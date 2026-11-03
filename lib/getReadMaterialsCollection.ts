@@ -1,6 +1,7 @@
 import { GridFSBucket, ObjectId } from "mongodb";
 import { db } from "@/app/db";
 import { dbBackend, getBlobs, getD1 } from "@/lib/d1";
+import { bookHash } from "@/lib/read/units";
 
 export interface ReadMaterial {
   _id: ObjectId | string;
@@ -10,6 +11,10 @@ export interface ReadMaterial {
   contentId?: ObjectId; // GridFS file ID for large content (MongoDB backend)
   r2Key?: string; // R2 object key for large content (D1 backend)
   content?: string; // Direct content for small materials (<32KB)
+  /** When it first passed (95% of its running words known); set once. */
+  passedAt?: Date;
+  /** The book hash of its plain lines (lib/read/units.ts bookHash); D1, set at import or on next open. */
+  contentHash?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +43,8 @@ type ReadMaterialRow = {
   lines: string;
   r2_key: string | null;
   content: string | null;
+  passed_at?: string | null;
+  content_hash?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -50,6 +57,8 @@ function rowToMaterial(row: ReadMaterialRow): ReadMaterial {
     lines: JSON.parse(row.lines || "[]"),
     r2Key: row.r2_key ?? undefined,
     content: row.content ?? undefined,
+    passedAt: row.passed_at ? new Date(row.passed_at) : undefined,
+    contentHash: row.content_hash ?? undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -62,6 +71,7 @@ export async function saveReadMaterial(
   title: string,
   content: string,
   lines: string[],
+  contentHash?: string,
 ): Promise<ReadMaterial> {
   const now = new Date();
   const large = Buffer.byteLength(content, "utf8") >= GRIDFS_THRESHOLD;
@@ -73,8 +83,8 @@ export async function saveReadMaterial(
     await getD1()
       .prepare(
         `INSERT INTO read_materials
-           (id, user_id, title, lines, r2_key, content, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, user_id, title, lines, r2_key, content, content_hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -83,6 +93,7 @@ export async function saveReadMaterial(
         JSON.stringify(lines),
         r2Key ?? null,
         large ? null : content,
+        contentHash ?? null,
         now.toISOString(),
         now.toISOString(),
       )
@@ -94,6 +105,7 @@ export async function saveReadMaterial(
       lines,
       r2Key,
       content: large ? undefined : content,
+      contentHash,
       createdAt: now,
       updatedAt: now,
     };
@@ -221,4 +233,138 @@ export async function getReadMaterialById(
 
   const collection = getReadMaterialsCollection(userId);
   return collection.findOne({ _id: new ObjectId(materialId), userId });
+}
+
+/**
+ * Replace a material's content in place (a backfill: the book's word count
+ * added to its meta). Moves between inline and R2 as the size requires, and
+ * leaves `updated_at` alone so the list order does not change. D1 only:
+ * MongoDB is the frozen rollback copy, so there it is a no-op.
+ */
+export async function replaceReadMaterialContent(
+  userId: string,
+  materialId: string,
+  content: string,
+): Promise<void> {
+  if (dbBackend() !== "d1") return;
+  const large = Buffer.byteLength(content, "utf8") >= GRIDFS_THRESHOLD;
+  const row = await getD1()
+    .prepare("SELECT r2_key FROM read_materials WHERE id = ? AND user_id = ?")
+    .bind(materialId, userId)
+    .first<{ r2_key: string | null }>();
+  if (!row) return;
+  if (large) {
+    const key = row.r2_key ?? `${R2_PREFIX}${materialId}`;
+    await getBlobs().put(key, content);
+    await getD1()
+      .prepare("UPDATE read_materials SET r2_key = ?, content = NULL WHERE id = ? AND user_id = ?")
+      .bind(key, materialId, userId)
+      .run();
+    return;
+  }
+  await getD1()
+    .prepare("UPDATE read_materials SET r2_key = NULL, content = ? WHERE id = ? AND user_id = ?")
+    .bind(content, materialId, userId)
+    .run();
+  if (row.r2_key) {
+    try {
+      await getBlobs().delete(row.r2_key);
+    } catch {
+      // a stray object costs little; the row no longer points at it
+    }
+  }
+}
+
+/**
+ * Record the first time a material passed. Only when none is recorded yet:
+ * the first pass stands, whatever happens to the coverage later. Returns the
+ * date that is recorded now (the existing one if it was already set).
+ */
+export async function markReadMaterialPassed(
+  userId: string,
+  materialId: string,
+  at: Date,
+): Promise<Date | null> {
+  if (dbBackend() !== "d1") return null;
+  await getD1()
+    .prepare(
+      "UPDATE read_materials SET passed_at = ? WHERE id = ? AND user_id = ? AND passed_at IS NULL",
+    )
+    .bind(at.toISOString(), materialId, userId)
+    .run();
+  const row = await getD1()
+    .prepare("SELECT passed_at FROM read_materials WHERE id = ? AND user_id = ?")
+    .bind(materialId, userId)
+    .first<{ passed_at: string | null }>();
+  return row?.passed_at ? new Date(row.passed_at) : null;
+}
+
+/**
+ * The user's material with exactly these lines (same book hash, or no hash
+ * yet and the same stored lines), newest first; null if none. D1 only: the
+ * same EPUB imported again upgrades that book in place (docs/books-plan.md,
+ * "Review units").
+ */
+export async function findReadMaterialByText(
+  userId: string,
+  contentHash: string,
+  lines: string[],
+): Promise<ReadMaterial | null> {
+  if (dbBackend() !== "d1") return null;
+  const row = await getD1()
+    .prepare(
+      `SELECT * FROM read_materials
+       WHERE user_id = ? AND (content_hash = ? OR (content_hash IS NULL AND lines = ?))
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(userId, contentHash, JSON.stringify(lines))
+    .first<ReadMaterialRow>();
+  return row ? rowToMaterial(row) : null;
+}
+
+/**
+ * The id of the user's own material whose text has this book hash (the
+ * content hash a deep link names, lib/read/book-link.ts), newest first; null
+ * if the user has none. Looks only at `userId`'s rows. Rows from before the
+ * hash was stored are hashed here (and the hash saved), so an old upload
+ * still answers its links.
+ */
+export async function findReadMaterialIdByHash(
+  userId: string,
+  hash: string,
+): Promise<string | null> {
+  if (dbBackend() === "d1") {
+    const d1 = getD1();
+    const hit = await d1
+      .prepare(
+        "SELECT id FROM read_materials WHERE user_id = ? AND content_hash = ? ORDER BY updated_at DESC LIMIT 1",
+      )
+      .bind(userId, hash)
+      .first<{ id: string }>();
+    if (hit) return hit.id;
+    const { results } = await d1
+      .prepare(
+        "SELECT id, lines FROM read_materials WHERE user_id = ? AND content_hash IS NULL ORDER BY updated_at DESC",
+      )
+      .bind(userId)
+      .all<{ id: string; lines: string }>();
+    for (const r of results) {
+      const h = await bookHash(JSON.parse(r.lines || "[]"));
+      try {
+        await d1
+          .prepare("UPDATE read_materials SET content_hash = ? WHERE id = ? AND user_id = ?")
+          .bind(h, r.id, userId)
+          .run();
+      } catch {}
+      if (h === hash) return r.id;
+    }
+    return null;
+  }
+  const docs = await getReadMaterialsCollection(userId)
+    .find({ userId }, { projection: { _id: 1, lines: 1, contentHash: 1 } })
+    .sort({ updatedAt: -1 })
+    .toArray();
+  for (const d of docs)
+    if ((d.contentHash ?? (await bookHash(d.lines ?? []))) === hash) return String(d._id);
+  return null;
 }

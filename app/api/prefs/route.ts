@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
+import { apiTokenUser } from "@/lib/api-token-user";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { devBridgeUser } from "@/lib/dev-bridge-user";
 import { MAX_BODY_BYTES, patchBody } from "@/lib/prefs/schema";
@@ -15,7 +16,9 @@ import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
  * their schemas are lib/prefs/schema.ts; anything else is refused.
  *
  * The owner's dev page reaches it through the dev bridge (lib/dev-bridge-user.ts),
- * so it shares his settings with lianki.com.
+ * so it shares his settings with lianki.com. The `lianki settings` CLI reaches
+ * it with `Authorization: Bearer lk_…` (lib/api-token-user.ts) — the only
+ * route that takes an API token this way.
  *
  * D1 only: on the frozen Mongo rollback copy, reads are empty and writes 503,
  * so a rollback falls back to device-local preferences.
@@ -24,7 +27,9 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
 
 async function who(req: Request) {
   const bridged = await devBridgeUser(req);
-  return bridged === undefined ? await authUserOrNull() : bridged;
+  if (bridged !== undefined) return bridged;
+  const token = await apiTokenUser(req);
+  return token === undefined ? await authUserOrNull() : token;
 }
 
 export async function GET(req: NextRequest) {

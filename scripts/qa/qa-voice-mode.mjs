@@ -12,6 +12,17 @@
 import { chromium, devices } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 
+// "Add a list" is a tree (lib/words/add-tree.ts): unfold the language, tick
+// its first list, Add selected. Adding stays on the picker; tap the new row to study.
+const addAndOpen = async (page, c) => {
+  const node = page.locator(`[data-add-node="${c.id}"]`);
+  if (!(await node.isVisible()))
+    await page.locator(`[data-add-node="lang:${c.lang}"] button`).first().click();
+  await node.locator("label").click();
+  await page.locator("[data-add-selected]").click();
+  await page.locator("[data-added-toast]").waitFor({ timeout: 15000 });
+  await page.locator("[data-fresh] [data-open-list]").first().click();
+};
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const EMAIL = process.env.QA_EMAIL || "qa+voice@lianki.test";
 const PW = "qa-test-pass-1234";
@@ -73,8 +84,7 @@ async function pass(name, contextOptions) {
       async () => (await (await fetch("/words/index.json")).json()).lists,
     );
     const first = catalog.find((c) => c.lang === "fr") ?? catalog[0];
-    await page.getByRole("button", { name: first.lang, exact: true }).click();
-    await page.getByRole("button", { name: "add", exact: true }).first().click();
+    await addAndOpen(page, first);
   }
   await page.waitForTimeout(500);
   await rows.first().waitFor({ timeout: 20000 });
@@ -94,7 +104,7 @@ async function pass(name, contextOptions) {
     (await page.evaluate(() => localStorage.getItem("lk:words-voice-mode"))) === "1",
     "turning it on is kept in prefs (lk:words-voice-mode, synced as words.voiceMode)",
   );
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.locator("[data-words-settings-close]").click(); // a modal sheet: its ✕ closes it
 
   const badge = page.locator("[data-voice-mode]");
   await page.waitForFunction(

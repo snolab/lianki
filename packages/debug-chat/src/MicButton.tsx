@@ -24,9 +24,13 @@ import { createLocalStt } from "./local-stt";
 import { VOICE_DEVICE_KEY, deviceSlug, noteSpeaker } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
+import { MIC_BOX, MIC_RING } from "./bar-geometry";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
 import { voice } from "./voice";
+import { captureHeld, pageAudio } from "./page-audio";
+import { ECHO_WINDOW_MS, echoScore } from "./echo";
+import { micAec, onOpened } from "./aec";
 import {
   aecOn,
   appliedSettings,
@@ -48,7 +52,16 @@ import {
 const ORT = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
 const VAD = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/";
 const REC = "oklch(0.6 0.22 25)";
-/** The agent speaking (capture held): a calm blue, unlike the red of REC. */
+/**
+ * The capturing ring's pulse: its opacity and a slight scale, both on the GPU,
+ * about the ring's own centre, so it stays concentric and nothing moves. Under
+ * reduced motion it holds still, a little thicker than the listening ring.
+ * In a <style> beside the button, not a Tailwind class: a stale stylesheet
+ * (docs/dev-debug-widget.md, "concentric") cannot drop it.
+ */
+const MIC_PULSE = `@keyframes lk-mic-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.12)}}
+@media (prefers-reduced-motion:reduce){[data-testid="debug-chat-mic-ring"][data-rec]{animation:none!important;box-shadow:0 0 0 3px ${REC}!important}}`;
+/** The agent speaking (capture held): a calm blue, unlike the red of capture. */
 const TALK = "oklch(0.62 0.14 250)";
 /** Passive (docs/wake-word.md): on, but only waiting for "Linky": a quiet grey-violet. */
 const WAIT = "oklch(0.62 0.06 290)";
@@ -96,15 +109,17 @@ const script = (src: string) =>
   });
 
 /**
- * The mic, with echo cancellation, noise suppression and auto gain on
- * (lk:voice-aec; voice-out.ts). vad-web is handed this stream (getStream),
- * so these are the constraints it runs with. What the browser applied is kept
- * for the per-utterance debug log. The mic session (mic-session.ts) owns it:
+ * The mic, with echo cancellation, noise suppression and auto gain all on or
+ * all off (lk:voice-aec; aec.ts). vad-web is handed this stream (getStream),
+ * so these are the constraints it runs with. The mode it was opened with and
+ * what the browser applied are kept, for the hold, the clips' metadata and
+ * the per-utterance debug log. The mic session (mic-session.ts) owns it:
  * the VADs below listen on it and never stop it.
  */
 const micStream = async () => {
-  const s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aecOn()) });
-  noteTrack(s);
+  const aec = aecOn();
+  const s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aec) });
+  noteTrack(s, aec);
   return s;
 };
 
@@ -299,6 +314,7 @@ function session(): MicSession {
     onState: (s, last) => {
       const active = s !== "off";
       v.setMic(active);
+      pageAudio().setMic(active);
       // The user starts talking: over the agent it ducks (a barge-in if they
       // keep going), else the reading pauses; it reads on once they are done.
       if (s === "capturing") {
@@ -311,9 +327,20 @@ function session(): MicSession {
     },
     onProb: (p) => v.userFrame(p),
     // Only with lk:voice-aec off: else the mic stays open and the user can barge in.
+    // Held while the chat reads (voice.ts) or the page plays word audio (page-audio.ts).
     subscribeHold: (f) => {
-      f(v.state().hold);
-      return v.subscribe((x) => f(x.hold));
+      const page = pageAudio();
+      const calc = () =>
+        f(captureHeld(v.state().hold, page.playing(), micAec(), page.always()));
+      calc();
+      const a = v.subscribe(calc);
+      const b = page.subscribe(calc);
+      const c = onOpened(calc);
+      return () => {
+        a();
+        b();
+        c();
+      };
     },
     // The device goes along, so the Mac scores finals against this device's voiceprint.
     localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner" }),
@@ -324,6 +351,9 @@ function session(): MicSession {
     upload: async (wav, { seq, durationMs, partial, local, onEcho }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
+      // The mode and track this utterance was recorded on: a reopen while it is transcribed changes both.
+      const aecAt = v.aec();
+      const trackAt = appliedSettings();
       try {
         // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
         let out: { text: string; model?: string; ms?: number };
@@ -348,13 +378,29 @@ function session(): MicSession {
           }
         } else out = await postStt(wav, fetch, "audio/wav", sttHint());
         // The text guard: the agent's own words that leaked past the AEC are dropped.
-        const echo = v.echoCheck(out.text, durationMs);
+        const chatEcho = v.echoCheck(out.text, durationMs);
+        // The page reads aloud too (/read): what it said is the same kind of echo.
+        // But first the page may claim the line as the user's own (/read's shadowing).
+        const page = pageAudio();
+        // From `at` (taken before the transcription await): when the speech began.
+        const spokeAt = at - durationMs;
+        if (!partial && !chatEcho.drop && page.heard(out.text, spokeAt)) {
+          v.log({ ev: "voice-utt-page", durationMs, text: out.text.slice(0, 80) });
+          return "";
+        }
+        const pageEcho = chatEcho.drop
+          ? null
+          : echoScore(
+              out.text,
+              page.said(spokeAt, ECHO_WINDOW_MS).map((r) => r.text),
+            );
+        const echo = pageEcho?.drop ? { ...pageEcho, during: chatEcho.during } : chatEcho;
         if (!partial)
           v.log({
             ev: "voice-utt",
             out: v.mode(),
-            aec: v.aec(),
-            settings: appliedSettings(),
+            aec: aecAt,
+            settings: trackAt,
             durationMs,
             during: echo.during,
             drop: echo.drop,
@@ -379,15 +425,15 @@ function session(): MicSession {
             label: cfg.label,
             transcript: out.text,
             model: out.model,
-            aec: v.aec(),
-            track: appliedSettings(),
+            aec: aecAt,
+            track: trackAt,
           };
           sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
         }
         return out.text;
       } catch (e) {
         if (sink) {
-          const meta = { at, durationMs, label: cfg.label, aec: v.aec(), track: appliedSettings() };
+          const meta = { at, durationMs, label: cfg.label, aec: aecAt, track: trackAt };
           sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
         }
         throw e;
@@ -443,7 +489,8 @@ export const canCapture = () =>
  * turns listening on, another (or Escape) off. Each utterance the VAD cuts is
  * sent to /api/debug/stt at once, and its transcript appended to the input in
  * order (`onText`); nothing is sent as a message. While capturing: a red
- * pulsing ring and REC; listening but quiet: a steady faint ring. With
+ * pulsing ring; listening but quiet: a steady faint ring. No text on the
+ * button: the ring shows the state, and a polite live region says it. With
  * `clipSink` (the owner's dev server) each utterance is also posted there,
  * with its transcript, to build a local test set. Hidden where the browser
  * cannot capture.
@@ -571,6 +618,11 @@ export function DebugMic({
   return (
     // The chat bar's last control, right of the input.
     <div className="relative flex shrink-0">
+      <style>{MIC_PULSE}</style>
+      {/* What the ring shows, for screen readers: said on each change of state. */}
+      <span role="status" aria-live="polite" className="sr-only" data-testid="debug-chat-mic-live">
+        {state === "off" || state === "loading" ? "" : speaking ? "Agent speaking" : passive ? wakeLabel : "Listening"}
+      </span>
       {note && (
         <span
           role="alert"
@@ -634,39 +686,52 @@ export function DebugMic({
           void mic.current?.toggle();
         }}
         // 40px wide, and 40px tall to the touch (tap-40); no scrolling under a drag.
-        className={`tap-40 pointer-events-auto relative flex h-8 w-10 touch-none flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
-        style={{ color: state === "off" ? undefined : speaking ? TALK : passive ? WAIT : REC }}
+        // Its circle is the line-sized square at its end (the start padding takes
+        // the rest of the 40px): in the bar's corner, concentric with its border
+        // (bar-geometry.ts).
+        style={{
+          ...MIC_BOX,
+          color: state === "off" ? undefined : speaking ? TALK : passive ? WAIT : REC,
+        }}
+        className={`tap-40 pointer-events-auto relative flex touch-none flex-col items-center justify-center text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
       >
         {speaking ? (
-          // The agent speaks: a slow blue ring, so it is never mistaken for REC.
+          // The agent speaks: a slow blue ring, so it is never mistaken for capture.
           <span
             aria-hidden
             data-testid="debug-chat-mic-speaking"
-            className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 animate-pulse rounded-full"
-            style={{ boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
+            className="pointer-events-none absolute rounded-full animate-pulse motion-reduce:animate-none"
+            style={{ ...MIC_RING, boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
           />
         ) : passive ? (
           // Passive: a dashed ring, pulsing slowly while the spotter downloads.
           <span
             aria-hidden
             data-testid="debug-chat-mic-passive"
-            className={`pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
-            style={{ borderColor: WAIT }}
+            className={`pointer-events-none absolute rounded-full border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+            style={{ ...MIC_RING, borderColor: WAIT }}
           />
         ) : view.resume && state === "off" ? (
           // Reloaded with the mic on, and it could not resume by itself: one tap does.
           <span
             aria-hidden
             data-testid="debug-chat-mic-resume"
-            className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full border-2 border-dashed"
-            style={{ borderColor: REC }}
+            className={`pointer-events-none absolute rounded-full border-2 border-dashed`}
+            style={{ ...MIC_RING, borderColor: REC }}
           />
         ) : listening && (
-          // Steady and faint while listening; red and pulsing while audio is captured.
+          // Steady and faint while listening; red and pulsing (MIC_PULSE) while audio
+          // is captured. The ring alone shows it: no text on the button (owner, 2026-11-03).
           <span
             aria-hidden
-            className={`pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full ${rec ? "animate-pulse" : ""}`}
-            style={{ boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}` }}
+            data-testid="debug-chat-mic-ring"
+            data-rec={rec || undefined}
+            className="pointer-events-none absolute rounded-full"
+            style={{
+              ...MIC_RING,
+              boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}`,
+              animation: rec ? "lk-mic-pulse 1.2s ease-in-out infinite" : undefined,
+            }}
           />
         )}
         <MicIcon fill={state !== "off"} />
@@ -681,24 +746,6 @@ export function DebugMic({
             className={`pointer-events-none absolute end-1 top-0 size-1.5 rounded-full ${view.local === "connecting" ? "animate-pulse motion-reduce:animate-none" : ""}`}
             style={{ background: LOCAL_DOT[view.local] }}
           />
-        )}
-        {passive && !rec && (
-          <span
-            data-testid="debug-chat-mic-wake"
-            className="fs-8 font-bold leading-none"
-            style={{ color: WAIT }}
-          >
-            {ws.badge}
-          </span>
-        )}
-        {rec && (
-          <span
-            data-testid="debug-chat-mic-rec"
-            className="fs-8 font-bold leading-none"
-            style={{ color: REC }}
-          >
-            REC
-          </span>
         )}
       </button>
     </div>

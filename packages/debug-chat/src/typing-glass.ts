@@ -8,7 +8,8 @@
  * tint in the page's own tone, `blur(12px) saturate(1.4)`, a hairline edge;
  * near-opaque where nothing blurs.
  *
- * Lighter than the full-screen log's sheet (log-surface.ts SHEET_SCRIM).
+ * Lighter than the full-screen log's tint (log-surface.ts SHEET_SCRIM), which
+ * the same glass takes while it spans the log's height.
  */
 export const TYPING_SCRIM = {
   light: { l: 0.98, c: 0.01, h: 90, a: 0.6 },
@@ -23,16 +24,43 @@ export const TYPING_FILTER = "blur(12px) saturate(1.4)";
 export const TYPING_FADE_MS = 150;
 
 /**
- * When the glass is up: typing in the open chat. It covers only the box, so
- * it is up on other sites (the userscript) too; the host page is untouched.
+ * When the glass is up: typing in the open chat, or the full-screen log (a
+ * vertical drag on the mic or the empty input). It covers only the chat
+ * panel, so it is up on other sites (the userscript) too; the host page is
+ * untouched. The full-screen log has no sheet of its own over the page
+ * (owner, 2026-11-03 20:50 JST: "在输入框上拖动的这个全屏背景模糊"): the same
+ * glass grows with the log (glassAroundLog), one frame.
  */
 export function showTypingGlass(s: {
   typing: boolean;
   open: boolean;
-  /** The full-screen log has its own, stronger sheet. */
+  /** The full-screen log is up. */
   fullLog: boolean;
 }): boolean {
-  return s.typing && s.open && !s.fullLog;
+  return s.open && (s.typing || s.fullLog);
+}
+
+/** The glass's edge past the panel, px (Tailwind -inset-1.5). */
+export const GLASS_EDGE_PX = 6;
+
+/**
+ * The glass's box while the full-screen log has its own box (a drag on the
+ * empty input: the log leaves the flow, section-relative px, hanging from its
+ * bottom edge): the log's box and the same few px of edge, nothing more. The
+ * page around it stays sharp.
+ */
+export function glassAroundLog(
+  box: { left: number; width: number; bottom: number; height: number },
+  edge = GLASS_EDGE_PX,
+): { top: "auto"; right: "auto"; left: number; width: number; bottom: number; height: number } {
+  return {
+    top: "auto",
+    right: "auto",
+    left: box.left - edge,
+    width: box.width + 2 * edge,
+    bottom: box.bottom - edge,
+    height: box.height + 2 * edge,
+  };
 }
 
 type Tint = { l: number; c: number; h: number; a: number };
@@ -76,3 +104,29 @@ export function typingGlassMotion(
       : "none",
   };
 }
+
+/**
+ * One frame while typing (owner, 2026-11-03: "点进输入框、对焦之后，会有一个包括
+ * 聊天记录的框框显示出来；这个时候里面那个框框就没必要继续显示了"; and "尽量减少视觉上的
+ * 嵌套数量"). While the glass is up it is the frame, so the bar's own box goes
+ * inside it: its border turns transparent (the width stays, so nothing moves),
+ * its tint and its own blur go. Caret, placeholder, mic and + stay put. At
+ * rest nothing is overridden, and the bar's resting border is back.
+ */
+export function barInGlass(shown: boolean): {
+  borderColor?: string;
+  background?: string;
+  backdropFilter?: string;
+  WebkitBackdropFilter?: string;
+} {
+  if (!shown) return {};
+  return {
+    borderColor: "transparent",
+    background: "transparent",
+    backdropFilter: "none",
+    WebkitBackdropFilter: "none",
+  };
+}
+
+/** The bar's frame fades with the glass: border and tint over the same 150 ms. */
+export const BAR_IN_GLASS_TRANSITION = `border-color ${TYPING_FADE_MS}ms ease-out, background-color ${TYPING_FADE_MS}ms ease-out`;

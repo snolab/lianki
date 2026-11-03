@@ -86,6 +86,37 @@ const toPicker = async () => {
   await back.waitFor({ timeout: 15000 });
   await back.click();
 };
+/**
+ * "Add a list" is a tree (lib/words/add-tree.ts): unfold the language, tick
+ * the list's row, Add selected. Adding only adds: the picker stays, the new
+ * row shows (outlined) with an "Added" toast, and no study session starts;
+ * then the new row is tapped to study it.
+ */
+const addFromTree = async (c, { checks = false } = {}) => {
+  const node = page.locator(`[data-add-node="${c.id}"]`);
+  if (!(await node.isVisible()))
+    await page.locator(`[data-add-node="lang:${c.lang}"] button`).first().click();
+  await node.locator("label").click();
+  if (checks)
+    check(await node.locator("input").isChecked(), "a tapped list row ticks its checkbox");
+  await page.locator("[data-add-selected]").click();
+  await page.locator("[data-added-toast]").waitFor({ timeout: 15000 });
+  await page.waitForTimeout(500);
+  if (checks) {
+    check(!new URL(page.url()).searchParams.has("list"), `still on the picker: ${page.url()}`);
+    check(
+      (await page.locator('[role="listitem"]').count()) === 0,
+      "adding starts no study session",
+    );
+    check(
+      await page.locator("[data-fresh]").first().isVisible(),
+      "the new list shows in his lists",
+    );
+    check(await node.locator("input").isDisabled(), "the added list is checked and disabled");
+    await shot(page, "added-stays");
+  }
+  await page.locator("[data-fresh] [data-open-list]").first().click();
+};
 const errs = [];
 page.on("pageerror", (e) => {
   // Local runs have no Turnstile site key; that warning is not this page's fault.
@@ -217,6 +248,18 @@ const check = (cond, msg) => {
   console.log(`${cond ? "✓" : "✗"} ${msg}`);
   if (!cond) ok = false;
 };
+// Settings is a modal sheet (SettingsSheet): the toolbar's button opens it,
+// its ✕ closes it (the scrim covers the button while it is open).
+async function toggleSettings(pg) {
+  const sheet = pg.locator("[data-words-settings]");
+  if (await sheet.count()) {
+    await pg.locator("[data-words-settings-close]").click();
+    await sheet.waitFor({ state: "detached", timeout: 5000 });
+  } else {
+    await pg.getByRole("button", { name: "Settings" }).click();
+    await sheet.waitFor({ timeout: 5000 });
+  }
+}
 
 try {
   await page.goto(`${BASE}/sign-in`, { waitUntil: "networkidle" });
@@ -243,8 +286,104 @@ try {
   );
   check(catalog?.length > 0, `catalog lists: ${catalog?.length}`);
   const first = catalog.find((c) => c.lang === "fr") ?? catalog[0];
-  await page.getByRole("button", { name: first.lang, exact: true }).click();
-  await page.getByRole("button", { name: "add", exact: true }).first().click();
+  // Folding a language hides its whole branch: lists, coverage bands, Add all
+  // (owner, 2026-11-03 20:12 JST); lib/words/add-tree.ts shownKeys.
+  {
+    const lang = page.locator(`[data-add-node="lang:${first.lang}"]`);
+    const item = lang.locator("xpath=..");
+    const fold = lang.locator("button").first();
+    if ((await item.getAttribute("aria-expanded")) !== "true") await fold.click();
+    const branch = () => item.locator(`[data-add-node], [data-coverage-bands], [data-add-all]`);
+    check((await branch().count()) > 1, "an unfolded language shows its branch");
+    await fold.click();
+    check(
+      (await branch().count()) === 1,
+      `a folded language shows only its row: ${await branch().count()}`,
+    );
+  }
+  // Preview before adding (owner, 2026-11-03 20:14 JST; app/(app)/words/ListPreview.tsx):
+  // the eye on a list's row opens a modal sheet with every entry in the list's
+  // order, rendered only near the view; Esc and back close it, focus returns.
+  {
+    const lang = page.locator(`[data-add-node="lang:${first.lang}"]`);
+    if ((await lang.locator("xpath=..").getAttribute("aria-expanded")) !== "true")
+      await lang.locator("button").first().click();
+    const node = page.locator(`[data-add-node="${first.id}"]`);
+    const eye = node.locator("[data-list-preview-open]");
+    const box = await eye.boundingBox();
+    check(
+      box && box.width >= 40 && box.height >= 40,
+      `the preview eye is a 40px target: ${JSON.stringify(box)}`,
+    );
+    const entries = await page.evaluate(
+      async (file) => (await (await fetch(`/words/${file}`)).json()).entries,
+      first.file,
+    );
+    await eye.click();
+    const dlg = page.locator('[role="dialog"]:has([data-list-preview])');
+    await dlg.locator("[data-preview-row]").first().waitFor({ timeout: 15000 });
+    check(!(await node.locator("input").isChecked()), "the eye previews without ticking the row");
+    check(
+      (await dlg.locator("[data-preview-row]").first().locator("p").first().innerText()).startsWith(
+        entries[0].term,
+      ),
+      "the preview starts with the list's first entry",
+    );
+    check(
+      (await dlg.locator("[data-list-preview-size]").innerText()).replace(/\D/g, "") ===
+        String(entries.length),
+      `the preview gives the list's size (${entries.length})`,
+    );
+    const rendered = await dlg.locator("[data-preview-row]").count();
+    check(
+      entries.length < 200 || rendered < entries.length,
+      `the preview renders only rows near the view: ${rendered} of ${entries.length}`,
+    );
+    // Scrolled to the end, the last entry shows: no "first N".
+    for (let i = 0; i < 40; i++) {
+      const at = await dlg.evaluate((d) => {
+        const b = d.querySelector("[data-words-settings-body]");
+        b.scrollTop = b.scrollHeight;
+        return Math.abs(b.scrollHeight - b.clientHeight - b.scrollTop) < 2;
+      });
+      await page.waitForTimeout(50);
+      if (at && (await dlg.locator(`[data-preview-row="${entries.length - 1}"]`).count())) break;
+    }
+    check(
+      (await dlg.locator(`[data-preview-row="${entries.length - 1}"]`).count()) === 1,
+      "scrolled to the end, the preview shows the last entry",
+    );
+    check(
+      await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]')),
+      "focus is inside the preview",
+    );
+    await page.keyboard.press("Escape");
+    await dlg.waitFor({ state: "detached", timeout: 5000 });
+    check(
+      await page.evaluate(() => document.activeElement?.hasAttribute("data-list-preview-open")),
+      "closing the preview returns focus to its eye",
+    );
+    await eye.click();
+    await dlg.waitFor({ timeout: 5000 });
+    await page.goBack();
+    await dlg.waitFor({ state: "detached", timeout: 5000 });
+    check(new URL(page.url()).pathname.endsWith("/words"), "back closes the preview, not the page");
+    // A coverage band previews the union of its lists.
+    const bandEye = page.locator("[data-coverage-bands] [data-list-preview-open]").first();
+    if (await bandEye.count()) {
+      await bandEye.click();
+      await dlg.locator("[data-preview-row]").first().waitFor({ timeout: 15000 });
+      check(
+        Number((await dlg.locator("[data-list-preview-size]").innerText()).replace(/\D/g, "")) >=
+          entries.length,
+        "a band's preview holds its lists together",
+      );
+      await shot(page, "list-preview-band");
+      await dlg.locator("[data-words-settings-close]").click();
+      await dlg.waitFor({ state: "detached", timeout: 5000 });
+    }
+  }
+  await addFromTree(first, { checks: true });
 
   const rows = page.locator('[role="listitem"]');
   await rows.first().waitFor({ timeout: 15000 });
@@ -378,6 +517,48 @@ try {
   );
   await page.keyboard.press("Escape");
   check((await page.locator("[data-slip-sheet]").count()) === 0, "Escape closes the sheet");
+  // Back folds the sheet and stays on /words (owner, 2026-11-03); a sheet
+  // closed by its own UI leaves no extra history entry behind
+  // (lib/back-to-close.ts).
+  {
+    const where = () => page.evaluate(() => [location.href, history.length, history.state]);
+    await page.waitForTimeout(300); // Escape's history.back() lands
+    const [hrefBefore, , stateBefore] = await where();
+    check(stateBefore?.__lkBack === undefined, "Escape left the sheet's history entry");
+    await loose.click({ button: "right" });
+    await page.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+    const [hrefOpen, , stateOpen] = await where();
+    check(
+      hrefOpen === hrefBefore && typeof stateOpen?.__lkBack === "string",
+      "an open sheet has a history entry of its own, on the same URL",
+    );
+    await page.evaluate(() => history.back());
+    await page
+      .locator("[data-slip-sheet]")
+      .waitFor({ state: "detached", timeout: 3000 })
+      .catch(() => {});
+    await page.waitForTimeout(300);
+    const [hrefAfter] = await where();
+    check(
+      (await page.locator("[data-slip-sheet]").count()) === 0 && hrefAfter === hrefBefore,
+      `back closes the sheet and stays on /words (${hrefAfter})`,
+    );
+    check(
+      (await page.locator('[role="listitem"]').count()) > 0,
+      "after back the word list is still there",
+    );
+    // Reopen, close by Escape: the sheet's entry is consumed, so the next
+    // back leaves /words for the page before, not a dead entry.
+    await loose.click({ button: "right" });
+    await page.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    const [hrefEsc, , stateEsc] = await where();
+    check(
+      hrefEsc === hrefBefore && stateEsc?.__lkBack === undefined,
+      "a sheet closed by Escape consumes its history entry",
+    );
+  }
   await shot(page, "words-desktop-graded");
   check(
     /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(await statusOf(0)),
@@ -418,21 +599,24 @@ try {
   // The URL keeps the list; a refresh lands back in it.
   check(/[?&]list=/.test(page.url()), `the open list is in the URL: ${new URL(page.url()).search}`);
   // Settings live in a panel of switches, and are remembered across a refresh.
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.getByRole("switch", { name: "Show all meanings" }).click();
   await page.reload({ waitUntil: "networkidle" });
   await rows.first().waitFor({ timeout: 15000 });
   check((await rows.count()) > 0, "a refresh lands back in the list");
   check(!(await blurred(5)), "Show all meanings is remembered across a refresh");
-  await page.keyboard.press("e"); // back off, for the checks below
-  check(await blurred(5), "E turns it off again");
-
   // The open Settings panel is UI state of this tab (docs/ui-state.md): it
   // is still open after the refresh.
   check(
     await page.getByRole("switch", { name: "Server voice" }).isVisible(),
     "the Settings panel stays open across a refresh (sessionStorage)",
   );
+  // A modal sheet: the study keys rest while it is open, so close it first.
+  await page.keyboard.press("e");
+  check(!(await blurred(5)), "the study keys rest while the Settings sheet is open");
+  await toggleSettings(page);
+  await page.keyboard.press("e"); // back off, for the checks below
+  check(await blurred(5), "E turns it off again");
   // Where the reader was is this tab's UI state too: scrolled down, a
   // refresh reopens at the same word; /words with no ?list= reopens the list.
   {
@@ -484,12 +668,13 @@ try {
   }
   // The server voice is the default (browser voices can mislead): moving to
   // a word plays the server's recording (stubbed: no AI call, nothing audible).
+  await toggleSettings(page);
   check(
     (await page.getByRole("switch", { name: "Server voice" }).getAttribute("aria-checked")) ===
       "true",
     "Server voice is on by default",
   );
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.keyboard.press("s");
   await page
     .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
@@ -497,9 +682,9 @@ try {
   check((await page.evaluate(() => window.__played.length)) > 0, "Server voice plays server audio");
   // Server voice off, and no browser voice for the language: still the
   // server, never the OS's default voice (a Japanese voice reading French).
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.getByRole("switch", { name: "Server voice" }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.evaluate(() => {
     window.__played.length = 0;
     window.__spoken.length = 0;
@@ -513,9 +698,9 @@ try {
     voiceless[0] === 0 && voiceless[1] > 0,
     `no browser voice for the language: the server speaks, not the OS default (spoken ${voiceless[0]}, played ${voiceless[1]})`,
   );
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.getByRole("switch", { name: "Server voice" }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
 
   // Hints follow the input: a keyboard was used, so key hints, no gestures.
   // In the help strip: the nav island's first-visit tip repeats the hint,
@@ -592,8 +777,10 @@ try {
     });
   // The installed app has no address bar: seven quick taps on the Settings
   // button toggle the debug log instead (the stats line stays selectable text).
+  // While the sheet is open its scrim covers the button: those taps land on
+  // the scrim (and still count), so they are clicked through to its place.
   const gear = page.getByRole("button", { name: "Settings" });
-  for (let k = 0; k < 7; k++) await gear.click();
+  for (let k = 0; k < 7; k++) await gear.click({ force: true });
   check((await page.locator("[data-debug-badge]").count()) === 1, "seven taps turn debug on");
   {
     // Users know debug mode as their "Learning Partner" (docs/dev-debug-widget.md).
@@ -609,7 +796,7 @@ try {
       (await page.locator("[data-debug-proto]").count()) === 1,
     "debug mode links the slip prototype (and nothing else)",
   );
-  for (let k = 0; k < 7; k++) await gear.click();
+  for (let k = 0; k < 7; k++) await gear.click({ force: true });
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
   // The same hidden switch on every page: ten quick taps on your own name in
   // the profile menu (the menu stays open between taps).
@@ -1003,7 +1190,7 @@ try {
       await mrows.first().waitFor({ timeout: 15000 });
       if (variant === "native") {
         // The experimental switch, under its own heading in Settings.
-        await m.getByRole("button", { name: "Settings" }).click();
+        await toggleSettings(m);
         check(
           (await m.locator("[data-experimental]").innerText()).includes("It may change or go away"),
           `${tag} Settings has an Experimental section with its note`,
@@ -1014,7 +1201,7 @@ try {
           `${tag} New swipe is off by default`,
         );
         await sw.click();
-        await m.getByRole("button", { name: "Settings" }).click();
+        await toggleSettings(m);
         await m.locator('[data-swipe="native"]').first().waitFor({ timeout: 5000 });
         check(
           (await m.evaluate(() => localStorage.getItem("lk:swipe-ab"))) === "native" &&
@@ -1059,15 +1246,36 @@ try {
         // The island's own rim (its padding, no button), or its small
         // capsule while it is shrunk: a touch that changes nothing on the list.
         const rim = await m.evaluate(() => {
-          const nav = document.querySelector("[data-nav-island] nav");
-          if (!nav) return null;
-          const b = nav.getBoundingClientRect();
-          const p = { x: b.left + 3, y: b.top + b.height / 2 };
-          const el = document.elementFromPoint(p.x, p.y);
-          if (el && el.closest("[data-nav-island]")) return p;
-          const cap = document.querySelector("[data-nav-island] > button");
-          const c = cap?.getBoundingClientRect();
-          return c ? { x: c.left + c.width / 2, y: c.top + c.height / 2 } : null;
+          // The toolbar's empty space: the point farthest from any of its
+          // links and buttons (Chrome's touch adjustment moves a tap near one
+          // onto it). The bottom island is no good: a tap on its capsule
+          // grows it under the finger, and the click lands on a button.
+          const top = document.querySelector("[data-words-top]");
+          if (!top) return null;
+          const b = top.getBoundingClientRect();
+          const hits = [...top.querySelectorAll("a, button, input, [role=switch]")].map((e) =>
+            e.getBoundingClientRect(),
+          );
+          const gap = (x, y) =>
+            Math.min(
+              99,
+              ...hits.map((r) =>
+                Math.hypot(
+                  Math.max(r.left - x, 0, x - r.right),
+                  Math.max(r.top - y, 0, y - r.bottom),
+                ),
+              ),
+            );
+          let p = null;
+          let best = 0;
+          for (let x = b.left + 2; x <= b.right - 2; x += 2)
+            for (let y = b.top + 2; y <= b.bottom - 2; y += 4) {
+              const el = document.elementFromPoint(x, y);
+              if (!el?.closest("[data-words-top]") || el.closest("a, button, input")) continue;
+              const d = gap(x, y);
+              if (d > best) [best, p] = [d, { x, y }];
+            }
+          return best >= 8 ? p : null;
         });
         const hidden = await m
           .locator("[data-words-help]")
@@ -1253,18 +1461,39 @@ try {
         (await m.locator("[data-slip-sheet] [data-sheet-tags] span").count()) > 0,
         `${tag} the sheet shows the word's tags`,
       );
-      // One row = the whole card: front, then the back (meaning, then the
-      // example), in the row's fixed height, so the windowing stays exact.
-      const unified = await mrows.nth(0).evaluate((el) => ({
-        example: el.querySelectorAll("[data-row-back] [data-row-example]").length,
-        h: Math.round(el.getBoundingClientRect().height),
-      }));
+      // One row = the whole card: front, then the back (the example, then
+      // the meaning: example first, owner 2026-11-03), in the row's fixed
+      // height, so the windowing stays exact.
+      const unified = await mrows.nth(0).evaluate((el) => {
+        const back = el.querySelector("[data-row-back]");
+        const ex = back?.querySelector("[data-row-example]");
+        return {
+          example: ex ? 1 : 0,
+          exampleFirst: !!ex && !!back.firstElementChild?.contains(ex),
+          h: Math.round(el.getBoundingClientRect().height),
+        };
+      });
       check(
-        unified.example === 1 && unified.h === 44,
-        `${tag} the row shows the example under the meaning, at the fixed height (${JSON.stringify(unified)})`,
+        unified.example === 1 && unified.exampleFirst && unified.h === 44,
+        `${tag} the row shows the example above the meaning, at the fixed height (${JSON.stringify(unified)})`,
       );
       await m.getByRole("button", { name: "Cancel" }).click();
       check((await m.locator("[data-slip-sheet]").count()) === 0, `${tag} Cancel closes the sheet`);
+      // The phone's back with the sheet open folds it, on /words still.
+      await m.waitForTimeout(400);
+      const hrefBefore = await m.evaluate(() => location.href);
+      await m.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+      await m.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+      await m.evaluate(() => history.back());
+      await m
+        .locator("[data-slip-sheet]")
+        .waitFor({ state: "detached", timeout: 3000 })
+        .catch(() => {});
+      check(
+        (await m.locator("[data-slip-sheet]").count()) === 0 &&
+          (await m.evaluate(() => location.href)) === hrefBefore,
+        `${tag} back closes the double-tap sheet and stays on /words`,
+      );
       // Swipe vs scroll: a steep drag is a scroll and never grades; a clearly
       // sideways drag grades. A: pointer drags (WordRow reads pointer events).
       // B: real touches through CDP, so Chromium's own gesture code scrolls the
@@ -1306,7 +1535,8 @@ try {
       const after = await mStatus(3);
       check(after !== before, `${tag} a sideways drag grades (${before} → ${after})`);
       // An undo right after a swipe (undoing it) is logged against the variant.
-      await m.getByRole("button", { name: "Undo" }).click();
+      // The toolbar has no Undo button (owner, 2026-11-03): Z undoes.
+      await m.keyboard.press("z");
       const undoRow = await m.evaluate(() =>
         JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]")
           .map((r) => r.params)
@@ -1316,6 +1546,61 @@ try {
         !!undoRow && undoRow.includes(`ab=${variant}`),
         `${tag} an undo within 5 s of a swipe is logged (${undoRow})`,
       );
+      // Mirror swipe sides (Settings; lib/words/swipe.ts): on, a swipe left
+      // gives the grade a swipe right gave, the reveal and the help strip
+      // swap, and telemetry tags it. Off again for the checks below.
+      {
+        await toggleSettings(m);
+        const msw = m.getByRole("switch", { name: "Mirror swipe sides" });
+        const map = () => m.locator("[data-swipe-mirror-map]").innerText();
+        const map0 = await map();
+        check(
+          (await msw.getAttribute("aria-checked")) === "false" &&
+            map0.includes("← Hard / Again") &&
+            map0.includes("→ Good / Easy"),
+          `${tag} Mirror swipe sides is off by default, its mapping shown (${map0})`,
+        );
+        await msw.click();
+        const map1 = await map();
+        check(
+          (await m.evaluate(() => localStorage.getItem("lk:words-swipe-mirror"))) === "1" &&
+            map1.includes("← Good / Easy") &&
+            map1.includes("→ Hard / Again"),
+          `${tag} the switch flips the mapping at once, and is remembered (${map1})`,
+        );
+        await toggleSettings(m);
+        const sides = await m.evaluate(() =>
+          [...document.querySelectorAll('[data-reveal-slot="good"]')].map((e) =>
+            e.getAttribute("data-reveal-side"),
+          ),
+        );
+        check(
+          sides.length > 0 && sides.every((x) => x === "right"),
+          `${tag} mirrored, Good / Easy are uncovered on the right (${[...new Set(sides)]})`,
+        );
+        const was = await mStatus(3);
+        await drag(3, -70, 4);
+        const row = await m.evaluate(() =>
+          JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]")
+            .filter((r) => !r.params.includes("ev=undo"))
+            .at(-1),
+        );
+        check(
+          (await mStatus(3)) !== was &&
+            row?.finger < 0 &&
+            (row.rating === 3 || row.rating === 4) &&
+            row.params.includes("mirror=1"),
+          `${tag} mirrored, a swipe left grades as a swipe right did, tagged (${JSON.stringify(row)})`,
+        );
+        await m.keyboard.press("z");
+        await toggleSettings(m);
+        await msw.click();
+        await toggleSettings(m);
+        check(
+          (await m.evaluate(() => localStorage.getItem("lk:words-swipe-mirror"))) === "0",
+          `${tag} the mirror turns off again`,
+        );
+      }
       if (cdp) {
         // It glided home, and the list scrolled on by a row as in A.
         const home = await m.evaluate(() =>
@@ -1329,6 +1614,46 @@ try {
         check(
           top1 > top0 + 40,
           `${tag} a vertical drag on a slip scrolls the list (${top0} → ${top1})`,
+        );
+        // A slow slide lifted a pixel short of the first detent (the owner,
+        // Android, 2026-11-03: "stuck on the first slot"). Chromium snaps the
+        // last pixel itself after the lift, and that snap used to override the
+        // glide home, leaving the slip on Good's detent. Every one must grade
+        // and come home (lib/words/native-slip.ts); 3 in 10 stuck before.
+        const listTop = await m
+          .locator("[data-words-top]")
+          .evaluate((el) => el.getBoundingClientRect().bottom);
+        const short = [];
+        for (let n = 0; n < 6; n++) {
+          let at = null;
+          for (let i = 0; !at && i < 40; i++) {
+            const b = await mrows.nth(i).boundingBox();
+            if (b && b.y > listTop + 50 && b.y + b.height < 700) at = { i, b };
+          }
+          const di = await mrows.nth(at.i).getAttribute("data-i");
+          const status = () => m.locator(`[data-i="${di}"] span.tabular-nums`).innerText();
+          const was = await status();
+          const [x, y] = [at.b.x + at.b.width / 2, at.b.y + at.b.height / 2];
+          await touch("touchStart", x, y);
+          for (let k = 1; k <= 12; k++) {
+            await touch("touchMove", x + (60 * k) / 12, y);
+            await m.waitForTimeout(16);
+          }
+          await m.waitForTimeout(120);
+          await touch("touchEnd");
+          await m.waitForTimeout(1500);
+          const left = await m.evaluate(
+            (i) =>
+              Math.round(
+                document.querySelector(`[data-i="${i}"] .slip-scroller`)?.scrollLeft ?? -1,
+              ),
+            di,
+          );
+          short.push(`${left}:${(await status()) !== was ? "graded" : "not"}`);
+        }
+        check(
+          short.every((s) => s === "88:graded"),
+          `${tag} a slow slide lifted short of a detent grades and comes home, every time (${short.join(" ")})`,
         );
       }
       // What the slip uncovers: A's list-wide grade strip put under that row;
@@ -1460,7 +1785,7 @@ try {
 
       if (variant === "native") {
         // Full screen: the API where there is one, else the Add to Home Screen hint.
-        await m.getByRole("button", { name: "Settings" }).click();
+        await toggleSettings(m);
         await m.getByRole("switch", { name: "Full screen" }).click();
         await m.waitForTimeout(300);
         const fsOn = await m.evaluate(() => !!document.fullscreenElement);
@@ -1469,6 +1794,7 @@ try {
           fsOn || hint > 0,
           `phone: the full screen button works (${fsOn ? "fullscreen" : "hint"})`,
         );
+        await toggleSettings(m);
       }
       const order = await revealOrder(m, variant);
       check(
@@ -1798,8 +2124,7 @@ try {
         pageFits(o) && o.gap >= 0 && o.gap < 4,
         `${tag} 414×848 + safe area: the page is exactly the window, first word under the toolbar (${JSON.stringify(o)})`,
       );
-      const gear = w.getByRole("button", { name: "Settings" });
-      await gear.click();
+      await toggleSettings(w);
       await w.waitForTimeout(400);
       o = await layout();
       check(
@@ -1810,13 +2135,83 @@ try {
         o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
         `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
       );
-      await gear.click();
+      await toggleSettings(w);
       await w.waitForTimeout(400);
       o = await layout();
       check(
         !o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
         `${tag} settings closed: the first word is still right under the toolbar (${JSON.stringify(o)})`,
       );
+      // Settings is a modal sheet (SettingsSheet, owner 2026-11-03): bounded by
+      // the visible viewport, its body scrolls inside itself to the last row,
+      // the page never scrolls, focus goes back to the button. Short phones,
+      // both ways round, both schemes. The toolbar has no Undo button.
+      check(
+        (await w.locator("[data-words-top]").getByRole("button", { name: "Undo" }).count()) === 0,
+        `${tag} the toolbar has no Undo button (Z / M, Esc and voice undo)`,
+      );
+      for (const [vw, vh] of [
+        [360, 640],
+        [640, 360],
+      ]) {
+        await w.setViewportSize({ width: vw, height: vh });
+        await w.waitForTimeout(300);
+        await toggleSettings(w);
+        await w.waitForTimeout(400);
+        const fit = await w.evaluate(() => {
+          const panel = document.querySelector("[data-words-settings]");
+          const body = panel.querySelector("[data-words-settings-body]");
+          body.scrollTop = body.scrollHeight;
+          const p = panel.getBoundingClientRect();
+          const last = body.lastElementChild.getBoundingClientRect();
+          const b = body.getBoundingClientRect();
+          return {
+            modal:
+              panel.getAttribute("role") === "dialog" &&
+              panel.getAttribute("aria-modal") === "true",
+            panelTop: Math.round(p.top),
+            panelBottom: Math.round(p.bottom),
+            lastBottom: Math.round(last.bottom),
+            bodyBottom: Math.round(b.bottom),
+            innerH: innerHeight,
+            scrolls: body.scrollHeight > body.clientHeight ? body.scrollTop > 0 : true,
+            overscroll: getComputedStyle(body).overscrollBehaviorY,
+          };
+        });
+        // (WebKit's mobile emulation has no wheel: the body was scrolled to its
+        // end above; overscroll-behavior: contain keeps the page from following.)
+        await w.waitForTimeout(200);
+        const pageY = await w.evaluate(() => Math.round(scrollY));
+        check(
+          fit.modal &&
+            fit.panelTop >= 0 &&
+            fit.panelBottom <= fit.innerH &&
+            fit.lastBottom <= fit.bodyBottom + 1 &&
+            fit.scrolls &&
+            fit.overscroll === "contain" &&
+            pageY === 0,
+          `${tag} ${vw}×${vh}: the Settings sheet fits the screen and scrolls to its last row (${JSON.stringify({ ...fit, pageY })})`,
+        );
+        if (process.env.QA_SHOTS)
+          for (const colorScheme of ["light", "dark"]) {
+            await w.emulateMedia({ colorScheme });
+            await w.screenshot({
+              path: `${process.env.QA_SHOTS}/settings-sheet-${variant}-${vw}x${vh}-${colorScheme}.png`,
+            });
+          }
+        await w.keyboard.press("Escape");
+        await w.locator("[data-words-settings]").waitFor({ state: "detached", timeout: 5000 });
+        check(
+          await w.evaluate(() => document.activeElement?.getAttribute("aria-label") === "Settings"),
+          `${tag} ${vw}×${vh}: Esc closes the sheet and focus returns to the Settings button`,
+        );
+      }
+      await w.emulateMedia({ colorScheme: null });
+      await w.setViewportSize({ width: 414, height: 848 });
+      // Fresh layout for the swipe checks below, as before the resizes.
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(800);
       if (variant === "native") {
         // At rest the face covers the label strip; a completed swipe (the
         // touch sequence iOS gives: touchstart, pointercancel as the scroller
@@ -1896,8 +2291,7 @@ try {
 
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "ja", exact: true }).click();
-  await page.getByRole("button", { name: "add", exact: true }).first().click();
+  await addFromTree({ id: "ja-hiragana", lang: "ja" });
   await rows.first().waitFor({ timeout: 15000 });
   const firstTerms = await rows.locator("span.font-medium.overflow-hidden").allInnerTexts();
   const fronts = firstTerms.map((t) => t.split("\n")[0].trim());
@@ -1917,8 +2311,8 @@ try {
   check(saved, "download for offline completes");
 
   // Study all: with two lists, one queue mixes both.
-  await page.getByRole("button", { name: first.lang, exact: true }).click();
-  await page.getByRole("button", { name: "add", exact: true }).first().click();
+  const second = catalog.find((c) => c.lang === first.lang && c.id !== first.id && !c.kind);
+  await addFromTree(second);
   await rows.first().waitFor({ timeout: 15000 });
   await page.getByRole("button", { name: "← lists" }).click();
   await page.getByRole("button", { name: /Study all lists together/ }).click();

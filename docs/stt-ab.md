@@ -372,14 +372,19 @@ autoGainControl, sampleRate, channelCount}`, is saved in the sidecar
 it. The page side is the widget's: `postClip(…, { …, track:
 appliedSettings() })`.
 
-**The toggle does not turn echo cancellation off today.** `lk:voice-aec =
-"0"` selects `LEGACY_CONSTRAINTS`, which still has `echoCancellation: true`
-and `noiseSuppression: true`; only `autoGainControl` and the capture hold
-differ. On Android it is `echoCancellation` that puts Chrome in the
-voice-call audio mode (the worse speaker the owner noticed, 2026-10-31 00:51
-JST), so that side of the A/B needs `echoCancellation: false` (and then
-`noiseSuppression: false` and `autoGainControl: false` too, to hear the raw
-mic), with the capture hold so the agent's own voice is not transcribed.
+**The switch turns all processing off.** `lk:voice-aec = "0"` (the **Echo
+cancellation** switch, in the chat's ⋯ menu and in /words' Settings sheet)
+opens the mic with `RAW_CONSTRAINTS`: `echoCancellation`,
+`noiseSuppression` and `autoGainControl` all `false`. On Android it is
+`echoCancellation` that puts Chrome in the voice-call audio mode (the worse
+speaker the owner noticed, 2026-10-31 00:51 JST), so off keeps playback on
+the media stream. The capture hold (while anything plays, chat read-aloud
+and /words word audio, and 400 ms after) keeps the agent's own voice and the
+words read aloud out of the transcripts. Flipping it with the mic on
+reopens the track at once (`mic-session.ts` `reopen`), so each block of
+the A/B starts on a fresh track; a clip's `aec` and `track` fields are the
+open track's (`aec.ts` `micAec`, `noteTrack`), never a switch flipped
+after it opened.
 
 **How many clips.** Per-clip CER varies by about 0.1 between clean
 utterances. To tell a 0.1 difference in mean CER between two independent

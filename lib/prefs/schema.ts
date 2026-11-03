@@ -63,6 +63,7 @@ export const PREF_SCHEMAS = {
   "words.speakOnSwipe": z.boolean(),
   "words.gradeTones": z.boolean(),
   "words.voiceMode": z.boolean(),
+  "words.swipeMirror": z.boolean(),
   // the swipe (Experimental)
   "swipe.variant": z.enum(["js", "native"]),
   "swipe-feel.preset": z.enum(["light", "heavy"]),
@@ -73,6 +74,7 @@ export const PREF_SCHEMAS = {
   "text-size.ui": textScale,
   "text-size.chat": textScale,
   "text-size.cards": textScale,
+  "text-size.read": textScale,
   "ui.locale": z.enum(BLOG_LOCALES as unknown as [string, ...string[]]),
   "nav-pins.pinned": z.array(appPath).max(12),
   "home.lang": z.enum(IMMERSION_CODES),

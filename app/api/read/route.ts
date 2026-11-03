@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import { saveReadMaterial, listReadMaterials } from "@/lib/getReadMaterialsCollection";
+import {
+  findReadMaterialByText,
+  getReadMaterialContent,
+  listReadMaterials,
+  replaceReadMaterialContent,
+  saveReadMaterial,
+} from "@/lib/getReadMaterialsCollection";
+import { parseBookMeta } from "@/lib/read/book";
+import { saveContentHash } from "@/lib/read/reader-store";
+import { bookHash } from "@/lib/read/units";
 import { isoDay } from "@/lib/dates";
+import { bookMetaOf, checkBook } from "@/lib/read/book";
+import { dbBackend, getD1 } from "@/lib/d1";
+import { materialWords, summarizeMaterials, withLex } from "@/lib/read/progress";
+import { countWords } from "@/lib/read/words";
+
+const d1OrNull = () => (dbBackend() === "d1" ? getD1() : null);
 
 // GET /api/read - List materials
 export async function GET(request: NextRequest) {
@@ -32,12 +47,21 @@ export async function GET(request: NextRequest) {
   }
 
   const { materials, total } = await listReadMaterials(session.user.id, page, pageSize);
+  const userId = session.user.id;
+  const items = await Promise.all(
+    materials.map(async (m) => ({ material: m, stats: (await materialWords(m, userId)).stats })),
+  );
+  // One card query for the whole page (lib/read/progress.ts).
+  const words = await summarizeMaterials(d1OrNull(), session.user, items);
 
   return NextResponse.json({
-    materials: materials.map((m) => ({
+    materials: materials.map((m, i) => ({
       id: m._id.toString(),
       title: m.title,
-      lines: m.lines,
+      // The list shows a count only; a whole book's lines stay out of it.
+      lines: [],
+      lineCount: m.lines.length,
+      words: words[i],
       createdAt: m.createdAt.toISOString(),
       updatedAt: m.updatedAt.toISOString(),
     })),
@@ -66,7 +90,60 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400 });
   }
 
-  const { title, content } = body as { title?: unknown; content?: unknown };
+  const { title, content, book } = body as { title?: unknown; content?: unknown; book?: unknown };
+
+  // A book (EPUB parsed in the browser): validated and capped here, stored as
+  // lines + chapter meta (lib/read/book.ts). Always the signed-in user's own.
+  if (typeof book !== "undefined") {
+    const checked = checkBook(book);
+    if (!checked.ok) {
+      const status = checked.error === "too-much-text" ? 413 : 400;
+      return NextResponse.json({ error: checked.error }, { status });
+    }
+    const b = checked.book;
+    const bookMeta = bookMetaOf(b);
+    const hash = dbBackend() === "d1" ? await bookHash(b.lines) : undefined;
+    // The same text imported again with its markup (books from before #448's
+    // markup had none): upgrade that book in place, same id and history.
+    const prev =
+      hash && bookMeta.markup ? await findReadMaterialByText(session.user.id, hash, b.lines) : null;
+    const prevMeta = prev ? parseBookMeta(await getReadMaterialContent(prev)) : null;
+    if (prev && prevMeta && !prevMeta.markup) {
+      const pid = String(prev._id);
+      await replaceReadMaterialContent(session.user.id, pid, JSON.stringify(bookMeta));
+      if (!prev.contentHash) await saveContentHash(getD1(), session.user.id, pid, hash!);
+      const [words] = await summarizeMaterials(d1OrNull(), session.user, [
+        { material: prev, stats: bookMeta.words! },
+      ]);
+      return NextResponse.json({
+        id: pid,
+        title: prev.title,
+        lineCount: prev.lines.length,
+        words,
+        upgraded: true,
+        createdAt: prev.createdAt.toISOString(),
+        updatedAt: prev.updatedAt.toISOString(),
+      });
+    }
+    const material = await saveReadMaterial(
+      session.user.id,
+      b.title,
+      JSON.stringify(bookMeta),
+      b.lines,
+      hash,
+    );
+    const [words] = await summarizeMaterials(d1OrNull(), session.user, [
+      { material, stats: bookMeta.words! },
+    ]);
+    return NextResponse.json({
+      id: material._id.toString(),
+      title: material.title,
+      lineCount: material.lines.length,
+      words,
+      createdAt: material.createdAt.toISOString(),
+      updatedAt: material.updatedAt.toISOString(),
+    });
+  }
 
   if (typeof content !== "string" || content.length === 0) {
     return NextResponse.json({ error: "Content is required" }, { status: 400 });
@@ -85,11 +162,15 @@ export async function POST(request: NextRequest) {
     typeof title === "string" && title.length > 0 ? title : `Import ${isoDay()}`;
 
   const material = await saveReadMaterial(session.user.id, materialTitle, content, lines);
+  const [words] = await summarizeMaterials(d1OrNull(), session.user, [
+    { material, stats: await withLex(countWords(lines)) },
+  ]);
 
   return NextResponse.json({
     id: material._id.toString(),
     title: material.title,
     lines: material.lines,
+    words,
     createdAt: material.createdAt.toISOString(),
     updatedAt: material.updatedAt.toISOString(),
   });

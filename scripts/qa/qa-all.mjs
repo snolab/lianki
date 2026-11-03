@@ -188,6 +188,8 @@ const suites = [
   ["API  (qa-api)", "node", ["scripts/qa/qa-api.mjs"], { QA_BASE: BASE }],
   ["UI   (qa-ui)", "node", ["scripts/qa/qa-ui.mjs"], { QA_BASE: BASE }],
   ["WORDS (qa-words)", "node", ["scripts/qa/qa-words.mjs"], { QA_BASE: BASE }],
+  ["READ EPUB (qa-read-epub)", "node", ["scripts/qa/qa-read-epub.mjs"], { QA_BASE: BASE }],
+  ["READ PLAY (qa-read-play)", "node", ["scripts/qa/qa-read-play.mjs"], { QA_BASE: BASE }],
   [
     "SYNC (db-sync-matrix)",
     "bunx",

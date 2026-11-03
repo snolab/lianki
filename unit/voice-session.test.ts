@@ -10,6 +10,7 @@ import {
   IDLE_RESUME_MS,
   RESUME_TAIL_MS,
   SPEAK_KEY,
+  SPEECH_START_MS,
   type UtterLike,
   chunk,
   createVoice,
@@ -485,6 +486,7 @@ function cloudHarness(
   let cancels = 0;
   const timers: { f: () => void; ms: number; live: boolean }[] = [];
   const logs: Record<string, unknown>[] = [];
+  const reports: string[] = [];
   const flags = { aec: o.aec ?? true, mode: o.mode ?? "cloud" };
   const v = createVoice({
     synth: () => ({
@@ -501,6 +503,7 @@ function cloudHarness(
     aec: () => flags.aec,
     now: () => h0.t,
     log: (e) => void logs.push(e),
+    report: (m) => void reports.push(m),
     setTimer: (f, ms) => {
       const t = { f, ms, live: true };
       timers.push(t);
@@ -531,6 +534,7 @@ function cloudHarness(
     fetched,
     spoken,
     logs,
+    reports,
     fire,
     live,
     flags,
@@ -932,5 +936,102 @@ describe("voice session: resume after a pause", () => {
     // Long after, the same words are a new reply.
     h.advance(REPLY_DEDUPE_MS + 1);
     expect(h.v.reply("Alpha. Beta.")).toBe(true);
+  });
+});
+
+describe("voice session: never silent without saying so (Android, no speechSynthesis voices; 2026-11-03)", () => {
+  it("a refused clip with no voice to fall back on: kept, the chat is told (blocked), reported; a tap reads on", async () => {
+    const h = cloudHarness({ hasVoice: () => false });
+    h.v.setMic(true);
+    h.el.refuse = true;
+    expect(h.v.reply("第一句。")).toBe(true);
+    await h.loaded();
+    expect(h.spoken).toEqual([]); // never handed to a silent speechSynthesis
+    expect(h.v.state()).toMatchObject({ blocked: true, paused: true, speaking: false, queued: 1 });
+    expect(h.reports).toHaveLength(1);
+    expect(h.reports[0]).toContain("playback blocked");
+    expect(h.logs.find((l) => l.ev === "voice-blocked")).toMatchObject({
+      reason: "play NotAllowedError",
+    });
+    // A line arriving meanwhile is queued, not dropped.
+    expect(h.v.reply("第二句。")).toBe(true);
+    expect(h.v.state()).toMatchObject({ blocked: true, queued: 2 });
+    // The tap.
+    h.el.refuse = false;
+    h.v.unblock();
+    await h.loaded();
+    expect(h.el.plays).toHaveLength(1);
+    expect(h.v.state()).toMatchObject({ blocked: false, speaking: true, queued: 2 });
+    h.el.onended?.();
+    await h.loaded();
+    expect(h.el.plays).toHaveLength(2);
+    expect(h.reports).toHaveLength(1);
+  });
+
+  it("a cloud failure with no voice to fall back on skips that sentence (reported) and reads the next", async () => {
+    const h = cloudHarness({
+      hasVoice: () => false,
+      status: (t) => (t.startsWith("坏") ? 503 : 200),
+    });
+    h.v.setMic(true);
+    h.v.reply("坏的一句。好的一句。");
+    await h.loaded();
+    await h.loaded();
+    expect(h.spoken).toEqual([]);
+    expect(h.el.plays).toHaveLength(1);
+    expect(h.reports[0]).toContain("http 503");
+    expect(h.logs.find((l) => l.route === "none")).toMatchObject({ fallback: "http 503" });
+  });
+
+  it("speechSynthesis with no voice that never starts is given up on after SPEECH_START_MS", async () => {
+    const spoken: UtterLike[] = [];
+    const timers: { f: () => void; ms: number; live: boolean }[] = [];
+    const reports: string[] = [];
+    const v = createVoice({
+      synth: () => ({ speak: (u) => void spoken.push(u), cancel: () => {} }),
+      utter: (text) => ({ text, onend: null, onerror: null, onboundary: null }) as UtterLike,
+      enabled: () => true,
+      here: () => true,
+      hasVoice: () => false,
+      report: (m) => void reports.push(m),
+      setTimer: (f, ms) => {
+        const t = { f, ms, live: true };
+        timers.push(t);
+        return t;
+      },
+      clearTimer: (t) => {
+        if (t) (t as { live: boolean }).live = false;
+      },
+    });
+    v.reply("One. Two.");
+    expect(spoken.map((u) => u.text)).toEqual(["One."]);
+    for (const t of timers.filter((x) => x.live && x.ms === SPEECH_START_MS)) {
+      t.live = false;
+      t.f();
+    }
+    expect(spoken.map((u) => u.text)).toEqual(["One.", "Two."]);
+    expect(reports[0]).toContain("never started");
+    // The given-up one's late end does not move the queue past "Two." (Codex).
+    spoken[0].onend?.();
+    expect(v.state().queued).toBe(1);
+    // One that starts is not given up on.
+    spoken[1].onstart?.();
+    expect(timers.filter((x) => x.live && x.ms === SPEECH_START_MS)).toHaveLength(0);
+  });
+
+  it("speechSynthesis refusing (not-allowed, no tap yet) waits for the tap instead of skipping", () => {
+    const spoken: UtterLike[] = [];
+    const v = createVoice({
+      synth: () => ({ speak: (u) => void spoken.push(u), cancel: () => {} }),
+      utter: (text) => ({ text, onend: null, onerror: null, onboundary: null }) as UtterLike,
+      enabled: () => true,
+      here: () => true,
+    });
+    v.reply("Hello.");
+    spoken[0].onerror?.({ error: "not-allowed" });
+    expect(v.state()).toMatchObject({ blocked: true, queued: 1 });
+    v.unblock();
+    expect(spoken.map((u) => u.text)).toEqual(["Hello.", "Hello."]);
+    expect(v.state().blocked).toBe(false);
   });
 });

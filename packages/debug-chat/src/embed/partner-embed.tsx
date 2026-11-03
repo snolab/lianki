@@ -136,7 +136,7 @@ function Partner({ client, o, portal }: { client: PartnerClient; o: MountOptions
       live={s.live}
       listeners={s.listeners}
       messages={s.messages}
-      onSend={(text, to) => client.send(text, to)}
+      onSend={(text, to, opts) => client.send(text, to, opts?.context)}
       busy={s.busy}
       warning={s.warning}
       viewer={s.viewer}

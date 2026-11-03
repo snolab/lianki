@@ -29,7 +29,8 @@
  *       prints {"type":"pending","code"} to stdout; the owner taps "Allow chat
  *       for 30 days" — then prints each new owner or friend message as one
  *       JSON line {"type":"chat","id","thread","email","from","text","at","label"}
- *       (thread "owner" or the friend's user id; label = page path + user
+ *       (plus "context":{"selection","path","title","host"} when the sender
+ *       attached a page selection with the input's + menu; thread "owner" or the friend's user id; label = page path + user
  *       agent), and {"type":"friend-new","userId","email","at"} when someone
  *       writes for the first time, and {"type":"page-changed","thread",
  *       "email","label","at"} when a debug page navigates (silent on the
@@ -103,6 +104,9 @@
  *       (never read aloud again). Only the owner's LATEST line, only
  *       "source":"stt", at most 3 times; friends' lines never. --last targets
  *       the owner's latest line. Uses the saved grant; never pairs.
+ *       The hub refuses a polish its context does not support (polish.ts):
+ *       fix punctuation, homophones the line's `scene`, selection or thread
+ *       disambiguate, and stutters; never add, drop or invent words.
  *
  *   bun scripts/dev/eval.ts say --to /words/audio "text"
  *       Address a state-tree node instead of a thread (a `--to` starting

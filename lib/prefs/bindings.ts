@@ -182,6 +182,7 @@ export function prefBindings(): PrefBinding[] {
     plain("words.speakOnSwipe", "lk:words-swipe-speak", bool10, true),
     plain("words.gradeTones", "lk:words-grade-tones", bool10, true),
     plain("words.voiceMode", "lk:words-voice-mode", bool10, false),
+    plain("words.swipeMirror", "lk:words-swipe-mirror", bool10, false),
     plain("swipe.variant", "lk:swipe-ab", text, "js"),
     field("swipe-feel.preset", "swipe-feel", 1, "preset", "light"),
     field("swipe-feel.tweaks", "swipe-feel", 1, "tweaks", {}),
@@ -190,6 +191,7 @@ export function prefBindings(): PrefBinding[] {
     field("text-size.ui", "text-size", 1, "ui", 1),
     field("text-size.chat", "text-size", 1, "chat", 1),
     field("text-size.cards", "text-size", 1, "cards", 1),
+    field("text-size.read", "text-size", 1, "read", 1),
     plain("ui.paper", "lk:paper", text, "b", {
       also: (v) => {
         try {

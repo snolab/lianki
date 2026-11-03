@@ -2,6 +2,9 @@
 
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
 import { useTextScale } from "@/lib/use-text-size";
+import { useBackToClose } from "@/lib/use-back-to-close";
+import { SettingsSheet } from "./SettingsSheet";
+import { ListPreview, PreviewButton } from "./ListPreview";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { advanceTop, shouldAdvance } from "@/lib/words/advance";
 import {
@@ -14,10 +17,15 @@ import {
   type Requeue,
 } from "@/lib/words/requeue";
 import { progressPercent } from "@/lib/words/progress";
+import { ProgressRingSvg } from "@/app/components/progress-ring";
 import { voiceQuality } from "@lianki/debug-chat/wire";
+import { pageAudio } from "@lianki/debug-chat/page-audio";
+import { AEC_EVENT, aecOn, applyAec } from "@lianki/debug-chat/aec";
 import {
+  createContext,
   startTransition,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -54,6 +62,22 @@ import {
   withoutNode,
 } from "@/lib/words/tree";
 import { shownName } from "@/lib/words/lang-groups";
+import { planArrange } from "@/lib/words/arrange";
+import {
+  buildAddTree,
+  loadAddOpen,
+  saveAddOpen,
+  toggleOpenKey,
+  coverageBands,
+  defaultOpen,
+  freqListsOf,
+  leavesOf,
+  tickState,
+  tickedInOrder,
+  toggleTick,
+  type AddNode,
+} from "@/lib/words/add-tree";
+import { EXTERNAL_SEARCHES, searchLinks, type ExternalSearch } from "@/lib/words/external-search";
 import {
   SCENARIOS,
   isPhraseMeta,
@@ -70,6 +94,17 @@ import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
+import { backParts } from "@/lib/words/row-layout";
+import { withPickedExample, type Example } from "@/lib/words/example-pick";
+import {
+  exampleSegments,
+  famLang,
+  famMark,
+  missingWords,
+  recordHits,
+  type FamHit,
+  type FamMap,
+} from "@/lib/words/example-marks";
 import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
@@ -97,22 +132,17 @@ import {
 import { MIN_JERK_EASING, moveSeconds } from "@/lib/words/motion";
 import { CORD_BOW, cordPath } from "@/lib/words/cords";
 import {
-  type SwipeLevel,
-  lockAxis,
-  releaseLevel,
-  releaseRating,
-  releaseVelocity,
-  restRating,
-  swipeLevel,
-  revealShown,
+  sideGrade,
+  sideRating,
   SWIPE_COAST_MS,
+  SWIPE_MIRROR_KEY,
   SWIPE_HYSTERESIS,
   SWIPE_LEVEL,
   SWIPE_SNAP,
   SWIPE_SPRING,
-  SWIPE_VELOCITY_MS,
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
+import { NATIVE_PARAMS, showReveal, useNativeSlip } from "@/lib/words/native-slip-gesture";
 import {
   SWIPE_CORE_IFACE,
   SwipeFeelProvider,
@@ -124,7 +154,6 @@ import {
   useSwipeFeel,
   useSwipeGesture,
 } from "@/lib/words/swipe-core";
-import type { SwipePhase } from "@/lib/words/swipe-machine";
 import { notePrefWrite, PREF_APPLIED_EVENT, useUi } from "@lianki/ui-state";
 import {
   anchorTop,
@@ -134,7 +163,6 @@ import {
   topIndex,
   wordsUiStore,
 } from "./ui-store";
-import { releaseTrajectory } from "@/lib/words/swipe-physics";
 import { island } from "@/lib/islands/Island";
 import { SwipeCard } from "@/lib/words/islands/SwipeCard";
 import { SwipeCue } from "@/lib/words/islands/SwipeCue";
@@ -216,8 +244,6 @@ function readJson<T>(key: string): T[] {
     return [];
   }
 }
-/** Variant B's tuning, for its telemetry rows: the browser's scroll snapping. */
-const NATIVE_PARAMS = "scroll-snap";
 /** An undo this soon after a swipe graded counts against that swipe. */
 const UNDO_AFTER_SWIPE_MS = 5000;
 let lastSwipeGrade = { at: 0, a: 44 };
@@ -232,22 +258,49 @@ function logSwipe(e: {
   ev?: "undo";
 }) {
   if (e.rating) lastSwipeGrade = { at: Date.now(), a: e.a };
+  const mirror = swipeMirrored();
   const unsent = readJson<SwipeRow>(UNSENT);
   unsent.push({
     at: new Date().toISOString(),
     finger: Math.round(e.finger * 10) / 10,
     v: Math.round(e.v * 1000) / 1000,
     projected: Math.round(e.projected * 10) / 10,
-    rating: e.rating,
+    // The grade given: with the sides mirrored, the finger's sign is the other one's.
+    rating: sideRating(e.rating, mirror),
     a: e.a,
-    // The feel tag (lib/words/swipe-feel.ts) only off the plain light feel, so old rows compare.
-    params: `${e.params ?? SWIPE_PARAMS};${swipeAbTag()}${feelTagNow() ? `;${feelTagNow()}` : ""}${e.ev ? `;ev=${e.ev}` : ""}`,
+    // The feel tag (lib/words/swipe-feel.ts) only off the plain light feel, so old rows
+    // compare; `mirror=1` only with the sides mirrored (Settings → Mirror swipe sides).
+    params: `${e.params ?? SWIPE_PARAMS};${swipeAbTag()}${feelTagNow() ? `;${feelTagNow()}` : ""}${mirror ? ";mirror=1" : ""}${e.ev ? `;ev=${e.ev}` : ""}`,
   });
   try {
     localStorage.setItem(UNSENT, JSON.stringify(unsent.slice(-400)));
   } catch {}
   if (unsent.length >= 20) flushSwipes();
 }
+/** The sides are mirrored on this device (lib/words/swipe.ts, synced as words.swipeMirror). */
+function swipeMirrored() {
+  try {
+    return localStorage.getItem(SWIPE_MIRROR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+/**
+ * The sides mirrored (Settings → Mirror swipe sides): what a sliding slip
+ * uncovers reads it (GradeZones, and data-mirror for showReveal). The grade
+ * itself is mirrored once, where a row's swipe is graded (swipeGrade).
+ */
+const SwipeMirror = createContext(false);
+
+/** The list's swipe contexts: the feel (swipe-core) and the mirror. */
+function SwipeProviders({ mirror, children }: { mirror: boolean; children: React.ReactNode }) {
+  return (
+    <SwipeFeelProvider>
+      <SwipeMirror.Provider value={mirror}>{children}</SwipeMirror.Provider>
+    </SwipeFeelProvider>
+  );
+}
+
 /** An undo: logged when it comes within UNDO_AFTER_SWIPE_MS of a swipe's grade. */
 function logUndoAfterSwipe() {
   if (Date.now() - lastSwipeGrade.at > UNDO_AFTER_SWIPE_MS) return;
@@ -326,10 +379,20 @@ type CatalogMeta = {
    * words come from /api/words/lists/<id>/entries.
    */
   path?: string;
-  /** "phrase" for a scenario phrase deck (lib/words/phrases.ts); word lists have none. */
-  kind?: "phrase";
+  /**
+   * "phrase" for a scenario phrase deck (lib/words/phrases.ts), "exam" for an
+   * exam deck (scripts/words/build-exam-decks.ts); word lists have none.
+   */
+  kind?: "phrase" | "exam";
+  /** The exam a list prepares for (JLPT, HSK 3.0, CET 四六级, TOEFL…); the add picker groups by it. */
+  exam?: string;
   /** A phrase deck's scenario. */
   scenario?: Scenario;
+  /**
+   * A frequency list's text coverage: the share of running text its top rank
+   * covers, estimated by lemma (scripts/words/build-word-lists.ts). The add tree's bands.
+   */
+  coverage?: number;
 };
 /** The URL of a catalog's entries. */
 const catalogPath = (base: string, c: CatalogMeta) => c.path ?? `${base}/${c.file}`;
@@ -355,6 +418,8 @@ type Entry = {
   /** An example sentence in the target language, and its English. */
   ex?: string;
   exTr?: string;
+  /** More example sentences, if the deck has them: one is shown per showing (lib/words/example-pick.ts). */
+  exs?: Example[];
   /** Phrase decks: a usage note (English), casual / polite, and the moment it is said in. */
   note?: string;
   register?: Register;
@@ -418,6 +483,30 @@ function useTouch() {
     return () => mq.removeEventListener("change", on);
   }, []);
   return touch;
+}
+
+/**
+ * An example sentence with its words marked by the user's familiarity
+ * (lib/words/example-marks.ts): a word with a card gets a solid (weak) or
+ * dashed (learning) line; mastered words and words without a card stay plain.
+ */
+function MarkedExample({ text, lang, fam }: { text: string; lang: string; fam: FamMap }) {
+  const known = fam.get(famLang(lang));
+  if (!known) return <>{text}</>;
+  return (
+    <>
+      {exampleSegments(text, lang).map((s, k) => {
+        const mark = s.word ? famMark(known.get(s.word)) : null;
+        return mark ? (
+          <span key={k} className={`lk-fam-${mark}`} data-fam={mark}>
+            {s.text}
+          </span>
+        ) : (
+          s.text
+        );
+      })}
+    </>
+  );
 }
 
 /**
@@ -799,6 +888,30 @@ function requestPersistentStorage() {
   } catch {}
 }
 
+/**
+ * The mic's echo cancellation switch (lk:voice-aec; packages/debug-chat
+ * aec.ts), device-local (docs/prefs-sync.md): the same one as the chat's ⋯
+ * menu, which it follows. An open mic reopens with the new mode at once.
+ */
+function useAecSwitch(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    const read = () => setOn(aecOn());
+    read();
+    window.addEventListener(AEC_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(AEC_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, []);
+  const set = useCallback((next: boolean) => {
+    setOn(next);
+    void applyAec(next).then((how) => devLog({ ev: "aec-switch", on: next, how }));
+  }, []);
+  return [on, set];
+}
+
 /** `serverVoice`: always use the server's recordings, never the browser's. */
 function useSpeech(serverVoice = false) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -827,6 +940,12 @@ function useSpeech(serverVoice = false) {
   /** Languages the browser failed to speak; the server speaks them instead. */
   const browserDead = useRef(new Set<string>());
   const audio = useRef<Clip | null>(null);
+  /**
+   * The part playing, told to the page (page-audio.ts): with echo
+   * cancellation off the mic holds its capture meanwhile, so a word read
+   * aloud is not transcribed.
+   */
+  const audible = useRef<(() => void) | null>(null);
   const watchdog = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     setAvailable(true);
@@ -874,6 +993,8 @@ function useSpeech(serverVoice = false) {
   const cancel = useCallback(() => {
     generation.current++;
     clearTimeout(watchdog.current);
+    audible.current?.();
+    audible.current = null;
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
     // A clip cut mid-word is jarring when the card changes: fade it out.
     clipPool().fadeOut(audio.current, FADE_S);
@@ -986,8 +1107,16 @@ function useSpeech(serverVoice = false) {
 
   /** One part; a missing voice falls back to the other engine for this part only. */
   const say = useCallback(
-    (p: SayPart, done: Done) => {
+    (p: SayPart, finish: Done) => {
       devLog({ ev: "speak", kind: p.kind, lang: p.lang, text: p.text, serverVoice });
+      audible.current?.();
+      const end = pageAudio().start();
+      audible.current = end;
+      const done: Done = (played) => {
+        end();
+        if (audible.current === end) audible.current = null;
+        finish(played);
+      };
       // The server voice by default: browser voices can mislead (Japanese read
       // in a Chinese accent). The browser speaks only where the server can't —
       // a language or text it has no voice for, the rate limit, offline.
@@ -1645,10 +1774,6 @@ export default function WordsClient({
         catalog={fullCatalog}
         offline={offline}
         onOpen={setListId}
-        onCreated={async (id) => {
-          await refreshLists();
-          setListId(id);
-        }}
         onRefresh={refreshLists}
         onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
         onRename={renameList}
@@ -1788,8 +1913,6 @@ function ProgressRing({ progress, total }: { progress: number; total: number }) 
   if (pct === null) return null;
   const label = fill(text.progressTitle.value, { pct, total });
   const shown = new Intl.NumberFormat(String(locale), { style: "percent" }).format(pct / 100);
-  // r = 8 in a 20×20 box: the circumference, for the dash.
-  const c = 2 * Math.PI * 8;
   return (
     <span
       className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums"
@@ -1798,28 +1921,7 @@ function ProgressRing({ progress, total }: { progress: number; total: number }) 
       role="img"
       data-progress={pct}
     >
-      <svg viewBox="0 0 20 20" className="h-5 w-5 -rotate-90" aria-hidden>
-        <circle
-          cx="10"
-          cy="10"
-          r="8"
-          fill="none"
-          strokeWidth="2.5"
-          className="stroke-[oklch(0.5_0_0/0.18)] dark:stroke-[oklch(0.8_0_0/0.18)]"
-        />
-        {pct > 0 && (
-          <circle
-            cx="10"
-            cy="10"
-            r="8"
-            fill="none"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeDasharray={`${(c * pct) / 100} ${c}`}
-            className="stroke-[oklch(0.58_0.14_155)] dark:stroke-[oklch(0.76_0.14_155)]"
-          />
-        )}
-      </svg>
+      <ProgressRingSvg pct={pct} />
       <span className="min-w-[2.6em] text-end opacity-80">{shown}</span>
     </span>
   );
@@ -1840,8 +1942,11 @@ function SortableListRow({
   onRename,
   keys,
   displayName,
+  fresh,
 }: {
   list: WordList;
+  /** Just added from the "Add a list" tree: outlined while its toast is up. */
+  fresh?: boolean;
   /** The name as shown: inside a language group, without the language prefix. */
   displayName: string;
   /** A hardware keyboard is in use: show the row's number key. */
@@ -1890,7 +1995,10 @@ function SortableListRow({
       }}
       data-list-row={l.id}
       data-group={isGroup || undefined}
+      data-fresh={fresh || undefined}
       className={`relative flex min-h-14 items-center rounded-lg ps-0.5 pe-1 ${
+        fresh ? "ring-2 ring-[oklch(0.65_0.15_155)] " : ""
+      }${
         isDragging
           ? "z-10 bg-[oklch(0.5_0_0/0.14)] ring-1 ring-[oklch(0.5_0_0/0.35)] shadow-lg"
           : isGroup
@@ -2132,7 +2240,6 @@ function ListPicker({
   catalog,
   offline,
   onOpen,
-  onCreated,
   onRefresh,
   onDelete,
   onRename,
@@ -2144,9 +2251,8 @@ function ListPicker({
   /** Showing the offline copy of the lists. */
   offline: boolean;
   onOpen: (id: string) => void;
-  onCreated: (id: string) => void;
   /** Reload the lists from the server. */
-  onRefresh: () => void;
+  onRefresh: () => Promise<void>;
   /** Delete a row, with Undo (the toast is the parent's). */
   onDelete: (list: WordList, isGroup: boolean) => void;
   onRename: (id: string, name: string) => void;
@@ -2237,9 +2343,7 @@ function ListPicker({
   const [busy, setBusy] = useState(false);
   // Imported decks are already lists; only the built-in catalogs can be added.
   const builtIn = useMemo(() => catalog.filter((c) => !c.path), [catalog]);
-  const langs = useMemo(() => [...new Set(builtIn.map((c) => c.lang))], [builtIn]);
-  const [lang, setLang] = useState<string>("");
-  const added = new Set(lists.map((l) => l.source));
+  const added = new Set(lists.flatMap((l) => (l.source ? [l.source] : [])));
   const studyable = lists.filter((l) => !isGroup(l));
 
   // 1–9 open the matching row, 0 studies everything — no mouse needed.
@@ -2249,7 +2353,8 @@ function ListPicker({
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
       // Keys inside a row's ⋯ menu or the Undo toast are theirs.
-      if (t.closest?.('[role="menu"], [data-undo-delete]')) return;
+      if (t.closest?.('[role="menu"], [role="dialog"], [data-undo-delete], [data-added-toast]'))
+        return;
       const n = Number(e.key);
       if (e.key === "0" && studyable.length > 1) onOpen(ALL);
       else if (n >= 1 && n <= 9 && items[n - 1]) onOpen(items[n - 1].id);
@@ -2258,41 +2363,205 @@ function ListPicker({
     return () => window.removeEventListener("keydown", onKey);
   }, [items, studyable.length, onOpen]);
 
-  const add = async (c: CatalogMeta) => {
+  // "Add a list" as a tree with checkboxes (lib/words/add-tree.ts): tick
+  // lists, languages or whole branches, then add them all in one go. Adding
+  // never starts studying: the learner stays here and opens a list himself.
+  const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES), [builtIn]);
+  const [ticked, setTicked] = useState<Set<string>>(() => new Set());
+  const [openKeys, setOpenKeys] = useState<Set<string>>(
+    () =>
+      loadAddOpen(config.base) ??
+      defaultOpen(
+        addTree,
+        studyable.map((l) => l.lang),
+        typeof navigator === "undefined" ? [] : [...(navigator.languages ?? [])],
+      ),
+  );
+  // Folding a node hides its whole branch; unfolding it shows its branches as
+  // they were (the first time, all of them open). Kept per device.
+  const toggleOpen = (node: AddNode) =>
+    setOpenKeys((s) => {
+      const n = toggleOpenKey(node, s);
+      saveAddOpen(config.base, n);
+      return n;
+    });
+  const [addedNow, setAddedNow] = useState<AddedNow | null>(null);
+  const fresh = useMemo(() => new Set(addedNow?.ids ?? []), [addedNow]);
+  /** A built-in list's name in the toast: a phrase deck by its scenario. */
+  const addName = (c: CatalogMeta) =>
+    isPhraseMeta(c) && c.scenario ? scenarioName(c.scenario) : c.name;
+
+  // A list's (or a band's) preview before adding it (ListPreview.tsx): its
+  // entries load only once it opens. Focus goes back to its eye on close.
+  const [preview, setPreview] = useState<{ title: string; lists: CatalogMeta[] } | null>(null);
+  const previewFrom = useRef<HTMLElement | null>(null);
+  const openPreview = (lists: CatalogMeta[], title: string, from: HTMLElement) => {
+    previewFrom.current = from;
+    setPreview({ title, lists });
+  };
+  const previewSources = useMemo(
+    () =>
+      (preview?.lists ?? []).map((c) => ({
+        id: c.id,
+        count: c.count,
+        path: catalogPath(config.base, c),
+      })),
+    [preview, config.base],
+  );
+  const fetchPreview = useCallback(
+    (path: string) => loadCatalog<{ entries: Entry[] }>(path).then((d) => d.entries),
+    [],
+  );
+
+  // "Arrange by language" (lib/words/arrange.ts): every list he has into
+  // language → kind → lists in learning order, with Undo while it shows.
+  const { locale } = useLocale();
+  const [arrangedNow, setArrangedNow] = useState<{
+    before: { id: string; parentId: string | null }[];
+    made: string[];
+    at: number;
+  } | null>(null);
+  const arrange = async () => {
+    const index = new Map(catalog.map((c, i) => [c.id, i]));
+    const labels = {
+      freq: text.freqLists.value,
+      phrase: phraseText.phrases.value,
+      exam: text.examLists.value,
+    };
+    const plan = planArrange(lists, {
+      isGroup,
+      metaOf: (l) => catalogById.get(l.source ?? ""),
+      catalogIndex: (l) => index.get(l.source ?? "") ?? catalog.length,
+      kindLabels: labels,
+    });
+    const before = flat.map((r) => ({ id: r.id, parentId: r.parentId }));
+    const ids = new Map<string, string>();
     setBusy(true);
     try {
-      const { list } = await api<{ list: WordList }>("/api/words/lists", {
-        method: "POST",
-        body: JSON.stringify({ name: c.name, lang: c.lang, source: c.id }),
-      });
-      // A phrase deck is still added if placing it fails; it shows at the top level.
-      if (isPhraseMeta(c)) await placePhrase(list).catch(() => {});
-      onCreated(list.id);
+      for (const g of plan.make) {
+        const { list } = await api<{ list: WordList }>("/api/words/lists", {
+          method: "POST",
+          body: JSON.stringify({
+            name: g.kind ? labels[g.kind] : langName(g.lang, locale),
+            lang: g.lang,
+            source: groupSource,
+          }),
+        });
+        ids.set(g.key, list.id);
+      }
+      const order = plan.order(ids);
+      await api("/api/words/lists", { method: "PATCH", body: JSON.stringify({ order }) });
+      setArrangedNow({ before, made: [...ids.values()], at: Date.now() });
+    } finally {
+      await onRefresh().catch(() => {});
+      setBusy(false);
+    }
+  };
+  const undoArrange = async (a: NonNullable<typeof arrangedNow>) => {
+    setArrangedNow(null);
+    setBusy(true);
+    try {
+      await api("/api/words/lists", { method: "PATCH", body: JSON.stringify({ order: a.before }) });
+      // The groups it made are empty again now.
+      for (const id of a.made) await api(`/api/words/lists/${id}`, { method: "DELETE" });
+    } finally {
+      await onRefresh().catch(() => {});
+      setBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (!arrangedNow) return;
+    const t = setTimeout(() => setArrangedNow(null), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [arrangedNow]);
+
+  /** Add these built-in lists in one go (Add selected, or a language's Add all). */
+  const addLists = async (all: CatalogMeta[]) => {
+    const picks = all.filter((c) => !added.has(c.id));
+    if (!picks.length) return;
+    setBusy(true);
+    let nodes = lists;
+    const done: AddedNow = { ids: [], names: [], made: [], at: Date.now() };
+    try {
+      for (const c of picks) {
+        const { list } = await api<{ list: WordList }>("/api/words/lists", {
+          method: "POST",
+          body: JSON.stringify({ name: c.name, lang: c.lang, source: c.id }),
+        });
+        done.ids.push(list.id);
+        done.names.push(addName(c));
+        nodes = [...nodes, list];
+        // A phrase deck is still added if placing it fails; it shows at the top level.
+        if (isPhraseMeta(c)) {
+          const placed = await placePhrase(list, nodes).catch(() => null);
+          if (placed) {
+            nodes = placed.nodes;
+            if (placed.group) done.made.push(placed.group);
+          }
+        }
+      }
+    } catch (e) {
+      done.error = (e as Error).message;
+    }
+    setTicked((t) => new Set([...t].filter((id) => !picks.some((c) => c.id === id))));
+    await onRefresh().catch(() => {});
+    setBusy(false);
+    setAddedNow(done);
+  };
+
+  const undoAdd = async (a: AddedNow) => {
+    setAddedNow(null);
+    setBusy(true);
+    try {
+      // The lists first, then any Phrases group made for them (empty by then).
+      for (const id of [...a.ids, ...a.made])
+        await api(`/api/words/lists/${id}`, { method: "DELETE" }).catch(() => {});
+      await onRefresh().catch(() => {});
     } finally {
       setBusy(false);
     }
   };
 
+  // The toast runs out on its own; the new rows lose their outline with it.
+  useEffect(() => {
+    if (!addedNow) return;
+    const t = setTimeout(() => setAddedNow(null), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [addedNow]);
+  // Bring the first new row into view (it may sit inside a folded group).
+  useEffect(() => {
+    const id = addedNow?.ids[0];
+    if (!id) return;
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-list-row="${id}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: motionOff() ? "auto" : "smooth" }),
+    );
+  }, [addedNow]);
+
   /**
    * Put a newly added phrase deck where it belongs: language → Phrases →
    * scenario. The language's Phrases group is made when it has none, inside
    * the language's own group when there is one (lib/words/phrases.ts).
+   * `nodes` is the tree so far, the new list included; the tree after is returned.
    */
-  const placePhrase = async (list: WordList) => {
-    let nodes = [...lists, list];
+  const placePhrase = async (list: WordList, before: WordList[]) => {
+    let nodes = before;
     const label = phraseText.phrases.value;
     const home = phraseHome(flatten(nodes), list.lang, isGroup, isPhrase, label);
     let phrasesGroup = home.phrasesGroup;
+    let group: string | undefined;
     if (!phrasesGroup) {
       const { list: g } = await api<{ list: WordList }>("/api/words/lists", {
         method: "POST",
         body: JSON.stringify({ name: label, lang: list.lang, source: groupSource }),
       });
-      phrasesGroup = g.id;
+      phrasesGroup = group = g.id;
       nodes = applyOrder([...nodes, g], moveUnder(flatten([...nodes, g]), g.id, home.langGroup));
     }
     const order = moveUnder(flatten(nodes), list.id, phrasesGroup);
     await api("/api/words/lists", { method: "PATCH", body: JSON.stringify({ order }) });
+    return { nodes: applyOrder(nodes, order), group };
   };
 
   /** A row's name: phrase decks name their scenario in the UI's language. */
@@ -2419,6 +2688,7 @@ function ListPicker({
                   onRename={(name) => onRename(row.id, name)}
                   keys={keys}
                   displayName={rowName(row)}
+                  fresh={fresh.has(row.id)}
                 />
               ))}
             </SortableContext>
@@ -2433,63 +2703,494 @@ function ListPicker({
         >
           {text.newGroup}
         </button>
+        {studyable.length > 1 &&
+          (arrangedNow ? (
+            <span className="flex items-center gap-2 text-sm" data-arranged>
+              <span className="opacity-70">{text.arranged}</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => undoArrange(arrangedNow)}
+                data-undo-arrange
+                className="min-h-11 rounded-lg px-3 font-medium text-[oklch(0.5_0.14_155)] hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40 dark:text-[oklch(0.78_0.13_155)]"
+              >
+                {text.undoArrange}
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={arrange}
+              data-arrange-lists
+              className="text-sm px-3 py-1.5 rounded bg-[oklch(0.5_0_0/0.12)] hover:bg-[oklch(0.5_0_0/0.2)] disabled:opacity-40"
+            >
+              {text.arrangeLists}
+            </button>
+          ))}
         {config.imports && <ImportLink />}
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2" data-add-tree>
         <h2 className="text-sm font-medium opacity-80">{text.addList}</h2>
-        <div className="flex flex-wrap gap-2">
-          {langs.map((l) => (
-            <button
-              key={l}
-              onClick={() => setLang(l)}
-              className={`px-3 py-1 rounded text-sm ${l === lang ? "bg-black/20 dark:bg-white/25" : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"}`}
-            >
-              {l}
-            </button>
+        <div role="tree" aria-multiselectable className="-mx-2">
+          {addTree.map((n) => (
+            <AddTreeNode
+              key={n.key}
+              node={n}
+              depth={0}
+              ticked={ticked}
+              added={added}
+              openKeys={openKeys}
+              busy={busy}
+              onTick={(node) => setTicked((t) => toggleTick(node, t, added))}
+              onToggleOpen={toggleOpen}
+              onAdd={addLists}
+              onPreview={openPreview}
+              scenarioName={scenarioName}
+            />
           ))}
         </div>
-        {lang &&
-          (() => {
-            const ofLang = builtIn.filter((c) => c.lang === lang);
-            const words = ofLang.filter((c) => !isPhraseMeta(c));
-            const phrases = ofLang
-              .filter((c) => isPhraseMeta(c) && c.scenario)
-              .sort((a, b) => SCENARIOS.indexOf(a.scenario!) - SCENARIOS.indexOf(b.scenario!));
-            const row = (c: CatalogMeta, name: string) => (
-              <div key={c.id} className="flex items-center gap-3 text-sm">
-                <span className="flex-1">{name}</span>
-                <span className="opacity-50 tabular-nums">{c.count}</span>
-                <button
-                  disabled={busy || added.has(c.id)}
-                  onClick={() => add(c)}
-                  className="px-3 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-40"
-                >
-                  {added.has(c.id) ? text.added : text.add}
-                </button>
-              </div>
-            );
-            return (
-              <div className="space-y-1">
-                {words.map((c) => row(c, c.name))}
-                {words[0] && (
-                  <p className="fs-11 opacity-40 pt-2">
-                    {words[0].source} — {words[0].license}
-                  </p>
-                )}
-                {phrases.length > 0 && (
-                  <div className="space-y-1 pt-3" data-add-phrases>
-                    <h3 className="text-xs font-medium opacity-70">{phraseText.phrases}</h3>
-                    {phrases.map((c) => row(c, scenarioName(c.scenario!)))}
-                    <p className="fs-11 opacity-40 pt-2">
-                      {phrases[0].source} — {phrases[0].license}
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            disabled={busy || ![...ticked].some((id) => !added.has(id))}
+            onClick={() => addLists(tickedInOrder(addTree, ticked))}
+            data-add-selected
+            className="min-h-11 rounded-lg bg-[oklch(0.55_0.14_155)] px-4 text-sm font-medium text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.14_155)] disabled:opacity-40"
+          >
+            {text.addSelected}
+          </button>
+        </div>
+        {[
+          ...new Set(
+            builtIn
+              .filter((c) => ticked.has(c.id) || openKeys.has(`lang:${c.lang}`))
+              .map((c) => `${c.source} — ${c.license}`),
+          ),
+        ].map((credit) => (
+          <p key={credit} className="fs-11 opacity-40">
+            {credit}
+          </p>
+        ))}
       </div>
+      {preview && (
+        <ListPreview
+          title={preview.title}
+          lang={preview.lists[0]?.lang ?? ""}
+          sources={previewSources}
+          fetchEntries={fetchPreview}
+          allAdded={preview.lists.every((c) => added.has(c.id))}
+          busy={busy}
+          onAdd={() => {
+            const lists = preview.lists;
+            setPreview(null);
+            void addLists(lists);
+          }}
+          onClose={() => setPreview(null)}
+          returnTo={previewFrom}
+        />
+      )}
+      {addedNow && (
+        <AddedToast
+          key={addedNow.at}
+          added={addedNow}
+          onStart={
+            addedNow.ids.length === 1 && !addedNow.error
+              ? () => {
+                  setAddedNow(null);
+                  onOpen(addedNow.ids[0]);
+                }
+              : undefined
+          }
+          onUndo={addedNow.ids.length ? () => undoAdd(addedNow) : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+/** What one "Add selected" did: the new lists, any group made for them, a failure. */
+type AddedNow = { ids: string[]; names: string[]; made: string[]; error?: string; at: number };
+
+/**
+ * One node of the "Add a list" tree: the whole row ticks it (a language or a
+ * branch ticks everything under it), the arrow folds it. Flat: depth is shown
+ * by indentation and type weight, with no box per level.
+ */
+function AddTreeNode({
+  node,
+  depth,
+  ticked,
+  added,
+  openKeys,
+  busy,
+  onTick,
+  onToggleOpen,
+  onAdd,
+  onPreview,
+  scenarioName,
+}: {
+  node: AddNode<CatalogMeta>;
+  depth: number;
+  ticked: ReadonlySet<string>;
+  added: ReadonlySet<string>;
+  openKeys: ReadonlySet<string>;
+  busy: boolean;
+  onTick: (node: AddNode<CatalogMeta>) => void;
+  onToggleOpen: (node: AddNode<CatalogMeta>) => void;
+  /** One tap adds these lists: a language's "Add all", a coverage band. */
+  onAdd: (lists: CatalogMeta[]) => void;
+  /** The eye on a list's row or a band: preview its entries before adding. */
+  onPreview: (lists: CatalogMeta[], title: string, from: HTMLElement) => void;
+  scenarioName: (s: Scenario) => string;
+}) {
+  const text = useIntlayer("words-page");
+  const phraseText = useIntlayer("words-phrases");
+  const { locale } = useLocale();
+  const box = useRef<HTMLInputElement>(null);
+  const state = tickState(node, ticked, added);
+  useEffect(() => {
+    if (box.current) box.current.indeterminate = state.mixed;
+  }, [state.mixed]);
+  if (node.kind === "external")
+    return (
+      <ExternalNode
+        node={node}
+        depth={depth}
+        open={openKeys.has(node.key)}
+        onToggleOpen={() => onToggleOpen(node)}
+      />
+    );
+  // A branch with nothing to add (only exams we cannot ship) has no checkbox.
+  const tickable = leavesOf(node).length > 0;
+  const label =
+    node.kind === "lang"
+      ? langName(node.lang, locale)
+      : node.kind === "family"
+        ? node.family === "freq"
+          ? text.freqLists.value
+          : node.family === "exam"
+            ? text.examLists.value
+            : phraseText.phrases.value
+        : node.kind === "exam"
+          ? node.exam
+          : node.meta.scenario
+            ? scenarioName(node.meta.scenario as Scenario)
+            : // the language is the row above: "Japanese · JLPT N5" → "JLPT N5"
+              node.meta.name.replace(/^[^·]*·\s*/, "");
+  const open = node.kind !== "list" && openKeys.has(node.key);
+  const weight =
+    node.kind === "lang" ? "font-semibold" : node.kind === "list" ? "" : "font-medium opacity-80";
+  return (
+    <div
+      role="treeitem"
+      aria-expanded={node.kind === "list" ? undefined : open}
+      aria-selected={state.checked}
+    >
+      <div
+        className="flex min-h-11 items-center rounded-lg pe-2 hover:bg-[oklch(0.5_0_0/0.07)]"
+        style={{ paddingInlineStart: `calc(${depth} * 1.25rem)` }}
+        data-add-node={node.key}
+      >
+        {node.kind === "list" ? (
+          <span className="w-9 shrink-0" aria-hidden />
+        ) : (
+          <button
+            type="button"
+            onClick={() => onToggleOpen(node)}
+            aria-label={fill((open ? text.collapseGroup : text.expandGroup).value, { name: label })}
+            className="grid h-11 w-9 shrink-0 place-items-center text-sm opacity-60 hover:opacity-100"
+          >
+            <span
+              className={`inline-block transition-transform ${open ? "rotate-90" : "rtl:rotate-180"}`}
+            >
+              ▸
+            </span>
+          </button>
+        )}
+        {/* The whole row is the checkbox's label: tapping anywhere on it ticks it. */}
+        <label
+          className={`flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm ${weight} ${state.disabled ? "cursor-default" : ""}`}
+        >
+          {tickable ? (
+            <input
+              ref={box}
+              type="checkbox"
+              checked={state.checked}
+              disabled={state.disabled || busy}
+              onChange={() => onTick(node)}
+              className="size-4 shrink-0 accent-[oklch(0.55_0.14_155)]"
+            />
+          ) : (
+            <span className="size-4 shrink-0" aria-hidden />
+          )}
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {node.kind === "list" &&
+            (added.has(node.meta.id) ? (
+              <span className="fs-11 opacity-50">{text.added}</span>
+            ) : (
+              <span className="fs-11 tabular-nums opacity-40">{node.meta.count}</span>
+            ))}
+        </label>
+        {/* The eye sits outside the label: it previews, the rest of the row ticks. */}
+        {node.kind === "list" && (
+          <PreviewButton
+            name={label}
+            onOpen={(from) =>
+              onPreview([node.meta], `${langName(node.meta.lang, locale)} · ${label}`, from)
+            }
+          />
+        )}
+        {/* Folded, a language is only its row: no Add all, no bands, no children. */}
+        {node.kind === "lang" && open && !state.disabled && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onAdd(leavesOf(node))}
+            data-add-all={node.lang}
+            className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-medium text-[oklch(0.5_0.14_155)] hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40 dark:text-[oklch(0.78_0.13_155)]"
+          >
+            {text.addAll}
+          </button>
+        )}
+      </div>
+      {/* A language's one-tap coverage bands are part of its branch: they fold with it. */}
+      {node.kind === "lang" && open && (
+        <CoverageBands
+          lists={freqListsOf(node)}
+          added={added}
+          busy={busy}
+          depth={depth + 1}
+          onAdd={onAdd}
+          onPreview={onPreview}
+        />
+      )}
+      {open && (
+        <div role="group">
+          {node.children.map((c) => (
+            <AddTreeNode
+              key={c.key}
+              node={c}
+              depth={depth + 1}
+              ticked={ticked}
+              added={added}
+              openKeys={openKeys}
+              busy={busy}
+              onTick={onTick}
+              onToggleOpen={onToggleOpen}
+              onAdd={onAdd}
+              onPreview={onPreview}
+              scenarioName={scenarioName}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * An exam we cannot ship (docs/word-deck-sources.md, "Not shipped"): its name
+ * and a muted "not included"; unfolded, search links only (never a link to a
+ * specific deck or file) and a pointer to the Anki import, so the flow is
+ * search → download → import. No checkbox: there is nothing to add.
+ */
+function ExternalNode({
+  node,
+  depth,
+  open,
+  onToggleOpen,
+}: {
+  node: { key: string; search: ExternalSearch };
+  depth: number;
+  open: boolean;
+  onToggleOpen: () => void;
+}) {
+  const text = useIntlayer("words-page");
+  const label = node.search.level ?? node.search.exam;
+  const links = searchLinks(node.search);
+  const link = "underline decoration-[oklch(0.5_0_0/0.4)] underline-offset-2 hover:opacity-100";
+  return (
+    <div role="treeitem" aria-expanded={open} data-add-external={node.search.id}>
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        aria-label={fill((open ? text.collapseGroup : text.expandGroup).value, { name: label })}
+        className="flex min-h-11 w-full items-center gap-3 rounded-lg pe-2 text-start text-sm hover:bg-[oklch(0.5_0_0/0.07)]"
+        style={{ paddingInlineStart: `calc(${depth} * 1.25rem)` }}
+      >
+        <span className="grid h-11 w-9 shrink-0 place-items-center opacity-60" aria-hidden>
+          <span
+            className={`inline-block transition-transform ${open ? "rotate-90" : "rtl:rotate-180"}`}
+          >
+            ▸
+          </span>
+        </span>
+        <span className="size-4 shrink-0" aria-hidden />
+        <span className="min-w-0 truncate opacity-70">{label}</span>
+        <span className="fs-11 ms-auto shrink-0 opacity-50">{text.notIncluded}</span>
+      </button>
+      {open && (
+        <div
+          role="group"
+          className="space-y-1 pb-2 text-sm"
+          style={{ paddingInlineStart: `calc(${depth} * 1.25rem + 4.75rem)` }}
+        >
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="opacity-60">{text.searchOn}</span>
+            {links.map((l) => (
+              <a
+                key={l.engine}
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                data-search-engine={l.engine}
+                className={`${link} opacity-80`}
+              >
+                {l.name}
+              </a>
+            ))}
+          </p>
+          <p>
+            <a href="/words/import" className={`${link} opacity-80`}>
+              {text.importFound}
+            </a>
+          </p>
+          <p className="fs-11 opacity-50">{text.externalNote}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One-tap bands over a language's most common words, by how much of running
+ * text they cover (lib/words/add-tree.ts coverageBands): "Covers 75% of text ·
+ * top 1–500". A band adds its frequency lists that are not added yet.
+ */
+function CoverageBands({
+  lists,
+  added,
+  busy,
+  depth,
+  onAdd,
+  onPreview,
+}: {
+  lists: CatalogMeta[];
+  added: ReadonlySet<string>;
+  busy: boolean;
+  depth: number;
+  onAdd: (lists: CatalogMeta[]) => void;
+  /** A band's preview: the union of its lists. */
+  onPreview: (lists: CatalogMeta[], title: string, from: HTMLElement) => void;
+}) {
+  const text = useIntlayer("words-page");
+  const previewText = useIntlayer("words-list-preview");
+  const { locale } = useLocale();
+  const bands = coverageBands(lists);
+  if (!bands.length) return null;
+  return (
+    <div
+      className="flex flex-wrap gap-x-1"
+      style={{ paddingInlineStart: `calc(${depth} * 1.25rem + 2.25rem)` }}
+      data-coverage-bands
+    >
+      {bands.map((b) => {
+        const done = b.ids.every((id) => added.has(id));
+        const pct = Math.floor(b.coverage * 100);
+        const of = lists.filter((c) => b.ids.includes(c.id));
+        return (
+          <span key={b.top} className="inline-flex items-center">
+            <button
+              type="button"
+              disabled={busy || done}
+              onClick={() => onAdd(of)}
+              data-band={b.top}
+              className="min-h-11 rounded-lg px-2 text-start text-sm text-[oklch(0.5_0.14_155)] hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40 dark:text-[oklch(0.78_0.13_155)]"
+            >
+              {fill(text.coverageBand.value, { pct })}
+              <span className="ms-1.5 fs-11 tabular-nums opacity-60">
+                {done ? text.added : fill(text.coverageRanks.value, { top: b.top })}
+              </span>
+            </button>
+            <PreviewButton
+              name={fill(text.coverageBand.value, { pct }).replace(/^\+\s*/, "")}
+              onOpen={(from) =>
+                onPreview(
+                  of,
+                  fill(previewText.bandTitle.value, {
+                    lang: langName(of[0]?.lang ?? "", locale),
+                    pct,
+                  }),
+                  from,
+                )
+              }
+            />
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A language's name in the UI's language ("ja" → "Japanese" / "日语"). */
+function langName(code: string, locale: string) {
+  try {
+    return new Intl.DisplayNames([locale], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * "Added: JLPT N5 and JLPT N4", as glass over the bottom of the page: one
+ * layer, with Start studying (one list added) and Undo. It runs out with the
+ * new rows' outline (UNDO_MS).
+ */
+function AddedToast({
+  added,
+  onStart,
+  onUndo,
+}: {
+  added: AddedNow;
+  onStart?: () => void;
+  onUndo?: () => void;
+}) {
+  const text = useIntlayer("words-page");
+  const { locale } = useLocale();
+  let names = added.names.join(", ");
+  try {
+    names = new Intl.ListFormat([locale], { type: "conjunction" }).format(added.names);
+  } catch {}
+  const said = added.error
+    ? fill(text.addFailed.value, { error: added.error })
+    : fill(text.addedToast.value, { names });
+  const action =
+    "min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]";
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-added-toast
+      className="lk-glass fixed inset-x-4 z-50 mx-auto flex max-w-md items-center gap-1 rounded-xl border border-[var(--glass-line)] py-1 ps-4 pe-1 shadow-lg"
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
+    >
+      <span className="line-clamp-2 min-w-0 flex-1 text-sm">{said}</span>
+      {onStart && (
+        <button onClick={onStart} className={action} data-added-start>
+          {text.startStudying}
+        </button>
+      )}
+      {onUndo && (
+        <button onClick={onUndo} className={action} data-added-undo>
+          {text.undoAdd}
+        </button>
+      )}
+      <span
+        aria-hidden
+        className="lk-undo-timer pointer-events-none absolute inset-x-3 bottom-0 h-0.5 origin-left rounded-full bg-[oklch(0.5_0_0/0.35)] rtl:origin-right"
+        style={{ animationDuration: `${UNDO_MS}ms` }}
+      />
     </div>
   );
 }
@@ -2585,8 +3286,10 @@ function Study({
   /** The row whose other actions are open (double tap / right click). */
   const [sheet, setSheet] = useState<number | null>(null);
   const lastTap = useRef({ i: -1, t: 0 });
+  // A modal is open (the slip's sheet, Settings): the study keys rest.
   const sheetOpen = useRef(false);
-  sheetOpen.current = sheet !== null;
+  // Back (the browser's, the phone's) folds the sheet instead of leaving /words.
+  useBackToClose(sheet !== null, () => setSheet(null));
   const sync = useSyncStatus();
   /** The queue was built from the offline copy. */
   const [offlineCopy, setOfflineCopy] = useState(false);
@@ -2601,6 +3304,8 @@ function Study({
   /** Every meaning shown, not just the focused / pinned rows. */
   const [showAll, setShowAll] = usePref("lk:words-show-all", false);
   const settings = useUi(ui, (s) => s.settingsOpen);
+  sheetOpen.current = sheet !== null || settings;
+  const settingsBtn = useRef<HTMLButtonElement>(null);
   const setSettings = useCallback(
     (v: boolean | ((o: boolean) => boolean)) =>
       ui.setState((s) => ({ settingsOpen: typeof v === "function" ? v(s.settingsOpen) : v })),
@@ -2608,6 +3313,11 @@ function Study({
   );
   /** Touch: say the word as a swipe starts. Remembered; on by default. */
   const [swipeSpeak, setSwipeSpeak] = usePref("lk:words-swipe-speak", true);
+  /**
+   * Touch: the swipe's sides swapped (lib/words/swipe.ts sideRating): ← Good /
+   * Easy, → Hard / Again. Remembered, synced (words.swipeMirror); off by default.
+   */
+  const [mirror, setMirror] = usePref(SWIPE_MIRROR_KEY, false);
   /** Touch: the row being held (listen mode) — revealed and looped while held. */
   const [holding, setHolding] = useState<number | null>(null);
   /** After a swipe grades a row, scroll the list down one row. Remembered. */
@@ -2679,7 +3389,7 @@ function Study({
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
   const speech = useSpeech(serverVoice);
   const { locale } = useLocale();
-  /** What a tap, a hold or the focus reads: word → meaning → example. */
+  /** What a tap, a hold or the focus reads: word → example → meaning (the row's order). */
   const partsOf = useCallback(
     (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
     [config.readingOnBack, locale],
@@ -2717,8 +3427,10 @@ function Study({
       m = new Map((catalogs.current.get(listId) ?? []).map((e) => [e.term, e]));
       byTerm.current.set(listId, m);
     }
-    const e = m.get(term);
-    if (!e) return {};
+    const found = m.get(term);
+    if (!found) return {};
+    // Several examples: one at random for this showing, frozen into the item.
+    const e = withPickedExample(found, keyOf({ listId, term }));
     return {
       ...(e.ex ? { ex: e.ex, exTr: e.exTr } : {}),
       ...(e.note ? { note: e.note } : {}),
@@ -2799,7 +3511,8 @@ function Study({
         },
       );
       return picked.map((i) => ({
-        ...entries[i],
+        // Several examples: one at random for this showing, frozen into the item.
+        ...withPickedExample(entries[i], keyOf({ listId: list.id, term: entries[i].term })),
         kind: "new",
         newIndex: i,
         listId: list.id,
@@ -3043,6 +3756,13 @@ function Study({
     hard: ratingLabel[2],
     good: ratingLabel[3],
     easy: ratingLabel[4],
+  };
+  /** The help strip's touch grades by side: `{hard}` / `{again}` fill ←, `{good}` / `{easy}` fill →. */
+  const swipeSides = {
+    again: ratingLabel[sideRating(1, mirror)],
+    hard: ratingLabel[sideRating(2, mirror)],
+    good: ratingLabel[sideRating(3, mirror)],
+    easy: ratingLabel[sideRating(4, mirror)],
   };
   // The debug mode's user-facing name: "Learning Partner" (learning-partner.content.ts).
   const partner = useIntlayer("learning-partner");
@@ -3389,7 +4109,7 @@ function Study({
   useEffect(() => {
     if (!touch || !active || holding !== null || !focusItem) return;
     if (quietFocus.current === focusLine) return void (quietFocus.current = null);
-    // With every meaning shown, the back is read too: word → meaning → example.
+    // With every meaning shown, the back is read too: word → example → meaning.
     speech.once(
       showAll ? partsOf(focusItem) : [{ kind: "word", text: focusText, lang: focusItem.lang }],
       false,
@@ -3423,6 +4143,7 @@ function Study({
   const [voicePref, setVoicePref] = usePref("lk:words-voice-mode", false);
   const voiceOn = voice !== "off" && voicePref;
   const vtext = useIntlayer("words-voice-mode");
+  const [aec, setAecPill] = useAecSwitch();
   /** The card a command acts on: the touch focus, or the desktop cursor. */
   const currentRow = () => (touch ? focusNow.current : rowRef.current);
   /** Touch: bring a focused row into the part of the list the glass leaves uncovered. */
@@ -3465,6 +4186,8 @@ function Study({
     const near = queue.slice(Math.max(0, at - 2), at + 4);
     return handleUtterance(heard, {
       actions: voiceActions,
+      // 左/右 grade as the side that is on the left / right now (the mirror).
+      mirror,
       hasCard: !!queue[at],
       cardTexts: near.flatMap((it) => [
         it.term,
@@ -3483,7 +4206,7 @@ function Study({
     });
   };
   const voiceMode = useVoiceMode(voiceOn, voiceHandle);
-  const voiceLabel = (o: VoiceOutcome) => voiceOutcomeLabel(o, vtext, ratingLabel);
+  const voiceLabel = (o: VoiceOutcome) => voiceOutcomeLabel(o, vtext, ratingLabel, mirror);
 
   /** How far down the list the user has got: the cursor, or the last row in view. */
   const reach = Math.max(row, Math.floor((scrollTop - pad + viewH) / ROW_H));
@@ -3564,7 +4287,7 @@ function Study({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [loading]);
 
-  // Say the focused row aloud on a loop (word, then example) while the page
+  // Say the focused row aloud on a loop (word, example, meaning) while the page
   // is active; paused in a hidden tab or background window.
   const active = usePageActive();
   const focused = !touch && active ? queue[row] : undefined;
@@ -3605,6 +4328,37 @@ function Study({
   // Sticky over the whole loaded queue: a column appearing and disappearing
   // as example-less stretches scroll by would shift every other column.
   const hasExamples = useMemo(() => queue.some((it) => it.ex || it.note), [queue]);
+
+  // Familiarity marks inside the examples (lib/words/example-marks.ts): the
+  // words of the rendered window not asked yet, in one request per language
+  // once the window has held still for a moment; answers kept for the session.
+  const fam = useRef<FamMap>(new Map());
+  const [, setFamRev] = useState(0);
+  useEffect(() => {
+    const want = missingWords(queue.slice(from, to), fam.current);
+    if (!want.size) return;
+    const t = setTimeout(() => {
+      for (const [lang, all] of want)
+        for (let k = 0; k < all.length; k += 500) {
+          const words = all.slice(k, k + 500);
+          // Asked: never again this session, even if the request fails.
+          recordHits(fam.current, lang, words, {});
+          void fetch("/api/words/familiarity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lang, words }),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j: { hits?: Record<string, FamHit> } | null) => {
+              if (!j?.hits || !Object.keys(j.hits).length) return;
+              recordHits(fam.current, lang, words, j.hits);
+              setFamRev((n) => n + 1);
+            })
+            .catch(() => {});
+        }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [from, to, queue]);
 
   // Term column width (lib/words/columns.ts): fitted to the terms near the
   // middle of the screen, eased into place through --term-w on the list.
@@ -3668,10 +4422,10 @@ function Study({
   const termGoal = useRef<number | null>(null);
   const termShown = useRef<number | null>(null);
   const termVelocity = useRef(0);
-  // Desktop with examples: the meaning column's share, the same way.
-  const backGoal = useRef<number | null>(null);
-  const backShown = useRef<number | null>(null);
-  const backVelocity = useRef(0);
+  // Desktop with examples: the example column's share (it comes first), the same way.
+  const exGoal = useRef<number | null>(null);
+  const exShown = useRef<number | null>(null);
+  const exVelocity = useRef(0);
   /** The glide's one rAF loop, kept across renders (see below). */
   const glideRaf = useRef(0);
   const glideLast = useRef<number | null>(null);
@@ -3698,18 +4452,18 @@ function Study({
         );
       // The list less padding, marker and status columns, gaps, and the term column.
       const avail = el.clientWidth - (1 + 1.25 + 3.5 + 2) * rem - termGoal.current;
-      backGoal.current = nextGoal(
-        backGoal.current,
-        splitTarget(weighted((c) => c.back) + rem, weighted((c) => c.ex) + rem, avail, rem),
+      exGoal.current = nextGoal(
+        exGoal.current,
+        splitTarget(weighted((c) => c.ex) + rem, weighted((c) => c.back) + rem, avail, rem),
         rem,
       );
     }
-    if (termShown.current === null || (split && backShown.current === null)) {
+    if (termShown.current === null || (split && exShown.current === null)) {
       termShown.current = termGoal.current;
       el.style.setProperty("--term-w", `${termShown.current}px`);
       if (split) {
-        backShown.current = backGoal.current;
-        el.style.setProperty("--back-w", `${backShown.current}px`);
+        exShown.current = exGoal.current;
+        el.style.setProperty("--ex-w", `${exShown.current}px`);
       }
       return;
     }
@@ -3748,9 +4502,9 @@ function Study({
       const a = glide(termGoal.current!, termShown, termVelocity, "--term-w", dt);
       const b =
         !glideSplit.current ||
-        backGoal.current === null ||
-        backShown.current === null ||
-        glide(backGoal.current, backShown, backVelocity, "--back-w", dt);
+        exGoal.current === null ||
+        exShown.current === null ||
+        glide(exGoal.current, exShown, exVelocity, "--ex-w", dt);
       if (a && b) {
         glideRaf.current = 0;
         glideLast.current = null;
@@ -3787,7 +4541,9 @@ function Study({
     ) : modality === null ? null : modality === "touch" ? (
       // The gestures exist only in the touch layout; a touchscreen
       // laptop's tap is a click (= Again), and has no swipe to explain.
-      touch && fill(text.helpTouch.value, grades4)
+      // Each side's grades as the mirror (if on) puts them: the text's ← is
+      // filled with the left side's grades, whatever they are.
+      touch && fill(text.helpTouch.value, swipeSides)
     ) : help ? (
       fill(text.helpKeys.value, grades4)
     ) : (
@@ -3814,6 +4570,7 @@ function Study({
           </button>
           <span className="font-medium">{title}</span>
           <button
+            ref={settingsBtn}
             // Tapped seven times fast for debug: iOS must not turn that into a
             // text selection or a double-tap zoom.
             className={`tap-40 select-none touch-manipulation [-webkit-touch-callout:none] px-2 py-0.5 rounded text-xs ${
@@ -3833,16 +4590,6 @@ function Study({
             <Icon name="gearSix" className="me-1" />
             {text.settings}
           </button>
-          {touch && (
-            <button
-              className="tap-40 px-2 py-0.5 rounded text-xs bg-black/10 dark:bg-white/10"
-              onClick={() => undo()}
-              aria-label={text.undo.value}
-            >
-              <Icon name="arrowCounterClockwise" className="me-1" />
-              {text.undo}
-            </button>
-          )}
           <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
             {debug && (
               <>
@@ -3889,14 +4636,23 @@ function Study({
       </div>
 
       {settings && (
-        <div
-          // Its own glass sheet under the toolbar, not part of it: the
-          // toolbar (and the list's scroll-padding under it) stays one
-          // size, and a long sheet scrolls inside itself.
-          data-words-settings
-          className="lk-words-bar lk-words-sheet lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
-          style={{ top: bar.top, maxHeight: `calc(100dvh - ${bar.top + bar.bottom + 16}px)` }}
-          aria-label={text.studySettings.value}
+        <SettingsSheet
+          title={
+            <>
+              <Icon name="gearSix" className="me-1" />
+              {text.settings}
+            </>
+          }
+          label={text.studySettings.value}
+          closeLabel={text.closeSettings.value}
+          onClose={() => setSettings(false)}
+          // The scrim covers the Settings button: a tap there still counts
+          // toward the seven quick taps that toggle debug.
+          onScrimTap={(x, y) => {
+            const r = settingsBtn.current?.getBoundingClientRect();
+            if (r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) debugTap();
+          }}
+          returnTo={settingsBtn}
         >
           <div className="flex flex-wrap gap-2">
             <TogglePill
@@ -3942,6 +4698,23 @@ function Study({
                 label={text.speakOnSwipe.value}
                 hint={text.speakOnSwipeHint.value}
               />
+            )}
+            {(touch || voice !== "off") && (
+              <span className="inline-flex flex-wrap items-center gap-x-2" data-swipe-mirror>
+                <TogglePill
+                  on={mirror}
+                  onChange={setMirror}
+                  label={text.swipeMirror.value}
+                  hint={text.swipeMirrorHint.value}
+                />
+                {/* The mapping in force, live: it changes as the switch flips. */}
+                <span className="fs-11 opacity-60" data-swipe-mirror-map>
+                  {fill(text.swipeMirrorMap.value, {
+                    left: `${swipeSides.hard} / ${swipeSides.again}`,
+                    right: `${swipeSides.good} / ${swipeSides.easy}`,
+                  })}
+                </span>
+              </span>
             )}
             {touch && !fs.standalone && (
               <TogglePill
@@ -4009,6 +4782,18 @@ function Study({
                       )}
                     </span>
                   )}
+                  {/* The mic's echo cancellation (packages/debug-chat aec.ts), this device only. */}
+                  {voice !== "off" && (
+                    <span className="flex w-full flex-col items-start gap-1" data-aec-setting>
+                      <TogglePill
+                        on={aec}
+                        onChange={setAecPill}
+                        label={vtext.echoCancel.value}
+                        hint={vtext.echoCancelHint.value}
+                      />
+                      <span className="fs-10 opacity-60">{vtext.echoCancelHint}</span>
+                    </span>
+                  )}
                   <span className="text-xs opacity-60">
                     {touch ? `${text.nativeSwipeNote.value} ` : ""}
                     {text.mayChange}
@@ -4022,7 +4807,7 @@ function Study({
               {text.fsHint}
             </div>
           )}
-        </div>
+        </SettingsSheet>
       )}
 
       {loadError ? (
@@ -4049,7 +4834,7 @@ function Study({
           )}
         </div>
       ) : (
-        <SwipeFeelProvider>
+        <SwipeProviders mirror={mirror}>
           {/* The feel's sources and its tuner: islands (docs/swipe-core.md). */}
           {touch && <SwipeFeelIsland />}
           {touch && <SwipeTunerIsland />}
@@ -4087,10 +4872,10 @@ function Study({
             role="list"
           >
             {/* The paper, scrolling with the rows: one composited layer the
-              height of the whole content (both over-scroll pads included),
-              under everything in the list. `background-attachment: local`
-              on the list cost ~50 of 90 frames over 20ms on an iPhone; this
-              layer scrolls as fast as the fixed body texture. */}
+            height of the whole content (both over-scroll pads included),
+            under everything in the list. `background-attachment: local`
+            on the list cost ~50 of 90 frames over 20ms on an iPhone; this
+            layer scrolls as fast as the fixed body texture. */}
             <div
               aria-hidden
               data-paper-layer
@@ -4179,13 +4964,14 @@ function Study({
                     // through a swipe that follows.
                     speech.release();
                   }}
-                  onSwipe={(r) => swipeGrade(i, r)}
+                  // The row reports the side's default grade; the mirror swaps it here, once.
+                  onSwipe={(r) => swipeGrade(i, sideRating(r, mirror))}
                   locked={() => retired(i)}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
                       ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
                       : hasExamples
-                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--back-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
+                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--ex-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
                   } ${rating ? RATING_STYLE[rating] : ""}`}
                   style={{ height: ROW_H }}
@@ -4209,88 +4995,88 @@ function Study({
                           : ""
                     }`}
                   >
-                    {it.term}
+                    {/* bdi: a right-to-left word (Hebrew) keeps its own direction and punctuation */}
+                    <bdi lang={it.lang}>{it.term}</bdi>
                     {!config.readingOnBack && it.reading && it.reading !== it.term && (
-                      <span className="ml-2 text-xs font-normal opacity-60">{it.reading}</span>
+                      <bdi className="ml-2 text-xs font-normal opacity-60">{it.reading}</bdi>
                     )}
                   </Glance>
                   {(() => {
-                    const meaning = (
-                      <Glance
-                        active={glancing && show}
-                        title={show ? it.back : undefined}
-                        className={`text-sm opacity-80 transition-[filter] duration-75 ${
-                          touch ? "block min-w-0" : ""
-                        } ${show ? "" : "slip-blank"}`}
-                      >
-                        {config.readingOnBack && it.reading && it.reading !== it.term && (
-                          <span className="mr-2 font-medium">{it.reading}</span>
-                        )}
-                        {it.back}
-                      </Glance>
-                    );
-                    if (!touch || (!it.ex && !it.note)) return meaning;
-                    // Phones: one row is the whole card — the front, then everything
-                    // on the back (meaning, then example), as "Show all meanings"
-                    // shows and reads it. Two lines in the row's fixed height (one
-                    // line on a wider screen), so the windowing stays exact.
-                    // Tags (level, list) are only in the double-tap sheet.
+                    // The back in the row's order (lib/words/row-layout.ts): the
+                    // example, then the meaning; with no example the meaning
+                    // takes its place. Each part is styled by its place, not by
+                    // what it is: the first is the stronger.
+                    const parts = backParts(it);
+                    const cell = (k: (typeof parts)[number], at: number) => {
+                      const first = at === 0;
+                      const tone = touch
+                        ? first
+                          ? "text-sm opacity-80"
+                          : "text-xs opacity-60"
+                        : first
+                          ? "text-sm opacity-80"
+                          : "text-sm opacity-70";
+                      // Desktop: a card without an example spans both columns.
+                      const span = !touch && hasExamples && parts.length === 1 ? "col-span-2" : "";
+                      const look = `${tone} ${span} transition-[filter] duration-75 ${
+                        touch ? "block min-w-0" : ""
+                      } ${show ? "" : "slip-blank"}`;
+                      if (k === "meaning")
+                        return (
+                          <Glance
+                            key={k}
+                            active={glancing && show}
+                            title={show ? it.back : undefined}
+                            className={look}
+                          >
+                            {config.readingOnBack && it.reading && it.reading !== it.term && (
+                              <bdi className="mr-2 font-medium">{it.reading}</bdi>
+                            )}
+                            {it.back}
+                          </Glance>
+                        );
+                      return (
+                        <Glance
+                          key={k}
+                          active={glancing && show}
+                          title={
+                            show ? (it.ex ? `${it.ex}\n${it.exTr ?? ""}` : it.note) : undefined
+                          }
+                          className={look}
+                        >
+                          {it.ex ? (
+                            <>
+                              <bdi lang={it.lang} data-row-example>
+                                <MarkedExample text={it.ex} lang={it.lang} fam={fam.current} />
+                              </bdi>
+                              {it.exTr && (
+                                <span className="ml-2 text-xs opacity-60">{it.exTr}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs">
+                              <PhraseNote note={it.note} register={it.register} />
+                            </span>
+                          )}
+                        </Glance>
+                      );
+                    };
+                    const cells = parts.map(cell);
+                    if (!touch) return cells;
+                    // Phones: one row is the whole card — the front, then the
+                    // back beside it (example, then meaning), as "Show all
+                    // meanings" shows and reads it. Two lines in the row's fixed
+                    // height (one line on a wider screen), so the windowing
+                    // stays exact. Tags (level, list) are only in the double-tap sheet.
                     return (
                       <span
                         className="flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
                         data-row-back
                       >
-                        {meaning}
-                        <Glance
-                          active={glancing && show}
-                          title={
-                            show ? (it.ex ? `${it.ex}\n${it.exTr ?? ""}` : it.note) : undefined
-                          }
-                          className={`block min-w-0 text-xs opacity-60 transition-[filter] duration-75 sm:flex-1 ${
-                            show ? "" : "slip-blank"
-                          }`}
-                        >
-                          {it.ex ? (
-                            <>
-                              <span lang={it.lang} data-row-example>
-                                {it.ex}
-                              </span>
-                              {it.exTr && <span className="ml-2 opacity-80">{it.exTr}</span>}
-                            </>
-                          ) : (
-                            <PhraseNote note={it.note} register={it.register} />
-                          )}
-                        </Glance>
+                        {cells}
                       </span>
                     );
                   })()}
-                  {hasExamples && !touch && (
-                    // The example is part of the answer side: hidden with the meaning.
-                    <Glance
-                      active={glancing && show}
-                      className={`text-sm opacity-70 transition-[filter] duration-75 ${
-                        show ? "" : "slip-blank"
-                      }`}
-                      title={
-                        show && it.ex
-                          ? `${it.ex}\n${it.exTr ?? ""}`
-                          : show && it.note
-                            ? it.note
-                            : undefined
-                      }
-                    >
-                      {it.ex ? (
-                        <>
-                          {it.ex}
-                          {it.exTr && <span className="ml-2 text-xs opacity-60">{it.exTr}</span>}
-                        </>
-                      ) : (
-                        <span className="text-xs">
-                          <PhraseNote note={it.note} register={it.register} />
-                        </span>
-                      )}
-                    </Glance>
-                  )}
                   {/* Graded: when it comes back. Ungraded: "new", or how long it has been due. */}
                   <span
                     className={`flex items-center justify-end gap-1.5 fs-11 tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
@@ -4334,7 +5120,7 @@ function Study({
             />
           )}
           {/* The help strip: glass over the bottom of the list, shown only
-              when there is room (a tall window, no on-screen keyboard). */}
+            when there is room (a tall window, no on-screen keyboard). */}
           {room && hintText && (
             <div
               ref={hintRef}
@@ -4351,7 +5137,7 @@ function Study({
             retry={voiceMode.retry}
             bottom={bar.bottom}
           />
-        </SwipeFeelProvider>
+        </SwipeProviders>
       )}
     </div>
   );
@@ -4408,8 +5194,12 @@ function SlipSheet({
       <div className="absolute inset-x-0 bottom-0 mx-auto max-w-lg rounded-t-2xl bg-[var(--background)] px-4 pt-2 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_30px_oklch(0_0_0/0.25)] lk-sheet-in">
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-current opacity-20" />
         <div className="flex items-baseline gap-3 border-b border-black/10 dark:border-white/10 px-1 pb-3">
-          <b className="text-2xl font-normal">{item.term}</b>
-          <span className="truncate opacity-70">{item.back}</span>
+          <b className="text-2xl font-normal">
+            <bdi lang={item.lang}>{item.term}</bdi>
+          </b>
+          {/* Example first (lib/words/row-layout.ts): with an example, the
+          meaning comes after it, below; without one it stays up here. */}
+          {!item.ex && <span className="truncate opacity-70">{item.back}</span>}
           <small className="ml-auto shrink-0 text-xs opacity-60">{status}</small>
         </div>
         {tags.length > 0 && (
@@ -4441,8 +5231,18 @@ function SlipSheet({
             className="border-b border-black/10 dark:border-white/10 px-1 py-3"
             data-sheet-example
           >
-            <div lang={item.lang}>{item.ex}</div>
+            <div lang={item.lang} dir="auto">
+              {item.ex}
+            </div>
             {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
+          </div>
+        )}
+        {item.ex && (
+          <div
+            className="border-b border-black/10 dark:border-white/10 px-1 py-3 opacity-70"
+            data-sheet-meaning
+          >
+            {item.back}
           </div>
         )}
         <ul className="mt-1">
@@ -4531,7 +5331,8 @@ function SlipCords({
 /** The grade zones island, labelled with the grades' names in the app's language. */
 function GradeZones() {
   const l = useRatingLabel();
-  return <SwipeGradesIsland again={l[1]} hard={l[2]} good={l[3]} easy={l[4]} />;
+  const mirror = useContext(SwipeMirror);
+  return <SwipeGradesIsland again={l[1]} hard={l[2]} good={l[3]} easy={l[4]} mirror={mirror} />;
 }
 
 /**
@@ -4542,25 +5343,19 @@ function GradeZones() {
  * slip only moves over it.
  */
 function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> }) {
+  const mirror = useContext(SwipeMirror);
   return (
     <div
       ref={ref}
       aria-hidden
       data-swipe-underlay
+      data-mirror={mirror ? "" : undefined}
       className="pointer-events-none absolute inset-x-0 overflow-hidden"
       style={{ visibility: "hidden", background: "var(--slip-seam)" }}
     >
       <GradeZones />
     </div>
   );
-}
-
-/** Point a grade-zones container (SwipeGrades) at level `k`: which grade each side shows. */
-function showReveal(el: HTMLElement | null | undefined, k: number) {
-  if (!el) return;
-  const s = revealShown(k);
-  if (el.dataset.good !== String(s.good)) el.dataset.good = String(s.good);
-  if (el.dataset.hard !== String(s.hard)) el.dataset.hard = String(s.hard);
 }
 
 type RowProps = {
@@ -4747,290 +5542,28 @@ function NativeSlipRow({
 }: RowProps) {
   const a = typeof style.height === "number" ? style.height : 44;
   const scroller = useRef<HTMLDivElement>(null);
+  const mirror = useContext(SwipeMirror);
   // Rows mount as the list scrolls: each starts centred before it is painted.
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollLeft = 2 * a;
   }, [a]);
   const { feel, reducedMotion } = useSwipeFeel(SWIPE_CORE_IFACE);
-  /** The gesture's phase, for the lift cue: changes only as a gesture starts and ends. */
-  const [phase, setPhase] = useState<SwipePhase>("idle");
-  // The listeners below are attached once; they call the latest props.
-  const props = useRef({
-    onTap,
-    onSwipe,
-    onSwipeStart,
-    onHold,
-    onHoldEnd,
-    scrolling,
-    locked,
-    feel,
-    reducedMotion,
-  });
-  props.current = {
-    onTap,
-    onSwipe,
-    onSwipeStart,
-    onHold,
-    onHoldEnd,
-    scrolling,
-    locked,
-    feel,
-    reducedMotion,
-  };
   if (swipePerf.on) swipePerf.renders++;
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const home = 2 * a;
-    /**
-     * One gesture's state. `panned`: the browser took the touch over
-     * (pointercancel) — a slide or a list scroll; `moved`: this slip scrolled
-     * under the finger — a slide; `caught`: the touch landed on a slip
-     * still gliding home.
-     */
-    const g = {
-      touching: false,
-      panned: false,
-      moved: false,
-      caught: false,
-      /** A steep drag: a scroll, never a grade (lockAxis, as WordRow). */
-      steep: false,
-      returning: false,
-      held: false,
-      catching: false,
-      x0: 0,
-      y0: 0,
-      finger: 0,
-      hold: undefined as ReturnType<typeof setTimeout> | undefined,
-      /** The level the slide is on (hysteresis, as WordRow), for the spring release. */
-      level: 0 as SwipeLevel,
-      /** Recent offsets while the finger is down, for the release velocity. */
-      samples: [] as { t: number; x: number }[],
-      /** The spring release's frame while it runs (feel.nativeRelease). */
-      springing: 0,
-    };
-    const hasScrollEnd = "onscrollend" in window;
-    /**
-     * The heavy feel's release (feel.nativeRelease): the browser's coast and
-     * snap are stopped at the lift, and the slip follows the core's release
-     * path instead (coast under friction, then the spring home), written to
-     * scrollLeft once a frame. The grade is decided at the lift, by the same
-     * tiers as WordRow's (releaseRating). Returns false when it doesn't apply.
-     */
-    const springRelease = () => {
-      const { feel: f, reducedMotion: still } = props.current;
-      if (!f.nativeRelease || !g.moved || g.steep || g.held) return false;
-      const offset = home - el.scrollLeft; // + = slid right
-      const v = releaseVelocity(g.samples, performance.now());
-      const r = releaseRating(offset, v, g.level, a);
-      g.panned = g.moved = false;
-      swipePerf.stop(r ? "swipe" : "swipe-cancel");
-      logSwipe({
-        finger: g.finger,
-        v,
-        projected: releaseLevel(offset, v, g.level, a) * a,
-        rating: r,
-        a,
-        params: `${NATIVE_PARAMS}+spring`,
-      });
-      // overflow hidden stops WebKit's momentum; no snap, or each write would re-snap.
-      el.style.overflowX = "hidden";
-      el.style.scrollSnapType = "none";
-      const done = () => {
-        g.springing = 0;
-        el.scrollLeft = home;
-        el.style.overflowX = "";
-        el.style.scrollSnapType = "";
-        setPhase("idle");
-      };
-      const tr = releaseTrajectory(offset, v * 1000, f, 2 * a);
-      if (still || tr.seconds <= 0) done();
-      else {
-        setPhase("settling");
-        const t0 = performance.now();
-        const frame = (now: number) => {
-          const t = (now - t0) / 1000;
-          if (t >= tr.seconds) return done();
-          // The track ends at ±2a: the slip meets it as a wall.
-          el.scrollLeft = home - Math.max(-2 * a, Math.min(2 * a, tr.at(t)));
-          g.springing = requestAnimationFrame(frame);
-        };
-        g.springing = requestAnimationFrame(frame);
-      }
-      if (r) props.current.onSwipe(r);
-      return true;
-    };
-    const glideHome = () => {
-      g.returning = true;
-      el.scrollTo({ left: home, behavior: "smooth" });
-    };
-    /** The scroller came to rest: grade where it landed, then glide home. */
-    const settle = () => {
-      if (g.touching) return; // still under the finger: the gesture isn't over
-      if (g.springing) return; // the spring release has it
-      const offset = home - el.scrollLeft; // + = slid right
-      if (g.returning) {
-        if (Math.abs(offset) < 1) g.returning = false;
-        return;
-      }
-      // Only a slide this gesture made grades (not a glide caught by a tap,
-      // nor a steep drag the browser let slide anyway).
-      const swiped = g.panned && g.moved && !g.steep;
-      g.panned = g.moved = false;
-      if (g.steep) return void glideHome();
-      if (!swiped) return void (Math.abs(offset) >= 1 && glideHome());
-      const r = restRating(offset, a);
-      swipePerf.stop(r ? "swipe" : "swipe-cancel");
-      logSwipe({ finger: g.finger, v: 0, projected: offset, rating: r, a, params: NATIVE_PARAMS });
-      if (Math.abs(offset) >= 1) glideHome();
-      if (r) props.current.onSwipe(r);
-    };
-    /** The first scroll under the finger: a slide (a vertical drag never scrolls this). */
-    const slid = () => {
-      g.moved = true;
-      if (g.caught || g.steep) return;
-      setPhase("dragging");
-      props.current.onSwipeStart?.();
-    };
-    const touchstart = (e: TouchEvent) => {
-      g.touching = true;
-      // A slip still springing home finishes its path: this touch only catches it.
-      g.caught = g.returning || !!g.springing;
-      g.returning = false;
-      g.panned = g.moved = false;
-      g.x0 = e.touches[0].clientX;
-      g.y0 = e.touches[0].clientY;
-      g.finger = 0;
-      // A locked slip ("↓ back", asked now: the label flips on a timer) is
-      // held as a steep drag is: it can't scroll sideways, so it never slides
-      // or grades (settle, springRelease); it still taps and holds.
-      g.steep = props.current.locked?.() ?? false;
-      if (g.steep) el.style.overflowX = "hidden";
-      g.level = 0;
-      g.samples = [{ t: performance.now(), x: home - el.scrollLeft }];
-      if (!g.caught) setPhase("pressed");
-      swipePerf.start();
-      el.addEventListener("scroll", slid, { once: true, passive: true });
-      if (!g.steep) el.addEventListener("touchmove", axis, { passive: false });
-    };
-    /**
-     * The browser hands a diagonal drag to this slip when it can scroll that
-     * way at all; WordRow's rule is stricter (lockAxis: clearly sideways).
-     * Decided once per gesture, before the browser starts scrolling (this
-     * listener blocks only until then): a steep drag locks the slip, so the
-     * list scrolls instead.
-     */
-    const axis = (e: TouchEvent) => {
-      const t = e.touches[0];
-      const locked = t && lockAxis(t.clientX - g.x0, t.clientY - g.y0);
-      if (!locked) return;
-      el.removeEventListener("touchmove", axis);
-      if (locked === "v") {
-        g.steep = true;
-        el.style.overflowX = "hidden";
-        setPhase("scrolling");
-      }
-    };
-    const touchend = (e: TouchEvent) => {
-      if (e.touches.length) return;
-      g.touching = false;
-      g.finger = (e.changedTouches[0]?.clientX ?? g.x0) - g.x0;
-      el.removeEventListener("scroll", slid);
-      el.removeEventListener("touchmove", axis);
-      if (g.steep && !g.held) el.style.overflowX = "";
-      if (!g.caught && springRelease()) return;
-      if (!g.springing) setPhase("idle");
-      if (!g.moved) swipePerf.stop(g.panned ? "scroll" : "tap");
-      // Lifted while resting on a level, nothing more scrolls: no scrollend
-      // follows (WebKit fires it while the finger is still down, and settle
-      // waited for the lift), and without scrollend the quiet timer has
-      // already run. Settle here, or the slip would stay slid off its face,
-      // its grade label showing. A slip still coasting is between levels:
-      // its own scrollend / quiet timer settles it.
-      setTimeout(() => {
-        const k = el.scrollLeft / a;
-        if (!g.touching && !g.returning && Math.abs(k - Math.round(k)) < 1 / a) settle();
-      }, 50);
-    };
-    const pointerdown = (e: PointerEvent) => {
-      g.held = false;
-      g.catching = props.current.scrolling?.() ?? false;
-      clearTimeout(g.hold);
-      if (g.catching) return;
-      g.hold = setTimeout(() => {
-        g.held = true;
-        // A hold stays a hold: the slip no longer slides until the finger lifts.
-        el.style.overflowX = "hidden";
-        props.current.onHold?.();
-      }, HOLD_MS);
-    };
-    const endHold = () => {
-      clearTimeout(g.hold);
-      if (!g.held) return false;
-      g.held = false;
-      el.style.overflowX = "";
-      props.current.onHoldEnd?.();
-      return true;
-    };
-    const pointerup = (e: PointerEvent) => {
-      if (endHold()) return;
-      // The browser never took the touch over: a tap — unless it caught a fling.
-      if (!g.panned && !g.catching) props.current.onTap(e.timeStamp);
-    };
-    const pointercancel = () => {
-      // Scrolling began (this slip or the list): not a tap, not a hold.
-      g.panned = true;
-      if (!g.moved && !g.springing) setPhase("scrolling");
-      endHold();
-    };
-    const snapping = () => g.touching && navigator.vibrate?.(6);
-    // Older Safari has no scrollend: no scroll for 150 ms counts as settled.
-    let quiet: ReturnType<typeof setTimeout> | undefined;
-    const scrolled = () => {
-      clearTimeout(quiet);
-      quiet = setTimeout(settle, 150);
-    };
-    // The reveal follows the detent the slip is nearest (the far one's grade
-    // takes over the first one's spot).
-    const strip = el.parentElement?.querySelector<HTMLElement>("[data-swipe-strip]");
-    const reveal = () => {
-      const offset = home - el.scrollLeft;
-      showReveal(strip, Math.max(-2, Math.min(2, Math.round(offset / a))));
-      if (!g.touching) return;
-      // For the spring release: the level (with hysteresis) and the recent offsets.
-      g.level = swipeLevel(offset, g.level, a);
-      const t = performance.now();
-      g.samples = g.samples.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2);
-      g.samples.push({ t, x: offset });
-    };
-    el.addEventListener("scroll", reveal, { passive: true });
-    el.addEventListener("touchstart", touchstart, { passive: true });
-    el.addEventListener("touchend", touchend, { passive: true });
-    el.addEventListener("touchcancel", touchend, { passive: true });
-    el.addEventListener("pointerdown", pointerdown);
-    el.addEventListener("pointerup", pointerup);
-    el.addEventListener("pointercancel", pointercancel);
-    el.addEventListener("scrollsnapchanging", snapping);
-    if (hasScrollEnd) el.addEventListener("scrollend", settle);
-    else el.addEventListener("scroll", scrolled, { passive: true });
-    return () => {
-      clearTimeout(g.hold);
-      clearTimeout(quiet);
-      cancelAnimationFrame(g.springing);
-      el.removeEventListener("touchstart", touchstart);
-      el.removeEventListener("touchend", touchend);
-      el.removeEventListener("touchcancel", touchend);
-      el.removeEventListener("pointerdown", pointerdown);
-      el.removeEventListener("pointerup", pointerup);
-      el.removeEventListener("pointercancel", pointercancel);
-      el.removeEventListener("scrollsnapchanging", snapping);
-      el.removeEventListener("scrollend", settle);
-      el.removeEventListener("scroll", scrolled);
-      el.removeEventListener("scroll", reveal);
-      el.removeEventListener("scroll", slid);
-      el.removeEventListener("touchmove", axis);
-    };
-  }, [a]);
+  /** The gesture's phase, for the lift cue: changes only as a gesture starts and ends. */
+  const phase = useNativeSlip(scroller, a, {
+    onTap,
+    onSwipe,
+    onSwipeStart,
+    onHold,
+    onHoldEnd,
+    scrolling,
+    locked,
+    feel,
+    reducedMotion,
+    holdMs: HOLD_MS,
+    log: logSwipe,
+    perf: swipePerf,
+  });
   const value: SwipeRowValue = {
     iface: 1,
     variant: "native",
@@ -5056,7 +5589,12 @@ function NativeSlipRow({
         {/* Behind the scroller, not inside it: the face (opaque, above) uncovers
           it only by sliding away. A sticky strip inside the scroller painted
           over the face on iOS (WebKit composites sticky layers on their own). */}
-        <div aria-hidden className="slip-strip" data-swipe-strip>
+        <div
+          aria-hidden
+          className="slip-strip"
+          data-swipe-strip
+          data-mirror={mirror ? "" : undefined}
+        >
           <GradeZones />
         </div>
         <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>

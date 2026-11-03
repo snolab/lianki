@@ -1,0 +1,6 @@
+{
+  "stop": ["der", "die", "und", "das", "ist", "nicht", "ein", "zu", "ich", "mit", "sie"],
+  "folds": [["es", ""], ["s", ""], ["x", ""]],
+  "abbreviations": ["hr", "fr", "dr", "st", "nr"],
+  "names": false
+}

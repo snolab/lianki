@@ -63,6 +63,130 @@ afterEach(() => {
 });
 
 describe("mic session", () => {
+  it("reopen: a new stream with the constraints in force now, the off in between not shown", async () => {
+    let mode = "aec";
+    const opened: string[] = [];
+    const f = fakes();
+    const base = f.deps.getStream;
+    const states: string[] = [];
+    const s = createMicSession({
+      ...f.deps,
+      getStream: async () => {
+        opened.push(mode);
+        return base();
+      },
+      onState: (st) => void states.push(st),
+    });
+    expect(await s.reopen()).toBe(false); // off: nothing to reopen
+    expect(f.calls.gum).toBe(0);
+    await s.toggle();
+    const first = s.stream()?.id;
+    const views: string[] = [];
+    s.subscribe((v) => views.push(v.state));
+    mode = "raw";
+    expect(await s.reopen()).toBe(true);
+    expect(opened).toEqual(["aec", "raw"]);
+    expect(f.calls.stops).toBe(1); // the old track stopped
+    expect(s.stream()?.id).not.toBe(first);
+    expect(s.view().state).toBe("listening");
+    expect(views).not.toContain("off");
+    expect(states).not.toContain("off");
+    expect(f.store.get(MIC_ON_KEY)).toBe("1"); // a reload still resumes it
+    expect(f.logs.some((e) => e.ev === "mic-reopen" && e.ok === true)).toBe(true);
+  });
+
+  it("reopen: an explicit off meanwhile wins; toggles during one run one more pass, never two at once", async () => {
+    const f = fakes();
+    let inFlight = 0;
+    let most = 0;
+    const s = createMicSession({
+      ...f.deps,
+      getStream: async () => {
+        inFlight++;
+        most = Math.max(most, inFlight);
+        await tick();
+        inFlight--;
+        return f.deps.getStream();
+      },
+    });
+    await s.toggle();
+    // Three toggles in a row: one reopen, then one more pass.
+    const a = s.reopen();
+    const b = s.reopen();
+    const c = s.reopen();
+    expect(await Promise.all([a, b, c])).toEqual([true, true, true]);
+    expect(most).toBe(1);
+    expect(f.logs.filter((e) => e.ev === "mic-reopen").length).toBe(2);
+    expect(s.view().state).toBe("listening");
+    // An explicit off while it reopens: it stays off, and shows it.
+    const r = s.reopen();
+    await s.off();
+    expect(await r).toBe(false);
+    await tick();
+    expect(s.view().state).toBe("off");
+    expect(f.store.get(MIC_ON_KEY)).toBeUndefined();
+  });
+
+  it("an off while the browser opens the mic: the new track is stopped, not kept", async () => {
+    const f = fakes();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const s = createMicSession({
+      ...f.deps,
+      getStream: async () => {
+        await gate;
+        return f.deps.getStream();
+      },
+    });
+    const on = s.toggle();
+    await tick();
+    await s.off();
+    release();
+    await on;
+    await tick();
+    expect(s.stream()).toBeNull();
+    expect(f.calls.stops).toBe(1);
+    expect(s.view().state).toBe("off");
+  });
+
+  it("an off, then the VAD fails and the fallback asks for the mic: that track is stopped too", async () => {
+    const f = fakes();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const s = createMicSession({
+      ...f.deps,
+      load: async () => {
+        await gate;
+        throw new Error("vad failed");
+      },
+      fallback: f.deps.load,
+    });
+    const on = s.toggle();
+    await tick();
+    await s.off();
+    release();
+    await on;
+    await tick();
+    expect(s.stream()).toBeNull();
+    expect(f.calls.gum).toBe(2); // the VAD's, then the fallback's
+    expect(f.calls.stops).toBe(2); // both stopped
+    expect(s.view().state).toBe("off");
+  });
+
+  it("reopen while capturing: the voice session still hears the speech end", async () => {
+    const f = fakes();
+    const seen: string[] = [];
+    const s = createMicSession({ ...f.deps, onState: (st, was) => void seen.push(`${was}>${st}`) });
+    await s.toggle();
+    f.events()?.onSpeechStart?.();
+    await tick();
+    expect(s.view().state).toBe("capturing");
+    seen.length = 0;
+    expect(await s.reopen()).toBe(true);
+    expect(seen).toContain("capturing>listening");
+    expect(seen.some((x) => x.endsWith(">off"))).toBe(false);
+  });
+
   it("survives a detach: the stream stays live, only an explicit off stops it", async () => {
     const f = fakes();
     const s = createMicSession(f.deps);

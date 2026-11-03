@@ -7,6 +7,7 @@ import {
   useLayoutEffect,
   useMemo,
   useReducer,
+  useCallback,
   useRef,
   useState,
 } from "react";
@@ -41,6 +42,7 @@ import {
   parseAddress,
   pathLabel,
   type VoiceTiming,
+  type ChatContext,
 } from "./wire";
 import { latencyLines, viaAt, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
@@ -58,6 +60,8 @@ import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
+import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
+import { BAR_CONTROL, barGeometry } from "./bar-geometry";
 import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
@@ -72,7 +76,8 @@ import {
   sentenceRanges,
   sentenceState,
 } from "./read-progress";
-import { aecOn, cloudOut, noSpeechVoices, outMode, setAec } from "./voice-out";
+import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
+import { AEC_EVENT, aecOn, applyAec } from "./aec";
 import type { SpeakMeta } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
@@ -83,21 +88,33 @@ import {
   createArrivals,
   createFloatLife,
   dwellMs,
+  fifoDwellMs,
   minimizeFloat,
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
-import { showTypingGlass, typingGlassLook, typingGlassMotion } from "./typing-glass";
+import {
+  barInGlass,
+  BAR_IN_GLASS_TRANSITION,
+  glassAroundLog,
+  showTypingGlass,
+  typingGlassLook,
+  typingGlassMotion,
+} from "./typing-glass";
 import {
   LINE_HALO,
   SHEET_FILTER,
   anchorScrollTop,
   fullLogBox,
   fullLogHeight,
+  foldBackTo,
   fullLogPad,
   keepEndGap,
   logSurface,
+  nearEnd,
   pickAnchor,
+  repinEnd,
+  stillAtEnd,
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
@@ -106,10 +123,7 @@ import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
 import {
   type TreeNavEvent,
   type TreeNavState,
-  dragCells,
-  dragOffset,
   initialNav,
-  maxDetent,
   pinRow,
   pinScroll,
   treeNav,
@@ -126,14 +140,13 @@ import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
-import type { Frontier } from "./frontier-view";
+import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
   type TreeStrings,
   treeStrings,
   useTreeSource,
 } from "./StateTree";
-import { type TreeNode, crumbs, frontier as frontierOf } from "./state-tree";
 
 /** Typing pauses this long before the draft is sent. */
 const DEBOUNCE_MS = 3_000;
@@ -152,37 +165,11 @@ const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
 const MARK_HINT = "Tap: minimize or restore · double-tap: menu · drag: move the chat";
 const ALIGN_ITEMS = { left: "items-start", center: "items-center", right: "items-end" } as const;
 const TEXT_ALIGN = { left: "left", center: "center", right: "right" } as const;
-/**
- * The minimized bar's lines from a tree (state-tree.ts frontier()), in the
- * shape the bar draws (frontier-view.ts): a group as its ≈ summary and count,
- * its items with breadcrumbs and assignees; one item as its title.
- */
-function toFrontierView(root: TreeNode | null): Frontier | undefined {
-  if (!root) return undefined;
-  const f = frontierOf(root);
-  const line = (e: (typeof f)["done"]) =>
-    e && {
-      text: e.count > 1 && e.summary ? e.summary : e.title,
-      count: e.count,
-      assignee: e.assignee,
-      items:
-        e.count > 1 ? e.items.map((it) => ({ title: it.title, path: crumbs(it.path), assignee: it.assignee })) : undefined,
-    };
-  const out: Frontier = {};
-  if (f.done) out.done = line(f.done);
-  if (f.doing) out.doing = line(f.doing);
-  if (f.next) out.next = line(f.next);
-  return out.done || out.doing || out.next ? out : undefined;
-}
-
 /** Surface props with extra classes. */
 const withClass = <T extends { className: string }>(p: T, cls: string): T => ({
   ...p,
   className: `${p.className} ${cls}`,
 });
-/** The tree button's gestures, for its title and aria-description. */
-const TREE_HINT =
-  "Tap: show or hide the state tree · drag right: open the focused node deeper · drag left: fold it · arrow keys: move";
 /** The mic's extra gesture, for its title and aria-description. */
 const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
 /** A minimized scrub shows this many lines at a time. */
@@ -248,6 +235,10 @@ function useDrag() {
         write(POS_KEY, JSON.stringify(p));
         return p;
       });
+      // The host's bottom island may dock above (or leave) the bar now, and
+      // only now (lib/nav/nav-core.ts, CHAT_MOVED_EVENT): after the new place
+      // is painted.
+      requestAnimationFrame(() => dispatchEvent(new CustomEvent("lk:chat-moved")));
     },
     onPointerCancel: () => {
       setHolding(false);
@@ -316,7 +307,7 @@ const SPEAKING_STYLE = {
   background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.05 250 / 0.7))",
   borderRadius: 3,
 };
-/** The full-screen log's wipe in and out (and its sheet's fade). */
+/** The full-screen log's wipe in and out. */
 const WIPE = "clip-path 200ms ease-out";
 /** The input-started full-screen log fades in and out, as the bar does the other way. */
 const FADE = "opacity 200ms ease-out";
@@ -473,7 +464,13 @@ export type DebugChatProps = {
   onSend: (
     text: string,
     to?: string,
-    opts?: { source?: MessageSource; timing?: VoiceTiming; speakerProof?: string[] },
+    opts?: {
+      source?: MessageSource;
+      timing?: VoiceTiming;
+      speakerProof?: string[];
+      /** Attached with the + menu (AttachMenu.tsx): the page selection and where. */
+      context?: ChatContext;
+    },
   ) => boolean;
   /**
    * A tap on an ask card (AskCard.tsx): the page sends {type:"answer",
@@ -530,7 +527,7 @@ export type DebugChatProps = {
   renderAvatar?: RenderAvatar;
   /**
    * The state tree (StateTree.tsx): a URL serving its markdown, or a function
-   * returning markdown or nodes, or a feed. Shown by the tree button (and
+   * returning markdown or nodes, or a feed. Shown from the + menu's View group (and
    * the menu's "Tree"); loaded again each time the tree opens. Its frontier
    * feeds the minimized bar's lines.
    */
@@ -558,6 +555,11 @@ export type DebugChatProps = {
   embedded?: boolean;
   /** Where the full-screen sheet and badges are portalled (default document.body; the shadow root's container when embedded). */
   portalRoot?: Element;
+  /**
+   * The input's + menu (AttachMenu.tsx). Off in the cross-site iframe
+   * (app/embed/partner): it cannot see the page's selection, and its box is tiny.
+   */
+  attach?: boolean;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -568,7 +570,24 @@ const QUIET: VoiceState = {
   ducked: false,
   queued: 0,
   paused: false,
+  blocked: false,
 };
+
+/**
+ * In a tap, after the browser refused to play a reply: unlock the outputs
+ * (the AudioContext, the cloud's element, speechSynthesis) and read on.
+ */
+function unblockVoice() {
+  // Once: the chip's own tap is also the page's tap (both listen).
+  if (!voice().state().blocked) return;
+  void existingCtx()?.resume().catch(() => {});
+  // Whatever the mode: a sentence in a language with no voice here goes to the cloud too.
+  cloudOut()?.unlock();
+  try {
+    synth()?.speak(new SpeechSynthesisUtterance(""));
+  } catch {}
+  voice().unblock?.();
+}
 
 /** A log line's avatar, square: fixed, so a picture loading late shifts nothing. */
 const AVATAR_PX = 18;
@@ -613,6 +632,7 @@ export function DebugChat({
   polishedIcon = POLISHED_ICON,
   embedded = false,
   portalRoot,
+  attach = true,
 }: DebugChatProps) {
   const t = chatStrings(strings);
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
@@ -627,6 +647,12 @@ export function DebugChat({
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
   const [aec, setAecState] = useState(aecOn);
+  // The same switch in /words' Settings sheet: follow it.
+  useEffect(() => {
+    const f = () => setAecState(aecOn());
+    window.addEventListener(AEC_EVENT, f);
+    return () => window.removeEventListener(AEC_EVENT, f);
+  }, []);
   /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
   const [rate, setRate] = useState(speechRate);
   const { offset, handle, begin, wasDrag, holding, fit } = useDrag();
@@ -637,7 +663,7 @@ export function DebugChat({
   // Only expanding or minimizing refits (fit itself is fresh each render).
   /**
    * One panel at a time over the log: the menu (status, read-aloud, pages,
-   * sessions; a double tap on the mark) or the state tree (the tree button).
+   * sessions; a double tap on the mark) or the state tree (the + menu's View group).
    * Opening one closes the other.
    */
   const [panel, setPanelState] = useState<Panel>(() => uiStore.getState().panel);
@@ -834,15 +860,6 @@ export function DebugChat({
     Object.values(e).reduce((a, b) => a + b, 0);
   /** The minimized tree's own scroller (the floating box's tree body). */
   const treeBodyEl = useRef<HTMLDivElement | null>(null);
-  /**
-   * Minimized, the tree body takes its full height (30vh) from the first
-   * drag until the tree closes: the floating box hangs from the bar, so a
-   * body that resized with each level would move the whole tree up and down.
-   */
-  const [treeTall, setTreeTall] = useState(false);
-  useEffect(() => {
-    if (!tree) setTreeTall(false);
-  }, [tree]);
   /** The tree's scroller: the chat's column expanded, its own body minimized. */
   const treeScroller = () => treeBodyEl.current;
   const navTo = (ev: TreeNavEvent) => {
@@ -911,7 +928,12 @@ export function DebugChat({
     }
   }, [nav, open]);
   /** The minimized bar's lines: the host's, else the tree's frontier. */
-  const shownFrontier = frontier ?? toFrontierView(treeData.root);
+  const shownFrontier =
+    frontier ??
+    treeFrontier(treeData.root, {
+      locale: globalThis.document?.documentElement.lang,
+      inProgress: ui.nowDoing,
+    });
   /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
   const [treeFade, setTreeFade] = useState(false);
   const onTreeScroll = () => {
@@ -979,6 +1001,12 @@ export function DebugChat({
       pureDictation: v && pureDictation.current === v ? v : null,
       ...(v ? {} : { caret: null }),
     });
+  /** The + menu (AttachMenu.tsx): the page selection kept outside the chat, and what goes with the next line. */
+  const pageSel = usePageSelection(embedded);
+  const appAddItems = useAddItems();
+  const attached = useUi(uiStore, (s) => s.attached);
+  const [attachMenu, setAttachMenu] = useState(false);
+  const closeAttachMenu = useCallback(() => setAttachMenu(false), []);
   /** The node the next line goes to: the chip in the bar ("/" = the main thread, no chip). */
   const [target, setTargetState] = useState(keptTarget);
   const targetRef = useRef(target);
@@ -1005,6 +1033,8 @@ export function DebugChat({
   const log = useRef<HTMLDivElement | null>(null);
   /** The log is scrolled to its end (new messages follow it there). */
   const atEnd = useRef(true);
+  /** The scrollTop the resize re-pin set, until its scroll event comes. */
+  const pinnedAt = useRef<number | null>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
   /** Messages that arrived while scrolled up: a dot on the scroll-down button. */
   const [below, setBelow] = useState(0);
@@ -1023,7 +1053,11 @@ export function DebugChat({
     if (!el || el.hidden) return;
     lastLogScroll.current = el.scrollTop;
     setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
-    const end = el.scrollHeight - el.scrollTop - el.clientHeight < 4;
+    // Our own re-pin's scroll (below) can land a frame late, after the log
+    // shrank further (the keyboard): it is not him leaving the end.
+    const own = pinnedAt.current !== null && Math.abs(el.scrollTop - pinnedAt.current) <= 1;
+    pinnedAt.current = null;
+    const end = stillAtEnd({ gap: el.scrollHeight - el.scrollTop - el.clientHeight, ownPin: own });
     atEnd.current = end;
     setScrolledUp(!end);
     if (end) setBelow(0);
@@ -1031,14 +1065,18 @@ export function DebugChat({
   /**
    * A vertical drag on the bar (the mic, or the empty input) scrolls the log,
    * and for as long as it lasts the log goes full screen: it grows upward to
-   * the top of the visible area over a glass sheet, while the bar stays put
+   * the top of the visible area over the panel's own glass (never a sheet
+   * over the page), while the bar stays put
    * and floats over it. The lines at its bottom edge do not move; the older
-   * ones are revealed above them (a clip-path wipe and the sheet's fade,
+   * ones are revealed above them (a clip-path wipe and the glass's fade,
    * ~200 ms ease-out; at once under reduced motion). On release it folds
    * back the same way: the bar's resting log is the compact one, and a sheet
    * left up over the page would need its own way out.
    */
   const [fullLog, setFullLog] = useState<"off" | "on" | "leaving">("off");
+  /** The full-screen log's state, for handlers and observers. */
+  const fullNow = useRef(fullLog);
+  fullNow.current = fullLog;
   const fullRef = useRef<{
     maxH: number;
     fromH: number;
@@ -1048,7 +1086,15 @@ export function DebugChat({
     box: { left: number; width: number; bottom: number; height: number; hideBar: boolean } | null;
     /** The line the reader is on, kept in place across the height change (pickAnchor). */
     anchor: { id: string; top: number; height: number } | null;
-  }>({ maxH: 0, fromH: 0, gap: 0, lastDy: 0, box: null, anchor: null });
+    /**
+     * The resting log's centre (viewport y) at the press: folding back, the
+     * line there is the one kept, so the lines he sees where the resting log
+     * is stay the same (the tall view's own centre was far back).
+     */
+    focusY: number;
+    /** Folding back: to the end (the newest line was still in view at release), else the anchor. */
+    toEnd: boolean;
+  }>({ maxH: 0, fromH: 0, gap: 0, lastDy: 0, box: null, anchor: null, focusY: 0, toEnd: false });
   /**
    * Compact mode (compact-view.ts; this device's setting, off by default):
    * while the input has no focus, the open chat shows only its last message.
@@ -1102,8 +1148,12 @@ export function DebugChat({
     if (!lastMsg || !expanded) return;
     hold(dwellMs(lastMsg.text));
   }, [lastMsg?.id]);
-  /** The line nearest the log's centre (its focus line), with where it is now. */
-  const anchorNow = () => {
+  /**
+   * The line nearest the log's centre (its focus line), with where it is now;
+   * `"end"`: the newest line instead (the one at the bottom edge); a number:
+   * the line at that viewport y.
+   */
+  const anchorNow = (at?: "end" | number) => {
     const el = log.current;
     if (!el) return null;
     const v = el.getBoundingClientRect();
@@ -1111,7 +1161,10 @@ export function DebugChat({
       const b = r.getBoundingClientRect();
       return { id: r.dataset.msg ?? "", top: b.top, bottom: b.bottom };
     });
-    const a = pickAnchor(rows, (v.top + v.bottom) / 2);
+    const a = pickAnchor(
+      rows,
+      at === "end" ? v.bottom : typeof at === "number" ? at : (v.top + v.bottom) / 2,
+    );
     return a && a.id ? { id: a.id, top: a.top, height: a.bottom - a.top } : null;
   };
   /** After the height changed: the anchored line back where it was, in the same frame. */
@@ -1177,8 +1230,12 @@ export function DebugChat({
           hideBar: b.hideBar,
         };
       }
+      const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
       fullRef.current = {
-        anchor: box ? anchorNow() : null,
+        // At the end, the newest line holds its place (not the centre one).
+        anchor: box ? anchorNow(nearEnd(gap) ? "end" : undefined) : null,
+        focusY: (r.top + r.bottom) / 2,
+        toEnd: false,
         box,
         maxH: fullLogHeight({
           bottom: r.bottom,
@@ -1187,10 +1244,14 @@ export function DebugChat({
           vvTop: typeof visualViewport === "undefined" ? 0 : (visualViewport?.offsetTop ?? 0),
         }),
         fromH: el.clientHeight,
-        gap: el.scrollHeight - el.scrollTop - el.clientHeight,
+        gap,
         lastDy: 0,
       };
-      setFullLog("on");
+      // At once, before the first move scrolls it: the switch's layout effect
+      // holds the anchored line where it was at the press, so a scroll it ran
+      // after that first move would undo the move (the log lagged the finger
+      // by the touch slop from then on).
+      flushSync(() => setFullLog("on"));
     },
     /** The joystick drives it: the finger's travel is taken without scrolling, so coming back inside does not jump. */
     hold: (dy: number) => {
@@ -1323,7 +1384,7 @@ export function DebugChat({
           gap: fullRef.current.gap,
         });
       // Its own box: the same node, the same width, only taller, the line
-      // being read held in place: nothing to animate (the sheet fades), and
+      // being read held in place: nothing to animate (the glass fades), and
       // never an opacity-0 start, which left the list blank.
       if (reducedMotion() || fullRef.current.box) return;
       const h = revealed();
@@ -1335,8 +1396,16 @@ export function DebugChat({
       el.style.clipPath = "inset(0px 0 0 0)";
     } else if (fullLog === "leaving") {
       fullRef.current.gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-      // The line being read now, to keep in view as the log folds back.
-      if (fullRef.current.box) fullRef.current.anchor = anchorNow();
+      // The newest line still in view: back to the end. Else the line being
+      // read now, to keep in view as the log folds back.
+      if (fullRef.current.box) {
+        const rows = el.querySelectorAll<HTMLElement>("[data-testid=debug-chat-line]");
+        const last = rows[rows.length - 1]?.getBoundingClientRect() ?? null;
+        const v = el.getBoundingClientRect();
+        fullRef.current.toEnd =
+          foldBackTo({ newest: last, view: { top: v.top, bottom: v.bottom } }) === "end";
+        fullRef.current.anchor = fullRef.current.toEnd ? null : anchorNow(fullRef.current.focusY);
+      }
       const h = revealed();
       // Its own box folds back at once (no fade out, nothing to wait for).
       if (reducedMotion() || !h || fullRef.current.box) return setFullLog("off");
@@ -1349,13 +1418,16 @@ export function DebugChat({
       // the newest lines when idle, as the compact log always shows; typing,
       // the lines that were at its bottom edge.
       const fromBox = !!fullRef.current.box;
+      const toEnd = fromBox && fullRef.current.toEnd;
       fullRef.current.box = null;
+      fullRef.current.toEnd = false;
       el.style.transition = "none";
       el.style.clipPath = "";
       // From its own box: the line being read stays in view (as near its
       // place as the compact log allows). Else as before: the newest lines
       // when idle, the lines at the bottom edge while typing.
-      if (!(fromBox && holdAnchor()))
+      if (toEnd) el.scrollTop = el.scrollHeight;
+      else if (!(fromBox && holdAnchor()))
         el.scrollTop =
           typing || micActive
             ? keepEndGap({
@@ -1367,6 +1439,8 @@ export function DebugChat({
       fullRef.current.anchor = null;
       void el.offsetHeight;
       el.style.transition = "";
+      // Where it landed decides (not the slack-shifted scrolls before it).
+      atEnd.current = toEnd;
       onLogScroll();
     }
   }, [fullLog]);
@@ -1425,7 +1499,9 @@ export function DebugChat({
     }
   }, [draft, open]);
   // The log is click-through, so it can't be swiped: a vertical swipe on the
-  // empty input scrolls it instead. Only the pill moves the box.
+  // empty input scrolls it instead (inputDrag, by pointer events). Here the
+  // swipe only keeps the page from scrolling; it once scrolled the log as
+  // well, so the log moved twice the finger's travel. Only the pill moves the box.
   useEffect(() => {
     const el = input.current;
     if (!el) return;
@@ -1436,14 +1512,10 @@ export function DebugChat({
       swiping = false;
     };
     const move = (e: TouchEvent) => {
-      const list = log.current;
-      // Empty input: the swipe scrolls the log. With text in it, it scrolls the text.
-      if (!list || el.value.length > 0) return;
-      const ny = e.touches[0].clientY;
-      if (!swiping && Math.abs(ny - y) < 6) return;
+      // With text in it, the swipe scrolls the text.
+      if (el.value.length > 0) return;
+      if (!swiping && Math.abs(e.touches[0].clientY - y) < 6) return;
       swiping = true;
-      list.scrollTop -= ny - y;
-      y = ny;
       if (e.cancelable) e.preventDefault();
     };
     el.addEventListener("touchstart", down, { passive: true });
@@ -1467,6 +1539,17 @@ export function DebugChat({
     setVs(v.state());
     return v.subscribe(setVs);
   }, []);
+  // Playback refused (autoplay): the next tap anywhere on the page lets it go on too.
+  useEffect(() => {
+    if (!vs.blocked) return;
+    const on = () => unblockVoice();
+    window.addEventListener("pointerup", on, { once: true, capture: true });
+    window.addEventListener("keydown", on, { once: true, capture: true });
+    return () => {
+      window.removeEventListener("pointerup", on, { capture: true });
+      window.removeEventListener("keydown", on, { capture: true });
+    };
+  }, [vs.blocked]);
   // The tab hiding stops the reading — unless the mic is on (hands-free).
   useEffect(() => {
     const hide = () =>
@@ -1500,6 +1583,29 @@ export function DebugChat({
     const el = log.current;
     if (el) setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
   }, [messages, open]);
+  // At the end, the log stays there when it or its lines change size (the
+  // keyboard, the text size, the box moved, a card opening): a shrinking
+  // scroller keeps its scrollTop, which showed older lines. Scrolled up, it
+  // is left alone; the full-screen log places itself.
+  useEffect(() => {
+    const el = log.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (el.hidden || fullNow.current !== "off") return;
+      const top = repinEnd({
+        atEnd: atEnd.current,
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      });
+      if (top === null) return;
+      el.scrollTop = top;
+      pinnedAt.current = el.scrollTop;
+    });
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [open]);
 
   /** Send the draft; true when it went out. */
   const submit = (): boolean => {
@@ -1529,19 +1635,29 @@ export function DebugChat({
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
     const speakerProof = source ? takeSpeaker().proofs : (clearSpeaker(), undefined);
+    // What was attached with the + menu rides along, this line only.
+    const context = uiStore.getState().attached ?? undefined;
+    const opts = {
+      ...(source ? { source } : {}),
+      ...(source && timing ? { timing } : {}),
+      ...(source && speakerProof?.length ? { speakerProof } : {}),
+      ...(context ? { context } : {}),
+    };
     if (
       !sendRef.current(
         text,
         to === ROOT_NODE ? undefined : to,
-        source
-          ? { source, ...(timing ? { timing } : {}), ...(speakerProof?.length ? { speakerProof } : {}) }
-          : undefined,
+        Object.keys(opts).length ? opts : undefined,
       )
     ) {
       setOffline(true);
       return false;
     }
     setOffline(false);
+    if (context) {
+      uiStore.setState({ attached: null });
+      pageSel.clear();
+    }
     // A typed line says which language the owner speaks: the mic's STT hint.
     if (!source) learnSttHint(text);
     // Sent: an interruption is over, and the queue (still relevant) reads on.
@@ -1700,6 +1816,8 @@ export function DebugChat({
    * on the mic brings back. Each fades on its own after its dwell.
    */
   const [floats, setFloats] = useState<ChatMessage[]>([]);
+  /** Each floating line's life, by id: a line never fades before the one above it (fifoDwellMs). */
+  const floatLives = useRef(new Map<string, { remaining: () => number }>());
   /** Polished voice lines shown as first heard (their mark tapped). */
   const [rawIds, setRawIds] = useState<ReadonlySet<string>>(() => new Set());
   const toggleRaw = (id: string) =>
@@ -1848,88 +1966,6 @@ export function DebugChat({
     },
     wasDrag: () => micDragged.current.wasDrag(),
   };
-  /**
-   * The tree button: a tap opens or closes the tree; a horizontal drag (axis
-   * locked after 8 px) moves the tree's focused node through its detents —
-   * right opens it a level per cell, left folds it (tree-nav.ts) — with a
-   * live preview, resisting past a limit, committed on release. A vertical
-   * drag does nothing; it never moves the bar (the mark does). ←/→/↑/↓ on the
-   * focused button navigate the open tree.
-   */
-  const treeAxis = useRef(createAxisLock());
-  const treeDragged = useRef(createDragFlag());
-  const treePress = useRef({ cells: 0, limitAt: null as number | null });
-  const navRef = useRef(nav);
-  navRef.current = nav;
-  /** The hint's text; it changes only with a level, so a move re-renders nothing. */
-  const [treeHint, setTreeHint] = useState<string | null>(null);
-  /** The hint follows the finger by a transform set straight on it, never by a render. */
-  const treeHintEl = useRef<HTMLSpanElement | null>(null);
-  const treeHintOffset = useRef(0);
-  const hintText = (s: TreeNavState) => {
-    const id = s.focusId;
-    const node = id === null ? undefined : navIx.byId.get(id);
-    const depth = id === null ? 0 : (s.expanded[id] ?? 0);
-    const max = id === null ? 0 : maxDetent(navIx.ix, id);
-    return node ? `${node.title} · ${depth}/${max}` : "—";
-  };
-  const moveHint = (dx: number, limitAt: number | null) => {
-    treeHintOffset.current = Math.round(dragOffset(dx, limitAt ?? undefined) * 0.25);
-    if (treeHintEl.current)
-      treeHintEl.current.style.transform = `translateX(${treeHintOffset.current}px)`;
-  };
-  const treeGesture = {
-    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
-      treeAxis.current.down(e.clientX, e.clientY);
-      treeDragged.current.down();
-      treePress.current = { cells: 0, limitAt: null };
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-    },
-    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
-      const was = treeAxis.current.axis();
-      const m = treeAxis.current.move(e.clientX, e.clientY);
-      if (!m || m.axis !== "x" || !treeSource || renderTree) return;
-      let s = navRef.current;
-      const p = treePress.current;
-      if (!was) {
-        if (!tree) setPanel("tree");
-        setTreeTall(true);
-        s = treeNav(navIx.ix, s, { type: "dragStart" });
-        navRef.current = s;
-        navTo({ type: "dragStart" });
-      }
-      const cells = dragCells(m.dx, p.cells);
-      // Inside a detent: only the hint moves (no state, no render, no reflow).
-      if (was && cells === p.cells) {
-        moveHint(m.dx, p.limitAt);
-        return;
-      }
-      p.cells = cells;
-      const next = treeNav(navIx.ix, s, { type: "dragMove", cells });
-      // Where the limit was met: past it the hint only rubber-bands.
-      p.limitAt = next.atLimit ? (p.limitAt ?? cells - Math.sign(cells)) : null;
-      navRef.current = next;
-      navTo({ type: "dragMove", cells });
-      moveHint(m.dx, p.limitAt);
-      setTreeHint(hintText(next));
-    },
-    onPointerUp: () => {
-      const axis = treeAxis.current.up();
-      if (!axis) return;
-      treeDragged.current.dragEnded();
-      if (axis === "x") navTo({ type: "dragEnd" });
-      setTreeHint(null);
-    },
-    onPointerCancel: () => {
-      if (treeAxis.current.up() === "x") navTo({ type: "dragCancel" });
-      setTreeHint(null);
-    },
-    onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (!tree || !e.key.startsWith("Arrow")) return;
-      e.preventDefault();
-      navTo({ type: "key", key: e.key });
-    },
-  };
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const conns = plural(
     pages.length + sessions.filter((x) => x.scope !== "chat").length,
@@ -1998,9 +2034,9 @@ export function DebugChat({
   /**
    * The bar's controls, left of the input: drag any of them (or the bar's
    * edge) to move the box. The liagent mark: a tap minimizes or restores
-   * (after 280 ms), a double tap opens the menu. The tree button opens the
-   * state tree sheet (with the eval/preview sessions' count on it). Each is its
-   * own drag handle, so its click still lands on it. The mic is the bar's last control (micEl).
+   * (after 280 ms), a double tap opens the menu. It is its own drag handle,
+   * so its click still lands on it. The state tree is in the + menu (its
+   * "View" group; AttachMenu.tsx). The mic is the bar's last control (micEl).
    */
   const controls = (
     <>
@@ -2018,8 +2054,8 @@ export function DebugChat({
           handle.onPointerDown(e);
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
-        style={handle.style}
-        className="tap-40 relative flex h-8 w-10 shrink-0 items-center justify-center rounded-full"
+        style={{ ...handle.style, ...BAR_CONTROL }}
+        className="tap-40 relative flex w-10 shrink-0 items-center justify-center rounded-full"
       >
         <LiagentMark size={18} />
         <span
@@ -2027,46 +2063,6 @@ export function DebugChat({
           className="absolute end-1.5 top-1 size-1.5 rounded-full"
           style={{ background: dot }}
         />
-      </button>
-      <button
-        type="button"
-        data-testid="debug-chat-tree-button"
-        aria-label={ui.stateTree}
-        aria-description={`${TREE_HINT}${evalSessions.length ? ` · ${conns}` : ""}`}
-        title={TREE_HINT}
-        aria-expanded={tree}
-        aria-controls="debug-chat-tree"
-        // Keeps the input's focus (and its draft): the tree only looks.
-        onMouseDown={(e) => e.preventDefault()}
-        {...treeGesture}
-        onClick={() => !treeDragged.current.wasDrag() && setPanel((p) => (p === "tree" ? "none" : "tree"))}
-        style={{ touchAction: "none" }}
-        className="tap-40 relative flex h-8 w-10 shrink-0 items-center justify-center rounded-full text-base"
-      >
-        {treeHint && (
-          // While dragging: the focused node and the depth it would open to.
-          <span
-            ref={treeHintEl}
-            role="status"
-            data-testid="debug-chat-tree-hint"
-            className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap fs-10 lk-halo"
-            style={{ transform: `translateX(${treeHintOffset.current}px)` }}
-          >
-            {treeHint}
-          </span>
-        )}
-        <TreeIcon />
-        {evalSessions.length > 0 && (
-          // The eval/preview sessions, as before: their count, pulsing when code just ran.
-          <span
-            aria-hidden
-            data-testid="debug-chat-evals"
-            className={`absolute end-0.5 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 fs-8 leading-none text-white tabular-nums ${evalRan ? "animate-pulse" : ""}`}
-            style={{ background: "oklch(0.55 0.15 30)" }}
-          >
-            {evalSessions.length}
-          </span>
-        )}
       </button>
     </>
   );
@@ -2135,7 +2131,7 @@ export function DebugChat({
     ));
   /**
    * Expanded, the tree REPLACES the log: the same slot, the same box, one
-   * or the other (the tree button switches). The log is hidden, not
+   * or the other (the + menu's state tree row switches). The log is hidden, not
    * covered; its scroll is kept here and put back when it shows again.
    */
   const logScrollKept = useRef<number | null>(null);
@@ -2157,7 +2153,7 @@ export function DebugChat({
    * surface (at its open height), with its own scroller, taking taps and
    * scrolls, so it is wherever the log would be (no separate layer to place:
    * that kept ending up off screen, under the page or over the header). ✕
-   * (or the tree button, or Escape) brings the log back, never taking the
+   * (or the + menu's row, or Escape) brings the log back, never taking the
    * input's focus. Fades in (opacity; at once under reduced motion).
    */
   const treePanel = (floating: boolean) => (
@@ -2167,6 +2163,13 @@ export function DebugChat({
       aria-label={ui.stateTree}
       data-testid="debug-chat-tree"
       data-mode={floating ? "floating" : "log"}
+      // ←/→/↑/↓ on a focused row move the tree's focus (tree-nav.ts), as they
+      // did on the old tree button.
+      onKeyDown={(e) => {
+        if (!e.key.startsWith("Arrow")) return;
+        e.preventDefault();
+        navTo({ type: "key", key: e.key });
+      }}
       // Click-through, expanded or not (docs/design-principles.md): only its
       // rows and the ✕ take taps, so a blank strip beside or under the rows
       // never swallows a tap meant for the page (the log does the same). A
@@ -2193,9 +2196,9 @@ export function DebugChat({
         onScroll={onTreeScroll}
         {...withClass(
           // Expanded: the log's surface at its open height (the log's box).
-          logSurface({ expanded: !floating || typing || micActive || treeTall, fade: treeFade }),
+          logSurface({ expanded: !floating || typing || micActive, fade: treeFade }),
           // Expanded: the log's box at its open height (30vh), whatever it holds.
-          `min-w-0 flex-1 ${!floating || treeTall ? "h-[30vh]" : ""}`,
+          `min-w-0 flex-1 ${!floating ? "h-[30vh]" : ""}`,
         )}
       >
         {treeContent}
@@ -2210,7 +2213,8 @@ export function DebugChat({
           aria-live="polite"
           className={`flex flex-col gap-0.5 ${ALIGN_ITEMS[place.side]}`}
         >
-          {floats.map((f) => {
+          {floats.map((f, i) => {
+            const above = floats[i - 1]?.id;
             // The latest copy of the line: an edit changes it in place.
             const m = messages.find((x) => x.id === f.id) ?? f;
             const p = polish(m);
@@ -2239,6 +2243,8 @@ export function DebugChat({
                 )
               }
               epoch={floatEpoch}
+              aboveLeft={() => (above ? (floatLives.current.get(above)?.remaining() ?? 0) : 0)}
+              onLife={(l) => (l ? floatLives.current.set(m.id, l) : floatLives.current.delete(m.id))}
               paused={floatHover || scrubbing}
               onHover={setFloatHover}
               onGone={() => dropFloat(m.id)}
@@ -2309,7 +2315,7 @@ export function DebugChat({
         <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
         {vs.mic ? "Replies read aloud (mic on)" : speak ? "Replies read aloud" : "Replies silent"}
       </button>
-      {/* Echo cancellation, an A/B (voice-out.ts lk:voice-aec): from the next time the mic opens. */}
+      {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
       <button
         type="button"
         role="menuitemcheckbox"
@@ -2317,8 +2323,8 @@ export function DebugChat({
         aria-checked={aec}
         title={ui.aecHint}
         onClick={() => {
-          setAec(!aec);
           setAecState(!aec);
+          void applyAec(!aec);
         }}
         className="flex items-center gap-2 px-3 py-1.5 text-start"
       >
@@ -2438,7 +2444,7 @@ export function DebugChat({
           role="menuitemcheckbox"
           aria-checked={tree}
           data-testid="debug-menu-tree"
-          // The tree button's panel (one panel at a time: the menu closes).
+          // The tree panel, as the + menu's row (one panel at a time: the menu closes).
           onClick={() => setPanel("tree")}
           className="flex items-center gap-2 px-3 py-1.5 text-start"
         >
@@ -2833,7 +2839,7 @@ export function DebugChat({
   });
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
-    return typingGlassLook({
+    const look = typingGlassLook({
       blur:
         has("backdrop-filter", "blur(1px)") || has("-webkit-backdrop-filter", "blur(1px)"),
       reduce:
@@ -2841,6 +2847,11 @@ export function DebugChat({
         matchMedia("(prefers-reduced-transparency: reduce)").matches,
       lightDark: has("color", "light-dark(#000, #fff)"),
     });
+    if (fullLog === "off") return look;
+    // The full-screen log: the same glass, with the sheet's stronger tint and
+    // blur (log-surface.ts SHEET_SCRIM, contrast-checked for a tall list).
+    const sheet = sheetLook();
+    return { ...look, background: sheet.background, filter: sheet.solid ? "none" : SHEET_FILTER };
   })();
   return (
     <section
@@ -2854,7 +2865,7 @@ export function DebugChat({
       onKeyDown={unlockSpeech}
       // A live mic counts as focus: the box goes opaque as it does while typing.
       style={offset}
-      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive || fullLog !== "off" ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
@@ -2870,34 +2881,19 @@ export function DebugChat({
         aria-hidden
         data-testid="debug-chat-typing-glass"
         data-shown={typingGlassShown || undefined}
+        data-full={fullLog === "off" ? undefined : fullLog}
         style={{
           background: typingGlassLookNow.background,
           backdropFilter: typingGlassLookNow.filter,
           WebkitBackdropFilter: typingGlassLookNow.filter,
           boxShadow: typingGlassLookNow.edge,
+          // The full-screen log in its own box (out of the flow): the glass
+          // follows it, the log's box and its few px of edge, never the screen.
+          ...(fullLog !== "off" && fullRef.current.box ? glassAroundLog(fullRef.current.box) : {}),
           ...typingGlassMotion(typingGlassShown, reducedMotion()),
         }}
         className="pointer-events-none absolute -inset-1.5 -z-10 rounded-[1.5rem]"
       />
-      {fullLog !== "off" &&
-        typeof document !== "undefined" &&
-        createPortal(
-          // The full-screen log's glass sheet: over the page, under the chat.
-          // Out of the box, whose transform would trap a fixed child. It
-          // overhangs the viewport by 3rem, so the blur does not thin out
-          // toward the screen edges (it samples past its own box).
-          <div
-            aria-hidden
-            data-testid="debug-chat-log-sheet"
-            style={{
-              background: sheetLook().background,
-              backdropFilter: SHEET_FILTER,
-              WebkitBackdropFilter: SHEET_FILTER,
-            }}
-            className={`pointer-events-none fixed -inset-12 z-[39] transition-opacity duration-200 ease-out starting:opacity-0 motion-reduce:transition-none ${fullLog === "leaving" ? "opacity-0" : "opacity-100"}`}
-          />,
-          portalRoot ?? document.body,
-        )}
       {/* Expanded, one or the other in the log's slot: the state tree, or the log. */}
       {open && tree && treePanel(false)}
       {/* The log: the messages, the newest at the bottom. Hidden minimized, and while the tree has its place. */}
@@ -3015,6 +3011,7 @@ export function DebugChat({
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
                       >
+                        {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
                         {m.ask
                           ? m.ask.questions.length === 1
                             ? m.ask.questions[0]!.question
@@ -3068,6 +3065,19 @@ export function DebugChat({
           {warning}
         </div>
       )}
+      {vs.blocked && (
+        // The browser refused to read a reply aloud (no tap since the page loaded): one tap reads on.
+        <button
+          type="button"
+          data-testid="debug-chat-voice-blocked"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={unblockVoice}
+          style={{ background: INPUT_BG }}
+          className="pointer-events-auto self-start mb-1 rounded-full border border-current/25 px-2.5 py-1 fs-11 backdrop-blur"
+        >
+          🔊 {ui.resumeBlocked}
+        </button>
+      )}
       {resumeLeft.length > 0 && resumeItems.length > 0 && (
         // After a reload cut a reply off and the browser wants a tap before it speaks.
         <div className="pointer-events-auto flex items-center gap-1 self-start pb-1">
@@ -3096,6 +3106,17 @@ export function DebugChat({
           </button>
         </div>
       )}
+      {open && attached && !notice && (
+        <AttachChip
+          t={t}
+          flat={typingGlassShown}
+          ctx={attached}
+          onRemove={() => {
+            uiStore.setState({ attached: null });
+            pageSel.clear();
+          }}
+        />
+      )}
       {/* The log above is click-through: taps reach the page under it. Only the
       bar takes pointer events. Its width animates as two grid columns, the
       bar's and a spacer's, trading 1fr ⇄ 0fr: minimized, the bar's column is
@@ -3121,8 +3142,10 @@ export function DebugChat({
                 role="listbox"
                 aria-label="Nodes to address"
                 data-testid="debug-chat-nodes"
-                style={{ background: INPUT_BG }}
-                className="pointer-events-auto max-w-full list-none overflow-hidden rounded-lg border border-current/25 py-0.5 fs-11 backdrop-blur"
+                // Inside the typing glass, plain rows on the glass (no box of
+                // its own: one frame); a box only where no glass is behind it.
+                style={typingGlassShown ? undefined : { background: INPUT_BG }}
+                className={`pointer-events-auto max-w-full list-none overflow-hidden py-0.5 fs-11 ${typingGlassShown ? "" : "rounded-lg border border-current/25 backdrop-blur"}`}
               >
                 {completions.map((n) => (
                   <li key={n} role="option" aria-selected={false}>
@@ -3166,6 +3189,25 @@ export function DebugChat({
               </span>
             )}
           </div>
+        )}
+        {open && attachMenu && (
+          <AttachMenu
+            t={t}
+            attach={attach && !notice}
+            sel={pageSel.sel}
+            items={appAddItems}
+            tree={tree}
+            sessions={evalSessions.length}
+            sessionsLabel={conns}
+            onTree={() => setPanel((p) => (p === "tree" ? "none" : "tree"))}
+            onAttachSelection={() => {
+              const s = pageSel.sel;
+              if (!s) return;
+              const { at: _at, ...ctx } = s;
+              uiStore.setState({ attached: ctx });
+            }}
+            onClose={closeAttachMenu}
+          />
         )}
         {open && scrolledUp && (
           // The row stays click-through; only the button takes taps.
@@ -3215,15 +3257,22 @@ export function DebugChat({
           onPointerUp={(e) => e.target === e.currentTarget && handle.onPointerUp()}
           onPointerCancel={(e) => e.target === e.currentTarget && handle.onPointerCancel()}
           style={{
+            // Radius, padding and the line box as variables: the mic is concentric
+            // with the corner by construction (bar-geometry.ts).
+            ...barGeometry(open),
             background: INPUT_BG,
             // Aside while the log spans the screen; it keeps the pointer (captured).
             opacity: barAside ? 0 : undefined,
             // Its own blur off too: invisible, it would only cost a
             // second backdrop pass over the sheet.
             ...(barAside ? { backdropFilter: "none", WebkitBackdropFilter: "none" } : {}),
-            transition: reducedMotion() ? undefined : FADE,
+            // While the typing glass is up it is the frame: the bar's own box
+            // goes inside it (border transparent, width kept; no tint, no blur).
+            ...barInGlass(typingGlassShown),
+            transition: reducedMotion() ? undefined : `${FADE}, ${BAR_IN_GLASS_TRANSITION}`,
           }}
-          className={`pointer-events-auto relative flex items-end rounded-[1.125rem] border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300 ${open ? "p-0.5" : "p-px"}`}
+          data-in-glass={typingGlassShown || undefined}
+          className={`pointer-events-auto relative flex items-end border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300`}
         >
           {armed > 0 && (
             <div
@@ -3233,6 +3282,19 @@ export function DebugChat({
             />
           )}
           {controls}
+          {/* + : add to Lianki, attach to the line, view the state tree
+          (AttachMenu.tsx). Open only; without `attach` (or with a notice) it
+          holds only the View group. */}
+          {open && (
+            <AttachButton
+              t={t}
+              open={attachMenu}
+              announce={attach && !notice}
+              sessions={evalSessions.length}
+              ran={evalRan}
+              onToggle={() => setAttachMenu((v) => !v)}
+            />
+          )}
           {/* The input: gone while minimized (inert, so it can't take focus or
           be read), fading out as its slot closes. */}
           <div
@@ -3435,28 +3497,6 @@ export function DebugChat({
   );
 }
 
-/** An outline tree (a root and two branches), for the state tree button. */
-function TreeIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1em"
-      height="1em"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="3" y="3" width="7" height="5" rx="1.5" />
-      <rect x="14" y="10" width="7" height="4.5" rx="1.5" />
-      <rect x="14" y="16.5" width="7" height="4.5" rx="1.5" />
-      <path d="M6.5 8v10.75H14M6.5 12.25H14" />
-    </svg>
-  );
-}
-
 /**
  * One floating line of the minimized chat: "name: text", up for its dwell
  * (float-lines.ts), then a slow opacity fade (none under reduced motion).
@@ -3468,6 +3508,8 @@ function FloatLine({
   text,
   mark,
   epoch,
+  aboveLeft,
+  onLife,
   paused,
   onHover,
   onGone,
@@ -3479,19 +3521,24 @@ function FloatLine({
   text: ReactNode;
   mark: ReactNode;
   epoch: number;
+  /** The dwell left of the line above (ms): this one waits at least that long. */
+  aboveLeft: () => number;
+  /** Its life, for the line below (null when it ends). */
+  onLife: (l: { remaining: () => number } | null) => void;
   paused: boolean;
   onHover: (on: boolean) => void;
   onGone: () => void;
 }) {
   const [phase, setPhase] = useState<FloatPhase>("dwell");
   const life = useRef<ReturnType<typeof createFloatLife> | null>(null);
-  const live = useRef({ paused, onGone });
-  live.current = { paused, onGone };
+  const live = useRef({ paused, onGone, aboveLeft, onLife });
+  live.current = { paused, onGone, aboveLeft, onLife };
   // A new epoch (a scrub step or its release) starts the line over: full dwell, then the fade.
   useEffect(() => {
     setPhase("dwell");
     const l = createFloatLife({
-      ms: dwellMs(m.text),
+      // Its reading time, but never gone before the line above (float-lines.ts).
+      ms: fifoDwellMs(m.text, live.current.aboveLeft()),
       // The app's "Turn off animations" (lib/motion-pref.ts) sets data-motion="off".
       reducedMotion:
         document.documentElement.dataset.motion === "off" ||
@@ -3500,7 +3547,11 @@ function FloatLine({
       onPhase: (p) => (p === "gone" ? live.current.onGone() : setPhase(p)),
     });
     life.current = l;
-    return () => l.cancel();
+    live.current.onLife(l);
+    return () => {
+      l.cancel();
+      live.current.onLife(null);
+    };
   }, [epoch, m.id, m.text]);
   useEffect(() => {
     if (paused) life.current?.pause();

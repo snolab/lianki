@@ -24,6 +24,17 @@ import { chromium, devices } from "playwright";
 import { writeFileSync } from "node:fs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 
+// "Add a list" is a tree (lib/words/add-tree.ts): unfold the language, tick
+// its first list, Add selected. Adding stays on the picker; tap the new row to study.
+const addAndOpen = async (page, c) => {
+  const node = page.locator(`[data-add-node="${c.id}"]`);
+  if (!(await node.isVisible()))
+    await page.locator(`[data-add-node="lang:${c.lang}"] button`).first().click();
+  await node.locator("label").click();
+  await page.locator("[data-add-selected]").click();
+  await page.locator("[data-added-toast]").waitFor({ timeout: 15000 });
+  await page.locator("[data-fresh] [data-open-list]").first().click();
+};
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const MINUTES = Number(process.env.SOAK_MIN || 16);
 const EMAIL = `qa+soak${Date.now()}@lianki.test`;
@@ -153,8 +164,7 @@ const catalog = await page.evaluate(
   async () => (await (await fetch("/words/index.json")).json()).lists,
 );
 const first = catalog.find((c) => c.lang === "fr") ?? catalog[0];
-await page.getByRole("button", { name: first.lang, exact: true }).click();
-await page.getByRole("button", { name: "add", exact: true }).first().click();
+await addAndOpen(page, first);
 await page.locator('[role="listitem"]').first().waitFor({ timeout: 20000 });
 console.error(`studying ${first.lang} as ${EMAIL} for ${MINUTES} min`);
 
@@ -213,10 +223,8 @@ async function toggleSettings() {
     .first()
     .click();
   await sleep(300);
-  await page
-    .getByRole("button", { name: /settings/i })
-    .first()
-    .click();
+  // A modal sheet now: its ✕ closes it (the scrim covers the button).
+  await page.locator("[data-words-settings-close]").click();
   await sleep(200);
 }
 
@@ -371,12 +379,8 @@ for (let minute = 1; !process.env.SOAK_GROW && minute <= MINUTES; minute++) {
     await scroll(44 * 3);
     if (Math.random() < 0.3) await scroll(-44 * 6);
     if (Math.random() < 0.2) await toggleSettings();
-    if (Math.random() < 0.1)
-      await page
-        .getByRole("button", { name: /undo/i })
-        .first()
-        .click()
-        .catch(() => {});
+    // No Undo button in the toolbar (owner, 2026-11-03): Z undoes.
+    if (Math.random() < 0.1) await page.keyboard.press("z").catch(() => {});
   }
   const r = await snapshot(minute);
   rows.push(r);

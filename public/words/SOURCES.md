@@ -16,8 +16,10 @@ Tatoeba exports) are in the header of
 [`scripts/words/build-word-lists.ts`](../../scripts/words/build-word-lists.ts).
 Put downloads in a scratch dir outside the repo. Kaikki extracts are streamed
 through `scripts/words/filter-kaikki.ts`, which keeps only the headwords that
-appear in the frequency list. `WORDS_ONLY=fr,ja` rebuilds a subset and leaves
-the other lists in `index.json` alone.
+appear in the frequency list (its top 200,000 words, `FREQ_TOP`).
+`WORDS_ONLY=fr,ja` rebuilds a subset and leaves the other lists in
+`index.json` alone. Frequency lists already shipped are never rebuilt (a card
+belongs to its list): new lists are appended after them.
 
 ## Japanese: JLPT N5–N1 (`ja-jlpt-n*`)
 
@@ -52,11 +54,37 @@ the other lists in `index.json` alone.
   with the most senses is used (以 yǐ, not Yǐ "Israel"). `zh-hsk-7-9` is
   the combined advanced band, with 5,606 words.
 
-## Frequency bands: fr, es, de, en, ko, it, pt, ru (`<lang>-freq-1..6`)
+## Frequency bands: fr, es, de, en, ko, it, pt, ru, he (`<lang>-freq-<n>`)
 
 - Ranks come from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords),
-  `content/2018/<lang>/<lang>_50k.txt`. The ranks are built from the
+  `content/2018/<lang>/<lang>_full.txt` (list entries from its top 50,000
+  words, the same words as `<lang>_50k.txt`). The ranks are built from the
   OpenSubtitles 2018 corpus (opus.nlpl.eu). License: CC BY-SA 4.0.
+- Lists 1–6 (ranks 1–3000) are the original lists, kept unchanged. Since
+  2026-11-03 a language has as many further 500-word lists as its highest
+  reachable coverage line (50/80/90/95% of running text) needs, so the
+  "Add a list" tree offers those lines as one-tap bands. Each list's
+  `coverage` in `index.json` is the share of the corpus's running words its
+  top words cover, counted by lemma: a form counts for its lemma (Wiktionary
+  form-of entries and inflection tables), a homograph for the reading it
+  leads with, a piece of a word the tokenizer split (`c'` + `est`,
+  `don` + `'t`) with the first list (they are all pieces of first-list words
+  but `jusqu'`, 0.1% of French), a hyphenated token (`est-ce`) when all its
+  words are covered; proper names (tokens Wiktionary has only as names) are
+  left out of the count. Tokens past rank 200,000 count as not covered. The
+  figures are estimates from this one subtitle corpus. Reachable lines: English and Spanish/Portuguese up to 95%; French,
+  German, Italian, Russian 90%; Hebrew 80% (data ceiling 89.6%); Korean 50%
+  (ceiling 72.9%: eojeol tokens fold to lemmas only partly); Chinese 50%.
+- Hebrew (`he-freq-*`, 2026-11-03): ranks from FrequencyWords `he`
+  (CC BY-SA 4.0), meanings from the kaikki.org Hebrew extract of English
+  Wiktionary (CC BY-SA 4.0 / GFDL). The reading shows the pointed spelling
+  (niqqud) and Wiktionary's romanization (`שָׁלוֹם · shalóm`). Prefixed forms
+  fold to their word through Wiktionary's inflection tables (`הבית` → `בית`)
+  and its proclitic entries (`ו־`, `ב־`, `ה־`, `ל־`, `מ־`, `ש־`, `כ־`).
+  Hand-written backs for a few top function words whose Wiktionary entry
+  leads with a usage note: את, עם, כל, אם, אין, יש, הם, אותו, אותה, לו, כדי.
+  Examples: Wiktionary usage examples, then Tatoeba Hebrew sentences
+  (CC BY 2.0 FR).
 - Glosses are English Wiktionary content, taken from the per-language
   [kaikki.org](https://kaikki.org/dictionary/) extracts made with wiktextract
   (Tatu Ylonen). Wiktionary text is dual-licensed CC BY-SA 4.0 and GFDL.
@@ -218,6 +246,12 @@ Entries with no suitable sentence leave both fields out.
     Chinese lists.
   - A sentence already used for another entry counts as 15 characters
     longer, so sentences are not repeated across a list.
+  - Per-sentence credits: `credits/tatoeba-<lang>.tsv` lists every Tatoeba
+    sentence used in a language's word lists with its author, and the
+    English translation shown with it with that sentence's author
+    (`scripts/words/tatoeba-credits.ts`); each sentence is at
+    `https://tatoeba.org/sentences/show/<id>`. Examples not listed there are
+    Wiktionary usage examples.
 - Coverage: fr 98%, es 99%, de 99%, en 99.8% (examples only), it 99%,
   pt 98%, ru 98%, ko 65%, ja 90%, zh 66%.
 
@@ -334,10 +368,124 @@ authors (CC BY 2.0 FR).
 
 </details>
 
+## English exam decks (`en-exam-*`, `en-ngsl`, `en-nawl`, `en-tsl`)
+
+Built by `scripts/words/build-exam-decks.ts`. Every deck, its sources, the
+licence reasoning and the decks not shipped are in
+[docs/word-deck-sources.md](../../docs/word-deck-sources.md). The backs are
+Chinese.
+
+- **Word lists.** 中考, 高考, CET-4, CET-6 and 考研 use the
+  headwords that carry the matching `tag` in
+  [ECDICT](https://github.com/skywind3000/ECDICT) (`ecdict.csv`, MIT, © 2025
+  Linwei). They are ordered by its COCA rank (`frq`), then its BNC rank, then
+  A→Z. CET-6 holds only the words not tagged CET-4. Nothing else is taken
+  from ECDICT except its word forms (`exchange`): not its Chinese, phonetics
+  or definitions.
+- **TOEIC Service List, NGSL, NAWL.** The 1.2 lists from the
+  [New General Service List Project](https://www.newgeneralservicelist.com/),
+  in their own rank order, under
+  [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+  Attribution: NGSL and NAWL by Charles Browne, Brent Culligan and Joseph
+  Phillips; TSL by Charles Browne and Brent Culligan. Changes made: Chinese
+  meanings, IPA and examples added, TRUE/FALSE lowercased, NAWL's nine
+  prefixes dropped.
+- **Meanings.** English Wiktionary's translation tables into Mandarin, from
+  the [kaikki.org](https://kaikki.org/dictionary/English/) extract
+  (`scripts/words/filter-kaikki-zh.ts`; CC BY-SA 4.0 / GFDL). Attribution:
+  "Chinese meanings and IPA: English Wiktionary (en.wiktionary.org)
+  contributors, via kaikki.org". The simplified form is used. The main sense
+  gives two translations, the next senses one each. At most three per part of
+  speech, three parts of speech and about 48 characters. Example: "(n.)
+  状态，状况，国家；(v.) 表示，声明，规定". Words whose entry has no Mandarin
+  translation take the meaning written for Lianki in
+  `scripts/words/exam-glosses.tsv`, from their Wiktionary definitions; the
+  same file holds reviewed fixes that override Wiktionary. Senses marked
+  slang, vulgar, offensive or sexual are dropped, and every back is converted
+  to simplified characters with OpenCC (opencc-js, MIT; OpenCC data
+  Apache-2.0).
+- **Reading.** Wiktionary's IPA, the British one when given. It is never read
+  aloud.
+- **Examples.** The sentence the word already has in `en-freq-*` (see
+  "Example sentences"), else the shortest Tatoeba English sentence with the
+  word or one of its forms. Sentences with profanity, slurs or sexual content
+  are skipped (`isOffensive`). Each card records the sentence's source in
+  `exSrc` (`tatoeba:<id>`, see https://tatoeba.org/sentences/show/<id>, or
+  `wiktionary`) and its Tatoeba author in `exBy`, under
+  [CC BY 2.0 FR](https://creativecommons.org/licenses/by/2.0/fr/). Some Tatoeba
+  sentences have no author on record (orphans); they carry the id only.
+- **Left out.** Proper names, abbreviations, an inflection whose lemma is in
+  the same deck, and words with no English Wiktionary entry.
+
+ECDICT licence, reproduced as it requires:
+
+```text
+MIT License
+
+Copyright (c) 2025 Linwei
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Chinese frequency lists (`zh-freq-*`)
+
+- Ranks: hermitdave/FrequencyWords `zh_cn` (OpenSubtitles 2018, already
+  word-segmented), CC BY-SA 4.0; Han-script tokens only.
+- Readings (pinyin with tone marks) and meanings:
+  [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cc-cedict) (MDBG),
+  CC BY-SA 4.0. Entries CC-CEDICT has only as proper names (a capitalised
+  reading) are dropped and left out of coverage.
+- Examples: Tatoeba Mandarin sentences (CC BY 2.0 FR) whose characters all
+  occur in the lists.
+- Japanese has no frequency lists: FrequencyWords `ja` is not segmented into
+  words (verb stems such as 言, 行, 知 stand alone), so it cannot rank words.
+
+## Lemma files: French (`lemma/fr.txt`)
+
+Used by `/read` (not a word list): which words the dictionary has, and which
+inflected forms belong to which headword, so a book's "regarda" or "yeux"
+matches a card for "regarder" or "œil", and a word outside our decks but in
+the dictionary counts as "new" rather than "unrecognised".
+
+- Source: the English Wiktionary French extract from
+  [kaikki.org](https://kaikki.org/dictionary/French/) (wiktextract, Tatu
+  Ylonen), file of 2026-10-30. English Wiktionary content is licensed
+  [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) (and GFDL).
+  Attribution: "French headwords and inflected forms: English Wiktionary
+  (en.wiktionary.org) contributors, via kaikki.org".
+- Taken: headwords that have a sense of their own (not proper names,
+  symbols or affixes), each with its inflected forms (conjugation and
+  declension tables, plus entries Wiktionary marks as a form of it). No
+  definitions, glosses or examples. Changes made: lowercased, NFC, elided
+  clitics stripped from forms (`s'écria` → `écria`), multi-word and
+  hyphenated forms dropped, ligature spellings written out as a form
+  (`cœur` → `coeur`), forms written as a suffix of the headword.
+- The file is redistributed under CC BY-SA 4.0. Rebuild:
+  `scripts/words/build-lemmas.ts` (commands in its header).
+
 ## Licensing summary
 
-Lists built from CC BY-SA sources (all frequency bands, the HSK lists via
-CC-CEDICT, and the ordering of the JLPT lists) are redistributed under
-CC BY-SA 4.0 with the attribution above. The example sentences from Tatoeba
+Lists and files built from CC BY-SA sources (all frequency bands including
+Hebrew and Chinese, the French lemma file, the HSK lists via
+CC-CEDICT, the ordering of the JLPT lists, and the NGSL, NAWL and TOEIC
+Service List decks) are redistributed under CC BY-SA 4.0 with the attribution
+above. The exam decks' word lists from ECDICT are MIT (notice above); their
+meanings, IPA and examples are Wiktionary (CC BY-SA 4.0) and Tatoeba. The example sentences from Tatoeba
 and the Tatoeba phrases in the phrase decks are CC BY 2.0 FR, attributed above. Changes made: filtering, lemma
 folding, truncation and reordering.

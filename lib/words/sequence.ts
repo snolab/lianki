@@ -1,5 +1,5 @@
 /**
- * Plays a row's parts (word → meaning → example) back to back, once or on a
+ * Plays a row's parts (word → example → meaning) back to back, once or on a
  * loop. A new play() or stop() interrupts: nothing of the old sequence runs
  * after it, even a part that reports done late.
  */

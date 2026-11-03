@@ -29,6 +29,7 @@ export function TextSizeControls({ compact = false }: { compact?: boolean }) {
     ui: text.whole.value,
     chat: text.chat.value,
     cards: text.cards.value,
+    read: text.read.value,
   };
   const changed = TEXT_AREAS.some((a) => sizes[a] !== 1);
   const btn =
@@ -37,7 +38,7 @@ export function TextSizeControls({ compact = false }: { compact?: boolean }) {
     <button
       type="button"
       className="min-h-10 shrink-0 rounded-lg px-2 underline-offset-2 opacity-80 hover:underline"
-      onClick={() => textSizeStore.setState({ ui: 1, chat: 1, cards: 1 })}
+      onClick={() => textSizeStore.setState({ ui: 1, chat: 1, cards: 1, read: 1 })}
       data-text-size-reset
     >
       {text.reset}

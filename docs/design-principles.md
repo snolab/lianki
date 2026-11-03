@@ -14,6 +14,77 @@ Navigation, help and hint strips, the debug chat, toolbars and menus are translu
 - **Room.** Optional overlays (help, hints) show only when there is room: a tall enough viewport, the on-screen keyboard closed. Otherwise they hide rather than squeeze the content.
 - **Input-aware hints.** Touch hints show only for touch, keyboard hints only for a hardware keyboard; on hybrid devices, the input used last decides.
 
+## As little visual nesting as possible
+
+The owner, 2026-11-03 18:32 JST: "尽量减少视觉上的嵌套数量". Avoid boxes in
+boxes, borders in borders, cards in cards. One level of framing at most:
+
+- When an outer frame appears (a glass panel, a sheet), what sits inside it
+  drops its own border and background instead of drawing a second frame. The
+  chat bar's input, for example, loses its box while the focused glass panel
+  around the log and input is showing (keeping the border width, transparent,
+  so nothing shifts).
+- Separate things with space, alignment, weight and colour before reaching
+  for a border.
+- Text sits directly on the page or on one glass layer, never on a card on a
+  card.
+
+## No fixed numbers for users
+
+The owner, 2026-11-03 (Slack): "不要给用户规划任何死数字，不同的用户应该有他们自己的数字".
+A number shown to or imposed on a user (a daily amount, a chunk size, a
+goal, a pace) comes from that user: their goal and target date, their
+measured speed and history. We never pick a constant like "3 chunks a day"
+or "250 words a chunk" for everyone.
+
+The only built-in numbers are common knowledge that holds at every scale:
+the 95% reading-coverage line, the 60% general pass mark, the 1–3 s a person
+takes to react to information of a given size. When a user has no data yet,
+start from such a rule (e.g. a reading chunk = what they read in 1–3 minutes
+at their measured speed) and adapt as data comes in.
+
+## No special cases for any language
+
+The owner, 2026-11-03 19:05 JST: "你不要对任何语言有各种特殊处理". Code is
+generic; language specifics (elision and clitic rules, apostrophe variants,
+inflection folds, lemma maps, capitalisation and name rules, segmentation
+hints, frequency lists) live in per-language **data files** loaded by
+language code and fed to one engine (Intl.Segmenter, Unicode
+normalisation). No `if (lang === "…")` branches; a new language is added by
+adding data, not code. Features shown for "a language" (add all, frequency
+bands, …) exist for every language the data supports.
+
+## Chrome steps back while you read (proposal, 2026-11-03)
+
+Owner: "梳理一下缩小规则". Proposed rule set (decisions A–D open in Slack); today's
+behaviour per surface is summarised in the Slack thread of 2026-11-03.
+
+- **One intent signal.** The person's own scroll toward more content means
+  reading: chrome steps back. A deliberate scroll back, reaching the top, a
+  route change, or a tap on the reduced form brings it back. Stopping is not
+  a signal. Programmatic scrolls (follow-the-line, anchoring), scrolls inside
+  overlays (chat log, tree, sheets) and horizontal gestures (swipe to grade)
+  never count; tell user scrolls from input events.
+- **Three levels: full → reduced → hidden.** Reduced always leaves something
+  to tap back (the island's capsule, the chat's mark and mic, one line).
+  Hidden only for the keyboard and modal sheets.
+- **The keyboard:** everything except the surface being typed into hides; that
+  one lifts above the keyboard. One shared detector (visual viewport).
+- **Room as a share of the screen,** not pixels: optional overlays (help, tips,
+  frontier lines) go first when the content would lose most of the screen.
+- **The person owns open/minimized** for the chat (and the sidebar);
+  automatic reduction only moves an open chat between full and last line.
+- **Height decides, not width:** a short screen (phone in landscape) is a
+  reading surface: island as capsule, top strips reduced, no sidebar over
+  the content.
+- **The reserve follows the level:** `--lk-bottom-reserve` equals what the
+  overlay covers at its current level.
+- **Words:** "reduced" (automatic) and "minimized" (the person's choice) are
+  different states; don't call both "compact".
+- **/read:** window scroll, no inner scroller; island as capsule (owner
+  decision) and top strip reduced while reading; play pill at the thumb;
+  playback follow and swipe-to-grade never change the chrome.
+
 ### Accessibility and contrast
 
 - Text on glass must keep at least 4.5:1 contrast against the worst plausible content behind it. Use the page ink colour plus a halo (`text-shadow` in the page colour), and test over light and dark content.

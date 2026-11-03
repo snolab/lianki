@@ -510,8 +510,38 @@ echo "polished text" | bun scripts/dev/eval.ts edit --last --no-pair -
 ```
 
 Prints the hub's `{"type":"edited","id","thread","text","raw","edited"}`, or
-fails with the rule it broke. Polish, then reply: correct misheard words,
-names and punctuation only — never change what the owner meant.
+fails with the rule it broke. Polish, then reply.
+
+**Polish with the context, or not at all.** Fix punctuation, words misheard
+as a homophone that the context disambiguates, and stutters. Never change the
+meaning, never add or drop a word, never use a word the context does not
+contain. If unsure, do not edit: the raw line stands. The context is what the
+voice line carries and what `eval.ts chat` prints with it:
+
+- `scene` — where it was spoken: the page's `path`, `title`, and `screen`, the
+  text visible on screen outside the chat and not hidden by CSS (the deck's
+  words, the book's paragraph), up to `MAX_SCENE_SCREEN` (2000, the selection's bound).
+  Captured by `pageScene()` (`packages/debug-chat/src/scene.ts`) when the line
+  is sent; voice lines only (`cleanScene` in `wire.ts`).
+- `context.selection`, when something was attached;
+- the thread's other kept lines.
+
+The hub holds every edit to that (`polishCheck` in
+`packages/debug-chat/src/polish.ts`, on the words as `Intl.Segmenter` splits
+them, the same for every script): punctuation, spacing, case and width change
+freely (marks inside a word too: cant → can't); a replaced run must be in the
+context as whole words ("now" is not in "snow"), must not merely drop or add
+characters (不要 → 要 is a removal), and stays within 2x the length of what it
+replaces (the same stretch of audio); a removed run only if it repeats what
+is next to it; added words never. A refusal reads `not polished, the raw line
+stands: …`.
+
+**Off switch.** `stt.polish-off` at `/dev/flags` (docs/feature-flags.md):
+on, every edit is refused (`polish is off …`) and the chat keeps only what was
+heard. The hub asks the main Worker's `DebugSessions.flag()` on each edit; only an
+answer of exactly `false` lets polish through (busy or an error: the raw line
+stands). A main Worker without `flag()` means not off, so deploy order does
+not matter. Off (the default) is the behaviour above.
 
 **The rules** (`DebugHub.edit` in `workers/push/src/debug.ts`, each one unit-tested
 in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:
@@ -522,6 +552,8 @@ in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:
   after it do not count; any earlier line is refused);
 - that line has `source: "stt"`;
 - it was polished fewer than `MAX_EDITS` (3) times, and the text changes.
+- the polish passes `polishCheck` against the raw text and the context;
+- `stt.polish-off` is not on.
 
 Friends' threads and lines can never be edited. On success the stored line
 keeps the first STT text as `raw` (only the first), takes the polished
@@ -639,14 +671,49 @@ stays usable while typing. Rules and look in `typing-glass.ts`.
 - **Backdrop root:** the box sits at `opacity-60` at rest, and an ancestor
   under opacity 1 would stop the blur from seeing the page. While typing
   `focus-within` makes it opaque, so the glass blurs the page as it should.
-- **Not** minimized, and gives way to the full-screen log's own sheet. Also
+- **One frame** (owner, 2026-11-03: "点进输入框、对焦之后……里面那个框框就没必要继续显示了";
+  "尽量减少视觉上的嵌套数量"). While the glass is up it is the frame: the
+  bar's own box is not drawn inside it (`barInGlass`: border transparent with
+  its 1px width kept, no tint, no blur of its own), so caret, placeholder,
+  mic and + do not move and the concentric geometry is unchanged. It fades
+  with the glass; at rest the bar's resting border is back. In the same
+  spirit nothing inside the glass draws a second box: the `@/…` completions
+  are plain rows on the glass, the attached-selection chip keeps only its
+  rail (`AttachChip flat`), the + menu has no border (its shadow is its
+  edge), and its "soon" tag is plain text. Kept: the target chip's border
+  (its colour names the node) and round buttons (their shape is the
+  affordance).
+- **The full-screen log, too** (owner, 2026-11-03 20:50 JST: "在输入框上拖动的这个全屏背景模糊").
+  A vertical drag on the mic or the empty input no longer puts a sheet over
+  the whole page. The same glass stays up and grows with the log: from the
+  mic it is the panel (the log grown upward, and the bar); from the empty
+  input, where the log leaves the flow for its own box, it is that box plus
+  the same few px of edge (`glassAroundLog`). While it spans the log it takes
+  the old sheet's stronger tint and blur (`SHEET_SCRIM`, `SHEET_FILTER`; the
+  contrast checks in `unit/sheet-contrast.test.ts`), and the box goes opaque
+  so the blur sees the page. Beside the log the page stays sharp.
+- **Under the finger** (owner, same evening: "开始拖动之后的输入框/聊天内容老是不在一个位置").
+  Under the touch slop (`AXIS_LOCK_PX`) nothing moves, so a tap is still a
+  tap. Past it, the switch to the full-screen log runs at once
+  (`flushSync`), before the first move scrolls the log: its layout effect
+  holds the line he was on where it was at the press, and when it ran after
+  that first scroll it undid it, so the log lagged the finger by the slop
+  for the rest of the drag. Now the lines keep their offset from the finger
+  from the press to the release (inside the joystick's dead zone). Scrolled
+  up, the release lands where he left it; at the end, a short drag springs
+  back to the newest line (#443).
+- **Not** minimized. Also
   on other sites (the userscript): it covers only the box, so the host page
   is untouched. Only on focus; glass while a draft waits unfocused would be a
   follow-up.
 
 Checks and screenshots: `node scripts/dev/debug-chat-typing-glass-qa.mjs
 --shots <dir>` (silent browsers, 390×844, light and dark); the rules in
-`unit/chat-typing-glass.test.ts`. `shot.ts` cannot show it (no
+`unit/chat-typing-glass.test.ts`. The drag: `node
+scripts/dev/debug-chat-drag-qa.mjs --shots <dir>` (iPhone 390×844 and
+Android 412×915, light and dark): no backdrop-filter past the chat panel
+during or after a drag on the input or the mic, and the finger-to-line
+offset constant within a pixel from the press to the release. `shot.ts` cannot show it (no
 backdrop-filter in DOM-to-image); use the QA script's shots.
 
 ## Quiet lines
@@ -710,6 +777,52 @@ Tests: `unit/speak-rules.test.ts` (the rules, the gate, the missed line, the
 cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
 `unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
 `unit/node-args.test.ts`.
+
+## The + menu: add to Lianki, attach the page selection
+
+The round **+** at the start of the chat input (owner, 2026-11-03) opens one
+menu in three groups (`packages/debug-chat/src/AttachMenu.tsx`, `attach.ts`):
+
+- **Add** — the app's Create actions (add a link as a card, words from an Anki
+  deck, import cards, AI words). The bottom island registers them with
+  `setAddItems`; while a chat input with a + is on the page
+  (`announceChatAttach`, event `lk:chat-attach`), the island's own ＋ is not
+  shown. Anyone without the chat (not in debug mode, a blocked friend) keeps
+  the island's ＋. Search still lists the same actions.
+- **Attach to message** — a registry (`ATTACH_KINDS`), one entry per kind, so
+  each new kind lands in its own change. Now: **Page selection** works; File
+  and Photo/video/audio are shown disabled, tagged "Coming soon". URL import is
+  the Add group's "Add a link as a card".
+- **View** (查看) — **State tree** (状态树): toggles the state tree, as the
+  bar's tree button did (owner, 2026-11-03: "状态树功能藏到加号里"; the bar
+  has no tree button now, so it is `[mark | + | input | mic]`, and minimized
+  `[mark | mic]`). A `menuitemcheckbox`, checked while the tree is open, with
+  the eval/preview sessions' count; while there are any, the + shows a small
+  dot (pulsing when code just ran), so they are not lost with the button. The
+  button's sideways drag through detents is gone; a tap on a chip opens it,
+  and ←/→/↑/↓ on a focused tree row move the focus. Minimized there is no +:
+  the mark's menu (double tap) has Tree. In the cross-site iframe (no attach)
+  or while the chat is unavailable, the + is still there, holding only View.
+
+**Page selection.** A phone clears the page's selection the moment the chat
+input takes focus, so the widget remembers the last non-empty selection made
+outside the chat (`createSelectionMemory`, on `selectionchange` and a
+capturing `pointerdown`): an empty selection after a press in the chat keeps
+it; a press anywhere else on the page lets it go; it also goes after 30 min,
+when the chip's × is tapped, and when the line is sent. Never captured: a
+selection inside the chat (`[data-debug-chat]`, the embed's shadow host
+`[data-lk-chat-host]`), password and one-time-code/card fields, and anything
+inside `[data-sensitive]` / `[data-lk-sensitive]` (any page may mark a part).
+
+Choosing it puts a quote chip above the input (one line; a tap shows it whole;
+× drops it). It is kept with the draft in `lk:ui:chat` (`attached`), and sent
+with the **next line only** as `context: {selection, path, title, host?}` —
+`selection` ≤ 2000 characters, `path` without query or fragment, `host` only
+on another site (`cleanContext` in wire.ts, applied by the page, the hub's
+`parsePageMessage` and the session store). The hub stores it on the line in
+the sender's own thread — a friend's selection stays in their thread — and
+logs only its length. The log shows it as a small quote above the line;
+`eval.ts chat` prints it in the JSON line as `"context"`.
 
 ## The state tree, live
 
@@ -861,6 +974,31 @@ own: it starts the server on a free port, loads the hot widget into
 focus order, 16px input, 40px targets, the inert input, the mic clickable and
 its drag gestures, floating lines). getUserMedia is stubbed, so nothing is
 recorded. `--shots` also saves light/dark × expanded/minimized at 390px.
+
+The bar's round corner controls are concentric with its border by
+construction (`bar-geometry.ts`): the nested-radius rule, inner radius =
+outer radius − (border + padding), as Apple's iOS 26 `ConcentricRectangle`
+does. The bar's radius is `--lk-bar-r = border + padding + line/2`, and the
+mic's circle is the line-sized square in its inner bottom-right, so one line
+high the bar's right end is a semicircle around the mic, and a taller draft
+keeps the mic on the bottom-right arc. Text size does not scale it (only
+text scales). The geometry is inline styles, never new Tailwind classes: a
+stylesheet that has not generated a new class (the whole-page dev server's
+stale CSS on 2026-11-03) left the bar with no radius and no border. `node scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]`
+measures both centres (getBoundingClientRect) at 390×844 and 412×915, light
+and dark, one line, four lines, text at 150% and minimized, and fails over
+0.5px. A control added in a corner (a + at the left end) takes its circle
+from the same variables.
+
+`node scripts/dev/debug-chat-scroll-qa.mjs` checks the log's scroll on an
+Android-sized touch viewport (412×915). A drag on the empty input scrolls
+the log 1:1 with the finger. A log at its end stays there through drags,
+box moves and the keyboard, and lands back on the newest line on release
+while that line is still in view. A log he scrolled up keeps the lines he
+was reading. On fold-back the line kept is the one at the resting log's own
+place, not the tall view's centre: keeping the centre was the 2026-11-03
+jump to old chat. `unit/chat-scroll-pin.test.ts` covers the pure rules in
+`log-surface.ts`.
 
 ## Screenshots
 

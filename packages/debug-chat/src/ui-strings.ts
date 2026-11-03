@@ -81,6 +81,13 @@ export type UiStrings = {
    */
   resumeRead: string;
   /**
+   * A chip in the chat bar when the browser refused to play an agent reply
+   * aloud (autoplay rules: no tap on the page since it loaded, e.g. after a
+   * reload). One tap there (or anywhere) lets the reading go on; the 🔊 is
+   * added by the chip, so this is only the words.
+   */
+  resumeBlocked: string;
+  /**
    * Ask cards (AskCard.tsx): the agent asks a question with options shown
    * as tappable pills; the owner taps one. The question and option texts
    * come from the agent. These are the card's own words:
@@ -139,12 +146,13 @@ export const UI_EN: UiStrings = {
   latOther: "other",
   aec: "Echo cancellation",
   resumeRead: "Tap to continue reading",
+  resumeBlocked: "Tap to turn read-aloud back on",
   askRecommended: "recommended",
   askSend: "Send",
   askExpired: "Expired",
   askAnswered: "Answered",
   askSent: "Sent",
-  aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while replies play. Applies the next time the mic turns on.",
+  aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while anything plays. Takes effect at once.",
   compactIdle: "Only the last message while not typing",
   compactShowAll: "Show the whole chat",
 };
@@ -185,12 +193,13 @@ export const UI_ZH: UiStrings = {
   latOther: "其他",
   aec: "回声消除",
   resumeRead: "点按继续朗读",
+  resumeBlocked: "点一下恢复朗读",
   askRecommended: "推荐",
   askSend: "发送",
   askExpired: "已过期",
   askAnswered: "已回答",
   askSent: "已发送",
-  aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，朗读回复时麦克风暂停。下次打开麦克风时生效。",
+  aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，播放声音时麦克风暂停收音。立即生效。",
   compactIdle: "不打字时只显示最后一条消息",
   compactShowAll: "显示完整聊天",
 };
@@ -231,12 +240,13 @@ export const UI_JA: UiStrings = {
   latOther: "その他",
   aec: "エコーキャンセル",
   resumeRead: "タップして読み上げを続ける",
+  resumeBlocked: "タップして読み上げを再開",
   askRecommended: "おすすめ",
   askSend: "送信",
   askExpired: "期限切れ",
   askAnswered: "回答済み",
   askSent: "送信しました",
-  aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、読み上げ中はマイクが一時停止します。次にマイクをオンにしたときから有効。",
+  aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、音声の再生中はマイクが一時停止します。すぐに反映されます。",
   compactIdle: "入力していないときは最後のメッセージだけ表示",
   compactShowAll: "チャット全体を表示",
 };
@@ -325,8 +335,6 @@ export function localSttStrings(
  * nothing is transcribed or sent until it hears it.
  */
 export type WakeStrings = {
-  /** Under the mic icon while passive (at most 6 characters): the word it waits for. */
-  badge: string;
   /** The mic button's label and tooltip while passive: what to do to talk again. */
   passive: string;
   /** The same while the on-device spotter downloads (the first time only, ~25 MB). */
@@ -338,21 +346,18 @@ export type WakeStrings = {
 };
 const WAKE: Record<"en" | "zh" | "ja", WakeStrings> = {
   en: {
-    badge: "Linky?",
     passive: "Waiting for “Linky”: say it, then talk, or tap",
     loading: "Getting the wake word ready…",
     failed: "Wake word unavailable: listening to everything",
     wifi: "Wake word downloads on Wi-Fi (25 MB): listening to everything",
   },
   zh: {
-    badge: "Linky?",
     passive: "等你叫“Linky”：叫一声再说，或点一下",
     loading: "正在准备唤醒词…",
     failed: "唤醒词不可用，照常听所有声音",
     wifi: "唤醒词需连 Wi-Fi 下载（25 MB），先照常听所有声音",
   },
   ja: {
-    badge: "Linky?",
     passive: "「Linky」待ち：呼んでから話すか、タップしてください",
     loading: "ウェイクワードを準備中…",
     failed: "ウェイクワードが使えません。すべて聞き取ります",

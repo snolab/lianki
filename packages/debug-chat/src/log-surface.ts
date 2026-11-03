@@ -213,3 +213,53 @@ export function anchorScrollTop(d: {
   const want = d.scrollTop + (d.after - target);
   return Math.max(0, Math.min(Math.max(0, d.maxScroll), Math.round(want)));
 }
+
+/** The log counts as at its end within this many px of it (new lines follow it there). */
+export const NEAR_END_PX = 24;
+
+/** At (or near) the end: `gap` is the px left below the view (scrollHeight − scrollTop − clientHeight). */
+export const nearEnd = (gap: number, slack = NEAR_END_PX) => gap <= slack;
+
+/**
+ * Where the log lands when the full-screen log folds back (a drag on the empty
+ * input ended): at the end when the newest line is still in view at release
+ * (the drag never scrolled it out: he was at the end and stays there), else
+ * on the line he was reading. Without this the center line of the tall view
+ * was kept, and the folded 3-line log showed lines from far back.
+ */
+export function foldBackTo(d: {
+  /** The newest line's rect (viewport px), or null when there are none. */
+  newest: { top: number; bottom: number } | null;
+  /** The full-screen log's visible box (viewport px). */
+  view: { top: number; bottom: number };
+  slack?: number;
+}): "end" | "anchor" {
+  const s = d.slack ?? NEAR_END_PX;
+  if (!d.newest) return "end";
+  return d.newest.bottom <= d.view.bottom + s && d.newest.bottom > d.view.top ? "end" : "anchor";
+}
+
+/**
+ * The scrollTop that keeps a log pinned to its end after its size or its
+ * content changed (the keyboard, the text size, the box moved, a card
+ * opening), or null when nothing needs to move (scrolled up: never pinned).
+ */
+export function repinEnd(d: {
+  atEnd: boolean;
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}): number | null {
+  if (!d.atEnd) return null;
+  const max = Math.max(0, d.scrollHeight - d.clientHeight);
+  return Math.abs(max - d.scrollTop) > 1 ? max : null;
+}
+
+/**
+ * Whether the log is still at its end after a scroll event: within 4px of
+ * it, or the scroll is the resize re-pin's own (repinEnd), landing a frame
+ * after the log shrank further. Only his scrolling leaves the end.
+ */
+export function stillAtEnd(d: { gap: number; ownPin: boolean }) {
+  return d.gap < 4 || d.ownPin;
+}

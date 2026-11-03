@@ -36,10 +36,11 @@ describe("text size", () => {
   });
 
   it("an area's factor is the app's times its own", () => {
-    const s = { ui: 1.2, chat: 1.25, cards: 0.9 };
+    const s = { ui: 1.2, chat: 1.25, cards: 0.9, read: 1.1 };
     expect(effectiveScale(s, "ui")).toBe(1.2);
     expect(effectiveScale(s, "chat")).toBeCloseTo(1.5);
     expect(effectiveScale(s, "cards")).toBeCloseTo(1.08);
+    expect(effectiveScale(s, "read")).toBeCloseTo(1.32);
   });
 
   it("applies the choices as custom properties, 100% as none", () => {

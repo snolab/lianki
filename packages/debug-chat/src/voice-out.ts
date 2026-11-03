@@ -8,41 +8,32 @@
  *   AudioContext and a GainNode — page audio, so the browser's echo canceller
  *   has it as its reference, and the gain ducks it; iOS ignores
  *   `element.volume`).
- * - `lk:voice-aec` (default on) opens the mic with echoCancellation,
+ * - `lk:voice-aec` (aec.ts; default on) opens the mic with echoCancellation,
  *   noiseSuppression and autoGainControl and keeps it open while the agent
- *   speaks. "0" brings back the old behaviour: capture is held while the
- *   agent speaks, with the old constraints.
+ *   speaks. "0" opens it with no processing at all, and capture is held
+ *   while anything plays (half-duplex).
  *
  * createCloudOut takes its browser pieces injected (fetch, the element, the
  * AudioContext), so it is tested with fakes in unit/voice-out.test.ts.
  */
+import { noteOpened } from "./aec";
 import { encodeWav } from "./mic";
 import type { CloudOut, PlayEvents, Playback } from "./voice";
 
 export const VOICE_OUT_KEY = "lk:voice-out";
-export const VOICE_AEC_KEY = "lk:voice-aec";
 export type OutMode = "speech" | "cloud";
-
-/** The mic with echo cancellation on (lk:voice-aec, the default). */
-export const AEC_CONSTRAINTS = {
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
-  channelCount: 1,
-} as const;
-/**
- * lk:voice-aec = "0": no processing at all (echo cancellation, noise
- * suppression and auto gain all off), with capture held while the agent
- * speaks (half-duplex) and the text echo guard. On Chrome for Android an
- * echo-cancelled mic moves playback onto the call stream ("call mode", a
- * thinner speaker); this is the A/B against it.
- */
-export const LEGACY_CONSTRAINTS = {
-  echoCancellation: false,
-  noiseSuppression: false,
-  autoGainControl: false,
-  channelCount: 1,
-} as const;
+// The echo cancellation switch lives in aec.ts (small, so /words can show it).
+export {
+  AEC_CONSTRAINTS,
+  LEGACY_CONSTRAINTS,
+  RAW_CONSTRAINTS,
+  VOICE_AEC_KEY,
+  aecOn,
+  applyAec,
+  micAec,
+  micConstraints,
+  setAec,
+} from "./aec";
 
 /** /api/words/tts refuses text longer than this (its MAX_TEXT). */
 export const TTS_MAX_TEXT = 200;
@@ -51,6 +42,12 @@ export const CLOUD_LANGS: ReadonlySet<string> = new Set(["en", "es", "fr", "zh",
 /** A clip resumed after an interruption starts this much before where it stopped. */
 export const RESUME_REWIND_S = 0.3;
 const ignore = () => {};
+/**
+ * How long a suspended AudioContext gets to resume before a clip: Chrome
+ * keeps resume() pending (not rejected) until the page has had a tap, and
+ * the element, routed through the context, would play into silence.
+ */
+export const CTX_RESUME_MS = 1_500;
 /** Clips (blob URLs) kept for replays and resumes. */
 const CLIP_CACHE = 64;
 
@@ -74,21 +71,14 @@ export const noSpeechVoices = (): boolean => {
     return true;
   }
 };
-/** Echo-cancelled barge-in (default on; "0" = the old hold behaviour). */
-export const aecOn = (): boolean => read(VOICE_AEC_KEY) !== "0";
-/** The menu's A/B switch: takes effect the next time the mic opens. */
-export function setAec(on: boolean) {
-  try {
-    if (on) localStorage.removeItem(VOICE_AEC_KEY);
-    else localStorage.setItem(VOICE_AEC_KEY, "0");
-  } catch {}
-}
-export const micConstraints = (aec = aecOn()): MediaTrackConstraints =>
-  aec ? { ...AEC_CONSTRAINTS } : { ...LEGACY_CONSTRAINTS };
-
 /** What the browser actually applied to the mic track, for the debug log. */
 let applied: Record<string, unknown> | null = null;
-export function noteTrack(stream: { getAudioTracks(): { getSettings?(): object }[] }) {
+export function noteTrack(
+  stream: { getAudioTracks(): { getSettings?(): object }[] },
+  aec?: boolean,
+) {
+  // The mode it was opened with (aec.ts micAec): the hold and the clips' `aec` go by it.
+  if (aec !== undefined) noteOpened(aec);
   try {
     const s = (stream.getAudioTracks()[0]?.getSettings?.() ?? {}) as Record<string, unknown>;
     const { echoCancellation, noiseSuppression, autoGainControl, sampleRate, channelCount } = s;
@@ -180,9 +170,26 @@ export function createCloudOut(d: {
   ctx: () => CtxLike | null;
   toUrl?: (b: Blob) => string;
   revoke?: (u: string) => void;
+  setTimer?: (f: () => void, ms: number) => unknown;
 }): CloudOut & { unlock(): void; gain(): GainLike | null } {
   const toUrl = d.toUrl ?? ((b) => URL.createObjectURL(b));
   const revoke = d.revoke ?? ((u) => URL.revokeObjectURL(u));
+  const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
+  /**
+   * The context the element plays through, running: null when it is (or
+   * there is none, or the element is not routed through it), else the state
+   * it is stuck in after CTX_RESUME_MS.
+   */
+  const ctxReady = (): Promise<string | null> => {
+    const ctx = d.ctx();
+    if (!ctx || !gain || !ctx.resume || ctx.state === undefined || ctx.state === "running")
+      return Promise.resolve(null);
+    return new Promise((done) => {
+      const check = () => done(ctx.state === "running" ? null : String(ctx.state));
+      setTimer(check, CTX_RESUME_MS);
+      ctx.resume!().then(check, check);
+    });
+  };
   const clips = new Map<string, Promise<string>>();
   let el: ElementLike | null = null;
   let gain: GainLike | null = null;
@@ -254,7 +261,9 @@ export function createCloudOut(d: {
       const a = element();
       if (!a.paused) return;
       a.src = silentWav();
-      a.play().then(() => a.pause(), ignore);
+      const me = turn;
+      // A reply that started meanwhile is not paused by this late settle.
+      a.play().then(() => me === turn && a.src === silent && a.pause(), ignore);
     },
     gain: () => gain,
     prepare(text, lang) {
@@ -285,7 +294,12 @@ export function createCloudOut(d: {
         (url) => {
           if (!live()) return;
           const a = element();
-          d.ctx()?.resume?.().catch(ignore);
+          return ctxReady().then((stuck) => {
+          if (!live()) return;
+          // Routed through a context the browser will not run (no tap yet): it would be silent.
+          // A closed one never runs again: not a tap's matter, that clip fails outright.
+          if (stuck === "closed") return ev.onfail?.("audio context closed");
+          if (stuck) return ev.onfail?.(`play NotAllowedError (audio context ${stuck})`);
           setLevel(s.volume);
           a.onended = () => live() && ev.onend();
           a.onerror = () => live() && ev.onerror();
@@ -309,6 +323,7 @@ export function createCloudOut(d: {
           };
           a.src = url;
           a.load();
+          });
         },
         (e: unknown) => live() && ev.onfail?.(String((e as Error)?.message ?? e)),
       );

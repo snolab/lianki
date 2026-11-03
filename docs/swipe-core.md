@@ -23,6 +23,7 @@ every feel.
 | `lib/words/swipe-feel.ts`          | `SwipeFeel` tokens, the presets, prefs parsing, `resolveFeel`            |
 | `lib/words/swipe-core.tsx`         | the React core: contexts, `useSwipeGesture`, prefs store (shared module) |
 | `lib/words/requeue.ts`             | a miss's copy; its slip retires ("↓ back"): locked, no grade, no undo   |
+| `lib/words/native-slip.ts`         | New swipe rest rules: on a detent, a glide home that stops short          |
 | `lib/words/islands/*.tsx`          | the UI islands                                                           |
 | `app/(app)/words/WordsClient.tsx`  | `TouchWordRow` (js) and `NativeSlipRow` (native) wire the core           |
 | `unit/swipe-core.test.ts`          | physics, machine, tokens, the interface                                  |
@@ -36,6 +37,50 @@ a timer, not a render). The machine then turns a sideways drag into a dead
 `scrolling` gesture; the native row holds its scroller like a steep drag.
 Tap and hold still work. `grade()` and Undo refuse it too. Before it is due,
 a re-grade or an undo withdraws the waiting copy, so no ghost comes back.
+
+## Undo
+
+The toolbar has no Undo button (owner, 2026-11-03: it sat right of Settings
+and went unused). Undo stays everywhere else: on a phone, swipe a graded slip
+again to give it another grade, or say 撤销 in voice mode; with a keyboard, Z
+or M walks back through the grades and Esc undoes the focused row. The QA
+undoes with Z (`qa-words.mjs`, `words-soak.mjs`).
+
+## Mirrored sides
+
+Settings → **Mirror swipe sides** (owner, 2026-11-03; `lk:words-swipe-mirror`,
+synced as `words.swipeMirror`, off by default) swaps the sides on both
+swipes: ← gives Good / Easy, → Hard / Again. The physics, the levels and the
+machine are unchanged and still report the default side's grade; the mirror
+is applied once, where the row's grade is taken (`swipeGrade(i,
+sideRating(r, mirror))` in WordsClient, lib/words/swipe.ts). With it:
+
+- the reveal swaps too: `SwipeGrades` gets `mirror` (Good / Easy on the
+  right, island version 3), and its container carries `data-mirror`, which
+  `showReveal` reads (`revealShownSide`);
+- the help strip fills its ← with the left side's grades, whatever they are;
+- voice 左 / 右 follow the visible side (`sideGrade`, docs/voice-mode.md);
+- the keys stay: 1–4 and H J K L name grades, not sides, and ←/→ grade
+  nothing;
+- telemetry logs the grade given and tags `mirror=1`, so a row's `finger`
+  sign with that tag reads the other way;
+- undo and a locked ("↓ back") slip are untouched.
+
+The Settings switch shows the mapping in force beside it, live.
+
+## The New swipe comes to rest
+
+A native slip settles on the browser's `scrollend`, or, lifted while it
+already rests on a detent, on a timer 50 ms after the lift. The timer counts
+a slip as resting only within half a pixel of a detent (`onDetent`). Chrome
+on Android often lifts a pixel short and then snaps that pixel itself, over
+about 200 ms. That snap overrode the glide home the timer had started, and
+left the slip on the first detent (the owner, 2026-11-03). A glide home that
+stops short of home glides again, and after `GLIDE_RETRIES` it jumps home
+(`homeStep`). A watch `GLIDE_WATCH_MS` after each lift and each glide
+covers a browser that sends no `scrollend` at all: the slip is settled or
+sent home all the same, and a gesture already settled never grades twice. `qa-words` checks six slow slides
+lifted short of a detent.
 
 ## Interface v1 (`SWIPE_CORE_IFACE`)
 

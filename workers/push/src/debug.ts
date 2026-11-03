@@ -155,6 +155,7 @@ import {
   APPROVAL_MS,
   CHAT_HISTORY,
   CHAT_MS,
+  type ChatContext,
   type ChatMessage,
   EVAL_CHAIN_MS,
   EVAL_GRANT_MS,
@@ -203,6 +204,7 @@ import {
 } from "../../../packages/debug-chat/src/ask";
 import type { AnsweredEvent, SpeakerTag } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
+import { polishCheck, polishContext } from "../../../packages/debug-chat/src/polish";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import { EMBED_HEADER } from "./auth";
 import {
@@ -367,7 +369,13 @@ const renewDueAt = (until: number, t: number) => until - t <= EVAL_RENEW_BEFORE_
  * The main Worker's DebugSessions RPC entrypoint (worker.ts, over the
  * SESSIONS service binding: no URL, nothing public): "live" | "gone" | "busy".
  */
-type SessionsRpc = { live(user: string, session: string): Promise<unknown> };
+type SessionsRpc = {
+  live(user: string, session: string): Promise<unknown>;
+  /** A feature flag's value (lib/flags.ts); an older main Worker has no such method. */
+  flag?(key: string): Promise<unknown>;
+};
+/** The owner's off switch for agent polish (lib/flags.ts, /dev/flags). */
+export const POLISH_OFF_FLAG = "stt.polish-off";
 /** At most one live-session check per grant in this long (a burst of uses asks once). */
 const SESSION_CHECK_MIN_MS = 30_000;
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
@@ -686,12 +694,20 @@ export class DebugHub {
     const count = line.edited?.count ?? 0;
     if (count >= MAX_EDITS) return fail(`message ${m.id} was already polished ${MAX_EDITS} times`);
     if (m.text === line.text) return fail(`message ${m.id} already reads that way`);
+    // Held to the context (polish.ts): the raw STT text against the thread's
+    // other lines, the page it was spoken on, and the words on its screen.
+    const raw = line.raw ?? line.text;
+    const recent = [...kept].filter(([k]) => k !== key).map(([, x]) => x.text);
+    const v = polishCheck(raw, m.text, polishContext(line, recent));
+    if (!v.ok) return fail(`not polished, the raw line stands: ${v.reason}`);
+    if (await this.polishOff())
+      return fail(`polish is off (${POLISH_OFF_FLAG} at /dev/flags): the raw line stands`);
     const t = this.now();
     const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
     const next: ChatMessage = {
       ...line,
       text: m.text,
-      raw: line.raw ?? line.text,
+      raw,
       edited: { at: t, by, count: count + 1 },
     };
     await this.ctx.storage.put(key, next);
@@ -991,6 +1007,24 @@ export class DebugHub {
       return said === "live" ? "live" : said === "gone" ? "gone" : "unsure";
     } catch {
       return "unsure";
+    }
+  }
+
+  /**
+   * Has the owner switched agent polish off (POLISH_OFF_FLAG at /dev/flags)?
+   * Asked of the main Worker's DebugSessions entrypoint on each edit (edits are
+   * one per voice line at most). Only an answer of exactly false lets polish
+   * through; "busy", an error or an odd answer count as off (unsure: the raw
+   * line stands). No binding, or a main Worker from before `flag()`: not off,
+   * polish as before, so the deploy order never matters.
+   */
+  private async polishOff(): Promise<boolean> {
+    const ask = this.sessions?.flag?.bind(this.sessions);
+    if (!ask) return false;
+    try {
+      return (await ask(POLISH_OFF_FLAG)) !== false;
+    } catch {
+      return true;
     }
   }
 
@@ -1577,10 +1611,13 @@ export class DebugHub {
           len: m.text.length,
           head: head(m.text),
           ...(m.to ? { to: m.to } : {}),
+          // Its length only: the selection itself is never logged.
+          ...(m.context ? { selection: m.context.selection.length } : {}),
         }),
       );
       // A friend's line is always their own thread's: no node addressing there.
-      if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text);
+      // Its attachment (the page selection) stays on the sender's own thread.
+      if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text, m.context);
       const line = (speaker: SpeakerTag | undefined) =>
         this.post({
           id: m.id,
@@ -1595,6 +1632,8 @@ export class DebugHub {
           ...(m.timing ? { timing: m.timing } : {}),
           ...(m.wake ? { wake: m.wake } : {}),
           ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
+          ...(m.context ? { context: m.context } : {}),
+          ...(m.scene ? { scene: m.scene } : {}),
           // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
           // approvals later must rely on this, never on what a page says.
           ...(speaker ? { speaker } : {}),
@@ -1646,7 +1685,13 @@ export class DebugHub {
    * and more than FRIEND_CHAT_MAX in a window is dropped (and the page told).
    * Their first ever message tells the agent ({type:"friend-new"}).
    */
-  private async friendChat(ws: Socket, page: PageAtt, id: string, text: string) {
+  private async friendChat(
+    ws: Socket,
+    page: PageAtt,
+    id: string,
+    text: string,
+    context?: ChatContext,
+  ) {
     const t = this.now();
     const userId = page.thread;
     const rec = await this.ctx.storage.get<FriendRecord>(friendKey(userId));
@@ -1687,6 +1732,7 @@ export class DebugHub {
       thread: userId,
       email,
       ...(page.sender ? { sender: page.sender } : {}),
+      ...(context ? { context } : {}),
     });
   }
 

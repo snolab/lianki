@@ -45,6 +45,34 @@ non-components import (`lib/*`, content dictionaries, intlayer rebuilds, route
 handlers, `next.config.mjs`) is a full page reload. A `next.config.mjs` change
 or a guard (`scripts/dev/whole-page*.ts`) change needs a restart.
 
+### Reload storms (Turbopack restart loop)
+
+Owner, 2026-11-03 12:44 JST: "开发服务器经常暴风刷新". After a publish
+(13:45:57 JST that day), next dev 16.4.1 got stuck: every page's subscription
+to its runtime chunk list (`static/chunks/_1anvha4rlo79g._.js`) was answered
+at once with a Turbopack `restart` update, and the page's runtime obeys with
+`location.reload()`. So every page, on every load, reloaded every 0.5–1.5 s:
+about 70 loads in 40 s in `.next/dev/logs/next-development.log` (one "Download
+the React DevTools" line per load), until he left the page. A fresh next dev
+did not do it, and a plain restart (cache kept) cleared it. Not the cause: the
+version push (the guard refuses `/api/version/ws`), the service worker (the
+loop reproduced with it blocked), and the gate's `503 (no session)` lines
+(one per page load, also outside storms).
+
+To see it: open the HMR socket's frames (Playwright `page.on("websocket")`)
+on `http://127.0.0.1:3101/en/blog` — a wedged server sends
+`{"type":"turbopack-message","data":[{…"type":"restart"…}]}` right after the
+`turbopack-subscribe`, then the page navigates.
+
+The guard now watches the HMR sockets it pipes (`restartScanner`,
+`RestartStorm` in `whole-page-guard.ts`). Only a restart on a socket under 5 s
+old counts: in the storm each one came right after its page connected, while
+a publish's real restart goes to pages that were open before it, however many.
+6 of those within 20 s restarts next dev (at most once per 2 min) and logs
+`reload storm (Turbopack restart loop): restarting next dev`. next dev runs in
+its own process group, stopped with SIGTERM then SIGKILL, and with the guard,
+so a killed guard no longer leaves a server holding :3101.
+
 ## What runs
 
 | Piece                                      | Where                                                                                    |
@@ -169,8 +197,8 @@ token cannot be tested from anywhere else.
   gate cookie, `Authorization`, `cf-*`, `x-forwarded-*`, Tailscale and the
   guard's secret headers are removed.
 
-**On his iPhone**: on lianki.com, the account menu's "Dev server (production
-data)" item does it all (next section). For a device without a lianki.com
+**On his iPhone**: on lianki.com, the account menu's "Preview build" switch
+(「预览版」) does it all (next section). For a device without a lianki.com
 session: `/dev/tokens` → new token → "copy the link for another device",
 open that link once in Safari there; the cookie lasts up to 12 h, after which
 the link (or a new one) is opened again. In the home-screen app, use the
@@ -233,19 +261,35 @@ gate too. Revoke-all on `/dev/tokens` ends every session at once.
 For the owner only, decided on the server (`devSwitchFor`,
 `lib/dev-server-switch.server.ts`: anyone else's page carries none of it):
 
-- On lianki.com the account menu shows **"Dev server (production data)"**.
-  When the menu opens it checks once, with one fetch to
-  `https://preview.lianki.com/_lk/up` (1.5 s timeout; the gate answers 503
-  with an `x-lianki-gate` marker, readable by lianki.com only): green and
-  tappable when up, grey "Dev server is off" when not. No polling, no timer.
-  (A push from `serve` through the hub would also work, but needs hub
-  changes; the open-time check is the owner's allowed alternative.)
-- Tapping it mints a **single-use handoff**, 60 s (`POST /api/dev/dev-handoff`),
-  and posts it to `/_lk/dev-auth` in a form body with the current path and
-  query: never in a URL. The dev server opens on the same page, signed in.
-- On the dev server the same spot reads **"Back to lianki.com"**: a plain
-  link to the same path and query on production. Every dev-server page shows
-  a **"Dev server · production data"** badge in its top bar.
+- The account menu has a **"Preview build" switch** (「预览版」, no caption:
+  owner, 15:07 JST, "你不用写「生产数据」这四个字在菜单上"): on = the dev server, off = lianki.com.
+  The UI calls the dev server the **preview build**: trial code on
+  production data (owner, 2026-11-03 14:45 JST: "预览版的一个 checkbox，或者
+  switcher"; this replaced "live 试用版" and "Dev server" the same day).
+  Hostnames, routes and code names keep "dev" and "preview".
+- On lianki.com the switch is off. When the menu opens it checks once, with
+  one fetch to `https://preview.lianki.com/_lk/up` (1.5 s timeout; the gate
+  answers 503 with an `x-lianki-gate` marker, readable by lianki.com only):
+  tappable when up, grey "Preview build is not running" (「预览版未启动」)
+  when not. No polling, no timer. (A push from `serve` through the hub would
+  also work, but needs hub changes; the open-time check is the owner's
+  allowed alternative.)
+- Switching it on mints a **single-use handoff**, 60 s
+  (`POST /api/dev/dev-handoff`), and posts it to `/_lk/dev-auth` in a form
+  body with the current path and query: never in a URL. The dev server opens
+  on the same page, signed in.
+- On the dev server the switch is on; switching it off is a plain link
+  (no Referer) to the same path and query on production. Every dev-server
+  page puts a small **blue dot** on the profile menu's button (screen
+  readers: "Preview build"). No top-bar badge (owner,
+  2026-11-03 14:44 JST: "改成我 profile dropdown 上一个小蓝点，然后点开菜单就能看到它写的").
+- It is the menu's **only** preview control. Live view
+  ([live-view.md](live-view.md): the page stays on lianki.com, only the
+  widget and islands come from the Mac) used to be a second switch,
+  「实时预览 ⇄ 正常」; it is now a small **Dev parts** chip (「开发版部件」) on a
+  second line of the same row, shown on lianki.com only while a live-view
+  pointer is stored or the chip is on (owner, 2026-11-03 20:00 JST: "两个
+  『预览』的 Switch，有什么区别吗？").
 - Strings: `app/components/dev-switch.content.ts`, 16 locales, each key with
   its context line.
 

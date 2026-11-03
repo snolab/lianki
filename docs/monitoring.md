@@ -363,17 +363,21 @@ docs/dev-debug-widget.md, "Page errors".
 
 **The chat bar, the state tree and the menu.** No title bar: the controls
 and the input are one rounded glass container (`debug-chat-pill`): the mark,
-the tree button, the input, then the mic at the far right, in that focus
-order, each control a 40px tap target (`tap-40`). The mark
+the + (`debug-chat-attach`), the input, then the mic at the far right, in that
+focus order, each control a 40px tap target (`tap-40`). The mark
 (`debug-chat-pill-min`, with `aria-expanded`) holds the liagent mark
 (`packages/debug-chat/src/LiagentMark.tsx`) and a dot, green while the socket
 is live: a tap minimizes or restores the box (after 280 ms, so that a double
 tap can cancel it), and a double tap opens the menu — the only way to it
-(`packages/debug-chat/src/tap-gesture.ts`). The tree button
-(`debug-chat-tree-button`, "State tree", with the eval/preview sessions'
-count on it, pulsing when code just ran) toggles the state tree
-(`debug-chat-tree`, content from the `renderTree` prop, else "No tree
-source"). Only one of the menu and the tree is open at a time.
+(`packages/debug-chat/src/tap-gesture.ts`). There is no tree button in the
+bar (owner, 2026-11-03: 状态树藏到加号里): the + menu's last group, View
+(查看), has a "State tree" row (状态树, `debug-chat-attach-tree`, a
+`menuitemcheckbox`, checked while the tree is open, with the eval/preview
+sessions' count on it) that toggles the state tree (`debug-chat-tree`,
+content from the `renderTree` prop, else "No tree source"); while there are
+such sessions the + carries a small dot (`debug-chat-evals`, pulsing when code
+just ran). Minimized there is no +: the mark's menu has Tree (with a
+`treeSource`). Only one of the menu and the tree is open at a time.
 The tree is shown as the log is, with no box: translucent text with the halo,
 click-through except for the rows (`log-surface.ts`). With a `treeSource` it
 is a row of top-level chips (title, status glyph, 〔open count〕; the row
@@ -382,27 +386,25 @@ scrolls sideways) with one branch open below it as indented lines
 depth per node along the one open branch, end-stops at leaves (and
 min(3, subtree height)) and at the top row. Expanded, the tree heads the
 chat's one column, the messages below it, one scroller (newest at the
-bottom); minimized it heads the floating box. On the tree button a
-horizontal drag (locked after 8 px) moves through 40 px detents — right
-opens the focused node a level per cell, left folds it — previewed live,
-resisting past a limit, committed on release; a tap toggles the tree; ←/→/↑/↓
-on the focused button move the focus. An expand scrolls the new rows into
+bottom); minimized it heads the floating box. A tap on a chip opens it;
+←/→/↑/↓ on a focused row move the focus (the tree button's sideways drag
+through detents went with the button). An expand scrolls the new rows into
 view unless the user is scrolling; a fold keeps the focused row in place.
 In-progress items (the ◐ glyph, the ▶ frontier line, a fragment's `.d`)
 blink gently (opacity 1 → 0.35, 1.6 s; none under reduced motion). On a
 `zh` page the widget's and the tree's strings are Chinese
 (`ui-strings.ts`) unless the host passes its own. Without a `treeSource`:
 `renderTree`, else the lk:tree-src fragment. A small ✕
-(`debug-chat-tree-close`), Escape or the tree button close it; taps
+(`debug-chat-tree-close`), Escape or the + menu's row close it; taps
 elsewhere are the page's. It never takes the input's focus or its draft, and
 its Escape never stops the mic. A drag on the mark or the bar's edge moves the box,
 and never counts as a tap.
 
 Minimizing animates the bar's width in 180 ms (two grid columns trading
-`1fr` ⇄ `0fr`; at once under reduced motion) down to `[mark | tree | mic]`
+`1fr` ⇄ `0fr`; at once under reduced motion) down to `[mark | mic]`
 (`debug-chat-minimized`, at 0.6 opacity, with an unread badge
 `debug-chat-pill-unread`): the input's slot closes to 0, so the mic, always
-the same node, slides in beside the tree button. The input is then inert and
+the same node, slides in beside the mark. The input is then inert and
 aria-hidden, so it can take neither focus nor taps, and the log is hidden.
 The mic keeps its live state, so hands-free voice goes on while minimized.
 
@@ -421,12 +423,25 @@ dot, colon or slash, or over 64 characters, is hidden
 (`packages/debug-chat/src/frontier-view.ts`). Expanded, the lines go: the
 tree has it all.
 
+Without a host `frontier`, the lines come from the tree (`treeFrontier`,
+`frontier-view.ts`), and only what is live: items an agent reported to the
+progress hub (`TreeNode.live`, set by `overlayProgress`) that are in progress
+or wait on the owner, as one ▶ line. Its text is their ≈ summary in the
+page's language (else zh, en), or "In progress" in it, never an item's title;
+a tap lists the items. No ✓ and no › from the tree: the bundled outline's
+items are developer notes, often finished days ago (the owner, 2026-11-03,
+asked what "iOS glass: first card under the toolbar…" on /words was). The
+live feed hands over the document root, so the top ≈ lines are kept.
+
 Minimized, messages float above the frontier instead of the log
 (`debug-chat-float`, `packages/debug-chat/src/float-lines.ts`): the latest
 message at the moment of minimizing (unless over 10 minutes old), and those
 that arrive while minimized, newest at the bottom. Each stays fully visible
 for `max(2.5 s, 2 × its reading time)` from when it floats up, reading CJK at
-6 characters a second and anything else at 15, then fades out over 10 s
+6 characters a second and anything else at 15, but never less than what is
+left of the line above it, so lines leave in the order they came: a short
+line after a long one waits for it (`fifoDwellMs`; the owner, 2026-11-03).
+Then it fades out over 10 s
 (opacity only; gone at once under reduced motion). Hovering or touching the
 lines holds them: mid-fade they snap back to full, and the fade starts over
 on release. A vertical drag on the mic (locked after 8 px; a horizontal one
@@ -466,8 +481,12 @@ stops them until the next turn-on. A final transcript that leaves the
 draft a sentence of 3 characters or more (trimmed, ending in 。．.!?！？) is
 sent at once (`appendDictation`); otherwise the debounce waits while
 listening or while transcripts are out, partials never send, and Enter sends
-as usual. While audio is captured the button has a red pulsing ring and "REC"
-(`debug-chat-mic-rec`); listening but quiet, a faint steady ring; while the
+as usual. While audio is captured the button's ring is red and pulses
+(`debug-chat-mic-ring` with `data-rec`; opacity and a slight scale, held
+still and thicker under reduced motion); listening but quiet, a faint steady
+ring. The button carries no text (owner, 2026-11-03): the ring shows the
+state, and a polite live region (`debug-chat-mic-live`) says it for screen
+readers; while the
 agent's reply is read, a slow blue ring (`debug-chat-mic-speaking`,
 `data-status="speaking"`, labelled "Agent speaking; tap to interrupt and
 talk"). Replies are read aloud while listening (Hands-free voice). A short note
@@ -524,15 +543,25 @@ fakes in `unit/voice-session.test.ts`):
   speech probability over that window ≥ 0.7 (`BARGE_IN_PROB`; weaker speech
   stays ducked and is judged again), is it a barge-in: the reading pauses and
   resumes as below. The utterance is transcribed and sent either way.
-  `localStorage["lk:voice-aec"] = "0"` (or the ⋯ menu's **Echo
-  cancellation** switch, from the next time the mic opens) is the
-  half-duplex way: the mic holds capture while an utterance plays (VAD
-  paused, what it hears dropped) and for 400 ms after the last one ends,
-  with no processing at all (echoCancellation, noiseSuppression and
-  autoGainControl off), plus the text echo guard. It is the A/B against
+  `localStorage["lk:voice-aec"] = "0"` (the **Echo cancellation** switch,
+  in the chat's ⋯ menu and in /words' Settings sheet; `aec.ts`) is the
+  half-duplex way: the mic is opened with no processing at all
+  (`RAW_CONSTRAINTS`: echoCancellation, noiseSuppression and
+  autoGainControl all `false`), and it holds capture (VAD paused, what it
+  hears dropped) while anything the page plays is playing and for 400 ms
+  after the last one ends: the chat's read-aloud (`voice.ts` `hold`) and
+  /words' word audio, clips and browser voices alike (`page-audio.ts`,
+  signalled by `useSpeech` in `WordsClient.tsx`; a sound whose end never
+  comes lets go after 30 s). Plus the text echo guard. It is the A/B against
   Chrome for Android, where an echo-cancelled mic moves playback to the
-  call stream (a thinner speaker). Each clip in the clip sink carries
-  `aec: true | false` beside its transcript, to compare recognition by mode.
+  call stream (a thinner speaker). A switch flipped while the mic is on
+  reopens it at once (`mic-session.ts` `reopen`, a new track with the new
+  constraints, logged `mic-reopen`), so the difference is heard right away;
+  with the mic off it applies when it next opens. The setting stays on the
+  device (docs/prefs-sync.md). The hold, barge-in and clip metadata go by
+  the mode the open track was opened with (`micAec`), not the switch alone.
+  Each clip in the clip sink carries `aec: true | false` and the track's
+  applied settings beside its transcript, to compare recognition by mode.
 - _Output_ (`lk:voice-out`): `"speech"` (default) is the phone's own
   speechSynthesis. Its volume cannot change mid-utterance on iOS, so a duck
   applies from the next sentence; and on iOS it is probably _not_ in the
@@ -578,6 +607,21 @@ cloud sentence fell back); ducking logs `voice-duck`, `voice-duck-hold`
 Echo rate per mode = `voice-utt` with `during && drop` ÷ `voice-utt` with
 `during`, read over a few replies talked over and a few left alone; a
 `voice-barge-in` followed by a dropped transcript is echo pausing the reading.
+
+**Never silent without saying so** (2026-11-03: his Android PWA read nothing
+for ~3 minutes). After a reload the page has had no tap, so Chrome refuses
+the cloud clip (`play()` NotAllowedError, or an AudioContext whose
+`resume()` stays pending; voice-out.ts waits `CTX_RESUME_MS` for it). The
+old fallback handed that sentence to speechSynthesis, which on a phone with
+no voices never fires start, end or error, so the whole queue waited behind
+it in silence. Now: a refused play with no voice to fall back on keeps the
+sentence and pauses the reading (`voice-blocked`, state `blocked`); the bar
+shows "🔊 点一下恢复朗读" and the next tap anywhere reads on
+(`voice-unblocked`); lines arriving meanwhile queue behind it. A cloud
+failure with no voice skips that sentence (`voice-out` route `none`), and a
+voiceless speechSynthesis utterance that has not started after
+`SPEECH_START_MS` is given up on (`voice-stuck`). Each reports a `media`
+page-error (`voice-out: …`), so `eval.ts errors` sees it.
 
 **One voice per device.** Every tab of a thread shows every message, but
 only one reads a reply aloud: a tab with the mic on (the latest to turn it
@@ -689,14 +733,15 @@ End still reaches it.
 tests:
 
 - The chat box: `debug-chat` (root), `debug-chat-minimized` (minimized),
-  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-tree-button`,
+  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-attach` (the +),
+  `debug-chat-attach-menu`, `debug-chat-attach-tree`, `debug-chat-evals`,
   `debug-chat-tree` (with `data-mode`: `inline` or `column`), `debug-chat-tree-body`,
   `debug-chat-tree-close`, `debug-chat-tree-empty`,
   `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
   `data-from`), `debug-chat-floats`, `debug-chat-float`, `debug-chat-input-slot`,
   `debug-chat-input`, `debug-chat-drag-hint`,
   `debug-chat-bottom`, `debug-chat-busy`, `debug-chat-mic` (with
-  `data-state` and `data-status`), `debug-chat-mic-rec`,
+  `data-state` and `data-status`), `debug-chat-mic-ring`, `debug-chat-mic-live`,
   `debug-chat-mic-pending`, `debug-chat-mic-note`, `debug-chat-notice` and
   `debug-chat-warning`.
 - The pill's menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where

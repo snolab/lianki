@@ -22,6 +22,7 @@ export const LOCALE_PICK_KEY = "lk:ui-locale";
 
 export const APP_ROUTES = [
   "add-note",
+  "cli-login",
   "ai-vocab",
   "alphabet",
   "contact",
@@ -53,6 +54,19 @@ export const APP_ROUTES = [
 export function isAppRoute(pathname: string): boolean {
   const segment = pathname.split("/")[1] ?? "";
   return (APP_ROUTES as readonly string[]).includes(segment);
+}
+
+/**
+ * The locale of a bare locale root ("/zh", the landing page), else null.
+ * middleware.ts serves these itself: intlayer's middleware rewrites "/zh" to
+ * "/zh/", and next dev answers that trailing slash with a 308 back to "/zh",
+ * so the browser looped until ERR_TOO_MANY_REDIRECTS (owner, 2026-11-03
+ * 14:56 JST, on the whole-page dev server; every locale root, and "/" too,
+ * which redirects to "/en/").
+ */
+export function localeRoot(pathname: string): string | null {
+  const m = /^\/([a-z]{2})$/.exec(pathname);
+  return m && isSupportedLocale(m[1]) ? m[1] : null;
 }
 
 export function resolveLocale(candidate: string | null | undefined): string {

@@ -15,12 +15,19 @@ import selfIntro from "@/app/(app)/self-intro/page.content";
 import wordsImport from "@/app/(app)/words/import/page.content";
 import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
+import wordsListPreview from "@/app/(app)/words/list-preview.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import textSize from "@/app/components/text-size.content";
 import wordsStats from "@/app/(app)/words/stats.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
+import readEpub from "@/app/(app)/read/read-epub.content";
+import readPlayer from "@/app/(app)/read/read-player.content";
+import readWords from "@/app/(app)/read/read-words.content";
+import readReader from "@/app/(app)/read/read-reader.content";
+import readSelect from "@/app/(app)/read/read-select.content";
+import cliLogin from "@/app/(app)/cli-login/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -65,12 +72,19 @@ describe.each([
   ["words-import", wordsImport],
   ["words-phrases", wordsPhrases],
   ["words-voice-mode", wordsVoiceMode],
+  ["words-list-preview", wordsListPreview],
   ["leave-guard", leaveGuard],
   ["text-size", textSize],
   ["words-stats", wordsStats],
   ["wallet-card", walletCard],
   ["invite-card", inviteCard],
   ["credit-units", creditUnits],
+  ["read-epub", readEpub],
+  ["read-player", readPlayer],
+  ["read-words", readWords],
+  ["read-reader", readReader],
+  ["read-select", readSelect],
+  ["cli-login-page", cliLogin],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

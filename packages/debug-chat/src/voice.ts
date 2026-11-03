@@ -39,10 +39,12 @@
  */
 import { speechRate } from "./speech-rate";
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
-import { aecOn, cloudOut, cloudSkip, outMode } from "./voice-out";
+import { cloudOut, cloudSkip, outMode } from "./voice-out";
+import { micAec } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
 import { getKey } from "./storage-keys";
+import { reportPageError } from "./page-errors";
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
 export const RESUME_TAIL_MS = 400;
@@ -63,6 +65,13 @@ export const BARGE_IN_MS = 1_500;
  * agent ducked and is judged again after another BARGE_IN_MS.
  */
 export const BARGE_IN_PROB = 0.7;
+/**
+ * A sentence read by speechSynthesis on a device with no voice for its
+ * language that has not started after this long is given up on: Chrome on
+ * Android with no voices installed may never fire start, end or error, and
+ * the whole queue would wait behind it in silence (2026-11-03).
+ */
+export const SPEECH_START_MS = 8_000;
 /** Sentences are cut to at most this many characters (the TTS route's limit). */
 export const CHUNK_MAX = 200;
 /** localStorage: the speaker toggle ("0" = replies silent). */
@@ -222,6 +231,11 @@ export type VoiceState = {
   queued: number;
   /** The reading waits for an interruption to end. */
   paused: boolean;
+  /**
+   * The browser refused to play (autoplay: no tap on this page since it
+   * loaded): the reading waits for one tap (`unblock`), the chat shows a chip.
+   */
+  blocked?: boolean;
 };
 
 export type Why = "speech" | "tap" | "typing";
@@ -254,6 +268,8 @@ export function createVoice(d: {
   aec?: () => boolean;
   /** The reading speed, read for each utterance (speech-rate.ts; 1 if absent). */
   rate?: () => number;
+  /** A silence the owner should hear about (a page-error, page-errors.ts). */
+  report?: (message: string) => void;
   now?: () => number;
   log?: (ev: Record<string, unknown>) => void;
   setTimer?: (f: () => void, ms: number) => unknown;
@@ -272,7 +288,7 @@ export function createVoice(d: {
   /** Replies queued lately, so a re-delivered one is not read twice. */
   const recent: { text: string; at: number }[] = [];
   /** Interruptions under way; the reading waits while any is. */
-  const pauses = new Set<Why>();
+  const pauses = new Set<Why | "blocked">();
   /** The sentence playing: how, (speech) the char of the last word boundary heard, and its record. */
   let current: { p: Playback; mark: number; said: Said } | null = null;
   let tail: unknown;
@@ -295,6 +311,7 @@ export function createVoice(d: {
     ducked: !!duck,
     queued: queue.length,
     paused: pauses.size > 0,
+    blocked: pauses.has("blocked"),
   });
   const emit = () => {
     const s = state();
@@ -335,13 +352,36 @@ export function createVoice(d: {
       if (b.name && b.name !== "word") return;
       current.mark = from + Math.max(0, b.charIndex | 0);
     };
-    u.onend = () => ev.onend();
-    u.onerror = () => ev.onerror();
-    u.onstart = () => ev.onstart?.();
+    // No voice for this language here: it may stay silent with no event at all.
+    let watch: unknown = noVoice(head.lang)
+      ? setTimer(() => {
+          if (e !== epoch) return;
+          log({ ev: "voice-stuck", route: "speech", lang: head.lang, ms: SPEECH_START_MS });
+          d.report?.(`voice-out: speechSynthesis never started (${head.lang}, no voice); sentence skipped`);
+          // Its late events must not move the queue again: they are dropped, and it is cancelled.
+          u.onend = u.onerror = u.onstart = u.onboundary = null;
+          s.cancel();
+          ev.onerror();
+        }, SPEECH_START_MS)
+      : undefined;
+    const settle = () => {
+      clearTimer(watch);
+      watch = undefined;
+    };
+    u.onend = () => (settle(), ev.onend());
+    u.onerror = (x) => {
+      settle();
+      // Chrome refuses speak() before any tap on the page: wait for one, as for a refused clip.
+      if ((x as { error?: string } | undefined)?.error === "not-allowed")
+        return ev.onfail?.("speech NotAllowedError");
+      ev.onerror();
+    };
+    u.onstart = () => (settle(), ev.onstart?.());
     s.speak(u);
     return {
       route: "speech",
       stop: () => {
+        settle();
         s.cancel();
         return {};
       },
@@ -383,11 +423,34 @@ export function createVoice(d: {
       onerror: done,
       onfail: (reason) => {
         if (e !== epoch || !current) return;
+        const refused = /NotAllowed/.test(reason);
+        // Refused by the browser with nothing else that could read it (or the
+        // speech fallback refused too): keep the sentence and wait for a tap.
+        if (refused && (current.p.route === "speech" || noVoice(head.lang))) return block(reason);
+        if (noVoice(head.lang)) {
+          // The fallback would be silent (no voice here) and might never end: skip it, and say so.
+          log({ ev: "voice-out", out: "cloud", route: "none", fallback: reason, ...info });
+          d.report?.(`voice-out: cloud could not read a sentence (${reason}); no speech voice, skipped`);
+          return done();
+        }
         log({ ev: "voice-out", out: "cloud", route: "speech", fallback: reason, ...info });
         const p = speech(head, ev, e);
         if (!p) return done();
         current.p = p;
       },
+    };
+    /** The browser refused to play: drop this try, keep the sentence, wait for a tap (unblock). */
+    const block = (reason: string) => {
+      epoch++;
+      ended();
+      current = null;
+      clearTimer(tail);
+      speaking = false;
+      const first = !pauses.has("blocked");
+      pauses.add("blocked");
+      log({ ev: "voice-blocked", reason, ...info });
+      if (first) d.report?.(`voice-out: playback blocked (${reason}); waiting for a tap to resume reading`);
+      emit();
     };
     const rec: Said = { text: head.text, start: now() };
     const c = routeFor(head.lang);
@@ -604,6 +667,13 @@ export function createVoice(d: {
     },
     /** The interruption is over (a line was sent, or the input lost focus): read on. */
     resume,
+    /** A tap after playback was refused (the chat's chip, or any tap on the page): read on. */
+    unblock() {
+      if (!pauses.delete("blocked")) return;
+      log({ ev: "voice-unblocked" });
+      next();
+      emit();
+    },
     /**
      * Was `transcript` (an utterance `durationMs` long, just ended) the agent's
      * own voice? Checked against what it said in the last ECHO_WINDOW_MS.
@@ -799,8 +869,10 @@ export function voice(): Voice {
       }
     },
     mode: outMode,
-    aec: aecOn,
+    // The open track's mode (aec.ts), so hold and barge-in match what the mic does.
+    aec: micAec,
     rate: () => speechRate(),
+    report: (message) => reportPageError({ kind: "media", message }),
     utter: (text, lang) => {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = lang;
