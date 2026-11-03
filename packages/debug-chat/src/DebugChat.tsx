@@ -94,10 +94,14 @@ import {
   anchorScrollTop,
   fullLogBox,
   fullLogHeight,
+  foldBackTo,
   fullLogPad,
   keepEndGap,
   logSurface,
+  nearEnd,
   pickAnchor,
+  repinEnd,
+  stillAtEnd,
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
@@ -1005,6 +1009,8 @@ export function DebugChat({
   const log = useRef<HTMLDivElement | null>(null);
   /** The log is scrolled to its end (new messages follow it there). */
   const atEnd = useRef(true);
+  /** The scrollTop the resize re-pin set, until its scroll event comes. */
+  const pinnedAt = useRef<number | null>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
   /** Messages that arrived while scrolled up: a dot on the scroll-down button. */
   const [below, setBelow] = useState(0);
@@ -1023,7 +1029,11 @@ export function DebugChat({
     if (!el || el.hidden) return;
     lastLogScroll.current = el.scrollTop;
     setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
-    const end = el.scrollHeight - el.scrollTop - el.clientHeight < 4;
+    // Our own re-pin's scroll (below) can land a frame late, after the log
+    // shrank further (the keyboard): it is not him leaving the end.
+    const own = pinnedAt.current !== null && Math.abs(el.scrollTop - pinnedAt.current) <= 1;
+    pinnedAt.current = null;
+    const end = stillAtEnd({ gap: el.scrollHeight - el.scrollTop - el.clientHeight, ownPin: own });
     atEnd.current = end;
     setScrolledUp(!end);
     if (end) setBelow(0);
@@ -1039,6 +1049,9 @@ export function DebugChat({
    * left up over the page would need its own way out.
    */
   const [fullLog, setFullLog] = useState<"off" | "on" | "leaving">("off");
+  /** The full-screen log's state, for handlers and observers. */
+  const fullNow = useRef(fullLog);
+  fullNow.current = fullLog;
   const fullRef = useRef<{
     maxH: number;
     fromH: number;
@@ -1048,7 +1061,15 @@ export function DebugChat({
     box: { left: number; width: number; bottom: number; height: number; hideBar: boolean } | null;
     /** The line the reader is on, kept in place across the height change (pickAnchor). */
     anchor: { id: string; top: number; height: number } | null;
-  }>({ maxH: 0, fromH: 0, gap: 0, lastDy: 0, box: null, anchor: null });
+    /**
+     * The resting log's centre (viewport y) at the press: folding back, the
+     * line there is the one kept, so the lines he sees where the resting log
+     * is stay the same (the tall view's own centre was far back).
+     */
+    focusY: number;
+    /** Folding back: to the end (the newest line was still in view at release), else the anchor. */
+    toEnd: boolean;
+  }>({ maxH: 0, fromH: 0, gap: 0, lastDy: 0, box: null, anchor: null, focusY: 0, toEnd: false });
   /**
    * Compact mode (compact-view.ts; this device's setting, off by default):
    * while the input has no focus, the open chat shows only its last message.
@@ -1102,8 +1123,12 @@ export function DebugChat({
     if (!lastMsg || !expanded) return;
     hold(dwellMs(lastMsg.text));
   }, [lastMsg?.id]);
-  /** The line nearest the log's centre (its focus line), with where it is now. */
-  const anchorNow = () => {
+  /**
+   * The line nearest the log's centre (its focus line), with where it is now;
+   * `"end"`: the newest line instead (the one at the bottom edge); a number:
+   * the line at that viewport y.
+   */
+  const anchorNow = (at?: "end" | number) => {
     const el = log.current;
     if (!el) return null;
     const v = el.getBoundingClientRect();
@@ -1111,7 +1136,10 @@ export function DebugChat({
       const b = r.getBoundingClientRect();
       return { id: r.dataset.msg ?? "", top: b.top, bottom: b.bottom };
     });
-    const a = pickAnchor(rows, (v.top + v.bottom) / 2);
+    const a = pickAnchor(
+      rows,
+      at === "end" ? v.bottom : typeof at === "number" ? at : (v.top + v.bottom) / 2,
+    );
     return a && a.id ? { id: a.id, top: a.top, height: a.bottom - a.top } : null;
   };
   /** After the height changed: the anchored line back where it was, in the same frame. */
@@ -1177,8 +1205,12 @@ export function DebugChat({
           hideBar: b.hideBar,
         };
       }
+      const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
       fullRef.current = {
-        anchor: box ? anchorNow() : null,
+        // At the end, the newest line holds its place (not the centre one).
+        anchor: box ? anchorNow(nearEnd(gap) ? "end" : undefined) : null,
+        focusY: (r.top + r.bottom) / 2,
+        toEnd: false,
         box,
         maxH: fullLogHeight({
           bottom: r.bottom,
@@ -1187,7 +1219,7 @@ export function DebugChat({
           vvTop: typeof visualViewport === "undefined" ? 0 : (visualViewport?.offsetTop ?? 0),
         }),
         fromH: el.clientHeight,
-        gap: el.scrollHeight - el.scrollTop - el.clientHeight,
+        gap,
         lastDy: 0,
       };
       setFullLog("on");
@@ -1335,8 +1367,16 @@ export function DebugChat({
       el.style.clipPath = "inset(0px 0 0 0)";
     } else if (fullLog === "leaving") {
       fullRef.current.gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-      // The line being read now, to keep in view as the log folds back.
-      if (fullRef.current.box) fullRef.current.anchor = anchorNow();
+      // The newest line still in view: back to the end. Else the line being
+      // read now, to keep in view as the log folds back.
+      if (fullRef.current.box) {
+        const rows = el.querySelectorAll<HTMLElement>("[data-testid=debug-chat-line]");
+        const last = rows[rows.length - 1]?.getBoundingClientRect() ?? null;
+        const v = el.getBoundingClientRect();
+        fullRef.current.toEnd =
+          foldBackTo({ newest: last, view: { top: v.top, bottom: v.bottom } }) === "end";
+        fullRef.current.anchor = fullRef.current.toEnd ? null : anchorNow(fullRef.current.focusY);
+      }
       const h = revealed();
       // Its own box folds back at once (no fade out, nothing to wait for).
       if (reducedMotion() || !h || fullRef.current.box) return setFullLog("off");
@@ -1349,13 +1389,16 @@ export function DebugChat({
       // the newest lines when idle, as the compact log always shows; typing,
       // the lines that were at its bottom edge.
       const fromBox = !!fullRef.current.box;
+      const toEnd = fromBox && fullRef.current.toEnd;
       fullRef.current.box = null;
+      fullRef.current.toEnd = false;
       el.style.transition = "none";
       el.style.clipPath = "";
       // From its own box: the line being read stays in view (as near its
       // place as the compact log allows). Else as before: the newest lines
       // when idle, the lines at the bottom edge while typing.
-      if (!(fromBox && holdAnchor()))
+      if (toEnd) el.scrollTop = el.scrollHeight;
+      else if (!(fromBox && holdAnchor()))
         el.scrollTop =
           typing || micActive
             ? keepEndGap({
@@ -1367,6 +1410,8 @@ export function DebugChat({
       fullRef.current.anchor = null;
       void el.offsetHeight;
       el.style.transition = "";
+      // Where it landed decides (not the slack-shifted scrolls before it).
+      atEnd.current = toEnd;
       onLogScroll();
     }
   }, [fullLog]);
@@ -1425,7 +1470,9 @@ export function DebugChat({
     }
   }, [draft, open]);
   // The log is click-through, so it can't be swiped: a vertical swipe on the
-  // empty input scrolls it instead. Only the pill moves the box.
+  // empty input scrolls it instead (inputDrag, by pointer events). Here the
+  // swipe only keeps the page from scrolling; it once scrolled the log as
+  // well, so the log moved twice the finger's travel. Only the pill moves the box.
   useEffect(() => {
     const el = input.current;
     if (!el) return;
@@ -1436,14 +1483,10 @@ export function DebugChat({
       swiping = false;
     };
     const move = (e: TouchEvent) => {
-      const list = log.current;
-      // Empty input: the swipe scrolls the log. With text in it, it scrolls the text.
-      if (!list || el.value.length > 0) return;
-      const ny = e.touches[0].clientY;
-      if (!swiping && Math.abs(ny - y) < 6) return;
+      // With text in it, the swipe scrolls the text.
+      if (el.value.length > 0) return;
+      if (!swiping && Math.abs(e.touches[0].clientY - y) < 6) return;
       swiping = true;
-      list.scrollTop -= ny - y;
-      y = ny;
       if (e.cancelable) e.preventDefault();
     };
     el.addEventListener("touchstart", down, { passive: true });
@@ -1500,6 +1543,29 @@ export function DebugChat({
     const el = log.current;
     if (el) setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
   }, [messages, open]);
+  // At the end, the log stays there when it or its lines change size (the
+  // keyboard, the text size, the box moved, a card opening): a shrinking
+  // scroller keeps its scrollTop, which showed older lines. Scrolled up, it
+  // is left alone; the full-screen log places itself.
+  useEffect(() => {
+    const el = log.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (el.hidden || fullNow.current !== "off") return;
+      const top = repinEnd({
+        atEnd: atEnd.current,
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      });
+      if (top === null) return;
+      el.scrollTop = top;
+      pinnedAt.current = el.scrollTop;
+    });
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [open]);
 
   /** Send the draft; true when it went out. */
   const submit = (): boolean => {

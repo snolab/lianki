@@ -862,6 +862,16 @@ focus order, 16px input, 40px targets, the inert input, the mic clickable and
 its drag gestures, floating lines). getUserMedia is stubbed, so nothing is
 recorded. `--shots` also saves light/dark × expanded/minimized at 390px.
 
+`node scripts/dev/debug-chat-scroll-qa.mjs` checks the log's scroll on an
+Android-sized touch viewport (412×915). A drag on the empty input scrolls
+the log 1:1 with the finger. A log at its end stays there through drags,
+box moves and the keyboard, and lands back on the newest line on release
+while that line is still in view. A log he scrolled up keeps the lines he
+was reading. On fold-back the line kept is the one at the resting log's own
+place, not the tall view's centre: keeping the centre was the 2026-11-03
+jump to old chat. `unit/chat-scroll-pin.test.ts` covers the pure rules in
+`log-surface.ts`.
+
 ## Screenshots
 
 `scripts/dev/shot.ts` takes a PNG of the owner's open debug pages (the PWA on
