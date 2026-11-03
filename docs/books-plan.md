@@ -85,6 +85,18 @@ digital edition's licence matters, not only the age of the text):
 Segmenting these needs care (Sanskrit sandhi, Pali compounds, classical
 Chinese without spaces); a later phase, after modern languages.
 
+## Same book, many uploaders: store it once
+
+The owner (Slack, 2026-11-03 ~17:20 JST): several users may import the same
+EPUB, so keep one copy. Content-addressed storage: the book text, its chunks
+and its extraction are stored once under a hash of the normalised content and
+paid for once. Each user has only their own row ("I imported this"), sees the
+book only if they uploaded it, and deleting removes just that row; the text
+goes when the last row does. Progress and scan stats stay per user. No
+"instant upload" shortcut: every upload runs the full upload and check, and
+the dedupe happens server-side only, so nobody can learn that someone else
+has the same book.
+
 ## Cost
 
 Extraction with Workers AI (gpt-oss-120b) is about $0.002 per chunk: about
