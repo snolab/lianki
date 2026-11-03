@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import { saveReadMaterial, listReadMaterials } from "@/lib/getReadMaterialsCollection";
+import {
+  findReadMaterialByText,
+  getReadMaterialContent,
+  listReadMaterials,
+  replaceReadMaterialContent,
+  saveReadMaterial,
+} from "@/lib/getReadMaterialsCollection";
+import { parseBookMeta } from "@/lib/read/book";
+import { saveContentHash } from "@/lib/read/reader-store";
+import { bookHash } from "@/lib/read/units";
 import { isoDay } from "@/lib/dates";
 import { bookMetaOf, checkBook } from "@/lib/read/book";
 import { dbBackend, getD1 } from "@/lib/d1";
@@ -93,11 +102,35 @@ export async function POST(request: NextRequest) {
     }
     const b = checked.book;
     const bookMeta = bookMetaOf(b);
+    const hash = dbBackend() === "d1" ? await bookHash(b.lines) : undefined;
+    // The same text imported again with its markup (books from before #448's
+    // markup had none): upgrade that book in place, same id and history.
+    const prev =
+      hash && bookMeta.markup ? await findReadMaterialByText(session.user.id, hash, b.lines) : null;
+    const prevMeta = prev ? parseBookMeta(await getReadMaterialContent(prev)) : null;
+    if (prev && prevMeta && !prevMeta.markup) {
+      const pid = String(prev._id);
+      await replaceReadMaterialContent(session.user.id, pid, JSON.stringify(bookMeta));
+      if (!prev.contentHash) await saveContentHash(getD1(), session.user.id, pid, hash!);
+      const [words] = await summarizeMaterials(d1OrNull(), session.user, [
+        { material: prev, stats: bookMeta.words! },
+      ]);
+      return NextResponse.json({
+        id: pid,
+        title: prev.title,
+        lineCount: prev.lines.length,
+        words,
+        upgraded: true,
+        createdAt: prev.createdAt.toISOString(),
+        updatedAt: prev.updatedAt.toISOString(),
+      });
+    }
     const material = await saveReadMaterial(
       session.user.id,
       b.title,
       JSON.stringify(bookMeta),
       b.lines,
+      hash,
     );
     const [words] = await summarizeMaterials(d1OrNull(), session.user, [
       { material, stats: bookMeta.words! },

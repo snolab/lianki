@@ -37,7 +37,7 @@ export const FLAGS = {
   },
   "read.reader-v2": {
     description:
-      "新阅读器 /read/[id]：整本书连续滚动（按原书段落显示），每个词按熟悉度标记，左右滑动一段给理解评分（同 /words），朗读读完一段后等你滑动。关闭时只有站长本人在开发预览里能看到。",
+      "新阅读器 /read/[id]：整本书连续滚动（按原书段落显示），每个词按熟悉度标记，左右滑动一段给理解评分（同 /words，FSRS 记在每个句子上），同步阅读位置、阅读笔记和语境中见过的词。关闭时只有站长本人在开发预览里能看到。",
     default: false,
   },
 } as const satisfies Record<string, FlagDef>;

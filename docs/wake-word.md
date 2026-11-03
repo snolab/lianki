@@ -187,7 +187,7 @@ on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
 | The spotter: a Blob Worker running `@sherpaw/kws@0.3.0` (sherpa-onnx WASM, Apache-2.0) with the zh-en 3M model (fp32, 13 MB, pinned Hugging Face commit) | `packages/debug-chat/src/wake-kws.ts` |
 | The gate on each VAD segment, before upload, only in passive mode | `createMic` `wake` (`mic.ts`) |
 | Mode, rejections, lazy load, never-deaf fallback, `__lkMic.wake(mode)` | `mic-session.ts` |
-| The button: dashed violet ring + "Linky?", zh/ja/en strings with translator context | `MicButton.tsx`, `ui-strings.ts` (`wakeStrings`) |
+| The button: dashed violet ring (no text), zh/ja/en strings with translator context | `MicButton.tsx`, `ui-strings.ts` (`wakeStrings`) |
 | The chat lane: `{type: "wake", mode: "active" \| "passive" \| "ignored"}`, relayed to the thread's pages, not stored; each owner line carries `wake` (its mode) | `lib/dev-eval.ts`, `workers/push/src/debug.ts`, `app/components/DebugEval.tsx`, `bun scripts/dev/eval.ts wake <mode>` |
 | Browser end to end (fake mic from WAV files, nothing played) | `node scripts/dev/wake-word-qa.mjs --clip <wav> [--negative <wav>] [--save sent.wav]` |
 

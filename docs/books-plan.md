@@ -361,3 +361,87 @@ own paragraphs (no chunks):
    (very faint) mark.
 6. **Real-world statistics stay** (word counts, scan summary): they are the
    user's real data, not numbers we prescribe.
+
+## Review units (owner, Slack 2026-11-03 ~19:45–20:00 JST)
+
+The owner's final design for what the reader reviews. Built behind the flag
+`read.reader-v2` (off by default; always on for the owner). Contract:
+`lib/read/reader-api.ts`; pure libs `lib/read/units.ts` (segmentation, ids,
+items) and `lib/read/familiarity.ts` (aggregation); store
+`lib/read/reader-store.ts`; tables `db/migrations/0030_reader_v2.sql`.
+
+- **The atomic unit is the sentence.** A line (paragraph or heading) is cut
+  with `Intl.Segmenter` (granularity `sentence`, the book's language); a cut
+  after one of the language's abbreviations (`lib/read/lang/<lang>.json`
+  `abbreviations`: "Mrs.", "M.") is undone, and a piece with no letter or
+  digit joins the sentence before it. No language branches in code. Its id is
+  `<book hash>:<line>.<index>`: the book hash is the first 16 hex digits of
+  SHA-256 over the book's plain lines joined by newlines, so the same text
+  imported again (by anyone, any time) has the same ids, and emphasis added
+  later does not change them. The server is the only place that segments;
+  the UI takes sentence ranges from the items API. Each card also stores a
+  short hash of its sentence's text, so a segmenter (ICU) update that moves
+  cuts can be detected and remapped by line + text.
+- **FSRS state lives on sentences** (`read_sentence_cards`, ts-fsrs 5.x with
+  its default parameters, as page cards). One row per user per graded
+  sentence.
+- **An item is a run of whole sentences**, what one swipe grades. The user
+  picks the granularity: sentence, paragraph, or by time. Grading an item
+  grades each of its sentences with the same rating, so changing granularity
+  loses no history. Item bounds are reading time, never screen size or
+  counts:
+  - estimated time = the item's word-like segments ÷ the user's reading speed
+    in that language (median words per second over their graded reads);
+  - **lower bound**: consecutive short units merge until the item takes at
+    least this long; **upper bound**: a longer unit is split at sentence ends
+    so each part stays within it. Items never cross a chapter.
+  - From the user's own reads (`read_reviews.dwell_ms`: from the item coming
+    into view to the swipe, sent by the UI): lower = their 10th-percentile
+    read before a swipe, upper = their 90th percentile; used once there are
+    enough reads for a 10th percentile to exist (10).
+  - Before that: lower = 3 s (the upper end of the 1–3 s a person takes to
+    react to information, design-principles.md), upper = none (the chosen
+    unit unsplit), speed = 238 words a minute (Brysbaert 2019, silent
+    reading), replaced by the user's own speed as soon as it exists.
+  - By time: sentences packed (across paragraphs, within a chapter) until the
+    chosen span; the span defaults to the user's median read, and before data
+    to the lower bound. Same algorithm.
+- **Familiarity aggregates upward**: sentence → item / paragraph → chapter →
+  book, each a token-weighted mean (a sentence weighs its running words):
+  - vocab: mean word score (`lib/words/progress.ts` wordScore; names = 1);
+  - coverage: share of running words mastered or names (the 95% rule);
+  - grade: mean sentence FSRS score on the same log scale (never graded = 0);
+  - understood: share of running words in sentences last graded Good/Easy;
+  - shown value = min(vocab, grade): a sentence whose words are all known but
+    which was never understood is not familiar.
+  - **Book pass (reader v2)** = word coverage ≥ 95% (the existing ✓) **and**
+    understood ≥ 95%: the same line applied to sentences, no new threshold.
+    The stored `passed_at` stays the word-coverage pass.
+- **Words seen in context: exposure log only** (option A, decided).
+  `read_exposure_events` (one row per user, sentence, kind, word, day: a
+  resend is a duplicate) and `read_exposures` (per user, language, word, day:
+  seen and explicit counts). "seen" = the sentence passed the reading line;
+  "lookup" / "select" / "note" = an explicit "not recognised". Never changes
+  a word's FSRS state.
+- **Reading position synced** (`read_progress`): anchor (line, offset 0..1)
+  where the newest client time wins, and the high-water line that only grows;
+  the response names the lines it just moved over, the extraction trigger.
+  Written by the UI when scrolling stops and on `pagehide` (sendBeacon POST);
+  no polling.
+- **Notes per read** (`read_notes`): optional text on an item, tied to the
+  read it was written on; edits keep the earlier texts with their times;
+  delete is soft. History of an item = its reads (`read_reviews`) and notes.
+- **Inline emphasis and in-paragraph line breaks** from the EPUB (#448
+  dropped them). The stored `lines` stay plain text, unchanged, so counting,
+  read-aloud and ids keep working; `BookMeta` gains `marks` ([line, start,
+  end, kind], kinds em / strong / sup / sub only, checked on the server),
+  `breaks` (lines that continue the paragraph after a `<br>`) and `continues`
+  (lines that continue a long paragraph split at import), and `markup: 1`.
+  Books imported before have none and render as before. The EPUB itself is
+  not stored, so the markup comes back when the same EPUB is imported again:
+  same plain text (same hash) → the existing book is upgraded in place (same
+  id, same history), not duplicated. The hash is backfilled into
+  `read_materials.content_hash` on next open.
+- **Scope.** Every route checks the session, the flag (or owner), and that
+  the material is the user's own; every query is keyed by `user_id`.
+  Deleting a book deletes its reader rows.
