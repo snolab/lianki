@@ -39,7 +39,8 @@
  */
 import { speechRate } from "./speech-rate";
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
-import { aecOn, cloudOut, cloudSkip, outMode } from "./voice-out";
+import { cloudOut, cloudSkip, outMode } from "./voice-out";
+import { micAec } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
 import { getKey } from "./storage-keys";
@@ -799,7 +800,8 @@ export function voice(): Voice {
       }
     },
     mode: outMode,
-    aec: aecOn,
+    // The open track's mode (aec.ts), so hold and barge-in match what the mic does.
+    aec: micAec,
     rate: () => speechRate(),
     utter: (text, lang) => {
       const u = new SpeechSynthesisUtterance(text);

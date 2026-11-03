@@ -27,6 +27,8 @@ import { createKws } from "./wake-kws";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
 import { voice } from "./voice";
+import { captureHeld, pageAudio } from "./page-audio";
+import { micAec, onOpened } from "./aec";
 import {
   aecOn,
   appliedSettings,
@@ -96,15 +98,17 @@ const script = (src: string) =>
   });
 
 /**
- * The mic, with echo cancellation, noise suppression and auto gain on
- * (lk:voice-aec; voice-out.ts). vad-web is handed this stream (getStream),
- * so these are the constraints it runs with. What the browser applied is kept
- * for the per-utterance debug log. The mic session (mic-session.ts) owns it:
+ * The mic, with echo cancellation, noise suppression and auto gain all on or
+ * all off (lk:voice-aec; aec.ts). vad-web is handed this stream (getStream),
+ * so these are the constraints it runs with. The mode it was opened with and
+ * what the browser applied are kept, for the hold, the clips' metadata and
+ * the per-utterance debug log. The mic session (mic-session.ts) owns it:
  * the VADs below listen on it and never stop it.
  */
 const micStream = async () => {
-  const s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aecOn()) });
-  noteTrack(s);
+  const aec = aecOn();
+  const s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aec) });
+  noteTrack(s, aec);
   return s;
 };
 
@@ -311,9 +315,19 @@ function session(): MicSession {
     },
     onProb: (p) => v.userFrame(p),
     // Only with lk:voice-aec off: else the mic stays open and the user can barge in.
+    // Held while the chat reads (voice.ts) or the page plays word audio (page-audio.ts).
     subscribeHold: (f) => {
-      f(v.state().hold);
-      return v.subscribe((x) => f(x.hold));
+      const page = pageAudio();
+      const calc = () => f(captureHeld(v.state().hold, page.playing(), micAec()));
+      calc();
+      const a = v.subscribe(calc);
+      const b = page.subscribe(calc);
+      const c = onOpened(calc);
+      return () => {
+        a();
+        b();
+        c();
+      };
     },
     // The device goes along, so the Mac scores finals against this device's voiceprint.
     localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner" }),
@@ -324,6 +338,9 @@ function session(): MicSession {
     upload: async (wav, { seq, durationMs, partial, local, onEcho }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
+      // The mode and track this utterance was recorded on: a reopen while it is transcribed changes both.
+      const aecAt = v.aec();
+      const trackAt = appliedSettings();
       try {
         // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
         let out: { text: string; model?: string; ms?: number };
@@ -353,8 +370,8 @@ function session(): MicSession {
           v.log({
             ev: "voice-utt",
             out: v.mode(),
-            aec: v.aec(),
-            settings: appliedSettings(),
+            aec: aecAt,
+            settings: trackAt,
             durationMs,
             during: echo.during,
             drop: echo.drop,
@@ -379,15 +396,15 @@ function session(): MicSession {
             label: cfg.label,
             transcript: out.text,
             model: out.model,
-            aec: v.aec(),
-            track: appliedSettings(),
+            aec: aecAt,
+            track: trackAt,
           };
           sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
         }
         return out.text;
       } catch (e) {
         if (sink) {
-          const meta = { at, durationMs, label: cfg.label, aec: v.aec(), track: appliedSettings() };
+          const meta = { at, durationMs, label: cfg.label, aec: aecAt, track: trackAt };
           sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
         }
         throw e;

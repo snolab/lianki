@@ -63,6 +63,42 @@ const dictionary = {
       mr: "पूर्वावलोकन",
       ko: "미리 보기",
     }),
+    echoCancel: t({
+      en: "Echo cancellation",
+      zh: "回声消除",
+      hi: "इको कैंसलेशन",
+      es: "Cancelación de eco",
+      fr: "Annulation d’écho",
+      ar: "إلغاء الصدى",
+      bn: "ইকো ক্যান্সেলেশন",
+      pt: "Cancelamento de eco",
+      ru: "Эхоподавление",
+      ur: "ایکو کینسلیشن",
+      id: "Peredam gema",
+      de: "Echounterdrückung",
+      ja: "エコーキャンセル",
+      sw: "Kuzuia mwangwi",
+      mr: "इको कॅन्सलेशन",
+      ko: "에코 제거",
+    }),
+    echoCancelHint: t({
+      en: "On: you can speak while audio plays, but the sound is thinner. Off: better sound; the mic pauses while audio plays. Takes effect at once",
+      zh: "开：可边听边说，音质较差。关：音质好，播放时暂不收音。立即生效",
+      hi: "चालू: आवाज़ चलते समय भी बोल सकते हैं, पर आवाज़ पतली लगती है। बंद: बेहतर आवाज़; आवाज़ चलते समय माइक रुका रहता है। तुरंत लागू",
+      es: "Activada: puedes hablar mientras suena el audio, pero se oye peor. Desactivada: mejor sonido; el micrófono se pausa mientras suena el audio. Se aplica al instante",
+      fr: "Activée : vous pouvez parler pendant la lecture, mais le son est moins bon. Désactivée : meilleur son ; le micro se met en pause pendant la lecture. S’applique tout de suite",
+      ar: "مفعّل: يمكنك التحدث أثناء تشغيل الصوت، لكن جودته أقل. معطّل: صوت أفضل، ويتوقف الميكروفون مؤقتًا أثناء التشغيل. يسري فورًا",
+      bn: "চালু: অডিও চলার সময়ও কথা বলতে পারবেন, তবে শব্দ পাতলা শোনায়। বন্ধ: ভালো শব্দ; অডিও চলার সময় মাইক থেমে থাকে। সঙ্গে সঙ্গে কার্যকর",
+      pt: "Ativado: você pode falar enquanto o áudio toca, mas o som fica pior. Desativado: som melhor; o microfone pausa enquanto o áudio toca. Vale na hora",
+      ru: "Вкл.: можно говорить во время воспроизведения, но звук хуже. Выкл.: звук лучше; микрофон ждёт, пока идёт воспроизведение. Применяется сразу",
+      ur: "آن: آواز چلتے وقت بھی بول سکتے ہیں، مگر آواز پتلی لگتی ہے۔ آف: بہتر آواز؛ آواز چلتے وقت مائیک رکا رہتا ہے۔ فوراً لاگو",
+      id: "Aktif: Anda bisa bicara saat audio diputar, tetapi suaranya kurang jernih. Mati: suara lebih bagus; mikrofon berhenti sejenak saat audio diputar. Langsung berlaku",
+      de: "An: Sie können sprechen, während Audio läuft, aber der Klang ist dünner. Aus: besserer Klang; das Mikrofon pausiert, solange Audio läuft. Gilt sofort",
+      ja: "オン：再生中も話せますが、音質が落ちます。オフ：音質が良く、再生中はマイクが一時停止します。すぐに反映",
+      sw: "Imewashwa: unaweza kuongea sauti ikicheza, lakini sauti ni duni. Imezimwa: sauti bora; maikrofoni inasimama sauti ikicheza. Inaanza mara moja",
+      mr: "चालू: आवाज वाजत असतानाही बोलता येते, पण आवाज पातळ वाटतो. बंद: चांगला आवाज; आवाज वाजत असताना माइक थांबतो. लगेच लागू",
+      ko: "켜짐: 재생 중에도 말할 수 있지만 음질이 떨어집니다. 꺼짐: 음질이 좋고, 재생 중에는 마이크가 잠시 멈춥니다. 바로 적용",
+    }),
     listening: t({
       en: "Voice commands on",
       zh: "语音口令已开启",
@@ -271,6 +307,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "/words study view, Settings sheet: the tooltip of the 'Voice commands' switch: what the learner can say (next/previous card, a review grade, show the answer, read the word aloud again, undo the last grade) and that no wake word (a name said first to wake an assistant) is needed. No final period.",
   preview:
     "/words study view, Settings sheet: a small tag after the 'Voice commands' switch, shown only to the site owner while the feature is not yet released to everyone: it is a preview. One lowercase word.",
+  echoCancel:
+    "/words study view, Settings sheet: the label of an on/off switch (a pill) beside 'Voice commands' for the microphone's echo cancellation. On, the learner can talk while the app reads words aloud, but on Android phones the speaker switches to a phone-call sound (thinner). Off, the app's audio sounds better and the microphone stops listening while anything plays. The common technical term for this audio feature; a short noun phrase.",
+  echoCancelHint:
+    "/words study view, Settings sheet: a small visible line under the 'Echo cancellation' switch explaining both positions: on = you can speak while audio plays, worse sound quality; off = better sound quality, the microphone pauses (does not listen) while audio plays. 'Audio' is the app reading words aloud and its assistant's replies. The change applies immediately. Keep the On:/Off: structure. No final period.",
   listening:
     "/words study view: a small glass badge floating over the bottom of the word list while voice commands are on and the microphone is listening. A short status phrase.",
   sayHint:

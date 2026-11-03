@@ -16,6 +16,8 @@ import {
 } from "@/lib/words/requeue";
 import { progressPercent } from "@/lib/words/progress";
 import { voiceQuality } from "@lianki/debug-chat/wire";
+import { pageAudio } from "@lianki/debug-chat/page-audio";
+import { AEC_EVENT, aecOn, applyAec } from "@lianki/debug-chat/aec";
 import {
   startTransition,
   useCallback,
@@ -798,6 +800,30 @@ function requestPersistentStorage() {
   } catch {}
 }
 
+/**
+ * The mic's echo cancellation switch (lk:voice-aec; packages/debug-chat
+ * aec.ts), device-local (docs/prefs-sync.md): the same one as the chat's ⋯
+ * menu, which it follows. An open mic reopens with the new mode at once.
+ */
+function useAecSwitch(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    const read = () => setOn(aecOn());
+    read();
+    window.addEventListener(AEC_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(AEC_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, []);
+  const set = useCallback((next: boolean) => {
+    setOn(next);
+    void applyAec(next).then((how) => devLog({ ev: "aec-switch", on: next, how }));
+  }, []);
+  return [on, set];
+}
+
 /** `serverVoice`: always use the server's recordings, never the browser's. */
 function useSpeech(serverVoice = false) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -826,6 +852,12 @@ function useSpeech(serverVoice = false) {
   /** Languages the browser failed to speak; the server speaks them instead. */
   const browserDead = useRef(new Set<string>());
   const audio = useRef<Clip | null>(null);
+  /**
+   * The part playing, told to the page (page-audio.ts): with echo
+   * cancellation off the mic holds its capture meanwhile, so a word read
+   * aloud is not transcribed.
+   */
+  const audible = useRef<(() => void) | null>(null);
   const watchdog = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     setAvailable(true);
@@ -873,6 +905,8 @@ function useSpeech(serverVoice = false) {
   const cancel = useCallback(() => {
     generation.current++;
     clearTimeout(watchdog.current);
+    audible.current?.();
+    audible.current = null;
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
     // A clip cut mid-word is jarring when the card changes: fade it out.
     clipPool().fadeOut(audio.current, FADE_S);
@@ -985,8 +1019,16 @@ function useSpeech(serverVoice = false) {
 
   /** One part; a missing voice falls back to the other engine for this part only. */
   const say = useCallback(
-    (p: SayPart, done: Done) => {
+    (p: SayPart, finish: Done) => {
       devLog({ ev: "speak", kind: p.kind, lang: p.lang, text: p.text, serverVoice });
+      audible.current?.();
+      const end = pageAudio().start();
+      audible.current = end;
+      const done: Done = (played) => {
+        end();
+        if (audible.current === end) audible.current = null;
+        finish(played);
+      };
       // The server voice by default: browser voices can mislead (Japanese read
       // in a Chinese accent). The browser speaks only where the server can't —
       // a language or text it has no voice for, the rate limit, offline.
@@ -3414,6 +3456,7 @@ function Study({
   const [voicePref, setVoicePref] = usePref("lk:words-voice-mode", false);
   const voiceOn = voice !== "off" && voicePref;
   const vtext = useIntlayer("words-voice-mode");
+  const [aec, setAecPill] = useAecSwitch();
   /** The card a command acts on: the touch focus, or the desktop cursor. */
   const currentRow = () => (touch ? focusNow.current : rowRef.current);
   /** Touch: bring a focused row into the part of the list the glass leaves uncovered. */
@@ -3998,6 +4041,18 @@ function Study({
                       {voice === "preview" && (
                         <span className="fs-10 opacity-60">{vtext.preview}</span>
                       )}
+                    </span>
+                  )}
+                  {/* The mic's echo cancellation (packages/debug-chat aec.ts), this device only. */}
+                  {voice !== "off" && (
+                    <span className="flex w-full flex-col items-start gap-1" data-aec-setting>
+                      <TogglePill
+                        on={aec}
+                        onChange={setAecPill}
+                        label={vtext.echoCancel.value}
+                        hint={vtext.echoCancelHint.value}
+                      />
+                      <span className="fs-10 opacity-60">{vtext.echoCancelHint}</span>
                     </span>
                   )}
                   <span className="text-xs opacity-60">
