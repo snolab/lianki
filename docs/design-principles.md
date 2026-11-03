@@ -14,6 +14,21 @@ Navigation, help and hint strips, the debug chat, toolbars and menus are translu
 - **Room.** Optional overlays (help, hints) show only when there is room: a tall enough viewport, the on-screen keyboard closed. Otherwise they hide rather than squeeze the content.
 - **Input-aware hints.** Touch hints show only for touch, keyboard hints only for a hardware keyboard; on hybrid devices, the input used last decides.
 
+## As little visual nesting as possible
+
+The owner, 2026-11-03 18:32 JST: "尽量减少视觉上的嵌套数量". Avoid boxes in
+boxes, borders in borders, cards in cards. One level of framing at most:
+
+- When an outer frame appears (a glass panel, a sheet), what sits inside it
+  drops its own border and background instead of drawing a second frame. The
+  chat bar's input, for example, loses its box while the focused glass panel
+  around the log and input is showing (keeping the border width, transparent,
+  so nothing shifts).
+- Separate things with space, alignment, weight and colour before reaching
+  for a border.
+- Text sits directly on the page or on one glass layer, never on a card on a
+  card.
+
 ### Accessibility and contrast
 
 - Text on glass must keep at least 4.5:1 contrast against the worst plausible content behind it. Use the page ink colour plus a halo (`text-shadow` in the page colour), and test over light and dark content.
