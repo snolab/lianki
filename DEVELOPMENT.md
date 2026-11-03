@@ -126,7 +126,7 @@ scroll step).
 ## Prerequisites
 
 - Bun (runs everything locally — see "Bun and Node" below)
-- Node.js ≥ 22.12 only where that section lists it (CI deploy, the npm CLI)
+- Node.js only where that section lists it (≥ 22.12 for the CI deploy; the npm CLI supports ≥ 18)
 - MongoDB instance (local or cloud)
 - (Optional) Resend API key for magic-link email
 - (Optional) GitHub/Google OAuth credentials
@@ -151,7 +151,7 @@ on Node. Kept on Node, one reason each:
 | Kept on Node                                                                    | Why                                                                                                                                         |
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `deploy-worker.yml` `setup-node` 22 (OpenNext build, `wrangler deploy`)         | The production deploy stays on wrangler's and OpenNext's supported runtime (Node ≥ 22); Bun needs our miniflare patch.                      |
-| `nightly-qa.yml` (the Playwright image's Node 24)                               | The image ships it, so its `bunx wrangler` / `bunx playwright test` run on Node: a nightly check of the same suites on the supported runtime. |
+| `nightly-qa.yml` (the Playwright image's Node 24)                               | The image ships it, so there wrangler, OpenNext and the `playwright test` suites run on Node; the `qa-*.mjs` suites run on Bun. |
 | `next dev` / `next build` / `opennextjs-cloudflare` (node shebangs)             | Next and OpenNext support Node only; locally they run on Bun through the `node → bun` symlink.                                              |
 | `playwright test` (`test`, `test:sync`, `test:ext`, qa:all's spec suites)       | The test runner does not support Bun officially; library-only suites (`qa-*.mjs`, `test:e2e`) run on Bun.                                   |
 | `packages/lianki-cli` (`#!/usr/bin/env node`, `engines.node >=18`), `publish-cli.yml` | The published `lianki` CLI: `npx lianki` users may have only Node, so it stays Node ≥ 18 compatible and is smoke-tested and published with npm. |
