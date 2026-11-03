@@ -181,7 +181,8 @@ export function createMicSession(
     gumCalls++;
     const at = offs;
     const s = await deps.getStream();
-    if (at !== offs) {
+    // (or the mic is off by now: a fallback VAD asking for it after the off).
+    if (at !== offs || mic.state() === "off") {
       // Turned off while the browser opened it: never left running (the VAD built on it is dropped).
       for (const t of s.getTracks()) t.stop();
       return s;

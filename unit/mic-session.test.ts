@@ -149,6 +149,30 @@ describe("mic session", () => {
     expect(s.view().state).toBe("off");
   });
 
+  it("an off, then the VAD fails and the fallback asks for the mic: that track is stopped too", async () => {
+    const f = fakes();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const s = createMicSession({
+      ...f.deps,
+      load: async () => {
+        await gate;
+        throw new Error("vad failed");
+      },
+      fallback: f.deps.load,
+    });
+    const on = s.toggle();
+    await tick();
+    await s.off();
+    release();
+    await on;
+    await tick();
+    expect(s.stream()).toBeNull();
+    expect(f.calls.gum).toBe(2); // the VAD's, then the fallback's
+    expect(f.calls.stops).toBe(2); // both stopped
+    expect(s.view().state).toBe("off");
+  });
+
   it("survives a detach: the stream stays live, only an explicit off stops it", async () => {
     const f = fakes();
     const s = createMicSession(f.deps);
