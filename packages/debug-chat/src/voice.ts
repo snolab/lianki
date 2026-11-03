@@ -242,9 +242,10 @@ export type VoiceState = {
 export type Why = "speech" | "tap" | "typing";
 export type OutMode = "speech" | "cloud";
 
-type Sentence = { text: string; lang: string; from: number; at: number };
+/** `group`: the sentence (chunk) a language run is part of; its runs are one sentence to the echo guard. */
+type Sentence = { text: string; lang: string; from: number; at: number; group?: number };
 /** What the agent said, and when (for the echo guard). */
-type Said = { text: string; start: number; end?: number };
+type Said = { text: string; start: number; end?: number; group?: number };
 
 /** What the echo check says about one transcript. */
 export type EchoCheck = EchoScore & {
@@ -286,6 +287,7 @@ export function createVoice(d: {
   let mic = false;
   let speaking = false;
   const queue: Sentence[] = [];
+  let groups = 0;
   /** Replies queued lately, so a re-delivered one is not read twice. */
   const recent: { text: string; at: number }[] = [];
   /** Interruptions under way; the reading waits while any is. */
@@ -453,7 +455,7 @@ export function createVoice(d: {
       if (first) d.report?.(`voice-out: playback blocked (${reason}); waiting for a tap to resume reading`);
       emit();
     };
-    const rec: Said = { text: head.text, start: now() };
+    const rec: Said = { text: head.text, start: now(), group: head.group };
     const c = routeFor(head.lang);
     current = { p: null as unknown as Playback, mark: head.from, said: rec };
     const p = c
@@ -606,8 +608,10 @@ export function createVoice(d: {
       // finds its own language: a Japanese sentence in a Chinese reply is Japanese.
       const add = sentences(text)
         .flatMap((s) => chunk(s))
-        .flatMap((t) => langRuns(t))
-        .map((r) => ({ text: r.text, lang: localeOf(r.lang), from: 0, at: 0 }));
+        .flatMap((t) => {
+          const group = ++groups;
+          return langRuns(t).map((r) => ({ text: r.text, lang: localeOf(r.lang), from: 0, at: 0, group }));
+        });
       if (!add.length) return false;
       if (!queue.length) routeFor(add[0].lang)?.prepare?.(add[0].text, add[0].lang);
       queue.push(...add);
@@ -687,7 +691,14 @@ export function createVoice(d: {
     echoCheck(transcript: string, durationMs = 0): EchoCheck {
       const t = now();
       const from = t - durationMs;
-      const recent = said.filter((r) => (r.end ?? t) >= from - ECHO_WINDOW_MS).map((r) => r.text);
+      // A sentence's language runs, played one after another, are matched as the one sentence.
+      const recent: string[] = [];
+      let prev: number | undefined;
+      for (const r of said.filter((r) => (r.end ?? t) >= from - ECHO_WINDOW_MS)) {
+        if (r.group !== undefined && r.group === prev && recent.length) recent[recent.length - 1] += r.text;
+        else recent.push(r.text);
+        prev = r.group;
+      }
       const during = said.some((r) => r.start <= t && (r.end ?? t) >= from);
       return { ...echoScore(transcript, recent), during };
     },

@@ -27,6 +27,9 @@ describe("langRuns: mixed-language text, each run in its own language", () => {
     expect(runs("東京、大阪、京都に行きました。")).toEqual(["ja:東京、大阪、京都に行きました。"]);
     expect(runs("日本語を勉強しています。")).toEqual(["ja:日本語を勉強しています。"]);
     expect(runs("コーヒーを飲みたい。")).toEqual(["ja:コーヒーを飲みたい。"]);
+    expect(runs("情報処理技術者試験に合格しました。")).toEqual([
+      "ja:情報処理技術者試験に合格しました。",
+    ]);
   });
   it("Japanese with English words keeps them in Japanese", () => {
     expect(runs("今日はReactのhooksについて話します。")).toEqual([

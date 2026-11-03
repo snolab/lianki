@@ -17,6 +17,7 @@ type LangInfo = { locale: string; scripts: string[]; glue?: string[] };
 const LANGS = Object.entries(data.langs as Record<string, LangInfo>);
 const BORROWED = data.borrowed as Record<string, number>;
 const GLUE_MAX = data.glueMax;
+const WEIGHT = data.weight as Record<string, number>;
 
 /** Every listed script, with the languages that use it (primary users first). */
 const SCRIPTS = (() => {
@@ -84,8 +85,8 @@ function analyse(text: string, hint?: string) {
     for (const g of segs) {
       if (!g.script) continue;
       const l = g.lang ?? SCRIPTS.get(g.script)!.primary;
-      // A borrowed script counts by the word (one run), others by the character.
-      tally.set(l, (tally.get(l) ?? 0) + (g.script in BORROWED ? 1 : [...g.text].length));
+      // A borrowed script counts by the word (one run), others by the character, times its weight.
+      tally.set(l, (tally.get(l) ?? 0) + (g.script in BORROWED ? 1 : [...g.text].length * (WEIGHT[g.script] ?? 1)));
     }
     base = [...tally].sort((a, b) => b[1] - a[1])[0]?.[0] ?? baseOf(hint) ?? "en";
   }

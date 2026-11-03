@@ -15,5 +15,7 @@
   "_borrowed": "Scripts other languages' text borrows words in (an acronym, a name, a short term): a run in one of these, inside text whose language is not written in it, keeps the surrounding language unless it has at least this many words.",
   "borrowed": { "Latin": 4 },
   "_glueMax": "A shared-script run (Han) glued to a run another language decides (kana) joins that language only when it is at most this many characters long, so the Chinese around a Japanese word stays Chinese. Longer ones go by the text's language.",
-  "glueMax": 2
+  "glueMax": 2,
+  "_weight": "How much one character of a script counts when finding the text's own language (else 1): a kana writes one sound where a Han character writes a word, so a Japanese sentence of long kanji compounds (情報処理技術者試験に合格しました) is still Japanese.",
+  "weight": { "Hiragana": 1.5, "Katakana": 1.5 }
 }
