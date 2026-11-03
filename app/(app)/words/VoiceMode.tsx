@@ -13,6 +13,7 @@ import { useIntlayer } from "next-intlayer";
 import { notePrefWrite, PREF_APPLIED_EVENT } from "@lianki/ui-state";
 import type { VoiceOutcome } from "@/lib/words/voice-dispatch";
 import { voiceTap } from "@/lib/words/voice-dispatch";
+import { sideGrade } from "@/lib/words/swipe";
 import type { VoiceEar, VoiceEarState } from "@/lib/words/voice-mic";
 
 /** The synced on/off switch (docs/prefs-sync.md `words.voiceMode`): one for every screen. */
@@ -190,6 +191,8 @@ export function voiceOutcomeLabel(
     exit: { value: string };
   },
   grades: Record<1 | 2 | 3 | 4, string>,
+  /** The swipe's sides mirrored: 左/右 gave the other side's grade (lib/words/swipe.ts sideGrade). */
+  mirror = false,
 ): string {
   if (o.kind === "echo") return text.echo.value.replace("{text}", o.heard);
   if (o.kind === "no-card") return text.noCard.value;
@@ -201,9 +204,9 @@ export function voiceOutcomeLabel(
     case "prev":
       return `↑ ${text.prev.value}`;
     case "left":
-      return `← ${grades[2]}`;
+      return `← ${grades[sideGrade("left", mirror)]}`;
     case "right":
-      return `→ ${grades[3]}`;
+      return `→ ${grades[sideGrade("right", mirror)]}`;
     case "again":
       return grades[1];
     case "hard":
