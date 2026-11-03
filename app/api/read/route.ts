@@ -5,7 +5,7 @@ import { saveReadMaterial, listReadMaterials } from "@/lib/getReadMaterialsColle
 import { isoDay } from "@/lib/dates";
 import { bookMetaOf, checkBook } from "@/lib/read/book";
 import { dbBackend, getD1 } from "@/lib/d1";
-import { materialWords, summarizeMaterials } from "@/lib/read/progress";
+import { materialWords, summarizeMaterials, withLex } from "@/lib/read/progress";
 import { countWords } from "@/lib/read/words";
 
 const d1OrNull = () => (dbBackend() === "d1" ? getD1() : null);
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
 
   const material = await saveReadMaterial(session.user.id, materialTitle, content, lines);
   const [words] = await summarizeMaterials(d1OrNull(), session.user, [
-    { material, stats: countWords(lines) },
+    { material, stats: await withLex(countWords(lines)) },
   ]);
 
   return NextResponse.json({

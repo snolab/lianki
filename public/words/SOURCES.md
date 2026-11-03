@@ -409,9 +409,33 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Lemma files: French (`lemma/fr.txt`)
+
+Used by `/read` (not a word list): which words the dictionary has, and which
+inflected forms belong to which headword, so a book's "regarda" or "yeux"
+matches a card for "regarder" or "œil", and a word outside our decks but in
+the dictionary counts as "new" rather than "unrecognised".
+
+- Source: the English Wiktionary French extract from
+  [kaikki.org](https://kaikki.org/dictionary/French/) (wiktextract, Tatu
+  Ylonen), file of 2026-10-30. English Wiktionary content is licensed
+  [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) (and GFDL).
+  Attribution: "French headwords and inflected forms: English Wiktionary
+  (en.wiktionary.org) contributors, via kaikki.org".
+- Taken: headwords that have a sense of their own (not proper names,
+  symbols or affixes), each with its inflected forms (conjugation and
+  declension tables, plus entries Wiktionary marks as a form of it). No
+  definitions, glosses or examples. Changes made: lowercased, NFC, elided
+  clitics stripped from forms (`s'écria` → `écria`), multi-word and
+  hyphenated forms dropped, ligature spellings written out as a form
+  (`cœur` → `coeur`), forms written as a suffix of the headword.
+- The file is redistributed under CC BY-SA 4.0. Rebuild:
+  `scripts/words/build-lemmas.ts` (commands in its header).
+
 ## Licensing summary
 
-Lists built from CC BY-SA sources (all frequency bands, the HSK lists via
+Lists and files built from CC BY-SA sources (all frequency bands, the French
+lemma file, the HSK lists via
 CC-CEDICT, the ordering of the JLPT lists, and the NGSL, NAWL and TOEIC
 Service List decks) are redistributed under CC BY-SA 4.0 with the attribution
 above. The exam decks' word lists from ECDICT are MIT (notice above); their

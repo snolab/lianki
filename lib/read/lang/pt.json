@@ -1,0 +1,5 @@
+{
+  "stop": ["o", "os", "as", "que", "não", "uma", "com", "por", "é", "do", "da", "em"],
+  "folds": [["es", ""], ["s", ""], ["x", ""]],
+  "abbreviations": ["sr", "sra", "dr", "dra"]
+}

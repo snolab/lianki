@@ -11,6 +11,8 @@ import {
 } from "@/lib/getReadMaterialsCollection";
 import { PROGRESS_SCALE_DAYS } from "@/lib/words/progress";
 import { parseBookMeta, type BookMeta } from "./book";
+import { hasLemmas, LEMMA_V } from "./lemma";
+import { lemmasForWords } from "./lemma-server";
 import {
   BOOK_PASS_COVERAGE,
   bookPassed,
@@ -18,6 +20,7 @@ import {
   cardIndex,
   countWords,
   coveragePercent,
+  statsLemmas,
   type BookProgress,
   type CardRow,
   type WordStats,
@@ -38,9 +41,13 @@ export interface MaterialWords {
 export async function materialWords(m: ReadMaterial, userId: string): Promise<MaterialWords> {
   const content = await getReadMaterialContent(m);
   const book = parseBookMeta(content);
-  if (!book) return { book: null, text: content, stats: countWords(m.lines) };
-  if (book.words) return { book, stats: book.words };
-  const stats = countWords(m.lines, book.lang);
+  if (!book) return { book: null, text: content, stats: await withLex(countWords(m.lines)) };
+  if (book.words && (!hasLemmas(book.words.lang) || book.words.lex?.v === LEMMA_V))
+    return { book, stats: book.words };
+  const base = book.words ?? countWords(m.lines, book.lang);
+  const stats = await withLex(base);
+  // The lemma file could not be read: nothing new to save; tried again next time.
+  if (book.words && stats === base) return { book, stats };
   const next: BookMeta = { ...book, words: stats };
   try {
     await replaceReadMaterialContent(userId, String(m._id), JSON.stringify(next));
@@ -48,6 +55,24 @@ export async function materialWords(m: ReadMaterial, userId: string): Promise<Ma
     console.error("read: word-count backfill failed", err);
   }
   return { book: next, stats };
+}
+
+/**
+ * The stats with the dictionary entries their words need (lib/read/lemma.ts),
+ * for a language with a lemma file; unchanged when the file cannot be read.
+ */
+export async function withLex(stats: WordStats): Promise<WordStats> {
+  if (!hasLemmas(stats.lang) || stats.lex?.v === LEMMA_V) return stats;
+  try {
+    const lem = await lemmasForWords(
+      stats.lang,
+      stats.words.map((e) => e[0]),
+    );
+    return lem ? { ...stats, lex: lem.toLex() } : stats;
+  } catch (err) {
+    console.error("read: lemma lookup failed", err);
+    return stats;
+  }
 }
 
 /** SQL for "this list's language is one of `langs`" ("und" matches every list). */
@@ -140,7 +165,7 @@ export async function summarize(
     );
   return all.map((s) => {
     const mine = rows?.filter((r) => s.lang === "und" || r.lang === s.lang) ?? null;
-    const progress = mine ? bookProgress(s, cardIndex(mine)) : null;
+    const progress = mine ? bookProgress(s, cardIndex(mine), statsLemmas(s)) : null;
     return {
       lang: s.lang,
       tokens: s.tokens,

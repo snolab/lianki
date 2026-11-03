@@ -8,23 +8,29 @@
 // reader's page uses the same functions to tell new words (in one of our word
 // lists) from unrecognised ones.
 //
-// Approximation, until the planned extraction (docs/books-plan.md) gives real
-// lemmas: a word is its surface form — Intl.Segmenter word segments that are
-// word-like and hold a letter, NFKC, lowercased in cased scripts, the curly
-// apostrophe read as ', French/Italian elisions (l', d', qu'…) and the
-// English possessive 's stripped. Matching a book word to a card or a list
-// entry then tries a few cheap inflection folds (plural -s/-es, -ed, -ing, -x)
-// only when the folded form is itself a card or an entry, so "chats" finds a
-// card for "chat" but "is" never becomes "i". Japanese and Chinese depend on
-// the segmenter's dictionary (読んで → 読|んで), so their counts are rougher.
+// One engine for every language (owner, 19:05 JST: no per-language
+// branches): a word is an Intl.Segmenter word segment that is word-like and
+// holds a letter, NFKC, lowercased (caseless scripts are unchanged), the
+// curly apostrophe read as '. What differs by language is data only, in
+// lib/read/lang/<lang>.json: elided clitics stripped (French l', qu'…),
+// endings dropped (English 's), ligatures (œ → oe), cheap inflection folds
+// (plural -s/-es, -ed, -ing…) tried only when the folded form is itself a card
+// or an entry ("chats" finds "chat", "is" never becomes "i"), abbreviations
+// that do not end a sentence (Mrs., M.), and whether capitals mark names.
+// A language with a lemma file (lib/read/lemma.ts, French first) also maps
+// every inflected form to its headword ("regarda" → "regarder") and knows
+// which words the dictionary has. Japanese and Chinese depend on the
+// segmenter's dictionary (読んで → 読|んで), so their counts are rougher.
 //
 // Progress uses a /words deck's definition of a learned word (interval a
 // year or more, as the deck's "mastered"); see BookProgress for the ring.
 
 import { PROGRESS_SCALE_DAYS, progressPercent, wordScore } from "@/lib/words/progress";
+import { langRules, SCRIPT_LANGS, STOP_LANGS } from "./lang";
+import { lemmasFromLex, type BookLex, type Lemmas } from "./lemma";
 
 /** Bump when counting changes, so stored stats are counted again. */
-export const WORD_STATS_V = 1;
+export const WORD_STATS_V = 2;
 
 export interface WordStats {
   v: typeof WORD_STATS_V;
@@ -38,6 +44,12 @@ export interface WordStats {
   words: [string, number][];
   /** Distinct words taken for proper nouns (names): counted as known. */
   names: string[];
+  /**
+   * The language's dictionary entries these words need (lib/read/lemma.ts),
+   * added on the server once the lemma file is read; absent for languages
+   * without one, and until then.
+   */
+  lex?: BookLex;
 }
 
 /*
@@ -51,47 +63,40 @@ export interface WordStats {
  * anything with a digit, punctuation, web addresses and other dotted junk, single letters in alphabetic scripts
  * (a CJK character is a word), and segments with no letter (junk).
  * Names (proper nouns) stay in and count as known, as Hu & Nation (2000) did:
- * in a cased language other than German, a word that the book never writes
- * in lower case and writes capitalised at least once mid-sentence ("Della",
- * "Madame Sofronie"), not counting words in capitals, English I'm/I've, or
- * lines that are mostly capitalised (headings, title case). German capitalises every noun, and caseless scripts
- * (ja, zh, ko…) have no such clue, so they get no names yet.
- * Mastered: the reader has a card for the word (or a fold of it) whose
+ * a word that the book never writes in lower case and writes capitalised at
+ * least once mid-sentence ("Della", "Mrs. Aouda", "l'Angleterre"), not
+ * counting words in capitals, the language's notNames (English I'm/I've), or
+ * lines that are mostly capitalised (headings, title case). A language whose
+ * data says "names": false (German capitalises every noun) gets none, and
+ * caseless scripts (ja, zh, ko…) have no capitals, so no names yet.
+ * Mastered: the reader has a card for the word (or a fold or lemma of it) whose
  * interval is a year or more, a /words deck's "mastered". Every other word,
  * unrecognised ones included, is unknown and stays in the denominator.
  */
 
+// Scripts in which one character can be a word (Han, kana, Hangul): a
+// property of the script, not of a language.
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const LETTER = /\p{L}/u;
-const ELIDE =
-  /^(?:l|d|j|m|n|s|t|c|qu|jusqu|lorsqu|puisqu|quoiqu|presqu|dell|dall|nell|sull|all|un|quell|quest|po)'(?=\p{L})/u;
 
-// A handful of function words per Latin-script language, to guess the
-// language of pasted text that carries none.
-const STOP: Record<string, string[]> = {
-  en: ["the", "and", "of", "to", "is", "was", "that", "with", "he", "she", "you"],
-  fr: ["le", "la", "les", "et", "est", "une", "dans", "que", "pas", "il", "je", "du"],
-  es: ["el", "los", "las", "y", "es", "una", "que", "por", "con", "del", "se", "pero"],
-  de: ["der", "die", "und", "das", "ist", "nicht", "ein", "zu", "ich", "mit", "sie"],
-  it: ["il", "di", "che", "è", "non", "per", "una", "sono", "gli", "della", "ho"],
-  pt: ["o", "os", "as", "que", "não", "uma", "com", "por", "é", "do", "da", "em"],
-};
+/** "l'homme" → "homme", "qu'il" → "il", by the language's elisions (lib/read/lang). */
+export function stripElision(w: string, lang: string): string {
+  const re = langRules(lang).elide;
+  return re ? w.replace(re, "") : w;
+}
 
 /** The language to count a book in: its own tag's primary subtag, else a guess. */
 export function wordLang(tag: string | undefined | null, lines: string[] = []): string {
   const primary = (tag ?? "").trim().toLowerCase().split(/[-_]/)[0];
   if (/^[a-z]{2,3}$/.test(primary) && primary !== "und") return primary;
   const sample = lines.slice(0, 200).join("\n").slice(0, 20_000);
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(sample)) return "ja";
-  if (/\p{Script=Hangul}/u.test(sample)) return "ko";
-  if (/\p{Script=Han}/u.test(sample)) return "zh";
-  if (/\p{Script=Cyrillic}/u.test(sample)) return "ru";
+  for (const [lang, re] of SCRIPT_LANGS) if (re.test(sample)) return lang;
   const seen = new Map<string, number>();
   for (const w of sample.toLowerCase().split(/[^\p{L}]+/u))
     if (w) seen.set(w, (seen.get(w) ?? 0) + 1);
   let best = "und";
   let bestN = 0;
-  for (const [lang, words] of Object.entries(STOP)) {
+  for (const [lang, words] of STOP_LANGS) {
     const n = words.reduce((a, w) => a + (seen.get(w) ?? 0), 0);
     if (n > bestN) [best, bestN] = [lang, n];
   }
@@ -103,22 +108,16 @@ export function normWord(raw: string, lang: string): string | null {
   let w = raw.normalize("NFKC").replace(/[’ʼ′]/g, "'");
   // Numbers, and junk such as www.gutenberg.org, e-mail and paths.
   if (!LETTER.test(w) || /[\p{N}.@/_:]/u.test(w)) return null;
-  // Cased scripts only; CJK has no case and toLowerCase leaves it alone anyway.
+  // Caseless scripts are left alone by toLowerCase.
   w = w.toLowerCase();
-  if (lang === "fr" || lang === "it" || lang === "ca") w = w.replace(ELIDE, "");
-  if (lang === "en") w = w.replace(/'s$/, "");
+  w = stripElision(w, lang);
+  const suffix = langRules(lang).suffix;
+  if (suffix) w = w.replace(suffix, "");
   w = w.replace(/^'+|'+$/g, "");
   if (!w || !LETTER.test(w)) return null;
   // A lone letter ("I", "a", "M." of "M. Dupont") is not counted; a CJK character is a word.
   if ([...w].length === 1 && !CJK.test(w)) return null;
   return w;
-}
-
-/** Languages whose capital letters can mark names. */
-function namesByCase(lang: string): boolean {
-  return (
-    lang !== "de" && lang !== "und" && !["ja", "zh", "ko", "th", "lo", "km", "my"].includes(lang)
-  );
 }
 
 const SENTENCE_END = /[.!?…。！？]/u;
@@ -148,7 +147,11 @@ export function wordsOf(text: string, lang: string): string[] {
 export function countWords(lines: string[], tag?: string | null): WordStats {
   const lang = wordLang(tag, lines);
   const counts = new Map<string, number>();
-  const cased = namesByCase(lang);
+  const rules = langRules(lang);
+  // Capitals mark names unless the language's file says not (German nouns);
+  // a caseless script simply never has a capital.
+  const cased = rules.names;
+  const notNames = rules.data.notNames ?? [];
   const lower = new Set<string>();
   const capMid = new Set<string>();
   let tokens = 0;
@@ -156,17 +159,29 @@ export function countWords(lines: string[], tag?: string | null): WordStats {
     // Each line (paragraph or heading) starts a sentence.
     let start = true;
     const caps: { w: string; cap: boolean; mid: boolean; allCaps: boolean }[] = [];
+    let prev = "";
     for (const s of segmenter(lang).segment(line)) {
       if (!s.isWordLike) {
-        if (SENTENCE_END.test(s.segment)) start = true;
+        if (
+          SENTENCE_END.test(s.segment) &&
+          !(s.segment.startsWith(".") && rules.abbreviations.has(prev))
+        )
+          start = true;
+        if (!/^\s*$/.test(s.segment)) prev = "";
         continue;
       }
+      prev = s.segment.toLowerCase();
       const w = normWord(s.segment, lang);
       if (w) {
         tokens++;
         counts.set(w, (counts.get(w) ?? 0) + 1);
         if (cased) {
-          const raw = s.segment.normalize("NFKC").replace(/^['’]+/, "");
+          // The word's own first letter: "l'Angleterre" is capitalised.
+          let raw = s.segment
+            .normalize("NFKC")
+            .replace(/[’ʼ′]/g, "'")
+            .replace(/^'+/, "");
+          if (rules.elideAnyCase) raw = raw.replace(rules.elideAnyCase, "");
           const first = raw[0] ?? "";
           caps.push({
             w,
@@ -184,7 +199,7 @@ export function countWords(lines: string[], tag?: string | null): WordStats {
     const titleLine = caps.length >= 2 && capShare >= 0.6;
     for (const c of caps) {
       if (!c.cap) lower.add(c.w);
-      else if (c.mid && !c.allCaps && !titleLine && !(lang === "en" && c.w.startsWith("i'")))
+      else if (c.mid && !c.allCaps && !titleLine && !notNames.some((p) => c.w.startsWith(p)))
         capMid.add(c.w);
     }
   }
@@ -206,6 +221,7 @@ export function parseWordStats(raw: unknown): WordStats | null {
   const names = Array.isArray(s.names)
     ? s.names.filter((n): n is string => typeof n === "string" && have.has(n))
     : [];
+  const lex = lemmasFromLex(s.lex) ? s.lex : undefined;
   return {
     v: WORD_STATS_V,
     lang: s.lang,
@@ -213,34 +229,43 @@ export function parseWordStats(raw: unknown): WordStats | null {
     tokens: words.reduce((a, e) => a + e[1], 0),
     distinct: words.length,
     words,
+    ...(lex ? { lex } : {}),
   };
 }
 
-/** The forms to try for a book word, itself first; folds are cheap and per language. */
-export function foldsOf(w: string, lang: string): string[] {
+/** The dictionary entries stored with a book's words, if any. */
+export function statsLemmas(stats: WordStats): Lemmas | null {
+  return stats.lex ? lemmasFromLex(stats.lex) : null;
+}
+
+/** "cœur" → "coeur": the language's ligatures written out, the key both spellings share. */
+export function unligate(w: string, lang: string): string {
+  let out = w;
+  for (const [lig, plain] of langRules(lang).data.ligatures ?? [])
+    if (out.includes(lig)) out = out.split(lig).join(plain);
+  return out;
+}
+
+/**
+ * The forms to try for a book word, itself first: the language's cheap
+ * folds (lib/read/lang: plural and verb endings), and, with its dictionary
+ * (lib/read/lemma.ts), the headwords the word or a fold is a form of
+ * ("regarda" → "regarder", "yeux" → "œil").
+ */
+export function foldsOf(w: string, lang: string, lem?: Lemmas | null): string[] {
   const out = [w];
-  if (CJK.test(w)) return out;
   const add = (s: string) => {
     if (s.length >= 2 && !out.includes(s)) out.push(s);
   };
-  if (lang === "en") {
-    if (w.endsWith("ies")) add(w.slice(0, -3) + "y");
-    if (w.endsWith("es")) add(w.slice(0, -2));
-    if (w.endsWith("s") && !w.endsWith("ss")) add(w.slice(0, -1));
-    if (w.endsWith("ied")) add(w.slice(0, -3) + "y");
-    if (w.endsWith("ed")) {
-      add(w.slice(0, -2));
-      add(w.slice(0, -1));
-    }
-    if (w.endsWith("ing")) {
-      add(w.slice(0, -3));
-      add(w.slice(0, -3) + "e");
-    }
-  } else if (lang === "fr" || lang === "es" || lang === "pt" || lang === "it" || lang === "de") {
-    if (w.endsWith("es")) add(w.slice(0, -2));
-    if (w.endsWith("s") || w.endsWith("x")) add(w.slice(0, -1));
-    if (lang === "fr" && w.endsWith("e")) add(w.slice(0, -1));
-  }
+  add(unligate(w, lang));
+  for (const [end, repl, unless] of langRules(lang).data.folds ?? [])
+    if (w.endsWith(end) && !(unless && w.endsWith(unless))) add(w.slice(0, -end.length) + repl);
+  if (lem)
+    for (const f of out.slice())
+      for (const h of lem.of(f)) {
+        add(h);
+        add(unligate(h, lang));
+      }
   return out;
 }
 
@@ -280,9 +305,11 @@ export function termKeys(term: string, reading: string | null | undefined, lang:
   add(term);
   // "être (verb)", "a / an": the head before a gloss or a slash.
   add(term.split(/\s*[(/;,，、]/)[0]);
-  if (lang === "fr" || lang === "it") add(term.replace(ELIDE, ""));
-  if (lang === "ja" && reading && /^[\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u.test(reading))
-    add(reading);
+  // "s'écrier" answers to "écrier", as a book's "s'écria" is read "écria".
+  for (const k of keys.slice()) add(stripElision(k, lang));
+  for (const k of keys.slice()) add(unligate(k, lang));
+  const readingKeys = langRules(lang).reading;
+  if (readingKeys && reading && readingKeys.test(reading)) add(reading);
   return keys;
 }
 /** The reader's cards as a lookup: key → the best any card gives it. */
@@ -311,9 +338,14 @@ export function cardIndex(rows: CardRow[]): Map<string, CardHit> {
  * A book word's card: its own form or a fold that is a card, combined as
  * cardIndex combines cards — the best score, mastered if any is.
  */
-export function hitOf(w: string, lang: string, idx: Map<string, CardHit>): CardHit | null {
+export function hitOf(
+  w: string,
+  lang: string,
+  idx: Map<string, CardHit>,
+  lem?: Lemmas | null,
+): CardHit | null {
   let best: CardHit | null = null;
-  for (const f of foldsOf(w, lang)) {
+  for (const f of foldsOf(w, lang, lem)) {
     const h = idx.get(f);
     if (!h) continue;
     best = best
@@ -324,8 +356,13 @@ export function hitOf(w: string, lang: string, idx: Map<string, CardHit>): CardH
 }
 
 /** True when the word, or a fold of it, is in `keys` (a word list's terms). */
-export function inKeys(w: string, lang: string, keys: Set<string>): boolean {
-  return foldsOf(w, lang).some((f) => keys.has(f));
+export function inKeys(w: string, lang: string, keys: Set<string>, lem?: Lemmas | null): boolean {
+  return foldsOf(w, lang, lem).some((f) => keys.has(f));
+}
+
+/** True when the word, or a fold of it, is a headword of the language's dictionary. */
+export function inDict(w: string, lang: string, lem: Lemmas | null | undefined): boolean {
+  return !!lem && foldsOf(w, lang, lem).some((f) => lem.has(f));
 }
 
 /**
@@ -352,11 +389,15 @@ export interface BookProgress {
 /** A book passes at this coverage of learned running words. */
 export const BOOK_PASS_COVERAGE = 0.95;
 
-export function bookProgress(stats: WordStats, idx: Map<string, CardHit>): BookProgress {
+export function bookProgress(
+  stats: WordStats,
+  idx: Map<string, CardHit>,
+  lem?: Lemmas | null,
+): BookProgress {
   const p: BookProgress = { nameTokens: 0, seen: 0, mastered: 0, seenTokens: 0, masteredTokens: 0 };
   const names = new Set(stats.names);
   for (const [w, n] of stats.words) {
-    const h = idx.size ? hitOf(w, stats.lang, idx) : null;
+    const h = idx.size ? hitOf(w, stats.lang, idx, lem) : null;
     if (names.has(w) && !h?.mastered) p.nameTokens += n;
     if (!h) continue;
     p.seen++;

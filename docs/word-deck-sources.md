@@ -120,6 +120,16 @@ built from them are therefore CC BY-SA 4.0 (share-alike), as their `license`
 field says. Changes made: Chinese meanings, IPA and example sentences added;
 Excel's TRUE/FALSE restored to true/false; NAWL's nine prefixes dropped.
 
+## Reader dictionaries (lemma files)
+
+`/read` also uses a per-language lemma file, `public/words/lemma/<lang>.txt`
+(French first, 2026-11-03), to match a book's inflected forms to cards and to
+call a word "new" when the dictionary has it. Source: the kaikki.org English
+Wiktionary extract for the language, CC BY-SA 4.0 (and GFDL); headwords and
+forms only, no definitions. Attribution and changes are in
+[public/words/SOURCES.md](../public/words/SOURCES.md), "Lemma files". Build:
+`scripts/words/build-lemmas.ts`; format and interface: `lib/read/lemma.ts`.
+
 ## Not shipped (no cleared source identified)
 
 | Candidate                                    | What exists                                                                                                                                                                                                   | Why not                                                                                                                                                                                                                                            |
