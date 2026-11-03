@@ -279,3 +279,35 @@ This supersedes the chunk design above for the reader:
   no "读完" button is needed for it.
 - Pace toward a target date, if he sets one, is shown as a proportion or as
   time, derived from his own reading speed, never as a fixed amount.
+
+### Incremental reading (owner, 2026-11-03 ~19:00 JST)
+
+"我们采用渐进阅读概念" — SuperMemo-style incremental reading, on the book's
+own paragraphs (no chunks):
+
+- **The book is a topic.** He reads continuously; every paragraph he has read
+  joins review scheduling (FSRS, like page cards). Paragraphs he finds less
+  familiar come back sooner. Coming back means the reader takes him to that
+  paragraph, not a pop-up card.
+- **Each read is a review.** "用户可能同段落会读很多次，每次有新的理解". After a
+  paragraph he may grade his understanding (Again / Hard / Good / Easy, as on
+  cards) — that grade drives the paragraph's FSRS schedule; without a grade,
+  dwell time and look-ups give an inferred one. He can attach a note to each
+  read; the paragraph shows the history of grades and notes (like a word's
+  stamps), so deepening understanding is visible.
+- **Paragraph familiarity** combines the familiarity of its words, phrases
+  and concepts with his own paragraph grades, so a paragraph whose words are
+  all known but which he hasn't understood is not counted as mastered.
+- **Extracts become cards.** What he picks out with combo-click (word,
+  phrase, sentence) becomes its own card; auto-extraction adds unpicked new
+  words to the book's list in the background.
+- **Words seen in context (decided: option A).** A paragraph grade is not
+  copied onto its words. Risks: inflation (guessed words "learned"),
+  false failures (one hard word fails every word), same-day flooding of
+  common words, recognition ≠ recall. FSRS (ts-fsrs 5.x) has no weak/partial
+  rating. So, first, "seen in context" goes into a separate **exposure log**
+  only, used to reorder reviews (recently seen words later), never changing
+  FSRS state. Only explicit actions (looking a word up, selecting it,
+  marking it in a note) count as "not recognised". After collecting data,
+  check whether exposures predict later recall; if so, consider option B
+  (one Good, near-due only, once a day, tagged "from reading").
