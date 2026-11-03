@@ -229,3 +229,35 @@ performance (18:32), and keep visual nesting to one level (design-principles).
 - **Open decisions (owner, Slack 2026-11-03):** A or B; hide the island in
   the reader; does "known" count as mastered toward 95%; auto-jump to the
   newest position across devices; default 3 chunks a day.
+
+### Combo-click expanding selection (owner, 2026-11-03 18:38 JST)
+
+"连点扩选": each extra click in a combo selects the next larger unit — not a
+fixed count, the rule is "one level up per click" — up to the whole book:
+word → phrase (only if the word sits in a known phrase) → sentence →
+paragraph → chapter → book. Where the text is too large to select for real
+(a chapter or the book in a virtualised list), it is a **virtual selection**:
+the range is held as data and shown as a card pointing at the unit, without
+selecting DOM text.
+
+- **Combo timing.** Clicks within the platform double-click interval (≈ 350
+  ms, from `pointerdown` timestamps; one delegated listener on the scroller)
+  extend the level; a pause ends the combo, and a click outside clears it.
+  Native double/triple-click selection is suppressed in the reader so the
+  levels stay ours.
+- **The card.** Every level shows one glass card for the selected unit (one
+  layer, per the no-nesting rule): the unit's kind and text preview (or
+  title and size for chapter/book), its familiarity summary, actions that fit
+  the unit (gloss / add / translate / read from here / copy text), and a
+  🔗 **link button drawn as our own inline SVG** (stroke `currentColor`,
+  colours oklch; never an emoji). Tapping it copies the unit's link.
+- **Addressable units (deep links).** Stable IDs that survive re-imports of
+  the same content (derived from the content-hash book id of the dedupe plan
+  and positions in `lines`):
+  `/read/<book>` · `#ch=<n>` · `#p=<line>` · `#s=<line>.<sentence>` ·
+  `#w=<line>.<token>` · `#ph=<line>.<startToken>-<endToken>`. Opening a link
+  scrolls the virtualised list to the anchor, flashes the unit and shows its
+  card. Links open only for someone who has access to that book (own upload
+  or catalogue); for a private book they are personal bookmarks.
+- **Phrases.** Phrase boundaries come from the extraction step (books-plan
+  phase 1); until then the phrase level is skipped.
