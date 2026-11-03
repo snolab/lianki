@@ -171,6 +171,18 @@ describe("read speaker", () => {
     expect(x.result).toEqual(["end"]);
   });
 
+  it("one sentence lasting past the 30 s cap keeps the mic held, and lets go when it ends", () => {
+    const x = setup({ voices: [FR] });
+    x.sp.speak("Une très longue phrase.", "fr", x.cb);
+    x.spoken[0].onstart?.();
+    x.advance(65_000);
+    expect(x.page.always()).toBe(true);
+    x.spoken[0].onend?.();
+    expect(x.result).toEqual(["end"]);
+    x.advance(60_000);
+    expect(x.page.playing()).toBe(false);
+  });
+
   it("a long paragraph keeps the mic held past the 30 s cap, sentence by sentence", () => {
     const x = setup({ voices: [FR] });
     x.sp.speak("Une phrase. Une autre phrase. Et la dernière.", "fr", x.cb);
@@ -181,7 +193,7 @@ describe("read speaker", () => {
       x.spoken[i].onend?.();
     }
     expect(x.result).toEqual(["end"]);
-    expect(x.page.said(0, 100_000).map((r) => r.text)).toEqual([
+    expect([...new Set(x.page.said(0, 100_000).map((r) => r.text))]).toEqual([
       "Une phrase.",
       "Une autre phrase.",
       "Et la dernière.",

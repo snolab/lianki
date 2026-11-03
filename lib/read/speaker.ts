@@ -25,6 +25,8 @@ import { speechChunks } from "./player";
 export const CLOUD_LANGS: ReadonlySet<string> = new Set(["en", "es", "fr", "zh", "ja", "ko"]);
 /** A browser utterance that has not started after this has failed. */
 export const WATCHDOG_MS = 2500;
+/** The mic hold of a sentence still playing is taken again this often (page-audio caps one at 30 s). */
+export const HOLD_RENEW_MS = 20_000;
 
 export type VoiceLike = { lang: string; name?: string; voiceURI?: string; default?: boolean };
 export type UtterLike = {
@@ -131,14 +133,18 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
       const me = ++turn;
       const live = () => me === turn;
       const chunks = speechChunks(text);
-      // The mic hold is renewed per sentence (each well under the registry's
-      // 30 s cap), the next taken before the last is let go, so a long
-      // paragraph never reopens the mic mid-line; the echo guard gets each.
+      // The mic hold is taken per sentence, the next before the last is let
+      // go, and renewed every HOLD_RENEW_MS while one sentence lasts (a slow
+      // fetch, a long CJK sentence), so the registry's 30 s cap never reopens
+      // the mic mid-line. The echo guard gets each sentence.
       let release: (() => void) | null = null;
+      let renew: unknown = null;
       const hold = (part?: string) => {
         const next = part ? d.pageAudio().start({ text: part, always: true }) : null;
         release?.();
         release = next;
+        if (renew !== null) d.clearTimer(renew);
+        renew = part ? d.setTimer(() => live() && hold(part), HOLD_RENEW_MS) : null;
       };
       /** Bumped when one engine gives up: its late callbacks are ignored. */
       let attempt = 0;
