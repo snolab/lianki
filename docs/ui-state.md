@@ -86,6 +86,8 @@ target that is not built yet.
 | /words keyboard help strip (`?`)    | session `lk:ui:words`                    | done                                                                           |
 | swipe tuner panel open              | session `lk:ui:swipe-tuner`              | done                                                                           |
 | /read reading position (line)       | local `lk:read-pos:<id>`                 | done (this device; → the server with the book-as-goal plan)                    |
+| /read v2 position (anchor)      | server `/api/read/[id]/progress`; local `lk:read-anchor:<id>` as cache | done: line, piece, offset, never pixels; newest wins (lib/read/reader-pos.ts) |
+| /read v2 word marks level       | local `lk:pref:read-marks`            | done: off / unknown / all (default all); `html[data-read-marks]`, CSS only |
 | /read auto-advance (read on)        | local `lk:pref:read-auto`                | done: per device, off by default (owner, 2026-11-03); lib/read/player.ts       |
 | slip action sheet open              | memory (it is modal, closed on refresh)  | intentional; back closes it (below)                                            |
 | sidebar collapsed                   | local `lk:sidebar`                       | → `lk:pref:sidebar`                                                            |

@@ -3,6 +3,7 @@ import {
   type PaletteItem,
   asUrl,
   badge,
+  chatFootprint,
   dockAbove,
   dueTotal,
   edgeSwipe,
@@ -11,6 +12,7 @@ import {
   keyboardUp,
   nextCompact,
   rank,
+  redocks,
   score,
   seenTotal,
   showFirstTip,
@@ -104,6 +106,41 @@ describe("the island's behaviour", () => {
     // Dragged to the top, or already above: nothing to do.
     expect(dockAbove(island, { left: 200, right: 380, top: 100, bottom: 140 }, 844)).toBe(0);
     expect(dockAbove(island, { left: 340, right: 380, top: 790, bottom: 830 }, 844)).toBe(0);
+  });
+
+  it("docks the same whether the chat is expanded or minimized", () => {
+    const island = { left: 66, right: 346, top: 849, bottom: 905 };
+    // The chat box: 320px wide at the right, its bar dragged down over the island.
+    const section = { left: 84, right: 404, top: 600, bottom: 905 };
+    const open = { left: 84, right: 404, top: 865, bottom: 905 };
+    // Minimized, the bar is narrow at the box's right edge, clear of the island.
+    const min = { left: 350, right: 404, top: 867, bottom: 905 };
+    expect(dockAbove(island, min, 915)).toBe(0); // the old rule flipped here
+    const a = dockAbove(island, chatFootprint(open, section), 915);
+    expect(a).toBe(58);
+    expect(dockAbove(island, chatFootprint(min, section), 915)).toBeGreaterThan(0);
+    // The keyboard lift is taken off: the resting place counts.
+    expect(chatFootprint({ ...open, top: 565, bottom: 605 }, section, 300)).toEqual(open);
+  });
+
+  it("only the bar appearing, a drag ending or a rotation may move the island", () => {
+    expect(redocks("appear")).toBe(true);
+    expect(redocks("drag")).toBe(true);
+    expect(redocks("rotate")).toBe(true);
+    for (const c of ["toggle", "resize", "keyboard", "typing"] as const)
+      expect(redocks(c)).toBe(false);
+  });
+
+  it("does not oscillate: docking from the rest place is idempotent", () => {
+    const rest = { left: 66, right: 346, top: 849, bottom: 905 };
+    const bar = { left: 84, right: 404, top: 865, bottom: 905 };
+    const d = dockAbove(rest, bar, 915);
+    // Measured again while docked, with the dock taken off: the same answer.
+    const docked = { ...rest, top: rest.top - d, bottom: rest.bottom - d };
+    const back = { ...docked, top: docked.top + d, bottom: docked.bottom + d };
+    expect(dockAbove(back, bar, 915)).toBe(d);
+    // Docked, the island itself no longer overlaps the bar.
+    expect(docked.bottom).toBeLessThanOrEqual(bar.top);
   });
 
   it("counts due reviews over lists, not groups; badges cap at 99+", () => {

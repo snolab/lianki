@@ -142,6 +142,32 @@ export function dockAbove(island: Box, bar: Box | null, vh: number, gap = 8): nu
   return Math.max(0, Math.round(vh - bar.top + gap));
 }
 
+/**
+ * The chat bar's footprint for docking, the same expanded or minimized: the
+ * chat box's own width (fixed, whatever the bar shows) and the bar's height,
+ * at rest (the keyboard lift `lift` taken off: it is transient).
+ */
+export function chatFootprint(row: Box, section: Box, lift = 0): Box {
+  return {
+    left: section.left,
+    right: section.right,
+    top: row.top + lift,
+    bottom: row.bottom + lift,
+  };
+}
+
+/**
+ * What may move the island (docs/bottom-nav.md): the bar appearing, a drag of
+ * the bar ending, or a rotation. Never the chat minimizing or expanding, a
+ * draft growing, the keyboard or the bar's own resize: the island stays put.
+ */
+export type DockCause = "appear" | "drag" | "rotate" | "toggle" | "resize" | "keyboard" | "typing";
+export const redocks = (cause: DockCause): boolean =>
+  cause === "appear" || cause === "drag" || cause === "rotate";
+
+/** The event the chat bar sends on `window` when a drag of it ends. */
+export const CHAT_MOVED_EVENT = "lk:chat-moved";
+
 /** The due reviews over the cached word lists, groups left out (their lists count). */
 export function dueTotal(
   lists: readonly { due?: number; source?: string | null }[] | undefined,

@@ -3,6 +3,7 @@ import {
   AEC_CONSTRAINTS,
   CLOUD_LANGS,
   LEGACY_CONSTRAINTS,
+  CTX_RESUME_MS,
   RESUME_REWIND_S,
   TTS_MAX_TEXT,
   VOICE_AEC_KEY,
@@ -401,5 +402,105 @@ describe("voice-out: createCloudOut", () => {
     refused.out.unlock();
     await tick();
     expect(refused.el.plays).toBe(0);
+  });
+});
+
+describe("voice-out: a context the browser will not run (no tap since the page loaded)", () => {
+  /** A context stuck suspended: resume() stays pending (Chrome without a tap) or runs it. */
+  function stuck(o: { runs?: boolean } = {}) {
+    const timers: { f: () => void; ms: number }[] = [];
+    const el = new El();
+    const ctx = {
+      currentTime: 0,
+      destination: {},
+      state: "suspended",
+      resume: () => {
+        if (o.runs) ctx.state = "running";
+        return o.runs ? Promise.resolve() : new Promise<void>(() => {});
+      },
+      createGain: () => ({
+        gain: {
+          value: 1,
+          cancelScheduledValues: () => {},
+          setValueAtTime: () => {},
+          linearRampToValueAtTime: () => {},
+        },
+        connect: (n: unknown) => n,
+      }),
+      createMediaElementSource: () => ({ connect: (n: unknown) => n }),
+    };
+    const out = createCloudOut({
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        blob: async () => new Blob(["x"]),
+      }),
+      element: () => el,
+      ctx: () => ctx,
+      toUrl: () => "blob:1",
+      setTimer: (f, ms) => void timers.push({ f, ms }),
+    });
+    const events: string[] = [];
+    const ev = {
+      onend: () => void events.push("end"),
+      onerror: () => void events.push("error"),
+      onfail: (r: string) => void events.push(`fail:${r}`),
+    };
+    return { out, el, ev, events, timers, ctxState: (s: string) => void (ctx.state = s) };
+  }
+
+  it("resume() never settles: after CTX_RESUME_MS the clip fails as refused, nothing plays into silence", async () => {
+    const r = stuck();
+    r.out.play({ text: "你好。", lang: "zh", at: 0, volume: 1 }, r.ev);
+    await tick();
+    expect(r.events).toEqual([]);
+    expect(r.timers.map((t) => t.ms)).toEqual([CTX_RESUME_MS]);
+    r.timers[0].f();
+    await tick();
+    expect(r.events).toEqual(["fail:play NotAllowedError (audio context suspended)"]);
+    expect(r.el.src).toBe("");
+  });
+
+  it("a closed context fails the clip outright (not a tap's matter)", async () => {
+    const r = stuck();
+    r.out.play({ text: "你好。", lang: "zh", at: 0, volume: 1 }, r.ev);
+    await tick();
+    r.ctxState("closed");
+    r.timers[0].f();
+    await tick();
+    expect(r.events).toEqual(["fail:audio context closed"]);
+  });
+
+  it("an unlock that settles late does not pause the reply that started meanwhile", async () => {
+    const r = stuck({ runs: true });
+    let settle = () => {};
+    const play = r.el.play.bind(r.el);
+    r.el.play = () => {
+      if (r.el.src.startsWith("data:")) {
+        r.el.paused = false;
+        return new Promise<void>((done) => (settle = done));
+      }
+      return play();
+    };
+    r.out.unlock();
+    r.out.play({ text: "你好。", lang: "zh", at: 0, volume: 1 }, r.ev);
+    await tick();
+    r.el.onloadedmetadata?.();
+    await tick();
+    expect(r.el.plays).toBe(1);
+    settle();
+    await tick();
+    expect(r.el.paused).toBe(false);
+  });
+
+  it("a context that resumes plays as usual", async () => {
+    const r = stuck({ runs: true });
+    r.out.play({ text: "你好。", lang: "zh", at: 0, volume: 1 }, r.ev);
+    await tick();
+    r.el.onloadedmetadata?.();
+    await tick();
+    expect(r.el.plays).toBe(1);
+    expect(r.events).toEqual([]);
   });
 });

@@ -47,6 +47,7 @@ import {
   type Fam,
   type WordRow,
   ParaCache,
+  marksByLine,
   cutPara,
   blockLine,
   blockOfAnchor,
@@ -55,7 +56,13 @@ import {
   famMap,
   roughWords,
 } from "@/lib/read/reader-model";
-import { localReaderData, type GradeReceipt, type ReaderBook } from "@/lib/read/reader-adapter";
+import {
+  localReaderData,
+  type GradeReceipt,
+  type Loaded,
+  type ReaderBook,
+} from "@/lib/read/reader-adapter";
+import { GRADE_HOLD_MS, serverReaderData } from "@/lib/read/reader-server";
 import { anchorAt, type Anchor } from "@/lib/read/reader-pos";
 import { CHROME_FULL, SCROLL_KEYS, chromeStep, type ChromeState } from "@/lib/read/reader-chrome";
 import { setReading, readingUi } from "@/lib/nav/reading";
@@ -139,7 +146,7 @@ const ANCHOR_QUIET_MS = 1500;
 type Material = ReadMaterial & {
   book?: BookMeta;
   words?: WordsSummary;
-  /** Reader v2's server side is on for him (D1): grades, exposures. */
+  /** Reader v2's server side is on for him (GET /api/read/[id], lib/read/reader-api.ts). */
   readerV2?: boolean;
   /** The content hash: deep links name the book by it (lib/read/book-link.ts). */
   bookHash?: string;
@@ -219,7 +226,18 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   // ── The book's model ──
   const lang = useMemo(() => readLang(book?.lang, lines.slice(0, 20).join(" ")), [book, lines]);
   const normLang = material.words?.lang ?? wordLang(book?.lang, lines);
-  const data = useMemo(() => localReaderData(), []);
+  // The server's items, grades and position when its reader v2 is on for him
+  // (D1); otherwise (a guest, MongoDB) the device derives them.
+  // If the server cannot give its items, the whole visit goes local (its
+  // item ids have no server sentences to grade).
+  const [serverDown, setServerDown] = useState(false);
+  const data = useMemo(
+    () =>
+      signedIn && material.readerV2 && material.bookHash && !serverDown
+        ? serverReaderData(id, material.bookHash)
+        : localReaderData(),
+    [signedIn, material.readerV2, material.bookHash, id, serverDown],
+  );
   const rbook: ReaderBook = useMemo(
     () => ({
       id,
@@ -230,8 +248,54 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     }),
     [id, lines, book, lang],
   );
-  const blocks = useMemo(() => data.blocks(rbook), [data, rbook]);
-  const paras = useMemo(() => new ParaCache(lines, lang, normLang), [lines, lang, normLang]);
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [grades, setGrades] = useState<Record<string, SwipeRating>>({});
+  useEffect(() => {
+    let live = true;
+    data
+      .load(rbook)
+      .then((l) => {
+        if (!live) return;
+        setLoaded(l);
+        if (l.grades) setGrades(l.grades);
+      })
+      .catch((err) => {
+        // The server could not give its items: read on with the device's.
+        console.error("read: items failed, cutting on the device", err);
+        if (live) setServerDown(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [data, rbook]);
+  const blocks = useMemo(() => loaded?.blocks ?? [], [loaded]);
+  useEffect(() => () => data.flush(), [data]);
+  // The EPUB's own markup, when the book was imported with it (BookMeta
+  // marks / breaks / continues, feat/reader-data): emphasis and joins.
+  const markup = book as
+    | (BookMeta & {
+        marks?: [number, number, number, string][];
+        breaks?: number[];
+        continues?: number[];
+      })
+    | undefined;
+  const inline = useMemo(() => marksByLine(markup?.marks), [markup]);
+  const joins = useMemo(() => {
+    const m = new Map<number, "br" | "sp">();
+    for (const l of markup?.breaks ?? []) m.set(l, "br");
+    for (const l of markup?.continues ?? []) m.set(l, "sp");
+    return m;
+  }, [markup]);
+  const joinOf = useCallback((line: number) => joins.get(line), [joins]);
+  const isHeading = useCallback((line: number) => rbook.headings.has(line), [rbook]);
+  const paras = useMemo(
+    () =>
+      new ParaCache(lines, lang, normLang, 400, {
+        marks: (l) => inline.get(l) ?? null,
+        cuts: (l) => loaded?.cuts?.get(l) ?? null,
+      }),
+    [lines, lang, normLang, inline, loaded],
+  );
   const para = useCallback((line: number) => paras.get(line), [paras]);
   const lineText = useCallback((line: number) => lines[line] ?? "", [lines]);
   const chapters = useMemo(() => book?.chapters ?? [], [book]);
@@ -400,6 +464,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const [chrome, setChrome] = useState<ChromeState>(CHROME_FULL);
   const [eyeIndex, setEyeIndex] = useState(0);
   const eyeIndexRef = useRef(0);
+  /** When each item first reached the eye line (the grade's reading time). */
+  const shownAt = useRef(new Map<number, number>());
 
   // ── Position ──
   const takeAnchor = useCallback((): Anchor | null => {
@@ -420,10 +486,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     rects.sort((x, y) => x.top - y.top);
     return anchorAt(rects, eye());
   }, [blocks]);
-  const saveNow = useCallback(() => {
-    const a = takeAnchor();
-    if (a) data.saveAnchor(id, a);
-  }, [takeAnchor, data, id]);
+  const saveNow = useCallback(
+    (leaving = false) => {
+      const a = takeAnchor();
+      if (a) data.saveAnchor(id, a, { leaving });
+    },
+    [takeAnchor, data, id],
+  );
 
   // ── Combo-click selection (lib/read/reader-select.ts, use-reader-select.ts) ──
   const comboCtx = useMemo<ComboCtx>(
@@ -588,6 +657,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             break;
           }
         if (idx !== eyeIndexRef.current) {
+          if (!shownAt.current.has(idx)) shownAt.current.set(idx, Date.now());
           eyeIndexRef.current = idx;
           setEyeIndex(idx);
         }
@@ -613,7 +683,10 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       touching = false;
     };
     const key = (e: KeyboardEvent) => SCROLL_KEYS.has(e.key) && begin();
-    const pagehide = () => saveNow();
+    const pagehide = () => {
+      saveNow(true);
+      data.flush();
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("scrollend", settle);
     window.addEventListener("touchstart", touchstart, { passive: true });
@@ -636,10 +709,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       window.removeEventListener("pagehide", pagehide);
       saveNow();
     };
-  }, [saveNow]);
+  }, [saveNow, data]);
 
   // ── Grading ──
-  const [grades, setGrades] = useState<Record<string, SwipeRating>>({});
   const undoStack = useRef<{ receipt: GradeReceipt; index: number; top: number }[]>([]);
   const [canUndo, setCanUndo] = useState(false);
   const [announce, setAnnounce] = useState("");
@@ -659,9 +731,14 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       const top = (el ?? rowEl(index))?.getBoundingClientRect().top ?? eye();
       setGrades((g) => ({ ...g, [b.id]: r }));
       setAnnounce(fill(t.graded.value, { grade: gradeName(r) }));
-      void data.grade(rbook, b, r).then((receipt) => {
+      void data.grade(rbook, b, r, { shownAt: shownAt.current.get(index) }).then((receipt) => {
         undoStack.current.push({ receipt, index, top });
         setCanUndo(true);
+        // A grade sent to the server can no longer be taken back.
+        setTimeout(
+          () => setCanUndo(undoStack.current.some((e) => data.canUndo(e.receipt))),
+          GRADE_HOLD_MS + 50,
+        );
       });
       const next = nextItem(index);
       if (next < 0) return;
@@ -674,6 +751,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     [blocks, data, rbook, dispatch, placeBlock],
   );
   const undo = useCallback(() => {
+    undoStack.current = undoStack.current.filter((e) => data.canUndo(e.receipt));
     const last = undoStack.current.pop();
     setCanUndo(undoStack.current.length > 0);
     if (!last) return;
@@ -955,6 +1033,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     () => ({
       para,
       lineText,
+      joinOf,
+      isHeading,
       fam: fam?.map ?? null,
       famV: fam?.v ?? 0,
       lang,
@@ -966,7 +1046,20 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       underlay,
       scrolling,
     }),
-    [para, lineText, fam, lang, touch, variant, mirror, onSwipe, onTap, scrolling],
+    [
+      para,
+      lineText,
+      joinOf,
+      isHeading,
+      fam,
+      lang,
+      touch,
+      variant,
+      mirror,
+      onSwipe,
+      onTap,
+      scrolling,
+    ],
   );
 
   // Rows remounted by the virtualiser get the reading highlight back.
@@ -985,6 +1078,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             className={`lk-glass lk-glass-bleed-top absolute inset-x-0 top-0 overflow-hidden border-b border-[var(--glass-line)] transition-[height] duration-200 ease-out motion-reduce:transition-none ${
               chrome.reduced ? "h-7 cursor-pointer" : "h-11"
             }`}
+            // Text runs right under it: the near-opaque glass keeps it legible
+            // (design-principles: 4.5:1 over the worst content behind).
+            style={{ background: "var(--glass-bg-solid)" }}
             data-reduced={chrome.reduced ? "" : undefined}
             onClick={() => chrome.reduced && setChrome((c) => chromeStep(c, { type: "tap" }))}
           >
@@ -1036,6 +1132,11 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         <div aria-hidden className="h-[3.25rem]" />
 
         {/* The book */}
+        {!loaded && (
+          <p className="py-16 text-center opacity-60" data-testid="reader-loading">
+            {t.loading}
+          </p>
+        )}
         <BookList
           blocks={blocks}
           lines={lines}

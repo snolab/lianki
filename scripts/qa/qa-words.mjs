@@ -301,6 +301,88 @@ try {
       `a folded language shows only its row: ${await branch().count()}`,
     );
   }
+  // Preview before adding (owner, 2026-11-03 20:14 JST; app/(app)/words/ListPreview.tsx):
+  // the eye on a list's row opens a modal sheet with every entry in the list's
+  // order, rendered only near the view; Esc and back close it, focus returns.
+  {
+    const lang = page.locator(`[data-add-node="lang:${first.lang}"]`);
+    if ((await lang.locator("xpath=..").getAttribute("aria-expanded")) !== "true")
+      await lang.locator("button").first().click();
+    const node = page.locator(`[data-add-node="${first.id}"]`);
+    const eye = node.locator("[data-list-preview-open]");
+    const box = await eye.boundingBox();
+    check(
+      box && box.width >= 40 && box.height >= 40,
+      `the preview eye is a 40px target: ${JSON.stringify(box)}`,
+    );
+    const entries = await page.evaluate(
+      async (file) => (await (await fetch(`/words/${file}`)).json()).entries,
+      first.file,
+    );
+    await eye.click();
+    const dlg = page.locator('[role="dialog"]:has([data-list-preview])');
+    await dlg.locator("[data-preview-row]").first().waitFor({ timeout: 15000 });
+    check(!(await node.locator("input").isChecked()), "the eye previews without ticking the row");
+    check(
+      (await dlg.locator("[data-preview-row]").first().locator("p").first().innerText()).startsWith(
+        entries[0].term,
+      ),
+      "the preview starts with the list's first entry",
+    );
+    check(
+      (await dlg.locator("[data-list-preview-size]").innerText()).replace(/\D/g, "") ===
+        String(entries.length),
+      `the preview gives the list's size (${entries.length})`,
+    );
+    const rendered = await dlg.locator("[data-preview-row]").count();
+    check(
+      entries.length < 200 || rendered < entries.length,
+      `the preview renders only rows near the view: ${rendered} of ${entries.length}`,
+    );
+    // Scrolled to the end, the last entry shows: no "first N".
+    for (let i = 0; i < 40; i++) {
+      const at = await dlg.evaluate((d) => {
+        const b = d.querySelector("[data-words-settings-body]");
+        b.scrollTop = b.scrollHeight;
+        return Math.abs(b.scrollHeight - b.clientHeight - b.scrollTop) < 2;
+      });
+      await page.waitForTimeout(50);
+      if (at && (await dlg.locator(`[data-preview-row="${entries.length - 1}"]`).count())) break;
+    }
+    check(
+      (await dlg.locator(`[data-preview-row="${entries.length - 1}"]`).count()) === 1,
+      "scrolled to the end, the preview shows the last entry",
+    );
+    check(
+      await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]')),
+      "focus is inside the preview",
+    );
+    await page.keyboard.press("Escape");
+    await dlg.waitFor({ state: "detached", timeout: 5000 });
+    check(
+      await page.evaluate(() => document.activeElement?.hasAttribute("data-list-preview-open")),
+      "closing the preview returns focus to its eye",
+    );
+    await eye.click();
+    await dlg.waitFor({ timeout: 5000 });
+    await page.goBack();
+    await dlg.waitFor({ state: "detached", timeout: 5000 });
+    check(new URL(page.url()).pathname.endsWith("/words"), "back closes the preview, not the page");
+    // A coverage band previews the union of its lists.
+    const bandEye = page.locator("[data-coverage-bands] [data-list-preview-open]").first();
+    if (await bandEye.count()) {
+      await bandEye.click();
+      await dlg.locator("[data-preview-row]").first().waitFor({ timeout: 15000 });
+      check(
+        Number((await dlg.locator("[data-list-preview-size]").innerText()).replace(/\D/g, "")) >=
+          entries.length,
+        "a band's preview holds its lists together",
+      );
+      await shot(page, "list-preview-band");
+      await dlg.locator("[data-words-settings-close]").click();
+      await dlg.waitFor({ state: "detached", timeout: 5000 });
+    }
+  }
   await addFromTree(first, { checks: true });
 
   const rows = page.locator('[role="listitem"]');

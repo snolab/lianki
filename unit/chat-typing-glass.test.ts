@@ -7,6 +7,8 @@ import {
   TYPING_SCRIM,
   TYPING_SOLID_ALPHA,
   barInGlass,
+  GLASS_EDGE_PX,
+  glassAroundLog,
   showTypingGlass,
   typingGlassLook,
   typingGlassMotion,
@@ -25,8 +27,21 @@ describe("the typing glass: when it is up", () => {
   it("is down minimized", () => {
     expect(showTypingGlass({ ...base, open: false })).toBe(false);
   });
-  it("gives way to the full-screen log's own sheet", () => {
-    expect(showTypingGlass({ ...base, fullLog: true })).toBe(false);
+  it("stays up, and grows with it, for the full-screen log (no sheet over the page)", () => {
+    expect(showTypingGlass({ ...base, fullLog: true })).toBe(true);
+    expect(showTypingGlass({ ...base, typing: false, fullLog: true })).toBe(true);
+    expect(showTypingGlass({ ...base, open: false, fullLog: true })).toBe(false);
+  });
+  it("around the log's own box: its box and the edge, nothing more", () => {
+    const box = { left: 4, width: 300, bottom: 52, height: 700 };
+    expect(glassAroundLog(box)).toEqual({
+      top: "auto",
+      right: "auto",
+      left: 4 - GLASS_EDGE_PX,
+      width: 300 + 2 * GLASS_EDGE_PX,
+      bottom: 52 - GLASS_EDGE_PX,
+      height: 700 + 2 * GLASS_EDGE_PX,
+    });
   });
   it("depends on nothing about the page around the box", () => {
     // Box-local (owner, 2026-11-03): no embedded / page switch any more.

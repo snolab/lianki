@@ -458,3 +458,25 @@ items) and `lib/read/familiarity.ts` (aggregation); store
 - **Scope.** Every route checks the session, the flag (or owner), and that
   the material is the user's own; every query is keyed by `user_id`.
   Deleting a book deletes its reader rows.
+
+### Built: the reader v2 UI (2026-11-03, behind `read.reader-v2`)
+
+`app/(app)/read/[id]/ReaderV2.tsx` (rows: `reader-blocks.tsx`). The old reader
+stays while the flag is off; the owner sees v2 on the whole-page dev server.
+
+- The whole book on the window's scroll, virtualised (`@tanstack/react-virtual`,
+  measured heights); the EPUB's paragraphs, headings, emphasis and joins as
+  they are; `data-line` / `data-s` / `data-t` on paragraphs, sentences and
+  words for the combo-click layer.
+- Items, sentence cuts, grades and the position from the backend (#480,
+  `lib/read/reader-server.ts`); guests and MongoDB derive them on the device
+  (`lib/read/reader-adapter.ts`). A grade waits 8 s before it is sent, so
+  Undo can drop it: the grade API has no take-back. Only graded items move
+  the high-water mark.
+- Word marks by line style (solid learning, dotted new, dashed unrecognised),
+  item familiarity as a left rail; swipe to grade with the /words core (both
+  variants, mirror); read-aloud per item, then it waits for the swipe; chrome
+  steps back only on his own scroll (`lib/read/reader-chrome.ts`,
+  `lib/nav/reading.ts`).
+- QA: `scripts/qa/qa-read-reader.mjs` (iPhone and Android, light and dark,
+  both swipes, a long book under 4× CPU throttling).

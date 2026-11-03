@@ -608,6 +608,21 @@ Echo rate per mode = `voice-utt` with `during && drop` ÷ `voice-utt` with
 `during`, read over a few replies talked over and a few left alone; a
 `voice-barge-in` followed by a dropped transcript is echo pausing the reading.
 
+**Never silent without saying so** (2026-11-03: his Android PWA read nothing
+for ~3 minutes). After a reload the page has had no tap, so Chrome refuses
+the cloud clip (`play()` NotAllowedError, or an AudioContext whose
+`resume()` stays pending; voice-out.ts waits `CTX_RESUME_MS` for it). The
+old fallback handed that sentence to speechSynthesis, which on a phone with
+no voices never fires start, end or error, so the whole queue waited behind
+it in silence. Now: a refused play with no voice to fall back on keeps the
+sentence and pauses the reading (`voice-blocked`, state `blocked`); the bar
+shows "🔊 点一下恢复朗读" and the next tap anywhere reads on
+(`voice-unblocked`); lines arriving meanwhile queue behind it. A cloud
+failure with no voice skips that sentence (`voice-out` route `none`), and a
+voiceless speechSynthesis utterance that has not started after
+`SPEECH_START_MS` is given up on (`voice-stuck`). Each reports a `media`
+page-error (`voice-out: …`), so `eval.ts errors` sees it.
+
 **One voice per device.** Every tab of a thread shows every message, but
 only one reads a reply aloud: a tab with the mic on (the latest to turn it
 on), else the focused tab, or else the one focused most recently. Tabs agree over `BroadcastChannel("lk-debug-chat")`

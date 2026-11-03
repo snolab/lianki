@@ -261,6 +261,21 @@ async function run(deviceName, scheme, swipe = "js") {
   await page.getByTestId("read-play").click();
   void yBefore;
 
+  // On D1 with reader v2's server side on: the swipe's grade reaches the
+  // server once its Undo window has passed (lib/read/reader-server.ts).
+  const meta = await (await ctx.request.get(`/api/read/${id}`)).json();
+  if (meta.readerV2) {
+    const sent = await until(
+      page,
+      async () => {
+        const h = await (await ctx.request.get(`/api/read/${id}/history?from=0&to=100000`)).json();
+        return (h.reviews ?? []).length > 0;
+      },
+      15000,
+    );
+    check(sent, "the grade reached the server after the Undo window");
+  }
+
   // 5. Marks switched in the Aa sheet: attribute only.
   await page.getByRole("button", { name: /Text and word marks/ }).click();
   await page.locator('[data-marks-option="off"]').click();
