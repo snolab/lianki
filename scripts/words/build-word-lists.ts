@@ -7,25 +7,29 @@
  * Reproduce (RAW = any scratch dir OUTSIDE the repo; downloads are untrusted
  * data and are only parsed, never executed):
  *
- *   RAW=/tmp/words-raw; mkdir -p $RAW/{freq,kaikki,jlpt,hsk,tatoeba}
- *   # 1. Frequency ranks — hermitdave/FrequencyWords (OpenSubtitles 2018, CC BY-SA 4.0)
- *   for l in fr es de en ko it pt ru; do
- *     curl -sfL -o $RAW/freq/${l}_50k.txt \
- *       https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/$l/${l}_50k.txt
+ *   RAW=/tmp/words-raw; mkdir -p $RAW/{freq,kaikki,jlpt,hsk,tatoeba,cedict}
+ *   # 1. Frequency ranks — hermitdave/FrequencyWords (OpenSubtitles 2018, CC BY-SA 4.0).
+ *   #    The _full lists: the lists take words from their top 50,000; the top
+ *   #    200,000 (WORDS_SCAN) and the whole corpus count toward text coverage.
+ *   for l in fr es de en ko it pt ru he zh_cn; do
+ *     curl -sfL -o $RAW/freq/${l}_full.txt \
+ *       https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/$l/${l}_full.txt
  *   done
  *   curl -sfL -o $RAW/freq/ja_full.txt \
  *     https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ja/ja_full.txt
  *   # 2. Glosses — kaikki.org English-Wiktionary extracts (CC BY-SA 4.0 / GFDL),
  *   #    streamed through a filter so the multi-GB files never touch disk
- *   for p in fr:French es:Spanish de:German en:English it:Italian pt:Portuguese ru:Russian; do
+ *   for p in fr:French es:Spanish de:German en:English it:Italian pt:Portuguese ru:Russian he:Hebrew; do
  *     l=${p%%:*}; L=${p#*:}
  *     curl -sL https://kaikki.org/dictionary/$L/kaikki.org-dictionary-$L.jsonl \
- *       | bun scripts/words/filter-kaikki.ts $RAW/freq/${l}_50k.txt > $RAW/kaikki/$l.jsonl
+ *       | FREQ_TOP=200000 bun scripts/words/filter-kaikki.ts $RAW/freq/${l}_full.txt > $RAW/kaikki/$l.jsonl
  *   done
  *   # (the same files exist as .jsonl.gz, 6× smaller: curl -sL ….jsonl.gz | gunzip | bun …)
  *   # Korean also keeps every verb/adjective with its conjugation table (팔고 → 팔다)
  *   curl -sL https://kaikki.org/dictionary/Korean/kaikki.org-dictionary-Korean.jsonl \
- *     | KAIKKI_FORMS=1 bun scripts/words/filter-kaikki.ts $RAW/freq/ko_50k.txt > $RAW/kaikki/ko.jsonl
+ *     | KAIKKI_FORMS=1 FREQ_TOP=200000 bun scripts/words/filter-kaikki.ts $RAW/freq/ko_full.txt > $RAW/kaikki/ko.jsonl
+ *   # Chinese frequency lists: readings and meanings from CC-CEDICT (CC BY-SA 4.0)
+ *   curl -sfL https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz | gunzip > $RAW/cedict/cedict.txt
  *   # 3. JLPT — jamsinclair/open-anki-jlpt-decks (MIT; data from tanos.co.uk, CC BY)
  *   for n in 1 2 3 4 5; do
  *     curl -sfL -o $RAW/jlpt/n$n.csv \
@@ -38,15 +42,25 @@
  *   done
  *   # 5. Example sentences — Tatoeba per-language exports (CC BY 2.0 FR), plus
  *   #    the English sentences their translations point to
- *   for t in fra spa deu kor ita por rus jpn cmn; do
+ *   for t in fra spa deu kor ita por rus heb jpn cmn; do
  *     curl -sfL https://downloads.tatoeba.org/exports/per_language/$t/${t}_sentences.tsv.bz2 | bunzip2 > $RAW/tatoeba/${t}_sentences.tsv
  *     curl -sfL https://downloads.tatoeba.org/exports/per_language/$t/$t-eng_links.tsv.bz2 | bunzip2 > $RAW/tatoeba/$t-eng_links.tsv
  *   done
  *   curl -sfL https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2 | bunzip2 > $RAW/tatoeba/eng_sentences.tsv
- *   # 6. Build
+ *   # 6. Build (WORDS_ONLY=fr,he… for some languages; JLPT/HSK are skipped,
+ *   #    and kept, when jlpt/ or hsk/ is missing)
  *   bun scripts/words/build-word-lists.ts $RAW public/words
- *   # 7. Text coverage of the frequency lists (the add tree's one-tap bands)
- *   RAW=$RAW bun scripts/words/freq-coverage.ts
+ *
+ * Frequency lists already in <out> are kept as they are — a card belongs to
+ * its list — and new lists are appended after them: as many as the highest
+ * coverage line (lib/words/add-tree.ts COVERAGE_TARGETS) the data reaches
+ * needs. Each list's `coverage` in index.json is the share of the corpus's
+ * running words its top `level` words cover: a form counts for its lemma
+ * (sont → être, Kinder → Kind, Hebrew הבית → בית), a piece of a split word
+ * (c' + est, don + 't) for the common word it belongs to, a hyphenated token
+ * (est-ce) when all its words are covered; proper names are left out of the
+ * count, as coverage research does. WORDS_COVDEBUG=1 prints the most frequent
+ * tokens nothing covers.
  *
  * See public/words/SOURCES.md for licenses and attribution.
  */
@@ -54,6 +68,8 @@ import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ExamplePicker, loadTatoeba, wiktionaryExample, type Example } from "./examples";
 import { NOUN_EVIDENCE, stripParticles, unfuse, verbForms } from "./korean";
+import { COVERAGE_TARGETS } from "@/lib/words/add-tree";
+import { markPinyin } from "./pinyin";
 
 const [RAW, OUT] = process.argv.slice(2);
 if (!RAW || !OUT) {
@@ -77,6 +93,8 @@ type ListMeta = {
   license: string;
   /** The exam a level list belongs to (JLPT, HSK 3.0); the /words picker groups by it. */
   exam?: string;
+  /** Frequency lists: the share of running text the top `level` words cover (the add tree's bands). */
+  coverage?: number;
 };
 const index: ListMeta[] = [];
 
@@ -358,6 +376,108 @@ function buildChinese() {
   }
 }
 
+/**
+ * Chinese frequency lists: OpenSubtitles word ranks (hermitdave/FrequencyWords
+ * zh_cn, already word-segmented) with CC-CEDICT readings and meanings. Chinese
+ * does not inflect, so a token is its own word; tokens CC-CEDICT knows only as
+ * names (a capitalised reading) are left out of text coverage.
+ */
+function buildChineseFrequency() {
+  const freqPath = join(RAW, "freq/zh_cn_50k.txt");
+  const cedictPath = join(RAW, "cedict/cedict.txt");
+  if (!existsSync(freqPath) || !existsSync(cedictPath)) {
+    console.warn("skip zh frequency lists: freq/zh_cn_50k.txt or cedict/cedict.txt missing");
+    return;
+  }
+  const dict = new Map<string, { py: string; m: string[] }[]>();
+  for (const line of readFileSync(cedictPath, "utf8").split("\n")) {
+    const m = /^(\S+) (\S+) \[([^\]]*)\] \/(.*)\/\s*$/.exec(line);
+    if (!m) continue;
+    const arr = dict.get(m[2]) ?? [];
+    arr.push({ py: m[3], m: m[4].split("/").filter(Boolean) });
+    dict.set(m[2], arr);
+  }
+  const isNoise = (m: string) =>
+    /^(surname |abbr\. |variant of |old variant of |used in |see [^ ]|\(old\) variant|erhua variant|Japanese variant|\(Tw\)|CL:|also pr\.|also written)/i.test(
+      m,
+    );
+  const register = (m: string) =>
+    /^\((coll|bound form|literary|old|dialect|archaic|slang)\b/i.test(m);
+  const lines = freqLines("zh_cn");
+  const kept = keptLists("zh");
+  const out: Entry[] = kept.flatMap((k) => k.entries);
+  const seen = new Set(out.map((e) => e.term));
+  const tokens: { c: number; key: string }[] = [];
+  let names = 0;
+  for (const [li, line] of lines.entries()) {
+    const [w, c0] = line.trim().split(" ");
+    const c = Number(c0) || 0;
+    if (!w || !/^\p{Script=Han}+$/u.test(w)) continue;
+    const es = dict.get(w) ?? [];
+    if (!es.length) continue;
+    const common = es.filter((e) => !/^\p{Lu}/u.test(e.py));
+    if (!common.length) {
+      names += c;
+      continue;
+    }
+    tokens.push({ c, key: w });
+    if (li >= LIST_SCAN || seen.has(w)) continue;
+    const score = (e: { m: string[] }) =>
+      e.m.filter((m) => !isNoise(m)).length * 2 - e.m.filter(register).length;
+    const best = [...common].sort((a, b) => score(b) - score(a))[0];
+    const meanings = best.m.filter((m) => !isNoise(m));
+    const back = joinSenses(
+      (meanings.length ? meanings : best.m).flatMap((m) => m.split(/;\s*/)),
+      80,
+    );
+    if (!back || !meanings.length) continue;
+    seen.add(w);
+    out.push({ term: w, reading: markPinyin(best.py), back });
+  }
+  const pos = new Map(out.map((e, i) => [e.term, i]));
+  const byList: number[] = Array.from({ length: Math.ceil(out.length / 500) + 1 }, () => 0);
+  for (const t of tokens) {
+    const i = pos.get(t.key);
+    if (i != null) byList[Math.floor(i / 500)] += t.c;
+  }
+  const total = corpusTotal("zh_cn", lines) - names;
+  let run = 0;
+  // (rounded as index.json stores it, so the lists shipped are the ones a band needs)
+  const coverage = byList.map((c) => Math.round(((run += c) / total) * 1000) / 1000);
+  const reach = COVERAGE_TARGETS.filter((t) => coverage.some((c) => c >= t)).at(-1);
+  const need = reach == null ? byList.length - 1 : coverage.findIndex((c) => c >= reach) + 1;
+  const nLists = Math.max(kept.length, need, Math.min(6, byList.length - 1));
+  console.log(
+    `zh: ${out.length} terms; coverage by list ${coverage.map((c) => c.toFixed(3)).join(" ")}; shipping ${nLists}`,
+  );
+  out.length = Math.min(out.length, nLists * 500);
+  const vocab = out.map((e) => e.term);
+  const picker = new ExamplePicker("zh", onlyKnownHan(loadTatoeba(RAW, "zh"), vocab));
+  const longer = longerIn(vocab);
+  for (const e of out.slice(kept.length * 500))
+    Object.assign(e, picker.pick([e.term], [], longer(e.term)) ?? {});
+  const cov = (b: number) => coverage[b];
+  kept.forEach((k, b) =>
+    index.push({ ...k.meta, count: k.entries.length, file: `${k.meta.id}.json`, coverage: cov(b) }),
+  );
+  for (let b = kept.length; b * 500 < out.length; b++) {
+    const lo = b * 500 + 1;
+    const hi = Math.min(out.length, (b + 1) * 500);
+    writeList(
+      {
+        id: `zh-freq-${b + 1}`,
+        lang: "zh",
+        name: `Chinese · top ${lo}–${hi}`,
+        level: `${lo}–${hi}`,
+        source: `Ranks: hermitdave/FrequencyWords (OpenSubtitles 2018, zh_cn_50k); readings and meanings: CC-CEDICT (MDBG)${EX_SOURCE}`,
+        license: "CC BY-SA 4.0 (FrequencyWords; CC-CEDICT)" + EX_LICENSE,
+        coverage: cov(b),
+      },
+      out.slice(b * 500, (b + 1) * 500),
+    );
+  }
+}
+
 // ---------------------------------------------------------------- frequency + Wiktionary
 /** top: Wiktionary topics (heraldry, Buddhism, chemistry…). */
 type KSense = { g: string; tags: string[]; of: string[]; top?: string[] };
@@ -370,8 +490,14 @@ type KEntry = {
   f?: string[];
   /** Wiktionary usage examples: [text, English, sense index] */
   ex?: [string, string, number][];
+  /** Pages its inflection table links its forms to (Hebrew הכלב → כלב). */
+  tf?: string[];
+  /** The headword with its marks (niqqud, stress) and a romanization. */
+  cf?: string;
+  rom?: string;
 };
 
+/** English names; kaikki.org files are named after them. Other languages: Intl. */
 const LANG_NAMES: Record<string, string> = {
   fr: "French",
   es: "Spanish",
@@ -387,6 +513,36 @@ const SCRIPT: Record<string, RegExp> = {
   ko: /^\p{Script=Hangul}+$/u,
 };
 const LATIN = /^[\p{Script=Latin}][\p{Script=Latin}'’-]*$/u;
+const langName = (lang: string) =>
+  LANG_NAMES[lang] ?? new Intl.DisplayNames(["en"], { type: "language" }).of(lang) ?? lang;
+/**
+ * A language without an entry in SCRIPT: words in the script most of its top
+ * tokens are written in (Hebrew, Greek, Arabic…), marks and inner
+ * apostrophes, quotes and hyphens allowed (צ'יפס, צה"ל).
+ */
+function dominantScript(lines: string[]): RegExp {
+  const scripts = [
+    "Latin",
+    "Cyrillic",
+    "Greek",
+    "Hebrew",
+    "Arabic",
+    "Hangul",
+    "Han",
+    "Thai",
+    "Devanagari",
+    "Armenian",
+    "Georgian",
+  ];
+  const n = new Map<string, number>();
+  for (const l of lines.slice(0, 500)) {
+    const c = l.split(" ")[0]?.[0] ?? "";
+    const sc = scripts.find((x) => new RegExp(`\\p{Script=${x}}`, "u").test(c));
+    if (sc) n.set(sc, (n.get(sc) ?? 0) + 1);
+  }
+  const top = [...n].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Latin";
+  return new RegExp(`^\\p{Script=${top}}[\\p{Script=${top}}\\p{M}'’"׳״-]*$`, "u");
+}
 const BAD_POS = new Set([
   "name",
   "character",
@@ -461,6 +617,7 @@ const SOFT_TAGS = new Set([
   "Cajun",
   "Africa",
   "Caribbean",
+  "Biblical",
 ]);
 /**
  * Korean marks speech levels with these tags (너 "you" is informal, 저 "I" is
@@ -526,6 +683,11 @@ const POS_LABEL: Record<string, string> = {
  * or whose most common use is not the one the data puts first. Keep this
  * tiny; everything else comes from the data.
  */
+/** A hand-written back (own keys only: "constructor" is a Spanish word). */
+const override = (lang: string, w: string): string | undefined =>
+  Object.hasOwn(OVERRIDES, lang) && Object.hasOwn(OVERRIDES[lang], w)
+    ? OVERRIDES[lang][w]
+    : undefined;
 const OVERRIDES: Record<string, Record<string, string>> = {
   fr: {
     pas: "not (with ne); (noun) step, pace",
@@ -549,6 +711,21 @@ const OVERRIDES: Record<string, Record<string, string>> = {
     wer: "who; (pron) whoever, someone",
     sich: "oneself, himself, herself, itself, themselves; each other",
   },
+  // Wiktionary leads these with usage notes ("Used to introduce a semantically
+  // definite direct object") or a rarer homograph (אֵם "mother" before אִם "if")
+  he: {
+    את: "(marks a definite direct object); (pron) you (feminine)",
+    עם: "with; (noun) people, nation",
+    כל: "all, every, each; the whole",
+    אם: "if, whether; (noun) mother",
+    אין: "there is not, there are no",
+    יש: "there is, there are; (with ל־) to have",
+    הם: "they",
+    אותו: "him, it; (det) the same",
+    אותה: "her, it; (det) the same",
+    לו: "to him, for him; (conj) if only",
+    כדי: "in order to, so that",
+  },
   ru: {
     это: "this, that, it; this is, that is",
     бы: "would (conditional particle)",
@@ -566,6 +743,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   },
 };
 
+/** Marks that stay apart after NFC (Hebrew niqqud) removed; é, й, ü are kept. */
+const looseMarks = (s: string) => s.normalize("NFC").replace(/\p{M}/gu, "");
 const stripStress = (s: string) =>
   s
     .normalize("NFD")
@@ -634,6 +813,13 @@ function lemmaSenses(e: KEntry, soft = false, lang = ""): string[] {
   const ok = e.senses
     .filter((s) => !(lang === "ko" && e.hj && isTech(s)))
     .map((s) => functionFormSense(e, s) ?? s)
+    // "We; the subject form of the first-person plural personal pronoun": the meaning, then a note
+    .map((s) => {
+      const [head, ...rest] = s.g.split(/;\s+/);
+      return rest.length && /\bform of\b/i.test(rest.join(" ")) && !/\bof\b/i.test(head)
+        ? { ...s, g: head }
+        : s;
+    })
     .filter(
       (s) =>
         !s.of.length &&
@@ -682,7 +868,8 @@ function formRefs(e: KEntry, lang: string): FormRef[] {
     .filter((s) => s.of.length && s.tags.some((t) => t === "form-of" || t === "alt-of"))
     .flatMap((s) =>
       s.of.map((w) => ({
-        base: lang === "ru" ? stripStress(w) : w,
+        // targets are written with their marks (ru говори́ть, he יָדַע); headwords without
+        base: lang === "ru" ? stripStress(w) : looseMarks(w),
         g: s.g,
         tags: s.tags,
         pos: e.pos,
@@ -882,12 +1069,59 @@ const headSense = (back: string, max = 28) => {
   return c.length <= max ? c : "";
 };
 
+/**
+ * A language's shipped frequency lists, kept as they are: a card belongs to
+ * a list, so a rebuild only appends lists after them (WORDS_FRESH=1 rebuilds
+ * them too).
+ */
+function keptLists(lang: string) {
+  const kept: { meta: Omit<ListMeta, "count" | "file" | "coverage">; entries: Entry[] }[] = [];
+  if (process.env.WORDS_FRESH === "1") return kept;
+  for (let n = 1; existsSync(join(OUT, `${lang}-freq-${n}.json`)); n++) {
+    const j = JSON.parse(readFileSync(join(OUT, `${lang}-freq-${n}.json`), "utf8"));
+    kept.push({
+      meta: {
+        id: j.id,
+        lang: j.lang,
+        name: j.name,
+        level: j.level,
+        source: j.source,
+        license: j.license,
+      },
+      entries: j.entries,
+    });
+  }
+  return kept;
+}
+
+/** Tokens in the whole corpus (`<file>_full.txt`), else in the 50k list. */
+function corpusTotal(file: string, lines: string[]): number {
+  const full = join(RAW, `freq/${file}_full.txt`);
+  const src = existsSync(full) ? readFileSync(full, "utf8").split("\n") : lines;
+  return src.reduce((a, l) => a + (Number(l.trim().split(/\s+/)[1]) || 0), 0);
+}
+
+/**
+ * The word list a language is built from: the top WORDS_SCAN (200,000) words
+ * of `<file>_full.txt` when it is there, else `<file>_50k.txt`. The lists take
+ * their words from the top; the long tail is there so that coverage counts
+ * the rarer forms of listed words too (regardâmes → regarder).
+ */
+const LIST_SCAN = 50_000;
+function freqLines(file: string): string[] {
+  const full = join(RAW, `freq/${file}_full.txt`);
+  const scan = Number(process.env.WORDS_SCAN) || 200_000;
+  if (existsSync(full)) return readFileSync(full, "utf8").split("\n").slice(0, scan);
+  return readFileSync(join(RAW, `freq/${file}_50k.txt`), "utf8").split("\n");
+}
+
 function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
-  const scriptOk = SCRIPT[lang] ?? LATIN;
-  const lines = readFileSync(join(RAW, `freq/${lang}_50k.txt`), "utf8").split("\n");
+  const lines = freqLines(lang);
+  const scriptOk = SCRIPT[lang] ?? (LANG_NAMES[lang] ? LATIN : dominantScript(lines));
   const rank = new Map<string, number>();
   const count = new Map<string, number>();
-  lines.forEach((l, i) => {
+  // ranks (and every rank test below) see the top 50,000 only, as the lists do
+  lines.slice(0, LIST_SCAN).forEach((l, i) => {
     const [w0, c] = l.split(" ");
     const w = w0?.toLowerCase();
     if (w && !rank.has(w)) {
@@ -907,6 +1141,8 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
     // (Zeit) unless the lowercase word is itself a verb, adjective or pronoun.
     const deNoun =
       lang === "de" &&
+      // (a capitalised word — Kind, reached from kinder → Kinder — is the noun itself)
+      word[0] !== word[0].toUpperCase() &&
       // (nor when it is an adverb/interjection — ja, hier, nein — or a form of a common verb: habe → haben)
       !exact.some((e) => !/^(noun|prep)$/.test(e.pos) && senses(e, true).length) &&
       !exact.some((e) =>
@@ -961,15 +1197,36 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
     let es = pick(word);
     if (only) es = es.filter(only);
     if (!es.length) return null;
-    const back = OVERRIDES[lang]?.[es[0].w] || backOf(es, false) || backOf(es, true);
+    const back = override(lang, es[0].w) || backOf(es, false) || backOf(es, true);
     return back ? { term: es[0].w, back } : null;
   };
   /** Fold a form into its lemma (one more hop if the lemma is itself a form). */
-  const foldTo = (targets: string[]): Resolved => {
+  // A lemma is a word of the top 50,000 (or a Korean verb, met only in its
+  // forms: 팔다); the tail's rare words (lindar for lindo, miar for mia) are no
+  // lemma of a common form.
+  const lemmaOk = (t: string) => rankOf(t) < LIST_SCAN || pick(t).some((e) => e.f?.length);
+  // A rarer lemma is met in several forms of its own among the top words
+  // (мочь: могу, может, можешь…); one met in a name or two (normar ← norman,
+  // ciar ← cia) is not.
+  const pureForms = new Map<string, number>();
+  for (const l of lines.slice(0, LIST_SCAN)) {
+    const es = pick(l.split(" ")[0] ?? "");
+    if (!es.length || !es.every((e) => e.senses.every((x) => x.of.length))) continue;
+    for (const b of new Set(es.flatMap((e) => formTargets(e, lang))))
+      pureForms.set(b, (pureForms.get(b) ?? 0) + 1);
+  }
+  const metOften = (t: string) => (pureForms.get(t) ?? 0) >= 3;
+  const foldTo = (targets0: string[], anyLemma = false): Resolved => {
+    // (a rarer lemma only when no common one is offered: linda is lindo or nothing, never lindar)
+    const common = targets0.filter(lemmaOk);
+    const loose = anyLemma && !common.length;
+    const targets = loose ? targets0.filter(metOften) : common;
     for (const t of targets) {
       const r = glossOf(t);
       if (r) return r;
-      const t2 = pick(t).flatMap((e) => formTargets(e, lang))[0];
+      const t2 = pick(t)
+        .flatMap((e) => formTargets(e, lang))
+        .find((x) => loose || lemmaOk(x));
       if (t2) {
         const r2 = glossOf(t2);
         if (r2) return r2;
@@ -997,18 +1254,50 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
   };
   const isFunctionWord = (w: string) =>
     pick(w).some((e) => FUNCTION_POS.has(e.pos) && senses(e, true).length);
+  // Forms that only an inflection table names (Hebrew הכלב, כלבים → כלב).
+  const tableLemma = new Map<string, string[]>();
+  for (const es of dict.values())
+    for (const e of es) {
+      if (/\s/.test(e.w) || BAD_POS.has(e.pos)) continue;
+      for (const f of e.tf ?? []) {
+        const k = f.toLowerCase();
+        tableLemma.set(k, [...(tableLemma.get(k) ?? []), e.w]);
+      }
+    }
+  const viaTable = (word: string): Resolved[] => {
+    for (const lemma of tableLemma.get(word.toLowerCase()) ?? []) {
+      if (!lemmaOk(lemma)) continue;
+      const r = glossOf(lemma);
+      if (r) return [r];
+    }
+    return [];
+  };
+  // Proclitics Wiktionary writes with a joiner (Hebrew ו־ "and", ב־ "in", ה־ "the"):
+  // a token with no entry of its own may be one or more of them + a word.
+  const proclitics = [
+    ...new Set(
+      [...dict.values()]
+        .flat()
+        .filter((e) => /[-־]$/.test(e.w) && FUNCTION_POS.has(e.pos))
+        .map((e) => e.w.slice(0, -1).toLowerCase())
+        .filter((p) => p && !/[-־\s]/.test(p)),
+    ),
+  ].sort((a, b) => b.length - a.length);
 
   const resolveGeneric = (word: string): Resolved[] => {
     // a hand-written back is the whole card (ru есть "there is"; its lemma быть counts anyway)
-    const over = OVERRIDES[lang]?.[word];
+    const over = override(lang, word);
     if (over && pick(word).length) return [{ term: word, back: over }];
     const es = pick(word);
-    if (!es.length) return [];
+    if (!es.length) return viaTable(word);
     const lemmaEntries = es.filter((e) => senses(e, true).length);
     const hasFunctionLemma = lemmaEntries.some((e) => FUNCTION_POS.has(e.pos));
+    // the most frequent lemma first (vive is vivir, not the rare vivar); a
+    // phrase (ia → inteligencia artificial) is no lemma of a single word
     let refs = es
       .flatMap((e) => formRefs(e, lang))
-      .filter((r) => r.base.toLowerCase() !== word.toLowerCase());
+      .filter((r) => r.base.toLowerCase() !== word.toLowerCase() && !/\s/.test(r.base))
+      .sort((a, b) => rankOf(a.base) - rankOf(b.base));
     // A form of a rare word (terre, also a form of the rare verb terrer) is
     // just itself.
     if (lemmaEntries.length) refs = refs.filter((r) => rankOf(r.base) < 10000);
@@ -1028,7 +1317,13 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
       const r = glossOf(word);
       return r ? [r] : [];
     }
-    const base = foldTo(refs.map((r) => r.base));
+    // (a token that is only ever a form — задушу — may fold into a rarer lemma:
+    // there is no other reading it could be taken from)
+    const pureForm = es.every((e) => e.senses.every((x) => x.of.length));
+    const base = foldTo(
+      refs.map((r) => r.base),
+      pureForm,
+    );
     // Pure inflections (sont, fue) fold into their lemma, and so do forms
     // whose own meaning is only slang (Tage "period", besides "days").
     if (!lemmaEntries.length || !lemmaEntries.some((e) => senses(e).length))
@@ -1081,22 +1376,81 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
     return [{ term: own.term, back }, base];
   };
 
-  const resolve =
+  const resolveWord =
     lang === "ko"
       ? koreanResolver(dict, pick, senses, glossOf, resolveGeneric, rank, count)
       : resolveGeneric;
+  // A token typed without its accents (perche → perché, ecoute → écoute)
+  const fold = (w: string) => w.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  const accented = new Map<string, string[]>();
+  for (const k of dict.keys())
+    if (fold(k) !== k) accented.set(fold(k), [...(accented.get(fold(k)) ?? []), k]);
+  const viaAccents = (word: string): Resolved[] => {
+    // (not a word the dictionary has in any case, and only when the accented
+    // spelling is the more frequent one: martin is a name, not martín "heron")
+    if (dict.has(word.toLowerCase())) return [];
+    for (const k of accented.get(fold(word)) ?? []) {
+      if (rankOf(k) > rankOf(word)) continue;
+      const rs = resolveWord(k).filter(Boolean);
+      if (rs.length) return rs;
+    }
+    return [];
+  };
+  const resolve = (word: string, depth = 0): Resolved[] => {
+    let rs = resolveWord(word).filter(Boolean);
+    if (!rs.length) rs = viaTable(word);
+    if (!rs.length) rs = viaAccents(word);
+    if (rs.length || depth >= 3 || pick(word).length) return rs;
+    for (const p of proclitics) {
+      if (!word.toLowerCase().startsWith(p) || [...word].length - [...p].length < 2) continue;
+      const rest = resolve(word.slice(p.length), depth + 1);
+      if (rest.length) return rest;
+    }
+    return [];
+  };
+  /** The written form with its marks (שָׁלוֹם) and a romanization (shalóm), when Wiktionary has them. */
+  const readingOf = (term: string): { reading?: string } => {
+    const e = pick(term).find((k) => k.cf || k.rom);
+    const marked =
+      e?.cf &&
+      e.cf.normalize("NFD").replace(/\p{M}/gu, "") === term.normalize("NFD").replace(/\p{M}/gu, "")
+        ? e.cf
+        : "";
+    const reading = [marked, marked ? e?.rom : ""].filter(Boolean).join(" · ");
+    return reading ? { reading } : {};
+  };
+  /** Proper names only (no common-word entry): left out of text coverage. */
+  const nameOnly = (w: string) => {
+    const all = dict.get(w.toLowerCase()) ?? [];
+    return all.length > 0 && all.every((e) => e.pos === "name");
+  };
 
-  const out: Entry[] = [];
-  const seen = new Set<string>();
-  const TARGET = 3000;
+  const kept = keptLists(lang);
+  const out: Entry[] = kept.flatMap((k) => k.entries);
+  const seen = new Set<string>(out.map((e) => e.term.toLowerCase()));
   // every token that resolved to a term, for finding example sentences (팔고 → 팔다)
   const formsOfTerm = new Map<string, Set<string>>();
-  const FORM_SCAN = 30000;
+  // each resolved token with its count, for text coverage
+  const tokens: { c: number; keys: string[]; piece?: boolean; parts?: string[][] }[] = [];
+  let names = 0;
   for (const [li, line] of lines.entries()) {
-    if (li >= FORM_SCAN) break;
-    const full = out.length >= TARGET;
+    // list entries come from the top 50,000 words only (FrequencyWords' own
+    // cut); the tail below them only counts toward coverage
+    const tail = li >= LIST_SCAN;
     const word = line.split(" ")[0]?.trim();
     if (!word) continue;
+    const c = Number(line.split(" ")[1]) || 0;
+    if (nameOnly(word)) {
+      names += c;
+      continue;
+    }
+    // A piece of a word the tokenizer split (c' + est, don + 't, l' + homme):
+    // never a list entry; in coverage it is read with the common word it
+    // belongs to, so it counts from the first list when the dictionary has it.
+    if (/^['’]|['’]$/.test(word) || (lang === "en" && EN_JUNK.has(word))) {
+      if (pick(word).length) tokens.push({ c, keys: [], piece: true });
+      continue;
+    }
     if (!scriptOk.test(word) || /['’-]$/.test(word)) continue;
     if (lang === "en" && EN_JUNK.has(word)) continue; // pieces of contractions
     // English subtitle tokens are lowercased names too (kyle, vega, berlin):
@@ -1109,29 +1463,63 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
       const isFunction = pick(word).some((e) => FUNCTION_POS.has(e.pos) && senses(e).length);
       if (!isFunction) rs = rs.filter((r) => r.term.toLowerCase() !== word.toLowerCase());
     }
-    if (process.env.WORDS_DEBUG && rs.length && !full)
+    if (process.env.WORDS_DEBUG && rs.length)
       console.error(`${word}\t${rs.map((r) => r.term).join(" + ")}`);
+    // (the token itself counts when it is a listed word: kaikki may since have
+    // tagged every sense of a shipped word, fin "end", as archaic)
+    if (rs.length || seen.has(word.toLowerCase()))
+      tokens.push({ c, keys: [...rs.map((r) => r.term.toLowerCase()), word.toLowerCase()] });
+    // a hyphenated token (est-ce, laisse-moi, a-t-il): read as its words
+    else if (/\p{L}-\p{L}/u.test(word)) {
+      const parts = word.split("-").filter((p) => [...p].length > 1);
+      const keys = parts.map((p) => resolve(p).map((r) => r!.term.toLowerCase()));
+      if (parts.length && keys.every((k) => k.length)) tokens.push({ c, keys: [], parts: keys });
+    } else if (process.env.WORDS_COVDEBUG && c > 2e4) console.error(`miss ${word} ×${c}`);
     for (const r of rs) {
       const key = r.term.toLowerCase();
       let fs = formsOfTerm.get(key);
       if (!fs) formsOfTerm.set(key, (fs = new Set()));
       fs.add(word.toLowerCase());
-      if (full || seen.has(key)) continue;
+      if (tail || seen.has(key)) continue;
       seen.add(key);
-      out.push({ term: r.term, back: r.back });
+      out.push({ term: r.term, back: r.back, ...readingOf(r.term) });
     }
   }
+  // Text coverage of the top n terms: the share of running text (proper
+  // names left out) whose tokens resolve to one of them — a form counts for
+  // its lemma (sont → être), a homograph for either reading.
+  const pos = new Map(out.map((e, i) => [e.term.toLowerCase(), i]));
+  const byList: number[] = Array.from({ length: Math.ceil(out.length / 500) + 1 }, () => 0);
+  for (const t of tokens) {
+    const at = (keys: string[]) => Math.min(...keys.map((k) => pos.get(k) ?? Infinity));
+    const i = t.piece ? 0 : t.parts ? Math.max(...t.parts.map(at)) : at(t.keys);
+    if (i < Infinity) byList[Math.floor(i / 500)] += t.c;
+  }
+  const total = corpusTotal(lang, lines) - names;
+  let run = 0;
+  // (rounded as index.json stores it, so the lists shipped are the ones a band needs)
+  const coverage = byList.map((c) => Math.round(((run += c) / total) * 1000) / 1000);
+  // As many lists as the highest coverage line the data reaches needs, and
+  // never fewer than are shipped already.
+  const reach = COVERAGE_TARGETS.filter((t) => coverage.some((c) => c >= t)).at(-1);
+  const need = reach == null ? byList.length - 1 : coverage.findIndex((c) => c >= reach) + 1;
+  // (a new language starts with the 3000 words every language had before bands)
+  const nLists = Math.max(kept.length, need, Math.min(6, byList.length - 1));
+  console.log(
+    `${lang}: ${out.length} terms; coverage by list ${coverage.map((c) => c.toFixed(3)).join(" ")}; shipping ${nLists}`,
+  );
+  out.length = Math.min(out.length, nLists * 500);
   // one example per entry: Wiktionary's own usage example when one fits,
   // else the shortest Tatoeba sentence with the word or one of its forms
   const picker = new ExamplePicker(lang, loadTatoeba(RAW, lang));
-  for (const e of out) {
+  for (const e of out.slice(kept.length * 500)) {
     const key = e.term.toLowerCase();
     const forms = new Set([key, ...(formsOfTerm.get(key) ?? [])]);
     // examples of the main senses only; hand-written backs pick a sense the data may not lead with
     // and only from the entry whose sense the back leads with (maison "house",
     // not the adjective "in-house"; pick the noun "pickaxe", not the verb)
     const lead = e.back.split("; ")[0].replace(/^\([^)]*\) /, "");
-    const wikt = OVERRIDES[lang]?.[e.term]
+    const wikt = override(lang, e.term)
       ? []
       : pick(e.term)
           .filter((k) => !(lang === "ko" && k.hj))
@@ -1149,8 +1537,12 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
     const ex: Example | null = w && (!t || w.ex.length <= t.ex.length + 20) ? w : t;
     if (ex) Object.assign(e, ex);
   }
-  const name = LANG_NAMES[lang];
-  for (let b = 0; b * 500 < out.length; b++) {
+  const name = langName(lang);
+  const cov = (b: number) => coverage[b];
+  kept.forEach((k, b) =>
+    index.push({ ...k.meta, count: k.entries.length, file: `${k.meta.id}.json`, coverage: cov(b) }),
+  );
+  for (let b = kept.length; b * 500 < out.length; b++) {
     const lo = b * 500 + 1;
     const hi = Math.min(out.length, (b + 1) * 500);
     writeList(
@@ -1161,6 +1553,7 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
         level: `${lo}–${hi}`,
         source: `Ranks: hermitdave/FrequencyWords (OpenSubtitles 2018, ${lang}_50k); glosses: English Wiktionary via kaikki.org (${name} extract), inflected forms folded into lemmas${EX_SOURCE_WIKT}`,
         license: "CC BY-SA 4.0 (FrequencyWords; Wiktionary content, also GFDL)" + EX_LICENSE,
+        coverage: cov(b),
       },
       out.slice(b * 500, (b + 1) * 500),
     );
@@ -1302,9 +1695,16 @@ function koreanResolver(
 // ---------------------------------------------------------------- main
 const only = process.env.WORDS_ONLY?.split(",");
 const want = (l: string) => !only || only.includes(l);
-if (want("ja")) buildJapanese();
-if (want("zh")) buildChinese();
-for (const lang of ["fr", "es", "de", "en", "ko", "it", "pt", "ru"]) {
+if (want("ja")) {
+  if (existsSync(join(RAW, "jlpt/n5.csv"))) buildJapanese();
+  else console.warn("skip JLPT lists: jlpt/ missing (kept from index.json)");
+}
+if (want("zh")) {
+  if (existsSync(join(RAW, "hsk/new-1.json"))) buildChinese();
+  else console.warn("skip HSK lists: hsk/ missing (kept from index.json)");
+  buildChineseFrequency();
+}
+for (const lang of ["fr", "es", "de", "en", "ko", "it", "pt", "ru", "he"]) {
   if (!want(lang)) continue;
   const p = join(RAW, `kaikki/${lang}.jsonl`);
   if (!existsSync(p)) {
@@ -1324,19 +1724,18 @@ if (existsSync(indexPath)) {
     JSON.parse(readFileSync(indexPath, "utf8")).lists as (ListMeta & { kind?: string })[]
   ).filter(
     (l) =>
-      l.kind === "phrase" ||
-      l.kind === "exam" ||
-      (!!only && !index.some((n) => n.id === l.id) && !only.includes(l.lang)),
+      l.kind === "phrase" || l.kind === "exam" || (!!only && !index.some((n) => n.id === l.id)),
   );
 }
-const order = ["ja", "zh", "fr", "es", "de", "en", "ko", "it", "pt", "ru"];
+const order = ["ja", "zh", "fr", "es", "de", "en", "ko", "it", "pt", "ru", "he"];
+const langRank = (l: string) => (order.includes(l) ? order.indexOf(l) : order.length);
 // stable sort: language order, word lists before phrase decks, then build
 // order (N5→N1, HSK 1→7–9, band 1→6)
 // word lists, then exam decks, then phrase decks
 const rank = (l: ListMeta & { kind?: string }) =>
   l.kind === "phrase" ? 2 : l.kind === "exam" ? 1 : 0;
 lists = [...lists, ...index].sort(
-  (a, b) => order.indexOf(a.lang) - order.indexOf(b.lang) || rank(a) - rank(b),
+  (a, b) => langRank(a.lang) - langRank(b.lang) || rank(a) - rank(b),
 );
 writeFileSync(indexPath, JSON.stringify({ lists }));
 console.log(`index.json: ${lists.length} lists`);

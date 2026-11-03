@@ -385,7 +385,7 @@ type CatalogMeta = {
   scenario?: Scenario;
   /**
    * A frequency list's text coverage: the share of running text its top rank
-   * covers, at least (scripts/words/freq-coverage.ts). The add tree's bands.
+   * covers, at least (scripts/words/build-word-lists.ts, by lemma). The add tree's bands.
    */
   coverage?: number;
 };
@@ -4754,9 +4754,10 @@ function Study({
                           : ""
                     }`}
                   >
-                    {it.term}
+                    {/* bdi: a right-to-left word (Hebrew) keeps its own direction and punctuation */}
+                    <bdi lang={it.lang}>{it.term}</bdi>
                     {!config.readingOnBack && it.reading && it.reading !== it.term && (
-                      <span className="ml-2 text-xs font-normal opacity-60">{it.reading}</span>
+                      <bdi className="ml-2 text-xs font-normal opacity-60">{it.reading}</bdi>
                     )}
                   </Glance>
                   {(() => {
@@ -4769,7 +4770,7 @@ function Study({
                         } ${show ? "" : "slip-blank"}`}
                       >
                         {config.readingOnBack && it.reading && it.reading !== it.term && (
-                          <span className="mr-2 font-medium">{it.reading}</span>
+                          <bdi className="mr-2 font-medium">{it.reading}</bdi>
                         )}
                         {it.back}
                       </Glance>
@@ -4797,9 +4798,9 @@ function Study({
                         >
                           {it.ex ? (
                             <>
-                              <span lang={it.lang} data-row-example>
+                              <bdi lang={it.lang} data-row-example>
                                 {it.ex}
-                              </span>
+                              </bdi>
                               {it.exTr && <span className="ml-2 opacity-80">{it.exTr}</span>}
                             </>
                           ) : (
@@ -4826,7 +4827,7 @@ function Study({
                     >
                       {it.ex ? (
                         <>
-                          {it.ex}
+                          <bdi lang={it.lang}>{it.ex}</bdi>
                           {it.exTr && <span className="ml-2 text-xs opacity-60">{it.exTr}</span>}
                         </>
                       ) : (
@@ -4953,7 +4954,9 @@ function SlipSheet({
       <div className="absolute inset-x-0 bottom-0 mx-auto max-w-lg rounded-t-2xl bg-[var(--background)] px-4 pt-2 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_30px_oklch(0_0_0/0.25)] lk-sheet-in">
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-current opacity-20" />
         <div className="flex items-baseline gap-3 border-b border-black/10 dark:border-white/10 px-1 pb-3">
-          <b className="text-2xl font-normal">{item.term}</b>
+          <b className="text-2xl font-normal">
+            <bdi lang={item.lang}>{item.term}</bdi>
+          </b>
           <span className="truncate opacity-70">{item.back}</span>
           <small className="ml-auto shrink-0 text-xs opacity-60">{status}</small>
         </div>
@@ -4985,7 +4988,9 @@ function SlipSheet({
             className="border-b border-black/10 dark:border-white/10 px-1 py-3"
             data-sheet-example
           >
-            <div lang={item.lang}>{item.ex}</div>
+            <div lang={item.lang} dir="auto">
+              {item.ex}
+            </div>
             {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
           </div>
         )}

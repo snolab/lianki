@@ -22,6 +22,9 @@
  * (`ex`: up to 3 short usage examples [text, English, sense index])
  * (`top`: Wiktionary topics such as heraldry, Buddhism, chemistry)
  * (`hj`: the entry lists a hanja spelling — a Sino-Korean word; `f`: conjugated forms).
+ * (`tf`: its inflection-table forms, and the pages the table links them to, that occur as tokens;
+ * `cf`: the headword with its marks, when they differ — niqqud, stress; `rom`: a romanization).
+ * Proclitics (one word ending in a joiner, such as Hebrew ב־ "in") are always kept.
  */
 
 export {};
@@ -33,12 +36,16 @@ if (!freqPath) {
 }
 
 const keep = new Set<string>();
-for (const line of (await Bun.file(freqPath).text()).split("\n")) {
+// FREQ_TOP=n: only the n most frequent words of the list (a _full.txt list)
+const top = Number(process.env.FREQ_TOP) || Infinity;
+for (const line of (await Bun.file(freqPath).text()).split("\n").slice(0, top)) {
   const w = line.split(" ")[0]?.trim().toLowerCase();
   if (w) keep.add(w);
 }
 
 const withForms = process.env.KAIKKI_FORMS === "1";
+/** Parts of speech a proclitic can have (an article, a preposition, a conjunction…). */
+const PROCLITIC_POS = /^(prep|conj|article|particle|det|pron)$/;
 
 /**
  * Sub-senses repeat their parent gloss first. When the parent is only a
@@ -90,7 +97,28 @@ for await (const line of console) {
           ),
         ]
       : [];
-  if (!keep.has(w.toLowerCase()) && !conj.length) continue;
+  // Inflection-table forms that link to a page of their own (Hebrew tables
+  // link הַשָּׁלוֹם to the page השלום): the page titles that occur as tokens.
+  const tf = [
+    ...new Set([
+      ...forms
+        .flatMap((f) => (Array.isArray(f?.links) ? f.links : []))
+        .map((l: any) => (Array.isArray(l) && typeof l[1] === "string" ? l[1].split("#")[0] : "")),
+      // the table's own forms, without marks that stay apart (pointed Hebrew)
+      ...forms
+        .filter(
+          (f) =>
+            typeof f?.form === "string" &&
+            !tagsOf(f).some((t) =>
+              /^(table-tags|inflection-template|romanization|class|canonical)$/.test(t),
+            ),
+        )
+        .map((f) => (f.form as string).normalize("NFC").replace(/\p{M}/gu, "")),
+    ]),
+  ].filter((t: string) => t && t !== w && !/\s/.test(t) && keep.has(t.toLowerCase()));
+  // A proclitic: one written word ending in a joiner (Hebrew ב־ "in", ו־ "and").
+  const proclitic = PROCLITIC_POS.test(pos) && /^\p{L}[\p{L}\p{M}]*[-־]$/u.test(w);
+  if (!keep.has(w.toLowerCase()) && !conj.length && !tf.length && !proclitic) continue;
   const senses = (Array.isArray(e.senses) ? e.senses : [])
     .slice(0, 12)
     .map((s: any) => {
@@ -127,6 +155,12 @@ for await (const line of console) {
   if (ex.length) rec.ex = ex;
   if (forms.some((f) => tagsOf(f).includes("hanja"))) rec.hj = 1;
   if (conj.length) rec.f = conj;
+  if (tf.length) rec.tf = tf;
+  // the written form with its marks (שָׁלוֹם for שלום, говори́ть) and a romanization
+  const canon = forms.find((f) => tagsOf(f).includes("canonical") && typeof f.form === "string");
+  if (canon && canon.form !== w) rec.cf = canon.form;
+  const rom = forms.find((f) => tagsOf(f).includes("romanization") && typeof f.form === "string");
+  if (rom) rec.rom = rom.form;
   out.write(JSON.stringify(rec) + "\n");
   kept++;
 }

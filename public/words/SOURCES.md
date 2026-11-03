@@ -16,8 +16,10 @@ Tatoeba exports) are in the header of
 [`scripts/words/build-word-lists.ts`](../../scripts/words/build-word-lists.ts).
 Put downloads in a scratch dir outside the repo. Kaikki extracts are streamed
 through `scripts/words/filter-kaikki.ts`, which keeps only the headwords that
-appear in the frequency list. `WORDS_ONLY=fr,ja` rebuilds a subset and leaves
-the other lists in `index.json` alone.
+appear in the frequency list (its top 200,000 words, `FREQ_TOP`).
+`WORDS_ONLY=fr,ja` rebuilds a subset and leaves the other lists in
+`index.json` alone. Frequency lists already shipped are never rebuilt (a card
+belongs to its list): new lists are appended after them.
 
 ## Japanese: JLPT N5–N1 (`ja-jlpt-n*`)
 
@@ -52,11 +54,35 @@ the other lists in `index.json` alone.
   with the most senses is used (以 yǐ, not Yǐ "Israel"). `zh-hsk-7-9` is
   the combined advanced band, with 5,606 words.
 
-## Frequency bands: fr, es, de, en, ko, it, pt, ru (`<lang>-freq-1..6`)
+## Frequency bands: fr, es, de, en, ko, it, pt, ru, he (`<lang>-freq-<n>`)
 
 - Ranks come from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords),
-  `content/2018/<lang>/<lang>_50k.txt`. The ranks are built from the
+  `content/2018/<lang>/<lang>_full.txt` (list entries from its top 50,000
+  words, the same words as `<lang>_50k.txt`). The ranks are built from the
   OpenSubtitles 2018 corpus (opus.nlpl.eu). License: CC BY-SA 4.0.
+- Lists 1–6 (ranks 1–3000) are the original lists, kept unchanged. Since
+  2026-11-03 a language has as many further 500-word lists as its highest
+  reachable coverage line (50/80/90/95% of running text) needs, so the
+  "Add a list" tree offers those lines as one-tap bands. Each list's
+  `coverage` in `index.json` is the share of the corpus's running words its
+  top words cover, counted by lemma: a form counts for its lemma (Wiktionary
+  form-of entries and inflection tables), a piece of a word the tokenizer
+  split (`c'` + `est`, `don` + `'t`) for the common word it belongs to, and
+  proper names (tokens Wiktionary has only as names) are left out of the
+  count. Tokens past rank 200,000 count as not covered, so the figures are a
+  floor. Reachable lines: English and Spanish/Portuguese up to 95%; French,
+  German, Italian, Russian 90%; Hebrew 80% (data ceiling 89.6%); Korean 50%
+  (ceiling 72.9%: eojeol tokens fold to lemmas only partly); Chinese 50%.
+- Hebrew (`he-freq-*`, 2026-11-03): ranks from FrequencyWords `he`
+  (CC BY-SA 4.0), meanings from the kaikki.org Hebrew extract of English
+  Wiktionary (CC BY-SA 4.0 / GFDL). The reading shows the pointed spelling
+  (niqqud) and Wiktionary's romanization (`שָׁלוֹם · shalóm`). Prefixed forms
+  fold to their word through Wiktionary's inflection tables (`הבית` → `בית`)
+  and its proclitic entries (`ו־`, `ב־`, `ה־`, `ל־`, `מ־`, `ש־`, `כ־`).
+  Hand-written backs for a few top function words whose Wiktionary entry
+  leads with a usage note: את, עם, כל, אם, אין, יש, הם, אותו, אותה, לו, כדי.
+  Examples: Wiktionary usage examples, then Tatoeba Hebrew sentences
+  (CC BY 2.0 FR).
 - Glosses are English Wiktionary content, taken from the per-language
   [kaikki.org](https://kaikki.org/dictionary/) extracts made with wiktextract
   (Tatu Ylonen). Wiktionary text is dual-licensed CC BY-SA 4.0 and GFDL.
@@ -409,6 +435,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Chinese frequency lists (`zh-freq-*`)
+
+- Ranks: hermitdave/FrequencyWords `zh_cn` (OpenSubtitles 2018, already
+  word-segmented), CC BY-SA 4.0; Han-script tokens only.
+- Readings (pinyin with tone marks) and meanings:
+  [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cc-cedict) (MDBG),
+  CC BY-SA 4.0. Entries CC-CEDICT has only as proper names (a capitalised
+  reading) are dropped and left out of coverage.
+- Examples: Tatoeba Mandarin sentences (CC BY 2.0 FR) whose characters all
+  occur in the lists.
+- Japanese has no frequency lists: FrequencyWords `ja` is not segmented into
+  words (verb stems such as 言, 行, 知 stand alone), so it cannot rank words.
+
 ## Lemma files: French (`lemma/fr.txt`)
 
 Used by `/read` (not a word list): which words the dictionary has, and which
@@ -434,8 +473,8 @@ the dictionary counts as "new" rather than "unrecognised".
 
 ## Licensing summary
 
-Lists and files built from CC BY-SA sources (all frequency bands, the French
-lemma file, the HSK lists via
+Lists and files built from CC BY-SA sources (all frequency bands including
+Hebrew and Chinese, the French lemma file, the HSK lists via
 CC-CEDICT, the ordering of the JLPT lists, and the NGSL, NAWL and TOEIC
 Service List decks) are redistributed under CC BY-SA 4.0 with the attribution
 above. The exam decks' word lists from ECDICT are MIT (notice above); their
