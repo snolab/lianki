@@ -714,7 +714,7 @@ cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
 ## The + menu: add to Lianki, attach the page selection
 
 The round **+** at the start of the chat input (owner, 2026-11-03) opens one
-menu in two groups (`packages/debug-chat/src/AttachMenu.tsx`, `attach.ts`):
+menu in three groups (`packages/debug-chat/src/AttachMenu.tsx`, `attach.ts`):
 
 - **Add** — the app's Create actions (add a link as a card, words from an Anki
   deck, import cards, AI words). The bottom island registers them with
@@ -726,6 +726,16 @@ menu in two groups (`packages/debug-chat/src/AttachMenu.tsx`, `attach.ts`):
   each new kind lands in its own change. Now: **Page selection** works; File
   and Photo/video/audio are shown disabled, tagged "Coming soon". URL import is
   the Add group's "Add a link as a card".
+- **View** (查看) — **State tree** (状态树): toggles the state tree, as the
+  bar's tree button did (owner, 2026-11-03: "状态树功能藏到加号里"; the bar
+  has no tree button now, so it is `[mark | + | input | mic]`, and minimized
+  `[mark | mic]`). A `menuitemcheckbox`, checked while the tree is open, with
+  the eval/preview sessions' count; while there are any, the + shows a small
+  dot (pulsing when code just ran), so they are not lost with the button. The
+  button's sideways drag through detents is gone; a tap on a chip opens it,
+  and ←/→/↑/↓ on a focused tree row move the focus. Minimized there is no +:
+  the mark's menu (double tap) has Tree. In the cross-site iframe (no attach)
+  or while the chat is unavailable, the + is still there, holding only View.
 
 **Page selection.** A phone clears the page's selection the moment the chat
 input takes focus, so the widget remembers the last non-empty selection made

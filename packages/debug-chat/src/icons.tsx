@@ -73,3 +73,25 @@ export function Icon({
  * `polishedIcon`). The default is a sparkle.
  */
 export const POLISHED_ICON = <Icon name="sparkle" />;
+
+/** An outline tree (a root and two branches): the state tree's row in the + menu. Drawn here, not Phosphor's. */
+export function TreeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="3" width="7" height="5" rx="1.5" />
+      <rect x="14" y="10" width="7" height="4.5" rx="1.5" />
+      <rect x="14" y="16.5" width="7" height="4.5" rx="1.5" />
+      <path d="M6.5 8v10.75H14M6.5 12.25H14" />
+    </svg>
+  );
+}

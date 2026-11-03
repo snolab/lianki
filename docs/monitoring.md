@@ -363,17 +363,21 @@ docs/dev-debug-widget.md, "Page errors".
 
 **The chat bar, the state tree and the menu.** No title bar: the controls
 and the input are one rounded glass container (`debug-chat-pill`): the mark,
-the tree button, the input, then the mic at the far right, in that focus
-order, each control a 40px tap target (`tap-40`). The mark
+the + (`debug-chat-attach`), the input, then the mic at the far right, in that
+focus order, each control a 40px tap target (`tap-40`). The mark
 (`debug-chat-pill-min`, with `aria-expanded`) holds the liagent mark
 (`packages/debug-chat/src/LiagentMark.tsx`) and a dot, green while the socket
 is live: a tap minimizes or restores the box (after 280 ms, so that a double
 tap can cancel it), and a double tap opens the menu — the only way to it
-(`packages/debug-chat/src/tap-gesture.ts`). The tree button
-(`debug-chat-tree-button`, "State tree", with the eval/preview sessions'
-count on it, pulsing when code just ran) toggles the state tree
-(`debug-chat-tree`, content from the `renderTree` prop, else "No tree
-source"). Only one of the menu and the tree is open at a time.
+(`packages/debug-chat/src/tap-gesture.ts`). There is no tree button in the
+bar (owner, 2026-11-03: 状态树藏到加号里): the + menu's last group, View
+(查看), has a "State tree" row (状态树, `debug-chat-attach-tree`, a
+`menuitemcheckbox`, checked while the tree is open, with the eval/preview
+sessions' count on it) that toggles the state tree (`debug-chat-tree`,
+content from the `renderTree` prop, else "No tree source"); while there are
+such sessions the + carries a small dot (`debug-chat-evals`, pulsing when code
+just ran). Minimized there is no +: the mark's menu has Tree (with a
+`treeSource`). Only one of the menu and the tree is open at a time.
 The tree is shown as the log is, with no box: translucent text with the halo,
 click-through except for the rows (`log-surface.ts`). With a `treeSource` it
 is a row of top-level chips (title, status glyph, 〔open count〕; the row
@@ -382,27 +386,25 @@ scrolls sideways) with one branch open below it as indented lines
 depth per node along the one open branch, end-stops at leaves (and
 min(3, subtree height)) and at the top row. Expanded, the tree heads the
 chat's one column, the messages below it, one scroller (newest at the
-bottom); minimized it heads the floating box. On the tree button a
-horizontal drag (locked after 8 px) moves through 40 px detents — right
-opens the focused node a level per cell, left folds it — previewed live,
-resisting past a limit, committed on release; a tap toggles the tree; ←/→/↑/↓
-on the focused button move the focus. An expand scrolls the new rows into
+bottom); minimized it heads the floating box. A tap on a chip opens it;
+←/→/↑/↓ on a focused row move the focus (the tree button's sideways drag
+through detents went with the button). An expand scrolls the new rows into
 view unless the user is scrolling; a fold keeps the focused row in place.
 In-progress items (the ◐ glyph, the ▶ frontier line, a fragment's `.d`)
 blink gently (opacity 1 → 0.35, 1.6 s; none under reduced motion). On a
 `zh` page the widget's and the tree's strings are Chinese
 (`ui-strings.ts`) unless the host passes its own. Without a `treeSource`:
 `renderTree`, else the lk:tree-src fragment. A small ✕
-(`debug-chat-tree-close`), Escape or the tree button close it; taps
+(`debug-chat-tree-close`), Escape or the + menu's row close it; taps
 elsewhere are the page's. It never takes the input's focus or its draft, and
 its Escape never stops the mic. A drag on the mark or the bar's edge moves the box,
 and never counts as a tap.
 
 Minimizing animates the bar's width in 180 ms (two grid columns trading
-`1fr` ⇄ `0fr`; at once under reduced motion) down to `[mark | tree | mic]`
+`1fr` ⇄ `0fr`; at once under reduced motion) down to `[mark | mic]`
 (`debug-chat-minimized`, at 0.6 opacity, with an unread badge
 `debug-chat-pill-unread`): the input's slot closes to 0, so the mic, always
-the same node, slides in beside the tree button. The input is then inert and
+the same node, slides in beside the mark. The input is then inert and
 aria-hidden, so it can take neither focus nor taps, and the log is hidden.
 The mic keeps its live state, so hands-free voice goes on while minimized.
 
@@ -699,7 +701,8 @@ End still reaches it.
 tests:
 
 - The chat box: `debug-chat` (root), `debug-chat-minimized` (minimized),
-  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-tree-button`,
+  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-attach` (the +),
+  `debug-chat-attach-menu`, `debug-chat-attach-tree`, `debug-chat-evals`,
   `debug-chat-tree` (with `data-mode`: `inline` or `column`), `debug-chat-tree-body`,
   `debug-chat-tree-close`, `debug-chat-tree-empty`,
   `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
