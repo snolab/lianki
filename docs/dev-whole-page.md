@@ -261,8 +261,8 @@ gate too. Revoke-all on `/dev/tokens` ends every session at once.
 For the owner only, decided on the server (`devSwitchFor`,
 `lib/dev-server-switch.server.ts`: anyone else's page carries none of it):
 
-- The account menu has a **"Preview build" switch** (「预览版」, caption
-  "production data" / 「生产数据」): on = the dev server, off = lianki.com.
+- The account menu has a **"Preview build" switch** (「预览版」, no caption:
+  owner, 15:07 JST, "你不用写「生产数据」这四个字在菜单上"): on = the dev server, off = lianki.com.
   The UI calls the dev server the **preview build**: trial code on
   production data (owner, 2026-11-03 14:45 JST: "预览版的一个 checkbox，或者
   switcher"; this replaced "live 试用版" and "Dev server" the same day).
@@ -281,7 +281,7 @@ For the owner only, decided on the server (`devSwitchFor`,
 - On the dev server the switch is on; switching it off is a plain link
   (no Referer) to the same path and query on production. Every dev-server
   page puts a small **blue dot** on the profile menu's button (screen
-  readers: "Preview build · production data"). No top-bar badge (owner,
+  readers: "Preview build"). No top-bar badge (owner,
   2026-11-03 14:44 JST: "改成我 profile dropdown 上一个小蓝点，然后点开菜单就能看到它写的").
 - Strings: `app/components/dev-switch.content.ts`, 16 locales, each key with
   its context line.

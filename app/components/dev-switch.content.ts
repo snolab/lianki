@@ -29,24 +29,6 @@ const dictionary = {
       mr: "प्रीव्ह्यू बिल्ड",
       ko: "미리보기 버전",
     }),
-    data: t({
-      en: "production data",
-      zh: "生产数据",
-      hi: "प्रोडक्शन डेटा",
-      es: "datos de producción",
-      fr: "données de production",
-      ar: "بيانات الإنتاج",
-      bn: "প্রোডাকশন ডেটা",
-      pt: "dados de produção",
-      ru: "рабочие данные",
-      ur: "پروڈکشن ڈیٹا",
-      id: "data produksi",
-      de: "Produktionsdaten",
-      ja: "本番データ",
-      sw: "data halisi",
-      mr: "प्रॉडक्शन डेटा",
-      ko: "운영 데이터",
-    }),
     off: t({
       en: "Preview build is not running",
       zh: "预览版未启动",
@@ -83,24 +65,6 @@ const dictionary = {
       mr: "प्रीव्ह्यू बिल्ड तपासत आहे…",
       ko: "미리보기 버전 확인 중…",
     }),
-    dot: t({
-      en: "Preview build · production data",
-      zh: "预览版 · 生产数据",
-      hi: "प्रीव्यू बिल्ड · प्रोडक्शन डेटा",
-      es: "Versión preliminar · datos de producción",
-      fr: "Version preview · données de production",
-      ar: "النسخة التجريبية · بيانات الإنتاج",
-      bn: "প্রিভিউ বিল্ড · প্রোডাকশন ডেটা",
-      pt: "Pré-visualização · dados de produção",
-      ru: "Предварительная версия · рабочие данные",
-      ur: "پری ویو بلڈ · پروڈکشن ڈیٹا",
-      id: "Versi pratinjau · data produksi",
-      de: "Vorschauversion · Produktionsdaten",
-      ja: "プレビュー版 · 本番データ",
-      sw: "Toleo la hakikisho · data halisi",
-      mr: "प्रीव्ह्यू बिल्ड · प्रॉडक्शन डेटा",
-      ko: "미리보기 버전 · 운영 데이터",
-    }),
   },
 };
 
@@ -108,11 +72,9 @@ const ABOUT =
   "The preview build is the site owner's newest, not yet released trial code, running on the real production database: what he does there changes his real data. Owner only.";
 
 const context: Record<keyof typeof dictionary.content, string> = {
-  name: `${ABOUT} Label of an on/off toggle switch in the account (profile) dropdown menu: on = he is on the preview build, off = the public site lianki.com; flipping it moves the current page there. A short noun naming a preview/pre-release version of the app (the locale's usual word for a preview build), not a demo.`,
-  data: `${ABOUT} Small caption under that switch, reminding him the data is real. Lower-case noun phrase, no full stop.`,
+  name: `${ABOUT} Label of an on/off toggle switch (no caption under it) in the account (profile) dropdown menu: on = he is on the preview build, off = the public site lianki.com; flipping it moves the current page there. It is also the screen-reader label of a small blue dot on the menu's button, shown only on the preview build. A short noun naming a preview/pre-release version of the app (the locale's usual word for a preview build), not a demo.`,
   off: `${ABOUT} The switch's label when greyed out and not tappable, because the preview build is not running at the moment. Short statement, not an error message.`,
   checking: `${ABOUT} The switch's label while the menu checks, once, whether the preview build is running. Short progress text ending in an ellipsis.`,
-  dot: `${ABOUT} Screen-reader label of a small blue dot on the menu's button, shown only on the preview build. Two short noun phrases joined by a middle dot: the name and that the data is real.`,
 };
 
 export default {
