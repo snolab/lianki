@@ -245,7 +245,7 @@ export function AppShell({
                 aria-expanded={isProfileOpen}
                 className="relative flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
               >
-                {devSwitch?.mode === "back" && <DevServerDot label={devSwitch.labels.dot} />}
+                {devSwitch?.mode === "back" && <DevServerDot label={devSwitch.labels.name} />}
                 {user.image && (
                   <Image
                     className="w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"

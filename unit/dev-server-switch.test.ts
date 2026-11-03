@@ -16,7 +16,7 @@ import {
 import { devSwitchFor } from "../lib/dev-server-switch.server";
 
 const OWNERS = { OWNER_EMAILS: "owner@example.com" };
-const labels = () => ({ name: "n", data: "d", off: "f", checking: "c", dot: "g" });
+const labels = () => ({ name: "n", off: "f", checking: "c" });
 
 describe("who gets it (server side)", () => {
   test("guests and other users: nothing at all, not even the strings", () => {

@@ -10,10 +10,8 @@ import {
 
 export type DevSwitchLabels = {
   name: string;
-  data: string;
   off: string;
   checking: string;
-  dot: string;
 };
 
 export type DevSwitch = { mode: Exclude<DevSwitchMode, null>; labels: DevSwitchLabels };
@@ -45,10 +43,7 @@ export function DevSwitchItem({ sw }: { sw: DevSwitch }) {
     "flex items-center gap-3 w-full text-start px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700";
   const inner = (
     <>
-      <span className="flex-1 min-w-0">
-        <span className="block truncate">{label}</span>
-        <span className="block text-xs text-gray-500 dark:text-gray-400">{sw.labels.data}</span>
-      </span>
+      <span className="flex-1 min-w-0 truncate">{label}</span>
       <span
         aria-hidden
         className={`relative inline-block w-9 h-5 shrink-0 rounded-full transition-colors ${on ? "" : "bg-gray-300 dark:bg-gray-600"} ${up === null ? "animate-pulse" : ""}`}
