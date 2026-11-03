@@ -88,6 +88,16 @@ import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
+import { backParts, NARROW_PX, rowPx, stacksLines } from "@/lib/words/row-layout";
+import {
+  exampleSegments,
+  famLang,
+  famMark,
+  missingWords,
+  recordHits,
+  type FamHit,
+  type FamMap,
+} from "@/lib/words/example-marks";
 import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
@@ -476,6 +486,43 @@ function useTouch() {
     return () => mq.removeEventListener("change", on);
   }, []);
   return touch;
+}
+
+/** True on a narrow screen (a phone held upright): rows stack as lines (lib/words/row-layout.ts). */
+function useNarrow() {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${NARROW_PX - 0.02}px)`);
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return narrow;
+}
+
+/**
+ * An example sentence with its words marked by the user's familiarity
+ * (lib/words/example-marks.ts): a word with a card gets a solid (weak) or
+ * dashed (learning) line; mastered words and words without a card stay plain.
+ */
+function MarkedExample({ text, lang, fam }: { text: string; lang: string; fam: FamMap }) {
+  const known = fam.get(famLang(lang));
+  if (!known) return <>{text}</>;
+  return (
+    <>
+      {exampleSegments(text, lang).map((s, k) => {
+        const mark = s.word ? famMark(known.get(s.word)) : null;
+        return mark ? (
+          <span key={k} className={`lk-fam-${mark}`} data-fam={mark}>
+            {s.text}
+          </span>
+        ) : (
+          s.text
+        );
+      })}
+    </>
+  );
 }
 
 /**
@@ -3182,7 +3229,7 @@ function Study({
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
   const speech = useSpeech(serverVoice);
   const { locale } = useLocale();
-  /** What a tap, a hold or the focus reads: word → meaning → example. */
+  /** What a tap, a hold or the focus reads: word → example → meaning (the row's order). */
   const partsOf = useCallback(
     (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
     [config.readingOnBack, locale],
@@ -3618,7 +3665,9 @@ function Study({
   // Text size (lib/text-size.ts): rows grow with the cards' text, never shrink
   // under the 44px tap target.
   const cardScale = useTextScale("cards");
-  const ROW_H = Math.round((touch ? 44 : 28) * Math.max(1, cardScale));
+  // A phone held upright stacks each row as three lines (lib/words/row-layout.ts).
+  const narrow = useNarrow() && touch;
+  const ROW_H = Math.round(rowPx(touch, narrow) * Math.max(1, cardScale));
   const listRef = useRef<HTMLDivElement>(null);
   /** The list element as state, for effects that must start when it mounts. */
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
@@ -3899,7 +3948,7 @@ function Study({
   useEffect(() => {
     if (!touch || !active || holding !== null || !focusItem) return;
     if (quietFocus.current === focusLine) return void (quietFocus.current = null);
-    // With every meaning shown, the back is read too: word → meaning → example.
+    // With every meaning shown, the back is read too: word → example → meaning.
     speech.once(
       showAll ? partsOf(focusItem) : [{ kind: "word", text: focusText, lang: focusItem.lang }],
       false,
@@ -4077,7 +4126,7 @@ function Study({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [loading]);
 
-  // Say the focused row aloud on a loop (word, then example) while the page
+  // Say the focused row aloud on a loop (word, example, meaning) while the page
   // is active; paused in a hidden tab or background window.
   const active = usePageActive();
   const focused = !touch && active ? queue[row] : undefined;
@@ -4118,6 +4167,37 @@ function Study({
   // Sticky over the whole loaded queue: a column appearing and disappearing
   // as example-less stretches scroll by would shift every other column.
   const hasExamples = useMemo(() => queue.some((it) => it.ex || it.note), [queue]);
+
+  // Familiarity marks inside the examples (lib/words/example-marks.ts): the
+  // words of the rendered window not asked yet, in one request per language
+  // once the window has held still for a moment; answers kept for the session.
+  const fam = useRef<FamMap>(new Map());
+  const [, setFamRev] = useState(0);
+  useEffect(() => {
+    const want = missingWords(queue.slice(from, to), fam.current);
+    if (!want.size) return;
+    const t = setTimeout(() => {
+      for (const [lang, all] of want)
+        for (let k = 0; k < all.length; k += 500) {
+          const words = all.slice(k, k + 500);
+          // Asked: never again this session, even if the request fails.
+          recordHits(fam.current, lang, words, {});
+          void fetch("/api/words/familiarity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lang, words }),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j: { hits?: Record<string, FamHit> } | null) => {
+              if (!j?.hits || !Object.keys(j.hits).length) return;
+              recordHits(fam.current, lang, words, j.hits);
+              setFamRev((n) => n + 1);
+            })
+            .catch(() => {});
+        }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [from, to, queue]);
 
   // Term column width (lib/words/columns.ts): fitted to the terms near the
   // middle of the screen, eased into place through --term-w on the list.
@@ -4181,10 +4261,10 @@ function Study({
   const termGoal = useRef<number | null>(null);
   const termShown = useRef<number | null>(null);
   const termVelocity = useRef(0);
-  // Desktop with examples: the meaning column's share, the same way.
-  const backGoal = useRef<number | null>(null);
-  const backShown = useRef<number | null>(null);
-  const backVelocity = useRef(0);
+  // Desktop with examples: the example column's share (it comes first), the same way.
+  const exGoal = useRef<number | null>(null);
+  const exShown = useRef<number | null>(null);
+  const exVelocity = useRef(0);
   /** The glide's one rAF loop, kept across renders (see below). */
   const glideRaf = useRef(0);
   const glideLast = useRef<number | null>(null);
@@ -4211,18 +4291,18 @@ function Study({
         );
       // The list less padding, marker and status columns, gaps, and the term column.
       const avail = el.clientWidth - (1 + 1.25 + 3.5 + 2) * rem - termGoal.current;
-      backGoal.current = nextGoal(
-        backGoal.current,
-        splitTarget(weighted((c) => c.back) + rem, weighted((c) => c.ex) + rem, avail, rem),
+      exGoal.current = nextGoal(
+        exGoal.current,
+        splitTarget(weighted((c) => c.ex) + rem, weighted((c) => c.back) + rem, avail, rem),
         rem,
       );
     }
-    if (termShown.current === null || (split && backShown.current === null)) {
+    if (termShown.current === null || (split && exShown.current === null)) {
       termShown.current = termGoal.current;
       el.style.setProperty("--term-w", `${termShown.current}px`);
       if (split) {
-        backShown.current = backGoal.current;
-        el.style.setProperty("--back-w", `${backShown.current}px`);
+        exShown.current = exGoal.current;
+        el.style.setProperty("--ex-w", `${exShown.current}px`);
       }
       return;
     }
@@ -4261,9 +4341,9 @@ function Study({
       const a = glide(termGoal.current!, termShown, termVelocity, "--term-w", dt);
       const b =
         !glideSplit.current ||
-        backGoal.current === null ||
-        backShown.current === null ||
-        glide(backGoal.current, backShown, backVelocity, "--back-w", dt);
+        exGoal.current === null ||
+        exShown.current === null ||
+        glide(exGoal.current, exShown, exVelocity, "--ex-w", dt);
       if (a && b) {
         glideRaf.current = 0;
         glideLast.current = null;
@@ -4728,9 +4808,11 @@ function Study({
                   locked={() => retired(i)}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
-                      ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
+                      ? `slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4 ${
+                          stacksLines(narrow, i === focusLine) ? "slip-lines" : ""
+                        }`
                       : hasExamples
-                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--back-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
+                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--ex-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
                   } ${rating ? RATING_STYLE[rating] : ""}`}
                   style={{ height: ROW_H }}
@@ -4746,7 +4828,7 @@ function Study({
                   <Glance
                     active={glancing}
                     title={it.reading ? `${it.term} ${it.reading}` : it.term}
-                    className={`font-medium ${
+                    className={`slip-term font-medium ${
                       it.kind === "new"
                         ? "text-emerald-600 dark:text-emerald-400"
                         : it.kind === "again"
@@ -4760,85 +4842,85 @@ function Study({
                     )}
                   </Glance>
                   {(() => {
-                    const meaning = (
-                      <Glance
-                        active={glancing && show}
-                        title={show ? it.back : undefined}
-                        className={`text-sm opacity-80 transition-[filter] duration-75 ${
-                          touch ? "block min-w-0" : ""
-                        } ${show ? "" : "slip-blank"}`}
-                      >
-                        {config.readingOnBack && it.reading && it.reading !== it.term && (
-                          <span className="mr-2 font-medium">{it.reading}</span>
-                        )}
-                        {it.back}
-                      </Glance>
-                    );
-                    if (!touch || (!it.ex && !it.note)) return meaning;
-                    // Phones: one row is the whole card — the front, then everything
-                    // on the back (meaning, then example), as "Show all meanings"
-                    // shows and reads it. Two lines in the row's fixed height (one
-                    // line on a wider screen), so the windowing stays exact.
-                    // Tags (level, list) are only in the double-tap sheet.
-                    return (
-                      <span
-                        className="flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
-                        data-row-back
-                      >
-                        {meaning}
+                    // The back in the row's order (lib/words/row-layout.ts): the
+                    // example, then the meaning; with no example the meaning
+                    // takes its place. Each part is styled by its place, not by
+                    // what it is: the first is the stronger.
+                    const parts = backParts(it);
+                    const cell = (k: (typeof parts)[number], at: number) => {
+                      const first = at === 0;
+                      const tone = touch
+                        ? first
+                          ? "text-sm opacity-80"
+                          : "text-xs opacity-60"
+                        : first
+                          ? "text-sm opacity-80"
+                          : "text-sm opacity-70";
+                      // Desktop: a card without an example spans both columns.
+                      const span = !touch && hasExamples && parts.length === 1 ? "col-span-2" : "";
+                      const look = `${tone} ${span} transition-[filter] duration-75 ${
+                        touch ? "block min-w-0" : ""
+                      } ${show ? "" : "slip-blank"}`;
+                      if (k === "meaning")
+                        return (
+                          <Glance
+                            key={k}
+                            active={glancing && show}
+                            title={show ? it.back : undefined}
+                            className={look}
+                          >
+                            {config.readingOnBack && it.reading && it.reading !== it.term && (
+                              <span className="mr-2 font-medium">{it.reading}</span>
+                            )}
+                            {it.back}
+                          </Glance>
+                        );
+                      return (
                         <Glance
+                          key={k}
                           active={glancing && show}
                           title={
                             show ? (it.ex ? `${it.ex}\n${it.exTr ?? ""}` : it.note) : undefined
                           }
-                          className={`block min-w-0 text-xs opacity-60 transition-[filter] duration-75 sm:flex-1 ${
-                            show ? "" : "slip-blank"
-                          }`}
+                          className={look}
                         >
                           {it.ex ? (
                             <>
                               <span lang={it.lang} data-row-example>
-                                {it.ex}
+                                <MarkedExample text={it.ex} lang={it.lang} fam={fam.current} />
                               </span>
-                              {it.exTr && <span className="ml-2 opacity-80">{it.exTr}</span>}
+                              {it.exTr && (
+                                <span className="ml-2 text-xs opacity-60">{it.exTr}</span>
+                              )}
                             </>
                           ) : (
-                            <PhraseNote note={it.note} register={it.register} />
+                            <span className="text-xs">
+                              <PhraseNote note={it.note} register={it.register} />
+                            </span>
                           )}
                         </Glance>
+                      );
+                    };
+                    const cells = parts.map(cell);
+                    if (!touch) return cells;
+                    // Touch: one row is the whole card. Upright phones stack it
+                    // as three lines (.slip-lines: word / example / meaning);
+                    // wider screens put the back beside the word, two lines in
+                    // the row's fixed height (one on a wider screen), so the
+                    // windowing stays exact. Tags (level, list) are only in the
+                    // double-tap sheet.
+                    return (
+                      <span
+                        className="slip-back flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
+                        data-row-back
+                      >
+                        {cells}
                       </span>
                     );
                   })()}
-                  {hasExamples && !touch && (
-                    // The example is part of the answer side: hidden with the meaning.
-                    <Glance
-                      active={glancing && show}
-                      className={`text-sm opacity-70 transition-[filter] duration-75 ${
-                        show ? "" : "slip-blank"
-                      }`}
-                      title={
-                        show && it.ex
-                          ? `${it.ex}\n${it.exTr ?? ""}`
-                          : show && it.note
-                            ? it.note
-                            : undefined
-                      }
-                    >
-                      {it.ex ? (
-                        <>
-                          {it.ex}
-                          {it.exTr && <span className="ml-2 text-xs opacity-60">{it.exTr}</span>}
-                        </>
-                      ) : (
-                        <span className="text-xs">
-                          <PhraseNote note={it.note} register={it.register} />
-                        </span>
-                      )}
-                    </Glance>
-                  )}
                   {/* Graded: when it comes back. Ungraded: "new", or how long it has been due. */}
                   <span
-                    className={`flex items-center justify-end gap-1.5 fs-11 tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
+                    className={`slip-status flex items-center justify-end gap-1.5 fs-11 tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
                     style={rating ? { color: "var(--grade)" } : undefined}
                     title={rating ? ratingLabel[rating] : text.dueTitle.value}
                   >

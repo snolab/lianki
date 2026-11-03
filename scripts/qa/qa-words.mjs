@@ -1325,15 +1325,33 @@ try {
         (await m.locator("[data-slip-sheet] [data-sheet-tags] span").count()) > 0,
         `${tag} the sheet shows the word's tags`,
       );
-      // One row = the whole card: front, then the back (meaning, then the
-      // example), in the row's fixed height, so the windowing stays exact.
-      const unified = await mrows.nth(0).evaluate((el) => ({
-        example: el.querySelectorAll("[data-row-back] [data-row-example]").length,
-        h: Math.round(el.getBoundingClientRect().height),
-      }));
+      // One row = the whole card, example first (owner, 2026-11-03): on an
+      // upright phone three lines — word, example, meaning — in the row's
+      // fixed height (lib/words/row-layout.ts ROW_PX.lines), so the windowing
+      // stays exact; word, example and meaning share one left edge.
+      const unified = await mrows.nth(0).evaluate((el) => {
+        const back = el.querySelector("[data-row-back]");
+        const ex = back?.querySelector("[data-row-example]");
+        const term = el.querySelector(".slip-term");
+        const left = (n) => (n ? Math.round(n.getBoundingClientRect().left) : -1);
+        return {
+          lines: el.classList.contains("slip-lines"),
+          exampleFirst: !!ex && back.firstElementChild?.contains(ex),
+          aligned: left(term) === left(back),
+          below:
+            !!term &&
+            !!back &&
+            back.getBoundingClientRect().top >= term.getBoundingClientRect().bottom - 1,
+          h: Math.round(el.getBoundingClientRect().height),
+        };
+      });
       check(
-        unified.example === 1 && unified.h === 44,
-        `${tag} the row shows the example under the meaning, at the fixed height (${JSON.stringify(unified)})`,
+        unified.lines &&
+          unified.exampleFirst &&
+          unified.aligned &&
+          unified.below &&
+          unified.h === 56,
+        `${tag} the row stacks word / example / meaning, at the fixed height (${JSON.stringify(unified)})`,
       );
       await m.getByRole("button", { name: "Cancel" }).click();
       check((await m.locator("[data-slip-sheet]").count()) === 0, `${tag} Cancel closes the sheet`);
@@ -1822,7 +1840,8 @@ try {
             steps.push({ i: t.i, focus: b.focus - t.i, top: b.top - a.top });
           }
           check(
-            steps.every((s) => s.focus === 1 && s.top === 44),
+            // One row: ROW_PX.lines on an upright phone (lib/words/row-layout.ts).
+            steps.every((s) => s.focus === 1 && s.top === 56),
             `${tag} each grade moves the focus and the list by exactly one row (${JSON.stringify(steps)})`,
           );
           // Re-grade the row just graded (now one row above the focus): nothing moves.
