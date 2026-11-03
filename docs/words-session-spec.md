@@ -24,6 +24,14 @@ they land. Design details that are still open are marked **open**.
   without an example shows its meaning where the example would be (desktop:
   across both columns), with no gap. Three-line phone rows were built and
   dropped before shipping (19:47 JST).
+- **Rows 1.5× taller** (2026-11-03 23:01 JST: "卡片的高度再拉高那么一点… 1.5倍高度吧，
+  现在的1.5倍"): 66px on touch, 42px on desktop (× the cards' text size),
+  same columns and order. The room goes to the text, not to empty space: on a
+  phone the example may wrap to a second line before its ellipsis (the
+  meaning stays one line); on desktop each column may take two lines. A cut
+  cell on the focused row slides up to its end and back. The swipe keeps its
+  finger distance: one detent is still the old row height (44px), apart from
+  the row's own (`rowMetrics`, `lib/words/row-layout.ts`).
 - **Familiarity inside examples** (19:32 JST): an example's words that have
   one of his cards are marked by how well he knows them — solid line = weak,
   dashed = learning, mastered and card-less words plain (the reader's scheme,

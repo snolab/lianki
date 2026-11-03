@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Browser checks for the chat's typing glass (packages/debug-chat/src/typing-glass.ts)
  * on the local /harness page, with the hot widget, over a made-up busy page:
@@ -17,7 +17,7 @@
  * getUserMedia is stubbed (refused): nothing is recorded. Browsers are muted
  * (scripts/qa/silent.mjs).
  *
- *   node scripts/dev/debug-chat-typing-glass-qa.mjs [--shots <dir>]
+ *   bun scripts/dev/debug-chat-typing-glass-qa.mjs [--shots <dir>]
  *     --shots: save light/dark × resting/typing (and a multi-line draft at
  *     150%) at 390×844 (iPhone) there
  */

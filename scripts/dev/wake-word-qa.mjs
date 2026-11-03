@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * The "Linky" gate end to end in Chromium (docs/wake-word.md), on the local
  * /harness page: the real Silero VAD, the real WASM spotter (downloaded from
@@ -6,7 +6,7 @@
  * session. The microphone is Chromium's fake capture device fed from a WAV
  * file, so nothing is recorded and nothing is played.
  *
- *   node scripts/dev/wake-word-qa.mjs --clip <wav with "Linky, …"> [--negative <wav without it>] [--save sent.wav]
+ *   bun scripts/dev/wake-word-qa.mjs --clip <wav with "Linky, …"> [--negative <wav without it>] [--save sent.wav]
  *
  * Checks: the mic on, the agent's {type: "wake", mode: "passive"} (here
  * `__lkMic.wake("passive")`) makes it passive (data-wake, the "Linky?" badge)
@@ -31,7 +31,7 @@ const NEG = arg("negative");
 /** `--save <file.wav>`: write what was sent to STT, to check where the cut fell. */
 const SAVE = arg("save");
 if (!CLIP) {
-  console.error("usage: node scripts/dev/wake-word-qa.mjs --clip <wav> [--negative <wav>]");
+  console.error("usage: bun scripts/dev/wake-word-qa.mjs --clip <wav> [--negative <wav>]");
   process.exit(2);
 }
 

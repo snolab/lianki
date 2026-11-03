@@ -1,6 +1,6 @@
 name: CI
 
-# Mirrors the pre-commit hook: OXC lint + format check, typecheck, unit +
+# Mirrors the pre-push hook minus qa:all: OXC lint + format check, typecheck, unit +
 # coverage. ~20 s, and it is the only check main's deploy waits for
 # (deploy-worker.yml runs on this workflow's success).
 #

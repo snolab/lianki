@@ -8,9 +8,11 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 ## Hard rules
 
 - **NEVER `git push --force`.** If histories diverge, ask how to proceed.
-- **NEVER `--no-verify`** — the pre-commit hook syncs `lianki.meta.js`, scans
-  secrets, lints, builds, and tests. Bypassing causes meta drift and broken
-  userscript auto-updates.
+- **NEVER `--no-verify`** — pre-commit (seconds, staged files only) scans
+  secrets, runs oxlint --fix + oxfmt, and syncs the userscript build,
+  `lianki.meta.js` and `@version`; pre-push runs whole-repo lint, typecheck,
+  the unit suite with its coverage gate, then `qa:all`. Bypassing causes meta
+  drift, broken userscript auto-updates, and failures CI finds later.
 - **NEVER `git reset --hard`** to move a branch — it silently destroys
   uncommitted work. Use `git reset --keep`, which aborts instead of overwriting.
 - Always bump `@version` in `lianki.user.js` when changing the userscript.
@@ -27,7 +29,7 @@ bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
 bun test               # unit tests
 bun fix                # oxlint --fix + oxfmt
-bun run lint           # oxlint + oxfmt --check (check-only; hooks and CI run it)
+bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run it)
 bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
@@ -106,6 +108,7 @@ that are expensive to rediscover.
 | Finding your way around the code                              | [docs/repo-map.md](docs/repo-map.md)                                |
 | Secrets, auth, OAuth config                                   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
 | Anything calling an LLM or TTS                                | [docs/workers-ai.md](docs/workers-ai.md)                            |
+| Learning Partner AI replies for users (DeepSeek, caps)        | [docs/partner-ai.md](docs/partner-ai.md)                            |
 | The owner's local streaming speech-to-text (mic → his Mac)    | [docs/local-stt.md](docs/local-stt.md)                              |
 | Whole-page dev server on prod D1 (owner only, home LAN)       | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
 | The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |

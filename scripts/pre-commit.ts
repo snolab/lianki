@@ -4,6 +4,7 @@ import { writeFileSync, existsSync } from "fs";
 import { writeCorpus, CORPUS_PATH } from "./gen-blog-corpus";
 import { writeStateTree, STATE_TREE_MODULE } from "./gen-state-tree";
 import { join } from "path";
+import { planPreCommit, USERSCRIPT_OUT } from "./pre-commit-plan";
 
 const run = (cmd: string) => execSync(cmd, { encoding: "utf-8" });
 const die = (msg: string): never => {
@@ -16,22 +17,42 @@ const die = (msg: string): never => {
 const staged = () => run("git diff --cached --name-only").trim().split("\n").filter(Boolean);
 const isStaged = (path: string) => staged().includes(path);
 
+// Runs in the pre-commit hook after lint-staged. Every step is gated on the
+// staged paths (scripts/pre-commit-plan.ts), so an ordinary commit does nothing
+// here. Typecheck and the unit suite run in pre-push and CI, not per commit.
+const plan = planPreCommit(staged());
+
 // docs/state-tree.md is served by GET /api/dev/state-tree from a bundled copy
-// (the Worker has no filesystem): keep it in sync on every commit, before the
-// userscript-only steps below exit early. unit/state-tree.test.ts checks it.
-if (writeStateTree().changed) console.log(`${STATE_TREE_MODULE} regenerated`);
-run(`git add ${STATE_TREE_MODULE}`);
+// (the Worker has no filesystem): keep it in sync whenever the outline is
+// staged, before the userscript-only steps below exit early.
+// unit/state-tree.test.ts checks it.
+if (plan.stateTree) {
+  if (writeStateTree().changed) console.log(`${STATE_TREE_MODULE} regenerated`);
+  run(`git add ${STATE_TREE_MODULE}`);
+}
+
+// Bundle the blog markdown for the same reason: the Workers runtime has no
+// filesystem, and lib/blog.ts reading blog/*.md at request time renders an
+// empty page with a 200 rather than failing. Every route is dynamically
+// rendered (the root layout awaits headers()/cookies()), so there is no
+// prerendered copy to fall back on. unit/blog-corpus.test.ts fails if this
+// drifts.
+if (plan.blogCorpus) {
+  const { changed, count } = writeCorpus();
+  if (changed) console.log(`blog corpus regenerated (${count} posts)`);
+  run(`git add ${CORPUS_PATH}`);
+}
 
 // Build userscript from TS source if staged
-if (isStaged("src/lianki.user.ts")) {
+if (plan.buildUserscript) {
   execSync("bun run build:userscript", { stdio: "inherit" });
   // bunx, not bare `oxfmt`: the binary lives in node_modules/.bin and is not on
   // PATH inside the git hook's shell, so a bare call fails with status 127 and
   // blocks every commit that touches the userscript.
   execSync("bunx oxfmt public/lianki.user.js", { stdio: "inherit" });
-  run("git add public/lianki.user.js");
+  run(`git add ${USERSCRIPT_OUT}`);
 }
-if (!isStaged("public/lianki.user.js")) process.exit(0);
+if (!isStaged(USERSCRIPT_OUT)) process.exit(0);
 
 // Version bump check
 const ver = (ref: string) => run(`git show ${ref}`).match(/@version\s+([\d.]+)/)?.[1] ?? null;
@@ -59,18 +80,6 @@ writeFileSync(
     `export const LIANKI_USERSCRIPT_VERSION = ${JSON.stringify(sv)};\n`,
 );
 run("git add lib/userscript-version.ts");
-
-// Bundle the blog markdown for the same reason as the version above: the
-// Workers runtime has no filesystem, and lib/blog.ts reading blog/*.md at
-// request time renders an empty page with a 200 rather than failing. Every
-// route is dynamically rendered (the root layout awaits headers()/cookies()),
-// so there is no prerendered copy to fall back on. unit/blog-corpus.test.ts
-// fails if this drifts.
-{
-  const { changed, count } = writeCorpus();
-  if (changed) console.log(`blog corpus regenerated (${count} posts)`);
-  run(`git add ${CORPUS_PATH}`);
-}
 
 // Sync pardon submodule — only when it's initialized as its OWN git repo.
 // The directory exists even for an uninitialized submodule; without the .git

@@ -1,7 +1,7 @@
 // /review QA: the in-site review page, end to end, silent, with iPhone-size
 // screenshots in light and dark.
 //
-//   QA_BASE=http://localhost:3017 node scripts/qa/qa-review.mjs [outDir]
+//   QA_BASE=http://localhost:3017 bun scripts/qa/qa-review.mjs [outDir]
 //
 // Signs up a throwaway dev account (needs DEV_EMAIL_PASSWORD_AUTH=1), adds
 // three cards, then on /review: the card with its intervals, grading by tap

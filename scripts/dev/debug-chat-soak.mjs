@@ -1,10 +1,10 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * The Learning Partner chat (packages/debug-chat) over a long session, on the
  * local /harness page with the hot widget: does anything it holds grow?
  *
- *   node scripts/dev/debug-chat-soak.mjs            # 10 minutes
- *   SOAK_MIN=3 node scripts/dev/debug-chat-soak.mjs
+ *   bun scripts/dev/debug-chat-soak.mjs            # 10 minutes
+ *   SOAK_MIN=3 bun scripts/dev/debug-chat-soak.mjs
  *
  * iPhone-sized, muted Chromium. The harness keeps the last 200 lines
  * (`?cap=200`, as the app's trimHistory does), and an agent line arrives every

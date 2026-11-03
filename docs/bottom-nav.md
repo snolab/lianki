@@ -121,7 +121,7 @@ debug mode. The two never overlap:
    measured from its own resting place, so a second measure gives the same
    dock (no oscillation). At its default place the bar rests above
    `--lk-bottom-reserve` and the island never docks. Nothing polls.
-   `node scripts/dev/nav-island-chat-qa.mjs` checks it headless (412×915 and
+   `bun scripts/dev/nav-island-chat-qa.mjs` checks it headless (412×915 and
    390×844): the island's rect across open, minimized and a four-line draft,
    from the default place and from a place dragged over the island.
 2. **The partner button opens the chat.** It sends the `chat.open` action

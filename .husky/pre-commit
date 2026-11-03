@@ -1,17 +1,15 @@
-# Fast, per-commit checks (static + unit). The heavier integration suites and
-# the build run in pre-push via `bun run qa:all`. Never use --no-verify (see
-# CLAUDE.md) — this hook also syncs the userscript meta + version.
+# Fast, staged-file checks only — a commit should take seconds, not minutes
+# (owner, 2026-11-03). Never use --no-verify (see AGENTS.md): this hook also
+# syncs the userscript meta + version.
+#
+# 1. lint-staged (.lintstagedrc.mjs): secretlint on every staged file, then
+#    oxlint --fix + oxfmt on staged JS/TS outside packages/.
+# 2. scripts/pre-commit.ts: the generated copies, each only when its input is
+#    staged — the userscript build + @version check + lianki.meta.js and
+#    lib/userscript-version.ts sync, lib/state-tree.generated.ts,
+#    lib/blog.corpus.json. Plan: scripts/pre-commit-plan.ts.
+#
+# Whole-repo lint, typecheck and the unit suite (coverage gate) run in
+# .husky/pre-push and in CI.
 bunx lint-staged
-
-# Runs BEFORE typecheck and the tests, not after: this is the step that builds
-# the userscript from src/ and regenerates public/lianki.meta.js and
-# lib/userscript-version.ts. With it last, every @version bump failed its own
-# commit — unit/userscript-version.test.ts compares the generated constant
-# against the built script, and the constant had not been regenerated yet.
 bun scripts/pre-commit.ts
-
-# OXC, check-only, whole repo (not just staged files): oxlint fails on errors,
-# oxfmt --check on any unformatted file. ~0.1 s. Fix with `bun fix`.
-bun run lint
-bun run typecheck
-bun run test:unit -- --coverage

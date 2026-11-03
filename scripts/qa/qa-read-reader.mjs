@@ -1,7 +1,7 @@
 // /read reader v2 QA (flag read.reader-v2; ?reader=v2 on a local dev server):
 // silent, iPhone and Android sizes, light and dark screenshots.
 //
-//   QA_BASE=http://localhost:3417 node scripts/qa/qa-read-reader.mjs [outDir]
+//   QA_BASE=http://localhost:3417 bun scripts/qa/qa-read-reader.mjs [outDir]
 //
 // Signs up a throwaway account, imports the public-domain fixture EPUB (and a
 // long book made of it, for the performance numbers; never anyone's own

@@ -93,7 +93,7 @@ import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
-import { backParts } from "@/lib/words/row-layout";
+import { backParts, rowMetrics } from "@/lib/words/row-layout";
 import { withPickedExample, type Example } from "@/lib/words/example-pick";
 import {
   exampleSegments,
@@ -1248,6 +1248,8 @@ function useSpeech(serverVoice = false) {
 const GLANCE_ACCEL = 450;
 const GLANCE_HOLD_START = 1.0;
 const GLANCE_HOLD_END = 1.2;
+/** Line height of a /words cell that wraps (Glance `lines`), in em. */
+const ROW_LINE_LH = 1.25;
 
 /**
  * A cell that would be cut off: on the active row it slides to its end,
@@ -1255,18 +1257,25 @@ const GLANCE_HOLD_END = 1.2;
  * through the Web Animations API — so a long word or
  * meaning can be read in full without leaving the list. Elsewhere it ends in
  * an ellipsis, and hovering shows the whole text.
+ *
+ * With `lines` > 1 the text wraps onto that many lines first (the taller
+ * rows, owner 2026-11-03 23:01 JST), ends in an ellipsis there, and on the
+ * active row slides up instead, to its last line and back.
  */
 function Glance({
   active,
   className,
   title,
+  lines = 1,
   children,
 }: {
   active: boolean;
   className: string;
   title?: string;
+  lines?: number;
   children: React.ReactNode;
 }) {
+  const wrap = lines > 1;
   const outer = useRef<HTMLSpanElement>(null);
   const inner = useRef<HTMLSpanElement>(null);
   const [over, setOver] = useState(0);
@@ -1279,37 +1288,62 @@ function Glance({
     // The outer box clips, so its scrollWidth is the full text's width (an
     // inline span's own scrollWidth is always 0).
     const measure = () => {
-      const extra = o.scrollWidth - o.clientWidth;
+      // Wrapped: clamped, the inner box's own overflow; sliding (unclamped),
+      // how far it reaches past the outer box's lines.
+      const extra = wrap
+        ? Math.max(i.scrollHeight - i.clientHeight, i.offsetHeight - o.clientHeight)
+        : o.scrollWidth - o.clientWidth;
       setOver(extra > 2 ? Math.ceil(extra) : 0);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(o);
     return () => ro.disconnect();
-  }, [active, children, title]);
+  }, [active, children, title, wrap]);
   useEffect(() => {
     const i = inner.current;
     if (!over || !i || motionOff()) return;
     const move = moveSeconds(over, GLANCE_ACCEL);
     const total = GLANCE_HOLD_START + move + GLANCE_HOLD_END + move;
     const at = (s: number) => s / total;
-    const end = `translateX(-${over}px)`;
+    const end = wrap ? `translateY(-${over}px)` : `translateX(-${over}px)`;
     const anim = i.animate(
       [
-        { transform: "translateX(0)", offset: 0 },
-        { transform: "translateX(0)", offset: at(GLANCE_HOLD_START), easing: MIN_JERK_EASING },
+        { transform: "none", offset: 0 },
+        { transform: "none", offset: at(GLANCE_HOLD_START), easing: MIN_JERK_EASING },
         { transform: end, offset: at(GLANCE_HOLD_START + move) },
         {
           transform: end,
           offset: at(GLANCE_HOLD_START + move + GLANCE_HOLD_END),
           easing: MIN_JERK_EASING,
         },
-        { transform: "translateX(0)", offset: 1 },
+        { transform: "none", offset: 1 },
       ],
       { duration: total * 1000, iterations: Infinity },
     );
     return () => anim.cancel();
-  }, [over]);
+  }, [over, wrap]);
+  if (wrap)
+    return (
+      <span
+        ref={outer}
+        title={title}
+        className={`${className} overflow-hidden whitespace-normal [overflow-wrap:anywhere]`}
+        style={{ maxHeight: `${lines * ROW_LINE_LH}em`, lineHeight: ROW_LINE_LH }}
+      >
+        <span
+          ref={inner}
+          className={over ? "block will-change-transform" : "block overflow-hidden text-ellipsis"}
+          style={
+            over
+              ? undefined
+              : { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: lines }
+          }
+        >
+          {children}
+        </span>
+      </span>
+    );
   return (
     <span
       ref={outer}
@@ -3864,10 +3898,11 @@ export function Study({
 
   // The list is a box the height of the screen that scrolls inside itself;
   // only the rows in view (plus a margin) are rendered.
-  // Text size (lib/text-size.ts): rows grow with the cards' text, never shrink
-  // under the 44px tap target.
+  // Text size (lib/text-size.ts): rows grow with the cards' text, never shrink.
+  // Rows are 1.5× their swipe unit (owner, 2026-11-03): SWIPE_A, the old row
+  // height, stays the finger distance of one detent (lib/words/row-layout.ts).
   const cardScale = useTextScale("cards");
-  const ROW_H = Math.round((touch ? 44 : 28) * Math.max(1, cardScale));
+  const { rowH: ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale);
   const listRef = useRef<HTMLDivElement>(null);
   /** The list element as state, for effects that must start when it mounts. */
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
@@ -5016,6 +5051,7 @@ export function Study({
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
                   } ${rating ? RATING_STYLE[rating] : ""}`}
                   style={{ height: ROW_H }}
+                  a={SWIPE_A}
                 >
                   {/* The grade, stamped like a small seal (盖章) at the slip's left end. */}
                   <span className="flex justify-center fs-10" data-stamp-cell>
@@ -5062,6 +5098,10 @@ export function Study({
                       const look = `${tone} ${span} transition-[filter] duration-75 ${
                         touch ? "block min-w-0" : ""
                       } ${show ? "" : "slip-blank"}`;
+                      // The taller rows' room (owner, 2026-11-03): on a phone the
+                      // first line (the example) may wrap once, the second stays
+                      // one line; on desktop each column may take two lines.
+                      const lines = !touch || first ? 2 : 1;
                       if (k === "meaning")
                         return (
                           <Glance
@@ -5069,6 +5109,7 @@ export function Study({
                             active={glancing && show}
                             title={show ? it.back : undefined}
                             className={look}
+                            lines={lines}
                           >
                             {config.readingOnBack && it.reading && it.reading !== it.term && (
                               <bdi className="mr-2 font-medium">{it.reading}</bdi>
@@ -5084,6 +5125,7 @@ export function Study({
                             show ? (it.ex ? `${it.ex}\n${it.exTr ?? ""}` : it.note) : undefined
                           }
                           className={look}
+                          lines={lines}
                         >
                           {it.ex ? (
                             <>
@@ -5106,9 +5148,9 @@ export function Study({
                     if (!touch) return cells;
                     // Phones: one row is the whole card — the front, then the
                     // back beside it (example, then meaning), as "Show all
-                    // meanings" shows and reads it. Two lines in the row's fixed
-                    // height (one line on a wider screen), so the windowing
-                    // stays exact. Tags (level, list) are only in the double-tap sheet.
+                    // meanings" shows and reads it. Two parts in the row's fixed
+                    // height (side by side on a wider screen), the example
+                    // wrapping once, so the windowing stays exact. Tags (level, list) are only in the double-tap sheet.
                     return (
                       <span
                         className="flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
@@ -5420,6 +5462,8 @@ type RowProps = {
   onHoldEnd?: () => void;
   /** The list is (or just was) scrolling: a touch now is catching a fling. */
   scrolling?: () => boolean;
+  /** The swipe's travel unit, one detent (px): the old row height, not the row's own. */
+  a: number;
   className: string;
   style: React.CSSProperties;
   children: React.ReactNode;
@@ -5478,12 +5522,11 @@ function TouchWordRow({
   onHoldEnd,
   scrolling,
   underlay,
+  a,
   className,
   style,
   children,
 }: RowProps) {
-  /** Travel unit: the row's own height. */
-  const a = typeof style.height === "number" ? style.height : 44;
   const { feel, reducedMotion } = useSwipeFeel(SWIPE_CORE_IFACE);
   if (swipePerf.on) swipePerf.renders++;
   const core = useSwipeGesture({
@@ -5576,11 +5619,11 @@ function NativeSlipRow({
   onHold,
   onHoldEnd,
   scrolling,
+  a,
   className,
   style,
   children,
 }: RowProps) {
-  const a = typeof style.height === "number" ? style.height : 44;
   const scroller = useRef<HTMLDivElement>(null);
   const mirror = useContext(SwipeMirror);
   // Rows mount as the list scrolls: each starts centred before it is painted.

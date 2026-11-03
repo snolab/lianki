@@ -9,6 +9,26 @@ import type { PartnerStrings } from "./components/DebugEval";
 import { OwnerBoots } from "./components/OwnerBoots";
 import { LOCALE_HEADER, PARTNER_FRAME_HEADER, resolveLocale } from "@/lib/app-locale";
 import { LANG_TAGS } from "@/lib/constants";
+import { flagIn } from "@/lib/flags";
+import { readFlags } from "@/lib/flags-store";
+import { isOwner } from "@/lib/owner";
+
+/**
+ * The Learning Partner opened to users (`partner.ai-reply`, docs/partner-ai.md):
+ * a signed-in user who is not the owner gets the chat on every page. Off (the
+ * default), or a guest, or the owner: false, and nothing changes. The session
+ * is only looked up while the flag is on.
+ */
+async function partnerOpenFor(): Promise<boolean> {
+  if (!flagIn(await readFlags(), "partner.ai-reply")) return false;
+  try {
+    const { authSessionOrNull } = await import("./signInEmail");
+    const user = (await authSessionOrNull())?.user;
+    return !!user?.id && !isOwner(user.email);
+  } catch {
+    return false;
+  }
+}
 
 export const metadata: Metadata = {
   title: "Lianki",
@@ -77,6 +97,7 @@ export default async function RootLayout({
   ) as unknown as PartnerStrings;
   // The unsaved-changes confirm (LeaveGuard, leave-guard.content.ts).
   const leave = String(getIntlayer("leave-guard", locale as never).unsaved);
+  const open = partnerFrame ? false : await partnerOpenFor();
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
       <head>
@@ -123,7 +144,7 @@ export default async function RootLayout({
         {/* The band behind the status bar's white clock (home-screen app only). */}
         <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
-          {partnerFrame ? null : <OwnerBoots strings={partner} leave={leave} />}
+          {partnerFrame ? null : <OwnerBoots strings={partner} leave={leave} open={open} />}
           {children}
         </IntlayerServerProvider>
       </body>

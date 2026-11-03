@@ -36,15 +36,37 @@ wrangler runs D1 locally, so no Cloudflare secrets are needed. Both alerts need
 the repo secret `SLACK_WEBHOOK_URL` (`scripts/ci/slack-alert.sh`); without it
 they only leave a workflow warning.
 
-The `pre-push` hook runs `bun run lint`, typecheck and the same `qa:all` on every
-pushed commit, so it is the per-change integration gate and a `--no-verify` skip
-lets a broken commit reach main until the nightly run. It skips automatically for
-deletion-only pushes, and on **native Windows** (Git Bash), where the OpenNext
-Cloudflare packaging cannot produce a working Worker (symlink copy errors with
-bun's isolated linker, `ChunkLoadError` on every route with a hoisted install;
-verified 2026-10-14). There the nightly run is the only integration gate; `LIANKI_QA_ON_WINDOWS=1` forces
-the local run, for example to re-test after an OpenNext upgrade. WSL counts as
-Linux and runs the gate normally.
+## Local hooks
+
+Split by speed since 2026-11-04 (a commit used to run typecheck and the whole
+unit suite, 30 s to several minutes):
+
+- **`pre-commit`** — seconds, staged files only: secretlint, oxlint `--fix` +
+  oxfmt on staged JS/TS (`.lintstagedrc.mjs`), and the generated copies only
+  when their inputs are staged — userscript build, `@version` check,
+  `lianki.meta.js` / `lib/userscript-version.ts` sync, the state-tree and blog
+  bundles (`scripts/pre-commit.ts`, plan in `scripts/pre-commit-plan.ts`).
+- **`pre-push`** — cheapest first, so a failure surfaces in seconds:
+  `bun run lint` (whole repo), typecheck, the unit suite with its coverage
+  gate, then `qa:all`.
+
+So a commit can be locally unchecked for types and tests until it is pushed;
+nothing reaches `main` that way, because `main` takes only PRs and the required
+CI check runs lint, typecheck and the unit suite with coverage on each one. The
+generated copies are each pinned by a unit test (`unit/state-tree.test.ts`,
+`unit/blog-corpus.test.ts`, `unit/userscript-version.test.ts`), so a missed
+regeneration fails pre-push and CI.
+
+The `pre-push` hook's `qa:all` makes it the per-change integration gate, and a
+`--no-verify` skip lets a broken commit reach main until the nightly run. It
+skips automatically for deletion-only pushes. On **native Windows** (Git Bash)
+it skips `qa:all` only — lint, typecheck and the unit suite still run — because
+the OpenNext Cloudflare packaging cannot produce a working Worker there (symlink
+copy errors with bun's isolated linker, `ChunkLoadError` on every route with a
+hoisted install; verified 2026-10-14). There the nightly run is the only
+integration gate; `LIANKI_QA_ON_WINDOWS=1` forces the local run, for example to
+re-test after an OpenNext upgrade. WSL counts as Linux and runs the gate
+normally.
 
 ## Deploy order
 

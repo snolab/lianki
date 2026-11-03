@@ -202,10 +202,24 @@ import {
   askText,
   checkChoices,
 } from "../../../packages/debug-chat/src/ask";
-import type { AnsweredEvent, SpeakerTag } from "../../../packages/debug-chat/src/wire";
+import type { AnsweredEvent, SpeakerTag, SttScene } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
 import { polishCheck, polishContext } from "../../../packages/debug-chat/src/polish";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
+import {
+  HISTORY_LINES,
+  HISTORY_MAX_CHARS,
+  MAX_OUTPUT_TOKENS,
+  PARTNER_AI_FLAG,
+  PARTNER_AI_LABEL,
+  type PartnerRequest,
+  type PartnerResult,
+  SITE_DAILY_USD,
+  USER_DAILY_TOKENS,
+  costUsd,
+  jstDay,
+  reserveInTokens,
+} from "../../../lib/partner-ai-config";
 import { EMBED_HEADER } from "./auth";
 import {
   CLIPS_GONE_MS,
@@ -373,7 +387,16 @@ type SessionsRpc = {
   live(user: string, session: string): Promise<unknown>;
   /** A feature flag's value (lib/flags.ts); an older main Worker has no such method. */
   flag?(key: string): Promise<unknown>;
+  /** The Learning Partner's AI reply for a non-owner thread (lib/partner-ai.ts). */
+  partnerReply?(req: PartnerRequest): Promise<unknown>;
 };
+/** How long the hub trusts its read of PARTNER_AI_FLAG (as lib/flags-store.ts's FLAG_CACHE_MS). */
+const AI_FLAG_CACHE_MS = 30_000;
+/** The AI's spinner is re-sent this often while the model works (the page's BUSY_MS is 12 s). */
+const AI_BEAT_MS = 8_000;
+/** Daily usage keys (docs/partner-ai.md, "Caps"): a user's tokens, the site's micro-USD. */
+const aiUserKey = (day: string, userId: string) => `ai:${day}:u:${userId}`;
+const aiSiteKey = (day: string) => `ai:${day}:site`;
 /** The owner's off switch for agent polish (lib/flags.ts, /dev/flags). */
 export const POLISH_OFF_FLAG = "stt.polish-off";
 /** At most one live-session check per grant in this long (a burst of uses asks once). */
@@ -494,6 +517,12 @@ export class DebugHub {
   private sessions?: SessionsRpc;
   /** When each grant's session was last checked (the per-grant rate limit). */
   private checkedAt = new Map<string, number>();
+  /** The last read of PARTNER_AI_FLAG (AI_FLAG_CACHE_MS). */
+  private aiFlag?: { at: number; on: boolean };
+  /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
+  private agentAt = new Map<string, number>();
+  /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
+  private aiTurn = new Map<string, number>();
 
   constructor(
     private ctx: DebugState,
@@ -597,11 +626,13 @@ export class DebugHub {
       }));
     const agents = this.agents(except);
     const nodes = [...new Set(agents.map((c) => c.a.node).filter((n): n is string => !!n))].sort();
+    // A friend's thread answered by the AI counts it as one listener: the chat is online.
+    const ai = who !== OWNER_THREAD && this.aiCachedOn() ? 1 : 0;
     return {
       type: "state",
       pending,
       sessions,
-      listeners: agents.length,
+      listeners: agents.length + ai,
       pages,
       ...(nodes.length ? { nodes } : {}),
     };
@@ -654,6 +685,7 @@ export class DebugHub {
     await this.ctx.storage.put(seqKey, seq);
     await this.ctx.storage.put(msgKey(m.thread, seq), m);
     if (seq > CHAT_HISTORY) await this.ctx.storage.delete(msgKey(m.thread, seq - CHAT_HISTORY));
+    if (m.from === "agent") this.agentAt.set(m.thread, Math.max(m.at, this.now()));
     const out = { type: "chat", message: m };
     for (const { ws, a } of this.pages(m.thread))
       if (!only || (a.id && only.includes(a.id))) send(ws, out);
@@ -1203,7 +1235,9 @@ export class DebugHub {
         id,
         at: this.now(),
       } satisfies PageAtt);
-      send(ws, { type: "friend-status", status: "open" });
+      // `ai`: replies on this thread come from the model (the page says so in its strings).
+      const ai = await this.aiOn();
+      send(ws, { type: "friend-status", status: "open", ...(ai ? { ai: true } : {}) });
     } else
       ws.serializeAttachment({
         role: "page",
@@ -1609,7 +1643,8 @@ export class DebugHub {
           page: page.label,
           thread: page.thread,
           len: m.text.length,
-          head: head(m.text),
+          // A user's words are never logged (docs/partner-ai.md, "Privacy"): the owner's only.
+          ...(page.thread === OWNER_THREAD ? { head: head(m.text) } : {}),
           ...(m.to ? { to: m.to } : {}),
           // Its length only: the selection itself is never logged.
           ...(m.context ? { selection: m.context.selection.length } : {}),
@@ -1617,7 +1652,8 @@ export class DebugHub {
       );
       // A friend's line is always their own thread's: no node addressing there.
       // Its attachment (the page selection) stays on the sender's own thread.
-      if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text, m.context);
+      if (page.thread !== OWNER_THREAD)
+        return this.friendChat(ws, page, m.id, m.text, m.context, m.scene);
       const line = (speaker: SpeakerTag | undefined) =>
         this.post({
           id: m.id,
@@ -1691,6 +1727,7 @@ export class DebugHub {
     id: string,
     text: string,
     context?: ChatContext,
+    scene?: SttScene,
   ) {
     const t = this.now();
     const userId = page.thread;
@@ -1723,7 +1760,7 @@ export class DebugHub {
       console.log(JSON.stringify({ msg: "debug.friend-new", userId, email }));
       for (const l of this.listeners()) send(l.ws, { type: "friend-new", userId, email, at: t });
     }
-    return this.post({
+    await this.post({
       id,
       from: "friend",
       label: page.label,
@@ -1734,6 +1771,176 @@ export class DebugHub {
       ...(page.sender ? { sender: page.sender } : {}),
       ...(context ? { context } : {}),
     });
+    // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
+    if (await this.aiOn()) await this.aiReply(page, email, t, context, scene);
+  }
+
+  /**
+   * The last read of PARTNER_AI_FLAG, without asking (state() is synchronous).
+   * Its age does not matter here: it only counts the AI as a listener, and the
+   * next connect or line reads the flag again.
+   */
+  private aiCachedOn() {
+    return this.aiFlag?.on === true;
+  }
+
+  /**
+   * Is PARTNER_AI_FLAG on? Asked of the main Worker (DebugSessions.flag) at
+   * most once per AI_FLAG_CACHE_MS. Only exactly true is on: no binding, an
+   * older main Worker, "busy", an error — all off, so friends' chat stays as
+   * it was (the lanes answer).
+   */
+  private async aiOn(): Promise<boolean> {
+    const t = this.now();
+    if (this.aiFlag && t - this.aiFlag.at < AI_FLAG_CACHE_MS) return this.aiFlag.on;
+    const ask = this.sessions?.flag?.bind(this.sessions);
+    let on = false;
+    try {
+      on = !!ask && !!this.sessions?.partnerReply && (await ask(PARTNER_AI_FLAG)) === true;
+    } catch {}
+    this.aiFlag = { at: t, on };
+    return on;
+  }
+
+  /**
+   * Answer a friend's line with the model (docs/partner-ai.md). The thread is
+   * the hub-verified user's own; the owner's is never passed here. Within the
+   * daily caps, a reservation is taken before the call (so concurrent calls
+   * cannot all pass a nearly spent cap) and settled with the real counts after.
+   * The reply is dropped when an agent (a lane) posted in this thread after
+   * the line, or a newer line started its own turn: a human reply wins.
+   */
+  private async aiReply(
+    page: PageAtt,
+    email: string,
+    lineAt: number,
+    context?: ChatContext,
+    scene?: SttScene,
+  ) {
+    const thread = page.thread;
+    const ask = this.sessions?.partnerReply?.bind(this.sessions);
+    if (thread === OWNER_THREAD || !isUserId(thread) || !ask) return;
+    const t = this.now();
+    const day = jstDay(t);
+    const userKey = aiUserKey(day, thread);
+    const siteKey = aiSiteKey(day);
+    const used = (await this.ctx.storage.get<number>(userKey)) ?? 0;
+    const site = await this.ctx.storage.get<number>(siteKey);
+    if (site === undefined) await this.aiDropOldDays(day);
+    const lines = (await this.history(thread))
+      .filter((m) => m.from === "friend" || m.from === "agent")
+      .slice(-HISTORY_LINES)
+      .map((m) => ({ role: m.from === "friend" ? "user" : "assistant", text: m.text }) as const);
+    // The newest lines within HISTORY_MAX_CHARS (the latest one always).
+    const history: typeof lines = [];
+    let chars = 0;
+    for (const h of lines.toReversed()) {
+      if (history.length && chars + h.text.length > HISTORY_MAX_CHARS) break;
+      history.unshift(h);
+      chars += h.text.length;
+    }
+    const path = page.label.split(" ")[0]?.slice(0, 300);
+    const pageInfo: NonNullable<PartnerRequest["page"]> = {
+      ...(context?.path || scene?.path || path
+        ? { path: context?.path ?? scene?.path ?? path }
+        : {}),
+      ...(context?.title || scene?.title ? { title: context?.title ?? scene?.title } : {}),
+      ...(context?.selection ? { selection: context.selection } : {}),
+      ...(scene?.screen ? { screen: scene.screen } : {}),
+    };
+    const pageChars = Object.values(pageInfo).reduce((n, v) => n + (v?.length ?? 0), 0);
+    // The most this call can cost: a ceiling on input tokens for everything the
+    // prompt can hold (lib/partner-ai-config.ts), and every output token used.
+    const reserveIn = reserveInTokens(chars + pageChars);
+    const reserveTokens = reserveIn + MAX_OUTPUT_TOKENS;
+    const reserveMicro = Math.ceil(costUsd(reserveIn, MAX_OUTPUT_TOKENS) * 1e6);
+    if (
+      used + reserveTokens > USER_DAILY_TOKENS ||
+      (site ?? 0) + reserveMicro > SITE_DAILY_USD * 1e6
+    ) {
+      console.log(
+        JSON.stringify({
+          msg: "partner.capped",
+          which: used + reserveTokens > USER_DAILY_TOKENS ? "user" : "site",
+        }),
+      );
+      for (const { ws } of this.pages(thread)) send(ws, { type: "ai-limit" });
+      return;
+    }
+    await this.ctx.storage.put(userKey, used + reserveTokens);
+    await this.ctx.storage.put(siteKey, (site ?? 0) + reserveMicro);
+    const turn = (this.aiTurn.get(thread) ?? 0) + 1;
+    this.aiTurn.set(thread, turn);
+    const beat = () => {
+      const b = { type: "busy", label: PARTNER_AI_LABEL, at: this.now() };
+      for (const { ws } of this.pages(thread)) send(ws, b);
+    };
+    beat();
+    const timer = setInterval(beat, AI_BEAT_MS);
+    const req: PartnerRequest = { userId: thread, history, page: pageInfo };
+    let res: PartnerResult;
+    try {
+      res = ((await ask(req)) ?? {
+        ok: false,
+        error: "model-failed",
+        billed: "unknown",
+      }) as PartnerResult;
+    } catch {
+      // The RPC failed: the model may have run. Keep the reservation.
+      res = { ok: false, error: "model-failed", billed: "unknown" };
+    } finally {
+      clearInterval(timer);
+    }
+    // Settle. Reported usage replaces the reservation; without it, the
+    // reservation stands (a ceiling), unless the call surely billed nothing (a
+    // refusal before the model, or an error status from it).
+    // Each count on its own: a missing (or zero) one keeps its part of the reservation.
+    const unbilled = !res.ok && !res.tokensIn && !res.tokensOut && res.billed !== "unknown";
+    const tokensIn = res.tokensIn ? res.tokensIn : unbilled ? 0 : reserveIn;
+    const tokensOut = res.tokensOut ? res.tokensOut : unbilled ? 0 : MAX_OUTPUT_TOKENS;
+    const nowUser = (await this.ctx.storage.get<number>(userKey)) ?? 0;
+    const nowSite = (await this.ctx.storage.get<number>(siteKey)) ?? 0;
+    await this.ctx.storage.put(
+      userKey,
+      Math.max(0, nowUser - reserveTokens + tokensIn + tokensOut),
+    );
+    await this.ctx.storage.put(
+      siteKey,
+      Math.max(0, nowSite - reserveMicro + Math.ceil(costUsd(tokensIn, tokensOut) * 1e6)),
+    );
+    const stale = this.aiTurn.get(thread) !== turn || (this.agentAt.get(thread) ?? 0) >= lineAt;
+    // Token counts and latency only: never the text, the user or the page.
+    console.log(
+      JSON.stringify({
+        msg: "partner.reply",
+        ok: res.ok,
+        ...(res.ok ? { tokensIn, tokensOut, model: res.model } : { error: res.error }),
+        ...(res.ms !== undefined ? { ms: res.ms } : {}),
+        ...(res.ok && stale ? { dropped: true } : {}),
+      }),
+    );
+    if (!res.ok) {
+      // Off or the owner: nothing to say (the lanes still answer). Otherwise tell the page.
+      if (res.error !== "off" && res.error !== "owner")
+        for (const { ws } of this.pages(thread)) send(ws, { type: "ai-failed" });
+      return;
+    }
+    if (stale) return;
+    await this.post({
+      id: crypto.randomUUID().slice(0, 8),
+      from: "agent",
+      label: PARTNER_AI_LABEL,
+      text: res.text,
+      at: this.now(),
+      thread,
+      email,
+    });
+  }
+
+  /** A new JST day: the usage keys of earlier days go (they only ever counted against caps). */
+  private async aiDropOldDays(day: string) {
+    const old = await this.ctx.storage.list<number>({ prefix: "ai:" });
+    for (const k of old.keys()) if (!k.startsWith(`ai:${day}:`)) await this.ctx.storage.delete(k);
   }
 
   /**
@@ -2038,7 +2245,8 @@ export class DebugHub {
             ...(said.to ? { to: said.to } : {}),
             ...(quiet ? { quiet } : {}),
             len: text.length,
-            head: head(text),
+            // A reply in a user's thread may quote them: only the owner's thread logs its start.
+            ...(said.thread === OWNER_THREAD ? { head: head(text) } : {}),
           }),
         );
         const only = c.scope !== "chat" && said.thread === audience(c) ? c.pages : undefined;

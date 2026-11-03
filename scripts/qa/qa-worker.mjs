@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Phase 4 QA: compare a deployed Worker against a known-good baseline.
  *
