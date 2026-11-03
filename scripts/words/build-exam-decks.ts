@@ -294,8 +294,16 @@ for (const d of DECKS) {
       AFFIXES.has(word) || obscure
         ? null
         : toEntry({ word, wikt: w, written: written.get(word), forms: r?.forms ?? [] }, examples);
-    // OpenCC keeps 著 (土著, 著名); in 着急 it is the traditional 着
-    if (e) entries.push({ ...e, back: dedupeBack(toSimplified(e.back).replace(/著急/g, "着急")) });
+    // OpenCC keeps 著 (土著, 著名); in 着急 and 睡着 it is the traditional 着
+    if (e)
+      entries.push({
+        ...e,
+        back: dedupeBack(
+          toSimplified(e.back)
+            .replace(/著急/g, "着急")
+            .replace(/睡著/g, "睡着"),
+        ),
+      });
     else {
       missing.push(word);
       if (w.length && !AFFIXES.has(word) && !obscure)
