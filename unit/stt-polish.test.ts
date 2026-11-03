@@ -109,6 +109,11 @@ describe("polishCheck: realistic garbles", () => {
     expect(polishCheck("do not deploy", "Do not deploy.", ["snow"]).ok).toBe(true);
   });
 
+  it("a repeat is whole words (or one character), never part of a longer word", () => {
+    expect(polishCheck("do not notify anyone", "do notify anyone", []).ok).toBe(false);
+    expect(polishCheck("do do it", "Do it.", []).ok).toBe(true);
+  });
+
   it("a replacement that only drops characters is a removal (不要 → 要)", () => {
     expect(polishCheck("不要合并", "要合并", ["要"]).ok).toBe(false);
   });

@@ -115,18 +115,33 @@ function diff(a: string[], b: string[]): Hunk[] {
 }
 
 /**
- * The removed run repeats what is right next to it (a stutter). On the
- * spaceless text, so it holds however a script's words are segmented: the run
- * is copies of one unit, and that unit is said again right before or after it.
+ * The removed run repeats what is right next to it (a stutter): it is copies
+ * of one unit, said again right before or after it, as whole words — or, a
+ * single character, which is how a script that does not space its words
+ * stutters (我我我想 → 我想: its segmenter may join the last 我 to 想). Never
+ * part of a longer word: "not" is not repeated by "notify".
  */
 function isRepeat(raw: string[], h: Hunk): boolean {
   const run = h.del.join("");
-  const before = raw.slice(0, h.at).join("");
-  const after = raw.slice(h.at + h.del.length).join("");
+  const before = raw.slice(0, h.at);
+  const after = raw.slice(h.at + h.del.length);
+  /** The words' joined text starts (or ends) with `unit`, at a word boundary unless it is one grapheme. */
+  const next = (words: string[], unit: string, fromEnd: boolean) => {
+    const joined = words.join("");
+    if (!(fromEnd ? joined.endsWith(unit) : joined.startsWith(unit))) return false;
+    if (graphemes(unit) === 1) return true;
+    let at = 0;
+    for (const w of fromEnd ? [...words].reverse() : words) {
+      at += w.length;
+      if (at === unit.length) return true;
+      if (at > unit.length) return false;
+    }
+    return false;
+  };
   for (let n = 1; n <= run.length; n++) {
     const unit = run.slice(0, n);
     if (run.length % n || unit.repeat(run.length / n) !== run) continue;
-    return before.endsWith(unit) || after.startsWith(unit);
+    return next(before, unit, true) || next(after, unit, false);
   }
   return false;
 }
