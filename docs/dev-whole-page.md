@@ -197,7 +197,7 @@ token cannot be tested from anywhere else.
   gate cookie, `Authorization`, `cf-*`, `x-forwarded-*`, Tailscale and the
   guard's secret headers are removed.
 
-**On his iPhone**: on lianki.com, the account menu's "Dev server (production
+**On his iPhone**: on lianki.com, the account menu's "Live trial (production
 data)" item does it all (next section). For a device without a lianki.com
 session: `/dev/tokens` → new token → "copy the link for another device",
 open that link once in Safari there; the cookie lasts up to 12 h, after which
@@ -261,11 +261,15 @@ gate too. Revoke-all on `/dev/tokens` ends every session at once.
 For the owner only, decided on the server (`devSwitchFor`,
 `lib/dev-server-switch.server.ts`: anyone else's page carries none of it):
 
-- On lianki.com the account menu shows **"Dev server (production data)"**.
+- On lianki.com the account menu shows **"Live trial (production data)"**
+  (zh 「live 试用版（生产数据）」). The UI calls the dev server the **live
+  trial**: trial code on production data, so "live", never "preview"/预览
+  (owner, 2026-11-03 14:32 JST). Hostnames, routes and code names keep "dev"
+  and "preview".
   When the menu opens it checks once, with one fetch to
   `https://preview.lianki.com/_lk/up` (1.5 s timeout; the gate answers 503
   with an `x-lianki-gate` marker, readable by lianki.com only): green and
-  tappable when up, grey "Dev server is off" when not. No polling, no timer.
+  tappable when up, grey "Live trial is not running" (「live 试用版未启动」) when not. No polling, no timer.
   (A push from `serve` through the hub would also work, but needs hub
   changes; the open-time check is the owner's allowed alternative.)
 - Tapping it mints a **single-use handoff**, 60 s (`POST /api/dev/dev-handoff`),
@@ -273,7 +277,8 @@ For the owner only, decided on the server (`devSwitchFor`,
   query: never in a URL. The dev server opens on the same page, signed in.
 - On the dev server the same spot reads **"Back to lianki.com"**: a plain
   link to the same path and query on production. Every dev-server page shows
-  a **"Dev server · production data"** badge in its top bar.
+  a **"Live trial · production data"** (「live 试用版 · 生产数据」) badge in
+  its top bar.
 - Strings: `app/components/dev-switch.content.ts`, 16 locales, each key with
   its context line.
 
