@@ -319,6 +319,26 @@ selecting DOM text.
   mic hold and echo guard); a failure shows on the card ("Could not read it
   aloud (why)"). Rules: `tapVoice` in `lib/read/reader-select.ts`
   (`unit/read-tap-voice.test.ts`).
+- **Manual selection** (owner, 2026-11-03 22:25 JST: "我手动选择一串内容的时候也会
+  生成一个"): his own native selection of any extent — a long-press and the
+  handles on a phone, a mouse drag on a desktop, across paragraphs — gets the
+  same card, as the unit `range`. It is snapped to whole words (the first word
+  that ends after the selection starts, to the last that starts before it
+  ends; `snapIndices`), a single word is that word. The card appears once the
+  selection settles (`selectionchange` quiet 350 ms with no pointer down, or
+  a pointerup), on the side of the screen the selection leaves more room on,
+  away from the native handles and menu; the native selection is never moved
+  or cleared while he adjusts it. It offers the preview, its familiarity,
+  copy text, translate, read from here, **read aloud** (exactly the selection,
+  the same speaker and rules as a tap's), the link, 「复习选中内容的所有单词」
+  (the review below, scoped to the selection's own words across its
+  paragraphs, `spanWords`) and 制卡 (N) for those without a card. A tap
+  elsewhere — in the book too — clears it; a tap on the card keeps it.
+  Not a combo level: the next click in the book starts at the word. Link:
+  `#r=<line>.<token>-<line>.<token>` (start before end, at most
+  `RANGE_MAX_LINES` lines), opened, highlighted and flashed like the other
+  units, under the same access rule (the fragment never reaches the server:
+  no access is the same 404). QA: `scripts/qa/qa-read-manual-select.mjs`.
 
 ### Review a range's words (owner, 2026-11-03 22:17–22:27 JST)
 

@@ -4,13 +4,19 @@ import {
   type ComboCtx,
   type Hit,
   type Unit,
+  RANGE_MAX_LINES,
   comboClick,
+  countRange,
   countSentences,
   decodeUnit,
   encodeUnit,
   firstUnit,
   nextUnit,
+  partText,
+  rangeText,
+  rangeUnit,
   sentenceOfToken,
+  snapIndices,
   tokenOffset,
   tokenText,
   tokenWord,
@@ -166,6 +172,8 @@ describe("deep links", () => {
     [{ kind: "para", line: 0 }, "#p=0"],
     [{ kind: "chapter", n: 4 }, "#ch=4"],
     [{ kind: "book" }, ""],
+    [{ kind: "range", l0: 3, t0: 4, l1: 5, t1: 1 }, "#r=3.4-5.1"],
+    [{ kind: "range", l0: 7, t0: 0, l1: 7, t1: 2 }, "#r=7.0-7.2"],
   ];
   it("encode and decode round-trip", () => {
     for (const [u, h] of units) {
@@ -191,6 +199,14 @@ describe("deep links", () => {
       "#p=1&x=2",
       "#P=1",
       "#reading",
+      // A range runs forwards, over more than one word, and not past the cap.
+      "#r=5.1-3.4",
+      "#r=3.4-3.4",
+      "#r=3.4-3.2",
+      "#r=3.4",
+      "#r=3.4-5",
+      "#r=3.-5.1",
+      `#r=0.0-${RANGE_MAX_LINES + 1}.0`,
     ])
       expect(decodeUnit(bad)).toBeNull();
     expect(decodeUnit(null)).toBeNull();
@@ -199,6 +215,16 @@ describe("deep links", () => {
     expect(
       unitLink("https://lianki.com", "3f2a9c0d41b7e6aa", { kind: "sentence", line: 5, s: 1 }),
     ).toBe("https://lianki.com/read/3f2a9c0d41b7e6aa#s=5.1");
+    expect(
+      unitLink("https://lianki.com", "3f2a9c0d41b7e6aa", {
+        kind: "range",
+        l0: 2,
+        t0: 7,
+        l1: 4,
+        t1: 0,
+      }),
+    ).toBe("https://lianki.com/read/3f2a9c0d41b7e6aa#r=2.7-4.0");
+    expect(decodeUnit(`#r=0.0-${RANGE_MAX_LINES}.0`)).not.toBeNull();
     expect(unitLink("https://lianki.com", "3f2a9c0d41b7e6aa", { kind: "book" })).toBe(
       "https://lianki.com/read/3f2a9c0d41b7e6aa",
     );
@@ -276,5 +302,111 @@ describe("link access (lib/read/book-link.ts)", () => {
       kind: "material",
       id: "m-alice-1",
     });
+  });
+});
+
+describe("a hand-made selection (manual range)", () => {
+  // Three paragraphs as the reader lays them out: every word with its
+  // offsets in one running text, paragraphs separated by "\n".
+  const text = ["The cat sat. A dog ran.", "Rain fell — all night.", "Morning came."];
+  const paras = text.map((l) => cutPara(l, "en").sentences);
+  const toks: { line: number; t: number; a: number; b: number }[] = [];
+  let base = 0;
+  paras.forEach((ss, line) => {
+    let off = base;
+    for (const s of ss)
+      for (const g of s.segs) {
+        if (g.t >= 0) toks.push({ line, t: g.t, a: off, b: off + g.text.length });
+        off += g.text.length;
+      }
+    base += text[line].length + 1;
+  });
+  const at = (line: number, needle: string, k = 0) =>
+    text.slice(0, line).reduce((n, l) => n + l.length + 1, 0) + text[line].indexOf(needle) + k;
+  /** The unit a selection [s, e) of the running text snaps to. */
+  const snap = (s: number, e: number) => {
+    const ij = snapIndices(
+      toks.length,
+      (i) => s < toks[i].b,
+      (i) => e > toks[i].a,
+    );
+    return ij && rangeUnit(toks[ij[0]], toks[ij[1]]);
+  };
+
+  it("snaps to whole words, from inside a word to inside another", () => {
+    // From inside "cat" to inside "dog": both whole.
+    expect(snap(at(0, "cat", 2), at(0, "dog", 2))).toEqual({
+      kind: "range",
+      l0: 0,
+      t0: 1,
+      l1: 0,
+      t1: 4,
+    });
+  });
+  it("spans paragraphs, keeping each end's own token", () => {
+    const u = snap(at(0, "ran", 1), at(2, "Morning", 3));
+    expect(u).toEqual({ kind: "range", l0: 0, t0: 5, l1: 2, t1: 0 });
+    const get = (l: number) => paras[l] ?? null;
+    expect(rangeText(u as Extract<Unit, { kind: "range" }>, get)).toBe(
+      "ran.\n\nRain fell — all night.\n\nMorning",
+    );
+    expect(rangeText(u as Extract<Unit, { kind: "range" }>, get, " ")).toBe(
+      "ran. Rain fell — all night. Morning",
+    );
+  });
+  it("a selection ending right after a word, or starting right before one, takes no more", () => {
+    // "cat" exactly, then " sat" with its leading space.
+    expect(snap(at(0, "cat"), at(0, "cat", 3))).toEqual({ kind: "word", line: 0, t: 1 });
+    expect(snap(at(0, "cat", 3), at(0, "sat", 3))).toEqual({ kind: "word", line: 0, t: 2 });
+  });
+  it("only spaces or punctuation: no unit", () => {
+    expect(snap(at(1, "—"), at(1, "—", 1))).toBeNull();
+    expect(snap(at(0, ". A"), at(0, ". A", 1))).toBeNull();
+    // A newline between paragraphs.
+    expect(snap(at(0, "ran.", 4), at(1, "Rain"))).toBeNull();
+  });
+  it("the ends come in either order", () => {
+    expect(rangeUnit({ line: 2, t: 0 }, { line: 0, t: 3 })).toEqual({
+      kind: "range",
+      l0: 0,
+      t0: 3,
+      l1: 2,
+      t1: 0,
+    });
+  });
+  it("part text and counts follow the range's ends", () => {
+    expect(partText(paras[0], 3, null)).toBe("A dog ran.");
+    expect(partText(paras[0], null, 1)).toBe("The cat");
+    const fam = new Map<string, Fam>();
+    for (const ss of paras) for (const s of ss) for (const g of s.segs) if (g.w) fam.set(g.w, "n");
+    const u = { kind: "range", l0: 0, t0: 4, l1: 1, t1: 1 } as const;
+    // dog ran | Rain fell
+    expect(countRange(u, (l) => paras[l] ?? null, fam).n).toBe(4);
+    // A blank line in the middle is skipped.
+    expect(countRange({ ...u, l1: 2, t1: 0 }, (l) => (l === 1 ? null : paras[l]), fam).n).toBe(3);
+  });
+  it("a range's link opens only for who has the book (404 otherwise)", async () => {
+    const link = unitLink("https://lianki.com", "3f2a9c0d41b7e6aa", {
+      kind: "range",
+      l0: 0,
+      t0: 1,
+      l1: 2,
+      t1: 0,
+    });
+    const url = new URL(link);
+    // The fragment never reaches the server: access is the path's alone.
+    const id = url.pathname.split("/").pop()!;
+    const find = async (u: string, h: string) =>
+      u === "alice" && h === "3f2a9c0d41b7e6aa" ? "m-alice-1" : null;
+    expect(await resolveReadId(id, "alice", find)).toEqual({ kind: "redirect", id: "m-alice-1" });
+    expect(await resolveReadId(id, "bob", find)).toEqual({ kind: "none" });
+    expect(await resolveReadId(id, null, find)).toEqual({ kind: "none" });
+    expect(decodeUnit(url.hash)).toEqual({ kind: "range", l0: 0, t0: 1, l1: 2, t1: 0 });
+  });
+  it("a range is no combo level: a click in it starts at the word", () => {
+    const r: Unit = { kind: "range", l0: 0, t0: 1, l1: 2, t1: 0 };
+    expect(unitHolds(r, { line: 1, s: 0, t: 0 }, ctx())).toBe(true);
+    expect(unitHolds(r, { line: 0, s: 0, t: 0 }, ctx())).toBe(false);
+    expect(nextUnit(r, { line: 1, s: 0, t: 0 }, ctx()).kind).toBe("word");
   });
 });

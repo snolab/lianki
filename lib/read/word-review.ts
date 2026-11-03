@@ -151,3 +151,41 @@ export function orderWords(words: readonly ParaWord[]): { first: ParaWord[]; res
 /** Words of the range with no card in any of his lists, by the word map (new or unrecognised). */
 export const missingWords = (words: readonly ParaWord[]) =>
   words.filter((w) => w.fam === "n" || w.fam === "u");
+
+/** One paragraph's share of a range: its sentences, and its tokens from `from` to `to` (null: start / end). */
+export interface SpanPart {
+  ss: readonly Sentence[];
+  from: number | null;
+  to: number | null;
+}
+
+/**
+ * A hand-made range's distinct counted words, in reading order, across its
+ * paragraphs (reader-select.ts "Manual selection"). `sentences` is every
+ * sentence of the parts, flat, so a word's `s` names the sentence it first
+ * occurs in there (its example); `t` stays the token in its own paragraph.
+ */
+export function spanWords(
+  parts: readonly SpanPart[],
+  fam: Map<string, Fam> | null,
+): { sentences: Sentence[]; words: ParaWord[] } {
+  const seen = new Set<string>();
+  const sentences: Sentence[] = [];
+  const words: ParaWord[] = [];
+  for (const p of parts) {
+    const lo = p.from ?? 0;
+    const hi = p.to ?? Infinity;
+    for (const st of p.ss) {
+      const s = sentences.length;
+      let used = false;
+      for (const g of st.segs) {
+        if (!g.w || g.t < lo || g.t > hi || seen.has(g.w)) continue;
+        seen.add(g.w);
+        used = true;
+        words.push({ w: g.w, text: g.text, t: g.t, s, fam: fam?.get(g.w) });
+      }
+      if (used) sentences.push(st);
+    }
+  }
+  return { sentences, words };
+}

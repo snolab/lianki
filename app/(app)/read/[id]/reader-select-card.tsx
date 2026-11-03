@@ -36,8 +36,10 @@ export interface CardActions {
   lookUp?: () => void;
   translate?: () => void;
   readFrom?: () => void;
+  /** Say exactly the selected text (a hand-made selection). */
+  readAloud?: () => void;
   markNew?: () => void;
-  /** Review every word of the selection's paragraph in /words' review (reader-word-review.tsx). */
+  /** Review every word of the selection's paragraph (a range: its own words) in /words' review (reader-word-review.tsx). */
   reviewWords?: () => void;
   /** 制卡: `n` words of the paragraph have no card in any of his lists. */
   makeCards?: { n: number; run: () => void };
@@ -110,6 +112,7 @@ export function SelectCard({
     para: t.kindParagraph.value,
     chapter: t.kindChapter.value,
     book: t.kindBook.value,
+    range: t.kindSelection.value,
   }[u.kind];
   const label = {
     known: tw.mastered.value,
@@ -222,7 +225,7 @@ export function SelectCard({
             onClick={actions.reviewWords}
             data-action="review-words"
           >
-            {t.reviewWords}
+            {u.kind === "range" ? t.reviewSelection : t.reviewWords}
           </button>
         )}
         {actions.makeCards && (
@@ -233,6 +236,16 @@ export function SelectCard({
             data-action="make-cards"
           >
             {fill(tr.makeCards.value, { n: nf.format(actions.makeCards.n) })}
+          </button>
+        )}
+        {actions.readAloud && (
+          <button
+            type="button"
+            className={btn}
+            onClick={actions.readAloud}
+            data-action="read-aloud"
+          >
+            {t.readAloud}
           </button>
         )}
         {actions.lookUp && (

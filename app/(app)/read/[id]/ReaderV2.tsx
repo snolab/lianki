@@ -87,13 +87,16 @@ import {
   unmakeCards,
   type RangeWord,
 } from "./reader-word-review";
-import { missingWords, paraWords } from "@/lib/read/word-review";
+import { missingWords, paraWords, spanWords } from "@/lib/read/word-review";
 import {
   COMBO_MS,
   type ComboCtx,
   type Unit,
+  countRange,
   countSentences,
   decodeUnit,
+  rangeParts,
+  rangeText,
   emptyCounts,
   sameUnit,
   tapVoice,
@@ -108,6 +111,8 @@ import { segmentLine } from "@/lib/read/units";
 import { sentenceId } from "@/lib/read/reader-api";
 
 type WindowVirtualizer = Virtualizer<Window, Element>;
+/** The units whose card offers the review and 制卡. */
+type ReviewUnit = Extract<Unit, { kind: "word" | "phrase" | "sentence" | "para" | "range" }>;
 
 // ── Device preferences ──────────────────────────────────────────────────
 
@@ -538,6 +543,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         const r = chapterRange(u.n);
         return r ? blockOfLine(blocks, r[0]) : -1;
       }
+      if (u.kind === "range") {
+        // Both ends must be words of the book (a link names them).
+        const has = (l: number, t: number) =>
+          l < lines.length && !!lines[l]?.trim() && sentenceOfToken(para(l).sentences, t) >= 0;
+        if (!has(u.l0, u.t0) || !has(u.l1, u.t1)) return -1;
+        return blockOfAnchor(blocks, u.l0, sentenceOfToken(para(u.l0).sentences, u.t0));
+      }
       if (u.line >= lines.length || !lines[u.line]?.trim()) return -1;
       const ss = para(u.line).sentences;
       let s = 0;
@@ -573,13 +585,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
               : eye();
           const root = listRef.current;
           const el =
-            u.kind === "word" || u.kind === "phrase" || u.kind === "sentence"
-              ? root?.querySelector<HTMLElement>(
-                  u.kind === "sentence"
-                    ? `[data-line="${u.line}"] [data-s="${u.s}"]`
-                    : `[data-line="${u.line}"] [data-t="${u.kind === "word" ? u.t : u.t0}"]`,
-                )
-              : null;
+            u.kind === "range"
+              ? root?.querySelector<HTMLElement>(`[data-line="${u.l0}"] [data-t="${u.t0}"]`)
+              : u.kind === "word" || u.kind === "phrase" || u.kind === "sentence"
+                ? root?.querySelector<HTMLElement>(
+                    u.kind === "sentence"
+                      ? `[data-line="${u.line}"] [data-s="${u.s}"]`
+                      : `[data-line="${u.line}"] [data-t="${u.kind === "word" ? u.t : u.t0}"]`,
+                  )
+                : null;
           if (el) scrollTo(window.scrollY + el.getBoundingClientRect().top - y);
           else placeBlock(i, y);
         }),
@@ -870,37 +884,54 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
-  const [review, setReview] = useState<{ words: RangeWord[] } | null>(null);
+  const [review, setReview] = useState<{ words: RangeWord[]; range: boolean } | null>(null);
   const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
   const reviewBack = useRef<HTMLElement | null>(null);
   const famChanged = useCallback(() => setFamTick((n) => n + 1), []);
   const closeReview = useCallback(() => setReview(null), []);
-  const lineWords = useCallback(
-    (line: number) => {
-      const ss = para(line).sentences;
-      return { ss, words: paraWords(ss, fam?.map ?? null) };
-    },
-    [para, fam],
+  /** A line's sentences, or null for a blank line. */
+  const lineSentences = useCallback(
+    (l: number) => (lines[l]?.trim() ? para(l).sentences : null),
+    [lines, para],
   );
-  /** The one trigger of the review (owner, 22:19 JST: the card's button): the paragraph of `line`. */
+  /**
+   * The words a card's review and 制卡 take: a hand-made range's own words
+   * (across its paragraphs), else the paragraph holding the unit.
+   */
+  const lineWords = useCallback(
+    (u: ReviewUnit) => {
+      if (u.kind === "range") {
+        const parts = rangeParts(u).flatMap((p) => {
+          const ss = lineSentences(p.line);
+          return ss ? [{ ss, from: p.from, to: p.to }] : [];
+        });
+        const { sentences, words } = spanWords(parts, fam?.map ?? null);
+        return { ss: sentences, words, line: u.l0 };
+      }
+      const ss = para(u.line).sentences;
+      return { ss, words: paraWords(ss, fam?.map ?? null), line: u.line };
+    },
+    [para, fam, lineSentences],
+  );
+  /** The one trigger of the review (owner, 22:19 JST: the card's button): the unit's words. */
   const openReview = useCallback(
-    (line: number) => {
-      const { ss, words } = lineWords(line);
+    (u: ReviewUnit) => {
+      const { ss, words, line } = lineWords(u);
       // Focus comes back to the paragraph's item when the review closes.
       const el = rowEl(blockOfLine(blocks, line));
       if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
       reviewBack.current = el ?? null;
       void rangeWordsOf(words, ss, normLang).then((w) => {
         sel.clear();
-        setReview({ words: w });
+        setReview({ words: w, range: u.kind === "range" });
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lineWords, blocks, normLang, sel.clear],
   );
   const makeLine = useCallback(
-    (line: number) => {
-      const { ss, words } = lineWords(line);
+    (u: ReviewUnit) => {
+      const { ss, words } = lineWords(u);
       void rangeWordsOf(missingWords(words), ss, normLang)
         .then((w) => makeCards(id, w))
         .then((r) => {
@@ -921,12 +952,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const [sayFail, setSayFail] = useState<{ u: Unit; why: string } | null>(null);
   const unitSpeech = useCallback(
     (u: SayUnit): string => {
+      if (u.kind === "range") return rangeText(u, lineSentences, "\n");
       if (u.kind === "para") return lineText(u.line);
       const ss = para(u.line).sentences;
       if (u.kind === "sentence") return ss[u.s]?.text ?? "";
       return u.kind === "word" ? tokenText(ss, u.t, u.t) : tokenText(ss, u.t0, u.t1);
     },
-    [para, lineText],
+    [para, lineText, lineSentences],
   );
   tapRef.current = (u, continued) => {
     const v = tapVoice(u, continued, playingRef.current);
@@ -1004,6 +1036,11 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       v.counts = fm ? c : null;
       return v;
     }
+    if (u.kind === "range") {
+      v.text = rangeText(u, lineSentences);
+      v.counts = fm ? countRange(u, lineSentences, fm) : null;
+      return v;
+    }
     const ss = para(u.line).sentences;
     if (u.kind === "word") {
       v.text = tokenText(ss, u.t, u.t);
@@ -1032,6 +1069,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     normLang,
     para,
     lineText,
+    lineSentences,
   ]);
 
   const copy = useCallback(
@@ -1082,7 +1120,10 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         open(
           `https://${ui}.wiktionary.org/w/index.php?search=${encodeURIComponent(view.text!.trim())}`,
         );
-    if (view.text && (u.kind === "phrase" || u.kind === "sentence" || u.kind === "para"))
+    if (
+      view.text &&
+      (u.kind === "phrase" || u.kind === "sentence" || u.kind === "para" || u.kind === "range")
+    )
       a.translate = () =>
         open(
           `https://translate.google.com/?sl=${src}&tl=${ui}&op=translate&text=${encodeURIComponent(view.text!.trim())}`,
@@ -1092,13 +1133,19 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       signedIn &&
       material.readerV2 &&
       hash &&
-      (u.kind === "word" || u.kind === "phrase" || u.kind === "sentence" || u.kind === "para")
+      (u.kind === "word" ||
+        u.kind === "phrase" ||
+        u.kind === "sentence" ||
+        u.kind === "para" ||
+        u.kind === "range")
     ) {
-      // The word's, the phrase's and the sentence's own paragraph.
-      a.reviewWords = () => openReview(u.line);
-      const n = fam ? missingWords(lineWords(u.line).words).length : 0;
-      if (n > 0) a.makeCards = { n, run: () => makeLine(u.line) };
+      // The word's, the phrase's and the sentence's own paragraph; a range's own words.
+      a.reviewWords = () => openReview(u);
+      const n = fam ? missingWords(lineWords(u).words).length : 0;
+      if (n > 0) a.makeCards = { n, run: () => makeLine(u) };
     }
+    // His own selection: read exactly it (the same voice and rules as a tap's).
+    if (u.kind === "range" && view.text) a.readAloud = () => tapRef.current(u, false);
     if (u.kind === "word" && signedIn && material.readerV2 && hash)
       a.markNew = () => {
         // An explicit "not recognised" (books-plan, option A): the exposure log
@@ -1353,7 +1400,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         {review && (
           <WordReview
             id={id}
-            title={tr.title.value}
+            title={review.range ? tr.selectionTitle.value : tr.title.value}
             words={review.words}
             returnTo={reviewBack}
             onClose={closeReview}
