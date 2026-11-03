@@ -150,6 +150,36 @@ describe("voice session: the focus rule (mic off)", () => {
   });
 });
 
+describe("voice session: a reply in several languages", () => {
+  it("each language run is its own utterance in its own language, back to back, speaking throughout", () => {
+    const h = harness();
+    h.v.setMic(true);
+    h.v.reply("你刚刚说的ありがとう，其实是谢谢的意思。");
+    expect(h.texts()).toEqual(["你刚刚说的"]);
+    h.end();
+    h.end();
+    expect(h.texts()).toEqual(["你刚刚说的", "ありがとう，", "其实是谢谢的意思。"]);
+    expect(h.spoken.map((u) => u.lang)).toEqual(["zh-CN", "ja-JP", "zh-CN"]);
+    // No gap between the runs: still speaking (the hold covers the whole reply).
+    expect(h.states.slice(1)).not.toContain(false);
+    // The echo guard hears the runs as the one sentence they are.
+    expect(h.v.echoCheck("你刚刚说的ありがとう其实是谢谢的意思", 3_000).drop).toBe(true);
+    h.end();
+    h.fire(400);
+    expect(h.v.state().speaking).toBe(false);
+  });
+  it("a sentence switching language many times is still one sentence to the echo guard", () => {
+    const h = harness();
+    h.v.setMic(true);
+    const s =
+      "这是第一段中文ありがとう这是第二段中文こんにちは这是第三段中文さようなら这是第四段中文。";
+    h.v.reply(s);
+    for (let i = 0; i < 6; i++) h.end();
+    expect(h.spoken.length).toBe(7);
+    expect(h.v.echoCheck(s, 5_000).drop).toBe(true);
+  });
+});
+
 describe("voice session: the queue", () => {
   it("FIFO, one utterance per sentence; a new reply waits and never cuts one off", () => {
     const h = harness();
