@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useIntlayer } from "next-intlayer";
 import type { ReadMaterial } from "../ReadListClient";
 import { chapterAt, type BookMeta } from "@/lib/read/book";
+import type { WordsSummary } from "@/lib/read/progress";
+import { BookScan } from "../BookWords";
 
 /** Lines rendered at once: a whole book never goes into the DOM in one go. */
 const SECTION_LINES = 200;
@@ -54,7 +56,9 @@ function getLocalMaterial(id: string): ReadMaterial | null {
 }
 
 export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boolean }) {
-  const [material, setMaterial] = useState<(ReadMaterial & { book?: BookMeta }) | null>(null);
+  const [material, setMaterial] = useState<
+    (ReadMaterial & { book?: BookMeta; words?: WordsSummary }) | null
+  >(null);
   const epubText = useIntlayer("read-epub");
   const [currentLine, setCurrentLine] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -260,6 +264,9 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
           </p>
         </div>
       </div>
+
+      {/* The book's words: scanned at import, progress as a deck (lib/read/words.ts). */}
+      {material.words && <BookScan id={id} words={material.words} />}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">

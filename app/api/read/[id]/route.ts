@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import {
-  getReadMaterialById,
-  getReadMaterialContent,
-  deleteReadMaterial,
-} from "@/lib/getReadMaterialsCollection";
-import { parseBookMeta } from "@/lib/read/book";
+import { getReadMaterialById, deleteReadMaterial } from "@/lib/getReadMaterialsCollection";
+import { dbBackend, getD1 } from "@/lib/d1";
+import { materialWords, summarizeMaterials } from "@/lib/read/progress";
 
 // GET /api/read/[id] - Get material by ID
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -22,14 +19,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Material not found" }, { status: 404 });
   }
 
-  const content = await getReadMaterialContent(material);
-  const book = parseBookMeta(content);
+  const { book: fullBook, text, stats } = await materialWords(material, session.user.id);
+  // The word list itself is /api/read/[id]/words; the header needs the counts.
+  const book = fullBook ? { ...fullBook, words: undefined } : null;
+  const [words] = await summarizeMaterials(dbBackend() === "d1" ? getD1() : null, session.user, [
+    { material, stats },
+  ]);
 
   return NextResponse.json({
     id: material._id.toString(),
     title: material.title,
-    content: book ? undefined : content,
+    content: book ? undefined : text,
     book: book ?? undefined,
+    words,
     lines: material.lines,
     createdAt: material.createdAt.toISOString(),
     updatedAt: material.updatedAt.toISOString(),
