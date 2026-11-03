@@ -56,10 +56,11 @@
  * coverage line (lib/words/add-tree.ts COVERAGE_TARGETS) the data reaches
  * needs. Each list's `coverage` in index.json is the share of the corpus's
  * running words its top `level` words cover: a form counts for its lemma
- * (sont → être, Kinder → Kind, Hebrew הבית → בית), a piece of a split word
- * (c' + est, don + 't) for the common word it belongs to, a hyphenated token
- * (est-ce) when all its words are covered; proper names are left out of the
- * count, as coverage research does. WORDS_COVDEBUG=1 prints the most frequent
+ * (sont → être, Kinder → Kind, Hebrew הבית → בית), a homograph for the
+ * reading it leads with, a piece of a split word (c' + est, don + 't) with
+ * the first list, a hyphenated token (est-ce) when all its words are covered;
+ * proper names are left out of the count, as coverage research does. Then
+ * credit the Tatoeba examples: scripts/words/tatoeba-credits.ts. WORDS_COVDEBUG=1 prints the most frequent
  * tokens nothing covers.
  *
  * See public/words/SOURCES.md for licenses and attribution.
@@ -377,17 +378,58 @@ function buildChinese() {
 }
 
 /**
+ * The frequency lists to ship: the kept lists as they are, then 500 words
+ * each — as many as the highest coverage line the data reaches needs, never
+ * fewer than are kept (a new language starts with the 3000 words every
+ * language had before bands). `credit(add)` adds each token's count to the
+ * word (index in `out`) it is read as. Coverage is rounded as index.json
+ * stores it, so the lists shipped are the ones a band needs.
+ */
+function planLists(
+  lang: string,
+  kept: { entries: Entry[] }[],
+  n: number,
+  total: number,
+  credit: (add: (i: number, c: number) => void) => void,
+) {
+  const bounds: [number, number][] = [];
+  let at = 0;
+  for (const k of kept) {
+    bounds.push([at, at + k.entries.length]);
+    at += k.entries.length;
+  }
+  for (; at < n; at += 500) bounds.push([at, Math.min(n, at + 500)]);
+  const listOf = new Int32Array(Math.max(n, 1));
+  bounds.forEach(([a, z], b) => listOf.fill(b, a, z));
+  const byList = bounds.map(() => 0);
+  credit((i, c) => {
+    if (i >= 0 && i < n) byList[listOf[i]] += c;
+  });
+  let run = 0;
+  const coverage = byList.map((c) => Math.round(((run += c) / total) * 1000) / 1000);
+  const reach = COVERAGE_TARGETS.filter((t) => coverage.some((c) => c >= t)).at(-1);
+  const need = reach == null ? bounds.length : coverage.findIndex((c) => c >= reach) + 1;
+  const nLists = Math.max(kept.length, need, Math.min(6, bounds.length));
+  console.log(
+    `${lang}: ${n} terms; coverage by list ${coverage.map((c) => c.toFixed(3)).join(" ")}; shipping ${nLists}`,
+  );
+  return { bounds: bounds.slice(0, nLists), coverage };
+}
+
+/**
  * Chinese frequency lists: OpenSubtitles word ranks (hermitdave/FrequencyWords
  * zh_cn, already word-segmented) with CC-CEDICT readings and meanings. Chinese
  * does not inflect, so a token is its own word; tokens CC-CEDICT knows only as
  * names (a capitalised reading) are left out of text coverage.
  */
 function buildChineseFrequency() {
-  const freqPath = join(RAW, "freq/zh_cn_50k.txt");
+  const hasFreq = ["full", "50k"].some((k) => existsSync(join(RAW, `freq/zh_cn_${k}.txt`)));
   const cedictPath = join(RAW, "cedict/cedict.txt");
-  if (!existsSync(freqPath) || !existsSync(cedictPath)) {
-    console.warn("skip zh frequency lists: freq/zh_cn_50k.txt or cedict/cedict.txt missing");
-    return;
+  if (!hasFreq || !existsSync(cedictPath)) {
+    console.warn(
+      "skip zh frequency lists: freq/zh_cn_full.txt (or _50k) or cedict/cedict.txt missing",
+    );
+    return false;
   }
   const dict = new Map<string, { py: string; m: string[] }[]>();
   for (const line of readFileSync(cedictPath, "utf8").split("\n")) {
@@ -435,34 +477,23 @@ function buildChineseFrequency() {
     out.push({ term: w, reading: markPinyin(best.py), back });
   }
   const pos = new Map(out.map((e, i) => [e.term, i]));
-  const byList: number[] = Array.from({ length: Math.ceil(out.length / 500) + 1 }, () => 0);
-  for (const t of tokens) {
-    const i = pos.get(t.key);
-    if (i != null) byList[Math.floor(i / 500)] += t.c;
-  }
   const total = corpusTotal("zh_cn", lines) - names;
-  let run = 0;
-  // (rounded as index.json stores it, so the lists shipped are the ones a band needs)
-  const coverage = byList.map((c) => Math.round(((run += c) / total) * 1000) / 1000);
-  const reach = COVERAGE_TARGETS.filter((t) => coverage.some((c) => c >= t)).at(-1);
-  const need = reach == null ? byList.length - 1 : coverage.findIndex((c) => c >= reach) + 1;
-  const nLists = Math.max(kept.length, need, Math.min(6, byList.length - 1));
-  console.log(
-    `zh: ${out.length} terms; coverage by list ${coverage.map((c) => c.toFixed(3)).join(" ")}; shipping ${nLists}`,
-  );
-  out.length = Math.min(out.length, nLists * 500);
+  const { bounds, coverage } = planLists("zh", kept, out.length, total, (add) => {
+    for (const t of tokens) add(pos.get(t.key) ?? -1, t.c);
+  });
+  const keptN = kept.reduce((n, k) => n + k.entries.length, 0);
+  out.length = bounds.at(-1)?.[1] ?? 0;
   const vocab = out.map((e) => e.term);
   const picker = new ExamplePicker("zh", onlyKnownHan(loadTatoeba(RAW, "zh"), vocab));
   const longer = longerIn(vocab);
-  for (const e of out.slice(kept.length * 500))
+  for (const e of out.slice(keptN))
     Object.assign(e, picker.pick([e.term], [], longer(e.term)) ?? {});
   const cov = (b: number) => coverage[b];
   kept.forEach((k, b) =>
     index.push({ ...k.meta, count: k.entries.length, file: `${k.meta.id}.json`, coverage: cov(b) }),
   );
-  for (let b = kept.length; b * 500 < out.length; b++) {
-    const lo = b * 500 + 1;
-    const hi = Math.min(out.length, (b + 1) * 500);
+  for (let b = kept.length; b < bounds.length; b++) {
+    const [lo, hi] = [bounds[b][0] + 1, bounds[b][1]];
     writeList(
       {
         id: `zh-freq-${b + 1}`,
@@ -473,7 +504,7 @@ function buildChineseFrequency() {
         license: "CC BY-SA 4.0 (FrequencyWords; CC-CEDICT)" + EX_LICENSE,
         coverage: cov(b),
       },
-      out.slice(b * 500, (b + 1) * 500),
+      out.slice(lo - 1, hi),
     );
   }
 }
@@ -1445,10 +1476,11 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
       continue;
     }
     // A piece of a word the tokenizer split (c' + est, don + 't, l' + homme):
-    // never a list entry; in coverage it is read with the common word it
-    // belongs to, so it counts from the first list when the dictionary has it.
+    // never a list entry; in coverage it counts for what it is a form of
+    // (c' → ce, l' → le) or, with no lemma of its own, for its host word.
     if (/^['’]|['’]$/.test(word) || (lang === "en" && EN_JUNK.has(word))) {
-      if (pick(word).length) tokens.push({ c, keys: [], piece: true });
+      if (pick(word).length)
+        tokens.push({ c, keys: resolve(word).map((r) => r!.term.toLowerCase()), piece: true });
       continue;
     }
     if (!scriptOk.test(word) || /['’-]$/.test(word)) continue;
@@ -1468,7 +1500,10 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
     // (the token itself counts when it is a listed word: kaikki may since have
     // tagged every sense of a shipped word, fin "end", as archaic)
     if (rs.length || seen.has(word.toLowerCase()))
-      tokens.push({ c, keys: [...rs.map((r) => r.term.toLowerCase()), word.toLowerCase()] });
+      tokens.push({
+        c,
+        keys: [...rs.slice(0, 1).map((r) => r.term.toLowerCase()), word.toLowerCase()],
+      });
     // a hyphenated token (est-ce, laisse-moi, a-t-il): read as its words
     else if (/\p{L}-\p{L}/u.test(word)) {
       const parts = word.split("-").filter((p) => [...p].length > 1);
@@ -1486,33 +1521,32 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
     }
   }
   // Text coverage of the top n terms: the share of running text (proper
-  // names left out) whose tokens resolve to one of them — a form counts for
-  // its lemma (sont → être), a homograph for either reading.
+  // names left out) whose tokens are read as one of them — a form as its
+  // lemma (sont → être), a homograph as the reading it leads with.
   const pos = new Map(out.map((e, i) => [e.term.toLowerCase(), i]));
-  const byList: number[] = Array.from({ length: Math.ceil(out.length / 500) + 1 }, () => 0);
-  for (const t of tokens) {
-    const at = (keys: string[]) => Math.min(...keys.map((k) => pos.get(k) ?? Infinity));
-    const i = t.piece ? 0 : t.parts ? Math.max(...t.parts.map(at)) : at(t.keys);
-    if (i < Infinity) byList[Math.floor(i / 500)] += t.c;
-  }
   const total = corpusTotal(lang, lines) - names;
-  let run = 0;
-  // (rounded as index.json stores it, so the lists shipped are the ones a band needs)
-  const coverage = byList.map((c) => Math.round(((run += c) / total) * 1000) / 1000);
-  // As many lists as the highest coverage line the data reaches needs, and
-  // never fewer than are shipped already.
-  const reach = COVERAGE_TARGETS.filter((t) => coverage.some((c) => c >= t)).at(-1);
-  const need = reach == null ? byList.length - 1 : coverage.findIndex((c) => c >= reach) + 1;
-  // (a new language starts with the 3000 words every language had before bands)
-  const nLists = Math.max(kept.length, need, Math.min(6, byList.length - 1));
-  console.log(
-    `${lang}: ${out.length} terms; coverage by list ${coverage.map((c) => c.toFixed(3)).join(" ")}; shipping ${nLists}`,
-  );
-  out.length = Math.min(out.length, nLists * 500);
+  const { bounds, coverage } = planLists(lang, kept, out.length, total, (add) => {
+    const at = (keys: string[]) => Math.min(...keys.map((k) => pos.get(k) ?? Infinity));
+    for (const t of tokens) {
+      let i = t.parts ? Math.max(...t.parts.map(at)) : at(t.keys);
+      // A piece is read with the word it was split from; the frequent ones are
+      // all pieces of first-list words (c' ce, l' le, qu' que, 's is, 'm am,
+      // don do + not), so they count with the first list. (A piece Wiktionary
+      // reads as a rarer word — 'm as 'em — would otherwise count late.)
+      if (t.piece) {
+        if (process.env.WORDS_COVDEBUG && i >= 500 && t.c > 1e5)
+          console.error(`piece ${t.keys.join("+")} @${i} ×${t.c}`);
+        i = 0;
+      }
+      if (i < Infinity) add(i, t.c);
+    }
+  });
+  const keptN = kept.reduce((n, k) => n + k.entries.length, 0);
+  out.length = bounds.at(-1)?.[1] ?? 0;
   // one example per entry: Wiktionary's own usage example when one fits,
   // else the shortest Tatoeba sentence with the word or one of its forms
   const picker = new ExamplePicker(lang, loadTatoeba(RAW, lang));
-  for (const e of out.slice(kept.length * 500)) {
+  for (const e of out.slice(keptN)) {
     const key = e.term.toLowerCase();
     const forms = new Set([key, ...(formsOfTerm.get(key) ?? [])]);
     // examples of the main senses only; hand-written backs pick a sense the data may not lead with
@@ -1542,9 +1576,8 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
   kept.forEach((k, b) =>
     index.push({ ...k.meta, count: k.entries.length, file: `${k.meta.id}.json`, coverage: cov(b) }),
   );
-  for (let b = kept.length; b * 500 < out.length; b++) {
-    const lo = b * 500 + 1;
-    const hi = Math.min(out.length, (b + 1) * 500);
+  for (let b = kept.length; b < bounds.length; b++) {
+    const [lo, hi] = [bounds[b][0] + 1, bounds[b][1]];
     writeList(
       {
         id: `${lang}-freq-${b + 1}`,
@@ -1555,7 +1588,7 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
         license: "CC BY-SA 4.0 (FrequencyWords; Wiktionary content, also GFDL)" + EX_LICENSE,
         coverage: cov(b),
       },
-      out.slice(b * 500, (b + 1) * 500),
+      out.slice(lo - 1, hi),
     );
   }
 }
@@ -1695,20 +1728,29 @@ function koreanResolver(
 // ---------------------------------------------------------------- main
 const only = process.env.WORDS_ONLY?.split(",");
 const want = (l: string) => !only || only.includes(l);
+/** Id prefixes of lists whose sources are missing: kept from index.json as they are. */
+const skipped: string[] = [];
 if (want("ja")) {
   if (existsSync(join(RAW, "jlpt/n5.csv"))) buildJapanese();
-  else console.warn("skip JLPT lists: jlpt/ missing (kept from index.json)");
+  else {
+    console.warn("skip JLPT lists: jlpt/ missing (kept from index.json)");
+    skipped.push("ja-jlpt-");
+  }
 }
 if (want("zh")) {
   if (existsSync(join(RAW, "hsk/new-1.json"))) buildChinese();
-  else console.warn("skip HSK lists: hsk/ missing (kept from index.json)");
-  buildChineseFrequency();
+  else {
+    console.warn("skip HSK lists: hsk/ missing (kept from index.json)");
+    skipped.push("zh-hsk-");
+  }
+  if (buildChineseFrequency() === false) skipped.push("zh-freq-");
 }
 for (const lang of ["fr", "es", "de", "en", "ko", "it", "pt", "ru", "he"]) {
   if (!want(lang)) continue;
   const p = join(RAW, `kaikki/${lang}.jsonl`);
   if (!existsSync(p)) {
-    console.warn(`skip ${lang}: ${p} missing`);
+    console.warn(`skip ${lang}: ${p} missing (its lists kept from index.json)`);
+    skipped.push(`${lang}-freq-`);
     continue;
   }
   buildFrequencyLang(lang, await loadKaikki(p));
@@ -1724,7 +1766,10 @@ if (existsSync(indexPath)) {
     JSON.parse(readFileSync(indexPath, "utf8")).lists as (ListMeta & { kind?: string })[]
   ).filter(
     (l) =>
-      l.kind === "phrase" || l.kind === "exam" || (!!only && !index.some((n) => n.id === l.id)),
+      l.kind === "phrase" ||
+      l.kind === "exam" ||
+      skipped.some((p) => l.id.startsWith(p)) ||
+      (!!only && !index.some((n) => n.id === l.id)),
   );
 }
 const order = ["ja", "zh", "fr", "es", "de", "en", "ko", "it", "pt", "ru", "he"];

@@ -66,11 +66,13 @@ belongs to its list): new lists are appended after them.
   "Add a list" tree offers those lines as one-tap bands. Each list's
   `coverage` in `index.json` is the share of the corpus's running words its
   top words cover, counted by lemma: a form counts for its lemma (Wiktionary
-  form-of entries and inflection tables), a piece of a word the tokenizer
-  split (`c'` + `est`, `don` + `'t`) for the common word it belongs to, and
-  proper names (tokens Wiktionary has only as names) are left out of the
-  count. Tokens past rank 200,000 count as not covered, so the figures are a
-  floor. Reachable lines: English and Spanish/Portuguese up to 95%; French,
+  form-of entries and inflection tables), a homograph for the reading it
+  leads with, a piece of a word the tokenizer split (`c'` + `est`,
+  `don` + `'t`) with the first list (they are all pieces of first-list words
+  but `jusqu'`, 0.1% of French), a hyphenated token (`est-ce`) when all its
+  words are covered; proper names (tokens Wiktionary has only as names) are
+  left out of the count. Tokens past rank 200,000 count as not covered. The
+  figures are estimates from this one subtitle corpus. Reachable lines: English and Spanish/Portuguese up to 95%; French,
   German, Italian, Russian 90%; Hebrew 80% (data ceiling 89.6%); Korean 50%
   (ceiling 72.9%: eojeol tokens fold to lemmas only partly); Chinese 50%.
 - Hebrew (`he-freq-*`, 2026-11-03): ranks from FrequencyWords `he`
@@ -244,6 +246,12 @@ Entries with no suitable sentence leave both fields out.
     Chinese lists.
   - A sentence already used for another entry counts as 15 characters
     longer, so sentences are not repeated across a list.
+  - Per-sentence credits: `credits/tatoeba-<lang>.tsv` lists every Tatoeba
+    sentence used in a language's word lists with its author, and the
+    English translation shown with it with that sentence's author
+    (`scripts/words/tatoeba-credits.ts`); each sentence is at
+    `https://tatoeba.org/sentences/show/<id>`. Examples not listed there are
+    Wiktionary usage examples.
 - Coverage: fr 98%, es 99%, de 99%, en 99.8% (examples only), it 99%,
   pt 98%, ru 98%, ko 65%, ja 90%, zh 66%.
 

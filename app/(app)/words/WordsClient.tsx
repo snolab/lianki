@@ -385,7 +385,7 @@ type CatalogMeta = {
   scenario?: Scenario;
   /**
    * A frequency list's text coverage: the share of running text its top rank
-   * covers, at least (scripts/words/build-word-lists.ts, by lemma). The add tree's bands.
+   * covers, estimated by lemma (scripts/words/build-word-lists.ts). The add tree's bands.
    */
   coverage?: number;
 };
