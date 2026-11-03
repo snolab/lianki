@@ -15,6 +15,15 @@
 //   mounted now), else an attribute on the same elements. A chapter or the
 //   book is a virtual selection: the range is data, and only its mounted
 //   rows are drawn, again as rows mount (a MutationObserver on the list).
+// - **Manual selection.** His own selection (a long-press and the handles, a
+//   mouse drag) is left to the browser: never moved, never cleared while he
+//   adjusts it. Once it settles — `selectionchange` quiet for SETTLE_MS with
+//   no pointer down, or a pointerup — it is snapped to whole words
+//   (snapIndices) and becomes a `range` unit with the same card, which takes
+//   the side of the screen with more room than the selection leaves, away
+//   from the native handles and menu. A tap elsewhere (also in the book)
+//   clears it; a tap on the card keeps it even if the platform drops the
+//   native selection.
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
@@ -24,7 +33,14 @@ import {
   type Unit,
   comboClick,
   comboContinues,
+  inRange,
+  rangeUnit,
+  sameUnit,
+  snapIndices,
 } from "@/lib/read/reader-select";
+
+/** A hand selection has settled once `selectionchange` is this quiet (ms). */
+export const SETTLE_MS = 350;
 
 const HL = "lk-sel";
 
@@ -65,11 +81,50 @@ export function unitElements(
     }
     case "book":
       return all("[data-line]");
+    case "range":
+      return all("[data-line] [data-t]").filter((e) =>
+        inRange(
+          u,
+          Number(e.closest<HTMLElement>("[data-line]")!.dataset.line),
+          Number(e.dataset.t),
+        ),
+      );
   }
+}
+
+/** The unit a native selection covers, snapped to whole words; null when it holds none. */
+export function snapDomRange(root: HTMLElement, r: Range): Unit | null {
+  const toks = [...root.querySelectorAll<HTMLElement>("[data-line] [data-t]")];
+  const probe = document.createRange();
+  // A range that would end before it starts collapses: empty, so false.
+  const has = (sn: Node, so: number, en: Node, eo: number) => {
+    probe.setStart(sn, so);
+    probe.setEnd(en, eo);
+    return probe.toString().length > 0;
+  };
+  const ij = snapIndices(
+    toks.length,
+    (i) => has(r.startContainer, r.startOffset, toks[i], toks[i].childNodes.length),
+    (i) => has(toks[i], 0, r.endContainer, r.endOffset),
+  );
+  if (!ij) return null;
+  const ref = (e: HTMLElement) => ({
+    line: Number(e.closest<HTMLElement>("[data-line]")!.dataset.line),
+    t: Number(e.dataset.t),
+  });
+  return rangeUnit(ref(toks[ij[0]]), ref(toks[ij[1]]));
 }
 
 /** Ranges for the highlight: whole elements; a phrase from its first word to its last, per paragraph. */
 function rangesOf(u: Unit, els: HTMLElement[]): Range[] {
+  if (u.kind === "range") {
+    // One range from its first mounted word to its last, across paragraphs.
+    if (!els.length) return [];
+    const r = document.createRange();
+    r.setStartBefore(els[0]);
+    r.setEndAfter(els[els.length - 1]);
+    return [r];
+  }
   if (u.kind !== "phrase") {
     return els.map((e) => {
       const r = document.createRange();
@@ -115,6 +170,8 @@ export interface ReaderSelect {
   clear: () => void;
   /** The selection was made in the lower half of the screen: the card goes to the top. */
   low: boolean;
+  /** The unit is his own native selection, snapped to words. */
+  manual: boolean;
 }
 
 export function useReaderSelect(o: {
@@ -140,24 +197,99 @@ export function useReaderSelect(o: {
   onTapRef.current = o.onTap;
   const flash = useRef(false);
   const placed = useRef(false);
+  /** The unit came from his native selection. */
+  const manual = useRef(false);
+  const [isManual, setManual] = useState(false);
+  const unitRef = useRef<Unit | null>(null);
+  unitRef.current = unit;
 
   const clear = useCallback(() => {
     combo.current = null;
+    if (manual.current) {
+      // Closed by hand (×, Esc, back): his selection goes with the card.
+      const s = window.getSelection();
+      if (s && !s.isCollapsed) s.removeAllRanges();
+    }
+    manual.current = false;
+    setManual(false);
     setUnit(null);
   }, []);
   const select = useCallback((u: Unit, opt?: { flash?: boolean }) => {
     combo.current = { unit: u, at: -Infinity };
     flash.current = !!opt?.flash;
     placed.current = false;
+    manual.current = false;
+    setManual(false);
     setUnit(u);
   }, []);
 
   // One delegated listener set for the reader.
   useEffect(() => {
     let downAt = 0;
+    /** Pointers down now: a selection is not settled while one is. */
+    const pressed = new Set<number>();
+    /** The last press was on the card: the native selection may go, the card stays. */
+    let onCard = false;
+    let settleT: ReturnType<typeof setTimeout> | undefined;
     const inBook = (n: EventTarget | null) => n instanceof Node && !!o.listRef.current?.contains(n);
+    const settle = () => {
+      clearTimeout(settleT);
+      if (pressed.size) return;
+      const root = o.listRef.current;
+      const s = window.getSelection();
+      if (!root || !s || s.rangeCount === 0 || s.isCollapsed) {
+        // His selection went (a tap elsewhere): its card goes too.
+        if (manual.current && !onCard) clear();
+        return;
+      }
+      const r = s.getRangeAt(0);
+      // A selection in the card or the chrome, not in the book: not ours.
+      if (!r.intersectsNode(root)) return;
+      if (s.anchorNode instanceof Node && s.anchorNode.parentElement?.closest("[data-select-card]"))
+        return;
+      const u = snapDomRange(root, r);
+      if (!u) {
+        // Moved onto spaces or punctuation only: no words, so no card (his selection stays).
+        if (manual.current) {
+          combo.current = null;
+          manual.current = false;
+          setManual(false);
+          setUnit(null);
+        }
+        return;
+      }
+      if (sameUnit(u, unitRef.current)) {
+        // The unit on the card already (a word he tapped, now selected by hand): his now.
+        manual.current = true;
+        setManual(true);
+        return;
+      }
+      combo.current = { unit: u, at: -Infinity };
+      flash.current = false;
+      placed.current = true;
+      manual.current = true;
+      setManual(true);
+      // The card takes the side the selection leaves more room on.
+      const b = r.getBoundingClientRect();
+      setLow(b.top > innerHeight - b.bottom);
+      setUnit(u);
+    };
+    const later = (ms: number) => {
+      clearTimeout(settleT);
+      settleT = setTimeout(settle, ms);
+    };
+    const selChange = () => later(SETTLE_MS);
     const down = (e: PointerEvent) => {
+      // A new gesture: any pointer whose end was missed is gone.
+      if (e.isPrimary) pressed.clear();
+      pressed.add(e.pointerId);
+      onCard = e.target instanceof Element && !!e.target.closest("[data-select-card]");
       if (e.isPrimary && e.button === 0) downAt = e.timeStamp;
+    };
+    const up = (e: PointerEvent) => {
+      pressed.delete(e.pointerId);
+      // A drag ends with the selection made: settle at once.
+      if (!pressed.size) later(30);
     };
     const mouse = (e: MouseEvent) => {
       // The platform's own double/triple-click selection: ours instead.
@@ -178,6 +310,11 @@ export function useReaderSelect(o: {
       const sel = window.getSelection();
       // He dragged to select text himself: leave it to the browser.
       if (sel && !sel.isCollapsed && e.detail <= 1) return;
+      // A tap on the book while his own selection's card is up: it clears.
+      if (manual.current) {
+        clear();
+        return;
+      }
       const h = hitAt(root, e.clientX, e.clientY);
       if (!h) {
         if (combo.current) clear();
@@ -190,6 +327,8 @@ export function useReaderSelect(o: {
       onTapRef.current?.(next.unit, continued);
       if (e.detail > 1) sel?.removeAllRanges();
       flash.current = false;
+      manual.current = false;
+      setManual(false);
       // The card takes the other half of the screen from his finger, so the
       // next click of the combo lands on the book, never on the card.
       placed.current = true;
@@ -197,9 +336,16 @@ export function useReaderSelect(o: {
       setUnit(next.unit);
     };
     document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerup", up, true);
+    document.addEventListener("pointercancel", up, true);
+    document.addEventListener("selectionchange", selChange);
     document.addEventListener("mousedown", mouse, true);
     document.addEventListener("click", click);
     return () => {
+      clearTimeout(settleT);
+      document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("pointercancel", up, true);
+      document.removeEventListener("selectionchange", selChange);
       document.removeEventListener("pointerdown", down, true);
       document.removeEventListener("mousedown", mouse, true);
       document.removeEventListener("click", click);
@@ -265,5 +411,5 @@ export function useReaderSelect(o: {
     };
   }, [unit, o.listRef]);
 
-  return { unit, select, clear, low };
+  return { unit, select, clear, low, manual: isManual };
 }

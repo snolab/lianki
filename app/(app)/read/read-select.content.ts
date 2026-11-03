@@ -425,6 +425,60 @@ const dictionary = {
       sw: "Rudia maneno ya aya hii",
       mr: "या परिच्छेदातील शब्दांची उजळणी करा",
     }),
+    kindSelection: t({
+      en: "Selection",
+      zh: "选中内容",
+      ja: "選択範囲",
+      ko: "선택한 내용",
+      hi: "चुना हुआ अंश",
+      es: "Selección",
+      fr: "Sélection",
+      ar: "النص المحدد",
+      bn: "নির্বাচিত অংশ",
+      pt: "Seleção",
+      ru: "Выделенный текст",
+      ur: "منتخب متن",
+      id: "Teks terpilih",
+      de: "Auswahl",
+      sw: "Maandishi uliyochagua",
+      mr: "निवडलेला मजकूर",
+    }),
+    reviewSelection: t({
+      en: "Review all words in the selection",
+      zh: "复习选中内容的所有单词",
+      ja: "選択範囲の単語をすべて復習",
+      ko: "선택한 내용의 단어 모두 복습",
+      hi: "चुने हुए अंश के सभी शब्द दोहराएँ",
+      es: "Repasar todas las palabras seleccionadas",
+      fr: "Réviser tous les mots de la sélection",
+      ar: "راجع كل كلمات النص المحدد",
+      bn: "নির্বাচিত অংশের সব শব্দ ঝালিয়ে নিন",
+      pt: "Revisar todas as palavras da seleção",
+      ru: "Повторить все слова выделенного",
+      ur: "منتخب متن کے سب الفاظ دہرائیں",
+      id: "Ulas semua kata di teks terpilih",
+      de: "Alle Wörter der Auswahl wiederholen",
+      sw: "Rudia maneno yote uliyochagua",
+      mr: "निवडलेल्या मजकुरातील सर्व शब्दांची उजळणी करा",
+    }),
+    readAloud: t({
+      en: "Read aloud",
+      zh: "朗读",
+      ja: "読み上げる",
+      ko: "소리 내어 읽기",
+      hi: "ज़ोर से पढ़ें",
+      es: "Leer en voz alta",
+      fr: "Lire à voix haute",
+      ar: "اقرأ بصوت عالٍ",
+      bn: "জোরে পড়ুন",
+      pt: "Ler em voz alta",
+      ru: "Прочитать вслух",
+      ur: "بلند آواز سے پڑھیں",
+      id: "Bacakan",
+      de: "Vorlesen",
+      sw: "Soma kwa sauti",
+      mr: "मोठ्याने वाचा",
+    }),
   },
 };
 
@@ -475,6 +529,12 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Screen-reader label and tooltip of the × button of the reader's selection card: removes the highlight and closes the card. An imperative phrase.",
   reviewWords:
     "Button on the reader's selection card (for a selected word, phrase, sentence or paragraph): opens a sheet listing every word of the paragraph that holds the selection, each to be graded right there like a flashcard (spaced repetition review). An imperative phrase; 'review' means study again with flashcards, not critique.",
+  kindSelection:
+    "Small label at the top of the reader's selection card when the learner selected a stretch of text by hand (long-press and drag the handles, or drag with the mouse), possibly over several paragraphs. A short noun for 'the text you selected'.",
+  reviewSelection:
+    "Button on the reader's selection card for text the learner selected by hand: opens the flashcard review (spaced repetition) of every distinct word inside the selected text, graded right there. An imperative phrase; 'review' means study again with flashcards, not critique.",
+  readAloud:
+    "Button on the reader's selection card for text the learner selected by hand: text-to-speech reads exactly the selected text once, in the book's language. An imperative verb phrase.",
 };
 
 export default {

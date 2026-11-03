@@ -29,6 +29,24 @@ const dictionary = {
       sw: "Maneno ya aya hii",
       mr: "या परिच्छेदातील शब्द",
     }),
+    selectionTitle: t({
+      en: "Words in the selection",
+      zh: "选中内容的单词",
+      ja: "選択範囲の単語",
+      ko: "선택한 내용의 단어",
+      hi: "चुने हुए अंश के शब्द",
+      es: "Palabras de la selección",
+      fr: "Mots de la sélection",
+      ar: "كلمات النص المحدد",
+      bn: "নির্বাচিত অংশের শব্দ",
+      pt: "Palavras da seleção",
+      ru: "Слова выделенного текста",
+      ur: "منتخب متن کے الفاظ",
+      id: "Kata di teks terpilih",
+      de: "Wörter der Auswahl",
+      sw: "Maneno ya maandishi uliyochagua",
+      mr: "निवडलेल्या मजकुरातील शब्द",
+    }),
     close: t({
       en: "Close",
       zh: "关闭",
@@ -179,6 +197,8 @@ const dictionary = {
 const context: Record<keyof typeof dictionary.content, string> = {
   title:
     "Title of the word review opened over the book reader: the Words page's flashcard list, showing only the words of one paragraph of the book, for reviewing them in place. A short noun phrase.",
+  selectionTitle:
+    "Title of the word review opened over the book reader when the learner had selected a stretch of text by hand (possibly several paragraphs): the Words page's flashcard list showing only the words inside that selection. A short noun phrase.",
   close:
     "Screen-reader label and tooltip of the ✕ button that closes the word review opened over the book reader and returns to the book. An imperative verb.",
   undo: "Button on the toast shown after flashcards were made for a paragraph's words: removes those new cards again (only the ones not yet studied). An imperative verb.",

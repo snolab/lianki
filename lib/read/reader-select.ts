@@ -15,7 +15,13 @@
 //   token index in the line (word-like segments from 0). With the book's
 //   content hash in the path they survive a re-import of the same text:
 //   `/read/<book>` · `#ch=<n>` · `#p=<line>` · `#s=<line>.<sentence>` ·
-//   `#w=<line>.<token>` · `#ph=<line>.<start>-<end>`.
+//   `#w=<line>.<token>` · `#ph=<line>.<start>-<end>` ·
+//   `#r=<line>.<token>-<line>.<token>` (a range he selected by hand).
+// - **Manual selection** (owner, 2026-11-03 22:25 JST: "我手动选择一串内容的时候
+//   也会生成一个"): a native text selection of any extent — a long-press and
+//   handles, a mouse drag — is snapped to whole words (snapIndices) and is a
+//   `range` unit from its first word to its last, across paragraphs; a single
+//   word is that word. It gets the same card. Not a combo level.
 
 import type { Fam, Sentence } from "./reader-model";
 
@@ -25,9 +31,12 @@ export type Unit =
   | { kind: "sentence"; line: number; s: number }
   | { kind: "para"; line: number }
   | { kind: "chapter"; n: number }
-  | { kind: "book" };
+  | { kind: "book" }
+  /** Words he selected by hand: from token t0 of line l0 to token t1 of line l1, both inclusive. */
+  | { kind: "range"; l0: number; t0: number; l1: number; t1: number };
 
-export type Level = Unit["kind"];
+/** A combo level: every unit but a hand-made range. */
+export type Level = Exclude<Unit["kind"], "range">;
 
 /** Smallest to largest: one level up per click. */
 export const LEVELS: readonly Level[] = ["word", "phrase", "sentence", "para", "chapter", "book"];
@@ -105,8 +114,14 @@ export function unitHolds(u: Unit, hit: Hit, ctx: ComboCtx): boolean {
     }
     case "book":
       return true;
+    case "range":
+      return hit.t !== null && inRange(u, hit.line, hit.t);
   }
 }
+
+/** Whether token `t` of `line` lies in a range. */
+export const inRange = (u: Extract<Unit, { kind: "range" }>, line: number, t: number) =>
+  (line > u.l0 || (line === u.l0 && t >= u.t0)) && (line < u.l1 || (line === u.l1 && t <= u.t1));
 
 /** The smallest unit under a hit (a paragraph always exists). */
 export function firstUnit(hit: Hit, ctx: ComboCtx): Unit {
@@ -119,7 +134,8 @@ export function firstUnit(hit: Hit, ctx: ComboCtx): Unit {
 
 /** The next larger unit around a hit, after `u`; the book stays the book. */
 export function nextUnit(u: Unit, hit: Hit, ctx: ComboCtx): Unit {
-  for (let i = LEVELS.indexOf(u.kind) + 1; i < LEVELS.length; i++) {
+  // A hand-made range is no level: the word under the click comes next.
+  for (let i = LEVELS.indexOf(u.kind as Level) + 1; i < LEVELS.length; i++) {
     const n = unitFor(LEVELS[i], hit, ctx);
     if (n) return n;
   }
@@ -159,7 +175,7 @@ export function comboContinues(prev: Combo | null, hit: Hit, at: number, ctx: Co
  * double-click interval, so a fast triple-click does not stutter through
  * every level on its way to the paragraph.
  */
-export type SayUnit = Extract<Unit, { kind: "word" | "phrase" | "sentence" | "para" }>;
+export type SayUnit = Extract<Unit, { kind: "word" | "phrase" | "sentence" | "para" | "range" }>;
 
 export interface TapVoice {
   /** Say this unit (null: say nothing). */
@@ -194,8 +210,17 @@ export function encodeUnit(u: Unit): string {
       return `#ch=${u.n}`;
     case "book":
       return "";
+    case "range":
+      return `#r=${u.l0}.${u.t0}-${u.l1}.${u.t1}`;
   }
 }
+
+/**
+ * The most lines a range may span. A hand selection spans only the rows
+ * mounted at the time; a link naming more than this is no unit (its card
+ * would cut that many paragraphs at once).
+ */
+export const RANGE_MAX_LINES = 400;
 
 const N = "(0|[1-9]\\d{0,6})";
 const FRAG: [RegExp, (m: RegExpExecArray) => Unit | null][] = [
@@ -207,6 +232,15 @@ const FRAG: [RegExp, (m: RegExpExecArray) => Unit | null][] = [
   [new RegExp(`^s=${N}\\.${N}$`), (m) => ({ kind: "sentence", line: +m[1], s: +m[2] })],
   [new RegExp(`^p=${N}$`), (m) => ({ kind: "para", line: +m[1] })],
   [new RegExp(`^ch=${N}$`), (m) => ({ kind: "chapter", n: +m[1] })],
+  [
+    new RegExp(`^r=${N}\\.${N}-${N}\\.${N}$`),
+    (m) => {
+      const [l0, t0, l1, t1] = [+m[1], +m[2], +m[3], +m[4]];
+      // Start before end (one word is `#w`), and not longer than a range can be.
+      if (l1 < l0 || (l1 === l0 && t1 <= t0) || l1 - l0 > RANGE_MAX_LINES) return null;
+      return { kind: "range", l0, t0, l1, t1 };
+    },
+  ],
 ];
 
 /** The unit a fragment names (with or without its `#`), or null. */
@@ -312,4 +346,111 @@ export function tokenOffset(ss: readonly Sentence[], t: number): number {
       off += g.text.length;
     }
   return -1;
+}
+
+// ── A hand-made selection (lib/read/reader-select.ts "Manual selection") ──
+
+/** A word in the book: token `t` of `line`. */
+export interface TokRef {
+  line: number;
+  t: number;
+}
+
+/**
+ * The words a native selection covers, as indices into the mounted words in
+ * document order: the first word that ends after the selection starts and
+ * the last that starts before it ends — so a selection that begins or ends
+ * inside a word takes the whole word, and one over only spaces or
+ * punctuation takes none. Both predicates are monotone in document order
+ * (false…true, true…false), so each is a binary search. Null: no word.
+ */
+export function snapIndices(
+  n: number,
+  /** The selection starts before word i's end (a selected character of it or after it). */
+  startsBefore: (i: number) => boolean,
+  /** The selection ends after word i's start. */
+  endsAfter: (i: number) => boolean,
+): [number, number] | null {
+  let lo = 0;
+  let hi = n;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (startsBefore(m)) hi = m;
+    else lo = m + 1;
+  }
+  const i0 = lo;
+  lo = -1;
+  hi = n - 1;
+  while (lo < hi) {
+    const m = (lo + hi + 1) >> 1;
+    if (endsAfter(m)) lo = m;
+    else hi = m - 1;
+  }
+  const i1 = lo;
+  return i0 < n && i1 >= 0 && i0 <= i1 ? [i0, i1] : null;
+}
+
+/** The unit from word `a` to word `b`: that word when they are one, else a range. */
+export function rangeUnit(a: TokRef, b: TokRef): Unit {
+  const [x, y] = a.line < b.line || (a.line === b.line && a.t <= b.t) ? [a, b] : [b, a];
+  if (x.line === y.line && x.t === y.t) return { kind: "word", line: x.line, t: x.t };
+  return { kind: "range", l0: x.line, t0: x.t, l1: y.line, t1: y.t };
+}
+
+/** One paragraph of a range: its tokens from `from` to `to` (null: the line's start or end). */
+export interface RangePart {
+  line: number;
+  from: number | null;
+  to: number | null;
+}
+
+/** A range's paragraphs, first to last. */
+export function rangeParts(u: Extract<Unit, { kind: "range" }>): RangePart[] {
+  const out: RangePart[] = [];
+  for (let l = u.l0; l <= u.l1; l++)
+    out.push({ line: l, from: l === u.l0 ? u.t0 : null, to: l === u.l1 ? u.t1 : null });
+  return out;
+}
+
+/** The text of a paragraph from token `from` to token `to`, inclusive (null: its start / end). */
+export function partText(ss: readonly Sentence[], from: number | null, to: number | null): string {
+  let out = "";
+  let on = from === null;
+  for (const s of ss)
+    for (const g of s.segs) {
+      if (g.t === from) on = true;
+      if (on) out += g.text;
+      if (to !== null && g.t === to) return out;
+    }
+  return out;
+}
+
+/** A range's text, its paragraphs joined by `sep`; blank lines are left out. */
+export function rangeText(
+  u: Extract<Unit, { kind: "range" }>,
+  sentences: (line: number) => readonly Sentence[] | null,
+  sep = "\n\n",
+): string {
+  const out: string[] = [];
+  for (const p of rangeParts(u)) {
+    const ss = sentences(p.line);
+    if (!ss) continue;
+    const s = partText(ss, p.from, p.to).trim();
+    if (s) out.push(s);
+  }
+  return out.join(sep);
+}
+
+/** Running words of a range by familiarity. */
+export function countRange(
+  u: Extract<Unit, { kind: "range" }>,
+  sentences: (line: number) => readonly Sentence[] | null,
+  fam: ReadonlyMap<string, Fam>,
+): FamCounts {
+  const c = emptyCounts();
+  for (const p of rangeParts(u)) {
+    const ss = sentences(p.line);
+    if (ss) countSentences(ss, fam, [p.from ?? 0, p.to ?? Infinity], c);
+  }
+  return c;
 }

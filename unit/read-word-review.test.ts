@@ -24,6 +24,7 @@ import {
   newCardTerm,
   orderWords,
   paraWords,
+  spanWords,
   type DeckCard,
 } from "@/lib/read/word-review";
 import type { Fam, Sentence } from "@/lib/read/reader-model";
@@ -216,5 +217,40 @@ describe("the book's list (D1)", () => {
     expect(await addGradedEntries(d1, EMAIL, book, [{ w: "loup" }])).toBe(0);
     const [list] = await bookLists();
     expect(list.size).toBe(1);
+  });
+});
+
+describe("spanWords (a hand-made selection)", () => {
+  test("only the range's tokens, distinct across paragraphs, each with its own sentence", () => {
+    const p1 = [sentence(["The", "cat", "sat"]), sentence(["A", "dog", "ran"])];
+    const p2 = [sentence(["The", "dog", "slept"])];
+    const fam = new Map<string, Fam>([
+      ["dog", "n"],
+      ["ran", "k"],
+    ]);
+    // From "dog" (token 1 of p1's 2nd sentence) to "dog" of p2 (token 1).
+    const { sentences, words } = spanWords(
+      [
+        {
+          ss: [
+            { ...p1[0] },
+            { ...p1[1], segs: p1[1].segs.map((g) => ({ ...g, t: g.t < 0 ? -1 : g.t + 3 })) },
+          ],
+          from: 4,
+          to: null,
+        },
+        { ss: p2, from: null, to: 1 },
+      ],
+      fam,
+    );
+    expect(words.map((w) => w.w)).toEqual(["dog", "ran", "the"]);
+    expect(words.map((w) => w.fam)).toEqual(["n", "k", undefined]);
+    // The example of each word is the sentence it first occurs in.
+    expect(words.map((w) => sentences[w.s].text)).toEqual([
+      "A dog ran",
+      "A dog ran",
+      "The dog slept",
+    ]);
+    expect(missingWords(words).map((w) => w.w)).toEqual(["dog"]);
   });
 });
