@@ -210,24 +210,29 @@ bun build
 
 The project uses Husky, split by speed:
 
-**`pre-commit`** (fast, every commit):
+**`pre-commit`** (seconds, staged files only — `.lintstagedrc.mjs`,
+`scripts/pre-commit.ts`):
 
-- secretlint on staged files (lint-staged)
-- `bun run lint`: oxlint + `oxfmt --check` over the whole repo, check-only
-  (~0.1 s; fails the commit instead of rewriting it — `bun fix` repairs)
-- TypeScript type checking
-- Unit tests with coverage (`bun run test:unit -- --coverage`)
-- Auto-syncs `lianki.meta.js` + validates the userscript `@version` bump
+- secretlint on every staged file
+- oxlint `--fix` + oxfmt on staged JS/TS outside `packages/` (lint-staged
+  re-stages the fixes; an error oxlint cannot fix fails the commit)
+- Only when their inputs are staged (`scripts/pre-commit-plan.ts`): builds the
+  userscript from `src/lianki.user.ts`, validates the `@version` bump and syncs
+  `lianki.meta.js` + `lib/userscript-version.ts`; regenerates
+  `lib/state-tree.generated.ts` from `docs/state-tree.md` and
+  `lib/blog.corpus.json` from `blog/`
 
-**`pre-push`** (full integration, before sharing):
+**`pre-push`** (before sharing, cheapest first):
 
-- `bun run lint` and typecheck first (seconds), then `bun run qa:all` — builds
-  the OpenNext Worker and runs the API/UI/sync/userscript suites against
-  `wrangler dev` on local D1 (see the qa:all section above). CI runs qa:all only
-  nightly, so this hook is the per-change gate.
+- `bun run lint` (whole repo, check-only), typecheck, then the unit suite with
+  its coverage gate (`bun run test:unit -- --coverage`) — about half a minute
+- then `bun run qa:all` — builds the OpenNext Worker and runs the
+  API/UI/sync/userscript suites against `wrangler dev` on local D1 (see the
+  qa:all section above). CI runs qa:all only nightly, so this hook is the
+  per-change integration gate.
 
 Never use `--no-verify` (AGENTS.md hard rule) — it skips the userscript meta
-sync and secret scan.
+sync and secret scan on commit, and every local gate on push.
 
 ## Project Structure
 

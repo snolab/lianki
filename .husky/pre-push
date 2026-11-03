@@ -1,9 +1,12 @@
-# Full integration gate before code leaves the machine: builds the OpenNext
-# Worker, boots `wrangler dev` on local D1, and runs the API + UI + sync +
-# userscript suites against the real deployed backend path. See scripts/qa/qa-all.mjs.
+# Gate before code leaves the machine, cheapest first so a failure surfaces in
+# seconds: whole-repo lint, typecheck, the unit suite with its coverage gate
+# (bunfig.toml) — all moved here from pre-commit on 2026-11-04 — then qa:all,
+# the full integration gate: builds the OpenNext Worker, boots `wrangler dev` on
+# local D1, and runs the API + UI + sync + userscript suites against the real
+# deployed backend path. See scripts/qa/qa-all.mjs. CI runs lint, typecheck and
+# the unit suite on every PR; qa:all runs nightly (docs/shipping.md).
 #
-# Skip in an emergency with `git push --no-verify` ONLY if you understand the
-# risk — CI runs the same `qa:all`, so a skip just defers the failure.
+# Never `git push --no-verify` (AGENTS.md).
 #
 # Skip automatically when the push only DELETES remote refs — there is nothing
 # to build or test, and qa:all is a multi-minute build. git feeds one line per
@@ -18,31 +21,36 @@ while read -r _local_ref local_sha _remote_ref _remote_sha; do
   esac
 done
 if [ "$saw_ref" = "1" ] && [ "$only_deletes" = "1" ]; then
-  echo "pre-push: deletion-only push — skipping qa:all"
+  echo "pre-push: deletion-only push — nothing to check"
   exit 0
 fi
 
-# Skip on native Windows (Git Bash / MSYS), where the gate cannot pass: the
-# OpenNext Cloudflare packaging breaks there — with bun's isolated linker its
-# traced copy turns directory symlinks into file symlinks ("Access is denied"
-# in esbuild), and with a hoisted install the Worker boots but every route
-# fails with ChunkLoadError on Turbopack server chunks. Verified 2026-10-14;
-# neither failure involves the code being pushed. CI runs the identical
-# `qa:all` on Linux and remains the gate. WSL is not affected (uname = Linux).
-# Set LIANKI_QA_ON_WINDOWS=1 to run it anyway (e.g. after an OpenNext upgrade).
+# Cheap gates first, so a lint, type or unit failure fails in seconds, not after
+# the multi-minute build. husky already runs hooks with `sh -e`; the explicit
+# `set -e` keeps it true if the hook is ever run by hand.
+set -e
+bun run lint
+bun run typecheck
+bun run test:unit -- --coverage
+
+# Skip qa:all — only qa:all, the checks above have run — on native Windows (Git
+# Bash / MSYS), where it cannot pass: the OpenNext Cloudflare packaging breaks
+# there. With bun's isolated linker its traced copy turns directory symlinks
+# into file symlinks ("Access is denied" in esbuild); with a hoisted install the
+# Worker boots but every route fails with ChunkLoadError on Turbopack server
+# chunks. Verified 2026-10-14; neither failure involves the code being pushed.
+# The nightly CI run of the identical `qa:all` on Linux is the gate there. WSL
+# is not affected (uname = Linux). Set LIANKI_QA_ON_WINDOWS=1 to run it anyway
+# (e.g. after an OpenNext upgrade).
 case "$(uname -s 2>/dev/null)" in
 MINGW* | MSYS* | CYGWIN*)
   if [ "${LIANKI_QA_ON_WINDOWS:-}" != "1" ]; then
-    echo "pre-push: native Windows — qa:all cannot run here (OpenNext packaging); CI is the gate."
+    echo "pre-push: native Windows — qa:all cannot run here (OpenNext packaging); the nightly CI run is the gate."
     echo "pre-push: set LIANKI_QA_ON_WINDOWS=1 to force it."
     exit 0
   fi
   ;;
 esac
 
-# Cheap gates first, so a lint or type error fails in a second, not after the
-# multi-minute build.
-bun run lint
-bun run typecheck
 # qa:all mutes the Mac while it runs (scripts/qa/with-muted-mac.sh).
 bun run qa:all

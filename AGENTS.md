@@ -8,9 +8,11 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 ## Hard rules
 
 - **NEVER `git push --force`.** If histories diverge, ask how to proceed.
-- **NEVER `--no-verify`** — the pre-commit hook syncs `lianki.meta.js`, scans
-  secrets, lints, builds, and tests. Bypassing causes meta drift and broken
-  userscript auto-updates.
+- **NEVER `--no-verify`** — pre-commit (seconds, staged files only) scans
+  secrets, runs oxlint --fix + oxfmt, and syncs the userscript build,
+  `lianki.meta.js` and `@version`; pre-push runs whole-repo lint, typecheck,
+  the unit suite with its coverage gate, then `qa:all`. Bypassing causes meta
+  drift, broken userscript auto-updates, and failures CI finds later.
 - **NEVER `git reset --hard`** to move a branch — it silently destroys
   uncommitted work. Use `git reset --keep`, which aborts instead of overwriting.
 - Always bump `@version` in `lianki.user.js` when changing the userscript.
@@ -27,7 +29,7 @@ bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
 bun test               # unit tests
 bun fix                # oxlint --fix + oxfmt
-bun run lint           # oxlint + oxfmt --check (check-only; hooks and CI run it)
+bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run it)
 bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
