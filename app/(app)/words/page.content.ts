@@ -1797,6 +1797,24 @@ const dictionary = {
       mr: "जोडली",
       ko: "추가됨",
     }),
+    examLists: t({
+      en: "Exam word lists",
+      zh: "考试词表",
+      hi: "परीक्षा शब्द-सूचियाँ",
+      es: "Listas de exámenes",
+      fr: "Listes d’examens",
+      ar: "قوائم كلمات الامتحانات",
+      bn: "পরীক্ষার শব্দতালিকা",
+      pt: "Listas de exames",
+      ru: "Списки слов к экзаменам",
+      ur: "امتحانی الفاظ کی فہرستیں",
+      id: "Daftar kata ujian",
+      de: "Prüfungswortlisten",
+      ja: "試験の単語リスト",
+      sw: "Orodha za maneno ya mitihani",
+      mr: "परीक्षेच्या शब्दयाद्या",
+      ko: "시험 단어 목록",
+    }),
     signInToUse: t({
       en: "Sign in to use word lists.",
       zh: "登录后即可使用单词列表。",
@@ -1889,6 +1907,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
   add: "/words list picker, the small button next to each built-in word list in the 'Add a list' catalogue; adds that list to the learner's lists. Imperative verb, lowercase in English.",
   added:
     "/words list picker, the same small button once that built-in word list has been added (now disabled): a past participle agreeing with 'list' (feminine in French). Lowercase in English, one word if possible.",
+  examLists:
+    "/words list picker, 'Add a list' catalogue, small sub-heading over the built-in lists of one language that prepare for a language exam (CET-4/6, TOEFL, IELTS, GRE, JLPT, HSK…); below it, each exam's name and its level lists. A noun-phrase heading: word lists for exams, not 'exam results'.",
   signInToUse:
     "/words page, message shown in place of the word lists (in red) to a visitor who is not signed in. Asks them to sign in to use word lists. One polite sentence.",
   loading:

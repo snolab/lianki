@@ -360,8 +360,13 @@ type CatalogMeta = {
    * words come from /api/words/lists/<id>/entries.
    */
   path?: string;
-  /** "phrase" for a scenario phrase deck (lib/words/phrases.ts); word lists have none. */
-  kind?: "phrase";
+  /**
+   * "phrase" for a scenario phrase deck (lib/words/phrases.ts), "exam" for an
+   * exam deck (scripts/words/build-exam-decks.ts); word lists have none.
+   */
+  kind?: "phrase" | "exam";
+  /** The exam a list prepares for (JLPT, HSK 3.0, CET 四六级, TOEFL…); the add picker groups by it. */
+  exam?: string;
   /** A phrase deck's scenario. */
   scenario?: Scenario;
 };
@@ -2518,7 +2523,11 @@ function ListPicker({
         {lang &&
           (() => {
             const ofLang = builtIn.filter((c) => c.lang === lang);
-            const words = ofLang.filter((c) => !isPhraseMeta(c));
+            const words = ofLang.filter((c) => !isPhraseMeta(c) && !c.exam);
+            // exam lists by exam, in catalog order (CET-4 before CET-6, N5 before N1)
+            const exams = [...new Set(ofLang.filter((c) => c.exam).map((c) => c.exam!))].map(
+              (exam) => ofLang.filter((c) => c.exam === exam),
+            );
             const phrases = ofLang
               .filter((c) => isPhraseMeta(c) && c.scenario)
               .sort((a, b) => SCENARIOS.indexOf(a.scenario!) - SCENARIOS.indexOf(b.scenario!));
@@ -2542,6 +2551,24 @@ function ListPicker({
                   <p className="fs-11 opacity-40 pt-2">
                     {words[0].source} — {words[0].license}
                   </p>
+                )}
+                {exams.length > 0 && (
+                  <div className="space-y-1 pt-3" data-add-exams>
+                    <h3 className="text-xs font-medium opacity-70">{text.examLists}</h3>
+                    {exams.map((decks) => (
+                      <div key={decks[0].exam} className="space-y-1 pt-1">
+                        <h4 className="fs-11 font-medium opacity-60">{decks[0].exam}</h4>
+                        {decks.map((c) => row(c, c.name))}
+                      </div>
+                    ))}
+                    {[...new Set(exams.flat().map((c) => `${c.source} — ${c.license}`))].map(
+                      (credit) => (
+                        <p key={credit} className="fs-11 opacity-40 pt-2">
+                          {credit}
+                        </p>
+                      ),
+                    )}
+                  </div>
                 )}
                 {phrases.length > 0 && (
                   <div className="space-y-1 pt-3" data-add-phrases>

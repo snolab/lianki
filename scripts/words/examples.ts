@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export type Example = { ex: string; exTr?: string };
-type Sent = { s: string; en: string; words: number };
+export type Sent = { s: string; en: string; words: number };
 
 /** ISO 639-3 codes Tatoeba uses for its per-language exports. */
 export const TATOEBA_CODE: Record<string, string> = {
