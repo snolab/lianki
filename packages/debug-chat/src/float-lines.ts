@@ -36,6 +36,22 @@ export function dwellMs(text: string): number {
 }
 
 /**
+ * Lines leave in the order they came (the owner, 2026-11-03: a short line
+ * after a long one went first). A line's dwell is its own reading time
+ * (dwellMs), but never shorter than what is left of the line above it, so its
+ * fade never starts first: expiry = max(own, the one above's). All fade over
+ * the same FADE_MS and pause together, so the order holds to the end.
+ */
+export const fifoDwellMs = (text: string, aboveLeftMs = 0) =>
+  Math.max(dwellMs(text), Math.round(aboveLeftMs));
+
+/** The dwells of lines that start together (minimizing, a scrub step), top first. */
+export function chainDwells(texts: string[]): number[] {
+  let above = 0;
+  return texts.map((t) => (above = fifoDwellMs(t, above)));
+}
+
+/**
  * One line's countdown: a single setTimeout, stopped by `pause` and restarted
  * by `resume` with the time that was left. Clock and timers are injected for
  * tests.
@@ -225,6 +241,8 @@ export function createFloatLife(d: {
       fade = null;
     },
     phase: () => phase,
+    /** The dwell left, in ms (0 once fading): the next line waits at least this long. */
+    remaining: () => (phase === "dwell" ? dwell.remaining() : 0),
   };
   if (d.paused) life.pause();
   return life;

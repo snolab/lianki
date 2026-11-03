@@ -423,12 +423,25 @@ dot, colon or slash, or over 64 characters, is hidden
 (`packages/debug-chat/src/frontier-view.ts`). Expanded, the lines go: the
 tree has it all.
 
+Without a host `frontier`, the lines come from the tree (`treeFrontier`,
+`frontier-view.ts`), and only what is live: items an agent reported to the
+progress hub (`TreeNode.live`, set by `overlayProgress`) that are in progress
+or wait on the owner, as one ▶ line. Its text is their ≈ summary in the
+page's language (else zh, en), or "In progress" in it, never an item's title;
+a tap lists the items. No ✓ and no › from the tree: the bundled outline's
+items are developer notes, often finished days ago (the owner, 2026-11-03,
+asked what "iOS glass: first card under the toolbar…" on /words was). The
+live feed hands over the document root, so the top ≈ lines are kept.
+
 Minimized, messages float above the frontier instead of the log
 (`debug-chat-float`, `packages/debug-chat/src/float-lines.ts`): the latest
 message at the moment of minimizing (unless over 10 minutes old), and those
 that arrive while minimized, newest at the bottom. Each stays fully visible
 for `max(2.5 s, 2 × its reading time)` from when it floats up, reading CJK at
-6 characters a second and anything else at 15, then fades out over 10 s
+6 characters a second and anything else at 15, but never less than what is
+left of the line above it, so lines leave in the order they came: a short
+line after a long one waits for it (`fifoDwellMs`; the owner, 2026-11-03).
+Then it fades out over 10 s
 (opacity only; gone at once under reduced motion). Hovering or touching the
 lines holds them: mid-fade they snap back to full, and the fade starts over
 on release. A vertical drag on the mic (locked after 8 px; a horizontal one

@@ -88,6 +88,7 @@ import {
   createArrivals,
   createFloatLife,
   dwellMs,
+  fifoDwellMs,
   minimizeFloat,
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
@@ -138,14 +139,13 @@ import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
-import type { Frontier } from "./frontier-view";
+import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
   type TreeStrings,
   treeStrings,
   useTreeSource,
 } from "./StateTree";
-import { type TreeNode, crumbs, frontier as frontierOf } from "./state-tree";
 
 /** Typing pauses this long before the draft is sent. */
 const DEBOUNCE_MS = 3_000;
@@ -164,29 +164,6 @@ const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
 const MARK_HINT = "Tap: minimize or restore · double-tap: menu · drag: move the chat";
 const ALIGN_ITEMS = { left: "items-start", center: "items-center", right: "items-end" } as const;
 const TEXT_ALIGN = { left: "left", center: "center", right: "right" } as const;
-/**
- * The minimized bar's lines from a tree (state-tree.ts frontier()), in the
- * shape the bar draws (frontier-view.ts): a group as its ≈ summary and count,
- * its items with breadcrumbs and assignees; one item as its title.
- */
-function toFrontierView(root: TreeNode | null): Frontier | undefined {
-  if (!root) return undefined;
-  const f = frontierOf(root);
-  const line = (e: (typeof f)["done"]) =>
-    e && {
-      text: e.count > 1 && e.summary ? e.summary : e.title,
-      count: e.count,
-      assignee: e.assignee,
-      items:
-        e.count > 1 ? e.items.map((it) => ({ title: it.title, path: crumbs(it.path), assignee: it.assignee })) : undefined,
-    };
-  const out: Frontier = {};
-  if (f.done) out.done = line(f.done);
-  if (f.doing) out.doing = line(f.doing);
-  if (f.next) out.next = line(f.next);
-  return out.done || out.doing || out.next ? out : undefined;
-}
-
 /** Surface props with extra classes. */
 const withClass = <T extends { className: string }>(p: T, cls: string): T => ({
   ...p,
@@ -929,7 +906,12 @@ export function DebugChat({
     }
   }, [nav, open]);
   /** The minimized bar's lines: the host's, else the tree's frontier. */
-  const shownFrontier = frontier ?? toFrontierView(treeData.root);
+  const shownFrontier =
+    frontier ??
+    treeFrontier(treeData.root, {
+      locale: globalThis.document?.documentElement.lang,
+      inProgress: ui.nowDoing,
+    });
   /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
   const [treeFade, setTreeFade] = useState(false);
   const onTreeScroll = () => {
@@ -1796,6 +1778,8 @@ export function DebugChat({
    * on the mic brings back. Each fades on its own after its dwell.
    */
   const [floats, setFloats] = useState<ChatMessage[]>([]);
+  /** Each floating line's life, by id: a line never fades before the one above it (fifoDwellMs). */
+  const floatLives = useRef(new Map<string, { remaining: () => number }>());
   /** Polished voice lines shown as first heard (their mark tapped). */
   const [rawIds, setRawIds] = useState<ReadonlySet<string>>(() => new Set());
   const toggleRaw = (id: string) =>
@@ -2191,7 +2175,8 @@ export function DebugChat({
           aria-live="polite"
           className={`flex flex-col gap-0.5 ${ALIGN_ITEMS[place.side]}`}
         >
-          {floats.map((f) => {
+          {floats.map((f, i) => {
+            const above = floats[i - 1]?.id;
             // The latest copy of the line: an edit changes it in place.
             const m = messages.find((x) => x.id === f.id) ?? f;
             const p = polish(m);
@@ -2220,6 +2205,8 @@ export function DebugChat({
                 )
               }
               epoch={floatEpoch}
+              aboveLeft={() => (above ? (floatLives.current.get(above)?.remaining() ?? 0) : 0)}
+              onLife={(l) => (l ? floatLives.current.set(m.id, l) : floatLives.current.delete(m.id))}
               paused={floatHover || scrubbing}
               onHover={setFloatHover}
               onGone={() => dropFloat(m.id)}
@@ -3480,6 +3467,8 @@ function FloatLine({
   text,
   mark,
   epoch,
+  aboveLeft,
+  onLife,
   paused,
   onHover,
   onGone,
@@ -3491,19 +3480,24 @@ function FloatLine({
   text: ReactNode;
   mark: ReactNode;
   epoch: number;
+  /** The dwell left of the line above (ms): this one waits at least that long. */
+  aboveLeft: () => number;
+  /** Its life, for the line below (null when it ends). */
+  onLife: (l: { remaining: () => number } | null) => void;
   paused: boolean;
   onHover: (on: boolean) => void;
   onGone: () => void;
 }) {
   const [phase, setPhase] = useState<FloatPhase>("dwell");
   const life = useRef<ReturnType<typeof createFloatLife> | null>(null);
-  const live = useRef({ paused, onGone });
-  live.current = { paused, onGone };
+  const live = useRef({ paused, onGone, aboveLeft, onLife });
+  live.current = { paused, onGone, aboveLeft, onLife };
   // A new epoch (a scrub step or its release) starts the line over: full dwell, then the fade.
   useEffect(() => {
     setPhase("dwell");
     const l = createFloatLife({
-      ms: dwellMs(m.text),
+      // Its reading time, but never gone before the line above (float-lines.ts).
+      ms: fifoDwellMs(m.text, live.current.aboveLeft()),
       // The app's "Turn off animations" (lib/motion-pref.ts) sets data-motion="off".
       reducedMotion:
         document.documentElement.dataset.motion === "off" ||
@@ -3512,7 +3506,11 @@ function FloatLine({
       onPhase: (p) => (p === "gone" ? live.current.onGone() : setPhase(p)),
     });
     life.current = l;
-    return () => l.cancel();
+    live.current.onLife(l);
+    return () => {
+      l.cancel();
+      live.current.onLife(null);
+    };
   }, [epoch, m.id, m.text]);
   useEffect(() => {
     if (paused) life.current?.pause();

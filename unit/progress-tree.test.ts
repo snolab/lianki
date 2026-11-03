@@ -149,7 +149,7 @@ describe("liveTreeSource", () => {
       ) => () => void;
     };
     const off = src.subscribe(
-      (v, m) => updates.push({ nodes: v as TreeNode[], live: m?.live }),
+      (v, m) => updates.push({ nodes: (v as TreeNode).children, live: m?.live }),
       (e) => errors.push(e),
     );
     return { socks, timers, updates, errors, off, wake: () => wake?.() };

@@ -19,7 +19,8 @@
  *   - minimized, the mic is still on top and clickable
  *   - a vertical drag on the mic scrubs the history (floating lines), a
  *     horizontal one moves the bar, and neither toggles the mic
- *   - a message arriving while minimized floats above the bar
+ *   - a message arriving while minimized floats above the bar; lines leave
+ *     in order (a short one never fades before a long one above it)
  *   - a voice line the agent polished shows the sparkle mark ("Polished");
  *     a tap shows the raw STT text and back; minimized, the floating line
  *     changes in place; a typed send carries no source
@@ -581,8 +582,21 @@ try {
     await ctx.close();
   }
   {
-    // The minimized ▶ line (from the tree's own frontier) blinks.
+    // The tree's own frontier, minimized: nothing from the bundled outline —
+    // its items are finished or stale developer notes (the owner, 2026-11-03,
+    // asked what "iOS glass: first card under the toolbar…" was).
     const { ctx, page } = await open("?min&nofrontier");
+    await page.waitForSelector('[data-testid="debug-chat-minimized"]');
+    await page.waitForTimeout(800);
+    const stale = await page.locator('[data-testid="debug-chat-frontier-line"]').allTextContents();
+    check(stale.length === 0, `minimized, the bundled tree shows no lines (${stale.join(" | ")})`);
+    await ctx.close();
+  }
+  {
+    // In-progress items blink: the host's ▶ line. (A live item's ▶ line from
+    // the tree is unit-tested: unit/minimized-frontier.test.ts. Hot-loaded,
+    // the harness's tree is the dev server's file, which has no live items.)
+    const { ctx, page } = await open("?min");
     await page
       .waitForSelector('[data-testid="debug-chat-frontier-line"][data-status="doing"]', {
         timeout: 5000,
@@ -1131,6 +1145,40 @@ try {
     await page.waitForTimeout(500);
     const again = Number(await line.evaluate((e) => getComputedStyle(e).opacity));
     check(again > 0.75, `released, the fade starts over from full (opacity ${again} 0.5 s in)`);
+    await ctx.close();
+  }
+
+  // Lines leave in order (owner, 2026-11-03): a short line after a long one
+  // waits for it, though its own reading time is shorter.
+  {
+    const { ctx, page } = await open("?min");
+    await page.waitForSelector('[data-testid="debug-chat-minimized"]');
+    const long = "a much longer reply that takes a few seconds to read"; // ~3.5 s × 2
+    await page.evaluate((t) => {
+      window.__push(t);
+      window.__push("ok");
+    }, long);
+    await page.waitForSelector('[data-testid="debug-chat-float"]');
+    const t0 = Date.now();
+    // "ok" alone would fade at 2.5 s; at 3.5 s neither has started.
+    await page.waitForTimeout(3500);
+    const early = await page
+      .locator('[data-testid="debug-chat-float"][data-fading]')
+      .allTextContents();
+    check(
+      early.length === 0,
+      `3.5 s in, the short line has not faded before the long one (${early})`,
+    );
+    // Then they go together, never the later one first.
+    await page.waitForSelector('[data-testid="debug-chat-float"][data-fading]', { timeout: 6000 });
+    const order = await page
+      .locator('[data-testid="debug-chat-float"]')
+      .evaluateAll((els) => els.map((e) => [e.textContent?.slice(-12), !!e.dataset.fading]));
+    const fadeAt = Date.now() - t0;
+    check(
+      order.every(([, f], i) => !f || order.slice(0, i).every(([, g]) => g)),
+      `the fade goes top to bottom, never below first (${JSON.stringify(order)}, ${fadeAt} ms)`,
+    );
     await ctx.close();
   }
 
