@@ -793,6 +793,14 @@ const OVERRIDES: Record<string, Record<string, string>> = {
     kyllä: "yes; surely, certainly",
     kiitos: "thank you, thanks; (noun) thanks",
     juuri: "just, exactly; just now; (noun) root",
+    syy: "reason, cause; fault, blame; (noun) fibre, grain",
+    jolla: "on which, with which; who has (adessive of joka)",
+    pieniä: "small (partitive plural of pieni)",
+    käynyt: "been, visited (past participle of käydä); (adj) fermented",
+    pitää: "to hold, keep; to like (with elative); must, have to",
+    päästä: "to get to, reach; to get out, be let go; (postp) after, from",
+    kuulostaa: "to sound (like); to listen closely",
+    koski: "touched, concerned (3rd sg. past of koskea); (noun) rapids",
   },
   ko: {
     네: "yes; your (= 너의)",
@@ -924,9 +932,21 @@ const techOnly = (e: KEntry) =>
 type FormRef = { base: string; g: string; tags: string[]; pos: string };
 
 /** Lemmas this entry is a form of, with the form's own description. */
+/**
+ * The lemma a form-of gloss names when Wiktionary gave the sense no link
+ * (fi etsin: "first-person singular present/past indicative of etsiä").
+ */
+const unlinkedFormOf = (s: KSense): string[] => {
+  if (s.of.length || !FORMISH_GLOSS.test(s.g)) return [];
+  const m = /\bof (\p{L}[\p{L}\p{M}'-]*)\s*$/u.exec(s.g);
+  return m ? [m[1]] : [];
+};
 function formRefs(e: KEntry, lang: string): FormRef[] {
   if (BAD_POS.has(e.pos)) return [];
   return e.senses
+    .map((s) =>
+      unlinkedFormOf(s).length ? { ...s, of: unlinkedFormOf(s), tags: [...s.tags, "form-of"] } : s,
+    )
     .filter((s) => s.of.length && s.tags.some((t) => t === "form-of" || t === "alt-of"))
     .flatMap((s) =>
       s.of.map((w) => ({
@@ -1103,6 +1123,15 @@ const EN_JUNK = new Set(
  * subjunctive or literary tense); the token's own meaning follows.
  */
 const COMMON_BASE_RANK = 400;
+/**
+ * A person-marked verb form ("1st sg. past of ottaa", "first-person singular
+ * … of etsiä"). In a language that spreads a verb over many forms (Finnish),
+ * the lemma itself ranks low although the verb is common; such a form leads
+ * a homograph (etsin "I search" before "viewfinder") when its lemma is in the
+ * top FINITE_BASE_RANK and not much rarer than the token.
+ */
+const FINITE_FORM = /^(?:first|second|third|1st|2nd|3rd)\b.*\b(?:singular|plural|sg\.|pl\.)/i;
+const FINITE_BASE_RANK = 2000;
 const RARE_FORM = /\b(subjunctive|pluperfect|past historic|conditional|future|anterior)\b/i;
 
 /** "third-person singular present indicative of être" → "3rd sg. present of être". */
@@ -1410,8 +1439,12 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
         ? word + (lang === "es" && !/[aeiouáéíóú]$/.test(word) ? "es" : "s")
         : "";
     const unattested = !!plural && rankOf(plural) > 20 * Math.max(rankOf(word), 50);
+    const finite =
+      FINITE_FORM.test(ref.g) &&
+      rankOf(ref.base) < FINITE_BASE_RANK &&
+      rankOf(ref.base) < 3 * rankOf(word);
     const formFirst =
-      (rankOf(ref.base) < COMMON_BASE_RANK || (unattested && rankOf(ref.base) < 3000)) &&
+      (rankOf(ref.base) < COMMON_BASE_RANK || finite || (unattested && rankOf(ref.base) < 3000)) &&
       !RARE_FORM.test(ref.g) &&
       !ref.tags.some((t) => RARE_FORM.test(t)) &&
       // a German infinitive that is also an adjective ending (lieben, heißen) is the verb

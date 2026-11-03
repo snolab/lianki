@@ -95,9 +95,13 @@ belongs to its list): new lists are appended after them.
   `ei`). Lists 1–6 reach 83.0% of running words; all 9,624 lemmas the top
   50,000 tokens fold to reach 88.1%, so the 50% and 80% lines are offered and
   90% is past this corpus's ceiling (a long tail of rare forms; 4.2% of
-  running words are past rank 200,000). Hand-written backs for a few top
-  words that Wiktionary leads with a rarer homograph or a usage note: ei, et,
-  mitä, sitä, siitä, voi, kaikki, sitten, kyllä, kiitos, juuri. Examples:
+  running words are past rank 200,000). A person-marked verb form leads a
+  homograph when its verb is common (`etsin` "I look for" before
+  "viewfinder"), and a form-of gloss Wiktionary left unlinked still names its
+  lemma. Hand-written backs for a few top words that Wiktionary leads with a
+  rarer homograph or a usage note: ei, et, mitä, sitä, siitä, voi, kaikki,
+  sitten, kyllä, kiitos, juuri, syy, jolla, pieniä, käynyt, pitää, päästä,
+  kuulostaa, koski. Examples:
   Wiktionary usage examples, then Tatoeba Finnish sentences (CC BY 2.0 FR;
   per-sentence credits in `credits/tatoeba-fi.tsv`). No scenario phrase
   decks yet (they are hand-curated; a follow-up).

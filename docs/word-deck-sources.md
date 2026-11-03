@@ -165,7 +165,7 @@ pipeline and sources as the other frequency lists; no new licence.
 | Examples                 | Wiktionary usage examples, then Tatoeba Finnish sentences (`credits/tatoeba-fi.tsv`)        | CC BY-SA 4.0; CC BY 2.0 FR    |
 | /read lemma file (`lemma/fi.txt`) | kaikki.org Finnish extract; forms kept only when among FrequencyWords `fi`'s top 200,000 | CC BY-SA 4.0 / GFDL |
 
-Coverage by lemma: list 1 65.5%, lists 1–6 83.0%; the ceiling of the data
+Coverage by lemma: list 1 65.6%, lists 1–6 83.0%; the ceiling of the data
 is 88.1%, so the add tree offers the 50% and 80% lines, not 90/95%. The
 /read language data is `lib/read/lang/fi.json` (function words for guessing,
 abbreviations such as "esim." that do not end a sentence, the lemma file);
