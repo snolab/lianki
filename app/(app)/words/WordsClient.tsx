@@ -89,6 +89,7 @@ import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/wor
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { backParts } from "@/lib/words/row-layout";
+import { withPickedExample, type Example } from "@/lib/words/example-pick";
 import {
   exampleSegments,
   famLang,
@@ -423,6 +424,8 @@ type Entry = {
   /** An example sentence in the target language, and its English. */
   ex?: string;
   exTr?: string;
+  /** More example sentences, if the deck has them: one is shown per showing (lib/words/example-pick.ts). */
+  exs?: Example[];
   /** Phrase decks: a usage note (English), casual / polite, and the moment it is said in. */
   note?: string;
   register?: Register;
@@ -3254,8 +3257,10 @@ function Study({
       m = new Map((catalogs.current.get(listId) ?? []).map((e) => [e.term, e]));
       byTerm.current.set(listId, m);
     }
-    const e = m.get(term);
-    if (!e) return {};
+    const found = m.get(term);
+    if (!found) return {};
+    // Several examples: one at random for this showing, frozen into the item.
+    const e = withPickedExample(found, keyOf({ listId, term }));
     return {
       ...(e.ex ? { ex: e.ex, exTr: e.exTr } : {}),
       ...(e.note ? { note: e.note } : {}),
@@ -3336,7 +3341,8 @@ function Study({
         },
       );
       return picked.map((i) => ({
-        ...entries[i],
+        // Several examples: one at random for this showing, frozen into the item.
+        ...withPickedExample(entries[i], keyOf({ listId: list.id, term: entries[i].term })),
         kind: "new",
         newIndex: i,
         listId: list.id,

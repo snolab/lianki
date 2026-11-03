@@ -9,6 +9,7 @@ import {
   type FamMap,
 } from "@/lib/words/example-marks";
 import { segmentsOf } from "@/lib/read/words";
+import { examplesOf, pickExample, withPickedExample } from "@/lib/words/example-pick";
 
 describe("row order: example first (owner, 2026-11-03)", () => {
   test("the back is the example, then the meaning", () => {
@@ -78,5 +79,30 @@ describe("familiarity marks in examples", () => {
 
   test("an example is segmented once", () => {
     expect(exampleSegments("Le chat dort.", "fr")).toBe(exampleSegments("Le chat dort.", "fr"));
+  });
+});
+
+describe("one example per showing", () => {
+  const exs = [{ ex: "A.", exTr: "a" }, { ex: "B.", exTr: "b" }, { ex: "C." }];
+  test("an entry's examples: ex first, then the alternatives, no repeats", () => {
+    expect(examplesOf({ ex: "A.", exTr: "a", exs: [exs[0], exs[1]] }).map((x) => x.ex)).toEqual([
+      "A.",
+      "B.",
+    ]);
+    expect(examplesOf({})).toEqual([]);
+  });
+  test("random, never the last one shown when there is another", () => {
+    for (const r of [0, 0.5, 0.99]) expect(pickExample(exs, "B.", () => r)?.ex).not.toBe("B.");
+    expect(pickExample([exs[0]], "A.")?.ex).toBe("A.");
+    expect(pickExample([], undefined)).toBeUndefined();
+  });
+  test("one example: the entry is unchanged", () => {
+    const e = { term: "x", ex: "A.", exTr: "a" };
+    expect(withPickedExample(e, "k")).toBe(e);
+  });
+  test("the pick carries its own translation", () => {
+    const e = withPickedExample({ term: "x", ex: "A.", exTr: "a", exs }, "k", () => 0.99);
+    expect(e.ex).toBe("C.");
+    expect(e.exTr).toBeUndefined();
   });
 });
