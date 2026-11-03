@@ -96,6 +96,12 @@ type ListMeta = {
   exam?: string;
   /** Frequency lists: the share of running text the top `level` words cover (the add tree's bands). */
   coverage?: number;
+  /**
+   * Learning order among the language's lists of its kind, easiest first
+   * (JLPT N5 = 1 … N1 = 5, HSK 1 = 1, top 1–500 = 1). The /words picker's
+   * "Arrange" sorts his lists by it (lib/words/arrange.ts), never by name.
+   */
+  order?: number;
 };
 const index: ListMeta[] = [];
 
@@ -293,6 +299,7 @@ function buildJapanese() {
         name: `Japanese · JLPT N${n}`,
         level: `N${n}`,
         exam: "JLPT",
+        order: 6 - n,
         source:
           "JLPT vocabulary: jamsinclair/open-anki-jlpt-decks (via chyyran/jlpt-anki-decks, from Jonathan Waller's tanos.co.uk lists); ordered by OpenSubtitles frequency (hermitdave/FrequencyWords)" +
           EX_SOURCE,
@@ -367,6 +374,7 @@ function buildChinese() {
         name: `Chinese · HSK 3.0 level ${level}`,
         level: `HSK ${level}`,
         exam: "HSK 3.0",
+        order: parseInt(level, 10),
         source:
           "HSK 3.0 word lists: drkameleon/complete-hsk-vocabulary (lists from elkmovie/hsk30; definitions from CC-CEDICT via MDBG); ordered by its frequency rank" +
           EX_SOURCE,
@@ -490,13 +498,20 @@ function buildChineseFrequency() {
     Object.assign(e, picker.pick([e.term], [], longer(e.term)) ?? {});
   const cov = (b: number) => coverage[b];
   kept.forEach((k, b) =>
-    index.push({ ...k.meta, count: k.entries.length, file: `${k.meta.id}.json`, coverage: cov(b) }),
+    index.push({
+      ...k.meta,
+      count: k.entries.length,
+      file: `${k.meta.id}.json`,
+      coverage: cov(b),
+      order: b + 1,
+    }),
   );
   for (let b = kept.length; b < bounds.length; b++) {
     const [lo, hi] = [bounds[b][0] + 1, bounds[b][1]];
     writeList(
       {
         id: `zh-freq-${b + 1}`,
+        order: b + 1,
         lang: "zh",
         name: `Chinese · top ${lo}–${hi}`,
         level: `${lo}–${hi}`,
@@ -1574,7 +1589,13 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
   const name = langName(lang);
   const cov = (b: number) => coverage[b];
   kept.forEach((k, b) =>
-    index.push({ ...k.meta, count: k.entries.length, file: `${k.meta.id}.json`, coverage: cov(b) }),
+    index.push({
+      ...k.meta,
+      count: k.entries.length,
+      file: `${k.meta.id}.json`,
+      coverage: cov(b),
+      order: b + 1,
+    }),
   );
   for (let b = kept.length; b < bounds.length; b++) {
     const [lo, hi] = [bounds[b][0] + 1, bounds[b][1]];
@@ -1584,6 +1605,7 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
         lang,
         name: `${name} · top ${lo}–${hi}`,
         level: `${lo}–${hi}`,
+        order: b + 1,
         source: `Ranks: hermitdave/FrequencyWords (OpenSubtitles 2018, ${lang}_50k); glosses: English Wiktionary via kaikki.org (${name} extract), inflected forms folded into lemmas${EX_SOURCE_WIKT}`,
         license: "CC BY-SA 4.0 (FrequencyWords; Wiktionary content, also GFDL)" + EX_LICENSE,
         coverage: cov(b),

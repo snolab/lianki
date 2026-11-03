@@ -1,8 +1,10 @@
+import { BACK_ORDER, type BackPart } from "@/lib/words/row-layout";
 import { spokenText, type SpokenCard } from "@/lib/words/spoken";
 
 /**
- * What a tap reads aloud: the word, then its meaning, then the example
- * sentence — each its own clip, in its own language.
+ * What a tap reads aloud: the word, then its example sentence, then its
+ * meaning (the row's order, lib/words/row-layout.ts) — each its own clip, in
+ * its own language.
  */
 export type PartKind = "word" | "meaning" | "example";
 export type SayPart = { kind: PartKind; text: string; lang: string };
@@ -40,7 +42,10 @@ export function meaningLang(text: string, uiLocale: string): string {
   return "en";
 }
 
-/** Word → meaning → example; empty parts and repeats left out. */
+/**
+ * The word, then the back in the row's order (BACK_ORDER: example → meaning);
+ * empty parts and repeats left out.
+ */
 export function sayParts(
   it: SpokenCard & { ex?: string },
   lang: string,
@@ -50,12 +55,20 @@ export function sayParts(
   const word = spokenText(it, lang, readingOnBack);
   const meaning = meaningText(it.back);
   const ex = it.ex?.trim() ?? "";
+  const back: Record<BackPart, SayPart | null> = {
+    meaning:
+      meaning && meaning !== word
+        ? { kind: "meaning", text: meaning, lang: meaningLang(meaning, uiLocale) }
+        : null,
+    // Past the server's limit (400) a part is left to the browser's speech.
+    example: ex && ex !== word ? { kind: "example", text: ex, lang } : null,
+  };
   const parts: SayPart[] = [];
   if (word) parts.push({ kind: "word", text: word, lang });
-  if (meaning && meaning !== word)
-    parts.push({ kind: "meaning", text: meaning, lang: meaningLang(meaning, uiLocale) });
-  // Past the server's limit (400) a part is left to the browser's speech.
-  if (ex && ex !== word) parts.push({ kind: "example", text: ex, lang });
+  for (const k of BACK_ORDER) {
+    const p = back[k];
+    if (p) parts.push(p);
+  }
   return parts;
 }
 

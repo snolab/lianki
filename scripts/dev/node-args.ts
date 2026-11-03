@@ -63,6 +63,8 @@ export function chatLine(
     ...(m.edited && typeof m.edited === "object" ? { raw: m.raw, edited: m.edited } : {}),
     // Attached with the + menu (attach.ts): {selection, path?, title?, host?}.
     ...(m.context && typeof m.context === "object" ? { context: m.context } : {}),
+    // A voice line's page and screen text: what `eval.ts edit` may draw on (polish.ts).
+    ...(m.scene && typeof m.scene === "object" ? { scene: m.scene } : {}),
     ...(observed ? { observed: true } : {}),
   };
 }

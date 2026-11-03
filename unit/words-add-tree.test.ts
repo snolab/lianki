@@ -6,7 +6,11 @@ import {
   defaultOpen,
   freqListsOf,
   leavesOf,
+  loadAddOpen,
+  saveAddOpen,
+  shownKeys,
   tickState,
+  toggleOpenKey,
   tickedInOrder,
   toggleTick,
   type AddMeta,
@@ -83,6 +87,38 @@ describe("add tree", () => {
     expect(own.has("lang:ja")).toBe(false);
     expect(defaultOpen(tree, [], ["ja-JP", "fr"]).has("lang:ja")).toBe(true);
     expect(defaultOpen(tree, ["mul"], []).size).toBe(0);
+  });
+});
+
+describe("folding", () => {
+  const en = tree[1];
+  const all = defaultOpen(tree, ["en"], []);
+  test("a folded language shows only its row: no children, no bands, no Add all", () => {
+    expect(shownKeys([en], all)).toContain("bands:en");
+    const folded = toggleOpenKey(en, all);
+    expect(shownKeys([en], folded)).toEqual(["lang:en"]);
+  });
+  test("unfolding restores the branches as they were", () => {
+    const examShut = toggleOpenKey((en as Extract<typeof en, { kind: "lang" }>).children[1], all);
+    expect(examShut.has("en/exam")).toBe(false);
+    const back = toggleOpenKey(en, toggleOpenKey(en, examShut));
+    expect(back.has("lang:en") && back.has("en/freq") && !back.has("en/exam")).toBe(true);
+  });
+  test("unfolded the first time, a language opens all its branches", () => {
+    const first = toggleOpenKey(en, new Set());
+    expect(shownKeys([en], first)).toContain("en/exam/CET");
+  });
+  test("kept per device; bad storage is ignored", () => {
+    const m = new Map<string, string>();
+    const st = {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+    } as Storage;
+    expect(loadAddOpen("/words", st)).toBe(null);
+    saveAddOpen("/words", new Set(["lang:en"]), st);
+    expect([...loadAddOpen("/words", st)!]).toEqual(["lang:en"]);
+    m.set("lk:words-add-open:/words", "{");
+    expect(loadAddOpen("/words", st)).toBe(null);
   });
 });
 

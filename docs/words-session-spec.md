@@ -15,6 +15,22 @@ they land. Design details that are still open are marked **open**.
   branch `feat/words-big-cells` (local, tree/words-big-cells) has the attempt.
   Still open: showing the meaning and examples that the small cells cut off,
   without losing the columns.
+- **Example first** (19:31 JST, every deck and language; 19:47 JST: "不改layout，
+  目前需要的只是swap例句和解释的位置"): the example sentence and the meaning
+  swap places, nothing else in the layout changes. Desktop: word · example ·
+  meaning columns; phones: the word beside two lines, the example above the
+  meaning; a tap reads word → example → meaning. The order is data
+  (`BACK_ORDER`, `lib/words/row-layout.ts`), never per language. A card
+  without an example shows its meaning where the example would be (desktop:
+  across both columns), with no gap. Three-line phone rows were built and
+  dropped before shipping (19:47 JST).
+- **Familiarity inside examples** (19:32 JST): an example's words that have
+  one of his cards are marked by how well he knows them — solid line = weak,
+  dashed = learning, mastered and card-less words plain (the reader's scheme,
+  [books-plan.md](books-plan.md)). Matched as the reader matches a book
+  (`normWord`, folds, lemma files); the page asks
+  `POST /api/words/familiarity` once per word per session, for the rows it
+  renders (`lib/words/example-marks.ts`). The marks hide with the answer.
 - **Keep scrolling** (03:30–03:31 JST): he likes scrolling; with fixed slots
   his finger has to move to a different slot each time, while with scrolling
   it stays at one spot and swipes card after card. So after a swipe the next

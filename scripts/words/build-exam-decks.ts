@@ -87,6 +87,11 @@ type Deck = {
   name: string;
   level: string;
   exam: string;
+  /**
+   * Learning order among the language's exam decks, easiest first
+   * (中考 → 高考 → CET-4 → CET-6 → 考研); the picker's "Arrange" sorts by it.
+   */
+  order: number;
   /** The deck's words, in deck order. */
   words: () => string[];
   source: string;
@@ -117,6 +122,7 @@ const ecdict = { source: ECDICT_SOURCE, license: ECDICT_LICENSE };
 const DECKS: Deck[] = [
   {
     id: "en-exam-zk",
+    order: 10,
     name: "English · 中考 (Zhongkao)",
     level: "中考",
     exam: "中考 · 高考",
@@ -125,6 +131,7 @@ const DECKS: Deck[] = [
   },
   {
     id: "en-exam-gk",
+    order: 20,
     name: "English · 高考 (Gaokao)",
     level: "高考",
     exam: "中考 · 高考",
@@ -133,6 +140,7 @@ const DECKS: Deck[] = [
   },
   {
     id: "en-exam-cet4",
+    order: 30,
     name: "English · CET-4 (四级)",
     level: "CET-4",
     exam: "CET 四六级",
@@ -141,6 +149,7 @@ const DECKS: Deck[] = [
   },
   {
     id: "en-exam-cet6",
+    order: 40,
     name: "English · CET-6 (六级, beyond CET-4)",
     level: "CET-6",
     exam: "CET 四六级",
@@ -149,6 +158,7 @@ const DECKS: Deck[] = [
   },
   {
     id: "en-exam-ky",
+    order: 50,
     name: "English · 考研 (NEEP)",
     level: "考研",
     exam: "考研",
@@ -157,6 +167,7 @@ const DECKS: Deck[] = [
   },
   {
     id: "en-tsl",
+    order: 60,
     name: "English · TOEIC Service List",
     level: "TOEIC",
     exam: "TOEIC",
@@ -166,6 +177,7 @@ const DECKS: Deck[] = [
   },
   {
     id: "en-ngsl",
+    order: 70,
     name: "English · NGSL core words",
     level: "NGSL",
     exam: "NGSL",
@@ -175,6 +187,7 @@ const DECKS: Deck[] = [
   },
   {
     id: "en-nawl",
+    order: 80,
     name: "English · NAWL academic words",
     level: "NAWL",
     exam: "NGSL",
@@ -323,6 +336,7 @@ for (const d of DECKS) {
     ...meta,
     kind: "exam",
     exam: d.exam,
+    order: d.order,
     count: entries.length,
     file,
     license: d.license,

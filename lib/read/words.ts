@@ -135,11 +135,19 @@ function segmenter(lang: string): Intl.Segmenter {
 /** The words of one piece of text, normalized, in order. */
 export function wordsOf(text: string, lang: string): string[] {
   const out: string[] = [];
-  for (const s of segmenter(lang).segment(text)) {
-    if (!s.isWordLike) continue;
-    const w = normWord(s.segment, lang);
-    if (w) out.push(w);
-  }
+  for (const s of segmentsOf(text, lang)) if (s.word) out.push(s.word);
+  return out;
+}
+
+/**
+ * The text cut into segments that join back into it exactly, each with its
+ * counted word (normWord), or null for spaces, punctuation and non-words: for
+ * marking words inside a sentence (the /words example's familiarity marks).
+ */
+export function segmentsOf(text: string, lang: string): { text: string; word: string | null }[] {
+  const out: { text: string; word: string | null }[] = [];
+  for (const s of segmenter(lang).segment(text))
+    out.push({ text: s.segment, word: s.isWordLike ? normWord(s.segment, lang) : null });
   return out;
 }
 

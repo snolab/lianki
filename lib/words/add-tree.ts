@@ -237,3 +237,65 @@ export function freqListsOf<M extends AddMeta>(lang: AddNode<M>): M[] {
   if (freq) return leavesOf(freq);
   return lang.children.every((c) => c.kind === "list") ? leavesOf(lang) : [];
 }
+
+/**
+ * Fold or unfold one node (owner, 2026-11-03 20:12 JST: folding a language
+ * must hide everything under it). Folding removes only the node's own key, so
+ * its branches keep their state and come back as they were when it is
+ * unfolded; a node unfolded for the first time (no branch below it open)
+ * opens with all its branches.
+ */
+export function toggleOpenKey(node: AddNode, open: ReadonlySet<string>): Set<string> {
+  const next = new Set(open);
+  if (next.has(node.key)) {
+    next.delete(node.key);
+    return next;
+  }
+  const below = branchKeys(node).slice(1);
+  const fresh = !below.some((k) => open.has(k));
+  for (const k of fresh ? [node.key, ...below] : [node.key]) next.add(k);
+  return next;
+}
+
+/**
+ * The rows the tree shows, depth first, as keys: a node's branch (its
+ * children, and a language's coverage bands and Add all, `bands:<lang>` and
+ * `all:<lang>`) only while it is open. AddTreeNode renders by the same rule.
+ */
+export function shownKeys(tree: AddNode[], open: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  const walk = (n: AddNode) => {
+    out.push(n.key);
+    if (n.kind === "list" || !open.has(n.key)) return;
+    if (n.kind === "external") return;
+    if (n.kind === "lang") out.push(`all:${n.lang}`, `bands:${n.lang}`);
+    n.children.forEach(walk);
+  };
+  tree.forEach(walk);
+  return out;
+}
+
+/** The unfolded nodes, per device and page (docs/ui-state.md): `lk:words-add-open:<base>`. */
+const openStoreKey = (base: string) => `lk:words-add-open:${base}`;
+const MAX_OPEN = 400;
+
+export function loadAddOpen(base: string, storage?: Storage): Set<string> | null {
+  try {
+    const raw = (storage ?? globalThis.localStorage)?.getItem(openStoreKey(base));
+    if (raw == null) return null;
+    const keys = JSON.parse(raw);
+    if (!Array.isArray(keys)) return null;
+    return new Set(keys.filter((k): k is string => typeof k === "string" && k.length <= 200));
+  } catch {
+    return null;
+  }
+}
+
+export function saveAddOpen(base: string, open: ReadonlySet<string>, storage?: Storage) {
+  try {
+    (storage ?? globalThis.localStorage)?.setItem(
+      openStoreKey(base),
+      JSON.stringify([...open].slice(-MAX_OPEN)),
+    );
+  } catch {}
+}

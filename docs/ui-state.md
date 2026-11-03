@@ -77,22 +77,23 @@ target that is not built yet.
 
 ### Routing, panels, modals
 
-| State                             | Where                                    | Status                                                          |
-| --------------------------------- | ---------------------------------------- | --------------------------------------------------------------- |
-| current word list                 | URL `?list=`, then session `lk:ui:words` | done (/words, /alphabets)                                       |
-| /words Settings panel open        | session `lk:ui:words`                    | done                                                            |
-| /words list picker: folded groups | session `lk:ui:words` (`collapsed`)      | done (was local `lk:words-collapsed:<base>`, carried over once) |
-| /words keyboard help strip (`?`)  | session `lk:ui:words`                    | done                                                            |
-| swipe tuner panel open            | session `lk:ui:swipe-tuner`              | done                                                            |
-| /read reading position (line)   | local `lk:read-pos:<id>`              | done (this device; → the server with the book-as-goal plan)     |
-| /read auto-advance (read on)    | local `lk:pref:read-auto`             | done: per device, off by default (owner, 2026-11-03); lib/read/player.ts |
-| slip action sheet open            | memory (it is modal, closed on refresh)  | intentional; back closes it (below)                             |
-| sidebar collapsed                 | local `lk:sidebar`                       | → `lk:pref:sidebar`                                             |
-| phone drawer open                 | memory, `navUi` (lib/nav/ui-store.ts)    | done: the bottom island opens it too                            |
-| recent pages (nav)                | session `lk:ui:nav`                      | done                                                            |
-| pinned pages (nav)                | local `lk:pref:nav-pins`                 | done                                                            |
-| first-run answer                  | local `lk:first-run`                     | a device fact, stays                                            |
-| /review tutorial folded, platform | local `lk:pref:review-tutorial`          | done (a device preference: iPhone or Android steps)             |
+| State                               | Where                                    | Status                                                                         |
+| ----------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
+| current word list                   | URL `?list=`, then session `lk:ui:words` | done (/words, /alphabets)                                                      |
+| /words Settings panel open          | session `lk:ui:words`                    | done                                                                           |
+| /words list picker: folded groups   | session `lk:ui:words` (`collapsed`)      | done (was local `lk:words-collapsed:<base>`, carried over once)                |
+| /words "Add a list": unfolded nodes | local `lk:words-add-open:<base>`         | done: per device (owner, 2026-11-03 20:12 JST); folding hides the whole branch |
+| /words keyboard help strip (`?`)    | session `lk:ui:words`                    | done                                                                           |
+| swipe tuner panel open              | session `lk:ui:swipe-tuner`              | done                                                                           |
+| /read reading position (line)       | local `lk:read-pos:<id>`                 | done (this device; → the server with the book-as-goal plan)                    |
+| /read auto-advance (read on)        | local `lk:pref:read-auto`                | done: per device, off by default (owner, 2026-11-03); lib/read/player.ts       |
+| slip action sheet open              | memory (it is modal, closed on refresh)  | intentional; back closes it (below)                                            |
+| sidebar collapsed                   | local `lk:sidebar`                       | → `lk:pref:sidebar`                                                            |
+| phone drawer open                   | memory, `navUi` (lib/nav/ui-store.ts)    | done: the bottom island opens it too                                           |
+| recent pages (nav)                  | session `lk:ui:nav`                      | done                                                                           |
+| pinned pages (nav)                  | local `lk:pref:nav-pins`                 | done                                                                           |
+| first-run answer                    | local `lk:first-run`                     | a device fact, stays                                                           |
+| /review tutorial folded, platform   | local `lk:pref:review-tutorial`          | done (a device preference: iPhone or Android steps)                            |
 
 ### Chat widget (packages/debug-chat, another lane)
 
@@ -119,13 +120,13 @@ target that is not built yet.
 
 ### Search, filter, sort, study mode
 
-| State                                                                                           | Where                            | Status                                                             |
-| ----------------------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------ |
-| /words scroll position                                                                          | session `lk:ui:words` anchors    | done: the word at the top, per list, restored when the queue loads |
+| State                                                                            | Where                            | Status                                                             |
+| -------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------ |
+| /words scroll position                                                           | session `lk:ui:words` anchors    | done: the word at the top, per list, restored when the queue loads |
 | show all meanings, speak on swipe, grade tones, server voice, scroll after swipe | local `lk:words-*` (usePref)     | device prefs → `lk:pref:words`                                     |
-| list picker search / filter / sort                                                              | — (none on /words today)         | → URL when added (shareable)                                       |
-| study mode (one list, a group, "study all")                                                     | URL `?list=` (`all`, a group id) | done                                                               |
-| home pins, home language                                                                        | local `lk:home:*`                | device prefs → `lk:pref:home`                                      |
+| list picker search / filter / sort                                               | — (none on /words today)         | → URL when added (shareable)                                       |
+| study mode (one list, a group, "study all")                                      | URL `?list=` (`all`, a group id) | done                                                               |
+| home pins, home language                                                         | local `lk:home:*`                | device prefs → `lk:pref:home`                                      |
 
 ### Read-aloud
 
@@ -136,13 +137,13 @@ target that is not built yet.
 
 ### Appearance and language
 
-| State                | Where                                                              | Status                                                                                        |
-| -------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| theme (light / dark) | the system (`prefers-color-scheme`)                                | → `lk:pref:theme` if a switch is added                                                        |
-| language             | intlayer, as today                                                 | stays                                                                                         |
-| font size            | account `lk:pref:text-size` (`ui`, `chat`, `cards`; lib/text-size.ts) | done: /preferences and /words Settings → Text size; `--lk-fs-*` on `<html>` set before paint |
-| animations off       | local `lk:pref:motion` (`system` until chosen; lib/motion-pref.ts) | done: /words Settings → Turn off animations; `<html data-motion="off">` set before paint      |
-| paper texture        | local `lk:paper`                                                   | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash |
+| State                | Where                                                                 | Status                                                                                        |
+| -------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| theme (light / dark) | the system (`prefers-color-scheme`)                                   | → `lk:pref:theme` if a switch is added                                                        |
+| language             | intlayer, as today                                                    | stays                                                                                         |
+| font size            | account `lk:pref:text-size` (`ui`, `chat`, `cards`; lib/text-size.ts) | done: /preferences and /words Settings → Text size; `--lk-fs-*` on `<html>` set before paint  |
+| animations off       | local `lk:pref:motion` (`system` until chosen; lib/motion-pref.ts)    | done: /words Settings → Turn off animations; `<html data-motion="off">` set before paint      |
+| paper texture        | local `lk:paper`                                                      | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash |
 
 ### Not UI state (left alone)
 
