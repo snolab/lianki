@@ -23,7 +23,7 @@ most common first. Each part of a card comes from one place:
 
 | Part of the card                          | Source                                                                                                                                                                       | Licence                                                    | Attribution shown                                                                                                   |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Which words an exam deck holds (中考 … GRE) | [ECDICT](https://github.com/skywind3000/ECDICT) `ecdict.csv`, column `tag` only                                                                                               | MIT ([LICENSE](https://github.com/skywind3000/ECDICT/blob/master/LICENSE), © 2025 Linwei) | "Word list and frequency order: the exam tag of ECDICT (skywind3000/ECDICT)"; MIT notice in public/words/SOURCES.md |
+| Which words an exam deck holds (中考 … 考研) | [ECDICT](https://github.com/skywind3000/ECDICT) `ecdict.csv`, column `tag` only                                                                                               | MIT ([LICENSE](https://github.com/skywind3000/ECDICT/blob/master/LICENSE), © 2025 Linwei) | "Word list and frequency order: the exam tag of ECDICT (skywind3000/ECDICT)"; MIT notice in public/words/SOURCES.md |
 | Frequency order, word forms               | ECDICT columns `frq` (COCA rank), `bnc` (BNC rank) and `exchange` (inflections, the lemma of a plural)                                                                       | MIT                                                        | as above                                                                                                            |
 | Which words the NGSL/TSL/NAWL decks hold, and their order | [NGSL 1.2](https://www.newgeneralservicelist.com/new-general-service-list), [NAWL 1.2](https://www.newgeneralservicelist.com/new-academic-word-list), [TSL 1.2](https://www.newgeneralservicelist.com/toeic-service-list), `*_12_stats.csv` | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) | NGSL and NAWL: "by Charles Browne, Brent Culligan and Joseph Phillips"; TSL: "by Charles Browne and Brent Culligan" |
 | Chinese meaning                           | English Wiktionary's translation tables into Mandarin, via the [kaikki.org](https://kaikki.org/dictionary/English/) extract (wiktextract, Tatu Ylonen)                       | CC BY-SA 4.0 (and GFDL)                                    | "Chinese meanings and IPA: English Wiktionary (en.wiktionary.org) contributors, via kaikki.org"                     |
@@ -41,14 +41,37 @@ ECDICT's Chinese `translation`, `phonetic`, `definition`, `oxford` and
 | CET-4 四级 (`en-exam-cet4`)                | 3,783 | ECDICT tag `cet4`. Very basic words (the, run, get) carry no `cet4` tag, so this is the CET-4 vocabulary beyond them. | same |
 | CET-6 六级 (`en-exam-cet6`)                | 1,932 | ECDICT tag `cet6` minus words tagged `cet4`. It holds only what CET-6 adds, like the HSK levels, so a learner with both decks never sees a word twice. | same |
 | 考研 NEEP (`en-exam-ky`)                   | 4,754 | ECDICT tag `ky`                            | same |
-| IELTS (`en-exam-ielts`)                   | 4,615 | ECDICT tag `ielts`                      | same |
-| TOEFL (`en-exam-toefl`)                   | 6,739 | ECDICT tag `toefl`                      | same |
-| GRE (`en-exam-gre`)                       | 7,359 | ECDICT tag `gre`. Some common words (want, even, school) carry the tag for their rarer senses, and come first by frequency. | same |
 | TOEIC Service List (`en-tsl`)             | 1,250 | TSL 1.2                                   | CC BY-SA 4.0 |
 | NGSL core words (`en-ngsl`)               | 2,809 | NGSL 1.2                                 | CC BY-SA 4.0 |
-| NAWL academic words (`en-nawl`)           | 948 | NAWL 1.2. The prefixes trans, micro, semi, multi and neo get no card. | CC BY-SA 4.0 |
+| NAWL academic words (`en-nawl`)           | 948 | NAWL 1.2. Its nine prefixes (anti, micro, multi, neo, non, pre, semi, sub, trans) get no card. | CC BY-SA 4.0 |
 | Japanese JLPT N5–N1 (`ja-jlpt-*`)         | —     | already shipped; now grouped under "JLPT" in the picker | see SOURCES.md |
 | Chinese HSK 3.0 1–6, 7–9 (`zh-hsk-*`)     | —     | already shipped; now grouped under "HSK 3.0". Old HSK 2.0 levels are not added: HSK 3.0 replaced them and they would duplicate it. | see SOURCES.md |
+
+### Quality rules (after the judge's sampling on #451)
+
+- **Crude senses:** a translation is dropped when its Wiktionary sense says
+  slang, vulgar, offensive, derogatory, obscene, sexual intercourse, archaic or
+  obsolete, or when the Chinese is a swear word or ends in "！"
+  (`isCrudeSense`). Example: bottom no longer shows 被动, and hell no longer
+  shows 肏！.
+- **Main sense first:** Wiktionary's sense order often leads with a rare
+  sense (film 薄膜, bill 草案, date 椰枣). The 4,200 most frequent words with
+  a Wiktionary-built back were reviewed with an LLM against their definitions.
+  Corrections go in `exam-glosses.tsv`, which overrides Wiktionary when a word
+  is in it.
+- **Simplified only:** every back goes through OpenCC's traditional →
+  simplified table (`opencc-js`, MIT, dictionaries from OpenCC, Apache-2.0;
+  build time only).
+- **Examples use the word:** the sentence must contain the word or one of
+  its inflections as a whole word (`usesWord`), so "I'm a temp." no longer
+  stands for temperature. Profane and sexual sentences are skipped, and so are
+  a few listed by hand (`SKIP_EXAMPLES`).
+- **Overlap between decks:** 中考 is about 97% inside 高考, and CET-4 about 90%
+  inside 考研. /words keeps a card per list (`keyOf` is list + term), so a
+  learner with both decks reviews those words twice. This is deliberate: each
+  exam deck stays complete for someone who studies only that exam. Only CET-6
+  is exclusive, because CET-6 is studied on top of CET-4. A learner should add
+  one deck of each pair.
 
 Every deck in the table: proper names, abbreviations and an inflection whose
 lemma is in the same deck ("drugs" with "drug") are left out. So are words with
@@ -79,8 +102,14 @@ and place names.
   and are reproduced in every prep book. A bare alphabetical or
   frequency-sorted headword set has thin protection. If the owner wants zero
   dependency on ECDICT, the CET/考研 decks could be rebuilt from the published
-  syllabus appendices, and the IELTS/TOEFL/GRE decks dropped. The NGSL, NAWL
-  and TSL decks would stay.
+  syllabus appendices. The NGSL, NAWL and TSL decks would stay. The IELTS,
+  TOEFL and GRE decks were dropped for this reason (see "Not shipped"). For
+  中考, 高考, CET and 考研 the selection was made by the exam bodies
+  themselves: the 教育部 课程标准 appendices and the 考试中心 syllabi. Those
+  are official documents (PRC Copyright Law art. 5), and the judge accepted
+  them on that basis. ECDICT's own wiki
+  ([选词](https://github.com/skywind3000/ECDICT/wiki/%E9%80%89%E8%AF%8D)) names
+  those syllabi as the source of its tags.
 
 ### NGSL family
 
@@ -89,12 +118,13 @@ NGSL, NAWL and TSL 1.2 are each published on newgeneralservicelist.com under
 that "permissions beyond the scope of this license may be available". Our decks
 built from them are therefore CC BY-SA 4.0 (share-alike), as their `license`
 field says. Changes made: Chinese meanings, IPA and example sentences added;
-Excel's TRUE/FALSE restored to true/false; prefixes dropped.
+Excel's TRUE/FALSE restored to true/false; NAWL's nine prefixes dropped.
 
 ## Not shipped (no cleared source identified)
 
 | Candidate                                    | What exists                                                                                                                                                                                                   | Why not                                                                                                                                                                                                                                            |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IELTS, TOEFL, GRE (built in the first round of this PR, then removed) | ETS, IDP and the British Council publish no word list. ECDICT's `ielts`/`toefl`/`gre` tags (its wiki says "托福雅思GRE大纲") must therefore come from a third-party prep-book compilation (红宝书-style). | The choice of words is that compiler's copyrightable work. Re-sorting does not remove the selection, and ECDICT's MIT licence cannot pass on rights its author never had. Judge verdict on #451: FAIL on licence. NAWL (academic) and the CET/考研 decks cover much of the same ground. |
 | SAT                                          | College Board publishes no word list. GitHub "SAT words" lists are copied from prep books (Barron's, Kaplan).                                                                                                  | No list with a licence; ECDICT has no SAT tag.                                                                                                                                                                                                     |
 | Oxford 3000 / 5000                           | [oxfordlearnersdictionaries.com](https://www.oxfordlearnersdictionaries.com/about/wordlists/oxford3000-5000), © Oxford University Press. GitHub copies have no licence from OUP.                                  | No licence to redistribute. ECDICT's `oxford` column replicates it, so we do not use that column.                                                                                                                                                 |
 | French DELF A1–B2 / DALF / TCF / TEF         | France Éducation International publishes no vocabulary list for these exams. The CEFR-graded [FLELex](https://cental.uclouvain.be/cefrlex/flelex/download/) (UCLouvain) is CC BY-NC-SA 4.0. Beacco's *Niveau A1/A2/B1/B2 pour le français* (Didier) is a commercial book. | FLELex is NC, and Lianki is a paid app; the Beacco books are all rights reserved. Option: ask the FLELex authors (Thomas François, CENTAL) for a commercial permission. Until then the French frequency bands (`fr-freq-*`, CC BY-SA) stay the French path. |

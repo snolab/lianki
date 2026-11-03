@@ -341,7 +341,7 @@ licence reasoning and the decks not shipped are in
 [docs/word-deck-sources.md](../../docs/word-deck-sources.md). The backs are
 Chinese.
 
-- **Word lists.** 中考, 高考, CET-4, CET-6, 考研, IELTS, TOEFL and GRE use the
+- **Word lists.** 中考, 高考, CET-4, CET-6 and 考研 use the
   headwords that carry the matching `tag` in
   [ECDICT](https://github.com/skywind3000/ECDICT) (`ecdict.csv`, MIT, © 2025
   Linwei). They are ordered by its COCA rank (`frq`), then its BNC rank, then
@@ -354,7 +354,7 @@ Chinese.
   [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
   Attribution: NGSL and NAWL by Charles Browne, Brent Culligan and Joseph
   Phillips; TSL by Charles Browne and Brent Culligan. Changes made: Chinese
-  meanings, IPA and examples added, TRUE/FALSE lowercased, NAWL's five
+  meanings, IPA and examples added, TRUE/FALSE lowercased, NAWL's nine
   prefixes dropped.
 - **Meanings.** English Wiktionary's translation tables into Mandarin, from
   the [kaikki.org](https://kaikki.org/dictionary/English/) extract
@@ -365,7 +365,11 @@ Chinese.
   speech, three parts of speech and about 48 characters. Example: "(n.)
   状态，状况，国家；(v.) 表示，声明，规定". Words whose entry has no Mandarin
   translation take the meaning written for Lianki in
-  `scripts/words/exam-glosses.tsv`, from their Wiktionary definitions.
+  `scripts/words/exam-glosses.tsv`, from their Wiktionary definitions; the
+  same file holds reviewed fixes that override Wiktionary. Senses marked
+  slang, vulgar, offensive or sexual are dropped, and every back is converted
+  to simplified characters with OpenCC (opencc-js, MIT; OpenCC data
+  Apache-2.0).
 - **Reading.** Wiktionary's IPA, the British one when given. It is never read
   aloud.
 - **Examples.** The sentence the word already has in `en-freq-*` (see

@@ -180,7 +180,7 @@ export function wiktBack(entries: WiktEntry[], maxLen = 48): string {
     const bySense = new Map<string, string[]>();
     for (const t of e.tr) {
       const w = simplified(t.w);
-      if (!/\p{Script=Han}/u.test(w) || w.length > 8) continue;
+      if (!/\p{Script=Han}/u.test(w) || w.length > 8 || isCrudeSense(t)) continue;
       const list = bySense.get(t.s) ?? [];
       list.push(w);
       bySense.set(t.s, list);
@@ -200,6 +200,22 @@ export function wiktBack(entries: WiktEntry[], maxLen = 48): string {
   }
   return joinParts(parts, maxLen);
 }
+
+/**
+ * A translation not to show: its sense is marked slang, vulgar, offensive …
+ * ("slang: penetrated partner in sex" → 被动), it is about sex, or the Chinese
+ * itself is a swear word (hell! → 肏！). Wiktionary's tables carry these
+ * markers in the sense text and the tags, not as structured sense tags.
+ */
+export function isCrudeSense(t: { w: string; s: string; tags?: string[] }): boolean {
+  const tags = (t.tags ?? []).join(" ");
+  return (
+    CRUDE_SENSE.test(t.s) || CRUDE_SENSE.test(tags) || CRUDE_ZH.test(t.w) || /[！!]$/.test(t.w)
+  );
+}
+const CRUDE_SENSE =
+  /slang|vulgar|offensive|derogatory|pejorative|obscene|profan|ethnic slur|euphemis|sexual intercourse|orgasm|homosexual|\bgay\b|prostitut|archaic|obsolete/i;
+const CRUDE_ZH = /肏|屌|鸡巴|雞巴|傻逼|傻屄|屄|婊|操你|他妈|他媽|妓|嫖|寸止|条子|雷子|帽子叔叔|淫/;
 
 /** Parts of a back, joined with "；" while they fit in `maxLen` (always the first). */
 export function joinParts(parts: string[], maxLen = 48): string {
@@ -290,6 +306,30 @@ export function parseGlosses(text: string): Map<string, string> {
 export type Example = { ex: string; exSrc: string; exBy?: string };
 export type ExampleSource = (word: string, forms: string[]) => Example | undefined;
 
+/**
+ * Whether a sentence uses the word itself or one of its forms as a whole
+ * word, not a shorter word it was folded into ("I'm a temp." for
+ * temperature) or a prefix of it.
+ */
+export function usesWord(sentence: string, word: string, forms: string[]): boolean {
+  const w = word.toLowerCase();
+  const ok = new Set([w, ...forms.map((f) => f.toLowerCase())]);
+  // regular inflections ECDICT may not list
+  const stem = w.replace(/e$/, "");
+  for (const suf of ["s", "es", "ed", "d", "ing", "er", "est", "'s"]) {
+    ok.add(w + suf);
+    ok.add(stem + suf);
+  }
+  if (w.endsWith("y"))
+    for (const suf of ["ies", "ied", "ier", "iest"]) ok.add(w.slice(0, -1) + suf);
+  const tokens = sentence
+    .toLowerCase()
+    .split(/[^\p{L}\p{M}'-]+/u)
+    .filter(Boolean);
+  // "self-harm" holds the token self-harm, not self
+  return tokens.some((t) => ok.has(t) || ok.has(t.replace(/^'+|'+$/g, "")));
+}
+
 /** What a card is made from: its word, Wiktionary entries, written meaning, forms. */
 export type CardSource = {
   word: string;
@@ -303,7 +343,8 @@ export type CardSource = {
  * one; IPA from Wiktionary; an example. Null when there is no meaning.
  */
 export function toEntry(c: CardSource, examples: ExampleSource): ExamEntry | null {
-  const back = wiktBack(c.wikt) || c.written || "";
+  // a written meaning is either the only one or a reviewed fix of Wiktionary's
+  const back = c.written || wiktBack(c.wikt);
   if (!back) return null;
   const reading = wiktIpa(c.wikt);
   const ex = examples(c.word, c.forms);

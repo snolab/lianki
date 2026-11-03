@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * Build the English exam decks served from public/words/ for /words:
- * `en-exam-*.json`, `en-ngsl.json`, `en-nawl.json`, `en-tsl.json`, and their
+ * `en-exam-*.json` (中考, 高考, CET-4, CET-6, 考研), `en-ngsl.json`,
+ * `en-nawl.json`, `en-tsl.json`, and their
  * rows in index.json (`kind: "exam"`, `exam`). Other lists are left alone.
  * What each part of a card comes from: scripts/words/exam-decks.ts (top).
  *
@@ -27,11 +28,15 @@
  *   #    written to $RAW/need-glosses.tsv (word, part of speech, English glosses).
  *   bun scripts/words/build-exam-decks.ts $RAW public/words
  *
+ * No IELTS, TOEFL or GRE deck: those exams publish no word list, so any list
+ * is a prep-book compilation (docs/word-deck-sources.md, "Not shipped").
+ *
  * Sources, licences and attribution: docs/word-deck-sources.md and
  * public/words/SOURCES.md.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import * as OpenCC from "opencc-js";
 import { ExamplePicker, type Sent } from "./examples";
 import {
   byFrequency,
@@ -42,6 +47,7 @@ import {
   parseRanked,
   tagged,
   toEntry,
+  usesWord,
   wiktBack,
   type EcdictRow,
   type Example,
@@ -149,30 +155,6 @@ const DECKS: Deck[] = [
     ...ecdict,
   },
   {
-    id: "en-exam-ielts",
-    name: "English · IELTS",
-    level: "IELTS",
-    exam: "IELTS",
-    words: fromTag("ielts"),
-    ...ecdict,
-  },
-  {
-    id: "en-exam-toefl",
-    name: "English · TOEFL",
-    level: "TOEFL",
-    exam: "TOEFL",
-    words: fromTag("toefl"),
-    ...ecdict,
-  },
-  {
-    id: "en-exam-gre",
-    name: "English · GRE",
-    level: "GRE",
-    exam: "GRE",
-    words: fromTag("gre"),
-    ...ecdict,
-  },
-  {
     id: "en-tsl",
     name: "English · TOEIC Service List",
     level: "TOEIC",
@@ -219,8 +201,8 @@ for (const line of readFileSync(join(RAW, "kaikki-en-zh.jsonl"), "utf8").split("
 const glossPath = join(import.meta.dir, "exam-glosses.tsv");
 const written = parseGlosses(readFileSync(glossPath, "utf8"));
 
-/** Sentences found on cards in review that state something untrue as fact. */
-const UNTRUE = new Set(["Evolution is a lie."]);
+/** Sentences found on cards in review: untrue as fact, or crude in context. */
+const SKIP_EXAMPLES = new Set(["Evolution is a lie.", "I'm a bottom.", "Go to hell!"]);
 // Tatoeba English sentences with their ids and authors; none that offend.
 type Credit = { id: string; by?: string };
 const credit = new Map<string, Credit>();
@@ -229,7 +211,14 @@ for (const line of readFileSync(join(RAW, "tatoeba/eng_sentences_detailed.tsv"),
   "\n",
 )) {
   const [id, , text, by] = line.split("\t");
-  if (!id || !text || text.length > 80 || credit.has(text) || isOffensive(text) || UNTRUE.has(text))
+  if (
+    !id ||
+    !text ||
+    text.length > 80 ||
+    credit.has(text) ||
+    isOffensive(text) ||
+    SKIP_EXAMPLES.has(text)
+  )
     continue;
   credit.set(text, { id, ...(by && by !== "\\N" ? { by } : {}) });
   sents.push({ s: text, en: "", words: text.split(/\s+/).length });
@@ -247,17 +236,23 @@ const known = new Map<string, string>();
 for (let i = 1; i <= 6; i++) {
   const f = JSON.parse(readFileSync(join(OUT, `en-freq-${i}.json`), "utf8"));
   for (const e of f.entries as { term: string; ex?: string }[])
-    if (e.ex && !known.has(e.term) && !isOffensive(e.ex)) known.set(e.term, e.ex);
+    if (e.ex && !known.has(e.term) && !isOffensive(e.ex) && !SKIP_EXAMPLES.has(e.ex))
+      known.set(e.term, e.ex);
 }
 const picked = new Map<string, Example | undefined>();
 const examples: ExampleSource = (word, forms) => {
   if (!picked.has(word)) {
+    // the frequency list's sentence may use a word it was folded into
+    // ("I'm a temp." for temperature): only one with the word itself counts
     const k = known.get(word);
-    const p = k ? undefined : picker.pick([word], forms)?.ex;
-    picked.set(word, k ? credited(k) : p ? credited(p) : undefined);
+    const ok = (ex?: string) => !!ex && usesWord(ex, word, forms);
+    const p = ok(k) ? k : [picker.pick([word], forms)?.ex, picker.pick([word], [])?.ex].find(ok);
+    picked.set(word, p ? credited(p) : undefined);
   }
   return picked.get(word);
 };
+// Wiktionary's tables mix traditional and simplified; the backs are simplified.
+const toSimplified = OpenCC.Converter({ from: "t", to: "cn" });
 
 /** Wiktionary glosses that say a word is not a lemma of its own. */
 const STRAY =
@@ -298,7 +293,7 @@ for (const d of DECKS) {
       AFFIXES.has(word) || obscure
         ? null
         : toEntry({ word, wikt: w, written: written.get(word), forms: r?.forms ?? [] }, examples);
-    if (e) entries.push(e);
+    if (e) entries.push({ ...e, back: toSimplified(e.back) });
     else {
       missing.push(word);
       if (w.length && !AFFIXES.has(word) && !obscure)

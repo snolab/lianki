@@ -7,6 +7,7 @@ import {
   byFrequency,
   csvRows,
   exchangeOf,
+  isCrudeSense,
   isHeadword,
   isOffensive,
   joinParts,
@@ -17,6 +18,7 @@ import {
   simplified,
   tagged,
   toEntry,
+  usesWord,
   wiktBack,
   wiktIpa,
   type ExamListMeta,
@@ -79,6 +81,30 @@ describe("wiktBack", () => {
   it("simplified() keeps a single form as is", () => {
     expect(simplified("工具")).toBe("工具");
     expect(simplified("實施 /实施")).toBe("实施");
+  });
+});
+
+describe("crude senses and example words", () => {
+  it("drops slang, vulgar and sexual senses and swear words, keeps the rest", () => {
+    expect(isCrudeSense({ w: "被動 /被动", s: "slang: penetrated partner in sex" })).toBe(true);
+    expect(isCrudeSense({ w: "肏！", s: "hell!" })).toBe(true);
+    expect(isCrudeSense({ w: "寸止", s: "to stop just short" })).toBe(true);
+    expect(isCrudeSense({ w: "條子 /条子", s: "police officer" })).toBe(true);
+    expect(isCrudeSense({ w: "底部", s: "lowest part" })).toBe(false);
+    expect(isCrudeSense({ w: "女性", s: "belonging to the female sex" })).toBe(false);
+    const bottom = entry("noun", [
+      ["底部", "lowest part"],
+      ["被動 /被动", "slang: penetrated partner in sex"],
+    ]);
+    expect(wiktBack([bottom])).toBe("(n.) 底部");
+  });
+  it("an example must use the word or a form as a whole word", () => {
+    expect(usesWord("I'm a temp.", "temperature", ["temperatures"])).toBe(false);
+    expect(usesWord("It's my ship.", "relationship", [])).toBe(false);
+    expect(usesWord("I have a temperature.", "temperature", [])).toBe(true);
+    expect(usesWord("They studied it.", "study", [])).toBe(true);
+    expect(usesWord("She went home.", "go", ["went"])).toBe(true);
+    expect(usesWord("What is self-harm?", "self", [])).toBe(false);
   });
 });
 
@@ -179,6 +205,12 @@ describe("cards", () => {
       exBy: "CK",
     });
   });
+  it("a written meaning overrides Wiktionary's", () => {
+    const wikt = [entry("noun", [["薄膜", "thin layer"]])];
+    expect(
+      toEntry({ word: "film", wikt, written: "(n.) 电影，胶片", forms: [] }, examples)?.back,
+    ).toBe("(n.) 电影，胶片");
+  });
   it("uses the written meaning when Wiktionary has no Chinese, and none without either", () => {
     const wikt = [entry("noun", [])];
     expect(
@@ -250,7 +282,16 @@ describe("the shipped exam decks", () => {
   }[];
   const exams = index.filter((l) => l.kind === "exam");
   it("are listed with an exam, a source and a licence", () => {
-    expect(exams.length).toBeGreaterThanOrEqual(11);
+    expect(exams.map((l) => l.id).sort()).toEqual([
+      "en-exam-cet4",
+      "en-exam-cet6",
+      "en-exam-gk",
+      "en-exam-ky",
+      "en-exam-zk",
+      "en-nawl",
+      "en-ngsl",
+      "en-tsl",
+    ]);
     for (const l of exams) {
       expect(l.exam).toBeTruthy();
       expect(l.source).toContain("Wiktionary");
