@@ -1,0 +1,147 @@
+/* Styles of the /words stats strip and a word's stamps (WordsStats.tsx,
+ * WordStamps.tsx), imported by those components. The grade inks
+ * (--ink-again … --ink-easy) are app/globals.css's. */
+/* The /words stats strip (app/(app)/words/WordsStats.tsx): the heatmap's
+ * looks, all in the slips' own inks. Seals use the Again vermilion; the 正
+ * tally and ink dots a warm sumi; the bamboo slips a carved brown on cane. */
+.lk-stats {
+  --stats-brush: oklch(0.3 0.03 40);
+  --stats-faint: oklch(0.5 0 0 / 0.1);
+  --stats-carve: oklch(1 0 0 / 0.6);
+  --stats-cane: oklch(0.87 0.06 88);
+  --stats-notch: oklch(0.42 0.08 55);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-stats {
+    --stats-brush: oklch(0.9 0.025 85);
+    --stats-faint: oklch(1 0 0 / 0.08);
+    --stats-carve: oklch(0.2 0.02 30 / 0.55);
+    --stats-cane: oklch(0.42 0.045 82);
+    --stats-notch: oklch(0.92 0.05 88);
+  }
+}
+.lk-ink-seal {
+  fill: var(--ink-again);
+}
+.lk-ink-carve {
+  stroke: var(--stats-carve);
+}
+.lk-ink-blank {
+  fill: var(--stats-faint);
+}
+.lk-ink-brush {
+  stroke: var(--stats-brush);
+}
+.lk-ink-ghost {
+  stroke: var(--stats-faint);
+}
+.lk-ink-dot {
+  fill: var(--stats-faint);
+}
+.lk-ink-wash {
+  fill: var(--stats-brush);
+}
+.lk-slip-strip {
+  background: var(--stats-cane);
+}
+.lk-ink-notch {
+  fill: var(--stats-notch);
+}
+.lk-ink-today {
+  stroke: oklch(from currentColor l c h / 0.5);
+}
+.lk-ink-picked {
+  stroke: var(--ink-easy);
+}
+/* A word's stamps in its sheet: one small seal per grade that stands, oldest
+ * first, in the grade's ink. No numbers (owner, 2026-11-03): besides the
+ * colour, each grade carves its own mark so colour is never the only cue:
+ * Again solid, Hard a bar, Good a dot, Easy a frame. */
+
+/* One row, never two (owner, 2026-11-03): it opens scrolled to the newest
+ * stamp at the end; older ones scroll in from the start, fading there. */
+.lk-stamp-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 1px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.lk-stamp-row::-webkit-scrollbar {
+  display: none;
+}
+.lk-stamp-row[data-older] {
+  mask-image: linear-gradient(to right, transparent, black 1.5rem);
+}
+.lk-stamp-row > * {
+  flex: none;
+}
+.lk-grade-seal {
+  display: grid;
+  place-items: center;
+  /* A 0.9rem seal in a slightly larger hit area. */
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border-radius: 3px;
+}
+.lk-grade-seal::before {
+  content: "";
+  display: block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 2px;
+  background: var(--grade);
+  --carve: oklch(1 0 0 / 0.7);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-grade-seal::before {
+    --carve: oklch(0.2 0.02 30 / 0.65);
+  }
+}
+.lk-grade-seal.grade-hard::before {
+  background:
+    linear-gradient(var(--carve), var(--carve)) center / 55% 2px no-repeat,
+    var(--grade);
+}
+.lk-grade-seal.grade-good::before {
+  background:
+    radial-gradient(circle, var(--carve) 0 1.6px, transparent 2px) center / 100% 100% no-repeat,
+    var(--grade);
+}
+.lk-grade-seal.grade-easy::before {
+  background: var(--grade);
+  box-shadow:
+    inset 0 0 0 1.5px var(--grade),
+    inset 0 0 0 2.5px var(--carve);
+}
+.lk-grade-seal[aria-pressed="true"] {
+  outline: 1.5px solid oklch(0.55 0 0 / 0.75);
+  outline-offset: 0;
+}
+/* New-user layouts (WordsStats.tsx, lib/words/stats.ts VARIANTS): the days
+ * ahead as faint dashed frames; today's bar against his usual day, in the
+ * look's own ink. */
+.lk-ink-future {
+  stroke: oklch(0.5 0 0 / 0.35);
+}
+.lk-progress {
+  background: var(--stats-faint);
+}
+.lk-progress-fill {
+  background: var(--stats-brush);
+}
+.lk-progress[data-look="seal"] .lk-progress-fill {
+  background: var(--ink-again);
+}
+.lk-progress[data-look="slip"] {
+  background: var(--stats-cane);
+}
+.lk-progress[data-look="slip"] .lk-progress-fill {
+  background: var(--stats-notch);
+}
+.lk-progress-usual {
+  background: currentColor;
+  opacity: 0.55;
+}

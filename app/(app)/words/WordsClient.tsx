@@ -34,6 +34,8 @@ import {
   useState,
 } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
+import WordsStats from "./WordsStats";
+import WordStamps from "./WordStamps";
 import { useIntlayer, useLocale } from "next-intlayer";
 import {
   closestCenter,
@@ -1582,10 +1584,13 @@ function useListParam(base: string): [string | null, (id: string | null) => void
 export default function WordsClient({
   config: given,
   voice = "off",
+  owner = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
   voice?: VoiceAccess;
+  /** The site owner (lib/owner.ts): owner-only previews, e.g. the stats' simulate toggle. */
+  owner?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
@@ -1768,6 +1773,7 @@ export default function WordsClient({
       {undoToast}
       <ListPicker
         config={config}
+        owner={owner}
         lists={lists}
         catalog={fullCatalog}
         offline={offline}
@@ -2234,6 +2240,7 @@ function ListRowMenu({
 
 function ListPicker({
   config,
+  owner,
   lists,
   catalog,
   offline,
@@ -2244,6 +2251,8 @@ function ListPicker({
   onReorder,
 }: {
   config: DrillConfig;
+  /** The site owner: owner-only previews (the stats' simulate toggle). */
+  owner: boolean;
   lists: WordList[];
   catalog: CatalogMeta[];
   /** Showing the offline copy of the lists. */
@@ -2632,6 +2641,15 @@ function ListPicker({
         </div>
       </div>
 
+      {studyable.length > 0 && (
+        <WordsStats
+          base={config.base}
+          listIds={studyable.map((l) => l.id)}
+          learned={studyable.reduce((n, l) => n + l.cards, 0)}
+          due={studyable.reduce((n, l) => n + l.due, 0)}
+          owner={owner}
+        />
+      )}
       {studyable.length > 1 && (
         <button
           onClick={() => onOpen(ALL)}
@@ -5214,6 +5232,7 @@ function SlipSheet({
             {item.scene && <div className="mt-1 text-xs opacity-60">{item.scene}</div>}
           </div>
         )}
+        <WordStamps listId={item.listId} term={item.term} />
         {/* The row shows the example too; here it is in full. */}
         {item.ex && (
           <div
