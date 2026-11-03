@@ -10,12 +10,16 @@
  *     while typing reaches the page (nothing catches taps)
  *   - the glass fades out again; nothing on the page moves (no layout shift)
  *   - under prefers-reduced-motion it does not animate
+ *   - one frame (owner, 2026-11-03): while the glass is up the bar's own box
+ *     is not drawn inside it (border transparent, width kept; no tint, no
+ *     blur), nothing in the bar moves, and at rest its border is back
  *
  * getUserMedia is stubbed (refused): nothing is recorded. Browsers are muted
  * (scripts/qa/silent.mjs).
  *
  *   node scripts/dev/debug-chat-typing-glass-qa.mjs [--shots <dir>]
- *     --shots: save light/dark × resting/typing at 390×844 (iPhone) there
+ *     --shots: save light/dark × resting/typing (and a multi-line draft at
+ *     150%) at 390×844 (iPhone) there
  */
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -141,6 +145,29 @@ const glass = (page) =>
       z: Number(cs.zIndex),
     };
   });
+// The bar's own box: its border colour and width, tint, blur, and where its parts sit.
+const bar = (page) =>
+  page.evaluate(() => {
+    const b = document.querySelector('[data-testid="debug-chat-pill"]');
+    const cs = getComputedStyle(b);
+    const at = (sel) => {
+      const r = document.querySelector(sel)?.getBoundingClientRect();
+      return r ? `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)}` : "none";
+    };
+    const clear = (c) => c === "transparent" || /^rgba\(0, 0, 0, 0\)$|\/ 0\)$/.test(c);
+    return {
+      borderClear: clear(cs.borderTopColor),
+      borderColor: cs.borderTopColor,
+      borderWidth: cs.borderTopWidth,
+      bgClear: clear(cs.backgroundColor),
+      blur: cs.backdropFilter || cs.webkitBackdropFilter || "none",
+      parts: [
+        at('[data-testid="debug-chat-input"]'),
+        at('[data-testid="debug-chat-mic"]'),
+        at('[data-testid="debug-chat-attach"]'),
+      ].join(" | "),
+    };
+  });
 const pageRect = (page) =>
   page.evaluate(() => {
     const r = document.getElementById("qa-btn").getBoundingClientRect();
@@ -154,6 +181,11 @@ try {
     check(!!rest, `${scheme}: the glass is mounted`);
     check(rest.visibility === "hidden" && rest.opacity === 0, `${scheme}: hidden at rest`);
     const before = await pageRect(page);
+    const barRest = await bar(page);
+    check(
+      !barRest.borderClear && barRest.borderWidth === "1px",
+      `${scheme}: at rest the bar has its own border (${barRest.borderColor})`,
+    );
     if (SHOTS) {
       mkdirSync(SHOTS, { recursive: true });
       await page.screenshot({ path: join(SHOTS, `typing-glass-rest-${scheme}.png`) });
@@ -207,7 +239,35 @@ try {
       `${scheme}: no full-screen blur layer`,
     );
     check((await pageRect(page)) === before, `${scheme}: no layout shift`);
+    const barOn = await bar(page);
+    check(
+      barOn.borderClear && barOn.borderWidth === "1px",
+      `${scheme}: one frame: the bar's border goes inside the glass, its width stays (${barOn.borderColor})`,
+    );
+    check(
+      barOn.bgClear && barOn.blur === "none",
+      `${scheme}: one frame: no tint or blur of the bar's own`,
+    );
+    check(
+      barOn.parts === barRest.parts,
+      `${scheme}: input, mic and + stay where they were (${barOn.parts})`,
+    );
     if (SHOTS) await page.screenshot({ path: join(SHOTS, `typing-glass-${scheme}.png`) });
+
+    // A multi-line draft with the text at 150%: still one frame.
+    const input = page.locator('[data-testid="debug-chat-input"]');
+    await input.fill("one\ntwo\nthree");
+    await page.evaluate(() => document.documentElement.style.setProperty("--lk-fs-chat", "1.5"));
+    await page.waitForTimeout(250);
+    const tall = await bar(page);
+    check(
+      tall.borderClear && tall.bgClear && tall.borderWidth === "1px",
+      `${scheme}: one frame with a multi-line draft at 150%`,
+    );
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, `typing-glass-tall150-${scheme}.png`) });
+    await input.fill("");
+    await page.evaluate(() => document.documentElement.style.removeProperty("--lk-fs-chat"));
+    await page.waitForTimeout(150);
 
     // The page around the box stays usable while typing: a tap reaches it.
     const box = await page.locator("#qa-btn").boundingBox();
@@ -222,6 +282,11 @@ try {
     await page.waitForTimeout(300);
     const off = await glass(page);
     check(off.visibility === "hidden" && off.opacity === 0, `${scheme}: gone after the fade`);
+    const barOff = await bar(page);
+    check(
+      !barOff.borderClear && barOff.borderWidth === "1px",
+      `${scheme}: the bar's resting border is back (${barOff.borderColor})`,
+    );
     await ctx.close();
   }
   {

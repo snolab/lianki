@@ -639,6 +639,18 @@ stays usable while typing. Rules and look in `typing-glass.ts`.
 - **Backdrop root:** the box sits at `opacity-60` at rest, and an ancestor
   under opacity 1 would stop the blur from seeing the page. While typing
   `focus-within` makes it opaque, so the glass blurs the page as it should.
+- **One frame** (owner, 2026-11-03: "点进输入框、对焦之后……里面那个框框就没必要继续显示了";
+  "尽量减少视觉上的嵌套数量"). While the glass is up it is the frame: the
+  bar's own box is not drawn inside it (`barInGlass`: border transparent with
+  its 1px width kept, no tint, no blur of its own), so caret, placeholder,
+  mic and + do not move and the concentric geometry is unchanged. It fades
+  with the glass; at rest the bar's resting border is back. In the same
+  spirit nothing inside the glass draws a second box: the `@/…` completions
+  are plain rows on the glass, the attached-selection chip keeps only its
+  rail (`AttachChip flat`), the + menu has no border (its shadow is its
+  edge), and its "soon" tag is plain text. Kept: the target chip's border
+  (its colour names the node) and round buttons (their shape is the
+  affordance).
 - **Not** minimized, and gives way to the full-screen log's own sheet. Also
   on other sites (the userscript): it covers only the box, so the host page
   is untouched. Only on focus; glass while a draft waits unfocused would be a

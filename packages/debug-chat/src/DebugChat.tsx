@@ -92,7 +92,13 @@ import {
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
-import { showTypingGlass, typingGlassLook, typingGlassMotion } from "./typing-glass";
+import {
+  barInGlass,
+  BAR_IN_GLASS_TRANSITION,
+  showTypingGlass,
+  typingGlassLook,
+  typingGlassMotion,
+} from "./typing-glass";
 import {
   LINE_HALO,
   SHEET_FILTER,
@@ -3075,6 +3081,7 @@ export function DebugChat({
       {open && attached && !notice && (
         <AttachChip
           t={t}
+          flat={typingGlassShown}
           ctx={attached}
           onRemove={() => {
             uiStore.setState({ attached: null });
@@ -3107,8 +3114,10 @@ export function DebugChat({
                 role="listbox"
                 aria-label="Nodes to address"
                 data-testid="debug-chat-nodes"
-                style={{ background: INPUT_BG }}
-                className="pointer-events-auto max-w-full list-none overflow-hidden rounded-lg border border-current/25 py-0.5 fs-11 backdrop-blur"
+                // Inside the typing glass, plain rows on the glass (no box of
+                // its own: one frame); a box only where no glass is behind it.
+                style={typingGlassShown ? undefined : { background: INPUT_BG }}
+                className={`pointer-events-auto max-w-full list-none overflow-hidden py-0.5 fs-11 ${typingGlassShown ? "" : "rounded-lg border border-current/25 backdrop-blur"}`}
               >
                 {completions.map((n) => (
                   <li key={n} role="option" aria-selected={false}>
@@ -3229,8 +3238,12 @@ export function DebugChat({
             // Its own blur off too: invisible, it would only cost a
             // second backdrop pass over the sheet.
             ...(barAside ? { backdropFilter: "none", WebkitBackdropFilter: "none" } : {}),
-            transition: reducedMotion() ? undefined : FADE,
+            // While the typing glass is up it is the frame: the bar's own box
+            // goes inside it (border transparent, width kept; no tint, no blur).
+            ...barInGlass(typingGlassShown),
+            transition: reducedMotion() ? undefined : `${FADE}, ${BAR_IN_GLASS_TRANSITION}`,
           }}
+          data-in-glass={typingGlassShown || undefined}
           className={`pointer-events-auto relative flex items-end border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300`}
         >
           {armed > 0 && (
