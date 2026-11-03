@@ -261,3 +261,21 @@ selecting DOM text.
   or catalogue); for a private book they are personal bookmarks.
 - **Phrases.** Phrase boundaries come from the extraction step (books-plan
   phase 1); until then the phrase level is skipped.
+
+### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
+
+"阅读模式不用我们主动分块", after "不要给用户规划任何死数字 … 我们不要用任何数量数字".
+This supersedes the chunk design above for the reader:
+
+- The reader never splits the book into chunks and never sets a daily
+  portion. He reads continuously; there is no "today 3/3" divider and no
+  "N chunks a day".
+- What counts is what he actually read: a high-water mark (the furthest
+  paragraph that passed the reading line with real reading time), stored
+  with the position. Progress is shown only as proportions (share of the book
+  read, coverage against the 95% line), never as counts of units.
+- Word and phrase extraction runs on the paragraphs he has read, in the
+  background, as the high-water mark moves (idempotent per paragraph hash);
+  no "读完" button is needed for it.
+- Pace toward a target date, if he sets one, is shown as a proportion or as
+  time, derived from his own reading speed, never as a fixed amount.
