@@ -3,7 +3,7 @@ import { meaningLang, meaningText, prefetchOrder, sayParts } from "@/lib/words/s
 import { createSequencer } from "@/lib/words/sequence";
 
 describe("sayParts", () => {
-  test("word, then meaning, then example, each in its own language", () => {
+  test("word, then example, then meaning (the row's order), each in its own language", () => {
     expect(
       sayParts(
         { term: "maison", back: "house, home; household", ex: "Ma maison est grande." },
@@ -13,8 +13,8 @@ describe("sayParts", () => {
       ),
     ).toEqual([
       { kind: "word", text: "maison", lang: "fr" },
-      { kind: "meaning", text: "house", lang: "en" },
       { kind: "example", text: "Ma maison est grande.", lang: "fr" },
+      { kind: "meaning", text: "house", lang: "en" },
     ]);
   });
 
@@ -39,8 +39,8 @@ describe("sayParts", () => {
       ).map((p) => [p.kind, p.text, p.lang]),
     ).toEqual([
       ["word", "そと", "ja"],
-      ["meaning", "outside", "en"],
       ["example", "外は寒い。", "ja"],
+      ["meaning", "outside", "en"],
     ]);
   });
 

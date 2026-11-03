@@ -79,8 +79,8 @@
 .lk-fs-chat,
 .lk-fs-cards,
 .lk-fs-read {
-  --text-xs: calc(.75rem * var(--lk-fs-k, 1));
-  --text-sm: calc(.875rem * var(--lk-fs-k, 1));
+  --text-xs: calc(0.75rem * var(--lk-fs-k, 1));
+  --text-sm: calc(0.875rem * var(--lk-fs-k, 1));
   --text-base: calc(1rem * var(--lk-fs-k, 1));
   --text-lg: calc(1.125rem * var(--lk-fs-k, 1));
   --text-xl: calc(1.25rem * var(--lk-fs-k, 1));
@@ -259,6 +259,32 @@ ruby rt {
   /* padding + stamp column + gaps + the fitted term width */
   --node-x: calc(0.5rem + 1rem + 0.75rem + var(--term-w, 8rem));
 }
+/* Familiarity marks in an example (lib/words/example-marks.ts), the reader's
+ * scheme: the line style says the level (solid = weak, dashed = learning),
+ * the tint repeats it; mastered words and words without a card are plain. */
+.lk-fam-weak,
+.lk-fam-learning {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+  text-decoration-skip-ink: none;
+}
+.lk-fam-weak {
+  text-decoration-style: solid;
+  text-decoration-color: oklch(0.6 0.17 35);
+}
+.lk-fam-learning {
+  text-decoration-style: dashed;
+  text-decoration-color: oklch(0.55 0.12 250 / 0.8);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-fam-weak {
+    text-decoration-color: oklch(0.75 0.15 40);
+  }
+  .lk-fam-learning {
+    text-decoration-color: oklch(0.75 0.1 250 / 0.8);
+  }
+}
 /* Focus = this slip's cords come loose (.slip-cords) and the slip lifts a
  * little off its neighbours. */
 .slip-loose {
@@ -418,6 +444,11 @@ ruby rt {
 .slip-blank * {
   color: transparent;
 }
+/* Marks would give the hidden example away. */
+.slip-blank .lk-fam-weak,
+.slip-blank .lk-fam-learning {
+  text-decoration-line: none;
+}
 @media (hover: hover) {
   .group:hover .slip-blank {
     color: inherit;
@@ -426,6 +457,10 @@ ruby rt {
   }
   .group:hover .slip-blank * {
     color: inherit;
+  }
+  .group:hover .slip-blank .lk-fam-weak,
+  .group:hover .slip-blank .lk-fam-learning {
+    text-decoration-line: underline;
   }
 }
 
@@ -889,17 +924,26 @@ html.lk-page-lock .min-h-screen {
 html.lk-paper-scrolls body {
   background: var(--background);
 }
-/* Settings: a glass sheet that drops below the toolbar and scrolls itself. */
-.lk-words-sheet {
-  z-index: 21;
-  /* Nearly opaque: the rows under it must not read through its text. */
+/* Settings (/words, SettingsSheet): a bottom sheet on a phone, a centred
+ * dialog from 40rem up. Bounded by the visible viewport (its container), less
+ * the header and the notch on a phone; the body scrolls inside it. */
+.lk-settings-panel {
+  /* Nearly opaque, and blurred: the rows under it must not read through its
+   * text. A modal holds the list still, so the blur is painted once. */
   background: var(--glass-bg-solid);
-  /* No blur: at 0.9 alpha it barely shows, and this is the largest glass
-   * (a third of a phone screen) — every repaint under it re-blurred it. */
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  max-height: calc(100% - 3.5rem - env(safe-area-inset-top));
+  animation: lk-sheet-in 240ms var(--min-jerk) both;
+}
+@media (min-width: 40rem) {
+  .lk-settings-panel {
+    max-height: 100%;
+    animation: lk-fade-in 160ms linear both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-settings-panel {
+    animation: none;
+  }
 }
 /* Embed mode hides the header: the toolbar moves up into its place. */
 html[data-embed] [data-words-top] {

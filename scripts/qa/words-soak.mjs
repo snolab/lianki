@@ -223,10 +223,8 @@ async function toggleSettings() {
     .first()
     .click();
   await sleep(300);
-  await page
-    .getByRole("button", { name: /settings/i })
-    .first()
-    .click();
+  // A modal sheet now: its ✕ closes it (the scrim covers the button).
+  await page.locator("[data-words-settings-close]").click();
   await sleep(200);
 }
 
@@ -381,12 +379,8 @@ for (let minute = 1; !process.env.SOAK_GROW && minute <= MINUTES; minute++) {
     await scroll(44 * 3);
     if (Math.random() < 0.3) await scroll(-44 * 6);
     if (Math.random() < 0.2) await toggleSettings();
-    if (Math.random() < 0.1)
-      await page
-        .getByRole("button", { name: /undo/i })
-        .first()
-        .click()
-        .catch(() => {});
+    // No Undo button in the toolbar (owner, 2026-11-03): Z undoes.
+    if (Math.random() < 0.1) await page.keyboard.press("z").catch(() => {});
   }
   const r = await snapshot(minute);
   rows.push(r);

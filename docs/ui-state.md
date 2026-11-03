@@ -77,22 +77,23 @@ target that is not built yet.
 
 ### Routing, panels, modals
 
-| State                             | Where                                    | Status                                                                   |
-| --------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------ |
-| current word list                 | URL `?list=`, then session `lk:ui:words` | done (/words, /alphabets)                                                |
-| /words Settings panel open        | session `lk:ui:words`                    | done                                                                     |
-| /words list picker: folded groups | session `lk:ui:words` (`collapsed`)      | done (was local `lk:words-collapsed:<base>`, carried over once)          |
-| /words keyboard help strip (`?`)  | session `lk:ui:words`                    | done                                                                     |
-| swipe tuner panel open            | session `lk:ui:swipe-tuner`              | done                                                                     |
-| /read reading position (line)     | local `lk:read-pos:<id>`                 | done (this device; → the server with the book-as-goal plan)              |
-| /read auto-advance (read on)      | local `lk:pref:read-auto`                | done: per device, off by default (owner, 2026-11-03); lib/read/player.ts |
-| slip action sheet open            | memory (it is modal, closed on refresh)  | intentional; back closes it (below)                                      |
-| sidebar collapsed                 | local `lk:sidebar`                       | → `lk:pref:sidebar`                                                      |
-| phone drawer open                 | memory, `navUi` (lib/nav/ui-store.ts)    | done: the bottom island opens it too                                     |
-| recent pages (nav)                | session `lk:ui:nav`                      | done                                                                     |
-| pinned pages (nav)                | local `lk:pref:nav-pins`                 | done                                                                     |
-| first-run answer                  | local `lk:first-run`                     | a device fact, stays                                                     |
-| /review tutorial folded, platform | local `lk:pref:review-tutorial`          | done (a device preference: iPhone or Android steps)                      |
+| State                               | Where                                    | Status                                                                         |
+| ----------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
+| current word list                   | URL `?list=`, then session `lk:ui:words` | done (/words, /alphabets)                                                      |
+| /words Settings panel open          | session `lk:ui:words`                    | done                                                                           |
+| /words list picker: folded groups   | session `lk:ui:words` (`collapsed`)      | done (was local `lk:words-collapsed:<base>`, carried over once)                |
+| /words "Add a list": unfolded nodes | local `lk:words-add-open:<base>`         | done: per device (owner, 2026-11-03 20:12 JST); folding hides the whole branch |
+| /words keyboard help strip (`?`)    | session `lk:ui:words`                    | done                                                                           |
+| swipe tuner panel open              | session `lk:ui:swipe-tuner`              | done                                                                           |
+| /read reading position (line)       | local `lk:read-pos:<id>`                 | done (this device; → the server with the book-as-goal plan)                    |
+| /read auto-advance (read on)        | local `lk:pref:read-auto`                | done: per device, off by default (owner, 2026-11-03); lib/read/player.ts       |
+| slip action sheet open              | memory (it is modal, closed on refresh)  | intentional; back closes it (below)                                            |
+| sidebar collapsed                   | local `lk:sidebar`                       | → `lk:pref:sidebar`                                                            |
+| phone drawer open                   | memory, `navUi` (lib/nav/ui-store.ts)    | done: the bottom island opens it too                                           |
+| recent pages (nav)                  | session `lk:ui:nav`                      | done                                                                           |
+| pinned pages (nav)                  | local `lk:pref:nav-pins`                 | done                                                                           |
+| first-run answer                    | local `lk:first-run`                     | a device fact, stays                                                           |
+| /review tutorial folded, platform   | local `lk:pref:review-tutorial`          | done (a device preference: iPhone or Android steps)                            |
 
 ### Chat widget (packages/debug-chat, another lane)
 

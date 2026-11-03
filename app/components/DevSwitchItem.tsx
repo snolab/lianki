@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   backUrl,
   devServerUp,
@@ -24,8 +24,12 @@ const BLUE = "oklch(0.62 0.19 255)";
  * the dev server, off = lianki.com; flipping it moves the same page across.
  * It exists only while the menu is open, and on lianki.com checks once when
  * it mounts: no polling, nothing left running after the menu closes.
+ *
+ * It is the menu's one preview control: `children` (the Live view chip,
+ * LiveView.tsx) sit on a second line inside the same row, not as a second
+ * switch (owner, 2026-11-03 20:00 JST).
  */
-export function DevSwitchItem({ sw }: { sw: DevSwitch }) {
+export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: ReactNode }) {
   const on = sw.mode === "back";
   const [up, setUp] = useState<boolean | null>(on ? true : null);
   const [busy, setBusy] = useState(false);
@@ -57,20 +61,18 @@ export function DevSwitchItem({ sw }: { sw: DevSwitch }) {
   );
   // On (the dev server): flipping it off is a plain link to the same page on
   // lianki.com, with no Referer.
-  if (on)
-    return (
-      <a
-        role="switch"
-        aria-checked
-        data-dev-switch="back"
-        href={backUrl(location)}
-        referrerPolicy="no-referrer"
-        className={cls}
-      >
-        {inner}
-      </a>
-    );
-  return (
+  const control = on ? (
+    <a
+      role="switch"
+      aria-checked
+      data-dev-switch="back"
+      href={backUrl(location)}
+      referrerPolicy="no-referrer"
+      className={cls}
+    >
+      {inner}
+    </a>
+  ) : (
     <button
       type="button"
       role="switch"
@@ -85,6 +87,13 @@ export function DevSwitchItem({ sw }: { sw: DevSwitch }) {
     >
       {inner}
     </button>
+  );
+  if (!children) return control;
+  return (
+    <div data-preview-row>
+      {control}
+      <div className="px-4 pb-2 -mt-0.5">{children}</div>
+    </div>
   );
 }
 

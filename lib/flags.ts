@@ -40,6 +40,11 @@ export const FLAGS = {
       "新阅读器 /read/[id]：整本书连续滚动（按原书段落显示），每个词按熟悉度标记，左右滑动一段给理解评分（同 /words，FSRS 记在每个句子上），同步阅读位置、阅读笔记和语境中见过的词。关闭时只有站长本人在开发预览里能看到。",
     default: false,
   },
+  "stt.polish-off": {
+    description:
+      "关闭语音消息的自动润色：打开后，助手不能再改写你的语音消息，聊天里只留识别原文。关闭（默认）= 照旧：助手只按上下文（最近的消息、当前页面、屏幕上的词）改错字和标点，不改原意；原文一直保留，点 ✨ 可看。",
+    default: false,
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;
