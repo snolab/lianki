@@ -49,6 +49,8 @@ export interface Seg {
   w: string | null;
   /** Inline emphasis over it, outermost first. */
   k?: InlineKind[];
+  /** A word whose emphasis changes inside it: its parts, each with its own. */
+  parts?: { text: string; k?: InlineKind[] }[];
 }
 
 export interface Sentence {
@@ -156,6 +158,22 @@ export function cutPara(
     const k = marks.filter((m) => m[0] <= o && o < m[1]).map((m) => m[2]);
     return k.length ? k : undefined;
   };
+  /** A word whose emphasis changes inside it (H<sub>2</sub>O): its parts, else null. */
+  const partsOf = (seg: string, o: number): { text: string; k?: InlineKind[] }[] | null => {
+    if (!marks?.length) return null;
+    if (
+      !marks.some((m) => (m[0] > o && m[0] < o + seg.length) || (m[1] > o && m[1] < o + seg.length))
+    )
+      return null;
+    const parts: { text: string; k?: InlineKind[] }[] = [];
+    for (let i = 0; i < seg.length; i++) {
+      const k = kindsAt(o + i);
+      const last = parts[parts.length - 1];
+      if (last && String(last.k) === String(k)) last.text += seg[i];
+      else parts.push({ text: seg[i], ...(k ? { k } : {}) });
+    }
+    return parts;
+  };
   const texts = cuts ? sentencesFromCuts(text, cuts) : sentencesOf(text, lang);
   const sentences = texts.map((st) => {
     const segs: Seg[] = [];
@@ -163,13 +181,15 @@ export function cutPara(
       const o = base + s.index;
       const k = kindsAt(o);
       const last = segs[segs.length - 1];
-      if (s.isWordLike)
+      if (s.isWordLike) {
+        const parts = partsOf(s.segment, o);
         segs.push({
           text: s.segment,
           t: t++,
           w: normWord(s.segment, normLang),
-          ...(k ? { k } : {}),
+          ...(parts ? { parts } : k ? { k } : {}),
         });
+      }
       // Runs of non-words merge (fewer nodes), when they carry the same emphasis.
       else if (last && last.t < 0 && String(last.k) === String(k)) last.text += s.segment;
       else segs.push({ text: s.segment, t: -1, w: null, ...(k ? { k } : {}) });

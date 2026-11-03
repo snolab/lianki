@@ -358,3 +358,11 @@ describe("reader model: the backend's cuts and the EPUB's markup", () => {
     expect(c.get(0).sentences[0].segs.find((g) => g.text === "very")?.k).toEqual(["em"]);
   });
 });
+
+describe("reader model: emphasis inside a word", () => {
+  it("keeps H₂O one token, its digit in <sub>", () => {
+    const p = cutPara("H2O boils.", "en", "en", null, [[1, 2, "sub"]]);
+    const tok = p.sentences[0].segs.find((g) => g.t === 0);
+    expect(tok?.parts).toEqual([{ text: "H" }, { text: "2", k: ["sub"] }, { text: "O" }]);
+  });
+});

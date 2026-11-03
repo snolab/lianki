@@ -185,4 +185,32 @@ describe("server reader data", () => {
     expect(d.canUndo({ itemId: "x", rating: 3, at: 0 })).toBe(true);
     d.flush();
   });
+
+  it("keeps a grade the server refused, to send again", async () => {
+    fake({
+      ...res,
+      lang: "en",
+      granularity: "paragraph",
+      chapters: [0],
+      lines: [0, 3],
+      bounds: {},
+    });
+    const d = serverReaderData("m1", H);
+    const l = await d.load(book);
+    const item = l.blocks[1];
+    if (item.kind !== "item") throw new Error("item");
+    globalThis.fetch = mock(
+      async () => new Response("", { status: 503 }),
+    ) as unknown as typeof fetch;
+    const r = await d.grade(book, item, 2);
+    d.flush();
+    await new Promise((ok) => setTimeout(ok, 5));
+    // Sent (no longer undoable) but not lost: a later flush sends it again.
+    expect(d.canUndo(r)).toBe(false);
+    let again = 0;
+    globalThis.fetch = mock(async () => (again++, new Response("{}"))) as unknown as typeof fetch;
+    d.flush();
+    await new Promise((ok) => setTimeout(ok, 5));
+    expect(again).toBe(1);
+  });
 });

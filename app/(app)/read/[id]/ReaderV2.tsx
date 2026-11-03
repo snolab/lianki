@@ -209,12 +209,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const normLang = material.words?.lang ?? wordLang(book?.lang, lines);
   // The server's items, grades and position when its reader v2 is on for him
   // (D1); otherwise (a guest, MongoDB) the device derives them.
+  // If the server cannot give its items, the whole visit goes local (its
+  // item ids have no server sentences to grade).
+  const [serverDown, setServerDown] = useState(false);
   const data = useMemo(
     () =>
-      signedIn && material.readerV2 && material.bookHash
+      signedIn && material.readerV2 && material.bookHash && !serverDown
         ? serverReaderData(id, material.bookHash)
         : localReaderData(),
-    [signedIn, material.readerV2, material.bookHash, id],
+    [signedIn, material.readerV2, material.bookHash, id, serverDown],
   );
   const rbook: ReaderBook = useMemo(
     () => ({
@@ -232,15 +235,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     let live = true;
     data
       .load(rbook)
-      .catch((err) => {
-        // The server could not give its items: read on with the device's.
-        console.error("read: items failed, cutting on the device", err);
-        return localReaderData().load(rbook);
-      })
       .then((l) => {
         if (!live) return;
         setLoaded(l);
         if (l.grades) setGrades(l.grades);
+      })
+      .catch((err) => {
+        // The server could not give its items: read on with the device's.
+        console.error("read: items failed, cutting on the device", err);
+        if (live) setServerDown(true);
       });
     return () => {
       live = false;

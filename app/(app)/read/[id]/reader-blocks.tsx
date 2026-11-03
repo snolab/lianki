@@ -66,7 +66,7 @@ function segNode(g: Seg, fam: Map<string, Fam> | null, key: number): ReactNode {
   const f = g.w && fam ? fam.get(g.w) : undefined;
   return emphasise(
     <span key={key} data-t={g.t} data-f={f === "k" ? undefined : f}>
-      {g.text}
+      {g.parts ? g.parts.map((x, i) => emphasise(x.text, x.k, i)) : g.text}
     </span>,
     g.k,
     key,

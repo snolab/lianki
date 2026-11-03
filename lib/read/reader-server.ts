@@ -4,7 +4,8 @@
 // be (blocksFromItems, itemGrade), so it is unit-tested without a server
 // (unit/read-reader-model.test.ts).
 //
-// High-water mark: only items he graded move it (a fling never does).
+// High-water mark: only items he graded move it (a fling never does), once
+// their grade is sent (an undone grade never moves it).
 //
 // Undo. The grade API has no take-back, so a grade waits here for
 // GRADE_HOLD_MS before it is sent (or until the page is hidden): Undo inside
@@ -97,26 +98,47 @@ export function blocksFromItems(
   return { blocks, cuts, sids, grades };
 }
 
-type Pending = { req: GradeRequest; timer: ReturnType<typeof setTimeout> };
+type Pending = {
+  req: GradeRequest;
+  timer: ReturnType<typeof setTimeout>;
+  /** A request is on its way: no longer undoable, kept until it succeeds. */
+  inflight: boolean;
+  /** The last line of the graded item (the high-water mark). */
+  line: number;
+};
 
 export function serverReaderData(materialId: string, bookHash: string): ReaderData {
   const base = `/api/read/${encodeURIComponent(materialId)}`;
   let sids = new Map<string, string[]>();
   const last = new Map<string, SwipeRating[]>();
   const pending = new Map<string, Pending>();
+  /** The synced high-water mark, and lines of grades sent (kept). */
   let highLine = -1;
+  const high = () =>
+    Math.max(highLine, ...[...pending.values()].filter((p) => p.inflight).map((p) => p.line));
 
+  // A grade stays pending until the server has it; a failure is tried again
+  // later (the clientId makes a resend grade once).
   const send = (clientId: string, keepalive = false) => {
     const p = pending.get(clientId);
     if (!p) return;
     clearTimeout(p.timer);
-    pending.delete(clientId);
+    p.inflight = true;
     void fetch(`${base}/grade`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(p.req),
       keepalive,
-    }).catch((err) => console.error("read: grade failed", err));
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        pending.delete(clientId);
+        highLine = Math.max(highLine, p.line);
+      })
+      .catch((err) => {
+        console.error("read: grade failed, trying again", err);
+        p.timer = setTimeout(() => send(clientId), GRADE_HOLD_MS);
+      });
   };
   const flush = () => {
     for (const id of [...pending.keys()]) send(id, true);
@@ -148,20 +170,22 @@ export function serverReaderData(materialId: string, bookHash: string): ReaderDa
         clientId,
       };
       if (req.sentences.length)
-        pending.set(clientId, { req, timer: setTimeout(() => send(clientId), GRADE_HOLD_MS) });
-      // A graded item was really read: the high-water mark may move past it
-      // (a fling across the book never does: only swipes count).
-      highLine = Math.max(highLine, ...item.pieces.map((p) => p.line));
+        pending.set(clientId, {
+          req,
+          timer: setTimeout(() => send(clientId), GRADE_HOLD_MS),
+          inflight: false,
+          line: Math.max(...item.pieces.map((p) => p.line)),
+        });
       const l = last.get(item.id) ?? [];
       l.push(rating);
       last.set(item.id, l);
       return { itemId: item.id, rating, at: Date.now(), clientId };
     },
-    canUndo: (r) => !!r.clientId && pending.has(r.clientId),
+    canUndo: (r) => !!r.clientId && pending.get(r.clientId)?.inflight === false,
     async undo(_b, r) {
       if (!r.clientId) return;
       const p = pending.get(r.clientId);
-      if (!p) return;
+      if (!p || p.inflight) return;
       clearTimeout(p.timer);
       pending.delete(r.clientId);
       const l = last.get(r.itemId);
@@ -193,7 +217,8 @@ export function serverReaderData(materialId: string, bookHash: string): ReaderDa
         line: a.line,
         offset: a.off,
         at: new Date(a.at).toISOString(),
-        ...(highLine >= 0 ? { highLine } : {}),
+        // Only grades the server has move it (an undone one never does).
+        ...(high() >= 0 ? { highLine: high() } : {}),
       };
       const json = JSON.stringify(body);
       if (opts?.leaving && typeof navigator !== "undefined" && navigator.sendBeacon) {
