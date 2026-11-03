@@ -342,3 +342,22 @@ own paragraphs (no chunks):
   marking it in a note) count as "not recognised". After collecting data,
   check whether exposures predict later recall; if so, consider option B
   (one Good, near-due only, once a day, tagged "from reading").
+
+### Owner decisions, 2026-11-03 ~19:40 JST (Slack)
+
+1. **Shared catalogue rule:** public domain in the US **and** every creator
+   (translators included) dead 80+ years.
+2. **No book-page layout.** The reader renders the EPUB's own paragraphs as
+   they are, in one continuous scroll; **swiping a paragraph left/right is
+   its review grade**, exactly like the /words swipe (the mirror setting
+   applies). This replaces both layout options A and B above.
+3. "轮到你" (wait-for-you after each read-aloud line) was unclear to him;
+   explained as the shadowing pause. Open: whether reading aloud should
+   default to continuous.
+4. **Bottom nav shrinks to its capsule while reading.** A unified
+   minimise/collapse rule set is being compiled.
+5. **Marks follow each word's familiarity**, and paragraphs show their
+   vocabulary familiarity. Asked whether mastered words should also get a
+   (very faint) mark.
+6. **Real-world statistics stay** (word counts, scan summary): they are the
+   user's real data, not numbers we prescribe.
