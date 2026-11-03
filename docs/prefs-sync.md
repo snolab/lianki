@@ -45,6 +45,7 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:pref:text-size` `.chat`    | Text size: chat                           | **synced** | `text-size.chat`     | the same; multiplies the whole-app size inside the chat                             |
 | `lk:pref:text-size` `.cards`   | Text size: study cards                    | **synced** | `text-size.cards`    | the same; multiplies the whole-app size on /words slips and the /review card        |
 | `lk:words-fullscreen`          | Full screen                               | device     | —                    | owner: depends on the screen and the browser                                        |
+| `lk:pref:read-auto`           | /read: read on without waiting            | device     | —                    | owner, 2026-11-03: "remembered per device"; off by default                          |
 | `lk:ui:swipe-tuner`            | tuner panel open                          | session    | —                    | a panel                                                                             |
 | `lk:ui:words`                  | list, Settings open, help, scroll anchors | session    | —                    | UI state of this tab (ui-state.md)                                                  |
 | `lk:words-collapsed:<base>`    | collapsed groups                          | device     | —                    | one key per page, unbounded, and it tracks the list's layout. Revisit if asked      |
