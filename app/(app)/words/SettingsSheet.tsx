@@ -20,6 +20,7 @@ export function SettingsSheet({
   onClose,
   onScrimTap,
   returnTo,
+  footer,
   children,
 }: {
   title: ReactNode;
@@ -30,6 +31,8 @@ export function SettingsSheet({
   /** A tap on the scrim, with where it landed (before it closes the sheet). */
   onScrimTap?: (x: number, y: number) => void;
   returnTo: React.RefObject<HTMLElement | null>;
+  /** A row under the body that stays put while it scrolls (a sheet's main action). */
+  footer?: ReactNode;
   children: ReactNode;
 }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -150,11 +153,16 @@ export function SettingsSheet({
           </div>
         </div>
         <div
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4"
+          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 ${footer ? "pb-2" : "pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4"}`}
           data-words-settings-body
         >
           {children}
         </div>
+        {footer && (
+          <div className="shrink-0 px-4 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-4">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
