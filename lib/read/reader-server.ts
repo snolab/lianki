@@ -19,7 +19,7 @@ import type {
   ReadItem,
   SentenceState,
 } from "./reader-api";
-import { sentenceId } from "./reader-api";
+import { parseSentenceId, sentenceId } from "./reader-api";
 import type { SwipeRating } from "@/lib/words/swipe";
 import type { Block, Piece } from "./reader-model";
 import type { GradeReceipt, Loaded, ReaderBook, ReaderData } from "./reader-adapter";
@@ -106,7 +106,8 @@ export function blocksFromItems(
  * resend grade once).
  */
 export const UNSENT_KEY = "lk:read-unsent";
-const UNSENT_MAX = 500;
+/** A ceiling only against a runaway: far more grades than a reading session gives. */
+const UNSENT_MAX = 5000;
 type Unsent = { m: string; req: GradeRequest };
 const unsent = {
   read(): Unsent[] {
@@ -193,14 +194,14 @@ export function serverReaderData(
       if (!r.ok) throw new Error(`items: HTTP ${r.status}`);
       const res = (await r.json()) as ItemsResponse;
       // Grades a page closed or went offline before sending: send them now.
-      for (const u of unsent.read().filter((x) => x.m === materialId))
-        void fetch(`${base}/grade`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(u.req),
-        })
-          .then((x) => x.ok && unsent.drop(u.req.clientId))
-          .catch(() => {});
+      // Through the same retry loop as a fresh grade.
+      for (const u of unsent.read().filter((x) => x.m === materialId)) {
+        const id = u.req.clientId;
+        if (!id || pending.has(id)) continue;
+        const line = Math.max(-1, ...u.req.sentences.map((x) => parseSentenceId(x)?.line ?? -1));
+        pending.set(id, { req: u.req, timer: setTimeout(() => {}, 0), inflight: true, line });
+        send(id);
+      }
       const out = blocksFromItems(res, book.headings, book.lines.length);
       sids = out.sids;
       for (const [k, g] of Object.entries(out.grades)) last.set(k, [g]);
