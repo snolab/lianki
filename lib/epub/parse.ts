@@ -78,7 +78,13 @@ export function resolvePath(from: string, href: string): string | null {
 
 function fragmentOf(href: string): string {
   const i = href.indexOf("#");
-  return i < 0 ? "" : href.slice(i + 1);
+  if (i < 0) return "";
+  // Element ids are decoded text: "#caf%C3%A9" names id="café".
+  try {
+    return decodeURIComponent(href.slice(i + 1));
+  } catch {
+    return href.slice(i + 1);
+  }
 }
 
 interface TocEntry {

@@ -62,10 +62,10 @@ const epub3 = {
     <spine><itemref idref="all"/><itemref idref="notes" linear="no"/></spine></package>`,
   "OEBPS/nav.xhtml": xhtml(
     `<nav epub:type="landmarks"><ol><li><a href="all.xhtml">Start</a></li></ol></nav>
-     <nav epub:type="toc"><ol><li><a href="all.xhtml#one">One</a></li><li><a href="all.xhtml#two">Two</a></li></ol></nav>`,
+     <nav epub:type="toc"><ol><li><a href="all.xhtml#%6Fne">One</a></li><li><a href="all.xhtml#two">Two</a></li></ol></nav>`,
   ),
   "OEBPS/all.xhtml": xhtml(
-    `<section id="one"><h2>One</h2><p>First para.</p><p>Second<br/>line.</p></section>
+    `<p>Front.</p><section id="one"><h2>One</h2><p>First para.</p><p>Second<br/>line.</p></section>
      <section id="two"><h2>Two</h2><p>Café au lait.</p><aside epub:type="footnote"><p>A note.</p></aside></section>`,
   ),
   "OEBPS/notes.xhtml": xhtml(`<p>Not in the linear spine.</p>`),
@@ -120,11 +120,21 @@ describe("parseEpub", () => {
   it("EPUB 3: nav toc with fragments in one file, br splits, NFC, footnotes and non-linear items dropped", async () => {
     const b = await parseEpub(mem(epub3));
     expect(b.title).toBe("Book Three");
-    expect(b.lines).toEqual(["One", "First para.", "Second", "line.", "Two", "Café au lait."]);
-    expect(b.lines[5]).toBe("Café au lait.".normalize("NFC"));
+    expect(b.lines).toEqual([
+      "Front.",
+      "One",
+      "First para.",
+      "Second",
+      "line.",
+      "Two",
+      "Café au lait.",
+    ]);
+    expect(b.lines[6]).toBe("Café au lait.".normalize("NFC"));
+    // A percent-encoded fragment (#%6Fne) still finds id="one".
     expect(b.chapters).toEqual([
-      { title: "One", start: 0 },
-      { title: "Two", start: 4 },
+      { title: "Book Three", start: 0 },
+      { title: "One", start: 1 },
+      { title: "Two", start: 5 },
     ]);
   });
 
@@ -237,6 +247,12 @@ describe("checkBook (server-side validation)", () => {
     expect(checkBook({ title: "T", lines: [1] }).ok).toBe(false);
     const big = Array.from({ length: 400 }, () => "x".repeat(BOOK_LIMITS.maxLineChars));
     expect(checkBook({ title: "T", lines: big })).toEqual({ ok: false, error: "too-much-text" });
+    // Counted as stored: JSON escapes make a control character 6 bytes.
+    const escaped = Array.from({ length: 40 }, () => "\u0001".repeat(BOOK_LIMITS.maxLineChars));
+    expect(checkBook({ title: "T", lines: escaped })).toEqual({
+      ok: false,
+      error: "too-much-text",
+    });
   });
   it("round-trips the stored meta", () => {
     const r = checkBook({
@@ -256,6 +272,14 @@ describe("checkBook (server-side validation)", () => {
     ]);
     expect(meta?.author).toBe("A");
     expect(parseBookMeta("plain text")).toBeNull();
+    // Plain-text content mimicking the shape: bad starts are dropped.
+    const fake = parseBookMeta(
+      '{"kind":"lianki-book","chapters":[{"title":"x","start":-1e300},{"title":"y","start":2},{"title":"z","start":1}],"headings":[1.5,3]}',
+    );
+    expect(fake?.chapters).toEqual([{ title: "y", start: 2 }]);
+    expect(fake?.headings).toEqual([3]);
+    expect(parseBookMeta('{"kind":"lianki-book" broken')).toBeNull();
+    expect(parseBookMeta('{"kind":"lianki-book","chapters":1}')).toBeNull();
   });
 });
 

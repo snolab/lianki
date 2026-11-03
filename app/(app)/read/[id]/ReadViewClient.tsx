@@ -29,7 +29,8 @@ function savePos(id: string, line: number) {
 
 /** Render windows: each chapter, cut into pieces of at most SECTION_LINES. */
 function sectionsOf(total: number, book?: BookMeta): number[] {
-  const starts = book?.chapters?.length ? book.chapters.map((c) => c.start) : [0];
+  const starts = (book?.chapters ?? []).map((c) => c.start).filter((s) => s < total);
+  if (!starts.length || starts[0] !== 0) starts.unshift(0);
   const out: number[] = [];
   starts.forEach((s, i) => {
     const end = i + 1 < starts.length ? starts[i + 1] : total;

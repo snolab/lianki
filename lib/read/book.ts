@@ -60,16 +60,17 @@ export function checkBook(input: unknown): BookCheck {
   if (!Array.isArray(b.lines) || b.lines.length === 0)
     return { ok: false, error: "lines are required" };
   if (b.lines.length > BOOK_LIMITS.maxLines) return { ok: false, error: "too-much-text" };
-  let bytes = 0;
   const lines: string[] = [];
   for (const l of b.lines) {
     if (typeof l !== "string") return { ok: false, error: "lines must be strings" };
     const line = l.normalize("NFC").trim().slice(0, BOOK_LIMITS.maxLineChars);
     if (!line) return { ok: false, error: "empty line" };
-    bytes += enc.encode(line).length + 4;
     lines.push(line);
   }
-  if (bytes > BOOK_LIMITS.maxTextBytes) return { ok: false, error: "too-much-text" };
+  // Measured as stored: the JSON column, escapes included (\u0001 is 6 bytes).
+  if (enc.encode(JSON.stringify(lines)).length > BOOK_LIMITS.maxTextBytes) {
+    return { ok: false, error: "too-much-text" };
+  }
 
   const rawCh = Array.isArray(b.chapters) ? b.chapters : [];
   if (rawCh.length > BOOK_LIMITS.maxChapters) return { ok: false, error: "too many chapters" };
@@ -131,7 +132,31 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
   if (!content || !content.startsWith(`{"kind":"${BOOK_KIND}"`)) return null;
   try {
     const m = JSON.parse(content) as BookMeta;
-    return m?.kind === BOOK_KIND && Array.isArray(m.chapters) ? m : null;
+    if (m?.kind !== BOOK_KIND || !Array.isArray(m.chapters)) return null;
+    // `content` of a plain-text import is free text that could mimic this
+    // shape: keep only sane, ascending chapter starts and heading indexes.
+    const chapters: BookChapter[] = [];
+    for (const c of m.chapters) {
+      const start = c?.start;
+      if (!Number.isInteger(start) || start < 0 || start > 10_000_000) continue;
+      if (chapters.length && start <= chapters[chapters.length - 1].start) continue;
+      chapters.push({
+        title: typeof c.title === "string" ? c.title : String(chapters.length + 1),
+        start,
+      });
+    }
+    const headings = Array.isArray(m.headings)
+      ? m.headings.filter((h) => Number.isInteger(h) && h >= 0)
+      : [];
+    return {
+      kind: BOOK_KIND,
+      v: 1,
+      source: "epub",
+      ...(typeof m.author === "string" ? { author: m.author } : {}),
+      ...(typeof m.lang === "string" ? { lang: m.lang } : {}),
+      chapters,
+      headings,
+    };
   } catch {
     return null;
   }
