@@ -8,6 +8,7 @@
 // never decrypted.
 
 import { BOOK_LIMITS, type BookChapter, type ParsedBook } from "@/lib/read/book";
+import { INLINE_KINDS, type InlineKind, type InlineMark } from "@/lib/read/reader-api";
 import { find, findAll, parseXml, textOf, type XmlElement } from "./xml";
 
 export interface EpubArchive {
@@ -235,11 +236,133 @@ function splitLong(text: string): string[] {
   return out;
 }
 
+// ── inline markup ───────────────────────────────────────────────────────────
+//
+// Emphasis is kept beside the plain line, never in it (docs/books-plan.md,
+// "Review units"): while a paragraph is collected, an inline element writes
+// a sentinel (Unicode noncharacters, stripped from the book's own text) at
+// its start and end; at the end the plain line is made exactly as before and
+// the sentinels become [start, end, kind] ranges into it.
+
+const INLINE_TAGS: Record<string, InlineKind> = {
+  i: "em",
+  em: "em",
+  cite: "em",
+  dfn: "em",
+  var: "em",
+  b: "strong",
+  strong: "strong",
+  sup: "sup",
+  sub: "sub",
+};
+const OPEN = 0xfdd0;
+const CLOSE = 0xfde0;
+const SENTINELS = /[\uFDD0-\uFDEF]/g;
+const ASCII_WS = new Set([" ", "\t", "\n", "\r", "\f", "\v"]);
+
+/**
+ * The plain text of a collected paragraph (exactly `clean` of it without
+ * sentinels) and its marks as offsets into that text.
+ */
+export function extractMarks(raw: string): { text: string; marks: [number, number, InlineKind][] } {
+  let out = "";
+  let space = false;
+  let queued: number[] = [];
+  const open: number[][] = INLINE_KINDS.map(() => []);
+  const marks: [number, number, InlineKind][] = [];
+  for (const ch of raw) {
+    const c = ch.charCodeAt(0);
+    if (c >= OPEN && c < OPEN + INLINE_KINDS.length) {
+      queued.push(c - OPEN);
+    } else if (c >= CLOSE && c < CLOSE + INLINE_KINDS.length) {
+      const k = c - CLOSE;
+      const q = queued.lastIndexOf(k);
+      if (q >= 0) queued.splice(q, 1);
+      else {
+        const start = open[k].pop();
+        if (start !== undefined && start < out.length)
+          marks.push([start, out.length, INLINE_KINDS[k]]);
+      }
+    } else if (ASCII_WS.has(ch)) {
+      if (out) space = true;
+    } else {
+      if (space) out += " ";
+      space = false;
+      for (const k of queued) open[k].push(out.length);
+      queued = [];
+      out += ch;
+    }
+  }
+  open.forEach((starts, k) => {
+    for (const s of starts) if (s < out.length) marks.push([s, out.length, INLINE_KINDS[k]]);
+  });
+  // `clean` trims every Unicode space (a leading no-break space too) and NFCs.
+  const lead = out.length - out.trimStart().length;
+  const trimmed = out.trim();
+  const nfc = trimmed.normalize("NFC");
+  const at = (o: number) => {
+    const t = Math.max(0, Math.min(trimmed.length, o - lead));
+    return nfc === trimmed ? t : trimmed.slice(0, t).normalize("NFC").length;
+  };
+  const text = clean(raw.replace(SENTINELS, ""));
+  if (text !== nfc) return { text, marks: [] };
+  const kept: [number, number, InlineKind][] = [];
+  for (const [a, z, k] of marks) {
+    const s = at(a);
+    const e = at(z);
+    if (e > s) kept.push([s, e, k]);
+  }
+  kept.sort((x, y) => x[0] - y[0] || y[1] - x[1]);
+  return { text, marks: kept };
+}
+
+/**
+ * Where each part of a split paragraph sits in the paragraph: part offset →
+ * paragraph offset (a part's spaces may stand for a longer run of spaces).
+ */
+function partOffsets(text: string, parts: string[]): Int32Array[] {
+  let i = 0;
+  return parts.map((part) => {
+    const pos = new Int32Array(part.length + 1);
+    while (i < text.length && /\s/.test(text[i]) && !/\s/.test(part[0] ?? "")) i++;
+    for (let j = 0; j < part.length; j++) {
+      if (text[i] !== part[j] && /\s/.test(part[j])) {
+        while (i < text.length && /\s/.test(text[i])) i++;
+        pos[j] = i;
+        continue;
+      }
+      pos[j] = i;
+      i++;
+    }
+    pos[part.length] = i;
+    return pos;
+  });
+}
+
+/** The first part offset whose paragraph offset is ≥ `o`. */
+function toPart(pos: Int32Array, o: number): number {
+  let lo = 0;
+  let hi = pos.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (pos[mid] < o) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 class Collector {
   lines: string[] = [];
   headings: number[] = [];
+  marks: InlineMark[] = [];
+  /** Lines that continue a paragraph after a <br>. */
+  breaks: number[] = [];
+  /** Lines that continue a long paragraph split here. */
+  continues: number[] = [];
   bytes = 0;
   private buf = "";
+  private afterBr = false;
+  private paraStart = 0;
   private heading = 0;
   /** Marks waiting for the next line: they start there. */
   private pending: number[] = [];
@@ -252,16 +375,51 @@ class Collector {
   }
 
   text(s: string) {
-    this.buf += s;
+    this.buf += s.replace(SENTINELS, "");
+  }
+
+  open(kind: InlineKind) {
+    this.buf += String.fromCharCode(OPEN + INLINE_KINDS.indexOf(kind));
+  }
+
+  close(kind: InlineKind) {
+    this.buf += String.fromCharCode(CLOSE + INLINE_KINDS.indexOf(kind));
+  }
+
+  /** A block starts or ends: the next line is a new paragraph. */
+  block() {
+    this.flush();
+    this.afterBr = false;
+    this.paraStart = this.lines.length;
+  }
+
+  br() {
+    this.flush();
+    this.afterBr = true;
   }
 
   flush() {
-    const text = clean(this.buf);
+    const { text, marks } = extractMarks(this.buf);
     this.buf = "";
     if (!text) return;
-    for (const part of splitLong(text)) {
+    const parts = splitLong(text);
+    const pos = parts.length > 1 ? partOffsets(text, parts) : null;
+    for (let p = 0; p < parts.length; p++) {
+      const part = parts[p];
       for (const id of this.pending) this.resolved.set(id, this.lines.length);
       this.pending = [];
+      const line = this.lines.length;
+      if (p > 0) this.continues.push(line);
+      else if (this.afterBr && line > this.paraStart) this.breaks.push(line);
+      for (const [a, z, k] of marks) {
+        if (!pos) {
+          this.marks.push([line, a, z, k]);
+          continue;
+        }
+        const s = toPart(pos[p], a);
+        const e = toPart(pos[p], z);
+        if (e > s) this.marks.push([line, s, Math.min(e, part.length), k]);
+      }
       if (this.heading > 0) this.headings.push(this.lines.length);
       this.lines.push(part);
       this.bytes += this.enc.encode(part).length + 4;
@@ -281,15 +439,18 @@ class Collector {
       const id = c.attrs.id ?? c.attrs.name;
       const block = BLOCK.has(c.name);
       const isHeading = /^h[1-6]$/.test(c.name);
-      if (block) this.flush();
+      if (block) this.block();
       if (id && marksById.has(id)) for (const m of marksById.get(id)!) this.mark(m);
       if (c.name === "br") {
-        this.flush();
+        this.br();
         continue;
       }
       if (isHeading) this.heading++;
+      const inline = block ? undefined : INLINE_TAGS[c.name];
+      if (inline) this.open(inline);
       this.walk(c, marksById);
-      if (block) this.flush();
+      if (inline) this.close(inline);
+      if (block) this.block();
       if (isHeading) this.heading--;
     }
   }
@@ -406,7 +567,7 @@ export async function parseEpub(zip: EpubArchive): Promise<ParsedBook> {
     if (!toc.length) col.mark(docMark);
     const body = find(doc, "body") ?? doc;
     col.walk(body, marksById);
-    col.flush();
+    col.block();
     if (!toc.length && col.lines.length > before) {
       const firstHeading = col.headings.find((h) => h >= before);
       const docTitle = find(doc, "title");
@@ -445,6 +606,9 @@ export async function parseEpub(zip: EpubArchive): Promise<ParsedBook> {
     lines: col.lines,
     chapters: starts.slice(0, BOOK_LIMITS.maxChapters),
     headings: col.headings,
+    marks: col.marks.slice(0, BOOK_LIMITS.maxMarks),
+    breaks: col.breaks,
+    continues: col.continues,
   };
 }
 

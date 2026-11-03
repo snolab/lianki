@@ -104,7 +104,7 @@ async function pass(name, contextOptions) {
     (await page.evaluate(() => localStorage.getItem("lk:words-voice-mode"))) === "1",
     "turning it on is kept in prefs (lk:words-voice-mode, synced as words.voiceMode)",
   );
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.locator("[data-words-settings-close]").click(); // a modal sheet: its ✕ closes it
 
   const badge = page.locator("[data-voice-mode]");
   await page.waitForFunction(

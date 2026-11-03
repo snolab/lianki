@@ -24,6 +24,8 @@ import {
   cleanSpeaker,
   type ChatContext,
   cleanContext,
+  type SttScene,
+  cleanScene,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 import { cleanProofs } from "./speaker-proof";
@@ -247,6 +249,8 @@ export type PageMessage =
       wakeReason?: WakeReason;
       /** Attached with the + menu: the page selection and where (cleanContext's limits). */
       context?: ChatContext;
+      /** A voice line's page and screen text (cleanScene): what its polish may draw on. */
+      scene?: SttScene;
     }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
@@ -507,6 +511,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
     const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
     const context = cleanContext(m.context);
+    const scene = m.source === "stt" ? cleanScene(m.scene) : undefined;
     return {
       type: "chat",
       id,
@@ -520,6 +525,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
         ? { wakeReason: m.wakeReason }
         : {}),
       ...(context ? { context } : {}),
+      ...(scene ? { scene } : {}),
     };
   }
   if (m.type === "page-error") return parsePageError(m);

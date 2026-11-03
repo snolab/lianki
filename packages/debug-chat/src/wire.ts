@@ -103,6 +103,12 @@ export type ChatMessage = {
    * lines only; checked by cleanContext, so it is never more than its limits.
    */
   context?: ChatContext;
+  /**
+   * Where a voice line was spoken: the page's path and title and the text on
+   * its screen (cleanScene). Only on `source: "stt"` lines; what the agent's
+   * polish may draw on (polish.ts), so it fixes words from context, not guesses.
+   */
+  scene?: SttScene;
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -581,6 +587,38 @@ export type ChatContext = {
   title?: string;
   host?: string;
 };
+
+/**
+ * Most characters of a voice line's screen text: the same bound as a page
+ * selection (MAX_SELECTION), the other text a line carries from its page.
+ */
+export const MAX_SCENE_SCREEN = MAX_SELECTION;
+
+/** Where a voice line was spoken (ChatMessage.scene): path (no query), title, screen text. */
+export type SttScene = { path?: string; title?: string; screen?: string };
+
+/** An SttScene from the wire, or undefined: known keys only, each bounded. */
+export function cleanScene(raw: unknown): SttScene | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const text = (v: unknown, max: number) =>
+    typeof v === "string"
+      ? v
+          .replace(/[\u0000-\u001f\u007f]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, max)
+      : "";
+  const path = text(r.path, MAX_CONTEXT_PATH).split(/[?#]/)[0]!.trim();
+  const title = text(r.title, MAX_CONTEXT_TITLE);
+  const screen = text(r.screen, MAX_SCENE_SCREEN);
+  const out: SttScene = {
+    ...(path.startsWith("/") ? { path } : {}),
+    ...(title ? { title } : {}),
+    ...(screen ? { screen } : {}),
+  };
+  return Object.keys(out).length ? out : undefined;
+}
 
 /** A ChatContext from the wire, or undefined: known keys only, each bounded; no selection, none. */
 export function cleanContext(raw: unknown): ChatContext | undefined {

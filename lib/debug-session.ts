@@ -1,5 +1,6 @@
 import { isSessionTag, isUserId, sessionTag } from "@/lib/dev-eval";
 import { isOwner } from "@/lib/owner";
+import { isFlagKey } from "@/lib/flags";
 
 /**
  * Is the owner's sign-in session with this tag still live? Asked by
@@ -60,4 +61,18 @@ export function rateLimiter(max: number, windowMs: number, now: () => number = D
     }
     return ++n <= max;
   };
+}
+
+/**
+ * One feature flag, straight from D1 (`feature_flags`; lib/flags-store.ts
+ * keeps the cached path for requests). Registry keys only; no DB, or a key
+ * not in lib/flags.ts, is false. Only exactly 1 is on. Throws on a D1 error.
+ */
+export async function flagLive(db: SessionDb | null | undefined, key: unknown): Promise<boolean> {
+  if (!db || !isFlagKey(key)) return false;
+  const { results } = await db
+    .prepare("SELECT enabled FROM feature_flags WHERE key = ?")
+    .bind(key)
+    .all<{ enabled: number }>();
+  return results[0]?.enabled === 1;
 }

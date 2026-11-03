@@ -248,6 +248,18 @@ const check = (cond, msg) => {
   console.log(`${cond ? "✓" : "✗"} ${msg}`);
   if (!cond) ok = false;
 };
+// Settings is a modal sheet (SettingsSheet): the toolbar's button opens it,
+// its ✕ closes it (the scrim covers the button while it is open).
+async function toggleSettings(pg) {
+  const sheet = pg.locator("[data-words-settings]");
+  if (await sheet.count()) {
+    await pg.locator("[data-words-settings-close]").click();
+    await sheet.waitFor({ state: "detached", timeout: 5000 });
+  } else {
+    await pg.getByRole("button", { name: "Settings" }).click();
+    await sheet.waitFor({ timeout: 5000 });
+  }
+}
 
 try {
   await page.goto(`${BASE}/sign-in`, { waitUntil: "networkidle" });
@@ -505,21 +517,24 @@ try {
   // The URL keeps the list; a refresh lands back in it.
   check(/[?&]list=/.test(page.url()), `the open list is in the URL: ${new URL(page.url()).search}`);
   // Settings live in a panel of switches, and are remembered across a refresh.
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.getByRole("switch", { name: "Show all meanings" }).click();
   await page.reload({ waitUntil: "networkidle" });
   await rows.first().waitFor({ timeout: 15000 });
   check((await rows.count()) > 0, "a refresh lands back in the list");
   check(!(await blurred(5)), "Show all meanings is remembered across a refresh");
-  await page.keyboard.press("e"); // back off, for the checks below
-  check(await blurred(5), "E turns it off again");
-
   // The open Settings panel is UI state of this tab (docs/ui-state.md): it
   // is still open after the refresh.
   check(
     await page.getByRole("switch", { name: "Server voice" }).isVisible(),
     "the Settings panel stays open across a refresh (sessionStorage)",
   );
+  // A modal sheet: the study keys rest while it is open, so close it first.
+  await page.keyboard.press("e");
+  check(!(await blurred(5)), "the study keys rest while the Settings sheet is open");
+  await toggleSettings(page);
+  await page.keyboard.press("e"); // back off, for the checks below
+  check(await blurred(5), "E turns it off again");
   // Where the reader was is this tab's UI state too: scrolled down, a
   // refresh reopens at the same word; /words with no ?list= reopens the list.
   {
@@ -571,12 +586,13 @@ try {
   }
   // The server voice is the default (browser voices can mislead): moving to
   // a word plays the server's recording (stubbed: no AI call, nothing audible).
+  await toggleSettings(page);
   check(
     (await page.getByRole("switch", { name: "Server voice" }).getAttribute("aria-checked")) ===
       "true",
     "Server voice is on by default",
   );
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.keyboard.press("s");
   await page
     .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
@@ -584,9 +600,9 @@ try {
   check((await page.evaluate(() => window.__played.length)) > 0, "Server voice plays server audio");
   // Server voice off, and no browser voice for the language: still the
   // server, never the OS's default voice (a Japanese voice reading French).
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.getByRole("switch", { name: "Server voice" }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.evaluate(() => {
     window.__played.length = 0;
     window.__spoken.length = 0;
@@ -600,9 +616,9 @@ try {
     voiceless[0] === 0 && voiceless[1] > 0,
     `no browser voice for the language: the server speaks, not the OS default (spoken ${voiceless[0]}, played ${voiceless[1]})`,
   );
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
   await page.getByRole("switch", { name: "Server voice" }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await toggleSettings(page);
 
   // Hints follow the input: a keyboard was used, so key hints, no gestures.
   // In the help strip: the nav island's first-visit tip repeats the hint,
@@ -679,8 +695,10 @@ try {
     });
   // The installed app has no address bar: seven quick taps on the Settings
   // button toggle the debug log instead (the stats line stays selectable text).
+  // While the sheet is open its scrim covers the button: those taps land on
+  // the scrim (and still count), so they are clicked through to its place.
   const gear = page.getByRole("button", { name: "Settings" });
-  for (let k = 0; k < 7; k++) await gear.click();
+  for (let k = 0; k < 7; k++) await gear.click({ force: true });
   check((await page.locator("[data-debug-badge]").count()) === 1, "seven taps turn debug on");
   {
     // Users know debug mode as their "Learning Partner" (docs/dev-debug-widget.md).
@@ -696,7 +714,7 @@ try {
       (await page.locator("[data-debug-proto]").count()) === 1,
     "debug mode links the slip prototype (and nothing else)",
   );
-  for (let k = 0; k < 7; k++) await gear.click();
+  for (let k = 0; k < 7; k++) await gear.click({ force: true });
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
   // The same hidden switch on every page: ten quick taps on your own name in
   // the profile menu (the menu stays open between taps).
@@ -1090,7 +1108,7 @@ try {
       await mrows.first().waitFor({ timeout: 15000 });
       if (variant === "native") {
         // The experimental switch, under its own heading in Settings.
-        await m.getByRole("button", { name: "Settings" }).click();
+        await toggleSettings(m);
         check(
           (await m.locator("[data-experimental]").innerText()).includes("It may change or go away"),
           `${tag} Settings has an Experimental section with its note`,
@@ -1101,7 +1119,7 @@ try {
           `${tag} New swipe is off by default`,
         );
         await sw.click();
-        await m.getByRole("button", { name: "Settings" }).click();
+        await toggleSettings(m);
         await m.locator('[data-swipe="native"]').first().waitFor({ timeout: 5000 });
         check(
           (await m.evaluate(() => localStorage.getItem("lk:swipe-ab"))) === "native" &&
@@ -1408,7 +1426,8 @@ try {
       const after = await mStatus(3);
       check(after !== before, `${tag} a sideways drag grades (${before} → ${after})`);
       // An undo right after a swipe (undoing it) is logged against the variant.
-      await m.getByRole("button", { name: "Undo" }).click();
+      // The toolbar has no Undo button (owner, 2026-11-03): Z undoes.
+      await m.keyboard.press("z");
       const undoRow = await m.evaluate(() =>
         JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]")
           .map((r) => r.params)
@@ -1422,7 +1441,7 @@ try {
       // gives the grade a swipe right gave, the reveal and the help strip
       // swap, and telemetry tags it. Off again for the checks below.
       {
-        await m.getByRole("button", { name: "Settings" }).click();
+        await toggleSettings(m);
         const msw = m.getByRole("switch", { name: "Mirror swipe sides" });
         const map = () => m.locator("[data-swipe-mirror-map]").innerText();
         const map0 = await map();
@@ -1440,7 +1459,7 @@ try {
             map1.includes("→ Hard / Again"),
           `${tag} the switch flips the mapping at once, and is remembered (${map1})`,
         );
-        await m.getByRole("button", { name: "Settings" }).click();
+        await toggleSettings(m);
         const sides = await m.evaluate(() =>
           [...document.querySelectorAll('[data-reveal-slot="good"]')].map((e) =>
             e.getAttribute("data-reveal-side"),
@@ -1464,10 +1483,10 @@ try {
             row.params.includes("mirror=1"),
           `${tag} mirrored, a swipe left grades as a swipe right did, tagged (${JSON.stringify(row)})`,
         );
-        await m.getByRole("button", { name: "Undo" }).click();
-        await m.getByRole("button", { name: "Settings" }).click();
+        await m.keyboard.press("z");
+        await toggleSettings(m);
         await msw.click();
-        await m.getByRole("button", { name: "Settings" }).click();
+        await toggleSettings(m);
         check(
           (await m.evaluate(() => localStorage.getItem("lk:words-swipe-mirror"))) === "0",
           `${tag} the mirror turns off again`,
@@ -1657,7 +1676,7 @@ try {
 
       if (variant === "native") {
         // Full screen: the API where there is one, else the Add to Home Screen hint.
-        await m.getByRole("button", { name: "Settings" }).click();
+        await toggleSettings(m);
         await m.getByRole("switch", { name: "Full screen" }).click();
         await m.waitForTimeout(300);
         const fsOn = await m.evaluate(() => !!document.fullscreenElement);
@@ -1666,6 +1685,7 @@ try {
           fsOn || hint > 0,
           `phone: the full screen button works (${fsOn ? "fullscreen" : "hint"})`,
         );
+        await toggleSettings(m);
       }
       const order = await revealOrder(m, variant);
       check(
@@ -1995,8 +2015,7 @@ try {
         pageFits(o) && o.gap >= 0 && o.gap < 4,
         `${tag} 414×848 + safe area: the page is exactly the window, first word under the toolbar (${JSON.stringify(o)})`,
       );
-      const gear = w.getByRole("button", { name: "Settings" });
-      await gear.click();
+      await toggleSettings(w);
       await w.waitForTimeout(400);
       o = await layout();
       check(
@@ -2007,13 +2026,83 @@ try {
         o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
         `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
       );
-      await gear.click();
+      await toggleSettings(w);
       await w.waitForTimeout(400);
       o = await layout();
       check(
         !o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
         `${tag} settings closed: the first word is still right under the toolbar (${JSON.stringify(o)})`,
       );
+      // Settings is a modal sheet (SettingsSheet, owner 2026-11-03): bounded by
+      // the visible viewport, its body scrolls inside itself to the last row,
+      // the page never scrolls, focus goes back to the button. Short phones,
+      // both ways round, both schemes. The toolbar has no Undo button.
+      check(
+        (await w.locator("[data-words-top]").getByRole("button", { name: "Undo" }).count()) === 0,
+        `${tag} the toolbar has no Undo button (Z / M, Esc and voice undo)`,
+      );
+      for (const [vw, vh] of [
+        [360, 640],
+        [640, 360],
+      ]) {
+        await w.setViewportSize({ width: vw, height: vh });
+        await w.waitForTimeout(300);
+        await toggleSettings(w);
+        await w.waitForTimeout(400);
+        const fit = await w.evaluate(() => {
+          const panel = document.querySelector("[data-words-settings]");
+          const body = panel.querySelector("[data-words-settings-body]");
+          body.scrollTop = body.scrollHeight;
+          const p = panel.getBoundingClientRect();
+          const last = body.lastElementChild.getBoundingClientRect();
+          const b = body.getBoundingClientRect();
+          return {
+            modal:
+              panel.getAttribute("role") === "dialog" &&
+              panel.getAttribute("aria-modal") === "true",
+            panelTop: Math.round(p.top),
+            panelBottom: Math.round(p.bottom),
+            lastBottom: Math.round(last.bottom),
+            bodyBottom: Math.round(b.bottom),
+            innerH: innerHeight,
+            scrolls: body.scrollHeight > body.clientHeight ? body.scrollTop > 0 : true,
+            overscroll: getComputedStyle(body).overscrollBehaviorY,
+          };
+        });
+        // (WebKit's mobile emulation has no wheel: the body was scrolled to its
+        // end above; overscroll-behavior: contain keeps the page from following.)
+        await w.waitForTimeout(200);
+        const pageY = await w.evaluate(() => Math.round(scrollY));
+        check(
+          fit.modal &&
+            fit.panelTop >= 0 &&
+            fit.panelBottom <= fit.innerH &&
+            fit.lastBottom <= fit.bodyBottom + 1 &&
+            fit.scrolls &&
+            fit.overscroll === "contain" &&
+            pageY === 0,
+          `${tag} ${vw}×${vh}: the Settings sheet fits the screen and scrolls to its last row (${JSON.stringify({ ...fit, pageY })})`,
+        );
+        if (process.env.QA_SHOTS)
+          for (const colorScheme of ["light", "dark"]) {
+            await w.emulateMedia({ colorScheme });
+            await w.screenshot({
+              path: `${process.env.QA_SHOTS}/settings-sheet-${variant}-${vw}x${vh}-${colorScheme}.png`,
+            });
+          }
+        await w.keyboard.press("Escape");
+        await w.locator("[data-words-settings]").waitFor({ state: "detached", timeout: 5000 });
+        check(
+          await w.evaluate(() => document.activeElement?.getAttribute("aria-label") === "Settings"),
+          `${tag} ${vw}×${vh}: Esc closes the sheet and focus returns to the Settings button`,
+        );
+      }
+      await w.emulateMedia({ colorScheme: null });
+      await w.setViewportSize({ width: 414, height: 848 });
+      // Fresh layout for the swipe checks below, as before the resizes.
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(800);
       if (variant === "native") {
         // At rest the face covers the label strip; a completed swipe (the
         // touch sequence iOS gives: touchstart, pointercancel as the scroller

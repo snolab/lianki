@@ -74,8 +74,8 @@
 :root,
 .lk-fs-chat,
 .lk-fs-cards {
-  --text-xs: calc(.75rem * var(--lk-fs-k, 1));
-  --text-sm: calc(.875rem * var(--lk-fs-k, 1));
+  --text-xs: calc(0.75rem * var(--lk-fs-k, 1));
+  --text-sm: calc(0.875rem * var(--lk-fs-k, 1));
   --text-base: calc(1rem * var(--lk-fs-k, 1));
   --text-lg: calc(1.125rem * var(--lk-fs-k, 1));
   --text-xl: calc(1.25rem * var(--lk-fs-k, 1));
@@ -883,17 +883,26 @@ html.lk-page-lock .min-h-screen {
 html.lk-paper-scrolls body {
   background: var(--background);
 }
-/* Settings: a glass sheet that drops below the toolbar and scrolls itself. */
-.lk-words-sheet {
-  z-index: 21;
-  /* Nearly opaque: the rows under it must not read through its text. */
+/* Settings (/words, SettingsSheet): a bottom sheet on a phone, a centred
+ * dialog from 40rem up. Bounded by the visible viewport (its container), less
+ * the header and the notch on a phone; the body scrolls inside it. */
+.lk-settings-panel {
+  /* Nearly opaque, and blurred: the rows under it must not read through its
+   * text. A modal holds the list still, so the blur is painted once. */
   background: var(--glass-bg-solid);
-  /* No blur: at 0.9 alpha it barely shows, and this is the largest glass
-   * (a third of a phone screen) — every repaint under it re-blurred it. */
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  max-height: calc(100% - 3.5rem - env(safe-area-inset-top));
+  animation: lk-sheet-in 240ms var(--min-jerk) both;
+}
+@media (min-width: 40rem) {
+  .lk-settings-panel {
+    max-height: 100%;
+    animation: lk-fade-in 160ms linear both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-settings-panel {
+    animation: none;
+  }
 }
 /* Embed mode hides the header: the toolbar moves up into its place. */
 html[data-embed] [data-words-top] {

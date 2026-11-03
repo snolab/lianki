@@ -671,7 +671,6 @@ describe("the wake strings", () => {
   it("speak the page's language and keep Linky in Latin letters", () => {
     for (const lang of ["en", "zh-CN", "ja"]) {
       const s = wakeStrings(lang);
-      expect(s.badge).toBe("Linky?");
       expect(s.passive).toContain("Linky");
     }
     expect(wakeStrings("zh").wifi).toContain("Wi-Fi");

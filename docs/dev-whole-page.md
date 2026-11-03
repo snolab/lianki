@@ -283,6 +283,13 @@ For the owner only, decided on the server (`devSwitchFor`,
   page puts a small **blue dot** on the profile menu's button (screen
   readers: "Preview build"). No top-bar badge (owner,
   2026-11-03 14:44 JST: "改成我 profile dropdown 上一个小蓝点，然后点开菜单就能看到它写的").
+- It is the menu's **only** preview control. Live view
+  ([live-view.md](live-view.md): the page stays on lianki.com, only the
+  widget and islands come from the Mac) used to be a second switch,
+  「实时预览 ⇄ 正常」; it is now a small **Dev parts** chip (「开发版部件」) on a
+  second line of the same row, shown on lianki.com only while a live-view
+  pointer is stored or the chip is on (owner, 2026-11-03 20:00 JST: "两个
+  『预览』的 Switch，有什么区别吗？").
 - Strings: `app/components/dev-switch.content.ts`, 16 locales, each key with
   its context line.
 
