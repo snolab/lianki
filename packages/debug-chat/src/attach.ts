@@ -113,6 +113,9 @@ export type ElLike = {
   nodeType?: number;
 };
 
+/** The chat's own elements: its box and an embed's shadow host. */
+export const CHAT_FENCE = "[data-debug-chat], [data-lk-chat-host]";
+
 /** Marks a part of a page whose text is never captured (any page may use it). */
 export const SENSITIVE = "[data-sensitive], [data-lk-sensitive]";
 const SENSITIVE_AUTOCOMPLETE = /password|one-time-code|cc-|csc/i;
@@ -139,7 +142,10 @@ export type SelectionDoc = {
     anchorNode: ElLike | null;
     focusNode: ElLike | null;
     toString(): string;
+    getRangeAt?(i: number): { intersectsNode(n: unknown): boolean };
   } | null;
+  /** The excluded elements a selection must not cross (the DOM's). */
+  querySelectorAll?(selector: string): ArrayLike<unknown>;
   addEventListener(type: string, f: (e: { target: unknown }) => void, capture?: boolean): void;
   removeEventListener(type: string, f: (e: { target: unknown }) => void, capture?: boolean): void;
 };
@@ -167,6 +173,14 @@ export function readSelection(d: Pick<SelectionDeps, "doc" | "inChat">): string 
   if (!sel || !sel.rangeCount || sel.isCollapsed) return "";
   if (d.inChat(sel.anchorNode) || d.inChat(sel.focusNode)) return null;
   if (isSensitive(elementOf(sel.anchorNode)) || isSensitive(elementOf(sel.focusNode))) return null;
+  // Nor anything it spans: a selection from before a sensitive part (or the
+  // chat) to after it would carry that text in toString().
+  const fenced = d.doc.querySelectorAll?.(`${SENSITIVE}, ${CHAT_FENCE}`);
+  if (fenced?.length && sel.getRangeAt)
+    for (let i = 0; i < sel.rangeCount; i++) {
+      const r = sel.getRangeAt(i);
+      for (let j = 0; j < fenced.length; j++) if (r.intersectsNode(fenced[j])) return null;
+    }
   return sel.toString();
 }
 

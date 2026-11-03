@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ADD_ITEMS_EVENT,
   ATTACH_KINDS,
+  CHAT_FENCE,
   type AddItem,
   type PageSelection,
   addItems,
@@ -22,7 +23,7 @@ type Memory = ReturnType<typeof createSelectionMemory>;
 const MEMORY = "__lkPageSelection";
 
 /** The chat's own elements: its box (and anything portalled with the mark) and an embed's shadow host. */
-const CHAT_SELECTOR = "[data-debug-chat], [data-lk-chat-host]";
+const CHAT_SELECTOR = CHAT_FENCE;
 function inChat(node: unknown): boolean {
   const n = node as (Node & { closest?: (s: string) => Element | null }) | null;
   if (!n || typeof n !== "object") return false;

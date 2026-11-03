@@ -172,6 +172,28 @@ function docOf(active: ElLike): SelectionDoc {
   };
 }
 
+describe("a selection spanning a fenced part", () => {
+  it("is never read", () => {
+    const fence = {};
+    const sel = (crosses: boolean) => ({
+      rangeCount: 1,
+      isCollapsed: false,
+      anchorNode: { nodeType: 3, parentElement: { nodeType: 1 } },
+      focusNode: { nodeType: 3, parentElement: { nodeType: 1 } },
+      toString: () => "before SECRET after",
+      getRangeAt: () => ({ intersectsNode: (n: unknown) => crosses && n === fence }),
+    });
+    const doc = (crosses: boolean): SelectionDoc => ({
+      ...docOf(null as never),
+      activeElement: null,
+      getSelection: () => sel(crosses),
+      querySelectorAll: () => [fence],
+    });
+    expect(readSelection({ doc: doc(true), inChat: () => false })).toBeNull();
+    expect(readSelection({ doc: doc(false), inChat: () => false })).toBe("before SECRET after");
+  });
+});
+
 describe("oneLine", () => {
   it("collapses a selection's whitespace for the chip", () => {
     expect(oneLine("  a\n\n b\tc ")).toBe("a b c");
