@@ -12,6 +12,8 @@ export interface ReadMaterial {
   content?: string; // Direct content for small materials (<32KB)
   /** When it first passed (95% of its running words known); set once. */
   passedAt?: Date;
+  /** The book hash of its plain lines (lib/read/units.ts bookHash); D1, set at import or on next open. */
+  contentHash?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +43,7 @@ type ReadMaterialRow = {
   r2_key: string | null;
   content: string | null;
   passed_at?: string | null;
+  content_hash?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -54,6 +57,7 @@ function rowToMaterial(row: ReadMaterialRow): ReadMaterial {
     r2Key: row.r2_key ?? undefined,
     content: row.content ?? undefined,
     passedAt: row.passed_at ? new Date(row.passed_at) : undefined,
+    contentHash: row.content_hash ?? undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -66,6 +70,7 @@ export async function saveReadMaterial(
   title: string,
   content: string,
   lines: string[],
+  contentHash?: string,
 ): Promise<ReadMaterial> {
   const now = new Date();
   const large = Buffer.byteLength(content, "utf8") >= GRIDFS_THRESHOLD;
@@ -77,8 +82,8 @@ export async function saveReadMaterial(
     await getD1()
       .prepare(
         `INSERT INTO read_materials
-           (id, user_id, title, lines, r2_key, content, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, user_id, title, lines, r2_key, content, content_hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -87,6 +92,7 @@ export async function saveReadMaterial(
         JSON.stringify(lines),
         r2Key ?? null,
         large ? null : content,
+        contentHash ?? null,
         now.toISOString(),
         now.toISOString(),
       )
@@ -98,6 +104,7 @@ export async function saveReadMaterial(
       lines,
       r2Key,
       content: large ? undefined : content,
+      contentHash,
       createdAt: now,
       updatedAt: now,
     };
@@ -289,4 +296,27 @@ export async function markReadMaterialPassed(
     .bind(materialId, userId)
     .first<{ passed_at: string | null }>();
   return row?.passed_at ? new Date(row.passed_at) : null;
+}
+
+/**
+ * The user's material with exactly these lines (same book hash, or no hash
+ * yet and the same stored lines), newest first; null if none. D1 only: the
+ * same EPUB imported again upgrades that book in place (docs/books-plan.md,
+ * "Review units").
+ */
+export async function findReadMaterialByText(
+  userId: string,
+  contentHash: string,
+  lines: string[],
+): Promise<ReadMaterial | null> {
+  if (dbBackend() !== "d1") return null;
+  const row = await getD1()
+    .prepare(
+      `SELECT * FROM read_materials
+       WHERE user_id = ? AND (content_hash = ? OR (content_hash IS NULL AND lines = ?))
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(userId, contentHash, JSON.stringify(lines))
+    .first<ReadMaterialRow>();
+  return row ? rowToMaterial(row) : null;
 }

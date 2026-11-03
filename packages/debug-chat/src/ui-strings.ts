@@ -325,8 +325,6 @@ export function localSttStrings(
  * nothing is transcribed or sent until it hears it.
  */
 export type WakeStrings = {
-  /** Under the mic icon while passive (at most 6 characters): the word it waits for. */
-  badge: string;
   /** The mic button's label and tooltip while passive: what to do to talk again. */
   passive: string;
   /** The same while the on-device spotter downloads (the first time only, ~25 MB). */
@@ -338,21 +336,18 @@ export type WakeStrings = {
 };
 const WAKE: Record<"en" | "zh" | "ja", WakeStrings> = {
   en: {
-    badge: "Linky?",
     passive: "Waiting for “Linky”: say it, then talk, or tap",
     loading: "Getting the wake word ready…",
     failed: "Wake word unavailable: listening to everything",
     wifi: "Wake word downloads on Wi-Fi (25 MB): listening to everything",
   },
   zh: {
-    badge: "Linky?",
     passive: "等你叫“Linky”：叫一声再说，或点一下",
     loading: "正在准备唤醒词…",
     failed: "唤醒词不可用，照常听所有声音",
     wifi: "唤醒词需连 Wi-Fi 下载（25 MB），先照常听所有声音",
   },
   ja: {
-    badge: "Linky?",
     passive: "「Linky」待ち：呼んでから話すか、タップしてください",
     loading: "ウェイクワードを準備中…",
     failed: "ウェイクワードが使えません。すべて聞き取ります",
