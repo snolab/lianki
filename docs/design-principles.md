@@ -54,6 +54,37 @@ normalisation). No `if (lang === "…")` branches; a new language is added by
 adding data, not code. Features shown for "a language" (add all, frequency
 bands, …) exist for every language the data supports.
 
+## Chrome steps back while you read (proposal, 2026-11-03)
+
+Owner: "梳理一下缩小规则". Proposed rule set (decisions A–D open in Slack); today's
+behaviour per surface is summarised in the Slack thread of 2026-11-03.
+
+- **One intent signal.** The person's own scroll toward more content means
+  reading: chrome steps back. A deliberate scroll back, reaching the top, a
+  route change, or a tap on the reduced form brings it back. Stopping is not
+  a signal. Programmatic scrolls (follow-the-line, anchoring), scrolls inside
+  overlays (chat log, tree, sheets) and horizontal gestures (swipe to grade)
+  never count; tell user scrolls from input events.
+- **Three levels: full → reduced → hidden.** Reduced always leaves something
+  to tap back (the island's capsule, the chat's mark and mic, one line).
+  Hidden only for the keyboard and modal sheets.
+- **The keyboard:** everything except the surface being typed into hides; that
+  one lifts above the keyboard. One shared detector (visual viewport).
+- **Room as a share of the screen,** not pixels: optional overlays (help, tips,
+  frontier lines) go first when the content would lose most of the screen.
+- **The person owns open/minimized** for the chat (and the sidebar);
+  automatic reduction only moves an open chat between full and last line.
+- **Height decides, not width:** a short screen (phone in landscape) is a
+  reading surface: island as capsule, top strips reduced, no sidebar over
+  the content.
+- **The reserve follows the level:** `--lk-bottom-reserve` equals what the
+  overlay covers at its current level.
+- **Words:** "reduced" (automatic) and "minimized" (the person's choice) are
+  different states; don't call both "compact".
+- **/read:** window scroll, no inner scroller; island as capsule (owner
+  decision) and top strip reduced while reading; play pill at the thumb;
+  playback follow and swipe-to-grade never change the chrome.
+
 ### Accessibility and contrast
 
 - Text on glass must keep at least 4.5:1 contrast against the worst plausible content behind it. Use the page ink colour plus a halo (`text-shadow` in the page colour), and test over light and dark content.
