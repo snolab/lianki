@@ -5,6 +5,8 @@ import { useIntlayer } from "next-intlayer";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { isoDay, longDate } from "@/lib/dates";
+import type { WordsSummary } from "@/lib/read/progress";
+import { BookRing, WordCountText } from "./BookWords";
 
 export interface ReadMaterial {
   id: string;
@@ -13,6 +15,8 @@ export interface ReadMaterial {
   lines: string[];
   /** From the list API: the count, without the lines themselves. */
   lineCount?: number;
+  /** Word count and the reader's progress (signed in only). */
+  words?: WordsSummary;
   createdAt: string;
   updatedAt: string;
 }
@@ -100,6 +104,7 @@ export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
         return;
       }
       const saved = await res.json();
+      // The reader's header shows the scan summary of what was imported.
       router.push(`/read/${saved.id}`);
     } catch (err) {
       console.error("EPUB import failed:", err);
@@ -298,9 +303,19 @@ export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
                 <h3 className="font-medium truncate">{material.title}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {material.lineCount ?? material.lines.length} lines &middot;{" "}
+                  {material.words && (
+                    <span className="tabular-nums" data-testid="read-row-words">
+                      <WordCountText words={material.words} /> &middot;{" "}
+                    </span>
+                  )}
                   {longDate(material.updatedAt)}
                 </p>
               </Link>
+              {material.words && (
+                <Link href={`/read/${material.id}`} className="ms-2" tabIndex={-1}>
+                  <BookRing words={material.words} />
+                </Link>
+              )}
               <button
                 onClick={() => handleDelete(material.id)}
                 className="ml-4 p-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400"

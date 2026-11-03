@@ -7,7 +7,10 @@
 // reader with its title, author and chapter picker; only one section of lines
 // is in the DOM; next-chapter moves; the position survives a reload; a
 // DRM-protected EPUB is refused with the message; another account cannot read
-// the book; the book is deletable.
+// the book; the book is deletable. Words (lib/read/words.ts): the reader's
+// header shows the scan summary (counts adding up to the distinct words, the
+// unrecognised list on tap) and the coverage ring; the list row shows the
+// word count and the ring.
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import JSZip from "jszip";
@@ -65,6 +68,49 @@ check(
 const rendered = await page.locator('[id^="line-"]').count();
 check(rendered > 0 && rendered <= 200, `one section rendered (${rendered} lines in the DOM)`);
 
+// The scan summary of the imported book's words.
+{
+  const scan = page.locator('[data-testid="read-scan"]');
+  await scan.waitFor({ timeout: 15000 });
+  // Exact counts follow the runtime's ICU segmenter (the Worker's V8 and
+  // bun's JSC differ by a few words), so the check is a range; the numbers
+  // are printed. Bun's own are pinned in unit/read-words.test.ts.
+  const m = /([\d,]+) words · ([\d,]+) different/.exec(await scan.innerText());
+  const tokens = Number(m?.[1].replace(/,/g, ""));
+  const distinct = Number(m?.[2].replace(/,/g, ""));
+  check(
+    tokens > 4800 && tokens < 5000 && distinct > 1250 && distinct < 1300,
+    `header word count (${tokens} running, ${distinct} distinct)`,
+  );
+  await page.locator('[data-testid="read-scan-mastered"]').waitFor({ timeout: 30000 });
+  const num = async (t) =>
+    Number((await page.locator(`[data-testid="read-scan-${t}"]`).innerText()).replace(/\D/g, ""));
+  const names = await page.locator('[data-testid="read-scan-names"]').count();
+  const namesN = names
+    ? Number((await page.locator('[data-testid="read-scan-names"]').innerText()).replace(/\D/g, ""))
+    : 0;
+  const parts = [
+    await num("mastered"),
+    await num("learning"),
+    await num("new"),
+    await num("unrecognised"),
+  ];
+  const sum = parts.reduce((a, b) => a + b, 0) + namesN;
+  check(
+    sum === distinct,
+    `scan buckets add up to the distinct words (${parts.join("+")}+${namesN} = ${sum})`,
+  );
+  check(parts[2] > 500, `most words are new: in a word list (${parts[2]})`);
+  const ring = page.locator('[data-testid="read-scan"] [data-testid="read-ring"]');
+  const cov = Number(await ring.getAttribute("data-coverage"));
+  check(cov > 0 && cov < 20, `coverage ring: names only, no cards yet (${cov}%)`);
+  await page.locator('[data-testid="read-scan-toggle"]').click();
+  const unrec = page.locator('[data-testid="read-scan-unrecognised"] li');
+  check((await unrec.count()) === parts[3], `unrecognised words listed (${await unrec.count()})`);
+  await page.screenshot({ path: join(OUT, "read-scan-light.png"), fullPage: true });
+  await page.locator('[data-testid="read-scan-toggle"]').click();
+}
+
 await page.getByRole("button", { name: "Next chapter" }).click();
 await page.waitForTimeout(300);
 const sel = await page.locator('[data-testid="read-chapters"] select').inputValue();
@@ -88,8 +134,21 @@ check(
   const p = await dark.newPage();
   await p.goto(`/read/${id}`, { waitUntil: "networkidle" });
   await p.getByRole("heading", { name: "The Gift of the Magi" }).waitFor();
+  await p.locator('[data-testid="read-scan-mastered"]').waitFor({ timeout: 30000 });
   await p.screenshot({ path: join(OUT, "read-book-dark.png") });
+  await p.goto("/read", { waitUntil: "networkidle" });
+  await p.screenshot({ path: join(OUT, "read-list-dark.png") });
   await dark.close();
+}
+
+// The list row: word count and ring.
+{
+  await page.goto("/read", { waitUntil: "networkidle" });
+  const row = page.locator('[data-testid="read-row-words"]').first();
+  await row.waitFor({ timeout: 15000 });
+  check(/[\d,]+ words · [\d,]+ different/.test(await row.innerText()), "list row word count");
+  check((await page.locator('[data-testid="read-ring"]').count()) >= 1, "list row ring");
+  await page.screenshot({ path: join(OUT, "read-list-words-light.png") });
 }
 
 // DRM: the fixture with an AES-encrypted chapter listed in encryption.xml.

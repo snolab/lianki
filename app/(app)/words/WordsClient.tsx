@@ -16,6 +16,7 @@ import {
   type Requeue,
 } from "@/lib/words/requeue";
 import { progressPercent } from "@/lib/words/progress";
+import { ProgressRingSvg } from "@/app/components/progress-ring";
 import { voiceQuality } from "@lianki/debug-chat/wire";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
 import { AEC_EVENT, aecOn, applyAec } from "@lianki/debug-chat/aec";
@@ -1867,8 +1868,6 @@ function ProgressRing({ progress, total }: { progress: number; total: number }) 
   if (pct === null) return null;
   const label = fill(text.progressTitle.value, { pct, total });
   const shown = new Intl.NumberFormat(String(locale), { style: "percent" }).format(pct / 100);
-  // r = 8 in a 20×20 box: the circumference, for the dash.
-  const c = 2 * Math.PI * 8;
   return (
     <span
       className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums"
@@ -1877,28 +1876,7 @@ function ProgressRing({ progress, total }: { progress: number; total: number }) 
       role="img"
       data-progress={pct}
     >
-      <svg viewBox="0 0 20 20" className="h-5 w-5 -rotate-90" aria-hidden>
-        <circle
-          cx="10"
-          cy="10"
-          r="8"
-          fill="none"
-          strokeWidth="2.5"
-          className="stroke-[oklch(0.5_0_0/0.18)] dark:stroke-[oklch(0.8_0_0/0.18)]"
-        />
-        {pct > 0 && (
-          <circle
-            cx="10"
-            cy="10"
-            r="8"
-            fill="none"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeDasharray={`${(c * pct) / 100} ${c}`}
-            className="stroke-[oklch(0.58_0.14_155)] dark:stroke-[oklch(0.76_0.14_155)]"
-          />
-        )}
-      </svg>
+      <ProgressRingSvg pct={pct} />
       <span className="min-w-[2.6em] text-end opacity-80">{shown}</span>
     </span>
   );

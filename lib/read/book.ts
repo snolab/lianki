@@ -6,6 +6,10 @@
 // (`BookMeta`): author, language, and chapters as start indexes into `lines`.
 // Later book-as-goal work (chunked progressive reading, word/phrase
 // extraction) builds on chapters + paragraphs from here; no migration needed.
+// `words` (lib/read/words.ts) is the book's word count, made at import and
+// backfilled on first read for books imported before it existed.
+
+import { countWords, parseWordStats, type WordStats } from "./words";
 
 export const BOOK_KIND = "lianki-book";
 
@@ -24,6 +28,8 @@ export interface BookMeta {
   chapters: BookChapter[];
   /** Indexes into `lines` that are headings (h1–h6), for styling. */
   headings?: number[];
+  /** Every distinct word with its count (lib/read/words.ts). */
+  words?: WordStats;
 }
 
 export interface ParsedBook {
@@ -124,6 +130,7 @@ export function bookMetaOf(book: ParsedBook): BookMeta {
     ...(book.lang ? { lang: book.lang } : {}),
     chapters: book.chapters,
     headings: book.headings,
+    words: countWords(book.lines, book.lang),
   };
 }
 
@@ -148,6 +155,7 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
     const headings = Array.isArray(m.headings)
       ? m.headings.filter((h) => Number.isInteger(h) && h >= 0)
       : [];
+    const words = parseWordStats(m.words);
     return {
       kind: BOOK_KIND,
       v: 1,
@@ -156,6 +164,7 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
       ...(typeof m.lang === "string" ? { lang: m.lang } : {}),
       chapters,
       headings,
+      ...(words ? { words } : {}),
     };
   } catch {
     return null;

@@ -1,7 +1,8 @@
 # Books: a public-domain library you can actually read (plan)
 
 Owner's vision, 2026-11-03 15:15–16:33 JST. Design only; nothing here is
-built yet except EPUB import on /read (#448).
+built yet except EPUB import on /read (#448) and a book's word count and
+progress (below).
 
 ## Why
 
@@ -27,6 +28,43 @@ _Le Petit Prince_ in French) is a test case, never a product default.
 5. Progress shows on the roadmap: **% read** and **% of the book's running
    words you have mastered**. "看懂" = all read and coverage ≥ 98% (Hu &
    Nation 2000, the threshold for reading without a dictionary).
+
+## Built: a book's words and progress (2026-11-03)
+
+Owner, 17:01–17:18 JST: show the word count besides the line count, and his
+progress counted in words, as if the book were a deck; at import, how many
+words were found and how many are learned, new and unrecognised; the pass
+mark is 95% (the research's measure, "我们用同样口径统计"), it earns the
+book a ✓, and the day it first passed is kept.
+
+- **Counting** (`lib/read/words.ts`, once at import, stored as `words` in the
+  book's meta in `read_materials.content`; books imported before it are
+  counted on first read and saved back, so nothing needs re-importing).
+  Words are `Intl.Segmenter` word segments in the book's language (EPUB
+  metadata, or guessed for pasted text), NFKC, lowercased, French/Italian
+  elisions and English `'s` stripped.
+- **Coverage, the ring and the pass:** (running words mastered + running
+  words that are names) ÷ running words. Left out entirely: numbers,
+  punctuation, single letters (not CJK characters), web addresses and other
+  junk. Names count as known, as Hu & Nation (2000) did: a word never written
+  in lower case and capitalised mid-sentence at least once (not in headings
+  or capitals; none for German or caseless scripts). **Mastered** is a
+  /words deck's: a card, in any of the reader's lists in that language,
+  whose interval is a year or more (or the list's shorter cap). Unrecognised
+  words stay in the denominator as unknown. Passes at **95%**; the first
+  pass is stored in `read_materials.passed_at` and never overwritten (the ✓
+  fades with its date if coverage drops again). Decks do not record a pass
+  time yet; they could reuse the same idea.
+- **Scan summary** (reader's header, distinct words): mastered, learning (a
+  card, not mastered), new (no card, but in one of our word lists or the
+  reader's imported decks), unrecognised (in none; the list opens on tap),
+  plus names. Which public lists hold a word is decided on the device from
+  the catalogs it caches for /words.
+- **Approximation:** surface forms, with cheap folds (plural -s/-es/-x,
+  -ed, -ing, French -e) tried only when the folded form is itself a card or
+  entry. Japanese and Chinese depend on the segmenter's dictionary. Real
+  lemmas come with the extraction step below.
+- One card query per request, scoped to the signed-in user; no polling.
 
 ## Sources and copyright
 

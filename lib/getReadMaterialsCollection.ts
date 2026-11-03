@@ -10,6 +10,8 @@ export interface ReadMaterial {
   contentId?: ObjectId; // GridFS file ID for large content (MongoDB backend)
   r2Key?: string; // R2 object key for large content (D1 backend)
   content?: string; // Direct content for small materials (<32KB)
+  /** When it first passed (95% of its running words known); set once. */
+  passedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +40,7 @@ type ReadMaterialRow = {
   lines: string;
   r2_key: string | null;
   content: string | null;
+  passed_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -50,6 +53,7 @@ function rowToMaterial(row: ReadMaterialRow): ReadMaterial {
     lines: JSON.parse(row.lines || "[]"),
     r2Key: row.r2_key ?? undefined,
     content: row.content ?? undefined,
+    passedAt: row.passed_at ? new Date(row.passed_at) : undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -221,4 +225,68 @@ export async function getReadMaterialById(
 
   const collection = getReadMaterialsCollection(userId);
   return collection.findOne({ _id: new ObjectId(materialId), userId });
+}
+
+/**
+ * Replace a material's content in place (a backfill: the book's word count
+ * added to its meta). Moves between inline and R2 as the size requires, and
+ * leaves `updated_at` alone so the list order does not change. D1 only:
+ * MongoDB is the frozen rollback copy, so there it is a no-op.
+ */
+export async function replaceReadMaterialContent(
+  userId: string,
+  materialId: string,
+  content: string,
+): Promise<void> {
+  if (dbBackend() !== "d1") return;
+  const large = Buffer.byteLength(content, "utf8") >= GRIDFS_THRESHOLD;
+  const row = await getD1()
+    .prepare("SELECT r2_key FROM read_materials WHERE id = ? AND user_id = ?")
+    .bind(materialId, userId)
+    .first<{ r2_key: string | null }>();
+  if (!row) return;
+  if (large) {
+    const key = row.r2_key ?? `${R2_PREFIX}${materialId}`;
+    await getBlobs().put(key, content);
+    await getD1()
+      .prepare("UPDATE read_materials SET r2_key = ?, content = NULL WHERE id = ? AND user_id = ?")
+      .bind(key, materialId, userId)
+      .run();
+    return;
+  }
+  await getD1()
+    .prepare("UPDATE read_materials SET r2_key = NULL, content = ? WHERE id = ? AND user_id = ?")
+    .bind(content, materialId, userId)
+    .run();
+  if (row.r2_key) {
+    try {
+      await getBlobs().delete(row.r2_key);
+    } catch {
+      // a stray object costs little; the row no longer points at it
+    }
+  }
+}
+
+/**
+ * Record the first time a material passed. Only when none is recorded yet:
+ * the first pass stands, whatever happens to the coverage later. Returns the
+ * date that is recorded now (the existing one if it was already set).
+ */
+export async function markReadMaterialPassed(
+  userId: string,
+  materialId: string,
+  at: Date,
+): Promise<Date | null> {
+  if (dbBackend() !== "d1") return null;
+  await getD1()
+    .prepare(
+      "UPDATE read_materials SET passed_at = ? WHERE id = ? AND user_id = ? AND passed_at IS NULL",
+    )
+    .bind(at.toISOString(), materialId, userId)
+    .run();
+  const row = await getD1()
+    .prepare("SELECT passed_at FROM read_materials WHERE id = ? AND user_id = ?")
+    .bind(materialId, userId)
+    .first<{ passed_at: string | null }>();
+  return row?.passed_at ? new Date(row.passed_at) : null;
 }
