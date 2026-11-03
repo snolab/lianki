@@ -141,7 +141,7 @@ export function gridWeeks(today = new Date(), weeks = STATS_WEEKS): (string | nu
 /**
  * Ink level 0..steps of a day's mark, against the reader's own busy days (the
  * 90th percentile of studied days), so a light learner's grid is not all faint
- * and a heavy one's not all full. 4 steps for the seals, ink and notches; 5
+ * and a heavy one's not all full, on a log scale. 4 steps for the seals, ink and notches; 5
  * for the strokes of 正.
  */
 export function inkScale(days: Map<string, DayStats>, steps = 4): (words: number) => number {
@@ -154,7 +154,10 @@ export function inkScale(days: Map<string, DayStats>, steps = 4): (words: number
     : 1;
   return (words) => {
     if (words <= 0) return 0;
-    return Math.min(steps, Math.max(1, Math.ceil((steps * words) / Math.max(1, top))));
+    // Logarithmic (owner, 2026-11-03 22:58 JST: "确认一下你有没有用对数"): a few big
+    // days must not wash out the rest, and small days stay visible.
+    const k = Math.log1p(words) / Math.log1p(Math.max(1, top));
+    return Math.min(steps, Math.max(1, Math.ceil(steps * k)));
   };
 }
 

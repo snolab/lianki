@@ -101,9 +101,13 @@ describe("ink scale: against the reader's own busy days", () => {
     expect(scale(80)).toBe(4);
     expect(scale(500)).toBe(4);
   });
-  test("five steps for 正", () => {
+  test("five steps for 正, on a log scale: small days stay visible", () => {
     const five = inkScale(days([["a", 50]]), 5);
-    expect([10, 20, 30, 40, 50].map(five)).toEqual([1, 2, 3, 4, 5]);
+    const levels = [1, 2, 5, 10, 25, 50].map(five);
+    expect(levels).toEqual([...levels].sort((a, b) => a - b)); // never decreasing
+    expect(five(1)).toBe(1);
+    expect(five(5)).toBeGreaterThanOrEqual(3); // a tenth of the top is already mid-ink
+    expect(five(50)).toBe(5);
   });
 });
 
