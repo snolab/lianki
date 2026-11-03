@@ -22,10 +22,10 @@ export default async function DevTokensPage() {
   return (
     <main lang="zh" className="max-w-3xl mx-auto px-4 py-8 space-y-6">
       <header className="space-y-1">
-        <h1 className="font-brush text-4xl">开发服务器令牌</h1>
+        <h1 className="font-brush text-4xl">live 试用版令牌</h1>
         <p className="text-sm opacity-60">
-          只有你能看到这页。令牌让你的设备经 https://preview.lianki.com
-          打开开发服务器（用的是生产数据），
+          只有你能看到这页。令牌让你的设备经 https://preview.lianki.com 打开 live
+          试用版（试用代码，用的是生产数据），
           并自动以你的账号登录。令牌只显示一次；撤销后，用它建立的会话在 30 秒内失效。
         </p>
       </header>
