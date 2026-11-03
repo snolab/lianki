@@ -188,18 +188,30 @@ check((await page.evaluate(() => scrollY)) === yA, "the page itself did not scro
 // 3. A manual scroll during playback is not fought.
 const list = page.getByTestId("read-lines");
 await list.scrollIntoViewIfNeeded();
-const box = await list.boundingBox();
 // Slower lines, so his flick and the checks after it fit inside a few lines.
 await page.evaluate(() => (window.__lineMs = 1500));
-// A finger flick on the list (real touch events, as on his phone).
+// A finger flick on the list (real touch events, as on his phone), once the
+// page has settled and the point is really on the list.
 const cdp = await ctx.newCDPSession(page);
-await cdp.send("Input.synthesizeScrollGesture", {
-  x: Math.round(box.x + box.width / 2),
-  y: Math.round(box.y + box.height / 2),
-  yDistance: -250,
-  gestureSourceType: "touch",
-  speed: 1200,
-});
+for (let tries = 0; tries < 5; tries++) {
+  await page.waitForTimeout(400);
+  const box = await list.boundingBox();
+  const x = Math.round(box.x + box.width / 2);
+  const y = Math.round(box.y + Math.min(box.height, 300) / 2);
+  const onList = await page.evaluate(
+    ([px, py]) => !!document.elementFromPoint(px, py)?.closest('[data-testid="read-lines"]'),
+    [x, y],
+  );
+  if (!onList) continue;
+  await cdp.send("Input.synthesizeScrollGesture", {
+    x,
+    y,
+    yDistance: -250,
+    gestureSourceType: "touch",
+    speed: 1200,
+  });
+  if (await page.getByTestId("read-follow").isVisible()) break;
+}
 await page.waitForTimeout(300);
 const top = await list.evaluate((el) => el.scrollTop);
 const lineAtScroll = await current();
