@@ -3,7 +3,6 @@ import { ReaderV2 } from "./ReaderV2";
 import { authUserOrNull } from "@/app/signInEmail";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
-import { devWholePage } from "@/lib/dev-whole-page";
 import { readerPick } from "@/lib/read/reader-access";
 import { resolveReadId } from "@/lib/read/book-link";
 import { findReadMaterialIdByHash } from "@/lib/getReadMaterialsCollection";
@@ -38,7 +37,6 @@ export default async function ReadMaterialPage({
   const pick = readerPick({
     flags,
     owner: isOwner(user?.email),
-    devPreview: devWholePage(),
     dev: process.env.NODE_ENV === "development",
     query: query.reader,
   });
