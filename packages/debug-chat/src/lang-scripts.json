@@ -1,0 +1,19 @@
+{
+  "_": "Which Unicode scripts each spoken language is written in, first its own (primary) script. A script only one language uses (kana, Hangul) decides a run's language; a shared one (Han, Latin) goes by its neighbours and the message's language, else to the language whose primary script it is. Read by lang-runs.ts.",
+  "langs": {
+    "en": { "locale": "en-US", "scripts": ["Latin"] },
+    "zh": { "locale": "zh-CN", "scripts": ["Han"] },
+    "ja": { "locale": "ja-JP", "scripts": ["Hiragana", "Katakana", "Han"], "glue": ["ー"] },
+    "ko": { "locale": "ko-KR", "scripts": ["Hangul", "Han"] },
+    "ru": { "locale": "ru-RU", "scripts": ["Cyrillic"] },
+    "el": { "locale": "el-GR", "scripts": ["Greek"] },
+    "he": { "locale": "he-IL", "scripts": ["Hebrew"] },
+    "ar": { "locale": "ar-SA", "scripts": ["Arabic"] },
+    "th": { "locale": "th-TH", "scripts": ["Thai"] },
+    "hi": { "locale": "hi-IN", "scripts": ["Devanagari"] }
+  },
+  "_borrowed": "Scripts other languages' text borrows words in (an acronym, a name, a short term): a run in one of these, inside text whose language is not written in it, keeps the surrounding language unless it has at least this many words.",
+  "borrowed": { "Latin": 4 },
+  "_glueMax": "A shared-script run (Han) glued to a run another language decides (kana) joins that language only when it is at most this many characters long, so the Chinese around a Japanese word stays Chinese. Longer ones go by the text's language.",
+  "glueMax": 2
+}

@@ -41,7 +41,8 @@ import { speechRate } from "./speech-rate";
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
 import { cloudOut, cloudSkip, outMode } from "./voice-out";
 import { micAec } from "./aec";
-import { pickLang, pickVoice } from "./wire";
+import { langRuns, localeOf } from "./lang-runs";
+import { pickVoice } from "./wire";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
 import { getKey } from "./storage-keys";
 import { reportPageError } from "./page-errors";
@@ -598,12 +599,17 @@ export function createVoice(d: {
       }
       recent.push({ text, at: t });
       while (recent.length > 20) recent.shift();
-      const lang = pickLang(text);
+      // Each sentence in its language runs (a Japanese word in a Chinese
+      // reply is read with the Japanese voice, the rest with the Chinese
+      // one), played back to back: the queue never runs dry between them,
+      // so the hold and the echo guard cover the whole reply. Each sentence
+      // finds its own language: a Japanese sentence in a Chinese reply is Japanese.
       const add = sentences(text)
         .flatMap((s) => chunk(s))
-        .map((t) => ({ text: t, lang, from: 0, at: 0 }));
+        .flatMap((t) => langRuns(t))
+        .map((r) => ({ text: r.text, lang: localeOf(r.lang), from: 0, at: 0 }));
       if (!add.length) return false;
-      if (!queue.length) routeFor(lang)?.prepare?.(add[0].text, lang);
+      if (!queue.length) routeFor(add[0].lang)?.prepare?.(add[0].text, add[0].lang);
       queue.push(...add);
       next();
       emit();
