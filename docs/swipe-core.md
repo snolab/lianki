@@ -38,6 +38,14 @@ a timer, not a render). The machine then turns a sideways drag into a dead
 Tap and hold still work. `grade()` and Undo refuse it too. Before it is due,
 a re-grade or an undo withdraws the waiting copy, so no ghost comes back.
 
+## Undo
+
+The toolbar has no Undo button (owner, 2026-11-03: it sat right of Settings
+and went unused). Undo stays everywhere else: on a phone, swipe a graded slip
+again to give it another grade, or say 撤销 in voice mode; with a keyboard, Z
+or M walks back through the grades and Esc undoes the focused row. The QA
+undoes with Z (`qa-words.mjs`, `words-soak.mjs`).
+
 ## Mirrored sides
 
 Settings → **Mirror swipe sides** (owner, 2026-11-03; `lk:words-swipe-mirror`,
