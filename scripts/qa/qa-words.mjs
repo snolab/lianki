@@ -573,6 +573,16 @@ try {
     );
   }
   await shot(page, "words-desktop-graded");
+  if (process.env.QA_SHOTS) {
+    for (const scheme of ["light", "dark"]) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.keyboard.press("e");
+      await page.waitForTimeout(300);
+      await shot(page, `rows-desktop-${scheme}`);
+      await page.keyboard.press("e");
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  }
   check(
     /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(await statusOf(0)),
     `it shows when it returns: ${await statusOf(0)}`,
@@ -1361,6 +1371,18 @@ try {
         check(look.centred === 88, `${tag} each slip starts centred (scrollLeft ${look.centred})`);
       }
       await shot(m, `ab-${variant}-rest`);
+      // The taller rows with every answer shown (E), light and dark, to look at.
+      if (process.env.QA_SHOTS) {
+        for (const scheme of ["light", "dark"]) {
+          await m.emulateMedia({ colorScheme: scheme });
+          await m.keyboard.press("e");
+          await m.waitForTimeout(300);
+          await shot(m, `rows-${variant}-${scheme}`);
+          await m.keyboard.press("e");
+        }
+        await m.emulateMedia({ colorScheme: "light" });
+        await m.waitForTimeout(300);
+      }
       const blurredM = () =>
         mrows
           .nth(0)
