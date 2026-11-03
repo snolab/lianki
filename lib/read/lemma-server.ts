@@ -24,28 +24,35 @@ export async function readLemmaFile(
   assets: Assets | null = workerAssets(),
 ): Promise<string | null> {
   const path = lemmaPath(lang);
-  const r = assets
-    ? await assets.fetch(new Request(`https://assets.local${path}`)).catch(() => null)
-    : null;
-  if (r?.ok) return lemmaText(await r.arrayBuffer());
-  const { readFile } = await import("node:fs/promises");
-  const { join } = await import("node:path");
-  const b = await readFile(join(process.cwd(), "public", path)).catch(() => null);
-  return b
-    ? lemmaText(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer)
-    : null;
+  try {
+    const r = assets ? await assets.fetch(new Request(`https://assets.local${path}`)) : null;
+    if (r?.ok) return await lemmaText(await r.arrayBuffer());
+  } catch {
+    // The assets binding failed: try public/ below.
+  }
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const b = await readFile(join(process.cwd(), "public", path));
+    return await lemmaText(
+      b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer,
+    );
+  } catch {
+    return null;
+  }
 }
 
-function lemmaFile(lang: string): Promise<string | null> {
-  if (!hasLemmas(lang)) return Promise.resolve(null);
+/** The file's text, read once per isolate; a failed read is tried again next time. */
+async function lemmaFile(lang: string): Promise<string | null> {
+  if (!hasLemmas(lang)) return null;
   let p = texts.get(lang);
   if (!p) {
-    p = readLemmaFile(lang).catch(() => null);
-    // A failed read is tried again on the next request.
-    p.then((t) => t === null && texts.delete(lang));
+    p = readLemmaFile(lang);
     texts.set(lang, p);
   }
-  return p;
+  const text = await p;
+  if (text === null) texts.delete(lang);
+  return text;
 }
 
 /** The dictionary entries that a book's words need, or null (no file for the language). */
