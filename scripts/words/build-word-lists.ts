@@ -801,6 +801,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
     päästä: "to get to, reach; to get out, be let go; (postp) after, from",
     kuulostaa: "to sound (like); to listen closely",
     koski: "touched, concerned (3rd sg. past of koskea); (noun) rapids",
+    kuin: "than; as, like; as if",
+    tästä: "from this, about this (elative of tämä); from here",
   },
   ko: {
     네: "yes; your (= 너의)",

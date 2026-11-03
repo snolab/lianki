@@ -101,7 +101,7 @@ belongs to its list): new lists are appended after them.
   lemma. Hand-written backs for a few top words that Wiktionary leads with a
   rarer homograph or a usage note: ei, et, mitä, sitä, siitä, voi, kaikki,
   sitten, kyllä, kiitos, juuri, syy, jolla, pieniä, käynyt, pitää, päästä,
-  kuulostaa, koski. Examples:
+  kuulostaa, koski, kuin, tästä. Examples:
   Wiktionary usage examples, then Tatoeba Finnish sentences (CC BY 2.0 FR;
   per-sentence credits in `credits/tatoeba-fi.tsv`). No scenario phrase
   decks yet (they are hand-curated; a follow-up).
