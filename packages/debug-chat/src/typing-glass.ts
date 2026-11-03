@@ -76,3 +76,29 @@ export function typingGlassMotion(
       : "none",
   };
 }
+
+/**
+ * One frame while typing (owner, 2026-11-03: "点进输入框、对焦之后，会有一个包括
+ * 聊天记录的框框显示出来；这个时候里面那个框框就没必要继续显示了"; and "尽量减少视觉上的
+ * 嵌套数量"). While the glass is up it is the frame, so the bar's own box goes
+ * inside it: its border turns transparent (the width stays, so nothing moves),
+ * its tint and its own blur go. Caret, placeholder, mic and + stay put. At
+ * rest nothing is overridden, and the bar's resting border is back.
+ */
+export function barInGlass(shown: boolean): {
+  borderColor?: string;
+  background?: string;
+  backdropFilter?: string;
+  WebkitBackdropFilter?: string;
+} {
+  if (!shown) return {};
+  return {
+    borderColor: "transparent",
+    background: "transparent",
+    backdropFilter: "none",
+    WebkitBackdropFilter: "none",
+  };
+}
+
+/** The bar's frame fades with the glass: border and tint over the same 150 ms. */
+export const BAR_IN_GLASS_TRANSITION = `border-color ${TYPING_FADE_MS}ms ease-out, background-color ${TYPING_FADE_MS}ms ease-out`;

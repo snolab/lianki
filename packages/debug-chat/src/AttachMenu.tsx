@@ -191,7 +191,7 @@ export function AttachMenu({
       aria-label={attach ? t.attachOpen : t.attachGroupView}
       data-testid="debug-chat-attach-menu"
       style={{ background: "var(--lk-chat-menu-bg, oklch(0.99 0.004 85 / 0.97))" }}
-      className="pointer-events-auto absolute start-0 bottom-full z-10 mb-1 w-[min(17rem,100%)] overflow-hidden rounded-2xl border border-current/20 p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100"
+      className="pointer-events-auto absolute start-0 bottom-full z-10 mb-1 w-[min(17rem,100%)] overflow-hidden rounded-2xl p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100"
     >
       {attach && items.length > 0 && (
         <>
@@ -266,7 +266,7 @@ export function AttachMenu({
               )}
             </span>
             {k.soon && (
-              <span className="shrink-0 rounded-full border border-current/25 px-1.5 fs-10 leading-4 text-gray-500 dark:text-gray-400">
+              <span className="shrink-0 fs-10 leading-4 text-gray-500 dark:text-gray-400">
                 {t.attachSoon}
               </span>
             )}
@@ -340,16 +340,23 @@ export function AttachChip({
   t,
   ctx,
   onRemove,
+  flat = false,
 }: {
   t: ChatStrings;
   ctx: ChatContext;
   onRemove: () => void;
+  /** Inside the typing glass: the rail alone, no tinted box of its own (one frame). */
+  flat?: boolean;
 }) {
   return (
     <div
       data-testid="debug-chat-attached"
-      style={{ borderInlineStartColor: QUOTE_LINE, background: "oklch(0.6 0.1 250 / 0.1)" }}
-      className="pointer-events-auto mb-1 flex items-start gap-1 rounded-lg border-s-2 py-1 ps-2 pe-0.5 fs-11 leading-snug backdrop-blur"
+      data-flat={flat || undefined}
+      style={{
+        borderInlineStartColor: QUOTE_LINE,
+        background: flat ? undefined : "oklch(0.6 0.1 250 / 0.1)",
+      }}
+      className={`pointer-events-auto mb-1 flex items-start gap-1 border-s-2 py-1 ps-2 pe-0.5 fs-11 leading-snug ${flat ? "" : "rounded-lg backdrop-blur"}`}
     >
       <Quote ctx={ctx} t={t} testid="debug-chat-attached-text" />
       <button

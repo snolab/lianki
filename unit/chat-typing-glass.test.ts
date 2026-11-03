@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import {
+  BAR_IN_GLASS_TRANSITION,
   TYPING_EDGE,
   TYPING_FADE_MS,
   TYPING_FILTER,
   TYPING_SCRIM,
   TYPING_SOLID_ALPHA,
+  barInGlass,
   showTypingGlass,
   typingGlassLook,
   typingGlassMotion,
@@ -92,5 +94,28 @@ describe("the typing glass: its fade", () => {
       visibility: "hidden",
       transition: "none",
     });
+  });
+});
+
+describe("the typing glass: one frame (owner, 2026-11-03)", () => {
+  it("inside the glass the bar's own box goes: transparent border and tint, no blur", () => {
+    expect(barInGlass(true)).toEqual({
+      borderColor: "transparent",
+      background: "transparent",
+      backdropFilter: "none",
+      WebkitBackdropFilter: "none",
+    });
+  });
+  it("keeps the border's width and the radius, so nothing moves", () => {
+    const o = barInGlass(true) as Record<string, unknown>;
+    for (const k of ["borderWidth", "borderStyle", "borderRadius", "padding"])
+      expect(o[k]).toBeUndefined();
+  });
+  it("at rest overrides nothing: the resting border is back", () => {
+    expect(barInGlass(false)).toEqual({});
+  });
+  it("fades with the glass", () => {
+    expect(BAR_IN_GLASS_TRANSITION).toContain(`border-color ${TYPING_FADE_MS}ms`);
+    expect(BAR_IN_GLASS_TRANSITION).toContain(`background-color ${TYPING_FADE_MS}ms`);
   });
 });
