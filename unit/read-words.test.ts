@@ -153,6 +153,13 @@ describe("matching and coverage", () => {
     expect(hitOf("dog", "en", idx)?.mastered).toBe(false);
     expect(hitOf("cow", "en", idx)?.mastered).toBe(true);
   });
+  it("a mastered form is not hidden by a higher-scoring unmastered fold", () => {
+    const idx = cardIndex([
+      card("cats", 365, { stability: 100 }),
+      card("cat", 30, { stability: 300 }),
+    ]);
+    expect(hitOf("cats", "en", idx)?.mastered).toBe(true);
+  });
   it("the best card of any list wins; Japanese readings match", () => {
     const idx = cardIndex([card("cat", 10), card("Cat", 500)]);
     expect(hitOf("cat", "en", idx)?.mastered).toBe(true);

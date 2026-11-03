@@ -307,12 +307,18 @@ export function cardIndex(rows: CardRow[]): Map<string, CardHit> {
   return idx;
 }
 
-/** A book word's card: its own form, or a fold that is a card (the best one). */
+/**
+ * A book word's card: its own form or a fold that is a card, combined as
+ * cardIndex combines cards — the best score, mastered if any is.
+ */
 export function hitOf(w: string, lang: string, idx: Map<string, CardHit>): CardHit | null {
   let best: CardHit | null = null;
   for (const f of foldsOf(w, lang)) {
     const h = idx.get(f);
-    if (h && (!best || h.score > best.score || (h.mastered && !best.mastered))) best = h;
+    if (!h) continue;
+    best = best
+      ? { score: Math.max(best.score, h.score), mastered: best.mastered || h.mastered }
+      : h;
   }
   return best;
 }
