@@ -217,6 +217,17 @@ const CRUDE_SENSE =
   /slang|vulgar|offensive|derogatory|pejorative|obscene|profan|ethnic slur|euphemis|sexual intercourse|orgasm|homosexual|\bgay\b|prostitut|archaic|obsolete/i;
 const CRUDE_ZH = /肏|屌|鸡巴|雞巴|傻逼|傻屄|屄|婊|操你|他妈|他媽|妓|嫖|寸止|条子|雷子|帽子叔叔|淫/;
 
+/** A back with a sense repeated inside one part of speech said once (寄送發票 / 寄送发票 after conversion). */
+export function dedupeBack(back: string): string {
+  return back
+    .split("；")
+    .map((part) => {
+      const m = /^(\([a-z]+\.\) )?(.*)$/.exec(part)!;
+      return (m[1] ?? "") + [...new Set(m[2].split("，"))].join("，");
+    })
+    .join("；");
+}
+
 /** Parts of a back, joined with "；" while they fit in `maxLen` (always the first). */
 export function joinParts(parts: string[], maxLen = 48): string {
   let back = "";
@@ -232,13 +243,45 @@ export function joinParts(parts: string[], maxLen = 48): string {
  * A pronunciation from Wiktionary: the British one (UK, RP) when there is one,
  * as Chinese exam books use, else the first. Only a plain /…/ transcription.
  */
-export function wiktIpa(entries: WiktEntry[]): string {
+/**
+ * Heteronyms whose Wiktionary entries attach the leading meaning's
+ * translations to the other pronunciation's etymology.
+ */
+const IPA_FIX: Record<string, string> = { lead: "/liːd/" };
+
+export function wiktIpa(entries: WiktEntry[], back = ""): string {
+  const fix = entries[0] && IPA_FIX[entries[0].word];
+  if (fix && back.startsWith("(v.)")) return fix;
   const plain = (e: WiktEntry) => e.ipa.filter((x) => /^\/[^/]+\/$/.test(x.ipa));
+  // A heteronym follows the part of speech the back leads with: use "(v.) 用"
+  // is /juːz/, bow "(v.) 鞠躬" /baʊ/. Wiktionary gives each etymology its own
+  // pronunciation, so the first entry of that part of speech decides.
+  // Best: the entry whose translations hold the back's first meaning (lead
+  // "领导" is the verb /liːd/, not the metal /lɛd/); else the first entry of
+  // the back's first part of speech.
+  const m = /^\(([a-z]+)\.\)\s*([^，；]+)/.exec(back);
+  const first = m?.[2].trim();
+  const pos = m?.[1];
+  const bySense =
+    first &&
+    entries.find(
+      (e) =>
+        POS[e.pos] === pos &&
+        plain(e).length &&
+        e.tr.some((t) => simplified(t.w) === first && !isCrudeSense(t)),
+    );
+  if (bySense) return pick(plain(bySense));
+  const byPos = m && entries.find((e) => POS[e.pos] === m[1] && plain(e).length);
+  if (byPos) return pick(plain(byPos));
   // The entry the back leads with (the first with a Mandarin translation)
   // decides, so a heteronym gets the sound of its first meaning (lead "to
   // guide" /liːd/, not the metal /lɛd/).
   const lead = entries.find((e) => POS[e.pos] && e.tr.length && plain(e).length);
-  const all = lead ? plain(lead) : entries.flatMap(plain);
+  return pick(lead ? plain(lead) : entries.flatMap(plain));
+}
+function pick(found: { ipa: string; tags: string[] }[]): string {
+  // "/ɪjst/" (east) is a narrow regional variant, not a dictionary form
+  const all = found.filter((x) => !/ɪj|ʉw|ɛj/.test(x.ipa));
   const uk = all.find((x) => x.tags.some((t) => /^(UK|Received-Pronunciation|British)$/.test(t)));
   return (uk ?? all[0])?.ipa ?? "";
 }
@@ -346,7 +389,7 @@ export function toEntry(c: CardSource, examples: ExampleSource): ExamEntry | nul
   // a written meaning is either the only one or a reviewed fix of Wiktionary's
   const back = c.written || wiktBack(c.wikt);
   if (!back) return null;
-  const reading = wiktIpa(c.wikt);
+  const reading = wiktIpa(c.wikt, back);
   const ex = examples(c.word, c.forms);
   return { term: c.word, ...(reading ? { reading } : {}), back, ...ex };
 }
@@ -375,5 +418,5 @@ export function mergeExamIndex<T extends { id: string; lang: string; kind?: stri
  * people. Checked on whole words, case-insensitive.
  */
 const OFFENSIVE =
-  /\b(fuck\w*|shit\w*|bitch\w*|cunt\w*|dick|dicks|cock|cocks|pussy|whore\w*|slut\w*|bastard\w*|asshole\w*|arse\w*|nigg\w*|fag\w*|retard\w*|rape\w*|raping|porn\w*|sex|sexy|horny|damn\w*|goddamn|piss\w*|wank\w*|kill (yourself|myself|you|him|her)|suicide|penis\w*|vagina\w*|masturbat\w*|orgasm\w*|erection\w*|nude|naked|condom\w*|semen|sperm|testic\w*|genital\w*|anal|anus|boob\w*|tits?|nipple\w*|prostitut\w*|hooker\w*|virgin\w*|sexual\w*|lesbian\w*|gay)\b/i;
+  /\b(fuck\w*|shit\w*|bitch\w*|cunt\w*|dick|dicks|cock|cocks|pussy|whore\w*|slut\w*|bastard\w*|asshole\w*|arse\w*|nigg\w*|fag\w*|retard\w*|rape\w*|raping|porn\w*|sex|sexy|horny|damn\w*|goddamn|piss\w*|wank\w*|kill (yourself|myself|you|him|her)|suicide|penis\w*|vagina\w*|masturbat\w*|orgasm\w*|erection\w*|nude|naked|condom\w*|semen|sperm|testic\w*|genital\w*|anal|anus|boob\w*|tits?|nipple\w*|prostitut\w*|hooker\w*|virgin\w*|sexual\w*|lesbian\w*|gay|ass|asses|arse|prick\w*|escorts?|hell|bitchy|screw (you|him|her|it)|suck my|kiss my|a top|a bottom)\b/i;
 export const isOffensive = (s: string) => OFFENSIVE.test(s);

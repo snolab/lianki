@@ -6,6 +6,7 @@ import { spokenText } from "@/lib/words/spoken";
 import {
   byFrequency,
   csvRows,
+  dedupeBack,
   exchangeOf,
   isCrudeSense,
   isHeadword,
@@ -78,6 +79,11 @@ describe("wiktBack", () => {
   it("is read aloud from its first sense, without the part of speech", () => {
     expect(meaningText("(v.) 放弃，遗弃；(n.) 工具")).toBe("放弃");
   });
+  it("dedupeBack says a repeated sense once", () => {
+    expect(dedupeBack("(n.) 发票；(v.) 寄送发票，寄送发票，发货单")).toBe(
+      "(n.) 发票；(v.) 寄送发票，发货单",
+    );
+  });
   it("simplified() keeps a single form as is", () => {
     expect(simplified("工具")).toBe("工具");
     expect(simplified("實施 /实施")).toBe("实施");
@@ -138,6 +144,28 @@ describe("wiktIpa", () => {
       entry("noun", [["鉛 /铅", "metal"]], [{ ipa: "/lɛd/", tags: ["UK"] }]),
     ];
     expect(wiktIpa(lead)).toBe("/liːd/");
+    // a written back picks the entry that holds its first meaning, then its part of speech
+    const metalFirst = [
+      entry("noun", [["鉛 /铅", "metal"]], [{ ipa: "/lɛd/", tags: [] }]),
+      entry("verb", [["領導 /领导", "guide"]], [{ ipa: "/liːd/", tags: [] }]),
+    ];
+    expect(wiktIpa(metalFirst, "(v.) 领导，带领")).toBe("/liːd/");
+    const use = [
+      entry("noun", [], [{ ipa: "/juːs/", tags: [] }]),
+      entry("verb", [], [{ ipa: "/juːz/", tags: [] }]),
+    ];
+    expect(wiktIpa(use, "(v.) 用，使用")).toBe("/juːz/");
+    const east = [
+      entry(
+        "noun",
+        [],
+        [
+          { ipa: "/ɪjst/", tags: ["UK"] },
+          { ipa: "/iːst/", tags: [] },
+        ],
+      ),
+    ];
+    expect(wiktIpa(east)).toBe("/iːst/");
   });
   it("is never read aloud", () => {
     expect(spokenText({ term: "abandon", reading: "/əˈbændən/", back: "放弃" }, "en", false)).toBe(
@@ -229,6 +257,15 @@ describe("cards", () => {
     expect(isOffensive("Send me your résumé.")).toBe(false);
     expect(isOffensive("Dickens wrote it.")).toBe(false);
     expect(isOffensive("Why is masturbation so stigmatized?")).toBe(true);
+    for (const x of [
+      "Kiss my ass!",
+      "I'm a top.",
+      "Tom's a bottom.",
+      "What a prick!",
+      "Rot in hell!",
+    ])
+      expect(isOffensive(x)).toBe(true);
+    expect(isOffensive("The box is at the bottom.")).toBe(false);
   });
 });
 

@@ -40,6 +40,7 @@ import * as OpenCC from "opencc-js";
 import { ExamplePicker, type Sent } from "./examples";
 import {
   byFrequency,
+  dedupeBack,
   isOffensive,
   mergeExamIndex,
   parseEcdict,
@@ -202,7 +203,7 @@ const glossPath = join(import.meta.dir, "exam-glosses.tsv");
 const written = parseGlosses(readFileSync(glossPath, "utf8"));
 
 /** Sentences found on cards in review: untrue as fact, or crude in context. */
-const SKIP_EXAMPLES = new Set(["Evolution is a lie.", "I'm a bottom.", "Go to hell!"]);
+const SKIP_EXAMPLES = new Set(["Evolution is a lie.", "I provide escorts."]);
 // Tatoeba English sentences with their ids and authors; none that offend.
 type Credit = { id: string; by?: string };
 const credit = new Map<string, Credit>();
@@ -293,7 +294,8 @@ for (const d of DECKS) {
       AFFIXES.has(word) || obscure
         ? null
         : toEntry({ word, wikt: w, written: written.get(word), forms: r?.forms ?? [] }, examples);
-    if (e) entries.push({ ...e, back: toSimplified(e.back) });
+    // OpenCC keeps 著 (土著, 著名); in 着急 it is the traditional 着
+    if (e) entries.push({ ...e, back: dedupeBack(toSimplified(e.back).replace(/著急/g, "着急")) });
     else {
       missing.push(word);
       if (w.length && !AFFIXES.has(word) && !obscure)
