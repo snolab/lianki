@@ -773,6 +773,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             className={`lk-glass lk-glass-bleed-top absolute inset-x-0 top-0 overflow-hidden border-b border-[var(--glass-line)] transition-[height] duration-200 ease-out motion-reduce:transition-none ${
               chrome.reduced ? "h-7 cursor-pointer" : "h-11"
             }`}
+            // Text runs right under it: the near-opaque glass keeps it legible
+            // (design-principles: 4.5:1 over the worst content behind).
+            style={{ background: "var(--glass-bg-solid)" }}
             data-reduced={chrome.reduced ? "" : undefined}
             onClick={() => chrome.reduced && setChrome((c) => chromeStep(c, { type: "tap" }))}
           >
