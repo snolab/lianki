@@ -783,6 +783,11 @@ agent, so the agent knows which page a friend means. A friend's first
 message ever also sends the listener `{type:"friend-new", userId, email}`;
 the agent tells the owner in Slack.
 
+**AI replies.** With `partner.ai-reply` on, every non-owner thread is also
+answered by DeepSeek on Workers AI, and ordinary signed-in users get the chat
+without debug mode; a lane's reply in the meantime wins:
+[partner-ai.md](partner-ai.md).
+
 **Limits.** A friend may send 30 messages per 10 minutes; past that the hub
 drops the message and tells the page ("Too many messages…"). The owner has
 no limit. User ids must match `[A-Za-z0-9_-]{1,64}`, so no thread's storage

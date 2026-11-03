@@ -97,9 +97,30 @@ const pageLabel = () => {
  * back to the page, debug turned on) — no timers that touch the network.
  */
 /** The chat's user-facing strings, localized by the root layout (learning-partner.content.ts). */
-export type PartnerStrings = ChatStrings & { unavailable: string };
+export type PartnerStrings = ChatStrings & {
+  unavailable: string;
+  /** The AI replies on a friend's thread (docs/partner-ai.md): empty-log hint, status, two warnings. */
+  aiHint: string;
+  aiStatus: string;
+  aiLimit: string;
+  aiFailed: string;
+};
 
-export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {}) {
+/**
+ * `partnerOpen`: the root layout found `partner.ai-reply` on and a signed-in
+ * user who is not the owner — the chat connects on every page, not only in
+ * debug mode (docs/partner-ai.md). Remote eval still needs debug mode.
+ */
+export function DebugEval({
+  strings,
+  partnerOpen = false,
+}: { strings?: Partial<PartnerStrings>; partnerOpen?: boolean } = {}) {
+  const openRef = useRef(partnerOpen);
+  openRef.current = partnerOpen;
+  const stringsRef = useRef(strings);
+  stringsRef.current = strings;
+  /** The hub said this friend's thread is answered by the AI. */
+  const [friendAi, setFriendAi] = useState(false);
   const [live, setLive] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [state, setState] = useState<HubState | null>(null);
@@ -187,6 +208,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
   useEffect(() => {
     if (typeof WebSocket === "undefined") return;
     let ws: WebSocket | null = null;
+    /** The chat is wanted: debug mode, or the Learning Partner opened to users (partnerOpen). */
+    const chatOn = () => debugOn() || openRef.current;
     let idle: ReturnType<typeof setTimeout> | undefined;
     let hideToast: ReturnType<typeof setTimeout> | undefined;
     const opened = new WeakSet<WebSocket>();
@@ -301,6 +324,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           reporter.disable();
           unhookErrors();
           setFriend(msg.status === "blocked" ? "blocked" : "open");
+          setFriendAi((msg as { ai?: unknown }).ai === true);
           if (msg.status === "blocked") setChat(true);
           return;
         }
@@ -310,6 +334,15 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
         }
         if (msg.type === "page-ended") {
           setWarning("Ended from another page. It reconnects when you come back to this page.");
+          return;
+        }
+        if (msg.type === "ai-limit" || msg.type === "ai-failed") {
+          const s = stringsRef.current;
+          const line =
+            msg.type === "ai-limit"
+              ? (s?.aiLimit ?? "Your {name} is resting for today. Try again tomorrow.")
+              : (s?.aiFailed ?? "No reply this time. Please try again in a moment.");
+          setWarning(line.replaceAll("{name}", s?.name || "Learning Partner"));
           return;
         }
         if (msg.type === "rate-limited") {
@@ -422,10 +455,11 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     const disconnect = () => {
       clearTimeout(idle);
       reporter.detach();
-      if (!debugOn()) {
+      if (!chatOn()) {
         islandStore.setGrant(null);
         setChat(false);
         setFriend(null);
+        setFriendAi(false);
         setOwner(false);
         friendRef.current = false;
         // Debug mode off: no hooks, and a fresh reporter for next time.
@@ -447,7 +481,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     // Never inside another site's frame: no cookie socket, no pairing or Allow UI
     // a parent could clickjack (lib/frame-context.ts). The hub refuses too.
     const wanted = () =>
-      document.visibilityState === "visible" && debugOn() && frameContext() !== "foreign";
+      document.visibilityState === "visible" && chatOn() && frameContext() !== "foreign";
     /**
      * Tell the hub how this window is doing, while the socket is still open:
      * hidden (screen off, app in the background) keeps a recording session
@@ -467,7 +501,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       vis(document.visibilityState === "visible" ? "visible" : "hidden");
       clearTimeout(idle);
       if (wanted()) connect();
-      else if (!debugOn()) disconnect();
+      else if (!chatOn()) disconnect();
       else if (ws) idle = setTimeout(disconnect, IDLE_MS);
     };
     const onStorage = (e: StorageEvent) => {
@@ -613,6 +647,11 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   const isFriend = friend !== null;
+  // A friend's thread answered by the AI says so: in the empty log and the status line.
+  const friendStrings =
+    isFriend && friendAi && strings?.aiHint
+      ? { ...strings, hint: strings.aiHint, listening: strings.aiStatus ?? strings.listening }
+      : strings;
   // The owner's tree: the bundled outline, with live progress laid over it.
   const ownerTree = useMemo(
     () =>
@@ -659,7 +698,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
-          strings={strings}
+          strings={friendStrings}
           treeSource={owner && !isFriend ? ownerTree : undefined}
           treeRepo="snolab/lianki"
           agentAvatar={AGENT_AVATAR}
