@@ -131,9 +131,50 @@ export function nextUnit(u: Unit, hit: Hit, ctx: ComboCtx): Unit {
  * selected unit, one level up; otherwise a new combo at the smallest unit.
  */
 export function comboClick(prev: Combo | null, hit: Hit, at: number, ctx: ComboCtx): Combo {
-  if (prev && at - prev.at >= 0 && at - prev.at <= ctx.interval && unitHolds(prev.unit, hit, ctx))
-    return { unit: nextUnit(prev.unit, hit, ctx), at };
+  if (comboContinues(prev, hit, at, ctx)) return { unit: nextUnit(prev!.unit, hit, ctx), at };
   return { unit: firstUnit(hit, ctx), at };
+}
+
+/** Whether a click carries `prev`'s combo on (within the interval, inside its unit). */
+export function comboContinues(prev: Combo | null, hit: Hit, at: number, ctx: ComboCtx): boolean {
+  return (
+    !!prev && at - prev.at >= 0 && at - prev.at <= ctx.interval && unitHolds(prev.unit, hit, ctx)
+  );
+}
+
+// ── Saying the selected unit (owner, 2026-11-03 22:12 / 22:13 JST) ─────
+
+/**
+ * What a click of the combo does to the voice. "点击选择某个词的时候，只要朗读那个
+ * 词就可以了" / "连点三下，如果是选中句子的话，那就朗读整个句子": each level says
+ * exactly the unit it selected — the word, the phrase, the sentence, the
+ * paragraph — never its item or the book on from there. A chapter or the book
+ * is too long to say on a tap: nothing (their card's "read from here" plays
+ * the book). A book playback running then is paused and left paused (he
+ * resumes with ▶; the player's current item stays).
+ *
+ * Timing: the first click says its unit at once (inside the gesture, so a
+ * phone lets it sound). Each further click of the combo cuts what is being
+ * said and says its larger unit only once the combo has rested for the
+ * double-click interval, so a fast triple-click does not stutter through
+ * every level on its way to the paragraph.
+ */
+export type SayUnit = Extract<Unit, { kind: "word" | "phrase" | "sentence" | "para" }>;
+
+export interface TapVoice {
+  /** Say this unit (null: say nothing). */
+  say: SayUnit | null;
+  /** Wait the double-click interval first; another click of the combo cancels it. */
+  wait: boolean;
+  /** Pause the book playback. */
+  pause: boolean;
+}
+
+/** Every click cuts what the last one said; this says what comes next. */
+export function tapVoice(next: Unit, continued: boolean, playing: boolean): TapVoice {
+  if (next.kind === "chapter" || next.kind === "book")
+    return { say: null, wait: false, pause: false };
+  return { say: next, wait: continued, pause: playing };
 }
 
 // ── Deep links ──────────────────────────────────────────────────────────

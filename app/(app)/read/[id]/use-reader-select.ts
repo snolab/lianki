@@ -23,6 +23,7 @@ import {
   type Hit,
   type Unit,
   comboClick,
+  comboContinues,
 } from "@/lib/read/reader-select";
 
 const HL = "lk-sel";
@@ -121,6 +122,12 @@ export function useReaderSelect(o: {
   ctx: ComboCtx;
   /** A fling is still moving: a tap then stops it, it selects nothing. */
   scrolling: () => boolean;
+  /**
+   * A click of the combo selected `unit`; `continued`: it carried the last
+   * click's combo on. Called inside the click, so a voice started here has
+   * the gesture.
+   */
+  onTap?: (unit: Unit, continued: boolean) => void;
 }): ReaderSelect {
   const [unit, setUnit] = useState<Unit | null>(null);
   const [low, setLow] = useState(false);
@@ -129,6 +136,8 @@ export function useReaderSelect(o: {
   ctxRef.current = o.ctx;
   const scrollingRef = useRef(o.scrolling);
   scrollingRef.current = o.scrolling;
+  const onTapRef = useRef(o.onTap);
+  onTapRef.current = o.onTap;
   const flash = useRef(false);
   const placed = useRef(false);
 
@@ -174,8 +183,11 @@ export function useReaderSelect(o: {
         if (combo.current) clear();
         return;
       }
-      const next = comboClick(combo.current, h, downAt || e.timeStamp, ctxRef.current);
+      const at = downAt || e.timeStamp;
+      const continued = comboContinues(combo.current, h, at, ctxRef.current);
+      const next = comboClick(combo.current, h, at, ctxRef.current);
       combo.current = next;
+      onTapRef.current?.(next.unit, continued);
       if (e.detail > 1) sel?.removeAllRanges();
       flash.current = false;
       // The card takes the other half of the screen from his finger, so the

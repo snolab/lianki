@@ -86,6 +86,9 @@ import {
   countSentences,
   decodeUnit,
   emptyCounts,
+  sameUnit,
+  tapVoice,
+  type SayUnit,
   sentenceOfToken,
   tokenOffset,
   tokenText,
@@ -505,10 +508,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     }),
     [chapters, chapterRange],
   );
+  /** Says what a click of the combo selected (set below, with the card's strings). */
+  const tapRef = useRef<(u: Unit, continued: boolean) => void>(() => {});
   const sel = useReaderSelect({
     listRef,
     ctx: comboCtx,
     scrolling: () => performance.now() - lastScrollAt.current < 100,
+    onTap: (u, continued) => tapRef.current(u, continued),
   });
   useBackToClose(sel.unit !== null, sel.clear);
 
@@ -848,6 +854,55 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const { locale } = useLocale();
   const [selStatus, setSelStatus] = useState<string | null>(null);
   useEffect(() => setSelStatus(null), [sel.unit]);
+
+  // ── Saying the selected unit (lib/read/reader-select.ts, tapVoice) ──
+  /** Cuts what the last tap said, or its pending say. */
+  const said = useRef<(() => void) | null>(null);
+  const [sayFail, setSayFail] = useState<{ u: Unit; why: string } | null>(null);
+  const unitSpeech = useCallback(
+    (u: SayUnit): string => {
+      if (u.kind === "para") return lineText(u.line);
+      const ss = para(u.line).sentences;
+      if (u.kind === "sentence") return ss[u.s]?.text ?? "";
+      return u.kind === "word" ? tokenText(ss, u.t, u.t) : tokenText(ss, u.t0, u.t1);
+    },
+    [para, lineText],
+  );
+  tapRef.current = (u, continued) => {
+    const v = tapVoice(u, continued, playingRef.current);
+    said.current?.();
+    said.current = null;
+    setSayFail(null);
+    // Paused, not moved: ▶ reads on from where he is.
+    if (v.pause) dispatch({ type: "stop" });
+    const target = v.say;
+    if (!target) return;
+    const text = unitSpeech(target).trim();
+    if (!text) return;
+    // In the gesture, also when the unit is said after the combo rests.
+    speaker.unlock();
+    const go = () => {
+      const stop = speaker.speak(text, lang, {
+        onend: () => {
+          if (said.current === stop) said.current = null;
+        },
+        // Never silent without saying so: the card says why.
+        onerror: (why) => {
+          if (said.current === stop) said.current = null;
+          setSayFail({ u: target, why });
+        },
+      });
+      said.current = stop;
+    };
+    if (!v.wait) return go();
+    const timer = setTimeout(() => {
+      said.current = null;
+      // ▶ was pressed meanwhile: the book has the voice.
+      if (!playingRef.current) go();
+    }, COMBO_MS);
+    said.current = () => clearTimeout(timer);
+  };
+  useEffect(() => () => said.current?.(), []);
   const view = useMemo<UnitView | null>(() => {
     const u = sel.unit;
     if (!u) return null;
@@ -1211,7 +1266,12 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             actions={actions}
             atTop={sel.low}
             bottom={`calc(env(safe-area-inset-bottom) + ${(islandOpen ? 8.5 : 4.75) + (playing && !follow ? 3 : 0)}rem)`}
-            status={selStatus}
+            status={
+              selStatus ??
+              (sayFail && sameUnit(sayFail.u, sel.unit)
+                ? `${ts.sayFailed.value} (${sayFail.why})`
+                : null)
+            }
             onClose={sel.clear}
           />
         )}
