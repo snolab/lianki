@@ -11,7 +11,7 @@
  * /api/words/stats when the picker opens. Nothing polls.
  */
 import "./stats.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { createUiStore, useUi } from "@lianki/ui-state";
 import { Icon } from "@/app/components/icons";
@@ -22,8 +22,10 @@ import {
   gridWeeks,
   inkScale,
   sealTilt,
+  shiftDay,
   streak,
   sumByDay,
+  tzName,
   tzOffset,
   type StatsTuple,
 } from "@/lib/words/stats";
@@ -69,10 +71,12 @@ export default function WordsStats({
   const look = useUi(lookStore, (s) => s.look);
   const [rows, setRows] = useState<StatsTuple[] | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
+  const captionId = useId();
 
   useEffect(() => {
     let live = true;
-    fetch(`/api/words/stats?tz=${tzOffset()}`, { credentials: "same-origin" })
+    const zone = encodeURIComponent(tzName());
+    fetch(`/api/words/stats?tz=${tzOffset()}&zone=${zone}`, { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { days?: StatsTuple[] } | null) => live && setRows(d?.days ?? []))
       .catch(() => live && setRows([]));
@@ -95,15 +99,15 @@ export default function WordsStats({
     };
   }, [days]);
   const run = rows ? streak(days, now) : null;
+  const gridDays = weeks.flat().filter((d): d is string => !!d);
+  // A streak as long as the data read goes back further than shown: "182+".
+  const runText = run === null ? null : run >= gridDays.length ? `${gridDays.length}+` : `${run}`;
   const freshToday = days.get(today)?.fresh ?? 0;
   const studied = [...days.entries()].filter(([d, v]) => v.words > 0 && d >= weeks[0][0]!).length;
-  const lastWeek = weeks
-    .flat()
-    .filter((d): d is string => !!d)
-    .slice(-7);
+  const lastWeek = gridDays.slice(-7);
 
   const summary = [
-    run !== null ? fill(text.summaryStreak.value, { n: run }) : null,
+    runText !== null ? fill(text.summaryStreak.value, { n: runText }) : null,
     rows ? fill(text.summaryToday.value, { n: freshToday }) : null,
   ]
     .filter(Boolean)
@@ -154,7 +158,7 @@ export default function WordsStats({
                 [learned, text.learned.value],
                 [freshToday, text.today.value],
                 [due, text.due.value],
-                [run ?? "–", text.streak.value],
+                [runText ?? "–", text.streak.value],
               ] as const
             ).map(([n, label]) => (
               <div key={label} className="min-w-0">
@@ -195,13 +199,29 @@ export default function WordsStats({
           <div>
             <p className="fs-11 opacity-50 mb-1">{text.range}</p>
             <Months weeks={weeks} locale={locale} />
+            {/* One tab stop: arrows move the picked day (←→ a week, ↑↓ a day),
+                Home/End jump to the first day and today; the caption says it. */}
             <div
-              role="img"
+              role="group"
+              tabIndex={0}
               aria-label={fill(text.gridLabel.value, { n: studied })}
-              className={`flex ${look === "slip" ? "gap-[3px]" : "gap-[2px]"}`}
+              aria-describedby={captionId}
+              className={`flex rounded-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.12_250)] ${look === "slip" ? "gap-[3px]" : "gap-[2px]"}`}
               onClick={(e) => {
                 const d = (e.target as HTMLElement).closest<HTMLElement>("[data-day]")?.dataset.day;
                 if (d) setPicked(d === picked ? null : d);
+              }}
+              onKeyDown={(e) => {
+                const step = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 }[e.key];
+                let next: string | null = null;
+                if (step) next = shiftDay(shown, step);
+                else if (e.key === "Home") next = gridDays[0];
+                else if (e.key === "End") next = today;
+                if (!next) return;
+                e.preventDefault();
+                if (next < gridDays[0]) next = gridDays[0];
+                if (next > today) next = today;
+                setPicked(next === today ? null : next);
               }}
             >
               {weeks.map((col, w) => (
@@ -228,7 +248,11 @@ export default function WordsStats({
               ))}
             </div>
             <div className="mt-2 flex items-center gap-2 fs-11">
-              <span className="min-w-0 flex-1 truncate opacity-70 tabular-nums" aria-live="polite">
+              <span
+                id={captionId}
+                className="min-w-0 flex-1 truncate opacity-70 tabular-nums"
+                aria-live="polite"
+              >
                 {caption}
               </span>
               <span className="opacity-50">{text.less}</span>

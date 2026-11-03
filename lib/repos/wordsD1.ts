@@ -1,4 +1,5 @@
 import { PROGRESS_SCALE_DAYS, wordScore } from "@/lib/words/progress";
+import type { OffsetSpan } from "@/lib/words/stats";
 import type { Card } from "ts-fsrs";
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
 import {
@@ -619,22 +620,35 @@ export class WordsD1Repo {
 
   /**
    * Study activity for the picker's heatmap (lib/words/stats.ts): per local
-   * day and list, the words graded and how many of them were new. `offsetMin`
-   * is the reader's UTC offset in minutes east (JST +540), so a day is theirs,
-   * not UTC's. Re-grades and undos delete their review row, so a word counts
-   * once per grade that stands.
+   * day and list, the words graded and how many of them were new. `offsets`
+   * is the reader's UTC offset in minutes east (JST +540), or its spans
+   * across DST changes (`offsetSpans`), so each review falls on the reader's
+   * own day as it was then. Re-grades and undos delete their review row, so
+   * a word counts once per grade that stands.
    */
-  async activity(since: Date, offsetMin: number): Promise<ActivityRow[]> {
-    const shift = `${offsetMin >= 0 ? "+" : "-"}${Math.abs(Math.trunc(offsetMin))} minutes`;
+  async activity(since: Date, offsets: number | OffsetSpan[]): Promise<ActivityRow[]> {
+    const spans: OffsetSpan[] =
+      typeof offsets === "number" ? [{ until: null, offset: offsets }] : offsets;
+    const shift = (m: number) => `${m >= 0 ? "+" : "-"}${Math.abs(Math.trunc(m))} minutes`;
+    const open = spans.at(-1)!;
+    const cases = spans.slice(0, -1);
+    const modifier = cases.length
+      ? `CASE ${cases.map(() => "WHEN reviewed_at < ? THEN ?").join(" ")} ELSE ? END`
+      : "?";
     const { results } = await this.db
       .prepare(
-        `SELECT substr(datetime(reviewed_at, ?), 1, 10) AS day, list_id,
+        `SELECT substr(datetime(reviewed_at, ${modifier}), 1, 10) AS day, list_id,
            COUNT(DISTINCT term) AS words,
            COUNT(DISTINCT CASE WHEN state = 0 THEN term END) AS fresh
          FROM word_reviews WHERE email = ? AND reviewed_at >= ?
          GROUP BY day, list_id`,
       )
-      .bind(shift, this.email, since.toISOString())
+      .bind(
+        ...cases.flatMap((c) => [c.until!, shift(c.offset)]),
+        shift(open.offset),
+        this.email,
+        since.toISOString(),
+      )
       .all<ActivityRow>();
     return results.map((r) => ({
       day: r.day,

@@ -7,10 +7,14 @@ import {
   dayKey,
   gridWeeks,
   inkScale,
+  offsetSpans,
   sealTilt,
+  shiftDay,
   streak,
   sumByDay,
+  tzName,
   tzOffset,
+  zoneOffset,
   type StatsTuple,
 } from "@/lib/words/stats";
 
@@ -174,4 +178,48 @@ test("seal tilt: small, stable per day; tz offset is minutes east", () => {
   for (const d of ["2026-11-01", "2026-11-02", "2026-11-03", "x"])
     expect(Math.abs(sealTilt(d))).toBeLessThanOrEqual(6);
   expect(tzOffset(new Date())).toBe(-new Date().getTimezoneOffset());
+});
+
+describe("time zones: each review on the day it had then", () => {
+  test("zone offsets, minutes east; unknown zone is null", () => {
+    expect(zoneOffset("Asia/Tokyo", new Date("2026-11-03T00:00:00Z"))).toBe(540);
+    expect(zoneOffset("UTC", new Date("2026-11-03T00:00:00Z"))).toBe(0);
+    expect(zoneOffset("Asia/Kathmandu", new Date("2026-11-03T00:00:00Z"))).toBe(345);
+    expect(zoneOffset("America/New_York", new Date("2026-07-01T00:00:00Z"))).toBe(-240);
+    expect(zoneOffset("Not/AZone", new Date())).toBeNull();
+    expect(typeof tzName()).toBe("string");
+  });
+  test("spans split at DST, to the minute", () => {
+    const since = new Date("2026-05-01T00:00:00Z");
+    const now = new Date("2026-11-03T05:00:00Z");
+    expect(offsetSpans("America/New_York", since, now)).toEqual([
+      // 1 November 2026, 02:00 EDT = 06:00 UTC
+      { until: "2026-11-01T06:00:00.000Z", offset: -240 },
+      { until: null, offset: -300 },
+    ]);
+    expect(offsetSpans("Asia/Tokyo", since, now)).toEqual([{ until: null, offset: 540 }]);
+    expect(offsetSpans("Nope/Nope", since, now)).toBeNull();
+  });
+  test("shiftDay crosses months and DST", () => {
+    expect(shiftDay("2026-11-01", -1)).toBe("2026-10-31");
+    expect(shiftDay("2026-10-31", 7)).toBe("2026-11-07");
+    expect(shiftDay("2026-03-07", 1)).toBe("2026-03-08");
+  });
+  test("the repo buckets by the offset each review had", async () => {
+    const d1 = createTestD1(testSchema());
+    const me = new WordsD1Repo(d1, "me@example.com");
+    const id = await me.createList({ name: "x", lang: "en" });
+    // 04:30 UTC on 31 October is 00:30 EDT on 31 October (UTC-4 then);
+    // today's UTC-5 would put it on 30 October.
+    await me.review(
+      id,
+      [{ term: "a", rating: 3, reviewedAt: "2026-10-31T04:30:00.000Z" }],
+      "d",
+      new Date("2026-10-31T04:30:00Z"),
+    );
+    const since = new Date("2026-10-01T00:00:00Z");
+    const spans = offsetSpans("America/New_York", since, new Date("2026-11-03T05:00:00Z"))!;
+    expect((await me.activity(since, spans)).map((r) => r.day)).toEqual(["2026-10-31"]);
+    expect((await me.activity(since, -300)).map((r) => r.day)).toEqual(["2026-10-30"]);
+  });
 });

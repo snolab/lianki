@@ -17,8 +17,77 @@ export type DayStats = { words: number; fresh: number };
 
 export const dayKey = (d: Date): string => d.toLocaleDateString("en-CA");
 
-/** The reader's UTC offset in minutes east (JST 540), for the server. */
+/** `day` moved by `n` local days (YYYY-MM-DD in, YYYY-MM-DD out). */
+export function shiftDay(day: string, n: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return dayKey(new Date(y, m - 1, d + n));
+}
+
+/** The reader's UTC offset in minutes east (JST 540): the server's fallback. */
 export const tzOffset = (d = new Date()): number => -d.getTimezoneOffset();
+
+/** The reader's IANA time zone ("Asia/Tokyo"), so the server buckets each day exactly. */
+export const tzName = (): string => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  } catch {
+    return "";
+  }
+};
+
+/** Until `until` (exclusive, ISO; null = open), the zone is `offset` minutes east. */
+export type OffsetSpan = { until: string | null; offset: number };
+
+const offsetFormats = new Map<string, Intl.DateTimeFormat>();
+
+/** `tz`'s UTC offset at `at`, minutes east; null for an unknown zone. */
+export function zoneOffset(tz: string, at: Date): number | null {
+  let f = offsetFormats.get(tz);
+  if (!f) {
+    try {
+      f = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" });
+    } catch {
+      return null;
+    }
+    offsetFormats.set(tz, f);
+  }
+  const name = f.formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "";
+  const m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(name);
+  if (!m) return name === "GMT" ? 0 : null;
+  return (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0));
+}
+
+/**
+ * `tz`'s offsets between `since` and `now`, split at each change (DST), so a
+ * review is bucketed by the offset its own day had, not today's. Scans a day
+ * at a time and finds each change to the minute; null for an unknown zone.
+ */
+export function offsetSpans(tz: string, since: Date, now: Date): OffsetSpan[] | null {
+  const DAY = 86_400_000;
+  const MIN = 60_000;
+  let prev = zoneOffset(tz, since);
+  if (prev === null) return null;
+  const spans: OffsetSpan[] = [];
+  for (let t = since.getTime() + DAY; ; t += DAY) {
+    const at = Math.min(t, now.getTime());
+    const off = zoneOffset(tz, new Date(at))!;
+    if (off !== prev) {
+      // The change lies in (at - DAY, at]: narrow it to the minute.
+      let lo = at - DAY;
+      let hi = at;
+      while (hi - lo > MIN) {
+        const mid = lo + Math.max(1, Math.floor((hi - lo) / 2 / MIN)) * MIN;
+        if (zoneOffset(tz, new Date(mid)) === prev) lo = mid;
+        else hi = mid;
+      }
+      spans.push({ until: new Date(hi).toISOString(), offset: prev });
+      prev = off;
+    }
+    if (at >= now.getTime()) break;
+  }
+  spans.push({ until: null, offset: prev });
+  return spans;
+}
 
 /** Per-day totals over the lists shown (other pages' lists, e.g. alphabets, left out). */
 export function sumByDay(rows: StatsTuple[], listIds?: Set<string>): Map<string, DayStats> {

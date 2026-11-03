@@ -59,7 +59,7 @@ export default function WordStamps({ listId, term }: { listId: string; term: str
       {reviews.length === 0 ? (
         <p className="text-xs opacity-50">{text.stampsNone}</p>
       ) : (
-        <div className="lk-stamp-row">
+        <div className="lk-stamp-row max-h-32 overflow-y-auto overscroll-contain">
           {reviews.map(([r, at], i) => (
             <button
               key={`${i}-${at}`}
