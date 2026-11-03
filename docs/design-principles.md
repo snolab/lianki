@@ -43,6 +43,17 @@ takes to react to information of a given size. When a user has no data yet,
 start from such a rule (e.g. a reading chunk = what they read in 1–3 minutes
 at their measured speed) and adapt as data comes in.
 
+## No special cases for any language
+
+The owner, 2026-11-03 19:05 JST: "你不要对任何语言有各种特殊处理". Code is
+generic; language specifics (elision and clitic rules, apostrophe variants,
+inflection folds, lemma maps, capitalisation and name rules, segmentation
+hints, frequency lists) live in per-language **data files** loaded by
+language code and fed to one engine (Intl.Segmenter, Unicode
+normalisation). No `if (lang === "…")` branches; a new language is added by
+adding data, not code. Features shown for "a language" (add all, frequency
+bands, …) exist for every language the data supports.
+
 ### Accessibility and contrast
 
 - Text on glass must keep at least 4.5:1 contrast against the worst plausible content behind it. Use the page ink colour plus a halo (`text-shadow` in the page colour), and test over light and dark content.
