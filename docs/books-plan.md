@@ -62,8 +62,39 @@ book a ✓, and the day it first passed is kept.
   the catalogs it caches for /words.
 - **Approximation:** surface forms, with cheap folds (plural -s/-es/-x,
   -ed, -ing, French -e) tried only when the folded form is itself a card or
-  entry. Japanese and Chinese depend on the segmenter's dictionary. Real
-  lemmas come with the extraction step below.
+  entry. Japanese and Chinese depend on the segmenter's dictionary. Languages
+  with a lemma file (French first, below) match every inflected form.
+
+### French recognition, and language rules as data (2026-11-03)
+
+Owner, 18:53 JST, a French EPUB: "这里未识别的词有点多". On a public-domain
+test text (Verne, *Le tour du monde en quatre-vingts jours*, Project
+Gutenberg #800; 66k running words) **25.3% of running words** were
+unrecognised. About half were inflected forms of lemmas our decks hold
+(était, dit, yeux, fut, cette), a quarter dictionary words outside the
+decks' 3,000 lemmas (paquebot, wagon), a fifth forms of those, plus names
+missed after "Mrs." and in "l'Angleterre", and "coeur" for "cœur". Elision
+with ’ and hyphenated clitics (dit-il) were already handled by the segmenter.
+After: **0.6%** (English words in the novel: sir, bank, road; Roman
+numerals; Hindi loans).
+
+- **Lemma file** (`lib/read/lemma.ts`, built by
+  `scripts/words/build-lemmas.ts` from kaikki.org English Wiktionary, CC BY-SA
+  4.0): every headword with its forms, 2.5 MB (389 KB gzip), read by the server only.
+  A book stores the entries its words need with its word count
+  (`WordStats.lex`, once per book), so neither the ring nor the scan parses
+  the file per request, and the device downloads none of it.
+- **Matching:** a book word's folds include the headwords it is a form of,
+  so a card or list entry for "regarder" covers "regarda", "regardaient".
+  A word without a card is **new** when one of our lists or the reader's
+  decks has it or its headword, or when the dictionary has it; otherwise
+  unrecognised. The words route marks dictionary words for the device.
+- **No per-language code** (owner, 19:05 JST, "你不要对任何语言有各种特殊处理"):
+  one engine; elisions, endings, ligatures, folds, abbreviations, name rules,
+  reading keys and stop words live in `lib/read/lang/<lang>.json`. A new
+  language plugs in with a data file and, optionally, a lemma file.
+- **Scan summary:** a few unrecognised words (most frequent first) shown
+  inline, the full list a tap away; the button carries no count.
 - One card query per request, scoped to the signed-in user; no polling.
 
 ## Sources and copyright

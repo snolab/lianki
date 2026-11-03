@@ -1,0 +1,4 @@
+{
+  "script": "Hiragana|Katakana",
+  "readingKeys": "^[\\p{Script=Hiragana}\\p{Script=Katakana}ー]+$"
+}

@@ -4,13 +4,19 @@ import { headers } from "next/headers";
 import { getReadMaterialById } from "@/lib/getReadMaterialsCollection";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { materialWords, userDeckTerms, userWordCards } from "@/lib/read/progress";
-import { cardIndex, hitOf, inKeys, termKeys } from "@/lib/read/words";
+import { cardIndex, foldsOf, hitOf, inDict, inKeys, statsLemmas, termKeys } from "@/lib/read/words";
 
 /**
  * GET /api/read/[id]/words — every distinct word of the reader's own material,
  * with what their cards give it, for the scan summary in the reader's header:
  *
- *   words: [word, count, score 0..1 (-1: no card), mastered 0|1, in own deck 0|1, name 0|1]
+ *   words: [word, count, score 0..1 (-1: no card), mastered 0|1, in own deck 0|1, name 0|1,
+ *           in the language's dictionary 0|1, headwords it is a form of]
+ *
+ * The last two come from the language's lemma file (lib/read/lemma.ts), stored
+ * with the book's words, so the device needs no dictionary download: a word
+ * without a card is "new" when it is in the dictionary or one of its
+ * headwords is in a list ("regarda" → "regarder").
  *
  * "In own deck" (one of their imported lists has the word) is only looked up
  * for words without a card. Whether a word without a card is in one of the
@@ -40,11 +46,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   for (const e of deck) for (const k of termKeys(e.term, e.reading, stats.lang)) deckKeys.add(k);
 
   const names = new Set(stats.names);
+  const lem = statsLemmas(stats);
   const words = stats.words.map(([w, n]) => {
     const name = names.has(w) ? 1 : 0;
-    const h = hitOf(w, stats.lang, idx);
+    const h = hitOf(w, stats.lang, idx, lem);
     if (h) return [w, n, Math.round(h.score * 1000) / 1000, h.mastered ? 1 : 0, 0, name] as const;
-    return [w, n, -1, 0, inKeys(w, stats.lang, deckKeys) ? 1 : 0, name] as const;
+    const dict = inDict(w, stats.lang, lem) ? 1 : 0;
+    const cheap = foldsOf(w, stats.lang);
+    const heads = lem ? foldsOf(w, stats.lang, lem).filter((f) => !cheap.includes(f)) : [];
+    const own = inKeys(w, stats.lang, deckKeys, lem) ? 1 : 0;
+    return [w, n, -1, 0, own, name, dict, heads] as const;
   });
 
   return NextResponse.json(

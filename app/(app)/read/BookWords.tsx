@@ -3,7 +3,9 @@
 // A material's words on /read (lib/read/words.ts): the ring (coverage of
 // known running words, pass mark 95%) with the pass tick and its date, the
 // word counts, and in the reader's header the scan summary — mastered,
-// learning, new, unrecognised — with the unrecognised words a tap away.
+// learning, new, unrecognised — with a few unrecognised words shown and the
+// rest a tap away. "New" includes words the language's dictionary has
+// (lib/read/lemma.ts; the server marks them), not only our word lists.
 
 import { useEffect, useMemo, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
@@ -82,7 +84,11 @@ export function WordCountText({ words }: { words: WordsSummary }) {
   );
 }
 
-type WordRow = [string, number, number, 0 | 1, 0 | 1, 0 | 1];
+/** /api/read/[id]/words rows; the last two only for words without a card. */
+type WordRow = [string, number, number, 0 | 1, 0 | 1, 0 | 1, (0 | 1)?, string[]?];
+
+/** Unrecognised words shown inline before the full list is opened (most frequent first). */
+const EXAMPLES = 6;
 type Buckets = {
   mastered: number;
   learning: number;
@@ -121,11 +127,17 @@ export function BookScan({ id, words }: { id: string; words: WordsSummary }) {
   const b = useMemo<Buckets | null>(() => {
     if (!rows || !dict) return null;
     const out: Buckets = { mastered: 0, learning: 0, fresh: 0, names: 0, unrecognised: [] };
-    for (const [w, , score, mastered, ownDeck, name] of rows) {
+    for (const [w, , score, mastered, ownDeck, name, inDictionary, heads] of rows) {
       if (score >= 0) {
         if (mastered) out.mastered++;
         else out.learning++;
-      } else if (ownDeck || inKeys(w, words.lang, dict)) out.fresh++;
+      } else if (
+        ownDeck ||
+        inDictionary ||
+        inKeys(w, words.lang, dict) ||
+        heads?.some((h) => dict.has(h))
+      )
+        out.fresh++;
       else if (name) out.names++;
       else out.unrecognised.push(w);
     }
@@ -199,6 +211,21 @@ export function BookScan({ id, words }: { id: string; words: WordsSummary }) {
           <p className="mt-2 text-xs opacity-60">{text.legend}</p>
           {b.unrecognised.length > 0 && (
             <div className="mt-2">
+              {!open && (
+                <ul
+                  data-testid="read-scan-examples"
+                  className="flex flex-wrap items-center gap-1.5 text-xs"
+                >
+                  {b.unrecognised.slice(0, EXAMPLES).map((w) => (
+                    <li
+                      key={w}
+                      className="rounded bg-[oklch(0.5_0_0/0.08)] px-1.5 py-0.5 dark:bg-[oklch(0.8_0_0/0.1)]"
+                    >
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <button
                 type="button"
                 className="min-h-[44px] text-xs font-medium text-[oklch(0.5_0.14_250)] underline-offset-2 hover:underline dark:text-[oklch(0.75_0.12_250)]"
@@ -206,9 +233,7 @@ export function BookScan({ id, words }: { id: string; words: WordsSummary }) {
                 data-testid="read-scan-toggle"
                 onClick={() => setOpen((o) => !o)}
               >
-                {open
-                  ? text.hideUnrecognised
-                  : fill(text.showUnrecognised.value, { n: n.format(b.unrecognised.length) })}
+                {open ? text.hideUnrecognised : text.showUnrecognised}
               </button>
               {open && (
                 <ul
