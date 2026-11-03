@@ -57,18 +57,30 @@ export async function materialWords(m: ReadMaterial, userId: string): Promise<Ma
   return { book: next, stats };
 }
 
+const LEX_CACHE_MAX = 64;
+const lexCache = new Map<string, NonNullable<WordStats["lex"]>>();
+
 /**
  * The stats with the dictionary entries their words need (lib/read/lemma.ts),
  * for a language with a lemma file; unchanged when the file cannot be read.
  */
 export async function withLex(stats: WordStats): Promise<WordStats> {
   if (!hasLemmas(stats.lang) || stats.lex?.v === LEMMA_V) return stats;
+  // Pasted text has no meta to store its entries in: keep the last few per
+  // isolate, keyed by its exact words, so a listing does not parse again.
+  const key = `${stats.lang}\n${stats.words.map((e) => e[0]).join(" ")}`;
+  const hit = lexCache.get(key);
+  if (hit) return { ...stats, lex: hit };
   try {
     const lem = await lemmasForWords(
       stats.lang,
       stats.words.map((e) => e[0]),
     );
-    return lem ? { ...stats, lex: lem.toLex() } : stats;
+    if (!lem) return stats;
+    const lex = lem.toLex();
+    lexCache.set(key, lex);
+    if (lexCache.size > LEX_CACHE_MAX) lexCache.delete(lexCache.keys().next().value!);
+    return { ...stats, lex };
   } catch (err) {
     console.error("read: lemma lookup failed", err);
     return stats;

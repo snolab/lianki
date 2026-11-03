@@ -258,10 +258,15 @@ export function foldsOf(w: string, lang: string, lem?: Lemmas | null): string[] 
     if (s.length >= 2 && !out.includes(s)) out.push(s);
   };
   add(unligate(w, lang));
-  for (const [end, repl, unless] of langRules(lang).data.folds ?? [])
-    if (w.endsWith(end) && !(unless && w.endsWith(unless))) add(w.slice(0, -end.length) + repl);
+  // The dictionary, when it knows the word, replaces the guessed endings:
+  // "course" is a noun of its own, not "cours" (a form of courir).
+  const spelt = out.slice();
+  const known = !!lem && spelt.some((f) => lem.has(f) || lem.of(f).length > 0);
+  if (!known)
+    for (const [end, repl, unless] of langRules(lang).data.folds ?? [])
+      if (w.endsWith(end) && !(unless && w.endsWith(unless))) add(w.slice(0, -end.length) + repl);
   if (lem)
-    for (const f of out.slice())
+    for (const f of known ? spelt : out.slice())
       for (const h of lem.of(f)) {
         add(h);
         add(unligate(h, lang));

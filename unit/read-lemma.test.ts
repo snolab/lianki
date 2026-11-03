@@ -107,6 +107,16 @@ describe("matching with lemmas", () => {
     expect(inKeys("coeur", "fr", new Set(termKeys("cœur", null, "fr")))).toBe(true);
   });
 
+  it("lets the dictionary, when it knows a word, replace guessed endings", () => {
+    const l = parseLemmas("#lianki-lemmas v1 fr\ncourse\ncourir\t2s\n");
+    const idx = cardIndex([{ term: "courir", lang: "fr", interval: 400, stability: 400 }]);
+    expect(foldsOf("course", "fr", l)).toEqual(["course"]);
+    expect(hitOf("course", "fr", idx, l)).toBeNull();
+    expect(hitOf("cours", "fr", idx, l)?.mastered).toBe(true);
+    // Unknown to the dictionary: the cheap folds still apply.
+    expect(foldsOf("chats", "fr", l)).toContain("chat");
+  });
+
   it("tells dictionary words from unrecognised ones", () => {
     expect(inDict("paquebots", "fr", lem)).toBe(true);
     expect(inDict("fut", "fr", lem)).toBe(true);
@@ -145,6 +155,8 @@ describe("the shipped French file", () => {
     expect(await withLex(withL)).toBe(withL);
     const parsed = parseWordStats(JSON.parse(JSON.stringify(withL)))!;
     expect(statsLemmas(parsed)?.of("yeux")).toContain("œil");
+    const again = await withLex(stats);
+    expect(again.lex).toEqual(withL.lex);
     const en = countWords(["The eyes."], "en");
     expect(await withLex(en)).toBe(en);
   });
