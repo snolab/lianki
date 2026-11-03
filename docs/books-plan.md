@@ -170,3 +170,62 @@ $0.12 for _Le Petit Prince_, about $0.8 for a long novel.
 5. Accept the own-upload legal risk (ToS + takedown contact)? **Decided
    2026-11-03 (Slack): yes — a user's own upload is fine as long as it is
    never shared** (private, unlisted, deletable).
+
+## The reader: one continuous scroll (design, 2026-11-03)
+
+Owner, 18:30 JST: "阅读模式也希望是一个无限滚动的 UI … 完整地再思考一下这个功能的整体 UX".
+He wants to scroll with his finger staying in one place, and rejected tall,
+sparse layouts (words-session-spec.md), so the reader is a dense book page,
+not a list of rows. Also: show his familiarity on every word, virtualise for
+performance (18:32), and keep visual nesting to one level (design-principles).
+
+- **Scroll and render.** The window scrolls (no inner box), so browser bars
+  collapse and the bottom island's scroll-shrink works. Paragraphs are
+  virtualised (`@tanstack/react-virtual`, `useWindowVirtualizer`, measured
+  heights, ~6 overscan): a 60-chunk book keeps ~30 nodes mounted. Each
+  paragraph is a memoised `<p lang>` rendering its word spans in one pass;
+  one delegated tap listener; passive rAF-throttled scroll handler. Book text
+  cached in IndexedDB for offline. No section paging, line numbers, row
+  borders or inner scroller.
+- **Chapters.** Sticky chapter title under the top strip; TOC sheet behind
+  the ring; a thin right-edge scrubber with chunk ticks, read shading and
+  today's marker.
+- **Position.** Stored as an anchor (line, offsetRatio), never pixels, and
+  synced: D1 `read_progress(email, material_id, line, offset, read_through,
+  updated_at)`, written 1.5 s after scrolling stops and on `pagehide`; newest
+  anchor wins, `read_through` only grows. localStorage stays as cache.
+- **Familiarity on every word.** From the per-book word map
+  (`/api/read/[id]/words`, fetched once, memoised): unrecognised dotted
+  underline, new faint underline, learning light tint, mastered and names
+  unmarked; levels off / unknown only (default) / all. Tap → glass half-sheet
+  (word, reading, 🔊, gloss — catalogue first, else a cached in-context
+  Workers AI gloss — sentence, add to book list, known). Long press → native
+  selection + pill (translate, add phrase, read from here). The coverage ring
+  sits small in the top strip; its sheet holds TOC, per-chapter coverage and
+  the scan summary.
+- **Playback.** Keep the tested reducer (`lib/read/player.ts`); highlight by
+  sentence (`speechChunks`), no per-word highlight. Follow keeps the current
+  paragraph at ~35% height; any drag stops following and shows "↧ back to the
+  line". Wait cue inline: an amber rail and "轮到你 🎤 · 下一句 ›" at the
+  paragraph's end. Shadowing fills a bar; mic hold and auto-advance stay.
+- **Progressive reading.** Chunks are whole paragraphs (~250 words / 600 CJK
+  chars) stored in `BookMeta` at import. A chunk is read when all of it has
+  passed the reading zone with ≥ 40% of its expected time spent, or it was
+  played/shadowed. Today's portion ends at a soft divider ("今日 3/3 ✓ · 继续读"),
+  never blocking. Read chunks queue extraction (once per content hash) into
+  the book's list.
+- **Chrome.** Glass top strip (back, chapter, ring; hides on scroll down), a
+  play pill at the right thumb (play/pause, auto, Aa), bottom island hidden on
+  `/read/[id]` (pending owner) which also ends the overlap bug. Aa sheet: a
+  new `read` text-size area (#436), line spacing, serif/sans, mark level.
+- **Options.** A, book page (recommended): free scroll + floating pill. B,
+  teleprompter: current paragraph pinned to a reading line, the island
+  becomes the player — later as a 跟读 mode inside A.
+- **Phases (agent hours).** 1 (6): virtualised scroll, chapters, TOC,
+  scrubber, synced position, chrome, island fix. 2 (4): follow, sentence
+  highlight, inline wait cue, pill, shadowing fill. 3 (6): marks, gloss sheet,
+  selection pill, ring, per-chapter coverage. 4 (5): chunks, read tracking,
+  today divider, 读完, extraction trigger.
+- **Open decisions (owner, Slack 2026-11-03):** A or B; hide the island in
+  the reader; does "known" count as mastered toward 95%; auto-jump to the
+  newest position across devices; default 3 chunks a day.
