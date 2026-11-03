@@ -42,8 +42,8 @@ match.
 | -------- | --------------------------------------- | ---------------------- | ------------------ | ----------------------------------------------------- |
 | next     | 下一张 / 下一个 / 下 / 向下 / 下面      | next, down             | 次 / 次へ / した   | focus (touch) or cursor (desktop) one row down        |
 | prev     | 上一张 / 上一个 / 上 / 向上 / 上面      | previous, back, up     | 前 / 前へ / うえ   | one row up                                            |
-| left     | 左 / 向左 / 左滑                        | left                   | ひだり             | a one-level ← swipe: **Hard**                         |
-| right    | 右 / 向右 / 右滑                        | right                  | みぎ               | a one-level → swipe: **Good**                         |
+| left     | 左 / 向左 / 左滑                        | left                   | ひだり             | a one-level ← swipe: **Hard** (mirrored: **Good**)    |
+| right    | 右 / 向右 / 右滑                        | right                  | みぎ               | a one-level → swipe: **Good** (mirrored: **Hard**)    |
 | again    | 重来 / 忘了 / 不记得 / 不认识           | again                  | もう一度 / 忘れた  | grade Again                                           |
 | hard     | 困难 / 难 / 很难 / 模糊                 | hard                   | 難しい             | grade Hard                                            |
 | good     | 良好 / 记得 / 认识 / 记住了             | good                   | 正解 / 覚えた      | grade Good                                            |
@@ -52,6 +52,12 @@ match.
 | read     | 再读一遍 / 再读 / 重读 / 再说一遍 / 重复 | read again, repeat     | もう一回 / 読んで  | read the current card aloud again (as a tap does)     |
 | undo     | 撤销 / 撤回 / 回退                      | undo                   | 元に戻す / 取り消し | Z: undo the last grade                                |
 | exit     | 退出语音模式 / 关闭语音模式             | exit voice mode        | 音声モード終了     | turn voice mode off                                   |
+
+左/右 follow the side as the screen shows it: with Settings → **Mirror swipe
+sides** on (`words.swipeMirror`, [swipe-core.md](swipe-core.md)), 左 grades
+Good and 右 Hard, and the confirmation reads `← Good`. The named grades
+(重来, 困难, 良好, 简单) never move. /review has no swipe and keeps 左 = Hard.
+
 
 A grade moves on to the next card the way a swipe (touch) or a key (desktop)
 does: only when the card had no grade yet. The study view hands the voice

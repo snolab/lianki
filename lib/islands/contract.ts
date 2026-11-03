@@ -43,8 +43,14 @@ export interface IslandProps {
   "words.swipeCard": Static<Record<string, never>>;
   /** The lift under a pressed or dragged slip. */
   "words.swipeCue": Static<Record<string, never>>;
-  /** What a sliding slip uncovers: the grade zones, labelled in the app's language. */
-  "words.swipeGrades": Static<{ again: string; hard: string; good: string; easy: string }>;
+  /** What a sliding slip uncovers: the grade zones, labelled in the app's language; `mirror` swaps the sides. */
+  "words.swipeGrades": Static<{
+    again: string;
+    hard: string;
+    good: string;
+    easy: string;
+    mirror?: boolean;
+  }>;
   /** A feel source: token overrides per preset, in force while mounted. */
   "words.swipeFeel": Static<Record<string, never>>;
   /** The tuning panel (debug mode, "Tune swipe"). */
@@ -66,7 +72,7 @@ export const ISLAND_VERSIONS: { readonly [K in IslandName]: number } = {
   "header.brand": 2,
   "words.swipeCard": 1,
   "words.swipeCue": 1,
-  "words.swipeGrades": 2,
+  "words.swipeGrades": 3,
   "words.swipeFeel": 1,
   "words.swipeTuner": 1,
   "nav.bottom": 1,

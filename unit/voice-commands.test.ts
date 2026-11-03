@@ -250,6 +250,32 @@ describe("voice commands → the study view's actions", () => {
     expect(levelRating(1)).toBe(3);
   });
 
+  it("左/右 follow the visible side: mirrored, 左 is Good and 右 is Hard", () => {
+    for (const [mirror, left, right] of [
+      [false, 2, 3],
+      [true, 3, 2],
+    ] as const) {
+      for (const [said, want] of [
+        ["左", left],
+        ["右滑", right],
+      ] as const) {
+        const f = fakeActions();
+        const o = handleUtterance(said, {
+          actions: f.actions,
+          cardTexts: [],
+          hasCard: true,
+          mirror,
+        });
+        expect(o.kind).toBe("done");
+        expect(f.calls).toEqual([`grade ${want}`]);
+      }
+      // The named grades never move: 容易 is Easy either way.
+      const f = fakeActions();
+      handleUtterance("容易", { actions: f.actions, cardTexts: [], hasCard: true, mirror });
+      expect(f.calls).toEqual(["grade 4"]);
+    }
+  });
+
   it("runs a command and reports it", () => {
     const f = fakeActions();
     const o = handleUtterance(" 下一张。 ", {

@@ -20,8 +20,10 @@ import { voiceQuality } from "@lianki/debug-chat/wire";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
 import { AEC_EVENT, aecOn, applyAec } from "@lianki/debug-chat/aec";
 import {
+  createContext,
   startTransition,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -106,8 +108,11 @@ import {
   releaseVelocity,
   restRating,
   swipeLevel,
-  revealShown,
+  revealShownSide,
+  sideGrade,
+  sideRating,
   SWIPE_COAST_MS,
+  SWIPE_MIRROR_KEY,
   SWIPE_HYSTERESIS,
   SWIPE_LEVEL,
   SWIPE_SNAP,
@@ -234,22 +239,49 @@ function logSwipe(e: {
   ev?: "undo";
 }) {
   if (e.rating) lastSwipeGrade = { at: Date.now(), a: e.a };
+  const mirror = swipeMirrored();
   const unsent = readJson<SwipeRow>(UNSENT);
   unsent.push({
     at: new Date().toISOString(),
     finger: Math.round(e.finger * 10) / 10,
     v: Math.round(e.v * 1000) / 1000,
     projected: Math.round(e.projected * 10) / 10,
-    rating: e.rating,
+    // The grade given: with the sides mirrored, the finger's sign is the other one's.
+    rating: sideRating(e.rating, mirror),
     a: e.a,
-    // The feel tag (lib/words/swipe-feel.ts) only off the plain light feel, so old rows compare.
-    params: `${e.params ?? SWIPE_PARAMS};${swipeAbTag()}${feelTagNow() ? `;${feelTagNow()}` : ""}${e.ev ? `;ev=${e.ev}` : ""}`,
+    // The feel tag (lib/words/swipe-feel.ts) only off the plain light feel, so old rows
+    // compare; `mirror=1` only with the sides mirrored (Settings → Mirror swipe sides).
+    params: `${e.params ?? SWIPE_PARAMS};${swipeAbTag()}${feelTagNow() ? `;${feelTagNow()}` : ""}${mirror ? ";mirror=1" : ""}${e.ev ? `;ev=${e.ev}` : ""}`,
   });
   try {
     localStorage.setItem(UNSENT, JSON.stringify(unsent.slice(-400)));
   } catch {}
   if (unsent.length >= 20) flushSwipes();
 }
+/** The sides are mirrored on this device (lib/words/swipe.ts, synced as words.swipeMirror). */
+function swipeMirrored() {
+  try {
+    return localStorage.getItem(SWIPE_MIRROR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+/**
+ * The sides mirrored (Settings → Mirror swipe sides): what a sliding slip
+ * uncovers reads it (GradeZones, and data-mirror for showReveal). The grade
+ * itself is mirrored once, where a row's swipe is graded (swipeGrade).
+ */
+const SwipeMirror = createContext(false);
+
+/** The list's swipe contexts: the feel (swipe-core) and the mirror. */
+function SwipeProviders({ mirror, children }: { mirror: boolean; children: React.ReactNode }) {
+  return (
+    <SwipeFeelProvider>
+      <SwipeMirror.Provider value={mirror}>{children}</SwipeMirror.Provider>
+    </SwipeFeelProvider>
+  );
+}
+
 /** An undo: logged when it comes within UNDO_AFTER_SWIPE_MS of a swipe's grade. */
 function logUndoAfterSwipe() {
   if (Date.now() - lastSwipeGrade.at > UNDO_AFTER_SWIPE_MS) return;
@@ -2644,6 +2676,11 @@ function Study({
   );
   /** Touch: say the word as a swipe starts. Remembered; on by default. */
   const [swipeSpeak, setSwipeSpeak] = usePref("lk:words-swipe-speak", true);
+  /**
+   * Touch: the swipe's sides swapped (lib/words/swipe.ts sideRating): ← Good /
+   * Easy, → Hard / Again. Remembered, synced (words.swipeMirror); off by default.
+   */
+  const [mirror, setMirror] = usePref(SWIPE_MIRROR_KEY, false);
   /** Touch: the row being held (listen mode) — revealed and looped while held. */
   const [holding, setHolding] = useState<number | null>(null);
   /** After a swipe grades a row, scroll the list down one row. Remembered. */
@@ -3080,6 +3117,13 @@ function Study({
     good: ratingLabel[3],
     easy: ratingLabel[4],
   };
+  /** The help strip's touch grades by side: `{hard}` / `{again}` fill ←, `{good}` / `{easy}` fill →. */
+  const swipeSides = {
+    again: ratingLabel[sideRating(1, mirror)],
+    hard: ratingLabel[sideRating(2, mirror)],
+    good: ratingLabel[sideRating(3, mirror)],
+    easy: ratingLabel[sideRating(4, mirror)],
+  };
   // The debug mode's user-facing name: "Learning Partner" (learning-partner.content.ts).
   const partner = useIntlayer("learning-partner");
   const partnerName = partner.name.value;
@@ -3502,6 +3546,8 @@ function Study({
     const near = queue.slice(Math.max(0, at - 2), at + 4);
     return handleUtterance(heard, {
       actions: voiceActions,
+      // 左/右 grade as the side that is on the left / right now (the mirror).
+      mirror,
       hasCard: !!queue[at],
       cardTexts: near.flatMap((it) => [
         it.term,
@@ -3520,7 +3566,7 @@ function Study({
     });
   };
   const voiceMode = useVoiceMode(voiceOn, voiceHandle);
-  const voiceLabel = (o: VoiceOutcome) => voiceOutcomeLabel(o, vtext, ratingLabel);
+  const voiceLabel = (o: VoiceOutcome) => voiceOutcomeLabel(o, vtext, ratingLabel, mirror);
 
   /** How far down the list the user has got: the cursor, or the last row in view. */
   const reach = Math.max(row, Math.floor((scrollTop - pad + viewH) / ROW_H));
@@ -3824,7 +3870,9 @@ function Study({
     ) : modality === null ? null : modality === "touch" ? (
       // The gestures exist only in the touch layout; a touchscreen
       // laptop's tap is a click (= Again), and has no swipe to explain.
-      touch && fill(text.helpTouch.value, grades4)
+      // Each side's grades as the mirror (if on) puts them: the text's ← is
+      // filled with the left side's grades, whatever they are.
+      touch && fill(text.helpTouch.value, swipeSides)
     ) : help ? (
       fill(text.helpKeys.value, grades4)
     ) : (
@@ -3980,6 +4028,23 @@ function Study({
                 hint={text.speakOnSwipeHint.value}
               />
             )}
+            {(touch || voice !== "off") && (
+              <span className="inline-flex flex-wrap items-center gap-x-2" data-swipe-mirror>
+                <TogglePill
+                  on={mirror}
+                  onChange={setMirror}
+                  label={text.swipeMirror.value}
+                  hint={text.swipeMirrorHint.value}
+                />
+                {/* The mapping in force, live: it changes as the switch flips. */}
+                <span className="fs-11 opacity-60" data-swipe-mirror-map>
+                  {fill(text.swipeMirrorMap.value, {
+                    left: `${swipeSides.hard} / ${swipeSides.again}`,
+                    right: `${swipeSides.good} / ${swipeSides.easy}`,
+                  })}
+                </span>
+              </span>
+            )}
             {touch && !fs.standalone && (
               <TogglePill
                 on={fs.active}
@@ -4098,7 +4163,7 @@ function Study({
           )}
         </div>
       ) : (
-        <SwipeFeelProvider>
+        <SwipeProviders mirror={mirror}>
           {/* The feel's sources and its tuner: islands (docs/swipe-core.md). */}
           {touch && <SwipeFeelIsland />}
           {touch && <SwipeTunerIsland />}
@@ -4136,10 +4201,10 @@ function Study({
             role="list"
           >
             {/* The paper, scrolling with the rows: one composited layer the
-              height of the whole content (both over-scroll pads included),
-              under everything in the list. `background-attachment: local`
-              on the list cost ~50 of 90 frames over 20ms on an iPhone; this
-              layer scrolls as fast as the fixed body texture. */}
+            height of the whole content (both over-scroll pads included),
+            under everything in the list. `background-attachment: local`
+            on the list cost ~50 of 90 frames over 20ms on an iPhone; this
+            layer scrolls as fast as the fixed body texture. */}
             <div
               aria-hidden
               data-paper-layer
@@ -4228,7 +4293,8 @@ function Study({
                     // through a swipe that follows.
                     speech.release();
                   }}
-                  onSwipe={(r) => swipeGrade(i, r)}
+                  // The row reports the side's default grade; the mirror swaps it here, once.
+                  onSwipe={(r) => swipeGrade(i, sideRating(r, mirror))}
                   locked={() => retired(i)}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
@@ -4383,7 +4449,7 @@ function Study({
             />
           )}
           {/* The help strip: glass over the bottom of the list, shown only
-              when there is room (a tall window, no on-screen keyboard). */}
+            when there is room (a tall window, no on-screen keyboard). */}
           {room && hintText && (
             <div
               ref={hintRef}
@@ -4400,7 +4466,7 @@ function Study({
             retry={voiceMode.retry}
             bottom={bar.bottom}
           />
-        </SwipeFeelProvider>
+        </SwipeProviders>
       )}
     </div>
   );
@@ -4579,7 +4645,8 @@ function SlipCords({
 /** The grade zones island, labelled with the grades' names in the app's language. */
 function GradeZones() {
   const l = useRatingLabel();
-  return <SwipeGradesIsland again={l[1]} hard={l[2]} good={l[3]} easy={l[4]} />;
+  const mirror = useContext(SwipeMirror);
+  return <SwipeGradesIsland again={l[1]} hard={l[2]} good={l[3]} easy={l[4]} mirror={mirror} />;
 }
 
 /**
@@ -4590,11 +4657,13 @@ function GradeZones() {
  * slip only moves over it.
  */
 function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> }) {
+  const mirror = useContext(SwipeMirror);
   return (
     <div
       ref={ref}
       aria-hidden
       data-swipe-underlay
+      data-mirror={mirror ? "" : undefined}
       className="pointer-events-none absolute inset-x-0 overflow-hidden"
       style={{ visibility: "hidden", background: "var(--slip-seam)" }}
     >
@@ -4603,10 +4672,13 @@ function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> })
   );
 }
 
-/** Point a grade-zones container (SwipeGrades) at level `k`: which grade each side shows. */
+/**
+ * Point a grade-zones container (SwipeGrades) at level `k`: which grade each
+ * side shows. A container marked data-mirror shows the other side's grades.
+ */
 function showReveal(el: HTMLElement | null | undefined, k: number) {
   if (!el) return;
-  const s = revealShown(k);
+  const s = revealShownSide(k, el.dataset.mirror !== undefined);
   if (el.dataset.good !== String(s.good)) el.dataset.good = String(s.good);
   if (el.dataset.hard !== String(s.hard)) el.dataset.hard = String(s.hard);
 }
@@ -4795,6 +4867,7 @@ function NativeSlipRow({
 }: RowProps) {
   const a = typeof style.height === "number" ? style.height : 44;
   const scroller = useRef<HTMLDivElement>(null);
+  const mirror = useContext(SwipeMirror);
   // Rows mount as the list scrolls: each starts centred before it is painted.
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollLeft = 2 * a;
@@ -5149,7 +5222,12 @@ function NativeSlipRow({
         {/* Behind the scroller, not inside it: the face (opaque, above) uncovers
           it only by sliding away. A sticky strip inside the scroller painted
           over the face on iOS (WebKit composites sticky layers on their own). */}
-        <div aria-hidden className="slip-strip" data-swipe-strip>
+        <div
+          aria-hidden
+          className="slip-strip"
+          data-swipe-strip
+          data-mirror={mirror ? "" : undefined}
+        >
           <GradeZones />
         </div>
         <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>
