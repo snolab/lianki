@@ -147,7 +147,7 @@ export class WordsD1Repo {
     const { results } = await this.db
       .prepare(
         `SELECT l.*, s.cards, s.due, s.learning, s.mastered,
-           CASE WHEN l.source LIKE 'anki:%' THEN (SELECT COUNT(*) FROM word_list_entries e
+           CASE WHEN l.source LIKE 'anki:%' OR l.source LIKE 'book:%' THEN (SELECT COUNT(*) FROM word_list_entries e
              WHERE e.email = l.email AND e.list_id = l.id) ELSE 0 END AS size
          FROM word_lists l
          LEFT JOIN (

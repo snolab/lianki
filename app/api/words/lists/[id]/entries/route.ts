@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isEntrySource } from "@/lib/words/entry-list";
 import { WordEntriesD1Repo } from "@/lib/repos/wordEntriesD1";
 import { wordsRepo } from "../../../repo";
 
@@ -14,7 +15,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   if (repo instanceof NextResponse) return repo;
   const { id } = await params;
   const list = await repo.getList(id);
-  if (!list?.source?.startsWith("anki:"))
+  if (!isEntrySource(list?.source))
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   const entries = await new WordEntriesD1Repo(repo.db, repo.email).entries(id);
   return NextResponse.json({ entries }, { headers: { "Cache-Control": "private, no-cache" } });

@@ -88,7 +88,7 @@ export async function withLex(stats: WordStats): Promise<WordStats> {
 }
 
 /** SQL for "this list's language is one of `langs`" ("und" matches every list). */
-function langClause(langs: string[]): { sql: string; args: string[] } {
+export function langClause(langs: string[]): { sql: string; args: string[] } {
   const ls = [...new Set(langs)];
   if (!ls.length || ls.includes("und")) return { sql: "", args: [] };
   const parts: string[] = [];

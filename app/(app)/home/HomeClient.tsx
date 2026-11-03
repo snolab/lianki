@@ -1,5 +1,6 @@
 "use client";
 
+import { isEntrySource } from "@/lib/words/entry-list";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
@@ -48,7 +49,7 @@ export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
           // No catalog (offline, first visit): fall back to every non-group list.
           const lists = (d?.lists ?? []).filter((l) =>
             catalog
-              ? !!l.source && (ids.has(l.source) || l.source.startsWith("anki:"))
+              ? !!l.source && (ids.has(l.source) || isEntrySource(l.source))
               : !l.source?.startsWith("group:"),
           );
           setWords({ lists: lists.length, due: lists.reduce((s, l) => s + (l.due ?? 0), 0) });

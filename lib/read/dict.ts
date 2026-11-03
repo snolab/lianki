@@ -31,3 +31,40 @@ export function catalogKeys(lang: string): Promise<Set<string>> {
   }
   return p;
 }
+
+/** A catalog word, as the in-place word review shows it (its meaning). */
+export interface CatalogWord {
+  term: string;
+  reading?: string | null;
+  back: string;
+}
+type FullCatalog = { entries: CatalogWord[] };
+const words = new Map<string, Promise<Map<string, CatalogWord>>>();
+
+/**
+ * The catalogs' words by lookup key, first catalog first: the meaning a word
+ * of the book is shown with in the in-place review. Loaded only when that
+ * sheet opens (the same cached files as catalogKeys).
+ */
+export function catalogWords(lang: string): Promise<Map<string, CatalogWord>> {
+  if (lang === "und") return Promise.resolve(new Map());
+  let p = words.get(lang);
+  if (!p) {
+    p = (async () => {
+      const index = await loadCatalog<Index>("/words/index.json");
+      const files = index.lists.filter((l) => langMatches(l.lang, lang)).map((l) => l.file);
+      const out = new Map<string, CatalogWord>();
+      const cats = await Promise.all(
+        files.map((f) => loadCatalog<FullCatalog>(`/words/${f}`).catch(() => null)),
+      );
+      for (const c of cats)
+        for (const e of c?.entries ?? [])
+          if (e.back)
+            for (const k of termKeys(e.term, e.reading, lang)) if (!out.has(k)) out.set(k, e);
+      return out;
+    })();
+    p.catch(() => words.delete(lang));
+    words.set(lang, p);
+  }
+  return p;
+}

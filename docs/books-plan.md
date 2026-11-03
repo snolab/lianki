@@ -320,6 +320,39 @@ selecting DOM text.
   aloud (why)"). Rules: `tapVoice` in `lib/read/reader-select.ts`
   (`unit/read-tap-voice.test.ts`).
 
+### Review a range's words (owner, 2026-11-03 22:17–22:27 JST)
+
+"单击这个段落的时候……显示一个『复习该段落所有单词』的按钮……点这个按钮，出来一个
+popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在单词列表的卡组之前的进度";
+"如果这一堆里有任何一个我还没有打入进我的卡组的话……『制卡』按钮".
+
+- **Trigger:** one button on the selection card at the word, phrase,
+  sentence and paragraph levels — the paragraph holding the selection
+  (`openReview` in `ReaderV2.tsx`, the one place to change it). Not the
+  Again swipe, not the rail.
+- **The popup is /words' own review:** `Study` of `WordsClient.tsx` with a
+  `scope` (its rows, swipe, mirror, undo, marks, FSRS cards, grades sent
+  through `/api/words/lists/<id>/review`), over the book
+  (`reader-word-review.tsx`, loaded on open). Scoped: only these words, no
+  new-word intake, no more due words, the page under it not locked. Order:
+  unrecognised, new, learning weakest first, then the known ones
+  (`lib/read/word-review.ts` `orderWords`). A word reviewed before it is due
+  is /words' own re-grade of its last review.
+- **Which card:** a word that has a card in any of his lists in the book's
+  language — matched with the reader's folds and lemmas, as the marks are —
+  is reviewed on that card, its progress kept. Several lists: the card
+  reviewed most recently, then due soonest, then list id (`matchCard`). Only
+  a word with no card anywhere comes as a new word of **the book's own list**
+  (`source = "book:<content hash>"`, named after the book, made on first
+  need, entries in `word_list_entries` like an Anki import). Names without a
+  card are left out. `POST /api/read/[id]/word-session`.
+- **制卡:** on the card and at the top of the popup, with the count of words
+  that have no card (by the word map: new or unrecognised). Makes an
+  unreviewed card (due now) for each in the book's list, meaning from our
+  catalogs, the sentence as example; never a second card
+  (`lib/read/book-word-list.ts` `makeCards`). The toast's Undo removes the
+  ones still unreviewed. `POST /api/read/[id]/make-cards`.
+
 ### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
 
 "阅读模式不用我们主动分块", after "不要给用户规划任何死数字 … 我们不要用任何数量数字".

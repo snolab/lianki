@@ -407,6 +407,24 @@ const dictionary = {
       sw: "Ondoa uteuzi",
       mr: "निवड काढा",
     }),
+    reviewWords: t({
+      en: "Review this paragraph's words",
+      zh: "复习该段落所有单词",
+      ja: "この段落の単語を復習",
+      ko: "이 문단의 단어 복습",
+      hi: "इस अनुच्छेद के शब्द दोहराएँ",
+      es: "Repasar las palabras del párrafo",
+      fr: "Réviser les mots du paragraphe",
+      ar: "راجع كلمات هذه الفقرة",
+      bn: "এই অনুচ্ছেদের শব্দ ঝালিয়ে নিন",
+      pt: "Revisar as palavras do parágrafo",
+      ru: "Повторить слова абзаца",
+      ur: "اس پیراگراف کے الفاظ دہرائیں",
+      id: "Ulas kata di paragraf ini",
+      de: "Wörter des Absatzes wiederholen",
+      sw: "Rudia maneno ya aya hii",
+      mr: "या परिच्छेदातील शब्दांची उजळणी करा",
+    }),
   },
 };
 
@@ -455,6 +473,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Size line under the book's title on the reader's selection card: {words} is the number of running words, {chapters} the number of chapters, both already formatted. Keep the placeholders and the middle dot.",
   clear:
     "Screen-reader label and tooltip of the × button of the reader's selection card: removes the highlight and closes the card. An imperative phrase.",
+  reviewWords:
+    "Button on the reader's selection card (for a selected word, phrase, sentence or paragraph): opens a sheet listing every word of the paragraph that holds the selection, each to be graded right there like a flashcard (spaced repetition review). An imperative phrase; 'review' means study again with flashcards, not critique.",
 };
 
 export default {
