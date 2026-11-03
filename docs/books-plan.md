@@ -73,10 +73,22 @@ $0.12 for _Le Petit Prince_, about $0.8 for a long novel.
 - **3 (≈10):** catalogue in many languages, per-country gating, better
   segmenters (Sudachi, jieba), the generic node tree from calendar-plan.md.
 
+## Decisions so far
+
+- **Pass mark for a book: 95% coverage** (owner, Slack ~17:10 JST, after
+  first saying 60% like the decks): 95% of the book's running words are words
+  he has learned, using the word decks' definition of learned (interval over
+  one year). 95% is Hu & Nation's (2000) minimum for reading without a
+  dictionary; 98% is shown as the comfortable level.
+- His own French EPUB of _Le Petit Prince_ is the first test book (imported
+  via #448).
+
 ## Open decisions (owner)
 
 1. Book/language for v1 (his French EPUB is already imported).
 2. The shared-catalogue rule as above, or stricter (death 100+ years).
 3. Free monthly quota for own uploads; credits beyond it?
 4. v1 owner-only behind a flag?
-5. Accept the own-upload legal risk (ToS + takedown contact)?
+5. Accept the own-upload legal risk (ToS + takedown contact)? **Decided
+   2026-11-03 (Slack): yes — a user's own upload is fine as long as it is
+   never shared** (private, unlisted, deletable).
