@@ -75,9 +75,11 @@ $0.12 for _Le Petit Prince_, about $0.8 for a long novel.
 
 ## Decisions so far
 
-- Pass mark for a book = the word decks' pass mark: 60% of its words with an
-  interval over one year (owner, Slack ~17:05 JST). The 98% coverage figure
-  (Hu & Nation 2000) is secondary.
+- **Pass mark for a book: 95% coverage** (owner, Slack ~17:10 JST, after
+  first saying 60% like the decks): 95% of the book's running words are words
+  he has learned, using the word decks' definition of learned (interval over
+  one year). 95% is Hu & Nation's (2000) minimum for reading without a
+  dictionary; 98% is shown as the comfortable level.
 - His own French EPUB of _Le Petit Prince_ is the first test book (imported
   via #448).
 
