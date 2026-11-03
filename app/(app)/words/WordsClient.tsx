@@ -88,7 +88,7 @@ import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
-import { backParts, NARROW_PX, rowPx, stacksLines } from "@/lib/words/row-layout";
+import { backParts } from "@/lib/words/row-layout";
 import {
   exampleSegments,
   famLang,
@@ -486,19 +486,6 @@ function useTouch() {
     return () => mq.removeEventListener("change", on);
   }, []);
   return touch;
-}
-
-/** True on a narrow screen (a phone held upright): rows stack as lines (lib/words/row-layout.ts). */
-function useNarrow() {
-  const [narrow, setNarrow] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${NARROW_PX - 0.02}px)`);
-    const on = () => setNarrow(mq.matches);
-    on();
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return narrow;
 }
 
 /**
@@ -3665,9 +3652,7 @@ function Study({
   // Text size (lib/text-size.ts): rows grow with the cards' text, never shrink
   // under the 44px tap target.
   const cardScale = useTextScale("cards");
-  // A phone held upright stacks each row as three lines (lib/words/row-layout.ts).
-  const narrow = useNarrow() && touch;
-  const ROW_H = Math.round(rowPx(touch, narrow) * Math.max(1, cardScale));
+  const ROW_H = Math.round((touch ? 44 : 28) * Math.max(1, cardScale));
   const listRef = useRef<HTMLDivElement>(null);
   /** The list element as state, for effects that must start when it mounts. */
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
@@ -4808,9 +4793,7 @@ function Study({
                   locked={() => retired(i)}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
-                      ? `slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4 ${
-                          stacksLines(narrow, i === focusLine) ? "slip-lines" : ""
-                        }`
+                      ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
                       : hasExamples
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--ex-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
@@ -4828,7 +4811,7 @@ function Study({
                   <Glance
                     active={glancing}
                     title={it.reading ? `${it.term} ${it.reading}` : it.term}
-                    className={`slip-term font-medium ${
+                    className={`font-medium ${
                       it.kind === "new"
                         ? "text-emerald-600 dark:text-emerald-400"
                         : it.kind === "again"
@@ -4903,15 +4886,14 @@ function Study({
                     };
                     const cells = parts.map(cell);
                     if (!touch) return cells;
-                    // Touch: one row is the whole card. Upright phones stack it
-                    // as three lines (.slip-lines: word / example / meaning);
-                    // wider screens put the back beside the word, two lines in
-                    // the row's fixed height (one on a wider screen), so the
-                    // windowing stays exact. Tags (level, list) are only in the
-                    // double-tap sheet.
+                    // Phones: one row is the whole card — the front, then the
+                    // back beside it (example, then meaning), as "Show all
+                    // meanings" shows and reads it. Two lines in the row's fixed
+                    // height (one line on a wider screen), so the windowing
+                    // stays exact. Tags (level, list) are only in the double-tap sheet.
                     return (
                       <span
-                        className="slip-back flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
+                        className="flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
                         data-row-back
                       >
                         {cells}
@@ -4920,7 +4902,7 @@ function Study({
                   })()}
                   {/* Graded: when it comes back. Ungraded: "new", or how long it has been due. */}
                   <span
-                    className={`slip-status flex items-center justify-end gap-1.5 fs-11 tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
+                    className={`flex items-center justify-end gap-1.5 fs-11 tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
                     style={rating ? { color: "var(--grade)" } : undefined}
                     title={rating ? ratingLabel[rating] : text.dueTitle.value}
                   >
@@ -5036,7 +5018,9 @@ function SlipSheet({
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-current opacity-20" />
         <div className="flex items-baseline gap-3 border-b border-black/10 dark:border-white/10 px-1 pb-3">
           <b className="text-2xl font-normal">{item.term}</b>
-          <span className="truncate opacity-70">{item.back}</span>
+          {/* Example first (lib/words/row-layout.ts): with an example, the
+          meaning comes after it, below; without one it stays up here. */}
+          {!item.ex && <span className="truncate opacity-70">{item.back}</span>}
           <small className="ml-auto shrink-0 text-xs opacity-60">{status}</small>
         </div>
         {tags.length > 0 && (
@@ -5069,6 +5053,14 @@ function SlipSheet({
           >
             <div lang={item.lang}>{item.ex}</div>
             {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
+          </div>
+        )}
+        {item.ex && (
+          <div
+            className="border-b border-black/10 dark:border-white/10 px-1 py-3 opacity-70"
+            data-sheet-meaning
+          >
+            {item.back}
           </div>
         )}
         <ul className="mt-1">

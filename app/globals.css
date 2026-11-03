@@ -253,38 +253,6 @@ ruby rt {
   /* padding + stamp column + gaps + the fitted term width */
   --node-x: calc(0.5rem + 1rem + 0.75rem + var(--term-w, 8rem));
 }
-/* An upright phone stacks the slip as three lines (lib/words/row-layout.ts):
- * the word (with its reading), the example, the meaning, each cut to one
- * line and left-aligned on one edge; stamp and status keep their columns on
- * either side, and the cords (the list's, not the slip's) stay put. No node
- * line: there is no term column to mark. */
-.slip-touch.slip-lines {
-  grid-template-columns: 1rem minmax(0, 1fr) 3rem;
-  grid-template-rows: auto auto;
-  align-content: center;
-  row-gap: 3px;
-  --node-x: -4px;
-}
-.slip-lines > [data-stamp-cell] {
-  grid-row: 1 / span 2;
-}
-.slip-lines > .slip-term {
-  grid-column: 2;
-  grid-row: 1;
-  min-width: 0;
-}
-.slip-lines > .slip-back {
-  grid-column: 2;
-  grid-row: 2;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
-  line-height: 1.1;
-}
-.slip-lines > .slip-status {
-  grid-column: 3;
-  grid-row: 1 / span 2;
-}
 /* Familiarity marks in an example (lib/words/example-marks.ts), the reader's
  * scheme: the line style says the level (solid = weak, dashed = learning),
  * the tint repeats it; mastered words and words without a card are plain. */

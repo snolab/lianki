@@ -15,17 +15,15 @@ they land. Design details that are still open are marked **open**.
   branch `feat/words-big-cells` (local, tree/words-big-cells) has the attempt.
   Still open: showing the meaning and examples that the small cells cut off,
   without losing the columns.
-- **Example first** (19:31–19:35 JST, every deck and language): the row
-  shows the word, then the **example sentence**, then the meaning, and a tap
-  reads them in that order. The order is data (`BACK_ORDER`,
-  `lib/words/row-layout.ts`), never per language. A card without an example
-  shows its meaning in the example's place, with no gap. On an upright phone
-  (< 640 px) **every row is three lines** — word (with its reading), example,
-  meaning — each cut to one line (full text in the focused row's glance and
-  the double-tap sheet), rows 56 px instead of 44; wider screens keep the
-  columns (desktop: stamp · word · example · meaning · status). The cords
-  and the stamp/status columns stay where they were. `PHONE_LINES` switches
-  back to "focused only" in one line.
+- **Example first** (19:31 JST, every deck and language; 19:47 JST: "不改layout，
+  目前需要的只是swap例句和解释的位置"): the example sentence and the meaning
+  swap places, nothing else in the layout changes. Desktop: word · example ·
+  meaning columns; phones: the word beside two lines, the example above the
+  meaning; a tap reads word → example → meaning. The order is data
+  (`BACK_ORDER`, `lib/words/row-layout.ts`), never per language. A card
+  without an example shows its meaning where the example would be (desktop:
+  across both columns), with no gap. Three-line phone rows were built and
+  dropped before shipping (19:47 JST).
 - **Familiarity inside examples** (19:32 JST): an example's words that have
   one of his cards are marked by how well he knows them — solid line = weak,
   dashed = learning, mastered and card-less words plain (the reader's scheme,

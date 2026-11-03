@@ -1,12 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  BACK_ORDER,
-  backParts,
-  PHONE_LINES,
-  ROW_PX,
-  rowPx,
-  stacksLines,
-} from "@/lib/words/row-layout";
+import { BACK_ORDER, backParts } from "@/lib/words/row-layout";
 import { sayParts } from "@/lib/words/say-parts";
 import {
   exampleSegments,
@@ -42,18 +35,6 @@ describe("row order: example first (owner, 2026-11-03)", () => {
         "word",
         ...BACK_ORDER,
       ]);
-  });
-
-  test("phones stack every row as lines; wide screens and desktop keep columns", () => {
-    expect(PHONE_LINES).toBe("all");
-    expect(stacksLines(true, false)).toBe(true);
-    expect(stacksLines(false, true)).toBe(false);
-    expect(rowPx(true, true)).toBe(ROW_PX.lines);
-    expect(rowPx(true, false)).toBe(ROW_PX.touch);
-    expect(rowPx(false, true)).toBe(ROW_PX.desktop);
-    // Still at least a tap target, and as little taller as three lines allow.
-    expect(ROW_PX.lines).toBeGreaterThanOrEqual(44);
-    expect(ROW_PX.lines).toBeLessThanOrEqual(60);
   });
 });
 
