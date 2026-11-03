@@ -447,7 +447,7 @@ describe("voice-out: a context the browser will not run (no tap since the page l
       onerror: () => void events.push("error"),
       onfail: (r: string) => void events.push(`fail:${r}`),
     };
-    return { out, el, ev, events, timers };
+    return { out, el, ev, events, timers, ctxState: (s: string) => void (ctx.state = s) };
   }
 
   it("resume() never settles: after CTX_RESUME_MS the clip fails as refused, nothing plays into silence", async () => {
@@ -460,6 +460,38 @@ describe("voice-out: a context the browser will not run (no tap since the page l
     await tick();
     expect(r.events).toEqual(["fail:play NotAllowedError (audio context suspended)"]);
     expect(r.el.src).toBe("");
+  });
+
+  it("a closed context fails the clip outright (not a tap's matter)", async () => {
+    const r = stuck();
+    r.out.play({ text: "你好。", lang: "zh", at: 0, volume: 1 }, r.ev);
+    await tick();
+    r.ctxState("closed");
+    r.timers[0].f();
+    await tick();
+    expect(r.events).toEqual(["fail:audio context closed"]);
+  });
+
+  it("an unlock that settles late does not pause the reply that started meanwhile", async () => {
+    const r = stuck({ runs: true });
+    let settle = () => {};
+    const play = r.el.play.bind(r.el);
+    r.el.play = () => {
+      if (r.el.src.startsWith("data:")) {
+        r.el.paused = false;
+        return new Promise<void>((done) => (settle = done));
+      }
+      return play();
+    };
+    r.out.unlock();
+    r.out.play({ text: "你好。", lang: "zh", at: 0, volume: 1 }, r.ev);
+    await tick();
+    r.el.onloadedmetadata?.();
+    await tick();
+    expect(r.el.plays).toBe(1);
+    settle();
+    await tick();
+    expect(r.el.paused).toBe(false);
   });
 
   it("a context that resumes plays as usual", async () => {

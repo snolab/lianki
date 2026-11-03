@@ -261,7 +261,9 @@ export function createCloudOut(d: {
       const a = element();
       if (!a.paused) return;
       a.src = silentWav();
-      a.play().then(() => a.pause(), ignore);
+      const me = turn;
+      // A reply that started meanwhile is not paused by this late settle.
+      a.play().then(() => me === turn && a.src === silent && a.pause(), ignore);
     },
     gain: () => gain,
     prepare(text, lang) {
@@ -295,6 +297,8 @@ export function createCloudOut(d: {
           return ctxReady().then((stuck) => {
           if (!live()) return;
           // Routed through a context the browser will not run (no tap yet): it would be silent.
+          // A closed one never runs again: not a tap's matter, that clip fails outright.
+          if (stuck === "closed") return ev.onfail?.("audio context closed");
           if (stuck) return ev.onfail?.(`play NotAllowedError (audio context ${stuck})`);
           setLevel(s.volume);
           a.onended = () => live() && ev.onend();

@@ -1011,6 +1011,9 @@ describe("voice session: never silent without saying so (Android, no speechSynth
     }
     expect(spoken.map((u) => u.text)).toEqual(["One.", "Two."]);
     expect(reports[0]).toContain("never started");
+    // The given-up one's late end does not move the queue past "Two." (Codex).
+    spoken[0].onend?.();
+    expect(v.state().queued).toBe(1);
     // One that starts is not given up on.
     spoken[1].onstart?.();
     expect(timers.filter((x) => x.live && x.ms === SPEECH_START_MS)).toHaveLength(0);

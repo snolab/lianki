@@ -358,6 +358,9 @@ export function createVoice(d: {
           if (e !== epoch) return;
           log({ ev: "voice-stuck", route: "speech", lang: head.lang, ms: SPEECH_START_MS });
           d.report?.(`voice-out: speechSynthesis never started (${head.lang}, no voice); sentence skipped`);
+          // Its late events must not move the queue again: they are dropped, and it is cancelled.
+          u.onend = u.onerror = u.onstart = u.onboundary = null;
+          s.cancel();
           ev.onerror();
         }, SPEECH_START_MS)
       : undefined;
