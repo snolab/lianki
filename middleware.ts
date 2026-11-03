@@ -10,9 +10,12 @@ import {
   isAppRoute,
   isPartnerFramePath,
   localeFromAcceptLanguage,
+  localeRoot,
 } from "@/lib/app-locale";
 
 const YEAR_S = 365 * 24 * 60 * 60;
+/** intlayer's locale header, which the root layout reads (app/layout.tsx, getRootLocale). */
+const INTLAYER_LOCALE_HEADER = "x-intlayer-locale";
 
 function appRouteLocale(request: NextRequest): string {
   const requested = request.nextUrl.searchParams.get(LOCALE_PARAM);
@@ -69,6 +72,21 @@ export function middleware(request: NextRequest) {
     // app's own links can stay bare.
     if (searchParams.get(LOCALE_PARAM) === locale) {
       response.cookies.set(LOCALE_PARAM, locale, { path: "/", sameSite: "lax", maxAge: YEAR_S });
+    }
+    return response;
+  }
+
+  // A bare locale root ("/zh"): served as is, with the locale intlayer would
+  // pass down. Its own middleware rewrites it to "/zh/", which next dev
+  // redirects back to "/zh" (308): a redirect loop (lib/app-locale.ts, localeRoot).
+  const root = localeRoot(pathname);
+  if (root) {
+    const headers = new Headers(request.headers);
+    headers.set(INTLAYER_LOCALE_HEADER, root);
+    const response = NextResponse.next({ request: { headers } });
+    response.headers.set(INTLAYER_LOCALE_HEADER, root);
+    if (!request.cookies.has(LOCALE_PARAM)) {
+      response.cookies.set(LOCALE_PARAM, root, { path: "/", sameSite: "lax", maxAge: YEAR_S });
     }
     return response;
   }
