@@ -81,6 +81,13 @@ export type UiStrings = {
    */
   resumeRead: string;
   /**
+   * A chip in the chat bar when the browser refused to play an agent reply
+   * aloud (autoplay rules: no tap on the page since it loaded, e.g. after a
+   * reload). One tap there (or anywhere) lets the reading go on; the 🔊 is
+   * added by the chip, so this is only the words.
+   */
+  resumeBlocked: string;
+  /**
    * Ask cards (AskCard.tsx): the agent asks a question with options shown
    * as tappable pills; the owner taps one. The question and option texts
    * come from the agent. These are the card's own words:
@@ -139,6 +146,7 @@ export const UI_EN: UiStrings = {
   latOther: "other",
   aec: "Echo cancellation",
   resumeRead: "Tap to continue reading",
+  resumeBlocked: "Tap to turn read-aloud back on",
   askRecommended: "recommended",
   askSend: "Send",
   askExpired: "Expired",
@@ -185,6 +193,7 @@ export const UI_ZH: UiStrings = {
   latOther: "其他",
   aec: "回声消除",
   resumeRead: "点按继续朗读",
+  resumeBlocked: "点一下恢复朗读",
   askRecommended: "推荐",
   askSend: "发送",
   askExpired: "已过期",
@@ -231,6 +240,7 @@ export const UI_JA: UiStrings = {
   latOther: "その他",
   aec: "エコーキャンセル",
   resumeRead: "タップして読み上げを続ける",
+  resumeBlocked: "タップして読み上げを再開",
   askRecommended: "おすすめ",
   askSend: "送信",
   askExpired: "期限切れ",

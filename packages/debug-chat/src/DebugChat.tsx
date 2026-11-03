@@ -76,7 +76,7 @@ import {
   sentenceRanges,
   sentenceState,
 } from "./read-progress";
-import { cloudOut, noSpeechVoices, outMode } from "./voice-out";
+import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
 import { AEC_EVENT, aecOn, applyAec } from "./aec";
 import type { SpeakMeta } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
@@ -565,7 +565,23 @@ const QUIET: VoiceState = {
   ducked: false,
   queued: 0,
   paused: false,
+  blocked: false,
 };
+
+/**
+ * In a tap, after the browser refused to play a reply: unlock the outputs
+ * (the AudioContext, the cloud's element, speechSynthesis) and read on.
+ */
+function unblockVoice() {
+  // Once: the chip's own tap is also the page's tap (both listen).
+  if (!voice().state().blocked) return;
+  void existingCtx()?.resume().catch(() => {});
+  if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
+  try {
+    synth()?.speak(new SpeechSynthesisUtterance(""));
+  } catch {}
+  voice().unblock?.();
+}
 
 /** A log line's avatar, square: fixed, so a picture loading late shifts nothing. */
 const AVATAR_PX = 18;
@@ -1512,6 +1528,17 @@ export function DebugChat({
     setVs(v.state());
     return v.subscribe(setVs);
   }, []);
+  // Playback refused (autoplay): the next tap anywhere on the page lets it go on too.
+  useEffect(() => {
+    if (!vs.blocked) return;
+    const on = () => unblockVoice();
+    window.addEventListener("pointerup", on, { once: true, capture: true });
+    window.addEventListener("keydown", on, { once: true, capture: true });
+    return () => {
+      window.removeEventListener("pointerup", on, { capture: true });
+      window.removeEventListener("keydown", on, { capture: true });
+    };
+  }, [vs.blocked]);
   // The tab hiding stops the reading — unless the mic is on (hands-free).
   useEffect(() => {
     const hide = () =>
@@ -3036,6 +3063,19 @@ export function DebugChat({
         >
           {warning}
         </div>
+      )}
+      {vs.blocked && (
+        // The browser refused to read a reply aloud (no tap since the page loaded): one tap reads on.
+        <button
+          type="button"
+          data-testid="debug-chat-voice-blocked"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={unblockVoice}
+          style={{ background: INPUT_BG }}
+          className="pointer-events-auto self-start mb-1 rounded-full border border-current/25 px-2.5 py-1 fs-11 backdrop-blur"
+        >
+          🔊 {ui.resumeBlocked}
+        </button>
       )}
       {resumeLeft.length > 0 && resumeItems.length > 0 && (
         // After a reload cut a reply off and the browser wants a tap before it speaks.

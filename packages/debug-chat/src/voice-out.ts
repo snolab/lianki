@@ -42,6 +42,12 @@ export const CLOUD_LANGS: ReadonlySet<string> = new Set(["en", "es", "fr", "zh",
 /** A clip resumed after an interruption starts this much before where it stopped. */
 export const RESUME_REWIND_S = 0.3;
 const ignore = () => {};
+/**
+ * How long a suspended AudioContext gets to resume before a clip: Chrome
+ * keeps resume() pending (not rejected) until the page has had a tap, and
+ * the element, routed through the context, would play into silence.
+ */
+export const CTX_RESUME_MS = 1_500;
 /** Clips (blob URLs) kept for replays and resumes. */
 const CLIP_CACHE = 64;
 
@@ -164,9 +170,26 @@ export function createCloudOut(d: {
   ctx: () => CtxLike | null;
   toUrl?: (b: Blob) => string;
   revoke?: (u: string) => void;
+  setTimer?: (f: () => void, ms: number) => unknown;
 }): CloudOut & { unlock(): void; gain(): GainLike | null } {
   const toUrl = d.toUrl ?? ((b) => URL.createObjectURL(b));
   const revoke = d.revoke ?? ((u) => URL.revokeObjectURL(u));
+  const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
+  /**
+   * The context the element plays through, running: null when it is (or
+   * there is none, or the element is not routed through it), else the state
+   * it is stuck in after CTX_RESUME_MS.
+   */
+  const ctxReady = (): Promise<string | null> => {
+    const ctx = d.ctx();
+    if (!ctx || !gain || !ctx.resume || ctx.state === undefined || ctx.state === "running")
+      return Promise.resolve(null);
+    return new Promise((done) => {
+      const check = () => done(ctx.state === "running" ? null : String(ctx.state));
+      setTimer(check, CTX_RESUME_MS);
+      ctx.resume!().then(check, check);
+    });
+  };
   const clips = new Map<string, Promise<string>>();
   let el: ElementLike | null = null;
   let gain: GainLike | null = null;
@@ -269,7 +292,10 @@ export function createCloudOut(d: {
         (url) => {
           if (!live()) return;
           const a = element();
-          d.ctx()?.resume?.().catch(ignore);
+          return ctxReady().then((stuck) => {
+          if (!live()) return;
+          // Routed through a context the browser will not run (no tap yet): it would be silent.
+          if (stuck) return ev.onfail?.(`play NotAllowedError (audio context ${stuck})`);
           setLevel(s.volume);
           a.onended = () => live() && ev.onend();
           a.onerror = () => live() && ev.onerror();
@@ -293,6 +319,7 @@ export function createCloudOut(d: {
           };
           a.src = url;
           a.load();
+          });
         },
         (e: unknown) => live() && ev.onfail?.(String((e as Error)?.message ?? e)),
       );

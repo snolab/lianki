@@ -3,6 +3,7 @@ import {
   AEC_CONSTRAINTS,
   CLOUD_LANGS,
   LEGACY_CONSTRAINTS,
+  CTX_RESUME_MS,
   RESUME_REWIND_S,
   TTS_MAX_TEXT,
   VOICE_AEC_KEY,
@@ -401,5 +402,73 @@ describe("voice-out: createCloudOut", () => {
     refused.out.unlock();
     await tick();
     expect(refused.el.plays).toBe(0);
+  });
+});
+
+describe("voice-out: a context the browser will not run (no tap since the page loaded)", () => {
+  /** A context stuck suspended: resume() stays pending (Chrome without a tap) or runs it. */
+  function stuck(o: { runs?: boolean } = {}) {
+    const timers: { f: () => void; ms: number }[] = [];
+    const el = new El();
+    const ctx = {
+      currentTime: 0,
+      destination: {},
+      state: "suspended",
+      resume: () => {
+        if (o.runs) ctx.state = "running";
+        return o.runs ? Promise.resolve() : new Promise<void>(() => {});
+      },
+      createGain: () => ({
+        gain: {
+          value: 1,
+          cancelScheduledValues: () => {},
+          setValueAtTime: () => {},
+          linearRampToValueAtTime: () => {},
+        },
+        connect: (n: unknown) => n,
+      }),
+      createMediaElementSource: () => ({ connect: (n: unknown) => n }),
+    };
+    const out = createCloudOut({
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        blob: async () => new Blob(["x"]),
+      }),
+      element: () => el,
+      ctx: () => ctx,
+      toUrl: () => "blob:1",
+      setTimer: (f, ms) => void timers.push({ f, ms }),
+    });
+    const events: string[] = [];
+    const ev = {
+      onend: () => void events.push("end"),
+      onerror: () => void events.push("error"),
+      onfail: (r: string) => void events.push(`fail:${r}`),
+    };
+    return { out, el, ev, events, timers };
+  }
+
+  it("resume() never settles: after CTX_RESUME_MS the clip fails as refused, nothing plays into silence", async () => {
+    const r = stuck();
+    r.out.play({ text: "你好。", lang: "zh", at: 0, volume: 1 }, r.ev);
+    await tick();
+    expect(r.events).toEqual([]);
+    expect(r.timers.map((t) => t.ms)).toEqual([CTX_RESUME_MS]);
+    r.timers[0].f();
+    await tick();
+    expect(r.events).toEqual(["fail:play NotAllowedError (audio context suspended)"]);
+    expect(r.el.src).toBe("");
+  });
+
+  it("a context that resumes plays as usual", async () => {
+    const r = stuck({ runs: true });
+    r.out.play({ text: "你好。", lang: "zh", at: 0, volume: 1 }, r.ev);
+    await tick();
+    r.el.onloadedmetadata?.();
+    await tick();
+    expect(r.el.plays).toBe(1);
+    expect(r.events).toEqual([]);
   });
 });
