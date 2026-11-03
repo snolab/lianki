@@ -265,7 +265,7 @@ async function frames() {
     const times = [];
     for (let i = 0; i < 20; i++) {
       const t = performance.now();
-      el.scrollTop += i % 2 ? -44 : 44;
+      el.scrollTop += i % 2 ? -66 : 66;
       el.dispatchEvent(new Event("scroll"));
       await frame();
       times.push(performance.now() - t);
@@ -305,7 +305,7 @@ async function snapshot(minute) {
     return {
       dom: document.getElementsByTagName("*").length,
       rows: document.querySelectorAll('[role="listitem"]').length,
-      queue: list ? Math.round((list.scrollHeight - 2 * pad) / 44) : 0,
+      queue: list ? Math.round((list.scrollHeight - 2 * pad) / 66) : 0,
       graded: Number(
         document.querySelector("[data-words-top]")?.textContent.match(/(\d+) done/)?.[1] ?? 0,
       ),
@@ -376,8 +376,8 @@ for (let minute = 1; !process.env.SOAK_GROW && minute <= MINUTES; minute++) {
     await swipe(40); // Good
     await swipe(80); // Easy
     await swipe(-80); // Again: comes back within minutes
-    await scroll(44 * 3);
-    if (Math.random() < 0.3) await scroll(-44 * 6);
+    await scroll(66 * 3);
+    if (Math.random() < 0.3) await scroll(-66 * 6);
     if (Math.random() < 0.2) await toggleSettings();
     // No Undo button in the toolbar (owner, 2026-11-03): Z undoes.
     if (Math.random() < 0.1) await page.keyboard.press("z").catch(() => {});
