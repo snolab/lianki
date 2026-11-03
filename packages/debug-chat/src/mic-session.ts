@@ -278,8 +278,13 @@ export function createMicSession(
     upload: (wav, info) => deps.upload(wav, info, cfg),
     onState: (s) => {
       const was = prev;
+      if (reopening && s === "off") {
+        // Not shown, but speech under way has ended: the voice session hears it (unduck, read on).
+        if (was === "capturing") deps.onState?.("listening", "capturing");
+        prev = "listening";
+        return;
+      }
       prev = s;
-      if (reopening && s === "off") return;
       // Listening always starts active: a tap on means "I'm talking to you".
       if (was === "off" && s !== "off") wake.set("active", "mic-on");
       emit({ state: s, wakeReason: wake.view().reason, ...(s !== "off" ? { resume: false } : {}) });

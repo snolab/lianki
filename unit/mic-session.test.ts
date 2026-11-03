@@ -173,6 +173,20 @@ describe("mic session", () => {
     expect(s.view().state).toBe("off");
   });
 
+  it("reopen while capturing: the voice session still hears the speech end", async () => {
+    const f = fakes();
+    const seen: string[] = [];
+    const s = createMicSession({ ...f.deps, onState: (st, was) => void seen.push(`${was}>${st}`) });
+    await s.toggle();
+    f.events()?.onSpeechStart?.();
+    await tick();
+    expect(s.view().state).toBe("capturing");
+    seen.length = 0;
+    expect(await s.reopen()).toBe(true);
+    expect(seen).toContain("capturing>listening");
+    expect(seen.some((x) => x.endsWith(">off"))).toBe(false);
+  });
+
   it("survives a detach: the stream stays live, only an explicit off stops it", async () => {
     const f = fakes();
     const s = createMicSession(f.deps);
