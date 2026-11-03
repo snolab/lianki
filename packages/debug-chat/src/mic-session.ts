@@ -187,6 +187,10 @@ export function createMicSession(
   let prev: MicState = "off";
   /** reopen() under way: its own off is not shown (the mic is coming straight back). */
   let reopening = false;
+  let reopenRun: Promise<boolean> | null = null;
+  let reopenAgain = false;
+  /** Bumped by every explicit off: a reopen under way does not turn the mic back on. */
+  let offs = 0;
   /** The local STT client for cfg.localStt; replaced when the URL changes. */
   let local: { url: string; c: LocalClient; off: () => void } | null = null;
   const localStream = (): StreamStt | undefined => {
@@ -337,6 +341,7 @@ export function createMicSession(
     },
     /** The explicit off: the VAD, the stream and the reload flag all go. */
     async off() {
+      offs++;
       store.clear();
       emit({ resume: false });
       await mic.off();
@@ -349,19 +354,43 @@ export function createMicSession(
      * off in between is not shown, and the reload flag stays. False: it was
      * off, or could not come back (the error shows as for a tap).
      */
-    async reopen() {
-      if (mic.state() === "off" || reopening) return false;
-      reopening = true;
-      try {
-        await mic.off();
-        stopStream();
-      } finally {
-        reopening = false;
+    reopen(): Promise<boolean> {
+      // One at a time: a toggle during a reopen asks for one more pass after it.
+      if (reopenRun) {
+        reopenAgain = true;
+        return reopenRun;
       }
-      // Shown as off only if it fails to come back.
-      await mic.toggle();
-      deps.log?.({ ev: "mic-reopen", ok: mic.state() !== "off" });
-      return mic.state() !== "off";
+      if (mic.state() === "off") return Promise.resolve(false);
+      const run = async () => {
+        let ok = false;
+        do {
+          reopenAgain = false;
+          const was = view.state;
+          const offsAt = offs;
+          reopening = true;
+          try {
+            await mic.off();
+            stopStream();
+          } finally {
+            reopening = false;
+          }
+          if (offsAt !== offs) {
+            // An explicit off came meanwhile: it stays off, and now shows it.
+            emit({ state: "off" });
+            deps.onState?.("off", was);
+            return false;
+          }
+          // Shown as off only if it fails to come back.
+          await mic.toggle();
+          ok = mic.state() !== "off";
+          deps.log?.({ ev: "mic-reopen", ok });
+        } while (ok && reopenAgain);
+        return ok;
+      };
+      reopenRun = run().finally(() => {
+        reopenRun = null;
+      });
+      return reopenRun;
     },
     /**
      * Enrolment (voiceprint.ts): on, every utterance goes to `onFinal` as an

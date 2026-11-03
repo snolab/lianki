@@ -338,6 +338,9 @@ function session(): MicSession {
     upload: async (wav, { seq, durationMs, partial, local, onEcho }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
+      // The mode and track this utterance was recorded on: a reopen while it is transcribed changes both.
+      const aecAt = v.aec();
+      const trackAt = appliedSettings();
       try {
         // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
         let out: { text: string; model?: string; ms?: number };
@@ -367,8 +370,8 @@ function session(): MicSession {
           v.log({
             ev: "voice-utt",
             out: v.mode(),
-            aec: v.aec(),
-            settings: appliedSettings(),
+            aec: aecAt,
+            settings: trackAt,
             durationMs,
             during: echo.during,
             drop: echo.drop,
@@ -393,15 +396,15 @@ function session(): MicSession {
             label: cfg.label,
             transcript: out.text,
             model: out.model,
-            aec: v.aec(),
-            track: appliedSettings(),
+            aec: aecAt,
+            track: trackAt,
           };
           sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
         }
         return out.text;
       } catch (e) {
         if (sink) {
-          const meta = { at, durationMs, label: cfg.label, aec: v.aec(), track: appliedSettings() };
+          const meta = { at, durationMs, label: cfg.label, aec: aecAt, track: trackAt };
           sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
         }
         throw e;

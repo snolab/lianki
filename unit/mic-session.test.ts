@@ -95,6 +95,38 @@ describe("mic session", () => {
     expect(f.logs.some((e) => e.ev === "mic-reopen" && e.ok === true)).toBe(true);
   });
 
+  it("reopen: an explicit off meanwhile wins; toggles during one run one more pass, never two at once", async () => {
+    const f = fakes();
+    let inFlight = 0;
+    let most = 0;
+    const s = createMicSession({
+      ...f.deps,
+      getStream: async () => {
+        inFlight++;
+        most = Math.max(most, inFlight);
+        await tick();
+        inFlight--;
+        return f.deps.getStream();
+      },
+    });
+    await s.toggle();
+    // Three toggles in a row: one reopen, then one more pass.
+    const a = s.reopen();
+    const b = s.reopen();
+    const c = s.reopen();
+    expect(await Promise.all([a, b, c])).toEqual([true, true, true]);
+    expect(most).toBe(1);
+    expect(f.logs.filter((e) => e.ev === "mic-reopen").length).toBe(2);
+    expect(s.view().state).toBe("listening");
+    // An explicit off while it reopens: it stays off, and shows it.
+    const r = s.reopen();
+    await s.off();
+    expect(await r).toBe(false);
+    await tick();
+    expect(s.view().state).toBe("off");
+    expect(f.store.get(MIC_ON_KEY)).toBeUndefined();
+  });
+
   it("survives a detach: the stream stays live, only an explicit off stops it", async () => {
     const f = fakes();
     const s = createMicSession(f.deps);
