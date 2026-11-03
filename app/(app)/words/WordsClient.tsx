@@ -70,6 +70,7 @@ import {
   toggleTick,
   type AddNode,
 } from "@/lib/words/add-tree";
+import { EXTERNAL_SEARCHES, searchLinks, type ExternalSearch } from "@/lib/words/external-search";
 import {
   SCENARIOS,
   isPhraseMeta,
@@ -2320,7 +2321,7 @@ function ListPicker({
   // "Add a list" as a tree with checkboxes (lib/words/add-tree.ts): tick
   // lists, languages or whole branches, then add them all in one go. Adding
   // never starts studying: the learner stays here and opens a list himself.
-  const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS), [builtIn]);
+  const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES), [builtIn]);
   const [ticked, setTicked] = useState<Set<string>>(() => new Set());
   const [openKeys, setOpenKeys] = useState<Set<string>>(() =>
     defaultOpen(
@@ -2334,7 +2335,7 @@ function ListPicker({
     setOpenKeys((s) => {
       const n = new Set(s);
       if (n.has(node.key)) n.delete(node.key);
-      else for (const k of branchKeys(node)) n.add(k);
+      else for (const k of [node.key, ...branchKeys(node)]) n.add(k);
       return n;
     });
   const [addedNow, setAddedNow] = useState<AddedNow | null>(null);
@@ -2666,6 +2667,17 @@ function AddTreeNode({
   useEffect(() => {
     if (box.current) box.current.indeterminate = state.mixed;
   }, [state.mixed]);
+  if (node.kind === "external")
+    return (
+      <ExternalNode
+        node={node}
+        depth={depth}
+        open={openKeys.has(node.key)}
+        onToggleOpen={() => onToggleOpen(node)}
+      />
+    );
+  // A branch with nothing to add (only exams we cannot ship) has no checkbox.
+  const tickable = leavesOf(node).length > 0;
   const label =
     node.kind === "lang"
       ? langName(node.lang, locale)
@@ -2715,14 +2727,18 @@ function AddTreeNode({
         <label
           className={`flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm ${weight} ${state.disabled ? "cursor-default" : ""}`}
         >
-          <input
-            ref={box}
-            type="checkbox"
-            checked={state.checked}
-            disabled={state.disabled || busy}
-            onChange={() => onTick(node)}
-            className="size-4 shrink-0 accent-[oklch(0.55_0.14_155)]"
-          />
+          {tickable ? (
+            <input
+              ref={box}
+              type="checkbox"
+              checked={state.checked}
+              disabled={state.disabled || busy}
+              onChange={() => onTick(node)}
+              className="size-4 shrink-0 accent-[oklch(0.55_0.14_155)]"
+            />
+          ) : (
+            <span className="size-4 shrink-0" aria-hidden />
+          )}
           <span className="min-w-0 flex-1 truncate">{label}</span>
           {node.kind === "list" &&
             (added.has(node.meta.id) ? (
@@ -2770,6 +2786,80 @@ function AddTreeNode({
               scenarioName={scenarioName}
             />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * An exam we cannot ship (docs/word-deck-sources.md, "Not shipped"): its name
+ * and a muted "not included"; unfolded, search links only (never a link to a
+ * specific deck or file) and a pointer to the Anki import, so the flow is
+ * search → download → import. No checkbox: there is nothing to add.
+ */
+function ExternalNode({
+  node,
+  depth,
+  open,
+  onToggleOpen,
+}: {
+  node: { key: string; search: ExternalSearch };
+  depth: number;
+  open: boolean;
+  onToggleOpen: () => void;
+}) {
+  const text = useIntlayer("words-page");
+  const label = node.search.level ?? node.search.exam;
+  const links = searchLinks(node.search);
+  const link = "underline decoration-[oklch(0.5_0_0/0.4)] underline-offset-2 hover:opacity-100";
+  return (
+    <div role="treeitem" aria-expanded={open} data-add-external={node.search.id}>
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        aria-label={fill((open ? text.collapseGroup : text.expandGroup).value, { name: label })}
+        className="flex min-h-11 w-full items-center gap-3 rounded-lg pe-2 text-start text-sm hover:bg-[oklch(0.5_0_0/0.07)]"
+        style={{ paddingInlineStart: `calc(${depth} * 1.25rem)` }}
+      >
+        <span className="grid h-11 w-9 shrink-0 place-items-center opacity-60" aria-hidden>
+          <span
+            className={`inline-block transition-transform ${open ? "rotate-90" : "rtl:rotate-180"}`}
+          >
+            ▸
+          </span>
+        </span>
+        <span className="size-4 shrink-0" aria-hidden />
+        <span className="min-w-0 truncate opacity-70">{label}</span>
+        <span className="fs-11 ms-auto shrink-0 opacity-50">{text.notIncluded}</span>
+      </button>
+      {open && (
+        <div
+          role="group"
+          className="space-y-1 pb-2 text-sm"
+          style={{ paddingInlineStart: `calc(${depth} * 1.25rem + 4.75rem)` }}
+        >
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="opacity-60">{text.searchOn}</span>
+            {links.map((l) => (
+              <a
+                key={l.engine}
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                data-search-engine={l.engine}
+                className={`${link} opacity-80`}
+              >
+                {l.name}
+              </a>
+            ))}
+          </p>
+          <p>
+            <a href="/words/import" className={`${link} opacity-80`}>
+              {text.importFound}
+            </a>
+          </p>
+          <p className="fs-11 opacity-50">{text.externalNote}</p>
         </div>
       )}
     </div>

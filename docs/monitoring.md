@@ -481,8 +481,12 @@ stops them until the next turn-on. A final transcript that leaves the
 draft a sentence of 3 characters or more (trimmed, ending in 。．.!?！？) is
 sent at once (`appendDictation`); otherwise the debounce waits while
 listening or while transcripts are out, partials never send, and Enter sends
-as usual. While audio is captured the button has a red pulsing ring and "REC"
-(`debug-chat-mic-rec`); listening but quiet, a faint steady ring; while the
+as usual. While audio is captured the button's ring is red and pulses
+(`debug-chat-mic-ring` with `data-rec`; opacity and a slight scale, held
+still and thicker under reduced motion); listening but quiet, a faint steady
+ring. The button carries no text (owner, 2026-11-03): the ring shows the
+state, and a polite live region (`debug-chat-mic-live`) says it for screen
+readers; while the
 agent's reply is read, a slow blue ring (`debug-chat-mic-speaking`,
 `data-status="speaking"`, labelled "Agent speaking; tap to interrupt and
 talk"). Replies are read aloud while listening (Hands-free voice). A short note
@@ -722,7 +726,7 @@ tests:
   `data-from`), `debug-chat-floats`, `debug-chat-float`, `debug-chat-input-slot`,
   `debug-chat-input`, `debug-chat-drag-hint`,
   `debug-chat-bottom`, `debug-chat-busy`, `debug-chat-mic` (with
-  `data-state` and `data-status`), `debug-chat-mic-rec`,
+  `data-state` and `data-status`), `debug-chat-mic-ring`, `debug-chat-mic-live`,
   `debug-chat-mic-pending`, `debug-chat-mic-note`, `debug-chat-notice` and
   `debug-chat-warning`.
 - The pill's menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
