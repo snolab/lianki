@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildAddTree,
+  COVERAGE_TARGETS,
   coverageBands,
   defaultOpen,
   freqListsOf,
@@ -175,6 +176,44 @@ describe("every language in the catalogs", () => {
           expect(b.coverage).toBeGreaterThanOrEqual(0.5);
         }
       });
+      if (hasData)
+        test(`${base} ${lang.lang}: coverage grows list by list, and the last list reaches a line`, () => {
+          const cov = freq.map((c) => c.coverage!);
+          expect(cov).toEqual([...cov].sort((x, y) => x - y));
+          expect(cov.at(-1)!).toBeLessThanOrEqual(1);
+          // lists beyond the 3000 words every language had are there for a band only
+          if (freq.length > 6) {
+            const lines = COVERAGE_TARGETS.filter((t) => cov.at(-1)! >= t);
+            expect(lines.length).toBeGreaterThan(0);
+            expect(cov.at(-2)!).toBeLessThan(lines.at(-1)!);
+          }
+        });
     }
   }
+});
+
+describe("the shipped bands (data-driven: public/words/index.json)", () => {
+  const index = require("../public/words/index.json") as {
+    lists: { id: string; lang: string; level: string; coverage?: number }[];
+  };
+  const freq = (lang: string) =>
+    index.lists.filter((l) => l.lang === lang && /-freq-\d+$/.test(l.id));
+  test("95% of text is reachable for English, Spanish and Portuguese", () => {
+    for (const lang of ["en", "es", "pt"])
+      expect(coverageBands(freq(lang)).at(-1)!.coverage).toBeGreaterThanOrEqual(0.95);
+  });
+  test("90% for French, German, Italian and Russian; Hebrew and Chinese have lists", () => {
+    for (const lang of ["fr", "de", "it", "ru"])
+      expect(coverageBands(freq(lang)).at(-1)!.coverage).toBeGreaterThanOrEqual(0.9);
+    expect(freq("he").length).toBeGreaterThan(0);
+    expect(freq("zh").length).toBeGreaterThan(0);
+  });
+  test("the lists users already have keep their ids", () => {
+    for (const lang of ["fr", "es", "de", "en", "ko", "it", "pt", "ru"])
+      expect(
+        freq(lang)
+          .slice(0, 6)
+          .map((l) => l.id),
+      ).toEqual([1, 2, 3, 4, 5, 6].map((n) => `${lang}-freq-${n}`));
+  });
 });

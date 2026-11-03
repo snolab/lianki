@@ -130,6 +130,29 @@ forms only, no definitions. Attribution and changes are in
 [public/words/SOURCES.md](../public/words/SOURCES.md), "Lemma files". Build:
 `scripts/words/build-lemmas.ts`; format and interface: `lib/read/lemma.ts`.
 
+## Frequency lists past 3000 words, Hebrew and Chinese (2026-11-03)
+
+Owner, 2026-11-03 20:12 JST: 「覆盖 X% 文本的常用词」 buttons (50 / 80 / 90 /
+95%) for every language, computed from data. The frequency lists now go on
+past rank 3000 where a coverage line needs them (lists 1–6 unchanged), and
+`coverage` is counted by lemma (`scripts/words/build-word-lists.ts` header).
+No new licence: the same FrequencyWords (CC BY-SA 4.0), Wiktionary via
+kaikki.org (CC BY-SA 4.0 / GFDL) and Tatoeba (CC BY 2.0 FR) sources.
+
+| Language   | Ranks                                 | Meanings, readings                                  | Licence                       |
+| ---------- | ------------------------------------- | --------------------------------------------------- | ----------------------------- |
+| Hebrew     | FrequencyWords `he` (OpenSubtitles)    | English Wiktionary (kaikki.org Hebrew); niqqud + romanization from Wiktionary | CC BY-SA 4.0; Tatoeba CC BY 2.0 FR |
+| Chinese    | FrequencyWords `zh_cn` (segmented)     | CC-CEDICT (pinyin, English)                          | CC BY-SA 4.0; Tatoeba CC BY 2.0 FR |
+| Japanese   | — (FrequencyWords `ja` is not word-segmented: 言, 行, 知 are verb stems) | — | not shipped                    |
+
+Phrase decks get no coverage bands: they are scenario sentences, and no
+licence-safe corpus of running text gives phrase frequencies. Tatoeba is a
+collection of example sentences, not running text, so n-gram counts over it
+would measure Tatoeba, not what a learner meets; the OpenSubtitles text
+itself is not redistributable sentence by sentence. Hebrew phrase decks need
+the same hand curation and review as the ja/zh decks (Tatoeba has 212,000
+Hebrew sentences, 173,000 of them linked to English): a follow-up.
+
 ## Not shipped (no cleared source identified)
 
 | Candidate                                    | What exists                                                                                                                                                                                                   | Why not                                                                                                                                                                                                                                            |

@@ -23,6 +23,7 @@ export const TATOEBA_CODE: Record<string, string> = {
   ru: "rus",
   ja: "jpn",
   zh: "cmn",
+  he: "heb",
 };
 
 const MAX_EX = 80;
@@ -200,7 +201,10 @@ export function wiktionaryExample(
     if (lang !== "en" && !tr) continue;
     const ws = wordsOf(text);
     if (ws.length < 3) continue;
-    if (!ws.some((w) => forms.has(w))) continue;
+    // pointed examples (Hebrew niqqud) match their unpointed forms
+    // (marks that stay apart after NFC only: é and й are kept)
+    const bare = (w: string) => w.normalize("NFC").replace(/\p{M}/gu, "");
+    if (!ws.some((w) => forms.has(w) || forms.has(bare(w)))) continue;
     return lang === "en" ? { ex: text } : { ex: text, exTr: tr };
   }
   return null;

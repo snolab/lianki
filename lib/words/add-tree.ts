@@ -199,7 +199,7 @@ export const COVERAGE_TARGETS = [0.5, 0.8, 0.9, 0.95] as const;
 export type CoverageBand = {
   /** The frequency lists that make the band: a prefix, most frequent first. */
   ids: string[];
-  /** The share of text the band covers (at least; scripts/words/freq-coverage.ts). */
+  /** The share of text the band covers (estimated by lemma; scripts/words/build-word-lists.ts). */
   coverage: number;
   /** The band's last rank: the band is the top 1–`top` words. */
   top: number;
