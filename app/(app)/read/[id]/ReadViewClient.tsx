@@ -1,8 +1,42 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { useIntlayer } from "next-intlayer";
 import type { ReadMaterial } from "../ReadListClient";
+import { chapterAt, type BookMeta } from "@/lib/read/book";
+
+/** Lines rendered at once: a whole book never goes into the DOM in one go. */
+const SECTION_LINES = 200;
+const POS_KEY = (id: string) => `lk:read-pos:${id}`;
+
+function loadPos(id: string): number {
+  try {
+    const n = Number(localStorage.getItem(POS_KEY(id)));
+    return Number.isInteger(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function savePos(id: string, line: number) {
+  try {
+    localStorage.setItem(POS_KEY(id), String(line));
+  } catch {
+    // private mode or storage full: the position is a convenience
+  }
+}
+
+/** Render windows: each chapter, cut into pieces of at most SECTION_LINES. */
+function sectionsOf(total: number, book?: BookMeta): number[] {
+  const starts = book?.chapters?.length ? book.chapters.map((c) => c.start) : [0];
+  const out: number[] = [];
+  starts.forEach((s, i) => {
+    const end = i + 1 < starts.length ? starts[i + 1] : total;
+    for (let x = s; x < end; x += SECTION_LINES) out.push(x);
+  });
+  return out.length ? out : [0];
+}
 
 const STORAGE_KEY = "lianki-read-materials";
 
@@ -19,7 +53,8 @@ function getLocalMaterial(id: string): ReadMaterial | null {
 }
 
 export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boolean }) {
-  const [material, setMaterial] = useState<ReadMaterial | null>(null);
+  const [material, setMaterial] = useState<(ReadMaterial & { book?: BookMeta }) | null>(null);
+  const epubText = useIntlayer("read-epub");
   const [currentLine, setCurrentLine] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1000);
@@ -40,12 +75,15 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
           if (res.ok) {
             const data = await res.json();
             setMaterial(data);
+            setCurrentLine(Math.min(loadPos(id), Math.max(0, (data.lines?.length ?? 1) - 1)));
           }
         } catch (err) {
           console.error("Failed to load material:", err);
         }
       } else {
-        setMaterial(getLocalMaterial(id));
+        const local = getLocalMaterial(id);
+        setMaterial(local);
+        if (local) setCurrentLine(Math.min(loadPos(id), Math.max(0, local.lines.length - 1)));
       }
       setLoading(false);
     }
@@ -161,6 +199,21 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
+  // Remember where the reader is (this device), written when it changes.
+  useEffect(() => {
+    if (material) savePos(id, currentLine);
+  }, [id, material, currentLine]);
+
+  const total = material?.lines.length ?? 0;
+  const book = material?.book;
+  const sections = useMemo(() => sectionsOf(total, book), [total, book]);
+  const headingSet = useMemo(() => new Set(book?.headings ?? []), [book]);
+  let sec = 0;
+  for (let i = 0; i < sections.length; i++) if (sections[i] <= currentLine) sec = i;
+  const winStart = sections[sec] ?? 0;
+  const winEnd = sections[sec + 1] ?? total;
+  const chapter = book?.chapters?.length ? chapterAt(book.chapters, currentLine) : -1;
+
   // Scroll current line into view
   useEffect(() => {
     const element = document.getElementById(`line-${currentLine}`);
@@ -198,6 +251,9 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
             &larr; Back to materials
           </Link>
           <h1 className="text-2xl font-bold mt-2">{material.title}</h1>
+          {book?.author && (
+            <p className="text-sm text-gray-600 dark:text-gray-300">{book.author}</p>
+          )}
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {material.lines.length} lines &middot; Line {currentLine + 1} of {material.lines.length}
           </p>
@@ -273,6 +329,44 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
         </div>
       </div>
 
+      {/* Chapters (imported books) */}
+      {book && book.chapters.length > 1 && (
+        <div className="flex items-center gap-2" data-testid="read-chapters">
+          <button
+            onClick={() => setCurrentLine(book.chapters[Math.max(0, chapter - 1)].start)}
+            disabled={chapter <= 0}
+            aria-label={epubText.prevChapter.value}
+            title={epubText.prevChapter.value}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-40"
+          >
+            ←
+          </button>
+          <select
+            aria-label={epubText.chapters.value}
+            value={chapter}
+            onChange={(e) => setCurrentLine(book.chapters[Number(e.target.value)].start)}
+            className="flex-1 min-w-0 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800"
+          >
+            {book.chapters.map((c, i) => (
+              <option key={i} value={i}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() =>
+              setCurrentLine(book.chapters[Math.min(book.chapters.length - 1, chapter + 1)].start)
+            }
+            disabled={chapter >= book.chapters.length - 1}
+            aria-label={epubText.nextChapter.value}
+            title={epubText.nextChapter.value}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-40"
+          >
+            →
+          </button>
+        </div>
+      )}
+
       {/* Current Line Highlight */}
       <div className="p-6 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
         <p className="text-xl font-medium text-center">{material.lines[currentLine]}</p>
@@ -281,23 +375,42 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
       {/* All Lines */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <div className="max-h-96 overflow-y-auto">
-          {material.lines.map((line, index) => (
+          {winStart > 0 && (
             <button
-              key={index}
-              id={`line-${index}`}
-              onClick={() => setCurrentLine(index)}
-              className={`w-full text-left px-4 py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0 transition-colors ${
-                index === currentLine
-                  ? "bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-100"
-                  : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
-              }`}
+              onClick={() => setCurrentLine(sections[sec - 1] ?? 0)}
+              className="w-full px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"
             >
-              <span className="text-gray-400 dark:text-gray-500 text-sm mr-3 w-8 inline-block">
-                {index + 1}
-              </span>
-              {line}
+              ↑ {sections[sec - 1] + 1}–{winStart}
             </button>
-          ))}
+          )}
+          {material.lines.slice(winStart, winEnd).map((line, i) => {
+            const index = winStart + i;
+            return (
+              <button
+                key={index}
+                id={`line-${index}`}
+                onClick={() => setCurrentLine(index)}
+                className={`w-full text-left px-4 py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0 transition-colors ${
+                  index === currentLine
+                    ? "bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-100"
+                    : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                }`}
+              >
+                <span className="text-gray-400 dark:text-gray-500 text-sm mr-3 w-8 inline-block">
+                  {index + 1}
+                </span>
+                <span className={headingSet.has(index) ? "font-semibold" : undefined}>{line}</span>
+              </button>
+            );
+          })}
+          {winEnd < total && (
+            <button
+              onClick={() => setCurrentLine(winEnd)}
+              className="w-full px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+            >
+              ↓ {winEnd + 1}–{sections[sec + 2] ?? total}
+            </button>
+          )}
         </div>
       </div>
 

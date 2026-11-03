@@ -6,6 +6,7 @@ import {
   getReadMaterialContent,
   deleteReadMaterial,
 } from "@/lib/getReadMaterialsCollection";
+import { parseBookMeta } from "@/lib/read/book";
 
 // GET /api/read/[id] - Get material by ID
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -22,11 +23,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const content = await getReadMaterialContent(material);
+  const book = parseBookMeta(content);
 
   return NextResponse.json({
     id: material._id.toString(),
     title: material.title,
-    content,
+    content: book ? undefined : content,
+    book: book ?? undefined,
     lines: material.lines,
     createdAt: material.createdAt.toISOString(),
     updatedAt: material.updatedAt.toISOString(),
