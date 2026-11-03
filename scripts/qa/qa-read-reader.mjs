@@ -112,7 +112,7 @@ const firstItem = (page) =>
     return null;
   });
 
-async function run(deviceName, scheme) {
+async function run(deviceName, scheme, swipe = "js") {
   const dev = devices[deviceName];
   const ctx = await newSilentContext(browser, { ...dev, baseURL: BASE, colorScheme: scheme });
   await ctx.addInitScript(FAKE_SPEECH);
@@ -125,10 +125,11 @@ async function run(deviceName, scheme) {
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
   await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.goto(`/read/${id}?reader=v2&swipe=${swipe}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
-  const tag = `${deviceName.replace(/\W/g, "-")}-${scheme}`;
+  const tag = `${deviceName.replace(/\W/g, "-")}-${scheme}-${swipe}`;
+  console.log(`— ${tag}`);
   await page.screenshot({ path: join(OUT, `reader-top-${tag}.png`) });
 
   // 1. The window scrolls the book; rows carry their addresses.
@@ -187,7 +188,11 @@ async function run(deviceName, scheme) {
       (id) => document.querySelector(`[data-item="${id}"] .lk-rail`)?.dataset.grade ?? null,
       it.id,
     );
-    check(graded === "3", `a swipe right grades Good (rail ${graded})`);
+    // The New swipe coasts like the browser's own scroll: Good or Easy.
+    check(
+      swipe === "js" ? graded === "3" : graded === "3" || graded === "4",
+      `a swipe right grades ${swipe === "js" ? "Good" : "Good or Easy"} (rail ${graded})`,
+    );
     const next = await page.evaluate((b) => {
       const el = [...document.querySelectorAll("[data-testid=reader-book] [data-item]")].find(
         (e) => Number(e.dataset.block) > b,
@@ -342,11 +347,14 @@ async function perf() {
 }
 
 const only = process.env.QA_ONLY;
+if (only === "native") await run("Pixel 7", "light", "native");
 if (!only || only === "ui") {
   await run("iPhone 13", "light");
   await run("iPhone 13", "dark");
   await run("Pixel 7", "light");
   await run("Pixel 7", "dark");
+  // The New swipe (lib/words/native-slip-gesture.ts, shared with /words).
+  await run("Pixel 7", "light", "native");
 }
 if (!only || only === "perf") await perf();
 await browser.close();
