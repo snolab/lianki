@@ -3,47 +3,59 @@
  * Build the English exam decks served from public/words/ for /words:
  * `en-exam-*.json`, `en-ngsl.json`, `en-nawl.json`, `en-tsl.json`, and their
  * rows in index.json (`kind: "exam"`, `exam`). Other lists are left alone.
+ * What each part of a card comes from: scripts/words/exam-decks.ts (top).
  *
  * Reproduce (RAW = any scratch dir OUTSIDE the repo; downloads are only parsed):
  *
- *   RAW=/tmp/exam-raw; mkdir -p $RAW
- *   # ECDICT (MIT): exam tags, Chinese meanings, phonetics, COCA/BNC ranks
+ *   RAW=/tmp/exam-raw; mkdir -p $RAW/tatoeba
+ *   # 1. ECDICT (MIT): exam tags, COCA/BNC ranks, word forms
  *   curl -sfL -o $RAW/ecdict.csv https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv
- *   # NGSL project lists 1.2 (CC BY-SA 4.0), with their frequency ranks
+ *   # 2. NGSL project lists 1.2 (CC BY-SA 4.0), with their frequency ranks
  *   for f in NGSL_12_stats NAWL_12_stats TSL_12_stats; do
  *     curl -sfL -A Mozilla/5.0 -o $RAW/$f.csv https://www.newgeneralservicelist.com/s/$f.csv
  *   done
- *   # Tatoeba English sentences (CC BY 2.0 FR), for example sentences
- *   mkdir -p $RAW/tatoeba
- *   curl -sfL https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2 | bunzip2 > $RAW/tatoeba/eng_sentences.tsv
+ *   # 3. The words the decks hold, then their English-Wiktionary entries
+ *   #    (kaikki.org, CC BY-SA 4.0): Mandarin translations, IPA, glosses
+ *   bun scripts/words/build-exam-decks.ts --words $RAW > $RAW/exam-words.txt
+ *   curl -sL https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl.gz | gunzip \
+ *     | bun scripts/words/filter-kaikki-zh.ts $RAW/exam-words.txt > $RAW/kaikki-en-zh.jsonl
+ *   # 4. Tatoeba English sentences with their authors (CC BY 2.0 FR)
+ *   curl -sfL https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences_detailed.tsv.bz2 \
+ *     | bunzip2 > $RAW/tatoeba/eng_sentences_detailed.tsv
+ *   # 5. Build. Words with no Mandarin translation in Wiktionary take their
+ *   #    meaning from scripts/words/exam-glosses.tsv; any still missing are
+ *   #    written to $RAW/need-glosses.tsv (word, part of speech, English glosses).
  *   bun scripts/words/build-exam-decks.ts $RAW public/words
  *
- * Example sentences: the one the English frequency lists in public/words
- * (en-freq-*.json) already give a word, else the shortest Tatoeba sentence
- * with the word or one of its forms (scripts/words/examples.ts). Sources, licences
- * and attribution: docs/word-deck-sources.md and public/words/SOURCES.md.
+ * Sources, licences and attribution: docs/word-deck-sources.md and
+ * public/words/SOURCES.md.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ExamplePicker, loadTatoeba } from "./examples";
+import { ExamplePicker, type Sent } from "./examples";
 import {
   byFrequency,
-  chineseBack,
+  isOffensive,
   mergeExamIndex,
   parseEcdict,
+  parseGlosses,
   parseRanked,
-  rankedEntries,
   tagged,
   toEntry,
+  wiktBack,
   type EcdictRow,
+  type Example,
   type ExampleSource,
   type ExamEntry,
   type ExamListMeta,
+  type WiktEntry,
 } from "./exam-decks";
 
-const [RAW, OUT] = process.argv.slice(2);
-if (!RAW || !OUT) {
-  console.error("usage: build-exam-decks.ts <raw-dir> <out-dir>");
+const args = process.argv.slice(2);
+const wordsOnly = args[0] === "--words";
+const [RAW, OUT] = wordsOnly ? args.slice(1) : args;
+if (!RAW || (!OUT && !wordsOnly)) {
+  console.error("usage: build-exam-decks.ts <raw-dir> <out-dir> | --words <raw-dir>");
   process.exit(1);
 }
 
@@ -58,106 +70,41 @@ const readText = (p: string) => {
 };
 
 const rows = parseEcdict(readText(join(RAW, "ecdict.csv")));
-// One row per headword: the first, which is the lowercase one when ECDICT also has "Polish".
+// One row per headword (ECDICT has a few duplicates).
 const dict = new Map<string, EcdictRow>();
 for (const r of rows) if (!dict.has(r.word)) dict.set(r.word, r);
-
-// Without the accents NGSL's TSL uses (résumé, café), and case-insensitive (north, god).
-const fold = (w: string) => w.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-const folded = new Map<string, EcdictRow>();
-for (const r of rows) {
-  const k = fold(r.word);
-  const prev = folded.get(k);
-  // prefer the lowercase headword, then the one with a meaning
-  if (!prev || (prev.word !== k && (r.word === k || !prev.translation))) folded.set(k, r);
-}
-/**
- * Meanings written for Lianki, for NGSL/TSL words ECDICT has no entry for
- * (newer words). NAWL's prefixes (trans, micro, semi, multi, neo) get no card.
- */
-const WRITTEN: Record<string, string> = {
-  online: "adj. 在线的，网上的\nadv. 在线，上网",
-  reschedule: "vt. 重新安排，改期",
-  laptop: "n. 笔记本电脑",
-  attendee: "n. 出席者，参加者",
-  download: "vt. 下载\nn. 下载",
-  affordable: "adj. 买得起的，负担得起的",
-  login: "n. 登录，登录名",
-  internet: "n. 互联网，因特网",
-  donut: "n. 甜甜圈，炸面圈",
-  hacker: "n. 黑客，电脑高手",
-  paralegal: "n. 律师助理",
-  redesign: "vt. 重新设计\nn. 重新设计",
-  "by-law": "n. 章程，内部规章，地方法规",
-  globalization: "n. 全球化",
-  descriptor: "n. 描述词，描述符",
-  // not the verb resume, which an accent-blind lookup would find
-  résumé: "n. 简历，履历；摘要",
-};
-const usable = (r: EcdictRow | undefined) => !!r && !!chineseBack(r.translation);
-const lookup = (w: string): EcdictRow | undefined => {
-  const r = dict.get(w);
-  const hit = usable(r) ? r : folded.get(fold(w));
-  if (!WRITTEN[w]) return usable(hit) ? hit : undefined;
-  const base = dict.get(w);
-  return {
-    word: w,
-    phonetic: base?.phonetic ?? "",
-    translation: WRITTEN[w],
-    tag: "",
-    bnc: 0,
-    frq: 0,
-    forms: base?.forms ?? [],
-  };
-};
-
-// Example sentences: the one an English frequency list already gives the word
-// (a Wiktionary usage example or a Tatoeba sentence), else the shortest
-// Tatoeba sentence with the word or one of its forms.
-const known = new Map<string, string>();
-for (let i = 1; i <= 6; i++) {
-  const f = JSON.parse(readFileSync(join(OUT, `en-freq-${i}.json`), "utf8"));
-  for (const e of f.entries as { term: string; ex?: string }[])
-    if (e.ex && !known.has(e.term)) known.set(e.term, e.ex);
-}
-const picker = new ExamplePicker("en", loadTatoeba(RAW, "en"));
-const picked = new Map<string, string | undefined>();
-const examples: ExampleSource = (word, forms) => {
-  if (known.has(word)) return known.get(word);
-  if (!picked.has(word)) picked.set(word, picker.pick([word], forms)?.ex);
-  return picked.get(word);
-};
-
-const ECDICT_SOURCE =
-  "Word list: the exam tag of ECDICT (skywind3000/ECDICT); Chinese meanings and phonetics: ECDICT; ordered by COCA/BNC frequency (ECDICT); example sentences: Wiktionary usage examples, then Tatoeba (tatoeba.org)";
-const ECDICT_LICENSE =
-  "MIT (ECDICT); CC BY-SA 4.0 (Wiktionary examples, also GFDL); CC BY 2.0 FR (Tatoeba sentences)";
-const NGSL_SOURCE = (list: string) =>
-  `Word list: ${list} 1.2 by Charles Browne, Brent Culligan and Joseph Phillips (newgeneralservicelist.com), in its frequency order; Chinese meanings and phonetics: ECDICT (skywind3000/ECDICT); example sentences: Wiktionary usage examples, then Tatoeba (tatoeba.org)`;
-const NGSL_LICENSE =
-  "CC BY-SA 4.0 (NGSL lists; this deck); MIT (ECDICT); CC BY 2.0 FR (Tatoeba sentences)";
+const ranked = (file: string) => parseRanked(readText(join(RAW, file)));
 
 type Deck = {
   id: string;
   name: string;
   level: string;
   exam: string;
-  build: () => { entries: ExamEntry[]; missing?: string[] };
+  /** The deck's words, in deck order. */
+  words: () => string[];
   source: string;
   license: string;
 };
-
 const fromTag =
   (tag: string, except: string[] = []) =>
-  () => ({
-    entries: tagged(rows, tag, except)
+  () =>
+    tagged(rows, tag, except)
       .filter((r) => dict.get(r.word) === r)
       .sort(byFrequency)
-      .map((r) => toEntry(r, examples))
-      .filter((e): e is ExamEntry => !!e),
-  });
-const fromRanked = (file: string) => () =>
-  rankedEntries(parseRanked(readText(join(RAW, file))), lookup, examples);
+      .map((r) => r.word);
+const fromRanked = (file: string) => () => ranked(file);
+
+const SOURCE_TAIL =
+  "Chinese meanings and IPA: English Wiktionary (en.wiktionary.org) contributors, via kaikki.org; meanings Wiktionary has no Chinese for written for Lianki from its definitions; example sentences: Wiktionary usage examples, then Tatoeba (tatoeba.org), each credited by sentence id and author";
+const ECDICT_SOURCE = `Word list and frequency order: the exam tag of ECDICT (skywind3000/ECDICT); ${SOURCE_TAIL}`;
+const ECDICT_LICENSE =
+  "MIT (ECDICT word list); CC BY-SA 4.0 (Wiktionary content, also GFDL; this deck); CC BY 2.0 FR (Tatoeba sentences)";
+const NGSL_SOURCE = (list: string, by: string) =>
+  `Word list: ${list} 1.2 by ${by} (newgeneralservicelist.com), in its frequency order; ${SOURCE_TAIL}`;
+const NGSL_LICENSE =
+  "CC BY-SA 4.0 (NGSL list; Wiktionary content, also GFDL; this deck); CC BY 2.0 FR (Tatoeba sentences)";
+const NGSL_BY = "Charles Browne, Brent Culligan and Joseph Phillips";
+const TSL_BY = "Charles Browne and Brent Culligan";
 
 const ecdict = { source: ECDICT_SOURCE, license: ECDICT_LICENSE };
 const DECKS: Deck[] = [
@@ -166,7 +113,7 @@ const DECKS: Deck[] = [
     name: "English · 中考 (Zhongkao)",
     level: "中考",
     exam: "中考 · 高考",
-    build: fromTag("zk"),
+    words: fromTag("zk"),
     ...ecdict,
   },
   {
@@ -174,7 +121,7 @@ const DECKS: Deck[] = [
     name: "English · 高考 (Gaokao)",
     level: "高考",
     exam: "中考 · 高考",
-    build: fromTag("gk"),
+    words: fromTag("gk"),
     ...ecdict,
   },
   {
@@ -182,7 +129,7 @@ const DECKS: Deck[] = [
     name: "English · CET-4 (四级)",
     level: "CET-4",
     exam: "CET 四六级",
-    build: fromTag("cet4"),
+    words: fromTag("cet4"),
     ...ecdict,
   },
   {
@@ -190,7 +137,7 @@ const DECKS: Deck[] = [
     name: "English · CET-6 (六级, beyond CET-4)",
     level: "CET-6",
     exam: "CET 四六级",
-    build: fromTag("cet6", ["cet4"]),
+    words: fromTag("cet6", ["cet4"]),
     ...ecdict,
   },
   {
@@ -198,7 +145,7 @@ const DECKS: Deck[] = [
     name: "English · 考研 (NEEP)",
     level: "考研",
     exam: "考研",
-    build: fromTag("ky"),
+    words: fromTag("ky"),
     ...ecdict,
   },
   {
@@ -206,7 +153,7 @@ const DECKS: Deck[] = [
     name: "English · IELTS",
     level: "IELTS",
     exam: "IELTS",
-    build: fromTag("ielts"),
+    words: fromTag("ielts"),
     ...ecdict,
   },
   {
@@ -214,7 +161,7 @@ const DECKS: Deck[] = [
     name: "English · TOEFL",
     level: "TOEFL",
     exam: "TOEFL",
-    build: fromTag("toefl"),
+    words: fromTag("toefl"),
     ...ecdict,
   },
   {
@@ -222,7 +169,7 @@ const DECKS: Deck[] = [
     name: "English · GRE",
     level: "GRE",
     exam: "GRE",
-    build: fromTag("gre"),
+    words: fromTag("gre"),
     ...ecdict,
   },
   {
@@ -230,8 +177,8 @@ const DECKS: Deck[] = [
     name: "English · TOEIC Service List",
     level: "TOEIC",
     exam: "TOEIC",
-    build: fromRanked("TSL_12_stats.csv"),
-    source: NGSL_SOURCE("TOEIC Service List (TSL)"),
+    words: fromRanked("TSL_12_stats.csv"),
+    source: NGSL_SOURCE("TOEIC Service List (TSL)", TSL_BY),
     license: NGSL_LICENSE,
   },
   {
@@ -239,8 +186,8 @@ const DECKS: Deck[] = [
     name: "English · NGSL core words",
     level: "NGSL",
     exam: "NGSL",
-    build: fromRanked("NGSL_12_stats.csv"),
-    source: NGSL_SOURCE("New General Service List (NGSL)"),
+    words: fromRanked("NGSL_12_stats.csv"),
+    source: NGSL_SOURCE("New General Service List (NGSL)", NGSL_BY),
     license: NGSL_LICENSE,
   },
   {
@@ -248,15 +195,116 @@ const DECKS: Deck[] = [
     name: "English · NAWL academic words",
     level: "NAWL",
     exam: "NGSL",
-    build: fromRanked("NAWL_12_stats.csv"),
-    source: NGSL_SOURCE("New Academic Word List (NAWL)"),
+    words: fromRanked("NAWL_12_stats.csv"),
+    source: NGSL_SOURCE("New Academic Word List (NAWL)", NGSL_BY),
     license: NGSL_LICENSE,
   },
 ];
 
+if (wordsOnly) {
+  const all = new Set(DECKS.flatMap((d) => d.words()));
+  console.log([...all].sort().join("\n"));
+  process.exit(0);
+}
+
+// Wiktionary entries by word (several per word: one per part of speech).
+const wikt = new Map<string, WiktEntry[]>();
+for (const line of readFileSync(join(RAW, "kaikki-en-zh.jsonl"), "utf8").split("\n")) {
+  if (!line) continue;
+  const e = JSON.parse(line) as WiktEntry;
+  const list = wikt.get(e.word) ?? [];
+  list.push(e);
+  wikt.set(e.word, list);
+}
+const glossPath = join(import.meta.dir, "exam-glosses.tsv");
+const written = parseGlosses(readFileSync(glossPath, "utf8"));
+
+// Tatoeba English sentences with their ids and authors; none that offend.
+type Credit = { id: string; by?: string };
+const credit = new Map<string, Credit>();
+const sents: Sent[] = [];
+for (const line of readFileSync(join(RAW, "tatoeba/eng_sentences_detailed.tsv"), "utf8").split(
+  "\n",
+)) {
+  const [id, , text, by] = line.split("\t");
+  if (!id || !text || text.length > 80 || credit.has(text) || isOffensive(text)) continue;
+  credit.set(text, { id, ...(by && by !== "\\N" ? { by } : {}) });
+  sents.push({ s: text, en: "", words: text.split(/\s+/).length });
+}
+const picker = new ExamplePicker("en", sents);
+const credited = (ex: string): Example => {
+  const c = credit.get(ex);
+  return c
+    ? { ex, exSrc: `tatoeba:${c.id}`, ...(c.by ? { exBy: c.by } : {}) }
+    : { ex, exSrc: "wiktionary" };
+};
+// The sentence an English frequency list already gives the word, when it is
+// fine to show; else the shortest Tatoeba sentence with the word or a form.
+const known = new Map<string, string>();
+for (let i = 1; i <= 6; i++) {
+  const f = JSON.parse(readFileSync(join(OUT, `en-freq-${i}.json`), "utf8"));
+  for (const e of f.entries as { term: string; ex?: string }[])
+    if (e.ex && !known.has(e.term) && !isOffensive(e.ex)) known.set(e.term, e.ex);
+}
+const picked = new Map<string, Example | undefined>();
+const examples: ExampleSource = (word, forms) => {
+  if (!picked.has(word)) {
+    const k = known.get(word);
+    const p = k ? undefined : picker.pick([word], forms)?.ex;
+    picked.set(word, k ? credited(k) : p ? credited(p) : undefined);
+  }
+  return picked.get(word);
+};
+
+/** Wiktionary glosses that say a word is not a lemma of its own. */
+const STRAY =
+  /misspelling|obsolete|archaic|nonstandard|dated|alternative (form|spelling)|plural of|form of|past (tense|participle) of|third-person|present participle/i;
+/** Prefixes some lists carry as words; they are not cards. */
+const AFFIXES = new Set([
+  "trans",
+  "micro",
+  "semi",
+  "multi",
+  "neo",
+  "non",
+  "pre",
+  "anti",
+  "sub",
+  "inter",
+]);
+const lookupWikt = (w: string) => wikt.get(w) ?? wikt.get(w.toLowerCase()) ?? [];
+const need = new Map<string, string>();
 const metas: ExamListMeta[] = [];
 for (const d of DECKS) {
-  const { entries, missing = [] } = d.build();
+  const entries: ExamEntry[] = [];
+  const missing: string[] = [];
+  for (const word of d.words()) {
+    const w = lookupWikt(word);
+    const r = dict.get(word);
+    // A word the source tags but no corpus ranks, with no Mandarin in
+    // Wiktionary, whose Wiktionary entry calls it a misspelling, an old or
+    // nonstandard form, or a plural (uptodate, reservior, attent, bones): no
+    // card. Rare real words (abnegate, adulate) stay. The NGSL lists are
+    // curated, so their words always stay.
+    const obscure =
+      d.id.startsWith("en-exam-") &&
+      !(r?.frq || r?.bnc) &&
+      !wiktBack(w) &&
+      (!w.length || w.every((x) => x.glosses.every((g) => !g || STRAY.test(g))));
+    const e =
+      AFFIXES.has(word) || obscure
+        ? null
+        : toEntry({ word, wikt: w, written: written.get(word), forms: r?.forms ?? [] }, examples);
+    if (e) entries.push(e);
+    else {
+      missing.push(word);
+      if (w.length && !AFFIXES.has(word) && !obscure)
+        need.set(
+          word,
+          w.map((x) => `${x.pos}: ${x.glosses.filter(Boolean).join(" | ")}`).join(" || "),
+        );
+    }
+  }
   const file = `${d.id}.json`;
   const meta = { id: d.id, lang: "en", name: d.name, level: d.level, source: d.source };
   writeFileSync(
@@ -272,10 +320,18 @@ for (const d of DECKS) {
     license: d.license,
   });
   const withEx = entries.filter((e) => e.ex).length;
+  const wr = entries.filter((e) => written.get(e.term) === e.back).length;
   console.log(
-    `${d.id.padEnd(16)} ${String(entries.length).padStart(5)}  ex ${Math.round((100 * withEx) / Math.max(1, entries.length))}%` +
-      (missing.length ? `  no meaning: ${missing.length} (${missing.join(", ")})` : ""),
+    `${d.id.padEnd(16)} ${String(entries.length).padStart(5)}  ex ${Math.round((100 * withEx) / Math.max(1, entries.length))}%  written ${wr}` +
+      (missing.length ? `  dropped ${missing.length} (${missing.slice(0, 12).join(", ")})` : ""),
   );
+}
+if (need.size) {
+  writeFileSync(
+    join(RAW, "need-glosses.tsv"),
+    [...need].map(([w, g]) => `${w}\t${g}`).join("\n") + "\n",
+  );
+  console.log(`${need.size} words need a written meaning: ${join(RAW, "need-glosses.tsv")}`);
 }
 
 const indexPath = join(OUT, "index.json");

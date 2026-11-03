@@ -5,56 +5,107 @@ import { meaningText } from "@/lib/words/say-parts";
 import { spokenText } from "@/lib/words/spoken";
 import {
   byFrequency,
-  chineseBack,
   csvRows,
-  formsOf,
-  ipa,
+  exchangeOf,
   isHeadword,
+  isOffensive,
+  joinParts,
   mergeExamIndex,
   parseEcdict,
+  parseGlosses,
   parseRanked,
-  rankedEntries,
+  simplified,
   tagged,
   toEntry,
+  wiktBack,
+  wiktIpa,
   type ExamListMeta,
+  type WiktEntry,
 } from "@/scripts/words/exam-decks";
 
-describe("chineseBack", () => {
-  it("keeps three senses per part of speech, the part of speech in brackets", () => {
-    expect(chineseBack("vt. 放弃, 抛弃, 遗弃, 使屈从, 沉溺, 放纵\\nn. 放任, 无拘束, 狂热")).toBe(
-      "(vt.) 放弃，抛弃，遗弃；(n.) 放任，无拘束，狂热",
+const entry = (pos: string, tr: [string, string][], ipa: WiktEntry["ipa"] = []): WiktEntry => ({
+  word: "x",
+  pos,
+  tr: tr.map(([w, s]) => ({ w, s })),
+  ipa,
+  glosses: [],
+});
+
+describe("wiktBack", () => {
+  it("takes the simplified form: the main sense twice, then the next sense", () => {
+    const state = entry("noun", [
+      ["狀態 /状态", "a condition"],
+      ["狀況 /状况", "a condition"],
+      ["國家 /国家", "a sovereign country"],
+      ["州", "a federal division"],
+    ]);
+    expect(wiktBack([state])).toBe("(n.) 状态，状况，国家");
+  });
+  it("keeps Wiktionary's part-of-speech order and skips entries without Chinese", () => {
+    const even = [
+      entry("adj", [
+        ["平坦", "flat"],
+        ["偶數 /偶数", "divisible by two"],
+      ]),
+      entry("noun", []),
+      entry("adv", [
+        ["甚至", "implying extreme example"],
+        ["更加", "emphasising comparative"],
+      ]),
+    ];
+    expect(wiktBack(even)).toBe("(adj.) 平坦，偶数；(adv.) 甚至，更加");
+  });
+  it("merges two entries of one part of speech and ignores non-Han and long translations", () => {
+    expect(
+      wiktBack([
+        entry("verb", [["放棄 /放弃", "give up"]]),
+        entry("verb", [
+          ["fangqi", "give up"],
+          ["一二三四五六七八九", "too long"],
+          ["遺棄 /遗弃", "desert"],
+        ]),
+      ]),
+    ).toBe("(v.) 放弃，遗弃");
+  });
+  it("is empty without translations, and stops at the length limit", () => {
+    expect(wiktBack([entry("noun", [])])).toBe("");
+    expect(joinParts(["(n.) 一二三四五六七八九十", "(v.) 走"], 12)).toBe(
+      "(n.) 一二三四五六七八九十",
     );
-  });
-  it("drops field-tagged and web lines, and merges a repeated part of speech", () => {
-    expect(chineseBack("n. 上下文, 背景\\n[医] 关联\\nn. 上下文\\n[网络] 语境")).toBe(
-      "(n.) 上下文，背景",
-    );
-  });
-  it("says adj. for ECDICT's a.", () => {
-    expect(chineseBack("a. 椭圆的\\n[医] 椭圆形的")).toBe("(adj.) 椭圆的");
-  });
-  it("is empty when only field-tagged lines are left", () => {
-    expect(chineseBack("[计] 膝上型电脑")).toBe("");
-  });
-  it("stops adding parts of speech past the length limit, but always keeps one", () => {
-    const long =
-      "n. 一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六";
-    expect(chineseBack(`${long}\\nv. 走`)).toBe(`(n.) ${long.slice(3)}`);
   });
   it("is read aloud from its first sense, without the part of speech", () => {
-    expect(meaningText(chineseBack("vt. 放弃, 抛弃\\nn. 放任"))).toBe("放弃");
+    expect(meaningText("(v.) 放弃，遗弃；(n.) 工具")).toBe("放弃");
+  });
+  it("simplified() keeps a single form as is", () => {
+    expect(simplified("工具")).toBe("工具");
+    expect(simplified("實施 /实施")).toBe("实施");
   });
 });
 
-describe("ipa", () => {
-  it("turns ECDICT's notation into IPA between slashes", () => {
-    expect(ipa("ә'bændәn")).toBe("/əˈbændən/");
-    expect(ipa(".insti'tju:ʃәnәlaizd")).toBe("/ˌinstiˈtjuːʃənəlaizd/");
-    expect(ipa("'єәpɒ:t")).toBe("/ˈɛəpɒːt/");
-  });
-  it("gives no reading for an empty or garbled one", () => {
-    expect(ipa("")).toBe("");
-    expect(ipa("^ab\\c")).toBe("");
+describe("wiktIpa", () => {
+  it("prefers the British pronunciation, else the first plain one", () => {
+    const e = entry(
+      "verb",
+      [],
+      [
+        { ipa: "/ɹɪˈvɝs/", tags: ["US"] },
+        { ipa: "/ɹɪˈvɜːs/", tags: ["UK"] },
+      ],
+    );
+    expect(wiktIpa([e])).toBe("/ɹɪˈvɜːs/");
+    expect(
+      wiktIpa([
+        entry(
+          "noun",
+          [],
+          [
+            { ipa: "[ˈtʰæp]", tags: [] },
+            { ipa: "/tæp/", tags: [] },
+          ],
+        ),
+      ]),
+    ).toBe("/tæp/");
+    expect(wiktIpa([entry("noun", [])])).toBe("");
   });
   it("is never read aloud", () => {
     expect(spokenText({ term: "abandon", reading: "/əˈbændən/", back: "放弃" }, "en", false)).toBe(
@@ -70,72 +121,75 @@ describe("headwords and forms", () => {
     for (const w of ["Africa", "B.C.", "i.e.", "CORE", "-ism", "trans-"])
       expect(isHeadword(w)).toBe(false);
   });
-  it("reads inflections from the exchange column, not lemma pointers", () => {
-    expect(formsOf("d:abandoned/p:abandoned/i:abandoning/3:abandons")).toEqual([
-      "abandoned",
-      "abandoning",
-      "abandons",
-    ]);
-    expect(formsOf("0:abandon/1:p")).toEqual([]);
+  it("reads inflections and the lemma from the exchange column", () => {
+    expect(exchangeOf("d:abandoned/p:abandoned/i:abandoning/3:abandons")).toEqual({
+      forms: ["abandoned", "abandoning", "abandons"],
+    });
+    expect(exchangeOf("0:drug/1:s")).toEqual({ forms: [], lemma: "drug" });
   });
 });
 
 describe("ECDICT rows", () => {
   const csv = [
     "word,phonetic,definition,translation,pos,collins,oxford,tag,bnc,frq,exchange,detail,audio",
-    'zest,zest,,"n. 兴趣, 热情\\nvt. 给...调味",,,,cet6 gre,14392,10079,s:zests,,',
-    'abandon,ә\'bændәn,,"vt. 放弃",,,,gk cet4 cet6 gre,2057,2182,,,',
+    'zest,zest,,"n. 兴趣, 热情",,,,cet6 gre,14392,10079,s:zests,,',
+    "abandon,,,vt. 放弃,,,,gk cet4 cet6 gre,2057,2182,,,",
     "Africa,,,n. 非洲,,,,cet4,0,0,,,",
     "rare,,,a. 稀有的,,,,cet6,0,0,,,",
+    "drug,,,n. 药,,,,cet6,900,800,s:drugs,,",
+    "drugs,,,n. 药,,,,cet6,950,850,0:drug/1:s,,",
   ].join("\n");
   const rows = parseEcdict(csv);
-  it("parses quoted fields with commas", () => {
-    expect(rows.map((r) => r.word)).toEqual(["zest", "abandon", "Africa", "rare"]);
-    expect(rows[0].translation).toBe("n. 兴趣, 热情\\nvt. 给...调味");
+  it("parses quoted fields with commas, and the forms", () => {
+    expect(rows.map((r) => r.word)).toEqual(["zest", "abandon", "Africa", "rare", "drug", "drugs"]);
     expect(rows[0].forms).toEqual(["zests"]);
   });
-  it("selects a tag minus another, without names, by frequency", () => {
+  it("selects a tag minus another, without names or folded plurals, by frequency", () => {
     expect(tagged(rows, "cet4").map((r) => r.word)).toEqual(["abandon"]);
     expect(
       tagged(rows, "cet6", ["cet4"])
         .sort(byFrequency)
         .map((r) => r.word),
-    ).toEqual(["zest", "rare"]);
+    ).toEqual(["drug", "zest", "rare"]);
+  });
+  it("parses a last field cut off by the end of the file", () => {
+    expect([...csvRows('a,"b')]).toEqual([["a", "b"]]);
   });
 });
 
 describe("cards", () => {
-  const row = (word: string, translation: string, phonetic = "") => ({
-    word,
-    phonetic,
-    translation,
-    tag: "",
-    bnc: 0,
-    frq: 0,
-    forms: [`${word}s`],
-  });
   const examples = (w: string, forms: string[]) =>
-    w === "zest" && forms.includes("zests") ? "Add zest." : undefined;
-  it("carries the Chinese back, IPA and an example found by the word's forms", () => {
-    expect(toEntry(row("zest", "n. 兴趣", "zest"), examples)).toEqual({
+    w === "zest" && forms.includes("zests")
+      ? { ex: "Add zest.", exSrc: "tatoeba:1", exBy: "CK" }
+      : undefined;
+  it("carries the Chinese back, IPA and a credited example found by the word's forms", () => {
+    const wikt = [entry("noun", [["熱情 /热情", "enthusiasm"]], [{ ipa: "/zɛst/", tags: [] }])];
+    expect(toEntry({ word: "zest", wikt, forms: ["zests"] }, examples)).toEqual({
       term: "zest",
-      reading: "/zest/",
-      back: "(n.) 兴趣",
+      reading: "/zɛst/",
+      back: "(n.) 热情",
       ex: "Add zest.",
+      exSrc: "tatoeba:1",
+      exBy: "CK",
     });
-    expect(toEntry(row("laptop", "[计] 膝上型电脑"), examples)).toBeNull();
   });
-  it("keeps a ranked list's order and reports words with no meaning", () => {
-    const dict = new Map([
-      ["zest", row("zest", "n. 兴趣")],
-      ["laptop", row("laptop", "[计] 膝上型电脑")],
-    ]);
-    const out = rankedEntries(["zest", "laptop", "online"], (w) => dict.get(w), examples);
-    expect(out.entries.map((e) => e.term)).toEqual(["zest"]);
-    expect(out.missing).toEqual(["laptop", "online"]);
+  it("uses the written meaning when Wiktionary has no Chinese, and none without either", () => {
+    const wikt = [entry("noun", [])];
+    expect(
+      toEntry({ word: "laptop", wikt, written: "(n.) 笔记本电脑", forms: [] }, examples)?.back,
+    ).toBe("(n.) 笔记本电脑");
+    expect(toEntry({ word: "laptop", wikt, forms: [] }, examples)).toBeNull();
   });
-  it("parses a last field cut off by the end of the file", () => {
-    expect([...csvRows('a,"b')]).toEqual([["a", "b"]]);
+  it("reads the written meanings file, skipping comments", () => {
+    expect(parseGlosses("# note\nlaptop\t(n.) 笔记本电脑\n\nbad\t\n")).toEqual(
+      new Map([["laptop", "(n.) 笔记本电脑"]]),
+    );
+  });
+  it("keeps offensive sentences off the cards", () => {
+    expect(isOffensive("Fuck your resume.")).toBe(true);
+    expect(isOffensive("He put a dick joke in.")).toBe(true);
+    expect(isOffensive("Send me your résumé.")).toBe(false);
+    expect(isOffensive("Dickens wrote it.")).toBe(false);
   });
 });
 
@@ -192,8 +246,8 @@ describe("the shipped exam decks", () => {
     expect(exams.length).toBeGreaterThanOrEqual(11);
     for (const l of exams) {
       expect(l.exam).toBeTruthy();
-      expect(l.source).toContain("ECDICT");
-      expect(l.license).toContain("MIT");
+      expect(l.source).toContain("Wiktionary");
+      expect(l.license).toContain("CC BY-SA 4.0");
     }
   });
   it("JLPT and HSK levels are grouped under their exam", () => {
@@ -204,16 +258,26 @@ describe("the shipped exam decks", () => {
       true,
     );
   });
-  it("each file has unique terms, a Chinese back on every card, and the listed count", () => {
+  it("each file has unique terms, a Chinese back, credited clean examples, and the listed count", () => {
     for (const l of exams) {
       expect(existsSync(join(dir, l.file))).toBe(true);
       const deck = JSON.parse(readFileSync(join(dir, l.file), "utf8"));
-      const entries = deck.entries as { term: string; back: string; reading?: string }[];
+      const entries = deck.entries as {
+        term: string;
+        back: string;
+        reading?: string;
+        ex?: string;
+        exSrc?: string;
+      }[];
       expect(entries.length).toBe(l.count);
       expect(new Set(entries.map((e) => e.term)).size).toBe(entries.length);
       for (const e of entries) {
         expect(e.back).toMatch(/\p{Script=Han}/u);
         if (e.reading) expect(e.reading).toMatch(/^\/.+\/$/);
+        if (e.ex) {
+          expect(e.exSrc).toMatch(/^(tatoeba:\d+|wiktionary)$/);
+          expect(isOffensive(e.ex)).toBe(false);
+        }
       }
     }
   });

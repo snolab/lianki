@@ -17,68 +17,81 @@ levels). JLPT and HSK, which were already shipped, now appear there too.
 
 ## Shipped
 
-All English decks have **Chinese meanings** (the owner's ask), an IPA reading,
-and one example sentence where one is found. They are ordered by frequency, most
-common first.
+All English decks have **Chinese meanings** (the owner's ask), an IPA reading
+and, where one is found, one example sentence. They are ordered by frequency,
+most common first. Each part of a card comes from one place:
 
-| Deck (id)                                       | Word list source                                                                                                   | Licence of the list                                                                                                    | What we take                                                                                                                                                | Attribution shown                                                                                                                                                                                                                   |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 中考 Zhongkao (`en-exam-zk`), 1,553 words        | [ECDICT](https://github.com/skywind3000/ECDICT) `ecdict.csv`, `tag` column value `zk`                              | MIT ([LICENSE](https://github.com/skywind3000/ECDICT/blob/master/LICENSE), © Linwei)                                   | Headwords with the tag. Also their Chinese `translation` (shortened), `phonetic` (converted to IPA), `exchange` (forms, used to find examples), `frq`/`bnc` (order). | "Word list: the exam tag of ECDICT (skywind3000/ECDICT); Chinese meanings and phonetics: ECDICT; ordered by COCA/BNC frequency (ECDICT) …" — MIT (ECDICT)                                                                          |
-| 高考 Gaokao (`en-exam-gk`), 3,577               | ECDICT tag `gk`                                                                                                    | MIT                                                                                                                    | as above                                                                                                                                                    | as above                                                                                                                                                                                                                            |
-| CET-4 四级 (`en-exam-cet4`), 3,812              | ECDICT tag `cet4`                                                                                                  | MIT                                                                                                                    | as above. Very basic school words (the, run, get) carry no `cet4` tag in ECDICT, so they are not in this deck: it is the CET-4 vocabulary beyond them. | as above                                                                                                                                                                                                                            |
-| CET-6 六级 (`en-exam-cet6`), 1,941              | ECDICT tag `cet6` minus words tagged `cet4`                                                                        | MIT                                                                                                                    | as above. It is exclusive (only what CET-6 adds), like the HSK levels, so a learner with both decks does not see a word twice.                              | as above                                                                                                                                                                                                                            |
-| 考研 NEEP (`en-exam-ky`), 4,782                  | ECDICT tag `ky`                                                                                                    | MIT                                                                                                                    | as above                                                                                                                                                    | as above                                                                                                                                                                                                                            |
-| IELTS (`en-exam-ielts`), 4,958                  | ECDICT tag `ielts`                                                                                                 | MIT                                                                                                                    | as above                                                                                                                                                    | as above                                                                                                                                                                                                                            |
-| TOEFL (`en-exam-toefl`), 6,922                  | ECDICT tag `toefl`                                                                                                 | MIT                                                                                                                    | as above                                                                                                                                                    | as above                                                                                                                                                                                                                            |
-| GRE (`en-exam-gre`), 7,464                      | ECDICT tag `gre`                                                                                                   | MIT                                                                                                                    | as above. Some common words (want, even, school) carry the tag for their rarer GRE senses, and because of frequency order they come first. The Chinese back lists those senses as well ("want: 需要的东西，缺乏，贫困"). | as above                                                                                                                                                                                                                            |
-| TOEIC: TOEIC Service List (`en-tsl`), 1,250     | [TSL 1.2](https://www.newgeneralservicelist.com/toeic-service-list), `TSL_12_stats.csv` (word, rank)               | CC BY-SA 4.0 (stated on the page)                                                                                      | Words in TSL rank order. Chinese meanings and IPA from ECDICT (MIT). 13 newer words ECDICT lacks (laptop, download, résumé …) have meanings written for Lianki. | "Word list: TOEIC Service List (TSL) 1.2 by Charles Browne, Brent Culligan and Joseph Phillips (newgeneralservicelist.com) …" — CC BY-SA 4.0 (NGSL lists; this deck); MIT (ECDICT)                                                  |
-| NGSL core words (`en-ngsl`), 2,809              | [NGSL 1.2](https://www.newgeneralservicelist.com/new-general-service-list), `NGSL_12_stats.csv`                    | CC BY-SA 4.0                                                                                                           | as TSL ("online" has a written meaning)                                                                                                                     | "… New General Service List (NGSL) 1.2 by Charles Browne, Brent Culligan and Joseph Phillips …" — CC BY-SA 4.0                                                                                                                      |
-| NAWL academic words (`en-nawl`), 952            | [NAWL 1.2](https://www.newgeneralservicelist.com/new-academic-word-list), `NAWL_12_stats.csv`                      | CC BY-SA 4.0                                                                                                           | as TSL. The prefixes trans, micro, semi, multi and neo get no card. Globalization and descriptor have written meanings.                                     | "… New Academic Word List (NAWL) 1.2 …" — CC BY-SA 4.0                                                                                                                                                                              |
-| Japanese JLPT N5–N1 (`ja-jlpt-*`), already shipped | jamsinclair/open-anki-jlpt-decks ← tanos.co.uk                                                                  | MIT / CC BY                                                                                                            | unchanged; now grouped under "JLPT" in the picker                                                                                                           | see SOURCES.md                                                                                                                                                                                                                      |
-| Chinese HSK 3.0 1–6, 7–9 (`zh-hsk-*`), already shipped | drkameleon/complete-hsk-vocabulary; the HSK 3.0 standard GF 0025-2021                                     | MIT; CC-CEDICT meanings CC BY-SA 4.0                                                                                   | unchanged; now grouped under "HSK 3.0". Old HSK 2.0 levels are not added: they would duplicate HSK 3.0, which replaced them.                                | see SOURCES.md                                                                                                                                                                                                                      |
+| Part of the card                          | Source                                                                                                                                                                       | Licence                                                    | Attribution shown                                                                                                   |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Which words an exam deck holds (中考 … GRE) | [ECDICT](https://github.com/skywind3000/ECDICT) `ecdict.csv`, column `tag` only                                                                                               | MIT ([LICENSE](https://github.com/skywind3000/ECDICT/blob/master/LICENSE), © 2025 Linwei) | "Word list and frequency order: the exam tag of ECDICT (skywind3000/ECDICT)"; MIT notice in public/words/SOURCES.md |
+| Frequency order, word forms               | ECDICT columns `frq` (COCA rank), `bnc` (BNC rank) and `exchange` (inflections, the lemma of a plural)                                                                       | MIT                                                        | as above                                                                                                            |
+| Which words the NGSL/TSL/NAWL decks hold, and their order | [NGSL 1.2](https://www.newgeneralservicelist.com/new-general-service-list), [NAWL 1.2](https://www.newgeneralservicelist.com/new-academic-word-list), [TSL 1.2](https://www.newgeneralservicelist.com/toeic-service-list), `*_12_stats.csv` | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) | NGSL and NAWL: "by Charles Browne, Brent Culligan and Joseph Phillips"; TSL: "by Charles Browne and Brent Culligan" |
+| Chinese meaning                           | English Wiktionary's translation tables into Mandarin, via the [kaikki.org](https://kaikki.org/dictionary/English/) extract (wiktextract, Tatu Ylonen)                       | CC BY-SA 4.0 (and GFDL)                                    | "Chinese meanings and IPA: English Wiktionary (en.wiktionary.org) contributors, via kaikki.org"                     |
+| Chinese meaning, when Wiktionary has none (4,392 words; 30% of the 14,672) | Written for Lianki in `scripts/words/exam-glosses.tsv`, from the word's English Wiktionary definitions, which the builder writes next to each word in `need-glosses.tsv`. They were drafted with an LLM (Claude) under fixed rules: dictionary-style equivalents, at most 3 senses, no rare senses. | CC BY-SA 4.0, as an adaptation of the Wiktionary definitions | "meanings Wiktionary has no Chinese for written for Lianki from its definitions"                                    |
+| IPA                                       | English Wiktionary pronunciation (British when given, as Chinese exam books use)                                                                                            | CC BY-SA 4.0                                               | as Chinese meaning                                                                                                  |
+| Example sentence                          | The sentence the English frequency list (`en-freq-*`) gives the word, else the shortest [Tatoeba](https://tatoeba.org) English sentence with the word or a form             | CC BY 2.0 FR (Tatoeba); CC BY-SA 4.0 (Wiktionary examples) | Each card carries `exSrc` (`tatoeba:<id>` or `wiktionary`) and `exBy` (the Tatoeba author)                          |
 
-Example sentences, in all English exam decks, are the same kind as in the
-English frequency lists. A word that is in `en-freq-*` keeps the sentence it
-already has there: a Wiktionary usage example (CC BY-SA 4.0 / GFDL) or a Tatoeba
-sentence. Any other word gets the shortest
-[Tatoeba](https://tatoeba.org) English sentence containing the word or one of
-its forms (CC BY 2.0 FR; "Example sentences from Tatoeba (tatoeba.org)
-contributors"). These sentences have no translation.
+ECDICT's Chinese `translation`, `phonetic`, `definition`, `oxford` and
+`collins` columns are **not** used (see the licence reasoning below).
+
+| Deck (id)                                 | Words | Word list                                     | Deck licence |
+| ----------------------------------------- | ----: | --------------------------------------------- | ------------ |
+| 中考 Zhongkao (`en-exam-zk`)               | 1,538 | ECDICT tag `zk`                            | CC BY-SA 4.0 (Wiktionary content); word list MIT |
+| 高考 Gaokao (`en-exam-gk`)                 | 3,490 | ECDICT tag `gk`                            | same |
+| CET-4 四级 (`en-exam-cet4`)                | 3,783 | ECDICT tag `cet4`. Very basic words (the, run, get) carry no `cet4` tag, so this is the CET-4 vocabulary beyond them. | same |
+| CET-6 六级 (`en-exam-cet6`)                | 1,932 | ECDICT tag `cet6` minus words tagged `cet4`. It holds only what CET-6 adds, like the HSK levels, so a learner with both decks never sees a word twice. | same |
+| 考研 NEEP (`en-exam-ky`)                   | 4,754 | ECDICT tag `ky`                            | same |
+| IELTS (`en-exam-ielts`)                   | 4,615 | ECDICT tag `ielts`                      | same |
+| TOEFL (`en-exam-toefl`)                   | 6,739 | ECDICT tag `toefl`                      | same |
+| GRE (`en-exam-gre`)                       | 7,359 | ECDICT tag `gre`. Some common words (want, even, school) carry the tag for their rarer senses, and come first by frequency. | same |
+| TOEIC Service List (`en-tsl`)             | 1,250 | TSL 1.2                                   | CC BY-SA 4.0 |
+| NGSL core words (`en-ngsl`)               | 2,809 | NGSL 1.2                                 | CC BY-SA 4.0 |
+| NAWL academic words (`en-nawl`)           | 948 | NAWL 1.2. The prefixes trans, micro, semi, multi and neo get no card. | CC BY-SA 4.0 |
+| Japanese JLPT N5–N1 (`ja-jlpt-*`)         | —     | already shipped; now grouped under "JLPT" in the picker | see SOURCES.md |
+| Chinese HSK 3.0 1–6, 7–9 (`zh-hsk-*`)     | —     | already shipped; now grouped under "HSK 3.0". Old HSK 2.0 levels are not added: HSK 3.0 replaced them and they would duplicate it. | see SOURCES.md |
+
+Every deck in the table: proper names, abbreviations and an inflection whose
+lemma is in the same deck ("drugs" with "drug") are left out. So are words with
+no English Wiktionary entry, such as misspellings in the source ("reservior")
+and place names.
 
 ### Licence reasoning for ECDICT
 
-- ECDICT is released by its author under the MIT licence. The licence covers the
-  whole repository, data included, and allows commercial use and redistribution
-  with the copyright notice. The notice and the MIT name are in every deck's
-  `license` field. The full MIT text and the copyright line are reproduced in
-  public/words/SOURCES.md.
-- Provenance caveat: the author's README says the base vocabulary began from
-  word lists found online ("一份四六级到 GRE 包含释义的词汇表"), with phonetics
-  collected from various sources. We rely on the author's MIT grant, as the many
-  open-source apps that bundle ECDICT do. To keep what we take small and
-  factual, we take only:
-  - exam membership, as a set of headwords;
-  - short sense glosses, at most three per part of speech;
-  - the phonetic transcription.
-  We drop the long `definition`, `detail` and `[网络]` (web-harvested) lines and
-  all field-tagged lines (`[医]`, `[计]` …). We do not take the `oxford` and
-  `collins` columns: those mark Oxford 3000 / Collins star membership, which are
-  publishers' lists (see "Not shipped").
-- If the owner prefers to remove that dependency later, the same decks can be
-  rebuilt with Chinese meanings from Wiktionary translations (kaikki.org,
-  CC BY-SA). The exam membership would still come from ECDICT.
+- ECDICT's author releases the repository, data included, under MIT. MIT
+  allows commercial use and redistribution with the copyright notice. That
+  notice is reproduced in public/words/SOURCES.md.
+- Provenance caveat (raised by the Codex review): the README says the base
+  vocabulary started from word lists found online ("一份四六级到 GRE
+  包含释义的词汇表"), with phonetics collected from various sources. MIT can
+  only pass on the rights its author holds. So we take **no expressive content
+  from ECDICT**: no Chinese glosses, definitions or phonetics. We take only
+  facts about words:
+  - whether a word is tagged for an exam: a set of headwords, with no
+    selection or arrangement of ours kept from the source, because we re-sort
+    by frequency;
+  - two corpus frequency ranks;
+  - inflected forms.
+  Meanings, IPA and examples come from Wiktionary and Tatoeba, whose licences
+  are clear.
+- What is left at risk is the membership of each exam list, if the original
+  compiler of a list claimed it as a compilation. Exam syllabus vocabularies
+  are published by the exam bodies themselves (教育部考试中心 for CET and 考研)
+  and are reproduced in every prep book. A bare alphabetical or
+  frequency-sorted headword set has thin protection. If the owner wants zero
+  dependency on ECDICT, the CET/考研 decks could be rebuilt from the published
+  syllabus appendices, and the IELTS/TOEFL/GRE decks dropped. The NGSL, NAWL
+  and TSL decks would stay.
 
 ### NGSL family
 
-NGSL, NAWL and TSL 1.2 (Browne, Culligan and Phillips) are each published on
-newgeneralservicelist.com under "Creative Commons Attribution-ShareAlike 4.0
-International". The page adds that "permissions beyond the scope of this
-license may be available". Our decks built from them are therefore CC BY-SA 4.0
-(share-alike), and their `license` says so. Changes made: Chinese meanings and
-phonetics added, example sentences added, Excel's TRUE/FALSE restored to
-true/false, prefixes dropped.
+NGSL, NAWL and TSL 1.2 are each published on newgeneralservicelist.com under
+"Creative Commons Attribution-ShareAlike 4.0 International", and the page adds
+that "permissions beyond the scope of this license may be available". Our decks
+built from them are therefore CC BY-SA 4.0 (share-alike), as their `license`
+field says. Changes made: Chinese meanings, IPA and example sentences added;
+Excel's TRUE/FALSE restored to true/false; prefixes dropped.
 
-## Not shipped (no clean source)
+## Not shipped (no cleared source identified)
 
 | Candidate                                    | What exists                                                                                                                                                                                                   | Why not                                                                                                                                                                                                                                            |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

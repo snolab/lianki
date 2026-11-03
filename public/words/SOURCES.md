@@ -336,35 +336,46 @@ authors (CC BY 2.0 FR).
 
 ## English exam decks (`en-exam-*`, `en-ngsl`, `en-nawl`, `en-tsl`)
 
-Built by `scripts/words/build-exam-decks.ts`. Every deck, its source, the
+Built by `scripts/words/build-exam-decks.ts`. Every deck, its sources, the
 licence reasoning and the decks not shipped are in
 [docs/word-deck-sources.md](../../docs/word-deck-sources.md). The backs are
 Chinese.
 
-- **中考, 高考, CET-4, CET-6, 考研, IELTS, TOEFL, GRE**: the headwords carrying
-  the matching `tag` in [ECDICT](https://github.com/skywind3000/ECDICT)
-  (`ecdict.csv`, MIT, © Linwei). Proper names and abbreviations are left out.
-  CET-6 holds only the words not tagged CET-4. Words are ordered by ECDICT's
-  COCA rank (`frq`), then its BNC rank (`bnc`), then A→Z.
-- **TOEIC Service List, NGSL, NAWL**: the 1.2 lists by Charles Browne, Brent
-  Culligan and Joseph Phillips,
-  [newgeneralservicelist.com](https://www.newgeneralservicelist.com/), CC BY-SA
-  4.0, in their own frequency rank. Attribution: "New General Service List
-  Project (Browne, Culligan & Phillips), newgeneralservicelist.com, CC BY-SA
-  4.0". Changes made: Chinese meanings, IPA and examples added, TRUE/FALSE
-  lowercased, NAWL's five prefixes dropped. These three decks are CC BY-SA 4.0.
-- **Meanings**: ECDICT's Chinese `translation`. Lines tagged with a field
-  (`[医]`, `[计]`, `[网络]` …) are dropped. At most three senses are kept per
-  part of speech, and at most three parts of speech, about 48 characters in
-  all. Example: "(vt.) 放弃，抛弃，遗弃；(n.) 放任，无拘束，狂热". Fifteen
-  newer words that ECDICT lacks (laptop, download, online, résumé …) have
-  meanings written for Lianki (`WRITTEN` in the build script).
-- **Reading**: ECDICT's `phonetic`, converted to IPA (`ә'bændәn` →
-  `/əˈbændən/`). It is left out when the source has stray symbols. It is never
-  read aloud.
-- **Examples**: the sentence the word already has in `en-freq-*` (see
-  "Example sentences"), otherwise the shortest Tatoeba English sentence with
-  the word or one of its ECDICT forms (`exchange`).
+- **Word lists.** 中考, 高考, CET-4, CET-6, 考研, IELTS, TOEFL and GRE use the
+  headwords that carry the matching `tag` in
+  [ECDICT](https://github.com/skywind3000/ECDICT) (`ecdict.csv`, MIT, © 2025
+  Linwei). They are ordered by its COCA rank (`frq`), then its BNC rank, then
+  A→Z. CET-6 holds only the words not tagged CET-4. Nothing else is taken
+  from ECDICT except its word forms (`exchange`): not its Chinese, phonetics
+  or definitions.
+- **TOEIC Service List, NGSL, NAWL.** The 1.2 lists from the
+  [New General Service List Project](https://www.newgeneralservicelist.com/),
+  in their own rank order, under
+  [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+  Attribution: NGSL and NAWL by Charles Browne, Brent Culligan and Joseph
+  Phillips; TSL by Charles Browne and Brent Culligan. Changes made: Chinese
+  meanings, IPA and examples added, TRUE/FALSE lowercased, NAWL's five
+  prefixes dropped.
+- **Meanings.** English Wiktionary's translation tables into Mandarin, from
+  the [kaikki.org](https://kaikki.org/dictionary/English/) extract
+  (`scripts/words/filter-kaikki-zh.ts`; CC BY-SA 4.0 / GFDL). Attribution:
+  "Chinese meanings and IPA: English Wiktionary (en.wiktionary.org)
+  contributors, via kaikki.org". The simplified form is used. The main sense
+  gives two translations, the next senses one each. At most three per part of
+  speech, three parts of speech and about 48 characters. Example: "(n.)
+  状态，状况，国家；(v.) 表示，声明，规定". Words whose entry has no Mandarin
+  translation take the meaning written for Lianki in
+  `scripts/words/exam-glosses.tsv`, from their Wiktionary definitions.
+- **Reading.** Wiktionary's IPA, the British one when given. It is never read
+  aloud.
+- **Examples.** The sentence the word already has in `en-freq-*` (see
+  "Example sentences"), else the shortest Tatoeba English sentence with the
+  word or one of its forms. Sentences with profanity, slurs or sexual content
+  are skipped (`isOffensive`). Each card records the sentence's source in
+  `exSrc` (`tatoeba:<id>`, see https://tatoeba.org/sentences/show/<id>, or
+  `wiktionary`) and its Tatoeba author in `exBy`, as CC BY 2.0 FR asks.
+- **Left out.** Proper names, abbreviations, an inflection whose lemma is in
+  the same deck, and words with no English Wiktionary entry.
 
 ECDICT licence, reproduced as it requires:
 
@@ -397,7 +408,7 @@ SOFTWARE.
 Lists built from CC BY-SA sources (all frequency bands, the HSK lists via
 CC-CEDICT, the ordering of the JLPT lists, and the NGSL, NAWL and TOEIC
 Service List decks) are redistributed under CC BY-SA 4.0 with the attribution
-above. The ECDICT exam decks use MIT data (notice above), plus Wiktionary
-examples under CC BY-SA 4.0. The example sentences from Tatoeba
+above. The exam decks' word lists from ECDICT are MIT (notice above); their
+meanings, IPA and examples are Wiktionary (CC BY-SA 4.0) and Tatoeba. The example sentences from Tatoeba
 and the Tatoeba phrases in the phrase decks are CC BY 2.0 FR, attributed above. Changes made: filtering, lemma
 folding, truncation and reordering.
