@@ -384,13 +384,14 @@ try {
   {
     const where = () => page.evaluate(() => [location.href, history.length, history.state]);
     await page.waitForTimeout(300); // Escape's history.back() lands
-    const [hrefBefore, lenBefore] = await where();
+    const [hrefBefore, , stateBefore] = await where();
+    check(stateBefore?.__lkBack === undefined, "Escape left the sheet's history entry");
     await loose.click({ button: "right" });
     await page.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
-    const [, lenOpen, stateOpen] = await where();
+    const [hrefOpen, , stateOpen] = await where();
     check(
-      lenOpen === lenBefore + 1 && typeof stateOpen?.__lkBack === "string",
-      `an open sheet has one history entry of its own (${lenBefore} → ${lenOpen})`,
+      hrefOpen === hrefBefore && typeof stateOpen?.__lkBack === "string",
+      "an open sheet has a history entry of its own, on the same URL",
     );
     await page.evaluate(() => history.back());
     await page
