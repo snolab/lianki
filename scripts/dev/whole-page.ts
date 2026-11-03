@@ -24,7 +24,7 @@
  * Guard rules: scripts/dev/whole-page-guard.ts. Secrets (auth, device, guard)
  * are generated once into .dev-whole-page.json (gitignored, 0600).
  */
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
@@ -42,6 +42,8 @@ import {
   HUB_ORIGIN,
   isBridgedPath,
   needsIntlayerBuild,
+  RestartStorm,
+  restartScanner,
   isLabPath,
   Debouncer,
   LANDING_PATH,
@@ -105,6 +107,26 @@ function loadState(): State {
     chmodSync(STATE_FILE, 0o600);
   }
   return state;
+}
+
+/** Now in JST, for the log (it has no other clock): "2026-11-03 14:05:09 JST". */
+function jst(): string {
+  return `${new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 19).replace("T", " ")} JST`;
+}
+
+/** True once nothing listens on 127.0.0.1:<port>; false if something still does after `ms`. */
+async function portFree(port: number, ms: number): Promise<boolean> {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    const taken = await new Promise<boolean>((done) => {
+      const s = net.connect(port, "127.0.0.1");
+      s.once("connect", () => (s.destroy(), done(true)));
+      s.once("error", () => done(false));
+    });
+    if (!taken) return true;
+    await Bun.sleep(250);
+  }
+  return false;
 }
 
 /** OWNER_EMAILS from wrangler.jsonc's vars — the same list production gates on. */
@@ -181,14 +203,81 @@ async function serve() {
     BETTER_AUTH_BASE_URL: origin,
     AUTH_SECRET: state.authSecret,
   };
-  const next = spawn("node_modules/.bin/next", ["dev", "-H", "127.0.0.1", "-p", String(inner)], {
-    env,
-    stdio: "inherit",
-  });
-  next.on("exit", (code) => {
-    console.error(`[whole-page] next dev exited (${code})`);
-    process.exit(code ?? 1);
-  });
+  // next dev in its own process group: `node_modules/.bin/next` forks the
+  // server that holds the port, and killing only the first one left that
+  // server holding :<inner> (2026-11-03). Stopped as a group, and with us.
+  let next: ChildProcess;
+  let restarting = false;
+  let stopping = false;
+  /** Signals next dev's whole process group (its pid is the group id: detached). */
+  const signalGroup = (pgid: number | undefined, sig: NodeJS.Signals) => {
+    try {
+      if (pgid) process.kill(-pgid, sig);
+    } catch {}
+  };
+  /**
+   * SIGTERM to the group, and SIGKILL to the group `graceMs` later whatever
+   * happened meanwhile: the first process exiting says nothing about the
+   * server it forked (a group with no one left just ignores it).
+   */
+  const stopNext = (graceMs: number) => {
+    const pgid = next.pid;
+    signalGroup(pgid, "SIGTERM");
+    setTimeout(() => signalGroup(pgid, "SIGKILL"), graceMs).unref();
+  };
+  const startNext = () => {
+    const child = spawn("node_modules/.bin/next", ["dev", "-H", "127.0.0.1", "-p", String(inner)], {
+      env,
+      stdio: "inherit",
+      detached: true,
+    });
+    next = child;
+    child.on("exit", async (code) => {
+      if (!restarting && !stopping) {
+        console.error(`[whole-page] next dev exited (${code})`);
+        return process.exit(code ?? 1);
+      }
+      // What it forked may outlive it for a moment: wait for the port, kill
+      // the rest of the group if it will not let go, and never start a second
+      // server into a port still taken (that one would only exit, and us too).
+      let free = await portFree(inner, stopping ? 4_000 : 10_000);
+      if (!free || stopping) signalGroup(child.pid, "SIGKILL");
+      if (stopping) return process.exit(0); // a signal came, maybe mid-restart: no new server
+      if (!free) free = await portFree(inner, 5_000);
+      if (stopping) return process.exit(0);
+      if (!free) {
+        console.error(`[whole-page] :${inner} still taken after a restart; exiting`);
+        return process.exit(1);
+      }
+      restarting = false;
+      startNext();
+    });
+  };
+  startNext();
+  // Last resort on any exit (synchronous: no waiting here).
+  process.on("exit", () => signalGroup(next.pid, "SIGTERM"));
+  // (Not SIGHUP: under nohup it is ignored, and a handler would undo that.)
+  for (const sig of ["SIGINT", "SIGTERM"] as const)
+    process.on(sig, () => {
+      if (stopping) return;
+      stopping = true;
+      stopNext(5_000);
+      // If next dev never exits at all: kill the group and go anyway.
+      setTimeout(() => {
+        signalGroup(next.pid, "SIGKILL");
+        process.exit(0);
+      }, 10_000).unref();
+    });
+  // A wedged Turbopack reloading every page in a loop (RestartStorm): restart it.
+  const storm = new RestartStorm();
+  const noteRestarts = (n: number, openedAt: number) => {
+    if (!n || restarting || stopping || !storm.note(n, Date.now(), openedAt)) return;
+    console.error(
+      `[whole-page] ${jst()} reload storm (Turbopack restart loop): restarting next dev`,
+    );
+    restarting = true;
+    stopNext(8_000);
+  };
 
   const tokens = new EnterTokens();
   const device = await deviceCookieValue(state.deviceSecret);
@@ -612,6 +701,12 @@ async function serve() {
       up.pipe(socket);
       socket.pipe(up);
     });
+    // next dev's HMR socket: watched (not changed) for a Turbopack restart loop.
+    if (!hub && url.pathname.startsWith("/_next/")) {
+      const scan = restartScanner();
+      const openedAt = Date.now();
+      up.on("data", (chunk: Buffer) => noteRestarts(scan(chunk), openedAt));
+    }
     up.on("error", () => socket.destroy());
     socket.on("error", () => up.destroy());
     return up;
@@ -655,7 +750,7 @@ async function serve() {
       ? "published"
       : `publish FAILED: ${p.stderr.toString().trim().split("\n")[0]}`;
     const head = Bun.spawnSync(["git", "log", "--oneline", "-1"]).stdout.toString().trim();
-    console.error(`[whole-page] ${msg} (${follow} → ${head})`);
+    console.error(`[whole-page] ${jst()} ${msg} (${follow} → ${head})`);
     if (!p.success) return;
     // next dev does not rebuild intlayer's dictionaries for new or changed
     // *.content.ts that arrive by a merge, and the page throws until someone

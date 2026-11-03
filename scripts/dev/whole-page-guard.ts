@@ -274,6 +274,77 @@ export function needsIntlayerBuild(changedFiles: string[]): boolean {
 }
 
 /**
+ * A wedged Turbopack (owner, 2026-11-03 12:44 JST: "开发服务器经常暴风刷新").
+ * After a publish, next dev 16.4.1 could get stuck answering every page's
+ * subscription to its runtime chunk list with a `restart` update, and the
+ * page's runtime obeys with `location.reload()`. Every page, every load: one
+ * reload every 0.5–1.5 s, until next dev is restarted (a plain restart clears
+ * it). The guard sees those messages on the HMR sockets it pipes and restarts
+ * next dev itself (docs/dev-whole-page.md, "Reload storms").
+ */
+const RESTART_MARK = '"type":"restart"';
+/** This many restarts this close together is a storm, not a publish. */
+export const STORM_RESTARTS = 6;
+export const STORM_WINDOW_MS = 20_000;
+/**
+ * Only restarts on a socket this young count. In the storm each restart came
+ * well under a second after its page opened the socket; a publish's
+ * legitimate restart goes to pages that were open before it, however many.
+ */
+export const STORM_YOUNG_MS = 5_000;
+/** Never restart next dev again sooner than this (it takes a while to come up). */
+export const STORM_COOLDOWN_MS = 120_000;
+
+/**
+ * Counts Turbopack `restart` messages in one HMR socket's bytes from next dev,
+ * cut anywhere by TCP. Server-to-browser WebSocket frames are not masked, and
+ * next dev's `ws` server does not compress them, so the JSON is in the stream
+ * as is.
+ */
+export function restartScanner(): (chunk: Uint8Array | string) => number {
+  let tail = "";
+  return (chunk) => {
+    const text = tail + (typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("latin1"));
+    let n = 0;
+    for (let i = text.indexOf(RESTART_MARK); i !== -1; i = text.indexOf(RESTART_MARK, i + 1)) n++;
+    tail = text.slice(-(RESTART_MARK.length - 1));
+    return n;
+  };
+}
+
+/**
+ * Restarts seen across all HMR sockets. A publish that really changes the
+ * runtime sends each open page one restart, on a socket opened long before;
+ * a page in a loop gets its restart right after it (re)connects. So only
+ * restarts on young sockets count, and STORM_RESTARTS of those within
+ * STORM_WINDOW_MS means a page is reloading in a loop.
+ */
+export class RestartStorm {
+  private times: number[] = [];
+  private last = -Infinity;
+  constructor(
+    private count = STORM_RESTARTS,
+    private windowMs = STORM_WINDOW_MS,
+    private cooldownMs = STORM_COOLDOWN_MS,
+    private youngMs = STORM_YOUNG_MS,
+  ) {}
+
+  /**
+   * Notes `n` restarts at `now` on a socket opened at `openedAt`; true once
+   * per storm: restart next dev now.
+   */
+  note(n: number, now: number, openedAt: number): boolean {
+    if (now - openedAt >= this.youngMs) return false;
+    for (let k = 0; k < n; k++) this.times.push(now);
+    this.times = this.times.filter((t) => now - t < this.windowMs);
+    if (this.times.length < this.count || now - this.last < this.cooldownMs) return false;
+    this.last = now;
+    this.times = [];
+    return true;
+  }
+}
+
+/**
  * Tailscale identity (owner decision, 2026-10-31 02:08 JST, typed "1同意"):
  * his own devices on the tailnet are let in without a one-time link.
  *

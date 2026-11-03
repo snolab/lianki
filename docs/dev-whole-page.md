@@ -45,6 +45,34 @@ non-components import (`lib/*`, content dictionaries, intlayer rebuilds, route
 handlers, `next.config.mjs`) is a full page reload. A `next.config.mjs` change
 or a guard (`scripts/dev/whole-page*.ts`) change needs a restart.
 
+### Reload storms (Turbopack restart loop)
+
+Owner, 2026-11-03 12:44 JST: "开发服务器经常暴风刷新". After a publish
+(13:45:57 JST that day), next dev 16.4.1 got stuck: every page's subscription
+to its runtime chunk list (`static/chunks/_1anvha4rlo79g._.js`) was answered
+at once with a Turbopack `restart` update, and the page's runtime obeys with
+`location.reload()`. So every page, on every load, reloaded every 0.5–1.5 s:
+about 70 loads in 40 s in `.next/dev/logs/next-development.log` (one "Download
+the React DevTools" line per load), until he left the page. A fresh next dev
+did not do it, and a plain restart (cache kept) cleared it. Not the cause: the
+version push (the guard refuses `/api/version/ws`), the service worker (the
+loop reproduced with it blocked), and the gate's `503 (no session)` lines
+(one per page load, also outside storms).
+
+To see it: open the HMR socket's frames (Playwright `page.on("websocket")`)
+on `http://127.0.0.1:3101/en/blog` — a wedged server sends
+`{"type":"turbopack-message","data":[{…"type":"restart"…}]}` right after the
+`turbopack-subscribe`, then the page navigates.
+
+The guard now watches the HMR sockets it pipes (`restartScanner`,
+`RestartStorm` in `whole-page-guard.ts`). Only a restart on a socket under 5 s
+old counts: in the storm each one came right after its page connected, while
+a publish's real restart goes to pages that were open before it, however many.
+6 of those within 20 s restarts next dev (at most once per 2 min) and logs
+`reload storm (Turbopack restart loop): restarting next dev`. next dev runs in
+its own process group, stopped with SIGTERM then SIGKILL, and with the guard,
+so a killed guard no longer leaves a server holding :3101.
+
 ## What runs
 
 | Piece                                      | Where                                                                                    |
