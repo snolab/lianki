@@ -4,6 +4,7 @@ import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
 import { useTextScale } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { SettingsSheet } from "./SettingsSheet";
+import { ListPreview, PreviewButton } from "./ListPreview";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { advanceTop, shouldAdvance } from "@/lib/words/advance";
 import { GLIDE_WATCH_MS, homeStep, onDetent } from "@/lib/words/native-slip";
@@ -2363,7 +2364,8 @@ function ListPicker({
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
       // Keys inside a row's ⋯ menu or the Undo toast are theirs.
-      if (t.closest?.('[role="menu"], [data-undo-delete], [data-added-toast]')) return;
+      if (t.closest?.('[role="menu"], [role="dialog"], [data-undo-delete], [data-added-toast]'))
+        return;
       const n = Number(e.key);
       if (e.key === "0" && studyable.length > 1) onOpen(ALL);
       else if (n >= 1 && n <= 9 && items[n - 1]) onOpen(items[n - 1].id);
@@ -2399,6 +2401,28 @@ function ListPicker({
   /** A built-in list's name in the toast: a phrase deck by its scenario. */
   const addName = (c: CatalogMeta) =>
     isPhraseMeta(c) && c.scenario ? scenarioName(c.scenario) : c.name;
+
+  // A list's (or a band's) preview before adding it (ListPreview.tsx): its
+  // entries load only once it opens. Focus goes back to its eye on close.
+  const [preview, setPreview] = useState<{ title: string; lists: CatalogMeta[] } | null>(null);
+  const previewFrom = useRef<HTMLElement | null>(null);
+  const openPreview = (lists: CatalogMeta[], title: string, from: HTMLElement) => {
+    previewFrom.current = from;
+    setPreview({ title, lists });
+  };
+  const previewSources = useMemo(
+    () =>
+      (preview?.lists ?? []).map((c) => ({
+        id: c.id,
+        count: c.count,
+        path: catalogPath(config.base, c),
+      })),
+    [preview, config.base],
+  );
+  const fetchPreview = useCallback(
+    (path: string) => loadCatalog<{ entries: Entry[] }>(path).then((d) => d.entries),
+    [],
+  );
 
   // "Arrange by language" (lib/words/arrange.ts): every list he has into
   // language → kind → lists in learning order, with Undo while it shows.
@@ -2725,6 +2749,7 @@ function ListPicker({
               onTick={(node) => setTicked((t) => toggleTick(node, t, added))}
               onToggleOpen={toggleOpen}
               onAdd={addLists}
+              onPreview={openPreview}
               scenarioName={scenarioName}
             />
           ))}
@@ -2751,6 +2776,23 @@ function ListPicker({
           </p>
         ))}
       </div>
+      {preview && (
+        <ListPreview
+          title={preview.title}
+          lang={preview.lists[0]?.lang ?? ""}
+          sources={previewSources}
+          fetchEntries={fetchPreview}
+          allAdded={preview.lists.every((c) => added.has(c.id))}
+          busy={busy}
+          onAdd={() => {
+            const lists = preview.lists;
+            setPreview(null);
+            void addLists(lists);
+          }}
+          onClose={() => setPreview(null)}
+          returnTo={previewFrom}
+        />
+      )}
       {addedNow && (
         <AddedToast
           key={addedNow.at}
@@ -2788,6 +2830,7 @@ function AddTreeNode({
   onTick,
   onToggleOpen,
   onAdd,
+  onPreview,
   scenarioName,
 }: {
   node: AddNode<CatalogMeta>;
@@ -2800,6 +2843,8 @@ function AddTreeNode({
   onToggleOpen: (node: AddNode<CatalogMeta>) => void;
   /** One tap adds these lists: a language's "Add all", a coverage band. */
   onAdd: (lists: CatalogMeta[]) => void;
+  /** The eye on a list's row or a band: preview its entries before adding. */
+  onPreview: (lists: CatalogMeta[], title: string, from: HTMLElement) => void;
   scenarioName: (s: Scenario) => string;
 }) {
   const text = useIntlayer("words-page");
@@ -2890,6 +2935,15 @@ function AddTreeNode({
               <span className="fs-11 tabular-nums opacity-40">{node.meta.count}</span>
             ))}
         </label>
+        {/* The eye sits outside the label: it previews, the rest of the row ticks. */}
+        {node.kind === "list" && (
+          <PreviewButton
+            name={label}
+            onOpen={(from) =>
+              onPreview([node.meta], `${langName(node.meta.lang, locale)} · ${label}`, from)
+            }
+          />
+        )}
         {/* Folded, a language is only its row: no Add all, no bands, no children. */}
         {node.kind === "lang" && open && !state.disabled && (
           <button
@@ -2911,6 +2965,7 @@ function AddTreeNode({
           busy={busy}
           depth={depth + 1}
           onAdd={onAdd}
+          onPreview={onPreview}
         />
       )}
       {open && (
@@ -2927,6 +2982,7 @@ function AddTreeNode({
               onTick={onTick}
               onToggleOpen={onToggleOpen}
               onAdd={onAdd}
+              onPreview={onPreview}
               scenarioName={scenarioName}
             />
           ))}
@@ -3021,14 +3077,19 @@ function CoverageBands({
   busy,
   depth,
   onAdd,
+  onPreview,
 }: {
   lists: CatalogMeta[];
   added: ReadonlySet<string>;
   busy: boolean;
   depth: number;
   onAdd: (lists: CatalogMeta[]) => void;
+  /** A band's preview: the union of its lists. */
+  onPreview: (lists: CatalogMeta[], title: string, from: HTMLElement) => void;
 }) {
   const text = useIntlayer("words-page");
+  const previewText = useIntlayer("words-list-preview");
+  const { locale } = useLocale();
   const bands = coverageBands(lists);
   if (!bands.length) return null;
   return (
@@ -3039,20 +3100,36 @@ function CoverageBands({
     >
       {bands.map((b) => {
         const done = b.ids.every((id) => added.has(id));
+        const pct = Math.floor(b.coverage * 100);
+        const of = lists.filter((c) => b.ids.includes(c.id));
         return (
-          <button
-            key={b.top}
-            type="button"
-            disabled={busy || done}
-            onClick={() => onAdd(lists.filter((c) => b.ids.includes(c.id)))}
-            data-band={b.top}
-            className="min-h-11 rounded-lg px-2 text-start text-sm text-[oklch(0.5_0.14_155)] hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40 dark:text-[oklch(0.78_0.13_155)]"
-          >
-            {fill(text.coverageBand.value, { pct: Math.floor(b.coverage * 100) })}
-            <span className="ms-1.5 fs-11 tabular-nums opacity-60">
-              {done ? text.added : fill(text.coverageRanks.value, { top: b.top })}
-            </span>
-          </button>
+          <span key={b.top} className="inline-flex items-center">
+            <button
+              type="button"
+              disabled={busy || done}
+              onClick={() => onAdd(of)}
+              data-band={b.top}
+              className="min-h-11 rounded-lg px-2 text-start text-sm text-[oklch(0.5_0.14_155)] hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40 dark:text-[oklch(0.78_0.13_155)]"
+            >
+              {fill(text.coverageBand.value, { pct })}
+              <span className="ms-1.5 fs-11 tabular-nums opacity-60">
+                {done ? text.added : fill(text.coverageRanks.value, { top: b.top })}
+              </span>
+            </button>
+            <PreviewButton
+              name={fill(text.coverageBand.value, { pct }).replace(/^\+\s*/, "")}
+              onOpen={(from) =>
+                onPreview(
+                  of,
+                  fill(previewText.bandTitle.value, {
+                    lang: langName(of[0]?.lang ?? "", locale),
+                    pct,
+                  }),
+                  from,
+                )
+              }
+            />
+          </span>
         );
       })}
     </div>

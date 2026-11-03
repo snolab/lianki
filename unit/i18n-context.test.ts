@@ -15,6 +15,7 @@ import selfIntro from "@/app/(app)/self-intro/page.content";
 import wordsImport from "@/app/(app)/words/import/page.content";
 import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
+import wordsListPreview from "@/app/(app)/words/list-preview.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import textSize from "@/app/components/text-size.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
@@ -68,6 +69,7 @@ describe.each([
   ["words-import", wordsImport],
   ["words-phrases", wordsPhrases],
   ["words-voice-mode", wordsVoiceMode],
+  ["words-list-preview", wordsListPreview],
   ["leave-guard", leaveGuard],
   ["text-size", textSize],
   ["wallet-card", walletCard],
