@@ -1,0 +1,322 @@
+{
+  "$comment": "Exams and word lists Lianki cannot ship for licence reasons (docs/word-deck-sources.md, 'Not shipped'). The /words 'Add a list' tree shows each one as a node with SEARCH links only: one query per engine (AnkiWeb shared decks, GitHub repositories, Google), never a link to a specific deck or file. lib/words/external-search.ts builds the URLs; unit/words-external-search.test.ts checks every entry. 'exam' groups levels under one node; 'level' (optional) is the row's label.",
+  "searches": [
+    {
+      "id": "en-ielts",
+      "lang": "en",
+      "exam": "IELTS",
+      "queries": {
+        "ankiweb": "IELTS",
+        "github": "IELTS vocabulary",
+        "google": "IELTS vocabulary list"
+      }
+    },
+    {
+      "id": "en-toefl",
+      "lang": "en",
+      "exam": "TOEFL",
+      "queries": {
+        "ankiweb": "TOEFL",
+        "github": "TOEFL vocabulary",
+        "google": "TOEFL vocabulary list"
+      }
+    },
+    {
+      "id": "en-gre",
+      "lang": "en",
+      "exam": "GRE",
+      "queries": {
+        "ankiweb": "GRE",
+        "github": "GRE vocabulary",
+        "google": "GRE vocabulary list"
+      }
+    },
+    {
+      "id": "en-sat",
+      "lang": "en",
+      "exam": "SAT",
+      "queries": {
+        "ankiweb": "SAT vocabulary",
+        "github": "SAT vocabulary",
+        "google": "SAT vocabulary list"
+      }
+    },
+    {
+      "id": "en-oxford-3000",
+      "lang": "en",
+      "exam": "Oxford 3000",
+      "queries": {
+        "ankiweb": "Oxford 3000",
+        "github": "Oxford 3000",
+        "google": "Oxford 3000 word list"
+      }
+    },
+    {
+      "id": "en-oxford-5000",
+      "lang": "en",
+      "exam": "Oxford 5000",
+      "queries": {
+        "ankiweb": "Oxford 5000",
+        "github": "Oxford 5000",
+        "google": "Oxford 5000 word list"
+      }
+    },
+    {
+      "id": "fr-delf-a1",
+      "lang": "fr",
+      "exam": "DELF",
+      "level": "A1",
+      "queries": {
+        "ankiweb": "DELF A1",
+        "github": "DELF A1 vocabulaire",
+        "google": "DELF A1 vocabulaire liste"
+      }
+    },
+    {
+      "id": "fr-delf-a2",
+      "lang": "fr",
+      "exam": "DELF",
+      "level": "A2",
+      "queries": {
+        "ankiweb": "DELF A2",
+        "github": "DELF A2 vocabulaire",
+        "google": "DELF A2 vocabulaire liste"
+      }
+    },
+    {
+      "id": "fr-delf-b1",
+      "lang": "fr",
+      "exam": "DELF",
+      "level": "B1",
+      "queries": {
+        "ankiweb": "DELF B1",
+        "github": "DELF B1 vocabulaire",
+        "google": "DELF B1 vocabulaire liste"
+      }
+    },
+    {
+      "id": "fr-delf-b2",
+      "lang": "fr",
+      "exam": "DELF",
+      "level": "B2",
+      "queries": {
+        "ankiweb": "DELF B2",
+        "github": "DELF B2 vocabulaire",
+        "google": "DELF B2 vocabulaire liste"
+      }
+    },
+    {
+      "id": "fr-dalf-c1",
+      "lang": "fr",
+      "exam": "DALF",
+      "level": "C1",
+      "queries": {
+        "ankiweb": "DALF C1",
+        "github": "DALF C1 vocabulaire",
+        "google": "DALF C1 vocabulaire liste"
+      }
+    },
+    {
+      "id": "fr-dalf-c2",
+      "lang": "fr",
+      "exam": "DALF",
+      "level": "C2",
+      "queries": {
+        "ankiweb": "DALF C2",
+        "github": "DALF C2 vocabulaire",
+        "google": "DALF C2 vocabulaire liste"
+      }
+    },
+    {
+      "id": "fr-tcf",
+      "lang": "fr",
+      "exam": "TCF",
+      "queries": {
+        "ankiweb": "TCF",
+        "github": "TCF vocabulaire",
+        "google": "TCF vocabulaire liste"
+      }
+    },
+    {
+      "id": "fr-tef",
+      "lang": "fr",
+      "exam": "TEF",
+      "queries": {
+        "ankiweb": "TEF",
+        "github": "TEF vocabulaire",
+        "google": "TEF vocabulaire liste"
+      }
+    },
+    {
+      "id": "de-goethe-a1",
+      "lang": "de",
+      "exam": "Goethe-Zertifikat",
+      "level": "A1",
+      "queries": {
+        "ankiweb": "Goethe A1",
+        "github": "Goethe A1 Wortliste",
+        "google": "Goethe-Zertifikat A1 Wortliste"
+      }
+    },
+    {
+      "id": "de-goethe-a2",
+      "lang": "de",
+      "exam": "Goethe-Zertifikat",
+      "level": "A2",
+      "queries": {
+        "ankiweb": "Goethe A2",
+        "github": "Goethe A2 Wortliste",
+        "google": "Goethe-Zertifikat A2 Wortliste"
+      }
+    },
+    {
+      "id": "de-goethe-b1",
+      "lang": "de",
+      "exam": "Goethe-Zertifikat",
+      "level": "B1",
+      "queries": {
+        "ankiweb": "Goethe B1",
+        "github": "Goethe B1 Wortliste",
+        "google": "Goethe-Zertifikat B1 Wortliste"
+      }
+    },
+    {
+      "id": "es-dele-a1",
+      "lang": "es",
+      "exam": "DELE",
+      "level": "A1",
+      "queries": {
+        "ankiweb": "DELE A1",
+        "github": "DELE A1 vocabulario",
+        "google": "DELE A1 vocabulario lista"
+      }
+    },
+    {
+      "id": "es-dele-a2",
+      "lang": "es",
+      "exam": "DELE",
+      "level": "A2",
+      "queries": {
+        "ankiweb": "DELE A2",
+        "github": "DELE A2 vocabulario",
+        "google": "DELE A2 vocabulario lista"
+      }
+    },
+    {
+      "id": "es-dele-b1",
+      "lang": "es",
+      "exam": "DELE",
+      "level": "B1",
+      "queries": {
+        "ankiweb": "DELE B1",
+        "github": "DELE B1 vocabulario",
+        "google": "DELE B1 vocabulario lista"
+      }
+    },
+    {
+      "id": "es-dele-b2",
+      "lang": "es",
+      "exam": "DELE",
+      "level": "B2",
+      "queries": {
+        "ankiweb": "DELE B2",
+        "github": "DELE B2 vocabulario",
+        "google": "DELE B2 vocabulario lista"
+      }
+    },
+    {
+      "id": "es-dele-c1",
+      "lang": "es",
+      "exam": "DELE",
+      "level": "C1",
+      "queries": {
+        "ankiweb": "DELE C1",
+        "github": "DELE C1 vocabulario",
+        "google": "DELE C1 vocabulario lista"
+      }
+    },
+    {
+      "id": "es-dele-c2",
+      "lang": "es",
+      "exam": "DELE",
+      "level": "C2",
+      "queries": {
+        "ankiweb": "DELE C2",
+        "github": "DELE C2 vocabulario",
+        "google": "DELE C2 vocabulario lista"
+      }
+    },
+    {
+      "id": "it-cils",
+      "lang": "it",
+      "exam": "CILS",
+      "queries": {
+        "ankiweb": "CILS",
+        "github": "CILS vocabolario",
+        "google": "CILS vocabolario lista"
+      }
+    },
+    {
+      "id": "it-celi",
+      "lang": "it",
+      "exam": "CELI",
+      "queries": {
+        "ankiweb": "CELI",
+        "github": "CELI vocabolario",
+        "google": "CELI vocabolario lista"
+      }
+    },
+    {
+      "id": "pt-caple",
+      "lang": "pt",
+      "exam": "CAPLE",
+      "queries": {
+        "ankiweb": "CAPLE",
+        "github": "CAPLE vocabulário",
+        "google": "CAPLE vocabulário lista"
+      }
+    },
+    {
+      "id": "pt-celpe-bras",
+      "lang": "pt",
+      "exam": "CELPE-Bras",
+      "queries": {
+        "ankiweb": "Celpe-Bras",
+        "github": "Celpe-Bras vocabulário",
+        "google": "Celpe-Bras vocabulário lista"
+      }
+    },
+    {
+      "id": "ru-torfl",
+      "lang": "ru",
+      "exam": "TORFL (ТРКИ)",
+      "queries": {
+        "ankiweb": "TORFL",
+        "github": "ТРКИ лексический минимум",
+        "google": "ТРКИ лексический минимум"
+      }
+    },
+    {
+      "id": "ko-topik-1",
+      "lang": "ko",
+      "exam": "TOPIK",
+      "level": "TOPIK I",
+      "queries": {
+        "ankiweb": "TOPIK I",
+        "github": "TOPIK I vocabulary",
+        "google": "TOPIK I 어휘 목록"
+      }
+    },
+    {
+      "id": "ko-topik-2",
+      "lang": "ko",
+      "exam": "TOPIK",
+      "level": "TOPIK II",
+      "queries": {
+        "ankiweb": "TOPIK II",
+        "github": "TOPIK II vocabulary",
+        "google": "TOPIK II 어휘 목록"
+      }
+    }
+  ]
+}

@@ -146,3 +146,37 @@ forms only, no definitions. Attribution and changes are in
 | Korean TOPIK I / II                          | TOPIK has no official word list. The National Institute of Korean Language's [한국어 학습용 어휘 목록](https://www.korean.go.kr/front_eng/down/down_02V.do?etc_seq=70) (2003; 5,965 words, grades A/B/C) is **KOGL Type 1** (공공누리 제1유형: free use, including commercial, with the source named). | **Clean: a follow-up PR** (the owner asked for English and French first). The list has no meanings, so they would come from the Korean Wiktionary data the `ko-freq` lists use. Attribution: "한국어 학습용 어휘 목록, 국립국어원 (2003), 공공누리 제1유형". |
 | Japanese JLPT, Chinese HSK                   | Already shipped (see above).                                                                                                                                                                                  | Not duplicated.                                                                                                                                                                                                                                    |
 | CET / 考研 official syllabus lists           | The 大学英语四六级考试大纲 and 考研英语大纲 vocabulary appendices (教育部考试中心).                                                                                                                                     | Not used directly: no file with a stated licence. The ECDICT tags cover the same exams under MIT.                                                                                                                                                 |
+
+## Search links for what is not shipped
+
+The owner, 2026-11-03 ~19:45 JST: "关于各种没有授权的卡组、词表之类的，我们可以贴最接近的搜索链接
+… 总之我们贴的是搜索链接，而不是直接指向那个资源的链接".
+
+Every exam in "Not shipped" above appears in the /words "Add a list" tree
+under its language's "Exam word lists", as a row with no checkbox and a muted
+"not included". Unfolded, it shows:
+
+- **Search links only**, one per engine: AnkiWeb shared decks
+  (`https://ankiweb.net/shared/decks?search=<query>`), GitHub repositories
+  (`https://github.com/search?q=<query>&type=repositories`) and Google
+  (`https://www.google.com/search?q=<query>`). Never a link to a specific
+  deck, repository, PDF or file: what the search finds, and its licence, is
+  the finder's call. Links open in a new tab with
+  `rel="noopener noreferrer nofollow"`; Lianki never fetches them.
+- A link to the Anki import (/words/import), so the flow is search →
+  download → import. An imported deck stays private to the learner.
+- A neutral note: these are external search results, whose content and
+  licences are their authors' responsibility.
+
+The data is `public/words/external-search.json` (next to `index.json`): per
+entry an id, the language, the exam name, an optional level, and the query
+for each engine, written in the exam's own language where that is how decks
+are named ("DELF B2 vocabulaire", "Goethe-Zertifikat A1 Wortliste"). Entries
+sharing an exam are grouped under it; a lone entry without a level sits right
+under "Exam word lists". No code is per language or per exam: adding an exam
+is adding an entry. URLs are built in `lib/words/external-search.ts`;
+`unit/words-external-search.test.ts` checks that every entry builds valid
+URLs on the three search endpoints only, that no query holds a URL, domain or
+file name, and that every exam listed above as not shipped has an entry. When
+an exam gets a cleared source and ships (Korean TOPIK is next), remove its
+entry.

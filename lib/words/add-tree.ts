@@ -10,7 +10,11 @@
  * it that is not added yet; lists already added show checked and disabled.
  * One "Add selected" adds everything ticked, and the learner stays on the
  * picker (nothing starts studying).
+ *
+ * Exams we cannot ship (lib/words/external-search.ts) sit among the exam
+ * lists as "external" nodes: no checkbox, only search links when unfolded.
  */
+import type { ExternalSearch } from "./external-search";
 
 /** What the tree needs from a catalog entry. */
 export type AddMeta = {
@@ -27,7 +31,8 @@ export type AddNode<M extends AddMeta = AddMeta> =
   | { kind: "lang"; key: string; lang: string; children: AddNode<M>[] }
   | { kind: "family"; key: string; family: AddFamily; children: AddNode<M>[] }
   | { kind: "exam"; key: string; exam: string; children: AddNode<M>[] }
-  | { kind: "list"; key: string; meta: M };
+  | { kind: "list"; key: string; meta: M }
+  | { kind: "external"; key: string; search: ExternalSearch };
 
 const isPhrase = (m: AddMeta) => m.kind === "phrase" || !!m.scenario;
 
@@ -36,14 +41,31 @@ const isPhrase = (m: AddMeta) => m.kind === "phrase" || !!m.scenario;
  * language its common-word lists, its exams (each exam's levels in catalog
  * order: N5 before N1, CET-4 before CET-6), then its phrase decks ordered by
  * `scenarios` (lib/words/phrases.ts). An empty family is left out.
+ * `external` exams follow the shipped ones; an exam with one entry and no
+ * level sits right under "Exam word lists", with no branch between.
  */
-export function buildAddTree<M extends AddMeta>(catalog: M[], scenarios: readonly string[]) {
-  const langs = [...new Set(catalog.map((c) => c.lang))];
+export function buildAddTree<M extends AddMeta>(
+  catalog: M[],
+  scenarios: readonly string[],
+  external: readonly ExternalSearch[] = [],
+) {
+  const langs = [...new Set([...catalog.map((c) => c.lang), ...external.map((s) => s.lang)])];
   return langs.map((lang): AddNode<M> => {
     const of = catalog.filter((c) => c.lang === lang);
+    const ext = external.filter((s) => s.lang === lang);
     const leaf = (meta: M): AddNode<M> => ({ kind: "list", key: meta.id, meta });
+    const extLeaf = (search: ExternalSearch): AddNode<M> => ({
+      kind: "external",
+      key: `ext:${search.id}`,
+      search,
+    });
     const freq = of.filter((c) => !isPhrase(c) && !c.exam);
-    const exams = [...new Set(of.filter((c) => !isPhrase(c) && c.exam).map((c) => c.exam!))];
+    const exams = [
+      ...new Set([
+        ...of.filter((c) => !isPhrase(c) && c.exam).map((c) => c.exam!),
+        ...ext.map((s) => s.exam),
+      ]),
+    ];
     const phrases = of
       .filter((c) => isPhrase(c) && c.scenario)
       .sort((a, b) => scenarios.indexOf(a.scenario!) - scenarios.indexOf(b.scenario!));
@@ -60,12 +82,18 @@ export function buildAddTree<M extends AddMeta>(catalog: M[], scenarios: readonl
         kind: "family",
         key: `${lang}/exam`,
         family: "exam",
-        children: exams.map((exam) => ({
-          kind: "exam",
-          key: `${lang}/exam/${exam}`,
-          exam,
-          children: of.filter((c) => !isPhrase(c) && c.exam === exam).map(leaf),
-        })),
+        children: exams.map((exam): AddNode<M> => {
+          const lists = of.filter((c) => !isPhrase(c) && c.exam === exam);
+          const searches = ext.filter((s) => s.exam === exam);
+          if (!lists.length && searches.length === 1 && !searches[0].level)
+            return extLeaf(searches[0]);
+          return {
+            kind: "exam",
+            key: `${lang}/exam/${exam}`,
+            exam,
+            children: [...lists.map(leaf), ...searches.map(extLeaf)],
+          };
+        }),
       });
     if (phrases.length)
       families.push({
@@ -84,7 +112,9 @@ export function buildAddTree<M extends AddMeta>(catalog: M[], scenarios: readonl
 
 /** Every list under a node (the node itself when it is a list). */
 export function leavesOf<M extends AddMeta>(node: AddNode<M>): M[] {
-  return node.kind === "list" ? [node.meta] : node.children.flatMap(leavesOf);
+  if (node.kind === "list") return [node.meta];
+  if (node.kind === "external") return [];
+  return node.children.flatMap(leavesOf);
 }
 
 export type TickState = { checked: boolean; mixed: boolean; disabled: boolean };
@@ -128,9 +158,13 @@ export function toggleTick(
   return next;
 }
 
-/** The node keys under a node, itself included (for expanding a language). */
+/**
+ * The node keys under a node, itself included (for expanding a language).
+ * External nodes stay folded: their links show only when tapped open.
+ */
 export function branchKeys(node: AddNode): string[] {
-  return node.kind === "list" ? [] : [node.key, ...node.children.flatMap(branchKeys)];
+  if (node.kind === "list" || node.kind === "external") return [];
+  return [node.key, ...node.children.flatMap(branchKeys)];
 }
 
 /**
