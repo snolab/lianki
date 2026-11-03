@@ -10,7 +10,11 @@ import { debugOn, DEBUG_EVENT } from "@/lib/debug-client";
 import { idbAll, idbGet } from "@/lib/words/idb";
 import {
   type Box,
+  CHAT_MOVED_EVENT,
+  chatFootprint,
+  type DockCause,
   dockAbove,
+  redocks,
   dueTotal,
   edgeSwipe,
   keyboardUp,
@@ -100,12 +104,44 @@ export function useKeyboardUp(): boolean {
   return up;
 }
 
+/**
+ * `--lk-bottom-reserve` on <html>: what the island covers at rest (its own
+ * height, never its dock or the chat's state), for <main>'s bottom padding
+ * and the chat bar's resting place above it.
+ */
+export function useBottomReserve(island: RefObject<HTMLElement | null>): void {
+  useEffect(() => {
+    const el = island.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const set = () => {
+      const h = el.offsetHeight; // 0 while display:none (tablet and up)
+      if (h)
+        root.style.setProperty(
+          "--lk-bottom-reserve",
+          `calc(${h + 16}px + env(safe-area-inset-bottom))`,
+        );
+      else root.style.removeProperty("--lk-bottom-reserve");
+    };
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    set();
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--lk-bottom-reserve");
+    };
+  }, [island]);
+}
+
 const box = (r: DOMRect): Box => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom });
 
 /**
  * px above the bottom edge that keep the island clear of the Learning
- * Partner bar (packages/debug-chat), or 0. Follows the bar as it appears,
- * resizes and is dragged.
+ * Partner bar (packages/debug-chat), or 0. Decided only when the bar appears,
+ * when a drag of it ends (CHAT_MOVED_EVENT) and on a rotation (`redocks`):
+ * minimizing, expanding, a growing draft or the keyboard never move the
+ * island. The bar's footprint is the chat box's width, so the answer is the
+ * same expanded or minimized.
  */
 export function useChatDock(island: RefObject<HTMLElement | null>, enabled: boolean): number {
   const [dock, setDock] = useState(0);
@@ -114,48 +150,46 @@ export function useChatDock(island: RefObject<HTMLElement | null>, enabled: bool
       setDock(0);
       return;
     }
-    let bar: Element | null = null;
-    const ro = new ResizeObserver(() => measure());
-    // The bar's box: its style (a drag) and minimized state change on it.
-    const moved = new MutationObserver(() => measure());
-    const attach = () => {
-      const now = document.querySelector("[data-debug-chat-row]");
-      if (now === bar) return;
-      if (bar) ro.unobserve(bar);
-      moved.disconnect();
-      bar = now;
-      if (bar) {
-        ro.observe(bar);
-        const section = bar.closest("[data-debug-chat]");
-        if (section)
-          moved.observe(section, {
-            attributes: true,
-            attributeFilter: ["style", "data-minimized"],
-          });
-      }
-      measure();
-    };
-    // The bar appearing or going: cheap, measures only when it changed.
-    const mo = new MutationObserver(attach);
-    function measure() {
+    let section: Element | null = null;
+    let width = window.innerWidth;
+    function measure(cause: DockCause) {
+      if (!redocks(cause)) return;
       const el = island.current;
       if (!el) return;
       // The island's resting place: its box with the dock taken off.
       const r = el.getBoundingClientRect();
       const shift = parseFloat(el.dataset.dock ?? "0") || 0;
       const rest = shift ? { ...box(r), top: r.top + shift, bottom: r.bottom + shift } : box(r);
-      const b = bar?.getBoundingClientRect();
-      setDock(dockAbove(rest, b && b.width ? box(b) : null, window.innerHeight));
+      const row = section?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
+      const s = section?.getBoundingClientRect();
+      const lift = parseFloat((section as HTMLElement | null)?.dataset.kbLift ?? "0") || 0;
+      const bar = row && s && row.width ? chatFootprint(box(row), box(s), lift) : null;
+      setDock(dockAbove(rest, bar, window.innerHeight));
     }
+    // The chat box appearing or going: cheap, measures only when it changed.
+    const attach = () => {
+      const now = document.querySelector("[data-debug-chat]");
+      if (now === section) return;
+      section = now;
+      measure("appear");
+    };
+    const mo = new MutationObserver(attach);
+    const moved = () => measure("drag");
+    // Only a width change is a rotation: Android's keyboard shrinks the height.
+    const resize = () => {
+      if (window.innerWidth === width) return;
+      width = window.innerWidth;
+      measure("rotate");
+    };
     mo.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("resize", measure);
+    window.addEventListener(CHAT_MOVED_EVENT, moved);
+    window.addEventListener("resize", resize);
     attach();
-    measure();
+    measure("appear");
     return () => {
-      ro.disconnect();
       mo.disconnect();
-      moved.disconnect();
-      window.removeEventListener("resize", measure);
+      window.removeEventListener(CHAT_MOVED_EVENT, moved);
+      window.removeEventListener("resize", resize);
     };
   }, [island, enabled]);
   return dock;

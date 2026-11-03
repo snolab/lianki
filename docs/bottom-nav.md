@@ -108,10 +108,22 @@ Owner's decision (2026-10-31): the island and the strip never stack.
 The Learning Partner bar (packages/debug-chat) floats at the bottom right in
 debug mode. The two never overlap:
 
-1. **The island docks above the bar.** It measures `[data-debug-chat-row]`,
-   using a ResizeObserver plus a MutationObserver for the bar appearing and
-   being dragged. If the two overlap horizontally, the island sits 8px above
-   the bar's top. Nothing polls.
+1. **The island docks above the bar, and only a drag moves it.** It decides
+   when the bar appears, when a drag of the bar ends (the bar sends
+   `lk:chat-moved`, `CHAT_MOVED_EVENT`) and on a rotation (a width change),
+   and at no other time (`redocks` in `nav-core.ts`). Minimizing, expanding,
+   a growing draft and the keyboard never move it: toggling the chat used to
+   make it jump (owner, 2026-11-03), since the narrow minimized bar stopped
+   overlapping and the bar's height changed. The bar's footprint
+   (`chatFootprint`) is the chat box's fixed width at the bar's resting height
+   (keyboard lift taken off), so the answer is the same expanded or
+   minimized. If they overlap, the island sits 8px above the bar's top,
+   measured from its own resting place, so a second measure gives the same
+   dock (no oscillation). At its default place the bar rests above
+   `--lk-bottom-reserve` and the island never docks. Nothing polls.
+   `node scripts/dev/nav-island-chat-qa.mjs` checks it headless (412×915 and
+   390×844): the island's rect across open, minimized and a four-line draft,
+   from the default place and from a place dragged over the island.
 2. **The partner button opens the chat.** It sends the `chat.open` action
    (`lib/islands/contract.ts`), which the chat lane can listen for. Until it
    does, the button falls back to the bar's own mark button.
