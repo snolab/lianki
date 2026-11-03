@@ -66,8 +66,10 @@ nowhere for long; the dot just turns grey and the mic uses the cloud
 meanwhile. To take it down for good: `oxmgr delete lianki-stt` and
 `tailscale serve --set-path /lianki-stt off`.
 
-`--origin` adds the tailnet origin for the widget harness; lianki.com is
-always allowed. Once this is on main, production pages need only the STT
+`--origin` adds the tailnet origin for the widget harness; lianki.com and the
+owner's preview build (preview.lianki.com, docs/dev-whole-page.md) are always
+allowed. The preview is another origin, so its page needs its own
+`lk:agent-local-stt` (localStorage is per origin). Once this is on main, production pages need only the STT
 server and the flag below: the widget code ships with the app. If the server
 is not running, the dot is grey and the mic uses the cloud as before.
 

@@ -87,6 +87,8 @@ ENROL_TTL_S = 30 * 60
 ORIGINS = [
     "https://lianki.com",
     "https://www.lianki.com",
+    # The owner's whole-page dev server (docs/dev-whole-page.md): token-gated, owner only.
+    "https://preview.lianki.com",
     "http://localhost:3000",
     "http://localhost:5180",
     "http://localhost:5190",
