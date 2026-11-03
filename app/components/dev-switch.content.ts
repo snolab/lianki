@@ -72,7 +72,7 @@ const ABOUT =
   "The preview build is the site owner's newest, not yet released trial code, running on the real production database: what he does there changes his real data. Owner only.";
 
 const context: Record<keyof typeof dictionary.content, string> = {
-  name: `${ABOUT} Label of an on/off toggle switch (no caption under it) in the account (profile) dropdown menu: on = he is on the preview build, off = the public site lianki.com; flipping it moves the current page there. It is also the screen-reader label of a small blue dot on the menu's button, shown only on the preview build. A short noun naming a preview/pre-release version of the app (the locale's usual word for a preview build), not a demo.`,
+  name: `${ABOUT} Label of an on/off toggle switch (no caption under it) in the account (profile) dropdown menu: on = he is on the preview build, off = the public site lianki.com; flipping it moves the current page there. It is also the screen-reader label of a small blue dot on the menu's button, shown only on the preview build. A short noun naming a preview/pre-release version of the app (the locale's usual word for a preview build), not a demo. It is the menu's only preview control: a small 'Dev parts' chip may sit under it in the same row (another dictionary).`,
   off: `${ABOUT} The switch's label when greyed out and not tappable, because the preview build is not running at the moment. Short statement, not an error message.`,
   checking: `${ABOUT} The switch's label while the menu checks, once, whether the preview build is running. Short progress text ending in an ellipsis.`,
 };

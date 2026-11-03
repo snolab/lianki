@@ -10,6 +10,16 @@ or a Cloudflare tunnel, with hot reload:
 
 Owner's approval: Slack, 2026-11-01 11:41 JST ("要做").
 
+**One preview control (owner, 2026-11-03 20:00 JST: "ProfileDropdown 里面有两个
+『预览』的 Switch，有什么区别吗？").** Live view had its own menu switch
+(「实时预览 ⇄ 正常」) next to the whole-page **"Preview build"** switch
+([dev-whole-page.md](dev-whole-page.md)). They differ: the preview build moves
+the whole page to the dev server; live view keeps the page on lianki.com and
+loads only the widget and islands from the Mac, which agents still use for
+hot-replaced previews on his phone. So it stays, folded into the preview row
+as a chip and renamed "Dev parts", so the menu has one switch and the word
+"preview" once.
+
 ## Turn it on
 
 On the Mac, with the dev servers running (they print the line to use):
@@ -23,11 +33,15 @@ bun scripts/dev/live-view.ts status
 bun scripts/dev/live-view.ts off                      # stop
 ```
 
-On each device: account menu → **Live view ⇄ Normal**. It is a per-device
-switch (cookie `lk_live_view`), so the phone can be live while the laptop is
+On each device: account menu → the **"Preview build"** row → the
+**Dev parts** chip under its switch (「开发版部件」; the UI calls live view
+"Dev parts"). The chip appears only while a pointer is stored (it shows its
+branch@sha) or while it is already on, and only on lianki.com, not on the
+preview build, which is all dev code already. It is a per-device setting
+(cookie `lk_live_view`), so the phone can be live while the laptop is
 not. While a live pointer is loaded, a banner across the top says
-**Live view · <branch>@<sha>**, with a **Normal** button. With the switch on
-and no pointer, the menu says "Waiting for the dev machine", and the page is
+**Dev parts · <branch>@<sha>**, with a **Normal** button. With the chip on
+and no pointer, it says "Waiting for the dev machine", and the page is
 the normal one. A new pointer takes effect on the next page load; after that,
 saves reach the open page by hot reload, with no reload.
 
@@ -76,9 +90,11 @@ Both answer 404 to anyone else. The route is not under `/api/dev`, because
 the Mac's POST has no session, and Cloudflare Access on `/api/dev` would stop it.
 
 **Checked on the server, then again on the page.** For the owner only
-(`isOwner`), the app layout reads the switch cookie. Only while it is on, it
-reads the row and verifies it (lib/live-view/shell.server.ts). Everyone else
-gets no strings, no switch and no pointer. The page (`LiveViewBoot`) verifies
+(`isOwner`), the app layout reads the switch cookie and the row, and verifies
+it (lib/live-view/shell.server.ts): its branch@sha decides whether the menu
+offers the chip, and the pointer itself goes to the page only while the
+cookie is on. Everyone else gets no strings, no chip and no pointer, and no
+D1 read. The page (`LiveViewBoot`) verifies
 the pointer again with WebCrypto and the bundled keys. Only then does it
 publish the sources in `lib/live-view/client.ts`, which the widget host
 (DebugEval → `DebugChatHost src=`) and the islands (`useIslands`) read. One
@@ -103,14 +119,14 @@ phone through eval, and that was enough on lianki.com. Now, on lianki.com:
 1. the agent runs `bun scripts/dev/live-view.ts on --widget /<its serve path>`
    (or `--islands`), from the checkout it serves, so the banner names its
    branch;
-2. the owner turns on **Live view** once on that device. It stays on until he
+2. the owner turns on the **Dev parts** chip once on that device. It stays on until he
    turns it off, and later pointers need no tap.
 
 **The compact-mode preview (#401)**, hot-loaded today through
 `lk:agent-widget-src` from `/lianki-widget-compact`, keeps working after
 this deploys with `bun scripts/dev/live-view.ts on --widget /lianki-widget-compact`
-(run in the #401 checkout, so the banner names it), plus the Live view
-switch on the phone.
+(run in the #401 checkout, so the banner names it), plus the Dev parts
+chip on the phone.
 
 One pointer at a time: a new `on` replaces the previous one. The widget
 shows only where the chat does (debug mode on); islands show on every page
@@ -184,9 +200,9 @@ the event and one for the module.
 - `scripts/qa/qa-api.mjs`: a non-owner gets 404 from GET and DELETE; a malformed
   token gets 400; one signed by another key gets 401.
 - `bun scripts/dev/live-view-qa.ts [--shots <dir>]`: silent Chromium on the real
-  banner and switch (`scripts/dev/live-view-harness.tsx`), verifying with the
+  banner and chip (`scripts/dev/live-view-harness.tsx`), verifying with the
   browser's WebCrypto against a throwaway key. A good pointer shows the banner.
-  A stranger's key and an expired pointer show none, and the switch says why.
+  A stranger's key and an expired pointer show none, and the chip says why.
   Shots at 390 px, light and dark.
 
 ## Rotate the key
