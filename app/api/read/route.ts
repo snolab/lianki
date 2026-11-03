@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { saveReadMaterial, listReadMaterials } from "@/lib/getReadMaterialsCollection";
 import { isoDay } from "@/lib/dates";
+import { bookMetaOf, checkBook } from "@/lib/read/book";
 
 // GET /api/read - List materials
 export async function GET(request: NextRequest) {
@@ -37,7 +38,9 @@ export async function GET(request: NextRequest) {
     materials: materials.map((m) => ({
       id: m._id.toString(),
       title: m.title,
-      lines: m.lines,
+      // The list shows a count only; a whole book's lines stay out of it.
+      lines: [],
+      lineCount: m.lines.length,
       createdAt: m.createdAt.toISOString(),
       updatedAt: m.updatedAt.toISOString(),
     })),
@@ -66,7 +69,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400 });
   }
 
-  const { title, content } = body as { title?: unknown; content?: unknown };
+  const { title, content, book } = body as { title?: unknown; content?: unknown; book?: unknown };
+
+  // A book (EPUB parsed in the browser): validated and capped here, stored as
+  // lines + chapter meta (lib/read/book.ts). Always the signed-in user's own.
+  if (typeof book !== "undefined") {
+    const checked = checkBook(book);
+    if (!checked.ok) {
+      const status = checked.error === "too-much-text" ? 413 : 400;
+      return NextResponse.json({ error: checked.error }, { status });
+    }
+    const b = checked.book;
+    const meta = JSON.stringify(bookMetaOf(b));
+    const material = await saveReadMaterial(session.user.id, b.title, meta, b.lines);
+    return NextResponse.json({
+      id: material._id.toString(),
+      title: material.title,
+      lineCount: material.lines.length,
+      createdAt: material.createdAt.toISOString(),
+      updatedAt: material.updatedAt.toISOString(),
+    });
+  }
 
   if (typeof content !== "string" || content.length === 0) {
     return NextResponse.json({ error: "Content is required" }, { status: 400 });
