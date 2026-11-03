@@ -683,14 +683,37 @@ stays usable while typing. Rules and look in `typing-glass.ts`.
   edge), and its "soon" tag is plain text. Kept: the target chip's border
   (its colour names the node) and round buttons (their shape is the
   affordance).
-- **Not** minimized, and gives way to the full-screen log's own sheet. Also
+- **The full-screen log, too** (owner, 2026-11-03 20:50 JST: "在输入框上拖动的这个全屏背景模糊").
+  A vertical drag on the mic or the empty input no longer puts a sheet over
+  the whole page. The same glass stays up and grows with the log: from the
+  mic it is the panel (the log grown upward, and the bar); from the empty
+  input, where the log leaves the flow for its own box, it is that box plus
+  the same few px of edge (`glassAroundLog`). While it spans the log it takes
+  the old sheet's stronger tint and blur (`SHEET_SCRIM`, `SHEET_FILTER`; the
+  contrast checks in `unit/sheet-contrast.test.ts`), and the box goes opaque
+  so the blur sees the page. Beside the log the page stays sharp.
+- **Under the finger** (owner, same evening: "开始拖动之后的输入框/聊天内容老是不在一个位置").
+  Under the touch slop (`AXIS_LOCK_PX`) nothing moves, so a tap is still a
+  tap. Past it, the switch to the full-screen log runs at once
+  (`flushSync`), before the first move scrolls the log: its layout effect
+  holds the line he was on where it was at the press, and when it ran after
+  that first scroll it undid it, so the log lagged the finger by the slop
+  for the rest of the drag. Now the lines keep their offset from the finger
+  from the press to the release (inside the joystick's dead zone). Scrolled
+  up, the release lands where he left it; at the end, a short drag springs
+  back to the newest line (#443).
+- **Not** minimized. Also
   on other sites (the userscript): it covers only the box, so the host page
   is untouched. Only on focus; glass while a draft waits unfocused would be a
   follow-up.
 
 Checks and screenshots: `node scripts/dev/debug-chat-typing-glass-qa.mjs
 --shots <dir>` (silent browsers, 390×844, light and dark); the rules in
-`unit/chat-typing-glass.test.ts`. `shot.ts` cannot show it (no
+`unit/chat-typing-glass.test.ts`. The drag: `node
+scripts/dev/debug-chat-drag-qa.mjs --shots <dir>` (iPhone 390×844 and
+Android 412×915, light and dark): no backdrop-filter past the chat panel
+during or after a drag on the input or the mic, and the finger-to-line
+offset constant within a pixel from the press to the release. `shot.ts` cannot show it (no
 backdrop-filter in DOM-to-image); use the QA script's shots.
 
 ## Quiet lines
