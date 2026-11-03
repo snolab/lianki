@@ -2,7 +2,7 @@
 // (docs/books-plan.md, "Combo-click expanding selection"). Silent; iPhone and
 // desktop, light and dark screenshots.
 //
-//   QA_BASE=http://localhost:3417 node scripts/qa/qa-read-select.mjs [outDir]
+//   QA_BASE=http://localhost:3417 bun scripts/qa/qa-read-select.mjs [outDir]
 //
 // Against a local dev server on D1 (`DB_BACKEND=d1 next dev`, or qa:all's
 // wrangler dev) so books carry their content hash. Signs up throwaway

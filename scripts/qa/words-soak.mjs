@@ -1,8 +1,8 @@
 // /words long-session soak: study for N minutes on an iPhone-sized, muted
 // Chromium and snapshot what the page holds every minute, to find what grows.
 //
-//   node scripts/qa/words-soak.mjs                       # QA_BASE=http://localhost:3000, 16 min
-//   QA_BASE=http://localhost:3517 SOAK_MIN=3 node scripts/qa/words-soak.mjs
+//   bun scripts/qa/words-soak.mjs                       # QA_BASE=http://localhost:3000, 16 min
+//   QA_BASE=http://localhost:3517 SOAK_MIN=3 bun scripts/qa/words-soak.mjs
 //   SOAK_OUT=/tmp/soak.json …                            # also write the rows as JSON
 //
 // Signs up a throwaway qa+soak<ts>@lianki.test account (dev password auth, so

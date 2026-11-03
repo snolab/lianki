@@ -11,7 +11,7 @@
 //   - every option, scrolled into view inside the picker, is the element at
 //     its own centre (elementFromPoint): nothing covers it.
 //
-//   QA_BASE=http://localhost:3000 node scripts/qa/qa-lang-menu.mjs
+//   QA_BASE=http://localhost:3000 bun scripts/qa/qa-lang-menu.mjs
 import { chromium, webkit } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 

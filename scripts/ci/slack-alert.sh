@@ -8,6 +8,7 @@ if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
   echo "::warning title=No Slack alert::SLACK_WEBHOOK_URL is not set, so #lianki was not told: $text"
   exit 0
 fi
-payload=$(TEXT="$text" node -e 'process.stdout.write(JSON.stringify({ text: process.env.TEXT }))' 2>/dev/null ||
-  TEXT="$text" bun -e 'process.stdout.write(JSON.stringify({ text: process.env.TEXT }))')
+# Bun first; Node only as the fallback for a job whose setup-bun step failed.
+payload=$(TEXT="$text" bun -e 'process.stdout.write(JSON.stringify({ text: process.env.TEXT }))' 2>/dev/null ||
+  TEXT="$text" node -e 'process.stdout.write(JSON.stringify({ text: process.env.TEXT }))')
 curl -sSf --retry 3 -H 'Content-Type: application/json' -d "$payload" "$SLACK_WEBHOOK_URL" >/dev/null

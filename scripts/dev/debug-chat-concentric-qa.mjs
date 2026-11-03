@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * The chat bar's mic is concentric with the bar's corner
  * (packages/debug-chat/src/DebugChat.tsx, MicButton.tsx): the centre of the
@@ -24,7 +24,7 @@
  * Same harness as debug-chat-bar-qa.mjs (the hot widget on /harness, no
  * lianki-push). Browsers muted (qa/silent.mjs); getUserMedia refused.
  *
- *   node scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]
+ *   bun scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]
  */
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";

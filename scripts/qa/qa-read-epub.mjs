@@ -1,6 +1,6 @@
 // /read EPUB import QA: silent, iPhone size, light and dark screenshots.
 //
-//   QA_BASE=http://localhost:3017 node scripts/qa/qa-read-epub.mjs [outDir]
+//   QA_BASE=http://localhost:3017 bun scripts/qa/qa-read-epub.mjs [outDir]
 //
 // Signs up a throwaway dev account (needs DEV_EMAIL_PASSWORD_AUTH=1), picks the
 // public-domain fixture EPUB on /read, and checks: the book opens in the

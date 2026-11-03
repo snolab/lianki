@@ -644,7 +644,7 @@ transcript are unchanged and keep working.
   line itself, in full.
 - **State tree**: when the tree has the log's place, it stays.
 
-Checks and screenshots: `node scripts/dev/debug-chat-compact-qa.mjs --shots
+Checks and screenshots: `bun scripts/dev/debug-chat-compact-qa.mjs --shots
 
 <dir>` (silent browsers, getUserMedia refused, 390×844, light and dark);
 the rules in `unit/chat-compact.test.ts`.
@@ -707,7 +707,7 @@ stays usable while typing. Rules and look in `typing-glass.ts`.
   is untouched. Only on focus; glass while a draft waits unfocused would be a
   follow-up.
 
-Checks and screenshots: `node scripts/dev/debug-chat-typing-glass-qa.mjs
+Checks and screenshots: `bun scripts/dev/debug-chat-typing-glass-qa.mjs
 --shots <dir>` (silent browsers, 390×844, light and dark); the rules in
 `unit/chat-typing-glass.test.ts`. The drag: `node
 scripts/dev/debug-chat-drag-qa.mjs --shots <dir>` (iPhone 390×844 and
@@ -968,7 +968,7 @@ renders. `?min` (or `?open`) starts minimized (or expanded), `?notree` and
 `?nofrontier` leave out the static tree and frontier, and
 `globalThis.__push(text)` adds a live message.
 
-`node scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]` does that on its
+`bun scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]` does that on its
 own: it starts the server on a free port, loads the hot widget into
 `/harness`, and checks the chat bar expanded and minimized (one container,
 focus order, 16px input, 40px targets, the inert input, the mic clickable and
@@ -984,13 +984,13 @@ high the bar's right end is a semicircle around the mic, and a taller draft
 keeps the mic on the bottom-right arc. Text size does not scale it (only
 text scales). The geometry is inline styles, never new Tailwind classes: a
 stylesheet that has not generated a new class (the whole-page dev server's
-stale CSS on 2026-11-03) left the bar with no radius and no border. `node scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]`
+stale CSS on 2026-11-03) left the bar with no radius and no border. `bun scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]`
 measures both centres (getBoundingClientRect) at 390×844 and 412×915, light
 and dark, one line, four lines, text at 150% and minimized, and fails over
 0.5px. A control added in a corner (a + at the left end) takes its circle
 from the same variables.
 
-`node scripts/dev/debug-chat-scroll-qa.mjs` checks the log's scroll on an
+`bun scripts/dev/debug-chat-scroll-qa.mjs` checks the log's scroll on an
 Android-sized touch viewport (412×915). A drag on the empty input scrolls
 the log 1:1 with the finger. A log at its end stays there through drags,
 box moves and the keyboard, and lands back on the newest line on release

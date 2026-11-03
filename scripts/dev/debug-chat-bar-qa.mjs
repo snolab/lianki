@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Browser checks for the debug chat's bar (packages/debug-chat/src/DebugChat.tsx)
  * on the local /harness page — no lianki-push needed. Boots the widget server
@@ -27,7 +27,7 @@
  *
  * getUserMedia is stubbed (counted, then refused): nothing is ever recorded.
  *
- *   node scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]
+ *   bun scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]
  *     --shots: also save light/dark × expanded/minimized at 390px wide there
  */
 import { spawn } from "node:child_process";

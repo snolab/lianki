@@ -96,8 +96,8 @@ front under Bun. When wrangler is bumped, regenerate it with
 ### Long-session soaks (leaks, slowdowns)
 
 ```bash
-QA_BASE=http://localhost:<port> node scripts/qa/words-soak.mjs   # /words, 16 min (SOAK_MIN)
-node scripts/dev/debug-chat-soak.mjs                              # the chat widget on /harness, 10 min
+QA_BASE=http://localhost:<port> bun scripts/qa/words-soak.mjs   # /words, 16 min (SOAK_MIN)
+bun scripts/dev/debug-chat-soak.mjs                              # the chat widget on /harness, 10 min
 ```
 
 Both run an iPhone-sized, muted Chromium (`--mute-audio`; word clips are a
@@ -125,11 +125,41 @@ scroll step).
 
 ## Prerequisites
 
-- Node.js 20+ or Bun
+- Bun (runs everything locally — see "Bun and Node" below)
+- Node.js only where that section lists it (≥ 22.12 for the CI deploy; the npm CLI supports ≥ 18)
 - MongoDB instance (local or cloud)
 - (Optional) Resend API key for magic-link email
 - (Optional) GitHub/Google OAuth credentials
 - (Optional) OpenAI API key for blog auto-translation
+
+## Bun and Node
+
+Bun runs the toolchain (owner, 2026-11-03: no Node-based tooling; native TS
+tools). Typecheck is tsgo (`@typescript/native-preview`), lint and format are
+oxlint and oxfmt, unit tests are `bun test`. Our own scripts run on Bun:
+`dev:db`, every `qa:*` script and the suites `qa:all` spawns, `test:e2e`,
+`scripts/dev/*-qa.mjs` and the soaks (`#!/usr/bin/env bun`), the userscript
+and extension builds, `prepare` (husky), Storybook and the userscript Vite dev
+server (`bunx --bun …`), `scripts/ci/slack-alert.sh`. Write new scripts as
+`bun <file>`, never `node <file>`, and call tools with `bunx`, not `npx`.
+
+`bunx <tool>` honours a tool's `#!/usr/bin/env node` shebang. On the owner's
+Mac `node` is a symlink to Bun, so locally those tools run on Bun too (hence
+`patches/miniflare@*.patch`); where a real Node is on the PATH (CI) they run
+on Node. Kept on Node, one reason each:
+
+| Kept on Node                                                                    | Why                                                                                                                                         |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy-worker.yml` `setup-node` 22 (OpenNext build, `wrangler deploy`)         | The production deploy stays on wrangler's and OpenNext's supported runtime (Node ≥ 22); Bun needs our miniflare patch.                      |
+| `nightly-qa.yml` (the Playwright image's Node 24)                               | The image ships it, so there wrangler, OpenNext and the `playwright test` suites run on Node; the `qa-*.mjs` suites run on Bun. |
+| `next dev` / `next build` / `opennextjs-cloudflare` (node shebangs)             | Next and OpenNext support Node only; locally they run on Bun through the `node → bun` symlink.                                              |
+| `playwright test` (`test`, `test:sync`, `test:ext`, qa:all's spec suites)       | The test runner does not support Bun officially; library-only suites (`qa-*.mjs`, `test:e2e`) run on Bun.                                   |
+| `packages/lianki-cli` (`#!/usr/bin/env node`, `engines.node >=18`), `publish-cli.yml` | The published `lianki` CLI: `npx lianki` users may have only Node, so it stays Node ≥ 18 compatible and is smoke-tested and published with npm. |
+| `migrate-mongo-to-d1.yml` (`tsx`)                                               | Bun's TLS mishandled SNI to MongoDB Atlas. The one-off Mongo → D1 migration (done 2026-10-06), kept for a rollback re-run.                  |
+| `docker-compose.yml` (`node` image)                                             | Legacy and unused; its note says the Bun image broke Next's Edge VM.                                                                        |
+| `typescript` (tsc) devDependency                                                | Not called by us (tsgo typechecks), but Next requires it when `tsconfig.json` exists, and intlayer (`zod-to-ts`) and others peer-depend on it. |
+| root `engines.node >=22.12`, `.nvmrc`                                           | For the Node pieces above (wrangler; `node:sqlite` null rows).                                                                              |
+| `.husky/pre-commit` `bunx lint-staged`                                          | lint-staged and secretlint have node shebangs; `bunx --bun lint-staged` works (checked 2026-11-04) — switch it when the hook is next edited. |
 
 ## Getting Started
 

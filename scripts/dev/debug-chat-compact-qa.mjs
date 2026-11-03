@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Browser checks for the chat's compact mode (packages/debug-chat/src/compact-view.ts)
  * on the local /harness page, with the hot widget (its Tailwind CSS too):
@@ -15,7 +15,7 @@
  * getUserMedia is stubbed (refused): nothing is recorded. Browsers are muted
  * (scripts/qa/silent.mjs).
  *
- *   node scripts/dev/debug-chat-compact-qa.mjs [--shots <dir>]
+ *   bun scripts/dev/debug-chat-compact-qa.mjs [--shots <dir>]
  *     --shots: save light/dark × compact/expanded at 390×844 (iPhone) there
  */
 import { spawn } from "node:child_process";

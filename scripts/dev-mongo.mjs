@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Local development MongoDB — a single-node **replica set** on a fixed port.
  *

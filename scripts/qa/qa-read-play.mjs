@@ -1,6 +1,6 @@
 // /read read-aloud QA: silent, iPhone size, light and dark screenshots.
 //
-//   QA_BASE=http://localhost:3017 node scripts/qa/qa-read-play.mjs [outDir]
+//   QA_BASE=http://localhost:3017 bun scripts/qa/qa-read-play.mjs [outDir]
 //
 // Owner bug (2026-11-03): after importing a book, Play scrolled the page down
 // without end. This signs up a throwaway account, imports the public-domain
