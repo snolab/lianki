@@ -103,7 +103,11 @@ async function run(clip, expectWake) {
   );
   await page.evaluate(() => globalThis.__lkMic.wake("passive"));
   check((await mic.getAttribute("data-wake")) === "passive", `${clip}: the agent made it passive`);
-  check(await page.getByTestId("debug-chat-mic-wake").isVisible(), "the Linky? badge shows");
+  check(
+    await page.getByTestId("debug-chat-mic-passive").isVisible(),
+    "the dashed passive ring shows",
+  );
+  check((await mic.textContent()).trim() === "", "no text on the mic: the ring shows the state");
   const log = () =>
     page.evaluate(() => (globalThis.__devLog ?? []).filter((e) => String(e.ev).startsWith("wake")));
   await page.waitForFunction(

@@ -361,12 +361,17 @@ describe("owner-only shell", () => {
     expect(await liveViewFor("owner@example.com", undefined, labels)).toMatchObject({
       wanted: false,
       token: null,
+      ready: null,
     });
     // The real trusted key is the Mac's, so a test-signed pointer never verifies here.
     await writeSigned(d, await on(1), 1, Date.now());
     expect(await liveViewFor("Owner@Example.com", "1", labels)).toMatchObject({
       wanted: true,
       token: null,
+      ready: null,
+    });
+    expect(await liveViewFor("owner@example.com", undefined, labels)).toMatchObject({
+      ready: null,
     });
     // No table: stays normal rather than failing the page.
     useD1(createTestD1(""));

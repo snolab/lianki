@@ -2,7 +2,8 @@ import { t, type DeclarationContent } from "intlayer";
 import { describeKeys } from "@/lib/i18n-context";
 
 /**
- * Live view (docs/live-view.md): the owner's switch in the account menu and
+ * Live view (docs/live-view.md), called "Dev parts" in the UI: the owner's
+ * chip in the account menu's "Preview build" row and
  * the banner at the top of the page while his dev machine's code is loaded.
  * Only the site owner ever sees these strings.
  */
@@ -10,22 +11,22 @@ const dictionary = {
   key: "live-view",
   content: {
     liveView: t({
-      en: "Live view",
-      zh: "实时预览",
-      hi: "लाइव व्यू",
-      es: "Vista en vivo",
-      fr: "Vue en direct",
-      ar: "العرض المباشر",
-      bn: "লাইভ ভিউ",
-      pt: "Visualização ao vivo",
-      ru: "Живой просмотр",
-      ur: "لائیو ویو",
-      id: "Tampilan langsung",
-      de: "Live-Ansicht",
-      ja: "ライブビュー",
-      sw: "Mwonekano wa moja kwa moja",
-      mr: "लाइव्ह व्ह्यू",
-      ko: "라이브 뷰",
+      en: "Dev parts",
+      zh: "开发版部件",
+      hi: "डेव पार्ट्स",
+      es: "Piezas de desarrollo",
+      fr: "Éléments de dev",
+      ar: "أجزاء التطوير",
+      bn: "ডেভ অংশ",
+      pt: "Peças de desenvolvimento",
+      ru: "Части из разработки",
+      ur: "ڈیو حصے",
+      id: "Bagian dev",
+      de: "Dev-Teile",
+      ja: "開発版パーツ",
+      sw: "Sehemu za usanidi",
+      mr: "डेव्ह भाग",
+      ko: "개발 부품",
     }),
     normal: t({
       en: "Normal",
@@ -86,20 +87,20 @@ const dictionary = {
 
 const context: Record<keyof typeof dictionary.content, string> = {
   liveView:
-    "Name of a developer mode, as a short noun phrase: the page loads the developer's unreleased code from his own computer. Shown on an on/off switch in the account menu and at the start of the top banner ('Live view · branch@commit'). Not 'live broadcast'.",
+    "Name of a developer mode, as a short noun phrase: the page stays the public site, but some parts of it (a chat widget, some components) load the developer's unreleased code from his own computer. Shown on a small on/off chip inside the 'Preview build' row of the account menu ('Dev parts · branch@commit'), and at the start of the top banner while it is on. Must not repeat the word used for 'Preview build' (a different thing: the whole site's trial version). 'Parts' = pieces of the page, not spare parts.",
   normal:
-    "Name of the opposite mode: the ordinary released site. Shown after ⇄ on the same menu switch ('Live view ⇄ Normal') and on the banner's button that goes back to it. One word, an adjective naming the view.",
+    "Button on the Dev parts top banner that turns the mode off and goes back to the ordinary released site. One word, an adjective naming the view.",
   waiting:
-    "Small grey line under the Live view switch when it is on but the developer's computer has not shared any code yet. A short status phrase, no full stop.",
+    "Status text after '·' on the Dev parts chip in the account menu, when the chip is on but the developer's computer has not shared any code yet. A short status phrase, no full stop.",
   refused:
-    "Small line under the Live view switch when the page rejected the developer's code pointer because its signature or date did not check out; a technical reason follows in parentheses. Short status phrase; 'pointer' means a reference to where the code is.",
+    "Status text after '·' on the Dev parts chip in the account menu, when the page rejected the developer's code pointer because its signature or date did not check out; a technical reason follows in parentheses. Short status phrase; 'pointer' means a reference to where the code is.",
 };
 
 export default {
   ...dictionary,
-  title: "Live view — the owner's switch to load his dev machine's code",
+  title: "Live view (Dev parts) — the owner's chip to load his dev machine's code",
   description: describeKeys(
-    "The account-menu switch and the top banner of Live view, a mode only the site owner sees: the page stays the same, but some of its code comes from his development computer. Keep ⇄, branch names and commit ids as they are.",
+    "The account-menu chip and the top banner of Live view (shown as 'Dev parts'), a mode only the site owner sees: the page stays the same, but some of its code comes from his development computer. Keep branch names and commit ids as they are.",
     context,
   ),
 } satisfies DeclarationContent;

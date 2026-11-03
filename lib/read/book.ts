@@ -9,6 +9,7 @@
 // `words` (lib/read/words.ts) is the book's word count, made at import and
 // backfilled on first read for books imported before it existed.
 
+import { INLINE_KINDS, type InlineKind, type InlineMark } from "./reader-api";
 import { countWords, parseWordStats, type WordStats } from "./words";
 
 export const BOOK_KIND = "lianki-book";
@@ -30,9 +31,24 @@ export interface BookMeta {
   headings?: number[];
   /** Every distinct word with its count (lib/read/words.ts). */
   words?: WordStats;
+  /** Inline emphasis from the EPUB (`lines` stay plain text). */
+  marks?: InlineMark[];
+  /** Lines that continue the paragraph before after a visible line break (`<br>`). */
+  breaks?: number[];
+  /** Lines that continue the paragraph before after a space (a long one split at import). */
+  continues?: number[];
+  /** Imported with inline markup and joins (books from before have none). */
+  markup?: 1;
 }
 
-export interface ParsedBook {
+/** The book text's markup, kept beside the plain lines. */
+export interface BookMarkup {
+  marks: InlineMark[];
+  breaks: number[];
+  continues: number[];
+}
+
+export interface ParsedBook extends Partial<BookMarkup> {
   title: string;
   author?: string;
   lang?: string;
@@ -49,7 +65,49 @@ export const BOOK_LIMITS = {
   maxTextBytes: 1_500_000,
   maxChapters: 2_000,
   maxTitleChars: 300,
+  maxMarks: 100_000,
 };
+
+const KINDS = new Set<string>(INLINE_KINDS);
+
+/**
+ * Untrusted markup checked against the lines: kinds from the closed set,
+ * integer ranges inside their line, joins ascending and never line 0.
+ * Anything else is dropped, not refused: the book stays readable as text.
+ */
+export function checkMarkup(
+  b: Record<string, unknown>,
+  /** Null: shape only (stored meta, read without its lines). */
+  lines: readonly string[] | null,
+): BookMarkup | null {
+  if (!Array.isArray(b.marks) && !Array.isArray(b.breaks) && !Array.isArray(b.continues))
+    return null;
+  const marks: InlineMark[] = [];
+  for (const m of Array.isArray(b.marks) ? b.marks.slice(0, BOOK_LIMITS.maxMarks) : []) {
+    if (!Array.isArray(m) || m.length !== 4) continue;
+    const [l, a, z, k] = m as unknown[];
+    if (!Number.isInteger(l) || !Number.isInteger(a) || !Number.isInteger(z)) continue;
+    if ((l as number) < 0 || (a as number) < 0 || (z as number) <= (a as number)) continue;
+    const line = lines ? lines[l as number] : "";
+    if (line === undefined || (lines && (z as number) > line.length)) continue;
+    if (typeof k !== "string" || !KINDS.has(k)) continue;
+    marks.push([l as number, a as number, z as number, k as InlineKind]);
+  }
+  const joins = (v: unknown) => {
+    if (!Array.isArray(v)) return [];
+    const out: number[] = [];
+    for (const x of v) {
+      if (!Number.isInteger(x) || x <= 0 || (lines && x >= lines.length)) continue;
+      if (out.length && x <= out[out.length - 1]) continue;
+      out.push(x);
+    }
+    return out;
+  };
+  const breaks = joins(b.breaks);
+  const br = new Set(breaks);
+  const continues = joins(b.continues).filter((x) => !br.has(x));
+  return { marks, breaks, continues };
+}
 
 export type BookCheck = { ok: true; book: ParsedBook } | { ok: false; error: string };
 
@@ -108,6 +166,7 @@ export function checkBook(input: unknown): BookCheck {
         .slice(0, BOOK_LIMITS.maxLines)
     : [];
 
+  const markup = checkMarkup(b, lines);
   return {
     ok: true,
     book: {
@@ -117,6 +176,7 @@ export function checkBook(input: unknown): BookCheck {
       lines,
       chapters,
       headings,
+      ...markup,
     },
   };
 }
@@ -131,6 +191,14 @@ export function bookMetaOf(book: ParsedBook): BookMeta {
     chapters: book.chapters,
     headings: book.headings,
     words: countWords(book.lines, book.lang),
+    ...(book.marks || book.breaks || book.continues
+      ? {
+          marks: book.marks ?? [],
+          breaks: book.breaks ?? [],
+          continues: book.continues ?? [],
+          markup: 1 as const,
+        }
+      : {}),
   };
 }
 
@@ -156,6 +224,10 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
       ? m.headings.filter((h) => Number.isInteger(h) && h >= 0)
       : [];
     const words = parseWordStats(m.words);
+    // Lines are not known here: ranges are checked against them when used
+    // (lib/read/units.ts); here only the shape.
+    const markup =
+      m.markup === 1 ? checkMarkup(m as unknown as Record<string, unknown>, null) : null;
     return {
       kind: BOOK_KIND,
       v: 1,
@@ -165,6 +237,7 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
       chapters,
       headings,
       ...(words ? { words } : {}),
+      ...(markup ? { ...markup, markup: 1 as const } : {}),
     };
   } catch {
     return null;

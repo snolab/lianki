@@ -63,7 +63,7 @@ const css =
   harnessCss() + "\n" + (await widgetCss([HARNESS, join(ROOT, "app/components/LiveView.tsx")]));
 
 const labels = {
-  liveView: "Live view",
+  liveView: "Dev parts",
   normal: "Normal",
   waiting: "Waiting for the dev machine",
   refused: "Pointer refused",
@@ -74,10 +74,26 @@ const page = (lv: unknown) =>
   `<script>window.__LV=${JSON.stringify(lv)}</script><script type="module" src="/app.js"></script>`;
 
 const cases: Record<string, unknown> = {
-  good: { wanted: true, token: await signLiveView(test.priv, claim()), labels },
-  stranger: { wanted: true, token: await signLiveView(stranger.priv, claim()), labels },
-  expired: { wanted: true, token: await signLiveView(test.priv, claim(t - 10)), labels },
-  off: { wanted: false, token: await signLiveView(test.priv, claim()), labels },
+  good: { wanted: true, token: await signLiveView(test.priv, claim()), ready: null, labels },
+  stranger: {
+    wanted: true,
+    token: await signLiveView(stranger.priv, claim()),
+    ready: null,
+    labels,
+  },
+  expired: {
+    wanted: true,
+    token: await signLiveView(test.priv, claim(t - 10)),
+    ready: null,
+    labels,
+  },
+  // Off on this device, with a pointer stored: the chip is offered, nothing loads.
+  off: {
+    wanted: false,
+    token: await signLiveView(test.priv, claim()),
+    ready: "feat/live-view@abc1234",
+    labels,
+  },
 };
 
 const server = Bun.serve({
@@ -121,12 +137,12 @@ try {
     const text = (await banner.innerText()).replace(/\s+/g, " ").trim();
     rec(
       `${scheme}: good pointer shows the banner`,
-      text.startsWith("Live view · feat/live-view@abc1234"),
+      text.startsWith("Dev parts · feat/live-view@abc1234"),
       text,
     );
     const sub = await p.locator("[data-live-view-switch]").innerText();
     rec(
-      `${scheme}: menu switch is on, with the label`,
+      `${scheme}: menu chip is on, with the label`,
       sub.includes("feat/live-view@abc1234"),
       sub.replace(/\n/g, " | "),
     );
@@ -151,7 +167,7 @@ try {
     rec(`${name}: no banner`, (await p.locator("[data-live-view-banner]").count()) === 0);
     if (why) {
       const sub = await p.locator("[data-live-view-switch]").innerText();
-      rec(`${name}: the switch says why`, sub.includes(why), sub.replace(/\n/g, " | "));
+      rec(`${name}: the chip says why`, sub.includes(why), sub.replace(/\n/g, " | "));
     }
   }
   await ctx.close();

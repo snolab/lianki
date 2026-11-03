@@ -17,7 +17,7 @@ import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
 import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
 import { NavRows } from "@/lib/nav/islands/NavRows";
 import { DevServerDot, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
-import { LiveViewBoot, LiveViewItem, type LiveViewShell } from "./LiveView";
+import { LiveViewBoot, LiveViewChip, type LiveViewShell } from "./LiveView";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -284,8 +284,16 @@ export function AppShell({
                   <MenuLink href="/profile">{labels.profile}</MenuLink>
                   <MenuLink href="/preferences">{labels.preferences}</MenuLink>
                   <MenuLink href="/membership">{labels.membership}</MenuLink>
-                  {devSwitch && <DevSwitchItem sw={devSwitch} />}
-                  {liveView && <LiveViewItem lv={liveView} />}
+                  {/* One preview control: the whole-page switch, with Live view
+                      (dev parts on lianki.com) as a chip in the same row, only
+                      on lianki.com: the preview build is all dev code already. */}
+                  {devSwitch && (
+                    <DevSwitchItem sw={devSwitch}>
+                      {liveView &&
+                        devSwitch.mode === "go" &&
+                        (liveView.wanted || liveView.ready) && <LiveViewChip lv={liveView} />}
+                    </DevSwitchItem>
+                  )}
                   <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                     <Link
                       href="/auth/logout"

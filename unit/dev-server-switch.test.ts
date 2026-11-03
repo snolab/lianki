@@ -86,7 +86,9 @@ describe("up or down: one check, no polling", () => {
     );
     expect(item).toContain("devServerUp()");
     const shell = readFileSync(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8");
-    expect(shell).toContain("{devSwitch && <DevSwitchItem sw={devSwitch} />}");
+    expect(shell).toContain("<DevSwitchItem sw={devSwitch}>");
+    // One preview control: Live view is a chip inside it, not a second switch.
+    expect(shell).not.toContain("LiveViewItem");
     expect(shell).not.toContain("devServerUp");
   });
 });

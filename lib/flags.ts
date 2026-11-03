@@ -35,6 +35,11 @@ export const FLAGS = {
       "/words 语音口令模式：设置里出现「语音口令」开关，打开后不用唤醒词，说「下一张、上一张、上下左右、重来/困难/良好/简单、显示答案、再读一遍、撤销、退出语音模式」来操作。关闭时只有站长本人能预览。",
     default: false,
   },
+  "read.reader-v2": {
+    description:
+      "阅读 v2（复习单位）：/read 以句子为复习单位，左右滑动给段落/句子打分（FSRS 记在每个句子上），同步阅读位置、阅读笔记和语境中见过的词。关闭时只有站长本人能用。",
+    default: false,
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;
