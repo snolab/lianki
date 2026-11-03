@@ -3,6 +3,7 @@
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
 import { useTextScale } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
+import { SettingsSheet } from "./SettingsSheet";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { advanceTop, shouldAdvance } from "@/lib/words/advance";
 import { GLIDE_WATCH_MS, homeStep, onDetent } from "@/lib/words/native-slip";
@@ -3118,8 +3119,8 @@ function Study({
   /** The row whose other actions are open (double tap / right click). */
   const [sheet, setSheet] = useState<number | null>(null);
   const lastTap = useRef({ i: -1, t: 0 });
+  // A modal is open (the slip's sheet, Settings): the study keys rest.
   const sheetOpen = useRef(false);
-  sheetOpen.current = sheet !== null;
   // Back (the browser's, the phone's) folds the sheet instead of leaving /words.
   useBackToClose(sheet !== null, () => setSheet(null));
   const sync = useSyncStatus();
@@ -3136,6 +3137,8 @@ function Study({
   /** Every meaning shown, not just the focused / pinned rows. */
   const [showAll, setShowAll] = usePref("lk:words-show-all", false);
   const settings = useUi(ui, (s) => s.settingsOpen);
+  sheetOpen.current = sheet !== null || settings;
+  const settingsBtn = useRef<HTMLButtonElement>(null);
   const setSettings = useCallback(
     (v: boolean | ((o: boolean) => boolean)) =>
       ui.setState((s) => ({ settingsOpen: typeof v === "function" ? v(s.settingsOpen) : v })),
@@ -4400,6 +4403,7 @@ function Study({
           </button>
           <span className="font-medium">{title}</span>
           <button
+            ref={settingsBtn}
             // Tapped seven times fast for debug: iOS must not turn that into a
             // text selection or a double-tap zoom.
             className={`tap-40 select-none touch-manipulation [-webkit-touch-callout:none] px-2 py-0.5 rounded text-xs ${
@@ -4419,16 +4423,6 @@ function Study({
             <Icon name="gearSix" className="me-1" />
             {text.settings}
           </button>
-          {touch && (
-            <button
-              className="tap-40 px-2 py-0.5 rounded text-xs bg-black/10 dark:bg-white/10"
-              onClick={() => undo()}
-              aria-label={text.undo.value}
-            >
-              <Icon name="arrowCounterClockwise" className="me-1" />
-              {text.undo}
-            </button>
-          )}
           <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
             {debug && (
               <>
@@ -4475,14 +4469,23 @@ function Study({
       </div>
 
       {settings && (
-        <div
-          // Its own glass sheet under the toolbar, not part of it: the
-          // toolbar (and the list's scroll-padding under it) stays one
-          // size, and a long sheet scrolls inside itself.
-          data-words-settings
-          className="lk-words-bar lk-words-sheet lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
-          style={{ top: bar.top, maxHeight: `calc(100dvh - ${bar.top + bar.bottom + 16}px)` }}
-          aria-label={text.studySettings.value}
+        <SettingsSheet
+          title={
+            <>
+              <Icon name="gearSix" className="me-1" />
+              {text.settings}
+            </>
+          }
+          label={text.studySettings.value}
+          closeLabel={text.closeSettings.value}
+          onClose={() => setSettings(false)}
+          // The scrim covers the Settings button: a tap there still counts
+          // toward the seven quick taps that toggle debug.
+          onScrimTap={(x, y) => {
+            const r = settingsBtn.current?.getBoundingClientRect();
+            if (r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) debugTap();
+          }}
+          returnTo={settingsBtn}
         >
           <div className="flex flex-wrap gap-2">
             <TogglePill
@@ -4637,7 +4640,7 @@ function Study({
               {text.fsHint}
             </div>
           )}
-        </div>
+        </SettingsSheet>
       )}
 
       {loadError ? (

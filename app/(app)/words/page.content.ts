@@ -285,24 +285,6 @@ const dictionary = {
       mr: "स्वाइपची जाणीव ट्यून करण्यासाठी पॅनेल",
       ko: "스와이프 느낌을 조정하는 패널",
     }),
-    undo: t({
-      en: "Undo",
-      zh: "撤销",
-      hi: "पूर्ववत करें",
-      es: "Deshacer",
-      fr: "Annuler",
-      ar: "تراجع",
-      bn: "পূর্বাবস্থায় ফেরান",
-      pt: "Desfazer",
-      ru: "Отменить",
-      ur: "واپس کریں",
-      id: "Urungkan",
-      de: "Rückgängig",
-      ja: "元に戻す",
-      sw: "Tendua",
-      mr: "पूर्ववत करा",
-      ko: "실행 취소",
-    }),
     title: t({
       en: "Word lists",
       zh: "单词列表",
@@ -374,6 +356,24 @@ const dictionary = {
       sw: "Mipangilio ya kusoma",
       mr: "अभ्यास सेटिंग्ज",
       ko: "학습 설정",
+    }),
+    closeSettings: t({
+      en: "Close",
+      zh: "关闭",
+      hi: "बंद करें",
+      es: "Cerrar",
+      fr: "Fermer",
+      ar: "إغلاق",
+      bn: "বন্ধ করুন",
+      pt: "Fechar",
+      ru: "Закрыть",
+      ur: "بند کریں",
+      id: "Tutup",
+      de: "Schließen",
+      ja: "閉じる",
+      sw: "Funga",
+      mr: "बंद करा",
+      ko: "닫기",
     }),
     showAll: t({
       en: "Show all meanings",
@@ -1294,22 +1294,22 @@ const dictionary = {
       ko: "쉬움",
     }),
     helpTouch: t({
-      en: "tap = show + say · hold = listen (loops) · swipe ← a little {hard}, far {again} · swipe → a little {good}, far {easy} · ↶ undo",
-      zh: "轻点 = 显示 + 朗读 · 长按 = 循环收听 · 向 ← 滑一点 {hard}，滑远 {again} · 向 → 滑一点 {good}，滑远 {easy} · ↶ 撤销",
-      hi: "टैप = दिखाएँ + बोलें · दबाए रखें = सुनें (दोहराता है) · ← थोड़ा स्वाइप {hard}, दूर तक {again} · → थोड़ा स्वाइप {good}, दूर तक {easy} · ↶ पूर्ववत",
-      es: "tocar = mostrar + decir · mantener = escuchar (en bucle) · deslizar ← un poco {hard}, lejos {again} · deslizar → un poco {good}, lejos {easy} · ↶ deshacer",
-      fr: "toucher = afficher + dire · maintenir = écouter (en boucle) · glisser ← un peu {hard}, loin {again} · glisser → un peu {good}, loin {easy} · ↶ annuler",
-      ar: "نقرة = إظهار + نطق · ضغط مطوّل = استماع (متكرر) · اسحب ← قليلًا {hard}، بعيدًا {again} · اسحب → قليلًا {good}، بعيدًا {easy} · ↶ تراجع",
-      bn: "ট্যাপ = দেখান + বলুন · চেপে ধরুন = শুনুন (বারবার) · ← একটু সোয়াইপ {hard}, দূরে {again} · → একটু সোয়াইপ {good}, দূরে {easy} · ↶ ফেরান",
-      pt: "tocar = mostrar + falar · segurar = ouvir (em loop) · deslizar ← um pouco {hard}, longe {again} · deslizar → um pouco {good}, longe {easy} · ↶ desfazer",
-      ru: "тап = показать + произнести · удержание = слушать (по кругу) · свайп ← немного {hard}, далеко {again} · свайп → немного {good}, далеко {easy} · ↶ отменить",
-      ur: "ٹیپ = دکھائیں + بولیں · دبائے رکھیں = سنیں (بار بار) · ← تھوڑا سوائپ {hard}، دور تک {again} · → تھوڑا سوائپ {good}، دور تک {easy} · ↶ واپس",
-      id: "ketuk = tampilkan + ucapkan · tahan = dengarkan (berulang) · geser ← sedikit {hard}, jauh {again} · geser → sedikit {good}, jauh {easy} · ↶ batalkan",
-      de: "Tippen = zeigen + sprechen · Halten = anhören (in Schleife) · Wischen ← ein wenig {hard}, weit {again} · Wischen → ein wenig {good}, weit {easy} · ↶ rückgängig",
-      ja: "タップ = 表示 + 読み上げ · 長押し = 繰り返し再生 · ← 少しスワイプで {hard}、大きく {again} · → 少しスワイプで {good}、大きく {easy} · ↶ 元に戻す",
-      sw: "gusa = onyesha + tamka · shikilia = sikiliza (kwa kurudia) · telezesha ← kidogo {hard}, mbali {again} · telezesha → kidogo {good}, mbali {easy} · ↶ tendua",
-      mr: "टॅप = दाखवा + बोला · दाबून ठेवा = ऐका (पुन्हा पुन्हा) · ← थोडे स्वाइप {hard}, दूर {again} · → थोडे स्वाइप {good}, दूर {easy} · ↶ पूर्ववत",
-      ko: "탭 = 보기 + 읽기 · 길게 누르기 = 반복 듣기 · ← 조금 스와이프 {hard}, 멀리 {again} · → 조금 스와이프 {good}, 멀리 {easy} · ↶ 취소",
+      en: "tap = show + say · hold = listen (loops) · swipe ← a little {hard}, far {again} · swipe → a little {good}, far {easy}",
+      zh: "轻点 = 显示 + 朗读 · 长按 = 循环收听 · 向 ← 滑一点 {hard}，滑远 {again} · 向 → 滑一点 {good}，滑远 {easy}",
+      hi: "टैप = दिखाएँ + बोलें · दबाए रखें = सुनें (दोहराता है) · ← थोड़ा स्वाइप {hard}, दूर तक {again} · → थोड़ा स्वाइप {good}, दूर तक {easy}",
+      es: "tocar = mostrar + decir · mantener = escuchar (en bucle) · deslizar ← un poco {hard}, lejos {again} · deslizar → un poco {good}, lejos {easy}",
+      fr: "toucher = afficher + dire · maintenir = écouter (en boucle) · glisser ← un peu {hard}, loin {again} · glisser → un peu {good}, loin {easy}",
+      ar: "نقرة = إظهار + نطق · ضغط مطوّل = استماع (متكرر) · اسحب ← قليلًا {hard}، بعيدًا {again} · اسحب → قليلًا {good}، بعيدًا {easy}",
+      bn: "ট্যাপ = দেখান + বলুন · চেপে ধরুন = শুনুন (বারবার) · ← একটু সোয়াইপ {hard}, দূরে {again} · → একটু সোয়াইপ {good}, দূরে {easy}",
+      pt: "tocar = mostrar + falar · segurar = ouvir (em loop) · deslizar ← um pouco {hard}, longe {again} · deslizar → um pouco {good}, longe {easy}",
+      ru: "тап = показать + произнести · удержание = слушать (по кругу) · свайп ← немного {hard}, далеко {again} · свайп → немного {good}, далеко {easy}",
+      ur: "ٹیپ = دکھائیں + بولیں · دبائے رکھیں = سنیں (بار بار) · ← تھوڑا سوائپ {hard}، دور تک {again} · → تھوڑا سوائپ {good}، دور تک {easy}",
+      id: "ketuk = tampilkan + ucapkan · tahan = dengarkan (berulang) · geser ← sedikit {hard}, jauh {again} · geser → sedikit {good}, jauh {easy}",
+      de: "Tippen = zeigen + sprechen · Halten = anhören (in Schleife) · Wischen ← ein wenig {hard}, weit {again} · Wischen → ein wenig {good}, weit {easy}",
+      ja: "タップ = 表示 + 読み上げ · 長押し = 繰り返し再生 · ← 少しスワイプで {hard}、大きく {again} · → 少しスワイプで {good}、大きく {easy}",
+      sw: "gusa = onyesha + tamka · shikilia = sikiliza (kwa kurudia) · telezesha ← kidogo {hard}, mbali {again} · telezesha → kidogo {good}, mbali {easy}",
+      mr: "टॅप = दाखवा + बोला · दाबून ठेवा = ऐका (पुन्हा पुन्हा) · ← थोडे स्वाइप {hard}, दूर {again} · → थोडे स्वाइप {good}, दूर {easy}",
+      ko: "탭 = 보기 + 읽기 · 길게 누르기 = 반복 듣기 · ← 조금 스와이프 {hard}, 멀리 {again} · → 조금 스와이프 {good}, 멀리 {easy}",
     }),
     helpKeys: t({
       en: "↑↓ / W S / I U move (the focused row shows its example and meaning) · Space pin · E show all · 1 {again} · 2 {hard} · 3 {good} · 4 {easy} (right hand mirrored: L {again} · K {hard} · J {good} · H {easy}) · grading again re-grades · click = {again} · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help",
@@ -2159,8 +2159,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   backToLists:
     "/words study view, the first link at the top-left of the toolbar: leaves the study view and returns to the list picker. Keep the ← arrow pointing toward the start of the line (→ in right-to-left languages). 'lists' = word lists; lowercase, as short as the English.",
   settings:
-    "/words study view, toolbar button (with a gear icon) that opens and closes the study view's settings sheet; also its screen-reader label. One word, as on a gear button: a noun, not a verb.",
-  undo: "/words study view, toolbar button (touch screens only, with a ↶ icon) that undoes the last grade given to a word, putting that word back as ungraded. Undo, not Cancel. A short imperative verb.",
+    "/words study view, toolbar button (with a gear icon) that opens the study view's settings sheet; also its screen-reader label, and the title at the top of that sheet. One word, as on a gear button: a noun, not a verb.",
   stats:
     "/words study view, live counter at the right of the toolbar. {done}: words graded in this session; {rate}/min: grades per minute; {due}: words due for review still ahead; {new}: words in the lists being studied that have never been shown yet, all of them (there is no daily new-word limit, and it is not the batch loaded on screen); it only falls as new words are graded. Say 'not yet seen' or 'never shown', not just 'new'. Keep the · separators.",
   saving:
@@ -2179,7 +2178,9 @@ const context: Record<keyof typeof dictionary.content, string> = {
   // The study view: settings sheet. Each switch is a pill; its hint is the
   // pill's mouse-hover tooltip (title attribute), not a visible line.
   studySettings:
-    "/words study view, screen-reader label (aria-label) of the settings sheet that the toolbar's Settings button opens under the toolbar; the sheet holds the switches for the study view. A noun phrase.",
+    "/words study view, screen-reader label (aria-label) of the settings sheet that the toolbar's Settings button opens (a sheet from the bottom on a phone, a dialog on a wide screen); the sheet holds the switches for the study view. A noun phrase.",
+  closeSettings:
+    "/words study view, screen-reader label (aria-label) of the ✕ button in the settings sheet's title row: closes the sheet (the settings are already saved). A short imperative verb, Close (dismiss), not Cancel.",
   showAll:
     "/words study view, Settings sheet: the label of an on/off switch (a pill): show the meaning (translation) of every word in the list at once, instead of only the word currently focused. A short noun or imperative phrase.",
   showAllHint:
@@ -2273,7 +2274,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
 
   // The help strip (glass strip at the bottom of the study view).
   helpTouch:
-    "/words study view, help strip at the bottom on touch screens: tap a word to show its back (example sentence, then meaning) and hear it; hold to listen in a loop; swipe left a little/far or right a little/far to grade. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys. Keep the ← → ↶ symbols, the = signs and the · separators; lowercase fragments.",
+    "/words study view, help strip at the bottom on touch screens: tap a word to show its back (example sentence, then meaning) and hear it; hold to listen in a loop; swipe left a little/far or right a little/far to grade. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys. Keep the ← → symbols, the = signs and the · separators; lowercase fragments.",
   helpKeys:
     "/words study view, full keyboard help strip at the bottom (toggled with ?): the keys (↑↓, W S, I U, Space, E, 1-4, L K J H, Z, M, Esc, Enter, V, ?) are kept as is; only the explanation is translated. The parenthesis after the move keys says the focused row reveals its example sentence and its meaning (rows show the example first). {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys. Lowercase fragments, · separators kept.",
   helpKeysShort:
