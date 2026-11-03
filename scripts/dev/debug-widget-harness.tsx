@@ -47,6 +47,7 @@ voice().setLog((ev) => {
 import { STATE_TREE_MD } from "@/lib/state-tree.generated";
 import { LiagentMark } from "@lianki/debug-chat/LiagentMark";
 import { setTarget } from "@lianki/debug-chat/DebugChat";
+import { setAddItems } from "@lianki/debug-chat/attach";
 
 /** A made-up profile picture: no network, so the harness works offline. */
 const PIC = `data:image/svg+xml,${encodeURIComponent(
@@ -204,8 +205,36 @@ function Harness() {
     { id: "p2", label: "/words pwa Mozilla/5.0 (iPhone)", at: 0 },
     { id: "p3", label: "/home Mozilla/5.0 (Macintosh)", at: 0 },
   ];
+  // The + menu's Add group, as the bottom island registers it in the app.
+  useEffect(() => {
+    setAddItems([
+      {
+        id: "create:link",
+        title: "Add a link as a card",
+        icon: "link",
+        onPick: () => record("__picked", "create:link"),
+      },
+      {
+        id: "create:deck",
+        title: "Words from an Anki deck",
+        icon: "textAa",
+        onPick: () => record("__picked", "create:deck"),
+      },
+    ]);
+    return () => setAddItems([]);
+  }, []);
   return (
     <>
+      {/* Page text to select for the + menu's "Page selection", and a field that must never be read. */}
+      <main className="p-4 text-base">
+        <p data-testid="harness-text">Le chat noir dort sur le canapé depuis ce matin.</p>
+        <input
+          data-testid="harness-password"
+          type="password"
+          defaultValue="hunter2"
+          className="border"
+        />
+      </main>
       {pending && (
         <DebugPairModal
           pending={{
@@ -285,7 +314,7 @@ function Harness() {
           return !q.has("noanswer");
         }}
         onSend={(text, to, opts) => {
-          record("__sent", { text, source: opts?.source ?? null });
+          record("__sent", { text, source: opts?.source ?? null, context: opts?.context ?? null });
           setMessages((l) =>
             add(l, {
               id: crypto.randomUUID(),
@@ -295,6 +324,7 @@ function Harness() {
               at: Date.now(),
               ...(to ? { to } : {}),
               ...(opts?.source ? { source: opts.source } : {}),
+              ...(opts?.context ? { context: opts.context } : {}),
             }),
           );
           return true;

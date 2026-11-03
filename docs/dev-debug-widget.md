@@ -711,6 +711,42 @@ cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
 `unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
 `unit/node-args.test.ts`.
 
+## The + menu: add to Lianki, attach the page selection
+
+The round **+** at the start of the chat input (owner, 2026-11-03) opens one
+menu in two groups (`packages/debug-chat/src/AttachMenu.tsx`, `attach.ts`):
+
+- **Add** — the app's Create actions (add a link as a card, words from an Anki
+  deck, import cards, AI words). The bottom island registers them with
+  `setAddItems`; while a chat input with a + is on the page
+  (`announceChatAttach`, event `lk:chat-attach`), the island's own ＋ is not
+  shown. Anyone without the chat (not in debug mode, a blocked friend) keeps
+  the island's ＋. Search still lists the same actions.
+- **Attach to message** — a registry (`ATTACH_KINDS`), one entry per kind, so
+  each new kind lands in its own change. Now: **Page selection** works; File
+  and Photo/video/audio are shown disabled, tagged "Coming soon". URL import is
+  the Add group's "Add a link as a card".
+
+**Page selection.** A phone clears the page's selection the moment the chat
+input takes focus, so the widget remembers the last non-empty selection made
+outside the chat (`createSelectionMemory`, on `selectionchange` and a
+capturing `pointerdown`): an empty selection after a press in the chat keeps
+it; a press anywhere else on the page lets it go; it also goes after 30 min,
+when the chip's × is tapped, and when the line is sent. Never captured: a
+selection inside the chat (`[data-debug-chat]`, the embed's shadow host
+`[data-lk-chat-host]`), password and one-time-code/card fields, and anything
+inside `[data-sensitive]` / `[data-lk-sensitive]` (any page may mark a part).
+
+Choosing it puts a quote chip above the input (one line; a tap shows it whole;
+× drops it). It is kept with the draft in `lk:ui:chat` (`attached`), and sent
+with the **next line only** as `context: {selection, path, title, host?}` —
+`selection` ≤ 2000 characters, `path` without query or fragment, `host` only
+on another site (`cleanContext` in wire.ts, applied by the page, the hub's
+`parsePageMessage` and the session store). The hub stores it on the line in
+the sender's own thread — a friend's selection stays in their thread — and
+logs only its length. The log shows it as a small quote above the line;
+`eval.ts chat` prints it in the JSON line as `"context"`.
+
 ## The state tree, live
 
 The chat's Tree view (menu → Tree; `docs/state-tree.md`) normally shows the

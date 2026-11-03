@@ -66,7 +66,9 @@
     "./embed/frame-protocol": "./src/embed/frame-protocol.ts",
     "./embed/isolation": "./src/embed/isolation.ts",
     "./embed/partner-client": "./src/embed/partner-client.ts",
-    "./embed/partner-embed": "./src/embed/partner-embed.tsx"
+    "./embed/partner-embed": "./src/embed/partner-embed.tsx",
+    "./attach": "./src/attach.ts",
+    "./AttachMenu": "./src/AttachMenu.tsx"
   },
   "description": "The debug chat widget: chat box, pill, menu, pairing modal, mic, hot-load host. No imports from the app; Lianki passes what it needs as props.",
   "private": true,

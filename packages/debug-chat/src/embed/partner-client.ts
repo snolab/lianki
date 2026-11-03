@@ -12,7 +12,14 @@
  * when the socket had opened and the page is still visible. No timers that
  * touch the network.
  */
-import { applyEdit, type ChatMessage, type EditedEvent, type Sender } from "../wire";
+import {
+  applyEdit,
+  type ChatContext,
+  type ChatMessage,
+  type EditedEvent,
+  type Sender,
+  cleanContext,
+} from "../wire";
 import type { Blocker } from "./guard";
 
 export const PARTNER_SUBPROTOCOL = "lianki-partner";
@@ -59,7 +66,8 @@ export type PartnerDeps = {
 export type PartnerClient = {
   get(): PartnerState;
   subscribe(fn: () => void): () => void;
-  send(text: string, to?: string): boolean;
+  /** `context`: the page selection attached with the + menu. */
+  send(text: string, to?: string, context?: ChatContext): boolean;
   block(b: Blocker): void;
   stop(): void;
 };
@@ -181,7 +189,7 @@ export function createPartnerClient(d: PartnerDeps): PartnerClient {
       subs.add(fn);
       return () => subs.delete(fn);
     },
-    send(text, to) {
+    send(text, to, context) {
       const s = ws;
       if (!s || s.readyState !== 1) return false;
       try {
@@ -192,7 +200,16 @@ export function createPartnerClient(d: PartnerDeps): PartnerClient {
           sentLabel = label;
         }
         const id = crypto.randomUUID().slice(0, 12);
-        s.send(JSON.stringify({ type: "chat", id, text, ...(to ? { to } : {}) }));
+        const ctx = cleanContext(context);
+        s.send(
+          JSON.stringify({
+            type: "chat",
+            id,
+            text,
+            ...(to ? { to } : {}),
+            ...(ctx ? { context: ctx } : {}),
+          }),
+        );
         return true;
       } catch {
         return false;

@@ -7,6 +7,7 @@ import {
   useLayoutEffect,
   useMemo,
   useReducer,
+  useCallback,
   useRef,
   useState,
 } from "react";
@@ -41,6 +42,7 @@ import {
   parseAddress,
   pathLabel,
   type VoiceTiming,
+  type ChatContext,
 } from "./wire";
 import { latencyLines, viaAt, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
@@ -58,6 +60,7 @@ import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
+import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
@@ -474,7 +477,13 @@ export type DebugChatProps = {
   onSend: (
     text: string,
     to?: string,
-    opts?: { source?: MessageSource; timing?: VoiceTiming; speakerProof?: string[] },
+    opts?: {
+      source?: MessageSource;
+      timing?: VoiceTiming;
+      speakerProof?: string[];
+      /** Attached with the + menu (AttachMenu.tsx): the page selection and where. */
+      context?: ChatContext;
+    },
   ) => boolean;
   /**
    * A tap on an ask card (AskCard.tsx): the page sends {type:"answer",
@@ -986,6 +995,12 @@ export function DebugChat({
       pureDictation: v && pureDictation.current === v ? v : null,
       ...(v ? {} : { caret: null }),
     });
+  /** The + menu (AttachMenu.tsx): the page selection kept outside the chat, and what goes with the next line. */
+  const pageSel = usePageSelection(embedded);
+  const appAddItems = useAddItems();
+  const attached = useUi(uiStore, (s) => s.attached);
+  const [attachMenu, setAttachMenu] = useState(false);
+  const closeAttachMenu = useCallback(() => setAttachMenu(false), []);
   /** The node the next line goes to: the chip in the bar ("/" = the main thread, no chip). */
   const [target, setTargetState] = useState(keptTarget);
   const targetRef = useRef(target);
@@ -1536,19 +1551,29 @@ export function DebugChat({
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
     const speakerProof = source ? takeSpeaker().proofs : (clearSpeaker(), undefined);
+    // What was attached with the + menu rides along, this line only.
+    const context = uiStore.getState().attached ?? undefined;
+    const opts = {
+      ...(source ? { source } : {}),
+      ...(source && timing ? { timing } : {}),
+      ...(source && speakerProof?.length ? { speakerProof } : {}),
+      ...(context ? { context } : {}),
+    };
     if (
       !sendRef.current(
         text,
         to === ROOT_NODE ? undefined : to,
-        source
-          ? { source, ...(timing ? { timing } : {}), ...(speakerProof?.length ? { speakerProof } : {}) }
-          : undefined,
+        Object.keys(opts).length ? opts : undefined,
       )
     ) {
       setOffline(true);
       return false;
     }
     setOffline(false);
+    if (context) {
+      uiStore.setState({ attached: null });
+      pageSel.clear();
+    }
     // A typed line says which language the owner speaks: the mic's STT hint.
     if (!source) learnSttHint(text);
     // Sent: an interruption is over, and the queue (still relevant) reads on.
@@ -3022,6 +3047,7 @@ export function DebugChat({
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
                       >
+                        {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
                         {m.ask
                           ? m.ask.questions.length === 1
                             ? m.ask.questions[0]!.question
@@ -3103,6 +3129,16 @@ export function DebugChat({
           </button>
         </div>
       )}
+      {open && attached && !notice && (
+        <AttachChip
+          t={t}
+          ctx={attached}
+          onRemove={() => {
+            uiStore.setState({ attached: null });
+            pageSel.clear();
+          }}
+        />
+      )}
       {/* The log above is click-through: taps reach the page under it. Only the
       bar takes pointer events. Its width animates as two grid columns, the
       bar's and a spacer's, trading 1fr ⇄ 0fr: minimized, the bar's column is
@@ -3174,6 +3210,20 @@ export function DebugChat({
             )}
           </div>
         )}
+        {open && attachMenu && !notice && (
+          <AttachMenu
+            t={t}
+            sel={pageSel.sel}
+            items={appAddItems}
+            onAttachSelection={() => {
+              const s = pageSel.sel;
+              if (!s) return;
+              const { at: _at, ...ctx } = s;
+              uiStore.setState({ attached: ctx });
+            }}
+            onClose={closeAttachMenu}
+          />
+        )}
         {open && scrolledUp && (
           // The row stays click-through; only the button takes taps.
           <div className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end">
@@ -3240,6 +3290,10 @@ export function DebugChat({
             />
           )}
           {controls}
+          {/* + : add to Lianki, or attach to the line (AttachMenu.tsx). Open only. */}
+          {open && !notice && (
+            <AttachButton t={t} open={attachMenu} onToggle={() => setAttachMenu((v) => !v)} />
+          )}
           {/* The input: gone while minimized (inert, so it can't take focus or
           be read), fading out as its slot closes. */}
           <div
