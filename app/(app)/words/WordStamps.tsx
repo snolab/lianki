@@ -3,12 +3,12 @@
 /**
  * A word's stamps, in its sheet (WordsClient.tsx SlipSheet): one seal per
  * grade that stands, oldest first, in the grade's ink (Again red, Hard amber,
- * Good green, Easy blue: the slips' own --ink-*), carved with the grade's key
- * 1–4 so colour is never the only cue. Tap one for its grade and date.
+ * Good green, Easy blue: the slips' own --ink-*), each carving its own mark
+ * (stats.css) so colour is never the only cue; no numbers. Tap one for its grade and date.
  * Fetched once when the sheet opens; nothing polls.
  */
 import "./stats.css";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { fill } from "@/lib/nav/nav-core";
 import { longDateTime } from "@/lib/dates";
@@ -38,6 +38,19 @@ export default function WordStamps({ listId, term }: { listId: string; term: str
     };
   }, [listId, term]);
 
+  // One row: start at the newest stamp; the start fades while older ones are hidden.
+  const row = useRef<HTMLDivElement>(null);
+  const fade = () => {
+    const el = row.current;
+    if (el) el.toggleAttribute("data-older", el.scrollLeft > 1);
+  };
+  useLayoutEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    el.scrollLeft = el.scrollWidth;
+    fade();
+  }, [reviews]);
+
   // Offline or failed: the sheet simply has no stamp row.
   if (!reviews) return null;
   const name = (r: number) =>
@@ -59,7 +72,7 @@ export default function WordStamps({ listId, term }: { listId: string; term: str
       {reviews.length === 0 ? (
         <p className="text-xs opacity-50">{text.stampsNone}</p>
       ) : (
-        <div className="lk-stamp-row max-h-32 overflow-y-auto overscroll-contain">
+        <div className="lk-stamp-row" ref={row} onScroll={fade}>
           {reviews.map(([r, at], i) => (
             <button
               key={`${i}-${at}`}
@@ -72,9 +85,7 @@ export default function WordStamps({ listId, term }: { listId: string; term: str
               onClick={() => setPicked(picked === i ? null : i)}
               className={`lk-grade-seal ${GRADE_CLASS[r] ?? ""}`}
               style={{ transform: `rotate(${((i * 7) % 9) - 4}deg)` }}
-            >
-              {r}
-            </button>
+            />
           ))}
         </div>
       )}
