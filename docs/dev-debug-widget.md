@@ -898,6 +898,19 @@ focus order, 16px input, 40px targets, the inert input, the mic clickable and
 its drag gestures, floating lines). getUserMedia is stubbed, so nothing is
 recorded. `--shots` also saves light/dark × expanded/minimized at 390px.
 
+The bar's round corner controls are concentric with its border by
+construction (`bar-geometry.ts`): the nested-radius rule, inner radius =
+outer radius − (border + padding), as Apple's iOS 26 `ConcentricRectangle`
+does. The bar's radius is `--lk-bar-r = border + padding + line/2`, and the
+mic's circle is the line-sized square in its inner bottom-right, so one line
+high the bar's right end is a semicircle around the mic, and a taller draft
+keeps the mic on the bottom-right arc. Text size does not scale it (only
+text scales). `node scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]`
+measures both centres (getBoundingClientRect) at 390×844 and 412×915, light
+and dark, one line, four lines, text at 150% and minimized, and fails over
+0.5px. A control added in a corner (a + at the left end) takes its circle
+from the same variables.
+
 `node scripts/dev/debug-chat-scroll-qa.mjs` checks the log's scroll on an
 Android-sized touch viewport (412×915). A drag on the empty input scrolls
 the log 1:1 with the finger. A log at its end stays there through drags,

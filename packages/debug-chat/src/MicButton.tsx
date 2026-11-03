@@ -2,7 +2,7 @@
 
 import { type Adaptive, LIMIT, voiceAdapt } from "./adaptive";
 import { VOICE_CAPTURE_EVENT, voiceTune } from "./voice-tune";
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import {
   type MicState,
   type Vad,
@@ -472,6 +472,12 @@ export const canCapture = () =>
  * transcript goes through the echo guard first. With it off, capture is held
  * while the agent speaks, as before.
  */
+/** The mic's box: 40px wide to the touch; its circle the bar's line box (bar-geometry.ts). */
+const MIC_BOX = { "--lk-mic-w": "2.5rem", "--lk-mic-ring": "3px" } as CSSProperties;
+/** A ring on the mic's circle, inset by --lk-mic-ring: concentric with it, so with the bar. */
+const RING =
+  "pointer-events-none absolute inset-y-[var(--lk-mic-ring)] end-[var(--lk-mic-ring)] start-[calc(var(--lk-mic-w)_-_var(--lk-bar-line)_+_var(--lk-mic-ring))] rounded-full";
+
 export function DebugMic({
   onText,
   onPending,
@@ -651,15 +657,21 @@ export function DebugMic({
           void mic.current?.toggle();
         }}
         // 40px wide, and 40px tall to the touch (tap-40); no scrolling under a drag.
-        className={`tap-40 pointer-events-auto relative flex h-8 w-10 touch-none flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
-        style={{ color: state === "off" ? undefined : speaking ? TALK : passive ? WAIT : REC }}
+        // Its circle is the line-sized square at its end (the start padding takes
+        // the rest of the 40px): in the bar's corner, concentric with its border
+        // (bar-geometry.ts).
+        style={{
+          ...MIC_BOX,
+          color: state === "off" ? undefined : speaking ? TALK : passive ? WAIT : REC,
+        }}
+        className={`tap-40 pointer-events-auto relative flex h-[var(--lk-bar-line)] w-[var(--lk-mic-w)] touch-none flex-col items-center justify-center rounded-[var(--lk-bar-inner-r)] ps-[calc(var(--lk-mic-w)_-_var(--lk-bar-line))] text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
       >
         {speaking ? (
           // The agent speaks: a slow blue ring, so it is never mistaken for REC.
           <span
             aria-hidden
             data-testid="debug-chat-mic-speaking"
-            className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 animate-pulse rounded-full"
+            className={`${RING} animate-pulse`}
             style={{ boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
           />
         ) : passive ? (
@@ -667,7 +679,7 @@ export function DebugMic({
           <span
             aria-hidden
             data-testid="debug-chat-mic-passive"
-            className={`pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+            className={`${RING} border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
             style={{ borderColor: WAIT }}
           />
         ) : view.resume && state === "off" ? (
@@ -675,14 +687,14 @@ export function DebugMic({
           <span
             aria-hidden
             data-testid="debug-chat-mic-resume"
-            className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full border-2 border-dashed"
+            className={`${RING} border-2 border-dashed`}
             style={{ borderColor: REC }}
           />
         ) : listening && (
           // Steady and faint while listening; red and pulsing while audio is captured.
           <span
             aria-hidden
-            className={`pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full ${rec ? "animate-pulse" : ""}`}
+            className={`${RING} ${rec ? "animate-pulse" : ""}`}
             style={{ boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}` }}
           />
         )}
