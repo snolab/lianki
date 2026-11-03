@@ -82,6 +82,24 @@ const dictionary = {
       sw: "Kadi za kusoma",
       mr: "अभ्यास कार्ड",
     }),
+    read: t({
+      en: "Books",
+      zh: "阅读",
+      ja: "読書",
+      ko: "독서",
+      hi: "किताबें",
+      es: "Libros",
+      fr: "Livres",
+      ar: "الكتب",
+      bn: "বই",
+      pt: "Livros",
+      ru: "Книги",
+      ur: "کتابیں",
+      id: "Buku",
+      de: "Bücher",
+      sw: "Vitabu",
+      mr: "पुस्तके",
+    }),
     smaller: t({
       en: "Smaller",
       zh: "缩小",
@@ -165,12 +183,13 @@ const context: Record<keyof typeof dictionary.content, string> = {
   chat: "Row label inside the Text size group: this row scales only the text of the chat panel (the Learning Partner chat in the corner: messages and the typing box). One short noun.",
   cards:
     "Row label inside the Text size group: this row scales only the text on the study cards (the word slips on /words and the page card on /review). A short noun phrase, plural.",
+  read: "Row label inside the Text size group: this row scales only the text of a book open in the /read reader (the book's paragraphs, not its toolbar). A short noun, plural: the books you read.",
   smaller:
     "Screen-reader label and tooltip of the minus button (shown as a small A) in a Text size row: makes that row's text one step smaller. A comparative adjective or short imperative.",
   larger:
     "Screen-reader label and tooltip of the plus button (shown as a big A) in a Text size row: makes that row's text one step larger. A comparative adjective or short imperative.",
   reset:
-    "Button at the end of the Text size group that sets all three text sizes back to 100%. An imperative verb, short.",
+    "Button at the end of the Text size group that sets every text size row back to 100%. An imperative verb, short.",
   hint: "Small grey note under the Text size group: the change applies without a reload and is saved to the account, and the chat and card sizes multiply on top of the whole-app size. Two short sentences.",
 };
 

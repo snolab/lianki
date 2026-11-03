@@ -191,6 +191,7 @@ export function prefBindings(): PrefBinding[] {
     field("text-size.ui", "text-size", 1, "ui", 1),
     field("text-size.chat", "text-size", 1, "chat", 1),
     field("text-size.cards", "text-size", 1, "cards", 1),
+    field("text-size.read", "text-size", 1, "read", 1),
     plain("ui.paper", "lk:paper", text, "b", {
       also: (v) => {
         try {

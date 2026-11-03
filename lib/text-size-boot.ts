@@ -8,4 +8,4 @@ export const TEXT_MAX = 1.5;
  * `{state, version}` under `lk:pref:text-size`), as `--lk-fs-<area>` on
  * `<html>`. No imports: the root layout is a server component.
  */
-export const TEXT_SIZE_BOOT_SCRIPT = `try{var t=JSON.parse(localStorage.getItem("lk:pref:text-size")||"null");if(t&&t.version===1&&t.state)["ui","chat","cards"].forEach(function(a){var v=t.state[a];if(typeof v==="number"&&v>=${TEXT_MIN}&&v<=${TEXT_MAX}&&v!==1)document.documentElement.style.setProperty("--lk-fs-"+a,String(v))})}catch(e){}`;
+export const TEXT_SIZE_BOOT_SCRIPT = `try{var t=JSON.parse(localStorage.getItem("lk:pref:text-size")||"null");if(t&&t.version===1&&t.state)["ui","chat","cards","read"].forEach(function(a){var v=t.state[a];if(typeof v==="number"&&v>=${TEXT_MIN}&&v<=${TEXT_MAX}&&v!==1)document.documentElement.style.setProperty("--lk-fs-"+a,String(v))})}catch(e){}`;

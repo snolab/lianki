@@ -102,7 +102,16 @@ type Buckets = {
  * the server (the reader's cards); new vs unrecognised needs the word lists,
  * which this device reads from its catalog cache, once per open.
  */
-export function BookScan({ id, words }: { id: string; words: WordsSummary }) {
+export function BookScan({
+  id,
+  words,
+  flat = false,
+}: {
+  id: string;
+  words: WordsSummary;
+  /** On a sheet (one glass layer already): no frame of its own. */
+  flat?: boolean;
+}) {
   const text = useIntlayer("read-words");
   const { locale } = useLocale();
   const n = nf(String(locale));
@@ -153,7 +162,9 @@ export function BookScan({ id, words }: { id: string; words: WordsSummary }) {
   return (
     <section
       data-testid="read-scan"
-      className="rounded-lg border border-[oklch(0.5_0_0/0.15)] p-3 text-sm"
+      className={
+        flat ? "py-1 text-sm" : "rounded-lg border border-[oklch(0.5_0_0/0.15)] p-3 text-sm"
+      }
       aria-label={fill(text.scanTitle.value, { distinct: n.format(words.distinct) })}
     >
       <div className="flex items-start justify-between gap-3">
