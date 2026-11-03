@@ -22,6 +22,7 @@ let notesCollection: unknown = null;
 let goalsCollection: unknown = null;
 let d1Database: unknown = null;
 let apiTokensCollection: unknown = null;
+let blobs: unknown = null;
 let backend: Backend = "mongodb";
 
 /** Point `getFSRSNotesCollection()` at this collection for the current file. */
@@ -37,6 +38,11 @@ export function useGoalsCollection(value: unknown) {
 /** Point `getD1()` at this database for the current file. */
 export function useD1(value: unknown) {
   d1Database = value;
+}
+
+/** Point `getBlobs()` (R2) at this stand-in for the current file; null throws. */
+export function useBlobs(value: unknown) {
+  blobs = value;
 }
 
 /** Point `getApiTokensCollection()` (the Mongo ApiTokens) at this collection. */
@@ -74,6 +80,7 @@ mock.module("@/lib/d1", () => ({
   dbBackend: () => backend,
   getD1: () => d1Database,
   getBlobs: () => {
+    if (blobs) return blobs;
     throw new Error("getBlobs() is not stubbed for unit tests");
   },
 }));

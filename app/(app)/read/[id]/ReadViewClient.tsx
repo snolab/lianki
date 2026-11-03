@@ -16,6 +16,8 @@ import {
   type PlayerState,
 } from "@/lib/read/player";
 import { browserReadSpeaker } from "@/lib/read/speaker-browser";
+import type { WordsSummary } from "@/lib/read/progress";
+import { BookScan } from "../BookWords";
 
 /** Lines rendered at once: a whole book never goes into the DOM in one go. */
 const SECTION_LINES = 200;
@@ -85,7 +87,9 @@ const outMode = (): "speech" | "cloud" => {
 const SHADOW_SLACK_MS = 200;
 
 export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boolean }) {
-  const [material, setMaterial] = useState<(ReadMaterial & { book?: BookMeta }) | null>(null);
+  const [material, setMaterial] = useState<
+    (ReadMaterial & { book?: BookMeta; words?: WordsSummary }) | null
+  >(null);
   const epubText = useIntlayer("read-epub");
   const t = useIntlayer("read-player");
   const [loading, setLoading] = useState(true);
@@ -346,6 +350,9 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
           </p>
         </div>
       </div>
+
+      {/* The book's words: scanned at import, progress as a deck (lib/read/words.ts). */}
+      {material.words && <BookScan id={id} words={material.words} />}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">

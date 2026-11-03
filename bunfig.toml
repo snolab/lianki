@@ -53,6 +53,9 @@ coveragePathIgnorePatterns = [
   "lib/rateLimit.ts",
   "lib/repos/d1Repos.ts",
   "lib/repos/fsrsNotesD1.ts",
+  # Read materials' storage: a Mongo branch beside each D1 one (GridFS, the
+  # frozen rollback copy). Its D1 side runs in unit/read-words-backfill.test.ts.
+  "lib/getReadMaterialsCollection.ts",
   # The swipe core's React/DOM glue (contexts, pointer and touch wiring,
   # timers, rAF). Its logic is in pure files held to 90% here
   # (swipe-physics, swipe-machine, swipe-feel); the glue needs a browser and is
@@ -61,4 +64,8 @@ coveragePathIgnorePatterns = [
   # A React hook over lib/page-dirty.ts's registry (held to 90% here); it is
   # only loaded because swipe-core.tsx calls it.
   "lib/use-leave-guard.ts",
+  # The chat's + menu components (React glue: hooks, effects, DOM listeners).
+  # Their logic is in attach.ts (held to 90% here); unit/chat-attach-tree.test.ts
+  # renders the markup only, and debug-chat-bar-qa.mjs drives them in a browser.
+  "packages/debug-chat/src/AttachMenu.tsx",
 ]

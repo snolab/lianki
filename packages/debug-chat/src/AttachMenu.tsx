@@ -1,7 +1,8 @@
 /**
  * The chat input's + button, its menu, the chip of what is attached, and the
  * quote shown above a sent line (attach.ts; docs/dev-debug-widget.md, "The +
- * menu"). Every button keeps the input's focus (pointerdown preventDefault),
+ * menu"). The menu's View group opens the state tree (the bar has no tree
+ * button since 2026-11-03). Every button keeps the input's focus (pointerdown preventDefault),
  * so a phone's keyboard stays up and the remembered selection stays put.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -17,7 +18,7 @@ import {
   oneLine,
 } from "./attach";
 import { BAR_CONTROL } from "./bar-geometry";
-import { Icon, type IconName } from "./icons";
+import { Icon, type IconName, TreeIcon } from "./icons";
 import type { ChatContext, ChatStrings } from "./wire";
 
 type Memory = ReturnType<typeof createSelectionMemory>;
@@ -81,48 +82,86 @@ const ICON_NAMES = new Set<string>(["plus", "link", "uploadSimple", "textAa", "s
 const iconOf = (name: string | undefined): IconName =>
   name && ICON_NAMES.has(name) ? (name as IconName) : "plus";
 
-/** The + at the start of the input; announces itself (the bottom island then drops its ＋). */
+/**
+ * The + at the start of the input. With `announce` (its Add and Attach groups
+ * shown) it announces itself, and the bottom island drops its ＋. `sessions`:
+ * the eval/preview sessions (the tree row's count) — a dot on the + while
+ * there are any, pulsing when code just ran (`ran`), as on the old tree button.
+ */
 export function AttachButton({
   t,
   open,
+  announce = true,
+  sessions = 0,
+  ran = false,
   onToggle,
 }: {
   t: ChatStrings;
   open: boolean;
+  announce?: boolean;
+  sessions?: number;
+  ran?: boolean;
   onToggle: () => void;
 }) {
-  useEffect(() => announceChatAttach(), []);
+  useEffect(() => (announce ? announceChatAttach() : undefined), [announce]);
+  // Without its Add and Attach groups, the menu holds only the state tree.
+  const label = announce ? t.attachOpen : t.attachTree;
   return (
     <button
       type="button"
       data-chat-attach
       data-testid="debug-chat-attach"
-      aria-label={t.attachOpen}
-      title={t.attachOpen}
+      aria-label={label}
+      title={label}
       aria-haspopup="menu"
       aria-expanded={open}
       onPointerDown={keep}
       onClick={onToggle}
       // One line box high, as the bar's other controls (bar-geometry.ts).
       style={BAR_CONTROL}
-      className="tap-40 flex w-10 shrink-0 items-center justify-center self-end rounded-full text-base text-gray-500 dark:text-gray-400"
+      className="tap-40 relative flex w-10 shrink-0 items-center justify-center self-end rounded-full text-base text-gray-500 dark:text-gray-400"
     >
       <Icon name="plus" />
+      {sessions > 0 && (
+        <span
+          aria-hidden
+          data-testid="debug-chat-evals"
+          className={`absolute end-1.5 top-1 size-1.5 rounded-full ${ran ? "animate-pulse" : ""}`}
+          style={{ background: "oklch(0.55 0.15 30)" }}
+        />
+      )}
     </button>
   );
 }
 
-/** The + menu: "Add" (the app's items) and "Attach to message" (ATTACH_KINDS). */
+/**
+ * The + menu: "Add" (the app's items), "Attach to message" (ATTACH_KINDS),
+ * then "View" (the state tree). Without `attach` (the cross-site iframe, or
+ * the chat unavailable) only View is shown.
+ */
 export function AttachMenu({
   t,
+  attach = true,
   sel,
   items,
+  tree,
+  sessions = 0,
+  sessionsLabel,
+  onTree,
   onAttachSelection,
   onClose,
 }: {
   t: ChatStrings;
+  attach?: boolean;
   sel: PageSelection | null;
   items: readonly AddItem[];
+  /** The state tree is open (its row is checked; a pick closes it). */
+  tree: boolean;
+  /** The eval/preview sessions: their count on the tree row. */
+  sessions?: number;
+  /** "N connections", for screen readers (English, as the menu's status). */
+  sessionsLabel?: string;
+  onTree: () => void;
   onAttachSelection: () => void;
   onClose: () => void;
 }) {
@@ -149,12 +188,12 @@ export function AttachMenu({
     <div
       ref={box}
       role="menu"
-      aria-label={t.attachOpen}
+      aria-label={attach ? t.attachOpen : t.attachGroupView}
       data-testid="debug-chat-attach-menu"
       style={{ background: "var(--lk-chat-menu-bg, oklch(0.99 0.004 85 / 0.97))" }}
       className="pointer-events-auto absolute start-0 bottom-full z-10 mb-1 w-[min(17rem,100%)] overflow-hidden rounded-2xl border border-current/20 p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100"
     >
-      {items.length > 0 && (
+      {attach && items.length > 0 && (
         <>
           <div className={heading}>{t.attachGroupAdd}</div>
           {items.map((it) => (
@@ -182,8 +221,8 @@ export function AttachMenu({
           ))}
         </>
       )}
-      <div className={heading}>{t.attachGroupMessage}</div>
-      {ATTACH_KINDS.map((k) => {
+      {attach && <div className={heading}>{t.attachGroupMessage}</div>}
+      {(attach ? ATTACH_KINDS : []).map((k) => {
         const off = k.soon || (k.id === "selection" && !sel);
         return (
           <button
@@ -234,6 +273,43 @@ export function AttachMenu({
           </button>
         );
       })}
+      <div className={heading}>{t.attachGroupView}</div>
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        aria-checked={tree}
+        aria-description={sessions > 0 ? sessionsLabel : undefined}
+        data-testid="debug-chat-attach-tree"
+        onPointerDown={keep}
+        onClick={() => {
+          onClose();
+          onTree();
+        }}
+        className={`${row} hover:bg-[oklch(0.5_0_0/0.08)]`}
+      >
+        <span
+          className={badge}
+          style={{ background: "oklch(0.62 0.12 150 / 0.14)", color: "oklch(0.5 0.12 150)" }}
+        >
+          <TreeIcon />
+        </span>
+        <span className="min-w-0 flex-1 truncate">{t.attachTree}</span>
+        {sessions > 0 && (
+          <span
+            aria-hidden
+            data-testid="debug-chat-attach-tree-evals"
+            className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 fs-10 leading-none text-white tabular-nums"
+            style={{ background: "oklch(0.55 0.15 30)" }}
+          >
+            {sessions}
+          </span>
+        )}
+        {tree && (
+          <span aria-hidden className="shrink-0 fs-11 text-gray-500 dark:text-gray-400">
+            ✓
+          </span>
+        )}
+      </button>
     </div>
   );
 }

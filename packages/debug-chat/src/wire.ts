@@ -489,6 +489,10 @@ export type ChatStrings = {
   attachRemove: string;
   /** Screen-reader label of the quoted page selection shown above a message in the chat log, and of the chip above the input: it is text quoted from the page. Short noun phrase. */
   attachQuoted: string;
+  /** Section heading in the + menu, the last group: things to look at (the state tree). One short word. */
+  attachGroupView: string;
+  /** Menu item in the + menu's View group: shows or hides the state tree (the progress outline of what is being built). Short noun phrase, the panel's name. */
+  attachTree: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -555,6 +559,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   attachSoon: "Coming soon",
   attachRemove: "Remove the attached selection",
   attachQuoted: "Quoted from the page",
+  attachGroupView: "View",
+  attachTree: "State tree",
 };
 
 /** Most characters of a page selection attached to a line. */

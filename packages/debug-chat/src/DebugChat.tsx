@@ -115,10 +115,7 @@ import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
 import {
   type TreeNavEvent,
   type TreeNavState,
-  dragCells,
-  dragOffset,
   initialNav,
-  maxDetent,
   pinRow,
   pinScroll,
   treeNav,
@@ -189,9 +186,6 @@ const withClass = <T extends { className: string }>(p: T, cls: string): T => ({
   ...p,
   className: `${p.className} ${cls}`,
 });
-/** The tree button's gestures, for its title and aria-description. */
-const TREE_HINT =
-  "Tap: show or hide the state tree · drag right: open the focused node deeper · drag left: fold it · arrow keys: move";
 /** The mic's extra gesture, for its title and aria-description. */
 const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
 /** A minimized scrub shows this many lines at a time. */
@@ -545,7 +539,7 @@ export type DebugChatProps = {
   renderAvatar?: RenderAvatar;
   /**
    * The state tree (StateTree.tsx): a URL serving its markdown, or a function
-   * returning markdown or nodes, or a feed. Shown by the tree button (and
+   * returning markdown or nodes, or a feed. Shown from the + menu's View group (and
    * the menu's "Tree"); loaded again each time the tree opens. Its frontier
    * feeds the minimized bar's lines.
    */
@@ -664,7 +658,7 @@ export function DebugChat({
   // Only expanding or minimizing refits (fit itself is fresh each render).
   /**
    * One panel at a time over the log: the menu (status, read-aloud, pages,
-   * sessions; a double tap on the mark) or the state tree (the tree button).
+   * sessions; a double tap on the mark) or the state tree (the + menu's View group).
    * Opening one closes the other.
    */
   const [panel, setPanelState] = useState<Panel>(() => uiStore.getState().panel);
@@ -861,15 +855,6 @@ export function DebugChat({
     Object.values(e).reduce((a, b) => a + b, 0);
   /** The minimized tree's own scroller (the floating box's tree body). */
   const treeBodyEl = useRef<HTMLDivElement | null>(null);
-  /**
-   * Minimized, the tree body takes its full height (30vh) from the first
-   * drag until the tree closes: the floating box hangs from the bar, so a
-   * body that resized with each level would move the whole tree up and down.
-   */
-  const [treeTall, setTreeTall] = useState(false);
-  useEffect(() => {
-    if (!tree) setTreeTall(false);
-  }, [tree]);
   /** The tree's scroller: the chat's column expanded, its own body minimized. */
   const treeScroller = () => treeBodyEl.current;
   const navTo = (ev: TreeNavEvent) => {
@@ -1953,88 +1938,6 @@ export function DebugChat({
     },
     wasDrag: () => micDragged.current.wasDrag(),
   };
-  /**
-   * The tree button: a tap opens or closes the tree; a horizontal drag (axis
-   * locked after 8 px) moves the tree's focused node through its detents —
-   * right opens it a level per cell, left folds it (tree-nav.ts) — with a
-   * live preview, resisting past a limit, committed on release. A vertical
-   * drag does nothing; it never moves the bar (the mark does). ←/→/↑/↓ on the
-   * focused button navigate the open tree.
-   */
-  const treeAxis = useRef(createAxisLock());
-  const treeDragged = useRef(createDragFlag());
-  const treePress = useRef({ cells: 0, limitAt: null as number | null });
-  const navRef = useRef(nav);
-  navRef.current = nav;
-  /** The hint's text; it changes only with a level, so a move re-renders nothing. */
-  const [treeHint, setTreeHint] = useState<string | null>(null);
-  /** The hint follows the finger by a transform set straight on it, never by a render. */
-  const treeHintEl = useRef<HTMLSpanElement | null>(null);
-  const treeHintOffset = useRef(0);
-  const hintText = (s: TreeNavState) => {
-    const id = s.focusId;
-    const node = id === null ? undefined : navIx.byId.get(id);
-    const depth = id === null ? 0 : (s.expanded[id] ?? 0);
-    const max = id === null ? 0 : maxDetent(navIx.ix, id);
-    return node ? `${node.title} · ${depth}/${max}` : "—";
-  };
-  const moveHint = (dx: number, limitAt: number | null) => {
-    treeHintOffset.current = Math.round(dragOffset(dx, limitAt ?? undefined) * 0.25);
-    if (treeHintEl.current)
-      treeHintEl.current.style.transform = `translateX(${treeHintOffset.current}px)`;
-  };
-  const treeGesture = {
-    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
-      treeAxis.current.down(e.clientX, e.clientY);
-      treeDragged.current.down();
-      treePress.current = { cells: 0, limitAt: null };
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-    },
-    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
-      const was = treeAxis.current.axis();
-      const m = treeAxis.current.move(e.clientX, e.clientY);
-      if (!m || m.axis !== "x" || !treeSource || renderTree) return;
-      let s = navRef.current;
-      const p = treePress.current;
-      if (!was) {
-        if (!tree) setPanel("tree");
-        setTreeTall(true);
-        s = treeNav(navIx.ix, s, { type: "dragStart" });
-        navRef.current = s;
-        navTo({ type: "dragStart" });
-      }
-      const cells = dragCells(m.dx, p.cells);
-      // Inside a detent: only the hint moves (no state, no render, no reflow).
-      if (was && cells === p.cells) {
-        moveHint(m.dx, p.limitAt);
-        return;
-      }
-      p.cells = cells;
-      const next = treeNav(navIx.ix, s, { type: "dragMove", cells });
-      // Where the limit was met: past it the hint only rubber-bands.
-      p.limitAt = next.atLimit ? (p.limitAt ?? cells - Math.sign(cells)) : null;
-      navRef.current = next;
-      navTo({ type: "dragMove", cells });
-      moveHint(m.dx, p.limitAt);
-      setTreeHint(hintText(next));
-    },
-    onPointerUp: () => {
-      const axis = treeAxis.current.up();
-      if (!axis) return;
-      treeDragged.current.dragEnded();
-      if (axis === "x") navTo({ type: "dragEnd" });
-      setTreeHint(null);
-    },
-    onPointerCancel: () => {
-      if (treeAxis.current.up() === "x") navTo({ type: "dragCancel" });
-      setTreeHint(null);
-    },
-    onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (!tree || !e.key.startsWith("Arrow")) return;
-      e.preventDefault();
-      navTo({ type: "key", key: e.key });
-    },
-  };
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const conns = plural(
     pages.length + sessions.filter((x) => x.scope !== "chat").length,
@@ -2103,9 +2006,9 @@ export function DebugChat({
   /**
    * The bar's controls, left of the input: drag any of them (or the bar's
    * edge) to move the box. The liagent mark: a tap minimizes or restores
-   * (after 280 ms), a double tap opens the menu. The tree button opens the
-   * state tree sheet (with the eval/preview sessions' count on it). Each is its
-   * own drag handle, so its click still lands on it. The mic is the bar's last control (micEl).
+   * (after 280 ms), a double tap opens the menu. It is its own drag handle,
+   * so its click still lands on it. The state tree is in the + menu (its
+   * "View" group; AttachMenu.tsx). The mic is the bar's last control (micEl).
    */
   const controls = (
     <>
@@ -2132,46 +2035,6 @@ export function DebugChat({
           className="absolute end-1.5 top-1 size-1.5 rounded-full"
           style={{ background: dot }}
         />
-      </button>
-      <button
-        type="button"
-        data-testid="debug-chat-tree-button"
-        aria-label={ui.stateTree}
-        aria-description={`${TREE_HINT}${evalSessions.length ? ` · ${conns}` : ""}`}
-        title={TREE_HINT}
-        aria-expanded={tree}
-        aria-controls="debug-chat-tree"
-        // Keeps the input's focus (and its draft): the tree only looks.
-        onMouseDown={(e) => e.preventDefault()}
-        {...treeGesture}
-        onClick={() => !treeDragged.current.wasDrag() && setPanel((p) => (p === "tree" ? "none" : "tree"))}
-        style={{ touchAction: "none", ...BAR_CONTROL }}
-        className="tap-40 relative flex w-10 shrink-0 items-center justify-center rounded-full text-base"
-      >
-        {treeHint && (
-          // While dragging: the focused node and the depth it would open to.
-          <span
-            ref={treeHintEl}
-            role="status"
-            data-testid="debug-chat-tree-hint"
-            className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap fs-10 lk-halo"
-            style={{ transform: `translateX(${treeHintOffset.current}px)` }}
-          >
-            {treeHint}
-          </span>
-        )}
-        <TreeIcon />
-        {evalSessions.length > 0 && (
-          // The eval/preview sessions, as before: their count, pulsing when code just ran.
-          <span
-            aria-hidden
-            data-testid="debug-chat-evals"
-            className={`absolute end-0.5 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 fs-8 leading-none text-white tabular-nums ${evalRan ? "animate-pulse" : ""}`}
-            style={{ background: "oklch(0.55 0.15 30)" }}
-          >
-            {evalSessions.length}
-          </span>
-        )}
       </button>
     </>
   );
@@ -2240,7 +2103,7 @@ export function DebugChat({
     ));
   /**
    * Expanded, the tree REPLACES the log: the same slot, the same box, one
-   * or the other (the tree button switches). The log is hidden, not
+   * or the other (the + menu's state tree row switches). The log is hidden, not
    * covered; its scroll is kept here and put back when it shows again.
    */
   const logScrollKept = useRef<number | null>(null);
@@ -2262,7 +2125,7 @@ export function DebugChat({
    * surface (at its open height), with its own scroller, taking taps and
    * scrolls, so it is wherever the log would be (no separate layer to place:
    * that kept ending up off screen, under the page or over the header). ✕
-   * (or the tree button, or Escape) brings the log back, never taking the
+   * (or the + menu's row, or Escape) brings the log back, never taking the
    * input's focus. Fades in (opacity; at once under reduced motion).
    */
   const treePanel = (floating: boolean) => (
@@ -2272,6 +2135,13 @@ export function DebugChat({
       aria-label={ui.stateTree}
       data-testid="debug-chat-tree"
       data-mode={floating ? "floating" : "log"}
+      // ←/→/↑/↓ on a focused row move the tree's focus (tree-nav.ts), as they
+      // did on the old tree button.
+      onKeyDown={(e) => {
+        if (!e.key.startsWith("Arrow")) return;
+        e.preventDefault();
+        navTo({ type: "key", key: e.key });
+      }}
       // Click-through, expanded or not (docs/design-principles.md): only its
       // rows and the ✕ take taps, so a blank strip beside or under the rows
       // never swallows a tap meant for the page (the log does the same). A
@@ -2298,9 +2168,9 @@ export function DebugChat({
         onScroll={onTreeScroll}
         {...withClass(
           // Expanded: the log's surface at its open height (the log's box).
-          logSurface({ expanded: !floating || typing || micActive || treeTall, fade: treeFade }),
+          logSurface({ expanded: !floating || typing || micActive, fade: treeFade }),
           // Expanded: the log's box at its open height (30vh), whatever it holds.
-          `min-w-0 flex-1 ${!floating || treeTall ? "h-[30vh]" : ""}`,
+          `min-w-0 flex-1 ${!floating ? "h-[30vh]" : ""}`,
         )}
       >
         {treeContent}
@@ -2543,7 +2413,7 @@ export function DebugChat({
           role="menuitemcheckbox"
           aria-checked={tree}
           data-testid="debug-menu-tree"
-          // The tree button's panel (one panel at a time: the menu closes).
+          // The tree panel, as the + menu's row (one panel at a time: the menu closes).
           onClick={() => setPanel("tree")}
           className="flex items-center gap-2 px-3 py-1.5 text-start"
         >
@@ -3283,11 +3153,16 @@ export function DebugChat({
             )}
           </div>
         )}
-        {open && attachMenu && !notice && (
+        {open && attachMenu && (
           <AttachMenu
             t={t}
+            attach={attach && !notice}
             sel={pageSel.sel}
             items={appAddItems}
+            tree={tree}
+            sessions={evalSessions.length}
+            sessionsLabel={conns}
+            onTree={() => setPanel((p) => (p === "tree" ? "none" : "tree"))}
             onAttachSelection={() => {
               const s = pageSel.sel;
               if (!s) return;
@@ -3366,9 +3241,18 @@ export function DebugChat({
             />
           )}
           {controls}
-          {/* + : add to Lianki, or attach to the line (AttachMenu.tsx). Open only. */}
-          {open && !notice && attach && (
-            <AttachButton t={t} open={attachMenu} onToggle={() => setAttachMenu((v) => !v)} />
+          {/* + : add to Lianki, attach to the line, view the state tree
+          (AttachMenu.tsx). Open only; without `attach` (or with a notice) it
+          holds only the View group. */}
+          {open && (
+            <AttachButton
+              t={t}
+              open={attachMenu}
+              announce={attach && !notice}
+              sessions={evalSessions.length}
+              ran={evalRan}
+              onToggle={() => setAttachMenu((v) => !v)}
+            />
           )}
           {/* The input: gone while minimized (inert, so it can't take focus or
           be read), fading out as its slot closes. */}
@@ -3569,28 +3453,6 @@ export function DebugChat({
         )}
       </div>
     </section>
-  );
-}
-
-/** An outline tree (a root and two branches), for the state tree button. */
-function TreeIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1em"
-      height="1em"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="3" y="3" width="7" height="5" rx="1.5" />
-      <rect x="14" y="10" width="7" height="4.5" rx="1.5" />
-      <rect x="14" y="16.5" width="7" height="4.5" rx="1.5" />
-      <path d="M6.5 8v10.75H14M6.5 12.25H14" />
-    </svg>
   );
 }
 
