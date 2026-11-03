@@ -45,7 +45,7 @@ const FAKE_SPEECH = `(() => {
       spoken.push(u.text);
       if (window.__speechDead) return;
       timers.push(setTimeout(() => u.onstart && u.onstart(), 10));
-      timers.push(setTimeout(() => u.onend && u.onend(), LINE_MS));
+      timers.push(setTimeout(() => u.onend && u.onend(), window.__lineMs || LINE_MS));
     },
     cancel() { timers.forEach(clearTimeout); timers = []; },
     addEventListener() {},
@@ -79,7 +79,10 @@ await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" 
 }
 const page = await ctx.newPage();
 const errs = [];
-page.on("pageerror", (e) => errs.push(e.message));
+page.on("pageerror", (e) => {
+  errs.push(e.message);
+  console.log("pageerror:", e.message);
+});
 
 await page.goto("/read", { waitUntil: "networkidle" });
 await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
@@ -101,6 +104,10 @@ const current = () =>
     .getAttribute("id")
     .then((s) => Number(s.slice(5)));
 const spoken = () => page.evaluate(() => window.__spoken.slice());
+// A line is spoken in sentences: what was said, joined, against whole lines.
+const norm = (s) => s.replace(/\s+/g, " ").trim();
+const saidText = async () => norm((await spoken()).join(" "));
+const linesText = (from, to) => norm(lines.slice(from, to).join(" "));
 const until = async (f, ms = 5000) => {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -117,7 +124,8 @@ const openAt = async (line) => {
 };
 
 // 1. Wait mode (default): one line, then it waits. The page does not scroll.
-await openAt(chapters[1].start + 1);
+// Two past the chapter start: the chapter's title and byline are headings.
+await openAt(chapters[1].start + 2);
 const start = await current();
 const y0 = await page.evaluate(() => scrollY);
 await page.getByTestId("read-play").click();
@@ -131,21 +139,23 @@ check(
   "after the line: waiting for the reader",
 );
 await page.waitForTimeout(1500);
-check((await spoken()).length === 1, `only the current line was read (${(await spoken()).length})`);
-check((await spoken())[0] === lines[start], "it read the current line");
+check((await saidText()) === linesText(start, start + 1), "only the current line was read, once");
 check((await current()) === start, "the current line did not move on by itself");
 check((await page.evaluate(() => scrollY)) === y0, "the page itself did not scroll");
 await page.screenshot({ path: join(OUT, "read-waiting-light.png") });
 
 await page.getByTestId("read-next").click();
-check(await until(async () => (await spoken()).length === 2), "Next reads the next line");
+check(
+  await until(async () => (await saidText()) === linesText(start, start + 2)),
+  "Next reads the next line",
+);
 check((await current()) === start + 1, "Next moved to the next line");
 await until(async () => (await status()) === "waiting");
 
 // A tapped line is read too.
 await page.locator(`#line-${start + 3}`).click();
 check(
-  await until(async () => (await spoken()).at(-1) === lines[start + 3]),
+  await until(async () => (await saidText()).endsWith(linesText(start + 3, start + 4))),
   "a tapped line is read",
 );
 await until(async () => (await status()) === "waiting");
@@ -163,10 +173,11 @@ check(
   await until(async () => (await current()) >= boundary + 1, 8000),
   "auto-advance crosses into the next chapter",
 );
-const said = await spoken();
+await page.waitForTimeout(100);
+const said = await saidText();
 check(
-  said.join("\n") === lines.slice(boundary - 2, boundary - 2 + said.length).join("\n"),
-  `each line read once, in order (${said.length} lines)`,
+  said.length > 0 && linesText(boundary - 2, boundary + 4).startsWith(said),
+  "each line read once, in order",
 );
 check(
   (await page.locator('[data-testid="read-chapters"] select').inputValue()) === "2",
@@ -176,26 +187,42 @@ check((await page.evaluate(() => scrollY)) === yA, "the page itself did not scro
 
 // 3. A manual scroll during playback is not fought.
 const list = page.getByTestId("read-lines");
+await list.scrollIntoViewIfNeeded();
 const box = await list.boundingBox();
-await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-await page.mouse.wheel(0, -600);
+// Slower lines, so his flick and the checks after it fit inside a few lines.
+await page.evaluate(() => (window.__lineMs = 1500));
+// A finger flick on the list (real touch events, as on his phone).
+const cdp = await ctx.newCDPSession(page);
+await cdp.send("Input.synthesizeScrollGesture", {
+  x: Math.round(box.x + box.width / 2),
+  y: Math.round(box.y + box.height / 2),
+  yDistance: -250,
+  gestureSourceType: "touch",
+  speed: 1200,
+});
 await page.waitForTimeout(300);
 const top = await list.evaluate((el) => el.scrollTop);
-await until(async () => (await spoken()).length >= said.length + 3, 4000);
+const lineAtScroll = await current();
+await until(async () => (await current()) >= lineAtScroll + 2, 15000);
+await page.evaluate(() => (window.__lineMs = 0));
 check(
   Math.abs((await list.evaluate((el) => el.scrollTop)) - top) < 2,
   "after his scroll, the list stays where he put it",
 );
 check(await page.getByTestId("read-follow").isVisible(), "a Back to the current line button shows");
+// Slow lines again: the check below must not race the next line's own scroll.
+await page.evaluate(() => (window.__lineMs = 4000));
 await page.getByTestId("read-follow").click();
-await page.waitForTimeout(600);
+await page.waitForTimeout(1500);
 const cur = await current();
 const inView = await page.evaluate((i) => {
   const l = document.querySelector('[data-testid="read-lines"]').getBoundingClientRect();
   const r = document.getElementById(`line-${i}`).getBoundingClientRect();
-  return r.top >= l.top - 1 && r.bottom <= l.bottom + 1;
+  // Its start is in view (a long paragraph can be taller than the list).
+  return r.top >= l.top - 1 && r.top < l.bottom - 20;
 }, cur);
 check(inView, "Back to the current line scrolls it into view");
+await page.evaluate(() => (window.__lineMs = 0));
 await page.getByTestId("read-play").click(); // Pause
 await page.waitForTimeout(400);
 const n = (await spoken()).length;
@@ -210,7 +237,7 @@ check((await current()) === lines.length - 1, "on the last line");
 
 // 5. A failing voice stops with a message instead of racing ahead.
 await page.getByTestId("read-auto").uncheck();
-await openAt(chapters[1].start + 1);
+await openAt(chapters[1].start + 2);
 await page.evaluate(() => (window.__speechDead = true));
 await page.getByTestId("read-play").click();
 check(
@@ -219,7 +246,7 @@ check(
 );
 const alert = page.locator('[data-testid="read-status"][role="alert"]');
 check(await alert.isVisible(), `the failure is shown: ${(await alert.innerText()).slice(0, 90)}`);
-check((await current()) === chapters[1].start + 1, "it did not skip ahead");
+check((await current()) === chapters[1].start + 2, "it did not skip ahead");
 await page.evaluate(() => (window.__speechDead = false));
 
 // Dark screenshot, waiting state.

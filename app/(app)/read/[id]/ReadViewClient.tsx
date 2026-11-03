@@ -289,12 +289,18 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
     if (!box || !el) return;
     const br = box.getBoundingClientRect();
     const er = el.getBoundingClientRect();
-    const top = box.scrollTop + (er.top - br.top) - (box.clientHeight - er.height) / 2;
+    // Centred; a paragraph taller than the list shows from its first line.
+    const slack = Math.max(8, (box.clientHeight - er.height) / 2);
+    const top = box.scrollTop + (er.top - br.top) - slack;
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     box.scrollTo({ top: Math.max(0, top), behavior: still ? "auto" : "smooth" });
   }, [currentLine, follow, winStart]);
 
-  /** The reader scrolled the list himself: stop following until he acts. */
+  /**
+   * The reader scrolled the list himself (a finger, the wheel, its scrollbar):
+   * stop following until he acts. Told by input events, not scroll events —
+   * the list's own smooth scrolling fires those too.
+   */
   const userScrolled = () => {
     if (!follow || !playing) return;
     setFrozenSec(sec);
@@ -438,7 +444,7 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
         </div>
       )}
 
-      {/* Current Line Highlight, and what the player is doing */}
+      {/* What the player is doing (first: a paragraph can be long), and the current line */}
       <div
         className={`p-6 rounded-lg border-2 ${
           waiting
@@ -446,15 +452,12 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
             : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
         }`}
       >
-        <p className="text-xl font-medium text-center" lang={lang}>
-          {material.lines[currentLine]}
-        </p>
         {status !== "idle" && (
           <p
             data-testid="read-status"
             data-status={status}
             role={status === "error" ? "alert" : "status"}
-            className={`mt-3 text-sm text-center ${
+            className={`mb-3 text-sm text-center ${
               status === "error"
                 ? "text-red-600 dark:text-red-400"
                 : waiting
@@ -468,6 +471,9 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
             {status === "error" && `${t.failed.value} (${player.error})`}
           </p>
         )}
+        <p className="text-xl font-medium text-center" lang={lang}>
+          {material.lines[currentLine]}
+        </p>
       </div>
 
       {/* All Lines */}
@@ -486,6 +492,13 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
           data-testid="read-lines"
           onWheel={userScrolled}
           onTouchMove={userScrolled}
+          onPointerDown={(e) => {
+            // On the list itself (its scrollbar), not on a line: a tap on a line is an act.
+            if (e.target === e.currentTarget) userScrolled();
+          }}
+          onKeyDown={(e) => {
+            if (["PageUp", "PageDown", "ArrowUp", "ArrowDown"].includes(e.key)) userScrolled();
+          }}
           className="max-h-96 overflow-y-auto overscroll-contain"
         >
           {winStart > 0 && (
