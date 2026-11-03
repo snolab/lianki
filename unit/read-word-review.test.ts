@@ -199,6 +199,8 @@ describe("the book's list (D1)", () => {
       }[]
     ).map((x) => x.term);
     expect(terms).toEqual(["loup"]);
+    // The graded card keeps its entry.
+    expect((await bookLists())[0].size).toBe(1);
   });
 
   test("a new word graded in the review joins the book list's entries once", async () => {
@@ -210,6 +212,8 @@ describe("the book's list (D1)", () => {
     await addGradedEntries(d1, EMAIL, book, [{ w: "chien" }]);
     // Never an entry for a word his deck has.
     expect(await addGradedEntries(d1, EMAIL, book, [{ w: "chat" }])).toBe(0);
+    // Nor for one with no card yet (its grade not synced): no uncarded entries.
+    expect(await addGradedEntries(d1, EMAIL, book, [{ w: "loup" }])).toBe(0);
     const [list] = await bookLists();
     expect(list.size).toBe(1);
   });

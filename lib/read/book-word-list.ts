@@ -158,7 +158,7 @@ export async function scopeSession(
   const missing = matched.filter((m) => !m.hit).map((m) => m.x.w);
   const bookList = missing.length
     ? await ensureBookList(db, email, book.hash, book.title, book.lang)
-    : null;
+    : ((await findBookList(db, email, book.hash))?.id ?? null);
   const rows = await fullCards(
     db,
     email,
@@ -184,6 +184,20 @@ export async function scopeSession(
       card: r ? r.card : null,
     });
   }
+  // Cards of the book's list whose entry did not land (a grade's entry call
+  // lost): their entry now.
+  if (bookList)
+    await runAll(
+      db,
+      entryStatements(
+        db,
+        email,
+        bookList,
+        items
+          .filter((it) => it.listId === bookList && it.card)
+          .map((it) => ({ term: it.term, reading: it.reading, back: it.back, ex: it.ex })),
+      ),
+    );
   const ids = new Set(items.map((it) => it.listId));
   const lists = (await new WordsD1Repo(db, email).lists()).filter((l) => ids.has(l.id));
   return { items, lists, missing };
@@ -250,15 +264,34 @@ export async function makeCards(
   }));
   const statements = [
     ...entryStatements(db, email, listId, entries),
-    // DO NOTHING: a card made meanwhile (another tab's grade) keeps its progress.
+    // In the same transaction as a guard: a card made meanwhile under the
+    // same term in any of his lists of this language (another tab, another
+    // book) wins, and one already in this list keeps its progress.
     ...entries.map((e) =>
       db
         .prepare(
           `INSERT INTO word_cards (email, list_id, term, reading, back, card, card_due, reps, updated_at, prev_card)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, NULL)
+           SELECT ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL
+           WHERE NOT EXISTS (
+             SELECT 1 FROM word_cards c JOIN word_lists l ON l.email = c.email AND l.id = c.list_id
+             WHERE c.email = ? AND lower(c.term) = lower(?)
+               AND (lower(l.lang) = ? OR lower(l.lang) LIKE ?))
            ON CONFLICT(email, list_id, term) DO NOTHING`,
         )
-        .bind(email, listId, e.term, e.reading, e.back, json, card.due.toISOString(), at),
+        .bind(
+          email,
+          listId,
+          e.term,
+          e.reading,
+          e.back,
+          json,
+          card.due.toISOString(),
+          at,
+          email,
+          e.term,
+          book.lang,
+          `${book.lang}-%`,
+        ),
     ),
   ];
   await runAll(db, statements);
@@ -296,8 +329,14 @@ export async function unmakeCards(
           `DELETE FROM word_cards WHERE email = ? AND list_id = ? AND reps = 0 AND term IN (${g})`,
         )
         .bind(email, list.id, ...gone),
+      // After the cards: an entry goes only with its card (one graded
+      // meanwhile keeps both).
       db
-        .prepare(`DELETE FROM word_list_entries WHERE email = ? AND list_id = ? AND key IN (${g})`)
+        .prepare(
+          `DELETE FROM word_list_entries WHERE email = ? AND list_id = ? AND key IN (${g})
+           AND NOT EXISTS (SELECT 1 FROM word_cards c WHERE c.email = word_list_entries.email
+             AND c.list_id = word_list_entries.list_id AND c.term = word_list_entries.key)`,
+        )
         .bind(email, list.id, ...gone),
     ]);
     n += gone.length;
@@ -306,8 +345,8 @@ export async function unmakeCards(
 }
 
 /**
- * A new word of the book's list was graded in the review: it joins the
- * list's entries (its meaning and example), unless a card elsewhere has it.
+ * New words of the book's list graded in the review: once their card is
+ * there, they join the list's entries (meaning and example).
  */
 export async function addGradedEntries(
   db: D1Like,
@@ -318,10 +357,12 @@ export async function addGradedEntries(
   const list = await findBookList(db, email, book.hash);
   if (!list) return 0;
   const matched = await matchAll(db, email, book, words);
-  // Matched in the book's own list (its card was just made by the grade) or nowhere.
-  const own = matched.filter((m) => !m.hit || m.hit.listId === list.id);
+  // Only words whose card is in the book's own list (made by the grade): an
+  // entry without a card would be a new word to /words, carded twice if
+  // another list gets it first. Not synced yet: 0, and the device asks again.
+  const own = matched.filter((m) => m.hit?.listId === list.id);
   const entries = own.map(({ x, hit }) => ({
-    term: hit?.term ?? newCardTerm(x.w, book.lang, x.term, book.lem),
+    term: hit!.term,
     reading: clip(x.reading, 200),
     back: clip(x.back, 1000) ?? "",
     ex: clip(x.ex, 1000),

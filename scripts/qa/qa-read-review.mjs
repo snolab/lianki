@@ -67,7 +67,7 @@ const aWord = (page) =>
       if (p.querySelectorAll("[data-t]").length < 12) continue;
       const el = p.querySelector("[data-t]");
       const r = el.getBoundingClientRect();
-      if (r.top < 120 || r.bottom > innerHeight * 0.45) continue;
+      if (r.top < 120 || r.bottom > innerHeight * 0.7) continue;
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     }
     return null;

@@ -822,6 +822,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     const down = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      // A modal over the book (the word review, a sheet) has its own keys.
+      if (document.querySelector("[aria-modal=true]")) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         return undo();

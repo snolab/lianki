@@ -29,12 +29,14 @@ type StudyProps = {
   onExit: () => void;
   scope: StudyScope;
 };
+/** One array for every render: Study reloads its queue when `catalog` changes. */
+const NO_CATALOG: never[] = [];
 // /words' study with its own config, loaded only when the review opens.
 const Study = dynamic<StudyProps>(
   () =>
     import("@/app/(app)/words/WordsClient").then((m) => {
       const Scoped = (p: StudyProps) => (
-        <m.Study {...p} config={m.WORDS} catalog={[]} voice="off" title="" />
+        <m.Study {...p} config={m.WORDS} catalog={NO_CATALOG} voice="off" title="" />
       );
       return Scoped;
     }),
@@ -195,7 +197,14 @@ export function WordReview({
       touched();
       // A new word of the book's list: its meaning and sentence join the list.
       const w = byTerm.current.get(`${listId}\u0000${term}`);
-      if (isNew && w) void post(`/api/read/${id}/word-session`, { graded: [w] }).catch(() => {});
+      if (!isNew || !w) return;
+      // The grade syncs through /words' queue; its entry is added once the
+      // card is there (a few tries, then the next review backfills it).
+      const tryAdd = (n: number) =>
+        post<{ added: number }>(`/api/read/${id}/word-session`, { graded: [w] })
+          .then((r) => r.added > 0 || Promise.reject(new Error("not yet")))
+          .catch(() => n < 3 && setTimeout(() => tryAdd(n + 1), 1000 * 3 ** n));
+      setTimeout(() => tryAdd(0), 800);
     },
     [id, touched],
   );
@@ -224,29 +233,31 @@ export function WordReview({
       className="fixed inset-0 z-[60] isolate bg-[var(--background)] outline-none"
     >
       {/* The top band /words' toolbar sits under: the paragraph's title, 制卡, ✕. */}
-      <div className="lk-glass fixed inset-x-0 top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-end gap-2 border-b border-[var(--glass-line)] px-3 pb-2">
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
-        {missing > 0 && (
+      <div className="lk-glass fixed inset-x-0 top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-end border-b border-[var(--glass-line)] px-3 pb-1">
+        <div className="flex w-full items-center gap-2">
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
+          {missing > 0 && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={make}
+              data-testid="read-review-make"
+              className="min-h-10 rounded-full px-3 text-sm font-medium hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-50"
+            >
+              {fill(t.makeCards.value, { n: String(missing) })}
+            </button>
+          )}
           <button
             type="button"
-            disabled={busy}
-            onClick={make}
-            data-testid="read-review-make"
-            className="min-h-10 rounded-full px-3 text-sm font-medium hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-50"
+            onClick={() => close.current()}
+            aria-label={t.close.value}
+            title={t.close.value}
+            data-testid="read-review-close"
+            className="grid h-10 w-10 place-items-center rounded-full text-lg opacity-70"
           >
-            {fill(t.makeCards.value, { n: String(missing) })}
+            ×
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => close.current()}
-          aria-label={t.close.value}
-          title={t.close.value}
-          data-testid="read-review-close"
-          className="grid h-10 w-10 place-items-center rounded-full text-lg opacity-70"
-        >
-          ×
-        </button>
+        </div>
       </div>
       {session ? (
         <Study
