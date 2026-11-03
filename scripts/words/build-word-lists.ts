@@ -73,6 +73,8 @@ type ListMeta = {
   file: string;
   source: string;
   license: string;
+  /** The exam a level list belongs to (JLPT, HSK 3.0); the /words picker groups by it. */
+  exam?: string;
 };
 const index: ListMeta[] = [];
 
@@ -269,6 +271,7 @@ function buildJapanese() {
         lang: "ja",
         name: `Japanese · JLPT N${n}`,
         level: `N${n}`,
+        exam: "JLPT",
         source:
           "JLPT vocabulary: jamsinclair/open-anki-jlpt-decks (via chyyran/jlpt-anki-decks, from Jonathan Waller's tanos.co.uk lists); ordered by OpenSubtitles frequency (hermitdave/FrequencyWords)" +
           EX_SOURCE,
@@ -342,6 +345,7 @@ function buildChinese() {
         lang: "zh",
         name: `Chinese · HSK 3.0 level ${level}`,
         level: `HSK ${level}`,
+        exam: "HSK 3.0",
         source:
           "HSK 3.0 word lists: drkameleon/complete-hsk-vocabulary (lists from elkmovie/hsk30; definitions from CC-CEDICT via MDBG); ordered by its frequency rank" +
           EX_SOURCE,
@@ -1309,7 +1313,8 @@ for (const lang of ["fr", "es", "de", "en", "ko", "it", "pt", "ru"]) {
 }
 
 // merge with an existing index so partial (WORDS_ONLY) runs keep other lists;
-// the phrase decks (kind "phrase", build-phrase-decks.ts) are always kept
+// the phrase decks (kind "phrase", build-phrase-decks.ts) and the exam decks
+// (kind "exam", build-exam-decks.ts) are always kept
 const indexPath = join(OUT, "index.json");
 let lists: (ListMeta & { kind?: string })[] = [];
 if (existsSync(indexPath)) {
@@ -1318,15 +1323,18 @@ if (existsSync(indexPath)) {
   ).filter(
     (l) =>
       l.kind === "phrase" ||
+      l.kind === "exam" ||
       (!!only && !index.some((n) => n.id === l.id) && !only.includes(l.lang)),
   );
 }
 const order = ["ja", "zh", "fr", "es", "de", "en", "ko", "it", "pt", "ru"];
 // stable sort: language order, word lists before phrase decks, then build
 // order (N5→N1, HSK 1→7–9, band 1→6)
-const isPhrase = (l: ListMeta & { kind?: string }) => (l.kind === "phrase" ? 1 : 0);
+// word lists, then exam decks, then phrase decks
+const rank = (l: ListMeta & { kind?: string }) =>
+  l.kind === "phrase" ? 2 : l.kind === "exam" ? 1 : 0;
 lists = [...lists, ...index].sort(
-  (a, b) => order.indexOf(a.lang) - order.indexOf(b.lang) || isPhrase(a) - isPhrase(b),
+  (a, b) => order.indexOf(a.lang) - order.indexOf(b.lang) || rank(a) - rank(b),
 );
 writeFileSync(indexPath, JSON.stringify({ lists }));
 console.log(`index.json: ${lists.length} lists`);

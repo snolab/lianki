@@ -334,10 +334,70 @@ authors (CC BY 2.0 FR).
 
 </details>
 
+## English exam decks (`en-exam-*`, `en-ngsl`, `en-nawl`, `en-tsl`)
+
+Built by `scripts/words/build-exam-decks.ts`. Every deck, its source, the
+licence reasoning and the decks not shipped are in
+[docs/word-deck-sources.md](../../docs/word-deck-sources.md). The backs are
+Chinese.
+
+- **中考, 高考, CET-4, CET-6, 考研, IELTS, TOEFL, GRE**: the headwords carrying
+  the matching `tag` in [ECDICT](https://github.com/skywind3000/ECDICT)
+  (`ecdict.csv`, MIT, © Linwei). Proper names and abbreviations are left out.
+  CET-6 holds only the words not tagged CET-4. Words are ordered by ECDICT's
+  COCA rank (`frq`), then its BNC rank (`bnc`), then A→Z.
+- **TOEIC Service List, NGSL, NAWL**: the 1.2 lists by Charles Browne, Brent
+  Culligan and Joseph Phillips,
+  [newgeneralservicelist.com](https://www.newgeneralservicelist.com/), CC BY-SA
+  4.0, in their own frequency rank. Attribution: "New General Service List
+  Project (Browne, Culligan & Phillips), newgeneralservicelist.com, CC BY-SA
+  4.0". Changes made: Chinese meanings, IPA and examples added, TRUE/FALSE
+  lowercased, NAWL's five prefixes dropped. These three decks are CC BY-SA 4.0.
+- **Meanings**: ECDICT's Chinese `translation`. Lines tagged with a field
+  (`[医]`, `[计]`, `[网络]` …) are dropped. At most three senses are kept per
+  part of speech, and at most three parts of speech, about 48 characters in
+  all. Example: "(vt.) 放弃，抛弃，遗弃；(n.) 放任，无拘束，狂热". Fifteen
+  newer words that ECDICT lacks (laptop, download, online, résumé …) have
+  meanings written for Lianki (`WRITTEN` in the build script).
+- **Reading**: ECDICT's `phonetic`, converted to IPA (`ә'bændәn` →
+  `/əˈbændən/`). It is left out when the source has stray symbols. It is never
+  read aloud.
+- **Examples**: the sentence the word already has in `en-freq-*` (see
+  "Example sentences"), otherwise the shortest Tatoeba English sentence with
+  the word or one of its ECDICT forms (`exchange`).
+
+ECDICT licence, reproduced as it requires:
+
+```text
+MIT License
+
+Copyright (c) 2025 Linwei
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Licensing summary
 
 Lists built from CC BY-SA sources (all frequency bands, the HSK lists via
-CC-CEDICT, and the ordering of the JLPT lists) are redistributed under
-CC BY-SA 4.0 with the attribution above. The example sentences from Tatoeba
+CC-CEDICT, the ordering of the JLPT lists, and the NGSL, NAWL and TOEIC
+Service List decks) are redistributed under CC BY-SA 4.0 with the attribution
+above. The ECDICT exam decks use MIT data (notice above), plus Wiktionary
+examples under CC BY-SA 4.0. The example sentences from Tatoeba
 and the Tatoeba phrases in the phrase decks are CC BY 2.0 FR, attributed above. Changes made: filtering, lemma
 folding, truncation and reordering.
