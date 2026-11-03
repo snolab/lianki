@@ -96,6 +96,7 @@ import { PolishedMark } from "./PolishedMark";
 import {
   barInGlass,
   BAR_IN_GLASS_TRANSITION,
+  glassAroundLog,
   showTypingGlass,
   typingGlassLook,
   typingGlassMotion,
@@ -302,7 +303,7 @@ const SPEAKING_STYLE = {
   background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.05 250 / 0.7))",
   borderRadius: 3,
 };
-/** The full-screen log's wipe in and out (and its sheet's fade). */
+/** The full-screen log's wipe in and out. */
 const WIPE = "clip-path 200ms ease-out";
 /** The input-started full-screen log fades in and out, as the bar does the other way. */
 const FADE = "opacity 200ms ease-out";
@@ -1043,9 +1044,10 @@ export function DebugChat({
   /**
    * A vertical drag on the bar (the mic, or the empty input) scrolls the log,
    * and for as long as it lasts the log goes full screen: it grows upward to
-   * the top of the visible area over a glass sheet, while the bar stays put
+   * the top of the visible area over the panel's own glass (never a sheet
+   * over the page), while the bar stays put
    * and floats over it. The lines at its bottom edge do not move; the older
-   * ones are revealed above them (a clip-path wipe and the sheet's fade,
+   * ones are revealed above them (a clip-path wipe and the glass's fade,
    * ~200 ms ease-out; at once under reduced motion). On release it folds
    * back the same way: the bar's resting log is the compact one, and a sheet
    * left up over the page would need its own way out.
@@ -1224,7 +1226,11 @@ export function DebugChat({
         gap,
         lastDy: 0,
       };
-      setFullLog("on");
+      // At once, before the first move scrolls it: the switch's layout effect
+      // holds the anchored line where it was at the press, so a scroll it ran
+      // after that first move would undo the move (the log lagged the finger
+      // by the touch slop from then on).
+      flushSync(() => setFullLog("on"));
     },
     /** The joystick drives it: the finger's travel is taken without scrolling, so coming back inside does not jump. */
     hold: (dy: number) => {
@@ -1357,7 +1363,7 @@ export function DebugChat({
           gap: fullRef.current.gap,
         });
       // Its own box: the same node, the same width, only taller, the line
-      // being read held in place: nothing to animate (the sheet fades), and
+      // being read held in place: nothing to animate (the glass fades), and
       // never an opacity-0 start, which left the list blank.
       if (reducedMotion() || fullRef.current.box) return;
       const h = revealed();
@@ -2801,7 +2807,7 @@ export function DebugChat({
   });
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
-    return typingGlassLook({
+    const look = typingGlassLook({
       blur:
         has("backdrop-filter", "blur(1px)") || has("-webkit-backdrop-filter", "blur(1px)"),
       reduce:
@@ -2809,6 +2815,11 @@ export function DebugChat({
         matchMedia("(prefers-reduced-transparency: reduce)").matches,
       lightDark: has("color", "light-dark(#000, #fff)"),
     });
+    if (fullLog === "off") return look;
+    // The full-screen log: the same glass, with the sheet's stronger tint and
+    // blur (log-surface.ts SHEET_SCRIM, contrast-checked for a tall list).
+    const sheet = sheetLook();
+    return { ...look, background: sheet.background, filter: sheet.solid ? "none" : SHEET_FILTER };
   })();
   return (
     <section
@@ -2822,7 +2833,7 @@ export function DebugChat({
       onKeyDown={unlockSpeech}
       // A live mic counts as focus: the box goes opaque as it does while typing.
       style={offset}
-      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive || fullLog !== "off" ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
@@ -2838,34 +2849,19 @@ export function DebugChat({
         aria-hidden
         data-testid="debug-chat-typing-glass"
         data-shown={typingGlassShown || undefined}
+        data-full={fullLog === "off" ? undefined : fullLog}
         style={{
           background: typingGlassLookNow.background,
           backdropFilter: typingGlassLookNow.filter,
           WebkitBackdropFilter: typingGlassLookNow.filter,
           boxShadow: typingGlassLookNow.edge,
+          // The full-screen log in its own box (out of the flow): the glass
+          // follows it, the log's box and its few px of edge, never the screen.
+          ...(fullLog !== "off" && fullRef.current.box ? glassAroundLog(fullRef.current.box) : {}),
           ...typingGlassMotion(typingGlassShown, reducedMotion()),
         }}
         className="pointer-events-none absolute -inset-1.5 -z-10 rounded-[1.5rem]"
       />
-      {fullLog !== "off" &&
-        typeof document !== "undefined" &&
-        createPortal(
-          // The full-screen log's glass sheet: over the page, under the chat.
-          // Out of the box, whose transform would trap a fixed child. It
-          // overhangs the viewport by 3rem, so the blur does not thin out
-          // toward the screen edges (it samples past its own box).
-          <div
-            aria-hidden
-            data-testid="debug-chat-log-sheet"
-            style={{
-              background: sheetLook().background,
-              backdropFilter: SHEET_FILTER,
-              WebkitBackdropFilter: SHEET_FILTER,
-            }}
-            className={`pointer-events-none fixed -inset-12 z-[39] transition-opacity duration-200 ease-out starting:opacity-0 motion-reduce:transition-none ${fullLog === "leaving" ? "opacity-0" : "opacity-100"}`}
-          />,
-          portalRoot ?? document.body,
-        )}
       {/* Expanded, one or the other in the log's slot: the state tree, or the log. */}
       {open && tree && treePanel(false)}
       {/* The log: the messages, the newest at the bottom. Hidden minimized, and while the tree has its place. */}
