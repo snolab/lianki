@@ -197,8 +197,8 @@ token cannot be tested from anywhere else.
   gate cookie, `Authorization`, `cf-*`, `x-forwarded-*`, Tailscale and the
   guard's secret headers are removed.
 
-**On his iPhone**: on lianki.com, the account menu's "Live trial (production
-data)" item does it all (next section). For a device without a lianki.com
+**On his iPhone**: on lianki.com, the account menu's "Preview build" switch
+(「预览版」) does it all (next section). For a device without a lianki.com
 session: `/dev/tokens` → new token → "copy the link for another device",
 open that link once in Safari there; the cookie lasts up to 12 h, after which
 the link (or a new one) is opened again. In the home-screen app, use the
@@ -261,24 +261,28 @@ gate too. Revoke-all on `/dev/tokens` ends every session at once.
 For the owner only, decided on the server (`devSwitchFor`,
 `lib/dev-server-switch.server.ts`: anyone else's page carries none of it):
 
-- On lianki.com the account menu shows **"Live trial (production data)"**
-  (zh 「live 试用版（生产数据）」). The UI calls the dev server the **live
-  trial**: trial code on production data, so "live", never "preview"/预览
-  (owner, 2026-11-03 14:32 JST). Hostnames, routes and code names keep "dev"
-  and "preview".
-  When the menu opens it checks once, with one fetch to
-  `https://preview.lianki.com/_lk/up` (1.5 s timeout; the gate answers 503
-  with an `x-lianki-gate` marker, readable by lianki.com only): green and
-  tappable when up, grey "Live trial is not running" (「live 试用版未启动」) when not. No polling, no timer.
-  (A push from `serve` through the hub would also work, but needs hub
-  changes; the open-time check is the owner's allowed alternative.)
-- Tapping it mints a **single-use handoff**, 60 s (`POST /api/dev/dev-handoff`),
-  and posts it to `/_lk/dev-auth` in a form body with the current path and
-  query: never in a URL. The dev server opens on the same page, signed in.
-- On the dev server the same spot reads **"Back to lianki.com"**: a plain
-  link to the same path and query on production. Every dev-server page shows
-  a **"Live trial · production data"** (「live 试用版 · 生产数据」) badge in
-  its top bar.
+- The account menu has a **"Preview build" switch** (「预览版」, caption
+  "production data" / 「生产数据」): on = the dev server, off = lianki.com.
+  The UI calls the dev server the **preview build**: trial code on
+  production data (owner, 2026-11-03 14:45 JST: "预览版的一个 checkbox，或者
+  switcher"; this replaced "live 试用版" and "Dev server" the same day).
+  Hostnames, routes and code names keep "dev" and "preview".
+- On lianki.com the switch is off. When the menu opens it checks once, with
+  one fetch to `https://preview.lianki.com/_lk/up` (1.5 s timeout; the gate
+  answers 503 with an `x-lianki-gate` marker, readable by lianki.com only):
+  tappable when up, grey "Preview build is not running" (「预览版未启动」)
+  when not. No polling, no timer. (A push from `serve` through the hub would
+  also work, but needs hub changes; the open-time check is the owner's
+  allowed alternative.)
+- Switching it on mints a **single-use handoff**, 60 s
+  (`POST /api/dev/dev-handoff`), and posts it to `/_lk/dev-auth` in a form
+  body with the current path and query: never in a URL. The dev server opens
+  on the same page, signed in.
+- On the dev server the switch is on; switching it off is a plain link
+  (no Referer) to the same path and query on production. Every dev-server
+  page puts a small **blue dot** on the profile menu's button (screen
+  readers: "Preview build · production data"). No top-bar badge (owner,
+  2026-11-03 14:44 JST: "改成我 profile dropdown 上一个小蓝点，然后点开菜单就能看到它写的").
 - Strings: `app/components/dev-switch.content.ts`, 16 locales, each key with
   its context line.
 

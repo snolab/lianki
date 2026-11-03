@@ -16,7 +16,7 @@ import { island } from "@/lib/islands/Island";
 import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
 import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
 import { NavRows } from "@/lib/nav/islands/NavRows";
-import { DevServerBadge, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
+import { DevServerDot, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
 import { LiveViewBoot, LiveViewItem, type LiveViewShell } from "./LiveView";
 
 const SIDEBAR_KEY = "lk:sidebar";
@@ -229,7 +229,6 @@ export function AppShell({
         </Link>
 
         <div className="ms-auto flex items-center gap-3">
-          {devSwitch?.mode === "back" && <DevServerBadge label={devSwitch.labels.badge} />}
           <LanguageSwitcher />
           {user ? (
             <div className="relative" ref={profileRef}>
@@ -244,8 +243,9 @@ export function AppShell({
                   if (to && !profileRef.current?.contains(to)) setIsProfileOpen(false);
                 }}
                 aria-expanded={isProfileOpen}
-                className="flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
+                className="relative flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
               >
+                {devSwitch?.mode === "back" && <DevServerDot label={devSwitch.labels.dot} />}
                 {user.image && (
                   <Image
                     className="w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"

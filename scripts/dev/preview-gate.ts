@@ -179,9 +179,9 @@ export function safeNext(
 
 /** The handshake page: takes the token from the #fragment (never sent anywhere), strips it, posts it. */
 export function handshakeHtml(): string {
-  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Lianki live trial</title>
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Lianki preview build</title>
 <body style="font:16px system-ui;margin:2rem;max-width:32rem">
-<p><b>Lianki live trial</b> (trial code, production data). Paste a dev access token from lianki.com/dev/tokens:</p>
+<p><b>Lianki preview build</b> (trial code, production data). Paste a dev access token from lianki.com/dev/tokens:</p>
 <form method="post" action="${AUTH_PATH}" id="f"><input type="password" name="token" autocomplete="off" style="width:100%;font-size:16px"><input type="hidden" name="next" id="n"><p><button>Open</button></p></form>
 <script>
 (function () {
