@@ -150,3 +150,21 @@ export function restRating(offset: number, a = SWIPE_ROW_PX): SwipeRating | null
 export function revealShown(k: number): { good: 3 | 4; hard: 2 | 1 } {
   return { good: k >= 2 ? 4 : 3, hard: k <= -2 ? 1 : 2 };
 }
+
+/**
+ * The mirror (Settings → "Mirror swipe sides", owner 2026-11-03): every side
+ * swaps. Slid left grades as slid right did, and the other way round: Hard ↔
+ * Good, Again ↔ Easy (5 − r). The physics, the levels and the reveal's
+ * movement stay as they are; only which grade a side means changes. Undo and
+ * a locked ("↓ back") slip are not touched.
+ */
+export const SWIPE_MIRROR_KEY = "lk:words-swipe-mirror";
+export const mirrorRating = (r: SwipeRating): SwipeRating => (5 - r) as SwipeRating;
+/** A grade read off a side under the default mapping, as the mirror (if on) makes it. */
+export const sideRating = <R extends SwipeRating | null>(r: R, mirror: boolean): R =>
+  (mirror && r !== null ? mirrorRating(r) : r) as R;
+/** The one-level grade a side gives (voice 左/右, the help strip): ← Hard, → Good, or mirrored. */
+export const sideGrade = (side: "left" | "right", mirror: boolean): SwipeRating =>
+  sideRating(levelRating(side === "left" ? -1 : 1)!, mirror);
+/** What the reveal at level `k` shows (revealShown), mirrored: a level right shows the left grades. */
+export const revealShownSide = (k: number, mirror: boolean) => revealShown(mirror ? -k : k);

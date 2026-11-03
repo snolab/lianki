@@ -61,7 +61,7 @@ import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
-import { barGeometry } from "./bar-geometry";
+import { BAR_CONTROL, barGeometry } from "./bar-geometry";
 import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
@@ -2123,8 +2123,8 @@ export function DebugChat({
           handle.onPointerDown(e);
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
-        style={handle.style}
-        className="tap-40 relative flex h-[var(--lk-bar-line)] w-10 shrink-0 items-center justify-center rounded-full"
+        style={{ ...handle.style, ...BAR_CONTROL }}
+        className="tap-40 relative flex w-10 shrink-0 items-center justify-center rounded-full"
       >
         <LiagentMark size={18} />
         <span
@@ -2145,8 +2145,8 @@ export function DebugChat({
         onMouseDown={(e) => e.preventDefault()}
         {...treeGesture}
         onClick={() => !treeDragged.current.wasDrag() && setPanel((p) => (p === "tree" ? "none" : "tree"))}
-        style={{ touchAction: "none" }}
-        className="tap-40 relative flex h-[var(--lk-bar-line)] w-10 shrink-0 items-center justify-center rounded-full text-base"
+        style={{ touchAction: "none", ...BAR_CONTROL }}
+        className="tap-40 relative flex w-10 shrink-0 items-center justify-center rounded-full text-base"
       >
         {treeHint && (
           // While dragging: the focused node and the depth it would open to.
@@ -3356,7 +3356,7 @@ export function DebugChat({
             ...(barAside ? { backdropFilter: "none", WebkitBackdropFilter: "none" } : {}),
             transition: reducedMotion() ? undefined : FADE,
           }}
-          className={`pointer-events-auto relative flex items-end rounded-[var(--lk-bar-r)] border-[length:var(--lk-bar-b)] border-current/25 p-[var(--lk-bar-pad)] text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300`}
+          className={`pointer-events-auto relative flex items-end border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300`}
         >
           {armed > 0 && (
             <div
@@ -3376,7 +3376,7 @@ export function DebugChat({
             data-testid="debug-chat-input-slot"
             inert={!open}
             aria-hidden={!open || undefined}
-            className={`relative flex w-0 min-w-0 flex-1 transition-opacity duration-[180ms] ease-out motion-reduce:transition-none ${open ? "opacity-100" : "max-h-[var(--lk-bar-line)] overflow-hidden opacity-0"}`}
+            className={`relative flex w-0 min-w-0 flex-1 transition-opacity duration-[180ms] ease-out motion-reduce:transition-none ${open ? "opacity-100" : "max-h-8 overflow-hidden opacity-0"}`}
           >
             {notice ? (
               <p
@@ -3505,7 +3505,7 @@ export function DebugChat({
                   // A drag on a long draft scrolls its text, never the page or the box.
                   {...inputDrag}
                   // Empty, a vertical drag scrolls the log (full screen), not the page.
-                  className={`block h-[var(--lk-bar-line)] max-h-32 min-h-[var(--lk-bar-line)] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain ${draft ? "touch-pan-y" : "touch-none"} border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
+                  className={`block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain ${draft ? "touch-pan-y" : "touch-none"} border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
                 />
                 {holding && draft && (
                   // The draft hides the placeholder: the hint sits over it instead.

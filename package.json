@@ -103,6 +103,7 @@
     "idb-keyval": "^6.2.2",
     "lint-staged": "^16.4.0",
     "mongodb-memory-server": "^11.1.0",
+    "opencc-js": "1.0.5",
     "oxfmt": "^0.36.0",
     "oxlint": "^1.51.0",
     "playwright": "^1.58.2",

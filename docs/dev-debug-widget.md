@@ -905,7 +905,9 @@ does. The bar's radius is `--lk-bar-r = border + padding + line/2`, and the
 mic's circle is the line-sized square in its inner bottom-right, so one line
 high the bar's right end is a semicircle around the mic, and a taller draft
 keeps the mic on the bottom-right arc. Text size does not scale it (only
-text scales). `node scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]`
+text scales). The geometry is inline styles, never new Tailwind classes: a
+stylesheet that has not generated a new class (the whole-page dev server's
+stale CSS on 2026-11-03) left the bar with no radius and no border. `node scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]`
 measures both centres (getBoundingClientRect) at 390×844 and 412×915, light
 and dark, one line, four lines, text at 150% and minimized, and fails over
 0.5px. A control added in a corner (a + at the left end) takes its circle

@@ -16,6 +16,7 @@ import {
   createSelectionMemory,
   oneLine,
 } from "./attach";
+import { BAR_CONTROL } from "./bar-geometry";
 import { Icon, type IconName } from "./icons";
 import type { ChatContext, ChatStrings } from "./wire";
 
@@ -102,7 +103,9 @@ export function AttachButton({
       aria-expanded={open}
       onPointerDown={keep}
       onClick={onToggle}
-      className="tap-40 flex h-8 w-10 shrink-0 items-center justify-center self-end rounded-full text-base text-gray-500 dark:text-gray-400"
+      // One line box high, as the bar's other controls (bar-geometry.ts).
+      style={BAR_CONTROL}
+      className="tap-40 flex w-10 shrink-0 items-center justify-center self-end rounded-full text-base text-gray-500 dark:text-gray-400"
     >
       <Icon name="plus" />
     </button>

@@ -334,10 +334,87 @@ authors (CC BY 2.0 FR).
 
 </details>
 
+## English exam decks (`en-exam-*`, `en-ngsl`, `en-nawl`, `en-tsl`)
+
+Built by `scripts/words/build-exam-decks.ts`. Every deck, its sources, the
+licence reasoning and the decks not shipped are in
+[docs/word-deck-sources.md](../../docs/word-deck-sources.md). The backs are
+Chinese.
+
+- **Word lists.** 中考, 高考, CET-4, CET-6 and 考研 use the
+  headwords that carry the matching `tag` in
+  [ECDICT](https://github.com/skywind3000/ECDICT) (`ecdict.csv`, MIT, © 2025
+  Linwei). They are ordered by its COCA rank (`frq`), then its BNC rank, then
+  A→Z. CET-6 holds only the words not tagged CET-4. Nothing else is taken
+  from ECDICT except its word forms (`exchange`): not its Chinese, phonetics
+  or definitions.
+- **TOEIC Service List, NGSL, NAWL.** The 1.2 lists from the
+  [New General Service List Project](https://www.newgeneralservicelist.com/),
+  in their own rank order, under
+  [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+  Attribution: NGSL and NAWL by Charles Browne, Brent Culligan and Joseph
+  Phillips; TSL by Charles Browne and Brent Culligan. Changes made: Chinese
+  meanings, IPA and examples added, TRUE/FALSE lowercased, NAWL's nine
+  prefixes dropped.
+- **Meanings.** English Wiktionary's translation tables into Mandarin, from
+  the [kaikki.org](https://kaikki.org/dictionary/English/) extract
+  (`scripts/words/filter-kaikki-zh.ts`; CC BY-SA 4.0 / GFDL). Attribution:
+  "Chinese meanings and IPA: English Wiktionary (en.wiktionary.org)
+  contributors, via kaikki.org". The simplified form is used. The main sense
+  gives two translations, the next senses one each. At most three per part of
+  speech, three parts of speech and about 48 characters. Example: "(n.)
+  状态，状况，国家；(v.) 表示，声明，规定". Words whose entry has no Mandarin
+  translation take the meaning written for Lianki in
+  `scripts/words/exam-glosses.tsv`, from their Wiktionary definitions; the
+  same file holds reviewed fixes that override Wiktionary. Senses marked
+  slang, vulgar, offensive or sexual are dropped, and every back is converted
+  to simplified characters with OpenCC (opencc-js, MIT; OpenCC data
+  Apache-2.0).
+- **Reading.** Wiktionary's IPA, the British one when given. It is never read
+  aloud.
+- **Examples.** The sentence the word already has in `en-freq-*` (see
+  "Example sentences"), else the shortest Tatoeba English sentence with the
+  word or one of its forms. Sentences with profanity, slurs or sexual content
+  are skipped (`isOffensive`). Each card records the sentence's source in
+  `exSrc` (`tatoeba:<id>`, see https://tatoeba.org/sentences/show/<id>, or
+  `wiktionary`) and its Tatoeba author in `exBy`, under
+  [CC BY 2.0 FR](https://creativecommons.org/licenses/by/2.0/fr/). Some Tatoeba
+  sentences have no author on record (orphans); they carry the id only.
+- **Left out.** Proper names, abbreviations, an inflection whose lemma is in
+  the same deck, and words with no English Wiktionary entry.
+
+ECDICT licence, reproduced as it requires:
+
+```text
+MIT License
+
+Copyright (c) 2025 Linwei
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Licensing summary
 
 Lists built from CC BY-SA sources (all frequency bands, the HSK lists via
-CC-CEDICT, and the ordering of the JLPT lists) are redistributed under
-CC BY-SA 4.0 with the attribution above. The example sentences from Tatoeba
+CC-CEDICT, the ordering of the JLPT lists, and the NGSL, NAWL and TOEIC
+Service List decks) are redistributed under CC BY-SA 4.0 with the attribution
+above. The exam decks' word lists from ECDICT are MIT (notice above); their
+meanings, IPA and examples are Wiktionary (CC BY-SA 4.0) and Tatoeba. The example sentences from Tatoeba
 and the Tatoeba phrases in the phrase decks are CC BY 2.0 FR, attributed above. Changes made: filtering, lemma
 folding, truncation and reordering.
