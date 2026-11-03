@@ -165,7 +165,6 @@ export function ListPreview({
     >
       <div ref={content} className="min-h-[50dvh]" data-list-preview>
         <ol
-          lang={lang}
           style={{ paddingTop: win.before, paddingBottom: win.after }}
           aria-busy={!state.done}
           aria-setsize={size}
@@ -180,7 +179,7 @@ export function ListPreview({
                 aria-posinset={i + 1}
                 className="py-2"
               >
-                <p className="font-medium">
+                <p className="font-medium" lang={lang}>
                   {e.term}
                   {e.reading && e.reading !== e.term && (
                     <span className="ms-2 font-normal opacity-55">{e.reading}</span>
@@ -188,7 +187,12 @@ export function ListPreview({
                 </p>
                 {backParts(e).map((part) =>
                   part === "example" ? (
-                    <p key={part} className="opacity-80" data-preview-example>
+                    <p
+                      key={part}
+                      lang={e.ex ? lang : undefined}
+                      className="opacity-80"
+                      data-preview-example
+                    >
                       {example}
                     </p>
                   ) : (

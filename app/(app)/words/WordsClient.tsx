@@ -2940,13 +2940,7 @@ function AddTreeNode({
           <PreviewButton
             name={label}
             onOpen={(from) =>
-              onPreview(
-                [node.meta],
-                node.meta.scenario
-                  ? `${langName(node.meta.lang, locale)} · ${label}`
-                  : node.meta.name,
-                from,
-              )
+              onPreview([node.meta], `${langName(node.meta.lang, locale)} · ${label}`, from)
             }
           />
         )}
