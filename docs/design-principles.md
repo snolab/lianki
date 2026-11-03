@@ -29,6 +29,20 @@ boxes, borders in borders, cards in cards. One level of framing at most:
 - Text sits directly on the page or on one glass layer, never on a card on a
   card.
 
+## No fixed numbers for users
+
+The owner, 2026-11-03 (Slack): "不要给用户规划任何死数字，不同的用户应该有他们自己的数字".
+A number shown to or imposed on a user (a daily amount, a chunk size, a
+goal, a pace) comes from that user: their goal and target date, their
+measured speed and history. We never pick a constant like "3 chunks a day"
+or "250 words a chunk" for everyone.
+
+The only built-in numbers are common knowledge that holds at every scale:
+the 95% reading-coverage line, the 60% general pass mark, the 1–3 s a person
+takes to react to information of a given size. When a user has no data yet,
+start from such a rule (e.g. a reading chunk = what they read in 1–3 minutes
+at their measured speed) and adapt as data comes in.
+
 ### Accessibility and contrast
 
 - Text on glass must keep at least 4.5:1 contrast against the worst plausible content behind it. Use the page ink colour plus a halo (`text-shadow` in the page colour), and test over light and dark content.
