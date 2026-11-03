@@ -37,6 +37,10 @@ export interface CardActions {
   translate?: () => void;
   readFrom?: () => void;
   markNew?: () => void;
+  /** Review every word of the selection's paragraph in /words' review (reader-word-review.tsx). */
+  reviewWords?: () => void;
+  /** 制卡: `n` words of the paragraph have no card in any of his lists. */
+  makeCards?: { n: number; run: () => void };
 }
 
 const famClass = (f: Fam): "known" | "learning" | "fresh" | "unrecognised" =>
@@ -88,6 +92,7 @@ export function SelectCard({
 }) {
   const t = useIntlayer("read-select");
   const tw = useIntlayer("read-words");
+  const tr = useIntlayer("read-word-review");
   const { locale } = useLocale();
   const nf = new Intl.NumberFormat(String(locale));
   const pf = new Intl.NumberFormat(String(locale), { style: "percent" });
@@ -210,6 +215,26 @@ export function SelectCard({
         className="-mx-2 mt-1 flex flex-wrap items-center gap-x-1"
         data-testid="read-select-actions"
       >
+        {actions.reviewWords && (
+          <button
+            type="button"
+            className={`${btn} font-medium`}
+            onClick={actions.reviewWords}
+            data-action="review-words"
+          >
+            {t.reviewWords}
+          </button>
+        )}
+        {actions.makeCards && (
+          <button
+            type="button"
+            className={btn}
+            onClick={actions.makeCards.run}
+            data-action="make-cards"
+          >
+            {fill(tr.makeCards.value, { n: nf.format(actions.makeCards.n) })}
+          </button>
+        )}
         {actions.lookUp && (
           <button type="button" className={btn} onClick={actions.lookUp} data-action="lookup">
             {t.lookUp}

@@ -80,6 +80,15 @@ import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { SelectCard, type CardActions, type UnitView } from "./reader-select-card";
 import { useReaderSelect } from "./use-reader-select";
 import {
+  MadeToast,
+  WordReview,
+  makeCards,
+  rangeWordsOf,
+  unmakeCards,
+  type RangeWord,
+} from "./reader-word-review";
+import { missingWords, paraWords } from "@/lib/read/word-review";
+import {
   COMBO_MS,
   type ComboCtx,
   type Unit,
@@ -310,6 +319,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
 
   // ── Familiarity: the per-book word map, fetched once ──
   const [fam, setFam] = useState<{ map: Map<string, Fam>; v: number } | null>(null);
+  /** Bumped when cards were made or graded from the reader: the map is fetched again. */
+  const [famTick, setFamTick] = useState(0);
   useEffect(() => {
     if (!signedIn || !material.words) return;
     let live = true;
@@ -321,13 +332,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       .then(([d, keys]) => {
         if (!live || !d) return;
         const map = famMap(d.words as WordRow[], (w) => inKeys(w, wlang, keys));
-        setFam({ map, v: 1 });
+        setFam((f) => ({ map, v: (f?.v ?? 0) + 1 }));
       })
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [id, signedIn, material.words]);
+  }, [id, signedIn, material.words, famTick]);
 
   // ── Marks: an attribute on <html>, so switching repaints, never re-renders ──
   const marks = useUi(readMarks, (s) => s.level);
@@ -848,6 +859,53 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const { locale } = useLocale();
   const [selStatus, setSelStatus] = useState<string | null>(null);
   useEffect(() => setSelStatus(null), [sel.unit]);
+
+  // ── A paragraph's words: /words' review over the book, and 制卡 ──
+  const tr = useIntlayer("read-word-review");
+  const [review, setReview] = useState<{ words: RangeWord[] } | null>(null);
+  const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
+  const reviewBack = useRef<HTMLElement | null>(null);
+  const famChanged = useCallback(() => setFamTick((n) => n + 1), []);
+  const closeReview = useCallback(() => setReview(null), []);
+  const lineWords = useCallback(
+    (line: number) => {
+      const ss = para(line).sentences;
+      return { ss, words: paraWords(ss, fam?.map ?? null) };
+    },
+    [para, fam],
+  );
+  /** The one trigger of the review (owner, 22:19 JST: the card's button): the paragraph of `line`. */
+  const openReview = useCallback(
+    (line: number) => {
+      const { ss, words } = lineWords(line);
+      // Focus comes back to the paragraph's item when the review closes.
+      const el = rowEl(blockOfLine(blocks, line));
+      if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+      reviewBack.current = el ?? null;
+      void rangeWordsOf(words, ss, normLang).then((w) => {
+        sel.clear();
+        setReview({ words: w });
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lineWords, blocks, normLang, sel.clear],
+  );
+  const makeLine = useCallback(
+    (line: number) => {
+      const { ss, words } = lineWords(line);
+      void rangeWordsOf(missingWords(words), ss, normLang)
+        .then((w) => makeCards(id, w))
+        .then((r) => {
+          setMade({
+            text: fill(tr.madeCards.value, { n: String(r.terms.length) }),
+            terms: r.terms,
+          });
+          famChanged();
+        })
+        .catch(() => setMade({ text: tr.makeFailed.value }));
+    },
+    [lineWords, normLang, id, tr, famChanged],
+  );
   const view = useMemo<UnitView | null>(() => {
     const u = sel.unit;
     if (!u) return null;
@@ -973,6 +1031,17 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           `https://translate.google.com/?sl=${src}&tl=${ui}&op=translate&text=${encodeURIComponent(view.text!.trim())}`,
         );
     const hash = material.bookHash;
+    if (
+      signedIn &&
+      material.readerV2 &&
+      hash &&
+      (u.kind === "word" || u.kind === "phrase" || u.kind === "sentence" || u.kind === "para")
+    ) {
+      // The word's, the phrase's and the sentence's own paragraph.
+      a.reviewWords = () => openReview(u.line);
+      const n = fam ? missingWords(lineWords(u.line).words).length : 0;
+      if (n > 0) a.makeCards = { n, run: () => makeLine(u.line) };
+    }
     if (u.kind === "word" && signedIn && material.readerV2 && hash)
       a.markNew = () => {
         // An explicit "not recognised" (books-plan, option A): the exposure log
@@ -1020,6 +1089,10 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     copy,
     unitBlock,
     ts,
+    fam,
+    openReview,
+    makeLine,
+    lineWords,
   ]);
 
   const eyeLine = blocks[eyeIndex] ? blockLine(blocks[eyeIndex]) : 0;
@@ -1213,6 +1286,31 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             bottom={`calc(env(safe-area-inset-bottom) + ${(islandOpen ? 8.5 : 4.75) + (playing && !follow ? 3 : 0)}rem)`}
             status={selStatus}
             onClose={sel.clear}
+          />
+        )}
+        {review && (
+          <WordReview
+            id={id}
+            title={tr.title.value}
+            words={review.words}
+            returnTo={reviewBack}
+            onClose={closeReview}
+            onChanged={famChanged}
+          />
+        )}
+        {made && (
+          <MadeToast
+            text={made.text}
+            undoLabel={tr.undo.value}
+            onUndo={
+              made.terms?.length
+                ? () =>
+                    void unmakeCards(id, made.terms!)
+                      .then(famChanged)
+                      .catch(() => {})
+                : undefined
+            }
+            onDone={() => setMade(null)}
           />
         )}
         {player.status === "error" && (

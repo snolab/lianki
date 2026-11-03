@@ -1,5 +1,6 @@
 "use client";
 
+import { isEntrySource } from "@/lib/words/entry-list";
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
 import { useTextScale } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
@@ -395,7 +396,7 @@ type CatalogMeta = {
 /** The URL of a catalog's entries. */
 const catalogPath = (base: string, c: CatalogMeta) => c.path ?? `${base}/${c.file}`;
 /** An Anki deck imported at /words/import: its words live in D1, not a catalog file. */
-const isImported = (l: { source: string | null }) => !!l.source?.startsWith("anki:");
+const isImported = (l: { source: string | null }) => isEntrySource(l.source);
 /** Imported lists, described as catalogs so the rest of the page needs no special case. */
 const importedCatalog = (lists: WordList[]): CatalogMeta[] =>
   lists.filter(isImported).map((l) => ({
@@ -405,7 +406,8 @@ const importedCatalog = (lists: WordList[]): CatalogMeta[] =>
     level: "",
     count: l.size,
     file: "",
-    source: "Anki",
+    // A book's own list (the reader's in-place review): the book is its source.
+    source: l.source!.startsWith("book:") ? l.name : "Anki",
     license: "",
     path: `/api/words/lists/${l.id}/entries`,
   }));
@@ -1517,7 +1519,7 @@ export type DrillConfig = {
   imports?: boolean;
 };
 
-const WORDS: DrillConfig = {
+export const WORDS: DrillConfig = {
   base: "/words",
   title: "Word lists",
   intro: "An endless list: grade each word with 1 / 2 / 3 / 4 — it is saved at once. Z undoes.",
@@ -3239,14 +3241,40 @@ function ImportLink() {
  * misses come back further down within minutes. Grading a word again re-grades
  * it (the server replaces the review while the word is not due yet); Z undoes.
  */
-function Study({
+/**
+ * A review of given words instead of a list's session: the reader's "review
+ * this range's words" (app/(app)/read/[id]/reader-word-review.tsx). The same
+ * study — rows, swipe, mirror, undo, marks, FSRS cards — with only these
+ * words: no new-word intake, no further due words, the page not locked.
+ */
+export type StudyScope = {
+  items: {
+    listId: string;
+    term: string;
+    reading?: string | null;
+    back: string;
+    ex?: string | null;
+    /** Stored ts-fsrs card JSON; null: a new word (its first grade makes the card). */
+    card?: string | null;
+  }[];
+  /** A row was graded (its review is queued to sync as usual). */
+  onGrade?: (listId: string, term: string, isNew: boolean) => void;
+  /** The exit button's text (instead of "back to lists"). */
+  exitLabel?: string;
+  /** Shown in the toolbar after the title (the reader's 制卡). */
+  toolbar?: React.ReactNode;
+};
+
+export function Study({
   config,
   lists,
   catalog,
   title,
   onExit,
   voice,
+  scope,
 }: {
+  scope?: StudyScope;
   config: DrillConfig;
   /** Whether the voice mode switch is offered (lib/words/voice-access.ts). */
   voice: VoiceAccess;
@@ -3516,6 +3544,8 @@ function Study({
   const takeNew = useCallback(
     async (n: number) => {
       const out: Item[] = [];
+      // A scoped review has only its own words.
+      if (scope) return out;
       for (const l of lists) {
         if (out.length >= n) break;
         out.push(...(await takeNewFrom(l, n - out.length)));
@@ -3551,7 +3581,7 @@ function Study({
 
   /** Due words not in `queued` yet, from the server; [] offline. */
   const fetchDue = async (queued: Item[]): Promise<Item[]> => {
-    if (!navigator.onLine) return [];
+    if (!navigator.onLine || scope) return [];
     const limit = dueFetchLimit(queued.filter((it) => it.kind !== "new").length, DUE_PAGE);
     try {
       const s = await api<{ lists: Record<string, { due: WordCard[] }> }>(
@@ -3569,6 +3599,24 @@ function Study({
     let alive = true;
     // Start from the stored cursors every run (Strict Mode mounts twice in dev).
     scans.current = new Map(lists.map((l) => [l.id, newScan(l.cursor)]));
+    if (scope) {
+      // The given words, in their order: a card as due, a new word as new.
+      const lang = new Map(lists.map((l) => [l.id, l.lang]));
+      setQueue(
+        scope.items.map((x) => ({
+          term: x.term,
+          reading: x.reading ?? undefined,
+          back: x.back,
+          ex: x.ex ?? undefined,
+          kind: x.card ? "due" : "new",
+          listId: x.listId,
+          lang: lang.get(x.listId) ?? "und",
+          card: x.card ?? undefined,
+        })),
+      );
+      setLoading(false);
+      return;
+    }
     (async () => {
       // All lists' due words in one request (one D1 query) — or, with no
       // network, the copy saved on the last visit / "download for offline",
@@ -3699,6 +3747,7 @@ function Study({
       if (stale != null && grades.has(i)) await idbDelete("pending", stale).catch(() => {});
       await enqueue(op);
     })();
+    scope?.onGrade?.(it.listId, it.term, !it.card);
   };
 
   /**
@@ -4016,7 +4065,8 @@ function Study({
   }, [listEl]);
   // Only the list scrolls: the page under it stays put.
   useEffect(() => {
-    if (!listEl) return;
+    // A scoped review is an overlay: the page under it keeps its place.
+    if (!listEl || scope) return;
     // The page is exactly the window while the list is up (.lk-page-lock):
     // no overflow, no rubber band, and no taller-than-the-window document
     // (min-h-screen plus the body's safe-area padding made it 48px taller on
@@ -4205,7 +4255,7 @@ function Study({
   // move it), fetch more — every due word not queued yet first (the server is
   // asked each time, so words that fell due since the page opened come too),
   // then new ones. Stops only when every catalog runs out.
-  const [exhausted, setExhausted] = useState(false);
+  const [exhausted, setExhausted] = useState(!!scope);
   const fetching = useRef(false);
   /** Bumped when a recheck lets go of `fetching`, so a skipped endless fetch runs. */
   const [released, setReleased] = useState(0);
@@ -4556,9 +4606,10 @@ function Study({
             className="tap-40 opacity-60 hover:opacity-100 whitespace-nowrap"
             onClick={onExit}
           >
-            {text.backToLists}
+            {scope?.exitLabel ?? text.backToLists}
           </button>
           <span className="font-medium">{title}</span>
+          {scope?.toolbar}
           <button
             ref={settingsBtn}
             // Tapped seven times fast for debug: iOS must not turn that into a

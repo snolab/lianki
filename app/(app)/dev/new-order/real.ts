@@ -1,4 +1,5 @@
 import catalogIndex from "@/public/words/index.json";
+import { isEntrySource } from "@/lib/words/entry-list";
 import { getD1 } from "@/lib/d1";
 import { WordsD1Repo } from "@/lib/repos/wordsD1";
 import { projectCurve } from "@/lib/words/gate-eta";
@@ -26,8 +27,7 @@ export async function loadRealData(email: string, now = new Date()): Promise<Rea
   const counts = new Map(catalogIndex.lists.map((c) => [c.id, c.count]));
   const lists = (await repo.lists(now)).filter(
     (l) =>
-      l.source &&
-      (counts.has(l.source) || l.source === "group:words" || l.source.startsWith("anki:")),
+      l.source && (counts.has(l.source) || l.source === "group:words" || isEntrySource(l.source)),
   );
   const isGroup = (l: (typeof lists)[number]) => l.source === "group:words";
   const sizeOf = (l: (typeof lists)[number]) => counts.get(l.source!) ?? l.size ?? 0;

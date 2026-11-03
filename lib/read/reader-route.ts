@@ -96,3 +96,47 @@ export async function wordCtx(ctx: ReaderCtx): Promise<{ book: ReaderBook; w: Wo
     w: { idx: cardIndex(rows), stats: words.stats, lem: statsLemmas(words.stats) },
   };
 }
+
+/** A range's words, as the device sends them for the word review (≤ 400, strings capped). */
+export function rangeWords(raw: unknown, own: (w: string) => boolean) {
+  if (!Array.isArray(raw) || raw.length > 400) return null;
+  const str = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : null);
+  const out: {
+    w: string;
+    ex: string | null;
+    term: string | null;
+    reading: string | null;
+    back: string | null;
+  }[] = [];
+  const seen = new Set<string>();
+  for (const x of raw as Record<string, unknown>[]) {
+    const w = x && typeof x === "object" ? str(x.w, 200) : null;
+    // Only the book's own words: the book's list holds nothing else.
+    if (!w || seen.has(w) || !own(w)) continue;
+    seen.add(w);
+    out.push({
+      w,
+      ex: str(x.ex, 1000),
+      term: str(x.term, 200),
+      reading: str(x.reading, 200),
+      back: str(x.back, 1000),
+    });
+  }
+  return out;
+}
+
+/** The book as the word review needs it: hash, title, language, lemmas. */
+export async function bookCtxOf(ctx: ReaderCtx) {
+  const { book, words } = await ctx.load();
+  const own = new Set(words.stats.words.map(([w]) => w));
+  return {
+    book: {
+      hash: book.hash,
+      title: ctx.material.title,
+      lang: book.lang,
+      lem: statsLemmas(words.stats),
+      names: new Set(words.stats.names),
+    },
+    own: (w: string) => own.has(w),
+  };
+}
