@@ -164,3 +164,115 @@ export function sealTilt(day: string): number {
   for (let i = 0; i < day.length; i++) h = (h * 31 + day.charCodeAt(i)) | 0;
   return ((Math.abs(h) % 11) - 5) * 1.2;
 }
+
+/* ---------------------------------------------------------------------------
+ * New users (owner, 2026-11-03 22:39 JST): variants of the grid while the
+ * owner picks one. No span is fixed for a user; each comes from his history:
+ *
+ *  - "full"   the six-month grid as before (the default until he picks).
+ *  - "grow"   (A) only as many weeks as he has history, growing with it.
+ *  - "today"  (B) no grid while history is too short to mean anything
+ *             (`tooShort`); today against his own usual day, and his streak.
+ *  - "ahead"  (C) the days still to come this period drawn as faint cells.
+ *  - "grow-ahead" A and C together.
+ * ------------------------------------------------------------------------- */
+
+export const VARIANTS = ["full", "grow", "today", "ahead", "grow-ahead"] as const;
+export type Variant = (typeof VARIANTS)[number];
+
+/** Days in one column of the grid: a week, one row per weekday. */
+export const WEEK = 7;
+
+/** Days with any study. */
+export const activeDays = (days: Map<string, DayStats>): string[] =>
+  [...days.entries()]
+    .filter(([, v]) => v.words > 0)
+    .map(([d]) => d)
+    .sort();
+
+/**
+ * Too little history for a grid to mean anything: fewer studied days than a
+ * grid column has cells (a week). Before that not one column could be full,
+ * so the grid cannot show a rhythm yet, only a few scattered marks.
+ */
+export const tooShort = (days: Map<string, DayStats>): boolean => activeDays(days).length < WEEK;
+
+/** Sunday of `day`'s week (the grid's columns start on Sunday). */
+export function weekStart(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return shiftDay(day, -new Date(y, m - 1, d).getDay());
+}
+
+/** Whole weeks from `from`'s week to `to`'s, both counted. */
+export function weeksBetween(from: string, to: string): number {
+  const a = weekStart(from).split("-").map(Number);
+  const b = weekStart(to).split("-").map(Number);
+  const ms = Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2]);
+  return Math.round(ms / 86_400_000 / WEEK) + 1;
+}
+
+/**
+ * The end of the period the faint "ahead" cells run to: the Saturday that
+ * closes the week holding the last day of this month. A calendar month is
+ * the period everyone shares; no goal of ours is put on him.
+ */
+export function periodEnd(today: string): string {
+  const [y, m] = today.split("-").map(Number);
+  const last = dayKey(new Date(y, m, 0));
+  return shiftDay(weekStart(last), WEEK - 1);
+}
+
+/**
+ * The grid's columns for a variant: weeks of day keys, Sunday first. Days
+ * after `today` are future cells (C draws them faint; the others leave them
+ * blank). Never more than the data read (`max` weeks).
+ *  - full: the `max` weeks ending this week, as before.
+ *  - grow: from the week of the first studied day to this week (one week
+ *    with no history yet).
+ *  - ahead: `max` weeks ending at the period's end.
+ *  - grow-ahead: from the first studied week to the period's end.
+ *  - today: as full (it shows no grid only while history is too short).
+ */
+export function gridFor(
+  variant: Variant,
+  days: Map<string, DayStats>,
+  today: string,
+  max = STATS_WEEKS,
+): string[][] {
+  const grow = variant === "grow" || variant === "grow-ahead";
+  const ahead = variant === "ahead" || variant === "grow-ahead";
+  const end = ahead ? periodEnd(today) : shiftDay(weekStart(today), WEEK - 1);
+  const first = activeDays(days).find((d) => d <= today) ?? today;
+  const want = grow ? weeksBetween(first, end) : max;
+  const n = Math.max(1, Math.min(max, want));
+  const start = shiftDay(weekStart(end), -(n - 1) * WEEK);
+  return Array.from({ length: n }, (_, w) =>
+    Array.from({ length: WEEK }, (_, d) => shiftDay(start, w * WEEK + d)),
+  );
+}
+
+/**
+ * Today against his own usual day: words studied today, and the mean over
+ * the earlier days he studied (in the data read). `ratio` is today / usual;
+ * null usual on his first day, when there is nothing to compare with.
+ */
+export function todayVsUsual(
+  days: Map<string, DayStats>,
+  today: string,
+): { today: number; usual: number | null; ratio: number | null } {
+  const now = days.get(today)?.words ?? 0;
+  const before = activeDays(days).filter((d) => d < today);
+  if (!before.length) return { today: now, usual: null, ratio: null };
+  const usual = before.reduce((s, d) => s + days.get(d)!.words, 0) / before.length;
+  return { today: now, usual, ratio: now / usual };
+}
+
+/**
+ * The owner's "simulate a new user" view: his own rows cut to the last `n`
+ * days (today counted), so each variant can be seen with real data. Client
+ * side only; nothing is written.
+ */
+export function simulateHistory(rows: StatsTuple[], today: string, n: number): StatsTuple[] {
+  const from = shiftDay(today, -(n - 1));
+  return rows.filter(([d]) => d >= from && d <= today);
+}

@@ -112,9 +112,36 @@
 }
 .lk-grade-seal.grade-easy::before {
   background: var(--grade);
-  box-shadow: inset 0 0 0 1.5px var(--grade), inset 0 0 0 2.5px var(--carve);
+  box-shadow:
+    inset 0 0 0 1.5px var(--grade),
+    inset 0 0 0 2.5px var(--carve);
 }
 .lk-grade-seal[aria-pressed="true"] {
   outline: 1.5px solid oklch(0.55 0 0 / 0.75);
   outline-offset: 0;
+}
+/* New-user layouts (WordsStats.tsx, lib/words/stats.ts VARIANTS): the days
+ * ahead as faint dashed frames; today's bar against his usual day, in the
+ * look's own ink. */
+.lk-ink-future {
+  stroke: oklch(0.5 0 0 / 0.35);
+}
+.lk-progress {
+  background: var(--stats-faint);
+}
+.lk-progress-fill {
+  background: var(--stats-brush);
+}
+.lk-progress[data-look="seal"] .lk-progress-fill {
+  background: var(--ink-again);
+}
+.lk-progress[data-look="slip"] {
+  background: var(--stats-cane);
+}
+.lk-progress[data-look="slip"] .lk-progress-fill {
+  background: var(--stats-notch);
+}
+.lk-progress-usual {
+  background: currentColor;
+  opacity: 0.55;
 }
