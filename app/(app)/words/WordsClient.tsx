@@ -4861,7 +4861,7 @@ function NativeSlipRow({
       g.glides++;
       el.scrollTo({ left: home, behavior: "smooth" });
       clearTimeout(g.watch);
-      g.watch = setTimeout(watchGlide, GLIDE_WATCH_MS);
+      g.watch = setTimeout(watch, GLIDE_WATCH_MS);
     };
     /**
      * A glide home stopped (scrollend, or the watch): home, or it stopped
@@ -4877,14 +4877,21 @@ function NativeSlipRow({
       g.glides = 0;
       if (step === "jump") el.scrollTo({ left: home, behavior: "instant" });
     };
-    const watchGlide = () => {
-      if (g.touching || g.springing || !g.returning) return;
-      // Still moving: its own scrollend (or the next watch) decides.
+    /**
+     * Looks again a while after a lift or a glide home, in case the browser
+     * never sent the scrollend that settles it: a slip lifted off a detent
+     * is graded (or not) and sent home, a glide that stopped short goes on.
+     * settle() is safe to repeat: a gesture it already took does not grade twice.
+     */
+    const watch = () => {
+      if (g.touching || g.springing) return;
+      // Still moving: its own scrollend (or the next look) decides.
       if (performance.now() - g.scrolledAt < 150) {
-        g.watch = setTimeout(watchGlide, 150);
+        g.watch = setTimeout(watch, 150);
         return;
       }
-      backHome();
+      if (g.returning) backHome();
+      else settle();
     };
     /** The scroller came to rest: grade where it landed, then glide home. */
     const settle = () => {
@@ -4975,6 +4982,8 @@ function NativeSlipRow({
       setTimeout(() => {
         if (!g.touching && !g.returning && onDetent(el.scrollLeft, a)) settle();
       }, 50);
+      clearTimeout(g.watch);
+      g.watch = setTimeout(watch, GLIDE_WATCH_MS);
     };
     const pointerdown = (e: PointerEvent) => {
       g.held = false;

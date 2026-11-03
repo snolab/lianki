@@ -29,9 +29,9 @@ export function onDetent(scrollLeft: number, a: number, tol = DETENT_TOLERANCE_P
 export const GLIDE_RETRIES = 2;
 
 /**
- * How long after a glide home starts the row looks again, in case the
- * browser cancelled the glide with no scrollend at all (ms). Longer than
- * Chrome's smooth scroll over 2a.
+ * How long after a lift or a glide home the row looks again, in case the
+ * browser sent no scrollend at all (ms). Longer than Chrome's smooth scroll
+ * over 2a; a slip still moving then is looked at again once it is quiet.
  */
 export const GLIDE_WATCH_MS = 1000;
 

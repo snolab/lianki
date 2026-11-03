@@ -47,8 +47,9 @@ on Android often lifts a pixel short and then snaps that pixel itself, over
 about 200 ms. That snap overrode the glide home the timer had started, and
 left the slip on the first detent (the owner, 2026-11-03). A glide home that
 stops short of home glides again, and after `GLIDE_RETRIES` it jumps home
-(`homeStep`). A watch `GLIDE_WATCH_MS` after each glide covers a glide that
-was cancelled with no `scrollend` at all. `qa-words` checks six slow slides
+(`homeStep`). A watch `GLIDE_WATCH_MS` after each lift and each glide
+covers a browser that sends no `scrollend` at all: the slip is settled or
+sent home all the same, and a gesture already settled never grades twice. `qa-words` checks six slow slides
 lifted short of a detent.
 
 ## Interface v1 (`SWIPE_CORE_IFACE`)
