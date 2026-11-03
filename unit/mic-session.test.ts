@@ -127,6 +127,28 @@ describe("mic session", () => {
     expect(f.store.get(MIC_ON_KEY)).toBeUndefined();
   });
 
+  it("an off while the browser opens the mic: the new track is stopped, not kept", async () => {
+    const f = fakes();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const s = createMicSession({
+      ...f.deps,
+      getStream: async () => {
+        await gate;
+        return f.deps.getStream();
+      },
+    });
+    const on = s.toggle();
+    await tick();
+    await s.off();
+    release();
+    await on;
+    await tick();
+    expect(s.stream()).toBeNull();
+    expect(f.calls.stops).toBe(1);
+    expect(s.view().state).toBe("off");
+  });
+
   it("survives a detach: the stream stays live, only an explicit off stops it", async () => {
     const f = fakes();
     const s = createMicSession(f.deps);

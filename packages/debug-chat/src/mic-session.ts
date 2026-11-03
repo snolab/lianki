@@ -174,10 +174,19 @@ export function createMicSession(
     },
   };
   /** The live stream, or a new one (the only getUserMedia). */
+  /** Bumped by every explicit off: a reopen or an open under way does not turn the mic back on. */
+  let offs = 0;
   const ensureStream = async () => {
     if (live(stream)) return stream as StreamLike;
     gumCalls++;
-    stream = await deps.getStream();
+    const at = offs;
+    const s = await deps.getStream();
+    if (at !== offs) {
+      // Turned off while the browser opened it: never left running (the VAD built on it is dropped).
+      for (const t of s.getTracks()) t.stop();
+      return s;
+    }
+    stream = s;
     return stream;
   };
   const stopStream = () => {
@@ -189,8 +198,6 @@ export function createMicSession(
   let reopening = false;
   let reopenRun: Promise<boolean> | null = null;
   let reopenAgain = false;
-  /** Bumped by every explicit off: a reopen under way does not turn the mic back on. */
-  let offs = 0;
   /** The local STT client for cfg.localStt; replaced when the URL changes. */
   let local: { url: string; c: LocalClient; off: () => void } | null = null;
   const localStream = (): StreamStt | undefined => {
