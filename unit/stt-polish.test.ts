@@ -112,6 +112,8 @@ describe("polishCheck: realistic garbles", () => {
   it("a repeat is whole words (or one character), never part of a longer word", () => {
     expect(polishCheck("do not notify anyone", "do notify anyone", []).ok).toBe(false);
     expect(polishCheck("do do it", "Do it.", []).ok).toBe(true);
+    expect(polishCheck("I insist", "insist", []).ok).toBe(false);
+    expect(polishCheck("a apple", "apple", []).ok).toBe(false);
   });
 
   it("a replacement that only drops characters is a removal (不要 → 要)", () => {

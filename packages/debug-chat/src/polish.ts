@@ -117,11 +117,11 @@ function diff(a: string[], b: string[]): Hunk[] {
 /**
  * The removed run repeats what is right next to it (a stutter): it is copies
  * of one unit, said again right before or after it, as whole words — or, a
- * single character, which is how a script that does not space its words
- * stutters (我我我想 → 我想: its segmenter may join the last 我 to 想). Never
+ * single character written up against it with no space, which is how a
+ * script that does not space its words stutters (我我我想 → 我想: its segmenter may join the last 我 to 想). Never
  * part of a longer word: "not" is not repeated by "notify".
  */
-function isRepeat(raw: string[], h: Hunk): boolean {
+function isRepeat(raw: string[], h: Hunk, written: string): boolean {
   const run = h.del.join("");
   const before = raw.slice(0, h.at);
   const after = raw.slice(h.at + h.del.length);
@@ -129,7 +129,9 @@ function isRepeat(raw: string[], h: Hunk): boolean {
   const next = (words: string[], unit: string, fromEnd: boolean) => {
     const joined = words.join("");
     if (!(fromEnd ? joined.endsWith(unit) : joined.startsWith(unit))) return false;
-    if (graphemes(unit) === 1) return true;
+    // One character counts only where the text itself does not space it off
+    // (我我我想, not "I insist"): its writing, not a language, decides.
+    if (graphemes(unit) === 1) return written.includes(fromEnd ? unit + run : run + unit);
     let at = 0;
     for (const w of fromEnd ? [...words].reverse() : words) {
       at += w.length;
@@ -156,7 +158,7 @@ export function polishCheck(raw: string, polished: string, context: PolishContex
     const said = h.del.join(" ");
     const put = h.ins.join(" ");
     if (!h.ins.length) {
-      if (isRepeat(a, h)) continue;
+      if (isRepeat(a, h, norm(raw))) continue;
       return { ok: false, reason: `drops "${said}", which is not a repeat: it may be meaning` };
     }
     if (!h.del.length) return { ok: false, reason: `adds "${put}", which was not said` };
