@@ -2054,8 +2054,8 @@ try {
             overscroll: getComputedStyle(body).overscrollBehaviorY,
           };
         });
-        await w.mouse.move(vw / 2, vh - 40);
-        await w.mouse.wheel(0, 400);
+        // (WebKit's mobile emulation has no wheel: the body was scrolled to its
+        // end above; overscroll-behavior: contain keeps the page from following.)
         await w.waitForTimeout(200);
         const pageY = await w.evaluate(() => Math.round(scrollY));
         check(
@@ -2084,7 +2084,10 @@ try {
       }
       await w.emulateMedia({ colorScheme: null });
       await w.setViewportSize({ width: 414, height: 848 });
-      await w.waitForTimeout(300);
+      // Fresh layout for the swipe checks below, as before the resizes.
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(800);
       if (variant === "native") {
         // At rest the face covers the label strip; a completed swipe (the
         // touch sequence iOS gives: touchstart, pointercancel as the scroller
