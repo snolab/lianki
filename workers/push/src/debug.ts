@@ -389,6 +389,8 @@ type SessionsRpc = {
   flag?(key: string): Promise<unknown>;
   /** The Learning Partner's AI reply for a non-owner thread (lib/partner-ai.ts). */
   partnerReply?(req: PartnerRequest): Promise<unknown>;
+  /** The chat inbox's agent ops (lib/inbox/agent.ts); an older main Worker has none. */
+  inbox?(req: { op: string; id?: string }): Promise<unknown>;
 };
 /** How long the hub trusts its read of PARTNER_AI_FLAG (as lib/flags-store.ts's FLAG_CACHE_MS). */
 const AI_FLAG_CACHE_MS = 30_000;
@@ -1648,10 +1650,13 @@ export class DebugHub {
           ...(m.to ? { to: m.to } : {}),
           // Its length only: the selection itself is never logged.
           ...(m.context ? { selection: m.context.selection.length } : {}),
+          // How many files, never their names.
+          ...(m.attachments ? { files: m.attachments.length } : {}),
         }),
       );
       // A friend's line is always their own thread's: no node addressing there.
       // Its attachment (the page selection) stays on the sender's own thread.
+      // Files are the owner's only (the upload is owner-only): a friend's refs are dropped.
       if (page.thread !== OWNER_THREAD)
         return this.friendChat(ws, page, m.id, m.text, m.context, m.scene);
       const line = (speaker: SpeakerTag | undefined) =>
@@ -1669,6 +1674,7 @@ export class DebugHub {
           ...(m.wake ? { wake: m.wake } : {}),
           ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
           ...(m.context ? { context: m.context } : {}),
+          ...(m.attachments ? { attachments: m.attachments } : {}),
           ...(m.scene ? { scene: m.scene } : {}),
           // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
           // approvals later must rely on this, never on what a page says.
@@ -2146,6 +2152,27 @@ export class DebugHub {
     send(ws, { type: "granted", from: m.from, to: m.to, until });
   }
 
+  /**
+   * `eval.ts inbox …` (lib/inbox/agent.ts): passed to the main Worker's
+   * DebugSessions.inbox over SESSIONS, its answer sent back as
+   * inbox-list / inbox-ticket / inbox-done. Ids only in the log, never names.
+   */
+  private async inbox(ws: Socket, req: { op: string; id?: string }) {
+    const sessions = this.sessions;
+    if (!sessions?.inbox) return send(ws, { type: "error", error: "the inbox is not available" });
+    let a: Record<string, unknown>;
+    try {
+      a = ((await sessions.inbox(req)) ?? {}) as Record<string, unknown>;
+    } catch {
+      return send(ws, { type: "error", error: "the inbox did not answer" });
+    }
+    console.log(JSON.stringify({ msg: "debug.inbox", op: req.op, ok: a.ok === true }));
+    if (a.ok !== true) return send(ws, { type: "error", error: String(a.error ?? "inbox failed") });
+    const type =
+      req.op === "list" ? "inbox-list" : req.op === "get" ? "inbox-ticket" : "inbox-done";
+    send(ws, { ...a, type });
+  }
+
   private fromController(ws: Socket, c: ControllerAtt, raw: unknown): void | Promise<void> {
     const t = this.now();
     if (!c.until) return send(ws, { type: "error", error: "not approved yet" });
@@ -2160,6 +2187,12 @@ export class DebugHub {
         return send(ws, { type: "error", error: "a pairing for a friend cannot record" });
       if (!clip.ok) return send(ws, { type: "error", error: clip.error });
       return this.clipsControl(ws, c, clip.value);
+    }
+    const box = inboxRequest(raw);
+    if (box) {
+      if (c.forUser)
+        return send(ws, { type: "error", error: "a pairing for a friend cannot read the inbox" });
+      return this.inbox(ws, box);
     }
     const m = parseControllerMessage(raw);
     if (!m.ok) return send(ws, { type: "error", error: m.error });
@@ -2634,4 +2667,28 @@ export class DebugHub {
   webSocketError(ws: Socket): void | Promise<void> {
     return this.webSocketClose(ws, 1011);
   }
+}
+
+/** A controller's {type:"inbox", op, id?}, or null (any other message). Bounded before the RPC. */
+function inboxRequest(raw: unknown): { op: string; id?: string } | null {
+  let j: unknown = raw;
+  if (typeof raw === "string") {
+    if (raw.length > 512 || !raw.includes("inbox")) return null;
+    try {
+      j = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!j || typeof j !== "object") return null;
+  const r = j as Record<string, unknown>;
+  if (r.type !== "inbox") return null;
+  if (r.op === "list") return { op: "list" };
+  if (
+    (r.op === "get" || r.op === "done") &&
+    typeof r.id === "string" &&
+    /^[0-9a-f]{20}$/.test(r.id)
+  )
+    return { op: r.op, id: r.id };
+  return { op: "invalid" };
 }

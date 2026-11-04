@@ -63,6 +63,15 @@ Console OAuth client:
 - `https://www.lianki.com/api/auth/callback/google` (keep registered — www still
   resolves and 308s to apex)
 
+## Google Drive connection
+
+Separate from sign-in, same OAuth client: its own flow and table
+([connections.md](connections.md)). Needs a second redirect URI on the client,
+`https://lianki.com/api/connections/google/callback`, and the Worker secret
+`GOOGLE_PICKER_API_KEY` (a browser key restricted to lianki.com and the
+Picker API). Refresh tokens are sealed with a key derived from `AUTH_SECRET`
+(HKDF), so no other secret.
+
 ## Origins
 
 The apex is canonical: `middleware.ts` 308s `www` → apex, and session cookies

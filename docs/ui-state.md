@@ -109,6 +109,7 @@ target that is not built yet.
 | voice-clip recording (on, sink)     | the hub, per window session; session `lk:ui:clips` (its id)  | done (dev-debug-widget.md, "Recording")                    |
 | speech rate, voice out, echo cancel | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec` | → `lk:pref:chat-voice`                                     |
 | compact mode (last message only)    | local `lk:pref:chat-view` (`chatPrefs`, off by default)      | done: per device, never synced                             |
+| tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)              | done: per device, never synced                             |
 
 ### Cards and the swipe
 
@@ -124,7 +125,7 @@ target that is not built yet.
 
 | State                                                                            | Where                            | Status                                                             |
 | -------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------ |
-| /words scroll position                                                           | session `lk:ui:words` anchors    | done: the word at the top, per list, restored when the queue loads |
+| /words scroll position                                                           | session `lk:ui:words` anchors    | done: the word at the top, per list, restored when the queue loads; written at once on Back, hide or leave (lib/page-leave.ts) |
 | show all meanings, speak on swipe, grade tones, server voice, scroll after swipe | local `lk:words-*` (usePref)     | device prefs → `lk:pref:words`                                     |
 | list picker search / filter / sort                                               | — (none on /words today)         | → URL when added (shareable)                                       |
 | study mode (one list, a group, "study all")                                      | URL `?list=` (`all`, a group id) | done                                                               |

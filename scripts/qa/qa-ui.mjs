@@ -155,6 +155,44 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   // ?lang= sticks in a cookie: switch back so the English names below match.
   await page.goto(`${BASE}/home?lang=en`, { waitUntil: "networkidle" });
 
+  // Explore cards on /home: a line of explanation each, and a screenshot
+  // behind it that loads without moving anything (layout-shift total ≈ 0).
+  {
+    const cls = await ctx.newPage();
+    await cls.addInitScript(() => {
+      window.__cls = 0;
+      new PerformanceObserver((l) => {
+        for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value;
+      }).observe({ type: "layout-shift", buffered: true });
+    });
+    await cls.setViewportSize({ width: 390, height: 844 });
+    await cls.goto(`${BASE}/home`, { waitUntil: "networkidle" });
+    const cards = cls.locator("[data-feature]");
+    await cards.last().scrollIntoViewIfNeeded();
+    await cls.waitForTimeout(800);
+    const info = await cls.evaluate(() =>
+      [...document.querySelectorAll("[data-feature]")].map((a) => {
+        const img = a.querySelector("img");
+        return {
+          text: a.textContent?.trim().length ?? 0,
+          h: a.getBoundingClientRect().height,
+          img: !!img,
+          loaded: !!img && img.complete && img.naturalWidth > 0,
+          sized: !!img && !!img.getAttribute("width") && img.getAttribute("loading") === "lazy",
+          alt: img?.alt ?? "",
+        };
+      }),
+    );
+    const shift = await cls.evaluate(() => window.__cls);
+    check(
+      info.length === 7 &&
+        info.every((c) => c.text > 20 && c.h >= 160 && c.img && c.loaded && c.sized && c.alt),
+      `/home Explore: 7 cards, each with a line of text and a loaded, sized, lazy screenshot with alt (${JSON.stringify(info[0])})`,
+    );
+    check(shift < 0.01, `/home Explore cards cause no layout shift (CLS ${shift.toFixed(4)})`);
+    await cls.close();
+  }
+
   // Phone width: the drawer is a modal dialog that Escape closes, and the
   // profile menu closes on a tap outside it (iOS never blurs its trigger).
   const phone = await ctx.newPage();

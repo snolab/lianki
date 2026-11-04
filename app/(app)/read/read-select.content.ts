@@ -281,6 +281,42 @@ const dictionary = {
       sw: "Tafsiri",
       mr: "भाषांतर करा",
     }),
+    translating: t({
+      en: "Translating…",
+      zh: "正在翻译…",
+      ja: "翻訳中…",
+      ko: "번역 중…",
+      hi: "अनुवाद हो रहा है…",
+      es: "Traduciendo…",
+      fr: "Traduction…",
+      ar: "جارٍ الترجمة…",
+      bn: "অনুবাদ হচ্ছে…",
+      pt: "Traduzindo…",
+      ru: "Перевод…",
+      ur: "ترجمہ ہو رہا ہے…",
+      id: "Menerjemahkan…",
+      de: "Wird übersetzt…",
+      sw: "Inatafsiri…",
+      mr: "भाषांतर होत आहे…",
+    }),
+    translateFailed: t({
+      en: "Could not translate",
+      zh: "未能翻译",
+      ja: "翻訳できませんでした",
+      ko: "번역하지 못했습니다",
+      hi: "अनुवाद नहीं हो सका",
+      es: "No se pudo traducir",
+      fr: "Traduction impossible",
+      ar: "تعذّرت الترجمة",
+      bn: "অনুবাদ করা যায়নি",
+      pt: "Não foi possível traduzir",
+      ru: "Не удалось перевести",
+      ur: "ترجمہ نہیں ہو سکا",
+      id: "Tidak bisa menerjemahkan",
+      de: "Übersetzen fehlgeschlagen",
+      sw: "Imeshindwa kutafsiri",
+      mr: "भाषांतर करता आले नाही",
+    }),
     readFromHere: t({
       en: "Read from here",
       zh: "从这里朗读",
@@ -512,7 +548,11 @@ const context: Record<keyof typeof dictionary.content, string> = {
   lookUp:
     "Button on the reader's selection card for a selected word or phrase: opens a dictionary entry (Wiktionary) for it in a new tab. An imperative verb phrase.",
   translate:
-    "Button on the reader's selection card for a selected phrase, sentence or paragraph: opens a machine translation of the text into the learner's language in a new tab. An imperative verb.",
+    "Button on the reader's selection card for a selected word, phrase, sentence or paragraph: shows a machine translation of the text into the learner's language right on the card, under the text. An imperative verb.",
+  translating:
+    "Placeholder on the reader's selection card, under the selected text, while its machine translation (asked for with the Translate button) is on its way. A short progressive phrase ending in an ellipsis.",
+  translateFailed:
+    "Short error on the reader's selection card when the machine translation of the selected text could not be made (offline, over the limit, or a server failure). A short phrase.",
   readFromHere:
     "Button on the reader's selection card: starts read-aloud (text to speech) at the passage holding the selected unit and goes on from there. An imperative phrase.",
   markNew:

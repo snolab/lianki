@@ -69,7 +69,7 @@ import { anchorAt, type Anchor } from "@/lib/read/reader-pos";
 import { CHROME_FULL, SCROLL_KEYS, chromeStep, type ChromeState } from "@/lib/read/reader-chrome";
 import { setReading, readingUi } from "@/lib/nav/reading";
 import { SwipeFeelProvider } from "@/lib/words/swipe-core";
-import { SWIPE_MIRROR_KEY, sideRating, type SwipeRating } from "@/lib/words/swipe";
+import { SWIPE_MIRROR_KEY, keyRating, sideRating, type SwipeRating } from "@/lib/words/swipe";
 import { swipeVariant } from "@/lib/words/swipe-ab";
 import { ProgressRingSvg } from "@/app/components/progress-ring";
 import { fill } from "@/lib/nav/nav-core";
@@ -113,6 +113,7 @@ import { segmentLine } from "@/lib/read/units";
 import { findWord, sideKindOf, type SideKind, type WordAt } from "@/lib/read/side-review";
 import type { SideFocus, SideGrade } from "./reader-side-review";
 import { sentenceId } from "@/lib/read/reader-api";
+import { onPageLeave } from "@/lib/page-leave";
 
 type WindowVirtualizer = Virtualizer<Window, Element>;
 // The side-by-side word review, loaded when it opens (it brings /words' client).
@@ -739,10 +740,18 @@ function Reader({
       touching = false;
     };
     const key = (e: KeyboardEvent) => SCROLL_KEYS.has(e.key) && begin();
-    const pagehide = () => {
+    // Leaving: the position is written now, not ANCHOR_QUIET_MS later — the
+    // unmount after a Back (Android's edge swipe takes one with no warning)
+    // can no longer measure the list. A popstate may only be a sheet closing
+    // (lib/back-to-close.ts): it saves the position and leaves grades in
+    // their undo window; so does hiding (an app switch). Grades not yet
+    // sent are kept on the device and sent on the next load either way.
+    const offLeave = onPageLeave((why) => {
+      clearTimeout(saveT);
+      if (why !== "pagehide") return saveNow(why === "hidden");
       saveNow(true);
       data.flush();
-    };
+    });
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("scrollend", settle);
     window.addEventListener("touchstart", touchstart, { passive: true });
@@ -750,8 +759,8 @@ function Reader({
     window.addEventListener("touchcancel", touchend, { passive: true });
     window.addEventListener("wheel", begin, { passive: true });
     window.addEventListener("keydown", key);
-    window.addEventListener("pagehide", pagehide);
     return () => {
+      offLeave();
       cancelAnimationFrame(frame);
       clearTimeout(quiet);
       clearTimeout(saveT);
@@ -762,7 +771,6 @@ function Reader({
       window.removeEventListener("touchcancel", touchend);
       window.removeEventListener("wheel", begin);
       window.removeEventListener("keydown", key);
-      window.removeEventListener("pagehide", pagehide);
       saveNow();
     };
   }, [saveNow, data]);
@@ -841,7 +849,7 @@ function Reader({
   );
   const scrolling = useCallback(() => performance.now() - lastScrollAt.current < 100, []);
 
-  // ── Keys (desktop): 1–4 / H J K L grade, Space plays, U or ⌘Z undoes ──
+  // ── Keys (desktop): 1–4 / L K J H grade (as /words: KEY_RATING), Space plays, U or ⌘Z undoes ──
   const togglePlay = useCallback(() => {
     if (player.status !== "speaking") speaker.unlock();
     if (!playing) {
@@ -854,16 +862,6 @@ function Reader({
     dispatch({ type: player.status === "speaking" ? "stop" : "play" });
   }, [player.status, playing, speaker, dispatch]);
   useEffect(() => {
-    const keys: Record<string, SwipeRating> = {
-      "1": 1,
-      "2": 2,
-      "3": 3,
-      "4": 4,
-      h: 1,
-      j: 2,
-      k: 3,
-      l: 4,
-    };
     const down = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -881,7 +879,7 @@ function Reader({
         return togglePlay();
       }
       if (e.key === "u") return undo();
-      const r = keys[e.key.toLowerCase()];
+      const r = keyRating(e);
       if (!r) return;
       const i = playingRef.current ? player.line : eyeIndexRef.current;
       const b = blocks[i];
@@ -908,6 +906,10 @@ function Reader({
   const { locale } = useLocale();
   const [selStatus, setSelStatus] = useState<string | null>(null);
   useEffect(() => setSelStatus(null), [sel.unit]);
+  // Translate: the selected text in his own language, on the card (our API,
+  // lib/read/translate.ts). Keyed by the text, so a new selection drops it.
+  const [trans, setTrans] = useState<{ src: string; out: string | null } | null>(null);
+  useEffect(() => setTrans(null), [sel.unit]);
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
@@ -1316,7 +1318,7 @@ function Reader({
     const u = view?.unit;
     if (!view || !u) return null;
     const ui = String(locale).split("-")[0];
-    const src = lang && lang !== "und" ? lang.split("-")[0] : "auto";
+    const from = lang && lang !== "und" ? lang : undefined;
     const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
     const text =
       u.kind === "chapter"
@@ -1351,12 +1353,33 @@ function Reader({
         );
     if (
       view.text &&
-      (u.kind === "phrase" || u.kind === "sentence" || u.kind === "para" || u.kind === "range")
+      signedIn &&
+      material.readerV2 &&
+      (u.kind === "word" ||
+        u.kind === "phrase" ||
+        u.kind === "sentence" ||
+        u.kind === "para" ||
+        u.kind === "range")
     )
-      a.translate = () =>
-        open(
-          `https://translate.google.com/?sl=${src}&tl=${ui}&op=translate&text=${encodeURIComponent(view.text!.trim())}`,
-        );
+      a.translate = () => {
+        const src = view.text!.trim();
+        if (trans?.src === src) return;
+        setTrans({ src, out: null });
+        void fetch(`/api/read/${id}/translate`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: src, to: String(locale), from }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d: { text?: string } | null) => {
+            if (!d?.text) throw new Error("no translation");
+            setTrans((t) => (t?.src === src ? { src, out: d.text! } : t));
+          })
+          .catch(() => {
+            setTrans((t) => (t?.src === src ? null : t));
+            setSelStatus(ts.translateFailed.value);
+          });
+      };
     const hash = material.bookHash;
     if (
       signedIn &&
@@ -1426,6 +1449,7 @@ function Reader({
     openReview,
     makeLine,
     lineWords,
+    trans,
   ]);
 
   const eyeLine = blocks[eyeIndex] ? blockLine(blocks[eyeIndex]) : 0;
@@ -1642,6 +1666,7 @@ function Reader({
                 ? `${ts.sayFailed.value} (${sayFail.why})`
                 : null)
             }
+            translation={trans && view.text?.trim() === trans.src ? { text: trans.out } : null}
             onClose={sel.clear}
           />
         )}

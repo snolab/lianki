@@ -81,6 +81,20 @@
  *       or --origins a,b. `off` stops the matching ones (all without --device).
  *       Never deletes a clip.
  *
+ *   bun scripts/dev/eval.ts inbox [list]
+ *   bun scripts/dev/eval.ts inbox get <id> [--out <dir>]
+ *   bun scripts/dev/eval.ts inbox done <id>
+ *       The chat inbox (docs/dev-debug-widget.md, "Attachments and the inbox"):
+ *       files the owner pasted, dropped or picked in the chat; each chat line
+ *       that carried some has "attachments":[{id,name,type,size}]. `list`
+ *       prints {"type":"inbox-list","items":[{id,name,type,size,sha256,at,
+ *       processedAt?,line?}]}; `get` downloads one (a single-use 60 s ticket,
+ *       through the hub) into a scratch dir ($TMPDIR/lianki-inbox/<id>/, or
+ *       --out), checks its sha256 and prints {"type":"inbox-file","path",…};
+ *       `done` marks it processed. With the saved grant; never pairs.
+ *       Deleting needs the owner's own session (the chat's + → Inbox →
+ *       Delete): `inbox rm` only says so.
+ *
  *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] "text"   (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
@@ -186,6 +200,7 @@ import { DEAD, PONG, keepalive } from "./keepalive";
 import { tailnetHost } from "./tailnet";
 import { clipsOrigins, sinkKeys } from "./clip-sink";
 import {
+  BASE as INBOX_BASE,
   EVAL_TOKEN_FILE,
   type Msg,
   TOKEN_FILE,
@@ -642,6 +657,60 @@ function sendOnce(msg: Record<string, unknown>, done: string): Promise<Msg> {
   });
 }
 
+/** `eval.ts inbox …`: list, fetch one into a scratch dir, mark one processed. */
+async function inbox(op: string, id: string | undefined) {
+  if (op === "rm") {
+    console.error(
+      "deleting an inbox file needs the owner's own session: the chat's + → Inbox → Delete (nothing was deleted)",
+    );
+    process.exit(2);
+  }
+  if (op === "list") {
+    console.log(JSON.stringify(await sendOnce({ type: "inbox", op: "list" }, "inbox-list")));
+    return;
+  }
+  if ((op !== "get" && op !== "done") || !id || !/^[0-9a-f]{20}$/.test(id)) {
+    console.error(
+      "usage: bun scripts/dev/eval.ts inbox [list | get <id> [--out <dir>] | done <id>]",
+    );
+    process.exit(2);
+  }
+  if (op === "done") {
+    console.log(JSON.stringify(await sendOnce({ type: "inbox", op: "done", id }, "inbox-done")));
+    return;
+  }
+  const t = (await sendOnce({ type: "inbox", op: "get", id }, "inbox-ticket")) as Msg & {
+    ticket?: string;
+    item?: { name?: string; type?: string; size?: number; sha256?: string };
+  };
+  if (!t.ticket) throw new Error("the hub gave no ticket");
+  // The ticket rides in a header, never the URL (URLs are logged). Never printed.
+  const r = await fetch(`${INBOX_BASE}/api/dev/inbox/${id}`, {
+    headers: { "x-inbox-ticket": t.ticket },
+  });
+  if (!r.ok) throw new Error(`download failed: HTTP ${r.status}`);
+  const buf = new Uint8Array(await r.arrayBuffer());
+  const sha = new Bun.CryptoHasher("sha256").update(buf).digest("hex");
+  const dir = out ?? join(process.env.TMPDIR ?? "/tmp", "lianki-inbox", id);
+  mkdirSync(dir, { recursive: true });
+  // The name is the user's text: only its last part, nothing that climbs out of the dir.
+  const name = basename(String(t.item?.name ?? "file")).replace(/^\.+/, "_") || "file";
+  const path = join(dir, name);
+  writeFileSync(path, buf);
+  console.log(
+    JSON.stringify({
+      type: "inbox-file",
+      id,
+      path,
+      name,
+      contentType: t.item?.type,
+      size: buf.length,
+      sha256: sha,
+      verified: sha === t.item?.sha256,
+    }),
+  );
+}
+
 /**
  * Ask with a card (tappable options). Resolves with the hub's {type:"asked"};
  * with `wait`, keeps listening and resolves with {type:"answered"} for this
@@ -959,6 +1028,7 @@ async function main() {
     console.log(JSON.stringify(await sendOnce(msg, op === "list" ? "clips-list" : "clips-done")));
     return;
   }
+  if (args[0] === "inbox") return inbox(args[1] ?? "list", args[2]);
   if (args[0] === "wake") {
     const mode = args[1];
     if (mode !== "active" && mode !== "passive" && mode !== "ignored") {

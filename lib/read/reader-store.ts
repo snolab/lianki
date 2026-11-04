@@ -756,3 +756,80 @@ export async function deleteReaderRows(
   }
   await db.batch(stmts);
 }
+
+// ── re-import ───────────────────────────────────────────────────────────────
+
+/**
+ * Lines that stayed the same between two versions of a text, as
+ * [old line, new line] pairs in order: each new line takes the first unused
+ * old line with the same text after the last one taken. A paragraph that
+ * moved far may be missed; a matched line is always the same text.
+ */
+export function unchangedLines(
+  before: readonly string[],
+  after: readonly string[],
+): [number, number][] {
+  const at = new Map<string, number[]>();
+  before.forEach((l, i) => {
+    const q = at.get(l);
+    if (q) q.push(i);
+    else at.set(l, [i]);
+  });
+  const out: [number, number][] = [];
+  let last = -1;
+  after.forEach((l, j) => {
+    const q = at.get(l);
+    if (!q) return;
+    let lo = 0;
+    let hi = q.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (q[mid] <= last) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo < q.length) {
+      last = q[lo];
+      out.push([last, j]);
+    }
+  });
+  return out;
+}
+
+/**
+ * A re-imported text got a new book hash: copy the sentence cards (FSRS
+ * state) of its unchanged lines to the new ids. The same line text cuts into
+ * the same sentences, so index and text key stay; only hash and line change.
+ * The old rows stay (another copy of the old text may still use them); a
+ * card already under the new id wins.
+ */
+export async function carrySentenceCards(
+  db: D1Batch,
+  userId: string,
+  oldHash: string,
+  newHash: string,
+  lineMap: [number, number][],
+): Promise<void> {
+  if (oldHash === newHash || !lineMap.length) return;
+  const { results } = await db
+    .prepare("SELECT DISTINCT line FROM read_sentence_cards WHERE user_id = ? AND book_hash = ?")
+    .bind(userId, oldHash)
+    .all<{ line: number }>();
+  const graded = new Set(results.map((r) => r.line));
+  const pairs = lineMap.filter(([o]) => graded.has(o));
+  if (!pairs.length) return;
+  const stmts = chunks(pairs).map((part) =>
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO read_sentence_cards
+           (user_id, sid, book_hash, line, idx, text_key, card, due, last_rating, rev, updated_at)
+         SELECT c.user_id, ? || ':' || m.nl || '.' || c.idx, ?, m.nl, c.idx, c.text_key,
+                c.card, c.due, c.last_rating, c.rev, c.updated_at
+         FROM read_sentence_cards c
+         JOIN (SELECT json_extract(value, '$[0]') AS ol, json_extract(value, '$[1]') AS nl
+               FROM json_each(?)) m ON c.line = m.ol
+         WHERE c.user_id = ? AND c.book_hash = ?`,
+      )
+      .bind(newHash, newHash, JSON.stringify(part), userId, oldHash),
+  );
+  await db.batch(stmts);
+}

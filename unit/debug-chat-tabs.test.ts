@@ -139,3 +139,63 @@ describe("joinTabs: a tab with the mic on reads aloud", () => {
     expect([a.isSpeaker(), c.isSpeaker()]).toEqual([true, false]);
   });
 });
+
+describe("joinTabs: another tab takes the voice over (voice-bg.ts)", () => {
+  it("another tab's mic coming on later takes it; an older mic or a repeat does not", () => {
+    const chan = bus();
+    let t = 100;
+    const got: Record<string, string[]> = { a: [], b: [], c: [] };
+    const join = (id: "a" | "b" | "c") =>
+      joinTabs(
+        id,
+        chan(),
+        () => false,
+        () => t,
+        (why) => got[id].push(why),
+      );
+    const a = join("a");
+    const b = join("b");
+    a.mic(true);
+    expect(got.b).toEqual(["mic"]);
+    t = 200;
+    b.mic(true);
+    // b's mic is newer than a's: a hands over.
+    expect(got.a).toEqual(["mic"]);
+    // A newcomer makes both repeat their mic: nobody hands over again.
+    got.a.length = 0;
+    got.b.length = 0;
+    join("c");
+    expect(got.a).toEqual([]);
+    expect(got.b).toEqual([]);
+  });
+
+  it("another tab newly focused takes the reading; repeating an old focus time does not", () => {
+    const chan = bus();
+    let t = 100;
+    const got: string[] = [];
+    joinTabs(
+      "a",
+      chan(),
+      () => false,
+      () => t,
+      (why) => got.push(why),
+    );
+    const b = joinTabs(
+      "b",
+      chan(),
+      () => false,
+      () => t,
+    );
+    t = 200;
+    b.focus();
+    expect(got).toEqual(["focus"]);
+    // A newcomer's hello makes b repeat 200: a has seen it already.
+    joinTabs(
+      "c",
+      chan(),
+      () => false,
+      () => t,
+    );
+    expect(got).toEqual(["focus"]);
+  });
+});

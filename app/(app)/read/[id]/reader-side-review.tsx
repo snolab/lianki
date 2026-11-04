@@ -15,7 +15,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
-import { KEY_RATING, queueWordReview, queueWordUndo } from "@/app/(app)/words/WordsClient";
+import { queueWordReview, queueWordUndo } from "@/app/(app)/words/WordsClient";
+import { keyRating } from "@/lib/words/swipe";
 import type { WordList } from "@/lib/repos/wordsD1";
 import { fill } from "@/lib/nav/nav-core";
 import { formatInterval, parseCard } from "@/lib/words/schedule";
@@ -130,7 +131,7 @@ export default function SideReview({
         const g = L.onUndo();
         if (g) void queueWordUndo(g.listId, g.term);
       } else if (e.code === "Escape") L.onClose();
-      else if (KEY_RATING[e.code] && !e.shiftKey) L.grade(KEY_RATING[e.code] as Rating);
+      else if (keyRating(e)) L.grade(keyRating(e)!);
       else return;
       e.preventDefault();
     };

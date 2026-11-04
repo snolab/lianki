@@ -649,6 +649,45 @@ Checks and screenshots: `bun scripts/dev/debug-chat-compact-qa.mjs --shots
 <dir>` (silent browsers, getUserMedia refused, 390×844, light and dark);
 the rules in `unit/chat-compact.test.ts`.
 
+## Folding: open, pill, tucked into the edge
+
+The owner reviewed the fold redesign in Slack on 2026-11-04 (storyboard:
+`stories/chat-fold`). The rules are in `packages/debug-chat/src/fold.ts`,
+and the unit tests are in `unit/chat-fold.test.ts` and `unit/anchor.test.ts`.
+
+- **Open → pill.** The mark (left of the input) folds the bar toward
+  itself into the pill, and stays under the pointer. Unchanged.
+- **Floating lines follow the pill.** They start at the pill's own side,
+  so the side follows the way the bar folded. The screen third no longer
+  decides it, which fixes "folds left but lines right-aligned". The
+  floating box is still clamped on screen (`anchor.ts`).
+- **Pill → tucked.** On the pill the same mark becomes a tuck arrow, and a
+  tap slides the chat into its edge. A pill dragged flush against an edge
+  tucks into that edge too. The pill's Li (part of the pill, not a new
+  button) opens the chat again, as does the menu's Restore row or
+  `chat.open`.
+- **The handle.** Tucked, the chat leaves one thumb-sized handle. Its shape
+  is set by `HANDLE_SHAPE` in fold.ts: `"half"` (a half circle bulging from
+  the edge, the default) or `"square"` (a rounded square). The owner has
+  not picked one yet. The handle's touch area starts `TOUCH_INSET` in from
+  the edge, because on Android a horizontal swipe that starts at the edge
+  is the system's Back. A tap brings the pill back, and so does a
+  press-and-drag that starts on the handle (the pill then follows the
+  finger). Nothing relies on pulling from the edge.
+- **New messages while tucked.** A dot shows on the handle while anything
+  is unread, and the newest line peeks beside the handle for its dwell. A
+  tap on that line brings the pill back.
+- **Left edge: everything mirrors.** After each drag the chat keeps to the
+  edge nearest the box's centre. On the left edge the row runs right to
+  left: the mark sits on the inner side, the bar folds right, the lines
+  end at the pill's right edge, and the chat tucks into the left edge.
+  When the mirroring changes, the box shifts so the pill stays put.
+- **Kept per device**: `lk:pref:chat-fold` (`tucked`, `edge`) in
+  localStorage, never synced. Open or minimized stays in `lk:debug-chat-open`.
+
+Browser checks: `bun scripts/dev/debug-chat-fold-qa.mjs [--shots <dir>]`
+runs them in silent browsers at 390×844, with getUserMedia refused.
+
 ## Typing glass: the chat box frosts while typing
 
 Owner, 2026-11-02 on /home: "帮我背景玻璃化，在我在这里打字的时候"; corrected
@@ -741,12 +780,22 @@ it onto the `ChatMessage`, so pages get it live and in history, and logs it
 in `debug.say`.
 
 **On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
-`voice.ts` `gateVoice`), on top of the usual rules (mic on, or the speaker
-toggle on and the input focused):
+`voice.ts` `gateVoice`), on top of the usual rules (mic on; or the speaker
+toggle on and either the mic used in this tab or the input focused):
+
+0. **Mic used here, sticky** (owner, 2026-11-04: "最近用过 mic 输入的话，回我的打字消息也要用语音"):
+   once the mic has been on in a tab, replies are read there with the
+   toggle on whether the input has focus or not, typed lines included
+   (sessionStorage `lk:agent:voiced`). There is no time window: it lasts
+   until he turns "Replies read aloud" off, which clears it; his mute always
+   wins. The menu row says "Replies read aloud (mic used)" while it holds,
+   "Replies read aloud while typing" when only the focus rule applies.
+
 
 1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
-2. **Hidden page or locked screen** (`document.visibilityState` "hidden"):
-   never spoken (the browser would not let it). Hiding the page also stops a
+2. **Hidden page or locked screen** (`document.visibilityState` "hidden"),
+   **on a phone**: never spoken (the browser would not let it). On a
+   computer this rule is off: see "Background tab on a computer" below. Hiding the page also stops a
    reading under way. When the page is visible again, the newest line that
    arrived while it was hidden is read once (not a backlog); the lines left
    unread show a small note, "not read aloud: the page was in the
@@ -756,6 +805,46 @@ A line kept silent is logged as `{ev:"voice-silent", why}` (quiet, hidden)
 on the voice session's log, and a missed line read on return as
 `{ev:"voice-missed"}`. Quiet lines carry `data-volume="quiet"` in the log,
 for tests; they look the same.
+
+**Background tab on a computer** (owner, 2026-11-04: "pc页面切走不要马上停语音";
+`packages/debug-chat/src/voice-bg.ts`, unit/voice-bg.test.ts). A computer is
+a fine primary pointer that can hover (`(hover: hover) and (pointer: fine)`).
+There, switching to another tab or window stops nothing, with no grace
+period: the mic keeps listening and the reading goes on until he stops it.
+The paths that used to stop it, all now phone-only on a computer:
+
+| Path | What it did on hide |
+| --- | --- |
+| `voice.ts` `gateVoice` visibilitychange | `voice().stop()`: the reading and its queue |
+| `speak-rules.ts` `silenceHere` | every new line silent while hidden |
+| `DebugChat.tsx` hide effect | stopped the reading (mic off) |
+| `DebugChat.tsx` reading-left mirror | froze the "read on next page" queue |
+| `DebugEval.tsx` hub socket `wanted()` | disconnected 30 s after hide: no lines out, no replies in |
+| `local-stt.ts` `visible()` | a dropped STT socket waited for the page to be visible again |
+
+The hub socket now stays while the voice is busy (mic on, speaking, or
+queued; `keepHub`), and the local STT socket reopens on its close event
+while hidden (`sttMayReopen`): events only, the existing backoff, no polling.
+Audio frames go out from the audio callbacks, not timers, so timer throttling
+in hidden tabs does not hold them back; Chrome on a computer keeps a running
+AudioContext and speechSynthesis going in a background tab (Safari may
+interrupt it). Echo cancel is the mic track's own and is unchanged.
+
+**The title hint.** While the voice runs in a tab he is not looking at
+(hidden, or the window unfocused), the tab title starts with
+"🎙 Lianki voice on · " (🔊 when only reading; `voiceBgWords` in
+ui-strings.ts, en/zh/ja), besides the browser's own mic indicator; it goes
+when the voice stops or he is back (`app/components/useVoiceTitleHint.ts`).
+
+**One tab listens.** Another Lianki tab turning its mic on takes the voice
+over (`debug-chat-tabs.ts` `onTakeover("mic")`): this tab turns its mic off,
+stops reading, and so shows no hint. A tab he newly focuses takes over a
+hidden tab's reading with the mic off (`onTakeover("focus")`); a mic tab
+keeps the voice whichever tab is focused.
+
+**Phones** keep the old behaviour: hiding stops the reading and silences
+lines, and the hub socket idles out; mobile browsers suspend background
+audio and the mic anyway.
 
 **No voice on the device.** With the output on "speech" (the default), a
 reply in a language speechSynthesis has no voice for (some Android Chromes
@@ -790,9 +879,10 @@ menu in three groups (`packages/debug-chat/src/AttachMenu.tsx`, `attach.ts`):
   shown. Anyone without the chat (not in debug mode, a blocked friend) keeps
   the island's ＋. Search still lists the same actions.
 - **Attach to message** — a registry (`ATTACH_KINDS`), one entry per kind, so
-  each new kind lands in its own change. Now: **Page selection** works; File
-  and Photo/video/audio are shown disabled, tagged "Coming soon". URL import is
-  the Add group's "Add a link as a card".
+  each new kind lands in its own change. **Page selection**; **File** and
+  **Photo, video or audio** upload to the inbox (below, "Attachments and the
+  inbox"; "Coming soon" where the host gives no uploads). URL import is the
+  Add group's "Add a link as a card".
 - **View** (查看) — **State tree** (状态树): toggles the state tree, as the
   bar's tree button did (owner, 2026-11-03: "状态树功能藏到加号里"; the bar
   has no tree button now, so it is `[mark | + | input | mic]`, and minimized
@@ -823,6 +913,84 @@ on another site (`cleanContext` in wire.ts, applied by the page, the hub's
 the sender's own thread — a friend's selection stays in their thread — and
 logs only its length. The log shows it as a small quote above the line;
 `eval.ts chat` prints it in the JSON line as `"context"`.
+
+## Attachments and the inbox
+
+The owner can paste, drop or pick files of any kind into the chat (owner,
+2026-11-04). They are uploaded at once, kept in an **inbox** in R2
+`lianki-blobs` (no other bucket), and the agent reads them from there.
+
+**In the widget** (generic: `packages/debug-chat/src/files.ts`,
+`FileChips.tsx`; nothing product-specific). The host passes `files`
+(`ChatFiles`): `upload(file, onProgress, signal)`, `url(ref)`, and optionally
+`maxBytes`, `list()` (items + usage), `remove(id)` and `actions(ref)` (host
+buttons on a file). Without `files`, File and Photo/video/audio stay "Coming
+soon" and paste/drop do nothing.
+
+- **Paste** a screenshot or a copied file into the input; **drop** files
+  anywhere on the chat box (while files are dragged into the window, an
+  overlay over the whole box takes the drop, so a file never lands in the
+  input as its name); or pick with **+ → File** / **Photo, video or audio**.
+- Each file is a chip above the input: thumbnail (images, a local object URL)
+  or its extension, name, size, a progress bar, × to drop it before sending
+  (aborts the upload). Too big for `maxBytes`: refused before upload.
+- A line waits for uploads still running and goes when they are done; files
+  alone send after the usual pause, with their names as the text. The line
+  carries `attachments: [{id, name, type, size}]` (`cleanAttachments`, at
+  most 10) — refs only, never bytes.
+- In the log, an image of a safe type (png, jpeg, gif, webp, avif) shows as
+  an `<img>` from the host's URL; anything else is a download chip. Names are
+  text; nothing a user sent is rendered as HTML.
+- **+ → Inbox** (View group) lists the stored files, newest first, with the
+  usage line at the top ("12 MB stored · 3 files"), a **Delete** per file
+  (confirmed: "Delete for good?"), and the host's actions — here an Anki
+  package (`.apkg`/`.colpkg`) gets **Import as a deck** (导入为卡组), which
+  opens `/words/import?inbox=<id>`; the import page fetches it with the
+  owner's session and opens it as if dropped (the usual import into his own
+  word list). The same action shows under the line that carried the file.
+
+**On lianki.com** (`lib/inbox/`, `app/api/dev/inbox/**`). Owner session only
+(`isOwner`, 404 for anyone else, friends included, as every `/api/dev`
+route); the chat passes `files` only on the owner's own pages.
+
+| route | what |
+| --- | --- |
+| `POST /api/dev/inbox` | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
+| `GET /api/dev/inbox` | his files and usage (settles accrued storage cost) |
+| `PATCH /api/dev/inbox` | `{ids, line}`: the chat line they were sent with |
+| `GET /api/dev/inbox/<id>` | the file: his session, or an agent's ticket in `x-inbox-ticket` |
+| `DELETE /api/dev/inbox/<id>` | his own session only; the object and the row go |
+
+- **Keys**: `inbox/<user id>/<yyyy>/<mm>/<id>` (`lib/inbox/keys.ts`); the name
+  never goes into a key. D1 `inbox_item` (id, owner, name, type, size,
+  sha256, created, processed, line id, ticket hash/expiry) and
+  `inbox_usage` (`db/migrations/0035_inbox.sql`).
+- **Sniffing** (`lib/inbox/sniff.ts`): the stored type comes from the first
+  512 bytes, never the browser's claim; HTML/SVG/XML are stored as
+  `text/plain`; PE/ELF/Mach-O/`#!` are flagged. An `.apkg` is a zip.
+- **Serving**: `Content-Disposition: attachment` for everything but the safe
+  image types, `nosniff`, `CSP: default-src 'none'; sandbox`, private cache.
+  No public URL: his session, or a single-use 60 s ticket.
+- **Caps** — one object, `INBOX` in `lib/inbox/config.ts`, **the owner may
+  change any of them**; first values (conservative, the agent's pick):
+  20 MB per file, 200 MB per rolling 24 h per user, 2 GB stored per user (a
+  safety cap, not a plan limit), 30 uploads a minute per isolate.
+- **Cost, by usage** (owner, 2026-11-04: "按用量扣莲（上传和存储）"):
+  `lib/inbox/charge.ts` `chargeInbox`, the same seam as the AI gloss's
+  `chargeAi` — it records the real R2 cost in USD (list prices in the
+  config: Class A per upload, Class B per download, storage GB-month); the
+  debit goes there once the credit unit is final. Storage accrues as bytes
+  stored × time since `inbox_usage.settled_ms`, settled at every upload and
+  delete and when he opens the Inbox view — nothing polls.
+- **Retention**: none automatic. A file stays until he deletes it.
+
+**The agent** (`bun scripts/dev/eval.ts inbox …`, with the saved grant):
+`inbox` lists `{id,name,type,size,sha256,at,processedAt?,line?}`; `inbox get
+<id> [--out dir]` asks the hub, which calls the main Worker's
+`DebugSessions.inbox` over its service binding for a single-use ticket, then
+downloads into `$TMPDIR/lianki-inbox/<id>/` and checks the sha256; `inbox
+done <id>` marks it processed. `inbox rm` only says that deleting needs his
+own session. Chat lines from `eval.ts chat` carry `"attachments"`.
 
 ## The state tree, live
 

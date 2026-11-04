@@ -11,9 +11,123 @@ import {
   devServerUp,
   devSwitchMode,
   postToDevServer,
+  previewEntryUrl,
+  safePreviewPath,
+  signInReturnPath,
+  signInUrlForPreview,
   switchToDevServer,
 } from "../lib/dev-server-switch";
 import { devSwitchFor } from "../lib/dev-server-switch.server";
+
+describe("signed out on the entry: sign in, then back to it", () => {
+  test("only the preview entry on lianki.com comes back, rebuilt from its parts", () => {
+    expect(signInReturnPath("/dev/preview?to=%2Fen%2Fread")).toBe("/dev/preview?to=%2Fen%2Fread");
+    expect(signInReturnPath("/dev/preview")).toBe("/dev/preview?to=%2F");
+    expect(signInReturnPath("/dev/preview?to=%2F%2Fevil.example")).toBe("/dev/preview?to=%2F");
+    expect(signInReturnPath("/dev/preview?to=%2Fx&evil=1")).toBe("/dev/preview?to=%2Fx");
+    expect(signInReturnPath("/dev/preview?to=%2Fx%3Ftoken%3Dlkdev_abc")).toBe(
+      "/dev/preview?to=%2Fx",
+    );
+  });
+
+  test("everything else is null: sign-in lands on /home as before (no open redirect)", () => {
+    for (const bad of [
+      null,
+      undefined,
+      "",
+      "/home",
+      "/en/read",
+      "/dev/tokens",
+      "/dev/preview/x",
+      "https://evil.example/dev/preview",
+      "https://lianki.com/dev/preview",
+      "//evil.example/dev/preview",
+      "/\\evil.example/dev/preview",
+      "/\t/evil.example/dev/preview",
+      "/dev/preview\n",
+      "javascript:alert(1)",
+      "dev/preview",
+      `/dev/preview?to=${"a".repeat(2001)}`,
+    ])
+      expect([bad, signInReturnPath(bad)]).toEqual([bad, null]);
+  });
+
+  test("the entry's sign-in URL carries the return path, never a token", () => {
+    expect(signInUrlForPreview("/en/read")).toBe(
+      "/sign-in?next=%2Fdev%2Fpreview%3Fto%3D%252Fen%252Fread",
+    );
+    const u = new URL(signInUrlForPreview("/en/read"), "https://lianki.com");
+    expect(signInReturnPath(u.searchParams.get("next"))).toBe("/dev/preview?to=%2Fen%2Fread");
+    expect(decodeURIComponent(signInUrlForPreview(`/x?token=lkdev_${"g".repeat(43)}`))).not.toMatch(
+      /lkdev_|token=/,
+    );
+  });
+
+  test("sign-in reads the return path only through the helper", () => {
+    const src = readFileSync("app/(app)/sign-in/SignInClient.tsx", "utf8");
+    expect(src).toContain('signInReturnPath(raw) ?? "/home"');
+    expect(src).not.toMatch(/callbackURL:\s*"\/home"/);
+  });
+});
+
+describe("the entry from the gate page: `to` is a relative path only", () => {
+  test("paths and queries on the preview origin are kept", () => {
+    expect(safePreviewPath("/en/read")).toBe("/en/read");
+    expect(safePreviewPath("/words?list=all")).toBe("/words?list=all");
+    expect(safePreviewPath("/")).toBe("/");
+    expect(safePreviewPath("/en/read#x")).toBe("/en/read");
+  });
+
+  test("anything that could leave the site is refused (no open redirect)", () => {
+    for (const bad of [
+      "",
+      null,
+      undefined,
+      "https://evil.example/",
+      "//evil.example/",
+      "/\\evil.example",
+      "\\\\evil.example",
+      "/\t/evil.example",
+      "/\n/evil.example",
+      "/\r/evil.example",
+      "/\u0000x",
+      "javascript:alert(1)",
+      "en/read",
+      "https://preview.lianki.com/en/read",
+      "/_lk/dev-auth",
+      "/_lk/sign-out",
+      `/${"a".repeat(2001)}`,
+    ])
+      expect([bad, safePreviewPath(bad)]).toEqual([bad, null]);
+  });
+
+  test("a token never travels in it: such a query is dropped, such a path refused", () => {
+    expect(safePreviewPath(`/en/read?token=lkdev_${"g".repeat(43)}`)).toBe("/en/read");
+    expect(safePreviewPath("/en/read?handoff=x")).toBe("/en/read");
+    expect(safePreviewPath("/en/read?a=1&token=x")).toBe("/en/read");
+    expect(safePreviewPath(`/en/read?x=lkhand_${"h".repeat(43)}`)).toBe("/en/read");
+    expect(safePreviewPath(`/en/read?x=%6Ckdev_abc`)).toBe("/en/read");
+    expect(safePreviewPath(`/lkdev_${"g".repeat(43)}`)).toBeNull();
+  });
+
+  test("the entry URL is lianki.com's owner route, with `to` encoded", () => {
+    expect(previewEntryUrl("/en/read?list=all")).toBe(
+      "https://lianki.com/dev/preview?to=%2Fen%2Fread%3Flist%3Dall",
+    );
+    expect(previewEntryUrl("//evil.example")).toBe("https://lianki.com/dev/preview?to=%2F");
+    expect(previewEntryUrl(`/x?token=lkdev_${"g".repeat(43)}`)).not.toContain("lkdev_");
+  });
+
+  test("the route is owner-only and lands via the switch, never a token in a URL", () => {
+    const page = readFileSync("app/(app)/dev/preview/page.tsx", "utf8");
+    expect(page).toContain("notFound()");
+    expect(page).toContain("isOwner(");
+    expect(page).toContain("safePreviewPath(");
+    const client = readFileSync("app/(app)/dev/preview/PreviewEntryClient.tsx", "utf8");
+    expect(client).toContain("switchToDevServer(");
+    expect(client).not.toMatch(/location\.(href|assign|replace)/);
+  });
+});
 
 const OWNERS = { OWNER_EMAILS: "owner@example.com" };
 const labels = () => ({ name: "n", off: "f", checking: "c" });

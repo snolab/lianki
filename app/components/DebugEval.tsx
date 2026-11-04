@@ -23,6 +23,8 @@ import {
   type ChatStrings,
   type VoiceTiming,
   cleanContext,
+  cleanAttachments,
+  type AttachmentRef,
   cleanTiming,
 } from "@lianki/debug-chat/wire";
 import { voiceLatency } from "@lianki/debug-chat/latency";
@@ -31,6 +33,8 @@ import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { voice } from "@lianki/debug-chat/voice";
+import { isDesktop, keepHub, onTakeover, voiceBusy } from "@lianki/debug-chat/voice-bg";
+import { useVoiceTitleHint } from "./useVoiceTitleHint";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 import {
@@ -50,6 +54,7 @@ import { frameContext } from "@/lib/frame-context";
 import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
 import { useLiveView, widgetSource } from "@/lib/live-view/client";
+import { inboxFiles, linkInboxLine } from "@/lib/inbox/client";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
@@ -99,6 +104,8 @@ const pageLabel = () => {
 /** The chat's user-facing strings, localized by the root layout (learning-partner.content.ts). */
 export type PartnerStrings = ChatStrings & {
   unavailable: string;
+  /** The inbox's one-tap import of an Anki package (.apkg) as a deck (lib/inbox/client.ts). */
+  importDeck: string;
   /** The AI replies on a friend's thread (docs/partner-ai.md): empty-log hint, status, two warnings. */
   aiHint: string;
   aiStatus: string;
@@ -164,6 +171,8 @@ export function DebugEval({
   const router = useRouter();
   // Hot islands (docs/dev-hot-islands.md): on with the code-run grant below, or live view.
   useIslands();
+  // The tab title says when Lianki's voice runs on in the background (voice-bg.ts).
+  useVoiceTitleHint();
   /** Live view (docs/live-view.md): the signed pointer, verified on this page. */
   const liveState = useLiveView();
   /** This device's tabs agree on one to read replies aloud (BroadcastChannel). */
@@ -175,6 +184,17 @@ export function DebugEval({
         crypto.randomUUID(),
         new BroadcastChannel(TABS_CHANNEL),
         () => document.visibilityState === "visible" && document.hasFocus(),
+        Date.now,
+        // Another tab took the voice over (voice-bg.ts): only one tab listens and reads.
+        (why) => {
+          const looking = document.visibilityState === "visible" && document.hasFocus();
+          const d = onTakeover(why, { mic: voice().state().mic, looking });
+          if (d.micOff)
+            void (globalThis as { __lkMic?: { off?: () => Promise<void> } }).__lkMic
+              ?.off?.()
+              .catch(() => {});
+          if (d.stopReading) voice().stop();
+        },
       );
       tabsRef.current.mic(voice().state().mic);
     };
@@ -480,8 +500,16 @@ export function DebugEval({
     };
     // Never inside another site's frame: no cookie socket, no pairing or Allow UI
     // a parent could clickjack (lib/frame-context.ts). The hub refuses too.
+    // A computer keeps it while the voice runs in a background tab (voice-bg.ts):
+    // his spoken lines still go out, the replies still come in and are read.
     const wanted = () =>
-      document.visibilityState === "visible" && chatOn() && frameContext() !== "foreign";
+      keepHub({
+        visible: document.visibilityState === "visible",
+        desktop: isDesktop(),
+        busy: voiceBusy(voice().state()),
+      }) &&
+      chatOn() &&
+      frameContext() !== "foreign";
     /**
      * Tell the hub how this window is doing, while the socket is still open:
      * hidden (screen off, app in the background) keeps a recording session
@@ -509,12 +537,21 @@ export function DebugEval({
     };
 
     update();
+    // The voice starting or stopping in a hidden tab: keep the socket or let it idle out.
+    let busy = voiceBusy(voice().state());
+    const unVoice = voice().subscribe((st) => {
+      const b = voiceBusy(st);
+      if (b === busy) return;
+      busy = b;
+      if (document.visibilityState !== "visible") update();
+    });
     window.addEventListener("pagehide", leaving);
     document.addEventListener("visibilitychange", update);
     window.addEventListener(DEBUG_EVENT, update);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("pagehide", leaving);
+      unVoice();
       unClips();
       document.removeEventListener("visibilitychange", update);
       window.removeEventListener(DEBUG_EVENT, update);
@@ -587,6 +624,7 @@ export function DebugEval({
       timing?: VoiceTiming;
       speakerProof?: string[];
       context?: ChatContext;
+      attachments?: AttachmentRef[];
     },
   ) => {
     const sock = sockRef.current;
@@ -607,6 +645,9 @@ export function DebugEval({
       const wakeReason = wake ? mic?.wakeReason : undefined;
       // The page selection attached with the + menu (bounded as the hub bounds it).
       const context = cleanContext(opts?.context);
+      // Files from the owner's inbox (lib/inbox/client.ts): refs only, the bytes are in R2.
+      const attachments =
+        owner && friend === null ? cleanAttachments(opts?.attachments) : undefined;
       // Where a voice line was spoken (path, title, screen text): its polish draws on it.
       const scene = opts?.source === "stt" ? pageScene() : undefined;
       sock.send(
@@ -621,9 +662,15 @@ export function DebugEval({
           ...(speakerProof?.length ? { speakerProof } : {}),
           ...(wakeReason ? { wakeReason } : {}),
           ...(context ? { context } : {}),
+          ...(attachments ? { attachments } : {}),
           ...(scene ? { scene } : {}),
         }),
       );
+      if (attachments)
+        linkInboxLine(
+          attachments.map((a) => a.id),
+          id,
+        );
       // Its reply is timed against it (latency.ts); main-thread lines only.
       if (timing && !to) voiceLatency().sent(id, text, timing);
       return true;
@@ -668,6 +715,12 @@ export function DebugEval({
           }),
     [],
   );
+  // The chat inbox's host side (lib/inbox/client.ts): an Anki package imports in one tap.
+  const importDeck = strings?.importDeck ?? "Import as a deck";
+  const ownerFiles = useMemo(
+    () => inboxFiles({ importDeck, go: (path) => router.push(path) }),
+    [importDeck, router],
+  );
   if (!live && !toast && !chat) return null;
   return (
     <>
@@ -698,9 +751,12 @@ export function DebugEval({
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
+          owner={owner && !isFriend}
           strings={friendStrings}
           treeSource={owner && !isFriend ? ownerTree : undefined}
           treeRepo="snolab/lianki"
+          // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
+          files={owner && !isFriend ? ownerFiles : undefined}
           agentAvatar={AGENT_AVATAR}
           viewer={viewer}
         />

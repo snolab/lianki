@@ -19,7 +19,14 @@
  * - Only Host: <publicHost> is served. Tailscale identity headers are never
  *   believed here (they are stripped), so the tunnel can never pass for his
  *   tailnet device.
+ * - A browser opening a page here without a session (a top-level navigation)
+ *   gets the same 503 as a small page with one link: the owner-only entry on
+ *   lianki.com (lib/dev-server-switch.ts, previewEntryUrl), which runs the
+ *   profile menu's switch and comes back to the same path. Assets, APIs and
+ *   sockets keep the plain 503.
  */
+
+import { previewEntryUrl } from "../../lib/dev-server-switch";
 
 export const AUTH_PATH = "/_lk/dev-auth";
 export const UP_PATH = "/_lk/up";
@@ -192,6 +199,42 @@ export function handshakeHtml(): string {
   if (t) { document.querySelector("[name=token]").value = t; document.getElementById("f").submit(); }
 })();
 </script>`;
+}
+
+/**
+ * A top-level browser navigation (the address bar, a tapped link): GET,
+ * Sec-Fetch-Mode: navigate, Sec-Fetch-Dest: document (when sent), and an
+ * Accept that asks for HTML. Assets, fetches, frames and sockets are not.
+ */
+export function isNavigation(req: { method: string; headers: Headers }): boolean {
+  if (req.method !== "GET") return false;
+  if ((one(req.headers["sec-fetch-mode"]) ?? "").trim().toLowerCase() !== "navigate") return false;
+  const dest = (one(req.headers["sec-fetch-dest"]) ?? "").trim().toLowerCase();
+  if (dest && dest !== "document") return false;
+  return /(^|,)\s*text\/html\s*(;|,|$)/i.test(one(req.headers.accept) ?? "");
+}
+
+const PAGE_CSS =
+  ":root{color-scheme:light dark;--bg:oklch(0.98 0.005 250);--fg:oklch(0.25 0.02 250);--mute:oklch(0.5 0.02 250);--btn:oklch(0.55 0.18 255);--btn-fg:oklch(0.99 0 0)}" +
+  "@media (prefers-color-scheme:dark){:root{--bg:oklch(0.18 0.01 250);--fg:oklch(0.93 0.01 250);--mute:oklch(0.7 0.02 250);--btn:oklch(0.65 0.16 255);--btn-fg:oklch(0.15 0.01 250)}}" +
+  "body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,sans-serif}" +
+  "main{max-width:24rem;padding:2rem 1rem;text-align:center}h1{font-size:1.25rem;margin:0 0 .5rem}p{margin:.25rem 0;color:var(--mute)}" +
+  "a{display:inline-block;margin-top:1.5rem;padding:.75rem 1.25rem;border-radius:999px;background:var(--btn);color:var(--btn-fg);text-decoration:none;font-weight:600}";
+const PAGE_CSS_HASH = new Bun.CryptoHasher("sha256").update(PAGE_CSS).digest("base64");
+/** No script, no external anything: only the one inline style, by hash. */
+export const CLOSED_PAGE_CSP = `default-src 'none'; style-src 'sha256-${PAGE_CSS_HASH}'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'`;
+
+const escAttr = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** The 503 page for a navigation without a session: the way in is lianki.com, for the owner. */
+export function closedPageHtml(pathAndQuery: string): string {
+  const href = escAttr(previewEntryUrl(pathAndQuery));
+  return `<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex"><title>Lianki 预览版</title><style>${PAGE_CSS}</style>
+<main><h1>Lianki 预览版 · Preview build</h1>
+<p>这是开发者自用的预览版，需要从 lianki.com 进入。</p>
+<p lang="en">This is the owner's preview build. Enter it from lianki.com.</p>
+<a href="${href}" rel="noreferrer">从 lianki.com 进入预览版 / Enter via lianki.com</a></main>`;
 }
 
 /** Failure counting for the handshake and bearer checks, per IP. */
@@ -531,6 +574,17 @@ export function createGate(d: GateDeps) {
     log(`gate: 503 (${why})`); // the reason only, never a token
     return respond(503, "503 — Lianki dev server: a dev access token is required.\n");
   };
+  /** The same 503; a page with the way in (via lianki.com) for a browser navigation. */
+  const closedFor = (req: GateRequest, why: string) => {
+    if (!isNavigation(req)) return closed(why);
+    log(`gate: 503 page (${why})`);
+    const u = new URL(req.url, "http://x");
+    return respond(503, closedPageHtml(`${u.pathname}${u.search}`), {
+      "content-type": "text/html; charset=utf-8",
+      "content-security-policy": CLOSED_PAGE_CSP,
+      "x-frame-options": "DENY",
+    });
+  };
 
   async function stillActive(tid: string): Promise<boolean> {
     const at = confirmed.get(tid);
@@ -643,8 +697,8 @@ export function createGate(d: GateDeps) {
         readCookie(one(req.headers.cookie), SESSION_COOKIE),
         now(),
       );
-      if (!s) return closed("no session");
-      if (!(await stillActive(s.tid))) return closed("token revoked or expired");
+      if (!s) return closedFor(req, "no session");
+      if (!(await stillActive(s.tid))) return closedFor(req, "token revoked or expired");
       return { kind: "forward", tokenId: s.tid, untilMs: s.exp };
     },
   };

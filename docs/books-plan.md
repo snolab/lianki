@@ -107,6 +107,19 @@ numerals; Hindi loans).
 - **Your own copy:** private to you, never shared or listed, deletable,
   DRM-free only (#448 refuses DRM). Needs a ToS line and a takedown contact
   before it opens beyond the owner.
+- **A Google Doc** (owner, 2026-11-04): paste a docs.google.com/document
+  link on /read (behind the reader-v2 gate). The server reduces it to the
+  doc id and fetches only Google's HTML export for it (`lib/gdoc/`; redirects
+  only to Google's export hosts, inline images dropped while streaming, 8 MB
+  of markup, 20 imports per 10 minutes per user). Works for docs shared
+  "Anyone with the link"; private docs answer "not shared" until a Google
+  connection exists (step 2: OAuth + /connections, after GCP setup).
+  Headings stay headings, chapters start at the top heading level used more
+  than once, bold/italic/super/subscript come from the export's class styles.
+  `read_materials.source_key = "gdoc:<id>"`: importing the same doc again
+  updates that book (same id); when its text changed, the sentence cards of
+  unchanged lines are copied to the new sentence ids (`carrySentenceCards`),
+  the old rows stay.
 - _Le Petit Prince_: protected in the US until 2039 and in France until about
   2032, so it can never be in the shared catalogue; own copy only. Its
   drawings and name are trademarks.
@@ -301,8 +314,17 @@ selecting DOM text.
   screen away from the finger, so the next click lands on the book. Links
   name the book by its content hash; `/read/<hash>` redirects to the
   signed-in user's own copy of that text or answers 404
-  (`lib/read/book-link.ts`). Gloss is a Wiktionary search and translate a
-  machine translation, both in a new tab; "New to me" on a word logs a
+  (`lib/read/book-link.ts`). Gloss is a Wiktionary search in a new tab.
+  **Translate is ours** (owner, 2026-11-04 14:58 JST: "dont [go to google
+  translate], lets use ai credits and our api"): `POST /api/read/[id]/translate`
+  (`lib/read/translate.ts`, `translate-server.ts`; the reader-v2 gate)
+  translates the selected word … paragraph or hand-made range into the UI
+  locale with the Learning Partner's model on Workers AI, and the card shows it
+  under the text. Cached in D1 `read_translation` by SHA-256 of target + text
+  (the text itself is not stored), so the same text and target are paid once;
+  60 model calls per user per 10 min (a cost guard); the real cost goes to
+  `chargeAi` (`gloss-server.ts`), the one charge seam until the credits
+  redesign. "New to me" on a word logs a
   `select` exposure (no list API yet: extracts become cards later). QA:
   `scripts/qa/qa-read-select.mjs`.
 - **Each level says its unit** (owner, 2026-11-03 22:12 / 22:13 JST: "点击选择
@@ -411,7 +433,7 @@ above the pill). Off for everyone but the owner until the flag is on.
   word: his card, or a new word of the book's list, with the #507 gloss),
   its reading, status (new / due since / not due yet), the meaning on
   Space or "show the meaning", the book's sentence, 🔊. Grades: 1–4 and
-  L K J H as /words (`KEY_RATING`), through /words' own pending queue
+  L K J H as /words (`keyRating`, lib/words/swipe.ts), through /words' own pending queue
   (`queueWordReview`); a new word's entry joins the book's list as in the
   paragraph review. After a grade: the next word of the same kind, then of
   the other. `Z` takes the last grade back and returns to that word. `Esc`

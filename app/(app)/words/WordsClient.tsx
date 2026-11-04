@@ -139,9 +139,11 @@ import {
   SWIPE_LEVEL,
   SWIPE_SNAP,
   SWIPE_SPRING,
+  keyRating,
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
 import { NATIVE_PARAMS, showReveal, useNativeSlip } from "@/lib/words/native-slip-gesture";
+import { onPageLeave } from "@/lib/page-leave";
 import {
   SWIPE_CORE_IFACE,
   SwipeFeelProvider,
@@ -437,21 +439,6 @@ type Item = Entry & {
 /** Identity of a card across lists: the same term may be in two of them. */
 const keyOf = (it: { listId: string; term: string }) => `${it.listId}\u0000${it.term}`;
 
-/**
- * 1–4 for the left hand; the right hand mirrors it, so the outer fingers
- * agree: L K J H = Again Hard Good Easy (1 and L are both the outer edge's
- * Again). W/S move, like the arrows.
- */
-export const KEY_RATING: Record<string, Rating> = {
-  KeyL: 1,
-  KeyK: 2,
-  KeyJ: 3,
-  KeyH: 4,
-  Digit1: 1,
-  Digit2: 2,
-  Digit3: 3,
-  Digit4: 4,
-};
 /**
  * A graded row's ink (--grade, app/globals.css): the slip itself keeps its
  * colour; only a small seal at its right end and the due time take the grade.
@@ -3953,7 +3940,7 @@ export function Study({
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.code === "KeyV") speech.toggle();
       else if (e.code === "KeyE") setShowAll((v) => !v);
-      else if (KEY_RATING[e.code] && !e.shiftKey) keyGrade(row, KEY_RATING[e.code]);
+      else if (keyRating(e)) keyGrade(row, keyRating(e)!);
       else return;
       e.preventDefault();
     };
@@ -4106,18 +4093,34 @@ export function Study({
   }, [listEl, listReady, measured, pad, bar.top, shownAt, anchorAt]);
   /** Remember the word at the top once the reader has moved the list (not the opening's own scroll). */
   const anchorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** The anchor write still waiting for the scroll to stop, if any. */
+  const anchorPending = useRef<(() => void) | null>(null);
   const keepAnchor = useCallback(
     (top: number) => {
       if (!opened.current.moved) return;
       clearTimeout(anchorTimer.current);
-      anchorTimer.current = setTimeout(() => {
+      const write = () => {
+        clearTimeout(anchorTimer.current);
+        anchorPending.current = null;
         const it = queue[topIndex(top, { pad, rowH: ROW_H, barTop: barRef.current.top })];
         setAnchor(ui, studyKey, it ? keyOf(it) : null);
-      }, 200);
+      };
+      anchorPending.current = write;
+      anchorTimer.current = setTimeout(write, 200);
     },
     [queue, pad, ui, studyKey, ROW_H],
   );
-  useEffect(() => () => clearTimeout(anchorTimer.current), []);
+  // A Back (Android's edge swipe takes one with no warning), an app switch or
+  // leaving the list writes the waiting anchor now, so coming back opens at
+  // the same word (lib/page-leave.ts, docs/design-principles.md).
+  useEffect(() => {
+    const now = () => anchorPending.current?.();
+    const off = onPageLeave(now);
+    return () => {
+      off();
+      now();
+    };
+  }, []);
   // A text size change resizes the rows (lib/text-size.ts): the word at the
   // top stays at the top.
   const rowHWas = useRef(ROW_H);

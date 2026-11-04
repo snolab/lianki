@@ -18,8 +18,11 @@
  *   staying silent.
  * - Mic on: every reply is read, whatever the speaker toggle or focus says
  *   (the toggle itself is never changed, so it is "restored" when the mic
- *   stops). Mic off: a reply is read only with the toggle on and the chat
- *   input focused in a visible tab (the focus rule).
+ *   stops). Mic off: a reply is read with the toggle on, and either the mic
+ *   has been used in this tab (sticky, `voiced`: replies to typed lines are
+ *   read too, owner 2026-11-04) or the chat input is focused in a visible
+ *   tab (the focus rule). Sticky means no time window: it lasts until he
+ *   mutes (the toggle off clears it, `unvoice`); his mute always wins.
  * - Echo (`lk:voice-aec`, default on): the mic stays open while the agent
  *   speaks — echo cancellation, then the text guard (echo.ts) drops what
  *   leaks through. The user speaking over the agent ducks it to DUCK_LEVEL;
@@ -44,6 +47,7 @@ import { micAec } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
 import { getKey } from "./storage-keys";
+import { hideStops, isDesktop } from "./voice-bg";
 import { reportPageError } from "./page-errors";
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
@@ -76,6 +80,8 @@ export const SPEECH_START_MS = 8_000;
 export const CHUNK_MAX = 200;
 /** localStorage: the speaker toggle ("0" = replies silent). */
 export const SPEAK_KEY = "lk:debug-chat-speak";
+/** sessionStorage (this tab): "1" once the mic was used here, until he mutes (sticky read-aloud). */
+export const VOICED_KEY = "lk:agent:voiced";
 /** A reply with the same text within this long is a re-delivery, not a new one. */
 export const REPLY_DEDUPE_MS = 10 * 60_000;
 /** globalThis key of the shared session. */
@@ -221,6 +227,8 @@ export type CloudOut = {
 export type VoiceState = {
   /** The mic is on (listening, loading or capturing). */
   mic: boolean;
+  /** The mic was used in this tab: replies are read with the toggle on, focused or not (sticky). */
+  voiced?: boolean;
   /** An utterance is playing, or just ended (the tail). */
   speaking: boolean;
   /** The mic holds its capture: speaking, with echo cancellation off (lk:voice-aec = "0"). */
@@ -259,6 +267,8 @@ export function createVoice(d: {
   enabled: () => boolean;
   /** The focus rule: this tab is visible and the chat input has focus. */
   here: () => boolean;
+  /** Where "the mic was used here" is kept (sessionStorage in the page; memory if absent). */
+  voiced?: { get(): boolean; set(on: boolean): void };
   /** The cloud output, for `mode() === "cloud"`, and for a language speechSynthesis has no voice for. */
   cloud?: () => CloudOut | null;
   /** speechSynthesis has a voice for `lang` (absent: assume it has). */
@@ -283,6 +293,11 @@ export function createVoice(d: {
   const aec = () => d.aec?.() ?? true;
   let log = d.log ?? (() => {});
   let mic = false;
+  let voicedMem = false;
+  const voiced = d.voiced ?? {
+    get: () => voicedMem,
+    set: (on: boolean) => void (voicedMem = on),
+  };
   let speaking = false;
   const queue: Sentence[] = [];
   /** Replies queued lately, so a re-delivered one is not read twice. */
@@ -306,6 +321,7 @@ export function createVoice(d: {
 
   const state = (): VoiceState => ({
     mic,
+    voiced: voiced.get(),
     speaking,
     hold: speaking && !aec(),
     ducked: !!duck,
@@ -317,7 +333,8 @@ export function createVoice(d: {
     const s = state();
     for (const f of subs) f(s);
   };
-  const focusRule = () => d.enabled() && d.here();
+  /** Mic off: the toggle on, and the mic used here (sticky) or the focus rule. */
+  const focusRule = () => d.enabled() && (voiced.get() || d.here());
   /** Nothing on this device can read `lang`: no speechSynthesis, or no voice for it. */
   const noVoice = (lang: string) => !d.synth() || (d.hasVoice ? !d.hasVoice(lang) : false);
   /**
@@ -571,7 +588,7 @@ export function createVoice(d: {
     /** The output in use: "speech" or "cloud". */
     mode,
     aec,
-    /** Whether a reply arriving now is read: always with the mic on, else by the focus rule. */
+    /** Whether a reply arriving now is read: always with the mic on, else by the toggle and (mic used here, or focus). */
     shouldSpeak: () => mic || focusRule(),
     /** The speaker toggle as it applies now (forced on while the mic is on). */
     readAloud: () => mic || d.enabled(),
@@ -579,6 +596,8 @@ export function createVoice(d: {
     setMic(on: boolean) {
       if (mic === on) return;
       mic = on;
+      // Using the mic turns spoken replies on in this tab until he mutes (sticky).
+      if (on && !voiced.get()) voiced.set(true);
       if (!on && !focusRule()) return api.stop();
       emit();
     },
@@ -691,6 +710,14 @@ export function createVoice(d: {
      */
     echoDropped() {
       if (pauses.size === 1 && pauses.has("speech")) resume();
+    },
+    /** The mic was used in this tab (sticky read-aloud). */
+    voiced: () => voiced.get(),
+    /** He muted read-aloud: the sticky "mic used here" ends with it (the mic itself is not touched). */
+    unvoice() {
+      if (!voiced.get()) return;
+      voiced.set(false);
+      emit();
     },
     /** Clear the queue and stop reading ("Stop reading", the focus rule). */
     stop() {
@@ -827,7 +854,9 @@ export function gateVoice(v: Voice, why: (m: SpeakMeta) => Silence | null = sile
     if (!g.__lkVoiceHide) {
       g.__lkVoiceHide = true;
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") (g[KEY] as Voice | undefined)?.stop();
+        // A phone stops reading on hide; a computer reads on in the background (voice-bg.ts).
+        if (document.visibilityState === "hidden" && hideStops(isDesktop()))
+          (g[KEY] as Voice | undefined)?.stop();
       });
     }
     if (!g.__lkVoiceShow) {
@@ -850,6 +879,23 @@ export function unheard(v: Voice = voice()): Unheard {
   return s.__unheard ?? (s.__unheard = unheardSet());
 }
 
+/** VOICED_KEY in this tab's sessionStorage, guarded (private mode, sandboxed frames throw). */
+const voicedStore = {
+  get: () => {
+    try {
+      return sessionStorage.getItem(VOICED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  },
+  set: (on: boolean) => {
+    try {
+      if (on) sessionStorage.setItem(VOICED_KEY, "1");
+      else sessionStorage.removeItem(VOICED_KEY);
+    } catch {}
+  },
+};
+
 /** The session, shared by every copy of this module on the page. */
 export function voice(): Voice {
   const g = globalThis as unknown as Record<string, Voice | undefined>;
@@ -859,6 +905,7 @@ export function voice(): Voice {
     synth,
     enabled: speechEnabled,
     here: speakHere,
+    voiced: voicedStore,
     cloud: cloudOut,
     // getVoices() can be empty (some Android Chromes always): the cloud reads those.
     hasVoice: (lang) => {

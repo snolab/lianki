@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { isoDay, longDate } from "@/lib/dates";
 import type { WordsSummary } from "@/lib/read/progress";
 import { BookRing, WordCountText } from "./BookWords";
+import { GdocDriveImport } from "./GdocDriveImport";
+import { gdocUrlOf } from "@/lib/gdoc/url";
 
 export interface ReadMaterial {
   id: string;
@@ -51,7 +53,17 @@ function saveLocalMaterials(materials: ReadMaterial[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(materials));
 }
 
-export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
+export function ReadListClient({
+  isLoggedIn,
+  gdoc = false,
+  drive = false,
+}: {
+  isLoggedIn: boolean;
+  /** Google Docs import shown (the reader-v2 gate, page.tsx). */
+  gdoc?: boolean;
+  /** Private docs through Google Drive offered (connectionsOn, docs/connections.md). */
+  drive?: boolean;
+}) {
   const router = useRouter();
   const [materials, setMaterials] = useState<ReadMaterial[]>([]);
   const [isImporting, setIsImporting] = useState(false);
@@ -64,6 +76,74 @@ export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
   const epubInput = useRef<HTMLInputElement>(null);
   const [epubBusy, setEpubBusy] = useState(false);
   const [epubError, setEpubError] = useState("");
+  const gdocText = useIntlayer("read-gdoc");
+  const [gdocOpen, setGdocOpen] = useState(false);
+  const [gdocUrl, setGdocUrl] = useState("");
+  const [gdocBusy, setGdocBusy] = useState(false);
+  const [gdocError, setGdocError] = useState("");
+  // A doc that is not shared by link: offer Google Drive instead (GdocDriveImport).
+  const [gdocPrivate, setGdocPrivate] = useState(false);
+  const [driveReturned, setDriveReturned] = useState<string | null>(null);
+
+  // Back from Google's consent screen (/read?gdoc=<id>&google=<result>):
+  // reopen the import on that doc with the Drive button, then clean the URL.
+  useEffect(() => {
+    if (!drive || !gdoc) return;
+    const q = new URLSearchParams(window.location.search);
+    const id = q.get("gdoc");
+    if (!id || !/^[A-Za-z0-9_-]{25,128}$/.test(id)) return;
+    setGdocOpen(true);
+    setGdocUrl(gdocUrlOf(id));
+    setGdocPrivate(true);
+    setDriveReturned(q.get("google"));
+    window.history.replaceState(null, "", "/read");
+  }, [drive, gdoc]);
+
+  const gdocErrorText = (code: string | undefined): string =>
+    ({
+      "bad-url": gdocText.errBadUrl.value,
+      "not-shared": gdocText.errNotShared.value,
+      "not-found": gdocText.errNotFound.value,
+      "too-large": gdocText.errTooLarge.value,
+      "too-much-text": gdocText.errTooLarge.value,
+      "no-text": gdocText.errNoText.value,
+      "rate-limited": gdocText.errRateLimited.value,
+    })[code ?? ""] ?? gdocText.errFailed.value;
+
+  // Google Docs: the server fetches the doc's public export by its id
+  // (app/api/read/gdoc); the same doc again updates that book.
+  const handleGdoc = async () => {
+    const url = gdocUrl.trim();
+    if (!url) return;
+    setGdocError("");
+    setGdocPrivate(false);
+    setDriveReturned(null);
+    if (!/^(https?:\/\/)?docs\.google\.com\/document\//i.test(url)) {
+      setGdocError(gdocText.errBadUrl.value);
+      return;
+    }
+    setGdocBusy(true);
+    try {
+      const res = await fetch("/api/read/gdoc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) {
+        const code = ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
+        if (drive && code === "not-shared") setGdocPrivate(true);
+        else setGdocError(gdocErrorText(code));
+        return;
+      }
+      const saved = await res.json();
+      router.push(`/read/${saved.id}`);
+    } catch (err) {
+      console.error("Google Docs import failed:", err);
+      setGdocError(gdocText.errFailed.value);
+    } finally {
+      setGdocBusy(false);
+    }
+  };
 
   // EPUB: unpacked and parsed here in the browser (lib/epub/), so the Worker
   // never inflates an untrusted zip; the server validates and caps the result.
@@ -233,9 +313,83 @@ export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
                 />
               </label>
             )}
+            {isLoggedIn && gdoc && !gdocOpen && (
+              <button
+                type="button"
+                data-testid="read-import-gdoc"
+                onClick={() => setGdocOpen(true)}
+                className="flex-1 py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+              >
+                + {gdocText.importGdoc}
+              </button>
+            )}
           </div>
           {isLoggedIn && (
             <p className="text-xs text-gray-500 dark:text-gray-400">{epubText.note}</p>
+          )}
+          {isLoggedIn && gdoc && gdocOpen && (
+            <form
+              data-testid="read-gdoc-form"
+              className="flex flex-col sm:flex-row gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleGdoc();
+              }}
+            >
+              <input
+                type="url"
+                inputMode="url"
+                autoFocus
+                value={gdocUrl}
+                onChange={(e) => setGdocUrl(e.target.value)}
+                aria-label={gdocText.urlLabel.value}
+                placeholder="https://docs.google.com/document/d/…"
+                disabled={gdocBusy}
+                className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGdocOpen(false);
+                    setGdocUrl("");
+                    setGdocError("");
+                    setGdocPrivate(false);
+                  }}
+                  className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                >
+                  {gdocText.cancel}
+                </button>
+                <button
+                  type="submit"
+                  disabled={gdocBusy || !gdocUrl.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {gdocBusy ? gdocText.importing : gdocText.submit}
+                </button>
+              </div>
+            </form>
+          )}
+          {isLoggedIn && gdoc && gdocOpen && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">{gdocText.note}</p>
+          )}
+          {isLoggedIn && gdoc && drive && gdocOpen && gdocPrivate && (
+            <GdocDriveImport
+              key={`${gdocUrl}|${driveReturned ?? ""}`}
+              url={gdocUrl}
+              returned={driveReturned}
+              errorText={gdocErrorText}
+              onImported={(id) => router.push(`/read/${id}`)}
+            />
+          )}
+          {gdocError && (
+            <p
+              role="alert"
+              data-testid="read-gdoc-error"
+              className="text-sm text-[oklch(0.58_0.2_27)] dark:text-[oklch(0.72_0.16_27)]"
+            >
+              {gdocError}
+            </p>
           )}
           {epubError && (
             <p

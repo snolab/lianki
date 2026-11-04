@@ -93,6 +93,24 @@ stays paused, and every request to `wrangler dev` hangs after "Ready on".
 front under Bun. When wrangler is bumped, regenerate it with
 `bun patch miniflare@<ver>`, or drop it once upstream handles Bun.
 
+### Screenshots on the /home Explore cards
+
+Each card under Explore on /home has a faint screenshot of its feature
+behind it (`public/home-features/<key>-<light|dark>.webp`, list in
+`lib/home-features.ts`). Refresh them when one of those pages changes look:
+
+```bash
+bun run qa:all -- --keep                          # or bun run dev; note the port
+QA_BASE=http://localhost:<port> bun run shots:home            # all, light + dark
+QA_BASE=http://localhost:<port> bun run shots:home -- read    # just some
+```
+
+`scripts/qa/home-feature-shots.mjs` signs up a throwaway
+`qa+shots…@lianki.test` account with demo content only (Hiragana, a
+public-domain fable) — never anyone's own data — and shoots an iPhone-size,
+muted Chromium below the top bar, ~5–15 KB WebP each. It refuses a
+`lianki.com` base.
+
 ### Long-session soaks (leaks, slowdowns)
 
 ```bash
