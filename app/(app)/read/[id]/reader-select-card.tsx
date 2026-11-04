@@ -4,8 +4,8 @@
 // selection"): ONE glass layer for the selected unit, nothing framed inside
 // it (design-principles.md, minimal nesting) — its kind and a preview (title
 // and size for a chapter or the book), how well its words are known, the
-// actions that fit it, and a link button (our own inline SVG) that copies
-// the unit's deep link. A word or phrase that is one of his /words cards
+// actions that fit it, and an icon group (read aloud, copy the text,
+// copy the unit's deep link). A word or phrase that is one of his /words cards
 // shows the card's meaning at once (lib/read/select-meaning.ts); a sentence,
 // a paragraph or a hand-made range shows its translation by itself, unit by
 // unit as each lands (lib/read/select-translate.ts); Translate is a tap for
@@ -17,6 +17,7 @@ import { useIntlayer, useLocale } from "next-intlayer";
 import type { Fam } from "@/lib/read/reader-model";
 import type { FamCounts, Unit } from "@/lib/read/reader-select";
 import { fill } from "@/lib/nav/nav-core";
+import { Icon, type IconName } from "@/app/components/icons";
 
 export interface UnitView {
   unit: Unit;
@@ -37,7 +38,6 @@ export interface UnitView {
 export interface CardActions {
   copyLink: () => void;
   copyText?: () => void;
-  lookUp?: () => void;
   translate?: () => void;
   readFrom?: () => void;
   /** Say exactly the selected text (a hand-made selection). */
@@ -96,22 +96,39 @@ const SEG = {
   unrecognised: "bg-[oklch(0.6_0.13_45/0.55)] dark:bg-[oklch(0.74_0.12_45/0.55)]",
 } as const;
 
-/** The link mark: two chain links, stroked in the text colour. */
-export function LinkIcon({ className = "h-5 w-5" }: { className?: string }) {
+/** One icon action of the card's top row; its label is its name and its tooltip. */
+interface IconAction {
+  action: string;
+  icon: IconName;
+  label: string;
+  run: () => void;
+  testId?: string;
+}
+
+/**
+ * The card's icon group (owner, 2026-11-05 02:10 JST): read aloud, copy the
+ * text, copy the link — icons only (Phosphor, app/components/icons.tsx), in
+ * currentColor, each named by its label for screen readers and as a tooltip.
+ * 44px tap targets on touch, compact under a fine pointer.
+ */
+export function CardIcons({ items }: { items: IconAction[] }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className={className}
-    >
-      <path d="M10 13.5a4.5 4.5 0 0 0 6.36 0l3.18-3.18a4.5 4.5 0 0 0-6.36-6.36l-1.4 1.4" />
-      <path d="M14 10.5a4.5 4.5 0 0 0-6.36 0l-3.18 3.18a4.5 4.5 0 0 0 6.36 6.36l1.4-1.4" />
-    </svg>
+    <div className="flex items-center" data-testid="read-select-icons">
+      {items.map((x) => (
+        <button
+          key={x.action}
+          type="button"
+          onClick={x.run}
+          aria-label={x.label}
+          title={x.label}
+          data-action={x.action}
+          data-testid={x.testId}
+          className="grid h-11 w-11 place-items-center rounded-full text-xl opacity-80 hover:bg-[oklch(0.5_0_0/0.1)] hover:opacity-100 focus-visible:bg-[oklch(0.5_0_0/0.1)] pointer-fine:h-8 pointer-fine:w-8 pointer-fine:text-lg"
+        >
+          <Icon name={x.icon} />
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -195,16 +212,37 @@ export function SelectCard({
           </span>
         )}
         <span className="flex-1" />
-        <button
-          type="button"
-          onClick={actions.copyLink}
-          aria-label={t.copyLink.value}
-          title={t.copyLink.value}
-          data-testid="read-select-link"
-          className="grid h-10 w-10 place-items-center rounded-full hover:bg-[oklch(0.5_0_0/0.1)]"
-        >
-          <LinkIcon />
-        </button>
+        <CardIcons
+          items={[
+            ...(actions.readAloud
+              ? [
+                  {
+                    action: "read-aloud",
+                    icon: "speakerHigh" as const,
+                    label: t.readAloud.value,
+                    run: actions.readAloud,
+                  },
+                ]
+              : []),
+            ...(actions.copyText
+              ? [
+                  {
+                    action: "copy-text",
+                    icon: "copy" as const,
+                    label: t.copyText.value,
+                    run: actions.copyText,
+                  },
+                ]
+              : []),
+            {
+              action: "copy-link",
+              icon: "link",
+              label: t.copyLink.value,
+              run: actions.copyLink,
+              testId: "read-select-link",
+            },
+          ]}
+        />
         <button
           type="button"
           onClick={onClose}
@@ -340,21 +378,6 @@ export function SelectCard({
             {fill(tr.makeCards.value, { n: nf.format(actions.makeCards.n) })}
           </button>
         )}
-        {actions.readAloud && (
-          <button
-            type="button"
-            className={btn}
-            onClick={actions.readAloud}
-            data-action="read-aloud"
-          >
-            {t.readAloud}
-          </button>
-        )}
-        {actions.lookUp && (
-          <button type="button" className={btn} onClick={actions.lookUp} data-action="lookup">
-            {t.lookUp}
-          </button>
-        )}
         {actions.translate && (
           <button type="button" className={btn} onClick={actions.translate} data-action="translate">
             {t.translate}
@@ -378,11 +401,6 @@ export function SelectCard({
         {actions.readFrom && (
           <button type="button" className={btn} onClick={actions.readFrom} data-action="read-from">
             {t.readFromHere}
-          </button>
-        )}
-        {actions.copyText && (
-          <button type="button" className={btn} onClick={actions.copyText} data-action="copy-text">
-            {t.copyText}
           </button>
         )}
         {status && (

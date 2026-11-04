@@ -95,6 +95,7 @@ import {
   type UnitView,
 } from "./reader-select-card";
 import { useSelectTranslate } from "./use-select-translate";
+import { useSelectGloss } from "./use-select-gloss";
 import { useReaderSelect } from "./use-reader-select";
 import { ReaderBack } from "./reader-back";
 import {
@@ -1005,6 +1006,20 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     };
     return { w, card, ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null };
   }, [sel.unit, para, heads, meanIdx, normLang, formTags]);
+  // A word that is no card of his: its gloss by itself (use-select-gloss.ts).
+  const glossWord = useMemo(() => {
+    const u = sel.unit;
+    if (u?.kind !== "word" || selMeaning || !signedIn || !material.readerV2) return null;
+    const ss = para(u.line).sentences;
+    const w = tokenWord(ss, u.t);
+    if (!w) return null;
+    return {
+      w,
+      text: tokenText(ss, u.t, u.t),
+      ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null,
+    };
+  }, [sel.unit, selMeaning, signedIn, material.readerV2, para]);
+  const selGloss = useSelectGloss(id, glossWord);
   // A sentence, a paragraph or a range: its whole units translated by
   // themselves (lib/read/select-translate.ts). Not when it is a deck card.
   const plan = useMemo(
@@ -1213,9 +1228,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const actions = useMemo<CardActions | null>(() => {
     const u = view?.unit;
     if (!view || !u) return null;
-    const ui = String(locale).split("-")[0];
     const from = lang && lang !== "und" ? lang : undefined;
-    const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
     const text =
       u.kind === "chapter"
         ? (() => {
@@ -1242,11 +1255,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       },
     };
     if (text && u.kind !== "book") a.copyText = () => void copy(text, ts.textCopied.value);
-    if (view.text && (u.kind === "word" || u.kind === "phrase"))
-      a.lookUp = () =>
-        open(
-          `https://${ui}.wiktionary.org/w/index.php?search=${encodeURIComponent(view.text!.trim())}`,
-        );
     if (plan) {
       if (autoTrans.more) a.translate = autoTrans.more;
     } else if (
@@ -1591,7 +1599,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
                   ? { blocks: [[trans.out]] }
                   : null
             }
-            meaning={selMeaning?.card ?? null}
+            meaning={
+              selMeaning?.card ?? (selGloss && selLemma ? { ...selGloss, other: false } : selGloss)
+            }
             lemma={selLemma?.card ?? null}
             onClose={sel.clear}
           />

@@ -245,24 +245,6 @@ const dictionary = {
       sw: "Imeshindwa kusoma kwa sauti",
       mr: "मोठ्याने वाचता आले नाही",
     }),
-    lookUp: t({
-      en: "Look up",
-      zh: "查词",
-      ja: "辞書で調べる",
-      ko: "사전 찾기",
-      hi: "शब्दकोश में देखें",
-      es: "Buscar en el diccionario",
-      fr: "Chercher",
-      ar: "ابحث في القاموس",
-      bn: "অভিধানে দেখুন",
-      pt: "Procurar no dicionário",
-      ru: "Найти в словаре",
-      ur: "لغت میں دیکھیں",
-      id: "Cari di kamus",
-      de: "Nachschlagen",
-      sw: "Tafuta kamusini",
-      mr: "शब्दकोशात पहा",
-    }),
     translate: t({
       en: "Translate",
       zh: "翻译",
@@ -550,11 +532,11 @@ const context: Record<keyof typeof dictionary.content, string> = {
   kindBook:
     "Small label at the top of the reader's selection card when the whole book is selected (the last level of quick clicks); the book's title follows it. A short noun meaning the entire book.",
   copyLink:
-    "Tooltip and screen-reader label of the chain-link icon button on the reader's selection card: copies a web address that opens the book at exactly this word, sentence, paragraph or chapter. An imperative phrase.",
+    "Tooltip and screen-reader label (aria-label) of the chain-link icon button (icon only, no visible text) in the small icon group at the top of the reader's selection card: copies a web address that opens the book at exactly this word, sentence, paragraph or chapter. An imperative phrase.",
   linkCopied:
     "Short confirmation shown on the reader's selection card and announced to screen readers after the deep link of the selected unit was copied to the clipboard. A past-participle phrase.",
   copyText:
-    "Button on the reader's selection card: copies the text of the selected word, sentence, paragraph or chapter to the clipboard. An imperative phrase.",
+    "Tooltip and screen-reader label (aria-label) of the copy icon button (two overlapping sheets, icon only, no visible text) in the small icon group at the top of the reader's selection card, next to the copy-link button: copies the text of the selected word, sentence, paragraph or chapter to the clipboard. An imperative phrase.",
   textCopied:
     "Short confirmation shown on the reader's selection card and announced to screen readers after the selected text was copied to the clipboard. A past-participle phrase.",
   copyFailed:
@@ -563,8 +545,6 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Short error on the reader's selection card when noting the selected word as new to the learner did not reach the server (offline, or an error). A short phrase.",
   sayFailed:
     "Short error on the reader's selection card when tapping a word, sentence or paragraph should have read the selected text aloud but no voice could (no voice for the language, network or server failure, playback refused); the technical reason is shown after it in parentheses. A short phrase.",
-  lookUp:
-    "Button on the reader's selection card for a selected word or phrase: opens a dictionary entry (Wiktionary) for it in a new tab. An imperative verb phrase.",
   translate:
     "Button on the reader's selection card for a selected word, phrase, sentence or paragraph: shows a machine translation of the text into the learner's language right on the card, under the text. Sentences and paragraphs are translated by themselves; there the button only appears to translate what is left of a long selection or to try again after a failure. An imperative verb.",
   translating:
@@ -594,7 +574,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   reviewSelection:
     "Button on the reader's selection card for text the learner selected by hand: opens the flashcard review (spaced repetition) of every distinct word inside the selected text, graded right there. An imperative phrase; 'review' means study again with flashcards, not critique.",
   readAloud:
-    "Button on the reader's selection card for text the learner selected by hand: text-to-speech reads exactly the selected text once, in the book's language. An imperative verb phrase.",
+    "Tooltip and screen-reader label (aria-label) of the speaker icon button (icon only, no visible text) in the small icon group at the top of the reader's selection card, shown for text the learner selected by hand: text-to-speech reads exactly the selected text once, in the book's language. An imperative verb phrase.",
 };
 
 export default {
