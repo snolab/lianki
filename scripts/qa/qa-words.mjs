@@ -82,7 +82,7 @@ const page = await ctx.newPage();
 const toPicker = async () => {
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
   if (!new URL(page.url()).searchParams.has("list")) return;
-  const back = page.getByRole("button", { name: "← lists" });
+  const back = page.getByRole("button", { name: "← lists" }).first();
   await back.waitFor({ timeout: 15000 });
   await back.click();
 };
@@ -425,6 +425,20 @@ try {
     `the list fills the window under the overlays, scroll-padded by them (${glass.scrollPad}px)`,
   );
   check(glass.tray === 2, `an empty tray fills the over-scroll at both ends (${glass.tray})`);
+  {
+    // The tray after the last word is the way back, labelled as the toolbar's exit.
+    const back = await page.evaluate(() => {
+      const b = document.querySelector('[role="list"] button[data-testid="study-done-back"]');
+      const r = b?.getBoundingClientRect();
+      return (
+        b && { text: b.textContent.trim(), h: Math.round(r.height), svg: !!b.querySelector("svg") }
+      );
+    });
+    check(
+      back && back.text === "← lists" && back.h >= 44 && back.svg,
+      `the end-of-list tray is a back button, "← lists", 44px+ (${JSON.stringify(back)})`,
+    );
+  }
   {
     // Scrolled, a row passes under the toolbar: the bar covers the list.
     const under = await page.evaluate(async () => {
@@ -2361,7 +2375,7 @@ try {
   const second = catalog.find((c) => c.lang === first.lang && c.id !== first.id && !c.kind);
   await addFromTree(second);
   await rows.first().waitFor({ timeout: 15000 });
-  await page.getByRole("button", { name: "← lists" }).click();
+  await page.getByRole("button", { name: "← lists" }).first().click();
   await page.getByRole("button", { name: /Study all lists together/ }).click();
   await rows.first().waitFor({ timeout: 15000 });
   check(page.url().includes("list=all"), "study all has its own URL");

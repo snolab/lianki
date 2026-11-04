@@ -1,35 +1,50 @@
 /**
- * The study view's done state keeps a way back (app/(app)/words/study-done-back.tsx;
- * owner, 2026-11-05: "都学完了的情况也是显示返回按钮"): every word learned or
- * none due shows a button that does what the toolbar's exit does — back to the
- * lists on /words, back to the book (closing the overlay) in the reader's review.
+ * The study view's end of the list keeps a way back (app/(app)/words/study-done-back.tsx;
+ * owner, 2026-11-05: "都学完了的情况也是显示返回按钮", and the "no more cards"
+ * picture itself as the back action): the tray after the last word, and the
+ * every-word-learned / none-due state, are a button doing what the toolbar's
+ * exit does — back to the lists on /words, back to the book (closing the
+ * overlay) in the reader's paragraph review.
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { StudyDoneBack, studyFinished } from "@/app/(app)/words/study-done-back";
+import { TrayBack, studyFinished } from "@/app/(app)/words/study-done-back";
 
 const app = join(import.meta.dir, "../app/(app)");
 const words = readFileSync(join(app, "words/WordsClient.tsx"), "utf8");
 const review = readFileSync(join(app, "read/[id]/reader-word-review.tsx"), "utf8");
 
-describe("StudyDoneBack", () => {
-  test("renders the exit label as a button", () => {
-    const html = renderToStaticMarkup(
-      createElement(StudyDoneBack, { label: "Back to the book", onExit: () => {} }),
-    );
-    expect(html).toContain('data-testid="study-done-back"');
-    expect(html).toContain('type="button"');
-    expect(html).toContain("Back to the book");
+const html = (art: boolean) =>
+  renderToStaticMarkup(
+    createElement(TrayBack, { label: "Back to the book", onExit: () => {}, art }),
+  );
+
+describe("TrayBack", () => {
+  test("the picture is a button named by its visible label", () => {
+    const h = html(true);
+    expect(h).toMatch(/^<button type="button"/);
+    expect(h).toContain('data-testid="study-done-back"');
+    expect(h).toContain("<span>Back to the book</span>");
+    // The picture is decoration inside the button: hidden from screen readers.
+    expect(h).toMatch(/<span aria-hidden="true" data-empty-tray="true" class="block"><svg/);
+    // A 44px tap target with a keyboard focus ring.
+    expect(h).toContain("min-h-11");
+    expect(h).toContain("focus-visible:ring-2");
     // Colours are oklch only.
-    expect(html).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i);
+    expect(h).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i);
+  });
+
+  test("a short over-scroll keeps the label button without the picture", () => {
+    expect(html(false)).not.toContain("<svg");
+    expect(html(false)).toContain("Back to the book");
   });
 
   test("a tap runs the exit, once", () => {
     let exits = 0;
-    const el = StudyDoneBack({ label: "← lists", onExit: () => exits++ }) as ReactElement<{
+    const el = TrayBack({ label: "← lists", onExit: () => exits++, art: true }) as ReactElement<{
       onClick: () => void;
     }>;
     el.props.onClick();
@@ -43,16 +58,18 @@ describe("StudyDoneBack", () => {
   });
 });
 
-describe("Study's done states", () => {
-  test("the empty state and the end of a finished list both offer the exit", () => {
-    const uses = [...words.matchAll(/<StudyDoneBack label=\{(\w+)\} onExit=\{(\w+)\} \/>/g)];
+describe("Study's end of the list", () => {
+  test("the empty state and the end of the list both offer the toolbar's exit", () => {
+    const uses = [...words.matchAll(/<TrayBack label=\{(\w+)\} onExit=\{(\w+)\} art/g)];
     expect(uses.length).toBe(2);
     for (const m of uses) expect([m[1], m[2]]).toEqual(["exitLabel", "onExit"]);
+    // The end-of-list one is not gated on being finished: it is there in every state.
+    expect(words).not.toMatch(/finished && \(\s*<div[^]*?<TrayBack/);
     // The same label as the toolbar's exit button, which runs the same onExit.
     expect(words).toContain("const exitLabel = scope?.exitLabel ?? text.backToLists.value;");
     expect(words).toMatch(/onClick=\{onExit\}\s*>\s*\{exitLabel\}/);
-    // The every-word-learned hint and the button agree on "finished".
-    expect(words).toContain("studyFinished(exhausted, ahead.length)");
+    // The study keys leave Enter / Space on the focused button to the button.
+    expect(words).toContain('t.closest?.("[data-testid=study-done-back]")');
   });
 
   test("in the reader's paragraph review the exit closes the overlay, back to the book", () => {

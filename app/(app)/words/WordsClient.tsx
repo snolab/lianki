@@ -120,7 +120,7 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
-import { DONE_BACK_H, StudyDoneBack, studyFinished } from "./study-done-back";
+import { TrayBack, studyFinished } from "./study-done-back";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -3978,6 +3978,12 @@ export function Study({
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      // The end-of-list way back, focused: Enter / Space press it.
+      if (
+        (e.code === "Enter" || e.code === "Space") &&
+        t.closest?.("[data-testid=study-done-back]")
+      )
+        return;
       // Holding a key repeats movement only, never grading or undo.
       const moves = ["ArrowDown", "ArrowUp", "KeyS", "KeyW", "KeyU", "KeyI"];
       if (e.repeat && !moves.includes(e.code)) return e.preventDefault();
@@ -5113,8 +5119,8 @@ export function Study({
             <>
               {text.everyWordLearned}{" "}
               <Icon name="confetti" className="ms-1 text-blue-600 dark:text-blue-400" />
-              <div className="mt-6 flex justify-center">
-                <StudyDoneBack label={exitLabel} onExit={onExit} />
+              <div className="lk-tray mt-6 flex justify-center">
+                <TrayBack label={exitLabel} onExit={onExit} art />
               </div>
             </>
           ) : (
@@ -5392,23 +5398,14 @@ export function Study({
               );
             })}
             <div className="relative" style={{ height: (queue.length - to) * ROW_H + pad }}>
-              {/* All graded: the way back right under the last row, the tray below it. */}
-              {finished && (
-                <div
-                  className="absolute inset-x-0 flex justify-center pt-6"
-                  style={{ top: (queue.length - to) * ROW_H }}
-                >
-                  <StudyDoneBack label={exitLabel} onExit={onExit} />
-                </div>
-              )}
-              {pad - bar.bottom - (finished ? DONE_BACK_H : 0) > 140 && (
-                <EmptyTray
-                  style={{
-                    bottom: bar.bottom,
-                    height: pad - bar.bottom - (finished ? DONE_BACK_H : 0),
-                  }}
-                />
-              )}
+              {/* After the last word, in every state (not started, half way,
+              all done): the tray is the way back, as the toolbar's exit. */}
+              <div
+                className="lk-tray pointer-events-none absolute inset-x-0 flex items-center justify-center"
+                style={{ bottom: bar.bottom, height: pad - bar.bottom }}
+              >
+                <TrayBack label={exitLabel} onExit={onExit} art={pad - bar.bottom > 180} />
+              </div>
             </div>
             {/* Last, so the rows' :nth-child grain is unchanged. */}
             <SlipCords
