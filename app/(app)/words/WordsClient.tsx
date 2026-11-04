@@ -4979,7 +4979,6 @@ export function Study({
                   index={i}
                   touch={touch}
                   loose={touch ? i === focusLine : i === row}
-                  onHover={() => moveRow(i)}
                   onMore={() => setSheet(i)}
                   scrolling={scrollingNow}
                   underlay={underlay}
@@ -5446,7 +5445,6 @@ type RowProps = {
   touch: boolean;
   /** Focused: it lifts, its cords (SlipCords) come loose, and only a loose slip slides. */
   loose?: boolean;
-  onHover: () => void;
   /** `at`: when the finger lifted (the event's own time, not when it was handled). */
   onTap: (at: number) => void;
   /** The slip's other actions (desktop: right click). */
@@ -5478,7 +5476,6 @@ function WordRow(props: RowProps) {
 function DeskWordRow({
   index,
   loose = false,
-  onHover,
   onTap,
   onMore,
   className,
@@ -5489,10 +5486,9 @@ function DeskWordRow({
     <div
       role="listitem"
       data-i={index}
-      // Only a real mouse move takes the cursor: Chrome replays mouse events
-      // at a resting pointer when rows re-render, which would otherwise yank
-      // the cursor back under the mouse after every key press.
-      onMouseMove={(e) => (e.movementX || e.movementY) && onHover()}
+      // No hover handler: the mouse never moves the focused slip (owner,
+      // 2026-11-04). It moves by keys, grading and voice; hovering only
+      // reveals the blank (CSS .group:hover), which leaves the focus alone.
       onClick={(e) => onTap(e.timeStamp)}
       onContextMenu={(e) => {
         if (!onMore) return;
