@@ -40,8 +40,6 @@ export type SideKind = "due" | "new";
 /** A word's place in the text: its paragraph line and token index there. */
 export type WordAt = { line: number; t: number };
 
-export const cmpAt = (a: WordAt, b: WordAt) => a.line - b.line || a.t - b.t;
-
 /** The kind a word is for the side review, or null when neither. */
 export function sideKindOf(
   w: string,

@@ -110,7 +110,7 @@ import {
   unitLink,
 } from "@/lib/read/reader-select";
 import { segmentLine } from "@/lib/read/units";
-import { cmpAt, findWord, sideKindOf, type SideKind, type WordAt } from "@/lib/read/side-review";
+import { findWord, sideKindOf, type SideKind, type WordAt } from "@/lib/read/side-review";
 import type { SideFocus, SideGrade } from "./reader-side-review";
 import { sentenceId } from "@/lib/read/reader-api";
 
