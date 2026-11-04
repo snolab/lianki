@@ -32,7 +32,15 @@
  * Node".
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  watch,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 
 /**
@@ -61,6 +69,66 @@ function freePort() {
     });
   });
 }
+
+/**
+ * One qa:all per checkout at a time; a second one waits for the first.
+ *
+ * Ports are per run, but the files are per checkout: each run rewrites
+ * BETTER_AUTH_BASE_URL in .dev.vars and rebuilds .open-next, and both are
+ * watched by the first run's `wrangler dev`. It printed "Reloading local
+ * server…", never answered again, and the rest of its suites failed with
+ * ERR_CONNECTION_REFUSED (5 of 9) — reproduced 2026-11-04 by a manual qa:all
+ * with a `git push` (pre-push qa:all) started in the same worktree, which reads
+ * as a flaky gate and passes on a retry. Other checkouts are unaffected.
+ *
+ * The lock is a file holding the holder's pid; a holder that died is taken
+ * over. Waiting wakes on the file's removal, with a slow liveness check for a
+ * holder killed before it could remove it.
+ */
+const LOCK = ".wrangler/qa-all.lock";
+async function lockCheckout() {
+  mkdirSync(".wrangler", { recursive: true });
+  const alive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (e) {
+      return e.code === "EPERM";
+    }
+  };
+  for (let said = false; ; ) {
+    try {
+      writeFileSync(LOCK, String(process.pid), { flag: "wx" });
+      process.on("exit", () => {
+        try {
+          if (readFileSync(LOCK, "utf8") === String(process.pid)) unlinkSync(LOCK);
+        } catch {}
+      });
+      return;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+    }
+    const holder = Number(readFileSync(LOCK, "utf8").trim() || 0);
+    if (!holder || !alive(holder)) {
+      rmSync(LOCK, { force: true });
+      continue;
+    }
+    if (!said) {
+      console.log(`\n⏳ another qa:all (pid ${holder}) is using this checkout — waiting for it`);
+      said = true;
+    }
+    await new Promise((resolve) => {
+      const w = watch(".wrangler", () => !existsSync(LOCK) && done());
+      const t = setInterval(() => (!existsSync(LOCK) || !alive(holder)) && done(), 5000);
+      function done() {
+        w.close();
+        clearInterval(t);
+        resolve();
+      }
+    });
+  }
+}
+await lockCheckout();
 
 // QA_PORT still pins it, for when you want a predictable URL to poke at.
 const PORT = Number(process.env.QA_PORT) || (await freePort());

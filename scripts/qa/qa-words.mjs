@@ -1127,6 +1127,18 @@ try {
     return c;
   };
   const saved60 = await cardsReach(60);
+  // Each first grade scrolls the list one row smoothly (keyGradeMove, #511),
+  // so after 60 fast presses the view is still gliding for a moment, and the
+  // rows below the cursor are not rendered yet. Count once it is at rest.
+  await page.evaluate(async () => {
+    const el = document.querySelector('[role="list"]');
+    let last = -1;
+    for (let still = 0, end = Date.now() + 10000; still < 5 && Date.now() < end; ) {
+      await new Promise((r) => setTimeout(r, 100));
+      still = el?.scrollTop === last ? still + 1 : 0;
+      last = el?.scrollTop ?? 0;
+    }
+  });
   const ahead = await rows.evaluateAll(
     (els) => els.filter((e) => e.querySelector("span.tabular-nums")?.textContent === "new").length,
   );
