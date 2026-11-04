@@ -103,7 +103,7 @@ numerals; Hindi loans).
   before 1930 as of 2026; the cutoff moves each 1 January) **and** with every
   creator, translators included, dead 80+ years. Candidate sources: Project
   Gutenberg, Standard Ebooks, Wikisource, Aozora Bunko (check US status per
-  work), zh.wikisource. Text and its extraction are shared and paid for once.
+  work), zh.wikisource. Text and its extraction are shared and paid for once. The shared catalogue is **/books** (below).
 - **Your own copy:** private to you, never shared or listed, deletable,
   DRM-free only (#448 refuses DRM). Needs a ToS line and a takedown contact
   before it opens beyond the owner.
@@ -123,6 +123,79 @@ numerals; Hindi loans).
 - _Le Petit Prince_: protected in the US until 2039 and in France until about
   2032, so it can never be in the shared catalogue; own copy only. Its
   drawings and name are trademarks.
+
+## The catalogue: /books (built 2026-11-05)
+
+Owner, 01:36–01:44 JST: "这几个公版的你直接帮我列到预置里。点击导入；注意标来源；而且不放仓库，我们只做 CF 缓存",
+then: a /books page for every user, grouped by language, stable slugs in the
+title's own language, the source link visible inside the imported book.
+
+- **Roles.** **/books** (nav "公版书库 / Public-domain library") is the shared
+  catalogue and never lists anyone's own books. **/read** (nav "我的阅读 / My
+  reading") is the user's own material — pasted text, EPUBs, Google Docs, and
+  books added from /books — and never lists the catalogue, only a link to it.
+  A /books card shows "已在我的阅读 · 打开" once added.
+- **Data, not code** (`lib/books/catalogue.ts`): one entry per edition with
+  title, author, language, CEFR level hint, verse/prose, first-publication
+  year, every creator with their death year, the source page (linked), the one
+  file the server fetches, licence line and attribution, and optionally a
+  `range` (element ids / a markup marker) to leave out matter such as Lang's
+  English introduction. `checkCatalogue` (unit test) enforces the rule above
+  for the current year: published ≤ year − 96, every creator died ≥ 80 years
+  ago, file and page on `SOURCE_HOSTS`, licence and attribution present.
+- **Entries (all Project Gutenberg HTML, checked on each ebook page):**
+  Perrault, _Histoires ou Contes du temps passé_ (#33931, Lang ed. 1888, only
+  the 1697 prose tales; A1); La Fontaine, _Fables_ livre I (#17941; A1–A2,
+  verse); Daudet, _Lettres de mon moulin_ (#11770, not #36780 whose
+  introduction is by Sarolea † 1953; A2); Maupassant, _Contes du jour et de la
+  nuit_ (#14790, incl. _La Parure_; ill. Cousturier † 1908; A2–B1); Voltaire,
+  _Candide_ (#4650, Beuchot ed.; B1); Carroll, _Alice's Adventures in
+  Wonderland_ (#11; A2–B1); Kafka, _Die Verwandlung_ (#22367; B1). Not _Le
+  Petit Prince_ or _Le Petit Nicolas_ (in copyright). #20971/#20972 are audio.
+- **Slugs** (`lib/books/slug.ts`): the title in its own language and script
+  (owner: "slug用书名原语言 不强制英文"): NFC, lower case, letters/marks/digits
+  of any script, everything else "-", an apostrophe kept between letters
+  (`candide-ou-l'optimisme`, `吾輩は猫である`). Written once into the entry and
+  never recomputed; a collision takes the first free meaningful suffix
+  (author, year, translator). URL `/books/<lang>/<slug>`, percent-encoded by
+  `bookHref`, decoded and NFC-normalised by the route. Source key
+  `preset:<lang>/<slug>`.
+- **Import** (`POST /api/books/import { book: "<lang>/<slug>" }`): the client
+  names an entry, never a URL. Already imported → its id (`existing: true`),
+  free. Otherwise 20 new imports per 10 minutes per user (D1 throttle), then
+  the source file (below), Gutenberg's licence header/footer stripped
+  (`pg-header`/`pg-footer`, or the START/END lines of older files), parsed by
+  the Google Docs HTML parser (headings, chapters at a level used ≥ 3 times, a
+  heading broken by `<br>` is one chapter), checked by `checkBook`, saved as
+  the user's own read_material. Its meta has `source: "preset"`, `sourceUrl`
+  (the ebook page) and `credit` (entry key, site name, licence, attribution);
+  `parseBookMeta` keeps them only when the link is on a source host. Both
+  readers show them at the top of the book (`BookSourceNote`), v2 also in the
+  contents sheet.
+- **Text never in the repo; one shared cache.** The server fetches the entry's
+  file only: https, `SOURCE_HOSTS`, redirects followed by hand within them,
+  HTML only, 6 MB cap, 25 s timeout. The file is kept in R2 `lianki-blobs` at
+  `preset-cache/<lang>/<slug>/<sha256(file URL)[0..16]>.html` for every user;
+  a cache error falls back to fetching. `bun scripts/books/warm.ts <key>|--all`
+  fills the cache ahead of the first import (same fetch rules, `wrangler r2
+  object put --remote`); it imports nothing into any account.
+- **Gate:** flag `books.catalogue` (off: the owner only), D1 only; the nav
+  item carries `flag` in `lib/app-nav.ts` and the layout passes the visible
+  ones. Not tied to `read.reader-v2`: an added book opens in whichever reader
+  the user has.
+
+### Next: confidently public-domain imports become shared (owner, 01:43 JST)
+
+"识别到确信公有授权的内容要全站所有用户共享": when a user imports from a source
+on a public-domain host allowlist (Wikisource, Project Gutenberg, Aozora
+Bunko…) whose own page states the work's status, and the rule above holds from
+the source's metadata (never guessed), the text and its processing are shared
+(one R2 copy, paid once) and the work is promoted to a /books entry for all
+users, marked with its source; who added it and when is not shown. Uploaded
+files (EPUB…) and anything not confidently public domain stay private
+(decision 5). Uncertain → private. Not in the first /books PR: it needs a URL
+import for those hosts, per-host metadata readers, and a stored (D1)
+catalogue table beside the curated list; its slug is made once by `newSlug`.
 
 ## A first multilingual text: the Bible, in its original languages
 

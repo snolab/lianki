@@ -97,8 +97,7 @@ import {
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
-import { CopyLine } from "./CopyLine";
-import { LINE_SELECTABLE, lineCopyText } from "./copy-line";
+import { LINE_SELECTABLE } from "./copy-line";
 import {
   barInGlass,
   BAR_IN_GLASS_TRANSITION,
@@ -3562,11 +3561,6 @@ export function DebugChat({
                           />
                         )}
                         {polish(m).mark}
-                        <CopyLine
-                          text={lineCopyText({ ...m, showRaw: rawIds.has(m.id) })}
-                          label={ui.copyLine}
-                          copiedLabel={ui.copiedLine}
-                        />
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
                         {m.from === "agent" && unheardIds.has(m.id) && (
                           <span

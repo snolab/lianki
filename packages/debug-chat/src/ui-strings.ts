@@ -121,14 +121,6 @@ export type UiStrings = {
   tuckChat: string;
   restoreChat: string;
   untuckChat: string;
-  /**
-   * The small copy button after each chat message (CopyLine.tsx), its
-   * tooltip and screen-reader label: a tap puts that message's plain text on
-   * the clipboard. copiedLine: shown and announced for a moment after it
-   * copied ("Copied").
-   */
-  copyLine: string;
-  copiedLine: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -179,8 +171,6 @@ export const UI_EN: UiStrings = {
   tuckChat: "Tuck the chat into the screen edge",
   restoreChat: "Open the chat",
   untuckChat: "Bring the chat back",
-  copyLine: "Copy this message",
-  copiedLine: "Copied",
 };
 
 export const UI_ZH: UiStrings = {
@@ -231,8 +221,6 @@ export const UI_ZH: UiStrings = {
   tuckChat: "把聊天收进屏幕边",
   restoreChat: "展开聊天",
   untuckChat: "拉出聊天",
-  copyLine: "复制这条消息",
-  copiedLine: "已复制",
 };
 
 export const UI_JA: UiStrings = {
@@ -283,8 +271,6 @@ export const UI_JA: UiStrings = {
   tuckChat: "チャットを画面の端にしまう",
   restoreChat: "チャットを開く",
   untuckChat: "チャットを戻す",
-  copyLine: "このメッセージをコピー",
-  copiedLine: "コピーしました",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

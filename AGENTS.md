@@ -125,6 +125,7 @@ that are expensive to rediscover.
 | The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
 | /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
 | Exam word decks (CET, TOEFL, GRE…): sources, licences, gaps   | [docs/word-deck-sources.md](docs/word-deck-sources.md)              |
+| /books public-domain library: catalogue rule, slugs, R2 cache | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
 | Voice mode: spoken commands per screen, grammar, mic taps     | [docs/voice-mode.md](docs/voice-mode.md)                            |
 | /words owner spec: tall slips, window, review-first, voice    | [docs/words-session-spec.md](docs/words-session-spec.md)            |
 | Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |

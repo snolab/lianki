@@ -8,8 +8,8 @@
  *   - a line's text takes the pointer and is selectable (computed
  *     pointer-events not none, user-select / -webkit-user-select not none),
  *     though the box around it is click-through
- *   - its copy button writes the line's plain text (navigator.clipboard is
- *     mocked) and says "Copied"
+ *   - its text selects, and there is no per-line copy button (owner,
+ *     2026-11-05 02:00 JST: long-press → Copy is enough)
  *   - idle, the panel is faint; a tap on + makes it opaque, and closing the
  *     menu returns it to idle
  *
@@ -55,6 +55,7 @@ await new Promise((resolve, reject) => {
   server.on("exit", (c) => reject(new Error(`widget server exited (${c})`)));
 });
 
+const q = (page) => page.locator('[data-testid="debug-chat-copy"]').count();
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
@@ -73,11 +74,6 @@ try {
     });
     await ctx.addInitScript((src) => {
       localStorage.setItem("lk:debug-widget-src", src);
-      globalThis.__copied = [];
-      Object.defineProperty(navigator, "clipboard", {
-        configurable: true,
-        value: { writeText: async (t) => void globalThis.__copied.push(t) },
-      });
       if (navigator.mediaDevices)
         navigator.mediaDevices.getUserMedia = async () => {
           throw new DOMException("refused in QA", "NotAllowedError");
@@ -106,14 +102,18 @@ try {
     check(st.pe !== "none", `${scheme}: the line takes the pointer (${st.pe})`);
     check(st.us !== "none" && st.wus !== "none", `${scheme}: the line is selectable (${st.us})`);
 
-    const copy = line.locator('[data-testid="debug-chat-copy"]');
-    check((await copy.count()) === 1, `${scheme}: the line has a copy button`);
-    check(!!(await copy.getAttribute("aria-label")), `${scheme}: the copy button has a label`);
-    await copy.tap();
-    await page.waitForTimeout(100);
-    const copied = await page.evaluate(() => globalThis.__copied);
-    check(copied.at(-1) === text, `${scheme}: it copied the plain text`);
-    check((await copy.getAttribute("data-copied")) !== null, `${scheme}: it says copied`);
+    // No per-line copy button (owner, 2026-11-05 02:00 JST): long-press → Copy is enough.
+    check((await q(page)) === 0, `${scheme}: no copy button on the lines`);
+    // The line's text can be selected as a whole (what a long-press and its handles do).
+    const picked = await line.evaluate((el) => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const s = getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      return s.toString();
+    });
+    check(picked.includes(text), `${scheme}: the line's text selects`);
     if (SHOTS) await page.screenshot({ path: join(SHOTS, `copy-${scheme}.png`) });
 
     // The + menu: opaque while it is up, idle again once it closes.
