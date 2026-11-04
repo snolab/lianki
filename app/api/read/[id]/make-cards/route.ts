@@ -7,7 +7,8 @@ import {
   rangeWords,
   readerCtx,
 } from "@/lib/read/reader-route";
-import { makeCards, unmakeCards } from "@/lib/read/book-word-list";
+import { makeCards, unmakeCards, type RangeWord } from "@/lib/read/book-word-list";
+import { fillGlosses } from "@/lib/read/gloss-server";
 
 /**
  * POST /api/read/[id]/make-cards — 制卡: a card in the book's own list for
@@ -31,5 +32,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { book, own } = await bookCtxOf(ctx);
   const words = rangeWords(body?.words, own);
   if (!words) return badRequest("words are required");
-  return json(await makeCards(ctx.db, ctx.email, book, words));
+  const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, book, ws, { userId: ctx.userId });
+  return json(await makeCards(ctx.db, ctx.email, book, words, undefined, gloss));
 }
