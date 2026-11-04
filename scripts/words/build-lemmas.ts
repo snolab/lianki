@@ -42,16 +42,30 @@
  *   gunzip -c $RAW/kaikki/Finnish.jsonl.gz | FORMS_IN_FREQ=1 \
  *     bun scripts/words/build-lemmas.ts fi public/words/lemma/fi.txt $RAW/freq/fi_200k.txt
  *
- * Format (UTF-8, NFC, lowercase), documented in lib/read/lemma.ts:
- *   line 1:  #lianki-lemmas v1 <lang>
+ * Format v2 (UTF-8, NFC, lowercase), documented in lib/read/lemma.ts:
+ *   #lianki-lemmas v2 <lang>, then the tag and set tables (#tags, #sets),
  *   then one headword per line, optionally followed by a tab and its forms,
- *   space-separated, each written as <n><suffix>: drop n letters from the end
- *   of the headword and append the suffix (n ≥ 10 is written ~n~).
- *   "regarder\t2a 2ai 1" = regarder: regarda, regardai, regarde.
+ *   space-separated, each written as <n><suffix>[:<set>]: drop n letters from
+ *   the end of the headword and append the suffix (n ≥ 10 is written ~n~);
+ *   the set id names the form's readings, each a set of Wiktionary's
+ *   grammatical tags. "regarder\t2a:31 2ai:32 1:38" = regarder: regarda
+ *   (past historic, third-person singular), regardai, regarde.
+ *
+ * Tags (2026-11-05, owner: the reader shows "form → lemma" with the form's
+ * grammar, "简单过去时 · 第三人称单数"): a table form's `forms[].tags`, a
+ * form-of entry's sense tags, kept when lib/read/form-tags.ts names them
+ * (FORM_TAGS: tense, mood, person, number, case… not "rare" or table markup),
+ * a reading dropped when another of the form says the same and more. Most
+ * used tags and sets get the shortest ids. With tags, 2026-11-05: French
+ * 3.5 MB (458 KB gzip; 2.6 MB and 389 KB without), 30 tags, 281 sets;
+ * Finnish 3.1 MB (938 KB gzip; 2.8 MB and 860 KB without), 45 tags, 445
+ * sets. FORM_TAGS=0 writes a v1 file, without tags.
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { gzipSync } from "node:zlib";
+import { FORM_TAGS } from "@/lib/read/form-tags";
+import { encodeForm } from "@/lib/read/lemma";
 import { stripElision, unligate } from "@/lib/read/words";
 
 const [lang, outPath, freqPath] = process.argv.slice(2);
@@ -76,12 +90,28 @@ const norm = (s: string) =>
 // Parts of speech that are not words a reader learns.
 const SKIP_POS = new Set(["name", "character", "symbol", "punct", "prefix", "suffix", "infix"]);
 
-/** Headword → its forms (table forms, and words that are a form of it). */
-const forms = new Map<string, Set<string>>();
+/** A form's grammatical tags as one key (lib/read/form-tags.ts FORM_TAGS; others dropped), "" for none. */
+const tagKey = (tags: unknown): string =>
+  Array.isArray(tags)
+    ? [...new Set(tags.filter((t): t is string => typeof t === "string" && FORM_TAGS.has(t)))]
+        .sort()
+        .join(" ")
+    : "";
+
+/** Headword → its forms (table forms, and words that are a form of it) → their tag sets. */
+const forms = new Map<string, Map<string, string[]>>();
+const addForm = (h: string, f: string, key: string) => {
+  let m = forms.get(h);
+  if (!m) forms.set(h, (m = new Map()));
+  const sets = m.get(f) ?? [];
+  if (key && !sets.includes(key)) sets.push(key);
+  m.set(f, sets);
+};
 /** Words whose every sense is a form of something (candidate headwords if that fails). */
 const formOnly = new Map<string, string[]>();
 const own = new Set<string>();
-const formOf: [string, string][] = [];
+/** [form, headword, tag key]: "x is a form of y", from x's senses. */
+const formOf: [string, string, string][] = [];
 
 let seen = 0;
 for await (const line of console) {
@@ -98,7 +128,7 @@ for await (const line of console) {
   const w = norm(e.word);
   if (!WORD.test(w)) continue;
   let hasOwn = false;
-  const ofs: string[] = [];
+  const ofs: [string, string][] = [];
   for (const s of Array.isArray(e.senses) ? e.senses : []) {
     const glosses = Array.isArray(s?.glosses) ? s.glosses : [];
     if (!glosses.length) continue;
@@ -107,12 +137,14 @@ for await (const line of console) {
       .filter(Boolean);
     // "au": contraction of à + le, a word in its own right.
     const tags: string[] = Array.isArray(s.tags) ? s.tags : [];
-    if (of.length && !tags.includes("contraction")) ofs.push(...of);
-    else hasOwn = true;
+    if (of.length && !tags.includes("contraction")) {
+      const key = tagKey(tags);
+      for (const o of of) ofs.push([o, key]);
+    } else hasOwn = true;
   }
   if (hasOwn) {
     own.add(w);
-    const set = forms.get(w) ?? new Set<string>();
+    if (!forms.has(w)) forms.set(w, new Map());
     for (const f of Array.isArray(e.forms) ? e.forms : []) {
       const tags: string[] = Array.isArray(f?.tags) ? f.tags : [];
       if (
@@ -125,62 +157,120 @@ for await (const line of console) {
       // As a book's word is read (lib/read/words.ts normWord): "s'écria" is
       // met as "écria"; a hyphenated form is split by the segmenter, never met.
       const k = stripElision(norm(f.form), lang);
-      if (k !== w && WORD.test(k) && !k.includes("-")) set.add(k);
+      if (k !== w && WORD.test(k) && !k.includes("-")) addForm(w, k, tagKey(tags));
     }
-    forms.set(w, set);
   }
-  for (const o of ofs) formOf.push([w, o]);
-  if (!hasOwn && ofs.length) formOnly.set(w, [...(formOnly.get(w) ?? []), ...ofs]);
+  for (const [o, key] of ofs) formOf.push([w, o, key]);
+  if (!hasOwn && ofs.length) formOnly.set(w, [...(formOnly.get(w) ?? []), ...ofs.map(([o]) => o)]);
 }
 
 // "x is a form of y": x joins y's forms when y is a headword.
-for (const [f, l] of formOf) if (forms.has(l) && f !== l) forms.get(l)!.add(f);
+for (const [f, l, key] of formOf) if (forms.has(l) && f !== l) addForm(l, f, key);
 // A word that is only a form of something that is no headword ("au":
 // contraction of "à le") is a headword itself, so it is not unrecognised.
 for (const [w, ofs] of formOnly)
-  if (!own.has(w) && !ofs.some((o) => own.has(o))) forms.set(w, forms.get(w) ?? new Set());
+  if (!own.has(w) && !ofs.some((o) => own.has(o))) forms.set(w, forms.get(w) ?? new Map());
 
 // "manœuvre" is often typed "manoeuvre": the written-out spelling is a form.
 // (the language's ligatures, lib/read/lang)
-for (const [h, set] of forms) {
+for (const h of forms.keys()) {
   const plain = unligate(h, lang);
-  if (plain !== h) set.add(plain);
+  if (plain !== h) addForm(h, plain, "");
 }
 
 const attested = (h: string) => {
   if (!freqPath || freq.has(h)) return true;
-  for (const f of forms.get(h)!) if (freq.has(f)) return true;
+  for (const f of forms.get(h)!.keys()) if (freq.has(f)) return true;
   return false;
 };
-const enc = (h: string, f: string) => {
-  let i = 0;
-  while (i < h.length && i < f.length && h[i] === f[i]) i++;
-  const d = h.length - i;
-  return (d < 10 ? String(d) : `~${d}~`) + f.slice(i);
-};
 
+// FORM_TAGS=0: a v1 file, no tags (the size without them).
+const withTags = process.env.FORM_TAGS !== "0";
 // FORMS_IN_FREQ=1: only forms the frequency list has (see the header).
 const formsInFreq = process.env.FORMS_IN_FREQ === "1" && freq.size > 0;
 const heads = [...forms.keys()].sort();
+/**
+ * A form's readings without those another one says more precisely: the
+ * form-of sense "future third-person singular" next to the table's "future
+ * indicative third-person singular".
+ */
+const readings = (sets: string[]) => {
+  const tagSets = sets.map((s) => new Set(s.split(" ")));
+  return sets.filter(
+    (_, i) =>
+      !tagSets.some(
+        (o, j) => j !== i && o.size > tagSets[i].size && [...tagSets[i]].every((t) => o.has(t)),
+      ),
+  );
+};
+const kept = new Map<string, [string, string[]][]>();
+for (const h of heads) {
+  const m = forms.get(h)!;
+  const fs = attested(h) ? [...m.keys()].filter((f) => !formsInFreq || freq.has(f)).sort() : [];
+  kept.set(
+    h,
+    fs.map((f) => [f, withTags ? readings(m.get(f)!) : []]),
+  );
+}
+
+// The tag and set tables, most used first, so the common ids are short. A
+// set is a form's readings (lib/read/lemma.ts): its tag sets in order.
+const tagUse = new Map<string, number>();
+const setUse = new Map<string, number>();
+const readingsKey = (sets: string[]) => sets.join("|");
+for (const fs of kept.values())
+  for (const [, sets] of fs) {
+    if (!sets.length) continue;
+    const k = readingsKey(sets);
+    setUse.set(k, (setUse.get(k) ?? 0) + 1);
+    for (const s of sets) for (const t of s.split(" ")) tagUse.set(t, (tagUse.get(t) ?? 0) + 1);
+  }
+const byUse = (m: Map<string, number>) =>
+  [...m].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([k]) => k);
+const tagList = byUse(tagUse);
+const tagId = new Map(tagList.map((t, i) => [t, i]));
+const setList = byUse(setUse);
+const setId = new Map(setList.map((s, i) => [s, i]));
+const setCode = (k: string) =>
+  k
+    .split("|")
+    .map((s) =>
+      s
+        .split(" ")
+        .map((t) => tagId.get(t))
+        .join("."),
+    )
+    .join(",");
+
 let withForms = 0;
 let formCount = 0;
-const lines = [`#lianki-lemmas v1 ${lang}`];
+let tagged = 0;
+const lines = withTags
+  ? [
+      `#lianki-lemmas v2 ${lang}`,
+      `#tags ${tagList.join(" ")}`,
+      `#sets ${setList.map(setCode).join(" ")}`,
+    ]
+  : [`#lianki-lemmas v1 ${lang}`];
 for (const h of heads) {
-  const fs = attested(h)
-    ? [...forms.get(h)!].filter((f) => !formsInFreq || freq.has(f)).sort()
-    : [];
+  const fs = kept.get(h)!;
   if (fs.length) {
     withForms++;
     formCount += fs.length;
-    lines.push(`${h}\t${fs.map((f) => enc(h, f)).join(" ")}`);
+    const codes = fs.map(([f, sets]) => {
+      if (sets.length) tagged++;
+      return encodeForm(h, f, sets.length ? setId.get(readingsKey(sets)) : undefined);
+    });
+    lines.push(`${h}\t${codes.join(" ")}`);
   } else lines.push(h);
 }
 const body = lines.join("\n") + "\n";
+const bytes = Buffer.byteLength(body);
 const gz = gzipSync(body, { level: 9 });
 mkdirSync(dirname(outPath), { recursive: true });
 // Plain text in public/ (archives are refused there, lib/security/public-dir.ts);
 // the CDN compresses it in transit. A .gz path writes gzip.
 writeFileSync(outPath, outPath.endsWith(".gz") ? gz : body);
 console.error(
-  `${lang}: ${seen} entries → ${heads.length} headwords, ${withForms} with ${formCount} forms; ${body.length} bytes, ${gz.length} gzip`,
+  `${lang}: ${seen} entries → ${heads.length} headwords, ${withForms} with ${formCount} forms (${tagged} tagged; ${tagList.length} tags, ${setList.length} sets); ${bytes} bytes, ${gz.length} gzip`,
 );

@@ -12,8 +12,11 @@ import {
   afterGrade,
   emptyRequeue,
   isRetired,
+  nextDueIn,
+  offscreenSlot,
   takeDue,
   undoPick,
+  viewport,
   withdraw,
   type Requeue,
 } from "@/lib/words/requeue";
@@ -3855,6 +3858,7 @@ export function Study({
       now.getTime(),
       SESSION_WINDOW_MS,
     );
+    insertDue.current();
     const op: PendingOp = {
       listId: it.listId,
       op: "review",
@@ -4278,38 +4282,99 @@ export function Study({
   // focused row is read once.
   const [focusLine, setFocusLine] = useState(0);
 
-  // Due words from `later` join the list just below the screen — nothing on
-  // screen moves, and scrolling on meets them, as Anki interleaves learning
-  // cards. Never mid-gesture or mid-scroll: they wait for the hand to rest.
-  // Every index-keyed piece of state below the insertion point shifts by one.
+  // Due words from `later` join the list off screen — nearest below it, as
+  // Anki interleaves learning cards, so scrolling on meets them — and never
+  // inside the viewport (the owner, 2026-11-05): with the tail on screen they
+  // wait (the slip reads "↓ back") until a scroll, a resize or the list
+  // growing leaves a slot off screen (lib/words/requeue.ts, offscreenSlot).
+  // Never mid-gesture or mid-scroll: they wait for the hand to rest. Events
+  // and one timer to the next due moment — nothing polls. Every index-keyed
+  // piece of state below the insertion point shifts by one.
   const touchingList = useRef(false);
+  const dueTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Inserted above the viewport: scroll down by this much, so the rows on screen stay put. */
+  const holdBy = useRef(0);
+  const insertDue = useRef(() => {});
+  insertDue.current = () => {
+    clearTimeout(dueTimer.current);
+    const el = listRef.current;
+    const now = Date.now();
+    const wait = nextDueIn(requeue.current, now);
+    if (!el || wait === null) return;
+    const again = (ms: number) => (dueTimer.current = setTimeout(() => insertDue.current(), ms));
+    if (wait > 0) return void again(wait);
+    // The finger lifting tries again (onPointerUpCapture below).
+    if (touchingList.current) return;
+    const rest = performance.now() - lastScrollAt.current;
+    if (rest < 400) return void again(400 - rest);
+    // The list's top spacer (`pad`), from the live height.
+    const top = Math.round(el.clientHeight * OVERSCROLL_FRACTION);
+    const slot = offscreenSlot(
+      (touch ? focusNow.current : rowRef.current) + 1,
+      queueLen.current,
+      (at) => top + at * ROW_H,
+      viewport(el.scrollTop, el.clientHeight),
+    );
+    if (!slot) {
+      // Waiting for a slot; a copy not due yet still needs its timer.
+      const ahead = requeue.current.later.filter((w) => w.due > now);
+      if (ahead.length) again(Math.min(...ahead.map((w) => w.due)) - now);
+      return;
+    }
+    // Updaters stay pure (Strict Mode runs them twice): the insertion point
+    // is fixed here, from the queue length as last rendered.
+    const at = slot.at;
+    const { ready, next, shift } = takeDue(requeue.current, now, at);
+    const n = ready.length;
+    requeue.current = next;
+    if (slot.above) holdBy.current += n * ROW_H;
+    setQueue((q) => [...q.slice(0, at), ...ready, ...q.slice(at)]);
+    setGrades((g) => new Map([...g].map(([k, v]) => [shift(k), v])));
+    setRevealed((r) => new Set([...r].map(shift)));
+    gradeLog.current = gradeLog.current.map(shift);
+    rowRef.current = shift(rowRef.current);
+    focusNow.current = shift(focusNow.current);
+    queueLen.current += n;
+    setRow((r) => shift(r));
+    setFocusLine((f) => shift(f));
+    setHolding((h) => (h === null ? h : shift(h)));
+    // The timer for the copies still waiting.
+    insertDue.current();
+  };
+  // Inserted above the viewport: the rows on screen moved down by what went
+  // in, and the list follows them before the frame is painted.
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    const by = holdBy.current;
+    holdBy.current = 0;
+    if (!el || !by) return;
+    el.scrollTop += by;
+    const to = advancing.current;
+    if (to) advancing.current = { ...to, top: to.top + by };
+  }, [queue]);
+  // What can leave a slot off screen: the list growing, the rows resizing,
+  // the list resizing, a scroll coming to rest, the finger lifting.
   useEffect(() => {
-    const t = setInterval(() => {
-      const el = listRef.current;
-      const now = Date.now();
-      if (!el || !requeue.current.later.some((x) => x.due <= now)) return;
-      if (touchingList.current || performance.now() - lastScrollAt.current < 400) return;
-      // The list's top spacer (`pad`), from the live height.
-      const top = Math.round(el.clientHeight * OVERSCROLL_FRACTION);
-      const below = Math.floor((el.scrollTop - top + el.clientHeight) / ROW_H) + 1;
-      // Updaters stay pure (Strict Mode runs them twice): the insertion point
-      // is fixed here, from the queue length as last rendered.
-      const at = Math.max(0, Math.min(queueLen.current, below));
-      const { ready, next, shift } = takeDue(requeue.current, now, at);
-      const n = ready.length;
-      requeue.current = next;
-      setQueue((q) => [...q.slice(0, at), ...ready, ...q.slice(at)]);
-      setGrades((g) => new Map([...g].map(([k, v]) => [shift(k), v])));
-      setRevealed((r) => new Set([...r].map(shift)));
-      gradeLog.current = gradeLog.current.map(shift);
-      rowRef.current = shift(rowRef.current);
-      queueLen.current += n;
-      setRow((r) => shift(r));
-      setFocusLine((f) => shift(f));
-      setHolding((h) => (h === null ? h : shift(h)));
-    }, 1000);
-    return () => clearInterval(t);
-  }, [ROW_H]);
+    insertDue.current();
+  }, [queue.length, ROW_H]);
+  useEffect(() => {
+    if (!listEl) return;
+    const ro = new ResizeObserver(() => insertDue.current());
+    ro.observe(listEl);
+    let rest: ReturnType<typeof setTimeout> | undefined;
+    const scrolled = () => {
+      clearTimeout(rest);
+      if (nextDueIn(requeue.current, Date.now()) === 0)
+        rest = setTimeout(() => insertDue.current(), 400);
+    };
+    listEl.addEventListener("scroll", scrolled, { passive: true });
+    return () => {
+      ro.disconnect();
+      clearTimeout(rest);
+      listEl.removeEventListener("scroll", scrolled);
+    };
+  }, [listEl]);
+  useEffect(() => () => clearTimeout(dueTimer.current), []);
   const focusItem = touch ? queue[focusLine] : undefined;
   const focusText = focusItem ? spokenText(focusItem, focusItem.lang, !!config.readingOnBack) : "";
   /** The focus moved by a tap or a swipe that already said the word: don't say it twice. */
@@ -4463,6 +4528,7 @@ export function Study({
       .filter((it) => !have.has(keyOf(it)))
       .map((item) => ({ item, due: 0, from: -1 }));
     requeue.current = { ...q, later: [...q.later, ...add] };
+    insertDue.current();
   };
   // Back on the page after a while (a phone keeps the tab open overnight):
   // words that fell due meanwhile join just below the screen, through `requeue.later`,
@@ -5089,7 +5155,10 @@ export function Study({
               // where it is. One still on its way keeps its target.
               if (!scrollingNow()) advancing.current = null;
             }}
-            onPointerUpCapture={() => (touchingList.current = false)}
+            onPointerUpCapture={() => {
+              touchingList.current = false;
+              insertDue.current();
+            }}
             onPointerCancelCapture={() => (touchingList.current = false)}
             // pointerup, not pointerdown: for touch it is the event that grants
             // the user activation full screen needs.

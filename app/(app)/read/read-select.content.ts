@@ -317,6 +317,24 @@ const dictionary = {
       sw: "Imeshindwa kutafsiri",
       mr: "भाषांतर करता आले नाही",
     }),
+    makePhraseCard: t({
+      en: "Make a card",
+      zh: "制作卡片",
+      ja: "カードを作る",
+      ko: "카드 만들기",
+      hi: "कार्ड बनाएँ",
+      es: "Crear tarjeta",
+      fr: "Créer une carte",
+      ar: "أنشئ بطاقة",
+      bn: "কার্ড তৈরি করুন",
+      pt: "Criar cartão",
+      ru: "Создать карточку",
+      ur: "کارڈ بنائیں",
+      id: "Buat kartu",
+      de: "Karte erstellen",
+      sw: "Tengeneza kadi",
+      mr: "कार्ड बनवा",
+    }),
     readFromHere: t({
       en: "Read from here",
       zh: "从这里朗读",
@@ -548,11 +566,13 @@ const context: Record<keyof typeof dictionary.content, string> = {
   lookUp:
     "Button on the reader's selection card for a selected word or phrase: opens a dictionary entry (Wiktionary) for it in a new tab. An imperative verb phrase.",
   translate:
-    "Button on the reader's selection card for a selected word, phrase, sentence or paragraph: shows a machine translation of the text into the learner's language right on the card, under the text. An imperative verb.",
+    "Button on the reader's selection card for a selected word, phrase, sentence or paragraph: shows a machine translation of the text into the learner's language right on the card, under the text. Sentences and paragraphs are translated by themselves; there the button only appears to translate what is left of a long selection or to try again after a failure. An imperative verb.",
   translating:
-    "Placeholder on the reader's selection card, under the selected text, while its machine translation (asked for with the Translate button) is on its way. A short progressive phrase ending in an ellipsis.",
+    "Placeholder on the reader's selection card, under the selected text, while its machine translation (started by itself for a sentence or paragraph, or with the Translate button) is on its way. A short progressive phrase ending in an ellipsis.",
   translateFailed:
     "Short error on the reader's selection card when the machine translation of the selected text could not be made (offline, over the limit, or a server failure). A short phrase.",
+  makePhraseCard:
+    "Button on the reader's selection card when the learner selected a phrase (several words, or a multi-character expression) that is not yet one of their flashcards, or an inflected word whose dictionary form is not yet one: makes a spaced-repetition flashcard for that phrase (or for the word's dictionary form) in the book's own word list. An imperative phrase; 'card' means a flashcard.",
   readFromHere:
     "Button on the reader's selection card: starts read-aloud (text to speech) at the passage holding the selected unit and goes on from there. An imperative phrase.",
   markNew:

@@ -125,8 +125,9 @@ Excel's TRUE/FALSE restored to true/false; NAWL's nine prefixes dropped.
 `/read` also uses a per-language lemma file, `public/words/lemma/<lang>.txt`
 (French first, 2026-11-03), to match a book's inflected forms to cards and to
 call a word "new" when the dictionary has it. Source: the kaikki.org English
-Wiktionary extract for the language, CC BY-SA 4.0 (and GFDL); headwords and
-forms only, no definitions. Attribution and changes are in
+Wiktionary extract for the language, CC BY-SA 4.0 (and GFDL); headwords,
+forms and each form's grammatical tags (format v2, 2026-11-05: the reader's
+"form → lemma" label, `lib/read/form-tags.ts`), no definitions. Attribution and changes are in
 [public/words/SOURCES.md](../public/words/SOURCES.md), "Lemma files". Build:
 `scripts/words/build-lemmas.ts`; format and interface: `lib/read/lemma.ts`.
 

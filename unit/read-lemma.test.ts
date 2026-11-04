@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { LEMMA_V, lemmasFromLex, parseLemmas } from "@/lib/read/lemma";
+import { encodeForm, LEMMA_V, lemmasFromLex, parseLemmas } from "@/lib/read/lemma";
 import { lemmasForWords, readLemmaFile } from "@/lib/read/lemma-server";
 import { withLex } from "@/lib/read/progress";
 import {
@@ -60,6 +60,77 @@ describe("lemma file", () => {
     expect(back?.has("œil")).toBe(true);
     expect(lemmasFromLex({ ...lem.toLex(), v: LEMMA_V + 1 })).toBeNull();
     expect(lemmasFromLex(null)).toBeNull();
+  });
+});
+
+// v2: the same entries, each form with its readings' tag sets.
+const FILE_V2 = [
+  "#lianki-lemmas v2 fr",
+  "#tags past historic third-person singular first-person present plural masculine",
+  "#sets 0.1.2.3 5.4.3,5.2.3 6.7",
+  "regarder\t2a:0 1:1 1s",
+  "œil\t3yeux:2 0s:2",
+  "",
+].join("\n");
+
+describe("lemma file v2: grammatical tags per form", () => {
+  it("returns each form's headword with its tags", () => {
+    const lem = parseLemmas(FILE_V2);
+    expect(lem.of("regarda")).toEqual(["regarder"]);
+    expect(lem.forms("regarda")).toEqual([
+      {
+        lemma: "regarder",
+        tags: ["past", "historic", "third-person", "singular"],
+        sets: [["past", "historic", "third-person", "singular"]],
+      },
+    ]);
+    expect(lem.forms("regarde")[0].sets).toEqual([
+      ["present", "first-person", "singular"],
+      ["present", "third-person", "singular"],
+    ]);
+    expect(lem.forms("regardes")).toEqual([{ lemma: "regarder", tags: [], sets: [] }]);
+    expect(lem.forms("yeux")[0]).toMatchObject({ lemma: "œil", tags: ["plural", "masculine"] });
+    expect(lem.forms("chat")).toEqual([]);
+  });
+
+  it("filters by a book's words as v1 does", () => {
+    const lem = parseLemmas(FILE_V2, new Set(["yeux", "regarde"]));
+    expect(lem.forms("yeux")[0].lemma).toBe("œil");
+    expect(lem.forms("regarde")[0].tags).toEqual(["present", "first-person", "singular"]);
+    expect(lem.of("regarda")).toEqual([]);
+  });
+
+  it("still reads a v1 file, without tags", () => {
+    const lem = parseLemmas(FILE);
+    expect(lem.forms("regarda")).toEqual([{ lemma: "regarder", tags: [], sets: [] }]);
+    expect(lem.toLex().tags).toBeUndefined();
+  });
+
+  it("keeps the tags through a book's stored entries", () => {
+    const lem = parseLemmas(FILE_V2, new Set(["regarde", "regardes", "yeux"]));
+    const lex = JSON.parse(JSON.stringify(lem.toLex()));
+    expect(lex.v).toBe(2);
+    const back = lemmasFromLex(lex)!;
+    expect(back.forms("regarde")).toEqual(lem.forms("regarde"));
+    expect(back.forms("yeux")).toEqual(lem.forms("yeux"));
+    expect(back.forms("regardes")).toEqual([{ lemma: "regarder", tags: [], sets: [] }]);
+    // An entry from a v1 book (no tags) is stored again, not read.
+    expect(lemmasFromLex({ ...lex, v: 1 })).toBeNull();
+    // Ids outside the tag list are dropped, not shown as "undefined".
+    const bad = lemmasFromLex({ v: LEMMA_V, of: [["x", ["y"], ["0.99"]]], heads: [], tags: ["a"] });
+    expect(bad?.forms("x")).toEqual([{ lemma: "y", tags: ["a"], sets: [["a"]] }]);
+  });
+
+  it("encodes forms the parser reads back", () => {
+    expect(encodeForm("regarder", "regarda")).toBe("2a");
+    expect(encodeForm("regarder", "regarda", 0)).toBe("2a:0");
+    expect(encodeForm("œil", "yeux", 12)).toBe("3yeux:12");
+    const long = "anticonstitutionnellement";
+    expect(encodeForm(long, "anti", 3)).toBe("~21~:3");
+    const lem = parseLemmas(
+      `#lianki-lemmas v2 fr\n#tags plural\n#sets 0\n${long}\t${encodeForm(long, "anti", 0)}\n`,
+    );
+    expect(lem.forms("anti")).toEqual([{ lemma: long, tags: ["plural"], sets: [["plural"]] }]);
   });
 });
 
@@ -148,6 +219,25 @@ describe("the shipped French file", () => {
     expect(await lemmasForWords("de", words)).toBeNull();
   });
 
+  it("tags the forms with their grammar", async () => {
+    const lem = (await lemmasForWords("fr", ["regarda", "yeux", "était"]))!;
+    expect(lem.forms("regarda").find((f) => f.lemma === "regarder")?.tags).toEqual(
+      expect.arrayContaining(["past", "historic", "third-person", "singular"]),
+    );
+    expect(lem.forms("yeux").find((f) => f.lemma === "œil")?.tags).toContain("plural");
+    expect(lem.forms("était").find((f) => f.lemma === "être")?.tags).toContain("imperfect");
+  });
+
+  it("tags Finnish forms with case and person", async () => {
+    const lem = (await lemmasForWords("fi", ["talossa", "olen"]))!;
+    expect(lem.forms("talossa").find((f) => f.lemma === "talo")?.tags).toEqual(
+      expect.arrayContaining(["inessive", "singular"]),
+    );
+    expect(lem.forms("olen").find((f) => f.lemma === "olla")?.tags).toEqual(
+      expect.arrayContaining(["first-person", "present", "singular"]),
+    );
+  });
+
   it("stores the entries with a book's words, once", async () => {
     const stats = countWords(["Ses yeux regardaient le paquebot."], "fr");
     const withL = await withLex(stats);
@@ -172,7 +262,7 @@ describe("reading the lemma file on the server", () => {
     };
     expect(await readLemmaFile("fr", assets)).toContain("chat");
     const down = { fetch: async () => new Response("", { status: 404 }) };
-    expect((await readLemmaFile("fr", down))?.startsWith("#lianki-lemmas v1 fr")).toBe(true);
+    expect((await readLemmaFile("fr", down))?.startsWith("#lianki-lemmas v2 fr")).toBe(true);
     const broken = { fetch: async () => Promise.reject(new Error("down")) };
     expect(await readLemmaFile("xx", broken)).toBeNull();
   });
