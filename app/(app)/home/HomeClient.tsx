@@ -7,9 +7,9 @@ import { useIntlayer } from "next-intlayer";
 import { APP_NAV } from "@/lib/app-nav";
 import { Icon } from "@/app/components/icons";
 import { loadCatalog } from "@/lib/words/catalog-cache";
+import { HOME_EXPLORE, homeFeatureShot } from "@/lib/home-features";
+import { FeatureCard } from "./FeatureCard";
 
-/** Learning features shown as entries below the word lists. */
-const EXPLORE = ["alphabet", "learn", "aiVocab", "polyglot", "selfIntro", "read", "roadmap"];
 /** The page-card features, behind "Advanced". */
 const ADVANCED = ["sites", "review", "cards"];
 
@@ -109,17 +109,24 @@ export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.explore}</h2>
         <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {EXPLORE.map((k) => (
-            <li key={k}>
-              <Link
-                href={item(k).href}
-                className="flex items-center gap-2 rounded-xl border border-black/10 dark:border-white/10 px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5"
-              >
-                <Icon name={item(k).icon} className="text-lg opacity-80" />
-                <span className="font-medium">{label(k)}</span>
-              </Link>
-            </li>
-          ))}
+          {HOME_EXPLORE.map((k) => {
+            const light = homeFeatureShot(k, "light");
+            const dark = homeFeatureShot(k, "dark");
+            return (
+              <li key={k}>
+                <FeatureCard
+                  featureKey={k}
+                  href={item(k).href}
+                  icon={item(k).icon}
+                  label={label(k)}
+                  desc={t.cards[k].value}
+                  shot={
+                    light && dark ? { light, dark, alt: `${t.shotAlt.value}: ${label(k)}` } : null
+                  }
+                />
+              </li>
+            );
+          })}
         </ul>
       </section>
 

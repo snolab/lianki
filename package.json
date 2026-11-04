@@ -13,6 +13,7 @@
     "dev:db": "bun scripts/dev-mongo.mjs",
     "qa:api": "bun scripts/qa/qa-api.mjs",
     "qa:ui": "bun scripts/qa/qa-ui.mjs",
+    "shots:home": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/home-feature-shots.mjs",
     "qa:lang-menu": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-lang-menu.mjs",
     "qa:all": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-all.mjs",
     "qa:partner": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-partner-embed.ts",
