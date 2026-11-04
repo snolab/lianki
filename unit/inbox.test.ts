@@ -251,9 +251,37 @@ describe("edges", () => {
     expect((await patch({ ids: [id], line: "x" })).status).toBe(404);
   });
 
+  test("a body in many chunks is streamed whole; no length is a 411; a bad name is 'file'", async () => {
+    const chunks = [PNG, new Uint8Array(600).fill(1), new Uint8Array(300).fill(2)];
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const body = new ReadableStream<Uint8Array>({
+      start(ctl) {
+        for (const c of chunks) ctl.enqueue(c);
+        ctl.close();
+      },
+    });
+    const req = new Request("https://x", {
+      method: "POST",
+      headers: { "content-length": String(total), "x-file-name": "%E0%A4%A" },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    const r = await upload(req, deps);
+    expect(r.status).toBe(201);
+    expect(await r.json()).toMatchObject({ name: "file", type: "image/png", size: total });
+    expect([...bucket.store.values()][0]?.length).toBe(total);
+    const none = new Request("https://x", { method: "POST" });
+    expect((await upload(none, deps)).status).toBe(411);
+  });
+
   test("fewer bytes than announced, or a failing R2 put: nothing is kept", async () => {
     expect((await upload(post(PNG, "a.png", PNG.length + 10), deps)).status).toBe(400);
-    const broken = { ...bucket, put: async () => Promise.reject(new Error("r2 down")) };
+    // The clean-up delete failing too changes nothing: still a 400.
+    const noDelete = { ...bucket, delete: async () => Promise.reject(new Error("r2 down")) };
+    const short = post(PNG, "a.png", PNG.length + 10);
+    expect((await upload(short, { ...deps, bucket: () => noDelete })).status).toBe(400);
+    bucket.store.clear(); // what that failed delete left behind
+    const broken = { ...noDelete, put: async () => Promise.reject(new Error("r2 down")) };
     expect((await upload(post(PNG), { ...deps, bucket: () => broken })).status).toBe(400);
     expect(bucket.store.size).toBe(0);
     // A body R2 stops reading: the reader is cancelled with it.
