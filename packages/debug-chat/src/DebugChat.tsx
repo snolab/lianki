@@ -66,6 +66,7 @@ import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicB
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
 import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
+import { hideStops, isDesktop } from "./voice-bg";
 import {
   type ReadingLeft,
   initialRead,
@@ -1585,10 +1586,14 @@ export function DebugChat({
       window.removeEventListener("keydown", on, { capture: true });
     };
   }, [vs.blocked]);
-  // The tab hiding stops the reading — unless the mic is on (hands-free).
+  // The tab hiding stops the reading — unless the mic is on (hands-free), or on
+  // a computer, where it reads on in the background (voice-bg.ts).
   useEffect(() => {
     const hide = () =>
-      document.visibilityState !== "visible" && !voice().state().mic && voice().stop();
+      document.visibilityState !== "visible" &&
+      hideStops(isDesktop()) &&
+      !voice().state().mic &&
+      voice().stop();
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
@@ -2714,7 +2719,13 @@ export function DebugChat({
     for (const e of readP.queue) if (!queuedAt.current.has(e.id)) queuedAt.current.set(e.id, Date.now());
     // The page going away stops the voice (the queue empties): keep what was
     // left from before, so the next page can read on.
-    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    // (A computer reads on in the background: its queue is kept as it goes.)
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState !== "visible" &&
+      hideStops(isDesktop())
+    )
+      return;
     // Nothing read on this page yet: what an earlier page kept stays (for the
     // chip, or for a copy of this widget mounted next, e.g. after a hot swap).
     if (!readP.queue.length && !queueSeen.current) return;

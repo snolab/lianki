@@ -299,6 +299,26 @@ export const treeDefaults = (lang?: string | null): Partial<TreeStrings> =>
 /** Opacity blink for in-progress items (globals.css lk-blink: 1 → 0.35 → 1, 1.6 s). */
 export const BLINK = "animate-lk-blink motion-reduce:animate-none";
 
+/**
+ * The browser tab's title hint (voice-bg.ts): on a computer, while the Li
+ * chat's voice keeps running in a tab he switched away from (the mic still
+ * listening, or replies still being read aloud), the tab title starts with a
+ * glyph (🎙 or 🔊) and these few words, then " · " and the page's own title.
+ * It tells him which tab still has Lianki's voice on; it must stay short
+ * (tab titles are cut off) and name Lianki. Gone when the voice stops or he
+ * is back on the tab.
+ */
+const VOICE_BG: Record<"en" | "zh" | "ja", string> = {
+  en: "Lianki voice on",
+  zh: "Lianki 语音运行中",
+  ja: "Lianki 音声オン",
+};
+export function voiceBgWords(
+  lang: string | null | undefined = globalThis.document?.documentElement.lang,
+): string {
+  return isZh(lang) ? VOICE_BG.zh : isJa(lang) ? VOICE_BG.ja : VOICE_BG.en;
+}
+
 /** The mic's local-STT dot (MicButton.tsx, docs/local-stt.md): what each state says. */
 export type LocalSttStrings = { ready: string; connecting: string; down: string };
 const LOCAL_STT: Record<"en" | "zh" | "ja", LocalSttStrings> = {
