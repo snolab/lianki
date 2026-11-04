@@ -150,6 +150,62 @@ describe("voice session: the focus rule (mic off)", () => {
   });
 });
 
+describe("voice session: sticky read-aloud once the mic was used (owner 2026-11-04)", () => {
+  it("after the mic, replies to typed lines are read with the input unfocused; no time window", () => {
+    const h = harness({ enabled: true, here: false });
+    expect(h.v.reply("Before the mic.")).toBe(false);
+    expect(h.v.voiced()).toBe(false);
+    h.v.setMic(true);
+    h.v.setMic(false);
+    expect(h.v.voiced()).toBe(true);
+    expect(h.v.state().voiced).toBe(true);
+    expect(h.v.shouldSpeak()).toBe(true);
+    expect(h.v.reply("Typed reply.")).toBe(true);
+    expect(h.texts()).toEqual(["Typed reply."]);
+    // No timer decides it: nothing was armed for the sticky state.
+    expect(h.timers.filter((t) => t.live).length).toBe(0);
+  });
+
+  it("his mute wins: the toggle off silences it, and unvoice ends the sticky state", () => {
+    const h = harness({ enabled: true, here: false });
+    h.v.setMic(true);
+    h.v.setMic(false);
+    h.flags.enabled = false;
+    expect(h.v.reply("Muted.")).toBe(false);
+    h.v.unvoice();
+    expect(h.v.voiced()).toBe(false);
+    // The toggle back on: the focus rule again, until the mic is used once more.
+    h.flags.enabled = true;
+    expect(h.v.reply("Unfocused again.")).toBe(false);
+    h.flags.here = true;
+    expect(h.v.reply("Focused.")).toBe(true);
+  });
+
+  it("the mic stopping mid-reading with the sticky state on keeps reading", () => {
+    const h = harness({ enabled: true, here: false });
+    h.v.setMic(true);
+    h.v.reply("One. Two.");
+    h.v.setMic(false);
+    expect(h.v.state().queued).toBe(2);
+  });
+
+  it("keeps the state where it is told (sessionStorage in the page)", () => {
+    let kept = false;
+    const v = createVoice({
+      synth: () => null,
+      utter: (text, lang) =>
+        ({ text, lang, onend: null, onerror: null, onboundary: null }) as UtterLike,
+      enabled: () => true,
+      here: () => false,
+      voiced: { get: () => kept, set: (on) => void (kept = on) },
+    });
+    v.setMic(true);
+    expect(kept).toBe(true);
+    v.unvoice();
+    expect(kept).toBe(false);
+  });
+});
+
 describe("voice session: the queue", () => {
   it("FIFO, one utterance per sentence; a new reply waits and never cuts one off", () => {
     const h = harness();

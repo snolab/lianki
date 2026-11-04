@@ -2029,6 +2029,8 @@ export function DebugChat({
     setSpeak(v);
     write(SPEAK_KEY, v ? "1" : "0");
     notePrefWrite(); // synced with the account by the app (docs/prefs-sync.md)
+    // His mute wins: it also ends "the mic was used here" (sticky read-aloud, voice.ts).
+    if (!v) voice().unvoice?.();
     if (!v && !voice().state().mic) voice().stop();
   };
 
@@ -2360,13 +2362,21 @@ export function DebugChat({
         title={
           vs.mic
             ? "The mic is on: replies are always read aloud (your setting is back when it stops)"
-            : "Replies are read aloud while you're typing here (the input has focus)"
+            : speak && vs.voiced
+              ? "You used the mic in this tab: replies are read aloud, typed or spoken, until you turn this off"
+              : "Replies are read aloud while you're typing here (the input has focus)"
         }
         onClick={() => !vs.mic && toggleSpeak()}
         className={`flex items-center gap-2 px-3 py-1.5 text-start ${vs.mic ? "opacity-70" : ""}`}
       >
         <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
-        {vs.mic ? "Replies read aloud (mic on)" : speak ? "Replies read aloud" : "Replies silent"}
+        {vs.mic
+          ? "Replies read aloud (mic on)"
+          : speak && vs.voiced
+            ? "Replies read aloud (mic used)"
+            : speak
+              ? "Replies read aloud while typing"
+              : "Replies silent"}
       </button>
       {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
       <button
