@@ -9,7 +9,7 @@ import { statsLemmas } from "@/lib/read/words";
  * selected word or phrase shows its card's meaning with no wait.
  *
  *   → { cards: [{ term, reading, back, listId }], forms: [[bookWord, cardIndex]],
- *       heads: [[inflectedBookWord, lemma]] }
+ *       heads: [[inflectedBookWord, lemma, tagSets]] }
  *
  * Scoped to his email.
  */

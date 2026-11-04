@@ -454,3 +454,11 @@ export function countRange(
   }
   return c;
 }
+
+/** The Li chat's own elements (packages/debug-chat): its taps and selections are not the reader's. */
+export const CHAT_SELECTOR = "[data-debug-chat], [data-debug-widget]";
+
+/** The event happened in the chat (through a shadow root too). */
+export function inChat(e: Pick<Event, "composedPath">): boolean {
+  return e.composedPath().some((n) => n instanceof Element && n.matches(CHAT_SELECTOR));
+}

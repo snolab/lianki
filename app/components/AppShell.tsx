@@ -5,7 +5,7 @@ import { BrandName } from "./BrandName";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { APP_NAV, NAV_GROUPS, activeNavKey, type NavGroup } from "@/lib/app-nav";
+import { NAV_GROUPS, activeNavKey, visibleNav, type NavGroup } from "@/lib/app-nav";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
 import { Icon, SealIcon } from "./icons";
@@ -49,6 +49,8 @@ interface AppShellProps {
   devSwitch?: DevSwitch;
   /** Live view (docs/live-view.md): set by the server for the owner only. */
   liveView?: LiveViewShell;
+  /** Flag-gated nav items this viewer gets (lib/app-nav.ts `flag`), decided by the server. */
+  navShown?: string[];
   children: React.ReactNode;
 }
 
@@ -60,6 +62,7 @@ export function AppShell({
   firstRun,
   devSwitch,
   liveView,
+  navShown,
   children,
 }: AppShellProps) {
   const pathname = usePathname();
@@ -138,7 +141,7 @@ export function AppShell({
     >
       <NavDrawerIsland place={place} collapsed={place === "sidebar" && collapsed} />
       {NAV_GROUPS.map((group) => {
-        const items = APP_NAV.filter((item) => item.group === group);
+        const items = visibleNav(navShown).filter((item) => item.group === group);
         if (!items.length) return null;
         return (
           <div key={group}>

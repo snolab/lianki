@@ -17,9 +17,10 @@ export interface BookMeanings {
   /**
    * Book words that are an inflected form, with their dictionary headword
    * (the language's lemma file, lib/read/lemma.ts): "représentait" →
-   * "représenter". The card shows "form → lemma".
+   * "représenter", and the form's readings as tag sets (lemma file v2;
+   * empty without tags). The card shows "form → lemma · its label".
    */
-  heads: [string, string][];
+  heads: [string, string, (readonly string[])[]][];
 }
 
 /** His cards first, then his lists' entries; only those with a meaning. */
@@ -82,10 +83,12 @@ export function bookMeanings(
       forms.push([w, take(m)]);
       break;
     }
-  const heads: [string, string][] = [];
+  const heads: BookMeanings["heads"] = [];
   for (const w of bookWords) {
     const h = headOf(w, lem);
-    if (h !== w) heads.push([w, h]);
+    if (h === w) continue;
+    const sets = lem?.forms(w).find((f) => f.lemma === h)?.sets ?? [];
+    heads.push([w, h, sets.map((s) => [...s])]);
   }
   return { cards, forms, heads };
 }

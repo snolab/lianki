@@ -199,7 +199,8 @@ export function SearchPalette({
 
   const pages = useMemo<PaletteItem[]>(
     () =>
-      APP_NAV.map((i) => ({
+      // Flag-gated pages (lib/app-nav.ts `flag`) stay out: the palette does not know the viewer.
+      APP_NAV.filter((i) => !i.flag).map((i) => ({
         id: `go:${i.key}`,
         kind: "go",
         title: t.pages[i.key] ?? i.key,

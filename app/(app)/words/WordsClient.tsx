@@ -12,8 +12,11 @@ import {
   afterGrade,
   emptyRequeue,
   isRetired,
+  nextDueIn,
+  offscreenSlot,
   takeDue,
   undoPick,
+  viewport,
   withdraw,
   type Requeue,
 } from "@/lib/words/requeue";
@@ -99,9 +102,11 @@ import {
   famLang,
   famMark,
   missingWords,
+  recordHeads,
   recordHits,
   type FamHit,
   type FamMap,
+  type HeadMap,
 } from "@/lib/words/example-marks";
 import { examplePieces, pieceRuns, targetSpans, type Piece } from "@/lib/words/example-target";
 import { SOUND_LOOP_KEY, createSequencer, rowReading } from "@/lib/words/sequence";
@@ -479,22 +484,25 @@ function useTouch() {
  * (lib/words/example-marks.ts): a word with a card gets a solid (weak) or
  * dashed (learning) line; mastered words and words without a card stay plain.
  * The card's own word (`forms`: its term and reading) is highlighted
- * (lib/words/example-target.ts) and carries data-ex-target, which Glance
+ * (lib/words/example-target.ts), an inflected form of it too by the
+ * language's lemma file (`heads`), and carries data-ex-target, which Glance
  * scrolls into the middle of a long example.
  */
 export function MarkedExample({
   text,
   lang,
   fam,
+  heads,
   forms = [],
 }: {
   text: string;
   lang: string;
   fam?: FamMap;
+  heads?: HeadMap;
   forms?: readonly (string | null | undefined)[];
 }) {
   const known = fam?.get(famLang(lang));
-  const spans = targetSpans(text, forms, lang);
+  const spans = targetSpans(text, forms, lang, heads?.get(famLang(lang)));
   if (!known && !spans.length) return <>{text}</>;
   const piece = (p: Piece, k: number) => {
     const mark = known && p.word ? famMark(known.get(p.word)) : null;
@@ -3857,6 +3865,7 @@ export function Study({
       now.getTime(),
       SESSION_WINDOW_MS,
     );
+    insertDue.current();
     const op: PendingOp = {
       listId: it.listId,
       op: "review",
@@ -4280,38 +4289,99 @@ export function Study({
   // focused row is read once.
   const [focusLine, setFocusLine] = useState(0);
 
-  // Due words from `later` join the list just below the screen — nothing on
-  // screen moves, and scrolling on meets them, as Anki interleaves learning
-  // cards. Never mid-gesture or mid-scroll: they wait for the hand to rest.
-  // Every index-keyed piece of state below the insertion point shifts by one.
+  // Due words from `later` join the list off screen — nearest below it, as
+  // Anki interleaves learning cards, so scrolling on meets them — and never
+  // inside the viewport (the owner, 2026-11-05): with the tail on screen they
+  // wait (the slip reads "↓ back") until a scroll, a resize or the list
+  // growing leaves a slot off screen (lib/words/requeue.ts, offscreenSlot).
+  // Never mid-gesture or mid-scroll: they wait for the hand to rest. Events
+  // and one timer to the next due moment — nothing polls. Every index-keyed
+  // piece of state below the insertion point shifts by one.
   const touchingList = useRef(false);
+  const dueTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Inserted above the viewport: scroll down by this much, so the rows on screen stay put. */
+  const holdBy = useRef(0);
+  const insertDue = useRef(() => {});
+  insertDue.current = () => {
+    clearTimeout(dueTimer.current);
+    const el = listRef.current;
+    const now = Date.now();
+    const wait = nextDueIn(requeue.current, now);
+    if (!el || wait === null) return;
+    const again = (ms: number) => (dueTimer.current = setTimeout(() => insertDue.current(), ms));
+    if (wait > 0) return void again(wait);
+    // The finger lifting tries again (onPointerUpCapture below).
+    if (touchingList.current) return;
+    const rest = performance.now() - lastScrollAt.current;
+    if (rest < 400) return void again(400 - rest);
+    // The list's top spacer (`pad`), from the live height.
+    const top = Math.round(el.clientHeight * OVERSCROLL_FRACTION);
+    const slot = offscreenSlot(
+      (touch ? focusNow.current : rowRef.current) + 1,
+      queueLen.current,
+      (at) => top + at * ROW_H,
+      viewport(el.scrollTop, el.clientHeight),
+    );
+    if (!slot) {
+      // Waiting for a slot; a copy not due yet still needs its timer.
+      const ahead = requeue.current.later.filter((w) => w.due > now);
+      if (ahead.length) again(Math.min(...ahead.map((w) => w.due)) - now);
+      return;
+    }
+    // Updaters stay pure (Strict Mode runs them twice): the insertion point
+    // is fixed here, from the queue length as last rendered.
+    const at = slot.at;
+    const { ready, next, shift } = takeDue(requeue.current, now, at);
+    const n = ready.length;
+    requeue.current = next;
+    if (slot.above) holdBy.current += n * ROW_H;
+    setQueue((q) => [...q.slice(0, at), ...ready, ...q.slice(at)]);
+    setGrades((g) => new Map([...g].map(([k, v]) => [shift(k), v])));
+    setRevealed((r) => new Set([...r].map(shift)));
+    gradeLog.current = gradeLog.current.map(shift);
+    rowRef.current = shift(rowRef.current);
+    focusNow.current = shift(focusNow.current);
+    queueLen.current += n;
+    setRow((r) => shift(r));
+    setFocusLine((f) => shift(f));
+    setHolding((h) => (h === null ? h : shift(h)));
+    // The timer for the copies still waiting.
+    insertDue.current();
+  };
+  // Inserted above the viewport: the rows on screen moved down by what went
+  // in, and the list follows them before the frame is painted.
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    const by = holdBy.current;
+    holdBy.current = 0;
+    if (!el || !by) return;
+    el.scrollTop += by;
+    const to = advancing.current;
+    if (to) advancing.current = { ...to, top: to.top + by };
+  }, [queue]);
+  // What can leave a slot off screen: the list growing, the rows resizing,
+  // the list resizing, a scroll coming to rest, the finger lifting.
   useEffect(() => {
-    const t = setInterval(() => {
-      const el = listRef.current;
-      const now = Date.now();
-      if (!el || !requeue.current.later.some((x) => x.due <= now)) return;
-      if (touchingList.current || performance.now() - lastScrollAt.current < 400) return;
-      // The list's top spacer (`pad`), from the live height.
-      const top = Math.round(el.clientHeight * OVERSCROLL_FRACTION);
-      const below = Math.floor((el.scrollTop - top + el.clientHeight) / ROW_H) + 1;
-      // Updaters stay pure (Strict Mode runs them twice): the insertion point
-      // is fixed here, from the queue length as last rendered.
-      const at = Math.max(0, Math.min(queueLen.current, below));
-      const { ready, next, shift } = takeDue(requeue.current, now, at);
-      const n = ready.length;
-      requeue.current = next;
-      setQueue((q) => [...q.slice(0, at), ...ready, ...q.slice(at)]);
-      setGrades((g) => new Map([...g].map(([k, v]) => [shift(k), v])));
-      setRevealed((r) => new Set([...r].map(shift)));
-      gradeLog.current = gradeLog.current.map(shift);
-      rowRef.current = shift(rowRef.current);
-      queueLen.current += n;
-      setRow((r) => shift(r));
-      setFocusLine((f) => shift(f));
-      setHolding((h) => (h === null ? h : shift(h)));
-    }, 1000);
-    return () => clearInterval(t);
-  }, [ROW_H]);
+    insertDue.current();
+  }, [queue.length, ROW_H]);
+  useEffect(() => {
+    if (!listEl) return;
+    const ro = new ResizeObserver(() => insertDue.current());
+    ro.observe(listEl);
+    let rest: ReturnType<typeof setTimeout> | undefined;
+    const scrolled = () => {
+      clearTimeout(rest);
+      if (nextDueIn(requeue.current, Date.now()) === 0)
+        rest = setTimeout(() => insertDue.current(), 400);
+    };
+    listEl.addEventListener("scroll", scrolled, { passive: true });
+    return () => {
+      ro.disconnect();
+      clearTimeout(rest);
+      listEl.removeEventListener("scroll", scrolled);
+    };
+  }, [listEl]);
+  useEffect(() => () => clearTimeout(dueTimer.current), []);
   // A scoped review's card in focus, per tab (ui-store.ts `focus`): a refresh
   // lands on the same card while it is still in the queue. Saved only once
   // the stored one has been restored: the save is declared first, so on the
@@ -4487,6 +4557,7 @@ export function Study({
       .filter((it) => !have.has(keyOf(it)))
       .map((item) => ({ item, due: 0, from: -1 }));
     requeue.current = { ...q, later: [...q.later, ...add] };
+    insertDue.current();
   };
   // Back on the page after a while (a phone keeps the tab open overnight):
   // words that fell due meanwhile join just below the screen, through `requeue.later`,
@@ -4566,6 +4637,8 @@ export function Study({
   // words of the rendered window not asked yet, in one request per language
   // once the window has held still for a moment; answers kept for the session.
   const fam = useRef<FamMap>(new Map());
+  // The headwords of the same words (the lemma file's), for the card's word in its example.
+  const heads = useRef<HeadMap>(new Map());
   const [, setFamRev] = useState(0);
   useEffect(() => {
     const want = missingWords(queue.slice(from, to), fam.current);
@@ -4582,9 +4655,11 @@ export function Study({
             body: JSON.stringify({ lang, words }),
           })
             .then((r) => (r.ok ? r.json() : null))
-            .then((j: { hits?: Record<string, FamHit> } | null) => {
-              if (!j?.hits || !Object.keys(j.hits).length) return;
-              recordHits(fam.current, lang, words, j.hits);
+            .then((j: { hits?: Record<string, FamHit>; heads?: unknown } | null) => {
+              const hs = j?.heads && typeof j.heads === "object" ? Object.keys(j.heads) : [];
+              if (hs.length) recordHeads(heads.current, lang, j!.heads);
+              if (!hs.length && (!j?.hits || !Object.keys(j.hits).length)) return;
+              if (j?.hits) recordHits(fam.current, lang, words, j.hits);
               setFamRev((n) => n + 1);
             })
             .catch(() => {});
@@ -5109,7 +5184,10 @@ export function Study({
               // where it is. One still on its way keeps its target.
               if (!scrollingNow()) advancing.current = null;
             }}
-            onPointerUpCapture={() => (touchingList.current = false)}
+            onPointerUpCapture={() => {
+              touchingList.current = false;
+              insertDue.current();
+            }}
             onPointerCancelCapture={() => (touchingList.current = false)}
             // pointerup, not pointerdown: for touch it is the event that grants
             // the user activation full screen needs.
@@ -5303,6 +5381,7 @@ export function Study({
                                   text={it.ex}
                                   lang={it.lang}
                                   fam={fam.current}
+                                  heads={heads.current}
                                   forms={[it.term, it.reading]}
                                 />
                               </bdi>
@@ -5363,6 +5442,7 @@ export function Study({
           {sheet !== null && queue[sheet] && (
             <SlipSheet
               item={queue[sheet]}
+              heads={heads.current}
               tags={tagsOf(queue[sheet])}
               status={status(queue[sheet], sheet)}
               onClose={() => setSheet(null)}
@@ -5412,6 +5492,7 @@ export function Study({
  */
 function SlipSheet({
   item,
+  heads,
   tags,
   status,
   onClose,
@@ -5419,6 +5500,8 @@ function SlipSheet({
   onCopy,
 }: {
   item: Item;
+  /** The example's words' headwords, so the card's word is found in it inflected. */
+  heads?: HeadMap;
   /** The word's tags (its list, the list's level): shown here only, never in the row. */
   tags: string[];
   status: React.ReactNode;
@@ -5488,7 +5571,12 @@ function SlipSheet({
             data-sheet-example
           >
             <div lang={item.lang} dir="auto">
-              <MarkedExample text={item.ex} lang={item.lang} forms={[item.term, item.reading]} />
+              <MarkedExample
+                text={item.ex}
+                lang={item.lang}
+                heads={heads}
+                forms={[item.term, item.reading]}
+              />
             </div>
             {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
           </div>
