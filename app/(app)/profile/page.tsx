@@ -5,6 +5,10 @@ import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
 import PasskeysCard from "./PasskeysCard";
 import { DebugOnly } from "./DebugOnly";
+import { dbBackend } from "@/lib/d1";
+import { readFlags } from "@/lib/flags-store";
+import { isOwner } from "@/lib/owner";
+import { connectionsOn } from "@/lib/connections/gate";
 
 export default async function ProfilePage() {
   const user = await authUser();
@@ -22,6 +26,11 @@ export default async function ProfilePage() {
     editPreferences,
     backToHome,
   } = getIntlayer("profile-page", locale);
+  // /connections while it ships dark: the owner, or everyone once connections.google is on.
+  const connections =
+    dbBackend() === "d1" && connectionsOn(await readFlags(), isOwner(user.email))
+      ? String(getIntlayer("connections-page", locale).title)
+      : null;
 
   return (
     <div className="flex flex-col">
@@ -79,6 +88,11 @@ export default async function ProfilePage() {
           <a href="/preferences" className="text-blue-500 hover:text-blue-600">
             {editPreferences}
           </a>
+          {connections && (
+            <a href="/connections" className="text-blue-500 hover:text-blue-600">
+              {connections}
+            </a>
+          )}
           <a href="/list" className="text-blue-500 hover:text-blue-600">
             {backToHome}
           </a>

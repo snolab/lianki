@@ -7,7 +7,13 @@
 
 import { gdocExportUrl } from "./url";
 
-export type GdocFetchError = "not-shared" | "not-found" | "too-large" | "fetch-failed";
+/** `not-granted`: through the Google connection, a doc `drive.file` does not cover yet (lib/gdoc/drive.ts). */
+export type GdocFetchError =
+  | "not-shared"
+  | "not-granted"
+  | "not-found"
+  | "too-large"
+  | "fetch-failed";
 
 export class GdocError extends Error {
   constructor(public code: GdocFetchError | "no-text" | "too-much-text") {
