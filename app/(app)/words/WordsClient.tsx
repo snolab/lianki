@@ -442,7 +442,7 @@ const keyOf = (it: { listId: string; term: string }) => `${it.listId}\u0000${it.
  * agree: L K J H = Again Hard Good Easy (1 and L are both the outer edge's
  * Again). W/S move, like the arrows.
  */
-const KEY_RATING: Record<string, Rating> = {
+export const KEY_RATING: Record<string, Rating> = {
   KeyL: 1,
   KeyK: 2,
   KeyJ: 3,
@@ -1486,6 +1486,60 @@ async function enqueue(op: PendingOp) {
   }
   await notifySync();
   void flushPending();
+}
+
+/**
+ * One word's review outside the list study (the reader's side-by-side card,
+ * docs/books-plan.md): the same op Study's grade queues, through the same
+ * pending queue and sync. A re-grade still waiting replaces its earlier op.
+ */
+export async function queueWordReview(
+  it: { listId: string; term: string; reading?: string | null; back: string; cursor: number },
+  rating: Rating,
+  elapsedMs: number | null,
+) {
+  const now = new Date();
+  const queued = await idbAll<PendingOp>("pending").catch(() => []);
+  const stale = undoTarget(queued, it.listId, it.term);
+  if (stale != null) await idbDelete("pending", stale).catch(() => {});
+  await enqueue({
+    listId: it.listId,
+    op: "review",
+    term: it.term,
+    at: now.toISOString(),
+    body: {
+      day: localDay(),
+      cursor: it.cursor,
+      reviews: [
+        {
+          term: it.term,
+          reading: it.reading ?? null,
+          back: it.back,
+          rating,
+          elapsedMs,
+          newIndex: null,
+          reviewedAt: now.toISOString(),
+        },
+      ],
+    },
+  });
+}
+
+/** Takes one word's last grade back, as Study's undo: dropped if unsent, else an undo op. */
+export async function queueWordUndo(listId: string, term: string) {
+  const queued = await idbAll<PendingOp>("pending").catch(() => []);
+  const drop = undoTarget(queued, listId, term);
+  if (drop != null) {
+    await idbDelete("pending", drop).catch(() => {});
+    await notifySync();
+  } else
+    await enqueue({
+      listId,
+      op: "undo",
+      term,
+      at: new Date().toISOString(),
+      body: { term, day: localDay() },
+    });
 }
 
 /** Pending ops and connectivity, for the study header. Also drives retries. */

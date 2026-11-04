@@ -22,6 +22,7 @@
  *   (lib/read/reader-adapter.ts), the device copy only a cache.
  */
 
+import dynamic from "next/dynamic";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useIntlayer, useLocale } from "next-intlayer";
@@ -45,6 +46,7 @@ import { inKeys, wordLang } from "@/lib/read/words";
 import {
   type Block,
   type Fam,
+  type Sentence,
   type WordRow,
   ParaCache,
   marksByLine,
@@ -108,9 +110,13 @@ import {
   unitLink,
 } from "@/lib/read/reader-select";
 import { segmentLine } from "@/lib/read/units";
+import { cmpAt, findWord, sideKindOf, type SideKind, type WordAt } from "@/lib/read/side-review";
+import type { SideFocus, SideGrade } from "./reader-side-review";
 import { sentenceId } from "@/lib/read/reader-api";
 
 type WindowVirtualizer = Virtualizer<Window, Element>;
+// The side-by-side word review, loaded when it opens (it brings /words' client).
+const SideReview = dynamic(() => import("./reader-side-review"), { ssr: false });
 /** The units whose card offers the review and 制卡. */
 type ReviewUnit = Extract<Unit, { kind: "word" | "phrase" | "sentence" | "para" | "range" }>;
 
@@ -184,7 +190,16 @@ function useTouch() {
   return touch;
 }
 
-export function ReaderV2({ id, isLoggedIn }: { id: string; isLoggedIn: boolean }) {
+export function ReaderV2({
+  id,
+  isLoggedIn,
+  sideReview = false,
+}: {
+  id: string;
+  isLoggedIn: boolean;
+  /** The side-by-side word review is on for him (flag `read.side-review`, else the owner). */
+  sideReview?: boolean;
+}) {
   const t = useIntlayer("read-reader");
   const [material, setMaterial] = useState<Material | null>(null);
   const [loading, setLoading] = useState(true);
@@ -223,10 +238,20 @@ export function ReaderV2({ id, isLoggedIn }: { id: string; isLoggedIn: boolean }
         </Link>
       </div>
     );
-  return <Reader id={id} material={material} signedIn={isLoggedIn} />;
+  return <Reader id={id} material={material} signedIn={isLoggedIn} sideReview={sideReview} />;
 }
 
-function Reader({ id, material, signedIn }: { id: string; material: Material; signedIn: boolean }) {
+function Reader({
+  id,
+  material,
+  signedIn,
+  sideReview,
+}: {
+  id: string;
+  material: Material;
+  signedIn: boolean;
+  sideReview: boolean;
+}) {
   const t = useIntlayer("read-reader");
   const tp = useIntlayer("read-player");
   const tw = useIntlayer("words-page");
@@ -844,6 +869,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       // A modal over the book (the word review, a sheet) has its own keys.
       if (document.querySelector("[aria-modal=true]")) return;
+      // The side-by-side card has its own keys (/words' keys).
+      if (sideRef.current) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         return undo();
@@ -884,6 +911,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
+  const tsr = useIntlayer("read-side-review");
   const [review, setReview] = useState<{ words: RangeWord[]; range: boolean } | null>(null);
   const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
   const reviewBack = useRef<HTMLElement | null>(null);
@@ -945,6 +973,200 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     },
     [lineWords, normLang, id, tr, famChanged],
   );
+
+  // ── The side-by-side word review (reader-side-review.tsx, lib/read/side-review.ts) ──
+  const sideAllowed = sideReview && signedIn && !!material.readerV2 && !!material.bookHash;
+  const [side, setSide] = useState(false);
+  const sideRef = useRef(false);
+  sideRef.current = side;
+  const [focus, setFocus] = useState<SideFocus | null>(null);
+  const focusRef = useRef<SideFocus | null>(null);
+  focusRef.current = focus;
+  const [sideNone, setSideNone] = useState(false);
+  /** The book's words due on his cards now (GET /api/read/[id]/word-due). */
+  const dueRef = useRef<Set<string>>(new Set());
+  /** Words graded here: not offered again this visit. */
+  const doneRef = useRef<Set<string>>(new Set());
+  const sideStack = useRef<{ f: SideFocus; g: SideGrade; wasDue: boolean }[]>([]);
+  const famRef = useRef(fam);
+  famRef.current = fam;
+  /** Paragraphs cut for the scan only (not the rows' cache: a long scan would push them out). */
+  const scanCache = useMemo(() => new Map<number, Sentence[] | null>(), []);
+  const scanSentences = useCallback(
+    (l: number) => {
+      if (scanCache.has(l)) return scanCache.get(l)!;
+      const text = lines[l];
+      const ss =
+        !text?.trim() || rbook.headings.has(l) ? null : cutPara(text, lang, normLang).sentences;
+      scanCache.set(l, ss);
+      return ss;
+    },
+    [scanCache, lines, rbook, lang, normLang],
+  );
+  const sideKind = useCallback(
+    (w: string) => sideKindOf(w, famRef.current?.map ?? null, dueRef.current, doneRef.current),
+    [],
+  );
+  /** Where a jump starts: the focused word, else the paragraph at the eye line. */
+  const sideFrom = (): WordAt => {
+    const f = focusRef.current;
+    if (f) return { line: f.line, t: f.t };
+    const b = blocks[eyeIndexRef.current];
+    return { line: b ? blockLine(b) : 0, t: -1 };
+  };
+  const sayWord = useCallback(
+    (text: string) => {
+      speaker.unlock();
+      said.current?.();
+      said.current = speaker.speak(text, lang, { onend: () => {}, onerror: () => {} });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [speaker, lang],
+  );
+  /** Focuses a word of the text: its card, the word marked and scrolled into view. */
+  const focusWord = useCallback(
+    (at: WordAt & { w: string }, kind: SideKind | null, speak: boolean) => {
+      const ss = para(at.line).sentences;
+      let sIdx = sentenceOfToken(ss, at.t);
+      let t0 = at.t;
+      // The rows cut with the server's sentence cuts: find the word there if its index moved.
+      if (sIdx < 0 || tokenWord(ss, at.t) !== at.w) {
+        for (let i = 0; i < ss.length && sIdx < 0; i++)
+          for (const g of ss[i].segs)
+            if (g.w === at.w) {
+              sIdx = i;
+              t0 = g.t;
+              break;
+            }
+      }
+      if (sIdx < 0) return;
+      const pw = {
+        w: at.w,
+        text: tokenText(ss, t0, t0),
+        t: t0,
+        s: sIdx,
+        fam: famRef.current?.map.get(at.w),
+      };
+      void rangeWordsOf([pw], ss, normLang).then(([word]) => {
+        if (!word) return;
+        setSideNone(false);
+        setFocus({ line: at.line, t: t0, w: at.w, kind, word });
+        if (speak) sayWord(tokenText(ss, t0, t0));
+      });
+      // Into view: at the eye line unless it is already well on screen.
+      const sel0 = `[data-line="${at.line}"] [data-t="${t0}"]`;
+      const el = listRef.current?.querySelector<HTMLElement>(sel0);
+      const r = el?.getBoundingClientRect();
+      const top = strip.current?.offsetHeight ?? 44;
+      if (r && r.top > top + 8 && r.bottom < window.innerHeight * (1 - EYE_SHARE)) return;
+      if (el) return scrollTo(window.scrollY + r!.top - eye());
+      const i = blockOfAnchor(blocks, at.line, sIdx);
+      prog.current = true;
+      vz().scrollToIndex(i, { align: "start" });
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const e2 = listRef.current?.querySelector<HTMLElement>(sel0);
+          if (e2) scrollTo(window.scrollY + e2.getBoundingClientRect().top - eye());
+        }),
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [para, normLang, blocks, scrollTo, sayWord],
+  );
+  /** The next / previous word of `kind` (null: either); false when there is none. */
+  const sideJump = useCallback(
+    (kind: SideKind | null, dir: 1 | -1, from = sideFrom()): boolean => {
+      const hit = findWord(from, dir, kind, lines.length, scanSentences, sideKind);
+      if (!hit) return false;
+      focusWord(hit, hit.kind, true);
+      return true;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lines.length, scanSentences, sideKind, focusWord, blocks],
+  );
+  const openSide = useCallback(() => {
+    sel.clear();
+    setSide(true);
+    setFocus(null);
+    setSideNone(false);
+    void fetch(`/api/read/${id}/word-due`)
+      .then((r) => (r.ok ? r.json() : { due: [] }))
+      .catch(() => ({ due: [] }))
+      .then((d: { due?: string[] }) => {
+        dueRef.current = new Set(d.due ?? []);
+        if (!sideRef.current) return;
+        // His due words first, then the new ones, from where he is reading.
+        if (!sideJump("due", 1) && !sideJump("new", 1)) setSideNone(true);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, sideJump, sel.clear]);
+  const sideGraded = useRef(false);
+  const closeSide = useCallback(() => {
+    setSide(false);
+    setFocus(null);
+    if (sideGraded.current) {
+      sideGraded.current = false;
+      famChanged();
+    }
+  }, [famChanged]);
+  useBackToClose(side, closeSide);
+  const onSideJump = useCallback(
+    (kind: SideKind, dir: 1 | -1) => {
+      if (!sideJump(kind, dir) && !focusRef.current) setSideNone(true);
+    },
+    [sideJump],
+  );
+  const onSideGraded = useCallback(
+    (f: SideFocus, g: SideGrade) => {
+      sideGraded.current = true;
+      const wasDue = dueRef.current.has(f.w);
+      sideStack.current.push({ f, g, wasDue });
+      doneRef.current.add(f.w);
+      dueRef.current.delete(f.w);
+      // On to the next word of the same kind, then of the other kind.
+      const kind = f.kind ?? (wasDue ? "due" : "new");
+      const other: SideKind = kind === "due" ? "new" : "due";
+      const from = { line: f.line, t: f.t };
+      if (sideJump(kind, 1, from) || sideJump(other, 1, from)) return;
+      setFocus(null);
+      setSideNone(true);
+    },
+    [sideJump],
+  );
+  /** Z: the last grade here, taken back (the card queues the undo); its word focused again. */
+  const onSideUndo = useCallback((): SideGrade | null => {
+    const last = sideStack.current.pop();
+    if (!last) return null;
+    doneRef.current.delete(last.f.w);
+    if (last.wasDue) dueRef.current.add(last.f.w);
+    focusWord(last.f, last.f.kind, false);
+    return last.g;
+  }, [focusWord]);
+  // A click on a word while the review is open: that word's card.
+  const selUnit = sel.unit;
+  useEffect(() => {
+    if (!sideRef.current || selUnit?.kind !== "word") return;
+    const w = tokenWord(para(selUnit.line).sentences, selUnit.t);
+    sel.clear();
+    if (w) focusWord({ line: selUnit.line, t: selUnit.t, w }, null, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selUnit]);
+  // ?side opens it (a link to try it).
+  useEffect(() => {
+    if (!sideAllowed || !blocks.length || !restored.current) return;
+    if (new URLSearchParams(location.search).has("side") && !sideRef.current) openSide();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sideAllowed, blocks.length, fam]);
+  // The focused word marked in the book (rows remount as the list scrolls).
+  useLayoutEffect(() => {
+    const root = listRef.current;
+    if (!root) return;
+    root.querySelectorAll("[data-side-focus]").forEach((n) => n.removeAttribute("data-side-focus"));
+    if (!side || !focus) return;
+    root
+      .querySelectorAll(`[data-line="${focus.line}"] [data-t="${focus.t}"]`)
+      .forEach((n) => n.setAttribute("data-side-focus", ""));
+  });
 
   // ── Saying the selected unit (lib/read/reader-select.ts, tapVoice) ──
   /** Cuts what the last tap said, or its pending say. */
@@ -1246,7 +1468,11 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
 
   return (
     <SwipeFeelProvider>
-      <div className="lk-reader lk-fs-read" data-testid="reader-v2">
+      <div
+        className="lk-reader lk-fs-read"
+        data-testid="reader-v2"
+        data-side={side ? "" : undefined}
+      >
         {/* The top strip: back, chapter, ring. Reserve, don't push: a
             zero-height sticky holder, the glass floats over the book. */}
         <div className="sticky top-0 z-20 h-0" data-reader-strip>
@@ -1370,6 +1596,21 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
               ↶
             </button>
           )}
+          {sideAllowed && (
+            <button
+              type="button"
+              onClick={() => (side ? closeSide() : openSide())}
+              aria-label={tsr.open.value}
+              title={tsr.open.value}
+              aria-pressed={side}
+              data-testid="read-side-open"
+              className={`grid h-10 w-10 place-items-center rounded-full text-sm font-semibold ${
+                side ? "bg-[oklch(0.5_0_0/0.14)]" : ""
+              }`}
+            >
+              <span aria-hidden>⧉</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={togglePlay}
@@ -1395,6 +1636,18 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
                 : null)
             }
             onClose={sel.clear}
+          />
+        )}
+        {side && (
+          <SideReview
+            id={id}
+            focus={focus}
+            none={sideNone}
+            say={sayWord}
+            onJump={onSideJump}
+            onGraded={onSideGraded}
+            onUndo={onSideUndo}
+            onClose={closeSide}
           />
         )}
         {review && (

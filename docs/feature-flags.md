@@ -46,6 +46,7 @@ with no deploy and no secret change.
 | `payments.komoju.live` | KOMOJU takes real money (also needs an `sk_live_` key)         |
 | `words.voice-mode`     | everyone gets the /words voice commands switch (off: the owner's preview only) — [voice-mode.md](voice-mode.md) |
 | `read.reader-v2`       | everyone gets reader v2: sentence review units, swipe grades, synced position, notes, exposure log (off: the owner only) — [books-plan.md](books-plan.md), "Review units" |
+| `read.side-review`    | everyone gets the reader's side-by-side word review: one /words card beside the book, D / N jump to the next due / new word in the text (off: the owner only) — [books-plan.md](books-plan.md), "Side-by-side word review" |
 | `stt.polish-off`       | the agent can no longer polish the owner's voice lines; the chat keeps only what STT heard (off: polish from context only) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached |
 | `partner.ai-reply`     | every signed-in user but the owner gets the Learning Partner chat on every page, answered by DeepSeek on Workers AI (off: debug-mode friends only, lanes answer) — [partner-ai.md](partner-ai.md). Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 

@@ -1,0 +1,263 @@
+"use client";
+
+// The reader's side-by-side word review (docs/books-plan.md, "Side-by-side
+// word review"; owner, 2026-11-04 15:56 JST; flag `read.side-review`). The
+// book stays on screen; ONE /words card sits beside it (a wide screen) or
+// over the bottom of the book (a phone), for the word focused in the text.
+// D / N jump to the next due / new word of the text (Shift: back); the card
+// reveals with Space, grades with /words' keys (1–4, L K J H) through
+// /words' own pending queue, and Z undoes. After a grade the reader moves to
+// the next word of the same kind.
+//
+// Loaded only when the review opens (it pulls in /words' client module).
+// No gesture starts at a screen edge (Android's Back): the card is inset and
+// graded by buttons and keys.
+
+import { useEffect, useRef, useState } from "react";
+import { useIntlayer } from "next-intlayer";
+import { KEY_RATING, queueWordReview, queueWordUndo } from "@/app/(app)/words/WordsClient";
+import type { WordList } from "@/lib/repos/wordsD1";
+import { fill } from "@/lib/nav/nav-core";
+import { formatInterval, parseCard } from "@/lib/words/schedule";
+import type { SideKind } from "@/lib/read/side-review";
+import { addGradedWord, wordSession, type RangeWord } from "./reader-word-review";
+
+type Rating = 1 | 2 | 3 | 4;
+
+/** The focused word: where it is, its form, its sentence and the catalog's meaning. */
+export type SideFocus = {
+  line: number;
+  t: number;
+  w: string;
+  /** Why it is here (a jump's kind), or null for a word he clicked. */
+  kind: SideKind | null;
+  word: RangeWord;
+};
+
+/** What a grade leaves for the reader's undo. */
+export type SideGrade = { listId: string; term: string };
+
+type Card = {
+  listId: string;
+  term: string;
+  reading: string | null;
+  back: string;
+  ex: string | null;
+  card: string | null;
+  cursor: number;
+};
+
+export default function SideReview({
+  id,
+  focus,
+  none,
+  say,
+  onJump,
+  onGraded,
+  onUndo,
+  onClose,
+}: {
+  id: string;
+  focus: SideFocus | null;
+  /** No word of either kind from here on. */
+  none: boolean;
+  say: (text: string) => void;
+  onJump: (kind: SideKind, dir: 1 | -1) => void;
+  onGraded: (f: SideFocus, g: SideGrade, rating: Rating) => void;
+  /** The last grade here to take back, or null. */
+  onUndo: () => SideGrade | null;
+  onClose: () => void;
+}) {
+  const t = useIntlayer("read-side-review");
+  const tw = useIntlayer("words-page");
+  const [card, setCard] = useState<Card | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const shownAt = useRef(Date.now());
+
+  useEffect(() => {
+    setCard(null);
+    setFailed(false);
+    setRevealed(false);
+    shownAt.current = Date.now();
+    if (!focus) return;
+    let live = true;
+    wordSession(id, [focus.word])
+      .then((s) => {
+        const it = s.items[0];
+        if (!live) return;
+        if (!it) return setFailed(true);
+        const list: WordList | undefined = s.lists.find((l) => l.id === it.listId);
+        setCard({
+          listId: it.listId,
+          term: it.term,
+          reading: it.reading ?? null,
+          back: it.back,
+          ex: it.ex ?? null,
+          card: it.card ?? null,
+          cursor: list?.cursor ?? 0,
+        });
+      })
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [id, focus]);
+
+  const grade = (r: Rating) => {
+    if (!focus || !card) return;
+    void queueWordReview(card, r, Date.now() - shownAt.current);
+    // A new word of the book's list: its meaning and sentence join the list.
+    if (!card.card) addGradedWord(id, focus.word);
+    onGraded(focus, { listId: card.listId, term: card.term }, r);
+  };
+
+  const live = useRef({ grade, onJump, onUndo, onClose, say, card });
+  live.current = { grade, onJump, onUndo, onClose, say, card };
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (document.querySelector("[aria-modal=true]")) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const L = live.current;
+      // Holding a key repeats jumps only, never a grade or an undo (as /words).
+      if (e.repeat && e.code !== "KeyD" && e.code !== "KeyN") return e.preventDefault();
+      if (e.code === "KeyD") L.onJump("due", e.shiftKey ? -1 : 1);
+      else if (e.code === "KeyN") L.onJump("new", e.shiftKey ? -1 : 1);
+      else if (e.code === "Space") setRevealed((v) => !v);
+      else if (e.code === "KeyZ" || e.code === "Backspace") {
+        const g = L.onUndo();
+        if (g) void queueWordUndo(g.listId, g.term);
+      } else if (e.code === "Escape") L.onClose();
+      else if (KEY_RATING[e.code] && !e.shiftKey) L.grade(KEY_RATING[e.code] as Rating);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", down);
+    return () => window.removeEventListener("keydown", down);
+  }, []);
+
+  const due = card?.card ? (parseCard(card.card)?.due.getTime() ?? null) : null;
+  const status = !card
+    ? null
+    : !card.card
+      ? tw.statusNew.value
+      : due !== null && due <= Date.now()
+        ? fill(tw.ago.value, { t: formatInterval(Date.now() - due) })
+        : t.notDue.value;
+  const grades: [Rating, string][] = [
+    [1, tw.again.value],
+    [2, tw.hard.value],
+    [3, tw.good.value],
+    [4, tw.easy.value],
+  ];
+  const nav = (kind: SideKind, label: string) => (
+    <div className="flex items-center">
+      <button
+        type="button"
+        onClick={() => onJump(kind, -1)}
+        aria-label={fill(t.prev.value, { kind: label })}
+        title={fill(t.prev.value, { kind: label })}
+        data-testid={`side-prev-${kind}`}
+        className="grid h-10 w-10 place-items-center rounded-full hover:bg-[oklch(0.5_0_0/0.1)]"
+      >
+        ‹
+      </button>
+      <span className="px-1 text-xs opacity-75">{label}</span>
+      <button
+        type="button"
+        onClick={() => onJump(kind, 1)}
+        aria-label={fill(t.next.value, { kind: label })}
+        title={fill(t.next.value, { kind: label })}
+        data-testid={`side-next-${kind}`}
+        className="grid h-10 w-10 place-items-center rounded-full hover:bg-[oklch(0.5_0_0/0.1)]"
+      >
+        ›
+      </button>
+    </div>
+  );
+
+  return (
+    <aside
+      aria-label={t.open.value}
+      data-testid="read-side-review"
+      // Phone: over the bottom of the book, above the pill; wide: beside it.
+      className="lk-glass fixed inset-x-3 z-30 flex max-h-[45vh] flex-col gap-2 overflow-y-auto overscroll-contain rounded-2xl border border-[var(--glass-line)] p-3 shadow-[0_8px_24px_-10px_oklch(0.22_0.015_65/0.4)] lg:inset-x-auto lg:end-4 lg:top-16 lg:bottom-auto lg:max-h-[calc(100vh-6rem)] lg:w-[calc(var(--lk-side-w)-2rem)]"
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.75rem)" }}
+    >
+      <div className="flex items-center gap-1">
+        {nav("due", t.due.value)}
+        {nav("new", t.fresh.value)}
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t.close.value}
+          title={t.close.value}
+          data-testid="side-close"
+          className="grid h-10 w-10 place-items-center rounded-full text-lg opacity-70"
+        >
+          ×
+        </button>
+      </div>
+
+      {!focus ? (
+        <p className="text-sm opacity-70">{none ? t.none : t.loading}</p>
+      ) : (
+        <>
+          <div className="flex items-baseline gap-2">
+            <h2 className="min-w-0 flex-1 text-2xl font-semibold break-words" data-side-term>
+              {card?.term ?? focus.word.w}
+            </h2>
+            <button
+              type="button"
+              onClick={() => say(card?.term ?? focus.word.w)}
+              aria-label={t.say.value}
+              title={t.say.value}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full hover:bg-[oklch(0.5_0_0/0.1)]"
+            >
+              <span aria-hidden>🔊</span>
+            </button>
+          </div>
+          {card?.reading && <p className="-mt-1 text-sm opacity-75">{card.reading}</p>}
+          <p className="text-xs opacity-70" data-side-status>
+            {failed ? t.loadFailed : (status ?? t.loading)}
+          </p>
+          {card &&
+            (revealed ? (
+              <p className="whitespace-pre-line text-base" data-side-back>
+                {card.back}
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setRevealed(true)}
+                data-testid="side-reveal"
+                className="min-h-10 rounded-full px-3 text-sm font-medium hover:bg-[oklch(0.5_0_0/0.1)]"
+              >
+                {t.reveal}
+              </button>
+            ))}
+          {card?.ex && revealed && <p className="text-sm italic opacity-75">{card.ex}</p>}
+          <div className="grid grid-cols-4 gap-1" role="group">
+            {grades.map(([r, label]) => (
+              <button
+                key={r}
+                type="button"
+                disabled={!card}
+                onClick={() => grade(r)}
+                data-grade={r}
+                data-testid={`side-grade-${r}`}
+                className="min-h-10 rounded-full px-1 text-sm font-medium hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <p className="hidden text-xs opacity-60 lg:block">{t.keys}</p>
+    </aside>
+  );
+}

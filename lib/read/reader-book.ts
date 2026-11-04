@@ -15,6 +15,11 @@ export function readerV2On(flags: FlagValues | null | undefined, owner: boolean)
   return flagIn(flags, "read.reader-v2") || owner;
 }
 
+/** The side-by-side word review in the reader (flag `read.side-review`): the flag, else the owner alone. */
+export function sideReviewOn(flags: FlagValues | null | undefined, owner: boolean): boolean {
+  return flagIn(flags, "read.side-review") || owner;
+}
+
 export interface ReaderBook {
   hash: string;
   lang: string;

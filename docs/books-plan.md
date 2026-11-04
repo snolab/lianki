@@ -390,6 +390,35 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   until the credits redesign (owner, 2026-11-04) it only logs
   `read.gloss.cost`.
 
+### Side-by-side word review (owner, 2026-11-04 15:56 JST; flag `read.side-review`)
+
+A /words-style review **inside** the reader, PC first: the book stays on
+screen and ONE card sits beside it (a phone: over the bottom of the book,
+above the pill). Off for everyone but the owner until the flag is on.
+
+- **Open:** the ⧉ button on the reader's pill, or `?side` on the book's URL.
+  It starts at the first due word from the eye line, else the first new one.
+- **Jump:** `D` / `N` the next word of the text due on his cards / new to
+  him (no card; a list's or the dictionary's word, the marks' `n`);
+  `Shift+D` / `Shift+N` back; the card's ‹ › buttons do the same. A click
+  on any word shows that word's card. The focused word is marked in the text
+  (`data-side-focus`) and scrolled to the eye line when off screen.
+- **Due:** GET `/api/read/[id]/word-due`: the book's words whose card (any
+  of his lists in the book's language) has `due` ≤ now, by the same folds as
+  the word map (lib/read/side-review.ts `dueBookWords`). Read once on open.
+- **The card:** the word as /words has it (POST word-session for that one
+  word: his card, or a new word of the book's list, with the #507 gloss),
+  its reading, status (new / due since / not due yet), the meaning on
+  Space or "show the meaning", the book's sentence, 🔊. Grades: 1–4 and
+  L K J H as /words (`KEY_RATING`), through /words' own pending queue
+  (`queueWordReview`); a new word's entry joins the book's list as in the
+  paragraph review. After a grade: the next word of the same kind, then of
+  the other. `Z` takes the last grade back and returns to that word. `Esc`
+  or back closes; the word marks refresh then.
+- While it is open the reader's own item keys (1–4, H J K L, Space) rest.
+- No gesture starts at a screen edge (Android's Back): no card swipe yet;
+  grade by buttons and keys. The shared edge-safe swipe can come later.
+
 ### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
 
 "阅读模式不用我们主动分块", after "不要给用户规划任何死数字 … 我们不要用任何数量数字".

@@ -86,6 +86,26 @@ export const makeCards = (id: string, words: RangeWord[]) =>
 export const unmakeCards = (id: string, terms: string[]) =>
   post<{ removed: number }>(`/api/read/${id}/make-cards`, { undo: terms });
 
+/**
+ * A new word of the book's list was just graded: its meaning and sentence
+ * join the list. The grade syncs through /words' queue; the entry is added
+ * once the card is there (a few tries, then the next review backfills it).
+ */
+export function addGradedWord(id: string, w: RangeWord) {
+  const tryAdd = (n: number) =>
+    post<{ added: number }>(`/api/read/${id}/word-session`, { graded: [w] })
+      .then((r) => r.added > 0 || Promise.reject(new Error("not yet")))
+      .catch(() => n < 3 && setTimeout(() => tryAdd(n + 1), 1000 * 3 ** n));
+  setTimeout(() => tryAdd(0), 800);
+}
+
+/** Opens a range's words in /words' terms (each on his card, or new in the book's list). */
+export const wordSession = (id: string, words: RangeWord[]) =>
+  post<{ items: StudyScope["items"]; lists: WordList[]; missing: string[] }>(
+    `/api/read/${id}/word-session`,
+    { words },
+  );
+
 /** The toast after 制卡: how many, and Undo (glass, over the bottom of the screen). */
 export function MadeToast({
   text,
@@ -198,13 +218,7 @@ export function WordReview({
       // A new word of the book's list: its meaning and sentence join the list.
       const w = byTerm.current.get(`${listId}\u0000${term}`);
       if (!isNew || !w) return;
-      // The grade syncs through /words' queue; its entry is added once the
-      // card is there (a few tries, then the next review backfills it).
-      const tryAdd = (n: number) =>
-        post<{ added: number }>(`/api/read/${id}/word-session`, { graded: [w] })
-          .then((r) => r.added > 0 || Promise.reject(new Error("not yet")))
-          .catch(() => n < 3 && setTimeout(() => tryAdd(n + 1), 1000 * 3 ** n));
-      setTimeout(() => tryAdd(0), 800);
+      addGradedWord(id, w);
     },
     [id, touched],
   );

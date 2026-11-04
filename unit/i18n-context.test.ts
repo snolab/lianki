@@ -26,6 +26,7 @@ import readPlayer from "@/app/(app)/read/read-player.content";
 import readWords from "@/app/(app)/read/read-words.content";
 import readReader from "@/app/(app)/read/read-reader.content";
 import readSelect from "@/app/(app)/read/read-select.content";
+import readSideReview from "@/app/(app)/read/read-side-review.content";
 import cliLogin from "@/app/(app)/cli-login/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
@@ -82,6 +83,7 @@ describe.each([
   ["read-words", readWords],
   ["read-reader", readReader],
   ["read-select", readSelect],
+  ["read-side-review", readSideReview],
   ["cli-login-page", cliLogin],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
