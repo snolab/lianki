@@ -34,10 +34,14 @@ import { catalogKeys, catalogWords } from "@/lib/read/dict";
 import {
   matchMeaning,
   meaningIndex,
+  paraTokens,
+  phraseAtToken,
   phraseKey,
+  phraseSpans,
   wordMeaning,
   type Meaning,
   type MeaningIndex,
+  type PhraseSpan,
 } from "@/lib/read/select-meaning";
 import { translationPlan } from "@/lib/read/select-translate";
 import { formLabels } from "@/lib/read/form-tags";
@@ -372,6 +376,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   // ── Meanings: his /words cards (words and phrases) and the public lists ──
   // (lib/read/select-meaning.ts), on the device before he selects anything.
   const [meanIdx, setMeanIdx] = useState<MeaningIndex[]>([]);
+  /** His own cards' index, when it has phrases: the phrase marks and the combo's phrase level. */
+  const [ownIdx, setOwnIdx] = useState<MeaningIndex | null>(null);
   /** Inflected book words → their dictionary headword (the lemma file, from the server). */
   const [heads, setHeads] = useState<Map<string, { lemma: string; sets: string[][] }>>(
     () => new Map(),
@@ -396,14 +402,16 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         if (!live) return;
         const out: MeaningIndex[] = [];
         const cards = own?.cards ?? [];
+        let mine: MeaningIndex | null = null;
         if (cards.length) {
           const forms = (own?.forms ?? []).flatMap(([w, i]): [string, Meaning][] =>
             cards[i] ? [[w, cards[i]]] : [],
           );
-          out.push(meaningIndex(cards, normLang, forms));
+          out.push((mine = meaningIndex(cards, normLang, forms)));
         }
         out.push(meaningIndex(new Set(cat.values()), normLang));
         setMeanIdx(out);
+        setOwnIdx(mine?.longest ? mine : null);
         setHeads(
           new Map((own?.heads ?? []).map(([w, lemma, sets]) => [w, { lemma, sets: sets ?? [] }])),
         );
@@ -413,6 +421,20 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       live = false;
     };
   }, [id, ownMeanings, normLang, famTick]);
+  /**
+   * A paragraph's deck phrases (his phrase cards only, lib/read/select-meaning.ts
+   * phraseSpans): found once per paragraph and kept until his cards change.
+   */
+  const phrasesOf = useMemo(() => {
+    const cache = new Map<number, readonly PhraseSpan[]>();
+    return (line: number): readonly PhraseSpan[] | null => {
+      if (!ownIdx || !lines[line]?.trim()) return null;
+      let s = cache.get(line);
+      if (!s)
+        cache.set(line, (s = phraseSpans(paraTokens(para(line).sentences), ownIdx, normLang)));
+      return s.length ? s : null;
+    };
+  }, [ownIdx, lines, para, normLang]);
 
   // ── Marks: an attribute on <html>, so switching repaints, never re-renders ──
   const marks = useUi(readMarks, (s) => s.level);
@@ -583,12 +605,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const comboCtx = useMemo<ComboCtx>(
     () => ({
       interval: COMBO_MS,
-      // Phrase bounds come with extraction (books-plan phase 1): until then the level is skipped.
-      phraseAt: () => null,
+      // His deck phrases (the phrase criterion: nothing detected here); none, the level is skipped.
+      phraseAt: (line, t) => {
+        const s = phraseAtToken(phrasesOf(line) ?? [], t);
+        return s ? [s.t0, s.t1] : null;
+      },
       chapterAt: (line) => (chapters.length ? chapterAt(chapters, line) : -1),
       chapterRange,
     }),
-    [chapters, chapterRange],
+    [chapters, chapterRange, phrasesOf],
   );
   /** Says what a click of the combo selected (set below, with the card's strings). */
   const tapRef = useRef<(u: Unit, continued: boolean) => void>(() => {});
@@ -969,9 +994,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   /** The deck card the selection is, or covers (word → phrase: the longest wins). */
   const selMeaning = useMemo(() => {
     if (!selSpan || !meanIdx.length) return null;
-    const toks: string[] = [];
-    for (const st of para(selSpan.line).sentences)
-      for (const g of st.segs) if (g.t >= 0) toks[g.t] = g.text;
+    const toks = paraTokens(para(selSpan.line).sentences);
     const hit = matchMeaning(toks, selSpan.t0, selSpan.t1, meanIdx, normLang);
     if (!hit) return null;
     const card: CardMeaning = {
@@ -1386,6 +1409,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       isHeading,
       fam: fam?.map ?? null,
       famV: fam?.v ?? 0,
+      phrases: phrasesOf,
       lang,
       touch,
       variant,
@@ -1401,6 +1425,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       joinOf,
       isHeading,
       fam,
+      phrasesOf,
       lang,
       touch,
       variant,
