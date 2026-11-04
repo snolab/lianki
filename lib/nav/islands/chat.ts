@@ -11,7 +11,12 @@ export function openChat() {
   sendAction("chat.open", {});
   setTimeout(() => {
     const box = document.querySelector("[data-debug-chat]");
+    // The pill's Li restores; the mark beside it now tucks (packages/debug-chat/src/fold.ts).
+    // An older widget has no Li: there the mark still restores.
     if (box?.hasAttribute("data-minimized"))
-      box.querySelector<HTMLElement>('[data-testid="debug-chat-pill-min"]')?.click();
+      (
+        box.querySelector<HTMLElement>("[data-chat-restore]") ??
+        box.querySelector<HTMLElement>('[data-testid="debug-chat-pill-min"]')
+      )?.click();
   }, 320);
 }

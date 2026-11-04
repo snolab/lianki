@@ -140,6 +140,26 @@ export const CHAT_VIEW_INITIAL: ChatView = { compact: false };
 export const chatPrefs = () =>
   createUiStore<ChatView>("chat-view", 1, CHAT_VIEW_INITIAL, { storage: "local" });
 
+/**
+ * How far the minimized chat is folded, and the edge it keeps to (fold.ts):
+ * localStorage `lk:pref:chat-fold`, this device only, never synced. Open or
+ * minimized stays where it was (`lk:debug-chat-open`); `tucked` counts only
+ * minimized.
+ */
+export type ChatFold = { tucked: boolean; edge: "left" | "right" };
+export const CHAT_FOLD_INITIAL: ChatFold = { tucked: false, edge: "right" };
+export const chatFold = () =>
+  createUiStore<ChatFold>("chat-fold", 1, CHAT_FOLD_INITIAL, {
+    storage: "local",
+    clean: (v) => {
+      const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+      return {
+        ...(typeof o.tucked === "boolean" ? { tucked: o.tucked } : {}),
+        ...(o.edge === "left" || o.edge === "right" ? { edge: o.edge } : {}),
+      };
+    },
+  });
+
 /** The chat's UI store (one per page, shared by hot-swapped widget copies). */
 export const chatUi = () =>
   createUiStore<ChatUi>(CHAT_UI_NAME, CHAT_UI_VERSION, CHAT_UI_INITIAL, {

@@ -13,7 +13,7 @@ import {
 } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { useUi } from "@lianki/ui-state";
-import { chatPrefs, chatUi } from "./ui-store";
+import { chatFold, chatPrefs, chatUi } from "./ui-store";
 import {
   COMPACT_BLUR_MS,
   COMPACT_PEEK_MS,
@@ -132,6 +132,21 @@ import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { notePrefWrite } from "@lianki/ui-state/account";
 import { confirmLeave } from "@lianki/ui-state/dirty";
 import { type AnchorSide, placeBox } from "./anchor";
+import {
+  type Fold,
+  type FoldEvent,
+  type FoldState,
+  HANDLE_SHAPE,
+  HANDLE_SIZE,
+  floatSide,
+  foldNext,
+  handleTop,
+  handleTouch,
+  mirrorShift,
+  mirrored,
+  nearestEdge,
+  pushedAgainst,
+} from "./fold";
 import { keyboardLift } from "./keyboard-lift";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
@@ -164,6 +179,9 @@ const END_CONFIRM_MS = 3_000;
 const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
 /** The mark's gestures, for its title and aria-description. */
 const MARK_HINT = "Tap: minimize or restore · double-tap: menu · drag: move the chat";
+/** Text inside the mirrored row stays left to right; LTR adds no box of its own. */
+const LTR_TEXT = { direction: "ltr" } as const;
+const LTR = { display: "contents", direction: "ltr" } as const;
 const ALIGN_ITEMS = { left: "items-start", center: "items-center", right: "items-end" } as const;
 const TEXT_ALIGN = { left: "left", center: "center", right: "right" } as const;
 /** Surface props with extra classes. */
@@ -184,7 +202,10 @@ const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
  * offset from its bottom-right home, kept on screen and remembered. A press
  * that moves under 5 px is still a click.
  */
-function useDrag() {
+/** Where a drag left the bar and its box: their spans, viewport px (fold.ts edges). */
+type DropSpan = { left: number; right: number; boxLeft: number; boxRight: number };
+
+function useDrag(onDrop?: (at: DropSpan) => void) {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
       const v = JSON.parse(read(POS_KEY) ?? "null") as { x: number; y: number } | null;
@@ -193,13 +214,78 @@ function useDrag() {
       return { x: 0, y: 0 };
     }
   });
-  const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(
-    null,
-  );
+  const drag = useRef<{
+    px: number;
+    py: number;
+    x: number;
+    y: number;
+    moved: boolean;
+    /** The bar's span after the last move, and its box: the drop's edge (fold.ts). */
+    last?: DropSpan;
+  } | null>(null);
+  const dropRef = useRef(onDrop);
+  dropRef.current = onDrop;
   /** The click that ends a drag is not a tap (cleared on the next press, or after 400 ms). */
   const dragged = useRef(createDragFlag());
   /** The pill is held down: the input shows how to use it. */
   const [holding, setHolding] = useState(false);
+  /**
+   * Move the box to follow the pointer. Keep the chat bar on screen, up to
+   * the very top under the notch: its rect at the start, moved by the delta.
+   * The click-through log above it may go off-screen.
+   */
+  const moveTo = (box: HTMLElement | null, cx: number, cy: number) => {
+    const d = drag.current;
+    if (!d || !box) return;
+    const dx = cx - d.px;
+    const dy = cy - d.py;
+    if (!d.moved && Math.hypot(dx, dy) < 5) return;
+    d.moved = true;
+    const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
+    const left = row.left - (pos.x - d.x);
+    const top = row.top + liftOf(box) - (pos.y - d.y);
+    const x = d.x + Math.max(-left, Math.min(innerWidth - row.width - left, dx));
+    const y = d.y + Math.max(safeTop() - top, Math.min(innerHeight - row.height - top, dy));
+    // The box as it will be once this move renders.
+    const by = x - pos.x;
+    const b = box.getBoundingClientRect();
+    d.last = {
+      left: left + x - d.x,
+      right: left + x - d.x + row.width,
+      boxLeft: b.left + by,
+      boxRight: b.right + by,
+    };
+    setPos({ x, y });
+  };
+  /**
+   * The host's bottom island may dock above (or leave) the bar now, and only
+   * now (lib/nav/nav-core.ts, CHAT_MOVED_EVENT): after the new place is painted.
+   */
+  const moved = () =>
+    requestAnimationFrame(() => dispatchEvent(new CustomEvent("lk:chat-moved")));
+  /** The press is over: a drag is saved, and its drop told (the fold's edge, fold.ts). */
+  const end = () => {
+    setHolding(false);
+    const d = drag.current;
+    drag.current = null;
+    if (!d?.moved) return;
+    dragged.current.dragEnded();
+    setPos((p) => {
+      write(POS_KEY, JSON.stringify(p));
+      return p;
+    });
+    if (d.last) dropRef.current?.(d.last);
+    moved();
+  };
+  /** Move the box sideways by dx, saved: the pill kept in place as the box mirrors (fold.ts). */
+  const shift = (dx: number) => {
+    if (!dx) return;
+    setPos((p) => {
+      const next = { x: p.x + dx, y: p.y };
+      write(POS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
   const handle = {
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
       if ((e.target as HTMLElement).closest("button:not([data-drag-handle]), textarea")) return;
@@ -208,39 +294,9 @@ function useDrag() {
       dragged.current.down();
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
-      const d = drag.current;
-      if (!d) return;
-      const dx = e.clientX - d.px;
-      const dy = e.clientY - d.py;
-      if (!d.moved && Math.hypot(dx, dy) < 5) return;
-      d.moved = true;
-      // Keep the chat bar on screen, up to the very top under the notch: its
-      // rect at the start, moved by the delta. The click-through log above it
-      // may go off-screen.
-      const box = e.currentTarget.closest("[data-debug-chat]") as HTMLElement;
-      const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
-      const left = row.left - (pos.x - d.x);
-      const top = row.top + liftOf(box) - (pos.y - d.y);
-      const x = d.x + Math.max(-left, Math.min(innerWidth - row.width - left, dx));
-      const y = d.y + Math.max(safeTop() - top, Math.min(innerHeight - row.height - top, dy));
-      setPos({ x, y });
-    },
-    onPointerUp: () => {
-      setHolding(false);
-      const d = drag.current;
-      drag.current = null;
-      if (!d?.moved) return;
-      dragged.current.dragEnded();
-      setPos((p) => {
-        write(POS_KEY, JSON.stringify(p));
-        return p;
-      });
-      // The host's bottom island may dock above (or leave) the bar now, and
-      // only now (lib/nav/nav-core.ts, CHAT_MOVED_EVENT): after the new place
-      // is painted.
-      requestAnimationFrame(() => dispatchEvent(new CustomEvent("lk:chat-moved")));
-    },
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) =>
+      moveTo(e.currentTarget.closest("[data-debug-chat]") as HTMLElement, e.clientX, e.clientY),
+    onPointerUp: () => end(),
     onPointerCancel: () => {
       setHolding(false);
       drag.current = null;
@@ -295,6 +351,10 @@ function useDrag() {
     offset: { transform: `translate(${pos.x}px, calc(${pos.y}px - var(${KB_LIFT_VAR}, 0px)))` },
     handle,
     begin,
+    moveTo,
+    end,
+    shift,
+    moved,
     wasDrag,
     holding,
     fit,
@@ -656,7 +716,33 @@ export function DebugChat({
   }, []);
   /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
   const [rate, setRate] = useState(speechRate);
-  const { offset, handle, begin, wasDrag, holding, fit } = useDrag();
+  /** A drag of the box ended (useDrag): its edge, or a tuck (fold.ts). */
+  const onDrop = useRef((_at: DropSpan) => {});
+  const { offset, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
+    (bar) => onDrop.current(bar),
+  );
+  /**
+   * How far the chat is folded (fold.ts): open, a pill, or tucked into the
+   * screen edge, and the edge it keeps to (on the left, everything mirrors).
+   * Tucked and the edge are kept per device (ui-store.ts chatFold).
+   */
+  const foldStore = chatFold();
+  const tuckedPref = useUi(foldStore, (s) => s.tucked);
+  const edge = useUi(foldStore, (s) => s.edge);
+  const fold: Fold = open ? "open" : tuckedPref ? "tucked" : "pill";
+  const tucked = fold === "tucked";
+  const mirrorRow = mirrored(edge);
+  const foldNow = useRef<FoldState>({ fold, edge });
+  foldNow.current = { fold, edge };
+  /** The box sliding into or out of the edge: its transform animates, then this clears. */
+  const [sliding, setSliding] = useState(false);
+  const slideEnd = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(slideEnd.current), []);
+  const endSlide = () => {
+    clearTimeout(slideEnd.current);
+    setSliding(false);
+    moved();
+  };
   /** Session UI state (draft, panel, tree): survives a refresh and a hot swap. */
   const uiStore = chatUi();
   /** The box: its bar is kept on screen, expanded or minimized. */
@@ -688,7 +774,10 @@ export function DebugChat({
   const tree = panel === "tree";
   const setMenu = (v: boolean) => setPanel((p) => (v ? "menu" : p === "menu" ? "none" : p));
   // Expanding, minimizing or opening the tree refits (fit itself is fresh each render).
-  useLayoutEffect(() => fit(root.current, open), [open, tree]);
+  // Tucked, the box is past the edge on purpose: never pulled back on screen.
+  useLayoutEffect(() => {
+    if (!tucked) fit(root.current, open);
+  }, [open, tree]);
   /** The floating box's side and left edge (px from the bar row's left), anchor.ts. */
   const [place, setPlace] = useState<{ side: AnchorSide; left: number }>({
     side: "left",
@@ -704,6 +793,7 @@ export function DebugChat({
     if (!bar || !row) return;
     const { left: insetLeft, right: insetRight } = safeSides();
     const p = placeBox({
+      side: floatSide(foldNow.current.edge),
       barLeft: bar.left,
       barRight: bar.right,
       boxWidth: floatBox.current?.getBoundingClientRect().width ?? 0,
@@ -717,6 +807,63 @@ export function DebugChat({
   // Re-placed when what it holds changes, after a drag, and on any resize
   // (window, rotation, the visual viewport, the box's own size). All events.
   useLayoutEffect(() => placeRef.current());
+  /**
+   * The tucked handle's top (fold.ts handleTop): level with the pill it
+   * stands in for (the slide is sideways only), measured on tucking and on
+   * any resize while tucked.
+   */
+  const [handleAt, setHandleAt] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!tucked) return;
+    const measure = () => {
+      const bar = barEl.current?.getBoundingClientRect();
+      if (!bar) return;
+      const top = handleTop({
+        centerY: (bar.top + bar.bottom) / 2,
+        height: HANDLE_SIZE[HANDLE_SHAPE].h,
+        vh: innerHeight,
+        safeTop: safeTop(),
+      });
+      setHandleAt((cur) => (cur === top ? cur : top));
+    };
+    measure();
+    addEventListener("resize", measure);
+    return () => removeEventListener("resize", measure);
+  }, [tucked]);
+  /** The press on the handle became a drag (its click is not a tap). */
+  const handleDragged = useRef(false);
+  /**
+   * A press on the handle: moved past the slop, the pill comes back at once
+   * and follows the finger as a drag of the box (useDrag), so it can be
+   * carried anywhere, or to the other edge. A tap is the button's click.
+   */
+  const pressHandle = (e: React.PointerEvent<HTMLButtonElement>) => {
+    unlockSpeech();
+    handleDragged.current = false;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let started = false;
+    const move = (ev: PointerEvent) => {
+      if (!started) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+        started = true;
+        handleDragged.current = true;
+        // Back where it was before the drag measures it: no slide.
+        flushSync(() => foldBy({ type: "handle" }, true));
+        begin(sx, sy);
+      }
+      moveTo(root.current, ev.clientX, ev.clientY);
+    };
+    const up = () => {
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+      removeEventListener("pointercancel", up);
+      if (started) end();
+    };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+    addEventListener("pointercancel", up);
+  };
   /** The notch, px: measured on mount and on rotation, not per viewport event. */
   const notch = useRef(0);
   /**
@@ -790,7 +937,9 @@ export function DebugChat({
   };
   /** Keeps the box on screen (fit) on a resize. */
   const fitRef = useRef(() => {});
-  fitRef.current = () => fit(root.current, open);
+  fitRef.current = () => {
+    if (foldNow.current.fold !== "tucked") fit(root.current, open);
+  };
   /** The tree's scroll, kept across the sheet ⇄ column switch. */
   const treeScroll = useRef(uiStore.getState().tree?.scroll ?? 0);
   /** Bumped each time the tree opens: the source loads again (never polled). */
@@ -1808,6 +1957,8 @@ export function DebugChat({
   };
   const toggle = (v: boolean) => {
     if (v) atEnd.current = true;
+    // Opened from anywhere (the island, a voice command, the menu): no longer tucked.
+    if (v && chatFold().getState().tucked) chatFold().setState({ tucked: false });
     setOpen(v);
     write(OPEN_KEY, v ? "1" : "0");
   };
@@ -1838,10 +1989,56 @@ export function DebugChat({
     focusOnOpen.current = false;
     input.current?.focus();
   }, [open]);
+  /**
+   * One step of the fold (fold.ts): open or minimize, tuck or untuck (a
+   * slide unless `instant`), and the edge, keeping a minimized pill where it
+   * is when the box mirrors.
+   */
+  const foldBy = (ev: FoldEvent, instant = false) => {
+    const cur = foldNow.current;
+    const next = foldNext(cur, ev);
+    if (next.fold === cur.fold && next.edge === cur.edge) return;
+    shift(
+      mirrorShift({
+        from: cur.edge,
+        to: next.edge,
+        fold: cur.fold,
+        boxWidth: root.current?.getBoundingClientRect().width ?? 0,
+        pillWidth: barEl.current?.getBoundingClientRect().width ?? 0,
+      }),
+    );
+    const tuckNow = next.fold === "tucked";
+    if (tuckNow !== (cur.fold === "tucked")) {
+      if (tuckNow) {
+        // What was floating stays behind; only what arrives from now on peeks.
+        setFloats([]);
+        setPanel("none");
+      }
+      const slide = !instant && !reducedMotion() && next.fold !== "open";
+      setSliding(slide);
+      clearTimeout(slideEnd.current);
+      // The slide's transitionend ends it; this only in case none comes.
+      slideEnd.current = setTimeout(endSlide, slide ? 400 : 0);
+    }
+    foldNow.current = next;
+    foldStore.setState({ tucked: tuckNow, edge: next.edge });
+    if ((next.fold === "open") !== open) toggle(next.fold === "open");
+  };
+  // A drag of the box ended: it follows its nearest edge, and a pill pushed
+  // against one tucks into it.
+  onDrop.current = (bar) => {
+    const vw = innerWidth;
+    foldBy({
+      type: "dropped",
+      nearest: nearestEdge(bar.boxLeft, bar.boxRight, vw),
+      against: pushedAgainst(bar.left, bar.right, vw),
+    });
+  };
   gripAct.current = {
+    // Open: minimize into the pill. The pill: tuck it into the edge.
     single: () => {
       setPanel("none");
-      toggle(!open);
+      foldBy({ type: "mark" });
     },
     double: () => setPanel((p) => (p === "menu" ? "none" : "menu")),
   };
@@ -2079,9 +2276,10 @@ export function DebugChat({
         type="button"
         data-drag-handle
         data-testid="debug-chat-pill-min"
-        aria-label={open ? "Minimize chat" : `Restore chat${unread ? `, ${unread} new` : ""}`}
+        // On the pill it is the tuck arrow (fold.ts): the pill's Li restores.
+        aria-label={open ? "Minimize chat" : `${ui.tuckChat}${unread ? `, ${unread} new` : ""}`}
         aria-description={MARK_HINT}
-        title={MARK_HINT}
+        title={open ? MARK_HINT : ui.tuckChat}
         aria-expanded={open}
         {...handle}
         onPointerDown={(e) => {
@@ -2092,13 +2290,30 @@ export function DebugChat({
         style={{ ...handle.style, ...BAR_CONTROL }}
         className="tap-40 relative flex w-10 shrink-0 items-center justify-center rounded-full"
       >
-        <LiagentMark size={18} />
+        {open ? <LiagentMark size={18} /> : <TuckArrow edge={edge} />}
         <span
           aria-hidden
           className="absolute end-1.5 top-1 size-1.5 rounded-full"
           style={{ background: dot }}
         />
       </button>
+      {!open && (
+        // The pill's Li: a tap opens the chat again (the mark beside it now
+        // tucks). Part of the pill, not a button of its own: it drags as the
+        // pill does. Screen readers restore from the menu.
+        <span
+          aria-hidden
+          data-testid="debug-chat-restore"
+          data-chat-restore
+          title={ui.restoreChat}
+          {...handle}
+          onClick={() => !wasDrag() && foldBy({ type: "restore" })}
+          style={{ ...handle.style, ...BAR_CONTROL, cursor: "pointer" }}
+          className="tap-40 flex w-8 shrink-0 items-center justify-center"
+        >
+          <LiagentMark size={18} />
+        </span>
+      )}
     </>
   );
   /**
@@ -2240,21 +2455,14 @@ export function DebugChat({
       </div>
     </div>
   );
-  const floatsEl = floats.length > 0 && (
-        // Minimized: the lines that arrived (or a scrub brought back), newest
-        // at the bottom, each fading on its own. Hover or touch holds them.
-        <ol
-          data-testid="debug-chat-floats"
-          aria-live="polite"
-          className={`flex flex-col gap-0.5 ${ALIGN_ITEMS[place.side]}`}
-        >
-          {floats.map((f, i) => {
-            const above = floats[i - 1]?.id;
-            // The latest copy of the line: an edit changes it in place.
-            const m = messages.find((x) => x.id === f.id) ?? f;
-            const p = polish(m);
-            return (
+  /** One floating line; `above` is the line before it (its dwell waits for that one's). */
+  const floatLine = (f: ChatMessage, above: string | undefined, oneLine = false) => {
+    // The latest copy of the line: an edit changes it in place.
+    const m = messages.find((x) => x.id === f.id) ?? f;
+    const p = polish(m);
+    return (
             <FloatLine
+              oneLine={oneLine}
               key={m.id}
               m={m}
               // The same identity as in the log: the avatar, never the name in its place.
@@ -2284,16 +2492,25 @@ export function DebugChat({
               onHover={setFloatHover}
               onGone={() => dropFloat(m.id)}
             />
-            );
-          })}
-        </ol>
+    );
+  };
+  const floatsEl = floats.length > 0 && (
+    // Minimized: the lines that arrived (or a scrub brought back), newest
+    // at the bottom, each fading on its own. Hover or touch holds them.
+    <ol
+      data-testid="debug-chat-floats"
+      aria-live="polite"
+      className={`flex flex-col gap-0.5 ${ALIGN_ITEMS[place.side]}`}
+    >
+      {floats.map((f, i) => floatLine(f, floats[i - 1]?.id))}
+    </ol>
   );
   /**
    * Minimized: the floating lines, the frontier and the tree hang over the
-   * bar in one box, on the bar's side of the screen (anchor.ts), clamped
-   * inside the viewport.
+   * pill in one box, from the pill's side (fold.ts floatSide, anchor.ts),
+   * clamped inside the viewport. Tucked, only the newest line peeks (tuckEl).
    */
-  const floatBoxEl = !open && (floats.length > 0 || !!shownFrontier || tree) && (
+  const floatBoxEl = fold === "pill" && (floats.length > 0 || !!shownFrontier || tree) && (
     <div
       ref={setFloatBox}
       data-testid="debug-chat-float-box"
@@ -2548,12 +2765,12 @@ export function DebugChat({
         data-testid="debug-menu-minimize"
         onClick={() => {
           setMenu(false);
-          toggle(false);
+          foldBy({ type: open ? "minimize" : "restore" });
         }}
         className="flex items-center gap-2 px-3 py-1.5 text-start"
       >
-        <span className="w-[1em] text-center">–</span>
-        Minimize
+        <span className="w-[1em] text-center">{open ? "–" : "+"}</span>
+        {open ? "Minimize" : ui.restoreChat}
       </button>
       {/* Every open page of this chat; ending this one asks twice. */}
       {pages.map((pg) => {
@@ -2867,6 +3084,88 @@ export function DebugChat({
       </div>
     );
   })();
+  /**
+   * Tucked (fold.ts): one big handle on the edge, and the newest line that
+   * arrived since peeking beside it for its dwell, a dot while any is
+   * unread. Its touch area starts TOUCH_INSET in from the edge, clear of
+   * Android's Back swipe: a tap, or a press-and-drag starting on it, brings
+   * the pill back (the drag carrying it along). Out of the box's transform.
+   */
+  const tuckEl = tucked && handleAt !== null && (() => {
+    const size = HANDLE_SIZE[HANDLE_SHAPE];
+    const touch = handleTouch(HANDLE_SHAPE);
+    const fromEdge = (px: number) => `calc(env(safe-area-inset-${edge}) + ${px}px)`;
+    const r = size.r;
+    const radius =
+      HANDLE_SHAPE === "square" ? r : edge === "right" ? `${r} 0 0 ${r}` : `0 ${r} ${r} 0`;
+    const peek = floats.at(-1);
+    return (
+      <>
+        <button
+          type="button"
+          data-testid="debug-chat-handle"
+          data-chat-restore
+          data-shape={HANDLE_SHAPE}
+          data-edge={edge}
+          aria-label={`${ui.untuckChat}${unread ? `, ${unread} new` : ""}`}
+          title={ui.untuckChat}
+          onPointerDown={pressHandle}
+          onClick={() => {
+            if (handleDragged.current) return void (handleDragged.current = false);
+            foldBy({ type: "handle" });
+          }}
+          style={{
+            top: handleAt,
+            [edge]: fromEdge(touch.inset),
+            width: touch.width,
+            height: size.h,
+            touchAction: "none",
+          }}
+          className="pointer-events-auto fixed z-[var(--lk-z-chat,80)] cursor-pointer text-gray-600 dark:text-gray-300"
+        >
+          {/* The shape, out to the edge; only the touch area above takes the press. */}
+          <span
+            aria-hidden
+            data-testid="debug-chat-handle-shape"
+            style={{
+              [edge]: size.gap - touch.inset,
+              width: size.w,
+              height: size.h,
+              borderRadius: radius,
+              background: INPUT_BG,
+              ...(HANDLE_SHAPE === "half" ? { [edge === "right" ? "borderRight" : "borderLeft"]: "none" } : {}),
+            }}
+            className="pointer-events-none absolute top-0 flex items-center justify-center border border-current/25 backdrop-blur-md backdrop-saturate-150"
+          >
+            <LiagentMark size={20} />
+            {unread > 0 && (
+              <span
+                data-testid="debug-chat-handle-dot"
+                className="absolute top-2 size-2.5 rounded-full"
+                style={{ background: "oklch(0.6 0.2 22)", [edge === "right" ? "left" : "right"]: 6 }}
+              />
+            )}
+          </span>
+        </button>
+        {peek && (
+          // Text on the page with its halo, as the floating lines are: no box.
+          <ol
+            data-testid="debug-chat-peek"
+            aria-live="polite"
+            onClick={() => foldBy({ type: "handle" })}
+            style={{
+              top: handleAt + size.h / 2,
+              [edge]: fromEdge(size.gap + size.w + 8),
+              textAlign: edge,
+            }}
+            className="pointer-events-none fixed z-[var(--lk-z-chat,80)] flex w-max max-w-[min(20rem,calc(100vw-6rem))] -translate-y-1/2 cursor-pointer flex-col lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100"
+          >
+            {floatLine(peek, undefined, true)}
+          </ol>
+        )}
+      </>
+    );
+  })();
   const typingGlassShown = showTypingGlass({
     typing,
     open,
@@ -2889,17 +3188,32 @@ export function DebugChat({
     return { ...look, background: sheet.background, filter: sheet.solid ? "none" : SHEET_FILTER };
   })();
   return (
+    <>
     <section
       ref={root}
       data-debug-chat
       // Minimized keeps its old test id: the bar alone, plus floating lines.
       data-testid={open ? "debug-chat" : "debug-chat-minimized"}
       data-minimized={!open || undefined}
+      data-fold={fold}
+      data-edge={edge}
+      // Tucked: slid past its edge, out of reach (the handle stands in for it).
+      inert={tucked}
+      aria-hidden={tucked || undefined}
       aria-label={t.chatWith}
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && e.propertyName === "transform") endSlide();
+      }}
       // A live mic counts as focus: the box goes opaque as it does while typing.
-      style={offset}
+      style={{
+        transform: tucked
+          ? `${offset.transform} translateX(${mirrorRow ? "-" : ""}100vw)`
+          : offset.transform,
+        // Only the slide into or out of the edge animates: a drag follows the finger.
+        transition: sliding && !holding ? "opacity 150ms, transform 220ms ease-out" : undefined,
+      }}
       className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive || fullLog !== "off" ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
@@ -3167,8 +3481,11 @@ export function DebugChat({
           fitInput();
           placeRef.current();
         }}
-        style={{ gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr" }}
+        // On the left edge the row runs right to left (fold.ts): the mark on
+        // the inner side, folding right. The text inside stays left to right.
+        style={{ gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr", direction: mirrorRow ? "rtl" : undefined }}
       >
+        <div style={LTR}>
         {open && (shownTarget !== ROOT_NODE || completions.length > 0) && (
           // The target node (a chip: × back to the main thread) and "@/…" completions.
           <div className="pointer-events-none absolute start-20 bottom-full mb-1 flex max-w-[calc(100%-6rem)] flex-col items-start gap-1">
@@ -3272,6 +3589,7 @@ export function DebugChat({
             </button>
           </div>
         )}
+        </div>
         {/* One container: [minimize | connections | input | mic]; minimized, the
         input's slot closes to 0 and leaves [minimize | connections | mic]. No title bar:
         the mark drags the box, minimizes it and opens the menu (status,
@@ -3285,7 +3603,8 @@ export function DebugChat({
           title={status}
           // The bar's own edge drags too; its buttons and the input handle themselves.
           onPointerDown={(e) => {
-            if ((e.target as HTMLElement).closest("button, textarea, p")) return;
+            if ((e.target as HTMLElement).closest("button, textarea, p, [data-chat-restore]"))
+              return;
             handle.onPointerDown(e);
           }}
           onPointerMove={(e) => e.target === e.currentTarget && handle.onPointerMove(e)}
@@ -3334,6 +3653,7 @@ export function DebugChat({
           be read), fading out as its slot closes. */}
           <div
             data-testid="debug-chat-input-slot"
+            style={LTR_TEXT}
             inert={!open}
             aria-hidden={!open || undefined}
             className={`relative flex w-0 min-w-0 flex-1 transition-opacity duration-[180ms] ease-out motion-reduce:transition-none ${open ? "opacity-100" : "max-h-8 overflow-hidden opacity-0"}`}
@@ -3520,6 +3840,7 @@ export function DebugChat({
           )}
         </div>
         <span aria-hidden />
+        <div style={LTR}>
         {floatBoxEl}
         {menuEl}
         {panel === "voiceprint" && (
@@ -3527,8 +3848,31 @@ export function DebugChat({
             <VoiceprintPanel t={t} deps={voiceprintDeps} onClose={() => setPanel("none")} />
           </div>
         )}
+        </div>
       </div>
     </section>
+    {tuckEl}
+    </>
+  );
+}
+
+/** The pill's mark as the tuck arrow: an arrow into a bar, pointing at the edge it tucks into. */
+function TuckArrow({ edge }: { edge: "left" | "right" }) {
+  return (
+    <svg
+      viewBox="0 0 18 18"
+      width={18}
+      height={18}
+      aria-hidden
+      style={edge === "left" ? { transform: "scaleX(-1)" } : undefined}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 9h9M8.5 5.5 12 9l-3.5 3.5M15 4v10" />
+    </svg>
   );
 }
 
@@ -3538,6 +3882,7 @@ export function DebugChat({
  * `epoch` restarts it; `paused` holds it, back at full opacity if fading.
  */
 function FloatLine({
+  oneLine,
   m,
   who,
   text,
@@ -3549,6 +3894,8 @@ function FloatLine({
   onHover,
   onGone,
 }: {
+  /** Its first line only (the tucked handle's peek), else up to three. */
+  oneLine?: boolean;
   m: ChatMessage;
   /** Who said it (avatar-rules.ts lineAvatar), drawn as in the log. */
   who: ReturnType<typeof lineAvatar>;
@@ -3605,7 +3952,7 @@ function FloatLine({
       style={{ textShadow: LINE_HALO, transitionDuration: `${FADE_MS}ms` }}
       // The fade runs FADE_MS (ease-out, opacity only); held (touched), the line
       // snaps back to full at once. Reduced motion: no fade, it just goes.
-      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
+      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto ${oneLine ? "line-clamp-1" : "line-clamp-3"} max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
     >
       <span className="me-1 inline-block align-[-0.25em]">
         <Avatar

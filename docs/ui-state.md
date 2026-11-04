@@ -109,6 +109,7 @@ target that is not built yet.
 | voice-clip recording (on, sink)     | the hub, per window session; session `lk:ui:clips` (its id)  | done (dev-debug-widget.md, "Recording")                    |
 | speech rate, voice out, echo cancel | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec` | → `lk:pref:chat-voice`                                     |
 | compact mode (last message only)    | local `lk:pref:chat-view` (`chatPrefs`, off by default)      | done: per device, never synced                             |
+| tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)              | done: per device, never synced                             |
 
 ### Cards and the swipe
 
