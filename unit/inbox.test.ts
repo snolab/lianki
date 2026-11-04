@@ -15,6 +15,7 @@ import {
   type InboxBucket,
   type InboxDeps,
   download,
+  link,
   list,
   remove,
   upload,
@@ -22,7 +23,14 @@ import {
 import { inboxOp } from "../lib/inbox/agent";
 import { type InboxDb, usageOf } from "../lib/inbox/store";
 import { cleanAttachments, cleanFileName } from "../packages/debug-chat/src/wire";
-import { createPendingFiles, filesFrom, formatSize } from "../packages/debug-chat/src/files";
+import {
+  type ChatFiles,
+  createPendingFiles,
+  dragHasFiles,
+  filesFrom,
+  formatSize,
+  isInlineImage,
+} from "../packages/debug-chat/src/files";
 
 const SCHEMA =
   "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT);\n" +
@@ -227,6 +235,40 @@ describe("upload, usage and cost", () => {
   });
 });
 
+describe("edges", () => {
+  test("link: the line id lands on the owner's own rows; junk is a 400", async () => {
+    const { id } = (await (await upload(post(PNG), deps)).json()) as { id: string };
+    const patch = (body: unknown) =>
+      link(new Request("https://x", { method: "PATCH", body: JSON.stringify(body) }), deps);
+    expect((await patch({ ids: [id], line: "line_1" })).status).toBe(200);
+    expect((await patch({ ids: ["nope"], line: "x" })).status).toBe(400);
+    expect((await patch({ ids: [id], line: "bad line!" })).status).toBe(400);
+    const agent = (await inboxOp(db, { op: "list" }, { ownerEmails: OWNER.email })) as {
+      items: { line?: string }[];
+    };
+    expect(agent.items[0]?.line).toBe("line_1");
+    who = FRIEND;
+    expect((await patch({ ids: [id], line: "x" })).status).toBe(404);
+  });
+
+  test("fewer bytes than announced, or a failing R2 put: nothing is kept", async () => {
+    expect((await upload(post(PNG, "a.png", PNG.length + 10), deps)).status).toBe(400);
+    const broken = { ...bucket, put: async () => Promise.reject(new Error("r2 down")) };
+    expect((await upload(post(PNG), { ...deps, bucket: () => broken })).status).toBe(400);
+    expect(bucket.store.size).toBe(0);
+    // A body R2 stops reading: the reader is cancelled with it.
+    const lazy = {
+      ...bucket,
+      put: async (_k: string, b: ReadableStream<Uint8Array>) => {
+        await b.cancel("stop");
+        throw new Error("r2 stopped reading");
+      },
+    };
+    const big = new Uint8Array(4096).fill(65);
+    expect((await upload(post(big, "a.txt"), { ...deps, bucket: () => lazy })).status).toBe(400);
+  });
+});
+
 describe("agent tickets", () => {
   test("single use, 60 s, in a header; done marks it processed; friends' files unreachable", async () => {
     const { id } = (await (await upload(post(PNG), deps)).json()) as { id: string };
@@ -296,6 +338,47 @@ describe("the widget's side", () => {
     p.remove(p.get()[1]!.key);
     expect(p.take()).toEqual([{ id: "r1", name: "a.txt", type: "text/plain", size: 3 }]);
     expect(p.get()).toEqual([]);
+  });
+
+  test("pending files: aborting a running upload, failures, thumbnails, no host", async () => {
+    const revoked: string[] = [];
+    let host: ChatFiles | undefined = {
+      url: () => "",
+      upload: (_f, onProgress, signal) =>
+        new Promise((_ok, no) => {
+          onProgress(1, 3);
+          signal.addEventListener("abort", () => no(new Error("aborted")));
+        }),
+    };
+    const p = createPendingFiles({
+      files: () => host,
+      objectUrl: { create: () => "blob:1", revoke: (u) => revoked.push(u) },
+    });
+    let ticks = 0;
+    const off = p.subscribe(() => ticks++);
+    p.add([new File(["abc"], "a.png", { type: "image/png" })]);
+    expect(p.get()[0]).toMatchObject({ thumb: "blob:1", sent: 1, state: "uploading" });
+    p.remove(p.get()[0]!.key);
+    await Bun.sleep(0);
+    expect(p.get()).toEqual([]);
+    expect(revoked).toEqual(["blob:1"]);
+    host = { url: () => "", upload: () => Promise.reject(new Error("HTTP 500")) };
+    p.add([new File(["x"], "b.bin")]);
+    await Bun.sleep(0);
+    expect(p.get()[0]?.state).toBe("failed");
+    expect(p.take()).toEqual([]);
+    p.remove("missing");
+    off();
+    expect(ticks).toBeGreaterThan(2);
+    host = undefined;
+    p.add([new File(["x"], "c.bin")]);
+    expect(p.get()).toEqual([]);
+    expect(dragHasFiles({ types: ["Files"] })).toBe(true);
+    expect(dragHasFiles({ types: ["text/plain"] })).toBe(false);
+    expect(isInlineImage("image/png")).toBe(true);
+    expect(isInlineImage("image/svg+xml")).toBe(false);
+    expect(filesFrom(null)).toEqual([]);
+    expect(formatSize(-1)).toBe("");
   });
 
   test("files from a paste or a drop; sizes for a chip", () => {

@@ -156,6 +156,7 @@ export function createPendingFiles(deps: Deps) {
       if (!host) return;
       const room = Math.max(0, MAX_ATTACHMENTS - list.length);
       const added: PendingFile[] = [];
+      const starts: (() => void)[] = [];
       for (const file of files.slice(0, room)) {
         const key = `f${++n}`;
         const type = file.type || "application/octet-stream";
@@ -173,7 +174,9 @@ export function createPendingFiles(deps: Deps) {
         if (big) continue;
         const ac = new AbortController();
         aborts.set(key, ac);
-        host
+        // Started once the chips are listed, so a first progress report has a chip to land on.
+        starts.push(() => {
+          host
           .upload(file, (sent) => patch(key, { sent }), ac.signal)
           .then(
             (ref) => {
@@ -188,8 +191,10 @@ export function createPendingFiles(deps: Deps) {
           .finally(() => {
             if (aborts.get(key) === ac) aborts.delete(key);
           });
+        });
       }
       if (added.length) set([...list, ...added]);
+      for (const go of starts) go();
     },
     /** × on a chip: abort its upload (if running) and drop it. */
     remove(key: string) {
