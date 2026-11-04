@@ -117,9 +117,18 @@ export async function readStripped(
     }
     feed(dec.decode(), true);
   } finally {
-    reader.cancel().catch(() => {});
+    await reader.cancel().then(undefined, String);
   }
   return parts.join("");
+}
+
+/** Discard a response body we will not read (a failed cancel changes nothing). */
+async function drop(res: Response): Promise<void> {
+  try {
+    await res.body?.cancel();
+  } catch {
+    // already closed
+  }
 }
 
 export interface GdocExport {
@@ -146,7 +155,7 @@ export async function fetchGdocHtml(
       throw new GdocError("fetch-failed");
     }
     if (res.status >= 300 && res.status < 400) {
-      res.body?.cancel().catch(() => {});
+      void drop(res);
       const to = redirectTarget(res.headers.get("location") ?? "", url);
       if (to === "login") throw new GdocError("not-shared");
       if (!to || hop >= limits.maxRedirects) throw new GdocError("fetch-failed");
@@ -154,20 +163,20 @@ export async function fetchGdocHtml(
       continue;
     }
     if (res.status === 401 || res.status === 403) {
-      res.body?.cancel().catch(() => {});
+      void drop(res);
       throw new GdocError("not-shared");
     }
     if (res.status === 404 || res.status === 410) {
-      res.body?.cancel().catch(() => {});
+      void drop(res);
       throw new GdocError("not-found");
     }
     if (!res.ok || !res.body) {
-      res.body?.cancel().catch(() => {});
+      void drop(res);
       throw new GdocError("fetch-failed");
     }
     const type = res.headers.get("content-type") ?? "";
     if (!/^text\/html\b/i.test(type)) {
-      res.body.cancel().catch(() => {});
+      void drop(res);
       throw new GdocError("fetch-failed");
     }
     const html = await readStripped(res.body, limits);

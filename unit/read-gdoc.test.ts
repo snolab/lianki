@@ -7,7 +7,7 @@ import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import { fetchGdocHtml, GdocError, readStripped, titleFromDisposition } from "@/lib/gdoc/fetch";
 import { parseGdocHtml } from "@/lib/gdoc/parse";
-import { gdocExportUrl, gdocIdOf } from "@/lib/gdoc/url";
+import { gdocExportUrl, gdocIdOf, gdocSourceKey, gdocUrlOf } from "@/lib/gdoc/url";
 import { bookMetaOf, checkBook, parseBookMeta } from "@/lib/read/book";
 import { carrySentenceCards, unchangedLines, type D1Batch } from "@/lib/read/reader-store";
 
@@ -45,6 +45,10 @@ describe("Google Docs links", () => {
 
   it("the server fetches only the export URL built from the id", () => {
     expect(gdocExportUrl(ID)).toBe(`https://docs.google.com/document/d/${ID}/export?format=html`);
+    expect(gdocUrlOf(ID)).toBe(`https://docs.google.com/document/d/${ID}/edit`);
+    expect(gdocSourceKey(ID)).toBe(`gdoc:${ID}`);
+    expect(gdocIdOf("https://[::1")).toBeNull();
+    expect(gdocIdOf(`ftp://docs.google.com/document/d/${ID}`)).toBeNull();
   });
 });
 
