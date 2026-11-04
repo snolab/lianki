@@ -151,6 +151,7 @@ type FullRow = {
   reading: string | null;
   back: string;
   card: string;
+  reps: number;
 };
 
 /** The full card rows of these (list, term) pairs. */
@@ -160,7 +161,7 @@ async function fullCards(db: D1Like, email: string, keys: { listId: string; term
     const chunk = keys.slice(i, i + 45);
     const { results } = await db
       .prepare(
-        `SELECT list_id, term, reading, back, card FROM word_cards WHERE email = ? AND (${chunk
+        `SELECT list_id, term, reading, back, card, reps FROM word_cards WHERE email = ? AND (${chunk
           .map(() => "(list_id = ? AND term = ?)")
           .join(" OR ")})`,
       )
@@ -315,6 +316,42 @@ async function runAll(db: D1Like, statements: D1StmtLike[]) {
   const batch = (db as { batch?: (s: D1StmtLike[]) => Promise<unknown> }).batch;
   if (batch) await batch.call(db, statements);
   else for (const st of statements) await st.run();
+}
+
+/** A word of a selection as the grade handle sees it: his card (any state) or none. */
+export interface WordTarget {
+  w: string;
+  /** His card's list and term; null: no card in any of his lists. */
+  listId: string | null;
+  term: string | null;
+  /** The stored ts-fsrs card JSON; null: no card. */
+  card: string | null;
+  reps: number;
+}
+
+/** What each word is now, nothing written and no meaning looked up (the handle's probe). */
+export async function wordTargets(
+  db: D1Like,
+  email: string,
+  book: BookCtx,
+  words: RangeWord[],
+): Promise<WordTarget[]> {
+  const matched = await matchAll(db, email, book, words);
+  const rows = await fullCards(
+    db,
+    email,
+    matched.flatMap((m) => (m.hit ? [{ listId: m.hit.listId, term: m.hit.term }] : [])),
+  );
+  return matched.map(({ x, hit }) => {
+    const r = hit ? rows.get(`${hit.listId}\u0000${hit.term}`) : undefined;
+    return {
+      w: x.w,
+      listId: r ? r.list_id : null,
+      term: r ? r.term : null,
+      card: r ? r.card : null,
+      reps: r?.reps ?? 0,
+    };
+  });
 }
 
 /**

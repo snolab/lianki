@@ -149,6 +149,31 @@ describe("server reader data", () => {
     });
   });
 
+  it("revert: a held grade is dropped; a sent one is taken back by the server", async () => {
+    fake({
+      ...res,
+      lang: "en",
+      granularity: "paragraph",
+      chapters: [0],
+      lines: [0, 3],
+      bounds: {},
+    });
+    const d = serverReaderData("m1", H);
+    const l = await d.load(book);
+    const item = l.blocks[2];
+    if (item.kind !== "item") throw new Error("item");
+    const held = await d.grade(book, item, 2);
+    await d.revert(book, held);
+    expect(calls.length).toBe(1);
+    const sent = await d.grade(book, item, 1);
+    d.flush();
+    expect(calls.length).toBe(2);
+    await d.revert(book, sent);
+    expect(calls[2].url).toBe("/api/read/m1/batch-grade");
+    expect(JSON.parse(String(calls[2].init?.body))).toEqual({ undo: sent.clientId });
+    expect(d.lastGrade("b")).toBe(4);
+  });
+
   it("takes the newer of the synced and the device's position", async () => {
     fake({ anchor: { line: 7, offset: 0.25, at: "2026-11-03T00:00:00Z" }, highLine: 5 });
     const d = serverReaderData("m1", H);

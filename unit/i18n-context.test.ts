@@ -27,6 +27,7 @@ import readPlayer from "@/app/(app)/read/read-player.content";
 import readWords from "@/app/(app)/read/read-words.content";
 import readReader from "@/app/(app)/read/read-reader.content";
 import readSelect from "@/app/(app)/read/read-select.content";
+import readGradeHandle from "@/app/(app)/read/read-grade-handle.content";
 import cliLogin from "@/app/(app)/cli-login/page.content";
 import connectionsPage from "@/app/(app)/connections/page.content";
 import readGdocDrive from "@/app/(app)/read/read-gdoc-drive.content";
@@ -88,6 +89,7 @@ describe.each([
   ["read-words", readWords],
   ["read-reader", readReader],
   ["read-select", readSelect],
+  ["read-grade-handle", readGradeHandle],
   ["cli-login-page", cliLogin],
   ["connections-page", connectionsPage],
   ["read-gdoc-drive", readGdocDrive],
