@@ -188,6 +188,14 @@ export const KEY_RATING: Readonly<Record<string, SwipeRating>> = {
   Digit3: 3,
   Digit4: 4,
 };
+/**
+ * What a click or tap on a slip does: on a computer it focuses the row, as
+ * the cursor keys do; on touch it reveals the row and reads it. Never a
+ * grade: grades are keys, swipes and grade buttons only (owner, 2026-11-04
+ * 19:35 JST: "why click on card marks it to Again? should only focus it").
+ */
+export const rowTap = (touch: boolean): "focus" | "reveal" => (touch ? "reveal" : "focus");
+
 /** The grade a key press gives, or null (Shift held: not a grade). */
 export const keyRating = (e: Pick<KeyboardEvent, "code" | "shiftKey">): SwipeRating | null =>
   e.shiftKey ? null : (KEY_RATING[e.code] ?? null);

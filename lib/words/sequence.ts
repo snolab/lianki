@@ -85,3 +85,13 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
 
   return { play, stop, finish, playing };
 }
+
+/** "Read on a loop" on /words, per device (docs/prefs-sync.md): "on", or off. */
+export const SOUND_LOOP_KEY = "lk:words-sound-loop";
+
+/**
+ * How a shown row is read: once per showing by default; with "Read on a
+ * loop" on, again and again until it is graded or left (owner, 2026-11-04
+ * 19:30 JST). A short delay so flicking through rows does not start a word per row.
+ */
+export const rowReading = (repeat: boolean): PlayOptions => ({ loop: repeat, delayMs: 250 });
