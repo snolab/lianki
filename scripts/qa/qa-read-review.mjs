@@ -39,13 +39,15 @@ const until = async (page, f, ms = 8000) => {
 
 const browser = await launchSilent(chromium);
 
-async function setup(ctx, tag) {
+async function setup(ctx, tag, { clock = false } = {}) {
   const r = await ctx.request.post("/api/auth/sign-up/email", {
     data: { email: `qa+review-${tag}${Date.now()}@lianki.test`, password: PW, name: "QA Review" },
     headers: { origin: BASE },
   });
   check(r.ok(), `sign-up ${tag} (${r.status()})`);
   const page = await ctx.newPage();
+  // A fake clock that still runs: fastForward makes a missed card due.
+  if (clock) await page.clock.install();
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
   await page.goto("/read", { waitUntil: "networkidle" });
@@ -200,6 +202,81 @@ async function run(device, scheme, touch) {
   await ctx.close();
 }
 
+/**
+ * A missed card comes back due, never into the viewport (the owner,
+ * 2026-11-05): scrolled to the end, the tail is on screen, so it waits —
+ * nothing on screen moves. Scrolled back up, it joins off screen.
+ */
+async function offscreenInsert(device) {
+  const tag = "insert-desktop";
+  console.log(`— ${tag}`);
+  const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: "light" });
+  await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
+  const { page, errs } = await setup(ctx, tag, { clock: true });
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(600);
+  const w = await aWord(page);
+  check(!!w, `${tag}: a word in a long paragraph is on screen`);
+  if (!w) return ctx.close();
+  await page.mouse.click(w.x, w.y);
+  await page.waitForTimeout(300);
+  await page.locator("[data-action=review-words]").click();
+  const list = page.locator("[data-testid=read-word-review] [role=list]");
+  const rows = list.locator("[data-i]");
+  await until(page, async () => (await rows.count()) > 0);
+  // Again on the first word: its copy is due within minutes.
+  const graded = page.waitForResponse((r) => /\/api\/words\/lists\/[^/]+\/review/.test(r.url()));
+  await page.keyboard.press("Digit1");
+  await graded.catch(() => null);
+  // The cursor to the last word, then the list to its end: the tail is on screen.
+  for (let i = 0; i < 60; i++) await page.keyboard.press("KeyS");
+  const snap = () =>
+    list.evaluate((el) => {
+      const v = el.getBoundingClientRect();
+      const seen = [...el.querySelectorAll("[data-i]")]
+        .map((r) => [r, r.getBoundingClientRect()])
+        .filter(([, b]) => b.bottom > v.top && b.top < v.bottom)
+        .map(([r, b]) => `${r.dataset.i}:${Math.round(b.top)}:${r.textContent.slice(0, 24)}`);
+      return {
+        h: el.scrollHeight,
+        top: el.scrollTop,
+        max: el.scrollHeight - el.clientHeight,
+        seen,
+      };
+    });
+  await list.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await page.waitForTimeout(800);
+  const atEnd = await snap();
+  check(atEnd.top >= atEnd.max - 1, `${tag}: scrolled to the end (${atEnd.top}/${atEnd.max})`);
+  // Due now; the hand rests (> 400 ms), the copy has nowhere off screen to go.
+  await page.clock.fastForward("05:00");
+  await page.waitForTimeout(1200);
+  const waited = await snap();
+  check(
+    waited.h === atEnd.h,
+    `${tag}: with the tail on screen nothing is inserted (${atEnd.h} → ${waited.h})`,
+  );
+  check(
+    JSON.stringify(waited.seen) === JSON.stringify(atEnd.seen) && waited.top === atEnd.top,
+    `${tag}: the rows on screen did not move (${atEnd.seen.length} rows)`,
+  );
+  await page.screenshot({ path: join(OUT, `insert-waiting.png`) });
+  // Back to the top: the tail is off screen, the copy joins there.
+  await list.evaluate((el) => (el.scrollTop = 0));
+  await page.waitForTimeout(150);
+  const up = await snap();
+  await page.waitForTimeout(1200);
+  const after = await snap();
+  check(after.h > up.h, `${tag}: scrolled up, the copy joins the list (${up.h} → ${after.h})`);
+  check(
+    JSON.stringify(after.seen) === JSON.stringify(up.seen) && after.top === up.top,
+    `${tag}: off screen — the rows on screen stay as they were`,
+  );
+  check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
+  await ctx.close();
+}
+
+await offscreenInsert(devices["Desktop Chrome"]);
 await run(devices["iPhone 13"], "light", true);
 await run(devices["iPhone 13"], "dark", true);
 await run(devices["Desktop Chrome"], "light", false);

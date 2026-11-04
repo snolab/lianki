@@ -33,6 +33,13 @@ there is no setting for it. `lib/words/review-first.ts`,
   hidden, they join just below the screen, ahead of the new words still
   waiting. A due word fetched while new words wait below the screen joins
   the same way, not at the end. Rows already on screen do not move.
+- **Never into the viewport** (the owner, 2026-11-05): a card coming back
+  joins at the nearest slot off screen, ahead of the focus
+  (`offscreenSlot`, lib/words/requeue.ts). With the list's tail on screen
+  there is none, so it waits — the slip reads "↓ back" — until a scroll, a
+  resize or the list growing leaves one; no timer polls. A slot above the
+  viewport scrolls the list by the rows inserted, so what is on screen
+  stays still. Same for /words and the /read paragraph review.
 - Misses and learning steps still come back within minutes, as before.
 - Offline, only the saved copy of due cards is known, so new words follow it.
   Cached cards that fall due later in the same offline session are not

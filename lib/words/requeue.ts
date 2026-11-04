@@ -107,3 +107,50 @@ export function undoPick(
   for (let k = log.length - 1; k >= 0; k--) if (!retired(log[k])) return log[k];
   return -1;
 }
+
+/** Where a list edge `y` lies against the viewport (content coordinates). */
+export type Where = "above" | "on" | "below";
+
+/**
+ * The viewport test for a scroller at `scrollTop`, `height` tall: an edge on
+ * either border is off it (a row starting at the bottom border is not seen).
+ */
+export const viewport =
+  (scrollTop: number, height: number) =>
+  (y: number): Where =>
+    y <= scrollTop ? "above" : y >= scrollTop + height ? "below" : "on";
+
+/**
+ * Where due copies join the list: **never into the viewport** (the owner,
+ * 2026-11-05: a card appearing on screen after a review made the list jump).
+ * Slot `at` is the edge above row `at` (`edge(at)`; `at` = `len` is the
+ * tail), and only slots from `min` on — ahead of the focus — count. The
+ * nearest one below the viewport, else the nearest above it (`above`: the
+ * caller keeps the visible rows still by scrolling down by what it inserts).
+ * null: no slot is off screen right now — the copies wait until a scroll, a
+ * resize or the list growing makes one.
+ */
+export function offscreenSlot(
+  min: number,
+  len: number,
+  edge: (at: number) => number,
+  where: (y: number) => Where,
+): { at: number; above: boolean } | null {
+  let above = -1;
+  for (let at = Math.max(0, min); at <= len; at++) {
+    const w = where(edge(at));
+    if (w === "below") return { at, above: false };
+    if (w === "above") above = at;
+  }
+  return above < 0 ? null : { at: above, above: true };
+}
+
+/**
+ * When to look again for a slot (ms from `now`): 0 when a copy is due now,
+ * the wait for the next one otherwise, null with none waiting. One timer to
+ * a known moment, not a poll.
+ */
+export function nextDueIn(q: Requeue<unknown>, now: number): number | null {
+  if (!q.later.length) return null;
+  return Math.max(0, Math.min(...q.later.map((w) => w.due)) - now);
+}
