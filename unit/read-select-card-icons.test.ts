@@ -63,5 +63,8 @@ describe("CardIcons", () => {
     expect(src).not.toContain("lookUp");
     expect(src).not.toContain("{t.copyText}");
     expect(src).not.toContain("{t.readAloud}");
+    // No Translate button: the rest comes as he scrolls, a failure's line is its retry.
+    expect(src).not.toContain("actions.translate");
+    expect(src).toContain('data-testid="read-select-translate-retry"');
   });
 });

@@ -88,7 +88,9 @@ await page.goto("/read", { waitUntil: "networkidle" });
 await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
 await page.waitForURL(/\/read\/[^/]+$/, { timeout: 30000 });
 const id = page.url().split("/").pop();
-await page.getByRole("heading", { name: "The Gift of the Magi" }).waitFor({ timeout: 15000 });
+await page
+  .getByRole("heading", { name: "The Gift of the Magi", exact: true })
+  .waitFor({ timeout: 15000 });
 const book = await (await ctx.request.get(`/api/read/${id}`)).json();
 const lines = book.lines;
 const chapters = book.book?.chapters ?? JSON.parse(book.content).chapters;
@@ -119,7 +121,7 @@ const until = async (f, ms = 5000) => {
 const openAt = async (line) => {
   await page.evaluate(([k, v]) => localStorage.setItem(k, v), [`lk:read-pos:${id}`, String(line)]);
   await page.reload({ waitUntil: "networkidle" });
-  await page.getByRole("heading", { name: "The Gift of the Magi" }).waitFor();
+  await page.getByRole("heading", { name: "The Gift of the Magi", exact: true }).waitFor();
   await page.evaluate(() => (window.__spoken.length = 0));
 };
 
@@ -285,7 +287,7 @@ await page.evaluate(() => (window.__speechDead = false));
   await dark.addInitScript(FAKE_SPEECH);
   const p = await dark.newPage();
   await p.goto(`/read/${id}`, { waitUntil: "networkidle" });
-  await p.getByRole("heading", { name: "The Gift of the Magi" }).waitFor();
+  await p.getByRole("heading", { name: "The Gift of the Magi", exact: true }).waitFor();
   await p.getByTestId("read-play").click();
   await p.locator('[data-testid="read-status"][data-status="waiting"]').waitFor();
   await p.screenshot({ path: join(OUT, "read-waiting-dark.png") });

@@ -6,13 +6,15 @@
 // and size for a chapter or the book), how well its words are known, the
 // actions that fit it, and an icon group (read aloud, copy the text,
 // copy the unit's deep link). A word or phrase that is one of his /words cards
-// shows the card's meaning at once (lib/read/select-meaning.ts); a sentence,
-// a paragraph or a hand-made range shows its translation by itself, unit by
-// unit as each lands (lib/read/select-translate.ts); Translate is a tap for
-// the rest. Not modal: the book stays clickable under it, so the
+// shows the card's meaning at once (lib/read/select-meaning.ts), any other
+// word its gloss (use-select-gloss.ts); a phrase, a sentence, a paragraph or
+// a hand-made range shows its translation by itself, unit by unit as each
+// lands (lib/read/select-translate.ts). No Look up or Translate buttons
+// (owner, 2026-11-05 02:11 JST): the rest of a long translation comes as he
+// scrolls it, and a failure's error line is its retry. Not modal: the book stays clickable under it, so the
 // next quick click widens the selection.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import type { Fam } from "@/lib/read/reader-model";
 import type { FamCounts, Unit } from "@/lib/read/reader-select";
@@ -38,7 +40,6 @@ export interface UnitView {
 export interface CardActions {
   copyLink: () => void;
   copyText?: () => void;
-  translate?: () => void;
   readFrom?: () => void;
   /** Say exactly the selected text (a hand-made selection). */
   readAloud?: () => void;
@@ -132,6 +133,9 @@ export function CardIcons({ items }: { items: IconAction[] }) {
   );
 }
 
+/** A scroller shown to (about) its end. */
+const nearEnd = (el: HTMLElement) => el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
+
 export function SelectCard({
   view,
   actions,
@@ -141,6 +145,8 @@ export function SelectCard({
   translation = null,
   meaning = null,
   lemma = null,
+  onMoreTranslation = null,
+  translateFailed = null,
   onClose,
 }: {
   view: UnitView;
@@ -157,6 +163,10 @@ export function SelectCard({
   meaning?: CardMeaning | null;
   /** The selected word's dictionary form, when it is an inflected one. */
   lemma?: CardLemma | null;
+  /** Ask for the next stretch of a long selection's translation (null: nothing left). */
+  onMoreTranslation?: (() => void) | null;
+  /** The translation failed: its error line is the retry (null: it did not). */
+  translateFailed?: (() => void) | null;
   onClose: () => void;
 }) {
   const t = useIntlayer("read-select");
@@ -165,6 +175,13 @@ export function SelectCard({
   const { locale } = useLocale();
   const nf = new Intl.NumberFormat(String(locale));
   const pf = new Intl.NumberFormat(String(locale), { style: "percent" });
+  // The rest of a long translation comes by itself (no Translate button):
+  // when what came fits without scrolling, or he scrolls it to its end.
+  const transRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = transRef.current;
+    if (onMoreTranslation && el && nearEnd(el)) onMoreTranslation();
+  }, [onMoreTranslation, translation]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", key);
@@ -313,6 +330,8 @@ export function SelectCard({
         <div
           className="mt-1 max-h-[40vh] space-y-1.5 overflow-y-auto text-sm"
           aria-live="polite"
+          ref={transRef}
+          onScroll={(e) => onMoreTranslation && nearEnd(e.currentTarget) && onMoreTranslation()}
           data-testid="read-select-translation"
           data-pending={translation.blocks.some((b) => b.includes(null)) || undefined}
         >
@@ -334,6 +353,20 @@ export function SelectCard({
         </div>
       )}
 
+      {translateFailed && (
+        <button
+          type="button"
+          onClick={translateFailed}
+          className="-mx-1 mt-1 min-h-11 rounded-full px-1 text-start text-sm text-[oklch(0.52_0.17_30)] pointer-fine:min-h-0 dark:text-[oklch(0.76_0.14_30)]"
+          data-testid="read-select-translate-retry"
+        >
+          {t.translateFailed}
+          <span aria-hidden className="mx-1 opacity-60">
+            ·
+          </span>
+          <span className="font-medium underline underline-offset-2">{t.retry}</span>
+        </button>
+      )}
       {u.kind !== "word" && share !== null && (
         <div className="mt-1.5 flex items-center gap-2" data-testid="read-select-fam">
           {c && c.n > 0 && (
@@ -376,11 +409,6 @@ export function SelectCard({
             data-action="make-cards"
           >
             {fill(tr.makeCards.value, { n: nf.format(actions.makeCards.n) })}
-          </button>
-        )}
-        {actions.translate && (
-          <button type="button" className={btn} onClick={actions.translate} data-action="translate">
-            {t.translate}
           </button>
         )}
         {actions.makePhrase && (

@@ -173,6 +173,14 @@ describe("translation: whole sentences, whole paragraphs", () => {
     expect(translationPlan({ kind: "word", line: 0, t: 0 }, sentences)).toBeNull();
   });
 
+  test("a phrase (no Translate button) is translated by itself, as one piece", () => {
+    const t0 = tokIn(0, "Les");
+    const t1 = tokIn(0, "oiseaux");
+    const plan = translationPlan({ kind: "phrase", line: 0, t0, t1 }, sentences)!;
+    expect(plan.map((b) => b.map((p) => p.level))).toEqual([["phrase"]]);
+    expect(plan[0][0].text).toBe("Les oiseaux");
+  });
+
   test("a ragged range in one paragraph grows to whole sentences", () => {
     // From "brille" to "oiseaux": sentences 0 and 1.
     const u: Unit = {

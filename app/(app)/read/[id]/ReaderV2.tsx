@@ -943,10 +943,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const { locale } = useLocale();
   const [selStatus, setSelStatus] = useState<string | null>(null);
   useEffect(() => setSelStatus(null), [sel.unit]);
-  // Translate: the selected text in his own language, on the card (our API,
-  // lib/read/translate.ts). Keyed by the text, so a new selection drops it.
-  const [trans, setTrans] = useState<{ src: string; out: string | null } | null>(null);
-  useEffect(() => setTrans(null), [sel.unit]);
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
@@ -1020,14 +1016,18 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     };
   }, [sel.unit, selMeaning, signedIn, material.readerV2, para]);
   const selGloss = useSelectGloss(id, glossWord);
-  // A sentence, a paragraph or a range: its whole units translated by
-  // themselves (lib/read/select-translate.ts). Not when it is a deck card.
+  // A phrase, a sentence, a paragraph or a range: its whole units translated
+  // by themselves (lib/read/select-translate.ts). Not when it is a deck card.
   const plan = useMemo(
     () =>
-      signedIn && material.readerV2 && sel.unit && !selInside
+      signedIn &&
+      material.readerV2 &&
+      sel.unit &&
+      !selInside &&
+      !(sel.unit.kind === "phrase" && selMeaning)
         ? translationPlan(sel.unit, lineSentences)
         : null,
-    [signedIn, material.readerV2, sel.unit, selInside, lineSentences],
+    [signedIn, material.readerV2, sel.unit, selInside, selMeaning, lineSentences],
   );
   const autoTrans = useSelectTranslate(
     id,
@@ -1228,7 +1228,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const actions = useMemo<CardActions | null>(() => {
     const u = view?.unit;
     if (!view || !u) return null;
-    const from = lang && lang !== "und" ? lang : undefined;
     const text =
       u.kind === "chapter"
         ? (() => {
@@ -1255,33 +1254,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       },
     };
     if (text && u.kind !== "book") a.copyText = () => void copy(text, ts.textCopied.value);
-    if (plan) {
-      if (autoTrans.more) a.translate = autoTrans.more;
-    } else if (
-      view.text &&
-      signedIn &&
-      material.readerV2 &&
-      (u.kind === "word" || u.kind === "phrase" || u.kind === "range")
-    )
-      a.translate = () => {
-        const src = view.text!.trim();
-        if (trans?.src === src) return;
-        setTrans({ src, out: null });
-        void fetch(`/api/read/${id}/translate`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text: src, to: String(locale), from }),
-        })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((d: { text?: string } | null) => {
-            if (!d?.text) throw new Error("no translation");
-            setTrans((t) => (t?.src === src ? { src, out: d.text! } : t));
-          })
-          .catch(() => {
-            setTrans((t) => (t?.src === src ? null : t));
-            setSelStatus(ts.translateFailed.value);
-          });
-      };
     const hash = material.bookHash;
     if (
       signedIn &&
@@ -1391,9 +1363,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     openReview,
     makeLine,
     lineWords,
-    trans,
-    plan,
-    autoTrans.more,
     selSpan,
     selMeaning,
     selLemma,
@@ -1587,18 +1556,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             bottom={`calc(env(safe-area-inset-bottom) + ${(islandOpen ? 8.5 : 4.75) + (playing && !follow ? 3 : 0)}rem)`}
             status={
               selStatus ??
-              (autoTrans.failed ? ts.translateFailed.value : null) ??
               (sayFail && sameUnit(sayFail.u, sel.unit)
                 ? `${ts.sayFailed.value} (${sayFail.why})`
                 : null)
             }
-            translation={
-              plan
-                ? autoTrans.translation
-                : trans && view.text?.trim() === trans.src
-                  ? { blocks: [[trans.out]] }
-                  : null
-            }
+            translation={plan ? autoTrans.translation : null}
+            onMoreTranslation={autoTrans.more}
+            translateFailed={autoTrans.failed ? autoTrans.retry : null}
             meaning={
               selMeaning?.card ?? (selGloss && selLemma ? { ...selGloss, other: false } : selGloss)
             }
