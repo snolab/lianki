@@ -53,6 +53,7 @@ import {
 import { followSwipe, releaseTrajectory, springStep, trajectoryEasing } from "./swipe-physics";
 import type { SwipeLevel, SwipeRating } from "./swipe";
 import { useLeaveGuard } from "@/lib/use-leave-guard";
+import { onPageLeave } from "@/lib/page-leave";
 
 /** Bump when a context value's shape or a hook's meaning changes (and the islands' contract versions). */
 export const SWIPE_CORE_IFACE = 1;
@@ -463,6 +464,22 @@ export function useSwipeGesture(opts: GestureOptions) {
       node.removeEventListener("touchmove", move);
     };
   }, []);
+
+  // The system can take the touch without a pointercancel reaching the card:
+  // Android's edge Back, an app switch, the shade (lib/page-leave.ts). The
+  // gesture ends as a cancel then: the slip goes home, nothing is graded.
+  useEffect(() => {
+    if (phase === "idle" || phase === "settling") return;
+    return onPageLeave(
+      () => {
+        const s = g.current.phase;
+        if (s === "idle" || s === "settling") return;
+        o.current.perf?.stop(s === "dragging" ? "swipe-cancel" : "scroll");
+        run({ type: "cancel" });
+      },
+      { blur: true },
+    );
+  }, [phase]);
 
   useEffect(
     () => () => {
