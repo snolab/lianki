@@ -245,41 +245,23 @@ const dictionary = {
       sw: "Imeshindwa kusoma kwa sauti",
       mr: "मोठ्याने वाचता आले नाही",
     }),
-    lookUp: t({
-      en: "Look up",
-      zh: "查词",
-      ja: "辞書で調べる",
-      ko: "사전 찾기",
-      hi: "शब्दकोश में देखें",
-      es: "Buscar en el diccionario",
-      fr: "Chercher",
-      ar: "ابحث في القاموس",
-      bn: "অভিধানে দেখুন",
-      pt: "Procurar no dicionário",
-      ru: "Найти в словаре",
-      ur: "لغت میں دیکھیں",
-      id: "Cari di kamus",
-      de: "Nachschlagen",
-      sw: "Tafuta kamusini",
-      mr: "शब्दकोशात पहा",
-    }),
-    translate: t({
-      en: "Translate",
-      zh: "翻译",
-      ja: "翻訳",
-      ko: "번역",
-      hi: "अनुवाद करें",
-      es: "Traducir",
-      fr: "Traduire",
-      ar: "ترجمة",
-      bn: "অনুবাদ করুন",
-      pt: "Traduzir",
-      ru: "Перевести",
-      ur: "ترجمہ کریں",
-      id: "Terjemahkan",
-      de: "Übersetzen",
-      sw: "Tafsiri",
-      mr: "भाषांतर करा",
+    retry: t({
+      en: "Retry",
+      zh: "重试",
+      ja: "再試行",
+      ko: "다시 시도",
+      hi: "फिर से कोशिश करें",
+      es: "Reintentar",
+      fr: "Réessayer",
+      ar: "أعد المحاولة",
+      bn: "আবার চেষ্টা করুন",
+      pt: "Tentar de novo",
+      ru: "Повторить",
+      ur: "دوبارہ کوشش کریں",
+      id: "Coba lagi",
+      de: "Erneut versuchen",
+      sw: "Jaribu tena",
+      mr: "पुन्हा प्रयत्न करा",
     }),
     translating: t({
       en: "Translating…",
@@ -550,11 +532,11 @@ const context: Record<keyof typeof dictionary.content, string> = {
   kindBook:
     "Small label at the top of the reader's selection card when the whole book is selected (the last level of quick clicks); the book's title follows it. A short noun meaning the entire book.",
   copyLink:
-    "Tooltip and screen-reader label of the chain-link icon button on the reader's selection card: copies a web address that opens the book at exactly this word, sentence, paragraph or chapter. An imperative phrase.",
+    "Tooltip and screen-reader label (aria-label) of the chain-link icon button (icon only, no visible text) in the small icon group at the top of the reader's selection card: copies a web address that opens the book at exactly this word, sentence, paragraph or chapter. An imperative phrase.",
   linkCopied:
     "Short confirmation shown on the reader's selection card and announced to screen readers after the deep link of the selected unit was copied to the clipboard. A past-participle phrase.",
   copyText:
-    "Button on the reader's selection card: copies the text of the selected word, sentence, paragraph or chapter to the clipboard. An imperative phrase.",
+    "Tooltip and screen-reader label (aria-label) of the copy icon button (two overlapping sheets, icon only, no visible text) in the small icon group at the top of the reader's selection card, next to the copy-link button: copies the text of the selected word, sentence, paragraph or chapter to the clipboard. An imperative phrase.",
   textCopied:
     "Short confirmation shown on the reader's selection card and announced to screen readers after the selected text was copied to the clipboard. A past-participle phrase.",
   copyFailed:
@@ -563,14 +545,12 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Short error on the reader's selection card when noting the selected word as new to the learner did not reach the server (offline, or an error). A short phrase.",
   sayFailed:
     "Short error on the reader's selection card when tapping a word, sentence or paragraph should have read the selected text aloud but no voice could (no voice for the language, network or server failure, playback refused); the technical reason is shown after it in parentheses. A short phrase.",
-  lookUp:
-    "Button on the reader's selection card for a selected word or phrase: opens a dictionary entry (Wiktionary) for it in a new tab. An imperative verb phrase.",
-  translate:
-    "Button on the reader's selection card for a selected word, phrase, sentence or paragraph: shows a machine translation of the text into the learner's language right on the card, under the text. Sentences and paragraphs are translated by themselves; there the button only appears to translate what is left of a long selection or to try again after a failure. An imperative verb.",
+  retry:
+    "Tappable word at the end of the error line on the reader's selection card when the automatic machine translation of the selected text failed (shown as 'Could not translate · Retry'); tapping the line asks for the translation again. Only shown in that error state. A short imperative verb.",
   translating:
-    "Placeholder on the reader's selection card, under the selected text, while its machine translation (started by itself for a sentence or paragraph, or with the Translate button) is on its way. A short progressive phrase ending in an ellipsis.",
+    "Placeholder on the reader's selection card, under the selected text, while its machine translation (always started by itself, for a phrase, sentence, paragraph or hand-made selection; there is no Translate button) is on its way. A short progressive phrase ending in an ellipsis.",
   translateFailed:
-    "Short error on the reader's selection card when the machine translation of the selected text could not be made (offline, over the limit, or a server failure). A short phrase.",
+    "Short error on the reader's selection card when the machine translation of the selected text could not be made (offline, over the limit, or a server failure). The line itself is tappable to retry, followed by ' · Retry'. A short phrase.",
   makePhraseCard:
     "Button on the reader's selection card when the learner selected a phrase (several words, or a multi-character expression) that is not yet one of their flashcards, or an inflected word whose dictionary form is not yet one: makes a spaced-repetition flashcard for that phrase (or for the word's dictionary form) in the book's own word list. An imperative phrase; 'card' means a flashcard.",
   readFromHere:
@@ -594,7 +574,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   reviewSelection:
     "Button on the reader's selection card for text the learner selected by hand: opens the flashcard review (spaced repetition) of every distinct word inside the selected text, graded right there. An imperative phrase; 'review' means study again with flashcards, not critique.",
   readAloud:
-    "Button on the reader's selection card for text the learner selected by hand: text-to-speech reads exactly the selected text once, in the book's language. An imperative verb phrase.",
+    "Tooltip and screen-reader label (aria-label) of the speaker icon button (icon only, no visible text) in the small icon group at the top of the reader's selection card, shown for text the learner selected by hand: text-to-speech reads exactly the selected text once, in the book's language. An imperative verb phrase.",
 };
 
 export default {
