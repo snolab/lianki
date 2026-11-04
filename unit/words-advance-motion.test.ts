@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { advanceTop, shouldAdvance } from "@/lib/words/advance";
+import { advanceTop, keyGradeMove, shouldAdvance } from "@/lib/words/advance";
 import {
   applyMotionAttr,
   installMotionAttr,
@@ -26,6 +26,27 @@ describe("auto-advance (owner, 2026-10-30)", () => {
   });
   test("re-grading a card already graded stays put", () => {
     expect(shouldAdvance(new Map([[3, { rating: 1 }]]), 3)).toBe(false);
+  });
+});
+
+describe("grade keys 1–4 (owner, 2026-11-04)", () => {
+  test("a word not graded yet: scroll like the swipe, cursor to the next", () => {
+    expect(keyGradeMove(new Map(), 3, false)).toEqual({ grade: true, next: true, scroll: true });
+    expect(keyGradeMove(new Map([[2, 1]]), 3, false).scroll).toBe(true);
+  });
+  test("a correction: cursor to the next, the view does not scroll", () => {
+    expect(keyGradeMove(new Map([[3, 1]]), 3, false)).toEqual({
+      grade: true,
+      next: true,
+      scroll: false,
+    });
+  });
+  test("a locked 回来了 slip: nothing grades, nothing moves (#427)", () => {
+    expect(keyGradeMove(new Map([[3, 1]]), 3, true)).toEqual({
+      grade: false,
+      next: false,
+      scroll: false,
+    });
   });
 });
 

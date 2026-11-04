@@ -49,6 +49,11 @@ they land. Design details that are still open are marked **open**.
 - **Binding cords at a fixed position**: dragging a slip never carries the
   cords along (old and new swipe).
 - A slip showing "↓ back"/「回来了」 is locked: no swipe, grade or undo (#427).
+- **Grade keys 1–4** (2026-11-04, PC, also the /read word review): a word not
+  graded yet is graded like a swipe — the list scrolls one row and the cursor
+  moves to the next word. A correction (re-grading a graded word) never
+  scrolls the view, but the cursor still moves to the next word
+  (`keyGradeMove`, lib/words/advance.ts).
 
 ## The window (phase 2, **open**: design options go to the owner in Slack)
 

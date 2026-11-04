@@ -7,7 +7,7 @@ import { useBackToClose } from "@/lib/use-back-to-close";
 import { SettingsSheet } from "./SettingsSheet";
 import { ListPreview, PreviewButton } from "./ListPreview";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
-import { advanceTop, shouldAdvance } from "@/lib/words/advance";
+import { advanceTop, keyGradeMove, shouldAdvance } from "@/lib/words/advance";
 import {
   afterGrade,
   emptyRequeue,
@@ -3852,11 +3852,21 @@ export function Study({
     return () => clearTimeout(t);
   }, [notice]);
 
-  /** A grade from the keys (or the voice on desktop): the cursor moves on past a first grade. */
+  /**
+   * A grade from the keys (or the voice on desktop), lib/words/advance.ts
+   * `keyGradeMove`: a first grade is the swipe's own (swipeGrade: the list
+   * scrolls one row); a correction grades in place, view still. Either way
+   * the cursor moves on to the next word — without the cursor-follow scroll,
+   * which would fight the advance or move the view on a correction.
+   */
   const keyGrade = (at: number, r: Rating) => {
-    const advance = shouldAdvance(grades, at);
-    grade(at, r);
-    if (advance) moveRow(at + 1);
+    const move = keyGradeMove(gradesNow.current, at, retired(at));
+    if (!move.grade) return;
+    if (move.scroll) swipeGrade(at, r);
+    else grade(at, r);
+    if (!move.next) return;
+    stillCursor.current = Math.max(0, Math.min(queueLen.current - 1, at + 1));
+    moveRow(at + 1);
   };
 
   useEffect(() => {
@@ -4124,6 +4134,8 @@ export function Study({
       window.removeEventListener("scroll", top);
     };
   }, [listEl]);
+  /** The row a grade key just moved the cursor to: the cursor-follow below leaves the view alone. */
+  const stillCursor = useRef<number | null>(null);
   // Keep the cursor in view as it moves, a couple of rows from the edges of
   // what the overlays leave uncovered. A row height change alone (text size)
   // is not a move: the effect below keeps the reader's place instead.
@@ -4132,7 +4144,10 @@ export function Study({
     const el = listRef.current;
     const resized = cursorRowH.current !== ROW_H;
     cursorRowH.current = ROW_H;
-    if (!el || resized) return;
+    // A grade key moved the cursor (keyGrade): it scrolled as it should already.
+    const still = stillCursor.current === row;
+    stillCursor.current = null;
+    if (!el || resized || still) return;
     const { top: over, bottom: under } = barRef.current;
     const top = pad + row * ROW_H;
     if (top < el.scrollTop + over + ROW_H) el.scrollTop = Math.max(0, top - ROW_H - over);
