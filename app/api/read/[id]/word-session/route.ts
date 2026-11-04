@@ -14,7 +14,7 @@ import { fillGlosses } from "@/lib/read/gloss-server";
  * POST /api/read/[id]/word-session — the review of a range's words in /words'
  * own list review (docs/books-plan.md, "Review a range's words"):
  *
- *   { words: [{ w, ex, term?, reading?, back? }] }            → { items, lists, missing }
+ *   { words: [{ w, ex, term?, reading?, back? }], all? }      → { items, lists, missing }
  *   { graded: [{ w, ex, term?, reading?, back? }] }           → { added }
  *
  * `items`: each word on his existing card (any of his lists in the book's
@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
   if (!ctx.email) return badRequest("no email");
-  const body = (await bodyOf(req)) as { words?: unknown; graded?: unknown } | null;
+  const body = (await bodyOf(req)) as { words?: unknown; graded?: unknown; all?: unknown } | null;
   const { book, own } = await bookCtxOf(ctx);
   if (body?.graded !== undefined) {
     const graded = rangeWords(body.graded, own);
@@ -39,5 +39,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // A meaning for every word lacking one: the decks over the book's lemmas,
   // the generated glosses, the model (lib/read/gloss.ts).
   const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, book, ws, { userId: ctx.userId });
-  return json(await scopeSession(ctx.db, ctx.email, book, words, gloss));
+  // `all`: cards not due yet too (the side review's card for a word he clicked).
+  return json(
+    await scopeSession(ctx.db, ctx.email, book, words, gloss, new Date(), body?.all === true),
+  );
 }

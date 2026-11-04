@@ -4,6 +4,7 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { readerPick } from "@/lib/read/reader-access";
+import { sideReviewOn } from "@/lib/read/reader-book";
 import { resolveReadId } from "@/lib/read/book-link";
 import { findReadMaterialIdByHash } from "@/lib/getReadMaterialsCollection";
 import { notFound, redirect } from "next/navigation";
@@ -42,7 +43,14 @@ export default async function ReadMaterialPage({
   });
 
   // The reader v2 fills the screen: the window scrolls the whole book.
-  if (pick === "v2") return <ReaderV2 id={id} isLoggedIn={!!user} />;
+  if (pick === "v2")
+    return (
+      <ReaderV2
+        id={id}
+        isLoggedIn={!!user}
+        sideReview={sideReviewOn(flags, isOwner(user?.email))}
+      />
+    );
 
   return (
     <div className="flex flex-col">

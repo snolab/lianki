@@ -160,6 +160,9 @@ describe("the book's list (D1)", () => {
     expect(soon.lists.every((l) => l.source !== "fr-1000")).toBe(true);
     const later = await scopeSession(d1, EMAIL, book, words, undefined, new Date("2027-06-01"));
     expect(later.items.map((i) => i.term)).toEqual(["chat", "chien"]);
+    // The side review's card for a clicked word: his card whatever its due.
+    const all = await scopeSession(d1, EMAIL, book, words, undefined, at, true);
+    expect(all.items.map((i) => i.term)).toEqual(["chat", "chien"]);
   });
 
   test("words without a card come from the book's list; names are left out", async () => {

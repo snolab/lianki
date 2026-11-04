@@ -1263,6 +1263,27 @@ html[data-read-marks="unknown"] .lk-book [data-f="u"] {
 .lk-book .lk-item-face > .lk-rail {
   inset-inline-start: 0;
 }
+/* The side-by-side word review (reader-side-review.tsx): the focused word in
+ * the book, and room for the card beside the book on a wide screen. */
+.lk-book [data-side-focus] {
+  background: oklch(0.86 0.1 155 / 0.5);
+  box-shadow: 0 0 0 2px oklch(0.6 0.13 155 / 0.85);
+  border-radius: 0.2em;
+}
+@media (prefers-color-scheme: dark) {
+  .lk-book [data-side-focus] {
+    background: oklch(0.5 0.09 155 / 0.45);
+    box-shadow: 0 0 0 2px oklch(0.72 0.13 155 / 0.85);
+  }
+}
+.lk-reader {
+  --lk-side-w: min(26rem, 38vw);
+}
+@media (min-width: 64rem) {
+  .lk-reader[data-side] {
+    padding-inline-end: var(--lk-side-w);
+  }
+}
 
 /* Feature cards under Explore on /home (app/(app)/home/FeatureCard.tsx): name
  * and one line of explanation over a faint screenshot of the feature. One

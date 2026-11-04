@@ -414,6 +414,48 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   until the credits redesign (owner, 2026-11-04) it only logs
   `read.gloss.cost`.
 
+### Side-by-side word review (owner, 2026-11-04 15:56 JST; flag `read.side-review`)
+
+A /words-style review **inside** the reader, PC first: the book stays on
+screen and ONE card sits beside it (a phone: over the bottom of the book,
+above the pill). Off for everyone but the owner until the flag is on.
+
+- **Open:** the ⧉ button on the reader's pill, or `?side` on the book's URL.
+  It starts at the first due word from the eye line, else the first new one,
+  silently; a jump or a grade then says the word, as a focus change on /words.
+- **Jump:** `D` / `N` the next word of the text due on his cards / new to
+  him (no card; a list's or the dictionary's word, the marks' `n`);
+  `Shift+D` / `Shift+N` back; the card's ‹ › buttons do the same. A click
+  on any word shows that word's card. The focused word is marked in the text
+  (`data-side-focus`) and scrolled to the eye line when off screen.
+- **Due:** GET `/api/read/[id]/word-due`: the book's words whose card (any
+  of his lists in the book's language) has `due` ≤ now, by the same folds as
+  the word map (lib/read/side-review.ts `dueBookWords`). Read once on open.
+- **The card:** the word as /words has it (POST word-session for that one
+  word: his card, or a new word of the book's list, with the #507 gloss),
+  its reading, status (new / due since / not due yet), and everything at
+  once (owner, 19:53 JST: no reveal step): meaning, the book's sentence, 🔊.
+  Grades: 1–4 and
+  L K J H as /words (`keyRating`, lib/words/swipe.ts), through /words' own pending queue
+  (`queueWordReview`); a new word's entry joins the book's list as in the
+  paragraph review. After a grade: the next word of the same kind, then of
+  the other. `Z` takes the last grade back and returns to that word. `Esc`
+  or back closes; the word marks refresh then.
+- **本段单词 on PC** (owner, 2026-11-04 19:31 JST): on a wide screen the
+  selection card's "review the paragraph's words" opens the panel, not the
+  overlay: the paragraph's (or selection's) words above the card, each with
+  his progress (due, mastered / learning / new / unrecognised, or the grade
+  just given); a pick shows its card, a grade moves to the next word of the
+  list that is due or new. A phone keeps the overlay review.
+- **Never lands on a card not due yet** (owner, 19:43 JST): D / N, the
+  auto-advance and the list's next offer due and new words only; a click
+  still opens any word (word-session `all`, past #527's due filter). A word
+  the session leaves out shows its word and meaning with 制卡; only a failed
+  request shows the error, with a retry.
+- While it is open the reader's own item keys (1–4, H J K L, Space) rest.
+- No gesture starts at a screen edge (Android's Back): no card swipe yet;
+  grade by buttons and keys. The shared edge-safe swipe can come later.
+
 ### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
 
 "阅读模式不用我们主动分块", after "不要给用户规划任何死数字 … 我们不要用任何数量数字".
