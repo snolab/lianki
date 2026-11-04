@@ -117,7 +117,7 @@ const phraseState = (page, line, t0) =>
         below: pr.bottom - wr.bottom > 0.25 * fs,
         // Near the top of the bar (its height is --lk-ph-h, 0.17em): the edge
         // a selection's highlight would reach first.
-        bar: { x: wr.left + wr.width / 2, y: pr.bottom - 0.17 * fs + 1.5 },
+        bar: { x: wr.left + wr.width / 2, y: pr.bottom - 0.17 * fs + 1.5, bottom: pr.bottom },
         word: { x: wr.left + wr.width / 2, y: wr.top + wr.height / 2, top: wr.top },
         fs,
       };
@@ -143,16 +143,12 @@ async function pixel(page, x, y) {
     return [d[0], d[1], d[2]];
   }, buf.toString("base64"));
 }
-/**
- * The word's own underline: in a one-pixel column from the word's top down to
- * just above the bar, the lowest row that is not the page (below the glyphs).
- */
-async function underlineRow(page, x, top, bottom) {
+/** A one-pixel column of the page from `top` to `bottom`, in device pixels. */
+async function column(page, x, top, bottom) {
   const y0 = Math.round(top);
   const h = Math.max(1, Math.round(bottom) - y0);
   const buf = await page.screenshot({ clip: { x: Math.round(x), y: y0, width: 1, height: h } });
-  const paper = await pixel(page, 2, bottom);
-  const got = await page.evaluate(async (b64) => {
+  return page.evaluate(async (b64) => {
     const img = new Image();
     img.src = `data:image/png;base64,${b64}`;
     await img.decode();
@@ -166,10 +162,26 @@ async function underlineRow(page, x, top, bottom) {
     for (let i = 0; i < img.height; i++) rows.push([d[i * 4], d[i * 4 + 1], d[i * 4 + 2]]);
     return rows;
   }, buf.toString("base64"));
-  const k = got.length / h;
-  for (let i = got.length - 1; i >= 0; i--)
-    if (!near(got[i], paper, 30)) return { y: y0 + (i + 0.5) / k, c: got[i] };
-  return null;
+}
+
+/**
+ * The two layers in a column from the word's top to below the bar: from the
+ * bottom up, the first run of rows that are not the page is the phrase bar,
+ * the next (after a gap of page) the word's own underline. Each as the row in
+ * the middle of its run (clear of anti-aliased edges).
+ */
+function layers(rows, paper) {
+  const runs = [];
+  let end = -1;
+  for (let i = rows.length - 1; i >= -1 && runs.length < 2; i--) {
+    const ink = i >= 0 && !near(rows[i], paper, 30);
+    if (ink && end < 0) end = i;
+    if (!ink && end >= 0) {
+      runs.push(Math.round((i + 1 + end) / 2));
+      end = -1;
+    }
+  }
+  return runs.length === 2 ? { bar: runs[0], word: runs[1] } : null;
 }
 const near = (a, b, tol = 10) => !!a && !!b && a.every((v, i) => Math.abs(v - b[i]) <= tol);
 
@@ -285,12 +297,14 @@ async function run(engine, device, scheme) {
   );
   await page.waitForTimeout(500);
   st = await phraseState(page, pick.line, pick.t0);
-  const bg = await pixel(page, st.bar.x, st.bar.y);
-  const wordLine = await underlineRow(page, st.word.x, st.word.top, st.bar.y - 3);
-  check(!!wordLine, `the word's own line is found above the bar (${wordLine?.c})`);
-  // The page at the same height, in the margin.
+  // The page at the bar's height, in the margin.
   const paper = await pixel(page, 2, st.bar.y);
-  check(!near(bg, paper, 6), `the bar is visible (${bg} on ${paper})`);
+  const col = [st.word.x, st.word.top, st.bar.bottom + 2];
+  const before = await column(page, ...col);
+  const at = layers(before, paper);
+  check(!!at, "the column shows two layers: the word's line, then the phrase bar");
+  const bg = at ? before[at.bar] : null;
+  check(!!bg && !near(bg, paper, 6), `the bar is visible (${bg} on ${paper})`);
   await page.screenshot({ path: join(OUT, `phrase-${tag}.png`) });
 
   // Marks follow html[data-read-marks]: learning bars under "all" only.
@@ -340,21 +354,23 @@ async function run(engine, device, scheme) {
     card?.meaning.includes(BACK),
     `the card shows the phrase card's meaning (${card?.meaning?.slice(0, 40)})`,
   );
-  const sel = await pixel(page, st.bar.x, st.bar.y);
-  check(near(sel, bg), `selected, the bar keeps its colour (${sel} vs ${bg})`);
-  if (wordLine) {
-    const now = await pixel(page, st.word.x, wordLine.y);
+  if (at) {
+    // The same device rows as before: each layer's colour, selected.
+    const after = await column(page, ...col);
+    if (process.env.QA_DEBUG)
+      before.forEach((r, i) => console.log(i, r.join(","), after[i]?.join(",")));
     check(
-      near(now, wordLine.c, 30),
-      `selected, the word line keeps its colour (${now} vs ${wordLine.c})`,
+      near(after[at.bar], before[at.bar], 12),
+      `selected, the bar keeps its colour (${after[at.bar]} vs ${before[at.bar]})`,
+    );
+    check(
+      near(after[at.word], before[at.word], 30),
+      `selected, the word line keeps its colour (${after[at.word]} vs ${before[at.word]})`,
     );
   }
   st = await phraseState(page, pick.line, pick.t0);
   check(st?.wordLines, "selected, its words keep their own underline");
   await page.screenshot({ path: join(OUT, `phrase-selected-${tag}.png`) });
-  if (process.env.QA_DEBUG)
-    for (let dy = -6; dy <= 6; dy++)
-      console.log(dy, await pixel(page, st.bar.x, st.bar.y + dy), st.bar.y + dy);
   check(errs.length === 0, `no page errors (${errs.slice(0, 2)})`);
   await browser.close();
 }

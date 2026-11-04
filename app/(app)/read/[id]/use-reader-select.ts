@@ -418,7 +418,12 @@ export function useReaderSelect(o: {
       frame = 0;
       const els = unitElements(root, unit, (n) => ctxRef.current.chapterRange(n));
       wipe();
-      if (hl) {
+      // A deck phrase's bar (reader-blocks [data-ph]) sits in its own padding
+      // below the words; WebKit paints a highlight down to the bottom of the
+      // tallest inline box on the line, over the bar. With phrases on screen
+      // the elements carry the selection instead (their backgrounds end above
+      // the bar).
+      if (hl && !root.querySelector("[data-ph]")) {
         const H = Highlight as unknown as new (...r: Range[]) => unknown;
         hl.set(HL, new H(...rangesOf(unit, els)));
       } else {
