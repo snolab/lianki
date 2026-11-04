@@ -11,6 +11,7 @@ import {
   titleHint,
   voiceBusy,
 } from "@lianki/debug-chat/voice-bg";
+import { voiceBgWords } from "@lianki/debug-chat/ui-strings";
 
 const quiet = { mic: false, speaking: false, queued: 0 };
 const mic = { mic: true, speaking: false, queued: 0 };
@@ -77,6 +78,12 @@ describe("voice-bg: the title hint", () => {
     expect(hintedTitle(t, w, "reading")).toBe("🔊 Lianki voice on · Read · Lianki");
     expect(hintedTitle(t, w, null)).toBe("Read · Lianki");
     expect(baseTitle("Plain", w)).toBe("Plain");
+  });
+
+  it("its words follow the page language (zh, ja, else English)", () => {
+    expect(voiceBgWords("zh-CN")).toBe("Lianki 语音运行中");
+    expect(voiceBgWords("ja")).toBe("Lianki 音声オン");
+    expect(voiceBgWords("fr")).toBe("Lianki voice on");
   });
 });
 
