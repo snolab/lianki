@@ -15,7 +15,9 @@
 // - the link copies /read/<content hash>#<unit>; opening it scrolls to the
 //   unit, flashes it and shows its card; back closes the card;
 // - another account (and a signed-out visitor) get 404 for the same link;
-// - a sideways swipe grades and never selects; a tap elsewhere clears.
+// - a sideways swipe grades and never selects; a tap elsewhere clears;
+// - a sentence and a paragraph translate by themselves on the card (the
+//   translate API is answered here, no model), each unit asked for once.
 //
 // No sound: speechSynthesis is a fake (on top of silent.mjs).
 import { mkdirSync } from "node:fs";
@@ -153,6 +155,27 @@ async function open(ctx) {
   return { page, errs, id };
 }
 
+/** Answers the translate API without a model, and counts what it was asked. */
+async function fakeTranslate(ctx) {
+  const asked = [];
+  await ctx.route("**/api/read/*/translate", async (r) => {
+    const { text } = JSON.parse(r.request().postData() || "{}");
+    asked.push(text);
+    await r.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ text: `«${text.slice(0, 12)}»`, cached: false }),
+    });
+  });
+  return asked;
+}
+
+const translationShown = (page) =>
+  page.evaluate(() => {
+    const el = document.querySelector("[data-testid=read-select-translation]");
+    return el && !el.dataset.pending ? el.textContent.trim() : null;
+  });
+
 async function desktop(scheme) {
   const tag = `desktop-${scheme}`;
   console.log(`— ${tag}`);
@@ -164,6 +187,7 @@ async function desktop(scheme) {
   });
   await ctx.addInitScript(FAKE_SPEECH);
   await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
+  const asked = await fakeTranslate(ctx);
   await signUp(ctx, tag);
   const { page, errs, id } = await open(ctx);
   const w = await aWord(page);
@@ -245,9 +269,12 @@ async function desktop(scheme) {
   c = await card(page);
   check(c?.kind === "para", `a triple-click selects the paragraph (${c?.kind})`);
   check(c?.domSel === "", `no native selection (${JSON.stringify(c?.domSel?.slice(0, 20))})`);
+  check(c?.actions.includes("read-from"), `paragraph actions (${c?.actions})`);
+  // The paragraph translates by itself, in one call (owner, 2026-11-05 00:37 JST).
+  const paraTr = await until(page, async () => !!(await translationShown(page)), 5000);
   check(
-    c?.actions.includes("translate") && c?.actions.includes("read-from"),
-    `paragraph actions (${c?.actions})`,
+    paraTr && asked.some((t) => t.replace(/\s+/g, " ").trim() === w.para),
+    `the paragraph is translated by itself, whole (${asked.length} asked)`,
   );
   // The word map arrives on its own after the book: wait for it.
   const famShown = await until(
@@ -281,7 +308,15 @@ async function desktop(scheme) {
   await page.waitForTimeout(150);
   c = await card(page);
   check(c?.kind === "sentence", `a double-click selects the sentence (${c?.kind})`);
-  await page.getByTestId("read-select-link").click();
+  const sentTr = await until(page, async () => !!(await translationShown(page)), 5000);
+  check(
+    sentTr && asked.some((t) => t.replace(/\s+/g, " ").trim() === w.sentence),
+    "the sentence is translated by itself",
+  );
+  check(
+    !c?.actions.includes("translate"),
+    `no Translate tap needed for a sentence (${c?.actions})`,
+  );
   await page.waitForTimeout(150);
   const link = await page.evaluate(() => navigator.clipboard.readText());
   check(
@@ -305,9 +340,15 @@ async function desktop(scheme) {
     "back closes the card",
   );
 
-  // Read from here (a sentence).
+  // Read from here (a sentence) — selected again: its translation is not asked for again.
+  const before = asked.length;
   await page.mouse.click(w.x, w.y, { clickCount: 2, delay: 20 });
   await page.waitForTimeout(150);
+  check(
+    !!(await until(page, async () => !!(await translationShown(page)), 3000)) &&
+      asked.length === before,
+    `a sentence translated once is not asked for again (${asked.length - before} more)`,
+  );
   await page.waitForTimeout(600);
   await page.evaluate(() => window.__spoken.splice(0));
   await page.locator('[data-testid=read-select-card] [data-action="read-from"]').click();
