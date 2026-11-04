@@ -87,7 +87,7 @@ export function LanguageSwitcher() {
     <div
       lang={scope.lang}
       dir={scope.dir}
-      className="lk-lang-backdrop fixed inset-0 z-[70]"
+      className="lk-lang-backdrop fixed inset-0 z-[var(--lk-z-overlay-toast)]"
       onClick={() => setIsOpen(false)}
     >
       <div

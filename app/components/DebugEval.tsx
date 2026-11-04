@@ -722,7 +722,7 @@ export function DebugEval({
           aria-live="polite"
           data-debug-eval
           data-testid="debug-eval"
-          className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-[calc(0.5rem+env(safe-area-inset-left))] z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
+          className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-[calc(0.5rem+env(safe-area-inset-left))] z-[var(--lk-z-chat,80)] flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
           style={{ color: "oklch(0.98 0 0)" }}
         >
           {sessions.map((s) => (

@@ -106,7 +106,7 @@ export function MadeToast({
     <div
       role="status"
       data-testid="read-made-toast"
-      className="lk-glass fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[70] mx-auto flex max-w-[28rem] items-center gap-2 rounded-full border border-[var(--glass-line)] px-4 py-1.5 text-sm shadow-[0_8px_24px_-10px_oklch(0.22_0.015_65/0.4)]"
+      className="lk-glass fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[var(--lk-z-overlay-toast)] mx-auto flex max-w-[28rem] items-center gap-2 rounded-full border border-[var(--glass-line)] px-4 py-1.5 text-sm shadow-[0_8px_24px_-10px_oklch(0.22_0.015_65/0.4)]"
     >
       <span className="min-w-0 flex-1">{text}</span>
       {onUndo && (
@@ -230,7 +230,7 @@ export function WordReview({
       aria-label={title}
       tabIndex={-1}
       data-testid="read-word-review"
-      className="fixed inset-0 z-[60] isolate bg-[var(--background)] outline-none"
+      className="fixed inset-0 z-[var(--lk-z-overlay)] isolate bg-[var(--background)] outline-none"
     >
       {/* The top band /words' toolbar sits under: the paragraph's title, 制卡, ✕. */}
       <div className="lk-glass fixed inset-x-0 top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-end border-b border-[var(--glass-line)] px-3 pb-1">

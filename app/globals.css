@@ -66,6 +66,23 @@
 :root {
   --lk-fs-k: var(--lk-fs-ui, 1);
 }
+/* Stacking, for what is fixed over the page. Up to 50 (plain z-10…z-50): the
+   page's own chrome, sheets and palettes. Above that, by name:
+   overlay        a full-screen app layer (the /read word review, first run)
+   overlay-toast  a toast or popover over one (its undo toast, the language list)
+   chat           the Li chat (packages/debug-chat), above every app layer and
+                  usable while one is open
+   chat-modal     the chat's own modals (pairing, the recording badge)
+   notice         a notice that must stay in reach (new version, hotkey help)
+   The chat writes its layers with these fallbacks (z-[var(--lk-z-chat,80)]):
+   it also runs where this sheet is not loaded. */
+:root {
+  --lk-z-overlay: 60;
+  --lk-z-overlay-toast: 70;
+  --lk-z-chat: 80;
+  --lk-z-chat-modal: 90;
+  --lk-z-notice: 95;
+}
 .lk-fs-chat {
   --lk-fs-k: calc(var(--lk-fs-ui, 1) * var(--lk-fs-chat, 1));
 }
