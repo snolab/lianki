@@ -15,6 +15,8 @@
 // - a missed word coming back due never joins inside the viewport: with the
 //   tail on screen it waits, nothing on screen moves; scrolled up, it joins
 //   off screen (lib/words/requeue.ts offscreenSlot; a fake clock that runs).
+// - the review is pinned in the URL (?review=): a reload opens it again on the
+//   same card (the tab's sessionStorage), and Back closes it on the book.
 //
 // The reader v2 needs `?reader=v2` on a dev server, or the read.reader-v2
 // flag on in the local D1 for wrangler dev.
@@ -221,6 +223,81 @@ async function run(device, scheme, touch) {
   );
   const y1 = await page.evaluate(() => scrollY);
   check(Math.abs(y1 - y0) < 40, `the book kept its place (${y0} → ${y1})`);
+  check(!new URL(page.url()).searchParams.has("review"), `✕ drops ?review= (${page.url()})`);
+
+  // Reload in the review: the same review, on the same card (owner, 2026-11-05).
+  await click();
+  await page.waitForTimeout(300);
+  await page.locator("[data-action=review-words]").click();
+  await page.getByTestId("read-word-review").waitFor();
+  await until(page, async () => (await rows.count()) > 2);
+  const ref = new URL(page.url()).searchParams.get("review");
+  check(/^p\d+$/.test(ref ?? ""), `the review is in the URL (?review=${ref})`);
+  // Move the focus to the third card: a tap (touch), the cursor keys (desktop).
+  if (touch) {
+    // A tap while the list still moves is a scroll's end, not a tap: let it rest.
+    await page.waitForTimeout(1200);
+    // A row in the middle of the screen, clear of the bands over the list.
+    const p = await page.evaluate(() => {
+      for (const r of document.querySelectorAll("[data-testid=read-word-review] [data-i]")) {
+        const b = r.getBoundingClientRect();
+        const y = b.top + b.height / 2;
+        if (y > innerHeight * 0.45 && y < innerHeight * 0.75 && !r.querySelector(".slip-loose"))
+          return { x: b.left + b.width / 2, y };
+      }
+      return null;
+    });
+    if (p) {
+      const cdp = await ctx.newCDPSession(page);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [p] });
+      await page.waitForTimeout(60);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    }
+  } else {
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+  }
+  const focused = () =>
+    page.evaluate(
+      () =>
+        document.querySelector(
+          "[data-testid=read-word-review] .slip-loose bdi:not([data-row-example])",
+        )?.textContent ?? null,
+    );
+  const first = await page.evaluate(
+    () =>
+      document.querySelector(
+        "[data-testid=read-word-review] [data-i='0'] bdi:not([data-row-example])",
+      )?.textContent ?? null,
+  );
+  let before = null;
+  await until(page, async () => !!(before = await focused()) && before !== first, 4000);
+  check(!!before && before !== first, `the focus moved off the first card (${first} → ${before})`);
+  // The position is written as it changes; give the store a beat.
+  await page.waitForTimeout(400);
+  const entries = await page.evaluate(() => history.length);
+  await page.reload({ waitUntil: "load" });
+  check(
+    await until(page, async () => (await page.getByTestId("read-word-review").count()) > 0, 20000),
+    "a reload opens the review again",
+  );
+  check(new URL(page.url()).searchParams.get("review") === ref, "on the same ?review=");
+  let after = null;
+  await until(page, async () => (after = await focused()) === before, 15000);
+  check(after === before, `on the same card (${before} → ${after})`);
+  check((await page.evaluate(() => history.length)) === entries, "no extra history entry");
+  await page.screenshot({ path: join(OUT, `reloaded-${tag}.png`) });
+  // Back closes it on the book, the reader still there.
+  await page.goBack();
+  check(
+    await until(page, async () => !(await page.getByTestId("read-word-review").count())),
+    "Back closes the reloaded review",
+  );
+  check(
+    !new URL(page.url()).searchParams.has("review") && /\/read\//.test(page.url()),
+    `Back lands on the book (${page.url()})`,
+  );
+  check(await page.getByTestId("reader-v2").isVisible(), "the reader is under it");
   check(errs.length === 0, `no page errors (${errs.slice(0, 2)})`);
   await ctx.close();
 }

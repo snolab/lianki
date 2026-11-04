@@ -36,6 +36,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
 import { useIntlayer, useLocale } from "next-intlayer";
@@ -108,7 +109,20 @@ import {
   type FamMap,
   type HeadMap,
 } from "@/lib/words/example-marks";
-import { examplePieces, pieceRuns, targetSpans, type Piece } from "@/lib/words/example-target";
+import {
+  examplePieces,
+  markSpoken,
+  pieceRuns,
+  targetSpans,
+  type Piece,
+} from "@/lib/words/example-target";
+import {
+  followAudio,
+  followSpeech,
+  spokenIn,
+  spokenWord,
+  type Span as SpokenSpan,
+} from "@/lib/words/spoken-word";
 import { SOUND_LOOP_KEY, createSequencer, rowReading } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
@@ -165,6 +179,7 @@ import {
 import { notePrefWrite, PREF_APPLIED_EVENT, useUi } from "@lianki/ui-state";
 import {
   anchorTop,
+  setFocusKey,
   migrateCollapsed,
   setAnchor,
   toggleCollapsed,
@@ -503,21 +518,31 @@ export function MarkedExample({
 }) {
   const known = fam?.get(famLang(lang));
   const spans = targetSpans(text, forms, lang, heads?.get(famLang(lang)));
-  if (!known && !spans.length) return <>{text}</>;
-  const piece = (p: Piece, k: number) => {
+  const spoken = useSpokenSpan(text);
+  if (!known && !spans.length && !spoken) return <>{text}</>;
+  const piece = (p: Piece & { spoken: boolean }, k: number) => {
     const mark = known && p.word ? famMark(known.get(p.word)) : null;
-    return mark ? (
+    const inner = mark ? (
       <span key={k} className={`lk-fam-${mark}`} data-fam={mark}>
         {p.text}
       </span>
     ) : (
       p.text
     );
+    // The word being read aloud (lib/words/spoken-word.ts): its own style,
+    // beside the card word's highlight.
+    return p.spoken ? (
+      <span key={k} className="lk-ex-spoken" data-ex-spoken>
+        {inner}
+      </span>
+    ) : (
+      inner
+    );
   };
   let k = 0;
   return (
     <>
-      {pieceRuns(examplePieces(text, lang, spans)).map((r) =>
+      {pieceRuns(markSpoken(examplePieces(text, lang, spans), spoken)).map((r) =>
         r.target ? (
           <mark key={k++} className="lk-ex-target" data-ex-target>
             {r.pieces.map((p) => piece(p, k++))}
@@ -529,6 +554,31 @@ export function MarkedExample({
     </>
   );
 }
+
+/**
+ * The word of `text` being read aloud now, if `text` is what is being read
+ * (spokenWord, lib/words/spoken-word.ts). Only the example being read
+ * re-renders as the voice moves on.
+ */
+function useSpokenSpan(text: string): SpokenSpan | null {
+  const key = useSyncExternalStore(
+    spokenWord.subscribe,
+    () => {
+      const s = spokenIn(spokenWord.get(), text);
+      return s ? `${s[0]}:${s[1]}` : "";
+    },
+    () => "",
+  );
+  if (!key) return null;
+  const [a, b] = key.split(":").map(Number);
+  return [a, b];
+}
+
+/** The browser's animation frames, for the spoken-word followers. */
+const FRAMES = {
+  request: (fn: () => void) => requestAnimationFrame(fn),
+  cancel: (h: unknown) => cancelAnimationFrame(h as number),
+};
 
 /**
  * Run `read` after mount, and again whenever a setting may have changed
@@ -979,6 +1029,12 @@ function useSpeech(serverVoice = false) {
    */
   const audible = useRef<(() => void) | null>(null);
   const watchdog = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Stops following the example being read aloud word by word (spoken-word.ts), and clears its mark. */
+  const follow = useRef<(() => void) | null>(null);
+  const unfollow = useCallback(() => {
+    follow.current?.();
+    follow.current = null;
+  }, []);
   useEffect(() => {
     setAvailable(true);
     if (typeof speechSynthesis === "undefined") return;
@@ -1025,49 +1081,60 @@ function useSpeech(serverVoice = false) {
   const cancel = useCallback(() => {
     generation.current++;
     clearTimeout(watchdog.current);
+    unfollow();
     audible.current?.();
     audible.current = null;
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
     // A clip cut mid-word is jarring when the card changes: fade it out.
     clipPool().fadeOut(audio.current, FADE_S);
     audio.current = null;
-  }, []);
+  }, [unfollow]);
 
   type Done = (played: boolean) => void;
 
-  /** Play the server's recording of `text`. False when it could not (no voice, limit, offline). */
-  const serverSpeak = useCallback(async (text: string, lang: string, done: Done) => {
-    const gen = generation.current;
-    const t0 = performance.now();
-    // Prefetched, most of the time: then it plays at once, still inside the
-    // tap's gesture (no await before play()).
-    const ready = wordAudio().peek(lang, text);
-    const r = ready ?? (await wordAudio().load(lang, text));
-    if (r.kind !== "ok") return false;
-    if (gen !== generation.current) return true;
-    const tFetched = performance.now();
-    const from = r.from;
-    // An idle element from the pool: the previous one may still be fading out.
-    const c = clipPool().take(r.url);
-    audio.current = c;
-    // Debug mode only: how long from "say it" to sound, and where it went —
-    // waiting for the clip, or the element starting to play.
-    c.el.onplaying = () =>
-      devLog({
-        ev: "play",
-        lang,
-        text,
-        prefetched: !!ready,
-        // memory (this session), disk (the device), or network.
-        from,
-        fetchMs: Math.round(tFetched - t0),
-        startMs: Math.round(performance.now() - tFetched),
-      });
-    c.el.onended = () => done(true);
-    c.el.onerror = () => done(false);
-    void c.el.play().catch(() => {});
-    return true;
-  }, []);
+  /**
+   * Play the server's recording of `text`. False when it could not (no voice,
+   * limit, offline). `track`: mark the word being said (an example).
+   */
+  const serverSpeak = useCallback(
+    async (text: string, lang: string, done: Done, track = false) => {
+      const gen = generation.current;
+      const t0 = performance.now();
+      // Prefetched, most of the time: then it plays at once, still inside the
+      // tap's gesture (no await before play()).
+      const ready = wordAudio().peek(lang, text);
+      const r = ready ?? (await wordAudio().load(lang, text));
+      if (r.kind !== "ok") return false;
+      if (gen !== generation.current) return true;
+      const tFetched = performance.now();
+      const from = r.from;
+      // An idle element from the pool: the previous one may still be fading out.
+      const c = clipPool().take(r.url);
+      audio.current = c;
+      if (track) {
+        unfollow();
+        follow.current = followAudio(c.el, text, lang, FRAMES);
+      }
+      // Debug mode only: how long from "say it" to sound, and where it went —
+      // waiting for the clip, or the element starting to play.
+      c.el.onplaying = () =>
+        devLog({
+          ev: "play",
+          lang,
+          text,
+          prefetched: !!ready,
+          // memory (this session), disk (the device), or network.
+          from,
+          fetchMs: Math.round(tFetched - t0),
+          startMs: Math.round(performance.now() - tFetched),
+        });
+      c.el.onended = () => done(true);
+      c.el.onerror = () => done(false);
+      void c.el.play().catch(() => {});
+      return true;
+    },
+    [unfollow],
+  );
 
   /** The browser can say this language itself. */
   const browserCan = useCallback(
@@ -1080,7 +1147,7 @@ function useSpeech(serverVoice = false) {
 
   /** `serverTried`: the server already failed this text — don't ask again. */
   const browserSpeak = useCallback(
-    (text: string, lang: string, done: Done, serverTried = false) => {
+    (text: string, lang: string, done: Done, serverTried = false, track = false) => {
       const gen = generation.current;
       const viaServer = () => {
         if (serverTried) {
@@ -1088,7 +1155,7 @@ function useSpeech(serverVoice = false) {
           devLog({ ev: "silent", lang, text, reason: "no server clip, no browser voice" });
           return done(false);
         }
-        void serverSpeak(text, lang, done).then(
+        void serverSpeak(text, lang, done, track).then(
           (ok) => !ok && gen === generation.current && done(false),
         );
       };
@@ -1102,6 +1169,22 @@ function useSpeech(serverVoice = false) {
       u.lang = voice.lang;
       devLog({ ev: "browser", lang, text, voice: voice.name, voiceLang: voice.lang });
       u.rate = 0.9;
+      // The word being said: exact from boundary events, else estimated.
+      const words = track
+        ? followSpeech(text, lang, u.rate, {
+            now: () => performance.now(),
+            frames: FRAMES,
+            setTimer: (fn, ms) => setTimeout(fn, ms),
+            clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+          })
+        : null;
+      if (words) {
+        unfollow();
+        follow.current = () => words.end(false);
+        u.onboundary = (e) => {
+          if (gen === generation.current) words.boundary(e.charIndex, e.name);
+        };
+      }
       // Never started (no engine behind the API) or failed outright: the
       // server speaks this language from now on.
       let started = false;
@@ -1115,18 +1198,21 @@ function useSpeech(serverVoice = false) {
       u.onstart = () => {
         started = true;
         clearTimeout(watchdog.current);
+        if (gen === generation.current) words?.start();
       };
       u.onerror = (e) => {
+        words?.end(false);
         if (e.error !== "interrupted" && e.error !== "canceled") fallBack();
       };
       u.onend = () => {
+        words?.end(started);
         if (started) done(true);
       };
       clearTimeout(watchdog.current);
       watchdog.current = setTimeout(fallBack, 2000);
       speechSynthesis.speak(u);
     },
-    [voiceFor, browserCan, serverSpeak],
+    [voiceFor, browserCan, serverSpeak, unfollow],
   );
 
   /** The server voices this part (rather than the browser). */
@@ -1147,18 +1233,21 @@ function useSpeech(serverVoice = false) {
       const done: Done = (played) => {
         end();
         if (audible.current === end) audible.current = null;
+        unfollow();
         finish(played);
       };
+      const track = p.kind === "example";
       // The server voice by default: browser voices can mislead (Japanese read
       // in a Chinese accent). The browser speaks only where the server can't —
       // a language or text it has no voice for, the rate limit, offline.
-      if (!viaServer(p)) return browserSpeak(p.text, p.lang, done);
+      if (!viaServer(p)) return browserSpeak(p.text, p.lang, done, false, track);
       const gen = generation.current;
-      void serverSpeak(p.text, p.lang, done).then(
-        (ok) => !ok && gen === generation.current && browserSpeak(p.text, p.lang, done, true),
+      void serverSpeak(p.text, p.lang, done, track).then(
+        (ok) =>
+          !ok && gen === generation.current && browserSpeak(p.text, p.lang, done, true, track),
       );
     },
-    [serverVoice, viaServer, serverSpeak, browserSpeak],
+    [serverVoice, viaServer, serverSpeak, browserSpeak, unfollow],
   );
 
   /**
@@ -3403,6 +3492,12 @@ export type StudyScope = {
   exitLabel?: string;
   /** Shown in the toolbar after the title (the reader's 制卡). */
   toolbar?: React.ReactNode;
+  /**
+   * This review's place in the tab's UI state (`lk:ui:words`): the list's
+   * scroll and the card in focus, kept apart from the lists' own sessions so
+   * a refresh lands on the same card (lib/read/review-ref.ts reviewKey).
+   */
+  key?: string;
 };
 
 export function Study({
@@ -4150,7 +4245,7 @@ export function Study({
   }, [listEl]);
   // Where the reader was in this tab (ui-store.ts): the same opening, aimed
   // at that word instead of the first, while it is still in the queue.
-  const studyKey = lists.map((l) => l.id).join(",");
+  const studyKey = scope?.key ?? lists.map((l) => l.id).join(",");
   const anchor = useUi(ui, (s) => s.anchors[studyKey] ?? null);
   const anchorAt = useMemo(
     () => (anchor === null ? -1 : queue.findIndex((it) => keyOf(it) === anchor)),
@@ -4382,6 +4477,28 @@ export function Study({
     };
   }, [listEl]);
   useEffect(() => () => clearTimeout(dueTimer.current), []);
+  // A scoped review's card in focus, per tab (ui-store.ts `focus`): a refresh
+  // lands on the same card while it is still in the queue. Saved only once
+  // the stored one has been restored: the save is declared first, so on the
+  // commit that restores it still skips, and the opening's row 0 never
+  // overwrites the stored card.
+  const focusKey = scope?.key;
+  const focusRestored = useRef(false);
+  const focusedAt = touch ? focusLine : row;
+  const focusedTerm = queue[focusedAt] ? keyOf(queue[focusedAt]) : null;
+  useEffect(() => {
+    if (focusKey && focusRestored.current && focusedTerm) setFocusKey(ui, focusKey, focusedTerm);
+  }, [focusKey, focusedTerm, ui]);
+  useEffect(() => {
+    if (!focusKey || focusRestored.current || loading || !queue.length) return;
+    focusRestored.current = true;
+    const k = ui.getState().focus[focusKey];
+    const i = k ? queue.findIndex((it) => keyOf(it) === k) : -1;
+    if (i <= 0) return;
+    setFocusLine(i);
+    moveRow(i);
+  }, [focusKey, loading, queue, ui, moveRow]);
+
   const focusItem = touch ? queue[focusLine] : undefined;
   const focusText = focusItem ? spokenText(focusItem, focusItem.lang, !!config.readingOnBack) : "";
   /** The focus moved by a tap or a swipe that already said the word: don't say it twice. */

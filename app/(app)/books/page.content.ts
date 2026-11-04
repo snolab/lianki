@@ -29,22 +29,22 @@ const dictionary = {
       ko: "퍼블릭 도메인 서재",
     }),
     intro: t({
-      en: "Classic books in their original language, free for everyone: in the public domain in the US, and every author, editor and translator died more than 80 years ago. Each one names its source and licence. Tap a book to add it to My reading as your own copy.",
-      zh: "原文经典，人人可读：在美国属于公有领域，且作者、编者、译者都已去世 80 年以上。每本都注明来源和授权。点一本，它就作为你自己的一本加入「我的阅读」。",
-      hi: "मूल भाषा में क्लासिक किताबें, सबके लिए मुफ़्त: अमेरिका में सार्वजनिक डोमेन में, और हर लेखक, संपादक और अनुवादक का निधन 80 वर्ष से अधिक पहले हुआ। हर किताब अपना स्रोत और लाइसेंस बताती है। किताब पर टैप करें, वह आपकी अपनी प्रति के रूप में ‘मेरा पठन’ में जुड़ जाएगी।",
-      es: "Clásicos en su idioma original, libres para todos: de dominio público en EE. UU. y con autores, editores y traductores fallecidos hace más de 80 años. Cada libro indica su fuente y su licencia. Toca un libro para añadirlo a Mis lecturas como tu propia copia.",
-      fr: "Des classiques dans leur langue d’origine, libres pour tous : dans le domaine public aux États-Unis, et dont chaque auteur, éditeur et traducteur est mort depuis plus de 80 ans. Chaque livre indique sa source et sa licence. Touchez un livre pour l’ajouter à Mes lectures, comme votre propre exemplaire.",
-      ar: "كتب كلاسيكية بلغتها الأصلية، متاحة للجميع: في الملك العام في الولايات المتحدة، وقد توفي كل مؤلف ومحرر ومترجم لها منذ أكثر من 80 عامًا. يذكر كل كتاب مصدره وترخيصه. اضغط على كتاب لإضافته إلى «قراءاتي» كنسختك الخاصة.",
-      bn: "মূল ভাষায় ক্লাসিক বই, সবার জন্য উন্মুক্ত: যুক্তরাষ্ট্রে পাবলিক ডোমেইনে, এবং প্রত্যেক লেখক, সম্পাদক ও অনুবাদক ৮০ বছরেরও আগে প্রয়াত। প্রতিটি বই তার উৎস ও লাইসেন্স জানায়। কোনো বইয়ে ট্যাপ করুন, সেটি আপনার নিজের কপি হিসেবে ‘আমার পড়া’-য় যোগ হবে।",
-      pt: "Clássicos no idioma original, livres para todos: em domínio público nos EUA, e cada autor, editor e tradutor morreu há mais de 80 anos. Cada livro indica a fonte e a licença. Toque num livro para adicioná-lo a Minhas leituras como sua própria cópia.",
-      ru: "Классика на языке оригинала, свободная для всех: в общественном достоянии в США, и каждый автор, редактор и переводчик умер более 80 лет назад. У каждой книги указаны источник и лицензия. Нажмите на книгу, чтобы добавить её в «Моё чтение» как собственную копию.",
-      ur: "اصل زبان میں کلاسیکی کتابیں، سب کے لیے آزاد: امریکہ میں پبلک ڈومین میں، اور ہر مصنف، مدیر اور مترجم کو فوت ہوئے 80 سال سے زیادہ ہو چکے۔ ہر کتاب اپنا ماخذ اور لائسنس بتاتی ہے۔ کسی کتاب پر ٹیپ کریں، وہ آپ کی اپنی کاپی کے طور پر ‘میرا مطالعہ’ میں شامل ہو جائے گی۔",
-      id: "Buku klasik dalam bahasa aslinya, bebas untuk semua: domain publik di AS, dan setiap penulis, editor, dan penerjemahnya telah wafat lebih dari 80 tahun lalu. Setiap buku mencantumkan sumber dan lisensinya. Ketuk buku untuk menambahkannya ke Bacaan saya sebagai salinan Anda sendiri.",
-      de: "Klassiker in der Originalsprache, frei für alle: in den USA gemeinfrei, und alle Autoren, Herausgeber und Übersetzer sind seit mehr als 80 Jahren tot. Jedes Buch nennt Quelle und Lizenz. Tippe auf ein Buch, um es als eigenes Exemplar zu „Meine Lektüre“ hinzuzufügen.",
-      ja: "原語で読む古典、誰でも自由に：米国でパブリックドメインであり、著者・編者・訳者の全員が没後 80 年以上。どの本にも出典とライセンスを記載しています。本をタップすると、自分の一冊として「マイ読書」に追加されます。",
-      sw: "Vitabu vya zamani katika lugha yao asili, huru kwa wote: viko katika uwanja wa umma Marekani, na kila mwandishi, mhariri na mfasiri alifariki zaidi ya miaka 80 iliyopita. Kila kitabu kinataja chanzo na leseni yake. Gusa kitabu ili kukiongeza kwenye Usomaji wangu kama nakala yako mwenyewe.",
-      mr: "मूळ भाषेतील अभिजात पुस्तके, सर्वांसाठी मुक्त: अमेरिकेत सार्वजनिक डोमेनमध्ये, आणि प्रत्येक लेखक, संपादक व अनुवादक यांच्या निधनाला 80 वर्षांहून अधिक काळ झाला आहे. प्रत्येक पुस्तक आपला स्रोत आणि परवाना सांगते. पुस्तकावर टॅप करा, ते तुमची स्वतःची प्रत म्हणून ‘माझे वाचन’ मध्ये जोडले जाईल.",
-      ko: "원어로 읽는 고전, 누구나 자유롭게: 미국에서 퍼블릭 도메인이며 모든 저자·편자·역자가 사망한 지 80년이 넘었습니다. 책마다 출처와 라이선스를 밝힙니다. 책을 탭하면 내 사본으로 ‘내 독서’에 추가됩니다.",
+      en: "Classic books in their original language, free for everyone. A book is listed only where it is in the public domain: in the country it was first published, in your country, and in the US. Each one names its source and licence. Tap a book to add it to My reading as your own copy.",
+      zh: "原文经典，人人可读。只有在首次出版的国家、你所在的国家和美国都属于公有领域的书才会列出。每本都注明来源和授权。点一本，它就作为你自己的一本加入「我的阅读」。",
+      hi: "मूल भाषा में क्लासिक किताबें, सबके लिए मुफ़्त। कोई किताब तभी दिखती है जब वह सार्वजनिक डोमेन में हो: जिस देश में पहली बार छपी, आपके देश में, और अमेरिका में। हर किताब अपना स्रोत और लाइसेंस बताती है। किताब पर टैप करें, वह आपकी अपनी प्रति के रूप में ‘मेरा पठन’ में जुड़ जाएगी।",
+      es: "Clásicos en su idioma original, libres para todos. Un libro aparece solo donde es de dominio público: en el país donde se publicó por primera vez, en tu país y en EE. UU. Cada libro indica su fuente y su licencia. Toca un libro para añadirlo a Mis lecturas como tu propia copia.",
+      fr: "Des classiques dans leur langue d’origine, libres pour tous. Un livre n’apparaît que là où il est dans le domaine public : dans le pays de sa première publication, dans votre pays et aux États-Unis. Chaque livre indique sa source et sa licence. Touchez un livre pour l’ajouter à Mes lectures, comme votre propre exemplaire.",
+      ar: "كتب كلاسيكية بلغتها الأصلية، متاحة للجميع. لا يظهر الكتاب إلا حيث يكون في الملك العام: في البلد الذي نُشر فيه أول مرة، وفي بلدك، وفي الولايات المتحدة. يذكر كل كتاب مصدره وترخيصه. اضغط على كتاب لإضافته إلى «قراءاتي» كنسختك الخاصة.",
+      bn: "মূল ভাষায় ক্লাসিক বই, সবার জন্য উন্মুক্ত। কোনো বই কেবল সেখানেই দেখানো হয় যেখানে সেটি পাবলিক ডোমেইনে: যে দেশে প্রথম প্রকাশিত, আপনার দেশে, এবং যুক্তরাষ্ট্রে। প্রতিটি বই তার উৎস ও লাইসেন্স জানায়। কোনো বইয়ে ট্যাপ করুন, সেটি আপনার নিজের কপি হিসেবে ‘আমার পড়া’-য় যোগ হবে।",
+      pt: "Clássicos no idioma original, livres para todos. Um livro só aparece onde está em domínio público: no país onde foi publicado pela primeira vez, no seu país e nos EUA. Cada livro indica a fonte e a licença. Toque num livro para adicioná-lo a Minhas leituras como sua própria cópia.",
+      ru: "Классика на языке оригинала, свободная для всех. Книга показывается, только если она в общественном достоянии: в стране первой публикации, в вашей стране и в США. У каждой книги указаны источник и лицензия. Нажмите на книгу, чтобы добавить её в «Моё чтение» как собственную копию.",
+      ur: "اصل زبان میں کلاسیکی کتابیں، سب کے لیے آزاد۔ کوئی کتاب صرف وہیں دکھائی جاتی ہے جہاں وہ پبلک ڈومین میں ہو: جس ملک میں پہلی بار شائع ہوئی، آپ کے ملک میں، اور امریکہ میں۔ ہر کتاب اپنا ماخذ اور لائسنس بتاتی ہے۔ کسی کتاب پر ٹیپ کریں، وہ آپ کی اپنی کاپی کے طور پر ‘میرا مطالعہ’ میں شامل ہو جائے گی۔",
+      id: "Buku klasik dalam bahasa aslinya, bebas untuk semua. Sebuah buku hanya ditampilkan jika berstatus domain publik: di negara terbit pertamanya, di negara Anda, dan di AS. Setiap buku mencantumkan sumber dan lisensinya. Ketuk buku untuk menambahkannya ke Bacaan saya sebagai salinan Anda sendiri.",
+      de: "Klassiker in der Originalsprache, frei für alle. Ein Buch erscheint nur dort, wo es gemeinfrei ist: im Land seiner Erstveröffentlichung, in deinem Land und in den USA. Jedes Buch nennt Quelle und Lizenz. Tippe auf ein Buch, um es als eigenes Exemplar zu „Meine Lektüre“ hinzuzufügen.",
+      ja: "原語で読む古典、誰でも自由に。初版が出た国、あなたのいる国、米国のすべてでパブリックドメインの本だけを表示します。どの本にも出典とライセンスを記載しています。本をタップすると、自分の一冊として「マイ読書」に追加されます。",
+      sw: "Vitabu vya zamani katika lugha yao asili, huru kwa wote. Kitabu huonyeshwa tu mahali kilipo katika uwanja wa umma: katika nchi kilipochapishwa mara ya kwanza, katika nchi yako, na Marekani. Kila kitabu kinataja chanzo na leseni yake. Gusa kitabu ili kukiongeza kwenye Usomaji wangu kama nakala yako mwenyewe.",
+      mr: "मूळ भाषेतील अभिजात पुस्तके, सर्वांसाठी मुक्त. एखादे पुस्तक फक्त तिथेच दिसते जिथे ते सार्वजनिक डोमेनमध्ये आहे: ज्या देशात ते प्रथम प्रकाशित झाले, तुमच्या देशात, आणि अमेरिकेत. प्रत्येक पुस्तक आपला स्रोत आणि परवाना सांगते. पुस्तकावर टॅप करा, ते तुमची स्वतःची प्रत म्हणून ‘माझे वाचन’ मध्ये जोडले जाईल.",
+      ko: "원어로 읽는 고전, 누구나 자유롭게. 처음 출판된 나라, 지금 계신 나라, 미국 모두에서 퍼블릭 도메인인 책만 보여 줍니다. 책마다 출처와 라이선스를 밝힙니다. 책을 탭하면 내 사본으로 ‘내 독서’에 추가됩니다.",
     }),
     add: t({
       en: "Add to My reading",
@@ -280,6 +280,24 @@ const dictionary = {
       mr: "पुस्तक जोडता आले नाही. थोड्या वेळाने पुन्हा प्रयत्न करा.",
       ko: "책을 추가하지 못했습니다. 잠시 후 다시 시도하세요.",
     }),
+    errNotHere: t({
+      en: "This book is not in the public domain in your country, so it cannot be added here.",
+      zh: "这本书在你所在的国家还不属于公有领域，所以不能在这里加入。",
+      hi: "यह किताब आपके देश में सार्वजनिक डोमेन में नहीं है, इसलिए इसे यहाँ नहीं जोड़ा जा सकता।",
+      es: "Este libro no es de dominio público en tu país, así que no se puede añadir aquí.",
+      fr: "Ce livre n’est pas dans le domaine public dans votre pays : il ne peut pas être ajouté ici.",
+      ar: "هذا الكتاب ليس في الملك العام في بلدك، لذا لا يمكن إضافته هنا.",
+      bn: "এই বইটি আপনার দেশে পাবলিক ডোমেইনে নেই, তাই এখানে যোগ করা যাবে না।",
+      pt: "Este livro não está em domínio público no seu país, por isso não pode ser adicionado aqui.",
+      ru: "Эта книга не находится в общественном достоянии в вашей стране, поэтому её нельзя добавить здесь.",
+      ur: "یہ کتاب آپ کے ملک میں پبلک ڈومین میں نہیں ہے، اس لیے اسے یہاں شامل نہیں کیا جا سکتا۔",
+      id: "Buku ini bukan domain publik di negara Anda, jadi tidak dapat ditambahkan di sini.",
+      de: "Dieses Buch ist in deinem Land nicht gemeinfrei und kann hier nicht hinzugefügt werden.",
+      ja: "この本はあなたの国ではまだパブリックドメインではないため、ここでは追加できません。",
+      sw: "Kitabu hiki hakiko katika uwanja wa umma katika nchi yako, kwa hiyo hakiwezi kuongezwa hapa.",
+      mr: "हे पुस्तक तुमच्या देशात सार्वजनिक डोमेनमध्ये नाही, म्हणून ते इथे जोडता येत नाही.",
+      ko: "이 책은 지금 계신 나라에서 퍼블릭 도메인이 아니어서 여기서는 추가할 수 없습니다.",
+    }),
   },
 };
 
@@ -287,7 +305,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   title:
     "Page title and heading of /books, the shared catalogue of public-domain books anyone can add to their reading (distinct from the user's own reading list, 'My reading'). A short noun phrase; 'public domain' in its usual legal term in the language.",
   intro:
-    "Paragraph under the /books heading: what the catalogue holds (original-language classics, public domain in the US, all creators dead 80+ years), that each book shows its source and licence, and that tapping one adds the user's own copy to their reading list named 'My reading' (use the same name as the 'add' button). Four sentences.",
+    "Paragraph under the /books heading: what the catalogue holds (original-language classics), that a book is listed only where it is public domain in three places (its country of first publication, the reader's own country, and the US), that each book shows its source and licence, and that tapping one adds the user's own copy to their reading list named 'My reading' (use the same name as the 'add' button). Four sentences; 'public domain' in its usual legal term in the language.",
   add: "Button on a book card on /books: adds the book as the user's own copy to their reading list 'My reading' (the /read page) and opens it there. Imperative phrase; 'My reading' is the list's name, keep it consistent across these strings.",
   adding:
     "Status text on that button while the server fetches the book and adds it to the user's reading list. Progressive, ends with an ellipsis.",
@@ -313,6 +331,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Error on /books when the user added too many books within a few minutes and must wait. Two short sentences.",
   errFailed:
     "Generic error on /books when adding a book failed (the source site was unreachable, a network problem); the user can try again. Two short sentences.",
+  errNotHere:
+    "Error on a /books book card when the server refused to add the book because it is still under copyright in the country the reader is in now (detected from their connection); it may be public domain elsewhere. One sentence; 'public domain' in its usual legal term in the language.",
 };
 
 export default {

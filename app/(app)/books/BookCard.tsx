@@ -41,7 +41,13 @@ export function BookCard({
       });
       const data = (await res.json().catch(() => null)) as { id?: string; error?: string } | null;
       if (!res.ok || !data?.id) {
-        setError(data?.error === "rate-limited" ? t.errRateLimited.value : t.errFailed.value);
+        setError(
+          data?.error === "rate-limited"
+            ? t.errRateLimited.value
+            : data?.error === "not-public-domain-here"
+              ? t.errNotHere.value
+              : t.errFailed.value,
+        );
         return;
       }
       router.push(`/read/${encodeURIComponent(data.id)}`);
@@ -107,7 +113,7 @@ export function BookCard({
           {t.level} {book.level}
         </span>
         {book.form && <span>{book.form === "verse" ? t.verse : t.prose}</span>}
-        <span>{book.published}</span>
+        <span>{book.firstPublicationYear}</span>
         <span>
           {t.source}:{" "}
           <a

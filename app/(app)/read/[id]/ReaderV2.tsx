@@ -34,10 +34,14 @@ import { catalogKeys, catalogWords } from "@/lib/read/dict";
 import {
   matchMeaning,
   meaningIndex,
+  paraTokens,
+  phraseAtToken,
   phraseKey,
+  phraseSpans,
   wordMeaning,
   type Meaning,
   type MeaningIndex,
+  type PhraseSpan,
 } from "@/lib/read/select-meaning";
 import { translationPlan } from "@/lib/read/select-translate";
 import { formLabels } from "@/lib/read/form-tags";
@@ -132,6 +136,13 @@ import { parseSentenceId, sentenceId } from "@/lib/read/reader-api";
 import { CardGradeArea, useGradeWords } from "./reader-grade-handle";
 import { flashElements, useCardGrade, type FlashTargets } from "./use-card-grade";
 import { onPageLeave } from "@/lib/page-leave";
+import {
+  decodeReviewRef,
+  reviewKey,
+  reviewOfHref,
+  reviewRef,
+  withReview,
+} from "@/lib/read/review-ref";
 
 type WindowVirtualizer = Virtualizer<Window, Element>;
 /** The units whose card offers the review and 制卡. */
@@ -374,6 +385,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   // ── Meanings: his /words cards (words and phrases) and the public lists ──
   // (lib/read/select-meaning.ts), on the device before he selects anything.
   const [meanIdx, setMeanIdx] = useState<MeaningIndex[]>([]);
+  /** His own cards' index, when it has phrases: the phrase marks and the combo's phrase level. */
+  const [ownIdx, setOwnIdx] = useState<MeaningIndex | null>(null);
   /** Inflected book words → their dictionary headword (the lemma file, from the server). */
   const [heads, setHeads] = useState<Map<string, { lemma: string; sets: string[][] }>>(
     () => new Map(),
@@ -398,14 +411,16 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         if (!live) return;
         const out: MeaningIndex[] = [];
         const cards = own?.cards ?? [];
+        let mine: MeaningIndex | null = null;
         if (cards.length) {
           const forms = (own?.forms ?? []).flatMap(([w, i]): [string, Meaning][] =>
             cards[i] ? [[w, cards[i]]] : [],
           );
-          out.push(meaningIndex(cards, normLang, forms));
+          out.push((mine = meaningIndex(cards, normLang, forms)));
         }
         out.push(meaningIndex(new Set(cat.values()), normLang));
         setMeanIdx(out);
+        setOwnIdx(mine?.longest ? mine : null);
         setHeads(
           new Map((own?.heads ?? []).map(([w, lemma, sets]) => [w, { lemma, sets: sets ?? [] }])),
         );
@@ -415,6 +430,20 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       live = false;
     };
   }, [id, ownMeanings, normLang, famTick]);
+  /**
+   * A paragraph's deck phrases (his phrase cards only, lib/read/select-meaning.ts
+   * phraseSpans): found once per paragraph and kept until his cards change.
+   */
+  const phrasesOf = useMemo(() => {
+    const cache = new Map<number, readonly PhraseSpan[]>();
+    return (line: number): readonly PhraseSpan[] | null => {
+      if (!ownIdx || !lines[line]?.trim()) return null;
+      let s = cache.get(line);
+      if (!s)
+        cache.set(line, (s = phraseSpans(paraTokens(para(line).sentences), ownIdx, normLang)));
+      return s.length ? s : null;
+    };
+  }, [ownIdx, lines, para, normLang]);
 
   // ── Marks: an attribute on <html>, so switching repaints, never re-renders ──
   const marks = useUi(readMarks, (s) => s.level);
@@ -585,12 +614,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const comboCtx = useMemo<ComboCtx>(
     () => ({
       interval: COMBO_MS,
-      // Phrase bounds come with extraction (books-plan phase 1): until then the level is skipped.
-      phraseAt: () => null,
+      // His deck phrases (the phrase criterion: nothing detected here); none, the level is skipped.
+      phraseAt: (line, t) => {
+        const s = phraseAtToken(phrasesOf(line) ?? [], t);
+        return s ? [s.t0, s.t1] : null;
+      },
       chapterAt: (line) => (chapters.length ? chapterAt(chapters, line) : -1),
       chapterRange,
     }),
-    [chapters, chapterRange],
+    [chapters, chapterRange, phrasesOf],
   );
   /** Says what a click of the combo selected (set below, with the card's strings). */
   const tapRef = useRef<(u: Unit, continued: boolean) => void>(() => {});
@@ -986,7 +1018,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
-  const [review, setReview] = useState<{ words: RangeWord[]; range: boolean } | null>(null);
+  /** The review open now: its words, its ref in the URL (`?review=`), and whether it came from the URL. */
+  const [review, setReview] = useState<{
+    words: RangeWord[];
+    range: boolean;
+    ref: string;
+    adopt: boolean;
+  } | null>(null);
   const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
   const reviewBack = useRef<HTMLElement | null>(null);
   const famChanged = useCallback(() => setFamTick((n) => n + 1), []);
@@ -1008,9 +1046,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   /** The deck card the selection is, or covers (word → phrase: the longest wins). */
   const selMeaning = useMemo(() => {
     if (!selSpan || !meanIdx.length) return null;
-    const toks: string[] = [];
-    for (const st of para(selSpan.line).sentences)
-      for (const g of st.segs) if (g.t >= 0) toks[g.t] = g.text;
+    const toks = paraTokens(para(selSpan.line).sentences);
     const hit = matchMeaning(toks, selSpan.t0, selSpan.t1, meanIdx, normLang);
     if (!hit) return null;
     const card: CardMeaning = {
@@ -1097,19 +1133,61 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   );
   /** The one trigger of the review (owner, 22:19 JST: the card's button): the unit's words. */
   const openReview = useCallback(
-    (u: ReviewUnit) => {
+    (u: ReviewUnit, adopt = false) => {
+      const ref = reviewRef(u);
+      if (!ref) return;
       const { ss, words, line } = lineWords(u);
       // Focus comes back to the paragraph's item when the review closes.
       const el = rowEl(blockOfLine(blocks, line));
       if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
       reviewBack.current = el ?? null;
       void rangeWordsOf(words, ss, normLang).then((w) => {
-        sel.clear();
-        setReview({ words: w, range: u.kind === "range" });
+        if (!adopt) sel.clear();
+        setReview({ words: w, range: u.kind === "range", ref, adopt });
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lineWords, blocks, normLang, sel.clear],
+  );
+  // The review named in the URL (a refresh, Back / Forward, a link) opens
+  // again over the book, once its lines and word map are in.
+  const reviewRestored = useRef(false);
+  const canReview = signedIn && !!material.readerV2 && !!material.bookHash;
+  const reviewFromUrl = useRef(() => {});
+  reviewFromUrl.current = () => {
+    const ref = reviewOfHref(location.href);
+    if (!ref || review) return;
+    const target = decodeReviewRef(ref);
+    const ok =
+      canReview &&
+      target &&
+      (target.kind === "para" ? target.line : target.l1) < lines.length &&
+      (target.kind === "range" || !!lines[target.line]?.trim());
+    if (ok) return openReview(target, true);
+    // Nothing to review there: the address drops it, with no history entry.
+    history.replaceState(null, "", withReview(location.href, null));
+  };
+  useEffect(() => {
+    if (reviewRestored.current || !blocks.length || (material.words && !fam)) return;
+    reviewRestored.current = true;
+    reviewFromUrl.current();
+  }, [blocks.length, fam, material.words]);
+  // Forward onto a review's entry opens it again (Back off it closes it: useBackToClose).
+  useEffect(() => {
+    const on = () => reviewRestored.current && reviewFromUrl.current();
+    window.addEventListener("popstate", on);
+    return () => window.removeEventListener("popstate", on);
+  }, []);
+  const reviewPin = useMemo(
+    () =>
+      review
+        ? {
+            url: (href: string) => withReview(href, review.ref),
+            adopt: review.adopt,
+            exit: (href: string) => withReview(href, null),
+          }
+        : undefined,
+    [review],
   );
   const makeLine = useCallback(
     (u: ReviewUnit) => {
@@ -1603,6 +1681,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       isHeading,
       fam: fam?.map ?? null,
       famV: fam?.v ?? 0,
+      phrases: phrasesOf,
       lang,
       touch,
       variant,
@@ -1618,6 +1697,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       joinOf,
       isHeading,
       fam,
+      phrasesOf,
       lang,
       touch,
       variant,
@@ -1796,6 +1876,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             id={id}
             title={review.range ? tr.selectionTitle.value : tr.title.value}
             words={review.words}
+            place={reviewKey(id, review.ref)}
+            pin={reviewPin}
             returnTo={reviewBack}
             onClose={closeReview}
             onChanged={famChanged}
