@@ -2589,7 +2589,11 @@ export function DebugChat({
         onScroll={onTreeScroll}
         {...withClass(
           // Expanded: the log's surface at its open height (the log's box).
-          logSurface({ expanded: !floating || typing || micActive, fade: treeFade }),
+          logSurface({
+            expanded: !floating || typing || micActive,
+            fade: treeFade,
+            touch: !floating && (typing || micActive),
+          }),
           // Expanded: the log's box at its open height (30vh), whatever it holds.
           `min-w-0 flex-1 ${!floating ? "h-[30vh]" : ""}`,
         )}
@@ -3451,7 +3455,11 @@ export function DebugChat({
         }}
         data-full={fullLog === "off" ? undefined : fullLog}
         {...fullSurface(
-          logSurface({ expanded: typing || micActive || (compactPref && expanded), fade }),
+          logSurface({
+            expanded: typing || micActive || (compactPref && expanded),
+            fade,
+            touch: typing || micActive,
+          }),
         )}
       >
       <ol
