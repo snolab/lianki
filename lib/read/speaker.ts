@@ -9,6 +9,18 @@
 //   no such voice on the device, fetches each sentence from /api/words/tts
 //   (MeloTTS: en, es, fr, zh, ja, ko). One engine failing falls back to the
 //   other once; when neither can, `onerror` says why — the player stops.
+// - No wait between sentences (owner, 2026-11-05: "句子之间感觉有 1s 停顿"):
+//   the cloud voice fetched each sentence only after the one before had
+//   ended, so every sentence boundary waited a whole round trip (session
+//   lookup, R2 or MeloTTS, download, decode). Now, as soon as a sentence
+//   starts, the next PREFETCH_AHEAD are fetched and the next one is loaded
+//   into the second of two unlocked <audio> elements, so `ended` starts it
+//   on the spot. Clips are kept in memory for the session (CLIP_MEMORY,
+//   newest kept), beside the server's R2 copy and the browser's cache. The
+//   browser voice queues the next sentence when one starts, so the engine
+//   chains them itself. No pause is added: the voice's own sentence end is
+//   the pause. Cancel (pause, stop, a tap elsewhere) aborts what is still
+//   being fetched for that line, and nothing of it plays.
 // - The line is spoken in sentences of at most 200 characters (the route's
 //   limit, and Chrome cuts long utterances off after about 15 s).
 // - A browser voice that never starts (no engine behind the API, as on some
@@ -27,6 +39,10 @@ export const CLOUD_LANGS: ReadonlySet<string> = new Set(["en", "es", "fr", "zh",
 export const WATCHDOG_MS = 2500;
 /** The mic hold of a sentence still playing is taken again this often (page-audio caps one at 30 s). */
 export const HOLD_RENEW_MS = 20_000;
+/** Sentences fetched ahead of the one playing (cloud voice). */
+export const PREFETCH_AHEAD = 2;
+/** Cloud clips kept in memory for the session, the most recently used. */
+export const CLIP_MEMORY = 64;
 
 export type VoiceLike = { lang: string; name?: string; voiceURI?: string; default?: boolean };
 export type UtterLike = {
@@ -45,12 +61,17 @@ export type AudioLike = {
   onerror: (() => void) | null;
   play(): Promise<void>;
   pause(): void;
+  /** Starts loading `src` now (preload), so play() has it ready. */
+  load?(): void;
 };
 export type ReadSpeakerDeps = {
   mode(): "speech" | "cloud";
   synth(): { speak(u: UtterLike): void; cancel(): void; getVoices(): VoiceLike[] } | null;
   utterance(text: string): UtterLike;
-  fetch(url: string): Promise<{ ok: boolean; status: number; blob(): Promise<Blob> }>;
+  fetch(
+    url: string,
+    init?: { signal?: AbortSignal },
+  ): Promise<{ ok: boolean; status: number; blob(): Promise<Blob> }>;
   audio(): AudioLike;
   toUrl(b: Blob): string;
   revoke(u: string): void;
@@ -99,8 +120,46 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
   /** Bumped by every speak and cancel: callbacks of older ones are ignored. */
   let turn = 0;
   let stopCurrent: (() => void) | null = null;
-  let el: AudioLike | null = null;
-  const element = () => (el ??= d.audio());
+  /** Two elements, taking turns: one plays while the next sentence loads in the other. */
+  let els: [AudioLike, AudioLike] | null = null;
+  const pair = () => (els ??= [d.audio(), d.audio()]);
+  const pauseAll = () => {
+    for (const a of els ?? []) {
+      try {
+        a.pause();
+      } catch {}
+    }
+  };
+  type Clip = { p: Promise<Blob>; done: boolean };
+  /** Cloud clips by "lang\ntext", oldest first (a Map keeps insertion order). */
+  const clips = new Map<string, Clip>();
+  /** The clip of `text`, from memory or fetched; `own` collects the keys this line started. */
+  const clip = (text: string, lang: string, own: Set<string>, signal: AbortSignal) => {
+    const k = `${lang}\n${text}`;
+    const had = clips.get(k);
+    if (had) {
+      clips.delete(k);
+      clips.set(k, had);
+      return had.p;
+    }
+    const c: Clip = {
+      p: (async () => {
+        const r = await d.fetch(readTtsUrl(text, lang), { signal });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.blob();
+      })(),
+      done: false,
+    };
+    c.p.then(
+      () => void (c.done = true),
+      // A failure is never kept: the next try fetches again.
+      () => void (clips.get(k) === c && clips.delete(k)),
+    );
+    clips.set(k, c);
+    own.add(k);
+    while (clips.size > CLIP_MEMORY) clips.delete(clips.keys().next().value as string);
+    return c.p;
+  };
 
   const voiceFor = (lang: string): VoiceLike | null => {
     try {
@@ -114,16 +173,19 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
   return {
     /** In the Play tap (a gesture): lets later lines play on iOS. Silent. */
     unlock() {
-      try {
-        const a = element();
-        if (a.paused) {
-          a.src = silentWav();
-          a.play().then(
-            () => a.pause(),
-            () => {},
-          );
-        }
-      } catch {}
+      for (const a of pair()) {
+        try {
+          if (a.paused) {
+            const wav = silentWav();
+            a.src = wav;
+            a.play().then(
+              // A sentence loaded into it meanwhile is not paused.
+              () => a.src === wav && a.pause(),
+              () => {},
+            );
+          }
+        } catch {}
+      }
     },
     /** Which engine would speak `lang` now (null: none can). */
     engineFor(lang: string): "speech" | "cloud" | null {
@@ -173,17 +235,29 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
       /** Bumped when one engine gives up: its late callbacks are ignored. */
       let attempt = 0;
       let timer: unknown = null;
-      let url: string | null = null;
+      /** This line's object URLs, revoked when it ends. */
+      const urls = new Set<string>();
+      /** Cloud fetches of this line: aborted, and dropped from memory unfinished, on cancel. */
+      const ctrl = new AbortController();
+      const own = new Set<string>();
       const cleanup = () => {
         if (timer !== null) d.clearTimer(timer);
         timer = null;
-        if (url) d.revoke(url);
-        url = null;
+        for (const u of urls) d.revoke(u);
+        urls.clear();
+      };
+      const dropFetches = () => {
+        for (const k of own) if (clips.get(k)?.done === false) clips.delete(k);
+        own.clear();
+        try {
+          ctrl.abort();
+        } catch {}
       };
       const finish = (ok: boolean, why = "") => {
         if (!live()) return;
         turn++;
         cleanup();
+        dropFetches();
         hold();
         stopCurrent = null;
         if (ok) cb.onend();
@@ -193,14 +267,13 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         if (!live()) return;
         turn++;
         cleanup();
+        dropFetches();
         hold();
         stopCurrent = null;
         try {
           d.synth()?.cancel();
         } catch {}
-        try {
-          el?.pause();
-        } catch {}
+        pauseAll();
       };
       stopCurrent = cancel;
       if (!chunks.length) {
@@ -219,49 +292,67 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         const cur = () => live() && mine === attempt;
         const s = d.synth();
         if (!s || !voice) return fail(from, "speech", `no browser voice for ${lang}`);
+        /** Utterances handed to the engine: the next is queued when one starts. */
+        const said = new Map<number, { started: boolean }>();
         const one = (i: number) => {
           if (!cur()) return;
           if (i >= chunks.length) return finish(true);
           hold(chunks[i]);
           startChunk(i);
           try {
-            speakOne(i);
+            if (!said.has(i)) speakOne(i);
           } catch (e) {
-            fail(i, "speech", `browser voice: ${(e as Error)?.message ?? e}`);
+            return fail(i, "speech", `browser voice: ${(e as Error)?.message ?? e}`);
           }
-        };
-        const speakOne = (i: number) => {
-          const u = d.utterance(chunks[i]);
-          u.voice = voice;
-          u.lang = voice.lang;
-          u.rate = 0.95;
-          let started = false;
-          u.onstart = () => {
-            if (!cur()) return;
-            started = true;
-            if (timer !== null) d.clearTimer(timer);
-            timer = null;
-          };
-          u.onend = () => {
-            if (!cur()) return;
-            if (!started) return fail(i, "speech", "the browser voice did not start");
-            one(i + 1);
-          };
-          u.onerror = (e) => {
-            if (!cur() || e?.error === "interrupted" || e?.error === "canceled") return;
-            fail(i, "speech", `browser voice: ${e?.error ?? "error"}`);
-          };
+          // Queued or not, it must start within WATCHDOG_MS of being due.
+          if (said.get(i)?.started) return;
           if (timer !== null) d.clearTimer(timer);
           timer = d.setTimer(() => {
             timer = null;
-            if (cur() && !started) {
+            if (cur() && !said.get(i)?.started) {
               try {
                 s.cancel();
               } catch {}
               fail(i, "speech", "the browser voice did not start");
             }
           }, WATCHDOG_MS);
-          s.speak(u);
+        };
+        const speakOne = (i: number) => {
+          const u = d.utterance(chunks[i]);
+          u.voice = voice;
+          u.lang = voice.lang;
+          u.rate = 0.95;
+          const st = { started: false };
+          u.onstart = () => {
+            if (!cur()) return;
+            st.started = true;
+            if (timer !== null) d.clearTimer(timer);
+            timer = null;
+            // The next sentence waits in the engine's own queue, not on us.
+            if (i + 1 < chunks.length && !said.has(i + 1)) {
+              try {
+                speakOne(i + 1);
+              } catch {
+                // one(i + 1) tries again when it is due, and says why.
+              }
+            }
+          };
+          u.onend = () => {
+            if (!cur()) return;
+            if (!st.started) return fail(i, "speech", "the browser voice did not start");
+            one(i + 1);
+          };
+          u.onerror = (e) => {
+            if (!cur() || e?.error === "interrupted" || e?.error === "canceled") return;
+            fail(i, "speech", `browser voice: ${e?.error ?? "error"}`);
+          };
+          said.set(i, st);
+          try {
+            s.speak(u);
+          } catch (e) {
+            said.delete(i);
+            throw e;
+          }
         };
         one(from);
       };
@@ -271,29 +362,70 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         const mine = ++attempt;
         const cur = () => live() && mine === attempt;
         if (!cloudOk) return fail(from, "cloud", `no server voice for ${lang}`);
-        const a = element();
-        const one = async (i: number) => {
+        const L = baseLang(lang);
+        const [a0, a1] = pair();
+        /** Chunk i plays in one element while i + 1 loads in the other. */
+        const slot = (i: number) => ((i - from) % 2 === 0 ? a0 : a1);
+        type Staged = { el: AudioLike; url: string };
+        const staging = new Map<number, Promise<Staged>>();
+        const ready = new Map<number, Staged>();
+        const errText = (e: unknown) => (e as Error)?.message ?? String(e);
+        /** Chunk i's clip, loaded into its element (not playing yet). */
+        const stage = (i: number): Promise<Staged> => {
+          let p = staging.get(i);
+          if (!p) {
+            p = clip(chunks[i], L, own, ctrl.signal).then((blob) => {
+              if (!cur()) throw new Error("cancelled");
+              const el = slot(i);
+              // Its last sentence's handlers must not fire for this one.
+              el.onended = null;
+              el.onerror = null;
+              const url = d.toUrl(blob);
+              urls.add(url);
+              el.src = url;
+              try {
+                el.load?.();
+              } catch {}
+              const st = { el, url };
+              ready.set(i, st);
+              return st;
+            });
+            p.catch(() => {});
+            staging.set(i, p);
+          }
+          return p;
+        };
+        const start = (i: number, st: Staged) => {
+          const a = st.el;
+          a.onended = () => {
+            if (!cur()) return;
+            urls.delete(st.url);
+            d.revoke(st.url);
+            one(i + 1);
+          };
+          a.onerror = () => cur() && fail(i, "cloud", "server voice: the clip did not play");
+          a.play().catch((e) => cur() && fail(i, "cloud", `server voice: ${errText(e)}`));
+          // The other element is free now (i - 1 has ended): the next loads there.
+          if (i + 1 < chunks.length) stage(i + 1);
+        };
+        const one = (i: number) => {
           if (!cur()) return;
           if (i >= chunks.length) return finish(true);
           hold(chunks[i]);
           startChunk(i);
-          try {
-            const r = await d.fetch(readTtsUrl(chunks[i], baseLang(lang)));
-            if (!cur()) return;
-            if (!r.ok) return fail(i, "cloud", `server voice: HTTP ${r.status}`);
-            const blob = await r.blob();
-            if (!cur()) return;
-            if (url) d.revoke(url);
-            url = d.toUrl(blob);
-            a.onended = () => cur() && void one(i + 1);
-            a.onerror = () => cur() && fail(i, "cloud", "server voice: the clip did not play");
-            a.src = url;
-            await a.play();
-          } catch (e) {
-            if (cur()) fail(i, "cloud", `server voice: ${(e as Error)?.message ?? e}`);
-          }
+          const st = ready.get(i);
+          // Loaded while the last one played: it starts within this `ended`.
+          if (st) start(i, st);
+          else
+            stage(i).then(
+              (n) => cur() && start(i, n),
+              (e) => cur() && fail(i, "cloud", `server voice: ${errText(e)}`),
+            );
+          // Then the ones after it, so each is here before its turn.
+          for (let k = 1; k <= PREFETCH_AHEAD && i + k < chunks.length; k++)
+            clip(chunks[i + k], L, own, ctrl.signal).catch(() => {});
         };
-        void one(from);
+        one(from);
       };
 
       const fail = (at: number, engine: "speech" | "cloud", why: string): void => {
@@ -305,7 +437,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         timer = null;
         try {
           if (engine === "speech") d.synth()?.cancel();
-          else el?.pause();
+          else pauseAll();
         } catch {}
         if (engine === "speech" && !tried.has("cloud") && cloudOk) return viaCloud(at);
         if (engine === "cloud" && !tried.has("speech") && voice) return viaSpeech(at);
