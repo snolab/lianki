@@ -282,6 +282,52 @@ export function foldsOf(w: string, lang: string, lem?: Lemmas | null): string[] 
   return out;
 }
 
+/**
+ * The headwords the dictionary says this exact spelling is a form of
+ * ("dû" → "devoir", "yeux" → "œil"), no guessed endings: real forms only,
+ * accents kept ("du" the article is no form of "devoir"). Empty without one.
+ */
+export function lemmaHeads(w: string, lang: string, lem: Lemmas | null | undefined): string[] {
+  const out: string[] = [];
+  if (!lem) return out;
+  const add = (s: string) => {
+    if (s && s !== w && !out.includes(s)) out.push(s);
+  };
+  for (const f of new Set([w, unligate(w, lang)]))
+    for (const h of lem.of(f)) {
+      add(h);
+      add(unligate(h, lang));
+    }
+  return out;
+}
+
+/**
+ * Each word's headwords (lemmaHeads), two steps deep: a form of a form
+ * ("due" → "dû" → "devoir") reaches the headword too. `lemmas` gives the
+ * dictionary entries some words need (lemma-server lemmasForWords); only
+ * words with a headword are in the answer.
+ */
+export async function headsOfWords(
+  words: readonly string[],
+  lang: string,
+  lem: Lemmas | null,
+  lemmas: (words: string[]) => Promise<Lemmas | null>,
+): Promise<Record<string, string[]>> {
+  const out: Record<string, string[]> = {};
+  if (!lem) return out;
+  for (const w of words) {
+    const h = lemmaHeads(w, lang, lem);
+    if (h.length) out[w] = h;
+  }
+  const next = [...new Set(Object.values(out).flat())];
+  const lem2 = next.length ? await lemmas(next) : null;
+  if (lem2)
+    for (const [w, hs] of Object.entries(out))
+      for (const h of hs.slice())
+        for (const g of lemmaHeads(h, lang, lem2)) if (g !== w && !hs.includes(g)) hs.push(g);
+  return out;
+}
+
 /** One of the reader's word cards, as the progress query returns it. */
 export interface CardRow {
   term: string;

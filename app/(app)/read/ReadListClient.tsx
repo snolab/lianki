@@ -57,12 +57,15 @@ export function ReadListClient({
   isLoggedIn,
   gdoc = false,
   drive = false,
+  books = false,
 }: {
   isLoggedIn: boolean;
   /** Google Docs import shown (the reader-v2 gate, page.tsx). */
   gdoc?: boolean;
   /** Private docs through Google Drive offered (connectionsOn, docs/connections.md). */
   drive?: boolean;
+  /** The public-domain library /books is open to this viewer (lib/books/gate.ts). */
+  books?: boolean;
 }) {
   const router = useRouter();
   const [materials, setMaterials] = useState<ReadMaterial[]>([]);
@@ -73,6 +76,7 @@ export function ReadListClient({
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const epubText = useIntlayer("read-epub");
+  const booksText = useIntlayer("books-page");
   const epubInput = useRef<HTMLInputElement>(null);
   const [epubBusy, setEpubBusy] = useState(false);
   const [epubError, setEpubError] = useState("");
@@ -284,6 +288,16 @@ export function ReadListClient({
 
   return (
     <div className="space-y-6">
+      {/* The shared public-domain library: a link only, its books never listed here. */}
+      {books && (
+        <Link
+          href="/books"
+          data-testid="read-browse-books"
+          className="inline-flex items-center gap-1 text-sm font-medium text-[oklch(0.5_0.16_255)] dark:text-[oklch(0.78_0.12_255)] hover:underline"
+        >
+          {booksText.browse} &rarr;
+        </Link>
+      )}
       {/* Import Button / Form */}
       {!isImporting ? (
         <div className="space-y-2">

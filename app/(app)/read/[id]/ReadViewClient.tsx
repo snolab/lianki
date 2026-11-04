@@ -18,6 +18,8 @@ import {
 import { browserReadSpeaker } from "@/lib/read/speaker-browser";
 import type { WordsSummary } from "@/lib/read/progress";
 import { BookScan } from "../BookWords";
+import { BookSourceNote } from "../BookSourceNote";
+import { ReaderBack } from "./reader-back";
 
 /** Lines rendered at once: a whole book never goes into the DOM in one go. */
 const SECTION_LINES = 200;
@@ -92,6 +94,7 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
   >(null);
   const epubText = useIntlayer("read-epub");
   const t = useIntlayer("read-player");
+  const tr = useIntlayer("read-reader");
   const [loading, setLoading] = useState(true);
   const [auto, setAuto] = useState(false);
   const [player, setPlayer] = useState<PlayerState>(() => initialPlayer());
@@ -335,16 +338,12 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <Link
-            href="/read"
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-          >
-            &larr; Back to materials
-          </Link>
+          <ReaderBack variant="text" label={tr.back.value} />
           <h1 className="text-2xl font-bold mt-2">{material.title}</h1>
           {book?.author && (
             <p className="text-sm text-gray-600 dark:text-gray-300">{book.author}</p>
           )}
+          <BookSourceNote book={book} className="mt-1" />
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {material.lines.length} lines &middot; Line {currentLine + 1} of {material.lines.length}
           </p>
@@ -571,6 +570,9 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
           className="w-full"
         />
       </div>
+
+      {/* The page's end: the same way back as the header's, no scrolling up. */}
+      <ReaderBack variant="end" label={tr.back.value} />
     </div>
   );
 }

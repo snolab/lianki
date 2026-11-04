@@ -30,7 +30,17 @@ import { pageAudio } from "@lianki/debug-chat/page-audio";
 import { createUiStore, useUi } from "@lianki/ui-state";
 import type { ReadMaterial } from "../ReadListClient";
 import { chapterAt, type BookMeta } from "@/lib/read/book";
-import { catalogKeys } from "@/lib/read/dict";
+import { catalogKeys, catalogWords } from "@/lib/read/dict";
+import {
+  matchMeaning,
+  meaningIndex,
+  phraseKey,
+  wordMeaning,
+  type Meaning,
+  type MeaningIndex,
+} from "@/lib/read/select-meaning";
+import { translationPlan } from "@/lib/read/select-translate";
+import { formLabels } from "@/lib/read/form-tags";
 import {
   initialPlayer,
   playerReducer,
@@ -75,10 +85,19 @@ import { setTextSize, stepScale, TEXT_MAX, TEXT_MIN } from "@/lib/text-size";
 import { useTextSizes } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
+import { BookSourceNote } from "../BookSourceNote";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
-import { SelectCard, type CardActions, type UnitView } from "./reader-select-card";
+import {
+  SelectCard,
+  type CardActions,
+  type CardLemma,
+  type CardMeaning,
+  type UnitView,
+} from "./reader-select-card";
+import { useSelectTranslate } from "./use-select-translate";
 import { useReaderSelect } from "./use-reader-select";
+import { ReaderBack } from "./reader-back";
 import {
   MadeToast,
   WordReview,
@@ -348,6 +367,51 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       live = false;
     };
   }, [id, signedIn, material.words, famTick]);
+
+  // ── Meanings: his /words cards (words and phrases) and the public lists ──
+  // (lib/read/select-meaning.ts), on the device before he selects anything.
+  const [meanIdx, setMeanIdx] = useState<MeaningIndex[]>([]);
+  /** Inflected book words → their dictionary headword (the lemma file, from the server). */
+  const [heads, setHeads] = useState<Map<string, { lemma: string; sets: string[][] }>>(
+    () => new Map(),
+  );
+  const ownMeanings = signedIn && !!material.readerV2 && !!material.bookHash;
+  useEffect(() => {
+    let live = true;
+    type Own = {
+      cards?: Meaning[];
+      forms?: [string, number][];
+      heads?: [string, string, string[][]?][];
+    } | null;
+    Promise.all([
+      ownMeanings
+        ? fetch(`/api/read/${id}/meanings`)
+            .then((r) => (r.ok ? (r.json() as Promise<Own>) : null))
+            .catch(() => null)
+        : null,
+      catalogWords(normLang).catch(() => new Map<string, Meaning>()),
+    ])
+      .then(([own, cat]) => {
+        if (!live) return;
+        const out: MeaningIndex[] = [];
+        const cards = own?.cards ?? [];
+        if (cards.length) {
+          const forms = (own?.forms ?? []).flatMap(([w, i]): [string, Meaning][] =>
+            cards[i] ? [[w, cards[i]]] : [],
+          );
+          out.push(meaningIndex(cards, normLang, forms));
+        }
+        out.push(meaningIndex(new Set(cat.values()), normLang));
+        setMeanIdx(out);
+        setHeads(
+          new Map((own?.heads ?? []).map(([w, lemma, sets]) => [w, { lemma, sets: sets ?? [] }])),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [id, ownMeanings, normLang, famTick]);
 
   // ── Marks: an attribute on <html>, so switching repaints, never re-renders ──
   const marks = useUi(readMarks, (s) => s.level);
@@ -896,6 +960,68 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     (l: number) => (lines[l]?.trim() ? para(l).sentences : null),
     [lines, para],
   );
+  /** The selection's tokens in one paragraph [line, t0, t1], or null (a range over paragraphs, a sentence…). */
+  const selSpan = useMemo(() => {
+    const u = sel.unit;
+    if (!u) return null;
+    if (u.kind === "word") return { line: u.line, t0: u.t, t1: u.t };
+    if (u.kind === "phrase") return { line: u.line, t0: u.t0, t1: u.t1 };
+    if (u.kind === "range" && u.l0 === u.l1) return { line: u.l0, t0: u.t0, t1: u.t1 };
+    return null;
+  }, [sel.unit]);
+  /** The deck card the selection is, or covers (word → phrase: the longest wins). */
+  const selMeaning = useMemo(() => {
+    if (!selSpan || !meanIdx.length) return null;
+    const toks: string[] = [];
+    for (const st of para(selSpan.line).sentences)
+      for (const g of st.segs) if (g.t >= 0) toks[g.t] = g.text;
+    const hit = matchMeaning(toks, selSpan.t0, selSpan.t1, meanIdx, normLang);
+    if (!hit) return null;
+    const card: CardMeaning = {
+      term: hit.m.term,
+      back: hit.m.back,
+      other: hit.t0 !== selSpan.t0 || hit.t1 !== selSpan.t1,
+    };
+    return { hit, card };
+  }, [selSpan, meanIdx, para, normLang]);
+  const selInside = !!selMeaning?.hit.inside;
+  /** A selected inflected word: "form → lemma", the lemma's own card if he has one. */
+  const formTags = useIntlayer("read-form-tags");
+  const selLemma = useMemo(() => {
+    const u = sel.unit;
+    if (u?.kind !== "word") return null;
+    const ss = para(u.line).sentences;
+    const w = tokenWord(ss, u.t);
+    const head = w ? heads.get(w) : undefined;
+    if (!w || !head) return null;
+    const { lemma } = head;
+    // His own cards only (the first index when he has any): the link goes to his list.
+    const own = meanIdx.length > 1 ? wordMeaning(lemma, meanIdx.slice(0, 1), normLang) : null;
+    const card: CardLemma = {
+      form: tokenText(ss, u.t, u.t),
+      lemma,
+      href: own?.listId ? `/words?list=${encodeURIComponent(own.listId)}` : null,
+      // The lemma file's own tags, named in his language (lib/read/form-tags.ts): data, no model.
+      tags: formLabels(head.sets, formTags).join(" / ") || null,
+    };
+    return { w, card, ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null };
+  }, [sel.unit, para, heads, meanIdx, normLang, formTags]);
+  // A sentence, a paragraph or a range: its whole units translated by
+  // themselves (lib/read/select-translate.ts). Not when it is a deck card.
+  const plan = useMemo(
+    () =>
+      signedIn && material.readerV2 && sel.unit && !selInside
+        ? translationPlan(sel.unit, lineSentences)
+        : null,
+    [signedIn, material.readerV2, sel.unit, selInside, lineSentences],
+  );
+  const autoTrans = useSelectTranslate(
+    id,
+    String(locale),
+    lang && lang !== "und" ? lang : undefined,
+    plan,
+  );
+
   /**
    * The words a card's review and 制卡 take: a hand-made range's own words
    * (across its paragraphs), else the paragraph holding the unit.
@@ -1122,15 +1248,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         open(
           `https://${ui}.wiktionary.org/w/index.php?search=${encodeURIComponent(view.text!.trim())}`,
         );
-    if (
+    if (plan) {
+      if (autoTrans.more) a.translate = autoTrans.more;
+    } else if (
       view.text &&
       signedIn &&
       material.readerV2 &&
-      (u.kind === "word" ||
-        u.kind === "phrase" ||
-        u.kind === "sentence" ||
-        u.kind === "para" ||
-        u.kind === "range")
+      (u.kind === "word" || u.kind === "phrase" || u.kind === "range")
     )
       a.translate = () => {
         const src = view.text!.trim();
@@ -1167,6 +1291,46 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       const n = fam ? missingWords(lineWords(u).words).length : 0;
       if (n > 0) a.makeCards = { n, run: () => makeLine(u) };
     }
+    // A phrase that is no card yet: 制卡 for it, in the book's own deck, as a word's.
+    if (
+      signedIn &&
+      material.readerV2 &&
+      hash &&
+      selSpan &&
+      selSpan.t1 > selSpan.t0 &&
+      !(selMeaning && !selMeaning.card.other)
+    ) {
+      const ss = para(selSpan.line).sentences;
+      const s0 = sentenceOfToken(ss, selSpan.t0);
+      const w = phraseKey(tokenText(ss, selSpan.t0, selSpan.t1));
+      if (w && s0 >= 0 && s0 === sentenceOfToken(ss, selSpan.t1))
+        a.makePhrase = () =>
+          void makeCards(id, [
+            { w, ex: ss[s0].text.trim() || null, term: null, reading: null, back: null },
+          ])
+            .then((r) => {
+              setMade({
+                text: fill(tr.madeCards.value, { n: String(r.terms.length) }),
+                terms: r.terms,
+              });
+              famChanged();
+            })
+            .catch(() => setMade({ text: tr.makeFailed.value }));
+    }
+    // An inflected word whose lemma he has no card for: 制作卡片 makes the lemma's card.
+    if (signedIn && material.readerV2 && hash && selLemma && !selLemma.card.href)
+      a.makePhrase = () =>
+        void makeCards(id, [
+          { w: selLemma.w, ex: selLemma.ex, term: selLemma.card.lemma, reading: null, back: null },
+        ])
+          .then((r) => {
+            setMade({
+              text: fill(tr.madeCards.value, { n: String(r.terms.length) }),
+              terms: r.terms,
+            });
+            famChanged();
+          })
+          .catch(() => setMade({ text: tr.makeFailed.value }));
     // His own selection: read exactly it (the same voice and rules as a tap's).
     if (u.kind === "range" && view.text) a.readAloud = () => tapRef.current(u, false);
     if (u.kind === "word" && signedIn && material.readerV2 && hash)
@@ -1221,6 +1385,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     makeLine,
     lineWords,
     trans,
+    plan,
+    autoTrans.more,
+    selSpan,
+    selMeaning,
+    selLemma,
+    tr,
+    famChanged,
   ]);
 
   const eyeLine = blocks[eyeIndex] ? blockLine(blocks[eyeIndex]) : 0;
@@ -1292,14 +1463,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
               </div>
             ) : (
               <div className="mx-auto flex h-11 max-w-[42rem] items-center gap-2 px-2">
-                <Link
-                  href="/read"
-                  aria-label={t.back.value}
-                  title={t.back.value}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-lg"
-                >
-                  <span aria-hidden>←</span>
-                </Link>
+                <ReaderBack variant="icon" label={t.back.value} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium" data-reader-chapter>
                   {chapterTitle}
                 </span>
@@ -1331,6 +1495,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
 
         {/* Reserve, don't push: the strip's height of room above the book at rest. */}
         <div aria-hidden className="h-[3.25rem]" />
+        {/* A /books book: its source link and licence, above the text (docs/books-plan.md). */}
+        <BookSourceNote book={book} className="mx-auto max-w-[42rem] px-5 pb-3" />
 
         {/* The book */}
         {!loaded && (
@@ -1348,6 +1514,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           grades={grades}
           row={row}
         />
+        {/* The book's end: the same way back as the toolbar's ←, no scrolling up. */}
+        {loaded && <ReaderBack variant="end" label={t.back.value} />}
         {/* Room for the last item to reach the eye line. */}
         <div style={{ height: "60vh" }} aria-hidden />
 
@@ -1414,11 +1582,20 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             bottom={`calc(env(safe-area-inset-bottom) + ${(islandOpen ? 8.5 : 4.75) + (playing && !follow ? 3 : 0)}rem)`}
             status={
               selStatus ??
+              (autoTrans.failed ? ts.translateFailed.value : null) ??
               (sayFail && sameUnit(sayFail.u, sel.unit)
                 ? `${ts.sayFailed.value} (${sayFail.why})`
                 : null)
             }
-            translation={trans && view.text?.trim() === trans.src ? { text: trans.out } : null}
+            translation={
+              plan
+                ? autoTrans.translation
+                : trans && view.text?.trim() === trans.src
+                  ? { blocks: [[trans.out]] }
+                  : null
+            }
+            meaning={selMeaning?.card ?? null}
+            lemma={selLemma?.card ?? null}
             onClose={sel.clear}
           />
         )}
@@ -1459,6 +1636,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         {sheet === "toc" && (
           <Sheet title={t.contents.value} onClose={closeSheet} closeLabel={t.close.value}>
             {material.words && <BookScan id={id} words={material.words} flat />}
+            <BookSourceNote book={book} className="mt-3" />
             {chapters.length > 1 && (
               <ol className="mt-3 flex flex-col" data-testid="reader-toc">
                 {chapters.map((c, i) => (

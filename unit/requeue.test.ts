@@ -3,8 +3,11 @@ import {
   afterGrade,
   emptyRequeue,
   isRetired,
+  nextDueIn,
+  offscreenSlot,
   takeDue,
   undoPick,
+  viewport,
   withdraw,
   type Requeue,
 } from "@/lib/words/requeue";
@@ -80,5 +83,63 @@ describe("undoPick: undo never reaches a retired slip", () => {
     expect(undoPick([1, 4, 6], 6, false, g, back)).toBe(1);
     expect(undoPick([1, 4, 6], 6, true, g, back)).toBe(-1);
     expect(undoPick([4, 6], 6, false, g, back)).toBe(-1);
+  });
+});
+
+describe("offscreenSlot: a due copy never joins the list inside the viewport", () => {
+  // Rows 40 px under a 100 px top pad; the viewport is 400 px tall.
+  const edge = (at: number) => 100 + at * 40;
+  const len = 20; // tail edge at 900
+
+  it("the nearest slot below the viewport, ahead of the focus", () => {
+    // Viewport [200, 600]: 600 is its bottom border, slot 12's edge.
+    expect(offscreenSlot(4, len, edge, viewport(200, 400))).toEqual({ at: 13, above: false });
+    // The focus below the viewport: after it.
+    expect(offscreenSlot(15, len, edge, viewport(200, 400))).toEqual({ at: 15, above: false });
+  });
+
+  it("the tail on screen, the focus on screen: no slot — the copy waits", () => {
+    // Scrolled to the end: viewport [700, 1100] holds the tail (900).
+    expect(offscreenSlot(19, len, edge, viewport(700, 400))).toBeNull();
+    expect(offscreenSlot(len, len, edge, viewport(700, 400))).toBeNull();
+  });
+
+  it("scrolled back up, the tail is off screen again: it goes there", () => {
+    expect(offscreenSlot(len, len, edge, viewport(400, 400))).toEqual({ at: len, above: false });
+  });
+
+  it("the list grows past the viewport: the new rows make a slot below", () => {
+    expect(offscreenSlot(19, 40, edge, viewport(700, 400))).toEqual({ at: 25, above: false });
+  });
+
+  it("above the viewport only when ahead of the focus and nothing is below", () => {
+    // Focus at 2, viewport at the tail [700, 1100]: edges ≤ 700 → slots ≤ 15.
+    expect(offscreenSlot(2, len, edge, viewport(700, 400))).toEqual({ at: 15, above: true });
+  });
+
+  it("a list that fits on screen has no slot at all", () => {
+    expect(offscreenSlot(0, 5, edge, viewport(0, 400))).toBeNull();
+  });
+
+  it("viewport: the borders are off screen", () => {
+    const w = viewport(100, 300);
+    expect([w(99), w(100), w(101), w(399), w(400)]).toEqual([
+      "above",
+      "above",
+      "on",
+      "on",
+      "below",
+    ]);
+  });
+});
+
+describe("nextDueIn: one timer to the next due copy", () => {
+  it("now, later, or none", () => {
+    let q: Requeue<string> = emptyRequeue();
+    expect(nextDueIn(q, 0)).toBeNull();
+    q = afterGrade(q, 1, "a", 5 * MIN, 0, WIN);
+    q = afterGrade(q, 2, "b", 2 * MIN, 0, WIN);
+    expect(nextDueIn(q, MIN)).toBe(MIN);
+    expect(nextDueIn(q, 3 * MIN)).toBe(0);
   });
 });

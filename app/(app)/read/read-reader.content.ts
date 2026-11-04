@@ -230,7 +230,7 @@ const dictionary = {
 };
 
 const context: Record<keyof typeof dictionary.content, string> = {
-  back: "Screen-reader label and tooltip of the ← button at the start of the reader's top toolbar: leaves the open book for the list of the learner's books and texts on /read. An imperative phrase.",
+  back: "Leaves the open book for the list of the learner's books and texts on /read. Shown three ways: the screen-reader label and tooltip of the ← button at the start of the reader's top toolbar, the visible text of the button after the book's last paragraph (so the learner goes back without scrolling up), and the back link at the top of the classic reader. An imperative phrase.",
   contents:
     "Heading of the sheet that opens from the progress ring in the reader's toolbar: the book's chapters (tap one to jump there) and its word summary. A book's table of contents; a short noun.",
   textAndMarks:

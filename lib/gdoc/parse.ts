@@ -69,15 +69,20 @@ function transform(el: XmlElement, styles: Map<string, Style[]>): XmlElement {
   return { ...el, children };
 }
 
-/** The level that starts chapters: the top one used more than once, else none. */
-function chapterLevel(levels: number[]): number | null {
+/** The level that starts chapters: the top one used at least `min` times, else none. */
+function chapterLevel(levels: number[], min = 2): number | null {
   const count = new Map<number, number>();
   for (const l of levels) count.set(l, (count.get(l) ?? 0) + 1);
-  const many = [...count].filter(([, n]) => n > 1).map(([l]) => l);
+  const many = [...count].filter(([, n]) => n >= min).map(([l]) => l);
   return many.length ? Math.min(...many) : null;
 }
 
-export function parseGdocHtml(html: string, title: string | null): ParsedBook {
+export function parseGdocHtml(
+  html: string,
+  title: string | null,
+  /** How often a heading level must occur to start chapters (a printed book's title page has a few top headings). */
+  minChapters = 2,
+): ParsedBook {
   const styles = classStyles(html);
   const doc = parseXml(html);
   const body = find(doc, "body") ?? doc;
@@ -101,7 +106,7 @@ export function parseGdocHtml(html: string, title: string | null): ParsedBook {
     "Google Doc"
   ).slice(0, BOOK_LIMITS.maxTitleChars);
 
-  const level = chapterLevel(col.levels);
+  const level = chapterLevel(col.levels, minChapters);
   const chapters: BookChapter[] = [];
   if (level !== null) {
     col.headings.forEach((line, i) => {

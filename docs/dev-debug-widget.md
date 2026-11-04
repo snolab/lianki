@@ -755,6 +755,44 @@ during or after a drag on the input or the mic, and the finger-to-line
 offset constant within a pixel from the press to the release. `shot.ts` cannot show it (no
 backdrop-filter in DOM-to-image); use the QA script's shots.
 
+**The + menu counts as typing** (owner, 2026-11-05 01:39 JST). While the +
+menu, or the file picker it opened, is up, the panel leaves its faint idle
+look (opacity 60%) and the glass is up, exactly as for a focused input. One
+condition, `inputInUse` in `typing-glass.ts`, feeds both `showTypingGlass`
+and `panelOpaque`; the menu closing (or the picker answered or dismissed)
+ends it, as a blur does.
+
+**The history drags while typing** (owner, 2026-11-05 01:52 JST, iPhone
+PWA on /words). The log is click-through at rest, so with the keyboard up a
+drag on the history went to the page behind it. While the input has the
+focus or the mic is on, the log takes the touch (`LOG_TOUCH` in
+`log-surface.ts`: `pointer-events: auto`, `touch-action: pan-y`,
+`overscroll-behavior: contain`); the input keeps the focus, so the keyboard
+stays. At rest it is click-through again. Checks: `bun
+scripts/dev/debug-chat-typing-scroll-qa.mjs` (WebKit and Chromium, 390×844
+touch).
+
+## Copying a message
+
+Owner, 2026-11-05 01:34 JST, iPhone PWA on /read: "这里复制不了". The chat
+box is click-through (`pointer-events: none` on the section, so the page
+under it stays usable) and the log inherited it. iOS will not long-press
+select text that does not take the pointer, so there was no Copy. Each
+line's text now takes the pointer and is selectable (`LINE_SELECTABLE` in
+`copy-line.ts`: `pointer-events: auto`, `user-select: text` with WebKit's
+prefix, the touch callout on); the space around the lines stays
+click-through. Long-press and the platform's Copy do the rest: a per-line
+copy button shipped in #537 and was dropped the same night (owner,
+2026-11-05 02:00 JST: selectable text is enough). The
+reader's combo-click selection (`use-reader-select.ts`) ignores taps and
+selections inside `[data-debug-chat]`, so copying in the chat never opens
+the reader's card or clears what is selected there.
+
+Checks: `bun scripts/dev/debug-chat-copy-qa.mjs --shots <dir>` (silent,
+390×844 touch, light and dark: computed `user-select` and `pointer-events`
+on a line, its text selecting, no copy button, + menu opacity);
+the rules in `unit/chat-copy.test.ts`.
+
 ## Quiet lines
 
 Every agent line is shown; what changes is whether it is also read aloud.
