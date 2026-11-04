@@ -134,6 +134,39 @@ export function safePreviewPath(raw: string | null | undefined): string | null {
   return `${path}${query}`;
 }
 
+/** The query parameter /sign-in reads for where to go after signing in. */
+export const SIGN_IN_RETURN_PARAM = "next";
+
+/**
+ * Where /sign-in may send the browser after signing in, or null (then
+ * "/home", as before). Only the preview entry on lianki.com, as a relative
+ * path: anything else, any other origin, "//", backslash or control
+ * character, is null. The result is rebuilt from its parts (`to` through
+ * safePreviewPath), never echoed, so it is always "/dev/preview?to=…".
+ */
+export function signInReturnPath(raw: string | null | undefined): string | null {
+  const v = raw ?? "";
+  if (!v || v.length > 2000) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f\\]/.test(v)) return null;
+  if (!v.startsWith("/") || v.startsWith("//")) return null;
+  let u: URL;
+  try {
+    u = new URL(v, PROD_ORIGIN);
+  } catch {
+    return null;
+  }
+  if (u.origin !== PROD_ORIGIN || u.pathname !== PREVIEW_ENTRY_PATH) return null;
+  const to = safePreviewPath(u.searchParams.get("to")) ?? "/";
+  return `${PREVIEW_ENTRY_PATH}?to=${encodeURIComponent(to)}`;
+}
+
+/** /sign-in for a signed-out owner on the preview entry: back to it, same `to`, afterwards. */
+export function signInUrlForPreview(to: string): string {
+  const back = signInReturnPath(`${PREVIEW_ENTRY_PATH}?to=${encodeURIComponent(to)}`);
+  return `/sign-in?${SIGN_IN_RETURN_PARAM}=${encodeURIComponent(back ?? PREVIEW_ENTRY_PATH)}`;
+}
+
 /** lianki.com's entry for a preview path: the switch, then back to that path on preview. */
 export function previewEntryUrl(pathAndQuery: string): string {
   const to = safePreviewPath(pathAndQuery) ?? "/";

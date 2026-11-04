@@ -150,7 +150,7 @@ navigate`, `Sec-Fetch-Dest: document` (when sent) and `Accept: text/html`
   `default-src 'none'` and the one inline style by hash, no script, oklch,
   light/dark, 中文/English) whose only link is
   `https://lianki.com/dev/preview?to=<same path and query>`. That page is
-  owner-only (signed out: `/sign-in`; anyone else: 404) and runs the
+  owner-only (signed out: `/sign-in?next=…`, which after signing in returns to this entry only, `signInReturnPath`; anyone else: 404) and runs the
   profile menu's switch at once: a fresh handoff, posted in a form body to
   `/_lk/dev-auth`, landing on `to`. `to` is a relative path on the preview
   origin only (`safePreviewPath`: no scheme, host, `//`, backslash or
