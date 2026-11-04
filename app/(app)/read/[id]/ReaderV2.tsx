@@ -134,6 +134,13 @@ import {
 import { segmentLine } from "@/lib/read/units";
 import { sentenceId } from "@/lib/read/reader-api";
 import { onPageLeave } from "@/lib/page-leave";
+import {
+  decodeReviewRef,
+  reviewKey,
+  reviewOfHref,
+  reviewRef,
+  withReview,
+} from "@/lib/read/review-ref";
 
 type WindowVirtualizer = Virtualizer<Window, Element>;
 /** The units whose card offers the review and 制卡. */
@@ -972,7 +979,13 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
-  const [review, setReview] = useState<{ words: RangeWord[]; range: boolean } | null>(null);
+  /** The review open now: its words, its ref in the URL (`?review=`), and whether it came from the URL. */
+  const [review, setReview] = useState<{
+    words: RangeWord[];
+    range: boolean;
+    ref: string;
+    adopt: boolean;
+  } | null>(null);
   const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
   const reviewBack = useRef<HTMLElement | null>(null);
   const famChanged = useCallback(() => setFamTick((n) => n + 1), []);
@@ -1081,19 +1094,61 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   );
   /** The one trigger of the review (owner, 22:19 JST: the card's button): the unit's words. */
   const openReview = useCallback(
-    (u: ReviewUnit) => {
+    (u: ReviewUnit, adopt = false) => {
+      const ref = reviewRef(u);
+      if (!ref) return;
       const { ss, words, line } = lineWords(u);
       // Focus comes back to the paragraph's item when the review closes.
       const el = rowEl(blockOfLine(blocks, line));
       if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
       reviewBack.current = el ?? null;
       void rangeWordsOf(words, ss, normLang).then((w) => {
-        sel.clear();
-        setReview({ words: w, range: u.kind === "range" });
+        if (!adopt) sel.clear();
+        setReview({ words: w, range: u.kind === "range", ref, adopt });
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lineWords, blocks, normLang, sel.clear],
+  );
+  // The review named in the URL (a refresh, Back / Forward, a link) opens
+  // again over the book, once its lines and word map are in.
+  const reviewRestored = useRef(false);
+  const canReview = signedIn && !!material.readerV2 && !!material.bookHash;
+  const reviewFromUrl = useRef(() => {});
+  reviewFromUrl.current = () => {
+    const ref = reviewOfHref(location.href);
+    if (!ref || review) return;
+    const target = decodeReviewRef(ref);
+    const ok =
+      canReview &&
+      target &&
+      (target.kind === "para" ? target.line : target.l1) < lines.length &&
+      (target.kind === "range" || !!lines[target.line]?.trim());
+    if (ok) return openReview(target, true);
+    // Nothing to review there: the address drops it, with no history entry.
+    history.replaceState(null, "", withReview(location.href, null));
+  };
+  useEffect(() => {
+    if (reviewRestored.current || !blocks.length || (material.words && !fam)) return;
+    reviewRestored.current = true;
+    reviewFromUrl.current();
+  }, [blocks.length, fam, material.words]);
+  // Forward onto a review's entry opens it again (Back off it closes it: useBackToClose).
+  useEffect(() => {
+    const on = () => reviewRestored.current && reviewFromUrl.current();
+    window.addEventListener("popstate", on);
+    return () => window.removeEventListener("popstate", on);
+  }, []);
+  const reviewPin = useMemo(
+    () =>
+      review
+        ? {
+            url: (href: string) => withReview(href, review.ref),
+            adopt: review.adopt,
+            exit: (href: string) => withReview(href, null),
+          }
+        : undefined,
+    [review],
   );
   const makeLine = useCallback(
     (u: ReviewUnit) => {
@@ -1603,6 +1658,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             id={id}
             title={review.range ? tr.selectionTitle.value : tr.title.value}
             words={review.words}
+            place={reviewKey(id, review.ref)}
+            pin={reviewPin}
             returnTo={reviewBack}
             onClose={closeReview}
             onChanged={famChanged}
