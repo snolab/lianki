@@ -23,9 +23,16 @@ export type Span = readonly [number, number];
 /** A word of the sentence and its share of the audio, as fractions of the whole [0, 1]. */
 export type Slot = { start: number; end: number; t0: number; t1: number };
 
-const segCache = new Map<string, Intl.Segmenter>();
-function wordSegmenter(lang: string): Intl.Segmenter | null {
-  if (typeof Intl === "undefined" || !("Segmenter" in Intl)) return null;
+type Seg = { segment: string; index: number; isWordLike?: boolean };
+type Segmenter = { segment(text: string): Iterable<Seg> };
+/** Without Intl.Segmenter (old browsers): words are what spaces separate. */
+const BY_SPACES: Segmenter = {
+  segment: (text) =>
+    [...text.matchAll(/\S+/g)].map((m) => ({ segment: m[0], index: m.index, isWordLike: true })),
+};
+const segCache = new Map<string, Segmenter>();
+function wordSegmenter(lang: string): Segmenter {
+  if (typeof Intl === "undefined" || !("Segmenter" in Intl)) return BY_SPACES;
   let s = segCache.get(lang);
   if (!s) {
     try {
@@ -81,23 +88,18 @@ export function timeline(text: string, lang: string): Slot[] {
   const seg = wordSegmenter(lang);
   type Raw = { start: number; end: number; w: number; pause: number };
   const words: Raw[] = [];
-  if (seg) {
-    for (const s of seg.segment(text)) {
-      if (s.isWordLike) {
-        words.push({
-          start: s.index,
-          end: s.index + s.segment.length,
-          w: wordWeight(s.segment),
-          pause: 0,
-        });
-      } else if (words.length) {
-        const last = words[words.length - 1];
-        last.pause = Math.max(last.pause, pauseAfter(s.segment));
-      }
+  for (const s of seg.segment(text)) {
+    if (s.isWordLike) {
+      words.push({
+        start: s.index,
+        end: s.index + s.segment.length,
+        w: wordWeight(s.segment),
+        pause: 0,
+      });
+    } else if (words.length) {
+      const last = words[words.length - 1];
+      last.pause = Math.max(last.pause, pauseAfter(s.segment));
     }
-  } else {
-    for (const m of text.matchAll(/\S+/g))
-      words.push({ start: m.index!, end: m.index! + m[0].length, w: wordWeight(m[0]), pause: 0 });
   }
   // The last word's pause is the clip's end: nothing comes after it.
   if (words.length) words[words.length - 1].pause = 0;
@@ -146,18 +148,12 @@ export function sentenceUnits(text: string, lang: string): number {
   let u = 0;
   let words = 0;
   let pauses = 0;
-  if (seg) {
-    for (const s of seg.segment(text)) {
-      if (s.isWordLike) {
-        u += wordWeight(s.segment);
-        words++;
-      } else pauses += pauseAfter(s.segment);
-    }
-  } else
-    for (const m of text.matchAll(/\S+/g)) {
-      u += wordWeight(m[0]);
+  for (const s of seg.segment(text)) {
+    if (s.isWordLike) {
+      u += wordWeight(s.segment);
       words++;
-    }
+    } else pauses += pauseAfter(s.segment);
+  }
   return u + (pauses * u) / Math.max(1, words);
 }
 

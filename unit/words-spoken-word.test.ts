@@ -8,6 +8,7 @@ import {
   pauseAfter,
   resetPace,
   spokenIn,
+  spokenWord,
   timeline,
   wordAt,
   wordAtChar,
@@ -100,6 +101,31 @@ describe("wordAtChar", () => {
   });
   it("says none past the last word", () => {
     expect(wordAtChar(s, text.length)).toBe(-1);
+  });
+});
+
+describe("spokenWord store", () => {
+  it("tells its listeners of a change, once per change", () => {
+    let calls = 0;
+    const off = spokenWord.subscribe(() => calls++);
+    spokenWord.set({ text: "aa bb", lang: "en", span: [0, 2] });
+    spokenWord.set({ text: "aa bb", lang: "en", span: [0, 2] });
+    expect(calls).toBe(1);
+    spokenWord.set({ text: "aa bb", lang: "en", span: [3, 5] });
+    expect(spokenWord.get()!.span).toEqual([3, 5]);
+    spokenWord.set(null);
+    spokenWord.set(null);
+    expect(calls).toBe(3);
+    off();
+    spokenWord.set({ text: "x", lang: "en", span: [0, 1] });
+    expect(calls).toBe(3);
+    spokenWord.set(null);
+  });
+});
+
+describe("a language tag the segmenter refuses", () => {
+  it("still cuts the words", () => {
+    expect(words("aa bb", "!!")).toEqual(["aa", "bb"]);
   });
 });
 
