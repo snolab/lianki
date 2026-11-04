@@ -138,8 +138,13 @@ try {
     `the handle's touch area is inset from the edge (${h && h.x + h.width})`,
   );
   check(!!h && h.width >= 44 && h.height >= 44, "the handle is thumb-sized");
+  // The half circle reaches the edge; the rounded square stands past the Back strip.
+  const shapeName = await page.getAttribute(sel("debug-chat-handle"), "data-shape");
   const shape = await box("debug-chat-handle-shape");
-  check(!!shape && Math.abs(shape.x + shape.width - W) < 1, "the shape reaches the edge");
+  check(
+    !!shape && Math.abs(shape.x + shape.width - (shapeName === "square" ? W - 20 : W)) < 1,
+    `the ${shapeName} sits on the edge`,
+  );
   await shot("3-tucked");
 
   // A message while tucked: dot + peek.

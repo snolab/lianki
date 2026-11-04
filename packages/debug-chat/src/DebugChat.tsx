@@ -131,7 +131,7 @@ import {
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { notePrefWrite } from "@lianki/ui-state/account";
 import { confirmLeave } from "@lianki/ui-state/dirty";
-import { type AnchorSide, placeBox } from "./anchor";
+import { ANCHOR_GUTTER_PX, type AnchorSide, placeBox } from "./anchor";
 import {
   type Fold,
   type FoldEvent,
@@ -425,10 +425,16 @@ function safeBottom() {
 
 /** env(safe-area-inset-top) in px (the notch), measured once per drag. */
 function safeTop() {
+  return safeInset("top");
+}
+
+/** env(safe-area-inset-<side>) in px, through a probe. */
+function safeInset(side: "top" | "bottom") {
   const probe = document.createElement("div");
-  probe.style.cssText = "position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top)";
+  probe.style.cssText = `position:fixed;visibility:hidden;padding-${side}:env(safe-area-inset-${side})`;
   document.body.append(probe);
-  const v = Number.parseFloat(getComputedStyle(probe).paddingTop) || 0;
+  const cs = getComputedStyle(probe);
+  const v = Number.parseFloat(side === "top" ? cs.paddingTop : cs.paddingBottom) || 0;
   probe.remove();
   return v;
 }
@@ -829,7 +835,9 @@ export function DebugChat({
         centerY: (bar.top + bar.bottom) / 2,
         height: HANDLE_SIZE[HANDLE_SHAPE].h,
         vh: innerHeight,
-        safeTop: safeTop(),
+        // Clear of the notch and the home indicator, with the floating box's gutter.
+        safeTop: safeTop() + ANCHOR_GUTTER_PX,
+        safeBottom: safeInset("bottom") + ANCHOR_GUTTER_PX,
       });
       setHandleAt((cur) => (cur === top ? cur : top));
     };
@@ -3155,11 +3163,11 @@ export function DebugChat({
             }}
             className="pointer-events-none absolute top-0 flex items-center justify-center border border-current/25 backdrop-blur-md backdrop-saturate-150"
           >
-            <LiagentMark size={20} />
+            <LiagentMark size={26} />
             {unread > 0 && (
               <span
                 data-testid="debug-chat-handle-dot"
-                className="absolute top-2 size-2.5 rounded-full"
+                className="absolute top-2.5 size-3.5 rounded-full"
                 style={{ background: "oklch(0.6 0.2 22)", [edge === "right" ? "left" : "right"]: 6 }}
               />
             )}

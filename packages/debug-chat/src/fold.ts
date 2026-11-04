@@ -110,11 +110,12 @@ export const HANDLE_SHAPE: HandleShape = "half";
 export const HANDLE_SIZE: Record<HandleShape, { w: number; h: number; gap: number; r: string }> =
   {
     // A half circle: as tall as twice its bulge, flush with the edge.
-    half: { w: 44, h: 88, gap: 0, r: "44px" },
-    // A rounded square standing a little off the edge.
-    square: { w: 56, h: 56, gap: 8, r: "14px" },
+    half: { w: 52, h: 104, gap: 0, r: "52px" },
+    // A rounded square standing past the Back-gesture strip.
+    square: { w: 60, h: 60, gap: 20, r: "18px" },
   };
-export const TOUCH_INSET = 16;
+/** Android keeps about this strip at the edge for its Back swipe (stories/chat-fold/handle.stories.ts). */
+export const TOUCH_INSET = 20;
 export const TOUCH_SLOP = 16;
 
 /** The handle's touch area, px from its edge (inset) and its width. */
