@@ -6,9 +6,11 @@
 import type { D1Like } from "@/lib/d1/types";
 import { headOf } from "./gloss";
 import type { Lemmas } from "./lemma";
+import { PROGRESS_SCALE_DAYS } from "@/lib/words/progress";
 import { langClause } from "./progress";
+import { learningBand } from "./reader-model";
 import { phraseTokens, type Meaning } from "./select-meaning";
-import { foldsOf, normWord, termKeys } from "./words";
+import { cardHit, foldsOf, normWord, termKeys, type CardRow } from "./words";
 
 export interface BookMeanings {
   cards: Meaning[];
@@ -26,19 +28,34 @@ export interface BookMeanings {
 /** His cards first, then his lists' entries; only those with a meaning. */
 async function ownMeanings(db: D1Like, email: string, lang: string): Promise<Meaning[]> {
   const { sql, args } = langClause([lang]);
+  type Row = Meaning & Pick<CardRow, "stability" | "interval" | "cap">;
   const q = (table: "word_cards" | "word_list_entries") =>
     db
       .prepare(
-        `SELECT c.term AS term, c.reading AS reading, c.back AS back, c.list_id AS listId
+        `SELECT c.term AS term, c.reading AS reading, c.back AS back, c.list_id AS listId${
+          table === "word_cards"
+            ? `, json_extract(c.card, '$.stability') AS stability,
+         json_extract(c.card, '$.scheduled_days') AS interval,
+         MIN(${PROGRESS_SCALE_DAYS}, COALESCE(json_extract(l.params, '$.maxIntervalDays'), ${PROGRESS_SCALE_DAYS})) AS cap`
+            : ""
+        }
          FROM ${table} c JOIN word_lists l ON l.email = c.email AND l.id = c.list_id
          WHERE c.email = ? AND c.back != ''${sql}`,
       )
       .bind(email, ...args)
-      .all<Meaning>();
+      .all<Row>();
   const [cards, entries] = await Promise.all([q("word_cards"), q("word_list_entries")]);
+  // Each card's familiarity, as a word's (the reader's phrase marks); an entry with no card is new.
+  const own = [
+    ...cards.results.map(({ stability, interval, cap, ...m }): Meaning => {
+      const h = cardHit({ stability, interval, cap });
+      return { ...m, f: h.mastered ? "k" : learningBand(h.score) };
+    }),
+    ...entries.results.map((m): Meaning => ({ ...m, f: "n" })),
+  ];
   // A list's entry mirrors its card: one meaning per term, the card's first.
   const seen = new Set<string>();
-  return [...cards.results, ...entries.results].filter((m) => {
+  return own.filter((m) => {
     const k = m.term.toLowerCase();
     if (seen.has(k)) return false;
     seen.add(k);

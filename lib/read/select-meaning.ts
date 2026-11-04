@@ -16,6 +16,7 @@
 // a token matches a phrase word by its loose form or one of its folds
 // (lib/read/words.ts foldsOf — the language's data). Pure, so unit-tested.
 
+import type { Fam, Sentence } from "./reader-model";
 import { foldsOf, normWord, termKeys } from "./words";
 
 /** A deck card's meaning, as the selection card shows it. */
@@ -25,6 +26,8 @@ export interface Meaning {
   back: string;
   /** The /words list his card is in (his own cards only). */
   listId?: string | null;
+  /** His card's familiarity, as a word's mark (his own only; an entry with no card is "n"). */
+  f?: Exclude<Fam, "u">;
 }
 
 /** A multi-word card: its words as the segmenter cuts them, loose forms. */
@@ -182,6 +185,65 @@ export function matchMeaning(
       const m = idx.words.get(k);
       if (m) return { m, t0, t1, inside: true };
     }
+  return null;
+}
+
+/** A paragraph's tokens by token index (the book's text), from its sentences. */
+export function paraTokens(sentences: readonly Sentence[]): string[] {
+  const toks: string[] = [];
+  for (const st of sentences) for (const g of st.segs) if (g.t >= 0) toks[g.t] = g.text;
+  return toks;
+}
+
+/** A deck phrase found in a paragraph: its tokens, both inclusive, and its card. */
+export interface PhraseSpan {
+  t0: number;
+  t1: number;
+  m: Meaning;
+}
+
+/**
+ * The phrase cards of `idx` in a paragraph's tokens, for the reader's phrase
+ * marks and the combo's phrase level (owner, 2026-11-05 00:47 JST): longest
+ * first, never overlapping (a shorter card inside or across a longer one's
+ * words is left out; at equal length the earlier one wins), in text order.
+ * Only cards he made pass — the phrase criterion (docs/books-plan.md): nothing
+ * is detected here. Cheap for long books: nothing to do without a phrase card,
+ * and each token looks up only the phrases starting with one of its keys.
+ */
+export function phraseSpans(toks: ParaTokens, idx: MeaningIndex, lang: string): PhraseSpan[] {
+  if (!idx.longest || toks.length < 2) return [];
+  const keys: (string[] | undefined)[] = [];
+  const keysAt = (i: number) => (keys[i] ??= toks[i] ? tokKeys(toks[i], lang) : []);
+  const found: PhraseSpan[] = [];
+  for (let i = 0; i < toks.length; i++) {
+    const cands = new Set<Phrase>();
+    for (const k of keysAt(i)) for (const p of idx.phrases.get(k) ?? []) cands.add(p);
+    for (const p of cands) {
+      const end = i + p.toks.length - 1;
+      if (end >= toks.length) continue;
+      let ok = true;
+      for (let j = 1; j < p.toks.length && ok; j++) ok = keysAt(i + j).includes(p.toks[j]);
+      if (ok) found.push({ t0: i, t1: end, m: p.m });
+    }
+  }
+  if (!found.length) return [];
+  found.sort((a, b) => b.t1 - b.t0 - (a.t1 - a.t0) || a.t0 - b.t0);
+  const taken = new Uint8Array(toks.length);
+  const out: PhraseSpan[] = [];
+  for (const s of found) {
+    let free = true;
+    for (let t = s.t0; t <= s.t1 && free; t++) free = !taken[t];
+    if (!free) continue;
+    taken.fill(1, s.t0, s.t1 + 1);
+    out.push(s);
+  }
+  return out.sort((a, b) => a.t0 - b.t0);
+}
+
+/** The phrase span holding token `t`, or null. */
+export function phraseAtToken(spans: readonly PhraseSpan[], t: number): PhraseSpan | null {
+  for (const s of spans) if (t >= s.t0 && t <= s.t1) return s;
   return null;
 }
 

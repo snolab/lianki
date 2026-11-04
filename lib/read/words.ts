@@ -325,15 +325,20 @@ export function termKeys(term: string, reading: string | null | undefined, lang:
   if (readingKeys && reading && readingKeys.test(reading)) add(reading);
   return keys;
 }
+/** What one card gives its term: the deck's score, and whether mastered. */
+export function cardHit(r: Pick<CardRow, "stability" | "interval" | "cap">): CardHit {
+  const cap = r.cap && r.cap > 0 ? r.cap : PROGRESS_SCALE_DAYS;
+  return {
+    score: wordScore({ stability: r.stability, interval: r.interval }, cap),
+    mastered: (r.interval ?? 0) >= Math.min(PROGRESS_SCALE_DAYS, cap),
+  };
+}
+
 /** The reader's cards as a lookup: key → the best any card gives it. */
 export function cardIndex(rows: CardRow[]): Map<string, CardHit> {
   const idx = new Map<string, CardHit>();
   for (const r of rows) {
-    const cap = r.cap && r.cap > 0 ? r.cap : PROGRESS_SCALE_DAYS;
-    const hit: CardHit = {
-      score: wordScore({ stability: r.stability, interval: r.interval }, cap),
-      mastered: (r.interval ?? 0) >= Math.min(PROGRESS_SCALE_DAYS, cap),
-    };
+    const hit = cardHit(r);
     for (const k of termKeys(r.term, r.reading, r.lang)) {
       const had = idx.get(k);
       if (!had) idx.set(k, hit);

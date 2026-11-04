@@ -303,8 +303,21 @@ selecting DOM text.
   scrolls the virtualised list to the anchor, flashes the unit and shows its
   card. Links open only for someone who has access to that book (own upload
   or catalogue); for a private book they are personal bookmarks.
-- **Phrases.** Phrase boundaries come from the extraction step (books-plan
-  phase 1); until then the phrase level is skipped.
+- **Phrases.** Phrase boundaries are his phrase cards found in the text
+  (owner, 2026-11-05 00:47 JST; the phrase criterion below: his deck cards
+  pass, nothing is detected): per paragraph, longest first, never
+  overlapping, over the paragraph's segmenter tokens and the language's folds
+  (`phraseSpans` in `lib/read/select-meaning.ts`, found once per paragraph and
+  kept until his cards change). A word inside one has the phrase as its
+  combo level (`phraseAt`); a paragraph with none skips the level. The text
+  shows **two layers**: each word's own familiarity underline, and under it
+  the phrase's — a thicker bar drawn as the `[data-ph]` span's background at
+  the bottom of its padding (`box-decoration-break: clone`, so every wrapped
+  line gets it), coloured by the phrase card's familiarity (`f` from
+  `GET /api/read/[id]/meanings`), dashed when new, following the same
+  `data-read-marks` rules as the words. Never a text-decoration, so a
+  selection's highlight does not recolour it. QA:
+  `scripts/qa/qa-read-phrase-marks.mjs`.
 - **Built** (reader v2, behind `read.reader-v2`): the rules in
   `lib/read/reader-select.ts` (levels, fragments; unit-tested), the listener
   and highlight in `app/(app)/read/[id]/use-reader-select.ts`, the card in

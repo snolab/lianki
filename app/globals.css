@@ -1207,6 +1207,48 @@ html[data-read-marks="unknown"] .lk-book [data-f="u"] {
   html[data-read-marks="all"] .lk-book [data-f="u"],
   html[data-read-marks="unknown"] .lk-book [data-f="u"] { text-decoration-color: oklch(0.75 0.02 60 / 0.5); }
 }
+/* Phrase marks (owner, 2026-11-05 00:47 JST): a deck phrase's words sit in one
+ * [data-ph] span (reader-blocks.tsx) whose line is a second layer below the
+ * words' own underlines, never a text-decoration (so it neither collides with
+ * nor takes the colour of theirs, and a selection's highlight leaves it
+ * alone). A thicker bar drawn as the span's background at the bottom of its
+ * bottom padding, so it sits under the word line; cloned on every line the
+ * phrase wraps onto. Same colour per familiarity as the words, same on/off
+ * rules (html[data-read-marks]): learning by band under "all", new under
+ * "all" and "unknown", mastered none. */
+.lk-book [data-ph] {
+  --lk-ph-h: 0.17em;
+  padding-bottom: 0.46em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+html[data-read-marks="all"] .lk-book [data-pf^="l"],
+html[data-read-marks="all"] .lk-book [data-pf="n"],
+html[data-read-marks="unknown"] .lk-book [data-pf="n"] {
+  background-image: linear-gradient(var(--lk-ph-c), var(--lk-ph-c));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 100% var(--lk-ph-h);
+}
+/* New: a dashed bar (the words' "new" is dotted), so the style still says it. */
+html[data-read-marks="all"] .lk-book [data-pf="n"],
+html[data-read-marks="unknown"] .lk-book [data-pf="n"] {
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--lk-ph-c) 0 0.55em,
+    transparent 0.55em 0.8em
+  );
+}
+.lk-book [data-pf="l1"] { --lk-ph-c: oklch(0.6 0.13 60 / 0.85); }
+.lk-book [data-pf="l2"] { --lk-ph-c: oklch(0.6 0.13 60 / 0.55); }
+.lk-book [data-pf="l3"] { --lk-ph-c: oklch(0.6 0.13 60 / 0.32); }
+.lk-book [data-pf="n"] { --lk-ph-c: oklch(0.55 0.13 250 / 0.75); }
+@media (prefers-color-scheme: dark) {
+  .lk-book [data-pf="l1"] { --lk-ph-c: oklch(0.78 0.12 70 / 0.85); }
+  .lk-book [data-pf="l2"] { --lk-ph-c: oklch(0.78 0.12 70 / 0.55); }
+  .lk-book [data-pf="l3"] { --lk-ph-c: oklch(0.78 0.12 70 / 0.35); }
+  .lk-book [data-pf="n"] { --lk-ph-c: oklch(0.75 0.12 250 / 0.75); }
+}
 /* The sentence being read aloud. */
 .lk-book [data-reading] {
   background: oklch(0.85 0.09 85 / 0.45);
