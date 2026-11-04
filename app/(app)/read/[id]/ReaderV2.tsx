@@ -1075,10 +1075,10 @@ function Reader({
   );
   /** The next / previous word of `kind` (null: either); false when there is none. */
   const sideJump = useCallback(
-    (kind: SideKind | null, dir: 1 | -1, from = sideFrom()): boolean => {
+    (kind: SideKind | null, dir: 1 | -1, from = sideFrom(), speak = true): boolean => {
       const hit = findWord(from, dir, kind, lines.length, scanSentences, sideKind);
       if (!hit) return false;
-      focusWord(hit, hit.kind, true);
+      focusWord(hit, hit.kind, speak);
       return true;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1096,7 +1096,9 @@ function Reader({
         dueRef.current = new Set(d.due ?? []);
         if (!sideRef.current) return;
         // His due words first, then the new ones, from where he is reading.
-        if (!sideJump("due", 1) && !sideJump("new", 1)) setSideNone(true);
+        // Opening is silent; a jump or a grade says the word (as a focus change on /words).
+        const from = sideFrom();
+        if (!sideJump("due", 1, from, false) && !sideJump("new", 1, from, false)) setSideNone(true);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, sideJump, sel.clear]);

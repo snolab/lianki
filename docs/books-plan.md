@@ -397,7 +397,8 @@ screen and ONE card sits beside it (a phone: over the bottom of the book,
 above the pill). Off for everyone but the owner until the flag is on.
 
 - **Open:** the ⧉ button on the reader's pill, or `?side` on the book's URL.
-  It starts at the first due word from the eye line, else the first new one.
+  It starts at the first due word from the eye line, else the first new one,
+  silently; a jump or a grade then says the word, as a focus change on /words.
 - **Jump:** `D` / `N` the next word of the text due on his cards / new to
   him (no card; a list's or the dictionary's word, the marks' `n`);
   `Shift+D` / `Shift+N` back; the card's ‹ › buttons do the same. A click
