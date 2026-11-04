@@ -47,6 +47,7 @@ import { micAec } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
 import { getKey } from "./storage-keys";
+import { hideStops, isDesktop } from "./voice-bg";
 import { reportPageError } from "./page-errors";
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
@@ -853,7 +854,9 @@ export function gateVoice(v: Voice, why: (m: SpeakMeta) => Silence | null = sile
     if (!g.__lkVoiceHide) {
       g.__lkVoiceHide = true;
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") (g[KEY] as Voice | undefined)?.stop();
+        // A phone stops reading on hide; a computer reads on in the background (voice-bg.ts).
+        if (document.visibilityState === "hidden" && hideStops(isDesktop()))
+          (g[KEY] as Voice | undefined)?.stop();
       });
     }
     if (!g.__lkVoiceShow) {

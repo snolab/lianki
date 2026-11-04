@@ -32,6 +32,7 @@
 
 import { reportPageError } from "./page-errors";
 import { type SpeakerTag, cleanSpeaker } from "./wire";
+import { isDesktop, sttMayReopen } from "./voice-bg";
 
 /** localStorage: the local STT server's WebSocket URL(s) (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
@@ -292,7 +293,11 @@ export function createLocalStt(
   const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   const watch = d.watch ?? watchPage;
   const visible =
-    d.visible ?? (() => typeof document === "undefined" || document.visibilityState !== "hidden");
+    d.visible ??
+    (() =>
+      typeof document === "undefined" ||
+      // A computer reopens in a background tab too: the mic listens on there (voice-bg.ts).
+      sttMayReopen({ visible: document.visibilityState !== "hidden", desktop: isDesktop() }));
   /** The socket in use: the race's winner. */
   let ws: WsLike | null = null;
   let ready = false;

@@ -793,8 +793,9 @@ toggle on and either the mic used in this tab or the input focused):
 
 
 1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
-2. **Hidden page or locked screen** (`document.visibilityState` "hidden"):
-   never spoken (the browser would not let it). Hiding the page also stops a
+2. **Hidden page or locked screen** (`document.visibilityState` "hidden"),
+   **on a phone**: never spoken (the browser would not let it). On a
+   computer this rule is off: see "Background tab on a computer" below. Hiding the page also stops a
    reading under way. When the page is visible again, the newest line that
    arrived while it was hidden is read once (not a backlog); the lines left
    unread show a small note, "not read aloud: the page was in the
@@ -804,6 +805,46 @@ A line kept silent is logged as `{ev:"voice-silent", why}` (quiet, hidden)
 on the voice session's log, and a missed line read on return as
 `{ev:"voice-missed"}`. Quiet lines carry `data-volume="quiet"` in the log,
 for tests; they look the same.
+
+**Background tab on a computer** (owner, 2026-11-04: "pc页面切走不要马上停语音";
+`packages/debug-chat/src/voice-bg.ts`, unit/voice-bg.test.ts). A computer is
+a fine primary pointer that can hover (`(hover: hover) and (pointer: fine)`).
+There, switching to another tab or window stops nothing, with no grace
+period: the mic keeps listening and the reading goes on until he stops it.
+The paths that used to stop it, all now phone-only on a computer:
+
+| Path | What it did on hide |
+| --- | --- |
+| `voice.ts` `gateVoice` visibilitychange | `voice().stop()`: the reading and its queue |
+| `speak-rules.ts` `silenceHere` | every new line silent while hidden |
+| `DebugChat.tsx` hide effect | stopped the reading (mic off) |
+| `DebugChat.tsx` reading-left mirror | froze the "read on next page" queue |
+| `DebugEval.tsx` hub socket `wanted()` | disconnected 30 s after hide: no lines out, no replies in |
+| `local-stt.ts` `visible()` | a dropped STT socket waited for the page to be visible again |
+
+The hub socket now stays while the voice is busy (mic on, speaking, or
+queued; `keepHub`), and the local STT socket reopens on its close event
+while hidden (`sttMayReopen`): events only, the existing backoff, no polling.
+Audio frames go out from the audio callbacks, not timers, so timer throttling
+in hidden tabs does not hold them back; Chrome on a computer keeps a running
+AudioContext and speechSynthesis going in a background tab (Safari may
+interrupt it). Echo cancel is the mic track's own and is unchanged.
+
+**The title hint.** While the voice runs in a tab he is not looking at
+(hidden, or the window unfocused), the tab title starts with
+"🎙 Lianki voice on · " (🔊 when only reading; `voiceBgWords` in
+ui-strings.ts, en/zh/ja), besides the browser's own mic indicator; it goes
+when the voice stops or he is back (`app/components/useVoiceTitleHint.ts`).
+
+**One tab listens.** Another Lianki tab turning its mic on takes the voice
+over (`debug-chat-tabs.ts` `onTakeover("mic")`): this tab turns its mic off,
+stops reading, and so shows no hint. A tab he newly focuses takes over a
+hidden tab's reading with the mic off (`onTakeover("focus")`); a mic tab
+keeps the voice whichever tab is focused.
+
+**Phones** keep the old behaviour: hiding stops the reading and silences
+lines, and the hub socket idles out; mobile browsers suspend background
+audio and the mic anyway.
 
 **No voice on the device.** With the output on "speech" (the default), a
 reply in a language speechSynthesis has no voice for (some Android Chromes

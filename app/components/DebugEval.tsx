@@ -31,6 +31,8 @@ import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { voice } from "@lianki/debug-chat/voice";
+import { isDesktop, keepHub, onTakeover, voiceBusy } from "@lianki/debug-chat/voice-bg";
+import { useVoiceTitleHint } from "./useVoiceTitleHint";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 import {
@@ -164,6 +166,8 @@ export function DebugEval({
   const router = useRouter();
   // Hot islands (docs/dev-hot-islands.md): on with the code-run grant below, or live view.
   useIslands();
+  // The tab title says when Lianki's voice runs on in the background (voice-bg.ts).
+  useVoiceTitleHint();
   /** Live view (docs/live-view.md): the signed pointer, verified on this page. */
   const liveState = useLiveView();
   /** This device's tabs agree on one to read replies aloud (BroadcastChannel). */
@@ -175,6 +179,17 @@ export function DebugEval({
         crypto.randomUUID(),
         new BroadcastChannel(TABS_CHANNEL),
         () => document.visibilityState === "visible" && document.hasFocus(),
+        Date.now,
+        // Another tab took the voice over (voice-bg.ts): only one tab listens and reads.
+        (why) => {
+          const looking = document.visibilityState === "visible" && document.hasFocus();
+          const d = onTakeover(why, { mic: voice().state().mic, looking });
+          if (d.micOff)
+            void (globalThis as { __lkMic?: { off?: () => Promise<void> } }).__lkMic
+              ?.off?.()
+              .catch(() => {});
+          if (d.stopReading) voice().stop();
+        },
       );
       tabsRef.current.mic(voice().state().mic);
     };
@@ -480,8 +495,16 @@ export function DebugEval({
     };
     // Never inside another site's frame: no cookie socket, no pairing or Allow UI
     // a parent could clickjack (lib/frame-context.ts). The hub refuses too.
+    // A computer keeps it while the voice runs in a background tab (voice-bg.ts):
+    // his spoken lines still go out, the replies still come in and are read.
     const wanted = () =>
-      document.visibilityState === "visible" && chatOn() && frameContext() !== "foreign";
+      keepHub({
+        visible: document.visibilityState === "visible",
+        desktop: isDesktop(),
+        busy: voiceBusy(voice().state()),
+      }) &&
+      chatOn() &&
+      frameContext() !== "foreign";
     /**
      * Tell the hub how this window is doing, while the socket is still open:
      * hidden (screen off, app in the background) keeps a recording session
@@ -509,12 +532,21 @@ export function DebugEval({
     };
 
     update();
+    // The voice starting or stopping in a hidden tab: keep the socket or let it idle out.
+    let busy = voiceBusy(voice().state());
+    const unVoice = voice().subscribe((st) => {
+      const b = voiceBusy(st);
+      if (b === busy) return;
+      busy = b;
+      if (document.visibilityState !== "visible") update();
+    });
     window.addEventListener("pagehide", leaving);
     document.addEventListener("visibilitychange", update);
     window.addEventListener(DEBUG_EVENT, update);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("pagehide", leaving);
+      unVoice();
       unClips();
       document.removeEventListener("visibilitychange", update);
       window.removeEventListener(DEBUG_EVENT, update);
