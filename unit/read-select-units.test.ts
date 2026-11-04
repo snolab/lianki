@@ -24,6 +24,7 @@ import {
 import { bookMeanings, readBookMeanings } from "@/lib/read/select-meaning-server";
 import { autoPieces, sentenceSpan, transKey, translationPlan } from "@/lib/read/select-translate";
 import { MAX_TRANSLATE_CHARS } from "@/lib/read/translate";
+import { formLabel, formLabels, type FormTagKey } from "@/lib/read/form-tags";
 
 const toksOf = (text: string, lang: string) => {
   const out: string[] = [];
@@ -116,7 +117,38 @@ describe("the book's meanings (server, pure)", () => {
     const r = bookMeanings(all, ["regarda", "il", "roi", "vide"], "fr", lem);
     expect(r.cards.map((c) => c.term)).toEqual(["il y a", "regarder"]);
     expect(r.forms).toEqual([["regarda", 1]]);
-    expect(r.heads).toEqual([["regarda", "regarder"]]);
+    expect(r.heads).toEqual([["regarda", "regarder", []]]);
+  });
+
+  test("with lemma file v2, each head carries its form's tag sets: a label, no model", () => {
+    const v2 = parseLemmas(
+      [
+        "#lianki-lemmas v2 fr",
+        "#tags past historic third-person singular first-person present",
+        "#sets 0.1.2.3 5.4.3,5.2.3",
+        "regarder\t2a:0 1:1",
+        "",
+      ].join("\n"),
+    );
+    const r = bookMeanings([], ["regarda", "regarde"], "fr", v2);
+    expect(r.heads).toEqual([
+      ["regarda", "regarder", [["past", "historic", "third-person", "singular"]]],
+      [
+        "regarde",
+        "regarder",
+        [
+          ["present", "first-person", "singular"],
+          ["present", "third-person", "singular"],
+        ],
+      ],
+    ]);
+    const zh = new Proxy({} as Record<FormTagKey, string>, {
+      get: (_, k) => `<${String(k)}>`,
+    });
+    expect(formLabels(r.heads[0][2], zh).join(" / ")).toBe(
+      formLabel(["past", "historic", "third-person", "singular"], zh),
+    );
+    expect(formLabels(r.heads[0][2], zh)[0]).not.toBe("");
   });
 });
 
