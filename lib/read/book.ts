@@ -11,10 +11,21 @@
 
 import { INLINE_KINDS, type InlineKind, type InlineMark } from "./reader-api";
 import { countWords, parseWordStats, type WordStats } from "./words";
+import { allowedSourceUrl } from "@/lib/books/catalogue";
 
 export const BOOK_KIND = "lianki-book";
 
-export type BookSource = "epub" | "gdoc";
+export type BookSource = "epub" | "gdoc" | "preset";
+
+/** Where a catalogue book (/books) came from, shown in the book: lib/books/catalogue.ts. */
+export interface BookCredit {
+  /** "<lang>/<slug>" of the catalogue entry. */
+  preset: string;
+  /** The source site, as shown ("Project Gutenberg"). */
+  sourceName: string;
+  licence: string;
+  attribution: string;
+}
 
 export interface BookChapter {
   title: string;
@@ -27,8 +38,10 @@ export interface BookMeta {
   v: 1;
   /** Imported from: an EPUB file, or a Google Doc (lib/gdoc). */
   source: BookSource;
-  /** The Google Doc's link, for a "gdoc" book. */
+  /** The Google Doc's link, for a "gdoc" book; the source page, for a "preset" one. */
   sourceUrl?: string;
+  /** A catalogue book's source and licence (source "preset"). */
+  credit?: BookCredit;
   author?: string;
   lang?: string;
   chapters: BookChapter[];
@@ -188,13 +201,14 @@ export function checkBook(input: unknown): BookCheck {
 
 export function bookMetaOf(
   book: ParsedBook,
-  from: { source: BookSource; sourceUrl?: string } = { source: "epub" },
+  from: { source: BookSource; sourceUrl?: string; credit?: BookCredit } = { source: "epub" },
 ): BookMeta {
   return {
     kind: BOOK_KIND,
     v: 1,
     source: from.source,
     ...(from.sourceUrl ? { sourceUrl: from.sourceUrl } : {}),
+    ...(from.credit ? { credit: from.credit } : {}),
     ...(book.author ? { author: book.author } : {}),
     ...(book.lang ? { lang: book.lang } : {}),
     chapters: book.chapters,
@@ -209,6 +223,21 @@ export function bookMetaOf(
         }
       : {}),
   };
+}
+
+const cap = (v: unknown, max: number) =>
+  typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
+
+/** A catalogue book's source link and credit, kept only when the link is on a source host. */
+function presetCredit(m: BookMeta): Pick<BookMeta, "sourceUrl" | "credit"> {
+  const url = typeof m.sourceUrl === "string" ? allowedSourceUrl(m.sourceUrl) : null;
+  const c = (m.credit ?? {}) as Partial<BookCredit>;
+  const preset = cap(c.preset, 200);
+  const sourceName = cap(c.sourceName, 100);
+  const licence = cap(c.licence, 500);
+  const attribution = cap(c.attribution, 1000);
+  if (!url || !preset || !sourceName || !licence || !attribution) return {};
+  return { sourceUrl: url.toString(), credit: { preset, sourceName, licence, attribution } };
 }
 
 /** The book meta stored in a material's `content`, or null for plain text. */
@@ -240,7 +269,8 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
     return {
       kind: BOOK_KIND,
       v: 1,
-      source: m.source === "gdoc" ? "gdoc" : "epub",
+      source: m.source === "gdoc" || m.source === "preset" ? m.source : "epub",
+      ...(m.source === "preset" ? presetCredit(m) : {}),
       ...(m.source === "gdoc" &&
       typeof m.sourceUrl === "string" &&
       /^https:\/\/docs\.google\.com\/document\/d\/[A-Za-z0-9_-]{25,128}\/edit$/.test(m.sourceUrl)

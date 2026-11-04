@@ -15,6 +15,10 @@ import { devSwitchFor } from "@/lib/dev-server-switch.server";
 import type { DevSwitchLabels } from "@/app/components/DevSwitchItem";
 import { LIVE_VIEW_COOKIE, liveViewFor } from "@/lib/live-view/shell.server";
 import type { LiveViewLabels } from "@/app/components/LiveView";
+import { dbBackend } from "@/lib/d1";
+import { readFlags } from "@/lib/flags-store";
+import { isOwner } from "@/lib/owner";
+import { booksOn } from "@/lib/books/gate";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   announceBuild();
@@ -34,6 +38,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     jar.get(LIVE_VIEW_COOKIE)?.value,
     () => getIntlayer("live-view", locale) as unknown as LiveViewLabels,
   );
+
+  // Flag-gated nav items (lib/app-nav.ts `flag`): /books shows for the owner
+  // only while `books.catalogue` is off. readFlags is cached 30 s per isolate.
+  const flags = dbBackend() === "d1" ? await readFlags() : null;
+  const navShown = booksOn(flags, isOwner(user?.email ?? null)) ? ["books"] : [];
 
   const { appName, nav } = getIntlayer("landing-page", locale);
   const shell = getIntlayer("app-shell", locale);
@@ -64,6 +73,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               () => getIntlayer("dev-switch", locale) as unknown as DevSwitchLabels,
             )}
             liveView={liveView}
+            navShown={navShown}
           >
             {pendingInvite && <InviteClaim />}
             <PrefSync signedIn={Boolean(user)} />

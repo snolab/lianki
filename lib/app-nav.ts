@@ -11,6 +11,7 @@
  * switch puts `?lang=` in the URL.
  */
 import type { IconName } from "@/app/components/icons";
+import type { FlagKey } from "@/lib/flags";
 
 export type NavGroup = "main" | "advanced" | "data" | "account";
 
@@ -20,6 +21,11 @@ export type NavItem = {
   /** A Phosphor icon, drawn by app/components/icons.tsx. */
   icon: IconName;
   group: NavGroup;
+  /**
+   * Shown only while this feature flag is on, or to the owner (the page
+   * itself 404s otherwise): the server passes the keys to show.
+   */
+  flag?: FlagKey;
 };
 
 // Home is navigation and onboarding; word lists are the main path. The
@@ -36,6 +42,7 @@ export const APP_NAV: NavItem[] = [
   { key: "polyglot", href: "/polyglot", icon: "globeHemisphereWest", group: "main" },
   { key: "selfIntro", href: "/self-intro", icon: "userSound", group: "main" },
   { key: "read", href: "/read", icon: "bookOpen", group: "main" },
+  { key: "books", href: "/books", icon: "books", group: "main", flag: "books.catalogue" },
   { key: "roadmap", href: "/roadmap", icon: "mapTrifold", group: "main" },
   { key: "sites", href: "/sites", icon: "globe", group: "advanced" },
   { key: "review", href: "/review", icon: "play", group: "advanced" },
@@ -47,6 +54,11 @@ export const APP_NAV: NavItem[] = [
   { key: "preferences", href: "/preferences", icon: "gearSix", group: "account" },
   { key: "membership", href: "/membership", icon: "star", group: "account" },
 ];
+
+/** The nav items this viewer gets: every unflagged one, and flagged ones in `shown`. */
+export function visibleNav(shown: readonly string[] = []): NavItem[] {
+  return APP_NAV.filter((i) => !i.flag || shown.includes(i.key));
+}
 
 export const NAV_GROUPS: NavGroup[] = ["main", "advanced", "data", "account"];
 
