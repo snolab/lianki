@@ -22,7 +22,9 @@ describe("rules", () => {
     expect(langTag("pt-br")).toBe("pt-BR");
     expect(langTag("en; drop table")).toBeNull();
     expect(langTag(3)).toBeNull();
+    expect(langTag("de-1996-1996")).toBeNull(); // the shape, but not a tag Intl takes
     expect(langName("ja")).toBe("Japanese");
+    expect(langName("de-1996-1996")).toBe("de-1996-1996"); // no name: the code itself
     expect(translateMessages("Bonjour", "zh", "fr")[0].content).toContain(
       "from French into Chinese",
     );
