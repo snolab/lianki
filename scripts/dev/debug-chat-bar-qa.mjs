@@ -198,16 +198,16 @@ try {
       return {
         same: mic.__qaTag === 1,
         nextToMenu:
-          mic.getBoundingClientRect().left - q("debug-chat-pill-min").getBoundingClientRect().right,
+          mic.getBoundingClientRect().left - q("debug-chat-restore").getBoundingClientRect().right,
       };
     });
     check(m.same, "the mic is the same DOM node across minimize");
     check(
       Math.abs(m.nextToMenu) < 4,
-      `minimized: the mic sits right after the mark (${m.nextToMenu}px)`,
+      `minimized: the mic sits right after the pill's Li (${m.nextToMenu}px)`,
     );
     if (SHOTS) {
-      await page.click('[data-testid="debug-chat-pill-min"]');
+      await page.click('[data-testid="debug-chat-restore"]');
       await page.waitForSelector('[data-testid="debug-chat"]');
       await page.waitForTimeout(400);
     }
@@ -238,7 +238,7 @@ try {
     await page.click('[data-testid="debug-chat-pill-min"]');
     await page.waitForSelector('[data-testid="debug-chat-minimized"]');
     await page.waitForTimeout(300);
-    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.click('[data-testid="debug-chat-restore"]');
     await page.waitForSelector('[data-testid="debug-chat"]');
     await page.waitForTimeout(400);
     r = await h();
@@ -248,7 +248,7 @@ try {
   // Starting minimized (the input measured at 0 width), then expanded: still one line.
   {
     const { ctx, page } = await open("?min&offline");
-    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.click('[data-testid="debug-chat-restore"]');
     await page.waitForSelector('[data-testid="debug-chat"]');
     await page.waitForTimeout(400);
     const hh = await page.evaluate(
@@ -927,7 +927,7 @@ try {
     const fading = await page.locator('[data-testid="debug-chat-float"][data-fading]').count();
     check(fading === 3, `then all 3 fade (${fading} fading)`);
     // Opened, they are read: minimized again, no badge.
-    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.click('[data-testid="debug-chat-restore"]');
     await page.waitForSelector('[data-testid="debug-chat"]');
     await page.click('[data-testid="debug-chat-pill-min"]');
     await page.waitForSelector('[data-testid="debug-chat-minimized"]');
@@ -1035,7 +1035,10 @@ try {
     await audioBrowser.close();
   }
 
-  // The floating box hangs on the bar's side: right, left, centre; always on screen.
+  // The floating box hangs from the pill's side (fold.ts floatSide): at the
+  // right edge its left edges with the pill's, mirrored at the left edge;
+  // never by the screen third. Always on screen. (Pushed flush against an
+  // edge the pill tucks: debug-chat-fold-qa.mjs.)
   {
     const { ctx, page } = await open("?min");
     await page.evaluate(() => window.__push("a short reply"));
@@ -1066,35 +1069,28 @@ try {
         };
       });
     const inside = (m) => m.box.l >= 8 - 0.5 && m.box.r <= m.vw - 8 + 0.5;
-    await dragBarTo(390);
+    await dragBarTo(330);
     let m = await measure();
     check(
-      // Right edges together, unless the gutter clamps it.
-      m.side === "right" &&
-        Math.abs(m.box.r - Math.min(m.bar.r, m.vw - 8)) < 1.5 &&
-        m.align === "right" &&
-        inside(m),
-      `bar right: right edges together, text right, on screen (${JSON.stringify(m)})`,
-    );
-    await dragBarTo(0);
-    m = await measure();
-    check(
+      // Near the right edge: from the pill's left, unless the gutter clamps it.
       m.side === "left" &&
-        Math.abs(m.box.l - Math.max(m.bar.l, 8)) < 1.5 &&
+        Math.abs(m.box.l - Math.min(m.bar.l, m.vw - 8 - (m.box.r - m.box.l))) < 1.5 &&
         m.align === "left" &&
         inside(m),
-      `bar left: left edges together, text left, on screen (${JSON.stringify(m)})`,
+      `bar right: from the pill's left, text left, on screen (${JSON.stringify(m)})`,
     );
-    await dragBarTo(195);
+    await dragBarTo(70);
     m = await measure();
     check(
-      m.side === "center" &&
-        Math.abs((m.box.l + m.box.r) / 2 - (m.bar.l + m.bar.r) / 2) < 1.5 &&
+      // Nearer the left edge: mirrored, right edges together unless clamped.
+      m.side === "right" &&
+        Math.abs(m.box.r - Math.max(m.bar.r, 8 + (m.box.r - m.box.l))) < 1.5 &&
+        m.align === "right" &&
         inside(m),
-      `bar in the middle: centred, on screen (${JSON.stringify(m)})`,
+      `bar left: mirrored, right edges together, text right, on screen (${JSON.stringify(m)})`,
     );
-    // The tree, minimized, with the bar at the right edge: fully on screen.
-    await dragBarTo(390);
+    // The tree, minimized, with the bar near the right edge: fully on screen.
+    await dragBarTo(330);
     await openTreeMinimized(page);
     await page.waitForTimeout(400);
     const t = await page.evaluate(() => {
@@ -1278,7 +1274,7 @@ try {
     );
     // Expanded again: the lines go (the tree has it all); minimized again: collapsed.
     await page.click('[data-status="doing"] button');
-    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.click('[data-testid="debug-chat-restore"]');
     await page.waitForSelector('[data-testid="debug-chat"]');
     check(
       (await page.locator('[data-testid="debug-chat-frontier"]').count()) === 0,

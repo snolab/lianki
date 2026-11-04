@@ -73,8 +73,10 @@ const rect = (page) =>
     const r = document.querySelector("[data-nav-island] nav").getBoundingClientRect();
     return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}x${Math.round(r.height)}`;
   });
+/** Minimize with the mark; restore with the pill's Li (on the pill the mark tucks, fold.ts). */
 const toggle = async (page) => {
-  await page.click('[data-testid="debug-chat-pill-min"]');
+  const min = await page.locator("[data-debug-chat][data-minimized]").count();
+  await page.click(`[data-testid="${min ? "debug-chat-restore" : "debug-chat-pill-min"}"]`);
   await settle(page);
 };
 
