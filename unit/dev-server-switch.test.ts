@@ -13,9 +13,62 @@ import {
   postToDevServer,
   previewEntryUrl,
   safePreviewPath,
+  signInReturnPath,
+  signInUrlForPreview,
   switchToDevServer,
 } from "../lib/dev-server-switch";
 import { devSwitchFor } from "../lib/dev-server-switch.server";
+
+describe("signed out on the entry: sign in, then back to it", () => {
+  test("only the preview entry on lianki.com comes back, rebuilt from its parts", () => {
+    expect(signInReturnPath("/dev/preview?to=%2Fen%2Fread")).toBe("/dev/preview?to=%2Fen%2Fread");
+    expect(signInReturnPath("/dev/preview")).toBe("/dev/preview?to=%2F");
+    expect(signInReturnPath("/dev/preview?to=%2F%2Fevil.example")).toBe("/dev/preview?to=%2F");
+    expect(signInReturnPath("/dev/preview?to=%2Fx&evil=1")).toBe("/dev/preview?to=%2Fx");
+    expect(signInReturnPath("/dev/preview?to=%2Fx%3Ftoken%3Dlkdev_abc")).toBe(
+      "/dev/preview?to=%2Fx",
+    );
+  });
+
+  test("everything else is null: sign-in lands on /home as before (no open redirect)", () => {
+    for (const bad of [
+      null,
+      undefined,
+      "",
+      "/home",
+      "/en/read",
+      "/dev/tokens",
+      "/dev/preview/x",
+      "https://evil.example/dev/preview",
+      "https://lianki.com/dev/preview",
+      "//evil.example/dev/preview",
+      "/\\evil.example/dev/preview",
+      "/\t/evil.example/dev/preview",
+      "/dev/preview\n",
+      "javascript:alert(1)",
+      "dev/preview",
+      `/dev/preview?to=${"a".repeat(2001)}`,
+    ])
+      expect([bad, signInReturnPath(bad)]).toEqual([bad, null]);
+  });
+
+  test("the entry's sign-in URL carries the return path, never a token", () => {
+    expect(signInUrlForPreview("/en/read")).toBe(
+      "/sign-in?next=%2Fdev%2Fpreview%3Fto%3D%252Fen%252Fread",
+    );
+    const u = new URL(signInUrlForPreview("/en/read"), "https://lianki.com");
+    expect(signInReturnPath(u.searchParams.get("next"))).toBe("/dev/preview?to=%2Fen%2Fread");
+    expect(decodeURIComponent(signInUrlForPreview(`/x?token=lkdev_${"g".repeat(43)}`))).not.toMatch(
+      /lkdev_|token=/,
+    );
+  });
+
+  test("sign-in reads the return path only through the helper", () => {
+    const src = readFileSync("app/(app)/sign-in/SignInClient.tsx", "utf8");
+    expect(src).toContain('signInReturnPath(raw) ?? "/home"');
+    expect(src).not.toMatch(/callbackURL:\s*"\/home"/);
+  });
+});
 
 describe("the entry from the gate page: `to` is a relative path only", () => {
   test("paths and queries on the preview origin are kept", () => {
