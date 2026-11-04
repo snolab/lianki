@@ -210,8 +210,24 @@ async function run(device, scheme, touch) {
   check(/^p\d+$/.test(ref ?? ""), `the review is in the URL (?review=${ref})`);
   // Move the focus to the third card: a tap (touch), the cursor keys (desktop).
   if (touch) {
-    const b = await rows.nth(2).boundingBox();
-    await page.touchscreen.tap(b.x + 40, b.y + b.height / 2);
+    // A tap while the list still moves is a scroll's end, not a tap: let it rest.
+    await page.waitForTimeout(1200);
+    // A row in the middle of the screen, clear of the bands over the list.
+    const p = await page.evaluate(() => {
+      for (const r of document.querySelectorAll("[data-testid=read-word-review] [data-i]")) {
+        const b = r.getBoundingClientRect();
+        const y = b.top + b.height / 2;
+        if (y > innerHeight * 0.45 && y < innerHeight * 0.75 && !r.querySelector(".slip-loose"))
+          return { x: b.left + b.width / 2, y };
+      }
+      return null;
+    });
+    if (p) {
+      const cdp = await ctx.newCDPSession(page);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [p] });
+      await page.waitForTimeout(60);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    }
   } else {
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
@@ -223,14 +239,14 @@ async function run(device, scheme, touch) {
           "[data-testid=read-word-review] .slip-loose bdi:not([data-row-example])",
         )?.textContent ?? null,
     );
-  let before = null;
-  await until(page, async () => !!(before = await focused()));
   const first = await page.evaluate(
     () =>
       document.querySelector(
         "[data-testid=read-word-review] [data-i='0'] bdi:not([data-row-example])",
       )?.textContent ?? null,
   );
+  let before = null;
+  await until(page, async () => !!(before = await focused()) && before !== first, 4000);
   check(!!before && before !== first, `the focus moved off the first card (${first} → ${before})`);
   // The position is written as it changes; give the store a beat.
   await page.waitForTimeout(400);

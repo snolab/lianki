@@ -4314,7 +4314,9 @@ export function Study({
   }, [ROW_H]);
   // A scoped review's card in focus, per tab (ui-store.ts `focus`): a refresh
   // lands on the same card while it is still in the queue. Saved only once
-  // the stored one has been restored (the restore runs first, below).
+  // the stored one has been restored: the save is declared first, so on the
+  // commit that restores it still skips, and the opening's row 0 never
+  // overwrites the stored card.
   const focusKey = scope?.key;
   const focusRestored = useRef(false);
   const focusedAt = touch ? focusLine : row;
