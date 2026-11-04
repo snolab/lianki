@@ -28,6 +28,8 @@ import readWords from "@/app/(app)/read/read-words.content";
 import readReader from "@/app/(app)/read/read-reader.content";
 import readSelect from "@/app/(app)/read/read-select.content";
 import cliLogin from "@/app/(app)/cli-login/page.content";
+import connectionsPage from "@/app/(app)/connections/page.content";
+import readGdocDrive from "@/app/(app)/read/read-gdoc-drive.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -85,6 +87,8 @@ describe.each([
   ["read-reader", readReader],
   ["read-select", readSelect],
   ["cli-login-page", cliLogin],
+  ["connections-page", connectionsPage],
+  ["read-gdoc-drive", readGdocDrive],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

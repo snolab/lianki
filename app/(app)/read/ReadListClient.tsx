@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { isoDay, longDate } from "@/lib/dates";
 import type { WordsSummary } from "@/lib/read/progress";
 import { BookRing, WordCountText } from "./BookWords";
+import { GdocDriveImport } from "./GdocDriveImport";
+import { gdocUrlOf } from "@/lib/gdoc/url";
 
 export interface ReadMaterial {
   id: string;
@@ -54,10 +56,13 @@ function saveLocalMaterials(materials: ReadMaterial[]): void {
 export function ReadListClient({
   isLoggedIn,
   gdoc = false,
+  drive = false,
 }: {
   isLoggedIn: boolean;
   /** Google Docs import shown (the reader-v2 gate, page.tsx). */
   gdoc?: boolean;
+  /** Private docs through Google Drive offered (connectionsOn, docs/connections.md). */
+  drive?: boolean;
 }) {
   const router = useRouter();
   const [materials, setMaterials] = useState<ReadMaterial[]>([]);
@@ -76,6 +81,34 @@ export function ReadListClient({
   const [gdocUrl, setGdocUrl] = useState("");
   const [gdocBusy, setGdocBusy] = useState(false);
   const [gdocError, setGdocError] = useState("");
+  // A doc that is not shared by link: offer Google Drive instead (GdocDriveImport).
+  const [gdocPrivate, setGdocPrivate] = useState(false);
+  const [driveReturned, setDriveReturned] = useState<string | null>(null);
+
+  // Back from Google's consent screen (/read?gdoc=<id>&google=<result>):
+  // reopen the import on that doc with the Drive button, then clean the URL.
+  useEffect(() => {
+    if (!drive || !gdoc) return;
+    const q = new URLSearchParams(window.location.search);
+    const id = q.get("gdoc");
+    if (!id || !/^[A-Za-z0-9_-]{25,128}$/.test(id)) return;
+    setGdocOpen(true);
+    setGdocUrl(gdocUrlOf(id));
+    setGdocPrivate(true);
+    setDriveReturned(q.get("google"));
+    window.history.replaceState(null, "", "/read");
+  }, [drive, gdoc]);
+
+  const gdocErrorText = (code: string | undefined): string =>
+    ({
+      "bad-url": gdocText.errBadUrl.value,
+      "not-shared": gdocText.errNotShared.value,
+      "not-found": gdocText.errNotFound.value,
+      "too-large": gdocText.errTooLarge.value,
+      "too-much-text": gdocText.errTooLarge.value,
+      "no-text": gdocText.errNoText.value,
+      "rate-limited": gdocText.errRateLimited.value,
+    })[code ?? ""] ?? gdocText.errFailed.value;
 
   // Google Docs: the server fetches the doc's public export by its id
   // (app/api/read/gdoc); the same doc again updates that book.
@@ -83,6 +116,8 @@ export function ReadListClient({
     const url = gdocUrl.trim();
     if (!url) return;
     setGdocError("");
+    setGdocPrivate(false);
+    setDriveReturned(null);
     if (!/^(https?:\/\/)?docs\.google\.com\/document\//i.test(url)) {
       setGdocError(gdocText.errBadUrl.value);
       return;
@@ -96,16 +131,8 @@ export function ReadListClient({
       });
       if (!res.ok) {
         const code = ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
-        const msg: Record<string, string> = {
-          "bad-url": gdocText.errBadUrl.value,
-          "not-shared": gdocText.errNotShared.value,
-          "not-found": gdocText.errNotFound.value,
-          "too-large": gdocText.errTooLarge.value,
-          "too-much-text": gdocText.errTooLarge.value,
-          "no-text": gdocText.errNoText.value,
-          "rate-limited": gdocText.errRateLimited.value,
-        };
-        setGdocError(msg[code ?? ""] ?? gdocText.errFailed.value);
+        if (drive && code === "not-shared") setGdocPrivate(true);
+        else setGdocError(gdocErrorText(code));
         return;
       }
       const saved = await res.json();
@@ -327,6 +354,7 @@ export function ReadListClient({
                     setGdocOpen(false);
                     setGdocUrl("");
                     setGdocError("");
+                    setGdocPrivate(false);
                   }}
                   className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
                 >
@@ -344,6 +372,15 @@ export function ReadListClient({
           )}
           {isLoggedIn && gdoc && gdocOpen && (
             <p className="text-xs text-gray-500 dark:text-gray-400">{gdocText.note}</p>
+          )}
+          {isLoggedIn && gdoc && drive && gdocOpen && gdocPrivate && (
+            <GdocDriveImport
+              key={`${gdocUrl}|${driveReturned ?? ""}`}
+              url={gdocUrl}
+              returned={driveReturned}
+              errorText={gdocErrorText}
+              onImported={(id) => router.push(`/read/${id}`)}
+            />
           )}
           {gdocError && (
             <p

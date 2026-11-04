@@ -1,0 +1,128 @@
+# Connections (Google Drive)
+
+A **connection** lets Lianki open files a user chooses in another service.
+The first one is Google Drive, for importing the user's own **private Google
+Docs** into /read. Approved by the owner 2026-11-04 (Slack, ~16:20 JST).
+
+It is **separate from sign-in**. Signing in with Google is better-auth's
+`account` row with `openid email profile`; a connection is its own row in its
+own table, from its own OAuth flow. Disconnecting never signs anyone out, and
+signing out or unlinking the sign-in never touches a connection.
+
+Ships **dark**: flag `connections.google` (off) — while off, only the owner
+(`OWNER_EMAILS`) sees /connections and the Drive import; everyone else gets
+404. Turn it on at `/dev/flags` once the setup below is done and checked.
+
+## Flow
+
+1. **/connections** (signed in) shows Google Drive: status, account email,
+   granted access, Connect / Disconnect. Also linked from /profile.
+2. **Connect** → `POST /api/connections/google/start` (same-origin JSON,
+   10 per user per 10 min). The server makes a random `state` and a PKCE
+   verifier (S256), seals both with the user id and a 10-minute expiry into
+   an HttpOnly cookie `lk_gconn` (path `/api/connections/google`,
+   SameSite=Lax), and answers Google's consent URL:
+   scopes `openid email https://www.googleapis.com/auth/drive.file`,
+   `access_type=offline`, `prompt=consent` (a refresh token every time), never
+   `include_granted_scopes` (see `lib/google-auth-url.ts`: the shared GCP
+   project would fold unrelated scopes in and Google refuses the request).
+3. Google → **`GET /api/connections/google/callback`**. The cookie must open,
+   belong to the signed-in user, be unexpired, and its state must equal
+   Google's (constant time). The code is exchanged with the verifier; the
+   id token's `iss`/`aud`/`exp` are checked (it comes straight from Google's
+   token endpoint, so no signature check is needed, OIDC Core 3.1.3.7); the
+   refresh token is sealed into D1. Every outcome redirects to our own page
+   with a fixed word (`?google=connected|denied|failed|bad-state|…`).
+4. **Disconnect** → `POST /api/connections/google/disconnect`: revoke at
+   `oauth2.googleapis.com/revoke` (best effort), delete the row regardless.
+
+### Importing a private doc (/read)
+
+`drive.file` reaches only files the user opened with Lianki **through the
+Google Picker**, so:
+
+1. The user pastes a docs.google.com link in the /read Google Docs import
+   (the public-link import, `app/api/read/gdoc`, #513). When the public
+   export answers `not-shared`, the page offers **Choose in Google Drive**
+   (`app/(app)/read/GdocDriveImport.tsx`).
+2. That calls `POST /api/connections/google/picker` (30 per user per 10 min):
+   a short-lived `drive.file` access token, the Picker's browser key and the
+   project number. Not connected (409): to Google's consent first, back to
+   `/read?gdoc=<id>`, where the import reopens on that doc.
+3. The Picker (`lib/connections/picker-client.ts`, loaded on demand from
+   apis.google.com) opens **preselected on that doc** (`DocsView.setFileIds`);
+   picking it grants `drive.file` on exactly that file.
+4. `POST /api/read/gdoc {url, via: "drive"}`: the server gets the user's
+   access token (memory, else refresh), reads `files.get` (must be a Google
+   Docs document) and `files.export?mimeType=text/html` from
+   `www.googleapis.com/drive/v3/files/<id>` (`lib/gdoc/drive.ts`), then imports
+   exactly as the public path does: same parser, same `source_key`
+   `gdoc:<id>` dedupe, re-import updates the book in place.
+
+## Tokens at rest
+
+| what                   | where                                           |
+| ---------------------- | ----------------------------------------------- |
+| refresh token          | D1 `connection.refresh_enc`, AES-256-GCM sealed |
+| access token (≤ 1 h)   | the Worker isolate's memory; the browser's memory while the Picker is open |
+| state + PKCE verifier  | the sealed `lk_gconn` cookie, 10 min            |
+
+- **Key**: HKDF-SHA256 from `AUTH_SECRET`, one key per purpose (`info`
+  `lianki/connections/<purpose>/v1`), so no new Worker secret. AAD binds each
+  sealed value to its user (and provider), so a value copied to another row
+  or cookie does not open. Rotating `AUTH_SECRET` makes stored grants
+  unreadable: those connections show "connect again" and nothing else breaks.
+- A refused refresh (`invalid_grant`: the user removed Lianki at
+  myaccount.google.com) marks the row `reconnect`.
+- Tokens, codes and the cookie are never logged; log lines carry the user id
+  and an error word only. Google's error text is never shown or echoed.
+
+## Tables
+
+`db/migrations/0034_connection.sql` — `connection` (PK `user_id, provider`):
+`account_sub`, `account_email`, `scopes` (space-separated, as granted),
+`refresh_enc`, `status` (`ok` | `reconnect`), `created_ms`, `updated_ms`.
+`ON DELETE CASCADE` from `user`. Rate limits use `auth_throttle`
+(`lib/security/throttle.ts`).
+
+## Code
+
+| piece                                     | where                                           |
+| ----------------------------------------- | ----------------------------------------------- |
+| flow, storage, refresh, revoke            | `lib/connections/google.ts`                     |
+| sealing                                   | `lib/connections/crypto.ts`                     |
+| gate (`connectionsOn`)                    | `lib/connections/gate.ts`, route gate `lib/connections/route.ts` |
+| routes                                    | `app/api/connections/google/{start,callback,picker,disconnect}` |
+| page                                      | `app/(app)/connections/`                        |
+| Drive export                              | `lib/gdoc/drive.ts`; import in `app/api/read/gdoc/route.ts` |
+| Picker                                    | `lib/connections/picker-client.ts`, `app/(app)/read/GdocDriveImport.tsx` |
+| tests                                     | `unit/connections.test.ts`                      |
+
+## Owner setup (Google Cloud console, project of the sign-in client)
+
+Until these are done, /connections says "not available yet" and the Drive
+button says the same; nothing else is affected.
+
+1. **APIs & Services → Library**: enable **Google Drive API** and **Google
+   Picker API** (the Google Docs API is not used: the export is Drive's).
+2. **Google Auth Platform → Data Access → Add or remove scopes**: add
+   `https://www.googleapis.com/auth/drive.file` (non-sensitive, no
+   verification), Save.
+3. **Google Auth Platform → Clients →** the web client whose id is
+   `AUTH_GOOGLE_ID` **→ Authorized redirect URIs → Add URI**:
+   `https://lianki.com/api/connections/google/callback`, Save. (Local dev,
+   optional: `http://localhost:3000/api/connections/google/callback`.)
+4. **APIs & Services → Credentials → Create credentials → API key**; edit it:
+   Application restrictions **Websites** `https://lianki.com/*`, API
+   restrictions **Google Picker API** only. Then
+   `bunx wrangler secret put GOOGLE_PICKER_API_KEY` and paste it at the
+   prompt (it is a browser key, but keep it out of chat and code anyway).
+5. **Project number** (the Picker's app id): **IAM & Admin → Settings**. It
+   is normally the numeric prefix of `AUTH_GOOGLE_ID`, which the code uses by
+   default; only if it differs, `bunx wrangler secret put GOOGLE_PICKER_APP_ID`.
+6. If the consent screen's **Audience** is "Testing", the account must be a
+   listed test user (or publish the app; `drive.file` needs no review).
+
+Then on lianki.com (owner): /connections → Connect → /read → paste a private
+doc's link → Choose in Google Drive. When it works, `connections.google` on
+at `/dev/flags` opens it to everyone.
