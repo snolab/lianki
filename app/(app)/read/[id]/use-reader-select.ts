@@ -39,6 +39,14 @@ import {
   snapIndices,
 } from "@/lib/read/reader-select";
 
+/** The Li chat's own elements (packages/debug-chat): its taps and selections are not the reader's. */
+export const CHAT_SELECTOR = "[data-debug-chat], [data-debug-widget]";
+
+/** The event happened in the chat (through a shadow root too). */
+export function inChat(e: Pick<Event, "composedPath">): boolean {
+  return e.composedPath().some((n) => n instanceof Element && n.matches(CHAT_SELECTOR));
+}
+
 /** A hand selection has settled once `selectionchange` is this quiet (ms). */
 export const SETTLE_MS = 350;
 
@@ -245,6 +253,8 @@ export function useReaderSelect(o: {
       const r = s.getRangeAt(0);
       // A selection in the card or the chrome, not in the book: not ours.
       if (!r.intersectsNode(root)) return;
+      // A selection that starts in the chat (copying a message) is the chat's.
+      if (s.anchorNode?.parentElement?.closest(CHAT_SELECTOR)) return;
       if (s.anchorNode instanceof Node && s.anchorNode.parentElement?.closest("[data-select-card]"))
         return;
       const u = snapDomRange(root, r);
@@ -298,6 +308,9 @@ export function useReaderSelect(o: {
     const click = (e: MouseEvent) => {
       const root = o.listRef.current;
       if (!root) return;
+      // The chat over the book (its copy button, a tap on its text): not the
+      // reader's tap, and it must not clear what is selected there.
+      if (inChat(e)) return;
       const target = e.target as Element | null;
       if (target?.closest?.("[data-select-card]")) return;
       const hit = inBook(target) || root.contains(document.elementFromPoint(e.clientX, e.clientY));
