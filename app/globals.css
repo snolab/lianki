@@ -382,6 +382,14 @@ html[data-motion="off"] .lk-ex-spoken {
     transparent
   );
 }
+/* An example cell following the word read aloud (lib/words/spoken-scroll.ts):
+ * the person may scroll it by touch, with no scrollbar showing. */
+.lk-ex-follow {
+  scrollbar-width: none;
+}
+.lk-ex-follow::-webkit-scrollbar {
+  display: none;
+}
 /* Focus = this slip's cords come loose (.slip-cords) and the slip lifts a
  * little off its neighbours. */
 .slip-loose {

@@ -123,6 +123,14 @@ import {
   spokenWord,
   type Span as SpokenSpan,
 } from "@/lib/words/spoken-word";
+import {
+  FOLLOW_ATTR,
+  registerFollower,
+  spokenFollower,
+  spokenMoved,
+  type Follower,
+} from "@/lib/words/spoken-scroll";
+import { aimAt, scrollToAim } from "@/lib/words/centre-in";
 import { SOUND_LOOP_KEY, createSequencer, rowReading } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
@@ -519,6 +527,7 @@ export function MarkedExample({
   const known = fam?.get(famLang(lang));
   const spans = targetSpans(text, forms, lang, heads?.get(famLang(lang)));
   const spoken = useSpokenSpan(text);
+  const spokenEl = useSpokenFollow(spoken);
   if (!known && !spans.length && !spoken) return <>{text}</>;
   const piece = (p: Piece & { spoken: boolean }, k: number) => {
     const mark = known && p.word ? famMark(known.get(p.word)) : null;
@@ -532,7 +541,7 @@ export function MarkedExample({
     // The word being read aloud (lib/words/spoken-word.ts): its own style,
     // beside the card word's highlight.
     return p.spoken ? (
-      <span key={k} className="lk-ex-spoken" data-ex-spoken>
+      <span key={k} ref={spokenEl} className="lk-ex-spoken" data-ex-spoken>
         {inner}
       </span>
     ) : (
@@ -572,6 +581,22 @@ function useSpokenSpan(text: string): SpokenSpan | null {
   if (!key) return null;
   const [a, b] = key.split(":").map(Number);
   return [a, b];
+}
+
+/**
+ * The cell this example is in follows the lit word (lib/words/spoken-scroll.ts):
+ * told after each move is painted, and when the reading ends here (or this
+ * example goes away). Returns the ref for the lit word's span.
+ */
+function useSpokenFollow(spoken: SpokenSpan | null) {
+  const el = useRef<HTMLSpanElement>(null);
+  const cell = useRef<Follower | null>(null);
+  const key = spoken ? `${spoken[0]}:${spoken[1]}` : "";
+  useLayoutEffect(() => {
+    cell.current = spokenMoved(key ? el.current : null, cell.current);
+  }, [key]);
+  useLayoutEffect(() => () => void cell.current?.end(), []);
+  return el;
 }
 
 /** The browser's animation frames, for the spoken-word followers. */
@@ -1408,6 +1433,10 @@ const ROW_LINE_LH = 1.25;
  * the cell (owner, 2026-11-04 21:44 JST): its line, or its centre on one
  * line. The cell itself scrolls (scrollTop / scrollLeft), never the page;
  * smoothly on the active row unless motion is off.
+ *
+ * While its example is read aloud, the cell follows the lit word
+ * (lib/words/spoken-scroll.ts): unclamped, no slide, scrollable by touch, and
+ * back at the card word when the reading ends.
  */
 function Glance({
   active,
@@ -1428,6 +1457,54 @@ function Glance({
   const [over, setOver] = useState(0);
   /** How far the cell scrolls to bring its card word to the middle; 0 = not needed. */
   const [aim, setAim] = useState(0);
+  const aimNow = useRef(0);
+  aimNow.current = aim;
+  /** Its example is being read aloud, and the cell follows the lit word. */
+  const [following, setFollowing] = useState(false);
+  const follower = useRef<Follower | null>(null);
+  useLayoutEffect(() => {
+    const o = outer.current;
+    if (!o) return;
+    let settle: (() => void) | null = null;
+    const unsettle = () => {
+      settle?.();
+      settle = null;
+    };
+    const f = spokenFollower(o, {
+      inner: () => inner.current,
+      wrap,
+      lines,
+      lh: () => lineHeightOf(o),
+      rtl: () => !wrap && getComputedStyle(o).direction === "rtl",
+      smooth: () => !motionOff(),
+      home: () => aimNow.current,
+      following(on) {
+        unsettle();
+        if (on) return setFollowing(true);
+        // Clamped again only once the scroll home has settled, so it glides.
+        const off = () => {
+          unsettle();
+          setFollowing(false);
+        };
+        const there = wrap
+          ? Math.abs(o.scrollTop - aimNow.current) < 1
+          : Math.abs(Math.abs(o.scrollLeft) - aimNow.current) < 1;
+        if (there || motionOff() || !("onscrollend" in window)) return off();
+        o.addEventListener("scrollend", off, { once: true });
+        settle = () => o.removeEventListener("scrollend", off);
+      },
+    });
+    follower.current = f;
+    const unregister = registerFollower(o, f);
+    return () => {
+      unregister();
+      unsettle();
+      follower.current = null;
+    };
+  }, [wrap, lines]);
+  useLayoutEffect(() => {
+    if (following) follower.current?.relayout();
+  }, [following]);
   useLayoutEffect(() => {
     const o = outer.current;
     const i = inner.current;
@@ -1438,7 +1515,9 @@ function Glance({
     // inline span's own scrollWidth is always 0).
     const measure = () => {
       const t = i.querySelector<HTMLElement>("[data-ex-target]");
-      const shift = t ? aimAt(o, i, t, wrap, lines) : 0;
+      const shift = t
+        ? aimAt(o, i, t, wrap, lines, lineHeightOf(o), getComputedStyle(o).direction === "rtl")
+        : 0;
       setAim(shift);
       if (!active || shift) return setOver(0);
       // Wrapped: clamped, the inner box's own overflow; sliding (unclamped),
@@ -1455,16 +1534,13 @@ function Glance({
   }, [active, children, title, wrap, lines]);
   useLayoutEffect(() => {
     const o = outer.current;
-    if (!o || !(aim || o.scrollTop || o.scrollLeft)) return;
+    if (!o || follower.current?.on || !(aim || o.scrollTop || o.scrollLeft)) return;
     const rtl = !wrap && getComputedStyle(o).direction === "rtl";
-    o.scrollTo({
-      ...(wrap ? { top: aim } : { left: rtl ? -aim : aim }),
-      behavior: active && !motionOff() ? "smooth" : "auto",
-    });
+    scrollToAim(o, aim, wrap, rtl, active && !motionOff());
   }, [aim, active, wrap]);
   useEffect(() => {
     const i = inner.current;
-    if (!over || !i || motionOff()) return;
+    if (!over || following || !i || motionOff()) return;
     const move = moveSeconds(over, GLANCE_ACCEL);
     const total = GLANCE_HOLD_START + move + GLANCE_HOLD_END + move;
     const at = (s: number) => s / total;
@@ -1484,22 +1560,27 @@ function Glance({
       { duration: total * 1000, iterations: Infinity },
     );
     return () => anim.cancel();
-  }, [over, wrap]);
+  }, [over, wrap, following]);
+  const follow = { [FOLLOW_ATTR]: "" };
+  const clip = following ? "overflow-auto lk-ex-follow" : "overflow-hidden";
   if (wrap)
     return (
       <span
         ref={outer}
         title={title}
-        className={`${className} overflow-hidden whitespace-normal [overflow-wrap:anywhere]`}
+        className={`${className} ${clip} whitespace-normal [overflow-wrap:anywhere]`}
         style={{ maxHeight: `${lines * ROW_LINE_LH}em`, lineHeight: ROW_LINE_LH }}
+        {...follow}
       >
         <span
           ref={inner}
           className={
-            over || aim ? "block will-change-transform" : "block overflow-hidden text-ellipsis"
+            over || aim || following
+              ? "block will-change-transform"
+              : "block overflow-hidden text-ellipsis"
           }
           style={
-            over || aim
+            over || aim || following
               ? undefined
               : { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: lines }
           }
@@ -1512,44 +1593,19 @@ function Glance({
     <span
       ref={outer}
       title={title}
-      className={`${className} overflow-hidden whitespace-nowrap ${over || aim ? "" : "text-ellipsis"} ${aim ? "lk-ex-aimed" : ""}`}
+      className={`${className} ${clip} whitespace-nowrap ${over || aim || following ? "" : "text-ellipsis"} ${aim || following ? "lk-ex-aimed" : ""}`}
+      {...follow}
     >
-      <span ref={inner} className={over ? "inline-block will-change-transform" : ""}>
+      <span ref={inner} className={over && !following ? "inline-block will-change-transform" : ""}>
         {children}
       </span>
     </span>
   );
 }
 
-/**
- * How far a Glance cell scrolls so its card word `t` is in the middle, or 0
- * when the word is in view unscrolled. Wrapped: whole lines, the word's first
- * line in the middle line (the first of two, so the sentence reads on). One
- * line: the word's centre at the cell's centre, from the line's start side.
- */
-function aimAt(
-  o: HTMLElement,
-  i: HTMLElement,
-  t: HTMLElement,
-  wrap: boolean,
-  lines: number,
-): number {
-  const r = t.getClientRects()[0];
-  if (!r) return 0;
-  const ir = i.getBoundingClientRect();
-  if (wrap) {
-    const lh = parseFloat(getComputedStyle(o).fontSize) * ROW_LINE_LH;
-    if (!lh) return 0;
-    const line = Math.floor((r.top - ir.top + r.height / 2) / lh);
-    if (line < lines) return 0;
-    const last = Math.max(0, Math.round(i.scrollHeight / lh) - lines);
-    return Math.max(0, Math.min(line - Math.floor((lines - 1) / 2), last)) * lh;
-  }
-  const rtl = getComputedStyle(o).direction === "rtl";
-  const start = rtl ? ir.right - r.right : r.left - ir.left;
-  if (start + r.width <= o.clientWidth) return 0;
-  const room = o.scrollWidth - o.clientWidth;
-  return Math.max(0, Math.min(start + r.width / 2 - o.clientWidth / 2, room));
+/** A Glance cell's line height, px. */
+function lineHeightOf(o: HTMLElement): number {
+  return parseFloat(getComputedStyle(o).fontSize) * ROW_LINE_LH;
 }
 
 /**
