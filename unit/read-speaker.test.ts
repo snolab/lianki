@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import { createReadSpeaker, WATCHDOG_MS, type UtterLike, type AudioLike } from "@/lib/read/speaker";
 import { captureHeld, createPageAudio } from "@lianki/debug-chat/page-audio";
+import { AUDIO_PRIO, audioOwner } from "@lianki/debug-chat/audio-claim";
 
 type Timer = { f: () => void; at: number; id: number };
 type FakeAudio = AudioLike & { plays: string[]; loads: string[] };
@@ -11,6 +12,8 @@ function setup(
     mode?: "speech" | "cloud";
     fetchOk?: boolean;
     held?: boolean;
+    /** The page the audio owner claims on (absent: no owner). */
+    claims?: EventTarget;
   } = {},
 ) {
   let t = 0;
@@ -116,6 +119,7 @@ function setup(
     setTimer,
     clearTimer,
     log: (e) => void logs.push(e),
+    owner: o.claims ? (h) => audioOwner({ ...h, id: "read", target: o.claims }) : undefined,
   });
   const result: string[] = [];
   const cb = {
@@ -520,5 +524,104 @@ describe("read speaker: no wait between sentences", () => {
     x.advance(WATCHDOG_MS);
     await flush();
     expect(x.fetched.map(text)).toEqual(["Deux."]);
+  });
+});
+
+// Owner, 2026-11-05 03:05–03:06 JST: the word review and Li's voice pause the
+// paragraph read aloud, which goes on from the same sentence after.
+describe("read speaker: pauses for a higher sound, resumes at the same sentence", () => {
+  const text = (u: string) => new URL(u, "https://x").searchParams.get("text");
+  const li = (claims: EventTarget) => audioOwner({ id: "li", prio: AUDIO_PRIO.li, target: claims });
+  const said = (p: { src: string }) => p.src.split(":").at(-1);
+
+  it("cloud: Li speaking pauses sentence 2; Li done, sentence 2 plays again", async () => {
+    const claims = new EventTarget();
+    const x = setup({ mode: "cloud", claims });
+    const parts: number[] = [];
+    x.sp.speak(["Un.", "Deux.", "Trois."], "fr", { ...x.cb, onpart: (p) => parts.push(p) });
+    await flush();
+    await flush();
+    x.audios[0].onended?.();
+    expect(x.played.map(said)).toEqual(["Un.", "Deux."]);
+    const playing = x.audio;
+    let pauses = 0;
+    playing.pause = () => void pauses++;
+    const voice = li(claims);
+    voice.claim();
+    expect(pauses).toBeGreaterThan(0);
+    // Its `ended` after the pause is the old attempt's: ignored.
+    playing.onended?.();
+    expect(x.played.length).toBe(2);
+    voice.release();
+    await flush();
+    await flush();
+    expect(x.played.map(said)).toEqual(["Un.", "Deux.", "Deux."]);
+    // From memory: nothing fetched twice.
+    expect(new Set(x.fetched.map(text)).size).toBe(x.fetched.length);
+    expect(x.result).toEqual([]);
+    x.audio.onended?.();
+    await flush();
+    x.audio.onended?.();
+    expect(x.result).toEqual(["end"]);
+    expect(parts).toEqual([0, 1, 2]);
+  });
+
+  it("speech: the word review open pauses it; closed, the same sentence is said again", () => {
+    const claims = new EventTarget();
+    const x = setup({ voices: [FR], claims });
+    x.sp.speak("Un. Deux. Trois.", "fr", x.cb);
+    x.spoken[0].onstart?.();
+    x.spoken[0].onend?.();
+    x.spoken[1].onstart?.();
+    const review = audioOwner({ id: "review", prio: AUDIO_PRIO.card, target: claims });
+    const before = x.cancels();
+    review.claim();
+    expect(x.cancels()).toBe(before + 1);
+    x.spoken[1].onerror?.({ error: "interrupted" });
+    x.spoken[1].onend?.();
+    expect(x.result).toEqual([]);
+    const n = x.spoken.length;
+    review.release();
+    expect(x.spoken.slice(n).map((u) => u.text)).toEqual(["Deux."]);
+  });
+
+  it("a paragraph started while Li speaks waits, then reads from its start", () => {
+    const claims = new EventTarget();
+    const x = setup({ voices: [FR], claims });
+    const voice = li(claims);
+    voice.claim();
+    x.sp.speak("Un. Deux.", "fr", x.cb);
+    expect(x.spoken).toEqual([]);
+    x.advance(WATCHDOG_MS * 2);
+    expect(x.result).toEqual([]);
+    voice.release();
+    expect(x.spoken.map((u) => u.text)).toEqual(["Un."]);
+  });
+
+  it("stop while paused cancels nothing (Li keeps talking) and never resumes", () => {
+    const claims = new EventTarget();
+    const x = setup({ voices: [FR], claims });
+    const stop = x.sp.speak("Un. Deux.", "fr", x.cb);
+    x.spoken[0].onstart?.();
+    const voice = li(claims);
+    voice.claim();
+    const before = x.cancels();
+    stop();
+    expect(x.cancels()).toBe(before);
+    voice.release();
+    expect(x.spoken.length).toBe(2);
+    expect(x.result).toEqual([]);
+  });
+
+  it("a line that ends lets the page go", () => {
+    const claims = new EventTarget();
+    const x = setup({ voices: [FR], claims });
+    let released = 0;
+    claims.addEventListener("lk:audio-release", () => released++);
+    x.sp.speak("Un.", "fr", x.cb);
+    x.spoken[0].onstart?.();
+    x.spoken[0].onend?.();
+    expect(x.result).toEqual(["end"]);
+    expect(released).toBe(1);
   });
 });

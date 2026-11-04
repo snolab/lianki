@@ -2,6 +2,11 @@
  * Plays a row's parts (word → example → meaning) back to back, once or on a
  * loop. A new play() or stop() interrupts: nothing of the old sequence runs
  * after it, even a part that reports done late.
+ *
+ * With `owner` (packages/debug-chat/src/audio-claim.ts) a sequence claims the
+ * page's audio before it plays. Li speaking pauses it (the part playing is
+ * cut) and, when Li's line ends, the same part is said again from its start.
+ * A claim refused (Li is speaking) waits for it the same way.
  */
 
 export type SequencerDeps<P> = {
@@ -19,6 +24,11 @@ export type SequencerDeps<P> = {
   gapMs?: number;
   /** Before a loop starts over. */
   repeatMs?: number;
+  /** The page's audio owner, made once for this sequencer. */
+  owner?: (h: { onYield(): void; onResume(): void }) => {
+    claim(): boolean;
+    release(): void;
+  };
 };
 
 export type PlayOptions = {
@@ -36,22 +46,45 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
   let timer: unknown;
   /** The sequence playing now, if any: its tag, and whether it still loops. */
   let current: { tag: string; loop: boolean } | null = null;
+  /** Paused for a higher sound: goes on with the part it was saying. */
+  let parked: (() => void) | null = null;
+  /** Set by play(): cuts the part playing and keeps the place. */
+  let park: () => void = () => {};
+  const owner =
+    deps.owner?.({
+      onYield: () => {
+        if (current && !parked) park();
+      },
+      onResume: () => {
+        const go = parked;
+        parked = null;
+        go?.();
+      },
+    }) ?? null;
 
-  const stop = () => {
+  /** `keep`: a new sequence follows at once, so the page is not let go in between. */
+  const halt = (keep: boolean) => {
     generation++;
     current = null;
+    // Paused for Li: nothing of ours plays, and cancel() would cut Li's voice.
+    const wasParked = !!parked;
+    parked = null;
     deps.clearTimeout(timer);
-    deps.cancel();
+    if (!wasParked) deps.cancel();
+    if (!keep) owner?.release();
   };
+  const stop = () => halt(false);
 
   const play = (parts: P[], opts: PlayOptions = {}) => {
-    stop();
+    halt(parts.length > 0);
     if (!parts.length) return;
-    const gen = generation;
+    let gen = generation;
     const cur = { tag: opts.tag ?? "", loop: !!opts.loop };
     current = cur;
     const end = () => {
-      if (current === cur) current = null;
+      if (current !== cur) return;
+      current = null;
+      owner?.release();
     };
     let i = 0;
     /** Something played this round: a loop where nothing can play ends. */
@@ -71,6 +104,22 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
         timer = deps.setTimeout(next, repeat);
       });
     };
+    /** Go on with part `i` when the page is ours again. */
+    const resumeLater = () => {
+      parked = () => {
+        if (current !== cur) return;
+        gen = ++generation;
+        next();
+      };
+    };
+    park = () => {
+      // The part playing is cut; its late `done` is ignored (a new generation).
+      generation++;
+      deps.clearTimeout(timer);
+      deps.cancel();
+      resumeLater();
+    };
+    if (owner && !owner.claim()) return resumeLater();
     if (opts.delayMs) timer = deps.setTimeout(next, opts.delayMs);
     else next();
   };

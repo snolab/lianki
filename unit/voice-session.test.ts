@@ -24,6 +24,7 @@ import {
   voice,
 } from "@lianki/debug-chat/voice";
 import { RESUME_REWIND_S, createCloudOut } from "@lianki/debug-chat/voice-out";
+import { AUDIO_CLAIM, AUDIO_PRIO, audioOwner } from "@lianki/debug-chat/audio-claim";
 
 describe("sentences", () => {
   it("cuts Latin text after . ! ? before a space or the end, keeping 3.14 and e.g. whole", () => {
@@ -64,7 +65,9 @@ describe("sentences", () => {
 });
 
 /** speechSynthesis in memory: one utterance at a time is all the session ever gives it. */
-function harness(o: { enabled?: boolean; here?: boolean } = {}) {
+function harness(
+  o: { enabled?: boolean; here?: boolean; owner?: { claim(): boolean; release(): void } } = {},
+) {
   const spoken: (UtterLike & { lang: string })[] = [];
   let cancels = 0;
   const flags = { enabled: o.enabled ?? true, here: o.here ?? false, synth: true };
@@ -81,6 +84,7 @@ function harness(o: { enabled?: boolean; here?: boolean } = {}) {
       ({ text, lang, onend: null, onerror: null, onboundary: null }) as UtterLike,
     enabled: () => flags.enabled,
     here: () => flags.here,
+    owner: o.owner,
     setTimer: (f, ms) => {
       const t = { f, ms, live: true };
       timers.push(t);
@@ -104,6 +108,37 @@ function harness(o: { enabled?: boolean; here?: boolean } = {}) {
   v.subscribe((s) => states.push(s.speaking));
   return { v, spoken, texts, end, fire, live, flags, timers, states, cancels: () => cancels };
 }
+
+describe("voice session: Li owns the page's audio while speaking (audio-claim.ts)", () => {
+  it("claims before the first sentence is spoken, and lets go after the tail", () => {
+    const target = new EventTarget();
+    const log: string[] = [];
+    const reader = audioOwner({
+      id: "para",
+      prio: AUDIO_PRIO.para,
+      target,
+      onYield: () => void log.push("para yield"),
+      onResume: () => void log.push("para resume"),
+    });
+    reader.claim();
+    let spokenAtYield = -1;
+    const h = harness({
+      enabled: true,
+      here: true,
+      owner: audioOwner({ id: "li", prio: AUDIO_PRIO.li, target }),
+    });
+    target.addEventListener(AUDIO_CLAIM, () => void (spokenAtYield = h.spoken.length));
+    expect(h.v.reply("One. Two.")).toBe(true);
+    // The reader paused before Li's utterance went to the engine.
+    expect(spokenAtYield).toBe(0);
+    expect(log).toEqual(["para yield"]);
+    h.end();
+    h.end();
+    expect(log).toEqual(["para yield"]);
+    h.fire(RESUME_TAIL_MS);
+    expect(log).toEqual(["para yield", "para resume"]);
+  });
+});
 
 describe("voice session: the focus rule (mic off)", () => {
   it("reads only with the speaker on and the input focused here", () => {

@@ -27,6 +27,7 @@ import Link from "next/link";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { type Virtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
+import { AUDIO_PRIO, audioOwner, audioOwnerId } from "@lianki/debug-chat/audio-claim";
 import { createUiStore, useUi } from "@lianki/ui-state";
 import type { ReadMaterial } from "../ReadListClient";
 import { chapterAt, type BookMeta } from "@/lib/read/book";
@@ -977,6 +978,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const reviewBack = useRef<HTMLElement | null>(null);
   const famChanged = useCallback(() => setFamTick((n) => n + 1), []);
   const closeReview = useCallback(() => setReview(null), []);
+  // While the review is open the paragraph read aloud pauses; on close it goes
+  // on from the same sentence (packages/debug-chat/src/audio-claim.ts).
+  const reviewOpen = !!review;
+  useEffect(() => {
+    if (!reviewOpen) return;
+    const o = audioOwner({ id: audioOwnerId("read-review"), prio: AUDIO_PRIO.card });
+    o.claim();
+    return () => o.release();
+  }, [reviewOpen]);
   /** A line's sentences, or null for a blank line. */
   const lineSentences = useCallback(
     (l: number) => (lines[l]?.trim() ? para(l).sentences : null),

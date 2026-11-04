@@ -24,6 +24,7 @@ import { progressPercent } from "@/lib/words/progress";
 import { ProgressRingSvg } from "@/app/components/progress-ring";
 import { voiceQuality } from "@lianki/debug-chat/wire";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
+import { AUDIO_PRIO, audioOwner, audioOwnerId } from "@lianki/debug-chat/audio-claim";
 import { AEC_EVENT, aecOn, applyAec } from "@lianki/debug-chat/aec";
 import {
   createContext,
@@ -1268,6 +1269,8 @@ function useSpeech(serverVoice = false) {
         cancel,
         setTimeout: (fn, ms) => setTimeout(fn, ms),
         clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+        // A word read aloud pauses the reader's paragraph, and pauses for Li (audio-claim.ts).
+        owner: (h) => audioOwner({ ...h, id: audioOwnerId("words"), prio: AUDIO_PRIO.card }),
       }),
     [cancel],
   );
