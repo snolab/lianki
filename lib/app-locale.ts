@@ -25,6 +25,8 @@ export const APP_ROUTES = [
   "cli-login",
   "ai-vocab",
   "alphabet",
+  // app/auth/logout, outside app/(app)/: the sign-out page (lib/sign-out.ts).
+  "auth",
   "books",
   "connections",
   "contact",

@@ -260,6 +260,8 @@ log("server ready");
 const suites = [
   ["API  (qa-api)", "bun", ["scripts/qa/qa-api.mjs"], { QA_BASE: BASE }],
   ["UI   (qa-ui)", "bun", ["scripts/qa/qa-ui.mjs"], { QA_BASE: BASE }],
+  // The menu's Sign out on the Worker build, Chromium + WebKit (lib/sign-out.ts).
+  ["SIGN OUT (qa-sign-out)", "bun", ["scripts/qa/qa-sign-out.mjs"], { QA_BASE: BASE }],
   ["WORDS (qa-words)", "bun", ["scripts/qa/qa-words.mjs"], { QA_BASE: BASE }],
   ["READ EPUB (qa-read-epub)", "bun", ["scripts/qa/qa-read-epub.mjs"], { QA_BASE: BASE }],
   ["READ PLAY (qa-read-play)", "bun", ["scripts/qa/qa-read-play.mjs"], { QA_BASE: BASE }],
