@@ -97,6 +97,7 @@ for (const [method, path] of [
   ["POST", "/api/dev/dev-tokens"],
   ["POST", "/api/dev/dev-handoff"],
   ["GET", "/dev/tokens"],
+  ["GET", "/dev/preview?to=%2Fen%2Fread"],
   ["GET", "/dev/users"],
   ["GET", "/dev/gift-codes"],
 ]) {
