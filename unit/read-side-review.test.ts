@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { cutPara, type Fam } from "@/lib/read/reader-model";
-import { dueBookWords, findWord, sideKindOf } from "@/lib/read/side-review";
+import { dueBookWords, findWord, sideCardOf, sideKindOf } from "@/lib/read/side-review";
 import { WORD_STATS_V, type WordStats } from "@/lib/read/words";
 import { sideReviewOn } from "@/lib/read/reader-book";
 
@@ -58,5 +58,18 @@ describe("findWord", () => {
     expect(back && [back.line, back.w]).toEqual([2, "cat"]);
     const done = (w: string) => sideKindOf(w, fam, new Set(["cat"]), new Set(["cat"]));
     expect(findWord({ line: 0, t: -1 }, 1, "due", lines.length, ss, done)).toBeNull();
+  });
+});
+
+describe("sideCardOf", () => {
+  it("shows his card for the word, or the word as new", () => {
+    const items = [
+      { w: "chat", term: "chat", card: "{}" },
+      { w: "chien", term: "chien", card: null },
+    ];
+    expect(sideCardOf(items, "chien")).toEqual({ kind: "card", item: items[1] });
+  });
+  it("a word the session leaves out (in none of his decks, a name) is cardless, not an error", () => {
+    expect(sideCardOf([], "marie")).toEqual({ kind: "cardless" });
   });
 });

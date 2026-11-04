@@ -188,6 +188,8 @@ export async function scopeSession(
   words: RangeWord[],
   gloss?: Gloss,
   now: Date = new Date(),
+  /** Also cards not due yet: the side review's card for a word he clicked (docs/books-plan.md). */
+  all = false,
 ): Promise<{ items: ScopeItem[]; lists: WordList[]; missing: string[] }> {
   const matched = await matchAll(db, email, book, words);
   const missing = matched.filter((m) => !m.hit).map((m) => m.x.w);
@@ -241,7 +243,7 @@ export async function scopeSession(
       ),
     );
   await runAll(db, backfillStatements(db, email, fill));
-  const shown = items.filter((it) => isDueCard(it.card, now));
+  const shown = all ? items : items.filter((it) => isDueCard(it.card, now));
   const ids = new Set(shown.map((it) => it.listId));
   const lists = (await new WordsD1Repo(db, email).lists()).filter((l) => ids.has(l.id));
   return { items: shown, lists, missing };

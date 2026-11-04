@@ -5,7 +5,7 @@ import { describeKeys } from "@/lib/i18n-context";
  * The reader v2's side-by-side word review on /read/[id]
  * (reader-side-review.tsx): the book stays on screen and one flashcard of
  * the Words page sits beside it (below it on a phone); the learner jumps to
- * the next word of the text that is due for review or new to them, reveals
+ * the next word of the text that is due for review or new to them, reads
  * its meaning, and grades it Again / Hard / Good / Easy.
  */
 const dictionary = {
@@ -119,24 +119,6 @@ const dictionary = {
       sw: "Neno linalofuata ({kind})",
       mr: "पुढील {kind} शब्द",
     }),
-    reveal: t({
-      en: "Show the meaning",
-      zh: "显示释义",
-      ja: "意味を表示",
-      ko: "뜻 보기",
-      hi: "अर्थ दिखाएँ",
-      es: "Mostrar el significado",
-      fr: "Afficher le sens",
-      ar: "أظهر المعنى",
-      bn: "অর্থ দেখান",
-      pt: "Mostrar o significado",
-      ru: "Показать значение",
-      ur: "معنی دکھائیں",
-      id: "Tampilkan arti",
-      de: "Bedeutung zeigen",
-      sw: "Onyesha maana",
-      mr: "अर्थ दाखवा",
-    }),
     say: t({
       en: "Say the word",
       zh: "朗读这个词",
@@ -228,22 +210,76 @@ const dictionary = {
       mr: "इथून पुढे उजळणीचे किंवा नवीन शब्द नाहीत.",
     }),
     keys: t({
-      en: "D / N next due / new · Shift+D / N back · Space meaning · 1–4 grade · Z undo · Esc close",
-      zh: "D / N 下一个到期词 / 新词 · Shift+D / N 往回 · 空格 释义 · 1–4 打分 · Z 撤销 · Esc 关闭",
-      ja: "D / N 次の復習期限 / 新しい単語 · Shift+D / N 戻る · Space 意味 · 1–4 評価 · Z 元に戻す · Esc 閉じる",
-      ko: "D / N 다음 복습 / 새 단어 · Shift+D / N 이전 · Space 뜻 · 1–4 평가 · Z 실행 취소 · Esc 닫기",
-      hi: "D / N अगला दोहराने योग्य / नया · Shift+D / N पीछे · Space अर्थ · 1–4 ग्रेड · Z पूर्ववत · Esc बंद",
-      es: "D / N siguiente pendiente / nueva · Shift+D / N atrás · Espacio significado · 1–4 calificar · Z deshacer · Esc cerrar",
-      fr: "D / N mot à réviser / nouveau suivant · Maj+D / N retour · Espace sens · 1–4 noter · Z annuler · Échap fermer",
-      ar: "D / N الكلمة المستحقة / الجديدة التالية · Shift+D / N رجوع · المسافة المعنى · 1–4 تقييم · Z تراجع · Esc إغلاق",
-      bn: "D / N পরের ঝালাইয়ের / নতুন · Shift+D / N পেছনে · Space অর্থ · 1–4 গ্রেড · Z আগের অবস্থা · Esc বন্ধ",
-      pt: "D / N próxima pendente / nova · Shift+D / N voltar · Espaço significado · 1–4 avaliar · Z desfazer · Esc fechar",
-      ru: "D / N следующее к повторению / новое · Shift+D / N назад · Пробел значение · 1–4 оценка · Z отменить · Esc закрыть",
-      ur: "D / N اگلا دہرائی والا / نیا · Shift+D / N پیچھے · Space معنی · 1–4 درجہ · Z واپس · Esc بند",
-      id: "D / N kata jatuh tempo / baru berikutnya · Shift+D / N mundur · Spasi arti · 1–4 nilai · Z urungkan · Esc tutup",
-      de: "D / N nächstes fälliges / neues · Umschalt+D / N zurück · Leertaste Bedeutung · 1–4 bewerten · Z rückgängig · Esc schließen",
-      sw: "D / N linalosubiri / jipya linalofuata · Shift+D / N rudi · Nafasi maana · 1–4 tathmini · Z tendua · Esc funga",
-      mr: "D / N पुढील उजळणीचा / नवीन · Shift+D / N मागे · Space अर्थ · 1–4 श्रेणी · Z पूर्ववत · Esc बंद",
+      en: "D / N next due / new · Shift+D / N back · 1–4 grade · Z undo · Esc close",
+      zh: "D / N 下一个到期词 / 新词 · Shift+D / N 往回 · 1–4 打分 · Z 撤销 · Esc 关闭",
+      ja: "D / N 次の復習期限 / 新しい単語 · Shift+D / N 戻る · 1–4 評価 · Z 元に戻す · Esc 閉じる",
+      ko: "D / N 다음 복습 / 새 단어 · Shift+D / N 이전 · 1–4 평가 · Z 실행 취소 · Esc 닫기",
+      hi: "D / N अगला दोहराने योग्य / नया · Shift+D / N पीछे · 1–4 ग्रेड · Z पूर्ववत · Esc बंद",
+      es: "D / N siguiente pendiente / nueva · Shift+D / N atrás · 1–4 calificar · Z deshacer · Esc cerrar",
+      fr: "D / N mot à réviser / nouveau suivant · Maj+D / N retour · 1–4 noter · Z annuler · Échap fermer",
+      ar: "D / N الكلمة المستحقة / الجديدة التالية · Shift+D / N رجوع · 1–4 تقييم · Z تراجع · Esc إغلاق",
+      bn: "D / N পরের ঝালাইয়ের / নতুন · Shift+D / N পেছনে · 1–4 গ্রেড · Z আগের অবস্থা · Esc বন্ধ",
+      pt: "D / N próxima pendente / nova · Shift+D / N voltar · 1–4 avaliar · Z desfazer · Esc fechar",
+      ru: "D / N следующее к повторению / новое · Shift+D / N назад · 1–4 оценка · Z отменить · Esc закрыть",
+      ur: "D / N اگلا دہرائی والا / نیا · Shift+D / N پیچھے · 1–4 درجہ · Z واپس · Esc بند",
+      id: "D / N kata jatuh tempo / baru berikutnya · Shift+D / N mundur · 1–4 nilai · Z urungkan · Esc tutup",
+      de: "D / N nächstes fälliges / neues · Umschalt+D / N zurück · 1–4 bewerten · Z rückgängig · Esc schließen",
+      sw: "D / N linalosubiri / jipya linalofuata · Shift+D / N rudi · 1–4 tathmini · Z tendua · Esc funga",
+      mr: "D / N पुढील उजळणीचा / नवीन · Shift+D / N मागे · 1–4 श्रेणी · Z पूर्ववत · Esc बंद",
+    }),
+    noCard: t({
+      en: "Not in your word lists yet",
+      zh: "还不在你的词表里",
+      ja: "まだ単語リストにありません",
+      ko: "아직 단어 목록에 없음",
+      hi: "अभी आपकी शब्द सूचियों में नहीं",
+      es: "Aún no está en tus listas",
+      fr: "Pas encore dans vos listes",
+      ar: "ليست في قوائم كلماتك بعد",
+      bn: "এখনও আপনার শব্দতালিকায় নেই",
+      pt: "Ainda não está nas suas listas",
+      ru: "Пока нет в ваших списках слов",
+      ur: "ابھی آپ کی الفاظ کی فہرستوں میں نہیں",
+      id: "Belum ada di daftar kata Anda",
+      de: "Noch nicht in deinen Wortlisten",
+      sw: "Bado halimo kwenye orodha zako za maneno",
+      mr: "अजून तुमच्या शब्दयाद्यांमध्ये नाही",
+    }),
+    makeCard: t({
+      en: "Make a card",
+      zh: "制卡",
+      ja: "カードを作る",
+      ko: "카드 만들기",
+      hi: "कार्ड बनाएँ",
+      es: "Crear tarjeta",
+      fr: "Créer une carte",
+      ar: "أنشئ بطاقة",
+      bn: "কার্ড বানান",
+      pt: "Criar cartão",
+      ru: "Создать карточку",
+      ur: "کارڈ بنائیں",
+      id: "Buat kartu",
+      de: "Karte anlegen",
+      sw: "Tengeneza kadi",
+      mr: "कार्ड बनवा",
+    }),
+    retry: t({
+      en: "Try again",
+      zh: "重试",
+      ja: "再試行",
+      ko: "다시 시도",
+      hi: "फिर कोशिश करें",
+      es: "Reintentar",
+      fr: "Réessayer",
+      ar: "أعد المحاولة",
+      bn: "আবার চেষ্টা করুন",
+      pt: "Tentar de novo",
+      ru: "Повторить",
+      ur: "دوبارہ کوشش کریں",
+      id: "Coba lagi",
+      de: "Erneut versuchen",
+      sw: "Jaribu tena",
+      mr: "पुन्हा प्रयत्न करा",
     }),
   },
 };
@@ -257,8 +293,6 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Short label of a pair of ‹ › buttons on the side-by-side flashcard in the book reader: they jump to the previous / next word of the text that the learner has no flashcard for yet (a new word). Also fills {kind} in the previous/next labels. One word.",
   prev: "Tooltip of the ‹ button on the side-by-side flashcard in the book reader: jumps back to the previous word of the text of that kind; {kind} is the 'Due' or 'New' label. Keep {kind}; a short noun phrase.",
   next: "Tooltip of the › button on the side-by-side flashcard in the book reader: jumps on to the next word of the text of that kind; {kind} is the 'Due' or 'New' label. Keep {kind}; a short noun phrase.",
-  reveal:
-    "Button on the side-by-side flashcard in the book reader, shown while the word's meaning is hidden: turns the card over to show the meaning (the Space key does the same). An imperative phrase.",
   say: "Tooltip and screen-reader label of the speaker button on the side-by-side flashcard in the book reader: says the word aloud. An imperative phrase.",
   notDue:
     "Status line on the side-by-side flashcard in the book reader when the learner clicked a word whose flashcard is not due for review yet (it can still be graded). A short phrase.",
@@ -267,13 +301,19 @@ const context: Record<keyof typeof dictionary.content, string> = {
   loadFailed:
     "Error shown on the side-by-side flashcard in the book reader when the focused word's flashcard could not be loaded (offline, or a server error). A short sentence.",
   none: "Shown on the side-by-side flashcard in the book reader when there is no word due for review and no new word left after the current place in the book. A short sentence.",
-  keys: "The keyboard help line at the bottom of the side-by-side flashcard in the book reader: D and N jump to the next due / new word of the text, with Shift they go back; Space shows the meaning; keys 1–4 grade Again / Hard / Good / Easy; Z undoes; Esc closes. Keep the key names D, N, Shift, 1–4, Z, Esc and the separators as they are; translate the words.",
+  keys: "The keyboard help line at the bottom of the side-by-side flashcard in the book reader: D and N jump to the next due / new word of the text, with Shift they go back; keys 1–4 grade Again / Hard / Good / Easy; Z undoes; Esc closes. Keep the key names D, N, Shift, 1–4, Z, Esc and the separators as they are; translate the words.",
+  noCard:
+    "Status line on the side-by-side flashcard in the book reader when the focused word of the book has no flashcard to offer (it is in none of the learner's word lists, e.g. a name); the word and its meaning are still shown, with a 'make a card' button. A short phrase.",
+  makeCard:
+    "Button on the side-by-side flashcard in the book reader for a word that has no flashcard: creates one in the word list kept for this book, then shows it for grading. A short imperative phrase (zh: 制卡).",
+  retry:
+    "Button next to the error on the side-by-side flashcard in the book reader when the word's flashcard could not be loaded (offline, a server error): loads it again. A short imperative phrase.",
 };
 
 export default {
   ...dictionary,
   description: describeKeys(
-    "The /read book reader's side-by-side word review: the book stays on screen and one Words-page flashcard sits beside it; the learner jumps to the next due or new word of the text, reveals and grades it.",
+    "The /read book reader's side-by-side word review: the book stays on screen and one Words-page flashcard sits beside it; the learner jumps to the next due or new word of the text, reads its whole card and grades it.",
     context,
   ),
 } satisfies DeclarationContent;

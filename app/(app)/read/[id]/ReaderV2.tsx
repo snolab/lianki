@@ -1114,11 +1114,10 @@ function Reader({
           doneRef.current = new Set();
           if (!sideRef.current) return;
           if (list) {
-            // The list: his due words first, then the first he does not know yet.
+            // The list: his due words first, then the new ones; never a card not due yet.
             const it =
-              list.items.find((x) => dueRef.current.has(x.w)) ??
-              list.items.find((x) => x.fam !== "k") ??
-              list.items[0];
+              list.items.find((x) => sideKind(x.w) === "due") ??
+              list.items.find((x) => sideKind(x.w) === "new");
             if (it) focusWord(it, null, false);
             else setSideNone(true);
             return;
@@ -1164,9 +1163,14 @@ function Reader({
       if (list) {
         const at = list.items.findIndex((x) => x.w === f.w);
         const next = [...list.items.slice(at + 1), ...list.items.slice(0, Math.max(0, at))].find(
-          (x) => !doneRef.current.has(x.w),
+          // Due or new only (sideKind): a card not due yet is never landed on.
+          (x) => sideKind(x.w) !== null,
         );
         if (next) focusWord(next, null, true);
+        else {
+          setFocus(null);
+          setSideNone(true);
+        }
         return;
       }
       // On to the next word of the same kind, then of the other kind.

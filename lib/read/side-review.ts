@@ -79,3 +79,18 @@ export function findWord(
   }
   return null;
 }
+
+/**
+ * What the side card shows for a word-session answer: his card (or the word
+ * as new in the book's list), or no card to offer — a word the session
+ * leaves out (a name, not one of the book's counted words) shows its word
+ * and meaning with 制卡, never an error. A failed request is the caller's
+ * (a retry).
+ */
+export function sideCardOf<T extends { w?: string }>(
+  items: readonly T[],
+  w: string,
+): { kind: "card"; item: T } | { kind: "cardless" } {
+  const item = items.find((x) => x.w === w) ?? items[0];
+  return item ? { kind: "card", item } : { kind: "cardless" };
+}

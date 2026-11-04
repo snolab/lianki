@@ -81,8 +81,11 @@ await page.waitForFunction(
   null,
   { timeout: 20000 },
 );
-await page.keyboard.press("Space");
-check(await page.locator("[data-side-back]").isVisible(), "Space shows the meaning");
+check(
+  (await page.locator("[data-side-back]").isVisible()) &&
+    !(await page.getByTestId("side-reveal").count()),
+  "the meaning is shown at once, no reveal step",
+);
 await page.screenshot({ path: join(OUT, "side-desktop-light.png") });
 await page.emulateMedia({ colorScheme: "dark" });
 await page.screenshot({ path: join(OUT, "side-desktop-dark.png") });
@@ -117,7 +120,9 @@ check(!(await card.isVisible().catch(() => false)), "Esc closes the card");
 await page.getByTestId("read-side-open").click();
 await page.waitForTimeout(2500);
 const w3 = await focused();
-check(w3 === w1, `opening again starts at the due word (${w3})`);
+// A word left from earlier runs on the same account may be due first: any due word.
+const dueNow = (await (await ctx.request.get(`/api/read/${id}/word-due`)).json()).due ?? [];
+check(!!w3 && dueNow.includes(w3.toLowerCase()), `opening again starts at a due word (${w3})`);
 
 // PC: the selection card's 本段单词 opens the paragraph's words in the panel.
 await page.keyboard.press("Escape");
@@ -159,6 +164,48 @@ await page.waitForTimeout(1500);
 const after = await list.locator('[aria-current="true"]').getAttribute("data-side-item");
 check(after !== pw, `a grade moves on in the list (${pw} → ${after})`);
 await page.screenshot({ path: join(OUT, "side-list-desktop-light.png") });
+// A card not due yet (graded Good just now) is never landed on: not by the
+// list's next, not by N; a click still opens it.
+await page.keyboard.press("Escape");
+await page.waitForTimeout(500);
+await second.click();
+await page.locator('[data-action="review-words"]').click({ timeout: 10000 });
+await page.waitForTimeout(2500);
+const landed = [];
+for (let i = 0; i < 6; i++) {
+  landed.push(await list.locator('[aria-current="true"]').getAttribute("data-side-item"));
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="side-grade-3"]')?.hasAttribute("disabled"),
+    null,
+    { timeout: 20000 },
+  );
+  await page.keyboard.press("Digit3");
+  await page.waitForTimeout(1200);
+}
+check(!landed.includes(pw), `the list's next skips the word not due yet (${landed.join(", ")})`);
+await list.locator(`[data-side-item="${pw}"]`).click();
+await page.waitForTimeout(1500);
+check(
+  (await page.locator("[data-side-status]").textContent())?.trim() !== "" &&
+    (await page.locator("[data-side-term]").textContent()) === pw,
+  `a click still opens the word not due yet (${pw})`,
+);
+// A word in none of his decks: its word and meaning (or 制卡), never the load
+// error (the cardless answer itself is unit-tested: sideCardOf).
+await page
+  .locator("[data-line] [data-t]", { hasText: /^Henry$/ })
+  .first()
+  .click();
+await page.waitForTimeout(2500);
+check(
+  (await page.locator("[data-side-back], [data-testid=side-make]").first().isVisible()) &&
+    !(await page
+      .getByTestId("side-retry")
+      .isVisible()
+      .catch(() => false)),
+  "a word in none of his decks shows its meaning or 制卡, not an error",
+);
+await page.screenshot({ path: join(OUT, "side-cardless-desktop-light.png") });
 
 // Phone: the card over the bottom of the book.
 const phone = await newSilentContext(browser, { ...devices["iPhone 13"], baseURL: BASE });

@@ -100,10 +100,10 @@ export function addGradedWord(id: string, w: RangeWord) {
 }
 
 /** Opens a range's words in /words' terms (each on his card, or new in the book's list). */
-export const wordSession = (id: string, words: RangeWord[]) =>
+export const wordSession = (id: string, words: RangeWord[], all = false) =>
   post<{ items: StudyScope["items"]; lists: WordList[]; missing: string[] }>(
     `/api/read/${id}/word-session`,
-    { words },
+    { words, all },
   );
 
 /** The toast after 制卡: how many, and Undo (glass, over the bottom of the screen). */

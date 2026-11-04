@@ -433,8 +433,9 @@ above the pill). Off for everyone but the owner until the flag is on.
   the word map (lib/read/side-review.ts `dueBookWords`). Read once on open.
 - **The card:** the word as /words has it (POST word-session for that one
   word: his card, or a new word of the book's list, with the #507 gloss),
-  its reading, status (new / due since / not due yet), the meaning on
-  Space or "show the meaning", the book's sentence, 🔊. Grades: 1–4 and
+  its reading, status (new / due since / not due yet), and everything at
+  once (owner, 19:53 JST: no reveal step): meaning, the book's sentence, 🔊.
+  Grades: 1–4 and
   L K J H as /words (`keyRating`, lib/words/swipe.ts), through /words' own pending queue
   (`queueWordReview`); a new word's entry joins the book's list as in the
   paragraph review. After a grade: the next word of the same kind, then of
@@ -445,7 +446,12 @@ above the pill). Off for everyone but the owner until the flag is on.
   overlay: the paragraph's (or selection's) words above the card, each with
   his progress (due, mastered / learning / new / unrecognised, or the grade
   just given); a pick shows its card, a grade moves to the next word of the
-  list not graded yet. A phone keeps the overlay review.
+  list that is due or new. A phone keeps the overlay review.
+- **Never lands on a card not due yet** (owner, 19:43 JST): D / N, the
+  auto-advance and the list's next offer due and new words only; a click
+  still opens any word (word-session `all`, past #527's due filter). A word
+  the session leaves out shows its word and meaning with 制卡; only a failed
+  request shows the error, with a retry.
 - While it is open the reader's own item keys (1–4, H J K L, Space) rest.
 - No gesture starts at a screen edge (Android's Back): no card swipe yet;
   grade by buttons and keys. The shared edge-safe swipe can come later.

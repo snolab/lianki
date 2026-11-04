@@ -20,10 +20,10 @@ import { keyRating } from "@/lib/words/swipe";
 import type { WordList } from "@/lib/repos/wordsD1";
 import { fill } from "@/lib/nav/nav-core";
 import { formatInterval, parseCard } from "@/lib/words/schedule";
-import type { SideKind } from "@/lib/read/side-review";
+import { sideCardOf, type SideKind } from "@/lib/read/side-review";
 import type { Fam } from "@/lib/read/reader-model";
 import { SEG, famClass } from "./reader-select-card";
-import { addGradedWord, wordSession, type RangeWord } from "./reader-word-review";
+import { addGradedWord, makeCards, wordSession, type RangeWord } from "./reader-word-review";
 
 type Rating = 1 | 2 | 3 | 4;
 
@@ -91,22 +91,29 @@ export default function SideReview({
   const t = useIntlayer("read-side-review");
   const tw = useIntlayer("words-page");
   const [card, setCard] = useState<Card | null>(null);
+  /** The request failed (offline, a server error): a retry is offered. */
   const [failed, setFailed] = useState(false);
-  const [revealed, setRevealed] = useState(false);
+  /** No card can be offered for this word (not one of the book's counted words, a name): 制卡. */
+  const [cardless, setCardless] = useState(false);
+  const [busy, setBusy] = useState(false);
+  /** Bumped to load the card again (retry, after 制卡). */
+  const [v, setV] = useState(0);
   const shownAt = useRef(Date.now());
 
   useEffect(() => {
     setCard(null);
     setFailed(false);
-    setRevealed(false);
+    setCardless(false);
     shownAt.current = Date.now();
     if (!focus) return;
     let live = true;
-    wordSession(id, [focus.word])
+    // His card even when not due yet: a word he clicked opens whatever its due.
+    wordSession(id, [focus.word], true)
       .then((s) => {
-        const it = s.items[0];
         if (!live) return;
-        if (!it) return setFailed(true);
+        const got = sideCardOf(s.items as ((typeof s.items)[number] & { w?: string })[], focus.w);
+        if (got.kind === "cardless") return setCardless(true);
+        const it = got.item;
         const list: WordList | undefined = s.lists.find((l) => l.id === it.listId);
         setCard({
           listId: it.listId,
@@ -122,7 +129,17 @@ export default function SideReview({
     return () => {
       live = false;
     };
-  }, [id, focus]);
+  }, [id, focus, v]);
+
+  /** 制卡 for a word with no card to offer: then its card is loaded. */
+  const make = () => {
+    if (!focus) return;
+    setBusy(true);
+    makeCards(id, [focus.word])
+      .then(() => setV((x) => x + 1))
+      .catch(() => setFailed(true))
+      .finally(() => setBusy(false));
+  };
 
   const grade = (r: Rating) => {
     if (!focus || !card) return;
@@ -145,7 +162,6 @@ export default function SideReview({
       if (e.repeat && e.code !== "KeyD" && e.code !== "KeyN") return e.preventDefault();
       if (e.code === "KeyD") L.onJump("due", e.shiftKey ? -1 : 1);
       else if (e.code === "KeyN") L.onJump("new", e.shiftKey ? -1 : 1);
-      else if (e.code === "Space") setRevealed((v) => !v);
       else if (e.code === "KeyZ" || e.code === "Backspace") {
         const g = L.onUndo();
         if (g) void queueWordUndo(g.listId, g.term);
@@ -257,10 +273,10 @@ export default function SideReview({
                       {grade ??
                         (x.due
                           ? t.due.value
-                          : f === "known"
-                            ? tr.mastered.value
-                            : f === "learning"
-                              ? tr.learning.value
+                          : f === "learning"
+                            ? t.notDue.value
+                            : f === "known"
+                              ? tr.mastered.value
                               : f === "fresh"
                                 ? tr.newWords.value
                                 : f === "unrecognised"
@@ -294,25 +310,39 @@ export default function SideReview({
             </button>
           </div>
           {card?.reading && <p className="-mt-1 text-sm opacity-75">{card.reading}</p>}
-          <p className="text-xs opacity-70" data-side-status>
-            {failed ? t.loadFailed : (status ?? t.loading)}
-          </p>
-          {card &&
-            (revealed ? (
-              <p className="whitespace-pre-line text-base" data-side-back>
-                {card.back}
-              </p>
-            ) : (
+          <p className="flex items-center gap-2 text-xs opacity-70" data-side-status>
+            {failed ? t.loadFailed : cardless ? t.noCard : (status ?? t.loading)}
+            {failed && (
               <button
                 type="button"
-                onClick={() => setRevealed(true)}
-                data-testid="side-reveal"
-                className="min-h-10 rounded-full px-3 text-sm font-medium hover:bg-[oklch(0.5_0_0/0.1)]"
+                onClick={() => setV((x) => x + 1)}
+                data-testid="side-retry"
+                className="min-h-8 rounded-full px-2 font-medium underline"
               >
-                {t.reveal}
+                {t.retry}
               </button>
-            ))}
-          {card?.ex && revealed && <p className="text-sm italic opacity-75">{card.ex}</p>}
+            )}
+          </p>
+          {/* Everything shown at once (owner, 19:53 JST): he reads it and grades. */}
+          {(card?.back || (!card && focus.word.back)) && (
+            <p className="whitespace-pre-line text-base" data-side-back>
+              {card?.back || focus.word.back}
+            </p>
+          )}
+          {(card?.ex || (!card && focus.word.ex)) && (
+            <p className="text-sm italic opacity-75">{card?.ex || focus.word.ex}</p>
+          )}
+          {cardless && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={make}
+              data-testid="side-make"
+              className="min-h-10 self-start rounded-full px-3 text-sm font-medium hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-50"
+            >
+              {t.makeCard}
+            </button>
+          )}
           <div className="grid grid-cols-4 gap-1" role="group">
             {grades.map(([r, label]) => (
               <button
