@@ -19,12 +19,12 @@ function fakeWin(start: unknown = { __NA: true, tree: "t" }, href = "https://lia
       get length() {
         return entries.length;
       },
-      pushState(data: unknown, _: string, url?: string) {
+      pushState(data: unknown, _?: string, url?: string) {
         const to = url ? new URL(url, entries[at].href).href : entries[at].href;
         entries.splice(at + 1, entries.length, { state: data, href: to });
         at++;
       },
-      replaceState(data: unknown, _: string, url?: string) {
+      replaceState(data: unknown, _?: string, url?: string) {
         const to = url ? new URL(url, entries[at].href).href : entries[at].href;
         entries[at] = { state: data, href: to };
       },
