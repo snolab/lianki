@@ -51,6 +51,28 @@ describe("signOut (the menu's Sign out)", () => {
     }
   });
 
+  it("in the browser: the page's own fetch, caches and location", async () => {
+    const g = globalThis as Record<string, unknown>;
+    const saved = { fetch: g.fetch, caches: g.caches, location: g.location };
+    const t = env();
+    const replaced: string[] = [];
+    try {
+      g.fetch = t.e.fetch;
+      g.caches = t.e.caches;
+      g.location = { replace: (u: string) => replaced.push(u) };
+      expect(await signOut()).toBe(true);
+      expect(t.calls[0].url).toBe(SIGN_OUT_PATH);
+      expect(t.deleted.sort()).toEqual(["lianki-v1", "lianki-v2"]);
+      expect(replaced).toEqual(["/"]);
+      // No Cache Storage (an old browser, a private window): still signs out.
+      g.caches = undefined;
+      expect(await signOut("/en")).toBe(true);
+      expect(replaced).toEqual(["/", "/en"]);
+    } finally {
+      Object.assign(g, saved);
+    }
+  });
+
   it("keeps exactly the caches public/sw.js keeps", () => {
     const sw = readFileSync("public/sw.js", "utf8");
     const keep = /const KEEP_CACHES = (\[[^\]]*\])/.exec(sw)?.[1];
