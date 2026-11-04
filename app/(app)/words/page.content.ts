@@ -447,6 +447,42 @@ const dictionary = {
       mr: "शब्द बोला, मग त्याचे उदाहरण आणि अर्थ (V)",
       ko: "단어, 예문, 뜻 순서로 읽어 줍니다 (V)",
     }),
+    readAloudLoop: t({
+      en: "Read on a loop",
+      zh: "循环朗读",
+      hi: "बार-बार पढ़ें",
+      es: "Leer en bucle",
+      fr: "Lire en boucle",
+      ar: "القراءة المتكررة",
+      bn: "বারবার পড়ুন",
+      pt: "Ler em repetição",
+      ru: "Читать по кругу",
+      ur: "بار بار پڑھیں",
+      id: "Bacakan berulang",
+      de: "In Schleife vorlesen",
+      ja: "繰り返し読み上げる",
+      sw: "Soma kwa kurudia",
+      mr: "पुन्हा पुन्हा वाचा",
+      ko: "반복해서 읽기",
+    }),
+    readAloudLoopHint: t({
+      en: "Off: each card is read once. On: it is read again and again until you grade it or move on",
+      zh: "关：每张卡读一遍。开：反复朗读，直到你评分或换到下一张",
+      hi: "बंद: हर कार्ड एक बार पढ़ा जाता है। चालू: जब तक आप ग्रेड न दें या आगे न बढ़ें, बार-बार पढ़ा जाता है",
+      es: "Desactivado: cada tarjeta se lee una vez. Activado: se repite hasta que la califiques o pases a otra",
+      fr: "Désactivé : chaque carte est lue une fois. Activé : elle est relue jusqu'à ce que vous la notiez ou passiez à la suivante",
+      ar: "إيقاف: تُقرأ كل بطاقة مرة واحدة. تشغيل: تُقرأ مرارًا حتى تقيّمها أو تنتقل إلى غيرها",
+      bn: "বন্ধ: প্রতিটি কার্ড একবার পড়া হয়। চালু: আপনি মূল্যায়ন না করা বা এগিয়ে না যাওয়া পর্যন্ত বারবার পড়া হয়",
+      pt: "Desligado: cada cartão é lido uma vez. Ligado: é lido de novo até você avaliá-lo ou passar ao próximo",
+      ru: "Выкл.: каждая карточка читается один раз. Вкл.: читается снова и снова, пока вы её не оцените или не перейдёте дальше",
+      ur: "بند: ہر کارڈ ایک بار پڑھا جاتا ہے۔ چالو: جب تک آپ درجہ نہ دیں یا آگے نہ بڑھیں، بار بار پڑھا جاتا ہے",
+      id: "Mati: tiap kartu dibacakan sekali. Nyala: dibacakan berulang sampai Anda menilainya atau pindah",
+      de: "Aus: Jede Karte wird einmal vorgelesen. An: immer wieder, bis du sie bewertest oder weitergehst",
+      ja: "オフ：各カードを一度だけ読み上げます。オン：評価するか次へ進むまで繰り返します",
+      sw: "Imezimwa: kila kadi inasomwa mara moja. Imewashwa: inasomwa tena na tena hadi uipe alama au uendelee",
+      mr: "बंद: प्रत्येक कार्ड एकदाच वाचले जाते. चालू: तुम्ही गुण देईपर्यंत किंवा पुढे जाईपर्यंत पुन्हा पुन्हा वाचले जाते",
+      ko: "끄기: 카드마다 한 번 읽습니다. 켜기: 평가하거나 다음으로 넘어갈 때까지 반복해서 읽습니다",
+    }),
     serverVoice: t({
       en: "Server voice",
       zh: "服务器语音",
@@ -2249,6 +2285,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "/words study view, Settings sheet (only where the browser can speak): the label of an on/off switch (a pill): text-to-speech reads each word aloud, then its example sentence and its meaning, as the learner reaches it. A short imperative or noun phrase.",
   readAloudHint:
     "/words study view, Settings sheet: the tooltip of the 'Read cards aloud' switch, saying what is spoken and in which order: the word first, then its example sentence, then its meaning (the order the row shows them). '(V)' is its keyboard shortcut, kept. No final period.",
+  readAloudLoop:
+    "/words study view, Settings sheet (shown once 'Read cards aloud' is on): the label of an on/off switch (a pill), off by default and remembered per device: the card being studied is read aloud (word, example, meaning) over and over instead of once. A short noun or imperative phrase.",
+  readAloudLoopHint:
+    "/words study view, Settings sheet: the tooltip of the 'Read on a loop' switch: off reads each card's word, example and meaning one time; on repeats them until the learner grades the card or moves to another. No final period.",
   serverVoice:
     "/words study view, Settings sheet (shown once 'Read cards aloud' is on): the label of an on/off switch (a pill): speech comes from Lianki's own server-side text-to-speech voices instead of the browser's built-in voices. A short noun phrase.",
   serverVoiceHint:

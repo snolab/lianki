@@ -149,6 +149,19 @@ describe("the book's list (D1)", () => {
     expect(await bookLists()).toHaveLength(0);
   });
 
+  test("a card not due yet stays out of the review until its due", async () => {
+    // "chat" graded Easy just now: due days from now.
+    const [deck] = (await repo.lists()).filter((l) => l.source === "fr-1000");
+    const at = new Date("2026-10-21T12:00:00Z");
+    await repo.review(deck.id, [{ term: "chat", rating: 4 }], "2026-10-21", at);
+    const words = [{ w: "chat", ex: "Le chat dort." }, { w: "chien" }];
+    const soon = await scopeSession(d1, EMAIL, book, words, undefined, at);
+    expect(soon.items.map((i) => i.term)).toEqual(["chien"]);
+    expect(soon.lists.every((l) => l.source !== "fr-1000")).toBe(true);
+    const later = await scopeSession(d1, EMAIL, book, words, undefined, new Date("2027-06-01"));
+    expect(later.items.map((i) => i.term)).toEqual(["chat", "chien"]);
+  });
+
   test("words without a card come from the book's list; names are left out", async () => {
     const s = await scopeSession(d1, EMAIL, book, [
       { w: "chien", ex: "Le chien court.", back: "dog" },

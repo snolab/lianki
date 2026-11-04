@@ -106,6 +106,20 @@ export interface ScopeItem {
   card: string | null;
 }
 
+/**
+ * Whether a range's review shows this card now: no card (a new word), a due
+ * one, or one whose due cannot be read (shown rather than lost).
+ */
+export function isDueCard(card: string | null, now: Date): boolean {
+  if (!card) return true;
+  try {
+    const due = new Date((JSON.parse(card) as { due?: string }).due ?? NaN).getTime();
+    return !(due > now.getTime());
+  } catch {
+    return true;
+  }
+}
+
 const clip = (s: string | null | undefined, n: number) => (s ? s.slice(0, n) : null);
 
 /** Gives words without a meaning one where it can (lib/read/gloss-server.ts fillGlosses). */
@@ -162,6 +176,10 @@ async function fullCards(db: D1Like, email: string, keys: { listId: string; term
  * order given, and the lists they belong to (for their FSRS parameters).
  * Words without a card come as new words of the book's list — the list is
  * made only when there is one (a book's list is never made empty).
+ *
+ * A card not due yet is left out: graded Easy, a word stays away until its
+ * due, here as on /words (owner, 2026-11-04 19:28 JST: "lorsque" graded Easy
+ * came back in the paragraph's review the same evening).
  */
 export async function scopeSession(
   db: D1Like,
@@ -169,6 +187,7 @@ export async function scopeSession(
   book: BookCtx,
   words: RangeWord[],
   gloss?: Gloss,
+  now: Date = new Date(),
 ): Promise<{ items: ScopeItem[]; lists: WordList[]; missing: string[] }> {
   const matched = await matchAll(db, email, book, words);
   const missing = matched.filter((m) => !m.hit).map((m) => m.x.w);
@@ -222,9 +241,10 @@ export async function scopeSession(
       ),
     );
   await runAll(db, backfillStatements(db, email, fill));
-  const ids = new Set(items.map((it) => it.listId));
+  const shown = items.filter((it) => isDueCard(it.card, now));
+  const ids = new Set(shown.map((it) => it.listId));
   const lists = (await new WordsD1Repo(db, email).lists()).filter((l) => ids.has(l.id));
-  return { items, lists, missing };
+  return { items: shown, lists, missing };
 }
 
 /**
