@@ -4,7 +4,8 @@
  *
  * - **Attach kinds** are a registry (ATTACH_KINDS): each kind is its own
  *   entry, so a later change adds one (file upload, media) without touching
- *   the others. Only "selection" works now; the rest show as "coming soon".
+ *   the others. "selection" always works; "file" and "media" upload through
+ *   the host's ChatFiles (files.ts) and show as "coming soon" without one.
  * - **Add items** come from the host (the app's Create actions, which the
  *   bottom island's ＋ used to hold): the widget never imports the app.
  * - **The page selection** is remembered here (createSelectionMemory): the
@@ -19,8 +20,13 @@ export type AttachKind = {
   id: "selection" | "file" | "media";
   /** Its label's key in ChatStrings. */
   label: "attachSelection" | "attachFile" | "attachMedia";
-  /** Not built yet: shown disabled, tagged "coming soon"; no fake behaviour. */
-  soon?: true;
+  /**
+   * Needs the host's file upload (ChatFiles, files.ts): without it, shown
+   * disabled and tagged "coming soon"; no fake behaviour.
+   */
+  upload?: true;
+  /** The file picker's `accept` (absent: any file). */
+  accept?: string;
 };
 /**
  * The kinds, in menu order. URL import is not here: the Add group's
@@ -28,8 +34,8 @@ export type AttachKind = {
  */
 export const ATTACH_KINDS: readonly AttachKind[] = [
   { id: "selection", label: "attachSelection" },
-  { id: "file", label: "attachFile", soon: true },
-  { id: "media", label: "attachMedia", soon: true },
+  { id: "file", label: "attachFile", upload: true },
+  { id: "media", label: "attachMedia", upload: true, accept: "image/*,video/*,audio/*" },
 ];
 
 /**

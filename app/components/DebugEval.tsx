@@ -23,6 +23,8 @@ import {
   type ChatStrings,
   type VoiceTiming,
   cleanContext,
+  cleanAttachments,
+  type AttachmentRef,
   cleanTiming,
 } from "@lianki/debug-chat/wire";
 import { voiceLatency } from "@lianki/debug-chat/latency";
@@ -50,6 +52,7 @@ import { frameContext } from "@/lib/frame-context";
 import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
 import { useLiveView, widgetSource } from "@/lib/live-view/client";
+import { inboxFiles, linkInboxLine } from "@/lib/inbox/client";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
@@ -99,6 +102,8 @@ const pageLabel = () => {
 /** The chat's user-facing strings, localized by the root layout (learning-partner.content.ts). */
 export type PartnerStrings = ChatStrings & {
   unavailable: string;
+  /** The inbox's one-tap import of an Anki package (.apkg) as a deck (lib/inbox/client.ts). */
+  importDeck: string;
   /** The AI replies on a friend's thread (docs/partner-ai.md): empty-log hint, status, two warnings. */
   aiHint: string;
   aiStatus: string;
@@ -587,6 +592,7 @@ export function DebugEval({
       timing?: VoiceTiming;
       speakerProof?: string[];
       context?: ChatContext;
+      attachments?: AttachmentRef[];
     },
   ) => {
     const sock = sockRef.current;
@@ -607,6 +613,9 @@ export function DebugEval({
       const wakeReason = wake ? mic?.wakeReason : undefined;
       // The page selection attached with the + menu (bounded as the hub bounds it).
       const context = cleanContext(opts?.context);
+      // Files from the owner's inbox (lib/inbox/client.ts): refs only, the bytes are in R2.
+      const attachments =
+        owner && friend === null ? cleanAttachments(opts?.attachments) : undefined;
       // Where a voice line was spoken (path, title, screen text): its polish draws on it.
       const scene = opts?.source === "stt" ? pageScene() : undefined;
       sock.send(
@@ -621,9 +630,15 @@ export function DebugEval({
           ...(speakerProof?.length ? { speakerProof } : {}),
           ...(wakeReason ? { wakeReason } : {}),
           ...(context ? { context } : {}),
+          ...(attachments ? { attachments } : {}),
           ...(scene ? { scene } : {}),
         }),
       );
+      if (attachments)
+        linkInboxLine(
+          attachments.map((a) => a.id),
+          id,
+        );
       // Its reply is timed against it (latency.ts); main-thread lines only.
       if (timing && !to) voiceLatency().sent(id, text, timing);
       return true;
@@ -668,6 +683,12 @@ export function DebugEval({
           }),
     [],
   );
+  // The chat inbox's host side (lib/inbox/client.ts): an Anki package imports in one tap.
+  const importDeck = strings?.importDeck ?? "Import as a deck";
+  const ownerFiles = useMemo(
+    () => inboxFiles({ importDeck, go: (path) => router.push(path) }),
+    [importDeck, router],
+  );
   if (!live && !toast && !chat) return null;
   return (
     <>
@@ -702,6 +723,8 @@ export function DebugEval({
           strings={friendStrings}
           treeSource={owner && !isFriend ? ownerTree : undefined}
           treeRepo="snolab/lianki"
+          // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
+          files={owner && !isFriend ? ownerFiles : undefined}
           agentAvatar={AGENT_AVATAR}
           viewer={viewer}
         />

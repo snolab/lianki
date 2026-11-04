@@ -17,6 +17,7 @@ import {
   type Role,
 } from "@/lib/words/anki";
 import { ApkgError, mainModel, parseApkg, type ApkgDeck, type ApkgPackage } from "@/lib/words/apkg";
+import { inboxFile } from "@/lib/inbox/client";
 import { downloadCatalog } from "@/lib/words/catalog-cache";
 import type { WordList } from "@/lib/repos/wordsD1";
 import {
@@ -174,6 +175,19 @@ export default function WordsImportClient() {
       setStage("idle");
     }
   };
+
+  // From the chat inbox (lib/inbox/client.ts, "Import as a deck"): ?inbox=<id>
+  // opens that stored file here, as if it had been dropped. The owner's own
+  // session fetches it; the import itself is the usual one (a list of his own).
+  const fromInbox = useRef(false);
+  useEffect(() => {
+    if (fromInbox.current) return;
+    const id = new URLSearchParams(location.search).get("inbox");
+    if (!id) return;
+    fromInbox.current = true;
+    inboxFile(id).then(open, (e: Error) => setError(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
 
   const update = (i: number, patch: Partial<Plan>) =>
     setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));

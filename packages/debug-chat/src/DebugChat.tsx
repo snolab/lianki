@@ -42,6 +42,7 @@ import {
   parseAddress,
   pathLabel,
   type VoiceTiming,
+  type AttachmentRef,
   type ChatContext,
 } from "./wire";
 import { latencyLines, viaAt, voiceLatency } from "./latency";
@@ -61,6 +62,8 @@ import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
+import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
+import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
 import { BAR_CONTROL, barGeometry } from "./bar-geometry";
 import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
@@ -537,6 +540,8 @@ export type DebugChatProps = {
       speakerProof?: string[];
       /** Attached with the + menu (AttachMenu.tsx): the page selection and where. */
       context?: ChatContext;
+      /** Files sent with the line (files.ts): the host's refs, already uploaded. */
+      attachments?: AttachmentRef[];
     },
   ) => boolean;
   /**
@@ -633,6 +638,12 @@ export type DebugChatProps = {
    * (app/embed/partner): it cannot see the page's selection, and its box is tiny.
    */
   attach?: boolean;
+  /**
+   * The host's file handling (files.ts): paste, drop and the + menu's File /
+   * Photo upload through it, sent lines show their files from its URLs, and
+   * the menu's Inbox lists (and deletes) what it stored. Absent: no files.
+   */
+  files?: ChatFiles;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -707,6 +718,7 @@ export function DebugChat({
   embedded = false,
   portalRoot,
   attach = true,
+  files,
 }: DebugChatProps) {
   const t = chatStrings(strings);
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
@@ -1172,6 +1184,59 @@ export function DebugChat({
   const attached = useUi(uiStore, (s) => s.attached);
   const [attachMenu, setAttachMenu] = useState(false);
   const closeAttachMenu = useCallback(() => setAttachMenu(false), []);
+  /** Files for the next line (files.ts): uploading or stored, removable until sent. */
+  const filesRef = useRef(files);
+  filesRef.current = attach ? files : undefined;
+  const [pending] = useState(() =>
+    createPendingFiles({
+      files: () => filesRef.current,
+      objectUrl:
+        typeof URL !== "undefined" && URL.createObjectURL
+          ? { create: (f) => URL.createObjectURL(f), revoke: (u) => URL.revokeObjectURL(u) }
+          : undefined,
+    }),
+  );
+  /** A send waited for uploads (submit): it goes when they are done. */
+  const waitFiles = useRef(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  // Files dragged into the window: the whole chat box takes the drop (its log
+  // is click-through otherwise), so a dropped file uploads instead of its
+  // name landing in the input as text. Ends on drop, or on leaving the window.
+  useEffect(() => {
+    if (!files || !attach) return;
+    let depth = 0;
+    const enter = (e: DragEvent) => {
+      if (!dragHasFiles(e.dataTransfer ?? undefined)) return;
+      depth++;
+      setDragging(true);
+    };
+    const leave = () => {
+      depth = Math.max(0, depth - 1);
+      if (!depth) setDragging(false);
+    };
+    const done = () => {
+      depth = 0;
+      setDragging(false);
+    };
+    window.addEventListener("dragenter", enter, true);
+    window.addEventListener("dragleave", leave, true);
+    window.addEventListener("drop", done, true);
+    window.addEventListener("dragend", done, true);
+    return () => {
+      window.removeEventListener("dragenter", enter, true);
+      window.removeEventListener("dragleave", leave, true);
+      window.removeEventListener("drop", done, true);
+      window.removeEventListener("dragend", done, true);
+    };
+  }, [files, attach]);
+  const pickFiles = (accept?: string) => {
+    const el = picker.current;
+    if (!el) return;
+    el.accept = accept ?? "";
+    el.click();
+  };
   /** The node the next line goes to: the chip in the bar ("/" = the main thread, no chip). */
   const [target, setTargetState] = useState(keptTarget);
   const targetRef = useRef(target);
@@ -1838,6 +1903,19 @@ export function DebugChat({
         return false;
       }
     }
+    // Files still uploading: the line waits for them, and goes once they are stored.
+    if (pending.busy()) {
+      waitFiles.current = true;
+      return false;
+    }
+    const hasFiles = pending.get().some((p) => p.state === "done");
+    // Files alone: the line's text is their names (a line always has text).
+    if (!text && hasFiles)
+      text = pending
+        .get()
+        .flatMap((p) => (p.state === "done" ? [p.name] : []))
+        .join(", ")
+        .slice(0, MAX_CHAT);
     if (!text) return false;
     const source = draftSource(draftRef.current, pureDictation.current);
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
@@ -1847,7 +1925,9 @@ export function DebugChat({
     const speakerProof = source ? takeSpeaker().proofs : (clearSpeaker(), undefined);
     // What was attached with the + menu rides along, this line only.
     const context = uiStore.getState().attached ?? undefined;
+    const attachments = hasFiles ? pending.get().flatMap((p) => (p.ref ? [p.ref] : [])) : [];
     const opts = {
+      ...(attachments.length ? { attachments } : {}),
       ...(source ? { source } : {}),
       ...(source && timing ? { timing } : {}),
       ...(source && speakerProof?.length ? { speakerProof } : {}),
@@ -1868,6 +1948,7 @@ export function DebugChat({
       uiStore.setState({ attached: null });
       pageSel.clear();
     }
+    if (pending.get().length) pending.take();
     // A typed line says which language the owner speaks: the mic's STT hint.
     if (!source) learnSttHint(text);
     // Sent: an interruption is over, and the queue (still relevant) reads on.
@@ -1928,6 +2009,16 @@ export function DebugChat({
   });
   const sendVoiceRef = useRef(sendVoice);
   sendVoiceRef.current = sendVoice;
+  /** Uploads finished: a held send goes now; files alone send after the usual pause. */
+  const afterUpload = useRef(() => {});
+  afterUpload.current = () => {
+    if (pending.busy()) return;
+    if (waitFiles.current) {
+      waitFiles.current = false;
+      submit();
+    } else if (pending.get().some((p) => p.state === "done")) arm();
+  };
+  useEffect(() => pending.subscribe(() => afterUpload.current()), [pending]);
   useEffect(() => {
     const on = () => joiner.current?.speechStart();
     window.addEventListener(VOICE_CAPTURE_EVENT, on);
@@ -1974,7 +2065,7 @@ export function DebugChat({
       composing.current ||
       micOn.current ||
       micPending.current ||
-      !draftRef.current.trim() ||
+      (!draftRef.current.trim() && !pending.get().some((p) => p.state === "done")) ||
       parseAddress(draftRef.current)?.complete === false
     )
       return setArmed(0);
@@ -3239,6 +3330,20 @@ export function DebugChat({
       aria-label={t.chatWith}
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
+      // Files dropped anywhere on the chat are attached (files.ts).
+      onDragOver={(e) => {
+        if (!filesRef.current || !open || notice || !dragHasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(e) => {
+        setDragging(false);
+        if (!filesRef.current || !open || notice) return;
+        const got = filesFrom(e.dataTransfer);
+        if (!got.length) return;
+        e.preventDefault();
+        pending.add(got);
+      }}
       onTransitionEnd={(e) => {
         if (e.target === e.currentTarget && e.propertyName === "transform") endSlide();
       }}
@@ -3397,6 +3502,9 @@ export function DebugChat({
                         }
                       >
                         {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
+                        {m.attachments?.length && m.from !== "agent" ? (
+                          <SentFiles refs={m.attachments} files={files} />
+                        ) : null}
                         {m.ask
                           ? m.ask.questions.length === 1
                             ? m.ask.questions[0]!.question
@@ -3491,6 +3599,17 @@ export function DebugChat({
           </button>
         </div>
       )}
+      {open && dragging && !notice && (
+        // Over the whole box, taking pointer events: the drop lands here (onDrop above).
+        <div
+          data-testid="debug-chat-drop"
+          className="pointer-events-auto absolute inset-0 z-30 flex min-h-24 items-center justify-center rounded-xl border-2 border-dashed px-2 text-center fs-13 backdrop-blur-sm"
+          style={{ borderColor: "oklch(0.6 0.12 250)", background: "oklch(0.6 0.12 250 / 0.16)" }}
+        >
+          {t.attachDrop}
+        </div>
+      )}
+      {open && !notice && filesRef.current && <PendingChips t={t} pending={pending} />}
       {open && attached && !notice && (
         <AttachChip
           t={t}
@@ -3594,7 +3713,26 @@ export function DebugChat({
               const { at: _at, ...ctx } = s;
               uiStore.setState({ attached: ctx });
             }}
+            upload={!!filesRef.current}
+            onPickFiles={pickFiles}
+            onInbox={filesRef.current?.list && !notice ? () => setInboxOpen(true) : undefined}
             onClose={closeAttachMenu}
+          />
+        )}
+        {open && inboxOpen && filesRef.current?.list && (
+          <InboxPanel t={t} files={filesRef.current} onClose={() => setInboxOpen(false)} />
+        )}
+        {filesRef.current && (
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            hidden
+            data-testid="debug-chat-file-input"
+            onChange={(e) => {
+              pending.add(Array.from(e.currentTarget.files ?? []));
+              e.currentTarget.value = "";
+            }}
           />
         )}
         {open && scrolledUp && (
@@ -3753,6 +3891,14 @@ export function DebugChat({
                   }
                   onScroll={(e) => {
                     if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
+                  }}
+                  // A pasted image or file goes up as an attachment (files.ts); text pastes as usual.
+                  onPaste={(e) => {
+                    if (!filesRef.current) return;
+                    const got = filesFrom(e.clipboardData);
+                    if (!got.length) return;
+                    e.preventDefault();
+                    pending.add(got);
                   }}
                   aria-label={t.message.replace(/…$/, "")}
                   onChange={(e) => {

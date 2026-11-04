@@ -838,9 +838,10 @@ menu in three groups (`packages/debug-chat/src/AttachMenu.tsx`, `attach.ts`):
   shown. Anyone without the chat (not in debug mode, a blocked friend) keeps
   the island's ＋. Search still lists the same actions.
 - **Attach to message** — a registry (`ATTACH_KINDS`), one entry per kind, so
-  each new kind lands in its own change. Now: **Page selection** works; File
-  and Photo/video/audio are shown disabled, tagged "Coming soon". URL import is
-  the Add group's "Add a link as a card".
+  each new kind lands in its own change. **Page selection**; **File** and
+  **Photo, video or audio** upload to the inbox (below, "Attachments and the
+  inbox"; "Coming soon" where the host gives no uploads). URL import is the
+  Add group's "Add a link as a card".
 - **View** (查看) — **State tree** (状态树): toggles the state tree, as the
   bar's tree button did (owner, 2026-11-03: "状态树功能藏到加号里"; the bar
   has no tree button now, so it is `[mark | + | input | mic]`, and minimized
@@ -871,6 +872,84 @@ on another site (`cleanContext` in wire.ts, applied by the page, the hub's
 the sender's own thread — a friend's selection stays in their thread — and
 logs only its length. The log shows it as a small quote above the line;
 `eval.ts chat` prints it in the JSON line as `"context"`.
+
+## Attachments and the inbox
+
+The owner can paste, drop or pick files of any kind into the chat (owner,
+2026-11-04). They are uploaded at once, kept in an **inbox** in R2
+`lianki-blobs` (no other bucket), and the agent reads them from there.
+
+**In the widget** (generic: `packages/debug-chat/src/files.ts`,
+`FileChips.tsx`; nothing product-specific). The host passes `files`
+(`ChatFiles`): `upload(file, onProgress, signal)`, `url(ref)`, and optionally
+`maxBytes`, `list()` (items + usage), `remove(id)` and `actions(ref)` (host
+buttons on a file). Without `files`, File and Photo/video/audio stay "Coming
+soon" and paste/drop do nothing.
+
+- **Paste** a screenshot or a copied file into the input; **drop** files
+  anywhere on the chat box (while files are dragged into the window, an
+  overlay over the whole box takes the drop, so a file never lands in the
+  input as its name); or pick with **+ → File** / **Photo, video or audio**.
+- Each file is a chip above the input: thumbnail (images, a local object URL)
+  or its extension, name, size, a progress bar, × to drop it before sending
+  (aborts the upload). Too big for `maxBytes`: refused before upload.
+- A line waits for uploads still running and goes when they are done; files
+  alone send after the usual pause, with their names as the text. The line
+  carries `attachments: [{id, name, type, size}]` (`cleanAttachments`, at
+  most 10) — refs only, never bytes.
+- In the log, an image of a safe type (png, jpeg, gif, webp, avif) shows as
+  an `<img>` from the host's URL; anything else is a download chip. Names are
+  text; nothing a user sent is rendered as HTML.
+- **+ → Inbox** (View group) lists the stored files, newest first, with the
+  usage line at the top ("12 MB stored · 3 files"), a **Delete** per file
+  (confirmed: "Delete for good?"), and the host's actions — here an Anki
+  package (`.apkg`/`.colpkg`) gets **Import as a deck** (导入为卡组), which
+  opens `/words/import?inbox=<id>`; the import page fetches it with the
+  owner's session and opens it as if dropped (the usual import into his own
+  word list). The same action shows under the line that carried the file.
+
+**On lianki.com** (`lib/inbox/`, `app/api/dev/inbox/**`). Owner session only
+(`isOwner`, 404 for anyone else, friends included, as every `/api/dev`
+route); the chat passes `files` only on the owner's own pages.
+
+| route | what |
+| --- | --- |
+| `POST /api/dev/inbox` | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
+| `GET /api/dev/inbox` | his files and usage (settles accrued storage cost) |
+| `PATCH /api/dev/inbox` | `{ids, line}`: the chat line they were sent with |
+| `GET /api/dev/inbox/<id>` | the file: his session, or an agent's ticket in `x-inbox-ticket` |
+| `DELETE /api/dev/inbox/<id>` | his own session only; the object and the row go |
+
+- **Keys**: `inbox/<user id>/<yyyy>/<mm>/<id>` (`lib/inbox/keys.ts`); the name
+  never goes into a key. D1 `inbox_item` (id, owner, name, type, size,
+  sha256, created, processed, line id, ticket hash/expiry) and
+  `inbox_usage` (`db/migrations/0035_inbox.sql`).
+- **Sniffing** (`lib/inbox/sniff.ts`): the stored type comes from the first
+  512 bytes, never the browser's claim; HTML/SVG/XML are stored as
+  `text/plain`; PE/ELF/Mach-O/`#!` are flagged. An `.apkg` is a zip.
+- **Serving**: `Content-Disposition: attachment` for everything but the safe
+  image types, `nosniff`, `CSP: default-src 'none'; sandbox`, private cache.
+  No public URL: his session, or a single-use 60 s ticket.
+- **Caps** — one object, `INBOX` in `lib/inbox/config.ts`, **the owner may
+  change any of them**; first values (conservative, the agent's pick):
+  20 MB per file, 200 MB per rolling 24 h per user, 2 GB stored per user (a
+  safety cap, not a plan limit), 30 uploads a minute per isolate.
+- **Cost, by usage** (owner, 2026-11-04: "按用量扣莲（上传和存储）"):
+  `lib/inbox/charge.ts` `chargeInbox`, the same seam as the AI gloss's
+  `chargeAi` — it records the real R2 cost in USD (list prices in the
+  config: Class A per upload, Class B per download, storage GB-month); the
+  debit goes there once the credit unit is final. Storage accrues as bytes
+  stored × time since `inbox_usage.settled_ms`, settled at every upload and
+  delete and when he opens the Inbox view — nothing polls.
+- **Retention**: none automatic. A file stays until he deletes it.
+
+**The agent** (`bun scripts/dev/eval.ts inbox …`, with the saved grant):
+`inbox` lists `{id,name,type,size,sha256,at,processedAt?,line?}`; `inbox get
+<id> [--out dir]` asks the hub, which calls the main Worker's
+`DebugSessions.inbox` over its service binding for a single-use ticket, then
+downloads into `$TMPDIR/lianki-inbox/<id>/` and checks the sha256; `inbox
+done <id>` marks it processed. `inbox rm` only says that deleting needs his
+own session. Chat lines from `eval.ts chat` carry `"attachments"`.
 
 ## The state tree, live
 

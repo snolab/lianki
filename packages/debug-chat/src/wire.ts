@@ -104,6 +104,13 @@ export type ChatMessage = {
    */
   context?: ChatContext;
   /**
+   * Files sent with the line (the + menu's File / Photo, paste, drop): the
+   * host's upload ids and what each is. Never the bytes: the host stores
+   * them and says where to fetch them (ChatFiles.url). Checked by
+   * cleanAttachments. Owner lines only, as the host's upload is.
+   */
+  attachments?: AttachmentRef[];
+  /**
    * Where a voice line was spoken: the page's path and title and the text on
    * its screen (cleanScene). Only on `source: "stt"` lines; what the agent's
    * polish may draw on (polish.ts), so it fixes words from context, not guesses.
@@ -485,11 +492,11 @@ export type ChatStrings = {
   attachSelection: string;
   /** Grey hint under the disabled 'Page selection' item when nothing is selected: the user should first select (highlight) text on the page. One short imperative sentence. */
   attachSelectionNone: string;
-  /** Menu item in the + menu (not available yet): attach a file from the device to the message. Noun or short verb phrase. */
+  /** Menu item in the + menu: upload a file from the device and attach it to the message. Noun or short verb phrase. */
   attachFile: string;
-  /** Menu item in the + menu (not available yet): attach a photo, a video or a sound recording to the message. Short noun phrase. */
+  /** Menu item in the + menu: upload a photo, a video or a sound recording and attach it to the message. Short noun phrase. */
   attachMedia: string;
-  /** Small grey tag on a + menu item that is not available yet. Two or three words. */
+  /** Small grey tag on a + menu item that is not available here (no uploads on this page). Two or three words. */
   attachSoon: string;
   /** Screen-reader label of the × on the chip above the input that shows the attached page selection: removes it from the message. Imperative verb phrase. */
   attachRemove: string;
@@ -499,6 +506,37 @@ export type ChatStrings = {
   attachGroupView: string;
   /** Menu item in the + menu's View group: shows or hides the state tree (the progress outline of what is being built). Short noun phrase, the panel's name. */
   attachTree: string;
+  // Files attached to a message (files.ts; FileChips.tsx).
+  /** Big hint over the chat while files are dragged over it: let go to attach them to the message. Short imperative phrase. */
+  attachDrop: string;
+  /** Tooltip of a file chip above the input while it is still being uploaded (a progress bar is shown). Progressive form, ends with an ellipsis. */
+  attachUploading: string;
+  /** Small red note on a file chip above the input: the upload did not work; remove it and try again. Two or three words. */
+  attachFailed: string;
+  /** Small red note on a file chip above the input: the file is bigger than allowed, so it was not uploaded. Two or three words. */
+  attachTooBig: string;
+  /** Screen-reader label of the × on a file chip above the input: takes that file off the message (before sending). Imperative verb phrase. */
+  attachFileRemove: string;
+  /** Menu item in the + menu's View group: opens the list of files sent in the chat (the inbox). One word, a noun. */
+  inbox: string;
+  /** Grey line in the inbox list when no file has been sent yet. One short sentence. */
+  inboxEmpty: string;
+  /** Grey line at the top of the inbox list: how much the user has stored. {size} is like "12 MB", {n} a count of files. Keep both placeholders. */
+  inboxUsage: string;
+  /** The same line when the user has a storage limit: {size} used of {quota} (both like "12 MB"), {n} files. Keep the three placeholders. */
+  inboxUsageQuota: string;
+  /** Red line in the inbox list when it could not be loaded. One short sentence. */
+  inboxFailed: string;
+  /** Small grey tag on a file in the inbox list: the agent has already read and handled it. One word, past participle. */
+  inboxProcessed: string;
+  /** Button on a file in the inbox list: deletes that one file for good (asks to confirm first). Imperative verb, one word. */
+  inboxDelete: string;
+  /** The question that replaces a file's row in the inbox list after Delete was tapped: the file is removed for good. Short question. */
+  inboxDeleteConfirm: string;
+  /** The button next to that question that keeps the file (does not delete it). Imperative verb, one word. */
+  inboxKeep: string;
+  /** Button and screen-reader label that closes the inbox list. Imperative verb, one word. */
+  inboxClose: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -564,6 +602,21 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   attachMedia: "Photo, video or audio",
   attachSoon: "Coming soon",
   attachRemove: "Remove the attached selection",
+  attachDrop: "Drop to attach",
+  attachUploading: "Uploading…",
+  attachFailed: "Upload failed",
+  attachTooBig: "Too large",
+  attachFileRemove: "Remove this file",
+  inbox: "Inbox",
+  inboxEmpty: "Nothing here yet.",
+  inboxUsage: "{size} stored · {n} files",
+  inboxUsageQuota: "{size} of {quota} used · {n} files",
+  inboxFailed: "Could not load the inbox.",
+  inboxProcessed: "Processed",
+  inboxDelete: "Delete",
+  inboxDeleteConfirm: "Delete for good?",
+  inboxKeep: "Keep",
+  inboxClose: "Close",
   attachQuoted: "Quoted from the page",
   attachGroupView: "View",
   attachTree: "State tree",
@@ -618,6 +671,46 @@ export function cleanScene(raw: unknown): SttScene | undefined {
     ...(screen ? { screen } : {}),
   };
   return Object.keys(out).length ? out : undefined;
+}
+
+/** Most files sent with one line. */
+export const MAX_ATTACHMENTS = 10;
+/** Most characters of an attached file's name. */
+export const MAX_ATTACHMENT_NAME = 200;
+
+/**
+ * A file sent with a line (ChatMessage.attachments): the host's id for the
+ * upload, the file's name (display only), its type and size in bytes.
+ */
+export type AttachmentRef = { id: string; name: string; type: string; size: number };
+
+/** Control and bidirectional-override characters: never in a shown file name. */
+const NAME_JUNK = /[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+/** A file name for display: no control or bidi characters, no folders, bounded. */
+export function cleanFileName(raw: unknown): string {
+  const s = typeof raw === "string" ? raw : "";
+  const base = s.replace(NAME_JUNK, "").split(/[\\/]/).at(-1)!.trim();
+  return base.slice(0, MAX_ATTACHMENT_NAME) || "file";
+}
+
+/** AttachmentRefs from the wire, or undefined: known keys only, each checked; at most MAX_ATTACHMENTS. */
+export function cleanAttachments(raw: unknown): AttachmentRef[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: AttachmentRef[] = [];
+  for (const a of raw.slice(0, MAX_ATTACHMENTS)) {
+    if (!a || typeof a !== "object") continue;
+    const r = a as Record<string, unknown>;
+    if (typeof r.id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(r.id)) continue;
+    const type =
+      typeof r.type === "string" && /^[a-z0-9.+-]{1,40}\/[a-z0-9.+-]{1,60}$/.test(r.type)
+        ? r.type
+        : "application/octet-stream";
+    const size = typeof r.size === "number" && Number.isSafeInteger(r.size) && r.size >= 0 ? r.size : 0;
+    if (out.some((x) => x.id === r.id)) continue;
+    out.push({ id: r.id, name: cleanFileName(r.name), type, size });
+  }
+  return out.length ? out : undefined;
 }
 
 /** A ChatContext from the wire, or undefined: known keys only, each bounded; no selection, none. */

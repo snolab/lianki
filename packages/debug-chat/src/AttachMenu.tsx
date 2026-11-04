@@ -149,6 +149,9 @@ export function AttachMenu({
   sessionsLabel,
   onTree,
   onAttachSelection,
+  upload = false,
+  onPickFiles,
+  onInbox,
   onClose,
 }: {
   t: ChatStrings;
@@ -163,6 +166,12 @@ export function AttachMenu({
   sessionsLabel?: string;
   onTree: () => void;
   onAttachSelection: () => void;
+  /** The host takes files (ChatFiles): File and Photo, video or audio work. */
+  upload?: boolean;
+  /** Open the device's file picker (`accept`: the kind's types). */
+  onPickFiles?: (accept?: string) => void;
+  /** The host lists stored files: the View group's Inbox opens them. */
+  onInbox?: () => void;
   onClose: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -223,7 +232,8 @@ export function AttachMenu({
       )}
       {attach && <div className={heading}>{t.attachGroupMessage}</div>}
       {(attach ? ATTACH_KINDS : []).map((k) => {
-        const off = k.soon || (k.id === "selection" && !sel);
+        const soon = k.upload && !upload;
+        const off = soon || (k.id === "selection" && !sel);
         return (
           <button
             key={k.id}
@@ -234,9 +244,10 @@ export function AttachMenu({
             aria-disabled={off || undefined}
             onPointerDown={keep}
             onClick={() => {
-              if (k.id !== "selection" || !sel) return;
-              onAttachSelection();
+              if (off) return;
               onClose();
+              if (k.upload) return onPickFiles?.(k.accept);
+              onAttachSelection();
             }}
             className={`${row} ${off ? "opacity-55" : "hover:bg-[oklch(0.5_0_0/0.08)]"}`}
           >
@@ -265,7 +276,7 @@ export function AttachMenu({
                 </span>
               )}
             </span>
-            {k.soon && (
+            {soon && (
               <span className="shrink-0 fs-10 leading-4 text-gray-500 dark:text-gray-400">
                 {t.attachSoon}
               </span>
@@ -274,6 +285,27 @@ export function AttachMenu({
         );
       })}
       <div className={heading}>{t.attachGroupView}</div>
+      {onInbox && (
+        <button
+          type="button"
+          role="menuitem"
+          data-testid="debug-chat-attach-inbox"
+          onPointerDown={keep}
+          onClick={() => {
+            onClose();
+            onInbox();
+          }}
+          className={`${row} hover:bg-[oklch(0.5_0_0/0.08)]`}
+        >
+          <span
+            className={badge}
+            style={{ background: "oklch(0.62 0.1 80 / 0.16)", color: "oklch(0.5 0.1 80)" }}
+          >
+            <Icon name="uploadSimple" />
+          </span>
+          <span className="min-w-0 flex-1 truncate">{t.inbox}</span>
+        </button>
+      )}
       <button
         type="button"
         role="menuitemcheckbox"
