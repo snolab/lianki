@@ -40,6 +40,7 @@ import {
   type MeaningIndex,
 } from "@/lib/read/select-meaning";
 import { translationPlan } from "@/lib/read/select-translate";
+import { formLabels } from "@/lib/read/form-tags";
 import {
   initialPlayer,
   playerReducer,
@@ -369,14 +370,16 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   // (lib/read/select-meaning.ts), on the device before he selects anything.
   const [meanIdx, setMeanIdx] = useState<MeaningIndex[]>([]);
   /** Inflected book words → their dictionary headword (the lemma file, from the server). */
-  const [heads, setHeads] = useState<Map<string, string>>(() => new Map());
+  const [heads, setHeads] = useState<Map<string, { lemma: string; sets: string[][] }>>(
+    () => new Map(),
+  );
   const ownMeanings = signedIn && !!material.readerV2 && !!material.bookHash;
   useEffect(() => {
     let live = true;
     type Own = {
       cards?: Meaning[];
       forms?: [string, number][];
-      heads?: [string, string][];
+      heads?: [string, string, string[][]?][];
     } | null;
     Promise.all([
       ownMeanings
@@ -398,7 +401,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         }
         out.push(meaningIndex(new Set(cat.values()), normLang));
         setMeanIdx(out);
-        setHeads(new Map(own?.heads ?? []));
+        setHeads(
+          new Map((own?.heads ?? []).map(([w, lemma, sets]) => [w, { lemma, sets: sets ?? [] }])),
+        );
       })
       .catch(() => {});
     return () => {
@@ -979,22 +984,26 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   }, [selSpan, meanIdx, para, normLang]);
   const selInside = !!selMeaning?.hit.inside;
   /** A selected inflected word: "form → lemma", the lemma's own card if he has one. */
+  const formTags = useIntlayer("read-form-tags");
   const selLemma = useMemo(() => {
     const u = sel.unit;
     if (u?.kind !== "word") return null;
     const ss = para(u.line).sentences;
     const w = tokenWord(ss, u.t);
-    const lemma = w ? heads.get(w) : undefined;
-    if (!w || !lemma) return null;
+    const head = w ? heads.get(w) : undefined;
+    if (!w || !head) return null;
+    const { lemma } = head;
     // His own cards only (the first index when he has any): the link goes to his list.
     const own = meanIdx.length > 1 ? wordMeaning(lemma, meanIdx.slice(0, 1), normLang) : null;
     const card: CardLemma = {
       form: tokenText(ss, u.t, u.t),
       lemma,
       href: own?.listId ? `/words?list=${encodeURIComponent(own.listId)}` : null,
+      // The lemma file's own tags, named in his language (lib/read/form-tags.ts): data, no model.
+      tags: formLabels(head.sets, formTags).join(" / ") || null,
     };
     return { w, card, ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null };
-  }, [sel.unit, para, heads, meanIdx, normLang]);
+  }, [sel.unit, para, heads, meanIdx, normLang, formTags]);
   // A sentence, a paragraph or a range: its whole units translated by
   // themselves (lib/read/select-translate.ts). Not when it is a deck card.
   const plan = useMemo(
