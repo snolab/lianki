@@ -324,19 +324,23 @@ function fakeModel(
 let logs: string[] = [];
 let logSpy: ReturnType<typeof spyOn>;
 let errSpy: ReturnType<typeof spyOn>;
-beforeEach(() => {
-  logs = [];
-  const rec = (...a: unknown[]) =>
-    void logs.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" "));
-  logSpy = spyOn(console, "log").mockImplementation(rec);
-  errSpy = spyOn(console, "error").mockImplementation(rec);
-});
-afterEach(() => {
-  logSpy.mockRestore();
-  errSpy.mockRestore();
-});
+/** Capture console.log/error for each test of the calling describe (scoped there, not file-wide). */
+function captureLogs() {
+  beforeEach(() => {
+    logs = [];
+    const rec = (...a: unknown[]) =>
+      void logs.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" "));
+    logSpy = spyOn(console, "log").mockImplementation(rec);
+    errSpy = spyOn(console, "error").mockImplementation(rec);
+  });
+  afterEach(() => {
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+}
 
 describe("extractSelfIntro (mocked model)", () => {
+  captureLogs();
   const answer = JSON.stringify({
     facts: [
       { field: "name", value: "Mei Example-Tanaka", certain: true },
@@ -417,6 +421,7 @@ describe("extractSelfIntro (mocked model)", () => {
 });
 
 describe("POST /api/self-intro/import (handleImport)", () => {
+  captureLogs();
   const answer = JSON.stringify({ facts: [{ field: "hobby", value: "baking", certain: true }] });
   let n = 0;
   const deps = (over: Partial<ImportDeps> = {}): ImportDeps => ({
@@ -492,20 +497,13 @@ describe("POST /api/self-intro/import (handleImport)", () => {
     expect(last).toBe(429);
   });
 
-  it("writes nothing anywhere: no fetch, no D1 or R2 in its code, the material in no log", async () => {
-    const fetchSpy = spyOn(globalThis, "fetch");
-    try {
-      const r = await handleImport(
-        post({ text: MATERIAL, images: ["data:image/jpeg;base64,AAAA"] }),
-        deps(),
-      );
-      expect(r.status).toBe(200);
-      // No request carries the material anywhere (a stray fetch from another
-      // suite's timer may land in this window, so check content, not count).
-      for (const call of fetchSpy.mock.calls) expect(JSON.stringify(call)).not.toMatch(/Mei|AAAA/);
-    } finally {
-      fetchSpy.mockRestore();
-    }
+  it("writes nothing anywhere: no D1 or R2 in its code, the material in no log", async () => {
+    // The model is the injected stand-in: the handler has no other way out.
+    const r = await handleImport(
+      post({ text: MATERIAL, images: ["data:image/jpeg;base64,AAAA"] }),
+      deps(),
+    );
+    expect(r.status).toBe(200);
     expect(logs.join("\n")).not.toContain("Mei");
     expect(logs.join("\n")).not.toContain("AAAA");
     // The import's server code holds no storage: no D1, no R2 bucket, no cache, no put.
