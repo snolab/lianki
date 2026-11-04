@@ -58,7 +58,7 @@ import {
 import { CLIPS_AUTOSTOP_MIN, activeSink } from "./clips";
 import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
-import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
+import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { BAR_CONTROL, barGeometry } from "./bar-geometry";
@@ -548,6 +548,12 @@ export type DebugChatProps = {
   evalRan?: boolean;
   /** A friend's page: pairings are previews (no chat scope to grant). */
   friend?: boolean;
+  /**
+   * The hub verified this as the owner's session (DebugEval `owner`): with no
+   * stored `lk:agent-local-stt`, the mic defaults to his local STT
+   * (localSttRoute, docs/local-stt.md). Never set for friends or other users.
+   */
+  owner?: boolean;
   /** Shown instead of the input when this account cannot chat (blocked). */
   notice?: string;
   /** With `notice`: a link under it (the read-only partner on another site: type on lianki.com). */
@@ -669,6 +675,7 @@ export function DebugChat({
   onEnd,
   evalRan = false,
   friend = false,
+  owner = false,
   notice,
   noticeHref,
   warning,
@@ -1716,6 +1723,17 @@ export function DebugChat({
     synth()?.getVoices(); // starts loading them, so the first reply finds one
     return () => clearTimeout(timer.current);
   }, []);
+  /**
+   * The mic's local STT route (localSttRoute): a stored value wins; with none,
+   * the owner's page defaults to his Mac. Never on a friend's page.
+   */
+  const storedStt = read(LOCAL_STT_KEY);
+  const sttRoute = friend ? { source: "none" as const } : localSttRoute(storedStt, owner);
+  useEffect(() => {
+    // The devLog says where speech goes: `via` on the ready line, and here the route's source.
+    if (sttRoute.source !== "none")
+      voice().log({ ev: "local-stt", state: "route", source: sttRoute.source, urls: sttRoute.urls ?? "" });
+  }, [sttRoute.source, sttRoute.urls]);
   /** The voice session (voice.ts): mic on, reading, sentences queued. */
   const [vs, setVs] = useState<VoiceState>(QUIET);
   useEffect(() => {
@@ -2344,7 +2362,7 @@ export function DebugChat({
           }}
           // Only while the hub says this window records (clips.ts); the key is the sink URL only.
           clipSink={friend ? undefined : activeSink(clipsHub)}
-          localStt={friend ? undefined : localSttFrom(read(LOCAL_STT_KEY))}
+          localStt={sttRoute.urls}
           label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
           gesture={micGesture}
         />
@@ -2528,7 +2546,7 @@ export function DebugChat({
   /** The voiceprint panel's page side: the Mac over the local STT socket, and the mic session. */
   const voiceprintDeps = () =>
     panelDeps({
-      url: localSttFrom(read(LOCAL_STT_KEY)) ?? "",
+      url: sttRoute.urls ?? "",
       device: voiceDevice(),
       capture: (on, onFinal, id) => pageMic().enrolCapture(on, onFinal, id),
       log: (ev) => voice().log(ev),
@@ -2707,7 +2725,7 @@ export function DebugChat({
         </button>
       )}
       {/* The voiceprint (voiceprint.ts): owner pages with a local STT; enrolling and deleting are taps in its panel. */}
-      {!friend && localSttFrom(read(LOCAL_STT_KEY)) && (
+      {sttRoute.urls && (
         <button
           type="button"
           role="menuitem"

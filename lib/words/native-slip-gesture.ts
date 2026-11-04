@@ -28,6 +28,7 @@ import {
   SWIPE_VELOCITY_MS,
 } from "./swipe";
 import { GLIDE_WATCH_MS, homeStep, onDetent } from "./native-slip";
+import { onPageLeave } from "@/lib/page-leave";
 
 /** The tuning tag of the New swipe in telemetry rows. */
 export const NATIVE_PARAMS = "scroll-snap";
@@ -264,6 +265,32 @@ export function useNativeSlip(
       props.current.perf?.start();
       el.addEventListener("scroll", slid, { once: true, passive: true });
       if (!g.steep) el.addEventListener("touchmove", axis, { passive: false });
+      leave?.();
+      leave = onPageLeave(stolen, { blur: true });
+    };
+    /** Listens for the page going away while a finger is down (lib/page-leave.ts). */
+    let leave: (() => void) | null = null;
+    /**
+     * The system took the touch: a touchcancel (Android's edge Back, the
+     * shade, an app switch) or the page hidden or left mid-gesture. Not a
+     * lift: wherever the slip stands, nothing is graded, and it glides home
+     * (docs/design-principles.md, "Edge gestures").
+     */
+    const stolen = () => {
+      leave?.();
+      leave = null;
+      if (!g.touching) return;
+      g.touching = false;
+      el.removeEventListener("scroll", slid);
+      el.removeEventListener("touchmove", axis);
+      endHold();
+      el.style.overflowX = "";
+      const slide = g.moved && !g.caught && !g.steep;
+      // settle() grades only a slide this gesture made: there is none now.
+      g.panned = g.moved = g.steep = false;
+      setPhase("idle");
+      props.current.perf?.stop(slide ? "swipe-cancel" : "scroll");
+      if (Math.abs(home - el.scrollLeft) >= 1) glideHome();
     };
     /**
      * The browser hands a diagonal drag to this slip when it can scroll that
@@ -285,6 +312,8 @@ export function useNativeSlip(
     };
     const touchend = (e: TouchEvent) => {
       if (e.touches.length) return;
+      leave?.();
+      leave = null;
       g.touching = false;
       g.finger = (e.changedTouches[0]?.clientX ?? g.x0) - g.x0;
       el.removeEventListener("scroll", slid);
@@ -363,7 +392,7 @@ export function useNativeSlip(
     el.addEventListener("scroll", reveal, { passive: true });
     el.addEventListener("touchstart", touchstart, { passive: true });
     el.addEventListener("touchend", touchend, { passive: true });
-    el.addEventListener("touchcancel", touchend, { passive: true });
+    el.addEventListener("touchcancel", stolen, { passive: true });
     el.addEventListener("pointerdown", pointerdown);
     el.addEventListener("pointerup", pointerup);
     el.addEventListener("pointercancel", pointercancel);
@@ -377,7 +406,8 @@ export function useNativeSlip(
       cancelAnimationFrame(g.springing);
       el.removeEventListener("touchstart", touchstart);
       el.removeEventListener("touchend", touchend);
-      el.removeEventListener("touchcancel", touchend);
+      el.removeEventListener("touchcancel", stolen);
+      leave?.();
       el.removeEventListener("pointerdown", pointerdown);
       el.removeEventListener("pointerup", pointerup);
       el.removeEventListener("pointercancel", pointercancel);

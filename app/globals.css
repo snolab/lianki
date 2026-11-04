@@ -83,6 +83,18 @@
   --lk-z-chat-modal: 90;
   --lk-z-notice: 95;
 }
+/* The system's edge-gesture strip: a sideways drag that starts here is
+   Android's Back (either side, gesture navigation) or iOS's swipe back, and
+   the page can't cancel it (docs/design-principles.md, "Edge gestures").
+   No env() reports its width — safe-area insets cover the notch and the home
+   indicator only — so this one constant stands in for it: Android's default
+   back-gesture strip, about 24dp (1 CSS px = 1dp there). A UI internal, never
+   shown or set by a user. --lk-edge-l / -r add the safe area for landscape. */
+:root {
+  --lk-edge-gesture: 24px;
+  --lk-edge-l: calc(var(--lk-edge-gesture) + env(safe-area-inset-left));
+  --lk-edge-r: calc(var(--lk-edge-gesture) + env(safe-area-inset-right));
+}
 .lk-fs-chat {
   --lk-fs-k: calc(var(--lk-fs-ui, 1) * var(--lk-fs-chat, 1));
 }
@@ -1195,6 +1207,14 @@ html[data-read-marks="unknown"] .lk-book [data-f="u"] {
 /* Double taps are combo clicks here, never a zoom. */
 .lk-book {
   touch-action: manipulation;
+}
+/* Touch: the text — what a finger grabs to swipe an item — starts and ends
+   clear of the edge-gesture strip (--lk-edge-gesture), so a swipe begun on
+   the words is the page's, never the system's Back. */
+@media (pointer: coarse) {
+  .lk-book {
+    padding-inline: max(1.25rem, var(--lk-edge-l)) max(1.25rem, var(--lk-edge-r));
+  }
 }
 @media (prefers-color-scheme: dark) {
   .lk-book [data-reading] {
