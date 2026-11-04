@@ -26,6 +26,7 @@ regexes = [
   '''eyJhIjoiUlVOLVRPS0VOLVNFQ1JFVCJ9''',
   # UI string keys of the reader's grammar labels (lib/read/form-tags.ts in
   # ba465f1f, #532: `key: "person1Singular"`), read as a generic API key.
-  # Pushed history; the field is named `piece` since.
-  '''key: "person[123]Singular"''',
+  # Pushed history; the field is named `piece` since. (Matched against the
+  # secret gitleaks captured, the string itself.)
+  '''^person[123]Singular$''',
 ]
