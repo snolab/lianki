@@ -263,6 +263,8 @@ const suites = [
   ["WORDS (qa-words)", "bun", ["scripts/qa/qa-words.mjs"], { QA_BASE: BASE }],
   ["READ EPUB (qa-read-epub)", "bun", ["scripts/qa/qa-read-epub.mjs"], { QA_BASE: BASE }],
   ["READ PLAY (qa-read-play)", "bun", ["scripts/qa/qa-read-play.mjs"], { QA_BASE: BASE }],
+  // Serverless: familiarity underlines keep their colours inside the reader's selection (WebKit + Chromium).
+  ["READ SEL UNDERLINES", "bun", ["scripts/qa/qa-read-sel-underlines.ts"], {}],
   [
     "SYNC (db-sync-matrix)",
     "bunx",
