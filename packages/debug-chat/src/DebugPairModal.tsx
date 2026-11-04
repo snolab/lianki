@@ -46,7 +46,7 @@ export function DebugPairModal({
   return (
     <div
       data-testid="debug-modal"
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[var(--lk-z-chat-modal,90)] flex items-center justify-center p-4"
       style={{ background: "oklch(0.1 0 0 / 0.7)" }}
     >
       <div

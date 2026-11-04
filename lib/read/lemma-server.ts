@@ -18,12 +18,11 @@ function workerAssets(): Assets | null {
   }
 }
 
-/** A lemma file's text: from the Worker's assets, else from public/; null when neither has it. */
-export async function readLemmaFile(
-  lang: string,
+/** A file of public/ as text (gunzipped): from the Worker's assets, else from public/; null when neither has it. */
+export async function readPublicText(
+  path: string,
   assets: Assets | null = workerAssets(),
 ): Promise<string | null> {
-  const path = lemmaPath(lang);
   try {
     const r = assets ? await assets.fetch(new Request(`https://assets.local${path}`)) : null;
     if (r?.ok) return await lemmaText(await r.arrayBuffer());
@@ -41,6 +40,10 @@ export async function readLemmaFile(
     return null;
   }
 }
+
+/** A lemma file's text, or null. */
+export const readLemmaFile = (lang: string, assets: Assets | null = workerAssets()) =>
+  readPublicText(lemmaPath(lang), assets);
 
 /** The file's text, read once per isolate; a failed read is tried again next time. */
 async function lemmaFile(lang: string): Promise<string | null> {

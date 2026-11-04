@@ -137,7 +137,7 @@ export function ClipsBadge({ strings }: { strings: Strings }) {
         marginInline: "auto",
         width: "fit-content",
         maxWidth: "calc(100vw - 2rem)",
-        zIndex: 50,
+        zIndex: "var(--lk-z-chat-modal, 90)",
         border: `1px solid ${failing ? red : "var(--glass-line, oklch(0.5 0 0 / 0.2))"}`,
         color: "var(--foreground, oklch(0.25 0 0))",
       }}

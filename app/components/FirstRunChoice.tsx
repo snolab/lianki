@@ -58,7 +58,7 @@ export function FirstRunChoice({ labels }: { labels: FirstRunLabels }) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-[var(--lk-z-overlay)] flex items-center justify-center bg-black/50 p-4"
       // Dismissing without choosing means "not now", which is the local path:
       // they keep using the app exactly as they already were.
       onClick={() => record("local")}

@@ -135,6 +135,7 @@ import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
+import { type ScrollBox, forwardWheel } from "./wheel-forward";
 import { AskCard } from "./AskCard";
 import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
@@ -1525,6 +1526,40 @@ export function DebugChat({
       el.removeEventListener("touchmove", move);
     };
   }, [open]);
+  // A wheel or trackpad scroll over the bar (the input, its buttons) scrolls
+  // the log, as a drag on the empty input does (wheel-forward.ts). A long
+  // draft (or a menu) that can still scroll that way keeps it. Not passive:
+  // the forwarded wheel must not also scroll the page; one left alone is
+  // never cancelled. Touch never fires wheel: the drag paths are untouched.
+  const holdRef = useRef(hold);
+  holdRef.current = hold;
+  useEffect(() => {
+    const bar = barEl.current;
+    if (!bar) return;
+    const wheel = (e: WheelEvent) => {
+      const own: ScrollBox[] = [];
+      for (let n = e.target as HTMLElement | null; n && n !== bar; n = n.parentElement) {
+        const oy = getComputedStyle(n).overflowY;
+        if (oy === "auto" || oy === "scroll") own.push(n);
+      }
+      const el = treeShown.current ? treeBodyEl.current : log.current;
+      const dy = forwardWheel({
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        ctrlKey: e.ctrlKey,
+        own,
+        log: el && !el.hidden ? el : null,
+      });
+      if (!dy || !el) return;
+      if (e.cancelable) e.preventDefault();
+      el.scrollTop += dy;
+      userScrollAt.current = Date.now();
+      holdRef.current(COMPACT_SCROLL_MS);
+    };
+    bar.addEventListener("wheel", wheel, { passive: false });
+    return () => bar.removeEventListener("wheel", wheel);
+  }, [open]);
   const sendRef = useRef(onSend);
   sendRef.current = onSend;
 
@@ -2865,7 +2900,7 @@ export function DebugChat({
       onKeyDown={unlockSpeech}
       // A live mic counts as focus: the box goes opaque as it does while typing.
       style={offset}
-      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive || fullLog !== "off" ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive || fullLog !== "off" ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
