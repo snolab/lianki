@@ -1093,7 +1093,9 @@ function Reader({
       .then((r) => (r.ok ? r.json() : { due: [] }))
       .catch(() => ({ due: [] }))
       .then((d: { due?: string[] }) => {
+        // The server's due list is the truth again: a word missed here is back once due.
         dueRef.current = new Set(d.due ?? []);
+        doneRef.current = new Set();
         if (!sideRef.current) return;
         // His due words first, then the new ones, from where he is reading.
         // Opening is silent; a jump or a grade says the word (as a focus change on /words).
@@ -1153,10 +1155,13 @@ function Reader({
     if (w) focusWord({ line: selUnit.line, t: selUnit.t, w }, null, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selUnit]);
-  // ?side opens it (a link to try it).
+  // ?side opens it once (a link to try it), when the word map is here.
+  const sideLinked = useRef(false);
   useEffect(() => {
-    if (!sideAllowed || !blocks.length || !restored.current) return;
-    if (new URLSearchParams(location.search).has("side") && !sideRef.current) openSide();
+    if (sideLinked.current || !sideAllowed || !blocks.length || !restored.current) return;
+    if (!fam && material.words) return;
+    sideLinked.current = true;
+    if (new URLSearchParams(location.search).has("side")) openSide();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sideAllowed, blocks.length, fam]);
   // The focused word marked in the book (rows remount as the list scrolls).

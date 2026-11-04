@@ -183,8 +183,9 @@ export default function SideReview({
       aria-label={t.open.value}
       data-testid="read-side-review"
       // Phone: over the bottom of the book, above the pill; wide: beside it.
-      className="lk-glass fixed inset-x-3 z-30 flex max-h-[45vh] flex-col gap-2 overflow-y-auto overscroll-contain rounded-2xl border border-[var(--glass-line)] p-3 shadow-[0_8px_24px_-10px_oklch(0.22_0.015_65/0.4)] lg:inset-x-auto lg:end-4 lg:top-16 lg:bottom-auto lg:max-h-[calc(100vh-6rem)] lg:w-[calc(var(--lk-side-w)-2rem)]"
-      style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.75rem)" }}
+      className="lk-glass fixed inset-x-3 z-30 flex max-h-[45vh] flex-col gap-2 overflow-y-auto overscroll-contain rounded-2xl border border-[var(--glass-line)] bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] p-3 shadow-[0_8px_24px_-10px_oklch(0.22_0.015_65/0.4)] lg:inset-x-auto lg:end-4 lg:top-16 lg:bottom-auto lg:max-h-[calc(100vh-6rem)] lg:w-[calc(var(--lk-side-w)-2rem)]"
+      // Text runs under it: the near-opaque glass keeps it legible (as the reader's strip).
+      style={{ background: "var(--glass-bg-solid)" }}
     >
       <div className="flex items-center gap-1">
         {nav("due", t.due.value)}
