@@ -159,6 +159,7 @@ import {
 import { notePrefWrite, PREF_APPLIED_EVENT, useUi } from "@lianki/ui-state";
 import {
   anchorTop,
+  setFocusKey,
   migrateCollapsed,
   setAnchor,
   toggleCollapsed,
@@ -3394,6 +3395,12 @@ export type StudyScope = {
   exitLabel?: string;
   /** Shown in the toolbar after the title (the reader's 制卡). */
   toolbar?: React.ReactNode;
+  /**
+   * This review's place in the tab's UI state (`lk:ui:words`): the list's
+   * scroll and the card in focus, kept apart from the lists' own sessions so
+   * a refresh lands on the same card (lib/read/review-ref.ts reviewKey).
+   */
+  key?: string;
 };
 
 export function Study({
@@ -4134,7 +4141,7 @@ export function Study({
   }, [listEl]);
   // Where the reader was in this tab (ui-store.ts): the same opening, aimed
   // at that word instead of the first, while it is still in the queue.
-  const studyKey = lists.map((l) => l.id).join(",");
+  const studyKey = scope?.key ?? lists.map((l) => l.id).join(",");
   const anchor = useUi(ui, (s) => s.anchors[studyKey] ?? null);
   const anchorAt = useMemo(
     () => (anchor === null ? -1 : queue.findIndex((it) => keyOf(it) === anchor)),
@@ -4305,6 +4312,26 @@ export function Study({
     }, 1000);
     return () => clearInterval(t);
   }, [ROW_H]);
+  // A scoped review's card in focus, per tab (ui-store.ts `focus`): a refresh
+  // lands on the same card while it is still in the queue. Saved only once
+  // the stored one has been restored (the restore runs first, below).
+  const focusKey = scope?.key;
+  const focusRestored = useRef(false);
+  const focusedAt = touch ? focusLine : row;
+  const focusedTerm = queue[focusedAt] ? keyOf(queue[focusedAt]) : null;
+  useEffect(() => {
+    if (focusKey && focusRestored.current && focusedTerm) setFocusKey(ui, focusKey, focusedTerm);
+  }, [focusKey, focusedTerm, ui]);
+  useEffect(() => {
+    if (!focusKey || focusRestored.current || loading || !queue.length) return;
+    focusRestored.current = true;
+    const k = ui.getState().focus[focusKey];
+    const i = k ? queue.findIndex((it) => keyOf(it) === k) : -1;
+    if (i <= 0) return;
+    setFocusLine(i);
+    moveRow(i);
+  }, [focusKey, loading, queue, ui, moveRow]);
+
   const focusItem = touch ? queue[focusLine] : undefined;
   const focusText = focusItem ? spokenText(focusItem, focusItem.lang, !!config.readingOnBack) : "";
   /** The focus moved by a tap or a swipe that already said the word: don't say it twice. */

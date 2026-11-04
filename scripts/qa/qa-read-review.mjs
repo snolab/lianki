@@ -11,7 +11,9 @@
 // - 制卡 makes N cards (toast, Undo removes them; again makes them);
 // - the review opens /words' rows for the paragraph's words over the book,
 //   a swipe (touch) or a key (desktop) grades one through /words' review API;
-// - ✕ closes it: the book is where it was.
+// - ✕ closes it: the book is where it was;
+// - the review is pinned in the URL (?review=): a reload opens it again on the
+//   same card (the tab's sessionStorage), and Back closes it on the book.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, devices } from "playwright";
@@ -196,6 +198,65 @@ async function run(device, scheme, touch) {
   check(!(await page.getByTestId("read-word-review").count()), "✕ closes the review");
   const y1 = await page.evaluate(() => scrollY);
   check(Math.abs(y1 - y0) < 40, `the book kept its place (${y0} → ${y1})`);
+  check(!new URL(page.url()).searchParams.has("review"), `✕ drops ?review= (${page.url()})`);
+
+  // Reload in the review: the same review, on the same card (owner, 2026-11-05).
+  await click();
+  await page.waitForTimeout(300);
+  await page.locator("[data-action=review-words]").click();
+  await page.getByTestId("read-word-review").waitFor();
+  await until(page, async () => (await rows.count()) > 2);
+  const ref = new URL(page.url()).searchParams.get("review");
+  check(/^p\d+$/.test(ref ?? ""), `the review is in the URL (?review=${ref})`);
+  // Move the focus to the third card: a tap (touch), the cursor keys (desktop).
+  if (touch) {
+    const b = await rows.nth(2).boundingBox();
+    await page.touchscreen.tap(b.x + 40, b.y + b.height / 2);
+  } else {
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+  }
+  const focused = () =>
+    page.evaluate(
+      () =>
+        document.querySelector(
+          "[data-testid=read-word-review] .slip-loose bdi:not([data-row-example])",
+        )?.textContent ?? null,
+    );
+  let before = null;
+  await until(page, async () => !!(before = await focused()));
+  const first = await page.evaluate(
+    () =>
+      document.querySelector(
+        "[data-testid=read-word-review] [data-i='0'] bdi:not([data-row-example])",
+      )?.textContent ?? null,
+  );
+  check(!!before && before !== first, `the focus moved off the first card (${first} → ${before})`);
+  // The position is written as it changes; give the store a beat.
+  await page.waitForTimeout(400);
+  const entries = await page.evaluate(() => history.length);
+  await page.reload({ waitUntil: "load" });
+  check(
+    await until(page, async () => (await page.getByTestId("read-word-review").count()) > 0, 20000),
+    "a reload opens the review again",
+  );
+  check(new URL(page.url()).searchParams.get("review") === ref, "on the same ?review=");
+  let after = null;
+  await until(page, async () => (after = await focused()) === before, 15000);
+  check(after === before, `on the same card (${before} → ${after})`);
+  check((await page.evaluate(() => history.length)) === entries, "no extra history entry");
+  await page.screenshot({ path: join(OUT, `reloaded-${tag}.png`) });
+  // Back closes it on the book, the reader still there.
+  await page.goBack();
+  check(
+    await until(page, async () => !(await page.getByTestId("read-word-review").count())),
+    "Back closes the reloaded review",
+  );
+  check(
+    !new URL(page.url()).searchParams.has("review") && /\/read\//.test(page.url()),
+    `Back lands on the book (${page.url()})`,
+  );
+  check(await page.getByTestId("reader-v2").isVisible(), "the reader is under it");
   check(errs.length === 0, `no page errors (${errs.slice(0, 2)})`);
   await ctx.close();
 }
