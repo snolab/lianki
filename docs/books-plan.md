@@ -99,9 +99,9 @@ numerals; Hindi loans).
 
 ## Sources and copyright
 
-- **Shared catalogue:** only works public domain in the US (published in or
-  before 1930 as of 2026; the cutoff moves each 1 January) **and** with every
-  creator, translators included, dead 80+ years. Candidate sources: Project
+- **Shared catalogue:** only works that pass the **admission rule** below
+  (public domain in the work's country, the viewer's country and the US;
+  replaces the earlier "US PD + every creator dead 80+ years"). Candidate sources: Project
   Gutenberg, Standard Ebooks, Wikisource, Aozora Bunko (check US status per
   work), zh.wikisource. Text and its extraction are shared and paid for once. The shared catalogue is **/books** (below).
 - **Your own copy:** private to you, never shared or listed, deletable,
@@ -140,9 +140,12 @@ title's own language, the source link visible inside the imported book.
   year, every creator with their death year, the source page (linked), the one
   file the server fetches, licence line and attribution, and optionally a
   `range` (element ids / a markup marker) to leave out matter such as Lang's
-  English introduction. `checkCatalogue` (unit test) enforces the rule above
-  for the current year: published ≤ year − 96, every creator died ≥ 80 years
-  ago, file and page on `SOURCE_HOSTS`, licence and attribution present.
+  English introduction. Each entry also carries `workCountry` (ISO 3166 of
+  first publication), `firstPublicationYear` and `creators[]` (name, role
+  author/translator/editor/illustrator, `deathYear`). `checkCatalogue` (unit
+  test) requires that data and, for the current year, that the entry is
+  public domain in its own `workCountry` and in the US (the admission rule
+  below), file and page on `SOURCE_HOSTS`, licence and attribution present.
 - **Entries (all Project Gutenberg HTML, checked on each ebook page):**
   Perrault, _Histoires ou Contes du temps passé_ (#33931, Lang ed. 1888, only
   the 1697 prose tales; A1); La Fontaine, _Fables_ livre I (#17941; A1–A2,
@@ -184,11 +187,69 @@ title's own language, the source link visible inside the imported book.
   ones. Not tied to `read.reader-v2`: an added book opens in whichever reader
   the user has.
 
+### Admission rule: public domain per country (owner, 02:18 JST 2026-11-05)
+
+> **Not legal advice; re-verify with counsel before turning
+> `books.catalogue` on for users.** The flag stays off until then.
+
+Replaces the single global cut-off ("US PD + every creator dead 80 years").
+A book is **shown to a viewer, and importable by them, only when it is public
+domain in all three of**:
+
+1. its **country of first publication** (`workCountry`),
+2. the **viewer's country** — Cloudflare's `request.cf.country`, else the
+   `CF-IPCountry` header (`lib/books/viewer.ts`); unknown (dev, "XX", Tor
+   "T1") → the conservative default term,
+3. the **US**, always: our servers and Project Gutenberg are there.
+
+The rule of the shorter term is **not** assumed (conservative).
+
+- **The test** (`lib/books/terms.ts`, one generic engine, the countries as
+  data): PD(work, country) under a life+N rule = every creator's
+  `deathYear + N < year`; terms run to the end of the calendar year (life+70
+  for a 1955 death protects through 31 December 2025). The last creator of the
+  edition to die decides (author, translator, editor, illustrator,
+  introduction). No creators → never PD.
+- **US**: the publication rule — published in or before `year − 96` (1930 in
+  2026) is PD. First published 1931–2002 → treated as protected (renewal not
+  checked). Unpublished or first published from 2003 → life+70.
+- **The term table** (data; each row has a note with its source):
+
+  | country                                   | rule                                                                                                                                                          |
+  | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | US                                        | publication rule above                                                                                                                                        |
+  | EU 26 (all but ES), NO, IS, LI, CH, GB, BR | life+70 (France: +30 for "mort pour la France" not modelled; GB: Peter Pan, unpublished pre-1989 works not modelled)                                         |
+  | ES                                        | life+70; life+80 for creators who died by 1987                                                                                                                |
+  | JP                                        | life+70 from 2018-12-30, not retroactive (a life+50 term ended by 2017 stays ended); wartime additions (戦時加算) taken as +11 years for works first published before 1952 in an Allied country |
+  | KR                                        | life+70 from 2013-07-01, not retroactive (life+50 ended by 2012 stays ended)                                                                                  |
+  | AU                                        | life+70 from 2005, not retroactive (life+50 ended by 2004 stays ended)                                                                                        |
+  | CA                                        | life+70 from 2022-12-30, not retroactive (life+50 ended by 2021 stays ended)                                                                                  |
+  | RU                                        | life+74 (the +4 for WWII-era authors applied to everyone); a term not running on 1993-01-01 (life+50 ended by 1992) stays ended                               |
+  | CN                                        | life+50                                                                                                                                                       |
+  | IN                                        | life+60                                                                                                                                                       |
+  | MX                                        | life+100, flat                                                                                                                                                |
+  | any other / unknown                       | **life+100 AND the US rule**                                                                                                                                  |
+
+- **Enforced in three places:** `/books` lists only the viewer's visible
+  books (`catalogueFor`), `/books/<lang>/<slug>` 404s for a book not visible
+  to them, and `POST /api/books/import` refuses with 451
+  `not-public-domain-here` and a message naming the country.
+- **Tests** (`unit/books-catalogue.test.ts`): every entry carries the data and
+  is PD in its own country and the US; the term table (end-of-year, last
+  creator decides, the US publication rule, the non-retroactive extensions,
+  Japan's wartime additions, Spain, the default); viewer filtering — Kafka
+  († 1924) was hidden in Mexico but shown in France in 2024, and a 1950 death
+  published 1925 is shown in France and China but hidden in Mexico in 2026.
+- **The 7 entries in 2026:** every creator died by 1924 (Kafka; Cousturier
+  1915 at the latest), so all are PD under every row, the default included,
+  and none is hidden anywhere. The filter starts to matter with the first
+  author who died after 1925.
+
 ### Next: confidently public-domain imports become shared (owner, 01:43 JST)
 
 "识别到确信公有授权的内容要全站所有用户共享": when a user imports from a source
 on a public-domain host allowlist (Wikisource, Project Gutenberg, Aozora
-Bunko…) whose own page states the work's status, and the rule above holds from
+Bunko…) whose own page states the work's status, and the admission rule holds from
 the source's metadata (never guessed), the text and its processing are shared
 (one R2 copy, paid once) and the work is promoted to a /books entry for all
 users, marked with its source; who added it and when is not shown. Uploaded
@@ -577,7 +638,8 @@ own paragraphs (no chunks):
 ### Owner decisions, 2026-11-03 ~19:40 JST (Slack)
 
 1. **Shared catalogue rule:** public domain in the US **and** every creator
-   (translators included) dead 80+ years.
+   (translators included) dead 80+ years. _Superseded 2026-11-05 by the
+   per-country admission rule ("Admission rule: public domain per country")._
 2. **No book-page layout.** The reader renders the EPUB's own paragraphs as
    they are, in one continuous scroll; **swiping a paragraph left/right is
    its review grade**, exactly like the /words swipe (the mirror setting
