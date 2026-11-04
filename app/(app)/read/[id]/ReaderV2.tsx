@@ -75,6 +75,7 @@ import { setTextSize, stepScale, TEXT_MAX, TEXT_MIN } from "@/lib/text-size";
 import { useTextSizes } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
+import { BookSourceNote } from "../BookSourceNote";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { SelectCard, type CardActions, type UnitView } from "./reader-select-card";
@@ -1331,6 +1332,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
 
         {/* Reserve, don't push: the strip's height of room above the book at rest. */}
         <div aria-hidden className="h-[3.25rem]" />
+        {/* A /books book: its source link and licence, above the text (docs/books-plan.md). */}
+        <BookSourceNote book={book} className="mx-auto max-w-[42rem] px-5 pb-3" />
 
         {/* The book */}
         {!loaded && (
@@ -1459,6 +1462,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         {sheet === "toc" && (
           <Sheet title={t.contents.value} onClose={closeSheet} closeLabel={t.close.value}>
             {material.words && <BookScan id={id} words={material.words} flat />}
+            <BookSourceNote book={book} className="mt-3" />
             {chapters.length > 1 && (
               <ol className="mt-3 flex flex-col" data-testid="reader-toc">
                 {chapters.map((c, i) => (

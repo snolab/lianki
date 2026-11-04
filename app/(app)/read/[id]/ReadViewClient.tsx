@@ -18,6 +18,7 @@ import {
 import { browserReadSpeaker } from "@/lib/read/speaker-browser";
 import type { WordsSummary } from "@/lib/read/progress";
 import { BookScan } from "../BookWords";
+import { BookSourceNote } from "../BookSourceNote";
 
 /** Lines rendered at once: a whole book never goes into the DOM in one go. */
 const SECTION_LINES = 200;
@@ -345,6 +346,7 @@ export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boo
           {book?.author && (
             <p className="text-sm text-gray-600 dark:text-gray-300">{book.author}</p>
           )}
+          <BookSourceNote book={book} className="mt-1" />
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {material.lines.length} lines &middot; Line {currentLine + 1} of {material.lines.length}
           </p>
