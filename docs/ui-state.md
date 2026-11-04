@@ -90,6 +90,8 @@ target that is not built yet.
 | /read v2 word marks level       | local `lk:pref:read-marks`            | done: off / unknown / all (default all); `html[data-read-marks]`, CSS only |
 | /read auto-advance (read on)        | local `lk:pref:read-auto`                | done: per device, off by default (owner, 2026-11-03); lib/read/player.ts       |
 | slip action sheet open              | memory (it is modal, closed on refresh)  | intentional; back closes it (below)                                            |
+| /read word review open (what it covers) | URL `?review=p<line>` · `?review=r<l0>.<t0>-<l1>.<t1>` (lib/read/review-ref.ts) | done (owner, 2026-11-05): refresh, Back / Forward and a link open it again; the reader's deep-link addresses, stable across reloads |
+| /read word review: card in focus, list scroll | session `lk:ui:words` `focus` / `anchors`, key `review:<book>:<ref>` | done: a refresh lands on the same card while it is still in the review |
 | sidebar collapsed                   | local `lk:sidebar`                       | → `lk:pref:sidebar`                                                            |
 | phone drawer open                   | memory, `navUi` (lib/nav/ui-store.ts)    | done: the bottom island opens it too                                           |
 | recent pages (nav)                  | session `lk:ui:nav`                      | done                                                                           |
@@ -176,9 +178,21 @@ folds the sheet; it does not leave the page. `useBackToClose(open, close)`
   back. The marker left in that entry is stripped on the next mount
   (`dropOrphan`). The entry stays, so one back after such a reload changes
   nothing on screen.
+- **Pinned in the URL** (the /read word review, `?review=`): `useBackToClose(open,
+  close, { url, adopt, exit })`. Opening pushes its one entry _with_ that
+  address (without Next.js's keys, so its patched `pushState` moves the router
+  to it too); Back returns to the address without it. A reload or a link opens
+  it from the address and `adopt`s the entry it is on: no second entry. If
+  that entry was its own before the reload (its marker was still there),
+  closing goes back one entry as usual; from a link or a new tab, closing
+  replaces the address with `exit` instead. Forward onto its entry opens it
+  again. Its position (the card in focus, the scroll) is per tab, in
+  sessionStorage, never in the URL.
 
 In use: the /words slip sheet (double tap, right click); the reader v2's sheets
-and its combo-click selection card (back clears the selection). Candidates: the
+and its combo-click selection card (back clears the selection); the reader v2's
+word review (pinned in the URL). /words has no review popup of its own: its
+review is the page (`?list=`), its sheets are memory state. Candidates: the
 phone nav drawer (`AppShell`), the language switcher dialog and the chat
 panel.
 

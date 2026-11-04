@@ -23,6 +23,11 @@ export type WordsUi = {
   anchors: Record<string, string>;
   /** List picker: the groups this tab has folded shut (their ids). */
   collapsed: string[];
+  /**
+   * Per scoped review (the reader's word review, its `scope.key`): the card
+   * in focus (keyOf), a pointer, never the card. Restored when it opens again.
+   */
+  focus: Record<string, string>;
 };
 
 const INITIAL: WordsUi = {
@@ -31,6 +36,7 @@ const INITIAL: WordsUi = {
   helpOpen: false,
   anchors: {},
   collapsed: [],
+  focus: {},
 };
 
 /** Folded groups remembered per tab; ids beyond this are dropped. */
@@ -47,12 +53,16 @@ export function cleanWordsUi(raw: unknown): Partial<WordsUi> {
     out.listId = v.listId;
   if (typeof v.settingsOpen === "boolean") out.settingsOpen = v.settingsOpen;
   if (typeof v.helpOpen === "boolean") out.helpOpen = v.helpOpen;
-  if (v.anchors && typeof v.anchors === "object" && !Array.isArray(v.anchors))
-    out.anchors = Object.fromEntries(
-      Object.entries(v.anchors as Record<string, unknown>)
+  const strings = (x: unknown) =>
+    Object.fromEntries(
+      Object.entries(x as Record<string, unknown>)
         .filter((e): e is [string, string] => typeof e[1] === "string")
         .slice(-MAX_ANCHORS),
     );
+  if (v.anchors && typeof v.anchors === "object" && !Array.isArray(v.anchors))
+    out.anchors = strings(v.anchors);
+  if (v.focus && typeof v.focus === "object" && !Array.isArray(v.focus))
+    out.focus = strings(v.focus);
   if (Array.isArray(v.collapsed))
     out.collapsed = v.collapsed
       .filter((x): x is string => typeof x === "string" && x.length <= 64)
@@ -76,6 +86,18 @@ export function setAnchor(store: UiStore<WordsUi>, listId: string, key: string |
   const keys = Object.keys(next);
   for (const k of keys.slice(0, Math.max(0, keys.length - MAX_ANCHORS))) delete next[k];
   store.setState({ anchors: next });
+}
+
+/** Remember the card in focus in a scoped review (its `scope.key`). */
+export function setFocusKey(store: UiStore<WordsUi>, scope: string, key: string) {
+  const { focus } = store.getState();
+  if (focus[scope] === key) return;
+  const next = { ...focus };
+  delete next[scope];
+  next[scope] = key;
+  const keys = Object.keys(next);
+  for (const k of keys.slice(0, Math.max(0, keys.length - MAX_ANCHORS))) delete next[k];
+  store.setState({ focus: next });
 }
 
 /**

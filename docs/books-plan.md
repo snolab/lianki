@@ -574,6 +574,12 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   (`source = "book:<content hash>"`, named after the book, made on first
   need, entries in `word_list_entries` like an Anki import). Names without a
   card are left out. `POST /api/read/[id]/word-session`.
+- **In the URL** (owner, 2026-11-05 01:30 JST: a refresh in the review
+  dropped him back to the book): `?review=p<line>` (a word's, a phrase's, a
+  sentence's or a paragraph's review) or `?review=r<l0>.<t0>-<l1>.<t1>` (a
+  range), the deep links' addresses (`lib/read/review-ref.ts`). Opening pushes
+  one entry, Back closes it, a refresh or a link opens it again on the same
+  card (per tab, `lk:ui:words`). docs/ui-state.md.
 - **制卡:** on the card and at the top of the popup, with the count of words
   that have no card (by the word map: new or unrecognised). Makes an
   unreviewed card (due now) for each in the book's list, meaning from our

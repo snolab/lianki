@@ -19,12 +19,14 @@ function fakeWin(start: unknown = { __NA: true, tree: "t" }, href = "https://lia
       get length() {
         return entries.length;
       },
-      pushState(data: unknown) {
-        entries.splice(at + 1, entries.length, { state: data, href: entries[at].href });
+      pushState(data: unknown, _?: string, url?: string) {
+        const to = url ? new URL(url, entries[at].href).href : entries[at].href;
+        entries.splice(at + 1, entries.length, { state: data, href: to });
         at++;
       },
-      replaceState(data: unknown) {
-        entries[at] = { ...entries[at], state: data };
+      replaceState(data: unknown, _?: string, url?: string) {
+        const to = url ? new URL(url, entries[at].href).href : entries[at].href;
+        entries[at] = { state: data, href: to };
       },
       back() {
         queued.push(-1);
@@ -47,6 +49,10 @@ function fakeWin(start: unknown = { __NA: true, tree: "t" }, href = "https://lia
     /** The user's back button. */
     userBack() {
       go(-1);
+    },
+    /** The user's forward button. */
+    userForward() {
+      go(1);
     },
     /** A router.push to another URL. */
     navigate(to: string) {
@@ -186,3 +192,89 @@ describe("dropOrphan", () => {
 function markOfTop(w: { history: { state: unknown } }) {
   return (w.history.state as Record<string, unknown> | null)?.[BACK_KEY];
 }
+
+describe("an overlay pinned in the URL", () => {
+  const BOOK = "https://lianki.com/read/abc";
+  const pin = {
+    url: (h: string) => `${new URL(h).pathname}?review=p3`,
+    exit: (h: string) => new URL(h).pathname,
+  };
+  const mark = (w: { history: { state: unknown } }) =>
+    (w.history.state as Record<string, unknown>)[BACK_KEY];
+
+  it("pushes its address, leaving Next.js to copy its own keys back", () => {
+    const w = fakeWin({ __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: "t", x: 1 }, BOOK);
+    openBackToClose(w, () => {}, pin);
+    expect(w.entries.length).toBe(2);
+    expect(w.location.href).toBe(`${BOOK}?review=p3`);
+    expect(w.history.state).toMatchObject({ x: 1 });
+    expect(w.history.state).not.toHaveProperty("__NA");
+    expect(mark(w)).toBeString();
+  });
+
+  it("back returns to the address without it and closes", () => {
+    const w = fakeWin({ __NA: true }, BOOK);
+    let closed = 0;
+    openBackToClose(w, () => closed++, pin);
+    w.userBack();
+    expect(closed).toBe(1);
+    expect(w.location.href).toBe(BOOK);
+  });
+
+  it("closing by its own UI goes back one entry", () => {
+    const w = fakeWin({ __NA: true }, BOOK);
+    const close = openBackToClose(w, () => {}, pin);
+    close();
+    w.settle();
+    expect(w.at).toBe(0);
+    expect(w.location.href).toBe(BOOK);
+  });
+
+  it("after a reload on its own entry, adopts it: no second entry, close goes back", () => {
+    const w = fakeWin({ __NA: true }, BOOK);
+    // The reload: the marker is left behind, nothing is open.
+    w.history.pushState({ __NA: true, [BACK_KEY]: "old.2" }, "", `${BOOK}?review=p3`);
+    dropOrphan(w);
+    expect(mark(w)).toBeUndefined();
+    let closed = 0;
+    const close = openBackToClose(w, () => closed++, { ...pin, adopt: true });
+    expect(w.entries.length).toBe(2);
+    expect(mark(w)).toBeString();
+    close();
+    w.settle();
+    expect(w.at).toBe(0);
+    expect(w.location.href).toBe(BOOK);
+    expect(closed).toBe(0);
+  });
+
+  it("adopted with the marker still on (no dropOrphan yet), it is its own too", () => {
+    const w = fakeWin({ __NA: true }, BOOK);
+    // A reload: the overlay that pushed this entry is gone, its marker stays.
+    w.history.pushState({ __NA: true, [BACK_KEY]: "old.1" }, "", `${BOOK}?review=p3`);
+    const close = openBackToClose(w, () => {}, { ...pin, adopt: true });
+    close();
+    w.settle();
+    expect(w.at).toBe(0);
+  });
+
+  it("from a shared link (nothing behind it), close replaces the address", () => {
+    const w = fakeWin({ __NA: true }, `${BOOK}?review=p3`);
+    const close = openBackToClose(w, () => {}, { ...pin, adopt: true });
+    expect(w.entries.length).toBe(1);
+    close();
+    w.settle();
+    expect(w.entries.length).toBe(1);
+    expect(w.location.href).toBe(BOOK);
+    expect(mark(w)).toBeUndefined();
+  });
+
+  it("adopted, back off it closes", () => {
+    const w = fakeWin({ __NA: true }, BOOK);
+    w.history.pushState({ __NA: true }, "", `${BOOK}?review=p3`);
+    let closed = 0;
+    openBackToClose(w, () => closed++, { ...pin, adopt: true });
+    w.userBack();
+    expect(closed).toBe(1);
+    expect(w.location.href).toBe(BOOK);
+  });
+});
