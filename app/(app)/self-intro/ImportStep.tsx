@@ -78,7 +78,7 @@ async function shrinkImage(file: FileLike): Promise<string> {
 function joinFacts(values: string[], locale: string): string {
   if (values.length < 2) return values[0] ?? "";
   try {
-    return new Intl.ListFormat(locale, { type: "unit", style: "short" }).format(values);
+    return new Intl.ListFormat(locale, { type: "conjunction" }).format(values);
   } catch {
     return values.join(", ");
   }
@@ -116,9 +116,11 @@ export default function ImportStep({
 
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;
+    // Copied now: the picker's FileList is emptied when its value is reset, before the updater runs.
+    const picked = Array.from(list);
     setFiles((prev) => {
       const next = [...prev];
-      for (const f of Array.from(list))
+      for (const f of picked)
         if (!next.some((x) => x.name === f.name && x.size === f.size)) next.push(f);
       return next.slice(0, IMPORT.maxFiles);
     });
@@ -132,7 +134,7 @@ export default function ImportStep({
       unreadable: c.errUnreadable,
       empty: c.errEmpty,
     }[code];
-    return String(msg).replace("{file}", name);
+    return msg.value.replace("{file}", name);
   };
 
   const recognize = async () => {
@@ -168,7 +170,7 @@ export default function ImportStep({
       setFacts(got.map((f, id) => ({ ...f, id, status: "pending", editing: false })));
       setPhase("facts");
     } catch (e) {
-      setError(String(e instanceof Error && e.message === "rate" ? c.errRate : c.errFailed));
+      setError((e instanceof Error && e.message === "rate" ? c.errRate : c.errFailed).value);
     } finally {
       setBusy(false);
     }
@@ -205,7 +207,7 @@ export default function ImportStep({
             id="self-intro-about"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={String(c.textPlaceholder)}
+            placeholder={c.textPlaceholder.value}
             rows={7}
             maxLength={IMPORT.maxTextChars}
             className={`${inputBox} text-base mb-4 resize-y`}
@@ -259,7 +261,7 @@ export default function ImportStep({
                     <span className="truncate">{f.name}</span>
                     <button
                       type="button"
-                      aria-label={String(c.removeFile).replace("{file}", f.name)}
+                      aria-label={c.removeFile.value.replace("{file}", f.name)}
                       onClick={() => setFiles((prev) => prev.filter((x) => x !== f))}
                       className="w-7 h-7 rounded-full shrink-0 hover:bg-[oklch(0.55_0.18_255/0.15)]"
                     >
@@ -374,7 +376,7 @@ export default function ImportStep({
                         ) : (
                           <div className="flex shrink-0">
                             <FactButton
-                              label={String(c.keep)}
+                              label={c.keep.value}
                               on={f.status === "kept"}
                               tone="keep"
                               onClick={() => update(f.id, { status: "kept" })}
@@ -382,13 +384,13 @@ export default function ImportStep({
                               ✓
                             </FactButton>
                             <FactButton
-                              label={String(c.edit)}
+                              label={c.edit.value}
                               onClick={() => update(f.id, { editing: true })}
                             >
                               ✎
                             </FactButton>
                             <FactButton
-                              label={String(c.drop)}
+                              label={c.drop.value}
                               on={f.status === "dropped"}
                               tone="drop"
                               onClick={() => update(f.id, { status: "dropped" })}
@@ -432,7 +434,7 @@ export default function ImportStep({
                 id={`self-intro-${k}`}
                 value={fields[k]}
                 maxLength={IMPORT.maxFieldChars}
-                placeholder={String(c.reviewEmpty)}
+                placeholder={c.reviewEmpty.value}
                 onChange={(e) => setFields((prev) => ({ ...prev, [k]: e.target.value }))}
                 className={inputBox}
               />
