@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CardIcons } from "@/app/(app)/read/[id]/reader-select-card";
+import { CardIcons } from "@/app/(app)/read/[id]/reader-card-icons";
 
 const noop = () => {};
 const html = renderToStaticMarkup(
