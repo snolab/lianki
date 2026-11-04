@@ -487,12 +487,16 @@ the dictionary counts as "new" rather than "unrecognised".
   [kaikki.org](https://kaikki.org/dictionary/French/) (wiktextract, Tatu
   Ylonen), file of 2026-10-30. English Wiktionary content is licensed
   [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) (and GFDL).
-  Attribution: "French headwords and inflected forms: English Wiktionary
+  Attribution: "French headwords, inflected forms and their grammatical tags: English Wiktionary
   (en.wiktionary.org) contributors, via kaikki.org".
 - Taken: headwords that have a sense of their own (not proper names,
   symbols or affixes), each with its inflected forms (conjugation and
   declension tables, plus entries Wiktionary marks as a form of it). No
-  definitions, glosses or examples. Changes made: lowercased, NFC, elided
+  definitions, glosses or examples. Each form keeps Wiktionary's grammatical
+  tags for it (tense, mood, person, number, case: `past historic`,
+  `third-person singular`, `inessive`), from the tables and the form-of
+  entries (format v2, 2026-11-05), so the reader can name a form's grammar.
+  Changes made: lowercased, NFC, elided
   clitics stripped from forms (`s'écria` → `écria`), multi-word and
   hyphenated forms dropped, ligature spellings written out as a form
   (`cœur` → `coeur`), forms written as a suffix of the headword.
@@ -500,12 +504,12 @@ the dictionary counts as "new" rather than "unrecognised".
   `scripts/words/build-lemmas.ts` (commands in its header).
 - Finnish (2026-11-04): the same, from the kaikki.org Finnish extract
   ([kaikki.org/dictionary/Finnish](https://kaikki.org/dictionary/Finnish/),
-  CC BY-SA 4.0 and GFDL). Attribution: "Finnish headwords and inflected
-  forms: English Wiktionary (en.wiktionary.org) contributors, via kaikki.org".
+  CC BY-SA 4.0 and GFDL). Attribution: "Finnish headwords, inflected
+  forms and their grammatical tags: English Wiktionary (en.wiktionary.org) contributors, via kaikki.org".
   A Finnish table has about 150 forms per word (cases, numbers, possessive
   suffixes, clitics), so a headword keeps only the forms that occur among the
   top 200,000 words of FrequencyWords `fi` (`FORMS_IN_FREQ=1`): 164,017
-  headwords, 129,981 forms, 2.7 MB.
+  headwords, 129,981 forms, 3.1 MB with tags.
 
 ## Licensing summary
 
