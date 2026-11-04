@@ -544,6 +544,7 @@ describe("Drive export of a private doc", () => {
     expect(
       await errOf(fetchDriveHtml(DOC, "t", meta(json({ mimeType: "application/pdf", name: "x" })))),
     ).toBe("not-found");
+    expect(await errOf(fetchDriveHtml(DOC, "t", meta(new Response("not json"))))).toBe("not-found");
     const throws = (async () => {
       throw new Error("net");
     }) as unknown as typeof fetch;

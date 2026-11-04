@@ -26,14 +26,6 @@ export function driveExportUrl(id: string): string {
   return `${DRIVE}${id}/export?mimeType=text%2Fhtml`;
 }
 
-async function drop(res: Response) {
-  try {
-    await res.body?.cancel();
-  } catch {
-    // already closed
-  }
-}
-
 /** Map a Drive error answer to ours. Drive says 404 for a file `drive.file` does not cover. */
 async function driveError(res: Response): Promise<Error> {
   let reason = "";
@@ -82,7 +74,8 @@ export async function fetchDriveHtml(
   const res = await get(driveExportUrl(id), "text/html");
   if (!res.ok) throw await driveError(res);
   if (!res.body || !/^text\/html\b/i.test(res.headers.get("content-type") ?? "")) {
-    void drop(res);
+    // Discard the body we will not read (a failed cancel changes nothing).
+    void res.body?.cancel().then(undefined, String);
     throw new GdocError("fetch-failed");
   }
   return { html: await readStripped(res.body, limits), title };
