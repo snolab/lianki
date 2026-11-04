@@ -27,25 +27,19 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
+  CHAT_SELECTOR,
   type Combo,
   type ComboCtx,
   type Hit,
   type Unit,
   comboClick,
   comboContinues,
+  inChat,
   inRange,
   rangeUnit,
   sameUnit,
   snapIndices,
 } from "@/lib/read/reader-select";
-
-/** The Li chat's own elements (packages/debug-chat): its taps and selections are not the reader's. */
-export const CHAT_SELECTOR = "[data-debug-chat], [data-debug-widget]";
-
-/** The event happened in the chat (through a shadow root too). */
-export function inChat(e: Pick<Event, "composedPath">): boolean {
-  return e.composedPath().some((n) => n instanceof Element && n.matches(CHAT_SELECTOR));
-}
 
 /** A hand selection has settled once `selectionchange` is this quiet (ms). */
 export const SETTLE_MS = 350;

@@ -77,7 +77,7 @@ describe("LINE_SELECTABLE", () => {
 
 describe("the reader leaves the chat alone", () => {
   it("knows an event in the chat by its path", async () => {
-    const { inChat, CHAT_SELECTOR } = await import("@/app/(app)/read/[id]/use-reader-select");
+    const { inChat, CHAT_SELECTOR } = await import("@/lib/read/reader-select");
     class El {
       constructor(private sel: string) {}
       matches(s: string) {
