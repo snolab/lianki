@@ -84,6 +84,37 @@ export function localSttFrom(raw: string | null | undefined): string | undefined
 }
 
 /**
+ * The owner's routes when his page has stored none (docs/local-stt.md, "On by
+ * default for the owner"): his Mac on the tailnet first, then the tunnel.
+ * Either failing is the usual race; both failing is the cloud, per utterance.
+ */
+export const OWNER_DEFAULT_LOCAL_STT = "wss://taku.onca-tint.ts.net/lianki-stt wss://stt.lianki.com";
+
+/** A stored value that turns the local route off on this origin (the default included). */
+export const LOCAL_STT_OFF = "off";
+
+/** Where the page's local STT route came from: a stored value, the owner default, an explicit off, or nothing. */
+export type LocalSttSource = "stored" | "owner-default" | "off" | "none";
+
+/**
+ * The route(s) a page uses. A stored value always wins — `off` (or one with
+ * no usable URL) is off, even for the owner. With nothing stored, only the
+ * owner's page (`owner`: the hub's verified owner session, never a friend or
+ * another user) gets OWNER_DEFAULT_LOCAL_STT.
+ */
+export function localSttRoute(
+  stored: string | null | undefined,
+  owner: boolean,
+): { urls?: string; source: LocalSttSource } {
+  if (stored != null) {
+    const urls = stored.trim().toLowerCase() === LOCAL_STT_OFF ? undefined : localSttFrom(stored);
+    return urls ? { urls, source: "stored" } : { source: "off" };
+  }
+  if (owner) return { urls: localSttFrom(OWNER_DEFAULT_LOCAL_STT), source: "owner-default" };
+  return { source: "none" };
+}
+
+/**
  * The tunnel's hosts. Only these are sent a ticket: a ticket is good for the
  * tunnel, so it must never go to any other host a localStorage value names.
  */
