@@ -372,6 +372,23 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   catalogs, the sentence as example; never a second card
   (`lib/read/book-word-list.ts` `makeCards`). The toast's Undo removes the
   ones still unreviewed. `POST /api/read/[id]/make-cards`.
+- **Every word with a meaning** (owner, 2026-11-04 14:41 JST, Le Petit
+  Prince: "有好几个词只有例句没有解释" → "用AI自动补上"). The device looked our
+  decks up without the book's lemmas, so "représentait", "avalait",
+  "appelait" had no meaning, and "fauve", "boa" are in no deck at all. Now
+  the server fills every word lacking one (`lib/read/gloss.ts`,
+  `gloss-server.ts` `fillGlosses`), first hit wins: the decks over the
+  word's folds with the lemmas; the shared generated glosses (D1
+  `word_gloss`, keyed by language + headword, not personal data); the model
+  (Workers AI, the Learning Partner's DeepSeek, English Wiktionary-style
+  like the decks), written to `word_gloss` first so no word is generated
+  twice. Only words that need one are looked up: a new word, or a card made
+  without a meaning — that card (and its entry) is backfilled, only where
+  its back is still empty. Per user, a rate limit on model calls.
+  **Cost:** each generation's real cost (the model's token counts × its
+  list price) goes to `chargeAi`, the one place a credits debit will go;
+  until the credits redesign (owner, 2026-11-04) it only logs
+  `read.gloss.cost`.
 
 ### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
 

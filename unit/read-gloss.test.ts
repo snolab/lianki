@@ -1,0 +1,98 @@
+/**
+ * A book word's meaning in the in-place review (lib/read/gloss.ts,
+ * lib/read/gloss-server.ts): the decks over the book's lemmas, the shared
+ * generated glosses, and the backfill of cards made without a meaning.
+ */
+import { beforeEach, describe, expect, test } from "bun:test";
+import { testSchema } from "@/lib/d1/testSchema";
+import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
+import { WordsD1Repo } from "@/lib/repos/wordsD1";
+import { parseLemmas } from "@/lib/read/lemma";
+import { headOf, lookupGloss, parseGlosses } from "@/lib/read/gloss";
+import { fillGlosses } from "@/lib/read/gloss-server";
+import { scopeSession, type BookCtx, type RangeWord } from "@/lib/read/book-word-list";
+
+const lem = parseLemmas(
+  "#lianki-lemmas v1 fr\nreprésenter\t2ait\navaler\t2ait\nfauve\t0s\nboa\t0s\n",
+);
+
+describe("rules", () => {
+  test("an inflected form finds its headword's meaning", () => {
+    const deck = new Map([["représenter", { term: "représenter", back: "to represent" }]]);
+    expect(lookupGloss("représentait", "fr", lem, deck)?.back).toBe("to represent");
+    // Without the lemmas (what the device had), nothing.
+    expect(lookupGloss("représentait", "fr", null, deck)).toBeNull();
+  });
+
+  test("a generated meaning is keyed by the headword", () => {
+    expect(headOf("avalait", lem)).toBe("avaler");
+    expect(headOf("fauve", lem)).toBe("fauve");
+    expect(headOf("zzz", null)).toBe("zzz");
+  });
+
+  test("the model's answer: only asked words, trimmed; junk is nothing", () => {
+    const got = parseGlosses('Sure: {"fauve": " wild  animal; tawny ", "x": "no", "boa": 3}', [
+      "fauve",
+      "boa",
+    ]);
+    expect([...got]).toEqual([["fauve", "wild animal; tawny"]]);
+    expect(parseGlosses("no json", ["fauve"]).size).toBe(0);
+  });
+});
+
+describe("filling and backfilling (D1)", () => {
+  const EMAIL = "me@example.com";
+  let d1: TestD1Database;
+  const book: BookCtx = { hash: "h1", title: "Le Petit Prince", lang: "fr", lem };
+
+  beforeEach(() => {
+    d1 = createTestD1(testSchema());
+    d1.raw()
+      .prepare(
+        "INSERT INTO word_gloss (lang, term, back, model, created_at) VALUES ('fr', 'fauve', 'wild animal', 'm', 'now')",
+      )
+      .run();
+  });
+
+  test("the decks over the lemmas, then the generated glosses; no model without `ai`", async () => {
+    const words: RangeWord[] = [
+      { w: "représentait", ex: "Ça représentait un serpent boa." },
+      { w: "fauve", ex: "…qui avalait un fauve." },
+      { w: "boa", ex: null },
+      { w: "livre", back: "book" },
+    ];
+    const out = await fillGlosses(d1, book, words, null);
+    expect(out.map((x) => [x.w, x.term ?? null, x.back ?? null])).toEqual([
+      ["représentait", "représenter", "to represent"],
+      ["fauve", "fauve", "wild animal"],
+      ["boa", null, null],
+      ["livre", null, "book"],
+    ]);
+  });
+
+  test("a card made without a meaning gets one; a meaning already there is kept", async () => {
+    const repo = new WordsD1Repo(d1, EMAIL);
+    const list = await repo.createList({ name: "Le Petit Prince", lang: "fr", source: "book:h1" });
+    await repo.review(list, [{ term: "fauve", rating: 3 }], "2026-11-03", new Date("2026-11-03"));
+    await repo.review(
+      list,
+      [{ term: "boa", rating: 3, back: "mine" }],
+      "2026-11-03",
+      new Date("2026-11-03"),
+    );
+    const gloss = (ws: RangeWord[]) => fillGlosses(d1, book, ws, null);
+    const s = await scopeSession(d1, EMAIL, book, [{ w: "fauve" }, { w: "boa" }], gloss);
+    expect(s.items.map((i) => [i.term, i.back])).toEqual([
+      ["fauve", "wild animal"],
+      ["boa", "mine"],
+    ]);
+    const rows = d1
+      .raw()
+      .prepare("SELECT term, back FROM word_cards WHERE email = ? ORDER BY term")
+      .all(EMAIL);
+    expect(rows).toEqual([
+      { term: "boa", back: "mine" },
+      { term: "fauve", back: "wild animal" },
+    ]);
+  });
+});

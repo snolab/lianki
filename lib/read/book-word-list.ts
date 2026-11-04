@@ -108,6 +108,21 @@ export interface ScopeItem {
 
 const clip = (s: string | null | undefined, n: number) => (s ? s.slice(0, n) : null);
 
+/** Gives words without a meaning one where it can (lib/read/gloss-server.ts fillGlosses). */
+export type Gloss = (words: RangeWord[]) => Promise<RangeWord[]>;
+
+/** The words glossed in place: `need` picks the ones worth a lookup. */
+async function glossIn<T extends { x: RangeWord }>(
+  matched: T[],
+  need: (m: T) => boolean,
+  gloss: Gloss | undefined,
+) {
+  const ask = matched.filter(need).map((m) => m.x);
+  if (!gloss || !ask.length) return;
+  const got = new Map((await gloss(ask)).map((x) => [x.w, x]));
+  for (const m of matched) m.x = got.get(m.x.w) ?? m.x;
+}
+
 /** What each word of the range is: his existing card (best match), or nothing yet. */
 async function matchAll(db: D1Like, email: string, book: BookCtx, words: RangeWord[]) {
   const idx = deckIndex(await deckCards(db, email, book.lang), book.lang);
@@ -153,6 +168,7 @@ export async function scopeSession(
   email: string,
   book: BookCtx,
   words: RangeWord[],
+  gloss?: Gloss,
 ): Promise<{ items: ScopeItem[]; lists: WordList[]; missing: string[] }> {
   const matched = await matchAll(db, email, book, words);
   const missing = matched.filter((m) => !m.hit).map((m) => m.x.w);
@@ -164,22 +180,29 @@ export async function scopeSession(
     email,
     matched.flatMap((m) => (m.hit ? [{ listId: m.hit.listId, term: m.hit.term }] : [])),
   );
+  const rowOf = (hit: DeckCard | null) => (hit ? rows.get(`${hit.listId}\u0000${hit.term}`) : null);
+  // A meaning for each word that has none: a new word, or a card made without one.
+  await glossIn(matched, (m) => !m.x.back && !rowOf(m.hit)?.back, gloss);
   const items: ScopeItem[] = [];
   const seen = new Set<string>();
+  /** His cards that have no meaning yet, and the one found for them now. */
+  const fill: { listId: string; term: string; back: string }[] = [];
   for (const { x, hit } of matched) {
-    const r = hit ? rows.get(`${hit.listId}\u0000${hit.term}`) : null;
+    const r = rowOf(hit);
     const listId = r ? r.list_id : bookList!;
     const term = r ? r.term : newCardTerm(x.w, book.lang, x.term, book.lem);
     // Two forms of one word ("regarda", "regarde") are one card: listed once.
     const key = `${listId}\u0000${term}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    const back = r?.back || (clip(x.back, 1000) ?? "");
+    if (r && !r.back && back) fill.push({ listId, term, back });
     items.push({
       w: x.w,
       listId,
       term,
       reading: r ? r.reading : clip(x.reading, 200),
-      back: r ? r.back : (clip(x.back, 1000) ?? ""),
+      back,
       ex: clip(x.ex, 1000),
       card: r ? r.card : null,
     });
@@ -198,9 +221,34 @@ export async function scopeSession(
           .map((it) => ({ term: it.term, reading: it.reading, back: it.back, ex: it.ex })),
       ),
     );
+  await runAll(db, backfillStatements(db, email, fill));
   const ids = new Set(items.map((it) => it.listId));
   const lists = (await new WordsD1Repo(db, email).lists()).filter((l) => ids.has(l.id));
   return { items, lists, missing };
+}
+
+/**
+ * A meaning for cards made without one (and their entries): only where the
+ * back is still empty, so a meaning he wrote or one written meanwhile stays.
+ */
+export function backfillStatements(
+  db: D1Like,
+  email: string,
+  fill: { listId: string; term: string; back: string }[],
+): D1StmtLike[] {
+  const at = new Date().toISOString();
+  return fill.flatMap((f) => [
+    db
+      .prepare(
+        "UPDATE word_cards SET back = ?, updated_at = ? WHERE email = ? AND list_id = ? AND term = ? AND back = ''",
+      )
+      .bind(f.back, at, email, f.listId, f.term),
+    db
+      .prepare(
+        "UPDATE word_list_entries SET back = ?, updated_at = ? WHERE email = ? AND list_id = ? AND key = ? AND back = ''",
+      )
+      .bind(f.back, at, email, f.listId, f.term),
+  ]);
 }
 
 /**
@@ -262,8 +310,10 @@ export async function makeCards(
   book: BookCtx,
   words: RangeWord[],
   now = new Date(),
+  gloss?: Gloss,
 ): Promise<{ listId: string | null; terms: string[] }> {
   const matched = await matchAll(db, email, book, words);
+  await glossIn(matched, (m) => !m.hit && !m.x.back, gloss);
   const missing = matched.filter((m) => !m.hit).map((m) => m.x);
   if (!missing.length) return { listId: null, terms: [] };
   const listId = await ensureBookList(db, email, book.hash, book.title, book.lang);
