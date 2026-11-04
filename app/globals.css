@@ -322,7 +322,7 @@ ruby rt {
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --lk-ex-target: oklch(0.5 0.1 95 / 0.55);
+    --lk-ex-target: oklch(0.55 0.11 95 / 0.6);
   }
 }
 .lk-ex-target {
