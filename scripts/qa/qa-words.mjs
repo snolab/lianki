@@ -1127,9 +1127,19 @@ try {
     return c;
   };
   const saved60 = await cardsReach(60);
-  const ahead = await rows.evaluateAll(
-    (els) => els.filter((e) => e.querySelector("span.tabular-nums")?.textContent === "new").length,
-  );
+  // More words load in after the last grade lands: give them a moment to arrive (flaky at 0 otherwise).
+  const newAhead = () =>
+    rows.evaluateAll(
+      (els) =>
+        els.filter((e) => e.querySelector("span.tabular-nums")?.textContent === "new").length,
+    );
+  let ahead = await newAhead();
+  for (
+    const end = Date.now() + 10000;
+    ahead === 0 && Date.now() < end;
+    await page.waitForTimeout(300)
+  )
+    ahead = await newAhead();
   check(
     saved60 === 60 && ahead > 0,
     `60 graded and saved (${saved60}), more words below (${ahead})`,
