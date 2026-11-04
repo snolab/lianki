@@ -2,6 +2,15 @@ import { describe, expect, it } from "bun:test";
 import { cutPara, type Fam } from "@/lib/read/reader-model";
 import { dueBookWords, findWord, sideKindOf } from "@/lib/read/side-review";
 import { WORD_STATS_V, type WordStats } from "@/lib/read/words";
+import { sideReviewOn } from "@/lib/read/reader-book";
+
+describe("sideReviewOn", () => {
+  it("is on with the flag for everyone, and for the owner without it", () => {
+    expect(sideReviewOn({}, false)).toBe(false);
+    expect(sideReviewOn({ "read.side-review": true }, false)).toBe(true);
+    expect(sideReviewOn(null, true)).toBe(true);
+  });
+});
 
 const stats = (words: string[]): WordStats =>
   ({
