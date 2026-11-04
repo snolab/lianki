@@ -141,7 +141,24 @@ token cannot be tested from anywhere else.
 `port + 4` that only cloudflared targets):
 
 - **503 for everything** without a valid token: pages, static files, auth
-  routes, `/__dev/enter`, the hub paths.
+  routes, `/__dev/enter`, the hub paths. A top-level browser navigation
+  gets the same 503 as a small page with one way in (next bullet).
+- **Opening a preview link directly** (owner, 2026-11-04 17:20 JST: "requires
+  token and have no way to login yet"): a `GET` with `Sec-Fetch-Mode:
+navigate`, `Sec-Fetch-Dest: document` (when sent) and `Accept: text/html`
+  (`isNavigation`) is answered 503 with a self-contained page (CSP
+  `default-src 'none'` and the one inline style by hash, no script, oklch,
+  light/dark, 中文/English) whose only link is
+  `https://lianki.com/dev/preview?to=<same path and query>`. That page is
+  owner-only (signed out: `/sign-in?next=…`, which after signing in returns to this entry only, `signInReturnPath`; anyone else: 404) and runs the
+  profile menu's switch at once: a fresh handoff, posted in a form body to
+  `/_lk/dev-auth`, landing on `to`. `to` is a relative path on the preview
+  origin only (`safePreviewPath`: no scheme, host, `//`, backslash or
+  control character; not `/_lk/*`); a query that looks like it carries a
+  token (`token=`, `handoff=`, `lkdev_`, `lkhand_`, also %-encoded) is
+  dropped, so no token is ever in that URL. Assets, APIs, fetches, frames
+  and sockets keep the plain 503. Nothing here is a new way in: the page
+  only links to the switch the owner already has.
 - Only `Host: preview.lianki.com` is served; any other Host is 503. Trust
   comes from the listener, never from a header: a `Tailscale-User-Login`
   header on the tunnel is stripped and never believed, and the LAN and

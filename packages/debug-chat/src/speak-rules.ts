@@ -11,8 +11,13 @@
  * 2. A quiet line (`say --quiet`: FYI, progress, deploy notices) is never
  *    read.
  *
+ *    On a computer (voice-bg.ts) a hidden tab still speaks: switching away
+ *    must not stop the voice (owner 2026-11-04); only phones keep rule 1.
+ *
  * There is no time of day in it. Pure: unit/speak-rules.test.ts.
  */
+
+import { hiddenSilences, isDesktop } from "./voice-bg";
 
 /** What a line says about being read aloud (ChatMessage's fields). */
 export type SpeakMeta = { id?: unknown; quiet?: unknown; ask?: unknown };
@@ -33,8 +38,9 @@ export function silenceFor(m: SpeakMeta, at: { hidden: boolean }): Silence | nul
 export const pageHidden = () =>
   typeof document === "undefined" || document.visibilityState === "hidden";
 
-/** silenceFor with this page's visibility. */
-export const silenceHere = (m: SpeakMeta = {}) => silenceFor(m, { hidden: pageHidden() });
+/** silenceFor with this page's visibility (a computer's hidden tab counts as shown: voice-bg.ts). */
+export const silenceHere = (m: SpeakMeta = {}) =>
+  silenceFor(m, { hidden: hiddenSilences({ hidden: pageHidden(), desktop: isDesktop() }) });
 
 /**
  * A key an older build saved on his devices (a time-of-day setting that is

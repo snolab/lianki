@@ -139,6 +139,7 @@ import {
   SWIPE_LEVEL,
   SWIPE_SNAP,
   SWIPE_SPRING,
+  keyRating,
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
 import { NATIVE_PARAMS, showReveal, useNativeSlip } from "@/lib/words/native-slip-gesture";
@@ -438,21 +439,6 @@ type Item = Entry & {
 /** Identity of a card across lists: the same term may be in two of them. */
 const keyOf = (it: { listId: string; term: string }) => `${it.listId}\u0000${it.term}`;
 
-/**
- * 1–4 for the left hand; the right hand mirrors it, so the outer fingers
- * agree: L K J H = Again Hard Good Easy (1 and L are both the outer edge's
- * Again). W/S move, like the arrows.
- */
-const KEY_RATING: Record<string, Rating> = {
-  KeyL: 1,
-  KeyK: 2,
-  KeyJ: 3,
-  KeyH: 4,
-  Digit1: 1,
-  Digit2: 2,
-  Digit3: 3,
-  Digit4: 4,
-};
 /**
  * A graded row's ink (--grade, app/globals.css): the slip itself keeps its
  * colour; only a small seal at its right end and the due time take the grade.
@@ -3900,7 +3886,7 @@ export function Study({
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.code === "KeyV") speech.toggle();
       else if (e.code === "KeyE") setShowAll((v) => !v);
-      else if (KEY_RATING[e.code] && !e.shiftKey) keyGrade(row, KEY_RATING[e.code]);
+      else if (keyRating(e)) keyGrade(row, keyRating(e)!);
       else return;
       e.preventDefault();
     };

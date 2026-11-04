@@ -11,12 +11,23 @@ import {
   PASSKEY_SUGGESTION_DISMISSED_KEY,
   passkeyErrorKind,
 } from "@/lib/passkey";
+import { SIGN_IN_RETURN_PARAM, signInReturnPath } from "@/lib/dev-server-switch";
 
 type Step = "email" | "password" | "code" | "suggest-passkey";
 
+/**
+ * Where to land after signing in: "/home", except the owner's preview entry
+ * (/dev/preview?to=…) when it sent him here (signInReturnPath allows nothing else).
+ */
+function afterSignInPath(): string {
+  if (typeof window === "undefined") return "/home";
+  const raw = new URLSearchParams(window.location.search).get(SIGN_IN_RETURN_PARAM);
+  return signInReturnPath(raw) ?? "/home";
+}
+
 /** A full load, so every part of the app sees the new session. */
 function goToApp() {
-  window.location.href = "/home";
+  window.location.href = afterSignInPath();
 }
 
 function suggestionDismissed(): boolean {
@@ -142,7 +153,11 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
     e.preventDefault();
     setError("");
     startTransition(async () => {
-      const result = await authClient.signIn.email({ email, password, callbackURL: "/home" });
+      const result = await authClient.signIn.email({
+        email,
+        password,
+        callbackURL: afterSignInPath(),
+      });
       if (result.error) {
         // Try sign-up if sign-in fails with "user not found" type error
         const msg = result.error.message ?? "";
@@ -151,7 +166,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
             email,
             password,
             name: "",
-            callbackURL: "/home",
+            callbackURL: afterSignInPath(),
           });
           if (signUpResult.error) {
             setError(signUpResult.error.message || "Authentication failed");
@@ -403,7 +418,9 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
 
             <button
               type="button"
-              onClick={() => authClient.signIn.social({ provider: "google", callbackURL: "/home" })}
+              onClick={() =>
+                authClient.signIn.social({ provider: "google", callbackURL: afterSignInPath() })
+              }
               className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <GoogleIcon />
@@ -412,7 +429,9 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
 
             <button
               type="button"
-              onClick={() => authClient.signIn.social({ provider: "github", callbackURL: "/home" })}
+              onClick={() =>
+                authClient.signIn.social({ provider: "github", callbackURL: afterSignInPath() })
+              }
               className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <GitHubIcon />

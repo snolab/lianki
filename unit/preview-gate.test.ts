@@ -17,6 +17,7 @@ import {
   createGate,
   downstreamHeaders,
   handshakeHtml,
+  isNavigation,
   openSession,
   safeNext,
   sealSession,
@@ -379,5 +380,104 @@ describe("the profile menu's up check", () => {
     expect(r.headers["x-lianki-gate"]).toBe("1");
     expect(r.headers["access-control-allow-origin"]).toBe("https://lianki.com");
     expect(h.verifyCalls).toEqual([]);
+  });
+});
+
+describe("a browser opening a preview link directly", () => {
+  const NAV = {
+    accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-dest": "document",
+  };
+  const nav = (headers: Record<string, string>, method = "GET") =>
+    isNavigation({ method, headers });
+
+  test("navigation detection: GET + Sec-Fetch-Mode navigate + Accept text/html only", () => {
+    expect(nav(NAV)).toBe(true);
+    expect(nav({ ...NAV, "sec-fetch-dest": "" })).toBe(true);
+    expect(nav(NAV, "POST")).toBe(false);
+    expect(nav(NAV, "HEAD")).toBe(false);
+    expect(nav({ ...NAV, "sec-fetch-mode": "cors" })).toBe(false);
+    expect(nav({ ...NAV, "sec-fetch-mode": "no-cors" })).toBe(false);
+    expect(nav({ ...NAV, "sec-fetch-mode": "websocket" })).toBe(false);
+    expect(nav({ ...NAV, "sec-fetch-dest": "iframe" })).toBe(false);
+    expect(nav({ ...NAV, accept: "*/*" })).toBe(false);
+    expect(nav({ ...NAV, accept: "text/htmlx" })).toBe(false);
+    expect(nav({ accept: NAV.accept })).toBe(false); // no Sec-Fetch-Mode: curl, old browsers
+  });
+
+  test("without a session: 503 with the page and its one way in, via lianki.com", async () => {
+    const h = setup();
+    const r = await h.req("/en/read?list=all", NAV);
+    expect(status(r)).toBe(503);
+    if (r.kind !== "respond") return;
+    const csp = String(r.headers["content-security-policy"]);
+    expect(r.headers["content-type"]).toContain("text/html");
+    expect(csp).toStartWith("default-src 'none'");
+    expect(csp).not.toContain("unsafe");
+    expect(r.headers["cache-control"]).toContain("no-store");
+    expect(r.body).toContain('href="https://lianki.com/dev/preview?to=%2Fen%2Fread%3Flist%3Dall"');
+    expect(r.body).toContain("从 lianki.com 进入预览版 / Enter via lianki.com");
+    expect(r.body).not.toMatch(/<script|src=|@import|url\(/i);
+    expect(r.body).not.toMatch(/rgb|#[0-9a-f]{3,6}\b/i);
+    expect(h.verifyCalls).toEqual([]);
+  });
+
+  test("the style is allowed by its hash, and only it", async () => {
+    const h = setup();
+    const r = await h.req("/", NAV);
+    if (r.kind !== "respond") throw new Error("no response");
+    const css = /<style>([^<]*)<\/style>/.exec(r.body)?.[1] ?? "";
+    const hash = new Bun.CryptoHasher("sha256").update(css).digest("base64");
+    expect(String(r.headers["content-security-policy"])).toContain(`'sha256-${hash}'`);
+    expect(r.body.match(/<style>/g)?.length).toBe(1);
+  });
+
+  test("assets, APIs and sockets keep the plain 503", async () => {
+    const h = setup();
+    const cases: [string, Record<string, string>][] = [
+      [
+        "/_next/static/chunk.js",
+        { accept: "*/*", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "script" },
+      ],
+      ["/api/auth/get-session", { accept: "application/json", "sec-fetch-mode": "cors" }],
+      ["/api/version/ws", { "sec-fetch-mode": "websocket" }],
+      ["/en/read", { accept: "text/html" }],
+      ["/en/read", { ...NAV, "sec-fetch-dest": "iframe" }],
+    ];
+    for (const [p, hd] of cases) {
+      const r = await h.req(p, hd);
+      expect([p, status(r)]).toEqual([p, 503]);
+      if (r.kind === "respond")
+        expect([p, r.headers["content-type"]]).toEqual([p, "text/plain; charset=utf-8"]);
+    }
+  });
+
+  test("no token ever reaches the page's link", async () => {
+    const h = setup();
+    for (const u of [
+      `/?token=${GOOD}`,
+      `/en/read?handoff=${HANDOFF}`,
+      `/en/read?x=${GOOD}`,
+      `/en/read?x=%6Ckdev_${"g".repeat(43)}`,
+      `/${GOOD}`,
+    ]) {
+      const r = await h.req(u, NAV);
+      expect(status(r)).toBe(503);
+      if (r.kind !== "respond") continue;
+      expect([u, /lk(dev|hand)_/i.test(decodeURIComponent(r.body))]).toEqual([u, false]);
+      expect(r.body).not.toContain("gggggggg");
+    }
+  });
+
+  test("a session still forwards; the page is only for the closed door", async () => {
+    const h = setup();
+    const c = h.cookieOf(await h.post({ token: GOOD, next: "/" }));
+    expect(status(await h.req("/en/read", { ...NAV, cookie: c }))).toBe("forward");
+    h.revoked.add("t1");
+    h.advance(RECHECK_MS + 1);
+    const r = await h.req("/en/read", { ...NAV, cookie: c });
+    expect(status(r)).toBe(503);
+    if (r.kind === "respond") expect(r.body).toContain("lianki.com/dev/preview");
   });
 });

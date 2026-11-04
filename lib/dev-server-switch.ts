@@ -85,3 +85,90 @@ export async function switchToDevServer(
   (d.post ?? postToDevServer)(handoff, `${loc.pathname}${loc.search}`);
   return true;
 }
+
+/**
+ * The way in from the preview gate's page (docs/dev-whole-page.md, "Opening a
+ * preview link directly"): a browser that lands on preview.lianki.com with no
+ * session is sent to this owner-only page on lianki.com, which runs the same
+ * switch (a fresh handoff, posted in a form body) and comes back to `to`.
+ */
+export const PREVIEW_ENTRY_PATH = "/dev/preview";
+
+/** Anything that looks like a token or a handoff, or a parameter that carries one. */
+const TOKENISH = /lk(dev|hand)_|(^|[?&;])(token|handoff)=/i;
+
+function tokenish(s: string): boolean {
+  if (TOKENISH.test(s)) return true;
+  try {
+    return TOKENISH.test(decodeURIComponent(s));
+  } catch {
+    return true; // undecodable: treat as suspect
+  }
+}
+
+/**
+ * `to` for the entry: a path (and query) on the preview origin, or null.
+ * Relative only: no scheme, no host, no "//", no backslash or control
+ * character (browsers drop TAB/LF/CR and read "\\" as "/"), and it must parse
+ * back to the preview origin. The gate's own /_lk/ paths are refused. A query
+ * that looks like it carries a token is dropped (the path is kept), so a
+ * token can never travel in this URL. The #fragment is never kept.
+ */
+export function safePreviewPath(raw: string | null | undefined): string | null {
+  const v = raw ?? "";
+  if (!v || v.length > 2000) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f\\]/.test(v)) return null;
+  if (!v.startsWith("/") || v.startsWith("//")) return null;
+  let u: URL;
+  try {
+    u = new URL(v, DEV_SERVER_ORIGIN);
+  } catch {
+    return null;
+  }
+  if (u.origin !== DEV_SERVER_ORIGIN) return null;
+  const path = u.pathname;
+  if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/_lk/")) return null;
+  if (tokenish(path)) return null;
+  const query = u.search && !tokenish(u.search) ? u.search : "";
+  return `${path}${query}`;
+}
+
+/** The query parameter /sign-in reads for where to go after signing in. */
+export const SIGN_IN_RETURN_PARAM = "next";
+
+/**
+ * Where /sign-in may send the browser after signing in, or null (then
+ * "/home", as before). Only the preview entry on lianki.com, as a relative
+ * path: anything else, any other origin, "//", backslash or control
+ * character, is null. The result is rebuilt from its parts (`to` through
+ * safePreviewPath), never echoed, so it is always "/dev/preview?to=…".
+ */
+export function signInReturnPath(raw: string | null | undefined): string | null {
+  const v = raw ?? "";
+  if (!v || v.length > 2000) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f\\]/.test(v)) return null;
+  if (!v.startsWith("/") || v.startsWith("//")) return null;
+  let u: URL;
+  try {
+    u = new URL(v, PROD_ORIGIN);
+  } catch {
+    return null;
+  }
+  if (u.origin !== PROD_ORIGIN || u.pathname !== PREVIEW_ENTRY_PATH) return null;
+  const to = safePreviewPath(u.searchParams.get("to")) ?? "/";
+  return `${PREVIEW_ENTRY_PATH}?to=${encodeURIComponent(to)}`;
+}
+
+/** /sign-in for a signed-out owner on the preview entry: back to it, same `to`, afterwards. */
+export function signInUrlForPreview(to: string): string {
+  const back = signInReturnPath(`${PREVIEW_ENTRY_PATH}?to=${encodeURIComponent(to)}`);
+  return `/sign-in?${SIGN_IN_RETURN_PARAM}=${encodeURIComponent(back ?? PREVIEW_ENTRY_PATH)}`;
+}
+
+/** lianki.com's entry for a preview path: the switch, then back to that path on preview. */
+export function previewEntryUrl(pathAndQuery: string): string {
+  const to = safePreviewPath(pathAndQuery) ?? "/";
+  return `${PROD_ORIGIN}${PREVIEW_ENTRY_PATH}?to=${encodeURIComponent(to)}`;
+}

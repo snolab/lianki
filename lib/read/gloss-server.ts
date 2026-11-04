@@ -61,9 +61,13 @@ async function cachedGlosses(db: D1Like, lang: string, terms: string[]) {
  * redesigned (owner, 2026-11-04: a new unit and real-cost metering), so for
  * now this only records the real cost; the debit goes here, and only here.
  */
-export async function chargeAi(userId: string, use: { usd: number; words: number }) {
+export async function chargeAi(
+  userId: string,
+  use: { usd: number; what?: string; words?: number; chars?: number },
+) {
   void userId;
-  console.log(JSON.stringify({ event: "read.gloss.cost", usd: use.usd, words: use.words }));
+  const { what = "read.gloss", ...rest } = use;
+  console.log(JSON.stringify({ event: `${what}.cost`, ...rest }));
   return { ok: true as const };
 }
 
@@ -78,7 +82,7 @@ type Completion = {
 /** A chat completion call (the OpenAI-compatible body); Workers AI unless a test gives one. */
 export type Complete = (body: Record<string, unknown>) => Promise<Completion>;
 
-const workersAiComplete: Complete = async (body) =>
+export const workersAiComplete: Complete = async (body) =>
   (await workersAiOpenAI().chat.completions.create(body as never, {
     timeout: 30_000,
   })) as Completion;

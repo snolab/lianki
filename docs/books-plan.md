@@ -314,8 +314,17 @@ selecting DOM text.
   screen away from the finger, so the next click lands on the book. Links
   name the book by its content hash; `/read/<hash>` redirects to the
   signed-in user's own copy of that text or answers 404
-  (`lib/read/book-link.ts`). Gloss is a Wiktionary search and translate a
-  machine translation, both in a new tab; "New to me" on a word logs a
+  (`lib/read/book-link.ts`). Gloss is a Wiktionary search in a new tab.
+  **Translate is ours** (owner, 2026-11-04 14:58 JST: "dont [go to google
+  translate], lets use ai credits and our api"): `POST /api/read/[id]/translate`
+  (`lib/read/translate.ts`, `translate-server.ts`; the reader-v2 gate)
+  translates the selected word … paragraph or hand-made range into the UI
+  locale with the Learning Partner's model on Workers AI, and the card shows it
+  under the text. Cached in D1 `read_translation` by SHA-256 of target + text
+  (the text itself is not stored), so the same text and target are paid once;
+  60 model calls per user per 10 min (a cost guard); the real cost goes to
+  `chargeAi` (`gloss-server.ts`), the one charge seam until the credits
+  redesign. "New to me" on a word logs a
   `select` exposure (no list API yet: extracts become cards later). QA:
   `scripts/qa/qa-read-select.mjs`.
 - **Each level says its unit** (owner, 2026-11-03 22:12 / 22:13 JST: "点击选择

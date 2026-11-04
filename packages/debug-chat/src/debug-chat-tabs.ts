@@ -4,6 +4,11 @@
  * it on), else the focused tab, else the one focused most recently.
  * Tabs tell each other over a BroadcastChannel ("lk-debug-chat"), never the
  * network. docs/monitoring.md, "Chat with the agent".
+ *
+ * Taking the voice over (voice-bg.ts): `onTakeover("mic")` when another tab
+ * turns its mic on (only one tab listens: this one turns its mic off), and
+ * `onTakeover("focus")` when another tab is newly focused (a hidden tab
+ * reading with the mic off stops; the focused one reads from then on).
  */
 
 export const TABS_CHANNEL = "lk-debug-chat";
@@ -34,6 +39,7 @@ export function joinTabs(
   },
   focused: () => boolean,
   now: () => number = Date.now,
+  onTakeover?: (why: "mic" | "focus") => void,
 ) {
   const tabs: FocusTable = new Map([[self, focused() ? now() : 0]]);
   /** Tabs with the mic on → when they turned it on. */
@@ -53,11 +59,19 @@ export function joinTabs(
       return;
     }
     if (m.type === "mic") {
+      const had = mics.has(m.tab);
       if (m.on) mics.set(m.tab, Number(m.at) || 0);
       else mics.delete(m.tab);
+      // Another tab's mic came on (not an answer to a hello repeating it), after this one's.
+      const mine = mics.get(self);
+      if (m.on && !had && (mine === undefined || (Number(m.at) || 0) >= mine)) onTakeover?.("mic");
       return;
     }
-    tabs.set(m.tab, Number(m.at) || 0);
+    const at = Number(m.at) || 0;
+    // Newly focused (not a tab repeating its old focus time to a newcomer).
+    const fresh = at > 0 && at > (tabs.get(m.tab) ?? 0);
+    tabs.set(m.tab, at);
+    if (fresh && m.type !== "hello") onTakeover?.("focus");
     // A newcomer asks who is here: answer with this tab's focus time (and mic).
     if (m.type === "hello") {
       post("focus");

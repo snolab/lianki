@@ -5,7 +5,8 @@
 // it (design-principles.md, minimal nesting) — its kind and a preview (title
 // and size for a chapter or the book), how well its words are known, the
 // actions that fit it, and a link button (our own inline SVG) that copies
-// the unit's deep link. Not modal: the book stays clickable under it, so the
+// the unit's deep link. Translate shows the translation right in it, under
+// the text (our API, lib/read/translate.ts). Not modal: the book stays clickable under it, so the
 // next quick click widens the selection.
 
 import { useEffect } from "react";
@@ -80,6 +81,7 @@ export function SelectCard({
   atTop,
   bottom,
   status,
+  translation = null,
   onClose,
 }: {
   view: UnitView;
@@ -90,6 +92,8 @@ export function SelectCard({
   bottom: string;
   /** A short confirmation (copied, noted), or null. */
   status: string | null;
+  /** The text's translation (null text while it comes), or null when none was asked. */
+  translation?: { text: string | null } | null;
   onClose: () => void;
 }) {
   const t = useIntlayer("read-select");
@@ -191,6 +195,16 @@ export function SelectCard({
           data-testid="read-select-text"
         >
           {view.text.trim()}
+        </p>
+      )}
+      {translation && (
+        <p
+          className="mt-1 max-h-[40vh] overflow-y-auto whitespace-pre-line text-sm"
+          aria-live="polite"
+          data-testid="read-select-translation"
+          data-pending={translation.text === null || undefined}
+        >
+          {translation.text ?? <span className="opacity-60">{t.translating}</span>}
         </p>
       )}
 
