@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { EmptyTray } from "@/app/(app)/words/EmptyTray";
 import { TrayBack, studyFinished } from "@/app/(app)/words/study-done-back";
 
 const app = join(import.meta.dir, "../app/(app)");
@@ -49,6 +50,13 @@ describe("TrayBack", () => {
     }>;
     el.props.onClick();
     expect(exits).toBe(1);
+  });
+
+  test("the tray before the first word stays decoration: no button, hidden", () => {
+    const h = renderToStaticMarkup(createElement(EmptyTray, {}));
+    expect(h).toMatch(/^<div aria-hidden="true" data-empty-tray="true"/);
+    expect(h).toContain("<svg");
+    expect(h).not.toContain("<button");
   });
 
   test("finished only when nothing is left to fetch or grade", () => {
