@@ -91,6 +91,31 @@ describe("filling and backfilling (D1)", () => {
     expect(msgs[0].content).toContain('"fr"');
   });
 
+  test("by default the model is Workers AI's OpenAI-compatible endpoint", async () => {
+    const env = { ...process.env };
+    const realFetch = globalThis.fetch;
+    const urls: string[] = [];
+    process.env.CLOUDFLARE_ACCOUNT_ID = "acct";
+    process.env.CLOUDFLARE_AI_TOKEN = "tok";
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      urls.push(String(input instanceof Request ? input.url : input));
+      return Response.json({
+        id: "x",
+        object: "chat.completion",
+        choices: [{ index: 0, message: { role: "assistant", content: '{"boa": "boa"}' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      });
+    }) as typeof fetch;
+    try {
+      const out = await fillGlosses(d1, book, [{ w: "boa" }], { userId: "u3" });
+      expect(out[0].back).toBe("boa");
+      expect(urls[0]).toContain("/accounts/acct/ai/v1/chat/completions");
+    } finally {
+      globalThis.fetch = realFetch;
+      process.env = env;
+    }
+  });
+
   test("a failing model leaves the word as it was", async () => {
     const complete: Complete = async () => {
       throw new Error("down");
