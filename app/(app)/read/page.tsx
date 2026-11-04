@@ -5,6 +5,7 @@ import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { readerV2On } from "@/lib/read/reader-book";
 import { connectionsOn } from "@/lib/connections/gate";
+import { booksOn } from "@/lib/books/gate";
 
 export default async function ReadPage() {
   const user = await authUserOrNull();
@@ -14,6 +15,8 @@ export default async function ReadPage() {
   const gdoc = !!flags && readerV2On(flags, owner);
   // Private docs through the Google connection (docs/connections.md).
   const drive = gdoc && connectionsOn(flags, owner);
+  // The link to /books, the public-domain library (books.catalogue, or the owner).
+  const books = !!flags && booksOn(flags, owner);
 
   return (
     <div className="flex flex-col">
@@ -26,7 +29,7 @@ export default async function ReadPage() {
               ? " Your materials are stored securely in your account."
               : " Sign in to save your materials."}
           </p>
-          <ReadListClient isLoggedIn={!!user} gdoc={gdoc} drive={drive} />
+          <ReadListClient isLoggedIn={!!user} gdoc={gdoc} drive={drive} books={books} />
         </div>
       </div>
     </div>

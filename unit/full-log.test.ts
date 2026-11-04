@@ -6,6 +6,7 @@ import {
   fullLogHeight,
   keepEndGap,
   fullLogBox,
+  LOG_TOUCH,
   logSurface,
   snapAxis,
   anchorScrollTop,
@@ -39,6 +40,13 @@ describe("logSurface", () => {
     expect(open.className).toContain("max-h-[30vh]");
     expect(open.style?.maskImage).toBe(FADE);
     expect(logSurface({ expanded: false, fade: true }).style?.maskImage).toBe(FADE_SHORT);
+  });
+  it("takes the touch only while the input is in use, so the history drags (owner, 2026-11-05)", () => {
+    expect(logSurface({ expanded: true, fade: false }).className).not.toContain(LOG_TOUCH);
+    const typing = logSurface({ expanded: true, fade: false, touch: true }).className;
+    expect(typing).toContain("pointer-events-auto");
+    expect(typing).toContain("touch-pan-y");
+    expect(typing).toContain("overscroll-contain");
   });
 });
 

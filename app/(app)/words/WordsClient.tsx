@@ -103,9 +103,11 @@ import {
   famLang,
   famMark,
   missingWords,
+  recordHeads,
   recordHits,
   type FamHit,
   type FamMap,
+  type HeadMap,
 } from "@/lib/words/example-marks";
 import {
   examplePieces,
@@ -495,22 +497,25 @@ function useTouch() {
  * (lib/words/example-marks.ts): a word with a card gets a solid (weak) or
  * dashed (learning) line; mastered words and words without a card stay plain.
  * The card's own word (`forms`: its term and reading) is highlighted
- * (lib/words/example-target.ts) and carries data-ex-target, which Glance
+ * (lib/words/example-target.ts), an inflected form of it too by the
+ * language's lemma file (`heads`), and carries data-ex-target, which Glance
  * scrolls into the middle of a long example.
  */
 export function MarkedExample({
   text,
   lang,
   fam,
+  heads,
   forms = [],
 }: {
   text: string;
   lang: string;
   fam?: FamMap;
+  heads?: HeadMap;
   forms?: readonly (string | null | undefined)[];
 }) {
   const known = fam?.get(famLang(lang));
-  const spans = targetSpans(text, forms, lang);
+  const spans = targetSpans(text, forms, lang, heads?.get(famLang(lang)));
   const spoken = useSpokenSpan(text);
   if (!known && !spans.length && !spoken) return <>{text}</>;
   const piece = (p: Piece & { spoken: boolean }, k: number) => {
@@ -4691,6 +4696,8 @@ export function Study({
   // words of the rendered window not asked yet, in one request per language
   // once the window has held still for a moment; answers kept for the session.
   const fam = useRef<FamMap>(new Map());
+  // The headwords of the same words (the lemma file's), for the card's word in its example.
+  const heads = useRef<HeadMap>(new Map());
   const [, setFamRev] = useState(0);
   useEffect(() => {
     const want = missingWords(queue.slice(from, to), fam.current);
@@ -4707,9 +4714,11 @@ export function Study({
             body: JSON.stringify({ lang, words }),
           })
             .then((r) => (r.ok ? r.json() : null))
-            .then((j: { hits?: Record<string, FamHit> } | null) => {
-              if (!j?.hits || !Object.keys(j.hits).length) return;
-              recordHits(fam.current, lang, words, j.hits);
+            .then((j: { hits?: Record<string, FamHit>; heads?: unknown } | null) => {
+              const hs = j?.heads && typeof j.heads === "object" ? Object.keys(j.heads) : [];
+              if (hs.length) recordHeads(heads.current, lang, j!.heads);
+              if (!hs.length && (!j?.hits || !Object.keys(j.hits).length)) return;
+              if (j?.hits) recordHits(fam.current, lang, words, j.hits);
               setFamRev((n) => n + 1);
             })
             .catch(() => {});
@@ -5431,6 +5440,7 @@ export function Study({
                                   text={it.ex}
                                   lang={it.lang}
                                   fam={fam.current}
+                                  heads={heads.current}
                                   forms={[it.term, it.reading]}
                                 />
                               </bdi>
@@ -5491,6 +5501,7 @@ export function Study({
           {sheet !== null && queue[sheet] && (
             <SlipSheet
               item={queue[sheet]}
+              heads={heads.current}
               tags={tagsOf(queue[sheet])}
               status={status(queue[sheet], sheet)}
               onClose={() => setSheet(null)}
@@ -5540,6 +5551,7 @@ export function Study({
  */
 function SlipSheet({
   item,
+  heads,
   tags,
   status,
   onClose,
@@ -5547,6 +5559,8 @@ function SlipSheet({
   onCopy,
 }: {
   item: Item;
+  /** The example's words' headwords, so the card's word is found in it inflected. */
+  heads?: HeadMap;
   /** The word's tags (its list, the list's level): shown here only, never in the row. */
   tags: string[];
   status: React.ReactNode;
@@ -5616,7 +5630,12 @@ function SlipSheet({
             data-sheet-example
           >
             <div lang={item.lang} dir="auto">
-              <MarkedExample text={item.ex} lang={item.lang} forms={[item.term, item.reading]} />
+              <MarkedExample
+                text={item.ex}
+                lang={item.lang}
+                heads={heads}
+                forms={[item.term, item.reading]}
+              />
             </div>
             {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
           </div>

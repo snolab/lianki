@@ -8,6 +8,11 @@ import {
   type Span,
 } from "@/lib/words/example-target";
 import { centreIn } from "@/lib/words/centre-in";
+import { recordHeads, type HeadMap } from "@/lib/words/example-marks";
+import { parseLemmas } from "@/lib/read/lemma";
+import { foldsOf, headsOfWords, lemmaHeads, wordsOf } from "@/lib/read/words";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const marked = (text: string, spans: Span[]) => spans.map(([a, b]) => text.slice(a, b));
 const find = (text: string, forms: (string | null)[], lang: string) =>
@@ -161,5 +166,62 @@ describe("markSpoken", () => {
   it("no span: nothing spoken", () => {
     const m = markSpoken([{ text: "x", word: null, target: false }], null);
     expect(m).toEqual([{ text: "x", word: null, target: false, spoken: false }]);
+  });
+});
+
+// Owner, 2026-11-05 01:27 JST: the card "devoir" (French top 1–500) showed
+// this example with nothing highlighted, so it read as an example without the
+// word. "dû" is devoir's past participle: the lemma file says so.
+describe("the card's word inflected in its example, by the lemma file", () => {
+  const DEVOIR = "J'ai donc dû choisir un autre métier et j'ai appris à piloter des avions.";
+  const fileText = readFileSync(join(process.cwd(), "public/words/lemma/fr.txt"), "utf8");
+  const lemmas = async (ws: string[]) => {
+    const only = new Set<string>();
+    for (const w of ws) for (const f of foldsOf(w, "fr")) only.add(f);
+    return parseLemmas(fileText, only);
+  };
+  /** The example's headwords as /api/words/familiarity answers them. */
+  const headsOf = async (text: string) => {
+    const ws = wordsOf(text, "fr");
+    const rec = await headsOfWords(ws, "fr", await lemmas(ws), lemmas);
+    const m: HeadMap = new Map();
+    recordHeads(m, "fr", rec);
+    return m.get("fr")!;
+  };
+
+  it("highlights dû for devoir", async () => {
+    const heads = await headsOf(DEVOIR);
+    expect(marked(DEVOIR, targetSpans(DEVOIR, ["devoir"], "fr", heads))).toEqual(["dû"]);
+  });
+
+  it("finds nothing without the lemma data (the bug)", () => {
+    expect(targetSpans(DEVOIR, ["devoir"], "fr")).toEqual([]);
+  });
+
+  it("keeps accents: the article du is no form of devoir", async () => {
+    const text = "Il a mangé du pain parce qu'il a dû partir.";
+    const heads = await headsOf(text);
+    expect(marked(text, targetSpans(text, ["devoir"], "fr", heads))).toEqual(["dû"]);
+    expect(marked(text, targetSpans(text, ["du"], "fr", heads))).toEqual(["du"]);
+  });
+
+  it("reaches the headword through a form of a form (due → dû → devoir)", async () => {
+    const text = "La somme due est payée.";
+    const heads = await headsOf(text);
+    expect(heads.get("due")).toContain("devoir");
+    expect(marked(text, targetSpans(text, ["devoir"], "fr", heads))).toEqual(["due"]);
+  });
+
+  it("finds other irregular forms, every one", async () => {
+    const text = "Il doit partir, et je dois rester.";
+    const heads = await headsOf(text);
+    expect(marked(text, targetSpans(text, ["devoir"], "fr", heads))).toEqual(["doit", "dois"]);
+  });
+
+  it("lemmaHeads is exact: no guessed endings, no lost accents", async () => {
+    const lem = await lemmas(["dû", "du"]);
+    expect(lemmaHeads("dû", "fr", lem)).toEqual(["devoir"]);
+    expect(lemmaHeads("du", "fr", lem)).toEqual([]);
+    expect(lemmaHeads("dû", "fr", null)).toEqual([]);
   });
 });

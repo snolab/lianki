@@ -80,3 +80,22 @@ export function recordHits(
   if (!m) known.set(lang, (m = new Map()));
   for (const w of asked) m.set(w, hits[w] ?? null);
 }
+
+/**
+ * lang → word → the headwords it is a form of, by the language's lemma file
+ * (/api/words/familiarity `heads`): how the card's word is found in an
+ * example that inflects it ("dû" for "devoir", lib/words/example-target.ts).
+ */
+export type HeadMap = Map<string, Map<string, readonly string[]>>;
+
+/** Record the headwords an answer gave (words without any stay absent). */
+export function recordHeads(known: HeadMap, lang: string, heads: unknown): void {
+  if (!heads || typeof heads !== "object") return;
+  let m = known.get(lang);
+  if (!m) known.set(lang, (m = new Map()));
+  for (const [w, hs] of Object.entries(heads as Record<string, unknown>))
+    if (Array.isArray(hs)) {
+      const ok = hs.filter((h): h is string => typeof h === "string" && !!h);
+      if (ok.length) m.set(w, ok);
+    }
+}

@@ -11,12 +11,30 @@ export const FADE = "linear-gradient(to bottom, transparent, black 2.5rem)";
 /** The compact surface fades over less, so its 3 lines stay legible. */
 export const FADE_SHORT = "linear-gradient(to bottom, transparent, black 0.9rem)";
 
+/**
+ * While the input is in use (focused, keyboard up) or the mic is on, the log
+ * takes the touch itself, so a finger drags the history (owner, 2026-11-05
+ * 01:52 JST, iPhone PWA: "keyboard up, the history won't scroll"). At rest it
+ * stays click-through for the page under it. `overscroll-contain`: the end
+ * of the history does not hand the drag to the page behind the keyboard.
+ */
+export const LOG_TOUCH = "pointer-events-auto touch-pan-y overscroll-contain";
+
 /** Props for a log surface element: its classes and its fade mask. */
-export function logSurface({ expanded, fade }: { expanded: boolean; fade: boolean }) {
+export function logSurface({
+  expanded,
+  fade,
+  touch = false,
+}: {
+  expanded: boolean;
+  fade: boolean;
+  /** The input is in use or the mic on: the log takes the touch (LOG_TOUCH). */
+  touch?: boolean;
+}) {
   const mask = expanded ? FADE : FADE_SHORT;
   return {
     style: fade ? { maskImage: mask, WebkitMaskImage: mask } : undefined,
-    className: `min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${expanded ? "max-h-[30vh]" : "max-h-[4.4rem]"}`,
+    className: `min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${expanded ? "max-h-[30vh]" : "max-h-[4.4rem]"}${touch ? ` ${LOG_TOUCH}` : ""}`,
   };
 }
 

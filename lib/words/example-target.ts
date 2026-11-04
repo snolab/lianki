@@ -4,18 +4,22 @@
  * highlighted there).
  *
  * One engine for every language: what differs is data (lib/read/lang/*.json
- * through normWord and foldsOf). The card's forms (its term, and its reading
- * if any) are matched against the example's words in three tiers, the first
- * that finds anything wins:
+ * through normWord and foldsOf, and the language's lemma file through
+ * `heads`). The card's forms (its term, and its reading if any) are matched
+ * against the example's words in tiers, the first that finds anything wins:
  *
- * 1. word by word: a word of the example matches when one of its folds
- *    (foldsOf: elision, ligatures, the language's cheap inflections) equals
- *    one of the form's, case- and diacritic-insensitively; a form of several
- *    words matches the same number of consecutive words;
- * 2. the form as a substring, case- and diacritic-insensitively, for scripts
+ * 1. word by word, exactly: a word of the example that is the form, or one
+ *    the dictionary lists as a form of it (`heads`: "dû" → "devoir"; owner,
+ *    2026-11-05 01:27 JST, "J'ai donc dû choisir…" showed no "devoir"), the
+ *    accents kept, so "du" the article is not "dû"; a form of several words
+ *    matches the same number of consecutive words;
+ * 2. the same, case- and diacritic-insensitively;
+ * 3. through the folds (foldsOf: elision, ligatures, the language's cheap
+ *    inflections), diacritic-insensitively too;
+ * 4. the form as a substring, case- and diacritic-insensitively, for scripts
  *    the segmenter cuts differently from the card (no spaces between words);
- * 3. an inflected form the folds do not know ("mâchait" for "mâcher"): a word
- *    that starts with most of the form; the whole word is highlighted.
+ * 5. an inflected form neither knows ("mâchait" for "mâcher"): a word that
+ *    starts with most of the form; the whole word is highlighted.
  */
 import { foldsOf, wordsOf } from "@/lib/read/words";
 import { exampleSegments, famLang } from "./example-marks";
@@ -32,13 +36,20 @@ export function looseKey(s: string): string {
     .toLowerCase();
 }
 
-/** The keys a word may be matched by: itself, or with its folds too; each also without diacritics. */
-function keysOf(word: string, lang: string, folds: boolean): Set<string> {
+/** How loosely a word is matched: exactly, without case and diacritics, or through its folds too. */
+type Mode = "exact" | "loose" | "folds";
+
+/** A word's headwords (the lemma file's), by its normalised spelling. */
+export type Heads = ReadonlyMap<string, readonly string[]>;
+
+/** The keys a word may be matched by: itself and its headwords, with its folds and loose keys by mode. */
+function keysOf(word: string, lang: string, mode: Mode, heads?: Heads | null): Set<string> {
   const out = new Set<string>();
-  for (const f of folds ? foldsOf(word, lang) : [word]) {
-    out.add(f);
-    out.add(looseKey(f));
-  }
+  for (const b of [word, ...(heads?.get(word) ?? [])])
+    for (const f of mode === "folds" ? foldsOf(b, lang) : [b]) {
+      out.add(f);
+      if (mode !== "exact") out.add(looseKey(f));
+    }
   return out;
 }
 
@@ -61,16 +72,23 @@ function wordSegs(text: string, lang: string): WordSeg[] {
 }
 
 /**
- * Tier 1: whole words (and runs of words for a form of several) — the very
- * word first, and only without it its folds ("danse" folds to "dans", so it
- * is the card "dans" only when the example has no "dans" itself).
+ * Tiers 1–3: whole words (and runs of words for a form of several) — the
+ * very word or a real form of it first, and only without one its folds
+ * ("danse" folds to "dans", so it is the card "dans" only when the example
+ * has no "dans" itself).
  */
-function byWords(segs: WordSeg[], forms: string[][], lang: string, folds: boolean): Span[] {
+function byWords(
+  segs: WordSeg[],
+  forms: string[][],
+  lang: string,
+  mode: Mode,
+  heads?: Heads | null,
+): Span[] {
   const out: Span[] = [];
-  const has = segs.map((s) => keysOf(s.word, lang, folds));
+  const has = segs.map((s) => keysOf(s.word, lang, mode, heads));
   for (const words of forms) {
     if (!words.length) continue;
-    const want = words.map((w) => keysOf(w, lang, folds));
+    const want = words.map((w) => keysOf(w, lang, mode));
     for (let i = 0; i + want.length <= segs.length; i++)
       if (want.every((k, j) => meets(k, has[i + j])))
         out.push([segs[i].start, segs[i + want.length - 1].end]);
@@ -96,7 +114,7 @@ function looseMap(text: string): { key: string; from: number[] } {
   return { key, from };
 }
 
-/** Tier 2: the form anywhere in the text. */
+/** Tier 4: the form anywhere in the text. */
 function bySubstring(text: string, forms: string[]): Span[] {
   const { key, from } = looseMap(text);
   const out: Span[] = [];
@@ -112,7 +130,7 @@ function bySubstring(text: string, forms: string[]): Span[] {
   return out;
 }
 
-/** Tier 3: a word starting with most of a one-word form (an inflection the folds miss). */
+/** Tier 5: a word starting with most of a one-word form (an inflection the folds miss). */
 function byStem(segs: WordSeg[], forms: string[]): Span[] {
   const out: Span[] = [];
   for (const f of forms) {
@@ -142,22 +160,28 @@ const cache = new Map<string, Span[]>();
 /**
  * Where the card's word stands in its example: every occurrence, in order.
  * `forms` are the card's own spellings (term, reading); empty ones are skipped.
+ * `heads`: the example's words' headwords by the language's lemma file
+ * (/api/words/familiarity), when the page has them.
  */
 export function targetSpans(
   text: string,
   forms: readonly (string | null | undefined)[],
   lang: string,
+  heads?: Heads | null,
 ): Span[] {
   const fs = [...new Set(forms.map((f) => f?.trim()).filter((f): f is string => !!f))];
   if (!text || !fs.length) return [];
-  const k = `${lang}\n${fs.join("\n")}\n${text}`;
+  const segs = wordSegs(text, lang);
+  // The answer changes when the headwords of the example's words arrive.
+  const hs = heads ? segs.map((s) => heads.get(s.word)?.join(",") ?? "").join(";") : "";
+  const k = `${lang}\n${fs.join("\n")}\n${hs}\n${text}`;
   const hit = cache.get(k);
   if (hit) return hit;
   const L = famLang(lang);
-  const segs = wordSegs(text, lang);
   const words = fs.map((f) => wordsOf(f, L));
-  let spans = byWords(segs, words, L, false);
-  if (!spans.length) spans = byWords(segs, words, L, true);
+  let spans = byWords(segs, words, L, "exact", heads);
+  if (!spans.length) spans = byWords(segs, words, L, "loose", heads);
+  if (!spans.length) spans = byWords(segs, words, L, "folds", heads);
   if (!spans.length) spans = bySubstring(text, fs);
   if (!spans.length) spans = byStem(segs, fs);
   const out = tidy(spans);

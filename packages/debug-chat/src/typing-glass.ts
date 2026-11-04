@@ -36,8 +36,35 @@ export function showTypingGlass(s: {
   open: boolean;
   /** The full-screen log is up. */
   fullLog: boolean;
+  /** The + menu (or the file picker it opened) is up. */
+  plusMenu?: boolean;
 }): boolean {
-  return s.open && (s.typing || s.fullLog);
+  return s.open && (inputInUse(s) || s.fullLog);
+}
+
+/**
+ * The input is in use: it has the focus, or its + menu (AttachMenu.tsx) or
+ * the file picker that menu opened is up (owner, 2026-11-05 01:39 JST: a tap
+ * on + should leave the idle look as focusing the input does). The one
+ * condition both the glass and the panel's opacity follow; it ends by the
+ * same rule as the focus: the menu closing, the picker answered or dismissed.
+ */
+export function inputInUse(s: { typing: boolean; plusMenu?: boolean }): boolean {
+  return s.typing || !!s.plusMenu;
+}
+
+/**
+ * The panel is at full opacity rather than its faint idle look (opacity 60%):
+ * the input in use, the mic on, or the full-screen log. (CSS focus-within and
+ * :active keep it opaque as well, for a focus the state has not caught yet.)
+ */
+export function panelOpaque(s: {
+  typing: boolean;
+  plusMenu?: boolean;
+  micActive: boolean;
+  fullLog: boolean;
+}): boolean {
+  return inputInUse(s) || s.micActive || s.fullLog;
 }
 
 /** The glass's edge past the panel, px (Tailwind -inset-1.5). */
