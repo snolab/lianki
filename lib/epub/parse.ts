@@ -351,9 +351,12 @@ function toPart(pos: Int32Array, o: number): number {
   return lo;
 }
 
-class Collector {
+/** Collects block text into book lines; shared with the Google Docs import (lib/gdoc). */
+export class Collector {
   lines: string[] = [];
   headings: number[] = [];
+  /** The heading level (1–6; 0 for a document title) of each entry in `headings`. */
+  levels: number[] = [];
   marks: InlineMark[] = [];
   /** Lines that continue a paragraph after a <br>. */
   breaks: number[] = [];
@@ -364,6 +367,7 @@ class Collector {
   private afterBr = false;
   private paraStart = 0;
   private heading = 0;
+  private level = 0;
   /** Marks waiting for the next line: they start there. */
   private pending: number[] = [];
   /** Resolved marks: mark id → line index. */
@@ -420,7 +424,10 @@ class Collector {
         const e = toPart(pos[p], z);
         if (e > s) this.marks.push([line, s, Math.min(e, part.length), k]);
       }
-      if (this.heading > 0) this.headings.push(this.lines.length);
+      if (this.heading > 0) {
+        this.headings.push(this.lines.length);
+        this.levels.push(this.level);
+      }
       this.lines.push(part);
       this.bytes += this.enc.encode(part).length + 4;
       if (this.bytes > BOOK_LIMITS.maxTextBytes || this.lines.length > BOOK_LIMITS.maxLines) {
@@ -445,13 +452,21 @@ class Collector {
         this.br();
         continue;
       }
-      if (isHeading) this.heading++;
+      const outerLevel = this.level;
+      if (isHeading) {
+        this.heading++;
+        const lv = c.attrs["data-lk-level"];
+        this.level = lv !== undefined ? Number(lv) : Number(c.name[1]);
+      }
       const inline = block ? undefined : INLINE_TAGS[c.name];
       if (inline) this.open(inline);
       this.walk(c, marksById);
       if (inline) this.close(inline);
       if (block) this.block();
-      if (isHeading) this.heading--;
+      if (isHeading) {
+        this.heading--;
+        this.level = outerLevel;
+      }
     }
   }
 }

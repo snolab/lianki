@@ -15,6 +15,8 @@ export interface ReadMaterial {
   passedAt?: Date;
   /** The book hash of its plain lines (lib/read/units.ts bookHash); D1, set at import or on next open. */
   contentHash?: string;
+  /** Where it was imported from, when it can be imported again ("gdoc:<id>"); D1. */
+  sourceKey?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +47,7 @@ type ReadMaterialRow = {
   content: string | null;
   passed_at?: string | null;
   content_hash?: string | null;
+  source_key?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -59,6 +62,7 @@ function rowToMaterial(row: ReadMaterialRow): ReadMaterial {
     content: row.content ?? undefined,
     passedAt: row.passed_at ? new Date(row.passed_at) : undefined,
     contentHash: row.content_hash ?? undefined,
+    sourceKey: row.source_key ?? undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -72,6 +76,7 @@ export async function saveReadMaterial(
   content: string,
   lines: string[],
   contentHash?: string,
+  sourceKey?: string,
 ): Promise<ReadMaterial> {
   const now = new Date();
   const large = Buffer.byteLength(content, "utf8") >= GRIDFS_THRESHOLD;
@@ -83,8 +88,8 @@ export async function saveReadMaterial(
     await getD1()
       .prepare(
         `INSERT INTO read_materials
-           (id, user_id, title, lines, r2_key, content, content_hash, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, user_id, title, lines, r2_key, content, content_hash, source_key, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -94,6 +99,7 @@ export async function saveReadMaterial(
         r2Key ?? null,
         large ? null : content,
         contentHash ?? null,
+        sourceKey ?? null,
         now.toISOString(),
         now.toISOString(),
       )
@@ -106,6 +112,7 @@ export async function saveReadMaterial(
       r2Key,
       content: large ? undefined : content,
       contentHash,
+      sourceKey,
       createdAt: now,
       updatedAt: now,
     };
@@ -367,4 +374,45 @@ export async function findReadMaterialIdByHash(
   for (const d of docs)
     if ((d.contentHash ?? (await bookHash(d.lines ?? []))) === hash) return String(d._id);
   return null;
+}
+
+/** The user's material imported from this source (newest first), or null. D1 only. */
+export async function findReadMaterialBySource(
+  userId: string,
+  sourceKey: string,
+): Promise<ReadMaterial | null> {
+  if (dbBackend() !== "d1") return null;
+  const row = await getD1()
+    .prepare(
+      `SELECT * FROM read_materials WHERE user_id = ? AND source_key = ?
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(userId, sourceKey)
+    .first<ReadMaterialRow>();
+  return row ? rowToMaterial(row) : null;
+}
+
+/**
+ * A re-imported source: the same material (id, created date, position row)
+ * gets the new title, lines, meta and book hash, and moves to the top of the
+ * list. D1 only.
+ */
+export async function replaceReadMaterialText(
+  userId: string,
+  materialId: string,
+  title: string,
+  lines: string[],
+  content: string,
+  contentHash: string,
+): Promise<Date> {
+  const now = new Date();
+  await replaceReadMaterialContent(userId, materialId, content);
+  await getD1()
+    .prepare(
+      `UPDATE read_materials SET title = ?, lines = ?, content_hash = ?, updated_at = ?
+       WHERE id = ? AND user_id = ?`,
+    )
+    .bind(title, JSON.stringify(lines), contentHash, now.toISOString(), materialId, userId)
+    .run();
+  return now;
 }
