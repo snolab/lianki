@@ -140,6 +140,7 @@ import {
   SWIPE_SNAP,
   SWIPE_SPRING,
   keyRating,
+  rowTap,
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
 import { NATIVE_PARAMS, showReveal, useNativeSlip } from "@/lib/words/native-slip-gesture";
@@ -4668,7 +4669,7 @@ export function Study({
       </>
     ) : modality === null ? null : modality === "touch" ? (
       // The gestures exist only in the touch layout; a touchscreen
-      // laptop's tap is a click (= Again), and has no swipe to explain.
+      // laptop's tap is a click (focus), and has no swipe to explain.
       // Each side's grades as the mirror (if on) puts them: the text's ← is
       // filled with the left side's grades, whatever they are.
       touch && fill(text.helpTouch.value, swipeSides)
@@ -5042,9 +5043,10 @@ export function Study({
                   onMore={() => setSheet(i)}
                   scrolling={scrollingNow}
                   underlay={underlay}
-                  // Desktop click = Again; on touch a tap reveals and reads it.
+                  // A click focuses the row (as the cursor keys do), never grades
+                  // (owner, 2026-11-04 19:35 JST); on touch a tap reveals and reads it.
                   onTap={(now) => {
-                    if (!touch) return grade(i, 1);
+                    if (rowTap(touch) === "focus") return moveRow(i);
                     // A double tap: the slip's other actions, in a sheet. Timed
                     // by the events themselves: a slow render after the first
                     // tap must not stretch the gap.
