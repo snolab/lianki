@@ -14,6 +14,8 @@ import { countWords, parseWordStats, type WordStats } from "./words";
 
 export const BOOK_KIND = "lianki-book";
 
+export type BookSource = "epub" | "gdoc";
+
 export interface BookChapter {
   title: string;
   /** Index into `lines` of the chapter's first line. Ascending, first is 0. */
@@ -23,7 +25,10 @@ export interface BookChapter {
 export interface BookMeta {
   kind: typeof BOOK_KIND;
   v: 1;
-  source: "epub";
+  /** Imported from: an EPUB file, or a Google Doc (lib/gdoc). */
+  source: BookSource;
+  /** The Google Doc's link, for a "gdoc" book. */
+  sourceUrl?: string;
   author?: string;
   lang?: string;
   chapters: BookChapter[];
@@ -181,11 +186,15 @@ export function checkBook(input: unknown): BookCheck {
   };
 }
 
-export function bookMetaOf(book: ParsedBook): BookMeta {
+export function bookMetaOf(
+  book: ParsedBook,
+  from: { source: BookSource; sourceUrl?: string } = { source: "epub" },
+): BookMeta {
   return {
     kind: BOOK_KIND,
     v: 1,
-    source: "epub",
+    source: from.source,
+    ...(from.sourceUrl ? { sourceUrl: from.sourceUrl } : {}),
     ...(book.author ? { author: book.author } : {}),
     ...(book.lang ? { lang: book.lang } : {}),
     chapters: book.chapters,
@@ -231,7 +240,12 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
     return {
       kind: BOOK_KIND,
       v: 1,
-      source: "epub",
+      source: m.source === "gdoc" ? "gdoc" : "epub",
+      ...(m.source === "gdoc" &&
+      typeof m.sourceUrl === "string" &&
+      /^https:\/\/docs\.google\.com\/document\/d\/[A-Za-z0-9_-]{25,128}\/edit$/.test(m.sourceUrl)
+        ? { sourceUrl: m.sourceUrl }
+        : {}),
       ...(typeof m.author === "string" ? { author: m.author } : {}),
       ...(typeof m.lang === "string" ? { lang: m.lang } : {}),
       chapters,

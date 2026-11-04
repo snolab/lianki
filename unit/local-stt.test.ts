@@ -11,6 +11,8 @@ import {
   createLocalStt,
   fetchSttTicket,
   localSttFrom,
+  localSttRoute,
+  OWNER_DEFAULT_LOCAL_STT,
   needsTicket,
   packPcm,
 } from "@lianki/debug-chat/local-stt";
@@ -890,5 +892,35 @@ describe("edge paths: requests, hello, page events", () => {
       g.window = had.window;
       g.document = had.document;
     }
+  });
+});
+
+describe("localSttRoute (the owner's default)", () => {
+  it("nothing stored: the owner gets the tailnet then the tunnel, in that order", () => {
+    const r = localSttRoute(null, true);
+    expect(r.source).toBe("owner-default");
+    expect(r.urls).toBe("wss://taku.onca-tint.ts.net/lianki-stt wss://stt.lianki.com/");
+    expect(r.urls?.split(" ").map((u) => needsTicket(u))).toEqual([false, true]);
+    expect(localSttFrom(OWNER_DEFAULT_LOCAL_STT)).toBe(r.urls);
+  });
+  it("nothing stored and not the owner: no local route", () => {
+    expect(localSttRoute(null, false)).toEqual({ source: "none" });
+    expect(localSttRoute(undefined, false)).toEqual({ source: "none" });
+  });
+  it("a stored URL wins over the default", () => {
+    expect(localSttRoute("wss://mac.ts.net/x", true)).toEqual({
+      urls: "wss://mac.ts.net/x",
+      source: "stored",
+    });
+    expect(localSttRoute("wss://mac.ts.net/x", false)).toEqual({
+      urls: "wss://mac.ts.net/x",
+      source: "stored",
+    });
+  });
+  it("an explicit off (or a value with no usable URL) stays off, even for the owner", () => {
+    expect(localSttRoute("off", true)).toEqual({ source: "off" });
+    expect(localSttRoute(" OFF ", true)).toEqual({ source: "off" });
+    expect(localSttRoute("", true)).toEqual({ source: "off" });
+    expect(localSttRoute("ws://evil.example/x", true)).toEqual({ source: "off" });
   });
 });

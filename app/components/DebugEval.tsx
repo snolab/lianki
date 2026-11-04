@@ -730,6 +730,7 @@ export function DebugEval({
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
+          owner={owner && !isFriend}
           strings={friendStrings}
           treeSource={owner && !isFriend ? ownerTree : undefined}
           treeRepo="snolab/lianki"

@@ -109,6 +109,7 @@ import {
 } from "@/lib/read/reader-select";
 import { segmentLine } from "@/lib/read/units";
 import { sentenceId } from "@/lib/read/reader-api";
+import { onPageLeave } from "@/lib/page-leave";
 
 type WindowVirtualizer = Virtualizer<Window, Element>;
 /** The units whose card offers the review and 制卡. */
@@ -714,10 +715,18 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       touching = false;
     };
     const key = (e: KeyboardEvent) => SCROLL_KEYS.has(e.key) && begin();
-    const pagehide = () => {
+    // Leaving: the position is written now, not ANCHOR_QUIET_MS later — the
+    // unmount after a Back (Android's edge swipe takes one with no warning)
+    // can no longer measure the list. A popstate may only be a sheet closing
+    // (lib/back-to-close.ts): it saves the position and leaves grades in
+    // their undo window; so does hiding (an app switch). Grades not yet
+    // sent are kept on the device and sent on the next load either way.
+    const offLeave = onPageLeave((why) => {
+      clearTimeout(saveT);
+      if (why !== "pagehide") return saveNow(why === "hidden");
       saveNow(true);
       data.flush();
-    };
+    });
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("scrollend", settle);
     window.addEventListener("touchstart", touchstart, { passive: true });
@@ -725,8 +734,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     window.addEventListener("touchcancel", touchend, { passive: true });
     window.addEventListener("wheel", begin, { passive: true });
     window.addEventListener("keydown", key);
-    window.addEventListener("pagehide", pagehide);
     return () => {
+      offLeave();
       cancelAnimationFrame(frame);
       clearTimeout(quiet);
       clearTimeout(saveT);
@@ -737,7 +746,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       window.removeEventListener("touchcancel", touchend);
       window.removeEventListener("wheel", begin);
       window.removeEventListener("keydown", key);
-      window.removeEventListener("pagehide", pagehide);
       saveNow();
     };
   }, [saveNow, data]);

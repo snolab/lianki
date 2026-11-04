@@ -38,6 +38,25 @@ a timer, not a render). The machine then turns a sideways drag into a dead
 Tap and hold still work. `grade()` and Undo refuse it too. Before it is due,
 a re-grade or an undo withdraws the waiting copy, so no ghost comes back.
 
+## Edge Back steals a swipe
+
+Android's gesture navigation takes a sideways drag that starts on a screen
+edge as Back, and no page can stop it (design-principles.md, "Edge
+gestures"). So no grade needs a drag from the edge: on /words the term
+starts past the stamp column and the meaning ends before the right-hand
+column, and on /read (touch) the text is inset by `--lk-edge-gesture`. When the
+system does take a gesture, it is a cancel, never a lift:
+
+- js swipe: `pointercancel`, or the page hidden, left, popped or blurred mid-
+  gesture (`lib/page-leave.ts`, wired in `useSwipeGesture`), is the machine's
+  `cancel`: the slip goes home, no `release`, no grade.
+- New swipe: `touchcancel` (and the same page signals while a finger is
+  down) runs `stolen()` in `native-slip-gesture.ts` instead of the lift: the
+  slide is forgotten and the slip glides home, so the snap that follows
+  can't grade it.
+- `unit/page-leave.test.ts` covers the signals and a cancel past the far
+  level.
+
 ## Undo
 
 The toolbar has no Undo button (owner, 2026-11-03: it sat right of Settings
