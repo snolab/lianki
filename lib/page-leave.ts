@@ -28,9 +28,9 @@ export function onPageLeave(
   fn: (why: LeaveReason) => void,
   opts: { blur?: boolean } & Partial<LeaveTargets> = {},
 ): () => void {
-  const win = opts.win ?? (typeof window === "undefined" ? null : window);
-  const doc = opts.doc ?? (typeof document === "undefined" ? null : document);
-  if (!win || !doc) return () => {};
+  // Callers run in effects and event handlers: always in a browser.
+  const win = opts.win ?? window;
+  const doc = opts.doc ?? document;
   const hidden = () => doc.visibilityState === "hidden" && fn("hidden");
   const pagehide = () => fn("pagehide");
   const popstate = () => fn("popstate");
