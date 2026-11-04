@@ -378,8 +378,10 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   (`reader-word-review.tsx`, loaded on open). Scoped: only these words, no
   new-word intake, no more due words, the page under it not locked. Order:
   unrecognised, new, learning weakest first, then the known ones
-  (`lib/read/word-review.ts` `orderWords`). A word reviewed before it is due
-  is /words' own re-grade of its last review.
+  (`lib/read/word-review.ts` `orderWords`). A card not due yet is left out
+  until its due (`scopeSession`, `isDueCard`; owner, 2026-11-04 19:28 JST:
+  "lorsque" graded Easy came back in the same paragraph's review); every
+  word not due yet → the review opens already done.
 - **Which card:** a word that has a card in any of his lists in the book's
   language — matched with the reader's folds and lemmas, as the marks are —
   is reviewed on that card, its progress kept. Several lists: the card

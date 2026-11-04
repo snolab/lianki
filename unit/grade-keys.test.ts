@@ -7,7 +7,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { KEY_RATING, keyRating } from "@/lib/words/swipe";
+import { KEY_RATING, keyRating, rowTap } from "@/lib/words/swipe";
 
 const key = (code: string, shiftKey = false) => ({ code, shiftKey });
 
@@ -39,5 +39,18 @@ describe("grade keys", () => {
       expect(src).not.toMatch(/\bh: [1-4],/);
       expect(src).not.toMatch(/KeyH: [1-4]/);
     }
+  });
+
+  it("a click on a slip focuses it, a tap reveals it: neither grades", () => {
+    expect(rowTap(false)).toBe("focus");
+    expect(rowTap(true)).toBe("reveal");
+    const src = readFileSync(
+      join(import.meta.dir, "..", "app/(app)/words/WordsClient.tsx"),
+      "utf8",
+    );
+    // The row's tap handler never grades (it once was `grade(i, 1)`: click = Again).
+    const tap = src.slice(src.indexOf("onTap={(now) => {"), src.indexOf("onSwipeStart={"));
+    expect(tap).toContain("rowTap(touch)");
+    expect(tap).not.toMatch(/grade\(/);
   });
 });

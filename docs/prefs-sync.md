@@ -40,6 +40,7 @@ The store column gives the account-mode store that will hold the key, as
 | ------------------------------ | ----------------------------------------- | ---------- | -------------------- | ----------------------------------------------------------------------------------- |
 | `lk:words-show-all`            | Show all meanings                         | **synced** | `words.showAll`      | a reading habit                                                                     |
 | `lk:words-sound`               | Read aloud                                | **synced** | `words.readAloud`    | a habit; the mic and speaker state is a separate device fact                        |
+| `lk:words-sound-loop`          | Read on a loop                            | device     | —                    | owner, 2026-11-04 19:30 JST: off by default (a card is read once), per device      |
 | `lk:words-server-voice`        | Server voice                              | **synced** | `words.serverVoice`  | a voice choice, not a device feature                                                |
 | `lk:words-swipe-speak`         | Speak on swipe                            | **synced** | `words.speakOnSwipe` | a habit                                                                             |
 | `lk:words-grade-tones`         | Grade tones                               | **synced** | `words.gradeTones`   | a habit                                                                             |

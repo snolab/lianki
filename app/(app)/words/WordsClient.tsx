@@ -104,7 +104,7 @@ import {
   type FamHit,
   type FamMap,
 } from "@/lib/words/example-marks";
-import { createSequencer } from "@/lib/words/sequence";
+import { SOUND_LOOP_KEY, createSequencer, rowReading } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
 import { rowPriority } from "@/lib/words/audio-priority";
@@ -140,6 +140,7 @@ import {
   SWIPE_SNAP,
   SWIPE_SPRING,
   keyRating,
+  rowTap,
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
 import { NATIVE_PARAMS, showReveal, useNativeSlip } from "@/lib/words/native-slip-gesture";
@@ -910,6 +911,16 @@ function useSpeech(serverVoice = false) {
       return true;
     }
   });
+  // Read on a loop (per device, off by default): a row's word, meaning and
+  // example said again and again until it is graded or left. Off: once per
+  // showing (owner, 2026-11-04 19:30 JST).
+  const [repeat, setRepeat] = useState(() => {
+    try {
+      return localStorage.getItem(SOUND_LOOP_KEY) === "on";
+    } catch {
+      return false;
+    }
+  });
   // Read aloud follows the account (docs/prefs-sync.md).
   usePrefReader(
     useCallback(() => {
@@ -1161,8 +1172,8 @@ function useSpeech(serverVoice = false) {
   const release = sequencer.finish;
 
   /**
-   * Say `parts` in turn (word, meaning, example), pause, repeat — until the
-   * next call; an empty list just stops.
+   * Say `parts` in turn (word, meaning, example) once — or, with "Read on a
+   * loop" on, pause and repeat — until the next call; an empty list just stops.
    */
   const loop = useCallback(
     (parts: SayPart[], force = false) => {
@@ -1170,15 +1181,23 @@ function useSpeech(serverVoice = false) {
       // A tap: everything now. Not when the focus moves (desktop): flicking
       // through rows would fetch every row's clips, and prefetch has them.
       if (force) warm(parts);
-      // A short delay so flicking through rows does not start a word per row.
       sequencer.play(
         parts.filter((p) => p.text),
-        { loop: true, delayMs: 250 },
+        rowReading(repeat),
       );
       return stop;
     },
-    [on, sequencer, stop, warm],
+    [on, repeat, sequencer, stop, warm],
   );
+
+  const toggleRepeat = useCallback(() => {
+    setRepeat((v) => {
+      try {
+        localStorage.setItem(SOUND_LOOP_KEY, v ? "off" : "on");
+      } catch {}
+      return !v;
+    });
+  }, []);
 
   /**
    * Say `parts` once, back to back, now — interrupting whatever was playing,
@@ -1224,8 +1243,20 @@ function useSpeech(serverVoice = false) {
   }, [stop]);
 
   return useMemo(
-    () => ({ available, on, loop, once, hold, release, toggle, prefetch, stock }),
-    [available, on, loop, once, hold, release, toggle, prefetch, stock],
+    () => ({
+      available,
+      on,
+      repeat,
+      loop,
+      once,
+      hold,
+      release,
+      toggle,
+      toggleRepeat,
+      prefetch,
+      stock,
+    }),
+    [available, on, repeat, loop, once, hold, release, toggle, toggleRepeat, prefetch, stock],
   );
 }
 
@@ -4435,11 +4466,12 @@ export function Study({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [loading]);
 
-  // Say the focused row aloud on a loop (word, example, meaning) while the page
-  // is active; paused in a hidden tab or background window.
+  // Say the focused row aloud (word, example, meaning) once — on a loop when
+  // "Read on a loop" is on — while the page is active; paused in a hidden tab
+  // or background window.
   const active = usePageActive();
   const focused = !touch && active ? queue[row] : undefined;
-  // Keyed by content: re-rendering the same row must not restart its loop.
+  // Keyed by content: re-rendering the same row must not restart its reading.
   const focusParts = JSON.stringify(focused ? partsOf(focused) : []);
   useEffect(() => speech.loop(JSON.parse(focusParts) as SayPart[]), [focusParts, speech]);
 
@@ -4677,7 +4709,10 @@ export function Study({
       return previewInterval(it.card, g.rating, paramsOf.get(it.listId)!);
     }
     if (it.kind === "new" || !it.card) return text.statusNew.value;
-    return fill(text.ago.value, { t: formatInterval(Date.now() - dueOf(it.card)) });
+    // Not due yet (a word shown ahead of its due): when it is, never "0s ago".
+    const due = dueOf(it.card);
+    if (due > Date.now()) return <Countdown due={due} back={false} />;
+    return fill(text.ago.value, { t: formatInterval(Date.now() - due) });
   };
 
   // The help strip's text, by the input used last (keys or gestures).
@@ -4688,7 +4723,7 @@ export function Study({
       </>
     ) : modality === null ? null : modality === "touch" ? (
       // The gestures exist only in the touch layout; a touchscreen
-      // laptop's tap is a click (= Again), and has no swipe to explain.
+      // laptop's tap is a click (focus), and has no swipe to explain.
       // Each side's grades as the mirror (if on) puts them: the text's ← is
       // filled with the left side's grades, whatever they are.
       touch && fill(text.helpTouch.value, swipeSides)
@@ -4816,6 +4851,14 @@ export function Study({
                 onChange={() => speech.toggle()}
                 label={text.readAloud.value}
                 hint={text.readAloudHint.value}
+              />
+            )}
+            {speech.on && (
+              <TogglePill
+                on={speech.repeat}
+                onChange={() => speech.toggleRepeat()}
+                label={text.readAloudLoop.value}
+                hint={text.readAloudLoopHint.value}
               />
             )}
             {speech.on && (
@@ -5054,9 +5097,10 @@ export function Study({
                   onMore={() => setSheet(i)}
                   scrolling={scrollingNow}
                   underlay={underlay}
-                  // Desktop click = Again; on touch a tap reveals and reads it.
+                  // A click focuses the row (as the cursor keys do), never grades
+                  // (owner, 2026-11-04 19:35 JST); on touch a tap reveals and reads it.
                   onTap={(now) => {
-                    if (!touch) return grade(i, 1);
+                    if (rowTap(touch) === "focus") return moveRow(i);
                     // A double tap: the slip's other actions, in a sheet. Timed
                     // by the events themselves: a slow render after the first
                     // tap must not stretch the gap.

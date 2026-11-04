@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { meaningLang, meaningText, prefetchOrder, sayParts } from "@/lib/words/say-parts";
-import { createSequencer } from "@/lib/words/sequence";
+import { createSequencer, rowReading } from "@/lib/words/sequence";
 
 describe("sayParts", () => {
   test("word, then example, then meaning (the row's order), each in its own language", () => {
@@ -103,6 +103,33 @@ function rig() {
   };
   return { seq, said, pending, timers, tick, cancels: () => cancels };
 }
+
+describe("a shown row's reading (rowReading)", () => {
+  test("off (the default): the row's info is read once, then silence", () => {
+    const r = rig();
+    r.seq.play(["word", "meaning", "example"], rowReading(false));
+    expect(r.tick()).toBe(250);
+    for (let i = 0; i < 3; i++) {
+      r.pending[i](true);
+      if (i < 2) r.tick();
+    }
+    expect(r.said).toEqual(["word", "meaning", "example"]);
+    expect(r.timers).toHaveLength(0);
+  });
+
+  test("Read on a loop: it starts over until the next play or stop", () => {
+    const r = rig();
+    r.seq.play(["word", "meaning"], rowReading(true));
+    r.tick();
+    r.pending[0](true);
+    r.tick();
+    r.pending[1](true);
+    expect(r.tick()).toBe(1200);
+    expect(r.said).toEqual(["word", "meaning", "word"]);
+    r.seq.stop(); // graded or left
+    expect(r.timers).toHaveLength(0);
+  });
+});
 
 describe("sequencer", () => {
   test("plays the parts in order, 150 ms apart, once", () => {
