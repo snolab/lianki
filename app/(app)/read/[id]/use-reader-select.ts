@@ -11,8 +11,9 @@
 //   in the book (mousedown with detail > 1), so the levels stay ours; a drag
 //   to select text is left alone.
 // - **Highlight.** Every level is drawn without touching the DOM selection:
-//   the CSS Custom Highlight API where there is one (ranges over the rows
-//   mounted now), else an attribute on the same elements. A chapter or the
+//   the CSS Custom Highlight API where there is one and it keeps each word's
+//   underline colour (keepsDecorations; ranges over the rows mounted now),
+//   else an attribute on the same elements. A chapter or the
 //   book is a virtual selection: the range is data, and only its mounted
 //   rows are drawn, again as rows mount (a MutationObserver on the list).
 // - **Manual selection.** His own selection (a long-press and the handles, a
@@ -51,6 +52,44 @@ const highlights = (): Highlights | null =>
   typeof CSS !== "undefined" && "highlights" in CSS && typeof Highlight !== "undefined"
     ? (CSS as unknown as { highlights: Highlights }).highlights
     : null;
+
+let keeps: boolean | null = null;
+/**
+ * Whether this engine paints the underlines inside `::highlight(lk-sel)` in
+ * each word's own colour (globals.css: `text-decoration-color: inherit`).
+ * WebKit takes the inherited colour from the word, so the familiarity levels
+ * stay apart; Chromium takes it from the parent highlight, one colour for all
+ * (owner, 2026-11-05). Asked once, of the engine's own computed style: a probe
+ * with a known underline colour, read through the highlight pseudo. An engine
+ * that cannot answer (no pseudo, no background from the rule) counts as no;
+ * asked again while the page is still loading.
+ */
+export function keepsDecorations(): boolean {
+  if (keeps !== null) return keeps;
+  try {
+    const probe = document.createElement("span");
+    probe.textContent = "x";
+    probe.style.cssText =
+      "position:absolute;opacity:0;pointer-events:none;text-decoration:underline solid oklch(0.5 0.1 30)";
+    document.body.appendChild(probe);
+    const own = getComputedStyle(probe).textDecorationColor;
+    // A live declaration: read before the probe goes.
+    const hl = getComputedStyle(probe, `::highlight(${HL})`);
+    const bg = hl.backgroundColor;
+    const deco = hl.textDecorationColor;
+    probe.remove();
+    // No background: the engine cannot read the pseudo, or the stylesheet is
+    // still loading (then ask again next time).
+    if (!bg || bg === "rgba(0, 0, 0, 0)") {
+      keeps = document.readyState === "complete" ? false : null;
+      return false;
+    }
+    keeps = deco === own;
+  } catch {
+    keeps = false;
+  }
+  return keeps;
+}
 
 /** The elements a unit covers among the rows mounted now. */
 export function unitElements(
@@ -362,7 +401,8 @@ export function useReaderSelect(o: {
   // The highlight, redrawn as rows mount and unmount.
   useEffect(() => {
     const root = o.listRef.current;
-    const hl = highlights();
+    // Where the highlight would recolour the underlines, the elements carry it.
+    const hl = highlights() && keepsDecorations() ? highlights() : null;
     let marked: HTMLElement[] = [];
     const wipe = () => {
       hl?.delete(HL);
