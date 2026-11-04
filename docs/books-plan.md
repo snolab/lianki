@@ -339,6 +339,15 @@ selecting DOM text.
     nothing charged; no lemma file, no line), the lemma linked to his list
     holding it, or 制作卡片 making the lemma's card. A slot is left for the
     grammatical label once the lemma file carries tags;
+  - **What counts as a phrase** (owner, 2026-11-05 01:09 JST): a group of
+    words is a phrase — a phrase card, a phrase unit — only when together it
+    means more than its words' separate meanings: idioms, fixed expressions,
+    non-compositional collocations (like Chinese 成语). One criterion for
+    every language, no per-language rule. Matching uses his existing deck
+    cards (he chose to make them, so they pass); anything that suggests or
+    detects phrases by itself (the combo's phrase level, extraction, a
+    suggestion) admits only non-compositional ones, from a data list or
+    flagged by the model, never "any n words in a row";
   - a phrase that is no card yet gets 制作卡片: the same `make-cards` path as
     a word (the server accepts a phrase of the book's words,
     `bookPhrase`), into the book's own deck (`book:<hash>`, named after the
