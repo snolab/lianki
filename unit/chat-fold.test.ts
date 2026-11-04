@@ -1,4 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { resetUiStores } from "@lianki/ui-state";
+import { CHAT_FOLD_INITIAL, chatFold } from "@lianki/debug-chat/ui-store";
 import {
   type FoldState,
   HANDLE_SIZE,
@@ -93,5 +95,46 @@ describe("handle", () => {
     expect(handleTop({ centerY: 800, height: 88, vh: 844 })).toBe(756);
     expect(handleTop({ centerY: 840, height: 88, vh: 844, safeBottom: 34 })).toBe(722);
     expect(handleTop({ centerY: 10, height: 88, vh: 844, safeTop: 47 })).toBe(47);
+  });
+});
+
+describe("chatFold (per device)", () => {
+  let data: Map<string, string>;
+  beforeEach(() => {
+    data = new Map();
+    const localStorage = {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, String(v)),
+      removeItem: (k: string) => void data.delete(k),
+    };
+    (globalThis as { window?: unknown }).window = { localStorage, addEventListener() {} };
+    resetUiStores();
+  });
+  afterEach(() => {
+    resetUiStores();
+    delete (globalThis as { window?: unknown }).window;
+  });
+  const stored = (state: unknown) =>
+    data.set("lk:pref:chat-fold", JSON.stringify({ state, version: 1 }));
+  it("starts untucked on the right, kept in localStorage lk:pref:chat-fold", () => {
+    expect(CHAT_FOLD_INITIAL).toEqual({ tucked: false, edge: "right" });
+    expect(chatFold().getState()).toEqual(CHAT_FOLD_INITIAL);
+    chatFold().setState({ tucked: true, edge: "left" });
+    expect(JSON.parse(data.get("lk:pref:chat-fold")!).state).toEqual({
+      tucked: true,
+      edge: "left",
+    });
+    resetUiStores();
+    expect(chatFold().getState()).toEqual({ tucked: true, edge: "left" });
+  });
+  it("a damaged value falls back field by field", () => {
+    stored({ tucked: "yes", edge: "left" });
+    expect(chatFold().getState()).toEqual({ tucked: false, edge: "left" });
+    resetUiStores();
+    stored({ tucked: true, edge: "top" });
+    expect(chatFold().getState()).toEqual({ tucked: true, edge: "right" });
+    resetUiStores();
+    stored(null);
+    expect(chatFold().getState()).toEqual(CHAT_FOLD_INITIAL);
   });
 });
