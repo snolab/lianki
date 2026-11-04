@@ -96,7 +96,6 @@ import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/word
 import { backParts, rowMetrics } from "@/lib/words/row-layout";
 import { withPickedExample, type Example } from "@/lib/words/example-pick";
 import {
-  exampleSegments,
   famLang,
   famMark,
   missingWords,
@@ -104,6 +103,7 @@ import {
   type FamHit,
   type FamMap,
 } from "@/lib/words/example-marks";
+import { examplePieces, pieceRuns, targetSpans, type Piece } from "@/lib/words/example-target";
 import { SOUND_LOOP_KEY, createSequencer, rowReading } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
@@ -477,22 +477,46 @@ function useTouch() {
  * An example sentence with its words marked by the user's familiarity
  * (lib/words/example-marks.ts): a word with a card gets a solid (weak) or
  * dashed (learning) line; mastered words and words without a card stay plain.
+ * The card's own word (`forms`: its term and reading) is highlighted
+ * (lib/words/example-target.ts) and carries data-ex-target, which Glance
+ * scrolls into the middle of a long example.
  */
-function MarkedExample({ text, lang, fam }: { text: string; lang: string; fam: FamMap }) {
-  const known = fam.get(famLang(lang));
-  if (!known) return <>{text}</>;
+export function MarkedExample({
+  text,
+  lang,
+  fam,
+  forms = [],
+}: {
+  text: string;
+  lang: string;
+  fam?: FamMap;
+  forms?: readonly (string | null | undefined)[];
+}) {
+  const known = fam?.get(famLang(lang));
+  const spans = targetSpans(text, forms, lang);
+  if (!known && !spans.length) return <>{text}</>;
+  const piece = (p: Piece, k: number) => {
+    const mark = known && p.word ? famMark(known.get(p.word)) : null;
+    return mark ? (
+      <span key={k} className={`lk-fam-${mark}`} data-fam={mark}>
+        {p.text}
+      </span>
+    ) : (
+      p.text
+    );
+  };
+  let k = 0;
   return (
     <>
-      {exampleSegments(text, lang).map((s, k) => {
-        const mark = s.word ? famMark(known.get(s.word)) : null;
-        return mark ? (
-          <span key={k} className={`lk-fam-${mark}`} data-fam={mark}>
-            {s.text}
-          </span>
+      {pieceRuns(examplePieces(text, lang, spans)).map((r) =>
+        r.target ? (
+          <mark key={k++} className="lk-ex-target" data-ex-target>
+            {r.pieces.map((p) => piece(p, k++))}
+          </mark>
         ) : (
-          s.text
-        );
-      })}
+          r.pieces.map((p) => piece(p, k++))
+        ),
+      )}
     </>
   );
 }
@@ -1280,6 +1304,12 @@ const ROW_LINE_LH = 1.25;
  * With `lines` > 1 the text wraps onto that many lines first (the taller
  * rows, owner 2026-11-03 23:01 JST), ends in an ellipsis there, and on the
  * active row slides up instead, to its last line and back.
+ *
+ * An example whose card word (data-ex-target, MarkedExample) would be cut
+ * off is scrolled instead, on every row, so the word sits in the middle of
+ * the cell (owner, 2026-11-04 21:44 JST): its line, or its centre on one
+ * line. The cell itself scrolls (scrollTop / scrollLeft), never the page;
+ * smoothly on the active row unless motion is off.
  */
 function Glance({
   active,
@@ -1298,15 +1328,21 @@ function Glance({
   const outer = useRef<HTMLSpanElement>(null);
   const inner = useRef<HTMLSpanElement>(null);
   const [over, setOver] = useState(0);
+  /** How far the cell scrolls to bring its card word to the middle; 0 = not needed. */
+  const [aim, setAim] = useState(0);
   useLayoutEffect(() => {
     const o = outer.current;
     const i = inner.current;
-    if (!active || !o || !i) return setOver(0);
+    if (!o || !i) return;
     // Measured as laid out on one line, ellipsis aside — and again whenever
     // the cell's width changes (window resize, the term column gliding).
     // The outer box clips, so its scrollWidth is the full text's width (an
     // inline span's own scrollWidth is always 0).
     const measure = () => {
+      const t = i.querySelector<HTMLElement>("[data-ex-target]");
+      const shift = t ? aimAt(o, i, t, wrap, lines) : 0;
+      setAim(shift);
+      if (!active || shift) return setOver(0);
       // Wrapped: clamped, the inner box's own overflow; sliding (unclamped),
       // how far it reaches past the outer box's lines.
       const extra = wrap
@@ -1318,7 +1354,16 @@ function Glance({
     const ro = new ResizeObserver(measure);
     ro.observe(o);
     return () => ro.disconnect();
-  }, [active, children, title, wrap]);
+  }, [active, children, title, wrap, lines]);
+  useLayoutEffect(() => {
+    const o = outer.current;
+    if (!o || !(aim || o.scrollTop || o.scrollLeft)) return;
+    const rtl = !wrap && getComputedStyle(o).direction === "rtl";
+    o.scrollTo({
+      ...(wrap ? { top: aim } : { left: rtl ? -aim : aim }),
+      behavior: active && !motionOff() ? "smooth" : "auto",
+    });
+  }, [aim, active, wrap]);
   useEffect(() => {
     const i = inner.current;
     if (!over || !i || motionOff()) return;
@@ -1352,9 +1397,11 @@ function Glance({
       >
         <span
           ref={inner}
-          className={over ? "block will-change-transform" : "block overflow-hidden text-ellipsis"}
+          className={
+            over || aim ? "block will-change-transform" : "block overflow-hidden text-ellipsis"
+          }
           style={
-            over
+            over || aim
               ? undefined
               : { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: lines }
           }
@@ -1367,13 +1414,44 @@ function Glance({
     <span
       ref={outer}
       title={title}
-      className={`${className} overflow-hidden whitespace-nowrap ${over ? "" : "text-ellipsis"}`}
+      className={`${className} overflow-hidden whitespace-nowrap ${over || aim ? "" : "text-ellipsis"} ${aim ? "lk-ex-aimed" : ""}`}
     >
       <span ref={inner} className={over ? "inline-block will-change-transform" : ""}>
         {children}
       </span>
     </span>
   );
+}
+
+/**
+ * How far a Glance cell scrolls so its card word `t` is in the middle, or 0
+ * when the word is in view unscrolled. Wrapped: whole lines, the word's first
+ * line in the middle line (the first of two, so the sentence reads on). One
+ * line: the word's centre at the cell's centre, from the line's start side.
+ */
+function aimAt(
+  o: HTMLElement,
+  i: HTMLElement,
+  t: HTMLElement,
+  wrap: boolean,
+  lines: number,
+): number {
+  const r = t.getClientRects()[0];
+  if (!r) return 0;
+  const ir = i.getBoundingClientRect();
+  if (wrap) {
+    const lh = parseFloat(getComputedStyle(o).fontSize) * ROW_LINE_LH;
+    if (!lh) return 0;
+    const line = Math.floor((r.top - ir.top + r.height / 2) / lh);
+    if (line < lines) return 0;
+    const last = Math.max(0, Math.round(i.scrollHeight / lh) - lines);
+    return Math.max(0, Math.min(line - Math.floor((lines - 1) / 2), last)) * lh;
+  }
+  const rtl = getComputedStyle(o).direction === "rtl";
+  const start = rtl ? ir.right - r.right : r.left - ir.left;
+  if (start + r.width <= o.clientWidth) return 0;
+  const room = o.scrollWidth - o.clientWidth;
+  return Math.max(0, Math.min(start + r.width / 2 - o.clientWidth / 2, room));
 }
 
 /**
@@ -5192,7 +5270,12 @@ export function Study({
                           {it.ex ? (
                             <>
                               <bdi lang={it.lang} data-row-example>
-                                <MarkedExample text={it.ex} lang={it.lang} fam={fam.current} />
+                                <MarkedExample
+                                  text={it.ex}
+                                  lang={it.lang}
+                                  fam={fam.current}
+                                  forms={[it.term, it.reading]}
+                                />
                               </bdi>
                               {it.exTr && (
                                 <span className="ml-2 text-xs opacity-60">{it.exTr}</span>
@@ -5376,7 +5459,7 @@ function SlipSheet({
             data-sheet-example
           >
             <div lang={item.lang} dir="auto">
-              {item.ex}
+              <MarkedExample text={item.ex} lang={item.lang} forms={[item.term, item.reading]} />
             </div>
             {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
           </div>
