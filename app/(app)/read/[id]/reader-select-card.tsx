@@ -5,8 +5,11 @@
 // it (design-principles.md, minimal nesting) — its kind and a preview (title
 // and size for a chapter or the book), how well its words are known, the
 // actions that fit it, and a link button (our own inline SVG) that copies
-// the unit's deep link. Translate shows the translation right in it, under
-// the text (our API, lib/read/translate.ts). Not modal: the book stays clickable under it, so the
+// the unit's deep link. A word or phrase that is one of his /words cards
+// shows the card's meaning at once (lib/read/select-meaning.ts); a sentence,
+// a paragraph or a hand-made range shows its translation by itself, unit by
+// unit as each lands (lib/read/select-translate.ts); Translate is a tap for
+// the rest. Not modal: the book stays clickable under it, so the
 // next quick click widens the selection.
 
 import { useEffect } from "react";
@@ -44,7 +47,44 @@ export interface CardActions {
   reviewWords?: () => void;
   /** 制卡: `n` words of the paragraph have no card in any of his lists. */
   makeCards?: { n: number; run: () => void };
+  /** A card for the selected phrase, in the book's own deck (the same path as a word's). */
+  makePhrase?: () => void;
 }
+
+/** A deck card's meaning on the card. */
+export interface CardMeaning {
+  term: string;
+  back: string;
+  /** The card is not the selected text itself (a phrase around it, or one inside it). */
+  other: boolean;
+}
+
+/** An inflected word: the form in the book and its dictionary headword (the lemma file). */
+export interface CardLemma {
+  form: string;
+  lemma: string;
+  /** The /words list holding his lemma card; null when he has none (制作卡片 makes it). */
+  href: string | null;
+  /** A grammatical label ("simple past · 3sg"), once the lemma file carries tags. */
+  tags?: string | null;
+}
+
+/**
+ * The translation, a block per paragraph and a part per unit (sentence or
+ * paragraph): its text, null while it comes, false when it is not there
+ * (failed, or past what is translated by itself).
+ */
+export interface CardTranslation {
+  blocks: (string | null | false)[][];
+}
+
+/** A deck meaning as plain text: imported decks may carry line breaks as markup. */
+export const plainBack = (back: string) =>
+  back
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
 
 const famClass = (f: Fam): "known" | "learning" | "fresh" | "unrecognised" =>
   f === "k" ? "known" : f === "n" ? "fresh" : f === "u" ? "unrecognised" : "learning";
@@ -82,6 +122,8 @@ export function SelectCard({
   bottom,
   status,
   translation = null,
+  meaning = null,
+  lemma = null,
   onClose,
 }: {
   view: UnitView;
@@ -92,8 +134,12 @@ export function SelectCard({
   bottom: string;
   /** A short confirmation (copied, noted), or null. */
   status: string | null;
-  /** The text's translation (null text while it comes), or null when none was asked. */
-  translation?: { text: string | null } | null;
+  /** The text's translation, or null when there is none to show. */
+  translation?: CardTranslation | null;
+  /** The deck card the selection is, or covers. */
+  meaning?: CardMeaning | null;
+  /** The selected word's dictionary form, when it is an inflected one. */
+  lemma?: CardLemma | null;
   onClose: () => void;
 }) {
   const t = useIntlayer("read-select");
@@ -197,15 +243,57 @@ export function SelectCard({
           {view.text.trim()}
         </p>
       )}
-      {translation && (
+      {lemma && (
+        <p className="mt-0.5 text-sm" data-testid="read-select-lemma">
+          <span className="opacity-75">{lemma.form}</span>
+          <span aria-hidden className="mx-1 opacity-60">
+            →
+          </span>
+          {lemma.href ? (
+            <a
+              href={lemma.href}
+              className="font-medium underline decoration-[oklch(0.6_0.12_250/0.6)] underline-offset-2"
+            >
+              {lemma.lemma}
+            </a>
+          ) : (
+            <span className="font-medium">{lemma.lemma}</span>
+          )}
+          {lemma.tags && <span className="ms-2 text-xs opacity-70">{lemma.tags}</span>}
+        </p>
+      )}
+      {meaning && (
         <p
-          className="mt-1 max-h-[40vh] overflow-y-auto whitespace-pre-line text-sm"
+          className="mt-1 max-h-[30vh] overflow-y-auto whitespace-pre-line text-sm"
+          data-testid="read-select-meaning"
+        >
+          {meaning.other && <span className="me-1.5 font-medium">{meaning.term}</span>}
+          {plainBack(meaning.back)}
+        </p>
+      )}
+      {translation && translation.blocks.some((b) => b.some((x) => x !== false)) && (
+        <div
+          className="mt-1 max-h-[40vh] space-y-1.5 overflow-y-auto text-sm"
           aria-live="polite"
           data-testid="read-select-translation"
-          data-pending={translation.text === null || undefined}
+          data-pending={translation.blocks.some((b) => b.includes(null)) || undefined}
         >
-          {translation.text ?? <span className="opacity-60">{t.translating}</span>}
-        </p>
+          {translation.blocks.every((b) => b.every((x) => x === null || x === false)) ? (
+            <p className="opacity-60">{t.translating}</p>
+          ) : (
+            translation.blocks.map((b, i) => (
+              <p key={i} className="whitespace-pre-line">
+                {b.map((x, j) =>
+                  x === false ? null : (
+                    <span key={j} className={`me-1 ${x === null ? "opacity-60" : ""}`}>
+                      {x ?? "…"}
+                    </span>
+                  ),
+                )}
+              </p>
+            ))
+          )}
+        </div>
       )}
 
       {u.kind !== "word" && share !== null && (
@@ -270,6 +358,16 @@ export function SelectCard({
         {actions.translate && (
           <button type="button" className={btn} onClick={actions.translate} data-action="translate">
             {t.translate}
+          </button>
+        )}
+        {actions.makePhrase && (
+          <button
+            type="button"
+            className={btn}
+            onClick={actions.makePhrase}
+            data-action="make-phrase"
+          >
+            {t.makePhraseCard}
           </button>
         )}
         {actions.markNew && (

@@ -15,6 +15,7 @@ import { materialWords, userWordCards, type MaterialWords } from "./progress";
 import { hashOf, readerBook, readerV2On, type ReaderBook } from "./reader-book";
 import { saveContentHash, type BookRef, type D1Batch } from "./reader-store";
 import type { WordContext } from "./reader-service";
+import { bookPhrase } from "./select-meaning";
 import { cardIndex, statsLemmas, wordLang } from "./words";
 
 export interface ReaderCtx {
@@ -137,6 +138,7 @@ export async function bookCtxOf(ctx: ReaderCtx) {
       lem: statsLemmas(words.stats),
       names: new Set(words.stats.names),
     },
-    own: (w: string) => own.has(w),
+    // A book word, or a phrase of the book's words (a phrase card: the same path as a word's).
+    own: (w: string) => own.has(w) || bookPhrase(w, book.lang, (x) => own.has(x)),
   };
 }

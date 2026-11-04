@@ -324,7 +324,35 @@ selecting DOM text.
   (the text itself is not stored), so the same text and target are paid once;
   60 model calls per user per 10 min (a cost guard); the real cost goes to
   `chargeAi` (`gloss-server.ts`), the one charge seam until the credits
-  redesign. "New to me" on a word logs a
+  redesign.
+  **The card answers by itself** (owner, 2026-11-05 00:35–00:46 JST). The
+  ladder is word → phrase → whole sentences → whole paragraphs
+  (`lib/read/select-meaning.ts`, `select-translate.ts`):
+  - a word or phrase that is one of his /words cards shows the card's
+    meaning at once, from `GET /api/read/[id]/meanings` (read once per
+    book: his cards and list entries the book can show, single words over
+    the lemmas, phrases whose words are all in the book) and then the public
+    lists on the device. The longest card around or inside the selection
+    wins ("y" in "il y a" is "il y a"), his before the public ones at equal
+    length. Tokens are Intl.Segmenter's; nothing is per language;
+  - an inflected word shows "form → lemma" (the lemma file only, no model,
+    nothing charged; no lemma file, no line), the lemma linked to his list
+    holding it, or 制作卡片 making the lemma's card. A slot is left for the
+    grammatical label once the lemma file carries tags;
+  - a phrase that is no card yet gets 制作卡片: the same `make-cards` path as
+    a word (the server accepts a phrase of the book's words,
+    `bookPhrase`), into the book's own deck (`book:<hash>`, named after the
+    book, made once);
+  - a sentence, a paragraph or a hand-made range translates by itself once
+    the selection rests (the combo interval): a ragged range grows to whole
+    sentences, each translated and cached on its own; grown to a whole
+    paragraph, the paragraph in one call; a range across paragraphs that
+    covers one whole takes every paragraph it touches whole, one call each,
+    in order. The cache unit is the sentence or paragraph (`read_translation`
+    keyed by its own text, no migration); the device keeps this tab's
+    answers and never asks twice. A long selection stops at a bound and
+    Translate asks for the rest.
+  "New to me" on a word logs a
   `select` exposure (no list API yet: extracts become cards later). QA:
   `scripts/qa/qa-read-select.mjs`.
 - **Each level says its unit** (owner, 2026-11-03 22:12 / 22:13 JST: "点击选择
