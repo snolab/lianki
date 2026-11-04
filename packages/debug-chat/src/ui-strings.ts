@@ -108,6 +108,19 @@ export type UiStrings = {
    */
   compactIdle: string;
   compactShowAll: string;
+  /**
+   * Folding the minimized chat into the screen edge (fold.ts), screen-reader
+   * labels and tooltips:
+   * - tuckChat: the arrow button on the minimized chat (a small pill): a tap
+   *   slides the chat into the nearest screen edge, leaving a handle;
+   * - restoreChat: the Li mark on that pill, and the menu row that replaces
+   *   "Minimize" while minimized: a tap opens the full chat again;
+   * - untuckChat: the handle left on the screen edge: a tap (or a drag
+   *   starting on it) brings the small pill back.
+   */
+  tuckChat: string;
+  restoreChat: string;
+  untuckChat: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -155,6 +168,9 @@ export const UI_EN: UiStrings = {
   aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while anything plays. Takes effect at once.",
   compactIdle: "Only the last message while not typing",
   compactShowAll: "Show the whole chat",
+  tuckChat: "Tuck the chat into the screen edge",
+  restoreChat: "Open the chat",
+  untuckChat: "Bring the chat back",
 };
 
 export const UI_ZH: UiStrings = {
@@ -202,6 +218,9 @@ export const UI_ZH: UiStrings = {
   aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，播放声音时麦克风暂停收音。立即生效。",
   compactIdle: "不打字时只显示最后一条消息",
   compactShowAll: "显示完整聊天",
+  tuckChat: "把聊天收进屏幕边",
+  restoreChat: "展开聊天",
+  untuckChat: "拉出聊天",
 };
 
 export const UI_JA: UiStrings = {
@@ -249,6 +268,9 @@ export const UI_JA: UiStrings = {
   aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、音声の再生中はマイクが一時停止します。すぐに反映されます。",
   compactIdle: "入力していないときは最後のメッセージだけ表示",
   compactShowAll: "チャット全体を表示",
+  tuckChat: "チャットを画面の端にしまう",
+  restoreChat: "チャットを開く",
+  untuckChat: "チャットを戻す",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

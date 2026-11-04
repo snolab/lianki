@@ -4,12 +4,16 @@ import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { readerV2On } from "@/lib/read/reader-book";
+import { connectionsOn } from "@/lib/connections/gate";
 
 export default async function ReadPage() {
   const user = await authUserOrNull();
   // Google Docs import: the reader-v2 gate, as its route (app/api/read/gdoc).
-  const gdoc =
-    !!user && dbBackend() === "d1" && readerV2On(await readFlags(), isOwner(user.email ?? null));
+  const flags = user && dbBackend() === "d1" ? await readFlags() : null;
+  const owner = isOwner(user?.email ?? null);
+  const gdoc = !!flags && readerV2On(flags, owner);
+  // Private docs through the Google connection (docs/connections.md).
+  const drive = gdoc && connectionsOn(flags, owner);
 
   return (
     <div className="flex flex-col">
@@ -22,7 +26,7 @@ export default async function ReadPage() {
               ? " Your materials are stored securely in your account."
               : " Sign in to save your materials."}
           </p>
-          <ReadListClient isLoggedIn={!!user} gdoc={gdoc} />
+          <ReadListClient isLoggedIn={!!user} gdoc={gdoc} drive={drive} />
         </div>
       </div>
     </div>

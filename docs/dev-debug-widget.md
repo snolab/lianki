@@ -649,6 +649,45 @@ Checks and screenshots: `bun scripts/dev/debug-chat-compact-qa.mjs --shots
 <dir>` (silent browsers, getUserMedia refused, 390×844, light and dark);
 the rules in `unit/chat-compact.test.ts`.
 
+## Folding: open, pill, tucked into the edge
+
+The owner reviewed the fold redesign in Slack on 2026-11-04 (storyboard:
+`stories/chat-fold`). The rules are in `packages/debug-chat/src/fold.ts`,
+and the unit tests are in `unit/chat-fold.test.ts` and `unit/anchor.test.ts`.
+
+- **Open → pill.** The mark (left of the input) folds the bar toward
+  itself into the pill, and stays under the pointer. Unchanged.
+- **Floating lines follow the pill.** They start at the pill's own side,
+  so the side follows the way the bar folded. The screen third no longer
+  decides it, which fixes "folds left but lines right-aligned". The
+  floating box is still clamped on screen (`anchor.ts`).
+- **Pill → tucked.** On the pill the same mark becomes a tuck arrow, and a
+  tap slides the chat into its edge. A pill dragged flush against an edge
+  tucks into that edge too. The pill's Li (part of the pill, not a new
+  button) opens the chat again, as does the menu's Restore row or
+  `chat.open`.
+- **The handle.** Tucked, the chat leaves one thumb-sized handle. Its shape
+  is set by `HANDLE_SHAPE` in fold.ts: `"half"` (a half circle bulging from
+  the edge, the default) or `"square"` (a rounded square). The owner has
+  not picked one yet. The handle's touch area starts `TOUCH_INSET` in from
+  the edge, because on Android a horizontal swipe that starts at the edge
+  is the system's Back. A tap brings the pill back, and so does a
+  press-and-drag that starts on the handle (the pill then follows the
+  finger). Nothing relies on pulling from the edge.
+- **New messages while tucked.** A dot shows on the handle while anything
+  is unread, and the newest line peeks beside the handle for its dwell. A
+  tap on that line brings the pill back.
+- **Left edge: everything mirrors.** After each drag the chat keeps to the
+  edge nearest the box's centre. On the left edge the row runs right to
+  left: the mark sits on the inner side, the bar folds right, the lines
+  end at the pill's right edge, and the chat tucks into the left edge.
+  When the mirroring changes, the box shifts so the pill stays put.
+- **Kept per device**: `lk:pref:chat-fold` (`tucked`, `edge`) in
+  localStorage, never synced. Open or minimized stays in `lk:debug-chat-open`.
+
+Browser checks: `bun scripts/dev/debug-chat-fold-qa.mjs [--shots <dir>]`
+runs them in silent browsers at 390×844, with getUserMedia refused.
+
 ## Typing glass: the chat box frosts while typing
 
 Owner, 2026-11-02 on /home: "帮我背景玻璃化，在我在这里打字的时候"; corrected

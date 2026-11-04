@@ -1127,19 +1127,21 @@ try {
     return c;
   };
   const saved60 = await cardsReach(60);
-  // More words load in after the last grade lands: give them a moment to arrive (flaky at 0 otherwise).
-  const newAhead = () =>
-    rows.evaluateAll(
-      (els) =>
-        els.filter((e) => e.querySelector("span.tabular-nums")?.textContent === "new").length,
-    );
-  let ahead = await newAhead();
-  for (
-    const end = Date.now() + 10000;
-    ahead === 0 && Date.now() < end;
-    await page.waitForTimeout(300)
-  )
-    ahead = await newAhead();
+  // Each first grade scrolls the list one row smoothly (keyGradeMove, #511),
+  // so after 60 fast presses the view is still gliding for a moment, and the
+  // rows below the cursor are not rendered yet. Count once it is at rest.
+  await page.evaluate(async () => {
+    const el = document.querySelector('[role="list"]');
+    let last = -1;
+    for (let still = 0, end = Date.now() + 10000; still < 5 && Date.now() < end; ) {
+      await new Promise((r) => setTimeout(r, 100));
+      still = el?.scrollTop === last ? still + 1 : 0;
+      last = el?.scrollTop ?? 0;
+    }
+  });
+  const ahead = await rows.evaluateAll(
+    (els) => els.filter((e) => e.querySelector("span.tabular-nums")?.textContent === "new").length,
+  );
   check(
     saved60 === 60 && ahead > 0,
     `60 graded and saved (${saved60}), more words below (${ahead})`,
