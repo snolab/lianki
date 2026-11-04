@@ -71,43 +71,72 @@ export async function chargeAi(userId: string, use: { usd: number; words: number
 const BATCH = 40;
 const TOKENS_PER_WORD = 80;
 
+type Completion = {
+  choices?: { message?: { content?: string | null } }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+};
+/** A chat completion call (the OpenAI-compatible body); Workers AI unless a test gives one. */
+export type Complete = (body: Record<string, unknown>) => Promise<Completion>;
+
+const workersAiComplete: Complete = async (body) =>
+  (await workersAiOpenAI().chat.completions.create(body as never, {
+    timeout: 30_000,
+  })) as Completion;
+
 /** One model call: its glosses and its real cost; nothing when it fails or says nothing usable. */
-async function generateBatch(lang: string, chunk: { term: string; ex: string | null }[]) {
+async function generateBatch(
+  complete: Complete,
+  lang: string,
+  chunk: { term: string; ex: string | null }[],
+) {
   try {
-    const r = (await workersAiOpenAI().chat.completions.create(
-      {
-        model: PARTNER_AI_MODEL,
-        messages: glossMessages(lang, chunk),
-        max_tokens: chunk.length * TOKENS_PER_WORD,
-        temperature: 0.2,
-        reasoning_effort: PARTNER_AI_REASONING,
-      } as never,
-      { timeout: 30_000 },
-    )) as {
-      choices?: { message?: { content?: string | null } }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
-    };
-    return {
-      got: parseGlosses(
-        r.choices?.[0]?.message?.content ?? "",
-        chunk.map((x) => x.term),
-      ),
-      usd: costUsd(r.usage?.prompt_tokens ?? 0, r.usage?.completion_tokens ?? 0),
-    };
+    const r = await complete({
+      model: PARTNER_AI_MODEL,
+      messages: glossMessages(lang, chunk),
+      max_tokens: chunk.length * TOKENS_PER_WORD,
+      temperature: 0.2,
+      reasoning_effort: PARTNER_AI_REASONING,
+    });
+    const got = parseGlosses(
+      r.choices?.[0]?.message?.content ?? "",
+      chunk.map((x) => x.term),
+    );
+    return { got, usd: costUsd(r.usage?.prompt_tokens ?? 0, r.usage?.completion_tokens ?? 0) };
   } catch (err) {
     console.error("read.gloss: model failed", String(err).slice(0, 200));
     return { got: new Map<string, string>(), usd: 0 };
   }
 }
 
-/** The model's glosses for these headwords, the batches at once (the review waits for them). */
-async function generate(lang: string, words: { term: string; ex: string | null }[]) {
+/**
+ * The model's glosses for these headwords (the batches at once: the review
+ * waits for them), written to word_gloss, their real cost settled.
+ */
+async function generate(
+  db: D1Like,
+  lang: string,
+  words: { term: string; ex: string | null }[],
+  ai: { userId: string; complete: Complete },
+): Promise<Map<string, string>> {
   const chunks: (typeof words)[] = [];
   for (let i = 0; i < words.length; i += BATCH) chunks.push(words.slice(i, i + BATCH));
-  const done = await Promise.all(chunks.map((c) => generateBatch(lang, c)));
-  const out = new Map(done.flatMap((d) => [...d.got]));
-  return { out, usd: done.reduce((n, d) => n + d.usd, 0) };
+  const done = await Promise.all(chunks.map((c) => generateBatch(ai.complete, lang, c)));
+  const made = new Map(done.flatMap((d) => [...d.got]));
+  const at = new Date().toISOString();
+  for (const [term, back] of made)
+    await db
+      .prepare(
+        "INSERT INTO word_gloss (lang, term, back, model, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(lang, term) DO NOTHING",
+      )
+      .bind(lang, term, back, PARTNER_AI_MODEL, at)
+      .run();
+  const usd = done.reduce((n, d) => n + d.usd, 0);
+  if (usd > 0) await chargeAi(ai.userId, { usd, words: made.size });
+  return made;
 }
+
+/** Model calls per user per window: a guard against runaway cost, not a quota shown to anyone. */
+const AI_LIMIT = { windowMs: 10 * 60_000, max: 30 };
 
 /**
  * The range's words with a meaning wherever one can be found: the device's
@@ -119,7 +148,7 @@ export async function fillGlosses(
   db: D1Like,
   book: BookCtx,
   words: RangeWord[],
-  ai: { userId: string } | null,
+  ai: { userId: string; complete?: Complete } | null,
 ): Promise<RangeWord[]> {
   if (book.lang === "und" || words.every((x) => x.back)) return words;
   const deck = await deckGlosses(book.lang).catch(() => new Map<string, GlossEntry>());
@@ -131,30 +160,13 @@ export async function fillGlosses(
   const open = out.filter((x) => !x.back && !book.names?.has(x.w));
   if (!open.length) return out;
   const head = (x: RangeWord) => headOf(x.w, book.lem);
-  const heads = [...new Set(open.map(head))];
-  const known = await cachedGlosses(db, book.lang, heads);
-  const ask = heads.filter((h) => !known.has(h));
-  if (ask.length && ai && isWorkersAiConfigured()) {
-    const limit = checkRateLimit(`read-gloss:${ai.userId}`, { windowMs: 10 * 60_000, max: 30 });
-    if (limit.allowed) {
-      const ex = new Map(open.map((x) => [head(x), x.ex ?? null]));
-      const { out: made, usd } = await generate(
-        book.lang,
-        ask.map((term) => ({ term, ex: ex.get(term) ?? null })),
-      );
-      const at = new Date().toISOString();
-      for (const [term, back] of made) {
-        await db
-          .prepare(
-            "INSERT INTO word_gloss (lang, term, back, model, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(lang, term) DO NOTHING",
-          )
-          .bind(book.lang, term, back, PARTNER_AI_MODEL, at)
-          .run();
-        known.set(term, back);
-      }
-      if (usd > 0) await chargeAi(ai.userId, { usd, words: made.size });
-    }
-  }
+  const known = await cachedGlosses(db, book.lang, [...new Set(open.map(head))]);
+  const ex = new Map(open.map((x) => [head(x), x.ex ?? null]));
+  const ask = [...ex].filter(([h]) => !known.has(h)).map(([term, e]) => ({ term, ex: e }));
+  const complete = ai?.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
+  if (ai && complete && ask.length && checkRateLimit(`read-gloss:${ai.userId}`, AI_LIMIT).allowed)
+    for (const [term, back] of await generate(db, book.lang, ask, { userId: ai.userId, complete }))
+      known.set(term, back);
   return out.map((x) => {
     if (x.back) return x;
     const back = known.get(head(x));

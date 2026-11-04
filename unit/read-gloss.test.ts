@@ -8,8 +8,8 @@ import { testSchema } from "@/lib/d1/testSchema";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { WordsD1Repo } from "@/lib/repos/wordsD1";
 import { parseLemmas } from "@/lib/read/lemma";
-import { headOf, lookupGloss, parseGlosses } from "@/lib/read/gloss";
-import { fillGlosses } from "@/lib/read/gloss-server";
+import { glossMessages, headOf, lookupGloss, parseGlosses } from "@/lib/read/gloss";
+import { chargeAi, fillGlosses, type Complete } from "@/lib/read/gloss-server";
 import { scopeSession, type BookCtx, type RangeWord } from "@/lib/read/book-word-list";
 
 const lem = parseLemmas(
@@ -68,6 +68,36 @@ describe("filling and backfilling (D1)", () => {
       ["boa", null, null],
       ["livre", null, "book"],
     ]);
+  });
+
+  test("the model glosses what nothing else has, once: cached, its real cost counted", async () => {
+    const asked: string[] = [];
+    const complete: Complete = async (body) => {
+      const msgs = body.messages as { content: string }[];
+      asked.push(msgs[1].content);
+      return {
+        choices: [{ message: { content: '```json\n{"boa": "boa (snake); feather boa"}\n```' } }],
+        usage: { prompt_tokens: 100, completion_tokens: 10 },
+      };
+    };
+    const ai = { userId: "u1", complete };
+    const out = await fillGlosses(d1, book, [{ w: "boa", ex: "un serpent boa" }], ai);
+    expect(out[0]).toMatchObject({ term: "boa", back: "boa (snake); feather boa" });
+    expect(JSON.parse(asked[0])).toEqual([{ word: "boa", example: "un serpent boa" }]);
+    // Again: from word_gloss, the model not asked.
+    await fillGlosses(d1, book, [{ w: "boa", ex: null }], ai);
+    expect(asked).toHaveLength(1);
+    const msgs = glossMessages("fr", [{ term: "boa", ex: null }]);
+    expect(msgs[0].content).toContain('"fr"');
+  });
+
+  test("a failing model leaves the word as it was", async () => {
+    const complete: Complete = async () => {
+      throw new Error("down");
+    };
+    const out = await fillGlosses(d1, book, [{ w: "boa" }], { userId: "u2", complete });
+    expect(out[0].back ?? null).toBeNull();
+    expect(await chargeAi("u2", { usd: 0.0001, words: 1 })).toEqual({ ok: true });
   });
 
   test("a card made without a meaning gets one; a meaning already there is kept", async () => {
