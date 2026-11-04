@@ -34,10 +34,14 @@ import { catalogKeys, catalogWords } from "@/lib/read/dict";
 import {
   matchMeaning,
   meaningIndex,
+  paraTokens,
+  phraseAtToken,
   phraseKey,
+  phraseSpans,
   wordMeaning,
   type Meaning,
   type MeaningIndex,
+  type PhraseSpan,
 } from "@/lib/read/select-meaning";
 import { translationPlan } from "@/lib/read/select-translate";
 import { formLabels } from "@/lib/read/form-tags";
@@ -96,6 +100,7 @@ import {
   type UnitView,
 } from "./reader-select-card";
 import { useSelectTranslate } from "./use-select-translate";
+import { useSelectGloss } from "./use-select-gloss";
 import { useReaderSelect } from "./use-reader-select";
 import { ReaderBack } from "./reader-back";
 import {
@@ -378,6 +383,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   // ── Meanings: his /words cards (words and phrases) and the public lists ──
   // (lib/read/select-meaning.ts), on the device before he selects anything.
   const [meanIdx, setMeanIdx] = useState<MeaningIndex[]>([]);
+  /** His own cards' index, when it has phrases: the phrase marks and the combo's phrase level. */
+  const [ownIdx, setOwnIdx] = useState<MeaningIndex | null>(null);
   /** Inflected book words → their dictionary headword (the lemma file, from the server). */
   const [heads, setHeads] = useState<Map<string, { lemma: string; sets: string[][] }>>(
     () => new Map(),
@@ -402,14 +409,16 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         if (!live) return;
         const out: MeaningIndex[] = [];
         const cards = own?.cards ?? [];
+        let mine: MeaningIndex | null = null;
         if (cards.length) {
           const forms = (own?.forms ?? []).flatMap(([w, i]): [string, Meaning][] =>
             cards[i] ? [[w, cards[i]]] : [],
           );
-          out.push(meaningIndex(cards, normLang, forms));
+          out.push((mine = meaningIndex(cards, normLang, forms)));
         }
         out.push(meaningIndex(new Set(cat.values()), normLang));
         setMeanIdx(out);
+        setOwnIdx(mine?.longest ? mine : null);
         setHeads(
           new Map((own?.heads ?? []).map(([w, lemma, sets]) => [w, { lemma, sets: sets ?? [] }])),
         );
@@ -419,6 +428,20 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       live = false;
     };
   }, [id, ownMeanings, normLang, famTick]);
+  /**
+   * A paragraph's deck phrases (his phrase cards only, lib/read/select-meaning.ts
+   * phraseSpans): found once per paragraph and kept until his cards change.
+   */
+  const phrasesOf = useMemo(() => {
+    const cache = new Map<number, readonly PhraseSpan[]>();
+    return (line: number): readonly PhraseSpan[] | null => {
+      if (!ownIdx || !lines[line]?.trim()) return null;
+      let s = cache.get(line);
+      if (!s)
+        cache.set(line, (s = phraseSpans(paraTokens(para(line).sentences), ownIdx, normLang)));
+      return s.length ? s : null;
+    };
+  }, [ownIdx, lines, para, normLang]);
 
   // ── Marks: an attribute on <html>, so switching repaints, never re-renders ──
   const marks = useUi(readMarks, (s) => s.level);
@@ -589,12 +612,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const comboCtx = useMemo<ComboCtx>(
     () => ({
       interval: COMBO_MS,
-      // Phrase bounds come with extraction (books-plan phase 1): until then the level is skipped.
-      phraseAt: () => null,
+      // His deck phrases (the phrase criterion: nothing detected here); none, the level is skipped.
+      phraseAt: (line, t) => {
+        const s = phraseAtToken(phrasesOf(line) ?? [], t);
+        return s ? [s.t0, s.t1] : null;
+      },
       chapterAt: (line) => (chapters.length ? chapterAt(chapters, line) : -1),
       chapterRange,
     }),
-    [chapters, chapterRange],
+    [chapters, chapterRange, phrasesOf],
   );
   /** Says what a click of the combo selected (set below, with the card's strings). */
   const tapRef = useRef<(u: Unit, continued: boolean) => void>(() => {});
@@ -950,10 +976,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const { locale } = useLocale();
   const [selStatus, setSelStatus] = useState<string | null>(null);
   useEffect(() => setSelStatus(null), [sel.unit]);
-  // Translate: the selected text in his own language, on the card (our API,
-  // lib/read/translate.ts). Keyed by the text, so a new selection drops it.
-  const [trans, setTrans] = useState<{ src: string; out: string | null } | null>(null);
-  useEffect(() => setTrans(null), [sel.unit]);
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
@@ -985,9 +1007,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   /** The deck card the selection is, or covers (word → phrase: the longest wins). */
   const selMeaning = useMemo(() => {
     if (!selSpan || !meanIdx.length) return null;
-    const toks: string[] = [];
-    for (const st of para(selSpan.line).sentences)
-      for (const g of st.segs) if (g.t >= 0) toks[g.t] = g.text;
+    const toks = paraTokens(para(selSpan.line).sentences);
     const hit = matchMeaning(toks, selSpan.t0, selSpan.t1, meanIdx, normLang);
     if (!hit) return null;
     const card: CardMeaning = {
@@ -1019,14 +1039,32 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     };
     return { w, card, ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null };
   }, [sel.unit, para, heads, meanIdx, normLang, formTags]);
-  // A sentence, a paragraph or a range: its whole units translated by
-  // themselves (lib/read/select-translate.ts). Not when it is a deck card.
+  // A word that is no card of his: its gloss by itself (use-select-gloss.ts).
+  const glossWord = useMemo(() => {
+    const u = sel.unit;
+    if (u?.kind !== "word" || selMeaning || !signedIn || !material.readerV2) return null;
+    const ss = para(u.line).sentences;
+    const w = tokenWord(ss, u.t);
+    if (!w) return null;
+    return {
+      w,
+      text: tokenText(ss, u.t, u.t),
+      ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null,
+    };
+  }, [sel.unit, selMeaning, signedIn, material.readerV2, para]);
+  const selGloss = useSelectGloss(id, glossWord);
+  // A phrase, a sentence, a paragraph or a range: its whole units translated
+  // by themselves (lib/read/select-translate.ts). Not when it is a deck card.
   const plan = useMemo(
     () =>
-      signedIn && material.readerV2 && sel.unit && !selInside
+      signedIn &&
+      material.readerV2 &&
+      sel.unit &&
+      !selInside &&
+      !(sel.unit.kind === "phrase" && selMeaning)
         ? translationPlan(sel.unit, lineSentences)
         : null,
-    [signedIn, material.readerV2, sel.unit, selInside, lineSentences],
+    [signedIn, material.readerV2, sel.unit, selInside, selMeaning, lineSentences],
   );
   const autoTrans = useSelectTranslate(
     id,
@@ -1269,9 +1307,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const actions = useMemo<CardActions | null>(() => {
     const u = view?.unit;
     if (!view || !u) return null;
-    const ui = String(locale).split("-")[0];
-    const from = lang && lang !== "und" ? lang : undefined;
-    const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
     const text =
       u.kind === "chapter"
         ? (() => {
@@ -1298,38 +1333,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       },
     };
     if (text && u.kind !== "book") a.copyText = () => void copy(text, ts.textCopied.value);
-    if (view.text && (u.kind === "word" || u.kind === "phrase"))
-      a.lookUp = () =>
-        open(
-          `https://${ui}.wiktionary.org/w/index.php?search=${encodeURIComponent(view.text!.trim())}`,
-        );
-    if (plan) {
-      if (autoTrans.more) a.translate = autoTrans.more;
-    } else if (
-      view.text &&
-      signedIn &&
-      material.readerV2 &&
-      (u.kind === "word" || u.kind === "phrase" || u.kind === "range")
-    )
-      a.translate = () => {
-        const src = view.text!.trim();
-        if (trans?.src === src) return;
-        setTrans({ src, out: null });
-        void fetch(`/api/read/${id}/translate`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text: src, to: String(locale), from }),
-        })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((d: { text?: string } | null) => {
-            if (!d?.text) throw new Error("no translation");
-            setTrans((t) => (t?.src === src ? { src, out: d.text! } : t));
-          })
-          .catch(() => {
-            setTrans((t) => (t?.src === src ? null : t));
-            setSelStatus(ts.translateFailed.value);
-          });
-      };
     const hash = material.bookHash;
     if (
       signedIn &&
@@ -1439,9 +1442,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     openReview,
     makeLine,
     lineWords,
-    trans,
-    plan,
-    autoTrans.more,
     selSpan,
     selMeaning,
     selLemma,
@@ -1464,6 +1464,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       isHeading,
       fam: fam?.map ?? null,
       famV: fam?.v ?? 0,
+      phrases: phrasesOf,
       lang,
       touch,
       variant,
@@ -1479,6 +1480,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       joinOf,
       isHeading,
       fam,
+      phrasesOf,
       lang,
       touch,
       variant,
@@ -1637,19 +1639,16 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             bottom={`calc(env(safe-area-inset-bottom) + ${(islandOpen ? 8.5 : 4.75) + (playing && !follow ? 3 : 0)}rem)`}
             status={
               selStatus ??
-              (autoTrans.failed ? ts.translateFailed.value : null) ??
               (sayFail && sameUnit(sayFail.u, sel.unit)
                 ? `${ts.sayFailed.value} (${sayFail.why})`
                 : null)
             }
-            translation={
-              plan
-                ? autoTrans.translation
-                : trans && view.text?.trim() === trans.src
-                  ? { blocks: [[trans.out]] }
-                  : null
+            translation={plan ? autoTrans.translation : null}
+            onMoreTranslation={autoTrans.more}
+            translateFailed={autoTrans.failed ? autoTrans.retry : null}
+            meaning={
+              selMeaning?.card ?? (selGloss && selLemma ? { ...selGloss, other: false } : selGloss)
             }
-            meaning={selMeaning?.card ?? null}
             lemma={selLemma?.card ?? null}
             onClose={sel.clear}
           />

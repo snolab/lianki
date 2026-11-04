@@ -16,17 +16,21 @@
 //   when it only joins the tail of one to the head of the next, their
 //   sentences.
 //
-// Words and phrases are not translated by themselves: their meaning is the
-// deck card's (lib/read/select-meaning.ts), and Translate stays a tap.
+// - **A phrase** that is no deck card (the caller passes none for a card):
+//   the phrase itself, one piece (owner, 2026-11-05 02:11 JST: no Translate
+//   button; translation happens by itself).
+//
+// A word is not translated: its meaning is the deck card's
+// (lib/read/select-meaning.ts), else its gloss (/api/read/[id]/gloss).
 // Pure, so unit-tested (unit/read-select-translate.test.ts).
 
 import type { Sentence } from "./reader-model";
-import { rangeParts, type Unit } from "./reader-select";
+import { rangeParts, tokenText, type Unit } from "./reader-select";
 import { MAX_TRANSLATE_CHARS, normText } from "./translate";
 
 /** One unit to translate: a sentence or a whole paragraph. */
 export interface TransPiece {
-  level: "sentence" | "para";
+  level: "sentence" | "para" | "phrase";
   line: number;
   /** The sentence's index in the paragraph; -1 for a paragraph. */
   s: number;
@@ -87,6 +91,11 @@ export function translationPlan(
     if (u.kind === "sentence") {
       const ss = sentences(u.line);
       return ss ? [sentencePieces(u.line, ss, u.s, u.s)] : [];
+    }
+    if (u.kind === "phrase") {
+      const ss = sentences(u.line);
+      const text = ss ? normText(tokenText(ss, u.t0, u.t1)) : "";
+      return text ? [[{ level: "phrase" as const, line: u.line, s: -1, text }]] : [];
     }
     if (u.kind === "para") {
       const ss = sentences(u.line);

@@ -122,6 +122,7 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
+import { TrayBack, studyFinished } from "./study-done-back";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -3989,6 +3990,12 @@ export function Study({
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      // The end-of-list way back, focused: Enter / Space press it.
+      if (
+        (e.code === "Enter" || e.code === "Space") &&
+        t.closest?.("[data-testid=study-done-back]")
+      )
+        return;
       // Holding a key repeats movement only, never grading or undo.
       const moves = ["ArrowDown", "ArrowUp", "KeyS", "KeyW", "KeyU", "KeyI"];
       if (e.repeat && !moves.includes(e.code)) return e.preventDefault();
@@ -4828,6 +4835,9 @@ export function Study({
   // Not the new words in the loaded batch (always ~80 at the start): the
   // words in scope never seen yet (lib/words/unseen.ts).
   const unseen = unseenLeft(scopeAtStart, countGradedNew(queue, grades.keys()));
+  // Nothing left to grade: the done text offers the toolbar's exit too.
+  const finished = studyFinished(exhausted, ahead.length);
+  const exitLabel = scope?.exitLabel ?? text.backToLists.value;
 
   const status = (it: Item, i: number) => {
     const g = grades.get(i);
@@ -4844,22 +4854,21 @@ export function Study({
   };
 
   // The help strip's text, by the input used last (keys or gestures).
-  const hintText =
-    exhausted && ahead.length === 0 ? (
-      <>
-        {text.everyWordLearned} <Icon name="confetti" className="ms-0.5" />
-      </>
-    ) : modality === null ? null : modality === "touch" ? (
-      // The gestures exist only in the touch layout; a touchscreen
-      // laptop's tap is a click (focus), and has no swipe to explain.
-      // Each side's grades as the mirror (if on) puts them: the text's ← is
-      // filled with the left side's grades, whatever they are.
-      touch && fill(text.helpTouch.value, swipeSides)
-    ) : help ? (
-      fill(text.helpKeys.value, grades4)
-    ) : (
-      fill(text.helpKeysShort.value, grades4)
-    );
+  const hintText = finished ? (
+    <>
+      {text.everyWordLearned} <Icon name="confetti" className="ms-0.5" />
+    </>
+  ) : modality === null ? null : modality === "touch" ? (
+    // The gestures exist only in the touch layout; a touchscreen
+    // laptop's tap is a click (focus), and has no swipe to explain.
+    // Each side's grades as the mirror (if on) puts them: the text's ← is
+    // filled with the left side's grades, whatever they are.
+    touch && fill(text.helpTouch.value, swipeSides)
+  ) : help ? (
+    fill(text.helpKeys.value, grades4)
+  ) : (
+    fill(text.helpKeysShort.value, grades4)
+  );
 
   return (
     // Full width: wide screens get room for longer explanations.
@@ -4877,7 +4886,7 @@ export function Study({
             className="tap-40 opacity-60 hover:opacity-100 whitespace-nowrap"
             onClick={onExit}
           >
-            {scope?.exitLabel ?? text.backToLists}
+            {exitLabel}
           </button>
           <span className="font-medium">{title}</span>
           {scope?.toolbar}
@@ -5148,6 +5157,9 @@ export function Study({
             <>
               {text.everyWordLearned}{" "}
               <Icon name="confetti" className="ms-1 text-blue-600 dark:text-blue-400" />
+              <div className="lk-tray mt-6 flex justify-center">
+                <TrayBack label={exitLabel} onExit={onExit} art />
+              </div>
             </>
           ) : (
             text.loadingMore
@@ -5425,9 +5437,14 @@ export function Study({
               );
             })}
             <div className="relative" style={{ height: (queue.length - to) * ROW_H + pad }}>
-              {pad - bar.bottom > 140 && (
-                <EmptyTray style={{ bottom: bar.bottom, height: pad - bar.bottom }} />
-              )}
+              {/* After the last word, in every state (not started, half way,
+              all done): the tray is the way back, as the toolbar's exit. */}
+              <div
+                className="lk-tray pointer-events-none absolute inset-x-0 flex items-center justify-center"
+                style={{ bottom: bar.bottom, height: pad - bar.bottom }}
+              >
+                <TrayBack label={exitLabel} onExit={onExit} art={pad - bar.bottom > 180} />
+              </div>
             </div>
             {/* Last, so the rows' :nth-child grain is unchanged. */}
             <SlipCords

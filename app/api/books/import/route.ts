@@ -5,7 +5,8 @@
 // Only catalogue entries: the client names an entry, never a URL; the server
 // fetches that entry's own file from an allowed host (lib/books/source.ts),
 // through the shared R2 cache. Rate-limited per user (each new import parses a
-// whole book). Gate: a session, D1, and `books.catalogue` or the owner.
+// whole book). Gate: a session, D1, and `books.catalogue` or the owner; and
+// the book must be public domain where the viewer is (lib/books/terms.ts).
 
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
@@ -15,7 +16,8 @@ import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { hit } from "@/lib/security/throttle";
 import { findReadMaterialBySource, saveReadMaterial } from "@/lib/getReadMaterialsCollection";
-import { catalogueBook } from "@/lib/books/catalogue";
+import { bookVisibleIn, catalogueBook } from "@/lib/books/catalogue";
+import { ruleYear, viewerCountry } from "@/lib/books/viewer";
 import { booksOn } from "@/lib/books/gate";
 import { importCatalogueBook } from "@/lib/books/import";
 import { r2SourceCache } from "@/lib/books/cache-r2";
@@ -44,6 +46,18 @@ export async function POST(request: NextRequest) {
   }
   const book = catalogueBook((body as { book?: unknown } | null)?.book);
   if (!book) return fail("bad-book", 400);
+  // The admission rule, server-side (lib/books/terms.ts): public domain in the
+  // work's country, the viewer's country and the US, or no import.
+  const country = viewerCountry(request.headers);
+  if (!bookVisibleIn(book, country, ruleYear())) {
+    return NextResponse.json(
+      {
+        error: "not-public-domain-here",
+        message: `This book is not in the public domain in ${country ?? "your country"} under our rule, so it cannot be added there.`,
+      },
+      { status: 451 },
+    );
+  }
 
   const find = async (uid: string, key: string) => {
     const m = await findReadMaterialBySource(uid, key);

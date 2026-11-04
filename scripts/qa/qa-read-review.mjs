@@ -198,10 +198,29 @@ async function run(device, scheme, touch) {
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, `graded-${tag}.png`) });
 
-  // Close: the book where it was.
-  await page.getByTestId("read-review-close").click();
+  // The tray after the last word is the way back to the book, labelled as the
+  // toolbar's exit (the owner, 2026-11-05: never a dead end at the end).
+  const tray = page.getByTestId("study-done-back");
+  const trayText = (await tray.count()) === 1 ? (await tray.textContent()).trim() : null;
+  const exitText = await page
+    .locator("[data-words-top] button")
+    .first()
+    .textContent()
+    .then((s) => s.trim());
+  check(
+    !!trayText && trayText === exitText,
+    `the end of the list is a way back, as the exit ("${trayText}" / "${exitText}")`,
+  );
+  // Close: the book where it was. On touch through the tray, else ✕.
+  if (touch && trayText) {
+    await tray.scrollIntoViewIfNeeded();
+    await tray.click();
+  } else await page.getByTestId("read-review-close").click();
   await page.waitForTimeout(400);
-  check(!(await page.getByTestId("read-word-review").count()), "✕ closes the review");
+  check(
+    !(await page.getByTestId("read-word-review").count()),
+    `${touch && trayText ? "the end tray" : "✕"} closes the review`,
+  );
   const y1 = await page.evaluate(() => scrollY);
   check(Math.abs(y1 - y0) < 40, `the book kept its place (${y0} → ${y1})`);
   check(!new URL(page.url()).searchParams.has("review"), `✕ drops ?review= (${page.url()})`);
