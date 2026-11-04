@@ -142,6 +142,7 @@ import {
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
 import { NATIVE_PARAMS, showReveal, useNativeSlip } from "@/lib/words/native-slip-gesture";
+import { onPageLeave } from "@/lib/page-leave";
 import {
   SWIPE_CORE_IFACE,
   SwipeFeelProvider,
@@ -4052,18 +4053,34 @@ export function Study({
   }, [listEl, listReady, measured, pad, bar.top, shownAt, anchorAt]);
   /** Remember the word at the top once the reader has moved the list (not the opening's own scroll). */
   const anchorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** The anchor write still waiting for the scroll to stop, if any. */
+  const anchorPending = useRef<(() => void) | null>(null);
   const keepAnchor = useCallback(
     (top: number) => {
       if (!opened.current.moved) return;
       clearTimeout(anchorTimer.current);
-      anchorTimer.current = setTimeout(() => {
+      const write = () => {
+        clearTimeout(anchorTimer.current);
+        anchorPending.current = null;
         const it = queue[topIndex(top, { pad, rowH: ROW_H, barTop: barRef.current.top })];
         setAnchor(ui, studyKey, it ? keyOf(it) : null);
-      }, 200);
+      };
+      anchorPending.current = write;
+      anchorTimer.current = setTimeout(write, 200);
     },
     [queue, pad, ui, studyKey, ROW_H],
   );
-  useEffect(() => () => clearTimeout(anchorTimer.current), []);
+  // A Back (Android's edge swipe takes one with no warning), an app switch or
+  // leaving the list writes the waiting anchor now, so coming back opens at
+  // the same word (lib/page-leave.ts, docs/design-principles.md).
+  useEffect(() => {
+    const now = () => anchorPending.current?.();
+    const off = onPageLeave(now);
+    return () => {
+      off();
+      now();
+    };
+  }, []);
   // A text size change resizes the rows (lib/text-size.ts): the word at the
   // top stays at the top.
   const rowHWas = useRef(ROW_H);
