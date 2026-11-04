@@ -26,6 +26,7 @@ export const APP_ROUTES = [
   "ai-vocab",
   "alphabet",
   "books",
+  "connections",
   "contact",
   "contacts",
   "data",

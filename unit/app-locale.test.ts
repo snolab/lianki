@@ -1,5 +1,23 @@
 import { describe, expect, it } from "bun:test";
-import { isAppRoute, localeFromAcceptLanguage, resolveLocale } from "@/lib/app-locale";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import { APP_ROUTES, isAppRoute, localeFromAcceptLanguage, resolveLocale } from "@/lib/app-locale";
+
+describe("APP_ROUTES", () => {
+  // A page under app/(app)/ missing from APP_ROUTES gets intlayer's /{locale}/
+  // prefix and 404s (/connections → /en/connections, owner, 2026-11-05).
+  it("lists every page directory under app/(app)/", () => {
+    const dir = join(import.meta.dir, "..", "app", "(app)");
+    const pages = readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      // route groups "(x)", private folders "_x", dynamic segments "[x]"
+      .filter((name) => !/^[(_[]/.test(name));
+    expect(pages.length).toBeGreaterThan(0);
+    const missing = pages.filter((name) => !(APP_ROUTES as readonly string[]).includes(name));
+    expect(missing).toEqual([]);
+  });
+});
 
 describe("isAppRoute", () => {
   it("matches app routes and their subpaths", () => {

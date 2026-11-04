@@ -31,6 +31,7 @@ import cliLogin from "@/app/(app)/cli-login/page.content";
 import connectionsPage from "@/app/(app)/connections/page.content";
 import readGdocDrive from "@/app/(app)/read/read-gdoc-drive.content";
 import booksPage from "@/app/(app)/books/page.content";
+import readFormTags from "@/app/(app)/read/read-form-tags.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -91,6 +92,7 @@ describe.each([
   ["connections-page", connectionsPage],
   ["read-gdoc-drive", readGdocDrive],
   ["books-page", booksPage],
+  ["read-form-tags", readFormTags],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

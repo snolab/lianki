@@ -97,10 +97,13 @@ import {
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
+import { CopyLine } from "./CopyLine";
+import { LINE_SELECTABLE, lineCopyText } from "./copy-line";
 import {
   barInGlass,
   BAR_IN_GLASS_TRANSITION,
   glassAroundLog,
+  panelOpaque,
   showTypingGlass,
   typingGlassLook,
   typingGlassMotion,
@@ -1232,12 +1235,28 @@ export function DebugChat({
       window.removeEventListener("dragend", done, true);
     };
   }, [files, attach]);
+  /** The file picker the + menu opened is up: the input counts as in use (typing-glass.ts inputInUse). */
+  const [picking, setPicking] = useState(false);
   const pickFiles = (accept?: string) => {
     const el = picker.current;
     if (!el) return;
     el.accept = accept ?? "";
+    setPicking(true);
     el.click();
   };
+  // The picker answered (change, below) or was dismissed: its "cancel", or the
+  // page getting the focus back where a browser has no "cancel".
+  useEffect(() => {
+    if (!picking) return;
+    const el = picker.current;
+    const done = () => setPicking(false);
+    el?.addEventListener("cancel", done);
+    window.addEventListener("focus", done);
+    return () => {
+      el?.removeEventListener("cancel", done);
+      window.removeEventListener("focus", done);
+    };
+  }, [picking]);
   /** The node the next line goes to: the chip in the bar ("/" = the main thread, no chip). */
   const [target, setTargetState] = useState(keptTarget);
   const targetRef = useRef(target);
@@ -3187,7 +3206,7 @@ export function DebugChat({
           hidden
         />
         <p
-          className={`m-0 min-w-0 flex-1 break-words pt-px ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
+          className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
         >
           <span className="sr-only">{who.name}: </span>
           {m.ask
@@ -3304,8 +3323,11 @@ export function DebugChat({
       </>
     );
   })();
+  /** The + menu or its file picker is up: in use, as the focused input is. */
+  const plusMenu = attachMenu || picking;
   const typingGlassShown = showTypingGlass({
     typing,
+    plusMenu,
     open,
     fullLog: fullLog !== "off",
   });
@@ -3366,7 +3388,7 @@ export function DebugChat({
         // Only the slide into or out of the edge animates: a drag follows the finger.
         transition: sliding && !holding ? "opacity 150ms, transform 220ms ease-out" : undefined,
       }}
-      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive || fullLog !== "off" ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing, plusMenu, micActive, fullLog: fullLog !== "off" }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
@@ -3511,6 +3533,8 @@ export function DebugChat({
                         title={
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
+                        // The log is click-through; its text is not: long-press → Copy (copy-line.ts).
+                        className={LINE_SELECTABLE}
                       >
                         {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
                         {m.attachments?.length && m.from !== "agent" ? (
@@ -3530,6 +3554,11 @@ export function DebugChat({
                           />
                         )}
                         {polish(m).mark}
+                        <CopyLine
+                          text={lineCopyText({ ...m, showRaw: rawIds.has(m.id) })}
+                          label={ui.copyLine}
+                          copiedLabel={ui.copiedLine}
+                        />
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
                         {m.from === "agent" && unheardIds.has(m.id) && (
                           <span
@@ -3741,6 +3770,7 @@ export function DebugChat({
             hidden
             data-testid="debug-chat-file-input"
             onChange={(e) => {
+              setPicking(false);
               pending.add(Array.from(e.currentTarget.files ?? []));
               e.currentTarget.value = "";
             }}

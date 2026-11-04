@@ -755,6 +755,35 @@ during or after a drag on the input or the mic, and the finger-to-line
 offset constant within a pixel from the press to the release. `shot.ts` cannot show it (no
 backdrop-filter in DOM-to-image); use the QA script's shots.
 
+**The + menu counts as typing** (owner, 2026-11-05 01:39 JST). While the +
+menu, or the file picker it opened, is up, the panel leaves its faint idle
+look (opacity 60%) and the glass is up, exactly as for a focused input. One
+condition, `inputInUse` in `typing-glass.ts`, feeds both `showTypingGlass`
+and `panelOpaque`; the menu closing (or the picker answered or dismissed)
+ends it, as a blur does.
+
+## Copying a message
+
+Owner, 2026-11-05 01:34 JST, iPhone PWA on /read: "这里复制不了". The chat
+box is click-through (`pointer-events: none` on the section, so the page
+under it stays usable) and the log inherited it. iOS will not long-press
+select text that does not take the pointer, so there was no Copy. Each
+line's text now takes the pointer and is selectable (`LINE_SELECTABLE` in
+`copy-line.ts`: `pointer-events: auto`, `user-select: text` with WebKit's
+prefix, the touch callout on); the space around the lines stays
+click-through. Each line in the log also has a small copy button
+(`CopyLine.tsx`): it copies the plain text (an ask's question, or the raw
+text while that is shown), shows a tick and "Copied" for 1.5 s, and falls
+back to `execCommand("copy")` where the Clipboard API refuses. The
+reader's combo-click selection (`use-reader-select.ts`) ignores taps and
+selections inside `[data-debug-chat]`, so copying in the chat never opens
+the reader's card or clears what is selected there.
+
+Checks: `bun scripts/dev/debug-chat-copy-qa.mjs --shots <dir>` (silent,
+390×844 touch, light and dark: computed `user-select` and `pointer-events`
+on a line, the copy button writing to a mocked clipboard, + menu opacity);
+the rules in `unit/chat-copy.test.ts`.
+
 ## Quiet lines
 
 Every agent line is shown; what changes is whether it is also read aloud.
