@@ -14,6 +14,32 @@ Navigation, help and hint strips, the debug chat, toolbars and menus are translu
 - **Room.** Optional overlays (help, hints) show only when there is room: a tall enough viewport, the on-screen keyboard closed. Otherwise they hide rather than squeeze the content.
 - **Input-aware hints.** Touch hints show only for touch, keyboard hints only for a hardware keyboard; on hybrid devices, the input used last decides.
 
+## Edge gestures
+
+The owner, 2026-11-04 (Slack): "需要注意移动端，特别是安卓。经常右边整一条边的往左滑动都会识别为页面级别的返回键。"
+On Android with gesture navigation, a sideways drag that starts on either
+screen edge is the system's Back; iOS has its own edge swipe back. A web page
+can't cancel either one.
+
+- **Never rely on a gesture that starts at a screen edge.** Every swipe
+  (swipe to grade on /words and /read) must be comfortable from inside: the
+  text a finger grabs sits clear of the edge strip, and the travel needed (one
+  or two levels of `a`) fits between the strip and the far side.
+- **Edge handles are tap targets inset from the edge,** never drag handles
+  that live on it.
+- **The strip's width** is `--lk-edge-gesture` in `app/globals.css` (24px,
+  Android's default back strip; no `env()` reports it, safe-area insets cover
+  only the notch). `--lk-edge-l` / `--lk-edge-r` add the safe area. It is a
+  UI internal, not a user setting.
+- **A stolen gesture is a cancel, not a lift.** When the system takes the
+  touch (`pointercancel`, `touchcancel`) or the page is hidden or left
+  mid-drag (`visibilitychange`, `pagehide`, `popstate`, `blur`:
+  `lib/page-leave.ts`), the slip goes home and nothing is graded.
+- **An accidental Back loses nothing.** Grades are queued on the device the
+  moment they are given; positions waiting on a debounce (/words' anchor, the
+  /read anchor) are written at once on Back, hide and leave, so coming back
+  opens at the same word.
+
 ## As little visual nesting as possible
 
 The owner, 2026-11-03 18:32 JST: "尽量减少视觉上的嵌套数量". Avoid boxes in
