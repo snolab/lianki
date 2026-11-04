@@ -889,6 +889,10 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const { locale } = useLocale();
   const [selStatus, setSelStatus] = useState<string | null>(null);
   useEffect(() => setSelStatus(null), [sel.unit]);
+  // Translate: the selected text in his own language, on the card (our API,
+  // lib/read/translate.ts). Keyed by the text, so a new selection drops it.
+  const [trans, setTrans] = useState<{ src: string; out: string | null } | null>(null);
+  useEffect(() => setTrans(null), [sel.unit]);
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
@@ -1095,7 +1099,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     const u = view?.unit;
     if (!view || !u) return null;
     const ui = String(locale).split("-")[0];
-    const src = lang && lang !== "und" ? lang.split("-")[0] : "auto";
+    const from = lang && lang !== "und" ? lang : undefined;
     const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
     const text =
       u.kind === "chapter"
@@ -1130,12 +1134,33 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         );
     if (
       view.text &&
-      (u.kind === "phrase" || u.kind === "sentence" || u.kind === "para" || u.kind === "range")
+      signedIn &&
+      material.readerV2 &&
+      (u.kind === "word" ||
+        u.kind === "phrase" ||
+        u.kind === "sentence" ||
+        u.kind === "para" ||
+        u.kind === "range")
     )
-      a.translate = () =>
-        open(
-          `https://translate.google.com/?sl=${src}&tl=${ui}&op=translate&text=${encodeURIComponent(view.text!.trim())}`,
-        );
+      a.translate = () => {
+        const src = view.text!.trim();
+        if (trans?.src === src) return;
+        setTrans({ src, out: null });
+        void fetch(`/api/read/${id}/translate`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: src, to: String(locale), from }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d: { text?: string } | null) => {
+            if (!d?.text) throw new Error("no translation");
+            setTrans((t) => (t?.src === src ? { src, out: d.text! } : t));
+          })
+          .catch(() => {
+            setTrans((t) => (t?.src === src ? null : t));
+            setSelStatus(ts.translateFailed.value);
+          });
+      };
     const hash = material.bookHash;
     if (
       signedIn &&
@@ -1205,6 +1230,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     openReview,
     makeLine,
     lineWords,
+    trans,
   ]);
 
   const eyeLine = blocks[eyeIndex] ? blockLine(blocks[eyeIndex]) : 0;
@@ -1402,6 +1428,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
                 ? `${ts.sayFailed.value} (${sayFail.why})`
                 : null)
             }
+            translation={trans && view.text?.trim() === trans.src ? { text: trans.out } : null}
             onClose={sel.clear}
           />
         )}
