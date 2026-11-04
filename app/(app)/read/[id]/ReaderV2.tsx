@@ -95,6 +95,7 @@ import {
 } from "./reader-select-card";
 import { useSelectTranslate } from "./use-select-translate";
 import { useReaderSelect } from "./use-reader-select";
+import { ReaderBack } from "./reader-back";
 import {
   MadeToast,
   WordReview,
@@ -1452,14 +1453,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
               </div>
             ) : (
               <div className="mx-auto flex h-11 max-w-[42rem] items-center gap-2 px-2">
-                <Link
-                  href="/read"
-                  aria-label={t.back.value}
-                  title={t.back.value}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-lg"
-                >
-                  <span aria-hidden>←</span>
-                </Link>
+                <ReaderBack variant="icon" label={t.back.value} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium" data-reader-chapter>
                   {chapterTitle}
                 </span>
@@ -1508,6 +1502,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           grades={grades}
           row={row}
         />
+        {/* The book's end: the same way back as the toolbar's ←, no scrolling up. */}
+        {loaded && <ReaderBack variant="end" label={t.back.value} />}
         {/* Room for the last item to reach the eye line. */}
         <div style={{ height: "60vh" }} aria-hidden />
 
