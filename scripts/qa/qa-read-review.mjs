@@ -11,7 +11,13 @@
 // - 制卡 makes N cards (toast, Undo removes them; again makes them);
 // - the review opens /words' rows for the paragraph's words over the book,
 //   a swipe (touch) or a key (desktop) grades one through /words' review API;
-// - ✕ closes it: the book is where it was.
+// - ✕ closes it: the book is where it was;
+// - a missed word coming back due never joins inside the viewport: with the
+//   tail on screen it waits, nothing on screen moves; scrolled up, it joins
+//   off screen (lib/words/requeue.ts offscreenSlot; a fake clock that runs).
+//
+// The reader v2 needs `?reader=v2` on a dev server, or the read.reader-v2
+// flag on in the local D1 for wrangler dev.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, devices } from "playwright";
@@ -39,15 +45,13 @@ const until = async (page, f, ms = 8000) => {
 
 const browser = await launchSilent(chromium);
 
-async function setup(ctx, tag, { clock = false } = {}) {
+async function setup(ctx, tag) {
   const r = await ctx.request.post("/api/auth/sign-up/email", {
     data: { email: `qa+review-${tag}${Date.now()}@lianki.test`, password: PW, name: "QA Review" },
     headers: { origin: BASE },
   });
   check(r.ok(), `sign-up ${tag} (${r.status()})`);
   const page = await ctx.newPage();
-  // A fake clock that still runs: fastForward makes a missed card due.
-  if (clock) await page.clock.install();
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
   await page.goto("/read", { waitUntil: "networkidle" });
@@ -212,7 +216,10 @@ async function offscreenInsert(device) {
   console.log(`— ${tag}`);
   const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: "light" });
   await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
-  const { page, errs } = await setup(ctx, tag, { clock: true });
+  const { page, errs } = await setup(ctx, tag);
+  // A fake clock that still runs, from here on (the book loads on the real
+  // one): fastForward makes the missed card due.
+  await page.clock.install();
   await page.mouse.wheel(0, 900);
   await page.waitForTimeout(600);
   const w = await aWord(page);
