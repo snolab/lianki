@@ -20,6 +20,7 @@ passkey — there is no password login in production.
 | `https://preview.lianki.com` (tunnel to the owner's dev server, production D1) | 503 to everything without a dev access token; the token signs in as the owner only (docs/dev-whole-page.md, "Off the tailnet") |
 | `POST /api/dev-access/verify`             | the dev server gate's token check: `DEV_BRIDGE_SECRET` only, 401 otherwise |
 | `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac) | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7) |
+| `/api/dev/inbox`, `/api/dev/inbox/<id>`   | the chat inbox (docs/dev-debug-widget.md, "Attachments and the inbox"): owner session only, 404 otherwise; a file is also readable with a single-use 60 s ticket that only an approved agent gets through lianki-push → `DebugSessions.inbox`; served as an attachment (sandboxed, nosniff) except safe image types |
 | `/api/live-view`                          | live view's pointer to the owner's dev JS: POST only with a pointer the Mac's Ed25519 key signed (serials only grow); GET/DELETE the owner's session, 404 otherwise (section 8) |
 | `/api/version/debug/control` (lianki-push) | remote-eval/chat controller: useless until the owner approves it on a page, or holds a grant |
 | `POST /api/version/progress` (lianki-push) | agent progress reports: `Authorization: Bearer PROGRESS_TOKEN` |

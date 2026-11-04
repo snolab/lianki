@@ -284,12 +284,13 @@ describe("the hub schema", () => {
 });
 
 describe("the + menu registry", () => {
-  it("lists selection first, the rest coming soon", () => {
-    expect(ATTACH_KINDS.map((k) => [k.id, !!k.soon])).toEqual([
+  it("lists selection first, then the kinds that need the host's upload", () => {
+    expect(ATTACH_KINDS.map((k) => [k.id, !!k.upload])).toEqual([
       ["selection", false],
       ["file", true],
       ["media", true],
     ]);
+    expect(ATTACH_KINDS.find((k) => k.id === "media")?.accept).toBe("image/*,video/*,audio/*");
   });
 
   it("counts the + buttons on the page, and holds the app's add items", () => {

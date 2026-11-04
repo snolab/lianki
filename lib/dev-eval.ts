@@ -24,6 +24,8 @@ import {
   cleanSpeaker,
   type ChatContext,
   cleanContext,
+  type AttachmentRef,
+  cleanAttachments,
   type SttScene,
   cleanScene,
 } from "../packages/debug-chat/src/wire";
@@ -74,6 +76,8 @@ export {
   combineSpeaker,
   type ChatContext,
   cleanContext,
+  type AttachmentRef,
+  cleanAttachments,
   MAX_SELECTION,
 } from "../packages/debug-chat/src/wire";
 
@@ -249,6 +253,8 @@ export type PageMessage =
       wakeReason?: WakeReason;
       /** Attached with the + menu: the page selection and where (cleanContext's limits). */
       context?: ChatContext;
+      /** Files sent with the line: refs to the owner's inbox uploads (cleanAttachments). */
+      attachments?: AttachmentRef[];
       /** A voice line's page and screen text (cleanScene): what its polish may draw on. */
       scene?: SttScene;
     }
@@ -511,6 +517,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
     const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
     const context = cleanContext(m.context);
+    const attachments = cleanAttachments(m.attachments);
     const scene = m.source === "stt" ? cleanScene(m.scene) : undefined;
     return {
       type: "chat",
@@ -525,6 +532,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
         ? { wakeReason: m.wakeReason }
         : {}),
       ...(context ? { context } : {}),
+      ...(attachments ? { attachments } : {}),
       ...(scene ? { scene } : {}),
     };
   }
