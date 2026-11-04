@@ -314,6 +314,37 @@ ruby rt {
     text-decoration-color: oklch(0.75 0.1 250 / 0.8);
   }
 }
+/* The card's own word in its example (lib/words/example-target.ts): a soft
+ * highlighter tint behind it, the text's own colour kept so the familiarity
+ * line still reads. */
+:root {
+  --lk-ex-target: oklch(0.88 0.11 95 / 0.75);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --lk-ex-target: oklch(0.5 0.1 95 / 0.55);
+  }
+}
+.lk-ex-target {
+  color: inherit;
+  background-color: var(--lk-ex-target);
+  border-radius: 0.2em;
+  padding-inline: 0.1em;
+  margin-inline: -0.1em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+/* A one-line example scrolled to its word: both ends fade, so a cut word
+ * reads as more text, not as the sentence's edge. */
+.lk-ex-aimed {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 1.25em,
+    black calc(100% - 1.25em),
+    transparent
+  );
+}
 /* Focus = this slip's cords come loose (.slip-cords) and the slip lifts a
  * little off its neighbours. */
 .slip-loose {
@@ -478,6 +509,9 @@ ruby rt {
 .slip-blank .lk-fam-learning {
   text-decoration-line: none;
 }
+.slip-blank .lk-ex-target {
+  background-color: transparent;
+}
 @media (hover: hover) {
   .group:hover .slip-blank {
     color: inherit;
@@ -490,6 +524,9 @@ ruby rt {
   .group:hover .slip-blank .lk-fam-weak,
   .group:hover .slip-blank .lk-fam-learning {
     text-decoration-line: underline;
+  }
+  .group:hover .slip-blank .lk-ex-target {
+    background-color: var(--lk-ex-target);
   }
 }
 
