@@ -168,3 +168,26 @@ export const sideGrade = (side: "left" | "right", mirror: boolean): SwipeRating 
   sideRating(levelRating(side === "left" ? -1 : 1)!, mirror);
 /** What the reveal at level `k` shows (revealShown), mirrored: a level right shows the left grades. */
 export const revealShownSide = (k: number, mirror: boolean) => revealShown(mirror ? -k : k);
+
+/**
+ * The grade keys, by `KeyboardEvent.code` (the key's place, not its letter,
+ * so a layout never moves them): 1–4 for the left hand; the right hand
+ * mirrors it, so the outer fingers agree: L K J H = Again Hard Good Easy (1
+ * and L are both the outer edge's Again). One map for every screen that
+ * grades like /words (/words, the reader v2): a reader that read H as Again
+ * turned his /words habit (H = Easy) into Again (owner, 2026-11-04). Keys name
+ * grades, not sides: the mirror never applies to them.
+ */
+export const KEY_RATING: Readonly<Record<string, SwipeRating>> = {
+  KeyL: 1,
+  KeyK: 2,
+  KeyJ: 3,
+  KeyH: 4,
+  Digit1: 1,
+  Digit2: 2,
+  Digit3: 3,
+  Digit4: 4,
+};
+/** The grade a key press gives, or null (Shift held: not a grade). */
+export const keyRating = (e: Pick<KeyboardEvent, "code" | "shiftKey">): SwipeRating | null =>
+  e.shiftKey ? null : (KEY_RATING[e.code] ?? null);
