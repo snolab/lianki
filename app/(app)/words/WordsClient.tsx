@@ -120,6 +120,7 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
+import { DONE_BACK_H, StudyDoneBack, studyFinished } from "./study-done-back";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -4790,6 +4791,9 @@ export function Study({
   // Not the new words in the loaded batch (always ~80 at the start): the
   // words in scope never seen yet (lib/words/unseen.ts).
   const unseen = unseenLeft(scopeAtStart, countGradedNew(queue, grades.keys()));
+  // Nothing left to grade: the done text offers the toolbar's exit too.
+  const finished = studyFinished(exhausted, ahead.length);
+  const exitLabel = scope?.exitLabel ?? text.backToLists.value;
 
   const status = (it: Item, i: number) => {
     const g = grades.get(i);
@@ -4806,22 +4810,21 @@ export function Study({
   };
 
   // The help strip's text, by the input used last (keys or gestures).
-  const hintText =
-    exhausted && ahead.length === 0 ? (
-      <>
-        {text.everyWordLearned} <Icon name="confetti" className="ms-0.5" />
-      </>
-    ) : modality === null ? null : modality === "touch" ? (
-      // The gestures exist only in the touch layout; a touchscreen
-      // laptop's tap is a click (focus), and has no swipe to explain.
-      // Each side's grades as the mirror (if on) puts them: the text's ← is
-      // filled with the left side's grades, whatever they are.
-      touch && fill(text.helpTouch.value, swipeSides)
-    ) : help ? (
-      fill(text.helpKeys.value, grades4)
-    ) : (
-      fill(text.helpKeysShort.value, grades4)
-    );
+  const hintText = finished ? (
+    <>
+      {text.everyWordLearned} <Icon name="confetti" className="ms-0.5" />
+    </>
+  ) : modality === null ? null : modality === "touch" ? (
+    // The gestures exist only in the touch layout; a touchscreen
+    // laptop's tap is a click (focus), and has no swipe to explain.
+    // Each side's grades as the mirror (if on) puts them: the text's ← is
+    // filled with the left side's grades, whatever they are.
+    touch && fill(text.helpTouch.value, swipeSides)
+  ) : help ? (
+    fill(text.helpKeys.value, grades4)
+  ) : (
+    fill(text.helpKeysShort.value, grades4)
+  );
 
   return (
     // Full width: wide screens get room for longer explanations.
@@ -4839,7 +4842,7 @@ export function Study({
             className="tap-40 opacity-60 hover:opacity-100 whitespace-nowrap"
             onClick={onExit}
           >
-            {scope?.exitLabel ?? text.backToLists}
+            {exitLabel}
           </button>
           <span className="font-medium">{title}</span>
           {scope?.toolbar}
@@ -5110,6 +5113,9 @@ export function Study({
             <>
               {text.everyWordLearned}{" "}
               <Icon name="confetti" className="ms-1 text-blue-600 dark:text-blue-400" />
+              <div className="mt-6 flex justify-center">
+                <StudyDoneBack label={exitLabel} onExit={onExit} />
+              </div>
             </>
           ) : (
             text.loadingMore
@@ -5386,8 +5392,22 @@ export function Study({
               );
             })}
             <div className="relative" style={{ height: (queue.length - to) * ROW_H + pad }}>
-              {pad - bar.bottom > 140 && (
-                <EmptyTray style={{ bottom: bar.bottom, height: pad - bar.bottom }} />
+              {/* All graded: the way back right under the last row, the tray below it. */}
+              {finished && (
+                <div
+                  className="absolute inset-x-0 flex justify-center pt-6"
+                  style={{ top: (queue.length - to) * ROW_H }}
+                >
+                  <StudyDoneBack label={exitLabel} onExit={onExit} />
+                </div>
+              )}
+              {pad - bar.bottom - (finished ? DONE_BACK_H : 0) > 140 && (
+                <EmptyTray
+                  style={{
+                    bottom: bar.bottom,
+                    height: pad - bar.bottom - (finished ? DONE_BACK_H : 0),
+                  }}
+                />
               )}
             </div>
             {/* Last, so the rows' :nth-child grain is unchanged. */}
