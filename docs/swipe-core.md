@@ -79,7 +79,7 @@ sideRating(r, mirror))` in WordsClient, lib/words/swipe.ts). With it:
   `showReveal` reads (`revealShownSide`);
 - the help strip fills its ← with the left side's grades, whatever they are;
 - voice 左 / 右 follow the visible side (`sideGrade`, docs/voice-mode.md);
-- the keys stay: 1–4 and H J K L name grades, not sides, and ←/→ grade
+- the keys stay: 1–4 and L K J H (`KEY_RATING` in lib/words/swipe.ts, one map for /words and the reader v2) name grades, not sides, and ←/→ grade
   nothing;
 - telemetry logs the grade given and tags `mirror=1`, so a row's `finger`
   sign with that tag reads the other way;

@@ -67,7 +67,7 @@ import { anchorAt, type Anchor } from "@/lib/read/reader-pos";
 import { CHROME_FULL, SCROLL_KEYS, chromeStep, type ChromeState } from "@/lib/read/reader-chrome";
 import { setReading, readingUi } from "@/lib/nav/reading";
 import { SwipeFeelProvider } from "@/lib/words/swipe-core";
-import { SWIPE_MIRROR_KEY, sideRating, type SwipeRating } from "@/lib/words/swipe";
+import { SWIPE_MIRROR_KEY, keyRating, sideRating, type SwipeRating } from "@/lib/words/swipe";
 import { swipeVariant } from "@/lib/words/swipe-ab";
 import { ProgressRingSvg } from "@/app/components/progress-ring";
 import { fill } from "@/lib/nav/nav-core";
@@ -824,7 +824,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   );
   const scrolling = useCallback(() => performance.now() - lastScrollAt.current < 100, []);
 
-  // ── Keys (desktop): 1–4 / H J K L grade, Space plays, U or ⌘Z undoes ──
+  // ── Keys (desktop): 1–4 / L K J H grade (as /words: KEY_RATING), Space plays, U or ⌘Z undoes ──
   const togglePlay = useCallback(() => {
     if (player.status !== "speaking") speaker.unlock();
     if (!playing) {
@@ -837,16 +837,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     dispatch({ type: player.status === "speaking" ? "stop" : "play" });
   }, [player.status, playing, speaker, dispatch]);
   useEffect(() => {
-    const keys: Record<string, SwipeRating> = {
-      "1": 1,
-      "2": 2,
-      "3": 3,
-      "4": 4,
-      h: 1,
-      j: 2,
-      k: 3,
-      l: 4,
-    };
     const down = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -862,7 +852,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         return togglePlay();
       }
       if (e.key === "u") return undo();
-      const r = keys[e.key.toLowerCase()];
+      const r = keyRating(e);
       if (!r) return;
       const i = playingRef.current ? player.line : eyeIndexRef.current;
       const b = blocks[i];
