@@ -9,6 +9,8 @@ import {
   barInGlass,
   GLASS_EDGE_PX,
   glassAroundLog,
+  inputInUse,
+  panelOpaque,
   showTypingGlass,
   typingGlassLook,
   typingGlassMotion,
@@ -31,6 +33,22 @@ describe("the typing glass: when it is up", () => {
     expect(showTypingGlass({ ...base, fullLog: true })).toBe(true);
     expect(showTypingGlass({ ...base, typing: false, fullLog: true })).toBe(true);
     expect(showTypingGlass({ ...base, open: false, fullLog: true })).toBe(false);
+  });
+  it("is up while the + menu or its file picker is up, as for the focus (owner, 2026-11-05)", () => {
+    expect(showTypingGlass({ ...base, typing: false, plusMenu: true })).toBe(true);
+    expect(showTypingGlass({ ...base, typing: false, plusMenu: false })).toBe(false);
+    expect(showTypingGlass({ ...base, open: false, plusMenu: true })).toBe(false);
+  });
+  it("the panel leaves its idle look by the same condition", () => {
+    const idle = { typing: false, plusMenu: false, micActive: false, fullLog: false };
+    expect(panelOpaque(idle)).toBe(false);
+    expect(panelOpaque({ ...idle, typing: true })).toBe(true);
+    expect(panelOpaque({ ...idle, plusMenu: true })).toBe(true);
+    expect(panelOpaque({ ...idle, micActive: true })).toBe(true);
+    expect(panelOpaque({ ...idle, fullLog: true })).toBe(true);
+    for (const typing of [false, true])
+      for (const plusMenu of [false, true])
+        expect(panelOpaque({ ...idle, typing, plusMenu })).toBe(inputInUse({ typing, plusMenu }));
   });
   it("around the log's own box: its box and the edge, nothing more", () => {
     const box = { left: 4, width: 300, bottom: 52, height: 700 };

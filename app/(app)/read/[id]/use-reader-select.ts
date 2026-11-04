@@ -27,12 +27,14 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
+  CHAT_SELECTOR,
   type Combo,
   type ComboCtx,
   type Hit,
   type Unit,
   comboClick,
   comboContinues,
+  inChat,
   inRange,
   rangeUnit,
   sameUnit,
@@ -245,6 +247,8 @@ export function useReaderSelect(o: {
       const r = s.getRangeAt(0);
       // A selection in the card or the chrome, not in the book: not ours.
       if (!r.intersectsNode(root)) return;
+      // A selection that starts in the chat (copying a message) is the chat's.
+      if (s.anchorNode?.parentElement?.closest(CHAT_SELECTOR)) return;
       if (s.anchorNode instanceof Node && s.anchorNode.parentElement?.closest("[data-select-card]"))
         return;
       const u = snapDomRange(root, r);
@@ -298,6 +302,9 @@ export function useReaderSelect(o: {
     const click = (e: MouseEvent) => {
       const root = o.listRef.current;
       if (!root) return;
+      // The chat over the book (its copy button, a tap on its text): not the
+      // reader's tap, and it must not clear what is selected there.
+      if (inChat(e)) return;
       const target = e.target as Element | null;
       if (target?.closest?.("[data-select-card]")) return;
       const hit = inBook(target) || root.contains(document.elementFromPoint(e.clientX, e.clientY));
