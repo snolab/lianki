@@ -80,8 +80,19 @@ localStorage.setItem("lk:agent-local-stt", "wss://<mac>.ts.net/lianki-stt");
 // with the tunnel as a second route (see "Off the tailnet" below):
 localStorage.setItem("lk:agent-local-stt", "wss://<mac>.ts.net/lianki-stt wss://stt.lianki.com");
 location.reload();
-// off again: localStorage.removeItem("lk:agent-local-stt"); localStorage.removeItem("lk:debug-local-stt")
+// off again: localStorage.setItem("lk:agent-local-stt", "off")
+// (removing both keys puts the owner's page back on the default below)
 ```
+
+**On by default for the owner** (2026-11-04, after a PC's lianki.com never
+had the flag and stayed on the cloud): with nothing stored, the owner's page
+(the hub's verified owner session, DebugEval `owner`; never a friend or
+another user) uses `OWNER_DEFAULT_LOCAL_STT`, the tailnet URL then
+`wss://stt.lianki.com`, through the same race. A stored value always wins;
+`localStorage.setItem("lk:agent-local-stt", "off")` turns it off on that
+origin, default included (`localSttRoute`, `local-stt.ts`). The devLog says
+which: `local-stt {state:"route", source:"stored"|"owner-default"|"off"}`,
+then `{state:"ready", via:…}` for the winner; the mic's dot is green for local.
 
 It is read with `getKey` (storage-keys.ts): `lk:agent-local-stt` first, then
 the legacy `lk:debug-local-stt`. When both are set and differ, the one
