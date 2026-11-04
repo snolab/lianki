@@ -15,7 +15,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
-import { queueWordReview, queueWordUndo } from "@/app/(app)/words/WordsClient";
+import { MarkedExample, queueWordReview, queueWordUndo } from "@/app/(app)/words/WordsClient";
+import { centreIn } from "@/lib/words/centre-in";
+import { motionOff } from "@/lib/motion-pref";
 import { keyRating } from "@/lib/words/swipe";
 import type { WordList } from "@/lib/repos/wordsD1";
 import { fill } from "@/lib/nav/nav-core";
@@ -63,6 +65,7 @@ type Card = {
 
 export default function SideReview({
   id,
+  lang = "und",
   focus,
   none,
   say,
@@ -74,6 +77,8 @@ export default function SideReview({
   onPick,
 }: {
   id: string;
+  /** The book's word language (primary subtag): how the example's words are matched. */
+  lang?: string;
   focus: SideFocus | null;
   /** No word of either kind from here on. */
   none: boolean;
@@ -99,6 +104,16 @@ export default function SideReview({
   /** Bumped to load the card again (retry, after 制卡). */
   const [v, setV] = useState(0);
   const shownAt = useRef(Date.now());
+  const box = useRef<HTMLElement>(null);
+  const exText = card?.ex || (!card && focus?.word.ex) || null;
+  const exTerm = card?.term ?? focus?.word.w ?? null;
+  // A long example: the card scrolls (never the page) so its word is in view
+  // (owner, 2026-11-04 21:44 JST), smoothly unless motion is off.
+  useEffect(() => {
+    const b = box.current;
+    const m = b?.querySelector<HTMLElement>("[data-side-example] [data-ex-target]");
+    if (b && m) centreIn(b, m, !motionOff());
+  }, [exText, exTerm]);
 
   useEffect(() => {
     setCard(null);
@@ -216,6 +231,7 @@ export default function SideReview({
 
   return (
     <aside
+      ref={box}
       aria-label={t.open.value}
       data-testid="read-side-review"
       // Phone: over the bottom of the book, above the pill; wide: beside it.
@@ -329,8 +345,14 @@ export default function SideReview({
               {card?.back || focus.word.back}
             </p>
           )}
-          {(card?.ex || (!card && focus.word.ex)) && (
-            <p className="text-sm italic opacity-75">{card?.ex || focus.word.ex}</p>
+          {exText && (
+            <p className="text-sm italic opacity-75" lang={lang} data-side-example>
+              <MarkedExample
+                text={exText}
+                lang={lang}
+                forms={[card?.term ?? focus.word.w, card?.reading, focus.word.w]}
+              />
+            </p>
           )}
           {cardless && (
             <button

@@ -455,6 +455,10 @@ above the pill). Off for everyone but the owner until the flag is on.
 - While it is open the reader's own item keys (1–4, H J K L, Space) rest.
 - No gesture starts at a screen edge (Android's Back): no card swipe yet;
   grade by buttons and keys. The shared edge-safe swipe can come later.
+- **The word is highlighted in its example** (owner, 2026-11-04 21:44 JST),
+  as on /words' rows (`lib/words/example-target.ts`). When the example is
+  long and the word is out of view, the card scrolls to it (`centreIn`).
+  The page does not scroll.
 
 ### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
 

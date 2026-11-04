@@ -1750,6 +1750,7 @@ function Reader({
         {side && (
           <SideReview
             id={id}
+            lang={normLang}
             focus={focus}
             none={sideNone}
             say={sayWord}

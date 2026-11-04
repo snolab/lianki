@@ -130,6 +130,33 @@ async function run(device, scheme, touch) {
     await until(page, async () => (await rows.count()) > 0),
     `the review lists the words (${await rows.count()})`,
   );
+  // The card's word is highlighted in its sentence, and a long sentence's
+  // cell is scrolled so the word is inside it (lib/words/example-target.ts).
+  await page.waitForTimeout(300);
+  const aim = await page.evaluate(() => {
+    const exs = [...document.querySelectorAll("[data-testid=read-word-review] [data-row-example]")];
+    let marked = 0;
+    let hidden = 0;
+    let scrolled = 0;
+    for (const ex of exs) {
+      const m = ex.querySelector("[data-ex-target]");
+      if (!m) continue;
+      marked++;
+      let cell = ex.parentElement;
+      while (cell && getComputedStyle(cell).overflow !== "hidden") cell = cell.parentElement;
+      if (!cell) continue;
+      if (cell.scrollTop || cell.scrollLeft) scrolled++;
+      const a = m.getClientRects()[0];
+      const c = cell.getBoundingClientRect();
+      if (!a || a.bottom <= c.top || a.top >= c.bottom || a.right <= c.left || a.left >= c.right)
+        hidden++;
+    }
+    return { examples: exs.length, marked, hidden, scrolled };
+  });
+  check(
+    aim.marked > 0 && aim.hidden === 0,
+    `each example's word is highlighted and in view (${JSON.stringify(aim)})`,
+  );
   const makeTop = page.getByTestId("read-review-make");
   check(await makeTop.isVisible(), "制卡 at the top of the review");
   await page.screenshot({ path: join(OUT, `review-${tag}.png`) });
