@@ -135,6 +135,7 @@ import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
+import { type ScrollBox, forwardWheel } from "./wheel-forward";
 import { AskCard } from "./AskCard";
 import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
@@ -1524,6 +1525,40 @@ export function DebugChat({
       el.removeEventListener("touchstart", down);
       el.removeEventListener("touchmove", move);
     };
+  }, [open]);
+  // A wheel or trackpad scroll over the bar (the input, its buttons) scrolls
+  // the log, as a drag on the empty input does (wheel-forward.ts). A long
+  // draft (or a menu) that can still scroll that way keeps it. Not passive:
+  // the forwarded wheel must not also scroll the page; one left alone is
+  // never cancelled. Touch never fires wheel: the drag paths are untouched.
+  const holdRef = useRef(hold);
+  holdRef.current = hold;
+  useEffect(() => {
+    const bar = barEl.current;
+    if (!bar) return;
+    const wheel = (e: WheelEvent) => {
+      const own: ScrollBox[] = [];
+      for (let n = e.target as HTMLElement | null; n && n !== bar; n = n.parentElement) {
+        const oy = getComputedStyle(n).overflowY;
+        if (oy === "auto" || oy === "scroll") own.push(n);
+      }
+      const el = treeShown.current ? treeBodyEl.current : log.current;
+      const dy = forwardWheel({
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        ctrlKey: e.ctrlKey,
+        own,
+        log: el && !el.hidden ? el : null,
+      });
+      if (!dy || !el) return;
+      if (e.cancelable) e.preventDefault();
+      el.scrollTop += dy;
+      userScrollAt.current = Date.now();
+      holdRef.current(COMPACT_SCROLL_MS);
+    };
+    bar.addEventListener("wheel", wheel, { passive: false });
+    return () => bar.removeEventListener("wheel", wheel);
   }, [open]);
   const sendRef = useRef(onSend);
   sendRef.current = onSend;
