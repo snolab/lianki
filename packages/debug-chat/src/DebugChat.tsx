@@ -97,8 +97,7 @@ import {
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
-import { CopyLine } from "./CopyLine";
-import { LINE_SELECTABLE, lineCopyText } from "./copy-line";
+import { LINE_SELECTABLE } from "./copy-line";
 import {
   barInGlass,
   BAR_IN_GLASS_TRANSITION,
@@ -2589,7 +2588,11 @@ export function DebugChat({
         onScroll={onTreeScroll}
         {...withClass(
           // Expanded: the log's surface at its open height (the log's box).
-          logSurface({ expanded: !floating || typing || micActive, fade: treeFade }),
+          logSurface({
+            expanded: !floating || typing || micActive,
+            fade: treeFade,
+            touch: !floating && (typing || micActive),
+          }),
           // Expanded: the log's box at its open height (30vh), whatever it holds.
           `min-w-0 flex-1 ${!floating ? "h-[30vh]" : ""}`,
         )}
@@ -3451,7 +3454,11 @@ export function DebugChat({
         }}
         data-full={fullLog === "off" ? undefined : fullLog}
         {...fullSurface(
-          logSurface({ expanded: typing || micActive || (compactPref && expanded), fade }),
+          logSurface({
+            expanded: typing || micActive || (compactPref && expanded),
+            fade,
+            touch: typing || micActive,
+          }),
         )}
       >
       <ol
@@ -3554,11 +3561,6 @@ export function DebugChat({
                           />
                         )}
                         {polish(m).mark}
-                        <CopyLine
-                          text={lineCopyText({ ...m, showRaw: rawIds.has(m.id) })}
-                          label={ui.copyLine}
-                          copiedLabel={ui.copiedLine}
-                        />
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
                         {m.from === "agent" && unheardIds.has(m.id) && (
                           <span
