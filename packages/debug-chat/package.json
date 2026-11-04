@@ -24,6 +24,7 @@
     "./mic": "./src/mic.ts",
     "./node-path": "./src/node-path.ts",
     "./page-audio": "./src/page-audio.ts",
+    "./audio-claim": "./src/audio-claim.ts",
     "./page-errors": "./src/page-errors.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
     "./wire": "./src/wire.ts",
