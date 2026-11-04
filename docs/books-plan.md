@@ -107,6 +107,19 @@ numerals; Hindi loans).
 - **Your own copy:** private to you, never shared or listed, deletable,
   DRM-free only (#448 refuses DRM). Needs a ToS line and a takedown contact
   before it opens beyond the owner.
+- **A Google Doc** (owner, 2026-11-04): paste a docs.google.com/document
+  link on /read (behind the reader-v2 gate). The server reduces it to the
+  doc id and fetches only Google's HTML export for it (`lib/gdoc/`; redirects
+  only to Google's export hosts, inline images dropped while streaming, 8 MB
+  of markup, 20 imports per 10 minutes per user). Works for docs shared
+  "Anyone with the link"; private docs answer "not shared" until a Google
+  connection exists (step 2: OAuth + /connections, after GCP setup).
+  Headings stay headings, chapters start at the top heading level used more
+  than once, bold/italic/super/subscript come from the export's class styles.
+  `read_materials.source_key = "gdoc:<id>"`: importing the same doc again
+  updates that book (same id); when its text changed, the sentence cards of
+  unchanged lines are copied to the new sentence ids (`carrySentenceCards`),
+  the old rows stay.
 - _Le Petit Prince_: protected in the US until 2039 and in France until about
   2032, so it can never be in the shared catalogue; own copy only. Its
   drawings and name are trademarks.
