@@ -8,6 +8,7 @@
 // off for; everyone else gets lib/read/reader-server.ts.
 
 import type { SwipeRating } from "@/lib/words/swipe";
+import type { GradeRequest } from "./reader-api";
 import { type Block, itemWords, localItems } from "./reader-model";
 import { type Anchor, loadAnchor, saveAnchor } from "./reader-pos";
 
@@ -47,7 +48,16 @@ export interface ReaderData {
     book: ReaderBook,
     item: Extract<Block, { kind: "item" }>,
     r: SwipeRating,
-    info?: { shownAt?: number },
+    info?: {
+      shownAt?: number;
+      /**
+       * With an Easy grade: the item's words to grade Easy with it, sent in
+       * the same request when the Undo hold ends (an undo drops both).
+       */
+      easyWords?: Promise<GradeRequest["easyWords"] | null>;
+      /** The server has the grade (its words graded too). */
+      onSent?: () => void;
+    },
   ): Promise<GradeReceipt>;
   /** This grade can still be taken back. */
   canUndo(receipt: GradeReceipt): boolean;

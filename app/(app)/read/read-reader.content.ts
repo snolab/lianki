@@ -226,6 +226,60 @@ const dictionary = {
       sw: "Imepimwa: {grade}",
       mr: "मूल्यांकन: {grade}",
     }),
+    easyHint: t({
+      en: "Passage Easy + {n} words Easy",
+      zh: "段落简单 + {n} 个词记为简单",
+      ja: "段落を簡単 + {n} 語を簡単に",
+      ko: "단락 쉬움 + 단어 {n}개 쉬움",
+      hi: "अनुच्छेद आसान + {n} शब्द आसान",
+      es: "Pasaje Fácil + {n} palabras Fácil",
+      fr: "Passage Facile + {n} mots Facile",
+      ar: "المقطع سهل + {n} كلمات سهلة",
+      bn: "অনুচ্ছেদ সহজ + {n}টি শব্দ সহজ",
+      pt: "Trecho Fácil + {n} palavras Fácil",
+      ru: "Отрывок «Легко» + {n} слов «Легко»",
+      ur: "پیراگراف آسان + {n} الفاظ آسان",
+      id: "Bagian Mudah + {n} kata Mudah",
+      de: "Abschnitt Einfach + {n} Wörter Einfach",
+      sw: "Kifungu Rahisi + maneno {n} Rahisi",
+      mr: "परिच्छेद सोपा + {n} शब्द सोपे",
+    }),
+    easyHintAlone: t({
+      en: "Passage Easy",
+      zh: "段落简单",
+      ja: "段落を簡単",
+      ko: "단락 쉬움",
+      hi: "अनुच्छेद आसान",
+      es: "Pasaje Fácil",
+      fr: "Passage Facile",
+      ar: "المقطع سهل",
+      bn: "অনুচ্ছেদ সহজ",
+      pt: "Trecho Fácil",
+      ru: "Отрывок «Легко»",
+      ur: "پیراگراف آسان",
+      id: "Bagian Mudah",
+      de: "Abschnitt Einfach",
+      sw: "Kifungu Rahisi",
+      mr: "परिच्छेद सोपा",
+    }),
+    easyDone: t({
+      en: "{n} words graded Easy",
+      zh: "{n} 个词已记为简单",
+      ja: "{n} 語を簡単にしました",
+      ko: "단어 {n}개를 쉬움으로 평가함",
+      hi: "{n} शब्द आसान आँके गए",
+      es: "{n} palabras calificadas Fácil",
+      fr: "{n} mots notés Facile",
+      ar: "قُيّمت {n} كلمات سهلة",
+      bn: "{n}টি শব্দ সহজ হিসেবে মূল্যায়িত",
+      pt: "{n} palavras avaliadas Fácil",
+      ru: "{n} слов оценено «Легко»",
+      ur: "{n} الفاظ کو آسان درجہ دیا گیا",
+      id: "{n} kata dinilai Mudah",
+      de: "{n} Wörter mit Einfach bewertet",
+      sw: "Maneno {n} yamepimwa Rahisi",
+      mr: "{n} शब्द सोपे म्हणून नोंदले",
+    }),
   },
 };
 
@@ -252,6 +306,12 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Shown in the reader when the book's address points at nothing the learner can open (deleted, or another account's). A full sentence.",
   graded:
     "Screen-reader announcement after the learner swiped a passage sideways to grade how well they understood it; {grade} is the grade's name (Again, Hard, Good or Easy, as on the word cards). Keep {grade} as is.",
+  easyHint:
+    "Hint shown above a passage while the learner drags it sideways to the Easy grade: letting go grades the passage Easy and also grades {n} of its words Easy (the words due for review and the words they have never studied). Shown only when {n} is at least 1. Grade names as on the word cards (Easy). Keep {n} and the + as is; short, fits one line on a phone.",
+  easyHintAlone:
+    "The same hint when the passage has no words to grade with it: letting go grades only the passage Easy. Grade name as on the word cards (Easy). A short phrase, one line on a phone.",
+  easyDone:
+    "Toast after a passage was graded Easy: {n} of its words (due ones and never-studied ones) were graded Easy along with it; the toast has an Undo button that takes back the passage's grade and all of these word grades. Grade name as on the word cards. Keep {n} as is.",
 };
 
 export default {
