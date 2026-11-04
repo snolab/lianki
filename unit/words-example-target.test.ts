@@ -6,6 +6,7 @@ import {
   targetSpans,
   type Span,
 } from "@/lib/words/example-target";
+import { centreIn } from "@/lib/words/centre-in";
 
 const marked = (text: string, spans: Span[]) => spans.map(([a, b]) => text.slice(a, b));
 const find = (text: string, forms: (string | null)[], lang: string) =>
@@ -98,5 +99,41 @@ describe("examplePieces", () => {
 describe("looseKey", () => {
   it("folds case, diacritics and the curly apostrophe", () => {
     expect(looseKey("L’Été")).toBe("l'ete");
+  });
+});
+
+describe("centreIn", () => {
+  const rect = (top: number, left: number, h: number, w: number) => ({
+    top,
+    left,
+    bottom: top + h,
+    right: left + w,
+    height: h,
+    width: w,
+  });
+  const box = (calls: unknown[]) =>
+    ({
+      getBoundingClientRect: () => rect(0, 0, 100, 200),
+      scrollBy: (o: unknown) => calls.push(o),
+    }) as unknown as HTMLElement;
+  const el = (top: number, left: number) =>
+    ({ getClientRects: () => [rect(top, left, 20, 40)] }) as unknown as HTMLElement;
+
+  it("leaves a word already in view alone", () => {
+    const calls: unknown[] = [];
+    centreIn(box(calls), el(10, 10), false);
+    expect(calls).toEqual([]);
+  });
+
+  it("scrolls the box so a word below it is in its middle", () => {
+    const calls: unknown[] = [];
+    centreIn(box(calls), el(190, 10), true);
+    expect(calls).toEqual([{ top: 150, left: 0, behavior: "smooth" }]);
+  });
+
+  it("scrolls sideways for a word past its end", () => {
+    const calls: unknown[] = [];
+    centreIn(box(calls), el(10, 300), false);
+    expect(calls).toEqual([{ top: 0, left: 220, behavior: "auto" }]);
   });
 });

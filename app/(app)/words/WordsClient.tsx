@@ -481,7 +481,7 @@ function useTouch() {
  * (lib/words/example-target.ts) and carries data-ex-target, which Glance
  * scrolls into the middle of a long example.
  */
-function MarkedExample({
+export function MarkedExample({
   text,
   lang,
   fam,
