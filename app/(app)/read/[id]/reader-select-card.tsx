@@ -46,10 +46,10 @@ export interface CardActions {
   makeCards?: { n: number; run: () => void };
 }
 
-const famClass = (f: Fam): "known" | "learning" | "fresh" | "unrecognised" =>
+export const famClass = (f: Fam): "known" | "learning" | "fresh" | "unrecognised" =>
   f === "k" ? "known" : f === "n" ? "fresh" : f === "u" ? "unrecognised" : "learning";
 
-const SEG = {
+export const SEG = {
   known: "bg-[oklch(0.58_0.14_155)] dark:bg-[oklch(0.76_0.14_155)]",
   learning: "bg-[oklch(0.58_0.14_155/0.45)] dark:bg-[oklch(0.76_0.14_155/0.45)]",
   fresh: "bg-[oklch(0.62_0.12_250/0.55)] dark:bg-[oklch(0.72_0.12_250/0.55)]",

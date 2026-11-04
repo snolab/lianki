@@ -438,6 +438,12 @@ above the pill). Off for everyone but the owner until the flag is on.
   paragraph review. After a grade: the next word of the same kind, then of
   the other. `Z` takes the last grade back and returns to that word. `Esc`
   or back closes; the word marks refresh then.
+- **本段单词 on PC** (owner, 2026-11-04 19:31 JST): on a wide screen the
+  selection card's "review the paragraph's words" opens the panel, not the
+  overlay: the paragraph's (or selection's) words above the card, each with
+  his progress (due, mastered / learning / new / unrecognised, or the grade
+  just given); a pick shows its card, a grade moves to the next word of the
+  list not graded yet. A phone keeps the overlay review.
 - While it is open the reader's own item keys (1–4, H J K L, Space) rest.
 - No gesture starts at a screen edge (Android's Back): no card swipe yet;
   grade by buttons and keys. The shared edge-safe swipe can come later.

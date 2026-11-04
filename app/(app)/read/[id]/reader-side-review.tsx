@@ -21,6 +21,8 @@ import type { WordList } from "@/lib/repos/wordsD1";
 import { fill } from "@/lib/nav/nav-core";
 import { formatInterval, parseCard } from "@/lib/words/schedule";
 import type { SideKind } from "@/lib/read/side-review";
+import type { Fam } from "@/lib/read/reader-model";
+import { SEG, famClass } from "./reader-select-card";
 import { addGradedWord, wordSession, type RangeWord } from "./reader-word-review";
 
 type Rating = 1 | 2 | 3 | 4;
@@ -34,6 +36,17 @@ export type SideFocus = {
   kind: SideKind | null;
   word: RangeWord;
 };
+
+/**
+ * A paragraph's (or a selection's) words, shown above the card on PC (owner,
+ * 2026-11-04 19:31 JST: 本段单词 beside the text): each with its place in
+ * the text and his familiarity.
+ */
+export type SideList = {
+  title: string;
+  items: { w: string; text: string; line: number; t: number; fam?: Fam }[];
+};
+type ListItem = SideList["items"][number] & { due: boolean; grade?: Rating };
 
 /** What a grade leaves for the reader's undo. */
 export type SideGrade = { listId: string; term: string };
@@ -57,6 +70,8 @@ export default function SideReview({
   onGraded,
   onUndo,
   onClose,
+  list = null,
+  onPick,
 }: {
   id: string;
   focus: SideFocus | null;
@@ -68,7 +83,11 @@ export default function SideReview({
   /** The last grade here to take back, or null. */
   onUndo: () => SideGrade | null;
   onClose: () => void;
+  /** The paragraph's words (PC), above the card; null: the text's due / new words. */
+  list?: { title: string; items: ListItem[] } | null;
+  onPick?: (x: ListItem) => void;
 }) {
+  const tr = useIntlayer("read-words");
   const t = useIntlayer("read-side-review");
   const tw = useIntlayer("words-page");
   const [card, setCard] = useState<Card | null>(null);
@@ -203,6 +222,58 @@ export default function SideReview({
           ×
         </button>
       </div>
+
+      {list && (
+        <section aria-label={list.title} data-testid="side-list" className="flex flex-col gap-1">
+          <h2 className="text-sm font-semibold">{list.title}</h2>
+          <ul className="flex max-h-[38vh] flex-col overflow-y-auto overscroll-contain">
+            {list.items.map((x) => {
+              const f = x.fam ? famClass(x.fam) : null;
+              const on = focus?.w === x.w;
+              const grade = x.grade ? grades.find(([r]) => r === x.grade)?.[1] : null;
+              return (
+                <li key={x.w}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      // The keys stay the card's (Space reveals), not this button's.
+                      e.currentTarget.blur();
+                      onPick?.(x);
+                    }}
+                    aria-current={on ? "true" : undefined}
+                    data-side-item={x.w}
+                    className={`flex min-h-9 w-full items-center gap-2 rounded-lg px-2 text-start text-sm ${
+                      on
+                        ? "bg-[oklch(0.5_0_0/0.12)] font-semibold"
+                        : "hover:bg-[oklch(0.5_0_0/0.07)]"
+                    }`}
+                  >
+                    <span
+                      aria-hidden
+                      className={`h-2 w-2 shrink-0 rounded-full ${f ? SEG[f] : "bg-[oklch(0.5_0_0/0.2)]"}`}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{x.text}</span>
+                    <span className="shrink-0 text-xs opacity-70">
+                      {grade ??
+                        (x.due
+                          ? t.due.value
+                          : f === "known"
+                            ? tr.mastered.value
+                            : f === "learning"
+                              ? tr.learning.value
+                              : f === "fresh"
+                                ? tr.newWords.value
+                                : f === "unrecognised"
+                                  ? tr.unrecognised.value
+                                  : "")}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {!focus ? (
         <p className="text-sm opacity-70">{none ? t.none : t.loading}</p>

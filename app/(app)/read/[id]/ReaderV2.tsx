@@ -111,7 +111,7 @@ import {
 } from "@/lib/read/reader-select";
 import { segmentLine } from "@/lib/read/units";
 import { findWord, sideKindOf, type SideKind, type WordAt } from "@/lib/read/side-review";
-import type { SideFocus, SideGrade } from "./reader-side-review";
+import type { SideFocus, SideGrade, SideList } from "./reader-side-review";
 import { sentenceId } from "@/lib/read/reader-api";
 import { onPageLeave } from "@/lib/page-leave";
 
@@ -913,6 +913,8 @@ function Reader({
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
+  /** Opens the side panel on a unit's words (PC); false: not here, the overlay review instead. */
+  const sideListRef = useRef<(u: ReviewUnit) => boolean>(() => false);
   const tsr = useIntlayer("read-side-review");
   const [review, setReview] = useState<{ words: RangeWord[]; range: boolean } | null>(null);
   const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
@@ -946,6 +948,9 @@ function Reader({
   /** The one trigger of the review (owner, 22:19 JST: the card's button): the unit's words. */
   const openReview = useCallback(
     (u: ReviewUnit) => {
+      // PC (owner, 2026-11-04 19:31 JST): the paragraph's words in the side
+      // panel beside the text, one card at a time, instead of over the book.
+      if (sideListRef.current(u)) return;
       const { ss, words, line } = lineWords(u);
       // Focus comes back to the paragraph's item when the review closes.
       const el = rowEl(blockOfLine(blocks, line));
@@ -985,6 +990,11 @@ function Reader({
   const focusRef = useRef<SideFocus | null>(null);
   focusRef.current = focus;
   const [sideNone, setSideNone] = useState(false);
+  /** The paragraph's words in the panel (PC), or null: the text's due / new words. */
+  const [sideList, setSideListState] = useState<SideList | null>(null);
+  const sideListNow = useRef<SideList | null>(null);
+  /** Grades given here this time, by word: the list shows them. */
+  const [sideGrades, setSideGrades] = useState<Record<string, SwipeRating>>({});
   /** The book's words due on his cards now (GET /api/read/[id]/word-due). */
   const dueRef = useRef<Set<string>>(new Set());
   /** Words graded here: not offered again this visit. */
@@ -1086,29 +1096,48 @@ function Reader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lines.length, scanSentences, sideKind, focusWord, blocks],
   );
-  const openSide = useCallback(() => {
-    sel.clear();
-    setSide(true);
-    setFocus(null);
-    setSideNone(false);
-    void fetch(`/api/read/${id}/word-due`)
-      .then((r) => (r.ok ? r.json() : { due: [] }))
-      .catch(() => ({ due: [] }))
-      .then((d: { due?: string[] }) => {
-        // The server's due list is the truth again: a word missed here is back once due.
-        dueRef.current = new Set(d.due ?? []);
-        doneRef.current = new Set();
-        if (!sideRef.current) return;
-        // His due words first, then the new ones, from where he is reading.
-        // Opening is silent; a jump or a grade says the word (as a focus change on /words).
-        const from = sideFrom();
-        if (!sideJump("due", 1, from, false) && !sideJump("new", 1, from, false)) setSideNone(true);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, sideJump, sel.clear]);
+  const openSide = useCallback(
+    (list: SideList | null = null) => {
+      sel.clear();
+      setSide(true);
+      setSideListState(list);
+      sideListNow.current = list;
+      setSideGrades({});
+      setFocus(null);
+      setSideNone(false);
+      void fetch(`/api/read/${id}/word-due`)
+        .then((r) => (r.ok ? r.json() : { due: [] }))
+        .catch(() => ({ due: [] }))
+        .then((d: { due?: string[] }) => {
+          // The server's due list is the truth again: a word missed here is back once due.
+          dueRef.current = new Set(d.due ?? []);
+          doneRef.current = new Set();
+          if (!sideRef.current) return;
+          if (list) {
+            // The list: his due words first, then the first he does not know yet.
+            const it =
+              list.items.find((x) => dueRef.current.has(x.w)) ??
+              list.items.find((x) => x.fam !== "k") ??
+              list.items[0];
+            if (it) focusWord(it, null, false);
+            else setSideNone(true);
+            return;
+          }
+          // His due words first, then the new ones, from where he is reading.
+          // Opening is silent; a jump or a grade says the word (as a focus change on /words).
+          const from = sideFrom();
+          if (!sideJump("due", 1, from, false) && !sideJump("new", 1, from, false))
+            setSideNone(true);
+        });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [id, sideJump, focusWord, sel.clear],
+  );
   const sideGraded = useRef(false);
   const closeSide = useCallback(() => {
     setSide(false);
+    setSideListState(null);
+    sideListNow.current = null;
     setFocus(null);
     if (sideGraded.current) {
       sideGraded.current = false;
@@ -1123,12 +1152,23 @@ function Reader({
     [sideJump],
   );
   const onSideGraded = useCallback(
-    (f: SideFocus, g: SideGrade) => {
+    (f: SideFocus, g: SideGrade, r: SwipeRating) => {
       sideGraded.current = true;
       const wasDue = dueRef.current.has(f.w);
       sideStack.current.push({ f, g, wasDue });
       doneRef.current.add(f.w);
       dueRef.current.delete(f.w);
+      setSideGrades((m) => ({ ...m, [f.w]: r }));
+      // The paragraph's list: its next word not graded here.
+      const list = sideListNow.current;
+      if (list) {
+        const at = list.items.findIndex((x) => x.w === f.w);
+        const next = [...list.items.slice(at + 1), ...list.items.slice(0, Math.max(0, at))].find(
+          (x) => !doneRef.current.has(x.w),
+        );
+        if (next) focusWord(next, null, true);
+        return;
+      }
       // On to the next word of the same kind, then of the other kind.
       const kind = f.kind ?? (wasDue ? "due" : "new");
       const other: SideKind = kind === "due" ? "new" : "due";
@@ -1137,7 +1177,7 @@ function Reader({
       setFocus(null);
       setSideNone(true);
     },
-    [sideJump],
+    [sideJump, focusWord],
   );
   /** Z: the last grade here, taken back (the card queues the undo); its word focused again. */
   const onSideUndo = useCallback((): SideGrade | null => {
@@ -1145,6 +1185,11 @@ function Reader({
     if (!last) return null;
     doneRef.current.delete(last.f.w);
     if (last.wasDue) dueRef.current.add(last.f.w);
+    setSideGrades((m) => {
+      const n = { ...m };
+      delete n[last.f.w];
+      return n;
+    });
     focusWord(last.f, last.f.kind, false);
     return last.g;
   }, [focusWord]);
@@ -1157,13 +1202,41 @@ function Reader({
     if (w) focusWord({ line: selUnit.line, t: selUnit.t, w }, null, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selUnit]);
+  /**
+   * A unit's distinct words with their place in the text (a range: its own
+   * words across its paragraphs; else the unit's paragraph), in reading order.
+   */
+  const unitWordsAt = (u: ReviewUnit) => {
+    const parts =
+      u.kind === "range" ? rangeParts(u) : [{ line: u.line, from: undefined, to: undefined }];
+    const seen = new Set<string>();
+    const items: SideList["items"] = [];
+    for (const p of parts) {
+      const ss = lineSentences(p.line);
+      if (!ss) continue;
+      for (const st of ss)
+        for (const g of st.segs) {
+          if (!g.w || g.t < (p.from ?? 0) || g.t > (p.to ?? Infinity) || seen.has(g.w)) continue;
+          seen.add(g.w);
+          items.push({ w: g.w, text: g.text, line: p.line, t: g.t, fam: fam?.map.get(g.w) });
+        }
+    }
+    return items;
+  };
+  sideListRef.current = (u) => {
+    if (!sideAllowed || !matchMedia("(min-width: 64rem)").matches) return false;
+    const items = unitWordsAt(u);
+    if (!items.length) return false;
+    openSide({ title: u.kind === "range" ? tr.selectionTitle.value : tr.title.value, items });
+    return true;
+  };
   // ?side opens it once (a link to try it), when the word map is here.
   const sideLinked = useRef(false);
   useEffect(() => {
     if (sideLinked.current || !sideAllowed || !blocks.length || !restored.current) return;
     if (!fam && material.words) return;
     sideLinked.current = true;
-    if (new URLSearchParams(location.search).has("side")) openSide();
+    if (new URLSearchParams(location.search).has("side")) openSide(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sideAllowed, blocks.length, fam]);
   // The focused word marked in the book (rows remount as the list scrolls).
@@ -1630,7 +1703,7 @@ function Reader({
           {sideAllowed && (
             <button
               type="button"
-              onClick={() => (side ? closeSide() : openSide())}
+              onClick={() => (side ? closeSide() : openSide(null))}
               aria-label={tsr.open.value}
               title={tsr.open.value}
               aria-pressed={side}
@@ -1680,6 +1753,18 @@ function Reader({
             onGraded={onSideGraded}
             onUndo={onSideUndo}
             onClose={closeSide}
+            list={
+              sideList && {
+                title: sideList.title,
+                items: sideList.items.map((x) => ({
+                  ...x,
+                  fam: fam?.map.get(x.w) ?? x.fam,
+                  due: dueRef.current.has(x.w),
+                  grade: sideGrades[x.w],
+                })),
+              }
+            }
+            onPick={(x) => focusWord(x, null, false)}
           />
         )}
         {review && (

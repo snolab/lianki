@@ -119,6 +119,47 @@ await page.waitForTimeout(2500);
 const w3 = await focused();
 check(w3 === w1, `opening again starts at the due word (${w3})`);
 
+// PC: the selection card's 本段单词 opens the paragraph's words in the panel.
+await page.keyboard.press("Escape");
+await page.waitForTimeout(500);
+const second = page.locator('[data-line] [data-t="3"]').first();
+await second.click();
+await page.locator('[data-action="review-words"]').click({ timeout: 10000 });
+const list = page.getByTestId("side-list");
+check(
+  await list.isVisible({ timeout: 10000 }).catch(() => false),
+  "本段单词 shows in the side panel",
+);
+check(
+  !(await page
+    .getByTestId("read-word-review")
+    .isVisible()
+    .catch(() => false)),
+  "no overlay over the book on PC",
+);
+const items = await list.locator("[data-side-item]").count();
+await page.waitForTimeout(1500);
+const cur = await list.locator('[aria-current="true"]').getAttribute("data-side-item");
+check(items > 1 && !!cur, `the list (${items} words) has a focused word (${cur})`);
+const pick = list.locator("[data-side-item]").nth(2);
+const pw = await pick.getAttribute("data-side-item");
+await pick.click();
+await page.waitForTimeout(1500);
+check(
+  (await list.locator('[aria-current="true"]').getAttribute("data-side-item")) === pw,
+  `picking a word in the list shows its card (${pw})`,
+);
+await page.waitForFunction(
+  () => !document.querySelector('[data-testid="side-grade-3"]')?.hasAttribute("disabled"),
+  null,
+  { timeout: 20000 },
+);
+await page.keyboard.press("Digit3");
+await page.waitForTimeout(1500);
+const after = await list.locator('[aria-current="true"]').getAttribute("data-side-item");
+check(after !== pw, `a grade moves on in the list (${pw} → ${after})`);
+await page.screenshot({ path: join(OUT, "side-list-desktop-light.png") });
+
 // Phone: the card over the bottom of the book.
 const phone = await newSilentContext(browser, { ...devices["iPhone 13"], baseURL: BASE });
 await phone.addCookies(await ctx.cookies());
