@@ -224,12 +224,40 @@ export function examplePieces(text: string, lang: string, spans: readonly Span[]
 }
 
 /** Pieces grouped into runs: each run is the target's or not, in order. */
-export function pieceRuns(pieces: readonly Piece[]): { target: boolean; pieces: Piece[] }[] {
-  const out: { target: boolean; pieces: Piece[] }[] = [];
+export function pieceRuns<P extends Piece>(
+  pieces: readonly P[],
+): { target: boolean; pieces: P[] }[] {
+  const out: { target: boolean; pieces: P[] }[] = [];
   for (const p of pieces) {
     const last = out.at(-1);
     if (last && last.target === p.target) last.pieces.push(p);
     else out.push({ target: p.target, pieces: [p] });
+  }
+  return out;
+}
+
+/**
+ * The pieces cut again at the edges of the word being read aloud
+ * (lib/words/spoken-word.ts), each marked whether it is that word. A word cut
+ * here keeps its familiarity on both halves: the cut lasts only while it is
+ * spoken.
+ */
+export function markSpoken<P extends Piece>(
+  pieces: readonly P[],
+  span: Span | null,
+): (P & { spoken: boolean })[] {
+  if (!span) return pieces.map((p) => ({ ...p, spoken: false }));
+  const [x, y] = span;
+  const out: (P & { spoken: boolean })[] = [];
+  let at = 0;
+  for (const p of pieces) {
+    const end = at + p.text.length;
+    const cuts = [at, ...[x, y].filter((c) => c > at && c < end), end];
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const [a, b] = [cuts[i], cuts[i + 1]];
+      out.push({ ...p, text: p.text.slice(a - at, b - at), spoken: a >= x && b <= y });
+    }
+    at = end;
   }
   return out;
 }
