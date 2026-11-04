@@ -762,6 +762,16 @@ condition, `inputInUse` in `typing-glass.ts`, feeds both `showTypingGlass`
 and `panelOpaque`; the menu closing (or the picker answered or dismissed)
 ends it, as a blur does.
 
+**The history drags while typing** (owner, 2026-11-05 01:52 JST, iPhone
+PWA on /words). The log is click-through at rest, so with the keyboard up a
+drag on the history went to the page behind it. While the input has the
+focus or the mic is on, the log takes the touch (`LOG_TOUCH` in
+`log-surface.ts`: `pointer-events: auto`, `touch-action: pan-y`,
+`overscroll-behavior: contain`); the input keeps the focus, so the keyboard
+stays. At rest it is click-through again. Checks: `bun
+scripts/dev/debug-chat-typing-scroll-qa.mjs` (WebKit and Chromium, 390×844
+touch).
+
 ## Copying a message
 
 Owner, 2026-11-05 01:34 JST, iPhone PWA on /read: "这里复制不了". The chat
