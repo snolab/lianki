@@ -52,7 +52,7 @@ export function LevelChip() {
       data-level-chip={level}
       aria-label={ui.chipLabel.value.replace("{level}", name)}
       title={name}
-      className="inline-flex items-center gap-1 h-7 px-1 sm:pe-2 rounded-full border border-[var(--glass-line)] text-xs font-medium hover:opacity-80 transition-opacity shrink-0"
+      className="inline-flex items-center justify-center gap-1 h-7 w-7 -mx-1 sm:mx-0 sm:w-auto sm:px-1 sm:pe-2 rounded-full sm:border border-[var(--glass-line)] text-xs font-medium hover:opacity-80 transition-opacity shrink-0"
     >
       <LevelBadge level={level} size={20} />
       <span aria-hidden="true" className="hidden sm:inline max-w-[6rem] truncate">

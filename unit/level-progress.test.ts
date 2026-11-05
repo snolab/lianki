@@ -17,7 +17,7 @@ type Leaf = { translation: Record<string, string> };
 const labelsIn = (locale: string) =>
   Object.fromEntries(
     Object.entries(ui.content as Record<string, Leaf>).map(([k, v]) => [k, v.translation[locale]]),
-  ) as unknown as LevelCardLabels;
+  ) as unknown as LevelCardLabels & { chipLabel: string };
 const namesIn = (locale: string) =>
   Object.fromEntries(
     LEVEL_IDS.map((id) => [

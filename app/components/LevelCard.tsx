@@ -88,7 +88,7 @@ export function LevelCard({
       )}
       <ol
         aria-label={labels.ladderLabel}
-        className="mt-5 grid grid-cols-6 gap-1 text-[oklch(0.25_0.02_60)] dark:text-[oklch(0.92_0.02_82)]"
+        className="mt-5 grid grid-cols-6 gap-1 max-w-md text-[oklch(0.25_0.02_60)] dark:text-[oklch(0.92_0.02_82)]"
       >
         {LEVEL_IDS.map((id) => {
           const locked = isLocked(id, view.level);
