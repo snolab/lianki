@@ -68,6 +68,7 @@ import {
   type Verified,
   createGate,
   downstreamHeaders,
+  upgradeHeadFilter,
   upstreamHeaders,
 } from "./preview-gate";
 
@@ -604,15 +605,15 @@ async function serve() {
         });
         return res.end(landingHtml(lab, origin));
       }
-      return proxy(
-        req,
-        res,
-        url,
-        (h) =>
-          downstreamHeaders(framable(h) as Record<string, string | string[] | undefined>, {
+      // Filtered first (no cookies, CSP, CORS, HSTS… from the app), then the
+      // guard's own frame-ancestors.
+      return proxy(req, res, url, (h) =>
+        framable(
+          downstreamHeaders(h as Record<string, string | string[] | undefined>, {
             publicHost,
             origin,
-          }) as http.OutgoingHttpHeaders,
+          }) as http.IncomingHttpHeaders,
+        ),
       );
     } catch (e) {
       console.error("[whole-page] tunnel error:", (e as Error).message);
@@ -647,7 +648,9 @@ async function serve() {
       socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");
       return;
     }
-    const up = pipeUpgrade(req, socket, head, url);
+    // The 101 from upstream is filtered like any tunnel response (no cookies,
+    // CSP, CORS, HSTS…): preview-gate.ts upgradeHeadFilter.
+    const up = pipeUpgrade(req, socket, head, url, true);
     // Gated once at the upgrade is not enough: the socket lives on, so it is
     // closed when its token is revoked, its re-check fails or its session ends.
     const unwatch = watch.add(g.tokenId, g.untilMs, () => {
@@ -682,7 +685,13 @@ async function serve() {
       pipeUpgrade(req, socket, head, url);
     };
 
-  function pipeUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer, url: URL): Duplex {
+  function pipeUpgrade(
+    req: http.IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+    url: URL,
+    filterHead = false,
+  ): Duplex {
     const hub = isHubPath(url.pathname);
     const headers = hub ? hubHeaders(req.headers) : forwardHeaders(req.headers);
     const hubHost = new URL(HUB_ORIGIN).host;
@@ -698,7 +707,20 @@ async function serve() {
       }
       up.write(`${lines.join("\r\n")}\r\n\r\n`);
       if (head.length) up.write(head);
-      up.pipe(socket);
+      if (filterHead) {
+        const filter = upgradeHeadFilter();
+        up.on("data", (chunk: Buffer) => {
+          const out = filter(chunk);
+          if (out === "too-large") {
+            up.destroy();
+            socket.destroy();
+          } else if (out && !socket.write(out)) {
+            up.pause();
+            socket.once("drain", () => up.resume());
+          }
+        });
+        up.on("end", () => socket.end());
+      } else up.pipe(socket);
       socket.pipe(up);
     });
     // next dev's HMR socket: watched (not changed) for a Turbopack restart loop.

@@ -46,6 +46,6 @@ export const GET = async () => {
 export const DELETE = async () => {
   const user = await authUserOrNull();
   if (!isOwner(user?.email) || dbBackend() !== "d1") return notFound();
-  await clearPointer(getD1(), Date.now());
+  await clearPointer(getD1(), Date.now(), user?.id ?? "owner");
   return NextResponse.json({ on: false }, { headers: NO_STORE });
 };

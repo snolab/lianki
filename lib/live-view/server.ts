@@ -5,7 +5,8 @@
  * layout call these; tests pass a test D1 and their own keys.
  */
 import { type Limit, type ThrottleDb, clientIp, hit, ipKey } from "@/lib/security/throttle";
-import { type LiveViewClaim, verifyLiveView } from "./rules";
+import { audit } from "@/lib/security/audit-log";
+import { type LiveViewClaim, liveLabel, verifyLiveView } from "./rules";
 
 /** The part of D1 used here. */
 export interface LiveViewDb {
@@ -47,11 +48,12 @@ export async function writeSigned(
 }
 
 /** The owner's "stop" from a signed-in page: clears the pointer, keeps the serial. */
-export async function clearPointer(db: LiveViewDb, now: number): Promise<void> {
+export async function clearPointer(db: LiveViewDb, now: number, actor = "owner"): Promise<void> {
   await db
     .prepare("UPDATE live_view SET pointer = NULL, updated_ms = ? WHERE id = 1")
     .bind(now)
     .run();
+  await audit(db, { kind: "live-view.stop", actor }, now);
 }
 
 /** The stored pointer, if it still verifies and has not expired. */
@@ -106,6 +108,16 @@ export async function handlePost(
   }
   const ok = await writeSigned(db, c.op === "on" ? (token as string) : null, c.serial, now);
   if (!ok) return { status: 409, body: { error: "replayed" } };
+  await audit(
+    db,
+    {
+      kind: c.op === "on" ? "live-view.on" : "live-view.off",
+      actor: "mac-key",
+      subject: String(c.serial),
+      detail: c.op === "on" ? liveLabel(c) : undefined,
+    },
+    now,
+  );
   return {
     status: 200,
     body: c.op === "on" ? { on: true, claim: publicClaim(c) } : { on: false },
