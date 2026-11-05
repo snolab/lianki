@@ -10,7 +10,8 @@
 //   alone: turning it off hides the voice settings the suites test, and every
 //   audio output is already silent.
 //
-// The Mac's output is muted too while qa:all runs (scripts/qa/with-muted-mac.sh).
+// The Mac's output is muted too while qa:all's browser suites run
+// (scripts/qa/with-muted-mac.sh).
 
 export const MUTE_ARGS = ["--mute-audio"];
 

@@ -23,6 +23,7 @@ import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
 import type { InboxDb } from "./lib/inbox/store";
 
 import { createLivePage, mayBeLive, type LiveEnv } from "./lib/live-view/page-proxy";
+import { siblingRequestRefused } from "./lib/security/same-site-guard";
 import { anchorDue, type LianDb } from "./lib/lian/anchor";
 import { boxGate, type BoxEnv } from "./lib/box-oauth/gate";
 import type { BoxDb } from "./lib/box-oauth/store";
@@ -69,8 +70,14 @@ function afterBox(req: Request, env: LiveEnv, ctx: Ctx): Promise<Response> {
 export default {
   ...handler,
   fetch(req: Request, env: LiveEnv & BoxEnv, ctx: Ctx): Promise<Response> {
-    // Box tokens and box origins (docs/box-oauth.md), and the sibling-subdomain
-    // write guard. A request with neither goes straight on.
+    if (siblingRequestRefused(req))
+      return Promise.resolve(
+        Response.json(
+          { error: "Not from another lianki.com host" },
+          { status: 403, headers: { "cache-control": "no-store" } },
+        ),
+      );
+    // Box tokens and box origins (docs/box-oauth.md). A request with neither goes straight on.
     return boxGate(req, env, boxDeps, (r) => afterBox(r, env, ctx));
   },
   /**

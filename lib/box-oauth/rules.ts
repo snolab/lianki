@@ -140,26 +140,6 @@ export function tokenMayCall(
 }
 
 /**
- * Lianki's session cookie is host-only but SameSite=Lax, and Lax treats every
- * subdomain as the same site. So a page on my-<hash>.lianki.com, which runs the
- * box owner's code, could make a signed-in visitor's browser send writes to
- * lianki.com with the cookie. CORS hides the answer, not the write. Refused
- * here: a cookie-carrying /api write from another subdomain, and a GET that
- * writes, whichever way it was triggered.
- */
-export function siblingWriteRefused(
-  method: string,
-  pathname: string,
-  headers: { get(name: string): string | null },
-): boolean {
-  if (!pathname.toLowerCase().startsWith("/api/")) return false;
-  if (headers.get("sec-fetch-site")?.toLowerCase() !== "same-site") return false;
-  if (!(headers.get("cookie") ?? "").includes("session_token=")) return false;
-  const m = method.toUpperCase();
-  return WRITE_METHODS.has(m) || (READ_METHODS.has(m) && isMutatingGet(pathname));
-}
-
-/**
  * The plugin's authorize route answers only this: a top-level navigation by
  * lianki.com's own entry page. Its answer holds a one-time code, and it gives
  * that as JSON to any fetch. So without this, JS running on lianki.com with the

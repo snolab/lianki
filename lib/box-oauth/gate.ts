@@ -13,14 +13,7 @@
  *   (identity.ts), and any Set-Cookie on the way back is dropped.
  */
 import { signBoxIdentity, BOX_IDENTITY_HEADER } from "./identity";
-import {
-  BOX_FLAG,
-  BOX_TOKEN_PREFIX,
-  isBoxOrigin,
-  isCorsProviderPath,
-  siblingWriteRefused,
-  tokenMayCall,
-} from "./rules";
+import { BOX_FLAG, BOX_TOKEN_PREFIX, isBoxOrigin, isCorsProviderPath, tokenMayCall } from "./rules";
 import { bindingByOrigin, liveToken, type BoxDb } from "./store";
 
 export type BoxEnv = {
@@ -101,10 +94,6 @@ export async function boxGate(
 ): Promise<Response> {
   const url = new URL(req.url);
   const now = deps.now?.() ?? Date.now();
-
-  // Applies with the flag off too: the hole exists today, whatever the flag says.
-  if (siblingWriteRefused(req.method, url.pathname, req.headers))
-    return json(403, "Not available from another subdomain");
 
   // Only the gate may set this, on any request.
   let clean = req;

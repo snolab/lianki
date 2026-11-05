@@ -38,8 +38,9 @@ context. `devbox/box.sh` runs `docker --context orbstack compose` with
 `DOCKER_CONTEXT=orbstack`, so it never uses the default socket; use it, or pass
 `--context orbstack` to any `docker` command by hand. The compose file itself
 is plain Compose. Licence: OrbStack is free for personal use only and asks for
-a paid licence for "freelance, business, and commercial use"; the owner chose
-it knowing that (2026-11-05).
+a paid licence for "freelance, business, and commercial use". Lianki sells Pro
+passes, so this is still open: the owner preferred OrbStack on 2026-11-05 and
+was told about the terms in Slack afterwards; no licence decision is recorded.
 
 ### Reset
 
@@ -69,10 +70,10 @@ DEVBOX_ENV=.env.<name> devbox/host-tunnel.sh create
 
 Boxes on the owner's Mac (2026-11-05):
 
-| Box         | Env file              | Dev server (host loopback → public)                      | dsh port | Branch             |
-| ----------- | --------------------- | -------------------------------------------------------- | -------- | ------------------ |
-| `kishouzet` | `devbox/.env`         | `127.0.0.1:3200` → `https://devbox-kishouzet.lianki.com` | 3280     | `friend/kishouzet` |
-| `snomiao`   | `devbox/.env.snomiao` | `127.0.0.1:3201` → `https://devbox-snomiao.lianki.com`   | 3281     | `friend/snomiao`   |
+| Box         | Env file              | Dev server (host loopback → public)           | dsh port | Branch             |
+| ----------- | --------------------- | --------------------------------------------- | -------- | ------------------ |
+| `kishouzet` | `devbox/.env`         | `127.0.0.1:3200` → its `my-<hash>.lianki.com` | 3280     | `friend/kishouzet` |
+| `snomiao`   | `devbox/.env.snomiao` | `127.0.0.1:3201` → its `my-<hash>.lianki.com` | 3281     | `friend/snomiao`   |
 
 The owner's own box (`snomiao`) is for trying the setup before the friend.
 
@@ -149,22 +150,32 @@ config stay in `~/.cloudflared` (0600); the repo holds only the script.
 
 ```bash
 devbox/host-tunnel.sh create    # tunnel lianki-devbox-<name> + ~/.cloudflared/lianki-devbox-<name>.yml
-OWNER_APPROVED_DNS=1 devbox/host-tunnel.sh dns    # CNAME devbox-<name>.lianki.com — owner's typed OK first
+OWNER_APPROVED_DNS=1 devbox/host-tunnel.sh dns    # CNAME my-<hash>.lianki.com — owner's typed OK first
 devbox/host-tunnel.sh status
 # connector, kept up by oxmgr (as lianki-preview-tunnel is):
 oxmgr start --name lianki-devbox-<name>-tunnel --restart always --cwd ~ \
   "$HOME/.local/bin/cloudflared tunnel --no-autoupdate --config $HOME/.cloudflared/lianki-devbox-<name>.yml run lianki-devbox-<name>"
 ```
 
-Each command takes `DEVBOX_ENV=.env.<name>` for another box. The DNS records
-`devbox-kishouzet` and `devbox-snomiao` were created 2026-11-05 on the owner's
-typed OK ("是创建 DNS 记录"); connectors `lianki-devbox-{kishouzet,snomiao}-tunnel`
-run under oxmgr.
+Each command takes `DEVBOX_ENV=.env.<name>` for another box. Connectors
+`lianki-devbox-{kishouzet,snomiao}-tunnel` run under oxmgr.
 
-Ingress: `devbox-<name>.lianki.com → http://127.0.0.1:<DEVBOX_DEV_PORT>`,
-everything else 404. After the DNS record exists, set
-`DEVBOX_PUBLIC_URL=https://devbox-<name>.lianki.com` in `devbox/.env` and
-recreate the box, so sign-in and `allowedDevOrigins` use that host. The
+**Public hosts are `my-<hash>.lianki.com`** (owner, 2026-11-05): one level, so
+the free certificate covers them, and unguessable. Each box has its own random
+hash (`openssl rand -hex 8`), kept only in that box's gitignored env file
+(`DEVBOX_PUBLIC_URL`) and its tunnel config in `~/.cloudflared`. Never write one
+in the repo; `host-tunnel.sh` reads it from the env file and refuses without it.
+The hash hides the URL but is not a login: anyone who has it can open the page.
+
+The first records, `devbox-kishouzet` and `devbox-snomiao`, are out of the
+ingress (they answer 404) and are still to be deleted: neither cloudflared nor
+wrangler's OAuth can delete a DNS record, so that needs an API token with
+Zone · DNS · Edit.
+
+Ingress: `my-<hash>.lianki.com → http://127.0.0.1:<DEVBOX_DEV_PORT>`,
+everything else 404. Set `DEVBOX_PUBLIC_URL` in the env file first, then run
+`create`, `dns` and recreate the box, so sign-in and `allowedDevOrigins` use
+that host. The
 public dev server is open to anyone who has the URL, which is acceptable
 because it holds only local throwaway data (any email and password signs up); the production-facing view of the friend's
 frontend comes through Lianki's custom-frontend `?live` feature instead.

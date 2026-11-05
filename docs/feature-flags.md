@@ -14,6 +14,7 @@ with no deploy and no secret change.
 
 ## Rules
 
+- **Announce with the link.** Anything shipped default-off is announced with its `https://lianki.com/dev/flags#<key>` link, which opens that flag's card.
 - **Only registry keys exist.** `setFlag` refuses any other key (400 on the
   API); a stored row for a key no longer in the registry is ignored.
 - **Every default is OFF**, and so is a flag that cannot be read (a D1 error,

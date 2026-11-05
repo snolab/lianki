@@ -23,7 +23,6 @@ import {
   isOpenProviderPath,
   isProviderPath,
   parseScopes,
-  siblingWriteRefused,
   tokenMayCall,
 } from "@/lib/box-oauth/rules";
 import {
@@ -196,35 +195,6 @@ describe("the plugin's routes", () => {
     for (const p of ["/get-session", "/sign-out", "/sign-in/email-otp", "/passkey/add-passkey"])
       expect(isProviderPath(p)).toBe(false);
     expect(authPathOf("/api/auth/oauth2/token")).toBe("/oauth2/token");
-  });
-});
-
-describe("the sibling-subdomain guard", () => {
-  const h = (o: Record<string, string>) => new Headers(o);
-  const cookie = {
-    cookie: "__Secure-better-auth.session_token=abc",
-    "sec-fetch-site": "same-site",
-  };
-  test("a cookie write from another subdomain is refused", () => {
-    expect(siblingWriteRefused("POST", "/api/prefs", h(cookie))).toBe(true);
-    expect(siblingWriteRefused("DELETE", "/api/x", h(cookie))).toBe(true);
-    expect(siblingWriteRefused("GET", "/api/fsrs/delete/1", h(cookie))).toBe(true);
-    expect(
-      siblingWriteRefused(
-        "POST",
-        "/api/x",
-        h({ cookie: "__Host-better-auth.session_token=abc", "sec-fetch-site": "same-site" }),
-      ),
-    ).toBe(true);
-  });
-  test("everything else passes", () => {
-    expect(siblingWriteRefused("GET", "/api/prefs", h(cookie))).toBe(false);
-    expect(siblingWriteRefused("POST", "/sign-in", h(cookie))).toBe(false);
-    expect(siblingWriteRefused("POST", "/api/x", h({ "sec-fetch-site": "same-site" }))).toBe(false);
-    expect(
-      siblingWriteRefused("POST", "/api/x", h({ ...cookie, "sec-fetch-site": "same-origin" })),
-    ).toBe(false);
-    expect(siblingWriteRefused("POST", "/api/x", h({ cookie: cookie.cookie }))).toBe(false);
   });
 });
 
@@ -500,14 +470,6 @@ describe("the gate", () => {
       expect(res.headers.get("access-control-allow-origin")).toBeNull();
       expect(seen).not.toBeNull();
     });
-    test("the sibling guard still holds", async () => {
-      const res = await call("/api/prefs", {
-        method: "POST",
-        headers: { cookie: "better-auth.session_token=x", "sec-fetch-site": "same-site" },
-      });
-      expect(res.status).toBe(403);
-      expect(seen).toBeNull();
-    });
   });
 
   test("the app gets the identity and no token, no cookie; no cookie comes back", async () => {
@@ -600,18 +562,5 @@ describe("the gate", () => {
     expect(
       (await call("/api/auth/oauth2/token", { ...init, headers: { origin: OTHER } })).status,
     ).toBe(403);
-  });
-
-  test("a box page cannot reach other routes with a cookie by being cross-origin", async () => {
-    const res = await call("/api/prefs", {
-      method: "POST",
-      headers: {
-        origin: ORIGIN,
-        cookie: "better-auth.session_token=x",
-        "sec-fetch-site": "same-site",
-      },
-    });
-    expect(res.status).toBe(403);
-    expect(seen).toBeNull();
   });
 });

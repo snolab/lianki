@@ -6,7 +6,7 @@ uses the production API as one Lianki account, through a short-lived token and
 no shared cookie. Owner's decision: Slack, 2026-11-05.
 
 **Dark:** behind the flag `box.oauth`, off. With it off, everything here answers
-as if it did not exist, except the sibling guard (below), which is always on.
+as if it did not exist.
 
 | piece                         | where                                                       |
 | ----------------------------- | ----------------------------------------------------------- |
@@ -15,7 +15,7 @@ as if it did not exist, except the sibling guard (below), which is always on.
 | provider (better-auth plugin), binding hook | `lib/box-oauth/provider.ts`, `auth-impl.ts`   |
 | lianki.com's entry to the flow | `app/box-authorize/route.ts`                               |
 | which plugin routes answer    | `app/api/auth/[...all]/route.ts`                            |
-| binding, revoke, token lookup | `lib/box-oauth/store.ts`, `db/migrations/0046_box_oauth.sql` |
+| binding, revoke, token lookup | `lib/box-oauth/store.ts`, `db/migrations/0047_box_oauth.sql` |
 | owner's page and API          | `/dev/box-clients`, `app/api/dev/box-clients/route.ts`      |
 | the app's view of a token     | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`    |
 | the box's browser side        | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge` |
@@ -99,13 +99,13 @@ stored hashed. The browser keeps them in that tab's sessionStorage.
 
 ### The sibling guard
 
-The session cookie is host-only but `SameSite=Lax`, and Lax treats every
-subdomain as the same site. So a box's page, which runs its owner's code, could
-make a signed-in visitor's browser send writes to lianki.com with the cookie;
-CORS hides the answer, not the write. `siblingWriteRefused` refuses a
-cookie-carrying `/api` write marked `Sec-Fetch-Site: same-site`, and a GET that
-writes. It is always on, flag or no flag. A `__Host-` cookie does **not** fix
-this: it stops subdomains setting the cookie, not sending it.
+A box is a sibling subdomain, and `SameSite=Lax` sends the session cookie to
+lianki.com from its pages. `lib/security/same-site-guard.ts`
+([security-measures.md](security-measures.md) §11) refuses a cookie-carrying
+same-site request to `/api`, first thing in `worker.ts`. That is why the entry is
+`/box-authorize`, not under `/api`, and why a box's own calls omit cookies. A
+`__Host-` cookie does not replace this: it stops subdomains setting the cookie, not
+sending it.
 
 ### Custom frontends
 

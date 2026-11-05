@@ -3,8 +3,9 @@ import {
   blocksFromItems,
   GRADE_HOLD_MS,
   itemGrade,
-  serverReaderData,
+  serverReaderData as makeServerReaderData,
 } from "@/lib/read/reader-server";
+import type { ReaderData } from "@/lib/read/reader-adapter";
 import type { Familiarity, ItemsResponse, SentenceState } from "@/lib/read/reader-api";
 
 const H = "0123456789abcdef";
@@ -91,7 +92,20 @@ describe("reader v2 from the server", () => {
 describe("server reader data", () => {
   const calls: { url: string; init?: RequestInit }[] = [];
   const realFetch = globalThis.fetch;
-  afterEach(() => {
+  // A grade that failed retries by itself GRADE_HOLD_MS later. Left pending, that
+  // timer outlives its test and calls whatever fetch mock is installed then:
+  // it landed in unit/komoju.test.ts's recorded calls as a stray /grade. So every
+  // reader made here is drained before the real fetch comes back.
+  const made: ReaderData[] = [];
+  const serverReaderData = (...args: Parameters<typeof makeServerReaderData>) => {
+    const d = makeServerReaderData(...args);
+    made.push(d);
+    return d;
+  };
+  afterEach(async () => {
+    globalThis.fetch = (async () => new Response("{}")) as unknown as typeof fetch;
+    for (const d of made.splice(0)) d.flush();
+    await new Promise((ok) => setTimeout(ok, 5));
     globalThis.fetch = realFetch;
     calls.length = 0;
   });
