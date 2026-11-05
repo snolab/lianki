@@ -3,5 +3,6 @@
   "suffixes": ["'s"],
   "folds": [["ies", "y"], ["es", ""], ["s", "", "ss"], ["ied", "y"], ["ed", ""], ["ed", "e"], ["ing", ""], ["ing", "e"]],
   "abbreviations": ["mr", "mrs", "ms", "dr", "st", "sr", "jr"],
-  "notNames": ["i'"]
+  "notNames": ["i'"],
+  "fillers": ["um", "umm", "uh", "uhm", "erm", "hmm", "mm", "mhm"]
 }

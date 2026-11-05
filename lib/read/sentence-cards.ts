@@ -15,6 +15,7 @@ import {
 } from "ts-fsrs";
 import type { BookSentences } from "./units";
 import { textKey } from "./units";
+import { stripFillers } from "./prep";
 import type { ReadRating, SentenceState } from "./reader-api";
 
 const schedulers = new Map<boolean, ReturnType<typeof fsrs>>();
@@ -101,6 +102,79 @@ export function matchCards(
         break;
       }
     }
+  }
+  return out;
+}
+
+/**
+ * A sentence's words only (no hesitation sounds; NFKC, lower case, letters,
+ * marks and digits): the same through a re-cut or a polish.
+ */
+export function sentenceWordsKey(s: string): string {
+  return stripFillers(s)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, "");
+}
+
+/**
+ * Old sentence → new sentence, for a text cut again (bite size) or polished
+ * (punctuation, case and sentence ends changed, words not). When the whole
+ * text's words are the same, each new sentence takes the old sentence its
+ * first word was in (a raw run cut into three sentences gives each the
+ * run's card). Otherwise (the text itself changed) each new sentence takes
+ * the first unused old one after the last taken with the same words.
+ * Returns [old line, old index, new line, new index, new text key].
+ */
+export function sentenceCarryMap(
+  oldB: BookSentences,
+  oldLines: readonly string[],
+  newB: BookSentences,
+  newLines: readonly string[],
+): [number, number, number, number, string][] {
+  const textOf = (b: BookSentences, lines: readonly string[], i: number) =>
+    lines[b.refs[i * 4]].slice(b.refs[i * 4 + 2], b.refs[i * 4 + 3]);
+  const oldKeys = Array.from({ length: oldB.n }, (_, i) =>
+    sentenceWordsKey(textOf(oldB, oldLines, i)),
+  );
+  const newTexts = Array.from({ length: newB.n }, (_, j) => textOf(newB, newLines, j));
+  const newKeys = newTexts.map(sentenceWordsKey);
+  const out: [number, number, number, number, string][] = [];
+  const push = (i: number, j: number) =>
+    out.push([
+      oldB.refs[i * 4],
+      oldB.refs[i * 4 + 1],
+      newB.refs[j * 4],
+      newB.refs[j * 4 + 1],
+      textKey(newTexts[j]),
+    ]);
+
+  if (oldB.n && oldKeys.join("") === newKeys.join("")) {
+    let i = 0;
+    let oldEnd = oldKeys[0].length;
+    let at = 0;
+    for (let j = 0; j < newB.n; j++) {
+      if (!newKeys[j]) continue;
+      while (i < oldB.n - 1 && at >= oldEnd) oldEnd += oldKeys[++i].length;
+      push(i, j);
+      at += newKeys[j].length;
+    }
+    return out;
+  }
+
+  const byKey = new Map<string, number[]>();
+  oldKeys.forEach((k, i) => {
+    if (!k) return;
+    const q = byKey.get(k);
+    if (q) q.push(i);
+    else byKey.set(k, [i]);
+  });
+  let last = -1;
+  for (let j = 0; j < newB.n; j++) {
+    const i = byKey.get(newKeys[j])?.find((x) => x > last);
+    if (i === undefined) continue;
+    last = i;
+    push(i, j);
   }
   return out;
 }

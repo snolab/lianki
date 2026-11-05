@@ -1,1 +1,3 @@
-{ "script": "Han" }
+{ "script": "Han",
+  "fillers": ["嗯", "呃"]
+}

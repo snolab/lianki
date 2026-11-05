@@ -853,6 +853,9 @@ export async function deleteReaderRows(
     db
       .prepare("DELETE FROM read_grade_undo WHERE user_id = ? AND material_id = ?")
       .bind(userId, materialId),
+    db
+      .prepare("DELETE FROM read_material_raw WHERE user_id = ? AND material_id = ?")
+      .bind(userId, materialId),
   ];
   if (bookHash) {
     const other = await db
@@ -878,6 +881,101 @@ export async function deleteReaderRows(
 }
 
 // ── re-import ───────────────────────────────────────────────────────────────
+
+/**
+ * A text cut again or polished got new sentence ids: copy each graded
+ * sentence's card to the new sentence with the same words
+ * (sentenceCarryMap), with the new text key. As carrySentenceCards: the old
+ * rows stay, a card already under the new id wins.
+ */
+export async function carrySentenceCardsByText(
+  db: D1Batch,
+  userId: string,
+  oldHash: string,
+  newHash: string,
+  map: [number, number, number, number, string][],
+): Promise<number> {
+  if (oldHash === newHash || !map.length) return 0;
+  const { results } = await db
+    .prepare("SELECT line, idx FROM read_sentence_cards WHERE user_id = ? AND book_hash = ?")
+    .bind(userId, oldHash)
+    .all<{ line: number; idx: number }>();
+  const graded = new Set(results.map((r) => `${r.line}.${r.idx}`));
+  const pairs = map.filter(([l, i]) => graded.has(`${l}.${i}`));
+  if (!pairs.length) return 0;
+  const stmts = chunks(pairs).map((part) =>
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO read_sentence_cards
+           (user_id, sid, book_hash, line, idx, text_key, card, due, last_rating, rev, updated_at)
+         SELECT c.user_id, ? || ':' || m.nl || '.' || m.ni, ?, m.nl, m.ni, m.tk,
+                c.card, c.due, c.last_rating, c.rev, c.updated_at
+         FROM read_sentence_cards c
+         JOIN (SELECT json_extract(value, '$[0]') AS ol, json_extract(value, '$[1]') AS oi,
+                      json_extract(value, '$[2]') AS nl, json_extract(value, '$[3]') AS ni,
+                      json_extract(value, '$[4]') AS tk
+               FROM json_each(?)) m ON c.line = m.ol AND c.idx = m.oi
+         WHERE c.user_id = ? AND c.book_hash = ?`,
+      )
+      .bind(newHash, newHash, JSON.stringify(part), userId, oldHash),
+  );
+  await db.batch(stmts);
+  return pairs.length;
+}
+
+// ── raw text kept beside a polish ───────────────────────────────────────────
+
+/** The raw text of a polished material: its lines and meta as imported. */
+export interface RawText {
+  lines: string[];
+  content: string;
+  at: string;
+}
+
+export async function readRawText(
+  db: D1Like,
+  userId: string,
+  materialId: string,
+): Promise<RawText | null> {
+  const r = await db
+    .prepare(
+      "SELECT lines, content, created_at AS at FROM read_material_raw WHERE user_id = ? AND material_id = ?",
+    )
+    .bind(userId, materialId)
+    .first<{ lines: string; content: string; at: string }>();
+  if (!r) return null;
+  try {
+    const lines = JSON.parse(r.lines) as unknown;
+    if (!Array.isArray(lines) || !lines.every((l) => typeof l === "string")) return null;
+    return { lines: lines as string[], content: r.content, at: r.at };
+  } catch {
+    return null;
+  }
+}
+
+/** Keep the raw text the first time a material is polished; a later polish never overwrites it. */
+export async function keepRawText(
+  db: D1Like,
+  userId: string,
+  materialId: string,
+  raw: { lines: string[]; content: string },
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO read_material_raw (user_id, material_id, lines, content, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+    .bind(userId, materialId, JSON.stringify(raw.lines), raw.content, new Date().toISOString())
+    .run();
+}
+
+/** The material's text is raw again (re-imported from its source): its kept raw copy goes. */
+export async function dropRawText(db: D1Like, userId: string, materialId: string): Promise<void> {
+  await db
+    .prepare("DELETE FROM read_material_raw WHERE user_id = ? AND material_id = ?")
+    .bind(userId, materialId)
+    .run();
+}
 
 /**
  * Lines that stayed the same between two versions of a text, as

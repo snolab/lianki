@@ -179,6 +179,8 @@ export type RowCommon = {
   /** Bumped when the word map arrives (memo key). */
   famV: number;
   lang: string;
+  /** A line's own language (a book that mixes them): its `lang` attribute. */
+  langOf: (line: number) => string;
   /** The item's last grade (rail tint), or null. */
   grade: SwipeRating | null;
   touch: boolean;
@@ -202,7 +204,7 @@ export const BlockRow = memo(function BlockRow(p: RowCommon) {
   const b = p.block;
   if (b.kind === "heading")
     return (
-      <h2 data-line={b.line} lang={p.lang} className="lk-head">
+      <h2 data-line={b.line} lang={p.langOf(b.line)} className="lk-head">
         {p.lineText(b.line)}
       </h2>
     );
@@ -234,7 +236,12 @@ function ItemBody({ p }: { p: RowCommon }) {
       {b.pieces.map((pc, i) =>
         p.isHeading(pc.line) ? (
           // A heading the server put into an item stays a heading.
-          <h2 key={`${pc.line}.${pc.s0}`} data-line={pc.line} lang={p.lang} className="lk-head">
+          <h2
+            key={`${pc.line}.${pc.s0}`}
+            data-line={pc.line}
+            lang={p.langOf(pc.line)}
+            className="lk-head"
+          >
             {p.lineText(pc.line)}
           </h2>
         ) : (
@@ -244,7 +251,7 @@ function ItemBody({ p }: { p: RowCommon }) {
             piece={pc}
             fam={p.fam}
             phrases={p.phrases(pc.line)}
-            lang={p.lang}
+            lang={p.langOf(pc.line)}
             last={i === b.pieces.length - 1}
             join={pc.s0 === 0 ? p.joinOf(pc.line) : undefined}
           />

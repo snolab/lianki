@@ -124,6 +124,58 @@ numerals; Hindi loans).
   2032, so it can never be in the shared catalogue; own copy only. Its
   drawings and name are trademarks.
 
+## Import pipeline: detect, bite size, optional polish (2026-11-05)
+
+Owner, 10:54–10:55 JST: a Google Doc that was a raw speech-to-text transcript
+(English and Japanese mixed) read as one huge paragraph — "maybe we should
+detect first", "or preprocess first to make it bite size". The cause: the doc
+had two paragraphs of ~9,000 characters (split into 6 lines joined as
+`continues`), the reader had no upper item bound before ten of his own reads
+(`itemBounds` → `maxSeconds: null`, "the unit unsplit"), and the book's
+language came from the first script present (any kana → `ja` for every line).
+One path for a Google Doc import (`lib/read/prep.ts`, `prep-server.ts`):
+
+1. **Detect** (local, no AI; `detectShape`, stored as `BookMeta.shape`):
+   raw-transcript-like when most of the body's words sit in paragraphs past
+   the upper end of the 1–3 minute rule at his own pace *and* one transcript
+   sign holds for most of the text — lower-case sentence starts, words in
+   sentences with no ending mark, or hesitation sounds (`fillers` in
+   `lib/read/lang/<lang>.json`) outnumbering the paragraphs. Mixed-language:
+   more than one language among the lines. Ratios of the text only. A book
+   imported before has its shape worked out once on open and stored; its
+   text is not touched.
+2. **Bite size** (local, always; `biteSize`): every Docs paragraph, list item
+   and line break (`<br>`, a soft return) its own paragraph; a paragraph cut
+   where its language changes; one past the rule's upper end (a raw
+   transcript: 1.5× its lower end) cut at sentence ends into pieces of about
+   the lower end, at his speed (`readSamples` → `itemBounds`, else the
+   prior); a sentence longer than that cut at a pause (clause punctuation, a
+   filler), else between words. Headings, chapters and marks follow.
+3. **Polish** (AI, optional): offered in the reader only when `shape.raw`
+   (「这像是未整理的转写稿，要整理吗？」 / 整理转写稿), never silent.
+   `POST /api/read/[id]/polish`: chunks of ~3,000 characters through the
+   partner model, each checked to keep every word (punctuation, case,
+   paragraphs and dropped fillers only, `lib/read/polish.ts`), else kept raw;
+   then bite size again. The raw text is kept the first time in
+   `read_material_raw` and never overwritten; "查看原稿" in the contents
+   sheet shows it. Cost through `chargeAi` (`read.polish`), 3 per 10 minutes
+   per user; logs carry counts only.
+
+**Language per line.** `lib/read/lang-detect.ts`: a unit's language is its
+heaviest by script (data: `script`, and `alongside` for Han beside kana or
+Hangul) or, for a shared script, the document's function words (`stop`). The
+book's primary language is the majority (`wordLang`, `readLang` too). Lines
+carry theirs as runs (`BookMeta.langs`): sentences are cut, read aloud,
+translated and looked up in the line's language; an item never holds two;
+制卡 and the word review put a word in a list of its own language (the
+primary keeps `book:<hash>`, another gets `book:<hash>~<lang>`).
+
+**Cards.** A re-import or a polish moves sentence ids: unchanged lines carry
+by line (`carrySentenceCards`), the rest by their words
+(`sentenceCarryMap` → `carrySentenceCardsByText`). The reader's own item
+split stays as the safety net: no item runs past the rule's upper end.
+EPUB and catalogue imports keep their structure for now.
+
 ## The catalogue: /books (built 2026-11-05)
 
 Owner, 01:36–01:44 JST: "这几个公版的你直接帮我列到预置里。点击导入；注意标来源；而且不放仓库，我们只做 CF 缓存",

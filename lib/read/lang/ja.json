@@ -1,4 +1,6 @@
 {
   "script": "Hiragana|Katakana",
-  "readingKeys": "^[\\p{Script=Hiragana}\\p{Script=Katakana}ー]+$"
+  "alongside": "Han",
+  "readingKeys": "^[\\p{Script=Hiragana}\\p{Script=Katakana}ー]+$",
+  "fillers": ["えっと", "えーと", "えー"]
 }

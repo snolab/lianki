@@ -204,6 +204,8 @@ export function cutPara(
 export interface LineExtras {
   cuts?(line: number): readonly [number, number][] | null;
   marks?(line: number): readonly LineMark[] | null;
+  /** A line's own language (a book that mixes them), else the book's. */
+  lang?(line: number): string;
 }
 
 /** Paragraphs already cut, per book: a paragraph is cut once, when first shown. */
@@ -226,7 +228,7 @@ export class ParaCache {
     }
     p = cutPara(
       this.lines[line] ?? "",
-      this.lang,
+      this.extras.lang?.(line) ?? this.lang,
       this.normLang,
       this.extras.cuts?.(line),
       this.extras.marks?.(line),
@@ -260,6 +262,8 @@ export interface LocalItemsInput {
   /** Chapter starts: an item never runs across one. */
   chapterStarts: ReadonlySet<number>;
   lang: string;
+  /** A line's own language (a book that mixes them): an item never holds two. */
+  langOf?: (line: number) => string;
   /** Words an item holds (itemWords). */
   target: number;
 }
@@ -280,10 +284,12 @@ export function localItems(o: LocalItemsInput): Block[] {
     cur = [];
     curWords = 0;
   };
+  const langOf = o.langOf ?? (() => o.lang);
   for (let line = 0; line < o.lines.length; line++) {
     const text = o.lines[line] ?? "";
     if (!text.trim()) continue;
     if (o.headings.has(line) || o.chapterStarts.has(line)) flush();
+    if (cur.length && langOf(cur[cur.length - 1].line) !== langOf(line)) flush();
     if (o.headings.has(line)) {
       out.push({ kind: "heading", line });
       continue;
@@ -291,7 +297,7 @@ export function localItems(o: LocalItemsInput): Block[] {
     const w = roughWords(text);
     if (w > o.target * 1.5) {
       flush();
-      const sents = sentencesOf(text, o.lang);
+      const sents = sentencesOf(text, langOf(line));
       let s0 = 0;
       let acc = 0;
       for (let s = 0; s < sents.length; s++) {
