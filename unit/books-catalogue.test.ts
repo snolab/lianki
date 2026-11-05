@@ -29,7 +29,12 @@ import {
 import { bookHref, newSlug, normaliseSlug, slugOf, SLUG_RE } from "@/lib/books/slug";
 import {
   BookSourceFail,
+  cleanAozora,
+  cleanWikisource,
   cutRange,
+  decodeSource,
+  dropElements,
+  sourceCharset,
   fetchSourceFile,
   loadSource,
   parseSource,
@@ -105,13 +110,35 @@ describe("catalogue", () => {
     expect(checkCatalogue([b], 2025).join()).toContain("not public domain in the US");
   });
 
-  test("every entry is visible in every listed country, and to an unknown viewer, in 2026", () => {
-    for (const c of [...listedCountries(), null, "XX", "ZZ"])
-      expect(catalogueFor(c, 2026).map(bookKey)).toEqual(CATALOGUE.map(bookKey));
+  test("in 2026 an entry whose creators all died by 1925 is visible everywhere; the rest follow the viewer", () => {
+    const old = CATALOGUE.filter((b) => b.creators.every((c) => c.deathYear <= 1925));
+    for (const c of [...listedCountries(), null, "XX", "ZZ"]) {
+      const seen = catalogueFor(c, 2026).map(bookKey);
+      for (const b of old) expect(seen).toContain(bookKey(b));
+    }
+    // Lu Xun († 1936): free in China (life+50) and the US (published 1919), not under
+    // Mexico's life+100 or the default for an unknown viewer.
+    const kong = catalogueBook("zh/孔乙己")!;
+    expect(bookVisibleIn(kong, "CN", 2026)).toBe(true);
+    expect(bookVisibleIn(kong, "FR", 2026)).toBe(true);
+    expect(bookVisibleIn(kong, "MX", 2026)).toBe(false);
+    expect(bookVisibleIn(kong, null, 2026)).toBe(false);
+  });
+
+  test("the catalogue spans many languages, each entry in its own script", () => {
+    const langs = new Set(CATALOGUE.map((b) => b.lang));
+    for (const l of ["fr", "en", "de", "es", "it", "pt", "ru", "ja", "zh", "la"])
+      expect(langs.has(l)).toBe(true);
+    expect(catalogueBook("ja/坊っちゃん")?.source.format).toBe("aozora-xhtml");
+    expect(catalogueBook("ru/каштанка")?.source.format).toBe("wikisource-html");
   });
 
   test("allowed URLs: https on a listed host only", () => {
     expect(SOURCE_HOSTS).toContain("www.gutenberg.org");
+    expect(allowedSourceUrl("https://www.aozora.gr.jp/cards/000148/card752.html")).not.toBeNull();
+    expect(allowedSourceUrl("https://zh.wikisource.org/api/rest_v1/page/html/x/1")).not.toBeNull();
+    expect(allowedSourceUrl("https://en.wikisource.org/wiki/x")).toBeNull(); // only the hosts listed
+    expect(allowedSourceUrl("http://www.aozora.gr.jp/x")).toBeNull();
     expect(allowedSourceUrl("https://www.gutenberg.org/ebooks/1")).not.toBeNull();
     expect(allowedSourceUrl("http://www.gutenberg.org/ebooks/1")).toBeNull();
     expect(allowedSourceUrl("https://www.gutenberg.org:8443/x")).toBeNull();
@@ -369,6 +396,125 @@ describe("Project Gutenberg files", () => {
       "LE PETIT CHAPERON ROUGE",
       "LES FÉES",
     ]);
+  });
+});
+
+// Small synthetic files in each host's format (never real texts).
+const AOZORA_FILE = `<?xml version="1.0" encoding="Shift_JIS"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja"><head><meta http-equiv="Content-Type" content="text/html;charset=Shift_JIS" /><title>作家 題</title></head>
+<body><div class="metadata"><h1 class="title">題</h1><h2 class="author">作家</h2></div>
+<div id="contents" style="display:none"></div><div class="main_text"><br />
+<div class="jisage_8"><h4 class="naka-midashi"><a class="midashi_anchor" id="midashi10">一</a></h4></div>
+<br />
+　ある日の<ruby><rb>事</rb><rp>（</rp><rt>こと</rt><rp>）</rp></ruby>でございます。<br />
+　<img src="../../../gaiji/1-87/1-87-71.png" alt="※(「牛へん＋建」、第3水準1-87-71)" class="gaiji" />陀多と云う男<span class="notes">［＃「陀多」に傍点］</span>がいました。<br />
+<div class="jisage_8"><h4 class="naka-midashi"><a class="midashi_anchor" id="midashi20">二</a></h4></div>
+　やがて夜になりました。<br />
+<div class="jisage_8"><h4 class="naka-midashi"><a class="midashi_anchor" id="midashi30">三</a></h4></div>
+　おしまい。<br />
+</div>
+<div class="bibliographical_information"><hr />底本：「全集」文庫<br />入力：誰か<br />校正：誰か<br />青空文庫作成ファイル：<br /></div>
+<div class="notation_notes"><hr />●表記について<br /></div>
+</body></html>`;
+
+const aozoraEntry: CatalogueBook = {
+  ...perrault,
+  slug: "題",
+  title: "題",
+  author: "作家",
+  lang: "ja",
+  source: {
+    page: "https://www.aozora.gr.jp/cards/000001/card1.html",
+    file: "https://www.aozora.gr.jp/cards/000001/files/1_1.html",
+    format: "aozora-xhtml",
+    name: "青空文庫 Aozora Bunko",
+  },
+  range: undefined,
+};
+
+const WS_FILE = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>題</title></head><body lang="zh">
+<section data-mw-section-id="0"><div about="#mwt1" typeof="mw:Transclusion" data-mw='{"parts":[{"template":{"target":{"wt":"header"},"params":{"notes":{"wt":"<ref>x</ref> a > b"}}}}]}'>
+<table class="ws-noexport"><tbody><tr><td><b>題</b><br/>作者：某人</td></tr></tbody></table></div>
+<p>第一段，有注<sup class="mw-ref reference" data-mw='{"body":{"html":"<span>注</span>"}}'><a href="#cite_note-1">[1]</a></sup>。</p>
+<p>第二段。</p>
+<div class="references-small"><ol class="mw-references references"><li id="cite_note-1">注釋文字。</li></ol></div>
+<style>.x{color:red}</style><div class="licenseContainer licenseBanner"><p>这部作品在美國屬於公有領域。</p></div>
+<span class="mw-empty-elt"><link rel="mw:PageProp/Category" href="./Category:PD"/></span>
+</section><section data-mw-section-id="1"><h2>注釋</h2>
+</section></body></html>`;
+
+const wsEntry: CatalogueBook = {
+  ...perrault,
+  slug: "題",
+  title: "題",
+  author: "某人",
+  lang: "zh",
+  source: {
+    page: "https://zh.wikisource.org/wiki/%E9%A1%8C",
+    file: "https://zh.wikisource.org/api/rest_v1/page/html/%E9%A1%8C/1",
+    format: "wikisource-html",
+    name: "Wikisource",
+  },
+  range: undefined,
+};
+
+describe("other host formats: one cleaner per host, never per language", () => {
+  test("Aozora Bunko: the main text only, ruby base kept, notes and bibliography dropped", () => {
+    const out = cleanAozora(AOZORA_FILE);
+    expect(out).not.toContain("底本");
+    expect(out).not.toContain("表記について");
+    expect(out).not.toContain("［＃");
+    const b = parseSource(aozoraEntry, AOZORA_FILE);
+    expect(b.title).toBe("題");
+    expect(b.lang).toBe("ja");
+    expect(b.lines).toEqual([
+      "一",
+      "ある日の事でございます。",
+      "※陀多と云う男がいました。",
+      "二",
+      "やがて夜になりました。",
+      "三",
+      "おしまい。",
+    ]);
+    expect(b.chapters.map((c) => c.title)).toEqual(["一", "二", "三"]);
+  });
+
+  test("Wikisource: no header, licence, references or styles; an emptied notes heading goes too", () => {
+    const b = parseSource(wsEntry, WS_FILE);
+    expect(b.lines).toEqual(["第一段，有注。", "第二段。"]);
+    expect(b.lines.join()).not.toMatch(/公有領域|注釋|作者/);
+  });
+
+  test("dropElements: same-name nesting and '>' inside a quoted attribute", () => {
+    const html = `<div class="x" data-mw='{"a":"<b>1 > 0</b>"}'><div>in</div>still in</div><p>kept</p>`;
+    expect(dropElements(html, (_, attrs) => attrs.includes('class="x"'))).toBe("<p>kept</p>");
+    expect(
+      cleanWikisource(
+        "<p>a</p><table><tr><td><table><tr><td>t</td></tr></table></td></tr></table><p>b</p>",
+      ),
+    ).toBe("<p>a</p><p>b</p>");
+  });
+
+  test("charset: the header's, else a meta or XML declaration; unknown charsets are refused", () => {
+    const sjis = new Uint8Array([0x82, 0xa0]); // あ in Shift_JIS
+    expect(sourceCharset("text/html", new TextEncoder().encode(AOZORA_FILE))).toBe("shift_jis");
+    expect(sourceCharset("text/html; charset=UTF-8", sjis)).toBe("utf-8");
+    expect(sourceCharset("text/html", new Uint8Array())).toBe("utf-8");
+    expect(sourceCharset("text/html; charset=x-evil", sjis)).toBeNull();
+    expect(decodeSource(sjis, "text/html; charset=Shift_JIS")).toBe("あ");
+    expect(() => decodeSource(sjis, "text/html; charset=x-evil")).toThrow("fetch-failed");
+  });
+
+  test("a Shift_JIS file is fetched and decoded", async () => {
+    const meta = new TextEncoder().encode(
+      '<html><head><meta http-equiv="Content-Type" content="text/html;charset=Shift_JIS" /></head><body>',
+    );
+    const body = new Uint8Array([...meta, 0x82, 0xa0]);
+    const { f } = mockFetch({
+      [aozoraEntry.source.file]: () =>
+        new Response(body, { status: 200, headers: { "content-type": "text/html" } }),
+    });
+    expect((await fetchSourceFile(aozoraEntry, f)).endsWith("<body>あ")).toBe(true);
   });
 });
 

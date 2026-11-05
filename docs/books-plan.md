@@ -207,6 +207,50 @@ title's own language, the source link visible inside the imported book.
   _Candide_ (#4650, Beuchot ed.; B1); Carroll, _Alice's Adventures in
   Wonderland_ (#11; A2–B1); Kafka, _Die Verwandlung_ (#22367; B1). Not _Le
   Petit Prince_ or _Le Petit Nicolas_ (in copyright). #20971/#20972 are audio.
+- **Added 2026-11-05 (owner 11:10 JST: more books, more languages)**, 29
+  entries, originals only, each with its verification in a comment in
+  `lib/books/catalogue.ts` (edition, creators and death years, first
+  publication, licence line) and parsed through the importer before listing:
+  English: Potter, _The Tale of Peter Rabbit_ (A1); Wilde, _The Happy Prince
+  and Other Tales_; Kipling, _Just So Stories_; Baum, _The Wonderful Wizard of
+  Oz_ (A2–B1). German: Hoffmann, _Der Struwwelpeter_ (A1–A2, verse); Busch,
+  _Max und Moritz_ (A2, verse); Eichendorff, _Aus dem Leben eines
+  Taugenichts_ (B1). Spanish: Pardo Bazán, _Cuentos de amor_ (B1); Unamuno,
+  _Niebla_ (B2). Italian: Collodi, _Pinocchio_ (A2–B1); De Amicis, _Novelle_
+  (B1); Dante, _Inferno_ (C1, verse). Portuguese: Machado de Assis, _Historias
+  Sem Data_ (B1), _Dom Casmurro_ (B2); Eça de Queirós, _Contos_ (B1).
+  Russian (ru.wikisource): Пушкин, _Сказка о рыбаке и рыбке_ (A2–B1, verse);
+  Чехов, _Каштанка_ (B1). Japanese (Aozora Bunko): 宮沢賢治 _注文の多い料理店_,
+  _どんぐりと山猫_ (A2–B1); 芥川 _杜子春_, _鼻_; 漱石 _夢十夜_ (B1), _坊っちゃん_
+  (B2). Chinese (zh.wikisource): 朱自清 _匆匆_ (A2–B1), _背影_ (B1); 魯迅
+  _孔乙己_ (B1–B2), _故鄉_ (B2). Latin: Appleton, _Fabulae_ (A2–B1, written in
+  Latin for children, 1914); Caesar, _De Bello Gallico_ I–IV (B2–C1).
+  **Left out, and why:** _Don Quijote_ (#2000: over the 6 MB cap); Grimm,
+  _Deutsche Märchen_ (#77905: illustrator Brandenburg-Polster † 1958, editor's
+  death year unknown); #20050/#20051 Grimm (audio); PG's Russian _Белые ночи_
+  and _Детство_ (#21183, #19681: no HTML file); PG's _吶喊_ and _朝花夕拾_
+  (#27166, #25271: the files' structure breaks into hundreds of false
+  chapters / merged paragraphs, so 魯迅 comes from zh.wikisource instead);
+  Aozora _蜘蛛の糸_ (17 characters outside JIS X 0208, its hero's name among
+  them, would import as ※); Phaedrus on la.wikisource (verse numbers inline);
+  Chekhov's _Толстый и тонкий_ / _Хамелеон_ (their pages list editions, the
+  text is on sub-pages); anonymous works (_Lazarillo_: no death year to
+  record); translations (Andersen in German, Aesop in Spanish). Akutagawa's
+  _羅生門_ on PG (#1982) was not needed beside Aozora.
+- **Hosts and formats** (`SOURCE_HOSTS`, `SourceFormat`; one cleaner per host
+  format in `lib/books/source.ts`, never per language): `gutenberg-html`
+  (www.gutenberg.org), `aozora-xhtml` (www.aozora.gr.jp: the `main_text` only,
+  each `<br />` a paragraph, ruby keeps its base text and drops the reading,
+  ［＃…］ notes and the bibliography dropped, a gaiji image becomes ※),
+  `wikisource-html` (zh. and ru.wikisource.org: the REST HTML of one
+  revision, `/api/rest_v1/page/html/<title>/<rev>`, so the edition never
+  changes under the cache; header and licence tables, references, styles and
+  an emptied notes heading dropped). The file is decoded from its declared
+  charset (header, `<meta>` or XML declaration; Aozora is Shift_JIS; an
+  unknown charset is refused). Licence lines: Aozora's (PD; credit its
+  volunteers, kept in the attribution with the 底本), Wikisource's (PD work;
+  transcription CC BY-SA 4.0). A new Wikisource language is one more host in
+  the list.
 - **Slugs** (`lib/books/slug.ts`): the title in its own language and script
   (owner: "slug用书名原语言 不强制英文"): NFC, lower case, letters/marks/digits
   of any script, everything else "-", an apostrophe kept between letters
@@ -234,6 +278,11 @@ title's own language, the source link visible inside the imported book.
   a cache error falls back to fetching. `bun scripts/books/warm.ts <key>|--all`
   fills the cache ahead of the first import (same fetch rules, `wrangler r2
   object put --remote`); it imports nothing into any account.
+- **Buttons** (owner 11:13 JST 2026-11-05: "too many primary btns"): one
+  primary per view, in the theme's tokens (the 書法 palette: `blue-600` is
+  the seal red, `gray` the paper→ink ramp). On /books every card's add,
+  open and sign-in are secondary (outlined or text); on a book's own page
+  its one action is the primary.
 - **Gate:** flag `books.catalogue` (off: the owner only), D1 only; the nav
   item carries `flag` in `lib/app-nav.ts` and the layout passes the visible
   ones. Not tied to `read.reader-v2`: an added book opens in whichever reader
@@ -292,10 +341,13 @@ The rule of the shorter term is **not** assumed (conservative).
   Japan's wartime additions, Spain, the default); viewer filtering — Kafka
   († 1924) was hidden in Mexico but shown in France in 2024, and a 1950 death
   published 1925 is shown in France and China but hidden in Mexico in 2026.
-- **The 7 entries in 2026:** every creator died by 1924 (Kafka; Cousturier
-  1915 at the latest), so all are PD under every row, the default included,
-  and none is hidden anywhere. The filter starts to matter with the first
-  author who died after 1925.
+- **The 36 entries in 2026:** the first 7 and most of the 29 added on
+  2026-11-05 have creators who all died by 1925, so they are PD under every
+  row and shown everywhere. The filter matters for Potter († 1943), Kipling
+  († 1936), Unamuno († 1936), Chiostri († 1939, Pinocchio's illustrator),
+  Lu Xun († 1936), Zhu Ziqing († 1948) and Appleton († 1938): shown where
+  their term has ended, hidden in Mexico (life+100) and to an unknown viewer
+  (the default).
 
 ### Next: confidently public-domain imports become shared (owner, 01:43 JST)
 

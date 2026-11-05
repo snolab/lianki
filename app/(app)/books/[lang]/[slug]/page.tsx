@@ -39,13 +39,10 @@ export default async function BookPage({ params }: { params: Params }) {
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8">
       <div className="max-w-3xl mx-auto">
-        <Link
-          href="/books"
-          className="text-sm text-[oklch(0.5_0_0)] dark:text-[oklch(0.7_0_0)] hover:underline"
-        >
+        <Link href="/books" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
           &larr; {String(t.allBooks)}
         </Link>
-        <p className="mt-4 text-sm font-semibold uppercase tracking-wide text-[oklch(0.5_0_0)] dark:text-[oklch(0.7_0_0)]">
+        <p className="mt-4 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
           {languageName(b.lang, locale)}
         </p>
         <BookCard book={b} ownedId={owned[bookKey(b)]} signedIn={signedIn} detail />

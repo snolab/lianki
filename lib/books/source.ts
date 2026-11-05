@@ -2,9 +2,14 @@
 //
 // The server fetches the entry's one file, never a user-supplied URL; a
 // redirect is followed by hand and only to SOURCE_HOSTS. The answer is
-// untrusted data: capped in size, required to be HTML, and parsed by the same
-// markup collector as EPUB and Google Docs (lib/gdoc/parse.ts), which keeps
-// text only (no scripts, styles or images).
+// untrusted data: capped in size, required to be HTML, decoded from its
+// declared charset (Aozora Bunko serves Shift_JIS), cleaned by its host's
+// format (one cleaner per host format, never per language: Gutenberg's licence
+// header and footer, Aozora's bibliography and notes, Wikisource's header and
+// licence templates), and parsed by the same markup collector as EPUB and
+// Google Docs (lib/gdoc/parse.ts), which keeps text only (no scripts, styles or
+// images; a ruby reading <rt> is dropped and its base text kept, as the reader
+// has no ruby yet).
 //
 // The fetched file is cached (R2 `lianki-blobs`, `preset-cache/`, through
 // SourceCache) for every user: the first import of a book fetches it, every
@@ -55,11 +60,10 @@ async function drop(res: Response): Promise<void> {
   }
 }
 
-/** Read at most `max` bytes of a body as UTF-8, else too-large. */
-async function readCapped(body: ReadableStream<Uint8Array>, max: number): Promise<string> {
+/** Read at most `max` bytes of a body, else too-large. */
+async function readCapped(body: ReadableStream<Uint8Array>, max: number): Promise<Uint8Array> {
   const reader = body.getReader();
-  const dec = new TextDecoder();
-  const parts: string[] = [];
+  const parts: Uint8Array[] = [];
   let n = 0;
   try {
     for (;;) {
@@ -67,13 +71,58 @@ async function readCapped(body: ReadableStream<Uint8Array>, max: number): Promis
       if (done) break;
       n += value.byteLength;
       if (n > max) throw new BookSourceFail("too-large");
-      parts.push(dec.decode(value, { stream: true }));
+      parts.push(value);
     }
-    parts.push(dec.decode());
   } finally {
     await reader.cancel().then(undefined, String);
   }
-  return parts.join("");
+  const out = new Uint8Array(n);
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.byteLength;
+  }
+  return out;
+}
+
+/** Charsets a source file may declare; anything else is refused. */
+const CHARSETS = new Set([
+  "utf-8",
+  "shift_jis",
+  "euc-jp",
+  "iso-2022-jp",
+  "gb18030",
+  "gbk",
+  "big5",
+  "windows-1252",
+  "iso-8859-1",
+]);
+
+/**
+ * A file's charset: the Content-Type header's, else a <meta> or the XML
+ * declaration in its first bytes, else UTF-8. Null for one we do not decode.
+ */
+export function sourceCharset(contentType: string, head: Uint8Array): string | null {
+  const ascii = new TextDecoder("latin1").decode(head.subarray(0, 2048));
+  const raw = (
+    /charset\s*=\s*["']?([\w-]+)/i.exec(contentType)?.[1] ??
+    /<meta[^>]+charset\s*=\s*["']?([\w-]+)/i.exec(ascii)?.[1] ??
+    /<\?xml[^>]+encoding\s*=\s*["']([\w-]+)/i.exec(ascii)?.[1] ??
+    "utf-8"
+  ).toLowerCase();
+  const cs = raw === "utf8" ? "utf-8" : raw === "sjis" || raw === "x-sjis" ? "shift_jis" : raw;
+  return CHARSETS.has(cs) ? cs : null;
+}
+
+/** A file's bytes as text, from its declared charset. */
+export function decodeSource(bytes: Uint8Array, contentType: string): string {
+  const cs = sourceCharset(contentType, bytes);
+  if (!cs) throw new BookSourceFail("fetch-failed");
+  try {
+    return new TextDecoder(cs).decode(bytes);
+  } catch {
+    throw new BookSourceFail("fetch-failed");
+  }
 }
 
 /** Fetch an entry's source file from its host (no cache). */
@@ -91,7 +140,10 @@ export async function fetchSourceFile(
       res = await fetchImpl(url.toString(), {
         redirect: "manual",
         signal,
-        headers: { Accept: "text/html", "User-Agent": "Lianki (lianki.com) catalogue import" },
+        headers: {
+          Accept: "text/html, application/xhtml+xml",
+          "User-Agent": "Lianki (lianki.com) catalogue import",
+        },
       });
     } catch {
       throw new BookSourceFail("fetch-failed");
@@ -112,7 +164,8 @@ export async function fetchSourceFile(
       void drop(res);
       throw new BookSourceFail("fetch-failed");
     }
-    if (!/^(text\/html|application\/xhtml\+xml)\b/i.test(res.headers.get("content-type") ?? "")) {
+    const type = res.headers.get("content-type") ?? "";
+    if (!/^(text\/html|application\/xhtml\+xml)\b/i.test(type)) {
       void drop(res);
       throw new BookSourceFail("fetch-failed");
     }
@@ -121,7 +174,7 @@ export async function fetchSourceFile(
       void drop(res);
       throw new BookSourceFail("too-large");
     }
-    return readCapped(res.body, limits.maxBytes);
+    return decodeSource(await readCapped(res.body, limits.maxBytes), type);
   }
 }
 
@@ -200,6 +253,153 @@ export function stripGutenberg(html: string): string {
   return out;
 }
 
+const VOID = new Set([
+  "br",
+  "hr",
+  "img",
+  "meta",
+  "link",
+  "input",
+  "wbr",
+  "col",
+  "area",
+  "base",
+  "source",
+]);
+
+/**
+ * Remove every element whose start tag matches `drop` (name, attribute text),
+ * with all it contains. Same-name nesting is counted; markup is not otherwise
+ * interpreted (the collector parses what is left).
+ */
+export function dropElements(html: string, drop: (name: string, attrs: string) => boolean): string {
+  // Quoted attribute values may hold ">" (Parsoid's data-mw JSON does).
+  const TAG = /<(\/?)([A-Za-z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+  const out: string[] = [];
+  let keepFrom = 0;
+  /** The dropped element being skipped: its name and same-name depth. */
+  let skip: { name: string; depth: number } | null = null;
+  for (let m = TAG.exec(html); m; m = TAG.exec(html)) {
+    const close = m[1] === "/";
+    const name = m[2].toLowerCase();
+    const selfClosing = VOID.has(name) || m[3].endsWith("/");
+    if (skip) {
+      if (name !== skip.name || selfClosing) continue;
+      skip.depth += close ? -1 : 1;
+      if (skip.depth === 0) {
+        skip = null;
+        keepFrom = TAG.lastIndex;
+      }
+      continue;
+    }
+    if (close || !drop(name, m[3])) continue;
+    out.push(html.slice(keepFrom, m.index));
+    if (selfClosing) keepFrom = TAG.lastIndex;
+    else skip = { name, depth: 1 };
+  }
+  if (!skip) out.push(html.slice(keepFrom));
+  return out.join("");
+}
+
+const classOf = (attrs: string) => /\bclass\s*=\s*["']([^"']*)["']/i.exec(attrs)?.[1] ?? "";
+const hasClass = (attrs: string, names: Set<string>) =>
+  classOf(attrs)
+    .split(/\s+/)
+    .some((c) => names.has(c));
+
+/** The element with this class, and everything in it; "" when there is none. */
+function elementWithClass(html: string, cls: string): string {
+  const start = new RegExp(
+    `<([A-Za-z][\\w-]*)\\b[^>]*\\bclass=["'][^"']*\\b${cls}\\b[^"']*["'][^>]*>`,
+    "i",
+  ).exec(html);
+  if (!start) return "";
+  const name = start[1].toLowerCase();
+  const TAG = new RegExp(`<(/?)${name}\\b[^>]*>`, "gi");
+  TAG.lastIndex = start.index + start[0].length;
+  let depth = 1;
+  for (let m = TAG.exec(html); m; m = TAG.exec(html)) {
+    if (m[0].endsWith("/>")) continue;
+    depth += m[1] ? -1 : 1;
+    if (depth === 0) return html.slice(start.index, TAG.lastIndex);
+  }
+  return html.slice(start.index);
+}
+
+/** Aozora Bunko's editorial notes inside the text: ［＃…］ annotations. */
+const AOZORA_DROP = new Set(["notes"]);
+
+/**
+ * An Aozora Bunko XHTML file: only its `main_text` (not the title block, the
+ * bibliography — 底本, 入力, 校正, kept with the entry's attribution — or the
+ * notation notes). A line ends with <br /> there: each one is a paragraph.
+ * Ruby keeps its base text (the collector drops <rt>/<rp>).
+ */
+export function cleanAozora(html: string): string {
+  const head = /<head\b[^>]*>[\s\S]*?<\/head>/i.exec(html)?.[0] ?? "";
+  const main = elementWithClass(html, "main_text");
+  if (!main) return `<html>${head}<body></body></html>`;
+  const text = dropElements(main, (_, attrs) => hasClass(attrs, AOZORA_DROP))
+    .replace(/<br\s*\/?>/gi, "<p></p>")
+    // A character outside JIS X 0208 is an image (gaiji): Aozora's own placeholder.
+    .replace(/<img\b[^>]*\bclass=["'][^"']*\bgaiji\b[^>]*>/gi, "※");
+  return `<html>${head}<body>${text}</body></html>`;
+}
+
+/**
+ * What Wikisource puts around a text: the header and licence templates, edit
+ * and navigation chrome, references (the class names MediaWiki and the
+ * Wikisource templates use on every language's site).
+ */
+const WIKISOURCE_DROP = new Set([
+  "licenseContainer",
+  "licensetpl",
+  "ws-header",
+  "ws-noexport",
+  "noprint",
+  "mw-editsection",
+  "mw-references-wrap",
+  "mw-references",
+  "references",
+  "references-small",
+  "reference",
+  "mw-ref",
+  "dablink",
+  "navbox",
+  "sisitem",
+  "metadata",
+  "mw-empty-elt",
+]);
+
+/**
+ * A Wikisource page's REST HTML (Parsoid): the text without its header and
+ * licence (both are data tables or classed boxes; the licence is kept with the
+ * entry instead), styles, references and page chrome.
+ */
+export function cleanWikisource(html: string): string {
+  const text = dropElements(
+    html,
+    (name, attrs) =>
+      name === "table" ||
+      name === "style" ||
+      name === "link" ||
+      hasClass(attrs, WIKISOURCE_DROP) ||
+      /\bid=["'](headerContainer|plainSister)["']/.test(attrs),
+  );
+  // A heading left with nothing under it (a notes section whose notes were dropped).
+  return text.replace(
+    /<h([1-6])\b[^>]*>(?:(?!<\/?h[1-6]\b)[\s\S])*<\/h\1>(?=(?:\s|<(?!(?:p|h[1-6]|div|dl|ol|ul|li|dd|blockquote)\b)[^>]*>)*(?:<\/section>|<\/body>|$))/gi,
+    "",
+  );
+}
+
+/** The host format's cleaner: what is left is the book's text. */
+const CLEANERS: Record<CatalogueBook["source"]["format"], (html: string) => string> = {
+  "gutenberg-html": stripGutenberg,
+  "aozora-xhtml": cleanAozora,
+  "wikisource-html": cleanWikisource,
+};
+
 /** Only the part named by `range`, or the whole file. The <head> (its class styles) is kept. */
 export function cutRange(html: string, range: CatalogueBook["range"]): string {
   if (!range) return html;
@@ -238,8 +438,9 @@ export function joinHeadingChapters(b: ParsedBook): BookChapter[] {
 
 /** The catalogue entry's source file → its book, titled and credited from the entry. */
 export function parseSource(book: CatalogueBook, html: string): ParsedBook {
-  if (book.source.format !== "gutenberg-html") throw new BookSourceFail("no-text");
-  const body = cutRange(stripGutenberg(html), book.range);
+  const clean = CLEANERS[book.source.format];
+  if (!clean) throw new BookSourceFail("no-text");
+  const body = cutRange(clean(html), book.range);
   let parsed: ParsedBook;
   try {
     // A printed book's title page has a couple of top headings: a level

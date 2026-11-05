@@ -60,14 +60,18 @@ export function BookCard({
 
   const button =
     "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60";
-  const primary = `${button} bg-[oklch(0.55_0.18_255)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.18_255)]`;
-  const quiet = `${button} border border-[oklch(0.55_0.18_255/0.4)] text-[oklch(0.5_0.16_255)] dark:text-[oklch(0.78_0.12_255)] hover:bg-[oklch(0.55_0.18_255/0.08)]`;
+  // The 書法 theme's tokens (app/globals.css: "blue" is the seal red, "gray" the
+  // paper→ink ramp). One primary per view: the add button on a book's own
+  // page; on the list every card's actions are secondary.
+  const primary = `${button} bg-blue-600 text-white hover:bg-blue-700`;
+  const secondary = `${button} border border-blue-600/40 text-blue-700 dark:text-blue-300 hover:bg-blue-600/10`;
+  const quiet = `${button} text-blue-700 dark:text-blue-300 hover:bg-blue-600/10`;
 
   return (
     <article
       data-testid="books-card"
       data-book={`${book.lang}/${book.slug}`}
-      className="flex flex-col gap-2 py-4 border-b border-[oklch(0.9_0_0)] dark:border-[oklch(0.3_0_0)] last:border-b-0"
+      className="flex flex-col gap-2 py-4 border-b border-gray-200 dark:border-gray-700 last:border-b-0"
     >
       <div className="flex flex-col sm:flex-row sm:items-start gap-3">
         <div className="flex-1 min-w-0" lang={book.lang}>
@@ -80,15 +84,13 @@ export function BookCard({
               </Link>
             </h3>
           )}
-          <p className="text-sm text-[oklch(0.45_0_0)] dark:text-[oklch(0.75_0_0)]">
-            {book.author}
-          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{book.author}</p>
         </div>
         {ownedId ? (
           <Link
             href={`/read/${encodeURIComponent(ownedId)}`}
             data-testid="books-owned"
-            className={quiet}
+            className={detail ? primary : quiet}
           >
             {t.owned}
           </Link>
@@ -98,18 +100,21 @@ export function BookCard({
             data-testid="books-add"
             disabled={busy}
             onClick={() => void add()}
-            className={primary}
+            className={detail ? primary : secondary}
           >
             {busy ? t.adding : t.add}
           </button>
         ) : (
-          <a href={`/sign-in?to=${encodeURIComponent(bookHref(book))}`} className={quiet}>
+          <a
+            href={`/sign-in?to=${encodeURIComponent(bookHref(book))}`}
+            className={detail ? primary : quiet}
+          >
             {t.signIn}
           </a>
         )}
       </div>
-      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[oklch(0.5_0_0)] dark:text-[oklch(0.7_0_0)]">
-        <span className="rounded-full bg-[oklch(0.55_0.18_255/0.1)] px-2 py-0.5 font-medium text-[oklch(0.45_0.16_255)] dark:text-[oklch(0.8_0.1_255)]">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+        <span className="rounded-full bg-blue-600/10 px-2 py-0.5 font-medium text-blue-700 dark:text-blue-300">
           {t.level} {book.level}
         </span>
         {book.form && <span>{book.form === "verse" ? t.verse : t.prose}</span>}
@@ -121,25 +126,18 @@ export function BookCard({
             target="_blank"
             rel="noopener noreferrer"
             data-testid="books-source"
-            className="underline hover:text-[oklch(0.5_0.16_255)]"
+            className="underline hover:text-blue-700 dark:hover:text-blue-300"
           >
             {book.source.name}
           </a>
         </span>
       </p>
-      <p className="text-xs text-[oklch(0.5_0_0)] dark:text-[oklch(0.7_0_0)]">
+      <p className="text-xs text-gray-500 dark:text-gray-400">
         {t.licence}: {book.licence}
       </p>
-      {detail && (
-        <p className="text-xs text-[oklch(0.5_0_0)] dark:text-[oklch(0.7_0_0)]">
-          {book.attribution}
-        </p>
-      )}
+      {detail && <p className="text-xs text-gray-500 dark:text-gray-400">{book.attribution}</p>}
       {error && (
-        <p
-          role="alert"
-          className="text-sm text-[oklch(0.58_0.2_27)] dark:text-[oklch(0.72_0.16_27)]"
-        >
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
           {error}
         </p>
       )}

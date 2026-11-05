@@ -27,10 +27,10 @@ export default async function BooksPage() {
     <div className="px-4 sm:px-6 lg:px-8 py-8">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold mb-3">{String(t.title)}</h1>
-        <p className="text-[oklch(0.45_0_0)] dark:text-[oklch(0.75_0_0)] mb-8">{String(t.intro)}</p>
+        <p className="text-gray-600 dark:text-gray-400 mb-8">{String(t.intro)}</p>
         {catalogueByLang(catalogueFor(country, year)).map(([lang, books]) => (
           <section key={lang} className="mb-10" data-testid="books-lang" data-lang={lang}>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[oklch(0.5_0_0)] dark:text-[oklch(0.7_0_0)] mb-1">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
               {languageName(lang, locale)}
             </h2>
             {books.map((b) => (
