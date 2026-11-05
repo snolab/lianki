@@ -61,13 +61,17 @@ export function useGradeWords() {
     p: GradePlan,
     s: { rating: SwipeRating | null; undo: boolean },
     lastWhat: string | null,
+    intervals: Record<SwipeRating, string | null> | null = null,
   ) => {
     if (s.undo && lastWhat) return fill(t.undo.value, { what: lastWhat });
     const h = hintParts(p, s.rating);
     const skipped = h.skipped ? ` ${fill(t.skipped.value, { n: nf(h.skipped) })}` : "";
     if (!s.rating) return `${lastWhat ? t.idleUndo.value : t.idle.value}${skipped}`;
     const words = h.words ? ` ${fill(t.plusWords.value, { n: nf(h.words) })}` : "";
-    return `${fill(t.graded.value, { target: name(p, h.n), grade: grades[s.rating] })}${words}${skipped}`;
+    // The grade with the interval it gives, as /words shows it ("良好 · 3d").
+    const iv = intervals?.[s.rating];
+    const grade = iv ? `${grades[s.rating]} · ${iv}` : grades[s.rating];
+    return `${fill(t.graded.value, { target: name(p, h.n), grade })}${words}${skipped}`;
   };
   return { describe, hint, grades };
 }
@@ -79,6 +83,7 @@ export function useGradeWords() {
  */
 export function CardGradeArea({
   plan,
+  intervals = null,
   locale,
   mirror,
   openedAt,
@@ -93,6 +98,8 @@ export function CardGradeArea({
   onUndo,
 }: {
   plan: HandlePlan;
+  /** Each grade's next interval ("3d", "1d–5d"), null while unknown. */
+  intervals?: Record<SwipeRating, string | null> | null;
   locale: string;
   mirror: boolean;
   openedAt: number;
@@ -177,13 +184,51 @@ export function CardGradeArea({
         canUndo={canUndo}
         mirror={mirror}
         openedAt={openedAt}
-        hint={(s) => words.hint(plan, s, canUndo ? lastWhat : null)}
+        hint={(s) => words.hint(plan, s, canUndo ? lastWhat : null, intervals)}
         onPreview={onPreview}
         onGrade={onGrade}
         onUndo={onUndo}
       />
+      {!plan.disabled && <KeyRow intervals={intervals} grades={words.grades} />}
       {nextLine}
     </>
+  );
+}
+
+/** A mouse and a keyboard: the four grade keys, each with its grade and interval. */
+const FINE = "(hover: hover) and (pointer: fine)";
+function KeyRow({
+  intervals,
+  grades,
+}: {
+  intervals: Record<SwipeRating, string | null> | null;
+  grades: Record<SwipeRating, string>;
+}) {
+  const [fine, setFine] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia?.(FINE);
+    if (!m) return;
+    setFine(m.matches);
+    const on = () => setFine(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  if (!fine) return null;
+  // Keys name grades, not sides: 1–4, and L K J H (lib/words/swipe.ts KEY_RATING).
+  const alt: Record<SwipeRating, string> = { 1: "L", 2: "K", 3: "J", 4: "H" };
+  return (
+    <p
+      className="mt-1 flex flex-wrap justify-center gap-x-3 text-xs tabular-nums opacity-75"
+      data-testid="read-grade-keys"
+    >
+      {([1, 2, 3, 4] as const).map((r) => (
+        <span key={r} data-rating={r} title={`${r} / ${alt[r]}`}>
+          <kbd className="me-1 rounded border border-[var(--glass-line)] px-1 font-sans">{r}</kbd>
+          {grades[r]}
+          {intervals?.[r] && <span className="ms-1 opacity-80">{intervals[r]}</span>}
+        </span>
+      ))}
+    </p>
   );
 }
 

@@ -702,6 +702,17 @@ it in the text, not a list of toasts.
   Undo. After a word, phrase or sentence, the card shows its next due briefly.
 - **Keys:** with a card open whose handle is on, 1–4 / L K J H grade it
   (`keyRating`); U and ⌘Z undo the latest grade, the card's or a swipe's.
+- **Intervals** (owner, 2026-11-05 11:06 JST: "要复习就给整套 rate 系统" — if
+  the card offers review, it is the whole rating system, as on /words): while
+  dragging, the hint shows the grade with the interval it gives ("良好 · 3d"),
+  in /words' own labels (`formatInterval`). The probe gives every word's and
+  sentence's due after each grade, without fuzz: a word by /words' preview
+  (`reviewWord` with its list's parameters, as `previewInterval`; a word with
+  no card yet, a new card's), a sentence by the reader's sentence scheduler
+  (`gradeSentence`). A batch shows its span ("1d–5d"), a paragraph its
+  sentences' (`lib/read/batch-grade.ts` `gradeIntervals`, `intervalLabel`).
+  With a mouse and keyboard, a row under the track shows the four keys, each
+  with its grade and interval.
 - QA: `scripts/qa/qa-read-card-grade.mjs`; unit: `read-batch-grade`,
   `read-grade-handle`.
 
