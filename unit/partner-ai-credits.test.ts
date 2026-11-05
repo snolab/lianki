@@ -204,6 +204,76 @@ describe("partner AI: credits", () => {
     expect((10 - (await getBalance(db(), "u_alice"))) * 1_000_000 + carry()).toBe(REAL);
   });
 
+  it("a sweep or settle that fails leaves the reply answered and the row pending, refunded later", async () => {
+    setBalance(10);
+    const real = d1;
+    const flaky = new Proxy(real, {
+      get(target, prop) {
+        if (prop === "prepare")
+          return (sql: string) => {
+            if (
+              sql.includes("status = 'pending' AND createdAt <") ||
+              sql.startsWith("SELECT userId FROM credit_ai_charge")
+            )
+              throw new Error("D1 down");
+            return target.prepare(sql);
+          };
+        const v = Reflect.get(target, prop);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
+    const calls = { n: 0 };
+    const res = await partnerReply(
+      { ...env(), DB: flaky as unknown as PartnerDb },
+      { userId: "u_alice", msgId: "flaky", history: [{ role: "user", text: "hi" }] },
+      { fetch: fakeFetch(calls), now: () => NOW },
+    );
+    expect(res.ok).toBe(true);
+    expect(await getBalance(db(), "u_alice")).toBe(10 - RESERVED);
+    // The next request, past the stale time, refunds it in full.
+    expect((await ask("later", fakeFetch(calls), NOW + CHARGE_STALE_MS + 1000)).ok).toBe(true);
+    const flakyRows = rows().filter((r) => r.refId === aiRefId("u_alice:flaky"));
+    expect(flakyRows.map((r) => r.amount).sort((a, b) => a - b)).toEqual([-RESERVED, RESERVED]);
+  });
+
+  it("an empty answer without usage is refunded in full; a broken study plan is skipped", async () => {
+    setBalance(10);
+    d1.raw().exec(
+      `INSERT INTO roadmap_goals (id, email, topic, nodes, created_at, updated_at) VALUES ('g', 'alice@x.com', 'Plan', 'not json', 'x', 'x')`,
+    );
+    const calls = { n: 0 };
+    expect(await ask("empty", fakeFetch(calls, { choices: [] }))).toMatchObject({
+      ok: false,
+      error: "model-failed",
+      billed: "unknown",
+    });
+    expect(await getBalance(db(), "u_alice")).toBe(10);
+  });
+
+  it("the page text counts toward the worst case", async () => {
+    setBalance(100);
+    const calls = { n: 0 };
+    const screen = "x".repeat(3000);
+    const res = await partnerReply(
+      env(),
+      {
+        userId: "u_alice",
+        msgId: "page",
+        history: [{ role: "user", text: "hi" }],
+        page: { path: "/words", screen },
+      },
+      { fetch: fakeFetch(calls), now: () => NOW },
+    );
+    expect(res.ok).toBe(true);
+    const r = d1
+      .raw()
+      .prepare("SELECT reserved FROM credit_ai_charge WHERE key = 'u_alice:page'")
+      .get() as { reserved: number };
+    expect(r.reserved).toBe(
+      reserveCredits(costUsd(reserveInTokens(2 + "/words".length + 3000), MAX_OUTPUT_TOKENS)),
+    );
+  });
+
   it("the owner is refused before any reservation", async () => {
     setBalance(100);
     const calls = { n: 0 };
