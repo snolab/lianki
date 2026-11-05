@@ -27,6 +27,7 @@ import {
 import type { BookChapter, ParsedBook } from "./book";
 import type { InlineMark } from "./reader-api";
 import { CHUNK_SECONDS, PRIOR_WORDS_PER_SECOND, readingLoad, segmentLine } from "./units";
+import { wordSegments } from "./word-segments";
 
 export { CHUNK_SECONDS };
 
@@ -168,7 +169,7 @@ function pauseCuts(text: string, lang: string): { at: number; words: number; ran
   const seg = new Intl.Segmenter(lang === "und" ? undefined : lang, { granularity: "word" });
   const out: { at: number; words: number; rank: number }[] = [];
   let words = 0;
-  for (const s of seg.segment(text)) {
+  for (const s of wordSegments(seg, text)) {
     if (!s.isWordLike) continue;
     if (words > 0) {
       const before = text.slice(0, s.index);

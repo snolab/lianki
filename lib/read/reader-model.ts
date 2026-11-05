@@ -18,6 +18,7 @@
 // here, `localItems` derives them on the device from the book's lines.
 
 import { normWord } from "./words";
+import { wordSegments } from "./word-segments";
 
 export interface Piece {
   line: number;
@@ -177,7 +178,7 @@ export function cutPara(
   const texts = cuts ? sentencesFromCuts(text, cuts) : sentencesOf(text, lang);
   const sentences = texts.map((st) => {
     const segs: Seg[] = [];
-    for (const s of word.segment(st)) {
+    for (const s of wordSegments(word, st)) {
       const o = base + s.index;
       const k = kindsAt(o);
       const last = segs[segs.length - 1];

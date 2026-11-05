@@ -9,6 +9,7 @@
 import { langRules } from "./lang";
 import type { Granularity, ItemBounds, Paragraph, SentenceRef } from "./reader-api";
 import { sentenceId } from "./reader-api";
+import { wordSegments } from "./word-segments";
 
 // ── ids ─────────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ export function segmentLine(line: string, lang: string): [number, number][] {
 /** Word-like segments of a piece of text (numbers included): its reading load. */
 export function readingLoad(text: string, lang: string): number {
   let n = 0;
-  for (const s of segmenters(lang).word.segment(text)) if (s.isWordLike) n++;
+  for (const s of wordSegments(segmenters(lang).word, text)) if (s.isWordLike) n++;
   return n;
 }
 

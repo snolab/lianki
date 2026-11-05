@@ -68,6 +68,18 @@ export interface LangData {
   fillers?: string[];
   /** Has a lemma file, public/words/lemma/<lang>.txt (lib/read/lemma.ts). */
   lemmas?: boolean;
+  /**
+   * Word segments to join back into one word: Intl.Segmenter cuts scripts
+   * without spaces by dictionary, and splits inflected forms (か|ついで for
+   * かついで, 食|べ|て). Two adjacent word-like segments join when the first
+   * matches `a`, the second `b`, and the segment before the first (word or
+   * not; "" at the start) matches `prev`. A joined word can join again.
+   * Each pattern names the script it is about, so every language's joins
+   * apply to all text (lib/read/word-segments.ts): Intl.Segmenter cuts these
+   * scripts alike under every locale, and a line tagged in another language
+   * must still read its words the same way.
+   */
+  joins?: { why?: string; prev?: string; a: string; b: string }[];
 }
 
 const FILES: [string, LangData][] = [
@@ -156,4 +168,20 @@ export const FILLERS: readonly string[] = [
 /** Languages with function words to guess from. */
 export const STOP_LANGS: [string, string[]][] = FILES.filter(([, d]) => d.stop?.length).map(
   ([l, d]) => [l, d.stop!],
+);
+
+/** A join rule (LangData.joins), compiled. */
+export interface JoinRule {
+  prev: RegExp | null;
+  a: RegExp;
+  b: RegExp;
+}
+
+/** Every language's word joins, in FILES order (each names its own script). */
+export const JOINS: readonly JoinRule[] = FILES.flatMap(([, d]) =>
+  (d.joins ?? []).map((j) => ({
+    prev: j.prev ? new RegExp(j.prev, "u") : null,
+    a: new RegExp(j.a, "u"),
+    b: new RegExp(j.b, "u"),
+  })),
 );
