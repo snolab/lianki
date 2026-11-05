@@ -104,6 +104,22 @@ MODELS: dict[str, Model] = {
     ),
 }
 
+
+@dataclass(frozen=True)
+class FilterLine:
+    """The voiceprint filter stops a final under `below`, with this much clear speech."""
+
+    below: float
+    min_speech_s: float
+    min_snr_db: float
+
+
+#: Measured on his clips (scripts/local-stt/voice-filter-eval.py; docs/local-stt.md, "Only my
+#: voice"), and far under `reject`: false rejects are the risk that matters. 2 s of speech and a
+#: read 8 dB (about 5 dB true SNR) are as far as his own scores stayed clear of the line.
+#: Only models with a measured line filter at all: ERes2NetV2 has none.
+FILTER_BELOW: dict[str, FilterLine] = {"campp": FilterLine(0.15, 2.0, 8.0)}
+
 _DEVICE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
 
@@ -165,6 +181,29 @@ def decide(model: Model, score: float, speech_s: float, snr_db: float) -> tuple[
     if score < b.reject:
         return "other", None
     return "unknown", "between"
+
+
+def filter_reason(spk: dict | None, device: str | None) -> str | None:
+    """
+    Why the voiceprint filter should stop this final, or None: None whenever in
+    doubt, since a filter that eats his words is worse than none (docs/local-stt.md,
+    "Only my voice"). Only against this device's own print, only a model with a
+    measured line, only with enough clear speech to judge. Not a security gate.
+    """
+    if not spk or spk.get("score") is None or not device or spk.get("device") != device:
+        return None
+    line = FILTER_BELOW.get(spk.get("model") or "")
+    if line is None or spk.get("speechS", 0) < line.min_speech_s or spk.get("snrDb", -99) < line.min_snr_db:
+        return None
+    return "no-match" if spk["score"] < line.below else None
+
+
+def filter_pending(spk: dict | None, device: str | None) -> bool:
+    """Not enough speech yet to judge against this device's print: partials wait, the final never does."""
+    if not spk or not device or spk.get("device") != device:
+        return False
+    line = FILTER_BELOW.get(spk.get("model") or "")
+    return line is not None and spk.get("speechS", 0) < line.min_speech_s
 
 
 def unit(v: np.ndarray) -> np.ndarray:
@@ -542,6 +581,11 @@ class Verifier:
             if others:
                 return model, others
         return None
+
+    def has_print(self, device: str | None) -> bool:
+        """This device has its own print: what the voiceprint filter needs (filter_reason)."""
+        self._check()
+        return bool(device and valid_device(device) and any(self._print(device, m) for m in self.order))
 
     def embed(self, model: str, audio: np.ndarray) -> np.ndarray | None:
         return self.embedders[model](audio)

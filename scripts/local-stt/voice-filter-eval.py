@@ -112,6 +112,7 @@ def main() -> None:
     ap.add_argument("--json", default="")
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--model", default="campp", choices=sorted(VP.MODELS))
+    ap.add_argument("--real-print", action="store_true", help="also score the clips against his enrolled prints")
     a = ap.parse_args()
 
     embed = VP.Embedder(VP.MODELS[a.model], a.threads)
@@ -240,6 +241,27 @@ def main() -> None:
             for e, x in rest_d:
                 mix.add(e, x, c)
         res["android-print"] = {"enrol-pool": len(sure), "held-out": same.out(), "rest-mixture": mix.out()}
+
+    # His real print, once he has enrolled: the clips against it, per device. This is the
+    # re-check before the line is trusted (the lines above come from throwaway enrolments on
+    # conversational iPhone clips, not sentences read aloud on the device).
+    if a.real_print:
+        store = VP.Store()
+        real: dict = {}
+        for p in store.prints():
+            if p["model"] != a.model:
+                continue
+            c = store.load(p["device"], p["model"])["_centroid"]
+            own, mix = Rates(), {}
+            for x, e in zip(owner, emb):
+                own.add(e, x, c)
+            for w in sorted(glob.glob(os.path.join(a.clips, "*.wav"))):
+                n = os.path.basename(w)[:-4]
+                if n not in refs:
+                    x = G.load(w)
+                    mix.setdefault(device_of(G.sidecar(w)), Rates()).add(embed(x), x, c)
+            real[p["device"]] = {"labelled": own.out(), **{k: v.out() for k, v in mix.items()}}
+        res["real-print"] = real
 
     txt = json.dumps(res, indent=1, sort_keys=True)
     if a.json:

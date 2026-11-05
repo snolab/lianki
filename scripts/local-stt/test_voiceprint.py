@@ -477,6 +477,29 @@ class Signer:
         return self.ticket(aud="lianki-voiceprint", op=op, device=device, uv=uv, **extra)
 
 
+class FilterLineTest(unittest.TestCase):
+    """The filter's rule: in doubt it never stops anything."""
+
+    TAG = {"score": 0.01, "model": "campp", "device": "iphone", "speechS": 4.0, "snrDb": 20.0}
+
+    def test_stops_a_clear_mismatch_on_this_devices_print(self):
+        self.assertEqual(V.filter_reason(self.TAG, "iphone"), "no-match")
+
+    def test_never_in_doubt(self):
+        line = V.FILTER_BELOW["campp"]
+        for tag, device in (
+            (None, "iphone"),
+            ({**self.TAG, "score": None}, "iphone"),  # no print, or no embedding
+            ({**self.TAG, "score": line.below}, "iphone"),
+            (self.TAG, None),  # no hello
+            (self.TAG, "android"),  # another device's print: the channel, not the voice
+            ({**self.TAG, "speechS": line.min_speech_s - 0.01}, "iphone"),
+            ({**self.TAG, "snrDb": line.min_snr_db - 0.1}, "iphone"),
+            ({**self.TAG, "model": "eres2netv2"}, "iphone"),  # no line measured for it
+        ):
+            self.assertIsNone(V.filter_reason(tag, device), (tag, device))
+
+
 class ServerProtocol(unittest.TestCase):
     """
     The real server.py (--engine fake --speaker fake): voiceprint ops only with a
@@ -594,6 +617,113 @@ class ServerProtocol(unittest.TestCase):
 
     def test_stt_ticket_socket_gets_no_voiceprint_ops(self):
         self.refused_everywhere(public=True)
+
+    def filter_flow(self, device):
+        """A print for iphone (440 Hz); the same device hears it, and someone else (1000 Hz)."""
+        sg = self.signer
+
+        async def flow(ws):
+            await ws.send(json.dumps({"t": "hello", "device": device, "thread": "owner"}))
+            r = await self.ask(ws, {"t": "enrol", "op": "start", "device": "iphone", "keepAudio": False, "ticket": sg.vp("enrol", "iphone")})
+            eid = r["enrolment"]
+            for i in range(V.ENROL_MIN):
+                await self.utter(ws, 500 + i, tone(440, seed=i), enrol=eid)
+            self.assertTrue((await self.ask(ws, {"t": "enrol", "op": "commit", "enrolment": eid}))["ok"])
+            st = await self.ask(ws, {"t": "voiceprint", "op": "status", "ticket": sg.vp("status")})
+            off_me = await self.utter(ws, 1, tone(440))
+            off_other = await self.utter(ws, 2, tone(1000))
+            await ws.send(json.dumps({"t": "filter", "on": True}))
+            self.assertEqual(json.loads(await ws.recv()), {"t": "filter", "on": True})
+            on_me = await self.utter(ws, 3, tone(440))
+            on_other = await self.utter(ws, 4, tone(1000))
+            short = await self.utter(ws, 5, tone(1000, speech_s=1.0))
+            noisy = await self.utter(ws, 6, tone(1000, snr_db=3.0))
+            await ws.send(json.dumps({"t": "filter", "on": False}))
+            await ws.recv()
+            again = await self.utter(ws, 7, tone(1000))
+            await self.ask(ws, {"t": "voiceprint", "op": "delete", "device": "*", "ticket": sg.vp("delete", "*")})
+            await ws.send(json.dumps({"t": "filter", "on": True}))
+            await ws.recv()
+            gone = await self.utter(ws, 8, tone(1000))
+            return st, off_me, off_other, on_me, on_other, short, noisy, again, gone
+
+        return self.run_ws(flow)
+
+    def test_filter_stops_only_what_clearly_is_not_him(self):
+        st, off_me, off_other, on_me, on_other, short, noisy, again, gone = self.filter_flow("iphone")
+        self.assertEqual(st["filter"], "on")
+        # Off: nothing changes, it only counts what it would have stopped.
+        self.assertTrue(off_me["text"])
+        self.assertNotIn("wouldFilter", off_me)
+        self.assertTrue(off_other["text"])
+        self.assertEqual(off_other["wouldFilter"], "no-match")
+        self.assertNotIn("filtered", off_other)
+        # On: his voice as ever, with its proof; someone else's not decoded, no text, no proof.
+        self.assertTrue(on_me["text"])
+        self.assertEqual(on_me["speaker"]["decision"], "me")
+        self.assertIn("speakerProof", on_me)
+        self.assertEqual(on_other["text"], "")
+        self.assertEqual(on_other["filtered"]["reason"], "no-match")
+        self.assertNotIn("speakerProof", on_other)
+        # Not enough to judge: it passes (a filter that eats his words is worse than none).
+        self.assertTrue(short["text"])
+        self.assertNotIn("filtered", short)
+        self.assertTrue(noisy["text"])
+        self.assertNotIn("filtered", noisy)
+        # The off switch, and no print: exactly as before.
+        self.assertTrue(again["text"])
+        self.assertNotIn("filtered", again)
+        self.assertTrue(gone["text"])
+        self.assertNotIn("filtered", gone)
+
+    def test_filter_needs_this_devices_own_print(self):
+        st, _m, off_other, _on, on_other, *_ = self.filter_flow("android")
+        self.assertEqual(st["filter"], "no-print")
+        self.assertNotIn("wouldFilter", off_other)
+        self.assertTrue(on_other["text"])
+        self.assertNotIn("filtered", on_other)
+
+    def test_filter_holds_partials_until_checked(self):
+        sg = self.signer
+
+        async def flow(ws):
+            await ws.send(json.dumps({"t": "hello", "device": "iphone"}))
+            r = await self.ask(ws, {"t": "enrol", "op": "start", "device": "iphone", "keepAudio": False, "ticket": sg.vp("enrol", "iphone")})
+            eid = r["enrolment"]
+            for i in range(V.ENROL_MIN):
+                await self.utter(ws, 700 + i, tone(440, seed=i), enrol=eid)
+            await self.ask(ws, {"t": "enrol", "op": "commit", "enrolment": eid})
+            await ws.send(json.dumps({"t": "filter", "on": True}))
+            await ws.recv()
+
+            async def partials(uid, audio):
+                await ws.send(json.dumps({"t": "begin", "id": uid}))
+                got = []
+                step = int(0.05 * V.RATE)
+                for k in range(0, len(audio), step):
+                    x = audio[k : k + step]
+                    await ws.send(b"\x01" + (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes())
+                    await asyncio.sleep(0.005)
+                await ws.send(json.dumps({"t": "end", "id": uid}))
+                while True:
+                    m = json.loads(await ws.recv())
+                    if m.get("t") == "partial" and m.get("id") == uid:
+                        got.append(m["audioMs"])
+                    if m.get("t") == "final" and m.get("id") == uid:
+                        return got, m
+
+            other, of = await partials(21, tone(1000, speech_s=3.0))
+            me, mf = await partials(22, tone(440, speech_s=3.0))
+            await self.ask(ws, {"t": "voiceprint", "op": "delete", "device": "*", "ticket": sg.vp("delete", "*")})
+            return other, of, me, mf
+
+        other, of, me, mf = self.run_ws(flow)
+        self.assertEqual(other, [])  # nothing of someone else's was ever decoded
+        self.assertEqual(of["text"], "")
+        self.assertTrue(mf["text"])
+        self.assertTrue(me)
+        # His first partial waits for the check: enough speech heard to judge.
+        self.assertGreaterEqual(me[0], int(V.FILTER_BELOW["campp"].min_speech_s * 1000))
 
     def test_flow(self):
         sg = self.signer

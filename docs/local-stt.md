@@ -379,11 +379,14 @@ The voiceprint adds these (next section):
 | client | `{"t":"enrol","op":"start","rid","device","ticket","keepAudio":false}`          | open an enrolment: needs an `enrol` ticket for that device (passkey) |
 | client | `{"t":"enrol","op":"commit"\|"cancel","rid","enrolment"}`                       | save it (10 sentences at least), or drop it                     |
 | client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`   | what is enrolled (status ticket); delete (passkey ticket)       |
+| client | `{"t":"filter","on":bool}`                                                      | the voiceprint filter on this socket (off until said)           |
 | server | `ready` + `"speaker":{"models":["campp"]}`                                      | the check is on                                                 |
 | server | `final` + `"speaker":{score,decision,model,device,speechS,snrDb[,reason]}`      | the check on that final                                         |
 | server | `final` + `"speakerProof":"<payload>.<sig>"`                                    | the Mac's signature over that tag and the final's text          |
 | server | `final` + `"enrol":{ok,n[,reason]}`                                             | an enrolment sentence kept (or why not)                         |
 | server | `{"t":"enrol"\|"voiceprint","rid","ok"[,"error"],…}`                            | the answer to a request                                         |
+| server | `final` + `"filtered":{reason,score}`, text empty                               | the filter stopped it: nothing decoded, no proof                |
+| server | `final` + `"wouldFilter":reason`                                                | the filter is not on; it would have stopped this one            |
 
 ## Voiceprint: "only my voice"
 
@@ -545,9 +548,9 @@ bands on those after he enrols, before anything relies on them.
   devLog gets `{ev: "speaker-other", mode: "passive", n, score, model}`
   (a count, never the text). **unknown** passes, as before; so does a
   failure of the Mac (the rest goes to the cloud, unchecked).
-- **Active mode:** nothing is dropped (#380: noise and a talker under him
-  still cost his own speech). An "other" counts as one rejection towards
-  passive (docs/wake-word.md, "State machine").
+- **Active mode:** nothing is dropped unless he turned on the filter below
+  (#380: noise and a talker under him still cost his own speech). An "other"
+  counts as one rejection towards passive (docs/wake-word.md, "State machine").
 - **The line, signed:** the Mac signs each final's tag together with its
   text, `{v:1, uid, thread, at, text, decision, score, model, device, …}`,
   where `uid` is the page's fresh id for that utterance (`begin`) and
@@ -607,6 +610,112 @@ model in that list with a print. ERes2NetV2's bands (0.34 / 0.25, ≥ 3 s:
 0.37 / 0.27) are #394's 1 % FA points and marked `provisional`; it needs a
 per-device enrolment (#394: it rejected 85–98 % of his Android clips
 against an iPhone enrolment).
+
+## Only my voice: the filter
+
+Approved by the owner's tap on 2026-11-06 (about 01:02 JST). **Default off**:
+flag [`stt.voiceprint-filter`](https://lianki.com/dev/flags#stt.voiceprint-filter).
+With it on, a final on his local route that clearly is not his voice is not
+transcribed and not posted. It filters this route only (`server.py`), never
+another user, and it is **not a security gate**: voice approves nothing,
+with or without it.
+
+```
+page ─ GET /api/dev/voice-filter (owner, else 404) ─▶ flag
+     ─ {t:"filter",on:true} ─▶ server.py: this socket only, off until said
+utterance ─▶ CAM++ first ─ clear mismatch ─▶ final {text:"", filtered:{reason,score}}: no decode, no proof, no text in any log
+                         └ otherwise ─────▶ SenseVoice, as before
+```
+
+**When it stops a final** (`voiceprint.filter_reason`, all of these):
+
+- this device has its own print (a print from another device says nothing:
+  the channel moves his scores too much, below);
+- CAM++ scored it **under 0.15** (`FILTER_BELOW`), well under the tag's
+  "other" line (0.18–0.20);
+- at least **2 s of speech**, and a read SNR of at least **8 dB** (a true SNR
+  of about 5 dB).
+
+Anything else passes: short words, noise, no print, a model that fails, a
+store it cannot read. Then behaviour is exactly as today, and so it is on the
+cloud route (the Mac is unreachable: nothing to check with; the dot says so).
+
+**What it costs.** With the filter on, the check runs before the decode, not
+beside it, so a final waits about 6 ms per audio second more (30 ms on 5 s; an
+estimate from "Latency" above, not a foreground measurement). Partials wait
+until 2 s of speech have been heard and not stopped, so the first partial comes
+at about 2–2.5 s rather than 0.43 s. With the filter off, neither changes.
+
+**Seeing it.** On his device, never text:
+
+- a short note over the mic for 3 s when a line is stopped ("Not your voice: not sent");
+- Voiceprint panel (chat menu): whether it is working, today's count, the last
+  score; with the filter off, the count it **would** have stopped (the lines
+  still land), which is the real measure of false rejects on his own speech;
+- the devLog: `voice-filtered {n, reason, score, durationMs}`,
+  `voice-would-filter {…}`, `voice-filter {on}`;
+- on the Mac: `final #12: 4.2s audio, filtered no-match 0.07 (3 filtered)`.
+
+A stopped line goes nowhere else: not the cloud, not the clip sink
+(`filterVerdict`, `MicButton.tsx`). In passive mode it is dropped as "other" is.
+
+**Off.** The flag (a change reaches the page within 30 s, at the next
+utterance; nothing polls), or **Pause on this device** in the panel
+(`lk:agent-voice-filter` = `off`, at once).
+
+**The print.** Only his, read by him in the Voiceprint panel, on each device
+he uses (above). Nothing was enrolled from the clips: they hold other people's
+voices too. The evaluation below uses throwaway means in memory only; other
+voices' embeddings go with the process.
+
+### Where the line comes from
+
+`scripts/local-stt/voice-filter-eval.py`, 2026-11-06, files only, aggregates
+only. **No real print exists yet**: his side is held out of a throwaway mean of
+his 20 labelled iPhone clips (labelled by an agent, see
+[stt-ab.md](stt-ab.md), "References"). Run it again with `--real-print` after he
+enrols, before relying on the line: reading aloud on the device will shift
+his scores.
+
+| his own speech, at line 0.15 (≥ 2 s, ≥ 8 dB) | n | stopped |
+| --- | --- | --- |
+| whole clips, 5-fold; clean, phone band, dull, −12 / −24 dB | 20 each | 0 |
+| 3 s and 5 s crops | 32, 19 | 0 |
+| restaurant 20 / 10 / 5 / 0 dB, street 10 dB (whole) | 20 each | 0 |
+| only 10 clips in the mean, 30 draws (the panel's minimum) | 300 | **8 (2.7 %)** |
+| the 191 unlabelled clips (a mixture: an upper bound on his) | 191 | 0 |
+
+Zero of 71 clean whole and cropped clips has a 95 % upper bound of about 4 %,
+so read "0" as "under 4 %". The 2.7 % comes from a few poor means: **read all 20
+sentences at enrolment**, not 10.
+
+| line (same gates) | his, 10 clips in the mean | real people, clean: whole · 3 s | TTS, clean | shop PA | real people · TTS, in a noisy room |
+| --- | --- | --- | --- | --- | --- |
+| 0.08 | 0.7 % | 29 % · 18 % | 73 % | 17 % | 29 % · 19 % |
+| 0.12 | 2.3 % | 43 % · 36 % | 83 % | 33 % | 50 % · 23 % |
+| **0.15** | **2.7 %** | **71 % · 55 %** | **88 %** | **58 %** | **57 % · 27 %** |
+| 0.18 | 3.7 % (his 3 s crops: 3.1 %) | 79 % · 82 % | 92 % | 83 % | 57 % · 27 % |
+
+**What this does not show.**
+
+- **It may catch little of what he actually hears.** Against his iPhone mean,
+  **0 of the 191 unlabelled clips** would have been stopped. Some of those are
+  other voices; many are him talking in the room, which no voiceprint can
+  filter. The wake word is for those. The rates above are public recordings
+  and TTS, on another channel. His household's voices on his own phone are not
+  in the data, and they are the case that matters.
+- **Others under 2 s of speech always pass.** So do those under 8 dB.
+- **A whisper, a cold, a Mac mic:** not in the clips (all phones). The phone-band,
+  dull and quiet channels held up, but they are simulations, not those. A whisper
+  has no voiced pitch and may score low. This is why each device gets its own print
+  and why the filter's first days should be spent off, on the "would have been
+  stopped" count.
+- **A same-device print raises every score.** A mean from 5 of his Android clips
+  moved the other 80 from a median of 0.34 to 0.61. That is good for him, but
+  someone else in that room may gain as well: it may stop fewer of them.
+
+Suggested order: enrol, leave the flag off for a day of talking, look at the
+"would have been dropped" count, then turn it on.
 
 ## Short utterances and the language
 
@@ -792,6 +901,11 @@ this is owner-only.
   oxmgr, cloudflared and curl: the oxmgr entry left exactly as it was, the
   custom key path reaching the server, and the restore when the listener
   fails to start, `/health` fails, or the server never says "listening".
+- `scripts/local-stt/test_voiceprint.py`, `FilterLineTest` and the filter's
+  server tests: stops only a clear mismatch on this device's own print; passes
+  a short, noisy or unprinted one; holds partials; off is exactly as before.
+  `unit/voiceprint.test.ts`, "the voiceprint filter on the page": a stopped
+  final goes nowhere, the tally, the switch, every failure reading as off.
 - `unit/voiceprint.test.ts`: the page's side of the voiceprint: consent
   gating (nothing captured or started on the Mac before the tap), reading
   and its "again" reasons, save at 10 and by itself at 20, cancel, delete

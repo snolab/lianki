@@ -24,6 +24,7 @@ when done. The report prints no clip name and no text.
 from __future__ import annotations
 
 import argparse
+import base64
 import glob
 import json
 import os
@@ -372,10 +373,6 @@ def cloud(a) -> None:
         s = v.verify(x, None)
         if s["decision"] != "me":
             continue
-        import base64
-
-        import mimetypes  # noqa: F401
-
         body = json.dumps({"audio": base64.b64encode(open(w, "rb").read()).decode(), "initial_prompt": HINT_ZH,
                            "condition_on_previous_text": False, "no_speech_threshold": 0.5}).encode()
         req = urllib.request.Request(
