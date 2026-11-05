@@ -150,6 +150,14 @@ Guards (each tested in `unit/byok-proxy.test.ts`):
   status, ms, hops, bytes}`. Never the key, a header, the URL, a body or the
   provider's message (a test spies on every console method).
 
+**Testing it for real.** The guards' unit tests inject `fetch` and the
+resolver, so they cannot see what a Worker's runtime refuses: the first deploy
+answered `403 dns` to every provider, because workerd throws on `redirect:
+"error"` (2026-11-05, found by the post-deploy smoke, fixed). After changing the
+outgoing calls, run the relay's modules in `wrangler dev --local` (under Node;
+wrangler cannot forward requests under Bun), then POST to production with a
+throwaway invalid key: an allowlisted provider must answer `502 auth`.
+
 **Residual risks.**
 
 - *DNS rebinding / pinning.* A Worker's `fetch()` resolves the name itself and
