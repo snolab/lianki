@@ -34,8 +34,9 @@ class TestPreparedStatement {
   }
 
   runSync(): { success: true; meta: Record<string, unknown> } {
-    this.db.prepare(this.query).run(...(this.params as never[]));
-    return { success: true, meta: {} };
+    const r = this.db.prepare(this.query).run(...(this.params as never[]));
+    // D1 reports the rows a write touched as meta.changes.
+    return { success: true, meta: { changes: Number(r.changes) } };
   }
 }
 

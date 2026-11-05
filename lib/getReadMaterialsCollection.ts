@@ -393,9 +393,35 @@ export async function findReadMaterialBySource(
 }
 
 /**
+ * The owner renamed a material (/read row menu). The title is marked as the
+ * user's own (`title_custom`), so a re-import of its source keeps it. Leaves
+ * `updated_at` alone: renaming is not new reading. False when this user has
+ * no such material. `title` must already be clean (lib/read/title.ts).
+ */
+export async function renameReadMaterial(
+  userId: string,
+  materialId: string,
+  title: string,
+): Promise<boolean> {
+  if (dbBackend() === "d1") {
+    const r = (await getD1()
+      .prepare("UPDATE read_materials SET title = ?, title_custom = 1 WHERE id = ? AND user_id = ?")
+      .bind(title, materialId, userId)
+      .run()) as { meta?: { changes?: number } };
+    return (r.meta?.changes ?? 0) > 0;
+  }
+  if (!ObjectId.isValid(materialId)) return false;
+  const res = await getReadMaterialsCollection(userId).updateOne(
+    { _id: new ObjectId(materialId), userId },
+    { $set: { title } },
+  );
+  return res.matchedCount > 0;
+}
+
+/**
  * A re-imported source: the same material (id, created date, position row)
- * gets the new title, lines, meta and book hash, and moves to the top of the
- * list. D1 only.
+ * gets the new lines, meta and book hash, and moves to the top of the list.
+ * The new title too, unless the user renamed it (`title_custom`). D1 only.
  */
 export async function replaceReadMaterialText(
   userId: string,
@@ -409,7 +435,9 @@ export async function replaceReadMaterialText(
   await replaceReadMaterialContent(userId, materialId, content);
   await getD1()
     .prepare(
-      `UPDATE read_materials SET title = ?, lines = ?, content_hash = ?, updated_at = ?
+      `UPDATE read_materials
+       SET title = CASE WHEN title_custom = 1 THEN title ELSE ? END,
+           lines = ?, content_hash = ?, updated_at = ?
        WHERE id = ? AND user_id = ?`,
     )
     .bind(title, JSON.stringify(lines), contentHash, now.toISOString(), materialId, userId)

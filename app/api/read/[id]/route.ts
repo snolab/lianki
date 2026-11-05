@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import { getReadMaterialById, deleteReadMaterial } from "@/lib/getReadMaterialsCollection";
+import {
+  getReadMaterialById,
+  deleteReadMaterial,
+  renameReadMaterial,
+} from "@/lib/getReadMaterialsCollection";
+import { cleanTitle } from "@/lib/read/title";
+import { sameOriginJson } from "@/lib/security/same-origin";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { materialWords, summarizeMaterials } from "@/lib/read/progress";
 import { readFlags } from "@/lib/flags-store";
@@ -57,6 +63,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     createdAt: material.createdAt.toISOString(),
     updatedAt: material.updatedAt.toISOString(),
   });
+}
+
+// PATCH /api/read/[id] {title} - Rename the user's own material (the /read
+// row menu). Same-origin JSON only; the title is cleaned and capped
+// (lib/read/title.ts) and marked as the user's, so a re-import of the
+// source keeps it.
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!sameOriginJson(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const body = (await request.json().catch(() => null)) as { title?: unknown } | null;
+  const title = cleanTitle(body?.title);
+  if (!title) return NextResponse.json({ error: "bad-title" }, { status: 400 });
+  const { id } = await params;
+  if (!(await renameReadMaterial(session.user.id, id, title))) {
+    return NextResponse.json({ error: "Material not found" }, { status: 404 });
+  }
+  return NextResponse.json({ id, title });
 }
 
 // DELETE /api/read/[id] - Delete material

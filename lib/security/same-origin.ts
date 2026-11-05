@@ -12,7 +12,12 @@
  * Any miss is refused before the handler reads the body.
  */
 export function sameOriginJsonPost(req: Request): boolean {
-  if (req.method !== "POST") return false;
+  return req.method === "POST" && sameOriginJson(req);
+}
+
+/** The same rule for any state-changing method (POST, PATCH, PUT, DELETE). */
+export function sameOriginJson(req: Request): boolean {
+  if (req.method === "GET" || req.method === "HEAD") return false;
   const type = req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   if (type !== "application/json") return false;
   const site = req.headers.get("sec-fetch-site");
