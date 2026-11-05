@@ -433,6 +433,89 @@ shared catalogue. Built:
   redirects refused; the search merge, CSV, the one-file unzip; the D1 store
   (one row per work, slug suffix, curated keys win).
 
+### More libraries in the guide (owner, 13:02 JST 2026-11-05)
+
+The guide is data: `lib/books/libraries.ts` (`LIBRARIES`, grouped by
+language; `checkLibraries` in `unit/books-libraries.test.ts`). Each entry has
+a name, URL, what it offers (tags the page translates), the licence or terms
+as the site states them, and a support level: **paste** (a pasted link works:
+link parser + metadata reader + cleaner) or **guide** (link out only, with
+one reason: `no-reader` — fine terms, no reader yet; `terms` — the site's
+terms allow non-commercial or private use only, or forbid automated access;
+`no-facts` — its records do not state what the rule needs). The viewer's own
+language group is shown first, then the many-language libraries.
+
+Checked 2026-11-05 (reachable — Gallica, HathiTrust and Projekt Gutenberg-DE
+answer bots with 403, their terms were read from their published pages — and
+terms read; a couple of requests per site):
+
+| Language | Library | Support | Why / terms |
+| --- | --- | --- | --- |
+| many | Project Gutenberg | paste | PD in the USA, PG License |
+| many | Internet Archive · Open Library | guide (no-facts) | per-item rights; lending copies of in-copyright books beside PD scans; uploader metadata |
+| many | HathiTrust | guide (no-reader) | full view only for works it finds PD; scans |
+| en | Standard Ebooks | **paste (new)** | PD in the US; its own work CC0 1.0 |
+| ja | 青空文庫 | paste | PD; credit the volunteers |
+| fr | Gallica (BnF) | guide (terms) | non-commercial reuse free; commercial reuse needs a paid licence |
+| de | Deutsches Textarchiv | guide (no-reader) | CC BY-SA; first editions with place and year — a good next reader |
+| de | Projekt Gutenberg-DE | guide (terms) | private use only |
+| es | Biblioteca Virtual Miguel de Cervantes | guide (terms) | its legal notice, no open licence |
+| it | Liber Liber | guide (terms) | personal use; many editions CC BY-NC(-SA/ND) |
+| pl | Wolne Lektury | guide (no-reader) | PD works, editions CC BY-SA 3.0; its API has no death years |
+| sv | Projekt Runeberg | guide (no-reader) | Nordic PD works, scans + OCR |
+| la/grc | Perseus · Scaife | guide (no-facts) | CC BY-SA; a modern critical edition has an editor to date, an ancient work no country of first publication |
+| la | The Latin Library | guide (no-facts) | no licence or edition stated |
+| zh | ctext.org | guide (terms) | scraping forbidden by its terms; non-commercial |
+| he | Project Ben-Yehuda | guide (no-reader) | PD works free for any use; works "by permission" may not be reused |
+| 18 languages | Wikisource: en, zh, ru, fr, de, es, it, pt, la, pl, uk, nl, sv, ja, ko, ar, he, bn | paste (**16 new**) | PD works; transcription CC BY-SA 4.0 |
+
+Not listed: **Project Gutenberg Australia** (its basis is Australian law:
+many of its texts are protected in the US and elsewhere, against our rule);
+**lib.ru** (a mix of in-copyright works, not a public-domain library);
+**Hindawi** (books moved behind a bot challenge at safahat.org, its licence
+could not be read); **Shamela** (modern edited editions — an editor's rights —
+and no terms we could confirm); **zeno.org** (unreachable on 2026-11-05).
+
+New readers (one per host format, no per-language code):
+
+- **Wikisource**: `WIKISOURCE` (host → language, local name) is the only list;
+  link parser, search, cleaner and Wikidata reader are shared. A work item
+  lists the translators of *all* its editions (P655 on "The Raven" names a
+  Spanish one), so for an edition page only the edition's own P655 counts,
+  and an edition whose P407 language differs from its work's is a
+  translation. A page that is mostly links to its own sub-pages
+  (`./Title/Chapter`) is a contents page, not a book (`isContentsPage`):
+  refused as no text. Search: 3 hits per Wikisource site, 40 in all.
+- **Standard Ebooks** (`standardebooks.org/ebooks/<author>/<title>[/<translator
+  or illustrator>]`, any file under it): the ebook page names the work's
+  English Wikipedia article (schema:sameAs on the Book) and each author's;
+  other people come from its "Illustrated by / Translated by / Edited by …"
+  lines. English Wikipedia's API (`en.wikipedia.org`, meta host) gives their
+  Wikidata items; Wikidata the death years, P577 and P495, as for Wikisource.
+  Translated by → a translation; a person without an article → no death
+  year; another role → unknown role; a placeholder page → not found. The file
+  is `/text/single-page` (XHTML, `standardebooks-xhtml`): title page,
+  imprint, contents, endnotes, colophon and the CC0 "uncopyright" are dropped
+  by epub:type. Illustrated editions carry their images inline (Alice: 74 MB
+  of data: URIs, 200 KB of text), so every source file now streams through a
+  data:-URI stripper: 120 MB may arrive, 6 MB may be kept. Its catalogue
+  search (`/ebooks?query=`) joins the library search. Pride and Prejudice is
+  refused today for its Wikidata item states no country (P495): nothing is
+  guessed.
+
+### Table of contents (owner, 13:22 JST 2026-11-05)
+
+`lib/books/toc.ts` builds it from the groups shown: one entry per language
+section (`#books-<lang>`), its levels as sub-items when it has two or more
+(`#books-<lang>-<level>`, on the first book of that level), then 找更多书
+(`#books-find-more`) and its library guide (`#books-find-more-libraries`).
+It follows the filter (a group with no match has no section and no entry).
+Desktop: a sticky index right of the list; phone: a sticky glass bar naming
+the current section that opens a sheet. The current section comes from an
+IntersectionObserver (no polling, no scroll handler); jumps scroll smoothly
+unless reduced motion is asked for. Tests: every section has an entry, sub-
+items resolve to anchors the list sets, the filter drops empty groups.
+
 ## A first multilingual text: the Bible, in its original languages
 
 The owner's example (16:34 JST), refined at 16:36: chosen for language-learning

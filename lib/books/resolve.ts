@@ -13,6 +13,7 @@
 
 import { BOOK_LIMITS } from "@/lib/read/book";
 import { CATALOGUE, SOURCE_HOSTS, type CatalogueBook } from "./catalogue";
+import { STANDARD_EBOOKS_HOST, WIKISOURCE } from "./libraries";
 import { BookSourceFail, decodeSource } from "./source";
 import { newSlug } from "./slug";
 import { pdIn, normaliseCountry, type Creator, type CreatorRole } from "./terms";
@@ -21,16 +22,26 @@ import { pdIn, normaliseCountry, type Creator, type CreatorRole } from "./terms"
 export type BookLink =
   | { host: "gutenberg"; id: number }
   | { host: "aozora"; person: string; card: number }
-  | { host: "wikisource"; site: string; title: string };
+  | { host: "wikisource"; site: string; title: string }
+  /** A Standard Ebooks ebook: author/title[/translator-or-illustrator] (its URL path). */
+  | { host: "standardebooks"; path: string };
 
-/** Wikisource sites we read: their language is the text's (data, one per site). */
-export const WIKISOURCE_SITES: Readonly<Record<string, string>> = {
-  "zh.wikisource.org": "zh",
-  "ru.wikisource.org": "ru",
-};
+/** Wikisource sites we read → the language of their texts (lib/books/libraries.ts). */
+export const WIKISOURCE_SITES: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(WIKISOURCE).map(([host, s]) => [host, s.lang]),
+);
 
-/** Hosts the metadata readers may fetch (besides the source hosts). */
-export const META_HOSTS = [...SOURCE_HOSTS, "www.wikidata.org", "gutendex.com"] as const;
+/**
+ * Hosts the metadata readers may fetch (besides the source hosts): Wikidata,
+ * Gutendex, and English Wikipedia (only its API, to find the Wikidata item a
+ * Standard Ebooks page names by its Wikipedia article).
+ */
+export const META_HOSTS: readonly string[] = [
+  ...SOURCE_HOSTS,
+  "www.wikidata.org",
+  "gutendex.com",
+  "en.wikipedia.org",
+];
 
 /** A link the user pasted → its host and id, or null when it is not a book link we read. */
 export function parseBookLink(raw: string): BookLink | null {
@@ -54,6 +65,16 @@ export function parseBookLink(raw: string): BookLink | null {
     const file = /^\/cards\/(\d{6})\/files\/(\d{1,7})_\d+\.html$/.exec(path);
     return file ? { host: "aozora", person: file[1], card: Number(file[2]) } : null;
   }
+  if (host === STANDARD_EBOOKS_HOST || host === `www.${STANDARD_EBOOKS_HOST}`) {
+    // /ebooks/<author>/<title>[/<translator or illustrator>], or a file under it.
+    const seg = "[a-z0-9]+(?:[-_][a-z0-9]+)*";
+    const m = new RegExp(
+      `^/ebooks/(${seg})/(${seg})(?:/(?!(?:text|downloads)(?:/|$))(${seg}))?(?:/(?:text|downloads)(?:/[\\w.-]*)?)?/?$`,
+    ).exec(path);
+    return m
+      ? { host: "standardebooks", path: [m[1], m[2], m[3]].filter(Boolean).join("/") }
+      : null;
+  }
   const site = host.replace(/^([a-z]+)\.m\.wikisource\.org$/, "$1.wikisource.org");
   if (WIKISOURCE_SITES[site]) {
     const m = /^\/wiki\/(.+)$/.exec(path);
@@ -76,6 +97,7 @@ export function parseBookLink(raw: string): BookLink | null {
 export function linkKey(l: BookLink): string {
   if (l.host === "gutenberg") return `gutenberg:${l.id}`;
   if (l.host === "aozora") return `aozora:${l.person}/${l.card}`;
+  if (l.host === "standardebooks") return `standardebooks:${l.path}`;
   return `wikisource:${l.site}/${l.title}`;
 }
 
@@ -83,6 +105,7 @@ export function linkKey(l: BookLink): string {
 export function linkPage(l: BookLink): string {
   if (l.host === "gutenberg") return `https://www.gutenberg.org/ebooks/${l.id}`;
   if (l.host === "aozora") return `https://www.aozora.gr.jp/cards/${l.person}/card${l.card}.html`;
+  if (l.host === "standardebooks") return `https://${STANDARD_EBOOKS_HOST}/ebooks/${l.path}`;
   return `https://${l.site}/wiki/${encodeURI(l.title.replace(/ /g, "_"))}`;
 }
 
@@ -215,7 +238,7 @@ export function allowedMetaUrl(raw: string): URL | null {
     return null;
   }
   if (u.protocol !== "https:" || u.port || u.username || u.password) return null;
-  return (META_HOSTS as readonly string[]).includes(u.hostname) ? u : null;
+  return META_HOSTS.includes(u.hostname) ? u : null;
 }
 
 /** Fetch a metadata page or JSON from an allowed host: redirects by hand within them, size-capped. */
@@ -620,10 +643,117 @@ const yearOf = (v: unknown): number | null => {
   return m ? Number(m[1]) : null;
 };
 
+type Get = (url: string) => Promise<string>;
+
+/** Wikidata items by id (at most 40 per call), with their claims and labels. */
+async function wdEntities(ids: string[], get: Get): Promise<Map<string, WdEntity>> {
+  if (!ids.length) return new Map();
+  const j = JSON.parse(
+    await get(
+      `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims%7Clabels&ids=${ids.slice(0, 40).join("%7C")}`,
+    ),
+  ) as { entities?: Record<string, WdEntity> };
+  return new Map(Object.entries(j.entities ?? {}));
+}
+
+/** What Wikidata states about a work and its people. */
+interface WikidataFacts {
+  creators: StatedCreator[];
+  firstYear: number | null;
+  country: string | null;
+  translation: boolean;
+}
+
+/** A person an edition's page names: their Wikidata item when it is known. */
+interface NamedPerson {
+  id: string | null;
+  name: string;
+  role: CreatorRole;
+}
+
+/**
+ * Facts from a Wikidata item (an edition → its work via P629, or the work
+ * itself): P50 authors, P655 translators, P98 editors, P110 illustrators,
+ * each one's P570 death year (only at year precision or better; two different
+ * stated years → uncertain), the earliest P577 publication year and the P495
+ * country's P297 code. `extra` people (the edition's, as its page names them)
+ * join the work's; one without a Wikidata item has no stated death year.
+ * Names in `lang`, else English.
+ */
+async function wikidataFacts(
+  qid: string | undefined,
+  lang: string,
+  get: Get,
+  extra: NamedPerson[] = [],
+): Promise<WikidataFacts> {
+  let firstYear: number | null = null;
+  let translation = false;
+  let countryIds: string[] = [];
+  let workLangId: string | undefined;
+  let editionLangId: string | undefined;
+  const people = new Map<string, CreatorRole>();
+  if (qid) {
+    const own = (await wdEntities([qid], get)).get(qid);
+    const workId = itemIds(own, "P629")[0];
+    const work = workId ? (await wdEntities([workId], get)).get(workId) : own;
+    const roles: [string, CreatorRole][] = [
+      ["P50", "author"],
+      ["P655", "translator"],
+      ["P98", "editor"],
+      ["P110", "illustrator"],
+    ];
+    const edition = workId ? own : undefined;
+    for (const e of [work, own])
+      for (const [p, role] of roles) {
+        // A work item lists the translators of all its editions (P655 on "The
+        // Raven" names a Spanish one): when this page is an edition, only the
+        // edition's own translators are its creators.
+        if (p === "P655" && edition && e === work) continue;
+        for (const id of itemIds(e, p)) if (!people.has(id)) people.set(id, role);
+      }
+    translation = itemIds(edition ?? work, "P655").length > 0;
+    // An edition in another language than its work is a translation, stated or not.
+    if (edition) {
+      workLangId = itemIds(work, "P407")[0];
+      editionLangId = itemIds(edition, "P407")[0];
+    }
+    const years = [work, own]
+      .flatMap((e) => claims(e, "P577").map(yearOf))
+      .filter((y): y is number => y !== null);
+    // The earliest stated publication of the work (or of this edition, when the work has none).
+    firstYear = years.length ? Math.min(...years) : null;
+    countryIds = itemIds(work, "P495").concat(itemIds(own, "P495"));
+  }
+  for (const p of extra) if (p.id && !people.has(p.id)) people.set(p.id, p.role);
+  if (extra.some((p) => p.role === "translator")) translation = true;
+  if (workLangId && editionLangId && workLangId !== editionLangId) translation = true;
+  const looked = await wdEntities([...people.keys(), ...countryIds.slice(0, 1)], get);
+  const creators: StatedCreator[] = [...people].map(([id, role]) => {
+    const e = looked.get(id);
+    const deaths = claims(e, "P570").map(yearOf);
+    const known = [...new Set(deaths.filter((y): y is number => y !== null))];
+    const name =
+      e?.labels?.[lang]?.value ??
+      e?.labels?.en?.value ??
+      extra.find((p) => p.id === id)?.name ??
+      id;
+    return { name, role, deathYear: known.length === 1 ? known[0] : null };
+  });
+  for (const p of extra) if (!p.id) creators.push({ name: p.name, role: p.role, deathYear: null });
+  const c = countryIds[0] ? looked.get(countryIds[0]) : undefined;
+  const iso = claims(c, "P297")[0];
+  return {
+    creators,
+    firstYear,
+    country: typeof iso === "string" ? iso.toUpperCase() : null,
+    translation,
+  };
+}
+
 /** Facts for a Wikisource page from its Wikidata item (edition → its work), people's death years. */
 export async function wikisourceFacts(
   link: Extract<BookLink, { host: "wikisource" }>,
-  get: (url: string) => Promise<string>,
+  get: Get,
 ): Promise<WorkFacts | null> {
   const api = `https://${link.site}/w/api.php?action=query&format=json&formatversion=2&prop=pageprops%7Crevisions&rvprop=ids&redirects=1&titles=${encodeURIComponent(link.title)}`;
   const q = JSON.parse(await get(api)) as {
@@ -640,65 +770,18 @@ export async function wikisourceFacts(
   if (!page || page.missing || !page.revisions?.[0]) return null;
   const rev = page.revisions[0].revid;
   const title = page.title;
-  const entities = async (ids: string[]) => {
-    if (!ids.length) return new Map<string, WdEntity>();
-    const j = JSON.parse(
-      await get(
-        `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims%7Clabels&ids=${ids.slice(0, 40).join("%7C")}`,
-      ),
-    ) as { entities?: Record<string, WdEntity> };
-    return new Map(Object.entries(j.entities ?? {}));
-  };
   const lang = WIKISOURCE_SITES[link.site];
-  const qid = page.pageprops?.wikibase_item;
-  let creators: StatedCreator[] = [];
-  let firstYear: number | null = null;
-  let country: string | null = null;
-  let translation = false;
-  if (qid) {
-    const own = (await entities([qid])).get(qid);
-    const workId = itemIds(own, "P629")[0];
-    const work = workId ? (await entities([workId])).get(workId) : own;
-    const roles: [string, CreatorRole][] = [
-      ["P50", "author"],
-      ["P655", "translator"],
-      ["P98", "editor"],
-      ["P110", "illustrator"],
-    ];
-    const people = new Map<string, CreatorRole>();
-    for (const e of [work, own])
-      for (const [p, role] of roles)
-        for (const id of itemIds(e, p)) if (!people.has(id)) people.set(id, role);
-    translation = itemIds(own, "P655").length > 0 || itemIds(work, "P655").length > 0;
-    const years = [work, own]
-      .flatMap((e) => claims(e, "P577").map(yearOf))
-      .filter((y): y is number => y !== null);
-    // The earliest stated publication of the work (or of this edition, when the work has none).
-    firstYear = years.length ? Math.min(...years) : null;
-    const countryIds = itemIds(work, "P495").concat(itemIds(own, "P495"));
-    const looked = await entities([...people.keys(), ...countryIds.slice(0, 1)]);
-    creators = [...people].map(([id, role]) => {
-      const e = looked.get(id);
-      const deaths = claims(e, "P570").map(yearOf);
-      // Two different stated death years: uncertain, so none.
-      const known = [...new Set(deaths.filter((y): y is number => y !== null))];
-      const name = e?.labels?.[lang]?.value ?? e?.labels?.en?.value ?? id;
-      return { name, role, deathYear: known.length === 1 ? known[0] : null };
-    });
-    const c = countryIds[0] ? looked.get(countryIds[0]) : undefined;
-    const iso = claims(c, "P297")[0];
-    country = typeof iso === "string" ? iso.toUpperCase() : null;
-  }
+  const wd = await wikidataFacts(page.pageprops?.wikibase_item, lang, get);
   const t = title.replace(/ /g, "_");
   return {
     link: { ...link, title },
     title: title.replace(/\s*\([^)]*\)\s*$/, ""),
-    author: creators.find((c) => c.role === "author")?.name ?? "",
+    author: wd.creators.find((c) => c.role === "author")?.name ?? "",
     lang,
-    creators,
-    firstPublicationYear: firstYear,
-    workCountry: country,
-    translation,
+    creators: wd.creators,
+    firstPublicationYear: wd.firstYear,
+    workCountry: wd.country,
+    translation: wd.translation,
     source: {
       page: `https://${link.site}/wiki/${encodeURI(t)}`,
       file: `https://${link.site}/api/rest_v1/page/html/${encodeURIComponent(t)}/${rev}`,
@@ -711,14 +794,150 @@ export async function wikisourceFacts(
   };
 }
 
-/** The facts for a link, read from its host (Gutenberg's page, Aozora's card, Wikidata). */
-export async function readFacts(
-  link: BookLink,
-  get: (url: string) => Promise<string>,
+// ── Standard Ebooks: the ebook page, then Wikidata through Wikipedia ──────
+
+/** An English Wikipedia article URL → its title, or null. */
+function enwikiTitle(url: string): string | null {
+  const m = /^https:\/\/en\.wikipedia\.org\/wiki\/([^?#]+)$/.exec(url.trim());
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]).replace(/_/g, " ");
+  } catch {
+    return null;
+  }
+}
+
+/** English Wikipedia titles → their Wikidata items (normalised titles and redirects followed). */
+async function enwikiItems(titles: string[], get: Get): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!titles.length) return out;
+  const j = JSON.parse(
+    await get(
+      `https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&prop=pageprops&ppprop=wikibase_item&redirects=1&titles=${titles
+        .slice(0, 40)
+        .map(encodeURIComponent)
+        .join("%7C")}`,
+    ),
+  ) as {
+    query?: {
+      normalized?: { from: string; to: string }[];
+      redirects?: { from: string; to: string }[];
+      pages?: { title: string; pageprops?: { wikibase_item?: string } }[];
+    };
+  };
+  const step = (list: { from: string; to: string }[] | undefined, t: string) =>
+    list?.find((x) => x.from === t)?.to ?? t;
+  const item = new Map(
+    (j.query?.pages ?? []).map((p) => [p.title, p.pageprops?.wikibase_item] as const),
+  );
+  for (const t of titles) {
+    const id = item.get(step(j.query?.redirects, step(j.query?.normalized, t)));
+    if (id && /^Q\d+$/.test(id)) out.set(t, id);
+  }
+  return out;
+}
+
+/** The edition's roles as a Standard Ebooks page words them ("Illustrated by …"). */
+const SE_ROLE: Readonly<Record<string, CreatorRole>> = {
+  translated: "translator",
+  illustrated: "illustrator",
+  edited: "editor",
+  compiled: "editor",
+  annotated: "editor",
+};
+
+const SAME_AS = /property="schema:sameAs"\s+content="([^"]+)"/g;
+
+/**
+ * A Standard Ebooks ebook page → the facts it and Wikidata state. The page
+ * names the work's Wikipedia article (schema:sameAs on the Book) and each
+ * author's, and the edition's other people in lines such as "Illustrated by
+ * <a href=…wikipedia…>John Tenniel</a>."; Wikipedia gives each their Wikidata
+ * item, Wikidata the death years, the first publication and the country. A
+ * person without an article has no stated death year, a role we do not know
+ * refuses, and a placeholder page (a book not produced yet) has no text.
+ */
+export async function standardEbooksFacts(
+  link: Extract<BookLink, { host: "standardebooks" }>,
+  html: string,
+  get: Get,
 ): Promise<WorkFacts | null> {
+  const open = /<article\b([^>]*)>/.exec(html);
+  if (!open || !/typeof="schema:Book"/.test(open[1]) || /\bebook-placeholder\b/.test(open[1]))
+    return null;
+  const end = html.indexOf("</article>", open.index);
+  const body = html.slice(open.index, end < 0 ? undefined : end);
+  const h1 = /<h1[^>]*property="schema:name"[^>]*>([\s\S]*?)<\/h1>/.exec(body);
+  if (!h1) return null;
+  const title = text(h1[1]);
+  const firstAuthor = body.search(/property="schema:author"/);
+  const workHead = firstAuthor < 0 ? body : body.slice(0, firstAuthor);
+  const workTitle = [...workHead.matchAll(SAME_AS)].map((m) => enwikiTitle(m[1])).find(Boolean);
+  const people: { name: string; wiki: string | null; role: CreatorRole }[] = [];
+  for (const m of body.matchAll(/<a\b[^>]*property="schema:author"[^>]*>([\s\S]*?)<\/a>/g))
+    people.push({
+      name: text(/<span[^>]*property="schema:name"[^>]*>([\s\S]*?)<\/span>/.exec(m[1])?.[1] ?? ""),
+      wiki: [...m[1].matchAll(SAME_AS)].map((x) => enwikiTitle(x[1])).find(Boolean) ?? null,
+      role: "author",
+    });
+  // The edition's other people: "<Role> by <a>Name</a> and <a>Name</a>." lines.
+  let unknownRole: string | undefined;
+  const aside = /<aside\b[^>]*id="reading-ease"[^>]*>([\s\S]*?)<\/aside>/.exec(body)?.[1] ?? "";
+  for (const line of aside.matchAll(/<p>\s*([A-Z][a-z]+(?: [a-z]+)*) by ([\s\S]*?)<\/p>/g)) {
+    const role = SE_ROLE[line[1].toLowerCase()];
+    if (!role) {
+      unknownRole = line[1];
+      continue;
+    }
+    for (const a of line[2].matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g))
+      people.push({ name: text(a[2]), wiki: enwikiTitle(a[1]), role });
+    // Names in the line that are not links: people without a stated death year.
+    for (const name of text(line[2].replace(/<a\b[\s\S]*?<\/a>/g, ""))
+      .replace(/\.\s*$/, "")
+      .split(/\s*(?:,|\band\b)\s*/)
+      .filter((n) => /\p{L}/u.test(n)))
+      people.push({ name, wiki: null, role });
+  }
+  const named = people.filter((p) => p.name);
+  const titles = [workTitle, ...named.map((p) => p.wiki)].filter((t): t is string => !!t);
+  const items = await enwikiItems([...new Set(titles)], get);
+  const wd = await wikidataFacts(
+    workTitle ? items.get(workTitle) : undefined,
+    "en",
+    get,
+    named.map((p) => ({ id: (p.wiki && items.get(p.wiki)) || null, name: p.name, role: p.role })),
+  );
+  const lang = /property="schema:inLanguage"\s+content="([a-z]{2,3})\b/.exec(body)?.[1] ?? null;
+  const page = linkPage(link);
+  return {
+    link,
+    title,
+    author: named.find((p) => p.role === "author")?.name ?? "",
+    lang,
+    creators: wd.creators,
+    firstPublicationYear: wd.firstYear,
+    workCountry: wd.country,
+    translation: wd.translation,
+    ...(unknownRole ? { unknownRole } : {}),
+    source: {
+      page,
+      file: `${page}/text/single-page`,
+      format: "standardebooks-xhtml",
+      name: "Standard Ebooks",
+    },
+    licence:
+      "Public domain in the US. Standard Ebooks' own work on this edition is dedicated to the public domain (CC0 1.0, creativecommons.org/publicdomain/zero/1.0).",
+    attribution: `Standard Ebooks (standardebooks.org), "${title}", produced by its volunteers.`,
+  };
+}
+
+/** The facts for a link, read from its host (Gutenberg's page, Aozora's card, Wikidata). */
+export async function readFacts(link: BookLink, get: Get): Promise<WorkFacts | null> {
   if (link.host === "gutenberg")
     return gutenbergFacts(link.id, await get(`https://www.gutenberg.org/ebooks/${link.id}`));
   if (link.host === "aozora") return aozoraFacts(link, await get(linkPage(link)));
+  if (link.host === "standardebooks")
+    return standardEbooksFacts(link, await get(linkPage(link)), get);
   return wikisourceFacts(link, get);
 }
 
