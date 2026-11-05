@@ -221,6 +221,17 @@ navigate`, `Sec-Fetch-Dest: document` (when sent) and `Accept: text/html`
   gate cookie, `Authorization`, `cf-*`, `x-forwarded-*`, Tailscale and the
   guard's secret headers are removed.
 
+**The same page on lianki.com itself** (2026-11-05): with the gate running,
+`bun scripts/dev/live-view.ts on --page preview` prints
+`https://lianki.com/?live=<id>`, which serves the owner this dev server's
+pages at lianki.com's own address, `/api` and `/auth` staying on production
+([live-view.md](live-view.md), "Same-origin pages"). The Worker enters the
+gate with `LIVE_GATE_SECRET` (local copy: `liveSecret` here; set it on the
+Worker once with `bun scripts/dev/whole-page.ts live-secret`, then restart
+`serve`). Stop: the badge's **stop**, any page without `?live`, or
+`live-view.ts off`. `--public-host` also takes a quick tunnel's
+`*.trycloudflare.com` host for this.
+
 **On his iPhone**: on lianki.com, the account menu's "Preview build" switch
 (「预览版」) does it all (next section). For a device without a lianki.com
 session: `/dev/tokens` → new token → "copy the link for another device",

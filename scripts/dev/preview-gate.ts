@@ -28,6 +28,7 @@
 
 import { previewEntryUrl } from "../../lib/dev-server-switch";
 import {
+  LIVE_GATE_HEADER,
   filterTunnelHeaders,
   isServiceWorkerScript,
   tunnelHeaderDropped,
@@ -74,6 +75,13 @@ export type GateDeps = {
   ownerEmail: string;
   /** HMAC key for the session cookie (local; .dev-whole-page.json). */
   sessionKey: string;
+  /**
+   * LIVE_GATE_SECRET's local copy (.dev-whole-page.json `liveSecret`): the
+   * lianki Worker's entry for the same-origin live preview
+   * (lib/live-view/page-proxy.ts), sent in LIVE_GATE_HEADER. Unset or shorter
+   * than LIVE_SECRET_MIN: that entry is shut.
+   */
+  liveSecret?: string;
   verify(token: string): Promise<Verified | null>;
   active(ids: string[]): Promise<string[]>;
   now?: () => number;
@@ -93,7 +101,14 @@ export type GateRequest = {
 };
 export type GateResult =
   | { kind: "respond"; status: number; headers: Record<string, string | string[]>; body: string }
-  | { kind: "forward"; tokenId: string; untilMs: number };
+  | { kind: "forward"; tokenId: string; untilMs: number; via?: "worker" };
+
+/** The Worker entry's pseudo token id (never a dev_access_token id: those are random base64url). */
+export const WORKER_TOKEN_ID = "live-worker";
+/** A socket opened through the Worker entry is closed after this long (the page reconnects). */
+export const WORKER_SOCKET_MS = 60 * 60 * 1000;
+/** A Worker secret shorter than this never matches. */
+export const LIVE_SECRET_MIN = 32;
 
 const NO_STORE = {
   "cache-control": "no-store, max-age=0",
@@ -677,6 +692,25 @@ export function createGate(d: GateDeps) {
           "set-cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
         });
 
+      // The lianki Worker, for the same-origin live preview: its own secret,
+      // never a cookie. It has already checked the owner's session and the
+      // signed pointer; here it is let through as the owner, like a token.
+      const worker = one(req.headers[LIVE_GATE_HEADER]);
+      if (worker !== undefined) {
+        if (fails.blocked(ip)) return respond(429, "429\n", { "retry-after": "600" });
+        const s = d.liveSecret ?? "";
+        if (s.length < LIVE_SECRET_MIN || !safeEqual(worker.trim(), s)) {
+          fails.add(ip);
+          return closed("worker: bad secret");
+        }
+        return {
+          kind: "forward",
+          tokenId: WORKER_TOKEN_ID,
+          untilMs: now() + WORKER_SOCKET_MS,
+          via: "worker",
+        };
+      }
+
       const auth = one(req.headers.authorization) ?? "";
       if (auth) {
         const m = /^Bearer\s+(lkdev_[A-Za-z0-9_-]+)$/.exec(auth.trim());
@@ -727,6 +761,7 @@ export function upstreamHeaders(
   for (const [k, v] of Object.entries(h)) {
     const key = k.toLowerCase();
     if (key === "authorization" || key.startsWith("tailscale-") || key.startsWith("cf-")) continue;
+    if (key === LIVE_GATE_HEADER) continue; // the Worker's secret never goes past the gate
     if (key === "x-forwarded-host" || key === "x-forwarded-proto" || key === "x-forwarded-for")
       continue;
     if (o.drop.includes(key)) continue;

@@ -95,7 +95,9 @@ first, then the callee.
 
 `worker.ts` is the main Worker's entry: it re-exports everything the OpenNext
 build exports (`export *`, and the whole default handler) and adds
-`DebugSessions`. The export check bundles it like the deploy does
+`DebugSessions`. Its `fetch` has one check in front of OpenNext's, the
+owner's same-origin live preview (`lib/live-view/page-proxy.ts`): a request
+with no `live=` and no live cookie goes straight through. The export check bundles it like the deploy does
 (`wrangler deploy --dry-run`) and fails the run if the set differs from the
 build's own plus `DebugSessions`.
 

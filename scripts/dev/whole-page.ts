@@ -32,6 +32,7 @@ import net from "node:net";
 import type { Duplex } from "node:stream";
 import tls from "node:tls";
 import { DEV_BRIDGE_HEADER } from "../../lib/dev-bridge";
+import { LIVE_GATE_HEADER } from "../../lib/live-view/tunnel-headers";
 import { devWholePageOrigin } from "../../lib/dev-whole-page";
 import { ownerEmails } from "../../lib/owner";
 import {
@@ -84,6 +85,13 @@ type State = {
   bridgeSecret: string;
   /** Signs the tunnel gate's session cookie (scripts/dev/preview-gate.ts). */
   previewKey: string;
+  /**
+   * LIVE_GATE_SECRET's only other copy (the lianki Worker's): its entry
+   * through the gate for the same-origin live preview
+   * (lib/live-view/page-proxy.ts). `whole-page.ts live-secret` puts it on
+   * the Worker without printing it.
+   */
+  liveSecret: string;
 };
 
 function arg(name: string, fallback: string): string {
@@ -102,6 +110,7 @@ function loadState(): State {
     guardSecret: old.guardSecret ?? hex(),
     bridgeSecret: old.bridgeSecret ?? hex(),
     previewKey: old.previewKey ?? hex(),
+    liveSecret: old.liveSecret ?? hex(),
   };
   if (JSON.stringify(state) !== JSON.stringify(old)) {
     writeFileSync(STATE_FILE, JSON.stringify(state), { mode: 0o600 });
@@ -286,8 +295,13 @@ async function serve() {
   // The public tunnel (docs/dev-whole-page.md, "Off the tailnet"): only with
   // --public-host, on a loopback listener that only cloudflared targets.
   const publicHost = arg("public-host", "").toLowerCase();
-  if (publicHost && !/^[a-z0-9-]+\.lianki\.com$/.test(publicHost))
-    throw new Error(`--public-host must be a lianki.com subdomain, got ${publicHost}`);
+  // A lianki.com subdomain (a named tunnel), or a quick tunnel's random host
+  // (`cloudflared tunnel --url http://127.0.0.1:<port+4>`), which only a
+  // pointer signed on this Mac can name as a live page (lib/live-view/rules.ts).
+  if (publicHost && !/^([a-z0-9-]+\.lianki\.com|[a-z0-9-]+\.trycloudflare\.com)$/.test(publicHost))
+    throw new Error(
+      `--public-host must be a lianki.com subdomain or a trycloudflare.com host, got ${publicHost}`,
+    );
   const verifyCall = async (body: unknown) => {
     const r = await fetch(`${HUB_ORIGIN}/api/dev-access/verify`, {
       method: "POST",
@@ -307,6 +321,7 @@ async function serve() {
         publicHost,
         ownerEmail: ownerEmails(owners)[0] ?? "",
         sessionKey: state.previewKey,
+        liveSecret: state.liveSecret,
         verify: async (token) => {
           const r = await verifyCall({ token });
           return r.ok ? ((await r.json()) as Verified) : null;
@@ -347,6 +362,7 @@ async function serve() {
     const out = { ...h };
     delete out[GUARD_HEADER];
     delete out[DEV_BRIDGE_HEADER];
+    delete out[LIVE_GATE_HEADER];
     for (const h of TS_HEADERS) delete out[h];
     return out;
   }
@@ -552,7 +568,7 @@ async function serve() {
     });
   }
 
-  const tunnelDrop = [GUARD_HEADER, DEV_BRIDGE_HEADER];
+  const tunnelDrop = [GUARD_HEADER, DEV_BRIDGE_HEADER, LIVE_GATE_HEADER];
 
   /**
    * The public tunnel's listener (preview.lianki.com via cloudflared): the
@@ -651,12 +667,20 @@ async function serve() {
     // The 101 from upstream is filtered like any tunnel response (no cookies,
     // CSP, CORS, HSTS…): preview-gate.ts upgradeHeadFilter.
     const up = pipeUpgrade(req, socket, head, url, true);
-    // Gated once at the upgrade is not enough: the socket lives on, so it is
-    // closed when its token is revoked, its re-check fails or its session ends.
-    const unwatch = watch.add(g.tokenId, g.untilMs, () => {
+    const close = () => {
       socket.destroy();
       up.destroy();
-    });
+    };
+    if (g.via === "worker") {
+      // The Worker's entry has no token to re-check (it checked the owner and
+      // the pointer itself): the socket simply ends at untilMs (1 h).
+      const t = setTimeout(close, Math.max(0, g.untilMs - Date.now()));
+      socket.on("close", () => clearTimeout(t));
+      return;
+    }
+    // Gated once at the upgrade is not enough: the socket lives on, so it is
+    // closed when its token is revoked, its re-check fails or its session ends.
+    const unwatch = watch.add(g.tokenId, g.untilMs, close);
     socket.on("close", unwatch);
     up.on("close", unwatch);
   }
@@ -825,13 +849,33 @@ async function publish() {
   console.error("queued: the dev server takes preview/live after 3 s of quiet");
 }
 
+/**
+ * Put `liveSecret` (made here if missing) on the lianki Worker as
+ * LIVE_GATE_SECRET, through wrangler's stdin: never printed, never on a
+ * command line. Run it where `serve` runs (its .dev-whole-page.json), then
+ * restart `serve` so the gate knows it too.
+ */
+async function liveSecretPut() {
+  const state = loadState();
+  const child = spawn(
+    "bunx",
+    ["wrangler", "secret", "put", "LIVE_GATE_SECRET", "--name", "lianki"],
+    {
+      stdio: ["pipe", "inherit", "inherit"],
+    },
+  );
+  child.stdin.end(state.liveSecret);
+  child.on("exit", (c) => process.exit(c ?? 1));
+}
+
 const cmd = process.argv[2];
 if (cmd === "serve") await serve();
 else if (cmd === "send-login") await sendLogin();
 else if (cmd === "publish") await publish();
+else if (cmd === "live-secret") await liveSecretPut();
 else {
   console.error(
-    "usage: bun scripts/dev/whole-page.ts serve|send-login|publish [--host H] [--port P] [--target T] [--follow BRANCH]",
+    "usage: bun scripts/dev/whole-page.ts serve|send-login|publish|live-secret [--host H] [--port P] [--target T] [--follow BRANCH]",
   );
   process.exit(2);
 }

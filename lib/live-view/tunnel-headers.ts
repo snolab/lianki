@@ -9,6 +9,14 @@
  * pages".
  */
 
+/**
+ * The main Worker's way through the gate for the same-origin live preview
+ * (lib/live-view/page-proxy.ts): LIVE_GATE_SECRET, a Worker secret whose only
+ * other copy is `liveSecret` in the dev server's .dev-whole-page.json. Never a
+ * cookie; stripped by the gate before anything goes upstream.
+ */
+export const LIVE_GATE_HEADER = "x-lk-live-gate";
+
 /** Dropped by name (lower case). */
 export const TUNNEL_DROP: ReadonlySet<string> = new Set([
   "set-cookie",

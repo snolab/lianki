@@ -77,6 +77,7 @@ export const publicClaim = (c: LiveViewClaim) => ({
   sha: c.sha,
   widget: c.widget,
   islands: c.islands,
+  page: c.page,
 });
 
 export type ApiAnswer = { status: number; body: Record<string, unknown> };

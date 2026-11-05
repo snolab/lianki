@@ -141,6 +141,27 @@ for (const method of ["GET", "DELETE"]) {
   const w = await call("POST", "/api/live-view", { token: `${body}.${b64(sig)}` });
   rec("SEC   live-view pointer signed by another key → 401", w.status === 401, `HTTP ${w.status}`);
 }
+// The same-origin live preview (lib/live-view/page-proxy.ts, in worker.ts): a
+// non-owner's ?live=<id> or a forged live cookie gets the normal build, never
+// a dev page, never the live cookie.
+for (const [path, cookie] of [
+  ["/en?live=1793000000000", ""],
+  ["/en?live=on", ""],
+  ["/en?live=off", ""],
+  ["/en", `__Host-lk_live=1793000000000.9999999999999.${"A".repeat(43)}`],
+]) {
+  const r = await fetch(`${BASE}${path}`, {
+    redirect: "manual",
+    headers: { accept: "text/html", "sec-fetch-dest": "document", ...(cookie ? { cookie } : {}) },
+  });
+  const live = r.headers.get("x-lk-live");
+  const setLive = (r.headers.getSetCookie?.() ?? []).some((c) => /^__Host-lk_live=[^;]/.test(c));
+  rec(
+    `SEC   non-owner ${path}${cookie ? " + forged live cookie" : ""} → normal build`,
+    r.status < 300 && !live && !setLive,
+    `HTTP ${r.status}${live ? " x-lk-live" : ""}${setLive ? " set live cookie" : ""}`,
+  );
+}
 // Uploads: only the one format each import reads.
 for (const [name, bytes, label] of [
   ["notes.txt", "hello", "a .txt"],

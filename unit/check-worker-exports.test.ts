@@ -70,7 +70,12 @@ describe("check-worker-exports", () => {
   it("worker.ts re-exports the whole build and spreads its default handler", () => {
     const src = readFileSync("worker.ts", "utf8");
     expect(src).toContain('export * from "./.open-next/worker.js";');
-    expect(src).toContain("export default { ...handler };");
+    // The whole handler, with fetch wrapped only by the live-page check
+    // (lib/live-view/page-proxy.ts), which hands everything else to OpenNext.
+    expect(src).toContain("export default {\n  ...handler,\n  fetch(");
+    expect(src).toContain(
+      'if (!mayBeLive(req.url, req.headers.get("cookie"))) return nextFetch(req, env, ctx);',
+    );
     expect(src).toContain("export class DebugSessions");
   });
 });

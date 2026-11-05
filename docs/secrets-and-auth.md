@@ -138,6 +138,30 @@ a production build ignores it. Rotate: keygen a new pair (move the old file
 away first), add the new key to `LIVE_VIEW_PUBLIC_KEYS`, deploy, then drop the
 old key.
 
+## Live pages (`LIVE_GATE_SECRET`)
+
+A Worker secret on `lianki` (2026-11-05): the main Worker's way through the
+gate in front of the owner's dev server for the same-origin live preview
+([live-view.md](live-view.md), "Same-origin pages"). The Worker sends it in
+`x-lk-live-gate` to the pointer's page origin, only after it has checked the
+owner's session and the signed pointer; the gate compares it in constant
+time (32+ characters, or that entry is shut), counts failures per IP, and
+strips it before anything reaches next dev. It also keys the HMAC of the
+`__Host-lk_live` cookie. Unset: every `?live=` gets the production page.
+
+The only other copy is `liveSecret` in `.dev-whole-page.json` (gitignored,
+0600) in the dev server's worktree. Set or rotate it (a secret: the owner's
+tap first), never by echoing it:
+
+```bash
+cd ~/ws/snolab/lianki/tree/preview-serve
+bun scripts/dev/whole-page.ts live-secret   # makes liveSecret if missing; pipes it to wrangler secret put
+# then restart serve so the gate reads it
+```
+
+To rotate, delete `liveSecret` from the file first (the next run makes a new
+one). Live cookies sealed with the old value stop working at once.
+
 ## STT tickets (`STT_TICKET_KEY`)
 
 A Worker secret on `lianki`: an Ed25519 **private** key (a JWK) that signs

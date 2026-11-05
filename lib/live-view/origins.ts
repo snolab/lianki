@@ -8,6 +8,16 @@
  * runs (a named tunnel of his, e.g. "https://dev-mac.lianki.com"), by a
  * reviewed change here.
  */
+/**
+ * The exact origins a live-view pointer's `page` may name: where the
+ * same-origin live preview (lib/live-view/page-proxy.ts) fetches whole pages
+ * from. The gate in front of his dev server is there; the Worker enters it
+ * with its own secret. A Cloudflare quick tunnel's random host
+ * (`https://<words>.trycloudflare.com`) is also accepted, but only as a
+ * signed pointer's `page` (LIVE_QUICK_TUNNEL in rules.ts), never for JS.
+ */
+export const LIVE_PAGE_ORIGINS: readonly string[] = ["https://preview.lianki.com"];
+
 export const LIVE_VIEW_ORIGINS: readonly string[] = [
   // The owner's Mac on his tailnet (tailscale serve, never funnel): the dev servers'
   // `--tailnet /lianki-widget…` and `/lianki-islands…` paths.
