@@ -1,0 +1,56 @@
+name: CodeQL
+
+# Static analysis of the JavaScript / TypeScript code (docs/security-measures.md,
+# section 3). Owner's approval: Slack, 2026-11-05 ~16:30 JST.
+#
+# Its own workflow and NOT a required check: CI's `Typecheck + unit` stays the
+# only gate for main and for the deploy, so a slow or noisy analysis never holds
+# a merge. A finding shows up under Security → Code scanning and on the PR.
+# The repository's CodeQL "default setup" is left off; this file is the setup.
+#
+# Actions are pinned to a commit (the tag is in the comment): a moved tag can't
+# change what runs with `security-events: write`.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "41 4 * * 3" # Wednesdays 04:41 UTC (13:41 JST)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL (javascript-typescript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # No build: JS/TS is analysed from source (build-mode none).
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - node_modules
+              - .open-next
+              - .next
+              - public/lianki.user.js
+              - packages/pardon-could-you-say-it-again/lianki.user.js
+              - lib/blog.corpus.json
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: "/language:javascript-typescript"

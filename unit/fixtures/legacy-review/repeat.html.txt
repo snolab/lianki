@@ -1,6 +1,6 @@
 200 text/html; charset=utf-8
 
-Current due: -1d<script>document.title = "[-1d] Fixture <page> & title";</script><br/><a href="javascript:review(1)" rel="noopener noreferrer" accessKey='1'>Again 1m</a><br/><a href="javascript:review(2)" rel="noopener noreferrer" accessKey='2'>Hard 6m</a><br/><a href="javascript:review(3)" rel="noopener noreferrer" accessKey='3'>Good 10m</a><br/><a href="javascript:review(4)" rel="noopener noreferrer" accessKey='4'>Easy 9d</a><br/>
+Current due: -1d<script>document.title = "[-1d] Fixture \u003cpage\u003e \u0026 title";</script><br/><a href="javascript:review(1)" rel="noopener noreferrer" accessKey='1'>Again 1m</a><br/><a href="javascript:review(2)" rel="noopener noreferrer" accessKey='2'>Hard 6m</a><br/><a href="javascript:review(3)" rel="noopener noreferrer" accessKey='3'>Good 10m</a><br/><a href="javascript:review(4)" rel="noopener noreferrer" accessKey='4'>Easy 9d</a><br/>
             <div>
               hotkeys: <br/>
               hjlm = easy, good, again, delete <br/>
@@ -40,4 +40,4 @@ Current due: -1d<script>document.title = "[-1d] Fixture <page> & title";</script
               if (e.code === 'KeyL') review(4);
               if (e.code === 'KeyM') deleteCard();
             });
-          </script><br/>Reviewing <a target="_blank" href="https://example.com/fixture-page">Fixture <page> & title - https://example.com/fixture-page</a><br/><a href="javascript:deleteCard()" accessKey='5'> DELETE </a><br/>Due cards:1<br/>Total cards:2<br/><br/>
+          </script><br/>Reviewing <a target="_blank" href="https://example.com/fixture-page">Fixture &lt;page&gt; &amp; title - https://example.com/fixture-page</a><br/><a href="javascript:deleteCard()" accessKey='5'> DELETE </a><br/>Due cards:1<br/>Total cards:2<br/><br/>

@@ -194,4 +194,37 @@ describe("invites and gift codes, once per person", () => {
       reason: "already redeemed",
     });
   });
+
+  test("two aliases redeeming at the same moment: one gets it, and the use goes back", async () => {
+    const { d1, add } = setup();
+    await add("owner", "owner@example.com");
+    await add("p1", "ab@gmail.com");
+    await add("p2", "a.b+gift@googlemail.com");
+    const code = await createGiftCode(d1, "owner", { days: 30, maxUses: 10 }, NOW);
+    const out = await Promise.all([
+      redeemGiftCode(d1, "p1", code, NOW),
+      redeemGiftCode(d1, "p2", code, NOW),
+    ]);
+    expect(out.map((r) => r.status).sort()).toEqual(["redeemed", "rejected"]);
+    const { uses } = d1.raw().prepare("SELECT uses FROM gift_code WHERE code = ?").get(code) as {
+      uses: number;
+    };
+    expect(uses).toBe(1);
+  });
+
+  test("a grant from before the person key still counts as redeemed", async () => {
+    const { d1, add } = setup();
+    await add("owner", "owner@example.com");
+    await add("p1", "ab@gmail.com");
+    const code = await createGiftCode(d1, "owner", { days: 30, maxUses: 10 }, NOW);
+    d1.raw()
+      .prepare(
+        "INSERT INTO membership_grant (id, userId, kind, days, reason, refId, createdAt) VALUES ('g', 'p1', 'pro', 30, 'gift', ?, ?)",
+      )
+      .run(`${code}:p1`, NOW.toISOString());
+    expect(await redeemGiftCode(d1, "p1", code, NOW)).toEqual({
+      status: "rejected",
+      reason: "already redeemed",
+    });
+  });
 });
