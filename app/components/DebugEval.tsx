@@ -111,6 +111,9 @@ export type PartnerStrings = ChatStrings & {
   aiStatus: string;
   aiLimit: string;
   aiFailed: string;
+  /** Out of credits: the model was not asked; the line links to where credits are bought. */
+  aiCredits: string;
+  aiCreditsLink: string;
 };
 
 /**
@@ -137,6 +140,8 @@ export function DebugEval({
   /** null on the owner's pages; a friend's chat status otherwise. */
   const [friend, setFriend] = useState<"open" | "blocked" | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  /** The out-of-credits line as last shown: while it is the warning, a link to /membership follows it. */
+  const [creditsLine, setCreditsLine] = useState<string | null>(null);
   /** Who this page's user is, from the hub on connect: their own lines' avatar. */
   const [viewer, setViewer] = useState<Sender | undefined>(undefined);
   const sockRef = useRef<WebSocket | null>(null);
@@ -354,6 +359,15 @@ export function DebugEval({
         }
         if (msg.type === "page-ended") {
           setWarning("Ended from another page. It reconnects when you come back to this page.");
+          return;
+        }
+        if (msg.type === "ai-credits") {
+          const s = stringsRef.current;
+          const line = (
+            s?.aiCredits ?? "Your {name} needs credits to reply. Add credits to keep chatting."
+          ).replaceAll("{name}", s?.name || "Learning Partner");
+          setCreditsLine(line);
+          setWarning(line);
           return;
         }
         if (msg.type === "ai-limit" || msg.type === "ai-failed") {
@@ -746,6 +760,11 @@ export function DebugEval({
               : undefined
           }
           warning={warning ?? undefined}
+          warningHref={
+            warning && warning === creditsLine
+              ? { href: "/membership", label: strings?.aiCreditsLink ?? "Get credits" }
+              : undefined
+          }
           sessions={sessions}
           onEnd={(x) => answer("revoke", x)}
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}

@@ -1577,6 +1577,42 @@ const learningPartnerContent = {
       mr: "तुमच्या {name}ने आज खूप उत्तरे दिली आहेत आणि तो विश्रांती घेत आहे. उद्या पुन्हा प्रयत्न करा.",
       ko: "{name}가 오늘 많이 답해서 쉬고 있어요. 내일 다시 시도해 주세요.",
     }),
+    aiCredits: t({
+      en: "Your {name} needs credits to reply, and your balance has run out. Add credits to keep chatting.",
+      zh: "你的{name}回复需要积分，你的余额已用完。充值积分后即可继续聊天。",
+      hi: "आपके {name} को जवाब देने के लिए क्रेडिट चाहिए, और आपका बैलेंस खत्म हो गया है। बातचीत जारी रखने के लिए क्रेडिट जोड़ें।",
+      es: "Tu {name} necesita créditos para responder y tu saldo se ha agotado. Añade créditos para seguir conversando.",
+      fr: "Votre {name} a besoin de crédits pour répondre, et votre solde est épuisé. Ajoutez des crédits pour continuer la conversation.",
+      ar: "يحتاج {name} إلى رصيد للرد، وقد نفد رصيدك. أضف رصيدًا لمواصلة المحادثة.",
+      bn: "উত্তর দিতে আপনার {name}-এর ক্রেডিট লাগে, আর আপনার ব্যালান্স শেষ হয়ে গেছে। কথা চালিয়ে যেতে ক্রেডিট যোগ করুন।",
+      pt: "Seu {name} precisa de créditos para responder, e seu saldo acabou. Adicione créditos para continuar conversando.",
+      ru: "Чтобы отвечать, {name} нужны кредиты, а ваш баланс закончился. Пополните кредиты, чтобы продолжить разговор.",
+      ur: "آپ کے {name} کو جواب دینے کے لیے کریڈٹس چاہییں، اور آپ کا بیلنس ختم ہو گیا ہے۔ بات جاری رکھنے کے لیے کریڈٹس شامل کریں۔",
+      id: "{name} memerlukan kredit untuk membalas, dan saldo Anda sudah habis. Tambahkan kredit untuk terus mengobrol.",
+      de: "Dein {name} braucht Credits, um zu antworten, und dein Guthaben ist aufgebraucht. Lade Credits auf, um weiterzuchatten.",
+      ja: "{name}の返信にはクレジットが必要ですが、残高がなくなりました。クレジットを追加すると会話を続けられます。",
+      sw: "{name} wako anahitaji krediti ili kujibu, na salio lako limekwisha. Ongeza krediti ili kuendelea kuzungumza.",
+      mr: "उत्तर देण्यासाठी तुमच्या {name}ला क्रेडिट्स लागतात, आणि तुमची शिल्लक संपली आहे. गप्पा सुरू ठेवण्यासाठी क्रेडिट्स जोडा.",
+      ko: "{name}가 답장하려면 크레딧이 필요한데, 잔액이 모두 소진되었어요. 크레딧을 추가하면 계속 대화할 수 있어요.",
+    }),
+    aiCreditsLink: t({
+      en: "Get credits",
+      zh: "获取积分",
+      hi: "क्रेडिट पाएं",
+      es: "Conseguir créditos",
+      fr: "Obtenir des crédits",
+      ar: "احصل على رصيد",
+      bn: "ক্রেডিট নিন",
+      pt: "Obter créditos",
+      ru: "Получить кредиты",
+      ur: "کریڈٹس حاصل کریں",
+      id: "Dapatkan kredit",
+      de: "Credits holen",
+      ja: "クレジットを入手",
+      sw: "Pata krediti",
+      mr: "क्रेडिट्स मिळवा",
+      ko: "크레딧 받기",
+    }),
     aiFailed: t({
       en: "No reply this time. Please try again in a moment.",
       zh: "这次没有回复成功，请稍后再试。",
@@ -1768,6 +1804,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Connection status in the chat's menu and the status pill's tooltip, for ordinary users whose replies come from an AI model: the chat is online and answered by AI on Cloudflare Workers AI. Short noun phrase; keep 'Cloudflare Workers AI' exactly.",
   aiLimit:
     "Warning line above the chat input when the AI Learning Partner will not answer any more today (a daily usage limit was reached). Friendly, does not mention numbers or money; keep {name} (the assistant's name). Two short sentences: it is resting, try again tomorrow.",
+  aiCredits:
+    "Warning line above the chat input when the AI Learning Partner did not answer because the user's prepaid credit balance (the wallet on the Membership page) does not cover a reply; each AI reply is paid from those credits. A link (aiCreditsLink) follows it on the same line. Friendly, no numbers or prices; keep {name} (the assistant's name). Use the same word for 'credits' as the Membership page's wallet (积分 in Chinese). Two short sentences: replies need credits and the balance has run out; add credits to keep chatting.",
+  aiCreditsLink:
+    "Link right after the out-of-credits warning (aiCredits) above the chat input: opens the Membership page, where the user tops up their prepaid credit balance. Short imperative phrase, two or three words; same word for 'credits' as the wallet (积分 in Chinese).",
   aiFailed:
     "Warning line above the chat input when the AI model failed to produce an answer to the user's last message (a temporary error). Two short sentences: no reply this time, try again soon.",
 };

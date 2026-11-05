@@ -577,6 +577,8 @@ export type DebugChatProps = {
   noticeHref?: { href: string; label: string };
   /** A one-line note above the input (a message dropped by the rate limit). */
   warning?: string;
+  /** With `warning`: a link after it (out of credits: where credits are bought). */
+  warningHref?: { href: string; label: string };
   /**
    * The agent's heartbeat says it is working on a message (DebugEval decides,
    * from real beats only): a spinner at the right end of the input.
@@ -702,6 +704,7 @@ export function DebugChat({
   notice,
   noticeHref,
   warning,
+  warningHref,
   busy = null,
   note,
   pages = [],
@@ -3632,6 +3635,19 @@ export function DebugChat({
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {warning}
+          {warningHref && (
+            <>
+              {" "}
+              <a
+                href={warningHref.href}
+                data-testid="debug-chat-warning-link"
+                className="underline"
+                style={{ color: "inherit" }}
+              >
+                {warningHref.label}
+              </a>
+            </>
+          )}
         </div>
       )}
       {vs.blocked && (
