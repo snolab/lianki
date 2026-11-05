@@ -194,7 +194,8 @@ top-up reads "¥600 → 600 credits". `/dev/credits` and `/dev/gift-codes` say �
 
 - `credit_ledger` is append-only: one row per change, amount in JPY signed
   (+ top-up, gift, sponsor, refund to the wallet; − a pass, a reversed
-  top-up), reason `topup | pass | refund | gift | sponsor | adjust`, and
+  top-up, − an AI reply's reservation), reason
+  `topup | pass | refund | gift | sponsor | adjust | ai`, and
   **UNIQUE (reason, refId)** — each entry is once-only.
 - `credit_balance` caches the sum. Every ledger row and its balance change are
   written in the **same D1 batch** (one transaction), so the two never
@@ -206,7 +207,13 @@ top-up reads "¥600 → 600 credits". `/dev/credits` and `/dev/gift-codes` say �
   SQLite checks CHECK on the proposed INSERT row before `ON CONFLICT`.
 - refIds: top-up `<provider>:<paymentId>`; pass `<userId>:<client key>` (one
   key per click, so a retried request buys once); refund `pass:<spend refId>`
-  or `topup:<top-up refId>`; gift `<code>:<userId>`; admin `admin:<uuid>`.
+  or `topup:<top-up refId>`; gift `<code>:<userId>`; admin `admin:<uuid>`;
+  AI reply `ai:<userId>:<line id>` (the `ai` reservation and its `refund`
+  share it — docs/partner-ai.md, "Credits"; tables `credit_ai_charge`,
+  `credit_ai_carry` in `0039_ai_credits.sql`).
+- USD-priced costs (AI calls) become credits at `CREDITS_PER_USD`
+  (`lib/payments/credits.ts`), the one place to change when the credit unit
+  is redesigned.
 
 ### Endpoints
 

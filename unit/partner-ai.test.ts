@@ -212,6 +212,23 @@ describe("partner AI: hub routing", () => {
     expect((f.last("state") as { listeners: number }).listeners).toBe(1);
   });
 
+  it("the line's id is the credits key; out of credits the page is told, and the caps are given back", async () => {
+    const s = setup();
+    s.stub.reply = async () => ({ ok: false, error: "no-credits" });
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, { type: "chat", id: "line1", text: "hello" });
+    expect(s.stub.calls[0].msgId).toBe("line1");
+    expect(f.last("ai-credits")).toEqual({ type: "ai-credits" });
+    expect(f.sent.some((m) => m.type === "ai-failed")).toBe(false);
+    expect(chats(f).map((m) => m.from)).toEqual(["friend"]);
+    // Nothing billed: the day's counters are back to zero.
+    for (const [k, v] of s.storage.store) if (k.startsWith("ai:")) expect(v).toBe(0);
+    // A line already answered ("duplicate") says nothing.
+    s.stub.reply = async () => ({ ok: false, error: "duplicate" });
+    await s.msg(f, { type: "chat", id: "line2", text: "again" });
+    expect(f.sent.some((m) => m.type === "ai-failed")).toBe(false);
+  });
+
   it("the owner's thread never goes to the model (pages without identity, and owner identity)", async () => {
     const s = setup();
     const p = s.page();
@@ -444,6 +461,8 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
     const db = d1.raw();
     db.exec(`INSERT INTO user (id, email, createdAt, updatedAt) VALUES
       ('u_alice', 'alice@x.com', 'x', 'x'), ('u_bob', 'bob@x.com', 'x', 'x'), ('u_owner', 'owner@x.com', 'x', 'x')`);
+    // Replies cost credits (unit/partner-ai-credits.test.ts): Alice has some.
+    db.exec(`INSERT INTO credit_balance (userId, balance, updatedAt) VALUES ('u_alice', 100, 'x')`);
     db.exec(`INSERT INTO word_lists (email, id, name, lang, created_at, updated_at) VALUES
       ('alice@x.com', 'l1', 'Alice French', 'fr', 'x', 'x'),
       ('bob@x.com', 'l2', 'Bob Secret Korean', 'ko', 'x', 'x'),

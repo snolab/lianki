@@ -510,6 +510,24 @@ const dictionary = {
         sw: "Marekebisho",
         mr: "समायोजन",
       }),
+      ai: t({
+        en: "AI replies",
+        zh: "AI 回复",
+        ja: "AI の返信",
+        ko: "AI 답장",
+        hi: "AI जवाब",
+        es: "Respuestas de IA",
+        fr: "Réponses IA",
+        ar: "ردود الذكاء الاصطناعي",
+        bn: "AI উত্তর",
+        pt: "Respostas de IA",
+        ru: "Ответы ИИ",
+        ur: "AI جوابات",
+        id: "Balasan AI",
+        de: "KI-Antworten",
+        sw: "Majibu ya AI",
+        mr: "AI उत्तरे",
+      }),
     },
   },
 };
@@ -545,6 +563,7 @@ const context: KeyContext<typeof dictionary.content> = {
     gift: `${W} history row label: credits from a gift code or given by the owner. One noun.`,
     sponsor: `${W} history row label: credits given for sponsoring the project (GitHub Sponsors). One noun.`,
     adjust: `${W} history row label: a manual correction of the balance by the team. One noun.`,
+    ai: `${W} history row label: credits spent on the Learning Partner chat's AI-written replies (what one reply really cost, after unused credits came back). Short noun phrase, plural replies.`,
   },
 };
 

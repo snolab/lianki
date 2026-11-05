@@ -44,6 +44,13 @@ export const MAX_REPLY_CHARS = 2000;
 /** The model call gives up after this long (the page's spinner shows meanwhile). */
 export const MODEL_TIMEOUT_MS = 30_000;
 
+/**
+ * A credit reservation still pending this long after it was taken belongs to
+ * a reply that crashed before settling (no call lasts near this long): the
+ * next reply's sweep refunds it in full (lib/payments/ai-credits.ts).
+ */
+export const CHARGE_STALE_MS = 10 * 60_000;
+
 /** Per user, per JST day: input + output tokens (≈ 40–80 typical messages). */
 export const USER_DAILY_TOKENS = 60_000;
 /** Whole site, per JST day, in USD at the list prices above. */
@@ -63,6 +70,11 @@ export const jstDay = (t: number) => new Date(t + 9 * 3600_000).toISOString().sl
 export type PartnerRequest = {
   /** The hub-verified user id of the thread (never chosen by the model or the page). */
   userId: string;
+  /**
+   * The user's line id: the credits' idempotency key (with userId), so a
+   * retried request is charged once. An older hub sends none (a fresh key).
+   */
+  msgId?: string;
   /** The thread's latest lines, oldest first: the user's and the agent's. */
   history: { role: "user" | "assistant"; text: string }[];
   /** Where the user is: the page's path (from its label) and what the line carried. */
@@ -70,10 +82,33 @@ export type PartnerRequest = {
 };
 
 export type PartnerResult =
-  | { ok: true; text: string; tokensIn: number; tokensOut: number; ms: number; model: string }
+  | {
+      ok: true;
+      text: string;
+      tokensIn: number;
+      tokensOut: number;
+      ms: number;
+      model: string;
+      /** Whole credits kept from the reservation for this reply (the fraction carries over). */
+      charged?: number;
+    }
   | {
       ok: false;
-      error: "bad-input" | "off" | "owner" | "no-user" | "not-configured" | "model-failed" | "busy";
+      /**
+       * "no-credits": the balance does not cover this reply's worst case, so
+       * the model was not called. "duplicate": this line was already answered
+       * (or is being answered); nothing done.
+       */
+      error:
+        | "bad-input"
+        | "off"
+        | "owner"
+        | "no-user"
+        | "not-configured"
+        | "model-failed"
+        | "busy"
+        | "no-credits"
+        | "duplicate";
       ms?: number;
       /**
        * After the model was asked: "no" = it answered an error status (no

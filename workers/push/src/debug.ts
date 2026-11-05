@@ -1778,7 +1778,7 @@ export class DebugHub {
       ...(context ? { context } : {}),
     });
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
-    if (await this.aiOn()) await this.aiReply(page, email, t, context, scene);
+    if (await this.aiOn()) await this.aiReply(page, email, t, context, scene, id);
   }
 
   /**
@@ -1822,6 +1822,7 @@ export class DebugHub {
     lineAt: number,
     context?: ChatContext,
     scene?: SttScene,
+    msgId?: string,
   ) {
     const thread = page.thread;
     const ask = this.sessions?.partnerReply?.bind(this.sessions);
@@ -1883,7 +1884,12 @@ export class DebugHub {
     };
     beat();
     const timer = setInterval(beat, AI_BEAT_MS);
-    const req: PartnerRequest = { userId: thread, history, page: pageInfo };
+    const req: PartnerRequest = {
+      userId: thread,
+      ...(msgId ? { msgId } : {}),
+      history,
+      page: pageInfo,
+    };
     let res: PartnerResult;
     try {
       res = ((await ask(req)) ?? {
@@ -1920,14 +1926,24 @@ export class DebugHub {
       JSON.stringify({
         msg: "partner.reply",
         ok: res.ok,
-        ...(res.ok ? { tokensIn, tokensOut, model: res.model } : { error: res.error }),
+        ...(res.ok
+          ? {
+              tokensIn,
+              tokensOut,
+              model: res.model,
+              ...(res.charged !== undefined ? { charged: res.charged } : {}),
+            }
+          : { error: res.error }),
         ...(res.ms !== undefined ? { ms: res.ms } : {}),
         ...(res.ok && stale ? { dropped: true } : {}),
       }),
     );
     if (!res.ok) {
-      // Off or the owner: nothing to say (the lanes still answer). Otherwise tell the page.
-      if (res.error !== "off" && res.error !== "owner")
+      // Off, the owner, or a line already answered: nothing to say (the lanes
+      // still answer). No credits: the page says how to get some. Otherwise it failed.
+      if (res.error === "no-credits")
+        for (const { ws } of this.pages(thread)) send(ws, { type: "ai-credits" });
+      else if (res.error !== "off" && res.error !== "owner" && res.error !== "duplicate")
         for (const { ws } of this.pages(thread)) send(ws, { type: "ai-failed" });
       return;
     }
