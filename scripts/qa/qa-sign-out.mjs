@@ -69,8 +69,16 @@ for (const [name, type] of [
     });
     check(cached.length === 0, `${name}: no signed-in page cached (${cached.join(",") || "none"})`);
 
+    // Signed out, /profile sends to /sign-in — or, with the `levels` flag on
+    // (docs/levels.md), shows only the guest level card: no account on it.
     await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
-    check(/\/sign-in/.test(page.url()), `${name}: /profile now sends to /sign-in (${page.url()})`);
+    const guestCard =
+      (await page.locator('[data-level-card] [data-level-progress][href="/sign-in"]').count()) >
+        0 && !(await page.content()).includes("@lianki.test");
+    check(
+      /\/sign-in/.test(page.url()) || guestCard,
+      `${name}: /profile is signed out (${page.url()}${guestCard ? ", guest level card" : ""})`,
+    );
 
     const legacy = await page.goto(`${BASE}/auth/logout`, { waitUntil: "networkidle" });
     check(
