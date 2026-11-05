@@ -15,8 +15,8 @@ passkey — there is no password login in production.
 
 | surface                                   | what                                                  |
 | ----------------------------------------- | ----------------------------------------------------- |
-| `/dev/*` pages                            | users, friends, gift codes, membership grants, credits, feature flags, roadmap, A/B |
-| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, credits, flags, stt-ticket, dev-tokens, dev-handoff |
+| `/dev/*` pages                            | users, friends, gift codes, membership grants, credits, feature flags, owners, roadmap, A/B |
+| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, credits, flags, owners, stt-ticket, dev-tokens, dev-handoff |
 | `https://preview.lianki.com` (tunnel to the owner's dev server, production D1) | 503 to everything without a dev access token; the token signs in as the owner only (docs/dev-whole-page.md, "Off the tailnet") |
 | `POST /api/dev-access/verify`             | the dev server gate's token check: `DEV_BRIDGE_SECRET` only, 401 otherwise |
 | `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac) | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7) |
@@ -35,19 +35,21 @@ input-bounded and rate-limited. Gift-code management moved from
 prefix; redeeming stays at `/api/gift-codes/redeem`.
 
 **Layer 1, in the app.** Every `/dev` page and `/api/dev` route checks
-`isOwner()` (`lib/owner.ts`, `OWNER_EMAILS` in `wrangler.jsonc`) and answers
-**404** to everyone else, so the surface is not even discoverable. Unset
-`OWNER_EMAILS` fails closed. `unit/security.test.ts` fails if a `/dev` page or
+`isOwner()` (`lib/owner.ts`, the `site_role` table,
+[secrets-and-auth.md](secrets-and-auth.md), "The owner role") and answers
+**404** to everyone else, so the surface is not even discoverable. A D1 error
+fails closed: nobody is the owner. `unit/security.test.ts` fails if a `/dev` page or
 `/api/dev` route is added without the gate; `qa:api` checks a signed-in
 non-owner gets 404 from each.
 
 **Layer 2, at the edge: Cloudflare Access** on `lianki.com/dev` and
-`lianki.com/api/dev` (each covers its subpaths), allowing only the owner
-emails. Prepared, not applied — `scripts/ops/cloudflare-access.ts`:
+`lianki.com/api/dev` (each covers its subpaths), allowing only the
+addresses given with `--email` (Access keeps its own list; it does not follow
+`site_role`). Prepared, not applied — `scripts/ops/cloudflare-access.ts`:
 
 ```bash
-bun scripts/ops/cloudflare-access.ts --dry-run   # the policy and app it would create
-CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… bun scripts/ops/cloudflare-access.ts
+bun scripts/ops/cloudflare-access.ts --dry-run --email a@b.c   # the policy and app it would create
+CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… bun scripts/ops/cloudflare-access.ts --email a@b.c
 bun scripts/ops/cloudflare-access.ts --verify    # /dev/users must now redirect to Access
 ```
 
@@ -310,9 +312,11 @@ D1 row in `security_audit` (`db/migrations/0040_security_audit.sql`,
 serial, branch@sha) and the owner's stop; dev token mint, revoke, revoke all,
 and the profile menu's handoff (actor: the user id; subject: the token id);
 custom frontends: a preview registered or revoked, a user added to or
-removed from the allowlist ([custom-frontend.md](custom-frontend.md)).
-Ids and labels only, never a token or a pointer. Best effort: a failed audit
-insert is logged and never undoes the write. Read it with
+removed from the allowlist ([custom-frontend.md](custom-frontend.md)); the
+owner role granted or revoked (the address is the detail; written in one batch
+with the change, so that one cannot go unrecorded).
+Ids and labels only, never a token or a pointer. Otherwise best effort: a failed
+audit insert is logged and never undoes the write. Read it with
 `wrangler d1 execute lianki --remote --command "SELECT * FROM security_audit ORDER BY id DESC LIMIT 50"`.
 
 **The dev-token cap is one statement.** At most 20 live named tokens: the

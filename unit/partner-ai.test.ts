@@ -457,12 +457,14 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
   const NOW = Date.parse("2026-11-03T12:00:00Z");
   const env = () => ({
     DB: d1 as unknown as PartnerDb,
-    OWNER_EMAILS: "owner@x.com",
     CLOUDFLARE_ACCOUNT_ID: "acct",
     CLOUDFLARE_AI_TOKEN: "tok",
   });
   beforeEach(() => {
     d1 = createTestD1(testSchema());
+    d1.raw().exec(
+      "INSERT INTO site_role (email, granted_by, granted_at) VALUES ('owner@x.com', 'test', 1)",
+    );
     const db = d1.raw();
     db.exec(`INSERT INTO user (id, email, createdAt, updatedAt) VALUES
       ('u_alice', 'alice@x.com', 'x', 'x'), ('u_bob', 'bob@x.com', 'x', 'x'), ('u_owner', 'owner@x.com', 'x', 'x')`);
@@ -541,7 +543,7 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
     expect(s.pageCards).toEqual({ total: 0, due: 0 });
   });
 
-  it("refuses the owner, an unknown user, and everyone when the flag is off or OWNER_EMAILS unset", async () => {
+  it("refuses the owner, an unknown user, and everyone when the flag is off or the owners unknown", async () => {
     const bodies: unknown[] = [];
     const call = (e: ReturnType<typeof env>, userId: string) =>
       partnerReply(
@@ -551,10 +553,12 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
       );
     expect(await call(env(), "u_owner")).toEqual({ ok: false, error: "owner" });
     expect(await call(env(), "u_nobody")).toEqual({ ok: false, error: "no-user" });
-    expect(await call({ ...env(), OWNER_EMAILS: "" }, "u_alice")).toEqual({
-      ok: false,
-      error: "not-configured",
-    });
+    d1.raw().exec("ALTER TABLE site_role RENAME TO site_role_gone");
+    expect(await call(env(), "u_alice")).toEqual({ ok: false, error: "not-configured" });
+    d1.raw().exec("ALTER TABLE site_role_gone RENAME TO site_role");
+    d1.raw().exec("UPDATE site_role SET revoked_at = 2");
+    expect(await call(env(), "u_alice")).toEqual({ ok: false, error: "not-configured" });
+    d1.raw().exec("UPDATE site_role SET revoked_at = NULL");
     d1.raw().exec(`UPDATE feature_flags SET enabled = 0`);
     expect(await call(env(), "u_alice")).toEqual({ ok: false, error: "off" });
     expect(bodies).toEqual([]);

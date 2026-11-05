@@ -34,7 +34,6 @@ import tls from "node:tls";
 import { DEV_BRIDGE_HEADER } from "../../lib/dev-bridge";
 import { LIVE_GATE_HEADER } from "../../lib/live-view/tunnel-headers";
 import { devWholePageOrigin } from "../../lib/dev-whole-page";
-import { ownerEmails } from "../../lib/owner";
 import {
   DEVICE_COOKIE,
   ENTER_PATH,
@@ -139,11 +138,8 @@ async function portFree(port: number, ms: number): Promise<boolean> {
   return false;
 }
 
-/** OWNER_EMAILS from wrangler.jsonc's vars — the same list production gates on. */
-function ownerList(): string {
-  const m = /"OWNER_EMAILS":\s*"([^"]*)"/.exec(readFileSync("wrangler.jsonc", "utf8"));
-  return m?.[1] ?? "";
-}
+/** How stale the guard's owner list may get: the same window as production. */
+const OWNERS_CACHE_MS = 30_000;
 
 async function serve() {
   const host = arg("host", "192.168.31.96");
@@ -171,8 +167,6 @@ async function serve() {
   }
 
   const state = loadState();
-  const owners = ownerList();
-  if (!ownerEmails(owners).length) throw new Error("OWNER_EMAILS is empty in wrangler.jsonc");
   const origin = new URL(arg("origin", `http://${host}:${port}`)).origin;
   if (
     !devWholePageOrigin({
@@ -209,7 +203,6 @@ async function serve() {
     // dev server can never reach MongoDB (and next dev under bun cannot load
     // the real driver as an external anyway).
     CF_BUILD: "1",
-    OWNER_EMAILS: owners,
     BETTER_AUTH_BASE_URL: origin,
     AUTH_SECRET: state.authSecret,
   };
@@ -316,10 +309,27 @@ async function serve() {
     if (!r.ok) throw new Error(`verify answered ${r.status}`);
     return ((await r.json()) as { active: string[] }).active;
   };
+  // Who the owners are: site_role on production D1, the list production gates
+  // on, asked of lianki.com with the bridge secret. At most OWNERS_CACHE_MS old;
+  // [] when it cannot be read, so the guard and the gate refuse everyone.
+  let ownersRead = { at: -Infinity, owners: [] as string[] };
+  const currentOwners = async (): Promise<string[]> => {
+    if (Date.now() - ownersRead.at < OWNERS_CACHE_MS) return ownersRead.owners;
+    try {
+      const r = await verifyCall({ owners: true });
+      if (!r.ok) throw new Error(`verify answered ${r.status}`);
+      const { owners } = (await r.json()) as { owners: string[] };
+      ownersRead = { at: Date.now(), owners };
+      return owners;
+    } catch (e) {
+      console.error(`[whole-page] owner list unavailable: ${e}`);
+      return [];
+    }
+  };
   const gate = publicHost
     ? createGate({
         publicHost,
-        ownerEmail: ownerEmails(owners)[0] ?? "",
+        ownerEmail: async () => (await currentOwners())[0] ?? "",
         sessionKey: state.previewKey,
         liveSecret: state.liveSecret,
         verify: async (token) => {
@@ -345,7 +355,7 @@ async function serve() {
       headers: { cookie, host: new URL(origin).host },
     });
     const info = (res.ok ? await res.json().catch(() => null) : null) as SessionInfo;
-    const owner = sessionIsOwner(info, ownerEmails(owners));
+    const owner = sessionIsOwner(info, await currentOwners());
     sessions.set(cookie, { owner, exp: Date.now() + SESSION_CACHE_MS });
     return owner;
   }

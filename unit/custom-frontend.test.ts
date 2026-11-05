@@ -247,7 +247,9 @@ describe("the store", () => {
     expect(await previewFor(db, id, v, t)).toBeNull();
     expect(await listPreviews(db, KISHO, t)).toEqual([]);
     const { results } = await raw
-      .prepare("SELECT kind, actor, subject FROM security_audit ORDER BY id")
+      .prepare(
+        "SELECT kind, actor, subject FROM security_audit WHERE kind NOT LIKE 'site-role.%' ORDER BY id",
+      )
       .all<{ kind: string; actor: string; subject: string }>();
     expect(results.map((r) => r.kind)).toEqual([
       "live-frontend.allow",
