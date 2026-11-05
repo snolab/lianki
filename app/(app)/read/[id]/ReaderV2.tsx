@@ -543,6 +543,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     if (!b) return;
     const parts = blockSpeech(b, para, lineText);
     const token = player.token;
+    const line = player.line;
     return speaker.speak(
       parts.map((p) => p.text),
       lang,
@@ -550,6 +551,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         onpart: (i) => {
           reading.current = { line: parts[i].line, s: parts[i].s };
           paintReading();
+          // Its last sentence started and the player reads on: the next
+          // block's first sentences are fetched now, so no gap between paragraphs.
+          const c = cfgRef.current;
+          const nb = blocks[line + 1];
+          if (i === parts.length - 1 && nb && (c.auto || c.isHeading(line)))
+            speaker.prefetch(
+              blockSpeech(nb, para, lineText).map((p) => p.text),
+              lang,
+            );
         },
         onend: () => dispatch({ type: "ended", token }),
         onerror: (error) => dispatch({ type: "failed", token, error }),

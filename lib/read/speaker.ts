@@ -179,6 +179,16 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
     }
   };
 
+  /** Which engine would speak `lang` now (null: none can). */
+  const engineFor = (lang: string): "speech" | "cloud" | null => {
+    const cloudOk = CLOUD_LANGS.has(baseLang(lang));
+    if (d.mode() === "cloud" && cloudOk) return "cloud";
+    if (voiceFor(lang)) return "speech";
+    return cloudOk ? "cloud" : null;
+  };
+  /** Prefetches of a line not started yet belong to no line: never aborted (a clip or two). */
+  const spare = new AbortController();
+
   return {
     /** In the Play tap (a gesture): lets later lines play on iOS. Silent. */
     unlock() {
@@ -196,12 +206,19 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         } catch {}
       }
     },
-    /** Which engine would speak `lang` now (null: none can). */
-    engineFor(lang: string): "speech" | "cloud" | null {
-      const cloudOk = CLOUD_LANGS.has(baseLang(lang));
-      if (d.mode() === "cloud" && cloudOk) return "cloud";
-      if (voiceFor(lang)) return "speech";
-      return cloudOk ? "cloud" : null;
+    engineFor,
+    /**
+     * The line read next (the next paragraph, in auto mode): its first
+     * sentences are fetched now, while this one plays, so the paragraph
+     * boundary does not wait on the network either. Cloud voice only; kept
+     * in the session's memory, where speak() finds them.
+     */
+    prefetch(text: string | readonly string[], lang: string) {
+      if (engineFor(lang) !== "cloud") return;
+      const first = (typeof text === "string" ? [text] : text)
+        .flatMap((p) => speechChunks(p))
+        .slice(0, PREFETCH_AHEAD);
+      for (const c of first) clip(c, baseLang(lang), new Set(), spare.signal).catch(() => {});
     },
     /**
      * Say `text` in `lang`; exactly one of onend / onerror, once, unless
