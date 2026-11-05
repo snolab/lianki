@@ -9,6 +9,7 @@ import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { connectionsOn } from "@/lib/connections/gate";
 import { getConnection, googleConfig } from "@/lib/connections/google";
+import { listGdocImports } from "@/lib/connections/gdoc-imports";
 import ConnectionsClient, { type ConnectionsLabels } from "./ConnectionsClient";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +31,8 @@ export default async function ConnectionsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const c = getIntlayer("connections-page", await appLocale());
+  const locale = await appLocale();
+  const c = getIntlayer("connections-page", locale);
   const labels = Object.fromEntries(
     Object.entries(c).map(([k, v]) => [k, String(v)]),
   ) as unknown as ConnectionsLabels;
@@ -46,7 +48,11 @@ export default async function ConnectionsPage({
     );
   if (dbBackend() !== "d1" || !connectionsOn(await readFlags(), isOwner(user.email))) notFound();
 
-  const conn = await getConnection(getD1() as unknown as D1Like, user.id);
+  const db = getD1() as unknown as D1Like;
+  const [conn, imports] = await Promise.all([
+    getConnection(db, user.id),
+    listGdocImports(db, user.id),
+  ]);
   const raw = (await searchParams).google;
   const result = typeof raw === "string" && RESULTS.has(raw) ? raw : null;
   return (
@@ -60,6 +66,8 @@ export default async function ConnectionsPage({
         configured={!!googleConfig(process.env)}
         initial={conn ? { email: conn.email, scopes: conn.scopes, status: conn.status } : null}
         result={result}
+        imports={imports}
+        locale={locale}
       />
     </div>
   );

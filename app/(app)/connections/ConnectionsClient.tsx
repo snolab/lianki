@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DRIVE_FILE_SCOPE } from "@/lib/connections/scopes";
 import { startGoogleConnect } from "@/lib/connections/connect-client";
+import type { GdocImport } from "@/lib/connections/gdoc-imports";
+import { DrivePick, DrivePickHowTo } from "./DrivePick";
+import { GdocImportList } from "./GdocImportList";
 
 export type ConnectionsLabels = {
   title: string;
@@ -40,8 +44,12 @@ export default function ConnectionsClient(p: {
   configured: boolean;
   initial: Conn | null;
   result: string | null;
+  /** The user's books from Google Docs (lib/connections/gdoc-imports.ts). */
+  imports: GdocImport[];
+  locale: string;
 }) {
   const L = p.labels;
+  const router = useRouter();
   const [conn, setConn] = useState<Conn | null>(p.initial);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(() =>
@@ -57,6 +65,8 @@ export default function ConnectionsClient(p: {
   );
 
   // The result word came in the URL; drop it so a reload does not repeat it.
+  // (After a connect started by the pick button, DrivePick reads `pick`
+  // first: a child's effect runs before this one.)
   useEffect(() => {
     if (p.result) window.history.replaceState(null, "", "/connections");
   }, [p.result]);
@@ -91,6 +101,7 @@ export default function ConnectionsClient(p: {
   }
 
   const hasDrive = !!conn?.scopes.includes(DRIVE_FILE_SCOPE);
+  const ready = p.configured && conn?.status === "ok" && hasDrive;
   const scopes = (conn?.scopes ?? [])
     .map((s) =>
       s === DRIVE_FILE_SCOPE ? L.scopeDriveFile : s.endsWith("email") ? L.scopeEmail : null,
@@ -130,10 +141,19 @@ export default function ConnectionsClient(p: {
             {L.granted} {scopes.join(", ")}
           </p>
         )}
+        {ready && (
+          <div className="space-y-3 pt-1">
+            <DrivePick page="/connections" onImported={() => router.refresh()} />
+            <DrivePickHowTo />
+          </div>
+        )}
+        {(ready || p.imports.length > 0) && (
+          <GdocImportList imports={p.imports} locale={p.locale} />
+        )}
         {!p.configured ? (
           <p className={bad}>{L.notConfigured}</p>
         ) : (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 pt-1">
             {(!conn || conn.status !== "ok" || !hasDrive) && (
               <button className={primary} disabled={busy} onClick={connect}>
                 {conn ? L.reconnect : L.connect}

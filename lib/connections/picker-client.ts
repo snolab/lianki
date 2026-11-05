@@ -26,6 +26,7 @@ type PickerNS = {
   ViewId: { DOCUMENTS: unknown };
   DocsViewMode: { LIST: unknown };
   Action: { PICKED: string; CANCEL: string };
+  Feature: { MULTISELECT_ENABLED: unknown };
   Response: { ACTION: string; DOCUMENTS: string };
   Document: { ID: string; MIME_TYPE: string };
 };
@@ -65,24 +66,34 @@ function loadPicker(): Promise<PickerNS> {
 
 export type PickerSetup = { accessToken: string; apiKey: string; appId: string };
 
-/**
- * Show the Picker on one doc. Resolves with the picked doc's id, or null when
- * the user closed it. Only Google Docs documents can be picked.
- */
+/** Show the Picker on one doc: the picked doc's id, or null when it was closed. */
 export async function pickGoogleDoc(
   setup: PickerSetup,
   docId: string | null,
 ): Promise<string | null> {
+  return (await pickGoogleDocs(setup, { docId }))[0] ?? null;
+}
+
+/**
+ * Show the Picker. With `docId` it opens preselected on that doc; with
+ * `multi` the user may tick several. Resolves with the picked docs' ids, or
+ * none when the user closed it. Only Google Docs documents can be picked.
+ */
+export async function pickGoogleDocs(
+  setup: PickerSetup,
+  o: { docId?: string | null; multi?: boolean } = {},
+): Promise<string[]> {
   const P = await loadPicker();
   return new Promise((resolve) => {
     const view = new P.DocsView(P.ViewId.DOCUMENTS);
     view.setMimeTypes(GOOGLE_DOC_MIME_TYPE);
     view.setIncludeFolders(false);
     view.setMode(P.DocsViewMode.LIST);
-    if (docId) view.setFileIds(docId);
+    if (o.docId) view.setFileIds(o.docId);
     let picker: Picker | null = null;
     const b = new P.PickerBuilder();
     b.addView(view);
+    if (o.multi) b.enableFeature(P.Feature.MULTISELECT_ENABLED);
     b.setOAuthToken(setup.accessToken);
     b.setDeveloperKey(setup.apiKey);
     b.setAppId(setup.appId);
@@ -90,13 +101,14 @@ export async function pickGoogleDoc(
     b.setCallback((data: Record<string, unknown>) => {
       const action = data[P.Response.ACTION];
       if (action === P.Action.PICKED) {
-        const doc = (data[P.Response.DOCUMENTS] as Record<string, unknown>[] | undefined)?.[0];
-        const id = doc?.[P.Document.ID];
+        const docs = (data[P.Response.DOCUMENTS] as Record<string, unknown>[] | undefined) ?? [];
         picker?.dispose();
-        resolve(typeof id === "string" ? id : null);
+        resolve(
+          docs.map((d) => d[P.Document.ID]).filter((id): id is string => typeof id === "string"),
+        );
       } else if (action === P.Action.CANCEL) {
         picker?.dispose();
-        resolve(null);
+        resolve([]);
       }
     });
     picker = b.build();
