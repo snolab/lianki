@@ -299,12 +299,16 @@ export async function partnerReply(
       tokensOut ||= MAX_OUTPUT_TOKENS;
     } else if (res.billed === "unknown" && !tokensIn && !tokensOut)
       console.log(JSON.stringify({ msg: "partner.charge.unknown", error: res.error }));
-    const settled = await settleAi(
-      db,
-      key,
-      usdToMicroCredits(costUsd(tokensIn, tokensOut)),
-      new Date(now()),
-    ).catch(() => null);
+    // A failed settle leaves the row pending: the next request's sweep refunds it.
+    let settled: Awaited<ReturnType<typeof settleAi>> = null;
+    try {
+      settled = await settleAi(
+        db,
+        key,
+        usdToMicroCredits(costUsd(tokensIn, tokensOut)),
+        new Date(now()),
+      );
+    } catch {}
     if (res.ok && settled) res = { ...res, charged: settled.charged };
   }
   return res;
