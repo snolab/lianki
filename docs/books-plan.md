@@ -42,7 +42,12 @@ book a ✓, and the day it first passed is kept.
   counted on first read and saved back, so nothing needs re-importing).
   Words are `Intl.Segmenter` word segments in the book's language (EPUB
   metadata, or guessed for pasted text), NFKC, lowercased, French/Italian
-  elisions and English `'s` stripped.
+  elisions and English `'s` stripped. Segments a language's data joins back
+  (`joins` in `lib/read/lang/<lang>.json`, engine `lib/read/word-segments.ts`)
+  are one word: Intl.Segmenter cuts Japanese by dictionary and splits
+  inflected forms (か|ついで for かついで, 食|べ|て), the same under every
+  locale in Bun, Chromium and WebKit, so the joins apply to all text, and
+  every reader path (tokens, word count, selection, reading load) uses them.
 - **Coverage, the ring and the pass:** (running words mastered + running
   words that are names) ÷ running words. Left out entirely: numbers,
   punctuation, single letters (not CJK characters), web addresses and other
