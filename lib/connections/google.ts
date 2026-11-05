@@ -43,11 +43,27 @@ export type ConnError =
   | "no-drive-scope"
   | "google-failed";
 
+/** Where a connection failed, for the log line only: a step word and Google's `error` word. */
+export interface ConnFailDetail {
+  step: "token" | "id-token" | "no-refresh-token" | "refresh";
+  /** Google's `error` field (e.g. invalid_grant), when it is a plain word. Never its description. */
+  google?: string;
+  status?: number;
+}
+
 export class ConnectionError extends Error {
-  constructor(public code: ConnError) {
+  constructor(
+    public code: ConnError,
+    public detail?: ConnFailDetail,
+  ) {
     super(code);
     this.name = "ConnectionError";
   }
+}
+
+/** Google's `error` field when it is a short plain word, else undefined (logged, never shown). */
+export function googleErrorWord(v: unknown): string | undefined {
+  return typeof v === "string" && /^[a-z_]{1,40}$/.test(v) ? v : undefined;
 }
 
 // ── configuration ───────────────────────────────────────────────────────────
@@ -231,7 +247,10 @@ async function postForm(fetchImpl: Fetch, url: string, form: Record<string, stri
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: new URLSearchParams(form).toString(),
-    redirect: "error",
+    // Not "error": the Workers runtime throws a TypeError on it ("won't be
+    // implemented … at the edge"), so every exchange failed before reaching
+    // Google. "manual" leaves a 3xx as a non-200, which callers treat as failed.
+    redirect: "manual",
     signal: AbortSignal.timeout(15_000),
   });
   const json = (await res.json().catch(() => ({}))) as TokenAnswer;
@@ -301,9 +320,13 @@ export async function exchangeCode(
     redirect_uri: cfg.redirectUri,
   });
   if (status !== 200 || typeof json.access_token !== "string")
-    throw new ConnectionError("google-failed");
+    throw new ConnectionError("google-failed", {
+      step: "token",
+      status,
+      google: googleErrorWord(json.error),
+    });
   const claims = idClaims(json.id_token, cfg.clientId, now);
-  if (!claims) throw new ConnectionError("google-failed");
+  if (!claims) throw new ConnectionError("google-failed", { step: "id-token" });
   return {
     accessToken: json.access_token,
     expiresAt: now + Math.max(60, Math.min(3600, Number(json.expires_in) || 3600)) * 1000,
@@ -385,7 +408,7 @@ export async function saveConnection(
       .first<Row>();
     if (old && old.account_sub === ex.claims.sub) sealed = old.refresh_enc;
   }
-  if (!sealed) throw new ConnectionError("google-failed");
+  if (!sealed) throw new ConnectionError("google-failed", { step: "no-refresh-token" });
   await db
     .prepare(
       `INSERT INTO connection
@@ -513,7 +536,11 @@ export async function accessToken(
     throw new ConnectionError("reconnect");
   }
   if (status !== 200 || typeof json.access_token !== "string")
-    throw new ConnectionError("google-failed");
+    throw new ConnectionError("google-failed", {
+      step: "refresh",
+      status,
+      google: googleErrorWord(json.error),
+    });
   const exp = now + Math.max(60, Math.min(3600, Number(json.expires_in) || 3600)) * 1000;
   const scopes = json.scope ? grantedScopes(json.scope) : grantedScopes(row.scopes);
   if (typeof json.refresh_token === "string" && json.refresh_token !== refresh) {

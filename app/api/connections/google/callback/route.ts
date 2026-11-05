@@ -7,6 +7,7 @@ import {
   checkState,
   exchangeCode,
   googleConfig,
+  googleErrorWord,
   saveConnection,
   siteOrigin,
   validCode,
@@ -48,9 +49,21 @@ export async function GET(req: NextRequest) {
   );
   if (!checked.ok) return back("/connections", "bad-state");
   const ret = checked.state.r;
-  if (q.get("error")) return back(ret, q.get("error") === "access_denied" ? "denied" : "failed");
+  const gErr = q.get("error");
+  if (gErr) {
+    if (gErr === "access_denied") return back(ret, "denied");
+    console.error("connections.google.callback-failed", {
+      user: ctx.userId,
+      step: "consent",
+      google: googleErrorWord(gErr) ?? "other",
+    });
+    return back(ret, "failed");
+  }
   const code = q.get("code");
-  if (!validCode(code)) return back(ret, "failed");
+  if (!validCode(code)) {
+    console.error("connections.google.callback-failed", { user: ctx.userId, step: "code" });
+    return back(ret, "failed");
+  }
 
   try {
     const ex = await exchangeCode(cfg, code, checked.state.v);
@@ -58,9 +71,16 @@ export async function GET(req: NextRequest) {
     console.log("connections.google.connected", { user: ctx.userId, scopes: ex.scopes.length });
     return back(ret, "connected");
   } catch (err) {
+    // The user id, a step word, the error's class and Google's `error` word:
+    // never the code, tokens, the cookie or the account's email.
+    const ce = err instanceof ConnectionError ? err : null;
     console.error("connections.google.callback-failed", {
       user: ctx.userId,
-      code: err instanceof ConnectionError ? err.code : "error",
+      code: ce ? ce.code : "error",
+      step: ce?.detail?.step ?? "exchange-or-save",
+      google: ce?.detail?.google,
+      status: ce?.detail?.status,
+      name: err instanceof Error ? err.name : typeof err,
     });
     return back(ret, "failed");
   }
