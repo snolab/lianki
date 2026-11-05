@@ -371,6 +371,15 @@ describe("the reader with the user's own AI", () => {
     expect(await fetchPiece("book1", "fr", undefined, "Fails once.", own)).toBe("Échoue une fois.");
   });
 
+  it("the gloss route unreachable or refusing: no meaning, never thrown; BYOK read from the device by default", async () => {
+    const offline = (async () => {
+      throw new TypeError("offline");
+    }) as unknown as typeof fetch;
+    expect(await fetchGloss("book5", "loup", null, null, { fetch: offline })).toBeNull();
+    const refused = (async () => new Response("{}", { status: 401 })) as unknown as typeof fetch;
+    expect(await fetchGloss("book5", "chat", null, undefined, { fetch: refused })).toBeNull();
+  });
+
   it("our route failing: the translation is null, never thrown", async () => {
     globalThis.fetch = (async () => {
       throw new TypeError("offline");
