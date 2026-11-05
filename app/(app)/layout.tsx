@@ -19,6 +19,7 @@ import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { booksOn } from "@/lib/books/gate";
+import { levelsOn } from "@/lib/level-progress";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   announceBuild();
@@ -42,7 +43,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Flag-gated nav items (lib/app-nav.ts `flag`): /books shows for the owner
   // only while `books.catalogue` is off. readFlags is cached 30 s per isolate.
   const flags = dbBackend() === "d1" ? await readFlags() : null;
-  const navShown = booksOn(flags, isOwner(user?.email ?? null)) ? ["books"] : [];
+  const owner = isOwner(user?.email ?? null);
+  const navShown = booksOn(flags, owner) ? ["books"] : [];
+  // The level chip by the avatar (docs/levels.md): signed in, D1, `levels` on or the owner.
+  const levels = Boolean(user) && flags !== null && levelsOn(flags, owner);
 
   const { appName, nav } = getIntlayer("landing-page", locale);
   const shell = getIntlayer("app-shell", locale);
@@ -74,6 +78,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             )}
             liveView={liveView}
             navShown={navShown}
+            levels={levels}
           >
             {pendingInvite && <InviteClaim />}
             <PrefSync signedIn={Boolean(user)} />
