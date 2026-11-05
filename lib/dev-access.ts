@@ -15,6 +15,8 @@
  *   apart.
  */
 
+import { audit } from "./security/audit-log";
+
 /** The subset of D1 used here (TestD1Database in tests). */
 export interface DevAccessDb {
   prepare(query: string): {
@@ -81,15 +83,10 @@ export async function mintToken(
   if (!clean) throw new DevAccessError(400, "a name is required");
   if (!Number.isInteger(days) || days < MIN_TOKEN_DAYS || days > MAX_TOKEN_DAYS)
     throw new DevAccessError(400, `days must be ${MIN_TOKEN_DAYS}–${MAX_TOKEN_DAYS}`);
-  const live = await db
-    .prepare(
-      "SELECT COUNT(*) AS n FROM dev_access_token WHERE user_id = ?1 AND kind = 'token' AND revoked_ms IS NULL AND expires_ms > ?2",
-    )
-    .bind(who.id, now)
-    .first<{ n: number }>();
-  if ((live?.n ?? 0) >= MAX_LIVE_TOKENS)
-    throw new DevAccessError(409, `at most ${MAX_LIVE_TOKENS} live tokens: revoke one first`);
-  return insert(db, who, "token", clean, now + days * DAY, now);
+  const t = await insert(db, who, "token", clean, now + days * DAY, now, MAX_LIVE_TOKENS);
+  if (!t) throw new DevAccessError(409, `at most ${MAX_LIVE_TOKENS} live tokens: revoke one first`);
+  await audit(db, { kind: "dev-token.mint", actor: who.id, subject: t.id }, now);
+  return t;
 }
 
 export async function mintHandoff(
@@ -97,9 +94,18 @@ export async function mintHandoff(
   who: Minter,
   now = Date.now(),
 ): Promise<{ id: string; token: string; expiresMs: number }> {
-  return insert(db, who, "handoff", "profile menu", now + HANDOFF_TTL_MS, now);
+  const t = await insert(db, who, "handoff", "profile menu", now + HANDOFF_TTL_MS, now);
+  if (!t) throw new DevAccessError(500, "handoff not stored");
+  await audit(db, { kind: "dev-handoff.mint", actor: who.id, subject: t.id }, now);
+  return t;
 }
 
+/**
+ * One row; with `cap`, only while the owner has fewer than `cap` live named
+ * tokens. The count and the insert are ONE statement (INSERT … SELECT …
+ * WHERE (SELECT COUNT …) < cap), so concurrent mints can never pass the cap
+ * together, as a count-then-insert could. null: over the cap, nothing stored.
+ */
 async function insert(
   db: DevAccessDb,
   who: Minter,
@@ -107,13 +113,19 @@ async function insert(
   name: string,
   expiresMs: number,
   now: number,
+  cap?: number,
 ) {
   const id = rand(9);
   const token = `${kind === "token" ? TOKEN_PREFIX : HANDOFF_PREFIX}${rand(32)}`;
-  await db
+  const row = await db
     .prepare(
       `INSERT INTO dev_access_token (id, user_id, email, kind, name, token_hash, created_ms, expires_ms)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+       WHERE ?9 IS NULL OR (
+         SELECT COUNT(*) FROM dev_access_token
+         WHERE user_id = ?2 AND kind = 'token' AND revoked_ms IS NULL AND expires_ms > ?7
+       ) < ?9
+       RETURNING id`,
     )
     .bind(
       id,
@@ -124,9 +136,10 @@ async function insert(
       await tokenHash(token),
       now,
       expiresMs,
+      cap ?? null,
     )
-    .run();
-  return { id, token, expiresMs };
+    .first<{ id: string }>();
+  return row?.id === id ? { id, token, expiresMs } : null;
 }
 
 /** The owner's named tokens, newest first (never the hash). */
@@ -154,6 +167,7 @@ export async function revokeToken(
     )
     .bind(userId, id, now)
     .first<{ id: string }>();
+  if (row) await audit(db, { kind: "dev-token.revoke", actor: userId, subject: id }, now);
   return Boolean(row);
 }
 
@@ -165,6 +179,7 @@ export async function revokeAll(db: DevAccessDb, userId: string, now = Date.now(
     )
     .bind(userId, now)
     .run();
+  await audit(db, { kind: "dev-token.revoke-all", actor: userId }, now);
 }
 
 export type Verified = {

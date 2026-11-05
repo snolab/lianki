@@ -27,6 +27,11 @@
  */
 
 import { previewEntryUrl } from "../../lib/dev-server-switch";
+import {
+  filterTunnelHeaders,
+  isServiceWorkerScript,
+  tunnelHeaderDropped,
+} from "../../lib/live-view/tunnel-headers";
 
 export const AUTH_PATH = "/_lk/dev-auth";
 export const UP_PATH = "/_lk/up";
@@ -653,6 +658,10 @@ export function createGate(d: GateDeps) {
       if (host !== d.publicHost) return closed("wrong host");
       const ip = (one(req.headers["cf-connecting-ip"]) ?? "?").trim();
       const path = new URL(req.url, "http://x").pathname;
+      // A service worker from dev code would outlive the preview and control
+      // every later page of the origin: never served here, signed in or not.
+      if (isServiceWorkerScript(path, one(req.headers["service-worker"])))
+        return respond(403, "403 — no service workers from the dev server.\n");
       if (path === UP_PATH)
         // The profile menu's one check when it opens: the gate answers (the
         // tunnel is up), and still with 503 — nothing here is a way in.
@@ -743,19 +752,79 @@ export function upstreamHeaders(
 }
 
 /**
- * What goes back down: no better-auth cookie (a browser on the tunnel never
- * holds an owner session of its own, so revoking the token is the end of
- * it), and redirects to the dev server's own origin pointed at the tunnel.
+ * What goes back down: nothing that changes the browser's state for the
+ * origin (lib/live-view/tunnel-headers.ts): no Set-Cookie at all (the gate's
+ * own cookie is set by the gate, never by the app, and a browser on the
+ * tunnel never holds an owner session of its own, so revoking the token is
+ * the end of it), no Clear-Site-Data, CSP, CORS, HSTS or
+ * Service-Worker-Allowed (the guard adds its own frame-ancestors after this).
+ * Redirects to the dev server's own origin are pointed at the tunnel.
  */
 export function downstreamHeaders(h: Headers, o: { publicHost: string; origin: string }): Headers {
-  const out: Headers = { ...h };
-  const sc = h["set-cookie"];
-  const list = Array.isArray(sc) ? sc : sc ? [sc] : [];
-  const kept = list.filter((c) => !/^(__Secure-)?better-auth\./.test(c.trim()));
-  if (kept.length) out["set-cookie"] = kept;
-  else delete out["set-cookie"];
+  const out: Headers = filterTunnelHeaders({ ...h });
   const loc = one(h.location);
   if (loc?.startsWith(o.origin))
     out.location = `https://${o.publicHost}${loc.slice(o.origin.length)}`;
   return out;
+}
+
+const TOKEN_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/**
+ * An upstream response head (a websocket's 101 above all), filtered like
+ * downstreamHeaders: the status line, then only well-formed `name: value`
+ * lines whose name may pass. A folded continuation line is dropped too, so
+ * it cannot ride on a dropped header. `head` is everything before the blank
+ * line; the result ends with it.
+ */
+export function filterResponseHead(head: string): string {
+  const [status = "", ...lines] = head.split("\r\n");
+  const kept = lines.filter((l) => {
+    const i = l.indexOf(":");
+    return i > 0 && TOKEN_NAME.test(l.slice(0, i)) && !tunnelHeaderDropped(l.slice(0, i));
+  });
+  return `${[status, ...kept].join("\r\n")}\r\n\r\n`;
+}
+
+/** The longest upstream response head read before its socket is given up. */
+export const MAX_HEAD_BYTES = 16 * 1024;
+
+/**
+ * Splits an upgraded upstream socket's first bytes into its response head
+ * (filtered, filterResponseHead) and what follows. Feed it every chunk:
+ * `null` while the head is incomplete, then the bytes to write downstream
+ * (the filtered head and the rest of that chunk), and every later chunk
+ * unchanged. `"too-large"`: no head within MAX_HEAD_BYTES; close both ends.
+ */
+export function upgradeHeadFilter(max = MAX_HEAD_BYTES) {
+  let buf = new Uint8Array(0);
+  let done = false;
+  return (chunk: Uint8Array): Uint8Array | null | "too-large" => {
+    if (done) return chunk;
+    const all = new Uint8Array(buf.length + chunk.length);
+    all.set(buf);
+    all.set(chunk, buf.length);
+    const end = blankLine(all);
+    if (end < 0 ? all.length > max : end > max) return "too-large";
+    if (end < 0) {
+      buf = all;
+      return null;
+    }
+    done = true;
+    buf = new Uint8Array(0);
+    let text = "";
+    for (const b of all.subarray(0, end)) text += String.fromCharCode(b); // latin1, byte for byte
+    const head = Uint8Array.from(filterResponseHead(text), (c) => c.charCodeAt(0) & 0xff);
+    const rest = all.subarray(end + 4);
+    const out = new Uint8Array(head.length + rest.length);
+    out.set(head);
+    out.set(rest, head.length);
+    return out;
+  };
+}
+
+function blankLine(b: Uint8Array): number {
+  for (let i = 0; i + 3 < b.length; i++)
+    if (b[i] === 13 && b[i + 1] === 10 && b[i + 2] === 13 && b[i + 3] === 10) return i;
+  return -1;
 }

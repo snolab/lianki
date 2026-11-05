@@ -277,6 +277,31 @@ session, so:
 - **Stop:** `bun scripts/dev/live-view.ts off`, the owner's DELETE, or simply
   expiry.
 
+**Dev-tunnel responses never change the browser's state** (2026-11-05,
+before the same-origin live preview): whatever the dev server answers, on
+preview.lianki.com and wherever else a tunnel response is served, loses
+`Set-Cookie` (all of them), `Clear-Site-Data`, CSP, every
+`Access-Control-*`, HSTS and `Service-Worker-Allowed`
+(`lib/live-view/tunnel-headers.ts`). A websocket's `101` is filtered the same
+way before its first byte goes down (`upgradeHeadFilter` in
+`scripts/dev/preview-gate.ts`; a head over 16 KB closes the socket). A
+service worker script (`/sw.js`, `*-sw.js`, `service-worker.js`, or any
+request with `Service-Worker: script`) is 403 at the gate, signed in or not:
+one would outlive the preview and control later pages.
+
+**Audit log.** Every write to what lets dev code or a dev server in gets a
+D1 row in `security_audit` (`db/migrations/0040_security_audit.sql`,
+`lib/security/audit-log.ts`): live view on / off (actor `mac-key`, the
+serial, branch@sha) and the owner's stop; dev token mint, revoke, revoke all,
+and the profile menu's handoff (actor: the user id; subject: the token id).
+Ids and labels only, never a token or a pointer. Best effort: a failed audit
+insert is logged and never undoes the write. Read it with
+`wrangler d1 execute lianki --remote --command "SELECT * FROM security_audit ORDER BY id DESC LIMIT 50"`.
+
+**The dev-token cap is one statement.** At most 20 live named tokens: the
+count and the insert are a single `INSERT … SELECT … WHERE (SELECT COUNT(*) …)
+< 20`, so concurrent mints cannot pass it together.
+
 ## 9. The CLI login (`lianki auth login`)
 
 The command-line tool signs in through the browser and gets an API token

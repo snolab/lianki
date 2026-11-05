@@ -23,7 +23,8 @@ import {
 
 const SCHEMA =
   "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT);\n" +
-  readFileSync(new URL("../db/migrations/0021_dev_access_token.sql", import.meta.url), "utf8");
+  readFileSync(new URL("../db/migrations/0021_dev_access_token.sql", import.meta.url), "utf8") +
+  readFileSync(new URL("../db/migrations/0040_security_audit.sql", import.meta.url), "utf8");
 const OWNER = { id: "u1", email: "owner@example.com" };
 const OWNERS = [OWNER.email];
 const T0 = 1_800_000_000_000;

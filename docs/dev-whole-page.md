@@ -192,9 +192,16 @@ navigate`, `Sec-Fetch-Dest: document` (when sent) and `Accept: text/html`
   with a single leading `/`. Otherwise `/__dev/landing`.
 - **Auto sign-in**: past the gate, the guard adds his owner session
   server-side, as for his tailnet devices. The browser never holds a
-  better-auth cookie of its own here (incoming ones are dropped, outgoing
-  `Set-Cookie`s for it are stripped), so the token is the only key.
-  Sign-out on the tunnel ends the tunnel session only.
+  better-auth cookie of its own here (incoming ones are dropped), so the
+  token is the only key. Sign-out on the tunnel ends the tunnel session only.
+- **Nothing from the app changes the browser's state** (2026-11-05): every
+  tunnel response, a websocket's `101` included, loses all `Set-Cookie`,
+  `Clear-Site-Data`, CSP, `Access-Control-*`, HSTS and
+  `Service-Worker-Allowed` (`lib/live-view/tunnel-headers.ts`); the guard
+  then adds its own `frame-ancestors`. Only the gate sets a cookie (its own
+  session). A language picked on the preview build therefore does not
+  stick there (the `lang` cookie is dropped); `?lang=` still works per page.
+  Service worker scripts (`/sw.js`, `Service-Worker: script`) are 403.
 - **Limits**: 10 failed tokens per IP per 10 minutes → 429, and attempts
   still in flight count towards it. No global lockout: one would let anyone
   with a few IPs lock the owner out without a token. Token checks go through

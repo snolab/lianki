@@ -366,7 +366,8 @@ describe("what reaches the app, and what comes back", () => {
       },
       { publicHost: HOST, origin: ORIGIN },
     );
-    expect(down["set-cookie"]).toEqual(["lk_theme=dark; Path=/"]);
+    // No cookie from the app reaches the browser at all (lib/live-view/tunnel-headers.ts).
+    expect(down["set-cookie"]).toBeUndefined();
     expect(down.location).toBe(`https://${HOST}/words`);
   });
 });
