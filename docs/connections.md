@@ -10,8 +10,7 @@ own table, from its own OAuth flow. Disconnecting never signs anyone out, and
 signing out or unlinking the sign-in never touches a connection.
 
 Ships **dark**: flag `connections.google` (off) — while off, only the owner
-(`OWNER_EMAILS`) sees /connections and the Drive import; everyone else gets
-404. Turn it on at `/dev/flags` once the setup below is done and checked.
+(`OWNER_EMAILS`) sees /connections and the Drive import; everyone else gets 404. Turn it on at `/dev/flags` once the setup below is done and checked.
 
 ## Flow
 
@@ -61,11 +60,11 @@ Google Picker**, so:
 
 ## Tokens at rest
 
-| what                   | where                                           |
-| ---------------------- | ----------------------------------------------- |
-| refresh token          | D1 `connection.refresh_enc`, AES-256-GCM sealed |
-| access token (≤ 1 h)   | the Worker isolate's memory; the browser's memory while the Picker is open |
-| state + PKCE verifier  | the sealed `lk_gconn` cookie, 10 min            |
+| what                  | where                                                                      |
+| --------------------- | -------------------------------------------------------------------------- |
+| refresh token         | D1 `connection.refresh_enc`, AES-256-GCM sealed                            |
+| access token (≤ 1 h)  | the Worker isolate's memory; the browser's memory while the Picker is open |
+| state + PKCE verifier | the sealed `lk_gconn` cookie, 10 min                                       |
 
 - **Key**: HKDF-SHA256 from `AUTH_SECRET`, one key per purpose (`info`
   `lianki/connections/<purpose>/v1`), so no new Worker secret. AAD binds each
@@ -74,8 +73,15 @@ Google Picker**, so:
   unreadable: those connections show "connect again" and nothing else breaks.
 - A refused refresh (`invalid_grant`: the user removed Lianki at
   myaccount.google.com) marks the row `reconnect`.
-- Tokens, codes and the cookie are never logged; log lines carry the user id
-  and an error word only. Google's error text is never shown or echoed.
+- Tokens, codes and the cookie are never logged; a failed callback logs
+  `connections.google.callback-failed` with the user id, a step word
+  (`consent`, `code`, `token`, `id-token`, `no-refresh-token`, else
+  `exchange-or-save` plus the error's class name), the HTTP status and
+  Google's `error` word (e.g. `invalid_grant`) only. Google's error text is
+  never shown, echoed or logged.
+- Calls to Google use `redirect: "manual"`, never `"error"`: the Workers
+  runtime throws a TypeError on `"error"`, which made every connect fail
+  until 2026-11-05.
 
 ## Tables
 
@@ -87,16 +93,16 @@ Google Picker**, so:
 
 ## Code
 
-| piece                                     | where                                           |
-| ----------------------------------------- | ----------------------------------------------- |
-| flow, storage, refresh, revoke            | `lib/connections/google.ts`                     |
-| sealing                                   | `lib/connections/crypto.ts`                     |
-| gate (`connectionsOn`)                    | `lib/connections/gate.ts`, route gate `lib/connections/route.ts` |
-| routes                                    | `app/api/connections/google/{start,callback,picker,disconnect}` |
-| page                                      | `app/(app)/connections/`                        |
-| Drive export                              | `lib/gdoc/drive.ts`; import in `app/api/read/gdoc/route.ts` |
-| Picker                                    | `lib/connections/picker-client.ts`, `app/(app)/read/GdocDriveImport.tsx` |
-| tests                                     | `unit/connections.test.ts`                      |
+| piece                          | where                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| flow, storage, refresh, revoke | `lib/connections/google.ts`                                              |
+| sealing                        | `lib/connections/crypto.ts`                                              |
+| gate (`connectionsOn`)         | `lib/connections/gate.ts`, route gate `lib/connections/route.ts`         |
+| routes                         | `app/api/connections/google/{start,callback,picker,disconnect}`          |
+| page                           | `app/(app)/connections/`                                                 |
+| Drive export                   | `lib/gdoc/drive.ts`; import in `app/api/read/gdoc/route.ts`              |
+| Picker                         | `lib/connections/picker-client.ts`, `app/(app)/read/GdocDriveImport.tsx` |
+| tests                          | `unit/connections.test.ts`                                               |
 
 ## Owner setup (Google Cloud console, project of the sign-in client)
 
