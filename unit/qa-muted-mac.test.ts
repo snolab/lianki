@@ -20,11 +20,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const SCRIPT = join(import.meta.dir, "../scripts/qa/with-muted-mac.sh");
+const SOURCE = join(import.meta.dir, "../scripts/qa/with-muted-mac.sh");
 // Many processes per test, and the machines running this are often busy.
 const SLOW = 30_000;
 
 let root: string;
+let script: string; // a copy per test, so every process it starts is findable by path
 let dir: string; // the script's state directory
 let sound: string; // the fake Mac's "muted" state
 let log: string; // what the fake osascript was asked
@@ -56,12 +57,33 @@ beforeEach(() => {
   chmodSync(join(bin, "uname"), 0o755);
   writeFileSync(sound, "false\n");
   writeFileSync(log, "");
+  script = join(root, "with-muted-mac.sh");
+  writeFileSync(script, readFileSync(SOURCE));
 });
 
-afterEach(() => {
+/** Processes still running from this test's copy of the script or its temp dir. */
+const alive = () =>
+  new TextDecoder()
+    .decode(Bun.spawnSync(["ps", "-axo", "pid=,command="]).stdout)
+    .split("\n")
+    .filter((l) => l.includes(root));
+
+// Watchers and wrapped commands must end by themselves once their run and its
+// state are gone. They once did not: 140 watchers spun for hours and loaded the
+// owner's Mac (2026-11-05). Anything left is killed, then fails the test.
+afterEach(async () => {
   for (const p of running.splice(0)) p.kill(9);
   rmSync(root, { recursive: true, force: true });
-});
+  const end = Date.now() + 15_000;
+  while (alive().length && Date.now() < end) await Bun.sleep(50);
+  const left = alive();
+  for (const l of left) {
+    try {
+      process.kill(Number(l.trim().split(/\s+/)[0]), "SIGKILL");
+    } catch {}
+  }
+  expect(left).toEqual([]);
+}, SLOW);
 
 const env = () => ({
   ...process.env,
@@ -71,7 +93,7 @@ const env = () => ({
 });
 
 const run = (...cmd: string[]) => {
-  const p = Bun.spawn(["bash", SCRIPT, ...cmd], { env: env(), stdout: "ignore", stderr: "ignore" });
+  const p = Bun.spawn(["bash", script, ...cmd], { env: env(), stdout: "ignore", stderr: "ignore" });
   running.push(p);
   return p;
 };
@@ -83,7 +105,8 @@ const held = (name: string) => {
   const p = run(
     "sh",
     "-c",
-    `touch "${started}"; until [ -f "${go}" ]; do sleep 0.02; done; exit 0`,
+    // It may outlive a killed wrapper, so it also ends when the test's dir goes.
+    `touch "${started}"; until [ -f "${go}" ] || [ ! -d "${root}" ]; do sleep 0.05; done; exit 0`,
   );
   return {
     p,
@@ -110,6 +133,61 @@ const deadPid = async () => {
   await p.exited;
   return p.pid;
 };
+
+describe("nothing outlives a run", () => {
+  test(
+    "a clean run leaves no process behind, not even for a moment after it exits",
+    async () => {
+      expect(await run("true").exited).toBe(0);
+      await until(() => alive().length === 0, 3000);
+    },
+    SLOW,
+  );
+
+  test(
+    "a watcher whose state directory is gone ends instead of waiting on the lock",
+    async () => {
+      const a = held("a");
+      await a.up();
+      rmSync(dir, { recursive: true, force: true });
+      a.p.kill(9);
+      await a.p.exited;
+      writeFileSync(join(root, "a.go"), "");
+      await until(() => alive().length === 0);
+    },
+    SLOW,
+  );
+
+  test(
+    "a run whose state directory goes mid-run ends with its command's code",
+    async () => {
+      const code = await run("sh", "-c", `rm -rf "${dir}"; exit 3`).exited;
+      expect(code).toBe(3);
+      await until(() => alive().length === 0);
+    },
+    SLOW,
+  );
+
+  test(
+    "a lock it cannot take: the command still runs, unmuted",
+    async () => {
+      // A stale mutex gets broken, so only a mkdir that always refuses it stays locked.
+      const fake = join(root, "bin", "mkdir");
+      writeFileSync(
+        fake,
+        `#!/bin/sh\ncase "$*" in */mutex*) exit 1 ;; esac\nexec /bin/mkdir "$@"\n`,
+      );
+      chmodSync(fake, 0o755);
+      const src = readFileSync(script, "utf8").replace("LOCK_WAIT=300", "LOCK_WAIT=2");
+      writeFileSync(script, src);
+      expect(await run("sh", "-c", "exit 4").exited).toBe(4);
+      expect(readFileSync(log, "utf8")).toBe("");
+      expect(muted()).toBe(false);
+      await until(() => alive().length === 0);
+    },
+    SLOW,
+  );
+});
 
 describe("one run", () => {
   test(
@@ -205,7 +283,7 @@ describe("killed runs and leftovers", () => {
   test(
     "kill -9 of the run's whole process group: the watcher is outside it",
     async () => {
-      const p = Bun.spawn(["bash", SCRIPT, "sleep", "30"], {
+      const p = Bun.spawn(["bash", script, "sleep", "30"], {
         env: env(),
         stdout: "ignore",
         stderr: "ignore",
@@ -354,7 +432,7 @@ describe("osascript failing", () => {
 test(
   "the wrapper's output pipe closes with it: the watcher does not hold it open",
   async () => {
-    const p = Bun.spawn(["bash", SCRIPT, "echo", "hi"], {
+    const p = Bun.spawn(["bash", script, "echo", "hi"], {
       env: env(),
       stdout: "pipe",
       stderr: "pipe",

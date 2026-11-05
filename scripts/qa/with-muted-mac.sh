@@ -46,9 +46,13 @@ fi
 
 started() { ps -o lstart= -p "$1" 2>/dev/null; }
 
+# Fails rather than waits for ever: a process that outlives its run must end.
 lock() {
-  local i=0 owner now
+  local i=0 total=0 owner now
   until mkdir "$MUTEX" 2>/dev/null; do
+    [ -d "$DIR" ] || return 1
+    total=$((total + 1))
+    [ "$total" -le $((LOCK_WAIT * 4)) ] || return 1
     i=$((i + 1))
     owner="$(cat "$MUTEX/pid" 2>/dev/null)"
     # No pid is an older checkout's mutex, or an owner just past its mkdir: only
@@ -88,16 +92,13 @@ holders() { ls "$DIR"/holder.* 2>/dev/null | wc -l | tr -d ' '; }
 
 # osascript with a time limit: it runs under the mutex and can hang on a busy
 # audio daemon. Fd 8 is the watcher's pipe, which only the wrapper may hold.
+# An alarm survives exec, so no guard process is left behind.
 osa() {
-  osascript -e "$1" 8>&- 2>/dev/null &
-  local job=$! guard rc
-  { sleep 8 8>&- && kill "$job"; } >/dev/null 2>&1 &
-  guard=$!
-  wait "$job" 2>/dev/null
-  rc=$?
-  kill "$guard" 2>/dev/null
-  wait "$guard" 2>/dev/null
-  return "$rc"
+  if command -v perl >/dev/null 2>&1; then
+    perl -e 'alarm 8; exec @ARGV' osascript -e "$1" 8>&- 2>/dev/null
+  else
+    osascript -e "$1" 8>&- 2>/dev/null
+  fi
 }
 
 muted_now() { osa 'output muted of (get volume settings)'; }
@@ -144,11 +145,11 @@ settle() {
 if [ -n "${LIANKI_QA_MUTE_WATCH:-}" ]; then
   trap '' INT TERM HUP
   cat >/dev/null
-  # Ignored signals are inherited, and osa() must be able to stop its guard.
+  # Only the wait is shielded: from here on a plain kill ends it.
   trap - INT TERM HUP
   # Nothing saved: a clean exit already restored, or a live holder will.
   [ -f "$STATE" ] || exit 0
-  lock
+  lock || exit 0
   settle
   unlock
   exit 0
@@ -156,8 +157,8 @@ fi
 
 restore() {
   trap - EXIT INT TERM HUP
-  lock
   rm -f "$ME"
+  lock || return 0
   settle
   unlock
 }
@@ -170,7 +171,11 @@ exec 8> >(
   LIANKI_QA_MUTE_WATCH=1 bash "$0" <&0 >/dev/null 2>&1 &
 )
 
-lock
+# No lock means no safe way to save or restore: leave the sound alone.
+if ! lock; then
+  echo "with-muted-mac: could not lock $DIR, not muting" >&2
+  exec "$@" 8>&-
+fi
 prune
 if [ ! -f "$STATE" ]; then
   # The first holder saves the state. With live holders but no saved state their
