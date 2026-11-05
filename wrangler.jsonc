@@ -21,10 +21,7 @@
     "BETTER_AUTH_BASE_URL": "https://lianki.com",
     // Comma-separated. Gates owner-only internal pages (/dev/roadmap); empty
     // means nobody passes. See lib/owner.ts.
-    // The owner's main account is temporarily a normal user by his decision on
-    // 2026-11-05; the admin account holds the owner role. Restore by putting
-    // his main address back when he asks in Slack.
-    "OWNER_EMAILS": "snomiao+admin@gmail.com"
+    "OWNER_EMAILS": "snomiao@gmail.com,snomiao+admin@gmail.com"
   },
   // Workers Logs: requests and console output kept and searchable in the
   // dashboard (Observability), not only live via `wrangler tail`.
