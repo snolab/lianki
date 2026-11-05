@@ -14,9 +14,10 @@ const ROW = "flex items-center gap-2 min-h-11 mb-2";
 const ERROR = "text-sm text-red-600 dark:text-red-400 mb-2";
 
 /**
- * The User Information card's fields. Name and picture have a pen; email has
- * none (the sign-in identity). After a save the server's layout is re-rendered
- * (router.refresh), so the nav's name and avatar change at once.
+ * The User Information card's fields, each with a pen. After a save the server's
+ * layout is re-rendered (router.refresh), so the nav's name and avatar change at
+ * once. The address changes only after its mailed link is confirmed
+ * (lib/profile/email-change.ts), so here it only asks.
  */
 export function ProfileFields(props: {
   name: string;
@@ -24,6 +25,8 @@ export function ProfileFields(props: {
   image: string | null;
   /** The routes behind the pens exist only on the D1 backend. */
   editable: boolean;
+  /** D1, and a mail provider to send the link. */
+  emailEditable: boolean;
 }) {
   const page = useIntlayer("profile-page");
   const t = useIntlayer("profile-edit");
@@ -35,6 +38,10 @@ export function ProfileFields(props: {
   const [saving, setSaving] = useState(false);
   const penRef = useRef<HTMLButtonElement>(null);
 
+  const [emailDraft, setEmailDraft] = useState<string | null>(null);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailNote, setEmailNote] = useState<{ ok: boolean; text: ReactNode } | null>(null);
+
   const [image, setImage] = useState(props.image);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState<ReactNode>(null);
@@ -45,6 +52,38 @@ export function ProfileFields(props: {
     setDraft(null);
     setNameError(null);
     requestAnimationFrame(() => penRef.current?.focus());
+  }
+
+  async function askEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (emailDraft === null || emailBusy) return;
+    setEmailBusy(true);
+    setEmailNote(null);
+    try {
+      const r = await fetch("/api/profile/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: emailDraft }),
+      });
+      const body = (await r.json().catch(() => ({}))) as { error?: string };
+      if (r.ok) {
+        setEmailDraft(null);
+        setEmailNote({ ok: true, text: t.emailSent });
+        return;
+      }
+      const reasons: Record<string, ReactNode> = {
+        invalid: t.emailInvalid,
+        same: t.emailSame,
+        owner: t.emailOwner,
+        "sign-in-again": t.emailSignInAgain,
+        "rate-limited": t.tooMany,
+      };
+      setEmailNote({ ok: false, text: reasons[body.error ?? ""] ?? t.saveFailed });
+    } catch {
+      setEmailNote({ ok: false, text: t.saveFailed });
+    } finally {
+      setEmailBusy(false);
+    }
   }
 
   async function saveName(e: React.FormEvent) {
@@ -200,11 +239,83 @@ export function ProfileFields(props: {
         </p>
       )}
 
-      <p className={`${ROW} [overflow-wrap:anywhere]`}>
-        <span>
-          <strong>{page.email}</strong> {props.email}
-        </span>
-      </p>
+      {emailDraft === null ? (
+        <div className={ROW}>
+          <p className="min-w-0 [overflow-wrap:anywhere]">
+            <strong>{page.email}</strong> {props.email}
+          </p>
+          {props.emailEditable && (
+            <button
+              type="button"
+              className={ICON_BUTTON}
+              aria-label={t.editEmail.value}
+              title={t.editEmail.value}
+              onClick={() => {
+                setEmailNote(null);
+                setEmailDraft("");
+              }}
+              data-testid="edit-email"
+            >
+              <Icon name="pencilSimple" />
+            </button>
+          )}
+        </div>
+      ) : (
+        <>
+          <form onSubmit={askEmail} className={ROW}>
+            <label htmlFor="profile-email">
+              <strong>{page.email}</strong>
+            </label>
+            <input
+              id="profile-email"
+              type="email"
+              value={emailDraft}
+              onChange={(e) => setEmailDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setEmailDraft(null);
+              }}
+              placeholder={t.emailField.value}
+              aria-label={t.emailField.value}
+              autoComplete="email"
+              autoFocus
+              required
+              maxLength={254}
+              className="min-w-0 grow rounded border border-gray-300 bg-white px-2 py-1 dark:border-gray-600 dark:bg-gray-900"
+            />
+            <button
+              type="submit"
+              disabled={emailBusy}
+              className={ICON_BUTTON}
+              aria-label={t.emailSend.value}
+              title={t.emailSend.value}
+              data-testid="save-email"
+            >
+              <Icon name="check" />
+            </button>
+            <button
+              type="button"
+              className={ICON_BUTTON}
+              aria-label={t.cancelEdit.value}
+              title={t.cancelEdit.value}
+              onClick={() => setEmailDraft(null)}
+            >
+              <Icon name="x" />
+            </button>
+          </form>
+          <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">{t.emailHow}</p>
+          <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">{t.emailGoogle}</p>
+        </>
+      )}
+      {emailNote &&
+        (emailNote.ok ? (
+          <p role="status" className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+            {emailNote.text}
+          </p>
+        ) : (
+          <p role="alert" className={ERROR}>
+            {emailNote.text}
+          </p>
+        ))}
 
       {(image || props.editable) && (
         <>

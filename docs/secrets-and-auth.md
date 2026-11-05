@@ -88,6 +88,44 @@ A picture stays until replaced or removed. There is no account deletion in the
 app today; when one comes, it has to delete `avatars/<user id>/` too (the row
 cascades, the object does not).
 
+## Changing the email
+
+`lib/profile/email-change.ts`, pen on `/profile`. Not better-auth's `/change-email`
+(left disabled): it updates the user row alone, with no way to put the moves below
+into its transaction, and it applies on a GET, which a mail scanner would trigger.
+
+1. `POST /api/profile/email` (same origin, session under a day old, D1 limits per
+   user and per target address). A link goes to the **new** address and a notice,
+   with that address masked, to the **old** one. Nothing changes.
+2. The link opens `/profile/email-confirm#<user id>.<token>`: a fragment, so the
+   token reaches no log, and a press on the page is what applies it, so a mail
+   scanner changes nothing. D1 `email_change_request` keeps the token's hash, for
+   1 hour, one per user: a newer request kills the older link.
+3. `POST /api/profile/email/confirm` moves `user.email`, `email_canonical` and every
+   table in `EMAIL_KEYED_TABLES` in **one D1 batch**, then tells the old address.
+   Failure at any step (a key conflict included) rolls all of it back.
+
+- **Email-keyed data**: `fsrs_notes`, `word_lists`, `word_cards`, `word_list_entries`,
+  `word_reviews`, `swipe_log`, `watch_stats`, `study_day`, `roadmap_goals`,
+  `api_tokens`, `cli_login`, `dev_access_token`. A unit test fails when a migration
+  adds another table with an `email` column. Everything else goes by user id.
+- **Taken addresses** (exact or canonical form, or an owner's): the same answer and
+  the same two mails, but the new address reads "already in use" instead of a link.
+- **Owner**: an address in `OWNER_EMAILS` is refused with its reason (the role goes by
+  the address), and can't be moved to.
+- **Sessions** stay valid, as with better-auth's flow: they point at the user id.
+- **Google/GitHub**: a linked account keeps signing in to this user (matched by
+  provider account id first). An unlinked Google account at the old address now
+  matches nobody and makes a new account; so does an email code to the old address.
+- **Batch size**: on local D1 (`wrangler dev --local`) a 200,000-row account moved in
+  0.9 s, and a key conflict on the batch's last table rolled everything back.
+  Production D1's limits on one batch were not measured; going over one should fail
+  the batch and answer "unavailable", changing nothing. The owner, the largest
+  account, is refused anyway.
+- **In-flight writes**: a request authenticated just before the batch can still write
+  a row under the old address. It would stay behind under that address; the window
+  is one request's length.
+
 ## Google OAuth
 
 Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between
