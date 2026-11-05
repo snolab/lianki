@@ -1,0 +1,27 @@
+// lianki-edge, the spike's Hono front Worker (docs/framework-migration.md,
+// sections 4 and 7). LOCAL ONLY: no routes, no workers.dev URL, and the D1 id
+// below is not a real database, so a deploy of this file can't reach production
+// data. deploy-worker.yml does not know about it.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lianki-edge",
+  "main": "src/index.ts",
+  "workers_dev": false,
+  "preview_urls": false,
+  "compatibility_date": "2026-10-01",
+  // For node:async_hooks, and for process.env, which auth-impl.ts reads.
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "DB_BACKEND": "d1" },
+  // A name, not an id: local D1 only. Never put the production id here.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lianki-edge-local",
+      "database_id": "lianki-edge-local",
+      "migrations_dir": "../../db/migrations",
+    },
+  ],
+  // Locally this is whichever `lianki` runs under the same dev registry
+  // (scripts/compare-local.ts starts one).
+  "services": [{ "binding": "MAIN", "service": "lianki" }],
+}
