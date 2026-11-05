@@ -36,6 +36,19 @@ describe("isOwner", () => {
     expect(isOwner("owner@example.com", " , ")).toBe(false);
   });
 
+  it("compares a plus address exactly, never in its canonical form", () => {
+    const admin = "someone+admin@gmail.com";
+    expect(isOwner(admin, admin)).toBe(true);
+    expect(isOwner("Someone+Admin@Gmail.com", admin)).toBe(true);
+    // One mailbox to Gmail, and one canonical form, but not the owner.
+    expect(isOwner("someone@gmail.com", admin)).toBe(false);
+    expect(isOwner("some.one@gmail.com", admin)).toBe(false);
+    expect(isOwner("someone+other@gmail.com", admin)).toBe(false);
+    expect(isOwner("someone@googlemail.com", admin)).toBe(false);
+    // And the other way round: a plain owner address admits no aliases.
+    expect(isOwner(admin, "someone@gmail.com")).toBe(false);
+  });
+
   it("reads OWNER_EMAILS from the environment by default", () => {
     process.env.OWNER_EMAILS = "env-owner@example.com";
     expect(isOwner("env-owner@example.com")).toBe(true);
