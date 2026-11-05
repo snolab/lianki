@@ -768,7 +768,8 @@ drag on the history went to the page behind it. While the input has the
 focus or the mic is on, the log takes the touch (`LOG_TOUCH` in
 `log-surface.ts`: `pointer-events: auto`, `touch-action: pan-y`,
 `overscroll-behavior: contain`); the input keeps the focus, so the keyboard
-stays. At rest it is click-through again. Checks: `bun
+stays. At rest it is click-through again (a press-and-hold engages it too:
+"The history is glass until it is engaged" below). Checks: `bun
 scripts/dev/debug-chat-typing-scroll-qa.mjs` (WebKit and Chromium, 390×844
 touch).
 
@@ -777,21 +778,64 @@ touch).
 Owner, 2026-11-05 01:34 JST, iPhone PWA on /read: "这里复制不了". The chat
 box is click-through (`pointer-events: none` on the section, so the page
 under it stays usable) and the log inherited it. iOS will not long-press
-select text that does not take the pointer, so there was no Copy. Each
-line's text now takes the pointer and is selectable (`LINE_SELECTABLE` in
-`copy-line.ts`: `pointer-events: auto`, `user-select: text` with WebKit's
-prefix, the touch callout on); the space around the lines stays
-click-through. Long-press and the platform's Copy do the rest: a per-line
-copy button shipped in #537 and was dropped the same night (owner,
-2026-11-05 02:00 JST: selectable text is enough). The
-reader's combo-click selection (`use-reader-select.ts`) ignores taps and
-selections inside `[data-debug-chat]`, so copying in the chat never opens
-the reader's card or clears what is selected there.
+select text that does not take the pointer, so there was no Copy. #537 made
+each line take the pointer; that made the lines catch the wheel and clicks
+meant for the page, so since the owner's 13:00 JST note below the lines are
+selectable (`LINE_SELECTABLE` in `copy-line.ts`: `user-select: text` with
+WebKit's prefix, the touch callout on) but take the pointer only while the
+history is engaged. Long-press (or a mouse drag) and the platform's Copy do
+the rest: a per-line copy button shipped in #537 and was dropped the same
+night (owner, 2026-11-05 02:00 JST: selectable text is enough). The reader's
+combo-click selection (`use-reader-select.ts`) ignores taps and selections
+inside `[data-debug-chat]`, so copying in the chat never opens the reader's
+card or clears what is selected there.
 
-Checks: `bun scripts/dev/debug-chat-copy-qa.mjs --shots <dir>` (silent,
-390×844 touch, light and dark: computed `user-select` and `pointer-events`
-on a line, its text selecting, no copy button, + menu opacity);
-the rules in `unit/chat-copy.test.ts`.
+### The history is glass until it is engaged
+
+Owner, 2026-11-05 13:00 JST, Mac Chrome on /books: with the input not
+focused, a wheel or a click over the history must reach the page under it.
+One rule, `logEngaged` in `log-engage.ts`: the history takes the pointer
+(`LOG_TOUCH`: wheel and drag scroll it, its lines select) while
+
+- the input is in use (focused, or the + menu / its file picker up),
+- the mic is on, or
+- it is **held**: a **press-and-hold on the history** (500 ms, the
+  platform's long-press, within 10 px) engaged it and selected the line
+  under the finger ("rest": the log keeps its height, so the line stays
+  under the finger); or a press on the history while typing ("open": the
+  press blurs the input, and the log stays open, glass and all, with no jump
+  to the newest lines, so the drag selects what it started on); or a
+  selection is open in the chat. A press anywhere outside the chat drops it.
+
+At rest nothing in the history takes a pointer (the polish mark, sent files
+and ask-card buttons keep theirs), so a wheel scrolls the page and a click
+lands on it. **How to copy now:** press and hold a message (mouse or
+finger): it is selected; ⌘C / Copy. Or tap the input first, then
+long-press / drag a line as before. On the phone a second long-press on the
+selected line brings up iOS's Copy menu if it did not show by itself.
+
+The hold is seen at the window (`log-hold-dom.ts`), since the log takes no
+events at rest: a pointerdown inside the log's box starts one `HOLD_MS`
+timer; a move past the slop, the release, a cancel or a scroll stops it.
+No polling. While a touch hold may be under way (and for the rest of a fired
+one) `data-lk-chat-holding` on `<html>` turns the page's text selection and
+touch callout off outside the chat, so the platform's own long-press does
+not select the page under the finger; a mouse press is left alone until the
+hold fires, so a drag-select on page text under the history still works.
+The click that ends a fired hold, and its context menu, are swallowed: the
+hold never presses the page's button under it.
+
+Checks: `bun scripts/dev/debug-chat-passthrough-qa.mjs --shots <dir>`
+(silent, Chromium and WebKit 1280×800 mouse, light and dark, a tall page
+with a button under the history: at rest the wheel scrolls the page and a
+click reaches the button; focused, the wheel scrolls the history, the page
+stays, the input keeps the focus, a drag selects part of a line and the log
+stays open; the hold selects the line without clicking the button; a click
+outside makes it glass again; Chromium 390×844 touch hold over CDP). `bun
+scripts/dev/debug-chat-copy-qa.mjs --shots <dir>` (390×844 touch: computed
+`user-select` and `pointer-events` on a line at rest and focused, its text
+selecting, no copy button, + menu opacity); the rules in
+`unit/chat-log-engage.test.ts` and `unit/chat-copy.test.ts`.
 
 ### A selection started in the chat stays in the chat
 
@@ -800,7 +844,7 @@ past the box selected half the page. `select-fence.ts` (decisions, pure) and
 `select-fence-dom.ts` (listeners, installed once per page by each mounted
 `DebugChat`), event-driven only:
 
-- A press on a line's text arms the fence and puts `data-lk-chat-selecting`
+- A press on a line's text (the history engaged: see above) arms the fence and puts `data-lk-chat-selecting`
   on `<html>`; a style rule then makes every element outside the chat (not
   its ancestors, not an embed's shadow host) `user-select: none`, so the drag
   has nothing out there to take. It stays up while the selection that press

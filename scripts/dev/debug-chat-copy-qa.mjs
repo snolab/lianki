@@ -5,9 +5,10 @@
  * /harness page with the hot widget (its Tailwind CSS too), at 390×844 with
  * touch, as on the owner's iPhone:
  *
- *   - a line's text takes the pointer and is selectable (computed
- *     pointer-events not none, user-select / -webkit-user-select not none),
- *     though the box around it is click-through
+ *   - a line's text is selectable (user-select / -webkit-user-select not
+ *     none); at rest it leaves the pointer to the page (log-engage.ts), with
+ *     the input focused it takes it (the press-and-hold path is in
+ *     debug-chat-passthrough-qa.mjs)
  *   - its text selects, and there is no per-line copy button (owner,
  *     2026-11-05 02:00 JST: long-press → Copy is enough)
  *   - idle, the panel is faint; a tap on + makes it opaque, and closing the
@@ -88,19 +89,31 @@ try {
     await page.waitForTimeout(200);
 
     const line = page.locator('[data-testid="debug-chat-line"]').last();
-    const st = await line.evaluate((el) => {
-      const c = getComputedStyle(el);
-      const box = getComputedStyle(el.closest("[data-debug-chat]"));
-      return {
-        pe: c.pointerEvents,
-        us: c.userSelect,
-        wus: c.webkitUserSelect,
-        boxPe: box.pointerEvents,
-      };
-    });
-    check(st.boxPe === "none", `${scheme}: the box stays click-through`);
-    check(st.pe !== "none", `${scheme}: the line takes the pointer (${st.pe})`);
-    check(st.us !== "none" && st.wus !== "none", `${scheme}: the line is selectable (${st.us})`);
+    const st = async () =>
+      line.evaluate((el) => {
+        const c = getComputedStyle(el);
+        const box = getComputedStyle(el.closest("[data-debug-chat]"));
+        return {
+          pe: c.pointerEvents,
+          us: c.userSelect,
+          wus: c.webkitUserSelect,
+          boxPe: box.pointerEvents,
+        };
+      });
+    let st0 = await st();
+    check(st0.boxPe === "none", `${scheme}: the box stays click-through`);
+    // At rest the history is glass (log-engage.ts); the input focused, its lines take the finger.
+    check(
+      st0.pe === "none",
+      `${scheme}: at rest the line leaves the pointer to the page (${st0.pe})`,
+    );
+    check(st0.us !== "none" && st0.wus !== "none", `${scheme}: the line is selectable (${st0.us})`);
+    await page.locator('[data-testid="debug-chat-input"]').focus();
+    await page.waitForTimeout(300);
+    st0 = await st();
+    check(st0.pe !== "none", `${scheme}: focused, the line takes the pointer (${st0.pe})`);
+    await page.locator('[data-testid="debug-chat-input"]').blur();
+    await page.waitForTimeout(300);
 
     // No per-line copy button (owner, 2026-11-05 02:00 JST): long-press → Copy is enough.
     check((await q(page)) === 0, `${scheme}: no copy button on the lines`);
