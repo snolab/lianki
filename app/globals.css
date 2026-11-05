@@ -1345,21 +1345,12 @@ html[data-read-marks="unknown"] .lk-book [data-pf="n"] {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-/* The combo-click selection (use-reader-select.ts): drawn by the CSS Custom
- * Highlight API, else by [data-sel] on the same elements; never the DOM
- * selection. A deep link's unit flashes once as it lands.
- * An engine repaints the underlines inside a highlight with the highlight's own
- * decoration colour, so every familiarity level turned one colour (owner,
- * 2026-11-05). `inherit` keeps each word's colour (and dots) where the engine takes it
- * from the word (WebKit); where it does not (Chromium paints them in the
- * highlight's text colour), keepsDecorations() in use-reader-select.ts says
- * so and [data-sel] draws the selection instead. */
-::highlight(lk-sel) {
-  background-color: oklch(0.72 0.11 250 / 0.32);
-  text-decoration-color: inherit;
-  text-decoration-style: inherit;
-  text-decoration-thickness: inherit;
-}
+/* The combo-click selection (use-reader-select.ts): [data-sel] on the unit's
+ * elements, an element background, so every familiarity underline keeps its
+ * own colour (owner, 2026-11-05); never the DOM selection. Not the CSS Custom
+ * Highlight API: on the iPhone a replaced ::highlight stayed painted on the
+ * words tapped before, so two taps showed two selections (owner, 2026-11-05
+ * 03:00 JST). A deep link's unit flashes once as it lands. */
 .lk-book [data-sel] {
   background: oklch(0.72 0.11 250 / 0.32);
   border-radius: 0.15em;
@@ -1367,7 +1358,6 @@ html[data-read-marks="unknown"] .lk-book [data-pf="n"] {
   box-decoration-break: clone;
 }
 @media (prefers-color-scheme: dark) {
-  ::highlight(lk-sel) { background-color: oklch(0.62 0.12 250 / 0.42); text-decoration-color: inherit; }
   .lk-book [data-sel] { background: oklch(0.62 0.12 250 / 0.42); }
 }
 @keyframes lk-flash {

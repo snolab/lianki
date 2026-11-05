@@ -267,6 +267,8 @@ const suites = [
   ["READ PLAY (qa-read-play)", "bun", ["scripts/qa/qa-read-play.mjs"], { QA_BASE: BASE }],
   // Serverless: familiarity underlines keep their colours inside the reader's selection (WebKit + Chromium).
   ["READ SEL UNDERLINES", "bun", ["scripts/qa/qa-read-sel-underlines.ts"], {}],
+  // Serverless: a tap on another word moves the selection, never two drawn (WebKit + Chromium).
+  ["READ SEL ONE", "bun", ["scripts/qa/qa-read-sel-one.ts"], {}],
   [
     "SYNC (db-sync-matrix)",
     "bunx",

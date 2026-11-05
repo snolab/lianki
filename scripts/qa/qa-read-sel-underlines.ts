@@ -5,10 +5,9 @@
  *
  *   bun scripts/qa/qa-read-sel-underlines.ts [outDir]
  *
- * Needs no server. The page carries app/globals.css as it is and the very
- * decision use-reader-select.ts makes (keepsDecorations: the CSS Custom
- * Highlight API where the engine keeps each word's underline colour inside
- * it, else [data-sel] on the elements). Words of two levels (l1, solid amber;
+ * Needs no server. The page carries app/globals.css as it is and draws the
+ * selection the way use-reader-select.ts does (markSelected: [data-sel] on
+ * the elements, an element background). Words of two levels (l1, solid amber;
  * n, dotted blue) are selected together. Each word's underline is found by
  * difference: the word shot with its underline, then with every underline
  * turned off; the pixels that changed are the underline, and their mean
