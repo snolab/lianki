@@ -36,19 +36,83 @@ const shots = [];
  */
 async function fillsWindow(page) {
   await page.evaluate(() => scrollTo(0, 0));
-  await page.getByTestId("grade-3").locator("text=/\\d/").waitFor({ timeout: 10000 });
+  await page
+    .getByTestId("grade-3")
+    .getByTestId("grade-interval")
+    .filter({ hasText: /\d/ })
+    .waitFor({ timeout: 10000 });
   const m = await page.evaluate(() => {
     const vh = innerHeight;
     const card = document.querySelector("[data-testid=review-card]")?.getBoundingClientRect();
+    // The next-up strip is the last line of the stage, right under the card.
+    const end = document.querySelector("[data-testid=review-next]")?.getBoundingClientRect();
     const ids = ["open-card", "grade-1", "grade-2", "grade-3", "grade-4"];
     const inView = ids.every((id) => {
       const r = document.querySelector(`[data-testid=${id}]`)?.getBoundingClientRect();
       return !!r && r.top >= 0 && r.bottom <= vh;
     });
-    return { vh, bottom: card?.bottom ?? 0, top: card?.top ?? vh, inView };
+    return { vh, bottom: end?.bottom ?? 0, top: card?.top ?? vh, inView };
   });
   console.log(`  window ${m.vh}px, card ${Math.round(m.top)}–${Math.round(m.bottom)}px`);
   return m.inView && m.bottom <= m.vh && m.bottom >= m.vh * 0.8 && m.top < m.vh * 0.25;
+}
+
+/**
+ * Long intervals stay whole: each on one line, inside its button, nothing
+ * sideways, at every width, and the grade buttons stay in the window.
+ */
+async function longIntervalsFit(storageState, colorScheme, width, height, lang) {
+  const c = await newSilentContext(browser, {
+    viewport: { width, height },
+    colorScheme,
+    baseURL: BASE,
+    storageState,
+  });
+  const p = await c.newPage();
+  const dues = ["10m", "1y 142d", "2y 333d", "10y 350d"];
+  await p.route("**/api/fsrs/options*", (r) =>
+    r.fulfill({
+      json: { id: "x", options: dues.map((due, i) => ({ rating: i + 1, due })) },
+    }),
+  );
+  await p.goto(`/review?lang=${lang}`, { waitUntil: "load" });
+  await p
+    .getByTestId("grade-4")
+    .getByTestId("grade-interval")
+    .filter({ hasText: /\d/ })
+    .waitFor({ timeout: 10000 });
+  const bad = await p.evaluate(() => {
+    const out = [];
+    if (document.documentElement.scrollWidth > innerWidth) out.push("page scrolls sideways");
+    for (const n of [1, 2, 3, 4]) {
+      const b = document.querySelector(`[data-testid=grade-${n}]`);
+      const box = b.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(b);
+      const inner = range.getBoundingClientRect();
+      const interval = b.querySelector("[data-testid=grade-interval]");
+      if (
+        interval.getBoundingClientRect().height >
+        parseFloat(getComputedStyle(interval).lineHeight) * 1.5
+      )
+        out.push(`${n}: interval wrapped`);
+      if (inner.left < box.left - 0.5 || inner.right > box.right + 0.5)
+        out.push(`${n}: wider than button`);
+      if (inner.top < box.top - 0.5 || inner.bottom > box.bottom + 0.5)
+        out.push(`${n}: taller than button`);
+      if (box.top < 0 || box.bottom > innerHeight || box.right > innerWidth)
+        out.push(`${n}: out of the window`);
+    }
+    return out;
+  });
+  check(
+    bad.length === 0,
+    `${colorScheme} ${width}x${height} ${lang}: long intervals whole ${bad.join("; ")}`,
+  );
+  const file = join(OUT, `review-long-${width}x${height}-${lang}-${colorScheme}.png`);
+  await p.screenshot({ path: file });
+  shots.push(file);
+  await c.close();
 }
 
 async function context(colorScheme) {
@@ -120,9 +184,13 @@ for (const scheme of ["light", "dark"]) {
     shots.push(file);
   };
 
-  await page.goto("/review", { waitUntil: "networkidle" });
+  await page.goto("/review", { waitUntil: "load" });
   await page.getByTestId("review-card").waitFor({ timeout: 20000 });
-  await page.getByTestId("grade-3").locator("text=/\\d/").waitFor({ timeout: 10000 });
+  await page
+    .getByTestId("grade-3")
+    .getByTestId("grade-interval")
+    .filter({ hasText: /\d/ })
+    .waitFor({ timeout: 10000 });
   check(await page.getByTestId("review-tutorial").isVisible(), `${scheme}: tutorial shown`);
   check(
     (await page.getByTestId("open-card").getAttribute("target")) === "_blank",
@@ -134,6 +202,25 @@ for (const scheme of ["light", "dark"]) {
     `${scheme}: iPhone — the due card fills the window, actions in view`,
   );
   const cardBox = () => page.getByTestId("review-card").boundingBox();
+  const nextText = () => page.getByTestId("review-next-card").textContent();
+  await page.getByTestId("review-next-card").waitFor({ timeout: 10000 });
+  check(
+    (await nextText()) !== (await page.locator("[data-testid=review-card] h2").textContent()),
+    `${scheme}: next-up strip names another card`,
+  );
+  check(
+    (await page.getByRole("radio", { name: "iPhone" }).getAttribute("aria-checked")) === "true",
+    `${scheme}: a phone keeps its own tutorial tab`,
+  );
+  for (const [w, h, lang] of [
+    [320, 568, "fr"],
+    [360, 640, "en"],
+    [390, 664, "zh"],
+    [390, 664, "ar"],
+    [1512, 794, "zh"],
+    [1512, 794, "de"],
+  ])
+    await longIntervalsFit(state, scheme, w, h, lang);
   // Desktop: the same card fills a laptop window too.
   {
     const desk = await newSilentContext(browser, {
@@ -143,8 +230,13 @@ for (const scheme of ["light", "dark"]) {
       storageState: state,
     });
     const dp = await desk.newPage();
-    await dp.goto("/review", { waitUntil: "networkidle" });
+    await dp.goto("/review", { waitUntil: "load" });
     await dp.getByTestId("review-card").waitFor({ timeout: 20000 });
+    check(
+      (await dp.getByRole("radio", { name: "Web" }).getAttribute("aria-checked")) === "true" &&
+        (await dp.getByText("switch back to this one").isVisible()),
+      `${scheme}: a desktop browser opens on the Web tutorial tab`,
+    );
     check(
       await fillsWindow(dp),
       `${scheme}: desktop — the due card fills the window, actions in view`,
@@ -170,6 +262,11 @@ for (const scheme of ["light", "dark"]) {
     );
     await tab?.close();
     await page.bringToFront();
+    // A headless page never really loses focus, so say what a real tab switch says.
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+    });
     const asked = await page
       .getByTestId("return-prompt")
       .waitFor({ timeout: 5000 })
@@ -186,6 +283,7 @@ for (const scheme of ["light", "dark"]) {
     await page.evaluate(() => scrollTo(0, 0));
     const boxBefore = await cardBox();
     const first = await page.locator("[data-testid=review-card] h2").textContent();
+    const predicted = await nextText();
     await page.getByTestId("grade-3").click();
     await page
       .getByRole("status")
@@ -200,6 +298,21 @@ for (const scheme of ["light", "dark"]) {
       .then(() => true)
       .catch(() => false);
     check(moved && page.url().endsWith("/review"), "grade → next card, same page");
+    check(
+      (await page.locator("[data-testid=review-card] h2").textContent()) === predicted,
+      "the next-up strip named the card the grade moved on to",
+    );
+    await page
+      .waitForFunction(
+        (t) => {
+          const el = document.querySelector("[data-testid=review-next-card]");
+          return !!el && el.textContent !== t;
+        },
+        predicted,
+        { timeout: 10000 },
+      )
+      .then(() => check(true, "the strip moves on to the new next card"))
+      .catch(() => check(false, "the strip moves on to the new next card"));
     const boxAfter = await cardBox();
     check(
       !!boxBefore &&
@@ -218,6 +331,13 @@ for (const scheme of ["light", "dark"]) {
     await page.getByTestId("delete-yes").click();
     await page.waitForTimeout(800);
 
+    await page
+      .getByTestId("review-next")
+      .getByText("Nothing else is due")
+      .waitFor({ timeout: 10000 })
+      .then(() => check(true, "the strip says so when no other card is due"))
+      .catch(() => check(false, "the strip says so when no other card is due"));
+
     // Grade by key.
     await page.keyboard.press("Digit4");
     await page.getByTestId("review-done").waitFor({ timeout: 10000 });
@@ -226,7 +346,7 @@ for (const scheme of ["light", "dark"]) {
 
     // Tutorial folds, and stays folded on this device.
     await page.getByTestId("tutorial-toggle").click();
-    await page.reload({ waitUntil: "networkidle" });
+    await page.reload({ waitUntil: "load" });
     await page.getByTestId("review-done").waitFor();
     check(
       !(await page.locator("[data-testid=review-tutorial] ol").isVisible()),
@@ -254,10 +374,10 @@ for (const scheme of ["light", "dark"]) {
 
     // Back to a card for the dark screenshots and the bookmarklet shot.
     await addCards("?again");
-    await page.goto("/review", { waitUntil: "networkidle" });
+    await page.goto("/review", { waitUntil: "load" });
     await page.getByTestId("review-card").waitFor();
   } else {
-    await page.goto("/review", { waitUntil: "networkidle" });
+    await page.goto("/review", { waitUntil: "load" });
     await page.getByTestId("review-card").waitFor();
   }
 
@@ -282,7 +402,7 @@ for (const scheme of ["light", "dark"]) {
     const LOCALES = "en zh hi es fr ar bn pt ru ur id de ja sw mr ko".split(" ");
     for (const lang of LOCALES) {
       const before = errors.length;
-      await page.goto(`/review?lang=${lang}`, { waitUntil: "networkidle" });
+      await page.goto(`/review?lang=${lang}`, { waitUntil: "load" });
       await page.locator("[data-testid=review-bookmarklet] summary").click();
       const blank = await page.evaluate(
         () =>
@@ -294,7 +414,7 @@ for (const scheme of ["light", "dark"]) {
       );
       check(blank === 0 && errors.length === before, `${lang}: every /review string renders`);
     }
-    await page.goto("/review?lang=en", { waitUntil: "networkidle" });
+    await page.goto("/review?lang=en", { waitUntil: "load" });
   }
 
   check(errors.length === 0, `${scheme}: no page errors ${errors.join(" | ")}`);

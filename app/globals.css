@@ -1562,6 +1562,16 @@ html[data-read-marks="unknown"] .lk-book [data-pf="n"] {
  * The card's own text scrolls inside it when it is long (ReviewClient). The
  * floor keeps the actions usable on a phone in landscape. */
 .lk-review-stage {
-  height: calc(100dvh - 3.5rem - env(safe-area-inset-top) - var(--lk-bottom-reserve, 0px) - 1.5rem);
-  min-height: 22rem;
+  /* Fills the window, and grows rather than spill when large text makes the
+     card's actions taller than that: the page scrolls, nothing overlaps. */
+  min-height: max(
+    22rem,
+    calc(100dvh - 3.5rem - env(safe-area-inset-top) - var(--lk-bottom-reserve, 0px) - 1.5rem)
+  );
+}
+/* Help lines on the card give way first on a short window, so the grade buttons stay in view. */
+@media (max-height: 36rem) {
+  .lk-review-help {
+    display: none;
+  }
 }
