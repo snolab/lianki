@@ -15,7 +15,7 @@ it while it is off), for users on an allowlist the owner keeps at
 `/dev/live-frontends`. Code: `lib/live-view/custom.ts` (rules, store, CSP,
 cookie), the custom branch of `lib/live-view/page-proxy.ts` (in `worker.ts`,
 before OpenNext), `app/api/live-previews/`, `app/api/dev/live-frontends/`,
-`db/migrations/0043_live_previews.sql`. Tests: `unit/custom-frontend.test.ts`,
+`db/migrations/0045_live_previews.sql`. Tests: `unit/custom-frontend.test.ts`,
 `scripts/qa/qa-api.mjs`. It is the owner's same-origin live preview
 ([live-view.md](live-view.md), "Same-origin pages") with stricter rules, and
 it follows the shared spec: **no cookie is forwarded, and there is no session
