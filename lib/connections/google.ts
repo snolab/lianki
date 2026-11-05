@@ -135,10 +135,20 @@ export interface ConnectState {
   r: string;
 }
 
-/** Only our own pages that start a connection: /connections, or /read with a doc to import. */
+/**
+ * Only our own pages that start a connection: /connections, /read with a doc
+ * to import, or either with `?pick=drive` (the Picker opens on return,
+ * lib/connections/drive-pick.ts).
+ */
 export function returnPath(raw: unknown): string {
   if (typeof raw !== "string") return "/connections";
-  if (raw === "/connections" || raw === "/read") return raw;
+  if (
+    raw === "/connections" ||
+    raw === "/read" ||
+    raw === "/connections?pick=drive" ||
+    raw === "/read?pick=drive"
+  )
+    return raw;
   const m = /^\/read\?gdoc=([A-Za-z0-9_-]{25,128})$/.exec(raw);
   return m ? `/read?gdoc=${m[1]}` : "/connections";
 }

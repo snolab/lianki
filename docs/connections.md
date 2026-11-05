@@ -58,6 +58,41 @@ Google Picker**, so:
    exactly as the public path does: same parser, same `source_key`
    `gdoc:<id>` dedupe, re-import updates the book in place.
 
+### Picking docs ("Choose docs from Google Drive")
+
+Owner, option A, 2026-11-05 10:50 JST: after connecting, /connections must
+lead somewhere. The connected card and /read's import row both carry
+**Choose docs from Google Drive** (`app/(app)/connections/DrivePick.tsx`,
+flow in `lib/connections/drive-pick.ts`), with a three-step how-to under it:
+
+1. It opens the Picker at once (no link), **multi-select**
+   (`Feature.MULTISELECT_ENABLED`, `pickGoogleDocs`).
+2. Each picked doc goes through the same `POST /api/read/gdoc {via: "drive"}`
+   as above, one after the other (so `source_key gdoc:<id>`, a re-import
+   updates the book). One imported → it opens in /read; several → the page
+   says how many and its list reloads (/connections: `router.refresh()`;
+   /read: the materials list).
+3. Not connected, or the grant ended (409): Google's consent with
+   `return` `/connections?pick=drive` or `/read?pick=drive` (`returnPath`
+   allows exactly these). Back with `?pick=drive&google=connected`, the
+   Picker opens by itself (`autoPickOnReturn`), and both words leave the URL.
+   A denial or failure never opens it.
+
+### Imported docs (/connections)
+
+Under the button, **Docs imported from Google**: the user's books whose
+`source_key` is `gdoc:<id>` (`lib/connections/gdoc-imports.ts`, a range on
+the `(user_id, source_key)` index, newest `updated_at` first, ≤ 200), each
+with title, last sync (relative, the user's locale), Open, and **Sync again**
+(`resyncGdoc`): through Drive first; a doc that came by its public link was
+never picked, so Drive refuses it (`not-granted`) and the public link is
+used. Either way it is the same import, so `carrySentenceCards` moves the
+sentence cards of unchanged lines to the new text. The list also shows,
+read-only apart from Sync, while the connection is off but books exist.
+
+QA mocks the Picker (`window.gapi` / `google.picker` stubbed, the picker
+and import routes answered): `scripts/qa/qa-drive-pick.mjs`.
+
 ## Tokens at rest
 
 | what                  | where                                                                      |
@@ -102,7 +137,9 @@ Google Picker**, so:
 | page                           | `app/(app)/connections/`                                                 |
 | Drive export                   | `lib/gdoc/drive.ts`; import in `app/api/read/gdoc/route.ts`              |
 | Picker                         | `lib/connections/picker-client.ts`, `app/(app)/read/GdocDriveImport.tsx` |
-| tests                          | `unit/connections.test.ts`                                               |
+| pick button, imported list     | `app/(app)/connections/{DrivePick,GdocImportList}.tsx`                   |
+| their logic                    | `lib/connections/{drive-pick,gdoc-imports}.ts`                           |
+| tests                          | `unit/connections.test.ts`, `unit/drive-pick.test.ts`                    |
 
 ## Owner setup (Google Cloud console, project of the sign-in client)
 

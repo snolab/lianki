@@ -8,6 +8,7 @@ import { isoDay, longDate } from "@/lib/dates";
 import type { WordsSummary } from "@/lib/read/progress";
 import { BookRing, WordCountText } from "./BookWords";
 import { GdocDriveImport } from "./GdocDriveImport";
+import { DrivePick, DrivePickHowTo } from "../connections/DrivePick";
 import { gdocUrlOf } from "@/lib/gdoc/url";
 
 export interface ReadMaterial {
@@ -75,6 +76,8 @@ export function ReadListClient({
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  // Bumped after several docs came from Google Drive: the list loads again.
+  const [reload, setReload] = useState(0);
   const epubText = useIntlayer("read-epub");
   const booksText = useIntlayer("books-page");
   const epubInput = useRef<HTMLInputElement>(null);
@@ -222,7 +225,7 @@ export function ReadListClient({
       setLoading(false);
     }
     loadMaterials();
-  }, [isLoggedIn, page]);
+  }, [isLoggedIn, page, reload]);
 
   const handleImport = async () => {
     if (!importText.trim()) return;
@@ -337,10 +340,14 @@ export function ReadListClient({
                 + {gdocText.importGdoc}
               </button>
             )}
+            {isLoggedIn && drive && (
+              <DrivePick page="/read" compact onImported={() => setReload((n) => n + 1)} />
+            )}
           </div>
           {isLoggedIn && (
             <p className="text-xs text-gray-500 dark:text-gray-400">{epubText.note}</p>
           )}
+          {isLoggedIn && drive && <DrivePickHowTo />}
           {isLoggedIn && gdoc && gdocOpen && (
             <form
               data-testid="read-gdoc-form"
