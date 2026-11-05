@@ -29,4 +29,7 @@ regexes = [
   # Pushed history; the field is named `piece` since. (Matched against the
   # secret gitleaks captured, the string itself.)
   '''^person[123]Singular$''',
+  # The fake API key of unit/byok.test.ts (#593), the value the test proves
+  # never reaches our origin; pushed history, so it stays allowed.
+  '''sk-test-SECRET-never-leaves-0000''',
 ]
