@@ -163,6 +163,11 @@ alone (`stripeKeyMode`, `komojuKeyMode`, `providerSettleMode`). The rule:
   days, KOMOJU for 25), so nothing is lost while it is fixed.
 - A test event against a live key (or the reverse) is still refused, flag or
   not (`payments.stripe.mode-mismatch`).
+- `/dev/flags` cannot turn a live flag **on** until the Worker has an
+  `sk_live_` key and its webhook secret (`stripeKeyMode` / `komojuKeyMode` =
+  `"live"`; the API answers 400 otherwise). Off always works.
+  [feature-flags.md](feature-flags.md), "Prerequisites". The page also notes
+  that real charging is confirmed by the owner typing in Slack first.
 
 Unit tests: "a flag flip while a checkout is in flight" in
 `unit/stripe-mode.test.ts` and `unit/komoju.test.ts`.
