@@ -244,8 +244,9 @@ export function gapOf(b: ByokBackend, apiKey: string, pageHost?: string | null):
     if (!p.browser) return "server-only";
     if (!checkBaseUrl(b.baseUrl, pageHost).ok) return "url";
   }
-  if (!MODEL_RE.test(b.model)) return "model";
+  // The key first: the model is chosen from the list the key opens.
   if (!apiKey.trim() && !p.keyless) return "key";
+  if (!MODEL_RE.test(b.model)) return "model";
   return null;
 }
 
