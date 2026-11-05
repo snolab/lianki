@@ -2,6 +2,17 @@ import { isUserId } from "@/lib/dev-eval";
 import { isFlagKey } from "@/lib/flags";
 import { isOwner, ownerEmails } from "@/lib/owner";
 import {
+  reserveAi,
+  reserveCredits,
+  settleAi,
+  sweepStaleAi,
+  usdToMicroCredits,
+} from "@/lib/payments/ai-credits";
+import type { D1WithBatch } from "@/lib/payments/credits-store";
+import {
+  CHARGE_STALE_MS,
+  costUsd,
+  reserveInTokens,
   HISTORY_LINES,
   HISTORY_MAX_CHARS,
   MAX_LINE_CHARS,
@@ -31,13 +42,16 @@ import {
  * The owner (OWNER_EMAILS) is refused, and so is everyone when OWNER_EMAILS
  * is unset (fail closed: then no one can be told apart from the owner).
  *
- * Logs: none here; the hub logs token counts and latency only.
+ * Credits (docs/partner-ai.md, "Credits"): before the call, the worst case
+ * of this reply is reserved from the user's wallet (lib/payments/ai-credits.ts);
+ * with too little, the model is not called ("no-credits"). After it, the
+ * reservation is settled to the real cost and the rest refunded.
+ *
+ * Logs: none here but credit anomalies (no user, no text); the hub logs token
+ * counts and latency only.
  */
 
-type Stmt = {
-  bind(...v: unknown[]): { all<T>(): Promise<{ results: T[] }> };
-};
-export type PartnerDb = { prepare(sql: string): Stmt };
+export type PartnerDb = D1WithBatch;
 
 export type PartnerEnv = {
   DB?: PartnerDb;
@@ -80,7 +94,9 @@ export function parsePartnerRequest(raw: unknown): PartnerRequest | null {
       screen: str(p.screen, MAX_PAGE_CHARS),
     };
   }
-  return { userId: r.userId, history, ...(page ? { page } : {}) };
+  const msgId =
+    typeof r.msgId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(r.msgId) ? r.msgId : undefined;
+  return { userId: r.userId, ...(msgId ? { msgId } : {}), history, ...(page ? { page } : {}) };
 }
 
 /** The user's own study data, read by their verified email only. */
@@ -247,6 +263,63 @@ export async function partnerReply(
   const account = env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const token = (env.CLOUDFLARE_AI_TOKEN || env.CLOUDFLARE_API_TOKEN)?.trim();
   if (!account || !token) return { ok: false, error: "not-configured" };
+
+  // Credits, reserve first: any crashed reply's reservation is refunded, then
+  // this reply's worst case (every character the prompt can hold, every output
+  // token) is debited — or the model is not called.
+  try {
+    await sweepStaleAi(db, CHARGE_STALE_MS, new Date(now()));
+  } catch {}
+  const p = req.page;
+  const chars =
+    req.history.reduce((n, h) => n + h.text.length, 0) +
+    (p ? [p.path, p.title, p.selection, p.screen].reduce((n, v) => n + (v?.length ?? 0), 0) : 0);
+  const worstIn = reserveInTokens(chars);
+  const key = `${req.userId}:${req.msgId ?? crypto.randomUUID()}`;
+  const hold = await reserveAi(
+    db,
+    { userId: req.userId, key, reserved: reserveCredits(costUsd(worstIn, MAX_OUTPUT_TOKENS)) },
+    new Date(now()),
+  );
+  if (hold.status === "duplicate") return { ok: false, error: "duplicate" };
+  if (hold.status === "no user") return { ok: false, error: "no-user" };
+  if (hold.status === "insufficient") return { ok: false, error: "no-credits" };
+
+  let res: PartnerResult = { ok: false, error: "model-failed", billed: "unknown" };
+  try {
+    res = await callModel(req, db, email, account, token, deps, now);
+  } finally {
+    // Only what Workers AI billed: reported counts (a missing count on a
+    // delivered reply = its ceiling, as the hub's cap does); nothing for an
+    // error status; nothing — logged — when billing is unknown and uncounted.
+    let tokensIn = res.tokensIn ?? 0;
+    let tokensOut = res.tokensOut ?? 0;
+    if (res.ok) {
+      tokensIn ||= worstIn;
+      tokensOut ||= MAX_OUTPUT_TOKENS;
+    } else if (res.billed === "unknown" && !tokensIn && !tokensOut)
+      console.log(JSON.stringify({ msg: "partner.charge.unknown", error: res.error }));
+    const settled = await settleAi(
+      db,
+      key,
+      usdToMicroCredits(costUsd(tokensIn, tokensOut)),
+      new Date(now()),
+    ).catch(() => null);
+    if (res.ok && settled) res = { ...res, charged: settled.charged };
+  }
+  return res;
+}
+
+/** One model call for this user (the reservation is already taken). */
+async function callModel(
+  req: PartnerRequest,
+  db: PartnerDb,
+  email: string,
+  account: string,
+  token: string,
+  deps: Deps,
+  now: () => number,
+): Promise<PartnerResult> {
   const summary = await studySummary(db, email, now());
   const t0 = now();
   try {

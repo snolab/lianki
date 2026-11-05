@@ -15,7 +15,16 @@ export const TOPUP_MAX = 10_000;
 /** One-tap amounts: the two passes, and multiples that cover them. */
 export const QUICK_TOPUPS = [600, 1200, 3000, 5000] as const;
 
-export type CreditReason = "topup" | "pass" | "refund" | "gift" | "sponsor" | "adjust";
+export type CreditReason = "topup" | "pass" | "refund" | "gift" | "sponsor" | "adjust" | "ai";
+
+/**
+ * Credits per US dollar of metered cost (AI model calls, priced in USD by the
+ * provider: lib/partner-ai-config.ts). One credit is what ¥1 of top-up buys, so
+ * this is a JPY/USD rate (about the market rate on 2026-11-05). The credit
+ * unit is being redesigned (owner, 2026-11-04): this is the one place that
+ * turns USD into credits — change it here and every AI charge follows.
+ */
+export const CREDITS_PER_USD = 150;
 
 /** The reasons the owner may use for a manual entry from /dev/credits. */
 export const ADMIN_REASONS = ["sponsor", "adjust", "gift"] as const satisfies CreditReason[];

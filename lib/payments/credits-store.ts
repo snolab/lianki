@@ -38,12 +38,21 @@ export async function getBalance(d1: D1Like, userId: string): Promise<number> {
   return Number(row?.balance ?? 0);
 }
 
-/** The newest `limit` entries, newest first. */
+/**
+ * The newest `limit` entries, newest first. An AI reply's reservation and its
+ * refund (lib/payments/ai-credits.ts, same refId) read as one row with what
+ * the reply kept; replies that kept nothing (the fraction carries) are left out.
+ */
 export async function ledger(d1: D1Like, userId: string, limit = 50): Promise<LedgerEntry[]> {
   return (
     await d1
       .prepare(
-        "SELECT id, amount, reason, refId, passId, note, createdAt FROM credit_ledger WHERE userId = ? ORDER BY createdAt DESC, rowid DESC LIMIT ?",
+        `SELECT id, amount, reason, refId, passId, note, createdAt FROM (
+           SELECT l.id, l.amount + CASE WHEN l.reason = 'ai' THEN COALESCE((SELECT r.amount FROM credit_ledger r WHERE r.reason = 'refund' AND r.refId = l.refId), 0) ELSE 0 END AS amount,
+             l.reason, l.refId, l.passId, l.note, l.createdAt, l.rowid AS rid
+           FROM credit_ledger l
+           WHERE l.userId = ?1 AND NOT (l.reason = 'refund' AND l.refId LIKE 'ai:%')
+         ) WHERE amount <> 0 ORDER BY createdAt DESC, rid DESC LIMIT ?2`,
       )
       .bind(userId, limit)
       .all<LedgerEntry>()

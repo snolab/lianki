@@ -44,6 +44,7 @@ export const APP_ROUTES = [
   "next",
   "polyglot",
   "preferences",
+  "privacy",
   "profile",
   "read",
   "review",
