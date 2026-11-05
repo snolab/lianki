@@ -83,7 +83,7 @@ source), and the server's `saveNote`, which every way of saving goes through, so
 old userscript or a bookmarklet is cleaned too. Watch-time titles are cleaned by
 the client only.
 
-**Display:** `displayTitle(title, url)` from `lib/titles/client.ts`, synchronous,
+**Display:** `displayTitle(title, url)` from `lib/titles/client.ts` (/list for guests, /data, /stats, search, /review via `lib/review-ui.ts`), synchronous,
 reading the device's copy of the preference; `cleanTitle` with
 `titleRulesForUser()` on the server. Display never writes. Exports and the title
 editor on `/data` show the stored title.

@@ -6,15 +6,25 @@
 import { activeTitleRules, DEFAULT_TITLE_RULES, type TitleRule } from "@lianki/core/titleClean";
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
+import type { D1Like } from "@/lib/d1/types";
 import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
 
-export async function titleRulesForUser(): Promise<readonly TitleRule[]> {
+export async function titleRulesFrom(
+  user: () => Promise<{ id?: string } | null | undefined>,
+  stored: (userId: string) => Promise<unknown>,
+): Promise<readonly TitleRule[]> {
   try {
-    if (dbBackend() !== "d1") return DEFAULT_TITLE_RULES;
-    const user = await authUserOrNull();
-    if (!user?.id) return DEFAULT_TITLE_RULES;
-    return activeTitleRules(await new UserPrefsD1Repo(getD1(), user.id).value("titles.rules"));
+    const id = (await user())?.id;
+    return id ? activeTitleRules(await stored(id)) : DEFAULT_TITLE_RULES;
   } catch {
     return DEFAULT_TITLE_RULES;
   }
 }
+
+export const titleRulesForUser = (
+  user: () => Promise<{ id?: string } | null | undefined> = authUserOrNull,
+  db: () => D1Like = getD1,
+): Promise<readonly TitleRule[]> =>
+  dbBackend() === "d1"
+    ? titleRulesFrom(user, (id) => new UserPrefsD1Repo(db(), id).value("titles.rules"))
+    : Promise.resolve(DEFAULT_TITLE_RULES);
