@@ -112,6 +112,7 @@ that are expensive to rediscover.
 | Learning Partner AI replies for users (DeepSeek, caps)        | [docs/partner-ai.md](docs/partner-ai.md)                            |
 | The owner's local streaming speech-to-text (mic → his Mac)    | [docs/local-stt.md](docs/local-stt.md)                              |
 | Whole-page dev server on prod D1 (owner only, home LAN)       | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
+| A friend's dev container (devbox: agents, local D1, tunnel)   | [devbox/README.md](devbox/README.md)                                |
 | The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
 | Hot-swapping headless core modules (kernel, swap, leak tests) | [docs/hot-core.md](docs/hot-core.md)                                |
 | The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
@@ -126,7 +127,7 @@ that are expensive to rediscover.
 | The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
 | /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
 | Exam word decks (CET, TOEFL, GRE…): sources, licences, gaps   | [docs/word-deck-sources.md](docs/word-deck-sources.md)              |
-| /self-intro import: files/text → facts → review; privacy        | [docs/self-intro-import.md](docs/self-intro-import.md)              |
+| /self-intro import: files/text → facts → review; privacy      | [docs/self-intro-import.md](docs/self-intro-import.md)              |
 | /books public-domain library: catalogue rule, slugs, R2 cache | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
 | Voice mode: spoken commands per screen, grammar, mic taps     | [docs/voice-mode.md](docs/voice-mode.md)                            |
 | /words owner spec: tall slips, window, review-first, voice    | [docs/words-session-spec.md](docs/words-session-spec.md)            |

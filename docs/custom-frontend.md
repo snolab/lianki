@@ -66,6 +66,14 @@ cloudflared tunnel --url http://localhost:5188
 A new quick tunnel has a new host, so register again when you restart
 `cloudflared`.
 
+**A devbox** ([devbox/README.md](../devbox/README.md)) is a different way in:
+the friend's whole checkout, on a local D1, at its own host
+(`devbox-<name>.lianki.com`). To view a devbox's pages at lianki.com
+`?live` against production's API, add its exact host to
+`CUSTOM_FRONTEND_HOSTS` (`lib/live-view/custom.ts`, a reviewed change) once
+its DNS record exists, and register `https://devbox-<name>.lianki.com`. Its
+server-rendered pages still get no session there (see "Not available").
+
 ## How it works
 
 ```

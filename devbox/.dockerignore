@@ -1,0 +1,4 @@
+# The image gets only the two scripts. Above all, never devbox/.env (the DeepSeek key).
+*
+!entrypoint.sh
+!start.sh

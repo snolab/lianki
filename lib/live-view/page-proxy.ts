@@ -318,8 +318,26 @@ export function readCookie(header: string | null, name: string): string | undefi
 export const clearLiveCookie = () =>
   `${LIVE_COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`;
 
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+/** A JS string literal that is safe inside <script>: no "</script>", no line separators. */
+const lit = (s: string) =>
+  JSON.stringify(s)
+    .replace(/</g, "\\u003c")
+    .split(String.fromCharCode(0x2028))
+    .join("\\u2028")
+    .split(String.fromCharCode(0x2029))
+    .join("\\u2029");
+
+/**
+ * A script that puts a small fixed element at the end of <body>, built with
+ * the DOM (text only, never HTML), and puts it back whenever it goes: React's
+ * hydration removes nodes it did not render (seen on lianki.com, 2026-11-05),
+ * so a plain server-rendered <div> would vanish. One observer on <body>'s
+ * own children; no timer.
+ */
+function mountScript(elId: string, css: string, text: string, href: string, link: string) {
+  return `(function(){function m(){var b=document.body;if(!b||document.getElementById(${lit(elId)}))return;var d=document.createElement("div");d.id=${lit(elId)};d.setAttribute("role","status");d.style.cssText=${lit(css)};d.append(${lit(text)});var a=document.createElement("a");a.href=${lit(href)};a.textContent=${lit(link)};a.style.cssText="color:inherit;text-decoration:underline";d.append(a);b.appendChild(d)}
+m();document.addEventListener("DOMContentLoaded",m);addEventListener("load",m);if(document.body&&typeof MutationObserver==="function")new MutationObserver(m).observe(document.body,{childList:true});})();`;
+}
 
 /** The URL with live=off: what the badge's "stop" opens. */
 export function offHref(url: URL): string {
@@ -339,18 +357,16 @@ export function badgeHtml(id: string, label: string, off: string, nonce?: string
     "position:fixed;left:12px;bottom:12px;z-index:2147483647;display:flex;gap:6px;align-items:center;" +
     "padding:4px 10px;border-radius:999px;font:600 12px/1.6 system-ui,-apple-system,sans-serif;" +
     "background:oklch(0.55 0.2 25);color:oklch(0.99 0 0);box-shadow:0 2px 8px oklch(0 0 0 / 0.3)";
-  const js = `(function(){var ID=${JSON.stringify(id)},P=${JSON.stringify(LIVE_PARAM)},N=${STORM_LOADS},W=${STORM_WINDOW_MS};
+  const js = `(function(){var ID=${lit(id)},P=${lit(LIVE_PARAM)},N=${STORM_LOADS},W=${STORM_WINDOW_MS};
 function off(){var u=new URL(location.href);u.searchParams.set(P,"off");return u.pathname+u.search+u.hash}
 try{var k="lk:live-loads",t=Date.now(),a=JSON.parse(sessionStorage.getItem(k)||"[]").filter(function(x){return typeof x==="number"&&t-x<W});a.push(t);sessionStorage.setItem(k,JSON.stringify(a));if(a.length>=N){sessionStorage.removeItem(k);location.replace(off());return}}catch(e){}
 function keep(v){if(v==null)return v;try{var u=new URL(String(v),location.href);if(u.origin!==location.origin||u.searchParams.has(P))return v;u.searchParams.set(P,ID);return u.pathname+u.search+u.hash}catch(e){return v}}
 ["pushState","replaceState"].forEach(function(m){var o=history[m];history[m]=function(s,t,u){return arguments.length>2?o.call(this,s,t,keep(u)):o.apply(this,arguments)}});
 document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(!a||(a.target&&a.target!=="_self"))return;var h=a.getAttribute("href"),n=keep(h);if(n!==h)a.setAttribute("href",n)},true);
 })();`;
-  return (
-    `<div id="lk-live-badge" role="status" style="${css}">LIVE · ${esc(label)} · ` +
-    `<a href="${esc(off)}" style="color:inherit;text-decoration:underline">stop</a></div>` +
-    `<script${nonce ? ` nonce="${esc(nonce)}"` : ""}>${js}</script>`
-  );
+  // A custom frontend's CSP allows inline scripts with its nonce only (base64url: safe in an attribute).
+  const n = nonce && /^[A-Za-z0-9_-]+$/.test(nonce) ? ` nonce="${nonce}"` : "";
+  return `<script${n}>${js}${mountScript("lk-live-badge", css, `LIVE · ${label} · `, off, "stop")}</script>`;
 }
 
 /** The production page's notice when a live page could not be served. */
@@ -359,11 +375,7 @@ export function noticeHtml(why: string, off: string): string {
     "position:fixed;left:12px;bottom:12px;z-index:2147483647;max-width:calc(100vw - 24px);" +
     "padding:6px 12px;border-radius:12px;font:500 13px/1.5 system-ui,-apple-system,sans-serif;" +
     "background:oklch(0.3 0.02 250);color:oklch(0.97 0.01 250);box-shadow:0 2px 8px oklch(0 0 0 / 0.3)";
-  return (
-    `<div id="lk-live-notice" role="status" style="${css}">预览不可用，这是正式版 · ` +
-    `<span lang="en">Preview unavailable (${esc(why)})</span> · ` +
-    `<a href="${esc(off)}" style="color:inherit">关闭</a></div>`
-  );
+  return `<script>${mountScript("lk-live-notice", css, `预览不可用，这是正式版 · Preview unavailable (${why}) · `, off, "关闭")}</script>`;
 }
 
 type RewriterElement = {

@@ -15,6 +15,7 @@
 // - a missed word coming back due never joins inside the viewport: with the
 //   tail on screen it waits, nothing on screen moves; scrolled up, it joins
 //   off screen (lib/words/requeue.ts offscreenSlot; a fake clock that runs).
+// - the last card graded by keyboard focuses 返回书本; Enter goes back;
 // - the review is pinned in the URL (?review=): a reload opens it again on the
 //   same card (the tab's sessionStorage), and Back closes it on the book.
 //
@@ -379,6 +380,77 @@ async function offscreenInsert(device) {
   await ctx.close();
 }
 
+/**
+ * The last card graded by keyboard: focus goes to the end-of-list way back
+ * (返回书本), a polite status says so, and Enter goes back to the book (the
+ * owner, 2026-11-05 13:37 JST). A correction afterwards never pulls the focus.
+ */
+async function lastCardBack(device) {
+  const tag = "last-card-desktop";
+  console.log(`— ${tag}`);
+  const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: "light" });
+  await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
+  const { page, errs } = await setup(ctx, tag);
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(600);
+  const w = await aWord(page);
+  check(!!w, `${tag}: a word in a long paragraph is on screen`);
+  if (!w) return ctx.close();
+  await page.mouse.click(w.x, w.y);
+  await page.waitForTimeout(300);
+  await page.locator("[data-action=review-words]").click();
+  const list = page.locator("[data-testid=read-word-review] [role=list]");
+  const rows = list.locator("[data-i]");
+  await until(page, async () => (await rows.count()) > 0);
+  await page.waitForTimeout(400);
+  // The rows are windowed: the count is the last row's index, scrolled to the end.
+  const n = await list.evaluate(async (el) => {
+    el.scrollTop = el.scrollHeight;
+    await new Promise((r) => setTimeout(r, 300));
+    const last = Math.max(...[...el.querySelectorAll("[data-i]")].map((r) => +r.dataset.i));
+    el.scrollTop = 0;
+    await new Promise((r) => setTimeout(r, 300));
+    return last + 1;
+  });
+  const onBack = () =>
+    page.evaluate(() => document.activeElement?.dataset?.testid === "study-done-back");
+  // Easy on every card but the last (Easy: days away, nothing comes back).
+  for (let i = 0; i < n - 1; i++) {
+    await page.keyboard.press("Digit4");
+    await page.waitForTimeout(60);
+  }
+  await page.waitForTimeout(300);
+  check(!(await onBack()), `${tag}: one card of ${n} left, the focus stays on the list`);
+  await page.keyboard.press("Digit4");
+  check(await until(page, onBack, 3000), `${tag}: the last card graded, focus on 返回书本`);
+  const said = await page.evaluate(
+    () => document.querySelector("[data-review-ended]")?.textContent ?? "",
+  );
+  check(said.length > 0, `${tag}: a polite status says so ("${said}")`);
+  const seen = await page.evaluate(() => {
+    const b = document.activeElement.getBoundingClientRect();
+    return b.top >= 0 && b.bottom <= innerHeight;
+  });
+  check(seen, `${tag}: the button is scrolled into view`);
+  await page.screenshot({ path: join(OUT, `last-card-back.png`) });
+  // A correction when all are done: the focus is not pulled back to it.
+  await page.evaluate(() => document.activeElement.blur());
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Digit3");
+  await page.waitForTimeout(500);
+  check(!(await onBack()), `${tag}: a correction does not move the focus to 返回书本`);
+  // Back on the button, Enter goes back to the book.
+  await page.getByTestId("study-done-back").focus();
+  await page.keyboard.press("Enter");
+  check(
+    await until(page, async () => !(await page.getByTestId("read-word-review").count())),
+    `${tag}: Enter on 返回书本 closes the review`,
+  );
+  check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
+  await ctx.close();
+}
+
+await lastCardBack(devices["Desktop Chrome"]);
 await offscreenInsert(devices["Desktop Chrome"]);
 await run(devices["iPhone 13"], "light", true);
 await run(devices["iPhone 13"], "dark", true);

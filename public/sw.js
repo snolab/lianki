@@ -50,7 +50,7 @@ self.addEventListener("message", (event) => {
           .filter((u) => typeof u === "string")
           .map((u) =>
             fetch(u)
-              .then((res) => (res.ok ? cache.put(u, res) : undefined))
+              .then((res) => (cacheable(res) ? cache.put(u, res) : undefined))
               .catch(() => {}),
           ),
       ),
@@ -67,6 +67,12 @@ self.addEventListener("fetch", (event) => {
 
   // Skip API routes — always network only
   if (url.pathname.startsWith("/api/")) return;
+
+  // The owner's same-origin live preview (lib/live-view/page-proxy.ts): a page
+  // with ?live=<id>, and whatever it loads, comes from his dev server. Never
+  // answered from the cache (dev chunk names are reused across edits) and
+  // never cached (below), so nothing of it outlives the preview.
+  if (url.searchParams.has("live") || /[?&]live=/.test(request.referrer || "")) return;
 
   // Hashed, immutable build output: cache first.
   if (url.pathname.startsWith("/_next/static/")) {
@@ -85,7 +91,7 @@ self.addEventListener("fetch", (event) => {
         .then((res) => {
           // Cache successful HTML responses
           const cloned = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+          if (cacheable(res)) caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
           return res;
         })
         .catch(async () => {
@@ -113,7 +119,7 @@ async function cacheThenNetwork(request) {
   const cached = await cache.match(request);
   if (cached) return cached;
   const res = await fetch(request);
-  if (res.ok) cache.put(request, res.clone());
+  if (cacheable(res)) cache.put(request, res.clone());
   return res;
 }
 
@@ -121,9 +127,14 @@ async function networkThenCache(request) {
   const cache = await caches.open(CACHE_NAME);
   try {
     const res = await fetch(request);
-    if (res.ok) cache.put(request, res.clone());
+    if (cacheable(res)) cache.put(request, res.clone());
     return res;
   } catch {
     return (await cache.match(request)) ?? Response.error();
   }
+}
+
+/** Kept for offline use: a good answer that is not the owner's live preview (x-lk-live). */
+function cacheable(res) {
+  return res.ok && !res.headers.has("x-lk-live");
 }
