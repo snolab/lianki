@@ -643,7 +643,10 @@ hold, keys 1–4 / L K J H, all unchanged). What follows it is new
   item's word review opens (the selection card's review, over the same
   words) — only when the plan has a due or new word, not after a later
   grade or an undo, not over a sheet. Closing it focuses the next item.
-  Undoing the grade inside the hold closes a review it opened.
+  Undoing the grade inside the hold closes a review it opened. Reading
+  aloud is paused under it, not stopped: the review claims the audio
+  (audio-claim, as when opened from the card) and the book goes on from the
+  same sentence on close.
 
 ### Grading from the selection card (owner, 2026-11-05 02:50–03:20 JST)
 

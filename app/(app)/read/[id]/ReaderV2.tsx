@@ -1353,7 +1353,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           const el = rowEl(next >= 0 ? next : index);
           if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
           reviewBack.current = el ?? null;
-          if (playingRef.current) dispatch({ type: "stop" });
+          // Read-aloud is not stopped here: the open review claims the audio
+          // (audio-claim, as a review opened from the card), which pauses it
+          // and resumes from the same sentence on close.
           sel.clear();
           setReview({ words, range: false, ref: itemRef(index), adopt: false, from: receipt });
         },
