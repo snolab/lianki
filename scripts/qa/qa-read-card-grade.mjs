@@ -137,6 +137,58 @@ async function run(device, scheme, touch) {
   await page.waitForTimeout(700);
   await page.screenshot({ path: join(OUT, `handle-${tag}.png`) });
 
+  // The whole rating system: each grade with its next interval, as /words.
+  const IV = /\d+(s|m|h|d|mo|y)/;
+  if (!touch) {
+    const keys = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-testid=read-grade-keys] [data-rating]")].map(
+        (e) => e.textContent,
+      ),
+    );
+    check(
+      keys.length === 4 && keys.every((k) => /\d+(s|m|h|d|mo|y)/.test(k ?? "")),
+      `desktop: keys 1–4 with grade and interval (${JSON.stringify(keys)})`,
+    );
+  }
+  {
+    // Mid-drag: the hint names the grade and its interval; letting go short of a level cancels.
+    const b0 = await knobBox(page);
+    const x = b0.x + b0.width / 2;
+    const y = b0.y + b0.height / 2;
+    if (touch) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+      for (let i = 1; i <= 10; i++) {
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: x + i * 5.5, y }],
+        });
+        await page.waitForTimeout(16);
+      }
+    } else {
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (let i = 1; i <= 10; i++) {
+        await page.mouse.move(x + i * 5.5, y);
+        await page.waitForTimeout(16);
+      }
+    }
+    await page.waitForTimeout(150);
+    const hint = await page.getByTestId("read-grade-hint").textContent();
+    check(/·/.test(hint ?? "") && IV.test(hint ?? ""), `mid-drag hint: grade · interval (${hint})`);
+    await page.screenshot({ path: join(OUT, `dragging-${tag}.png`) });
+    // Back to the middle before letting go: nothing graded.
+    if (touch) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
+      await page.waitForTimeout(120);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    } else {
+      await page.mouse.move(x, y, { steps: 6 });
+      await page.waitForTimeout(120);
+      await page.mouse.up();
+    }
+    await page.waitForTimeout(300);
+  }
+
   // Taps on the text and on the knob never grade.
   for (let i = 0; i < 3; i++) {
     await tapWord();

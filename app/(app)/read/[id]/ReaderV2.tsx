@@ -1678,7 +1678,11 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     (u: Unit): string[] => {
       const out: (string | null)[] = [];
       if (u.kind === "sentence") out.push(sidOf(u.line, u.s));
-      else if (u.kind === "range")
+      else if (u.kind === "para") {
+        // Its sentences: only for the intervals the hint shows (the swipe grades the item).
+        const n = lineSentences(u.line)?.length ?? 0;
+        for (let s = 0; s < n; s++) out.push(sidOf(u.line, s));
+      } else if (u.kind === "range")
         for (const p of rangeParts(u)) {
           const ss = lineSentences(p.line);
           if (!ss) continue;
@@ -1789,6 +1793,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const gradeArea = sel.unit ? (
     <CardGradeArea
       plan={cardGrade.plan}
+      intervals={cardGrade.intervals}
       locale={String(locale)}
       mirror={mirror}
       openedAt={cardGrade.openedAt}

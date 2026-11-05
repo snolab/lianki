@@ -16,8 +16,12 @@ import { gradeFor, type WordContext } from "@/lib/read/reader-service";
 import { cardsOfBook, type BookRef, type D1Batch } from "@/lib/read/reader-store";
 import { bookHash } from "@/lib/read/units";
 import type { BookCtx } from "@/lib/read/book-word-list";
+import { formatInterval, previewInterval } from "@/lib/words/schedule";
+import { gradeSentence } from "@/lib/read/sentence-cards";
 import {
   batchOf,
+  gradeIntervals,
+  intervalLabel,
   handlePlan,
   hintParts,
   splitSentences,
@@ -199,6 +203,17 @@ beforeEach(async () => {
   await repo.review(deck, [{ term: "chien", rating: 4 }], "2026-11-05", at("2026-11-05T02:00:00Z"));
 });
 
+describe("interval labels", () => {
+  test("one value as /words writes it; a batch's span as a range", () => {
+    const d = 86_400_000;
+    expect(intervalLabel([3 * d, 3 * d], formatInterval)).toBe("3d");
+    expect(intervalLabel([3 * d + 1000, 3 * d], formatInterval)).toBe("3d");
+    expect(intervalLabel([d, 5 * d], formatInterval)).toBe("1d–5d");
+    expect(intervalLabel([10 * 60_000, 2 * d], formatInterval)).toBe("10m–2d");
+    expect(intervalLabel(null, formatInterval)).toBeNull();
+  });
+});
+
 describe("one batch, the shared write paths, one undo", () => {
   test("the probe says what each sentence and word is, and writes nothing", async () => {
     const r = await probeBatch(c, [sid(1, 0)], [w("chat"), w("chien"), w("zèbre")], new Date(NOW));
@@ -209,8 +224,45 @@ describe("one batch, the shared write paths, one undo", () => {
     expect(wordState(by.chien, NOW).kind).toBe("notDue");
     expect(wordState(by.zèbre, NOW).kind).toBe("nocard");
     expect(by.chat.next?.[4]).toBeDefined();
-    expect(r.res.sentenceNext?.[3]).toBeDefined();
+    expect(r.res.sentenceNext[sid(1, 0)]?.[3]).toBeDefined();
     expect(await cardRow("zèbre")).toBeNull();
+  });
+
+  test("intervals: the same FSRS preview as /words for words, the sentence scheduler for sentences", async () => {
+    const now = new Date(NOW);
+    const r = await probeBatch(c, [sid(1, 0), sid(1, 1)], [w("chat"), w("zèbre")], now);
+    if (!r.ok) throw new Error(r.error);
+    const by = Object.fromEntries(r.res.words.map((x) => [x.w, x]));
+    const list = (await repo.lists()).find((l) => l.id === deck)!;
+    const chat = await cardRow("chat");
+    for (const g of [1, 2, 3, 4] as const) {
+      // A word: /words' own interval label (previewInterval: list params, no fuzz).
+      const pl = handlePlan("word", { sentences: {}, words: [by.chat] }, [], NOW);
+      if (pl.mode !== "grade") throw new Error("no handle");
+      const iv = gradeIntervals(pl, r.res, NOW);
+      expect(intervalLabel(iv[g], formatInterval)).toBe(
+        previewInterval(chat!.card, g, list.params, now),
+      );
+      // A sentence: the reader's sentence scheduler.
+      const sp = handlePlan("sentence", r.res, [sid(1, 0)], NOW);
+      if (sp.mode !== "grade") throw new Error("no handle");
+      const due = gradeSentence(null, g, now, false).due.getTime();
+      expect(gradeIntervals(sp, r.res, NOW)[g]).toEqual([due - NOW, due - NOW]);
+    }
+    // A word with no card yet: a new card's interval.
+    expect(by.zèbre.next?.[3]).toBeDefined();
+    // A range: the span over its sentences, and its words on Easy.
+    const rp = handlePlan("range", r.res, [sid(1, 0), sid(1, 1)], NOW);
+    if (rp.mode !== "grade") throw new Error("no handle");
+    const easy = gradeIntervals(rp, r.res, NOW)[4]!;
+    const chatEasy = Date.parse(by.chat.next![4]!) - NOW;
+    expect(easy[1]).toBeGreaterThanOrEqual(chatEasy);
+    expect(easy[0]).toBeLessThanOrEqual(chatEasy);
+    // A paragraph: its sentences.
+    const pp = handlePlan("para", r.res, [], NOW);
+    if (pp.mode !== "grade") throw new Error("no handle");
+    expect(gradeIntervals(pp, r.res, NOW, [sid(1, 0), sid(1, 1)])[1]).not.toBeNull();
+    expect(gradeIntervals(pp, null, NOW)[1]).toBeNull();
   });
 
   test("a word batch: graded through /words' review; undo restores the card exactly", async () => {
