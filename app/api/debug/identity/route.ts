@@ -4,14 +4,15 @@ import { DEV_BRIDGE_HEADER } from "@/lib/dev-bridge";
 import { devBridgeUser } from "@/lib/dev-bridge-user";
 import { sessionTag } from "@/lib/dev-eval";
 import { isOwner } from "@/lib/owner";
+import { absoluteImage } from "@/lib/profile/avatar";
 import { flushSignedOutSoon } from "@/lib/push-signed-out";
 
 /**
  * Who is this session, for lianki-push (workers/push) before it accepts a
  * debug socket — it forwards the page's Cookie header over its service
  * binding. Any signed-in user: {userId, email, owner, name, image}; a guest:
- * 401. `image` is better-auth's user.image (the sign-in provider's picture;
- * Lianki keeps no avatar of its own), for the chat's avatars. The owner
+ * 401. `image` is better-auth's user.image (the sign-in provider's picture, or
+ * the user's upload made absolute: the hub takes https URLs only), for the chat's avatars. The owner
  * gets the owner's thread and pairings; anyone else their own thread only
  * (docs/monitoring.md, "Friends"). /api/dev/whoami stays the owner-only check.
  * `session` is sessionTag(session id) — a hash, never the id or its token —
@@ -40,7 +41,7 @@ export const GET = async (req: Request) => {
       email: user.email ?? "",
       owner: isOwner(user.email),
       name: user.name ?? "",
-      image: user.image ?? "",
+      image: absoluteImage(user.image, req.url),
       ...(session?.id ? { session: await sessionTag(session.id) } : {}),
       ...(Number.isFinite(until) ? { sessionUntil: until } : {}),
     },
@@ -57,7 +58,7 @@ async function bridgeIdentity(req: Request) {
       email: user.email,
       owner: true,
       name: user.name ?? "",
-      image: user.image ?? "",
+      image: absoluteImage(user.image, req.url),
     },
     { headers: { "cache-control": "no-store" } },
   );

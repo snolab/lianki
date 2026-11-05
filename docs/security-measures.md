@@ -130,6 +130,15 @@ memory. `lib/security/upload-policy.ts`:
 
 Every other import takes JSON validated by zod.
 
+**BYOK relay** (`POST /api/byok/proxy`, docs/byok.md "The relay"). The one
+place the server sends a request to a user-influenced address, so it is not
+an open proxy: it forwards only to an allowlist of AI provider hosts and
+paths (data in `lib/byok/presets.ts`, changed only by a reviewed PR), https
+on 443, same-origin JSON only, with DoH resolution refusing any non-public
+address, manual redirects re-checked against the allowlist, body/answer/time
+caps, per-IP/user/global rate limits, and no logging of keys, headers, URLs
+or bodies. Nothing is stored. Residual risk (DNS rebinding) is in that doc.
+
 ## 3. Vulnerability checks (脆弱性対策 ③)
 
 `.github/workflows/security.yml`:
@@ -359,7 +368,29 @@ server code stores a key; the managed mode waits for the owner's approval.
 The audit (prefs sync, page errors, chat context, analytics) is in
 [byok.md](byok.md), "Never leaving the device". Tests: `unit/byok.test.ts`.
 
-## 11. Route limits, body caps and the legacy pages (2026-11-05)
+## 11. Sibling hosts
+
+A browser counts every `*.lianki.com` host as the same site as lianki.com, so
+a page on one (a user's box, a dev tunnel) gets the SameSite=Lax session cookie
+sent with its requests here. `worker.ts` answers 403, before any route, to a
+cookie-carrying request marked `Sec-Fetch-Site: same-site` that goes to `/api`
+(any method, because some GETs write) or writes to any other path (server
+actions POST to page URLs) (`lib/security/same-site-guard.ts`). Reading a page
+or following a link from a sibling still works.
+
+What it does not cover:
+
+- **lianki-push** (`/api/version/*`, its own Worker route): its cookie sockets
+  have their own check, `Origin` must be exactly `https://lianki.com`
+  (`workers/push/src/auth.ts`); the other routes there take bearer tokens.
+- **A browser without Fetch Metadata** passes.
+- **Cookies set by a sibling.** A page there can still set a cookie for
+  `Domain=lianki.com`. Only a separate registrable domain for those pages stops
+  that, and it would stop the same-site requests as well.
+- **Reading** needs CORS, which `/api` does not answer for siblings, so this
+  guard is about writes.
+
+## 12. Route limits, body caps and the legacy pages (2026-11-05)
 
 A review pass (Claude, with Codex as a second opinion) fixed these on main;
 tests in `unit/security-hardening.test.ts`.
@@ -388,14 +419,9 @@ tests in `unit/security-hardening.test.ts`.
   are plain text. These pages have no CSP, so escaping is the whole defence.
 - **GETs that write** (`/api/fsrs/review/*`, `/api/fsrs/delete`,
   `/api/fsrs/repeat`): kept as GETs for installed userscripts and the CLI,
-  a top-level navigation from another site, or anything from a sibling
-  `*.lianki.com` host, gets 403 (Fetch Metadata; browsers without it pass).
+  a top-level navigation from another site gets 403 (Fetch Metadata; browsers
+  without it pass). Sibling `*.lianki.com` hosts: section 11.
   `POST /api/fsrs/delete` exists too, and the list page uses it.
-- **Sibling hosts.** A browser counts every `*.lianki.com` host as the same
-  site, so a page on one (a friend's devbox, a tunnel) sends the SameSite=Lax
-  session cookie with its POSTs. `worker.ts` refuses every cookie-carrying
-  write to `/api` that says `Sec-Fetch-Site: same-site`
-  (`lib/security/same-site-guard.ts`). The cross-site case is SameSite's own.
 - **Pro days** from gift codes, invites and Stripe payments are added in
   SQL inside the grant's batch, so two at once both count; a gift code's
   use is given back if its grant fails.

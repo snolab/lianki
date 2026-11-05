@@ -53,9 +53,32 @@ describe("QA browsers are silent", () => {
     expect(readFileSync("playwright.config.ts", "utf8")).toContain("--mute-audio");
   });
 
-  test("qa:all mutes the Mac while it runs", () => {
+  test("qa:all mutes the Mac around its browser suites, not around its build", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-    expect(pkg.scripts["qa:all"]).toStartWith("bash scripts/qa/with-muted-mac.sh ");
+    expect(pkg.scripts["qa:all"]).not.toContain("with-muted-mac");
+    const src = readFileSync("scripts/qa/qa-all.mjs", "utf8");
+    expect(src).toContain("scripts/qa/with-muted-mac.sh");
+    const hold = src.indexOf("await holdMute()");
+    expect(hold).toBeGreaterThan(src.indexOf('step("OpenNext build'));
+    expect(hold).toBeLessThan(src.indexOf("await releaseMute();"));
+  });
+
+  test("what cannot make a sound never mutes: unit tests, lint, typecheck", () => {
+    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+    for (const name of ["test:unit", "lint", "typecheck", "fix"])
+      expect(String(pkg.scripts[name])).not.toContain("with-muted-mac");
+    const hook = readFileSync(".husky/pre-push", "utf8").split("\n");
+    const qa = hook.indexOf("bun run qa:all");
+    expect(qa).toBeGreaterThan(0);
+    const before = hook.slice(0, qa).filter((l) => !l.startsWith("#"));
+    expect(before.join("\n")).not.toContain("with-muted-mac");
+    // No unit test reaches the real sound: only the wrapper's own, with its fake.
+    const hits = [...new Glob("unit/**/*.{ts,tsx}").scanSync(".")].filter((f) =>
+      /with-muted-mac\.sh|osascript|set volume/.test(
+        readFileSync(f, "utf8").replace(/\/\/.*$/gm, ""),
+      ),
+    );
+    expect(hits.sort()).toEqual(["unit/qa-muted-mac.test.ts", "unit/qa-silent.test.ts"]);
   });
 });
 

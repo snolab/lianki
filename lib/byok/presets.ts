@@ -7,6 +7,9 @@
 //
 // Nothing here is per provider in code: a new preset is a new row.
 
+/** A model name as providers write them ("gpt-4o-mini", "meta-llama/llama-3:8b"). */
+export const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,119}$/;
+
 export type ByokProtocol = "openai" | "anthropic";
 
 export interface ByokPreset {
@@ -30,6 +33,14 @@ export interface ByokPreset {
   opaqueAuthErrors?: boolean;
   /** Where its privacy / data-use policy is (shown with the notice). */
   policyUrl?: string;
+  /**
+   * Lianki's relay (`POST /api/byok/proxy`, docs/byok.md "The relay") may
+   * forward to this provider: exactly this host, over https on port 443, and
+   * only these paths. This is the relay's allowlist — a preset without it
+   * (Ollama, Custom) is never relayed. Adding a host is an owner action: a
+   * reviewed change to this file; users cannot add one.
+   */
+  relay?: { host: string; paths: readonly string[] };
 }
 
 export const BYOK_PRESETS: readonly ByokPreset[] = [
@@ -42,6 +53,7 @@ export const BYOK_PRESETS: readonly ByokPreset[] = [
     browser: true,
     opaqueAuthErrors: true,
     policyUrl: "https://openai.com/policies/row-privacy-policy/",
+    relay: { host: "api.openai.com", paths: ["/v1/chat/completions"] },
   },
   {
     id: "anthropic",
@@ -51,6 +63,7 @@ export const BYOK_PRESETS: readonly ByokPreset[] = [
     model: "claude-haiku-4-5",
     browser: true,
     policyUrl: "https://www.anthropic.com/legal/privacy",
+    relay: { host: "api.anthropic.com", paths: ["/v1/messages"] },
   },
   {
     id: "deepseek",
@@ -60,6 +73,7 @@ export const BYOK_PRESETS: readonly ByokPreset[] = [
     model: "deepseek-chat",
     browser: true,
     policyUrl: "https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html",
+    relay: { host: "api.deepseek.com", paths: ["/chat/completions", "/v1/chat/completions"] },
   },
   {
     id: "gemini",
@@ -69,6 +83,10 @@ export const BYOK_PRESETS: readonly ByokPreset[] = [
     model: "gemini-2.5-flash",
     browser: true,
     policyUrl: "https://ai.google.dev/gemini-api/terms",
+    relay: {
+      host: "generativelanguage.googleapis.com",
+      paths: ["/v1beta/openai/chat/completions"],
+    },
   },
   {
     id: "openrouter",
@@ -78,6 +96,7 @@ export const BYOK_PRESETS: readonly ByokPreset[] = [
     model: "openrouter/auto",
     browser: true,
     policyUrl: "https://openrouter.ai/privacy",
+    relay: { host: "openrouter.ai", paths: ["/api/v1/chat/completions"] },
   },
   {
     id: "ollama",
@@ -97,6 +116,9 @@ export const BYOK_PRESETS: readonly ByokPreset[] = [
     browser: true,
   },
 ];
+
+/** The presets Lianki's relay may forward to (the allowlist, as data). */
+export const RELAY_PRESETS: readonly ByokPreset[] = BYOK_PRESETS.filter((p) => p.relay);
 
 export const presetOf = (id: string | null | undefined): ByokPreset | null =>
   BYOK_PRESETS.find((p) => p.id === id) ?? null;

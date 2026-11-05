@@ -5,6 +5,7 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
 import PasskeysCard from "./PasskeysCard";
+import { ProfileFields } from "./ProfileFields";
 import { DebugOnly } from "./DebugOnly";
 import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
@@ -57,18 +58,10 @@ export default async function ProfilePage() {
   }
   const user = signedIn;
   const session = await auth.api.getSession({ headers: await headers() });
-  const {
-    heading,
-    userInformation,
-    name,
-    notAvailable,
-    email,
-    avatar,
-    userAvatarAlt,
-    sessionDetails,
-    editPreferences,
-    backToHome,
-  } = getIntlayer("profile-page", locale);
+  const { heading, userInformation, sessionDetails, editPreferences, backToHome } = getIntlayer(
+    "profile-page",
+    locale,
+  );
   // /connections while it ships dark: the owner, or everyone once connections.google is on.
   const connections =
     dbBackend() === "d1" && connectionsOn(await readFlags(), isOwner(user.email))
@@ -82,18 +75,12 @@ export default async function ProfilePage() {
         {level && <LevelCard {...level} locale={locale} />}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
           <h2 className="text-2xl font-semibold mb-4">{userInformation}</h2>
-          <p className="mb-2">
-            <strong>{name}</strong> {user.name || notAvailable}
-          </p>
-          <p className="mb-2">
-            <strong>{email}</strong> {user.email}
-          </p>
-          {user.image && (
-            <p>
-              <strong>{avatar}</strong>{" "}
-              <img src={user.image} alt={userAvatarAlt} className="mt-2 w-32 h-32 rounded-full" />
-            </p>
-          )}
+          <ProfileFields
+            name={user.name ?? ""}
+            email={user.email}
+            image={user.image ?? null}
+            editable={dbBackend() === "d1"}
+          />
         </div>
         <PasskeysCard />
         {/* A raw dump for diagnosing sign-in; shown in debug mode only. */}

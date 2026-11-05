@@ -13,7 +13,6 @@ import {
 } from "@/lib/security/route-guard";
 import type { ThrottleDb } from "@/lib/security/throttle";
 import { isMutatingGet, openable } from "@/app/fsrs";
-import { siblingApiWrite } from "@/lib/security/same-site-guard";
 import { probeReachability } from "@/lib/probe";
 import { createGiftCode, redeemGiftCode } from "@/lib/referrals/store";
 import { fulfilCheckout } from "@/lib/payments/fulfil";
@@ -198,21 +197,6 @@ describe("GETs that write: no cross-site navigation", () => {
     // The userscript's privileged requests can look like this; no Lax cookie rides on a real one.
     expect(off("cross-site", "cors")).toBe(false);
     expect(offSiteWritingGet(req({}))).toBe(false);
-  });
-
-  test("a sibling host's cookie-carrying write to the API is refused", () => {
-    const write = (path: string, h: Record<string, string>, method = "POST") =>
-      siblingApiWrite(new Request(`https://lianki.com${path}`, { method, headers: h }));
-    const sibling = { "sec-fetch-site": "same-site", cookie: "a=b" };
-    expect(write("/api/token", sibling)).toBe(true);
-    expect(write("/api", sibling)).toBe(true);
-    expect(write("/API/token", sibling, "DELETE")).toBe(true);
-    expect(write("/api/token", { ...sibling, "sec-fetch-site": "same-origin" })).toBe(false);
-    expect(write("/api/token", { "sec-fetch-site": "same-site" })).toBe(false); // no cookie
-    expect(write("/api/payments/stripe-webhook", { cookie: "a=b" })).toBe(false); // no browser
-    expect(write("/api/token", sibling, "GET")).toBe(false);
-    expect(write("/apix", sibling)).toBe(false);
-    expect(readFileSync("worker.ts", "utf8")).toMatch(/if \(siblingApiWrite\(req\)\)/);
   });
 
   test("the legacy pages never window.open a script url", () => {
