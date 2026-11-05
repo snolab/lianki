@@ -358,9 +358,80 @@ the source's metadata (never guessed), the text and its processing are shared
 (one R2 copy, paid once) and the work is promoted to a /books entry for all
 users, marked with its source; who added it and when is not shown. Uploaded
 files (EPUB…) and anything not confidently public domain stay private
-(decision 5). Uncertain → private. Not in the first /books PR: it needs a URL
-import for those hosts, per-host metadata readers, and a stored (D1)
-catalogue table beside the curated list; its slug is made once by `newSlug`.
+(decision 5). Uncertain → private. Built 2026-11-05 as the paste-link box
+and the library search below.
+
+### Paste a link, or search the libraries (owner, 11:11–11:13 JST 2026-11-05)
+
+Owner: instead of a federated search option, "actually want both" — (A) an
+instant filter over /books, (B) "到公版图书馆搜索", run by the server against
+the libraries, and (C) a paste-link box plus a guide to the libraries' own
+sites. B and C share one path; a confirmed public-domain import joins the
+shared catalogue. Built:
+
+- **(A) Filter** (`BooksBrowser`): one field above the list filters the cards
+  already on the page by title, author, language name, level or year. Local,
+  no request.
+- **(C) Guide + paste link** (`BookFinder`, signed-in users): links to
+  gutenberg.org, aozora.gr.jp, zh./ru.wikisource.org (new tab), and a field
+  that takes a book link from them. The client sends the link; the server
+  does everything else.
+- **(B) Search** (`GET /api/books/search?q=`): Gutendex (Project Gutenberg's
+  catalogue; books it marks copyrighted are dropped), each Wikisource site's
+  own search, and Aozora Bunko's index of works
+  (`list_person_all_extended_utf8.zip`, unzipped with the platform's
+  `DecompressionStream`, kept as a compact list for a week; works Aozora
+  marks 著作権あり are dropped). Cached a day per query in R2; a library
+  that fails is left out, all failing is an error (not cached). Hits are
+  links only; the page checks each (three at a time) through resolve.
+- **One resolve path** (`lib/books/resolve.ts`, `lib/books/lookup.ts`,
+  `POST /api/books/resolve { url }`, and `POST /api/books/import { url }`):
+  the link is reduced to a host and an id (`parseBookLink`: Gutenberg
+  `/ebooks/N`, `/cache/epub/N/…`, `/files/N/…`; Aozora card or XHTML file;
+  Wikisource main-namespace page) — never fetched as given. A link to a
+  curated or shared work resolves to that entry (PG #33931 → Perrault's
+  entry, same slug and source key, nothing fetched). Otherwise the host's own
+  metadata is read (allowed hosts only, redirects within them, 3 MB, 15 s;
+  cached a week): **Gutenberg** — the ebook page's bibliographic record:
+  every Author / Illustrator / Editor / Translator / Contributor… with dates
+  (an "approximately" date or none → no death year), Language, "Original
+  Publication" (its year — the latest when several, stricter for the US rule
+  — and its place via a data table of cities; an ambiguous place such as
+  plain "Cambridge" is no country), and PG's own "Public domain in the USA"
+  line. **Aozora** — the card: each person's 分類 (role) and 没年, 初出 (its
+  year; 初出 is a Japanese publication, so JP), the XHTML file, 底本 and its
+  publisher, 入力/校正 for the attribution; a card marked 著作権存続 is never
+  a candidate. **Wikisource** — the page's Wikidata item (edition → its work
+  via P629): P50 authors, P655 translators, P98 editors, P110 illustrators,
+  each person's P570 death year (only at year precision or better; two
+  different stated years → uncertain), P577 earliest publication year, P495
+  country → its P297 code; the file is the REST HTML of the current revision.
+- **The rule on stated facts** (`judge`): refused, with the reason shown,
+  when anything is missing or uncertain — a creator's death year, the first
+  publication year, the country, the language, a role we cannot place — or
+  for a translation (the shared library holds originals); then public domain
+  in the US (PG's own "not PD in the USA" also refuses), in the work's
+  country and in the viewer's (`not-public-domain-*`). Shown as
+  "无法确认公版" (facts missing) or "不属于公版" (protected), never
+  importable.
+- **Shared catalogue** (`shared_books` in D1, migration 0039,
+  `lib/books/shared.ts`): a confirmed work not yet listed becomes one entry
+  for everyone on its first import — after its file was fetched and parsed
+  into a book (a source the importer cannot read is never listed). Slug made
+  once by `newSlug` in the title's own script (taken → author, year…). Listed
+  after the curated entries, no level hint, same per-viewer filter, its own
+  page `/books/<lang>/<slug>`, imported by key like any entry. Who added it
+  is not stored.
+- **Limits** (D1 `auth_throttle`, per user / 10 min): 120 checks, 30
+  searches, 20 new imports (a new shared work counts once).
+- **Tests** (`unit/books-resolve.test.ts`, synthetic metadata only): links
+  and hosts; each host's facts; PD pass; a missing death year, first
+  publication, country or language refuses; a translation, an unknown role,
+  US / home / viewer protection refuse; PG #33931 resolves to the curated
+  Perrault entry without a fetch; a new work becomes one shared entry, its
+  facts read once; an unreadable file is not listed; off-list hosts and
+  redirects refused; the search merge, CSV, the one-file unzip; the D1 store
+  (one row per work, slug suffix, curated keys win).
 
 ## A first multilingual text: the Bible, in its original languages
 

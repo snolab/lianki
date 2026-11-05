@@ -114,9 +114,11 @@ export function BookCard({
         )}
       </div>
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-        <span className="rounded-full bg-blue-600/10 px-2 py-0.5 font-medium text-blue-700 dark:text-blue-300">
-          {t.level} {book.level}
-        </span>
+        {book.level && (
+          <span className="rounded-full bg-blue-600/10 px-2 py-0.5 font-medium text-blue-700 dark:text-blue-300">
+            {t.level} {book.level}
+          </span>
+        )}
         {book.form && <span>{book.form === "verse" ? t.verse : t.prose}</span>}
         <span>{book.firstPublicationYear}</span>
         <span>
