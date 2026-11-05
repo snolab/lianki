@@ -16,7 +16,7 @@
 // `Authorization`, the backend and messages as JSON. The relay forwards it
 // and forgets both; the answer comes back unchanged.
 
-import { checkBaseUrl, type ByokActive } from "./config";
+import { checkBaseUrl, MODEL_RE, type ByokActive } from "./config";
 
 export type ByokMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -260,4 +260,54 @@ export async function testByok(a: ByokActive, deps: ByokDeps = {}): Promise<Byok
   );
   // A reasoning model may spend 16 tokens thinking and say nothing: still a working key.
   return !r.ok && r.kind === "empty" ? { ok: true, text: "" } : r;
+}
+
+/**
+ * The models a provider offers this key, sorted; [] on any failure (the field
+ * can always be typed in). Same rules as a completion: the checked URL, no
+ * cookies, no referrer, nothing logged.
+ */
+export async function byokModels(
+  backend: ByokActive["backend"],
+  apiKey: string,
+  preset: ByokActive["preset"],
+  deps: ByokDeps = {},
+): Promise<string[]> {
+  const pageHost =
+    deps.pageHost !== undefined
+      ? deps.pageHost
+      : typeof location === "undefined"
+        ? null
+        : location.host;
+  const u = checkBaseUrl(backend.baseUrl, pageHost);
+  if (!u.ok) return [];
+  const anthropic = preset.protocol === "anthropic";
+  const headers: Record<string, string> = anthropic
+    ? {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      }
+    : apiKey
+      ? { authorization: `Bearer ${apiKey}` }
+      : {};
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), deps.timeoutMs ?? 10_000);
+  try {
+    const res = await (deps.fetch ?? fetch)(`${u.url}/models${anthropic ? "?limit=1000" : ""}`, {
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      cache: "no-store",
+      headers,
+      signal: ctl.signal,
+    });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { data?: { id?: unknown }[] } | null;
+    const ids = (body?.data ?? []).map((m) => m?.id);
+    return ids.filter((id): id is string => typeof id === "string" && MODEL_RE.test(id)).sort();
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }

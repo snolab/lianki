@@ -17,7 +17,7 @@
 // drawn, disabled, behind the `byok.sync` flag: no API, table or encryption
 // exists until the owner approves the storage design.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { notePrefWrite, PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { BYOK_PRESETS, presetOf } from "@/lib/byok/presets";
@@ -39,7 +39,7 @@ import {
   type ByokBackend,
   type ByokDevice,
 } from "@/lib/byok/config";
-import { testByok, type ByokErrorKind } from "@/lib/byok/call";
+import { byokModels, testByok, type ByokErrorKind } from "@/lib/byok/call";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { markClean } from "@/lib/page-dirty";
 
@@ -49,11 +49,25 @@ const FIELD =
   "w-full rounded-lg border border-[oklch(0.5_0.02_250/0.35)] bg-[oklch(1_0_0/0.6)] px-3 py-2 text-base outline-none focus:border-[oklch(0.6_0.14_250)] focus:ring-1 focus:ring-[oklch(0.6_0.14_250)] dark:bg-[oklch(0.25_0.01_250/0.6)]";
 const BTN =
   "min-h-11 rounded-full px-4 text-sm font-medium transition-colors disabled:opacity-50 pointer-fine:min-h-9";
+/** The field (its data-testid) to fill in for each gap. */
+const gapField = {
+  url: "base-url",
+  "server-only": "base-url",
+  relay: "base-url",
+  model: "model",
+  key: "key",
+} as const;
 const TONE = {
   ok: "text-[oklch(0.5_0.14_155)] dark:text-[oklch(0.78_0.14_155)]",
   err: "text-[oklch(0.52_0.17_30)] dark:text-[oklch(0.76_0.14_30)]",
   info: "opacity-80",
 } as const;
+
+/** The form before anything is chosen: the model stays empty until the provider lists its own. */
+const blankForm = (): ByokDevice => {
+  const d = emptyDevice();
+  return { ...d, backend: { ...d.backend, model: "" } };
+};
 
 export function ByokSettings({
   showKeySync = false,
@@ -64,7 +78,7 @@ export function ByokSettings({
   signedIn?: boolean;
 }) {
   const c = useIntlayer("byok-settings");
-  const [device, setDevice] = useState<ByokDevice>(() => emptyDevice());
+  const [device, setDevice] = useState<ByokDevice>(blankForm);
   const [synced, setSynced] = useState(false);
   const [acked, setAcked] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -73,9 +87,14 @@ export function ByokSettings({
   const [status, setStatus] = useState<Status>(null);
   /** The last browser-direct test failed the way a relay would fix (CORS / unreachable). */
   const [suggestRelay, setSuggestRelay] = useState(false);
+  /** Ticked while the form is incomplete: it turns on when the form is saved. */
+  const [wanted, setWanted] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
+  const keyEdited = useRef(false);
+  const modelsAsk = useRef(0);
 
   const reload = useCallback(() => {
-    const d = loadDevice() ?? emptyDevice();
+    const d = loadDevice() ?? blankForm();
     const s = loadSyncedBackend();
     setDevice(s ? { ...d, backend: s } : d);
     setSynced(!!s);
@@ -145,16 +164,38 @@ export function ByokSettings({
   const setBackend = (b: Partial<ByokBackend>) =>
     setDevice((d) => ({ ...d, backend: { ...d.backend, ...b } }));
 
+  /**
+   * The provider's own model list, with the key the user just entered; the
+   * preset's model is chosen when the provider offers it. Silent on failure:
+   * the model can always be typed.
+   */
+  const loadModels = async (d: ByokDevice) => {
+    const p = presetOf(d.backend.provider);
+    if (!p) return;
+    const ask = ++modelsAsk.current;
+    const list = await byokModels(d.backend, d.apiKey.trim(), p);
+    if (ask !== modelsAsk.current) return;
+    setModels(list);
+    if (list.includes(p.model))
+      setDevice((cur) =>
+        cur.backend.provider === p.id && !cur.backend.model
+          ? { ...cur, backend: { ...cur.backend, model: p.model } }
+          : cur,
+      );
+  };
+
   const pickProvider = (id: string) => {
     const p = presetOf(id);
     if (!p) return;
     setStatus(null);
     setSuggestRelay(false);
-    setBackend(
-      p.id === "custom"
-        ? { provider: p.id, relay: undefined }
-        : { provider: p.id, baseUrl: p.baseUrl, model: p.model, relay: undefined },
-    );
+    modelsAsk.current++;
+    setModels([]);
+    const backend = p.id === "custom" ? device.backend : { baseUrl: p.baseUrl, model: "" };
+    setBackend({ ...backend, provider: p.id, relay: undefined });
+    // Never with the key in the field: it may belong to the provider just left.
+    if (p.keyless)
+      void loadModels({ ...device, apiKey: "", backend: { ...backend, provider: p.id } });
   };
 
   /** Store the form on this device (and the backend on the account, when synced). */
@@ -177,11 +218,23 @@ export function ByokSettings({
 
   const save = () => {
     if (gapText) return setStatus({ tone: "err", text: gapText });
-    if (persist(device)) setStatus({ tone: "ok", text: c.saved.value });
+    if (!persist(device)) return;
+    setStatus({ tone: "ok", text: c.saved.value });
+    if (wanted) {
+      setWanted(false);
+      turn(true);
+    }
   };
 
   const turn = (on: boolean) => {
-    if (on && gapText) return setStatus({ tone: "err", text: gapText });
+    if (on && gap) {
+      setWanted(true);
+      document.querySelector<HTMLElement>(`[data-testid="byok-${gapField[gap]}"]`)?.focus();
+      return;
+    }
+    setWanted(false);
+    // Only ticked, never turned on: nothing is stored, so nothing to undo.
+    if (!on && !device.enabled) return;
     const r = withEnabled(device, on, acked);
     if (!r.ok) return setNotice(true);
     if (persist(r.device)) setStatus(null);
@@ -236,8 +289,10 @@ export function ByokSettings({
   const remove = () => {
     removeDevice();
     setShowKey(false);
+    setWanted(false);
+    setModels([]);
     const s = loadSyncedBackend();
-    const d = emptyDevice();
+    const d = blankForm();
     setDevice(s ? { ...d, backend: s } : d);
     markClean();
     setStatus({ tone: "ok", text: c.removed.value });
@@ -246,7 +301,7 @@ export function ByokSettings({
   const toggleSync = (on: boolean) => {
     if (on) {
       const b = cleanBackend(device.backend);
-      if (!b) return setStatus({ tone: "err", text: c.errUrl.value });
+      if (!b) return setStatus({ tone: "err", text: gapText ?? c.errUrl.value });
       saveSyncedBackend(b);
     } else saveSyncedBackend(null);
     notePrefWrite();
@@ -298,16 +353,25 @@ export function ByokSettings({
         <input
           type="checkbox"
           className="mt-1 h-5 w-5 shrink-0"
-          checked={device.enabled && acked}
+          checked={wanted || (device.enabled && acked)}
           onChange={(e) => turn(e.target.checked)}
           data-testid="byok-enable"
         />
         <span>
           <span className="block font-medium">{c.enable}</span>
           <span className="mt-1 block text-sm opacity-75" data-testid="byok-notice-short">
-            {c.noticeShort} {policy}
+            {c.noticeShort}
             {device.backend.relay && <span className="mt-1 block">{c.noticeRelay}</span>}
           </span>
+          {wanted && gapText && (
+            <span
+              className={`mt-1 block text-sm ${TONE.err}`}
+              role="status"
+              data-testid="byok-enable-gap"
+            >
+              {gapText}
+            </span>
+          )}
         </span>
       </label>
 
@@ -361,10 +425,17 @@ export function ByokSettings({
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
+            list="byok-models"
             value={device.backend.model}
             onChange={(e) => setBackend({ model: e.target.value })}
             data-testid="byok-model"
           />
+          <datalist id="byok-models">
+            {models.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          {!models.length && <span className="text-xs opacity-70">{c.modelHint}</span>}
         </label>
 
         <div className="flex flex-col gap-1">
@@ -384,7 +455,15 @@ export function ByokSettings({
               data-lpignore="true"
               data-1p-ignore
               value={device.apiKey}
-              onChange={(e) => setDevice((d) => ({ ...d, apiKey: e.target.value }))}
+              onChange={(e) => {
+                keyEdited.current = true;
+                setDevice((d) => ({ ...d, apiKey: e.target.value }));
+              }}
+              onBlur={() => {
+                if (!keyEdited.current || !device.apiKey.trim()) return;
+                keyEdited.current = false;
+                void loadModels(device);
+              }}
               data-testid="byok-key"
             />
             <button

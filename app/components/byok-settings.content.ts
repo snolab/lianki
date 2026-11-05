@@ -172,6 +172,24 @@ const dictionary = {
       mr: "मॉडेल",
       ko: "모델",
     }),
+    modelHint: t({
+      en: "Filled in from your provider after you enter an API key. You can also type a model name.",
+      zh: "输入 API key 后会从服务商获取可选模型，也可以直接输入模型名。",
+      hi: "API key डालने के बाद आपके प्रदाता से मॉडल की सूची आती है। आप मॉडल का नाम ख़ुद भी लिख सकते हैं।",
+      es: "Se rellena desde tu proveedor al introducir la clave API. También puedes escribir el nombre de un modelo.",
+      fr: "Rempli depuis votre fournisseur une fois la clé API saisie. Vous pouvez aussi saisir un nom de modèle.",
+      ar: "تُملأ من مزوّدك بعد إدخال مفتاح API. يمكنك أيضًا كتابة اسم النموذج.",
+      bn: "API key দিলে আপনার প্রদানকারী থেকে মডেলের তালিকা আসবে। আপনি মডেলের নামও লিখতে পারেন।",
+      pt: "Preenchido pelo seu provedor depois de inserir a chave de API. Você também pode digitar o nome de um modelo.",
+      ru: "Заполняется от вашего провайдера после ввода API-ключа. Можно также ввести название модели.",
+      ur: "API key درج کرنے کے بعد آپ کے فراہم کنندہ سے ماڈلز کی فہرست آتی ہے۔ آپ ماڈل کا نام خود بھی لکھ سکتے ہیں۔",
+      id: "Terisi dari penyedia Anda setelah API key dimasukkan. Anda juga bisa mengetik nama model.",
+      de: "Wird nach Eingabe des API-Schlüssels von Ihrem Anbieter geladen. Sie können auch selbst einen Modellnamen eingeben.",
+      ja: "API キーを入力するとプロバイダーからモデルの一覧を取得します。モデル名を直接入力することもできます。",
+      sw: "Hujazwa kutoka kwa mtoa huduma wako baada ya kuweka API key. Unaweza pia kuandika jina la modeli.",
+      mr: "API key टाकल्यावर तुमच्या प्रदात्याकडून मॉडेलची यादी येते. तुम्ही मॉडेलचे नाव स्वतःही लिहू शकता.",
+      ko: "API 키를 입력하면 제공업체에서 모델 목록을 가져옵니다. 모델 이름을 직접 입력할 수도 있습니다.",
+    }),
     apiKey: t({
       en: "API key",
       zh: "API key",
@@ -1058,6 +1076,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Help text under the base URL field in Settings → Your own AI: which addresses are allowed — any https:// address, or http://localhost or 127.0.0.1 for a server running on the same computer. Keep the addresses exactly.",
   model:
     "Field label in Settings → Your own AI: the name of the AI model to use at the provider (e.g. gpt-4o-mini). One noun.",
+  modelHint:
+    "Help text under the model field in Settings → Your own AI, while the field has no list yet: the choices come from the AI provider once the learner has entered their API key, or they may type a model name themselves. In Chinese keep 'API key' in Latin letters. One or two short sentences.",
   apiKey:
     "Field label in Settings → Your own AI: the secret API key from the AI provider (a password-like field). In Chinese keep 'API key' in Latin letters. Short noun.",
   keyHere:

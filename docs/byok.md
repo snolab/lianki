@@ -50,7 +50,8 @@ disabled checkbox behind the flag `byok.sync`.
 ## The privacy notice
 
 BYOK means Lianki cannot promise privacy. A short notice is always shown by
-the switch; the full one opens the first time the switch is turned on and
+the switch, without a provider's link: OpenAI, first in the list, would read
+as the one we prefer (owner, 2026-11-05). The full one opens the first time the switch is turned on and
 the switch stays off until 「我明白」 (`withEnabled` refuses without it;
 `activeByok` ignores a record without it). It says: what is sent (the text of
 each request — the selected text, sentence, paragraph or words — plus the

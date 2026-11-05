@@ -165,40 +165,18 @@
 }
 
 /* Paper skins (紙紋), picked in preferences and stored as <html data-paper>.
- * B 宣紙 (xuan fibres, a 12KB WebP tile per scheme) is the default; A 細紙 is
- * a 0.5KB grain, C 和紙 adds faint clouds, E 手漉紙 is lit relief. */
+ * B 宣紙 (xuan fibres, a 12KB WebP tile per scheme) is the only one for now; a
+ * stored A, C or E (retired 2026-11-05) matches no rule and renders as B. */
 :root {
   --grain-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .28 0 0 0 .2 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --clouds: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .55 0 0 0 0 .42 0 0 0 0 .25 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --relief: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.05' numOctaves='4' stitchTiles='stitch' result='t'/%3E%3CfeDiffuseLighting in='t' lighting-color='oklch(0.95 0.02 82)' surfaceScale='.9'%3E%3CfeDistantLight azimuth='45' elevation='65'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
   --fibres: url(/paper/xuan-light.webp);
   --paper: var(--fibres), var(--grain-a);
-}
-:root[data-paper="a"] {
-  --paper: var(--grain-a);
-}
-:root[data-paper="c"] {
-  --paper: var(--grain-a), var(--clouds);
-}
-:root[data-paper="e"] {
-  --paper: var(--relief);
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --grain-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 .95 0 0 0 0 .85 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    --clouds: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 .9 0 0 0 0 .75 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    --relief: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.05' numOctaves='4' stitchTiles='stitch' result='t'/%3E%3CfeDiffuseLighting in='t' lighting-color='oklch(0.26 0.015 70)' surfaceScale='.7'%3E%3CfeDistantLight azimuth='45' elevation='65'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
     --fibres: url(/paper/xuan-dark.webp);
     --paper: var(--fibres);
-  }
-  :root[data-paper="a"] {
-    --paper: var(--grain-a);
-  }
-  :root[data-paper="c"] {
-    --paper: var(--clouds);
-  }
-  :root[data-paper="e"] {
-    --paper: var(--relief);
   }
 }
 
