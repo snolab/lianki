@@ -7,6 +7,12 @@
 // (`byok.backend`, docs/prefs-sync.md). Turning it on the first time needs the
 // privacy notice acknowledged (「我明白」), per notice version.
 //
+// 「经 Lianki 转发（不保存）」 (`backend.relay`) is offered only for a preset
+// on the relay's allowlist (`relay` in lib/byok/presets.ts): calls then go
+// through `/api/byok/proxy`, which forwards and keeps nothing. A custom
+// backend is never relayed. A failed browser-direct test of an allowlisted
+// provider suggests turning it on.
+//
 // The key syncing (managed mode, the server keeps the key encrypted) is only
 // drawn, disabled, behind the `byok.sync` flag: no API, table or encryption
 // exists until the owner approves the storage design.
@@ -24,6 +30,7 @@ import {
   hasAck,
   loadDevice,
   loadSyncedBackend,
+  relayable,
   removeDevice,
   saveAck,
   saveDevice,
@@ -64,6 +71,8 @@ export function ByokSettings({
   const [notice, setNotice] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
+  /** The last browser-direct test failed the way a relay would fix (CORS / unreachable). */
+  const [suggestRelay, setSuggestRelay] = useState(false);
 
   const reload = useCallback(() => {
     const d = loadDevice() ?? emptyDevice();
@@ -95,12 +104,14 @@ export function ByokSettings({
     () =>
       gap === "url" || gap === "server-only"
         ? c.errUrl.value
-        : gap === "model"
-          ? c.errModel.value
-          : gap === "key"
-            ? c.errKey.value
-            : null,
-    [gap, c],
+        : gap === "relay"
+          ? c.errRelay.value.replaceAll("{name}", preset.name)
+          : gap === "model"
+            ? c.errModel.value
+            : gap === "key"
+              ? c.errKey.value
+              : null,
+    [gap, c, preset.name],
   );
 
   const errorText = (kind: ByokErrorKind, status?: number) => {
@@ -120,6 +131,12 @@ export function ByokSettings({
         return c.errTimeout.value;
       case "empty":
         return c.errEmpty.value;
+      case "relay-refused":
+        return c.errRelayRefused.value;
+      case "rate":
+        return c.errRate.value;
+      case "too-large":
+        return c.errTooLarge.value;
       default:
         return c.errCors.value;
     }
@@ -132,10 +149,11 @@ export function ByokSettings({
     const p = presetOf(id);
     if (!p) return;
     setStatus(null);
+    setSuggestRelay(false);
     setBackend(
       p.id === "custom"
-        ? { provider: p.id }
-        : { provider: p.id, baseUrl: p.baseUrl, model: p.model },
+        ? { provider: p.id, relay: undefined }
+        : { provider: p.id, baseUrl: p.baseUrl, model: p.model, relay: undefined },
     );
   };
 
@@ -177,23 +195,42 @@ export function ByokSettings({
     if (r.ok) persist(r.device);
   };
 
-  const test = async () => {
-    if (gapText) return setStatus({ tone: "err", text: gapText });
-    const u = checkBaseUrl(device.backend.baseUrl, pageHost);
+  const test = async (backend: ByokBackend = device.backend) => {
+    const g = gapOf(backend, device.apiKey, pageHost);
+    if (g) return setStatus({ tone: "err", text: gapText ?? c.errUrl.value });
+    const u = checkBaseUrl(backend.baseUrl, pageHost);
     if (!u.ok) return setStatus({ tone: "err", text: c.errUrl.value });
     setBusy(true);
+    setSuggestRelay(false);
     setStatus({ tone: "info", text: c.testing.value });
     const r = await testByok({
-      backend: { ...device.backend, baseUrl: u.url },
+      backend: { ...backend, baseUrl: u.url },
       apiKey: device.apiKey.trim(),
       preset,
     });
     setBusy(false);
+    // Browser-direct failed the way a relay fixes, and this provider may be relayed.
+    const relayFixes =
+      !r.ok && !backend.relay && !!preset.relay && (r.kind === "cors" || r.kind === "opaque-auth");
+    setSuggestRelay(relayFixes && relayable(backend.provider, u.url));
     setStatus(
       r.ok
         ? { tone: "ok", text: c.testOk.value }
-        : { tone: "err", text: errorText(r.kind, r.status) },
+        : {
+            tone: "err",
+            text:
+              relayFixes && relayable(backend.provider, u.url)
+                ? `${errorText(r.kind, r.status)} ${c.corsTryRelay.value.replaceAll("{name}", preset.name)}`
+                : errorText(r.kind, r.status),
+          },
     );
+  };
+
+  /** 「经 Lianki 转发」 on (the suggestion's button), then test again. */
+  const relayAndTest = () => {
+    const b = { ...device.backend, relay: true };
+    setBackend({ relay: true });
+    void test(b);
   };
 
   const remove = () => {
@@ -215,6 +252,28 @@ export function ByokSettings({
     notePrefWrite();
     setSynced(on);
   };
+
+  const relayRow = preset.relay ? (
+    <label className="flex items-start gap-3" data-testid="byok-relay-row">
+      <input
+        type="checkbox"
+        className="mt-1 h-5 w-5 shrink-0"
+        checked={!!device.backend.relay}
+        onChange={(e) => {
+          setSuggestRelay(false);
+          setStatus(null);
+          setBackend({ relay: e.target.checked || undefined });
+        }}
+        data-testid="byok-relay"
+      />
+      <span>
+        <span className="block font-medium">{c.relay}</span>
+        <span className="block text-sm opacity-75">
+          {c.relayHint.value.replaceAll("{name}", preset.name)}
+        </span>
+      </span>
+    </label>
+  ) : null;
 
   useBackToClose(notice, () => setNotice(false));
 
@@ -336,8 +395,12 @@ export function ByokSettings({
               {showKey ? c.hide : c.show}
             </button>
           </div>
-          <span className="text-xs opacity-70">{preset.keyless ? c.keyless : c.keyHere}</span>
+          <span className="text-xs opacity-70">
+            {preset.keyless ? c.keyless : device.backend.relay ? c.keyHereRelay : c.keyHere}
+          </span>
         </div>
+
+        {relayRow}
 
         <div className="flex flex-wrap gap-2">
           <button
@@ -350,7 +413,7 @@ export function ByokSettings({
           <button
             type="button"
             className={`${BTN} bg-[oklch(0.5_0.02_250/0.12)] hover:bg-[oklch(0.5_0.02_250/0.2)]`}
-            onClick={() => void test()}
+            onClick={() => void test(device.backend)}
             disabled={busy}
             data-testid="byok-test"
           >
@@ -369,6 +432,17 @@ export function ByokSettings({
           <p className={`text-sm ${TONE[status.tone]}`} role="status" data-testid="byok-status">
             {status.text}
           </p>
+        )}
+        {suggestRelay && !device.backend.relay && (
+          <button
+            type="button"
+            className={`${BTN} self-start bg-[oklch(0.5_0.02_250/0.12)] hover:bg-[oklch(0.5_0.02_250/0.2)]`}
+            onClick={relayAndTest}
+            disabled={busy}
+            data-testid="byok-relay-try"
+          >
+            {c.relayTry}
+          </button>
         )}
 
         <label className={`mt-2 flex items-start gap-3 ${signedIn ? "" : "opacity-70"}`}>
@@ -433,6 +507,7 @@ export function ByokSettings({
                 {c.noticeControl} {policy}
               </li>
               <li>{c.noticeCustom}</li>
+              <li>{c.noticeRelay}</li>
             </ul>
             <div className="flex justify-end gap-2">
               <button

@@ -15,7 +15,10 @@
 // The privacy notice's acknowledgement (`lk:byok-ack`) is per device and
 // carries the notice's version: a changed notice asks again.
 
-import { BYOK_PRESETS, presetOf, type ByokPreset } from "./presets";
+import { BYOK_PRESETS, MODEL_RE, presetOf, type ByokPreset } from "./presets";
+import { checkBackend } from "./proxy-guard";
+
+export { MODEL_RE };
 
 export const BYOK_KEY = "lk:byok";
 export const BYOK_BACKEND_KEY = "lk:byok-backend";
@@ -24,7 +27,7 @@ export const BYOK_ACK_KEY = "lk:byok-ack";
 export const BYOK_EVENT = "lk:byok-change";
 
 /** Bump when the privacy notice's meaning changes: everyone is asked again. */
-export const BYOK_NOTICE_VERSION = 1;
+export const BYOK_NOTICE_VERSION = 2;
 
 /** Where the key is kept. Only "device" exists; "account" (managed) waits for the owner. */
 export type ByokMode = "device";
@@ -34,6 +37,13 @@ export interface ByokBackend {
   provider: string;
   baseUrl: string;
   model: string;
+  /**
+   * 「经 Lianki 转发（不保存）」: calls go through Lianki's relay
+   * (`/api/byok/proxy`) instead of straight from the browser. Only for a
+   * preset on the relay's allowlist (`relay` in presets.ts), at exactly its
+   * host and path; never for a custom backend.
+   */
+  relay?: boolean;
 }
 
 /** This device's record (`lk:byok`). */
@@ -96,9 +106,6 @@ export function checkBaseUrl(raw: string, pageHost?: string | null): UrlCheck {
   return { ok: true, url: `${u.origin}${u.pathname}`.replace(/\/+$/, "") };
 }
 
-/** A model name as providers write them ("gpt-4o-mini", "meta-llama/llama-3:8b"). */
-export const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,119}$/;
-
 /** The backend as it may be stored or synced; null when any part is off. */
 export function cleanBackend(v: unknown): ByokBackend | null {
   if (!v || typeof v !== "object") return null;
@@ -108,7 +115,13 @@ export function cleanBackend(v: unknown): ByokBackend | null {
   if (typeof b.model !== "string" || !MODEL_RE.test(b.model)) return null;
   const u = checkBaseUrl(b.baseUrl);
   if (!u.ok) return null;
-  return { provider: b.provider, baseUrl: u.url, model: b.model };
+  const relay = b.relay === true && relayable(b.provider, u.url);
+  return { provider: b.provider, baseUrl: u.url, model: b.model, ...(relay ? { relay } : {}) };
+}
+
+/** May this provider at this base URL go through Lianki's relay (the allowlist)? */
+export function relayable(provider: string, baseUrl: string): boolean {
+  return checkBackend(provider, baseUrl).ok;
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────
@@ -152,6 +165,7 @@ export function loadDevice(s: Store | null = deviceStorage()): ByokDevice | null
       provider: p.id,
       baseUrl: typeof v.backend.baseUrl === "string" ? v.backend.baseUrl : p.baseUrl,
       model: typeof v.backend.model === "string" ? v.backend.model : p.model,
+      ...(v.backend.relay === true && p.relay ? { relay: true } : {}),
     },
     apiKey: typeof v.apiKey === "string" ? v.apiKey : "",
   };
@@ -216,13 +230,18 @@ export function withEnabled(
 // ── What a feature uses ───────────────────────────────────────────────────
 
 /** Why a record is not usable yet (the settings say which field). */
-export type ByokGap = "url" | "model" | "key" | "server-only" | null;
+export type ByokGap = "url" | "model" | "key" | "server-only" | "relay" | null;
 
 export function gapOf(b: ByokBackend, apiKey: string, pageHost?: string | null): ByokGap {
   const p = presetOf(b.provider);
   if (!p) return "url";
-  if (!p.browser) return "server-only";
-  if (!checkBaseUrl(b.baseUrl, pageHost).ok) return "url";
+  if (b.relay) {
+    // Relayed: only an allowlisted provider at exactly its allowlisted address.
+    if (!checkBaseUrl(b.baseUrl, pageHost).ok || !relayable(b.provider, b.baseUrl)) return "relay";
+  } else {
+    if (!p.browser) return "server-only";
+    if (!checkBaseUrl(b.baseUrl, pageHost).ok) return "url";
+  }
   if (!MODEL_RE.test(b.model)) return "model";
   if (!apiKey.trim() && !p.keyless) return "key";
   return null;
