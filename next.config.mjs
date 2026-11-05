@@ -3,8 +3,10 @@ import { withIntlayer } from "next-intlayer/server";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // The whole-page dev server (docs/dev-whole-page.md) is opened on its LAN
-  // address; next dev refuses dev assets to other origins unless listed.
-  ...(process.env.LIANKI_DEV_WHOLE_PAGE === "1" && process.env.BETTER_AUTH_BASE_URL
+  // address, and a friend's dev box (devbox/README.md) on its tunnel host;
+  // next dev refuses dev assets to other origins unless listed.
+  ...((process.env.LIANKI_DEV_WHOLE_PAGE === "1" || process.env.LIANKI_DEVBOX === "1") &&
+  process.env.BETTER_AUTH_BASE_URL
     ? { allowedDevOrigins: [new URL(process.env.BETTER_AUTH_BASE_URL).hostname] }
     : {}),
   // Which build this is, inlined into server and client alike: a page whose

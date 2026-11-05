@@ -65,6 +65,16 @@ export const FLAGS = {
       "公版书库 /books：所有登录用户都能看到公版书目录（只收美国公版且所有作者/译者/编者去世 80 年以上的原文，每本标明来源和授权），点一下导入成自己的书，之后在 /read 里阅读。原文不进仓库，服务器按需从来源（Project Gutenberg）下载一次，缓存在 R2 里给所有人共用。关闭（默认）= 只有你本人能看到和导入。",
     default: false,
   },
+  levels: {
+    description:
+      "学习等级（种子→莲 / 炼气→炼虚）：所有登录用户都能通过 /api/levels/me 读到自己的等级（未注册 / 免费 / 付费，付费后按累计有效学习天数升：100、365、1000 天）。界面上还没有任何地方显示等级。学习天数不论开关都在记录。关闭（默认）= 只有你本人能看到自己的等级（/dev/levels）。",
+    default: false,
+  },
+  "byok.sync": {
+    description:
+      "「自己的 AI」里的「同步 API key 到账号」（托管模式）草稿：所有登录用户都能看到这一行（显示「即将推出」和提醒：打开后 Lianki 服务器会保存你的 key（加密）；关闭会删除服务器上的副本）。现在只是界面，点不了，服务器上没有任何保存 key 的代码。提供方 / 地址 / 模型的同步不受这个开关影响，已经可以用。关闭（默认）= 只有你本人能看到这一行。",
+    default: false,
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;

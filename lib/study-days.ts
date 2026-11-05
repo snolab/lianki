@@ -1,0 +1,215 @@
+/**
+ * Study days and the learner level they lead to (docs/levels.md, lib/levels.ts).
+ *
+ * Owner rules, Slack 2026-11-05: progress after paying is cumulative study
+ * days — not a streak — and must be hard to fake:
+ * - only reviews the server records count, and the day is cut by the
+ *   server's clock in the user's time zone (Cloudflare's, from the request),
+ *   so a changed device clock or an offline review sent later adds no day;
+ * - a review counts only if its card was on screen at least human reaction
+ *   time (the 1–3 s common-knowledge range; its lower end), so mass-tapped
+ *   grades do not count;
+ * - one count per day however many reviews; never more days than have passed
+ *   since the first paid day; tied to the account (not transferable).
+ */
+import { cfRequestProps } from "@/lib/d1";
+import type { D1Like } from "@/lib/d1/types";
+import { LEVELS, type Level, type LevelId, type LevelTier } from "@/lib/levels";
+
+/** The lower end of human reaction time (1–3 s): faster than this is not a read. */
+export const HUMAN_REACTION_MS = 1000;
+
+const DAY_MS = 86_400_000;
+
+/** On screen long enough to have been read: measured and at least reaction time. */
+export function qualifies(onScreenMs: number | null | undefined): boolean {
+  return typeof onScreenMs === "number" && onScreenMs >= HUMAN_REACTION_MS;
+}
+
+/** The local calendar day of `at` in `tz` (YYYY-MM-DD); UTC when the zone is unknown. */
+export function localDay(at: Date, tz: string | null | undefined): { day: string; tz: string } {
+  const fmt = (timeZone: string) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(at);
+  if (tz)
+    try {
+      return { day: fmt(tz), tz };
+    } catch {
+      // not an IANA zone: UTC
+    }
+  return { day: fmt("UTC"), tz: "UTC" };
+}
+
+/** The time zone Cloudflare places this request in (from its IP), if any. */
+export function requestTimeZone(): string | undefined {
+  const tz = (cfRequestProps() as { timezone?: unknown } | undefined)?.timezone;
+  return typeof tz === "string" && tz ? tz : undefined;
+}
+
+/**
+ * Record `qualifying` reviews the server just stored for `email`, on today's
+ * local day by the server clock `now`, in the user's home zone (`tz` only
+ * until there is one). A no-op for 0. Idempotent per day:
+ * the row counts reviews, the day counts once.
+ */
+export async function recordStudy(
+  d1: D1Like,
+  email: string,
+  qualifying: number,
+  now: Date,
+  tz: string | null | undefined,
+): Promise<void> {
+  if (!email || !(qualifying > 0)) return;
+  const key = email.toLowerCase();
+  // The home zone — the one the first study day was cut in — cuts every later
+  // day too, so hopping zones (a VPN, a trip) cannot split one real day into
+  // two local dates. A new account takes the request's zone.
+  const home = await d1
+    .prepare("SELECT tz FROM study_day WHERE email = ? ORDER BY first_at LIMIT 1")
+    .bind(key)
+    .first<{ tz: string }>();
+  const d = localDay(now, home?.tz ?? tz);
+  await d1
+    .prepare(
+      `INSERT INTO study_day (email, day, tz, first_at, reviews) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(email, day) DO UPDATE SET reviews = reviews + excluded.reviews`,
+    )
+    .bind(key, d.day, d.tz, now.toISOString(), Math.floor(qualifying))
+    .run();
+}
+
+/**
+ * `recordStudy` for a request handler: never fails the review it follows
+ * (the review is already stored); a failure is logged.
+ */
+export async function recordStudySafe(
+  d1: D1Like,
+  email: string | null | undefined,
+  qualifying: number,
+  now: Date,
+): Promise<void> {
+  if (!email || !(qualifying > 0)) return;
+  try {
+    await recordStudy(d1, email, qualifying, now, requestTimeZone());
+  } catch (err) {
+    console.error("study-days: record failed", err);
+  }
+}
+
+/** Study days since `since` (server time), never more than the days that have passed. */
+export async function studyDaysSince(
+  d1: D1Like,
+  email: string,
+  since: Date,
+  now: Date,
+): Promise<number> {
+  const row = await d1
+    .prepare(
+      "SELECT COUNT(*) AS n FROM study_day WHERE email = ? AND first_at >= ? AND first_at <= ?",
+    )
+    .bind(email.toLowerCase(), since.toISOString(), now.toISOString())
+    .first<{ n: number }>();
+  return capDays(Number(row?.n ?? 0), since, now);
+}
+
+/** At most one study day per calendar day passed since `since`, the first included. */
+export function capDays(counted: number, since: Date, now: Date): number {
+  const passed = Math.floor((now.getTime() - since.getTime()) / DAY_MS) + 1;
+  return Math.max(0, Math.min(counted, passed));
+}
+
+/**
+ * The first day of the paid tier: the earliest Pro bought (a live payment or
+ * a pass bought with credits) or given (sponsor, gift, referral). Null when
+ * the user never had Pro.
+ */
+export async function paidSince(d1: D1Like, userId: string): Promise<Date | null> {
+  const row = await d1
+    .prepare(
+      `SELECT MIN(at) AS at FROM (
+         SELECT createdAt AS at FROM payment WHERE userId = ?1 AND testMode = 0
+         UNION ALL
+         SELECT createdAt FROM credit_ledger WHERE userId = ?1 AND reason = 'pass' AND amount < 0
+         UNION ALL
+         SELECT createdAt FROM membership_grant WHERE userId = ?1 AND kind = 'pro' AND days > 0
+       )`,
+    )
+    .bind(userId)
+    .first<{ at: string | null }>();
+  const t = row?.at ? Date.parse(row.at) : NaN;
+  return Number.isFinite(t) ? new Date(t) : null;
+}
+
+/** The level a user is at: guest, free, paid, then by study days after paying. */
+export function levelFor(s: { signedIn: boolean; paid: boolean; studyDays: number }): Level {
+  const tier: LevelTier = !s.signedIn ? "guest" : s.paid ? "paid" : "free";
+  let at = LEVELS.find((l) => l.tier === tier)!;
+  if (tier === "paid")
+    for (const l of LEVELS) if (l.unlock === "progress" && s.studyDays >= l.studyDays!) at = l;
+  return at;
+}
+
+export type UserLevel = {
+  level: LevelId;
+  tier: LevelTier;
+  paidSince: string | null;
+  studyDays: number;
+  /** The next level reached by study days, and how many it needs; null at the top or off the paid tier. */
+  next: { level: LevelId; studyDays: number } | null;
+};
+
+/** A user's level from D1. `user` null = a guest. */
+export async function userLevel(
+  d1: D1Like,
+  user: { id: string; email: string; proEndsAt?: Date | null } | null,
+  now = new Date(),
+): Promise<UserLevel> {
+  if (!user) return { level: "lv1", tier: "guest", paidSince: null, studyDays: 0, next: null };
+  const paid = !!user.proEndsAt && user.proEndsAt > now;
+  const since = await paidSince(d1, user.id);
+  const studyDays = since ? await studyDaysSince(d1, user.email, since, now) : 0;
+  const l = levelFor({ signedIn: true, paid: paid && !!since, studyDays });
+  const next =
+    l.tier === "paid" ? (LEVELS.find((x) => x.rank === l.rank + 1 && x.studyDays) ?? null) : null;
+  return {
+    level: l.id,
+    tier: l.tier,
+    paidSince: since?.toISOString() ?? null,
+    studyDays,
+    next: next ? { level: next.id, studyDays: next.studyDays! } : null,
+  };
+}
+
+/** `userLevel` for a signed-in email (null = guest), reading the user row from D1. */
+export async function userLevelOf(
+  d1: D1Like,
+  email: string | null | undefined,
+  now = new Date(),
+): Promise<UserLevel> {
+  if (!email) return userLevel(d1, null, now);
+  const row = await d1
+    .prepare("SELECT id, email, proEndsAt FROM user WHERE lower(email) = lower(?)")
+    .bind(email)
+    .first<{ id: string; email: string; proEndsAt: string | null }>();
+  // Signed in, but no user row (should not happen): a free account.
+  if (!row) return { level: "lv2", tier: "free", paidSince: null, studyDays: 0, next: null };
+  const pro = row.proEndsAt ? new Date(row.proEndsAt) : null;
+  return userLevel(d1, { id: row.id, email: row.email, proEndsAt: pro }, now);
+}
+
+export type StudyDayRow = { day: string; tz: string; first_at: string; reviews: number };
+
+/** The last `n` study days of `email`, newest first (the owner's debug view). */
+export async function recentStudyDays(d1: D1Like, email: string, n = 14): Promise<StudyDayRow[]> {
+  const { results } = await d1
+    .prepare(
+      "SELECT day, tz, first_at, reviews FROM study_day WHERE email = ? ORDER BY first_at DESC LIMIT ?",
+    )
+    .bind(email.toLowerCase(), n)
+    .all<StudyDayRow>();
+  return results;
+}
