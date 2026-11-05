@@ -73,6 +73,13 @@ function fail(kind: ProxyErrorKind, status: number, extra: Record<string, unknow
   });
 }
 
+/** Discard a body we will not pass on (never read, never logged). */
+async function drop(body: ReadableStream | null | undefined) {
+  try {
+    await body?.cancel();
+  } catch {}
+}
+
 /** Read at most `max` bytes of a request body; null when over. */
 async function readCapped(req: Request, max: number): Promise<string | null> {
   const len = Number(req.headers.get("content-length") ?? "0");
@@ -86,7 +93,9 @@ async function readCapped(req: Request, max: number): Promise<string | null> {
     if (done) break;
     total += value.byteLength;
     if (total > max) {
-      await reader.cancel().catch(() => {});
+      try {
+        await reader.cancel();
+      } catch {}
       return null;
     }
     chunks.push(value);
@@ -183,7 +192,10 @@ export async function handleProxy(req: Request, deps: ProxyDeps): Promise<Respon
   if (deps.ip && deps.ip !== "unknown")
     checks.push(deps.hit(`byok-proxy:ip:${deps.ip}`, PROXY_RATE.ip));
   if (deps.userId) checks.push(deps.hit(`byok-proxy:user:${deps.userId}`, PROXY_RATE.user));
-  const rate = await Promise.all(checks).catch(() => null);
+  let rate: Awaited<ReturnType<RateHit>>[] | null = null;
+  try {
+    rate = await Promise.all(checks);
+  } catch {}
   const refused = rate?.filter((r) => !r.allowed) ?? [];
   if (!rate || refused.length) {
     const retry = Math.ceil(Math.max(1000, ...refused.map((r) => r.retryAfterMs)) / 1000);
@@ -194,7 +206,10 @@ export async function handleProxy(req: Request, deps: ProxyDeps): Promise<Respon
   }
 
   const key = keyOf(req.headers);
-  const raw = await readCapped(req, PROXY_LIMITS.maxBodyBytes).catch(() => null);
+  let raw: string | null = null;
+  try {
+    raw = await readCapped(req, PROXY_LIMITS.maxBodyBytes);
+  } catch {}
   if (raw === null) {
     done("too-large", 413);
     return fail("too-large", 413);
@@ -227,7 +242,10 @@ export async function handleProxy(req: Request, deps: ProxyDeps): Promise<Respon
   let res: Response;
   for (;;) {
     const host = new URL(target.url).hostname;
-    const dns = await deps.resolve(host).catch(() => ({ ok: false as const }));
+    let dns: { ok: boolean } = { ok: false };
+    try {
+      dns = await deps.resolve(host);
+    } catch {}
     if (!dns.ok) {
       stop();
       done("dns", 403, { hops });
@@ -243,7 +261,7 @@ export async function handleProxy(req: Request, deps: ProxyDeps): Promise<Respon
     }
     if (res.status < 300 || res.status > 399) break;
     const next = checkRedirect(res.status, res.headers.get("location"), target.url, preset, hops);
-    await res.body?.cancel().catch(() => {});
+    await drop(res.body);
     if (!next.ok) {
       stop();
       done("redirect", 502, { hops, upstream: res.status });
@@ -255,7 +273,7 @@ export async function handleProxy(req: Request, deps: ProxyDeps): Promise<Respon
 
   if (!res.ok) {
     // Never the provider's body: an error message can echo part of the key.
-    await res.body?.cancel().catch(() => {});
+    await drop(res.body);
     stop();
     const kind = res.status === 401 || res.status === 403 ? "auth" : "http";
     done(kind, 502, { hops, upstream: res.status });
@@ -264,13 +282,13 @@ export async function handleProxy(req: Request, deps: ProxyDeps): Promise<Respon
   const type = res.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   const len = Number(res.headers.get("content-length") ?? "0");
   if (type !== "application/json" || !res.body) {
-    await res.body?.cancel().catch(() => {});
+    await drop(res.body);
     stop();
     done("type", 502, { hops, upstream: res.status });
     return fail("type", 502);
   }
   if (len > PROXY_LIMITS.maxResponseBytes) {
-    await res.body.cancel().catch(() => {});
+    await drop(res.body);
     stop();
     done("too-large", 502, { hops, upstream: res.status });
     return fail("too-large", 502);

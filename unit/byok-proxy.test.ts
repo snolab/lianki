@@ -527,6 +527,11 @@ describe("handleProxy", () => {
     const res = await handleProxy(req(), deps({ resolve: async () => ({ ok: false }) }));
     expect(res.status).toBe(403);
     expect((await res.json()).proxyError).toBe("dns");
+    const threw = await handleProxy(
+      req(),
+      deps({ resolve: async () => Promise.reject(new Error("x")) }),
+    );
+    expect(threw.status).toBe(403);
     expect(calls).toHaveLength(0);
   });
 
@@ -767,6 +772,44 @@ describe("client: 经 Lianki 转发", () => {
       ok: false,
       kind: "too-large",
     });
+  });
+
+  it("maps the relay's other answers, a network error and its own timeout", async () => {
+    const answer = (status: number, v: unknown) =>
+      (async () =>
+        new Response(typeof v === "string" ? v : JSON.stringify(v), {
+          status,
+        })) as unknown as typeof fetch;
+    const run = (f: typeof fetch, timeoutMs?: number) =>
+      byokComplete(
+        active(true),
+        [{ role: "user", content: "x" }],
+        { maxTokens: 8 },
+        { fetch: f, timeoutMs },
+      );
+    expect(await run(answer(502, { proxyError: "http", status: 500 }))).toEqual({
+      ok: false,
+      kind: "http",
+      status: 500,
+    });
+    expect(await run(answer(504, { proxyError: "timeout" }))).toEqual({
+      ok: false,
+      kind: "timeout",
+    });
+    expect(await run(answer(504, { proxyError: "network" }))).toEqual({ ok: false, kind: "cors" });
+    expect(await run(answer(502, { proxyError: "type" }))).toEqual({ ok: false, kind: "empty" });
+    expect(await run(answer(500, "<html>"))).toEqual({ ok: false, kind: "http", status: 500 });
+    expect(await run(answer(200, "<html>"))).toEqual({ ok: false, kind: "empty" });
+    expect(await run(answer(200, { choices: [] }))).toEqual({ ok: false, kind: "empty" });
+    const down = (async () => {
+      throw new Error("offline");
+    }) as unknown as typeof fetch;
+    expect(await run(down)).toEqual({ ok: false, kind: "cors" });
+    const hang = ((_u: string, init: RequestInit) =>
+      new Promise((_, rej) =>
+        init.signal?.addEventListener("abort", () => rej(new Error("abort"))),
+      )) as unknown as typeof fetch;
+    expect(await run(hang, 10)).toEqual({ ok: false, kind: "timeout" });
   });
 
   it("offers relaying only for allowlisted presets at their standard address", () => {
