@@ -53,6 +53,7 @@ with no deploy and no secret change.
 | `live.custom-frontend` | allowlisted users (`/dev/live-frontends`) can register their own tunnel and see their own frontend at `?live=<id>`, only they, /api stays production (off: the owner only) — [custom-frontend.md](custom-frontend.md) |
 | `books.catalogue`      | every visitor gets /books, the public-domain library, and can add its books to their own reading (off: the owner only) — [books-plan.md](books-plan.md), "The catalogue: /books" |
 | `levels`               | every signed-in user can read their own learner level from `GET /api/levels/me` (no UI yet; study days are recorded either way) (off: the owner only, at /dev/levels) — [levels.md](levels.md) |
+| `byok.sync`            | everyone sees the disabled 「同步 API key」 row (即将推出, with its warning) in Settings → 自己的 AI; nothing on the server stores a key yet (off: the owner only) — [byok.md](byok.md) |
 
 Turning a payment flag off is the kill switch: no new payment starts within
 30 s, and payments already started are still credited —

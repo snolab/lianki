@@ -25,6 +25,10 @@ export default async function PrivacyPage() {
         <h2 className="text-lg font-semibold">{c.aiHeading}</h2>
         <p>{c.aiBody}</p>
       </section>
+      <section id="own-ai" className="flex flex-col gap-2">
+        <h2 className="text-lg font-semibold">{c.byokHeading}</h2>
+        <p>{c.byokBody}</p>
+      </section>
     </main>
   );
 }

@@ -343,6 +343,16 @@ else can catch it ([secrets-and-auth.md](secrets-and-auth.md), "CLI login"):
   (never in a process list), else a 0600 file; the CLI never prints it.
 - Tests: `unit/cli-login.test.ts`, `unit/lianki-cli.test.ts`.
 
+## 10. Users' own AI keys (BYOK)
+
+A user's own API key stays in their browser (`lk:byok`) and is sent only to
+the provider URL they chose; the URL rules (`checkBaseUrl`: https, or http to
+localhost only; never a Lianki host or the page's origin) run before saving
+and before every call, and errors never carry the provider's message. No
+server code stores a key; the managed mode waits for the owner's approval.
+The audit (prefs sync, page errors, chat context, analytics) is in
+[byok.md](byok.md), "Never leaving the device". Tests: `unit/byok.test.ts`.
+
 ## Owner checklist
 
 Things this repo cannot do by itself:
