@@ -350,7 +350,7 @@ describe("grant and revoke", () => {
   });
 
   it("the oldest grant comes first (the dev bridge's owner)", async () => {
-    await grantOwner(write(), "a-later@example.com", ME, 1_900_000_000_000);
+    await grantOwner(write(), "a-later@example.com", ME); // now: the seed is in the past
     expect((await readOwnerEmails(read()))[0]).toBe(SEEDED);
   });
 });
