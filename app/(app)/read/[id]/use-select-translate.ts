@@ -1,12 +1,10 @@
 "use client";
 
 // The selection card's own translation (lib/read/select-translate.ts): the
-// plan's units fetched from our API (POST /api/read/[id]/translate — its
-// shared cache, limiter and charge), a few at a time, each shown as it lands.
-// A unit already translated in this tab is never asked for again, and one
-// on its way is not asked for twice (a re-selection while it comes joins it).
-// Asked only once the selection rests (the combo interval), so the levels a
-// quick combo passes through cost nothing.
+// plan's units fetched one by one (lib/read/select-translate-fetch.ts: our
+// API, or the user's own AI from this browser — docs/byok.md), a few at a
+// time, each shown as it lands. Asked only once the selection rests (the
+// combo interval), so the levels a quick combo passes through cost nothing.
 //
 // No Translate button (owner, 2026-11-05 02:11 JST): past the bound, the
 // card asks for the next stretch by itself (`more`: when he scrolls the
@@ -18,42 +16,15 @@ import { COMBO_MS } from "@/lib/read/reader-select";
 import {
   AUTO_TRANSLATE_CHARS,
   autoPieces,
-  transKey,
   type TransPiece,
   type TransPlan,
 } from "@/lib/read/select-translate";
+import { fetchPiece, transKeyOf, translated } from "@/lib/read/select-translate-fetch";
+import { activeByok } from "@/lib/byok/config";
 import type { CardTranslation } from "./reader-select-card";
-
-/** Translations of this tab, by transKey: the device's side of the cache. */
-const done = new Map<string, string>();
-const inflight = new Map<string, Promise<string | null>>();
 
 /** Requests in flight for one selection: the units still come in reading order, quickly. */
 const LANES = 3;
-
-function fetchPiece(id: string, to: string, from: string | undefined, text: string) {
-  const k = transKey(to, text);
-  const hit = done.get(k);
-  if (hit !== undefined) return Promise.resolve(hit);
-  let p = inflight.get(k);
-  if (!p) {
-    p = fetch(`/api/read/${id}/translate`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, to, from }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { text?: string } | null) => {
-        if (!d?.text) return null;
-        done.set(k, d.text);
-        return d.text;
-      })
-      .catch(() => null)
-      .finally(() => inflight.delete(k));
-    inflight.set(k, p);
-  }
-  return p;
-}
 
 export function useSelectTranslate(
   id: string,
@@ -61,7 +32,9 @@ export function useSelectTranslate(
   from: string | undefined,
   plan: TransPlan | null,
 ) {
-  const key = useCallback((p: TransPiece) => transKey(to, p.text), [to]);
+  /** The user's own AI, read when the plan changes (a settings change applies to the next selection). */
+  const own = useMemo(() => (plan ? activeByok() : null), [plan]);
+  const key = useCallback((p: TransPiece) => transKeyOf(own, to, p.text), [own, to]);
   /** A unit's text; null on its way; false not asked (past the bound) or failed. */
   const [got, setGot] = useState<Record<string, string | null | false>>({});
   const [failed, setFailed] = useState(false);
@@ -79,14 +52,14 @@ export function useSelectTranslate(
     const all = plan.flat();
     const want = autoPieces(plan, AUTO_TRANSLATE_CHARS * room);
     const init: Record<string, string | null | false> = {};
-    for (const p of all) init[key(p)] = done.get(key(p)) ?? (want.has(p) ? null : false);
+    for (const p of all) init[key(p)] = translated.get(key(p)) ?? (want.has(p) ? null : false);
     setGot(init);
-    const queue = all.filter((p) => want.has(p) && !done.has(key(p)));
+    const queue = all.filter((p) => want.has(p) && !translated.has(key(p)));
     let next = 0;
     const lane = async () => {
       while (live && next < queue.length) {
         const p = queue[next++];
-        const out = await fetchPiece(id, to, from, p.text);
+        const out = await fetchPiece(id, to, from, p.text, own);
         if (!live) return;
         if (out === null) setFailed(true);
         setGot((g) => ({ ...g, [key(p)]: out ?? false }));
@@ -103,11 +76,12 @@ export function useSelectTranslate(
       live = false;
       if (timer) clearTimeout(timer);
     };
-  }, [plan, room, tries, id, to, from, key]);
+  }, [plan, room, tries, id, to, from, key, own]);
 
   const translation = useMemo<CardTranslation | null>(
-    () => (plan ? { blocks: plan.map((b) => b.map((p) => got[key(p)] ?? false)) } : null),
-    [plan, got, key],
+    () =>
+      plan ? { blocks: plan.map((b) => b.map((p) => got[key(p)] ?? false)), own: !!own } : null,
+    [plan, got, key, own],
   );
   const pending = Object.values(got).includes(null);
   /** Pieces past what is asked for (never a failed one: that is `retry`'s). */
