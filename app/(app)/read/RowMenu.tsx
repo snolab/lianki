@@ -16,6 +16,8 @@ const item =
 export function RowMenu(p: { title: string; onRename: () => void; onDelete: () => void }) {
   const t = useIntlayer("read-row-menu");
   const [open, setOpen] = useState(false);
+  // Near the bottom of the screen (the bottom bar sits there) it opens upward.
+  const [up, setUp] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -42,6 +44,8 @@ export function RowMenu(p: { title: string; onRename: () => void; onDelete: () =
   }, [open]);
 
   const openAt = (i: number) => {
+    const r = button.current?.getBoundingClientRect();
+    setUp(!!r && r.bottom + 220 > window.innerHeight);
     setOpen(true);
     requestAnimationFrame(() => focusAt(i));
   };
@@ -91,7 +95,7 @@ export function RowMenu(p: { title: string; onRename: () => void; onDelete: () =
             e.preventDefault();
             focusAt(to);
           }}
-          className="absolute end-0 top-full z-20 mt-1 min-w-40 p-1 rounded-lg border border-[oklch(0.9_0.01_260)] dark:border-[oklch(0.38_0.02_260)] bg-[oklch(0.99_0.003_260)] dark:bg-[oklch(0.24_0.015_260)] shadow-lg"
+          className={`absolute end-0 z-40 min-w-40 ${up ? "bottom-full mb-1" : "top-full mt-1"} p-1 rounded-lg border border-[oklch(0.9_0.01_260)] dark:border-[oklch(0.38_0.02_260)] bg-[oklch(0.99_0.003_260)] dark:bg-[oklch(0.24_0.015_260)] shadow-lg`}
         >
           <button
             type="button"

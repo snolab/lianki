@@ -87,7 +87,10 @@ with title, last sync (relative, the user's locale), Open, and **Sync again**
 (`resyncGdoc`): through Drive first; a doc that came by its public link was
 never picked, so Drive refuses it (`not-granted`) and the public link is
 used. Either way it is the same import, so `carrySentenceCards` moves the
-sentence cards of unchanged lines to the new text. The list also shows,
+sentence cards of unchanged lines to the new text. A title the user set
+with Rename (the /read row's ⋯ menu, `PATCH /api/read/<id>`) is kept:
+`read_materials.title_custom` (migration 0037) stops a re-import from
+replacing it, while the text still updates. The list also shows,
 read-only apart from Sync, while the connection is off but books exist.
 
 QA mocks the Picker (`window.gapi` / `google.picker` stubbed, the picker
