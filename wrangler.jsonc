@@ -21,7 +21,11 @@
     "BETTER_AUTH_BASE_URL": "https://lianki.com",
     // Comma-separated. Gates owner-only internal pages (/dev/roadmap); empty
     // means nobody passes. See lib/owner.ts.
-    "OWNER_EMAILS": "snomiao@gmail.com"
+    "OWNER_EMAILS": "snomiao@gmail.com",
+    // Where users write to, e.g. to ask for a top-up while it is disabled
+    // (/membership wallet card). Read server-side by lib/contact.ts; unset
+    // hides the contact line. Swap for a lianki.com inbox once one receives.
+    "CONTACT_EMAIL": "snomiao@gmail.com"
   },
   // Workers Logs: requests and console output kept and searchable in the
   // dashboard (Observability), not only live via `wrangler tail`.

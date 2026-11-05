@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import MembershipClient from "./MembershipClient";
 import { appLocale } from "@/lib/app-locale.server";
+import { contactEmail } from "@/lib/contact";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export default async function MembershipPage() {
   return (
     <div className="flex flex-col">
       <div className="flex-grow">
-        <MembershipClient />
+        <MembershipClient contactEmail={contactEmail()} />
       </div>
     </div>
   );
