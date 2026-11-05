@@ -49,4 +49,20 @@ export const IMPORT = {
   maxFacts: 30,
   /** Most output tokens of the one extraction call (up to `maxFacts` short facts). */
   maxOutputTokens: 1500,
+  /**
+   * The Learning Partner's follow-up questions (one per open field at most,
+   * so a whole round is at most one call per field plus one):
+   */
+  followup: {
+    /** Calls per user per window (per Worker isolate, lib/rateLimit.ts). */
+    rate: { windowMs: 10 * 60_000, max: 40 },
+    /** The JSON body (facts and the questions so far), in bytes. */
+    maxBodyBytes: 64 * 1024,
+    /** A question, in characters. */
+    maxQuestionChars: 300,
+    /** Suggested answers offered as taps. */
+    maxSuggestions: 4,
+    /** Most output tokens of one turn (the answer's facts + the next question). */
+    maxOutputTokens: 600,
+  },
 } as const;

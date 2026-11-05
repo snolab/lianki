@@ -16,7 +16,7 @@ import { IMPORT, SELF_INTRO_FIELDS, type SelfIntroField } from "./import-config"
 
 /** The image data URLs the route accepts (what the page's canvas makes; nothing else). */
 const DATA_URL = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
-const LOCALE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+export const LOCALE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 
 /** The request body: checked before any model call. */
 export const ImportRequest = z.object({
@@ -68,6 +68,12 @@ const FactAnswer = z.object({
  * not `{facts: [...]}` at all.
  */
 export function parseFactsAnswer(content: string): ImportFact[] | null {
+  const list = (parseJsonObject(content) as { facts?: unknown } | null)?.facts;
+  return Array.isArray(list) ? cleanFacts(list) : null;
+}
+
+/** A model's JSON object answer (a ```json fence or prose around it tolerated); null otherwise. */
+export function parseJsonObject(content: string): Record<string, unknown> | null {
   const raw = content
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -84,8 +90,13 @@ export function parseFactsAnswer(content: string): ImportFact[] | null {
       return null;
     }
   }
-  const list = (json as { facts?: unknown } | null)?.facts;
-  if (!Array.isArray(list)) return null;
+  return json && typeof json === "object" && !Array.isArray(json)
+    ? (json as Record<string, unknown>)
+    : null;
+}
+
+/** Facts as the model listed them, checked: known field, a short value, no repeats, at most maxFacts. */
+export function cleanFacts(list: unknown[]): ImportFact[] {
   const out: ImportFact[] = [];
   const seen = new Set<string>();
   for (const item of list) {
@@ -102,7 +113,7 @@ export function parseFactsAnswer(content: string): ImportFact[] | null {
 }
 
 /** The language's English name ("Japanese"), from the platform's own data; no per-language code. */
-function languageName(locale: string | undefined): string {
+export function languageName(locale: string | undefined): string {
   if (!locale) return "the language of the material";
   try {
     return new Intl.DisplayNames(["en"], { type: "language" }).of(locale) ?? locale;

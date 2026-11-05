@@ -15,16 +15,44 @@ its answers filled in. "Skip: fill in myself" keeps the old manual path.
    (name, from, age, occupation, hobby, languages). Each is ✓ kept, ✎ edited
    or ✕ dropped; "Keep all" keeps every one not dropped. A fact the model was
    not sure of (unclear handwriting, indirect mention) is tagged "not sure".
-   Nothing is used until it is kept.
+   Nothing is used until it is kept. Under the list, the **Learning Partner
+   asks follow-up questions** (below).
 3. **Review**: each field is its kept facts joined with `Intl.ListFormat` in
    the page's language, all editable; an empty field may stay empty.
 4. Then the existing flow: choose the language → interview (answers
    pre-filled, still editable) → review → save cards.
 
-**Next PR (owner's step 3, 01:48 JST):** a short back-and-forth with the
-Learning Partner between facts and review — it asks about fields still empty
-or uncertain, one question at a time, and each answer becomes another fact to
-confirm. Not in this change.
+## Follow-up questions
+
+Owner, 01:48 JST: between facts and review, a short back-and-forth with the
+Learning Partner (`PartnerQuestions.tsx`, `lib/self-intro/followup.ts`).
+
+- **Which fields.** `openFields` (`lib/self-intro/open-fields.ts`, shared by
+  page and route): a field with no kept fact and no sure fact still standing
+  (empty, dropped, or only "not sure"), not asked before. Code decides, not
+  the model: the schema's `field` enum holds only these. Each field is asked
+  at most once, so a round is at most one call per field plus one.
+- **One question at a time.** It starts by itself when the facts step opens
+  with an open field (also after an import that found nothing). The user
+  types an answer, taps a suggestion (the not-sure value if there is one,
+  else typical answers; none for a name), or skips.
+- **One call per turn** (`POST /api/self-intro/followup`) does both halves:
+  the last answer becomes facts (tagged "from your answer", ✓/✎/✕ like the
+  rest; put under the field they really are), and the next question comes
+  back, or none when nothing is open.
+- **Reused from the Learning Partner:** the model and no-thinking setting
+  (`lib/partner-ai-config.ts`), `fence` and `cleanReply` from
+  `lib/partner-ai.ts`, and its name in the UI (`learning-partner`
+  dictionary). Not `partnerReply` itself: that is the chat's hub-only reply,
+  behind `partner.ai-reply`, refuses the owner, and reads study data this
+  step does not need.
+- **Same rules** as the import: the same flag and gate, same-origin JSON,
+  in-memory rate limit (`IMPORT.followup`), the facts and answers sent as
+  data (fenced), nothing stored, only the cost logged
+  (`self-intro.followup.cost`, via `chargeAi`).
+- Checked live on 2026-11-05 (Chinese, made-up answers): one question per
+  open field, the not-sure value offered as a tap, a mismatched answer (a
+  job given to the languages question) filed under occupation.
 
 ## How files are read
 
