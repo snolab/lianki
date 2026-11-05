@@ -9,6 +9,8 @@ import type { WordsSummary } from "@/lib/read/progress";
 import { BookRing, WordCountText } from "./BookWords";
 import { GdocDriveImport } from "./GdocDriveImport";
 import { DrivePick, DrivePickHowTo } from "../connections/DrivePick";
+import { RowMenu, TitleEditor } from "./RowMenu";
+import { cleanTitle } from "@/lib/read/title";
 import { gdocUrlOf } from "@/lib/gdoc/url";
 
 export interface ReadMaterial {
@@ -84,6 +86,9 @@ export function ReadListClient({
   const [epubBusy, setEpubBusy] = useState(false);
   const [epubError, setEpubError] = useState("");
   const gdocText = useIntlayer("read-gdoc");
+  const rowText = useIntlayer("read-row-menu");
+  // The row whose title is a text field right now (row menu → Rename).
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [gdocOpen, setGdocOpen] = useState(false);
   const [gdocUrl, setGdocUrl] = useState("");
   const [gdocBusy, setGdocBusy] = useState(false);
@@ -271,8 +276,43 @@ export function ReadListClient({
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this material?")) return;
+  // Rename from the row menu: the server (or this browser's list, signed out)
+  // takes the new title; a gdoc re-sync keeps it (title_custom).
+  const handleRename = async (id: string, title: string): Promise<boolean> => {
+    if (isLoggedIn) {
+      try {
+        const res = await fetch(`/api/read/${id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title }),
+        });
+        const j = (await res.json().catch(() => null)) as { title?: string } | null;
+        if (!res.ok || !j?.title) return false;
+        setMaterials((prev) => prev.map((m) => (m.id === id ? { ...m, title: j.title! } : m)));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    const clean = cleanTitle(title);
+    if (!clean) return false;
+    saveLocalMaterials(getLocalMaterials().map((m) => (m.id === id ? { ...m, title: clean } : m)));
+    setMaterials((prev) => prev.map((m) => (m.id === id ? { ...m, title: clean } : m)));
+    return true;
+  };
+
+  // Rename closed: focus back on that row's menu button.
+  const endRename = (id: string) => {
+    setRenaming(null);
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>(`[data-row-id="${id}"] [data-testid="read-row-menu"]`)
+        ?.focus(),
+    );
+  };
+
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(rowText.confirmDelete.value.replace("{title}", title))) return;
 
     if (isLoggedIn) {
       try {
@@ -472,39 +512,44 @@ export function ReadListClient({
           {materials.map((material) => (
             <div
               key={material.id}
-              className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+              data-row-id={material.id}
+              data-testid="read-row"
+              className="flex items-center justify-between gap-2 p-4 pe-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
             >
-              <Link href={`/read/${material.id}`} className="flex-1 min-w-0">
-                <h3 className="font-medium truncate">{material.title}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {material.lineCount ?? material.lines.length} lines &middot;{" "}
+              {renaming === material.id ? (
+                <TitleEditor
+                  initial={material.title}
+                  onSave={(title) => handleRename(material.id, title)}
+                  onDone={() => endRename(material.id)}
+                />
+              ) : (
+                <>
+                  <Link href={`/read/${material.id}`} className="flex-1 min-w-0">
+                    <h3 className="font-medium truncate" data-testid="read-row-title">
+                      {material.title}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {material.lineCount ?? material.lines.length} lines &middot;{" "}
+                      {material.words && (
+                        <span className="tabular-nums" data-testid="read-row-words">
+                          <WordCountText words={material.words} /> &middot;{" "}
+                        </span>
+                      )}
+                      {longDate(material.updatedAt)}
+                    </p>
+                  </Link>
                   {material.words && (
-                    <span className="tabular-nums" data-testid="read-row-words">
-                      <WordCountText words={material.words} /> &middot;{" "}
-                    </span>
+                    <Link href={`/read/${material.id}`} className="ms-2" tabIndex={-1}>
+                      <BookRing words={material.words} />
+                    </Link>
                   )}
-                  {longDate(material.updatedAt)}
-                </p>
-              </Link>
-              {material.words && (
-                <Link href={`/read/${material.id}`} className="ms-2" tabIndex={-1}>
-                  <BookRing words={material.words} />
-                </Link>
-              )}
-              <button
-                onClick={() => handleDelete(material.id)}
-                className="ml-4 p-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400"
-                title="Delete"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  <RowMenu
+                    title={material.title}
+                    onRename={() => setRenaming(material.id)}
+                    onDelete={() => void handleDelete(material.id, material.title)}
                   />
-                </svg>
-              </button>
+                </>
+              )}
             </div>
           ))}
         </div>

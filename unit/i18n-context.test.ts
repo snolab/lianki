@@ -33,6 +33,7 @@ import cliLogin from "@/app/(app)/cli-login/page.content";
 import connectionsPage from "@/app/(app)/connections/page.content";
 import readGdocDrive from "@/app/(app)/read/read-gdoc-drive.content";
 import drivePick from "@/app/(app)/connections/drive-pick.content";
+import readRowMenu from "@/app/(app)/read/read-row-menu.content";
 import selfIntroImport from "@/app/(app)/self-intro/import.content";
 import booksPage from "@/app/(app)/books/page.content";
 import readFormTags from "@/app/(app)/read/read-form-tags.content";
@@ -98,6 +99,7 @@ describe.each([
   ["connections-page", connectionsPage],
   ["read-gdoc-drive", readGdocDrive],
   ["drive-pick", drivePick],
+  ["read-row-menu", readRowMenu],
   ["self-intro-import", selfIntroImport],
   ["books-page", booksPage],
   ["read-form-tags", readFormTags],
