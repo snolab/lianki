@@ -325,6 +325,23 @@ describe("DNS (DoH)", () => {
     ).toBe(false);
   });
 
+  it("calls DoH the way a Worker's fetch accepts: redirect manual, and a redirect is refused", async () => {
+    // workerd throws on redirect: "error", which failed every call in production.
+    const inits: RequestInit[] = [];
+    const answer = (status: number) =>
+      (async (_u: string, init: RequestInit) => {
+        inits.push(init);
+        return new Response(
+          JSON.stringify({ Status: 0, Answer: [{ type: 1, data: "104.18.6.192" }] }),
+          { status, headers: status === 302 ? { location: "https://evil.example/" } : {} },
+        );
+      }) as unknown as typeof fetch;
+    expect(await dohResolver(answer(200))("api.openai.com")).toEqual({ ok: true });
+    expect(inits.length).toBeGreaterThan(0);
+    expect(inits.every((i) => i.redirect === "manual")).toBe(true);
+    expect(await dohResolver(answer(302))("api.openai.com")).toEqual({ ok: false });
+  });
+
   it("asks Cloudflare DoH for A and AAAA, fails closed, and refuses a private answer (rebinding)", async () => {
     const asked: string[] = [];
     const doh = (answers: Record<string, unknown[]>, status = 200) =>

@@ -278,9 +278,11 @@ export function dohResolver(f: typeof fetch = fetch, ttlMs = 60_000): Resolve {
     if ((okUntil.get(host) ?? 0) > now) return { ok: true };
     try {
       const ask = async (type: "A" | "AAAA") => {
+        // "manual", never "error": a Worker's fetch throws on "error". A 3xx is
+        // not ok, so a redirected lookup is still refused below.
         const r = await f(
           `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`,
-          { headers: { accept: "application/dns-json" }, redirect: "error" },
+          { headers: { accept: "application/dns-json" }, redirect: "manual" },
         );
         if (!r.ok) throw new Error("doh");
         const j = (await r.json()) as { Status?: number; Answer?: DohAnswer[] };
