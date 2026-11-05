@@ -42,7 +42,7 @@ import { probeReachability } from "@/lib/probe";
 import { originOf } from "@/lib/next-card";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { escapeHtml, safeHref, scriptJson } from "@/lib/security/escape";
-import { crossSiteNavigation } from "@/lib/security/route-guard";
+import { offSiteWritingGet } from "@/lib/security/route-guard";
 import { restoreNoteFromExport } from "@/lib/yaml-export";
 import {
   bulkDeleteNotes,
@@ -141,7 +141,7 @@ function isHttpUrl(raw: string): boolean {
 /**
  * The GETs here that write: grading, deleting, and the legacy /repeat page,
  * which adds the card its `url` names. Kept as GETs for installed userscripts
- * and the CLI, but never from another site's navigation (fsrsHandler).
+ * and the CLI, but never from another site or host (fsrsHandler).
  */
 export function isMutatingGet(pathname: string): boolean {
   return /^\/api\/fsrs\/(review\/|delete(\/|$)|repeat(\/|$))/i.test(pathname);
@@ -149,10 +149,18 @@ export function isMutatingGet(pathname: string): boolean {
 
 /**
  * A card's url as the legacy pages open it: anything but a script url
- * (`javascript:`, `data:`, `vbscript:`), which would run on lianki.com.
+ * (`javascript:`, `data:`, `vbscript:`), which would run on lianki.com. Asked of
+ * the URL parser, as the browser will: it drops tabs and newlines inside the
+ * scheme, which a pattern over the raw text would miss. What doesn't parse
+ * has no scheme, so it stays a relative link.
  */
 export function openable(url: string): string {
-  return /^\s*(javascript|data|vbscript):/i.test(url) ? "about:blank" : url;
+  try {
+    const { protocol } = new URL(url);
+    if (protocol === "javascript:" || protocol === "data:" || protocol === "vbscript:")
+      return "about:blank";
+  } catch {}
+  return url;
 }
 
 export const fsrsHandler = async (req: Request, email?: string) => {
@@ -1003,11 +1011,11 @@ export const fsrsHandler = async (req: Request, email?: string) => {
   const path = `${req.method} ${url.pathname}${url.search}`;
   // Method and path only: the query holds card urls and titles.
   console.log(`${req.method} ${url.pathname}`);
-  // A GET that changes cards, started by another site's link or redirect, is
-  // refused (CSRF: a top-level navigation is how a SameSite=Lax session
-  // cookie rides along). Same-origin fetches, the userscript and API tokens
-  // never look like this.
-  if (req.method === "GET" && isMutatingGet(url.pathname) && crossSiteNavigation(req))
+  // A GET that changes cards, from another site's link or redirect or from a
+  // sibling *.lianki.com host, is refused (CSRF: those are how a SameSite=Lax
+  // session cookie rides along). Same-origin fetches, the userscript and API
+  // tokens never look like this.
+  if (req.method === "GET" && isMutatingGet(url.pathname) && offSiteWritingGet(req))
     return new Response("This link changes your cards; open it from Lianki itself.\n", {
       status: 403,
       headers: { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff" },

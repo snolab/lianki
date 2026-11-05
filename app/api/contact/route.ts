@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   const res = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, mrkdwn: false }),
+    body: JSON.stringify({ text, mrkdwn: false, unfurl_links: false, unfurl_media: false }),
   });
 
   if (!res.ok) {

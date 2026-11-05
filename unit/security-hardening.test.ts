@@ -6,13 +6,14 @@ import { contactSlackText, CONTACT_PER_IP } from "@/lib/contact";
 import { escapeHtml, escapeSlack, safeHref, scriptJson } from "@/lib/security/escape";
 import {
   cappedJsonError,
-  crossSiteNavigation,
+  offSiteWritingGet,
   readJsonCapped,
   routeLimit,
   tooMany,
 } from "@/lib/security/route-guard";
 import type { ThrottleDb } from "@/lib/security/throttle";
 import { isMutatingGet, openable } from "@/app/fsrs";
+import { siblingApiWrite } from "@/lib/security/same-site-guard";
 import { probeReachability } from "@/lib/probe";
 import { createGiftCode, redeemGiftCode } from "@/lib/referrals/store";
 import { fulfilCheckout } from "@/lib/payments/fulfil";
@@ -179,32 +180,49 @@ describe("D1 route limits", () => {
 describe("GETs that write: no cross-site navigation", () => {
   const req = (h: Record<string, string>) => new Request("https://lianki.com/x", { headers: h });
 
-  test("a link or redirect from another site is refused", () => {
-    expect(
-      crossSiteNavigation(req({ "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate" })),
-    ).toBe(true);
-    expect(
-      crossSiteNavigation(req({ "sec-fetch-site": "same-site", "sec-fetch-mode": "navigate" })),
-    ).toBe(true);
+  test("a link or redirect from another site, or anything from a sibling host, is refused", () => {
+    const off = (site: string, mode: string) =>
+      offSiteWritingGet(req({ "sec-fetch-site": site, "sec-fetch-mode": mode }));
+    expect(off("cross-site", "navigate")).toBe(true);
+    expect(off("same-site", "navigate")).toBe(true);
+    expect(off("same-site", "cors")).toBe(true);
+    expect(off("same-site", "no-cors")).toBe(true);
   });
 
   test("same-origin fetches, typed addresses and non-browser clients pass", () => {
-    expect(
-      crossSiteNavigation(req({ "sec-fetch-site": "same-origin", "sec-fetch-mode": "navigate" })),
-    ).toBe(false);
-    expect(
-      crossSiteNavigation(req({ "sec-fetch-site": "none", "sec-fetch-mode": "navigate" })),
-    ).toBe(false);
-    expect(
-      crossSiteNavigation(req({ "sec-fetch-site": "cross-site", "sec-fetch-mode": "cors" })),
-    ).toBe(false);
-    expect(crossSiteNavigation(req({}))).toBe(false);
+    const off = (site: string, mode: string) =>
+      offSiteWritingGet(req({ "sec-fetch-site": site, "sec-fetch-mode": mode }));
+    expect(off("same-origin", "navigate")).toBe(false);
+    expect(off("same-origin", "cors")).toBe(false);
+    expect(off("none", "navigate")).toBe(false);
+    // The userscript's privileged requests can look like this; no Lax cookie rides on a real one.
+    expect(off("cross-site", "cors")).toBe(false);
+    expect(offSiteWritingGet(req({}))).toBe(false);
+  });
+
+  test("a sibling host's cookie-carrying write to the API is refused", () => {
+    const write = (path: string, h: Record<string, string>, method = "POST") =>
+      siblingApiWrite(new Request(`https://lianki.com${path}`, { method, headers: h }));
+    const sibling = { "sec-fetch-site": "same-site", cookie: "a=b" };
+    expect(write("/api/token", sibling)).toBe(true);
+    expect(write("/api", sibling)).toBe(true);
+    expect(write("/API/token", sibling, "DELETE")).toBe(true);
+    expect(write("/api/token", { ...sibling, "sec-fetch-site": "same-origin" })).toBe(false);
+    expect(write("/api/token", { "sec-fetch-site": "same-site" })).toBe(false); // no cookie
+    expect(write("/api/payments/stripe-webhook", { cookie: "a=b" })).toBe(false); // no browser
+    expect(write("/api/token", sibling, "GET")).toBe(false);
+    expect(write("/apix", sibling)).toBe(false);
+    expect(readFileSync("worker.ts", "utf8")).toMatch(/if \(siblingApiWrite\(req\)\)/);
   });
 
   test("the legacy pages never window.open a script url", () => {
     expect(openable("javascript:alert(1)")).toBe("about:blank");
     expect(openable(" JavaScript:x")).toBe("about:blank");
     expect(openable("data:text/html,x")).toBe("about:blank");
+    // The browser drops tabs and newlines inside a scheme; so does this check.
+    expect(openable("java\tscript:x")).toBe("about:blank");
+    expect(openable("java\nscript:x")).toBe("about:blank");
+    expect(openable("relative/page")).toBe("relative/page");
     expect(openable("https://example.com/")).toBe("https://example.com/");
     expect(openable("lianki://ai-vocab/en/x/1")).toBe("lianki://ai-vocab/en/x/1");
   });

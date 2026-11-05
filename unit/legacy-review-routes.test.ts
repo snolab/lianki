@@ -150,6 +150,17 @@ describe("legacy review flow, hostile input", () => {
     expect((await notes.findOne({ _id: new ObjectId(ID) }))?.log).toEqual([]);
   });
 
+  test("a sibling host's fetch to a GET that writes gets 403 too", async () => {
+    const res = await fsrsHandler(
+      new Request(`http://localhost/api/fsrs/delete?id=${ID}`, {
+        headers: { "sec-fetch-site": "same-site", "sec-fetch-mode": "cors" },
+      }),
+      EMAIL,
+    );
+    expect(res.status).toBe(403);
+    expect(await notes.countDocuments({})).toBe(2);
+  });
+
   test("an error is plain text", async () => {
     const res = await get(`/api/fsrs/delete?id=nope${encodeURIComponent(evil)}`);
     expect(res.status).toBe(500);

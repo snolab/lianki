@@ -373,24 +373,29 @@ tests in `unit/security-hardening.test.ts`.
   | `POST /api/roadmap/generate`  | 10 per account per hour                |
   | `POST /api/import/youtube`    | 10 per account per hour; 20 pages (1000 videos) per import |
   | `POST /api/words/telemetry`   | 120 batches per account per 10 min     |
-  | reader gloss / translate / polish; `/api/tts`, `/api/translate`, polyglot, self-intro, ai-sentences (model calls) | the same numbers as before, now in D1, per person (canonical email, hashed) |
+  | reader gloss / translate / polish; `/api/tts`, `/api/translate`, polyglot, self-intro, ai-sentences (model calls) | the same numbers as before, now in D1; per person (canonical email, hashed) except the reader's, per account. These count operations: one polish can make several model calls |
   Still per isolate (`lib/rateLimit.ts`): `/api/words/tts`, `/api/debug/stt`,
   the self-intro import and the FSRS bulk-mutation guard.
 - **Body caps** (`readJsonCapped`: Content-Length, then the stream):
-  contact 16 KB, roadmap and YouTube 4 KB, words telemetry 128 KB,
+  contact 32 KB, roadmap and YouTube 4 KB, words telemetry 128 KB,
   `POST /api/read` 12 MB, and pasted text there to a book's own caps.
 - **Slack**: contact-form text is escaped (`&`, `<`, `>`) and sent with
-  `mrkdwn: false`: no links, mentions or formatting from a sender.
+  `mrkdwn: false` and no unfurling: no labelled links, mentions or formatting
+  from a sender (Slack may still link a bare URL by itself).
 - **Legacy HTML** (`app/fsrs.ts`: `/api/fsrs/repeat`, `/next`, the preview
   lists): every title and url is HTML-escaped, links are http(s) only, values
   in inline scripts can't close them (`lib/security/escape.ts`), and errors
   are plain text. These pages have no CSP, so escaping is the whole defence.
 - **GETs that write** (`/api/fsrs/review/*`, `/api/fsrs/delete`,
   `/api/fsrs/repeat`): kept as GETs for installed userscripts and the CLI,
-  but a top-level navigation from another site (Fetch Metadata
-  `Sec-Fetch-Mode: navigate` with `Sec-Fetch-Site: cross-site` or
-  `same-site`) gets 403 — the one way a SameSite=Lax cookie rides along.
+  a top-level navigation from another site, or anything from a sibling
+  `*.lianki.com` host, gets 403 (Fetch Metadata; browsers without it pass).
   `POST /api/fsrs/delete` exists too, and the list page uses it.
+- **Sibling hosts.** A browser counts every `*.lianki.com` host as the same
+  site, so a page on one (a friend's devbox, a tunnel) sends the SameSite=Lax
+  session cookie with its POSTs. `worker.ts` refuses every cookie-carrying
+  write to `/api` that says `Sec-Fetch-Site: same-site`
+  (`lib/security/same-site-guard.ts`). The cross-site case is SameSite's own.
 - **Pro days** from gift codes, invites and Stripe payments are added in
   SQL inside the grant's batch, so two at once both count; a gift code's
   use is given back if its grant fails.

@@ -7,10 +7,10 @@
  *   the per-isolate memory counter (lib/rateLimit.ts).
  * - `readJsonCapped`: a JSON body read as a stream and cut off at a byte cap,
  *   so a huge body is refused before it is buffered or parsed.
- * - `crossSiteNavigation`: a top-level navigation from another site — the one
- *   way a SameSite=Lax session cookie rides along on a cross-site request. A
- *   GET that changes data refuses it (CSRF), while same-origin fetches, the
- *   userscript and API tokens are unaffected.
+ * - `offSiteWritingGet`: a request from another site or a sibling host that
+ *   would carry the SameSite=Lax session cookie. A GET that changes data refuses
+ *   it (CSRF), while same-origin fetches, the userscript and API tokens are
+ *   unaffected. Writes other than GET: lib/security/same-site-guard.ts.
  */
 import { NextResponse } from "next/server";
 import { dbBackend, getD1 } from "@/lib/d1";
@@ -102,13 +102,16 @@ export function cappedJsonError(status: 400 | 413): NextResponse {
 }
 
 /**
- * A top-level navigation that another site started (a link, a form GET, a
- * redirect). Browsers without Fetch Metadata send neither header and pass.
+ * A GET that writes must not come from elsewhere. Two ways carry the SameSite=Lax
+ * session cookie: a top-level navigation another site started (a link, a form
+ * GET, a redirect), and anything at all from a sibling *.lianki.com host, which
+ * a browser counts as the same site. Browsers without Fetch Metadata send
+ * neither header and pass.
  */
-export function crossSiteNavigation(req: Request): boolean {
+export function offSiteWritingGet(req: Request): boolean {
   const site = req.headers.get("sec-fetch-site")?.toLowerCase();
   const mode = req.headers.get("sec-fetch-mode")?.toLowerCase();
-  return mode === "navigate" && (site === "cross-site" || site === "same-site");
+  return site === "same-site" || (site === "cross-site" && mode === "navigate");
 }
 
 /** The client's own address, for a per-IP limit (Cloudflare's header first). */
