@@ -793,6 +793,33 @@ Checks: `bun scripts/dev/debug-chat-copy-qa.mjs --shots <dir>` (silent,
 on a line, its text selecting, no copy button, + menu opacity);
 the rules in `unit/chat-copy.test.ts`.
 
+### A selection started in the chat stays in the chat
+
+Owner, 2026-11-05 11:05 JST, Mac Chrome: a drag from a chat line that went
+past the box selected half the page. `select-fence.ts` (decisions, pure) and
+`select-fence-dom.ts` (listeners, installed once per page by each mounted
+`DebugChat`), event-driven only:
+
+- A press on a line's text arms the fence and puts `data-lk-chat-selecting`
+  on `<html>`; a style rule then makes every element outside the chat (not
+  its ancestors, not an embed's shadow host) `user-select: none`, so the drag
+  has nothing out there to take. It stays up while the selection that press
+  made is open (iOS's handles move it with no press of their own), and drops
+  on the first press outside the chat, before the page's own selection
+  starts. A tap on the chat's buttons never sets it.
+- On every `selectionchange`, a selection anchored in the chat whose focus
+  has left it gets its focus put back at the chat's first or last selectable
+  text: the way the pointer left (above or below the box, or the line it
+  started on), else document order.
+
+WebKit keeps a scripted focus in non-selectable text as it is in the DOM but
+selects none of it; Chromium moves it and the clamp puts it back. Selections
+outside the chat are untouched; the reader's hook already ignores ones
+anchored in the chat. Checks: `bun scripts/dev/debug-chat-select-fence-qa.mjs`
+(silent, Chromium and WebKit, mouse drags up and down out of the chat over
+page text, a handle-like scripted move, then a drag on the page);
+`unit/chat-select-fence.test.ts`.
+
 ## Quiet lines
 
 Every agent line is shown; what changes is whether it is also read aloud.

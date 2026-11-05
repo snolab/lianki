@@ -98,6 +98,7 @@ import {
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
 import { LINE_SELECTABLE } from "./copy-line";
+import { installSelectFence } from "./select-fence-dom";
 import {
   barInGlass,
   BAR_IN_GLASS_TRANSITION,
@@ -736,6 +737,8 @@ export function DebugChat({
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
   const [aec, setAecState] = useState(aecOn);
+  // A selection started on a chat line stays in the chat (select-fence.ts).
+  useEffect(() => installSelectFence(), []);
   // The same switch in /words' Settings sheet: follow it.
   useEffect(() => {
     const f = () => setAecState(aecOn());
