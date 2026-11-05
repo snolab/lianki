@@ -3,7 +3,7 @@
 // and drawing a unit takes the mark off every element of the one before.
 import { describe, expect, it } from "bun:test";
 import { COMBO_MS, type ComboCtx, comboClick } from "@/lib/read/reader-select";
-import { markSelected } from "@/app/(app)/read/[id]/use-reader-select";
+import { markSelected } from "@/lib/read/select-mark";
 
 const ctx: ComboCtx = {
   interval: COMBO_MS,

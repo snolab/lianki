@@ -46,21 +46,10 @@ import {
   sameUnit,
   snapIndices,
 } from "@/lib/read/reader-select";
+import { markSelected } from "@/lib/read/select-mark";
 
 /** A hand selection has settled once `selectionchange` is this quiet (ms). */
 export const SETTLE_MS = 350;
-
-/**
- * Draws the selection: `data-sel` on exactly `els`, taken off every other
- * element under `root` that carries it (a unit drawn before, rows painted by
- * an earlier pass).
- */
-export function markSelected(root: ParentNode, els: readonly Element[]): void {
-  const keep = new Set(els);
-  for (const e of root.querySelectorAll("[data-sel]"))
-    if (!keep.has(e)) e.removeAttribute("data-sel");
-  for (const e of els) if (!e.hasAttribute("data-sel")) e.setAttribute("data-sel", "");
-}
 
 /** The elements a unit covers among the rows mounted now. */
 export function unitElements(
