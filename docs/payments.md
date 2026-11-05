@@ -422,6 +422,29 @@ Rules (owner, 2026-10-29) live in `lib/referrals/rules.ts`; the D1 side in
 Every reward is a `membership_grant` row with UNIQUE (reason, refId), so each
 is given once however often the checks run.
 
+### Once per person: the canonical email
+
+"Once" means once per **person**, not per account (owner, 2026-11-05):
+`lib/canonical-email.ts` maps an address to its canonical form — for
+gmail.com / googlemail.com dots removed, `+tag` dropped, googlemail → gmail;
+`+tag` also dropped for the providers in `PLUS_ALIAS_DOMAINS`; any other
+domain only lowercased. Stored as `user.email_canonical` (indexed,
+`db/migrations/0043_email_canonical.sql`, backfilled there), set by the
+better-auth `user.create` / `user.update` hooks and filled lazily by the checks
+(`lib/canonical-email-d1.ts`). It is used **only** for these checks; sign-in and
+the account keep the address as given, and no accounts are merged.
+
+- **Trial**: an account whose canonical email belongs to another account that
+  already had a trial or Pro gets no trial — `trialEndsAt` is set to now, so it
+  is free and stays so. Accounts that already have a trial are never touched.
+- **Invites**: an alias of the inviter is `self`; an invitee with any other
+  account of the same canonical email is `not new`.
+- **Gift codes**: redeemed by one account, spent for all its aliases.
+- **Per-person limits**: `accountKey` (sign-in lockout, code sends) and
+  `personKey` (`lib/rateLimit.ts`, the AI/TTS limits) key on it.
+
+At the migration (2026-11-05) no two existing accounts shared a canonical email.
+
 ## GitHub Sponsors
 
 A second way to Pro, for people who would rather pay through GitHub. Rules in

@@ -7,7 +7,7 @@ import {
 } from "@/lib/workers-ai";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, personKey } from "@/lib/rateLimit";
 import { logSanitizedError } from "@/lib/safeError";
 
 const QUESTION_TEMPLATES: Record<string, string> = {
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 
-    const rateLimit = checkRateLimit(`self-intro-translate:${email}`, {
+    const rateLimit = checkRateLimit(personKey("self-intro-translate", email), {
       windowMs: RATE_LIMIT_WINDOW_MS,
       max: RATE_LIMIT_MAX_REQUESTS,
     });

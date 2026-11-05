@@ -23,6 +23,7 @@ import { passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
 import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
 import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
 import { notifySignedOut } from "./lib/push-signed-out";
+import { setEmailCanonical } from "./lib/canonical-email-d1";
 
 // The heavy half of auth: better-auth, its plugins, zod, kysely. Only ever
 // reached through the dynamic import in ./auth.ts, so it is one shared async
@@ -129,6 +130,27 @@ function baseOptions() {
         delete: {
           after: async (session: { id: string }) => {
             await notifySignedOut(session.id);
+          },
+        },
+      },
+      // The canonical email (lib/canonical-email.ts), for the once-per-person
+      // checks only — the trial, invite and gift rewards. Never fails the
+      // sign-up; those checks fill it in themselves when it is missing.
+      user: {
+        create: {
+          after: async (user: { id: string; email: string }) => {
+            if (dbBackend() !== "d1") return;
+            await setEmailCanonical(getD1(), user.id, user.email).catch((e) =>
+              console.error("[email-canonical] create:", e),
+            );
+          },
+        },
+        update: {
+          after: async (user: { id: string; email?: string | null }) => {
+            if (dbBackend() !== "d1" || !user.email) return;
+            await setEmailCanonical(getD1(), user.id, user.email).catch((e) =>
+              console.error("[email-canonical] update:", e),
+            );
           },
         },
       },
