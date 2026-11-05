@@ -11,7 +11,7 @@
  * - Anchors are written in day order with no gaps — a day nobody studied is
  *   anchored with no leaves — and each one in a single D1 batch with its
  *   leaves. `INSERT` (not upsert) on the day's primary key, plus the
- *   append-only triggers (0043), mean a re-run never rewrites a day.
+ *   append-only triggers (0044), mean a re-run never rewrites a day.
  */
 import {
   CHAIN_VERSION,

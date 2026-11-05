@@ -41,7 +41,7 @@ merkleRoot(N) ‖ chainHash(N−1))`, version one byte, day 10 ASCII bytes,
   proof. Without it a leaf cannot be tested against a guess ("did user X
   study 12 reviews on day D?"), so the public roots reveal only how many
   people studied that day.
-- **D1** (`db/migrations/0043_lian_ledger.sql`): `lian_anchor` (day, version,
+- **D1** (`db/migrations/0044_lian_ledger.sql`): `lian_anchor` (day, version,
   merkle_root, prev_hash, chain_hash, leaf_count, created_at), `lian_leaf`
   (day, idx, user_id, leaf_hash, summary — the counts as they were when
   anchored), `lian_salt`, `lian_timestamp`. Triggers refuse any UPDATE or
