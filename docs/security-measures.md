@@ -353,6 +353,28 @@ server code stores a key; the managed mode waits for the owner's approval.
 The audit (prefs sync, page errors, chat context, analytics) is in
 [byok.md](byok.md), "Never leaving the device". Tests: `unit/byok.test.ts`.
 
+## 11. Sibling hosts
+
+A browser counts every `*.lianki.com` host as the same site as lianki.com, so
+a page on one (a user's box, a dev tunnel) gets the SameSite=Lax session cookie
+sent with its requests here. `worker.ts` answers 403, before any route, to a
+cookie-carrying request marked `Sec-Fetch-Site: same-site` that goes to `/api`
+(any method, because some GETs write) or writes to any other path (server
+actions POST to page URLs) (`lib/security/same-site-guard.ts`). Reading a page
+or following a link from a sibling still works.
+
+What it does not cover:
+
+- **lianki-push** (`/api/version/*`, its own Worker route): its cookie sockets
+  have their own check, `Origin` must be exactly `https://lianki.com`
+  (`workers/push/src/auth.ts`); the other routes there take bearer tokens.
+- **A browser without Fetch Metadata** passes.
+- **Cookies set by a sibling.** A page there can still set a cookie for
+  `Domain=lianki.com`. Only a separate registrable domain for those pages stops
+  that, and it would stop the same-site requests as well.
+- **Reading** needs CORS, which `/api` does not answer for siblings, so this
+  guard is about writes.
+
 ## Owner checklist
 
 Things this repo cannot do by itself:
