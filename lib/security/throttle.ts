@@ -13,6 +13,8 @@
  * cannot both read the old count.
  */
 
+import { canonicalEmail } from "@/lib/canonical-email";
+
 /** The subset of D1 the counters use; `TestD1Database` provides it in tests. */
 export interface ThrottleDb {
   prepare(query: string): {
@@ -111,9 +113,13 @@ export async function sha256Hex(s: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** The counter key for an account: a hash, so the table never holds an address. */
+/**
+ * The counter key for an account: a hash, so the table never holds an address.
+ * Hashed in canonical form (lib/canonical-email.ts) — `a.b+1@gmail.com` and
+ * `ab@gmail.com` are one mailbox, so they share one limit.
+ */
 export async function accountKey(kind: string, email: string): Promise<string> {
-  return `${kind}:acct:${await sha256Hex(email.trim().toLowerCase())}`;
+  return `${kind}:acct:${await sha256Hex(canonicalEmail(email))}`;
 }
 
 export const ipKey = (kind: string, ip: string) => `${kind}:ip:${ip}`;

@@ -89,7 +89,12 @@ export type ReadSpeakerDeps = {
 };
 export type SpeakCallbacks = {
   onend(): void;
-  onerror(why: string): void;
+  /**
+   * Nothing was said. `noVoice`: neither engine has a voice for the
+   * language here (no browser voice, and the server has none or answered
+   * 404) — the card says "no voice for this language", not a failure.
+   */
+  onerror(why: string, noVoice?: boolean): void;
   /** A part (of `speak`'s array form) starts: its index. */
   onpart?(part: number): void;
   /** Its rank for the page's audio (AUDIO_PRIO; default: a paragraph). */
@@ -285,7 +290,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
       /** Paused for a higher sound; it resumes at `at`. */
       let parked = false;
       let owner: AudioOwner | null = null;
-      const finish = (ok: boolean, why = "") => {
+      const finish = (ok: boolean, why = "", noVoice = false) => {
         if (!live()) return;
         turn++;
         cleanup();
@@ -294,7 +299,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         hold();
         stopCurrent = null;
         if (ok) cb.onend();
-        else cb.onerror(why);
+        else cb.onerror(why, noVoice);
       };
       const cancel = () => {
         if (!live()) return;
@@ -323,6 +328,8 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
       const voice = voiceFor(lang);
       const cloudOk = CLOUD_LANGS.has(baseLang(lang));
       const tried = new Set<string>();
+      /** The server answered 404 for this line: it has no voice for the language (or this text). */
+      let cloud404 = false;
 
       const viaSpeech = (from: number): void => {
         tried.add("speech");
@@ -469,6 +476,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
       const fail = (at: number, engine: "speech" | "cloud", why: string): void => {
         if (!live()) return;
         log({ ev: "read-tts-fail", engine, why, lang });
+        if (engine === "cloud" && /HTTP 404/.test(why)) cloud404 = true;
         // The engine that failed is done: its watchdog, sound and callbacks go.
         attempt++;
         if (timer !== null) d.clearTimer(timer);
@@ -479,14 +487,14 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         } catch {}
         if (engine === "speech" && !tried.has("cloud") && cloudOk) return viaCloud(at);
         if (engine === "cloud" && !tried.has("speech") && voice) return viaSpeech(at);
-        finish(false, why);
+        finish(false, why, !voice && (!cloudOk || cloud404));
       };
 
       const begin = (from: number) => {
         if (d.mode() === "cloud" && cloudOk) viaCloud(from);
         else if (voice) viaSpeech(from);
         else if (cloudOk) viaCloud(from);
-        else finish(false, `no voice for ${lang} on this device`);
+        else finish(false, `no voice for ${lang} on this device`, true);
       };
       owner =
         d.owner?.({

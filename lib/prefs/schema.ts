@@ -7,6 +7,12 @@
  * Nothing free-form: no device URL, tailnet host, file path or typed text can
  * pass any schema here (unit/prefs-schema.test.ts probes every key).
  *
+ * One exception, by the owner (2026-11-05 14:25 JST): `byok.backend`, the
+ * user's own AI backend (docs/byok.md) — provider, base URL and model, only
+ * when they tick 「同步到我的账号」. Only that exact shape passes, its URL
+ * under lib/byok/config.ts's rules; the server stores it and never fetches
+ * it. The API key has no key here: it never leaves the device.
+ *
  * A field whose shape changes gets a new key (`swipe-feel.tweaks2`); the old
  * row is then simply no longer read.
  */
@@ -15,6 +21,7 @@ import { allImmersionSites, IMMERSION_LANGUAGES } from "@/lib/immersion-sites";
 import { FEEL_RANGES } from "@/lib/words/swipe-feel";
 import { BLOG_LOCALES } from "@/lib/constants";
 import { TEXT_MAX, TEXT_MIN } from "@/lib/text-size-boot";
+import { cleanBackend } from "@/lib/byok/config";
 
 // ── Limits ────────────────────────────────────────────────────────────────
 
@@ -55,6 +62,38 @@ const textScale = z
   .max(TEXT_MAX)
   .refine((v) => Math.abs(v * 20 - Math.round(v * 20)) < 1e-6);
 
+/** Nothing that names a place: a scheme, a host, a path. */
+const placeLike = (s: string) => /:\/\/|\.ts\.net|localhost|127\.0\.0\.1|\/|\.\w{2,}$/i.test(s);
+/**
+ * The reader's sense picks (lib/read/sense-pick.ts): "word@sentence-hash" →
+ * "lang\tterm", a word and a dictionary term — at most PICKS_MAX of them.
+ */
+const sensePicks = z
+  .record(
+    z
+      .string()
+      .max(80)
+      .regex(/^[^\t\n]+@[0-9a-f]{8}$/),
+    z
+      .string()
+      .max(60)
+      .regex(/^[a-z]{2,3}\t[^\t\n]+$/),
+  )
+  .refine((m) => Object.keys(m).length <= 24)
+  .refine((m) => !Object.entries(m).some(([k, v]) => placeLike(k) || placeLike(v)));
+/** A BYOK backend exactly as lib/byok/config.ts cleans it (no key field can pass). */
+const byokBackend = z
+  .object({
+    provider: z.string().max(40),
+    baseUrl: z.string().max(300),
+    model: z.string().max(120),
+  })
+  .strict()
+  .refine((b) => {
+    const c = cleanBackend(b);
+    return !!c && c.baseUrl === b.baseUrl && c.provider === b.provider && c.model === b.model;
+  });
+
 export const PREF_SCHEMAS = {
   // /words study settings
   "words.showAll": z.boolean(),
@@ -81,10 +120,14 @@ export const PREF_SCHEMAS = {
   "home.pins": z.array(catalogUrl).max(100),
   "lab.immersionLangs": z.array(z.enum(IMMERSION_CODES)).max(IMMERSION_CODES.length),
   "lab.immersionTranspose": z.boolean(),
+  // /read: which language's entry a word means where it stands
+  "read.sensePicks": sensePicks,
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),
   "chat-voice.speak": z.boolean(),
+  // the user's own AI backend (not the key), when they sync it; null: not synced
+  "byok.backend": z.union([z.null(), byokBackend]),
 } as const satisfies Record<string, z.ZodType>;
 
 export type PrefKey = keyof typeof PREF_SCHEMAS;

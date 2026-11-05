@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
 import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-guard";
-import { sha256Hex } from "@/lib/security/throttle";
+import { accountKey } from "@/lib/security/throttle";
 
 /** Model calls per account (D1): each one is a paid generation. */
 const GENERATE_LIMIT = { max: 10, windowMs: 60 * 60_000 };
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   const email = await authEmailOrToken(request);
   if (!email) return new NextResponse("Unauthorized", { status: 401 });
 
-  const limited = await tooMany(`roadmap-generate:${await sha256Hex(email)}`, GENERATE_LIMIT);
+  const limited = await tooMany(await accountKey("roadmap-generate", email), GENERATE_LIMIT);
   if (limited) return limited;
 
   const body = await readJsonCapped(request, 4096);

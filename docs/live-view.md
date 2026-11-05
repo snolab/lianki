@@ -61,8 +61,14 @@ bun scripts/dev/live-view.ts on --page preview        # prints https://lianki.co
 
 Open that link (any path works: `https://lianki.com/words?live=<id>`;
 `?live=on` finds the current one). A red **LIVE · branch@sha · stop** badge
-sits in the bottom-left corner. In-app navigation stays live (the badge's
-script keeps `?live=<id>` in the address).
+sits at the bottom centre, above the safe area (clear of next dev's dev-tools
+button on the left and the chat widget on the right; so is the notice). In-app
+navigation stays live (the badge's script keeps `?live=<id>` in the address).
+The "New version · Refresh" notice, and its reload-once, stay off on a live
+page (`onLivePage`, lib/live-view/live-page.ts: `?live=<digits>` in the
+address, or `window.__lkLive` from the badge's script): a dev build's id
+never matches production's. That check is in the app's code, so it reaches
+the live page once the dev server serves a checkout that has it.
 
 **Stop**: tap **stop** on the badge (`?live=off`), open any lianki.com page
 without `?live`, or `bun scripts/dev/live-view.ts off` (every device, at the
@@ -146,6 +152,10 @@ host escapes, 101 filtering, redirects, expiry, revoke, leaving, tunnel
 down, the gate's Worker entry), `unit/tunnel-headers.test.ts`;
 `scripts/qa/qa-api.mjs` (a non-owner's `?live=` and a forged cookie get the
 normal build).
+
+**Other people's frontends** use the same path with stricter rules:
+`?live=<22-character id>`, only for the user who registered it, no cookie
+or gate secret sent up, a strict CSP — [custom-frontend.md](custom-frontend.md).
 
 ## Design
 

@@ -299,7 +299,9 @@ one would outlive the preview and control later pages.
 D1 row in `security_audit` (`db/migrations/0040_security_audit.sql`,
 `lib/security/audit-log.ts`): live view on / off (actor `mac-key`, the
 serial, branch@sha) and the owner's stop; dev token mint, revoke, revoke all,
-and the profile menu's handoff (actor: the user id; subject: the token id).
+and the profile menu's handoff (actor: the user id; subject: the token id);
+custom frontends: a preview registered or revoked, a user added to or
+removed from the allowlist ([custom-frontend.md](custom-frontend.md)).
 Ids and labels only, never a token or a pointer. Best effort: a failed audit
 insert is logged and never undoes the write. Read it with
 `wrangler d1 execute lianki --remote --command "SELECT * FROM security_audit ORDER BY id DESC LIMIT 50"`.
@@ -307,6 +309,16 @@ insert is logged and never undoes the write. Read it with
 **The dev-token cap is one statement.** At most 20 live named tokens: the
 count and the insert are a single `INSERT … SELECT … WHERE (SELECT COUNT(*) …)
 < 20`, so concurrent mints cannot pass it together.
+
+**Custom frontends** ([custom-frontend.md](custom-frontend.md)): another
+user's dev server at `?live=<id>`. Shown only to the user who registered
+it; anyone else gets production and the live cookie cleared. No cookie,
+auth or gate secret is sent up. A strict CSP (scripts and connections:
+lianki.com and that tunnel only; inline scripts by nonce). The cookie is
+bound to the session and re-checked in D1 within 5 s. Under it the Worker
+refuses token minting, `/api/dev` writes and better-auth account changes.
+Allowlist and flag `live.custom-frontend`; at most 3 previews of at most
+8 h per user, the cap in one `INSERT`.
 
 ## 9. The CLI login (`lianki auth login`)
 
@@ -337,7 +349,17 @@ else can catch it ([secrets-and-auth.md](secrets-and-auth.md), "CLI login"):
   (never in a process list), else a 0600 file; the CLI never prints it.
 - Tests: `unit/cli-login.test.ts`, `unit/lianki-cli.test.ts`.
 
-## 10. Route limits, body caps and the legacy pages (2026-11-05)
+## 10. Users' own AI keys (BYOK)
+
+A user's own API key stays in their browser (`lk:byok`) and is sent only to
+the provider URL they chose; the URL rules (`checkBaseUrl`: https, or http to
+localhost only; never a Lianki host or the page's origin) run before saving
+and before every call, and errors never carry the provider's message. No
+server code stores a key; the managed mode waits for the owner's approval.
+The audit (prefs sync, page errors, chat context, analytics) is in
+[byok.md](byok.md), "Never leaving the device". Tests: `unit/byok.test.ts`.
+
+## 11. Route limits, body caps and the legacy pages (2026-11-05)
 
 A review pass (Claude, with Codex as a second opinion) fixed these on main;
 tests in `unit/security-hardening.test.ts`.
@@ -351,10 +373,9 @@ tests in `unit/security-hardening.test.ts`.
   | `POST /api/roadmap/generate`  | 10 per account per hour                |
   | `POST /api/import/youtube`    | 10 per account per hour; 20 pages (1000 videos) per import |
   | `POST /api/words/telemetry`   | 120 batches per account per 10 min     |
-  | reader gloss / translate / polish (model calls) | the same numbers as before, now in D1 |
-  The other per-user AI limits (`/api/tts`, polyglot, self-intro,
-  ai-sentences, words TTS) are still per isolate (`lib/rateLimit.ts`); they
-  move once PR #591's key change has landed.
+  | reader gloss / translate / polish; `/api/tts`, `/api/translate`, polyglot, self-intro, ai-sentences (model calls) | the same numbers as before, now in D1, per person (canonical email, hashed) |
+  Still per isolate (`lib/rateLimit.ts`): `/api/words/tts`, `/api/debug/stt`,
+  the self-intro import and the FSRS bulk-mutation guard.
 - **Body caps** (`readJsonCapped`: Content-Length, then the stream):
   contact 16 KB, roadmap and YouTube 4 KB, words telemetry 128 KB,
   `POST /api/read` 12 MB, and pasted text there to a book's own caps.

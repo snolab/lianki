@@ -150,6 +150,15 @@ target that is not built yet.
 | animations off       | local `lk:pref:motion` (`system` until chosen; lib/motion-pref.ts)    | done: /words Settings → Turn off animations; `<html data-motion="off">` set before paint      |
 | paper texture        | local `lk:paper`                                                      | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash |
 
+### Your own AI (docs/byok.md)
+
+| State                                     | Where                                  | Status                                                                                  |
+| ----------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
+| own AI on/off, provider, URL, model, key  | local `lk:byok`                        | done: **device only, never synced, never sent to Lianki**; "Remove" deletes it          |
+| privacy notice acknowledged (version)     | local `lk:byok-ack`                    | done: device only; a new notice version asks again                                      |
+| provider, URL, model when synced          | local `lk:byok-backend` → `byok.backend` | done: opt-in 「同步到我的账号」, signed-in only; never the key                         |
+| own-AI translations and meanings          | memory (`own:` keys in the hooks)      | done: this tab only, never a shared server cache                                        |
+
 ### Not UI state (left alone)
 
 These are queues, logs and sync bookkeeping, and they stay where they are:

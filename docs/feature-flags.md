@@ -5,11 +5,12 @@ with no deploy and no secret change.
 
 | piece                      | where                                         |
 | -------------------------- | --------------------------------------------- |
-| registry (key, description, default) | `lib/flags.ts`                      |
+| registry (key, description, default, `requires`) | `lib/flags.ts`        |
+| prerequisite checks        | `lib/flag-prereqs.ts`                         |
 | read / write, cache        | `lib/flags-store.ts`                          |
 | tables                     | `db/migrations/0027_feature_flags.sql`: `feature_flags` (key, enabled, updated_at, updated_by) and `feature_flag_log` (every change) |
-| toggle page / API          | `app/(app)/dev/flags/`, `app/api/dev/flags/route.ts` |
-| tests                      | `unit/flags.test.ts`                          |
+| toggle page / API          | `app/(app)/dev/flags/` (`FlagCard.tsx`: one switch, its reasons), `app/api/dev/flags/route.ts` |
+| tests                      | `unit/flags.test.ts`, `unit/flag-prereqs.test.ts` |
 
 ## Rules
 
@@ -50,8 +51,42 @@ with no deploy and no secret change.
 | `connections.google`   | every signed-in user gets /connections (Google Drive, `drive.file`) and the private Google Docs import on /read (off: the owner only) — [connections.md](connections.md) |
 | `partner.ai-reply`     | every signed-in user but the owner gets the Learning Partner chat on every page, answered by DeepSeek on Workers AI (off: debug-mode friends only, lanes answer) — [partner-ai.md](partner-ai.md). Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `self-intro.import`    | every signed-in user gets the /self-intro import step: write about yourself or add files, AI lists facts to confirm; files never stored (off: the owner only) — [self-intro-import.md](self-intro-import.md) |
+| `live.custom-frontend` | allowlisted users (`/dev/live-frontends`) can register their own tunnel and see their own frontend at `?live=<id>`, only they, /api stays production (off: the owner only) — [custom-frontend.md](custom-frontend.md) |
 | `books.catalogue`      | every visitor gets /books, the public-domain library, and can add its books to their own reading (off: the owner only) — [books-plan.md](books-plan.md), "The catalogue: /books" |
-| `levels`               | every signed-in user can read their own learner level from `GET /api/levels/me` (no UI yet; study days are recorded either way) (off: the owner only, at /dev/levels) — [levels.md](levels.md) |
+| `levels`               | every user sees their learner level: a chip by the avatar in the nav (signed in) and a level card on /profile (guests too), from `GET /api/levels/me`; study days are recorded either way (off: the owner only) — [levels.md](levels.md) |
+| `byok.sync`            | everyone sees the disabled 「同步 API key」 row (即将推出, with its warning) in Settings → 自己的 AI; nothing on the server stores a key yet (off: the owner only) — [byok.md](byok.md) |
+
+## Prerequisites
+
+A flag may declare `requires` in `lib/flags.ts`: named server-side checks
+(`lib/flag-prereqs.ts`, `CHECKS`), each answering `{ ok }` or `{ ok: false,
+reason }`. The reason is a key in `PREREQ_REASONS` with its Chinese text (the
+page is owner-only and Chinese only) and a context line, as docs/i18n.md asks.
+
+- **Turning ON** a flag with a failing check is refused: `POST /api/dev/flags`
+  answers 400 with every reason (`flags.set-refused` in `wrangler tail`), and
+  `/dev/flags` greys its switch with the reasons under it.
+- **Turning OFF is never checked** — every flag is a kill switch. A flag that
+  is on while a check fails (on before the check existed, a secret removed
+  since) keeps a usable switch and shows "条件未满足（只能关闭）".
+- **Checks read presence and format only** — a key's `sk_live_` prefix, a
+  length, a table in `sqlite_master` — never a value; results carry only
+  `ok` and a reason key, and nothing is logged but the key.
+  `unit/flag-prereqs.test.ts` asserts no value reaches a result, a refusal, a
+  log line or the page.
+- Payment flags (`money: true`) also show 「打开正式收款前请在 Slack 打字确认」:
+  real charging still needs the owner's typed Slack confirmation.
+
+| flag                   | requires                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------ |
+| `payments.stripe.live` | `stripe.live-key`: `STRIPE_SECRET_KEY` starts `sk_live_` and `STRIPE_WEBHOOK_SECRET` is set |
+| `payments.komoju.live` | `komoju.live-key`: `KOMOJU_SECRET_KEY` starts `sk_live_` and `KOMOJU_WEBHOOK_SECRET` is set |
+| `partner.ai-reply`     | `workers-ai.credentials` (`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_TOKEN` or `CLOUDFLARE_API_TOKEN`); `ai-credits.migration` (0041: `credit_ai_charge` exists, `credit_ledger` accepts `'ai'`) |
+| `connections.google`   | `google.oauth-client` (`AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`); `google.picker-key` (`pickerConfig`); `auth-secret` (`AUTH_SECRET` ≥ 32 chars, seals tokens) |
+
+The others need nothing a check could see: `books.catalogue` works without R2
+(no cache) and its tables came with the reader migrations; the rest are UI
+rollouts. Add a check only for a real, observable requirement.
 
 Turning a payment flag off is the kill switch: no new payment starts within
 30 s, and payments already started are still credited —

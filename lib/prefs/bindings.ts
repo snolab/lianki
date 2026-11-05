@@ -13,13 +13,15 @@
  *   cannot import the app) needs no change. Writers call `notePrefWrite()`;
  *   a remote value fires `lk:pref-applied`, which usePref and friends follow.
  *
- * Device-local keys (mic, full screen, positions, dev URLs, echo cancel) are
+ * Device-local keys (mic, full screen, positions, dev URLs, echo cancel, and
+ * the user's own AI key `lk:byok` with its notice answer `lk:byok-ack`) are
  * not here, so they can never be sent.
  */
 import type { PrefBinding } from "@lianki/ui-state/account";
 import { REGISTRY, type UiStore } from "@lianki/ui-state";
 import { CATALOG_URLS, type PrefKey } from "@/lib/prefs/schema";
 import { LOCALE_PICK_KEY } from "@/lib/app-locale";
+import { BYOK_BACKEND_KEY } from "@/lib/byok/config";
 
 type Ls = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const ls = (): Ls | null => {
@@ -205,6 +207,8 @@ export function prefBindings(): PrefBinding[] {
     homePins(),
     plain("lab.immersionLangs", "lk:lab:immersion:langs", jsonCodec, []),
     plain("lab.immersionTranspose", "lk:lab:immersion:transpose", bool10, false),
+    // lib/read/sense-pick.ts: which entry a word in a book means, per word and sentence.
+    plain("read.sensePicks", "lk:read-sense-picks", jsonCodec, {}),
     plain("chat-voice.rate", "lk:agent-speech-rate", num, 1.5),
     plain("chat-voice.out", "lk:voice-out", text, "speech"),
     // The chat reads lk:agent-chat-speak, then its old name (storage-keys.ts).
@@ -212,5 +216,8 @@ export function prefBindings(): PrefBinding[] {
       read: () => getRaw("lk:agent-chat-speak") ?? getRaw("lk:debug-chat-speak"),
       also: (v) => setRaw("lk:debug-chat-speak", v ? "1" : "0"),
     }),
+    // The user's own AI backend (docs/byok.md), only while they sync it (null:
+    // they do not). Its own key: the API key (`lk:byok`) is never a binding.
+    plain("byok.backend", BYOK_BACKEND_KEY, jsonCodec, null),
   ];
 }

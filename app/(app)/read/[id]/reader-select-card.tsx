@@ -20,6 +20,7 @@ import type { Fam } from "@/lib/read/reader-model";
 import type { FamCounts, Unit } from "@/lib/read/reader-select";
 import { fill } from "@/lib/nav/nav-core";
 import { CardIcons } from "./reader-card-icons";
+import { langLabel } from "@/lib/read/sense-pick";
 
 export interface UnitView {
   unit: Unit;
@@ -57,6 +58,18 @@ export interface CardMeaning {
   back: string;
   /** The card is not the selected text itself (a phrase around it, or one inside it). */
   other: boolean;
+  /** The entry's language (lib/read/sense-pick.ts). */
+  lang?: string;
+  /** It is another language's entry than the word's own: labelled with its language. */
+  cross?: boolean;
+  /** He picked it among several languages' entries. */
+  picked?: boolean;
+  /** This entry as a pick (lib/read/sense-pick.ts choiceOf). */
+  choice?: string;
+  /** Other languages' entries for the same text, to pick the one meant here. */
+  others?: { lang: string; term: string; back: string; choice: string }[];
+  /** Made by the user's own AI from this browser (docs/byok.md): tagged on the card. */
+  own?: boolean;
 }
 
 /** An inflected word: the form in the book and its dictionary headword (the lemma file). */
@@ -76,6 +89,20 @@ export interface CardLemma {
  */
 export interface CardTranslation {
   blocks: (string | null | false)[][];
+  /** Asked of the user's own AI from this browser (docs/byok.md): tagged on the card. */
+  own?: boolean;
+}
+
+/** The tag on a result the user's own AI made: no credits, nothing shared. */
+function OwnKeyTag({ label }: { label: ReactNode }) {
+  return (
+    <span
+      className="ms-1.5 inline-block rounded-full bg-[oklch(0.62_0.12_250/0.14)] px-1.5 align-middle text-[0.7rem] leading-5 text-[oklch(0.45_0.12_250)] dark:bg-[oklch(0.72_0.12_250/0.18)] dark:text-[oklch(0.8_0.1_250)]"
+      data-testid="read-select-own-key"
+    >
+      {label}
+    </span>
+  );
 }
 
 /** A deck meaning as plain text: imported decks may carry line breaks as markup. */
@@ -110,6 +137,7 @@ export function SelectCard({
   lemma = null,
   onMoreTranslation = null,
   translateFailed = null,
+  onPickSense = null,
   grade = null,
   onClose,
 }: {
@@ -131,6 +159,8 @@ export function SelectCard({
   onMoreTranslation?: (() => void) | null;
   /** The translation failed: its error line is the retry (null: it did not). */
   translateFailed?: (() => void) | null;
+  /** He picked another language's entry as the meaning here (its choice, lib/read/sense-pick.ts). */
+  onPickSense?: ((choice: string) => void) | null;
   /** The grade handle (or 制卡 / when it is due), under the actions (reader-grade-handle.tsx). */
   grade?: ReactNode;
   onClose: () => void;
@@ -171,6 +201,11 @@ export function SelectCard({
     unrecognised: tw.unrecognised.value,
   };
   const c = view.counts;
+  /** The meaning can be picked here: another language's, or one of several (sense-pick.ts). */
+  const mayPick =
+    !!meaning &&
+    !meaning.picked &&
+    (!!meaning.others?.length || (!!meaning.cross && !!onPickSense));
   const share = c && c.n ? c.known / c.n : view.coverage !== null ? view.coverage / 100 : null;
   const btn =
     "min-h-10 rounded-full px-3 text-sm hover:bg-[oklch(0.5_0_0/0.1)] focus-visible:bg-[oklch(0.5_0_0/0.1)]";
@@ -284,13 +319,71 @@ export function SelectCard({
         </p>
       )}
       {meaning && (
-        <p
-          className="mt-1 max-h-[30vh] overflow-y-auto whitespace-pre-line text-sm"
-          data-testid="read-select-meaning"
-        >
-          {meaning.other && <span className="me-1.5 font-medium">{meaning.term}</span>}
-          {plainBack(meaning.back)}
-        </p>
+        <div className="mt-1 max-h-[30vh] overflow-y-auto text-sm">
+          {/* Another language's entry, or one of several: say whose (lib/read/sense-pick.ts). */}
+          {meaning.lang && (meaning.cross || !!meaning.others?.length) && (
+            <p className="text-xs opacity-70" data-testid="read-select-entry-lang">
+              {fill(t.entryIn.value, { lang: langLabel(meaning.lang, String(locale)) })}
+              {mayPick && (
+                <>
+                  <span aria-hidden className="mx-1 opacity-60">
+                    ·
+                  </span>
+                  {t.pickSense}
+                </>
+              )}
+            </p>
+          )}
+          {(() => {
+            const text = (
+              // A span (block): it may sit inside the pick button.
+              <span
+                className="block whitespace-pre-line"
+                data-testid="read-select-meaning"
+                data-lang={meaning.lang}
+              >
+                {(meaning.other || (meaning.cross && meaning.term !== view.text?.trim())) && (
+                  <span className="me-1.5 font-medium">{meaning.term}</span>
+                )}
+                {plainBack(meaning.back)}
+                {meaning.own && <OwnKeyTag label={t.ownKey} />}
+              </span>
+            );
+            // Another language's entry, not picked yet: tapping it says "this is the meaning
+            // here" — kept, and the word is read in that language from then on.
+            const choice = meaning.choice;
+            return meaning.cross && !meaning.picked && choice && onPickSense ? (
+              <button
+                type="button"
+                onClick={() => onPickSense(choice)}
+                className="-mx-1 block min-h-11 w-[calc(100%+0.5rem)] rounded-lg px-1 py-1 text-start hover:bg-[oklch(0.5_0_0/0.08)] pointer-fine:min-h-0"
+                data-testid="read-select-sense-main"
+                data-lang={meaning.lang}
+              >
+                {text}
+              </button>
+            ) : (
+              text
+            );
+          })()}
+          {meaning.others?.map((o) => (
+            <button
+              key={o.choice}
+              type="button"
+              onClick={() => onPickSense?.(o.choice)}
+              disabled={!onPickSense}
+              className="-mx-1 mt-1 block min-h-11 w-[calc(100%+0.5rem)] rounded-lg px-1 py-1 text-start hover:bg-[oklch(0.5_0_0/0.08)] pointer-fine:min-h-0"
+              data-testid="read-select-sense"
+              data-lang={o.lang}
+            >
+              <span className="me-1.5 text-xs opacity-70">
+                {fill(t.entryIn.value, { lang: langLabel(o.lang, String(locale)) })}
+              </span>
+              <span className="me-1.5 font-medium">{o.term}</span>
+              <span className="whitespace-pre-line">{plainBack(o.back)}</span>
+            </button>
+          ))}
+        </div>
       )}
       {translation && translation.blocks.some((b) => b.some((x) => x !== false)) && (
         <div
@@ -316,6 +409,7 @@ export function SelectCard({
               </p>
             ))
           )}
+          {translation.own && <OwnKeyTag label={t.ownKey} />}
         </div>
       )}
 

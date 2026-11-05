@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-guard";
-import { sha256Hex } from "@/lib/security/throttle";
+import { accountKey } from "@/lib/security/throttle";
 import { wordsRepo } from "../repo";
 
 const Swipe = z.object({
@@ -23,7 +23,7 @@ const BATCHES = { max: 120, windowMs: 10 * 60_000 };
 export async function POST(req: NextRequest) {
   const repo = await wordsRepo();
   if (repo instanceof NextResponse) return repo;
-  const limited = await tooMany(`words-telemetry:${await sha256Hex(repo.email)}`, BATCHES);
+  const limited = await tooMany(await accountKey("words-telemetry", repo.email), BATCHES);
   if (limited) return limited;
   const body = await readJsonCapped(req, BODY_MAX);
   if (!body.ok) return cappedJsonError(body.status);

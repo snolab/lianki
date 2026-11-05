@@ -4,7 +4,7 @@ import { getFSRSNotesCollection } from "@/app/getFSRSNotesCollection";
 import { createEmptyCard } from "ts-fsrs";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-guard";
-import { sha256Hex } from "@/lib/security/throttle";
+import { accountKey } from "@/lib/security/throttle";
 
 /** Imports per account (D1): each one spends the shared YouTube API quota. */
 const IMPORT_LIMIT = { max: 10, windowMs: 60 * 60_000 };
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Login required" }, { status: 401 });
     }
 
-    const limited = await tooMany(`import-youtube:${await sha256Hex(email)}`, IMPORT_LIMIT);
+    const limited = await tooMany(await accountKey("import-youtube", email), IMPORT_LIMIT);
     if (limited) return limited;
 
     const body = await readJsonCapped(req, 4096);

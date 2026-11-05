@@ -3,6 +3,7 @@ import { db } from "@/app/db";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
 import { MembershipD1Repo } from "@/lib/repos/d1Repos";
+import { sameEmailAccounts } from "@/lib/canonical-email-d1";
 
 export type MembershipTier = "free" | "trial" | "pro";
 
@@ -55,6 +56,12 @@ export type MembershipUser = {
 export interface MembershipStore {
   get(userId: string): Promise<MembershipUser | null>;
   grantTrial(userId: string, trialEndsAt: Date): Promise<void>;
+  /**
+   * Has another account of the same person (lib/canonical-email.ts) already
+   * had a trial or Pro? Then this one gets no trial of its own. Absent on the
+   * frozen MongoDB store.
+   */
+  trialTakenElsewhere?(user: MembershipUser): Promise<boolean>;
 }
 
 // ── MongoDB store ──────────────────────────────────────────────────────────────
@@ -113,6 +120,10 @@ export function d1MembershipStore(d1: D1Like): MembershipStore {
       };
     },
     grantTrial: (userId, trialEndsAt) => repo.setTrial(userId, trialEndsAt),
+    async trialTakenElsewhere(user) {
+      const others = await sameEmailAccounts(d1, user);
+      return others.some((o) => o.trialEndsAt != null || o.proEndsAt != null);
+    },
   };
 }
 
@@ -137,14 +148,19 @@ export async function getUserMembership(
 
   const now = new Date();
 
-  // Auto-grant a 90-day trial to users who have neither trial nor pro.
+  // Auto-grant a 90-day trial to users who have neither trial nor pro — once
+  // per person: when another account with the same canonical email already
+  // had one, this account's trial is recorded as used (ending now), so it is
+  // free and the check does not run again. Accounts that already have a trial
+  // are never touched here.
   if (!user.trialEndsAt && !user.proEndsAt) {
-    const trialEndsAt = trialEnd(now);
+    const taken = (await store.trialTakenElsewhere?.(user)) ?? false;
+    const trialEndsAt = taken ? now : trialEnd(now);
     await store.grantTrial(userId, trialEndsAt);
     return {
       userId: user.id,
       email: user.email,
-      tier: "trial",
+      tier: taken ? "free" : "trial",
       trialEndsAt,
       proEndsAt: undefined,
       createdAt: user.createdAt ?? now,

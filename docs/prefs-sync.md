@@ -55,6 +55,7 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:pref:text-size` `.cards`   | Text size: study cards                    | **synced** | `text-size.cards`    | the same; multiplies the whole-app size on /words slips and the /review card        |
 | `lk:words-fullscreen`          | Full screen                               | device     | —                    | owner: depends on the screen and the browser                                        |
 | `lk:pref:read-auto`           | /read: read on without waiting            | device     | —                    | owner, 2026-11-03: "remembered per device"; off by default                          |
+| `lk:read-sense-picks`         | /read: which language's entry a word means | **synced** | `read.sensePicks`    | owner, 2026-11-05: his pick (云 as Chinese "cloud" in a Japanese line) follows him; word@sentence-hash → lang + term, newest 24 (lib/read/sense-pick.ts) |
 | `lk:ui:swipe-tuner`            | tuner panel open                          | session    | —                    | a panel                                                                             |
 | `lk:ui:words`                  | list, Settings open, help, scroll anchors | session    | —                    | UI state of this tab (ui-state.md)                                                  |
 | `lk:words-collapsed:<base>`    | collapsed groups                          | device     | —                    | one key per page, unbounded, and it tracks the list's layout. Revisit if asked      |
@@ -113,6 +114,14 @@ listed once.
 | `lianki_pos`                                                                                                                                                                    | device                             | the button's position on this screen                                                              |
 | `lk:watch-lang`                                                                                                                                                                 | not a pref                         | per-video language overrides; that is card data                                                   |
 | `lk:deviceId`, `lk:config`, `lk:c:*`, `lk:card-index`, `lk:queue`, `lk:token`, `lk:note:*`, `lk:markers:*`, `lk:watch:*`, `lk:watch-index`, `lk:watch-dirty`, `lk:nav_intended` | not a pref                         | cards, sync state, caches (sync-architecture.md)                                                  |
+
+### Your own AI (docs/byok.md)
+
+| Key               | Setting                                | Class                    | Server key     | Reason                                                                                                                                                       |
+| ----------------- | -------------------------------------- | ------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lk:byok`         | own AI on/off, its backend, the API key | **device, never synced** | —              | **excluded explicitly**: the key is a secret and stays on the device until the managed mode is approved; no binding exists (unit/byok.test.ts)            |
+| `lk:byok-ack`     | the privacy notice was acknowledged    | device                   | —              | per device, with the notice's version                                                                                                                        |
+| `lk:byok-backend` | provider, base URL, model              | **synced, opt-in**       | `byok.backend` | owner, 2026-11-05 14:25 JST: not secret, follows the account when 「同步到我的账号」 is ticked (`null` when not). **The one URL a pref may hold**: only that exact shape, under lib/byok/config.ts's URL rules; the server never fetches it |
 
 ### Not prefs (left alone)
 
