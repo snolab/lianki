@@ -148,6 +148,19 @@ export const GRADE_MAX_SENTENCES = 5_000;
 
 export type GradeResult = { ok: true; res: GradeResponse } | { ok: false; error: string };
 
+/** Shown → swiped, when both ends make sense: after it was shown, not in the future. */
+export function dwellOf(
+  body: { shownAt?: unknown; swipedAt?: unknown } | null | undefined,
+  now: Date,
+): number | null {
+  const t = (v: unknown) => (typeof v === "string" ? Date.parse(v) : NaN);
+  const shown = t(body?.shownAt);
+  const swiped = Number.isFinite(t(body?.swipedAt)) ? t(body?.swipedAt) : now.getTime();
+  return Number.isFinite(shown) && swiped > shown && swiped <= now.getTime() + 60_000
+    ? Math.round(swiped - shown)
+    : null;
+}
+
 /** Grade an item: validate its sentences against the book, FSRS each, log the read. */
 export async function gradeFor(
   db: D1Batch,
@@ -184,14 +197,7 @@ export async function gradeFor(
     idxs.push(i);
   }
   const words = idxs.reduce((n, i) => n + b.load[i], 0);
-  const t = (v: unknown) => (typeof v === "string" ? Date.parse(v) : NaN);
-  const shown = t(body.shownAt);
-  const swiped = Number.isFinite(t(body.swipedAt)) ? t(body.swipedAt) : now.getTime();
-  // A read time only when both ends make sense: after it was shown, not in the future.
-  const dwellMs =
-    Number.isFinite(shown) && swiped > shown && swiped <= now.getTime() + 60_000
-      ? Math.round(swiped - shown)
-      : null;
+  const dwellMs = dwellOf(body, now);
   const clientId =
     typeof body.clientId === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(body.clientId)
       ? body.clientId
