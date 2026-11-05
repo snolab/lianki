@@ -209,24 +209,6 @@ const dictionary = {
       sw: "Imeshindwa kunakili",
       mr: "कॉपी करता आले नाही",
     }),
-    markFailed: t({
-      en: "Could not save",
-      zh: "未能保存",
-      ja: "保存できませんでした",
-      ko: "저장하지 못했습니다",
-      hi: "सहेजा नहीं जा सका",
-      es: "No se pudo guardar",
-      fr: "Enregistrement impossible",
-      ar: "تعذّر الحفظ",
-      bn: "সংরক্ষণ করা যায়নি",
-      pt: "Não foi possível guardar",
-      ru: "Не удалось сохранить",
-      ur: "محفوظ نہیں ہو سکا",
-      id: "Tidak bisa menyimpan",
-      de: "Speichern fehlgeschlagen",
-      sw: "Imeshindwa kuhifadhi",
-      mr: "जतन करता आले नाही",
-    }),
     sayFailed: t({
       en: "Could not read it aloud",
       zh: "没能读出来",
@@ -334,42 +316,6 @@ const dictionary = {
       de: "Ab hier vorlesen",
       sw: "Soma kuanzia hapa",
       mr: "येथून वाचा",
-    }),
-    markNew: t({
-      en: "New to me",
-      zh: "我不认识",
-      ja: "知らない語",
-      ko: "모르는 단어",
-      hi: "मेरे लिए नया",
-      es: "No la conozco",
-      fr: "Je ne le connais pas",
-      ar: "لا أعرفها",
-      bn: "আমার কাছে নতুন",
-      pt: "Não conheço",
-      ru: "Не знаю",
-      ur: "میرے لیے نیا",
-      id: "Belum saya kenal",
-      de: "Kenne ich nicht",
-      sw: "Ni mpya kwangu",
-      mr: "मला नवीन",
-    }),
-    markedNew: t({
-      en: "Noted as new to you",
-      zh: "已记为不认识",
-      ja: "知らない語として記録しました",
-      ko: "모르는 단어로 기록했습니다",
-      hi: "आपके लिए नया दर्ज किया गया",
-      es: "Anotada como desconocida",
-      fr: "Noté comme inconnu",
-      ar: "سُجّلت كجديدة عليك",
-      bn: "আপনার কাছে নতুন হিসেবে রাখা হলো",
-      pt: "Anotada como desconhecida",
-      ru: "Отмечено как незнакомое",
-      ur: "آپ کے لیے نیا درج ہو گیا",
-      id: "Dicatat sebagai kata baru",
-      de: "Als unbekannt vermerkt",
-      sw: "Imerekodiwa kuwa mpya kwako",
-      mr: "तुमच्यासाठी नवीन म्हणून नोंदवले",
     }),
     knownShare: t({
       en: "{pct} of its words known",
@@ -541,8 +487,6 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Short confirmation shown on the reader's selection card and announced to screen readers after the selected text was copied to the clipboard. A past-participle phrase.",
   copyFailed:
     "Short error shown on the reader's selection card when the browser refused to copy the text or the link to the clipboard. A short phrase.",
-  markFailed:
-    "Short error on the reader's selection card when noting the selected word as new to the learner did not reach the server (offline, or an error). A short phrase.",
   sayFailed:
     "Short error on the reader's selection card when tapping a word, sentence or paragraph should have read the selected text aloud but no voice could (no voice for the language, network or server failure, playback refused); the technical reason is shown after it in parentheses. A short phrase.",
   retry:
@@ -555,10 +499,6 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Button on the reader's selection card when the learner selected a phrase (several words, or a multi-character expression) that is not yet one of their flashcards, or an inflected word whose dictionary form is not yet one: makes a spaced-repetition flashcard for that phrase (or for the word's dictionary form) in the book's own word list. An imperative phrase; 'card' means a flashcard.",
   readFromHere:
     "Button on the reader's selection card: starts read-aloud (text to speech) at the passage holding the selected unit and goes on from there. An imperative phrase.",
-  markNew:
-    "Button on the reader's selection card for a selected word: the learner says they did not recognise this word, which is recorded so it becomes a word to learn. A short first-person phrase meaning 'I don't know this word'.",
-  markedNew:
-    "Short confirmation on the reader's selection card after the learner pressed the button saying they did not know the selected word. A past-participle phrase addressed to the learner.",
   knownShare:
     "Familiarity summary on the reader's selection card for a sentence, paragraph, chapter or the book: {pct} is a percentage already formatted with its sign (e.g. 72%), the share of its running words the learner has mastered. Keep {pct} as is.",
   chapterSize:

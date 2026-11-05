@@ -136,7 +136,6 @@ import {
   tapVoice,
   type SayUnit,
   sentenceOfToken,
-  tokenOffset,
   tokenText,
   tokenWord,
   unitLink,
@@ -1610,38 +1609,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           .catch(() => setMade({ text: tr.makeFailed.value }));
     // His own selection: read exactly it (the same voice and rules as a tap's).
     if (u.kind === "range" && view.text) a.readAloud = () => tapRef.current(u, false);
-    if (u.kind === "word" && signedIn && material.readerV2 && hash)
-      a.markNew = () => {
-        // An explicit "not recognised" (books-plan, option A): the exposure log
-        // only; its sentence as the server cuts the line (lib/read/units.ts).
-        const ss = para(u.line).sentences;
-        const off = tokenOffset(ss, u.t);
-        const idx = segmentLine(lines[u.line] ?? "", normLang).findIndex(
-          ([s0, s1]) => off >= s0 && off < s1,
-        );
-        if (off < 0 || idx < 0) return setSelStatus(ts.markFailed.value);
-        void fetch(`/api/read/${id}/exposures`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            events: [
-              {
-                kind: "select",
-                sid: sentenceId(hash, u.line, idx),
-                word: tokenText(ss, u.t, u.t),
-                at: new Date().toISOString(),
-              },
-            ],
-          }),
-        })
-          .then((r) => r.json().catch(() => null))
-          .then((d: { accepted?: number; duplicates?: number } | null) =>
-            setSelStatus(
-              d && (d.accepted || d.duplicates) ? ts.markedNew.value : ts.markFailed.value,
-            ),
-          )
-          .catch(() => setSelStatus(ts.markFailed.value));
-      };
     return a;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [

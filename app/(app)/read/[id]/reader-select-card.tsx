@@ -43,7 +43,6 @@ export interface CardActions {
   readFrom?: () => void;
   /** Say exactly the selected text (a hand-made selection). */
   readAloud?: () => void;
-  markNew?: () => void;
   /** Review every word of the selection's paragraph (a range: its own words) in /words' review (reader-word-review.tsx). */
   reviewWords?: () => void;
   /** 制卡: `n` words of the paragraph have no card in any of his lists. */
@@ -386,11 +385,6 @@ export function SelectCard({
             data-action="make-phrase"
           >
             {t.makePhraseCard}
-          </button>
-        )}
-        {actions.markNew && (
-          <button type="button" className={btn} onClick={actions.markNew} data-action="mark-new">
-            {t.markNew}
           </button>
         )}
         {actions.readFrom && (
