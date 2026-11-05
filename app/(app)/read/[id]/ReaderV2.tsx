@@ -133,7 +133,9 @@ import {
   unitLink,
 } from "@/lib/read/reader-select";
 import { segmentLine } from "@/lib/read/units";
-import { sentenceId } from "@/lib/read/reader-api";
+import { parseSentenceId, sentenceId } from "@/lib/read/reader-api";
+import { CardGradeArea, useGradeWords } from "./reader-grade-handle";
+import { flashElements, useCardGrade, type FlashTargets } from "./use-card-grade";
 import { onPageLeave } from "@/lib/page-leave";
 import {
   decodeReviewRef,
@@ -860,29 +862,33 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   };
 
   const gradeAt = useCallback(
-    (index: number, raw: SwipeRating, el: HTMLElement | null) => {
+    (index: number, raw: SwipeRating, el: HTMLElement | null): Promise<GradeReceipt | null> => {
       const b = blocks[index];
-      if (!b || b.kind !== "item") return;
+      if (!b || b.kind !== "item") return Promise.resolve(null);
       // The core reports the default side's grade; the mirror is applied once, here.
       const r = sideRating(raw, mirrored());
       const top = (el ?? rowEl(index))?.getBoundingClientRect().top ?? eye();
       setGrades((g) => ({ ...g, [b.id]: r }));
       setAnnounce(fill(t.graded.value, { grade: gradeName(r) }));
-      void data.grade(rbook, b, r, { shownAt: shownAt.current.get(index) }).then((receipt) => {
-        undoStack.current.push({ receipt, index, top });
-        setCanUndo(true);
-        // A grade sent to the server can no longer be taken back.
-        setTimeout(
-          () => setCanUndo(undoStack.current.some((e) => data.canUndo(e.receipt))),
-          GRADE_HOLD_MS + 50,
-        );
-      });
+      const graded = data
+        .grade(rbook, b, r, { shownAt: shownAt.current.get(index) })
+        .then((receipt) => {
+          undoStack.current.push({ receipt, index, top });
+          setCanUndo(true);
+          // A grade sent to the server can no longer be taken back.
+          setTimeout(
+            () => setCanUndo(undoStack.current.some((e) => data.canUndo(e.receipt))),
+            GRADE_HOLD_MS + 50,
+          );
+          return receipt;
+        });
       const next = nextItem(index);
-      if (next < 0) return;
+      if (next < 0) return graded;
       // The next item takes the graded one's place: his finger stays put.
       placed.current = next;
       dispatch({ type: "select", line: next });
       requestAnimationFrame(() => placeBlock(next, top));
+      return graded;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [blocks, data, rbook, dispatch, placeBlock],
@@ -906,9 +912,40 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   }, [data, rbook, dispatch, placeBlock]);
 
   const onSwipe = useCallback(
-    (index: number, r: SwipeRating, el: HTMLElement) => gradeAt(index, r, el),
+    (index: number, r: SwipeRating, el: HTMLElement) => void gradeAt(index, r, el),
     [gradeAt],
   );
+  /** A paragraph grade from the card's handle taken back, held or sent. */
+  const revertPara = useCallback(
+    (receipt: GradeReceipt) => {
+      undoStack.current = undoStack.current.filter((e) => e.receipt !== receipt);
+      setCanUndo(undoStack.current.some((e) => data.canUndo(e.receipt)));
+      void data
+        .revert(rbook, receipt)
+        .then(() => setFamTick((n) => n + 1))
+        .catch(() => {});
+      setGrades((g) => {
+        const n = { ...g };
+        delete n[receipt.itemId];
+        const prev = data.lastGrade(receipt.itemId);
+        if (prev) n[receipt.itemId] = prev;
+        return n;
+      });
+    },
+    [data, rbook],
+  );
+  /** The card's grade keys and undo, when a selection's handle is there (set below). */
+  const cardKeys = useRef<{ grade: (r: SwipeRating) => boolean; undo: () => boolean; at: number }>({
+    grade: () => false,
+    undo: () => false,
+    at: 0,
+  });
+  /** U / ⌘Z: the latest of the card's grades and the swipes'. */
+  const undoAny = useCallback(() => {
+    const swipeAt = undoStack.current.at(-1)?.receipt.at ?? 0;
+    if (cardKeys.current.at >= swipeAt && cardKeys.current.undo()) return;
+    undo();
+  }, [undo]);
   const onTap = useCallback(
     (index: number) => {
       // Playing: a tap on another item reads from there.
@@ -942,16 +979,18 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       if (document.querySelector("[aria-modal=true]")) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        return undo();
+        return undoAny();
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === " ") {
         e.preventDefault();
         return togglePlay();
       }
-      if (e.key === "u") return undo();
+      if (e.key === "u") return undoAny();
       const r = keyRating(e);
       if (!r) return;
+      // A selection whose card has the grade handle: the keys grade it.
+      if (!e.repeat && cardKeys.current.grade(r)) return e.preventDefault();
       const i = playingRef.current ? player.line : eyeIndexRef.current;
       const b = blocks[i];
       if (b?.kind !== "item") return;
@@ -960,7 +999,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     };
     window.addEventListener("keydown", down);
     return () => window.removeEventListener("keydown", down);
-  }, [blocks, player.line, gradeAt, undo, togglePlay]);
+  }, [blocks, player.line, gradeAt, undoAny, togglePlay]);
 
   // ── Sheets ──
   const [sheet, setSheet] = useState<null | "toc" | "aa">(null);
@@ -1459,6 +1498,184 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     famChanged,
   ]);
 
+  // ── Grading the selection from its card (use-card-grade.ts) ──
+  const gradeWords = useGradeWords();
+  const tg = useIntlayer("read-grade-handle");
+  /** The sentence ids of a line as the server cuts it, and each one's start in the line. */
+  const lineCuts = useCallback(
+    (l: number) => segmentLine(lines[l] ?? "", normLang),
+    [lines, normLang],
+  );
+  /** A paragraph sentence's start offset in its line. */
+  const sentenceStart = useCallback(
+    (l: number, s: number) => {
+      let off = 0;
+      const ss = para(l).sentences;
+      for (let i = 0; i < s && i < ss.length; i++) for (const g of ss[i].segs) off += g.text.length;
+      return off;
+    },
+    [para],
+  );
+  const sidOf = useCallback(
+    (l: number, s: number) => {
+      const hash = material.bookHash;
+      const off = sentenceStart(l, s);
+      const idx = lineCuts(l).findIndex(([a, z]) => off >= a && off < z);
+      return hash && idx >= 0 ? sentenceId(hash, l, idx) : null;
+    },
+    [material.bookHash, sentenceStart, lineCuts],
+  );
+  const sentenceOfSid = useCallback(
+    (sid: string) => {
+      const p = parseSentenceId(sid);
+      const cut = p ? lineCuts(p.line)[p.index] : undefined;
+      if (!p || !cut) return null;
+      const ss = para(p.line).sentences;
+      for (let s = 0; s < ss.length; s++)
+        if (sentenceStart(p.line, s) === cut[0]) return { line: p.line, s };
+      return null;
+    },
+    [lineCuts, para, sentenceStart],
+  );
+  const cardSids = useCallback(
+    (u: Unit): string[] => {
+      const out: (string | null)[] = [];
+      if (u.kind === "sentence") out.push(sidOf(u.line, u.s));
+      else if (u.kind === "range")
+        for (const p of rangeParts(u)) {
+          const ss = lineSentences(p.line);
+          if (!ss) continue;
+          const a = p.from === null ? 0 : Math.max(0, sentenceOfToken(ss, p.from));
+          const z = p.to === null ? ss.length - 1 : Math.max(a, sentenceOfToken(ss, p.to));
+          for (let s = a; s <= z; s++) out.push(sidOf(p.line, s));
+        }
+      return out.filter((x): x is string => !!x);
+    },
+    [sidOf, lineSentences],
+  );
+  const cardLines = useCallback((u: Unit): number[] => {
+    if (u.kind === "range") return Array.from({ length: u.l1 - u.l0 + 1 }, (_, i) => u.l0 + i);
+    return "line" in u ? [u.line] : [];
+  }, []);
+  const cardWords = useCallback(
+    async (u: Unit): Promise<RangeWord[]> => {
+      if (u.kind === "range") {
+        const { ss, words } = lineWords(u);
+        return rangeWordsOf(words, ss, normLang);
+      }
+      if (u.kind !== "word" && u.kind !== "phrase") return [];
+      const ss = para(u.line).sentences;
+      const t0 = u.kind === "word" ? u.t : u.t0;
+      const t1 = u.kind === "word" ? u.t : u.t1;
+      const s = sentenceOfToken(ss, t0);
+      const w = u.kind === "word" ? tokenWord(ss, t0) : phraseKey(tokenText(ss, t0, t1));
+      if (!w || s < 0 || (u.kind === "phrase" && s !== sentenceOfToken(ss, t1))) return [];
+      const fw = fam?.map.get(w);
+      return rangeWordsOf([{ w, text: tokenText(ss, t0, t1), t: t0, s, fam: fw }], ss, normLang);
+    },
+    [lineWords, normLang, para, fam],
+  );
+  /** The words and sentences a batch touches: pulse while dragging, flash on grade and undo. */
+  const marked = useRef<HTMLElement[]>([]);
+  const markCard = useCallback(
+    (f: FlashTargets, how: "pulse" | "off" | SwipeRating | "undo") => {
+      for (const el of marked.current) el.removeAttribute("data-lk-pulse");
+      marked.current = [];
+      if (how === "off") return;
+      const els = flashElements(document, f, sentenceOfSid, (l) => {
+        const m = new Map<number, string>();
+        for (const st of para(l).sentences)
+          for (const g of st.segs) if (g.t >= 0 && g.w) m.set(g.t, g.w);
+        return m;
+      });
+      if (how === "pulse") {
+        for (const el of els) el.setAttribute("data-lk-pulse", "");
+        marked.current = els;
+        return;
+      }
+      for (const el of els) {
+        el.removeAttribute("data-lk-flash");
+        // Restart the animation on an element flashed a moment ago.
+        void el.offsetWidth;
+        el.setAttribute("data-lk-flash", String(how));
+      }
+      setTimeout(() => {
+        for (const el of els) el.removeAttribute("data-lk-flash");
+      }, 1200);
+    },
+    [sentenceOfSid, para],
+  );
+  const [gradeToast, setGradeToast] = useState<{ text: string; undo: boolean } | null>(null);
+  const [making, setMaking] = useState(false);
+  const cardGrade = useCardGrade({
+    id,
+    on: signedIn && !!material.readerV2 && !!material.bookHash,
+    unit: sel.unit,
+    tick: famTick,
+    sidsOf: cardSids,
+    wordsOf: cardWords,
+    linesOf: cardLines,
+    gradePara: (u, r) => {
+      const i = blockOfLine(blocks, u.line);
+      // gradeAt applies the mirror to a raw side: hand it the side that names `r`.
+      return gradeAt(i, sideRating(r, mirrored()), rowEl(i));
+    },
+    revertPara,
+    openReview: (u) => {
+      if (u.kind !== "chapter" && u.kind !== "book") openReview(u);
+    },
+    famChanged,
+    mark: markCard,
+    describe: gradeWords.describe,
+    onFailed: () => setGradeToast({ text: tg.failed.value, undo: false }),
+  });
+  /** A grade from the handle or the keys: one compact toast with Undo. */
+  const gradeCard = (r: SwipeRating) => {
+    const plan = cardGrade.plan;
+    if (plan.mode !== "grade" || !cardGrade.grade(r)) return false;
+    setMade(null);
+    setGradeToast({
+      text: fill(tg.graded.value, {
+        target: gradeWords.describe(plan, r),
+        grade: gradeWords.grades[r],
+      }),
+      undo: true,
+    });
+    return true;
+  };
+  const undoCard = () => {
+    if (!cardGrade.undo()) return false;
+    setGradeToast({ text: tg.undone.value, undo: false });
+    return true;
+  };
+  cardKeys.current = { grade: gradeCard, undo: undoCard, at: cardGrade.lastAt };
+  const gradeArea = sel.unit ? (
+    <CardGradeArea
+      plan={cardGrade.plan}
+      locale={String(locale)}
+      mirror={mirror}
+      openedAt={cardGrade.openedAt}
+      canUndo={cardGrade.canUndo}
+      lastWhat={cardGrade.lastWhat}
+      next={cardGrade.next}
+      onNextShown={cardGrade.clearNext}
+      making={making}
+      onMake={() => {
+        const u = sel.unit;
+        if (!u) return;
+        setMaking(true);
+        void cardWords(u)
+          .then((w) => makeCards(id, w))
+          .then(() => famChanged())
+          .catch(() => setGradeToast({ text: tr.makeFailed.value, undo: false }))
+          .finally(() => setMaking(false));
+      }}
+      onPreview={cardGrade.preview}
+      onGrade={(r) => void gradeCard(r)}
+      onUndo={() => void undoCard()}
+    />
+  ) : null;
+
   const eyeLine = blocks[eyeIndex] ? blockLine(blocks[eyeIndex]) : 0;
   const chapter = chapters.length ? chapterAt(chapters, eyeLine) : -1;
   const chapterTitle = chapter >= 0 ? chapters[chapter].title : material.title;
@@ -1660,6 +1877,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
               selMeaning?.card ?? (selGloss && selLemma ? { ...selGloss, other: false } : selGloss)
             }
             lemma={selLemma?.card ?? null}
+            grade={gradeArea}
             onClose={sel.clear}
           />
         )}
@@ -1673,6 +1891,14 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             returnTo={reviewBack}
             onClose={closeReview}
             onChanged={famChanged}
+          />
+        )}
+        {gradeToast && !made && (
+          <MadeToast
+            text={gradeToast.text}
+            undoLabel={tr.undo.value}
+            onUndo={gradeToast.undo ? () => void undoCard() : undefined}
+            onDone={() => setGradeToast(null)}
           />
         )}
         {made && (

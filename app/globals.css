@@ -1209,6 +1209,43 @@ html[data-motion="off"] *::after {
 .lk-book .lk-rail[data-grade="3"] { background: oklch(0.62 0.13 140 / 0.85); }
 .lk-book .lk-rail[data-grade="4"] { background: oklch(0.62 0.1 235 / 0.85); }
 
+/* The selection card's grade handle (reader-grade-handle.tsx): what a batch
+ * will grade pulses softly while the knob is dragged past a level, and
+ * flashes once in the grade's colour when it is graded (or taken back).
+ * Reduced motion: a still tint instead. */
+.lk-book [data-lk-pulse],
+.lk-book [data-lk-flash] {
+  border-radius: 0.2em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.lk-book [data-lk-pulse] { animation: lk-grade-pulse 1.1s ease-in-out infinite; }
+.lk-book [data-lk-flash] { animation: lk-grade-flash 1.1s ease-out 1 both; }
+.lk-book [data-lk-flash="1"] { --lk-flash: oklch(0.7 0.15 30 / 0.5); }
+.lk-book [data-lk-flash="2"] { --lk-flash: oklch(0.78 0.13 75 / 0.5); }
+.lk-book [data-lk-flash="3"] { --lk-flash: oklch(0.72 0.13 140 / 0.5); }
+.lk-book [data-lk-flash="4"] { --lk-flash: oklch(0.7 0.1 235 / 0.5); }
+.lk-book [data-lk-flash="undo"] { --lk-flash: oklch(0.65 0.02 250 / 0.4); }
+@keyframes lk-grade-pulse {
+  0%, 100% { background: oklch(0.7 0.08 250 / 0.06); }
+  50% { background: oklch(0.7 0.08 250 / 0.24); }
+}
+@keyframes lk-grade-flash {
+  0% { background: var(--lk-flash); }
+  100% { background: transparent; }
+}
+@media (prefers-color-scheme: dark) {
+  .lk-book [data-lk-flash="1"] { --lk-flash: oklch(0.5 0.13 30 / 0.6); }
+  .lk-book [data-lk-flash="2"] { --lk-flash: oklch(0.55 0.11 75 / 0.6); }
+  .lk-book [data-lk-flash="3"] { --lk-flash: oklch(0.5 0.11 140 / 0.6); }
+  .lk-book [data-lk-flash="4"] { --lk-flash: oklch(0.5 0.1 235 / 0.6); }
+  .lk-book [data-lk-flash="undo"] { --lk-flash: oklch(0.5 0.02 250 / 0.5); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-book [data-lk-pulse] { animation: none; background: oklch(0.7 0.08 250 / 0.2); }
+  .lk-book [data-lk-flash] { animation: none; background: var(--lk-flash); }
+}
+
 /* Word marks by familiarity (html[data-read-marks]; switching repaints only).
  * The line style is the cue: solid = learning (by band), dotted = new,
  * dashed = not recognised; mastered and names carry none. */

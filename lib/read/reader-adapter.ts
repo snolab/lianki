@@ -52,6 +52,11 @@ export interface ReaderData {
   /** This grade can still be taken back. */
   canUndo(receipt: GradeReceipt): boolean;
   undo(book: ReaderBook, receipt: GradeReceipt): Promise<void>;
+  /**
+   * Take a grade back even once it was sent (the selection card's handle):
+   * held, as `undo`; sent, the server restores its sentences' states.
+   */
+  revert(book: ReaderBook, receipt: GradeReceipt): Promise<void>;
   anchor(bookId: string): Promise<Anchor | null>;
   saveAnchor(bookId: string, a: Anchor, opts?: { leaving?: boolean }): void;
   /** Send what waits (the page is going away). */
@@ -93,6 +98,9 @@ export function localReaderData(): ReaderData {
       if (!list) return;
       const i = list.lastIndexOf(r.rating);
       if (i >= 0) list.splice(i, 1);
+    },
+    async revert(b, r) {
+      await this.undo(b, r);
     },
     anchor: async (id) => loadAnchor(id),
     saveAnchor: (id, a) => saveAnchor(id, a),

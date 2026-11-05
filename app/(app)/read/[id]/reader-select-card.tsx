@@ -14,7 +14,7 @@
 // scrolls it, and a failure's error line is its retry. Not modal: the book stays clickable under it, so the
 // next quick click widens the selection.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import type { Fam } from "@/lib/read/reader-model";
 import type { FamCounts, Unit } from "@/lib/read/reader-select";
@@ -111,6 +111,7 @@ export function SelectCard({
   lemma = null,
   onMoreTranslation = null,
   translateFailed = null,
+  grade = null,
   onClose,
 }: {
   view: UnitView;
@@ -131,6 +132,8 @@ export function SelectCard({
   onMoreTranslation?: (() => void) | null;
   /** The translation failed: its error line is the retry (null: it did not). */
   translateFailed?: (() => void) | null;
+  /** The grade handle (or 制卡 / when it is due), under the actions (reader-grade-handle.tsx). */
+  grade?: ReactNode;
   onClose: () => void;
 }) {
   const t = useIntlayer("read-select");
@@ -401,6 +404,7 @@ export function SelectCard({
           </span>
         )}
       </div>
+      {grade}
     </div>
   );
 }

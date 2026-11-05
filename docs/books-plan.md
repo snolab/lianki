@@ -604,6 +604,63 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   until the credits redesign (owner, 2026-11-04) it only logs
   `read.gloss.cost`.
 
+### Grading from the selection card (owner, 2026-11-05 02:50–03:20 JST)
+
+"点击句子之后允许在浮动卡片上拖动一个handle去评分"; "这样也能作用于选中的其他单位";
+"还能批量评分"; "handle本身可以内部不包括内容"; "专门放中间用来拖"; undo = drag
+up; "注意批量操作只应用于due卡和新词"; show what a batch touches by flashing
+it in the text, not a list of toasts.
+
+- **One control:** a plain knob resting in the middle of a short track at the
+  bottom of the selection card (`reader-grade-handle.tsx`). Dragged left or
+  right it grades by the /words swipe's own levels, feel and release rule
+  (`lib/read/grade-handle.ts` over `lib/words/swipe.ts`; the mirror setting
+  applies); the track takes the grade's colour and a hint line above it names
+  what will be graded ("这 3 句：良好", "这 3 句：简单 + 12 个词",
+  "（另 2 句未到期，跳过）"). The knob springs back to the middle. Dragged up
+  (when there is one) it takes the last batch back ("撤销：…").
+- **Safety:** tapping or clicking the text never grades; neither does a tap on
+  the knob (no travel), nor a press that starts within 450 ms of the card
+  opening (the opening tap). The axis locks on the first movement, as on
+  /words: a steep drag can never grade.
+- **What each unit grades** (`lib/read/batch-grade.ts` `handlePlan`):
+  - a **word** or **phrase**: its own card, only when due or new (never
+    reviewed). No card (in the book's list but never studied, or not
+    recognised at all) → 制卡 first (the same make-cards path: the book's own
+    deck, meaning from the decks and lemmas, then the AI gloss through
+    `chargeAi`), then the handle. Not due → no handle, "3 天后到期".
+  - a **sentence**: that sentence's FSRS card (the reader's per-sentence
+    grade, `gradeFor`, granularity `sentence`). Never takes words along.
+  - a **hand-made range** (several sentences, several paragraphs): every due
+    or never-graded sentence in it, as one batch; not-due ones are skipped and
+    counted. Easy also grades the range's due and new words Easy (cards made
+    first for those with none), in the same batch; any other grade opens the
+    range's word review when it has due or new words. Nothing due → the
+    handle is greyed out with the reason.
+  - a **paragraph**: exactly as its swipe grades it (`gradeAt`, the same
+    function), so whatever rules the swipe has apply.
+- **One call, one undo:** `POST /api/read/[id]/batch-grade` probes
+  (`{ probe }`: each sentence's and word's state and the due each grade would
+  give), grades (`{ clientId, rating, sentences, words }`, validated, the
+  server applying the same due/new filter again, words through /words'
+  `WordsD1Repo.review`) and takes back (`{ undo }`). A batch is held 8 s like
+  a swipe (Undo then just drops it) and sent on leaving the page. Once sent,
+  the undo restores every card exactly: sentences from `read_grade_undo`
+  (`db/migrations/0036`: each read keeps the rows it replaced for a day, a
+  paragraph swipe's too), words through `WordsD1Repo.undo` (the card before
+  its last review), cards the batch made removed again. A card changed since
+  by something else keeps that later grade.
+- **Feedback:** while the knob is past a level, the words and sentences that
+  will be graded pulse softly in place; on release they flash once in the
+  grade's colour and their underlines refresh when the batch lands; skipped
+  ones stay still; an undo flashes the same ones back (`data-lk-pulse`,
+  `data-lk-flash`, still tints under reduced motion). One compact toast holds
+  Undo. After a word, phrase or sentence, the card shows its next due briefly.
+- **Keys:** with a card open whose handle is on, 1–4 / L K J H grade it
+  (`keyRating`); U and ⌘Z undo the latest grade, the card's or a swipe's.
+- QA: `scripts/qa/qa-read-card-grade.mjs`; unit: `read-batch-grade`,
+  `read-grade-handle`.
+
 ### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
 
 "阅读模式不用我们主动分块", after "不要给用户规划任何死数字 … 我们不要用任何数量数字".

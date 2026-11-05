@@ -203,6 +203,21 @@ async function gradeStatements(db: D1Batch, ref: BookRef, g: GradeInput, sids: s
         .bind(ref.userId, ref.bookHash, g.rating, at, JSON.stringify(part), g.reviewId),
     ),
   ];
+  // What this read replaces, so it can be taken back after it was sent
+  // (revertGrade); a day's worth is kept.
+  const prev = g.targets.map((t) => ({ sid: t.sid, prev: before.get(t.sid) ?? null }));
+  stmts.push(
+    db
+      .prepare(
+        `INSERT INTO read_grade_undo (user_id, id, material_id, sentences, words, at)
+         VALUES (?, ?, ?, ?, NULL, ?)
+         ON CONFLICT (user_id, id) DO UPDATE SET sentences = excluded.sentences, at = excluded.at`,
+      )
+      .bind(ref.userId, g.reviewId, ref.materialId, JSON.stringify(prev), at),
+    db
+      .prepare("DELETE FROM read_grade_undo WHERE user_id = ? AND at < ?")
+      .bind(ref.userId, new Date(g.now.getTime() - UNDO_KEEP_MS).toISOString()),
+  );
   if (g.note) {
     stmts.push(
       noteInsert(
@@ -216,6 +231,108 @@ async function gradeStatements(db: D1Batch, ref: BookRef, g: GradeInput, sids: s
   }
   return stmts;
 }
+
+/** How long a sent grade can still be taken back (read_grade_undo). */
+export const UNDO_KEEP_MS = 24 * 3600_000;
+
+/** One graded sentence's row before the grade (null: never graded). */
+export type PrevSentence = { sid: string; prev: SentenceCardRow | null };
+
+/** A grade's undo record: what its sentences were, and the word cards a batch graded. */
+export async function undoRecord(
+  db: D1Like,
+  userId: string,
+  id: string,
+): Promise<{ materialId: string; sentences: PrevSentence[]; words: string | null } | null> {
+  const row = await db
+    .prepare(
+      "SELECT material_id, sentences, words FROM read_grade_undo WHERE user_id = ? AND id = ?",
+    )
+    .bind(userId, id)
+    .first<{ material_id: string; sentences: string; words: string | null }>();
+  if (!row) return null;
+  let sentences: PrevSentence[] = [];
+  try {
+    sentences = JSON.parse(row.sentences) as PrevSentence[];
+  } catch {}
+  return { materialId: row.material_id, sentences, words: row.words };
+}
+
+/** Writes the word side of a batch's undo record (lib/read/batch-grade.ts). */
+export function undoWordsStatement(
+  db: D1Like,
+  ref: BookRef,
+  id: string,
+  words: string,
+  at: string,
+) {
+  return db
+    .prepare(
+      `INSERT INTO read_grade_undo (user_id, id, material_id, sentences, words, at)
+       VALUES (?, ?, ?, '[]', ?, ?)
+       ON CONFLICT (user_id, id) DO UPDATE SET words = excluded.words`,
+    )
+    .bind(ref.userId, id, ref.materialId, words, at);
+}
+
+/**
+ * Take a sent grade back: every sentence it wrote returns to the row it had
+ * before (or to never graded), and its read is removed — only sentences no
+ * later read changed (their `rev` is still this read's). Returns how many
+ * were restored and how many a later read had changed. The record goes.
+ */
+export async function revertSentences(
+  db: D1Batch,
+  ref: BookRef,
+  id: string,
+  sentences: PrevSentence[],
+): Promise<{ restored: number; changed: number }> {
+  const now = new Map(
+    (
+      await cardsBySid(
+        db,
+        ref.userId,
+        sentences.map((x) => x.sid),
+      )
+    ).map((r) => [r.sid, r]),
+  );
+  const mine = sentences.filter((x) => now.get(x.sid)?.rev === id);
+  const stmts = mine.map(({ sid, prev }) =>
+    prev
+      ? db
+          .prepare(
+            `UPDATE read_sentence_cards SET card = ?, due = ?, last_rating = ?, rev = ?,
+               text_key = ?, line = ?, idx = ?, updated_at = ?
+             WHERE user_id = ? AND sid = ? AND rev = ?`,
+          )
+          .bind(
+            prev.card,
+            prev.due,
+            prev.last_rating,
+            prev.rev ?? "",
+            prev.text_key,
+            prev.line,
+            prev.idx,
+            prev.updated_at,
+            ref.userId,
+            sid,
+            id,
+          )
+      : db
+          .prepare("DELETE FROM read_sentence_cards WHERE user_id = ? AND sid = ? AND rev = ?")
+          .bind(ref.userId, sid, id),
+  );
+  stmts.push(
+    db.prepare("DELETE FROM read_reviews WHERE user_id = ? AND id = ?").bind(ref.userId, id),
+    db.prepare("DELETE FROM read_grade_undo WHERE user_id = ? AND id = ?").bind(ref.userId, id),
+  );
+  await db.batch(stmts);
+  return { restored: mine.length, changed: sentences.length - mine.length };
+}
+
+/** Sentence card rows by id (the user's own). */
+export const sentenceCards = (db: D1Like, userId: string, sids: string[]) =>
+  cardsBySid(db, userId, sids);
 
 async function cardsBySid(db: D1Like, userId: string, sids: string[]): Promise<SentenceCardRow[]> {
   if (!sids.length) return [];
@@ -732,6 +849,9 @@ export async function deleteReaderRows(
   const stmts = [
     db
       .prepare("DELETE FROM read_progress WHERE user_id = ? AND material_id = ?")
+      .bind(userId, materialId),
+    db
+      .prepare("DELETE FROM read_grade_undo WHERE user_id = ? AND material_id = ?")
       .bind(userId, materialId),
   ];
   if (bookHash) {
