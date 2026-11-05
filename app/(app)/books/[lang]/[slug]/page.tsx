@@ -3,32 +3,32 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
-import { bookKey, bookVisibleIn, catalogueBook } from "@/lib/books/catalogue";
+import { bookKey, bookVisibleIn } from "@/lib/books/catalogue";
 import { normaliseSlug } from "@/lib/books/slug";
 import { BookCard } from "../../BookCard";
-import { booksAccess, languageName } from "../../access";
+import { booksAccess, findBook, languageName } from "../../access";
 
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ lang: string; slug: string }>;
 
 /** The entry for a /books/<lang>/<slug> URL: the slug decoded and NFC-normalised. */
-function entryOf(lang: string, slug: string) {
+async function entryOf(lang: string, slug: string) {
   const s = normaliseSlug(slug);
   if (!s || !/^[A-Za-z0-9-]{2,35}$/.test(lang)) return null;
-  return catalogueBook(`${lang}/${s}`);
+  return findBook(lang, s);
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { lang, slug } = await params;
-  const b = entryOf(lang, slug);
+  const b = await entryOf(lang, slug);
   return b ? { title: `${b.title} — ${b.author}` } : {};
 }
 
 /** One public-domain book's page: its stable URL (lib/books/slug.ts). */
 export default async function BookPage({ params }: { params: Params }) {
   const { lang, slug } = await params;
-  const b = entryOf(lang, slug);
+  const b = await entryOf(lang, slug);
   if (!b) notFound();
   const locale = await appLocale();
   const t = getIntlayer("books-page", locale);

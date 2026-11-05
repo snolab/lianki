@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
-import { bookKey, catalogueByLang, catalogueFor } from "@/lib/books/catalogue";
-import { BookCard } from "./BookCard";
-import { booksAccess, languageName } from "./access";
+import { catalogueByLang, catalogueFor } from "@/lib/books/catalogue";
+import { BooksBrowser } from "./BooksBrowser";
+import { BookFinder } from "./BookFinder";
+import { allBooks, booksAccess, languageName } from "./access";
 
 export const dynamic = "force-dynamic";
 
@@ -28,16 +29,14 @@ export default async function BooksPage() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold mb-3">{String(t.title)}</h1>
         <p className="text-gray-600 dark:text-gray-400 mb-8">{String(t.intro)}</p>
-        {catalogueByLang(catalogueFor(country, year)).map(([lang, books]) => (
-          <section key={lang} className="mb-10" data-testid="books-lang" data-lang={lang}>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
-              {languageName(lang, locale)}
-            </h2>
-            {books.map((b) => (
-              <BookCard key={b.slug} book={b} ownedId={owned[bookKey(b)]} signedIn={signedIn} />
-            ))}
-          </section>
-        ))}
+        <BooksBrowser
+          groups={catalogueByLang(catalogueFor(country, year, await allBooks())).map(
+            ([lang, books]) => [lang, languageName(lang, locale), books],
+          )}
+          owned={owned}
+          signedIn={signedIn}
+        />
+        {signedIn && <BookFinder />}
       </div>
     </div>
   );
