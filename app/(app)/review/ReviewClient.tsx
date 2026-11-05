@@ -252,7 +252,7 @@ export default function ReviewClient({
   useEffect(() => {
     if (ret !== "back") return;
     const el = promptRef.current;
-    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     el?.focus({ preventScroll: true });
   }, [ret]);
 
@@ -314,161 +314,185 @@ export default function ReviewClient({
     4: "grade-easy",
   };
 
-  return (
-    <main className="max-w-xl mx-auto px-4 py-6 sm:py-8 space-y-5">
-      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="font-brush text-4xl">{t.title}</h1>
-        {counts && (
-          <p className="text-sm tabular-nums opacity-70" data-testid="review-counts">
-            {fill(t.counts.value, { due: counts.due, total: counts.total })}
-          </p>
+  const renderCard = (card: ReviewCard, options: GradeOption[] | null) => (
+    <section
+      className="lk-fs-cards flex min-h-0 flex-1 flex-col gap-4 rounded-2xl border border-black/10 dark:border-white/10 bg-white/60 dark:bg-gray-900/60 p-5 sm:p-6"
+      data-testid="review-card"
+      aria-busy={busy}
+    >
+      {/* What the card is: scrolls inside the card when it is long, so the
+          actions below always stay on screen. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+        <div className="my-auto min-w-0 space-y-2 py-1">
+          {flash && (
+            <p role="status" className="text-sm opacity-80">
+              {flash}
+            </p>
+          )}
+          <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.upNext}</p>
+          <h2 className="text-2xl sm:text-3xl font-semibold leading-snug break-words">
+            {card.title ?? card.url}
+          </h2>
+          <p className="text-sm opacity-60 break-all">{card.url}</p>
+        </div>
+      </div>
+
+      <div className="shrink-0 space-y-4" data-testid="review-actions">
+        <div className="space-y-2">
+          <a
+            href={card.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setRet((r) => returnStep(r, "open"))}
+            className={
+              back
+                ? "flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-blue-600 px-5 py-2 text-base font-semibold text-blue-600 dark:text-blue-400"
+                : "flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-3 text-lg font-semibold text-white"
+            }
+            data-testid="open-card"
+          >
+            {t.openCard} <span aria-hidden>↗</span>
+          </a>
+          {!back && <p className="text-sm opacity-70">{ret === "idle" ? t.openHint : t.opened}</p>}
+        </div>
+
+        {back && (
+          <h3
+            ref={promptRef}
+            tabIndex={-1}
+            role="status"
+            className="text-center text-2xl font-semibold outline-none"
+            data-testid="return-prompt"
+          >
+            {t.returnPrompt}
+          </h3>
         )}
-      </header>
+
+        <div
+          className={`grid grid-cols-4 gap-2 ${back ? "rounded-2xl p-2" : ""}`}
+          style={
+            back
+              ? {
+                  boxShadow: "0 0 0 3px oklch(0.62 0.19 259.8 / 0.55)",
+                  background: "oklch(0.62 0.19 259.8 / 0.08)",
+                }
+              : undefined
+          }
+          role="group"
+          aria-label={back ? t.returnPrompt.value : t.title.value}
+        >
+          {RATINGS.map((r) => {
+            const due = options?.find((o) => o.rating === r)?.due;
+            return (
+              <button
+                key={r}
+                type="button"
+                disabled={busy}
+                onClick={() => void grade(r)}
+                className={`${gradeTone[r]} flex min-h-16 flex-col items-center justify-center rounded-xl border-2 px-1 py-2 font-semibold disabled:opacity-50`}
+                style={{
+                  borderColor: "var(--grade)",
+                  color: "var(--grade)",
+                  background: "oklch(from var(--grade) l c h / 0.08)",
+                }}
+                data-testid={`grade-${r}`}
+              >
+                <span className="text-base leading-tight">{gradeLabel[r]}</span>
+                <span className="text-xs tabular-nums opacity-80">
+                  {due ?? "…"}
+                  {modality === "keyboard" && <kbd className="ms-1 opacity-70">{gradeKey(r)}</kbd>}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {confirmDelete ? (
+            <div
+              role="alertdialog"
+              aria-label={t.deleteCard.value}
+              className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-blue-600/40 p-3"
+            >
+              <p className="w-full">{t.deleteAsk}</p>
+              <button
+                type="button"
+                autoFocus
+                disabled={busy}
+                onClick={() => void remove()}
+                className="min-h-10 rounded-lg bg-blue-600 px-4 font-semibold text-white"
+                data-testid="delete-yes"
+              >
+                {t.deleteYes}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="min-h-10 rounded-lg border border-black/15 dark:border-white/15 px-4"
+              >
+                {t.deleteNo}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="min-h-10 rounded-lg px-2 opacity-70 hover:opacity-100 underline-offset-2 hover:underline"
+              data-testid="delete-card"
+            >
+              {t.deleteCard}
+            </button>
+          )}
+        </div>
+
+        {modality === "keyboard" && <p className="text-xs opacity-60">{t.keys}</p>}
+      </div>
+    </section>
+  );
+
+  // The due card fills the window (owner, 2026-11-05: "full page size so
+  // user don't scroll off it"): the title and the card take exactly the
+  // space under the top bar; the tutorial and the bookmarklet sit below it.
+  // Loading keeps the same box, so the first card lands without a jump, and
+  // each next card replaces the last inside it.
+  const staged = phase.s === "card" || phase.s === "loading";
+
+  const heading = (
+    <header className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+      <h1 className="font-brush text-4xl">{t.title}</h1>
+      {counts && (
+        <p className="text-sm tabular-nums opacity-70" data-testid="review-counts">
+          {fill(t.counts.value, { due: counts.due, total: counts.total })}
+        </p>
+      )}
+    </header>
+  );
+
+  return (
+    <main className={`max-w-xl mx-auto px-4 space-y-5 ${staged ? "pt-3 pb-6" : "py-6 sm:py-8"}`}>
+      {staged ? (
+        <div className="lk-review-stage flex flex-col gap-3" data-testid="review-stage">
+          {heading}
+          {phase.s === "loading" && (
+            <p className="flex flex-1 items-center justify-center text-lg opacity-70" role="status">
+              {t.loading}
+            </p>
+          )}
+          {phase.s === "card" && renderCard(phase.card, phase.options)}
+        </div>
+      ) : (
+        heading
+      )}
 
       {isLoggedIn && <Tutorial />}
 
-      {flash && (
+      {flash && !staged && (
         <p
           role="status"
           className="rounded-lg border border-black/10 dark:border-white/10 px-4 py-2 text-sm"
         >
           {flash}
         </p>
-      )}
-
-      {phase.s === "loading" && (
-        <p className="py-10 text-center text-lg opacity-70" role="status">
-          {t.loading}
-        </p>
-      )}
-
-      {phase.s === "card" && (
-        <section
-          className="lk-fs-cards rounded-2xl border border-black/10 dark:border-white/10 bg-white/60 dark:bg-gray-900/60 p-5 sm:p-6 space-y-5"
-          data-testid="review-card"
-          aria-busy={busy}
-        >
-          <div className="space-y-1 min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.upNext}</p>
-            <h2 className="text-xl font-semibold break-words">
-              {phase.card.title ?? phase.card.url}
-            </h2>
-            <p className="text-sm opacity-60 break-all">{phase.card.url}</p>
-          </div>
-
-          <div className="space-y-2">
-            <a
-              href={phase.card.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setRet((r) => returnStep(r, "open"))}
-              className={
-                back
-                  ? "flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-blue-600 px-5 py-2 text-base font-semibold text-blue-600 dark:text-blue-400"
-                  : "flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-3 text-lg font-semibold text-white"
-              }
-              data-testid="open-card"
-            >
-              {t.openCard} <span aria-hidden>↗</span>
-            </a>
-            {!back && (
-              <p className="text-sm opacity-70">{ret === "idle" ? t.openHint : t.opened}</p>
-            )}
-          </div>
-
-          {back && (
-            <h3
-              ref={promptRef}
-              tabIndex={-1}
-              role="status"
-              className="text-center text-2xl font-semibold outline-none"
-              data-testid="return-prompt"
-            >
-              {t.returnPrompt}
-            </h3>
-          )}
-
-          <div
-            className={`grid grid-cols-4 gap-2 ${back ? "rounded-2xl p-2" : ""}`}
-            style={
-              back
-                ? {
-                    boxShadow: "0 0 0 3px oklch(0.62 0.19 259.8 / 0.55)",
-                    background: "oklch(0.62 0.19 259.8 / 0.08)",
-                  }
-                : undefined
-            }
-            role="group"
-            aria-label={back ? t.returnPrompt.value : t.title.value}
-          >
-            {RATINGS.map((r) => {
-              const due = phase.options?.find((o) => o.rating === r)?.due;
-              return (
-                <button
-                  key={r}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void grade(r)}
-                  className={`${gradeTone[r]} flex min-h-16 flex-col items-center justify-center rounded-xl border-2 px-1 py-2 font-semibold disabled:opacity-50`}
-                  style={{
-                    borderColor: "var(--grade)",
-                    color: "var(--grade)",
-                    background: "oklch(from var(--grade) l c h / 0.08)",
-                  }}
-                  data-testid={`grade-${r}`}
-                >
-                  <span className="text-base leading-tight">{gradeLabel[r]}</span>
-                  <span className="text-xs tabular-nums opacity-80">
-                    {due ?? "…"}
-                    {modality === "keyboard" && (
-                      <kbd className="ms-1 opacity-70">{gradeKey(r)}</kbd>
-                    )}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            {confirmDelete ? (
-              <div
-                role="alertdialog"
-                aria-label={t.deleteCard.value}
-                className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-blue-600/40 p-3"
-              >
-                <p className="w-full">{t.deleteAsk}</p>
-                <button
-                  type="button"
-                  autoFocus
-                  disabled={busy}
-                  onClick={() => void remove()}
-                  className="min-h-10 rounded-lg bg-blue-600 px-4 font-semibold text-white"
-                  data-testid="delete-yes"
-                >
-                  {t.deleteYes}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(false)}
-                  className="min-h-10 rounded-lg border border-black/15 dark:border-white/15 px-4"
-                >
-                  {t.deleteNo}
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                className="min-h-10 rounded-lg px-2 opacity-70 hover:opacity-100 underline-offset-2 hover:underline"
-                data-testid="delete-card"
-              >
-                {t.deleteCard}
-              </button>
-            )}
-          </div>
-
-          {modality === "keyboard" && <p className="text-xs opacity-60">{t.keys}</p>}
-        </section>
       )}
 
       {phase.s === "notCard" && (
