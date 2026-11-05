@@ -29,6 +29,28 @@ const browser = await launchSilent(chromium);
 const iphone = devices["iPhone 13"];
 const shots = [];
 
+/**
+ * The due card fills the window (owner, 2026-11-05): at the top of the page
+ * the card's bottom sits within the last 10% of the window (above the bottom
+ * island on a phone), and the open button and the four grades are fully in view.
+ */
+async function fillsWindow(page) {
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.getByTestId("grade-3").locator("text=/\\d/").waitFor({ timeout: 10000 });
+  const m = await page.evaluate(() => {
+    const vh = innerHeight;
+    const card = document.querySelector("[data-testid=review-card]")?.getBoundingClientRect();
+    const ids = ["open-card", "grade-1", "grade-2", "grade-3", "grade-4"];
+    const inView = ids.every((id) => {
+      const r = document.querySelector(`[data-testid=${id}]`)?.getBoundingClientRect();
+      return !!r && r.top >= 0 && r.bottom <= vh;
+    });
+    return { vh, bottom: card?.bottom ?? 0, top: card?.top ?? vh, inView };
+  });
+  console.log(`  window ${m.vh}px, card ${Math.round(m.top)}–${Math.round(m.bottom)}px`);
+  return m.inView && m.bottom <= m.vh && m.bottom >= m.vh * 0.8 && m.top < m.vh * 0.25;
+}
+
 async function context(colorScheme) {
   const ctx = await newSilentContext(browser, { ...iphone, colorScheme, baseURL: BASE });
   return ctx;
@@ -107,7 +129,31 @@ for (const scheme of ["light", "dark"]) {
     `${scheme}: "Open this card" is a tap-opened link (target=_blank)`,
   );
   await shot("top");
-  await shot("card", "[data-testid=review-card]");
+  check(
+    await fillsWindow(page),
+    `${scheme}: iPhone — the due card fills the window, actions in view`,
+  );
+  const cardBox = () => page.getByTestId("review-card").boundingBox();
+  // Desktop: the same card fills a laptop window too.
+  {
+    const desk = await newSilentContext(browser, {
+      viewport: { width: 1440, height: 900 },
+      colorScheme: scheme,
+      baseURL: BASE,
+      storageState: state,
+    });
+    const dp = await desk.newPage();
+    await dp.goto("/review", { waitUntil: "networkidle" });
+    await dp.getByTestId("review-card").waitFor({ timeout: 20000 });
+    check(
+      await fillsWindow(dp),
+      `${scheme}: desktop — the due card fills the window, actions in view`,
+    );
+    const file = join(OUT, `review-desktop-${scheme}.png`);
+    await dp.screenshot({ path: file });
+    shots.push(file);
+    await desk.close();
+  }
   check(
     (await page.locator("[data-testid^=tutorial-step-]").count()) === 8,
     `${scheme}: tutorial has the 8 steps, side by side`,
@@ -137,6 +183,8 @@ for (const scheme of ["light", "dark"]) {
 
   if (scheme === "light") {
     // Grade by tap: the next card loads in place, no navigation.
+    await page.evaluate(() => scrollTo(0, 0));
+    const boxBefore = await cardBox();
     const first = await page.locator("[data-testid=review-card] h2").textContent();
     await page.getByTestId("grade-3").click();
     await page
@@ -152,7 +200,16 @@ for (const scheme of ["light", "dark"]) {
       .then(() => true)
       .catch(() => false);
     check(moved && page.url().endsWith("/review"), "grade → next card, same page");
-    await shot("graded", "[data-testid=review-card]");
+    const boxAfter = await cardBox();
+    check(
+      !!boxBefore &&
+        !!boxAfter &&
+        Math.abs(boxBefore.y - boxAfter.y) < 1 &&
+        Math.abs(boxBefore.height - boxAfter.height) < 1 &&
+        (await page.evaluate(() => scrollY)) === 0,
+      "the next card replaces this one in place (same box, no page jump)",
+    );
+    await shot("graded");
 
     // Delete asks first.
     await page.getByTestId("delete-card").click();
@@ -178,8 +235,10 @@ for (const scheme of ["light", "dark"]) {
     await page.getByTestId("tutorial-toggle").click();
 
     // ?url= for a page that is not a card yet: offered to add.
+    // "load", not "networkidle": this page never went idle within 30 s here
+    // (on main before the full-window card too); the text below is the wait.
     await page.goto(`/review?url=${encodeURIComponent("https://example.org/not-a-card")}`, {
-      waitUntil: "networkidle",
+      waitUntil: "load",
     });
     await page.getByText("This page is not a card yet").waitFor();
     await shot("not-card", "text=This page is not a card yet");
