@@ -2,9 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { LINE_SELECTABLE } from "@lianki/debug-chat/copy-line";
 
 describe("LINE_SELECTABLE", () => {
-  it("takes the pointer and turns selection and the iOS callout on", () => {
+  it("turns selection and the iOS callout on, but leaves the pointer to the log", () => {
     const c = LINE_SELECTABLE.split(" ");
-    expect(c).toContain("pointer-events-auto");
+    // At rest the history is click-through (log-engage.ts); the log's LOG_TOUCH gives it the pointer.
+    expect(c).not.toContain("pointer-events-auto");
     expect(c).toContain("select-text");
     expect(c).toContain("[-webkit-user-select:text]");
     expect(c).toContain("[-webkit-touch-callout:default]");

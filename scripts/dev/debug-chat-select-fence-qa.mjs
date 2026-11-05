@@ -12,6 +12,9 @@
  *     on the page text selects page text as before
  *   - an iOS-handle-like move (the focus set outside by script) is put back
  *
+ * The history is engaged first by a press-and-hold (log-engage.ts): at rest
+ * it takes no pointer.
+ *
  * Chromium and WebKit (desktop, 1280×800). Browsers are muted
  * (scripts/qa/silent.mjs); getUserMedia refused: nothing is recorded.
  *
@@ -132,6 +135,15 @@ try {
       await page.waitForTimeout(150);
       return { mid, end: await where(page) };
     };
+
+    // The history is click-through at rest (log-engage.ts): a press-and-hold
+    // engages it, then a click collapses the line it selected.
+    await page.mouse.move(lb.x + 6, lb.y + lb.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(750);
+    await page.mouse.up();
+    await page.mouse.click(lb.x + 6, lb.y + lb.height / 2);
+    await page.waitForTimeout(200);
 
     // Out over the top of the chat, onto the page text (far left, near the top).
     const up = await drag({ x: 20, y: Math.max(10, cb.y - 200) });

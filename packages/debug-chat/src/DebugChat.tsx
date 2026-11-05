@@ -98,6 +98,8 @@ import {
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
 import { LINE_SELECTABLE } from "./copy-line";
+import { type Held, logEngaged, typingLook } from "./log-engage";
+import { wireLogHold } from "./log-hold-dom";
 import { installSelectFence } from "./select-fence-dom";
 import {
   barInGlass,
@@ -1298,6 +1300,14 @@ export function DebugChat({
    * last 3 lines, scrolled to the end.
    */
   const [typing, setTyping] = useState(false);
+  /**
+   * The history is held engaged (log-engage.ts): by a press-and-hold on it, a
+   * press on it while typing, or a selection open in the chat; a press
+   * outside the chat drops it.
+   */
+  const [held, setHeld] = useState<Held>(false);
+  /** Typing, for the log's height, the glass and the opacity (held open counts). */
+  const typingNow = typingLook(typing, held);
   /** The log's last scroll while shown (kept across the tree taking its place). */
   const lastLogScroll = useRef(0);
   const onLogScroll = () => {
@@ -1382,7 +1392,7 @@ export function DebugChat({
       pref: compactPref,
       open,
       expanded,
-      typing,
+      typing: typingNow,
       scrolledUp,
       busy: panel !== "none" || fullLog !== "off",
       holdUntil: holdUntil.current,
@@ -1392,7 +1402,7 @@ export function DebugChat({
     if (d === "now") return setExpanded(false);
     const t = setTimeout(() => setFoldTick((n) => n + 1), d);
     return () => clearTimeout(t);
-  }, [compactPref, open, expanded, typing, scrolledUp, panel, fullLog, foldTick]);
+  }, [compactPref, open, expanded, typingNow, scrolledUp, panel, fullLog, foldTick]);
   // A reply arriving while the whole chat is up: he is reading it, so the
   // fold waits for its reading time (float-lines.ts dwellMs).
   const lastMsg = messages.at(-1);
@@ -1858,16 +1868,18 @@ export function DebugChat({
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
-  // Compact again (the input lost focus): back to the newest lines.
+  // Compact again (the input lost focus): back to the newest lines. Not while
+  // held open: a press on a line took the focus, and the lines must stay put
+  // under the drag that selects them.
   useLayoutEffect(() => {
-    if (typing) return;
+    if (typingNow) return;
     const el = log.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight });
     atEnd.current = true;
     setScrolledUp(false);
     setBelow(0);
-  }, [typing]);
+  }, [typingNow]);
   useLayoutEffect(() => {
     if (!open) return;
     const added = messages.length - shown.current;
@@ -1999,6 +2011,25 @@ export function DebugChat({
   const micOn = useRef(false);
   /** The mic is on (drives the open log too: iOS drops input focus on a button tap). */
   const [micActive, setMicActive] = useState(false);
+  /** The history takes the pointer: wheel and drag scroll it, its lines select (log-engage.ts). */
+  const engaged = logEngaged({ typing, plusMenu: attachMenu || picking, micActive, held });
+  const busyRef = useRef(false);
+  busyRef.current = engaged && !held;
+  // At rest the history is click-through; a press-and-hold on it engages it
+  // and selects the line under the finger (log-hold-dom.ts). Events only.
+  useEffect(
+    () =>
+      wireLogHold({
+        log: () => {
+          const el = treeShown.current ? treeBodyEl.current : log.current;
+          return el && !el.hidden ? el : null;
+        },
+        chat: () => root.current,
+        busy: () => busyRef.current,
+        onHeld: setHeld,
+      }),
+    [],
+  );
   // The tree's fade follows its size: on opening, switching mode, expanding.
   useLayoutEffect(() => {
     if (tree) onTreeScroll();
@@ -2592,9 +2623,9 @@ export function DebugChat({
         {...withClass(
           // Expanded: the log's surface at its open height (the log's box).
           logSurface({
-            expanded: !floating || typing || micActive,
+            expanded: !floating || typingNow || micActive,
             fade: treeFade,
-            touch: !floating && (typing || micActive),
+            touch: !floating && engaged,
           }),
           // Expanded: the log's box at its open height (30vh), whatever it holds.
           `min-w-0 flex-1 ${!floating ? "h-[30vh]" : ""}`,
@@ -3332,7 +3363,7 @@ export function DebugChat({
   /** The + menu or its file picker is up: in use, as the focused input is. */
   const plusMenu = attachMenu || picking;
   const typingGlassShown = showTypingGlass({
-    typing,
+    typing: typingNow,
     plusMenu,
     open,
     fullLog: fullLog !== "off",
@@ -3394,7 +3425,7 @@ export function DebugChat({
         // Only the slide into or out of the edge animates: a drag follows the finger.
         transition: sliding && !holding ? "opacity 150ms, transform 220ms ease-out" : undefined,
       }}
-      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing, plusMenu, micActive, fullLog: fullLog !== "off" }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing: typingNow, plusMenu, micActive, fullLog: fullLog !== "off" }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
@@ -3458,9 +3489,9 @@ export function DebugChat({
         data-full={fullLog === "off" ? undefined : fullLog}
         {...fullSurface(
           logSurface({
-            expanded: typing || micActive || (compactPref && expanded),
+            expanded: typingNow || micActive || (compactPref && expanded),
             fade,
-            touch: typing || micActive,
+            touch: engaged,
           }),
         )}
       >
@@ -3543,7 +3574,7 @@ export function DebugChat({
                         title={
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
-                        // The log is click-through; its text is not: long-press → Copy (copy-line.ts).
+                        // Selectable; it takes the pointer while the log is engaged (log-engage.ts).
                         className={LINE_SELECTABLE}
                       >
                         {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
