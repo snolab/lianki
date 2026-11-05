@@ -189,3 +189,20 @@ export function spanWords(
   }
   return { sentences, words };
 }
+
+// ── After a paragraph grade (owner, 2026-11-05 02:31 / 02:32 JST) ─────────
+
+/**
+ * What follows an item's grade (the grade given, after the mirror): Easy
+ * also grades its due and new words Easy ("easy"); any other grade opens
+ * the item's word review, but only when it has a word to review (`n`: the
+ * item's due and new words, from the server's plan; null: not known).
+ */
+export function afterGrade(rating: 1 | 2 | 3 | 4, n: number | null): "easy" | "review" | "none" {
+  if (rating === 4) return "easy";
+  return n ? "review" : "none";
+}
+
+/** The words of a plan still to count: not already in an Easy grade waiting to be sent. */
+export const planLeft = (words: readonly string[], waiting: ReadonlySet<string>) =>
+  words.filter((w) => !waiting.has(w));

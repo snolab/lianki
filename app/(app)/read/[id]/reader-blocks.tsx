@@ -186,6 +186,11 @@ export type RowCommon = {
   mirror: boolean;
   onSwipe: (index: number, r: SwipeRating, el: HTMLElement) => void;
   onTap: (index: number) => void;
+  /**
+   * The level a sliding item shows (−2…2, the default side's, before the
+   * mirror; 0: on its way or home): the Easy hint follows it (ReaderV2).
+   */
+  onLevel?: (index: number, k: number) => void;
   /** The list's one grade strip (js variant): put under the sliding item. */
   underlay: RefObject<HTMLDivElement | null>;
   scrolling: () => boolean;
@@ -290,17 +295,27 @@ function TouchItem(p: RowCommon) {
       u.style.setProperty("--a", `${a}px`);
       showReveal(u, 0);
       u.style.visibility = "visible";
+      p.onLevel?.(p.index, 0);
     },
     onLevel: (k) => {
       navigator.vibrate?.(Math.abs(k) === 2 ? 12 : 6);
       showReveal(p.underlay.current, k);
+      p.onLevel?.(p.index, k);
     },
     onRelease: (r) =>
       p.log?.({ finger: r.finger, v: r.v, projected: r.projected, rating: r.rating, a }),
   });
   // The strip hides again once the item is home.
+  const slid = useRef(false);
   useLayoutEffect(() => {
     if (core.phase === "idle" && p.underlay.current) p.underlay.current.style.visibility = "hidden";
+    // Home again after a slide: the Easy hint goes.
+    if (core.phase !== "idle") slid.current = true;
+    else if (slid.current) {
+      slid.current = false;
+      p.onLevel?.(p.index, 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [core.phase, p.underlay]);
   const value: SwipeRowValue = {
     iface: 1,
@@ -351,6 +366,7 @@ function NativeItem(p: RowCommon) {
   const phase = useNativeSlip(scroller, a, {
     onTap: () => p.onTap(p.index),
     onSwipe: (r) => face.current && p.onSwipe(p.index, r, face.current),
+    onReveal: (k) => p.onLevel?.(p.index, k),
     scrolling: p.scrolling,
     feel,
     reducedMotion,

@@ -160,6 +160,22 @@ export interface GradeRequest {
   clientId?: string;
   /** Optional note for this read. */
   note?: string;
+  /**
+   * With an Easy grade only: the item's words, to grade Easy with it (their
+   * due cards, and new words carded in the book's list first;
+   * lib/read/book-word-list.ts gradeEasyWords). `day`: his local day, as
+   * /words sends it.
+   */
+  easyWords?: {
+    day: string;
+    words: {
+      w: string;
+      ex?: string | null;
+      term?: string | null;
+      reading?: string | null;
+      back?: string | null;
+    }[];
+  };
 }
 
 export interface GradeResponse {
@@ -169,6 +185,8 @@ export interface GradeResponse {
   cards: Record<SentenceId, SentenceState>;
   fam: Familiarity;
   note: ReadNote | null;
+  /** The words an Easy grade graded with it (easyWords), when sent. */
+  words?: { graded: number; made: number };
 }
 
 // ── GET /api/read/[id]/history?from=<line>&to=<line> ──

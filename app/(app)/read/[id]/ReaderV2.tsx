@@ -82,7 +82,14 @@ import { anchorAt, type Anchor } from "@/lib/read/reader-pos";
 import { CHROME_FULL, SCROLL_KEYS, chromeStep, type ChromeState } from "@/lib/read/reader-chrome";
 import { setReading, readingUi } from "@/lib/nav/reading";
 import { SwipeFeelProvider } from "@/lib/words/swipe-core";
-import { SWIPE_MIRROR_KEY, keyRating, sideRating, type SwipeRating } from "@/lib/words/swipe";
+import {
+  SWIPE_MIRROR_KEY,
+  SWIPE_RETURN_S,
+  keyRating,
+  levelRating,
+  sideRating,
+  type SwipeRating,
+} from "@/lib/words/swipe";
 import { swipeVariant } from "@/lib/words/swipe-ab";
 import { ProgressRingSvg } from "@/app/components/progress-ring";
 import { fill } from "@/lib/nav/nav-core";
@@ -93,6 +100,7 @@ import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
+import { useItemWords, type ItemPlan } from "./use-item-words";
 import {
   SelectCard,
   type CardActions,
@@ -112,7 +120,7 @@ import {
   unmakeCards,
   type RangeWord,
 } from "./reader-word-review";
-import { missingWords, paraWords, spanWords } from "@/lib/read/word-review";
+import { afterGrade, missingWords, paraWords, spanWords } from "@/lib/read/word-review";
 import {
   COMBO_MS,
   type ComboCtx,
@@ -121,6 +129,7 @@ import {
   countSentences,
   decodeUnit,
   rangeParts,
+  RANGE_MAX_LINES,
   rangeText,
   emptyCounts,
   sameUnit,
@@ -871,6 +880,27 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     return -1;
   };
 
+  // What follows a grade (lib/read/word-review.ts afterGrade): Easy grades
+  // the item's due and new words Easy with it; another grade opens its words'
+  // review (set below, where the review lives).
+  const itemWords = useItemWords({
+    id,
+    on: signedIn && data.source === "server",
+    para,
+    fam: fam?.map ?? null,
+    normLang,
+  });
+  const afterGradeRef = useRef<
+    (
+      index: number,
+      r: SwipeRating,
+      plan: Promise<ItemPlan | null>,
+      seq: number,
+      receipt: GradeReceipt,
+    ) => void
+  >(() => {});
+  /** Grades given this visit: a review opens only if no grade came after its own. */
+  const gradeSeq = useRef(0);
   const gradeAt = useCallback(
     (index: number, raw: SwipeRating, el: HTMLElement | null): Promise<GradeReceipt | null> => {
       const b = blocks[index];
@@ -880,10 +910,25 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       const top = (el ?? rowEl(index))?.getBoundingClientRect().top ?? eye();
       setGrades((g) => ({ ...g, [b.id]: r }));
       setAnnounce(fill(t.graded.value, { grade: gradeName(r) }));
+      const seq = ++gradeSeq.current;
+      const plan = itemWords.planOf(b);
+      // Easy: the words ride in the grade's own request, sent when its Undo
+      // hold ends; an undo inside the hold sends neither.
+      const easyWords =
+        r === 4
+          ? plan.then((p) =>
+              p ? { day: new Date().toLocaleDateString("en-CA"), words: p.words } : null,
+            )
+          : undefined;
       const graded = data
-        .grade(rbook, b, r, { shownAt: shownAt.current.get(index) })
+        .grade(rbook, b, r, {
+          shownAt: shownAt.current.get(index),
+          easyWords,
+          onSent: r === 4 ? () => setFamTick((n) => n + 1) : undefined,
+        })
         .then((receipt) => {
           undoStack.current.push({ receipt, index, top });
+          afterGradeRef.current(index, r, plan, seq, receipt);
           setCanUndo(true);
           // A grade sent to the server can no longer be taken back.
           setTimeout(
@@ -892,8 +937,12 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           );
           return receipt;
         });
+      setEasyHint(null);
       const next = nextItem(index);
       if (next < 0) return graded;
+      // Its count is ready by the time he slides it.
+      const nb = blocks[next];
+      if (nb.kind === "item") void itemWords.planOf(nb);
       // The next item takes the graded one's place: his finger stays put.
       placed.current = next;
       dispatch({ type: "select", line: next });
@@ -901,25 +950,68 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       return graded;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [blocks, data, rbook, dispatch, placeBlock],
+    [blocks, data, rbook, dispatch, placeBlock, itemWords],
   );
-  const undo = useCallback(() => {
-    undoStack.current = undoStack.current.filter((e) => data.canUndo(e.receipt));
-    const last = undoStack.current.pop();
-    setCanUndo(undoStack.current.length > 0);
-    if (!last) return;
-    void data.undo(rbook, last.receipt);
-    setGrades((g) => {
-      const n = { ...g };
-      delete n[last.receipt.itemId];
-      const prev = data.lastGrade(last.receipt.itemId);
-      if (prev) n[last.receipt.itemId] = prev;
-      return n;
-    });
-    placed.current = last.index;
-    dispatch({ type: "select", line: last.index });
-    requestAnimationFrame(() => placeBlock(last.index, last.top));
-  }, [data, rbook, dispatch, placeBlock]);
+  /** Closes the review a grade opened, when that grade is undone. */
+  const undoneRef = useRef<(receipt: GradeReceipt) => void>(() => {});
+  /** Undo the last grade, or (the Easy toast's Undo) this one, while its hold lasts. */
+  const undoGrade = useCallback(
+    (which: GradeReceipt | null) => {
+      undoStack.current = undoStack.current.filter((e) => data.canUndo(e.receipt));
+      const at = which
+        ? undoStack.current.findIndex((e) => e.receipt === which)
+        : undoStack.current.length - 1;
+      const last = at >= 0 ? undoStack.current.splice(at, 1)[0] : undefined;
+      setCanUndo(undoStack.current.length > 0);
+      if (!last) return;
+      void data.undo(rbook, last.receipt);
+      if (last.receipt.clientId) itemWords.release(last.receipt.clientId);
+      gradeSeq.current++;
+      undoneRef.current(last.receipt);
+      setGrades((g) => {
+        const n = { ...g };
+        delete n[last.receipt.itemId];
+        const prev = data.lastGrade(last.receipt.itemId);
+        if (prev) n[last.receipt.itemId] = prev;
+        return n;
+      });
+      placed.current = last.index;
+      dispatch({ type: "select", line: last.index });
+      requestAnimationFrame(() => placeBlock(last.index, last.top));
+    },
+    [data, rbook, dispatch, placeBlock, itemWords],
+  );
+  const undo = useCallback(() => undoGrade(null), [undoGrade]);
+
+  // ── The Easy hint: while an item rests on the Easy level, how many of its
+  // words go Easy with it (the server's plan; owner, 2026-11-05 02:31 JST) ──
+  const [easyHint, setEasyHint] = useState<{ index: number; top: number; n: number | null } | null>(
+    null,
+  );
+  const onLevel = useCallback(
+    (index: number, k: number) => {
+      const b = blocks[index];
+      if (b?.kind !== "item") return;
+      const r = k ? sideRating(levelRating(k), mirrored()) : null;
+      if (r !== 4) {
+        setEasyHint((h) => (h?.index === index ? null : h));
+        // A slide has started: ask the plan before it reaches a grade.
+        if (k) void itemWords.planOf(b);
+        return;
+      }
+      const top = rowEl(index)?.getBoundingClientRect().top ?? 0;
+      setEasyHint({ index, top, n: itemWords.countNow(b) });
+      void itemWords
+        .planOf(b)
+        .then(
+          (p) =>
+            p &&
+            setEasyHint((h) => (h?.index === index ? { ...h, n: itemWords.left(p).length } : h)),
+        );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [blocks, itemWords],
+  );
 
   const onSwipe = useCallback(
     (index: number, r: SwipeRating, el: HTMLElement) => void gradeAt(index, r, el),
@@ -930,6 +1022,11 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     (receipt: GradeReceipt) => {
       undoStack.current = undoStack.current.filter((e) => e.receipt !== receipt);
       setCanUndo(undoStack.current.some((e) => data.canUndo(e.receipt)));
+      // An Easy grade's words go back with it (the same undo record), and a
+      // review it opened closes.
+      if (receipt.clientId) itemWords.release(receipt.clientId);
+      gradeSeq.current++;
+      undoneRef.current(receipt);
       void data
         .revert(rbook, receipt)
         .then(() => setFamTick((n) => n + 1))
@@ -942,7 +1039,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         return n;
       });
     },
-    [data, rbook],
+    [data, rbook, itemWords],
   );
   /** The card's grade keys and undo, when a selection's handle is there (set below). */
   const cardKeys = useRef<{ grade: (r: SwipeRating) => boolean; undo: () => boolean; at: number }>({
@@ -1035,6 +1132,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     range: boolean;
     ref: string;
     adopt: boolean;
+    /** Opened by this item grade (afterGrade): an undo of it closes the review. */
+    from?: GradeReceipt;
   } | null>(null);
   const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
   const reviewBack = useRef<HTMLElement | null>(null);
@@ -1209,6 +1308,65 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         : undefined,
     [review],
   );
+  // After an item's grade (lib/read/word-review.ts afterGrade): Easy shows
+  // how many words went Easy with it (Undo takes back the lot, inside the
+  // hold); any other grade opens the item's word review once the swipe has
+  // settled, when it has a due or new word — not after a later grade, not
+  // over a sheet or another review. Closing it focuses the next item.
+  const [easyToast, setEasyToast] = useState<{ text: string; receipt: GradeReceipt } | null>(null);
+  /** The URL ref of an item's review: its paragraph when it is one whole paragraph, else its token range. */
+  const itemRef = (index: number) => {
+    const b = blocks[index];
+    if (b?.kind !== "item") return "p0";
+    const first = b.pieces[0];
+    const last = b.pieces[b.pieces.length - 1];
+    const whole = b.pieces.length === 1 && first.s0 === 0 && first.s1 < 0;
+    const toks = (line: number, s: number) =>
+      (para(line).sentences[s]?.segs ?? []).filter((g) => g.t >= 0).map((g) => g.t);
+    const t0 = Math.min(...toks(first.line, first.s0));
+    const lastS = last.s1 < 0 ? para(last.line).sentences.length - 1 : last.s1 - 1;
+    const t1 = Math.max(...toks(last.line, lastS));
+    const ok =
+      Number.isFinite(t0) &&
+      Number.isFinite(t1) &&
+      (last.line > first.line || t1 > t0) &&
+      last.line - first.line <= RANGE_MAX_LINES;
+    return whole || !ok ? `p${first.line}` : `r${first.line}.${t0}-${last.line}.${t1}`;
+  };
+  afterGradeRef.current = (index, r, planP, seq, receipt) => {
+    void planP.then((p) => {
+      if (!p) return;
+      const left = itemWords.left(p);
+      if (afterGrade(r, left.length) === "easy") {
+        if (receipt.clientId) itemWords.hold(receipt.clientId, left);
+        if (left.length)
+          setEasyToast({ text: fill(t.easyDone.value, { n: String(left.length) }), receipt });
+        return;
+      }
+      if (afterGrade(r, left.length) !== "review") return;
+      const words = itemWords.reviewWords(p);
+      setTimeout(
+        () => {
+          // Not after a later grade or an undo, not over a sheet or another review.
+          if (seq !== gradeSeq.current || document.querySelector("[aria-modal=true]")) return;
+          const next = nextItem(index);
+          const el = rowEl(next >= 0 ? next : index);
+          if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+          reviewBack.current = el ?? null;
+          if (playingRef.current) dispatch({ type: "stop" });
+          sel.clear();
+          setReview({ words, range: false, ref: itemRef(index), adopt: false, from: receipt });
+        },
+        // The next item has taken the graded one's place.
+        Math.round(SWIPE_RETURN_S * 1000) + 50,
+      );
+    });
+  };
+  undoneRef.current = (receipt) => {
+    setReview((rv) => (rv?.from === receipt ? null : rv));
+    setEasyToast((x) => (x?.receipt === receipt ? null : x));
+  };
+
   const makeLine = useCallback(
     (u: ReviewUnit) => {
       const { ss, words } = lineWords(u);
@@ -1708,6 +1866,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       mirror,
       onSwipe,
       onTap,
+      onLevel,
       underlay,
       scrolling,
     }),
@@ -1724,6 +1883,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       mirror,
       onSwipe,
       onTap,
+      onLevel,
       scrolling,
     ],
   );
@@ -1910,6 +2070,25 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             onUndo={gradeToast.undo ? () => void undoCard() : undefined}
             onDone={() => setGradeToast(null)}
           />
+        )}
+        {easyToast && !made && !gradeToast && (
+          <MadeToast
+            text={easyToast.text}
+            undoLabel={tr.undo.value}
+            onUndo={() => undoGrade(easyToast.receipt)}
+            onDone={() => setEasyToast(null)}
+          />
+        )}
+        {easyHint && (
+          <p
+            aria-hidden
+            data-testid="read-easy-hint"
+            data-n={easyHint.n ?? undefined}
+            className="lk-glass pointer-events-none fixed inset-x-0 z-[var(--lk-z-overlay-toast)] mx-auto w-max max-w-[calc(100vw-2rem)] rounded-full border border-[var(--glass-line)] px-3 py-1 text-sm font-medium text-[oklch(0.42_0.12_150)] shadow-[0_8px_24px_-10px_oklch(0.22_0.015_65/0.4)] dark:text-[oklch(0.82_0.12_150)]"
+            style={{ top: `max(calc(env(safe-area-inset-top) + 0.5rem), ${easyHint.top - 44}px)` }}
+          >
+            {easyHint.n ? fill(t.easyHint.value, { n: String(easyHint.n) }) : t.easyHintAlone.value}
+          </p>
         )}
         {made && (
           <MadeToast

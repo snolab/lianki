@@ -141,7 +141,12 @@ type Pending = {
   inflight: boolean;
   /** The last line of the graded item (the high-water mark). */
   line: number;
+  /** An Easy grade's words, still being gathered: joined to the request before it is sent. */
+  words?: Promise<EasyWords | null | undefined>;
+  onSent?: () => void;
 };
+
+type EasyWords = NonNullable<GradeRequest["easyWords"]>;
 
 export function serverReaderData(
   materialId: string,
@@ -164,6 +169,21 @@ export function serverReaderData(
     const p = pending.get(clientId);
     if (!p) return;
     clearTimeout(p.timer);
+    // An Easy grade's words ride in the same request: wait for them (the
+    // grade is no longer undoable from here, as any grade being sent).
+    if (p.words) {
+      const words = p.words;
+      p.words = undefined;
+      p.inflight = true;
+      void words
+        .catch(() => null)
+        .then((w) => {
+          if (w?.words.length) p.req.easyWords = w;
+          p.inflight = false;
+          send(clientId, keepalive);
+        });
+      return;
+    }
     if (!p.inflight) unsent.add(materialId, p.req);
     p.inflight = true;
     void fetch(`${base}/grade`, {
@@ -177,6 +197,7 @@ export function serverReaderData(
         pending.delete(clientId);
         unsent.drop(clientId);
         highLine = Math.max(highLine, p.line);
+        p.onSent?.();
       })
       .catch((err) => {
         console.error("read: grade failed, trying again", err);
@@ -227,6 +248,8 @@ export function serverReaderData(
           timer: setTimeout(() => send(clientId), holdMs),
           inflight: false,
           line: Math.max(...item.pieces.map((p) => p.line)),
+          ...(rating === 4 && info?.easyWords ? { words: info.easyWords } : {}),
+          onSent: info?.onSent,
         });
       const l = last.get(item.id) ?? [];
       l.push(rating);

@@ -58,6 +58,8 @@ export type NativeSlipOptions = {
   onTap: (at: number) => void;
   onSwipe: (r: SwipeRating) => void;
   onSwipeStart?: () => void;
+  /** The level the reveal shows changed (−2…2, the default side's; 0: home). */
+  onReveal?: (k: number) => void;
   onHold?: () => void;
   onHoldEnd?: () => void;
   /** The list is (or just was) scrolling: a touch now only catches it. */
@@ -378,10 +380,16 @@ export function useNativeSlip(
     // The reveal follows the detent the slip is nearest (the far one's grade
     // takes over the first one's spot).
     const strip = el.parentElement?.querySelector<HTMLElement>("[data-swipe-strip]");
+    let shown = 0;
     const reveal = () => {
       g.scrolledAt = performance.now();
       const offset = home - el.scrollLeft;
-      showReveal(strip, Math.max(-2, Math.min(2, Math.round(offset / a))));
+      const k = Math.max(-2, Math.min(2, Math.round(offset / a)));
+      showReveal(strip, k);
+      if (k !== shown) {
+        shown = k;
+        props.current.onReveal?.(k);
+      }
       if (!g.touching) return;
       // For the spring release: the level (with hysteresis) and the recent offsets.
       g.level = swipeLevel(offset, g.level, a);

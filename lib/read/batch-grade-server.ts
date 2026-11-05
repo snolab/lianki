@@ -176,6 +176,64 @@ export async function gradeBatch(
   const t = now.getTime();
   const { grade: gs, skipped } = splitSentences(sids, await sentenceDues(c, sids), t);
 
+  const { undoWords, outWords, skippedWords } = await gradeWords(
+    c,
+    words,
+    rating,
+    body.day,
+    now,
+    gloss,
+  );
+  // Sentences through the reader's own grade (FSRS per sentence, its read and undo record).
+  if (gs.length) {
+    const r = await gradeFor(
+      c.db,
+      c.ref,
+      c.book,
+      c.w,
+      {
+        sentences: gs,
+        rating,
+        granularity: "sentence",
+        clientId: id,
+        ...(typeof body.shownAt === "string" ? { shownAt: body.shownAt } : {}),
+        ...(typeof body.swipedAt === "string" ? { swipedAt: body.swipedAt } : {}),
+      },
+      now,
+    );
+    if (!r.ok) return r;
+  }
+  await c.db.batch([
+    undoWordsStatement(c.db, c.ref, id, JSON.stringify(undoWords), now.toISOString()),
+  ]);
+  return {
+    ok: true,
+    res: {
+      id,
+      duplicate: false,
+      sentences: gs,
+      skippedSentences: skipped.length,
+      words: outWords,
+      skippedWords,
+    },
+  };
+}
+
+/**
+ * A batch's words: the due or new ones graded `rating` through /words' own
+ * review (WordsD1Repo.review), words with no card carded first in the book's
+ * list (制卡). Returns what the undo record keeps. Also the words of an Easy
+ * paragraph swipe (app/api/read/[id]/grade, owner 2026-11-05 02:31 JST).
+ */
+export async function gradeWords(
+  c: Pick<BatchCtx, "db" | "email" | "bctx">,
+  words: RangeWord[],
+  rating: SwipeRating,
+  dayIn: string | undefined,
+  now: Date,
+  gloss?: Gloss,
+): Promise<{ undoWords: UndoWord[]; outWords: BatchResult["words"]; skippedWords: number }> {
+  const t = now.getTime();
   // Words: due or new cards; words with no card are carded first, in the book's list.
   const before = words.length ? await wordTargets(c.db, c.email, c.bctx, words) : [];
   const split = splitWords(
@@ -218,8 +276,7 @@ export async function gradeBatch(
   }
   const undoWords: UndoWord[] = [];
   const outWords: BatchResult["words"] = [];
-  const day =
-    body.day && /^\d{4}-\d{2}-\d{2}$/.test(body.day) ? body.day : now.toISOString().slice(0, 10);
+  const day = dayIn && /^\d{4}-\d{2}-\d{2}$/.test(dayIn) ? dayIn : now.toISOString().slice(0, 10);
   for (const [listId, ps] of byList) {
     const r = await repo.review(
       listId,
@@ -235,39 +292,21 @@ export async function gradeBatch(
       outWords.push({ w: p.w, listId, term: card.term, due: card.due, made });
     }
   }
-  // Sentences through the reader's own grade (FSRS per sentence, its read and undo record).
-  if (gs.length) {
-    const r = await gradeFor(
-      c.db,
-      c.ref,
-      c.book,
-      c.w,
-      {
-        sentences: gs,
-        rating,
-        granularity: "sentence",
-        clientId: id,
-        ...(typeof body.shownAt === "string" ? { shownAt: body.shownAt } : {}),
-        ...(typeof body.swipedAt === "string" ? { swipedAt: body.swipedAt } : {}),
-      },
-      now,
-    );
-    if (!r.ok) return r;
-  }
-  await c.db.batch([
-    undoWordsStatement(c.db, c.ref, id, JSON.stringify(undoWords), now.toISOString()),
-  ]);
-  return {
-    ok: true,
-    res: {
-      id,
-      duplicate: false,
-      sentences: gs,
-      skippedSentences: skipped.length,
-      words: outWords,
-      skippedWords: split.skipped.length,
-    },
-  };
+  return { undoWords, outWords, skippedWords: split.skipped.length };
+}
+
+/** The words a batch would grade now (due, new, or no card yet), by the book's word: read-only. */
+export async function planWords(
+  c: Pick<BatchCtx, "db" | "email" | "bctx">,
+  words: RangeWord[],
+  now: Date,
+): Promise<string[]> {
+  if (!words.length) return [];
+  const split = splitWords(
+    (await wordTargets(c.db, c.email, c.bctx, words)).map((x) => asProbe(x)),
+    now.getTime(),
+  );
+  return [...split.grade, ...split.make].map((p) => p.w);
 }
 
 /**
