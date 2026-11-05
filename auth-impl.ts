@@ -90,6 +90,12 @@ function baseOptions() {
     // honoured — see lib/trusted-origins.ts.
     trustedOrigins: trustedOrigins(),
 
+    // Profile edits go through /api/profile/** (lib/profile/), which validate
+    // and then call this endpoint server-side. Over HTTP it would let a session
+    // store any string as its name or image: a third-party URL among other
+    // people's chat avatars, for one. disabledPaths closes HTTP only, not auth.api.
+    disabledPaths: ["/update-user"],
+
     // Production stays passwordless (magic link + OAuth); see passwordAuthEnabled.
     emailAndPassword: { enabled: passwordAuthEnabled() },
 

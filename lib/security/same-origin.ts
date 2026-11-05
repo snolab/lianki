@@ -17,9 +17,16 @@ export function sameOriginJsonPost(req: Request): boolean {
 
 /** The same rule for any state-changing method (POST, PATCH, PUT, DELETE). */
 export function sameOriginJson(req: Request): boolean {
-  if (req.method === "GET" || req.method === "HEAD") return false;
   const type = req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
-  if (type !== "application/json") return false;
+  return type === "application/json" && sameOriginWrite(req);
+}
+
+/**
+ * The same rule without the JSON part, for a raw upload's body (an image):
+ * a cross-site form could send that type, so Origin and Sec-Fetch-Site decide.
+ */
+export function sameOriginWrite(req: Request): boolean {
+  if (req.method === "GET" || req.method === "HEAD") return false;
   const site = req.headers.get("sec-fetch-site");
   if (site !== null && site !== "same-origin") return false;
   const origin = req.headers.get("origin");
