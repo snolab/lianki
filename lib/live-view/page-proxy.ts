@@ -68,6 +68,7 @@ import {
   filterTunnelFetchHeaders,
   isServiceWorkerScript,
 } from "./tunnel-headers";
+import { LIVE_PAGE_GLOBAL } from "./live-page";
 
 export { LIVE_GATE_HEADER };
 export const LIVE_PARAM = "live";
@@ -347,17 +348,17 @@ export function offHref(url: URL): string {
 }
 
 /**
- * The badge (bottom-left, out of the chat widget's corner) and its script:
+ * The badge (bottom-centre, clear of the chat widget and of next dev's dev-tools button, above the safe area) and its script (it also sets window.__lkLive, lib/live-view/live-page.ts):
  * `?live=<id>` kept on history pushes and replaces and on same-origin link
  * clicks, and STORM_LOADS loads within STORM_WINDOW_MS (sessionStorage) go
  * to ?live=off.
  */
 export function badgeHtml(id: string, label: string, off: string, nonce?: string): string {
   const css =
-    "position:fixed;left:12px;bottom:12px;z-index:2147483647;display:flex;gap:6px;align-items:center;" +
+    "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom, 0px));white-space:nowrap;max-width:calc(100vw - 24px);z-index:2147483647;display:flex;gap:6px;align-items:center;" +
     "padding:4px 10px;border-radius:999px;font:600 12px/1.6 system-ui,-apple-system,sans-serif;" +
     "background:oklch(0.55 0.2 25);color:oklch(0.99 0 0);box-shadow:0 2px 8px oklch(0 0 0 / 0.3)";
-  const js = `(function(){var ID=${lit(id)},P=${lit(LIVE_PARAM)},N=${STORM_LOADS},W=${STORM_WINDOW_MS};
+  const js = `(function(){var ID=${lit(id)};window.${LIVE_PAGE_GLOBAL}=ID;var P=${lit(LIVE_PARAM)},N=${STORM_LOADS},W=${STORM_WINDOW_MS};
 function off(){var u=new URL(location.href);u.searchParams.set(P,"off");return u.pathname+u.search+u.hash}
 try{var k="lk:live-loads",t=Date.now(),a=JSON.parse(sessionStorage.getItem(k)||"[]").filter(function(x){return typeof x==="number"&&t-x<W});a.push(t);sessionStorage.setItem(k,JSON.stringify(a));if(a.length>=N){sessionStorage.removeItem(k);location.replace(off());return}}catch(e){}
 function keep(v){if(v==null)return v;try{var u=new URL(String(v),location.href);if(u.origin!==location.origin||u.searchParams.has(P))return v;u.searchParams.set(P,ID);return u.pathname+u.search+u.hash}catch(e){return v}}
@@ -372,7 +373,7 @@ document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&
 /** The production page's notice when a live page could not be served. */
 export function noticeHtml(why: string, off: string): string {
   const css =
-    "position:fixed;left:12px;bottom:12px;z-index:2147483647;max-width:calc(100vw - 24px);" +
+    "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom, 0px));z-index:2147483647;max-width:calc(100vw - 24px);" +
     "padding:6px 12px;border-radius:12px;font:500 13px/1.5 system-ui,-apple-system,sans-serif;" +
     "background:oklch(0.3 0.02 250);color:oklch(0.97 0.01 250);box-shadow:0 2px 8px oklch(0 0 0 / 0.3)";
   return `<script>${mountScript("lk-live-notice", css, `预览不可用，这是正式版 · Preview unavailable (${why}) · `, off, "关闭")}</script>`;
