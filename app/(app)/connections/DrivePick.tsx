@@ -90,7 +90,11 @@ export function DrivePick(p: {
     started.current = true;
     const open = autoPickOnReturn(s);
     window.history.replaceState(null, "", window.location.pathname + withoutPickParams(s));
+    // /connections shows its own result line; /read has none but this.
+    const back = p.page === "/read" ? new URLSearchParams(s).get("google") : null;
     if (open) void run(t.connectedOpening.value);
+    else if (back === "not-configured") setMsg({ alert: true, text: d.notConfigured.value });
+    else if (back && back !== "denied") setMsg({ alert: true, text: d.connectFailed.value });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
