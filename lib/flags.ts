@@ -12,11 +12,79 @@
  * Client-safe: no D1 here (the server side is lib/flags-store.ts).
  */
 
+/**
+ * Server-side prerequisite checks a flag may declare (lib/flag-prereqs.ts runs
+ * them). Each one reads only whether a setting is present and in the right
+ * format — never a secret's value — or whether a migration's table exists.
+ */
+export type PrereqCheck =
+  | "stripe.live-key"
+  | "komoju.live-key"
+  | "workers-ai.credentials"
+  | "ai-credits.migration"
+  | "google.oauth-client"
+  | "google.picker-key"
+  | "auth-secret";
+
+/**
+ * Why a check failed: a key, its text on /dev/flags (owner-only and Chinese
+ * only, like the rest of that page), and a context line — where it appears,
+ * what it means — so it is never translated or reworded on its own
+ * (docs/i18n.md).
+ */
+export const PREREQ_REASONS = {
+  "stripe.no-live-key": {
+    zh: "缺 Stripe sk_live_ 密钥（或 webhook 密钥）",
+    context:
+      "Reason under a greyed-out switch on the owner's /dev/flags page: the Worker has no Stripe secret key starting sk_live_, or no Stripe webhook secret, so live Stripe payments cannot be turned on. Keep sk_live_ as is.",
+  },
+  "komoju.no-live-key": {
+    zh: "缺 KOMOJU sk_live_ 密钥（或 webhook 密钥）",
+    context:
+      "Reason under a greyed-out switch on the owner's /dev/flags page: the Worker has no KOMOJU secret key starting sk_live_, or no KOMOJU webhook secret, so live KOMOJU payments cannot be turned on. Keep sk_live_ as is.",
+  },
+  "workers-ai.no-credentials": {
+    zh: "缺 Workers AI 设置（CLOUDFLARE_ACCOUNT_ID 或 CLOUDFLARE_AI_TOKEN）",
+    context:
+      "Reason under a greyed-out switch on the owner's /dev/flags page: the Worker lacks the Cloudflare account id or the Workers AI token, so the Learning Partner AI cannot call the model. Keep the setting names as is.",
+  },
+  "ai-credits.no-migration": {
+    zh: "积分账本迁移（0041_ai_credits）还没在 D1 上执行",
+    context:
+      "Reason under a greyed-out switch on the owner's /dev/flags page: the D1 database lacks the AI credits tables from migration 0041, so AI replies could not be charged. Keep 0041_ai_credits as is.",
+  },
+  "google.no-oauth-client": {
+    zh: "缺 Google OAuth 客户端（AUTH_GOOGLE_ID 或 AUTH_GOOGLE_SECRET）",
+    context:
+      "Reason under a greyed-out switch on the owner's /dev/flags page: the Worker lacks the Google OAuth client id or secret, so users cannot connect a Google account. Keep the setting names as is.",
+  },
+  "google.no-picker-key": {
+    zh: "缺 Google Picker 浏览器密钥（GOOGLE_PICKER_API_KEY）或项目编号",
+    context:
+      "Reason under a greyed-out switch on the owner's /dev/flags page: the Worker lacks a well-formed Google Picker API key or the project number, so users cannot pick Google Docs to import. Keep the setting name as is.",
+  },
+  "auth.no-secret": {
+    zh: "缺 AUTH_SECRET（或少于 32 个字符），无法加密保存 Google 授权",
+    context:
+      "Reason under a greyed-out switch on the owner's /dev/flags page: the Worker's AUTH_SECRET is missing or shorter than 32 characters, so Google refresh tokens could not be sealed at rest. Keep AUTH_SECRET as is.",
+  },
+} as const satisfies Record<string, { zh: string; context: string }>;
+
+export type PrereqReason = keyof typeof PREREQ_REASONS;
+
 export interface FlagDef {
   /** Shown on /dev/flags: what turning it on does (the owner's language). */
   description: string;
   /** Always off; a flag is a switch the owner turns ON. */
   default: false;
+  /**
+   * Checks that must all pass before the flag may be turned ON (the API
+   * refuses otherwise; /dev/flags greys the switch). Turning OFF is always
+   * allowed: a flag is also a kill switch.
+   */
+  requires?: readonly PrereqCheck[];
+  /** Turning it on moves real money: the owner confirms by typing in Slack first. */
+  money?: true;
 }
 
 export const FLAGS = {
@@ -24,11 +92,15 @@ export const FLAGS = {
     description:
       "Stripe 正式收款：需要 sk_live_ 密钥并打开此开关。关闭 = 紧急停止：30 秒内不再开始新的付款；已经在付款中的会照常入账。",
     default: false,
+    requires: ["stripe.live-key"],
+    money: true,
   },
   "payments.komoju.live": {
     description:
       "KOMOJU 正式收款：需要 sk_live_ 密钥并打开此开关。关闭 = 紧急停止：30 秒内不再开始新的付款；已经在付款中的（含便利店付款）会照常入账。",
     default: false,
+    requires: ["komoju.live-key"],
+    money: true,
   },
   "words.voice-mode": {
     description:
@@ -49,11 +121,13 @@ export const FLAGS = {
     description:
       "学习伙伴由 AI 回复（除你以外的所有用户）：打开后，普通登录用户在任意页面都能看到学习伙伴聊天框（不用调试模式），他们的消息由 Cloudflare Workers AI 上的 DeepSeek 模型在服务器端回复，只读他们自己的词表、到期卡片和学习计划。你的线程永远不经过模型，仍是你的 Claude 通道；通道先回复则 AI 不再回复。每人每日 token 上限和全站每日花费上限在 lib/partner-ai-config.ts。关闭（默认）= 照旧：只有调试模式的朋友能聊，由开发通道回复。",
     default: false,
+    requires: ["workers-ai.credentials", "ai-credits.migration"],
   },
   "connections.google": {
     description:
       "Google 连接（/connections）：所有登录用户都能连接自己的 Google 账号（只授权 drive.file：只有在 Lianki 里用 Google 选择器打开的文件），在 /read 导入自己的非公开 Google 文档。和 Google 登录完全分开，断开不影响登录。需要先在 GCP 控制台完成设置（docs/connections.md）。关闭（默认）= 只有你本人能用。",
     default: false,
+    requires: ["google.oauth-client", "google.picker-key", "auth-secret"],
   },
   "self-intro.import": {
     description:
