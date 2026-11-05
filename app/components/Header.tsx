@@ -1,4 +1,5 @@
 "use client";
+import { isOwnAvatar } from "@/lib/profile/avatar";
 
 import Image from "next/image";
 import { BrandName } from "./BrandName";
@@ -112,6 +113,8 @@ export function Header({
                     className="w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"
                     alt={user.name}
                     src={user.image}
+                    // An upload of ours is already small, and next/image's loader can't fetch /api/*.
+                    unoptimized={isOwnAvatar(user.image)}
                     width={32}
                     height={32}
                   />

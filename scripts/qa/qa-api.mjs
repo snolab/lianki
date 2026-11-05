@@ -203,6 +203,61 @@ for (const [name, bytes, label] of [
   rec(`SEC   anki import refuses ${label}`, res.status === 400, `HTTP ${res.status}`);
 }
 
+// ── PROFILE EDITS (docs/secrets-and-auth.md, "Profile edits") ──
+{
+  const r = await call("POST", "/api/profile/name", { name: "  QA Renamed  " });
+  const back = await call("GET", "/api/auth/get-session");
+  rec(
+    "PROFILE name saved, trimmed",
+    r.status === 200 && back.data?.user?.name === "QA Renamed",
+    `HTTP ${r.status}`,
+  );
+  const empty = await call("POST", "/api/profile/name", { name: "   " });
+  rec("PROFILE empty name refused", empty.status === 400, `HTTP ${empty.status}`);
+  // better-auth's own endpoint would store any image URL: closed over HTTP.
+  const direct = await call("POST", "/api/auth/update-user", {
+    image: "https://evil.example/x.png",
+  });
+  rec("PROFILE /update-user closed over HTTP", direct.status === 404, `HTTP ${direct.status}`);
+
+  const upload = (bytes, type = "image/png") =>
+    fetch(`${BASE}/api/profile/avatar`, {
+      method: "POST",
+      headers: { connection: "close", origin: BASE, cookie, "content-type": type },
+      body: bytes,
+    });
+  const svg = await upload(new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>"));
+  rec("PROFILE an SVG named as a PNG refused", svg.status === 415, `HTTP ${svg.status}`);
+  const png = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEAQH/7yMK/gAAAABJRU5ErkJggg==",
+    ),
+    (c) => c.charCodeAt(0),
+  );
+  const up = await upload(png);
+  const { image } = await up.json();
+  rec("PROFILE avatar uploaded", up.status === 201 && image.startsWith("/api/avatar/"), image);
+  const served = await fetch(`${BASE}${image}`, { headers: { connection: "close" } });
+  await served.arrayBuffer();
+  rec(
+    "PROFILE avatar served, no session, safe headers",
+    served.status === 200 &&
+      served.headers.get("content-type") === "image/png" &&
+      served.headers.get("x-content-type-options") === "nosniff",
+    `HTTP ${served.status}`,
+  );
+  const seen = await call("GET", "/api/auth/get-session");
+  rec("PROFILE user.image is the upload", seen.data?.user?.image === image, "");
+  const del = await call("DELETE", "/api/profile/avatar", {});
+  const gone = await fetch(`${BASE}${image}`, { headers: { connection: "close" } });
+  await gone.arrayBuffer();
+  rec(
+    "PROFILE avatar removed, object gone",
+    del.status === 200 && del.data?.image === null && gone.status === 404,
+    `HTTP ${del.status}/${gone.status}`,
+  );
+}
+
 // ── CREATE ──
 {
   const r = await call("POST", "/api/fsrs/add", { url: U1, title: "QA One" });
