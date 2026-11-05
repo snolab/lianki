@@ -59,13 +59,22 @@ Each box is its own Compose project, container and volume, named after
 
 ```bash
 git push origin origin/main:refs/heads/friend/<name>       # the owner, once
-cp devbox/.env.example devbox/.env.<name>                   # DEVBOX_NAME=<name>, DEVBOX_DEV_PORT=3201
+cp devbox/.env.example devbox/.env.<name>                   # DEVBOX_NAME, DEVBOX_ENV_FILE=.env.<name>, next free ports
 DEVBOX_ENV=.env.<name> devbox/box.sh up -d --build
+DEVBOX_ENV=.env.<name> devbox/host-tunnel.sh create
 ```
 
-In `devbox/.env.<name>` also set `DEVBOX_ENV_FILE=.env.<name>`, so the box
-reads that friend's file (and its `DEEPSEEK_API_KEY`). `devbox/.env*` is
-gitignored except `.env.example`.
+`DEVBOX_ENV_FILE=.env.<name>` makes the box read that file (and its
+`DEEPSEEK_API_KEY`). `devbox/.env*` is gitignored except `.env.example`.
+
+Boxes on the owner's Mac (2026-11-05):
+
+| Box         | Env file              | Dev server (host loopback → public)                      | dsh port | Branch             |
+| ----------- | --------------------- | -------------------------------------------------------- | -------- | ------------------ |
+| `kishouzet` | `devbox/.env`         | `127.0.0.1:3200` → `https://devbox-kishouzet.lianki.com` | 3280     | `friend/kishouzet` |
+| `snomiao`   | `devbox/.env.snomiao` | `127.0.0.1:3201` → `https://devbox-snomiao.lianki.com`   | 3281     | `friend/snomiao`   |
+
+The owner's own box (`snomiao`) is for trying the setup before the friend.
 
 ## Security boundaries
 
@@ -80,7 +89,7 @@ gitignored except `.env.example`.
   anything remote). `LIANKI_DEV_WHOLE_PAGE` is never set here.
 - **Container hardening.** Non-root, `cap_drop: ALL`, `no-new-privileges`,
   CPU/memory/pids limits (`DEVBOX_CPUS`, `DEVBOX_MEMORY`), no Docker socket, no
-  host directory mounted, the only published port bound to `127.0.0.1`.
+  host directory mounted, both published ports bound to `127.0.0.1`.
 - **The one secret inside:** `DEEPSEEK_API_KEY` (below). Anyone with a shell in
   the box can read it — that is the friend, by design. Cap its spend.
 
@@ -105,9 +114,11 @@ box.
 
 ## DeepSeek Harness (dsh)
 
-`dsh web` serves its UI on `127.0.0.1:3080` inside the box and is **not
-published**: it is a full shell into the container, so it stays unreachable
-until Cloudflare Access is in front of it. It still has its own auth (a launch
+`dsh web` serves its UI on `127.0.0.1:3080` inside the box: it is a full
+shell into the container, so it stays unreachable until Cloudflare Access is
+in front of it. Compose forwards `127.0.0.1:<DEVBOX_DSH_PORT>` on the host to
+the box's `:3080`, but while dsh listens on the box's own loopback that
+forward reaches nothing. It still has its own auth (a launch
 token in the URL it prints, then a signed cookie), but that is not the gate.
 
 Until then the friend works in a terminal (`devbox/box.sh exec
@@ -115,12 +126,13 @@ box bash`, then `claude`, `codex`, or `dsh --profile headless "…"`),
 and `dsh web` runs only so it is ready.
 
 **Key:** `DEEPSEEK_API_KEY`, provided by the owner, lives only in the
-gitignored `devbox/.env` and is passed into the box by `env_file`. The owner
+gitignored box env file and is passed into the box by `env_file`. The owner
 sets it himself, without it appearing anywhere else:
 
 ```bash
 read -s K && printf 'DEEPSEEK_API_KEY=%s\n' "$K" >> ~/ws/snolab/lianki/tree/main/devbox/.env && unset K
 devbox/box.sh up -d   # recreate to pick it up
+# his own box: the same with devbox/.env.snomiao and DEVBOX_ENV=.env.snomiao devbox/box.sh up -d
 ```
 
 Set a spend limit for that key in the DeepSeek console. dsh's OTel upload is
@@ -138,26 +150,47 @@ config stay in `~/.cloudflared` (0600); the repo holds only the script.
 ```bash
 devbox/host-tunnel.sh create    # tunnel lianki-devbox-<name> + ~/.cloudflared/lianki-devbox-<name>.yml
 OWNER_APPROVED_DNS=1 devbox/host-tunnel.sh dns    # CNAME devbox-<name>.lianki.com — owner's typed OK first
-devbox/host-tunnel.sh run       # connector (foreground; run under oxmgr to keep it up)
 devbox/host-tunnel.sh status
+# connector, kept up by oxmgr (as lianki-preview-tunnel is):
+oxmgr start --name lianki-devbox-<name>-tunnel --restart always --cwd ~ \
+  "$HOME/.local/bin/cloudflared tunnel --no-autoupdate --config $HOME/.cloudflared/lianki-devbox-<name>.yml run lianki-devbox-<name>"
 ```
+
+Each command takes `DEVBOX_ENV=.env.<name>` for another box. The DNS records
+`devbox-kishouzet` and `devbox-snomiao` were created 2026-11-05 on the owner's
+typed OK ("是创建 DNS 记录"); connectors `lianki-devbox-{kishouzet,snomiao}-tunnel`
+run under oxmgr.
 
 Ingress: `devbox-<name>.lianki.com → http://127.0.0.1:<DEVBOX_DEV_PORT>`,
 everything else 404. After the DNS record exists, set
 `DEVBOX_PUBLIC_URL=https://devbox-<name>.lianki.com` in `devbox/.env` and
-recreate the box, so sign-in and `allowedDevOrigins` use that host. The dev
-server holds only local data; the production-facing view of the friend's
+recreate the box, so sign-in and `allowedDevOrigins` use that host. The
+public dev server is open to anyone who has the URL, which is acceptable
+because it holds only local throwaway data (any email and password signs up); the production-facing view of the friend's
 frontend comes through Lianki's custom-frontend `?live` feature instead.
 
-### dsh behind Cloudflare Access (pending the friend's email)
+### dsh behind Cloudflare Access
 
-Not done until the owner gives the friend's email. Then:
+Owner confirmed (2026-11-05, typed) `dsh-kishouzet.lianki.com` (allow only the
+friend's account email) and `dsh-snomiao.lianki.com` (allow only the owner's
+`OWNER_EMAILS`). **Not created yet:** no credential on the Mac can make Access
+applications. Wrangler's OAuth has no Access scope, and cloudflared's
+`cert.pem` covers only tunnels and DNS. It needs an API token with
+**Account · Access: Apps and Policies · Edit**, made by the owner. The order
+below matters; dsh must never be routed before its Access app is live:
 
-1. Zero Trust → Access → Applications → self-hosted, `dsh-<name>.lianki.com`,
-   policy **Allow, emails: <friend's email>** (plus the owner's).
-2. In the box, bind dsh to the container's address and trust the host:
-   `dsh web --host "$(hostname -i | awk '{print $1}')" --port 3080 --no-open --public-url https://dsh-<name>.lianki.com/ --trusted-host dsh-<name>.lianki.com`
-   and publish `127.0.0.1:<3280+n>:3080` in `compose.yaml`.
-3. Add `- hostname: dsh-<name>.lianki.com / service: http://127.0.0.1:<port>`
-   to the tunnel config **above** the 404 rule, and its DNS record (owner's
-   typed OK). Never route dsh before step 1 is live.
+1. Make the Access application (self-hosted, `dsh-<name>.lianki.com`, one
+   Allow policy on the single email). Note its **AUD tag** and the Zero Trust
+   team name.
+2. In the box's env file set `DEVBOX_DSH_PUBLIC_HOST=dsh-<name>.lianki.com`,
+   `DEVBOX_DSH_ACCESS_AUD=<aud>` and `CF_ACCESS_TEAM=<team>`, then recreate the
+   box: `start.sh` binds dsh to the container's address with `--public-url`
+   and `--trusted-host`.
+3. `devbox/host-tunnel.sh create` adds the dsh rule with `originRequest.access`
+   (`required: true`, team, AUD), so the **connector itself** rejects any
+   request without a valid Access token for that app. Restart the oxmgr
+   connector.
+4. `OWNER_APPROVED_DNS=1 devbox/host-tunnel.sh dns-dsh`. It refuses unless the
+   AUD and the Access-gated rule are in place.
+5. Check: `curl -sI https://dsh-<name>.lianki.com/` gives a 302 to
+   `<team>.cloudflareaccess.com`, never dsh.
