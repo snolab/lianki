@@ -1,12 +1,10 @@
 "use client";
 
 // The selection card's own translation (lib/read/select-translate.ts): the
-// plan's units fetched from our API (POST /api/read/[id]/translate — its
-// shared cache, limiter and charge), a few at a time, each shown as it lands.
-// A unit already translated in this tab is never asked for again, and one
-// on its way is not asked for twice (a re-selection while it comes joins it).
-// Asked only once the selection rests (the combo interval), so the levels a
-// quick combo passes through cost nothing.
+// plan's units fetched one by one (lib/read/select-translate-fetch.ts: our
+// API, or the user's own AI from this browser — docs/byok.md), a few at a
+// time, each shown as it lands. Asked only once the selection rests (the
+// combo interval), so the levels a quick combo passes through cost nothing.
 //
 // No Translate button (owner, 2026-11-05 02:11 JST): past the bound, the
 // card asks for the next stretch by itself (`more`: when he scrolls the
@@ -18,92 +16,15 @@ import { COMBO_MS } from "@/lib/read/reader-select";
 import {
   AUTO_TRANSLATE_CHARS,
   autoPieces,
-  transKey,
   type TransPiece,
   type TransPlan,
 } from "@/lib/read/select-translate";
-import { cleanTranslation, translateMessages } from "@/lib/read/translate";
-import { activeByok, type ByokActive } from "@/lib/byok/config";
-import { byokComplete } from "@/lib/byok/call";
+import { fetchPiece, transKeyOf, translated } from "@/lib/read/select-translate-fetch";
+import { activeByok } from "@/lib/byok/config";
 import type { CardTranslation } from "./reader-select-card";
-
-// With the user's own AI on (docs/byok.md), each unit goes from this browser
-// straight to their provider with their key instead: no Lianki credits, and
-// the answer stays in this tab (`own:` keys) — never written to the shared
-// read_translation cache, because our API is not called at all.
-
-/**
- * Translations of this tab, by transKey (`own:` + transKey for the user's own
- * AI): the device's side of the cache.
- */
-const done = new Map<string, string>();
-const inflight = new Map<string, Promise<string | null>>();
-
-/** The cache key a unit is kept under, by who translated it. */
-const keyOf = (own: ByokActive | null, to: string, text: string) =>
-  own ? `own:${transKey(to, text)}` : transKey(to, text);
-
-/** The answer's ceiling, as the server's (lib/read/translate-server.ts). */
-const maxTokens = (chars: number) => Math.min(8000, 200 + chars * 2);
-
-/** One unit by the user's own AI, from this browser (lib/byok/call.ts). */
-export async function translateOwn(
-  own: ByokActive,
-  to: string,
-  from: string | undefined,
-  text: string,
-  deps?: Parameters<typeof byokComplete>[3],
-): Promise<string | null> {
-  const r = await byokComplete(
-    own,
-    translateMessages(text, to, from ?? null),
-    { maxTokens: maxTokens(text.length), temperature: 0.2 },
-    deps,
-  );
-  return r.ok ? cleanTranslation(r.text) || null : null;
-}
 
 /** Requests in flight for one selection: the units still come in reading order, quickly. */
 const LANES = 3;
-
-export function fetchPiece(
-  id: string,
-  to: string,
-  from: string | undefined,
-  text: string,
-  own: ByokActive | null = activeByok(),
-) {
-  const k = keyOf(own, to, text);
-  const hit = done.get(k);
-  if (hit !== undefined) return Promise.resolve(hit);
-  let p = inflight.get(k);
-  if (!p && own) {
-    p = translateOwn(own, to, from, text)
-      .then((out) => {
-        if (out) done.set(k, out);
-        return out;
-      })
-      .finally(() => inflight.delete(k));
-    inflight.set(k, p);
-  }
-  if (!p) {
-    p = fetch(`/api/read/${id}/translate`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, to, from }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { text?: string } | null) => {
-        if (!d?.text) return null;
-        done.set(k, d.text);
-        return d.text;
-      })
-      .catch(() => null)
-      .finally(() => inflight.delete(k));
-    inflight.set(k, p);
-  }
-  return p;
-}
 
 export function useSelectTranslate(
   id: string,
@@ -113,7 +34,7 @@ export function useSelectTranslate(
 ) {
   /** The user's own AI, read when the plan changes (a settings change applies to the next selection). */
   const own = useMemo(() => (plan ? activeByok() : null), [plan]);
-  const key = useCallback((p: TransPiece) => keyOf(own, to, p.text), [own, to]);
+  const key = useCallback((p: TransPiece) => transKeyOf(own, to, p.text), [own, to]);
   /** A unit's text; null on its way; false not asked (past the bound) or failed. */
   const [got, setGot] = useState<Record<string, string | null | false>>({});
   const [failed, setFailed] = useState(false);
@@ -131,9 +52,9 @@ export function useSelectTranslate(
     const all = plan.flat();
     const want = autoPieces(plan, AUTO_TRANSLATE_CHARS * room);
     const init: Record<string, string | null | false> = {};
-    for (const p of all) init[key(p)] = done.get(key(p)) ?? (want.has(p) ? null : false);
+    for (const p of all) init[key(p)] = translated.get(key(p)) ?? (want.has(p) ? null : false);
     setGot(init);
-    const queue = all.filter((p) => want.has(p) && !done.has(key(p)));
+    const queue = all.filter((p) => want.has(p) && !translated.has(key(p)));
     let next = 0;
     const lane = async () => {
       while (live && next < queue.length) {

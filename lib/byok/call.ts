@@ -110,13 +110,9 @@ export function byokText(protocol: ByokActive["preset"]["protocol"], body: unkno
   return typeof c === "string" ? c : "";
 }
 
-const isLocal = (url: string) => {
-  try {
-    return ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-};
+/** A URL on this computer (the request's URL has passed checkBaseUrl, so it parses). */
+const isLocal = (url: string) =>
+  ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
 
 /** One completion. Never throws, never logs. */
 export async function byokComplete(

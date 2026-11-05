@@ -22,8 +22,8 @@ import {
 import { byokComplete, byokRequest, testByok } from "@/lib/byok/call";
 import { prefBindings } from "@/lib/prefs/bindings";
 import { checkPref, PREF_KEYS } from "@/lib/prefs/schema";
-import { fetchPiece } from "@/app/(app)/read/[id]/use-select-translate";
-import { fetchGloss } from "@/app/(app)/read/[id]/use-select-gloss";
+import { fetchPiece } from "@/lib/read/select-translate-fetch";
+import { fetchGloss } from "@/lib/read/select-gloss-fetch";
 
 /** docs/byok.md: the user's own AI, browser-only; the key never leaves the device. */
 const SECRET = "sk-test-SECRET-never-leaves-0000";
@@ -324,5 +324,112 @@ describe("the reader with the user's own AI", () => {
     });
     for (const c of calls.filter((c) => ours(c.url))) expect(carries(c)).not.toContain(SECRET);
     expect(carries(calls[1])).toContain(SECRET);
+  });
+
+  it("a word asked again in the tab is not fetched again; nor while it is on its way", async () => {
+    const { calls, f } = recorder(() => ({ term: "boa", back: "boa (snake)" }));
+    const [a, b] = await Promise.all([
+      fetchGloss("book2", "boa", null, null, { fetch: f }),
+      fetchGloss("book2", "boa", null, null, { fetch: f }),
+    ]);
+    expect(a).toEqual({ term: "boa", back: "boa (snake)" });
+    expect(b).toEqual(a);
+    expect(await fetchGloss("book2", "boa", null, null, { fetch: f })).toEqual(a);
+    expect(calls.length).toBe(1);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ w: "boa", ex: null });
+  });
+
+  it("nothing found anywhere: no meaning, and no provider call without an `ask`", async () => {
+    const { calls, f } = recorder(() => ({ term: "Paris", back: null, ask: null }));
+    expect(
+      await fetchGloss("book3", "Paris", null, on(), { fetch: f, pageHost: "lianki.com" }),
+    ).toBeNull();
+    expect(calls.length).toBe(1);
+  });
+
+  it("the provider failing: no meaning, and a failed translation is asked again later", async () => {
+    const fail = (async () => new Response("{}", { status: 500 })) as unknown as typeof fetch;
+    const own = on();
+    expect(
+      await fetchGloss("book4", "fauve", null, own, {
+        fetch: (async (u: string) =>
+          ours(String(u))
+            ? new Response(
+                JSON.stringify({ term: "fauve", back: null, ask: { lang: "fr", term: "fauve" } }),
+              )
+            : new Response("{}", { status: 500 })) as unknown as typeof fetch,
+        pageHost: "lianki.com",
+      }),
+    ).toBeNull();
+    globalThis.fetch = fail;
+    expect(await fetchPiece("book1", "fr", undefined, "Fails once.", own)).toBeNull();
+    const { f } = recorder(() => ({ choices: [{ message: { content: "Échoue une fois." } }] }));
+    globalThis.fetch = f;
+    expect(await fetchPiece("book1", "fr", undefined, "Fails once.", own)).toBe("Échoue une fois.");
+    // Now cached in the tab: no further call.
+    globalThis.fetch = fail;
+    expect(await fetchPiece("book1", "fr", undefined, "Fails once.", own)).toBe("Échoue une fois.");
+  });
+
+  it("our route failing: the translation is null, never thrown", async () => {
+    globalThis.fetch = (async () => {
+      throw new TypeError("offline");
+    }) as unknown as typeof fetch;
+    expect(await fetchPiece("book1", "fr", undefined, "Offline here.", null)).toBeNull();
+  });
+});
+
+describe("the call's edges", () => {
+  it("times out", async () => {
+    const f = ((_u: string, init: RequestInit) =>
+      new Promise((_, reject) =>
+        init.signal!.addEventListener("abort", () => reject(new Error("aborted"))),
+      )) as unknown as typeof fetch;
+    expect(await testByok(active(), { fetch: f, pageHost: "lianki.com", timeoutMs: 5 })).toEqual({
+      ok: false,
+      kind: "timeout",
+    });
+  });
+  it("reads anthropic's text blocks; an empty or unreadable 200 is empty, which Test counts as working", async () => {
+    const answer = (body: string) =>
+      (async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
+    const d = (body: string) => ({ fetch: answer(body), pageHost: "lianki.com" });
+    const msg = [{ role: "user" as const, content: "x" }];
+    expect(
+      await byokComplete(
+        active("anthropic"),
+        msg,
+        { maxTokens: 5 },
+        d(JSON.stringify({ content: [{ type: "text", text: "Hi" }, { type: "tool_use" }] })),
+      ),
+    ).toEqual({ ok: true, text: "Hi" });
+    expect(await byokComplete(active(), msg, { maxTokens: 5 }, d("not json"))).toEqual({
+      ok: false,
+      kind: "empty",
+    });
+    expect(await byokComplete(active(), msg, { maxTokens: 5 }, d("{}"))).toEqual({
+      ok: false,
+      kind: "empty",
+    });
+    expect(await testByok(active(), d("{}"))).toEqual({ ok: true, text: "" });
+    expect(
+      await byokComplete(
+        active(),
+        msg,
+        { maxTokens: 5 },
+        { fetch: answer("{}"), pageHost: undefined },
+      ),
+    ).toEqual({ ok: false, kind: "empty" });
+  });
+  it("http errors keep only their status; a keyless local server gets no authorization header", async () => {
+    const f = (async () => new Response("boom", { status: 429 })) as unknown as typeof fetch;
+    expect(await testByok(active(), { fetch: f, pageHost: "lianki.com" })).toEqual({
+      ok: false,
+      kind: "http",
+      status: 429,
+    });
+    const local = { ...active("ollama"), apiKey: "" };
+    const r = byokRequest(local, [], { maxTokens: 1 })!;
+    expect((r.init.headers as Record<string, string>).authorization).toBeUndefined();
   });
 });
