@@ -136,6 +136,7 @@ that are expensive to rediscover.
 | Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
 | Settings that follow the account (`lk:*` key classes)         | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
+| Notification prefixes in page titles: rules, safe matcher     | [docs/title-clean.md](docs/title-clean.md)                          |
 | Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
 | Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
 | Study ledger: daily Merkle anchors, proofs, OpenTimestamps    | [docs/lian.md](docs/lian.md)                                        |

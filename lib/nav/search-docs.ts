@@ -5,6 +5,7 @@
  * never leave the device; the index is built from the offline copy.
  */
 import { norm, scoreNorm, treeItems } from "./nav-core";
+import { displayTitle } from "@/lib/titles/client";
 
 export type DocKind = "list" | "word" | "card" | "plan" | "tree";
 
@@ -126,7 +127,7 @@ export function cardDocs(rows: readonly { url: string; title?: string }[]): Sear
       id: `cards|${c.url}`,
       src: "cards",
       kind: "card",
-      title: c.title || c.url,
+      title: displayTitle(c.title, c.url) || c.url,
       sub: c.url,
       href: c.url,
     }),

@@ -5,6 +5,7 @@ import { Icon } from "@/app/components/icons";
 import { useIntlayer } from "next-intlayer";
 import { dueMs } from "@/app/ems";
 import { SyncStatusBanner } from "./SyncStatusBanner";
+import { displayTitle } from "@/lib/titles/client";
 
 type FSRSCard = {
   url: string;
@@ -220,7 +221,7 @@ export default function GuestListClient() {
                   ))}
                 </span>
                 <a href={url} className="break-all flex-1">
-                  {title || url}
+                  {displayTitle(title, url) || url}
                 </a>
                 {isSynced ? (
                   <span className="flex-shrink-0 text-green-500 text-xs" title="Synced to cloud">

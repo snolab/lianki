@@ -13,6 +13,11 @@
  * under lib/byok/config.ts's rules; the server stores it and never fetches
  * it. The API key has no key here: it never leaves the device.
  *
+ * A second, by the owner (2026-11-06): `titles.rules`, the patterns that clean
+ * notification prefixes out of page titles (docs/title-clean.md). A pattern is
+ * short text in a restricted syntax and a host names a public site, because
+ * per-site patterns are the point; device and tailnet hosts do not pass.
+ *
  * A field whose shape changes gets a new key (`swipe-feel.tweaks2`); the old
  * row is then simply no longer read.
  */
@@ -22,6 +27,14 @@ import { FEEL_RANGES } from "@/lib/words/swipe-feel";
 import { BLOG_LOCALES } from "@/lib/constants";
 import { TEXT_MAX, TEXT_MIN } from "@/lib/text-size-boot";
 import { cleanBackend } from "@/lib/byok/config";
+import {
+  isTitleHost,
+  isTitlePattern,
+  TITLE_HOST_MAX,
+  TITLE_PATTERN_MAX,
+  TITLE_RULES_ADD_MAX,
+  TITLE_RULES_OFF_MAX,
+} from "@lianki/core/titleClean";
 
 // ── Limits ────────────────────────────────────────────────────────────────
 
@@ -94,6 +107,23 @@ const byokBackend = z
     return !!c && c.baseUrl === b.baseUrl && c.provider === b.provider && c.model === b.model;
   });
 
+/** The difference from the default title rules (@lianki/core/titleClean). */
+const titleRules = z
+  .object({
+    off: z.array(z.string().regex(/^[0-9a-f]{8}$/)).max(TITLE_RULES_OFF_MAX),
+    add: z
+      .array(
+        z
+          .object({
+            host: z.string().max(TITLE_HOST_MAX).refine(isTitleHost),
+            pattern: z.string().max(TITLE_PATTERN_MAX).refine(isTitlePattern),
+          })
+          .strict(),
+      )
+      .max(TITLE_RULES_ADD_MAX),
+  })
+  .strict();
+
 export const PREF_SCHEMAS = {
   // /words study settings
   "words.showAll": z.boolean(),
@@ -122,6 +152,8 @@ export const PREF_SCHEMAS = {
   "lab.immersionTranspose": z.boolean(),
   // /read: which language's entry a word means where it stands
   "read.sensePicks": sensePicks,
+  // page titles: cleaning notification prefixes
+  "titles.rules": titleRules,
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),

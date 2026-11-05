@@ -125,6 +125,12 @@ listed once.
 | `lk:byok-ack`     | the privacy notice was acknowledged    | device                   | —              | per device, with the notice's version                                                                                                                        |
 | `lk:byok-backend` | provider, base URL, model              | **synced, opt-in**       | `byok.backend` | owner, 2026-11-05 14:25 JST: not secret, follows the account when 「同步到我的账号」 is ticked (`null` when not). **The one URL a pref may hold**: only that exact shape, under lib/byok/config.ts's URL rules; the server never fetches it |
 
+### Page titles (docs/title-clean.md)
+
+| Key              | Setting                                   | Class      | Server key     | Reason                                                                                                                                                                                                                                     |
+| ---------------- | ----------------------------------------- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lk:title-rules` | patterns that clean notification prefixes | **synced** | `titles.rules` | owner, 2026-11-06. Holds the difference from the defaults. A public site host and short patterns (a second exception to "nothing typed"); device hosts are refused. The userscript reads it through `/api/preferences` (`lk:preferences`) |
+
 ### Not prefs (left alone)
 
 `lk:swipe-unsent`, `lk:swipe-log*`, `lk:voice-sent`, `lk:status`, `lk:purge`,

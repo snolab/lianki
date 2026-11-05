@@ -55,6 +55,8 @@ import {
 } from "./lib/notesAdmin";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { D1FsrsCollection } from "./fsrsNotesD1Collection";
+import { cleanTitle, dropCountSeenChanging } from "@lianki/core/titleClean";
+import { titleRulesForUser } from "@/lib/titles/server";
 
 /**
  * The FSRS notes collection for the active backend. In D1 mode this is a shim
@@ -175,6 +177,28 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     if (_order === null) _order = reviewOrderMongo(await getReviewOrder());
     return { "card.due": _order };
   };
+
+  // Title rules, resolved once per request: a batch add saves hundreds of notes.
+  let _titleRules: ReturnType<typeof titleRulesForUser> | null = null;
+  const titleRules = () => (_titleRules ??= titleRulesForUser());
+
+  /**
+   * The title to store for a page being saved (docs/title-clean.md): every way
+   * of saving goes through here, so an old userscript or a bookmarklet is
+   * cleaned too. Saved again with a number that moved, on a site no rule knows,
+   * the stored title shows it was a counter. Titles are not what cards are
+   * matched by (the url is), so this cannot make or merge a card.
+   */
+  async function capturedTitle(title: string, url: string) {
+    const clean = cleanTitle(title, { url, rules: await titleRules() });
+    if (!clean.startsWith("(") && !clean.startsWith("（")) return clean;
+    const stored = await FSRSNotes.findOne({ url });
+    return dropCountSeenChanging(clean, stored?.title);
+  }
+
+  /** A stored title as the legacy pages show it. Never written back. */
+  const shownTitle = async (note: { title?: string; url: string }) =>
+    note.title ? cleanTitle(note.title, { url: note.url, rules: await titleRules() }) : note.title;
 
   /**
    * The next card to review, preferring the origin the user is already on.
@@ -607,7 +631,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const search = new URLSearchParams({
         id: note._id.toString(),
       }).toString();
-      const doctitle = `[${dueMs(note.card.due)}] ${note.title ?? note.url}`;
+      const shown = await shownTitle(note as FSRSNote);
+      const doctitle = `[${dueMs(note.card.due)}] ${shown ?? note.url}`;
       return HTMLR(
         sflow([
           sflow(`Current due: ${dueMs(note.card.due)}`),
@@ -672,7 +697,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           sflow(`<br/>`),
           sflow(
             `Reviewing <a target="_blank" href="${safeHref(note.url)}">${escapeHtml(
-              (note.title?.replace(/$/, " - ") ?? "") + note.url,
+              (shown?.replace(/$/, " - ") ?? "") + note.url,
             )}</a>`,
           ),
           sflow("<br/>"),
@@ -782,8 +807,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
       sflow(FSRSNotes.find({}, { sort: { "card.due": 1 } }))
         .map(
-          (note) =>
-            `${dueMs(note.card.due)} ${escapeHtml((note.title?.replace(/$/, " - ") ?? "") + note.url)}`,
+          async (note) =>
+            `${dueMs(note.card.due)} ${escapeHtml(((await shownTitle(note))?.replace(/$/, " - ") ?? "") + note.url)}`,
         )
         .join("\n"),
       sflow("\n"),
@@ -975,13 +1000,15 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       DIE(`Failed to normalize URL: ${url}`);
     }
 
+    const cleaned = title ? await capturedTitle(title, normalized) : undefined;
+
     let result;
     try {
       result = await FSRSNotes.findOneAndUpdate(
         { url: normalized },
         {
           $setOnInsert: { card: createEmptyCard(), url: normalized, hlc: newServerHLC() },
-          $set: { ...(title && { title }) },
+          $set: { ...(cleaned && { title: cleaned }) },
         },
         { upsert: true, returnDocument: "after", ...(restore ? { restore: true } : {}) },
       );
