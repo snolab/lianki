@@ -117,6 +117,26 @@ const NO_STORE = {
   "x-content-type-options": "nosniff",
 };
 
+/**
+ * The gate's only service worker: it deletes this origin's caches and
+ * unregisters itself. A worker the app registered on the preview origin before
+ * the gate refused them (2026-11-05) kept answering /_next/static from its
+ * cache-first store; dev chunk names do not change with their code, so the
+ * page ran a day-old bundle (an icon map without `books`, a TypeError). A 403
+ * only fails the worker's update check and leaves it running; this replaces it.
+ * No fetch handler: from activation on, every request goes to the network.
+ */
+export const SW_KILL_SWITCH = `self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) =>
+  e.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      .then(() => self.registration.unregister()),
+  ),
+);
+`;
+
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 export function readCookie(header: string | undefined, name: string): string | undefined {
@@ -675,8 +695,12 @@ export function createGate(d: GateDeps) {
       const path = new URL(req.url, "http://x").pathname;
       // A service worker from dev code would outlive the preview and control
       // every later page of the origin: never served here, signed in or not.
+      // In its place, a worker that removes itself and its caches: a 403
+      // leaves one registered earlier in place for good, serving stale chunks.
       if (isServiceWorkerScript(path, one(req.headers["service-worker"])))
-        return respond(403, "403 — no service workers from the dev server.\n");
+        return respond(200, SW_KILL_SWITCH, {
+          "content-type": "text/javascript; charset=utf-8",
+        });
       if (path === UP_PATH)
         // The profile menu's one check when it opens: the gate answers (the
         // tunnel is up), and still with 503 — nothing here is a way in.

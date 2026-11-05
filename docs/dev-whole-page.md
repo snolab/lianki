@@ -201,7 +201,10 @@ navigate`, `Sec-Fetch-Dest: document` (when sent) and `Accept: text/html`
   then adds its own `frame-ancestors`. Only the gate sets a cookie (its own
   session). A language picked on the preview build therefore does not
   stick there (the `lang` cookie is dropped); `?lang=` still works per page.
-  Service worker scripts (`/sw.js`, `Service-Worker: script`) are 403.
+  Service worker scripts (`/sw.js`, `Service-Worker: script`) get the
+  gate's self-removing worker (`SW_KILL_SWITCH`): it deletes the origin's
+  caches and unregisters. A 403 left a worker registered before the rule in
+  place, serving day-old `/_next/static` chunks (2026-11-05).
 - **Limits**: 10 failed tokens per IP per 10 minutes → 429, and attempts
   still in flight count towards it. No global lockout: one would let anyone
   with a few IPs lock the owner out without a token. Token checks go through
