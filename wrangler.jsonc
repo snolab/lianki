@@ -35,6 +35,10 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+  // The study ledger's daily anchor (worker.ts `scheduled`, lib/lian/anchor.ts,
+  // docs/lian.md): just after UTC midnight it anchors every day that has ended
+  // in every time zone. Event-driven by Cloudflare; re-runs change nothing.
+  "triggers": { "crons": ["5 0 * * *"] },
   // D1 database (SNOLAB account). Bound as `DB` — see lib/d1/index.ts.
   "d1_databases": [
     {
