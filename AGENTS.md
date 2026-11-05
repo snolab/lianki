@@ -134,6 +134,7 @@ that are expensive to rediscover.
 | Settings that follow the account (`lk:*` key classes)         | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
 | Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
 | Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
+| Learner levels: ladder, names per locale, SVG badges          | [docs/levels.md](docs/levels.md)                                    |
 | Feature flags: owner on/off at /dev/flags, ship dark, remove  | [docs/feature-flags.md](docs/feature-flags.md)                      |
 | Security measures: admin gate, lockout, scans, card testing   | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |
