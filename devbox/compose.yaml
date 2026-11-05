@@ -1,7 +1,7 @@
 # Lianki friend dev box — one box per friend (devbox/README.md).
 #   cp devbox/.env.example devbox/.env   # set DEVBOX_NAME
-#   docker compose -f devbox/compose.yaml --env-file devbox/.env up -d --build
-# Plain Compose: works on any engine (Colima, Docker Desktop, OrbStack).
+#   devbox/box.sh up -d --build    # always OrbStack: docker --context orbstack compose
+# Never run it on Docker Desktop's context (another project lives there).
 name: lianki-devbox-${DEVBOX_NAME:?set DEVBOX_NAME in devbox/.env}
 
 services:

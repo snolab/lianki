@@ -21,9 +21,9 @@ named volume, `lianki-devbox-<name>-home`, mounted at `/home/node`.
 
 ```bash
 cp devbox/.env.example devbox/.env            # DEVBOX_NAME=kishouzet
-docker compose -f devbox/compose.yaml --env-file devbox/.env up -d --build
-docker compose -f devbox/compose.yaml --env-file devbox/.env logs -f   # first run: clone, bun install, migrations
-docker exec -it lianki-devbox-kishouzet bash  # a shell in the box (tmux available)
+devbox/box.sh up -d --build                   # = docker --context orbstack compose … up
+devbox/box.sh logs -f                         # first run: clone, bun install, migrations
+devbox/box.sh exec box bash                   # a shell in the box (tmux available)
 ```
 
 First start clones the repo, runs `bun install`, applies `db/migrations` to the
@@ -32,19 +32,21 @@ local D1, then `devbox-start` runs `next dev` and `dsh web`
 `http://127.0.0.1:3200` on the Mac. Sign in with any email and password —
 `DEV_EMAIL_PASSWORD_AUTH=1` makes the account in the local D1.
 
-Plain Compose, nothing engine-specific: the Mac runs it on **Colima**
-(`colima start devbox`, profile in `~/.colima/devbox`, VM mounts restricted to
-an empty read-only directory). Why not OrbStack: its terms ask for a paid
-licence for commercial use, and Lianki sells Pro passes. Docker Desktop works
-the same (`docker context use desktop-linux`). Check where a build lands with
-`docker context ls`.
+**Engine: OrbStack, always named explicitly.** Docker Desktop on this Mac runs
+another project (symtak): never touch it, its containers, images, volumes or
+context. `devbox/box.sh` runs `docker --context orbstack compose` with
+`DOCKER_CONTEXT=orbstack`, so it never uses the default socket; use it, or pass
+`--context orbstack` to any `docker` command by hand. The compose file itself
+is plain Compose. Licence: OrbStack is free for personal use only and asks for
+a paid licence for "freelance, business, and commercial use"; the owner chose
+it knowing that (2026-11-05).
 
 ### Reset
 
 ```bash
-docker compose -f devbox/compose.yaml --env-file devbox/.env down        # stop, keep the volume
-docker compose -f devbox/compose.yaml --env-file devbox/.env down -v     # ALSO deletes the friend's work and logins — ask first
-docker compose -f devbox/compose.yaml --env-file devbox/.env build --pull --no-cache   # new tool versions
+devbox/box.sh down                        # stop, keep the volume
+devbox/box.sh down -v                     # ALSO deletes the friend's work and logins — ask first
+devbox/box.sh build --pull --no-cache     # new tool versions
 ```
 
 `down -v` throws away unpushed commits and the friend's Claude/Codex logins:
@@ -58,7 +60,7 @@ Each box is its own Compose project, container and volume, named after
 ```bash
 git push origin origin/main:refs/heads/friend/<name>       # the owner, once
 cp devbox/.env.example devbox/.env.<name>                   # DEVBOX_NAME=<name>, DEVBOX_DEV_PORT=3201
-docker compose -f devbox/compose.yaml --env-file devbox/.env.<name> up -d --build
+DEVBOX_ENV=.env.<name> devbox/box.sh up -d --build
 ```
 
 In `devbox/.env.<name>` also set `DEVBOX_ENV_FILE=.env.<name>`, so the box
@@ -108,8 +110,8 @@ published**: it is a full shell into the container, so it stays unreachable
 until Cloudflare Access is in front of it. It still has its own auth (a launch
 token in the URL it prints, then a signed cookie), but that is not the gate.
 
-Until then the friend works in a terminal (`docker exec -it
-lianki-devbox-<name> bash`, then `claude`, `codex`, or `dsh --profile headless "…"`),
+Until then the friend works in a terminal (`devbox/box.sh exec
+box bash`, then `claude`, `codex`, or `dsh --profile headless "…"`),
 and `dsh web` runs only so it is ready.
 
 **Key:** `DEEPSEEK_API_KEY`, provided by the owner, lives only in the
@@ -118,7 +120,7 @@ sets it himself, without it appearing anywhere else:
 
 ```bash
 read -s K && printf 'DEEPSEEK_API_KEY=%s\n' "$K" >> ~/ws/snolab/lianki/tree/main/devbox/.env && unset K
-docker compose -f devbox/compose.yaml --env-file devbox/.env up -d   # recreate to pick it up
+devbox/box.sh up -d   # recreate to pick it up
 ```
 
 Set a spend limit for that key in the DeepSeek console. dsh's OTel upload is
