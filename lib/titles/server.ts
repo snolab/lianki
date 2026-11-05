@@ -11,20 +11,19 @@ import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
 
 export async function titleRulesFrom(
   user: () => Promise<{ id?: string } | null | undefined>,
-  stored: (userId: string) => Promise<unknown>,
+  db: () => D1Like,
 ): Promise<readonly TitleRule[]> {
   try {
     const id = (await user())?.id;
-    return id ? activeTitleRules(await stored(id)) : DEFAULT_TITLE_RULES;
+    if (!id) return DEFAULT_TITLE_RULES;
+    return activeTitleRules(await new UserPrefsD1Repo(db(), id).value("titles.rules"));
   } catch {
     return DEFAULT_TITLE_RULES;
   }
 }
 
-export const titleRulesForUser = (
-  user: () => Promise<{ id?: string } | null | undefined> = authUserOrNull,
-  db: () => D1Like = getD1,
-): Promise<readonly TitleRule[]> =>
+/** Off D1 (the frozen Mongo copy) no rules are stored. */
+export const titleRulesForUser = (): Promise<readonly TitleRule[]> =>
   dbBackend() === "d1"
-    ? titleRulesFrom(user, (id) => new UserPrefsD1Repo(db(), id).value("titles.rules"))
+    ? titleRulesFrom(authUserOrNull, getD1)
     : Promise.resolve(DEFAULT_TITLE_RULES);
