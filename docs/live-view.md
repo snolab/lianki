@@ -110,6 +110,14 @@ OpenNext, not from Next's middleware):
 - **The tunnel down or slow** (no answer within 20 s, or a 5xx such as the
   gate's 503): the normal production page with a small notice, 「预览不可用，
   这是正式版」, and the cookie cleared. Never a 502.
+- **The service worker stays out** (`public/sw.js`): a request with
+  `?live` in its URL or its Referer is left to the network, and an answer
+  marked `x-lk-live` is never cached, so a dev chunk (whose name next dev
+  reuses across edits) is never served stale and nothing of the preview is
+  kept for offline use.
+- **The badge and the notice are put in by a script** (DOM text only), not
+  as server HTML, and put back if removed: React's hydration removes body
+  nodes it did not render (seen on lianki.com, 2026-11-05).
 - **Reload storms**: the badge's script counts loads in sessionStorage; 6
   within 20 s (the dev server's own `RestartStorm` numbers) switches to
   `?live=off`.
