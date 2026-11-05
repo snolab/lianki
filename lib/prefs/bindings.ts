@@ -205,6 +205,8 @@ export function prefBindings(): PrefBinding[] {
     homePins(),
     plain("lab.immersionLangs", "lk:lab:immersion:langs", jsonCodec, []),
     plain("lab.immersionTranspose", "lk:lab:immersion:transpose", bool10, false),
+    // lib/read/sense-pick.ts: which entry a word in a book means, per word and sentence.
+    plain("read.sensePicks", "lk:read-sense-picks", jsonCodec, {}),
     plain("chat-voice.rate", "lk:agent-speech-rate", num, 1.5),
     plain("chat-voice.out", "lk:voice-out", text, "speech"),
     // The chat reads lk:agent-chat-speak, then its old name (storage-keys.ts).
