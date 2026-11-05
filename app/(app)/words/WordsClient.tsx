@@ -133,6 +133,7 @@ import {
 } from "@/lib/words/spoken-scroll";
 import { aimAt, scrollToAim } from "@/lib/words/centre-in";
 import { SOUND_LOOP_KEY, createSequencer, rowReading } from "@/lib/words/sequence";
+import { ownSpeech } from "@/lib/words/own-speech";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
 import { rowPriority } from "@/lib/words/audio-priority";
@@ -945,6 +946,11 @@ function clipPool() {
   return sharedClips;
 }
 
+/** The browser voice of /words: cancels only its own utterances, never Li's (own-speech.ts). */
+const wordsSpeech = ownSpeech<SpeechSynthesisUtterance>(() =>
+  typeof speechSynthesis === "undefined" ? null : speechSynthesis,
+);
+
 /**
  * Word audio for this tab, shared by every mount of the page: each clip is
  * fetched once per session (lib/words/audio-cache.ts).
@@ -1110,7 +1116,8 @@ function useSpeech(serverVoice = false) {
     unfollow();
     audible.current?.();
     audible.current = null;
-    if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    // Only our own utterances: a global cancel would cut Li's voice off (own-speech.ts).
+    wordsSpeech.cancel();
     // A clip cut mid-word is jarring when the card changes: fade it out.
     clipPool().fadeOut(audio.current, FADE_S);
     audio.current = null;
@@ -1218,7 +1225,7 @@ function useSpeech(serverVoice = false) {
         if (started || gen !== generation.current) return;
         clearTimeout(watchdog.current);
         browserDead.current.add(lang);
-        speechSynthesis.cancel();
+        wordsSpeech.cancel();
         viaServer();
       };
       u.onstart = () => {
@@ -1236,7 +1243,7 @@ function useSpeech(serverVoice = false) {
       };
       clearTimeout(watchdog.current);
       watchdog.current = setTimeout(fallBack, 2000);
-      speechSynthesis.speak(u);
+      wordsSpeech.speak(u);
     },
     [voiceFor, browserCan, serverSpeak, unfollow],
   );

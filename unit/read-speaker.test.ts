@@ -625,3 +625,50 @@ describe("read speaker: pauses for a higher sound, resumes at the same sentence"
     expect(released).toBe(1);
   });
 });
+
+// No gap between paragraphs either (auto mode): the reader prefetches the
+// next block's first sentences while the last sentence of this one plays.
+describe("read speaker: the next paragraph fetched ahead", () => {
+  const text = (u: string) => new URL(u, "https://x").searchParams.get("text");
+
+  it("prefetch asks for the first sentences; speak then plays them from memory at once", async () => {
+    const x = setup({ mode: "cloud", held: true });
+    x.sp.speak("Fin.", "fr", x.cb);
+    x.pending[0].answer();
+    await flush();
+    await flush();
+    x.sp.prefetch(["Un. Deux. Trois.", "Quatre."], "fr");
+    expect(x.fetched.map(text)).toEqual(["Fin.", "Un.", "Deux."]);
+    x.pending[1].answer();
+    x.pending[2].answer();
+    await flush();
+    x.audio.onended?.();
+    expect(x.result).toEqual(["end"]);
+    const n = x.fetched.length;
+    x.sp.speak(["Un. Deux. Trois.", "Quatre."], "fr", x.cb);
+    // Only the sentence after the prefetched two is new.
+    expect(x.fetched.slice(n).map(text)).toEqual(["Trois."]);
+    await flush();
+    await flush();
+    expect(x.played.at(-1)?.src).toEndWith(":Un.");
+  });
+
+  it("does nothing for the browser voice", () => {
+    const x = setup({ voices: [FR] });
+    x.sp.prefetch("Un. Deux.", "fr");
+    expect(x.fetched).toEqual([]);
+    expect(x.spoken).toEqual([]);
+  });
+
+  it("the line playing is not touched: no sound, no callbacks", async () => {
+    const x = setup({ mode: "cloud" });
+    x.sp.speak("Un.", "fr", x.cb);
+    await flush();
+    await flush();
+    const plays = x.played.length;
+    x.sp.prefetch("Deux.", "fr");
+    await flush();
+    expect(x.played.length).toBe(plays);
+    expect(x.result).toEqual([]);
+  });
+});
