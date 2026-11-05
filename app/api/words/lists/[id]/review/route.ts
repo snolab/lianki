@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { dayKey } from "@/lib/words/schedule";
+import { qualifies, recordStudySafe } from "@/lib/study-days";
 import { wordsRepo } from "../../../repo";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -33,13 +34,19 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid reviews" }, { status: 400 });
+  const now = new Date();
   const result = await repo.review(
     id,
     parsed.data.reviews,
     dayKey(parsed.data.day),
-    new Date(),
+    now,
     parsed.data.cursor,
   );
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Study days (docs/levels.md): today by the server's clock, only reviews
+  // whose card was on screen at least reaction time; the client's reviewedAt
+  // (an offline grade sent later) never picks the day.
+  const read = parsed.data.reviews.filter((r) => qualifies(r.elapsedMs)).length;
+  await recordStudySafe(repo.db, repo.email, read, now);
   return NextResponse.json(result);
 }
