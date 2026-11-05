@@ -176,6 +176,32 @@ or Hebrew. Scenario phrase decks: none yet. The ja/zh decks are hand-curated
 and reviewed, so Finnish ones would be too (Tatoeba has the sentences, CC BY
 2.0 FR): a follow-up.
 
+## French scenario sentences (2026-11-05)
+
+Owner, 2026-11-05 10:35 JST, /words: "这个页面加入法语各种生活场景句", "类似日语",
+"目标是 survive". Decks like the ja/zh scenario phrase decks (same files,
+picker place, card type), but picked by data instead of by hand, so the same
+build serves any language: `scripts/words/build-scene-sentences.ts <dl> <lang>`.
+The scenario concepts are one English list (`scripts/words/scene-lexicon.ts`)
+matched in each sentence's Tatoeba English translation; the order is easiest
+first by the frequency band of the rarest word, then survival usefulness
+(questions, requests, polite formulas), then length. Two scenarios were added
+for every language: paperwork, bank and services (`admin`), and asking for
+help, not understanding (`help`); the picker now lists scenarios survival
+first.
+
+| Part           | Source                                                    | Licence      |
+| -------------- | --------------------------------------------------------- | ------------ |
+| French sentence | Tatoeba, native French authors, unchanged                 | CC BY 2.0 FR |
+| English back   | its Tatoeba English translation, unchanged                | CC BY 2.0 FR |
+| Order          | FrequencyWords ranks via `fr-freq-*`; `lemma/fr.txt` forms (not shipped in the deck) | CC BY-SA 4.0 (used only to sort) |
+
+Per-sentence credits (sentence and translation, each with its author):
+`public/words/credits/tatoeba-phrases-fr.tsv`. Details and filters:
+[public/words/SOURCES.md](../public/words/SOURCES.md), "French scenario
+sentences". Sizes follow the data (about 12,300 sentences in 14 decks on the
+2026-11-05 export).
+
 ## Not shipped (no cleared source identified)
 
 | Candidate                                    | What exists                                                                                                                                                                                                   | Why not                                                                                                                                                                                                                                            |

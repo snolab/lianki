@@ -108,6 +108,7 @@ export async function itemsFor(
       c,
       q.granularity,
       bounds,
+      book.mixed ? book.langOf : undefined,
     )) {
       let due: string | null = null;
       const sentences = [];

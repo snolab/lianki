@@ -16,6 +16,7 @@
 // message instead of racing ahead.
 
 import { echoScore, normalizeEcho } from "@lianki/debug-chat/echo";
+import { primaryLang } from "./lang-detect";
 
 export type PlayerStatus = "idle" | "speaking" | "waiting" | "ended" | "error";
 
@@ -136,12 +137,13 @@ export function speechChunks(text: string, max = 200): string[] {
   return out;
 }
 
-/** A material's language: the book's, else a guess from the script (Latin → en). */
+/**
+ * A material's language: the book's, else the heaviest language of the
+ * sample (lib/read/lang-detect.ts: scripts and function words, as data);
+ * text that names none reads as English.
+ */
 export function readLang(bookLang: string | undefined, sample: string): string {
   if (bookLang) return bookLang.replace(/_/g, "-");
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(sample)) return "ja";
-  if (/\p{Script=Hangul}/u.test(sample)) return "ko";
-  if (/\p{Script=Han}/u.test(sample)) return "zh";
-  if (/\p{Script=Cyrillic}/u.test(sample)) return "ru";
-  return "en";
+  const l = primaryLang([sample]);
+  return l && l !== "und" ? l : "en";
 }

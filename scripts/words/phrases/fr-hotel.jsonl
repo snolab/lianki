@@ -1,0 +1,520 @@
+// fr-hotel: written by build-scene-sentences.ts; edit the lexicon, not this file
+{"term":"As-tu une chambre ?","back":"Do you have a room?","scene":"at the hotel","src":"tatoeba:9457393","by":"Julien_PDC","enId":"9457399","enBy":"shekitten","auto":true}
+{"term":"Combien de temps vas-tu rester ?","back":"How long will you be staying?","scene":"at the hotel","src":"tatoeba:335187","by":"TRANG","enId":"37609","enBy":"CK","auto":true}
+{"term":"Combien de nuits resterez-vous ?","back":"How many nights will you stay?","scene":"at the hotel","src":"tatoeba:1310458","by":"sacredceltic","enId":"1310379","enBy":"CK","auto":true}
+{"term":"Voudriez-vous une chambre simple ?","back":"Would you like a single room?","scene":"at the hotel","src":"tatoeba:5706373","by":"Aiji","enId":"69684","enBy":"CK","auto":true}
+{"term":"Combien de temps aimerais-tu rester ?","back":"How long would you like to stay?","scene":"at the hotel","src":"tatoeba:1593590","by":"Petrus","enId":"4442407","enBy":"Silivrin","auto":true}
+{"term":"Pourriez-vous le mettre sur ma chambre ?","back":"Could you charge it to my room?","scene":"at the hotel","src":"tatoeba:1349914","by":"sacredceltic","enId":"325758","enBy":"CK","auto":true}
+{"term":"J'aimerais une chambre.","back":"I would like a room.","scene":"at the hotel","src":"tatoeba:4252567","by":"LaghmanC","enId":"4251425","enBy":"Linda_Li","auto":true}
+{"term":"Je veux une chambre simple.","back":"I want a single room.","scene":"at the hotel","src":"tatoeba:12683436","by":"Olcyx","enId":"3821103","enBy":"CK","auto":true}
+{"term":"Je veux une chambre avec vue.","back":"I want a room with a view.","scene":"at the hotel","src":"tatoeba:1853301","by":"sacredceltic","enId":"1848943","enBy":"Spamster","auto":true}
+{"term":"J'aimerais changer de chambre.","back":"I'd like to change my room.","scene":"at the hotel","src":"tatoeba:1339531","by":"sacredceltic","enId":"319614","enBy":"CK","auto":true}
+{"term":"Voici votre numéro de chambre.","back":"Your room number, please.","scene":"at the hotel","src":"tatoeba:7071908","by":"Micsmithel","enId":"1415601","enBy":"CK","auto":true}
+{"term":"Je veux faire le tour du monde.","back":"I want to travel around the world.","scene":"travelling","src":"tatoeba:10686322","by":"Micsmithel","enId":"271162","enBy":"CK","auto":true}
+{"term":"J’aimerais rester pour une nuit.","back":"I'd like to stay for one night.","scene":"at the hotel","src":"tatoeba:3479","by":"zmoo","enId":"1660","enBy":"CK","auto":true}
+{"term":"Quel est le numéro de ma chambre ?","back":"What's my room number?","scene":"at the hotel","src":"tatoeba:332882","by":"sysko","enId":"4662375","enBy":"CK","auto":true}
+{"term":"J'aimerais avoir une chambre à moi.","back":"I would like to have a room of my own.","scene":"at the hotel","src":"tatoeba:10905942","by":"lbdx","enId":"1816787","enBy":"pne","auto":true}
+{"term":"J'aimerais une chambre pour ce soir.","back":"I'd like a room for tonight.","scene":"at the hotel","src":"tatoeba:7995985","by":"Aiji","enId":"2543707","enBy":"CK","auto":true}
+{"term":"Par quel moyen te rends-tu à ton travail ?","back":"How do you travel to work?","scene":"travelling","src":"tatoeba:1735864","by":"sacredceltic","enId":"1735110","enBy":"wwkudu","auto":true}
+{"term":"J'aimerais une chambre avec une belle vue.","back":"I'd like a room with a good view.","scene":"at the hotel","src":"tatoeba:3718841","by":"Scorpionvenin14","enId":"277908","enBy":"CK","auto":true}
+{"term":"Prenons la route !","back":"Let's go on a road trip.","scene":"travelling","src":"tatoeba:1973658","by":"sacredceltic","enId":"1972590","enBy":"CK","auto":true}
+{"term":"Prends une chambre !","back":"Get a room.","scene":"at the hotel","src":"tatoeba:1853299","by":"sacredceltic","enId":"1848949","enBy":"Spamster","auto":true}
+{"term":"Il me faut une chambre.","back":"I need a room.","scene":"at the hotel","src":"tatoeba:7072013","by":"Micsmithel","enId":"2387466","enBy":"CK","auto":true}
+{"term":"Bonne route et à bientôt !","back":"Have a safe trip and see you soon!","scene":"travelling","src":"tatoeba:8098816","by":"felix63","enId":"13815928","enBy":"tieguy","auto":true}
+{"term":"On a une chambre pour toi.","back":"We've got a room for you.","scene":"at the hotel","src":"tatoeba:6926698","by":"Aiji","enId":"3309908","enBy":"CK","auto":true}
+{"term":"Trouve-toi déjà une chambre !","back":"Get a room already!","scene":"at the hotel","src":"tatoeba:7071986","by":"Micsmithel","enId":"2213995","enBy":"Hybrid","auto":true}
+{"term":"Il me faut une chambre pour deux.","back":"I need a room for two people.","scene":"at the hotel","src":"tatoeba:3432456","by":"sacredceltic","enId":"2026507","enBy":"kerbear407","auto":true}
+{"term":"Nous aimerions passer la nuit ici.","back":"We would like to stay here tonight.","scene":"at the hotel","src":"tatoeba:432539","by":"qdii","enId":"243272","enBy":"CK","auto":true}
+{"term":"Je vais prendre de leurs nouvelles.","back":"I'm going to check in on them.","scene":"at the hotel","src":"tatoeba:10516429","by":"lbdx","enId":"3911311","enBy":"CH","auto":true}
+{"term":"Aller et retour ou bien seulement aller ?","back":"Round trip or one-way?","scene":"travelling","src":"tatoeba:546534","by":"sacredceltic","enId":"25688","enBy":"auxitt","auto":true}
+{"term":"As-tu la clé ?","back":"Do you have the key?","scene":"at the hotel","src":"tatoeba:8286399","by":"felix63","enId":"2647712","enBy":"CK","auto":true}
+{"term":"Où est ma clé ?","back":"Where is my key?","scene":"at the hotel","src":"tatoeba:6171720","by":"felix63","enId":"6736484","enBy":"Eccles17","auto":true}
+{"term":"Où est la clé ?","back":"Where's the key?","scene":"at the hotel","src":"tatoeba:6367927","by":"Aiji","enId":"2549424","enBy":"CK","auto":true}
+{"term":"Où est l'hôtel ?","back":"Where is the hotel?","scene":"at the hotel","src":"tatoeba:2508115","by":"Aiji","enId":"2499505","enBy":"CM","auto":true}
+{"term":"Où est ton hôtel ?","back":"Where's your hotel?","scene":"at the hotel","src":"tatoeba:8269920","by":"Aiji","enId":"6924083","enBy":"Eccles17","auto":true}
+{"term":"Voyagerez-vous seule ?","back":"Will you travel alone?","scene":"travelling","src":"tatoeba:11473564","by":"Aiji","enId":"69685","enBy":"CK","auto":true}
+{"term":"Combien de sacs as-tu ?","back":"How many bags do you have?","scene":"at the hotel","src":"tatoeba:2853165","by":"nimfeo","enId":"23683","enBy":"CK","auto":true}
+{"term":"Où as-tu eu cette clé ?","back":"Where did you get this key?","scene":"at the hotel","src":"tatoeba:5963165","by":"Aiji","enId":"2892801","enBy":"CK","auto":true}
+{"term":"Où aimerais-tu voyager ?","back":"Where would you like to travel?","scene":"travelling","src":"tatoeba:8737034","by":"Julien_PDC","enId":"9937319","enBy":"DJ_Saidez","auto":true}
+{"term":"Où as-tu trouvé la clé ?","back":"Where did you find the key?","scene":"at the hotel","src":"tatoeba:865446","by":"sacredceltic","enId":"38200","enBy":"CK","auto":true}
+{"term":"Où as-tu trouvé ta clé ?","back":"Where did you find your key?","scene":"at the hotel","src":"tatoeba:9011352","by":"Micsmithel","enId":"954639","enBy":"CK","auto":true}
+{"term":"Je voudrais bien un reçu.","back":"I'd like a receipt, please.","scene":"at the hotel","src":"tatoeba:832022","by":"sacredceltic","enId":"325901","enBy":"CK","auto":true}
+{"term":"De quelle clé s'agit-il ?","back":"Which key is it?","scene":"at the hotel","src":"tatoeba:4548680","by":"sacredceltic","enId":"1886587","enBy":"CK","auto":true}
+{"term":"Pourrais-je avoir la clé ?","back":"May I have the key?","scene":"at the hotel","src":"tatoeba:8751","by":"sacredceltic","enId":"239401","enBy":"CK","auto":true}
+{"term":"Tu pars quand en vacances ?","back":"When are you going on vacation?","scene":"travelling","src":"tatoeba:6936014","by":"Aiji","enId":"3359688","enBy":"CK","auto":true}
+{"term":"Où as-tu trouvé cette clé ?","back":"Where did you find this key?","scene":"at the hotel","src":"tatoeba:11724653","by":"lbdx","enId":"7218645","enBy":"Sifaks","auto":true}
+{"term":"Où est-ce tu as mis ta clé ?","back":"Where did you put your key?","scene":"at the hotel","src":"tatoeba:3271493","by":"nimfeo","enId":"3271490","enBy":"CK","auto":true}
+{"term":"Où as-tu passé tes vacances ?","back":"Where did you spend your holiday?","scene":"travelling","src":"tatoeba:343299","by":"sysko","enId":"12056845","enBy":"sundown","auto":true}
+{"term":"Où passez-vous vos vacances ?","back":"Where are you spending your holiday?","scene":"travelling","src":"tatoeba:5971956","by":"christian63","enId":"11031277","enBy":"sundown","auto":true}
+{"term":"Quand partez-vous en vacances ?","back":"When do you go on holiday?","scene":"travelling","src":"tatoeba:1997895","by":"sacredceltic","enId":"1416027","enBy":"enteka","auto":true}
+{"term":"Où vas-tu passer tes vacances ?","back":"Where will you spend your vacation?","scene":"travelling","src":"tatoeba:10507578","by":"lbdx","enId":"6698836","enBy":"CK","auto":true}
+{"term":"Quand rentrent-ils de vacances ?","back":"When are they coming back from vacation?","scene":"travelling","src":"tatoeba:8630024","by":"Julien_PDC","enId":"11247801","enBy":"ddnktr","auto":true}
+{"term":"Où donc as-tu trouvé cette clé ?","back":"Where was it that you found this key?","scene":"at the hotel","src":"tatoeba:478040","by":"sacredceltic","enId":"18036","enBy":"Zifre","auto":true}
+{"term":"Où vous rendez-vous en vacances ?","back":"Where are you going on vacation?","scene":"travelling","src":"tatoeba:575513","by":"sacredceltic","enId":"19805","enBy":"CK","auto":true}
+{"term":"Quand es-tu revenu de ton voyage ?","back":"When did you get back from your trip?","scene":"travelling","src":"tatoeba:336612","by":"sysko","enId":"65955","enBy":"CK","auto":true}
+{"term":"Où penses-tu passer tes vacances ?","back":"Where do you think you'll be spending your holiday?","scene":"travelling","src":"tatoeba:11962592","by":"calypsow","enId":"11563232","enBy":"sundown","auto":true}
+{"term":"Où allez-vous en vacances cet été ?","back":"Where are you going to vacation this summer?","scene":"travelling","src":"tatoeba:1050942","by":"sacredceltic","enId":"1050800","enBy":"CM","auto":true}
+{"term":"Combien de jours durent vos vacances ?","back":"How many days is your holiday?","scene":"travelling","src":"tatoeba:10995130","by":"lbdx","enId":"10993807","enBy":"sundown","auto":true}
+{"term":"Quel est le meilleur hôtel de la ville ?","back":"Which is the best hotel in the town?","scene":"at the hotel","src":"tatoeba:501147","by":"sacredceltic","enId":"45077","auto":true}
+{"term":"À quelle heure dois-je quitter l'hôtel ?","back":"What time should I leave the hotel?","scene":"at the hotel","src":"tatoeba:585497","by":"qdii","enId":"24583","enBy":"CK","auto":true}
+{"term":"Voudriez-vous partir en voyage ensemble ?","back":"Would you like to go on a trip together?","scene":"travelling","src":"tatoeba:2168986","by":"sacredceltic","enId":"1102959","enBy":"jamessilver","auto":true}
+{"term":"Où allez-vous passer vos vacances d'été ?","back":"Where are you going to spend your summer vacation?","scene":"travelling","src":"tatoeba:11931341","by":"lbdx","enId":"6340066","enBy":"CK","auto":true}
+{"term":"Combien de semaines de vacances avez-vous ?","back":"How many weeks of vacation do you have?","scene":"travelling","src":"tatoeba:7141629","by":"Aiji","enId":"2753400","enBy":"Hybrid","auto":true}
+{"term":"Allez-vous partir en vacances cette année ?","back":"Will you be taking a holiday this year?","scene":"travelling","src":"tatoeba:11230236","by":"lbdx","enId":"625638","enBy":"Eldad","auto":true}
+{"term":"Où est-ce que vous avez passé vos vacances ?","back":"Where did you spend your vacation?","scene":"travelling","src":"tatoeba:1083311","by":"Aiji","enId":"528266","enBy":"fanty","auto":true}
+{"term":"Est-ce que vous avez des chambres de libre ?","back":"Do you have a vacancy?","scene":"at the hotel","src":"tatoeba:14987","by":"sacredceltic","enId":"434550","enBy":"lukaszpp","auto":true}
+{"term":"Tu quitterais ta femme pour voyager avec moi?","back":"Would you leave your wife to travel with me?","scene":"travelling","src":"tatoeba:6376739","by":"Scorpionvenin14","enId":"6376674","enBy":"OsoHombre","auto":true}
+{"term":"Où veux-tu aller pendant les vacances d'été ?","back":"Where do you want to go during the summer vacation?","scene":"travelling","src":"tatoeba:11433246","by":"lbdx","enId":"2537463","enBy":"CK","auto":true}
+{"term":"Avez-vous des projets pour les vacances d'été ?","back":"Do you have any plans for the summer vacation?","scene":"travelling","src":"tatoeba:11136810","by":"Aiji","enId":"24316","enBy":"CK","auto":true}
+{"term":"Reste-t-il des chambres de libres dans votre hôtel ?","back":"Are there still available rooms in your hotel?","scene":"at the hotel","src":"tatoeba:3255644","by":"Aiji","enId":"3255645","auto":true}
+{"term":"Je cherche ma clé.","back":"I'm looking for my key.","scene":"at the hotel","src":"tatoeba:8747","by":"Cocorico","enId":"239408","enBy":"CK","auto":true}
+{"term":"Aimes-tu voyager ?","back":"Do you like to travel?","scene":"travelling","src":"tatoeba:1316298","by":"sacredceltic","enId":"325529","enBy":"CK","auto":true}
+{"term":"Je cherche la clé.","back":"I'm looking for the key.","scene":"at the hotel","src":"tatoeba:9742332","by":"lbdx","enId":"9741492","enBy":"DJ_Saidez","auto":true}
+{"term":"Voyages-tu souvent ?","back":"Do you travel often?","scene":"travelling","src":"tatoeba:7677626","by":"sacredceltic","enId":"3821808","enBy":"CK","auto":true}
+{"term":"Tu as perdu la clé ?","back":"Did you lose the key?","scene":"at the hotel","src":"tatoeba:12504302","by":"Rovo","enId":"12504042","enBy":"CK","auto":true}
+{"term":"Connais-tu cet hôtel ?","back":"Do you know that hotel?","scene":"at the hotel","src":"tatoeba:12060","by":"sysko","enId":"49873","enBy":"CK","auto":true}
+{"term":"Voyagez-vous beaucoup ?","back":"Do you travel much?","scene":"travelling","src":"tatoeba:337801","by":"sysko","enId":"868307","enBy":"Sonix","auto":true}
+{"term":"Êtes-vous en vacances ?","back":"Are you on holiday?","scene":"travelling","src":"tatoeba:3430481","by":"sacredceltic","enId":"434250","enBy":"lukaszpp","auto":true}
+{"term":"Es-tu ici en vacances ?","back":"Are you here on holiday?","scene":"travelling","src":"tatoeba:4992689","by":"sacredceltic","enId":"4593673","enBy":"Hybrid","auto":true}
+{"term":"J'aimerais voyager seul.","back":"I'd like to travel alone.","scene":"travelling","src":"tatoeba:632820","by":"qdii","enId":"8226952","enBy":"CK","auto":true}
+{"term":"T’as pas la clef, hein ?","back":"You don't have the key, do you?","scene":"at the hotel","src":"tatoeba:4004669","by":"gillux","enId":"13562457","enBy":"rul","auto":true}
+{"term":"As-tu essayé cette clé ?","back":"Did you try this key?","scene":"at the hotel","src":"tatoeba:7771165","by":"Aiji","enId":"3071812","enBy":"sharptoothed","auto":true}
+{"term":"Je veux voyager avec toi.","back":"I want to travel with you.","scene":"travelling","src":"tatoeba:1337156","by":"sacredceltic","enId":"29042","enBy":"CK","auto":true}
+{"term":"Je veux voyager en avion.","back":"I want to travel by airplane.","scene":"travelling","src":"tatoeba:2051857","by":"nimfeo","enId":"261424","enBy":"CK","auto":true}
+{"term":"Savez-vous qui a la clé ?","back":"Do you know who has the key?","scene":"at the hotel","src":"tatoeba:6545537","by":"Aiji","enId":"2891102","enBy":"CK","auto":true}
+{"term":"Comment était le voyage ?","back":"How was the trip?","scene":"travelling","src":"tatoeba:8122822","by":"felix63","enId":"3819088","enBy":"CK","auto":true}
+{"term":"Savez-vous où est ma clé ?","back":"Do you know where my key is?","scene":"at the hotel","src":"tatoeba:11624204","by":"Aiji","enId":"3608109","enBy":"panamicua","auto":true}
+{"term":"Es-tu prêt pour le voyage ?","back":"Are you ready for the trip?","scene":"travelling","src":"tatoeba:1339205","by":"sacredceltic","enId":"325554","enBy":"CK","auto":true}
+{"term":"Vous avez fait bon voyage ?","back":"Did you have a good trip?","scene":"travelling","src":"tatoeba:7702139","by":"Maxence","enId":"5442691","enBy":"tabular","auto":true}
+{"term":"Je veux vérifier, maintenant.","back":"I want to check out now.","scene":"at the hotel","src":"tatoeba:2435523","by":"sacredceltic","enId":"2011898","enBy":"CK","auto":true}
+{"term":"Est-ce la clé que tu cherches ?","back":"Is this the key you're looking for?","scene":"at the hotel","src":"tatoeba:429320","by":"Archibald","enId":"4664331","enBy":"CK","auto":true}
+{"term":"Qu'as-tu fait de tes vacances ?","back":"How did you spend your vacation?","scene":"travelling","src":"tatoeba:575509","by":"sacredceltic","enId":"19794","enBy":"CK","auto":true}
+{"term":"Est-ce ton premier voyage ici ?","back":"Is it your first trip here?","scene":"travelling","src":"tatoeba:6631113","by":"Aiji","enId":"3069827","enBy":"CK","auto":true}
+{"term":"En première classe je vous prie.","back":"I'd like to travel first-class.","scene":"travelling","src":"tatoeba:13215","by":"dominiko","enId":"34424","enBy":"AlanF_US","auto":true}
+{"term":"J'aimerais une chambre côté rue.","back":"I'd like a room in the front.","scene":"at the hotel","src":"tatoeba:1485755","by":"Aiji","enId":"318353","enBy":"CK","auto":true}
+{"term":"Sommes-nous dans le même hôtel ?","back":"Are we in the same hotel?","scene":"at the hotel","src":"tatoeba:1590254","by":"sacredceltic","enId":"1449092","enBy":"CM","auto":true}
+{"term":"Je veux que tu me rendes ma clé.","back":"I want my key back.","scene":"at the hotel","src":"tatoeba:2427374","by":"sacredceltic","enId":"2011404","enBy":"CK","auto":true}
+{"term":"Est-ce que tu voyages beaucoup ?","back":"Do you travel a lot?","scene":"travelling","src":"tatoeba:5737008","by":"Petrus","enId":"29911","enBy":"CK","auto":true}
+{"term":"Est-ce la clé que tu cherchais ?","back":"Is this the key you were looking for?","scene":"at the hotel","src":"tatoeba:9585116","by":"Amastan","enId":"9585103","enBy":"Amastan","auto":true}
+{"term":"Tu as passé de bonnes vacances ?","back":"Did you have a good vacation?","scene":"travelling","src":"tatoeba:10518363","by":"lbdx","enId":"6263470","enBy":"CK","auto":true}
+{"term":"Pars-tu en vacances cette année ?","back":"Are you going to go on holiday this year?","scene":"travelling","src":"tatoeba:625654","by":"U2FS","enId":"607024","enBy":"rado","auto":true}
+{"term":"Quel genre d'hôtel vous plairait ?","back":"What kind of hotel would you like?","scene":"at the hotel","src":"tatoeba:5041392","by":"nimfeo","enId":"12319410","enBy":"Miktsoanit","auto":true}
+{"term":"Comment as-tu passé tes vacances ?","back":"How did you spend your holiday?","scene":"travelling","src":"tatoeba:2393670","by":"sacredceltic","enId":"724978","enBy":"Eldad","auto":true}
+{"term":"Qu'avez-vous fait de vos vacances ?","back":"What did you do on your vacation?","scene":"travelling","src":"tatoeba:575511","by":"sacredceltic","enId":"19780","enBy":"CK","auto":true}
+{"term":"Quel est ton jour de fête préféré ?","back":"What's your favorite holiday?","scene":"travelling","src":"tatoeba:1422104","by":"sacredceltic","enId":"906776","enBy":"CK","auto":true}
+{"term":"Est-ce que tu as besoin de la clé ?","back":"Do you need the key?","scene":"at the hotel","src":"tatoeba:7794000","by":"Aiji","enId":"4128240","enBy":"AlanF_US","auto":true}
+{"term":"Je veux partir en vacances avec toi.","back":"I want to go on a trip with you.","scene":"travelling","src":"tatoeba:3779579","by":"Scorpionvenin14","enId":"3777933","enBy":"CK","auto":true}
+{"term":"Est-ce la clé que ton oncle cherche ?","back":"Is this the key your uncle is looking for?","scene":"at the hotel","src":"tatoeba:5380561","by":"Aiji","enId":"55991","enBy":"CK","auto":true}
+{"term":"Voyagez-vous par bateau ou par avion ?","back":"Do you travel by sea or by air?","scene":"travelling","src":"tatoeba:15288","by":"nimfeo","enId":"69150","enBy":"sundown","auto":true}
+{"term":"J'aimerais que tu remettes ton voyage.","back":"I'd like you to postpone your trip.","scene":"travelling","src":"tatoeba:2019719","by":"sacredceltic","enId":"2016919","enBy":"CK","auto":true}
+{"term":"Comment vas-tu ? As-tu fait bon voyage ?","back":"How are you? Did you have a good trip?","scene":"travelling","src":"tatoeba:1088773","by":"sacredceltic","enId":"1716","enBy":"CK","auto":true}
+{"term":"Je veux en entendre plus sur ton voyage.","back":"I want to hear more about your trip.","scene":"travelling","src":"tatoeba:5344177","by":"Aiji","enId":"2539871","enBy":"CK","auto":true}
+{"term":"Quelle est la meilleure façon de voyager ?","back":"What's the best way to travel?","scene":"travelling","src":"tatoeba:8237590","by":"Aiji","enId":"1304529","enBy":"CK","auto":true}
+{"term":"Que vas-tu faire pendant tes vacances d'été ?","back":"What're you going to do during your summer vacation?","scene":"travelling","src":"tatoeba:3668571","by":"THURET","enId":"1970490","enBy":"CK","auto":true}
+{"term":"Qu'allez-vous faire pendant vos vacances d'été ?","back":"What are you going to do for summer vacation?","scene":"travelling","src":"tatoeba:3668573","by":"THURET","enId":"3669431","enBy":"karloelkebekio","auto":true}
+{"term":"J'aimerais voyager et visiter de nouveaux lieux.","back":"I would like to travel and visit new places.","scene":"travelling","src":"tatoeba:6206393","by":"Sorgan","enId":"6038728","enBy":"Hybrid","auto":true}
+{"term":"Je voyage.","back":"I travel.","scene":"travelling","src":"tatoeba:10512296","by":"pkill","enId":"6018103","enBy":"LimeGreenTeknii","auto":true}
+{"term":"Emmène la clé.","back":"Bring the key.","scene":"at the hotel","src":"tatoeba:1108598","by":"sacredceltic","enId":"507763","enBy":"CM","auto":true}
+{"term":"Je veux voyager.","back":"I wanna travel.","scene":"travelling","src":"tatoeba:1226050","by":"Julien_PDC","enId":"1226030","auto":true}
+{"term":"Allons en voyage.","back":"Let's take a trip.","scene":"travelling","src":"tatoeba:135590","by":"Julien_PDC","enId":"325547","enBy":"CK","auto":true}
+{"term":"Fais bon voyage !","back":"Have a safe trip.","scene":"travelling","src":"tatoeba:1763116","by":"sacredceltic","enId":"28483","enBy":"CK","auto":true}
+{"term":"Je vis à l'hôtel.","back":"I live in a hotel.","scene":"at the hotel","src":"tatoeba:2383469","by":"sacredceltic","enId":"2377657","enBy":"CK","auto":true}
+{"term":"Faites bon voyage.","back":"Have a nice trip!","scene":"travelling","src":"tatoeba:9399","by":"sacredceltic","enId":"339238","enBy":"nickyeow","auto":true}
+{"term":"Je voyage souvent.","back":"I travel often.","scene":"travelling","src":"tatoeba:467442","by":"sacredceltic","enId":"465459","enBy":"FeuDRenais","auto":true}
+{"term":"Donnez-moi la clé.","back":"Give me the key.","scene":"at the hotel","src":"tatoeba:667294","by":"Aiji","enId":"660423","enBy":"CM","auto":true}
+{"term":"Ça vaut le voyage.","back":"It's worth a trip.","scene":"travelling","src":"tatoeba:2187144","by":"sacredceltic","enId":"2182136","enBy":"Hybrid","auto":true}
+{"term":"Je voyage beaucoup.","back":"I travel a lot.","scene":"travelling","src":"tatoeba:4451265","by":"franlexcois","enId":"2549662","enBy":"CK","auto":true}
+{"term":"Voyageons ensemble.","back":"Let's travel together.","scene":"travelling","src":"tatoeba:5603489","by":"Aiji","enId":"2713596","enBy":"CK","auto":true}
+{"term":"Nous aimons voyager.","back":"We like to travel.","scene":"travelling","src":"tatoeba:6158759","by":"felix63","enId":"6736456","enBy":"Eccles17","auto":true}
+{"term":"Je suis en vacances.","back":"I'm on holiday.","scene":"travelling","src":"tatoeba:6538","by":"TRANG","enId":"1655626","enBy":"CK","auto":true}
+{"term":"J’aime voyager seul.","back":"I like to travel alone.","scene":"travelling","src":"tatoeba:3766261","by":"gillux","enId":"252478","enBy":"CK","auto":true}
+{"term":"Il vous faut une clé.","back":"You need a key.","scene":"at the hotel","src":"tatoeba:7414766","by":"lbdx","enId":"2649064","enBy":"CK","auto":true}
+{"term":"Voyager me fait peur.","back":"I'm afraid to travel.","scene":"travelling","src":"tatoeba:13210383","by":"Rovo","enId":"13106918","enBy":"rul","auto":true}
+{"term":"Il faut que je voyage.","back":"I need to travel.","scene":"travelling","src":"tatoeba:1122367","by":"sacredceltic","enId":"1122360","enBy":"cntrational","auto":true}
+{"term":"Retournons à l'hôtel !","back":"Let's go back to the hotel.","scene":"at the hotel","src":"tatoeba:4922646","by":"sacredceltic","enId":"2438252","enBy":"Hybrid","auto":true}
+{"term":"Je n'avais pas de clé.","back":"I didn't have a key.","scene":"at the hotel","src":"tatoeba:5452540","by":"Aiji","enId":"4498016","enBy":"CK","auto":true}
+{"term":"C'était un bon voyage.","back":"That was a good trip.","scene":"travelling","src":"tatoeba:6285979","by":"Aiji","enId":"5008836","enBy":"CK","auto":true}
+{"term":"Ne sors pas de l'hôtel.","back":"Don't leave the hotel.","scene":"at the hotel","src":"tatoeba:2355037","by":"Amastan","enId":"11966029","enBy":"sundown","auto":true}
+{"term":"Je prends des vacances.","back":"I'm taking a vacation.","scene":"travelling","src":"tatoeba:3019560","by":"JulieMDM","enId":"2547105","enBy":"CK","auto":true}
+{"term":"Je dois trouver la clé.","back":"I have to find the key.","scene":"at the hotel","src":"tatoeba:5452342","by":"alexisslay","enId":"2360466","enBy":"CK","auto":true}
+{"term":"Je sais où est la clef.","back":"I know where the key is.","scene":"at the hotel","src":"tatoeba:6965871","by":"Yemana","enId":"5269380","enBy":"Hybrid","auto":true}
+{"term":"Bonnes vacances d'été !","back":"Have a nice summer vacation!","scene":"travelling","src":"tatoeba:7491921","by":"felix63","enId":"12233477","enBy":"Miktsoanit","auto":true}
+{"term":"Je vais voyager demain.","back":"I'm going to travel tomorrow.","scene":"travelling","src":"tatoeba:9065920","by":"Aiji","enId":"2036141","enBy":"AlanF_US","auto":true}
+{"term":"Je pense à mes vacances.","back":"I am thinking of my vacation.","scene":"travelling","src":"tatoeba:868707","by":"Micsmithel","enId":"1505500","enBy":"somekinda","auto":true}
+{"term":"Ce voyage vaut la peine.","back":"This trip is worth it.","scene":"travelling","src":"tatoeba:9126707","by":"felix63","enId":"13855508","enBy":"tieguy","auto":true}
+{"term":"Je dois trouver ma clef.","back":"I must find my key.","scene":"at the hotel","src":"tatoeba:4245058","by":"mouche","enId":"2387261","enBy":"CK","auto":true}
+{"term":"Je préfère voyager seul.","back":"I prefer to travel alone.","scene":"travelling","src":"tatoeba:6891332","by":"GB3","enId":"6890944","enBy":"CK","auto":true}
+{"term":"Il me faut des vacances.","back":"I need a holiday.","scene":"travelling","src":"tatoeba:7763068","by":"sacredceltic","enId":"2387439","enBy":"CK","auto":true}
+{"term":"Nous voyagerons ensemble.","back":"We'll travel together.","scene":"travelling","src":"tatoeba:6481921","by":"GB3","enId":"6356547","enBy":"CK","auto":true}
+{"term":"Ce voyage était ton idée.","back":"This trip was your idea.","scene":"travelling","src":"tatoeba:7047068","by":"Aiji","enId":"3823625","enBy":"CK","auto":true}
+{"term":"Tu as besoin de vacances.","back":"You need a vacation.","scene":"travelling","src":"tatoeba:7368205","by":"tras","enId":"2647245","enBy":"CK","auto":true}
+{"term":"Passe de bonnes vacances !","back":"Have a nice holiday.","scene":"travelling","src":"tatoeba:4626125","by":"sacredceltic","enId":"273948","enBy":"CK","auto":true}
+{"term":"Tu auras besoin d'une clé.","back":"You will need a key.","scene":"at the hotel","src":"tatoeba:6465655","by":"Aiji","enId":"2713656","enBy":"CK","auto":true}
+{"term":"Vous méritez des vacances.","back":"You deserve a holiday.","scene":"travelling","src":"tatoeba:11574535","by":"Aiji","enId":"3737112","enBy":"CK","auto":true}
+{"term":"Je ne voyage pas beaucoup.","back":"I don't travel very much.","scene":"travelling","src":"tatoeba:12321331","by":"lbdx","enId":"7928243","enBy":"CK","auto":true}
+{"term":"Je pars en voyage d'affaire.","back":"I'm going on a business trip.","scene":"travelling","src":"tatoeba:2576510","by":"sacredceltic","enId":"2293569","enBy":"CK","auto":true}
+{"term":"Nous sommes ici en vacances.","back":"We're here on holiday.","scene":"travelling","src":"tatoeba:7352992","by":"Aiji","enId":"8097205","enBy":"deniko","auto":true}
+{"term":"Rentrons vite à notre hôtel.","back":"Let's hurry back to our hotel.","scene":"at the hotel","src":"tatoeba:9547792","by":"Aiji","enId":"2457340","enBy":"sharptoothed","auto":true}
+{"term":"Je ne veux pas voyager seul.","back":"I don't want to travel alone.","scene":"travelling","src":"tatoeba:11181181","by":"lbdx","enId":"6262942","enBy":"CK","auto":true}
+{"term":"Parlez-leur de vos vacances !","back":"Tell them about your vacation!","scene":"travelling","src":"tatoeba:3272481","by":"nimfeo","enId":"9951440","enBy":"traeton","auto":true}
+{"term":"Vous avez besoin de vacances.","back":"You need a holiday.","scene":"travelling","src":"tatoeba:4930275","by":"sacredceltic","enId":"5264095","enBy":"dynamo","auto":true}
+{"term":"Je voyage pour voir le monde.","back":"I travel to see the world.","scene":"travelling","src":"tatoeba:6850092","by":"Delapouite","enId":"6900914","enBy":"kaiperkins271","auto":true}
+{"term":"Je sais que tu aimes voyager.","back":"I know you like to travel.","scene":"travelling","src":"tatoeba:7524839","by":"tras","enId":"7521437","enBy":"CK","auto":true}
+{"term":"Nous n'allons pas en vacances.","back":"We're not going on vacation.","scene":"travelling","src":"tatoeba:843444","by":"Aiji","enId":"6874227","enBy":"CK","auto":true}
+{"term":"Nous pouvons voyager ensemble.","back":"We can travel together.","scene":"travelling","src":"tatoeba:3258775","by":"nimfeo","enId":"3258776","enBy":"CM","auto":true}
+{"term":"Ça a souvent lieu en vacances.","back":"It happens frequently on vacation.","scene":"travelling","src":"tatoeba:4992715","by":"sacredceltic","enId":"4904319","enBy":"warrenbisch","auto":true}
+{"term":"Je viens de rentrer de voyage.","back":"I've just returned from a trip.","scene":"travelling","src":"tatoeba:5804737","by":"Yemana","enId":"5803583","enBy":"CK","auto":true}
+{"term":"Je sais que tu es en vacances.","back":"I know you're on vacation.","scene":"travelling","src":"tatoeba:6736825","by":"Aiji","enId":"3725661","enBy":"CM","auto":true}
+{"term":"Je ne voyage pas très souvent.","back":"I don't travel very often.","scene":"travelling","src":"tatoeba:12803082","by":"lbdx","enId":"7192310","enBy":"CK","auto":true}
+{"term":"Nous allons voyager en voiture.","back":"We're going to travel by car.","scene":"travelling","src":"tatoeba:3260429","by":"nimfeo","enId":"6874224","enBy":"CK","auto":true}
+{"term":"Je restai debout tout le temps.","back":"I stood all the way.","scene":"at the hotel","src":"tatoeba:532835","by":"sacredceltic","enId":"262190","enBy":"sundown","auto":true}
+{"term":"Je prévois de dormir à l'hôtel.","back":"I'm planning to stay at a hotel.","scene":"at the hotel","src":"tatoeba:7088899","by":"Aiji","enId":"2427040","enBy":"CK","auto":true}
+{"term":"Je prévois de rester à l'hôtel.","back":"I'm planning to stay at the hotel.","scene":"at the hotel","src":"tatoeba:8628189","by":"Aiji","enId":"33384","enBy":"AlanF_US","auto":true}
+{"term":"Tu devrais prendre des vacances.","back":"You should take a vacation.","scene":"travelling","src":"tatoeba:1820510","by":"sacredceltic","enId":"1818260","enBy":"Spamster","auto":true}
+{"term":"Je veux simplement des vacances.","back":"I just want a vacation.","scene":"travelling","src":"tatoeba:2447889","by":"sacredceltic","enId":"2011764","enBy":"CK","auto":true}
+{"term":"Je suis dans ma chambre d'hôtel.","back":"I'm in my hotel room.","scene":"at the hotel","src":"tatoeba:7853386","by":"Aiji","enId":"3821101","enBy":"CK","auto":true}
+{"term":"Restons tous dans le même hôtel.","back":"Let's all stay at the same hotel.","scene":"at the hotel","src":"tatoeba:8700717","by":"Julien_PDC","enId":"6348542","enBy":"CK","auto":true}
+{"term":"Ceci est un hôtel, pas un bordel.","back":"This is a hotel, not a brothel.","scene":"at the hotel","src":"tatoeba:4867345","by":"Amastan","enId":"4887680","enBy":"venticello","auto":true}
+{"term":"Je suis en vacances cette semaine.","back":"I'm on holiday this week.","scene":"travelling","src":"tatoeba:6533","by":"sysko","enId":"10189287","enBy":"CK","auto":true}
+{"term":"Cet hôtel est meilleur que l'autre.","back":"This hotel is better than the other one.","scene":"at the hotel","src":"tatoeba:3259391","by":"nimfeo","enId":"3259392","enBy":"CM","auto":true}
+{"term":"Il nous plaît de voyager en bateau.","back":"We like to travel by boat.","scene":"travelling","src":"tatoeba:3259793","by":"nimfeo","enId":"3259794","auto":true}
+{"term":"J'espère que tu as fait bon voyage.","back":"I hope you had a nice trip.","scene":"travelling","src":"tatoeba:9394","by":"qdii","enId":"21290","enBy":"CK","auto":true}
+{"term":"Tu es trop jeune pour voyager seul.","back":"You are too young to travel alone.","scene":"travelling","src":"tatoeba:339577","by":"TRANG","enId":"64878","enBy":"CK","auto":true}
+{"term":"Pourquoi je dois voyager avec toi !","back":"Why do I travel with you!","scene":"travelling","src":"tatoeba:5800092","by":"Toynop","enId":"5790421","enBy":"Eccles17","auto":true}
+{"term":"J'adore voyager à travers le monde.","back":"I love to travel around the world.","scene":"travelling","src":"tatoeba:10946840","by":"lbdx","enId":"2675074","enBy":"Joseph","auto":true}
+{"term":"« As-tu la clé ? » « Oui, je l'ai. »","back":"\"Have you got the key?\" \"Yes, I have it.\"","scene":"at the hotel","src":"tatoeba:3994248","by":"Aiji","enId":"3993936","enBy":"mervert1","auto":true}
+{"term":"Je voyage beaucoup pour mon travail.","back":"I travel a lot for work.","scene":"travelling","src":"tatoeba:11856883","by":"calypsow","enId":"11856344","enBy":"CK","auto":true}
+{"term":"Je prends des vacances cette semaine.","back":"I take a vacation this week.","scene":"travelling","src":"tatoeba:180396","by":"sacredceltic","enId":"257513","auto":true}
+{"term":"Je me rappelle lui avoir donné la clé.","back":"I remember that I gave him the key.","scene":"at the hotel","src":"tatoeba:541806","by":"sacredceltic","enId":"528497","enBy":"fanty","auto":true}
+{"term":"Je pense que tu as besoin de vacances.","back":"I think you need a vacation.","scene":"travelling","src":"tatoeba:2410597","by":"sacredceltic","enId":"2408625","enBy":"CK","auto":true}
+{"term":"Nous avons un long voyage devant nous.","back":"We have a long trip ahead of us.","scene":"travelling","src":"tatoeba:6285955","by":"Aiji","enId":"3312398","enBy":"CK","auto":true}
+{"term":"Mon rêve est de voyager dans le monde.","back":"My dream is to travel the world.","scene":"travelling","src":"tatoeba:6383418","by":"Scorpionvenin14","enId":"6383306","enBy":"mraz","auto":true}
+{"term":"Je me souviens lui avoir remis la clé.","back":"I remember giving him the key.","scene":"at the hotel","src":"tatoeba:6833042","by":"Micsmithel","enId":"285056","enBy":"CH","auto":true}
+{"term":"Je passerai te prendre devant l'hôtel.","back":"I'll pick you up in front of the hotel.","scene":"at the hotel","src":"tatoeba:6966544","by":"Yemana","enId":"6954623","enBy":"CK","auto":true}
+{"term":"J'espère que tu as apprécié ton voyage.","back":"I hope you enjoyed your trip.","scene":"travelling","src":"tatoeba:2444112","by":"sacredceltic","enId":"1989734","enBy":"CK","auto":true}
+{"term":"Voici la clef qui a ouvert cette porte.","back":"This is the key that opened that door.","scene":"at the hotel","src":"tatoeba:5270593","by":"BabyAzerty","enId":"2146719","enBy":"CK","auto":true}
+{"term":"Je pars en vacances dans trois semaines.","back":"I'm going on holiday in three weeks' time.","scene":"travelling","src":"tatoeba:6028323","by":"christian63","enId":"6028429","enBy":"zumley","auto":true}
+{"term":"Tu es trop jeune pour voyager tout seul.","back":"You're too young to travel by yourself.","scene":"travelling","src":"tatoeba:7992526","by":"Aiji","enId":"2712707","enBy":"CK","auto":true}
+{"term":"Je pars en vacances la semaine prochaine.","back":"I'm going on vacation next week.","scene":"travelling","src":"tatoeba:1958914","by":"gillux","enId":"1957987","enBy":"CK","auto":true}
+{"term":"Nous pourrions essayer de trouver la clé.","back":"We could try to find the key.","scene":"at the hotel","src":"tatoeba:6843515","by":"Aiji","enId":"3312957","enBy":"CK","auto":true}
+{"term":"Je ne prends pas de vacances cette année.","back":"I'm not taking a vacation this year.","scene":"travelling","src":"tatoeba:8422088","by":"lbdx","enId":"1647286","enBy":"Spamster","auto":true}
+{"term":"Nos vacances se terminent dans trois jours.","back":"Our vacation will be over in three days.","scene":"travelling","src":"tatoeba:10515290","by":"lbdx","enId":"7735258","enBy":"CK","auto":true}
+{"term":"J'aimerais pouvoir voyager à travers le monde.","back":"I wish I could travel around the world.","scene":"travelling","src":"tatoeba:7817006","by":"Aiji","enId":"271164","enBy":"CK","auto":true}
+{"term":"Avez-vous des coffres ?","back":"Do you have safety deposit boxes?","scene":"at the hotel","src":"tatoeba:129143","by":"Julien_PDC","enId":"275351","enBy":"CK","auto":true}
+{"term":"As-tu des parents à l’étranger ?","back":"Do you have relatives abroad?","scene":"travelling","src":"tatoeba:9469263","by":"felix63","enId":"9469253","enBy":"sundown","auto":true}
+{"term":"Aimerais-tu voyager à l'étranger ?","back":"Would you like to travel abroad?","scene":"travelling","src":"tatoeba:1270506","by":"sacredceltic","enId":"22183","enBy":"CK","auto":true}
+{"term":"Merci de me réveiller à six heures.","back":"Please wake me at six.","scene":"at the hotel","src":"tatoeba:1982207","by":"nimfeo","enId":"72431","enBy":"CK","auto":true}
+{"term":"Combien d'heures va durer le voyage?","back":"How many hours will the trip take?","scene":"travelling","src":"tatoeba:3669158","by":"Scorpionvenin14","enId":"3667386","enBy":"_undertoad","auto":true}
+{"term":"Veuillez vous préparer pour le voyage.","back":"Please prepare for the trip.","scene":"travelling","src":"tatoeba:1340832","by":"sacredceltic","enId":"325538","enBy":"CK","auto":true}
+{"term":"Quand prévois-tu de régler ta chambre ?","back":"When do you plan to check out?","scene":"at the hotel","src":"tatoeba:1348543","by":"sacredceltic","enId":"70873","enBy":"CK","auto":true}
+{"term":"Quand doit-elle se rendre à l'étranger ?","back":"When is she to go abroad?","scene":"travelling","src":"tatoeba:465659","by":"sacredceltic","enId":"65967","auto":true}
+{"term":"Combien de temps es-tu resté à l'étranger ?","back":"How long have you been abroad?","scene":"travelling","src":"tatoeba:1201336","by":"sacredceltic","enId":"37600","enBy":"CK","auto":true}
+{"term":"Combien de fois as-tu voyagé à l'étranger ?","back":"How many times have you travelled abroad?","scene":"travelling","src":"tatoeba:6891435","by":"sacredceltic","enId":"6892688","enBy":"Gulliver","auto":true}
+{"term":"Est-ce que tu aimerais aller à l'étranger ?","back":"Would you like to go abroad?","scene":"travelling","src":"tatoeba:10621694","by":"Aiji","enId":"16238","enBy":"CK","auto":true}
+{"term":"Combien de temps êtes-vous resté à l'étranger ?","back":"How long did you stay abroad?","scene":"travelling","src":"tatoeba:10388","by":"sysko","enId":"69533","enBy":"CK","auto":true}
+{"term":"Partages-tu une chambre ?","back":"Do you share a room?","scene":"at the hotel","src":"tatoeba:5645473","by":"narnar","enId":"434622","enBy":"lukaszpp","auto":true}
+{"term":"Avez-vous apporté la clé ?","back":"Did you bring the key?","scene":"at the hotel","src":"tatoeba:11082136","by":"Aiji","enId":"6272928","enBy":"CK","auto":true}
+{"term":"Je veux aller à l'étranger.","back":"I want to go abroad.","scene":"travelling","src":"tatoeba:459679","by":"sacredceltic","enId":"21938","enBy":"CK","auto":true}
+{"term":"As-tu déjà été à l'étranger ?","back":"Have you ever been abroad?","scene":"travelling","src":"tatoeba:570275","by":"sacredceltic","enId":"444754","enBy":"CK","auto":true}
+{"term":"Je veux voyager à l'étranger.","back":"I want to travel abroad.","scene":"travelling","src":"tatoeba:9742355","by":"lbdx","enId":"9741459","enBy":"DJ_Saidez","auto":true}
+{"term":"J'aimerais aller à l'étranger.","back":"I'd like to go abroad.","scene":"travelling","src":"tatoeba:1527736","by":"Rovo","enId":"6922414","enBy":"CK","auto":true}
+{"term":"As-tu passé un agréable voyage ?","back":"Did you have a pleasant trip?","scene":"travelling","src":"tatoeba:1986624","by":"sacredceltic","enId":"1931861","enBy":"Spamster","auto":true}
+{"term":"Avez-vous déjà été à l'étranger ?","back":"Have you been abroad?","scene":"travelling","src":"tatoeba:9469","by":"dominiko","enId":"21932","enBy":"CK","auto":true}
+{"term":"Prévois-tu d'aller à l'étranger ?","back":"Do you plan to go abroad?","scene":"travelling","src":"tatoeba:474708","by":"sacredceltic","enId":"16239","enBy":"CK","auto":true}
+{"term":"Je veux que tu me racontes ton voyage.","back":"I want you to tell me about your trip.","scene":"travelling","src":"tatoeba:2026200","by":"sacredceltic","enId":"2025907","enBy":"CK","auto":true}
+{"term":"J'aimerais un jour visiter l'étranger.","back":"I'd like to go abroad someday.","scene":"travelling","src":"tatoeba:7427558","by":"Micsmithel","enId":"253092","enBy":"CK","auto":true}
+{"term":"Est-ce ton premier voyage à l'étranger ?","back":"Is this your first trip abroad?","scene":"travelling","src":"tatoeba:5620816","by":"Aiji","enId":"56185","enBy":"CK","auto":true}
+{"term":"Pourquoi ne partageons-nous pas une pièce ?","back":"Why don't we share a room?","scene":"at the hotel","src":"tatoeba:1339161","by":"sacredceltic","enId":"73222","enBy":"CK","auto":true}
+{"term":"Quelle est votre façon de voyager préférée ?","back":"What's your favorite way to travel?","scene":"travelling","src":"tatoeba:916321","by":"trotter","enId":"906939","enBy":"CK","auto":true}
+{"term":"Nous aimerions une chambre double avec bain.","back":"We'd like a double room with bath.","scene":"at the hotel","src":"tatoeba:1437091","by":"sacredceltic","enId":"1437082","enBy":"CM","auto":true}
+{"term":"Nous vivons à l'étranger.","back":"We live abroad.","scene":"travelling","src":"tatoeba:13455016","by":"sacredceltic","enId":"8486868","enBy":"Luiaard","auto":true}
+{"term":"Chambre simple ou double ?","back":"Single or double room?","scene":"at the hotel","src":"tatoeba:8714","by":"Sbgodin","enId":"462440","enBy":"lukaszpp","auto":true}
+{"term":"Je vais à l'étranger cet été.","back":"I'm going abroad this summer.","scene":"travelling","src":"tatoeba:472228","by":"sacredceltic","enId":"6873103","enBy":"CK","auto":true}
+{"term":"Je vais souvent à l'étranger.","back":"I often go abroad.","scene":"travelling","src":"tatoeba:8452428","by":"Aiji","enId":"7998732","enBy":"AlanF_US","auto":true}
+{"term":"Raconte-moi un peu ton voyage.","back":"Tell me a little bit about your trip.","scene":"travelling","src":"tatoeba:5304892","by":"nimfeo","enId":"7328344","enBy":"AlanF_US","auto":true}
+{"term":"Je passe mes vacances à la plage.","back":"I'm spending my holiday on the beach.","scene":"travelling","src":"tatoeba:7236772","by":"Aiji","enId":"1229074","enBy":"CK","auto":true}
+{"term":"Mon père va parfois à l'étranger.","back":"My father sometimes goes abroad.","scene":"travelling","src":"tatoeba:12900965","by":"Rovo","enId":"251692","enBy":"CK","auto":true}
+{"term":"Je prends des vacances à la plage.","back":"I am taking a holiday at the beach.","scene":"travelling","src":"tatoeba:778194","by":"sysko","enId":"22154","enBy":"shekitten","auto":true}
+{"term":"Je suis occupé à préparer le voyage.","back":"I'm busy preparing for the trip.","scene":"travelling","src":"tatoeba:1354226","by":"sacredceltic","enId":"321980","enBy":"CK","auto":true}
+{"term":"Cet hôtel est meilleur que celui-là.","back":"This hotel is better than that hotel.","scene":"at the hotel","src":"tatoeba:5494608","by":"Aiji","enId":"60484","enBy":"CK","auto":true}
+{"term":"Je pars à l'étranger l'été prochain.","back":"I'm going abroad next summer.","scene":"travelling","src":"tatoeba:7794820","by":"Aiji","enId":"2713175","enBy":"CK","auto":true}
+{"term":"Mon ami a failli partir à l'étranger.","back":"My friend almost went abroad.","scene":"travelling","src":"tatoeba:3272788","by":"nimfeo","enId":"3272787","auto":true}
+{"term":"J'irai à l'étranger l'année prochaine.","back":"I will go abroad next year.","scene":"travelling","src":"tatoeba:127996","by":"Archibald","enId":"262162","enBy":"CK","auto":true}
+{"term":"Je partage une chambre avec mon frère.","back":"I share a room with my brother.","scene":"at the hotel","src":"tatoeba:7785882","by":"Aiji","enId":"5649305","enBy":"CK","auto":true}
+{"term":"Nous allons voyager à l'étranger cet été.","back":"We're going to travel abroad this summer.","scene":"travelling","src":"tatoeba:376729","by":"sysko","enId":"6874168","enBy":"CK","auto":true}
+{"term":"Je préfère un hôtel proche de l'aéroport.","back":"I prefer a hotel by the airport.","scene":"at the hotel","src":"tatoeba:478149","by":"sacredceltic","enId":"18203","enBy":"CK","auto":true}
+{"term":"Donnez-moi une clé, et j'ouvrirai l'univers.","back":"Give me a key, and I will unlock the universe.","scene":"at the hotel","src":"tatoeba:470625","by":"qdii","enId":"470624","enBy":"FeuDRenais","auto":true}
+{"term":"Avez-vous réservé ?","back":"Do you have a reservation?","scene":"at the hotel","src":"tatoeba:135516","by":"sacredceltic","enId":"54308","enBy":"CK","auto":true}
+{"term":"M'accompagnes-tu à mon hôtel ?","back":"Will you accompany me to the hotel?","scene":"at the hotel","src":"tatoeba:1718765","by":"sacredceltic","enId":"8936282","enBy":"dzouras","auto":true}
+{"term":"M'accompagneras-tu à mon hôtel ?","back":"Will you give me a ride to my hotel?","scene":"at the hotel","src":"tatoeba:1718766","by":"sacredceltic","enId":"33351","enBy":"CK","auto":true}
+{"term":"Quand commencent vos vacances d'hiver ?","back":"When does your winter vacation begin?","scene":"travelling","src":"tatoeba:4693740","by":"michelnialon","enId":"4662524","enBy":"CK","auto":true}
+{"term":"À quand remonte vos dernières vacances ?","back":"When was the last time you had a vacation?","scene":"travelling","src":"tatoeba:12629232","by":"lbdx","enId":"4012113","enBy":"CK","auto":true}
+{"term":"Veuillez réserver une semaine à l'avance.","back":"Please make your reservation one week in advance.","scene":"at the hotel","src":"tatoeba:1528542","by":"Rovo","enId":"324740","enBy":"CK","auto":true}
+{"term":"On a réservé ?","back":"Did we make a reservation?","scene":"at the hotel","src":"tatoeba:2074621","by":"sacredceltic","enId":"4325139","enBy":"monahxo","auto":true}
+{"term":"As-tu réservé ?","back":"Have you made a reservation?","scene":"at the hotel","src":"tatoeba:4636131","by":"sacredceltic","enId":"6439302","enBy":"CK","auto":true}
+{"term":"Je veux étudier à l'étranger.","back":"I want to study abroad.","scene":"travelling","src":"tatoeba:180696","by":"Aiji","enId":"262197","enBy":"CK","auto":true}
+{"term":"Quel est l'objet de ton voyage ?","back":"What's the purpose of your trip?","scene":"travelling","src":"tatoeba:3259572","by":"nimfeo","enId":"325558","enBy":"CK","auto":true}
+{"term":"Est-ce que ce siège est réservé ?","back":"Is this seat reserved?","scene":"at the hotel","src":"tatoeba:6365612","by":"Aiji","enId":"2959287","enBy":"sharptoothed","auto":true}
+{"term":"As-tu réservé une chambre à l'hôtel ?","back":"Did you book a room at the hotel?","scene":"at the hotel","src":"tatoeba:13341","by":"sacredceltic","enId":"11616618","enBy":"sundown","auto":true}
+{"term":"Pourquoi veux-tu étudier à l'étranger ?","back":"Why do you want to study abroad?","scene":"travelling","src":"tatoeba:469915","by":"sacredceltic","enId":"16456","enBy":"kebukebu","auto":true}
+{"term":"Qu'as-tu fait pendant tes vacances d'hiver ?","back":"How did you spend your winter vacation?","scene":"travelling","src":"tatoeba:14614","by":"nimfeo","enId":"279653","enBy":"CK","auto":true}
+{"term":"Je veux prendre de chouettes et longues vacances.","back":"I want to take a nice long vacation.","scene":"travelling","src":"tatoeba:2474010","by":"sacredceltic","enId":"2018819","enBy":"CK","auto":true}
+{"term":"Tu es réservé.","back":"You're reserved.","scene":"at the hotel","src":"tatoeba:9155307","by":"Julien_PDC","enId":"2203273","enBy":"CK","auto":true}
+{"term":"Je suis réservé.","back":"I'm reserved.","scene":"at the hotel","src":"tatoeba:9155310","by":"Julien_PDC","enId":"2203275","enBy":"CK","auto":true}
+{"term":"Je vais réserver.","back":"I'll make a reservation.","scene":"at the hotel","src":"tatoeba:6930163","by":"Aiji","enId":"2546063","enBy":"CK","auto":true}
+{"term":"Vous devez réserver.","back":"You have to make a reservation.","scene":"at the hotel","src":"tatoeba:11453462","by":"Aiji","enId":"68874","enBy":"CK","auto":true}
+{"term":"Ne sois pas aussi réservé.","back":"Don't be so reserved.","scene":"at the hotel","src":"tatoeba:479585","by":"sacredceltic","enId":"51055","enBy":"CK","auto":true}
+{"term":"Vous vous êtes trompé de clé.","back":"You took the wrong key.","scene":"at the hotel","src":"tatoeba:4293","by":"TRANG","enId":"2416","enBy":"CK","auto":true}
+{"term":"Notre hôtel donne sur la côte.","back":"Our hotel faces the coast.","scene":"at the hotel","src":"tatoeba:408161","by":"qdii","enId":"262558","enBy":"rul","auto":true}
+{"term":"Profitons des grandes vacances !","back":"Let's enjoy the long vacation.","scene":"travelling","src":"tatoeba:440883","by":"sysko","enId":"278038","enBy":"CK","auto":true}
+{"term":"Cet hôtel est très proche du lac.","back":"That hotel is very near the lake.","scene":"at the hotel","src":"tatoeba:2752034","by":"sysko","enId":"1401113","enBy":"CK","auto":true}
+{"term":"Cet hôtel était très proche du lac.","back":"That hotel was very near the lake.","scene":"at the hotel","src":"tatoeba:3383328","by":"Aiji","enId":"492859","enBy":"CK","auto":true}
+{"term":"On devient plus sage si l'on voyage.","back":"You become wiser if you travel.","scene":"travelling","src":"tatoeba:3260447","by":"nimfeo","enId":"3260448","auto":true}
+{"term":"Mon rêve est d'étudier à l'étranger.","back":"My dream is to study abroad.","scene":"travelling","src":"tatoeba:898189","by":"sacredceltic","enId":"251943","enBy":"CK","auto":true}
+{"term":"Demandons dans une agence de voyage.","back":"Let's ask in a travel agency.","scene":"travelling","src":"tatoeba:929490","by":"sacredceltic","enId":"12483062","enBy":"Nandixer","auto":true}
+{"term":"Je vais t'aider à réserver un hôtel.","back":"I'll help you book a hotel.","scene":"at the hotel","src":"tatoeba:10966485","by":"lbdx","enId":"10706608","enBy":"sundown","auto":true}
+{"term":"Je dois réserver une chambre d'hôtel.","back":"I have to book a hotel room.","scene":"at the hotel","src":"tatoeba:8718284","by":"Rockaround","enId":"1744970","enBy":"Amastan","auto":true}
+{"term":"Je travaille dans une agence de voyage.","back":"I work at a travel agency.","scene":"travelling","src":"tatoeba:10346593","by":"Aiji","enId":"7156430","enBy":"Kiwi","auto":true}
+{"term":"Je préfère prendre des vacances en hiver.","back":"I prefer to take a winter vacation.","scene":"travelling","src":"tatoeba:8447944","by":"Aiji","enId":"7798705","enBy":"AlanF_US","auto":true}
+{"term":"Bonjour, je souhaite réserver une chambre.","back":"Good morning, I would like to reserve a room.","scene":"at the hotel","src":"tatoeba:11938217","by":"lbdx","enId":"434808","enBy":"lukaszpp","auto":true}
+{"term":"Où est ta valise ?","back":"Where's your suitcase?","scene":"at the hotel","src":"tatoeba:3628022","by":"fleur74","enId":"1886589","enBy":"CK","auto":true}
+{"term":"Où sont tes bagages ?","back":"Where is your luggage?","scene":"at the hotel","src":"tatoeba:4470322","by":"Petrus","enId":"6542678","enBy":"CK","auto":true}
+{"term":"Où sont mes bagages ?","back":"Where is my luggage?","scene":"at the hotel","src":"tatoeba:8703689","by":"Julien_PDC","enId":"687632","enBy":"lukaszpp","auto":true}
+{"term":"Quelle est ta valise ?","back":"Which is your luggage?","scene":"at the hotel","src":"tatoeba:3378605","by":"nimfeo","enId":"2218","enBy":"Zifre","auto":true}
+{"term":"Laquelle est ta valise ?","back":"Which is your suitcase?","scene":"at the hotel","src":"tatoeba:3260513","by":"nimfeo","enId":"3260514","enBy":"CK","auto":true}
+{"term":"Où a-t-elle laissé sa valise ?","back":"Where did she leave her suitcase?","scene":"at the hotel","src":"tatoeba:7498246","by":"tras","enId":"7494814","enBy":"Amastan","auto":true}
+{"term":"Où veux-tu que je mette ta valise ?","back":"Where do you want me to put your suitcase?","scene":"at the hotel","src":"tatoeba:2029618","by":"Rovo","enId":"2028438","enBy":"CK","auto":true}
+{"term":"Où penses-tu que tu passeras tes congés ?","back":"Where do you suppose you'll spend your vacation?","scene":"travelling","src":"tatoeba:336996","by":"sysko","enId":"19795","enBy":"CK","auto":true}
+{"term":"À quelle heure dois-je me faire enregistrer ?","back":"What time should I check in?","scene":"at the hotel","src":"tatoeba:541112","by":"sacredceltic","enId":"24587","enBy":"Eldad","auto":true}
+{"term":"Veuillez interrompre vos vacances et revenir.","back":"Please cut your vacation short and return.","scene":"travelling","src":"tatoeba:1052202","by":"sacredceltic","enId":"19788","enBy":"shekitten","auto":true}
+{"term":"Combien de temps durent tes vacances de printemps ?","back":"How long is your spring vacation?","scene":"travelling","src":"tatoeba:846135","by":"U2FS","enId":"266964","enBy":"CK","auto":true}
+{"term":"À qui appartient la valise ?","back":"Who does the suitcase belong to?","scene":"at the hotel","src":"tatoeba:6690963","by":"felix63","enId":"6909427","enBy":"kaiperkins271","auto":true}
+{"term":"Qu'est-il arrivé à ma valise ?","back":"What happened to my suitcase?","scene":"at the hotel","src":"tatoeba:7995984","by":"Aiji","enId":"5494245","enBy":"CK","auto":true}
+{"term":"À qui appartient cette valise ?","back":"Who does this suitcase belong to?","scene":"at the hotel","src":"tatoeba:575212","by":"sacredceltic","enId":"55525","enBy":"CK","auto":true}
+{"term":"Quel est le poids de ta valise ?","back":"What's the weight of your suitcase?","scene":"at the hotel","src":"tatoeba:1608651","by":"nimfeo","enId":"17381","enBy":"Zifre","auto":true}
+{"term":"Prends-tu des congés cette année ?","back":"Are you going on holiday this year?","scene":"travelling","src":"tatoeba:1073341","by":"sacredceltic","enId":"8883883","enBy":"sundown","auto":true}
+{"term":"Qu'est-ce qui cloche avec les bagages ?","back":"What's with the luggage?","scene":"at the hotel","src":"tatoeba:4131916","by":"sacredceltic","enId":"3730415","enBy":"CM","auto":true}
+{"term":"Quelle est ton activité préférée, en vacances ?","back":"What's your favorite holiday activity?","scene":"travelling","src":"tatoeba:2106532","by":"sacredceltic","enId":"906774","enBy":"CK","auto":true}
+{"term":"Je veux ces bagages dans ma chambre immédiatement.","back":"I want this luggage taken to my room at once.","scene":"at the hotel","src":"tatoeba:7276","by":"Archibald","enId":"60041","enBy":"CK","auto":true}
+{"term":"Je voyage léger.","back":"I travel light.","scene":"travelling","src":"tatoeba:3658876","by":"sacredceltic","enId":"2247425","enBy":"CK","auto":true}
+{"term":"Ma valise est cassée.","back":"My suitcase is broken.","scene":"at the hotel","src":"tatoeba:7804","by":"sacredceltic","enId":"250589","enBy":"CK","auto":true}
+{"term":"Nous voyageons léger.","back":"We travel light.","scene":"travelling","src":"tatoeba:3658875","by":"sacredceltic","enId":"2241459","enBy":"CK","auto":true}
+{"term":"Nous sommes réservés.","back":"We're reserved.","scene":"at the hotel","src":"tatoeba:9155306","by":"Julien_PDC","enId":"2203272","enBy":"CK","auto":true}
+{"term":"N'oublie pas la valise !","back":"Don't forget the suitcase!","scene":"at the hotel","src":"tatoeba:13597140","by":"felix63","enId":"13599862","enBy":"rul","auto":true}
+{"term":"À qui est cette valise ?","back":"Whose suitcase is that?","scene":"at the hotel","src":"tatoeba:1845526","by":"sacredceltic","enId":"1841521","enBy":"CK","auto":true}
+{"term":"Je surveillais sa valise.","back":"I kept an eye on her suitcase.","scene":"at the hotel","src":"tatoeba:1032503","by":"sacredceltic","enId":"261230","enBy":"CK","auto":true}
+{"term":"N’oubliez pas la valise !","back":"Do not forget the suitcase!","scene":"at the hotel","src":"tatoeba:10707973","by":"AutoBot","enId":"10707971","enBy":"vxern","auto":true}
+{"term":"Je dois louer une chambre.","back":"I need to rent a room.","scene":"at the hotel","src":"tatoeba:7785954","by":"Aiji","enId":"2258804","enBy":"_undertoad","auto":true}
+{"term":"Je ne trouve pas ma valise.","back":"I can't find my suitcase.","scene":"at the hotel","src":"tatoeba:10471530","by":"Aiji","enId":"250337","enBy":"CK","auto":true}
+{"term":"Nous devrons voyager léger.","back":"We'll have to travel light.","scene":"travelling","src":"tatoeba:10666692","by":"Aiji","enId":"6453750","enBy":"Eccles17","auto":true}
+{"term":"Laisse-moi porter ta valise.","back":"Let me carry your suitcase.","scene":"at the hotel","src":"tatoeba:335759","by":"TRANG","enId":"249690","enBy":"CK","auto":true}
+{"term":"Votre valise est trop lourde.","back":"Your suitcase is too heavy.","scene":"at the hotel","src":"tatoeba:3259302","by":"nimfeo","enId":"3259303","enBy":"CK","auto":true}
+{"term":"Je ne trouve pas mes bagages.","back":"I can't find my luggage.","scene":"at the hotel","src":"tatoeba:451176","by":"Archibald","enId":"436481","enBy":"lukaszpp","auto":true}
+{"term":"Cet essai traite d'un bagage.","back":"This essay is about a piece of luggage.","scene":"at the hotel","src":"tatoeba:664709","by":"qdii","enId":"58283","enBy":"voxbubnya","auto":true}
+{"term":"Laisse-moi prendre ta valise.","back":"Let me take your suitcase.","scene":"at the hotel","src":"tatoeba:5186323","by":"Mag14","enId":"5182626","enBy":"CK","auto":true}
+{"term":"Mets les bagages quelque part.","back":"Put the luggage somewhere.","scene":"at the hotel","src":"tatoeba:2813829","by":"Micsmithel","enId":"1723307","enBy":"belgavox","auto":true}
+{"term":"Laisse-moi te porter ta valise.","back":"Let me carry your suitcase for you.","scene":"at the hotel","src":"tatoeba:6861978","by":"GB3","enId":"6529540","enBy":"CK","auto":true}
+{"term":"J’ai besoin d’une petite valise.","back":"I need a small suitcase.","scene":"at the hotel","src":"tatoeba:9550328","by":"felix63","enId":"9718763","enBy":"ariarin","auto":true}
+{"term":"Tu as un besoin urgent de vacances.","back":"You desperately need a holiday.","scene":"travelling","src":"tatoeba:4486676","by":"sicerabibax","enId":"12002109","enBy":"sundown","auto":true}
+{"term":"Je suis officiellement en vacances.","back":"I'm officially on vacation.","scene":"travelling","src":"tatoeba:7981891","by":"Aiji","enId":"3818813","enBy":"CK","auto":true}
+{"term":"Je compte prendre des vacances en mai.","back":"I expect to take a vacation in May.","scene":"travelling","src":"tatoeba:7490","by":"Bruno","enId":"252588","enBy":"CN","auto":true}
+{"term":"Je vais porter cette valise pour vous.","back":"I'll carry this suitcase for you.","scene":"at the hotel","src":"tatoeba:1356943","by":"sacredceltic","enId":"61007","enBy":"CK","auto":true}
+{"term":"Cette valise est trop lourde pour toi.","back":"This suitcase is too heavy for you.","scene":"at the hotel","src":"tatoeba:3640306","by":"sacredceltic","enId":"3636227","enBy":"CK","auto":true}
+{"term":"Je ne peux pas porter tous ces bagages.","back":"I can't carry all the luggage.","scene":"at the hotel","src":"tatoeba:11310","by":"Archibald","enId":"10764140","enBy":"sundown","auto":true}
+{"term":"Je dois faire mes bagages pour le voyage.","back":"I've got to pack for the trip.","scene":"travelling","src":"tatoeba:8390129","by":"Aiji","enId":"5136089","enBy":"honestlang","auto":true}
+{"term":"J'essaie de voyager avec une seule valise.","back":"I try to travel with only one suitcase.","scene":"at the hotel","src":"tatoeba:3260389","by":"nimfeo","enId":"3260390","enBy":"CM","auto":true}
+{"term":"Nous avons choisi un hôtel près des musées.","back":"We chose a hotel near the museums.","scene":"at the hotel","src":"tatoeba:6631094","by":"Aiji","enId":"464366","enBy":"lukaszpp","auto":true}
+{"term":"Je vais porter votre bagage dans votre chambre.","back":"I'll take your suitcase to your room.","scene":"at the hotel","src":"tatoeba:2342907","by":"nimfeo","enId":"52366","enBy":"CK","auto":true}
+{"term":"Mon grand fils étudie actuellement à l'étranger.","back":"My grown-up son is studying abroad now.","scene":"travelling","src":"tatoeba:11880318","by":"lbdx","enId":"251289","enBy":"CK","auto":true}
+{"term":"Je vais travailler pendant les vacances de printemps.","back":"I'm going to work during the spring vacation.","scene":"travelling","src":"tatoeba:5391249","by":"Aiji","enId":"1343498","enBy":"CK","auto":true}
+{"term":"Où est ton passeport ?","back":"Where's your passport?","scene":"travelling","src":"tatoeba:6817339","by":"Rockaround","enId":"6818617","enBy":"Eccles17","auto":true}
+{"term":"Avez-vous votre passeport ?","back":"Do you have your passport?","scene":"travelling","src":"tatoeba:13095","by":"sacredceltic","enId":"35279","enBy":"CK","auto":true}
+{"term":"As-tu ton passeport sur toi ?","back":"Do you have your passport with you?","scene":"travelling","src":"tatoeba:11531036","by":"Julien_PDC","enId":"2540304","enBy":"CK","auto":true}
+{"term":"Je cherche mon passeport. L'as-tu vu ?","back":"I'm looking for my passport. Have you seen it?","scene":"travelling","src":"tatoeba:2105173","by":"sacredceltic","enId":"2103986","enBy":"CK","auto":true}
+{"term":"Es-tu satisfait de l'hôtel?","back":"Are you satisfied with the hotel?","scene":"at the hotel","src":"tatoeba:4299738","by":"Scorpionvenin14","enId":"4299568","enBy":"mecasa90","auto":true}
+{"term":"Votre passeport, je vous prie !","back":"Show me your passport, please.","scene":"travelling","src":"tatoeba:4930333","by":"sacredceltic","enId":"35276","enBy":"CK","auto":true}
+{"term":"Ta femme a-t-elle un passeport ?","back":"Does your wife have a passport?","scene":"travelling","src":"tatoeba:4469340","by":"Amastan","enId":"4469895","enBy":"maaster","auto":true}
+{"term":"Quel est le motif de son voyage ?","back":"What's the reason for his trip?","scene":"travelling","src":"tatoeba:598063","by":"qdii","enId":"11075785","enBy":"sundown","auto":true}
+{"term":"Je désirerais rester trois nuits.","back":"I'd like to stay for three nights.","scene":"at the hotel","src":"tatoeba:7497961","by":"tras","enId":"7496153","enBy":"Ricardo14","auto":true}
+{"term":"Je désire une chambre à deux lits.","back":"I want a room with two beds.","scene":"at the hotel","src":"tatoeba:3259288","by":"nimfeo","enId":"2464689","enBy":"sharptoothed","auto":true}
+{"term":"Suis-je obligé d'obtenir un visa ?","back":"Am I required to get a visa?","scene":"travelling","src":"tatoeba:6385368","by":"Aiji","enId":"3403371","enBy":"CK","auto":true}
+{"term":"À quelle fréquence vas-tu à l'étranger ?","back":"How often do you go abroad?","scene":"travelling","src":"tatoeba:469990","by":"sacredceltic","enId":"16465","enBy":"CK","auto":true}
+{"term":"Je désire louer une voiture pour mon voyage.","back":"I want to rent a car for my trip.","scene":"travelling","src":"tatoeba:3259300","by":"nimfeo","enId":"3259301","auto":true}
+{"term":"Vous rappelez-vous votre numéro de passeport ?","back":"Do you remember your passport number?","scene":"travelling","src":"tatoeba:13094","by":"engone","enId":"35281","enBy":"CK","auto":true}
+{"term":"Quelle est ta destination de vacances préférée ?","back":"What's your favorite vacation place?","scene":"travelling","src":"tatoeba:6861250","by":"Micsmithel","enId":"6857185","enBy":"CK","auto":true}
+{"term":"As-tu vraiment oublié ton passeport à la maison ?","back":"Did you really forget your passport at home?","scene":"travelling","src":"tatoeba:11842770","by":"flowingwords","enId":"8593181","enBy":"CK","auto":true}
+{"term":"Je ne voyage que rarement.","back":"I rarely travel.","scene":"travelling","src":"tatoeba:9550924","by":"Julien_PDC","enId":"10855031","enBy":"Taikian","auto":true}
+{"term":"Montre-moi ton passeport !","back":"Show me your passport.","scene":"travelling","src":"tatoeba:1852786","by":"sacredceltic","enId":"1852499","enBy":"CK","auto":true}
+{"term":"Va chercher ton passeport.","back":"Go get your passport.","scene":"travelling","src":"tatoeba:8305619","by":"Aiji","enId":"3411023","enBy":"CK","auto":true}
+{"term":"Passeport, s’il vous plaît.","back":"Passport, please.","scene":"travelling","src":"tatoeba:12241135","by":"Orange","enId":"35273","enBy":"gin","auto":true}
+{"term":"Tu dois montrer ton passeport.","back":"You must show your passport.","scene":"travelling","src":"tatoeba:5185573","by":"nimfeo","enId":"69791","enBy":"CK","auto":true}
+{"term":"Je vous en prie, donnez-moi un visa.","back":"I beg you, give me a visa.","scene":"travelling","src":"tatoeba:392294","by":"qdii","enId":"392292","auto":true}
+{"term":"Je suis très satisfait de ce voyage.","back":"I am very happy with this trip.","scene":"travelling","src":"tatoeba:9749131","by":"lbdx","enId":"3464736","enBy":"luciussulla","auto":true}
+{"term":"Je ne dois pas oublier mon passeport.","back":"I mustn't forget my passport.","scene":"travelling","src":"tatoeba:10738822","by":"lbdx","enId":"7037092","enBy":"Goatstein","auto":true}
+{"term":"Cet hôtel est tout sauf satisfaisant.","back":"This hotel is anything but satisfactory.","scene":"at the hotel","src":"tatoeba:11189999","by":"lbdx","enId":"60479","enBy":"CK","auto":true}
+{"term":"Il me faut votre passeport et trois photos.","back":"I need your passport and three pictures.","scene":"travelling","src":"tatoeba:334364","by":"TRANG","enId":"35284","enBy":"TRANG","auto":true}
+{"term":"Je vais remettre mon passeport dans le coffre.","back":"I'll put my passport back in the safe.","scene":"travelling","src":"tatoeba:8976783","by":"Aiji","enId":"2539222","enBy":"CK","auto":true}
+{"term":"Voyager dans le passé est considéré comme impossible.","back":"It is considered impossible to travel back to the past.","scene":"travelling","src":"tatoeba:640134","by":"qdii","enId":"23620","enBy":"secokit","auto":true}
+{"term":"Pourriez-vous signer le registre ?","back":"Could you please sign the register?","scene":"at the hotel","src":"tatoeba:128378","by":"sacredceltic","enId":"266726","enBy":"CK","auto":true}
+{"term":"Où sont les chariots à bagages ?","back":"Where are the luggage carts?","scene":"at the hotel","src":"tatoeba:12423016","by":"lbdx","enId":"265950","enBy":"CK","auto":true}
+{"term":"Avez-vous une quelconque chambre de libre ?","back":"Do you have any vacancies?","scene":"at the hotel","src":"tatoeba:456865","by":"sacredceltic","enId":"18354","enBy":"CK","auto":true}
+{"term":"Sur quoi ai-je buté ?","back":"What did I trip over?","scene":"travelling","src":"tatoeba:4232973","by":"sacredceltic","enId":"3412996","enBy":"CK","auto":true}
+{"term":"Vous devriez préparer une chambre pour le visiteur.","back":"You should prepare a room for the visitor.","scene":"at the hotel","src":"tatoeba:6560295","by":"sacredceltic","enId":"19908","enBy":"Dejo","auto":true}
+{"term":"Puis-je avoir la clé maintenant ?","back":"Can I have the key now, please?","scene":"at the hotel","src":"tatoeba:11735","by":"Lulantis","enId":"53213","enBy":"CM","auto":true}
+{"term":"As-tu un passeport valide ?","back":"Do you have a valid passport?","scene":"travelling","src":"tatoeba:6879610","by":"GB3","enId":"4497758","enBy":"CK","auto":true}
+{"term":"Disposes-tu d'un passeport ?","back":"Do you have a passport?","scene":"travelling","src":"tatoeba:4758486","by":"sacredceltic","enId":"4497938","enBy":"CK","auto":true}
+{"term":"Y a-t-il une clé de secours ?","back":"Is there a spare key?","scene":"at the hotel","src":"tatoeba:10692391","by":"Rovo","enId":"13350809","enBy":"artemlyubchenko","auto":true}
+{"term":"Puis-je voir votre passeport ?","back":"May I see your passport?","scene":"travelling","src":"tatoeba:13096","by":"Archibald","enId":"35268","enBy":"CK","auto":true}
+{"term":"Où se trouve la gare routière ?","back":"Where is the bus terminal?","scene":"at the hotel","src":"tatoeba:1238556","by":"sacredceltic","enId":"35406","enBy":"CK","auto":true}
+{"term":"Puis-je poursuivre mon voyage ?","back":"Can I continue my trip?","scene":"travelling","src":"tatoeba:1398718","by":"Delapouite","enId":"325568","enBy":"CM","auto":true}
+{"term":"Puis-je faire une réservation ?","back":"Can I make a reservation?","scene":"at the hotel","src":"tatoeba:8010457","by":"Aiji","enId":"324746","enBy":"CK","auto":true}
+{"term":"Avez-vous une clé supplémentaire ?","back":"Do you have an extra key?","scene":"at the hotel","src":"tatoeba:7680496","by":"sacredceltic","enId":"3564976","enBy":"CK","auto":true}
+{"term":"Y a-t-il un coiffeur dans l'hôtel ?","back":"Is there a hairdresser in the hotel?","scene":"at the hotel","src":"tatoeba:428854","by":"slegros","enId":"33366","enBy":"CM","auto":true}
+{"term":"Pourrais-je faire une réservation ?","back":"Could I make a reservation?","scene":"at the hotel","src":"tatoeba:1130726","by":"sacredceltic","enId":"324737","enBy":"CK","auto":true}
+{"term":"Où se trouve l'office du tourisme ?","back":"Where is the tourist information office?","scene":"travelling","src":"tatoeba:11145658","by":"lbdx","enId":"20924","enBy":"CK","auto":true}
+{"term":"Pourrais-tu annuler ma réservation ?","back":"Could you cancel my reservation?","scene":"at the hotel","src":"tatoeba:135518","by":"sacredceltic","enId":"324748","enBy":"CK","auto":true}
+{"term":"Quand est-ce que ton passeport expire ?","back":"When does your passport expire?","scene":"travelling","src":"tatoeba:11434728","by":"lbdx","enId":"4135163","enBy":"CK","auto":true}
+{"term":"Y a-t-il de la place pour mes bagages ?","back":"Is there any space for my luggage?","scene":"at the hotel","src":"tatoeba:12303053","by":"lbdx","enId":"3045749","enBy":"sharptoothed","auto":true}
+{"term":"Quel est le prochain jour férié majeur ?","back":"When is the next major holiday?","scene":"travelling","src":"tatoeba:9964959","by":"Micsmithel","enId":"9849477","enBy":"NurseMeeks","auto":true}
+{"term":"À quelle heure commence l'embarquement ?","back":"What time does boarding begin?","scene":"at the hotel","src":"tatoeba:12449382","by":"lbdx","enId":"24568","enBy":"CK","auto":true}
+{"term":"Puis-je faire une réservation pour un golf ?","back":"Can I make a reservation for golf?","scene":"at the hotel","src":"tatoeba:337020","by":"sysko","enId":"56358","enBy":"CK","auto":true}
+{"term":"Jusqu'à quand ton passeport est-il valable ?","back":"When is your passport valid until?","scene":"travelling","src":"tatoeba:1805614","by":"sacredceltic","enId":"1805091","enBy":"Tamy","auto":true}
+{"term":"Disposez-vous d’un service de blanchisserie ?","back":"Do you have laundry service?","scene":"at the hotel","src":"tatoeba:7752442","by":"sacredceltic","enId":"62865","enBy":"CK","auto":true}
+{"term":"Pourriez-vous faire une réservation pour moi ?","back":"Could you make a reservation for me?","scene":"at the hotel","src":"tatoeba:11200","by":"dominiko","enId":"61857","enBy":"CK","auto":true}
+{"term":"Voudriez-vous voyager vers des horizons distants ?","back":"Would you like to travel to distant horizons?","scene":"travelling","src":"tatoeba:4467834","by":"sacredceltic","enId":"4466539","enBy":"LB","auto":true}
+{"term":"Pourriez-vous envoyer quelqu'un pour faire le lit ?","back":"Could you send someone up to make the bed?","scene":"at the hotel","src":"tatoeba:13284","by":"Micsmithel","enId":"33957","enBy":"CK","auto":true}
+{"term":"Aimeriez-vous que je vous reconduise à votre hôtel ?","back":"Would you like me to drive you back to your hotel?","scene":"at the hotel","src":"tatoeba:8030762","by":"Aiji","enId":"1886426","enBy":"CK","auto":true}
+{"term":"Avez-vous un itinéraire pour votre voyage d'affaires ?","back":"Do you have an itinerary for your business trip?","scene":"travelling","src":"tatoeba:8925802","by":"lbdx","enId":"4816985","enBy":"LB","auto":true}
+{"term":"C'est férié, demain ?","back":"Is tomorrow a holiday?","scene":"travelling","src":"tatoeba:2297624","by":"Rovo","enId":"2267351","enBy":"_undertoad","auto":true}
+{"term":"Ton hôtel est-il proche ?","back":"Is your hotel nearby?","scene":"at the hotel","src":"tatoeba:10764817","by":"Rovo","enId":"10764269","enBy":"carlosalberto","auto":true}
+{"term":"Ton passeport est-il prêt ?","back":"Is your passport ready?","scene":"travelling","src":"tatoeba:3260320","by":"Aiji","enId":"3260321","auto":true}
+{"term":"Combien pèse votre valise ?","back":"How heavy is your suitcase?","scene":"at the hotel","src":"tatoeba:564225","by":"sacredceltic","enId":"2610048","enBy":"WestofEden","auto":true}
+{"term":"Qui d’autre détient une clé ?","back":"Who else has a key?","scene":"at the hotel","src":"tatoeba:9413990","by":"sacredceltic","enId":"9411102","enBy":"CK","auto":true}
+{"term":"Est-ce qu'ils ont leur valise ?","back":"Do they have their suitcase?","scene":"at the hotel","src":"tatoeba:3273794","by":"nimfeo","enId":"3273793","auto":true}
+{"term":"J'aimerais un visa touristique.","back":"I would like a tourist visa.","scene":"travelling","src":"tatoeba:6373702","by":"Aiji","enId":"1939395","enBy":"linguine","auto":true}
+{"term":"Avez-vous effectué une réservation ?","back":"Did you make a reservation?","scene":"at the hotel","src":"tatoeba:12317799","by":"lbdx","enId":"6439547","enBy":"CK","auto":true}
+{"term":"As-tu acheté un billet aller-retour ?","back":"Did you buy a round-trip ticket?","scene":"at the hotel","src":"tatoeba:120026","by":"TRANG","enId":"25684","enBy":"CK","auto":true}
+{"term":"J’aimerais séjourner dans votre hôtel.","back":"I'd like to stay at your hotel.","scene":"at the hotel","src":"tatoeba:9823725","by":"sacredceltic","enId":"266724","enBy":"CK","auto":true}
+{"term":"J'aimerais soumettre une demande de visa.","back":"I'd like to apply for a visa.","scene":"travelling","src":"tatoeba:1942319","by":"sacredceltic","enId":"1936565","enBy":"CK","auto":true}
+{"term":"J'aimerais faire cette excursion avec vous.","back":"I would like to take that trip with you.","scene":"travelling","src":"tatoeba:3258138","by":"Julien_PDC","enId":"3258139","auto":true}
+{"term":"Comment puis-je faire une demande de visa ?","back":"How do I apply for a visa?","scene":"travelling","src":"tatoeba:5959452","by":"Aiji","enId":"5833184","enBy":"CK","auto":true}
+{"term":"Proposez-vous des excursions d'une journée ?","back":"Do you offer any day trips?","scene":"at the hotel","src":"tatoeba:13997","by":"sacredceltic","enId":"1153932","enBy":"belgavox","auto":true}
+{"term":"J'aimerais faire une réservation pour lundi.","back":"I'd like to make a reservation for next Monday.","scene":"at the hotel","src":"tatoeba:7011266","by":"Aiji","enId":"1936406","enBy":"CK","auto":true}
+{"term":"Je voudrais faire une réservation pour ce soir.","back":"I'd like to make a reservation for tonight.","scene":"at the hotel","src":"tatoeba:8398","by":"sacredceltic","enId":"243220","enBy":"CK","auto":true}
+{"term":"Vous êtes-vous bien amusés pendant vos vacances ?","back":"Did you enjoy your holiday?","scene":"travelling","src":"tatoeba:9287","by":"sacredceltic","enId":"19760","enBy":"CK","auto":true}
+{"term":"Qu'est-ce qui est inclus dans le petit-déjeuner ?","back":"What does breakfast include?","scene":"at the hotel","src":"tatoeba:1300603","by":"sacredceltic","enId":"277789","enBy":"sundown","auto":true}
+{"term":"Avez-vous terminé vos préparatifs pour le voyage ?","back":"Have you finished your preparations for the trip?","scene":"travelling","src":"tatoeba:1293409","by":"sacredceltic","enId":"1293152","enBy":"CK","auto":true}
+{"term":"Chantes-tu toujours cette chanson dans cette tonalité ?","back":"Do you always sing this song in this key?","scene":"at the hotel","src":"tatoeba:5804746","by":"Yemana","enId":"5803585","enBy":"CK","auto":true}
+{"term":"Avez-vous reçu une compensation pour les bagages endommagés ?","back":"Did you receive any compensation for the damaged luggage?","scene":"at the hotel","src":"tatoeba:8983937","by":"Aiji","enId":"3472421","enBy":"AlanF_US","auto":true}
+{"term":"J'ai la clé.","back":"I have the key.","scene":"at the hotel","src":"tatoeba:6863774","by":"GB3","enId":"2360391","enBy":"CK","auto":true}
+{"term":"J'ai ta clé.","back":"I have your key.","scene":"at the hotel","src":"tatoeba:7362077","by":"Rockaround","enId":"2360690","enBy":"CK","auto":true}
+{"term":"J'ai un visa.","back":"I have a visa.","scene":"travelling","src":"tatoeba:514788","by":"Aiji","enId":"514763","enBy":"CK","auto":true}
+{"term":"C'est votre clé.","back":"This is your key.","scene":"at the hotel","src":"tatoeba:1201864","by":"sacredceltic","enId":"449118","enBy":"CK","auto":true}
+{"term":"C'est ma valise.","back":"That's my suitcase.","scene":"at the hotel","src":"tatoeba:5369515","by":"Aiji","enId":"3396843","enBy":"CK","auto":true}
+{"term":"Je suis touriste.","back":"I'm a tourist.","scene":"travelling","src":"tatoeba:514787","by":"Micsmithel","enId":"3856063","enBy":"CK","auto":true}
+{"term":"J'ai une réserve.","back":"I have a reservation.","scene":"at the hotel","src":"tatoeba:1360492","by":"sacredceltic","enId":"324726","enBy":"CK","auto":true}
+{"term":"C'est très sobre.","back":"That is very low key.","scene":"at the hotel","src":"tatoeba:14046080","by":"Myrano_","enId":"6924082","enBy":"Eccles17","auto":true}
+{"term":"J'ai perdu la clé.","back":"I have lost the key.","scene":"at the hotel","src":"tatoeba:6571","by":"sysko","enId":"257268","enBy":"CK","auto":true}
+{"term":"J'ai un passeport.","back":"I have a passport.","scene":"travelling","src":"tatoeba:905877","by":"sacredceltic","enId":"905887","enBy":"Zifre","auto":true}
+{"term":"J'ai mon passeport.","back":"I have my passport.","scene":"travelling","src":"tatoeba:1485279","by":"Aiji","enId":"35271","enBy":"CK","auto":true}
+{"term":"Je n'ai pas de clé.","back":"I don't have a key.","scene":"at the hotel","src":"tatoeba:2421312","by":"sacredceltic","enId":"2276021","enBy":"CK","auto":true}
+{"term":"Je n'ai pas la clé.","back":"I don't have the key.","scene":"at the hotel","src":"tatoeba:2422004","by":"sacredceltic","enId":"2276050","enBy":"CK","auto":true}
+{"term":"J'ai oublié ma clé.","back":"I forgot my key.","scene":"at the hotel","src":"tatoeba:2422862","by":"sacredceltic","enId":"2326561","enBy":"CK","auto":true}
+{"term":"J'ai trouvé la clé.","back":"I've found the key.","scene":"at the hotel","src":"tatoeba:6696775","by":"GB3","enId":"2359529","enBy":"CK","auto":true}
+{"term":"Je n'ai pas ma clé.","back":"I don't have my key.","scene":"at the hotel","src":"tatoeba:11602020","by":"Adrien_FR","enId":"11601021","enBy":"shekitten","auto":true}
+{"term":"Ce n'est pas ma clé.","back":"This isn't my key.","scene":"at the hotel","src":"tatoeba:6402417","by":"Aiji","enId":"4132392","enBy":"CK","auto":true}
+{"term":"J'ai posé ma valise.","back":"I put down my suitcase.","scene":"at the hotel","src":"tatoeba:11574550","by":"Aiji","enId":"5916666","enBy":"CK","auto":true}
+{"term":"Je dispose d'une clé.","back":"I have a key.","scene":"at the hotel","src":"tatoeba:7763055","by":"sacredceltic","enId":"2358741","enBy":"CK","auto":true}
+{"term":"J'ai un visa étudiant.","back":"I have a student visa.","scene":"travelling","src":"tatoeba:6694","by":"Cocorico","enId":"256694","enBy":"CK","auto":true}
+{"term":"J'ai le passe-partout.","back":"I have the master key.","scene":"at the hotel","src":"tatoeba:6843786","by":"Aiji","enId":"1598993","enBy":"marcelostockle","auto":true}
+{"term":"J'ai besoin de ma clé.","back":"I need my key.","scene":"at the hotel","src":"tatoeba:6876757","by":"Micsmithel","enId":"6882651","enBy":"kaiperkins271","auto":true}
+{"term":"J'ai besoin de congés.","back":"I need a vacation.","scene":"travelling","src":"tatoeba:11566554","by":"Aiji","enId":"2387470","enBy":"CK","auto":true}
+{"term":"J'ai la clé de réserve.","back":"I have a spare key.","scene":"at the hotel","src":"tatoeba:7960297","by":"Micsmithel","enId":"4979568","enBy":"CK","auto":true}
+{"term":"J'ai un visa de travail.","back":"I have a business visa.","scene":"travelling","src":"tatoeba:6324","by":"PERCE_NEIGE","enId":"258618","enBy":"CK","auto":true}
+{"term":"Je suis en congés payés.","back":"I'm on a paid vacation.","scene":"travelling","src":"tatoeba:8556","by":"gillux","enId":"241584","enBy":"Zifre","auto":true}
+{"term":"C'est rigolo de voyager.","back":"It's fun to travel.","scene":"travelling","src":"tatoeba:1410188","by":"sacredceltic","enId":"325560","enBy":"CK","auto":true}
+{"term":"Demandons à un voyagiste.","back":"Let's ask a travel agent.","scene":"travelling","src":"tatoeba:1335651","by":"sacredceltic","enId":"325585","enBy":"CK","auto":true}
+{"term":"Je n'ai pas de passeport.","back":"I don't have a passport.","scene":"travelling","src":"tatoeba:2421314","by":"sacredceltic","enId":"2276022","enBy":"CK","auto":true}
+{"term":"Je raccourcis mon voyage.","back":"I'm cutting my trip short.","scene":"travelling","src":"tatoeba:2597074","by":"sacredceltic","enId":"2544805","enBy":"CK","auto":true}
+{"term":"J'aime voyager en bateau.","back":"I like to travel by ship.","scene":"travelling","src":"tatoeba:10666688","by":"Aiji","enId":"3625030","enBy":"karloelkebekio","auto":true}
+{"term":"Je ne suis qu'un touriste.","back":"I'm just a tourist.","scene":"travelling","src":"tatoeba:1823417","by":"sacredceltic","enId":"1822839","enBy":"Spamster","auto":true}
+{"term":"J'ai réservé pour ce soir.","back":"I have a reservation for tonight.","scene":"at the hotel","src":"tatoeba:11461374","by":"Aiji","enId":"243328","enBy":"CK","auto":true}
+{"term":"J'ai un passeport chilien.","back":"I have a Chilean passport.","scene":"travelling","src":"tatoeba:12161251","by":"Rovo","enId":"8188198","enBy":"lucasmg123","auto":true}
+{"term":"Je suis également touriste.","back":"I'm a tourist, too.","scene":"travelling","src":"tatoeba:1098393","by":"manuk7","enId":"1578656","enBy":"CK","auto":true}
+{"term":"Je ne suis pas un touriste.","back":"I'm not a tourist.","scene":"travelling","src":"tatoeba:12214700","by":"Rovo","enId":"2549059","enBy":"CK","auto":true}
+{"term":"C'est un piège à touristes.","back":"It's a tourist trap.","scene":"travelling","src":"tatoeba:12907314","by":"lbdx","enId":"3305888","enBy":"Hybrid","auto":true}
+{"term":"Tu n'as pas besoin de visa.","back":"You don't need a visa.","scene":"travelling","src":"tatoeba:13225469","by":"Rovo","enId":"9627619","enBy":"CK","auto":true}
+{"term":"Ce n'est pas loin de l'hôtel.","back":"It is not far from the hotel.","scene":"at the hotel","src":"tatoeba:339727","by":"TRANG","enId":"1624610","enBy":"linst12","auto":true}
+{"term":"Laisse-moi te dégoter la clé.","back":"Let me get you the key.","scene":"at the hotel","src":"tatoeba:4164832","by":"sacredceltic","enId":"3729766","enBy":"CM","auto":true}
+{"term":"Enregistrez, s'il vous plaît.","back":"Check in, please.","scene":"at the hotel","src":"tatoeba:5550845","by":"guyniv","enId":"40238","enBy":"rul","auto":true}
+{"term":"Cette valise n'est pas à moi.","back":"This suitcase isn't mine.","scene":"at the hotel","src":"tatoeba:10604605","by":"lbdx","enId":"6268805","enBy":"CK","auto":true}
+{"term":"Je vais vérifier au sous-sol.","back":"I'll check in the basement.","scene":"at the hotel","src":"tatoeba:10615258","by":"Aiji","enId":"5883201","enBy":"OsoHombre","auto":true}
+{"term":"Ce n'est pas un jour de congé.","back":"It's not a holiday.","scene":"travelling","src":"tatoeba:4860234","by":"sacredceltic","enId":"4495027","enBy":"CK","auto":true}
+{"term":"J'ai posé la clé sur la table.","back":"I put the key on the table.","scene":"at the hotel","src":"tatoeba:11164719","by":"lbdx","enId":"9199114","enBy":"CK","auto":true}
+{"term":"Cet hôtel est à mon beau-frère.","back":"This hotel belongs to my brother-in-law.","scene":"at the hotel","src":"tatoeba:1117870","by":"Aiji","enId":"1343445","enBy":"Chrikaru","auto":true}
+{"term":"Je travaille dans l’hôtellerie.","back":"I work in the hotel industry.","scene":"at the hotel","src":"tatoeba:4881226","by":"gillux","enId":"6826065","enBy":"Eccles17","auto":true}
+{"term":"J'ai envie de partir en voyage.","back":"I feel like going on a trip.","scene":"travelling","src":"tatoeba:12860","by":"sacredceltic","enId":"325508","enBy":"CK","auto":true}
+{"term":"On a un jour férié aujourd'hui.","back":"We have a holiday today.","scene":"travelling","src":"tatoeba:338627","by":"sysko","enId":"242879","enBy":"CK","auto":true}
+{"term":"Ma sœur se joignit aux courses.","back":"My sister came along on the shopping trip.","scene":"travelling","src":"tatoeba:1102219","by":"sacredceltic","enId":"680166","enBy":"Source_VOA","auto":true}
+{"term":"Je n'ai pas d'assurance voyage.","back":"I don't have travel insurance.","scene":"travelling","src":"tatoeba:2502810","by":"sacredceltic","enId":"2276059","enBy":"CK","auto":true}
+{"term":"Vivement les grandes vacances !","back":"I can't wait for summer vacation to start.","scene":"travelling","src":"tatoeba:3841933","by":"gillux","enId":"4792241","enBy":"CK","auto":true}
+{"term":"Je dois annuler ma réservation.","back":"I need to cancel my reservation.","scene":"at the hotel","src":"tatoeba:12039856","by":"lbdx","enId":"6971429","enBy":"Eccles17","auto":true}
+{"term":"J'ai déjà commencé mes vacances.","back":"I've already started my holiday.","scene":"travelling","src":"tatoeba:3260387","by":"nimfeo","enId":"11821578","enBy":"sundown","auto":true}
+{"term":"J'ai trois semaines de vacances.","back":"I have three weeks of vacation.","scene":"travelling","src":"tatoeba:8901570","by":"felix63","enId":"8901883","enBy":"shekitten","auto":true}
+{"term":"J'ai hâte de partir en vacances.","back":"I can't wait to go on a vacation.","scene":"travelling","src":"tatoeba:3941","by":"TRANG","enId":"2131","enBy":"CK","auto":true}
+{"term":"Garde un œil sur cette mallette.","back":"Keep an eye on this suitcase.","scene":"at the hotel","src":"tatoeba:339726","by":"sysko","enId":"61006","enBy":"CK","auto":true}
+{"term":"Je n'ai jamais été à l'étranger.","back":"I've never been abroad.","scene":"travelling","src":"tatoeba:590020","by":"sacredceltic","enId":"22207","enBy":"CK","auto":true}
+{"term":"Mon passeport n'est plus valide.","back":"My passport is no longer valid.","scene":"travelling","src":"tatoeba:5685911","by":"Aiji","enId":"4135412","enBy":"CK","auto":true}
+{"term":"On n'a jamais assez de vacances.","back":"We never get enough vacation time.","scene":"travelling","src":"tatoeba:8395891","by":"Aiji","enId":"4498834","enBy":"CK","auto":true}
+{"term":"J'ai dû perdre la clé en chemin.","back":"I must've lost the key en route.","scene":"at the hotel","src":"tatoeba:11714220","by":"lbdx","enId":"9816306","enBy":"shekitten","auto":true}
+{"term":"J'ai dû perdre ma clé en chemin.","back":"I must've lost my key along the way.","scene":"at the hotel","src":"tatoeba:11920392","by":"lbdx","enId":"6681174","enBy":"CK","auto":true}
+{"term":"J'ai passé mes congés à la plage.","back":"I spent my vacation at the beach.","scene":"travelling","src":"tatoeba:6718","by":"Cocorico","enId":"256583","enBy":"CK","auto":true}
+{"term":"Je dois renouveler mon passeport.","back":"I must renew my passport.","scene":"travelling","src":"tatoeba:6952","by":"TRANG","enId":"255405","enBy":"CK","auto":true}
+{"term":"J'ai perdu mes chèques de voyage.","back":"I lost my travelers checks.","scene":"at the hotel","src":"tatoeba:372308","by":"nimfeo","enId":"36928","enBy":"CK","auto":true}
+{"term":"Je suis ici en tant que touriste.","back":"I'm here as a tourist.","scene":"travelling","src":"tatoeba:2422336","by":"gillux","enId":"2209077","enBy":"freddy1","auto":true}
+{"term":"Je peux recommander un bon hôtel.","back":"I can recommend a good hotel.","scene":"at the hotel","src":"tatoeba:7414336","by":"Rockaround","enId":"2301298","enBy":"CK","auto":true}
+{"term":"Je songe à me rendre à l'étranger.","back":"I am thinking of going abroad.","scene":"travelling","src":"tatoeba:1347836","by":"sacredceltic","enId":"256623","enBy":"CK","auto":true}
+{"term":"J'ai failli oublier mon passeport.","back":"I almost forgot my passport.","scene":"travelling","src":"tatoeba:3497657","by":"Lulantis","enId":"2291615","enBy":"CK","auto":true}
+{"term":"Je n'ai pas mon passeport sur moi.","back":"I don't have my passport with me.","scene":"travelling","src":"tatoeba:5803740","by":"Aiji","enId":"3618718","enBy":"CK","auto":true}
+{"term":"Tu n'es pas censé avoir cette clé.","back":"You're not supposed to have this key.","scene":"at the hotel","src":"tatoeba:5927243","by":"Aiji","enId":"2835600","enBy":"CK","auto":true}
+{"term":"J'ai mis ma valise dans le coffre.","back":"I put my suitcase in the trunk.","scene":"at the hotel","src":"tatoeba:7550460","by":"Aiji","enId":"253945","enBy":"CK","auto":true}
+{"term":"Mon passeport expirera en octobre.","back":"My passport will expire in October.","scene":"travelling","src":"tatoeba:7769811","by":"Aiji","enId":"6251045","enBy":"CK","auto":true}
+{"term":"J'ai encore une valise à déballer.","back":"I still have a suitcase to unpack.","scene":"at the hotel","src":"tatoeba:8606249","by":"Aiji","enId":"8084820","enBy":"AlanF_US","auto":true}
+{"term":"Mes vacances d'été sont terminées.","back":"My summer vacation is at an end.","scene":"travelling","src":"tatoeba:11230194","by":"lbdx","enId":"250478","enBy":"CK","auto":true}
+{"term":"Jusqu'à présent, je vis à l'hôtel.","back":"I've been staying at the hotel for now.","scene":"at the hotel","src":"tatoeba:11796545","by":"Rovo","enId":"13882201","enBy":"zogwarg","auto":true}
+{"term":"Ce porteur de bagage est très fort.","back":"This luggage porter is very strong.","scene":"at the hotel","src":"tatoeba:3258943","by":"Julien_PDC","enId":"3258944","auto":true}
+{"term":"C'est la clé qui ouvre cette porte.","back":"This is the key that opens that door.","scene":"at the hotel","src":"tatoeba:1939203","by":"sacredceltic","enId":"1937616","enBy":"CK","auto":true}
+{"term":"Je pense que c'est la mauvaise clé.","back":"I think this is the wrong key.","scene":"at the hotel","src":"tatoeba:8285768","by":"Aiji","enId":"7873920","enBy":"CK","auto":true}
+{"term":"Mets cet autocollant sur ta valise.","back":"Put this sticker on your suitcase.","scene":"at the hotel","src":"tatoeba:10465818","by":"lbdx","enId":"8078984","enBy":"CK","auto":true}
+{"term":"C'est à une bonne demi-heure d'ici.","back":"It's a good half hour away from here.","scene":"at the hotel","src":"tatoeba:10661507","by":"AutoBot","enId":"10091645","enBy":"sundown","auto":true}
+{"term":"J'ai passé mes vacances à la maison.","back":"I spent my vacation at home.","scene":"travelling","src":"tatoeba:6452794","by":"felix63","enId":"13077297","enBy":"rul","auto":true}
+{"term":"J'ai trouvé la clef que je cherchais.","back":"I found the key that I was looking for.","scene":"at the hotel","src":"tatoeba:604542","by":"qdii","enId":"1225682","enBy":"tsayng","auto":true}
+{"term":"Je ne parviens pas à trouver l'hôtel.","back":"I can't find the hotel.","scene":"at the hotel","src":"tatoeba:4915633","by":"sacredceltic","enId":"2779967","enBy":"Hybrid","auto":true}
+{"term":"Ne laisse pas la clé dans la serrure.","back":"Don't leave the key in the lock.","scene":"at the hotel","src":"tatoeba:11896275","by":"calypsow","enId":"2398634","enBy":"viule","auto":true}
+{"term":"Pour l'instant, je séjourne à l'hôtel.","back":"I am staying at the hotel for the time being.","scene":"at the hotel","src":"tatoeba:589504","by":"sacredceltic","enId":"259691","enBy":"CK","auto":true}
+{"term":"J'ai une réservation pour aujourd'hui.","back":"I have a reservation for today.","scene":"at the hotel","src":"tatoeba:1579816","by":"sacredceltic","enId":"436643","enBy":"lukaszpp","auto":true}
+{"term":"C'est le meilleur hôtel de cette ville.","back":"It's the best hotel in this town.","scene":"at the hotel","src":"tatoeba:3259393","by":"Aiji","enId":"3259394","enBy":"CM","auto":true}
+{"term":"J'ai trouvé l'excursion très éducative.","back":"I found the field trip very educational.","scene":"travelling","src":"tatoeba:3513361","by":"Scorpionvenin14","enId":"46891","enBy":"CK","auto":true}
+{"term":"Il me reste à renouveler mon passeport.","back":"I still need to renew my passport.","scene":"travelling","src":"tatoeba:4134767","by":"Scorpionvenin14","enId":"4132567","enBy":"CK","auto":true}
+{"term":"Cet hôtel a une atmosphère accueillante.","back":"That hotel has a homey atmosphere.","scene":"at the hotel","src":"tatoeba:1300415","by":"sacredceltic","enId":"1300410","enBy":"CK","auto":true}
+{"term":"Ta valise est plus lourde que la mienne.","back":"Your suitcase is heavier than mine.","scene":"at the hotel","src":"tatoeba:11940258","by":"lbdx","enId":"6346738","enBy":"CK","auto":true}
+{"term":"J'ai rendu le passe-partout au serrurier.","back":"I gave the master key back to the locksmith.","scene":"at the hotel","src":"tatoeba:1081785","by":"nimfeo","enId":"13871134","enBy":"zogwarg","auto":true}
+{"term":"J'aimerais disposer de ma propre chambre.","back":"I wish I had a room of my own.","scene":"at the hotel","src":"tatoeba:128051","by":"sacredceltic","enId":"262476","enBy":"CK","auto":true}
+{"term":"J'ai trouvé cette clé sous le paillasson.","back":"I found the key underneath the mat.","scene":"at the hotel","src":"tatoeba:805052","by":"U2FS","enId":"255674","enBy":"CK","auto":true}
+{"term":"Cette clef ne rentre pas dans la serrure.","back":"This key won't go in the lock.","scene":"at the hotel","src":"tatoeba:886439","by":"sacredceltic","enId":"61245","enBy":"CK","auto":true}
+{"term":"À quel nom dois-je faire la réservation ?","back":"In whose name shall I make the reservation?","scene":"at the hotel","src":"tatoeba:3273082","by":"nimfeo","enId":"3273081","auto":true}
+{"term":"Je ne parviens pas à ouvrir cette valise.","back":"I can't get this suitcase open.","scene":"at the hotel","src":"tatoeba:3846556","by":"Rovo","enId":"1951672","enBy":"CK","auto":true}
+{"term":"Il faut que tu renouvelles ton passeport.","back":"You need to renew your passport.","scene":"travelling","src":"tatoeba:7982985","by":"Aiji","enId":"6691660","enBy":"Eccles17","auto":true}
+{"term":"Je séjourne dans un hôtel, pour le moment.","back":"I'm staying at a hotel for the time being.","scene":"at the hotel","src":"tatoeba:3633045","by":"sacredceltic","enId":"2710308","enBy":"CK","auto":true}
+{"term":"Cette plage est un lieu touristique prisé.","back":"This beach is a popular tourist spot.","scene":"travelling","src":"tatoeba:12357502","by":"lbdx","enId":"2819535","enBy":"Hybrid","auto":true}
+{"term":"C'est dur de planifier un voyage ensemble.","back":"It's hard to plan a trip together.","scene":"travelling","src":"tatoeba:13353449","by":"genes1s","enId":"13133922","enBy":"Nuel","auto":true}
+{"term":"Ce billet est valable pendant quinze jours.","back":"This ticket is valid for a fortnight.","scene":"at the hotel","src":"tatoeba:10068638","by":"lbdx","enId":"10068625","enBy":"sundown","auto":true}
+{"term":"Rien n'est encore arrêté pour les vacances.","back":"Our plans for the vacation are still up in the air.","scene":"travelling","src":"tatoeba:11255928","by":"lbdx","enId":"28891","enBy":"CM","auto":true}
+{"term":"J'attends les vacances d'été avec impatience.","back":"I'm looking forward to summer vacation.","scene":"travelling","src":"tatoeba:1422556","by":"sacredceltic","enId":"1894513","enBy":"CK","auto":true}
+{"term":"Nous n'avons pas encore planifié nos vacances.","back":"Our holiday plans are still up in the air.","scene":"travelling","src":"tatoeba:15018","by":"sacredceltic","enId":"23433","enBy":"Ivan24","auto":true}
+{"term":"Nous attendons tous nos congés avec impatience.","back":"We are all impatient for our holiday.","scene":"travelling","src":"tatoeba:1722465","by":"sacredceltic","enId":"23127","enBy":"al_ex_an_der","auto":true}
+{"term":"Nous avons réservé pour dix-huit heures trente.","back":"We have a reservation for six-thirty.","scene":"at the hotel","src":"tatoeba:2927752","by":"Elliv","enId":"1369387","enBy":"CK","auto":true}
+{"term":"Cet espace est réservé aux personnes handicapées.","back":"This area is reserved for the handicapped.","scene":"at the hotel","src":"tatoeba:13980555","by":"zogwarg","enId":"9056458","enBy":"rafaeldejesus8199","auto":true}
+{"term":"Cette chambre d'hôtel dispose de la climatisation.","back":"This hotel room has air conditioning.","scene":"at the hotel","src":"tatoeba:11436251","by":"lbdx","enId":"6853896","enBy":"Hybrid","auto":true}
+{"term":"J'aime voyager et rencontrer de nouvelles personnes.","back":"I like to travel and meet new people.","scene":"travelling","src":"tatoeba:3994957","by":"Scorpionvenin14","enId":"3994950","enBy":"Bergthor","auto":true}
+{"term":"Je suis en déplacement professionnel la semaine prochaine.","back":"I will be on a business trip next week.","scene":"travelling","src":"tatoeba:1564403","by":"sacredceltic","enId":"11953102","enBy":"zogwarg","auto":true}

@@ -5,9 +5,11 @@ import {
   getReadMaterialById,
   deleteReadMaterial,
   renameReadMaterial,
+  replaceReadMaterialContent,
 } from "@/lib/getReadMaterialsCollection";
 import { cleanTitle } from "@/lib/read/title";
 import { sameOriginJson } from "@/lib/security/same-origin";
+import { detectBook } from "@/lib/read/prep";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { materialWords, summarizeMaterials } from "@/lib/read/progress";
 import { readFlags } from "@/lib/flags-store";
@@ -30,7 +32,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Material not found" }, { status: 404 });
   }
 
-  const { book: fullBook, text, stats } = await materialWords(material, session.user.id);
+  const mw = await materialWords(material, session.user.id);
+  const { text, stats } = mw;
+  let fullBook = mw.book;
+  // The import pipeline's detector (lib/read/prep.ts), for a book imported
+  // before it: run once on open and stored, so the reader's polish offer is
+  // not worked out again on every open. Only the shape is added; the text
+  // stays as it is until he re-imports or polishes it.
+  if (fullBook && !fullBook.shape && dbBackend() === "d1") {
+    const shape = detectBook({
+      lines: material.lines,
+      headings: fullBook.headings ?? [],
+      continues: fullBook.continues,
+    });
+    fullBook = { ...fullBook, shape };
+    try {
+      await replaceReadMaterialContent(session.user.id, id, JSON.stringify(fullBook));
+    } catch (err) {
+      console.error("read: shape backfill failed", err);
+    }
+  }
   // The word list itself is /api/read/[id]/words; the header needs the counts.
   const book = fullBook ? { ...fullBook, words: undefined } : null;
   const [words] = await summarizeMaterials(dbBackend() === "d1" ? getD1() : null, session.user, [

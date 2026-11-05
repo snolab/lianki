@@ -1,0 +1,941 @@
+// fr-school: written by build-scene-sentences.ts; edit the lexicon, not this file
+{"term":"As-tu des devoirs ?","back":"Do you have homework?","scene":"at school","src":"tatoeba:8701735","by":"Micsmithel","enId":"2647195","enBy":"CK","auto":true}
+{"term":"Où est votre école ?","back":"Where's your school?","scene":"at school","src":"tatoeba:3627868","by":"fleur74","enId":"2883715","enBy":"CK","auto":true}
+{"term":"Où vas-tu à l'école ?","back":"Where do you go to school?","scene":"at school","src":"tatoeba:465129","by":"sacredceltic","enId":"21538","enBy":"CK","auto":true}
+{"term":"Où sont tes devoirs ?","back":"Where is your homework?","scene":"at school","src":"tatoeba:5160127","by":"Ceriz","enId":"5158817","enBy":"Zaksocool","auto":true}
+{"term":"Où se trouve l'école ?","back":"Where's the school?","scene":"at school","src":"tatoeba:1054844","by":"sacredceltic","enId":"13320607","enBy":"rul","auto":true}
+{"term":"Où es-tu allé à l'école ?","back":"Where did you go to school?","scene":"at school","src":"tatoeba:1844525","by":"sacredceltic","enId":"1841528","enBy":"CK","auto":true}
+{"term":"M'aideras-tu pour mes devoirs ?","back":"Will you help me with my homework?","scene":"at school","src":"tatoeba:465675","by":"sacredceltic","enId":"251199","enBy":"CK","auto":true}
+{"term":"Quand l'école s'arrête-t-elle ?","back":"When does school break up?","scene":"at school","src":"tatoeba:1288788","by":"sacredceltic","enId":"21545","enBy":"sundown","auto":true}
+{"term":"Quelle école est la meilleure ?","back":"Which school is the best?","scene":"at school","src":"tatoeba:2659518","by":"Rovo","enId":"2659510","enBy":"Balamax","auto":true}
+{"term":"À quelle heure avez-vous école ?","back":"What time do you have school?","scene":"at school","src":"tatoeba:11031591","by":"felix63","enId":"13168685","enBy":"rul","auto":true}
+{"term":"À quelle heure finit ton cours ?","back":"What time does your class end?","scene":"at school","src":"tatoeba:2534870","by":"Julien_PDC","enId":"1892016","enBy":"CK","auto":true}
+{"term":"À quelle heure commence l'école ?","back":"What time does school begin?","scene":"at school","src":"tatoeba:1342232","by":"sacredceltic","enId":"21531","enBy":"CK","auto":true}
+{"term":"À quelle heure pars-tu à l'école ?","back":"What time do you leave for school?","scene":"at school","src":"tatoeba:1364508","by":"sacredceltic","enId":"69576","enBy":"CK","auto":true}
+{"term":"Veuillez m'aider avec mes devoirs.","back":"Please help me with my homework.","scene":"at school","src":"tatoeba:8703612","by":"Julien_PDC","enId":"38475","enBy":"CK","auto":true}
+{"term":"Tu as cours à quelle heure demain ?","back":"What time do you have class tomorrow?","scene":"at school","src":"tatoeba:2302767","by":"sysko","enId":"10928314","enBy":"ddnktr","auto":true}
+{"term":"À quelle heure te rends-tu à l'école ?","back":"What time do you go to school?","scene":"at school","src":"tatoeba:696136","by":"qdii","enId":"696155","enBy":"qdii","auto":true}
+{"term":"À quelle heure est ton premier cours ?","back":"When's your first class?","scene":"at school","src":"tatoeba:6545599","by":"Aiji","enId":"3738534","enBy":"CK","auto":true}
+{"term":"Aide-moi avec mon devoir, s’il te plaît.","back":"Help me with my homework, please.","scene":"at school","src":"tatoeba:1366521","by":"Danquebec","enId":"38840","enBy":"CK","auto":true}
+{"term":"À quelle heure commence l'école le matin ?","back":"What time does school start in the morning?","scene":"at school","src":"tatoeba:8252847","by":"Aiji","enId":"5144446","enBy":"Barra","auto":true}
+{"term":"À quelle heure commence ton prochain cours ?","back":"When does your next class start?","scene":"at school","src":"tatoeba:7794849","by":"Aiji","enId":"6024941","enBy":"CK","auto":true}
+{"term":"Peux-tu aller chercher les enfants à l'école ?","back":"Can you fetch the children from school?","scene":"at school","src":"tatoeba:13088442","by":"lbdx","enId":"1514222","enBy":"rul","auto":true}
+{"term":"Vas-tu à l’école ?","back":"Do you go to school?","scene":"at school","src":"tatoeba:3787583","by":"Danquebec","enId":"2985719","enBy":"sharptoothed","auto":true}
+{"term":"Tu as cours demain ?","back":"You have class tomorrow?","scene":"at school","src":"tatoeba:5940420","by":"Blabla","enId":"11008293","enBy":"tjwhale","auto":true}
+{"term":"Fais-tu tes devoirs ?","back":"Are you doing your homework?","scene":"at school","src":"tatoeba:9557313","by":"Julien_PDC","enId":"3823745","enBy":"CK","auto":true}
+{"term":"Comment était l'école ?","back":"How was class?","scene":"at school","src":"tatoeba:6926650","by":"Aiji","enId":"3563955","enBy":"CK","auto":true}
+{"term":"As-tu fait tes devoirs ?","back":"Did you do your homework?","scene":"at school","src":"tatoeba:895068","by":"sacredceltic","enId":"434484","enBy":"lukaszpp","auto":true}
+{"term":"Je veux aller à l'école.","back":"I want to go to school.","scene":"at school","src":"tatoeba:11166643","by":"lbdx","enId":"2714993","enBy":"CK","auto":true}
+{"term":"As-tu rendu ton devoir ?","back":"Have you handed in your homework?","scene":"at school","src":"tatoeba:11934412","by":"lbdx","enId":"31327","enBy":"CK","auto":true}
+{"term":"As-tu compris le devoir ?","back":"Did you understand the homework assignment?","scene":"at school","src":"tatoeba:11941784","by":"Amastan","enId":"11892307","enBy":"Amastan","auto":true}
+{"term":"Qu'apprends-tu à l'école ?","back":"What do you learn at school?","scene":"at school","src":"tatoeba:587975","by":"sacredceltic","enId":"17643","enBy":"Swift","auto":true}
+{"term":"As-tu appris ça à l'école ?","back":"Did you learn that in school?","scene":"at school","src":"tatoeba:13341906","by":"genes1s","enId":"12170627","enBy":"CK","auto":true}
+{"term":"As-tu déjà fini tes devoirs ?","back":"Have you already finished your homework?","scene":"at school","src":"tatoeba:6467396","by":"felix63","enId":"3043096","enBy":"CK","auto":true}
+{"term":"As-tu fait tous tes devoirs ?","back":"Have you done all your homework?","scene":"at school","src":"tatoeba:469837","by":"sacredceltic","enId":"16400","enBy":"CK","auto":true}
+{"term":"Aide-moi à faire mes devoirs.","back":"Help me with my homework.","scene":"at school","src":"tatoeba:11171833","by":"Aiji","enId":"251200","enBy":"CK","auto":true}
+{"term":"As-tu enfin fini tes devoirs ?","back":"Have you finished your homework yet?","scene":"at school","src":"tatoeba:15293","by":"zmoo","enId":"31328","enBy":"Eldad","auto":true}
+{"term":"Comment se rend-il à l'école ?","back":"How does he go to school?","scene":"at school","src":"tatoeba:1330455","by":"sacredceltic","enId":"291983","enBy":"CK","auto":true}
+{"term":"Vas-tu à l'école aujourd'hui ?","back":"Are you going to school today?","scene":"at school","src":"tatoeba:10099042","by":"Cronos87","enId":"3819520","enBy":"CK","auto":true}
+{"term":"Comment te rends-tu à l'école ?","back":"How do you get to school?","scene":"at school","src":"tatoeba:8969","by":"sacredceltic","enId":"16469","enBy":"CK","auto":true}
+{"term":"As-tu fait les devoirs d'hier ?","back":"Did you do yesterday's homework?","scene":"at school","src":"tatoeba:1099420","by":"sacredceltic","enId":"1098697","enBy":"cntrational","auto":true}
+{"term":"Comment ça se passe à l'école ?","back":"How are you doing in school?","scene":"at school","src":"tatoeba:12169981","by":"lbdx","enId":"5839806","enBy":"CK","auto":true}
+{"term":"En as-tu fini avec tes devoirs ?","back":"Are you through with your homework?","scene":"at school","src":"tatoeba:128376","by":"Aiji","enId":"266712","enBy":"CK","auto":true}
+{"term":"N'as-tu pas cours, aujourd'hui ?","back":"Don't you have classes today?","scene":"at school","src":"tatoeba:2401901","by":"sacredceltic","enId":"2396029","enBy":"CK","auto":true}
+{"term":"Les enfants sont-ils à l'école ?","back":"Are the children at school?","scene":"at school","src":"tatoeba:5596920","by":"Julien_PDC","enId":"5596886","enBy":"carlosalberto","auto":true}
+{"term":"Pourquoi n'es-tu pas à l'école ?","back":"Why aren't you at school?","scene":"at school","src":"tatoeba:6668577","by":"Aiji","enId":"3820928","enBy":"CK","auto":true}
+{"term":"Je veux te parler après le cours.","back":"I want to talk to you after class.","scene":"at school","src":"tatoeba:2475275","by":"sacredceltic","enId":"2016656","enBy":"CK","auto":true}
+{"term":"Es-tu allé à l'école aujourd'hui ?","back":"Did you go to school today?","scene":"at school","src":"tatoeba:386049","by":"sysko","enId":"370683","enBy":"saeb","auto":true}
+{"term":"Pourquoi dois-je aller à l'école ?","back":"Why do I have to go to school?","scene":"at school","src":"tatoeba:3445348","by":"sacredceltic","enId":"3444892","enBy":"LishaR","auto":true}
+{"term":"As-tu fait tes devoirs tout seul ?","back":"Did you do your homework by yourself?","scene":"at school","src":"tatoeba:6468713","by":"Aiji","enId":"15999","enBy":"CK","auto":true}
+{"term":"As-tu oublié de faire tes devoirs ?","back":"Did you forget to do your homework?","scene":"at school","src":"tatoeba:1140234","by":"sacredceltic","enId":"1140195","enBy":"CK","auto":true}
+{"term":"Est-ce ton premier jour à l'école ?","back":"Is it your first day at school?","scene":"at school","src":"tatoeba:2208314","by":"sacredceltic","enId":"2206500","enBy":"Hybrid","auto":true}
+{"term":"Pourquoi n'étais-tu pas à l'école ?","back":"Why weren't you in school?","scene":"at school","src":"tatoeba:6169891","by":"felix63","enId":"6814293","enBy":"CK","auto":true}
+{"term":"Comment vont les choses, à l'école ?","back":"How's school going?","scene":"at school","src":"tatoeba:2367750","by":"sacredceltic","enId":"2548866","enBy":"CK","auto":true}
+{"term":"Ma fille peut-elle aller à l'école ?","back":"Can my daughter go to school?","scene":"at school","src":"tatoeba:3660958","by":"sacredceltic","enId":"322891","auto":true}
+{"term":"Pourquoi n'êtes-vous pas à l'école ?","back":"Why aren't you in school?","scene":"at school","src":"tatoeba:9034899","by":"Aiji","enId":"2644656","enBy":"CK","auto":true}
+{"term":"Qu'as-tu fait à l'école aujourd'hui ?","back":"What did you do at school today?","scene":"at school","src":"tatoeba:2002385","by":"sacredceltic","enId":"1989661","enBy":"Spamster","auto":true}
+{"term":"Pourquoi devrais-je aller à l'école ?","back":"Why should I go to school?","scene":"at school","src":"tatoeba:2075972","by":"sacredceltic","enId":"1850581","enBy":"jinpt","auto":true}
+{"term":"Qu'as-tu fait aujourd'hui à l'école ?","back":"What did you do today at school?","scene":"at school","src":"tatoeba:10778362","by":"lbdx","enId":"6796677","enBy":"CK","auto":true}
+{"term":"As-tu fait le dernier problème de tes devoirs ?","back":"Did you do the last problem of the homework?","scene":"at school","src":"tatoeba:128372","by":"Aiji","enId":"266669","auto":true}
+{"term":"Pourquoi n'as-tu toujours pas fait tes devoirs ?","back":"Why haven't you done your homework yet?","scene":"at school","src":"tatoeba:11426651","by":"lbdx","enId":"4011764","enBy":"CK","auto":true}
+{"term":"Va à l'école.","back":"Go to school.","scene":"at school","src":"tatoeba:339593","by":"TRANG","enId":"21504","enBy":"CK","auto":true}
+{"term":"Va apprendre.","back":"Go study.","scene":"at school","src":"tatoeba:7704265","by":"Micsmithel","enId":"6826536","enBy":"Eccles17","auto":true}
+{"term":"Ça t'apprendra.","back":"That will teach you a lesson.","scene":"at school","src":"tatoeba:8530092","by":"Aiji","enId":"7492484","enBy":"AlanF_US","auto":true}
+{"term":"Viens à l'école.","back":"Come to school.","scene":"at school","src":"tatoeba:11963861","by":"Amastan","enId":"8119693","enBy":"Amastan","auto":true}
+{"term":"Prends ce cours.","back":"Take that class.","scene":"at school","src":"tatoeba:11963872","by":"Amastan","enId":"10836247","enBy":"Amastan","auto":true}
+{"term":"Fais tes devoirs.","back":"Do your homework.","scene":"at school","src":"tatoeba:128374","by":"nimfeo","enId":"266698","enBy":"CK","auto":true}
+{"term":"Je vais à l’école.","back":"I go to school.","scene":"at school","src":"tatoeba:10505687","by":"pkill","enId":"472089","enBy":"tamsanh","auto":true}
+{"term":"Tu iras à l'école.","back":"You will go to school.","scene":"at school","src":"tatoeba:827630","by":"sacredceltic","enId":"497951","enBy":"FeuDRenais","auto":true}
+{"term":"Tu as école demain.","back":"You have school tomorrow.","scene":"at school","src":"tatoeba:12439336","by":"lbdx","enId":"7782458","enBy":"Hybrid","auto":true}
+{"term":"Je fais mes devoirs.","back":"I'm doing my homework.","scene":"at school","src":"tatoeba:1718796","by":"sacredceltic","enId":"258045","enBy":"CK","auto":true}
+{"term":"Il y a école demain.","back":"It's a school night.","scene":"at school","src":"tatoeba:11802989","by":"lbdx","enId":"3728191","enBy":"CM","auto":true}
+{"term":"Je finis mes devoirs.","back":"I'm finishing my homework.","scene":"at school","src":"tatoeba:7229","by":"dominiko","enId":"253877","enBy":"CK","auto":true}
+{"term":"Je ferai mes devoirs.","back":"I'll do my homework.","scene":"at school","src":"tatoeba:2204993","by":"sacredceltic","enId":"2204358","enBy":"CK","auto":true}
+{"term":"On se voit à l'école.","back":"I'll see you at school.","scene":"at school","src":"tatoeba:11928454","by":"lbdx","enId":"6271476","enBy":"CK","auto":true}
+{"term":"Va faire tes devoirs.","back":"Go do your homework.","scene":"at school","src":"tatoeba:12431133","by":"lbdx","enId":"2951864","enBy":"CK","auto":true}
+{"term":"Je me rends à l'école.","back":"I'm going to school.","scene":"at school","src":"tatoeba:4594412","by":"sacredceltic","enId":"3315771","enBy":"CK","auto":true}
+{"term":"Mon devoir est à faire.","back":"My homework remains to be done.","scene":"at school","src":"tatoeba:974727","by":"sacredceltic","enId":"251196","enBy":"al_ex_an_der","auto":true}
+{"term":"Tu as fait tes devoirs.","back":"You've done your homework.","scene":"at school","src":"tatoeba:2031217","by":"sacredceltic","enId":"2030097","enBy":"Spamster","auto":true}
+{"term":"Mon bureau est en haut.","back":"My study is upstairs.","scene":"at school","src":"tatoeba:4548580","by":"sacredceltic","enId":"251206","enBy":"CK","auto":true}
+{"term":"Nous avons des devoirs.","back":"We have homework.","scene":"at school","src":"tatoeba:4779603","by":"sacredceltic","enId":"2549214","enBy":"CK","auto":true}
+{"term":"Ne parle pas en cours !","back":"Don't talk during class.","scene":"at school","src":"tatoeba:4902561","by":"sacredceltic","enId":"4902557","enBy":"Hybrid","auto":true}
+{"term":"Tu dois aller à l'école.","back":"You must go to school.","scene":"at school","src":"tatoeba:2163552","by":"sacredceltic","enId":"2163206","enBy":"Source_VOA","auto":true}
+{"term":"J'irai à l'école demain.","back":"I will go to the school tomorrow.","scene":"at school","src":"tatoeba:2736480","by":"Micsmithel","enId":"2664946","auto":true}
+{"term":"Je n'irai pas à l'école.","back":"I won't go to school.","scene":"at school","src":"tatoeba:11621873","by":"Aiji","enId":"3714424","enBy":"CK","auto":true}
+{"term":"Je suis encore à l'école.","back":"I'm still at school.","scene":"at school","src":"tatoeba:2328963","by":"Amastan","enId":"2329024","enBy":"CM","auto":true}
+{"term":"Tu es toujours à l'école.","back":"You're always at school.","scene":"at school","src":"tatoeba:2572738","by":"Amastan","enId":"12343996","enBy":"Miktsoanit","auto":true}
+{"term":"Parlons-en après l'école.","back":"Let's talk about it after school.","scene":"at school","src":"tatoeba:335765","by":"TRANG","enId":"42912","enBy":"CK","auto":true}
+{"term":"Tu iras à l'école demain.","back":"You'll go to school tomorrow.","scene":"at school","src":"tatoeba:1347670","by":"sacredceltic","enId":"20112","enBy":"CK","auto":true}
+{"term":"Demain, j'irai à l'école.","back":"I'll go to school tomorrow.","scene":"at school","src":"tatoeba:10356052","by":"Amastan","enId":"10056564","enBy":"DJ_Saidez","auto":true}
+{"term":"Je n'aime pas les devoirs.","back":"I don't like homework.","scene":"at school","src":"tatoeba:6333","by":"hirymnak","enId":"258539","enBy":"CK","auto":true}
+{"term":"Je dois faire mes devoirs.","back":"I have to do my homework.","scene":"at school","src":"tatoeba:6336","by":"TRANG","enId":"241787","enBy":"CK","auto":true}
+{"term":"Je ne vais plus à l'école.","back":"I don't go to school anymore.","scene":"at school","src":"tatoeba:6616120","by":"GB3","enId":"6263147","enBy":"CK","auto":true}
+{"term":"Je vais à l'école avec lui.","back":"I go to school with him.","scene":"at school","src":"tatoeba:127625","by":"Barbiche0","enId":"260198","enBy":"CK","auto":true}
+{"term":"Mes enfants aiment l'école.","back":"My children like school.","scene":"at school","src":"tatoeba:5664457","by":"Yemana","enId":"5664327","enBy":"Barra","auto":true}
+{"term":"Nous devons aller à l'école.","back":"We must go to school.","scene":"at school","src":"tatoeba:334293","by":"sysko","enId":"248530","enBy":"CK","auto":true}
+{"term":"Nous allons à la même école.","back":"We go to the same school.","scene":"at school","src":"tatoeba:588686","by":"sacredceltic","enId":"249116","enBy":"CK","auto":true}
+{"term":"Nous vivons près de l'école.","back":"We live near the school.","scene":"at school","src":"tatoeba:7063933","by":"Aiji","enId":"2949789","enBy":"AlanF_US","auto":true}
+{"term":"Je ne vais jamais à l'école.","back":"I never go to school.","scene":"at school","src":"tatoeba:8530152","by":"Aiji","enId":"3945083","enBy":"AlanF_US","auto":true}
+{"term":"On t'apprendra ça à l'école.","back":"You'll be taught this in school.","scene":"at school","src":"tatoeba:8571218","by":"Aiji","enId":"7946833","enBy":"AlanF_US","auto":true}
+{"term":"Nous sommes encore à l'école.","back":"We are still in school.","scene":"at school","src":"tatoeba:2329156","by":"Amastan","enId":"3201135","enBy":"AlanF_US","auto":true}
+{"term":"Faisons nos devoirs ensemble.","back":"Let's do the homework together.","scene":"at school","src":"tatoeba:1399240","by":"Delapouite","enId":"266701","enBy":"CK","auto":true}
+{"term":"Mon chien a mangé mon devoir.","back":"My dog ate my homework.","scene":"at school","src":"tatoeba:7745907","by":"lbdx","enId":"954184","enBy":"CK","auto":true}
+{"term":"Vous devriez aller à l'école.","back":"You should go to school.","scene":"at school","src":"tatoeba:7862079","by":"Aiji","enId":"1430137","enBy":"CK","auto":true}
+{"term":"Je vais à l'école en marchant.","back":"I walk to school.","scene":"at school","src":"tatoeba:6698","by":"TRANG","enId":"437011","enBy":"lukaszpp","auto":true}
+{"term":"Faites vos devoirs maintenant.","back":"Do your homework now.","scene":"at school","src":"tatoeba:1606735","by":"Aiji","enId":"570180","enBy":"CK","auto":true}
+{"term":"Je veux juste aller à l'école.","back":"I just want to go to school.","scene":"at school","src":"tatoeba:2460603","by":"sacredceltic","enId":"2012954","enBy":"CK","auto":true}
+{"term":"Je la verrai demain à l'école.","back":"I'll see her tomorrow at school.","scene":"at school","src":"tatoeba:3229761","by":"sacredceltic","enId":"3218367","enBy":"Hybrid","auto":true}
+{"term":"Je le verrai demain à l'école.","back":"I'll see him tomorrow at school.","scene":"at school","src":"tatoeba:3229762","by":"sacredceltic","enId":"3218366","enBy":"Hybrid","auto":true}
+{"term":"Je ferai tes devoirs pour toi.","back":"I'll do your homework for you.","scene":"at school","src":"tatoeba:5660459","by":"Aiji","enId":"2542519","enBy":"CK","auto":true}
+{"term":"Nous ne sommes plus à l'école.","back":"We're not in school anymore.","scene":"at school","src":"tatoeba:7909491","by":"Aiji","enId":"2543291","enBy":"CK","auto":true}
+{"term":"Je ne vis pas loin de l'école.","back":"I don't live far from the school.","scene":"at school","src":"tatoeba:7995986","by":"Aiji","enId":"7857755","enBy":"shekitten","auto":true}
+{"term":"Je ne suis pas allé à l'école.","back":"I didn't go to school.","scene":"at school","src":"tatoeba:8709103","by":"Julien_PDC","enId":"2635424","enBy":"CK","auto":true}
+{"term":"On apprend beaucoup à l'école.","back":"We learn a good deal at school.","scene":"at school","src":"tatoeba:11936279","by":"lbdx","enId":"248519","enBy":"CK","auto":true}
+{"term":"Je n'aime pas aller à l'école.","back":"I don't like going to school.","scene":"at school","src":"tatoeba:12240097","by":"Aiji","enId":"6263096","enBy":"CK","auto":true}
+{"term":"Il est temps d'aller à l'école.","back":"It's time to go to school.","scene":"at school","src":"tatoeba:2792361","by":"Aiji","enId":"21595","enBy":"CK","auto":true}
+{"term":"Je vais à l'école avec plaisir.","back":"I go very gladly to school.","scene":"at school","src":"tatoeba:3444255","by":"felix63","enId":"3444138","enBy":"allenmanbear","auto":true}
+{"term":"Je n'irai pas à l'école demain.","back":"I won't go to school tomorrow.","scene":"at school","src":"tatoeba:6463151","by":"Aiji","enId":"3851580","enBy":"CK","auto":true}
+{"term":"Nous allons à l'école ensemble.","back":"We go to school together.","scene":"at school","src":"tatoeba:11181300","by":"Aiji","enId":"2545085","enBy":"CK","auto":true}
+{"term":"Nous avons quatre cours le matin.","back":"We have four classes in the morning.","scene":"at school","src":"tatoeba:3659721","by":"THURET","enId":"240099","enBy":"CK","auto":true}
+{"term":"Tu devrais encore être à l'école.","back":"You should still be at school.","scene":"at school","src":"tatoeba:5865559","by":"Aiji","enId":"3409377","enBy":"CK","auto":true}
+{"term":"Je dois faire ça avant les cours.","back":"I have to do this before class.","scene":"at school","src":"tatoeba:6935744","by":"Aiji","enId":"2360451","enBy":"CK","auto":true}
+{"term":"Que ta mère te fasse tes devoirs !","back":"Get your mother to do your homework!","scene":"at school","src":"tatoeba:433363","by":"qdii","enId":"63967","enBy":"CK","auto":true}
+{"term":"Je me rends à l'école chaque jour.","back":"I go to school every day.","scene":"at school","src":"tatoeba:1234219","by":"sacredceltic","enId":"1233508","enBy":"Eldad","auto":true}
+{"term":"Tu ne devrais pas aller à l'école.","back":"You shouldn't go to school.","scene":"at school","src":"tatoeba:1340248","by":"sacredceltic","enId":"21528","enBy":"CK","auto":true}
+{"term":"Ne devrais-tu pas être à l'école ?","back":"Shouldn't you be in school?","scene":"at school","src":"tatoeba:6134203","by":"Aiji","enId":"2644080","enBy":"CK","auto":true}
+{"term":"Nos enfants vont encore à l'école.","back":"Our children still go to school.","scene":"at school","src":"tatoeba:6460981","by":"GB3","enId":"6458101","enBy":"AnnieLouisa","auto":true}
+{"term":"Tu ne devrais pas être à l'école ?","back":"Shouldn't you be at school?","scene":"at school","src":"tatoeba:8409820","by":"lbdx","enId":"6199660","enBy":"Mofli","auto":true}
+{"term":"Je dois rentrer faire mes devoirs.","back":"I have to go inside and do my homework.","scene":"at school","src":"tatoeba:11792336","by":"lbdx","enId":"5295450","enBy":"Hybrid","auto":true}
+{"term":"Étais-tu à l'école à ce moment-là ?","back":"Were you at school at that time?","scene":"at school","src":"tatoeba:136160","by":"Aiji","enId":"47023","enBy":"CK","auto":true}
+{"term":"On ne peut pas courir dans l'école.","back":"You can't run in school.","scene":"at school","src":"tatoeba:933588","by":"sacredceltic","enId":"934437","enBy":"LittleBoy","auto":true}
+{"term":"J’ai oublié mes devoirs à la maison.","back":"I've left my homework at home.","scene":"at school","src":"tatoeba:8219345","by":"felix63","enId":"8982015","enBy":"sundown","auto":true}
+{"term":"Tu aurais dû apprendre ça à l'école.","back":"You should've learned that in school.","scene":"at school","src":"tatoeba:10670628","by":"Aiji","enId":"2060067","enBy":"CK","auto":true}
+{"term":"Ce cours a lieu une fois par semaine.","back":"That class takes place once per week.","scene":"at school","src":"tatoeba:1013074","by":"sacredceltic","enId":"1008794","enBy":"AOCinJAPAN","auto":true}
+{"term":"Je dois rentrer et faire mes devoirs.","back":"I have to go home and do my homework.","scene":"at school","src":"tatoeba:9065967","by":"Aiji","enId":"4846827","enBy":"CK","auto":true}
+{"term":"Je viendrai te chercher après l'école.","back":"I'll pick you up after school.","scene":"at school","src":"tatoeba:1843004","by":"sacredceltic","enId":"1841640","enBy":"CK","auto":true}
+{"term":"Ne devrais-tu pas déjà être à l'école?","back":"Shouldn't you be at school already?","scene":"at school","src":"tatoeba:4017754","by":"Scorpionvenin14","enId":"4017257","enBy":"CK","auto":true}
+{"term":"Va aider ton frère à faire ses devoirs.","back":"Go help your brother with his homework.","scene":"at school","src":"tatoeba:9949512","by":"Yemana","enId":"8977725","enBy":"CK","auto":true}
+{"term":"Tu dois faire tes devoirs tout de suite.","back":"You must do your homework at once.","scene":"at school","src":"tatoeba:11132432","by":"Aiji","enId":"17815","enBy":"CK","auto":true}
+{"term":"Tu devrais faire tes devoirs maintenant.","back":"You should do your homework now.","scene":"at school","src":"tatoeba:11476905","by":"Aiji","enId":"242127","enBy":"CK","auto":true}
+{"term":"Je dois finir mes devoirs avant le dîner.","back":"I must finish my homework before dinner.","scene":"at school","src":"tatoeba:339617","by":"TRANG","enId":"28930","enBy":"CK","auto":true}
+{"term":"Je sortirai après avoir fini mes devoirs.","back":"I will go out after I finish my homework.","scene":"at school","src":"tatoeba:460204","by":"sacredceltic","enId":"266709","enBy":"CK","auto":true}
+{"term":"Se rendre à l'école est presque impossible.","back":"It is next to impossible to go to school.","scene":"at school","src":"tatoeba:9780277","by":"rat","enId":"278408","enBy":"CM","auto":true}
+{"term":"Nous n'aurons pas cours la semaine prochaine.","back":"We won't have class next week.","scene":"at school","src":"tatoeba:5776485","by":"Thomz","enId":"5774836","enBy":"CK","auto":true}
+{"term":"Tu devras travailler plus dur l'année prochaine.","back":"You'll have to study harder next year.","scene":"at school","src":"tatoeba:990763","by":"sacredceltic","enId":"325125","enBy":"CK","auto":true}
+{"term":"Combien sont là dans ta classe ?","back":"How many are there in your class?","scene":"at school","src":"tatoeba:799780","by":"sacredceltic","enId":"17396","enBy":"darinmex","auto":true}
+{"term":"Tu as des amis, dans ta classe ?","back":"Do you have friends in your class?","scene":"at school","src":"tatoeba:3593818","by":"gillux","enId":"4404058","enBy":"space_badger","auto":true}
+{"term":"Quand l'école se termine-t-elle ?","back":"When is school over?","scene":"at school","src":"tatoeba:585288","by":"sacredceltic","enId":"21543","enBy":"CK","auto":true}
+{"term":"Où se trouve le reste de la classe ?","back":"Where's the rest of our class?","scene":"at school","src":"tatoeba:1985925","by":"sacredceltic","enId":"1985650","enBy":"FlamingTofu","auto":true}
+{"term":"M'aideras-tu avec mon devoir d'anglais ?","back":"Will you help me with my English homework?","scene":"at school","src":"tatoeba:1120566","by":"Sibelius","enId":"250468","enBy":"CK","auto":true}
+{"term":"Quand a-t-elle quitté la salle de classe ?","back":"When did she leave the classroom?","scene":"at school","src":"tatoeba:452642","by":"sacredceltic","enId":"310503","enBy":"CK","auto":true}
+{"term":"Veuillez remettre vos devoirs pour demain.","back":"Please turn in your homework by tomorrow.","scene":"at school","src":"tatoeba:1436673","by":"sacredceltic","enId":"1398771","enBy":"CK","auto":true}
+{"term":"Combien de garçons sont-ils dans cette classe ?","back":"How many boys are in this class?","scene":"at school","src":"tatoeba:2083321","by":"sacredceltic","enId":"2082877","enBy":"CK","auto":true}
+{"term":"Quand verras-tu ton professeur la prochaine fois ?","back":"When's the next time you'll see your teacher?","scene":"at school","src":"tatoeba:7759475","by":"felix63","enId":"13980598","enBy":"zogwarg","auto":true}
+{"term":"Dans quel lycée es-tu ?","back":"What secondary school do you go to?","scene":"at school","src":"tatoeba:1087606","by":"sacredceltic","enId":"11811855","enBy":"sundown","auto":true}
+{"term":"Est-ce ton professeur ?","back":"Is that your teacher?","scene":"at school","src":"tatoeba:5798206","by":"Toynop","enId":"5796975","enBy":"Herobane","auto":true}
+{"term":"En quelle classe es-tu ?","back":"What grade are you in?","scene":"at school","src":"tatoeba:403691","by":"Biptaste","enId":"16248","enBy":"CK","auto":true}
+{"term":"Qui est mon professeur ?","back":"Who's my teacher?","scene":"at school","src":"tatoeba:6627280","by":"GB3","enId":"6627274","enBy":"Schuager","auto":true}
+{"term":"Je veux quitter l'école.","back":"I want to leave school.","scene":"at school","src":"tatoeba:7267207","by":"Aiji","enId":"2633393","enBy":"CK","auto":true}
+{"term":"Quel sujet préférez-vous ?","back":"What subject do you like best?","scene":"at school","src":"tatoeba:1348536","by":"sacredceltic","enId":"69827","enBy":"CK","auto":true}
+{"term":"Qui est votre professeur ?","back":"Who's your teacher?","scene":"at school","src":"tatoeba:1564372","by":"sacredceltic","enId":"931492","enBy":"CM","auto":true}
+{"term":"Es-tu libre après l'école ?","back":"Are you free after school?","scene":"at school","src":"tatoeba:135092","by":"sacredceltic","enId":"321007","enBy":"CK","auto":true}
+{"term":"J'aimerais être professeur.","back":"I'd like to be a teacher.","scene":"at school","src":"tatoeba:353228","by":"Barbiche0","enId":"259075","enBy":"CK","auto":true}
+{"term":"As-tu terminé tes devoirs ?","back":"Did you finish your homework?","scene":"at school","src":"tatoeba:905929","by":"sacredceltic","enId":"3355244","enBy":"CK","auto":true}
+{"term":"Quel est ton sujet préféré ?","back":"What's your favorite subject?","scene":"at school","src":"tatoeba:1196754","by":"sacredceltic","enId":"906897","enBy":"CK","auto":true}
+{"term":"Quel est ton cours préféré ?","back":"What's your favorite class?","scene":"at school","src":"tatoeba:8411122","by":"Aiji","enId":"906723","enBy":"CK","auto":true}
+{"term":"Allez-vous à l'école à pied ?","back":"Do you go to school on foot?","scene":"at school","src":"tatoeba:10431","by":"zmoo","enId":"68952","enBy":"CK","auto":true}
+{"term":"Que fait chacun après l'école ?","back":"What does everyone do after school?","scene":"at school","src":"tatoeba:958302","by":"sacredceltic","enId":"954522","enBy":"CK","auto":true}
+{"term":"Avez-vous déjà été professeur ?","back":"Have you ever been a teacher?","scene":"at school","src":"tatoeba:7272299","by":"tras","enId":"7269166","enBy":"CarpeLanam","auto":true}
+{"term":"Comment est ta nouvelle classe ?","back":"How is your new class?","scene":"at school","src":"tatoeba:5752728","by":"Aiji","enId":"3643166","enBy":"boukensha","auto":true}
+{"term":"Apprécies-tu ta nouvelle classe ?","back":"How do you like your new class?","scene":"at school","src":"tatoeba:1350514","by":"sacredceltic","enId":"269066","enBy":"CK","auto":true}
+{"term":"Je veux être professeur d'anglais.","back":"I want to be an English teacher.","scene":"at school","src":"tatoeba:6055163","by":"verdakoro","enId":"7794446","enBy":"sharris123","auto":true}
+{"term":"Comment est le nouveau professeur ?","back":"What's the new teacher like?","scene":"at school","src":"tatoeba:7414785","by":"lbdx","enId":"269360","enBy":"CK","auto":true}
+{"term":"J'aimerais être professeur d'anglais.","back":"I would like to be an English teacher.","scene":"at school","src":"tatoeba:937403","by":"sacredceltic","enId":"26333","enBy":"CN","auto":true}
+{"term":"Qui court le plus vite dans ta classe ?","back":"Who can run fastest in your class?","scene":"at school","src":"tatoeba:353427","by":"TRANG","enId":"276101","enBy":"CK","auto":true}
+{"term":"Cela n'arrive-t-il à aucun professeur ?","back":"Does it happen to no teacher?","scene":"at school","src":"tatoeba:603891","by":"qdii","enId":"604507","enBy":"qdii","auto":true}
+{"term":"Pourquoi avez-vous manqué l'école hier ?","back":"Why were you absent from school yesterday?","scene":"at school","src":"tatoeba:11056524","by":"Aiji","enId":"36389","enBy":"CK","auto":true}
+{"term":"Quel est ton cours préféré, cette année ?","back":"What's your favorite class this year?","scene":"at school","src":"tatoeba:3603697","by":"sacredceltic","enId":"3587377","enBy":"CK","auto":true}
+{"term":"Pourquoi as-tu décidé d'arrêter l'école ?","back":"Why did you decide drop out of school?","scene":"at school","src":"tatoeba:11948305","by":"lbdx","enId":"6069038","enBy":"CK","auto":true}
+{"term":"Tu es professeur.","back":"You are a teacher.","scene":"at school","src":"tatoeba:968522","by":"manuk7","enId":"69155","enBy":"CK","auto":true}
+{"term":"Sors de la classe.","back":"Get out of the classroom.","scene":"at school","src":"tatoeba:573364","by":"sacredceltic","enId":"19047","enBy":"CK","auto":true}
+{"term":"Je suis professeur.","back":"I'm a teacher.","scene":"at school","src":"tatoeba:6641","by":"Cocorico","enId":"256929","enBy":"CK","auto":true}
+{"term":"Remets ton devoir !","back":"Turn in your homework.","scene":"at school","src":"tatoeba:1328778","by":"sacredceltic","enId":"266719","enBy":"CK","auto":true}
+{"term":"Je déteste l'école.","back":"I hate school.","scene":"at school","src":"tatoeba:5066642","by":"sacredceltic","enId":"4747564","enBy":"CK","auto":true}
+{"term":"Le lycée me manque.","back":"I miss high school.","scene":"at school","src":"tatoeba:11524689","by":"Aiji","enId":"3686494","enBy":"karloelkebekio","auto":true}
+{"term":"Je serai ton maître.","back":"I'll be your teacher.","scene":"at school","src":"tatoeba:474007","by":"sacredceltic","enId":"465469","enBy":"CM","auto":true}
+{"term":"Tu es le professeur.","back":"You're the teacher.","scene":"at school","src":"tatoeba:2228911","by":"sacredceltic","enId":"2218439","enBy":"CK","auto":true}
+{"term":"On se voit en classe.","back":"See you in class.","scene":"at school","src":"tatoeba:7047061","by":"Aiji","enId":"2648763","enBy":"CK","auto":true}
+{"term":"Je t'emmène à l'école.","back":"I'm taking you to school.","scene":"at school","src":"tatoeba:10767712","by":"lbdx","enId":"2545274","enBy":"CK","auto":true}
+{"term":"Ne parle pas en classe.","back":"Don't talk in the classroom.","scene":"at school","src":"tatoeba:1340456","by":"sacredceltic","enId":"495877","enBy":"CK","auto":true}
+{"term":"Je déteste les devoirs.","back":"I hate homework.","scene":"at school","src":"tatoeba:3643475","by":"gillux","enId":"5850576","enBy":"CK","auto":true}
+{"term":"Je déteste cette école.","back":"I hate this school.","scene":"at school","src":"tatoeba:4963281","by":"franlexcois","enId":"3140189","enBy":"Hybrid","auto":true}
+{"term":"Je vais à l'école à pied.","back":"I go to school on foot.","scene":"at school","src":"tatoeba:351410","by":"Barbiche0","enId":"261668","enBy":"CK","auto":true}
+{"term":"Je vous verrai en classe.","back":"I'll see you in class.","scene":"at school","src":"tatoeba:8954347","by":"Aiji","enId":"5272306","enBy":"Hybrid","auto":true}
+{"term":"Je suis fier de mon école.","back":"I'm proud of my school.","scene":"at school","src":"tatoeba:6699","by":"TRANG","enId":"256664","enBy":"CK","auto":true}
+{"term":"J'apprécie tous mes cours.","back":"I like all my classes.","scene":"at school","src":"tatoeba:2384038","by":"sacredceltic","enId":"2377437","enBy":"CK","auto":true}
+{"term":"Je ne déteste pas l'école.","back":"I don't hate school.","scene":"at school","src":"tatoeba:6904885","by":"Rockaround","enId":"3969369","enBy":"Ricardo14","auto":true}
+{"term":"Je suis un bon professeur.","back":"I'm a good teacher.","scene":"at school","src":"tatoeba:7696319","by":"Maxence","enId":"875851","enBy":"CM","auto":true}
+{"term":"Je suis le chef de classe.","back":"I am class president.","scene":"at school","src":"tatoeba:11969010","by":"Amastan","enId":"9030409","enBy":"Amastan","auto":true}
+{"term":"Notre école a neuf classes.","back":"Our school has nine classes.","scene":"at school","src":"tatoeba:8011","by":"dominiko","enId":"247459","enBy":"une_monica","auto":true}
+{"term":"Je suis en salle de classe.","back":"I am in the classroom.","scene":"at school","src":"tatoeba:940830","by":"sacredceltic","enId":"436381","enBy":"lukaszpp","auto":true}
+{"term":"J'adore ma nouvelle classe.","back":"I love my new class.","scene":"at school","src":"tatoeba:1809276","by":"nimfeo","enId":"6698224","enBy":"Eccles17","auto":true}
+{"term":"Il me faut quitter l'école.","back":"I have to leave school.","scene":"at school","src":"tatoeba:3414661","by":"sacredceltic","enId":"256682","enBy":"CK","auto":true}
+{"term":"Tu es une super maîtresse !","back":"You're a great teacher!","scene":"at school","src":"tatoeba:8342614","by":"marioo","enId":"2371757","auto":true}
+{"term":"Je vais à l'école publique.","back":"I attend state school.","scene":"at school","src":"tatoeba:11838156","by":"Amastan","enId":"10861804","enBy":"Amastan","auto":true}
+{"term":"Je prends un cours de danse.","back":"I am taking a dance class.","scene":"at school","src":"tatoeba:5291004","by":"Aiji","enId":"5260332","enBy":"kanbutsu","auto":true}
+{"term":"Je suis occupé à mes devoirs.","back":"I'm busy with my homework.","scene":"at school","src":"tatoeba:458681","by":"sacredceltic","enId":"258541","enBy":"CK","auto":true}
+{"term":"Je dois terminer mes devoirs.","back":"I must get my homework finished.","scene":"at school","src":"tatoeba:1082975","by":"sacredceltic","enId":"266714","enBy":"CK","auto":true}
+{"term":"Ma fille est allée à l'école.","back":"My daughter went to school.","scene":"at school","src":"tatoeba:3660847","by":"sacredceltic","enId":"934292","enBy":"CM","auto":true}
+{"term":"Je suis professeur d'anglais.","back":"I am an English teacher.","scene":"at school","src":"tatoeba:5574641","by":"sacredceltic","enId":"2811861","enBy":"robbieheslop","auto":true}
+{"term":"Emmène les enfants à l'école.","back":"Take the kids to school.","scene":"at school","src":"tatoeba:10314349","by":"sacredceltic","enId":"3359941","enBy":"CK","auto":true}
+{"term":"Je suis premier de ma classe.","back":"I'm at the top of my class.","scene":"at school","src":"tatoeba:12364492","by":"lbdx","enId":"6665775","enBy":"CK","auto":true}
+{"term":"Moi aussi, je suis professeur.","back":"I am a teacher, too.","scene":"at school","src":"tatoeba:14702","by":"Micsmithel","enId":"262362","enBy":"CK","auto":true}
+{"term":"Mon oncle vit près de l'école.","back":"My uncle lives near the school.","scene":"at school","src":"tatoeba:433177","by":"chtof","enId":"65069","enBy":"CK","auto":true}
+{"term":"Marie ira à l'école. Tu sais ?","back":"Mary will go to school. Do you know that?","scene":"at school","src":"tatoeba:3692567","by":"Elliv","enId":"3691063","enBy":"Eldad","auto":true}
+{"term":"Je ne suis pas ton professeur.","back":"I'm not your teacher.","scene":"at school","src":"tatoeba:4857289","by":"sacredceltic","enId":"3944993","enBy":"CK","auto":true}
+{"term":"Je suis professeure d'anglais.","back":"I'm an English teacher.","scene":"at school","src":"tatoeba:10505046","by":"lbdx","enId":"9194477","enBy":"DJ_Saidez","auto":true}
+{"term":"Notre école compte dix classes.","back":"Our school has ten classes.","scene":"at school","src":"tatoeba:784394","by":"sacredceltic","enId":"247458","auto":true}
+{"term":"Nous allons à l'école publique.","back":"We attend state school.","scene":"at school","src":"tatoeba:11838161","by":"Amastan","enId":"10861810","enBy":"Amastan","auto":true}
+{"term":"Il me faut terminer mes devoirs.","back":"I need to finish my homework.","scene":"at school","src":"tatoeba:1140377","by":"sacredceltic","enId":"1140169","enBy":"CK","auto":true}
+{"term":"Notre nouveau professeur est là.","back":"Our new teacher is there.","scene":"at school","src":"tatoeba:3141350","by":"Julien_PDC","enId":"3141349","enBy":"rul","auto":true}
+{"term":"Nous sommes dans la même classe.","back":"We're in the same class.","scene":"at school","src":"tatoeba:6275628","by":"Aiji","enId":"2713458","enBy":"CK","auto":true}
+{"term":"Je sais que tu détestes l'école.","back":"I know you hate school.","scene":"at school","src":"tatoeba:8372079","by":"Aiji","enId":"2376555","enBy":"CK","auto":true}
+{"term":"Je suis le directeur de l'école.","back":"I'm the head of the school.","scene":"at school","src":"tatoeba:8548103","by":"Aiji","enId":"3945023","enBy":"AlanF_US","auto":true}
+{"term":"Je vais à l'école à sept heures.","back":"I go to school at seven.","scene":"at school","src":"tatoeba:11166601","by":"Aiji","enId":"264923","enBy":"CK","auto":true}
+{"term":"Je viens de terminer mes devoirs.","back":"I've just finished my homework.","scene":"at school","src":"tatoeba:1053243","by":"sacredceltic","enId":"6026912","enBy":"CK","auto":true}
+{"term":"Ma sœur est professeur d'anglais.","back":"My sister is an English teacher.","scene":"at school","src":"tatoeba:4443566","by":"sicerabibax","enId":"4427786","enBy":"AlanF_US","auto":true}
+{"term":"J'apprends l'anglais à la maison.","back":"I study English at home.","scene":"at school","src":"tatoeba:5514790","by":"nimfeo","enId":"256477","enBy":"CK","auto":true}
+{"term":"Nous sommes des chefs de classes.","back":"We are class presidents.","scene":"at school","src":"tatoeba:11969016","by":"Amastan","enId":"9030427","enBy":"Amastan","auto":true}
+{"term":"Nous sommes des copains de classe.","back":"We're classmates.","scene":"at school","src":"tatoeba:483887","by":"sacredceltic","enId":"247946","enBy":"CK","auto":true}
+{"term":"Je veux juste retourner en classe.","back":"I just want to go back to class.","scene":"at school","src":"tatoeba:2460599","by":"sacredceltic","enId":"2014666","enBy":"CK","auto":true}
+{"term":"Je suis le plus grand de la classe.","back":"I'm the tallest one in the class.","scene":"at school","src":"tatoeba:1356944","by":"sacredceltic","enId":"1229089","enBy":"CK","auto":true}
+{"term":"Cette école ressemble à une prison.","back":"That school looks just like a prison.","scene":"at school","src":"tatoeba:3435641","by":"Blabla","enId":"1101541","enBy":"CK","auto":true}
+{"term":"Je suis le plus petit de ma classe.","back":"I'm the shortest one in my class.","scene":"at school","src":"tatoeba:11118703","by":"Aiji","enId":"8341213","enBy":"CK","auto":true}
+{"term":"J’ai une maîtresse et une maîtresse.","back":"I have a teacher and a mistress.","scene":"at school","src":"tatoeba:10689853","by":"AutoBot","enId":"10689855","enBy":"AutoBot","auto":true}
+{"term":"J'apprends l'anglais tous les jours.","back":"I study English every day.","scene":"at school","src":"tatoeba:127940","by":"steve","enId":"261833","enBy":"CN","auto":true}
+{"term":"Je dois encore terminer mes devoirs.","back":"I still have to finish my homework.","scene":"at school","src":"tatoeba:8382547","by":"Aiji","enId":"5848392","enBy":"CK","auto":true}
+{"term":"Notre professeur avait l'air surpris.","back":"Our teacher seemed surprised.","scene":"at school","src":"tatoeba:14650","by":"sacredceltic","enId":"272923","enBy":"CK","auto":true}
+{"term":"Cette salle de classe est très grande.","back":"This classroom is very large.","scene":"at school","src":"tatoeba:458876","by":"sacredceltic","enId":"59667","enBy":"CK","auto":true}
+{"term":"Je suis le plus grand de notre classe.","back":"I am the tallest in our class.","scene":"at school","src":"tatoeba:1347835","by":"sacredceltic","enId":"258029","enBy":"CK","auto":true}
+{"term":"Cette salle de classe est trop petite.","back":"That classroom is too small.","scene":"at school","src":"tatoeba:2281969","by":"sacredceltic","enId":"2259231","enBy":"_undertoad","auto":true}
+{"term":"Notre professeur est un parfait idiot.","back":"Our teacher is a real idiot.","scene":"at school","src":"tatoeba:2928111","by":"Elliv","enId":"1762636","enBy":"joyfie","auto":true}
+{"term":"Notre école se trouve dans ce village.","back":"Our school is found in this village.","scene":"at school","src":"tatoeba:3337102","by":"sacredceltic","enId":"6802949","enBy":"Eccles17","auto":true}
+{"term":"Vous êtes le professeur de mon enfant.","back":"You're my kid's teacher.","scene":"at school","src":"tatoeba:5458264","by":"Aiji","enId":"2545656","enBy":"CK","auto":true}
+{"term":"Il est dit du bien de notre professeur.","back":"Our teacher is well spoken of.","scene":"at school","src":"tatoeba:794481","by":"U2FS","enId":"247594","auto":true}
+{"term":"Vous devez arriver en classe à l'heure.","back":"You should come to class on time.","scene":"at school","src":"tatoeba:11971290","by":"lbdx","enId":"2665730","enBy":"CM","auto":true}
+{"term":"Laissons la décision à notre professeur.","back":"Let's leave the decision to our teacher.","scene":"at school","src":"tatoeba:3169032","by":"Sibelius","enId":"238571","enBy":"CK","auto":true}
+{"term":"Je suis toujours occupé avec mes devoirs.","back":"I'm always busy with my homework.","scene":"at school","src":"tatoeba:822381","by":"sacredceltic","enId":"253141","enBy":"CK","auto":true}
+{"term":"Il me faut vraiment terminer mes devoirs.","back":"I really have to finish my homework.","scene":"at school","src":"tatoeba:2392100","by":"sacredceltic","enId":"2390836","enBy":"CK","auto":true}
+{"term":"Notre professeur aime sa nouvelle voiture.","back":"Our teacher likes his new car.","scene":"at school","src":"tatoeba:128940","by":"nimfeo","enId":"273010","enBy":"CK","auto":true}
+{"term":"Arrête de parler quand le professeur entre.","back":"Stop talking when the teacher comes in.","scene":"at school","src":"tatoeba:128931","by":"Archibald","enId":"272799","enBy":"CM","auto":true}
+{"term":"Notre professeur paraît jeune pour son âge.","back":"Our teacher looks young for her age.","scene":"at school","src":"tatoeba:791305","by":"pierrephi","enId":"247617","enBy":"CK","auto":true}
+{"term":"Peut-être deviendras-tu professeur un jour ?","back":"Might you be a teacher one day?","scene":"at school","src":"tatoeba:5986124","by":"christian63","enId":"10455407","enBy":"sundown","auto":true}
+{"term":"\"Je peux arriver en classe à temps\", pensa-t-il.","back":"\"I can make it to my class on time,\" he thought.","scene":"at school","src":"tatoeba:139186","by":"kurisutofu","enId":"73650","enBy":"CM","auto":true}
+{"term":"Vous devez suivre les conseils de votre professeur.","back":"You must heed the advice of your teacher.","scene":"at school","src":"tatoeba:8638977","by":"lbdx","enId":"2510236","enBy":"shadyray601","auto":true}
+{"term":"« Es-tu professeur ? » « Oui, je suis professeur. »","back":"\"Are you a teacher?\" \"Yes, I'm a teacher.\"","scene":"at school","src":"tatoeba:12185997","by":"Rovo","enId":"12214158","enBy":"Miktsoanit","auto":true}
+{"term":"Où as-tu été à la fac ?","back":"Where did you go to college?","scene":"at school","src":"tatoeba:2264967","by":"sacredceltic","enId":"2234984","enBy":"Hybrid","auto":true}
+{"term":"Vas-tu à l'école le samedi ?","back":"Do you have school on Saturdays?","scene":"at school","src":"tatoeba:633780","by":"qdii","enId":"279528","enBy":"CK","auto":true}
+{"term":"Quand as-tu passé l'examen ?","back":"When did you take the exam?","scene":"at school","src":"tatoeba:1776471","by":"sacredceltic","enId":"1771320","enBy":"Scott","auto":true}
+{"term":"Quand l'examen commence-t-il ?","back":"When does the exam start?","scene":"at school","src":"tatoeba:1811059","by":"sacredceltic","enId":"1296525","enBy":"Eldad","auto":true}
+{"term":"Où es-tu allée à l'université ?","back":"Where did you go to university?","scene":"at school","src":"tatoeba:11748302","by":"lbdx","enId":"8452967","enBy":"Luiaard","auto":true}
+{"term":"Avez-vous des questions sur cette leçon ?","back":"Do you have any questions in this lesson?","scene":"at school","src":"tatoeba:431032","by":"chtof","enId":"60030","auto":true}
+{"term":"M'aideras-tu pour mon devoir de français ?","back":"Will you help me with my French homework?","scene":"at school","src":"tatoeba:4145217","by":"nimfeo","enId":"2451260","enBy":"CK","auto":true}
+{"term":"Où veux-tu aller pour notre première leçon ?","back":"Where do you want to go for our first lesson?","scene":"at school","src":"tatoeba:428807","by":"Archibald","enId":"54076","enBy":"orcrist","auto":true}
+{"term":"As-tu réussi l'examen ?","back":"Did you pass the exam?","scene":"at school","src":"tatoeba:1168560","by":"sacredceltic","enId":"7847715","enBy":"CK","auto":true}
+{"term":"J'aimerais aller en fac.","back":"I'd like to go to college.","scene":"at school","src":"tatoeba:3534815","by":"sacredceltic","enId":"3533855","enBy":"Hybrid","auto":true}
+{"term":"Je veux aller à l'université.","back":"I want to go to college.","scene":"at school","src":"tatoeba:127465","by":"Julien_PDC","enId":"259326","enBy":"CK","auto":true}
+{"term":"Quel genre d'examen était-ce ?","back":"What type of exam was it?","scene":"at school","src":"tatoeba:7780875","by":"felix63","enId":"10673252","enBy":"iankun","auto":true}
+{"term":"L'université vaut-elle le coup ?","back":"Is college worth it?","scene":"at school","src":"tatoeba:1638854","by":"sacredceltic","enId":"1636090","enBy":"Spamster","auto":true}
+{"term":"Comment s’est passé ton examen ?","back":"How was your exam?","scene":"at school","src":"tatoeba:4418301","by":"gillux","enId":"7002704","enBy":"Hybrid","auto":true}
+{"term":"Tu l'as rencontré à l'université ?","back":"You met him at the university?","scene":"at school","src":"tatoeba:3733","by":"TRANG","enId":"1909","enBy":"Ricardo14","auto":true}
+{"term":"Quelle est la taille de ton école ?","back":"How big is your school?","scene":"at school","src":"tatoeba:12195863","by":"Rovo","enId":"3315033","enBy":"CK","auto":true}
+{"term":"Qui est ton professeur de français ?","back":"Who's your French teacher?","scene":"at school","src":"tatoeba:5420023","by":"Aiji","enId":"2451578","enBy":"CK","auto":true}
+{"term":"À quelle université êtes-vous allé ?","back":"What college did you go to?","scene":"at school","src":"tatoeba:11613987","by":"Aiji","enId":"3395916","enBy":"CK","auto":true}
+{"term":"Réfléchis-tu à aller à l'université ?","back":"Are you thinking of going to university?","scene":"at school","src":"tatoeba:1936882","by":"sacredceltic","enId":"1433918","enBy":"CK","auto":true}
+{"term":"Je veux être un excellent professeur.","back":"I want to be an excellent teacher.","scene":"at school","src":"tatoeba:10686278","by":"Micsmithel","enId":"7801918","enBy":"AlanF_US","auto":true}
+{"term":"Tu veux vraiment abandonner le lycée ?","back":"Do you really want to drop out of high school?","scene":"at school","src":"tatoeba:8435356","by":"lbdx","enId":"1874025","enBy":"CK","auto":true}
+{"term":"Qui était votre professeur de français?","back":"Who was your French teacher?","scene":"at school","src":"tatoeba:4089522","by":"Scorpionvenin14","enId":"4088456","enBy":"CK","auto":true}
+{"term":"Vous souvenez-vous de la deuxième leçon ?","back":"Do you remember the second lesson?","scene":"at school","src":"tatoeba:6785474","by":"felix63","enId":"6900727","enBy":"kaiperkins271","auto":true}
+{"term":"Que faites-vous à l’école cet après-midi ?","back":"What are you doing at school this afternoon?","scene":"at school","src":"tatoeba:401951","by":"qdii","enId":"401948","enBy":"CM","auto":true}
+{"term":"Avez-vous pensé à revoir la première leçon ?","back":"Have you thought about reviewing the first lesson?","scene":"at school","src":"tatoeba:6780265","by":"felix63","enId":"9858599","enBy":"pyeman23","auto":true}
+{"term":"As-tu déjà terminé tes devoirs de français ?","back":"Have you finished your French homework yet?","scene":"at school","src":"tatoeba:4213213","by":"sacredceltic","enId":"2451239","enBy":"CK","auto":true}
+{"term":"As-tu rencontré le nouveau professeur de français ?","back":"Have you met the new French teacher?","scene":"at school","src":"tatoeba:8352818","by":"zarisi","enId":"8352280","enBy":"CK","auto":true}
+{"term":"Je retourne en fac.","back":"I'm going back to college.","scene":"at school","src":"tatoeba:2602427","by":"sacredceltic","enId":"2544791","enBy":"CK","auto":true}
+{"term":"Nous sommes à la fac.","back":"We're in college.","scene":"at school","src":"tatoeba:4801661","by":"sacredceltic","enId":"2240592","enBy":"CK","auto":true}
+{"term":"Ce fut une leçon utile.","back":"That was a useful lesson.","scene":"at school","src":"tatoeba:8538169","by":"Aiji","enId":"7948171","enBy":"AlanF_US","auto":true}
+{"term":"Je vais faire un examen.","back":"I'm taking an exam.","scene":"at school","src":"tatoeba:13155666","by":"say123","enId":"13155661","enBy":"say123","auto":true}
+{"term":"Je dois passer un examen.","back":"I have to take an exam.","scene":"at school","src":"tatoeba:5291002","by":"Aiji","enId":"5259761","enBy":"kanbutsu","auto":true}
+{"term":"Fais tes devoirs toi-même.","back":"Do your homework by yourself.","scene":"at school","src":"tatoeba:128205","by":"Songe","enId":"1458904","enBy":"CK","auto":true}
+{"term":"Que ça te serve de leçon !","back":"May that be a lesson to you!","scene":"at school","src":"tatoeba:3272806","by":"Micsmithel","enId":"3272805","auto":true}
+{"term":"Garde cette leçon en tête.","back":"Keep this lesson in mind.","scene":"at school","src":"tatoeba:5643993","by":"narnar","enId":"59671","enBy":"CK","auto":true}
+{"term":"Tu dois apprendre ta leçon.","back":"You have to learn your lesson.","scene":"at school","src":"tatoeba:8357608","by":"felix63","enId":"9891427","enBy":"Gib","auto":true}
+{"term":"J'en ai marre des devoirs !","back":"I'm fed up with homework.","scene":"at school","src":"tatoeba:751057","by":"Cocorico","enId":"751051","enBy":"sctld","auto":true}
+{"term":"Cet examen est très facile.","back":"This exam is very easy.","scene":"at school","src":"tatoeba:1744569","by":"Petrus","enId":"1744566","enBy":"Djef_Messaoudi","auto":true}
+{"term":"Que cela te serve de leçon.","back":"Let that be a lesson to you.","scene":"at school","src":"tatoeba:4879657","by":"sicerabibax","enId":"10511194","enBy":"CK","auto":true}
+{"term":"Je dois réussir cet examen.","back":"I have to pass this exam.","scene":"at school","src":"tatoeba:7797090","by":"Aiji","enId":"1744984","enBy":"Amastan","auto":true}
+{"term":"Ce bâtiment est notre école.","back":"That building is our school.","scene":"at school","src":"tatoeba:601938","by":"sysko","enId":"68432","enBy":"CK","auto":true}
+{"term":"Je vais te donner une leçon.","back":"I'm going to teach you a lesson.","scene":"at school","src":"tatoeba:1623758","by":"sacredceltic","enId":"1619631","enBy":"Spamster","auto":true}
+{"term":"Va te préparer pour l'école.","back":"Go get ready for school.","scene":"at school","src":"tatoeba:12716245","by":"lbdx","enId":"4013405","enBy":"CK","auto":true}
+{"term":"N'as-tu pas appris ta leçon ?","back":"Haven't you learned your lesson?","scene":"at school","src":"tatoeba:1631158","by":"sacredceltic","enId":"1619869","enBy":"Spamster","auto":true}
+{"term":"J'apprends plusieurs langues.","back":"I study many languages.","scene":"at school","src":"tatoeba:9788362","by":"Gib","enId":"2456789","enBy":"CK","auto":true}
+{"term":"Je suis professeur de langue.","back":"I'm a language teacher.","scene":"at school","src":"tatoeba:10069340","by":"Rovo","enId":"8776181","enBy":"Ricardo14","auto":true}
+{"term":"Il faut lui donner une leçon.","back":"We need to teach him a lesson.","scene":"at school","src":"tatoeba:12354633","by":"lbdx","enId":"5408237","enBy":"Hybrid","auto":true}
+{"term":"Bonne chance pour ton examen !","back":"Good luck on the exam!","scene":"at school","src":"tatoeba:409428","by":"qdii","enId":"409429","enBy":"FeuDRenais","auto":true}
+{"term":"Tu dois lui donner une leçon !","back":"You need to teach her a lesson!","scene":"at school","src":"tatoeba:473915","by":"sacredceltic","enId":"437831","enBy":"Hellerick","auto":true}
+{"term":"Que cela nous serve de leçon !","back":"Let that be a lesson to us!","scene":"at school","src":"tatoeba:1057908","by":"sacredceltic","enId":"13806375","enBy":"tieguy","auto":true}
+{"term":"J'en ai besoin pour un examen.","back":"I need them for an exam.","scene":"at school","src":"tatoeba:1890619","by":"Aiji","enId":"1890615","enBy":"CM","auto":true}
+{"term":"Nous avons appris notre leçon.","back":"We've learnt our lesson.","scene":"at school","src":"tatoeba:3345745","by":"sacredceltic","enId":"8384555","enBy":"Luiaard","auto":true}
+{"term":"Tu es un excellent professeur.","back":"You're a very good teacher.","scene":"at school","src":"tatoeba:6000933","by":"sicerabibax","enId":"2543874","enBy":"CK","auto":true}
+{"term":"Vous allez à l'école le samedi.","back":"You go to school on Saturdays.","scene":"at school","src":"tatoeba:4214180","by":"Amastan","enId":"9237951","enBy":"sundown","auto":true}
+{"term":"Fais tes devoirs immédiatement.","back":"Do your homework right now.","scene":"at school","src":"tatoeba:1340442","by":"sacredceltic","enId":"1192241","enBy":"Talonmalon","auto":true}
+{"term":"Nous avons tous réussi l'examen.","back":"We all passed the exam.","scene":"at school","src":"tatoeba:5380410","by":"Aiji","enId":"6824124","enBy":"CK","auto":true}
+{"term":"Celle-ci est une école publique.","back":"This is a state school.","scene":"at school","src":"tatoeba:9927092","by":"Rovo","enId":"10643367","enBy":"sundown","auto":true}
+{"term":"Ce terrain appartient à l'école.","back":"This ground belongs to the school.","scene":"at school","src":"tatoeba:9978339","by":"lbdx","enId":"61177","enBy":"Zifre","auto":true}
+{"term":"Je suis sûr de réussir l'examen.","back":"I'm sure I'll pass the exam.","scene":"at school","src":"tatoeba:11955807","by":"zogwarg","enId":"6872854","enBy":"CK","auto":true}
+{"term":"Faites vos devoirs immédiatement.","back":"Do your homework right away.","scene":"at school","src":"tatoeba:1340444","by":"sacredceltic","enId":"570182","enBy":"CK","auto":true}
+{"term":"J'apprends le français à l'école.","back":"I learn French at school.","scene":"at school","src":"tatoeba:5487103","by":"sacredceltic","enId":"5486527","enBy":"CK","auto":true}
+{"term":"Ma mère est également professeure.","back":"My mother is a teacher, too.","scene":"at school","src":"tatoeba:5801051","by":"Toynop","enId":"4475071","enBy":"Raizin","auto":true}
+{"term":"Je ne suis pas prêt pour l'examen.","back":"I'm not ready for the exam.","scene":"at school","src":"tatoeba:10709130","by":"lbdx","enId":"10708175","enBy":"sundown","auto":true}
+{"term":"J'enverrai mon fils à l'université.","back":"I am going to send my son to college.","scene":"at school","src":"tatoeba:2058730","by":"Amastan","enId":"259235","enBy":"CK","auto":true}
+{"term":"J'espère que tu as appris ta leçon.","back":"I hope you learned your lesson.","scene":"at school","src":"tatoeba:2398166","by":"sacredceltic","enId":"2396107","enBy":"CK","auto":true}
+{"term":"Nous habitons tout près de l'école.","back":"We live very near the school.","scene":"at school","src":"tatoeba:11745101","by":"lbdx","enId":"9637473","enBy":"CK","auto":true}
+{"term":"Donne-moi les résultats de l'examen.","back":"Let me know about the result of the exam.","scene":"at school","src":"tatoeba:128089","by":"Aiji","enId":"263465","enBy":"CK","auto":true}
+{"term":"Il me faut me préparer pour l'école.","back":"I've got to get ready for school.","scene":"at school","src":"tatoeba:2371142","by":"sacredceltic","enId":"2361998","enBy":"CK","auto":true}
+{"term":"Je regrette d'être devenu professeur.","back":"I regret becoming a teacher.","scene":"at school","src":"tatoeba:6652","by":"TRANG","enId":"256925","enBy":"CK","auto":true}
+{"term":"Je suis pressé d'aller à l'université.","back":"I can't wait to go to college.","scene":"at school","src":"tatoeba:3713917","by":"Scorpionvenin14","enId":"3713664","enBy":"CK","auto":true}
+{"term":"Je voulais juste aller à l'université.","back":"I just wanted to go to college.","scene":"at school","src":"tatoeba:5646179","by":"Scorpionvenin14","enId":"5646154","enBy":"CK","auto":true}
+{"term":"On devrait garder cette leçon à l'esprit.","back":"This lesson should be kept in mind.","scene":"at school","src":"tatoeba:890035","by":"sacredceltic","enId":"59670","enBy":"sacredceltic","auto":true}
+{"term":"Je te verrai immédiatement après l'école.","back":"I'll meet you right after school.","scene":"at school","src":"tatoeba:5380337","by":"Aiji","enId":"2540995","enBy":"CK","auto":true}
+{"term":"Je connais un bon professeur de français.","back":"I know a good French teacher.","scene":"at school","src":"tatoeba:9165803","by":"Julien_PDC","enId":"9162198","enBy":"CK","auto":true}
+{"term":"Nous devons nettoyer notre salle de classe.","back":"We must clean our classroom.","scene":"at school","src":"tatoeba:891037","by":"U2FS","enId":"588354","enBy":"CK","auto":true}
+{"term":"Je ne sais absolument rien de l'université.","back":"I know absolutely nothing about university.","scene":"at school","src":"tatoeba:3655838","by":"sacredceltic","enId":"2579584","enBy":"sundown","auto":true}
+{"term":"Il aurait fallu que vous sussiez votre leçon.","back":"It would have been better if you had known your lesson.","scene":"at school","src":"tatoeba:9560482","by":"Julien_PDC","enId":"13906020","enBy":"zogwarg","auto":true}
+{"term":"Devenir professeur d'université est son rêve.","back":"It has been her dream to be a university professor.","scene":"at school","src":"tatoeba:2057062","by":"sacredceltic","enId":"275599","enBy":"Zifre","auto":true}
+{"term":"Rentre à la maison directement après l'école.","back":"Come straight home after school.","scene":"at school","src":"tatoeba:13329227","by":"genes1s","enId":"12060894","enBy":"CK","auto":true}
+{"term":"Je parie que vous êtes un excellent professeur.","back":"I bet you're a great teacher.","scene":"at school","src":"tatoeba:6153734","by":"Aiji","enId":"2294112","enBy":"CK","auto":true}
+{"term":"Je suis responsable du cours de troisième année.","back":"I am in charge of the third-year class.","scene":"at school","src":"tatoeba:829712","by":"U2FS","enId":"252567","enBy":"CK","auto":true}
+{"term":"Nous avons quatre cours de français par semaine.","back":"We have four French classes a week.","scene":"at school","src":"tatoeba:3048108","by":"Rovo","enId":"266410","enBy":"CK","auto":true}
+{"term":"Notre professeur parle aussi bien français qu'anglais.","back":"Our teacher speaks French as well as English.","scene":"at school","src":"tatoeba:6555959","by":"GB3","enId":"262608","enBy":"CK","auto":true}
+{"term":"Où étudiez-vous ?","back":"Where do you study?","scene":"at school","src":"tatoeba:10139933","by":"Micsmithel","enId":"3350506","enBy":"feiningyuan","auto":true}
+{"term":"Quand étudiez-vous ?","back":"When do you study?","scene":"at school","src":"tatoeba:4923883","by":"sacredceltic","enId":"70172","enBy":"CK","auto":true}
+{"term":"Quel étudiant est sorti ?","back":"Which student went out?","scene":"at school","src":"tatoeba:458721","by":"sacredceltic","enId":"370720","enBy":"saeb","auto":true}
+{"term":"Quand avez-vous étudié hier ?","back":"When did you study yesterday?","scene":"at school","src":"tatoeba:7701772","by":"Maxence","enId":"69398","enBy":"rul","auto":true}
+{"term":"Combien de vos élèves sont ici ?","back":"How many of your students are here?","scene":"at school","src":"tatoeba:2201398","by":"sacredceltic","enId":"2196908","enBy":"CK","auto":true}
+{"term":"As-tu une carte de bibliothèque ?","back":"Do you have a library card?","scene":"at school","src":"tatoeba:12316599","by":"lbdx","enId":"8946712","enBy":"sundown","auto":true}
+{"term":"Quels élèves vont passer l'examen ?","back":"Which students will take the test?","scene":"at school","src":"tatoeba:2163562","by":"sacredceltic","enId":"2163205","enBy":"Source_VOA","auto":true}
+{"term":"À quelle heure ferme la bibliothèque ?","back":"What time does the library close?","scene":"at school","src":"tatoeba:10794708","by":"lbdx","enId":"10652763","enBy":"sundown","auto":true}
+{"term":"Quand commencera le cours de japonais ?","back":"When will the Japanese class start?","scene":"at school","src":"tatoeba:6892192","by":"Rockaround","enId":"3786152","enBy":"AlanF_US","auto":true}
+{"term":"Dans quelle université voulez-vous étudier?","back":"Which university do you want to study at?","scene":"at school","src":"tatoeba:3710082","by":"Scorpionvenin14","enId":"11160080","enBy":"sundown","auto":true}
+{"term":"À quelle distance se trouve la bibliothèque ?","back":"How far away is the library?","scene":"at school","src":"tatoeba:6363592","by":"Aiji","enId":"5843706","enBy":"CK","auto":true}
+{"term":"Étudies-tu ?","back":"Do you study?","scene":"at school","src":"tatoeba:533907","by":"sacredceltic","enId":"5575830","enBy":"grindeldore","auto":true}
+{"term":"Es-tu élève ?","back":"Are you a pupil?","scene":"at school","src":"tatoeba:3987475","by":"nimfeo","enId":"11870591","enBy":"sundown","auto":true}
+{"term":"Qu'étudies-tu ?","back":"What do you study?","scene":"at school","src":"tatoeba:4636122","by":"sacredceltic","enId":"3647231","enBy":"Jesse","auto":true}
+{"term":"Dois-je étudier ?","back":"Do I have to study?","scene":"at school","src":"tatoeba:127895","by":"Julien_PDC","enId":"261646","enBy":"CK","auto":true}
+{"term":"Es-tu étudiante ?","back":"Are you a student?","scene":"at school","src":"tatoeba:8959730","by":"Julien_PDC","enId":"69521","enBy":"CK","auto":true}
+{"term":"Es-tu élève, ici ?","back":"Are you a student here?","scene":"at school","src":"tatoeba:3640108","by":"sacredceltic","enId":"3636354","enBy":"CK","auto":true}
+{"term":"As-tu étudié hier ?","back":"Did you study yesterday?","scene":"at school","src":"tatoeba:15289","by":"Julien_PDC","enId":"69383","enBy":"CK","auto":true}
+{"term":"Sont-ils étudiants ?","back":"Are they students?","scene":"at school","src":"tatoeba:4022068","by":"mouche","enId":"3962743","enBy":"JSakuragi","auto":true}
+{"term":"Est-elle étudiante ?","back":"Is she a student?","scene":"at school","src":"tatoeba:13533823","by":"felix63","enId":"13550298","enBy":"rul","auto":true}
+{"term":"Pourquoi tu étudies ?","back":"Why do you study?","scene":"at school","src":"tatoeba:1135516","by":"nimfeo","enId":"36476","enBy":"CK","auto":true}
+{"term":"Que veux-tu étudier ?","back":"What do you want to study?","scene":"at school","src":"tatoeba:2222139","by":"sacredceltic","enId":"2220941","enBy":"CK","auto":true}
+{"term":"Êtes-vous étudiants ?","back":"Are you students?","scene":"at school","src":"tatoeba:4653732","by":"sacredceltic","enId":"71256","enBy":"CK","auto":true}
+{"term":"Étudies-tu l'anglais ?","back":"Do you study English?","scene":"at school","src":"tatoeba:468808","by":"sacredceltic","enId":"16289","enBy":"brauliobezerra","auto":true}
+{"term":"Tu es étudiant en quoi ?","back":"What are you a student in?","scene":"at school","src":"tatoeba:6850604","by":"Blabla","enId":"6861511","enBy":"kaiperkins271","auto":true}
+{"term":"Étudies-tu chaque jour ?","back":"Do you study every day?","scene":"at school","src":"tatoeba:541189","by":"sacredceltic","enId":"530175","enBy":"wma","auto":true}
+{"term":"Je veux étudier l'anglais.","back":"I want to study English.","scene":"at school","src":"tatoeba:355180","by":"sysko","enId":"256235","enBy":"CN","auto":true}
+{"term":"Étudiez-vous le français ?","back":"Do you study French?","scene":"at school","src":"tatoeba:2485908","by":"nimfeo","enId":"2451672","enBy":"CK","auto":true}
+{"term":"Je suis étudiant, et toi ?","back":"I'm a student. And you?","scene":"at school","src":"tatoeba:3787582","by":"Danquebec","enId":"3784764","enBy":"senryakun","auto":true}
+{"term":"As-tu étudié par toi-même ?","back":"Did you study by yourself?","scene":"at school","src":"tatoeba:128180","by":"Micsmithel","enId":"264538","enBy":"CK","auto":true}
+{"term":"Je veux étudier l'Histoire.","back":"I want to study history.","scene":"at school","src":"tatoeba:1032734","by":"sacredceltic","enId":"262266","enBy":"CK","auto":true}
+{"term":"Je veux étudier le français.","back":"I want to study French.","scene":"at school","src":"tatoeba:341859","by":"sysko","enId":"255547","enBy":"CK","auto":true}
+{"term":"Qui est ton prof d'anglais ?","back":"Who is your English teacher?","scene":"at school","src":"tatoeba:6716682","by":"Aiji","enId":"237726","enBy":"CK","auto":true}
+{"term":"Tu vas étudier le français ?","back":"Are you going to study French?","scene":"at school","src":"tatoeba:7414009","by":"lbdx","enId":"6040181","enBy":"CK","auto":true}
+{"term":"Êtes-vous étudiant en droit ?","back":"Are you a law student?","scene":"at school","src":"tatoeba:5706236","by":"Aiji","enId":"2890927","enBy":"CK","auto":true}
+{"term":"J'aimerais étudier le français.","back":"I'd like to study French.","scene":"at school","src":"tatoeba:5391237","by":"Aiji","enId":"2451604","enBy":"CK","auto":true}
+{"term":"As-tu étudié le français hier ?","back":"Did you study French yesterday?","scene":"at school","src":"tatoeba:6833610","by":"GB3","enId":"2451495","enBy":"CK","auto":true}
+{"term":"Êtes-vous élèves à cette école ?","back":"Are you students at this school?","scene":"at school","src":"tatoeba:9045","by":"sacredceltic","enId":"17654","enBy":"Swift","auto":true}
+{"term":"Tu étudies une langue étrangère ?","back":"Do you study any foreign language?","scene":"at school","src":"tatoeba:935322","by":"Micsmithel","enId":"935321","enBy":"CM","auto":true}
+{"term":"Pourquoi étudies-tu le français ?","back":"Why do you study French?","scene":"at school","src":"tatoeba:2737121","by":"Rovo","enId":"1120297","enBy":"Eldad","auto":true}
+{"term":"J'aimerais étudier à l'université.","back":"I'd like to study at university.","scene":"at school","src":"tatoeba:1015215","by":"sacredceltic","enId":"12043005","enBy":"sundown","auto":true}
+{"term":"Dans quelle université étudies-tu?","back":"What college do you study in?","scene":"at school","src":"tatoeba:4099760","by":"Scorpionvenin14","enId":"4098461","enBy":"eeyinn","auto":true}
+{"term":"Qui est leur professeur principal ?","back":"Who is their homeroom teacher?","scene":"at school","src":"tatoeba:1349287","by":"sacredceltic","enId":"305257","enBy":"CK","auto":true}
+{"term":"L'école a-t-elle une bibliothèque ?","back":"Does the school have a library?","scene":"at school","src":"tatoeba:3441417","by":"Aiji","enId":"3433223","enBy":"_undertoad","auto":true}
+{"term":"Il étudie l'anglais tous les jours ?","back":"Does he study English every day?","scene":"at school","src":"tatoeba:8029724","by":"marioo","enId":"303908","enBy":"CK","auto":true}
+{"term":"Êtes-vous le professeur de sciences ?","back":"Are you the science teacher?","scene":"at school","src":"tatoeba:6461214","by":"Aiji","enId":"4013117","enBy":"CK","auto":true}
+{"term":"Comment tu t'en sors avec tes études ?","back":"How are you getting along with your study?","scene":"at school","src":"tatoeba:431203","by":"qdii","enId":"37568","enBy":"Zifre","auto":true}
+{"term":"Étudies-tu parfois à la bibliothèque ?","back":"Do you sometimes study in the library?","scene":"at school","src":"tatoeba:1525795","by":"sacredceltic","enId":"1525189","enBy":"CK","auto":true}
+{"term":"Tu étudies le français, n'est-ce pas ?","back":"You study French, don't you?","scene":"at school","src":"tatoeba:9171652","by":"Julien_PDC","enId":"2451544","enBy":"CK","auto":true}
+{"term":"Cet étudiant court vite, n'est-ce pas ?","back":"That student runs fast, doesn't he?","scene":"at school","src":"tatoeba:12182","by":"dominiko","enId":"45914","enBy":"CK","auto":true}
+{"term":"Étudiez-vous l'anglais tous les jours ?","back":"Do you study English every day?","scene":"at school","src":"tatoeba:428115","by":"dominiko","enId":"68921","enBy":"CN","auto":true}
+{"term":"En quelle année de médecine êtes-vous ?","back":"What year of medical school are you in?","scene":"at school","src":"tatoeba:3661753","by":"THURET","enId":"2270151","enBy":"_undertoad","auto":true}
+{"term":"Étudies-tu le français tous les jours ?","back":"Do you study French every day?","scene":"at school","src":"tatoeba:5371899","by":"Aiji","enId":"2451517","enBy":"CK","auto":true}
+{"term":"Tu as rendu le livre à la bibliothèque ?","back":"Did you take the book back to the library?","scene":"at school","src":"tatoeba:425679","by":"qdii","enId":"43884","enBy":"CK","auto":true}
+{"term":"Quel est ton plus haut niveau d'études ?","back":"What is the highest level of school you completed?","scene":"at school","src":"tatoeba:9985232","by":"Micsmithel","enId":"9849578","enBy":"NurseMeeks","auto":true}
+{"term":"Que voulez-vous étudier à l'université ?","back":"What do you want to study at college?","scene":"at school","src":"tatoeba:11473569","by":"Aiji","enId":"69121","enBy":"CK","auto":true}
+{"term":"Pourquoi étudies-tu une langue étrangère ?","back":"What do you study a foreign language for?","scene":"at school","src":"tatoeba:1339128","by":"Aiji","enId":"69808","enBy":"orcrist","auto":true}
+{"term":"Que faites-vous tous dans la bibliothèque ?","back":"What're you all doing in the library?","scene":"at school","src":"tatoeba:6318281","by":"Aiji","enId":"2892669","enBy":"CK","auto":true}
+{"term":"Pourquoi ai-je besoin d'étudier le français ?","back":"Why do I need to study French?","scene":"at school","src":"tatoeba:7448936","by":"Aiji","enId":"6259971","enBy":"CK","auto":true}
+{"term":"J'aimerais étudier le français l'année prochaine.","back":"I'd like to study French next year.","scene":"at school","src":"tatoeba:5386460","by":"pititnatole","enId":"4664336","enBy":"CK","auto":true}
+{"term":"Fais-tu partie d'un programme d'échange étudiant ?","back":"Are you an exchange student?","scene":"at school","src":"tatoeba:2412715","by":"sacredceltic","enId":"2412268","enBy":"CK","auto":true}
+{"term":"La bibliothèque de l'université est-elle ouverte maintenant ?","back":"Is the university library open now?","scene":"at school","src":"tatoeba:5783166","by":"Aiji","enId":"4616255","enBy":"AlanF_US","auto":true}
+{"term":"J'étudierai.","back":"I will study.","scene":"at school","src":"tatoeba:4593080","by":"sacredceltic","enId":"4621286","enBy":"ddnktr","auto":true}
+{"term":"N'étudie pas.","back":"Don't study.","scene":"at school","src":"tatoeba:7094451","by":"Micsmithel","enId":"320401","enBy":"Dejo","auto":true}
+{"term":"Je dois étudier.","back":"I must study.","scene":"at school","src":"tatoeba:127896","by":"nimfeo","enId":"400129","enBy":"CK","auto":true}
+{"term":"Je vais étudier.","back":"I'm going to study.","scene":"at school","src":"tatoeba:127898","by":"zmoo","enId":"2280340","enBy":"CK","auto":true}
+{"term":"Je suis étudiant.","back":"I'm a student.","scene":"at school","src":"tatoeba:6692","by":"U2FS","enId":"567368","enBy":"jakov","auto":true}
+{"term":"J'étudie très peu.","back":"I study very little.","scene":"at school","src":"tatoeba:1403019","by":"sacredceltic","enId":"254986","enBy":"CM","auto":true}
+{"term":"Tu es un étudiant.","back":"You are a student.","scene":"at school","src":"tatoeba:1865755","by":"nimfeo","enId":"1163562","enBy":"cntrational","auto":true}
+{"term":"Étudions ensemble.","back":"Let's study together.","scene":"at school","src":"tatoeba:8269933","by":"Aiji","enId":"6066984","enBy":"CK","auto":true}
+{"term":"J'étudie l'anglais.","back":"I study English.","scene":"at school","src":"tatoeba:14326","by":"Aiji","enId":"256236","enBy":"CK","auto":true}
+{"term":"J'étudie à l'école.","back":"I study at school.","scene":"at school","src":"tatoeba:843371","by":"sacredceltic","enId":"256661","enBy":"CK","auto":true}
+{"term":"J'essaye d'étudier.","back":"I'm trying to study.","scene":"at school","src":"tatoeba:8328897","by":"Aiji","enId":"6115097","enBy":"Hybrid","auto":true}
+{"term":"Notre école a brûlé.","back":"Our school burned down.","scene":"at school","src":"tatoeba:339596","by":"TRANG","enId":"262573","enBy":"CK","auto":true}
+{"term":"Tu peux étudier ici.","back":"You can study here.","scene":"at school","src":"tatoeba:474841","by":"sacredceltic","enId":"16715","enBy":"CK","auto":true}
+{"term":"Tu dois étudier plus.","back":"You must study more.","scene":"at school","src":"tatoeba:334675","by":"sysko","enId":"16352","enBy":"CK","auto":true}
+{"term":"Tu étudies l'anglais.","back":"You study English.","scene":"at school","src":"tatoeba:353224","by":"Barbiche0","enId":"20124","enBy":"Barbiche0","auto":true}
+{"term":"Je sais quoi étudier.","back":"I know what to study.","scene":"at school","src":"tatoeba:2385877","by":"sacredceltic","enId":"2376340","enBy":"CK","auto":true}
+{"term":"J'étudie le français.","back":"I study French.","scene":"at school","src":"tatoeba:4682026","by":"sacredceltic","enId":"4015809","enBy":"CK","auto":true}
+{"term":"Étudions le français.","back":"Let's study French.","scene":"at school","src":"tatoeba:5359224","by":"Aiji","enId":"2451676","enBy":"CK","auto":true}
+{"term":"J'étudierai beaucoup.","back":"I'll study a lot.","scene":"at school","src":"tatoeba:8606535","by":"Aiji","enId":"2036035","enBy":"AlanF_US","auto":true}
+{"term":"Nous sommes étudiants.","back":"We're students.","scene":"at school","src":"tatoeba:331125","by":"TRANG","enId":"707431","enBy":"papabear","auto":true}
+{"term":"Tu es un bon étudiant.","back":"You are a good student.","scene":"at school","src":"tatoeba:376671","by":"TRANG","enId":"15938","enBy":"Swift","auto":true}
+{"term":"Nous devrions étudier.","back":"We should study.","scene":"at school","src":"tatoeba:2164893","by":"sacredceltic","enId":"2163203","enBy":"Source_VOA","auto":true}
+{"term":"Je suis de vos élèves.","back":"I'm one of your students.","scene":"at school","src":"tatoeba:4561732","by":"sacredceltic","enId":"2545312","enBy":"CK","auto":true}
+{"term":"Mon frère est étudiant.","back":"My brother is a college student.","scene":"at school","src":"tatoeba:331966","by":"TRANG","enId":"250722","enBy":"CK","auto":true}
+{"term":"Je dois étudier demain.","back":"I will have to study tomorrow.","scene":"at school","src":"tatoeba:3467645","by":"pjer","enId":"261950","enBy":"CK","auto":true}
+{"term":"Nous étudions ensemble.","back":"We study together.","scene":"at school","src":"tatoeba:8724383","by":"Micsmithel","enId":"2241457","enBy":"CK","auto":true}
+{"term":"Je suis un nouvel élève.","back":"I'm a new student.","scene":"at school","src":"tatoeba:2226474","by":"sacredceltic","enId":"424866","enBy":"CM","auto":true}
+{"term":"J'étudierai ton rapport.","back":"I'll study your report.","scene":"at school","src":"tatoeba:2577012","by":"Aiji","enId":"17331","enBy":"CK","auto":true}
+{"term":"Je t'ai regardé étudier.","back":"I've been watching you study.","scene":"at school","src":"tatoeba:4164824","by":"sacredceltic","enId":"3729765","enBy":"CM","auto":true}
+{"term":"J'étudie à l'université.","back":"I study at a university.","scene":"at school","src":"tatoeba:5452301","by":"nimfeo","enId":"2456797","enBy":"CK","auto":true}
+{"term":"Vous devez étudier plus.","back":"You need to study harder.","scene":"at school","src":"tatoeba:7790869","by":"Aiji","enId":"16372","enBy":"Swift","auto":true}
+{"term":"Tu devrais étudier plus.","back":"You should study more.","scene":"at school","src":"tatoeba:11596714","by":"Aiji","enId":"3342818","enBy":"CK","auto":true}
+{"term":"Je ne suis pas étudiant.","back":"I'm not a student.","scene":"at school","src":"tatoeba:12450853","by":"zogwarg","enId":"258994","enBy":"CK","auto":true}
+{"term":"Ma sœur devint étudiante.","back":"My sister became a college student.","scene":"at school","src":"tatoeba:1365260","by":"sacredceltic","enId":"250972","enBy":"CK","auto":true}
+{"term":"Je connais ces étudiants.","back":"I know these students.","scene":"at school","src":"tatoeba:4049761","by":"mouche","enId":"4003500","enBy":"chenglong","auto":true}
+{"term":"J'étudie le français ici.","back":"I study French here.","scene":"at school","src":"tatoeba:8737460","by":"Julien_PDC","enId":"6273998","enBy":"CK","auto":true}
+{"term":"Il faut qu’on étudie plus.","back":"We need to study more.","scene":"at school","src":"tatoeba:3400868","by":"gillux","enId":"248368","enBy":"CK","auto":true}
+{"term":"Nous étudions le français.","back":"We study French.","scene":"at school","src":"tatoeba:4779601","by":"sacredceltic","enId":"2451685","enBy":"CK","auto":true}
+{"term":"Je suis étudiant en droit.","back":"I'm a law student.","scene":"at school","src":"tatoeba:6385289","by":"Aiji","enId":"5859388","enBy":"CK","auto":true}
+{"term":"Vous êtes un bon étudiant.","back":"You're a good student.","scene":"at school","src":"tatoeba:7982903","by":"Aiji","enId":"2546865","enBy":"CK","auto":true}
+{"term":"Ce cours est déjà complet.","back":"This class is already full.","scene":"at school","src":"tatoeba:10531310","by":"lbdx","enId":"10528131","enBy":"LimeGreenTeknii","auto":true}
+{"term":"Je suis à la bibliothèque.","back":"I'm at the library.","scene":"at school","src":"tatoeba:11522133","by":"Aiji","enId":"1068771","enBy":"CK","auto":true}
+{"term":"Je suis assez bon étudiant.","back":"I'm a pretty good student.","scene":"at school","src":"tatoeba:2597040","by":"sacredceltic","enId":"2544817","enBy":"CK","auto":true}
+{"term":"J'étudie à la bibliothèque.","back":"I study at the library.","scene":"at school","src":"tatoeba:4128684","by":"sbamsbamsbam","enId":"881140","enBy":"CM","auto":true}
+{"term":"Nous sommes tous étudiants.","back":"We're all students.","scene":"at school","src":"tatoeba:4867259","by":"sacredceltic","enId":"4494945","enBy":"CK","auto":true}
+{"term":"Je ne peux pas étudier ici.","back":"I can't study here.","scene":"at school","src":"tatoeba:5324458","by":"Aiji","enId":"5165745","enBy":"CK","auto":true}
+{"term":"Je serai à la bibliothèque.","back":"I'll be in the library.","scene":"at school","src":"tatoeba:7124872","by":"Aiji","enId":"2546721","enBy":"CK","auto":true}
+{"term":"Je préfère étudier le soir.","back":"I prefer to study at night.","scene":"at school","src":"tatoeba:8114760","by":"Aiji","enId":"5175086","enBy":"CK","auto":true}
+{"term":"Toi et moi sommes étudiants.","back":"You and I are students.","scene":"at school","src":"tatoeba:10442","by":"Archibald","enId":"13109197","enBy":"rul","auto":true}
+{"term":"Prends ta carte d'étudiant !","back":"Bring your student ID!","scene":"at school","src":"tatoeba:1068923","by":"sacredceltic","enId":"1068776","enBy":"CE","auto":true}
+{"term":"Oui, je suis aussi étudiant.","back":"Yes, I'm a student too.","scene":"at school","src":"tatoeba:2667152","by":"Julien_PDC","enId":"2202375","enBy":"FeuDRenais2","auto":true}
+{"term":"Je dois étudier le français.","back":"I must study French.","scene":"at school","src":"tatoeba:6465510","by":"Aiji","enId":"8407322","enBy":"CK","auto":true}
+{"term":"Tu dois étudier le français.","back":"You must study French.","scene":"at school","src":"tatoeba:9159293","by":"Julien_PDC","enId":"6272175","enBy":"CK","auto":true}
+{"term":"Tu devrais étudier davantage.","back":"You should study harder.","scene":"at school","src":"tatoeba:480483","by":"sacredceltic","enId":"16356","enBy":"CK","auto":true}
+{"term":"J'étudie l'histoire de l'art.","back":"I study art history.","scene":"at school","src":"tatoeba:1339172","by":"Aiji","enId":"790045","enBy":"Swift","auto":true}
+{"term":"Tu as besoin de plus étudier.","back":"You need to study more.","scene":"at school","src":"tatoeba:1473523","by":"martin9","enId":"1473541","enBy":"CK","auto":true}
+{"term":"Je n’étudie plus le français.","back":"I no longer study French.","scene":"at school","src":"tatoeba:2389381","by":"gillux","enId":"2389363","enBy":"CK","auto":true}
+{"term":"Dois-je étudier le français ?","back":"Should I study French?","scene":"at school","src":"tatoeba:9159294","by":"Julien_PDC","enId":"6272337","enBy":"CK","auto":true}
+{"term":"J'étudie l'anglais à l'école.","back":"I study English at school.","scene":"at school","src":"tatoeba:13223997","by":"Rovo","enId":"262942","enBy":"CK","auto":true}
+{"term":"J'étudie l'histoire japonaise.","back":"I study Japanese history.","scene":"at school","src":"tatoeba:14748","by":"sacredceltic","enId":"259835","enBy":"CK","auto":true}
+{"term":"Tu dois étudier beaucoup plus.","back":"You must study much harder.","scene":"at school","src":"tatoeba:469779","by":"sacredceltic","enId":"16357","enBy":"CK","auto":true}
+{"term":"On doit étudier sa vie durant.","back":"You must study your whole life.","scene":"at school","src":"tatoeba:1353077","by":"sacredceltic","enId":"70298","enBy":"CK","auto":true}
+{"term":"Nous allons à l'école étudier.","back":"We go to school to study.","scene":"at school","src":"tatoeba:1461647","by":"sysko","enId":"249354","enBy":"CK","auto":true}
+{"term":"J'étudie le français chez moi.","back":"I study French at home.","scene":"at school","src":"tatoeba:2678042","by":"nimfeo","enId":"2451641","enBy":"CK","auto":true}
+{"term":"Je dois étudier pour l'examen.","back":"I have to study for the test.","scene":"at school","src":"tatoeba:2745126","by":"Micsmithel","enId":"419055","enBy":"CK","auto":true}
+{"term":"Notre prof est toujours sympa.","back":"Our teacher is always nice.","scene":"at school","src":"tatoeba:3084012","by":"Rovo","enId":"13712001","enBy":"menaud","auto":true}
+{"term":"Je me rends à l'école en vélo.","back":"I go to school by bicycle.","scene":"at school","src":"tatoeba:3642464","by":"sacredceltic","enId":"258202","enBy":"dobled","auto":true}
+{"term":"Nous devons étudier l'anglais.","back":"We must study English.","scene":"at school","src":"tatoeba:4245010","by":"mouche","enId":"248453","enBy":"CK","auto":true}
+{"term":"Ma sœur étudie à l'université.","back":"My sister studies at university.","scene":"at school","src":"tatoeba:6297566","by":"Scorpionvenin14","enId":"6295555","enBy":"traductorazo","auto":true}
+{"term":"Je n’ai pas à étudier ce soir.","back":"I don't have to study tonight.","scene":"at school","src":"tatoeba:9553059","by":"sacredceltic","enId":"5238979","enBy":"CK","auto":true}
+{"term":"Je suis allé à la bibliothèque.","back":"I have been to the library.","scene":"at school","src":"tatoeba:6279","by":"TRANG","enId":"258900","enBy":"CC","auto":true}
+{"term":"Nous devrions étudier ensemble.","back":"We should study together.","scene":"at school","src":"tatoeba:1032172","by":"sacredceltic","enId":"886269","enBy":"CM","auto":true}
+{"term":"J'étudie le français à l'école.","back":"I study French at school.","scene":"at school","src":"tatoeba:5372011","by":"Aiji","enId":"2451608","enBy":"CK","auto":true}
+{"term":"J'étudie le français également.","back":"I study French, too.","scene":"at school","src":"tatoeba:9159299","by":"Julien_PDC","enId":"6357546","enBy":"CK","auto":true}
+{"term":"On porte un uniforme à l'école.","back":"We wear a uniform at school.","scene":"at school","src":"tatoeba:11676325","by":"Aiji","enId":"5136414","enBy":"JimmyUK","auto":true}
+{"term":"Je dois aller à la bibliothèque.","back":"I need to go to the library.","scene":"at school","src":"tatoeba:8737152","by":"Julien_PDC","enId":"10575457","enBy":"sundown","auto":true}
+{"term":"Étudions un exemple particulier.","back":"Let's study a specific example.","scene":"at school","src":"tatoeba:129627","by":"dominiko","enId":"38253","enBy":"zumley","auto":true}
+{"term":"Vous êtes de nouveaux étudiants.","back":"You are new students.","scene":"at school","src":"tatoeba:517025","by":"Biptaste","enId":"237734","enBy":"xtofu80","auto":true}
+{"term":"Je suis étudiant, mais lui, non.","back":"I'm a student, but he's not.","scene":"at school","src":"tatoeba:1344999","by":"sacredceltic","enId":"11966110","enBy":"sundown","auto":true}
+{"term":"Je préfère étudier l'après-midi.","back":"I prefer to study in the afternoon.","scene":"at school","src":"tatoeba:5819629","by":"Yemana","enId":"5817922","enBy":"CK","auto":true}
+{"term":"Nous sommes dans la bibliothèque.","back":"We are in a library.","scene":"at school","src":"tatoeba:1745214","by":"Rovo","enId":"1115484","enBy":"ddnktr","auto":true}
+{"term":"Nous ne sommes que des étudiants.","back":"We're just students.","scene":"at school","src":"tatoeba:4801678","by":"sacredceltic","enId":"2240601","enBy":"CK","auto":true}
+{"term":"Ma fille étudie dans cette école.","back":"My daughter studies in that school.","scene":"at school","src":"tatoeba:5261433","by":"sacredceltic","enId":"1572105","enBy":"fanty","auto":true}
+{"term":"Tu peux utiliser sa bibliothèque.","back":"You may make use of his library.","scene":"at school","src":"tatoeba:9749207","by":"felix63","enId":"15811","enBy":"felix63","auto":true}
+{"term":"Tu es le pire élève de la classe.","back":"You're the worst student in the class.","scene":"at school","src":"tatoeba:10973891","by":"lbdx","enId":"6245509","enBy":"CK","auto":true}
+{"term":"Nous sommes dans une bibliothèque.","back":"We're in a library.","scene":"at school","src":"tatoeba:1115488","by":"Julien_PDC","enId":"1115485","auto":true}
+{"term":"Je veux vraiment être un bon prof.","back":"I really want to be a good teacher.","scene":"at school","src":"tatoeba:9775769","by":"lbdx","enId":"2051816","enBy":"AlanF_US","auto":true}
+{"term":"Je suis un étudiant de cette école.","back":"I'm a student of this school.","scene":"at school","src":"tatoeba:7287","by":"sysko","enId":"10545419","enBy":"CK","auto":true}
+{"term":"Les bons étudiants travaillent dur.","back":"Good students study hard.","scene":"at school","src":"tatoeba:13717","by":"sacredceltic","enId":"30080","enBy":"CK","auto":true}
+{"term":"Il est interdit de fumer à l'école.","back":"It's forbidden to smoke at school.","scene":"at school","src":"tatoeba:3143270","by":"sacredceltic","enId":"3154471","enBy":"Vanilla","auto":true}
+{"term":"Je vais rencontrer quelques élèves.","back":"I'm going to meet with some students.","scene":"at school","src":"tatoeba:3474147","by":"Scorpionvenin14","enId":"3250338","enBy":"Vincinho","auto":true}
+{"term":"Je suis très fier de nos étudiants.","back":"I'm very proud of our students.","scene":"at school","src":"tatoeba:5659377","by":"Yemana","enId":"5659300","enBy":"CK","auto":true}
+{"term":"Je ne veux pas étudier le français.","back":"I don't want to study French.","scene":"at school","src":"tatoeba:8703758","by":"Julien_PDC","enId":"2451534","enBy":"CK","auto":true}
+{"term":"Je suis étudiant en deuxième année.","back":"I'm a second-year student.","scene":"at school","src":"tatoeba:9965885","by":"felix63","enId":"8775500","enBy":"deniko","auto":true}
+{"term":"Je ne suis pas un de vos étudiants.","back":"I'm not one of your students.","scene":"at school","src":"tatoeba:11071258","by":"Aiji","enId":"2542946","enBy":"CK","auto":true}
+{"term":"Tu as accompagné ta fille à l'école.","back":"You accompanied your daughter to the school.","scene":"at school","src":"tatoeba:2902139","by":"Amastan","enId":"10553932","enBy":"catimini","auto":true}
+{"term":"Étaient-ils hier à la bibliothèque ?","back":"Were they in the library yesterday?","scene":"at school","src":"tatoeba:458843","by":"sacredceltic","enId":"306604","enBy":"CM","auto":true}
+{"term":"Je ne vais plus étudier le français.","back":"I'm not going to study French anymore.","scene":"at school","src":"tatoeba:5724183","by":"Aiji","enId":"3618893","enBy":"CK","auto":true}
+{"term":"Je n'étudie pas souvent le français.","back":"I don't often study French.","scene":"at school","src":"tatoeba:7763337","by":"Aiji","enId":"6266514","enBy":"CK","auto":true}
+{"term":"Je suis vraiment fier de mes élèves.","back":"I'm really proud of my students.","scene":"at school","src":"tatoeba:11765317","by":"lbdx","enId":"8508923","enBy":"Ricardo14","auto":true}
+{"term":"Je ne connais pas tous mes étudiants.","back":"I don't know all my students.","scene":"at school","src":"tatoeba:7159","by":"sysko","enId":"11472889","enBy":"sundown","auto":true}
+{"term":"J'étudie très sérieusement à l'école.","back":"I study hard at school.","scene":"at school","src":"tatoeba:14797","by":"nimfeo","enId":"256658","enBy":"CK","auto":true}
+{"term":"Je veux vraiment étudier le français.","back":"I really want to study French.","scene":"at school","src":"tatoeba:7862781","by":"Aiji","enId":"6260816","enBy":"CK","auto":true}
+{"term":"Vous êtes tous de nouveaux étudiants.","back":"You are all new students.","scene":"at school","src":"tatoeba:8553179","by":"Aiji","enId":"1225110","enBy":"AlanF_US","auto":true}
+{"term":"Je vais me coucher après avoir étudié.","back":"I go to bed after I study.","scene":"at school","src":"tatoeba:135915","by":"Aiji","enId":"261660","enBy":"CK","auto":true}
+{"term":"Je te verrai demain à la bibliothèque.","back":"I'll see you at the library tomorrow.","scene":"at school","src":"tatoeba:897474","by":"sacredceltic","enId":"716151","enBy":"papabear","auto":true}
+{"term":"Ce livre appartient à la bibliothèque.","back":"This book belongs to the library.","scene":"at school","src":"tatoeba:7423650","by":"Micsmithel","enId":"56908","enBy":"CK","auto":true}
+{"term":"Je suis un étudiant de première année.","back":"I'm a college freshman.","scene":"at school","src":"tatoeba:9742977","by":"lbdx","enId":"9737972","enBy":"CK","auto":true}
+{"term":"Je vais rencontrer une certaine élève.","back":"I'm going to meet a certain student.","scene":"at school","src":"tatoeba:11474255","by":"Aiji","enId":"504362","enBy":"blay_paul","auto":true}
+{"term":"Tu accompagneras les enfants à l'école.","back":"You will accompany the children to school.","scene":"at school","src":"tatoeba:2101139","by":"Amastan","enId":"4716554","enBy":"AlanF_US","auto":true}
+{"term":"Tu as eu toute la semaine pour étudier.","back":"You've had all week to study.","scene":"at school","src":"tatoeba:5494570","by":"Aiji","enId":"2643070","enBy":"CK","auto":true}
+{"term":"Je te montrerai la bibliothèque demain.","back":"I will show you the library tomorrow.","scene":"at school","src":"tatoeba:6295478","by":"halokkin","enId":"11902851","enBy":"purple_ice","auto":true}
+{"term":"Je vais à la bibliothèque pour étudier.","back":"I'm going to the library to study.","scene":"at school","src":"tatoeba:8442846","by":"Aiji","enId":"6864853","enBy":"CK","auto":true}
+{"term":"J'étudie le français de temps en temps.","back":"I study French occasionally.","scene":"at school","src":"tatoeba:8737331","by":"Julien_PDC","enId":"6221128","enBy":"CK","auto":true}
+{"term":"Notre nouveau prof sort juste de la fac.","back":"Our new teacher is fresh out of college.","scene":"at school","src":"tatoeba:1501976","by":"sacredceltic","enId":"1500316","enBy":"CK","auto":true}
+{"term":"Je passerai ma vie à étudier l'histoire.","back":"I will devote my life to the study of history.","scene":"at school","src":"tatoeba:6195463","by":"Sorgan","enId":"262264","enBy":"CK","auto":true}
+{"term":"Nous étudions tous les deux le français.","back":"We both study French.","scene":"at school","src":"tatoeba:8737442","by":"Julien_PDC","enId":"6273126","enBy":"CK","auto":true}
+{"term":"Je vais étudier l'anglais cet après-midi.","back":"I'm going to study English this afternoon.","scene":"at school","src":"tatoeba:6465639","by":"Aiji","enId":"1343499","enBy":"CK","auto":true}
+{"term":"Ce prof de sciences conduit tous les ans.","back":"That science teacher drives every year.","scene":"at school","src":"tatoeba:7702321","by":"Maxence","enId":"4867939","enBy":"shekitten","auto":true}
+{"term":"Vous trouverez le livre à la bibliothèque.","back":"You'll find the book in the library.","scene":"at school","src":"tatoeba:428005","by":"Archibald","enId":"43914","enBy":"CK","auto":true}
+{"term":"On se retrouve en face de la bibliothèque.","back":"Let's meet in front of the library.","scene":"at school","src":"tatoeba:4099779","by":"Scorpionvenin14","enId":"4098154","enBy":"CK","auto":true}
+{"term":"Mon ami va à la bibliothèque pour étudier.","back":"My friend goes to the library to study.","scene":"at school","src":"tatoeba:5363984","by":"Aiji","enId":"3684471","enBy":"kevlar67","auto":true}
+{"term":"Je dois rendre ce livre à la bibliothèque.","back":"I have to return this book to the library.","scene":"at school","src":"tatoeba:6668603","by":"Aiji","enId":"1495730","enBy":"CK","auto":true}
+{"term":"J'étudierai le français l'année prochaine.","back":"I'll study French next year.","scene":"at school","src":"tatoeba:6685811","by":"GB3","enId":"6264356","enBy":"CK","auto":true}
+{"term":"J'étudierai après être rentré à la maison.","back":"I'll study after I come home.","scene":"at school","src":"tatoeba:8548087","by":"Aiji","enId":"3931098","enBy":"AlanF_US","auto":true}
+{"term":"Il me faut mon propre espace pour étudier.","back":"I need my own space to study.","scene":"at school","src":"tatoeba:9414091","by":"sacredceltic","enId":"9413353","enBy":"Nuel","auto":true}
+{"term":"Je suis professeur particulier de langues.","back":"I'm a private language teacher.","scene":"at school","src":"tatoeba:10313788","by":"Rovo","enId":"9735196","enBy":"Ricardo14","auto":true}
+{"term":"Je dois réussir cet examen coûte que coûte.","back":"I must pass this exam, no matter what.","scene":"at school","src":"tatoeba:2109366","by":"sacredceltic","enId":"253520","enBy":"CK","auto":true}
+{"term":"Notre école compte environ mille étudiants.","back":"Our school has about one thousand students.","scene":"at school","src":"tatoeba:5603448","by":"Aiji","enId":"247461","enBy":"CK","auto":true}
+{"term":"Je vais étudier le français cet après-midi.","back":"I'm going to study French this afternoon.","scene":"at school","src":"tatoeba:5833148","by":"Aiji","enId":"2451266","enBy":"CK","auto":true}
+{"term":"Nous nous verrons demain à la bibliothèque.","back":"We'll see each other tomorrow in the library.","scene":"at school","src":"tatoeba:7957742","by":"sacredceltic","enId":"2006601","enBy":"AlanF_US","auto":true}
+{"term":"« Êtes-vous étudiants ? » « Oui, en effet. »","back":"\"Are you students?\" \"Yes, we are.\"","scene":"at school","src":"tatoeba:135725","by":"sacredceltic","enId":"73969","enBy":"Zifre","auto":true}
+{"term":"Oublions les études et amusons-nous ce soir.","back":"Let's forget to study and enjoy ourselves tonight.","scene":"at school","src":"tatoeba:337831","by":"Barbiche0","enId":"243393","auto":true}
+{"term":"Je dois rendre des livres à la bibliothèque.","back":"I have to return some books to the library.","scene":"at school","src":"tatoeba:11999087","by":"lbdx","enId":"4753297","enBy":"CK","auto":true}
+{"term":"Je connais quelques étudiants de cette école.","back":"I know some students in that school.","scene":"at school","src":"tatoeba:7414","by":"sysko","enId":"252937","enBy":"CK","auto":true}
+{"term":"Je vais dans ma chambre pour pouvoir étudier.","back":"I'm going to my room, so I can study.","scene":"at school","src":"tatoeba:1186497","by":"sacredceltic","enId":"1186477","enBy":"CK","auto":true}
+{"term":"Étiez-vous à la bibliothèque hier après-midi?","back":"Were you at the library yesterday afternoon?","scene":"at school","src":"tatoeba:4035284","by":"Scorpionvenin14","enId":"4034837","enBy":"CK","auto":true}
+{"term":"Il est utile d'étudier les langues étrangères.","back":"It's useful to study foreign languages.","scene":"at school","src":"tatoeba:3260383","by":"nimfeo","enId":"3260384","auto":true}
+{"term":"Notre prof dit : « Bien sûr que vous pouvez. »","back":"Our teacher says: \"Of course you can.\"","scene":"at school","src":"tatoeba:398200","by":"sysko","enId":"3249359","enBy":"nava","auto":true}
+{"term":"Cet élève fait parfois semblant d'être malade.","back":"That student sometimes affects illness.","scene":"at school","src":"tatoeba:1009898","by":"Micsmithel","enId":"45918","enBy":"Dejo","auto":true}
+{"term":"Je vais étudier le français l'année prochaine.","back":"I'm going to study French next year.","scene":"at school","src":"tatoeba:5369543","by":"Aiji","enId":"4664179","enBy":"CK","auto":true}
+{"term":"Nous devons tous les deux étudier le français.","back":"We both have to study French.","scene":"at school","src":"tatoeba:7763271","by":"Aiji","enId":"6262046","enBy":"CK","auto":true}
+{"term":"Tu vois ? Tu dois étudier une langue étrangère.","back":"You see? You must study a foreign language.","scene":"at school","src":"tatoeba:331995","by":"Barbiche0","enId":"319988","auto":true}
+{"term":"Nous ne devons pas parler dans la bibliothèque.","back":"We must not speak in the library.","scene":"at school","src":"tatoeba:817386","by":"sacredceltic","enId":"270694","enBy":"CK","auto":true}
+{"term":"Cette image me rappelle quand j'étais étudiant.","back":"This picture reminds me of when I was a student.","scene":"at school","src":"tatoeba:1108828","by":"sacredceltic","enId":"1108807","enBy":"CK","auto":true}
+{"term":"Laisse-moi te raconter l'origine de cette école.","back":"Let me tell you about the origin of this school.","scene":"at school","src":"tatoeba:3659732","by":"THURET","enId":"59936","enBy":"CK","auto":true}
+{"term":"Aucun étudiant ne pouvait répondre à la question.","back":"No students could answer the question.","scene":"at school","src":"tatoeba:882331","by":"sacredceltic","enId":"271851","enBy":"CK","auto":true}
+{"term":"On fait silence dans la bibliothèque, les garçons.","back":"Be silent in the library, boys.","scene":"at school","src":"tatoeba:9498","by":"sacredceltic","enId":"22123","enBy":"gin","auto":true}
+{"term":"Les bons étudiants gardent toujours leurs bureaux propres.","back":"Good students always keep their desk clean.","scene":"at school","src":"tatoeba:13722","by":"Aiji","enId":"30066","enBy":"CM","auto":true}
+{"term":"Où étudies-tu l'espagnol ?","back":"Where do you study the Spanish language?","scene":"at school","src":"tatoeba:7781681","by":"Rockaround","enId":"6003060","enBy":"CannedBread","auto":true}
+{"term":"Peux-tu me déposer à la bibliothèque ?","back":"Could you drop me off at the library?","scene":"at school","src":"tatoeba:984257","by":"dominiko","enId":"984149","enBy":"CM","auto":true}
+{"term":"Quand l'école ferme-t-elle pour les congés ?","back":"When does school let out for the holidays?","scene":"at school","src":"tatoeba:1288786","by":"sacredceltic","enId":"1288438","enBy":"CK","auto":true}
+{"term":"Pouvez-vous m'indiquer où se trouve la bibliothèque ?","back":"Could you tell me where the library is?","scene":"at school","src":"tatoeba:11602024","by":"Adrien_FR","enId":"10883257","enBy":"ddnktr","auto":true}
+{"term":"Je veux étudier l'allemand.","back":"I want to study German.","scene":"at school","src":"tatoeba:1494375","by":"Julien_PDC","enId":"1494374","enBy":"CN","auto":true}
+{"term":"Je veux être prof d'espagnol.","back":"I want to be a Spanish teacher.","scene":"at school","src":"tatoeba:9056647","by":"Equilingual","enId":"9056471","enBy":"rafaeldejesus8199","auto":true}
+{"term":"Quel est le nombre total d'étudiants ?","back":"What is the total number of students?","scene":"at school","src":"tatoeba:459942","by":"sacredceltic","enId":"271836","enBy":"CK","auto":true}
+{"term":"As-tu jamais échoué dans une matière ?","back":"Have you ever failed a class?","scene":"at school","src":"tatoeba:3572246","by":"sacredceltic","enId":"3571931","enBy":"Hybrid","auto":true}
+{"term":"Je veux louer cette chambre à un étudiant.","back":"I want to let this room to a student.","scene":"at school","src":"tatoeba:1123897","by":"sacredceltic","enId":"253720","auto":true}
+{"term":"Les étudiants étrangers peuvent-ils rejoindre ce cercle ?","back":"Can foreign students join this club?","scene":"at school","src":"tatoeba:1309583","by":"sacredceltic","enId":"852416","enBy":"piksea","auto":true}
+{"term":"Un uniforme élimine-t-il les différences de classes sociales ?","back":"Does a uniform eliminate class difference?","scene":"at school","src":"tatoeba:128807","by":"nimfeo","enId":"271258","auto":true}
+{"term":"J'étudie l'allemand.","back":"I study German.","scene":"at school","src":"tatoeba:3686199","by":"fleur74","enId":"3685924","enBy":"Ricardo14","auto":true}
+{"term":"Mon cours fut annulé.","back":"My class was canceled.","scene":"at school","src":"tatoeba:1891796","by":"sacredceltic","enId":"2028499","enBy":"CK","auto":true}
+{"term":"J'étudierai l'allemand.","back":"I will study German.","scene":"at school","src":"tatoeba:1494385","by":"Julien_PDC","enId":"1494382","enBy":"CM","auto":true}
+{"term":"Vous interrompez la leçon.","back":"You are interrupting the lesson.","scene":"at school","src":"tatoeba:1097845","by":"nimfeo","enId":"4546262","enBy":"mailohilohi","auto":true}
+{"term":"Tu seras renvoyé de l'école.","back":"You'll be expelled from school.","scene":"at school","src":"tatoeba:8436985","by":"lbdx","enId":"5096508","enBy":"CarpeLanam","auto":true}
+{"term":"Allons nager après l’école !","back":"Let's go swimming after school.","scene":"at school","src":"tatoeba:9971604","by":"felix63","enId":"9969864","enBy":"CK","auto":true}
+{"term":"Ton étude portera ses fruits.","back":"Your study will bear fruit.","scene":"at school","src":"tatoeba:562668","by":"sacredceltic","enId":"17242","enBy":"Swift","auto":true}
+{"term":"Je suis actuellement à l'école.","back":"I'm at school now.","scene":"at school","src":"tatoeba:2264002","by":"sacredceltic","enId":"2239620","enBy":"Hybrid","auto":true}
+{"term":"Je vais à une école de conduite.","back":"I go to a driving school.","scene":"at school","src":"tatoeba:12940","by":"mouche","enId":"36963","enBy":"CK","auto":true}
+{"term":"Je dois m'habiller pour l'école.","back":"I've got to get dressed for school.","scene":"at school","src":"tatoeba:2371170","by":"sacredceltic","enId":"2361995","enBy":"CK","auto":true}
+{"term":"Ma fille est professeur d'espagnol.","back":"My daughter is a Spanish teacher.","scene":"at school","src":"tatoeba:7785551","by":"felix63","enId":"7785553","enBy":"shekitten","auto":true}
+{"term":"Je dois me dépêcher d'aller en classe.","back":"I must hurry to class.","scene":"at school","src":"tatoeba:575200","by":"sacredceltic","enId":"19714","enBy":"CK","auto":true}
+{"term":"Notre professeur mange une pomme rouge.","back":"Our teacher is eating a red apple.","scene":"at school","src":"tatoeba:8842302","by":"felix63","enId":"13612928","enBy":"rul","auto":true}
+{"term":"Je regarde la télévision avant d'étudier.","back":"I watch television before I study.","scene":"at school","src":"tatoeba:127900","by":"Aiji","enId":"261654","enBy":"CK","auto":true}
+{"term":"Ce livre est populaire chez les étudiants.","back":"This book is popular amongst students.","scene":"at school","src":"tatoeba:1505396","by":"martin9","enId":"2940757","enBy":"Hakaku","auto":true}
+{"term":"J'étudie l'anglais une demi-heure par jour.","back":"I study English half an hour every day.","scene":"at school","src":"tatoeba:7696082","by":"Maxence","enId":"261834","enBy":"CK","auto":true}
+{"term":"J'emprunte souvent des livres à la bibliothèque.","back":"I often borrow books from the library.","scene":"at school","src":"tatoeba:6845910","by":"GB3","enId":"6845074","enBy":"CK","auto":true}
+{"term":"Fais tes devoirs avant de regarder la télévision.","back":"Do your homework before you watch TV.","scene":"at school","src":"tatoeba:1268255","by":"sacredceltic","enId":"39155","enBy":"CK","auto":true}
+{"term":"L'examen a été extrêmement difficile, cette fois-ci.","back":"This time, the exam was extremely difficult.","scene":"at school","src":"tatoeba:1780228","by":"sacredceltic","enId":"10596535","enBy":"sundown","auto":true}
+{"term":"Quel collège vises-tu ?","back":"Which college are you aiming for?","scene":"at school","src":"tatoeba:470050","by":"sacredceltic","enId":"16483","enBy":"daveoily","auto":true}
+{"term":"Quand es-tu devenu enseignant ?","back":"When did you become a teacher?","scene":"at school","src":"tatoeba:3598703","by":"sacredceltic","enId":"3597166","enBy":"CK","auto":true}
+{"term":"Combien de temps as-tu été enseignant ?","back":"How long have you been a teacher?","scene":"at school","src":"tatoeba:6461210","by":"Aiji","enId":"3738395","enBy":"CK","auto":true}
+{"term":"Je veux être enseignant.","back":"I want to be a teacher.","scene":"at school","src":"tatoeba:2102193","by":"sacredceltic","enId":"2090872","enBy":"CK","auto":true}
+{"term":"Tu es enseignant, n'est-ce pas ?","back":"You're a teacher, right?","scene":"at school","src":"tatoeba:1802673","by":"sacredceltic","enId":"5102133","enBy":"jhomel","auto":true}
+{"term":"Êtes-vous le nouvel enseignant ?","back":"Are you the new teacher?","scene":"at school","src":"tatoeba:3265383","by":"sacredceltic","enId":"3264701","enBy":"CK","auto":true}
+{"term":"Je veux être enseignant à l'avenir.","back":"I want to be a teacher in the future.","scene":"at school","src":"tatoeba:11435587","by":"lbdx","enId":"5725557","enBy":"CM","auto":true}
+{"term":"Que penses-tu du nouvel enseignant ?","back":"What do you think of the new teacher?","scene":"at school","src":"tatoeba:533041","by":"sacredceltic","enId":"269206","enBy":"CK","auto":true}
+{"term":"Pourquoi voudrais-tu être enseignant ?","back":"Why would you want to be a teacher?","scene":"at school","src":"tatoeba:2102241","by":"sacredceltic","enId":"2090859","enBy":"CK","auto":true}
+{"term":"As-tu déjà pensé à devenir enseignant ?","back":"Have you ever thought about becoming a teacher?","scene":"at school","src":"tatoeba:5698054","by":"Aiji","enId":"4013118","enBy":"CK","auto":true}
+{"term":"Tu es enseignant.","back":"You're a teacher.","scene":"at school","src":"tatoeba:4626099","by":"sacredceltic","enId":"2968334","enBy":"shekitten","auto":true}
+{"term":"Je suis enseignant ici.","back":"I'm a teacher here.","scene":"at school","src":"tatoeba:7045203","by":"Aiji","enId":"2548739","enBy":"CK","auto":true}
+{"term":"Je vais à l'auto-école.","back":"I go to driving school.","scene":"at school","src":"tatoeba:10966590","by":"lbdx","enId":"10800227","enBy":"ddnktr","auto":true}
+{"term":"Je suis ton enseignant.","back":"I am your teacher.","scene":"at school","src":"tatoeba:11963905","by":"Amastan","enId":"8095580","enBy":"Amastan","auto":true}
+{"term":"J'adore être enseignant.","back":"I love being a teacher.","scene":"at school","src":"tatoeba:2383344","by":"sacredceltic","enId":"2380202","enBy":"CK","auto":true}
+{"term":"Je vais être enseignant.","back":"I'm going to be a teacher.","scene":"at school","src":"tatoeba:2602431","by":"sacredceltic","enId":"2544788","enBy":"CK","auto":true}
+{"term":"Je serai son enseignant.","back":"I will be her teacher.","scene":"at school","src":"tatoeba:11733831","by":"Aiji","enId":"6118919","enBy":"mailohilohi","auto":true}
+{"term":"Mon époux est enseignant.","back":"My husband is a teacher.","scene":"at school","src":"tatoeba:5813795","by":"nimfeo","enId":"8341252","enBy":"CK","auto":true}
+{"term":"Je ne suis pas enseignant.","back":"I'm not a teacher.","scene":"at school","src":"tatoeba:3122730","by":"jedoo","enId":"2332108","enBy":"oldfashioned","auto":true}
+{"term":"Mon père était enseignant.","back":"My father was a teacher.","scene":"at school","src":"tatoeba:5741661","by":"Aiji","enId":"2645482","enBy":"CK","auto":true}
+{"term":"On sèche souvent les cours.","back":"We often skip school.","scene":"at school","src":"tatoeba:8418517","by":"Aiji","enId":"2951124","enBy":"AlanF_US","auto":true}
+{"term":"J'aimerais être enseignant.","back":"I'd love to be a teacher.","scene":"at school","src":"tatoeba:10235749","by":"ManuelAgostini","enId":"5825582","enBy":"CK","auto":true}
+{"term":"Notre prof de maths est nul.","back":"Our math teacher sucks.","scene":"at school","src":"tatoeba:7105741","by":"Micsmithel","enId":"7037105","enBy":"OsoHombre","auto":true}
+{"term":"Je ne suis pas un enseignant.","back":"I am not a teacher.","scene":"at school","src":"tatoeba:6247","by":"sysko","enId":"259070","enBy":"CK","auto":true}
+{"term":"J'étudie très bien les maths.","back":"I study math very well.","scene":"at school","src":"tatoeba:350241","by":"Barbiche0","enId":"258923","auto":true}
+{"term":"J'apprécie d'être enseignant.","back":"I like being a teacher.","scene":"at school","src":"tatoeba:2415921","by":"sacredceltic","enId":"3209800","enBy":"CK","auto":true}
+{"term":"Je me suis endormi en classe.","back":"I fell asleep in class.","scene":"at school","src":"tatoeba:5158339","by":"Salemminou","enId":"2283195","enBy":"ichivivi20","auto":true}
+{"term":"Je suis le nouvel enseignant.","back":"I'm the new teacher.","scene":"at school","src":"tatoeba:7138551","by":"Aiji","enId":"1891148","enBy":"CK","auto":true}
+{"term":"Je suis enseignant en japonais.","back":"I'm a Japanese teacher.","scene":"at school","src":"tatoeba:1103776","by":"sacredceltic","enId":"778135","enBy":"marloncori","auto":true}
+{"term":"Je suis enseignant en français.","back":"I'm a French teacher.","scene":"at school","src":"tatoeba:4592082","by":"sacredceltic","enId":"2451663","enBy":"CK","auto":true}
+{"term":"Je suis enseignant, pas étudiant.","back":"I'm a teacher, not a student.","scene":"at school","src":"tatoeba:6939923","by":"Aiji","enId":"2713176","enBy":"CK","auto":true}
+{"term":"Je me suis endormi en cours hier.","back":"I fell asleep in class yesterday.","scene":"at school","src":"tatoeba:8382557","by":"Aiji","enId":"4584965","enBy":"CK","auto":true}
+{"term":"Notre université a un beau campus.","back":"Our university has a beautiful campus.","scene":"at school","src":"tatoeba:6939933","by":"Aiji","enId":"2045847","enBy":"CK","auto":true}
+{"term":"Nous enseignons dans la même école.","back":"We teach at the same school.","scene":"at school","src":"tatoeba:8659975","by":"Julien_PDC","enId":"11615654","enBy":"tieguy","auto":true}
+{"term":"Mon rêve est de devenir enseignant.","back":"My dream is to become a teacher.","scene":"at school","src":"tatoeba:898183","by":"sacredceltic","enId":"251938","enBy":"CK","auto":true}
+{"term":"Nous avons maths en première heure.","back":"Our first lesson is Maths.","scene":"at school","src":"tatoeba:1744562","by":"Petrus","enId":"11406603","enBy":"sundown","auto":true}
+{"term":"Je vais rarement à la bibliothèque.","back":"I seldom go to the library.","scene":"at school","src":"tatoeba:7876068","by":"Rockaround","enId":"6806565","enBy":"CK","auto":true}
+{"term":"Je respecte beaucoup mon enseignant.","back":"I respect my teacher very much.","scene":"at school","src":"tatoeba:6246","by":"sysko","enId":"259084","enBy":"CK","auto":true}
+{"term":"Ce jeune homme est notre enseignant.","back":"That young man is our teacher.","scene":"at school","src":"tatoeba:11474224","by":"Aiji","enId":"68270","enBy":"CK","auto":true}
+{"term":"Notre école a été réduite en cendres.","back":"Our school was reduced to ashes.","scene":"at school","src":"tatoeba:9420","by":"sacredceltic","enId":"21515","enBy":"CK","auto":true}
+{"term":"Vous devez être le nouvel enseignant.","back":"You must be the new teacher.","scene":"at school","src":"tatoeba:7967420","by":"Aiji","enId":"2643441","enBy":"CK","auto":true}
+{"term":"Je sais que je suis un bon enseignant.","back":"I know that I'm a good teacher.","scene":"at school","src":"tatoeba:7849221","by":"Aiji","enId":"7240087","enBy":"CK","auto":true}
+{"term":"Notre classe comprend trente étudiants.","back":"Our class consists of thirty students.","scene":"at school","src":"tatoeba:128054","by":"Aiji","enId":"262548","auto":true}
+{"term":"Notre professeur a exigé de nous taire.","back":"Our teacher demanded that we keep quiet.","scene":"at school","src":"tatoeba:439270","by":"chtof","enId":"272998","enBy":"CK","auto":true}
+{"term":"Tu peux faire usage de sa bibliothèque.","back":"You may use his library.","scene":"at school","src":"tatoeba:2977688","by":"sacredceltic","enId":"396222","enBy":"CK","auto":true}
+{"term":"Je pense que j'aimerais être enseignant.","back":"I think I'd like to be a teacher.","scene":"at school","src":"tatoeba:1140437","by":"sacredceltic","enId":"1140149","enBy":"CK","auto":true}
+{"term":"Tu travailles comme enseignant à l'école.","back":"You work as a teacher at the school.","scene":"at school","src":"tatoeba:2572654","by":"Amastan","enId":"11617687","enBy":"tieguy","auto":true}
+{"term":"Je pense que je serais un bon enseignant.","back":"I think I'd be a good teacher.","scene":"at school","src":"tatoeba:7353040","by":"Aiji","enId":"5238969","enBy":"CK","auto":true}
+{"term":"Je n'aurais jamais dû devenir enseignant.","back":"I should never have become a teacher.","scene":"at school","src":"tatoeba:8302171","by":"Aiji","enId":"2406346","enBy":"CK","auto":true}
+{"term":"Je me suis endormi en faisant mes devoirs.","back":"I fell asleep while I was doing my homework.","scene":"at school","src":"tatoeba:6335","by":"Archibald","enId":"258544","enBy":"CK","auto":true}
+{"term":"Ça fait quinze ans que je suis professeur.","back":"I have been a teacher for 15 years.","scene":"at school","src":"tatoeba:1533587","by":"sacredceltic","enId":"19069","enBy":"CK","auto":true}
+{"term":"Cela fait quinze ans que je suis enseignant.","back":"I've been a teacher for 15 years.","scene":"at school","src":"tatoeba:4101252","by":"sbamsbamsbam","enId":"3250448","enBy":"Vincinho","auto":true}
+{"term":"Mon père enseigne l'anglais dans un collège.","back":"My father teaches English at a middle school.","scene":"at school","src":"tatoeba:8954230","by":"Aiji","enId":"3459842","enBy":"AlanF_US","auto":true}
+{"term":"Mon oncle enseigne l'anglais à l'université.","back":"My uncle teaches English in a college.","scene":"at school","src":"tatoeba:9150625","by":"Nyans","enId":"250262","enBy":"CK","auto":true}
+{"term":"Je me suis endormi plusieurs fois en classe.","back":"I've fallen asleep in class several times.","scene":"at school","src":"tatoeba:12256968","by":"lbdx","enId":"6927408","enBy":"CK","auto":true}
+{"term":"Nous l'admirons en tant que notre professeur.","back":"We look up to him as our teacher.","scene":"at school","src":"tatoeba:2421503","by":"sacredceltic","enId":"249273","enBy":"CK","auto":true}
+{"term":"« Êtes-vous enseignant ? » « Oui, je le suis. »","back":"\"Are you a teacher?\" \"So I am.\"","scene":"at school","src":"tatoeba:858998","by":"sacredceltic","enId":"73971","enBy":"sacredceltic","auto":true}
+{"term":"On te demandera pourquoi tu veux être enseignant.","back":"You'll be asked why you want to be a teacher.","scene":"at school","src":"tatoeba:2102212","by":"sacredceltic","enId":"2090869","enBy":"CK","auto":true}
+{"term":"Cet enseignant enseigne la conversation anglaise.","back":"That teacher is teaching English conversation.","scene":"at school","src":"tatoeba:11144322","by":"Aiji","enId":"8072502","enBy":"Tesseract42","auto":true}
+{"term":"Vous devriez être silencieux dans une bibliothèque.","back":"You ought to be quiet in a library.","scene":"at school","src":"tatoeba:677867","by":"qdii","enId":"270677","enBy":"CK","auto":true}
+{"term":"« Es-tu enseignant ? » « Oui, je suis enseignant. »","back":"\"Are you a teacher?\" \"Yeah, I'm a teacher.\"","scene":"at school","src":"tatoeba:12185999","by":"Rovo","enId":"12186118","enBy":"Miktsoanit","auto":true}
+{"term":"Quelle est votre spécialité ?","back":"What's your major?","scene":"at school","src":"tatoeba:2083312","by":"sacredceltic","enId":"24685","enBy":"CK","auto":true}
+{"term":"Sais-tu pourquoi il est absent de l'école ?","back":"Do you know why he's not at school?","scene":"at school","src":"tatoeba:10477980","by":"felix63","enId":"10492906","enBy":"sundown","auto":true}
+{"term":"Savez-vous pourquoi il est absent de l'école ?","back":"Do you know why he has been absent from school?","scene":"at school","src":"tatoeba:129933","by":"Aiji","enId":"283201","enBy":"papabear","auto":true}
+{"term":"Je passe un examen en janvier.","back":"I'm taking an exam in January.","scene":"at school","src":"tatoeba:334482","by":"TRANG","enId":"27825","enBy":"CK","auto":true}
+{"term":"Nous aimons cette classe ouvrière.","back":"We love this working class.","scene":"at school","src":"tatoeba:1616686","by":"Micsmithel","enId":"1616670","auto":true}
+{"term":"Je suis impatient d'aller à l'école.","back":"I just can't wait to go to school.","scene":"at school","src":"tatoeba:3649997","by":"sacredceltic","enId":"3649982","enBy":"Hybrid","auto":true}
+{"term":"Vous avez été absent de l'école hier.","back":"You were absent from school yesterday.","scene":"at school","src":"tatoeba:727355","by":"chkube","enId":"69388","enBy":"CK","auto":true}
+{"term":"Je vais généralement à l'école à pied.","back":"I usually walk to school.","scene":"at school","src":"tatoeba:14308","by":"Aiji","enId":"254901","enBy":"CK","auto":true}
+{"term":"Je suis impatient que l'école commence.","back":"I can't wait for school to start.","scene":"at school","src":"tatoeba:1910709","by":"sacredceltic","enId":"1908934","enBy":"Spamster","auto":true}
+{"term":"Nous allons généralement à l'école à pied.","back":"We usually walk to school.","scene":"at school","src":"tatoeba:336881","by":"sysko","enId":"263265","enBy":"CK","auto":true}
+{"term":"Cette école fournit des manuels à ses élèves.","back":"This school supplies textbooks to its students.","scene":"at school","src":"tatoeba:11928315","by":"lbdx","enId":"4921980","enBy":"catapri","auto":true}
+{"term":"N'attends pas de compliment de cet enseignant.","back":"Don't expect this teacher to give you any compliment.","scene":"at school","src":"tatoeba:13343915","by":"genes1s","enId":"6088545","enBy":"OsoHombre","auto":true}
+{"term":"Cet examen est difficile, donc croisons les doigts !","back":"This exam is difficult, so let's cross our fingers!","scene":"at school","src":"tatoeba:759454","by":"Aiji","enId":"759450","auto":true}
+{"term":"Puis-je m'inscrire à ce cours ?","back":"Can I register for that class?","scene":"at school","src":"tatoeba:12947295","by":"lbdx","enId":"2738934","enBy":"Dejo","auto":true}
+{"term":"Avez-vous un uniforme scolaire ?","back":"Do you have a school uniform?","scene":"at school","src":"tatoeba:128806","by":"nimfeo","enId":"271257","enBy":"CK","auto":true}
+{"term":"Où puis-je étudier le français ?","back":"Where can I study French?","scene":"at school","src":"tatoeba:9078144","by":"Julien_PDC","enId":"6090832","enBy":"CK","auto":true}
+{"term":"Où puis-je étudier le norvégien ?","back":"Where can I study Norwegian?","scene":"at school","src":"tatoeba:9151640","by":"Julien_PDC","enId":"9150890","enBy":"avac74","auto":true}
+{"term":"Combien d'élèves y a-t-il au total ?","back":"How many students are there in total?","scene":"at school","src":"tatoeba:845370","by":"sacredceltic","enId":"845608","enBy":"iampo0kie","auto":true}
+{"term":"Veuillez obéir au règlement de l'école.","back":"Please obey the school rules.","scene":"at school","src":"tatoeba:492069","by":"sacredceltic","enId":"482056","enBy":"CK","auto":true}
+{"term":"Quand cette université fut-elle fondée ?","back":"When was this university founded?","scene":"at school","src":"tatoeba:499379","by":"sacredceltic","enId":"57984","enBy":"CK","auto":true}
+{"term":"Quand l'université a-t-elle été fondée ?","back":"When was the university founded?","scene":"at school","src":"tatoeba:1103486","by":"sacredceltic","enId":"4378600","enBy":"AlanF_US","auto":true}
+{"term":"Combien d'élèves y a-t-il dans l'école ?","back":"How many students are there in the school?","scene":"at school","src":"tatoeba:8954231","by":"Aiji","enId":"2973509","enBy":"AlanF_US","auto":true}
+{"term":"Parle-moi de ta professeur, s'il te plaît.","back":"Please, tell me about your teacher.","scene":"at school","src":"tatoeba:6381764","by":"felix63","enId":"6482136","enBy":"Micsmithel","auto":true}
+{"term":"À quelle heure est votre cours de basque ?","back":"What time is your Basque class?","scene":"at school","src":"tatoeba:3167800","by":"Aiji","enId":"717611","enBy":"papabear","auto":true}
+{"term":"Combien y a-t-il d'élèves dans ta classe ?","back":"How many students are in your class?","scene":"at school","src":"tatoeba:11553594","by":"lbdx","enId":"6250429","enBy":"CK","auto":true}
+{"term":"Combien y a-t-il d'élèves dans ton école ?","back":"How many pupils are there in your school?","scene":"at school","src":"tatoeba:13207212","by":"lbdx","enId":"17284","enBy":"Swift","auto":true}
+{"term":"Combien y a-t-il de garçons dans la classe ?","back":"How many boys are there in this class?","scene":"at school","src":"tatoeba:332713","by":"sysko","enId":"61193","enBy":"saeb","auto":true}
+{"term":"Quand est-ce que le cours d'italien débute ?","back":"When will the Italian class start?","scene":"at school","src":"tatoeba:3779543","by":"Julien_PDC","enId":"3786155","enBy":"AlanF_US","auto":true}
+{"term":"Combien d'élèves y a-t-il dans votre classe ?","back":"How many pupils are there in your class?","scene":"at school","src":"tatoeba:10271","by":"sacredceltic","enId":"70932","enBy":"sundown","auto":true}
+{"term":"Y a-t-il de mignons garçons, dans ta classe ?","back":"Are there any cute boys in your class?","scene":"at school","src":"tatoeba:3572250","by":"sacredceltic","enId":"3571923","enBy":"Hybrid","auto":true}
+{"term":"Veuillez vous conformer aux règles de l'école.","back":"Please follow the school rules.","scene":"at school","src":"tatoeba:1580433","by":"sacredceltic","enId":"1580370","enBy":"sam_m","auto":true}
+{"term":"Y a-t-il de mignonnes filles, dans ta classe ?","back":"Are there any cute girls in your class?","scene":"at school","src":"tatoeba:3572253","by":"sacredceltic","enId":"3571922","enBy":"Hybrid","auto":true}
+{"term":"Combien y a-t-il de garçons dans votre classe ?","back":"How many boys are in your class?","scene":"at school","src":"tatoeba:337962","by":"sysko","enId":"5849133","enBy":"CK","auto":true}
+{"term":"Combien de livres y a-t-il dans cette bibliothèque ?","back":"How many books are there in this library?","scene":"at school","src":"tatoeba:1820832","by":"nimfeo","enId":"1820749","enBy":"Amastan","auto":true}
+{"term":"Es-tu lycéen ?","back":"Are you a high school student?","scene":"at school","src":"tatoeba:1347680","by":"sacredceltic","enId":"69439","enBy":"CK","auto":true}
+{"term":"Est-il enseignant ?","back":"Is he a teacher?","scene":"at school","src":"tatoeba:817475","by":"sacredceltic","enId":"300638","enBy":"CK","auto":true}
+{"term":"Êtes-vous enseignante ?","back":"Are you a teacher?","scene":"at school","src":"tatoeba:9986780","by":"felix63","enId":"2894605","enBy":"AlanF_US","auto":true}
+{"term":"Est-il votre enseignant ?","back":"Is he your teacher?","scene":"at school","src":"tatoeba:4548608","by":"sacredceltic","enId":"282885","enBy":"CK","auto":true}
+{"term":"Tu as déjà séché l’école ?","back":"Have you ever skipped school?","scene":"at school","src":"tatoeba:3563077","by":"gillux","enId":"3583291","enBy":"mikecash","auto":true}
+{"term":"Est-il un élève appliqué ?","back":"Is he a hardworking student?","scene":"at school","src":"tatoeba:4710950","by":"sacredceltic","enId":"295408","enBy":"CK","auto":true}
+{"term":"Je voudrais étudier l'arabe.","back":"I would like to study Arabic.","scene":"at school","src":"tatoeba:819259","by":"Julien_PDC","enId":"753302","enBy":"CN","auto":true}
+{"term":"Son père est-il enseignant ?","back":"Is her father a teacher?","scene":"at school","src":"tatoeba:1309692","by":"sacredceltic","enId":"309712","enBy":"CK","auto":true}
+{"term":"Quel lycée as-tu fréquenté ?","back":"What high school did you go to?","scene":"at school","src":"tatoeba:2264992","by":"sacredceltic","enId":"2234982","enBy":"Hybrid","auto":true}
+{"term":"As-tu séché les cours hier ?","back":"Did you play hooky yesterday?","scene":"at school","src":"tatoeba:11737715","by":"lbdx","enId":"7849034","enBy":"CK","auto":true}
+{"term":"Comment s'est passé l'examen ?","back":"How did the exam go?","scene":"at school","src":"tatoeba:128086","by":"sacredceltic","enId":"263436","enBy":"CK","auto":true}
+{"term":"Quelle école as-tu fréquentée ?","back":"What school did you go to?","scene":"at school","src":"tatoeba:2265410","by":"sacredceltic","enId":"2234981","enBy":"Hybrid","auto":true}
+{"term":"T'es-tu déjà bagarré au lycée ?","back":"Have you ever fought at high school?","scene":"at school","src":"tatoeba:4755781","by":"Amastan","enId":"1717708","enBy":"Amastan","auto":true}
+{"term":"As-tu assisté au dernier cours ?","back":"Did you go to the last class?","scene":"at school","src":"tatoeba:458656","by":"sacredceltic","enId":"58075","enBy":"CK","auto":true}
+{"term":"Tu n'as pas de devoirs à faire ?","back":"Don't you have some homework to do?","scene":"at school","src":"tatoeba:12176050","by":"lbdx","enId":"5738611","enBy":"Hybrid","auto":true}
+{"term":"As-tu jamais triché à un examen ?","back":"Have you ever cheated on an exam?","scene":"at school","src":"tatoeba:1356305","by":"sacredceltic","enId":"953292","enBy":"CK","auto":true}
+{"term":"Avez-vous fini votre inscription ?","back":"Did you finish your class registration?","scene":"at school","src":"tatoeba:129265","by":"Julien_PDC","enId":"276691","enBy":"Lurid","auto":true}
+{"term":"Comment évaluez-vous vos étudiants ?","back":"How do you assess your students?","scene":"at school","src":"tatoeba:1353853","by":"sacredceltic","enId":"69828","enBy":"CK","auto":true}
+{"term":"Comment c'est dans une école privée ?","back":"How is it in a private school?","scene":"at school","src":"tatoeba:334310","by":"sysko","enId":"263335","auto":true}
+{"term":"Je voudrais étudier les mathématiques.","back":"I want to study maths.","scene":"at school","src":"tatoeba:938369","by":"sacredceltic","enId":"7984138","enBy":"deniko","auto":true}
+{"term":"Est-ce que tes devoirs sont terminés ?","back":"Is your homework done?","scene":"at school","src":"tatoeba:7029844","by":"Aiji","enId":"4960772","enBy":"Chackoony","auto":true}
+{"term":"Je veux être un professeur exceptionnel.","back":"I want to be an exceptional teacher.","scene":"at school","src":"tatoeba:12257850","by":"Rovo","enId":"12257862","enBy":"Miktsoanit","auto":true}
+{"term":"Sais-tu pourquoi il a séché aujourd'hui ?","back":"Do you know why he skipped class today?","scene":"at school","src":"tatoeba:129990","by":"Aiji","enId":"461197","enBy":"CK","auto":true}
+{"term":"L'école et le quartier sont-ils craignos ?","back":"Are the school and neighborhood sketchy?","scene":"at school","src":"tatoeba:6742047","by":"nimfeo","enId":"11676473","enBy":"tieguy","auto":true}
+{"term":"Avez-vous décidé de votre sujet de thèse ?","back":"Have you decided on the subject of your thesis?","scene":"at school","src":"tatoeba:136338","by":"TRANG","enId":"274539","enBy":"CK","auto":true}
+{"term":"Comment s'est passé le cours de français ?","back":"How was the French class?","scene":"at school","src":"tatoeba:393406","by":"qdii","enId":"393407","enBy":"shekitten","auto":true}
+{"term":"Quelle est ta matière favorite à l'école ?","back":"What's your favorite subject at school?","scene":"at school","src":"tatoeba:3698755","by":"Elliv","enId":"906895","enBy":"CK","auto":true}
+{"term":"Quand tu as une question, demande au prof.","back":"When you have a question, ask the teacher.","scene":"at school","src":"tatoeba:6167074","by":"Aiji","enId":"1341280","enBy":"CK","auto":true}
+{"term":"Qui est en charge de la cantine scolaire ?","back":"Who's in charge of the school kitchen?","scene":"at school","src":"tatoeba:9576706","by":"Aiji","enId":"2750995","enBy":"sharptoothed","auto":true}
+{"term":"Comment s'est passée l'école, aujourd'hui ?","back":"How was school today?","scene":"at school","src":"tatoeba:1910773","by":"sacredceltic","enId":"1908585","enBy":"Spamster","auto":true}
+{"term":"Avez-vous passé l'examen de mathématiques ?","back":"Have you sat the maths exam?","scene":"at school","src":"tatoeba:3665249","by":"THURET","enId":"3668539","enBy":"speedwell","auto":true}
+{"term":"Ton école se situe-t-elle dans cette ville ?","back":"Is your school in this town?","scene":"at school","src":"tatoeba:332977","by":"sysko","enId":"70774","enBy":"CK","auto":true}
+{"term":"Un enseignant est-il un homme ou une femme ?","back":"Is a teacher a man or a woman?","scene":"at school","src":"tatoeba:11947386","by":"RCendre","enId":"13125203","enBy":"rul","auto":true}
+{"term":"Ton école dispose-t-elle d'une bibliothèque ?","back":"Does your school have a library?","scene":"at school","src":"tatoeba:1828010","by":"sacredceltic","enId":"1827560","enBy":"CK","auto":true}
+{"term":"As-tu déjà terminé tes études universitaires ?","back":"Have you already finished university?","scene":"at school","src":"tatoeba:1104374","by":"sacredceltic","enId":"9211595","enBy":"sundown","auto":true}
+{"term":"Ce livre est-il disponible à la bibliothèque ?","back":"Is this book available in the library?","scene":"at school","src":"tatoeba:11780874","by":"lbdx","enId":"10064109","enBy":"sundown","auto":true}
+{"term":"Pourquoi n'étudies-tu pas un peu plus assidument ?","back":"Why don't you just study a little harder?","scene":"at school","src":"tatoeba:5943432","by":"Aiji","enId":"3824130","enBy":"CK","auto":true}
+{"term":"Pourquoi vous êtes-vous absenté de la classe hier ?","back":"Why did you absent yourself from class yesterday?","scene":"at school","src":"tatoeba:469918","by":"sacredceltic","enId":"16454","enBy":"jakov","auto":true}
+{"term":"Connaissez-vous quelqu'un qui a réussi cet examen ?","back":"Do you know anybody who passed this exam?","scene":"at school","src":"tatoeba:4244932","by":"JulieMDM","enId":"4243633","enBy":"Lebad","auto":true}
+{"term":"Quelle est votre opinion concernant les uniformes scolaires ?","back":"What is your opinion on school uniforms?","scene":"at school","src":"tatoeba:4995195","by":"sacredceltic","enId":"2333275","enBy":"Hybrid","auto":true}
+{"term":"J'ai séché.","back":"I cut class.","scene":"at school","src":"tatoeba:4679134","by":"sacredceltic","enId":"2245668","enBy":"CK","auto":true}
+{"term":"Ne cafte pas.","back":"Don't tell tales out of school.","scene":"at school","src":"tatoeba:14020353","by":"Myrano_","enId":"21557","enBy":"moman","auto":true}
+{"term":"C'est mon école.","back":"That is my school.","scene":"at school","src":"tatoeba:470434","by":"sacredceltic","enId":"67127","enBy":"CK","auto":true}
+{"term":"J'ai des devoirs.","back":"I have homework.","scene":"at school","src":"tatoeba:2433583","by":"sacredceltic","enId":"2245886","enBy":"CK","auto":true}
+{"term":"J'étudie l'islam.","back":"I study Islam.","scene":"at school","src":"tatoeba:11590595","by":"Amastan","enId":"8145169","enBy":"Amastan","auto":true}
+{"term":"Je vais au lycée.","back":"I go to high school.","scene":"at school","src":"tatoeba:12357523","by":"lbdx","enId":"9763503","enBy":"CK","auto":true}
+{"term":"Je suis un lycéen.","back":"I'm a high school student.","scene":"at school","src":"tatoeba:6544","by":"Cocorico","enId":"257432","enBy":"CK","auto":true}
+{"term":"Loupons les cours.","back":"Let's bunk off class.","scene":"at school","src":"tatoeba:10958201","by":"GuiFFI","enId":"6359511","enBy":"sundown","auto":true}
+{"term":"J'étudie le coréen.","back":"I study Korean.","scene":"at school","src":"tatoeba:474504","by":"Micsmithel","enId":"472091","enBy":"tamsanh","auto":true}
+{"term":"Je suis au collège.","back":"I'm a junior high school student.","scene":"at school","src":"tatoeba:3766282","by":"gillux","enId":"252301","enBy":"CK","auto":true}
+{"term":"Nous sommes lycéens.","back":"We're high school students.","scene":"at school","src":"tatoeba:1203301","by":"sacredceltic","enId":"3311006","enBy":"CK","auto":true}
+{"term":"Mon frère est lycéen.","back":"My brother is a high school student.","scene":"at school","src":"tatoeba:1502917","by":"sysko","enId":"251522","enBy":"CK","auto":true}
+{"term":"J'ai couru à l'école.","back":"I ran to school.","scene":"at school","src":"tatoeba:6131298","by":"sicerabibax","enId":"5850216","enBy":"CK","auto":true}
+{"term":"J'ai un examen lundi.","back":"I have an exam on Monday.","scene":"at school","src":"tatoeba:6817718","by":"Rockaround","enId":"3822353","enBy":"CK","auto":true}
+{"term":"C'est mon enseignant.","back":"That's my teacher.","scene":"at school","src":"tatoeba:7793930","by":"Aiji","enId":"2094637","enBy":"AlanF_US","auto":true}
+{"term":"J'ai besoin d'étudier.","back":"I need to study.","scene":"at school","src":"tatoeba:127901","by":"Julien_PDC","enId":"400128","enBy":"CK","auto":true}
+{"term":"Tu n'es qu'un étudiant.","back":"You're nothing but a student.","scene":"at school","src":"tatoeba:869115","by":"sacredceltic","enId":"9684756","enBy":"CM","auto":true}
+{"term":"J'ai fait ça à l'école.","back":"I did that in school.","scene":"at school","src":"tatoeba:7763244","by":"Aiji","enId":"6730951","enBy":"CK","auto":true}
+{"term":"Demandons au professeur.","back":"Let's ask the teacher.","scene":"at school","src":"tatoeba:128935","by":"nimfeo","enId":"272832","enBy":"CK","auto":true}
+{"term":"On n'a pas cours demain.","back":"We have no school tomorrow.","scene":"at school","src":"tatoeba:138866","by":"sacredceltic","enId":"249421","enBy":"CK","auto":true}
+{"term":"Dois-je aller au lycée ?","back":"Should I go to college?","scene":"at school","src":"tatoeba:1123777","by":"sacredceltic","enId":"758595","enBy":"CM","auto":true}
+{"term":"Cet élève est paresseux.","back":"This student is lazy.","scene":"at school","src":"tatoeba:2031202","by":"sacredceltic","enId":"2030107","enBy":"Spamster","auto":true}
+{"term":"J'ai une fille au lycée.","back":"I have a daughter in high school.","scene":"at school","src":"tatoeba:2433329","by":"sacredceltic","enId":"1887350","enBy":"CK","auto":true}
+{"term":"Ma sœur est enseignante.","back":"My sister is a teacher.","scene":"at school","src":"tatoeba:6461264","by":"Aiji","enId":"3378020","enBy":"CM","auto":true}
+{"term":"J'étudie la psychologie.","back":"I study psychology.","scene":"at school","src":"tatoeba:9253018","by":"Micsmithel","enId":"1132368","enBy":"CM","auto":true}
+{"term":"J'ai beaucoup de devoirs.","back":"I have a lot of homework.","scene":"at school","src":"tatoeba:421789","by":"sysko","enId":"418848","enBy":"CK","auto":true}
+{"term":"C'est l'heure de l'école.","back":"It's time for school.","scene":"at school","src":"tatoeba:1843109","by":"sacredceltic","enId":"1841609","enBy":"CK","auto":true}
+{"term":"Je viens d'avoir mon bac.","back":"I just graduated from high school.","scene":"at school","src":"tatoeba:2369345","by":"sacredceltic","enId":"2362221","enBy":"CK","auto":true}
+{"term":"J'ai des devoirs à faire.","back":"I have homework to do.","scene":"at school","src":"tatoeba:4189363","by":"Scorpionvenin14","enId":"4177434","enBy":"Hybrid","auto":true}
+{"term":"J'ai un prof particulier.","back":"I have a private teacher.","scene":"at school","src":"tatoeba:8391036","by":"Aiji","enId":"2915019","enBy":"CK","auto":true}
+{"term":"Fais d'abord tes devoirs.","back":"Do your homework first.","scene":"at school","src":"tatoeba:13376226","by":"lbdx","enId":"9794203","enBy":"Amastan","auto":true}
+{"term":"C'est l'école de ma fille.","back":"This is my daughter's school.","scene":"at school","src":"tatoeba:3660994","by":"sacredceltic","enId":"2643347","enBy":"CK","auto":true}
+{"term":"J'ai effectué mes devoirs.","back":"I did my homework.","scene":"at school","src":"tatoeba:4223269","by":"sacredceltic","enId":"2314845","enBy":"CK","auto":true}
+{"term":"C'est ma matière préférée.","back":"This is my favorite subject.","scene":"at school","src":"tatoeba:4994988","by":"nimfeo","enId":"3232723","enBy":"CK","auto":true}
+{"term":"J'aime étudier l'espagnol.","back":"I like to study Spanish.","scene":"at school","src":"tatoeba:5203119","by":"davidcfres","enId":"5203100","enBy":"Airvian","auto":true}
+{"term":"J'ai cours dans une heure.","back":"I have class in an hour.","scene":"at school","src":"tatoeba:5829798","by":"Aiji","enId":"2359379","enBy":"CK","auto":true}
+{"term":"J'ai une tonne de devoirs.","back":"I've got a ton of homework.","scene":"at school","src":"tatoeba:6322857","by":"Yemana","enId":"6321893","enBy":"sundown","auto":true}
+{"term":"C'est dangereux d'étudier.","back":"It's dangerous to study.","scene":"at school","src":"tatoeba:7702319","by":"Maxence","enId":"4867946","auto":true}
+{"term":"Tu as séché trop de cours.","back":"You've skipped too many classes.","scene":"at school","src":"tatoeba:10940214","by":"lbdx","enId":"2541133","enBy":"CK","auto":true}
+{"term":"Je n'ai jamais eu mon bac.","back":"I never graduated from high school.","scene":"at school","src":"tatoeba:12945592","by":"lbdx","enId":"6003819","enBy":"CK","auto":true}
+{"term":"Tu encadrais les étudiants.","back":"You supervised the students.","scene":"at school","src":"tatoeba:2257645","by":"Amastan","enId":"8981948","enBy":"sundown","auto":true}
+{"term":"J'aime apprendre l'anglais.","back":"I like to study English.","scene":"at school","src":"tatoeba:6785","by":"Cocorico","enId":"256239","enBy":"CN","auto":true}
+{"term":"C'est ton devoir d'étudier.","back":"It is your duty to study.","scene":"at school","src":"tatoeba:135009","by":"Julien_PDC","enId":"320402","auto":true}
+{"term":"Ma sœur n'est pas lycéenne.","back":"My sister isn't a high school student.","scene":"at school","src":"tatoeba:452971","by":"sacredceltic","enId":"7492946","enBy":"CK","auto":true}
+{"term":"J'ai déjà fait mes devoirs.","back":"I've already done my homework.","scene":"at school","src":"tatoeba:578097","by":"sacredceltic","enId":"3823747","enBy":"CK","auto":true}
+{"term":"Cet étudiant est étasunien.","back":"This student is an American.","scene":"at school","src":"tatoeba:1200936","by":"sacredceltic","enId":"4372958","enBy":"jetkk","auto":true}
+{"term":"J'ai la nostalgie du lycée.","back":"I miss college.","scene":"at school","src":"tatoeba:1823341","by":"sacredceltic","enId":"1822875","enBy":"Spamster","auto":true}
+{"term":"J'étudie les mathématiques.","back":"I study mathematics.","scene":"at school","src":"tatoeba:3713626","by":"GB3","enId":"2920711","enBy":"CK","auto":true}
+{"term":"J'ai fait mes devoirs hier.","back":"I did my homework yesterday.","scene":"at school","src":"tatoeba:4227813","by":"sacredceltic","enId":"2611764","enBy":"CM","auto":true}
+{"term":"C'est une très bonne école.","back":"It's a really good school.","scene":"at school","src":"tatoeba:4532123","by":"Whidou","enId":"3619170","enBy":"CK","auto":true}
+{"term":"Quel enseignant paresseux !","back":"What a lazy teacher!","scene":"at school","src":"tatoeba:4626071","by":"sacredceltic","enId":"24881","enBy":"CK","auto":true}
+{"term":"C'est une bonne université.","back":"This is a good university.","scene":"at school","src":"tatoeba:11791795","by":"Zahia_Ntmazirt","enId":"11791804","enBy":"Zahia_Ntmazirt","auto":true}
+{"term":"Cette femme est enseignante.","back":"This woman is a teacher.","scene":"at school","src":"tatoeba:8444238","by":"felix63","enId":"8444261","enBy":"Luiaard","auto":true}
+{"term":"Mon fils est entré au lycée.","back":"My son entered high school.","scene":"at school","src":"tatoeba:355140","by":"Barbiche0","enId":"251374","enBy":"CK","auto":true}
+{"term":"Notre école a cinquante ans.","back":"Our school is fifty years old.","scene":"at school","src":"tatoeba:1348207","by":"sacredceltic","enId":"247486","enBy":"CK","auto":true}
+{"term":"J'ai des devoirs à terminer.","back":"I have homework to finish.","scene":"at school","src":"tatoeba:2070756","by":"sacredceltic","enId":"1887360","enBy":"CK","auto":true}
+{"term":"Je ne suis qu'un enseignant.","back":"I'm just a teacher.","scene":"at school","src":"tatoeba:4096610","by":"sbamsbamsbam","enId":"2548707","enBy":"CK","auto":true}
+{"term":"Je n'ai jamais aimé l'école.","back":"I never liked school.","scene":"at school","src":"tatoeba:5549496","by":"sacredceltic","enId":"2724511","enBy":"Hybrid","auto":true}
+{"term":"Je décore la salle de cours.","back":"I'm decorating the classroom.","scene":"at school","src":"tatoeba:6877125","by":"Micsmithel","enId":"6873104","enBy":"CK","auto":true}
+{"term":"J'ai fait ça à l'école hier.","back":"I did that at school yesterday.","scene":"at school","src":"tatoeba:7125022","by":"Aiji","enId":"6738157","enBy":"CK","auto":true}
+{"term":"On t'a appris ça à l'école ?","back":"Were you taught that at school?","scene":"at school","src":"tatoeba:10709134","by":"lbdx","enId":"10708165","enBy":"sundown","auto":true}
+{"term":"Tu es un étudiant paresseux.","back":"You're a lazy student.","scene":"at school","src":"tatoeba:13341716","by":"genes1s","enId":"6272133","enBy":"CK","auto":true}
+{"term":"Tu n'as pas besoin d'étudier.","back":"You don't have to study.","scene":"at school","src":"tatoeba:1243794","by":"sacredceltic","enId":"68953","enBy":"CK","auto":true}
+{"term":"Ma mère m'a dit : « Étudie. »","back":"My mother said to me, \"Study.\"","scene":"at school","src":"tatoeba:1366516","by":"Danquebec","enId":"251855","auto":true}
+{"term":"Je suis étudiant en biologie.","back":"I'm a biology student.","scene":"at school","src":"tatoeba:6135606","by":"Selenyt","enId":"6135605","enBy":"Selenyt","auto":true}
+{"term":"J'ai une montagne de devoirs.","back":"I've got a mountain of homework.","scene":"at school","src":"tatoeba:6325288","by":"felix63","enId":"9960785","enBy":"sundown","auto":true}
+{"term":"Je n'ai aucun devoir ce soir.","back":"I don't have any homework tonight.","scene":"at school","src":"tatoeba:8419945","by":"sacredceltic","enId":"2915026","enBy":"CK","auto":true}
+{"term":"C'est mon professeur préféré.","back":"This is my favorite teacher.","scene":"at school","src":"tatoeba:8532922","by":"Julien_PDC","enId":"7035394","enBy":"OsoHombre","auto":true}
+{"term":"J'aime les cours de français.","back":"I like French class.","scene":"at school","src":"tatoeba:9159305","by":"Julien_PDC","enId":"6440483","enBy":"CK","auto":true}
+{"term":"J'ai la faiblesse des devoirs.","back":"I've got a weakness for homework.","scene":"at school","src":"tatoeba:526824","by":"qdii","enId":"526821","enBy":"FeuDRenais","auto":true}
+{"term":"Je n'ai pas cours aujourd'hui.","back":"I don't have classes today.","scene":"at school","src":"tatoeba:1129049","by":"sacredceltic","enId":"242874","enBy":"CK","auto":true}
+{"term":"Les étudiants en sont friands.","back":"It's popular with students.","scene":"at school","src":"tatoeba:1794021","by":"sacredceltic","enId":"1789134","enBy":"Spamster","auto":true}
+{"term":"J'apprécie d'être enseignante.","back":"I enjoy being a teacher.","scene":"at school","src":"tatoeba:2415923","by":"sacredceltic","enId":"2325170","enBy":"CK","auto":true}
+{"term":"Tu n'as pas rendu tes devoirs.","back":"You didn't turn in your homework.","scene":"at school","src":"tatoeba:5933983","by":"Aiji","enId":"2540732","enBy":"CK","auto":true}
+{"term":"J'aime aller à l'école à pied.","back":"I like walking to school.","scene":"at school","src":"tatoeba:6398731","by":"EnglishLover","enId":"6398724","enBy":"Barra","auto":true}
+{"term":"J'ai un cours de violon lundi.","back":"I have a violin lesson on Monday.","scene":"at school","src":"tatoeba:7063872","by":"Aiji","enId":"5847010","enBy":"CK","auto":true}
+{"term":"C'est une petite bibliothèque.","back":"It's a small library.","scene":"at school","src":"tatoeba:7477840","by":"theachaean","enId":"5923971","enBy":"mailohilohi","auto":true}
+{"term":"Je vais te remmener à l'école.","back":"I'll take you back to school.","scene":"at school","src":"tatoeba:7967006","by":"Aiji","enId":"3662996","enBy":"Luciosp","auto":true}
+{"term":"Ne contredis pas ta maîtresse.","back":"Don't contradict your teacher.","scene":"at school","src":"tatoeba:11223502","by":"lbdx","enId":"4496908","enBy":"CK","auto":true}
+{"term":"Cette leçon est annulée demain.","back":"This lesson is cancelled tomorrow.","scene":"at school","src":"tatoeba:444790","by":"Archibald","enId":"58586","enBy":"sundown","auto":true}
+{"term":"Je n'ai aucune envie d'étudier.","back":"I have no desire to study.","scene":"at school","src":"tatoeba:756492","by":"nimfeo","enId":"7681739","enBy":"ouitroisheures19","auto":true}
+{"term":"Je rêve de devenir enseignante.","back":"I dream of becoming a teacher.","scene":"at school","src":"tatoeba:865749","by":"sacredceltic","enId":"1435874","enBy":"caspian","auto":true}
+{"term":"Je n'ai absolument rien étudié.","back":"I didn't study at all.","scene":"at school","src":"tatoeba:961082","by":"sacredceltic","enId":"259133","enBy":"CK","auto":true}
+{"term":"J'ai déjà parlé à cet étudiant.","back":"I've already talked to this student.","scene":"at school","src":"tatoeba:1107191","by":"Aiji","enId":"502826","enBy":"blay_paul","auto":true}
+{"term":"Mon école dispose d'un dortoir.","back":"My college has a dorm.","scene":"at school","src":"tatoeba:1174425","by":"sacredceltic","enId":"1152401","enBy":"belgavox","auto":true}
+{"term":"C'est son premier jour d'école.","back":"It is his first day of school.","scene":"at school","src":"tatoeba:4218276","by":"sacredceltic","enId":"4193757","enBy":"tinowls","auto":true}
+{"term":"Je n'ai rien d'autre à étudier.","back":"I have nothing else to study.","scene":"at school","src":"tatoeba:4404983","by":"Eden1","enId":"4404950","enBy":"Ooneykcall","auto":true}
+{"term":"Jouons au basket après l'école.","back":"Let's play basketball after school.","scene":"at school","src":"tatoeba:8703364","by":"Julien_PDC","enId":"321008","enBy":"CK","auto":true}
+{"term":"Je n'ai pas de devoirs à faire.","back":"I don't have any homework.","scene":"at school","src":"tatoeba:12963275","by":"lbdx","enId":"5388616","enBy":"Hybrid","auto":true}
+{"term":"Notre institutrice rit rarement.","back":"Our teacher seldom laughs.","scene":"at school","src":"tatoeba:972644","by":"sacredceltic","enId":"262607","enBy":"CK","auto":true}
+{"term":"Je te donnerai une amère leçon !","back":"I will teach you a tough lesson!","scene":"at school","src":"tatoeba:1019533","by":"sacredceltic","enId":"1723417","enBy":"belgavox","auto":true}
+{"term":"Mon collège comporte un dortoir.","back":"My college has a dormitory.","scene":"at school","src":"tatoeba:1339575","by":"sacredceltic","enId":"1166683","enBy":"CK","auto":true}
+{"term":"J'ai décidé d'étudier les kanji.","back":"I've decided to study kanji.","scene":"at school","src":"tatoeba:2180651","by":"Rovo","enId":"2180645","enBy":"CK","auto":true}
+{"term":"J'ai encore des devoirs à faire.","back":"I still have some homework to do.","scene":"at school","src":"tatoeba:3572249","by":"sacredceltic","enId":"3571929","enBy":"Hybrid","auto":true}
+{"term":"J'étudie la grammaire française.","back":"I study French grammar.","scene":"at school","src":"tatoeba:4822897","by":"sicerabibax","enId":"11559651","enBy":"weirdie","auto":true}
+{"term":"J'ai déjà visité son université.","back":"I've already visited his university.","scene":"at school","src":"tatoeba:7811454","by":"Aiji","enId":"4128330","enBy":"AlanF_US","auto":true}
+{"term":"Je n'ai pas du tout étudié hier.","back":"I didn't study at all yesterday.","scene":"at school","src":"tatoeba:7971053","by":"Aiji","enId":"257788","enBy":"CK","auto":true}
+{"term":"Sortez vos cahiers et vos stylos.","back":"Get out your notebooks and pens.","scene":"at school","src":"tatoeba:13039","by":"sacredceltic","enId":"35778","enBy":"CK","auto":true}
+{"term":"J'ai beaucoup de devoirs à faire.","back":"I have a lot of homework to do.","scene":"at school","src":"tatoeba:13708","by":"sacredceltic","enId":"30181","enBy":"CK","auto":true}
+{"term":"Cet étudiant étudie l'ingénierie.","back":"That college student is studying engineering.","scene":"at school","src":"tatoeba:1741332","by":"sacredceltic","enId":"522660","enBy":"blay_paul","auto":true}
+{"term":"C'est son premier jour à l'école.","back":"It's his first day at school.","scene":"at school","src":"tatoeba:2208324","by":"sacredceltic","enId":"2206498","enBy":"Hybrid","auto":true}
+{"term":"Je ne suis qu'un pauvre étudiant.","back":"I'm just a poor student.","scene":"at school","src":"tatoeba:2321795","by":"sacredceltic","enId":"2321257","enBy":"Hybrid","auto":true}
+{"term":"J'ai oublié de faire mes devoirs.","back":"I forgot to do my homework.","scene":"at school","src":"tatoeba:2422867","by":"sacredceltic","enId":"2326566","enBy":"CK","auto":true}
+{"term":"Ce n'est pas une salle de classe.","back":"It's not a classroom.","scene":"at school","src":"tatoeba:4854135","by":"sacredceltic","enId":"529975","enBy":"CK","auto":true}
+{"term":"Mon fils est au lycée maintenant.","back":"My son is in high school now.","scene":"at school","src":"tatoeba:6067087","by":"Aiji","enId":"1042673","enBy":"GPHemsley","auto":true}
+{"term":"Notre école est maintenant mixte.","back":"Our school is now coeducational.","scene":"at school","src":"tatoeba:7236786","by":"Aiji","enId":"5364120","enBy":"CK","auto":true}
+{"term":"Je suis un professeur au chômage.","back":"I'm an unemployed teacher.","scene":"at school","src":"tatoeba:7526043","by":"tras","enId":"7521430","enBy":"CK","auto":true}
+{"term":"Je suis étudiant en architecture.","back":"I'm an architecture student.","scene":"at school","src":"tatoeba:13325617","by":"genes1s","enId":"8811764","enBy":"CK","auto":true}
+{"term":"Où je vais à l'école m'indiffère.","back":"I don't care where I go to school.","scene":"at school","src":"tatoeba:13457612","by":"sacredceltic","enId":"7112150","enBy":"CM","auto":true}
+{"term":"Tu aurais dû te préparer au cours.","back":"You should've prepared for the lesson.","scene":"at school","src":"tatoeba:1045959","by":"sacredceltic","enId":"8986776","enBy":"CK","auto":true}
+{"term":"Mon collège comporte des dortoirs.","back":"My college has dormitories.","scene":"at school","src":"tatoeba:1339579","by":"sacredceltic","enId":"1166685","enBy":"CK","auto":true}
+{"term":"Je vais quotidiennement à l'école.","back":"I go to school daily.","scene":"at school","src":"tatoeba:3132539","by":"Micsmithel","enId":"3154922","enBy":"Vanilla","auto":true}
+{"term":"Nous n'avons rien appris à l'école.","back":"We learnt nothing at school.","scene":"at school","src":"tatoeba:2572611","by":"Amastan","enId":"3049530","enBy":"patgfisher","auto":true}
+{"term":"Mon fils a été récemment scolarisé.","back":"My son recently started school.","scene":"at school","src":"tatoeba:9337800","by":"felix63","enId":"10689652","enBy":"sundown","auto":true}
+{"term":"Notre école est au sud de la ville.","back":"Our school is in the south of the city.","scene":"at school","src":"tatoeba:128057","by":"nimfeo","enId":"262572","enBy":"sundown","auto":true}
+{"term":"Nous n'avons pas cours aujourd'hui.","back":"We have no school today.","scene":"at school","src":"tatoeba:431350","by":"qdii","enId":"247944","enBy":"CK","auto":true}
+{"term":"Je n'ai pas de devoirs aujourd'hui.","back":"I have no homework today.","scene":"at school","src":"tatoeba:1052132","by":"sacredceltic","enId":"242878","enBy":"CK","auto":true}
+{"term":"Cette salle de classe est nettoyée.","back":"This classroom is cleaned.","scene":"at school","src":"tatoeba:1129075","by":"sacredceltic","enId":"59668","auto":true}
+{"term":"Mon université comporte un dortoir.","back":"My university has a dormitory.","scene":"at school","src":"tatoeba:1348198","by":"sacredceltic","enId":"1166682","enBy":"CK","auto":true}
+{"term":"Je n'ai pas apprécié ma professeur.","back":"I didn't like my teacher.","scene":"at school","src":"tatoeba:2291771","by":"sacredceltic","enId":"2291173","enBy":"CK","auto":true}
+{"term":"J'étudie toujours avec application.","back":"I always study hard.","scene":"at school","src":"tatoeba:5066663","by":"sacredceltic","enId":"66085","enBy":"CK","auto":true}
+{"term":"J'ai décidé de retourner à l'école.","back":"I've decided to go back to school.","scene":"at school","src":"tatoeba:7290440","by":"Aiji","enId":"3359940","enBy":"CK","auto":true}
+{"term":"Vous avez embrouillé les étudiants.","back":"You've confused the students.","scene":"at school","src":"tatoeba:8305638","by":"Aiji","enId":"7824320","enBy":"CK","auto":true}
+{"term":"As-tu été grondé par ta maîtresse ?","back":"Were you scolded by your teacher?","scene":"at school","src":"tatoeba:8979422","by":"lbdx","enId":"69154","enBy":"CK","auto":true}
+{"term":"Nous vivons à proximité de l'école.","back":"We live in the vicinity of the school.","scene":"at school","src":"tatoeba:9936840","by":"lbdx","enId":"1042308","enBy":"yessoos","auto":true}
+{"term":"Lève-toi. C'est l'heure de l'école.","back":"Get up. It's time for school.","scene":"at school","src":"tatoeba:12949059","by":"lbdx","enId":"12042783","enBy":"ddnktr","auto":true}
+{"term":"J'ai la flemme de faire mes devoirs.","back":"I'm too lazy to do my homework.","scene":"at school","src":"tatoeba:3970","by":"TRANG","enId":"2155","enBy":"CK","auto":true}
+{"term":"Je suis juste un simple instituteur.","back":"I am just a humble teacher.","scene":"at school","src":"tatoeba:14813","by":"Julien_PDC","enId":"256040","enBy":"sacredceltic","auto":true}
+{"term":"Dorénavant je travaillerai plus dur.","back":"I'll study harder from now on.","scene":"at school","src":"tatoeba:15220","by":"nimfeo","enId":"1225392","enBy":"CK","auto":true}
+{"term":"Aucun étudiant n'est venu à la fête.","back":"No student went to the party.","scene":"at school","src":"tatoeba:331132","by":"TRANG","enId":"50046","enBy":"CK","auto":true}
+{"term":"Mes notes scolaires furent moyennes.","back":"My school marks were average.","scene":"at school","src":"tatoeba:1631109","by":"sacredceltic","enId":"1626136","enBy":"CM","auto":true}
+{"term":"C'est notre première heure de cours.","back":"This is our first lesson.","scene":"at school","src":"tatoeba:3085741","by":"Rovo","enId":"3085316","enBy":"CM","auto":true}
+{"term":"Je suis sûr qu'il réussira l'examen.","back":"I am certain that he will pass the exam.","scene":"at school","src":"tatoeba:4276057","by":"mariezou","enId":"453788","enBy":"saasmath","auto":true}
+{"term":"Ma boîte-à-bac se trouve loin d'ici.","back":"My cram school is a long way from here.","scene":"at school","src":"tatoeba:4428077","by":"sacredceltic","enId":"251201","enBy":"Lumi","auto":true}
+{"term":"Je n'ai pas toujours été professeur.","back":"I haven't always been a teacher.","scene":"at school","src":"tatoeba:5666485","by":"Scorpionvenin14","enId":"5666362","enBy":"CK","auto":true}
+{"term":"J'ai toujours voulu être enseignant.","back":"I always wanted to be a teacher.","scene":"at school","src":"tatoeba:5671461","by":"Aiji","enId":"2358631","enBy":"CK","auto":true}
+{"term":"J'ai un cours dans quelques minutes.","back":"I've got a class in a few minutes.","scene":"at school","src":"tatoeba:5959473","by":"Aiji","enId":"2359562","enBy":"CK","auto":true}
+{"term":"Je vais jouer au foot après l'école.","back":"I'm going to play soccer after school.","scene":"at school","src":"tatoeba:6877235","by":"Micsmithel","enId":"6872997","enBy":"CK","auto":true}
+{"term":"Je suis votre professeur de berbère.","back":"I'm your Berber teacher.","scene":"at school","src":"tatoeba:8314097","by":"Julien_PDC","enId":"8314094","enBy":"Amastan","auto":true}
+{"term":"J'ai pigé ce que le prof expliquait.","back":"I caught on to what the teacher was explaining.","scene":"at school","src":"tatoeba:11254435","by":"lbdx","enId":"259083","enBy":"CM","auto":true}
+{"term":"Je fais souvent l'école buissonnière.","back":"I often play truant.","scene":"at school","src":"tatoeba:2572498","by":"Amastan","enId":"10804136","enBy":"sundown","auto":true}
+{"term":"Je devrai étudier plus intensivement.","back":"I will have to study harder.","scene":"at school","src":"tatoeba:6875","by":"Elliv","enId":"255812","enBy":"CK","auto":true}
+{"term":"Ce n'est pas difficile si tu étudies.","back":"It's not difficult if you study.","scene":"at school","src":"tatoeba:590067","by":"qdii","enId":"456229","enBy":"lukaszpp","auto":true}
+{"term":"Mes notes scolaires étaient moyennes.","back":"My school grades were average.","scene":"at school","src":"tatoeba:827631","by":"sacredceltic","enId":"21561","enBy":"CK","auto":true}
+{"term":"Mon université comporte des dortoirs.","back":"My university has dormitories.","scene":"at school","src":"tatoeba:1348199","by":"sacredceltic","enId":"1166684","enBy":"CK","auto":true}
+{"term":"Ceci ne s'applique pas aux étudiants.","back":"This does not apply to students.","scene":"at school","src":"tatoeba:1356229","by":"sacredceltic","enId":"55775","enBy":"CK","auto":true}
+{"term":"Je pense que c'est un bon enseignant.","back":"I think him a good teacher.","scene":"at school","src":"tatoeba:1461175","by":"sacredceltic","enId":"260882","auto":true}
+{"term":"Tu dois être plus attentif en classe.","back":"You need to be more attentive in class.","scene":"at school","src":"tatoeba:1557931","by":"sacredceltic","enId":"1526463","enBy":"pauldhunt","auto":true}
+{"term":"Arrête de faire de la lèche au prof !","back":"Stop sucking up to the teacher.","scene":"at school","src":"tatoeba:2200128","by":"sacredceltic","enId":"2199785","enBy":"Hybrid","auto":true}
+{"term":"Nous n'avons qu'un cours aujourd'hui.","back":"We have only one lesson today.","scene":"at school","src":"tatoeba:8548108","by":"Aiji","enId":"3945036","enBy":"AlanF_US","auto":true}
+{"term":"J'ai oublié ma carte de bibliothèque.","back":"I forgot my library card.","scene":"at school","src":"tatoeba:11053405","by":"lbdx","enId":"5771963","enBy":"mailohilohi","auto":true}
+{"term":"J'ai beaucoup de devoirs aujourd'hui.","back":"I have a lot of homework today.","scene":"at school","src":"tatoeba:11646117","by":"Aiji","enId":"3003248","enBy":"CK","auto":true}
+{"term":"Nous n'avons pas de devoirs, ce soir.","back":"We don't have any homework tonight.","scene":"at school","src":"tatoeba:13517317","by":"sacredceltic","enId":"10877300","enBy":"CK","auto":true}
+{"term":"C'est une extraordinaire leçon de vie.","back":"It's an extraordinary lesson of life.","scene":"at school","src":"tatoeba:6169386","by":"felix63","enId":"6825541","enBy":"Eccles17","auto":true}
+{"term":"Ma photothèque est pleine de doublons.","back":"My photo library is full of duplicates.","scene":"at school","src":"tatoeba:12931860","by":"QuentiBc","enId":"12931864","enBy":"QuentiBc","auto":true}
+{"term":"Notre école est située sur la colline.","back":"Our school stands on the hill.","scene":"at school","src":"tatoeba:8009","by":"sacredceltic","enId":"247479","auto":true}
+{"term":"J'entrerai au lycée en avril prochain.","back":"I will be in high school next April.","scene":"at school","src":"tatoeba:127995","by":"nimfeo","enId":"262157","enBy":"CK","auto":true}
+{"term":"Nous devons d'abord finir nos devoirs.","back":"We must finish our homework first.","scene":"at school","src":"tatoeba:583153","by":"sacredceltic","enId":"32774","enBy":"CK","auto":true}
+{"term":"J'aime étudier les langues étrangères.","back":"I like to study foreign languages.","scene":"at school","src":"tatoeba:617759","by":"U2FS","enId":"436767","enBy":"lukaszpp","auto":true}
+{"term":"J'ai des devoirs de maths aujourd'hui.","back":"I have maths homework today.","scene":"at school","src":"tatoeba:1078067","by":"sacredceltic","enId":"11004776","enBy":"sundown","auto":true}
+{"term":"J'ai choisi d'étudier la sténographie.","back":"I chose to study stenography.","scene":"at school","src":"tatoeba:2200751","by":"sacredceltic","enId":"2199357","enBy":"ellasevia","auto":true}
+{"term":"Mon professeur m'a reconduit chez moi.","back":"My teacher drove me home.","scene":"at school","src":"tatoeba:5389536","by":"Aiji","enId":"272979","enBy":"CK","auto":true}
+{"term":"J'ai déjà payé pour la première leçon.","back":"I've already paid for the first lesson.","scene":"at school","src":"tatoeba:6479815","by":"Aiji","enId":"953869","enBy":"CK","auto":true}
+{"term":"Tu devrais rejoindre un club scolaire.","back":"You should join a school club.","scene":"at school","src":"tatoeba:12183301","by":"always","enId":"11891856","enBy":"Amastan","auto":true}
+{"term":"Tu as fréquenté une école pour garçons.","back":"You went to a boys' school.","scene":"at school","src":"tatoeba:2572528","by":"Amastan","enId":"11373141","enBy":"sundown","auto":true}
+{"term":"Notre école se situe au-delà du fleuve.","back":"Our school is across the river.","scene":"at school","src":"tatoeba:13841","by":"sacredceltic","enId":"29104","enBy":"CK","auto":true}
+{"term":"Je pense que tu devrais aller au lycée.","back":"I think you should go to college.","scene":"at school","src":"tatoeba:1140445","by":"sacredceltic","enId":"1140143","enBy":"CK","auto":true}
+{"term":"Tu dois davantage étudier la grammaire.","back":"You must study grammar more.","scene":"at school","src":"tatoeba:1342469","by":"sacredceltic","enId":"69721","enBy":"CK","auto":true}
+{"term":"Je laisse ma copine copier mes devoirs.","back":"I let my friend copy my homework.","scene":"at school","src":"tatoeba:2200151","by":"sacredceltic","enId":"2199777","enBy":"Hybrid","auto":true}
+{"term":"Aujourd’hui nous avons cours d'anglais.","back":"We have an English class today.","scene":"at school","src":"tatoeba:3018834","by":"nimfeo","enId":"242777","enBy":"CN","auto":true}
+{"term":"Cette école pratique la tolérance zéro.","back":"This school has a zero tolerance policy.","scene":"at school","src":"tatoeba:3229668","by":"sacredceltic","enId":"3222447","enBy":"Hybrid","auto":true}
+{"term":"Étais-tu gros quand tu étais au lycée ?","back":"Were you fat when you were in high school?","scene":"at school","src":"tatoeba:5857535","by":"Aiji","enId":"3309029","enBy":"CK","auto":true}
+{"term":"Ma petite sœur va à l'école maternelle.","back":"My little sister goes to nursery school.","scene":"at school","src":"tatoeba:8867340","by":"lbdx","enId":"1458088","enBy":"CK","auto":true}
+{"term":"Je suis un étudiant de troisième cycle.","back":"I'm a postgraduate student.","scene":"at school","src":"tatoeba:9982831","by":"lbdx","enId":"8093802","enBy":"iT4LL","auto":true}
+{"term":"Ne mâchez pas de chewing-gum en classe.","back":"Don't chew gum in class.","scene":"at school","src":"tatoeba:11145906","by":"lbdx","enId":"10069281","enBy":"espamatics","auto":true}
+{"term":"Faites cet exercice à titre de révision.","back":"Do this exercise as revision.","scene":"at school","src":"tatoeba:6554363","by":"felix63","enId":"6555502","enBy":"sundown","auto":true}
+{"term":"Je parle arabe, mais j'étudie l'anglais.","back":"I speak Arabic but I study English.","scene":"at school","src":"tatoeba:730224","by":"U2FS","enId":"436961","enBy":"lukaszpp","auto":true}
+{"term":"C'est un élève auquel mon père enseigne.","back":"That's a student my father teaches.","scene":"at school","src":"tatoeba:1446323","by":"sacredceltic","enId":"1475898","enBy":"CK","auto":true}
+{"term":"J'aurais dû être plus attentif en cours.","back":"I should've paid more attention in class.","scene":"at school","src":"tatoeba:11721056","by":"Aiji","enId":"5826263","enBy":"CK","auto":true}
+{"term":"Vous faites souvent l'école buissonnière.","back":"You often bunk off school.","scene":"at school","src":"tatoeba:2572513","by":"Amastan","enId":"10570829","enBy":"sundown","auto":true}
+{"term":"Notre école est l'une des mieux équipées.","back":"Our school is one of the best equipped.","scene":"at school","src":"tatoeba:527819","by":"sacredceltic","enId":"10646570","enBy":"sundown","auto":true}
+{"term":"J'ai toujours fréquenté une école privée.","back":"I've always attended a private school.","scene":"at school","src":"tatoeba:1267269","by":"sacredceltic","enId":"6794806","enBy":"CarpeLanam","auto":true}
+{"term":"Ma maison est au nord de la bibliothèque.","back":"My house is north of the library.","scene":"at school","src":"tatoeba:1664562","by":"nimfeo","enId":"770071","enBy":"marloncori","auto":true}
+{"term":"J'ai trop sommeil pour faire mes devoirs.","back":"I'm too sleepy to do my homework.","scene":"at school","src":"tatoeba:4401632","by":"nimfeo","enId":"252980","enBy":"CK","auto":true}
+{"term":"J'ai failli oublier de faire mes devoirs.","back":"I almost forgot to do my homework.","scene":"at school","src":"tatoeba:5488090","by":"alexisslay","enId":"1887075","enBy":"CK","auto":true}
+{"term":"Je dois étudier pour un test de biologie.","back":"I have to study for a biology test.","scene":"at school","src":"tatoeba:6385372","by":"Aiji","enId":"1437498","enBy":"Anon","auto":true}
+{"term":"J'ai recours à un professeur particulier.","back":"I'm using a private teacher.","scene":"at school","src":"tatoeba:9775714","by":"lbdx","enId":"2915015","enBy":"AlanF_US","auto":true}
+{"term":"Cet élève est complètement incontrôlable.","back":"This student is totally out-of-control.","scene":"at school","src":"tatoeba:11406165","by":"lbdx","enId":"2157111","enBy":"irrationale","auto":true}
+{"term":"Notre instituteur parle parfois trop vite.","back":"Our teacher sometimes speaks too fast.","scene":"at school","src":"tatoeba:2002394","by":"sacredceltic","enId":"1991228","enBy":"Sharaf78","auto":true}
+{"term":"Nous étudions beaucoup de sujets au lycée.","back":"We study many subjects in high school.","scene":"at school","src":"tatoeba:6935956","by":"Aiji","enId":"248690","enBy":"CK","auto":true}
+{"term":"J'apprends à conduire dans une auto-école.","back":"I'm learning to drive at a driving school.","scene":"at school","src":"tatoeba:12210578","by":"lbdx","enId":"11602773","enBy":"timmartin","auto":true}
+{"term":"Mon petit frère va dans une école primaire.","back":"My little brother goes to an elementary school.","scene":"at school","src":"tatoeba:129457","by":"Caku","enId":"278564","enBy":"CK","auto":true}
+{"term":"C'est un bon dictionnaire pour les lycéens.","back":"This is a good dictionary for high school students.","scene":"at school","src":"tatoeba:369310","by":"TRANG","enId":"55725","enBy":"CK","auto":true}
+{"term":"Notre instituteur est toujours décontracté.","back":"Our teacher is always chill.","scene":"at school","src":"tatoeba:3084009","by":"Rovo","enId":"14020564","enBy":"zogwarg","auto":true}
+{"term":"Cette école fournit des manuels aux élèves.","back":"This school provides pupils with textbooks.","scene":"at school","src":"tatoeba:3239273","by":"sacredceltic","enId":"12510934","enBy":"sundown","auto":true}
+{"term":"Notre classe compte quarante-cinq étudiants.","back":"Our class has forty-five students.","scene":"at school","src":"tatoeba:454790","by":"Archibald","enId":"62932","enBy":"CK","auto":true}
+{"term":"J'ai une semaine pour effectuer mes devoirs.","back":"I have a week to do my homework.","scene":"at school","src":"tatoeba:528897","by":"sacredceltic","enId":"507446","enBy":"callmath","auto":true}
+{"term":"Aujourd'hui, j'ai un devoir de mathématique.","back":"I have math homework today.","scene":"at school","src":"tatoeba:824215","by":"RaspaKrusto","enId":"242907","enBy":"CK","auto":true}
+{"term":"Essaie de faire tes devoirs sans assistance.","back":"Try and do your homework by yourself.","scene":"at school","src":"tatoeba:943339","by":"sacredceltic","enId":"940183","enBy":"riccioberto","auto":true}
+{"term":"Notre classe se compose de quarante garçons.","back":"Our class consists of 40 boys.","scene":"at school","src":"tatoeba:1728849","by":"sacredceltic","enId":"321361","enBy":"CM","auto":true}
+{"term":"J'aime notre nouveau professeur de français.","back":"I like our new French teacher.","scene":"at school","src":"tatoeba:6956900","by":"JulieMDM","enId":"4665333","enBy":"CK","auto":true}
+{"term":"Je te suggère fortement d'étudier davantage.","back":"I strongly suggest that you study harder.","scene":"at school","src":"tatoeba:7057215","by":"Aiji","enId":"3144577","enBy":"CK","auto":true}
+{"term":"Mon père m'encourageait à apprendre le piano.","back":"My father encouraged me to study the piano.","scene":"at school","src":"tatoeba:590636","by":"qdii","enId":"319192","enBy":"CK","auto":true}
+{"term":"J'étudierais plus assidument si j'étais vous.","back":"I'd study harder if I were you.","scene":"at school","src":"tatoeba:5441331","by":"Aiji","enId":"3329899","enBy":"CK","auto":true}
+{"term":"J'étudierai le français au prochain semestre.","back":"I'm going to study French next semester.","scene":"at school","src":"tatoeba:5800752","by":"Toynop","enId":"2451279","enBy":"CK","auto":true}
+{"term":"Allons à la bibliothèque avant qu'elle ferme.","back":"Let's get to the library before it closes.","scene":"at school","src":"tatoeba:7816973","by":"Aiji","enId":"2007242","enBy":"CK","auto":true}
+{"term":"Cette école fournit des manuels aux étudiants.","back":"This school supplies students with textbooks.","scene":"at school","src":"tatoeba:334937","by":"Barbiche0","enId":"59932","enBy":"Eldad","auto":true}
+{"term":"Vous, les étudiants, êtes censés être assidus.","back":"You students are supposed to be diligent.","scene":"at school","src":"tatoeba:10282836","by":"lbdx","enId":"17629","enBy":"Zifre","auto":true}
+{"term":"Nous devons étudier l'affaire dans sa totalité.","back":"We must study the affair as a whole.","scene":"at school","src":"tatoeba:486618","by":"sacredceltic","enId":"28843","enBy":"AlanF_US","auto":true}
+{"term":"Notre classe est composée de cinquante garçons.","back":"Our class consists of fifty boys.","scene":"at school","src":"tatoeba:13714225","by":"zogwarg","enId":"23363","enBy":"CM","auto":true}
+{"term":"Mon professeur est pointilleux sur la grammaire.","back":"My teacher is a stickler for grammar.","scene":"at school","src":"tatoeba:820424","by":"sacredceltic","enId":"580482","enBy":"darinmex","auto":true}
+{"term":"« Êtes-vous enseignante ? » « Oui, je le suis. »","back":"\"Are you a teacher?\" \"Yes, I am.\"","scene":"at school","src":"tatoeba:858999","by":"sacredceltic","enId":"401759","enBy":"CM","auto":true}
+{"term":"Tu devrais étudier l'anglais plus intensivement.","back":"You should study English harder.","scene":"at school","src":"tatoeba:1013976","by":"sacredceltic","enId":"69725","enBy":"CN","auto":true}
+{"term":"Retirez vos casquettes dans la salle de classe !","back":"Take off your caps in the classroom!","scene":"at school","src":"tatoeba:8614638","by":"Aiji","enId":"2921278","enBy":"AlanF_US","auto":true}
+{"term":"Nous vivons à proximité de la grande bibliothèque.","back":"We live near the large library.","scene":"at school","src":"tatoeba:1300417","by":"sacredceltic","enId":"1300368","enBy":"CK","auto":true}
+{"term":"Nous voulons modifier le règlement de notre école.","back":"We want to modify the regulations of our school.","scene":"at school","src":"tatoeba:3633101","by":"sacredceltic","enId":"263017","auto":true}
+{"term":"Ma plus jeune fille sera prochainement scolarisée.","back":"My youngest daughter will be starting school soon.","scene":"at school","src":"tatoeba:10275903","by":"felix63","enId":"11545384","enBy":"sundown","auto":true}
+{"term":"Notre bibliothèque scolaire est petite, mais neuve.","back":"Our school library is small, but new.","scene":"at school","src":"tatoeba:588709","by":"sacredceltic","enId":"247468","enBy":"CK","auto":true}
+{"term":"Je commence mes révisions dès la semaine prochaine.","back":"I'll start revising next week.","scene":"at school","src":"tatoeba:3273134","by":"nimfeo","enId":"3273133","enBy":"sundown","auto":true}
+{"term":"J'emprunte des livres à la bibliothèque municipale.","back":"I borrow books from the city library.","scene":"at school","src":"tatoeba:6396097","by":"Aiji","enId":"2792348","enBy":"CK","auto":true}
+{"term":"Notre professeur favorise uniquement les étudiantes.","back":"Our teacher favors only the girl students.","scene":"at school","src":"tatoeba:128065","by":"Micsmithel","enId":"262610","auto":true}
+{"term":"Nous résidons à proximité d'une grande bibliothèque.","back":"We live near a big library.","scene":"at school","src":"tatoeba:1018737","by":"sacredceltic","enId":"249044","enBy":"CK","auto":true}
+{"term":"Mon instituteur a écrit une recommandation pour moi.","back":"My teacher wrote a recommendation for me.","scene":"at school","src":"tatoeba:1820538","by":"Korekorin","enId":"272977","enBy":"CK","auto":true}
+{"term":"Vous pouvez utiliser un dictionnaire pour cet examen.","back":"You can use a dictionary for this exam.","scene":"at school","src":"tatoeba:428790","by":"Archibald","enId":"59029","enBy":"CK","auto":true}
+{"term":"« Comment s'est passé ton examen ? » « Moyennement ».","back":"\"How was your exam?\" \"So-so.\"","scene":"at school","src":"tatoeba:10624471","by":"lbdx","enId":"10602318","enBy":"sundown","auto":true}
+{"term":"Nous posons, chaque jour, des questions au professeur.","back":"We ask the teacher questions every day.","scene":"at school","src":"tatoeba:2163585","by":"sacredceltic","enId":"2163199","enBy":"Source_VOA","auto":true}
+{"term":"Devons-nous apporter nos dictionnaires en classe, demain ?","back":"Need we bring our dictionaries to class tomorrow?","scene":"at school","src":"tatoeba:135385","by":"Archibald","enId":"323421","auto":true}

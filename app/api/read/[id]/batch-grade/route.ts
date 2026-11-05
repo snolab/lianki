@@ -16,7 +16,7 @@ import type { RangeWord } from "@/lib/read/book-word-list";
  * POST /api/read/[id]/batch-grade — the selection card's grade handle
  * (lib/read/batch-grade.ts; docs/books-plan.md, "Grading from the selection card"):
  *
- *   { probe: { sentences: [sid], words: [RangeWord] } } → { sentences, words, sentenceNext? }
+ *   { probe: { sentences: [sid], words: [RangeWord] } } → { sentences, words, sentenceNext }
  *   { clientId, rating, sentences: [sid], words: [RangeWord], day? }   → BatchResult
  *   { undo: clientId, day? }                                           → { restored, changed }
  *

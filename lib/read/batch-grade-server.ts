@@ -10,7 +10,7 @@
 // the signed-in user.
 
 import { WordsD1Repo } from "@/lib/repos/wordsD1";
-import { parseCard, reviewWord } from "@/lib/words/schedule";
+import { normalizeParams, parseCard, reviewWord } from "@/lib/words/schedule";
 import type { SwipeRating } from "@/lib/words/swipe";
 import { splitSentences, splitWords, type SentenceProbe, type WordProbe } from "./batch-grade";
 import {
@@ -81,8 +81,10 @@ async function sentenceDues(c: BatchCtx, sids: string[]): Promise<SentenceProbe>
 
 /**
  * The probe: what each sentence and word of the selection is now, and the
- * due each grade would give a word (its list's parameters, no fuzz) and a
- * single sentence. Writes nothing.
+ * due each grade would give it — a word with its list's parameters (one with
+ * no card yet: a new card's, with the defaults a book's list has), a sentence
+ * with the reader's sentence scheduler; no fuzz, as /words' interval preview
+ * (previewInterval). Writes nothing.
  */
 export async function probeBatch(
   c: BatchCtx,
@@ -95,35 +97,43 @@ export async function probeBatch(
       res: {
         sentences: SentenceProbe;
         words: WordProbe[];
-        /** A single sentence's due after each grade (ISO, by rating). */
-        sentenceNext?: Partial<Record<SwipeRating, string>>;
+        /** Each sentence's due after each grade (ISO, by rating). */
+        sentenceNext: Record<string, NextDues>;
       };
     }
   | { ok: false; error: string }
 > {
   const sids = bookSids(rawSids, c.book);
   if (!sids) return { ok: false, error: "sentence not in this book" };
-  const sentences = await sentenceDues(c, sids);
+  const rows = new Map((await sentenceCards(c.db, c.ref.userId, sids)).map((r) => [r.sid, r]));
+  const sentences: SentenceProbe = {};
+  const sentenceNext: Record<string, NextDues> = {};
+  for (const sid of sids) {
+    const card = parseSentenceCard(rows.get(sid)?.card);
+    sentences[sid] = rows.get(sid)?.due ?? null;
+    sentenceNext[sid] = previewDues((r) => gradeSentence(card, r, now, false).due);
+  }
   const targets = words.length ? await wordTargets(c.db, c.email, c.bctx, words) : [];
   const lists = targets.some((t) => t.listId)
     ? new Map((await new WordsD1Repo(c.db, c.email).lists()).map((l) => [l.id, l.params]))
     : new Map();
   const out = targets.map((t) => {
-    const params = t.listId ? lists.get(t.listId) : undefined;
-    if (!params || !t.card) return asProbe(t);
-    const next: WordProbe["next"] = {};
-    for (const r of RATINGS)
-      next[r] = reviewWord(parseCard(t.card), r, now, params, false).card.due.toISOString();
-    return asProbe(t, next);
+    const params = (t.listId ? lists.get(t.listId) : undefined) ?? normalizeParams({});
+    const card = parseCard(t.card);
+    return asProbe(
+      t,
+      previewDues((r) => reviewWord(card, r, now, params, false).card.due),
+    );
   });
-  let sentenceNext: Partial<Record<SwipeRating, string>> | undefined;
-  if (sids.length === 1) {
-    const row = (await sentenceCards(c.db, c.ref.userId, sids))[0];
-    const card = parseSentenceCard(row?.card);
-    sentenceNext = {};
-    for (const r of RATINGS) sentenceNext[r] = gradeSentence(card, r, now, false).due.toISOString();
-  }
-  return { ok: true, res: { sentences, words: out, ...(sentenceNext ? { sentenceNext } : {}) } };
+  return { ok: true, res: { sentences, words: out, sentenceNext } };
+}
+
+type NextDues = Partial<Record<SwipeRating, string>>;
+/** The due each grade gives (ISO, by rating). */
+function previewDues(due: (r: SwipeRating) => Date): NextDues {
+  const out: NextDues = {};
+  for (const r of RATINGS) out[r] = due(r).toISOString();
+  return out;
 }
 
 /** One word card a batch graded: the card it wrote, and whether the batch made it. */

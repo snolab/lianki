@@ -16,6 +16,8 @@ import { hashOf, readerBook, readerV2On, type ReaderBook } from "./reader-book";
 import { saveContentHash, type BookRef, type D1Batch } from "./reader-store";
 import type { WordContext } from "./reader-service";
 import { bookPhrase } from "./select-meaning";
+import type { RangeWord } from "./book-word-list";
+import { langIn } from "./lang-detect";
 import { cardIndex, statsLemmas, wordLang } from "./words";
 
 export interface ReaderCtx {
@@ -140,5 +142,44 @@ export async function bookCtxOf(ctx: ReaderCtx) {
     },
     // A book word, or a phrase of the book's words (a phrase card: the same path as a word's).
     own: (w: string) => own.has(w) || bookPhrase(w, book.lang, (x) => own.has(x)),
+    langs: book.langs,
+  };
+}
+
+type BookCtxValue = Awaited<ReturnType<typeof bookCtxOf>>["book"];
+
+/**
+ * A book that mixes languages: its words grouped by their own language
+ * (lib/read/lang-detect.ts langIn), each with the book as that language's
+ * words need it. The primary language keeps the book's list ("book:<hash>");
+ * another gets its own list of that language ("book:<hash>~<lang>"), so a
+ * card is always made, matched and glossed in the word's language. A book
+ * of one language is one group, as before.
+ */
+export function byLang(
+  base: BookCtxValue,
+  langs: readonly string[],
+  words: RangeWord[],
+): { book: BookCtxValue; words: RangeWord[] }[] {
+  const groups = new Map<string, RangeWord[]>();
+  for (const w of words) {
+    const l = langIn(w.term || w.w, langs, base.lang);
+    const g = groups.get(l);
+    if (g) g.push(w);
+    else groups.set(l, [w]);
+  }
+  return [...groups].map(([l, ws]) => ({ book: bookInLang(base, l), words: ws }));
+}
+
+/** The book as the word review needs it in one of its languages. */
+export function bookInLang(base: BookCtxValue, lang: string): BookCtxValue {
+  if (lang === base.lang) return base;
+  return {
+    ...base,
+    hash: `${base.hash}~${lang}`,
+    title: `${base.title} · ${lang}`,
+    lang,
+    lem: null,
+    names: new Set(),
   };
 }

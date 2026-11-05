@@ -105,16 +105,26 @@ export interface BookSentences {
   lineStart: Int32Array;
 }
 
-export function segmentBook(lines: readonly string[], lang: string, hash: string): BookSentences {
+/**
+ * `langOf`: a line's own language, for a book that mixes languages
+ * (BookMeta.langs); without it every line is cut in the book's language.
+ */
+export function segmentBook(
+  lines: readonly string[],
+  lang: string,
+  hash: string,
+  langOf?: (line: number) => string,
+): BookSentences {
   const refs: number[] = [];
   const load: number[] = [];
   const lineStart = new Int32Array(lines.length + 1);
   for (let l = 0; l < lines.length; l++) {
     lineStart[l] = load.length;
-    const parts = segmentLine(lines[l], lang);
+    const ll = langOf?.(l) ?? lang;
+    const parts = segmentLine(lines[l], ll);
     parts.forEach(([a, b], i) => {
       refs.push(l, i, a, b);
-      load.push(readingLoad(lines[l].slice(a, b), lang));
+      load.push(readingLoad(lines[l].slice(a, b), ll));
     });
   }
   lineStart[lines.length] = load.length;
@@ -185,6 +195,14 @@ export const PRIOR_WORDS_PER_SECOND = 238 / 60;
  * takes to react to information (design-principles.md, "No fixed numbers").
  */
 export const REACTION_SECONDS = 3;
+/**
+ * The 1–3 minute rule (design-principles.md, "No fixed numbers"): what a
+ * person reads as one chunk, in seconds. An item never runs past the upper
+ * end, whatever his own long reads were (a book read in huge items before
+ * would otherwise teach huge items); a raw transcript's paragraphs are cut
+ * to about the lower end at import (lib/read/prep.ts).
+ */
+export const CHUNK_SECONDS = { low: 60, high: 180 } as const;
 /** The tails used from a user's reads: their short and long reads before a swipe. */
 export const LOW_Q = 0.1;
 export const HIGH_Q = 0.9;
@@ -208,8 +226,9 @@ export function quantile(sorted: readonly number[], q: number): number {
 /**
  * Item bounds for a user from their own reads in this language: speed = the
  * median words per second, lower = their LOW_Q read before a swipe, upper =
- * their HIGH_Q. Before MIN_SAMPLES reads: the prior speed, REACTION_SECONDS,
- * and no upper bound (the chosen unit unsplit). `seconds` is a span the user
+ * their HIGH_Q, never past the upper end of the 1–3 minute rule. Before
+ * MIN_SAMPLES reads: the prior speed, REACTION_SECONDS, and that upper end
+ * (owner, 2026-11-05: a whole transcript paragraph came as one item). `seconds` is a span the user
  * picked for g=time.
  */
 export function itemBounds(
@@ -225,7 +244,9 @@ export function itemBounds(
   const speeds = ok.map((s) => s.words / (s.dwellMs / 1000)).sort((a, b) => a - b);
   const wps = user ? quantile(speeds, 0.5) : PRIOR_WORDS_PER_SECOND;
   const minSeconds = user ? quantile(dwell, LOW_Q) : REACTION_SECONDS;
-  const maxSeconds = user ? Math.max(minSeconds, quantile(dwell, HIGH_Q)) : null;
+  const maxSeconds = user
+    ? Math.min(CHUNK_SECONDS.high, Math.max(minSeconds, quantile(dwell, HIGH_Q)))
+    : CHUNK_SECONDS.high;
   const b: ItemBounds = {
     minSeconds,
     maxSeconds,
@@ -268,6 +289,8 @@ export function buildChapterItems(
   chapter: number,
   granularity: Granularity,
   bounds: ItemBounds,
+  /** A line's language (a book that mixes them): an item never holds two. */
+  langOf?: (line: number) => string,
 ): ItemSpan[] {
   const wps = bounds.wordsPerSecond > 0 ? bounds.wordsPerSecond : PRIOR_WORDS_PER_SECOND;
   const minS =
@@ -325,11 +348,17 @@ export function buildChapterItems(
     }
   }
 
-  // Merge short neighbours until the lower bound.
+  // Merge short neighbours until the lower bound, within one language.
+  const langOfS = (i: number) => (langOf ? langOf(b.refs[i * 4]) : "");
   const out: ItemSpan[] = [];
   let cur: ItemSpan | null = null;
   for (const [a, z, w] of parts) {
-    if (cur && secs(cur.words) < minS && secs(cur.words + w) <= maxS) {
+    if (
+      cur &&
+      secs(cur.words) < minS &&
+      secs(cur.words + w) <= maxS &&
+      langOfS(cur.last) === langOfS(a)
+    ) {
       cur.last = z;
       cur.words += w;
       continue;
@@ -339,7 +368,12 @@ export function buildChapterItems(
   }
   if (cur) {
     const prev = out[out.length - 1];
-    if (prev && secs(cur.words) < minS && secs(prev.words + cur.words) <= maxS) {
+    if (
+      prev &&
+      secs(cur.words) < minS &&
+      secs(prev.words + cur.words) <= maxS &&
+      langOfS(prev.last) === langOfS(cur.first)
+    ) {
       prev.last = cur.last;
       prev.words += cur.words;
     } else out.push(cur);

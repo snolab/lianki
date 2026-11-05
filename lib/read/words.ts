@@ -26,7 +26,8 @@
 // year or more, as the deck's "mastered"); see BookProgress for the ring.
 
 import { PROGRESS_SCALE_DAYS, progressPercent, wordScore } from "@/lib/words/progress";
-import { langRules, SCRIPT_LANGS, STOP_LANGS } from "./lang";
+import { langRules, STOP_LANGS } from "./lang";
+import { primaryLang } from "./lang-detect";
 import { lemmasFromLex, type BookLex, type Lemmas } from "./lemma";
 
 /** Bump when counting changes, so stored stats are counted again. */
@@ -90,7 +91,10 @@ export function wordLang(tag: string | undefined | null, lines: string[] = []): 
   const primary = (tag ?? "").trim().toLowerCase().split(/[-_]/)[0];
   if (/^[a-z]{2,3}$/.test(primary) && primary !== "und") return primary;
   const sample = lines.slice(0, 200).join("\n").slice(0, 20_000);
-  for (const [lang, re] of SCRIPT_LANGS) if (re.test(sample)) return lang;
+  // The heaviest language of the text, not the first script that occurs (a
+  // mostly English doc with some Japanese in it is English; owner, 2026-11-05).
+  const top = primaryLang([sample], "");
+  if (top) return top;
   const seen = new Map<string, number>();
   for (const w of sample.toLowerCase().split(/[^\p{L}]+/u))
     if (w) seen.set(w, (seen.get(w) ?? 0) + 1);
