@@ -21,7 +21,7 @@ export async function customViewer(): Promise<Viewer | null> {
   const user = await authUserOrNull();
   if (!user?.id || !user.email) return null;
   const owner = isOwner(user.email);
-  const flagOn = flagIn(await readFlags(), "live.custom-frontend");
+  const flagOn = flagIn(await readFlags(), "my-box");
   if (!flagOn && !owner) return null;
   return { userId: user.id, email: user.email, owner, flagOn };
 }

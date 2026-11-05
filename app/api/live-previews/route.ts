@@ -14,7 +14,7 @@ import { hit, type ThrottleDb } from "@/lib/security/throttle";
 
 /**
  * Custom frontends (docs/custom-frontend.md, lib/live-view/custom.ts): the
- * signed-in user's own previews. Behind `live.custom-frontend` (the owner
+ * signed-in user's own previews. Behind `my-box` (the owner
  * sees it while off); 404 for a guest, or with the flag off.
  *
  * - GET → the caller's active previews, each with its `url`;

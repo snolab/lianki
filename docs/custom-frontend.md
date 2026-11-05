@@ -10,7 +10,7 @@ Owner's direction: Slack, 2026-11-05 13:58 JST ("we should allow everyone
 customize their frontend in future without harming our core api"). The
 first user is kishouzet (frontend only). Later it will be everyone.
 
-**Phase 1 (this):** behind the flag `live.custom-frontend` (the owner can use
+**Phase 1 (this):** behind the flag `my-box` (the owner can use
 it while it is off), for users on an allowlist the owner keeps at
 `/dev/live-frontends`. Code: `lib/live-view/custom.ts` (rules, store, CSP,
 cookie), the custom branch of `lib/live-view/page-proxy.ts` (in `worker.ts`,
@@ -23,7 +23,7 @@ bridge**.
 
 ## For the owner: turn it on
 
-1. `/dev/flags`: turn on `live.custom-frontend`.
+1. `/dev/flags`: turn on `my-box`.
 2. `/dev/live-frontends`: add the user by their sign-in email. Removing them
    later also stops all their previews at once. The same page lists every
    active preview, each with a **stop** button.
