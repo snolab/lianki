@@ -30,6 +30,7 @@ function fakes(over: Partial<MicDeps> = {}) {
     return { id, getTracks: () => [track] };
   };
   const deps: MicDeps = {
+    guard: { minFrameRms: 0 }, // the fake audio is zeros; unit/stt-guard.test.ts has the gate
     getStream: async () => {
       calls.gum++;
       return makeStream();

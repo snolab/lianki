@@ -17,6 +17,7 @@
 
 import { createOpenAI } from "@ai-sdk/openai";
 import OpenAI from "openai";
+import type { SttSignals } from "@lianki/debug-chat/stt-guard";
 import { type SttHint, type SttModel, readStt, sttPrompt } from "./stt";
 
 /** Replaces gpt-4o-mini: the everyday model for short, cheap generations. */
@@ -209,7 +210,7 @@ export async function workersAiTranscribe(opts: {
   lang?: string;
   hint?: SttHint;
   signal?: AbortSignal;
-}): Promise<{ text: string; language?: string }> {
+}): Promise<{ text: string; language?: string; signals?: SttSignals }> {
   const { apiToken } = requireConfig();
   const auth = { Authorization: `Bearer ${apiToken}` };
   let url = `${apiBase()}/run/${opts.model}`;

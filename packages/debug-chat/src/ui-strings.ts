@@ -16,6 +16,12 @@ export type UiStrings = {
   items: string;
   /** The mark on a voice line the agent polished (its tooltip and label). */
   polished: string;
+  /**
+   * The menu's row for the owner, with the lines the mic took for silence
+   * hallucinations and did not send (kept on this device only); tapping one
+   * puts it back in the box.
+   */
+  droppedLines: string;
   /** The menu's Latency row (latency.ts): its title, and before any voice reply. */
   latency: string;
   latencyNone: string;
@@ -143,6 +149,7 @@ export const UI_EN: UiStrings = {
   micAdaptGain: "gain",
   micAdaptWhisper: "whisper",
   latencyNone: "Latency: no voice reply yet",
+  droppedLines: "Lines not sent, taken for noise",
   latVad: "silence",
   latStt: "STT",
   latSend: "send",
@@ -195,6 +202,7 @@ export const UI_ZH: UiStrings = {
   micAdaptGain: "增益",
   micAdaptWhisper: "耳语",
   latencyNone: "延迟：还没有语音回复",
+  droppedLines: "当作杂音、未发送的语音",
   latVad: "静音等待",
   latStt: "转写",
   latSend: "发送",
@@ -247,6 +255,7 @@ export const UI_JA: UiStrings = {
   micAdaptGain: "ゲイン",
   micAdaptWhisper: "ささやき",
   latencyNone: "遅延：まだ音声の返信がありません",
+  droppedLines: "雑音と判断して送らなかった音声",
   latVad: "無音待ち",
   latStt: "文字起こし",
   latSend: "送信",

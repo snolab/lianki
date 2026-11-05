@@ -22,6 +22,7 @@
     "./icons": "./src/icons.tsx",
     "./latency": "./src/latency.ts",
     "./mic": "./src/mic.ts",
+    "./stt-guard": "./src/stt-guard.ts",
     "./node-path": "./src/node-path.ts",
     "./page-audio": "./src/page-audio.ts",
     "./audio-claim": "./src/audio-claim.ts",

@@ -180,6 +180,7 @@ describe("the mic's marks (createMic timing)", () => {
         return { start() {}, pause() {}, flush() {}, destroy() {} };
       },
       upload: () => new Promise((r) => (answer = r)),
+      guard: { minFrameRms: 0 },
       onState() {},
       onText() {},
       onPending() {},

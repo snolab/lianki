@@ -30,6 +30,7 @@ import {
   keepStream,
 } from "./mic";
 import type { LocalFinal, LocalState } from "./local-stt";
+import type { SttDropReason, SttGuardLimits } from "./stt-guard";
 import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
 import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
@@ -51,9 +52,10 @@ export const MIC_SESSION_KEY = "__lkMic";
  * stream kept. A newer one is left alone (an older bundle never downgrades
  * it). 10: it offers finals to the command taps first (mic-taps.ts). 11:
  * reopen (the echo cancellation switch, aec.ts applyAec). 12: the voice cues
- * (cues.ts), and the guard over what the VAD hears while one plays.
+ * (cues.ts), and the guard over what the VAD hears while one plays. 13: the
+ * silence guard (stt-guard.ts) over each final, and the route's signals for it.
  */
-export const MIC_SESSION_V = 12;
+export const MIC_SESSION_V = 13;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -109,6 +111,10 @@ export type MicDeps = {
   /** Try to get the AudioContext running without a gesture; false if it stays suspended. */
   resumeAudio?: () => Promise<boolean>;
   log?: (ev: Record<string, unknown>) => void;
+  /** A final the silence guard dropped (createMic's `dropped`; stt-dropped.ts). */
+  dropped?: (text: string, reason: SttDropReason) => void;
+  /** Overrides of the silence guard (createMic's `guard`), for tests. */
+  guard?: Partial<SttGuardLimits>;
   /** A client for the local streaming STT at this URL (local-stt.ts createLocalStt). */
   localStt?: (url: string) => LocalClient;
   /** Each kept final's speaker tag and the Mac's signed proof of it (voiceprint.ts noteSpeaker). */
@@ -307,6 +313,8 @@ export function createMicSession(
     onError: (e) => emit({ error: e }),
     onProb: (p) => deps.onProb?.(p),
     log: (ev) => deps.log?.(ev),
+    guard: deps.guard,
+    dropped: (t, r) => deps.dropped?.(t, r),
     timing: (seq, m) => deps.timing?.(seq, m),
     speaker: (t, p) => deps.speaker?.(t, p),
   });

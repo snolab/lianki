@@ -360,7 +360,7 @@ One socket per page; utterances one after another (`server.py` docstring):
 | client | `{"t":"cancel","id":N}`                                   | drop it (misfire, the agent speaking)           |
 | server | `{"t":"ready","engine","model"}`                          | on connect                                      |
 | server | `{"t":"partial","id","text","audioMs"}`                   | every 0.4 s of new audio, when the text changed |
-| server | `{"t":"final","id","text","lang","model","ms","audioMs"}` | the whole utterance decoded                     |
+| server | `{"t":"final","id","text","lang","model","ms","audioMs","signals"}` | the whole utterance decoded; `signals`: `{decoder, logprob?}` for the page's silence guard ([workers-ai.md](workers-ai.md), "Silence guard") |
 | server | `{"t":"error","id","error"}`                              | then the page falls back                        |
 
 `GET /health` on the same port answers `{ok, engine, model}`.

@@ -30,6 +30,8 @@ import { silenceHere } from "./speak-rules";
 import { voiceLatency, noteSttVia } from "./latency";
 import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
+import type { SttSignals } from "./stt-guard";
+import { noteDropped } from "./stt-dropped";
 import { VOICE_DEVICE_KEY, deviceSlug, noteSpeaker } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
@@ -382,7 +384,7 @@ function session(): MicSession {
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
     // localStorage lk:agent-wake = "0" turns the wake word off (never passive).
     kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),
-    upload: async (wav, { seq, durationMs, partial, local, onEcho }, cfg) => {
+    upload: async (wav, { seq, durationMs, partial, local, onEcho, onSignals }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
       // The mode and track this utterance was recorded on: a reopen while it is transcribed changes both.
@@ -390,7 +392,7 @@ function session(): MicSession {
       const trackAt = appliedSettings();
       try {
         // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
-        let out: { text: string; model?: string; ms?: number };
+        let out: { text: string; model?: string; ms?: number; signals?: SttSignals };
         let via: "local" | "cloud" = "cloud";
         if (local) {
           // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
@@ -411,6 +413,7 @@ function session(): MicSession {
             out = await postStt(wav, fetch, "audio/wav", sttHint());
           }
         } else out = await postStt(wav, fetch, "audio/wav", sttHint());
+        onSignals?.(out.signals);
         // The text guard: the agent's own words that leaked past the AEC are dropped.
         const chatEcho = v.echoCheck(out.text, durationMs);
         // The page reads aloud too (/read): what it said is the same kind of echo.
@@ -419,7 +422,7 @@ function session(): MicSession {
         // From `at` (taken before the transcription await): when the speech began.
         const spokeAt = at - durationMs;
         if (!partial && !chatEcho.drop && page.heard(out.text, spokeAt)) {
-          v.log({ ev: "voice-utt-page", durationMs, text: out.text.slice(0, 80) });
+          v.log({ ev: "voice-utt-page", durationMs, chars: out.text.length });
           return "";
         }
         const pageEcho = chatEcho.drop
@@ -439,7 +442,8 @@ function session(): MicSession {
             during: echo.during,
             drop: echo.drop,
             score: echo.score,
-            text: out.text.slice(0, 80),
+            // Length only: this runs before the silence guard, and it reaches the Worker logs.
+            chars: out.text.length,
             against: echo.drop ? echo.against?.slice(0, 80) : undefined,
           });
         if (echo.drop) {
@@ -491,6 +495,7 @@ function session(): MicSession {
       return (c.state as string) === "running";
     },
     log: (ev) => v.log(ev),
+    dropped: noteDropped,
     timing: (seq, m) => voiceLatency().mark(seq, m),
   });
 }
