@@ -137,7 +137,7 @@ describe("catalogue", () => {
     expect(SOURCE_HOSTS).toContain("www.gutenberg.org");
     expect(allowedSourceUrl("https://www.aozora.gr.jp/cards/000148/card752.html")).not.toBeNull();
     expect(allowedSourceUrl("https://zh.wikisource.org/api/rest_v1/page/html/x/1")).not.toBeNull();
-    expect(allowedSourceUrl("https://en.wikisource.org/wiki/x")).toBeNull(); // only the hosts listed
+    expect(allowedSourceUrl("https://xx.wikisource.org/wiki/x")).toBeNull(); // only the hosts listed
     expect(allowedSourceUrl("http://www.aozora.gr.jp/x")).toBeNull();
     expect(allowedSourceUrl("https://www.gutenberg.org/ebooks/1")).not.toBeNull();
     expect(allowedSourceUrl("http://www.gutenberg.org/ebooks/1")).toBeNull();

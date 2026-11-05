@@ -24,7 +24,9 @@ import {
   fetchZip,
   searchAozoraIndex,
   searchGutenberg,
+  searchStandardEbooks,
   searchWikisource,
+  SEARCH_LIMITS,
   unzipOne,
   type AozoraRow,
   type SearchHit,
@@ -149,6 +151,7 @@ export async function searchLibraries(raw: unknown, deps: LookupDeps): Promise<S
     async () => {
       const sources: Promise<SearchHit[]>[] = [
         searchGutenberg(q, get),
+        searchStandardEbooks(q, get),
         aozoraRows(deps).then((rows) => searchAozoraIndex(rows, q)),
         // Wikisource last: its full-text search also finds dictionaries and documents.
         ...Object.keys(WIKISOURCE_SITES).map((site) => searchWikisource(site, q, get)),
@@ -171,7 +174,7 @@ export async function searchLibraries(raw: unknown, deps: LookupDeps): Promise<S
           hits.push(h);
         }
       }
-      return hits;
+      return hits.slice(0, SEARCH_LIMITS.total);
     },
   );
 }

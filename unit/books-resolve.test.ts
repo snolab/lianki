@@ -136,7 +136,7 @@ describe("links: only book pages on the hosts we read", () => {
       "https://gutenberg.org.evil.com/ebooks/1",
       "https://www.gutenberg.org/ebooks/search/?query=x",
       "https://u:p@www.gutenberg.org/ebooks/1",
-      "https://en.wikisource.org/wiki/Foo",
+      "https://xx.wikisource.org/wiki/Foo",
       "https://zh.wikisource.org/wiki/Author:%E9%AD%AF%E8%BF%85",
       "javascript:alert(1)",
       "not a url",
@@ -486,7 +486,7 @@ describe("library search", () => {
           { id: 98, title: "Protected", authors: [], languages: ["en"], copyright: true },
         ],
       }),
-      "https://zh.wikisource.org/w/api.php?action=query&format=json&formatversion=2&list=search&srnamespace=0&srlimit=8&srsearch=tale":
+      "https://zh.wikisource.org/w/api.php?action=query&format=json&formatversion=2&list=search&srnamespace=0&srlimit=3&srsearch=tale":
         JSON.stringify({ query: { search: [{ title: "背影" }] } }),
       // ru.wikisource and Aozora answer 404 here: left out, not an error.
     });
