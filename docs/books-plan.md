@@ -835,7 +835,12 @@ items) and `lib/read/familiarity.ts` (aggregation); store
   resend is a duplicate) and `read_exposures` (per user, language, word, day:
   seen and explicit counts). "seen" = the sentence passed the reading line;
   "lookup" / "select" / "note" = an explicit "not recognised". Never changes
-  a word's FSRS state.
+  a word's FSRS state. The selection card's standalone 「不认识」 ("New to
+  me") button, the only client that sent "select", was removed (owner,
+  11:05 JST 2026-11-05): it looked like a grade but only logged an exposure.
+  The selection card's grade handle (#553) is the way to mark a word. The
+  API still accepts "select" (old clients); nothing reads the explicit
+  count, and the tables stay.
 - **Reading position synced** (`read_progress`): anchor (line, offset 0..1)
   where the newest client time wins, and the high-water line that only grows;
   the response names the lines it just moved over, the extraction trigger.
