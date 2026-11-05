@@ -60,6 +60,7 @@ re-exports for the hub and the sender.
 | `debug-chat-tabs.ts`, `tap-gesture.ts`                   | one voice per device; taps and drags                     |
 | `wire.ts`, `icons.tsx`, `LiagentMark.tsx`                | wire types and helpers; icons; the liagent mark          |
 | `Avatar.tsx`, `avatar-rules.ts`                          | the log's avatars: the component; its pure rules         |
+| `rich-text.ts`, `RichText.tsx`, `chat-links.ts`          | markdown, the HTML subset, links; trust tiers             |
 | `node-path.ts`                                           | state-tree node paths: validation, routing, rendering    |
 | `scripts/dev/debug-widget-build.ts`                      | Bun.build with React from the page, plus Tailwind CSS    |
 | `scripts/dev/debug-widget-server.ts`                     | serve, watch, SSE `reload`, tailnet or tunnel            |
@@ -772,6 +773,55 @@ stays. At rest it is click-through again (a press-and-hold engages it too:
 "The history is glass until it is engaged" below). Checks: `bun
 scripts/dev/debug-chat-typing-scroll-qa.mjs` (WebKit and Chromium, 390×844
 touch).
+
+## Markdown, safe HTML and links in a line
+
+Owner, 2026-11-06 00:05 JST. Every line (log, compact, floating, a polished
+line, its raw text) goes through `rich-text.ts`: `marked` to an HTML string,
+the browser's inert `DOMParser` to a tree, an allowlist walk to a plain data
+tree, and `RichText.tsx` to React elements. There is no
+`dangerouslySetInnerHTML` and no HTML string reaches the page, so only an
+allowed tag with allowed attributes can come out. No `style`, `class`, `id`,
+`on*` or `data-*` attribute ever passes; script, style, iframe, object, form
+and the like go with all that is inside them; another unknown tag gives way to
+its text. With no `DOMParser`, or if anything throws, the line is plain text
+with its links.
+
+**Tiers** (`lineTier`), from what the hub stamps, never from the text:
+
+| Tier       | Who                                                                        | Gets                                                   |
+| ---------- | -------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `html`     | an agent line with the hub's `ownerGrant`, in the owner's thread, not embedded | markdown, the HTML subset, images from `IMAGE_ORIGINS` |
+| `markdown` | everyone else: friends, the partner AI, his agents in a friend's thread, his own typing | markdown; raw HTML shows as text, an image as its alt  |
+
+`ownerGrant` is set only in the hub's `say`, when the thread is the owner's:
+that is, by a pairing he approved. A sender cannot set it: the hub builds each
+line field by field. The partner AI's lines and friends' lines never have it, and
+AI output is untrusted because a prompt can inject into it. A line kept from
+before this has none: markdown. It stays on a stored line after the pairing ends.
+
+**Links.** `chat-links.ts`: http(s) and bare `lianki.com/…` only. Punctuation,
+closing brackets and scripts written without spaces end a URL; a host that is not
+ASCII is not a link, so none reads as ours. On lianki.com a lianki.com link stays
+in the tab through `onOpenPage`; any other opens a new tab with
+`rel="noopener noreferrer"`. **The anchor's text is always the URL**: a labelled
+`[docs](https://…)` shows `docs (https://…)`, the URL being the anchor, so no line
+can dress one address as another, in any tier. A link carries `pointer-events-auto`
+because the history is click-through at rest (log-engage.ts); the text around it
+stays glass. A long press on a link is the platform's own (Copy link), not the
+press-and-hold that selects the line. A table or a code block scrolls in its own
+box and takes the pointer only while the history is engaged.
+
+**Read-aloud** reads `spoken`, not `m.text` (`spokenOf`; DebugEval's `speakReply`
+and the resume): the words without markup, a link's label not its URL, table cells
+joined with commas, code blocks left out (a line of only code says nothing). A bare
+URL is read as it always was. Each text keeps its offset in `spoken`, so the sentence
+highlight (`sentenceRanges` over `spoken`) lands on the same words the voice reads,
+across bold and links.
+
+Tests: `unit/chat-links.test.ts`, `unit/chat-rich-text.test.ts` (the sanitizer
+corpus, tiers, read-aloud; happy-dom's parser), the stamp in `unit/debug-hub.test.ts`
+and `unit/partner-ai.test.ts`.
 
 ## Copying a message
 

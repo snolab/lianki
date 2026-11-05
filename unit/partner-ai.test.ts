@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
+import { lineTier } from "@lianki/debug-chat/rich-text";
 import { DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
@@ -44,7 +45,7 @@ class FakeSocket implements Socket {
     return this.sent.filter((m) => m.type === type).at(-1);
   }
 }
-type Msg = { from: string; text: string; label: string; thread?: string };
+type Msg = { from: string; text: string; label: string; thread?: string; ownerGrant?: true };
 const chats = (ws: FakeSocket) =>
   ws.sent.filter((m) => m.type === "chat").map((m) => m.message as Msg);
 
@@ -207,6 +208,10 @@ describe("partner AI: hub routing", () => {
       ["agent", "Hi! You have 3 words due.", PARTNER_AI_LABEL],
     ]);
     expect(f.last("busy")).toMatchObject({ label: PARTNER_AI_LABEL });
+    // AI output is untrusted (a prompt can inject into it): never the HTML tier.
+    const ai = chats(f).at(-1)!;
+    expect(ai.ownerGrant).toBeUndefined();
+    expect(lineTier(ai)).toBe("markdown");
     // Nobody else's page hears it.
     expect(chats(other)).toEqual([]);
     expect((f.last("state") as { listeners: number }).listeners).toBe(1);

@@ -56,6 +56,9 @@
     "./float-lines": "./src/float-lines.ts",
     "./compact-view": "./src/compact-view.ts",
     "./copy-line": "./src/copy-line.ts",
+    "./chat-links": "./src/chat-links.ts",
+    "./rich-text": "./src/rich-text.ts",
+    "./RichText": "./src/RichText.tsx",
     "./log-engage": "./src/log-engage.ts",
     "./select-fence": "./src/select-fence.ts",    "./frontier-view": "./src/frontier-view.ts",
     "./log-surface": "./src/log-surface.ts",
@@ -81,6 +84,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@lianki/ui-state": "workspace:*"
+    "@lianki/ui-state": "workspace:*",
+    "marked": "^17.0.4"
   }
 }
