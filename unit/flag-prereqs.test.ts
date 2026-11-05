@@ -13,7 +13,7 @@ import {
   failedPrereqs,
   type PrereqContext,
 } from "@/lib/flag-prereqs";
-import { FlagCard, MONEY_NOTE } from "@/app/(app)/dev/flags/FlagsAdmin";
+import { FlagCard, MONEY_NOTE } from "@/app/(app)/dev/flags/FlagCard";
 
 /**
  * Flag prerequisites (docs/feature-flags.md, "Prerequisites"). What matters: a
@@ -245,6 +245,24 @@ describe("never exposes a value", () => {
   function html(el: Parameters<typeof FlagCard>[0]) {
     return renderToString(createElement(FlagCard, el));
   }
+});
+
+test("/dev/flags card: who changed it and when, in JST", () => {
+  const out = renderToString(
+    createElement(FlagCard, {
+      flag: {
+        key: "words.voice-mode",
+        description: "d",
+        enabled: true,
+        updatedAt: NOW.toISOString(),
+        updatedBy: BY,
+      },
+      busy: false,
+      onToggle() {},
+    }),
+  );
+  expect(out).toContain(BY);
+  expect(out).toContain("JST");
 });
 
 describe("wiring", () => {

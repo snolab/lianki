@@ -9,7 +9,7 @@ with no deploy and no secret change.
 | prerequisite checks        | `lib/flag-prereqs.ts`                         |
 | read / write, cache        | `lib/flags-store.ts`                          |
 | tables                     | `db/migrations/0027_feature_flags.sql`: `feature_flags` (key, enabled, updated_at, updated_by) and `feature_flag_log` (every change) |
-| toggle page / API          | `app/(app)/dev/flags/`, `app/api/dev/flags/route.ts` |
+| toggle page / API          | `app/(app)/dev/flags/` (`FlagCard.tsx`: one switch, its reasons), `app/api/dev/flags/route.ts` |
 | tests                      | `unit/flags.test.ts`, `unit/flag-prereqs.test.ts` |
 
 ## Rules
