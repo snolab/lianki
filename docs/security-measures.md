@@ -320,7 +320,7 @@ auth or gate secret is sent up. A strict CSP (scripts and connections:
 lianki.com and that tunnel only; inline scripts by nonce). The cookie is
 bound to the session and re-checked in D1 within 5 s. Under it the Worker
 refuses token minting, `/api/dev` writes and better-auth account changes.
-Allowlist and flag `live.custom-frontend`; at most 3 previews of at most
+Allowlist and flag `my-box`; at most 3 previews of at most
 8 h per user, the cap in one `INSERT`.
 
 ## 9. The CLI login (`lianki auth login`)

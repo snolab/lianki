@@ -4,7 +4,7 @@
  * Cloudflare tunnel, and views it at `lianki.com/<path>?live=<id>`. The page's
  * HTML and its /_next chunks come from the tunnel; /api and /auth always stay
  * on production, so their JS acts with their own session and permissions
- * only. Behind the flag `live.custom-frontend` (the owner sees it while off).
+ * only. Behind the flag `my-box` (the owner sees it while off).
  *
  * Safety rules (the shared spec, not the owner's #576 bridge):
  * - **Self only.** A preview is served only to the signed-in user who
@@ -22,11 +22,12 @@
  * Next import, no D1 binding of its own.
  */
 
+import { FLAG_OLD_KEYS } from "../flags";
 import type { AuditDb } from "../security/audit-log";
 import { audit } from "../security/audit-log";
 
 /** The feature flag (lib/flags.ts). */
-export const CUSTOM_FRONTEND_FLAG = "live.custom-frontend";
+export const CUSTOM_FRONTEND_FLAG = "my-box";
 /** A preview lives at most this long. */
 export const CUSTOM_MAX_HOURS = 8;
 /** Previews a user may have active at once (one conditional INSERT enforces it). */
@@ -453,7 +454,9 @@ export async function openCustomCookie(
 /**
  * The Worker's per-request check for a custom frontend's subresource: the
  * row still active, still this user's, and (unless the owner's) the flag on
- * and the user still on the allowlist. One query; null for "not live".
+ * and the user still on the allowlist. One query; null for "not live". The
+ * flag is read here with its own SQL, not lib/flags-store.ts, so it follows
+ * FLAG_OLD_KEYS itself: a row under the new key wins, else the old key's.
  */
 export async function activeForCookie(
   db: { prepare(q: string): { bind(...v: unknown[]): { first<T>(): Promise<T | null> } } },
@@ -464,10 +467,13 @@ export async function activeForCookie(
     .prepare(
       `SELECT p.*,
          EXISTS (SELECT 1 FROM live_frontend_allow a WHERE a.user_id = p.user_id) AS allowed,
-         (SELECT enabled FROM feature_flags WHERE key = ?2) AS flag
+         COALESCE(
+           (SELECT enabled FROM feature_flags WHERE key = ?2),
+           (SELECT enabled FROM feature_flags WHERE key = ?3)
+         ) AS flag
        FROM live_preview p WHERE p.id = ?1`,
     )
-    .bind(c.id, CUSTOM_FRONTEND_FLAG)
+    .bind(c.id, CUSTOM_FRONTEND_FLAG, FLAG_OLD_KEYS[CUSTOM_FRONTEND_FLAG])
     .first<Row & { allowed: number; flag: number | null }>();
   if (!row || row.user_id !== c.userId) return null;
   if (row.revoked_at !== null || row.expires_at <= now) return null;
