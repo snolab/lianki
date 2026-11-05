@@ -543,11 +543,16 @@ describe("subresources and the backend", () => {
       if (u.pathname.startsWith("/api/live-previews/")) {
         asked.push(r);
         const mine = (r.headers.get("cookie") ?? "").includes("tok-k.sig");
-        const p = await previewFor(db, u.pathname.split("/").pop()!, {
-          userId: mine ? KISHO : OTHER,
-          owner: false,
-          flagOn: true,
-        });
+        const p = await previewFor(
+          db,
+          u.pathname.split("/").pop()!,
+          {
+            userId: mine ? KISHO : OTHER,
+            owner: false,
+            flagOn: true,
+          },
+          t,
+        );
         if (!p) return new Response("{}", { status: 404 });
         return Response.json({ ...p, owner: false });
       }
