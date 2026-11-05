@@ -1149,6 +1149,24 @@ const dictionary = {
       mr: "आणखी लोड होत आहे…",
       ko: "더 불러오는 중…",
     }),
+    allReviewedBack: t({
+      en: "All reviewed. Press Enter to go back.",
+      zh: "都复习完了，按回车返回。",
+      hi: "सब दोहरा लिया। वापस जाने के लिए Enter दबाएँ।",
+      es: "Todo repasado. Pulsa Intro para volver.",
+      fr: "Tout est révisé. Appuyez sur Entrée pour revenir.",
+      ar: "تمت مراجعة الكل. اضغط Enter للرجوع.",
+      bn: "সব রিভিউ হয়ে গেছে। ফিরে যেতে Enter চাপুন।",
+      pt: "Tudo revisado. Pressione Enter para voltar.",
+      ru: "Всё повторено. Нажмите Enter, чтобы вернуться.",
+      ur: "سب دہرا لیا۔ واپس جانے کے لیے Enter دبائیں۔",
+      id: "Semua sudah diulas. Tekan Enter untuk kembali.",
+      de: "Alles wiederholt. Drücke die Eingabetaste, um zurückzugehen.",
+      ja: "すべて復習しました。Enter で戻ります。",
+      sw: "Yote yamepitiwa. Bonyeza Enter kurudi.",
+      mr: "सगळी उजळणी झाली. परत जाण्यासाठी Enter दाबा.",
+      ko: "모두 복습했습니다. Enter를 눌러 돌아가세요.",
+    }),
     everyWordLearned: t({
       en: "Every word learned.",
       zh: "所有单词都学完了。",
@@ -2363,6 +2381,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
   hard: "/words study view: name of the second review grade (Again/Hard/Good/Easy): remembered, but with difficulty. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
   good: "/words study view: name of the third review grade (Again/Hard/Good/Easy): remembered correctly, the normal answer. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
   easy: "/words study view: name of the highest review grade (Again/Hard/Good/Easy): remembered effortlessly, so the next review is far away. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
+  allReviewedBack:
+    "/words study view and the book reader's paragraph word review: screen-reader-only status (aria-live polite), announced once when the last word left to review has just been graded and keyboard focus has moved to the back button at the end of the list (back to the word lists, or back to the book). Tells the listener the review is done and that Enter goes back. Two short sentences; keep the key name Enter as the keyboards of that language label it.",
   everyWordLearned:
     "/words study view, shown in the help strip at the bottom (or in the middle of an empty list) when no words are left to study in the lists being studied; followed by a confetti icon. One short celebratory sentence.",
   loadingMore:

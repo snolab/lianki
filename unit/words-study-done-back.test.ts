@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { EmptyTray } from "@/app/(app)/words/EmptyTray";
-import { TrayBack, studyFinished } from "@/app/(app)/words/study-done-back";
+import { TrayBack, reviewEnded, studyFinished } from "@/app/(app)/words/study-done-back";
 
 const app = join(import.meta.dir, "../app/(app)");
 const words = readFileSync(join(app, "words/WordsClient.tsx"), "utf8");
@@ -66,7 +66,40 @@ describe("TrayBack", () => {
   });
 });
 
+describe("reviewEnded: the last word to review was just graded (focus goes to the way back)", () => {
+  const end = { first: true, reviewable: true, exhausted: true, left: 0, waiting: 0 };
+  test("the last unreviewed new or due word, graded: the end", () => {
+    expect(reviewEnded(end)).toBe(true);
+  });
+  test("a correction of an earlier word when all are done: no focus jump (#511)", () => {
+    expect(reviewEnded({ ...end, first: false })).toBe(false);
+  });
+  test("a missed word waiting to come back (#536, off screen or not due yet): not the end", () => {
+    expect(reviewEnded({ ...end, waiting: 1 })).toBe(false);
+  });
+  test("another new or due word still ungraded in the list: not the end", () => {
+    expect(reviewEnded({ ...end, left: 1 })).toBe(false);
+  });
+  test("more words still to fetch: not the end", () => {
+    expect(reviewEnded({ ...end, exhausted: false })).toBe(false);
+  });
+  test("browsing a word ahead of its due never ends the review", () => {
+    expect(reviewEnded({ ...end, reviewable: false })).toBe(false);
+  });
+});
+
 describe("Study's end of the list", () => {
+  test("the end of the review focuses the way back and says so, politely", () => {
+    expect(words).toContain("const first = !gradesNow.current.has(i);");
+    expect(words).toContain("waiting: requeue.current.later.length,");
+    // Focus moved on meanwhile (the chat input): left there.
+    expect(words).toContain("document.activeElement !== backFrom.current");
+    expect(words).toMatch(/btn\.focus\(\{ preventScroll: true, focusVisible: true \}/);
+    expect(words).toContain('behavior: motionOff() ? "auto" : "smooth"');
+    expect(words).toMatch(/role="status" aria-live="polite" className="sr-only" data-review-ended/);
+    expect(words).toContain("setBackSaid(text.allReviewedBack.value);");
+  });
+
   test("the empty state and the end of the list both offer the toolbar's exit", () => {
     const uses = [...words.matchAll(/<TrayBack label=\{(\w+)\} onExit=\{(\w+)\} art/g)];
     expect(uses.length).toBe(2);
