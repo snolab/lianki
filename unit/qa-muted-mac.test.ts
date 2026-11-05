@@ -1,8 +1,8 @@
 /**
  * scripts/qa/with-muted-mac.sh under overlapping runs. The Mac is never touched:
- * osascript is a fake first on PATH that keeps the "muted" state in a file, and
- * `uname` is one too so this runs on CI's Linux. Run by hand on the owner's Mac
- * or in CI, nothing plays and nothing mutes.
+ * LIANKI_QA_OSASCRIPT names a fake that keeps the state in files, so a process
+ * that outlives it finds nothing rather than the real osascript. `uname` is a
+ * fake too, so this runs on CI's Linux. Nothing plays and nothing mutes.
  *
  * Why: overlapping qa:all runs left the owner's Mac muted (2026-11-05 14:21 JST).
  */
@@ -34,6 +34,10 @@ const running: Bun.Subprocess[] = [];
 const FAKE_OSASCRIPT = `#!/bin/sh
 echo "$2" >>"$FAKE_ROOT/log"
 case "$2" in
+  "output volume"*) cat "$FAKE_ROOT/volume" ;;
+  "set volume output volume "*)
+    echo "\${2##* }" >"$FAKE_ROOT/volume"
+    echo false >"$FAKE_ROOT/sound" ;;
   output*)
     if [ -f "$FAKE_ROOT/read-fails" ]; then exit 1; fi
     cat "$FAKE_ROOT/sound" ;;
@@ -56,6 +60,7 @@ beforeEach(() => {
   chmodSync(join(bin, "osascript"), 0o755);
   chmodSync(join(bin, "uname"), 0o755);
   writeFileSync(sound, "false\n");
+  writeFileSync(join(root, "volume"), "25\n");
   writeFileSync(log, "");
   script = join(root, "with-muted-mac.sh");
   writeFileSync(script, readFileSync(SOURCE));
@@ -89,6 +94,7 @@ const env = () => ({
   ...process.env,
   PATH: `${join(root, "bin")}:${process.env.PATH}`,
   FAKE_ROOT: root,
+  LIANKI_QA_OSASCRIPT: join(root, "bin", "osascript"),
   LIANKI_QA_MUTE_DIR: dir,
 });
 
@@ -127,12 +133,87 @@ async function until(ok: () => boolean, ms = 20_000) {
 }
 
 const muted = () => readFileSync(sound, "utf8").trim() === "true";
-const leftovers = () => (existsSync(dir) ? readdirSync(dir) : []);
+const leftovers = () => (existsSync(dir) ? readdirSync(dir).filter((f) => f !== "log") : []);
+const volume = () => readFileSync(join(root, "volume"), "utf8").trim();
 const deadPid = async () => {
   const p = Bun.spawn(["true"]);
   await p.exited;
   return p.pid;
 };
+
+describe("the volume", () => {
+  test(
+    "moved during a run: put back, and the sound comes back too",
+    async () => {
+      const a = held("a");
+      await a.up();
+      writeFileSync(join(root, "volume"), "80\n");
+      await a.release();
+      expect(volume()).toBe("25");
+      expect(muted()).toBe(false);
+      expect(leftovers()).toEqual([]);
+    },
+    SLOW,
+  );
+
+  test(
+    "moved during a run on a muted Mac: put back, and still muted",
+    async () => {
+      writeFileSync(sound, "true\n");
+      const a = held("a");
+      await a.up();
+      writeFileSync(join(root, "volume"), "80\n");
+      await a.release();
+      expect(volume()).toBe("25");
+      expect(muted()).toBe(true);
+    },
+    SLOW,
+  );
+
+  test(
+    "unmoved: never set",
+    async () => {
+      expect(await run("true").exited).toBe(0);
+      expect(readFileSync(log, "utf8")).not.toContain("set volume output volume");
+    },
+    SLOW,
+  );
+
+  test(
+    "a crashed run's volume is restored by the next run",
+    async () => {
+      mkdirSync(dir);
+      writeFileSync(join(dir, "original-muted"), "false\n");
+      writeFileSync(join(dir, "original-volume"), "40\n");
+      expect(await run("true").exited).toBe(0);
+      expect(volume()).toBe("40");
+      expect(muted()).toBe(false);
+    },
+    SLOW,
+  );
+});
+
+test(
+  "every mute and restore is logged with its command, for the next 'why was it muted'",
+  async () => {
+    expect(await run("sh", "-c", "exit 0").exited).toBe(0);
+    const lines = readFileSync(join(dir, "log"), "utf8").trim().split("\n");
+    expect(lines[0]).toContain("mute: original=false");
+    expect(lines[0]).toContain("cmd=sh -c exit 0");
+    expect(lines[1]).toContain("restored: unmuted");
+  },
+  SLOW,
+);
+
+test(
+  "a fake that is gone reaches nothing, not the real osascript",
+  async () => {
+    rmSync(join(root, "bin", "osascript"));
+    expect(await run("sh", "-c", "exit 5").exited).toBe(5);
+    expect(existsSync(dir)).toBe(false);
+  },
+  SLOW,
+);
 
 describe("nothing outlives a run", () => {
   test(

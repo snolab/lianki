@@ -3,9 +3,14 @@
 #
 #   bash scripts/qa/with-muted-mac.sh <command> [args…]
 #
+# Only for what can make a sound: browsers. Builds, lint and unit tests stay
+# outside it, so `bun test` and most of a pre-push leave the Mac alone (owner,
+# 2026-11-05: it went muted "when unit tests run"). qa:all holds it only around
+# its browser suites (scripts/qa/qa-all.mjs).
+#
 # Owner, 2026-10-31 03:34 JST: QA may run at any hour, but the Mac must go
 # silent by itself (it read words aloud in the middle of the night). Before the
-# command: remember whether output was muted, then mute. After it — success,
+# command: remember the mute and the volume, then mute. After it — success,
 # failure, Ctrl-C or kill — restore what was there before (muted stays muted).
 #
 # Several QA runs at once share one mute (worktrees overlap all the time):
@@ -16,7 +21,10 @@
 #     the last. It goes only once the Mac has been seen unmuted, so a failed
 #     restore is tried again rather than read as "muted" by the next run. That
 #     misreading kept the owner's Mac muted (2026-11-05 14:21 JST).
-#   - $DIR/mutex guards both. mkdir is atomic; the owner's pid is inside, so it
+#   - $DIR/original-volume: the volume, saved and restored with it.
+#   - $DIR/log: every mute and restore with its time, pid, checkout and command,
+#     so "why was it muted at 14:21" has an answer.
+#   - $DIR/mutex guards them. mkdir is atomic; the owner's pid is inside, so it
 #     is broken only for a dead owner, or a stuck one after LOCK_WAIT. Every
 #     osascript under it has a time limit, so a live owner never gets that old.
 #   - A watcher per wrapper is detached from its process group and blocks on a
@@ -27,12 +35,18 @@
 # Not macOS (CI): the command just runs.
 set -u
 
-if [ "$(uname -s)" != "Darwin" ] || ! command -v osascript >/dev/null 2>&1; then
+# The tests name their fake here: with a fake only first on PATH, a process that
+# outlives the fake would reach the real osascript and the real Mac.
+OSASCRIPT="${LIANKI_QA_OSASCRIPT:-osascript}"
+
+if [ "$(uname -s)" != "Darwin" ] || ! command -v "$OSASCRIPT" >/dev/null 2>&1; then
   exec "$@"
 fi
 
 DIR="${LIANKI_QA_MUTE_DIR:-$HOME/.cache/lianki-qa-mute}"
 STATE="$DIR/original-muted"
+VOLUME="$DIR/original-volume"
+LOG="$DIR/log"
 MUTEX="$DIR/mutex"
 BREAKER="$DIR/mutex-breaker"
 ME="$DIR/holder.$$"
@@ -45,6 +59,14 @@ if ! mkdir -p "$DIR" 2>/dev/null || [ ! -w "$DIR" ]; then
 fi
 
 started() { ps -o lstart= -p "$1" 2>/dev/null; }
+
+# Called under the mutex. Keeps the last 500 lines or so.
+note() {
+  echo "$(date '+%Y-%m-%dT%H:%M:%S%z') pid=$$ cwd=$PWD $*" >>"$LOG" 2>/dev/null
+  if [ "$(wc -l <"$LOG" 2>/dev/null || echo 0)" -gt 1000 ]; then
+    tail -n 500 "$LOG" >"$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG"
+  fi
+}
 
 # Fails rather than waits for ever: a process that outlives its run must end.
 lock() {
@@ -95,9 +117,9 @@ holders() { ls "$DIR"/holder.* 2>/dev/null | wc -l | tr -d ' '; }
 # An alarm survives exec, so no guard process is left behind.
 osa() {
   if command -v perl >/dev/null 2>&1; then
-    perl -e 'alarm 8; exec @ARGV' osascript -e "$1" 8>&- 2>/dev/null
+    perl -e 'alarm 8; exec @ARGV' "$OSASCRIPT" -e "$1" 8>&- 2>/dev/null
   else
-    osascript -e "$1" 8>&- 2>/dev/null
+    "$OSASCRIPT" -e "$1" 8>&- 2>/dev/null
   fi
 }
 
@@ -119,6 +141,17 @@ read_original() {
 
 mute() { osa 'set volume with output muted' >/dev/null || true; }
 
+# Back to the saved volume, if it moved. Setting a volume can clear the mute, so
+# this comes before the mute is settled.
+restore_volume() {
+  local saved
+  saved="$(cat "$VOLUME" 2>/dev/null)"
+  case "$saved" in '' | *[!0-9]*) return ;; esac
+  if [ "$(osa 'output volume of (get volume settings)')" != "$saved" ]; then
+    osa "set volume output volume $saved" >/dev/null
+  fi
+}
+
 # The Mac ends up as it was. Only an original of exactly "true" stays muted: an
 # unreadable one, or none (a device with no mute reads "missing value"), is
 # unmuted, since a Mac stuck on mute is the failure this file exists to prevent.
@@ -126,19 +159,24 @@ settle() {
   local i
   prune
   if [ "$(holders)" != "0" ] || [ ! -f "$STATE" ]; then return; fi
+  restore_volume
   if [ "$(cat "$STATE")" = "true" ]; then
-    rm -f "$STATE"
+    mute
+    rm -f "$STATE" "$VOLUME"
+    note "restored: stays muted"
     return
   fi
   for i in 1 2 3; do
     osa 'set volume without output muted' >/dev/null
     if [ "$(muted_now)" != "true" ]; then
-      rm -f "$STATE"
+      rm -f "$STATE" "$VOLUME"
+      note "restored: unmuted"
       return
     fi
     sleep 0.5
   done
   echo "with-muted-mac: could not unmute; the next run tries again ($STATE)" >&2
+  note "restore failed: still muted"
 }
 
 # The watcher: its stdin is the wrapper's pipe. EOF means the wrapper is gone.
@@ -182,8 +220,10 @@ if [ ! -f "$STATE" ]; then
   # mute is all a read would see, so the original counts as not muted. A leftover
   # state with no live holder is from a crashed run: it is still the original.
   if [ "$(holders)" = "0" ]; then read_original >"$STATE"; else echo false >"$STATE"; fi
+  osa 'output volume of (get volume settings)' >"$VOLUME"
 fi
 mute
+note "mute: original=$(cat "$STATE") holders=$(holders) cmd=$*"
 started "$$" >"$ME"
 unlock
 

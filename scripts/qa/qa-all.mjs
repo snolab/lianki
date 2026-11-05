@@ -256,6 +256,37 @@ async function waitReady(timeoutMs = 120_000) {
 await waitReady();
 log("server ready");
 
+// The Mac is muted only while a browser may be open: not for the build, the
+// migrations or the API suite, none of which can make a sound (owner, 2026-11-05:
+// it went muted during a pre-push's early stages, and stayed so through the build).
+// One hold across the browser suites, so his sound does not flicker between them.
+// Its stdin is this process: if we die, even by kill -9, the pipe closes and the
+// wrapper restores the sound. It never blocks the run.
+let muteHold = null;
+async function holdMute() {
+  if (muteHold || process.platform !== "darwin") return;
+  muteHold = spawn(
+    "bash",
+    ["scripts/qa/with-muted-mac.sh", "sh", "-c", "echo muted; exec cat >/dev/null"],
+    { stdio: ["pipe", "pipe", "inherit"] },
+  );
+  await Promise.race([
+    new Promise((ok) => {
+      muteHold.stdout.once("data", ok);
+      muteHold.once("exit", ok);
+      muteHold.once("error", ok);
+    }),
+    new Promise((ok) => setTimeout(ok, 150_000).unref()),
+  ]);
+}
+async function releaseMute() {
+  if (!muteHold) return;
+  const gone = new Promise((ok) => muteHold.once("exit", ok));
+  muteHold.stdin.end();
+  await Promise.race([gone, new Promise((ok) => setTimeout(ok, 60_000).unref())]);
+  muteHold = null;
+}
+
 // ── 5. Run every suite; keep going on failure, report at the end ──────────────
 const suites = [
   ["API  (qa-api)", "bun", ["scripts/qa/qa-api.mjs"], { QA_BASE: BASE }],
@@ -291,12 +322,18 @@ const suites = [
   ["PARTNER FRAME (route)", "bun", ["scripts/qa/qa-partner-frame-route.ts"], { QA_BASE: BASE }],
 ];
 
+// Suites that open no browser, so they run before the Mac is muted.
+const NO_BROWSER = new Set(["API  (qa-api)"]);
+
 const results = [];
 for (const [name, cmd, args, env] of suites) {
+  if (!NO_BROWSER.has(name)) await holdMute();
   log(`SUITE — ${name}`);
   const r = spawnSync(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } });
   results.push([name, r.status === 0]);
 }
+
+await releaseMute();
 
 // ── 6. Teardown + summary ─────────────────────────────────────────────────────
 if (!KEEP) stopServer();
