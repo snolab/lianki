@@ -14,7 +14,9 @@
 // - Easy again, past the hold: one /grade request carries the words; they
 //   are graded (the item's plan is empty afterwards);
 // - Hard: once the swipe settles, the item's word review opens; ✕ closes it;
-// - a grade undone before the review opens: no review.
+// - a grade undone before the review opens: no review;
+// - reading aloud, a grade's review pauses it and closing resumes it from the
+//   same sentence (the audio claim, #550): never stopped.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, devices } from "playwright";
@@ -259,6 +261,82 @@ async function touchRun(swipe, scheme) {
   await ctx.close();
 }
 
+/** Speech that never makes a sound: each line "ends" after window.__lineMs. */
+const FAKE_SPEECH = `(() => {
+  const spoken = (window.__spoken = []);
+  let timers = [];
+  const fake = {
+    speaking: false,
+    paused: false,
+    getVoices: () => [{ lang: "en-US", name: "QA voice", voiceURI: "qa", default: true, localService: true }],
+    speak(u) {
+      spoken.push(u.text);
+      timers.push(setTimeout(() => u.onstart && u.onstart(), 10));
+      timers.push(setTimeout(() => u.onend && u.onend(), window.__lineMs || 200));
+    },
+    cancel() { timers.forEach(clearTimeout); timers = []; },
+    pause() { this.paused = true; },
+    resume() { this.paused = false; },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  Object.defineProperty(window, "speechSynthesis", { configurable: true, value: fake });
+  window.SpeechSynthesisUtterance = class {
+    constructor(text) { this.text = text; this.lang = ""; this.voice = null; this.rate = 1; this.onstart = this.onend = this.onerror = this.onboundary = null; }
+    addEventListener() {}
+    removeEventListener() {}
+  };
+})();`;
+
+async function playRun() {
+  const tag = "desktop-reading";
+  console.log(`— ${tag}`);
+  const ctx = await newSilentContext(browser, { ...devices["Desktop Chrome"], baseURL: BASE });
+  await ctx.addInitScript(FAKE_SPEECH);
+  await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
+  const { page, errs } = await setup(ctx, tag, "js");
+  await page.evaluate(() => (window.__lineMs = 1500));
+  await page.mouse.wheel(0, 600);
+  await page.waitForTimeout(800);
+  const status = () => page.getByTestId("read-play").getAttribute("data-status");
+  const spoken = () => page.evaluate(() => window.__spoken.length);
+  await page.getByTestId("read-play").click();
+  check(
+    await until(page, async () => (await spoken()) > 0, 5000),
+    `${tag}: reading aloud (${await status()})`,
+  );
+  // Good (J) while reading: the next item starts (its sentences are queued
+  // at once by the fake voice), then the item's review opens over the book.
+  await page.waitForTimeout(1000);
+  const n0 = await spoken();
+  await page.keyboard.press("KeyJ");
+  check(
+    await until(page, async () => (await page.getByTestId("read-word-review").count()) > 0, 5000),
+    `${tag}: Good opens the item's review`,
+  );
+  const playing = (await page.evaluate(() => window.__spoken)).slice(n0);
+  check(
+    (await status()) === "speaking",
+    `${tag}: the reading is paused under the review, not stopped (${await status()})`,
+  );
+  const n = await spoken();
+  await page.getByTestId("read-review-close").click();
+  check(
+    await until(page, async () => (await spoken()) > n + 1, 6000),
+    `${tag}: closed, the reading goes on (${n} → ${await spoken()})`,
+  );
+  // On from the sentence it was on: a line of the item that was playing, not the book's start.
+  const resumed = (await page.evaluate(() => window.__spoken))
+    .slice(n)
+    .filter((x) => x.trim() && playing.includes(x));
+  check(
+    resumed.length > 0 && (await status()) !== "idle",
+    `${tag}: it resumes in the item it was reading (${JSON.stringify(resumed[0] ?? null).slice(0, 60)})`,
+  );
+  check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
+  await ctx.close();
+}
+
 async function deskRun() {
   const tag = "desktop";
   console.log(`— ${tag}`);
@@ -312,6 +390,7 @@ async function deskRun() {
 await touchRun("js", "light");
 await touchRun("native", "dark");
 await deskRun();
+await playRun();
 await browser.close();
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed");
 process.exit(failed ? 1 : 0);
