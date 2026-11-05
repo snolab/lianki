@@ -14,7 +14,7 @@ export function devSwitchFor(
   env: Record<string, string | undefined> = process.env,
 ): DevSwitch | undefined {
   const mode = devSwitchMode({
-    owner: isOwner(email, env.OWNER_EMAILS),
+    owner: isOwner(email),
     devServer: devWholePage(env),
   });
   if (!mode) return undefined;

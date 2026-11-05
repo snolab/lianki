@@ -71,8 +71,11 @@ export type Verified = {
 
 export type GateDeps = {
   publicHost: string;
-  /** The account the dev server's login route signs in (OWNER_EMAILS[0]). */
-  ownerEmail: string;
+  /**
+   * The account the dev server's login route signs in: the oldest active grant
+   * in site_role, asked of lianki.com ("" when it cannot be read: nobody passes).
+   */
+  ownerEmail: string | (() => Promise<string>);
   /** HMAC key for the session cookie (local; .dev-whole-page.json). */
   sessionKey: string;
   /**
@@ -640,8 +643,11 @@ export function createGate(d: GateDeps) {
     return ok;
   }
 
-  const okFor = (v: Verified | null) =>
-    Boolean(v && v.email.toLowerCase() === d.ownerEmail.toLowerCase());
+  const okFor = async (v: Verified | null) => {
+    if (!v) return false;
+    const owner = typeof d.ownerEmail === "string" ? d.ownerEmail : await d.ownerEmail();
+    return Boolean(owner) && v.email.toLowerCase() === owner.toLowerCase();
+  };
 
   async function handshake(req: GateRequest, ip: string): Promise<GateResult> {
     if (req.method === "GET") {
@@ -673,7 +679,7 @@ export function createGate(d: GateDeps) {
     const r = await verify(token.trim(), ip, req.signal);
     if ("refused" in r) return refusedAnswer(r.refused);
     const v = r.v;
-    if (!okFor(v) || !v) {
+    if (!(await okFor(v)) || !v) {
       fails.add(ip);
       return closed("handshake: bad, used, expired or revoked token");
     }
@@ -750,7 +756,7 @@ export function createGate(d: GateDeps) {
           v = r.v;
           if (v) bearer.set(key, { v, at: now() });
         }
-        if (!okFor(v) || !v) {
+        if (!(await okFor(v)) || !v) {
           bearer.delete(key);
           fails.add(ip);
           return closed("bearer: bad token");

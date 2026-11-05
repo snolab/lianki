@@ -132,7 +132,7 @@ gate ─ POST https://lianki.com/api/dev-access/verify (x-lianki-dev-bridge) ─
 most 20 live), shown **once**; D1 keeps only the SHA-256. Revoke one, or
 "revoke all", on the same page. Each token signs in as the account that
 minted it, which must be an owner, and the gate also requires it to be the
-owner its login route mints (`OWNER_EMAILS[0]`): it can never sign in as
+owner its login route mints (the oldest active grant in `site_role`): it can never sign in as
 anyone else. Tokens are checked only by the gate, which proves itself with
 `DEV_BRIDGE_SECRET`; without it `/api/dev-access/verify` answers 401, so a
 token cannot be tested from anywhere else.
@@ -354,9 +354,11 @@ Rules: `scripts/dev/whole-page-guard.ts`. Tests: `unit/whole-page-guard.test.ts`
    OAuth and passkey endpoint returns 403, so no account or credential can
    be created in production through this origin.
 4. **Owner.** Every page and app API must carry a session whose email is in
-   `OWNER_EMAILS` (read from `wrangler.jsonc`, the list production uses).
+   `site_role` (production's list, asked of lianki.com with the bridge secret
+   through `/api/dev-access/verify`, at most 30 s old; unreadable means nobody).
    Anything else gets 403, so only the owner's data is readable and writes
-   only touch his account. The result is cached for 60 s per cookie header.
+   only touch his account. The result is cached for 60 s per cookie header, so
+   a revocation reaches this origin within 90 s.
 5. **Sign-in.** The enter link's second half: the guard calls
    `POST /api/dev-whole-page/login` with a secret header (stripped from all
    incoming requests). That route makes a better-auth session for the owner

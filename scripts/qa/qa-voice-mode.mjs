@@ -5,9 +5,9 @@
 // (`__lkMicTaps.offer`), exactly where a final transcript arrives, so no STT
 // runs and nothing is ever played.
 //
-//   QA_BASE=http://localhost:3217 QA_EMAIL=<an OWNER_EMAILS address> bun scripts/qa/qa-voice-mode.mjs
+//   QA_BASE=http://localhost:3217 QA_EMAIL=<an owner in site_role> bun scripts/qa/qa-voice-mode.mjs
 //
-// QA_EMAIL must be the dev server's OWNER_EMAILS (the flag is off locally, so
+// QA_EMAIL must be an owner in the dev server's site_role (the flag is off locally, so
 // only the owner's preview shows the switch). Runs a desktop and a phone pass.
 import { chromium, devices } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";

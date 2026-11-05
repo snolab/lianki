@@ -100,6 +100,9 @@ for (const [method, path] of [
   ["GET", "/dev/preview?to=%2Fen%2Fread"],
   ["GET", "/dev/users"],
   ["GET", "/dev/gift-codes"],
+  ["GET", "/api/dev/owners"],
+  ["POST", "/api/dev/owners"],
+  ["GET", "/dev/owners"],
 ]) {
   const r = await call(method, path, method === "POST" ? {} : undefined);
   rec(`SEC   non-owner ${method} ${path} → 404`, r.status === 404, `HTTP ${r.status}`);

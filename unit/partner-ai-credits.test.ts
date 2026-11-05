@@ -27,7 +27,6 @@ describe("partner AI: credits", () => {
   const db = () => d1 as unknown as D1WithBatch;
   const env = () => ({
     DB: d1 as unknown as PartnerDb,
-    OWNER_EMAILS: "owner@x.com",
     CLOUDFLARE_ACCOUNT_ID: "acct",
     CLOUDFLARE_AI_TOKEN: "tok",
   });
@@ -53,6 +52,9 @@ describe("partner AI: credits", () => {
     }[];
   beforeEach(() => {
     d1 = createTestD1(testSchema());
+    d1.raw().exec(
+      "INSERT INTO site_role (email, granted_by, granted_at) VALUES ('owner@x.com', 'test', 1)",
+    );
     d1.raw().exec(`INSERT INTO user (id, email, createdAt, updatedAt) VALUES
       ('u_alice', 'alice@x.com', 'x', 'x'), ('u_owner', 'owner@x.com', 'x', 'x')`);
     d1.raw().exec(

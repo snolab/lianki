@@ -10,7 +10,7 @@ own table, from its own OAuth flow. Disconnecting never signs anyone out, and
 signing out or unlinking the sign-in never touches a connection.
 
 Ships **dark**: flag `connections.google` (off) — while off, only the owner
-(`OWNER_EMAILS`) sees /connections and the Drive import; everyone else gets 404. Turn it on at `/dev/flags` once the setup below is done and checked.
+(`site_role`) sees /connections and the Drive import; everyone else gets 404. Turn it on at `/dev/flags` once the setup below is done and checked.
 
 ## Flow
 

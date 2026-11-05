@@ -173,7 +173,7 @@ frontend comes through Lianki's custom-frontend `?live` feature instead.
 
 Owner confirmed (2026-11-05, typed) `dsh-kishouzet.lianki.com` (allow only the
 friend's account email) and `dsh-snomiao.lianki.com` (allow only the owner's
-`OWNER_EMAILS`). **Not created yet:** no credential on the Mac can make Access
+address, an active owner in `site_role`). **Not created yet:** no credential on the Mac can make Access
 applications. Wrangler's OAuth has no Access scope, and cloudflared's
 `cert.pem` covers only tunnels and DNS. It needs an API token with
 **Account · Access: Apps and Policies · Edit**, made by the owner. The order

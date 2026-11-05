@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { makeSignature } from "better-auth/crypto";
 import { getAuth } from "@/auth";
-import { ownerEmails } from "@/lib/owner";
+import { refreshOwners } from "@/lib/owner-store";
 import { devWholePageLoginAllowed } from "@/lib/dev-whole-page";
 
 /**
@@ -18,8 +18,8 @@ export const POST = async (req: Request) => {
   if (!devWholePageLoginAllowed(process.env, req.headers)) {
     return new NextResponse(null, { status: 404 });
   }
-  const email = ownerEmails()[0];
-  if (!email) return NextResponse.json({ error: "OWNER_EMAILS is empty" }, { status: 500 });
+  const email = (await refreshOwners())[0];
+  if (!email) return NextResponse.json({ error: "no owner in site_role" }, { status: 500 });
 
   const ctx = await (await getAuth()).$context;
   const found = await ctx.internalAdapter.findUserByEmail(email);

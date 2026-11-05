@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { useBackend, useD1 } from "./support/testMocks";
+import { clearOwnerCache, setOwnerSnapshot } from "@/lib/owner";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import { b64url } from "@/lib/stt-ticket";
@@ -334,15 +335,13 @@ describe("the pointer store (D1) and POST /api/live-view", () => {
 });
 
 describe("owner-only shell", () => {
-  const saved = process.env.OWNER_EMAILS;
   const labels = () => ({ liveView: "Live view", normal: "Normal", waiting: "w", refused: "r" });
   beforeEach(() => {
-    process.env.OWNER_EMAILS = "owner@example.com";
+    setOwnerSnapshot(["owner@example.com"]);
     useBackend("d1");
   });
   afterAll(() => {
-    if (saved === undefined) delete process.env.OWNER_EMAILS;
-    else process.env.OWNER_EMAILS = saved;
+    clearOwnerCache();
     useBackend("mongodb");
   });
 
@@ -351,7 +350,7 @@ describe("owner-only shell", () => {
     useD1(d);
     expect(await liveViewFor("someone@example.com", "1", labels)).toBeUndefined();
     expect(await liveViewFor(null, "1", labels)).toBeUndefined();
-    process.env.OWNER_EMAILS = "";
+    clearOwnerCache();
     expect(await liveViewFor("owner@example.com", "1", labels)).toBeUndefined();
   });
 

@@ -8,7 +8,7 @@
  * at /dev/flags, no deploy):
  *
  * - **test**: an `sk_test_…` key and the flag off. Passes and top-ups are
- *   offered to the owner (`OWNER_EMAILS`) only, and the webhook credits the
+ *   offered to the owner (`site_role`) only, and the webhook credits the
  *   owner only, kept apart from real money — a test card must never become
  *   real Pro days or credits for anyone.
  * - **live**: an `sk_live_…` key and the flag on. Offered to everyone.
@@ -79,7 +79,7 @@ export function stripeOpenTo(
   flags: FlagValues = {},
 ): boolean {
   const mode = stripeMode(env, flags);
-  return mode === "live" || (mode === "test" && isOwner(email, env.OWNER_EMAILS));
+  return mode === "live" || (mode === "test" && isOwner(email));
 }
 
 function paymentMethods(): string[] {
