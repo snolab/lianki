@@ -18,6 +18,8 @@ export interface ReaderBook {
   headings: ReadonlySet<number>;
   chapterStarts: ReadonlySet<number>;
   lang: string;
+  /** A line's own language (a book that mixes them). */
+  langOf?: (line: number) => string;
 }
 
 /** A grade as given, to take back with `undo`. */
@@ -91,6 +93,7 @@ export function localReaderData(): ReaderData {
         headings: b.headings,
         chapterStarts: b.chapterStarts,
         lang: b.lang,
+        langOf: b.langOf,
         target: itemWords(START_WPM),
       }),
     }),

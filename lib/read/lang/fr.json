@@ -4,5 +4,6 @@
   "ligatures": [["œ", "oe"], ["æ", "ae"]],
   "folds": [["es", ""], ["s", ""], ["x", ""], ["e", ""]],
   "abbreviations": ["m", "mm", "mme", "mmes", "mlle", "mlles", "mgr", "st", "ste", "dr", "mr", "mrs"],
-  "lemmas": true
+  "lemmas": true,
+  "fillers": ["euh", "hum"]
 }

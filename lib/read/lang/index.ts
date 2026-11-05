@@ -35,6 +35,12 @@ export interface LangData {
    * FILES order, so Japanese kana wins over Chinese Han.
    */
   script?: string;
+  /**
+   * Another script this language writes beside its own (Japanese and Korean:
+   * Han). A run in it counts for this language where its own script is near
+   * (lib/read/lang-detect.ts), not for the language that owns the script.
+   */
+  alongside?: string;
   /** Clitics written before an apostrophe and dropped from the word: l' → "", qu' → "". */
   elisions?: string[];
   /** Endings dropped from a word: English possessive "'s". */
@@ -54,6 +60,12 @@ export interface LangData {
   notNames?: string[];
   /** A card's reading is a key too when it matches this pattern (Japanese kana). */
   readingKeys?: string;
+  /**
+   * Hesitation sounds of speech ("um", 嗯): a transcript sign, and a pause a
+   * long unpunctuated stretch may be cut at (lib/read/prep.ts). Matched as
+   * whole words, or, in scripts without spaces, as written.
+   */
+  fillers?: string[];
   /** Has a lemma file, public/words/lemma/<lang>.txt (lib/read/lemma.ts). */
   lemmas?: boolean;
 }
@@ -123,6 +135,23 @@ export const SCRIPT_LANGS: [string, RegExp][] = FILES.filter(([, d]) => d.script
     "u",
   ),
 ]);
+
+/** Languages that write another script beside their own (LangData.alongside). */
+export const ALONGSIDE: [string, RegExp][] = FILES.filter(([, d]) => d.alongside).map(([l, d]) => [
+  l,
+  new RegExp(
+    d
+      .alongside!.split("|")
+      .map((s) => `^(?:\\p{Script=${s}})+$`)
+      .join("|"),
+    "u",
+  ),
+]);
+
+/** Every language's hesitation sounds (LangData.fillers), lowercase. */
+export const FILLERS: readonly string[] = [
+  ...new Set(FILES.flatMap(([, d]) => (d.fillers ?? []).map((f) => f.toLowerCase()))),
+];
 
 /** Languages with function words to guess from. */
 export const STOP_LANGS: [string, string[]][] = FILES.filter(([, d]) => d.stop?.length).map(

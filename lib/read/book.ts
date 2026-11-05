@@ -12,6 +12,8 @@
 import { INLINE_KINDS, type InlineKind, type InlineMark } from "./reader-api";
 import { countWords, parseWordStats, type WordStats } from "./words";
 import { allowedSourceUrl } from "@/lib/books/catalogue";
+import { checkRuns, type LangRuns } from "./lang-detect";
+import { checkShape, type TextShape } from "./prep";
 
 export const BOOK_KIND = "lianki-book";
 
@@ -57,6 +59,23 @@ export interface BookMeta {
   continues?: number[];
   /** Imported with inline markup and joins (books from before have none). */
   markup?: 1;
+  /**
+   * A book that mixes languages: each line's language, as runs [first line,
+   * primary subtag] (lib/read/lang-detect.ts). Sentences, read-aloud, lookup,
+   * translation and 制卡 use a line's own; `lang` stays the book's primary.
+   */
+  langs?: LangRuns;
+  /** What the import's detector found (lib/read/prep.ts): the polish offer reads it. */
+  shape?: TextShape;
+  /** The AI polish of a raw transcript (lib/read/polish.ts); the raw text is kept beside it. */
+  polished?: PolishInfo;
+}
+
+/** A polish that was applied: when, and how many of its chunks passed the check. */
+export interface PolishInfo {
+  at: string;
+  chunks: number;
+  kept: number;
 }
 
 /** The book text's markup, kept beside the plain lines. */
@@ -200,8 +219,14 @@ export function checkBook(input: unknown): BookCheck {
 }
 
 export function bookMetaOf(
-  book: ParsedBook,
-  from: { source: BookSource; sourceUrl?: string; credit?: BookCredit } = { source: "epub" },
+  book: ParsedBook & { langs?: LangRuns },
+  from: {
+    source: BookSource;
+    sourceUrl?: string;
+    credit?: BookCredit;
+    shape?: TextShape;
+    polished?: PolishInfo;
+  } = { source: "epub" },
 ): BookMeta {
   return {
     kind: BOOK_KIND,
@@ -222,6 +247,9 @@ export function bookMetaOf(
           markup: 1 as const,
         }
       : {}),
+    ...(book.langs?.length ? { langs: book.langs } : {}),
+    ...(from.shape ? { shape: from.shape } : {}),
+    ...(from.polished ? { polished: from.polished } : {}),
   };
 }
 
@@ -266,6 +294,13 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
     // (lib/read/units.ts); here only the shape.
     const markup =
       m.markup === 1 ? checkMarkup(m as unknown as Record<string, unknown>, null) : null;
+    const langs = checkRuns(m.langs, null);
+    const shape = checkShape(m.shape);
+    const p = m.polished as Partial<PolishInfo> | undefined;
+    const polished =
+      p && typeof p.at === "string" && Number.isInteger(p.chunks) && Number.isInteger(p.kept)
+        ? { at: p.at.slice(0, 40), chunks: p.chunks!, kept: p.kept! }
+        : null;
     return {
       kind: BOOK_KIND,
       v: 1,
@@ -282,6 +317,9 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
       headings,
       ...(words ? { words } : {}),
       ...(markup ? { ...markup, markup: 1 as const } : {}),
+      ...(langs ? { langs } : {}),
+      ...(shape ? { shape } : {}),
+      ...(polished ? { polished } : {}),
     };
   } catch {
     return null;

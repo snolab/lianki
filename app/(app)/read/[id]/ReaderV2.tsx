@@ -98,6 +98,7 @@ import { useTextSizes } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
+import { PolishOffer, RawTranscript } from "./reader-polish";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { useItemWords, type ItemPlan } from "./use-item-words";
@@ -139,8 +140,10 @@ import {
   tokenOffset,
   tokenText,
   tokenWord,
+  unitLine,
   unitLink,
 } from "@/lib/read/reader-select";
+import { langAt } from "@/lib/read/lang-detect";
 import { segmentLine } from "@/lib/read/units";
 import { parseSentenceId, sentenceId } from "@/lib/read/reader-api";
 import { CardGradeArea, useGradeWords } from "./reader-grade-handle";
@@ -287,6 +290,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   // ── The book's model ──
   const lang = useMemo(() => readLang(book?.lang, lines.slice(0, 20).join(" ")), [book, lines]);
   const normLang = material.words?.lang ?? wordLang(book?.lang, lines);
+  // A book that mixes languages: each line's own (BookMeta.langs), for its
+  // sentences, its voice, its lookups and translation. Without runs every
+  // line is the book's, cut as the server cuts it (normLang).
+  const langRuns = book?.langs;
+  const lineLang = useCallback((l: number) => langAt(langRuns, l, lang), [langRuns, lang]);
+  const cutLang = useCallback(
+    (l: number) => (langRuns?.length ? langAt(langRuns, l, normLang) : normLang),
+    [langRuns, normLang],
+  );
   // The server's items, grades and position when its reader v2 is on for him
   // (D1); otherwise (a guest, MongoDB) the device derives them.
   // If the server cannot give its items, the whole visit goes local (its
@@ -306,8 +318,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       headings: new Set(book?.headings ?? []),
       chapterStarts: new Set((book?.chapters ?? []).map((c) => c.start)),
       lang,
+      ...(langRuns?.length ? { langOf: lineLang } : {}),
     }),
-    [id, lines, book, lang],
+    [id, lines, book, lang, langRuns, lineLang],
   );
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [grades, setGrades] = useState<Record<string, SwipeRating>>({});
@@ -354,8 +367,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       new ParaCache(lines, lang, normLang, 400, {
         marks: (l) => inline.get(l) ?? null,
         cuts: (l) => loaded?.cuts?.get(l) ?? null,
+        ...(langRuns?.length ? { lang: lineLang } : {}),
       }),
-    [lines, lang, normLang, inline, loaded],
+    [lines, lang, normLang, inline, loaded, langRuns, lineLang],
   );
   const para = useCallback((line: number) => paras.get(line), [paras]);
   const lineText = useCallback((line: number) => lines[line] ?? "", [lines]);
@@ -557,7 +571,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     const line = player.line;
     return speaker.speak(
       parts.map((p) => p.text),
-      lang,
+      // An item never holds two languages: its first line's is its voice.
+      lineLang(blockLine(b)),
       {
         onpart: (i) => {
           reading.current = { line: parts[i].line, s: parts[i].s };
@@ -569,7 +584,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           if (i === parts.length - 1 && nb && (c.auto || c.isHeading(line)))
             speaker.prefetch(
               blockSpeech(nb, para, lineText).map((p) => p.text),
-              lang,
+              lineLang(blockLine(nb)),
             );
         },
         onend: () => dispatch({ type: "ended", token }),
@@ -1224,10 +1239,12 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         : null,
     [signedIn, material.readerV2, sel.unit, selInside, selMeaning, lineSentences],
   );
+  // Translated from the selection's own language (a book that mixes them).
+  const selLang = sel.unit ? lineLang(unitLine(sel.unit)) : lang;
   const autoTrans = useSelectTranslate(
     id,
     String(locale),
-    lang && lang !== "und" ? lang : undefined,
+    selLang && selLang !== "und" ? selLang : undefined,
     plan,
   );
 
@@ -1414,7 +1431,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     // In the gesture, also when the unit is said after the combo rests.
     speaker.unlock();
     const go = () => {
-      const stop = speaker.speak(text, lang, {
+      const stop = speaker.speak(text, lineLang(unitLine(target)), {
         onend: () => {
           if (said.current === stop) said.current = null;
         },
@@ -1468,7 +1485,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         if (!lines[l]?.trim() || heads.has(l)) continue;
         paras++;
         // Cut here, not through the row cache: a chapter would push the rows on screen out.
-        const p = cutPara(lines[l], lang, normLang);
+        const p = cutPara(lines[l], lineLang(l), normLang);
         for (const st of p.sentences) for (const g of st.segs) if (g.t >= 0) words++;
         if (fm) countSentences(p.sentences, fm, undefined, c);
       }
@@ -1616,7 +1633,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         // only; its sentence as the server cuts the line (lib/read/units.ts).
         const ss = para(u.line).sentences;
         const off = tokenOffset(ss, u.t);
-        const idx = segmentLine(lines[u.line] ?? "", normLang).findIndex(
+        const idx = segmentLine(lines[u.line] ?? "", cutLang(u.line)).findIndex(
           ([s0, s1]) => off >= s0 && off < s1,
         );
         if (off < 0 || idx < 0) return setSelStatus(ts.markFailed.value);
@@ -1673,8 +1690,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const tg = useIntlayer("read-grade-handle");
   /** The sentence ids of a line as the server cuts it, and each one's start in the line. */
   const lineCuts = useCallback(
-    (l: number) => segmentLine(lines[l] ?? "", normLang),
-    [lines, normLang],
+    (l: number) => segmentLine(lines[l] ?? "", cutLang(l)),
+    [lines, cutLang],
   );
   /** A paragraph sentence's start offset in its line. */
   const sentenceStart = useCallback(
@@ -1863,6 +1880,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       famV: fam?.v ?? 0,
       phrases: phrasesOf,
       lang,
+      langOf: lineLang,
       touch,
       variant,
       mirror,
@@ -1880,6 +1898,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       fam,
       phrasesOf,
       lang,
+      lineLang,
       touch,
       variant,
       mirror,
@@ -1960,6 +1979,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             {t.loading}
           </p>
         )}
+        {signedIn && material.readerV2 && loaded && <PolishOffer id={id} book={book} />}
         <BookList
           blocks={blocks}
           lines={lines}
@@ -2120,6 +2140,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           <Sheet title={t.contents.value} onClose={closeSheet} closeLabel={t.close.value}>
             {material.words && <BookScan id={id} words={material.words} flat />}
             <BookSourceNote book={book} className="mt-3" />
+            {signedIn && material.readerV2 && <RawTranscript id={id} book={book} />}
             {chapters.length > 1 && (
               <ol className="mt-3 flex flex-col" data-testid="reader-toc">
                 {chapters.map((c, i) => (

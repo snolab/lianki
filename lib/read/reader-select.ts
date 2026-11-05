@@ -35,6 +35,13 @@ export type Unit =
   /** Words he selected by hand: from token t0 of line l0 to token t1 of line l1, both inclusive. */
   | { kind: "range"; l0: number; t0: number; l1: number; t1: number };
 
+/** The line a unit starts on (a chapter or the book: -1, the book's own language). */
+export function unitLine(u: Unit): number {
+  if ("line" in u) return u.line;
+  if (u.kind === "range") return u.l0;
+  return -1;
+}
+
 /** A combo level: every unit but a hand-made range. */
 export type Level = Exclude<Unit["kind"], "range">;
 

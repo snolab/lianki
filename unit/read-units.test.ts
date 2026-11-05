@@ -3,6 +3,7 @@ import { parseSentenceId, sentenceId, type ItemBounds } from "@/lib/read/reader-
 import {
   bookHash,
   buildChapterItems,
+  CHUNK_SECONDS,
   chapterRanges,
   itemBounds,
   itemKey,
@@ -126,11 +127,11 @@ describe("paragraphs and chapters", () => {
 });
 
 describe("itemBounds: the user's own numbers, a scale-free prior before", () => {
-  it("before enough reads: reaction time, no upper bound, prior speed", () => {
+  it("before enough reads: reaction time, the 1–3 minute rule's upper end, prior speed", () => {
     const b = itemBounds([{ words: 10, dwellMs: 1000 }], "paragraph");
     expect(b).toMatchObject({
       minSeconds: REACTION_SECONDS,
-      maxSeconds: null,
+      maxSeconds: CHUNK_SECONDS.high,
       wordsPerSecond: PRIOR_WORDS_PER_SECOND,
       speedSource: "prior",
       boundsSource: "prior",
@@ -149,6 +150,12 @@ describe("itemBounds: the user's own numbers, a scale-free prior before", () => 
     expect(b.wordsPerSecond).toBeCloseTo(2);
     expect(b.minSeconds).toBeCloseTo(3.8);
     expect(b.maxSeconds).toBeCloseTo(18.2);
+    // His long reads never make an item past the rule's upper end.
+    const long = Array.from({ length: MIN_SAMPLES }, (_, i) => ({
+      words: (i + 1) * 400,
+      dwellMs: (i + 1) * 200_000,
+    }));
+    expect(itemBounds(long, "paragraph").maxSeconds).toBe(CHUNK_SECONDS.high);
     // Junk reads are ignored.
     expect(
       itemBounds([...samples.slice(1), { words: 0, dwellMs: 5 }], "sentence").boundsSource,
@@ -235,5 +242,34 @@ describe("buildChapterItems: bounds in reading time", () => {
     expect(one[0].last).toBe(b.lineStart[3] - 1);
     expect(itemKey(b, one[0])).toBe("0123456789abcdef:0.0+3");
     expect(buildChapterItems(b, paras, [0, 3], 0, "paragraph", bounds(100, null))).toEqual(one);
+  });
+});
+
+describe("a book that mixes languages", () => {
+  const bounds: ItemBounds = {
+    minSeconds: 1000,
+    maxSeconds: 5000,
+    wordsPerSecond: 1,
+    speedSource: "user",
+    boundsSource: "user",
+    samples: 99,
+  };
+  it("cuts each line in its own language, and never merges two languages into one item", () => {
+    const lines = [
+      "Tom met Ana at the market.",
+      "トムは市場に行きました。",
+      "Then they went home.",
+    ];
+    const langs = ["en", "ja", "en"];
+    const b = segmentBook(lines, "en", "h", (l) => langs[l]);
+    const paras = paragraphsOf(lines.length);
+    const mixed = buildChapterItems(b, paras, [0, 3], 0, "paragraph", bounds, (l) => langs[l]);
+    expect(mixed.map((s) => [s.first, s.last])).toEqual([
+      [0, 0],
+      [1, 1],
+      [2, 2],
+    ]);
+    // Without languages the short paragraphs merge as before.
+    expect(buildChapterItems(b, paras, [0, 3], 0, "paragraph", bounds)).toHaveLength(1);
   });
 });

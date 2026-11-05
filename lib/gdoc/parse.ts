@@ -46,11 +46,19 @@ function isCommentBlock(el: XmlElement): boolean {
   return !!a && /^cmnt\d+$/.test(a.attrs.id ?? "");
 }
 
+const SOFT_RETURN = /[\u000b\u2028\u2029]|&#11;|&#x0?[bB];/;
+
 function transform(el: XmlElement, styles: Map<string, Style[]>): XmlElement {
   const children: XmlNode[] = [];
   for (const c of el.children) {
     if (typeof c === "string") {
-      children.push(c);
+      // A soft return the export left as a character (vertical tab, line or
+      // paragraph separator) is a line break, as <br> is.
+      const parts = c.split(SOFT_RETURN);
+      parts.forEach((p, i) => {
+        if (i > 0) children.push({ name: "br", attrs: {}, children: [] });
+        if (p) children.push(p);
+      });
       continue;
     }
     if (isComment(c) || isCommentBlock(c)) continue;

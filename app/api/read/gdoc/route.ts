@@ -11,6 +11,11 @@
 // doc again updates that book in place: same id, and the FSRS state of every
 // unchanged line carried over to the new text's sentence ids.
 //
+// The text goes through the import pipeline (lib/read/prep.ts): its shape
+// detected (a raw transcript is offered the AI polish in the reader), then
+// cut into bite-size paragraphs, each line in its own language. Cards of
+// sentences whose words did not change follow them to their new ids.
+//
 // Gate: as every reader-v2 route (lib/read/reader-route.ts): a session, D1,
 // and the `read.reader-v2` flag or the owner. Rate-limited per user.
 
@@ -23,6 +28,7 @@ import { isOwner } from "@/lib/owner";
 import { hit } from "@/lib/security/throttle";
 import {
   findReadMaterialBySource,
+  getReadMaterialContent,
   replaceReadMaterialText,
   saveReadMaterial,
 } from "@/lib/getReadMaterialsCollection";
@@ -33,9 +39,17 @@ import { fetchDriveHtml } from "@/lib/gdoc/drive";
 import { connectionsOn } from "@/lib/connections/gate";
 import { ConnectionError, accessToken, forget, googleConfig } from "@/lib/connections/google";
 import type { D1Like } from "@/lib/d1/types";
-import { bookMetaOf, checkBook } from "@/lib/read/book";
-import { hashOf, readerV2On } from "@/lib/read/reader-book";
-import { carrySentenceCards, unchangedLines, type D1Batch } from "@/lib/read/reader-store";
+import { bookMetaOf, checkBook, parseBookMeta } from "@/lib/read/book";
+import { prepareBook } from "@/lib/read/prep-server";
+import { hashOf, readerBook, readerV2On } from "@/lib/read/reader-book";
+import {
+  carrySentenceCards,
+  carrySentenceCardsByText,
+  dropRawText,
+  unchangedLines,
+  type D1Batch,
+} from "@/lib/read/reader-store";
+import { sentenceCarryMap } from "@/lib/read/sentence-cards";
 import { bookHash } from "@/lib/read/units";
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
@@ -123,8 +137,15 @@ export async function POST(request: NextRequest) {
       checked.error === "too-much-text" ? 413 : 422,
     );
   }
-  const b = checked.book;
-  const meta = bookMetaOf(b, { source: "gdoc", sourceUrl: gdocUrlOf(id) });
+  // The import pipeline (docs/books-plan.md): detect, then bite size at his
+  // own pace, each line in its own language. A Docs line break is a paragraph.
+  const db = getD1() as unknown as D1Batch;
+  const { book: b, shape } = await prepareBook(checked.book, {
+    db,
+    userId,
+    splitBreaks: true,
+  });
+  const meta = bookMetaOf(b, { source: "gdoc", sourceUrl: gdocUrlOf(id), shape });
   const content = JSON.stringify(meta);
   const hash = await bookHash(b.lines);
   const key = gdocSourceKey(id);
@@ -134,14 +155,25 @@ export async function POST(request: NextRequest) {
     const pid = String(prev._id);
     const prevHash = await hashOf(prev);
     if (prevHash !== hash) {
-      await carrySentenceCards(
-        getD1() as unknown as D1Batch,
-        userId,
-        prevHash,
-        hash,
-        unchangedLines(prev.lines, b.lines),
-      );
+      const same = unchangedLines(prev.lines, b.lines);
+      await carrySentenceCards(db, userId, prevHash, hash, same);
+      // Lines cut anew (bite size, a polish undone): the rest by sentence text.
+      const prevMeta = parseBookMeta(await getReadMaterialContent(prev));
+      const kept = new Set(same.map(([o]) => o));
+      if (kept.size < prev.lines.length) {
+        const oldB = readerBook(prev.lines, prevMeta, prevHash);
+        const newB = readerBook(b.lines, meta, hash);
+        await carrySentenceCardsByText(
+          db,
+          userId,
+          prevHash,
+          hash,
+          sentenceCarryMap(oldB.sentences, oldB.lines, newB.sentences, newB.lines),
+        );
+      }
     }
+    // The doc's text is the raw text now: a polish of the old one goes with it.
+    await dropRawText(db, userId, pid);
     await replaceReadMaterialText(userId, pid, b.title, b.lines, content, hash);
     return NextResponse.json({
       id: pid,
