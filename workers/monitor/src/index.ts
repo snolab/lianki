@@ -48,6 +48,7 @@ type Trace = {
   cpuTime?: number;
   event?: {
     request?: { url: string; method?: string };
+    cron?: string;
     response?: { status: number };
   } | null;
   exceptions?: { name: string; message: string }[];
@@ -133,6 +134,16 @@ async function onTail(env: Env, traces: Trace[]) {
     }
     if (t.scriptName && t.scriptName !== "lianki") continue;
     const req = t.event?.request;
+    // The study ledger's daily anchor (worker.ts `scheduled`, docs/lian.md):
+    // one run a day, so every failed run is posted.
+    if (!req && t.event?.cron) {
+      if (t.outcome !== "ok" || (t.exceptions?.length ?? 0) > 0)
+        await post(
+          env,
+          `🚨 lianki 每日学习记录锚定失败（cron ${t.event.cron}）：${t.exceptions?.[0]?.message.slice(0, 120) ?? t.outcome}`,
+        );
+      continue;
+    }
     if (!req) continue;
     const status = t.event?.response?.status ?? 0;
     const path = pathGroup(req.url);

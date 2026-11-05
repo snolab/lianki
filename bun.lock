@@ -110,6 +110,10 @@
     "packages/ext": {
       "name": "@lianki/ext",
     },
+    "packages/lian": {
+      "name": "@lianki/lian",
+      "version": "0.0.0",
+    },
     "packages/lianki-cli": {
       "name": "lianki",
       "version": "0.2.0",
@@ -575,6 +579,8 @@
     "@lianki/desktop": ["@lianki/desktop@workspace:packages/desktop"],
 
     "@lianki/ext": ["@lianki/ext@workspace:packages/ext"],
+
+    "@lianki/lian": ["@lianki/lian@workspace:packages/lian"],
 
     "@lianki/ui-state": ["@lianki/ui-state@workspace:packages/ui-state"],
 

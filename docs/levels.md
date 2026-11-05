@@ -72,6 +72,10 @@ Hard to fake, by construction (owner, Slack 2026-11-05):
 Study days are recorded for everyone whatever the flag says, so nobody loses
 days before levels are shown.
 
+Each closed day's rows are anchored by the daily cron into the study ledger
+(salted Merkle leaves, a hash chain; [lian.md](lian.md)), so a recorded day
+cannot be changed afterwards without it showing.
+
 ## Showing it
 
 Flag `levels` (docs/feature-flags.md): on, every signed-in user can read their
