@@ -15,6 +15,29 @@ export const studyFinished = (exhausted: boolean, aheadLeft: number) =>
   exhausted && aheadLeft === 0;
 
 /**
+ * The grade just given finished the review, so focus moves to the way back
+ * (owner, 2026-11-05 13:37 JST: after the last card, Enter goes back to the
+ * book instead of focus falling off). Only when the card was
+ * - graded for the first time in this session (`first`): re-rating an earlier
+ *   card is a correction (#511), which moves the cursor with the view still;
+ * - one to review (`reviewable`: new, or due by now): browsing a word ahead
+ *   of its due never ends anything;
+ * and nothing is left: no more to fetch (`exhausted`), no other new or due
+ * word ungraded in the list (`left`), and no missed word waiting to come
+ * back (`waiting`: #536's copies, off screen or not yet due, are still to
+ * answer).
+ */
+export function reviewEnded(o: {
+  first: boolean;
+  reviewable: boolean;
+  exhausted: boolean;
+  left: number;
+  waiting: number;
+}): boolean {
+  return o.first && o.reviewable && o.exhausted && o.left === 0 && o.waiting === 0;
+}
+
+/**
  * The tray as a button. Needs a `.lk-tray` ancestor for the picture's colours.
  * `art: false` (a short over-scroll) keeps just the label, still 44px tall.
  */

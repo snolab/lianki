@@ -146,7 +146,7 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
-import { TrayBack, studyFinished } from "./study-done-back";
+import { TrayBack, reviewEnded, studyFinished } from "./study-done-back";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -4005,6 +4005,7 @@ export function Study({
     // From the card as it was before this row's grade, so a re-grade replaces.
     const { card } = reviewWord(parseCard(it.card), rating, now, paramsOf.get(it.listId)!);
     const cardJson = JSON.stringify(card);
+    const first = !gradesNow.current.has(i);
     gradesNow.current = new Map(gradesNow.current).set(i, { rating, card: cardJson });
     setGrades((g) => new Map(g).set(i, { rating, card: cardJson }));
     gradeLog.current = [...gradeLog.current.filter((x) => x !== i), i];
@@ -4021,6 +4022,24 @@ export function Study({
       SESSION_WINDOW_MS,
     );
     insertDue.current();
+    // The last word to review, just graded: focus goes to the way back.
+    const t = now.getTime();
+    const toReview = (x: Item) => x.kind === "new" || !x.card || dueOf(x.card) <= t;
+    if (
+      reviewEnded({
+        first,
+        reviewable: toReview(it),
+        exhausted: exhaustedNow.current,
+        left: queue.filter(
+          (x, j) => j !== i && !gradesNow.current.has(j) && !retired(j) && toReview(x),
+        ).length,
+        waiting: requeue.current.later.length,
+      })
+    ) {
+      backFrom.current = document.activeElement;
+      setBackSaid("");
+      setBackCue((n) => n + 1);
+    }
     const op: PendingOp = {
       listId: it.listId,
       op: "review",
@@ -4233,6 +4252,36 @@ export function Study({
    * the finger takes the list.
    */
   const advancing = useRef<{ row: number; top: number } | null>(null);
+  /**
+   * The review just ended (`reviewEnded`, from grade): the end-of-list way
+   * back takes the focus, so Enter / Space press it, and a polite status
+   * says so. `backFrom`: what had the focus at that grade — if it moved on
+   * meanwhile (the chat input, a link), the focus is left where it went.
+   */
+  const [backCue, setBackCue] = useState(0);
+  const backFrom = useRef<Element | null>(null);
+  const [backSaid, setBackSaid] = useState("");
+  useEffect(() => {
+    if (!backCue) return;
+    const el = listRef.current;
+    const btn = el?.querySelector<HTMLButtonElement>("[data-testid=study-done-back]");
+    if (!el || !btn || document.activeElement !== backFrom.current) return;
+    // The ring shows whatever input graded (focusVisible, where supported).
+    btn.focus({ preventScroll: true, focusVisible: true } as FocusOptions);
+    const list = el.getBoundingClientRect();
+    const b = btn.getBoundingClientRect();
+    const { top, bottom } = barRef.current;
+    // Not fully clear of the glass: the end of the list, where the tray sits.
+    if (b.bottom > list.bottom - bottom || b.top < list.top + top) {
+      advancing.current = null;
+      el.scrollTo({
+        top: el.scrollHeight - el.clientHeight,
+        behavior: motionOff() ? "auto" : "smooth",
+      });
+    }
+    setBackSaid(text.allReviewedBack.value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backCue]);
   /**
    * After grading row `i` for the first time: scroll the list by exactly one
    * row, so the next word slides up under the thumb. An absolute target, not
@@ -4679,6 +4728,8 @@ export function Study({
   // asked each time, so words that fell due since the page opened come too),
   // then new ones. Stops only when every catalog runs out.
   const [exhausted, setExhausted] = useState(!!scope);
+  const exhaustedNow = useRef(exhausted);
+  exhaustedNow.current = exhausted;
   const fetching = useRef(false);
   /** Bumped when a recheck lets go of `fetching`, so a skipped endless fetch runs. */
   const [released, setReleased] = useState(0);
@@ -5028,6 +5079,10 @@ export function Study({
     // Full width: wide screens get room for longer explanations.
     // In-flow content (loading, errors) starts below the glass toolbar.
     <div className="w-full px-3 pb-4 sm:px-8 sm:pb-6" style={{ paddingTop: bar.toolbar + 16 }}>
+      {/* The review just ended: focus is on the way back (backCue). */}
+      <div role="status" aria-live="polite" className="sr-only" data-review-ended>
+        {backSaid}
+      </div>
       {/* The toolbar: a glass overlay under the header, over the list. */}
       <div
         ref={topRef}
