@@ -714,6 +714,14 @@ sentences at enrolment**, not 10.
   moved the other 80 from a median of 0.34 to 0.61. That is good for him, but
   someone else in that room may gain as well: it may stop fewer of them.
 
+**ERes2NetV2 may suit the filter better, on the same device.** The same run at
+line 0.20 (2 s, 8 dB) stopped 0.3 % of his clips with 10 in the mean (CAM++ at
+0.15: 2.7 %) and 0 of the same 20 and 32 clean ones, and caught 64 % of real
+people and 79 % of TTS, close to CAM++'s 71 % and 88 %, but 33 % of the PA against
+58 %. It has no filter line yet, so it filters nothing. An enrolment saves a print for
+each model the server has loaded (`--speaker campp,eres2netv2`, about 71 MB more on disk);
+with only `campp` loaded, adding it later means reading the sentences again.
+
 Suggested order: enrol, leave the flag off for a day of talking, look at the
 "would have been dropped" count, then turn it on.
 
