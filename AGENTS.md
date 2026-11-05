@@ -117,6 +117,7 @@ that are expensive to rediscover.
 | The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
 | Hot islands: swappable components, shared state               | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
 | Live view: dev JS or whole dev pages (?live=) on lianki.com   | [docs/live-view.md](docs/live-view.md)                              |
+| Custom frontends: a user's own dev server at ?live, the /api contract | [docs/custom-frontend.md](docs/custom-frontend.md)          |
 | The /words swipe: headless core, UI islands, feel presets     | [docs/swipe-core.md](docs/swipe-core.md)                            |
 | UI state: what is kept where (session, local, URL, server)    | [docs/ui-state.md](docs/ui-state.md)                                |
 | Screenshots of the owner's phone page (`scripts/dev/shot.ts`) | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |

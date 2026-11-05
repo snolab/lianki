@@ -147,7 +147,9 @@ gate in front of the owner's dev server for the same-origin live preview
 owner's session and the signed pointer; the gate compares it in constant
 time (32+ characters, or that entry is shut), counts failures per IP, and
 strips it before anything reaches next dev. It also keys the HMAC of the
-`__Host-lk_live` cookie. Unset: every `?live=` gets the production page.
+`__Host-lk_live` cookie, the owner's and, under its own label, a custom
+frontend's ([custom-frontend.md](custom-frontend.md)), which never send it
+anywhere. Unset: every `?live=` gets the production page.
 
 The only other copy is `liveSecret` in `.dev-whole-page.json` (gitignored,
 0600) in the dev server's worktree. Set or rotate it (a secret: the owner's

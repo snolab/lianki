@@ -1,0 +1,540 @@
+/**
+ * Custom frontends (lib/live-view/custom.ts, the custom branch of
+ * lib/live-view/page-proxy.ts; docs/custom-frontend.md): the target rule,
+ * the store (allowlist, the cap in one INSERT, expiry, revoke, audit), and
+ * the proxy: only the registrant sees it, anyone else gets production and
+ * the cookie cleared; nothing of the viewer (and no gate secret) goes up;
+ * the strict CSP and its nonce; /api never proxied, account-level writes
+ * refused; host escapes; the flag, revoke and allowlist removal end it.
+ */
+import { beforeEach, describe, expect, test } from "bun:test";
+import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
+import { testSchema } from "@/lib/d1/testSchema";
+import {
+  CUSTOM_CAP,
+  CUSTOM_FRONTEND_FLAG,
+  allowByEmail,
+  createPreview,
+  customCsp,
+  customHours,
+  customTarget,
+  disallow,
+  isCustomId,
+  listPreviews,
+  newCustomId,
+  openCustomCookie,
+  previewFor,
+  revokePreview,
+  sealCustomCookie,
+  sessionTag,
+  type CustomDb,
+} from "@/lib/live-view/custom";
+import {
+  LIVE_COOKIE,
+  LIVE_GATE_HEADER,
+  LIVE_ID_HEADER,
+  POINTER_CACHE_MS,
+  createLivePage,
+  customFrontendBlocked,
+} from "@/lib/live-view/page-proxy";
+
+const SECRET = "s".repeat(64);
+const T0 = Date.parse("2026-11-05T06:00:00Z");
+const TUNNEL = "https://kind-words-here.trycloudflare.com";
+const KISHO = "u_kisho";
+const OTHER = "u_other";
+const OWNER = "u_owner";
+const SESS: Record<string, string> = { "tok-k.sig": KISHO, "tok-o.sig": OTHER, "tok-w.sig": OWNER };
+const cookieFor = (tok: string, extra = "") =>
+  `__Secure-better-auth.session_token=${tok}${extra ? `; ${extra}` : ""}`;
+
+let raw: TestD1Database;
+let db: CustomDb;
+let t: number;
+let upCalls: Request[];
+let nextCalls: Request[];
+let upstream: (r: Request) => Promise<Response>;
+
+const next = async (r: Request) => {
+  nextCalls.push(r);
+  return new Response("<html><body>prod</body></html>", {
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
+};
+
+async function flag(on: boolean) {
+  await raw
+    .prepare(
+      `INSERT INTO feature_flags (key, enabled, updated_at, updated_by) VALUES (?1, ?2, 'x', 'x')
+       ON CONFLICT(key) DO UPDATE SET enabled = ?2`,
+    )
+    .bind(CUSTOM_FRONTEND_FLAG, on ? 1 : 0)
+    .run();
+}
+async function flagOn() {
+  const r = await raw
+    .prepare("SELECT enabled FROM feature_flags WHERE key = ?1")
+    .bind(CUSTOM_FRONTEND_FLAG)
+    .first<{ enabled: number }>();
+  return r?.enabled === 1;
+}
+
+/** The app's GET /api/live-previews/<id>, in miniature: the session's user, the flag, previewFor. */
+function live() {
+  return createLivePage({
+    now: () => t,
+    keys: async () => [],
+    isOwner: async () => false,
+    resolveCustom: async (r, id) => {
+      const m = /better-auth\.session_token=([^;]+)/.exec(r.headers.get("cookie") ?? "");
+      const userId = m ? SESS[m[1]] : undefined;
+      if (!userId) return null;
+      const owner = userId === OWNER;
+      const p = await previewFor(db, id, { userId, owner, flagOn: await flagOn() }, t);
+      return p ? { id, target: p.target, expiresAt: p.expiresAt, userId, owner } : null;
+    },
+    fetch: async (r) => {
+      upCalls.push(r);
+      return upstream(r);
+    },
+    respond101: (_up, h) => new Response("upgraded", { status: 200, headers: h }),
+  });
+}
+
+const ENV = () => ({ DB: db as never, LIVE_GATE_SECRET: SECRET });
+const DOC = { "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", accept: "text/html" };
+const req = (path: string, headers: Record<string, string> = {}, method = "GET") =>
+  new Request(`https://lianki.com${path}`, { method, headers });
+
+async function user(id: string, email: string) {
+  await raw
+    .prepare(
+      "INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?1, ?1, ?2, 1, 'x', 'x')",
+    )
+    .bind(id, email)
+    .run();
+}
+
+beforeEach(async () => {
+  raw = createTestD1(testSchema());
+  db = raw as unknown as CustomDb;
+  t = T0;
+  upCalls = [];
+  nextCalls = [];
+  upstream = async () =>
+    new Response(
+      '<html><head><script>self.__next_f=[]</script><script src="/_next/static/a.js"></script></head><body>custom page</body></html>',
+      {
+        headers: {
+          "content-type": "text/html",
+          "set-cookie": "evil=1; Path=/",
+          "content-security-policy": "script-src *",
+          "access-control-allow-origin": "*",
+          "clear-site-data": '"*"',
+        },
+      },
+    );
+  await user(KISHO, "kisho@example.com");
+  await user(OTHER, "other@example.com");
+  await user(OWNER, "owner@example.com");
+  await flag(true);
+  await allowByEmail(db, "KISHO@example.com", OWNER, T0);
+});
+
+async function register(hours = 8) {
+  const r = await createPreview(db, { userId: KISHO, target: TUNNEL, hours, owner: false, now: t });
+  if (!r.ok) throw new Error(r.error);
+  return r.preview.id;
+}
+
+/** Kisho opens his own preview: the response and the live cookie it set. */
+async function enter(lp = live(), id?: string) {
+  id ??= await register();
+  const r = await lp.handle(
+    req(`/words?x=1&live=${id}`, { ...DOC, cookie: cookieFor("tok-k.sig") }),
+    ENV(),
+    next,
+  );
+  const sc = r.headers.getSetCookie().find((c) => c.startsWith(`${LIVE_COOKIE}=`)) ?? "";
+  return { r, lp, id, cookie: sc.split(";")[0] };
+}
+
+describe("the target rule", () => {
+  test("a quick tunnel's bare origin, or an exact allowlisted host", () => {
+    expect(customTarget(TUNNEL)).toBe(TUNNEL);
+    expect(customTarget(`${TUNNEL}/`)).toBe(TUNNEL);
+    expect(customTarget("https://mine.example.org", ["mine.example.org"])).toBe(
+      "https://mine.example.org",
+    );
+    for (const bad of [
+      "http://a.trycloudflare.com",
+      "https://a.trycloudflare.com:8443",
+      "https://a.trycloudflare.com/path",
+      "https://a.trycloudflare.com/?q=1",
+      "https://a.trycloudflare.com#x",
+      "https://u:p@a.trycloudflare.com",
+      "https://u@a.trycloudflare.com",
+      "https://a.b.trycloudflare.com",
+      "https://trycloudflare.com",
+      "https://A.trycloudflare.com",
+      "https://a.trycloudflare.com.evil.com",
+      "https://evil.com/.trycloudflare.com",
+      "https://lianki.com",
+      "https://mine.example.org",
+      "https://a--.trycloudflare.com",
+      "https://a.trycloudflare.com\\@evil.com",
+      " https://a.trycloudflare.com",
+      "https://" + "a".repeat(100) + ".trycloudflare.com",
+      42,
+      null,
+    ])
+      expect({ bad, ok: customTarget(bad) }).toEqual({ bad, ok: null });
+  });
+
+  test("ids are 128-bit base64url; hours in (0, 8]", () => {
+    const id = newCustomId();
+    expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(isCustomId(id)).toBe(true);
+    expect(isCustomId("1793000000000")).toBe(false);
+    expect(new Set(Array.from({ length: 200 }, newCustomId)).size).toBe(200);
+    expect(customHours(undefined)).toBe(8);
+    expect(customHours(2.5)).toBe(2.5);
+    for (const h of [0, -1, 8.01, 24, "8", NaN, Infinity]) expect(customHours(h)).toBeNull();
+  });
+});
+
+describe("the store", () => {
+  test("only allowlisted users (or the owner) can register", async () => {
+    const no = await createPreview(db, { userId: OTHER, target: TUNNEL, hours: 1, owner: false });
+    expect(no).toEqual({ ok: false, error: "not-allowed" });
+    const own = await createPreview(db, { userId: OWNER, target: TUNNEL, hours: 1, owner: true });
+    expect(own.ok).toBe(true);
+  });
+
+  test("the cap holds under a race: one conditional INSERT", async () => {
+    const all = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        createPreview(db, { userId: KISHO, target: TUNNEL, hours: 1, owner: false, now: t }),
+      ),
+    );
+    expect(all.filter((r) => r.ok)).toHaveLength(CUSTOM_CAP);
+    expect(all.filter((r) => !r.ok && r.error === "cap")).toHaveLength(10 - CUSTOM_CAP);
+    const n = await raw
+      .prepare("SELECT COUNT(*) AS n FROM live_preview WHERE user_id = ?1")
+      .bind(KISHO)
+      .first<{ n: number }>();
+    expect(n?.n).toBe(CUSTOM_CAP);
+    // An expired one frees a slot.
+    t += 3_600_001;
+    expect(
+      (await createPreview(db, { userId: KISHO, target: TUNNEL, hours: 1, owner: false, now: t }))
+        .ok,
+    ).toBe(true);
+  });
+
+  test("expiry ≤ 8 h, registrant-only lookup, revoke, audit", async () => {
+    const id = await register(8);
+    const v = { userId: KISHO, owner: false, flagOn: true };
+    expect((await previewFor(db, id, v, t))?.expiresAt).toBe(T0 + 8 * 3_600_000);
+    expect(await previewFor(db, id, { ...v, userId: OTHER }, t)).toBeNull();
+    expect(await previewFor(db, id, { userId: OWNER, owner: true, flagOn: true }, t)).toBeNull();
+    expect(await previewFor(db, id, { ...v, flagOn: false }, t)).toBeNull();
+    expect(await previewFor(db, id, v, T0 + 8 * 3_600_000)).toBeNull();
+    expect(await revokePreview(db, id, { userId: OTHER, owner: false }, t)).toBe(false);
+    expect(await revokePreview(db, id, { userId: KISHO, owner: false }, t)).toBe(true);
+    expect(await previewFor(db, id, v, t)).toBeNull();
+    expect(await listPreviews(db, KISHO, t)).toEqual([]);
+    const { results } = await raw
+      .prepare("SELECT kind, actor, subject FROM security_audit ORDER BY id")
+      .all<{ kind: string; actor: string; subject: string }>();
+    expect(results.map((r) => r.kind)).toEqual([
+      "live-frontend.allow",
+      "live-preview.create",
+      "live-preview.revoke",
+    ]);
+    expect(JSON.stringify(results)).not.toContain(SECRET);
+  });
+
+  test("removing a user from the allowlist revokes their previews", async () => {
+    const id = await register();
+    expect(await disallow(db, KISHO, OWNER, t)).toBe(true);
+    expect(await previewFor(db, id, { userId: KISHO, owner: false, flagOn: true }, t)).toBeNull();
+    expect(
+      (await createPreview(db, { userId: KISHO, target: TUNNEL, hours: 1, owner: false })).ok,
+    ).toBe(false);
+  });
+
+  test("the cookie: sealed, bound to its session, lapses", async () => {
+    const c = {
+      id: newCustomId(),
+      userId: KISHO,
+      until: T0 + 1000,
+      owner: false,
+      session: await sessionTag("tok"),
+    };
+    const v = await sealCustomCookie(SECRET, c);
+    expect(await openCustomCookie(SECRET, v, T0)).toEqual(c);
+    expect(await openCustomCookie("x".repeat(64), v, T0)).toBeNull();
+    expect(await openCustomCookie(SECRET, v.replace(KISHO, OTHER), T0)).toBeNull();
+    expect(await openCustomCookie(SECRET, v.replace(".0.", ".1."), T0)).toBeNull();
+    expect(await openCustomCookie(SECRET, v, T0 + 1000)).toBeNull();
+  });
+});
+
+describe("who sees a custom frontend", () => {
+  test("anyone but the registrant (or signed out): production, cookie cleared, nothing fetched", async () => {
+    const id = await register();
+    for (const cookie of [
+      "",
+      cookieFor("tok-o.sig"),
+      cookieFor("tok-w.sig"),
+      cookieFor("forged.sig"),
+    ]) {
+      const r = await live().handle(req(`/words?live=${id}`, { ...DOC, cookie }), ENV(), next);
+      expect(await r.text()).toContain("prod");
+      expect(r.headers.get(LIVE_ID_HEADER)).toBeNull();
+      const sc = r.headers.getSetCookie().filter((c) => c.startsWith(`${LIVE_COOKIE}=`));
+      expect(sc).toEqual([`${LIVE_COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`]);
+    }
+    // An id that does not exist looks exactly the same.
+    const r = await live().handle(
+      req(`/words?live=${newCustomId()}`, { ...DOC, cookie: cookieFor("tok-k.sig") }),
+      ENV(),
+      next,
+    );
+    expect(await r.text()).toContain("prod");
+    expect(upCalls).toHaveLength(0);
+  });
+
+  test("the registrant: the tunnel's page, filtered, strict CSP, nonce on every script", async () => {
+    const { r, id, cookie } = await enter();
+    expect(upCalls).toHaveLength(1);
+    expect(upCalls[0].url).toBe(`${TUNNEL}/words?x=1`);
+    const body = await r.text();
+    expect(body).toContain("custom page");
+    expect(body).toContain('id="lk-live-badge"');
+    const csp = r.headers.get("content-security-policy") ?? "";
+    const nonce = /'nonce-([A-Za-z0-9_-]+)'/.exec(csp)?.[1];
+    expect(nonce).toBeTruthy();
+    expect(csp).toBe(customCsp(TUNNEL, "https://lianki.com", nonce));
+    expect(csp).toContain(
+      `connect-src 'self' wss://lianki.com ${TUNNEL} wss://kind-words-here.trycloudflare.com;`,
+    );
+    expect(csp).toContain(`script-src 'self' ${TUNNEL} 'unsafe-eval' 'nonce-${nonce}';`);
+    expect(csp).toContain("frame-ancestors 'self'");
+    expect(csp).not.toContain("unsafe-inline' " + TUNNEL + " 'unsafe-eval");
+    expect(/script-src[^;]*'unsafe-inline'/.test(csp)).toBe(false);
+    expect(/script-src[^;]*\*/.test(csp)).toBe(false);
+    // Every <script>, the dev page's and the badge's, carries the nonce.
+    const scripts = body.match(/<script\b[^>]*>/g) ?? [];
+    expect(scripts.length).toBe(3);
+    for (const s of scripts) expect(s).toContain(`nonce="${nonce}"`);
+    expect(r.headers.get(LIVE_ID_HEADER)).toBe(id);
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    expect(r.headers.get("access-control-allow-origin")).toBeNull();
+    expect(r.headers.get("clear-site-data")).toBeNull();
+    const sc = r.headers.getSetCookie();
+    expect(sc).toHaveLength(1);
+    expect(cookie.startsWith(`${LIVE_COOKIE}=c.${id}.${KISHO}.`)).toBe(true);
+  });
+
+  test("nothing of the viewer and no gate secret reaches the tunnel; Origin is the tunnel's", async () => {
+    const id = await register();
+    await live().handle(
+      req(`/words?live=${id}`, {
+        ...DOC,
+        cookie: cookieFor("tok-k.sig", "lang=zh"),
+        authorization: "Bearer lk_x",
+        "cf-connecting-ip": "203.0.113.9",
+        "cf-access-jwt-assertion": "jwt",
+        "x-forwarded-for": "1.2.3.4",
+        referer: "https://lianki.com/secret?token=x",
+        origin: "https://lianki.com",
+        [LIVE_GATE_HEADER]: "client-sent",
+        "accept-language": "zh",
+      }),
+      ENV(),
+      next,
+    );
+    const h = upCalls[0].headers;
+    for (const k of [
+      "cookie",
+      "authorization",
+      "cf-connecting-ip",
+      "cf-access-jwt-assertion",
+      "x-forwarded-for",
+      "referer",
+      LIVE_GATE_HEADER,
+    ])
+      expect({ k, v: h.get(k) }).toEqual({ k, v: null });
+    expect(h.get("origin")).toBe(TUNNEL);
+    expect(h.get("accept-language")).toBe("zh");
+  });
+
+  test("the flag off: only the owner's own still work; kisho gets production", async () => {
+    const id = await register();
+    await flag(false);
+    const r = await live().handle(
+      req(`/words?live=${id}`, { ...DOC, cookie: cookieFor("tok-k.sig") }),
+      ENV(),
+      next,
+    );
+    expect(await r.text()).toContain("prod");
+    const own = await createPreview(db, {
+      userId: OWNER,
+      target: TUNNEL,
+      hours: 1,
+      owner: true,
+      now: t,
+    });
+    if (!own.ok) throw new Error("owner");
+    const o = await live().handle(
+      req(`/?live=${own.preview.id}`, { ...DOC, cookie: cookieFor("tok-w.sig") }),
+      ENV(),
+      next,
+    );
+    expect(await o.text()).toContain("custom page");
+  });
+
+  test("tunnel down or 5xx: production with the notice, cookie cleared", async () => {
+    const id = await register();
+    upstream = async () => {
+      throw new Error("down");
+    };
+    const r = await live().handle(
+      req(`/words?live=${id}`, { ...DOC, cookie: cookieFor("tok-k.sig") }),
+      ENV(),
+      next,
+    );
+    expect(await r.text()).toContain("lk-live-notice");
+    expect(r.headers.getSetCookie().join()).toContain("Max-Age=0");
+  });
+});
+
+describe("subresources and the backend", () => {
+  test("/_next chunks follow the cookie, with the CSP; the session must match", async () => {
+    const { lp, cookie } = await enter();
+    upstream = async () =>
+      new Response("chunk", { headers: { "content-type": "text/javascript" } });
+    const ok = await lp.handle(
+      req("/_next/static/chunks/a.js", { cookie: `${cookie}; ${cookieFor("tok-k.sig")}` }),
+      ENV(),
+      next,
+    );
+    expect(await ok.text()).toBe("chunk");
+    expect(upCalls.at(-1)?.url).toBe(`${TUNNEL}/_next/static/chunks/a.js`);
+    expect(upCalls.at(-1)?.headers.get("cookie")).toBeNull();
+    expect(ok.headers.get("content-security-policy")).toContain("connect-src 'self'");
+    const n = upCalls.length;
+    // The same live cookie with another account's session (or none): production.
+    for (const c of [`${cookie}; ${cookieFor("tok-o.sig")}`, cookie]) {
+      const r = await lp.handle(req("/_next/static/chunks/a.js", { cookie: c }), ENV(), next);
+      expect(await r.text()).toContain("prod");
+    }
+    expect(upCalls).toHaveLength(n);
+  });
+
+  test("/api and /auth are never proxied; account-level writes are refused", async () => {
+    const { lp, cookie } = await enter();
+    const n = upCalls.length;
+    const both = `${cookie}; ${cookieFor("tok-k.sig")}`;
+    for (const p of ["/api/words/lists", "/api/fsrs/next-url", "/auth/x", "/_lk/y"]) {
+      const r = await lp.handle(req(p, { cookie: both, ...DOC }), ENV(), next);
+      expect(await r.text()).toContain("prod");
+    }
+    const post = await lp.handle(
+      req(
+        "/api/words/lists/1/review",
+        { cookie: both, "content-type": "application/json" },
+        "POST",
+      ),
+      ENV(),
+      next,
+    );
+    expect(post.status).toBe(200);
+    for (const [m, p] of [
+      ["POST", "/api/token"],
+      ["POST", "/api/dev/flags"],
+      ["DELETE", "/api/dev/tokens/x"],
+      ["POST", "/api/live-previews"],
+      ["POST", "/api/auth/update-user"],
+      ["POST", "/api/auth/link-social"],
+      ["POST", "/API/Token/"],
+      ["POST", "/api/cli-login/approve"],
+    ]) {
+      const r = await lp.handle(req(p, { cookie: both }, m), ENV(), next);
+      expect({ p, s: r.status }).toEqual({ p, s: 403 });
+    }
+    expect(upCalls).toHaveLength(n);
+    expect(customFrontendBlocked("POST", "/api/auth/sign-out")).toBe(false);
+    expect(customFrontendBlocked("GET", "/api/dev/whoami")).toBe(false);
+    expect(customFrontendBlocked("POST", "/api/read/x/grade")).toBe(false);
+  });
+
+  test("host-escape paths are refused; service worker scripts 403", async () => {
+    const { lp, cookie } = await enter();
+    const n = upCalls.length;
+    const both = `${cookie}; ${cookieFor("tok-k.sig")}`;
+    for (const p of [
+      "/_next//evil.com/x",
+      "/_next/%2F%2Fevil.com",
+      "/_next/%5Cevil",
+      "/_next/a%00b",
+    ]) {
+      const r = await lp.handle(req(p, { cookie: both }), ENV(), next);
+      expect({ p, s: r.status }).toEqual({ p, s: 400 });
+    }
+    const doc = await lp.handle(
+      req("/a@evil.com?live=" + (await register()), { ...DOC, cookie: cookieFor("tok-k.sig") }),
+      ENV(),
+      next,
+    );
+    expect(await doc.text()).toContain("path refused");
+    const sw = await lp.handle(
+      req("/_next/static/sw.js", { cookie: both, "service-worker": "script" }),
+      ENV(),
+      next,
+    );
+    expect(sw.status).toBe(403);
+    expect(upCalls).toHaveLength(n);
+  });
+
+  test("revoke, removal or the flag off end subresources within the cache window", async () => {
+    for (const end of ["revoke", "remove", "flag"] as const) {
+      raw = createTestD1(testSchema());
+      db = raw as unknown as CustomDb;
+      t = T0;
+      await user(KISHO, "kisho@example.com");
+      await user(OWNER, "owner@example.com");
+      await flag(true);
+      await allowByEmail(db, "kisho@example.com", OWNER, T0);
+      const { lp, id, cookie } = await enter();
+      upstream = async () => new Response("chunk");
+      const get = () =>
+        lp.handle(
+          req("/_next/static/a.js", { cookie: `${cookie}; ${cookieFor("tok-k.sig")}` }),
+          ENV(),
+          next,
+        );
+      expect(await (await get()).text()).toBe("chunk");
+      if (end === "revoke") await revokePreview(db, id, { userId: KISHO, owner: false }, t);
+      if (end === "remove") await disallow(db, KISHO, OWNER, t);
+      if (end === "flag") await flag(false);
+      t += POINTER_CACHE_MS;
+      expect({ end, body: await (await get()).text() }).toEqual({
+        end,
+        body: "<html><body>prod</body></html>",
+      });
+    }
+  });
+
+  test("a document without ?live, or ?live=off, leaves", async () => {
+    const { lp, cookie } = await enter();
+    const plain = await lp.handle(req("/words", { ...DOC, cookie }), ENV(), next);
+    expect(plain.headers.getSetCookie().join()).toContain("Max-Age=0");
+    const off = await lp.handle(req("/words?live=off&a=1", { ...DOC, cookie }), ENV(), next);
+    expect(off.status).toBe(303);
+    expect(off.headers.get("location")).toBe("/words?a=1");
+    expect(off.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+});

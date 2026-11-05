@@ -139,6 +139,10 @@ down, the gate's Worker entry), `unit/tunnel-headers.test.ts`;
 `scripts/qa/qa-api.mjs` (a non-owner's `?live=` and a forged cookie get the
 normal build).
 
+**Other people's frontends** use the same path with stricter rules:
+`?live=<22-character id>`, only for the user who registered it, no cookie
+or gate secret sent up, a strict CSP — [custom-frontend.md](custom-frontend.md).
+
 ## Design
 
 **A signed pointer.** `scripts/dev/live-view.ts` signs, with an Ed25519 key
