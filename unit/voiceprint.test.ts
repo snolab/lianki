@@ -6,7 +6,7 @@
  * STT socket's part of the protocol. The server's side (scoring, thresholds,
  * the store's file modes) is unit/local-stt-voiceprint.test.ts.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { type LocalFinal, type WsLike, createLocalStt } from "@lianki/debug-chat/local-stt";
 import { type EnrolTap, RATE, type StreamStt, createMic } from "@lianki/debug-chat/mic";
 import {
@@ -221,6 +221,12 @@ function card(o: { local?: boolean; startOk?: boolean; passkey?: boolean } = {})
 }
 
 describe("the voiceprint filter on the page (docs/local-stt.md, 'Only my voice')", () => {
+  // Other test files read globalThis.localStorage: put back what was there.
+  const had = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  afterEach(() => {
+    if (had) Object.defineProperty(globalThis, "localStorage", had);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
   const box = () => {
     const m = new Map<string, string>();
     (globalThis as { localStorage?: unknown }).localStorage = {
