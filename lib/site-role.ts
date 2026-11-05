@@ -1,5 +1,5 @@
 /**
- * `site_role` (db/migrations/0046_site_role.sql): the owner list. Reads and
+ * `site_role` (db/migrations/0047_site_role.sql): the owner list. Reads and
  * writes over an injected D1, so the Worker, the tests and the break-glass CLI
  * (scripts/dev/owner-role.ts, which inlines these same statements through
  * wrangler) all run one set of rules. docs/secrets-and-auth.md, "The owner role".

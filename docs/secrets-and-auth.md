@@ -133,7 +133,7 @@ every scoped token at once.
 ## The owner role (`site_role`)
 
 Who is the owner is a row in D1, table `site_role`
-(`db/migrations/0046_site_role.sql`, `lib/site-role.ts`), and nowhere else. The
+(`db/migrations/0047_site_role.sql`, `lib/site-role.ts`), and nowhere else. The
 deploy-time setting `OWNER_EMAILS` was removed on 2026-11-05 (the owner's
 decision); granting or revoking needs no deploy. Change it at **`/dev/owners`**
 (owner only, 404 otherwise). No Worker variable or secret is involved.
@@ -169,7 +169,7 @@ decision); granting or revoking needs no deploy. Change it at **`/dev/owners`**
 - **Audit.** Each change writes `site-role.grant` or `site-role.revoke` to
   `security_audit` in the same batch (actor: the user id, `cli`, or the
   migration; detail: the address). A no-op writes nothing.
-- **The seed.** Migration 0046 inserts the two owners `OWNER_EMAILS` named, the
+- **The seed.** Migration 0047 inserts the two owners `OWNER_EMAILS` named, the
   main account first. The deploy applies migrations before it deploys the Workers (`deploy-worker.yml`),
   so there is no moment without an owner.
 

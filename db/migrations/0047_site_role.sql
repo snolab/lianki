@@ -22,9 +22,9 @@ CREATE TABLE IF NOT EXISTS site_role (
 -- account's grant is a millisecond older: it stays first, as it was in that list,
 -- so it is "the owner" where only one account can be meant (oldest grant first).
 INSERT OR IGNORE INTO site_role (email, role, granted_by, granted_at) VALUES
-  ('snomiao@gmail.com', 'owner', 'migration-0046', 1793872800000),
-  ('snomiao+admin@gmail.com', 'owner', 'migration-0046', 1793872800001);
+  ('snomiao@gmail.com', 'owner', 'migration-0047', 1793872800000),
+  ('snomiao+admin@gmail.com', 'owner', 'migration-0047', 1793872800001);
 
 INSERT INTO security_audit (at_ms, kind, actor, subject, detail) VALUES
-  (1793872800000, 'site-role.grant', 'migration-0046', NULL, 'snomiao@gmail.com'),
-  (1793872800001, 'site-role.grant', 'migration-0046', NULL, 'snomiao+admin@gmail.com');
+  (1793872800000, 'site-role.grant', 'migration-0047', NULL, 'snomiao@gmail.com'),
+  (1793872800001, 'site-role.grant', 'migration-0047', NULL, 'snomiao+admin@gmail.com');

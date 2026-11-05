@@ -107,8 +107,8 @@ describe("the migration", () => {
     d1 = createTestD1(testSchema());
     expect(await readOwnerEmails(read())).toEqual([MAIN, SEEDED]);
     expect(audits()).toEqual([
-      { kind: "site-role.grant", actor: "migration-0046", detail: MAIN },
-      { kind: "site-role.grant", actor: "migration-0046", detail: SEEDED },
+      { kind: "site-role.grant", actor: "migration-0047", detail: MAIN },
+      { kind: "site-role.grant", actor: "migration-0047", detail: SEEDED },
     ]);
     // Both are owners, so either can revoke the other, but not both.
     await refreshOwners(read);
@@ -327,7 +327,7 @@ describe("grant and revoke", () => {
   it("granting an active owner changes nothing and audits nothing", async () => {
     expect(await grantOwner(write(), SEEDED, ME, T0)).toBe("already-owner");
     expect(audits()).toHaveLength(1); // the migration's
-    expect((await listOwners(read()))[0].granted_by).toBe("migration-0046");
+    expect((await listOwners(read()))[0].granted_by).toBe("migration-0047");
   });
 
   it("each change writes one audit row: who, what, which address", async () => {
