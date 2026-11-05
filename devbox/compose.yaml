@@ -1,0 +1,47 @@
+# Lianki friend dev box — one box per friend (devbox/README.md).
+#   cp devbox/.env.example devbox/.env   # set DEVBOX_NAME
+#   devbox/box.sh up -d --build    # always OrbStack: docker --context orbstack compose
+# Never run it on Docker Desktop's context (another project lives there).
+name: lianki-devbox-${DEVBOX_NAME:?set DEVBOX_NAME in devbox/.env}
+
+services:
+  box:
+    build:
+      context: .
+    image: lianki-devbox:latest
+    container_name: lianki-devbox-${DEVBOX_NAME}
+    hostname: devbox-${DEVBOX_NAME}
+    environment:
+      DEVBOX_NAME: ${DEVBOX_NAME}
+      DEVBOX_DEV_PORT: ${DEVBOX_DEV_PORT:-3200}
+      DEVBOX_PUBLIC_URL: ${DEVBOX_PUBLIC_URL:-}
+      DEVBOX_DSH: ${DEVBOX_DSH:-1}
+    # DEEPSEEK_API_KEY for dsh, and nothing else secret. Optional file.
+    env_file:
+      - path: ${DEVBOX_ENV_FILE:-.env}
+        required: false
+    ports:
+      # The dev server, on the host's loopback only. The host tunnel
+      # (devbox/host-tunnel.sh) is the only way in from outside.
+      - "127.0.0.1:${DEVBOX_DEV_PORT:-3200}:3000"
+      # dsh web is NOT published: it listens on the container's loopback until
+      # Cloudflare Access is configured (README, "dsh behind Cloudflare Access").
+    volumes:
+      # Everything the friend keeps (the clone, Claude/Codex logins, dsh home,
+      # local D1) lives in this named volume. No host directory is mounted.
+      - home:/home/node
+    # No Docker socket, no host home, no privileged mode.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cpus: ${DEVBOX_CPUS:-4}
+    mem_limit: ${DEVBOX_MEMORY:-6g}
+    memswap_limit: ${DEVBOX_MEMORY:-6g}
+    pids_limit: 2048
+    init: false # tini is the entrypoint
+    restart: unless-stopped
+
+volumes:
+  home:
+    name: lianki-devbox-${DEVBOX_NAME}-home
