@@ -14,7 +14,8 @@
  *   bun scripts/dev/live-view.ts pubkey     # the public key again (lib/live-view/keys.ts)
  *
  * Flags: --widget <url or /serve-path> | --no-widget, --islands <url or
- * /serve-path> | --no-islands,
+ * /serve-path> | --no-islands, --page preview|<origin> (whole pages on lianki.com:
+ * ?live=<serial>, docs/live-view.md "Same-origin pages"),
  * --hours N (≤ 12, default 12), --branch, --sha (default: this checkout's),
  * --base <origin> (default LIANKI_URL or https://lianki.com).
  *
@@ -34,10 +35,12 @@ import {
   LIVE_VIEW_REQ_MAX_S,
   importLiveViewPrivateKey,
   liveLabel,
+  livePageOk,
   liveSourceOk,
   signLiveView,
   type LiveViewClaim,
 } from "../../lib/live-view/rules";
+import { LIVE_PAGE_ORIGINS } from "../../lib/live-view/origins";
 import { tailnetHost } from "./tailnet";
 
 const args = process.argv.slice(2);
@@ -125,10 +128,36 @@ async function send(token: string) {
   return body;
 }
 
-async function sign(claim: Omit<LiveViewClaim, "aud" | "serial" | "iat">) {
+async function signed(claim: Omit<LiveViewClaim, "aud" | "serial" | "iat">) {
   const key = await importLiveViewPrivateKey(readKey());
   const iat = Math.floor(Date.now() / 1000);
-  return signLiveView(key, { ...claim, serial: nextSerial(), iat });
+  const serial = nextSerial();
+  return { serial, token: await signLiveView(key, { ...claim, serial, iat }) };
+}
+
+const sign = async (claim: Omit<LiveViewClaim, "aud" | "serial" | "iat">) =>
+  (await signed(claim)).token;
+
+/** `--page preview` is the gate's public host; anything else must be an exact origin. */
+function pageOrigin(): string | undefined {
+  const v = opt("page");
+  if (v === undefined) return undefined;
+  const page = v === "preview" ? LIVE_PAGE_ORIGINS[0] : v.replace(/\/$/, "");
+  if (!livePageOk(page))
+    die(
+      `${v}: not a live page origin (lib/live-view/origins.ts, or a trycloudflare.com quick tunnel)`,
+    );
+  return page;
+}
+
+/** The gate answers /_lk/up with its marker (a 503 by design). A warning only. */
+async function gateUp(origin: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${origin}/_lk/up`, { signal: AbortSignal.timeout(3000) });
+    return r.headers.get("x-lianki-gate") === "1";
+  } catch {
+    return false;
+  }
 }
 
 async function on() {
@@ -162,20 +191,31 @@ async function on() {
       else islands = undefined;
     }
   }
-  if (!widget && !islands)
-    die("nothing to point at: start a dev server, or name --widget / --islands");
+  const page = pageOrigin();
+  if (page && !(await gateUp(page)))
+    console.error(
+      `live-view: warning: ${page}/_lk/up has no gate marker (is serve --public-host running?)`,
+    );
+  if (!widget && !islands && !page)
+    die("nothing to point at: start a dev server, or name --widget / --islands / --page");
   const branch = opt("branch") ?? (git("rev-parse", "--abbrev-ref", "HEAD") || "detached");
   const sha = opt("sha") ?? git("rev-parse", "HEAD");
   if (!/^[0-9a-f]{7,40}$/.test(sha))
     die("no commit sha (run it in the dev server's checkout, or --sha)");
   const exp = Math.floor(Date.now() / 1000) + Math.round(hours * 3600);
-  const token = await sign({ op: "on", exp, widget, islands, branch, sha });
+  const { serial, token } = await signed({ op: "on", exp, widget, islands, page, branch, sha });
   await send(token);
   const until = new Date(exp * 1000).toLocaleString("sv-SE", { timeZone: "Asia/Tokyo" });
   console.log(`live view on: ${liveLabel({ branch, sha })} until ${until} JST`);
   if (widget) console.log(`  widget  ${widget}`);
   if (islands) console.log(`  islands ${islands}`);
-  console.log(`Account menu → "Live view" on each device that should load it.`);
+  if (page) {
+    console.log(`  page    ${page}`);
+    // Not a secret: only the owner's session can open it, and only while this pointer stands.
+    console.log(`Open ${BASE}/?live=${serial} (any path; ?live=on finds it; ?live=off stops).`);
+  }
+  if (widget || islands)
+    console.log(`Account menu → "Dev parts" on each device that should load the widget/islands.`);
 }
 
 async function req(op: "off" | "status") {
@@ -207,6 +247,8 @@ switch (cmd) {
       console.log(`live view: on · ${liveLabel(s.claim)} until ${until} JST`);
       if (s.claim.widget) console.log(`  widget  ${s.claim.widget}`);
       if (s.claim.islands) console.log(`  islands ${s.claim.islands}`);
+      if (s.claim.page)
+        console.log(`  page    ${s.claim.page}  →  ${BASE}/?live=${s.claim.serial}`);
     }
     break;
   }

@@ -11,8 +11,13 @@
  * Wire form, as the STT ticket: `<payload>.<signature>`, base64url without
  * padding; the signature covers the ASCII bytes of `<payload>`. Payload JSON:
  *
- *   {aud:"lianki-live-view", op:"on", serial, iat, exp, widget?, islands?, branch, sha}
+ *   {aud:"lianki-live-view", op:"on", serial, iat, exp, widget?, islands?, page?, branch, sha}
  *   {aud:"lianki-live-view", op:"off" | "status", serial, iat, exp}
+ *
+ * `page` is an origin that serves whole pages for the same-origin live
+ * preview (lib/live-view/page-proxy.ts): one of LIVE_PAGE_ORIGINS, or a
+ * Cloudflare quick tunnel's random host — accepted only here, in a pointer
+ * the Mac signed.
  *
  * `serial` only grows: the server keeps the highest it accepted (on or off)
  * and refuses anything not above it, so an old pointer cannot be replayed.
@@ -21,7 +26,7 @@
  * Pure and isomorphic: the route, the page and the Mac's script share it.
  */
 import { b64url, fromB64url } from "@/lib/stt-ticket";
-import { LIVE_VIEW_ORIGINS } from "./origins";
+import { LIVE_PAGE_ORIGINS, LIVE_VIEW_ORIGINS } from "./origins";
 
 export const LIVE_VIEW_AUD = "lianki-live-view";
 /** An "on" pointer lives at most this long (seconds). */
@@ -46,6 +51,8 @@ export type LiveViewClaim = {
   widget?: string;
   /** The islands module, e.g. https://<mac>.<tailnet>.ts.net/lianki-islands/islands.js */
   islands?: string;
+  /** An origin serving whole pages (the same-origin live preview), e.g. https://preview.lianki.com */
+  page?: string;
   branch?: string;
   sha?: string;
 };
@@ -92,6 +99,35 @@ export function liveSourceOk(
   if (allowLocal && LOCAL.has(u.hostname) && (u.protocol === "http:" || u.protocol === "https:"))
     return true;
   return u.protocol === "https:" && origins.includes(u.origin);
+}
+
+/** A Cloudflare quick tunnel (`cloudflared tunnel --url`): a random host, accepted only as a signed `page`. */
+export const LIVE_QUICK_TUNNEL = /^https:\/\/[a-z0-9]+(-[a-z0-9]+)*\.trycloudflare\.com$/;
+
+/**
+ * Where whole live pages may come from: exactly an origin (no path but "/",
+ * no query, fragment or credentials), over https, one of `origins`
+ * (LIVE_PAGE_ORIGINS) or a quick tunnel. `allowLocal` adds http(s)://localhost.
+ */
+export function livePageOk(
+  raw: unknown,
+  allowLocal = false,
+  origins: readonly string[] = LIVE_PAGE_ORIGINS,
+): raw is string {
+  if (typeof raw !== "string" || raw.length > 200) return false;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (u.username || u.password || u.hash || u.search || u.pathname !== "/") return false;
+  if (raw !== u.origin) return false; // the bare origin, as written
+  if (allowLocal && LOCAL.has(u.hostname) && (u.protocol === "http:" || u.protocol === "https:"))
+    return true;
+  return (
+    u.protocol === "https:" && (origins.includes(u.origin) || LIVE_QUICK_TUNNEL.test(u.origin))
+  );
 }
 
 /** A public key from its raw 32 bytes, base64url. */
@@ -189,15 +225,19 @@ export async function verifyLiveView(
   if (exp <= t) return { ok: false, error: "expired" };
   const claim: LiveViewClaim = { aud: LIVE_VIEW_AUD, op: c.op, serial, iat, exp };
   if (c.op === "on") {
-    if (c.widget === undefined && c.islands === undefined) return { ok: false, error: "no source" };
+    if (c.widget === undefined && c.islands === undefined && c.page === undefined)
+      return { ok: false, error: "no source" };
     for (const s of [c.widget, c.islands])
       if (s !== undefined && !liveSourceOk(s, o.allowLocal, o.origins))
         return { ok: false, error: "bad source" };
+    if (c.page !== undefined && !livePageOk(c.page, o.allowLocal))
+      return { ok: false, error: "bad source" };
     if (typeof c.branch !== "string" || !BRANCH.test(c.branch))
       return { ok: false, error: "malformed" };
     if (typeof c.sha !== "string" || !SHA.test(c.sha)) return { ok: false, error: "malformed" };
     if (c.widget !== undefined) claim.widget = c.widget as string;
     if (c.islands !== undefined) claim.islands = c.islands as string;
+    if (c.page !== undefined) claim.page = c.page as string;
     claim.branch = c.branch;
     claim.sha = c.sha;
   }
