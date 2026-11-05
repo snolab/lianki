@@ -25,6 +25,7 @@ import {
   cleanQuery,
   csvFields,
   searchAozoraIndex,
+  fetchZip,
   unzipOne,
 } from "@/lib/books/search";
 import { d1SharedStore, mergeCatalogue, parseEntry, type SharedStore } from "@/lib/books/shared";
@@ -526,5 +527,103 @@ describe("the shared catalogue (D1)", () => {
     expect(parseEntry("{}")).toBeNull();
     expect(parseEntry("nope")).toBeNull();
     expect(catalogueBook("en/a-little-tale")).toBeNull(); // curated lookup is unchanged
+  });
+});
+
+describe("caches and failures", () => {
+  test("cached facts are reused while fresh, read again when stale; a broken cache is skipped", async () => {
+    const { f, calls } = hosts({ "https://www.gutenberg.org/ebooks/99": POTTER_LIKE });
+    const cache = memoryCache();
+    const deps = { shared: memoryShared(), cache, fetchImpl: f, now: 0 };
+    await resolveLink("https://www.gutenberg.org/ebooks/99", "FR", YEAR, deps);
+    await resolveLink("https://www.gutenberg.org/ebooks/99", "FR", YEAR, { ...deps, now: 1000 });
+    expect(calls).toHaveLength(1);
+    await resolveLink("https://www.gutenberg.org/ebooks/99", "FR", YEAR, {
+      ...deps,
+      now: 30 * 86_400_000,
+    });
+    expect(calls).toHaveLength(2);
+    const broken: SourceCache = {
+      get: async () => {
+        throw new Error("r2 down");
+      },
+      put: async () => {
+        throw new Error("r2 down");
+      },
+    };
+    const r = await resolveLink("https://www.gutenberg.org/ebooks/99", "FR", YEAR, {
+      shared: memoryShared(),
+      cache: broken,
+      fetchImpl: f,
+    });
+    expect(r.verdict.ok).toBe(true);
+  });
+
+  test("a shared work is judged for the viewer like any entry", async () => {
+    const shared = memoryShared();
+    const v = judge(gutenbergFacts(99, POTTER_LIKE)!, "FR", YEAR);
+    if (!v.ok) throw new Error("expected ok");
+    shared.rows.set("gutenberg:99", {
+      ...v.book,
+      creators: [{ name: "X", role: "author", deathYear: 1930 }],
+    });
+    const r = await resolveLink("https://www.gutenberg.org/ebooks/99", "MX", YEAR, {
+      shared,
+      cache: null,
+    });
+    expect(r.verdict).toMatchObject({ ok: false, reason: "not-public-domain-here" });
+  });
+
+  test("every library failing is an error, not an empty answer; Aozora's index comes from its zip", async () => {
+    await expect(
+      searchLibraries("tale", { shared: memoryShared(), cache: null, fetchImpl: hosts({}).f }),
+    ).rejects.toThrow("every library failed");
+    const csv = new TextEncoder().encode(
+      "作品ID,作品名,作品著作権フラグ,図書カードURL,姓,名,役割フラグ\n42,鼻,なし,https://www.aozora.gr.jp/cards/000879/card42.html,芥川,竜之介,著者\n",
+    );
+    const name = new TextEncoder().encode("a.csv");
+    const head = new Uint8Array(30);
+    const dv = new DataView(head.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint32(18, csv.byteLength, true); // stored (method 0)
+    dv.setUint16(26, name.byteLength, true);
+    const zip = new Uint8Array([...head, ...name, ...csv]);
+    const f = (async (input: RequestInfo | URL) =>
+      String(input).endsWith(".zip")
+        ? new Response(zip, { status: 200 })
+        : new Response("no", { status: 404 })) as typeof fetch;
+    const hits = await searchLibraries("芥川", {
+      shared: memoryShared(),
+      cache: memoryCache(),
+      fetchImpl: f,
+    });
+    expect(hits.map((h) => h.url)).toEqual(["https://www.aozora.gr.jp/cards/000879/card42.html"]);
+  });
+
+  test("the index fetch: only Aozora's index pages, no redirects, size-capped", async () => {
+    await expect(fetchZip("https://evil.example/x.zip")).rejects.toThrow("fetch-failed");
+    const url = "https://www.aozora.gr.jp/index_pages/x.zip";
+    const redirect = (async () => new Response(null, { status: 302 })) as unknown as typeof fetch;
+    await expect(fetchZip(url, redirect)).rejects.toThrow("fetch-failed");
+    const big = (async () =>
+      new Response(new Uint8Array(20), { status: 200 })) as unknown as typeof fetch;
+    await expect(fetchZip(url, big, 10)).rejects.toThrow("too-large");
+    const throws = (async () => {
+      throw new Error("offline");
+    }) as unknown as typeof fetch;
+    await expect(fetchZip(url, throws)).rejects.toThrow("fetch-failed");
+    // Sizes in the data descriptor: read up to the central directory.
+    const name = new TextEncoder().encode("a");
+    const head = new Uint8Array(30);
+    const dv = new DataView(head.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(26, 1, true);
+    const body = new TextEncoder().encode("abc");
+    const end = new Uint8Array(22);
+    const ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint32(16, 30 + 1 + 3, true);
+    const zip = new Uint8Array([...head, ...name, ...body, ...end]);
+    expect(new TextDecoder().decode(await unzipOne(zip))).toBe("abc");
   });
 });
