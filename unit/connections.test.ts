@@ -66,6 +66,9 @@ function fakeFetch(answer: (url: string, init?: RequestInit) => Response) {
   const f = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
+    // As the Workers runtime does: only "follow" and "manual" exist there.
+    if (init?.redirect === "error")
+      throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
     return answer(url, init);
   }) as typeof fetch;
   return { f, calls };
@@ -295,8 +298,25 @@ describe("Google's answers", () => {
       client_secret: "client-secret",
       redirect_uri: CFG.redirectUri,
     });
+    // The Workers runtime throws on redirect "error" (every connect failed, 2026-11-05).
+    expect(["follow", "manual"]).toContain(calls[0].init?.redirect as string);
+    const refused = await exchangeCode(
+      CFG,
+      "c",
+      "v",
+      fakeFetch(() => json({ error: "invalid_grant", error_description: "Bad code x" }, 400)).f,
+    ).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(ConnectionError);
+    expect((refused as ConnectionError).code).toBe("google-failed");
+    // The log detail carries Google's error word and the step, never its text.
+    expect((refused as ConnectionError).detail).toEqual({
+      step: "token",
+      status: 400,
+      google: "invalid_grant",
+    });
+    // A redirect from the token endpoint is a failure, not followed.
     await expect(
-      exchangeCode(CFG, "c", "v", fakeFetch(() => json({ error: "invalid_grant" }, 400)).f),
+      exchangeCode(CFG, "c", "v", fakeFetch(() => new Response(null, { status: 302 })).f),
     ).rejects.toThrow("google-failed");
     await expect(
       exchangeCode(CFG, "c", "v", fakeFetch(() => json({ access_token: "at" })).f),
