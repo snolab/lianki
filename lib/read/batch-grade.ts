@@ -199,3 +199,52 @@ export function hintParts(
     skipped: plan.skipped,
   };
 }
+
+/** Each sentence's due after each grade (ISO, by rating), as the probe gives it. */
+export type SentenceNext = Record<string, Partial<Record<SwipeRating, string>>>;
+
+/**
+ * The interval each grade gives what the handle grades (owner, 2026-11-05
+ * 11:06 JST: "要复习就给整套 rate 系统" — every grade with its next interval,
+ * as /words shows it): ms from `now` to the next due, shortest and longest
+ * over the batch (one word or sentence: both the same). A paragraph: its
+ * sentences (`paraSids`). Null where the probe has nothing.
+ */
+export function gradeIntervals(
+  plan: Extract<HandlePlan, { mode: "grade" }>,
+  probe: { words: readonly WordProbe[]; sentenceNext?: SentenceNext } | null,
+  now: number,
+  paraSids: readonly string[] = [],
+): Record<SwipeRating, [number, number] | null> {
+  const out = {} as Record<SwipeRating, [number, number] | null>;
+  for (const r of [1, 2, 3, 4] as const) {
+    const dues: string[] = [];
+    if (plan.target === "para") {
+      for (const sid of paraSids) {
+        const d = probe?.sentenceNext?.[sid]?.[r];
+        if (d) dues.push(d);
+      }
+    } else {
+      const b = batchOf(plan, r);
+      for (const sid of b.sentences) {
+        const d = probe?.sentenceNext?.[sid]?.[r];
+        if (d) dues.push(d);
+      }
+      for (const w of [...b.words, ...b.make]) if (w.next?.[r]) dues.push(w.next[r]!);
+    }
+    const ms = dues.map((d) => Date.parse(d) - now).filter(Number.isFinite);
+    out[r] = ms.length ? [Math.min(...ms), Math.max(...ms)] : null;
+  }
+  return out;
+}
+
+/** An interval as /words labels it (formatInterval), a range as "1d–5d". */
+export function intervalLabel(
+  span: [number, number] | null,
+  format: (ms: number) => string,
+): string | null {
+  if (!span) return null;
+  const a = format(span[0]);
+  const b = format(span[1]);
+  return a === b ? a : `${a}–${b}`;
+}

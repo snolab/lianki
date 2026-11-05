@@ -7,8 +7,12 @@ import {
   isScenario,
   moveUnder,
   phraseHome,
+  PHRASE_LANG,
+  phraseLength,
   phraseProblems,
   phraseRowName,
+  phraseRule,
+  phraseWords,
   tatoebaId,
   tatoebaUrl,
   type PhraseEntry,
@@ -18,7 +22,12 @@ import { spokenText } from "@/lib/words/spoken";
 import {
   CREDITS_END,
   CREDITS_START,
+  PHRASE_LICENSE,
+  PHRASE_SOURCE,
+  PHRASE_SOURCE_AUTO,
   buildPhraseDecks,
+  creditFiles,
+  phraseCreditsFile,
   isGenerated,
   mergeIndex,
   parseDrops,
@@ -51,29 +60,45 @@ describe("phraseProblems", () => {
   });
 
   it("checks length, script, register, src and readings", () => {
-    expect(phraseProblems("ja", ok({ term: "あ".repeat(21) }))).toContain(
-      "term over 20 characters",
+    expect(phraseProblems("ja", ok({ term: "あ".repeat(21) }))).toContain("term over 20 chars");
+    expect(phraseProblems("zh", ok({ term: "我".repeat(15) }))).toContain("term over 14 chars");
+    expect(phraseProblems("zh", ok({ term: "ありがとう" }))).toContain(
+      "letters outside Han in term",
     );
-    expect(phraseProblems("zh", ok({ term: "我".repeat(15) }))).toContain(
-      "term over 14 characters",
-    );
-    expect(phraseProblems("zh", ok({ term: "ありがとう" }))).toContain("kana in a Chinese phrase");
     expect(phraseProblems("ja", ok({ term: "OKです。" }))).toEqual([]);
+    expect(phraseProblems("ja", ok({ term: "ラーメン。" }))).toEqual([]);
     expect(phraseProblems("ja", ok({ term: "Yesです。" }))).toContain(
-      "Latin letters or digits in term",
+      "letters outside Hiragana/Katakana/Han in term",
     );
-    expect(phraseProblems("ja", ok({ term: "3時です。" }))).toContain(
-      "Latin letters or digits in term",
-    );
+    expect(phraseProblems("ja", ok({ term: "3時です。" }))).toContain("digits in term");
     expect(phraseProblems("ja", ok({ register: "formal" as never }))).toContain(
       'register "formal"',
     );
     expect(phraseProblems("ja", ok({ src: "tatoeba:12" }))).toContain('src "tatoeba:12"');
-    expect(phraseProblems("ja", ok({ reading: "お会計" }))).toContain("reading not in kana");
+    expect(phraseProblems("ja", ok({ reading: "お会計" }))).toContain("reading not kana");
     expect(phraseProblems("zh", ok({ term: "买单。", reading: "买单" }))).toContain(
       "reading not pinyin",
     );
     expect(phraseProblems("ja", ok({ back: "" }))).toContain("empty back");
+  });
+});
+
+describe("phraseProblems is data: PHRASE_LANG, no per-language code", () => {
+  it("checks a word-based language by words and its own script", () => {
+    const fr = (term: string) => phraseProblems("fr", ok({ term }));
+    expect(fr("Où est la gare ?")).toEqual([]);
+    expect(fr("Je voudrais un café, s'il vous plaît.")).toEqual([]);
+    expect(fr("un deux trois quatre cinq six sept huit neuf")).toContain("term over 8 words");
+    expect(fr("お会計お願いします。")).toContain("letters outside Latin in term");
+    expect(fr("Il est 3 heures.")).toContain("digits in term");
+    expect(phraseWords("Qu'est-ce que c'est ?")).toBe(5);
+    expect(phraseLength("ja", "お会計")).toBe(3);
+  });
+
+  it("gives a language with no rule the default: words, any script", () => {
+    expect(phraseRule("xx").unit).toBe("word");
+    expect(phraseProblems("xx", ok({ term: "Привет!" }))).toEqual([]);
+    expect(Object.keys(PHRASE_LANG)).toEqual(expect.arrayContaining(["ja", "zh", "fr"]));
   });
 });
 
@@ -156,6 +181,37 @@ describe("buildPhraseDecks", () => {
     expect(out).not.toContain("old");
     expect(out.endsWith(`${CREDITS_END}\n\nrest\n`)).toBe(true);
     expect(withCredits("no markers", b.credits)).toBe("no markers");
+  });
+
+  it("credits a deck picked by data in its own file, with the English translation", () => {
+    const b = buildPhraseDecks([
+      {
+        lang: "fr",
+        scenario: "help",
+        lines: [
+          {
+            term: "Pouvez-vous m'aider ?",
+            back: "Can you help me?",
+            src: "tatoeba:7",
+            by: "a",
+            enId: "8",
+            enBy: "b",
+            auto: true,
+          },
+        ],
+      },
+    ]);
+    expect(b.lists[0].source).toBe(PHRASE_SOURCE_AUTO);
+    expect(b.lists[0].license).toBe(PHRASE_LICENSE);
+    expect(b.lists[0].name).toBe("French · Phrases · Asking for help, not understanding");
+    const files = creditFiles(b.credits);
+    expect([...files.keys()]).toEqual(["credits/tatoeba-phrases-fr.tsv"]);
+    expect(files.get("credits/tatoeba-phrases-fr.tsv")).toContain("fr-phrases-help\t7\ta\t8\tb\n");
+    const md = withCredits(`${CREDITS_START}\n${CREDITS_END}`, b.credits);
+    expect(md).toContain("- `fr-phrases-help`: 1 Tatoeba sentences");
+    expect(md).toContain("(credits/tatoeba-phrases-fr.tsv)");
+    // The deck file keeps no author fields.
+    expect(JSON.stringify(b.files[0].json)).not.toContain('"by"');
   });
 
   it("parses jsonl with comments and blank lines", () => {
@@ -283,9 +339,15 @@ describe("public/words phrase decks", () => {
   }[];
   const decks = index.filter((l) => l.kind === "phrase");
 
-  it("has every scenario for ja and zh", () => {
+  it("lists each language's decks in scenario order; fr has every scenario", () => {
+    for (const lang of ["ja", "zh", "fr"]) {
+      const got = decks.filter((d) => d.lang === lang).map((d) => d.scenario!);
+      expect(got).toEqual(SCENARIOS.filter((s) => got.includes(s)));
+    }
+    expect(decks.filter((d) => d.lang === "fr").map((d) => d.scenario)).toEqual([...SCENARIOS]);
+    // The hand-curated ja/zh decks predate admin and help.
     for (const lang of ["ja", "zh"])
-      expect(decks.filter((d) => d.lang === lang).map((d) => d.scenario)).toEqual([...SCENARIOS]);
+      expect(decks.filter((d) => d.lang === lang).length).toBe(SCENARIOS.length - 2);
   });
 
   it("keeps the word lists in place", () => {
@@ -302,15 +364,36 @@ describe("public/words phrase decks", () => {
     expect(deck.kind).toBe("phrase");
     expect(deck.entries).toHaveLength(d.count);
     expect(d.count).toBeGreaterThanOrEqual(20);
+    expect(d.license).toBe(PHRASE_LICENSE);
+    // Picked by data (scene-sentences.ts) or curated by hand, the source says which.
+    const auto = d.source === PHRASE_SOURCE_AUTO;
+    if (!auto) expect(d.source).toBe(PHRASE_SOURCE);
     const terms = new Set<string>();
     for (const e of deck.entries as PhraseEntry[]) {
       expect(phraseProblems(d.lang, e)).toEqual([]);
-      expect(e.register).toBeDefined();
-      expect(e.note).toBeTruthy();
+      if (!auto) {
+        expect(e.register).toBeDefined();
+        expect(e.note).toBeTruthy();
+      } else {
+        expect(tatoebaId(e.src)).toBeTruthy();
+        expect(e.scene).toBeTruthy();
+      }
       expect(terms.has(e.term)).toBe(false);
       terms.add(e.term);
     }
-    const regs = new Set((deck.entries as PhraseEntry[]).map((e) => e.register));
-    expect(regs.size).toBe(2);
+    if (auto) {
+      // Every sentence, and its English, credited with its author.
+      const rows = readFileSync(join(dir, phraseCreditsFile(d.lang)), "utf8")
+        .split("\n")
+        .filter((l) => l.startsWith(`${d.id}\t`))
+        .map((l) => l.split("\t"));
+      expect(rows.map((r): string | null => r[1])).toEqual(
+        (deck.entries as PhraseEntry[]).map((e) => tatoebaId(e.src)),
+      );
+      for (const r of rows) expect(r[2] && r[3]).toBeTruthy();
+    } else {
+      const regs = new Set((deck.entries as PhraseEntry[]).map((e) => e.register));
+      expect(regs.size).toBe(2);
+    }
   });
 });

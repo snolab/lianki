@@ -754,6 +754,17 @@ it in the text, not a list of toasts.
   Undo. After a word, phrase or sentence, the card shows its next due briefly.
 - **Keys:** with a card open whose handle is on, 1–4 / L K J H grade it
   (`keyRating`); U and ⌘Z undo the latest grade, the card's or a swipe's.
+- **Intervals** (owner, 2026-11-05 11:06 JST: "要复习就给整套 rate 系统" — if
+  the card offers review, it is the whole rating system, as on /words): while
+  dragging, the hint shows the grade with the interval it gives ("良好 · 3d"),
+  in /words' own labels (`formatInterval`). The probe gives every word's and
+  sentence's due after each grade, without fuzz: a word by /words' preview
+  (`reviewWord` with its list's parameters, as `previewInterval`; a word with
+  no card yet, a new card's), a sentence by the reader's sentence scheduler
+  (`gradeSentence`). A batch shows its span ("1d–5d"), a paragraph its
+  sentences' (`lib/read/batch-grade.ts` `gradeIntervals`, `intervalLabel`).
+  With a mouse and keyboard, a row under the track shows the four keys, each
+  with its grade and interval.
 - QA: `scripts/qa/qa-read-card-grade.mjs`; unit: `read-batch-grade`,
   `read-grade-handle`.
 
@@ -887,7 +898,12 @@ items) and `lib/read/familiarity.ts` (aggregation); store
   resend is a duplicate) and `read_exposures` (per user, language, word, day:
   seen and explicit counts). "seen" = the sentence passed the reading line;
   "lookup" / "select" / "note" = an explicit "not recognised". Never changes
-  a word's FSRS state.
+  a word's FSRS state. The selection card's standalone 「不认识」 ("New to
+  me") button, the only client that sent "select", was removed (owner,
+  11:05 JST 2026-11-05): it looked like a grade but only logged an exposure.
+  The selection card's grade handle (#553) is the way to mark a word. The
+  API still accepts "select" (old clients); nothing reads the explicit
+  count, and the tables stay.
 - **Reading position synced** (`read_progress`): anchor (line, offset 0..1)
   where the newest client time wins, and the high-water line that only grows;
   the response names the lines it just moved over, the extraction trigger.

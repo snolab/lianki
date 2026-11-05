@@ -137,7 +137,6 @@ import {
   tapVoice,
   type SayUnit,
   sentenceOfToken,
-  tokenOffset,
   tokenText,
   tokenWord,
   unitLine,
@@ -1627,38 +1626,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           .catch(() => setMade({ text: tr.makeFailed.value }));
     // His own selection: read exactly it (the same voice and rules as a tap's).
     if (u.kind === "range" && view.text) a.readAloud = () => tapRef.current(u, false);
-    if (u.kind === "word" && signedIn && material.readerV2 && hash)
-      a.markNew = () => {
-        // An explicit "not recognised" (books-plan, option A): the exposure log
-        // only; its sentence as the server cuts the line (lib/read/units.ts).
-        const ss = para(u.line).sentences;
-        const off = tokenOffset(ss, u.t);
-        const idx = segmentLine(lines[u.line] ?? "", cutLang(u.line)).findIndex(
-          ([s0, s1]) => off >= s0 && off < s1,
-        );
-        if (off < 0 || idx < 0) return setSelStatus(ts.markFailed.value);
-        void fetch(`/api/read/${id}/exposures`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            events: [
-              {
-                kind: "select",
-                sid: sentenceId(hash, u.line, idx),
-                word: tokenText(ss, u.t, u.t),
-                at: new Date().toISOString(),
-              },
-            ],
-          }),
-        })
-          .then((r) => r.json().catch(() => null))
-          .then((d: { accepted?: number; duplicates?: number } | null) =>
-            setSelStatus(
-              d && (d.accepted || d.duplicates) ? ts.markedNew.value : ts.markFailed.value,
-            ),
-          )
-          .catch(() => setSelStatus(ts.markFailed.value));
-      };
     return a;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1728,7 +1695,11 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     (u: Unit): string[] => {
       const out: (string | null)[] = [];
       if (u.kind === "sentence") out.push(sidOf(u.line, u.s));
-      else if (u.kind === "range")
+      else if (u.kind === "para") {
+        // Its sentences: only for the intervals the hint shows (the swipe grades the item).
+        const n = lineSentences(u.line)?.length ?? 0;
+        for (let s = 0; s < n; s++) out.push(sidOf(u.line, s));
+      } else if (u.kind === "range")
         for (const p of rangeParts(u)) {
           const ss = lineSentences(p.line);
           if (!ss) continue;
@@ -1839,6 +1810,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const gradeArea = sel.unit ? (
     <CardGradeArea
       plan={cardGrade.plan}
+      intervals={cardGrade.intervals}
       locale={String(locale)}
       mirror={mirror}
       openedAt={cardGrade.openedAt}

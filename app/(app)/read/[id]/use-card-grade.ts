@@ -20,11 +20,15 @@ import { GRADE_HOLD_MS } from "@/lib/read/reader-server";
 import type { GradeReceipt } from "@/lib/read/reader-adapter";
 import {
   batchOf,
+  gradeIntervals,
   handlePlan,
+  intervalLabel,
   type HandlePlan,
+  type SentenceNext,
   type SentenceProbe,
   type WordProbe,
 } from "@/lib/read/batch-grade";
+import { formatInterval } from "@/lib/words/schedule";
 import type { Unit } from "@/lib/read/reader-select";
 import type { SwipeRating } from "@/lib/words/swipe";
 import type { RangeWord } from "./reader-word-review";
@@ -32,7 +36,7 @@ import type { RangeWord } from "./reader-word-review";
 type Probe = {
   sentences: SentenceProbe;
   words: WordProbe[];
-  sentenceNext?: Partial<Record<SwipeRating, string>>;
+  sentenceNext?: SentenceNext;
 };
 
 /** Where a batch shows: the sentences and words to flash, by line. */
@@ -128,7 +132,8 @@ export function useCardGrade(o: {
 
   const u = o.unit;
   const key = u ? JSON.stringify(u) : "";
-  const probed = u && u.kind !== "para" && u.kind !== "chapter" && u.kind !== "book";
+  // A paragraph is probed too: its sentences' intervals for the hint.
+  const probed = u && u.kind !== "chapter" && u.kind !== "book";
   useEffect(() => {
     setOpenedAt(performance.now());
     setNext(null);
@@ -138,7 +143,7 @@ export function useCardGrade(o: {
     let live = true;
     // Combo clicks move the unit quickly: probe the one he stays on.
     const t = setTimeout(async () => {
-      const ws = u.kind === "sentence" ? [] : await cfg.current.wordsOf(u);
+      const ws = u.kind === "sentence" || u.kind === "para" ? [] : await cfg.current.wordsOf(u);
       if (!live) return;
       words.current = ws;
       const p = (await post(base, {
@@ -159,6 +164,15 @@ export function useCardGrade(o: {
     const p = probe?.key === key ? probe.p : null;
     return handlePlan(u.kind, p, sids, Date.now());
   }, [o.on, u, probe, key, sids]);
+  /** Each grade's next interval, as /words labels it ("3d", "1d–5d" over a batch). */
+  const intervals = useMemo((): Record<SwipeRating, string | null> | null => {
+    const p = probe?.key === key ? probe.p : null;
+    if (plan.mode !== "grade" || !p) return null;
+    const spans = gradeIntervals(plan, p, Date.now(), sids);
+    const out = {} as Record<SwipeRating, string | null>;
+    for (const r of [1, 2, 3, 4] as const) out[r] = intervalLabel(spans[r], formatInterval);
+    return out;
+  }, [plan, probe, key, sids]);
 
   const sync = () => setStack([...entries.current]);
   const send = useCallback(
@@ -259,13 +273,13 @@ export function useCardGrade(o: {
         plan.target === "word" || plan.target === "phrase"
           ? plan.words[0]?.next?.[r]
           : plan.target === "sentence"
-            ? p?.sentenceNext?.[r]
+            ? p?.sentenceNext?.[sids[0] ?? ""]?.[r]
             : undefined;
       setNext(due ?? null);
       if (b.openReview) c.openReview(unit);
       return true;
     },
-    [plan, probe, key, send],
+    [plan, probe, key, send, sids],
   );
 
   /** Take the last grade given here back. False: nothing to undo. */
@@ -292,6 +306,7 @@ export function useCardGrade(o: {
   const last = stack.at(-1) ?? null;
   return {
     plan,
+    intervals,
     openedAt,
     /** The due the last grade gave (word, phrase or sentence), shown briefly. */
     next,
