@@ -132,7 +132,6 @@ const card = (page) =>
   page.evaluate(() => {
     const c = document.querySelector("[data-testid=read-select-card]");
     if (!c) return null;
-    const hl = globalThis.CSS?.highlights?.get?.("lk-sel");
     return {
       kind: c.dataset.kind,
       text: c.querySelector("[data-testid=read-select-text]")?.textContent ?? null,
@@ -142,7 +141,7 @@ const card = (page) =>
       ]),
       fam: !!c.querySelector("[data-testid=read-select-fam]"),
       link: !!c.querySelector("[data-testid=read-select-link] svg path"),
-      ranges: hl ? hl.size : document.querySelectorAll(".lk-book [data-sel]").length,
+      ranges: document.querySelectorAll(".lk-book [data-sel]").length,
       domSel: getSelection()?.toString() ?? "",
       top: c.getBoundingClientRect().top,
       bottom: c.getBoundingClientRect().bottom,

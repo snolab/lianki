@@ -126,7 +126,6 @@ const card = (page) =>
   page.evaluate(() => {
     const c = document.querySelector("[data-testid=read-select-card]");
     if (!c) return null;
-    const hl = globalThis.CSS?.highlights?.get?.("lk-sel");
     return {
       kind: c.dataset.kind,
       actions: [...c.querySelectorAll("[data-action]")].map((b) => b.dataset.action),
@@ -134,7 +133,7 @@ const card = (page) =>
       title: c.querySelector("[data-testid=read-select-title]")?.textContent ?? null,
       size: c.querySelector("[data-testid=read-select-size]")?.textContent ?? null,
       fam: !!c.querySelector("[data-testid=read-select-fam]"),
-      ranges: hl ? hl.size : document.querySelectorAll(".lk-book [data-sel]").length,
+      ranges: document.querySelectorAll(".lk-book [data-sel]").length,
       domSel: getSelection()?.toString() ?? "",
       bg: getComputedStyle(c).backdropFilter || getComputedStyle(c).webkitBackdropFilter,
     };

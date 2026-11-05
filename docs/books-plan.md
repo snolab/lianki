@@ -455,9 +455,14 @@ selecting DOM text.
 - **Built** (reader v2, behind `read.reader-v2`): the rules in
   `lib/read/reader-select.ts` (levels, fragments; unit-tested), the listener
   and highlight in `app/(app)/read/[id]/use-reader-select.ts`, the card in
-  `reader-select-card.tsx`. Every level is drawn with the CSS Custom Highlight
-  API (an attribute where it is missing), never the DOM selection, so the
-  iOS selection menu never covers the card. The card takes the half of the
+  `reader-select-card.tsx`. Every level is drawn as `data-sel` on the unit's
+  elements (an element background, so each word keeps its underline colour),
+  never the DOM selection, so the iOS selection menu never covers the card.
+  One unit is drawn at a time: a tap on another word starts over there and
+  the old mark goes (each paint takes `data-sel` off every other element).
+  Not the CSS Custom Highlight API: on the iPhone a replaced `::highlight`
+  stayed painted on the words tapped before, so two taps showed two
+  selections (owner, 2026-11-05 03:00 JST; QA `scripts/qa/qa-read-sel-one.ts`). The card takes the half of the
   screen away from the finger, so the next click lands on the book. Links
   name the book by its content hash; `/read/<hash>` redirects to the
   signed-in user's own copy of that text or answers 404

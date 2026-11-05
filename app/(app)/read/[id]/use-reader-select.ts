@@ -11,11 +11,16 @@
 //   in the book (mousedown with detail > 1), so the levels stay ours; a drag
 //   to select text is left alone.
 // - **Highlight.** Every level is drawn without touching the DOM selection:
-//   the CSS Custom Highlight API where there is one and it keeps each word's
-//   underline colour (keepsDecorations; ranges over the rows mounted now),
-//   else an attribute on the same elements. A chapter or the
-//   book is a virtual selection: the range is data, and only its mounted
-//   rows are drawn, again as rows mount (a MutationObserver on the list).
+//   a `data-sel` attribute on the unit's elements among the rows mounted now
+//   (markSelected), a plain element background, so each word keeps its own
+//   underline colour. One drawing, one owner: each paint takes the attribute
+//   off every element in the book that is no longer the unit, so two units
+//   are never drawn at once. Not the CSS Custom Highlight API: on the iPhone
+//   (WebKit) a replaced or deleted `::highlight` was still painted on the old
+//   words, so two taps showed two selections (owner, 2026-11-05 03:00 JST:
+//   "连点两个不同词，两个都会高亮"). A chapter or the book is a virtual
+//   selection: the range is data, and only its mounted rows are drawn, again
+//   as rows mount (a MutationObserver on the list).
 // - **Manual selection.** His own selection (a long-press and the handles, a
 //   mouse drag) is left to the browser: never moved, never cleared while he
 //   adjusts it. Once it settles — `selectionchange` quiet for SETTLE_MS with
@@ -45,50 +50,16 @@ import {
 /** A hand selection has settled once `selectionchange` is this quiet (ms). */
 export const SETTLE_MS = 350;
 
-const HL = "lk-sel";
-
-type Highlights = { set(n: string, h: unknown): void; delete(n: string): void };
-const highlights = (): Highlights | null =>
-  typeof CSS !== "undefined" && "highlights" in CSS && typeof Highlight !== "undefined"
-    ? (CSS as unknown as { highlights: Highlights }).highlights
-    : null;
-
-let keeps: boolean | null = null;
 /**
- * Whether this engine paints the underlines inside `::highlight(lk-sel)` in
- * each word's own colour (globals.css: `text-decoration-color: inherit`).
- * WebKit takes the inherited colour from the word, so the familiarity levels
- * stay apart; Chromium takes it from the parent highlight, one colour for all
- * (owner, 2026-11-05). Asked once, of the engine's own computed style: a probe
- * with a known underline colour, read through the highlight pseudo. An engine
- * that cannot answer (no pseudo, no background from the rule) counts as no;
- * asked again while the page is still loading.
+ * Draws the selection: `data-sel` on exactly `els`, taken off every other
+ * element under `root` that carries it (a unit drawn before, rows painted by
+ * an earlier pass).
  */
-export function keepsDecorations(): boolean {
-  if (keeps !== null) return keeps;
-  try {
-    const probe = document.createElement("span");
-    probe.textContent = "x";
-    probe.style.cssText =
-      "position:absolute;opacity:0;pointer-events:none;text-decoration:underline solid oklch(0.5 0.1 30)";
-    document.body.appendChild(probe);
-    const own = getComputedStyle(probe).textDecorationColor;
-    // A live declaration: read before the probe goes.
-    const hl = getComputedStyle(probe, `::highlight(${HL})`);
-    const bg = hl.backgroundColor;
-    const deco = hl.textDecorationColor;
-    probe.remove();
-    // No background: the engine cannot read the pseudo, or the stylesheet is
-    // still loading (then ask again next time).
-    if (!bg || bg === "rgba(0, 0, 0, 0)") {
-      keeps = document.readyState === "complete" ? false : null;
-      return false;
-    }
-    keeps = deco === own;
-  } catch {
-    keeps = false;
-  }
-  return keeps;
+export function markSelected(root: ParentNode, els: readonly Element[]): void {
+  const keep = new Set(els);
+  for (const e of root.querySelectorAll("[data-sel]"))
+    if (!keep.has(e)) e.removeAttribute("data-sel");
+  for (const e of els) if (!e.hasAttribute("data-sel")) e.setAttribute("data-sel", "");
 }
 
 /** The elements a unit covers among the rows mounted now. */
@@ -154,39 +125,6 @@ export function snapDomRange(root: HTMLElement, r: Range): Unit | null {
     t: Number(e.dataset.t),
   });
   return rangeUnit(ref(toks[ij[0]]), ref(toks[ij[1]]));
-}
-
-/** Ranges for the highlight: whole elements; a phrase from its first word to its last, per paragraph. */
-function rangesOf(u: Unit, els: HTMLElement[]): Range[] {
-  if (u.kind === "range") {
-    // One range from its first mounted word to its last, across paragraphs.
-    if (!els.length) return [];
-    const r = document.createRange();
-    r.setStartBefore(els[0]);
-    r.setEndAfter(els[els.length - 1]);
-    return [r];
-  }
-  if (u.kind !== "phrase") {
-    return els.map((e) => {
-      const r = document.createRange();
-      r.selectNodeContents(e);
-      return r;
-    });
-  }
-  const byPara = new Map<Element, HTMLElement[]>();
-  for (const e of els) {
-    const p = e.closest("[data-line]");
-    if (!p) continue;
-    const list = byPara.get(p) ?? [];
-    list.push(e);
-    byPara.set(p, list);
-  }
-  return [...byPara.values()].map((list) => {
-    const r = document.createRange();
-    r.setStartBefore(list[0]);
-    r.setEndAfter(list[list.length - 1]);
-    return r;
-  });
 }
 
 /** What a click at (x, y) landed on in the book, or null (a margin, the rail, outside). */
@@ -401,13 +339,8 @@ export function useReaderSelect(o: {
   // The highlight, redrawn as rows mount and unmount.
   useEffect(() => {
     const root = o.listRef.current;
-    // Where the highlight would recolour the underlines, the elements carry it.
-    const hl = highlights() && keepsDecorations() ? highlights() : null;
-    let marked: HTMLElement[] = [];
     const wipe = () => {
-      hl?.delete(HL);
-      for (const e of marked) e.removeAttribute("data-sel");
-      marked = [];
+      if (root) markSelected(root, []);
     };
     if (!root || !unit) {
       wipe();
@@ -417,14 +350,7 @@ export function useReaderSelect(o: {
     const paint = () => {
       frame = 0;
       const els = unitElements(root, unit, (n) => ctxRef.current.chapterRange(n));
-      wipe();
-      if (hl) {
-        const H = Highlight as unknown as new (...r: Range[]) => unknown;
-        hl.set(HL, new H(...rangesOf(unit, els)));
-      } else {
-        for (const e of els) e.setAttribute("data-sel", "");
-        marked = els;
-      }
+      markSelected(root, els);
       if (!els.length) return;
       if (!placed.current) {
         placed.current = true;
