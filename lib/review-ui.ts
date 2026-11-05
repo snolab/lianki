@@ -9,6 +9,8 @@
  * logic is unit-tested (unit/review-ui.test.ts).
  */
 
+import { displayTitle } from "@/lib/titles/client";
+
 export type Rating = 1 | 2 | 3 | 4;
 
 export const RATINGS: readonly Rating[] = [1, 2, 3, 4];
@@ -28,7 +30,8 @@ export function cardFromDue(json: unknown): ReviewCard | null {
   return {
     id: first._id,
     url: first.url,
-    title: typeof first.title === "string" && first.title ? first.title : null,
+    title:
+      typeof first.title === "string" && first.title ? displayTitle(first.title, first.url) : null,
     due: typeof first.card?.due === "string" ? first.card.due : null,
   };
 }
@@ -40,7 +43,7 @@ export function cardFromGet(json: unknown): ReviewCard | null {
   return {
     id: j._id,
     url: j.url,
-    title: typeof j.title === "string" && j.title ? j.title : null,
+    title: typeof j.title === "string" && j.title ? displayTitle(j.title, j.url) : null,
     due: null,
   };
 }

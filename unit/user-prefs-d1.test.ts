@@ -27,6 +27,19 @@ beforeEach(() => {
 });
 
 describe("UserPrefsD1Repo", () => {
+  it("reads one key's value; a missing, corrupt or no longer valid row is not there", async () => {
+    const v = { off: [], add: [{ host: "", pattern: "(#)" }] };
+    expect(await repo().value("titles.rules")).toBeUndefined();
+    await repo().write([{ key: "titles.rules", value: v, hlc: hlc(900_000) }]);
+    expect(await repo().value("titles.rules")).toEqual(v);
+    expect(await repo("u2").value("titles.rules")).toBeUndefined();
+    const put = d1.raw().prepare("UPDATE user_prefs SET value = ? WHERE key = 'titles.rules'");
+    put.run("{not json");
+    expect(await repo().value("titles.rules")).toBeUndefined();
+    put.run(JSON.stringify({ off: [], add: [{ host: "", pattern: "*" }] }));
+    expect(await repo().value("titles.rules")).toBeUndefined();
+  });
+
   it("stores a value and reads it back with its clock", async () => {
     const r = await repo().write([{ key: "motion.animations", value: "off", hlc: hlc(900_000) }]);
     expect(r.rejected).toEqual([]);

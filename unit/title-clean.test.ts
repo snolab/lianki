@@ -11,6 +11,9 @@ import {
   titleRuleId,
 } from "@lianki/core/titleClean";
 import { displayTitle } from "@/lib/titles/client";
+import { titleRulesForUser, titleRulesFrom } from "@/lib/titles/server";
+import type { D1Like } from "@/lib/d1/types";
+import { cardFromDue, cardFromGet } from "@/lib/review-ui";
 
 const YT = "https://www.youtube.com/watch?v=x";
 const ZH = "https://www.zhihu.com/question/1";
@@ -322,6 +325,58 @@ describe("dropCountSeenChanging: the page was seen before", () => {
     expect(dropCountSeenChanging("(5) Foo", null)).toBe("(5) Foo");
     expect(dropCountSeenChanging("Foo", "(3) Foo")).toBe("Foo");
     expect(dropCountSeenChanging("(5)", "(3)")).toBe("(5)");
+  });
+});
+
+describe("the server's rules for a user", () => {
+  const signedIn = async () => ({ id: "u1" });
+
+  it("the user's stored difference, else the defaults", async () => {
+    const pref = { off: [], add: [{ host: "", pattern: "[x]" }] };
+    const rules = await titleRulesFrom(signedIn, async () => pref);
+    expect(cleanTitle("[x] Foo", { rules })).toBe("Foo");
+    expect(await titleRulesFrom(signedIn, async () => undefined)).toBe(DEFAULT_TITLE_RULES);
+    expect(
+      await titleRulesFrom(
+        async () => null,
+        async () => pref,
+      ),
+    ).toBe(DEFAULT_TITLE_RULES);
+  });
+
+  it("a failure gives the defaults: saving a card must not depend on it", async () => {
+    const boom = async (): Promise<never> => {
+      throw new Error("db down");
+    };
+    expect(await titleRulesFrom(signedIn, boom)).toBe(DEFAULT_TITLE_RULES);
+    expect(await titleRulesFrom(boom, async () => null)).toBe(DEFAULT_TITLE_RULES);
+  });
+
+  it("off D1 (the frozen Mongo copy) there are no stored rules", async () => {
+    const before = process.env.DB_BACKEND;
+    process.env.DB_BACKEND = "mongo";
+    try {
+      expect(await titleRulesForUser()).toBe(DEFAULT_TITLE_RULES);
+      process.env.DB_BACKEND = "d1";
+      const stored = JSON.stringify({ off: [], add: [{ host: "", pattern: "[x]" }] });
+      const db = () =>
+        ({
+          prepare: () => ({ bind: () => ({ first: async () => ({ value: stored }) }) }),
+        }) as unknown as D1Like;
+      const rules = await titleRulesForUser(signedIn, db);
+      expect(cleanTitle("[x] Foo", { rules })).toBe("Foo");
+    } finally {
+      if (before === undefined) delete process.env.DB_BACKEND;
+      else process.env.DB_BACKEND = before;
+    }
+  });
+});
+
+describe("/review shows the cleaned title", () => {
+  const raw = { _id: "a", url: YT, title: "(3) Foo", card: { due: "2026-11-06" } };
+  it("from either answer, and never loses the card's url", () => {
+    expect(cardFromDue({ cards: [raw] })).toMatchObject({ title: "Foo", url: YT });
+    expect(cardFromGet(raw)).toMatchObject({ title: "Foo", url: YT });
   });
 });
 
