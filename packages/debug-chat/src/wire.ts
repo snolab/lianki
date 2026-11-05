@@ -116,6 +116,13 @@ export type ChatMessage = {
    * polish may draw on (polish.ts), so it fixes words from context, not guesses.
    */
   scene?: SttScene;
+  /**
+   * Stamped by the hub only (workers/push/src/debug.ts `say`): an agent line
+   * said in the owner's thread by a pairing he approved. It alone lets a line
+   * use the HTML subset (rich-text.ts lineTier). Never read from what a sender
+   * sends, and absent on friends' lines, the partner AI's and older lines.
+   */
+  ownerGrant?: true;
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */

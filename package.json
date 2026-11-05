@@ -103,6 +103,7 @@
     "@typescript/native-preview": "^7.0.0-dev.20260308.1",
     "cloudflared": "^0.7.1",
     "dotenv": "^16.6.1",
+    "happy-dom": "^21.0.4",
     "husky": "^9.1.7",
     "idb-keyval": "^6.2.2",
     "lint-staged": "^16.4.0",
