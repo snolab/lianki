@@ -41,5 +41,13 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "archived", "tmp", "src/lianki.user.ts", "apps", "packages/ext"]
+  "exclude": [
+    "node_modules",
+    "archived",
+    "tmp",
+    "src/lianki.user.ts",
+    "apps",
+    "packages/ext",
+    "workers/edge"
+  ]
 }
