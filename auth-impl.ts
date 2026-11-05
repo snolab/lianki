@@ -24,6 +24,7 @@ import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
 import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
 import { notifySignedOut } from "./lib/push-signed-out";
 import { setEmailCanonical } from "./lib/canonical-email-d1";
+import { boxBindingHook, boxProviderPlugin } from "./lib/box-oauth/provider";
 
 // The heavy half of auth: better-auth, its plugins, zod, kysely. Only ever
 // reached through the dynamic import in ./auth.ts, so it is one shared async
@@ -118,7 +119,8 @@ function baseOptions() {
 
     // The Google URL must not ask for previously granted scopes — see
     // lib/google-auth-url.ts.
-    hooks: { after: stripGrantedScopesHook },
+    // before: a box's OAuth client belongs to one account (lib/box-oauth/provider.ts).
+    hooks: { after: stripGrantedScopesHook, before: boxBindingHook },
 
     // A GitHub account just signed up or was linked: claim any GitHub
     // Sponsors sponsorship that was waiting for its id (docs/payments.md).
@@ -167,6 +169,9 @@ function baseOptions() {
     },
 
     plugins: [
+      // my-<hash> boxes sign in through lianki.com: dark, its routes answer only
+      // with the flag on (app/api/auth/[...all]/route.ts, docs/box-oauth.md).
+      ...(dbBackend() === "d1" ? [boxProviderPlugin()] : []),
       // Gated on configuration, as the SMTP version was: with no provider the
       // plugin is absent and the sign-in form offers only OAuth, rather than
       // accepting an address and silently dropping the mail.

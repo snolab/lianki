@@ -1,0 +1,164 @@
+# A box signs in through lianki.com
+
+A my-box ([devbox/README.md](../devbox/README.md)) runs its owner's code on
+`my-<hash>.lianki.com`. With this, that code signs in through lianki.com and
+uses the production API as one Lianki account, through a short-lived token and
+no shared cookie. Owner's decision: Slack, 2026-11-05.
+
+**Dark:** behind the flag `box.oauth`, off. With it off, everything here answers
+as if it did not exist, except the sibling guard (below), which is always on.
+
+| piece                         | where                                                       |
+| ----------------------------- | ----------------------------------------------------------- |
+| pure rules: origins, allowlist, scopes | `lib/box-oauth/rules.ts`                           |
+| the Worker's gate             | `lib/box-oauth/gate.ts`, called first in `worker.ts`        |
+| provider (better-auth plugin), binding hook | `lib/box-oauth/provider.ts`, `auth-impl.ts`   |
+| lianki.com's entry to the flow | `app/box-authorize/route.ts`                               |
+| which plugin routes answer    | `app/api/auth/[...all]/route.ts`                            |
+| binding, revoke, token lookup | `lib/box-oauth/store.ts`, `db/migrations/0046_box_oauth.sql` |
+| owner's page and API          | `/dev/box-clients`, `app/api/dev/box-clients/route.ts`      |
+| the app's view of a token     | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`    |
+| the box's browser side        | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge` |
+| tests                         | `unit/box-oauth.test.ts`, `scripts/qa/qa-box-oauth.mjs`     |
+
+## For the owner: set up a box
+
+1. `/dev/box-clients`: bind the box's exact origin to one account, read or
+   read + write. Copy the client id (not a secret).
+2. In the box's gitignored env file, set `DEVBOX_LIANKI_CLIENT_ID=<id>` (and
+   `DEVBOX_LIANKI_SCOPE=box:read offline_access` for a read-only box), and
+   recreate the box. Its own sign-in and sign-up are gone from then on.
+3. `/dev/flags`: `box.oauth` on. This is the switch that opens it.
+
+**Revoke** on the same page is the one action that ends a box: its binding, its
+client and every token, at once. Every bind and revoke is in `security_audit`.
+
+## The flow
+
+```
+box /sign-in ─▶ lianki.com/box-authorize       flag, exact redirect URI, account = binding
+                 │ signed out: lianki.com/sign-in, then back here
+                 ▼ a page, not a redirect: lianki.com's own navigation from here on
+              /api/auth/oauth2/authorize       the plugin; the hook checks the binding again
+                 ▼
+box /box-callback?code=…&state=…               state checked, code traded once (PKCE S256)
+                 ▼
+POST lianki.com/api/auth/oauth2/token          cross-origin, no cookie
+                 ▼
+box page: fetch("/api/…") ─▶ lianki.com/api/…  Authorization: Bearer lkb_…, credentials omit
+```
+
+The client is public: PKCE, and no secret anywhere in the box. Access tokens
+last 15 min, refresh tokens 24 h and rotate, codes 60 s and work once. All are
+stored hashed. The browser keeps them in that tab's sessionStorage.
+
+## What holds it closed
+
+- **One box, one account.** `box_binding` has partial unique indexes on origin
+  and on account. Any other account is refused three times over, all on the
+  server: at the entry, in the plugin's hook, and in the gate, whose token lookup
+  joins the token's user to the binding's.
+- **The plugin answers three routes.** It mounts 34, including client CRUD for
+  any signed-in user and dynamic registration. Only `authorize`, `token` and
+  `revoke` answer, and only with the flag on; the rest are 404 at
+  `app/api/auth/[...all]`. Consent is off: the owner's binding is the grant. That
+  is right only while the owner alone can bind a box to an account; opening binding
+  to members means revisiting it and adding a consent screen.
+- **Exact redirect URIs.** One per client, origin + `/box-callback`, no loopback
+  port leniency.
+- **Deny by default.** A token reaches only the routes listed in
+  `tokenMayCall` (`rules.ts`), the account's own study data. A new route is closed
+  until someone adds it. Never `/api/dev*`, `/api/debug`, payments, invites and
+  gift codes, API tokens, CLI login, previews, connections, or `/api/auth`, so
+  no email or login change. BYOK keys are browser-only today and any route for
+  them would be closed the same way. Encoded and otherwise odd paths are refused,
+  so the list cannot be walked around.
+- **Scopes.** `box:read` is GET and HEAD, minus the GETs that write (grading,
+  deleting, `/repeat`). `box:write` adds the rest. Read-only routes take no
+  writes with either. A token never has more than its binding.
+- **CORS.** Only a live box's exact origin, and never
+  `Access-Control-Allow-Credentials`. A token and a cookie together are refused.
+  A token works only from its own origin.
+- **The app sees no token and no cookie.** The gate strips both and sends a
+  signed one-minute identity instead (`x-lk-box-identity`, HMAC with a key derived
+  from `AUTH_SECRET`). It strips that header from all incoming requests. `auth.ts`
+  answers `getSession` from it, so routes need no change, and a bad one is nobody,
+  never a fall back. `Set-Cookie` is dropped on the way back.
+- **Rate limit per token:** 300 requests a minute (`worker.ts`), on top of each
+  route's own per-account limits.
+- **No secrets in the box.** No Cloudflare credential, no D1 access, no token in
+  the image or the env file.
+
+- **Only a real navigation gets a code.** The plugin hands its redirect URL, code
+  included, as JSON to any `fetch`. JS on lianki.com with the user's session, such
+  as a `?live` custom frontend, could then read a code with its own PKCE verifier
+  and mint a token that outlives the preview. So `/oauth2/authorize` takes only a
+  top-level navigation by lianki.com's own entry page (`isFirstPartyNavigation`:
+  Fetch Metadata, which a page's JS cannot set). A code then goes only to the
+  box's exact redirect URI, where such a page cannot read it.
+
+### The sibling guard
+
+The session cookie is host-only but `SameSite=Lax`, and Lax treats every
+subdomain as the same site. So a box's page, which runs its owner's code, could
+make a signed-in visitor's browser send writes to lianki.com with the cookie;
+CORS hides the answer, not the write. `siblingWriteRefused` refuses a
+cookie-carrying `/api` write marked `Sec-Fetch-Site: same-site`, and a GET that
+writes. It is always on, flag or no flag. A `__Host-` cookie does **not** fix
+this: it stops subdomains setting the cookie, not sending it.
+
+### Custom frontends
+
+`?live` frontends keep their own rule: account writes are refused while the live
+cookie is set (`customFrontendBlocked`). Nothing here relies on it: any normal
+lianki.com page load clears that cookie, browser-wide, so it is no boundary (an
+open finding of the #600 review, not fixed here). A token is minted only through
+the navigation rule above, never through a route on that block, and
+`unit/box-oauth.test.ts` checks each of those writes is closed to a token as well.
+
+## Known limits
+
+- **Client-side only.** The box's `fetch` goes to lianki.com, but its server
+  components still read the box's own (empty) session and local D1, so
+  server-rendered parts show a signed-out shell. `authClient.useSession` is empty.
+- **An owner's own box.** Bound to an `OWNER_EMAILS` account, admin routes stay
+  closed, but on allowlisted routes `isOwner` is true, so owner-only feature
+  previews apply. Accepted (owner's direction, 2026-11-05): tokens never reach
+  admin routes, which is what matters.
+- **Token in the page.** Any script on the box can read the tab's token. That
+  is the box's own code and the box's own account, and the token is short-lived.
+- **Cookie tossing.** A box is a subdomain, so its JS can set a cookie with
+  `Domain=lianki.com`, which lianki.com then receives. The approved `__Host-`
+  session cookie closes that for the session (its own PR, not this one).
+
+## Edge gate (designed, not built)
+
+The tokens protect the account. They do not stop anyone with the URL from opening
+the box's pages: today the hash is the only thing hiding them. The gate makes a
+box open only for its own member. No code for it exists yet.
+
+**Option A, Cloudflare Access: needs a new credential.** An Access application
+per host, one allow-email policy, and `originRequest.access` on the connector
+(`devbox/host-tunnel.sh` already writes that rule for dsh). It needs an API token
+with **Account · Access: Apps and Policies · Edit**, and a Zero Trust team, which
+has not been confirmed to exist. Members sign in twice: Access, then Lianki.
+
+**Option B, a small Worker: needs no new credential (recommended, to be proved).**
+A Worker `lianki-box-gate` on an exact route per box, added through the API with
+wrangler's existing login, which has `workers_routes:write`. Hostnames stay in D1,
+never in a config file in the repo.
+
+1. A request with a valid `__Host-lk_box_gate` cookie (host-only, Secure,
+   HttpOnly, HMAC over client id + user + expiry) goes to the tunnel.
+2. Otherwise a redirect to `lianki.com/api/box/gate?client=<id>`, which checks the
+   session against `box_binding` and returns a one-time 60 s ticket to that box's
+   exact origin. The Worker trades it and sets the cookie. This also signs members
+   in only once.
+3. Anyone else gets a plain 403. Websockets (HMR) pass through after the cookie.
+
+To prove before building: that a Worker route on a proxied CNAME to a tunnel runs
+ahead of the tunnel (expected; not tested here), and that wrangler's OAuth token
+may create routes through the API. If either fails, it is Option A.
+
+Neither gate blocks the other work: it sits in front of the box, and the flow
+above is unchanged behind it.

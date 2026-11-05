@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import SignInClient from "./SignInClient";
+import BoxSignIn from "./BoxSignIn";
+import { boxConfig } from "@/lib/box-oauth/mode";
 import { appLocale } from "@/lib/app-locale.server";
 import { passwordAuthEnabled } from "@/auth";
 
@@ -18,6 +20,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function SignInPage() {
+  const box = boxConfig();
+  if (box) return <BoxSignIn config={box} />;
   return (
     <div className="flex flex-col">
       <div className="flex-grow">

@@ -25,7 +25,9 @@ export type AuditKind =
   | "live-preview.create"
   | "live-preview.revoke"
   | "live-frontend.allow"
-  | "live-frontend.disallow";
+  | "live-frontend.disallow"
+  | "box.bind"
+  | "box.revoke";
 
 export type AuditEntry = {
   kind: AuditKind;

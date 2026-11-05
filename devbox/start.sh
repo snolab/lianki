@@ -13,7 +13,13 @@ mkdir -p "$LOGS"
 cd "$REPO"
 export DB_BACKEND=d1
 export LIANKI_DEVBOX=1
-export DEV_EMAIL_PASSWORD_AUTH=1
+if [ -n "${DEVBOX_LIANKI_CLIENT_ID:-}" ]; then
+  # Signs in through lianki.com (docs/box-oauth.md): no sign-in or sign-up of its own.
+  export LIANKI_BOX_CLIENT_ID="$DEVBOX_LIANKI_CLIENT_ID"
+  export LIANKI_BOX_SCOPE="${DEVBOX_LIANKI_SCOPE:-box:read box:write offline_access}"
+else
+  export DEV_EMAIL_PASSWORD_AUTH=1
+fi
 export BETTER_AUTH_BASE_URL="${DEVBOX_PUBLIC_URL:-http://localhost:${DEVBOX_DEV_PORT:-3200}}"
 AUTH_SECRET="$(cat /home/node/.devbox/auth-secret)"
 export AUTH_SECRET

@@ -24,6 +24,8 @@ export function runtimeNodeEnv(): string | undefined {
  * better-auth.
  */
 export function passwordAuthEnabled(): boolean {
+  // A box signs in through lianki.com only (docs/box-oauth.md).
+  if (process.env.LIANKI_BOX_CLIENT_ID) return false;
   return runtimeNodeEnv() !== "production" && process.env.DEV_EMAIL_PASSWORD_AUTH === "1";
 }
 
@@ -33,5 +35,7 @@ export function passwordAuthEnabled(): boolean {
  * callers may skip loading better-auth altogether — the common guest case.
  */
 export function hasSessionCookie(headers: Headers): boolean {
+  // A box token's signed identity counts too: auth.ts answers it with no cookie.
+  if (headers.has("x-lk-box-identity")) return true;
   return headers.get("cookie")?.includes("better-auth.session_token=") ?? false;
 }
