@@ -2,7 +2,7 @@
  * What a dev-tunnel response may never carry (lib/live-view/tunnel-headers.ts),
  * on preview.lianki.com (the gate) and its websockets' 101s
  * (scripts/dev/preview-gate.ts upgradeHeadFilter); service worker scripts
- * refused; the dev-token cap as one statement (a concurrent-mint race); and
+ * replaced by a self-removing worker; the dev-token cap as one statement (a concurrent-mint race); and
  * the audit rows for live-view and dev-token writes (lib/security/audit-log.ts).
  */
 import { describe, expect, test } from "bun:test";
@@ -40,6 +40,7 @@ import {
   filterResponseHead,
   sealSession,
   SESSION_COOKIE,
+  SW_KILL_SWITCH,
   upgradeHeadFilter,
 } from "../scripts/dev/preview-gate";
 
@@ -100,7 +101,7 @@ describe("service worker scripts", () => {
       expect(isServiceWorkerScript(p, null)).toBe(false);
   });
 
-  test("the gate answers 403 for one, with or without a session", async () => {
+  test("the gate answers one with its self-removing worker, with or without a session", async () => {
     const key = "k".repeat(64);
     const gate = createGate({
       publicHost: "preview.lianki.com",
@@ -113,13 +114,15 @@ describe("service worker scripts", () => {
     const host = "preview.lianki.com";
     for (const headers of [{ host }, { host, cookie }]) {
       const r = await gate.handle({ method: "GET", url: "/sw.js", headers });
-      expect(r.kind === "respond" && r.status).toBe(403);
+      expect(r.kind === "respond" && r.status).toBe(200);
+      expect(r.kind === "respond" && r.body).toBe(SW_KILL_SWITCH);
+      expect(r.kind === "respond" && r.headers["content-type"]).toContain("javascript");
       const s = await gate.handle({
         method: "GET",
         url: "/_next/static/x.js",
         headers: { ...headers, "service-worker": "script" },
       });
-      expect(s.kind === "respond" && s.status).toBe(403);
+      expect(s.kind === "respond" && s.body).toBe(SW_KILL_SWITCH);
     }
     // A normal asset with the session still passes.
     const ok = await gate.handle({
