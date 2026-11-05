@@ -115,7 +115,8 @@ decision); granting or revoking needs no deploy. Change it at **`/dev/owners`**
   revocation holds everywhere within **30 s**, and at once in the isolate that
   wrote it. `/api/debug/identity` and `/api/dev/whoami` use it, so lianki-push
   and the live page proxy follow. Code without a session reads for itself: the
-  payment webhooks refresh the snapshot; the `DebugSessions` RPCs
+  payment webhooks and the bearer-token path of `/api/debug/partner-ticket`
+  refresh the snapshot; the `DebugSessions` RPCs
   (`lib/debug-session.ts`, `lib/inbox/agent.ts`, `lib/partner-ai.ts`) query
   `site_role` directly.
 - **Fail closed.** A D1 error, a missing table, or another backend than D1

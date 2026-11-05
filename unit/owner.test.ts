@@ -430,6 +430,22 @@ describe("/api/dev/owners", () => {
   });
 });
 
+describe("owner checks with no session to refresh the list", () => {
+  it("each refreshes it before it asks", () => {
+    for (const f of [
+      "app/api/debug/partner-ticket/route.ts",
+      "lib/payments/webhook.ts",
+      "lib/payments/stripe-webhook.ts",
+    ]) {
+      const src = readFileSync(f, "utf8");
+      expect({ f, refreshed: src.indexOf("await refreshOwners(") >= 0 }).toEqual({
+        f,
+        refreshed: true,
+      });
+    }
+  });
+});
+
 describe("the break-glass CLI", () => {
   it("parses its commands, and refuses anything else", () => {
     expect(parseArgs(["list"])).toEqual({ cmd: "list", local: false });

@@ -43,12 +43,13 @@ fails closed: nobody is the owner. `unit/security.test.ts` fails if a `/dev` pag
 non-owner gets 404 from each.
 
 **Layer 2, at the edge: Cloudflare Access** on `lianki.com/dev` and
-`lianki.com/api/dev` (each covers its subpaths), allowing only the owner
-emails. Prepared, not applied — `scripts/ops/cloudflare-access.ts`:
+`lianki.com/api/dev` (each covers its subpaths), allowing only the
+addresses given with `--email` (Access keeps its own list; it does not follow
+`site_role`). Prepared, not applied — `scripts/ops/cloudflare-access.ts`:
 
 ```bash
-bun scripts/ops/cloudflare-access.ts --dry-run   # the policy and app it would create
-CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… bun scripts/ops/cloudflare-access.ts
+bun scripts/ops/cloudflare-access.ts --dry-run --email a@b.c   # the policy and app it would create
+CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… bun scripts/ops/cloudflare-access.ts --email a@b.c
 bun scripts/ops/cloudflare-access.ts --verify    # /dev/users must now redirect to Access
 ```
 

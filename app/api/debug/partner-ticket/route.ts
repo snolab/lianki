@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
 import { isOwner } from "@/lib/owner";
+import { refreshOwners } from "@/lib/owner-store";
 import {
   PARTNER_TICKET_AUD,
   PARTNER_TICKET_HEADER,
@@ -24,6 +25,8 @@ export const POST = async (req: Request) => {
   if (req.headers.get(PARTNER_TICKET_HEADER) !== "1")
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   const email = await authEmailOrToken(req);
+  // A bearer token reads no session, so nothing has refreshed the owner list yet.
+  await refreshOwners();
   if (!isOwner(email)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const raw = process.env.STT_TICKET_KEY;
   if (!raw) return NextResponse.json({ error: "Partner tickets are off" }, { status: 503 });
