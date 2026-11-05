@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { NAV_GROUPS, activeNavKey, visibleNav, type NavGroup } from "@/lib/app-nav";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
+import { signOut } from "@/lib/sign-out";
 import { Icon, SealIcon } from "./icons";
 import { useDebugToggle } from "./useDebugToggle";
 import { useIntlayer } from "next-intlayer";
@@ -298,13 +299,18 @@ export function AppShell({
                     </DevSwitchItem>
                   )}
                   <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
-                    <Link
-                      href="/auth/logout"
-                      className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    <button
+                      type="button"
+                      data-sign-out
+                      onClick={(e) => {
+                        e.currentTarget.disabled = true;
+                        void signOut();
+                      }}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-60"
                     >
                       <Icon name="signOut" />
                       {labels.signOut}
-                    </Link>
+                    </button>
                   </div>
                 </div>
               )}

@@ -350,6 +350,8 @@ export function useReaderSelect(o: {
     const paint = () => {
       frame = 0;
       const els = unitElements(root, unit, (n) => ctxRef.current.chapterRange(n));
+      // Element backgrounds also end above a deck phrase's bar (#552: a WebKit
+      // ::highlight reached down over it).
       markSelected(root, els);
       if (!els.length) return;
       if (!placed.current) {

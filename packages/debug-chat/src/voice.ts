@@ -49,6 +49,7 @@ import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./sp
 import { getKey } from "./storage-keys";
 import { hideStops, isDesktop } from "./voice-bg";
 import { reportPageError } from "./page-errors";
+import { AUDIO_PRIO, audioOwner, audioOwnerId } from "./audio-claim";
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
 export const RESUME_TAIL_MS = 400;
@@ -284,6 +285,13 @@ export function createVoice(d: {
   log?: (ev: Record<string, unknown>) => void;
   setTimer?: (f: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
+  /**
+   * The page's audio owner (audio-claim.ts, AUDIO_PRIO.li): claimed before
+   * each sentence plays, so the reader or a word read aloud pauses first;
+   * released once nothing is speaking (after the tail), so they go on.
+   * When Li speaks is not changed by it.
+   */
+  owner?: { claim(): boolean; release(): void };
 }) {
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
   const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
@@ -330,6 +338,7 @@ export function createVoice(d: {
     blocked: pauses.has("blocked"),
   });
   const emit = () => {
+    if (!speaking) d.owner?.release();
     const s = state();
     for (const f of subs) f(s);
   };
@@ -470,6 +479,8 @@ export function createVoice(d: {
       emit();
     };
     const rec: Said = { text: head.text, start: now() };
+    // Before a sound of ours: the reader and word read-aloud pause now (never refused: Li ranks first).
+    d.owner?.claim();
     const c = routeFor(head.lang);
     current = { p: null as unknown as Playback, mark: head.from, said: rec };
     const p = c
@@ -916,6 +927,7 @@ export function voice(): Voice {
       }
     },
     mode: outMode,
+    owner: audioOwner({ id: audioOwnerId("li"), prio: AUDIO_PRIO.li }),
     // The open track's mode (aec.ts), so hold and barge-in match what the mic does.
     aec: micAec,
     rate: () => speechRate(),

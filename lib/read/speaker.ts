@@ -32,6 +32,7 @@
 
 import { pickVoice } from "@lianki/debug-chat/wire";
 import type { PageAudio } from "@lianki/debug-chat/page-audio";
+import { AUDIO_PRIO, type AudioOwner, type AudioOwnerOpts } from "@lianki/debug-chat/audio-claim";
 import { speechChunks } from "./player";
 
 export const CLOUD_LANGS: ReadonlySet<string> = new Set(["en", "es", "fr", "zh", "ja", "ko"]);
@@ -79,12 +80,20 @@ export type ReadSpeakerDeps = {
   setTimer(f: () => void, ms: number): unknown;
   clearTimer(t: unknown): void;
   log?(ev: Record<string, unknown>): void;
+  /**
+   * The page's audio owner (packages/debug-chat/src/audio-claim.ts): each
+   * line claims the page before it plays, pauses while a higher one (Li, a
+   * word read aloud) holds it, and goes on from the same sentence after.
+   */
+  owner?(o: Omit<AudioOwnerOpts, "id" | "target">): AudioOwner;
 };
 export type SpeakCallbacks = {
   onend(): void;
   onerror(why: string): void;
   /** A part (of `speak`'s array form) starts: its index. */
   onpart?(part: number): void;
+  /** Its rank for the page's audio (AUDIO_PRIO; default: a paragraph). */
+  prio?: number;
 };
 
 export const baseLang = (lang: string) => lang.toLowerCase().split(/[-_]/)[0];
@@ -214,7 +223,10 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         }),
       );
       let partShown = -1;
+      /** The sentence due now: where a pause (a higher sound) goes on from. */
+      let at = 0;
       const startChunk = (i: number) => {
+        at = i;
         if (partOf[i] === partShown) return;
         partShown = partOf[i];
         cb.onpart?.(partShown);
@@ -253,11 +265,15 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
           ctrl.abort();
         } catch {}
       };
+      /** Paused for a higher sound; it resumes at `at`. */
+      let parked = false;
+      let owner: AudioOwner | null = null;
       const finish = (ok: boolean, why = "") => {
         if (!live()) return;
         turn++;
         cleanup();
         dropFetches();
+        owner?.dispose();
         hold();
         stopCurrent = null;
         if (ok) cb.onend();
@@ -270,10 +286,15 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         dropFetches();
         hold();
         stopCurrent = null;
-        try {
-          d.synth()?.cancel();
-        } catch {}
-        pauseAll();
+        // Paused for a higher sound: ours is silent already, and a cancel would cut Li's voice.
+        if (!parked) {
+          try {
+            d.synth()?.cancel();
+          } catch {}
+          pauseAll();
+        }
+        // Last: a waiter resuming on this release must not be silenced by the lines above.
+        owner?.dispose();
       };
       stopCurrent = cancel;
       if (!chunks.length) {
@@ -444,10 +465,38 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         finish(false, why);
       };
 
-      if (d.mode() === "cloud" && cloudOk) viaCloud(0);
-      else if (voice) viaSpeech(0);
-      else if (cloudOk) viaCloud(0);
-      else finish(false, `no voice for ${lang} on this device`);
+      const begin = (from: number) => {
+        if (d.mode() === "cloud" && cloudOk) viaCloud(from);
+        else if (voice) viaSpeech(from);
+        else if (cloudOk) viaCloud(from);
+        else finish(false, `no voice for ${lang} on this device`);
+      };
+      owner =
+        d.owner?.({
+          prio: cb.prio ?? AUDIO_PRIO.para,
+          // A higher sound: silence this line now, keep its sentence and its callbacks.
+          onYield: () => {
+            if (!live() || parked) return;
+            parked = true;
+            attempt++;
+            cleanup();
+            hold();
+            try {
+              d.synth()?.cancel();
+            } catch {}
+            pauseAll();
+            log({ ev: "read-yield", at });
+          },
+          onResume: () => {
+            if (!live() || !parked) return;
+            parked = false;
+            tried.clear();
+            log({ ev: "read-resume", at });
+            begin(at);
+          },
+        }) ?? null;
+      if (owner && !owner.claim()) parked = true;
+      else begin(0);
       return cancel;
     },
     cancel() {
