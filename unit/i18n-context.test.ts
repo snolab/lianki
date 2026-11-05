@@ -39,6 +39,8 @@ import booksPage from "@/app/(app)/books/page.content";
 import readFormTags from "@/app/(app)/read/read-form-tags.content";
 import learnerLevels from "@/app/components/level-badge.content";
 import learnerLevelUi from "@/app/components/level-ui.content";
+import byokSettings from "@/app/components/byok-settings.content";
+import privacyPage from "@/app/(app)/privacy/privacy.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -107,6 +109,8 @@ describe.each([
   ["read-form-tags", readFormTags],
   ["learner-levels", learnerLevels],
   ["learner-level-ui", learnerLevelUi],
+  ["byok-settings", byokSettings],
+  ["privacy-page", privacyPage],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

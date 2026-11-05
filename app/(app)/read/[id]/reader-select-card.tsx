@@ -57,6 +57,8 @@ export interface CardMeaning {
   back: string;
   /** The card is not the selected text itself (a phrase around it, or one inside it). */
   other: boolean;
+  /** Made by the user's own AI from this browser (docs/byok.md): tagged on the card. */
+  own?: boolean;
 }
 
 /** An inflected word: the form in the book and its dictionary headword (the lemma file). */
@@ -76,6 +78,20 @@ export interface CardLemma {
  */
 export interface CardTranslation {
   blocks: (string | null | false)[][];
+  /** Asked of the user's own AI from this browser (docs/byok.md): tagged on the card. */
+  own?: boolean;
+}
+
+/** The tag on a result the user's own AI made: no credits, nothing shared. */
+function OwnKeyTag({ label }: { label: ReactNode }) {
+  return (
+    <span
+      className="ms-1.5 inline-block rounded-full bg-[oklch(0.62_0.12_250/0.14)] px-1.5 align-middle text-[0.7rem] leading-5 text-[oklch(0.45_0.12_250)] dark:bg-[oklch(0.72_0.12_250/0.18)] dark:text-[oklch(0.8_0.1_250)]"
+      data-testid="read-select-own-key"
+    >
+      {label}
+    </span>
+  );
 }
 
 /** A deck meaning as plain text: imported decks may carry line breaks as markup. */
@@ -290,6 +306,7 @@ export function SelectCard({
         >
           {meaning.other && <span className="me-1.5 font-medium">{meaning.term}</span>}
           {plainBack(meaning.back)}
+          {meaning.own && <OwnKeyTag label={t.ownKey} />}
         </p>
       )}
       {translation && translation.blocks.some((b) => b.some((x) => x !== false)) && (
@@ -316,6 +333,7 @@ export function SelectCard({
               </p>
             ))
           )}
+          {translation.own && <OwnKeyTag label={t.ownKey} />}
         </div>
       )}
 

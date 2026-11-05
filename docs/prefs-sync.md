@@ -114,6 +114,14 @@ listed once.
 | `lk:watch-lang`                                                                                                                                                                 | not a pref                         | per-video language overrides; that is card data                                                   |
 | `lk:deviceId`, `lk:config`, `lk:c:*`, `lk:card-index`, `lk:queue`, `lk:token`, `lk:note:*`, `lk:markers:*`, `lk:watch:*`, `lk:watch-index`, `lk:watch-dirty`, `lk:nav_intended` | not a pref                         | cards, sync state, caches (sync-architecture.md)                                                  |
 
+### Your own AI (docs/byok.md)
+
+| Key               | Setting                                | Class                    | Server key     | Reason                                                                                                                                                       |
+| ----------------- | -------------------------------------- | ------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lk:byok`         | own AI on/off, its backend, the API key | **device, never synced** | —              | **excluded explicitly**: the key is a secret and stays on the device until the managed mode is approved; no binding exists (unit/byok.test.ts)            |
+| `lk:byok-ack`     | the privacy notice was acknowledged    | device                   | —              | per device, with the notice's version                                                                                                                        |
+| `lk:byok-backend` | provider, base URL, model              | **synced, opt-in**       | `byok.backend` | owner, 2026-11-05 14:25 JST: not secret, follows the account when 「同步到我的账号」 is ticked (`null` when not). **The one URL a pref may hold**: only that exact shape, under lib/byok/config.ts's URL rules; the server never fetches it |
+
 ### Not prefs (left alone)
 
 `lk:swipe-unsent`, `lk:swipe-log*`, `lk:voice-sent`, `lk:status`, `lk:purge`,
