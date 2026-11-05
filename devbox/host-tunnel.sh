@@ -4,12 +4,12 @@
 # `cloudflared tunnel login`); nothing here goes into the container.
 #
 #   devbox/host-tunnel.sh create     # named tunnel + its config; no DNS, no connector
-#   devbox/host-tunnel.sh dns        # CNAME devbox-<name> — only after the owner's typed OK
+#   devbox/host-tunnel.sh dns        # CNAME my-<hash> — only after the owner's typed OK
 #   devbox/host-tunnel.sh dns-dsh    # CNAME dsh-<name> — only after the Access app exists
 #   devbox/host-tunnel.sh run        # the connector, foreground (run it under oxmgr)
 #   devbox/host-tunnel.sh status
 #
-# Box: devbox/.env, or DEVBOX_ENV=.env.<name>. Ingress: devbox-<name> -> the
+# Box: devbox/.env, or DEVBOX_ENV=.env.<name>. Ingress: my-<hash> -> the
 # box's dev server on the host loopback. dsh-<name> is added ONLY when the env
 # file names its Access application (DEVBOX_DSH_ACCESS_AUD + CF_ACCESS_TEAM):
 # then the connector itself rejects any request without a valid Access token
@@ -28,7 +28,13 @@ DSH_PORT="${DEVBOX_DSH_PORT:-}"
 AUD="${DEVBOX_DSH_ACCESS_AUD:-}"
 TEAM="${CF_ACCESS_TEAM:-}"
 TUNNEL="lianki-devbox-${DEVBOX_NAME}"
-HOST="devbox-${DEVBOX_NAME}.lianki.com"
+# The public host is my-<hash>.lianki.com, unguessable, so it lives only in the
+# gitignored env file (DEVBOX_PUBLIC_URL) and the tunnel config in ~/.cloudflared.
+HOST="$(sed -nE 's#^DEVBOX_PUBLIC_URL=https://(my-[0-9a-f]{12,}\.lianki\.com)/?$#\1#p' "$env_file" 2>/dev/null | tail -n 1)"
+if [ -z "$HOST" ]; then
+  echo "no DEVBOX_PUBLIC_URL=https://my-<hash>.lianki.com in $env_file (openssl rand -hex 8)" >&2
+  exit 1
+fi
 DSH_HOST="dsh-${DEVBOX_NAME}.lianki.com"
 CFDIR="$HOME/.cloudflared"
 CONFIG="$CFDIR/${TUNNEL}.yml"
