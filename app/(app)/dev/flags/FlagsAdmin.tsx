@@ -1,20 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { FlagKey } from "@/lib/flags";
 import type { FlagLogEntry, FlagRow } from "@/lib/flags-store";
+import type { PrereqFailure } from "@/lib/flag-prereqs";
+import { card, FlagCard, jst } from "./FlagCard";
 
-type State = { flags: FlagRow[]; log: FlagLogEntry[]; cacheSeconds: number };
-
-/** Written out, in JST, labelled — the owner reads every time in JST. */
-const jst = (iso: string) =>
-  `${new Date(iso).toLocaleString("zh-CN", {
-    timeZone: "Asia/Tokyo",
-    dateStyle: "long",
-    timeStyle: "short",
-  })} JST`;
-
-const card =
-  "rounded-lg border border-[oklch(0_0_0/0.1)] dark:border-[oklch(1_0_0/0.1)] p-4 space-y-2";
+type State = {
+  flags: FlagRow[];
+  /** The prerequisites each flag fails now (reason keys and texts only). */
+  prereqs?: Partial<Record<FlagKey, PrereqFailure[]>>;
+  log: FlagLogEntry[];
+  cacheSeconds: number;
+};
 
 /** Every registry flag with a switch; each change is logged on the server. */
 export default function FlagsAdmin() {
@@ -56,35 +54,13 @@ export default function FlagsAdmin() {
   return (
     <div className="space-y-4">
       {state.flags.map((f) => (
-        <section key={f.key} className={card} data-flag={f.key}>
-          <div className="flex items-center justify-between gap-3">
-            <code className="font-mono text-sm break-all">{f.key}</code>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={f.enabled}
-              aria-label={f.key}
-              disabled={busy !== null}
-              onClick={() => void toggle(f)}
-              className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-                f.enabled
-                  ? "bg-[oklch(0.62_0.17_150)]"
-                  : "bg-[oklch(0.8_0_0)] dark:bg-[oklch(0.4_0_0)]"
-              }`}
-            >
-              <span
-                className={`absolute top-1 h-5 w-5 rounded-full bg-[oklch(1_0_0)] transition-all ${
-                  f.enabled ? "left-6" : "left-1"
-                }`}
-              />
-            </button>
-          </div>
-          <p className="text-sm">{f.description}</p>
-          <p className="text-xs opacity-60">
-            {f.enabled ? "开" : "关"}
-            {f.updatedAt ? ` · ${f.updatedBy} · ${jst(f.updatedAt)}` : " · 从未改过（默认关）"}
-          </p>
-        </section>
+        <FlagCard
+          key={f.key}
+          flag={f}
+          failed={state.prereqs?.[f.key]}
+          busy={busy !== null}
+          onToggle={() => void toggle(f)}
+        />
       ))}
 
       {msg && <p className="text-sm">{msg}</p>}
