@@ -292,6 +292,10 @@ title's own language, the source link visible inside the imported book.
 
 > **Not legal advice; re-verify with counsel before turning
 > `books.catalogue` on for users.** The flag stays off until then.
+>
+> Owner decision, 2026-11-05 ~14:35 JST (Slack): books.catalogue turned on
+> for all users at 13:45 JST; the owner accepts the risk of opening before a
+> legal review.
 
 Replaces the single global cut-off ("US PD + every creator dead 80 years").
 A book is **shown to a viewer, and importable by them, only when it is public
