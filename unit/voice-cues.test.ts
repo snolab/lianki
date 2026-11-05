@@ -19,8 +19,10 @@ import {
   TICK_GAIN,
   TICK_MS,
   cueAllowed,
+  cueOn,
   createCues,
   scheduleCue,
+  setCue,
 } from "@lianki/debug-chat/cues";
 import { type VadEvents, createMic } from "@lianki/debug-chat/mic";
 import { prefBindings } from "@/lib/prefs/bindings";
@@ -544,5 +546,77 @@ describe("the wiring", () => {
     expect(src).not.toMatch(/from "\.\/audio-claim"/);
     expect(src).not.toMatch(/from "\.\/page-audio"/);
     expect(src).not.toMatch(/\.hold\(/);
+  });
+});
+
+describe("the switches and the defaults", () => {
+  const g = globalThis as unknown as { localStorage?: unknown };
+  const had = g.localStorage;
+  const withStore = (store: unknown, f: () => void) => {
+    g.localStorage = store;
+    try {
+      f();
+    } finally {
+      g.localStorage = had;
+    }
+  };
+
+  it("a switch is on until turned off, and survives storage that throws", () => {
+    const m = new Map<string, string>();
+    withStore(
+      {
+        getItem: (k: string) => m.get(k) ?? null,
+        setItem: (k: string, v: string) => void m.set(k, v),
+      },
+      () => {
+        expect(cueOn(CUE_SEND_KEY)).toBe(true);
+        setCue(CUE_SEND_KEY, false);
+        expect(m.get(CUE_SEND_KEY)).toBe("0");
+        expect(cueOn(CUE_SEND_KEY)).toBe(false);
+        expect(cueOn(CUE_SPEECH_KEY)).toBe(true);
+        setCue(CUE_SEND_KEY, true);
+        expect(cueOn(CUE_SEND_KEY)).toBe(true);
+      },
+    );
+    const boom = () => {
+      throw new Error("private mode");
+    };
+    withStore({ getItem: boom, setItem: boom }, () => {
+      expect(cueOn(CUE_SPEECH_KEY)).toBe(true);
+      setCue(CUE_SPEECH_KEY, false);
+    });
+  });
+
+  it("works on the real clock and timers, and without resume", async () => {
+    const { ctx, notes } = fakeCtx();
+    const noResume = ctx as CueContext;
+    noResume.resume = undefined;
+    let idle = 0;
+    const cues = createCues({
+      ctx: () => noResume,
+      allowed: () => true,
+      idle: () => void idle++,
+    });
+    expect(cues.send()).toBe(true);
+    expect(kinds(notes)).toEqual(["send"]);
+    expect(cues.guard()).toBe(true);
+    expect(cues.quiet()).toBe(false);
+    await new Promise((r) => setTimeout(r, CUE_RESUME_MS + 80));
+    expect(idle).toBe(1);
+    expect(cues.guard()).toBe(false);
+  });
+
+  it("a context that refuses, is closed, or is missing plays nothing", async () => {
+    const r = cueRig();
+    r.ctx.resume = () => Promise.reject(new Error("no"));
+    r.cues.send();
+    await settle();
+    expect(r.notes).toEqual([]);
+    const closed = cueRig({ state: "closed" });
+    expect(closed.cues.send()).toBe(false);
+    const none = createCues({ ctx: () => null, allowed: () => true });
+    expect(none.send()).toBe(false);
+    expect(none.speechStart()).toBe(false);
+    expect(none.speechEnd()).toBe(false);
   });
 });
