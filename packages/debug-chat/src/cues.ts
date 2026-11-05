@@ -4,6 +4,9 @@
  *
  * - "send": a spoken line went out (DebugChat submit, `source: "stt"`), once
  *   per message, whichever path sent it. Mixed over a reply being read.
+ * - "amend": one soft note. The spoken line amended the one before it instead
+ *   of going out as a new message (voice-merge.ts): it was sent, but nothing new
+ *   appeared. Follows the send cue's switch and rules.
  * - "start": rising, soft. The VAD confirmed speech (a false start that is
  *   discarded plays nothing). At most one per utterance, debounced.
  * - "end": falling, as soft. The VAD ended an utterance that was kept.
@@ -23,13 +26,15 @@
  * Everything browser-shaped is injected: unit/voice-cues.test.ts.
  */
 
-export type CueKind = "send" | "start" | "end";
+export type CueKind = "send" | "amend" | "start" | "end";
 
 /** The send cue: two sine notes, this loud at their peak, this long in all. */
 export const TICK_GAIN = 0.16;
 export const TICK_MS = 110;
 /** Start and end play during continuous listening, so they stay far under the send cue. */
 export const SPEECH_CUE_GAIN = 0.05;
+/** Half the send cue: heard, and plainly not a new message. */
+export const AMEND_GAIN = TICK_GAIN / 2;
 /** Each cue's peak and its notes, in order, as [Hz, ms]. */
 export const CUES: Record<CueKind, { gain: number; notes: [number, number][] }> = {
   send: {
@@ -39,6 +44,7 @@ export const CUES: Record<CueKind, { gain: number; notes: [number, number][] }> 
       [1320, TICK_MS - 50],
     ],
   },
+  amend: { gain: AMEND_GAIN, notes: [[1046.5, 60]] },
   start: {
     gain: SPEECH_CUE_GAIN,
     notes: [
@@ -151,7 +157,7 @@ export type CueGate = {
  */
 export function cueAllowed(kind: CueKind, g: CueGate): boolean {
   if (!g.on || g.muted || g.silenced) return false;
-  if (kind === "send") return true;
+  if (kind === "send" || kind === "amend") return true;
   if (g.speaking) return false;
   return kind === "end" || g.aec;
 }
@@ -189,7 +195,7 @@ export function createCues(d: {
   let lastSpeechCue = Number.NEGATIVE_INFINITY;
   let capturing = false;
   /** Send cues for lines that went out during a capture. */
-  let deferred = 0;
+  let deferred: ("send" | "amend")[] = [];
   let idleTimer: unknown = null;
   const extend = (ms: number) => {
     guardUntil = Math.max(guardUntil, now() + ms);
@@ -233,7 +239,13 @@ export function createCues(d: {
     /** A spoken line went out. Over a capture it waits for the capture's end, so it is not recorded. */
     send(): boolean {
       if (!capturing) return play("send");
-      deferred++;
+      deferred.push("send");
+      return true;
+    },
+    /** A spoken line amended the last one; waits for a capture's end as send does. */
+    amend(): boolean {
+      if (!capturing) return play("amend");
+      deferred.push("amend");
       return true;
     },
     /** The VAD confirmed speech (mic.ts). */
@@ -254,7 +266,7 @@ export function createCues(d: {
     capture(on: boolean) {
       capturing = on;
       if (on) return;
-      for (; deferred > 0; deferred--) play("send");
+      for (const k of deferred.splice(0)) play(k);
     },
     /** A cue is playing or just ended: what the mic hears now is not his. */
     guard: () => now() < guardUntil,

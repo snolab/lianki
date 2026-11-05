@@ -245,6 +245,24 @@ const learningPartnerContent = {
       mr: "{name}ने सुधारले",
       ko: "{name}가 다듬었어요",
     }),
+    unmerge: t({
+      en: "Split back into the separate messages",
+      zh: "拆回原来的几条消息",
+      hi: "वापस अलग-अलग संदेशों में बाँटें",
+      es: "Separar de nuevo en mensajes distintos",
+      fr: "Séparer à nouveau en messages distincts",
+      ar: "إعادة الفصل إلى رسائل منفصلة",
+      bn: "আবার আলাদা বার্তায় ভাগ করুন",
+      pt: "Separar de novo em mensagens distintas",
+      ru: "Разделить обратно на отдельные сообщения",
+      ur: "دوبارہ الگ الگ پیغامات میں بانٹیں",
+      id: "Pisahkan lagi menjadi pesan terpisah",
+      de: "Wieder in einzelne Nachrichten trennen",
+      ja: "元の別々のメッセージに戻す",
+      sw: "Tenganisha tena kuwa jumbe tofauti",
+      mr: "पुन्हा वेगवेगळ्या संदेशांत विभागा",
+      ko: "다시 별도의 메시지로 나누기",
+    }),
     unavailable: t({
       en: "Chat is not available for this account.",
       zh: "此账号无法使用聊天。",
@@ -1692,6 +1710,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Connection status in the chat's tooltip and menu when no assistant is online: messages wait. Keep {name}; the middle dot separates two parts.",
   polished:
     "Mark and tooltip on a voice-typed chat line whose words the assistant corrected. Keep {name}. Past participle phrase.",
+  unmerge:
+    "Tooltip and screen-reader label of a small undo icon on a voice chat line that several spoken pieces were joined into. Tapping it turns the one line back into the separate messages it was made from. Imperative verb; not 'delete'.",
   unavailable:
     "Shown instead of the chat input when this account may not use the chat (blocked). One full sentence.",
   clipsRecording:

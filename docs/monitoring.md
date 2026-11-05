@@ -319,6 +319,9 @@ bun scripts/dev/eval.ts say --quiet "PR #390 opened, CI running."
 # A line with "source":"stt" was spoken: polish its misheard words first
 # (docs/dev-debug-widget.md, "Agent edits of voice messages"):
 bun scripts/dev/eval.ts edit --last --no-pair "Fix the sync button on /words."
+# With flag stt.merge on, {"type":"edited",…,"merged":…} means a line you were shown
+# grew: read `text` again. {"type":"polish-due",…}: polish it now, from `raw`
+# (docs/dev-debug-widget.md, "Continuous speech amends the last line").
 ```
 
 The listener reconnects whenever its socket closes, backing off from 1 s to

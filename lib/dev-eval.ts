@@ -66,6 +66,7 @@ export {
   type EditedEvent,
   MAX_EDITS,
   applyEdit,
+  applyEditTo,
   dictatedDraft,
   draftSource,
   type VoiceTiming,
@@ -257,7 +258,13 @@ export type PageMessage =
       attachments?: AttachmentRef[];
       /** A voice line's page and screen text (cleanScene): what its polish may draw on. */
       scene?: SttScene;
+      /** A voice line asks to amend this line, the page's last (voice-merge.ts); the hub decides. */
+      continues?: string;
     }
+  /** The page's speech went quiet after a merged line: the passage is over. */
+  | { type: "passage-end" }
+  /** The owner's undo on a merged line: split it back into its lines. */
+  | { type: "unmerge"; id: string }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
@@ -508,10 +515,16 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       return null;
     return { type: "answer", askId, choices: m.choices as Record<string, unknown> };
   }
+  if (m.type === "passage-end") return { type: "passage-end" };
+  if (m.type === "unmerge") {
+    const id = str(m.id, 64);
+    return id ? { type: "unmerge", id } : null;
+  }
   if (m.type === "chat") {
     const id = str(m.id, 64);
     const text = chatText(m.text);
     if (!id || !text) return null;
+    const continues = m.source === "stt" ? str(m.continues, 64) : undefined;
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
@@ -534,6 +547,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(context ? { context } : {}),
       ...(attachments ? { attachments } : {}),
       ...(scene ? { scene } : {}),
+      ...(continues ? { continues } : {}),
     };
   }
   if (m.type === "page-error") return parsePageError(m);

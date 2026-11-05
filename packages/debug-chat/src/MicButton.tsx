@@ -102,7 +102,7 @@ export function pageCues(): Cues {
     allowed: (kind) => {
       const st = voice().state();
       return cueAllowed(kind, {
-        on: cueOn(kind === "send" ? CUE_SEND_KEY : CUE_SPEECH_KEY),
+        on: cueOn(kind === "send" || kind === "amend" ? CUE_SEND_KEY : CUE_SPEECH_KEY),
         muted: !speechEnabled(),
         silenced: silenceHere() !== null,
         speaking: st.speaking,
