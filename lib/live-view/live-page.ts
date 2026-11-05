@@ -8,11 +8,12 @@
  */
 export const LIVE_PAGE_GLOBAL = "__lkLive";
 
-export function onLivePage(
-  search: string = typeof location === "undefined" ? "" : location.search,
-  w: Record<string, unknown> = typeof window === "undefined"
-    ? {}
-    : (window as unknown as Record<string, unknown>),
-): boolean {
+type Bag = Record<string, unknown>;
+const here = (): { search: string; w: Bag } => ({
+  search: globalThis.location?.search ?? "",
+  w: globalThis as unknown as Bag,
+});
+
+export function onLivePage(search = here().search, w: Bag = here().w): boolean {
   return /(^\?|&)live=\d+(&|$)/.test(search) || typeof w[LIVE_PAGE_GLOBAL] === "string";
 }

@@ -562,6 +562,14 @@ describe("on the page", () => {
     expect(onLivePage("?a=1", { [LIVE_PAGE_GLOBAL]: ID })).toBe(true);
     for (const s of ["", "?live=off", "?live=on", "?olive=1", "?live=1x"])
       expect(onLivePage(s, {})).toBe(false);
+    // Defaults: this realm's location (none here) and globals.
+    expect(onLivePage()).toBe(false);
+    (globalThis as Record<string, unknown>)[LIVE_PAGE_GLOBAL] = ID;
+    try {
+      expect(onLivePage()).toBe(true);
+    } finally {
+      delete (globalThis as Record<string, unknown>)[LIVE_PAGE_GLOBAL];
+    }
   });
 });
 
