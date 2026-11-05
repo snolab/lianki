@@ -11,6 +11,8 @@ function setup(
     voices?: { lang: string; name: string }[];
     mode?: "speech" | "cloud";
     fetchOk?: boolean;
+    /** The status of a failed fetch (default 503). */
+    failStatus?: number;
     held?: boolean;
     /** The page the audio owner claims on (absent: no owner). */
     claims?: EventTarget;
@@ -95,7 +97,7 @@ function setup(
       fetched.push(url);
       const res = (ok = o.fetchOk ?? true) => ({
         ok,
-        status: ok ? 200 : 503,
+        status: ok ? 200 : (o.failStatus ?? 503),
         blob: async () => {
           const b = new Blob([url]);
           textOf.set(b, new URL(url, "https://x").searchParams.get("text") ?? "");
@@ -124,7 +126,8 @@ function setup(
   const result: string[] = [];
   const cb = {
     onend: () => void result.push("end"),
-    onerror: (w: string) => void result.push(`error:${w}`),
+    onerror: (w: string, noVoice?: boolean) =>
+      void result.push(`error:${w}${noVoice ? " [no-voice]" : ""}`),
   };
   return {
     sp,
@@ -288,7 +291,26 @@ describe("read speaker", () => {
   it("no voice at all for the language fails at once", () => {
     const x = setup({ voices: [EN] });
     x.sp.speak("Здравствуйте.", "ru", x.cb);
-    expect(x.result).toEqual(["error:no voice for ru on this device"]);
+    expect(x.result).toEqual(["error:no voice for ru on this device [no-voice]"]);
+  });
+
+  it("no browser voice and the server has none (404): a no-voice state, not a failure", async () => {
+    const x = setup({ voices: [EN], fetchOk: false, failStatus: 404 });
+    x.sp.speak("雲", "ja", x.cb);
+    await flush();
+    await flush();
+    expect(x.fetched[0]).toContain("lang=ja");
+    expect(x.result).toEqual(["error:server voice: HTTP 404 [no-voice]"]);
+  });
+
+  it("a server outage with a browser voice there falls back to it, so no no-voice state", async () => {
+    const x = setup({ voices: [{ lang: "ja-JP", name: "Kyoko" }], mode: "cloud", fetchOk: false });
+    x.sp.speak("雲", "ja", x.cb);
+    await flush();
+    await flush();
+    expect(x.spoken.map((u) => u.lang)).toEqual(["ja-JP"]);
+    x.spoken[0].onerror?.({ error: "synthesis-failed" });
+    expect(x.result).toEqual(["error:browser voice: synthesis-failed"]);
   });
 
   it("cancel stops it: later events are ignored and the hold ends", () => {

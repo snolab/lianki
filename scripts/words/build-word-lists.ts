@@ -71,6 +71,7 @@ import { ExamplePicker, loadTatoeba, wiktionaryExample, type Example } from "./e
 import { NOUN_EVIDENCE, stripParticles, unfuse, verbForms } from "./korean";
 import { COVERAGE_TARGETS } from "@/lib/words/add-tree";
 import { markPinyin } from "./pinyin";
+import { hskSenses, joinSenses, truncate } from "./senses";
 
 const [RAW, OUT] = process.argv.slice(2);
 if (!RAW || !OUT) {
@@ -128,38 +129,6 @@ function writeList(meta: Omit<ListMeta, "count" | "file">, entries: Entry[]) {
   );
   index.push({ ...meta, count: clean.length, file });
   console.log(`${meta.id.padEnd(12)} ${clean.length}`);
-}
-
-/** Join senses with "; " keeping the result ≤ max chars (always ≥ 1 sense). */
-function joinSenses(senses: string[], max = 80, maxSenses = 3): string {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (let s of senses) {
-    s = s
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace(/[.;:,]+$/, "");
-    if (!s || seen.has(s.toLowerCase())) continue;
-    if (!out.length && s.length > max) s = truncate(s, max);
-    const next = [...out, s].join("; ");
-    if (next.length > max) {
-      if (out.length) break;
-    }
-    seen.add(s.toLowerCase());
-    out.push(s);
-    if (out.length >= maxSenses) break;
-  }
-  return out.join("; ");
-}
-
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s;
-  // prefer cutting at a clause boundary, then a word boundary
-  const cut = s.slice(0, max - 1);
-  const clause = Math.max(cut.lastIndexOf(", "), cut.lastIndexOf("; "));
-  if (clause > max * 0.5) return cut.slice(0, clause);
-  const sp = cut.lastIndexOf(" ");
-  return (sp > max * 0.5 ? cut.slice(0, sp) : cut).replace(/[\s,;(]+$/, "") + "…";
 }
 
 // ---------------------------------------------------------------- Japanese
@@ -339,26 +308,14 @@ function buildChinese() {
       if (!term || seen.has(term)) return;
       const forms = Array.isArray(w.f) ? w.f : [];
       if (!forms.length) return;
-      // Pick the form whose meanings are not just surname/variant notes.
-      const isNoise = (m: string) =>
-        /^(surname |abbr\. |variant of |old variant of |used in |see [^ ]|\(old\) variant|erhua variant|Japanese variant|\(Tw\))/i.test(
-          m,
-        );
-      // Prefer common-noun readings (yǐ over Yǐ "Israel"), then the richest form.
-      const score = (f: any) =>
-        (/^\p{Lu}/u.test(String(f.i?.y ?? "")) ? 0 : 100) +
-        (f.m ?? []).filter((m: string) => !isNoise(m)).length;
-      const f = [...forms].sort((a: any, b: any) => score(b) - score(a))[0];
-      const meanings: string[] = (f.m ?? []).filter((m: string) => !isNoise(m));
-      const senses = (meanings.length ? meanings : (f.m ?? [])).flatMap((m: string) =>
-        m.split(/;\s*/),
-      );
+      // The common reading's senses, plain before classical (scripts/words/senses.ts).
+      const { reading, senses } = hskSenses(forms, term);
       const back = joinSenses(senses, 80);
       if (!back) return;
       seen.add(term);
       items.push({
         term,
-        reading: String(f.i?.y ?? ""),
+        reading,
         back,
         q: typeof w.q === "number" ? w.q : Infinity,
         ord,
