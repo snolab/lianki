@@ -9,6 +9,7 @@ import {
   createOutputBed,
   exitOutputBed,
   keepAwakeOn,
+  outputBed,
   setKeepAwake,
   KEEP_AWAKE_KEY,
   type BedCtx,
@@ -17,7 +18,7 @@ import {
 import { createVoice, type UtterLike } from "@lianki/debug-chat/voice";
 import { createSequencer } from "@/lib/words/sequence";
 import { createReadSpeaker, type AudioLike } from "@/lib/read/speaker";
-import { createPageAudio } from "@lianki/debug-chat/page-audio";
+import { createPageAudio, pageAudio } from "@lianki/debug-chat/page-audio";
 
 type Timer = { f: () => void; at: number };
 function clock() {
@@ -500,5 +501,155 @@ describe("pre-roll order on each read-aloud path", () => {
       "app/(app)/words/WordsClient.tsx",
     ])
       expect(readFileSync(f, "utf8")).toContain("outputBed().begin()");
+  });
+});
+
+describe("the page's bed (outputBed): the browser's events reach it", () => {
+  function page() {
+    const g = globalThis as unknown as Record<string, unknown>;
+    const names = ["window", "document", "AudioContext", "__lkOutputBed", "__lkPageAudio"];
+    const had = names.map((n) => g[n]);
+    const log: string[] = [];
+    const ctxs: ReturnType<typeof fakeCtx>[] = [];
+    const win = new EventTarget() as EventTarget & { AudioContext?: unknown };
+    win.AudioContext = function () {
+      const x = fakeCtx(log);
+      ctxs.push(x);
+      return x;
+    };
+    const doc = new EventTarget() as EventTarget & { visibilityState: string };
+    doc.visibilityState = "visible";
+    g.window = win;
+    g.document = doc;
+    delete g.__lkOutputBed;
+    delete g.__lkPageAudio;
+    return {
+      win,
+      doc,
+      ctxs,
+      restore() {
+        names.forEach((n, i) => {
+          if (had[i] === undefined) delete g[n];
+          else g[n] = had[i];
+        });
+      },
+    };
+  }
+
+  it("outside a browser: inert, and nothing is left on the page", () => {
+    const inert = outputBed();
+    expect(inert.begin()).toBe(0);
+    inert.gesture();
+    inert.sync();
+    inert.exit("x");
+    inert.onExit(() => {})();
+    expect(inert.running()).toBe(false);
+    expect((globalThis as unknown as Record<string, unknown>).__lkOutputBed).toBeUndefined();
+  });
+
+  it("a browser with no Web Audio: inert too", () => {
+    const p = page();
+    try {
+      delete p.win.AudioContext;
+      expect(outputBed().begin()).toBe(0);
+    } finally {
+      p.restore();
+    }
+  });
+
+  it("one bed per page: a tap arms it, page hide and hiding the tab close it", () => {
+    const p = page();
+    try {
+      const bed = outputBed();
+      expect(outputBed()).toBe(bed);
+      p.win.dispatchEvent(new Event("pointerup"));
+      expect(bed.begin()).toBeGreaterThan(0);
+      expect(p.ctxs.length).toBe(1);
+      p.win.dispatchEvent(new Event("pagehide"));
+      expect(p.ctxs[0].closed).toBe(true);
+
+      p.win.dispatchEvent(new Event("keydown"));
+      expect(bed.begin()).toBeGreaterThan(0);
+      p.doc.dispatchEvent(new Event("visibilitychange"));
+      expect(p.ctxs[1].closed).toBe(false);
+      p.doc.visibilityState = "hidden";
+      p.doc.dispatchEvent(new Event("visibilitychange"));
+      expect(p.ctxs[1].closed).toBe(true);
+      // Hidden: however recent the key press, nothing starts.
+      p.win.dispatchEvent(new Event("keydown"));
+      expect(bed.begin()).toBe(0);
+      expect(p.ctxs.length).toBe(2);
+      bed.exit("test");
+    } finally {
+      p.restore();
+    }
+  });
+
+  it("the mic's state reaches it through page-audio, and the setting from another tab", () => {
+    const p = page();
+    const store = new Map<string, string>();
+    const g = globalThis as unknown as { localStorage?: unknown };
+    const had = g.localStorage;
+    g.localStorage = { getItem: (k: string) => store.get(k) ?? null };
+    try {
+      const bed = outputBed();
+      p.win.dispatchEvent(new Event("pointerup"));
+      pageAudio().setMic(true);
+      expect(bed.running()).toBe(true);
+      store.set(KEEP_AWAKE_KEY, "0");
+      const other = new Event("storage") as Event & { key: string };
+      other.key = "lk:something-else";
+      p.win.dispatchEvent(other);
+      expect(bed.running()).toBe(true);
+      other.key = KEEP_AWAKE_KEY;
+      p.win.dispatchEvent(other);
+      expect(bed.running()).toBe(false);
+      expect(p.ctxs[0].closed).toBe(true);
+      pageAudio().setMic(false);
+    } finally {
+      g.localStorage = had;
+      p.restore();
+    }
+  });
+});
+
+describe("the bed's small print", () => {
+  it("a bed started on a press that is no gesture here (iOS) resumes on the next one", () => {
+    const { bed, ctxs } = setup();
+    bed.gesture();
+    bed.begin();
+    ctxs[0].state = "suspended";
+    const before = ctxs[0].resumes;
+    bed.gesture();
+    expect(ctxs[0].resumes).toBe(before + 1);
+    expect(ctxs.length).toBe(1);
+  });
+
+  it("the browser's own activation counts as a gesture; the real clock and timers work", () => {
+    const log: string[] = [];
+    const ctx = fakeCtx(log);
+    const bed = createOutputBed({
+      makeCtx: () => ctx as unknown as BedCtx,
+      enabled: () => true,
+      micOn: () => false,
+      busy: () => false,
+      activation: () => true,
+    });
+    expect(bed.begin()).toBeGreaterThan(0);
+    bed.exit("test");
+    expect(ctx.closed).toBe(true);
+  });
+
+  it("a removed exit listener hears nothing; one that throws stops no other", () => {
+    const { bed } = setup();
+    const told: string[] = [];
+    const off = bed.onExit(() => told.push("gone"));
+    off();
+    bed.onExit(() => {
+      throw new Error("boom");
+    });
+    bed.onExit((w) => told.push(w));
+    bed.exit("hidden");
+    expect(told).toEqual(["hidden"]);
   });
 });
