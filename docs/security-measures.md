@@ -302,7 +302,9 @@ one would outlive the preview and control later pages.
 D1 row in `security_audit` (`db/migrations/0040_security_audit.sql`,
 `lib/security/audit-log.ts`): live view on / off (actor `mac-key`, the
 serial, branch@sha) and the owner's stop; dev token mint, revoke, revoke all,
-and the profile menu's handoff (actor: the user id; subject: the token id).
+and the profile menu's handoff (actor: the user id; subject: the token id);
+custom frontends: a preview registered or revoked, a user added to or
+removed from the allowlist ([custom-frontend.md](custom-frontend.md)).
 Ids and labels only, never a token or a pointer. Best effort: a failed audit
 insert is logged and never undoes the write. Read it with
 `wrangler d1 execute lianki --remote --command "SELECT * FROM security_audit ORDER BY id DESC LIMIT 50"`.
@@ -310,6 +312,16 @@ insert is logged and never undoes the write. Read it with
 **The dev-token cap is one statement.** At most 20 live named tokens: the
 count and the insert are a single `INSERT … SELECT … WHERE (SELECT COUNT(*) …)
 < 20`, so concurrent mints cannot pass it together.
+
+**Custom frontends** ([custom-frontend.md](custom-frontend.md)): another
+user's dev server at `?live=<id>`. Shown only to the user who registered
+it; anyone else gets production and the live cookie cleared. No cookie,
+auth or gate secret is sent up. A strict CSP (scripts and connections:
+lianki.com and that tunnel only; inline scripts by nonce). The cookie is
+bound to the session and re-checked in D1 within 5 s. Under it the Worker
+refuses token minting, `/api/dev` writes and better-auth account changes.
+Allowlist and flag `live.custom-frontend`; at most 3 previews of at most
+8 h per user, the cap in one `INSERT`.
 
 ## 9. The CLI login (`lianki auth login`)
 

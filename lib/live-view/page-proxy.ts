@@ -36,7 +36,31 @@
  *   reload storm.
  * - **The tunnel down or slow**: the normal production page with a small
  *   "预览不可用" notice, never a 502.
+ *
+ * **Custom frontends** (`?live=<22-character id>`, lib/live-view/custom.ts,
+ * docs/custom-frontend.md) take the same path with stricter rules: the id is
+ * served only to the signed-in user who registered it (asked of the app's own
+ * /api/live-previews/<id> with the viewer's Cookie; anyone else gets the
+ * normal page and the live cookie cleared); nothing secret goes up, not even
+ * the gate secret; every response carries a strict CSP (customCsp), and the
+ * document's inline scripts get its nonce. Their cookie (`c.…`, sealed, bound
+ * to the session) is re-checked against D1 on every subresource, so a revoke,
+ * an allowlist removal or the flag turned off ends it within 5 s. While that
+ * cookie is set, the few account-level writes (minting tokens, /api/dev,
+ * better-auth's account changes) are refused (customFrontendBlocked).
  */
+import {
+  activeForCookie,
+  cspNonce,
+  customCsp,
+  customTarget,
+  isCustomId,
+  openCustomCookie,
+  sealCustomCookie,
+  sessionTag,
+  sessionToken,
+  type CustomPreview,
+} from "./custom";
 import { LIVE_VIEW_PUBLIC_KEYS } from "./keys";
 import { importLiveViewPublicKey, liveLabel, verifyLiveView } from "./rules";
 import {
@@ -44,6 +68,7 @@ import {
   filterTunnelFetchHeaders,
   isServiceWorkerScript,
 } from "./tunnel-headers";
+import { LIVE_PAGE_GLOBAL } from "./live-page";
 
 export { LIVE_GATE_HEADER };
 export const LIVE_PARAM = "live";
@@ -89,7 +114,37 @@ export type LiveDeps = {
   respond101?: (up: Response, headers: Headers) => Response;
   /** Dev builds and tests may point at http://localhost. */
   allowLocal?: boolean;
+  /**
+   * A custom frontend's preview, for this viewer only (null for anyone else).
+   * Default: the app's own GET /api/live-previews/<id>, with the viewer's Cookie.
+   */
+  resolveCustom?: (req: Request, id: string) => Promise<ResolvedCustom | null>;
 };
+
+export type ResolvedCustom = {
+  id: string;
+  target: string;
+  expiresAt: number;
+  userId: string;
+  owner: boolean;
+};
+
+/**
+ * Account-level writes a custom frontend's JS may not make, even with the
+ * user's own cookies (docs/custom-frontend.md, "Not available"): minting an
+ * API or CLI token (it would outlive the preview), registering more previews,
+ * anything under /api/dev or /api/dev-access, and better-auth's account
+ * changes (all but sign-out). Refused while the browser holds a custom live
+ * cookie; any page without ?live clears it.
+ */
+export function customFrontendBlocked(method: string, p: string): boolean {
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
+  const path = p.toLowerCase().replace(/\/+$/, "");
+  if (/^\/api\/(dev|dev-access)(\/|$)/.test(path)) return true;
+  if (/^\/api\/(token|cli-login|live-previews|live-view)(\/|$)/.test(path)) return true;
+  if (/^\/api\/auth(\/|$)/.test(path)) return path !== "/api/auth/sign-out";
+  return false;
+}
 
 /** The cheap first look: could this request be live at all? */
 export function mayBeLive(url: string, cookie: string | null): boolean {
@@ -174,7 +229,11 @@ const FORWARD_WS = [
   "sec-websocket-extensions",
 ];
 
-export function upstreamHeaders(req: Request, target: string, secret: string): Headers {
+/**
+ * `secret`: the owner's gate secret (his pointer's page only); null for a
+ * custom frontend, which gets nothing of ours.
+ */
+export function upstreamHeaders(req: Request, target: string, secret: string | null): Headers {
   const out = new Headers();
   const socket = (req.headers.get("upgrade") ?? "").toLowerCase() === "websocket";
   for (const k of socket ? [...FORWARD, ...FORWARD_WS] : FORWARD) {
@@ -182,7 +241,7 @@ export function upstreamHeaders(req: Request, target: string, secret: string): H
     if (v !== null) out.set(k, v);
   }
   out.set("origin", new URL(target).origin);
-  out.set(LIVE_GATE_HEADER, secret);
+  if (secret !== null) out.set(LIVE_GATE_HEADER, secret);
   return out;
 }
 
@@ -289,40 +348,43 @@ export function offHref(url: URL): string {
 }
 
 /**
- * The badge (bottom-left, out of the chat widget's corner) and its script:
+ * The badge (bottom-centre, clear of the chat widget and of next dev's dev-tools button, above the safe area) and its script (it also sets window.__lkLive, lib/live-view/live-page.ts):
  * `?live=<id>` kept on history pushes and replaces and on same-origin link
  * clicks, and STORM_LOADS loads within STORM_WINDOW_MS (sessionStorage) go
  * to ?live=off.
  */
-export function badgeHtml(id: string, label: string, off: string): string {
+export function badgeHtml(id: string, label: string, off: string, nonce?: string): string {
   const css =
-    "position:fixed;left:12px;bottom:12px;z-index:2147483647;display:flex;gap:6px;align-items:center;" +
+    "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom, 0px));white-space:nowrap;max-width:calc(100vw - 24px);z-index:2147483647;display:flex;gap:6px;align-items:center;" +
     "padding:4px 10px;border-radius:999px;font:600 12px/1.6 system-ui,-apple-system,sans-serif;" +
     "background:oklch(0.55 0.2 25);color:oklch(0.99 0 0);box-shadow:0 2px 8px oklch(0 0 0 / 0.3)";
-  const js = `(function(){var ID=${lit(id)},P=${lit(LIVE_PARAM)},N=${STORM_LOADS},W=${STORM_WINDOW_MS};
+  const js = `(function(){var ID=${lit(id)};window.${LIVE_PAGE_GLOBAL}=ID;var P=${lit(LIVE_PARAM)},N=${STORM_LOADS},W=${STORM_WINDOW_MS};
 function off(){var u=new URL(location.href);u.searchParams.set(P,"off");return u.pathname+u.search+u.hash}
 try{var k="lk:live-loads",t=Date.now(),a=JSON.parse(sessionStorage.getItem(k)||"[]").filter(function(x){return typeof x==="number"&&t-x<W});a.push(t);sessionStorage.setItem(k,JSON.stringify(a));if(a.length>=N){sessionStorage.removeItem(k);location.replace(off());return}}catch(e){}
 function keep(v){if(v==null)return v;try{var u=new URL(String(v),location.href);if(u.origin!==location.origin||u.searchParams.has(P))return v;u.searchParams.set(P,ID);return u.pathname+u.search+u.hash}catch(e){return v}}
 ["pushState","replaceState"].forEach(function(m){var o=history[m];history[m]=function(s,t,u){return arguments.length>2?o.call(this,s,t,keep(u)):o.apply(this,arguments)}});
 document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(!a||(a.target&&a.target!=="_self"))return;var h=a.getAttribute("href"),n=keep(h);if(n!==h)a.setAttribute("href",n)},true);
 })();`;
-  return `<script>${js}${mountScript("lk-live-badge", css, `LIVE · ${label} · `, off, "stop")}</script>`;
+  // A custom frontend's CSP allows inline scripts with its nonce only (base64url: safe in an attribute).
+  const n = nonce && /^[A-Za-z0-9_-]+$/.test(nonce) ? ` nonce="${nonce}"` : "";
+  return `<script${n}>${js}${mountScript("lk-live-badge", css, `LIVE · ${label} · `, off, "stop")}</script>`;
 }
 
 /** The production page's notice when a live page could not be served. */
 export function noticeHtml(why: string, off: string): string {
   const css =
-    "position:fixed;left:12px;bottom:12px;z-index:2147483647;max-width:calc(100vw - 24px);" +
+    "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom, 0px));z-index:2147483647;max-width:calc(100vw - 24px);" +
     "padding:6px 12px;border-radius:12px;font:500 13px/1.5 system-ui,-apple-system,sans-serif;" +
     "background:oklch(0.3 0.02 250);color:oklch(0.97 0.01 250);box-shadow:0 2px 8px oklch(0 0 0 / 0.3)";
   return `<script>${mountScript("lk-live-notice", css, `预览不可用，这是正式版 · Preview unavailable (${why}) · `, off, "关闭")}</script>`;
 }
 
+type RewriterElement = {
+  append(s: string, o: { html: boolean }): void;
+  setAttribute(name: string, value: string): void;
+};
 type Rewriter = {
-  on(
-    sel: string,
-    h: { element(e: { append(s: string, o: { html: boolean }): void }): void },
-  ): Rewriter;
+  on(sel: string, h: { element(e: RewriterElement): void }): Rewriter;
   transform(r: Response): Response;
 };
 
@@ -337,6 +399,52 @@ export function appendToBody(res: Response, html: string): Response {
       },
     })
     .transform(res);
+}
+
+/**
+ * A custom frontend's document: `nonce` on every <script> of the proxied HTML
+ * (the CSP allows inline scripts with it only), and `html` (the badge, which
+ * carries the nonce itself) appended to <body>.
+ */
+export function nonceAndAppend(res: Response, nonce: string, html: string): Response {
+  const R = (globalThis as unknown as { HTMLRewriter?: new () => Rewriter }).HTMLRewriter;
+  if (!R || !/text\/html/i.test(res.headers.get("content-type") ?? "")) return res;
+  return new R()
+    .on("script", {
+      element(e) {
+        e.setAttribute("nonce", nonce);
+      },
+    })
+    .on("body", {
+      element(e) {
+        e.append(html, { html: true });
+      },
+    })
+    .transform(res);
+}
+
+/** The custom preview through the app itself: 200 for its registrant's session only. */
+async function customByApi(req: Request, id: string, next: Next): Promise<ResolvedCustom | null> {
+  const cookie = req.headers.get("cookie") ?? "";
+  if (!sessionToken(cookie)) return null;
+  try {
+    const r = await next(
+      new Request(new URL(`/api/live-previews/${id}`, req.url), { headers: { cookie } }),
+    );
+    if (r.status !== 200) return null;
+    const b = (await r.json()) as Partial<ResolvedCustom>;
+    if (b.id !== id || typeof b.target !== "string" || typeof b.userId !== "string") return null;
+    if (typeof b.expiresAt !== "number") return null;
+    return {
+      id,
+      target: b.target,
+      expiresAt: b.expiresAt,
+      userId: b.userId,
+      owner: b.owner === true,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Whoami through the app itself: 200 {owner:true} for the owner's session only. */
@@ -395,6 +503,26 @@ export function createLivePage(d: LiveDeps) {
     return v;
   }
 
+  /** Custom previews by id, re-read from D1 at most every POINTER_CACHE_MS. */
+  const customCache = new Map<string, { at: number; v: CustomPreview | null }>();
+  async function customActive(db: LiveDb | undefined, c: Parameters<typeof activeForCookie>[1]) {
+    const t = now();
+    const hit = customCache.get(c.id);
+    if (hit && t - hit.at < POINTER_CACHE_MS)
+      return hit.v && hit.v.userId === c.userId ? hit.v : null;
+    let v: CustomPreview | null = null;
+    if (db) {
+      try {
+        v = await activeForCookie(db, c, t);
+      } catch {
+        v = null; // no table, D1 down: not live
+      }
+    }
+    if (customCache.size > 500) customCache.clear();
+    customCache.set(c.id, { at: t, v });
+    return v;
+  }
+
   const mark = (h: Headers, id: string) => {
     h.set("cache-control", "no-store");
     h.set(LIVE_ID_HEADER, id);
@@ -443,6 +571,153 @@ export function createLivePage(d: LiveDeps) {
     }
   }
 
+  async function proxiedCustom(
+    req: Request,
+    upUrl: URL,
+    target: string,
+    timeoutMs: number,
+  ): Promise<Response> {
+    // The upstream origin, asserted once more right before the fetch.
+    if (upUrl.origin !== target) throw new Error("upstream origin");
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      return await up(
+        new Request(upUrl.href, {
+          method: req.method,
+          headers: upstreamHeaders(req, target, null),
+          redirect: "manual",
+          signal: ctl.signal,
+        }),
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** A custom frontend's response: filtered, marked, with the strict CSP. */
+  function downCustom(
+    r: Response,
+    target: string,
+    id: string,
+    site: string,
+    nonce?: string,
+    extra?: (h: Headers) => void,
+  ): Response {
+    const h = filterTunnelFetchHeaders(r.headers);
+    const loc = h.get("location");
+    if (loc) h.set("location", rewriteLocation(loc, target, id));
+    mark(h, id);
+    h.set("content-security-policy", customCsp(target, site, nonce));
+    extra?.(h);
+    if (r.status === 101) {
+      if (!d.respond101) return new Response("websocket unavailable", { status: 502 });
+      return d.respond101(r, h);
+    }
+    return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
+  }
+
+  /** `?live=<custom id>` on a document: its registrant only. */
+  async function customDocument(
+    req: Request,
+    url: URL,
+    id: string,
+    secret: string,
+    enabled: boolean,
+    next: Next,
+  ): Promise<Response> {
+    const resolve = d.resolveCustom ?? ((r: Request, i: string) => customByApi(r, i, next));
+    const token = sessionToken(req.headers.get("cookie"));
+    const p = enabled && token ? await resolve(req, id) : null;
+    const target = p ? customTarget(p.target) : null;
+    if (!p || !token || !target || target !== p.target || p.expiresAt <= now()) {
+      // Not theirs, or not live: the normal page, as anyone gets it, and
+      // live mode left.
+      const r = await next(req);
+      const res = new Response(r.body, r);
+      res.headers.append("set-cookie", clearLiveCookie());
+      return res;
+    }
+    const upUrl = upstreamUrl(target, url);
+    if (!upUrl) return fallback(next, req, url, "path refused");
+    let r: Response;
+    try {
+      r = await proxiedCustom(req, upUrl, target, DOC_TIMEOUT_MS);
+    } catch {
+      return fallback(next, req, url, "dev server unreachable");
+    }
+    if (r.status >= 500) {
+      void r.body?.cancel().catch(() => {});
+      return fallback(next, req, url, `dev server ${r.status}`);
+    }
+    const until = Math.min(now() + LIVE_IDLE_MS, p.expiresAt);
+    const sealed = await sealCustomCookie(secret, {
+      id,
+      userId: p.userId,
+      until,
+      owner: p.owner,
+      session: await sessionTag(token),
+    });
+    const cookie = `${LIVE_COOKIE}=${sealed}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${Math.max(1, Math.floor((until - now()) / 1000))}`;
+    const nonce = cspNonce();
+    const res = downCustom(r, target, id, url.origin, nonce, (h) => {
+      h.append("set-cookie", cookie);
+      h.delete("content-length");
+    });
+    return nonceAndAppend(res, nonce, badgeHtml(id, new URL(target).host, offHref(url), nonce));
+  }
+
+  /** A custom frontend's subresource: the sealed cookie, its session, and D1 agree. */
+  async function customSubresource(
+    req: Request,
+    url: URL,
+    kind: LiveKind,
+    raw: string,
+    secret: string,
+    env: LiveEnv,
+    next: Next,
+  ): Promise<Response> {
+    const c = await openCustomCookie(secret, raw, now());
+    if (!c) return next(req);
+    const token = sessionToken(req.headers.get("cookie"));
+    if (!token || (await sessionTag(token)) !== c.session) return next(req);
+    if (kind === "rsc") {
+      let ref: URL | null = null;
+      try {
+        ref = new URL(req.headers.get("referer") ?? "");
+      } catch {}
+      if (!ref || ref.origin !== url.origin || ref.searchParams.get(LIVE_PARAM) !== c.id)
+        return next(req);
+    }
+    const p = await customActive(env.DB, c);
+    const target = p ? customTarget(p.target) : null;
+    if (!p || !target) return next(req);
+    if (isServiceWorkerScript(url.pathname, req.headers.get("service-worker")))
+      return new Response("no service workers from a custom frontend\n", {
+        status: 403,
+        headers: { "cache-control": "no-store" },
+      });
+    const upUrl = upstreamUrl(target, url);
+    if (!upUrl)
+      return new Response("path refused\n", {
+        status: 400,
+        headers: { "cache-control": "no-store" },
+      });
+    try {
+      return downCustom(
+        await proxiedCustom(req, upUrl, target, ASSET_TIMEOUT_MS),
+        target,
+        c.id,
+        url.origin,
+      );
+    } catch {
+      return new Response("dev server unreachable\n", {
+        status: 504,
+        headers: { "cache-control": "no-store", [LIVE_ID_HEADER]: c.id },
+      });
+    }
+  }
+
   function down(r: Response, p: LivePage, extra?: (h: Headers) => void): Response {
     const id = String(p.serial);
     const h = filterTunnelFetchHeaders(r.headers);
@@ -464,6 +739,20 @@ export function createLivePage(d: LiveDeps) {
       const isOwner = d.isOwner ?? ((r: Request) => ownerByWhoami(r, next));
       if (!mayBeLive(req.url, req.headers.get("cookie"))) return next(req);
       const url = new URL(req.url);
+      // A custom frontend's JS may not make account-level writes (above).
+      if (
+        readCookie(req.headers.get("cookie"), LIVE_COOKIE)?.startsWith("c.") &&
+        customFrontendBlocked(req.method, url.pathname)
+      )
+        return new Response(
+          JSON.stringify({
+            error: "Not available from a custom frontend; open lianki.com without ?live",
+          }),
+          {
+            status: 403,
+            headers: { "content-type": "application/json", "cache-control": "no-store" },
+          },
+        );
       const kind = requestKind(req, url);
       if (kind === "other") return next(req);
       const secret = env.LIVE_GATE_SECRET ?? "";
@@ -479,6 +768,14 @@ export function createLivePage(d: LiveDeps) {
           const res = new Response(r.body, r);
           res.headers.append("set-cookie", clearLiveCookie());
           return res;
+        }
+        // A custom frontend's id: its registrant only (docs/custom-frontend.md).
+        if (isCustomId(param)) return customDocument(req, url, param, secret, enabled, next);
+        // Leaving a custom frontend: anyone may clear their own cookie.
+        if (param === "off" && raw?.startsWith("c.")) {
+          const u = new URL(url);
+          u.searchParams.delete(LIVE_PARAM);
+          return redirect(`${u.pathname}${u.search}`, clearLiveCookie());
         }
         // Only the owner ever sees a difference; everyone else gets the normal page, untouched.
         if (!(await isOwner(req))) return next(req);
@@ -518,6 +815,7 @@ export function createLivePage(d: LiveDeps) {
 
       // Subresources: the cookie, still matching the stored pointer.
       if (!enabled || raw === undefined) return next(req);
+      if (raw.startsWith("c.")) return customSubresource(req, url, kind, raw, secret, env, next);
       const c = await openLiveCookie(secret, raw, now());
       if (!c) return next(req);
       if (kind === "rsc") {

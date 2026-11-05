@@ -119,6 +119,7 @@ that are expensive to rediscover.
 | The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
 | Hot islands: swappable components, shared state               | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
 | Live view: dev JS or whole dev pages (?live=) on lianki.com   | [docs/live-view.md](docs/live-view.md)                              |
+| Custom frontends: a user's own dev server at ?live, the /api contract | [docs/custom-frontend.md](docs/custom-frontend.md)          |
 | The /words swipe: headless core, UI islands, feel presets     | [docs/swipe-core.md](docs/swipe-core.md)                            |
 | UI state: what is kept where (session, local, URL, server)    | [docs/ui-state.md](docs/ui-state.md)                                |
 | Screenshots of the owner's phone page (`scripts/dev/shot.ts`) | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |
@@ -136,6 +137,7 @@ that are expensive to rediscover.
 | Settings that follow the account (`lk:*` key classes)         | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
 | Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
 | Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
+| Study ledger: daily Merkle anchors, proofs, OpenTimestamps    | [docs/lian.md](docs/lian.md)                                        |
 | Learner levels: ladder, names per locale, SVG badges          | [docs/levels.md](docs/levels.md)                                    |
 | Feature flags: owner on/off at /dev/flags, ship dark, remove  | [docs/feature-flags.md](docs/feature-flags.md)                      |
 | Security measures: admin gate, lockout, scans, card testing   | [docs/security-measures.md](docs/security-measures.md)              |

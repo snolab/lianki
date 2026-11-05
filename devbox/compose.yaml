@@ -16,6 +16,7 @@ services:
       DEVBOX_DEV_PORT: ${DEVBOX_DEV_PORT:-3200}
       DEVBOX_PUBLIC_URL: ${DEVBOX_PUBLIC_URL:-}
       DEVBOX_DSH: ${DEVBOX_DSH:-1}
+      DEVBOX_DSH_PUBLIC_HOST: ${DEVBOX_DSH_PUBLIC_HOST:-}
     # DEEPSEEK_API_KEY for dsh, and nothing else secret. Optional file.
     env_file:
       - path: ${DEVBOX_ENV_FILE:-.env}
@@ -24,8 +25,10 @@ services:
       # The dev server, on the host's loopback only. The host tunnel
       # (devbox/host-tunnel.sh) is the only way in from outside.
       - "127.0.0.1:${DEVBOX_DEV_PORT:-3200}:3000"
-      # dsh web is NOT published: it listens on the container's loopback until
-      # Cloudflare Access is configured (README, "dsh behind Cloudflare Access").
+      # dsh web, also on the host's loopback only. Until DEVBOX_DSH_PUBLIC_HOST
+      # is set (after its Cloudflare Access app exists) dsh listens on the
+      # container's own loopback, so this forward reaches nothing.
+      - "127.0.0.1:${DEVBOX_DSH_PORT:-3280}:3080"
     volumes:
       # Everything the friend keeps (the clone, Claude/Codex logins, dsh home,
       # local D1) lives in this named volume. No host directory is mounted.

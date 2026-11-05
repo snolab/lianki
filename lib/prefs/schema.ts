@@ -62,6 +62,25 @@ const textScale = z
   .max(TEXT_MAX)
   .refine((v) => Math.abs(v * 20 - Math.round(v * 20)) < 1e-6);
 
+/** Nothing that names a place: a scheme, a host, a path. */
+const placeLike = (s: string) => /:\/\/|\.ts\.net|localhost|127\.0\.0\.1|\/|\.\w{2,}$/i.test(s);
+/**
+ * The reader's sense picks (lib/read/sense-pick.ts): "word@sentence-hash" →
+ * "lang\tterm", a word and a dictionary term — at most PICKS_MAX of them.
+ */
+const sensePicks = z
+  .record(
+    z
+      .string()
+      .max(80)
+      .regex(/^[^\t\n]+@[0-9a-f]{8}$/),
+    z
+      .string()
+      .max(60)
+      .regex(/^[a-z]{2,3}\t[^\t\n]+$/),
+  )
+  .refine((m) => Object.keys(m).length <= 24)
+  .refine((m) => !Object.entries(m).some(([k, v]) => placeLike(k) || placeLike(v)));
 /** A BYOK backend exactly as lib/byok/config.ts cleans it (no key field can pass). */
 const byokBackend = z
   .object({
@@ -101,6 +120,8 @@ export const PREF_SCHEMAS = {
   "home.pins": z.array(catalogUrl).max(100),
   "lab.immersionLangs": z.array(z.enum(IMMERSION_CODES)).max(IMMERSION_CODES.length),
   "lab.immersionTranspose": z.boolean(),
+  // /read: which language's entry a word means where it stands
+  "read.sensePicks": sensePicks,
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),

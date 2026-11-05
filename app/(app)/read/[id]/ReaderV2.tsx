@@ -33,7 +33,6 @@ import type { ReadMaterial } from "../ReadListClient";
 import { chapterAt, type BookMeta } from "@/lib/read/book";
 import { catalogKeys, catalogWords } from "@/lib/read/dict";
 import {
-  matchMeaning,
   meaningIndex,
   paraTokens,
   phraseAtToken,
@@ -112,6 +111,8 @@ import {
 import { useSelectTranslate } from "./use-select-translate";
 import { useSelectGloss } from "./use-select-gloss";
 import { useReaderSelect } from "./use-reader-select";
+import { useWordSense } from "./use-word-sense";
+import { choiceOf, langLabel } from "@/lib/read/sense-pick";
 import { ReaderBack } from "./reader-back";
 import {
   MadeToast,
@@ -453,6 +454,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       live = false;
     };
   }, [id, ownMeanings, normLang, famTick]);
+  // Each line's voice and lookup language; which language's entry a word means here.
+  const sense = useWordSense({ lines, runs: langRuns, lang, normLang, meanIdx });
+  const sayLang = sense.sayLang;
   /**
    * A paragraph's deck phrases (his phrase cards only, lib/read/select-meaning.ts
    * phraseSpans): found once per paragraph and kept until his cards change.
@@ -571,7 +575,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     return speaker.speak(
       parts.map((p) => p.text),
       // An item never holds two languages: its first line's is its voice.
-      lineLang(blockLine(b)),
+      sayLang(blockLine(b)),
       {
         onpart: (i) => {
           reading.current = { line: parts[i].line, s: parts[i].s };
@@ -583,7 +587,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           if (i === parts.length - 1 && nb && (c.auto || c.isHeading(line)))
             speaker.prefetch(
               blockSpeech(nb, para, lineText).map((p) => p.text),
-              lineLang(blockLine(nb)),
+              sayLang(blockLine(nb)),
             );
         },
         onend: () => dispatch({ type: "ended", token }),
@@ -1177,18 +1181,67 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     return null;
   }, [sel.unit]);
   /** The deck card the selection is, or covers (word → phrase: the longest wins). */
+  /** The selection as use-word-sense.ts looks it up: its tokens, text and sentence. */
+  const senseSpan = useMemo(() => {
+    if (!selSpan) return null;
+    const ss = para(selSpan.line).sentences;
+    return {
+      ...selSpan,
+      toks: paraTokens(ss),
+      text: tokenText(ss, selSpan.t0, selSpan.t1).trim(),
+      sentence: ss[sentenceOfToken(ss, selSpan.t0)]?.text.trim() ?? "",
+    };
+  }, [selSpan, para]);
+  // The word's own language's list catalogue, when it is not the deck's (loaded once).
+  const { need: needLang, wordLangAt } = sense;
+  useEffect(() => {
+    if (senseSpan) needLang(wordLangAt(senseSpan.line, senseSpan.text));
+  }, [senseSpan, needLang, wordLangAt]);
+  /**
+   * The entry the selection is, or covers (word → phrase: the longest wins):
+   * the word's own language's first, another language's labelled, his pick
+   * when several languages have it (lib/read/sense-pick.ts).
+   */
+  const senseOf = sense.senseOf;
   const selMeaning = useMemo(() => {
-    if (!selSpan || !meanIdx.length) return null;
-    const toks = paraTokens(para(selSpan.line).sentences);
-    const hit = matchMeaning(toks, selSpan.t0, selSpan.t1, meanIdx, normLang);
-    if (!hit) return null;
+    const s = senseOf(senseSpan);
+    if (!s || !senseSpan) return null;
+    const { hit, view: sv } = s;
     const card: CardMeaning = {
-      term: hit.m.term,
-      back: hit.m.back,
-      other: hit.t0 !== selSpan.t0 || hit.t1 !== selSpan.t1,
+      term: sv.main.term,
+      back: sv.main.back,
+      other: hit.t0 !== senseSpan.t0 || hit.t1 !== senseSpan.t1,
+      lang: sv.main.lang,
+      cross: sv.cross,
+      picked: sv.picked,
+      choice: choiceOf(sv.main),
+      others: sv.others.map((e) => ({ ...e, choice: choiceOf(e) })),
     };
     return { hit, card };
-  }, [selSpan, meanIdx, para, normLang]);
+  }, [senseSpan, senseOf]);
+  /** He picked which language's entry the selection means: kept, and the word said in it. */
+  const pickSense = useCallback(
+    (choice: string) => {
+      if (!senseSpan || !sel.unit) return;
+      sense.pick(senseSpan.text, senseSpan.sentence, choice);
+      const l = choice.split("\t")[0];
+      said.current?.();
+      setSayFail(null);
+      speaker.unlock();
+      const u = sel.unit;
+      const stop = speaker.speak(senseSpan.text, l, {
+        onend: () => {
+          if (said.current === stop) said.current = null;
+        },
+        onerror: (why, noVoice) => {
+          if (said.current === stop) said.current = null;
+          setSayFail({ u, why, ...(noVoice ? { noVoice: l } : {}) });
+        },
+      });
+      said.current = stop;
+    },
+    [senseSpan, sel.unit, sense, speaker],
+  );
   const selInside = !!selMeaning?.hit.inside;
   /** A selected inflected word: "form → lemma", the lemma's own card if he has one. */
   const formTags = useIntlayer("read-form-tags");
@@ -1239,7 +1292,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     [signedIn, material.readerV2, sel.unit, selInside, selMeaning, lineSentences],
   );
   // Translated from the selection's own language (a book that mixes them).
-  const selLang = sel.unit ? lineLang(unitLine(sel.unit)) : lang;
+  const selLang = sel.unit ? sayLang(unitLine(sel.unit)) : lang;
   const autoTrans = useSelectTranslate(
     id,
     String(locale),
@@ -1405,7 +1458,22 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   // ── Saying the selected unit (lib/read/reader-select.ts, tapVoice) ──
   /** Cuts what the last tap said, or its pending say. */
   const said = useRef<(() => void) | null>(null);
-  const [sayFail, setSayFail] = useState<{ u: Unit; why: string } | null>(null);
+  const [sayFail, setSayFail] = useState<{
+    u: Unit;
+    why: string;
+    /** The language no voice could say, on this device or the server. */
+    noVoice?: string;
+  } | null>(null);
+  /** The language a unit is said in: a word or phrase its own (or his pick's), else its line's. */
+  const unitVoice = useCallback(
+    (u: SayUnit, text: string): string => {
+      if (u.kind !== "word" && u.kind !== "phrase") return sayLang(unitLine(u));
+      const ss = para(u.line).sentences;
+      const sentence = ss[sentenceOfToken(ss, u.kind === "word" ? u.t : u.t0)]?.text ?? "";
+      return sense.voiceLang(u.line, text, sentence);
+    },
+    [sayLang, para, sense],
+  );
   const unitSpeech = useCallback(
     (u: SayUnit): string => {
       if (u.kind === "range") return rangeText(u, lineSentences, "\n");
@@ -1429,15 +1497,16 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     if (!text) return;
     // In the gesture, also when the unit is said after the combo rests.
     speaker.unlock();
+    const voice = unitVoice(target, text);
     const go = () => {
-      const stop = speaker.speak(text, lineLang(unitLine(target)), {
+      const stop = speaker.speak(text, voice, {
         onend: () => {
           if (said.current === stop) said.current = null;
         },
         // Never silent without saying so: the card says why.
-        onerror: (why) => {
+        onerror: (why, noVoice) => {
           if (said.current === stop) said.current = null;
-          setSayFail({ u: target, why });
+          setSayFail({ u: target, why, ...(noVoice ? { noVoice: voice } : {}) });
         },
       });
       said.current = stop;
@@ -2031,7 +2100,11 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             status={
               selStatus ??
               (sayFail && sameUnit(sayFail.u, sel.unit)
-                ? `${ts.sayFailed.value} (${sayFail.why})`
+                ? sayFail.noVoice
+                  ? fill(ts.noVoiceFor.value, {
+                      lang: langLabel(sayFail.noVoice, String(locale)),
+                    })
+                  : `${ts.sayFailed.value} (${sayFail.why})`
                 : null)
             }
             translation={plan ? autoTrans.translation : null}
@@ -2040,6 +2113,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             meaning={
               selMeaning?.card ?? (selGloss && selLemma ? { ...selGloss, other: false } : selGloss)
             }
+            onPickSense={pickSense}
             lemma={selLemma?.card ?? null}
             grade={gradeArea}
             onClose={sel.clear}

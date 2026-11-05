@@ -18,6 +18,7 @@
 
 import type { Fam, Sentence } from "./reader-model";
 import { foldsOf, normWord, termKeys } from "./words";
+import { wordSegments } from "./word-segments";
 
 /** A deck card's meaning, as the selection card shows it. */
 export interface Meaning {
@@ -72,7 +73,7 @@ export function looseTok(s: string): string {
 /** A text's word-like tokens, loose forms, in order. */
 export function phraseTokens(text: string, lang: string): string[] {
   const out: string[] = [];
-  for (const s of wordSegmenter(lang).segment(text))
+  for (const s of wordSegments(wordSegmenter(lang), text))
     if (s.isWordLike) {
       const t = looseTok(s.segment);
       if (t) out.push(t);

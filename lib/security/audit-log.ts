@@ -1,7 +1,9 @@
 /**
  * The security audit log (db/migrations/0040_security_audit.sql,
  * docs/security-measures.md, "Audit log"): one D1 row per write to what lets
- * dev code or a dev server in — the live-view pointer and dev access tokens.
+ * dev code or a dev server in — the live-view pointer, dev access tokens, and
+ * custom frontends (lib/live-view/custom.ts: a preview registered or revoked,
+ * a user added to or removed from the allowlist).
  * Ids, kinds and labels only, never a token, a pointer or a secret.
  *
  * Best effort: a failed audit insert is logged and never undoes or blocks the
@@ -19,7 +21,11 @@ export type AuditKind =
   | "dev-token.mint"
   | "dev-token.revoke"
   | "dev-token.revoke-all"
-  | "dev-handoff.mint";
+  | "dev-handoff.mint"
+  | "live-preview.create"
+  | "live-preview.revoke"
+  | "live-frontend.allow"
+  | "live-frontend.disallow";
 
 export type AuditEntry = {
   kind: AuditKind;

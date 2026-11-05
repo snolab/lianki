@@ -115,9 +115,13 @@ export function detectLangs(texts: readonly string[], shared = sharedLang(texts)
       r[3] += weight[i];
     } else runs.push([l, i, i + 1, weight[i]]);
   });
+  // Only a shared-script aside ("OK.", a name in Latin letters) is smoothed: a
+  // line written in a language's own script (kana, Hangul) is that language
+  // however short — a Japanese line between English ones stays Japanese.
+  const ownScript = new Set(SCRIPT_LANGS.map(([l]) => l));
   for (let k = 1; k + 1 < runs.length; k++) {
     const [a, mid, b] = [runs[k - 1], runs[k], runs[k + 1]];
-    if (a[0] === b[0] && mid[3] < a[3] && mid[3] < b[3])
+    if (a[0] === b[0] && !ownScript.has(mid[0]) && mid[3] < a[3] && mid[3] < b[3])
       for (let i = mid[1]; i < mid[2]; i++) langs[i] = a[0];
   }
   return langs;

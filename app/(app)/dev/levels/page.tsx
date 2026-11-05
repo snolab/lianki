@@ -11,7 +11,7 @@ import { LevelGallery, type LevelNames } from "./LevelGallery";
 
 // Owner-only: his own level as the server computes it (lib/study-days.ts),
 // then the gallery of the learner level badges (docs/levels.md); anyone else
-// gets a plain 404. Nothing user-facing shows these yet.
+// gets a plain 404. Users see their level in the nav chip and on /profile.
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {

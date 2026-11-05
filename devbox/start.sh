@@ -24,8 +24,16 @@ echo "devbox: next dev (pid $dev) -> $LOGS/dev.log"
 
 pids=("$dev")
 if [ "${DEVBOX_DSH:-1}" = "1" ]; then
-  # Loopback only. Opening it to the host waits for Cloudflare Access (README).
-  dsh web --host 127.0.0.1 --port 3080 --no-open >>"$LOGS/dsh.log" 2>&1 &
+  if [ -n "${DEVBOX_DSH_PUBLIC_HOST:-}" ]; then
+    # Only set once its Cloudflare Access app exists (README): bind the
+    # container's address (published on the host loopback only) and trust
+    # the Access-protected host.
+    dsh_host="$(hostname -i | awk '{print $1}')"
+    dsh_args=(--host "$dsh_host" --public-url "https://${DEVBOX_DSH_PUBLIC_HOST}/" --trusted-host "$DEVBOX_DSH_PUBLIC_HOST")
+  else
+    dsh_args=(--host 127.0.0.1) # container loopback: unreachable from outside
+  fi
+  dsh web "${dsh_args[@]}" --port 3080 --no-open >>"$LOGS/dsh.log" 2>&1 &
   dsh_pid=$!
   pids+=("$dsh_pid")
   echo "devbox: dsh web (pid $dsh_pid) -> $LOGS/dsh.log"

@@ -14,7 +14,8 @@
  * the entry level on paying, and lv4–lv6 are unlocked one by one by learning
  * progress after paying: cumulative study days counted from the first paid
  * day (not a streak — gaps don't reset): 100 for lv4, 365 for lv5, 1000 for
- * lv6 (owner, Slack 2026-11-05). Nothing user-facing reads this yet.
+ * lv6 (owner, Slack 2026-11-05). Shown behind the `levels` flag: the nav chip
+ * (app/components/LevelChip.tsx) and the /profile card (LevelCard.tsx).
  */
 
 export const LEVEL_IDS = ["lv1", "lv2", "lv3", "lv4", "lv5", "lv6"] as const;
