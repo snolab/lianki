@@ -8,6 +8,7 @@
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
 import { creditStmts } from "@/lib/payments/credits-store";
 import { extendedProEnd } from "@/lib/payments/passes";
+import { sameEmailAccounts } from "@/lib/canonical-email-d1";
 import {
   ACTIVATION_REVIEW_DAYS,
   CLAIM_MAX_ACCOUNT_AGE_H,
@@ -174,6 +175,13 @@ export async function claimInvite(
   const age = now.getTime() - new Date(invitee.createdAt).getTime();
   if (!(age <= CLAIM_MAX_ACCOUNT_AGE_H * 60 * 60 * 1000))
     return { status: "rejected", reason: "not new" };
+
+  // One person, one invite (lib/canonical-email.ts): an alias of the inviter
+  // is the inviter, and a person with any other account (a dot or +tag
+  // variant) is not a new user — whichever of the two was made first.
+  const others = await sameEmailAccounts(d1, invitee);
+  if (others.some((o) => o.id === inviterId)) return { status: "rejected", reason: "self" };
+  if (others.length) return { status: "rejected", reason: "not new" };
 
   // The trial is granted lazily on first status read; start from it if it exists.
   const createdAt = new Date(invitee.createdAt);
@@ -403,9 +411,15 @@ export async function redeemGiftCode(
   if (gift.expiresAt && new Date(gift.expiresAt) <= now)
     return { status: "rejected", reason: "expired" };
   const refId = `${code}:${userId}`;
+  // Once per person, not per account: any account sharing the canonical email
+  // (lib/canonical-email.ts) that redeemed this code counts.
+  const user = await getUser(d1, userId);
+  const ids = [userId, ...(user ? await sameEmailAccounts(d1, user) : []).map((o) => o.id)];
   const seen = await d1
-    .prepare("SELECT id FROM membership_grant WHERE reason = 'gift' AND refId = ?")
-    .bind(refId)
+    .prepare(
+      `SELECT id FROM membership_grant WHERE reason = 'gift' AND refId IN (${ids.map(() => "?").join(", ")})`,
+    )
+    .bind(...ids.map((id) => `${code}:${id}`))
     .first();
   if (seen) return { status: "rejected", reason: "already redeemed" };
 

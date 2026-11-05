@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { MELOTTS_LANGS, sniffAudioType } from "@/lib/workers-ai";
 import { VOICE_CREDITS, voiceKey } from "@/lib/voice";
 import { MAX_TTS_TEXT, ttsParams } from "@/lib/voice-clip";
+import { personKey } from "@/lib/rateLimit";
 
 /**
  * /api/words/tts's logic (app/api/words/tts/route.ts wires the real I/O).
@@ -113,7 +114,7 @@ export async function wordsTts(
 
   // The same limit whether or not the clip is kept: store=0 cannot be used to
   // generate more than a word session may.
-  const limit = deps.checkRateLimit(`words-tts:${email}`, {
+  const limit = deps.checkRateLimit(personKey("words-tts", email), {
     windowMs: MISS_WINDOW_MS,
     max: MISS_MAX,
   });
