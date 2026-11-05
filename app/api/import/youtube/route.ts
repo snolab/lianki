@@ -3,6 +3,15 @@ import { authEmailOrToken } from "@/lib/authEmailOrToken";
 import { getFSRSNotesCollection } from "@/app/getFSRSNotesCollection";
 import { createEmptyCard } from "ts-fsrs";
 import { normalizeUrl } from "@/lib/normalizeUrl";
+import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-guard";
+import { sha256Hex } from "@/lib/security/throttle";
+
+/** Imports per account (D1): each one spends the shared YouTube API quota. */
+const IMPORT_LIMIT = { max: 10, windowMs: 60 * 60_000 };
+/** Pages of 50 read at most: 1000 videos. */
+const MAX_PLAYLIST_PAGES = 20;
+/** A YouTube playlist id: letters, digits, `-` and `_`. */
+const PLAYLIST_ID = /^[A-Za-z0-9_-]{2,64}$/;
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +38,7 @@ async function fetchPlaylistVideos(playlistId: string, apiKey?: string): Promise
 
   const videos: string[] = [];
   let pageToken: string | undefined;
+  let pages = 0;
 
   do {
     const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
@@ -55,7 +65,8 @@ async function fetchPlaylistVideos(playlistId: string, apiKey?: string): Promise
     }
 
     pageToken = data.nextPageToken;
-  } while (pageToken);
+    pages++;
+  } while (pageToken && pages < MAX_PLAYLIST_PAGES);
 
   return videos;
 }
@@ -67,11 +78,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Login required" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { playlistId } = body;
+    const limited = await tooMany(`import-youtube:${await sha256Hex(email)}`, IMPORT_LIMIT);
+    if (limited) return limited;
+
+    const body = await readJsonCapped(req, 4096);
+    if (!body.ok) return cappedJsonError(body.status);
+    const { playlistId } = (body.value ?? {}) as { playlistId?: unknown };
 
     if (!playlistId) {
       return NextResponse.json({ error: "Playlist ID is required" }, { status: 400 });
+    }
+    if (typeof playlistId !== "string" || !PLAYLIST_ID.test(playlistId)) {
+      return NextResponse.json({ error: "Invalid playlist ID" }, { status: 400 });
     }
 
     // Get YouTube API key from environment

@@ -143,6 +143,12 @@ Every other import takes JSON validated by zod.
   UTC (and on demand: Actions → Security scans → Run workflow). Baseline means
   spider + passive checks only — headers, cookies, information leaks — no
   attack payloads, so it is safe against production. Tuning in `.zap/rules.tsv`.
+- **CodeQL** (`.github/workflows/codeql.yml`, since 2026-11-05, owner's
+  approval): static analysis of the JS/TS source, `security-extended`
+  queries, on every PR, every push to `main` and Wednesdays. Its own
+  workflow and not a required check, so it never holds a merge or the
+  deploy. Findings are under Security → Code scanning. The repository's
+  "default setup" stays off: the workflow file is the setup.
 
 **Reading the reports.** Open the run → Artifacts:
 
@@ -330,6 +336,45 @@ else can catch it ([secrets-and-auth.md](secrets-and-auth.md), "CLI login"):
 - **On the Mac**: the macOS Keychain, written through `security -i` on stdin
   (never in a process list), else a 0600 file; the CLI never prints it.
 - Tests: `unit/cli-login.test.ts`, `unit/lianki-cli.test.ts`.
+
+## 10. Route limits, body caps and the legacy pages (2026-11-05)
+
+A review pass (Claude, with Codex as a second opinion) fixed these on main;
+tests in `unit/security-hardening.test.ts`.
+
+- **Limits in D1, not memory** (`lib/security/route-guard.ts`: `tooMany` /
+  `routeLimit` over `auth_throttle`; the memory counter only without D1):
+  | route                         | limit                                  |
+  | ----------------------------- | -------------------------------------- |
+  | `POST /api/contact` (no sign-in) | 5 per IP per hour, 60 per hour overall |
+  | `POST /api/gift-codes/redeem` | 10 tries per user, 30 per IP, per 10 min (wrong codes count) |
+  | `POST /api/roadmap/generate`  | 10 per account per hour                |
+  | `POST /api/import/youtube`    | 10 per account per hour; 20 pages (1000 videos) per import |
+  | `POST /api/words/telemetry`   | 120 batches per account per 10 min     |
+  | reader gloss / translate / polish (model calls) | the same numbers as before, now in D1 |
+  The other per-user AI limits (`/api/tts`, polyglot, self-intro,
+  ai-sentences, words TTS) are still per isolate (`lib/rateLimit.ts`); they
+  move once PR #591's key change has landed.
+- **Body caps** (`readJsonCapped`: Content-Length, then the stream):
+  contact 16 KB, roadmap and YouTube 4 KB, words telemetry 128 KB,
+  `POST /api/read` 12 MB, and pasted text there to a book's own caps.
+- **Slack**: contact-form text is escaped (`&`, `<`, `>`) and sent with
+  `mrkdwn: false`: no links, mentions or formatting from a sender.
+- **Legacy HTML** (`app/fsrs.ts`: `/api/fsrs/repeat`, `/next`, the preview
+  lists): every title and url is HTML-escaped, links are http(s) only, values
+  in inline scripts can't close them (`lib/security/escape.ts`), and errors
+  are plain text. These pages have no CSP, so escaping is the whole defence.
+- **GETs that write** (`/api/fsrs/review/*`, `/api/fsrs/delete`,
+  `/api/fsrs/repeat`): kept as GETs for installed userscripts and the CLI,
+  but a top-level navigation from another site (Fetch Metadata
+  `Sec-Fetch-Mode: navigate` with `Sec-Fetch-Site: cross-site` or
+  `same-site`) gets 403 — the one way a SameSite=Lax cookie rides along.
+  `POST /api/fsrs/delete` exists too, and the list page uses it.
+- **Pro days** from gift codes, invites and Stripe payments are added in
+  SQL inside the grant's batch, so two at once both count; a gift code's
+  use is given back if its grant fails.
+- **The reachability probe** follows redirects by hand (5 hops), checking
+  each one against the private-host list.
 
 ## Owner checklist
 

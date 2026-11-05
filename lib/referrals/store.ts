@@ -6,8 +6,7 @@
  * check may run any number of times.
  */
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
-import { creditStmts } from "@/lib/payments/credits-store";
-import { extendedProEnd } from "@/lib/payments/passes";
+import { EXTEND_PRO_SQL, creditStmts } from "@/lib/payments/credits-store";
 import {
   ACTIVATION_REVIEW_DAYS,
   CLAIM_MAX_ACCOUNT_AGE_H,
@@ -83,14 +82,9 @@ async function grantPro(
   if (!user) return false;
   const at = now.toISOString();
   const stmts = [grantRow(d1, { userId, kind: "pro", days, reason, refId }, at), ...extra];
-  if (days > 0) {
-    const end = extendedProEnd(user.proEndsAt ? new Date(user.proEndsAt) : undefined, days, now);
-    stmts.push(
-      d1
-        .prepare("UPDATE user SET proEndsAt = ?, updatedAt = ? WHERE id = ?")
-        .bind(end.toISOString(), at, userId),
-    );
-  }
+  // The new end is computed in SQL, inside the batch: two grants at once (a
+  // gift and an invite reward) both count, where a read-then-write lost one.
+  if (days > 0) stmts.push(d1.prepare(EXTEND_PRO_SQL).bind(at, days, userId));
   try {
     await d1.batch(stmts);
     return true;
@@ -423,8 +417,18 @@ export async function redeemGiftCode(
     credits > 0
       ? creditStmts(d1, { userId, amount: credits, reason: "gift", refId }, now.toISOString())
       : [];
-  if (!(await grantPro(d1, userId, gift.days, "gift", refId, now, extra))) {
-    await d1.prepare("UPDATE gift_code SET uses = uses - 1 WHERE code = ?").bind(code).run();
+  const giveBack = () =>
+    d1.prepare("UPDATE gift_code SET uses = uses - 1 WHERE code = ?").bind(code).run();
+  let granted: boolean;
+  try {
+    granted = await grantPro(d1, userId, gift.days, "gift", refId, now, extra);
+  } catch (e) {
+    // The grant failed outright: the use taken above goes back too.
+    await giveBack().catch(() => {});
+    throw e;
+  }
+  if (!granted) {
+    await giveBack();
     return { status: "rejected", reason: "already redeemed" };
   }
   return { status: "redeemed", days: gift.days, credits };

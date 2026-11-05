@@ -3,6 +3,11 @@ import { textModel, workersAiProvider } from "@/lib/workers-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
+import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-guard";
+import { sha256Hex } from "@/lib/security/throttle";
+
+/** Model calls per account (D1): each one is a paid generation. */
+const GENERATE_LIMIT = { max: 10, windowMs: 60 * 60_000 };
 
 export const maxDuration = 60;
 
@@ -25,7 +30,12 @@ export async function POST(request: NextRequest) {
   const email = await authEmailOrToken(request);
   if (!email) return new NextResponse("Unauthorized", { status: 401 });
 
-  const { topic } = await request.json();
+  const limited = await tooMany(`roadmap-generate:${await sha256Hex(email)}`, GENERATE_LIMIT);
+  if (limited) return limited;
+
+  const body = await readJsonCapped(request, 4096);
+  if (!body.ok) return cappedJsonError(body.status);
+  const { topic } = (body.value ?? {}) as { topic?: unknown };
   if (!topic || typeof topic !== "string" || topic.length > 500) {
     return new NextResponse("Invalid topic", { status: 400 });
   }

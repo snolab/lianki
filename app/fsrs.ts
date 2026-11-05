@@ -41,6 +41,8 @@ import { normalizeUrl } from "@/lib/normalizeUrl";
 import { probeReachability } from "@/lib/probe";
 import { originOf } from "@/lib/next-card";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { escapeHtml, safeHref, scriptJson } from "@/lib/security/escape";
+import { crossSiteNavigation } from "@/lib/security/route-guard";
 import { restoreNoteFromExport } from "@/lib/yaml-export";
 import {
   bulkDeleteNotes,
@@ -136,6 +138,23 @@ function isHttpUrl(raw: string): boolean {
   }
 }
 
+/**
+ * The GETs here that write: grading, deleting, and the legacy /repeat page,
+ * which adds the card its `url` names. Kept as GETs for installed userscripts
+ * and the CLI, but never from another site's navigation (fsrsHandler).
+ */
+export function isMutatingGet(pathname: string): boolean {
+  return /^\/api\/fsrs\/(review\/|delete(\/|$)|repeat(\/|$))/i.test(pathname);
+}
+
+/**
+ * A card's url as the legacy pages open it: anything but a script url
+ * (`javascript:`, `data:`, `vbscript:`), which would run on lianki.com.
+ */
+export function openable(url: string): string {
+  return /^\s*(javascript|data|vbscript):/i.test(url) ? "about:blank" : url;
+}
+
 export const fsrsHandler = async (req: Request, email?: string) => {
   const FSRSNotes = getFsrsNotes(email);
 
@@ -196,7 +215,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "GET /all$": async () =>
       new Response(
         sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: { "card.due": 1 } }))
-          .map((note) => `window.open(${JSON.stringify(note.url)})`)
+          .map((note) => `window.open(${scriptJson(openable(note.url))})`)
           .onFlush((c) =>
             c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"),
           )
@@ -410,18 +429,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         nextTitle: nextNote?.title ?? null,
       });
     },
-    "GET /api/fsrs/delete(?:/|$|\\?)": async (req, opt) => {
-      const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
-      await FSRSNotes.deleteOne({ url: note.url });
-
-      const nextNote = await findNextDue(req, note.url);
-
-      return JSONR({
-        ok: true,
-        nextUrl: nextNote?.url ?? null,
-        nextTitle: nextNote?.title ?? null,
-      });
-    },
+    "GET /api/fsrs/delete(?:/|$|\\?)": async (req, opt) => deleteByQuery(req, opt),
+    // The same as POST: the GET stays for installed userscripts and the CLI.
+    "POST /api/fsrs/delete(?:/|$|\\?)": async (req, opt) => deleteByQuery(req, opt),
     // ── Data management (/data) ──────────────────────────────────────────
     // Filtered, paged listing behind the data table.
     "GET /api/fsrs/list(?:/|$|\\?)": async (req) => {
@@ -568,7 +578,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: await dueSort() }))
           .limit(1)
           .map((note) => {
-            const url = JSON.stringify(note.url);
+            const url = scriptJson(openable(note.url));
             const q = new URLSearchParams({
               id: note._id.toString(),
             }).toString();
@@ -593,7 +603,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         sflow([
           sflow(`Current due: ${dueMs(note.card.due)}`),
 
-          sflow(`<script>document.title = ${JSON.stringify(doctitle)};</script>`),
+          sflow(`<script>document.title = ${scriptJson(doctitle)};</script>`),
 
           sflow(`<br/>`),
           sflow(Object.values(fsrsConfig.repeat(note.card, new Date())))
@@ -652,9 +662,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
           sflow(`<br/>`),
           sflow(
-            `Reviewing <a target="_blank" href="${note.url}">${
-              (note.title?.replace(/$/, " - ") ?? "") + note.url
-            }</a>`,
+            `Reviewing <a target="_blank" href="${safeHref(note.url)}">${escapeHtml(
+              (note.title?.replace(/$/, " - ") ?? "") + note.url,
+            )}</a>`,
           ),
           sflow("<br/>"),
           sflow(`<a href="javascript:deleteCard()" accessKey='5'> DELETE </a>`),
@@ -713,9 +723,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "GET /delete-confirm(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("fail to find note");
       return HTMLR(
-        `Are you sure you want to delete <a href="${note.url}">${
-          note.url
-        }</a>?<br/><a href="/delete/?${new URLSearchParams({
+        `Are you sure you want to delete <a href="${safeHref(note.url)}">${escapeHtml(
+          note.url,
+        )}</a>?<br/><a href="/delete/?${new URLSearchParams({
           // url: note.url,
           id: note._id.toString(),
         }).toString()}">YES</a> <a href="/list">NO</a>`,
@@ -736,6 +746,19 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
   };
 
+  async function deleteByQuery(req: Request, opt: { params?: Record<string, string> }) {
+    const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
+    await FSRSNotes.deleteOne({ url: note.url });
+
+    const nextNote = await findNextDue(req, note.url);
+
+    return JSONR({
+      ok: true,
+      nextUrl: nextNote?.url ?? null,
+      nextTitle: nextNote?.title ?? null,
+    });
+  }
+
   function notesPreviewFlow(): sflow<string> {
     return sflow(
       sflow(`<pre>\n`),
@@ -750,7 +773,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
       sflow(FSRSNotes.find({}, { sort: { "card.due": 1 } }))
         .map(
-          (note) => `${dueMs(note.card.due)} ${(note.title?.replace(/$/, " - ") ?? "") + note.url}`,
+          (note) =>
+            `${dueMs(note.card.due)} ${escapeHtml((note.title?.replace(/$/, " - ") ?? "") + note.url)}`,
         )
         .join("\n"),
       sflow("\n"),
@@ -977,14 +1001,28 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
   const url = new URL(req.url, "http://localhost");
   const path = `${req.method} ${url.pathname}${url.search}`;
-  console.log(path);
+  // Method and path only: the query holds card urls and titles.
+  console.log(`${req.method} ${url.pathname}`);
+  // A GET that changes cards, started by another site's link or redirect, is
+  // refused (CSRF: a top-level navigation is how a SameSite=Lax session
+  // cookie rides along). Same-origin fetches, the userscript and API tokens
+  // never look like this.
+  if (req.method === "GET" && isMutatingGet(url.pathname) && crossSiteNavigation(req))
+    return new Response("This link changes your cards; open it from Lianki itself.\n", {
+      status: 403,
+      headers: { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff" },
+    });
   for (const [pattern, fn] of Object.entries(routes).toReversed()) {
     const m = path.match(pattern);
     if (m)
       return fn(req, { params: m.groups ?? {} }).catch((error) => {
-        return new Response(`Error: ${String(error.message ?? error)}; <a href='/'>Home</a>`, {
+        // Plain text: the message can carry a url or title from the query.
+        return new Response(`Error: ${String(error.message ?? error)}\n`, {
           status: 500,
-          headers: { "Content-Type": "text/html" },
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            "x-content-type-options": "nosniff",
+          },
         });
       });
   }
