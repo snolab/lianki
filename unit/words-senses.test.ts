@@ -1,6 +1,6 @@
 // scripts/words/senses.ts: which CC-CEDICT senses an HSK word's back gets.
 import { describe, expect, it } from "bun:test";
-import { hskSenses, isMarkedSense, joinSenses } from "@/scripts/words/senses";
+import { hskSenses, isMarkedSense, joinSenses, truncate } from "@/scripts/words/senses";
 
 describe("hskSenses", () => {
   // The shape complete-hsk-vocabulary gives 云 (HSK 2).
@@ -36,6 +36,17 @@ describe("hskSenses", () => {
       { t: "颿", i: { y: "fān" }, m: ["to gallop"] },
     ];
     expect(hskSenses(fan, "帆").senses).toEqual(["sail"]);
+  });
+  it("joinSenses: repeats dropped, at most three, a long first sense cut at a boundary", () => {
+    expect(joinSenses(["cloud.", "Cloud", "sky", "air", "heaven"])).toBe("cloud; sky; air");
+    expect(joinSenses(["a fairly long first sense", "and a second one"], 30)).toBe(
+      "a fairly long first sense",
+    );
+    expect(joinSenses(["word ".repeat(30).trim()], 40)).toBe(`${"word ".repeat(7).trim()}…`);
+    expect(joinSenses(["one, two, three, four, five, six, seven"], 30)).toBe(
+      "one, two, three, four, five",
+    );
+    expect(truncate("x".repeat(50), 20)).toBe(`${"x".repeat(19)}…`);
   });
   it("register marks", () => {
     expect(isMarkedSense("(classical) to say")).toBe(true);
