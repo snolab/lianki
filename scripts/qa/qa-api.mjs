@@ -149,6 +149,12 @@ for (const [path, cookie] of [
   ["/en?live=on", ""],
   ["/en?live=off", ""],
   ["/en", `__Host-lk_live=1793000000000.9999999999999.${"A".repeat(43)}`],
+  // A custom frontend's id (docs/custom-frontend.md): its registrant only.
+  ["/en?live=AAAAAAAAAAAAAAAAAAAAAA", ""],
+  [
+    "/en",
+    `__Host-lk_live=c.${"A".repeat(22)}.u.9999999999999.0.${"A".repeat(22)}.${"A".repeat(43)}`,
+  ],
 ]) {
   const r = await fetch(`${BASE}${path}`, {
     redirect: "manual",
@@ -160,6 +166,26 @@ for (const [path, cookie] of [
     `SEC   non-owner ${path}${cookie ? " + forged live cookie" : ""} → normal build`,
     r.status < 300 && !live && !setLive,
     `HTTP ${r.status}${live ? " x-lk-live" : ""}${setLive ? " set live cookie" : ""}`,
+  );
+}
+// While a custom frontend's live cookie is set, its JS cannot mint tokens or
+// change the account (customFrontendBlocked in lib/live-view/page-proxy.ts).
+// The Worker decides it, so only against a deployed Worker (not next dev).
+if (!/^http:\/\/(localhost|127\.0\.0\.1)/.test(BASE)) {
+  const r = await fetch(`${BASE}/api/token`, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      "content-type": "application/json",
+      origin: BASE,
+      cookie: `__Host-lk_live=c.${"A".repeat(22)}.u.9999999999999.0.${"A".repeat(22)}.${"A".repeat(43)}`,
+    },
+    body: "{}",
+  });
+  rec(
+    "SEC   POST /api/token under a custom live cookie → 403",
+    r.status === 403,
+    `HTTP ${r.status}`,
   );
 }
 // Uploads: only the one format each import reads.
