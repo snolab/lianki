@@ -212,6 +212,61 @@ describe("pickAndImport", () => {
   });
 });
 
+describe("pickAndImport: network trouble", () => {
+  const boom = (() => Promise.reject(new Error("offline"))) as unknown as Fetch;
+
+  it("the token request fails or throws", async () => {
+    const down = mockFetch(() => [500, {}]);
+    expect(await pickAndImport("/read", deps(down.f, [A]))).toEqual({
+      kind: "error",
+      code: "failed",
+    });
+    expect(await pickAndImport("/read", deps(boom, [A]))).toEqual({
+      kind: "error",
+      code: "failed",
+    });
+  });
+
+  it("an import that throws or answers no JSON counts as failed, without onProgress", async () => {
+    let n = 0;
+    const f = (async (url: string) => {
+      if (url === "/api/connections/google/picker") return Response.json(SETUP);
+      n++;
+      if (n === 1) throw new Error("offline");
+      return new Response("not json", { status: 502 });
+    }) as Fetch;
+    const { onProgress: _, ...quiet } = deps(f, [A, B]);
+    expect(await pickAndImport("/read", quiet)).toEqual({
+      kind: "done",
+      imported: [],
+      failed: ["fetch-failed", "fetch-failed"],
+    });
+  });
+
+  it("a grant that ends after one import: the rest are listed as failed", async () => {
+    const { f } = mockFetch((c) =>
+      c.url === "/api/connections/google/picker"
+        ? [200, SETUP]
+        : String(c.body.url).includes(A)
+          ? [200, { id: "book-A" }]
+          : [409, { error: "reconnect" }],
+    );
+    const d = deps(f, [A, B]);
+    expect(await pickAndImport("/read", d)).toEqual({
+      kind: "done",
+      imported: [{ id: "book-A", title: "" }],
+      failed: ["reconnect"],
+    });
+    expect(d.connected).toEqual([]);
+  });
+
+  it("connecting cannot start: says why", async () => {
+    const { f } = mockFetch(() => [409, {}]);
+    const d = { ...deps(f, []), connect: async () => "not-configured" as const };
+    expect(await pickAndImport("/read", d)).toEqual({ kind: "error", code: "not-configured" });
+  });
+});
+
 describe("resyncGdoc", () => {
   it("re-imports through Drive", async () => {
     const { f, calls } = mockFetch(() => [200, { id: "book", updated: true }]);
