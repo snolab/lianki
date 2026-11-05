@@ -65,7 +65,8 @@ import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageS
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
 import { BAR_CONTROL, barGeometry } from "./bar-geometry";
-import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
+import { DebugMic, canCapture, pageCues, pageMic, voiceDevice } from "./MicButton";
+import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
 import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
@@ -749,6 +750,22 @@ export function DebugChat({
     const f = () => setAecState(aecOn());
     window.addEventListener(AEC_EVENT, f);
     return () => window.removeEventListener(AEC_EVENT, f);
+  }, []);
+  /** The voice cues' two switches (cues.ts), synced with the account. */
+  const [cueSend, setCueSend] = useState(() => cueOn(CUE_SEND_KEY));
+  const [cueSpeech, setCueSpeech] = useState(() => cueOn(CUE_SPEECH_KEY));
+  // Another tab's change, or another device's arriving (docs/prefs-sync.md).
+  useEffect(() => {
+    const f = () => {
+      setCueSend(cueOn(CUE_SEND_KEY));
+      setCueSpeech(cueOn(CUE_SPEECH_KEY));
+    };
+    window.addEventListener("storage", f);
+    window.addEventListener("lk:pref-applied", f);
+    return () => {
+      window.removeEventListener("storage", f);
+      window.removeEventListener("lk:pref-applied", f);
+    };
   }, []);
   /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
   const [rate, setRate] = useState(speechRate);
@@ -1992,6 +2009,12 @@ export function DebugChat({
     if (pending.get().length) pending.take();
     // A typed line says which language the owner speaks: the mic's STT hint.
     if (!source) learnSttHint(text);
+    // A spoken line went out, by whichever path (the join, Enter, the debounce):
+    // one cue for it (cues.ts), here and nowhere else. Typed lines are silent.
+    else
+      window.dispatchEvent(
+        new CustomEvent(VOICE_SENT_EVENT, { detail: { sound: pageCues().send() } }),
+      );
     // Sent: an interruption is over, and the queue (still relevant) reads on.
     voice().resume();
     draftRef.current = "";
@@ -2054,12 +2077,7 @@ export function DebugChat({
    * hub's edit is the agent's). The cost is up to joinMs on a line that is
    * really done; it is tunable, and 0 sends at once.
    */
-  const sendVoice = () => {
-    if (submit()) {
-      const sound = playSentTick();
-      window.dispatchEvent(new CustomEvent(VOICE_SENT_EVENT, { detail: { sound } }));
-    }
-  };
+  const sendVoice = () => void submit();
   const joiner = useRef<ReturnType<typeof createJoiner> | null>(null);
   joiner.current ??= createJoiner({
     send: () => sendVoiceRef.current(),
@@ -2775,6 +2793,41 @@ export function DebugChat({
           {aec ? "◉" : "○"}
         </span>
         {ui.aec}
+      </button>
+      {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-cue-send"
+        aria-checked={cueSend}
+        onClick={() => {
+          setCueSend(!cueSend);
+          setCue(CUE_SEND_KEY, !cueSend);
+          notePrefWrite();
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {cueSend ? "◉" : "○"}
+        </span>
+        {strings?.cueSend ? t.cueSend : ui.cueSend}
+      </button>
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-cue-speech"
+        aria-checked={cueSpeech}
+        onClick={() => {
+          setCueSpeech(!cueSpeech);
+          setCue(CUE_SPEECH_KEY, !cueSpeech);
+          notePrefWrite();
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {cueSpeech ? "◉" : "○"}
+        </span>
+        {strings?.cueSpeech ? t.cueSpeech : ui.cueSpeech}
       </button>
       {/* Compact mode (compact-view.ts): this device only (lk:pref:chat-view). */}
       <button

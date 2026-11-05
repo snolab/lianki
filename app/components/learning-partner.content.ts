@@ -461,6 +461,42 @@ const learningPartnerContent = {
       mr: "{n} मिनिटांनी आपोआप थांबवा",
       ko: "{n}분 후 자동 중지",
     }),
+    cueSend: t({
+      en: "Sound when a voice message is sent",
+      zh: "语音消息发出时提示音",
+      hi: "वॉइस संदेश भेजने पर ध्वनि",
+      es: "Sonido al enviar un mensaje de voz",
+      fr: "Son à l'envoi d'un message vocal",
+      ar: "صوت عند إرسال رسالة صوتية",
+      bn: "ভয়েস বার্তা পাঠালে শব্দ",
+      pt: "Som ao enviar mensagem de voz",
+      ru: "Звук при отправке голосового сообщения",
+      ur: "صوتی پیغام بھیجنے پر آواز",
+      id: "Suara saat pesan suara terkirim",
+      de: "Ton beim Senden einer Sprachnachricht",
+      ja: "音声メッセージ送信時の音",
+      sw: "Sauti ujumbe wa sauti unapotumwa",
+      mr: "व्हॉइस संदेश पाठवल्यावर आवाज",
+      ko: "음성 메시지 전송 시 알림음",
+    }),
+    cueSpeech: t({
+      en: "Sound when speech starts and ends",
+      zh: "开始和结束说话时提示音",
+      hi: "बोलना शुरू और ख़त्म होने पर ध्वनि",
+      es: "Sonido al empezar y terminar de hablar",
+      fr: "Son au début et à la fin de la parole",
+      ar: "صوت عند بدء الكلام وانتهائه",
+      bn: "কথা শুরু ও শেষ হলে শব্দ",
+      pt: "Som ao começar e terminar de falar",
+      ru: "Звук в начале и конце речи",
+      ur: "بولنا شروع اور ختم ہونے پر آواز",
+      id: "Suara saat mulai dan selesai bicara",
+      de: "Ton bei Beginn und Ende des Sprechens",
+      ja: "話し始めと話し終わりの音",
+      sw: "Sauti unapoanza na kumaliza kuongea",
+      mr: "बोलणे सुरू व संपल्यावर आवाज",
+      ko: "말하기 시작과 끝 알림음",
+    }),
     compactIdle: t({
       en: "Only the last message while not typing",
       zh: "不打字时只显示最后一条消息",
@@ -1680,6 +1716,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Item in the chat's menu that starts recording voice clips in this window (for testing speech recognition). Imperative phrase.",
   clipsAutoStop:
     "On/off switch in the chat's menu under that item: when on, starting a recording also stops it by itself after {n} minutes. Keep {n}; abbreviate minutes.",
+  cueSend:
+    "On/off switch in the chat's menu, with the voice settings, on by default and following the account: when on, a short tone (no words) plays each time a message the user spoke was recognised and sent. Names the setting as a short noun phrase, not a command.",
+  cueSpeech:
+    "On/off switch right under that one, on by default and following the account: when on, a soft rising tone plays when the microphone hears the user begin to speak, and a falling one when they finish. Speech means the user talking into the mic, not the app reading aloud. Short noun phrase, not a command.",
   compactIdle:
     "On/off switch in the chat's menu, saved on this device only: when on, the open chat shrinks to just its latest message (one short line over the input) whenever the text input is not focused, to cut distraction while talking by voice. Names the setting as a short noun phrase, not a command.",
   compactShowAll:

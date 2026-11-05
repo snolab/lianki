@@ -50,9 +50,10 @@ export const MIC_SESSION_KEY = "__lkMic";
  * Bumped when the session's shape changes; an older one is migrated, its
  * stream kept. A newer one is left alone (an older bundle never downgrades
  * it). 10: it offers finals to the command taps first (mic-taps.ts). 11:
- * reopen (the echo cancellation switch, aec.ts applyAec).
+ * reopen (the echo cancellation switch, aec.ts applyAec). 12: the voice cues
+ * (cues.ts), and the guard over what the VAD hears while one plays.
  */
-export const MIC_SESSION_V = 11;
+export const MIC_SESSION_V = 12;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -88,6 +89,8 @@ export type MicConfig = {
 export type MicDeps = {
   /** The room and voice estimator (adaptive.ts): the endpoint follows it. */
   adapt?: MicAdapt;
+  /** The start and end cues (cues.ts; createMic's `cue`). */
+  cue?: { guard(): boolean; edge(edge: "start" | "end"): void };
   /** getUserMedia with the session's constraints. */
   getStream: () => Promise<StreamLike>;
   /** The VAD on a stream (Silero), and the fallback (an energy gate). Neither stops the stream. */
@@ -259,6 +262,7 @@ export function createMicSession(
       done: (f) => enrolHook?.(f),
     },
     adapt: deps.adapt,
+    cue: deps.cue,
     wake: deps.kws
       ? {
           // In whisper mode it stays active: the spotter is unproven on whispers.

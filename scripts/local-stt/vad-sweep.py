@@ -136,7 +136,7 @@ def colored(n, kind, rng):
 
 
 def ticks(n, db):
-    """The send tick (mic.ts scheduleTick: 880 Hz, plus 1320 Hz from 30 ms, 80 ms decaying), every second."""
+    """A model of the send cue (cues.ts scheduleTick; its first shape: 880 Hz, plus 1320 Hz from 30 ms, 80 ms decaying), every second."""
     out = np.zeros(n, dtype=np.float32)
     k = int(0.08 * RATE)
     t = np.arange(k) / RATE
