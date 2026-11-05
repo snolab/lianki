@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
+import Link from "next/link";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import { longDate } from "@/lib/dates";
@@ -43,12 +44,9 @@ const well = "rounded-lg bg-[oklch(0.97_0.005_260)] dark:bg-[oklch(0.22_0.02_260
 export function WalletCard({
   refreshKey,
   onProChanged,
-  contactEmail = null,
 }: {
   refreshKey: number;
   onProChanged: () => void;
-  /** Who to write to for a top-up while none is possible; null hides the line. */
-  contactEmail?: string | null;
 }) {
   const s = useIntlayer("wallet-card");
   // The balance, pass prices paid from it and history are in credits; yen only
@@ -254,7 +252,7 @@ export function WalletCard({
         {providers.length === 0 ? (
           <>
             <p className={`text-sm ${muted}`}>{s.noProviders.value}</p>
-            {contactEmail && <ContactLine text={s.contact.value} email={contactEmail} />}
+            <ContactLine text={s.contact.value} />
           </>
         ) : (
           <>
@@ -393,18 +391,21 @@ export function WalletCard({
   );
 }
 
-/** "{email}" in the sentence becomes a mailto link to the address. */
-function ContactLine({ text, email }: { text: string; email: string }) {
-  const [before, after = ""] = text.split("{email}");
+/** The "[…]" part of the sentence becomes a link to the contact form. */
+function ContactLine({ text }: { text: string }) {
+  const m = /^(.*?)\[(.+?)\](.*)$/s.exec(text);
+  const [before, label, after] = m ? [m[1], m[2], m[3]] : [text, null, ""];
   return (
     <p className={`text-sm ${muted}`}>
       {before}
-      <a
-        href={`mailto:${email}`}
-        className="font-medium underline underline-offset-2 text-[oklch(0.5_0.2_262)] hover:text-[oklch(0.42_0.2_262)] dark:text-[oklch(0.75_0.14_262)] dark:hover:text-[oklch(0.82_0.12_262)]"
-      >
-        {email}
-      </a>
+      {label && (
+        <Link
+          href="/contacts"
+          className="font-medium underline underline-offset-2 text-[oklch(0.5_0.2_262)] hover:text-[oklch(0.42_0.2_262)] dark:text-[oklch(0.75_0.14_262)] dark:hover:text-[oklch(0.82_0.12_262)]"
+        >
+          {label}
+        </Link>
+      )}
       {after}
     </p>
   );

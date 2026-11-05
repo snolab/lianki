@@ -22,12 +22,7 @@ interface MembershipInfo {
   proEndsAt?: string;
 }
 
-export default function MembershipClient({
-  contactEmail = null,
-}: {
-  /** From `CONTACT_EMAIL` (lib/contact.ts); null hides the contact line. */
-  contactEmail?: string | null;
-}) {
+export default function MembershipClient() {
   const router = useRouter();
   const {
     backToHome,
@@ -201,11 +196,7 @@ export default function MembershipClient({
           )}
         </div>
 
-        <WalletCard
-          refreshKey={walletKey}
-          onProChanged={fetchMembership}
-          contactEmail={contactEmail}
-        />
+        <WalletCard refreshKey={walletKey} onProChanged={fetchMembership} />
 
         {/* Features Comparison */}
         <div className="grid md:grid-cols-2 gap-6">
