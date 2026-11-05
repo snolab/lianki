@@ -20,6 +20,8 @@ import {
   customTarget,
   disallow,
   isCustomId,
+  listAllPreviews,
+  listAllowed,
   listPreviews,
   newCustomId,
   openCustomCookie,
@@ -257,6 +259,11 @@ describe("the store", () => {
 
   test("removing a user from the allowlist revokes their previews", async () => {
     const id = await register();
+    expect((await listAllowed(db)).map((a) => a.email)).toEqual(["kisho@example.com"]);
+    expect(await allowByEmail(db, "nobody@example.com", OWNER, t)).toBeNull();
+    expect((await listAllPreviews(db, t)).map((p) => [p.id, p.email])).toEqual([
+      [id, "kisho@example.com"],
+    ]);
     expect(await disallow(db, KISHO, OWNER, t)).toBe(true);
     expect(await previewFor(db, id, { userId: KISHO, owner: false, flagOn: true }, t)).toBeNull();
     expect(
@@ -526,6 +533,134 @@ describe("subresources and the backend", () => {
         body: "<html><body>prod</body></html>",
       });
     }
+  });
+
+  test("the default resolver asks the app's /api/live-previews/<id> with the Cookie only", async () => {
+    const id = await register();
+    const asked: Request[] = [];
+    const appNext = async (r: Request) => {
+      const u = new URL(r.url);
+      if (u.pathname.startsWith("/api/live-previews/")) {
+        asked.push(r);
+        const mine = (r.headers.get("cookie") ?? "").includes("tok-k.sig");
+        const p = await previewFor(db, u.pathname.split("/").pop()!, {
+          userId: mine ? KISHO : OTHER,
+          owner: false,
+          flagOn: true,
+        });
+        if (!p) return new Response("{}", { status: 404 });
+        return Response.json({ ...p, owner: false });
+      }
+      return next(r);
+    };
+    const lp = createLivePage({
+      now: () => t,
+      keys: async () => [],
+      isOwner: async () => false,
+      fetch: async (r) => {
+        upCalls.push(r);
+        return upstream(r);
+      },
+    });
+    const mine = await lp.handle(
+      req(`/?live=${id}`, { ...DOC, cookie: cookieFor("tok-k.sig"), authorization: "Bearer x" }),
+      ENV(),
+      appNext,
+    );
+    expect(await mine.text()).toContain("custom page");
+    expect(asked[0].url).toBe(`https://lianki.com/api/live-previews/${id}`);
+    expect([...asked[0].headers.keys()]).toEqual(["cookie"]);
+    const theirs = await lp.handle(
+      req(`/?live=${id}`, { ...DOC, cookie: cookieFor("tok-o.sig") }),
+      ENV(),
+      appNext,
+    );
+    expect(await theirs.text()).toContain("prod");
+    // A malformed answer, or no session at all: production.
+    const odd = createLivePage({ now: () => t, keys: async () => [], isOwner: async () => false });
+    const bad = await odd.handle(
+      req(`/?live=${id}`, { ...DOC, cookie: cookieFor("tok-k.sig") }),
+      ENV(),
+      async (r) =>
+        new URL(r.url).pathname.startsWith("/api/") ? Response.json({ id, target: 1 }) : next(r),
+    );
+    expect(await bad.text()).toContain("prod");
+    const thrown = await odd.handle(
+      req(`/?live=${id}`, { ...DOC, cookie: cookieFor("tok-k.sig") }),
+      ENV(),
+      async (r) => {
+        if (new URL(r.url).pathname.startsWith("/api/")) throw new Error("x");
+        return next(r);
+      },
+    );
+    expect(await thrown.text()).toContain("prod");
+  });
+
+  test("RSC fetches need the live Referer; the HMR socket goes up; 5xx and unreachable", async () => {
+    const { lp, id, cookie } = await enter();
+    const both = `${cookie}; ${cookieFor("tok-k.sig")}`;
+    upstream = async () => new Response("rsc");
+    const noRef = await lp.handle(req("/list", { cookie: both, rsc: "1" }), ENV(), next);
+    expect(await noRef.text()).toContain("prod");
+    const ref = await lp.handle(
+      req("/list", { cookie: both, rsc: "1", referer: `https://lianki.com/words?live=${id}` }),
+      ENV(),
+      next,
+    );
+    expect(await ref.text()).toBe("rsc");
+    upstream = async () => new Response(null, { status: 200, headers: { "x-up": "1" } });
+    const ws = await lp.handle(
+      req("/_next/webpack-hmr", {
+        cookie: both,
+        upgrade: "websocket",
+        "sec-websocket-key": "k",
+        "sec-websocket-version": "13",
+        "sec-websocket-protocol": "vite-hmr",
+      }),
+      ENV(),
+      next,
+    );
+    expect(ws.headers.get("content-security-policy")).toContain("connect-src");
+    expect(upCalls.at(-1)?.headers.get("sec-websocket-protocol")).toBe("vite-hmr");
+    expect(upCalls.at(-1)?.headers.get("cookie")).toBeNull();
+    upstream = async () => {
+      throw new Error("down");
+    };
+    const down = await lp.handle(req("/_next/a.js", { cookie: both }), ENV(), next);
+    expect(down.status).toBe(504);
+    upstream = async () => new Response("boom", { status: 502 });
+    const five = await lp.handle(
+      req(`/words?live=${id}`, { ...DOC, cookie: cookieFor("tok-k.sig") }),
+      ENV(),
+      next,
+    );
+    expect(await five.text()).toContain("dev server 502");
+  });
+
+  test("a 101 from the tunnel is filtered too", async () => {
+    const lp = createLivePage({
+      now: () => t,
+      keys: async () => [],
+      isOwner: async () => false,
+      resolveCustom: async (_r, id) => {
+        const p = await previewFor(db, id, { userId: KISHO, owner: false, flagOn: true }, t);
+        return p && { id, target: p.target, expiresAt: p.expiresAt, userId: KISHO, owner: false };
+      },
+      fetch: async (r) =>
+        r.headers.get("upgrade")
+          ? ({ status: 101, headers: new Headers({ "set-cookie": "x=1" }) } as Response)
+          : upstream(r),
+    });
+    const { cookie } = await enter(lp);
+    const r = await lp.handle(
+      req("/_next/webpack-hmr", {
+        cookie: `${cookie}; ${cookieFor("tok-k.sig")}`,
+        upgrade: "websocket",
+      }),
+      ENV(),
+      next,
+    );
+    expect(r.status).toBe(502); // no respond101 given: never a raw upgrade
   });
 
   test("a document without ?live, or ?live=off, leaves", async () => {
