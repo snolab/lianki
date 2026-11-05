@@ -5,6 +5,7 @@ import type { FlagKey } from "@/lib/flags";
 import type { FlagLogEntry, FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { card, FlagCard, jst } from "./FlagCard";
+import { FLAG_HIGHLIGHT_MS, scrollToFlag } from "./flag-anchor";
 
 type State = {
   flags: FlagRow[];
@@ -19,6 +20,8 @@ export default function FlagsAdmin() {
   const [state, setState] = useState<State | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const loaded = state !== null;
 
   useEffect(() => {
     void (async () => {
@@ -27,6 +30,27 @@ export default function FlagsAdmin() {
       else setMsg(`HTTP ${r.status}`);
     })();
   }, []);
+
+  // /dev/flags#<key>: the cards exist only after the fetch above, so the browser's
+  // own jump to the fragment finds nothing. This effect runs once they are in the DOM.
+  useEffect(() => {
+    if (!loaded) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const goToHash = () => {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const key = scrollToFlag(document, window.location.hash, reduce);
+      if (!key) return;
+      setHighlighted(key);
+      clearTimeout(timer);
+      timer = setTimeout(() => setHighlighted(null), FLAG_HIGHLIGHT_MS);
+    };
+    goToHash();
+    window.addEventListener("hashchange", goToHash);
+    return () => {
+      window.removeEventListener("hashchange", goToHash);
+      clearTimeout(timer);
+    };
+  }, [loaded]);
 
   async function toggle(f: FlagRow) {
     const enabled = !f.enabled;
@@ -59,6 +83,7 @@ export default function FlagsAdmin() {
           flag={f}
           failed={state.prereqs?.[f.key]}
           busy={busy !== null}
+          highlighted={highlighted === f.key}
           onToggle={() => void toggle(f)}
         />
       ))}

@@ -52,10 +52,13 @@ QA may run at any hour, but the Mac must not make a sound:
   and every engine gets an init script that mutes media elements, zeroes Web
   Audio and stubs `speechSynthesis`.
   `unit/qa-silent.test.ts` fails on a launcher that skips it.
-- `bun run qa:all` runs under `scripts/qa/with-muted-mac.sh`. It mutes the
-  Mac's output for the run, restores the previous state afterwards, is
-  ref-counted across concurrent runs, and survives `kill -9`. Wrap any other
-  browser script the same way: `bash scripts/qa/with-muted-mac.sh <cmd>`.
+- `bun run qa:all` holds `scripts/qa/with-muted-mac.sh` around its browser
+  suites only: not the build, not the API suite. It mutes the Mac's output,
+  restores the previous mute and volume afterwards, is ref-counted across
+  concurrent runs, and survives `kill -9`. `bun test`, lint and typecheck never
+  touch the sound. Wrap any other browser script the same way:
+  `bash scripts/qa/with-muted-mac.sh <cmd>`. Each mute and restore is logged in
+  `~/.cache/lianki-qa-mute/log`.
 
 ### QA the **deployed D1/Workers path** — `bun run qa:all`
 

@@ -34,6 +34,8 @@ export type InboxUse = {
   bytes: number;
   /** storage: the span it covers, in ms. */
   ms?: number;
+  /** The same R2 costs for something other than the inbox (lib/profile: a user's avatar). */
+  what?: "avatar";
 };
 
 /** Settle one cost against the user: recorded now; the debit lands here once the unit exists. */
@@ -45,6 +47,7 @@ export async function chargeInbox(userId: string, use: InboxUse) {
       kind: use.kind,
       usd: use.usd,
       bytes: use.bytes,
+      ...(use.what ? { what: use.what } : {}),
       ...(use.ms !== undefined ? { ms: use.ms } : {}),
     }),
   );

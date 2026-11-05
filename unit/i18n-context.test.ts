@@ -39,6 +39,7 @@ import booksPage from "@/app/(app)/books/page.content";
 import readFormTags from "@/app/(app)/read/read-form-tags.content";
 import learnerLevels from "@/app/components/level-badge.content";
 import learnerLevelUi from "@/app/components/level-ui.content";
+import profileEdit from "@/app/(app)/profile/profile-edit.content";
 import byokSettings from "@/app/components/byok-settings.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
@@ -109,6 +110,7 @@ describe.each([
   ["read-form-tags", readFormTags],
   ["learner-levels", learnerLevels],
   ["learner-level-ui", learnerLevelUi],
+  ["profile-edit", profileEdit],
   ["byok-settings", byokSettings],
   ["privacy-page", privacyPage],
 ])("%s", (_name, dict) => {

@@ -262,6 +262,67 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   await phone.close();
 }
 
+// 5b2. Name and picture: pen, edit, save; the nav changes without a reload.
+{
+  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  const shown = page.locator("[data-profile-menu]");
+  await page.getByTestId("edit-name").click();
+  const input = page.locator("#profile-name");
+  await input.fill("Not saved");
+  await input.press("Escape");
+  await page.getByTestId("edit-name").waitFor({ timeout: 5000 });
+  check(!(await page.getByText("Not saved").count()), "profile: Esc cancels the name edit");
+  await page.getByTestId("edit-name").click();
+  await input.fill("  Renamed QA ");
+  await input.press("Enter");
+  await page.getByText("Renamed QA").first().waitFor({ timeout: 10000 });
+  await page.waitForFunction(
+    () => document.querySelector("[data-profile-menu]")?.textContent?.includes("Renamed QA"),
+    undefined,
+    { timeout: 10000 },
+  );
+  check(true, "profile: Enter saves the name, and the nav shows it");
+
+  // A real picture, drawn in the page: the browser's own downscale runs on it.
+  const png = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 900;
+    c.height = 600;
+    const x = c.getContext("2d");
+    x.fillStyle = "seagreen";
+    x.fillRect(0, 0, 900, 600);
+    return c.toDataURL("image/png").split(",")[1];
+  });
+  await page.getByTestId("avatar-file").setInputFiles({
+    name: "me.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(png, "base64"),
+  });
+  await page.getByTestId("remove-avatar").waitFor({ timeout: 15000 });
+  const size = await page.getByTestId("profile-avatar").evaluate(async (i) => {
+    await i.decode();
+    return [i.naturalWidth, i.naturalHeight];
+  });
+  check(
+    size[0] === 512 && size[1] === 512,
+    `profile: picture cropped to a 512 px square (${size})`,
+  );
+  await shown.locator('img[src^="/api/avatar/"]').waitFor({ timeout: 10000 });
+  check(true, "…and the nav shows it without a reload");
+
+  await page.getByTestId("avatar-file").setInputFiles({
+    name: "evil.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"),
+  });
+  await page.getByText("can't be used as a photo").waitFor({ timeout: 5000 });
+  check(true, "profile: an SVG renamed .png is refused");
+
+  await page.getByTestId("remove-avatar").click();
+  await page.getByTestId("remove-avatar").waitFor({ state: "detached", timeout: 10000 });
+  check(true, "profile: the picture can be removed");
+}
+
 // 5c. Passkeys: add one on the profile page, rename it, sign out, sign back in
 // with it, then delete it.
 {

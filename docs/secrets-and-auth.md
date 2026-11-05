@@ -53,6 +53,41 @@ secrets or settings: it is always on.
 - QA: `scripts/qa/qa-ui.mjs` drives the whole loop with a CDP virtual
   authenticator.
 
+## Profile edits
+
+`/profile` edits the display name and the picture (`lib/profile/`,
+`app/(app)/profile/ProfileFields.tsx`). Every write is same-origin, for the
+session's own user; nothing in a request can name a user.
+
+- **better-auth's HTTP `/update-user` is closed**: `disabledPaths:
+  ["/update-user"]`, because over HTTP it would store any string as a name or
+  image. `POST /api/profile/name` and `/api/profile/avatar` validate and then call
+  `auth.api.updateUser` server-side, which `disabledPaths` does not touch.
+- **Name** (`cleanName`): NFC, control and bidi-override characters out, spaces
+  collapsed and trimmed, at most `PROFILE.nameMaxChars` characters.
+- **Picture**: the browser crops it to a centred square, shrinks it and re-encodes
+  it (WebP, else JPEG; EXIF goes with it). The server takes only JPEG, WebP or PNG
+  **by their magic bytes** (`lib/inbox/sniff.ts`; no SVG, no GIF), within
+  `PROFILE.avatarMaxBytes`. R2 `lianki-blobs` key: `avatars/<user id>/<random id>`.
+  D1 `user_avatar` holds the key, the size and `previousImage` (the provider's
+  picture it replaced). A new upload deletes the old object; **Remove** deletes the
+  upload and goes back to `previousImage`, or to none. A provider's picture with no
+  upload has nothing to remove.
+- **Serving**: `GET /api/avatar/<user id>/<random id>` needs no session (the
+  picture shows wherever its owner does, such as chat avatars; the id is random).
+  Only an allowed stored type is sent, with `nosniff` and a sandbox CSP. A new upload
+  is a new URL, so it is `immutable`. `user.image` holds the same-origin path;
+  `/api/debug/identity` makes it absolute for the chat hub. `next/image` can't load
+  `/api/*` under OpenNext, so the nav passes `unoptimized` for these.
+- **Limits** (`lib/profile/config.ts`, D1 `hit()` per user): 20 name changes per
+  10 minutes; 10 uploads or removals per hour.
+- **Cost**: `chargeInbox` with `what: "avatar"`, log-only as the inbox (upload,
+  read, and storage settled when the avatar is replaced or removed).
+
+A picture stays until replaced or removed. There is no account deletion in the
+app today; when one comes, it has to delete `avatars/<user id>/` too (the row
+cascades, the object does not).
+
 ## Google OAuth
 
 Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between

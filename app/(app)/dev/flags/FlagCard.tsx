@@ -16,8 +16,11 @@ export const jst = (iso: string) =>
 export const card =
   "rounded-lg border border-[oklch(0_0_0/0.1)] dark:border-[oklch(1_0_0/0.1)] p-4 space-y-2";
 
+export const FLAG_HIGHLIGHT =
+  "bg-[oklch(0.95_0.07_95)] dark:bg-[oklch(0.35_0.07_95)] outline-2 outline-[oklch(0.75_0.15_85)]";
+
 /**
- * One flag on /dev/flags. A flag whose prerequisites fail cannot be turned on:
+ * One flag on /dev/flags; its `id` is the key, so /dev/flags#<key> links to it. A flag whose prerequisites fail cannot be turned on:
  * its switch is greyed and disabled, with every reason listed. If it is on
  * anyway (turned on before the check existed, or a secret removed since), the
  * switch stays usable so it can always be turned off — the kill switch.
@@ -26,18 +29,27 @@ export function FlagCard({
   flag: f,
   failed = [],
   busy,
+  highlighted = false,
   onToggle,
 }: {
   flag: FlagRow;
   failed?: PrereqFailure[];
   busy: boolean;
+  /** Reached by a /dev/flags#<key> link just now. */
+  highlighted?: boolean;
   onToggle: () => void;
 }) {
   const blocked = failed.length > 0;
   const locked = blocked && !f.enabled;
   const money = (FLAGS[f.key] as FlagDef).money === true;
   return (
-    <section className={card} data-flag={f.key} data-blocked={blocked || undefined}>
+    <section
+      id={f.key}
+      className={`${card} scroll-mt-20 transition-colors duration-500 ${highlighted ? FLAG_HIGHLIGHT : ""}`}
+      data-flag={f.key}
+      data-blocked={blocked || undefined}
+      data-highlighted={highlighted || undefined}
+    >
       <div className="flex items-center justify-between gap-3">
         <code className="font-mono text-sm break-all">{f.key}</code>
         <button

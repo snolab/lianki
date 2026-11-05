@@ -132,6 +132,15 @@ memory. `lib/security/upload-policy.ts`:
 
 Every other import takes JSON validated by zod.
 
+**BYOK relay** (`POST /api/byok/proxy`, docs/byok.md "The relay"). The one
+place the server sends a request to a user-influenced address, so it is not
+an open proxy: it forwards only to an allowlist of AI provider hosts and
+paths (data in `lib/byok/presets.ts`, changed only by a reviewed PR), https
+on 443, same-origin JSON only, with DoH resolution refusing any non-public
+address, manual redirects re-checked against the allowlist, body/answer/time
+caps, per-IP/user/global rate limits, and no logging of keys, headers, URLs
+or bodies. Nothing is stored. Residual risk (DNS rebinding) is in that doc.
+
 ## 3. Vulnerability checks (脆弱性対策 ③)
 
 `.github/workflows/security.yml`:
