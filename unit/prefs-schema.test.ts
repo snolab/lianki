@@ -82,6 +82,8 @@ describe("prefs schema: values", () => {
       "chat-voice.rate": 1.25,
       "chat-voice.out": "cloud",
       "chat-voice.speak": false,
+      "chat-voice.cueSend": false,
+      "chat-voice.cueSpeech": true,
     };
     for (const [k, v] of Object.entries(ok)) expect(checkPref(k, v)).toEqual(v);
   });

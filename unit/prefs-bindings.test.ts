@@ -60,6 +60,8 @@ const SAMPLE: Record<string, unknown> = {
   "chat-voice.rate": 2,
   "chat-voice.out": "cloud",
   "chat-voice.speak": false,
+  "chat-voice.cueSend": false,
+  "chat-voice.cueSpeech": false,
 };
 
 describe("prefBindings", () => {

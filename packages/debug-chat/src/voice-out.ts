@@ -91,7 +91,7 @@ export const appliedSettings = () => applied;
 
 /**
  * The page's one AudioContext for voice: the energy fallback records through
- * it, the send tick plays on it, and cloud replies play through it. Made on
+ * it, the voice cues play on it, and cloud replies play through it. Made on
  * the mic tap (a gesture, which iOS needs).
  */
 let audio: AudioContext | null = null;

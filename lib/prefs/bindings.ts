@@ -216,6 +216,8 @@ export function prefBindings(): PrefBinding[] {
       read: () => getRaw("lk:agent-chat-speak") ?? getRaw("lk:debug-chat-speak"),
       also: (v) => setRaw("lk:debug-chat-speak", v ? "1" : "0"),
     }),
+    plain("chat-voice.cueSend", "lk:voice-cue-send", bool10, true),
+    plain("chat-voice.cueSpeech", "lk:voice-cue-speech", bool10, true),
     // The user's own AI backend (docs/byok.md), only while they sync it (null:
     // they do not). Its own key: the API key (`lk:byok`) is never a binding.
     plain("byok.backend", BYOK_BACKEND_KEY, jsonCodec, null),
