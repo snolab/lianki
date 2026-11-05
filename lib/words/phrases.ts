@@ -8,20 +8,26 @@
  */
 import { descendants, type FlatItem, type TreeNode } from "./tree";
 
-/** The scenarios, in the order the picker lists them. */
+/**
+ * The scenarios, in the order the picker lists them: survival first (owner,
+ * 2026-11-05 "目标是 survive" — what you need to get by when living or
+ * travelling there), the rest of daily life after.
+ */
 export const SCENARIOS = [
-  "greetings",
-  "small-talk",
+  "emergency",
+  "health",
+  "transport",
   "restaurant",
   "shopping",
-  "transport",
   "hotel",
+  "admin",
+  "greetings",
+  "feelings",
+  "help",
+  "phone",
+  "small-talk",
   "work",
   "school",
-  "health",
-  "phone",
-  "emergency",
-  "feelings",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 export const isScenario = (s: unknown): s is Scenario => SCENARIOS.includes(s as Scenario);
@@ -34,12 +40,14 @@ export const SCENARIO_EN: Record<Scenario, string> = {
   shopping: "Shopping and paying",
   transport: "Transport and directions",
   hotel: "Hotel and travel",
+  admin: "Paperwork, bank and services",
   work: "Work and office",
   school: "School and class",
   health: "Health and pharmacy",
   phone: "Phone, messaging and online",
   emergency: "Emergencies and police",
   feelings: "Feelings, thanks and apologies",
+  help: "Asking for help, not understanding",
 };
 
 export const REGISTERS = ["casual", "polite"] as const;
@@ -69,32 +77,80 @@ export const tatoebaId = (src: string) => TATOEBA.exec(src)?.[1] ?? null;
 
 export const phraseListId = (lang: string, s: Scenario) => `${lang}-phrases-${s}`;
 
-/** Longest phrase, in characters: short enough to say in one breath (≈ 8 words). */
-export const MAX_TERM: Record<string, number> = { ja: 20, zh: 14 };
+/**
+ * What a language's phrases must look like, as data (no per-language code):
+ * - `max`: longest phrase, short enough to say in one breath (≈ 8 words),
+ *   counted in `unit`: characters for a language written without spaces,
+ *   words otherwise;
+ * - `scripts`: the Unicode scripts its letters may be in (Common and
+ *   Inherited marks such as ー are always fine; LOANS are allowed as is);
+ * - `need`: a letter of one of these scripts must appear;
+ * - `reading`: what a `reading` may contain, when the language has one.
+ */
+export type PhraseLangRule = {
+  max: number;
+  unit: "char" | "word";
+  scripts: readonly string[];
+  need?: readonly string[];
+  reading?: { pattern: RegExp; name: string };
+};
+
+/** Pinyin: Latin letters with tone marks, spaces and the punctuation phrases keep. */
+const PINYIN = /^[a-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü' ，。？！,.?!]+$/;
+/** Kana, with the marks and punctuation (Common) a reading keeps. */
+const KANA_ONLY = /^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Common}\s]+$/u;
+
+export const PHRASE_LANG: Record<string, PhraseLangRule> = {
+  ja: {
+    max: 20,
+    unit: "char",
+    scripts: ["Hiragana", "Katakana", "Han"],
+    need: ["Hiragana", "Katakana", "Han"],
+    reading: { pattern: KANA_ONLY, name: "kana" },
+  },
+  zh: {
+    max: 14,
+    unit: "char",
+    scripts: ["Han"],
+    need: ["Han"],
+    reading: { pattern: PINYIN, name: "pinyin" },
+  },
+  fr: { max: 8, unit: "word", scripts: ["Latin"], need: ["Latin"] },
+};
+/** Any other language: written in words, script unchecked. */
+const DEFAULT_RULE: PhraseLangRule = { max: 8, unit: "word", scripts: [] };
+export const phraseRule = (lang: string): PhraseLangRule => PHRASE_LANG[lang] ?? DEFAULT_RULE;
+
+/** Words of a phrase, for the `word` length unit ("l'heure" is two). */
+export const phraseWords = (term: string) =>
+  term.split(/[\s'’]+/u).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+/** A phrase's length in its language's unit. */
+export const phraseLength = (lang: string, term: string) =>
+  phraseRule(lang).unit === "word" ? phraseWords(term) : [...term.trim()].length;
+
 export const MAX_BACK = 60;
 export const MAX_NOTE = 90;
 export const MAX_SCENE = 40;
 
-const KANA = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
-const HAN = /\p{Script=Han}/u;
-const LATIN = /\p{Script=Latin}/u;
 const DIGIT = /[0-9０-９]/;
 /** Latin words that phrases write as is ("WiFi密码是多少？", "OKです"). */
-const LOANS = /\b(WiFi|Wi-Fi|OK|APP|PPT|ID|LINE|AED)\b/g;
-/** Pinyin: Latin letters with tone marks, spaces and the punctuation phrases keep. */
-const PINYIN = /^[a-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü' ，。？！,.?!]+$/;
+const LOANS = /\b(WiFi|Wi-Fi|OK|APP|PPT|ID|LINE|AED|SMS)\b/g;
+const scriptClass = (scripts: readonly string[]) => scripts.map((s) => `\\p{Script=${s}}`).join("");
+/** A letter outside `scripts` (Common and Inherited letters are fine). */
+const outside = (scripts: readonly string[]) =>
+  new RegExp(`[^\\P{L}${scriptClass([...scripts, "Common", "Inherited"])}]`, "u");
 
 /**
  * What is wrong with a phrase card, as short messages (none = fine): its
- * fields, its length, and its script (Japanese with kana, Chinese with no
- * kana; no Latin letters or digits in either).
+ * fields, its length, and its script (PHRASE_LANG: letters only in the
+ * language's scripts, no digits, a reading in the language's reading script).
  */
 export function phraseProblems(lang: string, e: PhraseEntry): string[] {
+  const rule = phraseRule(lang);
   const out: string[] = [];
   const term = e.term?.trim() ?? "";
-  const len = [...term].length;
   if (!term) out.push("empty term");
-  if (len > (MAX_TERM[lang] ?? 40)) out.push(`term over ${MAX_TERM[lang]} characters`);
+  if (phraseLength(lang, term) > rule.max) out.push(`term over ${rule.max} ${rule.unit}s`);
   if (!e.back?.trim()) out.push("empty back");
   if ((e.back ?? "").length > MAX_BACK) out.push(`back over ${MAX_BACK} characters`);
   if ((e.note ?? "").length > MAX_NOTE) out.push(`note over ${MAX_NOTE} characters`);
@@ -102,18 +158,13 @@ export function phraseProblems(lang: string, e: PhraseEntry): string[] {
   if (e.register !== undefined && !REGISTERS.includes(e.register))
     out.push(`register "${e.register}"`);
   if (e.src !== GENERATED && !TATOEBA.test(e.src ?? "")) out.push(`src "${e.src}"`);
-  if (LATIN.test(term.replace(LOANS, "")) || DIGIT.test(term))
-    out.push("Latin letters or digits in term");
-  if (lang === "ja") {
-    if (!KANA.test(term) && !HAN.test(term)) out.push("no Japanese script");
-    if (e.reading && (HAN.test(e.reading) || LATIN.test(e.reading)))
-      out.push("reading not in kana");
-  }
-  if (lang === "zh") {
-    if (KANA.test(term)) out.push("kana in a Chinese phrase");
-    if (!HAN.test(term)) out.push("no Han characters");
-    if (e.reading && !PINYIN.test(e.reading.toLowerCase())) out.push("reading not pinyin");
-  }
+  if (DIGIT.test(term)) out.push("digits in term");
+  if (rule.scripts.length && outside(rule.scripts).test(term.replace(LOANS, "")))
+    out.push(`letters outside ${rule.scripts.join("/")} in term`);
+  if (rule.need?.length && !new RegExp(`[${scriptClass(rule.need)}]`, "u").test(term))
+    out.push(`no ${rule.need.join("/")} letters in term`);
+  if (e.reading && rule.reading && !rule.reading.pattern.test(e.reading.toLowerCase()))
+    out.push(`reading not ${rule.reading.name}`);
   return out;
 }
 

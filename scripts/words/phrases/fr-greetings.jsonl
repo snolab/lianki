@@ -1,0 +1,200 @@
+// fr-greetings: written by build-scene-sentences.ts; edit the lexicon, not this file
+{"term":"Pardon. Quel est ton nom?","back":"Sorry, what's your name?","scene":"introducing yourself","src":"tatoeba:6775562","by":"Micsmithel","enId":"1211522","enBy":"alec","auto":true}
+{"term":"Merci de dire bonjour à tes parents.","back":"Please say hello to your parents.","scene":"greeting","src":"tatoeba:1129009","by":"sacredceltic","enId":"1127411","enBy":"CK","auto":true}
+{"term":"Ça va ?","back":"You good?","scene":"greeting","src":"tatoeba:14970","by":"sacredceltic","enId":"13128455","enBy":"menaud","auto":true}
+{"term":"Quoi de beau ?","back":"What's up?","scene":"greeting","src":"tatoeba:334412","by":"sysko","enId":"25164","enBy":"CK","auto":true}
+{"term":"Comment ça va ?","back":"How are you?","scene":"greeting","src":"tatoeba:4189529","by":"Scorpionvenin14","enId":"373320","enBy":"CK","auto":true}
+{"term":"Quoi de nouveau ?","back":"What's new?","scene":"greeting","src":"tatoeba:3259554","by":"nimfeo","enId":"25029","enBy":"CK","auto":true}
+{"term":"Quel est ton nom ?","back":"What's your name?","scene":"introducing yourself","src":"tatoeba:1097924","by":"nimfeo","enId":"408293","enBy":"CK","auto":true}
+{"term":"Comment ça se passe ?","back":"How are you getting along?","scene":"greeting","src":"tatoeba:12243746","by":"Orange","enId":"37554","enBy":"CK","auto":true}
+{"term":"Bonjour, qui êtes-vous ?","back":"Hello, who are you?","scene":"greeting","src":"tatoeba:7708192","by":"felix63","enId":"12100733","enBy":"jezkc","auto":true}
+{"term":"Quel est encore ton nom ?","back":"What's your name again?","scene":"introducing yourself","src":"tatoeba:2041081","by":"sacredceltic","enId":"1886671","enBy":"CK","auto":true}
+{"term":"Avez-vous passé un bon été ?","back":"Did you have a nice summer?","scene":"greeting","src":"tatoeba:1919088","by":"Julien_PDC","enId":"66730","enBy":"CK","auto":true}
+{"term":"Comment cela se passe-t-il ?","back":"How's it going?","scene":"greeting","src":"tatoeba:3640841","by":"sacredceltic","enId":"277972","enBy":"CK","auto":true}
+{"term":"Je veux lui dire bonne nuit.","back":"I want to tell her good night.","scene":"greeting","src":"tatoeba:10948152","by":"lbdx","enId":"3908374","enBy":"CH","auto":true}
+{"term":"Bonjour, comment allez-vous ?","back":"Hello, how are you?","scene":"greeting","src":"tatoeba:5960","by":"TRANG","enId":"138868","enBy":"CK","auto":true}
+{"term":"Comment vas-tu ces temps-ci ?","back":"How are you doing these days?","scene":"greeting","src":"tatoeba:1232123","by":"sacredceltic","enId":"64016","enBy":"CK","auto":true}
+{"term":"Salut, comment tu t'appelles ?","back":"Hello, what's your name?","scene":"greeting","src":"tatoeba:584560","by":"qdii","enId":"435080","enBy":"lukaszpp","auto":true}
+{"term":"As-tu passé une bonne journée ?","back":"Did you have a nice day?","scene":"greeting","src":"tatoeba:12175904","by":"lbdx","enId":"9345774","enBy":"CK","auto":true}
+{"term":"Bonjour ? Salut ! Comment vas-tu ?","back":"Hello? Hi! How are you?","scene":"greeting","src":"tatoeba:7705166","by":"lbdx","enId":"6670138","enBy":"shekitten","auto":true}
+{"term":"Comment vas-tu ces derniers temps ?","back":"How have you been recently?","scene":"greeting","src":"tatoeba:523032","by":"zmoo","enId":"372787","enBy":"sysko","auto":true}
+{"term":"Salut, comment marche ton affaire ?","back":"Hello, how's business?","scene":"greeting","src":"tatoeba:578074","by":"sacredceltic","enId":"30309","enBy":"CM","auto":true}
+{"term":"« Merci beaucoup. » « Tout le plaisir est pour moi. »","back":"\"Thank you very much.\" \"You're very welcome.\"","scene":"greeting","src":"tatoeba:11255973","by":"Micsmithel","enId":"5879585","enBy":"OsoHombre","auto":true}
+{"term":"Salut.","back":"Hi.","scene":"greeting","src":"tatoeba:4320462","by":"gillux","enId":"538123","enBy":"CM","auto":true}
+{"term":"Bonjour.","back":"Hello.","scene":"greeting","src":"tatoeba:3557547","by":"fleur74","enId":"1858850","enBy":"LanguageExpert","auto":true}
+{"term":"Et vous ?","back":"And you?","scene":"greeting","src":"tatoeba:8973","by":"Archibald","enId":"524168","enBy":"lugal","auto":true}
+{"term":"À bientôt !","back":"See you!","scene":"greeting","src":"tatoeba:337862","by":"sysko","enId":"1357251","enBy":"Eldad","auto":true}
+{"term":"Dis bonjour.","back":"Say hello.","scene":"greeting","src":"tatoeba:5364359","by":"pititnatole","enId":"2111563","enBy":"CK","auto":true}
+{"term":"Bonjour papa.","back":"Hello, dad.","scene":"greeting","src":"tatoeba:5255237","by":"martin9","enId":"6586779","enBy":"Eccles17","auto":true}
+{"term":"Salut là-bas !","back":"Hello there!","scene":"greeting","src":"tatoeba:1623695","by":"sacredceltic","enId":"1619718","enBy":"Spamster","auto":true}
+{"term":"Bonjour, père.","back":"Hello, father.","scene":"greeting","src":"tatoeba:9030039","by":"Micsmithel","enId":"8783284","enBy":"jimkillock","auto":true}
+{"term":"Salut, maman !","back":"Hello, Mum!","scene":"greeting","src":"tatoeba:10105823","by":"Micsmithel","enId":"10075778","enBy":"sundown","auto":true}
+{"term":"Bonjour à toi.","back":"Hello to you.","scene":"greeting","src":"tatoeba:12554709","by":"anzart","enId":"12554710","enBy":"anzart","auto":true}
+{"term":"Bonne journée !","back":"Have a nice day.","scene":"greeting","src":"tatoeba:13716","by":"sacredceltic","enId":"30085","enBy":"CK","auto":true}
+{"term":"Bonjour, chéri.","back":"Hello, Honey.","scene":"greeting","src":"tatoeba:5255252","by":"martin9","enId":"1926032","enBy":"rengoldovna","auto":true}
+{"term":"À bientôt donc.","back":"See you soon then.","scene":"greeting","src":"tatoeba:9126765","by":"manuchko","enId":"8472260","enBy":"shekitten","auto":true}
+{"term":"Salut ma belle !","back":"Hello, beautiful!","scene":"greeting","src":"tatoeba:594147","by":"sacredceltic","enId":"1265548","enBy":"Jefepeters","auto":true}
+{"term":"Bonjour parent !","back":"Hello parent!","scene":"greeting","src":"tatoeba:9754725","by":"Micsmithel","enId":"5708675","enBy":"Jojololly","auto":true}
+{"term":"Salut mon vieux !","back":"Hello, old friend!","scene":"greeting","src":"tatoeba:1551225","by":"sacredceltic","enId":"1549913","enBy":"miflhanc","auto":true}
+{"term":"Salut, les gars !","back":"Hello, boys!","scene":"greeting","src":"tatoeba:9820921","by":"Micsmithel","enId":"5077332","enBy":"CarpeLanam","auto":true}
+{"term":"Bonne nuit, papa.","back":"Good night, Dad.","scene":"greeting","src":"tatoeba:11790318","by":"lbdx","enId":"11790316","enBy":"CM","auto":true}
+{"term":"À tout à l'heure !","back":"See you soon!","scene":"greeting","src":"tatoeba:829076","by":"Cocorico","enId":"32672","enBy":"CK","auto":true}
+{"term":"Bonne nuit, maman.","back":"Good night, Mom.","scene":"greeting","src":"tatoeba:10837","by":"sacredceltic","enId":"64833","enBy":"shanghainese","auto":true}
+{"term":"Salut, vieil ami !","back":"Hello, old pal.","scene":"greeting","src":"tatoeba:1099462","by":"sacredceltic","enId":"12530680","enBy":"judahjog","auto":true}
+{"term":"On se voit demain.","back":"See you tomorrow.","scene":"greeting","src":"tatoeba:1186886","by":"sacredceltic","enId":"497969","enBy":"CM","auto":true}
+{"term":"Salut les filles !","back":"Hello, girls.","scene":"greeting","src":"tatoeba:3072570","by":"Blabla","enId":"1641754","enBy":"Amastan","auto":true}
+{"term":"Bonjour, mesdames.","back":"Hello, ladies.","scene":"greeting","src":"tatoeba:5255255","by":"martin9","enId":"2561581","enBy":"Hybrid","auto":true}
+{"term":"Bonne nuit, chéri.","back":"Good night, darling.","scene":"greeting","src":"tatoeba:11790315","by":"lbdx","enId":"11790313","enBy":"CM","auto":true}
+{"term":"Bonne nuit à tous !","back":"Good night, everyone!","scene":"greeting","src":"tatoeba:1226174","by":"sacredceltic","enId":"1082672","enBy":"MUIRIEL","auto":true}
+{"term":"Bonjour, les amis !","back":"Hello, friends!","scene":"greeting","src":"tatoeba:1143815","by":"sacredceltic","enId":"10314836","enBy":"timur_seber","auto":true}
+{"term":"Merci et à bientôt !","back":"Thanks! I'll see you soon!","scene":"greeting","src":"tatoeba:2379930","by":"vandpatr","enId":"2714075","auto":true}
+{"term":"À demain, à l'école.","back":"See you tomorrow at school.","scene":"greeting","src":"tatoeba:15717","by":"nimfeo","enId":"323402","enBy":"CK","auto":true}
+{"term":"Je suis de la ville.","back":"I'm from the city.","scene":"introducing yourself","src":"tatoeba:1743941","by":"sacredceltic","enId":"1743480","enBy":"Spamster","auto":true}
+{"term":"On se voit plus tard.","back":"See you later.","scene":"greeting","src":"tatoeba:1843145","by":"sacredceltic","enId":"1841588","enBy":"CK","auto":true}
+{"term":"Merci et bonne nuit !","back":"Thanks and good night!","scene":"greeting","src":"tatoeba:2714047","by":"Micsmithel","enId":"2714046","auto":true}
+{"term":"Bonjour tout le monde.","back":"Hi everybody.","scene":"greeting","src":"tatoeba:9495","by":"sysko","enId":"10067970","enBy":"tsp_2","auto":true}
+{"term":"Je lui dis bonne nuit.","back":"I wish him a good night.","scene":"greeting","src":"tatoeba:456877","by":"sacredceltic","enId":"457129","enBy":"FeuDRenais","auto":true}
+{"term":"J'espère te voir vite.","back":"I hope I can see you soon.","scene":"greeting","src":"tatoeba:1033254","by":"sacredceltic","enId":"1230478","enBy":"alec","auto":true}
+{"term":"Bonne nuit, mon cœur !","back":"Good night, sweetheart.","scene":"greeting","src":"tatoeba:1910214","by":"sacredceltic","enId":"1909439","enBy":"Spamster","auto":true}
+{"term":"Passe une bonne nuit !","back":"Good night and sleep tight!","scene":"greeting","src":"tatoeba:10684842","by":"Micsmithel","enId":"4597870","enBy":"Ricardo14","auto":true}
+{"term":"Dis bonjour à tes amis.","back":"Say hello to your friends.","scene":"greeting","src":"tatoeba:10316","by":"Sbgodin","enId":"70346","enBy":"CK","auto":true}
+{"term":"Donc, quel est ton nom ?","back":"So, what's your name?","scene":"introducing yourself","src":"tatoeba:3586633","by":"sacredceltic","enId":"2745375","enBy":"Hybrid","auto":true}
+{"term":"J'espère te voir demain.","back":"I hope to see you tomorrow.","scene":"greeting","src":"tatoeba:8392298","by":"Aiji","enId":"5205849","enBy":"CK","auto":true}
+{"term":"Mon nom est écrit dessus.","back":"My name is written on it.","scene":"introducing yourself","src":"tatoeba:12200740","by":"felix63","enId":"12200920","enBy":"Miktsoanit","auto":true}
+{"term":"Bonne journée. À bientôt.","back":"Good day. See you soon.","scene":"greeting","src":"tatoeba:11737","by":"sacredceltic","enId":"53177","auto":true}
+{"term":"J'espère te voir bientôt.","back":"I hope to see you soon.","scene":"greeting","src":"tatoeba:1725273","by":"sacredceltic","enId":"18711","enBy":"CK","auto":true}
+{"term":"Je viens d'un autre pays.","back":"I'm from another country.","scene":"introducing yourself","src":"tatoeba:13272073","by":"lbdx","enId":"13272069","enBy":"frpzzd","auto":true}
+{"term":"On se voit tout à l'heure.","back":"I'll see you later.","scene":"greeting","src":"tatoeba:2842022","by":"Aiji","enId":"32706","enBy":"CK","auto":true}
+{"term":"Bonne journée et à demain !","back":"Have a nice day and see you tomorrow!","scene":"greeting","src":"tatoeba:6637785","by":"felix63","enId":"13715703","enBy":"zogwarg","auto":true}
+{"term":"Dis-lui bonjour de ma part.","back":"Tell him I said hello.","scene":"greeting","src":"tatoeba:7703160","by":"Rockaround","enId":"3908132","enBy":"CH","auto":true}
+{"term":"Je ne veux pas dire bonjour.","back":"I don't want to say \"hello\".","scene":"greeting","src":"tatoeba:1306347","by":"sacredceltic","enId":"1305706","auto":true}
+{"term":"Je viendrai te voir bientôt.","back":"I'll come see you soon.","scene":"greeting","src":"tatoeba:7699778","by":"Maxence","enId":"13806194","enBy":"tieguy","auto":true}
+{"term":"Bonjour à vous, les filles !","back":"Hello to you girls!","scene":"greeting","src":"tatoeba:10496295","by":"pkill","enId":"11713128","enBy":"LdjuherTaqvaylit","auto":true}
+{"term":"Dis-leur bonjour de ma part.","back":"Tell them I said hello.","scene":"greeting","src":"tatoeba:12437246","by":"lbdx","enId":"3908131","enBy":"CH","auto":true}
+{"term":"Je te verrai demain à l'école.","back":"I'll see you tomorrow at school.","scene":"greeting","src":"tatoeba:3229753","by":"sacredceltic","enId":"3218368","enBy":"Hybrid","auto":true}
+{"term":"Je viendrai te voir plus tard.","back":"I'll come and see you later.","scene":"greeting","src":"tatoeba:3530962","by":"sacredceltic","enId":"240113","enBy":"CK","auto":true}
+{"term":"Je viens d'une grande famille.","back":"I'm from a big family.","scene":"introducing yourself","src":"tatoeba:7373137","by":"Rockaround","enId":"2547222","enBy":"CK","auto":true}
+{"term":"« Comment vas-tu ? » « Ça va. »","back":"\"How are you?\" \"Good.\"","scene":"greeting","src":"tatoeba:1051924","by":"sacredceltic","enId":"5881854","enBy":"Catriona","auto":true}
+{"term":"Salut tout le monde ! Bonjour !","back":"Hello everyone! Good morning!","scene":"greeting","src":"tatoeba:6169876","by":"felix63","enId":"6743369","enBy":"Eccles17","auto":true}
+{"term":"Ici, je me sens comme chez moi.","back":"I feel welcome here.","scene":"greeting","src":"tatoeba:7414350","by":"Rockaround","enId":"4498567","enBy":"CK","auto":true}
+{"term":"Je te verrai plus tard ce soir.","back":"I will see you later tonight.","scene":"greeting","src":"tatoeba:12304477","by":"Rovo","enId":"6103705","enBy":"OsoHombre","auto":true}
+{"term":"Bonjour, bonne journée à vous !","back":"Hello, have a great day!","scene":"greeting","src":"tatoeba:12553088","by":"anzart","enId":"12553089","enBy":"anzart","auto":true}
+{"term":"Je veux juste vous dire bonjour.","back":"I just want to say hello.","scene":"greeting","src":"tatoeba:11770864","by":"Jubaamrani","enId":"3552258","enBy":"DostKaplan","auto":true}
+{"term":"Il se peut que je te voie demain.","back":"I might see you tomorrow.","scene":"greeting","src":"tatoeba:8626995","by":"sacredceltic","enId":"6531836","enBy":"CK","auto":true}
+{"term":"Je suis juste passé dire bonjour.","back":"I just stopped by to say hello.","scene":"greeting","src":"tatoeba:11228921","by":"lbdx","enId":"2373985","enBy":"CK","auto":true}
+{"term":"Dis bonjour à ta maman de ma part.","back":"Say hello to your mum for me.","scene":"greeting","src":"tatoeba:337982","by":"sysko","enId":"337983","enBy":"sysko","auto":true}
+{"term":"Je ne t'ai pas vu depuis longtemps.","back":"I haven't seen you in a long time.","scene":"greeting","src":"tatoeba:1359338","by":"sacredceltic","enId":"417011","enBy":"CK","auto":true}
+{"term":"Je dois y aller maintenant. Salut !","back":"I have to go now. Bye!","scene":"greeting","src":"tatoeba:11165612","by":"lbdx","enId":"2093311","enBy":"gleki","auto":true}
+{"term":"Ça faisait un moment, n'est-ce pas ?","back":"Been a while, hasn't it?","scene":"greeting","src":"tatoeba:1111559","by":"sacredceltic","enId":"1111553","enBy":"Scott","auto":true}
+{"term":"Hé toi, petit, comment t'appelles-tu ?","back":"Hey you, boy, what is your name?","scene":"introducing yourself","src":"tatoeba:6864028","by":"GB3","enId":"3305111","enBy":"oyd11","auto":true}
+{"term":"« Comment vas-tu ? » « Pas trop mal. »","back":"\"How are you doing?\" \"Not bad.\"","scene":"greeting","src":"tatoeba:11233169","by":"Micsmithel","enId":"1051927","enBy":"CK","auto":true}
+{"term":"Nous avons passé une bonne soirée, hier.","back":"We spent a good evening together yesterday.","scene":"greeting","src":"tatoeba:1124741","by":"sysko","enId":"5715667","enBy":"CardinalRed","auto":true}
+{"term":"Je serai pas contre passer une bonne soirée.","back":"I'm not averse to a good night out.","scene":"greeting","src":"tatoeba:4033115","by":"Scorpionvenin14","enId":"4032957","enBy":"Dani6187","auto":true}
+{"term":"Bonsoir ! Comment ça va ?","back":"Good evening. How are you?","scene":"greeting","src":"tatoeba:1114536","by":"sacredceltic","enId":"6985178","enBy":"Eccles17","auto":true}
+{"term":"Suis-je le bienvenu ici ?","back":"Am I welcome here?","scene":"greeting","src":"tatoeba:8703655","by":"Julien_PDC","enId":"3434346","enBy":"CK","auto":true}
+{"term":"Bonjour, je vous dérange ?","back":"Good morning, am I disturbing you?","scene":"greeting","src":"tatoeba:5638387","by":"Blabla","enId":"5643832","enBy":"narnar","auto":true}
+{"term":"Bonjour, avez-vous déjà déjeuné ?","back":"Hello, have you already eaten?","scene":"greeting","src":"tatoeba:1143795","by":"sacredceltic","enId":"1926409","enBy":"dexique","auto":true}
+{"term":"Bonsoir.","back":"Good evening.","scene":"greeting","src":"tatoeba:7579945","by":"Borkonall","enId":"333156","enBy":"Aurix","auto":true}
+{"term":"Bonsoir, chérie !","back":"Good evening, darling!","scene":"greeting","src":"tatoeba:3089150","by":"Blabla","enId":"6586698","enBy":"Eccles17","auto":true}
+{"term":"Bonjour, mon cher.","back":"Hello, my dear.","scene":"greeting","src":"tatoeba:948157","by":"U2FS","enId":"592189","enBy":"880326119","auto":true}
+{"term":"Bonsoir monsieur !","back":"Good evening, sir!","scene":"greeting","src":"tatoeba:2186379","by":"nimfeo","enId":"9011917","enBy":"jaydenms","auto":true}
+{"term":"Bienvenue chez moi.","back":"You are welcome at my place.","scene":"greeting","src":"tatoeba:11146145","by":"Aiji","enId":"8172315","enBy":"abburns","auto":true}
+{"term":"Bonjour, professeur!","back":"Hello, professor!","scene":"greeting","src":"tatoeba:5255247","by":"martin9","enId":"6586782","enBy":"Eccles17","auto":true}
+{"term":"Salut la compagnie !","back":"Hello everyone!","scene":"greeting","src":"tatoeba:10015073","by":"Micsmithel","enId":"854117","enBy":"piksea","auto":true}
+{"term":"Bonne nuit, ma chère.","back":"Good night, my love.","scene":"greeting","src":"tatoeba:5859110","by":"dufromage","enId":"5857232","enBy":"OsoHombre","auto":true}
+{"term":"Tu es le bienvenu ici.","back":"You are welcome here.","scene":"greeting","src":"tatoeba:6774341","by":"Micsmithel","enId":"1152132","enBy":"cntrational","auto":true}
+{"term":"Bonjour et bienvenue !","back":"Hello and welcome!","scene":"greeting","src":"tatoeba:10460024","by":"pkill","enId":"12484024","enBy":"LanguageExpert","auto":true}
+{"term":"Je ne suis pas du coin.","back":"I'm from out of town.","scene":"introducing yourself","src":"tatoeba:4862652","by":"sacredceltic","enId":"2547775","enBy":"CK","auto":true}
+{"term":"Je suis ravi de te voir.","back":"I'm pleased to see you.","scene":"greeting","src":"tatoeba:862311","by":"sacredceltic","enId":"63901","enBy":"CK","auto":true}
+{"term":"Bonne nuit, chère amie !","back":"Good night, dear friend!","scene":"greeting","src":"tatoeba:1143756","by":"sacredceltic","enId":"1742315","enBy":"belgavox","auto":true}
+{"term":"Bonsoir, tout le monde !","back":"Good evening, everyone.","scene":"greeting","src":"tatoeba:2099364","by":"sacredceltic","enId":"2094776","enBy":"CK","auto":true}
+{"term":"Bonjour, mon beau soleil.","back":"Hello, sunshine.","scene":"greeting","src":"tatoeba:9025651","by":"Micsmithel","enId":"8885169","enBy":"soliloquist","auto":true}
+{"term":"Tu seras toujours bienvenu.","back":"You will always be welcome.","scene":"greeting","src":"tatoeba:1587648","by":"sacredceltic","enId":"1587254","enBy":"Spamster","auto":true}
+{"term":"Bienvenue, comment vas-tu ?","back":"Welcome, how's it going?","scene":"greeting","src":"tatoeba:10460026","by":"pkill","enId":"13139712","enBy":"rul","auto":true}
+{"term":"Tu n’es pas le bienvenu ici.","back":"You're not welcome here.","scene":"greeting","src":"tatoeba:9358029","by":"felix63","enId":"2021193","enBy":"Spamster","auto":true}
+{"term":"Je viens d'une autre planète.","back":"I'm from another planet.","scene":"introducing yourself","src":"tatoeba:8420902","by":"Aiji","enId":"5269975","enBy":"AlanF_US","auto":true}
+{"term":"Salut, fille à la robe rouge !","back":"Hello, girl with the red dress!","scene":"greeting","src":"tatoeba:1098114","by":"nimfeo","enId":"1098107","enBy":"cntrational","auto":true}
+{"term":"Vos idées sont les bienvenues.","back":"Your ideas are welcome.","scene":"greeting","src":"tatoeba:7726896","by":"lbdx","enId":"4502864","enBy":"CK","auto":true}
+{"term":"Chaud, ce matin, n'est-ce pas ?","back":"Warm this morning, isn't it?","scene":"greeting","src":"tatoeba:587912","by":"sacredceltic","enId":"242219","enBy":"CK","auto":true}
+{"term":"Tu seras toujours bienvenu ici.","back":"You'll always be welcome here.","scene":"greeting","src":"tatoeba:4904044","by":"Asorel","enId":"2835681","enBy":"CK","auto":true}
+{"term":"Tu seras toujours la bienvenue.","back":"You are always welcome.","scene":"greeting","src":"tatoeba:5800776","by":"Toynop","enId":"1417478","enBy":"CK","auto":true}
+{"term":"Tu es toujours le bienvenu ici.","back":"You're always welcome here.","scene":"greeting","src":"tatoeba:13926744","by":"zogwarg","enId":"2543873","enBy":"CK","auto":true}
+{"term":"Bonne nuit. Fais de beaux rêves.","back":"Good night. Sweet dreams.","scene":"greeting","src":"tatoeba:4023","by":"TRANG","enId":"2194","enBy":"laurafults","auto":true}
+{"term":"Je suis très content de te voir.","back":"I'm very glad to see you.","scene":"greeting","src":"tatoeba:1217949","by":"Aiji","enId":"17479","enBy":"CK","auto":true}
+{"term":"Nous ne sommes pas les bienvenus.","back":"We're not welcome.","scene":"greeting","src":"tatoeba:4841697","by":"sacredceltic","enId":"2240643","enBy":"CK","auto":true}
+{"term":"Je suis heureuse de vous rencontrer.","back":"It's nice to meet you.","scene":"introducing yourself","src":"tatoeba:10853","by":"sacredceltic","enId":"64723","enBy":"CK","auto":true}
+{"term":"Tu seras toujours le bienvenu chez moi.","back":"You'll always be welcome here in my house.","scene":"greeting","src":"tatoeba:6376759","by":"Scorpionvenin14","enId":"6376611","enBy":"OsoHombre","auto":true}
+{"term":"Ravi de te rencontrer. Comment vas-tu ?","back":"Nice to meet you. How are you doing?","scene":"introducing yourself","src":"tatoeba:7098110","by":"Micsmithel","enId":"1346288","enBy":"marcelostockle","auto":true}
+{"term":"Bonjour, je suis ravi de vous rencontrer.","back":"Hi, nice to meet you.","scene":"introducing yourself","src":"tatoeba:12444036","by":"lbdx","enId":"6075506","enBy":"Hybrid","auto":true}
+{"term":"« Je suis de retour. » « Bienvenue à la maison. »","back":"\"I'm back.\" \"Welcome home.\"","scene":"greeting","src":"tatoeba:11233061","by":"Micsmithel","enId":"329066","enBy":"fcbond","auto":true}
+{"term":"Je te remercie, adieu !","back":"Thank you and goodbye!","scene":"greeting","src":"tatoeba:1143415","by":"sacredceltic","enId":"4877445","enBy":"jshholland","auto":true}
+{"term":"Comment était ton weekend ?","back":"How was your weekend?","scene":"greeting","src":"tatoeba:128353","by":"davidcfres","enId":"466007","enBy":"CK","auto":true}
+{"term":"Bonjour, étranger.","back":"Hello stranger.","scene":"greeting","src":"tatoeba:9941130","by":"Micsmithel","enId":"9715988","enBy":"Nylez","auto":true}
+{"term":"Bonjour mon trésor.","back":"Hello, my treasure.","scene":"greeting","src":"tatoeba:5255329","by":"martin9","enId":"6733276","enBy":"Eccles17","auto":true}
+{"term":"Bonjour, princesse.","back":"Good morning, princess.","scene":"greeting","src":"tatoeba:7938927","by":"Micsmithel","enId":"7033278","enBy":"Hybrid","auto":true}
+{"term":"Je vous souhaite la bienvenue !","back":"I bid you welcome.","scene":"greeting","src":"tatoeba:3446560","by":"sacredceltic","enId":"3446485","enBy":"pauldhunt","auto":true}
+{"term":"Bonjour à tous ! Bon dimanche !","back":"Hello, everyone! Happy Sunday!","scene":"greeting","src":"tatoeba:9549921","by":"felix63","enId":"13188719","enBy":"menaud","auto":true}
+{"term":"Je t’invite à réfléchir un peu plus.","back":"You're welcome to think about it a bit more.","scene":"greeting","src":"tatoeba:8211035","by":"felix63","enId":"13706004","enBy":"zogwarg","auto":true}
+{"term":"Je suis ravi de faire votre connaissance.","back":"I'm very pleased to meet you.","scene":"introducing yourself","src":"tatoeba:10949","by":"RaspaKrusto","enId":"63905","enBy":"CK","auto":true}
+{"term":"Je suis venue simplement pour dire adieu.","back":"I just dropped in to say goodbye.","scene":"greeting","src":"tatoeba:1837621","by":"Rovo","enId":"64017","enBy":"CK","auto":true}
+{"term":"Je vous souhaite de tout cœur la bienvenue.","back":"I warmly welcome you.","scene":"greeting","src":"tatoeba:8424153","by":"fleur74","enId":"13752688","enBy":"qwertydiy","auto":true}
+{"term":"Nous vous souhaitons la bienvenue à notre club.","back":"We welcome you to our club.","scene":"greeting","src":"tatoeba:460274","by":"sacredceltic","enId":"247384","enBy":"CK","auto":true}
+{"term":"Bonjour, vous êtes mon nouveau voisin ?","back":"Good morning, are you my new neighbor?","scene":"greeting","src":"tatoeba:3093159","by":"Blabla","enId":"8962717","enBy":"DJ_Saidez","auto":true}
+{"term":"Je viens d'une famille nombreuse.","back":"I'm from a large family.","scene":"introducing yourself","src":"tatoeba:12355105","by":"lbdx","enId":"9207316","enBy":"CK","auto":true}
+{"term":"On se voit demain à la bibliothèque.","back":"See you tomorrow in the library.","scene":"greeting","src":"tatoeba:547841","by":"sacredceltic","enId":"507168","enBy":"darinmex","auto":true}
+{"term":"Mon nom est très rare dans notre pays.","back":"My name is very rare in our country.","scene":"introducing yourself","src":"tatoeba:8976890","by":"Aiji","enId":"4430254","enBy":"AlanF_US","auto":true}
+{"term":"Essayons de passer une chouette journée.","back":"Let's try to have a nice day.","scene":"greeting","src":"tatoeba:2133389","by":"sacredceltic","enId":"1333569","enBy":"CM","auto":true}
+{"term":"« Comment vas-tu ? » « Je ne peux pas me plaindre. »","back":"\"How are you?\" \"I can't complain.\"","scene":"greeting","src":"tatoeba:7696166","by":"Maxence","enId":"884471","enBy":"CK","auto":true}
+{"term":"J'aimerais prendre congé.","back":"I'd like to say goodbye.","scene":"greeting","src":"tatoeba:11681656","by":"Rovo","enId":"2011951","enBy":"CK","auto":true}
+{"term":"Je ne vous accueille pas.","back":"I will not welcome you.","scene":"greeting","src":"tatoeba:1967184","by":"Amastan","enId":"7803117","enBy":"sharris123","auto":true}
+{"term":"Nous serons heureux de vous accueillir vendredi.","back":"We'll be happy to welcome you on Friday.","scene":"greeting","src":"tatoeba:3271758","by":"Aiji","enId":"3271757","auto":true}
+{"term":"Ça fait un bail...","back":"I haven't seen you for ages.","scene":"greeting","src":"tatoeba:14139","by":"sacredceltic","enId":"417019","enBy":"CK","auto":true}
+{"term":"Salut, ça fait un bail !","back":"Hello, long time no see!","scene":"greeting","src":"tatoeba:12658765","by":"Olcyx","enId":"12658892","enBy":"Olcyx","auto":true}
+{"term":"Allô, le comptable est là ?","back":"Hello, is the accountant there, please?","scene":"greeting","src":"tatoeba:14179","by":"Julien_PDC","enId":"30976","enBy":"CN","auto":true}
+{"term":"Comment dit-on « hello » en français ?","back":"How do you say \"hello\" in French?","scene":"greeting","src":"tatoeba:3269278","by":"nimfeo","enId":"3269279","enBy":"CK","auto":true}
+{"term":"Saluons nos invités.","back":"Let's welcome our guests.","scene":"greeting","src":"tatoeba:4779352","by":"Oql","enId":"4780289","enBy":"LinguisticFusion","auto":true}
+{"term":"Saluez votre père de ma part.","back":"Say hello to your father for me.","scene":"greeting","src":"tatoeba:371133","by":"Micsmithel","enId":"64088","enBy":"CK","auto":true}
+{"term":"D'où viens-tu ?","back":"Where are you from?","scene":"introducing yourself","src":"tatoeba:4167","by":"TRANG","enId":"370703","enBy":"saeb","auto":true}
+{"term":"Puis-je te voir demain ?","back":"May I see you tomorrow?","scene":"greeting","src":"tatoeba:339455","by":"TRANG","enId":"323097","enBy":"CK","auto":true}
+{"term":"Dis-lui bonjour s'il te plait.","back":"Please say hello to her.","scene":"greeting","src":"tatoeba:133712","by":"dominiko","enId":"308827","enBy":"CK","auto":true}
+{"term":"Puis-je venir te voir demain ?","back":"May I come and see you tomorrow?","scene":"greeting","src":"tatoeba:531976","by":"Snout","enId":"323088","enBy":"CK","auto":true}
+{"term":"Transmettez mes salutations à votre famille.","back":"Please say hello to your family on my behalf.","scene":"greeting","src":"tatoeba:1715594","by":"Rovo","enId":"7816806","enBy":"sharris123","auto":true}
+{"term":"D'où venez-vous et comment êtes-vous arrivé ici ?","back":"Where are you from and how did you get here?","scene":"introducing yourself","src":"tatoeba:11293065","by":"lbdx","enId":"2583335","enBy":"Hybrid","auto":true}
+{"term":"Ohé, es-tu encore là ?","back":"Hello, are you still there?","scene":"greeting","src":"tatoeba:504000","by":"sacredceltic","enId":"8263262","enBy":"sundown","auto":true}
+{"term":"Je veux dire au revoir.","back":"I want to say goodbye.","scene":"greeting","src":"tatoeba:1674770","by":"sacredceltic","enId":"1126366","enBy":"CK","auto":true}
+{"term":"Veux-tu dire au revoir ?","back":"Do you want to say goodbye?","scene":"greeting","src":"tatoeba:2043489","by":"sacredceltic","enId":"2042941","enBy":"CK","auto":true}
+{"term":"Allô ? T'es toujours là ?","back":"Hello? Are you still here?","scene":"greeting","register":"casual","src":"tatoeba:3702","by":"TRANG","enId":"1878","enBy":"brauliobezerra","auto":true}
+{"term":"Bonjour, il y a quelqu'un ?","back":"Hello, is there anybody there?","scene":"greeting","src":"tatoeba:11928327","by":"lbdx","enId":"1444766","enBy":"Spamster","auto":true}
+{"term":"Comment vas-tuyau de poêle ?","back":"What's up, dawg?","scene":"greeting","register":"casual","src":"tatoeba:788862","by":"sacredceltic","enId":"518463","enBy":"FeuDRenais","auto":true}
+{"term":"Coucou, y a-t-il quelqu'un ?","back":"Hello? Anyone there?","scene":"greeting","src":"tatoeba:1445232","by":"sacredceltic","enId":"1444768","enBy":"Spamster","auto":true}
+{"term":"As-tu deviné d'où je viens ?","back":"Did you guess where I'm from?","scene":"introducing yourself","src":"tatoeba:3932110","by":"nimfeo","enId":"13055526","enBy":"menaud","auto":true}
+{"term":"Bonjour, puis-je vous aider ?","back":"Hello, can I help you?","scene":"greeting","src":"tatoeba:5971959","by":"christian63","enId":"12267677","enBy":"Miktsoanit","auto":true}
+{"term":"Merci pour cet accueil cordial.","back":"Thank you for the warm welcome.","scene":"greeting","src":"tatoeba:9543655","by":"Julien_PDC","enId":"14033650","enBy":"zogwarg","auto":true}
+{"term":"Au fait, comment tu t'appelles ?","back":"What's your name, by the way?","scene":"introducing yourself","src":"tatoeba:11928347","by":"lbdx","enId":"11617448","enBy":"Nuel","auto":true}
+{"term":"Je te verrai plus tard, d'accord ?","back":"I'll see you later, OK?","scene":"greeting","src":"tatoeba:5381243","by":"Aiji","enId":"2546661","enBy":"CK","auto":true}
+{"term":"Bonjour. Comment puis-je vous aider ?","back":"Hello. How can I help you?","scene":"greeting","src":"tatoeba:11764563","by":"lbdx","enId":"1435893","enBy":"caspian","auto":true}
+{"term":"Comment as-tu pu partir sans dire au revoir ?","back":"How could you just leave without saying goodbye?","scene":"greeting","src":"tatoeba:11037585","by":"Aiji","enId":"5012026","enBy":"AlanF_US","auto":true}
+{"term":"Quel accueil chaleureux ! Comment ai-je mérité ça ?","back":"What a warm welcome! How did I deserve this?","scene":"greeting","src":"tatoeba:6923855","by":"felix63","enId":"6925023","enBy":"kaiperkins271","auto":true}
+{"term":"Re-bonjour.","back":"Hello again.","scene":"greeting","src":"tatoeba:8292453","by":"codl","enId":"1764868","enBy":"Amastan","auto":true}
+{"term":"Dis au revoir.","back":"Say goodbye.","scene":"greeting","src":"tatoeba:6463385","by":"Aiji","enId":"2111564","enBy":"CK","auto":true}
+{"term":"Je suis d'ici.","back":"I'm from here.","scene":"introducing yourself","src":"tatoeba:8332333","by":"theachaean","enId":"5852648","enBy":"CK","auto":true}
+{"term":"À demain au bureau.","back":"See you tomorrow in the office.","scene":"greeting","src":"tatoeba:333860","by":"sysko","enId":"323399","enBy":"AlanF_US","auto":true}
+{"term":"Au fait, d'où es-tu ?","back":"By the way, where are you from?","scene":"introducing yourself","src":"tatoeba:15121","by":"sacredceltic","enId":"38050","enBy":"Zifre","auto":true}
+{"term":"« Allô, c'est qui ? »","back":"\"Hello, who is this?\"","scene":"greeting","src":"tatoeba:409198","by":"qdii","enId":"409194","enBy":"FeuDRenais","auto":true}
+{"term":"Allons-y dire bonjour.","back":"Let's go and say hello.","scene":"greeting","src":"tatoeba:8218047","by":"Aiji","enId":"2007635","enBy":"CK","auto":true}
+{"term":"Je dois dire au revoir.","back":"I need to say goodbye.","scene":"greeting","src":"tatoeba:7157360","by":"Micsmithel","enId":"2387713","enBy":"CK","auto":true}
+{"term":"Dites au revoir à vos amis.","back":"Say goodbye to your friends.","scene":"greeting","src":"tatoeba:135482","by":"Micsmithel","enId":"1437104","enBy":"CK","auto":true}
+{"term":"Je vais au lit. Bonne nuit.","back":"I'm going to bed. Good night.","scene":"greeting","src":"tatoeba:8107369","by":"Aiji","enId":"2496951","enBy":"CK","auto":true}
+{"term":"C'est une agréable nouvelle.","back":"That's welcome news.","scene":"greeting","src":"tatoeba:5226774","by":"nimfeo","enId":"2251330","enBy":"CK","auto":true}
+{"term":"Tu n'es plus le bienvenu ici.","back":"You're no longer welcome here.","scene":"greeting","src":"tatoeba:1800245","by":"sacredceltic","enId":"2642786","enBy":"CK","auto":true}
+{"term":"N'oublie pas de dire au revoir.","back":"Don't forget to say goodbye.","scene":"greeting","src":"tatoeba:12355045","by":"lbdx","enId":"11069715","enBy":"CK","auto":true}
+{"term":"Je viens d'un clan de lutteurs.","back":"I'm from a clan of fighters.","scene":"introducing yourself","src":"tatoeba:14024765","by":"Rovo","enId":"13758604","enBy":"rul","auto":true}
+{"term":"Ne sors pas sans dire au revoir.","back":"Don't leave without saying goodbye.","scene":"greeting","src":"tatoeba:11637","by":"Lulantis","enId":"1243531","enBy":"CK","auto":true}
+{"term":"Je voulais juste dire au revoir.","back":"I just wanted to say goodbye.","scene":"greeting","src":"tatoeba:2252313","by":"sacredceltic","enId":"2240473","enBy":"Hybrid","auto":true}
+{"term":"Tu ne m'as même pas dit bonjour !","back":"You didn't even say \"hello\" to me!","scene":"greeting","src":"tatoeba:6681897","by":"felix63","enId":"6909383","enBy":"kaiperkins271","auto":true}
+{"term":"J'imagine que c'est un au revoir.","back":"I guess this is goodbye.","scene":"greeting","src":"tatoeba:6454481","by":"Aiji","enId":"2330096","enBy":"CK","auto":true}
+{"term":"Tu n'es plus le bienvenu chez moi.","back":"You're no longer welcome in my house.","scene":"greeting","src":"tatoeba:6812860","by":"GB3","enId":"6812495","enBy":"CK","auto":true}
+{"term":"Ma petite sœur n'a pas dit bonjour.","back":"My younger sister didn't say \"hello.\"","scene":"greeting","src":"tatoeba:5353305","by":"Aiji","enId":"2852610","enBy":"CK","auto":true}
+{"term":"Bonjour, c'est le service de chambre.","back":"Hello, this is room service.","scene":"greeting","src":"tatoeba:8954176","by":"Aiji","enId":"5228687","enBy":"AlanF_US","auto":true}
+{"term":"Salut ! Je suis un nouvel utilisateur.","back":"Hello! I'm a new user.","scene":"greeting","src":"tatoeba:1623767","by":"sacredceltic","enId":"1619589","enBy":"Spamster","auto":true}
+{"term":"J'ignore comment dire au revoir en français.","back":"I don't know how to say goodbye in French.","scene":"greeting","src":"tatoeba:2504279","by":"sacredceltic","enId":"2318225","enBy":"CK","auto":true}
