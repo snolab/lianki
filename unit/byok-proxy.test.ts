@@ -472,7 +472,15 @@ describe("handleProxy", () => {
       body({ messages: [{ role: "user", content: "x".repeat(PROXY_LIMITS.maxBodyBytes) }] }),
     );
     expect((await handleProxy(req(undefined, {}, { raw: big }), deps())).status).toBe(413);
-    // A lying content-length: the stream is still counted.
+    // Declared too big: refused on the header, whatever the body really is.
+    const declared = req(undefined, { "content-length": String(PROXY_LIMITS.maxBodyBytes + 1) });
+    expect(declared.headers.get("content-length")).toBe(String(PROXY_LIMITS.maxBodyBytes + 1));
+    expect((await handleProxy(declared, deps())).status).toBe(413);
+    // Declared small, sent big: the bytes are counted anyway.
+    const understated = req(undefined, { "content-length": "10" }, { raw: big });
+    expect(understated.headers.get("content-length")).toBe("10");
+    expect((await handleProxy(understated, deps())).status).toBe(413);
+    // No length at all (a stream): the bytes are counted anyway.
     const lying = new Request(`${ORIGIN}/api/byok/proxy`, {
       method: "POST",
       headers: {

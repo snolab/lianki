@@ -161,10 +161,14 @@ Guards (each tested in `unit/byok-proxy.test.ts`):
   no route to private networks or a cloud metadata service.
 - *In transit.* Our server sees the key and text while it forwards them;
   "not stored, not logged" is our code's promise, which the notice and
-  `/privacy#own-ai` state plainly. Cloudflare's own request metadata (Workers
-  Logs, tail events) records the request but not its body; the key rides in
-  `Authorization`, the header Cloudflare redacts in tail events — still to
-  confirm in the Workers Logs dashboard after the first deploy.
+  `/privacy#own-ai` state plainly. Cloudflare's own request metadata records
+  the request but not its body. Checked 2026-11-05 with `wrangler tail lianki
+  --format json` and a throwaway random value: `Authorization` and
+  `x-byok-key` arrive as `REDACTED`, an ordinary `x-lk-plain` in clear, so the
+  key's header is not readable in tail events (what `lianki-monitor` gets).
+  **Keep the key in `Authorization`**: a custom header name without `key`,
+  `auth` or the like could be logged in clear. Not checked: the Workers Logs
+  dashboard store, which wrangler cannot query.
 - *Abuse with stolen keys.* The relay could launder calls made with someone
   else's key; the per-IP/user/global limits and the size caps bound it.
 
@@ -208,7 +212,8 @@ saving and again right before every fetch:
   only (mixed content: browsers treat those as secure; anything else over
   http is refused);
 - never a Lianki host (`*.lianki.com`) or the page's own origin, so the key
-  can never be sent to our server, whatever is typed;
+  can never reach our server by what is typed here (only the relay's own
+  toggle sends it to us, in transit, for an allowlisted provider);
 - no `user:password@`, query or fragment.
 
 If a CSP is added later, its `connect-src` needs the preset hosts plus
@@ -216,6 +221,9 @@ If a CSP is added later, its `connect-src` needs the preset hosts plus
 allowed by `https:` (the client rule stays the gate).
 
 ## Never leaving the device (audit, 2026-11-05)
+
+This holds for browser-direct calls, and for everything below except the one
+relayed request when the user ticks the relay ("The relay").
 
 - **Calls**: `credentials: "omit"`, `referrerPolicy: "no-referrer"`; errors
   carry only a kind and an HTTP status, never the provider's message (OpenAI's

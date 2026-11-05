@@ -306,6 +306,7 @@ export function ByokSettings({
           <span className="block font-medium">{c.enable}</span>
           <span className="mt-1 block text-sm opacity-75" data-testid="byok-notice-short">
             {c.noticeShort} {policy}
+            {device.backend.relay && <span className="mt-1 block">{c.noticeRelay}</span>}
           </span>
         </span>
       </label>

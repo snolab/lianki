@@ -9,7 +9,9 @@
 //   `byok.backend` (docs/prefs-sync.md), so it follows them to other devices.
 //   The server only stores it; it never fetches the URL.
 // - **The key** stays in `lk:byok` on this device only. It is never synced,
-//   never sent to Lianki, never logged. `lk:byok` is not a prefs-sync binding
+//   never stored by Lianki, never logged, and sent to Lianki only in transit
+//   when the user ticks the relay for an allowlisted provider (docs/byok.md,
+//   "The relay"). `lk:byok` is not a prefs-sync binding
 //   (unit/byok.test.ts pins that), and "remove" deletes the whole record.
 //
 // The privacy notice's acknowledgement (`lk:byok-ack`) is per device and
@@ -74,7 +76,7 @@ export function deviceStorage(): Store | null {
 
 // ── URL rules ─────────────────────────────────────────────────────────────
 
-/** Lianki's own hosts: a key is never sent there, whatever the user types. */
+/** Lianki's own hosts: never a backend, whatever the user types (the relay is its own path). */
 const OURS = /(^|\.)lianki\.com$/i;
 const LOCAL = new Set(["localhost", "127.0.0.1", "[::1]"]);
 

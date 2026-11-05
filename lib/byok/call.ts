@@ -1,5 +1,6 @@
 // One call to the user's own AI, from the browser (docs/byok.md). The key
-// goes in a header to the provider's URL and nowhere else:
+// goes in a header to the provider's URL and, unless the user turned on the
+// relay (below), nowhere else:
 //
 // - the URL is checked again right before the fetch (lib/byok/config.ts
 //   checkBaseUrl): never Lianki's hosts, never the page's own origin, https
