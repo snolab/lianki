@@ -4,6 +4,11 @@ Every LLM and TTS call in the app goes to Cloudflare Workers AI. There is no
 OpenAI dependency left at runtime — `lib/workers-ai.ts` is the only place that
 knows about the provider.
 
+The one exception is a user's **own** AI (BYOK, [byok.md](byok.md)): with it
+on, the reader's selection translation and word meanings are called from the
+user's browser to their own provider with their own key — never through
+`lib/workers-ai.ts`, never charged, never written to the shared caches.
+
 ## Setup
 
 ```bash
