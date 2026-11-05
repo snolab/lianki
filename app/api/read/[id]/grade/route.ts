@@ -14,6 +14,9 @@ import { fillGlosses } from "@/lib/read/gloss-server";
 import { dayKey } from "@/lib/words/schedule";
 import type { GradeRequest } from "@/lib/read/reader-api";
 
+/** How long the words' meanings may hold up an Easy grade's request. */
+const GLOSS_WAIT_MS = 5000;
+
 /**
  * POST /api/read/[id]/grade — one swipe: FSRS on each of the item's sentences.
  * An Easy grade with `easyWords` also grades the item's due and new words
@@ -36,7 +39,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const words = rangeWords(ew.words, b.own);
   if (!words?.length) return json({ ...r.res, words: { graded: 0, made: 0 } });
   try {
-    const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, b.book, ws, { userId: ctx.userId });
+    // Meanings for the new cards as 制卡 finds them, but never holding the
+    // grade up: past GLOSS_WAIT_MS the cards are made without (the word
+    // review fills a missing meaning later, book-word-list.ts backfill).
+    const gloss = (ws: RangeWord[]) =>
+      Promise.race([
+        fillGlosses(ctx.db, b.book, ws, { userId: ctx.userId }).catch(() => ws),
+        new Promise<RangeWord[]>((ok) => setTimeout(() => ok(ws), GLOSS_WAIT_MS)),
+      ]);
     const out = await gradeEasyWords(
       ctx.db,
       ctx.email,

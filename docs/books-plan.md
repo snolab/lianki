@@ -524,6 +524,37 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   until the credits redesign (owner, 2026-11-04) it only logs
   `read.gloss.cost`.
 
+### After a paragraph's grade: its words (owner, 2026-11-05 02:31 / 02:32 JST)
+
+The paragraph swipe stays the item's own grade (sides, mirror, the 8 s Undo
+hold, keys 1–4 / L K J H, all unchanged). What follows it is new
+(`lib/read/word-review.ts` `afterGrade`):
+
+- **Easy** — by swipe on whichever side gives Easy for his mirror setting,
+  or by key H / 4 — also grades Easy every word of the **swiped item** (the
+  swipe unit: its pieces' sentences, `paraWords`, as the review takes a
+  paragraph's) that is due now on his card, and every word with no card
+  anywhere (carded in the book's list as 制卡, then Easy). A card not due yet
+  is not touched; names without a card are left out
+  (`lib/read/book-word-list.ts` `easyPlan`, `gradeEasyWords`; grades go
+  through `WordsD1Repo.review`, rating 4, as on /words).
+- The words ride in the item grade's own request (`GradeRequest.easyWords`),
+  sent when its Undo hold ends: U / ⌘Z / the ↶ pill / the toast's Undo
+  inside the hold drops both, so nothing reaches the server and nothing has
+  to be reverted. The server re-reads his cards and re-checks each due in
+  that request (his email only); a retried request grades nothing twice (a
+  word graded once is no longer due). Meanings for the new cards as 制卡
+  finds them, waiting at most a few seconds.
+- While the item rests on the Easy level, a hint above it says
+  "段落简单 + N 个词记为简单" (N from the server's read-only plan,
+  `POST /api/read/[id]/easy-plan`, asked when a slide starts; "+ N" hidden
+  when N = 0). After the grade a toast says how many, with Undo.
+- **Again / Hard / Good** (swipe or key): once the swipe has settled, the
+  item's word review opens (the selection card's review, over the same
+  words) — only when the plan has a due or new word, not after a later
+  grade or an undo, not over a sheet. Closing it focuses the next item.
+  Undoing the grade inside the hold closes a review it opened.
+
 ### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
 
 "阅读模式不用我们主动分块", after "不要给用户规划任何死数字 … 我们不要用任何数量数字".
