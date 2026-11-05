@@ -22,20 +22,70 @@ import {
   type TransPiece,
   type TransPlan,
 } from "@/lib/read/select-translate";
+import { cleanTranslation, translateMessages } from "@/lib/read/translate";
+import { activeByok, type ByokActive } from "@/lib/byok/config";
+import { byokComplete } from "@/lib/byok/call";
 import type { CardTranslation } from "./reader-select-card";
 
-/** Translations of this tab, by transKey: the device's side of the cache. */
+// With the user's own AI on (docs/byok.md), each unit goes from this browser
+// straight to their provider with their key instead: no Lianki credits, and
+// the answer stays in this tab (`own:` keys) — never written to the shared
+// read_translation cache, because our API is not called at all.
+
+/**
+ * Translations of this tab, by transKey (`own:` + transKey for the user's own
+ * AI): the device's side of the cache.
+ */
 const done = new Map<string, string>();
 const inflight = new Map<string, Promise<string | null>>();
+
+/** The cache key a unit is kept under, by who translated it. */
+const keyOf = (own: ByokActive | null, to: string, text: string) =>
+  own ? `own:${transKey(to, text)}` : transKey(to, text);
+
+/** The answer's ceiling, as the server's (lib/read/translate-server.ts). */
+const maxTokens = (chars: number) => Math.min(8000, 200 + chars * 2);
+
+/** One unit by the user's own AI, from this browser (lib/byok/call.ts). */
+export async function translateOwn(
+  own: ByokActive,
+  to: string,
+  from: string | undefined,
+  text: string,
+  deps?: Parameters<typeof byokComplete>[3],
+): Promise<string | null> {
+  const r = await byokComplete(
+    own,
+    translateMessages(text, to, from ?? null),
+    { maxTokens: maxTokens(text.length), temperature: 0.2 },
+    deps,
+  );
+  return r.ok ? cleanTranslation(r.text) || null : null;
+}
 
 /** Requests in flight for one selection: the units still come in reading order, quickly. */
 const LANES = 3;
 
-function fetchPiece(id: string, to: string, from: string | undefined, text: string) {
-  const k = transKey(to, text);
+export function fetchPiece(
+  id: string,
+  to: string,
+  from: string | undefined,
+  text: string,
+  own: ByokActive | null = activeByok(),
+) {
+  const k = keyOf(own, to, text);
   const hit = done.get(k);
   if (hit !== undefined) return Promise.resolve(hit);
   let p = inflight.get(k);
+  if (!p && own) {
+    p = translateOwn(own, to, from, text)
+      .then((out) => {
+        if (out) done.set(k, out);
+        return out;
+      })
+      .finally(() => inflight.delete(k));
+    inflight.set(k, p);
+  }
   if (!p) {
     p = fetch(`/api/read/${id}/translate`, {
       method: "POST",
@@ -61,7 +111,9 @@ export function useSelectTranslate(
   from: string | undefined,
   plan: TransPlan | null,
 ) {
-  const key = useCallback((p: TransPiece) => transKey(to, p.text), [to]);
+  /** The user's own AI, read when the plan changes (a settings change applies to the next selection). */
+  const own = useMemo(() => (plan ? activeByok() : null), [plan]);
+  const key = useCallback((p: TransPiece) => keyOf(own, to, p.text), [own, to]);
   /** A unit's text; null on its way; false not asked (past the bound) or failed. */
   const [got, setGot] = useState<Record<string, string | null | false>>({});
   const [failed, setFailed] = useState(false);
@@ -86,7 +138,7 @@ export function useSelectTranslate(
     const lane = async () => {
       while (live && next < queue.length) {
         const p = queue[next++];
-        const out = await fetchPiece(id, to, from, p.text);
+        const out = await fetchPiece(id, to, from, p.text, own);
         if (!live) return;
         if (out === null) setFailed(true);
         setGot((g) => ({ ...g, [key(p)]: out ?? false }));
@@ -103,11 +155,12 @@ export function useSelectTranslate(
       live = false;
       if (timer) clearTimeout(timer);
     };
-  }, [plan, room, tries, id, to, from, key]);
+  }, [plan, room, tries, id, to, from, key, own]);
 
   const translation = useMemo<CardTranslation | null>(
-    () => (plan ? { blocks: plan.map((b) => b.map((p) => got[key(p)] ?? false)) } : null),
-    [plan, got, key],
+    () =>
+      plan ? { blocks: plan.map((b) => b.map((p) => got[key(p)] ?? false)), own: !!own } : null,
+    [plan, got, key, own],
   );
   const pending = Object.values(got).includes(null);
   /** Pieces past what is asked for (never a failed one: that is `retry`'s). */

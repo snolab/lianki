@@ -7,6 +7,7 @@ import { useIntlayer } from "next-intlayer";
 import TokenManager from "../list/components/TokenManager";
 import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
+import { ByokSettings } from "@/app/components/ByokSettings";
 
 type FilterType = "domain" | "title" | "url";
 
@@ -19,7 +20,7 @@ interface FilterPattern {
   createdAt: string;
 }
 
-export default function PreferencesClient() {
+export default function PreferencesClient({ showKeySync = false }: { showKeySync?: boolean }) {
   const {
     loading: loadingText,
     heading,
@@ -156,6 +157,9 @@ export default function PreferencesClient() {
         </h2>
         <TextSizeControls />
       </section>
+
+      {/* Your own AI — the key on this device only (docs/byok.md) */}
+      <ByokSettings showKeySync={showKeySync} />
 
       {/* Next-card order */}
       <section className="mb-10">
