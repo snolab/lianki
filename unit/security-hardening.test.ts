@@ -147,6 +147,23 @@ describe("D1 route limits", () => {
     }
   });
 
+  test("the AI routes count in D1, with no address in the key", () => {
+    for (const f of [
+      "app/api/ai-sentences/generate/route.ts",
+      "app/api/ai-sentences/new-word/route.ts",
+      "app/api/polyglot/translate/route.ts",
+      "app/api/polyglot/tts/route.ts",
+      "app/api/self-intro/translate/route.ts",
+      "app/api/self-intro/tts/route.ts",
+      "app/api/translate/route.ts",
+      "app/api/tts/route.ts",
+    ]) {
+      const src = readFileSync(f, "utf8");
+      expect(src).toMatch(/routeLimit\(await accountKey\(/);
+      expect(src).not.toMatch(/checkRateLimit\(|personKey\(/);
+    }
+  });
+
   test("bodies are read with a cap", () => {
     for (const f of [
       "app/api/contact/route.ts",

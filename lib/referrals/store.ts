@@ -7,7 +7,9 @@
  */
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
 import { EXTEND_PRO_SQL, creditStmts } from "@/lib/payments/credits-store";
+import { canonicalEmail } from "@/lib/canonical-email";
 import { sameEmailAccounts } from "@/lib/canonical-email-d1";
+import { sha256Hex } from "@/lib/security/throttle";
 import {
   ACTIVATION_REVIEW_DAYS,
   CLAIM_MAX_ACCOUNT_AGE_H,
@@ -404,16 +406,22 @@ export async function redeemGiftCode(
   if (!gift) return { status: "rejected", reason: "unknown code" };
   if (gift.expiresAt && new Date(gift.expiresAt) <= now)
     return { status: "rejected", reason: "expired" };
-  const refId = `${code}:${userId}`;
   // Once per person, not per account: any account sharing the canonical email
-  // (lib/canonical-email.ts) that redeemed this code counts.
+  // (lib/canonical-email.ts) that redeemed this code counts. The grant's refId
+  // names the person, so UNIQUE (reason, refId) also stops two aliases
+  // redeeming at the same moment, past the read below. Rows from before this
+  // name the account, and that read still finds them.
   const user = await getUser(d1, userId);
+  const refId = user?.email
+    ? `${code}:person:${await sha256Hex(canonicalEmail(user.email))}`
+    : `${code}:${userId}`;
   const ids = [userId, ...(user ? await sameEmailAccounts(d1, user) : []).map((o) => o.id)];
+  const refIds = [refId, ...ids.map((id) => `${code}:${id}`)];
   const seen = await d1
     .prepare(
-      `SELECT id FROM membership_grant WHERE reason = 'gift' AND refId IN (${ids.map(() => "?").join(", ")})`,
+      `SELECT id FROM membership_grant WHERE reason = 'gift' AND refId IN (${refIds.map(() => "?").join(", ")})`,
     )
-    .bind(...ids.map((id) => `${code}:${id}`))
+    .bind(...refIds)
     .first();
   if (seen) return { status: "rejected", reason: "already redeemed" };
 
