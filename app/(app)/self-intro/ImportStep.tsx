@@ -28,6 +28,7 @@ import {
   type FileLike,
   type ImportPart,
 } from "@/lib/self-intro/import-parse";
+import PartnerQuestions, { type NewFact } from "./PartnerQuestions";
 
 type Fact = {
   id: number;
@@ -36,6 +37,8 @@ type Fact = {
   certain: boolean;
   status: "pending" | "kept" | "dropped";
   editing: boolean;
+  /** Came from an answer to a Learning Partner question, not from the material. */
+  fromAnswer?: boolean;
 };
 
 const FIELD_LABEL = {
@@ -175,6 +178,22 @@ export default function ImportStep({
       setBusy(false);
     }
   };
+
+  /** An answer's facts join the list, to keep, edit or drop like the material's. */
+  const addAnswerFacts = (got: NewFact[]) =>
+    setFacts((prev) => {
+      let id = prev.reduce((n, f) => Math.max(n, f.id), -1);
+      return [
+        ...prev,
+        ...got.map((f) => ({
+          ...f,
+          id: ++id,
+          status: "pending" as const,
+          editing: false,
+          fromAnswer: true,
+        })),
+      ];
+    });
 
   const update = (id: number, patch: Partial<Fact>) =>
     setFacts((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
@@ -364,6 +383,11 @@ export default function ImportStep({
                               {c.uncertain}
                             </span>
                           )}
+                          {f.fromAnswer && (
+                            <span className="block text-xs text-[oklch(0.5_0.12_255)] dark:text-[oklch(0.78_0.1_255)]">
+                              {c.fromAnswer}
+                            </span>
+                          )}
                         </div>
                         {f.editing ? (
                           <button
@@ -406,6 +430,7 @@ export default function ImportStep({
               );
             })}
           </div>
+          <PartnerQuestions facts={facts} onFacts={addAnswerFacts} />
           <div className="flex flex-col-reverse sm:flex-row gap-3">
             <button type="button" onClick={() => setPhase("input")} className={btnQuiet}>
               {c.back}
