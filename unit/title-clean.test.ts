@@ -330,45 +330,35 @@ describe("dropCountSeenChanging: the page was seen before", () => {
 
 describe("the server's rules for a user", () => {
   const signedIn = async () => ({ id: "u1" });
+  /** A D1 whose one row holds this value, or no row. */
+  const dbWith = (value?: unknown) => () =>
+    ({
+      prepare: () => ({
+        bind: () => ({
+          first: async () => (value === undefined ? null : { value: JSON.stringify(value) }),
+        }),
+      }),
+    }) as unknown as D1Like;
 
   it("the user's stored difference, else the defaults", async () => {
-    const pref = { off: [], add: [{ host: "", pattern: "[x]" }] };
-    const rules = await titleRulesFrom(signedIn, async () => pref);
+    const pref = dbWith({ off: [], add: [{ host: "", pattern: "[x]" }] });
+    const rules = await titleRulesFrom(signedIn, pref);
     expect(cleanTitle("[x] Foo", { rules })).toBe("Foo");
-    expect(await titleRulesFrom(signedIn, async () => undefined)).toBe(DEFAULT_TITLE_RULES);
-    expect(
-      await titleRulesFrom(
-        async () => null,
-        async () => pref,
-      ),
-    ).toBe(DEFAULT_TITLE_RULES);
+    expect(await titleRulesFrom(signedIn, dbWith())).toBe(DEFAULT_TITLE_RULES);
+    expect(await titleRulesFrom(async () => null, pref)).toBe(DEFAULT_TITLE_RULES);
   });
 
   it("a failure gives the defaults: saving a card must not depend on it", async () => {
-    const boom = async (): Promise<never> => {
+    const boom = (): never => {
       throw new Error("db down");
     };
     expect(await titleRulesFrom(signedIn, boom)).toBe(DEFAULT_TITLE_RULES);
-    expect(await titleRulesFrom(boom, async () => null)).toBe(DEFAULT_TITLE_RULES);
+    expect(await titleRulesFrom(boom, dbWith())).toBe(DEFAULT_TITLE_RULES);
   });
 
-  it("off D1 (the frozen Mongo copy) there are no stored rules", async () => {
-    const before = process.env.DB_BACKEND;
-    process.env.DB_BACKEND = "mongo";
-    try {
-      expect(await titleRulesForUser()).toBe(DEFAULT_TITLE_RULES);
-      process.env.DB_BACKEND = "d1";
-      const stored = JSON.stringify({ off: [], add: [{ host: "", pattern: "[x]" }] });
-      const db = () =>
-        ({
-          prepare: () => ({ bind: () => ({ first: async () => ({ value: stored }) }) }),
-        }) as unknown as D1Like;
-      const rules = await titleRulesForUser(signedIn, db);
-      expect(cleanTitle("[x] Foo", { rules })).toBe("Foo");
-    } finally {
-      if (before === undefined) delete process.env.DB_BACKEND;
-      else process.env.DB_BACKEND = before;
-    }
+  it("the signed-in entry point always answers with rules", async () => {
+    // The backend is whatever this process has (unit/support/testMocks.ts stubs it).
+    expect(Array.isArray(await titleRulesForUser())).toBe(true);
   });
 });
 
