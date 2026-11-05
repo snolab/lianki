@@ -376,6 +376,73 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   check(true, "profile: passkey deleted");
 }
 
+// Page titles: the test box, adding and removing a pattern, restoring a default
+// (docs/title-clean.md). Signed in again above, so the change syncs as well.
+{
+  await page.goto(`${BASE}/preferences`, { waitUntil: "networkidle" });
+  const box = page.getByTestId("title-rules");
+  await box.waitFor({ timeout: 10000 });
+  const after = box.getByTestId("title-rules-after");
+  check(
+    (await after.innerText()) === "怎么能让书里的信息成为自己的知识呢？ - 知乎",
+    "titles: the test box cleans the Zhihu sample",
+  );
+  await box.getByTestId("title-rules-try").fill("(2024) 年度总结 - 知乎");
+  check(
+    (await after.innerText()) === "(2024) 年度总结 - 知乎",
+    "titles: a year in brackets is kept",
+  );
+  await box.getByTestId("title-rules-try").fill("[QA] hello");
+  await box.getByTestId("title-rules-pattern").fill("[QA]");
+  await box.getByRole("button", { name: "Add pattern" }).click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="title-rules-after"]')?.textContent === "hello",
+    null,
+    { timeout: 5000 },
+  );
+  check(true, "titles: a pattern of your own applies at once");
+  // A pref PATCH goes out 1 s after the last change.
+  const patch = await page
+    .waitForResponse((r) => r.url().includes("/api/prefs") && r.request().method() === "PATCH", {
+      timeout: 8000,
+    })
+    .catch(() => null);
+  check(patch?.ok() === true, "titles: the change syncs to the account");
+  const prefs = await page.evaluate(async () => (await fetch("/api/preferences")).json());
+  check(
+    prefs.titleRules?.add?.[0]?.pattern === "[QA]",
+    "titles: /api/preferences mirrors it for the userscript",
+  );
+
+  await box.getByTestId("title-rules-pattern").fill("*");
+  await box.getByRole("button", { name: "Add pattern" }).click();
+  check(
+    (await box.locator("form").innerText()).includes("can't be used"),
+    "titles: a pattern it cannot use is refused with a reason",
+  );
+
+  const restore = box.getByTestId("title-rules-restore");
+  check(await restore.isDisabled(), "titles: nothing to restore yet");
+  const rowsBefore = await box.locator("ul").last().locator("li").count();
+  await box.locator("ul").last().getByRole("button", { name: "Remove" }).first().click();
+  check(
+    (await box.locator("ul").last().locator("li").count()) === rowsBefore - 1,
+    "titles: a built-in pattern can be removed",
+  );
+  await restore.click();
+  check(
+    (await box.locator("ul").last().locator("li").count()) === rowsBefore,
+    "titles: restore defaults brings it back",
+  );
+  await box.locator("ul").first().getByRole("button", { name: "Remove" }).click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="title-rules-after"]')?.textContent === "[QA] hello",
+    null,
+    { timeout: 5000 },
+  );
+  check(true, "titles: your own pattern can be removed");
+}
+
 // 6. Console errors (ignore benign RSC prefetch aborts / 404 favicon / the
 // passkey client logging the autofill request it abandons when the explicit
 // passkey button starts its own / the

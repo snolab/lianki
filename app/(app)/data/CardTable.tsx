@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { displayTitle } from "@/lib/titles/client";
 import { CARD_STATES, dueLabel, stateName, type DataRow, type StoreId } from "./types";
 
 type Props = {
@@ -253,7 +254,9 @@ export default function CardTable(props: Props) {
                       </form>
                     ) : (
                       <>
-                        <div className="truncate font-medium">{row.title}</div>
+                        <div className="truncate font-medium">
+                          {displayTitle(row.title, row.url)}
+                        </div>
                         <a
                           href={row.url}
                           className="block truncate text-xs text-gray-500 dark:text-gray-400 hover:underline"

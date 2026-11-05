@@ -156,7 +156,8 @@ function fold(s: string): string {
 /** The tokens of a pattern, or null for one that cannot be used. */
 function compile(pattern: unknown): Token[] | null {
   if (typeof pattern !== "string" || pattern.length > TITLE_PATTERN_MAX) return null;
-  if (pattern.includes("://")) return null;
+  // Nothing that names a place reaches the account's stored values (prefs-sync.md, 5).
+  if (/:\/\/|^\/\/|\.ts\.net|localhost|127\.0\.0\.1/i.test(pattern)) return null;
   const tokens: Token[] = [];
   let lit = "";
   const flush = () => {

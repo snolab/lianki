@@ -3,6 +3,7 @@ import { db } from "@/app/db";
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { PreferencesD1Repo } from "@/lib/repos/d1Repos";
+import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
 
 const Preferences = db.collection("preferences");
 
@@ -35,10 +36,15 @@ export async function GET() {
 
     if (dbBackend() === "d1") {
       const prefs = await new PreferencesD1Repo(getD1(), user.id).get();
+      // The userscript has no path to /api/prefs; it reads this (docs/title-clean.md).
+      const titleRules = await new UserPrefsD1Repo(getD1(), user.id)
+        .value("titles.rules")
+        .catch(() => undefined);
       return NextResponse.json({
         mobileExcludePatterns: prefs?.mobileExcludePatterns ?? [],
         reviewOrder: prefs?.reviewOrder ?? DEFAULT_REVIEW_ORDER,
         watchTracking: asWatchTracking(prefs?.watchTracking),
+        titleRules: titleRules ?? null,
       });
     }
 

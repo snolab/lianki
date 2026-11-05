@@ -5,6 +5,7 @@ import {
   MAX_CLOCK_AHEAD_MS,
   MAX_ROWS,
   type PrefHlc,
+  type PrefKey,
   type PrefOp,
   type PrefRow,
 } from "@/lib/prefs/schema";
@@ -63,6 +64,20 @@ export class UserPrefsD1Repo {
       } catch {}
     }
     return { prefs, cursor };
+  }
+
+  /** One key's stored value, or undefined. A value no longer valid reads as not there. */
+  async value(key: PrefKey): Promise<unknown> {
+    const row = await this.db
+      .prepare("SELECT value FROM user_prefs WHERE user_id = ? AND key = ?")
+      .bind(this.userId, key)
+      .first<{ value: string }>();
+    if (!row) return undefined;
+    try {
+      return checkPref(key, JSON.parse(row.value));
+    } catch {
+      return undefined;
+    }
   }
 
   /**

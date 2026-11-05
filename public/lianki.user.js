@@ -10,7 +10,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.25
+// @version     2.24.26
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -1654,6 +1654,271 @@
     return dueMs > w.lo && dueMs < w.hi;
   }
 
+  // packages/core/src/titleClean.ts
+  var TITLE_PATTERN_MAX = 48;
+  var TITLE_HOST_MAX = 40;
+  var TITLE_RULES_ADD_MAX = 10;
+  var TITLE_RULES_OFF_MAX = 64;
+  var WINDOW = 512;
+  var ANY_MAX = 64;
+  var ANY_PER_PATTERN = 3;
+  var PASSES = 3;
+  var RULES_MAX = 128;
+  var on = (host, ...patterns) => patterns.map((pattern) => ({ host, pattern }));
+  var COUNTING_SITES = [
+    "youtube.com",
+    "instagram.com",
+    "linkedin.com",
+    "reddit.com",
+    "discord.com",
+    "quora.com",
+    "twitch.tv",
+    "tiktok.com",
+    "pinterest.com",
+    "threads.net",
+    "web.whatsapp.com",
+    "web.telegram.org",
+  ];
+  var DEFAULT_TITLE_RULES = [
+    ...on(
+      "",
+      "(9+)",
+      "(99+)",
+      "(999+)",
+      "(## new)",
+      "(## unread)",
+      "(## message)",
+      "(## messages)",
+      "(## new message)",
+      "(## new messages)",
+      "(## notification)",
+      "(## notifications)",
+      "(## 条消息)",
+      "(## 条新消息)",
+      "(## 条未读)",
+      "(## 条通知)",
+      "(## 条私信)",
+      "(## 封私信)",
+      "(## 件の通知)",
+      "(## 件の新着)",
+      "(## 개의 알림)",
+    ),
+    ...on("zhihu.com", "(##*条消息)", "(##*封私信)"),
+    ...COUNTING_SITES.flatMap((host) => on(host, "(#)")),
+    ...on("facebook.com", "(#)", "(#+)"),
+    ...on("x.com", "(#)", "(#+)"),
+    ...on("twitter.com", "(#)", "(#+)"),
+  ];
+  function titleRuleId(rule) {
+    const s = `${rule.host}|${rule.pattern}`;
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(16).padStart(8, "0");
+  }
+  var isSpace = (c) =>
+    c === 32 || (c >= 9 && c <= 13) || c === 160 || c === 12288 || c === 8203 || c === 65279;
+  var isDigit = (c) => c >= 48 && c <= 57;
+  function fold(s) {
+    let out = "";
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c >= 65281 && c <= 65374) {
+        const ascii = String.fromCharCode(c - 65248).toLowerCase();
+        out += ascii;
+      } else if (c === 12304 || c === 12308) out += "[";
+      else if (c === 12305 || c === 12309) out += "]";
+      else {
+        const ch = s[i];
+        const lower = ch.toLowerCase();
+        out += lower.length === 1 ? lower : ch;
+      }
+    }
+    return out;
+  }
+  function compile(pattern) {
+    if (typeof pattern !== "string" || pattern.length > TITLE_PATTERN_MAX) return null;
+    if (/:\/\/|^\/\/|\.ts\.net|localhost|127\.0\.0\.1/i.test(pattern)) return null;
+    const tokens = [];
+    let lit = "";
+    const flush = () => {
+      if (lit) tokens.push({ k: "lit", s: fold(lit) });
+      lit = "";
+    };
+    for (let i = 0; i < pattern.length; i++) {
+      const ch = pattern[i];
+      if (ch === "\\") {
+        i++;
+        if (i >= pattern.length) return null;
+        lit += pattern[i];
+      } else if (ch === "#") {
+        flush();
+        if (pattern[i + 1] === "#") {
+          i++;
+          tokens.push({ k: "num", max: 4, plus: true });
+        } else tokens.push({ k: "num", max: 2, plus: false });
+      } else if (ch === "*") {
+        flush();
+        tokens.push({ k: "any" });
+      } else if (isSpace(pattern.charCodeAt(i))) {
+        flush();
+        tokens.push({ k: "space" });
+      } else lit += ch;
+    }
+    flush();
+    while (tokens[0]?.k === "space") tokens.shift();
+    while (tokens[tokens.length - 1]?.k === "space") tokens.pop();
+    if (!tokens.length || tokens[0].k === "any") return null;
+    if (tokens.filter((t) => t.k === "any").length > ANY_PER_PATTERN) return null;
+    const out = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      out.push(t);
+      if (t.k !== "any") continue;
+      while (tokens[i + 1]?.k === "space") i++;
+      if (tokens[i + 1]?.k !== "lit") return null;
+    }
+    return out;
+  }
+  var isTitlePattern = (pattern) => compile(pattern) !== null;
+  function titleHostOf(input) {
+    if (typeof input !== "string") return null;
+    const raw = input.trim().toLowerCase();
+    if (!raw) return null;
+    let host;
+    try {
+      host = new URL(raw.includes("://") ? raw : `https://${raw}`).hostname;
+    } catch {
+      return null;
+    }
+    host = host.replace(/^www\./, "");
+    if (host.length > TITLE_HOST_MAX) return null;
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) return null;
+    if (/\.ts\.net$|\.local$|\.internal$|\.\d+$/.test(host)) return null;
+    return host;
+  }
+  var isTitleHost = (host) =>
+    host === "" || (typeof host === "string" && titleHostOf(host) === host);
+  function matchAt(tokens, text, from) {
+    let i = from;
+    for (let n = 0; n < tokens.length; n++) {
+      const t = tokens[n];
+      if (t.k === "lit") {
+        if (!text.startsWith(t.s, i)) return -1;
+        i += t.s.length;
+      } else if (t.k === "space") {
+        while (i < text.length && isSpace(text.charCodeAt(i))) i++;
+      } else if (t.k === "num") {
+        const start = i;
+        while (i < text.length && isDigit(text.charCodeAt(i))) {
+          i++;
+          if (i - start > t.max) return -1;
+        }
+        if (i === start) return -1;
+        if (t.plus && text[i] === "+") i++;
+      } else {
+        const next = tokens[n + 1].s;
+        const limit = Math.min(i + ANY_MAX, text.length);
+        let found = -1;
+        for (let j = i; j <= limit; j++) {
+          if (text.startsWith(next, j)) {
+            found = j;
+            break;
+          }
+          const c = text[j];
+          if (
+            c === ")" ||
+            c === "]" ||
+            c ===
+              `
+`
+          )
+            return -1;
+        }
+        if (found < 0) return -1;
+        i = found;
+      }
+    }
+    return i;
+  }
+  var compiledOf = new WeakMap();
+  function compileRules(rules) {
+    let c = compiledOf.get(rules);
+    if (c) return c;
+    c = [];
+    for (const r of rules.slice(0, RULES_MAX)) {
+      const tokens = compile(r?.pattern);
+      if (tokens) c.push({ host: typeof r.host === "string" ? r.host : "", tokens });
+    }
+    compiledOf.set(rules, c);
+    return c;
+  }
+  function hostFromUrl(url) {
+    if (!url) return "";
+    try {
+      return new URL(url).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  }
+  var onHost = (ruleHost, host) =>
+    ruleHost === "" || host === ruleHost || host.endsWith(`.${ruleHost}`);
+  var hasWords = (s) => /[\p{L}\p{N}]/u.test(s);
+  function cleanTitle(title, opts = {}) {
+    if (typeof title !== "string" || !title) return title;
+    const rules = opts.rules ?? DEFAULT_TITLE_RULES;
+    const host = hostFromUrl(opts.url);
+    const usable = compileRules(rules).filter((r) => onHost(r.host, host));
+    if (!usable.length) return title;
+    const text = fold(title.slice(0, WINDOW));
+    const skipSpace = (i) => {
+      while (i < text.length && isSpace(text.charCodeAt(i))) i++;
+      return i;
+    };
+    let at = skipSpace(0);
+    let cut = -1;
+    for (let pass = 0; pass < PASSES; pass++) {
+      let end = -1;
+      for (const r of usable) {
+        end = matchAt(r.tokens, text, at);
+        if (end >= 0) break;
+      }
+      if (end < 0) break;
+      at = skipSpace(end);
+      cut = at;
+    }
+    if (cut < 0) return title;
+    const rest = title.slice(cut);
+    return hasWords(rest) ? rest : title;
+  }
+  var BARE_COUNT = compile("(##)");
+  function parseTitleRulesPref(v) {
+    const o = v && typeof v === "object" ? v : {};
+    const off = (Array.isArray(o.off) ? o.off : [])
+      .filter((id) => typeof id === "string" && /^[0-9a-f]{8}$/.test(id))
+      .slice(0, TITLE_RULES_OFF_MAX);
+    const add = (Array.isArray(o.add) ? o.add : [])
+      .filter((r) => !!r && isTitleHost(r.host) && isTitlePattern(r.pattern))
+      .slice(0, TITLE_RULES_ADD_MAX)
+      .map((r) => ({ host: r.host, pattern: r.pattern }));
+    return { off, add };
+  }
+  var activeOf = new WeakMap();
+  function activeTitleRules(pref) {
+    if (!pref || typeof pref !== "object") return DEFAULT_TITLE_RULES;
+    const memo = activeOf.get(pref);
+    if (memo) return memo;
+    const { off, add } = parseTitleRulesPref(pref);
+    const rules =
+      !off.length && !add.length
+        ? DEFAULT_TITLE_RULES
+        : [...DEFAULT_TITLE_RULES.filter((r) => !off.includes(titleRuleId(r))), ...add];
+    activeOf.set(pref, rules);
+    return rules;
+  }
+
   // packages/debug-chat/src/embed/guard.ts
   function own(o) {
     if (!o || typeof o !== "object") return { __proto__: null };
@@ -2688,6 +2953,9 @@
     };
     const reviewOrder = () => (userPreferences?.reviewOrder === "oldest" ? "oldest" : "newest");
     const watchTrackingOn = () => userPreferences?.watchTracking !== false;
+    const cleanedTitle = (title, url) =>
+      cleanTitle(title, { url, rules: activeTitleRules(userPreferences?.titleRules) });
+    const pageTitle = () => cleanedTitle(document.title, location.href);
     async function loadPreferences() {
       try {
         const cached = GM_getValue("lk:preferences", "");
@@ -3419,7 +3687,7 @@ ${state.errorDetails}`);
           opacity: ".8",
         });
         const bold = document.createElement("b");
-        bold.textContent = document.title || location.href;
+        bold.textContent = pageTitle() || location.href;
         titleDiv.appendChild(bold);
         dialog.appendChild(titleDiv);
         const btnRow = document.createElement("div");
@@ -3554,7 +3822,7 @@ ${state.errorDetails}`);
       dialog.focus();
       keepFocusInDialog();
       const url = normalizeUrl(location.href);
-      addNote(url, document.title)
+      addNote(url, pageTitle())
         .then((note) => {
           state.noteId = note._id;
           state.notes = note.notes ?? "";
@@ -3627,7 +3895,7 @@ ${state.errorDetails}`);
       try {
         if (offlineReady) cardStorage.restoreCard(url);
         gmCacheInvalidate(noteKey(url));
-        await restoreNote(url, document.title);
+        await restoreNote(url, pageTitle());
         closeDialog();
         setTimeout(openDialog, 0);
       } catch (err) {
@@ -3716,7 +3984,7 @@ ${state.errorDetails}`);
         if (nextUrl) {
           prefetchNextPage(nextUrl);
           state.message = `Redirecting to:
-${nextTitle || nextUrl}`;
+${(nextTitle && cleanedTitle(nextTitle, nextUrl)) || nextUrl}`;
           renderDialog();
         }
       }
@@ -4150,7 +4418,7 @@ ${actualUrl}
       const now = Date.now();
       if (!force && now - watchSavedAt < WATCH_SAVE_MS) return;
       watchSavedAt = now;
-      acc.title = document.title || acc.title;
+      acc.title = pageTitle() || acc.title;
       saveLocalWatch(acc.url, watchSnapshot(acc), acc.dirty);
       if (acc.dirty) watchDirtyAdd(acc.url);
       if (!acc.indexed) {
@@ -4233,7 +4501,7 @@ ${actualUrl}
       watchAcc = {
         url,
         base: stats,
-        title: document.title,
+        title: pageTitle(),
         wall: mine.wall ?? 0,
         media: mine.media ?? 0,
         sessions: mine.sessions ?? 0,
@@ -4582,7 +4850,7 @@ ${actualUrl}
           logFail("cache-check", "cache check", err);
         }
       }
-      addNote(url, document.title)
+      addNote(url, pageTitle())
         .then(async (note) => {
           state.noteId = note._id;
           state.notes = note.notes ?? "";
@@ -4623,13 +4891,13 @@ ${actualUrl}
             const localNote = {
               _id: "local:" + hashUrl(url),
               url,
-              title: document.title,
+              title: pageTitle(),
               card: localFSRS.newCard(),
               notes: "",
               hlc: newHLC(deviceId, null),
             };
             cardStorage.setCard(url, localNote, localNote.hlc, true);
-            queueStorage.addToQueue("add", { url, title: document.title }, localNote.hlc);
+            queueStorage.addToQueue("add", { url, title: pageTitle() }, localNote.hlc);
             state.noteId = localNote._id;
             state.notes = "";
             state.notesSynced = false;
