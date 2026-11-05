@@ -24,6 +24,11 @@ export type SequencerDeps<P> = {
   gapMs?: number;
   /** Before a loop starts over. */
   repeatMs?: number;
+  /**
+   * Called as a sequence starts, in the tap that started it: ms to wait before
+   * its first part, so the output device is awake (output-bed.ts `begin`).
+   */
+  preroll?: () => number;
   /** The page's audio owner, made once for this sequencer. */
   owner?: (h: { onYield(): void; onResume(): void }) => {
     claim(): boolean;
@@ -120,7 +125,9 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
       resumeLater();
     };
     if (owner && !owner.claim()) return resumeLater();
-    if (opts.delayMs) timer = deps.setTimeout(next, opts.delayMs);
+    // The longer of the two, not both: the row's delay is pre-roll enough when it is.
+    const wait = Math.max(opts.delayMs ?? 0, deps.preroll?.() ?? 0);
+    if (wait) timer = deps.setTimeout(next, wait);
     else next();
   };
 

@@ -26,6 +26,17 @@ export function sharedAudioContext(): AudioContext | null {
   return audio();
 }
 
+/**
+ * Leaving: the context does not keep running behind a hidden page or after
+ * /words (docs/voice-mode.md). The next tone or clip resumes it (`audio`), and
+ * the next tap does too, where a resume needs one.
+ */
+export function suspendSharedAudio() {
+  if (ctx?.state !== "running") return;
+  void ctx.suspend().catch(() => {});
+  unlockGradeTones();
+}
+
 function audio(): AudioContext | null {
   if (typeof window === "undefined") return null;
   const AC =
