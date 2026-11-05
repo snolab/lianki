@@ -129,7 +129,7 @@ export class PreferencesD1Repo {
   }
 
   async set(
-    patterns: FilterPattern[],
+    patterns: FilterPattern[] | undefined,
     reviewOrder?: ReviewOrder,
     watchTracking?: boolean,
   ): Promise<void> {
@@ -137,7 +137,9 @@ export class PreferencesD1Repo {
     // UI saves without them, and defaulting there would silently reset a
     // choice made elsewhere.
     const order = reviewOrder ?? (await this.reviewOrder());
-    const watch = watchTracking ?? (await this.get())?.watchTracking ?? true;
+    const stored = await this.get();
+    const watch = watchTracking ?? stored?.watchTracking ?? true;
+    const filters = patterns ?? stored?.mobileExcludePatterns ?? [];
     await this.db
       .prepare(
         `INSERT INTO preferences
@@ -149,7 +151,7 @@ export class PreferencesD1Repo {
            watch_tracking = excluded.watch_tracking,
            updated_at = excluded.updated_at`,
       )
-      .bind(this.userId, JSON.stringify(patterns), order, watch ? 1 : 0, new Date().toISOString())
+      .bind(this.userId, JSON.stringify(filters), order, watch ? 1 : 0, new Date().toISOString())
       .run();
   }
 }
