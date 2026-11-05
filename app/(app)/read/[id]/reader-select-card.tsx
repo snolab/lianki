@@ -4,19 +4,22 @@
 // selection"): ONE glass layer for the selected unit, nothing framed inside
 // it (design-principles.md, minimal nesting) — its kind and a preview (title
 // and size for a chapter or the book), how well its words are known, the
-// actions that fit it, and a link button (our own inline SVG) that copies
-// the unit's deep link. A word or phrase that is one of his /words cards
-// shows the card's meaning at once (lib/read/select-meaning.ts); a sentence,
-// a paragraph or a hand-made range shows its translation by itself, unit by
-// unit as each lands (lib/read/select-translate.ts); Translate is a tap for
-// the rest. Not modal: the book stays clickable under it, so the
+// actions that fit it, and an icon group (read aloud, copy the text,
+// copy the unit's deep link). A word or phrase that is one of his /words cards
+// shows the card's meaning at once (lib/read/select-meaning.ts), any other
+// word its gloss (use-select-gloss.ts); a phrase, a sentence, a paragraph or
+// a hand-made range shows its translation by itself, unit by unit as each
+// lands (lib/read/select-translate.ts). No Look up or Translate buttons
+// (owner, 2026-11-05 02:11 JST): the rest of a long translation comes as he
+// scrolls it, and a failure's error line is its retry. Not modal: the book stays clickable under it, so the
 // next quick click widens the selection.
 
-import { useEffect } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import type { Fam } from "@/lib/read/reader-model";
 import type { FamCounts, Unit } from "@/lib/read/reader-select";
 import { fill } from "@/lib/nav/nav-core";
+import { CardIcons } from "./reader-card-icons";
 
 export interface UnitView {
   unit: Unit;
@@ -37,8 +40,6 @@ export interface UnitView {
 export interface CardActions {
   copyLink: () => void;
   copyText?: () => void;
-  lookUp?: () => void;
-  translate?: () => void;
   readFrom?: () => void;
   /** Say exactly the selected text (a hand-made selection). */
   readAloud?: () => void;
@@ -96,24 +97,8 @@ const SEG = {
   unrecognised: "bg-[oklch(0.6_0.13_45/0.55)] dark:bg-[oklch(0.74_0.12_45/0.55)]",
 } as const;
 
-/** The link mark: two chain links, stroked in the text colour. */
-export function LinkIcon({ className = "h-5 w-5" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className={className}
-    >
-      <path d="M10 13.5a4.5 4.5 0 0 0 6.36 0l3.18-3.18a4.5 4.5 0 0 0-6.36-6.36l-1.4 1.4" />
-      <path d="M14 10.5a4.5 4.5 0 0 0-6.36 0l-3.18 3.18a4.5 4.5 0 0 0 6.36 6.36l1.4-1.4" />
-    </svg>
-  );
-}
+/** A scroller shown to (about) its end. */
+const nearEnd = (el: HTMLElement) => el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
 
 export function SelectCard({
   view,
@@ -124,6 +109,9 @@ export function SelectCard({
   translation = null,
   meaning = null,
   lemma = null,
+  onMoreTranslation = null,
+  translateFailed = null,
+  grade = null,
   onClose,
 }: {
   view: UnitView;
@@ -140,6 +128,12 @@ export function SelectCard({
   meaning?: CardMeaning | null;
   /** The selected word's dictionary form, when it is an inflected one. */
   lemma?: CardLemma | null;
+  /** Ask for the next stretch of a long selection's translation (null: nothing left). */
+  onMoreTranslation?: (() => void) | null;
+  /** The translation failed: its error line is the retry (null: it did not). */
+  translateFailed?: (() => void) | null;
+  /** The grade handle (or 制卡 / when it is due), under the actions (reader-grade-handle.tsx). */
+  grade?: ReactNode;
   onClose: () => void;
 }) {
   const t = useIntlayer("read-select");
@@ -148,6 +142,13 @@ export function SelectCard({
   const { locale } = useLocale();
   const nf = new Intl.NumberFormat(String(locale));
   const pf = new Intl.NumberFormat(String(locale), { style: "percent" });
+  // The rest of a long translation comes by itself (no Translate button):
+  // when what came fits without scrolling, or he scrolls it to its end.
+  const transRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = transRef.current;
+    if (onMoreTranslation && el && nearEnd(el)) onMoreTranslation();
+  }, [onMoreTranslation, translation]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", key);
@@ -195,16 +196,37 @@ export function SelectCard({
           </span>
         )}
         <span className="flex-1" />
-        <button
-          type="button"
-          onClick={actions.copyLink}
-          aria-label={t.copyLink.value}
-          title={t.copyLink.value}
-          data-testid="read-select-link"
-          className="grid h-10 w-10 place-items-center rounded-full hover:bg-[oklch(0.5_0_0/0.1)]"
-        >
-          <LinkIcon />
-        </button>
+        <CardIcons
+          items={[
+            ...(actions.readAloud
+              ? [
+                  {
+                    action: "read-aloud",
+                    icon: "speakerHigh" as const,
+                    label: t.readAloud.value,
+                    run: actions.readAloud,
+                  },
+                ]
+              : []),
+            ...(actions.copyText
+              ? [
+                  {
+                    action: "copy-text",
+                    icon: "copy" as const,
+                    label: t.copyText.value,
+                    run: actions.copyText,
+                  },
+                ]
+              : []),
+            {
+              action: "copy-link",
+              icon: "link",
+              label: t.copyLink.value,
+              run: actions.copyLink,
+              testId: "read-select-link",
+            },
+          ]}
+        />
         <button
           type="button"
           onClick={onClose}
@@ -275,6 +297,8 @@ export function SelectCard({
         <div
           className="mt-1 max-h-[40vh] space-y-1.5 overflow-y-auto text-sm"
           aria-live="polite"
+          ref={transRef}
+          onScroll={(e) => onMoreTranslation && nearEnd(e.currentTarget) && onMoreTranslation()}
           data-testid="read-select-translation"
           data-pending={translation.blocks.some((b) => b.includes(null)) || undefined}
         >
@@ -296,6 +320,20 @@ export function SelectCard({
         </div>
       )}
 
+      {translateFailed && (
+        <button
+          type="button"
+          onClick={translateFailed}
+          className="-mx-1 mt-1 min-h-11 rounded-full px-1 text-start text-sm text-[oklch(0.52_0.17_30)] pointer-fine:min-h-0 dark:text-[oklch(0.76_0.14_30)]"
+          data-testid="read-select-translate-retry"
+        >
+          {t.translateFailed}
+          <span aria-hidden className="mx-1 opacity-60">
+            ·
+          </span>
+          <span className="font-medium underline underline-offset-2">{t.retry}</span>
+        </button>
+      )}
       {u.kind !== "word" && share !== null && (
         <div className="mt-1.5 flex items-center gap-2" data-testid="read-select-fam">
           {c && c.n > 0 && (
@@ -340,26 +378,6 @@ export function SelectCard({
             {fill(tr.makeCards.value, { n: nf.format(actions.makeCards.n) })}
           </button>
         )}
-        {actions.readAloud && (
-          <button
-            type="button"
-            className={btn}
-            onClick={actions.readAloud}
-            data-action="read-aloud"
-          >
-            {t.readAloud}
-          </button>
-        )}
-        {actions.lookUp && (
-          <button type="button" className={btn} onClick={actions.lookUp} data-action="lookup">
-            {t.lookUp}
-          </button>
-        )}
-        {actions.translate && (
-          <button type="button" className={btn} onClick={actions.translate} data-action="translate">
-            {t.translate}
-          </button>
-        )}
         {actions.makePhrase && (
           <button
             type="button"
@@ -380,17 +398,13 @@ export function SelectCard({
             {t.readFromHere}
           </button>
         )}
-        {actions.copyText && (
-          <button type="button" className={btn} onClick={actions.copyText} data-action="copy-text">
-            {t.copyText}
-          </button>
-        )}
         {status && (
           <span role="status" className="px-2 text-xs opacity-75" data-testid="read-select-status">
             {status}
           </span>
         )}
       </div>
+      {grade}
     </div>
   );
 }

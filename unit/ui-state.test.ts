@@ -14,6 +14,7 @@ import {
   cleanWordsUi,
   migrateCollapsed,
   setAnchor,
+  setFocusKey,
   toggleCollapsed,
   topIndex,
   wordsUiStore,
@@ -197,6 +198,7 @@ describe("/words UI store", () => {
       helpOpen: false,
       anchors: { L1: "L1\u0000chat" },
       collapsed: [],
+      focus: {},
     });
   });
 
@@ -213,6 +215,27 @@ describe("/words UI store", () => {
     setAnchor(w, "L24", null);
     expect(w.getState().anchors.L24).toBeUndefined();
     setAnchor(w, "nope", null);
+  });
+
+  it("a scoped review's focused card: kept per review, survives a refresh, capped at 20", () => {
+    browser();
+    const w = wordsUiStore("/words");
+    setFocusKey(w, "review:b:p3", "L\u0000dollar");
+    const before = w.getState();
+    setFocusKey(w, "review:b:p3", "L\u0000dollar");
+    expect(w.getState()).toBe(before);
+    setFocusKey(w, "review:b:p3", "L\u0000cent");
+    expect(w.getState().focus).toEqual({ "review:b:p3": "L\u0000cent" });
+    const kept = session.m.get("lk:ui:words")!;
+    resetUiStores();
+    browser({ "lk:ui:words": kept });
+    expect(wordsUiStore("/words").getState().focus).toEqual({ "review:b:p3": "L\u0000cent" });
+    const w2 = wordsUiStore("/words");
+    for (let i = 0; i < 25; i++) setFocusKey(w2, `r${i}`, `k${i}`);
+    expect(Object.keys(w2.getState().focus)).toHaveLength(20);
+    expect(w2.getState().focus.r24).toBe("k24");
+    expect(cleanWordsUi({ focus: { a: "k", b: 1 } })).toEqual({ focus: { a: "k" } });
+    expect(cleanWordsUi({ focus: ["k"] })).toEqual({});
   });
 
   it("cleans what it reads", () => {

@@ -58,7 +58,9 @@ await page.screenshot({ path: join(OUT, "read-list-light.png") });
 await picker.setInputFiles(FIXTURE);
 await page.waitForURL(/\/read\/[^/]+$/, { timeout: 30000 });
 const id = page.url().split("/").pop();
-await page.getByRole("heading", { name: "The Gift of the Magi" }).waitFor({ timeout: 15000 });
+await page
+  .getByRole("heading", { name: "The Gift of the Magi", exact: true })
+  .waitFor({ timeout: 15000 });
 check(await page.getByText("O. Henry", { exact: true }).isVisible(), "author shown");
 const chapters = page.locator('[data-testid="read-chapters"] select option');
 check(
@@ -117,7 +119,7 @@ const sel = await page.locator('[data-testid="read-chapters"] select').inputValu
 check(sel === "1", `next chapter selects chapter 2 (value ${sel})`);
 await page.screenshot({ path: join(OUT, "read-book-light.png") });
 await page.reload({ waitUntil: "networkidle" });
-await page.getByRole("heading", { name: "The Gift of the Magi" }).waitFor();
+await page.getByRole("heading", { name: "The Gift of the Magi", exact: true }).waitFor();
 check(
   (await page.locator('[data-testid="read-chapters"] select').inputValue()) === "1",
   "reading position survives a reload",
@@ -133,7 +135,7 @@ check(
   });
   const p = await dark.newPage();
   await p.goto(`/read/${id}`, { waitUntil: "networkidle" });
-  await p.getByRole("heading", { name: "The Gift of the Magi" }).waitFor();
+  await p.getByRole("heading", { name: "The Gift of the Magi", exact: true }).waitFor();
   await p.locator('[data-testid="read-scan-mastered"]').waitFor({ timeout: 30000 });
   await p.screenshot({ path: join(OUT, "read-book-dark.png") });
   await p.goto("/read", { waitUntil: "networkidle" });

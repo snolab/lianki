@@ -11,6 +11,11 @@
 //
 // The overlay covers the reader; the page under it keeps its place, and
 // closing (✕, the exit button, back) returns focus to the reader.
+//
+// It is pinned in the URL (`?review=<ref>`, lib/read/review-ref.ts): opening
+// pushes one entry with that address, so Back closes it and a refresh or a
+// link opens it again; the card in focus and the list's scroll are kept per
+// tab (`lk:ui:words`, under `reviewKey`). docs/ui-state.md.
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
@@ -21,6 +26,7 @@ import { orderWords, type ParaWord } from "@/lib/read/word-review";
 import { foldsOf } from "@/lib/read/words";
 import { fill } from "@/lib/nav/nav-core";
 import { useBackToClose } from "@/lib/use-back-to-close";
+import type { BackOptions } from "@/lib/back-to-close";
 import type { WordList } from "@/lib/repos/wordsD1";
 import type { StudyScope } from "@/app/(app)/words/WordsClient";
 
@@ -134,10 +140,16 @@ export function WordReview({
   returnTo,
   onClose,
   onChanged,
+  place,
+  pin,
 }: {
   id: string;
   title: string;
   words: RangeWord[];
+  /** Where this review's position is kept in the tab (reviewKey). */
+  place?: string;
+  /** Its history entry: the address with `?review=`, or the one it was opened from. */
+  pin?: BackOptions;
   /** Focused again on close. */
   returnTo: RefObject<HTMLElement | null>;
   onClose: () => void;
@@ -160,7 +172,7 @@ export function WordReview({
   const touched = useCallback(() => {
     changed.current = true;
   }, []);
-  useBackToClose(true, () => close.current());
+  useBackToClose(true, () => close.current(), pin);
 
   useLayoutEffect(() => {
     const back = returnTo.current;
@@ -264,7 +276,7 @@ export function WordReview({
           key={v}
           lists={session.lists}
           onExit={() => close.current()}
-          scope={{ items: session.items, onGrade, exitLabel: t.backToBook.value }}
+          scope={{ items: session.items, onGrade, exitLabel: t.backToBook.value, key: place }}
         />
       ) : (
         <p className="px-4 pt-[calc(5rem+env(safe-area-inset-top))] text-sm opacity-70">

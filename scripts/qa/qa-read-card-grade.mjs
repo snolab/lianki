@@ -1,0 +1,243 @@
+// /read reader v2: grading from the selection card's handle (docs/books-plan.md,
+// "Grading from the selection card"). Silent; desktop and iPhone.
+//
+//   QA_BASE=http://localhost:3471 bun scripts/qa/qa-read-card-grade.mjs [outDir]
+//
+// Against a local server on D1 (qa:all's wrangler dev, read.reader-v2 on in
+// the local D1). Throwaway accounts and the public-domain fixture EPUB only:
+//
+// - tapping or clicking the text never grades (no batch-grade write);
+// - a word with no card offers 制卡; once made, the handle appears;
+// - a tap on the knob never grades; a drag past a level does (one batch,
+//   sent after the hold); keys 1–4 grade on desktop;
+// - dragging the knob up takes the batch back (the server's undo);
+// - a sentence gets the handle and its drag grades that sentence.
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { chromium, devices } from "playwright";
+import { launchSilent, newSilentContext } from "./silent.mjs";
+
+const BASE = process.env.QA_BASE || "http://localhost:3000";
+const OUT = process.argv[2] || "test-results/read-card-grade";
+const FIXTURE = "unit/fixtures/epub/pg7256-gift-of-the-magi.epub";
+const PW = "qa-test-pass-1234";
+mkdirSync(OUT, { recursive: true });
+
+let failed = 0;
+const check = (ok, name) => {
+  console.log(`${ok ? "✓" : "✗"} ${name}`);
+  if (!ok) failed++;
+};
+const until = async (page, f, ms = 8000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (await f()) return true;
+    await page.waitForTimeout(100);
+  }
+  return false;
+};
+
+const browser = await launchSilent(chromium);
+
+async function setup(ctx, tag) {
+  const r = await ctx.request.post("/api/auth/sign-up/email", {
+    data: { email: `qa+cardgrade-${tag}${Date.now()}@lianki.test`, password: PW, name: "QA Grade" },
+    headers: { origin: BASE },
+  });
+  check(r.ok(), `sign-up ${tag} (${r.status()})`);
+  const page = await ctx.newPage();
+  const errs = [];
+  page.on("pageerror", (e) => errs.push(e.message));
+  // Every write the handle makes: grades and undos (the probe is a read).
+  const writes = [];
+  page.on("request", (q) => {
+    if (!q.url().includes("/batch-grade") || q.method() !== "POST") return;
+    const b = JSON.parse(q.postData() || "{}");
+    if (!b.probe) writes.push(b);
+  });
+  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
+  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
+  const id = page.url().split("/").pop();
+  await page.goto(`/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
+  await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
+  await until(page, () => page.evaluate(() => !!document.querySelector(".lk-book [data-f]")));
+  return { page, errs, writes };
+}
+
+/** A not-recognised or new word (no card yet) in a long paragraph, on screen. */
+const aNewWord = (page) =>
+  page.evaluate(() => {
+    for (const p of document.querySelectorAll("[data-testid=reader-book] p[data-line]")) {
+      if (p.querySelectorAll("[data-t]").length < 6) continue;
+      for (const el of p.querySelectorAll('[data-t][data-f="n"], [data-t][data-f="u"]')) {
+        const r = el.getBoundingClientRect();
+        if (r.top < 120 || r.bottom > innerHeight * 0.6 || r.width < 18) continue;
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, text: el.textContent };
+      }
+    }
+    return null;
+  });
+
+const knobBox = async (page) => page.getByTestId("read-grade-knob").boundingBox();
+
+async function mouseDrag(page, dx, dy) {
+  const b = await knobBox(page);
+  const x = b.x + b.width / 2;
+  const y = b.y + b.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 14; i++) {
+    await page.mouse.move(x + (dx * i) / 14, y + (dy * i) / 14);
+    await page.waitForTimeout(16);
+  }
+  await page.waitForTimeout(120);
+  await page.mouse.up();
+}
+
+async function touchDrag(cdp, page, dx, dy) {
+  const b = await knobBox(page);
+  const x = b.x + b.width / 2;
+  const y = b.y + b.height / 2;
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  for (let i = 1; i <= 14; i++) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: x + (dx * i) / 14, y: y + (dy * i) / 14 }],
+    });
+    await page.waitForTimeout(16);
+  }
+  await page.waitForTimeout(120);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+
+async function run(device, scheme, touch) {
+  const tag = `${touch ? "iphone" : "desktop"}-${scheme}`;
+  console.log(`— ${tag}`);
+  const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: scheme });
+  await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
+  const { page, errs, writes } = await setup(ctx, tag);
+  const cdp = touch ? await ctx.newCDPSession(page) : null;
+  await page.mouse.wheel(0, 700);
+  await page.waitForTimeout(600);
+  const w = await aNewWord(page);
+  check(!!w, `a word without a card is on screen (${w?.text})`);
+  if (!w) return ctx.close();
+  const tapWord = () => (touch ? page.touchscreen.tap(w.x, w.y) : page.mouse.click(w.x, w.y));
+
+  // A tap on the word: its card, 制卡 first, nothing graded.
+  await tapWord();
+  const make = page.getByTestId("read-grade-make");
+  check(await until(page, () => make.isVisible()), "a word without a card: 制卡 on the card");
+  await page.screenshot({ path: join(OUT, `make-${tag}.png`) });
+  await make.click();
+  const knob = page.getByTestId("read-grade-knob");
+  check(await until(page, () => knob.isVisible(), 15000), "once the card exists, the handle");
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, `handle-${tag}.png`) });
+
+  // Taps on the text and on the knob never grade.
+  for (let i = 0; i < 3; i++) {
+    await tapWord();
+    await page.waitForTimeout(700);
+  }
+  await until(page, () => knob.isVisible());
+  await page.waitForTimeout(600);
+  const b = await knobBox(page);
+  if (touch) await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2);
+  else await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await page.waitForTimeout(400);
+  check(
+    !(await page
+      .getByTestId("read-made-toast")
+      .isVisible()
+      .catch(() => false)) ||
+      !(await page.getByTestId("read-made-toast").textContent()).includes(":"),
+    "no grade toast after taps",
+  );
+
+  // A drag past the first level right: Good (mirror off), one batch after the hold.
+  if (touch) await touchDrag(cdp, page, 56, 0);
+  else await mouseDrag(page, 56, 0);
+  const toast = page.getByTestId("read-made-toast");
+  check(await until(page, () => toast.isVisible(), 2000), "the grade's compact toast");
+  await page.screenshot({ path: join(OUT, `graded-${tag}.png`) });
+  check(writes.length === 0, `held: nothing sent yet, and no tap graded (${writes.length})`);
+  check(await until(page, () => writes.length > 0, 12000), "the batch is sent after the hold");
+  check(
+    writes[0]?.rating === 3 && writes[0]?.words?.length === 1 && !writes[0]?.sentences?.length,
+    `the batch: the word, Good (${JSON.stringify(writes[0]).slice(0, 160)})`,
+  );
+  await page.waitForTimeout(800);
+
+  // Up: the batch is taken back by the server.
+  await tapWord();
+  await until(page, () => knob.isVisible());
+  await page.waitForTimeout(700);
+  const undone = page.waitForResponse(
+    (r) => r.url().includes("/batch-grade") && (r.request().postData() || "").includes('"undo"'),
+    { timeout: 8000 },
+  );
+  if (touch) await touchDrag(cdp, page, 0, -70);
+  else await mouseDrag(page, 0, -70);
+  const u = await undone.catch(() => null);
+  const ub = u ? await u.json().catch(() => null) : null;
+  check(!!u && u.ok() && ub?.restored >= 1, `dragging up undoes it (${JSON.stringify(ub)})`);
+
+  // Desktop: keys grade the open card's word.
+  if (!touch) {
+    await page.waitForTimeout(800);
+    await tapWord();
+    await until(page, () => knob.isVisible());
+    await page.waitForTimeout(600);
+    const before = writes.length;
+    await page.keyboard.press("4");
+    check(await until(page, () => toast.isVisible(), 2000), "key 4 grades the word (toast)");
+    await page.keyboard.press("u");
+    await page.waitForTimeout(GRADE_WAIT);
+    check(writes.length === before, "U while held: dropped, nothing sent");
+  }
+
+  // A sentence: two quick clicks; its handle grades that sentence.
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(800);
+  if (touch) {
+    await page.touchscreen.tap(w.x, w.y);
+    await page.waitForTimeout(60);
+    await page.touchscreen.tap(w.x, w.y);
+  } else await page.mouse.click(w.x, w.y, { clickCount: 2, delay: 20 });
+  await until(page, () =>
+    page.evaluate(
+      () => document.querySelector("[data-testid=read-select-card]")?.dataset.kind === "sentence",
+    ),
+  );
+  check(
+    await until(page, () =>
+      page.evaluate(
+        () => !!document.querySelector("[data-testid=read-grade-handle][data-enabled]"),
+      ),
+    ),
+    "a sentence never graded: the handle is on",
+  );
+  await page.waitForTimeout(700);
+  const n0 = writes.length;
+  if (touch) await touchDrag(cdp, page, 56, 0);
+  else await mouseDrag(page, 56, 0);
+  check(await until(page, () => writes.length > n0, 12000), "the sentence's batch is sent");
+  const sb = writes.at(-1);
+  check(
+    sb?.sentences?.length === 1 && !sb?.words?.length,
+    `the batch: that sentence alone (${JSON.stringify(sb).slice(0, 160)})`,
+  );
+  await page.screenshot({ path: join(OUT, `sentence-${tag}.png`) });
+  check(errs.length === 0, `no page errors (${errs.join(" | ").slice(0, 200)})`);
+  await ctx.close();
+}
+
+const GRADE_WAIT = 9000;
+await run(devices["Desktop Chrome"], "light", false);
+await run(devices["iPhone 15"], "dark", true);
+await browser.close();
+console.log(failed ? `\n${failed} failed` : "\nall passed");
+process.exit(failed ? 1 : 0);

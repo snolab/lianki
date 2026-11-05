@@ -7,16 +7,21 @@
 // fetched file is cached in R2 (`lianki-blobs`, `preset-cache/`) and shared by
 // every user after the first import.
 //
-// The rule every entry must pass (checkCatalogue, unit/books-catalogue.test.ts):
-// public domain in the US (first published 96+ years ago: in or before 1930 as
-// of 2026) AND every creator of the edition (author, translator, editor,
-// illustrator, author of an introduction) dead 80+ years. Original-language
-// texts. Checked by hand on each source's catalogue page; the years are kept
-// here so the check stays visible and testable.
+// The admission rule (lib/books/terms.ts; docs/books-plan.md, "Admission
+// rule"): a book is shown to a viewer only when it is public domain in its
+// country of first publication, in the viewer's country and in the US, judged
+// from every creator of the edition (author, translator, editor, illustrator,
+// author of an introduction). checkCatalogue (unit/books-catalogue.test.ts)
+// requires every entry to carry that data and to pass in its own country and
+// in the US; /books and the import filter per viewer. Not legal advice.
+// Original-language texts. Death years and first-publication years were
+// checked on each Project Gutenberg ebook page (its author line gives the
+// dates) and standard references (Wikipedia, BnF data) on 2026-11-05.
 //
 // Client-safe (no server imports): /books renders from it.
 
 import { SLUG_RE, slugOf } from "./slug";
+import { TERMS, normaliseCountry, pdForViewer, pdIn, type Creator } from "./terms";
 
 /** Hosts the server may fetch a catalogue file from, and follow a redirect to. */
 export const SOURCE_HOSTS = ["www.gutenberg.org"] as const;
@@ -40,13 +45,15 @@ export interface CatalogueBook {
   level: string;
   /** Verse or prose: shown beside the level. */
   form?: "verse" | "prose";
-  /** First publication year of the work (the US public-domain test). */
-  published: number;
+  /** ISO 3166-1 alpha-2 of the country where the work was first published. */
+  workCountry: string;
+  /** Year of the work's first publication (the US publication rule). */
+  firstPublicationYear: number;
   /**
    * Every creator of this edition with the year they died (author,
-   * translator, editor, illustrator, introduction): the 80-year test.
+   * translator, editor, illustrator, introduction): the life+N terms.
    */
-  creators: { name: string; role: string; died: number }[];
+  creators: Creator[];
   source: {
     /** The human page that names the edition and its licence: linked on the card and in the book. */
     page: string;
@@ -87,12 +94,14 @@ export const CATALOGUE: CatalogueBook[] = [
     lang: "fr",
     level: "A1",
     form: "prose",
-    published: 1697,
+    // Paris, Claude Barbin, 1697. PG #33931: Perrault 1628–1703, Lang 1844–1912.
+    workCountry: "FR",
+    firstPublicationYear: 1697,
     // Andrew Lang's 1888 Oxford edition; only the 1697 prose tales are
     // imported (`range`), not his English introduction and notes.
     creators: [
-      { name: "Charles Perrault", role: "author", died: 1703 },
-      { name: "Andrew Lang", role: "editor", died: 1912 },
+      { name: "Charles Perrault", role: "author", deathYear: 1703 },
+      { name: "Andrew Lang", role: "editor", deathYear: 1912 },
     ],
     source: pg(33931),
     licence: PG_LICENCE,
@@ -106,8 +115,10 @@ export const CATALOGUE: CatalogueBook[] = [
     lang: "fr",
     level: "A1–A2",
     form: "verse",
-    published: 1668,
-    creators: [{ name: "Jean de La Fontaine", role: "author", died: 1695 }],
+    // Paris, Barbin / Thierry, 1668 (books I–VI). PG #17941: La Fontaine 1621–1695.
+    workCountry: "FR",
+    firstPublicationYear: 1668,
+    creators: [{ name: "Jean de La Fontaine", role: "author", deathYear: 1695 }],
     source: pg(17941),
     licence: PG_LICENCE,
     attribution: pgCredit(17941),
@@ -119,9 +130,12 @@ export const CATALOGUE: CatalogueBook[] = [
     lang: "fr",
     level: "A2",
     form: "prose",
-    published: 1869,
+    // Paris, Hetzel, 1869 (some letters ran in L'Événement from 1866; the
+    // earlier year changes no result). PG #11770: Daudet 1840–1897.
+    workCountry: "FR",
+    firstPublicationYear: 1869,
     // Not #36780: its introduction is by Charles Sarolea (died 1953).
-    creators: [{ name: "Alphonse Daudet", role: "author", died: 1897 }],
+    creators: [{ name: "Alphonse Daudet", role: "author", deathYear: 1897 }],
     source: pg(11770),
     licence: PG_LICENCE,
     attribution: pgCredit(11770),
@@ -133,11 +147,15 @@ export const CATALOGUE: CatalogueBook[] = [
     lang: "fr",
     level: "A2–B1",
     form: "prose",
-    published: 1885,
-    // Includes "La Parure". Illustrations (not imported) by Paul Cousturier.
+    // Paris, Marpon & Flammarion, 1885. PG #14790: Maupassant 1850–1893.
+    workCountry: "FR",
+    firstPublicationYear: 1885,
+    // Includes "La Parure". Illustrations (not imported) by Paul Cousturier
+    // (b. 1855, also "Paul de Sémant"): references give his death as 1908
+    // (bedetheque) or 1915 (Wikipedia); the later year is kept.
     creators: [
-      { name: "Guy de Maupassant", role: "author", died: 1893 },
-      { name: "Paul Cousturier", role: "illustrator", died: 1908 },
+      { name: "Guy de Maupassant", role: "author", deathYear: 1893 },
+      { name: "Paul Cousturier", role: "illustrator", deathYear: 1915 },
     ],
     source: pg(14790),
     licence: PG_LICENCE,
@@ -152,11 +170,14 @@ export const CATALOGUE: CatalogueBook[] = [
     lang: "fr",
     level: "B1",
     form: "prose",
-    published: 1759,
+    // Geneva, Cramer, January 1759 (Paris and Amsterdam printings the same
+    // month). PG #4650: Voltaire 1694–1778; Beuchot 1777–1851 (BnF).
+    workCountry: "CH",
+    firstPublicationYear: 1759,
     // Beuchot's edition of the Œuvres (Lefèvre / Firmin Didot, 1829), with his preface and notes.
     creators: [
-      { name: "Voltaire", role: "author", died: 1778 },
-      { name: "Adrien Beuchot", role: "editor", died: 1851 },
+      { name: "Voltaire", role: "author", deathYear: 1778 },
+      { name: "Adrien Beuchot", role: "editor", deathYear: 1851 },
     ],
     source: pg(4650),
     licence: PG_LICENCE,
@@ -169,8 +190,10 @@ export const CATALOGUE: CatalogueBook[] = [
     lang: "en",
     level: "A2–B1",
     form: "prose",
-    published: 1865,
-    creators: [{ name: "Lewis Carroll", role: "author", died: 1898 }],
+    // London, Macmillan, 1865. PG #11: Carroll 1832–1898.
+    workCountry: "GB",
+    firstPublicationYear: 1865,
+    creators: [{ name: "Lewis Carroll", role: "author", deathYear: 1898 }],
     source: pg(11),
     licence: PG_LICENCE,
     attribution: pgCredit(11),
@@ -182,8 +205,11 @@ export const CATALOGUE: CatalogueBook[] = [
     lang: "de",
     level: "B1",
     form: "prose",
-    published: 1915,
-    creators: [{ name: "Franz Kafka", role: "author", died: 1924 }],
+    // Leipzig: Die weißen Blätter, October 1915, then Kurt Wolff, 1915.
+    // PG #22367: Kafka 1883–1924.
+    workCountry: "DE",
+    firstPublicationYear: 1915,
+    creators: [{ name: "Franz Kafka", role: "author", deathYear: 1924 }],
     source: pg(22367),
     licence: PG_LICENCE,
     attribution: pgCredit(22367),
@@ -223,7 +249,23 @@ export function allowedSourceUrl(raw: string): URL | null {
 
 /** The latest first-publication year that is public domain in the US during `year`. */
 export function usPdCutoff(year: number): number {
-  return year - 96;
+  return year - TERMS.US.publication!.years - 1;
+}
+
+const ROLES = new Set(["author", "translator", "editor", "illustrator"]);
+
+/** Whether `b` may be shown to, and imported by, a viewer in `country` (null = unknown). */
+export function bookVisibleIn(b: CatalogueBook, country: string | null, year: number): boolean {
+  return pdForViewer(b, country, year);
+}
+
+/** The catalogue a viewer in `country` sees during `year`. */
+export function catalogueFor(
+  country: string | null,
+  year: number,
+  list: CatalogueBook[] = CATALOGUE,
+): CatalogueBook[] {
+  return list.filter((b) => bookVisibleIn(b, country, year));
 }
 
 /** Problems with the catalogue as of `year`; empty when every entry passes. */
@@ -238,12 +280,19 @@ export function checkCatalogue(list: CatalogueBook[], year: number): string[] {
     if (!b.title.trim() || !b.author.trim()) out.push(`${at} title and author required`);
     if (!/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(b.lang)) out.push(`${at} bad lang`);
     if (!/^[ABC][12](–[ABC][12])?\+?$/.test(b.level)) out.push(`${at} bad CEFR level`);
-    if (!Number.isInteger(b.published) || b.published > usPdCutoff(year))
-      out.push(`${at} not public domain in the US`);
+    if (!Number.isInteger(b.firstPublicationYear) || b.firstPublicationYear > year)
+      out.push(`${at} first publication year missing`);
+    if (normaliseCountry(b.workCountry) !== b.workCountry)
+      out.push(`${at} workCountry must be an ISO 3166 code`);
     if (!b.creators.length) out.push(`${at} no creators`);
-    for (const c of b.creators)
-      if (!Number.isInteger(c.died) || c.died + 80 >= year)
-        out.push(`${at} ${c.name} died less than 80 years ago`);
+    for (const c of b.creators) {
+      if (!c.name.trim() || !ROLES.has(c.role)) out.push(`${at} creator needs a name and a role`);
+      if (!Number.isInteger(c.deathYear) || c.deathYear > year)
+        out.push(`${at} ${c.name}: death year missing`);
+    }
+    if (!pdIn(b, "US", year)) out.push(`${at} not public domain in the US`);
+    if (!pdIn(b, b.workCountry, year))
+      out.push(`${at} not public domain in its country of first publication`);
     if (!allowedSourceUrl(b.source.file)) out.push(`${at} source file not on an allowed host`);
     if (!allowedSourceUrl(b.source.page)) out.push(`${at} source page not on an allowed host`);
     if (b.licence.trim().length < 10) out.push(`${at} licence line missing`);

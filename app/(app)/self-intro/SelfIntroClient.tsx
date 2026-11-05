@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import ImportStep from "./ImportStep";
 
 type Language = {
   code: string;
@@ -68,10 +69,13 @@ const QUESTIONS: Question[] = [
   },
 ];
 
-export default function SelfIntroClient() {
+export default function SelfIntroClient({ importOn = false }: { importOn?: boolean }) {
   const { selectLanguage, interview, review, errors, success } = useIntlayer("self-intro-page");
 
-  const [step, setStep] = useState<"select-language" | "interview" | "review">("select-language");
+  // The flow starts by importing material about the user (behind `self-intro.import`).
+  const [step, setStep] = useState<"import" | "select-language" | "interview" | "review">(
+    importOn ? "import" : "select-language",
+  );
   const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -189,6 +193,19 @@ export default function SelfIntroClient() {
       setIsSaving(false);
     }
   };
+
+  if (step === "import") {
+    return (
+      <ImportStep
+        onSkip={() => setStep("select-language")}
+        onDone={(fields) => {
+          // The confirmed fields become the interview's answers, still editable there.
+          setAnswers(Object.fromEntries(Object.entries(fields).filter(([, v]) => v.trim())));
+          setStep("select-language");
+        }}
+      />
+    );
+  }
 
   if (step === "select-language") {
     return (

@@ -9,10 +9,23 @@ import {
   bookKey,
   catalogueBook,
   catalogueByLang,
+  bookVisibleIn,
+  catalogueFor,
   checkCatalogue,
   presetSourceKey,
+  usPdCutoff,
   type CatalogueBook,
 } from "@/lib/books/catalogue";
+import {
+  DEFAULT_TERM,
+  TERMS,
+  listedCountries,
+  normaliseCountry,
+  pdForViewer,
+  pdIn,
+  termFor,
+  type Work,
+} from "@/lib/books/terms";
 import { bookHref, newSlug, normaliseSlug, slugOf, SLUG_RE } from "@/lib/books/slug";
 import {
   BookSourceFail,
@@ -53,26 +66,48 @@ describe("catalogue", () => {
     }
   });
 
-  test("the check refuses a recent work, a creator dead under 80 years, an unknown host, no licence", () => {
+  test("the check refuses a recent work, missing data, an unknown host, no licence", () => {
     const bad: CatalogueBook = {
       ...perrault,
       slug: "x",
-      published: 1943,
-      creators: [{ name: "A translator", role: "translator", died: 1950 }],
+      workCountry: "France",
+      firstPublicationYear: 1943,
+      creators: [{ name: "A translator", role: "translator", deathYear: 1950 }],
       source: { ...perrault.source, file: "https://example.com/book.html" },
       licence: "",
     };
     const out = checkCatalogue([bad], 2026).join("\n");
     expect(out).toContain("not public domain in the US");
-    expect(out).toContain("died less than 80 years ago");
+    expect(out).toContain("workCountry must be an ISO 3166 code");
     expect(out).toContain("not on an allowed host");
     expect(out).toContain("licence line missing");
+    const undated = { ...perrault, creators: [{ ...perrault.creators[0], deathYear: NaN }] };
+    expect(checkCatalogue([undated], 2026).join()).toContain("death year missing");
+  });
+
+  test("the check refuses a work still protected in its own country (US PD alone is not enough)", () => {
+    // Published 1925 (US public domain in 2026), author died 1960: still life+70 in France.
+    const b = {
+      ...perrault,
+      firstPublicationYear: 1925,
+      creators: [{ name: "X", role: "author" as const, deathYear: 1960 }],
+    };
+    expect(checkCatalogue([b], 2026).join()).toContain(
+      "not public domain in its country of first publication",
+    );
+    expect(checkCatalogue([b], 2026).join()).not.toContain("not public domain in the US");
   });
 
   test("the US cutoff moves each year", () => {
-    const b = { ...perrault, published: 1930 };
+    const b = { ...perrault, firstPublicationYear: 1930 };
+    expect(usPdCutoff(2026)).toBe(1930);
     expect(checkCatalogue([b], 2026)).toEqual([]);
-    expect(checkCatalogue([b], 2025).join()).toContain("not public domain");
+    expect(checkCatalogue([b], 2025).join()).toContain("not public domain in the US");
+  });
+
+  test("every entry is visible in every listed country, and to an unknown viewer, in 2026", () => {
+    for (const c of [...listedCountries(), null, "XX", "ZZ"])
+      expect(catalogueFor(c, 2026).map(bookKey)).toEqual(CATALOGUE.map(bookKey));
   });
 
   test("allowed URLs: https on a listed host only", () => {
@@ -107,6 +142,122 @@ describe("catalogue", () => {
     expect(visibleNav([]).some((i) => i.key === "books")).toBe(false);
     expect(visibleNav(["books"]).some((i) => i.key === "books")).toBe(true);
     expect(isAppRoute("/books")).toBe(true);
+  });
+});
+
+const work = (workCountry: string, firstPublicationYear: number, ...deaths: number[]): Work => ({
+  workCountry,
+  firstPublicationYear,
+  creators: deaths.map((deathYear, i) => ({ name: `C${i}`, role: "author", deathYear })),
+});
+
+describe("copyright terms per country (lib/books/terms.ts)", () => {
+  test("the table covers the countries the rule names, with their life terms", () => {
+    const life = (c: string) => TERMS[c].life;
+    for (const c of ["FR", "DE", "IT", "NL", "SE", "PL", "GB", "BR", "AU", "CA", "KR", "JP"])
+      expect(life(c)).toBe(70);
+    expect(life("CN")).toBe(50);
+    expect(life("IN")).toBe(60);
+    expect(life("MX")).toBe(100);
+    expect(life("RU")).toBe(74);
+    expect(TERMS.US.publication).toEqual({ years: 95, lifeFrom: 2003 });
+    expect(DEFAULT_TERM).toMatchObject({ life: 100, andUs: true });
+    for (const t of Object.values(TERMS)) expect(t.note.length).toBeGreaterThan(10);
+  });
+
+  test("terms run to the end of the calendar year", () => {
+    const w = work("FR", 1900, 1955);
+    expect(pdIn(w, "FR", 2025)).toBe(false); // protected through 31 Dec 2025
+    expect(pdIn(w, "FR", 2026)).toBe(true);
+    expect(pdIn(work("CN", 1900, 1975), "CN", 2026)).toBe(true);
+    expect(pdIn(work("CN", 1900, 1976), "CN", 2026)).toBe(false);
+  });
+
+  test("the last creator to die decides (a translator, an illustrator)", () => {
+    expect(pdIn(work("FR", 1900, 1900, 1960), "FR", 2026)).toBe(false);
+    expect(pdIn(work("FR", 1900, 1900, 1950), "FR", 2026)).toBe(true);
+    expect(pdIn(work("FR", 1900), "FR", 2026)).toBe(false); // no creators: never public domain
+  });
+
+  test("US: the publication rule, not the death year", () => {
+    expect(pdIn(work("US", 1930, 2000), "US", 2026)).toBe(true);
+    expect(pdIn(work("US", 1931, 1900), "US", 2026)).toBe(false);
+    expect(pdIn(work("US", 1931, 1900), "US", 2027)).toBe(true);
+    expect(pdIn(work("US", 2010, 1940), "US", 2026)).toBe(true); // first published 2003+: life+70
+    expect(pdIn(work("US", 2010, 1960), "US", 2026)).toBe(false);
+  });
+
+  test("non-retroactive extensions: Japan 2018, Canada 2022, Korea 2013, Australia 2005", () => {
+    const jp = (d: number) => pdIn(work("JP", 1920, d), "JP", 2026);
+    expect(jp(1967)).toBe(true); // life+50 ended 2017, before the extension
+    expect(jp(1968)).toBe(false); // still running in 2018: life+70, to 2038
+    const ca = (d: number) => pdIn(work("CA", 1920, d), "CA", 2026);
+    expect(ca(1971)).toBe(true);
+    expect(ca(1972)).toBe(false);
+    expect(pdIn(work("KR", 1920, 1962), "KR", 2026)).toBe(true);
+    expect(pdIn(work("KR", 1920, 1963), "KR", 2026)).toBe(false);
+    expect(pdIn(work("AU", 1920, 1954), "AU", 2025)).toBe(true);
+    expect(pdIn(work("AU", 1920, 1955), "AU", 2025)).toBe(false); // life+70, to 2025
+  });
+
+  test("Japan's wartime additions apply to Allied-country works published before 1952", () => {
+    // Died 1960: a Japanese work's life+50 ended 2010; a British one's ran 11 more years, past 2018.
+    expect(pdIn(work("JP", 1940, 1960), "JP", 2026)).toBe(true);
+    expect(pdIn(work("GB", 1940, 1960), "JP", 2026)).toBe(false);
+    expect(pdIn(work("GB", 1955, 1960), "JP", 2026)).toBe(true); // published after 1952: no addition
+    expect(pdIn(work("GB", 1940, 1956), "JP", 2026)).toBe(true); // 1956+61 = 2017
+  });
+
+  test("Spain: life+80 for creators who died by 1987", () => {
+    expect(pdIn(work("ES", 1930, 1946), "ES", 2026)).toBe(false);
+    expect(pdIn(work("ES", 1930, 1945), "ES", 2026)).toBe(true);
+    expect(pdIn(work("ES", 1930, 1945), "FR", 2026)).toBe(true);
+  });
+
+  test("an unknown or unlisted country gets the conservative default: life+100 and the US rule", () => {
+    for (const c of [null, undefined, "XX", "T1", "", "zz", "France"])
+      expect(termFor(c)).toBe(DEFAULT_TERM);
+    expect(termFor("fr")).toBe(TERMS.FR);
+    expect(normaliseCountry(" jp ")).toBe("JP");
+    expect(pdIn(work("FR", 1920, 1925), null, 2026)).toBe(true);
+    expect(pdIn(work("FR", 1920, 1926), "ZZ", 2026)).toBe(false);
+    expect(pdIn(work("FR", 1931, 1900), "ZZ", 2026)).toBe(false); // not yet PD in the US
+  });
+});
+
+describe("viewer filtering: public domain in the work's country, the viewer's and the US", () => {
+  const kafka = CATALOGUE.find((b) => b.slug === "die-verwandlung")!;
+
+  test("a 1924-death author is hidden in Mexico (life+100) but shown in France, until 2025", () => {
+    expect(kafka.creators.map((c) => c.deathYear)).toEqual([1924]);
+    expect(bookVisibleIn(kafka, "FR", 2024)).toBe(true);
+    expect(bookVisibleIn(kafka, "MX", 2024)).toBe(false);
+    expect(bookVisibleIn(kafka, null, 2024)).toBe(false); // unknown viewer: the default, life+100
+    expect(catalogueFor("MX", 2024).map(bookKey)).not.toContain(bookKey(kafka));
+    expect(catalogueFor("FR", 2024).map(bookKey)).toContain(bookKey(kafka));
+    expect(bookVisibleIn(kafka, "MX", 2025)).toBe(true);
+  });
+
+  test("today's example: a 1950-death author, published 1925, is shown in France and China, hidden in Mexico", () => {
+    const w = work("FR", 1925, 1950);
+    expect(pdForViewer(w, "FR", 2026)).toBe(true);
+    expect(pdForViewer(w, "CN", 2026)).toBe(true);
+    expect(pdForViewer(w, "MX", 2026)).toBe(false);
+    // Died 1970, a Chinese work: free at home (life+50), still protected in India (life+60).
+    expect(pdForViewer(work("CN", 1925, 1970), "CN", 2026)).toBe(true);
+    expect(pdForViewer(work("CN", 1925, 1970), "IN", 2026)).toBe(false);
+    expect(pdForViewer(w, null, 2026)).toBe(false);
+  });
+
+  test("the work's own country counts even for a viewer where it is free", () => {
+    // Died 1960: free in China (life+50), still protected in its French homeland.
+    expect(pdForViewer(work("FR", 1925, 1960), "CN", 2026)).toBe(false);
+    expect(pdForViewer(work("CN", 1925, 1960), "CN", 2026)).toBe(true);
+  });
+
+  test("the US is always required, wherever the viewer is", () => {
+    // Published 1935: free by life+50 in China, not yet in the US.
+    expect(pdForViewer(work("CN", 1935, 1940), "CN", 2026)).toBe(false);
   });
 });
 

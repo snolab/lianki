@@ -7,11 +7,12 @@ import {
   rangeWords,
   readerCtx,
 } from "@/lib/read/reader-route";
-import { easyPlan, planWords } from "@/lib/read/book-word-list";
+import { planWords } from "@/lib/read/batch-grade-server";
 
 /**
  * POST /api/read/[id]/easy-plan — which of an item's words an Easy grade
- * would grade now (due on his card, or no card yet), read-only:
+ * would grade now (due, new, or no card yet; the batch path's own filter),
+ * read-only:
  *
  *   { words: [{ w, ex, term?, reading?, back? }] }  → { words: [w, …] }
  *
@@ -23,8 +24,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (ctx instanceof NextResponse) return ctx;
   if (!ctx.email) return json({ words: [] });
   const body = (await bodyOf(req)) as { words?: unknown } | null;
-  const { book, own } = await bookCtxOf(ctx);
+  const { book: bctx, own } = await bookCtxOf(ctx);
   const words = rangeWords(body?.words, own);
   if (!words) return badRequest("words are required");
-  return json({ words: planWords(await easyPlan(ctx.db, ctx.email, book, words)) });
+  return json({
+    words: await planWords({ db: ctx.db, email: ctx.email, bctx }, words, new Date()),
+  });
 }

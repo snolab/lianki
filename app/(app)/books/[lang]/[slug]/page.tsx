@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
-import { bookKey, catalogueBook } from "@/lib/books/catalogue";
+import { bookKey, bookVisibleIn, catalogueBook } from "@/lib/books/catalogue";
 import { normaliseSlug } from "@/lib/books/slug";
 import { BookCard } from "../../BookCard";
 import { booksAccess, languageName } from "../../access";
@@ -32,7 +32,9 @@ export default async function BookPage({ params }: { params: Params }) {
   if (!b) notFound();
   const locale = await appLocale();
   const t = getIntlayer("books-page", locale);
-  const { signedIn, owned } = await booksAccess();
+  const { signedIn, owned, country, year } = await booksAccess();
+  // Not public domain where the viewer is: as if it were not in the catalogue.
+  if (!bookVisibleIn(b, country, year)) notFound();
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8">

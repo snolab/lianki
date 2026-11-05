@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   examplePieces,
   looseKey,
+  markSpoken,
   pieceRuns,
   targetSpans,
   type Span,
@@ -140,6 +141,31 @@ describe("centreIn", () => {
     const calls: unknown[] = [];
     centreIn(box(calls), el(10, 300), false);
     expect(calls).toEqual([{ top: 0, left: 220, behavior: "auto" }]);
+  });
+});
+
+describe("markSpoken", () => {
+  it("cuts pieces at the spoken word and marks it, the target kept", () => {
+    const text = "Le chat dort";
+    const pieces = examplePieces(text, "fr", [[3, 7]]);
+    const m = markSpoken(pieces, [8, 12]);
+    expect(m.map((p) => p.text).join("")).toBe(text);
+    expect(m.filter((p) => p.spoken).map((p) => p.text)).toEqual(["dort"]);
+    expect(m.filter((p) => p.target).map((p) => p.text)).toEqual(["chat"]);
+  });
+  it("a spoken stretch inside one piece splits it", () => {
+    const pieces = [{ text: "abcdef", word: "abcdef", target: false }];
+    const m = markSpoken(pieces, [2, 4]);
+    expect(m.map((p) => [p.text, p.spoken])).toEqual([
+      ["ab", false],
+      ["cd", true],
+      ["ef", false],
+    ]);
+    expect(m.every((p) => p.word === "abcdef")).toBe(true);
+  });
+  it("no span: nothing spoken", () => {
+    const m = markSpoken([{ text: "x", word: null, target: false }], null);
+    expect(m).toEqual([{ text: "x", word: null, target: false, spoken: false }]);
   });
 });
 

@@ -2,13 +2,18 @@
 import { describe, expect, it } from "bun:test";
 import { createReadSpeaker, WATCHDOG_MS, type UtterLike, type AudioLike } from "@/lib/read/speaker";
 import { captureHeld, createPageAudio } from "@lianki/debug-chat/page-audio";
+import { AUDIO_PRIO, audioOwner } from "@lianki/debug-chat/audio-claim";
 
 type Timer = { f: () => void; at: number; id: number };
+type FakeAudio = AudioLike & { plays: string[]; loads: string[] };
 function setup(
   o: {
     voices?: { lang: string; name: string }[];
     mode?: "speech" | "cloud";
     fetchOk?: boolean;
+    held?: boolean;
+    /** The page the audio owner claims on (absent: no owner). */
+    claims?: EventTarget;
   } = {},
 ) {
   let t = 0;
@@ -42,18 +47,37 @@ function setup(
     getVoices: () => o.voices ?? [],
   };
   const fetched: string[] = [];
-  const audio: AudioLike & { plays: string[] } = {
-    src: "",
-    paused: true,
-    onended: null,
-    onerror: null,
-    plays: [],
-    play() {
-      this.plays.push(this.src);
-      return Promise.resolve();
-    },
-    pause() {},
+  /** Every element the speaker made, and every play() in order (the fake audio clock). */
+  const audios: FakeAudio[] = [];
+  const played: { el: FakeAudio; src: string; at: number }[] = [];
+  let playing: FakeAudio | null = null;
+  const makeAudio = (): FakeAudio => {
+    const a: FakeAudio = {
+      src: "",
+      paused: true,
+      onended: null,
+      onerror: null,
+      plays: [],
+      loads: [],
+      play() {
+        a.plays.push(a.src);
+        played.push({ el: a, src: a.src, at: t });
+        playing = a;
+        return Promise.resolve();
+      },
+      pause() {},
+      load() {
+        a.loads.push(a.src);
+      },
+    };
+    audios.push(a);
+    return a;
   };
+  /** A fetch held open until the test answers it (`o.held`), else answered at once. */
+  const pending: { url: string; answer(ok?: boolean): void; aborted: boolean }[] = [];
+  const textOf = new WeakMap<Blob, string>();
+  const revoked: string[] = [];
+  let nurl = 0;
   const logs: Record<string, unknown>[] = [];
   const sp = createReadSpeaker({
     mode: () => o.mode ?? "speech",
@@ -67,21 +91,35 @@ function setup(
       onend: null,
       onerror: null,
     }),
-    fetch: async (url) => {
+    fetch: (url, init) => {
       fetched.push(url);
-      return {
-        ok: o.fetchOk ?? true,
-        status: o.fetchOk === false ? 503 : 200,
-        blob: async () => new Blob(["x"]),
-      };
+      const res = (ok = o.fetchOk ?? true) => ({
+        ok,
+        status: ok ? 200 : 503,
+        blob: async () => {
+          const b = new Blob([url]);
+          textOf.set(b, new URL(url, "https://x").searchParams.get("text") ?? "");
+          return b;
+        },
+      });
+      if (!o.held) return Promise.resolve(res());
+      return new Promise((resolve, reject) => {
+        const p = { url, aborted: false, answer: (ok?: boolean) => resolve(res(ok)) };
+        init?.signal?.addEventListener("abort", () => {
+          p.aborted = true;
+          reject(new Error("aborted"));
+        });
+        pending.push(p);
+      });
     },
-    audio: () => audio,
-    toUrl: () => `blob:${fetched.length}`,
-    revoke: () => {},
+    audio: makeAudio,
+    toUrl: (b) => `blob:${++nurl}:${textOf.get(b)}`,
+    revoke: (u) => void revoked.push(u),
     pageAudio: () => page,
     setTimer,
     clearTimer,
     log: (e) => void logs.push(e),
+    owner: o.claims ? (h) => audioOwner({ ...h, id: "read", target: o.claims }) : undefined,
   });
   const result: string[] = [];
   const cb = {
@@ -92,7 +130,14 @@ function setup(
     sp,
     spoken,
     synth,
-    audio,
+    /** The element that played last. */
+    get audio(): FakeAudio {
+      return playing ?? audios[0];
+    },
+    audios,
+    played,
+    pending,
+    revoked,
     fetched,
     page,
     advance,
@@ -255,7 +300,12 @@ describe("read speaker", () => {
     x.spoken[0].onerror?.({ error: "interrupted" });
     x.spoken[0].onend?.();
     expect(x.result).toEqual([]);
-    expect(x.spoken.length).toBe(1);
+    // "Deux." was queued when "Un." started; the cancel cleared the queue, and nothing more is said.
+    expect(x.spoken.map((u) => u.text)).toEqual(["Un.", "Deux."]);
+    x.spoken[1].onstart?.();
+    x.spoken[1].onend?.();
+    expect(x.spoken.length).toBe(2);
+    expect(x.result).toEqual([]);
     x.advance(400);
     expect(x.page.playing()).toBe(false);
   });
@@ -331,5 +381,247 @@ describe("read speaker: engines and unlock", () => {
     x.spoken[0].onstart?.();
     x.spoken[0].onend?.();
     expect(x.result).toEqual([]);
+  });
+});
+
+// Owner, 2026-11-05: "句子之间感觉有 1s 停顿". Each sentence's clip used to be
+// fetched only after the one before had ended. The fake clock: `x.advance`
+// is time, a held fetch answers when the test says, `onended` is the clip
+// ending. Nothing here makes a sound.
+describe("read speaker: no wait between sentences", () => {
+  const FOUR = "Un. Deux. Trois. Quatre.";
+  const text = (u: string) => new URL(u, "https://x").searchParams.get("text");
+
+  it("the next sentences are fetched while one plays, and the next starts on `ended` at once", async () => {
+    const x = setup({ mode: "cloud", held: true });
+    const parts: number[] = [];
+    x.sp.speak(["Un. Deux.", "Trois. Quatre."], "fr", { ...x.cb, onpart: (p) => parts.push(p) });
+    // Asked at once: the first sentence and the PREFETCH_AHEAD after it.
+    expect(x.fetched.map(text)).toEqual(["Un.", "Deux.", "Trois."]);
+    x.pending.forEach((p) => p.answer());
+    await flush();
+    await flush();
+    expect(x.played.map((p) => p.src)).toEqual(["blob:1:Un."]);
+    // "Deux." is already loaded into the other element, before "Un." ends.
+    const [first, second] = x.audios;
+    expect(second.src).toBe("blob:2:Deux.");
+    expect(second.loads).toEqual(["blob:2:Deux."]);
+    x.advance(1800);
+    first.onended?.();
+    // Same tick, no await, no timer: the gap is zero on the fake clock.
+    expect(x.played.map((p) => [p.src, p.at])).toEqual([
+      ["blob:1:Un.", 0],
+      ["blob:2:Deux.", 1800],
+    ]);
+    // "Un." is let go, and "Quatre." asked for while "Deux." plays.
+    expect(x.revoked).toEqual(["blob:1:Un."]);
+    expect(x.fetched.map(text)).toEqual(["Un.", "Deux.", "Trois.", "Quatre."]);
+    x.pending[3].answer();
+    await flush();
+    await flush();
+    x.advance(1500);
+    second.onended?.();
+    expect(x.played.at(-1)).toMatchObject({ src: "blob:3:Trois.", at: 3300, el: first });
+    await flush();
+    first.onended?.();
+    expect(x.played.at(-1)).toMatchObject({ src: "blob:4:Quatre.", el: second });
+    second.onended?.();
+    expect(parts).toEqual([0, 1]);
+    expect(x.result).toEqual(["end"]);
+    expect(x.revoked.length).toBe(4);
+  });
+
+  it("a slow next clip is played as soon as it arrives, not refetched", async () => {
+    const x = setup({ mode: "cloud", held: true });
+    x.sp.speak("Un. Deux.", "fr", x.cb);
+    x.pending[0].answer();
+    await flush();
+    await flush();
+    x.audios[0].onended?.();
+    expect(x.played.length).toBe(1);
+    x.pending[1].answer();
+    await flush();
+    await flush();
+    expect(x.played.map((p) => p.src)).toEqual(["blob:1:Un.", "blob:2:Deux."]);
+    expect(x.fetched.length).toBe(2);
+  });
+
+  it("a sentence said again in the session is played from memory", async () => {
+    const x = setup({ mode: "cloud" });
+    x.sp.speak("Un. Deux.", "fr", x.cb);
+    await flush();
+    await flush();
+    x.audio.onended?.();
+    x.audio.onended?.();
+    expect(x.result).toEqual(["end"]);
+    x.sp.speak("Deux. Un.", "fr", x.cb);
+    await flush();
+    await flush();
+    expect(x.fetched.length).toBe(2);
+    expect(x.played.at(-1)?.src).toEndWith(":Deux.");
+  });
+
+  it("stop drops what is still being fetched: aborted, never played, not kept", async () => {
+    const x = setup({ mode: "cloud", held: true });
+    const stop = x.sp.speak(FOUR, "fr", x.cb);
+    x.pending[0].answer();
+    await flush();
+    await flush();
+    stop();
+    expect(x.pending.slice(1).map((p) => p.aborted)).toEqual([true, true]);
+    await flush();
+    expect(x.played.length).toBe(1);
+    expect(x.spoken).toEqual([]);
+    expect(x.result).toEqual([]);
+    // The aborted ones are fetched afresh next time; the finished one is not.
+    x.sp.speak(FOUR, "fr", x.cb);
+    expect(x.fetched.map(text)).toEqual(["Un.", "Deux.", "Trois.", "Deux.", "Trois."]);
+  });
+
+  it("a prefetch that failed is not an error until its sentence is due", async () => {
+    const x = setup({ mode: "cloud", held: true, voices: [FR] });
+    x.sp.speak("Un. Deux.", "fr", x.cb);
+    x.pending[0].answer();
+    x.pending[1].answer(false);
+    await flush();
+    await flush();
+    // Loading it into the other element asked once more (a failure is not kept); that fails too.
+    expect(x.fetched.map(text)).toEqual(["Un.", "Deux.", "Deux."]);
+    x.pending[2].answer(false);
+    await flush();
+    expect(x.spoken).toEqual([]);
+    expect(x.result).toEqual([]);
+    x.audios[0].onended?.();
+    await flush();
+    // Its turn: the browser voice reads it instead.
+    expect(x.spoken.map((u) => u.text)).toEqual(["Deux."]);
+  });
+
+  it("the browser voice gets the next sentence queued as soon as one starts", () => {
+    const x = setup({ voices: [FR] });
+    x.sp.speak(FOUR, "fr", x.cb);
+    expect(x.spoken.map((u) => u.text)).toEqual(["Un."]);
+    x.spoken[0].onstart?.();
+    expect(x.spoken.map((u) => u.text)).toEqual(["Un.", "Deux."]);
+    x.spoken[0].onend?.();
+    // Not spoken twice: the engine starts the queued one itself.
+    expect(x.spoken.length).toBe(2);
+    x.spoken[1].onstart?.();
+    x.spoken[1].onend?.();
+    x.spoken[2].onstart?.();
+    x.spoken[2].onend?.();
+    x.spoken[3].onstart?.();
+    x.spoken[3].onend?.();
+    expect(x.spoken.map((u) => u.text)).toEqual(["Un.", "Deux.", "Trois.", "Quatre."]);
+    expect(x.result).toEqual(["end"]);
+  });
+
+  it("a queued browser sentence that never starts still falls back after WATCHDOG_MS", async () => {
+    const x = setup({ voices: [FR] });
+    x.sp.speak("Un. Deux.", "fr", x.cb);
+    x.spoken[0].onstart?.();
+    x.spoken[0].onend?.();
+    x.advance(WATCHDOG_MS);
+    await flush();
+    expect(x.fetched.map(text)).toEqual(["Deux."]);
+  });
+});
+
+// Owner, 2026-11-05 03:05–03:06 JST: the word review and Li's voice pause the
+// paragraph read aloud, which goes on from the same sentence after.
+describe("read speaker: pauses for a higher sound, resumes at the same sentence", () => {
+  const text = (u: string) => new URL(u, "https://x").searchParams.get("text");
+  const li = (claims: EventTarget) => audioOwner({ id: "li", prio: AUDIO_PRIO.li, target: claims });
+  const said = (p: { src: string }) => p.src.split(":").at(-1);
+
+  it("cloud: Li speaking pauses sentence 2; Li done, sentence 2 plays again", async () => {
+    const claims = new EventTarget();
+    const x = setup({ mode: "cloud", claims });
+    const parts: number[] = [];
+    x.sp.speak(["Un.", "Deux.", "Trois."], "fr", { ...x.cb, onpart: (p) => parts.push(p) });
+    await flush();
+    await flush();
+    x.audios[0].onended?.();
+    expect(x.played.map(said)).toEqual(["Un.", "Deux."]);
+    const playing = x.audio;
+    let pauses = 0;
+    playing.pause = () => void pauses++;
+    const voice = li(claims);
+    voice.claim();
+    expect(pauses).toBeGreaterThan(0);
+    // Its `ended` after the pause is the old attempt's: ignored.
+    playing.onended?.();
+    expect(x.played.length).toBe(2);
+    voice.release();
+    await flush();
+    await flush();
+    expect(x.played.map(said)).toEqual(["Un.", "Deux.", "Deux."]);
+    // From memory: nothing fetched twice.
+    expect(new Set(x.fetched.map(text)).size).toBe(x.fetched.length);
+    expect(x.result).toEqual([]);
+    x.audio.onended?.();
+    await flush();
+    x.audio.onended?.();
+    expect(x.result).toEqual(["end"]);
+    expect(parts).toEqual([0, 1, 2]);
+  });
+
+  it("speech: the word review open pauses it; closed, the same sentence is said again", () => {
+    const claims = new EventTarget();
+    const x = setup({ voices: [FR], claims });
+    x.sp.speak("Un. Deux. Trois.", "fr", x.cb);
+    x.spoken[0].onstart?.();
+    x.spoken[0].onend?.();
+    x.spoken[1].onstart?.();
+    const review = audioOwner({ id: "review", prio: AUDIO_PRIO.card, target: claims });
+    const before = x.cancels();
+    review.claim();
+    expect(x.cancels()).toBe(before + 1);
+    x.spoken[1].onerror?.({ error: "interrupted" });
+    x.spoken[1].onend?.();
+    expect(x.result).toEqual([]);
+    const n = x.spoken.length;
+    review.release();
+    expect(x.spoken.slice(n).map((u) => u.text)).toEqual(["Deux."]);
+  });
+
+  it("a paragraph started while Li speaks waits, then reads from its start", () => {
+    const claims = new EventTarget();
+    const x = setup({ voices: [FR], claims });
+    const voice = li(claims);
+    voice.claim();
+    x.sp.speak("Un. Deux.", "fr", x.cb);
+    expect(x.spoken).toEqual([]);
+    x.advance(WATCHDOG_MS * 2);
+    expect(x.result).toEqual([]);
+    voice.release();
+    expect(x.spoken.map((u) => u.text)).toEqual(["Un."]);
+  });
+
+  it("stop while paused cancels nothing (Li keeps talking) and never resumes", () => {
+    const claims = new EventTarget();
+    const x = setup({ voices: [FR], claims });
+    const stop = x.sp.speak("Un. Deux.", "fr", x.cb);
+    x.spoken[0].onstart?.();
+    const voice = li(claims);
+    voice.claim();
+    const before = x.cancels();
+    stop();
+    expect(x.cancels()).toBe(before);
+    voice.release();
+    expect(x.spoken.length).toBe(2);
+    expect(x.result).toEqual([]);
+  });
+
+  it("a line that ends lets the page go", () => {
+    const claims = new EventTarget();
+    const x = setup({ voices: [FR], claims });
+    let released = 0;
+    claims.addEventListener("lk:audio-release", () => released++);
+    x.sp.speak("Un.", "fr", x.cb);
+    x.spoken[0].onstart?.();
+    x.spoken[0].onend?.();
+    expect(x.result).toEqual(["end"]);
+    expect(released).toBe(1);
   });
 });

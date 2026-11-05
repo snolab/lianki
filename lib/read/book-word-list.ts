@@ -151,6 +151,7 @@ type FullRow = {
   reading: string | null;
   back: string;
   card: string;
+  reps: number;
 };
 
 /** The full card rows of these (list, term) pairs. */
@@ -160,7 +161,7 @@ async function fullCards(db: D1Like, email: string, keys: { listId: string; term
     const chunk = keys.slice(i, i + 45);
     const { results } = await db
       .prepare(
-        `SELECT list_id, term, reading, back, card FROM word_cards WHERE email = ? AND (${chunk
+        `SELECT list_id, term, reading, back, card, reps FROM word_cards WHERE email = ? AND (${chunk
           .map(() => "(list_id = ? AND term = ?)")
           .join(" OR ")})`,
       )
@@ -317,6 +318,42 @@ async function runAll(db: D1Like, statements: D1StmtLike[]) {
   else for (const st of statements) await st.run();
 }
 
+/** A word of a selection as the grade handle sees it: his card (any state) or none. */
+export interface WordTarget {
+  w: string;
+  /** His card's list and term; null: no card in any of his lists. */
+  listId: string | null;
+  term: string | null;
+  /** The stored ts-fsrs card JSON; null: no card. */
+  card: string | null;
+  reps: number;
+}
+
+/** What each word is now, nothing written and no meaning looked up (the handle's probe). */
+export async function wordTargets(
+  db: D1Like,
+  email: string,
+  book: BookCtx,
+  words: RangeWord[],
+): Promise<WordTarget[]> {
+  const matched = await matchAll(db, email, book, words);
+  const rows = await fullCards(
+    db,
+    email,
+    matched.flatMap((m) => (m.hit ? [{ listId: m.hit.listId, term: m.hit.term }] : [])),
+  );
+  return matched.map(({ x, hit }) => {
+    const r = hit ? rows.get(`${hit.listId}\u0000${hit.term}`) : undefined;
+    return {
+      w: x.w,
+      listId: r ? r.list_id : null,
+      term: r ? r.term : null,
+      card: r ? r.card : null,
+      reps: r?.reps ?? 0,
+    };
+  });
+}
+
 /**
  * 制卡 (owner, 2026-11-03 22:27 JST): a card for every word of the range that
  * has none in any of his lists, in the book's list, unreviewed (a new FSRS
@@ -468,111 +505,4 @@ export async function addGradedEntries(
   }));
   await runAll(db, entryStatements(db, email, list.id, entries));
   return entries.length;
-}
-
-// ── A paragraph graded Easy: its words graded Easy with it ───────────────
-//
-// Owner, 2026-11-05 02:31 JST (option A): an item graded Easy — by swipe on
-// whichever side gives Easy, or by key — also grades Easy every word of the
-// item that is due now on his card, and every word of the book he has no
-// card for (made in the book's list, as 制卡, then graded). A card not due
-// yet is never touched. The set is the item's words, as the paragraph word
-// review takes them (rangeWords, own book words only; names without a card
-// left out). Any other grade opens that review instead (ReaderV2), when this
-// same plan finds at least one word. Sent with the paragraph's own grade
-// once its Undo hold ends, so an undo inside the hold sends neither.
-
-/** What an Easy paragraph grade would grade: the due cards and the words with no card. */
-export interface EasyPlan {
-  /** Due now on his best-matching card (one per card). */
-  due: { w: string; listId: string; term: string }[];
-  /** No card in any list of the book's language (one per new term). */
-  fresh: RangeWord[];
-}
-
-/** The plan, from his cards as they are now (each due checked here, on the server). */
-export async function easyPlan(
-  db: D1Like,
-  email: string,
-  book: BookCtx,
-  words: RangeWord[],
-  now: Date = new Date(),
-): Promise<EasyPlan> {
-  const matched = await matchAll(db, email, book, words);
-  const rows = await fullCards(
-    db,
-    email,
-    matched.flatMap((m) => (m.hit ? [{ listId: m.hit.listId, term: m.hit.term }] : [])),
-  );
-  const due: EasyPlan["due"] = [];
-  const fresh: RangeWord[] = [];
-  const seen = new Set<string>();
-  for (const { x, hit } of matched) {
-    if (!hit) {
-      const term = newCardTerm(x.w, book.lang, x.term, book.lem);
-      if (seen.has(`\u0001${term}`)) continue;
-      seen.add(`\u0001${term}`);
-      fresh.push(x);
-      continue;
-    }
-    const r = rows.get(`${hit.listId}\u0000${hit.term}`);
-    if (!r) continue;
-    const key = `${r.list_id}\u0000${r.term}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    // Only a card whose due reads and has come: an unreadable one is left alone.
-    let at = NaN;
-    try {
-      at = new Date((JSON.parse(r.card) as { due?: string }).due ?? NaN).getTime();
-    } catch {}
-    if (Number.isFinite(at) && at <= now.getTime())
-      due.push({ w: x.w, listId: r.list_id, term: r.term });
-  }
-  return { due, fresh };
-}
-
-/** The words an Easy grade would grade, by the book's word (the hint's count, the review's test). */
-export const planWords = (p: EasyPlan) => [...p.due.map((d) => d.w), ...p.fresh.map((x) => x.w)];
-
-/**
- * Grade the item's due and new words Easy (rating 4), through /words' own
- * review (WordsD1Repo.review): due cards per list in one call each; new
- * words get their card in the book's list first (makeCards, its guards),
- * then the same Easy. Safe to repeat: a word graded once is no longer due.
- */
-export async function gradeEasyWords(
-  db: D1Like,
-  email: string,
-  book: BookCtx,
-  words: RangeWord[],
-  day: string,
-  now: Date = new Date(),
-  gloss?: Gloss,
-): Promise<{ graded: number; made: number }> {
-  const plan = await easyPlan(db, email, book, words, now);
-  const repo = new WordsD1Repo(db, email);
-  const byList = new Map<string, string[]>();
-  for (const d of plan.due) byList.set(d.listId, [...(byList.get(d.listId) ?? []), d.term]);
-  let made = 0;
-  if (plan.fresh.length) {
-    const r = await makeCards(db, email, book, plan.fresh, now, gloss);
-    made = r.terms.length;
-    if (r.listId && r.terms.length)
-      byList.set(r.listId, [...(byList.get(r.listId) ?? []), ...r.terms]);
-  }
-  let graded = 0;
-  for (const [listId, terms] of byList) {
-    const unique = [...new Set(terms)];
-    for (let i = 0; i < unique.length; i += 200) {
-      const chunk = unique.slice(i, i + 200);
-      const out = await repo.review(
-        listId,
-        chunk.map((term) => ({ term, rating: 4 as const })),
-        day,
-        now,
-      );
-      graded += out?.cards.length ?? 0;
-    }
-  }
-  return { graded, made };
 }

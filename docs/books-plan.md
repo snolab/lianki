@@ -99,9 +99,9 @@ numerals; Hindi loans).
 
 ## Sources and copyright
 
-- **Shared catalogue:** only works public domain in the US (published in or
-  before 1930 as of 2026; the cutoff moves each 1 January) **and** with every
-  creator, translators included, dead 80+ years. Candidate sources: Project
+- **Shared catalogue:** only works that pass the **admission rule** below
+  (public domain in the work's country, the viewer's country and the US;
+  replaces the earlier "US PD + every creator dead 80+ years"). Candidate sources: Project
   Gutenberg, Standard Ebooks, Wikisource, Aozora Bunko (check US status per
   work), zh.wikisource. Text and its extraction are shared and paid for once. The shared catalogue is **/books** (below).
 - **Your own copy:** private to you, never shared or listed, deletable,
@@ -140,9 +140,12 @@ title's own language, the source link visible inside the imported book.
   year, every creator with their death year, the source page (linked), the one
   file the server fetches, licence line and attribution, and optionally a
   `range` (element ids / a markup marker) to leave out matter such as Lang's
-  English introduction. `checkCatalogue` (unit test) enforces the rule above
-  for the current year: published ≤ year − 96, every creator died ≥ 80 years
-  ago, file and page on `SOURCE_HOSTS`, licence and attribution present.
+  English introduction. Each entry also carries `workCountry` (ISO 3166 of
+  first publication), `firstPublicationYear` and `creators[]` (name, role
+  author/translator/editor/illustrator, `deathYear`). `checkCatalogue` (unit
+  test) requires that data and, for the current year, that the entry is
+  public domain in its own `workCountry` and in the US (the admission rule
+  below), file and page on `SOURCE_HOSTS`, licence and attribution present.
 - **Entries (all Project Gutenberg HTML, checked on each ebook page):**
   Perrault, _Histoires ou Contes du temps passé_ (#33931, Lang ed. 1888, only
   the 1697 prose tales; A1); La Fontaine, _Fables_ livre I (#17941; A1–A2,
@@ -184,11 +187,69 @@ title's own language, the source link visible inside the imported book.
   ones. Not tied to `read.reader-v2`: an added book opens in whichever reader
   the user has.
 
+### Admission rule: public domain per country (owner, 02:18 JST 2026-11-05)
+
+> **Not legal advice; re-verify with counsel before turning
+> `books.catalogue` on for users.** The flag stays off until then.
+
+Replaces the single global cut-off ("US PD + every creator dead 80 years").
+A book is **shown to a viewer, and importable by them, only when it is public
+domain in all three of**:
+
+1. its **country of first publication** (`workCountry`),
+2. the **viewer's country** — Cloudflare's `request.cf.country`, else the
+   `CF-IPCountry` header (`lib/books/viewer.ts`); unknown (dev, "XX", Tor
+   "T1") → the conservative default term,
+3. the **US**, always: our servers and Project Gutenberg are there.
+
+The rule of the shorter term is **not** assumed (conservative).
+
+- **The test** (`lib/books/terms.ts`, one generic engine, the countries as
+  data): PD(work, country) under a life+N rule = every creator's
+  `deathYear + N < year`; terms run to the end of the calendar year (life+70
+  for a 1955 death protects through 31 December 2025). The last creator of the
+  edition to die decides (author, translator, editor, illustrator,
+  introduction). No creators → never PD.
+- **US**: the publication rule — published in or before `year − 96` (1930 in
+  2026) is PD. First published 1931–2002 → treated as protected (renewal not
+  checked). Unpublished or first published from 2003 → life+70.
+- **The term table** (data; each row has a note with its source):
+
+  | country                                   | rule                                                                                                                                                          |
+  | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | US                                        | publication rule above                                                                                                                                        |
+  | EU 26 (all but ES), NO, IS, LI, CH, GB, BR | life+70 (France: +30 for "mort pour la France" not modelled; GB: Peter Pan, unpublished pre-1989 works not modelled)                                         |
+  | ES                                        | life+70; life+80 for creators who died by 1987                                                                                                                |
+  | JP                                        | life+70 from 2018-12-30, not retroactive (a life+50 term ended by 2017 stays ended); wartime additions (戦時加算) taken as +11 years for works first published before 1952 in an Allied country |
+  | KR                                        | life+70 from 2013-07-01, not retroactive (life+50 ended by 2012 stays ended)                                                                                  |
+  | AU                                        | life+70 from 2005, not retroactive (life+50 ended by 2004 stays ended)                                                                                        |
+  | CA                                        | life+70 from 2022-12-30, not retroactive (life+50 ended by 2021 stays ended)                                                                                  |
+  | RU                                        | life+74 (the +4 for WWII-era authors applied to everyone); a term not running on 1993-01-01 (life+50 ended by 1992) stays ended                               |
+  | CN                                        | life+50                                                                                                                                                       |
+  | IN                                        | life+60                                                                                                                                                       |
+  | MX                                        | life+100, flat                                                                                                                                                |
+  | any other / unknown                       | **life+100 AND the US rule**                                                                                                                                  |
+
+- **Enforced in three places:** `/books` lists only the viewer's visible
+  books (`catalogueFor`), `/books/<lang>/<slug>` 404s for a book not visible
+  to them, and `POST /api/books/import` refuses with 451
+  `not-public-domain-here` and a message naming the country.
+- **Tests** (`unit/books-catalogue.test.ts`): every entry carries the data and
+  is PD in its own country and the US; the term table (end-of-year, last
+  creator decides, the US publication rule, the non-retroactive extensions,
+  Japan's wartime additions, Spain, the default); viewer filtering — Kafka
+  († 1924) was hidden in Mexico but shown in France in 2024, and a 1950 death
+  published 1925 is shown in France and China but hidden in Mexico in 2026.
+- **The 7 entries in 2026:** every creator died by 1924 (Kafka; Cousturier
+  1915 at the latest), so all are PD under every row, the default included,
+  and none is hidden anywhere. The filter starts to matter with the first
+  author who died after 1925.
+
 ### Next: confidently public-domain imports become shared (owner, 01:43 JST)
 
 "识别到确信公有授权的内容要全站所有用户共享": when a user imports from a source
 on a public-domain host allowlist (Wikisource, Project Gutenberg, Aozora
-Bunko…) whose own page states the work's status, and the rule above holds from
+Bunko…) whose own page states the work's status, and the admission rule holds from
 the source's metadata (never guessed), the text and its processing are shared
 (one R2 copy, paid once) and the work is promoted to a /books entry for all
 users, marked with its source; who added it and when is not shown. Uploaded
@@ -376,8 +437,21 @@ selecting DOM text.
   scrolls the virtualised list to the anchor, flashes the unit and shows its
   card. Links open only for someone who has access to that book (own upload
   or catalogue); for a private book they are personal bookmarks.
-- **Phrases.** Phrase boundaries come from the extraction step (books-plan
-  phase 1); until then the phrase level is skipped.
+- **Phrases.** Phrase boundaries are his phrase cards found in the text
+  (owner, 2026-11-05 00:47 JST; the phrase criterion below: his deck cards
+  pass, nothing is detected): per paragraph, longest first, never
+  overlapping, over the paragraph's segmenter tokens and the language's folds
+  (`phraseSpans` in `lib/read/select-meaning.ts`, found once per paragraph and
+  kept until his cards change). A word inside one has the phrase as its
+  combo level (`phraseAt`); a paragraph with none skips the level. The text
+  shows **two layers**: each word's own familiarity underline, and under it
+  the phrase's — a thicker bar drawn as the `[data-ph]` span's background at
+  the bottom of its padding (`box-decoration-break: clone`, so every wrapped
+  line gets it), coloured by the phrase card's familiarity (`f` from
+  `GET /api/read/[id]/meanings`), dashed when new, following the same
+  `data-read-marks` rules as the words. Never a text-decoration, so a
+  selection's highlight does not recolour it. QA:
+  `scripts/qa/qa-read-phrase-marks.mjs`.
 - **Built** (reader v2, behind `read.reader-v2`): the rules in
   `lib/read/reader-select.ts` (levels, fragments; unit-tested), the listener
   and highlight in `app/(app)/read/[id]/use-reader-select.ts`, the card in
@@ -500,6 +574,12 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   (`source = "book:<content hash>"`, named after the book, made on first
   need, entries in `word_list_entries` like an Anki import). Names without a
   card are left out. `POST /api/read/[id]/word-session`.
+- **In the URL** (owner, 2026-11-05 01:30 JST: a refresh in the review
+  dropped him back to the book): `?review=p<line>` (a word's, a phrase's, a
+  sentence's or a paragraph's review) or `?review=r<l0>.<t0>-<l1>.<t1>` (a
+  range), the deep links' addresses (`lib/read/review-ref.ts`). Opening pushes
+  one entry, Back closes it, a refresh or a link opens it again on the same
+  card (per tab, `lk:ui:words`). docs/ui-state.md.
 - **制卡:** on the card and at the top of the popup, with the count of words
   that have no card (by the word map: new or unrecognised). Makes an
   unreviewed card (due now) for each in the book's list, meaning from our
@@ -536,15 +616,20 @@ hold, keys 1–4 / L K J H, all unchanged). What follows it is new
   paragraph's) that is due now on his card, and every word with no card
   anywhere (carded in the book's list as 制卡, then Easy). A card not due yet
   is not touched; names without a card are left out
-  (`lib/read/book-word-list.ts` `easyPlan`, `gradeEasyWords`; grades go
-  through `WordsD1Repo.review`, rating 4, as on /words).
+  (the selection card's batch path, `lib/read/batch-grade-server.ts`
+  `planWords` / `gradeWords`: grades through `WordsD1Repo.review`, rating 4,
+  as on /words). The swipe and the card's paragraph grade share this: both
+  go through `gradeAt`.
 - The words ride in the item grade's own request (`GradeRequest.easyWords`),
   sent when its Undo hold ends: U / ⌘Z / the ↶ pill / the toast's Undo
   inside the hold drops both, so nothing reaches the server and nothing has
-  to be reverted. The server re-reads his cards and re-checks each due in
-  that request (his email only); a retried request grades nothing twice (a
-  word graded once is no longer due). Meanings for the new cards as 制卡
-  finds them, waiting at most a few seconds.
+  to be reverted. Once sent, the words sit in the grade's own undo record
+  (`read_grade_undo.words`), so the card handle's undo of a sent paragraph
+  grade (`batch-grade { undo }`) restores the sentences and every word
+  exactly and removes the cards it made. The server re-reads his cards and
+  re-checks each due in that request (his email only); a retried request
+  grades nothing twice. Meanings for the new cards as 制卡 finds them,
+  waiting at most a few seconds.
 - While the item rests on the Easy level, a hint above it says
   "段落简单 + N 个词记为简单" (N from the server's read-only plan,
   `POST /api/read/[id]/easy-plan`, asked when a slide starts; "+ N" hidden
@@ -554,6 +639,63 @@ hold, keys 1–4 / L K J H, all unchanged). What follows it is new
   words) — only when the plan has a due or new word, not after a later
   grade or an undo, not over a sheet. Closing it focuses the next item.
   Undoing the grade inside the hold closes a review it opened.
+
+### Grading from the selection card (owner, 2026-11-05 02:50–03:20 JST)
+
+"点击句子之后允许在浮动卡片上拖动一个handle去评分"; "这样也能作用于选中的其他单位";
+"还能批量评分"; "handle本身可以内部不包括内容"; "专门放中间用来拖"; undo = drag
+up; "注意批量操作只应用于due卡和新词"; show what a batch touches by flashing
+it in the text, not a list of toasts.
+
+- **One control:** a plain knob resting in the middle of a short track at the
+  bottom of the selection card (`reader-grade-handle.tsx`). Dragged left or
+  right it grades by the /words swipe's own levels, feel and release rule
+  (`lib/read/grade-handle.ts` over `lib/words/swipe.ts`; the mirror setting
+  applies); the track takes the grade's colour and a hint line above it names
+  what will be graded ("这 3 句：良好", "这 3 句：简单 + 12 个词",
+  "（另 2 句未到期，跳过）"). The knob springs back to the middle. Dragged up
+  (when there is one) it takes the last batch back ("撤销：…").
+- **Safety:** tapping or clicking the text never grades; neither does a tap on
+  the knob (no travel), nor a press that starts within 450 ms of the card
+  opening (the opening tap). The axis locks on the first movement, as on
+  /words: a steep drag can never grade.
+- **What each unit grades** (`lib/read/batch-grade.ts` `handlePlan`):
+  - a **word** or **phrase**: its own card, only when due or new (never
+    reviewed). No card (in the book's list but never studied, or not
+    recognised at all) → 制卡 first (the same make-cards path: the book's own
+    deck, meaning from the decks and lemmas, then the AI gloss through
+    `chargeAi`), then the handle. Not due → no handle, "3 天后到期".
+  - a **sentence**: that sentence's FSRS card (the reader's per-sentence
+    grade, `gradeFor`, granularity `sentence`). Never takes words along.
+  - a **hand-made range** (several sentences, several paragraphs): every due
+    or never-graded sentence in it, as one batch; not-due ones are skipped and
+    counted. Easy also grades the range's due and new words Easy (cards made
+    first for those with none), in the same batch; any other grade opens the
+    range's word review when it has due or new words. Nothing due → the
+    handle is greyed out with the reason.
+  - a **paragraph**: exactly as its swipe grades it (`gradeAt`, the same
+    function), so whatever rules the swipe has apply.
+- **One call, one undo:** `POST /api/read/[id]/batch-grade` probes
+  (`{ probe }`: each sentence's and word's state and the due each grade would
+  give), grades (`{ clientId, rating, sentences, words }`, validated, the
+  server applying the same due/new filter again, words through /words'
+  `WordsD1Repo.review`) and takes back (`{ undo }`). A batch is held 8 s like
+  a swipe (Undo then just drops it) and sent on leaving the page. Once sent,
+  the undo restores every card exactly: sentences from `read_grade_undo`
+  (`db/migrations/0036`: each read keeps the rows it replaced for a day, a
+  paragraph swipe's too), words through `WordsD1Repo.undo` (the card before
+  its last review), cards the batch made removed again. A card changed since
+  by something else keeps that later grade.
+- **Feedback:** while the knob is past a level, the words and sentences that
+  will be graded pulse softly in place; on release they flash once in the
+  grade's colour and their underlines refresh when the batch lands; skipped
+  ones stay still; an undo flashes the same ones back (`data-lk-pulse`,
+  `data-lk-flash`, still tints under reduced motion). One compact toast holds
+  Undo. After a word, phrase or sentence, the card shows its next due briefly.
+- **Keys:** with a card open whose handle is on, 1–4 / L K J H grade it
+  (`keyRating`); U and ⌘Z undo the latest grade, the card's or a swipe's.
+- QA: `scripts/qa/qa-read-card-grade.mjs`; unit: `read-batch-grade`,
+  `read-grade-handle`.
 
 ### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
 
@@ -608,7 +750,8 @@ own paragraphs (no chunks):
 ### Owner decisions, 2026-11-03 ~19:40 JST (Slack)
 
 1. **Shared catalogue rule:** public domain in the US **and** every creator
-   (translators included) dead 80+ years.
+   (translators included) dead 80+ years. _Superseded 2026-11-05 by the
+   per-country admission rule ("Admission rule: public domain per country")._
 2. **No book-page layout.** The reader renders the EPUB's own paragraphs as
    they are, in one continuous scroll; **swiping a paragraph left/right is
    its review grade**, exactly like the /words swipe (the mirror setting

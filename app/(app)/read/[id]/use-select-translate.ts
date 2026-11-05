@@ -7,10 +7,21 @@
 // on its way is not asked for twice (a re-selection while it comes joins it).
 // Asked only once the selection rests (the combo interval), so the levels a
 // quick combo passes through cost nothing.
+//
+// No Translate button (owner, 2026-11-05 02:11 JST): past the bound, the
+// card asks for the next stretch by itself (`more`: when he scrolls the
+// translation to its end, or when what came fits without scrolling), and a
+// failure is retried by a tap on its own error line (`retry`).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { COMBO_MS } from "@/lib/read/reader-select";
-import { autoPieces, transKey, type TransPiece, type TransPlan } from "@/lib/read/select-translate";
+import {
+  AUTO_TRANSLATE_CHARS,
+  autoPieces,
+  transKey,
+  type TransPiece,
+  type TransPlan,
+} from "@/lib/read/select-translate";
 import type { CardTranslation } from "./reader-select-card";
 
 /** Translations of this tab, by transKey: the device's side of the cache. */
@@ -54,16 +65,19 @@ export function useSelectTranslate(
   /** A unit's text; null on its way; false not asked (past the bound) or failed. */
   const [got, setGot] = useState<Record<string, string | null | false>>({});
   const [failed, setFailed] = useState(false);
-  /** Taps on Translate for this plan: each asks for every unit not there yet. */
-  const [asks, setAsks] = useState(0);
-  useEffect(() => setAsks(0), [plan]);
-
+  /** Stretches of the bound asked for (1: the first, by itself); and retries of failures. */
+  const [room, setRoom] = useState(1);
+  const [tries, setTries] = useState(0);
+  useEffect(() => {
+    setRoom(1);
+    setTries(0);
+  }, [plan]);
   useEffect(() => {
     setFailed(false);
     if (!plan) return setGot({});
     let live = true;
     const all = plan.flat();
-    const want = asks > 0 ? new Set(all) : autoPieces(plan);
+    const want = autoPieces(plan, AUTO_TRANSLATE_CHARS * room);
     const init: Record<string, string | null | false> = {};
     for (const p of all) init[key(p)] = done.get(key(p)) ?? (want.has(p) ? null : false);
     setGot(init);
@@ -79,22 +93,27 @@ export function useSelectTranslate(
       }
     };
     // A combo passes through smaller units on its way up: only the one it
-    // rests on is asked for (a tap on Translate asks at once).
+    // rests on is asked for (a further stretch or a retry asks at once).
     const start = () => {
       for (let i = 0; i < Math.min(LANES, queue.length); i++) void lane();
     };
-    const timer = queue.length ? setTimeout(start, asks > 0 ? 0 : COMBO_MS) : null;
+    const first = room === 1 && tries === 0;
+    const timer = queue.length ? setTimeout(start, first ? COMBO_MS : 0) : null;
     return () => {
       live = false;
       if (timer) clearTimeout(timer);
     };
-  }, [plan, asks, id, to, from, key]);
+  }, [plan, room, tries, id, to, from, key]);
 
   const translation = useMemo<CardTranslation | null>(
     () => (plan ? { blocks: plan.map((b) => b.map((p) => got[key(p)] ?? false)) } : null),
     [plan, got, key],
   );
-  const missing = !!plan && plan.some((b) => b.some((p) => got[key(p)] === false));
-  const more = useCallback(() => setAsks((n) => n + 1), []);
-  return { translation, failed, more: missing ? more : null };
+  const pending = Object.values(got).includes(null);
+  /** Pieces past what is asked for (never a failed one: that is `retry`'s). */
+  const rest =
+    !!plan && !failed && !pending && plan.some((b) => b.some((p) => got[key(p)] === false));
+  const more = useCallback(() => setRoom((n) => n + 1), []);
+  const retry = useCallback(() => setTries((n) => n + 1), []);
+  return { translation, failed, more: rest ? more : null, retry };
 }

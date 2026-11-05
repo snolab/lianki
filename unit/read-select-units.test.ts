@@ -16,7 +16,9 @@ import {
   bookPhrase,
   matchMeaning,
   meaningIndex,
+  phraseAtToken,
   phraseKey,
+  phraseSpans,
   phraseTokens,
   wordMeaning,
   type Meaning,
@@ -110,6 +112,78 @@ describe("meanings: word → phrase, the longest card", () => {
   });
 });
 
+describe("phrase spans in a paragraph (the reader's phrase marks)", () => {
+  const spans = (text: string, lang: string, terms: string[]) =>
+    phraseSpans(
+      toksOf(text, lang),
+      meaningIndex(
+        terms.map((t) => m(t)),
+        lang,
+      ),
+      lang,
+    ).map((s) => [s.t0, s.t1, s.m.term]);
+
+  test("longest first: a shorter card inside a longer one is left out", () => {
+    // Il(0) y(1) a(2) longtemps(3) il(4) y(5) avait(6) un(7) roi(8)
+    const text = "Il y a longtemps, il y avait un roi.";
+    expect(spans(text, "fr", ["il y a", "il y a longtemps", "y a"])).toEqual([
+      [0, 3, "il y a longtemps"],
+    ]);
+    expect(spans(text, "fr", ["il y a", "un roi"])).toEqual([
+      [0, 2, "il y a"],
+      [7, 8, "un roi"],
+    ]);
+  });
+
+  test("never overlapping: of two crossing cards the longer wins, at equal length the earlier", () => {
+    const text = "Il y a longtemps, il y avait un roi.";
+    // "y a longtemps" takes y-a-longtemps; the first "il y" crosses it, the second is free.
+    expect(spans(text, "fr", ["il y", "y a longtemps"])).toEqual([
+      [1, 3, "y a longtemps"],
+      [4, 5, "il y"],
+    ]);
+    expect(spans(text, "fr", ["il y", "y a"])).toEqual([
+      [0, 1, "il y"],
+      [4, 5, "il y"],
+    ]);
+  });
+
+  test("single-word cards are no phrase; no phrase cards, nothing found", () => {
+    expect(spans("Il y a un roi.", "fr", ["roi", "un"])).toEqual([]);
+    expect(phraseSpans(toksOf("Il y a un roi.", "fr"), meaningIndex([], "fr"), "fr")).toEqual([]);
+  });
+
+  test("inflected words match through the language's folds", () => {
+    expect(spans("She gives up. They gave up.", "en", ["give up"])).toEqual([[1, 2, "give up"]]);
+  });
+
+  test("CJK: a phrase of several segmenter words, in text without spaces", () => {
+    for (const [text, lang, term] of [
+      ["他做事总是半途而废。", "zh", "半途而废"],
+      ["今日は猫の手も借りたいほど忙しい。", "ja", "猫の手も借りたい"],
+    ]) {
+      const toks = toksOf(text, lang);
+      const want = phraseTokens(term, lang);
+      expect(want.length).toBeGreaterThan(1);
+      const start = toks.indexOf(want[0]);
+      const got = phraseSpans(toks, meaningIndex([m(term)], lang), lang);
+      expect(got.map((s) => [s.t0, s.t1, s.m.term])).toEqual([
+        [start, start + want.length - 1, term],
+      ]);
+    }
+  });
+
+  test("the span holding a token: the combo's phrase level", () => {
+    const got = phraseSpans(
+      toksOf("Il y a un roi.", "fr"),
+      meaningIndex([m("il y a")], "fr"),
+      "fr",
+    );
+    expect(phraseAtToken(got, 1)?.m.term).toBe("il y a");
+    expect(phraseAtToken(got, 3)).toBeNull();
+  });
+});
+
 describe("the book's meanings (server, pure)", () => {
   const lem = parseLemmas("#lianki-lemmas v1 fr\nregarder\t2a 1\n");
   test("single cards matched over lemmas, phrases only when the book has their words, heads", () => {
@@ -171,6 +245,14 @@ describe("translation: whole sentences, whole paragraphs", () => {
     expect(shape({ kind: "para", line: 0 })).toEqual([["para:0.-1"]]);
     expect(translationPlan({ kind: "para", line: 0 }, sentences)![0][0].text).toBe(p0);
     expect(translationPlan({ kind: "word", line: 0, t: 0 }, sentences)).toBeNull();
+  });
+
+  test("a phrase (no Translate button) is translated by itself, as one piece", () => {
+    const t0 = tokIn(0, "Les");
+    const t1 = tokIn(0, "oiseaux");
+    const plan = translationPlan({ kind: "phrase", line: 0, t0, t1 }, sentences)!;
+    expect(plan.map((b) => b.map((p) => p.level))).toEqual([["phrase"]]);
+    expect(plan[0][0].text).toBe("Les oiseaux");
   });
 
   test("a ragged range in one paragraph grows to whole sentences", () => {
@@ -274,6 +356,8 @@ describe("a phrase card, in the book's own deck (D1)", () => {
       ["roi", "king", true],
     ]);
     expect(r.forms).toEqual([["roi", 1]]);
+    // Each card's familiarity as a word's mark (the reader's phrase layer): fresh, weakest band.
+    expect(r.cards.map((c) => c.f)).toEqual(["l1", "l1"]);
   });
 
   test("a CJK multi-character expression is a term like any other", async () => {

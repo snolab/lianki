@@ -201,8 +201,8 @@ async function desktop(scheme) {
   check(c?.kind === "word", `a click selects the word (${c?.kind})`);
   check(!!c?.link, "the card has the link button (inline SVG)");
   check(
-    c?.actions.includes("lookup") && c?.actions.includes("copy-text"),
-    `word actions (${c?.actions})`,
+    !c?.actions.includes("lookup") && c?.actions.includes("copy-text"),
+    `word actions: copy is an icon, no look-up (${c?.actions})`,
   );
   check((c?.ranges ?? 0) > 0, "the word is highlighted");
   check(!!c?.bg && c.bg !== "none", "the card is glass (backdrop-filter)");

@@ -14,7 +14,9 @@
 // docs/books-plan.md): every row `data-block` (its index) and `data-item`
 // (its id), every paragraph `data-line`, every sentence `data-s` (its index
 // in the paragraph), every word `data-t` (its token index in the paragraph)
-// and `data-f` (its familiarity, read by the marks' CSS only).
+// and `data-f` (its familiarity, read by the marks' CSS only). The words of a
+// deck phrase sit in one `data-ph="<t0>-<t1>"` span with `data-pf` (the
+// phrase card's familiarity): a second, lower mark layer under the words'.
 
 import { memo, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { useIntlayer } from "next-intlayer";
@@ -28,6 +30,7 @@ import {
   pieceSentences,
   railLevel,
 } from "@/lib/read/reader-model";
+import { phraseAtToken, type PhraseSpan } from "@/lib/read/select-meaning";
 import {
   SWIPE_CORE_IFACE,
   type SwipeRowValue,
@@ -73,10 +76,59 @@ function segNode(g: Seg, fam: Map<string, Fam> | null, key: number): ReactNode {
   );
 }
 
+/**
+ * A sentence's segments, the words of each deck phrase in it wrapped in one
+ * `data-ph` span (the spaces and marks between them too) for the phrase layer
+ * under the words' own marks. A phrase across a sentence end gets one wrapper
+ * on each side.
+ */
+function sentenceNodes(
+  segs: readonly Seg[],
+  fam: Map<string, Fam> | null,
+  phrases: readonly PhraseSpan[] | null,
+): ReactNode[] {
+  if (!phrases?.length) return segs.map((g, k) => segNode(g, fam, k));
+  const out: ReactNode[] = [];
+  let open: { ph: PhraseSpan; nodes: ReactNode[]; key: number } | null = null;
+  let between: ReactNode[] = [];
+  const close = () => {
+    if (open) {
+      const { ph, nodes, key } = open;
+      out.push(
+        <span key={`ph${key}`} data-ph={`${ph.t0}-${ph.t1}`} data-pf={ph.m.f ?? "n"}>
+          {nodes}
+        </span>,
+      );
+    }
+    open = null;
+    out.push(...between);
+    between = [];
+  };
+  segs.forEach((g, k) => {
+    const node = segNode(g, fam, k);
+    if (g.t < 0) {
+      (open ? between : out).push(node);
+      return;
+    }
+    const ph = phraseAtToken(phrases, g.t);
+    if (open && open.ph === ph) {
+      open.nodes.push(...between, node);
+      between = [];
+      return;
+    }
+    close();
+    if (ph) open = { ph, nodes: [node], key: k };
+    else out.push(node);
+  });
+  close();
+  return out;
+}
+
 function PieceText({
   para,
   piece,
   fam,
+  phrases,
   lang,
   last,
   join,
@@ -84,6 +136,7 @@ function PieceText({
   para: Para;
   piece: Piece;
   fam: Map<string, Fam> | null;
+  phrases: readonly PhraseSpan[] | null;
   lang: string;
   last: boolean;
   join?: "br" | "sp";
@@ -103,7 +156,7 @@ function PieceText({
     >
       {ss.map((st, i) => (
         <span key={piece.s0 + i} data-s={piece.s0 + i}>
-          {st.segs.map((g, k) => segNode(g, fam, k))}
+          {sentenceNodes(st.segs, fam, phrases)}
         </span>
       ))}
     </p>
@@ -118,6 +171,8 @@ export type RowCommon = {
   para: (line: number) => Para;
   lineText: (line: number) => string;
   fam: Map<string, Fam> | null;
+  /** A paragraph's deck phrases (memoised per line), for the phrase layer. */
+  phrases: (line: number) => readonly PhraseSpan[] | null;
   /** A line that continues the paragraph before (the EPUB's <br>, or a long one split at import). */
   joinOf: (line: number) => "br" | "sp" | undefined;
   isHeading: (line: number) => boolean;
@@ -188,6 +243,7 @@ function ItemBody({ p }: { p: RowCommon }) {
             para={paras[i]}
             piece={pc}
             fam={p.fam}
+            phrases={p.phrases(pc.line)}
             lang={p.lang}
             last={i === b.pieces.length - 1}
             join={pc.s0 === 0 ? p.joinOf(pc.line) : undefined}

@@ -17,6 +17,23 @@ describe("APP_ROUTES", () => {
     const missing = pages.filter((name) => !(APP_ROUTES as readonly string[]).includes(name));
     expect(missing).toEqual([]);
   });
+
+  // Same for a page directory at the top of app/: /auth/logout was missing, so
+  // the menu's Sign out went to /en/auth/logout, a 404 (owner, 2026-11-05).
+  it("lists every top-level page directory outside app/(app)/ and app/[locale]/", () => {
+    const dir = join(import.meta.dir, "..", "app");
+    const hasPage = (d: string): boolean =>
+      readdirSync(d, { withFileTypes: true }).some((e) =>
+        e.isDirectory() ? hasPage(join(d, e.name)) : /^(page|route)\.tsx?$/.test(e.name),
+      );
+    const pages = readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !/^[(_[]/.test(e.name) && e.name !== "api")
+      .filter((e) => hasPage(join(dir, e.name)))
+      .map((e) => e.name);
+    expect(pages).toContain("auth");
+    const missing = pages.filter((name) => !(APP_ROUTES as readonly string[]).includes(name));
+    expect(missing).toEqual([]);
+  });
 });
 
 describe("isAppRoute", () => {

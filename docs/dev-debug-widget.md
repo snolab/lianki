@@ -1088,6 +1088,45 @@ made Bun wrap the React shim as CommonJS with its ESM exports empty. So the
 shim (`hostModule` in `scripts/dev/debug-widget-build.ts`) is now CommonJS
 outright: `module.exports = globalThis.__lkReact.React`.
 
+## Page audio owner: one sound at a time
+
+Owner, 2026-11-05 03:05–03:06 JST: opening the reader's word review pauses
+the paragraph being read aloud, and Li speaking pauses any reader or word
+read-aloud. Each one goes on where it was once the other is done: the
+reader from the same sentence, /words from the part it was saying.
+
+Ranks, highest first (`AUDIO_PRIO`):
+
+1. `li` (3): Li's voice-out (`voice.ts`, claimed before each sentence,
+   released once nothing is speaking, after the tail). When Li speaks is not
+   changed by it: `shouldSpeak` and the focus rule are the same.
+2. `card` (2): a word or card read aloud. That covers /words' sequencer
+   (`lib/words/sequence.ts`, so the review inside the reader as well) and the
+   reader's word review while it is open (`ReaderV2.tsx`, which has no sound
+   of its own and holds the page only to keep the paragraph paused).
+3. `para` (1): the reader's paragraph read-aloud (`lib/read/speaker.ts`).
+
+The widget bundle can be hot-loaded with its own copy of every module, so the
+two sides share no module state. The contract is two window events
+(`packages/debug-chat/src/audio-claim.ts`, used on both sides):
+
+| event               | detail         | meaning                                                                                                                                                                                     |
+| ------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lk:audio-claim`    | `{ id, prio }` | cancelable, "I am about to play". An owner holding or waiting with a higher `prio` calls `preventDefault()`, and the claimer waits. One holding with an equal or lower `prio` pauses and waits (the newest of equals wins). |
+| `lk:audio-release`  | `{ id }`       | "I am done". Each waiter claims again. A higher waiter cancels a lower one's claim, so the highest goes first.                                                                                 |
+
+- Only an owner that is holding or waiting listens. An idle one needs no
+  cleanup.
+- A waiter that leaves (stop while paused) sends no release, and cancels
+  nothing on the speech engine, because that would cut Li's voice.
+- A claim is made before the sound starts. The paused side is silent before
+  Li's first utterance reaches `speechSynthesis`.
+- Nothing polls: every change is one of these two events.
+
+Tests use a fake audio clock and fake elements, with no sound:
+`unit/audio-claim.test.ts`, `unit/read-speaker.test.ts` ("pauses for a
+higher sound") and `unit/voice-session.test.ts` ("Li owns the page's audio").
+
 ## Page errors
 
 The owner's pages report their own errors to the agent, so it can watch them

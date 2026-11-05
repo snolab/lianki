@@ -267,6 +267,21 @@ export function serverReaderData(
       const i = l?.lastIndexOf(r.rating) ?? -1;
       if (l && i >= 0) l.splice(i, 1);
     },
+    async revert(b, r) {
+      if (!r.clientId) return;
+      const p = pending.get(r.clientId);
+      if (p && !p.inflight) return this.undo(b, r);
+      // Sent (or on its way): the server restores its sentences (batch-grade undo).
+      const l = last.get(r.itemId);
+      const i = l?.lastIndexOf(r.rating) ?? -1;
+      if (l && i >= 0) l.splice(i, 1);
+      const res = await fetch(`${base}/batch-grade`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ undo: r.clientId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    },
     async anchor(id) {
       const local = loadAnchor(id);
       try {

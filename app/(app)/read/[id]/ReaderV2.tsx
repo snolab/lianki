@@ -27,6 +27,7 @@ import Link from "next/link";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { type Virtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
+import { AUDIO_PRIO, audioOwner, audioOwnerId } from "@lianki/debug-chat/audio-claim";
 import { createUiStore, useUi } from "@lianki/ui-state";
 import type { ReadMaterial } from "../ReadListClient";
 import { chapterAt, type BookMeta } from "@/lib/read/book";
@@ -34,10 +35,14 @@ import { catalogKeys, catalogWords } from "@/lib/read/dict";
 import {
   matchMeaning,
   meaningIndex,
+  paraTokens,
+  phraseAtToken,
   phraseKey,
+  phraseSpans,
   wordMeaning,
   type Meaning,
   type MeaningIndex,
+  type PhraseSpan,
 } from "@/lib/read/select-meaning";
 import { translationPlan } from "@/lib/read/select-translate";
 import { formLabels } from "@/lib/read/form-tags";
@@ -104,6 +109,7 @@ import {
   type UnitView,
 } from "./reader-select-card";
 import { useSelectTranslate } from "./use-select-translate";
+import { useSelectGloss } from "./use-select-gloss";
 import { useReaderSelect } from "./use-reader-select";
 import { ReaderBack } from "./reader-back";
 import {
@@ -123,6 +129,7 @@ import {
   countSentences,
   decodeUnit,
   rangeParts,
+  RANGE_MAX_LINES,
   rangeText,
   emptyCounts,
   sameUnit,
@@ -135,8 +142,17 @@ import {
   unitLink,
 } from "@/lib/read/reader-select";
 import { segmentLine } from "@/lib/read/units";
-import { sentenceId } from "@/lib/read/reader-api";
+import { parseSentenceId, sentenceId } from "@/lib/read/reader-api";
+import { CardGradeArea, useGradeWords } from "./reader-grade-handle";
+import { flashElements, useCardGrade, type FlashTargets } from "./use-card-grade";
 import { onPageLeave } from "@/lib/page-leave";
+import {
+  decodeReviewRef,
+  reviewKey,
+  reviewOfHref,
+  reviewRef,
+  withReview,
+} from "@/lib/read/review-ref";
 
 type WindowVirtualizer = Virtualizer<Window, Element>;
 /** The units whose card offers the review and 制卡. */
@@ -379,6 +395,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   // ── Meanings: his /words cards (words and phrases) and the public lists ──
   // (lib/read/select-meaning.ts), on the device before he selects anything.
   const [meanIdx, setMeanIdx] = useState<MeaningIndex[]>([]);
+  /** His own cards' index, when it has phrases: the phrase marks and the combo's phrase level. */
+  const [ownIdx, setOwnIdx] = useState<MeaningIndex | null>(null);
   /** Inflected book words → their dictionary headword (the lemma file, from the server). */
   const [heads, setHeads] = useState<Map<string, { lemma: string; sets: string[][] }>>(
     () => new Map(),
@@ -403,14 +421,16 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         if (!live) return;
         const out: MeaningIndex[] = [];
         const cards = own?.cards ?? [];
+        let mine: MeaningIndex | null = null;
         if (cards.length) {
           const forms = (own?.forms ?? []).flatMap(([w, i]): [string, Meaning][] =>
             cards[i] ? [[w, cards[i]]] : [],
           );
-          out.push(meaningIndex(cards, normLang, forms));
+          out.push((mine = meaningIndex(cards, normLang, forms)));
         }
         out.push(meaningIndex(new Set(cat.values()), normLang));
         setMeanIdx(out);
+        setOwnIdx(mine?.longest ? mine : null);
         setHeads(
           new Map((own?.heads ?? []).map(([w, lemma, sets]) => [w, { lemma, sets: sets ?? [] }])),
         );
@@ -420,6 +440,20 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       live = false;
     };
   }, [id, ownMeanings, normLang, famTick]);
+  /**
+   * A paragraph's deck phrases (his phrase cards only, lib/read/select-meaning.ts
+   * phraseSpans): found once per paragraph and kept until his cards change.
+   */
+  const phrasesOf = useMemo(() => {
+    const cache = new Map<number, readonly PhraseSpan[]>();
+    return (line: number): readonly PhraseSpan[] | null => {
+      if (!ownIdx || !lines[line]?.trim()) return null;
+      let s = cache.get(line);
+      if (!s)
+        cache.set(line, (s = phraseSpans(paraTokens(para(line).sentences), ownIdx, normLang)));
+      return s.length ? s : null;
+    };
+  }, [ownIdx, lines, para, normLang]);
 
   // ── Marks: an attribute on <html>, so switching repaints, never re-renders ──
   const marks = useUi(readMarks, (s) => s.level);
@@ -590,12 +624,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const comboCtx = useMemo<ComboCtx>(
     () => ({
       interval: COMBO_MS,
-      // Phrase bounds come with extraction (books-plan phase 1): until then the level is skipped.
-      phraseAt: () => null,
+      // His deck phrases (the phrase criterion: nothing detected here); none, the level is skipped.
+      phraseAt: (line, t) => {
+        const s = phraseAtToken(phrasesOf(line) ?? [], t);
+        return s ? [s.t0, s.t1] : null;
+      },
       chapterAt: (line) => (chapters.length ? chapterAt(chapters, line) : -1),
       chapterRange,
     }),
-    [chapters, chapterRange],
+    [chapters, chapterRange, phrasesOf],
   );
   /** Says what a click of the combo selected (set below, with the card's strings). */
   const tapRef = useRef<(u: Unit, continued: boolean) => void>(() => {});
@@ -855,9 +892,9 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   /** Grades given this visit: a review opens only if no grade came after its own. */
   const gradeSeq = useRef(0);
   const gradeAt = useCallback(
-    (index: number, raw: SwipeRating, el: HTMLElement | null) => {
+    (index: number, raw: SwipeRating, el: HTMLElement | null): Promise<GradeReceipt | null> => {
       const b = blocks[index];
-      if (!b || b.kind !== "item") return;
+      if (!b || b.kind !== "item") return Promise.resolve(null);
       // The core reports the default side's grade; the mirror is applied once, here.
       const r = sideRating(raw, mirrored());
       const top = (el ?? rowEl(index))?.getBoundingClientRect().top ?? eye();
@@ -873,7 +910,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
               p ? { day: new Date().toLocaleDateString("en-CA"), words: p.words } : null,
             )
           : undefined;
-      void data
+      const graded = data
         .grade(rbook, b, r, {
           shownAt: shownAt.current.get(index),
           easyWords,
@@ -888,10 +925,11 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             () => setCanUndo(undoStack.current.some((e) => data.canUndo(e.receipt))),
             GRADE_HOLD_MS + 50,
           );
+          return receipt;
         });
       setEasyHint(null);
       const next = nextItem(index);
-      if (next < 0) return;
+      if (next < 0) return graded;
       // Its count is ready by the time he slides it.
       const nb = blocks[next];
       if (nb.kind === "item") void itemWords.planOf(nb);
@@ -899,6 +937,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       placed.current = next;
       dispatch({ type: "select", line: next });
       requestAnimationFrame(() => placeBlock(next, top));
+      return graded;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [blocks, data, rbook, dispatch, placeBlock, itemWords],
@@ -965,9 +1004,45 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   );
 
   const onSwipe = useCallback(
-    (index: number, r: SwipeRating, el: HTMLElement) => gradeAt(index, r, el),
+    (index: number, r: SwipeRating, el: HTMLElement) => void gradeAt(index, r, el),
     [gradeAt],
   );
+  /** A paragraph grade from the card's handle taken back, held or sent. */
+  const revertPara = useCallback(
+    (receipt: GradeReceipt) => {
+      undoStack.current = undoStack.current.filter((e) => e.receipt !== receipt);
+      setCanUndo(undoStack.current.some((e) => data.canUndo(e.receipt)));
+      // An Easy grade's words go back with it (the same undo record), and a
+      // review it opened closes.
+      if (receipt.clientId) itemWords.release(receipt.clientId);
+      gradeSeq.current++;
+      undoneRef.current(receipt);
+      void data
+        .revert(rbook, receipt)
+        .then(() => setFamTick((n) => n + 1))
+        .catch(() => {});
+      setGrades((g) => {
+        const n = { ...g };
+        delete n[receipt.itemId];
+        const prev = data.lastGrade(receipt.itemId);
+        if (prev) n[receipt.itemId] = prev;
+        return n;
+      });
+    },
+    [data, rbook, itemWords],
+  );
+  /** The card's grade keys and undo, when a selection's handle is there (set below). */
+  const cardKeys = useRef<{ grade: (r: SwipeRating) => boolean; undo: () => boolean; at: number }>({
+    grade: () => false,
+    undo: () => false,
+    at: 0,
+  });
+  /** U / ⌘Z: the latest of the card's grades and the swipes'. */
+  const undoAny = useCallback(() => {
+    const swipeAt = undoStack.current.at(-1)?.receipt.at ?? 0;
+    if (cardKeys.current.at >= swipeAt && cardKeys.current.undo()) return;
+    undo();
+  }, [undo]);
   const onTap = useCallback(
     (index: number) => {
       // Playing: a tap on another item reads from there.
@@ -1001,16 +1076,18 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       if (document.querySelector("[aria-modal=true]")) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        return undo();
+        return undoAny();
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === " ") {
         e.preventDefault();
         return togglePlay();
       }
-      if (e.key === "u") return undo();
+      if (e.key === "u") return undoAny();
       const r = keyRating(e);
       if (!r) return;
+      // A selection whose card has the grade handle: the keys grade it.
+      if (!e.repeat && cardKeys.current.grade(r)) return e.preventDefault();
       const i = playingRef.current ? player.line : eyeIndexRef.current;
       const b = blocks[i];
       if (b?.kind !== "item") return;
@@ -1019,7 +1096,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     };
     window.addEventListener("keydown", down);
     return () => window.removeEventListener("keydown", down);
-  }, [blocks, player.line, gradeAt, undo, togglePlay]);
+  }, [blocks, player.line, gradeAt, undoAny, togglePlay]);
 
   // ── Sheets ──
   const [sheet, setSheet] = useState<null | "toc" | "aa">(null);
@@ -1036,16 +1113,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const { locale } = useLocale();
   const [selStatus, setSelStatus] = useState<string | null>(null);
   useEffect(() => setSelStatus(null), [sel.unit]);
-  // Translate: the selected text in his own language, on the card (our API,
-  // lib/read/translate.ts). Keyed by the text, so a new selection drops it.
-  const [trans, setTrans] = useState<{ src: string; out: string | null } | null>(null);
-  useEffect(() => setTrans(null), [sel.unit]);
 
   // ── A paragraph's words: /words' review over the book, and 制卡 ──
   const tr = useIntlayer("read-word-review");
+  /** The review open now: its words, its ref in the URL (`?review=`), and whether it came from the URL. */
   const [review, setReview] = useState<{
     words: RangeWord[];
     range: boolean;
+    ref: string;
+    adopt: boolean;
     /** Opened by this item grade (afterGrade): an undo of it closes the review. */
     from?: GradeReceipt;
   } | null>(null);
@@ -1053,6 +1129,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const reviewBack = useRef<HTMLElement | null>(null);
   const famChanged = useCallback(() => setFamTick((n) => n + 1), []);
   const closeReview = useCallback(() => setReview(null), []);
+  // While the review is open the paragraph read aloud pauses; on close it goes
+  // on from the same sentence (packages/debug-chat/src/audio-claim.ts).
+  const reviewOpen = !!review;
+  useEffect(() => {
+    if (!reviewOpen) return;
+    const o = audioOwner({ id: audioOwnerId("read-review"), prio: AUDIO_PRIO.card });
+    o.claim();
+    return () => o.release();
+  }, [reviewOpen]);
   /** A line's sentences, or null for a blank line. */
   const lineSentences = useCallback(
     (l: number) => (lines[l]?.trim() ? para(l).sentences : null),
@@ -1070,9 +1155,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   /** The deck card the selection is, or covers (word → phrase: the longest wins). */
   const selMeaning = useMemo(() => {
     if (!selSpan || !meanIdx.length) return null;
-    const toks: string[] = [];
-    for (const st of para(selSpan.line).sentences)
-      for (const g of st.segs) if (g.t >= 0) toks[g.t] = g.text;
+    const toks = paraTokens(para(selSpan.line).sentences);
     const hit = matchMeaning(toks, selSpan.t0, selSpan.t1, meanIdx, normLang);
     if (!hit) return null;
     const card: CardMeaning = {
@@ -1104,14 +1187,32 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     };
     return { w, card, ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null };
   }, [sel.unit, para, heads, meanIdx, normLang, formTags]);
-  // A sentence, a paragraph or a range: its whole units translated by
-  // themselves (lib/read/select-translate.ts). Not when it is a deck card.
+  // A word that is no card of his: its gloss by itself (use-select-gloss.ts).
+  const glossWord = useMemo(() => {
+    const u = sel.unit;
+    if (u?.kind !== "word" || selMeaning || !signedIn || !material.readerV2) return null;
+    const ss = para(u.line).sentences;
+    const w = tokenWord(ss, u.t);
+    if (!w) return null;
+    return {
+      w,
+      text: tokenText(ss, u.t, u.t),
+      ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null,
+    };
+  }, [sel.unit, selMeaning, signedIn, material.readerV2, para]);
+  const selGloss = useSelectGloss(id, glossWord);
+  // A phrase, a sentence, a paragraph or a range: its whole units translated
+  // by themselves (lib/read/select-translate.ts). Not when it is a deck card.
   const plan = useMemo(
     () =>
-      signedIn && material.readerV2 && sel.unit && !selInside
+      signedIn &&
+      material.readerV2 &&
+      sel.unit &&
+      !selInside &&
+      !(sel.unit.kind === "phrase" && selMeaning)
         ? translationPlan(sel.unit, lineSentences)
         : null,
-    [signedIn, material.readerV2, sel.unit, selInside, lineSentences],
+    [signedIn, material.readerV2, sel.unit, selInside, selMeaning, lineSentences],
   );
   const autoTrans = useSelectTranslate(
     id,
@@ -1141,19 +1242,61 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   );
   /** The one trigger of the review (owner, 22:19 JST: the card's button): the unit's words. */
   const openReview = useCallback(
-    (u: ReviewUnit) => {
+    (u: ReviewUnit, adopt = false) => {
+      const ref = reviewRef(u);
+      if (!ref) return;
       const { ss, words, line } = lineWords(u);
       // Focus comes back to the paragraph's item when the review closes.
       const el = rowEl(blockOfLine(blocks, line));
       if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
       reviewBack.current = el ?? null;
       void rangeWordsOf(words, ss, normLang).then((w) => {
-        sel.clear();
-        setReview({ words: w, range: u.kind === "range" });
+        if (!adopt) sel.clear();
+        setReview({ words: w, range: u.kind === "range", ref, adopt });
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lineWords, blocks, normLang, sel.clear],
+  );
+  // The review named in the URL (a refresh, Back / Forward, a link) opens
+  // again over the book, once its lines and word map are in.
+  const reviewRestored = useRef(false);
+  const canReview = signedIn && !!material.readerV2 && !!material.bookHash;
+  const reviewFromUrl = useRef(() => {});
+  reviewFromUrl.current = () => {
+    const ref = reviewOfHref(location.href);
+    if (!ref || review) return;
+    const target = decodeReviewRef(ref);
+    const ok =
+      canReview &&
+      target &&
+      (target.kind === "para" ? target.line : target.l1) < lines.length &&
+      (target.kind === "range" || !!lines[target.line]?.trim());
+    if (ok) return openReview(target, true);
+    // Nothing to review there: the address drops it, with no history entry.
+    history.replaceState(null, "", withReview(location.href, null));
+  };
+  useEffect(() => {
+    if (reviewRestored.current || !blocks.length || (material.words && !fam)) return;
+    reviewRestored.current = true;
+    reviewFromUrl.current();
+  }, [blocks.length, fam, material.words]);
+  // Forward onto a review's entry opens it again (Back off it closes it: useBackToClose).
+  useEffect(() => {
+    const on = () => reviewRestored.current && reviewFromUrl.current();
+    window.addEventListener("popstate", on);
+    return () => window.removeEventListener("popstate", on);
+  }, []);
+  const reviewPin = useMemo(
+    () =>
+      review
+        ? {
+            url: (href: string) => withReview(href, review.ref),
+            adopt: review.adopt,
+            exit: (href: string) => withReview(href, null),
+          }
+        : undefined,
+    [review],
   );
   // After an item's grade (lib/read/word-review.ts afterGrade): Easy shows
   // how many words went Easy with it (Undo takes back the lot, inside the
@@ -1161,6 +1304,25 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   // settled, when it has a due or new word — not after a later grade, not
   // over a sheet or another review. Closing it focuses the next item.
   const [easyToast, setEasyToast] = useState<{ text: string; receipt: GradeReceipt } | null>(null);
+  /** The URL ref of an item's review: its paragraph when it is one whole paragraph, else its token range. */
+  const itemRef = (index: number) => {
+    const b = blocks[index];
+    if (b?.kind !== "item") return "p0";
+    const first = b.pieces[0];
+    const last = b.pieces[b.pieces.length - 1];
+    const whole = b.pieces.length === 1 && first.s0 === 0 && first.s1 < 0;
+    const toks = (line: number, s: number) =>
+      (para(line).sentences[s]?.segs ?? []).filter((g) => g.t >= 0).map((g) => g.t);
+    const t0 = Math.min(...toks(first.line, first.s0));
+    const lastS = last.s1 < 0 ? para(last.line).sentences.length - 1 : last.s1 - 1;
+    const t1 = Math.max(...toks(last.line, lastS));
+    const ok =
+      Number.isFinite(t0) &&
+      Number.isFinite(t1) &&
+      (last.line > first.line || t1 > t0) &&
+      last.line - first.line <= RANGE_MAX_LINES;
+    return whole || !ok ? `p${first.line}` : `r${first.line}.${t0}-${last.line}.${t1}`;
+  };
   afterGradeRef.current = (index, r, planP, seq, receipt) => {
     void planP.then((p) => {
       if (!p) return;
@@ -1183,7 +1345,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           reviewBack.current = el ?? null;
           if (playingRef.current) dispatch({ type: "stop" });
           sel.clear();
-          setReview({ words, range: false, from: receipt });
+          setReview({ words, range: false, ref: itemRef(index), adopt: false, from: receipt });
         },
         // The next item has taken the graded one's place.
         Math.round(SWIPE_RETURN_S * 1000) + 50,
@@ -1352,9 +1514,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const actions = useMemo<CardActions | null>(() => {
     const u = view?.unit;
     if (!view || !u) return null;
-    const ui = String(locale).split("-")[0];
-    const from = lang && lang !== "und" ? lang : undefined;
-    const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
     const text =
       u.kind === "chapter"
         ? (() => {
@@ -1381,38 +1540,6 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       },
     };
     if (text && u.kind !== "book") a.copyText = () => void copy(text, ts.textCopied.value);
-    if (view.text && (u.kind === "word" || u.kind === "phrase"))
-      a.lookUp = () =>
-        open(
-          `https://${ui}.wiktionary.org/w/index.php?search=${encodeURIComponent(view.text!.trim())}`,
-        );
-    if (plan) {
-      if (autoTrans.more) a.translate = autoTrans.more;
-    } else if (
-      view.text &&
-      signedIn &&
-      material.readerV2 &&
-      (u.kind === "word" || u.kind === "phrase" || u.kind === "range")
-    )
-      a.translate = () => {
-        const src = view.text!.trim();
-        if (trans?.src === src) return;
-        setTrans({ src, out: null });
-        void fetch(`/api/read/${id}/translate`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text: src, to: String(locale), from }),
-        })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((d: { text?: string } | null) => {
-            if (!d?.text) throw new Error("no translation");
-            setTrans((t) => (t?.src === src ? { src, out: d.text! } : t));
-          })
-          .catch(() => {
-            setTrans((t) => (t?.src === src ? null : t));
-            setSelStatus(ts.translateFailed.value);
-          });
-      };
     const hash = material.bookHash;
     if (
       signedIn &&
@@ -1522,15 +1649,190 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     openReview,
     makeLine,
     lineWords,
-    trans,
-    plan,
-    autoTrans.more,
     selSpan,
     selMeaning,
     selLemma,
     tr,
     famChanged,
   ]);
+
+  // ── Grading the selection from its card (use-card-grade.ts) ──
+  const gradeWords = useGradeWords();
+  const tg = useIntlayer("read-grade-handle");
+  /** The sentence ids of a line as the server cuts it, and each one's start in the line. */
+  const lineCuts = useCallback(
+    (l: number) => segmentLine(lines[l] ?? "", normLang),
+    [lines, normLang],
+  );
+  /** A paragraph sentence's start offset in its line. */
+  const sentenceStart = useCallback(
+    (l: number, s: number) => {
+      let off = 0;
+      const ss = para(l).sentences;
+      for (let i = 0; i < s && i < ss.length; i++) for (const g of ss[i].segs) off += g.text.length;
+      return off;
+    },
+    [para],
+  );
+  const sidOf = useCallback(
+    (l: number, s: number) => {
+      const hash = material.bookHash;
+      const off = sentenceStart(l, s);
+      const idx = lineCuts(l).findIndex(([a, z]) => off >= a && off < z);
+      return hash && idx >= 0 ? sentenceId(hash, l, idx) : null;
+    },
+    [material.bookHash, sentenceStart, lineCuts],
+  );
+  const sentenceOfSid = useCallback(
+    (sid: string) => {
+      const p = parseSentenceId(sid);
+      const cut = p ? lineCuts(p.line)[p.index] : undefined;
+      if (!p || !cut) return null;
+      const ss = para(p.line).sentences;
+      for (let s = 0; s < ss.length; s++)
+        if (sentenceStart(p.line, s) === cut[0]) return { line: p.line, s };
+      return null;
+    },
+    [lineCuts, para, sentenceStart],
+  );
+  const cardSids = useCallback(
+    (u: Unit): string[] => {
+      const out: (string | null)[] = [];
+      if (u.kind === "sentence") out.push(sidOf(u.line, u.s));
+      else if (u.kind === "range")
+        for (const p of rangeParts(u)) {
+          const ss = lineSentences(p.line);
+          if (!ss) continue;
+          const a = p.from === null ? 0 : Math.max(0, sentenceOfToken(ss, p.from));
+          const z = p.to === null ? ss.length - 1 : Math.max(a, sentenceOfToken(ss, p.to));
+          for (let s = a; s <= z; s++) out.push(sidOf(p.line, s));
+        }
+      return out.filter((x): x is string => !!x);
+    },
+    [sidOf, lineSentences],
+  );
+  const cardLines = useCallback((u: Unit): number[] => {
+    if (u.kind === "range") return Array.from({ length: u.l1 - u.l0 + 1 }, (_, i) => u.l0 + i);
+    return "line" in u ? [u.line] : [];
+  }, []);
+  const cardWords = useCallback(
+    async (u: Unit): Promise<RangeWord[]> => {
+      if (u.kind === "range") {
+        const { ss, words } = lineWords(u);
+        return rangeWordsOf(words, ss, normLang);
+      }
+      if (u.kind !== "word" && u.kind !== "phrase") return [];
+      const ss = para(u.line).sentences;
+      const t0 = u.kind === "word" ? u.t : u.t0;
+      const t1 = u.kind === "word" ? u.t : u.t1;
+      const s = sentenceOfToken(ss, t0);
+      const w = u.kind === "word" ? tokenWord(ss, t0) : phraseKey(tokenText(ss, t0, t1));
+      if (!w || s < 0 || (u.kind === "phrase" && s !== sentenceOfToken(ss, t1))) return [];
+      const fw = fam?.map.get(w);
+      return rangeWordsOf([{ w, text: tokenText(ss, t0, t1), t: t0, s, fam: fw }], ss, normLang);
+    },
+    [lineWords, normLang, para, fam],
+  );
+  /** The words and sentences a batch touches: pulse while dragging, flash on grade and undo. */
+  const marked = useRef<HTMLElement[]>([]);
+  const markCard = useCallback(
+    (f: FlashTargets, how: "pulse" | "off" | SwipeRating | "undo") => {
+      for (const el of marked.current) el.removeAttribute("data-lk-pulse");
+      marked.current = [];
+      if (how === "off") return;
+      const els = flashElements(document, f, sentenceOfSid, (l) => {
+        const m = new Map<number, string>();
+        for (const st of para(l).sentences)
+          for (const g of st.segs) if (g.t >= 0 && g.w) m.set(g.t, g.w);
+        return m;
+      });
+      if (how === "pulse") {
+        for (const el of els) el.setAttribute("data-lk-pulse", "");
+        marked.current = els;
+        return;
+      }
+      for (const el of els) {
+        el.removeAttribute("data-lk-flash");
+        // Restart the animation on an element flashed a moment ago.
+        void el.offsetWidth;
+        el.setAttribute("data-lk-flash", String(how));
+      }
+      setTimeout(() => {
+        for (const el of els) el.removeAttribute("data-lk-flash");
+      }, 1200);
+    },
+    [sentenceOfSid, para],
+  );
+  const [gradeToast, setGradeToast] = useState<{ text: string; undo: boolean } | null>(null);
+  const [making, setMaking] = useState(false);
+  const cardGrade = useCardGrade({
+    id,
+    on: signedIn && !!material.readerV2 && !!material.bookHash,
+    unit: sel.unit,
+    tick: famTick,
+    sidsOf: cardSids,
+    wordsOf: cardWords,
+    linesOf: cardLines,
+    gradePara: (u, r) => {
+      const i = blockOfLine(blocks, u.line);
+      // gradeAt applies the mirror to a raw side: hand it the side that names `r`.
+      return gradeAt(i, sideRating(r, mirrored()), rowEl(i));
+    },
+    revertPara,
+    openReview: (u) => {
+      if (u.kind !== "chapter" && u.kind !== "book") openReview(u);
+    },
+    famChanged,
+    mark: markCard,
+    describe: gradeWords.describe,
+    onFailed: () => setGradeToast({ text: tg.failed.value, undo: false }),
+  });
+  /** A grade from the handle or the keys: one compact toast with Undo. */
+  const gradeCard = (r: SwipeRating) => {
+    const plan = cardGrade.plan;
+    if (plan.mode !== "grade" || !cardGrade.grade(r)) return false;
+    setMade(null);
+    setGradeToast({
+      text: fill(tg.graded.value, {
+        target: gradeWords.describe(plan, r),
+        grade: gradeWords.grades[r],
+      }),
+      undo: true,
+    });
+    return true;
+  };
+  const undoCard = () => {
+    if (!cardGrade.undo()) return false;
+    setGradeToast({ text: tg.undone.value, undo: false });
+    return true;
+  };
+  cardKeys.current = { grade: gradeCard, undo: undoCard, at: cardGrade.lastAt };
+  const gradeArea = sel.unit ? (
+    <CardGradeArea
+      plan={cardGrade.plan}
+      locale={String(locale)}
+      mirror={mirror}
+      openedAt={cardGrade.openedAt}
+      canUndo={cardGrade.canUndo}
+      lastWhat={cardGrade.lastWhat}
+      next={cardGrade.next}
+      onNextShown={cardGrade.clearNext}
+      making={making}
+      onMake={() => {
+        const u = sel.unit;
+        if (!u) return;
+        setMaking(true);
+        void cardWords(u)
+          .then((w) => makeCards(id, w))
+          .then(() => famChanged())
+          .catch(() => setGradeToast({ text: tr.makeFailed.value, undo: false }))
+          .finally(() => setMaking(false));
+      }}
+      onPreview={cardGrade.preview}
+      onGrade={(r) => void gradeCard(r)}
+      onUndo={() => void undoCard()}
+    />
+  ) : null;
 
   const eyeLine = blocks[eyeIndex] ? blockLine(blocks[eyeIndex]) : 0;
   const chapter = chapters.length ? chapterAt(chapters, eyeLine) : -1;
@@ -1547,6 +1849,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       isHeading,
       fam: fam?.map ?? null,
       famV: fam?.v ?? 0,
+      phrases: phrasesOf,
       lang,
       touch,
       variant,
@@ -1563,6 +1866,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       joinOf,
       isHeading,
       fam,
+      phrasesOf,
       lang,
       touch,
       variant,
@@ -1722,20 +2026,18 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             bottom={`calc(env(safe-area-inset-bottom) + ${(islandOpen ? 8.5 : 4.75) + (playing && !follow ? 3 : 0)}rem)`}
             status={
               selStatus ??
-              (autoTrans.failed ? ts.translateFailed.value : null) ??
               (sayFail && sameUnit(sayFail.u, sel.unit)
                 ? `${ts.sayFailed.value} (${sayFail.why})`
                 : null)
             }
-            translation={
-              plan
-                ? autoTrans.translation
-                : trans && view.text?.trim() === trans.src
-                  ? { blocks: [[trans.out]] }
-                  : null
+            translation={plan ? autoTrans.translation : null}
+            onMoreTranslation={autoTrans.more}
+            translateFailed={autoTrans.failed ? autoTrans.retry : null}
+            meaning={
+              selMeaning?.card ?? (selGloss && selLemma ? { ...selGloss, other: false } : selGloss)
             }
-            meaning={selMeaning?.card ?? null}
             lemma={selLemma?.card ?? null}
+            grade={gradeArea}
             onClose={sel.clear}
           />
         )}
@@ -1744,12 +2046,22 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             id={id}
             title={review.range ? tr.selectionTitle.value : tr.title.value}
             words={review.words}
+            place={reviewKey(id, review.ref)}
+            pin={reviewPin}
             returnTo={reviewBack}
             onClose={closeReview}
             onChanged={famChanged}
           />
         )}
-        {easyToast && (
+        {gradeToast && !made && (
+          <MadeToast
+            text={gradeToast.text}
+            undoLabel={tr.undo.value}
+            onUndo={gradeToast.undo ? () => void undoCard() : undefined}
+            onDone={() => setGradeToast(null)}
+          />
+        )}
+        {easyToast && !made && !gradeToast && (
           <MadeToast
             text={easyToast.text}
             undoLabel={tr.undo.value}
