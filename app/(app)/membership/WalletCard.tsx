@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
+import Link from "next/link";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import { longDate } from "@/lib/dates";
@@ -249,7 +250,10 @@ export function WalletCard({
       <div className="space-y-3">
         <h3 className="font-semibold">{s.topupTitle.value}</h3>
         {providers.length === 0 ? (
-          <p className={`text-sm ${muted}`}>{s.noProviders.value}</p>
+          <>
+            <p className={`text-sm ${muted}`}>{s.noProviders.value}</p>
+            <ContactLine text={s.contact.value} />
+          </>
         ) : (
           <>
             <div className="flex flex-wrap gap-2">
@@ -384,5 +388,25 @@ export function WalletCard({
         )}
       </div>
     </section>
+  );
+}
+
+/** The "[…]" part of the sentence becomes a link to the contact form. */
+function ContactLine({ text }: { text: string }) {
+  const m = /^(.*?)\[(.+?)\](.*)$/s.exec(text);
+  const [before, label, after] = m ? [m[1], m[2], m[3]] : [text, null, ""];
+  return (
+    <p className={`text-sm ${muted}`}>
+      {before}
+      {label && (
+        <Link
+          href="/contacts"
+          className="font-medium underline underline-offset-2 text-[oklch(0.5_0.2_262)] hover:text-[oklch(0.42_0.2_262)] dark:text-[oklch(0.75_0.14_262)] dark:hover:text-[oklch(0.82_0.12_262)]"
+        >
+          {label}
+        </Link>
+      )}
+      {after}
+    </p>
   );
 }
