@@ -38,7 +38,52 @@ day — not a streak, gaps don't reset.
   thinnest about a pixel at 20px.
 - `locked` = the same silhouette in faint ink, no red: a level not reached.
 
-## Not done yet
+## Study days (how lv4–lv6 are reached)
 
-Nothing user-facing shows a level. Computing a user's level (study days from
-server-recorded reviews) is the next step.
+`lib/study-days.ts`, table `study_day` (`db/migrations/0042_study_days.sql`):
+one row per user per local day, a daily rollup, so a level is one indexed
+`COUNT(*)` on the primary key — no scan of the review logs, no polling.
+
+Hard to fake, by construction (owner, Slack 2026-11-05):
+
+- **Server-recorded only.** The row is written by the review routes
+  (`/api/words/lists/[id]/review`, `/api/read/[id]/grade`) right after the
+  review is stored, with the **server's clock**. A review's own `reviewedAt`
+  (an offline grade sent later, or a device with its clock moved) never picks
+  the day: it lands on the day the server received it.
+- **The day is cut in the user's time zone** — the zone Cloudflare places the
+  request in (`request.cf.timezone`, from the IP), fixed at the first study day
+  as the **home zone**; later requests from other zones (a VPN, a trip) are
+  still cut in the home zone, so one real day can't become two dates.
+- **Real reviews only.** A review counts if its card was on screen at least
+  human reaction time (`HUMAN_REACTION_MS` = 1 s, the low end of the 1–3 s
+  rule): /words sends `elapsedMs` only for the row in focus, so grades tapped
+  on other rows (mass-tapping) carry none and don't count; /read uses the
+  swipe's shown → swiped time, and a resent grade (same client id) is not a
+  new read. Selection batch grades and the Easy-grades-the-words path don't
+  count.
+- **One count per day** however many reviews; never more days than calendar
+  days since the first paid day (`capDays`); keyed to the account's email.
+- **Counted from the first paid day**: the earliest live payment (test-mode
+  ones excluded), pass bought with credits, or Pro given (sponsor, gift,
+  referral). Not a streak — gaps don't reset. If Pro lapses the level falls
+  back to lv2 while the days are kept for when it is renewed.
+
+Study days are recorded for everyone whatever the flag says, so nobody loses
+days before levels are shown.
+
+## Showing it
+
+Flag `levels` (docs/feature-flags.md): on, every signed-in user can read their
+own level from `GET /api/levels/me`; off (default), only the owner. The owner's
+debug view is `/dev/levels` ("My level": badge, tier, study days, first paid
+day, the last 14 study days, then the badge gallery). No other UI shows a
+level until the owner asks.
+
+## Open
+
+- Trial (the 90 days every new account gets) counts as **free**, not paid.
+- Pro that was given (sponsor, gift code, referral reward) counts as paid,
+  like Pro that was bought. To be confirmed by the owner.
+- `elapsedMs` / `shownAt` are measured on the device; a modified client could
+  send fake durations, but still at most one day per real server day.
