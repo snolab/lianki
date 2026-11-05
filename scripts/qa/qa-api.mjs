@@ -511,6 +511,26 @@ let goalId;
   );
 }
 {
+  // The real Worker entry (worker.ts): a sibling *.lianki.com page's request
+  // carries the session cookie, and is refused before any route runs.
+  const sibling = await fetch(`${BASE}/api/fsrs/stats`, {
+    headers: { connection: "close", cookie, "sec-fetch-site": "same-site" },
+  });
+  rec(
+    "SIBLING  a sibling host's request to /api is refused",
+    sibling.status === 403,
+    `HTTP ${sibling.status}`,
+  );
+  const own = await fetch(`${BASE}/api/fsrs/stats`, {
+    headers: { connection: "close", cookie, "sec-fetch-site": "same-origin" },
+  });
+  rec(
+    "SIBLING  the same request from lianki.com itself still works",
+    own.status === 200,
+    `HTTP ${own.status}`,
+  );
+}
+{
   const push = "https://example.com/qa-pushed";
   const r = await call("POST", "/api/fsrs/bulk-upsert", {
     notes: [

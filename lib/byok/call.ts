@@ -1,5 +1,6 @@
 // One call to the user's own AI, from the browser (docs/byok.md). The key
-// goes in a header to the provider's URL and nowhere else:
+// goes in a header to the provider's URL and, unless the user turned on the
+// relay (below), nowhere else:
 //
 // - the URL is checked again right before the fetch (lib/byok/config.ts
 //   checkBaseUrl): never Lianki's hosts, never the page's own origin, https
@@ -8,8 +9,14 @@
 // - nothing is logged, and an error carries only its kind and HTTP status —
 //   never the provider's message, which can echo part of the key
 //   ("Incorrect API key provided: sk-ab***yz").
+//
+// With 「经 Lianki 转发（不保存）」 on (`backend.relay`, an allowlisted
+// preset only), the same call goes to Lianki's relay instead
+// (`POST /api/byok/proxy`, lib/byok/proxy-server.ts): the key in
+// `Authorization`, the backend and messages as JSON. The relay forwards it
+// and forgets both; the answer comes back unchanged.
 
-import { checkBaseUrl, type ByokActive } from "./config";
+import { checkBaseUrl, MODEL_RE, type ByokActive } from "./config";
 
 export type ByokMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -28,7 +35,13 @@ export type ByokErrorKind =
   | "http"
   | "timeout"
   /** 200, but no text in the answer. */
-  | "empty";
+  | "empty"
+  /** Lianki's relay refused the backend (not on its allowlist, or not a public address). */
+  | "relay-refused"
+  /** Lianki's relay is busy for this device or account: wait a minute. */
+  | "rate"
+  /** The request or the answer was over the relay's size cap. */
+  | "too-large";
 
 export type ByokResult =
   | { ok: true; text: string }
@@ -114,6 +127,87 @@ export function byokText(protocol: ByokActive["preset"]["protocol"], body: unkno
 const isLocal = (url: string) =>
   ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
 
+/** The relay's request for one completion (`/api/byok/proxy`). */
+export function relayRequest(
+  a: ByokActive,
+  messages: readonly ByokMessage[],
+  opts: { maxTokens: number; temperature?: number },
+): { url: string; init: RequestInit } {
+  return {
+    url: "/api/byok/proxy",
+    init: {
+      method: "POST",
+      // Same origin: the session cookie only counts toward the user's own limit.
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "content-type": "application/json", authorization: `Bearer ${a.apiKey}` },
+      body: JSON.stringify({
+        provider: a.backend.provider,
+        baseUrl: a.backend.baseUrl,
+        model: a.backend.model,
+        messages,
+        maxTokens: opts.maxTokens,
+        temperature: opts.temperature ?? 0.2,
+      }),
+    },
+  };
+}
+
+/** The relay's own error, by its `proxyError` kind. */
+function relayError(kind: unknown, status?: unknown): ByokResult {
+  const s = typeof status === "number" ? status : undefined;
+  switch (kind) {
+    case "auth":
+      return { ok: false, kind: "auth", status: s };
+    case "http":
+      return { ok: false, kind: "http", status: s };
+    case "timeout":
+      return { ok: false, kind: "timeout" };
+    case "rate":
+      return { ok: false, kind: "rate" };
+    case "too-large":
+      return { ok: false, kind: "too-large" };
+    case "network":
+      return { ok: false, kind: "cors" };
+    case "type":
+      return { ok: false, kind: "empty" };
+    default:
+      return { ok: false, kind: "relay-refused" };
+  }
+}
+
+async function relayComplete(
+  a: ByokActive,
+  messages: readonly ByokMessage[],
+  opts: { maxTokens: number; temperature?: number },
+  deps: ByokDeps,
+): Promise<ByokResult> {
+  const req = relayRequest(a, messages, opts);
+  const f = deps.fetch ?? fetch;
+  const ctl = new AbortController();
+  // A little longer than the relay's own 30 s, so its timeout answer arrives.
+  const timer = setTimeout(() => ctl.abort(), deps.timeoutMs ?? 35_000);
+  let res: Response;
+  try {
+    res = await f(req.url, { ...req.init, signal: ctl.signal });
+  } catch {
+    clearTimeout(timer);
+    return { ok: false, kind: ctl.signal.aborted ? "timeout" : "cors" };
+  }
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    clearTimeout(timer);
+    return res.ok ? { ok: false, kind: "empty" } : { ok: false, kind: "http", status: res.status };
+  }
+  clearTimeout(timer);
+  const err = (body as { proxyError?: unknown; status?: unknown } | null)?.proxyError;
+  if (!res.ok || err) return relayError(err, (body as { status?: unknown }).status);
+  const text = byokText(a.preset.protocol, body).trim();
+  return text ? { ok: true, text } : { ok: false, kind: "empty" };
+}
+
 /** One completion. Never throws, never logs. */
 export async function byokComplete(
   a: ByokActive,
@@ -127,6 +221,7 @@ export async function byokComplete(
       : typeof location === "undefined"
         ? null
         : location.host;
+  if (a.backend.relay) return relayComplete(a, messages, opts, deps);
   const req = byokRequest(a, messages, opts, pageHost);
   if (!req) return { ok: false, kind: "bad-url" };
   const f = deps.fetch ?? fetch;
@@ -165,4 +260,54 @@ export async function testByok(a: ByokActive, deps: ByokDeps = {}): Promise<Byok
   );
   // A reasoning model may spend 16 tokens thinking and say nothing: still a working key.
   return !r.ok && r.kind === "empty" ? { ok: true, text: "" } : r;
+}
+
+/**
+ * The models a provider offers this key, sorted; [] on any failure (the field
+ * can always be typed in). Same rules as a completion: the checked URL, no
+ * cookies, no referrer, nothing logged.
+ */
+export async function byokModels(
+  backend: ByokActive["backend"],
+  apiKey: string,
+  preset: ByokActive["preset"],
+  deps: ByokDeps = {},
+): Promise<string[]> {
+  const pageHost =
+    deps.pageHost !== undefined
+      ? deps.pageHost
+      : typeof location === "undefined"
+        ? null
+        : location.host;
+  const u = checkBaseUrl(backend.baseUrl, pageHost);
+  if (!u.ok) return [];
+  const anthropic = preset.protocol === "anthropic";
+  const headers: Record<string, string> = anthropic
+    ? {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      }
+    : apiKey
+      ? { authorization: `Bearer ${apiKey}` }
+      : {};
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), deps.timeoutMs ?? 10_000);
+  try {
+    const res = await (deps.fetch ?? fetch)(`${u.url}/models${anthropic ? "?limit=1000" : ""}`, {
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      cache: "no-store",
+      headers,
+      signal: ctl.signal,
+    });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { data?: { id?: unknown }[] } | null;
+    const ids = (body?.data ?? []).map((m) => m?.id);
+    return ids.filter((id): id is string => typeof id === "string" && MODEL_RE.test(id)).sort();
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }

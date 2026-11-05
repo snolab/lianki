@@ -19,7 +19,7 @@ import {
   withEnabled,
   type ByokActive,
 } from "@/lib/byok/config";
-import { byokComplete, byokRequest, testByok } from "@/lib/byok/call";
+import { byokComplete, byokModels, byokRequest, testByok } from "@/lib/byok/call";
 import { prefBindings } from "@/lib/prefs/bindings";
 import { checkPref, PREF_KEYS } from "@/lib/prefs/schema";
 import { fetchPiece } from "@/lib/read/select-translate-fetch";
@@ -440,5 +440,93 @@ describe("the call's edges", () => {
     const local = { ...active("ollama"), apiKey: "" };
     const r = byokRequest(local, [], { maxTokens: 1 })!;
     expect((r.init.headers as Record<string, string>).authorization).toBeUndefined();
+  });
+});
+
+describe("byokModels: the provider's own list", () => {
+  const backend = (id: string) => {
+    const p = presetOf(id)!;
+    return { provider: p.id, baseUrl: p.baseUrl, model: "" };
+  };
+  const answer = (body: unknown, status = 200) =>
+    (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+
+  it("sends the key to the provider's URL only, with no cookies or referrer", async () => {
+    let url = "";
+    let init: RequestInit = {};
+    const f = (async (u: string, i: RequestInit) => {
+      url = u;
+      init = i;
+      return new Response(JSON.stringify({ data: [{ id: "b" }, { id: "a" }] }));
+    }) as unknown as typeof fetch;
+    const list = await byokModels(backend("openai"), SECRET, presetOf("openai")!, {
+      fetch: f,
+      pageHost: "lianki.com",
+    });
+    expect(list).toEqual(["a", "b"]);
+    expect(url).toBe("https://api.openai.com/v1/models");
+    expect(init.credentials).toBe("omit");
+    expect(init.referrerPolicy).toBe("no-referrer");
+    expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${SECRET}`);
+  });
+
+  it("uses Anthropic's headers, and none for a keyless server", async () => {
+    const seen: Record<string, string>[] = [];
+    const f = (async (_: string, i: RequestInit) => {
+      seen.push(i.headers as Record<string, string>);
+      return new Response(JSON.stringify({ data: [] }));
+    }) as unknown as typeof fetch;
+    const d = { fetch: f, pageHost: "lianki.com" };
+    await byokModels(backend("anthropic"), SECRET, presetOf("anthropic")!, d);
+    await byokModels(backend("ollama"), "", presetOf("ollama")!, d);
+    expect(seen[0]["x-api-key"]).toBe(SECRET);
+    expect(seen[0].authorization).toBeUndefined();
+    expect(seen[1]).toEqual({});
+  });
+
+  it("is empty on any failure, and drops ids that are not model names", async () => {
+    const d = { pageHost: "lianki.com" };
+    const openai = presetOf("openai")!;
+    const run = (f: typeof fetch) =>
+      byokModels(backend("openai"), SECRET, openai, { ...d, fetch: f });
+    expect(await run(answer({ error: "no" }, 401))).toEqual([]);
+    expect(await run(answer({ nothing: true }))).toEqual([]);
+    expect(await run((async () => new Response("not json")) as unknown as typeof fetch)).toEqual(
+      [],
+    );
+    expect(
+      await run((async () => {
+        throw new Error("cors");
+      }) as unknown as typeof fetch),
+    ).toEqual([]);
+    expect(await run(answer({ data: [{ id: "ok-1" }, { id: "has space" }, { id: 3 }] }))).toEqual([
+      "ok-1",
+    ]);
+  });
+
+  it("gives up on a provider that never answers", async () => {
+    const f = ((_: string, i: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        i.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      })) as unknown as typeof fetch;
+    const list = await byokModels(backend("openai"), SECRET, presetOf("openai")!, {
+      fetch: f,
+      pageHost: "lianki.com",
+      timeoutMs: 1,
+    });
+    expect(list).toEqual([]);
+  });
+
+  it("never fetches a URL that fails the rules", async () => {
+    let called = false;
+    const f = (async () => {
+      called = true;
+      return new Response("{}");
+    }) as unknown as typeof fetch;
+    const b = { provider: "custom", baseUrl: "https://lianki.com/v1", model: "" };
+    expect(
+      await byokModels(b, SECRET, presetOf("custom")!, { fetch: f, pageHost: "lianki.com" }),
+    ).toEqual([]);
+    expect(called).toBe(false);
   });
 });
