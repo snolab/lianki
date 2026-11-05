@@ -14,7 +14,14 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isScenario, type Scenario } from "@/lib/words/phrases";
-import { buildPhraseDecks, mergeIndex, parseDrops, parseJsonl, withCredits } from "./phrase-decks";
+import {
+  buildPhraseDecks,
+  creditFiles,
+  mergeIndex,
+  parseDrops,
+  parseJsonl,
+  withCredits,
+} from "./phrase-decks";
 
 const [SRC, OUT] = process.argv.slice(2);
 if (!SRC || !OUT) {
@@ -49,5 +56,6 @@ writeFileSync(indexPath, JSON.stringify({ lists }));
 const sourcesPath = join(OUT, "SOURCES.md");
 if (existsSync(sourcesPath))
   writeFileSync(sourcesPath, withCredits(readFileSync(sourcesPath, "utf8"), built.credits));
+for (const [file, text] of creditFiles(built.credits)) writeFileSync(join(OUT, file), text);
 for (const l of built.lists) console.log(`${l.id.padEnd(24)} ${l.count}`);
 console.log(`index.json: ${lists.length} lists`);

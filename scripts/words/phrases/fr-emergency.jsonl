@@ -1,0 +1,543 @@
+// fr-emergency: written by build-scene-sentences.ts; edit the lexicon, not this file
+{"term":"M'aideras-tu, je te prie ?","back":"Will you please help me?","scene":"calling for help","src":"tatoeba:1330337","by":"sacredceltic","enId":"258469","enBy":"CK","auto":true}
+{"term":"Voudriez-vous m'aider un peu ?","back":"Would you help me a bit, please?","scene":"calling for help","src":"tatoeba:1144432","by":"sacredceltic","enId":"8983669","enBy":"sundown","auto":true}
+{"term":"Où est la police ?","back":"Where are the police?","scene":"theft and loss","src":"tatoeba:7967449","by":"Aiji","enId":"2547471","enBy":"CK","auto":true}
+{"term":"Aide-moi, veux-tu ?","back":"Help me out, would you?","scene":"calling for help","src":"tatoeba:3639864","by":"sacredceltic","enId":"3636489","enBy":"CK","auto":true}
+{"term":"Je te prie de m'aider.","back":"Please help me.","scene":"calling for help","src":"tatoeba:1994787","by":"sacredceltic","enId":"262424","enBy":"CK","auto":true}
+{"term":"Où se trouvait la police ?","back":"Where was the police?","scene":"theft and loss","src":"tatoeba:1532780","by":"sacredceltic","enId":"1531030","enBy":"Spamster","auto":true}
+{"term":"Veux-tu m'aider une minute ?","back":"Will you help me for a minute?","scene":"calling for help","src":"tatoeba:1349864","by":"sacredceltic","enId":"39999","enBy":"CK","auto":true}
+{"term":"Veuillez m'aider ! Je meurs !","back":"Please help me. I'm dying.","scene":"calling for help","src":"tatoeba:3301660","by":"sacredceltic","enId":"3300290","enBy":"Hybrid","auto":true}
+{"term":"Pourrais-tu rester et m'aider ?","back":"Could you stay and help me?","scene":"calling for help","src":"tatoeba:5730095","by":"Aiji","enId":"3162180","enBy":"CK","auto":true}
+{"term":"Veuillez me dire si ça fait mal.","back":"Please let me know if it hurts.","scene":"accident","src":"tatoeba:1280947","by":"sacredceltic","enId":"278299","enBy":"CK","auto":true}
+{"term":"Peux-tu me donner un coup de main ?","back":"Will you help me?","scene":"calling for help","src":"tatoeba:128327","by":"sacredceltic","enId":"262426","enBy":"CK","auto":true}
+{"term":"Aide-moi.","back":"Help me.","scene":"calling for help","src":"tatoeba:428130","by":"dominiko","enId":"266065","enBy":"Zifre","auto":true}
+{"term":"Cela fait-il mal ?","back":"Does it hurt?","scene":"accident","src":"tatoeba:1664159","by":"sacredceltic","enId":"1655469","enBy":"Spamster","auto":true}
+{"term":"Aide-moi à sortir.","back":"Help me out.","scene":"calling for help","src":"tatoeba:1803603","by":"sacredceltic","enId":"1553498","enBy":"CK","auto":true}
+{"term":"Qui peut m'aider ?","back":"Who can help me?","scene":"calling for help","src":"tatoeba:6860580","by":"GB3","enId":"4499364","enBy":"CK","auto":true}
+{"term":"Cela m'aiderait-il ?","back":"Would it help me?","scene":"calling for help","src":"tatoeba:5762661","by":"Yemana","enId":"5758039","enBy":"CM","auto":true}
+{"term":"Voulez-vous m'aider ?","back":"Do you want to help me?","scene":"calling for help","src":"tatoeba:4274095","by":"michelnialon","enId":"2011744","enBy":"CK","auto":true}
+{"term":"Ai-je perdu l'esprit ?","back":"Have I lost my mind?","scene":"theft and loss","src":"tatoeba:4131985","by":"sacredceltic","enId":"3730357","enBy":"CM","auto":true}
+{"term":"Pourquoi m'as-tu aidé ?","back":"Why did you help me?","scene":"calling for help","src":"tatoeba:7289631","by":"Rockaround","enId":"3161707","enBy":"CK","auto":true}
+{"term":"Vous êtes de la police ?","back":"Are you from the police?","scene":"theft and loss","src":"tatoeba:6765339","by":"Blabla","enId":"2645551","enBy":"CK","auto":true}
+{"term":"Vas-tu m'aider ou quoi ?","back":"Are you gonna help me or what?","scene":"calling for help","src":"tatoeba:955067","by":"sacredceltic","enId":"953103","enBy":"CK","auto":true}
+{"term":"Qui a appelé la police ?","back":"Who called the police?","scene":"theft and loss","src":"tatoeba:3879177","by":"Rovo","enId":"3636309","enBy":"CK","auto":true}
+{"term":"As-tu appelé la police ?","back":"Did you call the police?","scene":"calling for help","src":"tatoeba:6829010","by":"Aiji","enId":"3333922","enBy":"CK","auto":true}
+{"term":"Aide-moi à sortir de là !","back":"Help me out here.","scene":"calling for help","src":"tatoeba:1852163","by":"sacredceltic","enId":"1850259","enBy":"CK","auto":true}
+{"term":"Aide-moi et je t'aiderai.","back":"Help me and I'll help you.","scene":"calling for help","src":"tatoeba:1924446","by":"sacredceltic","enId":"5927034","enBy":"CK","auto":true}
+{"term":"Aide-moi, si tu le peux !","back":"Help me if you can.","scene":"calling for help","src":"tatoeba:4833465","by":"sacredceltic","enId":"3825926","enBy":"CK","auto":true}
+{"term":"Est-ce que tu vas m'aider?","back":"Are you going to help me?","scene":"calling for help","src":"tatoeba:6312149","by":"kafka","enId":"2547427","enBy":"CK","auto":true}
+{"term":"Cela fait-il beaucoup mal ?","back":"Does it hurt a lot?","scene":"accident","src":"tatoeba:11880","by":"sacredceltic","enId":"52006","enBy":"CK","auto":true}
+{"term":"Penses-tu pouvoir m'aider ?","back":"Do you think you could help me?","scene":"calling for help","src":"tatoeba:5798308","by":"Toynop","enId":"5789701","enBy":"CK","auto":true}
+{"term":"Ça fait mal, n'est-ce pas ?","back":"It hurts, doesn't it?","scene":"accident","src":"tatoeba:8648867","by":"Micsmithel","enId":"11613862","enBy":"tieguy","auto":true}
+{"term":"Avez-vous appelé un docteur ?","back":"Did you call a doctor?","scene":"calling for help","src":"tatoeba:6467451","by":"lapinhibou","enId":"4666953","enBy":"CK","auto":true}
+{"term":"Pourquoi personne ne m'aide ?","back":"Why doesn't anybody help me?","scene":"calling for help","src":"tatoeba:8703826","by":"Julien_PDC","enId":"3915468","enBy":"CH","auto":true}
+{"term":"Qui peut m'aider, à ton avis ?","back":"Who do you think can help me?","scene":"calling for help","src":"tatoeba:7960304","by":"Micsmithel","enId":"6796598","enBy":"CK","auto":true}
+{"term":"La police va-t-elle m'arrêter ?","back":"Are the police going to arrest me?","scene":"theft and loss","src":"tatoeba:6285931","by":"Aiji","enId":"4014553","enBy":"CK","auto":true}
+{"term":"Je veux que tu m'aides à mourir.","back":"I want you to help me die.","scene":"calling for help","src":"tatoeba:2584839","by":"sacredceltic","enId":"2012483","enBy":"CK","auto":true}
+{"term":"Veux-tu que j'appelle la police ?","back":"Do you want me to call the police?","scene":"calling for help","src":"tatoeba:1992314","by":"sacredceltic","enId":"1992153","enBy":"Spamster","auto":true}
+{"term":"Cela fait-il mal où que ce soit ?","back":"Does it hurt anywhere?","scene":"accident","src":"tatoeba:3640094","by":"sacredceltic","enId":"3636359","enBy":"CK","auto":true}
+{"term":"Pourquoi ne peux-tu pas m'aider ?","back":"Why can't you help me?","scene":"calling for help","src":"tatoeba:7289745","by":"Rockaround","enId":"2546888","enBy":"CK","auto":true}
+{"term":"Aidez-moi ! Ma maison est en feu.","back":"Help me! My house is on fire.","scene":"calling for help","src":"tatoeba:12669956","by":"Olcyx","enId":"8105651","enBy":"iT4LL","auto":true}
+{"term":"Je veux que tu appelles la police.","back":"I want you to call the police.","scene":"calling for help","src":"tatoeba:2488757","by":"sacredceltic","enId":"2013964","enBy":"CK","auto":true}
+{"term":"Aide-moi rien que pour une minute !","back":"Help me for just a minute.","scene":"calling for help","src":"tatoeba:2164006","by":"sacredceltic","enId":"2163128","enBy":"Source_VOA","auto":true}
+{"term":"Pourquoi personne ne vient m'aider ?","back":"Why doesn't anyone come to help me?","scene":"calling for help","src":"tatoeba:8703787","by":"Julien_PDC","enId":"12130320","enBy":"zogwarg","auto":true}
+{"term":"Voulez-vous m'aider pour ce travail ?","back":"Are you willing to help me with that work?","scene":"calling for help","src":"tatoeba:136219","by":"TRANG","enId":"250941","enBy":"CK","auto":true}
+{"term":"En ont-ils déjà fait part à la police ?","back":"Have they reported it to the police yet?","scene":"theft and loss","src":"tatoeba:2374619","by":"Rovo","enId":"2266015","enBy":"_undertoad","auto":true}
+{"term":"Pourquoi n'as-tu pas appelé la police ?","back":"Why didn't you call the police?","scene":"calling for help","src":"tatoeba:2403394","by":"Aiji","enId":"2402203","enBy":"CK","auto":true}
+{"term":"Pourquoi n'es-tu pas allé voir la police ?","back":"Why didn't you go to the police?","scene":"theft and loss","src":"tatoeba:7079958","by":"Aiji","enId":"2852252","enBy":"CK","auto":true}
+{"term":"Pourquoi les gens ont-ils peur de la police ?","back":"Why are people afraid of the police?","scene":"theft and loss","src":"tatoeba:8110635","by":"Aiji","enId":"1886541","enBy":"CK","auto":true}
+{"term":"Ça fait mal.","back":"It hurts.","scene":"accident","src":"tatoeba:5013857","by":"Sittelle","enId":"2649251","enBy":"CK","auto":true}
+{"term":"Venez m'aider.","back":"Come help me.","scene":"calling for help","src":"tatoeba:1152087","by":"Salutlolo","enId":"1439549","enBy":"CM","auto":true}
+{"term":"Tu dois m'aider.","back":"You need to help me.","scene":"calling for help","src":"tatoeba:3470457","by":"Lulantis","enId":"3331011","enBy":"CK","auto":true}
+{"term":"Allez, aide-moi.","back":"Come on, help me.","scene":"calling for help","src":"tatoeba:5964209","by":"Aiji","enId":"3360600","enBy":"CK","auto":true}
+{"term":"Ça ne m'aide pas.","back":"That doesn't help me.","scene":"calling for help","src":"tatoeba:7060895","by":"Aiji","enId":"2272087","enBy":"CK","auto":true}
+{"term":"Appelez la police.","back":"Call the police.","scene":"calling for help","src":"tatoeba:10678613","by":"AutoBot","enId":"2245030","enBy":"CK","auto":true}
+{"term":"Mon père m’aidera.","back":"My father will help me.","scene":"calling for help","src":"tatoeba:10683494","by":"AutoBot","enId":"318858","enBy":"CK","auto":true}
+{"term":"Vous devez m'aider.","back":"You have to help me.","scene":"calling for help","src":"tatoeba:9077732","by":"Aiji","enId":"1895735","enBy":"CK","auto":true}
+{"term":"Appelons la police.","back":"Let's call the police.","scene":"calling for help","src":"tatoeba:11646126","by":"Aiji","enId":"2470096","enBy":"Hybrid","auto":true}
+{"term":"Je perdis mon chien.","back":"I lost my dog.","scene":"theft and loss","src":"tatoeba:2383394","by":"sacredceltic","enId":"2380189","enBy":"CK","auto":true}
+{"term":"Tu pourrais m'aider.","back":"You could help me.","scene":"calling for help","src":"tatoeba:3483463","by":"Lulantis","enId":"3331020","enBy":"CK","auto":true}
+{"term":"J’ai perdu ma montre.","back":"I lost my watch.","scene":"theft and loss","src":"tatoeba:521597","by":"zmoo","enId":"258139","enBy":"CK","auto":true}
+{"term":"Ça ne m'aiderait pas.","back":"That wouldn't help me.","scene":"calling for help","src":"tatoeba:3599306","by":"sacredceltic","enId":"3594043","enBy":"CK","auto":true}
+{"term":"Viens ici et aide-moi.","back":"Come here and help me.","scene":"calling for help","src":"tatoeba:11227","by":"sacredceltic","enId":"61596","enBy":"CK","auto":true}
+{"term":"Ça fait tellement mal.","back":"It hurts so much.","scene":"accident","src":"tatoeba:1549596","by":"sacredceltic","enId":"1548194","enBy":"Spamster","auto":true}
+{"term":"Viens par ici m'aider.","back":"Come over here and help me.","scene":"calling for help","src":"tatoeba:12879580","by":"lbdx","enId":"2986073","enBy":"CK","auto":true}
+{"term":"Je vais voir la police.","back":"I'm going to the police.","scene":"theft and loss","src":"tatoeba:1848536","by":"sacredceltic","enId":"1839530","enBy":"CK","auto":true}
+{"term":"Dis-moi si ça fait mal.","back":"Tell me if it hurts.","scene":"accident","src":"tatoeba:5400289","by":"pititnatole","enId":"5137167","enBy":"Joseph","auto":true}
+{"term":"Fais attention avec ça.","back":"Be careful with that.","scene":"accident","src":"tatoeba:6307797","by":"Aiji","enId":"2047604","enBy":"CK","auto":true}
+{"term":"J'appellerai la police !","back":"I'll call the police!","scene":"calling for help","src":"tatoeba:1663894","by":"sacredceltic","enId":"1655950","enBy":"Spamster","auto":true}
+{"term":"Je l'ai dit à la police.","back":"I've told the police.","scene":"theft and loss","src":"tatoeba:4450666","by":"franlexcois","enId":"2547656","enBy":"CK","auto":true}
+{"term":"Vous ne m'avez pas aidé.","back":"You didn't help me.","scene":"calling for help","src":"tatoeba:7843548","by":"Rovo","enId":"5147269","enBy":"mailohilohi","auto":true}
+{"term":"Je sais que ça fait mal.","back":"I know it hurts.","scene":"accident","src":"tatoeba:8428574","by":"lbdx","enId":"2376018","enBy":"CK","auto":true}
+{"term":"J'attends que tu m'aides.","back":"I'm waiting for you to help me.","scene":"calling for help","src":"tatoeba:2497626","by":"Amastan","enId":"3652065","enBy":"karloelkebekio","auto":true}
+{"term":"Personne ne peut m'aider.","back":"No one can help me.","scene":"calling for help","src":"tatoeba:12581","by":"sacredceltic","enId":"40350","enBy":"CK","auto":true}
+{"term":"On dirait que ça fait mal.","back":"That looks like it hurts.","scene":"accident","src":"tatoeba:3602488","by":"sacredceltic","enId":"3591091","enBy":"CK","auto":true}
+{"term":"Fais attention maintenant.","back":"Be careful now.","scene":"accident","src":"tatoeba:9253539","by":"Micsmithel","enId":"2047584","enBy":"CK","auto":true}
+{"term":"Je le ferai si tu m'aides.","back":"I'll do that if you help me.","scene":"calling for help","src":"tatoeba:9731136","by":"lbdx","enId":"6264365","enBy":"CK","auto":true}
+{"term":"Fais attention si tu sors.","back":"Be careful if you go out.","scene":"accident","src":"tatoeba:10620271","by":"lbdx","enId":"9393646","enBy":"CK","auto":true}
+{"term":"Tu devrais faire attention.","back":"You should be careful.","scene":"accident","src":"tatoeba:4599625","by":"sacredceltic","enId":"4496302","enBy":"CK","auto":true}
+{"term":"Je vais appeler la police !","back":"I'm gonna call the police!","scene":"calling for help","src":"tatoeba:4641460","by":"Tchernobil","enId":"4638695","enBy":"olive_wang","auto":true}
+{"term":"Fais attention avec ce truc.","back":"Be careful with that thing.","scene":"accident","src":"tatoeba:5896098","by":"Aiji","enId":"2047643","enBy":"CK","auto":true}
+{"term":"Tu devrais appeler la police.","back":"You should call the police.","scene":"calling for help","src":"tatoeba:1776212","by":"sacredceltic","enId":"1771932","enBy":"Scott","auto":true}
+{"term":"Tu dois m'aider à faire ceci.","back":"You need to help me do this.","scene":"calling for help","src":"tatoeba:5334692","by":"Aiji","enId":"3378945","enBy":"CK","auto":true}
+{"term":"Nous devons appeler la police.","back":"We must phone the police.","scene":"theft and loss","src":"tatoeba:474041","by":"sacredceltic","enId":"464420","enBy":"lukaszpp","auto":true}
+{"term":"Merci beaucoup de m'avoir aidé.","back":"How kind of you to help me!","scene":"calling for help","src":"tatoeba:128043","by":"Micsmithel","enId":"262428","enBy":"sundown","auto":true}
+{"term":"Attention, il y a une voiture !","back":"Be careful, there's a car!","scene":"accident","src":"tatoeba:5691925","by":"gillux","enId":"4787551","enBy":"Joseph","auto":true}
+{"term":"Tu es le seul à pouvoir m'aider.","back":"You're the only one who can help me.","scene":"calling for help","src":"tatoeba:547901","by":"sacredceltic","enId":"71269","enBy":"CK","auto":true}
+{"term":"Nous devrions appeler la police.","back":"We should call the police.","scene":"calling for help","src":"tatoeba:796684","by":"sacredceltic","enId":"632491","enBy":"CK","auto":true}
+{"term":"Ça fait mal de te voir comme ça.","back":"It hurts to see you like this.","scene":"accident","src":"tatoeba:12003089","by":"lbdx","enId":"10009560","enBy":"DJ_Saidez","auto":true}
+{"term":"Il nous faut un agent de police.","back":"We need a police officer.","scene":"theft and loss","src":"tatoeba:12643024","by":"Rovo","enId":"12640771","enBy":"rul","auto":true}
+{"term":"Faites attention où vous marchez.","back":"Be careful where you walk.","scene":"accident","src":"tatoeba:8373953","by":"Aiji","enId":"12042400","enBy":"carlosalberto","auto":true}
+{"term":"Je ne peux pas aller à la police.","back":"I can't go to the police.","scene":"theft and loss","src":"tatoeba:2302443","by":"sacredceltic","enId":"2301977","enBy":"CK","auto":true}
+{"term":"Tu n’essaies même pas de m’aider.","back":"You don't even try to help me.","scene":"calling for help","src":"tatoeba:2445227","by":"gillux","enId":"414371","enBy":"Dorenda","auto":true}
+{"term":"Fais attention de ne pas tomber !","back":"Be careful not to fall.","scene":"accident","src":"tatoeba:4854150","by":"sacredceltic","enId":"1345547","enBy":"CK","auto":true}
+{"term":"Fais attention la prochaine fois.","back":"Be careful next time.","scene":"accident","src":"tatoeba:6005058","by":"Fabimoto","enId":"9189284","enBy":"CK","auto":true}
+{"term":"Je n'avais personne pour m'aider.","back":"I didn't have anyone to help me.","scene":"calling for help","src":"tatoeba:10599274","by":"lbdx","enId":"10597617","enBy":"CK","auto":true}
+{"term":"Je ne veux pas que vous m'aidiez.","back":"I don't want you to help me.","scene":"calling for help","src":"tatoeba:12172498","by":"lbdx","enId":"6805801","enBy":"CK","auto":true}
+{"term":"Tu es la seule qui puisse m'aider.","back":"You are the only one who can help me.","scene":"calling for help","src":"tatoeba:1589200","by":"sacredceltic","enId":"1588728","enBy":"Spamster","auto":true}
+{"term":"Tu as dit que tu m'aiderais après.","back":"You said that you'd help me next.","scene":"calling for help","src":"tatoeba:9027442","by":"Equilingual","enId":"9027422","enBy":"CK","auto":true}
+{"term":"Je ferais attention si j'étais toi.","back":"I'd be careful if I were you.","scene":"accident","src":"tatoeba:9766077","by":"lbdx","enId":"9531039","enBy":"DJ_Saidez","auto":true}
+{"term":"Tu dois apprendre à faire attention.","back":"You've got to learn to be careful.","scene":"accident","src":"tatoeba:7327105","by":"Aiji","enId":"2047707","enBy":"CK","auto":true}
+{"term":"Ne devrais-tu pas appeler la police ?","back":"Shouldn't you call the police?","scene":"calling for help","src":"tatoeba:6736886","by":"Aiji","enId":"4013694","enBy":"CK","auto":true}
+{"term":"Je ne fais pas confiance à la police.","back":"I don't trust the police.","scene":"theft and loss","src":"tatoeba:7783757","by":"Rockaround","enId":"2276242","enBy":"CK","auto":true}
+{"term":"Rentre à la maison, et appelle la police !","back":"Go back home and call the police!","scene":"calling for help","src":"tatoeba:12418658","by":"zogwarg","enId":"1700254","enBy":"charlotte13","auto":true}
+{"term":"Je pense que nous devrions appeler la police.","back":"I think we should call the police.","scene":"calling for help","src":"tatoeba:2412130","by":"sacredceltic","enId":"2408457","enBy":"CK","auto":true}
+{"term":"Ne pourrais-tu pas m'aider avec mes devoirs ?","back":"Couldn't you help me with my homework?","scene":"calling for help","src":"tatoeba:7725086","by":"Micsmithel","enId":"10558728","enBy":"sundown","auto":true}
+{"term":"Où es-tu blessé ?","back":"Where are you hurt?","scene":"accident","src":"tatoeba:1100352","by":"sacredceltic","enId":"1096316","enBy":"CK","auto":true}
+{"term":"Où se trouve le poste de police ?","back":"Where is the police station?","scene":"theft and loss","src":"tatoeba:1342432","by":"sacredceltic","enId":"238250","enBy":"CK","auto":true}
+{"term":"Où se trouve la sortie de secours ?","back":"Where's the emergency exit?","scene":"calling for help","src":"tatoeba:1168100","by":"sacredceltic","enId":"317955","enBy":"CK","auto":true}
+{"term":"Veuillez aider la personne blessée.","back":"Please help the injured person.","scene":"accident","src":"tatoeba:13314394","by":"Rovo","enId":"13314286","enBy":"carlosalberto","auto":true}
+{"term":"À quel endroit a eu lieu l'accident ?","back":"Where did the accident happen?","scene":"accident","src":"tatoeba:1472828","by":"sacredceltic","enId":"5270378","enBy":"mailohilohi","auto":true}
+{"term":"Es-tu blessé ?","back":"Are you hurt?","scene":"accident","src":"tatoeba:1112173","by":"sacredceltic","enId":"1110547","enBy":"Scott","auto":true}
+{"term":"Es-tu blessée ?","back":"Are you injured?","scene":"accident","src":"tatoeba:7011253","by":"Aiji","enId":"2244950","enBy":"CK","auto":true}
+{"term":"Es-tu en danger ?","back":"Are you in danger?","scene":"accident","src":"tatoeba:5461572","by":"Aiji","enId":"2648576","enBy":"CK","auto":true}
+{"term":"As-tu vu l'accident ?","back":"Did you see the accident?","scene":"accident","src":"tatoeba:3345177","by":"sacredceltic","enId":"3343284","enBy":"CK","auto":true}
+{"term":"Qui causa l'accident ?","back":"Who caused the accident?","scene":"accident","src":"tatoeba:5503577","by":"Aiji","enId":"680484","enBy":"Source_VOA","auto":true}
+{"term":"Sommes-nous en danger ?","back":"Are we in danger?","scene":"accident","src":"tatoeba:3573181","by":"Rovo","enId":"2567839","enBy":"Hybrid","auto":true}
+{"term":"Que recherche la police ?","back":"What is the police looking for?","scene":"theft and loss","src":"tatoeba:8632193","by":"Julien_PDC","enId":"10218300","enBy":"megamanenm","auto":true}
+{"term":"Qu'est-ce qui a été volé ?","back":"What was stolen?","scene":"theft and loss","src":"tatoeba:578352","by":"sacredceltic","enId":"24678","enBy":"CK","auto":true}
+{"term":"Aide-moi à fermer ma robe.","back":"Help me zip up my dress.","scene":"calling for help","src":"tatoeba:7986251","by":"Aiji","enId":"3162164","enBy":"CK","auto":true}
+{"term":"Es-tu blessé où que ce soit ?","back":"Are you hurt anywhere?","scene":"accident","src":"tatoeba:3640090","by":"sacredceltic","enId":"3636360","enBy":"CK","auto":true}
+{"term":"Aide-moi à cacher cet argent.","back":"Help me hide this money.","scene":"calling for help","src":"tatoeba:6373722","by":"Aiji","enId":"3822292","enBy":"CK","auto":true}
+{"term":"Comment prévois-tu de m'aider ?","back":"How do you plan to help me?","scene":"calling for help","src":"tatoeba:3601269","by":"sacredceltic","enId":"3592219","enBy":"CK","auto":true}
+{"term":"Aide-moi à apprendre à conduire.","back":"Help me learn how to drive.","scene":"calling for help","src":"tatoeba:7024640","by":"Rockaround","enId":"1580105","enBy":"fanty","auto":true}
+{"term":"Aide-moi à ouvrir cette fenêtre.","back":"Help me open this window.","scene":"calling for help","src":"tatoeba:11156083","by":"lbdx","enId":"9995790","enBy":"CK","auto":true}
+{"term":"Quelle fut la cause de l'accident ?","back":"What was the cause of the accident?","scene":"accident","src":"tatoeba:3643641","by":"sacredceltic","enId":"3643422","enBy":"Hybrid","auto":true}
+{"term":"Quelle était la cause de l'accident?","back":"What caused the accident?","scene":"accident","src":"tatoeba:6536555","by":"Micsmithel","enId":"4496349","enBy":"CK","auto":true}
+{"term":"As-tu déjà eu un accident de voiture ?","back":"Have you ever been in a car accident?","scene":"accident","src":"tatoeba:12173631","by":"lbdx","enId":"4233757","enBy":"CK","auto":true}
+{"term":"Est-ce que ça ressemble à un accident ?","back":"Does this look like an accident?","scene":"accident","src":"tatoeba:13493879","by":"Draves","enId":"9518126","enBy":"shekitten","auto":true}
+{"term":"As-tu jamais vu un accident de voiture ?","back":"Have you ever seen a car accident?","scene":"accident","src":"tatoeba:1359118","by":"sacredceltic","enId":"953300","enBy":"CK","auto":true}
+{"term":"Savez-vous comment l'accident est arrivé ?","back":"Do you know how the accident happened?","scene":"accident","src":"tatoeba:128100","by":"nimfeo","enId":"263670","enBy":"CK","auto":true}
+{"term":"Pourquoi êtes-vous devenu agent de police ?","back":"Why did you become a police officer?","scene":"theft and loss","src":"tatoeba:4363833","by":"sacredceltic","enId":"4356722","enBy":"CK","auto":true}
+{"term":"Avez-vous vu l'accident de vos propres yeux ?","back":"Did you personally see the accident?","scene":"accident","src":"tatoeba:982173","by":"sacredceltic","enId":"5136502","enBy":"Airvian","auto":true}
+{"term":"« Pourrais-tu m'aider ? » « J'en serais ravi. »","back":"\"Will you help me?\" \"I'll be glad to.\"","scene":"calling for help","src":"tatoeba:139023","by":"kurisutofu","enId":"73638","enBy":"CK","auto":true}
+{"term":"Tu étais blessé.","back":"You were injured.","scene":"accident","src":"tatoeba:2231283","by":"Amastan","enId":"8788830","enBy":"sundown","auto":true}
+{"term":"Tu es en danger.","back":"You're in danger.","scene":"accident","src":"tatoeba:1652452","by":"sacredceltic","enId":"1651936","enBy":"Spamster","auto":true}
+{"term":"Je perdis la clé.","back":"I lost my key.","scene":"theft and loss","src":"tatoeba:901725","by":"sacredceltic","enId":"460058","enBy":"saasmath","auto":true}
+{"term":"Je suis en danger.","back":"I'm in danger.","scene":"accident","src":"tatoeba:2562276","by":"sacredceltic","enId":"2248033","enBy":"CK","auto":true}
+{"term":"Mon sac a été volé.","back":"My bag was stolen.","scene":"theft and loss","src":"tatoeba:1433567","by":"martin9","enId":"35155","enBy":"CK","auto":true}
+{"term":"Tu étais en danger.","back":"You were in danger.","scene":"accident","src":"tatoeba:6637492","by":"Aiji","enId":"2647739","enBy":"CK","auto":true}
+{"term":"J’ai perdu mon sac.","back":"I lost my bag.","scene":"theft and loss","src":"tatoeba:10689698","by":"AutoBot","enId":"10689695","enBy":"AutoBot","auto":true}
+{"term":"Appelle un médecin !","back":"Call a doctor.","scene":"calling for help","src":"tatoeba:4625941","by":"sacredceltic","enId":"2245023","enBy":"CK","auto":true}
+{"term":"Ma vie est en danger.","back":"My life is in danger.","scene":"accident","src":"tatoeba:3517662","by":"Rovo","enId":"2819609","enBy":"Hybrid","auto":true}
+{"term":"Ta vie est en danger.","back":"Your life's in danger.","scene":"accident","src":"tatoeba:5353245","by":"Aiji","enId":"2646118","enBy":"CK","auto":true}
+{"term":"Nous sommes en danger.","back":"We're in danger.","scene":"accident","src":"tatoeba:1652491","by":"sacredceltic","enId":"1651930","enBy":"Spamster","auto":true}
+{"term":"Ma vie était en danger.","back":"My life was in danger.","scene":"accident","src":"tatoeba:467248","by":"sacredceltic","enId":"251982","enBy":"CM","auto":true}
+{"term":"Ça te mettra en danger.","back":"That will put you in danger.","scene":"accident","src":"tatoeba:1273598","by":"sacredceltic","enId":"43004","enBy":"Zifre","auto":true}
+{"term":"Mes amis sont en danger.","back":"My friends are in danger.","scene":"accident","src":"tatoeba:6044601","by":"sicerabibax","enId":"3726369","enBy":"CM","auto":true}
+{"term":"Appelle vite un médecin !","back":"Call a doctor quickly!","scene":"calling for help","src":"tatoeba:6567763","by":"felix63","enId":"6579297","enBy":"Eccles17","auto":true}
+{"term":"Cela te mettra en danger.","back":"That'll put you in danger.","scene":"accident","src":"tatoeba:1771842","by":"gillux","enId":"1396363","enBy":"CK","auto":true}
+{"term":"Je sais que tu l'as volé.","back":"I know that you stole it.","scene":"theft and loss","src":"tatoeba:7525912","by":"tras","enId":"7521602","enBy":"CK","auto":true}
+{"term":"Cet homme a volé mon sac.","back":"That man stole my bag.","scene":"theft and loss","src":"tatoeba:10612492","by":"lbdx","enId":"10604818","enBy":"shekitten","auto":true}
+{"term":"Notre pays est en danger.","back":"Our country is in danger.","scene":"accident","src":"tatoeba:13370638","by":"lbdx","enId":"8169593","enBy":"lucasmg123","auto":true}
+{"term":"Ne te mets pas en danger !","back":"Don't put yourself in danger.","scene":"accident","src":"tatoeba:8658280","by":"Julien_PDC","enId":"12024374","enBy":"zogwarg","auto":true}
+{"term":"Ce ne fut pas un accident.","back":"It wasn't an accident.","scene":"accident","src":"tatoeba:1679264","by":"sacredceltic","enId":"1676693","enBy":"Spamster","auto":true}
+{"term":"Je ne veux pas me blesser.","back":"I don't want to get injured.","scene":"accident","src":"tatoeba:12232841","by":"Aiji","enId":"8340772","enBy":"CK","auto":true}
+{"term":"Tu es en danger, toi aussi.","back":"You're in danger, too.","scene":"accident","src":"tatoeba:6461769","by":"GB3","enId":"5916708","enBy":"CK","auto":true}
+{"term":"Moi aussi je suis en danger.","back":"I'm in danger, too.","scene":"accident","src":"tatoeba:9029341","by":"Equilingual","enId":"5975550","enBy":"CK","auto":true}
+{"term":"Ça fait mal quand je touche.","back":"It hurts when I touch it.","scene":"accident","src":"tatoeba:10703603","by":"lbdx","enId":"10696123","enBy":"tokzyk","auto":true}
+{"term":"Je pense que tu es en danger.","back":"I think you're in danger.","scene":"accident","src":"tatoeba:2410564","by":"sacredceltic","enId":"2408643","enBy":"CK","auto":true}
+{"term":"Prends la sortie de secours !","back":"Take the emergency exit!","scene":"calling for help","src":"tatoeba:3655724","by":"THURET","enId":"1729896","auto":true}
+{"term":"Nous ne sommes pas en danger.","back":"We're not in danger.","scene":"accident","src":"tatoeba:11571753","by":"Aiji","enId":"2548024","enBy":"CK","auto":true}
+{"term":"J'apprécierais que tu m'aides.","back":"I'd appreciate it if you'd help me.","scene":"calling for help","src":"tatoeba:1223587","by":"sacredceltic","enId":"1223585","enBy":"CK","auto":true}
+{"term":"J'ignore même qui a volé quoi.","back":"I don't even know who has stolen what.","scene":"theft and loss","src":"tatoeba:2024803","by":"sacredceltic","enId":"327826","enBy":"CK","auto":true}
+{"term":"Tu es recherché par la police.","back":"You're wanted by the police.","scene":"theft and loss","src":"tatoeba:5579284","by":"Aiji","enId":"2643414","enBy":"CK","auto":true}
+{"term":"Je devrais appeler un médecin.","back":"I should call a doctor.","scene":"calling for help","src":"tatoeba:7067780","by":"Aiji","enId":"2406320","enBy":"CK","auto":true}
+{"term":"Je n'aurais jamais dû voler ça.","back":"I should never have stolen that.","scene":"theft and loss","src":"tatoeba:3140845","by":"Aiji","enId":"2406352","enBy":"CK","auto":true}
+{"term":"Cet homme a volé mon sac à main.","back":"That man stole my purse.","scene":"theft and loss","src":"tatoeba:5645688","by":"narnar","enId":"5639095","enBy":"CK","auto":true}
+{"term":"Je sais que c'était un accident.","back":"I know it was an accident.","scene":"accident","src":"tatoeba:7811608","by":"Aiji","enId":"5640205","enBy":"CK","auto":true}
+{"term":"L'homme lui vola tout son argent.","back":"That man stole all of his money.","scene":"theft and loss","src":"tatoeba:1013073","by":"sacredceltic","enId":"1008798","enBy":"AOCinJAPAN","auto":true}
+{"term":"Je pense que c'était un accident.","back":"I think it was an accident.","scene":"accident","src":"tatoeba:5524289","by":"Aiji","enId":"5175085","enBy":"CK","auto":true}
+{"term":"Je pense que sa vie est en danger.","back":"I think his life is in danger.","scene":"accident","src":"tatoeba:130353","by":"Aiji","enId":"286970","enBy":"CK","auto":true}
+{"term":"Je viens juste de voir l'accident.","back":"I only just saw the accident.","scene":"accident","src":"tatoeba:12456642","by":"zogwarg","enId":"40825","auto":true}
+{"term":"Tu risques de devenir un bon homme.","back":"You're in danger of becoming a good man.","scene":"accident","src":"tatoeba:500473","by":"qdii","enId":"500471","auto":true}
+{"term":"Il ne s'agissait pas d'un accident.","back":"This was no accident.","scene":"accident","src":"tatoeba:7839617","by":"sacredceltic","enId":"5398450","enBy":"CK","auto":true}
+{"term":"Fais attention à ne pas trop boire !","back":"Be careful not to drink too much.","scene":"accident","src":"tatoeba:3613534","by":"sacredceltic","enId":"3610579","enBy":"CK","auto":true}
+{"term":"Ce qui est arrivé était un accident.","back":"What happened was an accident.","scene":"accident","src":"tatoeba:7057162","by":"Aiji","enId":"3129945","enBy":"CK","auto":true}
+{"term":"Je suis sûr que c'était un accident.","back":"I'm sure it was an accident.","scene":"accident","src":"tatoeba:7790977","by":"Aiji","enId":"2543473","enBy":"CK","auto":true}
+{"term":"Vous êtes responsable de l'accident.","back":"You're to blame for the accident.","scene":"accident","src":"tatoeba:9690372","by":"lbdx","enId":"9822978","enBy":"CK","auto":true}
+{"term":"Je pense que la police va t'ignorer.","back":"I believe the police will ignore you.","scene":"theft and loss","src":"tatoeba:10699571","by":"jmdesp","enId":"238116","enBy":"CK","auto":true}
+{"term":"Il se peut que nous soyons en danger.","back":"We may be in danger.","scene":"accident","src":"tatoeba:7928298","by":"Aiji","enId":"2570943","enBy":"Hybrid","auto":true}
+{"term":"Fais attention à ne faire aucune erreur.","back":"Be careful not to make any mistakes.","scene":"accident","src":"tatoeba:7553011","by":"Aiji","enId":"2733144","enBy":"CK","auto":true}
+{"term":"Nous sommes sûres que c'était un accident.","back":"We're sure that it was an accident.","scene":"accident","src":"tatoeba:6067062","by":"Aiji","enId":"5720732","enBy":"CK","auto":true}
+{"term":"Je me fiche que tu sois occupée. Aide-moi.","back":"I don't care whether you're busy. Help me.","scene":"calling for help","src":"tatoeba:8483174","by":"Aiji","enId":"5226404","enBy":"AlanF_US","auto":true}
+{"term":"Arrête de faire l'intéressant et aide-moi !","back":"Stop grandstanding and help me!","scene":"calling for help","src":"tatoeba:12835366","by":"lbdx","enId":"11536025","enBy":"letsgolanguages","auto":true}
+{"term":"Nous enquêtons sur les causes de l'accident.","back":"We're looking into the cause of the accident.","scene":"accident","src":"tatoeba:2113823","by":"sysko","enId":"6874155","enBy":"CK","auto":true}
+{"term":"Il vaut mieux attendre que la police arrive.","back":"It's better to wait until the police arrive.","scene":"theft and loss","src":"tatoeba:8457741","by":"Aiji","enId":"6484685","enBy":"CK","auto":true}
+{"term":"Aide-moi à trouver un taxi.","back":"Please help me get a taxi.","scene":"calling for help","src":"tatoeba:6375706","by":"Scorpionvenin14","enId":"6375696","enBy":"OsoHombre","auto":true}
+{"term":"Combien gagnent les policiers ?","back":"How much do police officers make?","scene":"theft and loss","src":"tatoeba:10867718","by":"Lumpawurump","enId":"6111043","enBy":"CK","auto":true}
+{"term":"Où l'accident s'est-il produit ?","back":"Where did the accident take place?","scene":"accident","src":"tatoeba:1015403","by":"sacredceltic","enId":"47117","enBy":"CK","auto":true}
+{"term":"Veuillez m'aider à descendre ceci.","back":"Please help me take this down.","scene":"calling for help","src":"tatoeba:992871","by":"sacredceltic","enId":"987493","enBy":"CK","auto":true}
+{"term":"M'aideras-tu à nettoyer la pièce ?","back":"Will you help me clean the room?","scene":"calling for help","src":"tatoeba:1367578","by":"sacredceltic","enId":"319533","enBy":"CK","auto":true}
+{"term":"Est-ce une urgence ?","back":"Is it an emergency?","scene":"calling for help","src":"tatoeba:6067085","by":"Aiji","enId":"5578767","enBy":"CK","auto":true}
+{"term":"Aide-moi à me lever.","back":"Help me get up.","scene":"calling for help","src":"tatoeba:10965955","by":"lbdx","enId":"8307650","enBy":"CK","auto":true}
+{"term":"Quelle en est l'urgence ?","back":"What's the emergency?","scene":"calling for help","src":"tatoeba:2071778","by":"sacredceltic","enId":"2234108","enBy":"CK","auto":true}
+{"term":"Quelle est votre urgence ?","back":"What's your emergency?","scene":"calling for help","src":"tatoeba:4548681","by":"sacredceltic","enId":"2234171","enBy":"CK","auto":true}
+{"term":"Aide-moi à charger le camion.","back":"Help me to load the truck.","scene":"calling for help","src":"tatoeba:7745700","by":"lbdx","enId":"7740192","enBy":"CK","auto":true}
+{"term":"La police a-t-elle des pistes ?","back":"Do the police have any leads?","scene":"theft and loss","src":"tatoeba:11234245","by":"lbdx","enId":"7802731","enBy":"Hybrid","auto":true}
+{"term":"Aide-moi à apprendre le français.","back":"Help me learn French.","scene":"calling for help","src":"tatoeba:8737389","by":"Julien_PDC","enId":"8049332","enBy":"CK","auto":true}
+{"term":"Je vous remercie d'être venu m'aider.","back":"Thank you for coming to help me.","scene":"calling for help","src":"tatoeba:10467699","by":"Julien_PDC","enId":"10480646","enBy":"traeton","auto":true}
+{"term":"Je veux que tu m'aides cet après-midi.","back":"I want you to help me this afternoon.","scene":"calling for help","src":"tatoeba:7352849","by":"Aiji","enId":"3594668","enBy":"CK","auto":true}
+{"term":"La police a-t-elle le moindre suspect ?","back":"Do the police have any suspects?","scene":"theft and loss","src":"tatoeba:1099529","by":"sacredceltic","enId":"1096516","enBy":"CK","auto":true}
+{"term":"Quelle est la nature de votre urgence ?","back":"What's the nature of your emergency?","scene":"calling for help","src":"tatoeba:6668650","by":"Aiji","enId":"3114021","enBy":"CK","auto":true}
+{"term":"Je veux que tu m'aides demain après-midi.","back":"I want you to help me tomorrow afternoon.","scene":"calling for help","src":"tatoeba:9731201","by":"lbdx","enId":"8015541","enBy":"CK","auto":true}
+{"term":"Pourquoi n'appelez-vous pas les policiers ?","back":"Why not just call the police?","scene":"calling for help","src":"tatoeba:4982945","by":"epsilom68","enId":"4013695","enBy":"CK","auto":true}
+{"term":"As-tu perdu connaissance après l'accident ?","back":"Did you lose consciousness after the accident?","scene":"accident","src":"tatoeba:9889427","by":"Micsmithel","enId":"9851473","enBy":"NurseMeeks","auto":true}
+{"term":"Bonjour ! Police ! Pourrais-je voir vos papiers ?","back":"Good day! Police! Can I see your papers?","scene":"theft and loss","src":"tatoeba:6206132","by":"felix63","enId":"6814126","enBy":"Eccles17","auto":true}
+{"term":"Petit voleur !","back":"You little thief!","scene":"theft and loss","src":"tatoeba:8738877","by":"Micsmithel","enId":"7532013","enBy":"shekitten","auto":true}
+{"term":"Tu es un voleur.","back":"You're a thief.","scene":"theft and loss","src":"tatoeba:6153729","by":"Aiji","enId":"2218045","enBy":"CK","auto":true}
+{"term":"J’ai une urgence.","back":"I have an emergency.","scene":"calling for help","src":"tatoeba:8369096","by":"sacredceltic","enId":"2358980","enBy":"CK","auto":true}
+{"term":"On a une urgence.","back":"We have an emergency.","scene":"calling for help","src":"tatoeba:12629236","by":"lbdx","enId":"2547496","enBy":"CK","auto":true}
+{"term":"Attrape le voleur !","back":"Get the thief!","scene":"theft and loss","src":"tatoeba:7668264","by":"tras","enId":"1502002","enBy":"marcelostockle","auto":true}
+{"term":"Cet oiseau est blessé.","back":"This bird is injured.","scene":"accident","src":"tatoeba:8248075","by":"felix63","enId":"13170835","enBy":"rul","auto":true}
+{"term":"Je ne suis pas un voleur.","back":"I am no thief.","scene":"theft and loss","src":"tatoeba:1836665","by":"sacredceltic","enId":"6489642","enBy":"sejb","auto":true}
+{"term":"Je sais qui est le voleur.","back":"I know who the thief is.","scene":"theft and loss","src":"tatoeba:7816992","by":"Aiji","enId":"2376495","enBy":"CK","auto":true}
+{"term":"Je l’ai appris par hasard.","back":"I found out by accident.","scene":"accident","src":"tatoeba:12235838","by":"Orange","enId":"12165252","enBy":"CK","auto":true}
+{"term":"Je ne suis pas une voleuse.","back":"I'm not a thief.","scene":"theft and loss","src":"tatoeba:1836666","by":"sacredceltic","enId":"1836094","enBy":"Spamster","auto":true}
+{"term":"Nous avons attrapé le voleur.","back":"We caught the thief.","scene":"theft and loss","src":"tatoeba:332104","by":"Barbiche0","enId":"278653","enBy":"CK","auto":true}
+{"term":"Nous ne sommes pas policiers.","back":"We're not the police.","scene":"theft and loss","src":"tatoeba:7796462","by":"nimfeo","enId":"5500335","enBy":"CK","auto":true}
+{"term":"Nous courûmes après le voleur.","back":"We ran after the thief.","scene":"theft and loss","src":"tatoeba:1103826","by":"sacredceltic","enId":"263161","enBy":"CK","auto":true}
+{"term":"Ta naissance était un accident.","back":"Your birth was an accident.","scene":"accident","src":"tatoeba:1112277","by":"sacredceltic","enId":"1112275","enBy":"Scott","auto":true}
+{"term":"Je vais lui faire rendre gorge !","back":"I will make him return what he has stolen.","scene":"theft and loss","src":"tatoeba:881862","by":"sacredceltic","enId":"5368467","enBy":"Catriona","auto":true}
+{"term":"Appelle un médecin immédiatement.","back":"Call a doctor immediately.","scene":"calling for help","src":"tatoeba:4102967","by":"Scorpionvenin14","enId":"4102938","enBy":"jmcd93","auto":true}
+{"term":"Fais attention à ce que tu souhaites.","back":"Be careful what you wish for.","scene":"accident","src":"tatoeba:530332","by":"sacredceltic","enId":"503532","enBy":"saeb","auto":true}
+{"term":"Je ne souhaite pas appeler la police.","back":"I don't want to call the police.","scene":"calling for help","src":"tatoeba:7124902","by":"Aiji","enId":"2323290","enBy":"CK","auto":true}
+{"term":"Il semble que le voleur était coupable.","back":"It seems the thief was guilty.","scene":"theft and loss","src":"tatoeba:10676057","by":"AutoBot","enId":"13899513","enBy":"rul","auto":true}
+{"term":"On doit appeler la police immédiatement.","back":"You need to call the police immediately.","scene":"calling for help","src":"tatoeba:9065975","by":"Aiji","enId":"453137","enBy":"CM","auto":true}
+{"term":"Il est difficile de voler chez un voleur.","back":"It's hard to steal from a thief.","scene":"theft and loss","src":"tatoeba:4545754","by":"sacredceltic","enId":"4546397","enBy":"mailohilohi","auto":true}
+{"term":"Fais attention à ce que tu dis, imbécile!","back":"Be careful with what you say, you fool!","scene":"accident","src":"tatoeba:6375840","by":"Scorpionvenin14","enId":"6375829","enBy":"OsoHombre","auto":true}
+{"term":"Notre rencontre était seulement un hasard.","back":"Our meeting was just an accident.","scene":"accident","src":"tatoeba:11380458","by":"Aiji","enId":"23508","enBy":"shekitten","auto":true}
+{"term":"Cet accident se produisit près de chez lui.","back":"That accident happened near his house.","scene":"accident","src":"tatoeba:1452077","by":"sacredceltic","enId":"1451592","enBy":"CK","auto":true}
+{"term":"Faites attention. Ne jetez pas ces papiers.","back":"Be careful. Don't throw away those papers.","scene":"accident","src":"tatoeba:12002542","by":"lbdx","enId":"2261535","enBy":"_undertoad","auto":true}
+{"term":"Je me suis fait voler mon téléphone portable.","back":"My mobile has been stolen.","scene":"theft and loss","src":"tatoeba:1484757","by":"Julien_PDC","enId":"456441","enBy":"lukaszpp","auto":true}
+{"term":"Veuillez être prudent.","back":"Please be careful.","scene":"accident","src":"tatoeba:2022262","by":"sacredceltic","enId":"2047599","enBy":"CK","auto":true}
+{"term":"Je veux être prudent.","back":"I want to be careful.","scene":"accident","src":"tatoeba:2435455","by":"sacredceltic","enId":"2011562","enBy":"CK","auto":true}
+{"term":"Tu me traites de voleur ?","back":"Are you calling me a thief?","scene":"theft and loss","src":"tatoeba:11461242","by":"lbdx","enId":"5294671","enBy":"Hybrid","auto":true}
+{"term":"Quiconque peut-il m'aider ?","back":"Can anyone help me?","scene":"calling for help","src":"tatoeba:3671215","by":"sacredceltic","enId":"461178","enBy":"jeanne","auto":true}
+{"term":"Aide-moi à faire le ménage.","back":"Help me clean up.","scene":"calling for help","src":"tatoeba:10556312","by":"lbdx","enId":"10553437","enBy":"CK","auto":true}
+{"term":"Avez-vous besoin d'une ambulance ?","back":"Do you need an ambulance?","scene":"calling for help","src":"tatoeba:575030","by":"sacredceltic","enId":"19591","enBy":"CK","auto":true}
+{"term":"Avez-vous réellement vu l'accident ?","back":"Did you actually see the accident?","scene":"accident","src":"tatoeba:8945","by":"sacredceltic","enId":"16024","enBy":"CK","auto":true}
+{"term":"Avez-vous déjà appelé une ambulance?","back":"Have you called an ambulance yet?","scene":"calling for help","src":"tatoeba:4134800","by":"Scorpionvenin14","enId":"4132858","enBy":"CK","auto":true}
+{"term":"Lorsqu'ils sont en danger, ils s'enfuient.","back":"When they're in danger, they run away.","scene":"accident","src":"tatoeba:126650","by":"TRANG","enId":"9840223","enBy":"CK","auto":true}
+{"term":"On se perd facilement, soyez donc prudent.","back":"It's easy to get lost, so please be careful.","scene":"accident","src":"tatoeba:7465590","by":"tras","enId":"7464470","enBy":"CK","auto":true}
+{"term":"Comment se nomme le nouveau commissaire de police ?","back":"What's the name of the new Chief of Police?","scene":"theft and loss","src":"tatoeba:9102036","by":"Julien_PDC","enId":"12262407","enBy":"Miktsoanit","auto":true}
+{"term":"Soyez prudents !","back":"Be careful.","scene":"accident","src":"tatoeba:1850042","by":"sacredceltic","enId":"1849392","enBy":"CK","auto":true}
+{"term":"Je serai prudent.","back":"I'll be careful.","scene":"accident","src":"tatoeba:1848559","by":"sacredceltic","enId":"1839523","enBy":"CK","auto":true}
+{"term":"Soyons prudents !","back":"Let's be careful.","scene":"accident","src":"tatoeba:3272848","by":"Julien_PDC","enId":"2007866","enBy":"CK","auto":true}
+{"term":"Je serais prudent.","back":"I'd be careful.","scene":"accident","src":"tatoeba:4594034","by":"sacredceltic","enId":"2247648","enBy":"CK","auto":true}
+{"term":"Mon vélo a été volé.","back":"My bike was stolen.","scene":"theft and loss","src":"tatoeba:3642209","by":"sacredceltic","enId":"6007114","enBy":"mailohilohi","auto":true}
+{"term":"Tu dois être prudent.","back":"You must be careful.","scene":"accident","src":"tatoeba:1791497","by":"sacredceltic","enId":"2547992","enBy":"CK","auto":true}
+{"term":"Nous serons prudents.","back":"We'll be careful.","scene":"accident","src":"tatoeba:4779906","by":"sacredceltic","enId":"2047591","enBy":"CK","auto":true}
+{"term":"Appelez une ambulance.","back":"Call an ambulance.","scene":"calling for help","src":"tatoeba:9254","by":"sacredceltic","enId":"19587","enBy":"CK","auto":true}
+{"term":"On avait volé mon vélo.","back":"My bicycle's been stolen.","scene":"theft and loss","src":"tatoeba:1837614","by":"Rovo","enId":"3820593","enBy":"CK","auto":true}
+{"term":"Il me fait être prudent.","back":"I have to be careful.","scene":"accident","src":"tatoeba:5574662","by":"sacredceltic","enId":"2837214","enBy":"Hybrid","auto":true}
+{"term":"Je te supplie de m'aider.","back":"I beg you to help me.","scene":"calling for help","src":"tatoeba:1784057","by":"sacredceltic","enId":"1779892","enBy":"Spamster","auto":true}
+{"term":"Sois prudente si tu y vas.","back":"Be careful if you do go.","scene":"accident","src":"tatoeba:8655117","by":"Julien_PDC","enId":"11856928","enBy":"tieguy","auto":true}
+{"term":"Nous devons être prudents.","back":"We must be careful.","scene":"accident","src":"tatoeba:1791510","by":"sacredceltic","enId":"1893770","enBy":"CK","auto":true}
+{"term":"Appelle-moi une ambulance.","back":"Get me an ambulance.","scene":"calling for help","src":"tatoeba:8567373","by":"Rockaround","enId":"3417618","enBy":"CK","auto":true}
+{"term":"Il faut que tu sois prudent.","back":"You need to be careful.","scene":"accident","src":"tatoeba:2022049","by":"sacredceltic","enId":"2020560","enBy":"Spamster","auto":true}
+{"term":"Tu as besoin d'une ambulance.","back":"You need an ambulance.","scene":"calling for help","src":"tatoeba:4757820","by":"Doremi391","enId":"2646136","enBy":"CK","auto":true}
+{"term":"Je vais appeler une ambulance.","back":"I'll call an ambulance.","scene":"calling for help","src":"tatoeba:5304062","by":"Scorpionvenin14","enId":"2546711","enBy":"CK","auto":true}
+{"term":"Je suis dans l'autre ambulance !","back":"I'm in the other ambulance!","scene":"calling for help","src":"tatoeba:4245041","by":"mouche","enId":"1302039","enBy":"Eldad","auto":true}
+{"term":"Personne ne te traite de voleur.","back":"No one is calling you a thief.","scene":"theft and loss","src":"tatoeba:11299701","by":"lbdx","enId":"5395133","enBy":"Hybrid","auto":true}
+{"term":"Devrais-je appeler une ambulance ?","back":"Should I call an ambulance?","scene":"calling for help","src":"tatoeba:5576652","by":"Aiji","enId":"2835729","enBy":"CK","auto":true}
+{"term":"Je serai prudent avec les enfants.","back":"I'll be careful with the kids.","scene":"accident","src":"tatoeba:5645545","by":"narnar","enId":"2047665","enBy":"CK","auto":true}
+{"term":"Fais attention à ne pas te brûler.","back":"Be careful not to burn yourself.","scene":"accident","src":"tatoeba:11217821","by":"lbdx","enId":"2733126","enBy":"CK","auto":true}
+{"term":"Sois prudente en traversant la rue.","back":"Be careful crossing the street.","scene":"accident","src":"tatoeba:13116754","by":"unetoilebrille","enId":"434308","enBy":"lukaszpp","auto":true}
+{"term":"Vous devriez appeler une ambulance.","back":"You should call an ambulance.","scene":"calling for help","src":"tatoeba:13377909","by":"lbdx","enId":"12723990","enBy":"CK","auto":true}
+{"term":"Nous devrions appeler une ambulance.","back":"We should call an ambulance.","scene":"calling for help","src":"tatoeba:7928306","by":"Aiji","enId":"3313173","enBy":"CK","auto":true}
+{"term":"Attention ! La soupe est très chaude.","back":"Be careful. The soup's very hot.","scene":"accident","src":"tatoeba:5156903","by":"rudycogniaux","enId":"2261539","enBy":"_undertoad","auto":true}
+{"term":"Devrions-nous appeler une ambulance ?","back":"Should we call an ambulance?","scene":"calling for help","src":"tatoeba:7794009","by":"Aiji","enId":"6030647","enBy":"AlanF_US","auto":true}
+{"term":"Tu dois m'aider à résoudre ce problème.","back":"You need to help me fix this.","scene":"calling for help","src":"tatoeba:12681461","by":"Olcyx","enId":"11621701","enBy":"CK","auto":true}
+{"term":"Fais attention quand tu traverses la rue.","back":"Be careful when you cross the street.","scene":"accident","src":"tatoeba:3260355","by":"Micsmithel","enId":"3060564","enBy":"sharptoothed","auto":true}
+{"term":"Sois prudent sur le chemin de la maison !","back":"Be careful on your way back home.","scene":"accident","src":"tatoeba:941224","by":"sacredceltic","enId":"579194","enBy":"CM","auto":true}
+{"term":"Sois prudent quand tu traverses une route.","back":"Be careful when you cross a road.","scene":"accident","src":"tatoeba:4481019","by":"mouche","enId":"4480821","enBy":"CK","auto":true}
+{"term":"Dites-leur que nous avons besoin d'une ambulance.","back":"Tell them we need an ambulance.","scene":"calling for help","src":"tatoeba:5386533","by":"Aiji","enId":"3201173","enBy":"CK","auto":true}
+{"term":"Qui a volé la pomme ?","back":"Who stole the apple?","scene":"theft and loss","src":"tatoeba:449757","by":"manuk7","enId":"276279","enBy":"CK","auto":true}
+{"term":"Je voudrais déclarer un vol.","back":"I'd like to report a theft.","scene":"calling for help","src":"tatoeba:541690","by":"sacredceltic","enId":"51408","enBy":"CK","auto":true}
+{"term":"Aide-moi à déplacer ce canapé.","back":"Help me move this couch.","scene":"calling for help","src":"tatoeba:10517705","by":"lbdx","enId":"4666677","enBy":"CK","auto":true}
+{"term":"Aide-moi à déplacer cette pierre.","back":"Help me move this stone.","scene":"calling for help","src":"tatoeba:7142178","by":"Micsmithel","enId":"58197","enBy":"CK","auto":true}
+{"term":"Aide-moi à éloigner la table du mur.","back":"Help me move the table away from the wall.","scene":"calling for help","src":"tatoeba:10977279","by":"Aiji","enId":"10552664","enBy":"AlanF_US","auto":true}
+{"term":"Je perdis patience.","back":"I lost my temper.","scene":"theft and loss","src":"tatoeba:2383384","by":"sacredceltic","enId":"2380194","enBy":"CK","auto":true}
+{"term":"Ma montre a été volée.","back":"My watch was stolen.","scene":"theft and loss","src":"tatoeba:128135","by":"nimfeo","enId":"3153889","enBy":"CK","auto":true}
+{"term":"Appelons des renforts.","back":"Let's call for backup.","scene":"calling for help","src":"tatoeba:12186509","by":"lbdx","enId":"1129706","enBy":"CM","auto":true}
+{"term":"Notre poubelle a été volée.","back":"Our wheelie bin was stolen.","scene":"theft and loss","src":"tatoeba:1070936","by":"sacredceltic","enId":"1070871","enBy":"sundown","auto":true}
+{"term":"On a volé mon portefeuille.","back":"My wallet's been stolen.","scene":"theft and loss","src":"tatoeba:8377786","by":"Aiji","enId":"7969520","enBy":"CK","auto":true}
+{"term":"Fais attention avec mes bagages.","back":"Be careful with my luggage.","scene":"accident","src":"tatoeba:5395843","by":"pititnatole","enId":"2047641","enBy":"CK","auto":true}
+{"term":"Ce type a volé mon portefeuille.","back":"That bloke stole my wallet.","scene":"theft and loss","src":"tatoeba:12920585","by":"lbdx","enId":"12140950","enBy":"sundown","auto":true}
+{"term":"Je crois que ma valise a été volée.","back":"I think my suitcase was stolen.","scene":"theft and loss","src":"tatoeba:335758","by":"TRANG","enId":"52370","enBy":"CK","auto":true}
+{"term":"J'apprécie vos efforts pour m'aider.","back":"I appreciate your efforts to help me.","scene":"calling for help","src":"tatoeba:5599824","by":"Aiji","enId":"1933582","enBy":"CK","auto":true}
+{"term":"Ma montre a été volée la nuit dernière.","back":"My watch was stolen last night.","scene":"theft and loss","src":"tatoeba:5920280","by":"Aiji","enId":"4332246","enBy":"AlanF_US","auto":true}
+{"term":"Fais attention à ne pas casser les œufs.","back":"Be careful not to break the eggs.","scene":"accident","src":"tatoeba:6668562","by":"Aiji","enId":"6111035","enBy":"CK","auto":true}
+{"term":"Fais attention en montant les escaliers.","back":"Be careful when going up the stairs.","scene":"accident","src":"tatoeba:11658850","by":"lbdx","enId":"9096954","enBy":"CK","auto":true}
+{"term":"Ce type a volé mon portefeuille ! Arrêtez-le !","back":"That guy stole my wallet! Stop him!","scene":"theft and loss","src":"tatoeba:11704820","by":"lbdx","enId":"1205787","enBy":"CS","auto":true}
+{"term":"Je regrette profondément avoir causé l'accident.","back":"I deeply regret having caused the accident.","scene":"accident","src":"tatoeba:1140344","by":"sacredceltic","enId":"1140182","enBy":"CK","auto":true}
+{"term":"M'aideriez-vous si je déménage ?","back":"Would you help me if I moved?","scene":"calling for help","src":"tatoeba:941279","by":"sacredceltic","enId":"1742290","enBy":"belgavox","auto":true}
+{"term":"Pouvez-vous décrire le voleur en quelques mots ?","back":"Can you quickly describe the thief?","scene":"theft and loss","src":"tatoeba:9673335","by":"lbdx","enId":"9673180","enBy":"ravensfeather","auto":true}
+{"term":"Pourquoi saignes-tu ?","back":"Why are you bleeding?","scene":"accident","src":"tatoeba:4599983","by":"sacredceltic","enId":"2900568","enBy":"Hybrid","auto":true}
+{"term":"Aidez-moi avec ma cravate.","back":"Help me with my tie.","scene":"calling for help","src":"tatoeba:7352852","by":"Aiji","enId":"3732850","enBy":"CK","auto":true}
+{"term":"Aide-moi à établir une liste !","back":"Help me make a list.","scene":"calling for help","src":"tatoeba:8602873","by":"sacredceltic","enId":"7137380","enBy":"CK","auto":true}
+{"term":"Je veux un volontaire pour m'aider.","back":"I want a volunteer to help me.","scene":"calling for help","src":"tatoeba:2427336","by":"sacredceltic","enId":"2013941","enBy":"CK","auto":true}
+{"term":"Je saigne.","back":"I'm bleeding.","scene":"accident","src":"tatoeba:10706431","by":"AutoBot","enId":"2111754","enBy":"CK","auto":true}
+{"term":"Vous saignez.","back":"You're bleeding.","scene":"accident","src":"tatoeba:8703677","by":"Julien_PDC","enId":"2549409","enBy":"CK","auto":true}
+{"term":"Mon nez saigne.","back":"My nose is bleeding.","scene":"accident","src":"tatoeba:1476098","by":"Julien_PDC","enId":"950186","enBy":"CM","auto":true}
+{"term":"Tu saignes du nez.","back":"Your nose is bleeding.","scene":"accident","src":"tatoeba:587943","by":"sacredceltic","enId":"68973","enBy":"CK","auto":true}
+{"term":"Tu ne saignes pas.","back":"You're not bleeding.","scene":"accident","src":"tatoeba:4839244","by":"sacredceltic","enId":"2218229","enBy":"CK","auto":true}
+{"term":"Mes yeux saignent.","back":"My eyes are bleeding.","scene":"accident","src":"tatoeba:12390852","by":"Rovo","enId":"12391255","enBy":"Miktsoanit","auto":true}
+{"term":"Tu saignes du front.","back":"Your forehead's bleeding.","scene":"accident","src":"tatoeba:6818095","by":"Rockaround","enId":"6970606","enBy":"CK","auto":true}
+{"term":"Vous saigniez du nez.","back":"Your nose was bleeding.","scene":"accident","src":"tatoeba:2075594","by":"Amastan","enId":"5144063","enBy":"AlanF_US","auto":true}
+{"term":"Nous saignons du nez.","back":"Our noses are bleeding.","scene":"accident","src":"tatoeba:2075730","by":"Amastan","enId":"12978090","enBy":"rul","auto":true}
+{"term":"Tu saignes à nouveau.","back":"You're bleeding again.","scene":"accident","src":"tatoeba:6850275","by":"Micsmithel","enId":"2546860","enBy":"CK","auto":true}
+{"term":"Appelle les pompiers !","back":"Call the fire brigade.","scene":"calling for help","src":"tatoeba:8737140","by":"Julien_PDC","enId":"10497622","enBy":"sundown","auto":true}
+{"term":"Je crois que tu saignes.","back":"I think you're bleeding.","scene":"accident","src":"tatoeba:6671265","by":"GB3","enId":"6670976","enBy":"Hybrid","auto":true}
+{"term":"Je saigne entre mes règles.","back":"I'm bleeding between my periods.","scene":"accident","src":"tatoeba:10707825","by":"AutoBot","enId":"10707823","enBy":"AutoBot","auto":true}
+{"term":"Attention ! Mon chien mord !","back":"Be careful! My dog bites!","scene":"accident","src":"tatoeba:6391175","by":"felix63","enId":"6392437","enBy":"scrungus","auto":true}
+{"term":"Ça ne s'arrête pas de saigner.","back":"It won't stop bleeding.","scene":"accident","src":"tatoeba:561429","by":"sacredceltic","enId":"266808","enBy":"CM","auto":true}
+{"term":"Nous devons avertir la police.","back":"We have to notify the police.","scene":"theft and loss","src":"tatoeba:8064457","by":"felix63","enId":"2259765","enBy":"_undertoad","auto":true}
+{"term":"Je suis enceinte et je saigne.","back":"I'm pregnant and I'm bleeding.","scene":"accident","src":"tatoeba:10707251","by":"AutoBot","enId":"10707246","enBy":"AutoBot","auto":true}
+{"term":"Mon voisin a appelé les pompiers.","back":"My neighbor called the fire department.","scene":"calling for help","src":"tatoeba:8342431","by":"Aiji","enId":"4132584","enBy":"CK","auto":true}
+{"term":"Devrais-je le rapporter à la police ?","back":"Should I tell the police?","scene":"theft and loss","src":"tatoeba:5565872","by":"sacredceltic","enId":"2466807","enBy":"Hybrid","auto":true}
+{"term":"Il vous faut être prudent, dans la jungle.","back":"You have to be careful when you're in the jungle.","scene":"accident","src":"tatoeba:13454570","by":"sacredceltic","enId":"1546138","enBy":"Spamster","auto":true}
+{"term":"Pouvez-vous me donner une brève description du voleur ?","back":"Can you give me a brief description of the thief?","scene":"theft and loss","src":"tatoeba:12179736","by":"lbdx","enId":"44943","enBy":"CK","auto":true}
+{"term":"Je lance un signal de détresse.","back":"I'm declaring an emergency.","scene":"calling for help","src":"tatoeba:3987699","by":"Julien_PDC","enId":"1890971","enBy":"CK","auto":true}
+{"term":"Fais attention de ne pas glisser !","back":"Be careful not to slip!","scene":"accident","src":"tatoeba:3691105","by":"Elliv","enId":"2733023","enBy":"Hybrid","auto":true}
+{"term":"Je vais vous dénoncer à la police.","back":"I'm going to report you to police.","scene":"theft and loss","src":"tatoeba:10809548","by":"Aiji","enId":"2284520","enBy":"CK","auto":true}
+{"term":"Fais attention. Le sol est glissant.","back":"Be careful. The floor is slippery.","scene":"accident","src":"tatoeba:5403598","by":"Aiji","enId":"3550128","enBy":"CK","auto":true}
+{"term":"Ça pourrait te provoquer un accident.","back":"You might have an accident.","scene":"accident","src":"tatoeba:6484405","by":"Micsmithel","enId":"263744","enBy":"CK","auto":true}
+{"term":"Faites attention. Le pont est glissant.","back":"Be careful. The deck is slippery.","scene":"accident","src":"tatoeba:12924529","by":"lbdx","enId":"3168566","enBy":"CK","auto":true}
+{"term":"Attention à ne pas glisser dans la baignoire.","back":"Be careful not to slip in the bathtub.","scene":"accident","src":"tatoeba:12623628","by":"lbdx","enId":"12155919","enBy":"CK","auto":true}
+{"term":"Pourriez-vous m'aider s'il vous plaît ?","back":"Could you please help me?","scene":"calling for help","src":"tatoeba:339608","by":"sysko","enId":"40087","enBy":"CK","auto":true}
+{"term":"Pouvez-vous appeler un médecin, s'il vous plaît ?","back":"Can you call a doctor please?","scene":"calling for help","src":"tatoeba:6060075","by":"christian63","enId":"6060893","enBy":"colwem","auto":true}
+{"term":"Pourriez-vous appeler un médecin, s'il vous plaît.","back":"Could you call a doctor, please?","scene":"calling for help","src":"tatoeba:13944","by":"sacredceltic","enId":"27899","enBy":"CK","auto":true}
+{"term":"Aide-moi, s'il te plait.","back":"Help me, please.","scene":"calling for help","src":"tatoeba:128433","by":"sacredceltic","enId":"267179","enBy":"CK","auto":true}
+{"term":"Quand l'accident est-il arrivé ?","back":"When did the accident take place?","scene":"accident","src":"tatoeba:486576","by":"sacredceltic","enId":"47127","enBy":"CK","auto":true}
+{"term":"Quand cet accident a-t-il eu lieu ?","back":"When did this accident take place?","scene":"accident","src":"tatoeba:1455599","by":"Rovo","enId":"6888463","enBy":"voxbubnya","auto":true}
+{"term":"S'il te plaît, aide-moi à cuisiner.","back":"Please help me cook.","scene":"calling for help","src":"tatoeba:5800769","by":"Toynop","enId":"325796","enBy":"CK","auto":true}
+{"term":"Aide-moi à ouvrir ça, s'il te plaît.","back":"Help me open this, please.","scene":"calling for help","src":"tatoeba:10356606","by":"selve","enId":"10356476","enBy":"DJ_Saidez","auto":true}
+{"term":"Quand cet accident lui est-il arrivé ?","back":"When did the accident happen to her?","scene":"accident","src":"tatoeba:962327","by":"sacredceltic","enId":"47125","auto":true}
+{"term":"Appelez une ambulance s'il vous plait.","back":"Please send an ambulance.","scene":"calling for help","src":"tatoeba:2124226","by":"pierrephi","enId":"19588","enBy":"CK","auto":true}
+{"term":"Quelqu'un peut-il m'aider, je vous prie ?","back":"Can somebody please help me?","scene":"calling for help","src":"tatoeba:2097403","by":"sacredceltic","enId":"2095433","enBy":"CK","auto":true}
+{"term":"Montrez-moi votre bras blessé, s'il vous plaît.","back":"Please show me your injured arm.","scene":"accident","src":"tatoeba:11105","by":"sacredceltic","enId":"62610","enBy":"CK","auto":true}
+{"term":"Quelqu'un pourrait-il m'aider à traduire ceci ?","back":"Could someone please help me translate this?","scene":"calling for help","src":"tatoeba:10672725","by":"lbdx","enId":"6113360","enBy":"mailohilohi","auto":true}
+{"term":"As-tu des bleus ou des saignements inexpliqués ?","back":"Do you have any unexplained bruising or bleeding?","scene":"accident","src":"tatoeba:9937132","by":"Micsmithel","enId":"9849467","enBy":"NurseMeeks","auto":true}
+{"term":"Monsieur, puis-je voir votre permis de conduire ?","back":"May I see your driver's license, sir?","scene":"calling for help","src":"tatoeba:1284844","by":"sacredceltic","enId":"26573","enBy":"CK","auto":true}
+{"term":"Qu'a dit la police ?","back":"What did the police say?","scene":"theft and loss","src":"tatoeba:8452312","by":"marioo","enId":"3820983","enBy":"CK","auto":true}
+{"term":"Aide-moi à imprimer ça.","back":"Help me print this.","scene":"calling for help","src":"tatoeba:1470235","by":"sacredceltic","enId":"1468427","enBy":"CK","auto":true}
+{"term":"Aide-moi à le soulever.","back":"Help me lift it.","scene":"calling for help","src":"tatoeba:12997660","by":"lbdx","enId":"5338806","enBy":"mailohilohi","auto":true}
+{"term":"Quelqu'un est-il blessé ?","back":"Is anyone hurt?","scene":"accident","src":"tatoeba:1843073","by":"sacredceltic","enId":"1841615","enBy":"CK","auto":true}
+{"term":"Quelqu'un peut-il m'aider ?","back":"Can someone help me?","scene":"calling for help","src":"tatoeba:2097405","by":"sacredceltic","enId":"2570958","enBy":"Hybrid","auto":true}
+{"term":"J'aimerais requérir ton aide.","back":"I'd like to ask you to help me.","scene":"calling for help","src":"tatoeba:2144152","by":"sacredceltic","enId":"1936538","enBy":"CK","auto":true}
+{"term":"Sois prudente, s'il te plaît.","back":"Be careful, please.","scene":"accident","src":"tatoeba:8593809","by":"Micsmithel","enId":"9194190","enBy":"CK","auto":true}
+{"term":"Aidez-moi à écaler ces œufs !","back":"Help me with shelling these eggs!","scene":"calling for help","src":"tatoeba:10219339","by":"lbdx","enId":"325214","enBy":"CM","auto":true}
+{"term":"Aide-moi à soulever ce paquet.","back":"Help me lift the package.","scene":"calling for help","src":"tatoeba:631214","by":"qdii","enId":"320951","enBy":"CK","auto":true}
+{"term":"La police t'a déjà interrogé ?","back":"Have the police questioned you yet?","scene":"theft and loss","src":"tatoeba:11247758","by":"lbdx","enId":"3142909","enBy":"CK","auto":true}
+{"term":"Tous ces trucs sont-ils volés ?","back":"Is all this stuff stolen?","scene":"theft and loss","src":"tatoeba:4872274","by":"sacredceltic","enId":"4013203","enBy":"CK","auto":true}
+{"term":"La police est-elle au courant ?","back":"Do the police know about this?","scene":"theft and loss","src":"tatoeba:5334491","by":"Aiji","enId":"5068203","enBy":"CK","auto":true}
+{"term":"Au secours ! Police ! À l'aide !","back":"Help! Police! Help!","scene":"theft and loss","src":"tatoeba:8718968","by":"Micsmithel","enId":"4238020","enBy":"Hybrid","auto":true}
+{"term":"Est-ce que la police l'a arrêté ?","back":"Did the police arrest him?","scene":"theft and loss","src":"tatoeba:11280255","by":"lbdx","enId":"3920315","enBy":"CH","auto":true}
+{"term":"C'est elle qui a volé mon stylo ?","back":"Is she the one who stole my pen?","scene":"theft and loss","src":"tatoeba:12023210","by":"djefdeg","enId":"12476665","enBy":"sundown","auto":true}
+{"term":"Aidez-moi à la faire sortir d'ici.","back":"Help me get her out of here.","scene":"calling for help","src":"tatoeba:10759572","by":"lbdx","enId":"10460097","enBy":"koala","auto":true}
+{"term":"Aide-moi à apprendre le tamazight.","back":"Help me learn Berber.","scene":"calling for help","src":"tatoeba:12141344","by":"always","enId":"7864942","enBy":"Amastan","auto":true}
+{"term":"Quelqu'un a-t-il appelé la police ?","back":"Did somebody call the police?","scene":"calling for help","src":"tatoeba:2097392","by":"sacredceltic","enId":"2095439","enBy":"CK","auto":true}
+{"term":"Cela fait-il mal lorsque tu mâches ?","back":"Does it hurt when you chew?","scene":"accident","src":"tatoeba:1339338","by":"sacredceltic","enId":"63567","enBy":"CK","auto":true}
+{"term":"À l'aide ! Je me suis fait braquer !","back":"Help! I've been robbed!","scene":"theft and loss","src":"tatoeba:6616476","by":"GB3","enId":"6616357","enBy":"Eccles17","auto":true}
+{"term":"Quelqu'un ne m'aidera-t-il donc pas ?","back":"Won't somebody please help me?","scene":"calling for help","src":"tatoeba:2096736","by":"sacredceltic","enId":"2095473","enBy":"CK","auto":true}
+{"term":"Aide-moi à accrocher cette photo au mur.","back":"Help me hang this picture on the wall.","scene":"calling for help","src":"tatoeba:8496316","by":"Aiji","enId":"7781451","enBy":"CK","auto":true}
+{"term":"On t'a insulté auparavant, n'est-ce pas ?","back":"You've been injured before, haven't you?","scene":"accident","src":"tatoeba:2402337","by":"sacredceltic","enId":"2402281","enBy":"CK","auto":true}
+{"term":"Merci de ne pas me reprocher cet accident.","back":"Thank you for not blaming me for the accident.","scene":"accident","src":"tatoeba:128103","by":"christian63","enId":"263696","enBy":"CK","auto":true}
+{"term":"Quel est le numéro de téléphone d'urgence ?","back":"What is the emergency telephone number?","scene":"calling for help","src":"tatoeba:572713","by":"sacredceltic","enId":"18790","enBy":"Swift","auto":true}
+{"term":"Est-ce que ça fait mal quand vous toussez ?","back":"Does it hurt when you cough?","scene":"accident","src":"tatoeba:11172207","by":"lbdx","enId":"9853831","enBy":"NurseMeeks","auto":true}
+{"term":"Quelle autre chose le voleur a-t-il prise ?","back":"What else did the thief take?","scene":"theft and loss","src":"tatoeba:13889482","by":"streveler","enId":"4013135","enBy":"CK","auto":true}
+{"term":"Quel numéro dois-je appeler en cas d'urgence ?","back":"What number should I call in case of an emergency?","scene":"calling for help","src":"tatoeba:572733","by":"sacredceltic","enId":"18799","enBy":"Swift","auto":true}
+{"term":"La police a-t-elle trouvé des empreintes digitales ?","back":"Did the police find any fingerprints?","scene":"theft and loss","src":"tatoeba:7045272","by":"Aiji","enId":"4497576","enBy":"CK","auto":true}
+{"term":"Comment l'accident de la circulation est-il survenu ?","back":"How did the traffic accident happen?","scene":"accident","src":"tatoeba:1511864","by":"sacredceltic","enId":"1317076","enBy":"CK","auto":true}
+{"term":"Cet accident est-il vraiment survenu l'année dernière ?","back":"Did that accident really happen last year?","scene":"accident","src":"tatoeba:960283","by":"sacredceltic","enId":"957265","enBy":"CK","auto":true}
+{"term":"J'ai volé l'idée.","back":"I stole the idea.","scene":"theft and loss","src":"tatoeba:8755876","by":"Aiji","enId":"5758190","enBy":"CM","auto":true}
+{"term":"J'ai volé une arme.","back":"I stole a gun.","scene":"theft and loss","src":"tatoeba:7060867","by":"Aiji","enId":"5853213","enBy":"CK","auto":true}
+{"term":"Coffrez le voleur !","back":"Stop thief!","scene":"theft and loss","src":"tatoeba:13915039","by":"Myrano_","enId":"2155100","enBy":"freddy1","auto":true}
+{"term":"Je saigne gravement.","back":"I'm bleeding badly.","scene":"accident","src":"tatoeba:128396","by":"Micsmithel","enId":"266806","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma force.","back":"I've lost my strength.","scene":"theft and loss","src":"tatoeba:1116472","by":"sacredceltic","enId":"3077575","enBy":"shake0615","auto":true}
+{"term":"J'ai perdu mes clés.","back":"I lost my keys.","scene":"theft and loss","src":"tatoeba:1121725","by":"sacredceltic","enId":"1799986","enBy":"cathrynm","auto":true}
+{"term":"Tu m'as volé l'idée.","back":"You stole my idea.","scene":"theft and loss","src":"tatoeba:2364091","by":"Amastan","enId":"1895651","enBy":"CK","auto":true}
+{"term":"J'ai perdu mes amis.","back":"I've lost my friends.","scene":"theft and loss","src":"tatoeba:6463945","by":"lapinhibou","enId":"6944123","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma bague.","back":"I lost my ring.","scene":"theft and loss","src":"tatoeba:6579158","by":"GB3","enId":"6577126","enBy":"Eccles17","auto":true}
+{"term":"J'ai perdu mon stylo.","back":"I've lost my pen.","scene":"theft and loss","src":"tatoeba:373542","by":"sysko","enId":"1960206","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma fierté.","back":"I've lost my pride.","scene":"theft and loss","src":"tatoeba:6138043","by":"christian63","enId":"9011754","enBy":"jaydenms","auto":true}
+{"term":"J'ai perdu mes gants.","back":"I lost my gloves.","scene":"theft and loss","src":"tatoeba:11439216","by":"felix63","enId":"11074466","enBy":"CK","auto":true}
+{"term":"Tu alertais la police.","back":"You were alerting the police.","scene":"theft and loss","src":"tatoeba:2916247","by":"Amastan","enId":"12847927","enBy":"rul","auto":true}
+{"term":"J'ai perdu mon crayon.","back":"I've lost my pencil.","scene":"theft and loss","src":"tatoeba:6770","by":"TRANG","enId":"25766","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma dignité.","back":"I've lost my dignity.","scene":"theft and loss","src":"tatoeba:1144427","by":"sacredceltic","enId":"1126986","enBy":"CM","auto":true}
+{"term":"J'ai perdu mon billet.","back":"I've lost my ticket.","scene":"theft and loss","src":"tatoeba:1501134","by":"martin9","enId":"259030","enBy":"CK","auto":true}
+{"term":"J'ai perdu la mémoire.","back":"I've lost my memory.","scene":"theft and loss","src":"tatoeba:3288889","by":"Amastan","enId":"12343464","enBy":"Miktsoanit","auto":true}
+{"term":"Personne n'est blessé.","back":"No one's injured.","scene":"accident","src":"tatoeba:7839213","by":"sacredceltic","enId":"4500293","enBy":"CK","auto":true}
+{"term":"J'ai perdu mes papiers.","back":"I lost my papers.","scene":"theft and loss","src":"tatoeba:6060072","by":"christian63","enId":"6060895","enBy":"colwem","auto":true}
+{"term":"J'ai perdu l'équilibre.","back":"I lost my balance.","scene":"theft and loss","src":"tatoeba:6850370","by":"Blabla","enId":"6888221","enBy":"voxbubnya","auto":true}
+{"term":"Ce n'est pas un hasard.","back":"That's no accident.","scene":"accident","src":"tatoeba:1035261","by":"sacredceltic","enId":"5756887","enBy":"CM","auto":true}
+{"term":"On m'a volé mon argent.","back":"My money was stolen.","scene":"theft and loss","src":"tatoeba:1170141","by":"sacredceltic","enId":"64556","enBy":"CK","auto":true}
+{"term":"J'ai perdu mon chapeau.","back":"I lost my hat.","scene":"theft and loss","src":"tatoeba:4477166","by":"sicerabibax","enId":"2549729","enBy":"CK","auto":true}
+{"term":"J'ai perdu mon mouchoir.","back":"I lost my handkerchief.","scene":"theft and loss","src":"tatoeba:6780188","by":"felix63","enId":"6900707","enBy":"kaiperkins271","auto":true}
+{"term":"J'espère qu'il m'aidera.","back":"I hope that he will help me.","scene":"calling for help","src":"tatoeba:132366","by":"nimfeo","enId":"298141","enBy":"CK","auto":true}
+{"term":"J'ai perdu mes lunettes.","back":"I lost my glasses.","scene":"theft and loss","src":"tatoeba:341811","by":"TRANG","enId":"2368090","enBy":"Zaghawa","auto":true}
+{"term":"Personne n'a été blessé.","back":"No one got hurt.","scene":"accident","src":"tatoeba:1314676","by":"sacredceltic","enId":"2091094","enBy":"CK","auto":true}
+{"term":"J'ai commencé à saigner.","back":"I've started bleeding.","scene":"accident","src":"tatoeba:1671378","by":"nimfeo","enId":"266807","enBy":"CM","auto":true}
+{"term":"Il s'agit d'une urgence.","back":"It's an emergency.","scene":"calling for help","src":"tatoeba:1949351","by":"sacredceltic","enId":"1173321","enBy":"cntrational","auto":true}
+{"term":"Je vais au commissariat.","back":"I'm going to the police station.","scene":"theft and loss","src":"tatoeba:3714651","by":"gillux","enId":"2541367","enBy":"CK","auto":true}
+{"term":"Je suis au commissariat.","back":"I'm at the police station.","scene":"theft and loss","src":"tatoeba:5804426","by":"Toynop","enId":"5799544","enBy":"Eccles17","auto":true}
+{"term":"Ma sœur ne m'a pas aidé.","back":"My sister didn't help me.","scene":"calling for help","src":"tatoeba:6573049","by":"GB3","enId":"3822632","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma chaussure.","back":"I lost my shoe.","scene":"theft and loss","src":"tatoeba:12029222","by":"Rovo","enId":"11588049","enBy":"shekitten","auto":true}
+{"term":"J'ai égaré mon parapluie.","back":"I lost my umbrella.","scene":"theft and loss","src":"tatoeba:1053909","by":"sacredceltic","enId":"257873","enBy":"CK","auto":true}
+{"term":"J'ai perdu mon téléphone.","back":"I lost my phone.","scene":"theft and loss","src":"tatoeba:2383386","by":"sacredceltic","enId":"2380193","enBy":"CK","auto":true}
+{"term":"C'est juste un accident !","back":"It's just an accident!","scene":"accident","src":"tatoeba:6195273","by":"Sorgan","enId":"6195257","enBy":"rayshih715","auto":true}
+{"term":"On m'a volé mes affaires.","back":"My stuff was stolen.","scene":"theft and loss","src":"tatoeba:11714406","by":"Aiji","enId":"5942162","enBy":"mailohilohi","auto":true}
+{"term":"On m'a volé mon passeport.","back":"My passport was stolen.","scene":"theft and loss","src":"tatoeba:15109","by":"sacredceltic","enId":"1994379","enBy":"Spamster","auto":true}
+{"term":"On m'a volé mon vélo hier.","back":"My bike was stolen yesterday.","scene":"theft and loss","src":"tatoeba:331206","by":"Lumpawurump","enId":"250122","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma montre hier.","back":"I lost my watch yesterday.","scene":"theft and loss","src":"tatoeba:431534","by":"qdii","enId":"257780","enBy":"CK","auto":true}
+{"term":"J'espère qu'elle m'aidera.","back":"I hope that she will help me.","scene":"calling for help","src":"tatoeba:746332","by":"Cocorico","enId":"314450","enBy":"CK","auto":true}
+{"term":"J'ai perdu mon passeport !","back":"I lost my passport!","scene":"theft and loss","src":"tatoeba:823215","by":"sacredceltic","enId":"436777","enBy":"lukaszpp","auto":true}
+{"term":"Quelqu'un a volé mon vélo.","back":"My bike has been stolen.","scene":"theft and loss","src":"tatoeba:3642218","by":"sacredceltic","enId":"2638725","enBy":"Joseph","auto":true}
+{"term":"Je n'ai pas vu l'accident.","back":"I didn't see the accident.","scene":"accident","src":"tatoeba:6396063","by":"Aiji","enId":"4062852","enBy":"CK","auto":true}
+{"term":"Aucun argent n'a été volé.","back":"No money was stolen.","scene":"theft and loss","src":"tatoeba:7839228","by":"sacredceltic","enId":"4502331","enBy":"CK","auto":true}
+{"term":"C'est arrivé par accident.","back":"It happened by accident.","scene":"accident","src":"tatoeba:11199262","by":"Aiji","enId":"42504","enBy":"CK","auto":true}
+{"term":"J'ai mal quand je respire.","back":"It hurts when I breathe.","scene":"accident","src":"tatoeba:11741557","by":"Aiji","enId":"11586408","enBy":"CK","auto":true}
+{"term":"Vous avez alerté la police.","back":"You called the police.","scene":"theft and loss","src":"tatoeba:2916345","by":"Amastan","enId":"4248119","enBy":"JulieMDM","auto":true}
+{"term":"J'ai perdu ma lampe-torche.","back":"I lost my flashlight.","scene":"theft and loss","src":"tatoeba:2383390","by":"sacredceltic","enId":"2380191","enBy":"CK","auto":true}
+{"term":"Fais attention au scorpion.","back":"Be careful with the scorpion.","scene":"accident","src":"tatoeba:11234264","by":"lbdx","enId":"7768498","enBy":"sharris123","auto":true}
+{"term":"Dites-lui que c'est urgent.","back":"Tell him it's an emergency.","scene":"calling for help","src":"tatoeba:12431153","by":"lbdx","enId":"3908046","enBy":"CH","auto":true}
+{"term":"J'ai perdu mon attaché-case.","back":"I've lost my briefcase.","scene":"theft and loss","src":"tatoeba:797287","by":"U2FS","enId":"3677255","enBy":"CK","auto":true}
+{"term":"Nous avons alerté la police.","back":"We've called the police.","scene":"theft and loss","src":"tatoeba:2916341","by":"Amastan","enId":"8075276","enBy":"CK","auto":true}
+{"term":"J'ai perdu le fil de ma vie.","back":"I've lost my way in life.","scene":"theft and loss","src":"tatoeba:10298393","by":"sacredceltic","enId":"10298398","enBy":"DJ_Saidez","auto":true}
+{"term":"J'ai perdu mon meilleur ami.","back":"I've lost my best friend.","scene":"theft and loss","src":"tatoeba:5745016","by":"Petrus","enId":"5744928","enBy":"CM","auto":true}
+{"term":"J'ai besoin d'une ambulance.","back":"I need an ambulance.","scene":"calling for help","src":"tatoeba:9766052","by":"lbdx","enId":"2387475","enBy":"CK","auto":true}
+{"term":"Je crois qu'il les a volées.","back":"I think he stole them.","scene":"theft and loss","src":"tatoeba:13957639","by":"Rovo","enId":"12251734","enBy":"Miktsoanit","auto":true}
+{"term":"C'est moi qui me suis blessé.","back":"I'm the one who got injured.","scene":"accident","src":"tatoeba:3058070","by":"Amastan","enId":"11883664","enBy":"zogwarg","auto":true}
+{"term":"J'ai perdu ma foi religieuse.","back":"I've lost my religious faith.","scene":"theft and loss","src":"tatoeba:550814","by":"sacredceltic","enId":"258490","auto":true}
+{"term":"J'ai perdu ma clé de voiture.","back":"I've lost my car key.","scene":"theft and loss","src":"tatoeba:728136","by":"chkube","enId":"265489","enBy":"CK","auto":true}
+{"term":"Ça me fait mal quand j'urine.","back":"It hurts when I urinate.","scene":"accident","src":"tatoeba:1012900","by":"sacredceltic","enId":"1009184","enBy":"AOCinJAPAN","auto":true}
+{"term":"J'ai perdu mon stylo préféré.","back":"I lost my favorite pen.","scene":"theft and loss","src":"tatoeba:2383392","by":"sacredceltic","enId":"2380190","enBy":"CK","auto":true}
+{"term":"C'est le devoir de la police.","back":"That is the duty of the police.","scene":"theft and loss","src":"tatoeba:3427574","by":"Micsmithel","enId":"2942522","enBy":"eirik174","auto":true}
+{"term":"Je n'ai jamais été dévalisée.","back":"I have never been robbed.","scene":"theft and loss","src":"tatoeba:5574679","by":"sacredceltic","enId":"2871298","enBy":"Hybrid","auto":true}
+{"term":"Aucun canadien ne fut blessé.","back":"No Canadians were injured.","scene":"accident","src":"tatoeba:5579313","by":"Aiji","enId":"4500277","enBy":"CK","auto":true}
+{"term":"Je viens d'avoir un accident.","back":"I just had an accident.","scene":"accident","src":"tatoeba:10940023","by":"lbdx","enId":"263688","enBy":"CK","auto":true}
+{"term":"Quelqu'un a-t-il été blessé ?","back":"Was anyone injured?","scene":"accident","src":"tatoeba:11732683","by":"lbdx","enId":"3823549","enBy":"CK","auto":true}
+{"term":"J'ai perdu mon porte-monnaie.","back":"I lost my purse.","scene":"theft and loss","src":"tatoeba:13358886","by":"lbdx","enId":"436779","enBy":"lukaszpp","auto":true}
+{"term":"Aide-moi au lieu de rêvasser !","back":"Stop dreaming and help me!","scene":"calling for help","src":"tatoeba:6085200","by":"christian63","enId":"6089472","enBy":"AsaeP","auto":true}
+{"term":"J'ai perdu mon appareil photo.","back":"I lost my camera.","scene":"theft and loss","src":"tatoeba:7335","by":"qdii","enId":"253341","enBy":"CK","auto":true}
+{"term":"Je n'ai personne pour m'aider.","back":"I have no one to help me.","scene":"calling for help","src":"tatoeba:942095","by":"sacredceltic","enId":"262435","enBy":"CK","auto":true}
+{"term":"J'attends de lui qu'il m'aide.","back":"I expect him to help me.","scene":"calling for help","src":"tatoeba:962543","by":"sacredceltic","enId":"260088","enBy":"CK","auto":true}
+{"term":"J'ai perdu, lundi, mon boulot.","back":"I lost my job on Monday.","scene":"theft and loss","src":"tatoeba:2383388","by":"sacredceltic","enId":"2380192","enBy":"CK","auto":true}
+{"term":"J'ai des amis à la préfecture.","back":"I have some friends in the police department.","scene":"theft and loss","src":"tatoeba:2433692","by":"sacredceltic","enId":"1970116","enBy":"CK","auto":true}
+{"term":"C'est arrivé par pur accident.","back":"It happened completely by accident.","scene":"accident","src":"tatoeba:3446588","by":"felix63","enId":"42625","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma carte de crédit.","back":"I lost my credit card.","scene":"theft and loss","src":"tatoeba:5377454","by":"Aiji","enId":"2819451","enBy":"Hybrid","auto":true}
+{"term":"J'ai failli avoir un accident.","back":"I almost had an accident.","scene":"accident","src":"tatoeba:6575396","by":"GB3","enId":"6575384","enBy":"Eccles17","auto":true}
+{"term":"Aucun passager n'a été blessé.","back":"No passengers were injured.","scene":"accident","src":"tatoeba:6892337","by":"GB3","enId":"4500275","enBy":"CK","auto":true}
+{"term":"Tu n'as pas besoin de m'aider.","back":"You don't need to help me.","scene":"calling for help","src":"tatoeba:8664025","by":"Julien_PDC","enId":"8456943","enBy":"Luiaard","auto":true}
+{"term":"C'est là que l'accident arriva.","back":"This is where the accident happened.","scene":"accident","src":"tatoeba:399999","by":"sysko","enId":"62144","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma confiance en lui.","back":"I lost my trust in him.","scene":"theft and loss","src":"tatoeba:483449","by":"sacredceltic","enId":"458218","enBy":"mamat","auto":true}
+{"term":"Je n'ai pas appelé d'ambulance.","back":"I didn't call an ambulance.","scene":"calling for help","src":"tatoeba:2291809","by":"sacredceltic","enId":"2291151","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma couverture santé.","back":"I lost my health insurance.","scene":"theft and loss","src":"tatoeba:2482455","by":"sacredceltic","enId":"2059857","enBy":"CK","auto":true}
+{"term":"Personne d'autre ne fut blessé.","back":"No one else was injured.","scene":"accident","src":"tatoeba:3649029","by":"sacredceltic","enId":"874869","enBy":"CK","auto":true}
+{"term":"Il ne s'agit pas d'une urgence.","back":"It's not an emergency.","scene":"calling for help","src":"tatoeba:4855539","by":"sacredceltic","enId":"2713601","enBy":"CK","auto":true}
+{"term":"J'ai perdu mes clés de voiture.","back":"I lost my car keys.","scene":"theft and loss","src":"tatoeba:5574598","by":"sacredceltic","enId":"2760955","enBy":"Hybrid","auto":true}
+{"term":"J'ai perdu ma carte de retrait.","back":"I lost my debit card.","scene":"theft and loss","src":"tatoeba:5574650","by":"sacredceltic","enId":"2819452","enBy":"Hybrid","auto":true}
+{"term":"Fais attention. C'est glissant.","back":"Be careful. It's slippery.","scene":"accident","src":"tatoeba:10589512","by":"lbdx","enId":"7830074","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma clé dans le coin.","back":"I lost my key around here.","scene":"theft and loss","src":"tatoeba:11384945","by":"Aiji","enId":"5277652","enBy":"tabular","auto":true}
+{"term":"J'attends que quelqu'un m'aide.","back":"I'm waiting for someone to help me.","scene":"calling for help","src":"tatoeba:11574545","by":"Aiji","enId":"5937235","enBy":"CK","auto":true}
+{"term":"Attention ! Le sol est mouillé.","back":"Be careful! The floor is wet.","scene":"accident","src":"tatoeba:12364306","by":"lbdx","enId":"682407","enBy":"Source_VOA","auto":true}
+{"term":"Il semble que j'ai perdu ma clé.","back":"It seems that I've lost my keys.","scene":"theft and loss","src":"tatoeba:559250","by":"sacredceltic","enId":"7727927","enBy":"CK","auto":true}
+{"term":"Tu as dit qu'il y avait urgence.","back":"You said there was an emergency.","scene":"calling for help","src":"tatoeba:4164885","by":"sacredceltic","enId":"3729732","enBy":"CM","auto":true}
+{"term":"J'ai perdu les clés de chez moi.","back":"I lost my house keys.","scene":"theft and loss","src":"tatoeba:5574596","by":"sacredceltic","enId":"2760954","enBy":"Hybrid","auto":true}
+{"term":"J'ai peur que tu sois en danger.","back":"I'm afraid you're in danger.","scene":"accident","src":"tatoeba:7815818","by":"Aiji","enId":"7217689","enBy":"CK","auto":true}
+{"term":"J'ai perdu mon sens de l'odorat.","back":"I've lost my sense of smell.","scene":"theft and loss","src":"tatoeba:12468562","by":"lbdx","enId":"2833917","enBy":"CK","auto":true}
+{"term":"Viens m'aider à décorer le sapin.","back":"Come help me decorate the tree.","scene":"calling for help","src":"tatoeba:6560495","by":"Blabla","enId":"6579603","enBy":"Eccles17","auto":true}
+{"term":"On m'a volé ma voiture hier soir.","back":"My car was stolen last night.","scene":"theft and loss","src":"tatoeba:6455","by":"TRANG","enId":"244735","enBy":"CK","auto":true}
+{"term":"Je pense que j'ai perdu mes clés.","back":"I think I lost my keys.","scene":"theft and loss","src":"tatoeba:528189","by":"sacredceltic","enId":"528185","enBy":"fanty","auto":true}
+{"term":"J'ai juste besoin que tu m'aides.","back":"I just need you to help me.","scene":"calling for help","src":"tatoeba:4250811","by":"mouche","enId":"3921142","enBy":"CK","auto":true}
+{"term":"Je n'ai pas de casier judiciaire.","back":"I don't have a police record.","scene":"theft and loss","src":"tatoeba:9077948","by":"Aiji","enId":"14037560","enBy":"Myrano_","auto":true}
+{"term":"J'ai perdu le fil de mes pensées.","back":"I lost my train of thought.","scene":"theft and loss","src":"tatoeba:11247412","by":"lbdx","enId":"6774589","enBy":"Hybrid","auto":true}
+{"term":"Ce n'est pas arrivé par accident.","back":"This didn't happen by accident.","scene":"accident","src":"tatoeba:11450605","by":"lbdx","enId":"8349146","enBy":"CK","auto":true}
+{"term":"C'est moi qui ai volé le tableau.","back":"I'm the one who stole the painting.","scene":"theft and loss","src":"tatoeba:11562536","by":"Aiji","enId":"2540049","enBy":"CK","auto":true}
+{"term":"J'ai beaucoup d'amis pour m'aider.","back":"I have a lot of friends to help me.","scene":"calling for help","src":"tatoeba:335729","by":"sysko","enId":"262436","enBy":"CK","auto":true}
+{"term":"J'ai perdu les clés de ma voiture.","back":"I lost my car key.","scene":"theft and loss","src":"tatoeba:4653308","by":"thowas","enId":"2760952","enBy":"verdulo","auto":true}
+{"term":"J'ai égaré mes lunettes de soleil.","back":"I lost my sunglasses.","scene":"theft and loss","src":"tatoeba:5549445","by":"sacredceltic","enId":"2481021","enBy":"Hybrid","auto":true}
+{"term":"J'ai perdu mon permis de conduire.","back":"I lost my driving license.","scene":"theft and loss","src":"tatoeba:5574652","by":"sacredceltic","enId":"2819453","enBy":"Hybrid","auto":true}
+{"term":"Ne laisse pas le voleur s'enfuir !","back":"Don't let the thief run away!","scene":"theft and loss","src":"tatoeba:6568710","by":"Micsmithel","enId":"1365769","enBy":"marcelostockle","auto":true}
+{"term":"J'ai perdu mon téléphone portable.","back":"I've lost my mobile.","scene":"theft and loss","src":"tatoeba:7675765","by":"Katastrauff","enId":"12338329","enBy":"sundown","auto":true}
+{"term":"Personne n'a de casier judiciaire.","back":"No one's got a police record.","scene":"theft and loss","src":"tatoeba:14037559","by":"Myrano_","enId":"14037558","enBy":"Myrano_","auto":true}
+{"term":"J'ai perdu mon nouveau stylo plume.","back":"I've lost my new fountain pen.","scene":"theft and loss","src":"tatoeba:330953","by":"TRANG","enId":"7714884","enBy":"CK","auto":true}
+{"term":"Appelez la police en cas d'urgence.","back":"Call the police in an emergency.","scene":"calling for help","src":"tatoeba:528609","by":"sacredceltic","enId":"317954","auto":true}
+{"term":"Cette cabane menace de s'effondrer.","back":"This hut is in danger of falling down.","scene":"accident","src":"tatoeba:837850","by":"sacredceltic","enId":"58504","enBy":"CK","auto":true}
+{"term":"C'est ainsi que l'accident survint.","back":"That is how the accident occurred.","scene":"accident","src":"tatoeba:1066723","by":"sacredceltic","enId":"41447","enBy":"Swift","auto":true}
+{"term":"J'ai perdu mes lunettes à la plage.","back":"I lost my glasses at the beach.","scene":"theft and loss","src":"tatoeba:6328419","by":"Scorpionvenin14","enId":"6327969","enBy":"OsoHombre","auto":true}
+{"term":"J'ai perdu ma bague de fiançailles.","back":"I lost my wedding ring.","scene":"theft and loss","src":"tatoeba:6486683","by":"GB3","enId":"5767527","enBy":"Hybrid","auto":true}
+{"term":"Fais attention. C'est glissant ici.","back":"Be careful. It's slippery here.","scene":"accident","src":"tatoeba:10635656","by":"lbdx","enId":"10631799","enBy":"CK","auto":true}
+{"term":"Je sais que la police me soupçonne.","back":"I know the police suspect me.","scene":"theft and loss","src":"tatoeba:11972135","by":"lbdx","enId":"6262804","enBy":"CK","auto":true}
+{"term":"J'ai failli perdre mon portefeuille.","back":"I almost lost my wallet.","scene":"theft and loss","src":"tatoeba:3259728","by":"Yemana","enId":"3259729","enBy":"Luornu","auto":true}
+{"term":"Nous devons prévenir la gendarmerie.","back":"We must alert the police.","scene":"theft and loss","src":"tatoeba:3293477","by":"Blabla","enId":"7644700","enBy":"karloelkebekio","auto":true}
+{"term":"On m'a volé ma bicyclette hier soir.","back":"My bike was stolen last night.","scene":"theft and loss","src":"tatoeba:334507","by":"TRANG","enId":"386697","enBy":"Mouseneb","auto":true}
+{"term":"Que quelqu'un veuille bien m'aider !","back":"Someone, please help me.","scene":"calling for help","src":"tatoeba:1628870","by":"sacredceltic","enId":"1627241","enBy":"Spamster","auto":true}
+{"term":"J'ai perdu mon chemin dans les bois.","back":"I lost my way in the woods.","scene":"theft and loss","src":"tatoeba:5449034","by":"Aiji","enId":"258835","enBy":"CK","auto":true}
+{"term":"J'ai seulement volé quelques pièces.","back":"I only stole a few coins.","scene":"theft and loss","src":"tatoeba:7004874","by":"Rockaround","enId":"5205186","enBy":"CK","auto":true}
+{"term":"Sortez d'ici ou j'appelle la police.","back":"Get out of here or I'll call the police.","scene":"calling for help","src":"tatoeba:11972813","by":"lbdx","enId":"7962243","enBy":"karloelkebekio","auto":true}
+{"term":"Tu risques de rester sur le carreau.","back":"You're in danger of falling by the wayside.","scene":"accident","src":"tatoeba:13014077","by":"lbdx","enId":"12098329","enBy":"sundown","auto":true}
+{"term":"Nous avons un mandat de perquisition.","back":"We have a search warrant.","scene":"calling for help","src":"tatoeba:5185372","by":"Amastan","enId":"5187837","enBy":"CK","auto":true}
+{"term":"Sois prudent. Ce couteau est aiguisé.","back":"Be careful. That knife is sharp.","scene":"accident","src":"tatoeba:1021962","by":"U2FS","enId":"680473","enBy":"Source_VOA","auto":true}
+{"term":"Je dois me rendre au poste de police.","back":"I have to go to the police station.","scene":"theft and loss","src":"tatoeba:1365174","by":"sacredceltic","enId":"238191","enBy":"CK","auto":true}
+{"term":"J'ai volé ce livre à la bibliothèque.","back":"I stole this book from the library.","scene":"theft and loss","src":"tatoeba:7327121","by":"Aiji","enId":"2406790","enBy":"CK","auto":true}
+{"term":"J'ai perdu ma femme dans un accident.","back":"I lost my wife in an accident.","scene":"theft and loss","src":"tatoeba:9710655","by":"lbdx","enId":"6808815","enBy":"CK","auto":true}
+{"term":"J'espère que personne n'a été blessé.","back":"I hope nobody got hurt.","scene":"accident","src":"tatoeba:9761883","by":"lbdx","enId":"2965708","enBy":"Hybrid","auto":true}
+{"term":"Cet accident a été dû à sa négligence.","back":"That accident was due to his carelessness.","scene":"accident","src":"tatoeba:1101945","by":"sacredceltic","enId":"485791","enBy":"minshirui","auto":true}
+{"term":"Sois prudent quant à ce que tu manges.","back":"Be careful about what you eat.","scene":"accident","src":"tatoeba:1347685","by":"sacredceltic","enId":"908416","enBy":"CK","auto":true}
+{"term":"Je crois que j'ai perdu mon parapluie.","back":"I think I've lost my umbrella.","scene":"theft and loss","src":"tatoeba:7745806","by":"lbdx","enId":"7730184","enBy":"CK","auto":true}
+{"term":"A-t-on parlé de l'accident aux infos ?","back":"Was there anything on the news about the accident?","scene":"accident","src":"tatoeba:10540567","by":"lbdx","enId":"3094894","enBy":"CK","auto":true}
+{"term":"Je n'ai jamais tué, ni blessé personne.","back":"I've never killed nor injured anyone.","scene":"accident","src":"tatoeba:127477","by":"Archibald","enId":"7810429","enBy":"CK","auto":true}
+{"term":"J'ai perdu mes clés quelque part, hier.","back":"I lost my keys somewhere yesterday.","scene":"theft and loss","src":"tatoeba:1016814","by":"sacredceltic","enId":"2318138","enBy":"Gulliver","auto":true}
+{"term":"C'est ainsi que l'accident est survenu.","back":"This is how the accident happened.","scene":"accident","src":"tatoeba:1364087","by":"sacredceltic","enId":"60391","enBy":"CK","auto":true}
+{"term":"J'ai appris l'accident dans le journal.","back":"I found out about the accident in the newspaper.","scene":"accident","src":"tatoeba:1978187","by":"nimfeo","enId":"9409309","enBy":"Nylez","auto":true}
+{"term":"J'ai terriblement mal à cet endroit-là.","back":"It hurts tremendously here.","scene":"accident","src":"tatoeba:4323139","by":"Scorpionvenin14","enId":"4321104","enBy":"AlanF_US","auto":true}
+{"term":"J'ai perdu mon portefeuille hier matin.","back":"I lost my wallet yesterday morning.","scene":"theft and loss","src":"tatoeba:11754628","by":"Aiji","enId":"6884717","enBy":"CK","auto":true}
+{"term":"Je ne fais pas confiance aux policiers.","back":"I don't trust police officers.","scene":"theft and loss","src":"tatoeba:12133313","by":"Rovo","enId":"13152415","enBy":"rul","auto":true}
+{"term":"Je suis parvenu à arrêter le saignement.","back":"I've managed to stop the bleeding.","scene":"accident","src":"tatoeba:5671450","by":"Aiji","enId":"2359951","enBy":"CK","auto":true}
+{"term":"Attention ! Je crois qu'il est dangereux.","back":"Be careful! I think he's dangerous.","scene":"accident","src":"tatoeba:7200914","by":"felix63","enId":"12024381","enBy":"zogwarg","auto":true}
+{"term":"Arrête de faire l'andouille et aide-moi !","back":"Stop fooling around and help me!","scene":"calling for help","src":"tatoeba:9930625","by":"lbdx","enId":"3018393","enBy":"Hautis","auto":true}
+{"term":"Veillez à ne pas trop cuire les carottes.","back":"Be careful not to overcook the carrots.","scene":"accident","src":"tatoeba:12247614","by":"lbdx","enId":"2733140","enBy":"CK","auto":true}
+{"term":"Soyez prudents ! Le danger rôde partout !","back":"Be careful! Danger lurks everywhere!","scene":"accident","src":"tatoeba:12963111","by":"lbdx","enId":"7155930","enBy":"Kiwi","auto":true}
+{"term":"Je ne parviens pas à juguler l'hémorragie.","back":"I can't stop the bleeding.","scene":"accident","src":"tatoeba:1949242","by":"Rovo","enId":"6873451","enBy":"CK","auto":true}
+{"term":"Nous n'avons pas encore attrapé le voleur.","back":"We haven't caught the thief yet.","scene":"theft and loss","src":"tatoeba:5546226","by":"Scorpionvenin14","enId":"5546211","enBy":"CK","auto":true}
+{"term":"Vous n'êtes pas responsable de l'accident.","back":"You're not to blame for the accident.","scene":"accident","src":"tatoeba:11454287","by":"Aiji","enId":"8980390","enBy":"CK","auto":true}
+{"term":"En cas d'urgence, agissez-vous rapidement ?","back":"In an emergency, do you act quickly?","scene":"calling for help","src":"tatoeba:1036923","by":"sacredceltic","enId":"680072","enBy":"Source_VOA","auto":true}
+{"term":"Sois prudent en manipulant des allumettes !","back":"Be careful handling matches!","scene":"accident","src":"tatoeba:3668288","by":"sacredceltic","enId":"32521","enBy":"Dejo","auto":true}
+{"term":"Fais attention, ce couteau est bien affûté.","back":"Be careful. This knife is really sharp.","scene":"accident","src":"tatoeba:4052500","by":"Scorpionvenin14","enId":"4051758","enBy":"CK","auto":true}
+{"term":"Fichons le camp avant que la police arrive.","back":"Let's get out of here before the police come.","scene":"theft and loss","src":"tatoeba:6718338","by":"Micsmithel","enId":"1334588","enBy":"CK","auto":true}
+{"term":"Prends garde à ceux qui parlent le lojban !","back":"Be careful of people who can speak Lojban!","scene":"accident","src":"tatoeba:11893322","by":"zogwarg","enId":"9980389","enBy":"tsp_2","auto":true}
+{"term":"Je voulais seulement quelqu'un pour m'aider.","back":"I just wanted somebody to help me.","scene":"calling for help","src":"tatoeba:7785774","by":"Aiji","enId":"2374078","enBy":"CK","auto":true}
+{"term":"Merci d'être venus spécialement pour m'aider.","back":"It is kind of you go out of your way to help me.","scene":"calling for help","src":"tatoeba:1903240","by":"sysko","enId":"29147","enBy":"CK","auto":true}
+{"term":"Fais attention, c'est un carrefour dangereux !","back":"Be careful, it's a dangerous junction!","scene":"accident","src":"tatoeba:8923125","by":"lbdx","enId":"3628318","enBy":"Eldad","auto":true}
+{"term":"Attention à ne pas trébucher sur cette pierre.","back":"Be careful not to trip over this rock.","scene":"accident","src":"tatoeba:11972724","by":"lbdx","enId":"7775416","enBy":"CK","auto":true}
+{"term":"Ma maison a été cambriolée pendant mon absence.","back":"My house was robbed while I was away.","scene":"theft and loss","src":"tatoeba:7585","by":"sacredceltic","enId":"247127","enBy":"CK","auto":true}
+{"term":"Oses-tu le questionner au sujet de l'accident ?","back":"Dare you ask him about the accident?","scene":"accident","src":"tatoeba:804585","by":"sacredceltic","enId":"47161","auto":true}
+{"term":"Pressez sur la plaie pour arrêter le saignement.","back":"Put pressure on the wound to stop the bleeding.","scene":"accident","src":"tatoeba:9833400","by":"lbdx","enId":"681784","enBy":"Source_VOA","auto":true}
+{"term":"C'était une décision délibérée, pas un accident.","back":"That was a wilful decision, not an accident.","scene":"accident","src":"tatoeba:12713406","by":"lbdx","enId":"12713405","enBy":"rul","auto":true}
+{"term":"Quel numéro devrais-je composer en cas d'urgence ?","back":"In case of an emergency, what number should I call?","scene":"calling for help","src":"tatoeba:4363868","by":"sacredceltic","enId":"4356258","enBy":"CK","auto":true}
+{"term":"Les routes sont glissantes, alors faites attention.","back":"The roads are slippery, so please be careful.","scene":"accident","src":"tatoeba:4040139","by":"Scorpionvenin14","enId":"4039445","enBy":"CK","auto":true}
+{"term":"Attention à ne pas confondre compassion et empathie.","back":"Be careful not to confuse sympathy for empathy.","scene":"accident","src":"tatoeba:12924997","by":"lbdx","enId":"3235927","enBy":"orcrist","auto":true}
+{"term":"Mon appartement a été cambriolé, la semaine dernière.","back":"My apartment was robbed last week.","scene":"theft and loss","src":"tatoeba:3229823","by":"sacredceltic","enId":"3213099","enBy":"Hybrid","auto":true}

@@ -3,7 +3,7 @@ import { describeKeys } from "../../../lib/i18n-context";
 
 /**
  * /words scenario phrase decks (lib/words/phrases.ts): the Phrases group,
- * the twelve scenario names shown as list names, and the register badge on a
+ * the scenario names shown as list names, and the register badge on a
  * phrase card. Every key has a line in `context` below (docs/i18n.md).
  */
 const dictionary = {
@@ -279,6 +279,42 @@ const dictionary = {
       mr: "भावना, आभार आणि माफी",
       ko: "감정, 감사, 사과",
     }),
+    admin: t({
+      en: "Paperwork, bank and services",
+      zh: "办手续、银行与服务",
+      hi: "कागज़ी काम, बैंक और सेवाएँ",
+      es: "Trámites, banco y servicios",
+      fr: "Démarches, banque et services",
+      ar: "المعاملات والبنك والخدمات",
+      bn: "কাগজপত্র, ব্যাংক ও পরিষেবা",
+      pt: "Burocracia, banco e serviços",
+      ru: "Документы, банк и услуги",
+      ur: "کاغذی کارروائی، بینک اور خدمات",
+      id: "Urusan dokumen, bank, dan layanan",
+      de: "Behörden, Bank und Dienste",
+      ja: "手続き・銀行・サービス",
+      sw: "Makaratasi, benki na huduma",
+      mr: "कागदपत्रे, बँक आणि सेवा",
+      ko: "서류, 은행, 서비스",
+    }),
+    help: t({
+      en: "Asking for help, not understanding",
+      zh: "求助与听不懂时",
+      hi: "मदद माँगना, समझ न आना",
+      es: "Pedir ayuda, no entender",
+      fr: "Demander de l’aide, ne pas comprendre",
+      ar: "طلب المساعدة وعدم الفهم",
+      bn: "সাহায্য চাওয়া, না বোঝা",
+      pt: "Pedir ajuda, não entender",
+      ru: "Просьба о помощи, «не понимаю»",
+      ur: "مدد مانگنا، سمجھ نہ آنا",
+      id: "Minta tolong, tidak mengerti",
+      de: "Um Hilfe bitten, nicht verstehen",
+      ja: "助けを求める・分からないとき",
+      sw: "Kuomba msaada, kutoelewa",
+      mr: "मदत मागणे, न समजणे",
+      ko: "도움 요청, 못 알아들을 때",
+    }),
   },
 };
 
@@ -313,6 +349,9 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "/words list picker and list tree: the name of one scenario phrase deck — phrases for calling for help, an accident, theft, the police. A short title (noun phrase), shown as a list name under Phrases.",
   feelings:
     "/words list picker and list tree: the name of one scenario phrase deck — phrases for saying how you feel, saying thank you and saying sorry. A short title (noun phrase), shown as a list name under Phrases.",
+  admin:
+    "/words list picker and list tree: the name of one scenario phrase deck — survival phrases for errands when living abroad: the bank, the post office, the town hall or prefecture, renting a flat, getting a phone SIM, filling in forms. “Paperwork” means official formalities, not office work. A short title (noun phrase), shown as a list name under Phrases.",
+  help: "/words list picker and list tree: the name of one scenario phrase deck — survival phrases for asking someone for help and for not understanding: “Sorry, I don't understand”, “Could you say that again more slowly?”, “Do you speak English?”. A short title (noun phrase), shown as a list name under Phrases.",
 };
 
 const wordsPhrasesContent = {

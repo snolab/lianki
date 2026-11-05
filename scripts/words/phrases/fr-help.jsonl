@@ -1,0 +1,424 @@
+// fr-help: written by build-scene-sentences.ts; edit the lexicon, not this file
+{"term":"Peux-tu aider ?","back":"Can you help?","scene":"asking for help","src":"tatoeba:7482608","by":"Micsmithel","enId":"2245055","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider ?","back":"Can you help me?","scene":"asking for help","src":"tatoeba:1159441","by":"sacredceltic","enId":"434410","enBy":"lukaszpp","auto":true}
+{"term":"Peux-tu l'aider ?","back":"Can you help her?","scene":"asking for help","src":"tatoeba:7679773","by":"Yemana","enId":"3914945","enBy":"CH","auto":true}
+{"term":"Pourrais-tu aider ?","back":"Could you help?","scene":"asking for help","src":"tatoeba:9253094","by":"Micsmithel","enId":"1556500","enBy":"brymck","auto":true}
+{"term":"Peux-tu nous aider ?","back":"Can you help us?","scene":"asking for help","src":"tatoeba:3262350","by":"Aiji","enId":"1886253","enBy":"CK","auto":true}
+{"term":"Pouvais-tu m’aider ?","back":"Could you help me?","scene":"asking for help","src":"tatoeba:9545558","by":"sacredceltic","enId":"64405","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider un peu ?","back":"Can you help me a little?","scene":"asking for help","src":"tatoeba:1144434","by":"sacredceltic","enId":"39986","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider, maman ?","back":"Can you help, Mother?","scene":"asking for help","src":"tatoeba:12141369","by":"always","enId":"11886536","enBy":"Amastan","auto":true}
+{"term":"Me rendrais-tu un service ?","back":"Would you do me a favor?","scene":"asking for help","src":"tatoeba:1330344","by":"sacredceltic","enId":"27869","enBy":"CK","auto":true}
+{"term":"Pourrais-tu m'aider un peu ?","back":"Could you help me out a little?","scene":"asking for help","src":"tatoeba:1310358","by":"sacredceltic","enId":"3162185","enBy":"CK","auto":true}
+{"term":"Frère, pourrais-tu m'aider ?","back":"Could you help me, brother?","scene":"asking for help","src":"tatoeba:7664161","by":"tras","enId":"7593081","enBy":"feudalism","auto":true}
+{"term":"Peux-tu m'aider à porter ça ?","back":"Can you help me carry this?","scene":"asking for help","src":"tatoeba:6939929","by":"Aiji","enId":"3162198","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider une seconde ?","back":"Could you help me for a second?","scene":"asking for help","src":"tatoeba:11984627","by":"lbdx","enId":"6438421","enBy":"CK","auto":true}
+{"term":"Peux-tu me rendre un service ?","back":"Can you do me a favour?","scene":"asking for help","src":"tatoeba:551479","by":"sacredceltic","enId":"2650946","enBy":"meerkat","auto":true}
+{"term":"Peux-tu m'aider à le trouver ?","back":"Can you help me find it?","scene":"asking for help","src":"tatoeba:5396430","by":"Aiji","enId":"3162196","enBy":"CK","auto":true}
+{"term":"Je peux te demander un service ?","back":"Can I ask you a favor?","scene":"asking for help","src":"tatoeba:2982088","by":"Blabla","enId":"71172","enBy":"CK","auto":true}
+{"term":"Pourrais-tu m'aider à faire ça ?","back":"Could you help me do this?","scene":"asking for help","src":"tatoeba:6630980","by":"Aiji","enId":"6126645","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider dans mon travail ?","back":"Can you help me with my work?","scene":"asking for help","src":"tatoeba:7752","by":"sacredceltic","enId":"250942","enBy":"CK","auto":true}
+{"term":"Pouvez-vous m'aider à le trouver ?","back":"Could you help me to find it?","scene":"asking for help","src":"tatoeba:129268","by":"sacredceltic","enId":"276704","enBy":"sundown","auto":true}
+{"term":"Tu pourrais me rendre un service ?","back":"Could you do me a favour?","scene":"asking for help","src":"tatoeba:3273829","by":"nimfeo","enId":"3273828","enBy":"BE","auto":true}
+{"term":"Peux-tu m'aider pour trouver ceci ?","back":"Could you help me find it?","scene":"asking for help","src":"tatoeba:961472","by":"manuk7","enId":"12403811","enBy":"sundown","auto":true}
+{"term":"Tu pourrais lui rendre un service ?","back":"Could you do him a favour?","scene":"asking for help","src":"tatoeba:3273831","by":"nimfeo","enId":"3273830","enBy":"BE","auto":true}
+{"term":"Pourriez-vous me rendre un service ?","back":"Could you do me a favor?","scene":"asking for help","src":"tatoeba:551478","by":"sacredceltic","enId":"485496","enBy":"CK","auto":true}
+{"term":"Pourrais-je te demander un service ?","back":"Could I ask a favor of you?","scene":"asking for help","src":"tatoeba:1059427","by":"sacredceltic","enId":"34681","enBy":"CK","auto":true}
+{"term":"Pourriez-vous nous aider après l'école ?","back":"Could you help us after school?","scene":"asking for help","src":"tatoeba:5453234","by":"alexisslay","enId":"320993","enBy":"CK","auto":true}
+{"term":"Pouvez-vous m'aider à trouver un travail ?","back":"Can you help me find a job?","scene":"asking for help","src":"tatoeba:11587194","by":"Aiji","enId":"3114078","enBy":"CK","auto":true}
+{"term":"À l'aide !","back":"Help!","scene":"asking for help","src":"tatoeba:128430","by":"sysko","enId":"435084","enBy":"lukaszpp","auto":true}
+{"term":"Que veux-tu dire ?","back":"What do you mean?","scene":"not understanding","src":"tatoeba:499166","by":"sacredceltic","enId":"24706","enBy":"CK","auto":true}
+{"term":"Ça veut dire quoi ?","back":"What does this mean?","scene":"not understanding","src":"tatoeba:12682904","by":"Olcyx","enId":"464566","enBy":"lukaszpp","auto":true}
+{"term":"Comment dit-on ... ?","back":"How do you say...?","scene":"not understanding","src":"tatoeba:624448","by":"qdii","enId":"602241","enBy":"Eldad","auto":true}
+{"term":"Comment dis-tu cela ?","back":"How do you say that?","scene":"not understanding","src":"tatoeba:761153","by":"pandark","enId":"759355","enBy":"vgigregg","auto":true}
+{"term":"Comment écris-tu ce mot ?","back":"How do you spell the word?","scene":"not understanding","src":"tatoeba:12117","by":"sysko","enId":"48087","enBy":"orcrist","auto":true}
+{"term":"Que voulez-vous dire par là ?","back":"What do you mean by it?","scene":"not understanding","src":"tatoeba:880925","by":"sacredceltic","enId":"42964","enBy":"Dejo","auto":true}
+{"term":"Comment pourrais-tu m'aider ?","back":"How could you help me?","scene":"asking for help","src":"tatoeba:5760208","by":"Yemana","enId":"5760180","enBy":"CK","auto":true}
+{"term":"Rends-moi un service, veux-tu ?","back":"Do me a favor, will you?","scene":"asking for help","src":"tatoeba:3639814","by":"sacredceltic","enId":"3636500","enBy":"CK","auto":true}
+{"term":"Je voudrais te demander un service.","back":"I'd like to ask a favour of you.","scene":"asking for help","src":"tatoeba:998673","by":"sacredceltic","enId":"11935563","enBy":"sundown","auto":true}
+{"term":"Comment ça, tu ne te souviens pas ?","back":"What do you mean, you don't remember?","scene":"not understanding","src":"tatoeba:11889693","by":"lbdx","enId":"5725490","enBy":"CM","auto":true}
+{"term":"Comment ça, je ne suis pas ton genre ?","back":"What do you mean, I'm not your type?","scene":"not understanding","src":"tatoeba:10927727","by":"lbdx","enId":"2947494","enBy":"Hybrid","auto":true}
+{"term":"Qu'est-ce que tu veux dire par \"mort\" ?","back":"What do you mean by \"dead\"?","scene":"not understanding","src":"tatoeba:2174675","by":"Sisyphe","enId":"2092339","enBy":"MethodGT","auto":true}
+{"term":"Ce mot-là… Qu'est-ce que ça veut dire ?","back":"That word there… What does that mean?","scene":"not understanding","src":"tatoeba:3272426","by":"nimfeo","enId":"3272425","auto":true}
+{"term":"« Tu peux m'aider ? » « Pas maintenant ! »","back":"\"Can you help me?\" \"Not now.\"","scene":"asking for help","src":"tatoeba:11129486","by":"felix63","enId":"11134292","enBy":"Ooneykcall","auto":true}
+{"term":"Écris-le !","back":"Write it down!","scene":"not understanding","src":"tatoeba:7563006","by":"Micsmithel","enId":"687854","enBy":"lukaszpp","auto":true}
+{"term":"Je comprends pas.","back":"I don't understand.","scene":"not understanding","src":"tatoeba:4323068","by":"gillux","enId":"376611","enBy":"CK","auto":true}
+{"term":"Fais-moi plaisir.","back":"Do me a favor.","scene":"asking for help","src":"tatoeba:10687561","by":"AutoBot","enId":"3206334","enBy":"asveja","auto":true}
+{"term":"Je ne compris pas.","back":"I didn't understand.","scene":"not understanding","src":"tatoeba:859211","by":"sacredceltic","enId":"853190","enBy":"piksea","auto":true}
+{"term":"Je ne comprends rien.","back":"I don't understand a thing.","scene":"not understanding","src":"tatoeba:4580505","by":"sacredceltic","enId":"3819931","enBy":"CK","auto":true}
+{"term":"Je t'ai rendu service.","back":"I did you a favor.","scene":"asking for help","src":"tatoeba:4227565","by":"sacredceltic","enId":"1887162","enBy":"CK","auto":true}
+{"term":"Je ne le comprends pas.","back":"I don't understand it.","scene":"not understanding","src":"tatoeba:938334","by":"sacredceltic","enId":"1841686","enBy":"CK","auto":true}
+{"term":"Tu me tues à petit feu.","back":"You are killing me slowly.","scene":"not understanding","src":"tatoeba:940872","by":"sacredceltic","enId":"269598","auto":true}
+{"term":"Je ne l'ai pas compris.","back":"I didn't understand it.","scene":"not understanding","src":"tatoeba:11675471","by":"Aiji","enId":"5175120","enBy":"CK","auto":true}
+{"term":"Je ne les comprends pas.","back":"I don't understand them.","scene":"not understanding","src":"tatoeba:1892968","by":"Amastan","enId":"2759543","enBy":"CM","auto":true}
+{"term":"Je lui ai rendu service.","back":"I did him a favor.","scene":"asking for help","src":"tatoeba:4233915","by":"sacredceltic","enId":"3918563","enBy":"CH","auto":true}
+{"term":"Maman, tu peux m'aider ?","back":"Mum, can you help me?","scene":"asking for help","src":"tatoeba:12141850","by":"Rovo","enId":"12204390","enBy":"sundown","auto":true}
+{"term":"Je ne vous comprends pas.","back":"I don't understand you.","scene":"not understanding","src":"tatoeba:7427","by":"Bruno","enId":"436555","enBy":"lukaszpp","auto":true}
+{"term":"Non, je ne comprends pas.","back":"No, I don't understand.","scene":"not understanding","src":"tatoeba:1979237","by":"nimfeo","enId":"1468397","enBy":"AMIKEMA","auto":true}
+{"term":"Je leur ai rendu service.","back":"I did them a favor.","scene":"asking for help","src":"tatoeba:4233914","by":"sacredceltic","enId":"3918562","enBy":"CH","auto":true}
+{"term":"Tu as tout à fait raison !","back":"You can say that again!","scene":"not understanding","src":"tatoeba:897919","by":"U2FS","enId":"7006348","enBy":"Adelpa","auto":true}
+{"term":"Je ne comprends pas ce mot.","back":"I don't understand this word.","scene":"not understanding","src":"tatoeba:11403","by":"sacredceltic","enId":"57974","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas du tout.","back":"I don't understand at all.","scene":"not understanding","src":"tatoeba:6210378","by":"Aiji","enId":"4567997","enBy":"CM","auto":true}
+{"term":"Je ne comprends pas ce pays.","back":"I don't understand this country.","scene":"not understanding","src":"tatoeba:7236793","by":"Aiji","enId":"2276247","enBy":"CK","auto":true}
+{"term":"Alors, que voulez-vous dire ?","back":"So, what do you mean?","scene":"not understanding","src":"tatoeba:5726763","by":"Aiji","enId":"3822495","enBy":"CK","auto":true}
+{"term":"Je n'y comprends rien du tout.","back":"I don't understand any of this.","scene":"not understanding","src":"tatoeba:5741082","by":"Yemana","enId":"2361523","enBy":"CK","auto":true}
+{"term":"J'essaie de te rendre service.","back":"I'm trying to do you a favor.","scene":"asking for help","src":"tatoeba:12911441","by":"lbdx","enId":"2542887","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas la musique.","back":"I don't understand music.","scene":"not understanding","src":"tatoeba:472218","by":"sacredceltic","enId":"472165","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas les femmes.","back":"I don't understand women.","scene":"not understanding","src":"tatoeba:2316254","by":"sacredceltic","enId":"2315332","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas du tout ça.","back":"I don't understand this at all.","scene":"not understanding","src":"tatoeba:2316263","by":"sacredceltic","enId":"2315330","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas l'histoire.","back":"I don't understand the plot.","scene":"not understanding","src":"tatoeba:5800062","by":"Toynop","enId":"5790217","enBy":"Eccles17","auto":true}
+{"term":"Je ne comprends pas ta question.","back":"I don't understand your question.","scene":"not understanding","src":"tatoeba:1060607","by":"sacredceltic","enId":"1060598","enBy":"CK","auto":true}
+{"term":"Fais-moi le plaisir de la fermer.","back":"Do me a favor and shut up.","scene":"asking for help","src":"tatoeba:1100349","by":"sacredceltic","enId":"4497838","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas ce qui arrive.","back":"I don't understand what's going on.","scene":"not understanding","src":"tatoeba:5331527","by":"Aiji","enId":"2361529","enBy":"CK","auto":true}
+{"term":"Je ne vous comprends pas très bien.","back":"I don't understand you very well.","scene":"not understanding","src":"tatoeba:6681204","by":"felix63","enId":"6687235","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas cette question.","back":"I don't understand that question.","scene":"not understanding","src":"tatoeba:2316265","by":"sacredceltic","enId":"2315329","enBy":"CK","auto":true}
+{"term":"Je ne compris pas ce qui se passait.","back":"I didn't understand what was happening.","scene":"not understanding","src":"tatoeba:3598472","by":"sacredceltic","enId":"3598196","enBy":"Hybrid","auto":true}
+{"term":"Je pense que je ne te comprends pas.","back":"I think I don't understand you.","scene":"not understanding","src":"tatoeba:5661765","by":"Yemana","enId":"5649331","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas pourquoi tu pars.","back":"I don't understand why you're leaving.","scene":"not understanding","src":"tatoeba:2316260","by":"sacredceltic","enId":"2315331","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas comment ça marche.","back":"I don't understand how this works.","scene":"not understanding","src":"tatoeba:548624","by":"sacredceltic","enId":"503528","enBy":"darinmex","auto":true}
+{"term":"Je ne comprends pas ce que vous dites.","back":"I don't understand what you're saying.","scene":"not understanding","src":"tatoeba:1080639","by":"sacredceltic","enId":"656776","enBy":"saeb","auto":true}
+{"term":"Qu'est-ce que ça veut dire exactement ?","back":"Exactly what does that mean?","scene":"not understanding","src":"tatoeba:4767609","by":"Doremi391","enId":"4890365","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas ce qui nous arrive.","back":"I don't understand what's happening to us.","scene":"not understanding","src":"tatoeba:8048357","by":"Rovo","enId":"2323273","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas sa façon de penser.","back":"I don't understand the way that he thinks.","scene":"not understanding","src":"tatoeba:11512136","by":"Aiji","enId":"286209","enBy":"CH","auto":true}
+{"term":"Je ne comprends pas de quoi vous parlez.","back":"I don't understand what you are talking about.","scene":"not understanding","src":"tatoeba:10288","by":"dominiko","enId":"70694","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas pourquoi tu le veux.","back":"I don't understand why you want it.","scene":"not understanding","src":"tatoeba:2017753","by":"sacredceltic","enId":"2016855","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas du tout cette question.","back":"I don't understand this question at all.","scene":"not understanding","src":"tatoeba:7794004","by":"Aiji","enId":"4181450","enBy":"AlanF_US","auto":true}
+{"term":"Parles-tu le moindre anglais ?","back":"Can you speak English at all?","scene":"not understanding","src":"tatoeba:461217","by":"sacredceltic","enId":"27516","enBy":"CN","auto":true}
+{"term":"Tu peux m'aider à trouver mes clés ?","back":"Can you help me find my keys?","scene":"asking for help","src":"tatoeba:11156054","by":"lbdx","enId":"5707850","enBy":"halfdan","auto":true}
+{"term":"Peux-tu aider à s'occuper des enfants ?","back":"Can you help look after the kids?","scene":"asking for help","src":"tatoeba:1356289","by":"sacredceltic","enId":"953152","enBy":"CK","auto":true}
+{"term":"Pourriez-vous m'aider à retrouver mon chien ?","back":"Could you help me find my dog?","scene":"asking for help","src":"tatoeba:11054424","by":"lbdx","enId":"4016340","enBy":"CK","auto":true}
+{"term":"Veuillez m'excuser ! Savez-vous parler anglais ?","back":"Excuse me. Can you speak English?","scene":"not understanding","src":"tatoeba:1951262","by":"sacredceltic","enId":"1951248","enBy":"CK","auto":true}
+{"term":"Parle-t-il anglais ?","back":"Does he speak English?","scene":"not understanding","src":"tatoeba:131636","by":"Archibald","enId":"293951","enBy":"CK","auto":true}
+{"term":"Parlez-vous anglais ?","back":"Do you speak English?","scene":"not understanding","src":"tatoeba:9311","by":"sysko","enId":"378270","enBy":"saeb","auto":true}
+{"term":"Je veux parler anglais.","back":"I want to speak English.","scene":"not understanding","src":"tatoeba:7419933","by":"Rockaround","enId":"2854610","enBy":"CN","auto":true}
+{"term":"Sait-il parler anglais ?","back":"Can he speak English?","scene":"not understanding","src":"tatoeba:131630","by":"Micsmithel","enId":"294045","enBy":"CK","auto":true}
+{"term":"Qui sait parler anglais ?","back":"Who can speak English?","scene":"not understanding","src":"tatoeba:1591687","by":"sacredceltic","enId":"276295","enBy":"CN","auto":true}
+{"term":"Ne pouvez-vous pas parler anglais ?","back":"Can't you speak English?","scene":"not understanding","src":"tatoeba:497795","by":"Bruno","enId":"483613","enBy":"CK","auto":true}
+{"term":"Est-ce difficile de parler anglais ?","back":"Is it hard to speak English?","scene":"not understanding","src":"tatoeba:428746","by":"Archibald","enId":"26189","enBy":"CK","auto":true}
+{"term":"Qui lui a appris à parler l'anglais ?","back":"Who taught her how to speak English?","scene":"not understanding","src":"tatoeba:991615","by":"sacredceltic","enId":"276384","enBy":"CN","auto":true}
+{"term":"Est-ce difficile de parler l'anglais ?","back":"Is it difficult to speak English?","scene":"not understanding","src":"tatoeba:1480512","by":"martin9","enId":"9011861","enBy":"jaydenms","auto":true}
+{"term":"Vous parlez bien anglais, n'est-ce pas ?","back":"You can speak English well, can you not?","scene":"not understanding","src":"tatoeba:3499069","by":"Lulantis","enId":"16298","enBy":"Zifre","auto":true}
+{"term":"Je parle anglais.","back":"I speak English.","scene":"not understanding","src":"tatoeba:14325","by":"sacredceltic","enId":"1655579","enBy":"gleki","auto":true}
+{"term":"Je sais parler anglais.","back":"I can speak English.","scene":"not understanding","src":"tatoeba:965361","by":"sacredceltic","enId":"256187","enBy":"CK","auto":true}
+{"term":"Doucement, je vous prie.","back":"Slowly, please.","scene":"not understanding","src":"tatoeba:540836","by":"sacredceltic","enId":"532687","enBy":"wma","auto":true}
+{"term":"Dois-je parler anglais ?","back":"Must I speak English?","scene":"not understanding","src":"tatoeba:1285157","by":"sacredceltic","enId":"26199","enBy":"Luornu","auto":true}
+{"term":"Je ne parle pas anglais.","back":"I don't speak English.","scene":"not understanding","src":"tatoeba:1339961","by":"sacredceltic","enId":"2703689","enBy":"CN","auto":true}
+{"term":"Tu ne parles pas anglais.","back":"You don't speak English.","scene":"not understanding","src":"tatoeba:2336981","by":"Amastan","enId":"2897291","enBy":"megamanenm","auto":true}
+{"term":"On parle anglais en cours.","back":"We speak English in class.","scene":"not understanding","src":"tatoeba:5857550","by":"Aiji","enId":"248847","enBy":"CK","auto":true}
+{"term":"Tu dois parler anglais ici.","back":"You have to speak English here.","scene":"not understanding","src":"tatoeba:5655151","by":"Yemana","enId":"61952","enBy":"CN","auto":true}
+{"term":"Nous ne parlons pas anglais.","back":"We don't speak English.","scene":"not understanding","src":"tatoeba:2336992","by":"Amastan","enId":"8385146","enBy":"Luiaard","auto":true}
+{"term":"Tu parles très bien anglais.","back":"You speak English very well.","scene":"not understanding","src":"tatoeba:8823444","by":"Aiji","enId":"6067799","enBy":"mailohilohi","auto":true}
+{"term":"Je sais déjà parler anglais.","back":"I can already speak English.","scene":"not understanding","src":"tatoeba:12925356","by":"Maritzanka","enId":"7843615","enBy":"sharris123","auto":true}
+{"term":"Ma mère ne parle pas anglais.","back":"My mother does not speak English.","scene":"not understanding","src":"tatoeba:14286","by":"Julien_PDC","enId":"251834","enBy":"CN","auto":true}
+{"term":"Non, je ne parle pas anglais.","back":"No, I don't speak English.","scene":"not understanding","src":"tatoeba:6011963","by":"ibg__95","enId":"6018812","enBy":"sicerabibax","auto":true}
+{"term":"Je ne peux parler qu'anglais.","back":"I can only speak English.","scene":"not understanding","src":"tatoeba:6114779","by":"Whidou","enId":"2455902","enBy":"CM","auto":true}
+{"term":"Je ne comprends pas l'anglais.","back":"I don't understand English.","scene":"not understanding","src":"tatoeba:6803","by":"Cocorico","enId":"256180","enBy":"CN","auto":true}
+{"term":"Je ne comprends pas sa blague.","back":"I don't understand his joke.","scene":"not understanding","src":"tatoeba:755704","by":"U2FS","enId":"9726790","enBy":"ariarin","auto":true}
+{"term":"Et qu'est-ce que ça signifie ?","back":"So what does it mean?","scene":"not understanding","src":"tatoeba:3976036","by":"sacredceltic","enId":"3731191","enBy":"CM","auto":true}
+{"term":"Mon père parle très bien anglais.","back":"My father can speak English well.","scene":"not understanding","src":"tatoeba:180778","by":"Aiji","enId":"319079","enBy":"CN","auto":true}
+{"term":"J'aimerais savoir parler anglais.","back":"I wish I could speak English.","scene":"not understanding","src":"tatoeba:1347185","by":"sacredceltic","enId":"26382","enBy":"CK","auto":true}
+{"term":"Tu ne parles pas anglais chez toi.","back":"You don't speak English in your home.","scene":"not understanding","src":"tatoeba:2338485","by":"Amastan","enId":"4491453","enBy":"sunsmudge","auto":true}
+{"term":"Je ne parle pas très bien anglais.","back":"I don't speak English very well.","scene":"not understanding","src":"tatoeba:6835368","by":"GB3","enId":"5519422","enBy":"mailohilohi","auto":true}
+{"term":"Je ne comprends pas cette chanson.","back":"I don't understand this song.","scene":"not understanding","src":"tatoeba:11166574","by":"Aiji","enId":"4165773","enBy":"Lepotdeterre","auto":true}
+{"term":"Non, je ne sais pas parler anglais.","back":"No, I can't speak English.","scene":"not understanding","src":"tatoeba:6018816","by":"sicerabibax","enId":"1020291","auto":true}
+{"term":"Vous nous apprenez à parler anglais.","back":"You teach us to speak English.","scene":"not understanding","src":"tatoeba:4488620","by":"VisionElf","enId":"3378219","auto":true}
+{"term":"Mes parents ne parlent pas l'anglais.","back":"My parents don't speak English.","scene":"not understanding","src":"tatoeba:1745528","by":"Rovo","enId":"456465","enBy":"lukaszpp","auto":true}
+{"term":"Nous vous apprenons à parler anglais.","back":"We are teaching you how to speak English.","scene":"not understanding","src":"tatoeba:6844898","by":"Micsmithel","enId":"6861592","enBy":"kaiperkins271","auto":true}
+{"term":"Je ne comprends pas du tout l'anglais.","back":"I don't understand English at all.","scene":"not understanding","src":"tatoeba:2338458","by":"Amastan","enId":"2617208","enBy":"Prophete","auto":true}
+{"term":"Nous ne parlons pas anglais chez nous.","back":"We don't speak English at home.","scene":"not understanding","src":"tatoeba:2338495","by":"Amastan","enId":"6170135","enBy":"CarpeLanam","auto":true}
+{"term":"Je ne comprend pas ce que cela signifie.","back":"I don't understand what that means.","scene":"not understanding","src":"tatoeba:5647351","by":"Aiji","enId":"2361527","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas certaines personnes.","back":"I don't understand some people.","scene":"not understanding","src":"tatoeba:12895809","by":"lbdx","enId":"5730996","enBy":"CM","auto":true}
+{"term":"Il est difficile de bien parler l'anglais.","back":"It's hard to speak English well.","scene":"not understanding","src":"tatoeba:906214","by":"sacredceltic","enId":"400391","enBy":"CN","auto":true}
+{"term":"J'aimerais pouvoir parler anglais comme toi.","back":"I wish I could speak English like you.","scene":"not understanding","src":"tatoeba:12175487","by":"lbdx","enId":"70850","enBy":"CN","auto":true}
+{"term":"Pourrais-tu répéter la question ?","back":"Could you please repeat the question?","scene":"not understanding","src":"tatoeba:7289788","by":"Rockaround","enId":"3329450","enBy":"CK","auto":true}
+{"term":"Pourriez-vous répéter ça s’il vous plaît ?","back":"Can you repeat that, please?","scene":"not understanding","src":"tatoeba:4085","by":"TRANG","enId":"3329632","enBy":"CK","auto":true}
+{"term":"Peux-tu répéter ?","back":"Can you repeat?","scene":"not understanding","src":"tatoeba:11803431","by":"lbdx","enId":"4272664","enBy":"phuc","auto":true}
+{"term":"Veuillez le noter.","back":"Please write it down.","scene":"not understanding","src":"tatoeba:966069","by":"sacredceltic","enId":"456631","enBy":"lukaszpp","auto":true}
+{"term":"Peux-tu répéter cela ?","back":"Can you say that again?","scene":"not understanding","src":"tatoeba:1101503","by":"sacredceltic","enId":"680109","enBy":"Source_VOA","auto":true}
+{"term":"Me feras-tu une faveur ?","back":"Will you do me a favor?","scene":"asking for help","src":"tatoeba:1328995","by":"sacredceltic","enId":"64695","enBy":"CK","auto":true}
+{"term":"Peut-on parler français ?","back":"Can we speak French?","scene":"not understanding","src":"tatoeba:5434806","by":"pititnatole","enId":"3279442","enBy":"CK","auto":true}
+{"term":"Pourrais-tu répéter cela ?","back":"Could you say that again?","scene":"not understanding","src":"tatoeba:1118960","by":"sacredceltic","enId":"1060025","enBy":"Trailsend","auto":true}
+{"term":"Peux-tu répéter la question ?","back":"Can you repeat the question?","scene":"not understanding","src":"tatoeba:8737041","by":"Julien_PDC","enId":"5942603","enBy":"nicholas_martin","auto":true}
+{"term":"Peux-tu m'aider pour celui-ci ?","back":"Can you help me on this one?","scene":"asking for help","src":"tatoeba:4110628","by":"sacredceltic","enId":"3730572","enBy":"CM","auto":true}
+{"term":"Savez-vous bien parler français ?","back":"Can you speak French well?","scene":"not understanding","src":"tatoeba:2580607","by":"sacredceltic","enId":"2451599","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider à nettoyer ceci ?","back":"Can you help me clean this up?","scene":"asking for help","src":"tatoeba:5366471","by":"Aiji","enId":"3329544","enBy":"CK","auto":true}
+{"term":"Où as-tu appris à parler français ?","back":"Where did you learn to speak French?","scene":"not understanding","src":"tatoeba:5814278","by":"Aiji","enId":"2451349","enBy":"CK","auto":true}
+{"term":"Excusez-moi, parlez-vous français ?","back":"Excuse me, do you speak French?","scene":"not understanding","src":"tatoeba:7759900","by":"felix63","enId":"8462472","enBy":"CK","auto":true}
+{"term":"Pourriez-vous répéter la question ?","back":"Could you repeat the question?","scene":"not understanding","src":"tatoeba:9136878","by":"felix63","enId":"1239140","enBy":"CK","auto":true}
+{"term":"Excusez-moi, pourriez-vous répéter ?","back":"Excuse me, could you repeat that?","scene":"not understanding","src":"tatoeba:538567","by":"zmoo","enId":"3687288","enBy":"sarefo","auto":true}
+{"term":"Tu peux m'aider à nettoyer ce bordel ?","back":"Could you help me clean up this mess?","scene":"asking for help","src":"tatoeba:10518491","by":"lbdx","enId":"6345962","enBy":"CK","auto":true}
+{"term":"Voudrais-tu que je répète la question ?","back":"Would you like me to repeat the question?","scene":"not understanding","src":"tatoeba:1680337","by":"sacredceltic","enId":"1679774","enBy":"CK","auto":true}
+{"term":"Pouvez-vous répéter ce que vous avez dit?","back":"Can you repeat what you said?","scene":"not understanding","src":"tatoeba:4765842","by":"Doremi391","enId":"241753","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider à apprendre le français ?","back":"Can you help me to learn French?","scene":"asking for help","src":"tatoeba:7802678","by":"Aiji","enId":"6789990","enBy":"CK","auto":true}
+{"term":"Combien de fois faut-il que je le répète ?","back":"How many times do I need to repeat it?","scene":"not understanding","src":"tatoeba:6463089","by":"Aiji","enId":"4943621","enBy":"AlanF_US","auto":true}
+{"term":"Est-ce que je peux te demander une faveur ?","back":"Can I ask you for a favor?","scene":"asking for help","src":"tatoeba:7063918","by":"Aiji","enId":"3328530","enBy":"CK","auto":true}
+{"term":"Tu parlais français ?","back":"Did you speak French?","scene":"not understanding","src":"tatoeba:8737451","by":"Julien_PDC","enId":"6273695","enBy":"CK","auto":true}
+{"term":"Parle-t-il français ?","back":"Does he speak French?","scene":"not understanding","src":"tatoeba:8838047","by":"Rockaround","enId":"8840360","enBy":"carlosalberto","auto":true}
+{"term":"Je veux parler français.","back":"I want to speak French.","scene":"not understanding","src":"tatoeba:3308741","by":"Malape","enId":"2451640","enBy":"CK","auto":true}
+{"term":"Vous parlez le français ?","back":"Do you speak French?","scene":"not understanding","src":"tatoeba:3053819","by":"Aiji","enId":"415441","enBy":"Alkrasnov","auto":true}
+{"term":"Parles-tu aussi français ?","back":"Do you speak French, too?","scene":"not understanding","src":"tatoeba:6864501","by":"GB3","enId":"6815632","enBy":"CK","auto":true}
+{"term":"Ta copine parle français ?","back":"Does your girlfriend speak French?","scene":"not understanding","src":"tatoeba:7745842","by":"lbdx","enId":"7698529","enBy":"CK","auto":true}
+{"term":"Qui peut parler français ?","back":"Who can speak French?","scene":"not understanding","src":"tatoeba:8741247","by":"Julien_PDC","enId":"8410226","enBy":"CK","auto":true}
+{"term":"J'aimerais parler français.","back":"I'd like to speak French.","scene":"not understanding","src":"tatoeba:9545349","by":"Julien_PDC","enId":"12808073","enBy":"rul","auto":true}
+{"term":"Parlez-vous tous français ?","back":"Do all of you speak French?","scene":"not understanding","src":"tatoeba:2076643","by":"sacredceltic","enId":"1886120","enBy":"CK","auto":true}
+{"term":"Tu ne parles pas français ?","back":"Can't you speak French?","scene":"not understanding","src":"tatoeba:5268606","by":"martin9","enId":"2451652","enBy":"CK","auto":true}
+{"term":"Sait-il parler le français ?","back":"Can he speak French?","scene":"not understanding","src":"tatoeba:487333","by":"sacredceltic","enId":"292639","enBy":"CK","auto":true}
+{"term":"Vous ne parlez pas français ?","back":"Don't you speak French?","scene":"not understanding","src":"tatoeba:5268607","by":"martin9","enId":"2271396","enBy":"CK","auto":true}
+{"term":"Devons-nous parler français ?","back":"Do we have to speak French?","scene":"not understanding","src":"tatoeba:7769726","by":"Aiji","enId":"6266889","enBy":"CK","auto":true}
+{"term":"Parlez-vous bien le français ?","back":"Do you speak French well?","scene":"not understanding","src":"tatoeba:2580604","by":"sacredceltic","enId":"2451615","enBy":"CK","auto":true}
+{"term":"Comment dis-tu ça en français ?","back":"How do you say that in French?","scene":"not understanding","src":"tatoeba:5865608","by":"Aiji","enId":"2451512","enBy":"CK","auto":true}
+{"term":"Parlez-vous français chez vous ?","back":"Do you speak French at home?","scene":"not understanding","src":"tatoeba:13859826","by":"Rovo","enId":"6353400","enBy":"CK","auto":true}
+{"term":"Ces dames parlent-elles français ?","back":"Do these ladies speak French?","scene":"not understanding","src":"tatoeba:1995326","by":"sacredceltic","enId":"2617239","enBy":"Prophete","auto":true}
+{"term":"Tes parents parlent-ils français ?","back":"Do your parents speak French?","scene":"not understanding","src":"tatoeba:3630580","by":"sacredceltic","enId":"2451539","enBy":"CK","auto":true}
+{"term":"J'aimerais te demander une faveur.","back":"I would like to ask a favor of you.","scene":"asking for help","src":"tatoeba:3706995","by":"Alexs","enId":"4495782","enBy":"CK","auto":true}
+{"term":"Je voudrais te demander une faveur.","back":"I would like to ask you a favor.","scene":"asking for help","src":"tatoeba:2193338","by":"sacredceltic","enId":"2193463","enBy":"coudykid","auto":true}
+{"term":"Parles-tu français tous les jours ?","back":"Do you speak French every day?","scene":"not understanding","src":"tatoeba:6465452","by":"Aiji","enId":"2451519","enBy":"CK","auto":true}
+{"term":"Veux-tu que je répète la question ?","back":"Do you want me to repeat the question?","scene":"not understanding","src":"tatoeba:6695933","by":"GB3","enId":"3142912","enBy":"CK","auto":true}
+{"term":"Vous parlez français, n'est-ce pas ?","back":"You do speak French, don't you?","scene":"not understanding","src":"tatoeba:8662273","by":"Julien_PDC","enId":"3183483","enBy":"CK","auto":true}
+{"term":"Ta femme peut-elle parler français ?","back":"Can your wife speak French?","scene":"not understanding","src":"tatoeba:7097673","by":"felix63","enId":"7008978","enBy":"CK","auto":true}
+{"term":"Ne peuvent-ils pas parler français ?","back":"Can't they speak French?","scene":"not understanding","src":"tatoeba:8557314","by":"marioo","enId":"2451627","enBy":"CK","auto":true}
+{"term":"Je voudrais vous demander une faveur.","back":"I'd like to ask you for a favour.","scene":"asking for help","src":"tatoeba:844280","by":"sacredceltic","enId":"12142893","enBy":"sundown","auto":true}
+{"term":"Tu parles le français, n'est-ce pas ?","back":"You speak French, right?","scene":"not understanding","src":"tatoeba:2403197","by":"sacredceltic","enId":"2402235","enBy":"CK","auto":true}
+{"term":"Je veux apprendre à parler le français.","back":"I want to learn how to speak French.","scene":"not understanding","src":"tatoeba:2398070","by":"sacredceltic","enId":"2396148","enBy":"CK","auto":true}
+{"term":"Comment dit-on « je t’aime » en français ?","back":"How do you say \"I love you\" in French?","scene":"not understanding","src":"tatoeba:4394588","by":"gillux","enId":"2417967","enBy":"CK","auto":true}
+{"term":"J'aimerais que vous me fassiez une faveur.","back":"I'd like you to do me a favor.","scene":"asking for help","src":"tatoeba:9034966","by":"Aiji","enId":"3619590","enBy":"CK","auto":true}
+{"term":"Vous ne parlez pas français, n'est-ce pas ?","back":"You don't speak French, do you?","scene":"not understanding","src":"tatoeba:6473210","by":"lapinhibou","enId":"2451468","enBy":"CK","auto":true}
+{"term":"Avez-vous besoin que je répète la question ?","back":"Do you need me to repeat the question?","scene":"not understanding","src":"tatoeba:3961525","by":"sacredceltic","enId":"3731253","enBy":"CM","auto":true}
+{"term":"Comment dit-on « Je t'aime », dans ta langue ?","back":"How do you say, \"I love you\", in your language?","scene":"not understanding","src":"tatoeba:10672811","by":"lbdx","enId":"2745288","enBy":"Dejo","auto":true}
+{"term":"Est-ce vraiment si difficile de parler français ?","back":"Is it really that hard to speak French?","scene":"not understanding","src":"tatoeba:5833139","by":"Aiji","enId":"2451293","enBy":"CK","auto":true}
+{"term":"Est-ce que, par hasard, vous parleriez français ?","back":"Do you, by any chance, speak French?","scene":"not understanding","src":"tatoeba:11024671","by":"lbdx","enId":"2840934","enBy":"CK","auto":true}
+{"term":"J'aimerais beaucoup que vous répétiez cette danse.","back":"I'd like it very much if you would repeat that dance.","scene":"not understanding","src":"tatoeba:6376769","by":"Scorpionvenin14","enId":"6376574","enBy":"OsoHombre","auto":true}
+{"term":"Répète-le.","back":"Say that again.","scene":"not understanding","src":"tatoeba:2352364","by":"Amastan","enId":"1841181","enBy":"CK","auto":true}
+{"term":"Parle français.","back":"Speak French.","scene":"not understanding","src":"tatoeba:8703218","by":"Julien_PDC","enId":"8049315","enBy":"CK","auto":true}
+{"term":"Ne répète pas ça !","back":"Don't repeat that.","scene":"not understanding","src":"tatoeba:1846014","by":"sacredceltic","enId":"1845510","enBy":"CK","auto":true}
+{"term":"Je parle français.","back":"I speak French.","scene":"not understanding","src":"tatoeba:2707089","by":"Aiji","enId":"2451687","enBy":"CK","auto":true}
+{"term":"Parlons français !","back":"Let's speak French!","scene":"not understanding","src":"tatoeba:4910750","by":"sacredceltic","enId":"11790900","enBy":"shekitten","auto":true}
+{"term":"Je te dois une faveur.","back":"I owe you a favor.","scene":"asking for help","src":"tatoeba:2390106","by":"sacredceltic","enId":"2389600","enBy":"CK","auto":true}
+{"term":"Tu me dois une faveur.","back":"You owe me a favor.","scene":"asking for help","src":"tatoeba:3470431","by":"Lulantis","enId":"3331080","enBy":"CK","auto":true}
+{"term":"Nous parlons français.","back":"We speak French.","scene":"not understanding","src":"tatoeba:4779821","by":"sacredceltic","enId":"4667249","enBy":"CK","auto":true}
+{"term":"Je te fais une faveur.","back":"I'm doing you a favor.","scene":"asking for help","src":"tatoeba:7029825","by":"Aiji","enId":"2547224","enBy":"CK","auto":true}
+{"term":"Ne parle pas français.","back":"Don't speak French.","scene":"not understanding","src":"tatoeba:8737467","by":"Julien_PDC","enId":"6274475","enBy":"CK","auto":true}
+{"term":"Je parle déjà français.","back":"I already speak French.","scene":"not understanding","src":"tatoeba:5829959","by":"Aiji","enId":"2451648","enBy":"CK","auto":true}
+{"term":"Je parle bien français.","back":"I speak French well.","scene":"not understanding","src":"tatoeba:8741255","by":"Julien_PDC","enId":"8410383","enBy":"CK","auto":true}
+{"term":"Je peux parler français.","back":"I can speak French.","scene":"not understanding","src":"tatoeba:6925","by":"sysko","enId":"255548","enBy":"CK","auto":true}
+{"term":"Je dois parler français.","back":"I have to speak French.","scene":"not understanding","src":"tatoeba:8436847","by":"zarisi","enId":"12808065","enBy":"rul","auto":true}
+{"term":"Parle français avec moi.","back":"Speak French with me.","scene":"not understanding","src":"tatoeba:8737478","by":"Julien_PDC","enId":"8407151","enBy":"CK","auto":true}
+{"term":"Tu parles bien français.","back":"You speak French well.","scene":"not understanding","src":"tatoeba:9159288","by":"Julien_PDC","enId":"6272166","enBy":"CK","auto":true}
+{"term":"Je ne parle pas français.","back":"I don't speak French.","scene":"not understanding","src":"tatoeba:2691259","by":"Aiji","enId":"2271921","enBy":"CK","auto":true}
+{"term":"Devrais-je répéter cela ?","back":"Should I repeat that?","scene":"not understanding","src":"tatoeba:6947493","by":"Aiji","enId":"3820070","enBy":"CK","auto":true}
+{"term":"Ne répète plus jamais ça !","back":"Don't you ever say that again.","scene":"not understanding","src":"tatoeba:2289272","by":"sacredceltic","enId":"2289026","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas l'art.","back":"I don't understand art.","scene":"not understanding","src":"tatoeba:5293260","by":"Aiji","enId":"5265481","enBy":"CK","auto":true}
+{"term":"Je ne vais pas me répéter.","back":"I'm not going to repeat myself.","scene":"not understanding","src":"tatoeba:6813931","by":"Micsmithel","enId":"6810512","enBy":"CK","auto":true}
+{"term":"Je parle souvent français.","back":"I often speak French.","scene":"not understanding","src":"tatoeba:8737319","by":"Julien_PDC","enId":"5939627","enBy":"CK","auto":true}
+{"term":"Je parle parfois français.","back":"I speak French sometimes.","scene":"not understanding","src":"tatoeba:8737327","by":"Julien_PDC","enId":"6269243","enBy":"CK","auto":true}
+{"term":"Nous parlons français ici.","back":"We speak French here.","scene":"not understanding","src":"tatoeba:9159308","by":"Julien_PDC","enId":"6805710","enBy":"CK","auto":true}
+{"term":"Note-le avant de l'oublier.","back":"Write it down before you forget it.","scene":"not understanding","src":"tatoeba:1171004","by":"sysko","enId":"321160","enBy":"CK","auto":true}
+{"term":"Nous parlons tous français.","back":"We all speak French.","scene":"not understanding","src":"tatoeba:4550669","by":"sacredceltic","enId":"2451666","enBy":"CK","auto":true}
+{"term":"Je parle seulement français.","back":"I only speak French.","scene":"not understanding","src":"tatoeba:5996772","by":"PERCE_NEIGE","enId":"3761792","enBy":"CK","auto":true}
+{"term":"Je vais te faire une faveur.","back":"I'll do you a favor.","scene":"asking for help","src":"tatoeba:6599415","by":"Aiji","enId":"8922273","enBy":"CK","auto":true}
+{"term":"Dois-je parler le français ?","back":"Should I speak French?","scene":"not understanding","src":"tatoeba:9159295","by":"Julien_PDC","enId":"6272340","enBy":"CK","auto":true}
+{"term":"Je refuse de parler anglais.","back":"I refuse to speak English.","scene":"not understanding","src":"tatoeba:10485875","by":"lbdx","enId":"10341339","enBy":"shekitten","auto":true}
+{"term":"Nous ne parlons pas français.","back":"We don't speak French.","scene":"not understanding","src":"tatoeba:5268596","by":"martin9","enId":"2273782","enBy":"CK","auto":true}
+{"term":"Je parle français et anglais.","back":"I speak French and English.","scene":"not understanding","src":"tatoeba:6463142","by":"Aiji","enId":"2406539","enBy":"CK","auto":true}
+{"term":"Nous pouvons parler français.","back":"We can speak French.","scene":"not understanding","src":"tatoeba:8737455","by":"Julien_PDC","enId":"6273818","enBy":"CK","auto":true}
+{"term":"Je préfère parler le français.","back":"I'd prefer to speak French.","scene":"not understanding","src":"tatoeba:3252584","by":"sacredceltic","enId":"2451572","enBy":"CK","auto":true}
+{"term":"Je vais vous faire une faveur.","back":"I'm going to do you a favor.","scene":"asking for help","src":"tatoeba:6599416","by":"Aiji","enId":"2543590","enBy":"CK","auto":true}
+{"term":"Je parle français à la maison.","back":"I speak French at home.","scene":"not understanding","src":"tatoeba:7550567","by":"Aiji","enId":"6356334","enBy":"CK","auto":true}
+{"term":"Note-le pour ne pas l'oublier.","back":"Write it down so you won't forget.","scene":"not understanding","src":"tatoeba:12212205","by":"lbdx","enId":"8126910","enBy":"Hybrid","auto":true}
+{"term":"Vous parlez très bien français.","back":"You speak French very well.","scene":"not understanding","src":"tatoeba:8825359","by":"Julien_PDC","enId":"2451563","enBy":"CK","auto":true}
+{"term":"Je ne sais pas parler français.","back":"I can't speak French.","scene":"not understanding","src":"tatoeba:14314","by":"Aiji","enId":"255532","enBy":"CK","auto":true}
+{"term":"Je sais que tu parles français.","back":"I know you speak French.","scene":"not understanding","src":"tatoeba:2382802","by":"Rovo","enId":"2376600","enBy":"CK","auto":true}
+{"term":"Vous pouvez parler en français.","back":"You can speak French.","scene":"not understanding","src":"tatoeba:6045175","by":"sicerabibax","enId":"8834122","enBy":"deniko","auto":true}
+{"term":"Je sais un peu parler français.","back":"I can speak French a little.","scene":"not understanding","src":"tatoeba:6465203","by":"Aiji","enId":"2451561","enBy":"CK","auto":true}
+{"term":"Devrions-nous parler français ?","back":"Should we speak French?","scene":"not understanding","src":"tatoeba:9159310","by":"Julien_PDC","enId":"7123005","enBy":"CM","auto":true}
+{"term":"Je ne comprends pas le français.","back":"I don't understand French.","scene":"not understanding","src":"tatoeba:6463307","by":"Aiji","enId":"2451596","enBy":"CK","auto":true}
+{"term":"Tu parles vraiment bien français.","back":"You really speak French well.","scene":"not understanding","src":"tatoeba:5468826","by":"alexisslay","enId":"5468703","enBy":"CK","auto":true}
+{"term":"Je ne parle pas souvent français.","back":"I don't often speak French.","scene":"not understanding","src":"tatoeba:7982863","by":"Aiji","enId":"5916127","enBy":"CK","auto":true}
+{"term":"Tu parles français mieux que moi.","back":"You speak French better than me.","scene":"not understanding","src":"tatoeba:12145077","by":"lbdx","enId":"12142753","enBy":"CK","auto":true}
+{"term":"Je ne parle plus du tout français.","back":"I never speak French anymore.","scene":"not understanding","src":"tatoeba:2388656","by":"gillux","enId":"2388198","enBy":"CK","auto":true}
+{"term":"Il me faut te demander une faveur.","back":"I need to ask you a favor.","scene":"asking for help","src":"tatoeba:2584669","by":"sacredceltic","enId":"2387557","enBy":"CK","auto":true}
+{"term":"Je ne parle pas beaucoup français.","back":"I don't speak French very much.","scene":"not understanding","src":"tatoeba:5707539","by":"Aiji","enId":"34165","enBy":"CK","auto":true}
+{"term":"J'aimerais savoir parler français.","back":"I wish I could speak French.","scene":"not understanding","src":"tatoeba:6468581","by":"Aiji","enId":"2451558","enBy":"CK","auto":true}
+{"term":"Évitez de répéter la même erreur !","back":"Don't repeat the same mistake!","scene":"not understanding","src":"tatoeba:6631613","by":"Micsmithel","enId":"1789333","enBy":"kerbear407","auto":true}
+{"term":"Je ne voulais pas parler français.","back":"I didn't want to speak French.","scene":"not understanding","src":"tatoeba:6863957","by":"GB3","enId":"6261257","enBy":"CK","auto":true}
+{"term":"Je ne comprends rien à ce résultat.","back":"I don't understand a thing about that result.","scene":"not understanding","src":"tatoeba:1741152","by":"sacredceltic","enId":"530918","enBy":"blay_paul","auto":true}
+{"term":"Je parle mieux français qu'anglais.","back":"I speak French better than I speak English.","scene":"not understanding","src":"tatoeba:6887605","by":"GB3","enId":"6342262","enBy":"CK","auto":true}
+{"term":"Mademoiselle, pouvez-vous m'aider ?","back":"Miss, can you help me?","scene":"asking for help","src":"tatoeba:7700411","by":"Maxence","enId":"12221216","enBy":"Miktsoanit","auto":true}
+{"term":"Je ne comprends pas mes sentiments.","back":"I don't understand my feelings.","scene":"not understanding","src":"tatoeba:12143363","by":"always","enId":"1823301","enBy":"Amastan","auto":true}
+{"term":"Je ne comprends pas ces traductions.","back":"I don’t understand those translations.","scene":"not understanding","src":"tatoeba:6206177","by":"Sorgan","enId":"6203752","enBy":"sifhg","auto":true}
+{"term":"Je suis venu te demander une faveur.","back":"I've come to ask you a favor.","scene":"asking for help","src":"tatoeba:6322071","by":"Aiji","enId":"3619591","enBy":"CK","auto":true}
+{"term":"Je suppose que vous parlez français.","back":"I assume you can speak French.","scene":"not understanding","src":"tatoeba:7966094","by":"Micsmithel","enId":"2293214","enBy":"CK","auto":true}
+{"term":"Mes enfants ne parlent pas français.","back":"My children don't speak French.","scene":"not understanding","src":"tatoeba:8090275","by":"Katastrauff","enId":"4088462","enBy":"CK","auto":true}
+{"term":"Nous parlons tous les deux français.","back":"We both speak French.","scene":"not understanding","src":"tatoeba:8737443","by":"Julien_PDC","enId":"6273129","enBy":"CK","auto":true}
+{"term":"Je ne parle que français et anglais.","back":"I only speak French and English.","scene":"not understanding","src":"tatoeba:10689633","by":"AutoBot","enId":"10674501","enBy":"CK","auto":true}
+{"term":"Ne te fie pas à ta mémoire. Note-le.","back":"Don't trust your memory. Write it down.","scene":"not understanding","src":"tatoeba:12455314","by":"lbdx","enId":"8592818","enBy":"CK","auto":true}
+{"term":"On ne parle pas français à la maison.","back":"We don't speak French at home.","scene":"not understanding","src":"tatoeba:6448575","by":"GB3","enId":"6438441","enBy":"CK","auto":true}
+{"term":"Je vais le noter pour ne pas oublier.","back":"I'll write it down so I won't forget.","scene":"not understanding","src":"tatoeba:10969275","by":"lbdx","enId":"10791689","enBy":"sundown","auto":true}
+{"term":"Je parle aussi bien français que lui.","back":"I speak French as well as he does.","scene":"not understanding","src":"tatoeba:11357743","by":"felix63","enId":"11357731","enBy":"ddnktr","auto":true}
+{"term":"Je parle aussi bien français que toi.","back":"I speak French as well as you do.","scene":"not understanding","src":"tatoeba:11357764","by":"felix63","enId":"11357753","enBy":"ddnktr","auto":true}
+{"term":"J'entends que tu sais parler français.","back":"I hear you know how to speak French.","scene":"not understanding","src":"tatoeba:6887744","by":"GB3","enId":"3431365","enBy":"CK","auto":true}
+{"term":"Je sais que tu ne parles pas français.","back":"I know you can't speak French.","scene":"not understanding","src":"tatoeba:7242433","by":"tras","enId":"3734042","enBy":"CK","auto":true}
+{"term":"Tu devrais le noter avant de l'oublier.","back":"You should write it down before you forget it.","scene":"not understanding","src":"tatoeba:459792","by":"sacredceltic","enId":"321162","enBy":"Eldad","auto":true}
+{"term":"Je sais que vous ne parlez pas français.","back":"I know you don't speak French.","scene":"not understanding","src":"tatoeba:6147253","by":"sicerabibax","enId":"7240436","enBy":"CK","auto":true}
+{"term":"Je ne sais toujours pas parler français.","back":"I still can't speak French.","scene":"not understanding","src":"tatoeba:11810611","by":"calypsow","enId":"3183479","enBy":"CK","auto":true}
+{"term":"Je ne sais pas parler français non plus.","back":"I can't speak French, either.","scene":"not understanding","src":"tatoeba:13341766","by":"genes1s","enId":"6665369","enBy":"CK","auto":true}
+{"term":"J'ignorais que tu savais parler français.","back":"I didn't know you could speak French.","scene":"not understanding","src":"tatoeba:2291783","by":"sacredceltic","enId":"2291169","enBy":"CK","auto":true}
+{"term":"Vous parlez tous français, n'est-ce pas ?","back":"All of you speak French, right?","scene":"not understanding","src":"tatoeba:5661982","by":"Aiji","enId":"3183482","enBy":"CK","auto":true}
+{"term":"Je peux parler français et aussi anglais.","back":"I can speak French and also English.","scene":"not understanding","src":"tatoeba:12038262","by":"Rovo","enId":"6967181","enBy":"CK","auto":true}
+{"term":"À la maison, nous ne parlons que français.","back":"We only speak French at home.","scene":"not understanding","src":"tatoeba:3474942","by":"sacredceltic","enId":"5521262","enBy":"CK","auto":true}
+{"term":"Je ne parle pas encore très bien français.","back":"I still don't speak French very well.","scene":"not understanding","src":"tatoeba:4451322","by":"franlexcois","enId":"2451340","enBy":"CK","auto":true}
+{"term":"Nous ne parlons jamais français chez nous.","back":"We never speak French at home.","scene":"not understanding","src":"tatoeba:5531829","by":"guyniv","enId":"5531625","enBy":"CK","auto":true}
+{"term":"Tu parles beaucoup mieux français que moi.","back":"You speak French a lot better than me.","scene":"not understanding","src":"tatoeba:7029867","by":"Aiji","enId":"5848174","enBy":"CK","auto":true}
+{"term":"Je ne le répéterai pas, alors écoutez bien.","back":"I won't repeat this, so listen carefully.","scene":"not understanding","src":"tatoeba:7815862","by":"Aiji","enId":"7261282","enBy":"AlanF_US","auto":true}
+{"term":"Je peux parler français, mais juste un peu.","back":"I can speak French, but only a little bit.","scene":"not understanding","src":"tatoeba:10755524","by":"TheSnail","enId":"5374403","enBy":"CK","auto":true}
+{"term":"Il me faut un avocat sachant parler français.","back":"I need a lawyer who can speak French.","scene":"not understanding","src":"tatoeba:6153681","by":"Aiji","enId":"2451342","enBy":"CK","auto":true}
+{"term":"J’aimerais sûrement parler mieux le français.","back":"I sure wish I could speak French better.","scene":"not understanding","src":"tatoeba:10543636","by":"sacredceltic","enId":"2406946","enBy":"CK","auto":true}
+{"term":"Je parle presque aussi bien français qu'anglais.","back":"I speak French almost as well as I speak English.","scene":"not understanding","src":"tatoeba:13341755","by":"genes1s","enId":"6340361","enBy":"CK","auto":true}
+{"term":"Je connais beaucoup de gens qui parlent français.","back":"I know a lot of people who can speak French.","scene":"not understanding","src":"tatoeba:7745846","by":"lbdx","enId":"7241014","enBy":"CK","auto":true}
+{"term":"Je souhaite toujours apprendre à parler français.","back":"I still want to learn how to speak French.","scene":"not understanding","src":"tatoeba:7769663","by":"Aiji","enId":"6126070","enBy":"CK","auto":true}
+{"term":"À propos de langues étrangères, parles-tu français ?","back":"Speaking about foreign languages, do you speak French?","scene":"not understanding","src":"tatoeba:527912","by":"sacredceltic","enId":"1726871","enBy":"belgavox","auto":true}
+{"term":"Pourriez-vous le répéter lentement, je vous prie ?","back":"Could you please repeat it slowly?","scene":"not understanding","src":"tatoeba:13589","by":"sacredceltic","enId":"31481","enBy":"CK","auto":true}
+{"term":"Peux-tu parler lentement ?","back":"Can you speak slowly?","scene":"not understanding","src":"tatoeba:6590348","by":"GB3","enId":"6589036","enBy":"Eccles17","auto":true}
+{"term":"Veuillez parlez lentement.","back":"Please speak slowly.","scene":"not understanding","src":"tatoeba:11741963","by":"Anxxos","enId":"403059","enBy":"Ramses","auto":true}
+{"term":"Peux-tu m'aider en japonais ?","back":"Can you help me with Japanese?","scene":"asking for help","src":"tatoeba:5762981","by":"Yemana","enId":"1723571","enBy":"Tutim","auto":true}
+{"term":"Pouvez-vous parler plus lentement ?","back":"Could you speak more slowly?","scene":"not understanding","src":"tatoeba:180971","by":"Aiji","enId":"434474","enBy":"lukaszpp","auto":true}
+{"term":"Tu peux m'aider à laver ces plats ?","back":"Can you help me wash these dishes?","scene":"asking for help","src":"tatoeba:4093492","by":"sbamsbamsbam","enId":"246458","enBy":"CK","auto":true}
+{"term":"Voulez-vous parler plus lentement ?","back":"Would you speak more slowly?","scene":"not understanding","src":"tatoeba:7700374","by":"Maxence","enId":"2270587","enBy":"_undertoad","auto":true}
+{"term":"Pourrais-tu conduire plus lentement ?","back":"Could you drive more slowly?","scene":"not understanding","src":"tatoeba:5453516","by":"Aiji","enId":"30489","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider à trouver mes lunettes?","back":"Could you help me find my glasses?","scene":"asking for help","src":"tatoeba:6328384","by":"Scorpionvenin14","enId":"6328036","enBy":"OsoHombre","auto":true}
+{"term":"Peux-tu m'aider à installer ce programme ?","back":"Can you help me install this program?","scene":"asking for help","src":"tatoeba:11392975","by":"lbdx","enId":"10116182","enBy":"ddnktr","auto":true}
+{"term":"Avez-vous des employés qui parlent français ?","back":"Do you have any employees who speak French?","scene":"not understanding","src":"tatoeba:5833155","by":"Aiji","enId":"2451241","enBy":"CK","auto":true}
+{"term":"Pourriez-vous répéter cela plus lentement, je vous prie ?","back":"Excuse me, could you say that again more slowly?","scene":"not understanding","src":"tatoeba:6558587","by":"sacredceltic","enId":"51493","enBy":"CK","auto":true}
+{"term":"Parle lentement, je te prie.","back":"Speak slowly, please.","scene":"not understanding","src":"tatoeba:1742034","by":"sacredceltic","enId":"514834","enBy":"blay_paul","auto":true}
+{"term":"Quiconque parle-t-il anglais ?","back":"Does anyone speak English?","scene":"not understanding","src":"tatoeba:3671214","by":"sacredceltic","enId":"434640","enBy":"lukaszpp","auto":true}
+{"term":"Parlez plus lentement, je vous en prie.","back":"Speak more slowly, please.","scene":"not understanding","src":"tatoeba:3259251","by":"nimfeo","enId":"3259252","enBy":"CK","auto":true}
+{"term":"Qu'est-ce que cela signifie en pratique ?","back":"What does that mean in practice?","scene":"not understanding","src":"tatoeba:12189526","by":"lbdx","enId":"7921443","enBy":"Hybrid","auto":true}
+{"term":"Quiconque parle-t-il le français, à votre bureau ?","back":"Does anyone in your office speak French?","scene":"not understanding","src":"tatoeba:4213201","by":"sacredceltic","enId":"2451285","enBy":"CK","auto":true}
+{"term":"Quiconque parle-t-il le français, dans votre famille ?","back":"Does anyone in your family speak French?","scene":"not understanding","src":"tatoeba:4213195","by":"sacredceltic","enId":"2451286","enBy":"CK","auto":true}
+{"term":"Parle lentement !","back":"Speak slowly!","scene":"not understanding","src":"tatoeba:7704234","by":"Micsmithel","enId":"2425844","enBy":"bionicboy","auto":true}
+{"term":"Je mange lentement.","back":"I eat slowly.","scene":"not understanding","src":"tatoeba:6636354","by":"lapinhibou","enId":"5839918","enBy":"CK","auto":true}
+{"term":"Je marche lentement.","back":"I walk slowly.","scene":"not understanding","src":"tatoeba:2284999","by":"Amastan","enId":"5853178","enBy":"CK","auto":true}
+{"term":"J'irai très lentement.","back":"I'll go very slowly.","scene":"not understanding","src":"tatoeba:10527874","by":"Rovo","enId":"11279268","enBy":"Lebensfreude","auto":true}
+{"term":"Vous marchez lentement.","back":"You walk slowly.","scene":"not understanding","src":"tatoeba:2285013","by":"Amastan","enId":"9444516","enBy":"sundown","auto":true}
+{"term":"Tu as marché lentement.","back":"You walked slowly.","scene":"not understanding","src":"tatoeba:12542297","by":"Rovo","enId":"11429059","enBy":"Agestur","auto":true}
+{"term":"Je dois bouger lentement.","back":"I need to move slowly.","scene":"not understanding","src":"tatoeba:7773528","by":"Aiji","enId":"2387707","enBy":"CK","auto":true}
+{"term":"Je me suis levé lentement.","back":"I stood up slowly.","scene":"not understanding","src":"tatoeba:7411554","by":"lbdx","enId":"5858509","enBy":"CK","auto":true}
+{"term":"Il me faut manger lentement.","back":"I must eat slowly.","scene":"not understanding","src":"tatoeba:5558931","by":"sacredceltic","enId":"5261316","enBy":"phoonaz","auto":true}
+{"term":"Ne cours pas, marche lentement.","back":"Don't run, walk slowly.","scene":"not understanding","src":"tatoeba:129054","by":"Micsmithel","enId":"274291","auto":true}
+{"term":"Je vais conduire très lentement.","back":"I will drive very slowly.","scene":"not understanding","src":"tatoeba:10527878","by":"Rovo","enId":"11888197","enBy":"zogwarg","auto":true}
+{"term":"Je ne comprends pas votre réaction.","back":"I don't understand your reaction.","scene":"not understanding","src":"tatoeba:9949526","by":"Yemana","enId":"6973249","enBy":"Eccles17","auto":true}
+{"term":"Je parle français avec mes associés.","back":"I speak French with my associates.","scene":"not understanding","src":"tatoeba:11045859","by":"Aiji","enId":"10767984","enBy":"AlanF_US","auto":true}
+{"term":"À part plaisanter, que veux-tu faire ?","back":"Apart from joking, what do you mean to do?","scene":"not understanding","src":"tatoeba:128525","by":"Aiji","enId":"268458","auto":true}
+{"term":"Je pense que cette voiture nous suit lentement.","back":"I think that that car is slowly following us.","scene":"not understanding","src":"tatoeba:8602983","by":"sacredceltic","enId":"1487419","enBy":"marshmallowcat","auto":true}
+{"term":"Je viendrai, à condition que tu conduises lentement.","back":"I'll come provided you drive slowly.","scene":"not understanding","src":"tatoeba:1974976","by":"nimfeo","enId":"30134","enBy":"CM","auto":true}
+{"term":"Peux-tu m'aider à faire ma valise ?","back":"Can you help me pack my suitcase?","scene":"asking for help","src":"tatoeba:5677367","by":"nimfeo","enId":"7808189","enBy":"sharris123","auto":true}
+{"term":"Peux-tu m'aider à déplacer le canapé ?","back":"Can you help me move the sofa?","scene":"asking for help","src":"tatoeba:7067861","by":"Aiji","enId":"5586251","enBy":"CK","auto":true}
+{"term":"Comment dit-on « love » en français ?","back":"How do you say \"love\" in French?","scene":"not understanding","src":"tatoeba:5951306","by":"Aiji","enId":"2451458","enBy":"CK","auto":true}
+{"term":"Comment dit-on « fromage » en allemand ?","back":"How do you say \"sir\" in German?","scene":"not understanding","src":"tatoeba:2709259","by":"Rovo","enId":"11749381","enBy":"Adelpa","auto":true}
+{"term":"Parle-t-elle anglais, français ou allemand ?","back":"Does she speak English, French or German?","scene":"not understanding","src":"tatoeba:11516515","by":"Aiji","enId":"859988","enBy":"piksea","auto":true}
+{"term":"Comment dit-on « bonjour » en allemand l'après-midi ?","back":"How do you say \"bonjour\" in German in the afternoon?","scene":"not understanding","src":"tatoeba:10027781","by":"felix63","enId":"10027808","enBy":"DJ_Saidez","auto":true}
+{"term":"Je ne comprends pas la phrase.","back":"I don't understand the sentence.","scene":"not understanding","src":"tatoeba:6031133","by":"christian63","enId":"6164869","enBy":"jayrod84","auto":true}
+{"term":"J'avoue que je ne comprends pas.","back":"I confess that I don't understand.","scene":"not understanding","src":"tatoeba:11918173","by":"lbdx","enId":"620890","enBy":"ulyssemc1","auto":true}
+{"term":"Je ne comprends pas cette phrase.","back":"I don't understand this sentence.","scene":"not understanding","src":"tatoeba:2300045","by":"sysko","enId":"2300046","enBy":"sysko","auto":true}
+{"term":"Je ne comprends pas leur culture.","back":"I don't understand their culture.","scene":"not understanding","src":"tatoeba:6576528","by":"GB3","enId":"6575912","enBy":"Eccles17","auto":true}
+{"term":"Il parle naturellement le français.","back":"It comes natural to him to speak French.","scene":"not understanding","src":"tatoeba:338143","by":"shiboy","enId":"34144","enBy":"AlanF_US","auto":true}
+{"term":"Je ne parle ni français ni allemand.","back":"I can't speak French or German.","scene":"not understanding","src":"tatoeba:564231","by":"sacredceltic","enId":"4753823","enBy":"garborg","auto":true}
+{"term":"Je ne comprends pas du tout l'allemand.","back":"I don't understand German at all.","scene":"not understanding","src":"tatoeba:15131","by":"Cocorico","enId":"38957","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas du tout cette phrase.","back":"I don't understand this sentence at all.","scene":"not understanding","src":"tatoeba:10687599","by":"felix63","enId":"10687606","enBy":"AutoBot","auto":true}
+{"term":"Et que voulez-vous dire par cette phrase ?","back":"And what do you mean by this phrase?","scene":"not understanding","src":"tatoeba:7701136","by":"Maxence","enId":"3689849","enBy":"AlgideAmygdale","auto":true}
+{"term":"Je ne comprends pas le langage des chiens.","back":"I don't understand dog language.","scene":"not understanding","src":"tatoeba:12143367","by":"always","enId":"3932073","enBy":"Amastan","auto":true}
+{"term":"Pourrez-vous m'aider quand je déménagerai ?","back":"Could you help me when I move?","scene":"asking for help","src":"tatoeba:14029","by":"alexisslay","enId":"27141","enBy":"CK","auto":true}
+{"term":"Pourriez-vous m'aider quand je déménagerai ?","back":"Can you help me when I move?","scene":"asking for help","src":"tatoeba:15037","by":"Aiji","enId":"27140","enBy":"Dejo","auto":true}
+{"term":"Je parle rarement le français.","back":"I seldom speak French.","scene":"not understanding","src":"tatoeba:8737316","by":"Julien_PDC","enId":"5916852","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas ta résistance.","back":"I don't understand your resistance.","scene":"not understanding","src":"tatoeba:8008313","by":"Aiji","enId":"7836916","enBy":"AlanF_US","auto":true}
+{"term":"Je ne comprends pas l'art moderne.","back":"I don't understand modern art.","scene":"not understanding","src":"tatoeba:8395937","by":"Aiji","enId":"5267696","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas ce qui te soucie.","back":"I don't understand what's bothering you.","scene":"not understanding","src":"tatoeba:1130068","by":"sacredceltic","enId":"1130065","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider à peindre ma maison ?","back":"Can you help me paint my house?","scene":"asking for help","src":"tatoeba:5291355","by":"Aiji","enId":"5195269","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider à laver la vaisselle ?","back":"Could you help me wash the dishes?","scene":"asking for help","src":"tatoeba:437238","by":"Archibald","enId":"1057310","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider à faire la vaisselle ?","back":"Can you help me with the washing up?","scene":"asking for help","src":"tatoeba:1580726","by":"sacredceltic","enId":"523898","enBy":"wma","auto":true}
+{"term":"Peux-tu m'aider à réparer mon pneu crevé ?","back":"Can you help me fix my flat tire?","scene":"asking for help","src":"tatoeba:12611660","by":"lbdx","enId":"5799511","enBy":"Eccles17","auto":true}
+{"term":"J'apprends l'irlandais doucement.","back":"I'm learning Irish slowly.","scene":"not understanding","src":"tatoeba:8530123","by":"Aiji","enId":"3945052","enBy":"AlanF_US","auto":true}
+{"term":"Je ne comprends pas le suisse allemand.","back":"I don't understand Swiss German.","scene":"not understanding","src":"tatoeba:9966442","by":"felix63","enId":"12811332","enBy":"rul","auto":true}
+{"term":"Peux-tu l'écrire s'il te plait ?","back":"Could you write it down, please?","scene":"not understanding","src":"tatoeba:128425","by":"dominiko","enId":"267129","enBy":"CK","auto":true}
+{"term":"Peux-tu le répéter, s'il te plait ?","back":"Can you repeat it please?","scene":"not understanding","src":"tatoeba:5764640","by":"Thomz","enId":"5763105","enBy":"ThomasFAustria","auto":true}
+{"term":"Pouvez-vous répéter cela, s'il vous plaît ?","back":"Would you repeat that, please?","scene":"not understanding","src":"tatoeba:10498895","by":"lbdx","enId":"6907868","enBy":"CK","auto":true}
+{"term":"M'accorderais-tu une faveur, s'il te plaît ?","back":"Would you please do me a favor?","scene":"asking for help","src":"tatoeba:827508","by":"U2FS","enId":"38894","enBy":"Eldad","auto":true}
+{"term":"Peux-tu répéter la question, s'il te plaît ?","back":"Can you please repeat the question?","scene":"not understanding","src":"tatoeba:5616310","by":"Aiji","enId":"1848781","enBy":"Spamster","auto":true}
+{"term":"Pourriez-vous parler plus lentement, s'il vous plaît ?","back":"Could you please speak more slowly?","scene":"not understanding","src":"tatoeba:11727754","by":"Aiji","enId":"6020570","enBy":"mailohilohi","auto":true}
+{"term":"Excusez-moi, pourriez-vous me renseigner, s'il vous plaît ?","back":"Excuse me, could you please help me?","scene":"asking for help","src":"tatoeba:7759880","by":"felix63","enId":"13886566","enBy":"tieguy","auto":true}
+{"term":"Puis-je parler français ?","back":"May I speak French?","scene":"not understanding","src":"tatoeba:8737463","by":"Julien_PDC","enId":"6274283","enBy":"CK","auto":true}
+{"term":"Parle français, s'il te plaît.","back":"Please speak French.","scene":"not understanding","src":"tatoeba:5762765","by":"Yemana","enId":"4044345","enBy":"CK","auto":true}
+{"term":"S'il te plaît, parle moins vite.","back":"Please speak more slowly.","scene":"not understanding","src":"tatoeba:12825","by":"sacredceltic","enId":"456627","enBy":"lukaszpp","auto":true}
+{"term":"Puis-je te demander une faveur ?","back":"May I ask you a favor?","scene":"asking for help","src":"tatoeba:1058597","by":"sacredceltic","enId":"34682","enBy":"CK","auto":true}
+{"term":"Répète après moi, s'il te plaît.","back":"Please repeat after me.","scene":"not understanding","src":"tatoeba:11488342","by":"Aiji","enId":"250839","enBy":"CK","auto":true}
+{"term":"Peux-tu m'aider à traduire ceci ?","back":"Can you help me translate this?","scene":"asking for help","src":"tatoeba:8590263","by":"Rovo","enId":"8589074","enBy":"CK","auto":true}
+{"term":"Pourrais-tu m'aider à les soulever ?","back":"Could you help me to lift them?","scene":"asking for help","src":"tatoeba:10327713","by":"Julien_PDC","enId":"10760495","enBy":"samir_t","auto":true}
+{"term":"Peux-tu m'aider à planter cet arbuste ?","back":"Can you help me plant this shrub?","scene":"asking for help","src":"tatoeba:7370529","by":"tras","enId":"7371734","enBy":"Eccles17","auto":true}
+{"term":"Peux-tu m'aider à apprendre l'espéranto?","back":"Can you help me learn Esperanto?","scene":"asking for help","src":"tatoeba:5644465","by":"Scorpionvenin14","enId":"5644456","enBy":"Objectivesea","auto":true}
+{"term":"Peux-tu m'aider à installer ce logiciel ?","back":"Can you help me install this software?","scene":"asking for help","src":"tatoeba:6572222","by":"GB3","enId":"4873725","enBy":"meirad","auto":true}
+{"term":"Peux-tu m'aider à replanter cet arbuste ?","back":"Can you help me replant this shrub?","scene":"asking for help","src":"tatoeba:9919203","by":"lbdx","enId":"6680174","enBy":"Eccles17","auto":true}
+{"term":"Veuillez parler lentement et distinctement.","back":"Please speak slowly and clearly.","scene":"not understanding","src":"tatoeba:11933852","by":"lbdx","enId":"2674515","enBy":"WestofEden","auto":true}
+{"term":"Pourrais-tu m'aider à traduire cela en français?","back":"Can you help me translate that into French?","scene":"asking for help","src":"tatoeba:7370389","by":"tras","enId":"7371742","enBy":"Eccles17","auto":true}
+{"term":"Comment épelles-tu ce mot ?","back":"How do you spell that word?","scene":"not understanding","src":"tatoeba:1451998","by":"sacredceltic","enId":"1451679","enBy":"CK","auto":true}
+{"term":"Parlez français, d'accord ?","back":"Speak French, OK?","scene":"not understanding","src":"tatoeba:8737418","by":"Julien_PDC","enId":"8407152","enBy":"CK","auto":true}
+{"term":"Parles-tu français couramment ?","back":"Do you speak French fluently?","scene":"not understanding","src":"tatoeba:5783151","by":"Aiji","enId":"4665575","enBy":"CK","auto":true}
+{"term":"Comment épelles-tu ton prénom ?","back":"How do you spell your first name?","scene":"not understanding","src":"tatoeba:11905193","by":"Rovo","enId":"11890090","enBy":"shekitten","auto":true}
+{"term":"J'ai une faveur à vous demander.","back":"I'd like to ask you a favor.","scene":"asking for help","src":"tatoeba:486505","by":"sacredceltic","enId":"2385535","enBy":"CK","auto":true}
+{"term":"Comment dit-on araignée en allemand ?","back":"How do you say \"spider\" in German?","scene":"not understanding","src":"tatoeba:4464198","by":"Amastan","enId":"12706409","enBy":"Adelpa","auto":true}
+{"term":"Est-ce que quelqu'un parle français ?","back":"Does anyone speak French?","scene":"not understanding","src":"tatoeba:8737399","by":"Julien_PDC","enId":"8211278","enBy":"CK","auto":true}
+{"term":"Dis-le encore une fois, s'il te plaît.","back":"Say that again, please.","scene":"not understanding","src":"tatoeba:895899","by":"U2FS","enId":"710784","enBy":"CM","auto":true}
+{"term":"Comment dit-on « un chat » en hébreu ?","back":"How do you say 'a cat' in Hebrew?","scene":"not understanding","src":"tatoeba:1537994","by":"Aiji","enId":"572115","enBy":"gnomebubble","auto":true}
+{"term":"Comment épelles-tu ton nom de famille ?","back":"How do you spell your surname?","scene":"not understanding","src":"tatoeba:914668","by":"sacredceltic","enId":"912312","enBy":"Shiawase","auto":true}
+{"term":"Quelqu'un ici sait-il parler français ?","back":"Can anyone here speak French?","scene":"not understanding","src":"tatoeba:6468575","by":"Aiji","enId":"2451542","enBy":"CK","auto":true}
+{"term":"Comment dis-tu « homard » en français ?","back":"How do you say lobster in French?","scene":"not understanding","src":"tatoeba:7372244","by":"tras","enId":"6961012","enBy":"Eccles17","auto":true}
+{"term":"Y a-t-il quelqu'un ici qui parle français ?","back":"Does anyone here speak French?","scene":"not understanding","src":"tatoeba:5955773","by":"Aiji","enId":"2451515","enBy":"CK","auto":true}
+{"term":"Je veux quelqu'un qui sache parler français.","back":"I want a person who can speak French.","scene":"not understanding","src":"tatoeba:13253","by":"sysko","enId":"34142","enBy":"CK","auto":true}
+{"term":"Penses-tu qu'une telle chose va se reproduire ?","back":"Do you think something like that will repeat itself?","scene":"not understanding","src":"tatoeba:15177","by":"sacredceltic","enId":"49832","enBy":"CM","auto":true}
+{"term":"Qu'entendez-vous par : « J'ai dormi avec elle. » ?","back":"What do you mean, you slept with her?","scene":"not understanding","src":"tatoeba:2103830","by":"Rovo","enId":"2103113","enBy":"Hybrid","auto":true}
+{"term":"Je pige rien.","back":"I don't understand anything.","scene":"not understanding","src":"tatoeba:11961601","by":"zogwarg","enId":"2202359","enBy":"lazarus1907","auto":true}
+{"term":"J'ai besoin d'une faveur.","back":"I need a favor.","scene":"asking for help","src":"tatoeba:1313848","by":"sacredceltic","enId":"325151","enBy":"CK","auto":true}
+{"term":"J'ai une faveur à requérir.","back":"I have a favor to ask.","scene":"asking for help","src":"tatoeba:1111918","by":"sacredceltic","enId":"265081","enBy":"CK","auto":true}
+{"term":"J'ai une demande à te faire.","back":"I have a favour to ask you.","scene":"asking for help","src":"tatoeba:1143689","by":"sacredceltic","enId":"4576256","enBy":"imjcooper","auto":true}
+{"term":"Je n'y pige pas grand-chose.","back":"I don't understand much about it.","scene":"not understanding","src":"tatoeba:11961607","by":"zogwarg","enId":"42920","enBy":"CK","auto":true}
+{"term":"Je n'ai pas du tout compris.","back":"I didn't understand at all.","scene":"not understanding","src":"tatoeba:13668399","by":"unetoilebrille","enId":"6900267","enBy":"kaiperkins271","auto":true}
+{"term":"Je ne comprends pas ce sabir.","back":"I don't understand this gobbledygook.","scene":"not understanding","src":"tatoeba:1438169","by":"sacredceltic","enId":"1438064","enBy":"Balamax","auto":true}
+{"term":"Je n'ai pas compris au début.","back":"I didn't understand at first.","scene":"not understanding","src":"tatoeba:11406284","by":"lbdx","enId":"9204054","enBy":"CK","auto":true}
+{"term":"Je diminue lentement ma dose.","back":"I'm slowly reducing my dose.","scene":"not understanding","src":"tatoeba:13939104","by":"Rovo","enId":"13471330","enBy":"rul","auto":true}
+{"term":"J'ai un service à te demander.","back":"I have a favor to ask you.","scene":"asking for help","src":"tatoeba:3095613","by":"Blabla","enId":"11038811","enBy":"CK","auto":true}
+{"term":"J'ai une faveur à te demander.","back":"I have a favor to ask of you.","scene":"asking for help","src":"tatoeba:13946","by":"sacredceltic","enId":"27874","enBy":"CK","auto":true}
+{"term":"Ce projet progresse lentement.","back":"That project is proceeding slowly.","scene":"not understanding","src":"tatoeba:896729","by":"sacredceltic","enId":"48535","enBy":"orge","auto":true}
+{"term":"Je parle couramment l'anglais.","back":"I speak English fluently.","scene":"not understanding","src":"tatoeba:5606120","by":"sacredceltic","enId":"2915909","enBy":"_undertoad","auto":true}
+{"term":"Je ne comprends pas l'analogie.","back":"I don't understand the analogy.","scene":"not understanding","src":"tatoeba:6287736","by":"Aiji","enId":"2361525","enBy":"CK","auto":true}
+{"term":"Je n'ai pas compris la question.","back":"I didn't understand the question.","scene":"not understanding","src":"tatoeba:2326122","by":"Amastan","enId":"3003917","enBy":"CM","auto":true}
+{"term":"Nous nous décomposons lentement.","back":"We slowly putrefy.","scene":"not understanding","src":"tatoeba:972035","by":"sacredceltic","enId":"972037","enBy":"sacredceltic","auto":true}
+{"term":"Je n'ai pas compris un seul mot.","back":"I didn't understand a single word.","scene":"not understanding","src":"tatoeba:6291805","by":"sicerabibax","enId":"7786429","enBy":"Adelpa","auto":true}
+{"term":"Je parle couramment le français.","back":"I speak French fluently.","scene":"not understanding","src":"tatoeba:8737301","by":"Julien_PDC","enId":"4864340","enBy":"jarbv","auto":true}
+{"term":"Je ne comprends pas le polonais.","back":"I don't understand Polish.","scene":"not understanding","src":"tatoeba:10698656","by":"Rovo","enId":"11874902","enBy":"shekitten","auto":true}
+{"term":"Tu n'as pas intérêt à redire ça.","back":"Don't you dare say that again.","scene":"not understanding","src":"tatoeba:11251733","by":"lbdx","enId":"9419070","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas le portugais.","back":"I don't understand Portuguese.","scene":"not understanding","src":"tatoeba:5138412","by":"sicerabibax","enId":"5165119","enBy":"tabular","auto":true}
+{"term":"C'est ce que je ne comprends pas.","back":"That's what I don't understand.","scene":"not understanding","src":"tatoeba:6385365","by":"Aiji","enId":"2276883","enBy":"CK","auto":true}
+{"term":"Je n'ai pas compris cette blague.","back":"I didn't understand that joke.","scene":"not understanding","src":"tatoeba:9710514","by":"lbdx","enId":"8244362","enBy":"CK","auto":true}
+{"term":"Je ne l'ai pas comprise au début.","back":"I didn't understand her at first.","scene":"not understanding","src":"tatoeba:10760285","by":"lbdx","enId":"5369849","enBy":"Objectivesea","auto":true}
+{"term":"Je parle anglais quotidiennement.","back":"I speak English daily.","scene":"not understanding","src":"tatoeba:10847426","by":"sacredceltic","enId":"261835","enBy":"Zifre","auto":true}
+{"term":"Je ne comprends pas le tamazight.","back":"I don't understand Berber.","scene":"not understanding","src":"tatoeba:12143296","by":"always","enId":"7828307","enBy":"Amastan","auto":true}
+{"term":"Parlez lentement et distinctement.","back":"Speak slowly and clearly.","scene":"not understanding","src":"tatoeba:560634","by":"sacredceltic","enId":"30129","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas ce qu'il veut.","back":"I don't understand what he wants.","scene":"not understanding","src":"tatoeba:1418019","by":"sacredceltic","enId":"1416175","enBy":"Shishir","auto":true}
+{"term":"Je n'ai pas compris votre question.","back":"I didn't understand your question.","scene":"not understanding","src":"tatoeba:8631068","by":"Julien_PDC","enId":"2949746","enBy":"AlanF_US","auto":true}
+{"term":"Je parle l'anglais quotidiennement.","back":"I speak English every day.","scene":"not understanding","src":"tatoeba:1460531","by":"sacredceltic","enId":"1017210","enBy":"AOCinJAPAN","auto":true}
+{"term":"Ce n'est pas dur de parler anglais.","back":"It is not difficult to speak English.","scene":"not understanding","src":"tatoeba:6195349","by":"Sorgan","enId":"26176","enBy":"CN","auto":true}
+{"term":"Je ne comprends pas ta psychologie.","back":"I don't understand your psychology.","scene":"not understanding","src":"tatoeba:12143413","by":"always","enId":"9476505","enBy":"Amastan","auto":true}
+{"term":"Je ne comprends pas ce raisonnement.","back":"I don't understand this reasoning.","scene":"not understanding","src":"tatoeba:6402358","by":"Aiji","enId":"2154819","enBy":"oneconor","auto":true}
+{"term":"Je parle français occasionnellement.","back":"I speak French occasionally.","scene":"not understanding","src":"tatoeba:8737330","by":"Julien_PDC","enId":"6221126","enBy":"CK","auto":true}
+{"term":"J'ai un ami qui sait parler français.","back":"I have a friend who can speak French.","scene":"not understanding","src":"tatoeba:3773703","by":"GB3","enId":"3734022","enBy":"CK","auto":true}
+{"term":"Je parle français aussi bien qu'elle.","back":"I speak French as well as she does.","scene":"not understanding","src":"tatoeba:11357930","by":"felix63","enId":"308631","enBy":"CK","auto":true}
+{"term":"Je ne comprends pas ton raisonnement.","back":"I don't understand your reasoning.","scene":"not understanding","src":"tatoeba:12020719","by":"lbdx","enId":"2738413","enBy":"Hybrid","auto":true}
+{"term":"J'ai trois amis qui parlent français.","back":"I have three friends who can speak French.","scene":"not understanding","src":"tatoeba:12260359","by":"Rovo","enId":"2451255","enBy":"CK","auto":true}
+{"term":"J'ai rien compris. Il parlait anglais.","back":"I didn't understand anything. He was speaking English.","scene":"not understanding","src":"tatoeba:2932394","by":"Blabla","enId":"12975156","enBy":"rul","auto":true}
+{"term":"Je parle français avec mes enseignants.","back":"I speak French with my teachers.","scene":"not understanding","src":"tatoeba:9635585","by":"dpcossio","enId":"2406543","enBy":"CK","auto":true}
+{"term":"Je n'ai pas compris la dernière phrase.","back":"I didn't understand that last sentence.","scene":"not understanding","src":"tatoeba:10346590","by":"Aiji","enId":"3022598","enBy":"sharptoothed","auto":true}
+{"term":"Je ne comprends pas pourquoi c'est arrivé.","back":"I don't understand why it happened.","scene":"not understanding","src":"tatoeba:2370607","by":"sacredceltic","enId":"2362094","enBy":"CK","auto":true}
+{"term":"Il n'est pas difficile de parler français.","back":"It isn't difficult to speak French.","scene":"not understanding","src":"tatoeba:7197216","by":"Rockaround","enId":"6687592","enBy":"CK","auto":true}
+{"term":"J'ai trois amis qui savent parler anglais.","back":"I have three friends who can speak English.","scene":"not understanding","src":"tatoeba:12260368","by":"Rovo","enId":"12260551","enBy":"Miktsoanit","auto":true}
+{"term":"Cette vieille maison se délabre peu à peu.","back":"This old house is slowly decaying.","scene":"not understanding","src":"tatoeba:13959787","by":"Myrano_","enId":"13515567","enBy":"Ergulis","auto":true}
+{"term":"Je n'ai pas compris l'avant-dernière ligne.","back":"I didn't understand the second-to-the-last line.","scene":"not understanding","src":"tatoeba:8483260","by":"Aiji","enId":"5297760","enBy":"AlanF_US","auto":true}
+{"term":"J'ai quelques amis qui parlent bien français.","back":"I have a few friends who speak French well.","scene":"not understanding","src":"tatoeba:7063865","by":"Aiji","enId":"2538281","enBy":"CK","auto":true}
+{"term":"Je parle anglais, espéranto, français et japonais.","back":"I speak English, Esperanto, French and Japanese.","scene":"not understanding","src":"tatoeba:2149611","by":"Sisyphe","enId":"5355315","enBy":"mailohilohi","auto":true}

@@ -1,0 +1,325 @@
+// fr-admin: written by build-scene-sentences.ts; edit the lexicon, not this file
+{"term":"As-tu l'adresse ?","back":"Do you have the address?","scene":"forms and offices","src":"tatoeba:6384427","by":"Scorpionvenin14","enId":"6384419","enBy":"OsoHombre","auto":true}
+{"term":"Veuillez signer ici.","back":"Please sign here.","scene":"forms and offices","src":"tatoeba:478808","by":"sacredceltic","enId":"476416","enBy":"minshirui","auto":true}
+{"term":"Où se trouve la poste ?","back":"Where is the post office?","scene":"post office","src":"tatoeba:1335977","by":"sacredceltic","enId":"324546","enBy":"CK","auto":true}
+{"term":"Pouvez-vous signer ici ?","back":"Can you sign here?","scene":"forms and offices","src":"tatoeba:11204","by":"sacredceltic","enId":"13136792","enBy":"rul","auto":true}
+{"term":"Merci d'aller à la banque.","back":"Please go to the bank.","scene":"at the bank","src":"tatoeba:572282","by":"sacredceltic","enId":"18441","enBy":"CK","auto":true}
+{"term":"L'enverras-tu par la poste ?","back":"Will you send it by mail?","scene":"post office","src":"tatoeba:1171855","by":"sacredceltic","enId":"41749","enBy":"CK","auto":true}
+{"term":"Peux-tu me dire ton adresse ?","back":"Can you tell me your address?","scene":"forms and offices","src":"tatoeba:391068","by":"sysko","enId":"391069","enBy":"sysko","auto":true}
+{"term":"Quand as-tu changé d'adresse ?","back":"When did you change your address?","scene":"forms and offices","src":"tatoeba:1358895","by":"sacredceltic","enId":"66006","enBy":"CK","auto":true}
+{"term":"La poste ferme à quelle heure ?","back":"What time does the post office close?","scene":"post office","src":"tatoeba:8630034","by":"Julien_PDC","enId":"2954151","enBy":"CK","auto":true}
+{"term":"Veuillez me donner l'adresse exacte.","back":"Please give me the exact address.","scene":"forms and offices","src":"tatoeba:2164111","by":"sacredceltic","enId":"2163017","enBy":"Mouseneb","auto":true}
+{"term":"Excusez-moi, où se trouve la poste ?","back":"Excuse me, where's the post office?","scene":"post office","src":"tatoeba:8825088","by":"Rockaround","enId":"8165827","enBy":"lucasmg123","auto":true}
+{"term":"Pouvez-vous l'envoyer à cette adresse ?","back":"Could you send it to this address?","scene":"forms and offices","src":"tatoeba:11290","by":"sacredceltic","enId":"60298","enBy":"CK","auto":true}
+{"term":"Veuillez écrire ici votre adresse de contact.","back":"Please write your contact address here.","scene":"forms and offices","src":"tatoeba:1391134","by":"sacredceltic","enId":"1391126","enBy":"CK","auto":true}
+{"term":"Combien de pièces a-t-elle dans son appartement ?","back":"How many rooms does she have in her apartment?","scene":"renting a flat","src":"tatoeba:11749730","by":"lbdx","enId":"7963143","enBy":"CH","auto":true}
+{"term":"Quelle est ton adresse ?","back":"What's your address?","scene":"forms and offices","src":"tatoeba:3627275","by":"sacredceltic","enId":"2713666","enBy":"CK","auto":true}
+{"term":"As-tu trouvé son adresse ?","back":"Did you find her address?","scene":"forms and offices","src":"tatoeba:6394692","by":"felix63","enId":"6394278","enBy":"npvojtik","auto":true}
+{"term":"La banque est-elle ouverte ?","back":"Is the bank open?","scene":"at the bank","src":"tatoeba:572285","by":"sacredceltic","enId":"18432","enBy":"CK","auto":true}
+{"term":"Comment as-tu eu notre adresse?","back":"How did you get our address?","scene":"forms and offices","src":"tatoeba:3432784","by":"Micsmithel","enId":"2891300","enBy":"CK","auto":true}
+{"term":"L'as-tu ramené à ton appartement ?","back":"Did you take him back to your apartment?","scene":"renting a flat","src":"tatoeba:1945373","by":"sacredceltic","enId":"1943944","enBy":"Spamster","auto":true}
+{"term":"À qui dois-je adresser la lettre ?","back":"Who should I address the letter to?","scene":"forms and offices","src":"tatoeba:5209770","by":"nimfeo","enId":"2270207","enBy":"_undertoad","auto":true}
+{"term":"Quelle est ton adresse personnelle ?","back":"What's your home address?","scene":"forms and offices","src":"tatoeba:575862","by":"sacredceltic","enId":"20134","enBy":"CK","auto":true}
+{"term":"Êtes-vous le directeur de la banque ?","back":"Are you the bank manager?","scene":"at the bank","src":"tatoeba:6935899","by":"Aiji","enId":"3822883","enBy":"CK","auto":true}
+{"term":"J'aimerais que tu postes cette lettre.","back":"I'd like you to mail this letter.","scene":"post office","src":"tatoeba:1461605","by":"sacredceltic","enId":"1455322","enBy":"CK","auto":true}
+{"term":"Est-ce que vous connaissez leur adresse ?","back":"Do you know their address?","scene":"forms and offices","src":"tatoeba:9576983","by":"Aiji","enId":"3071806","enBy":"sharptoothed","auto":true}
+{"term":"Cet endroit se trouve-t-il loin de la banque ?","back":"Is this place far from the bank?","scene":"at the bank","src":"tatoeba:585123","by":"sacredceltic","enId":"455072","enBy":"CM","auto":true}
+{"term":"Comment trouvez-vous votre nouvel appartement ?","back":"How do you like your new apartment?","scene":"renting a flat","src":"tatoeba:13220890","by":"lbdx","enId":"3264763","enBy":"CK","auto":true}
+{"term":"Est-ce que vous aimez votre nouvel appartement ?","back":"Do you like your new apartment?","scene":"renting a flat","src":"tatoeba:13220885","by":"lbdx","enId":"5955948","enBy":"mailohilohi","auto":true}
+{"term":"Veux-tu vraiment mettre ton argent dans cette banque ?","back":"Do you really want to put your money in that bank?","scene":"at the bank","src":"tatoeba:5399727","by":"Aiji","enId":"1874042","enBy":"CK","auto":true}
+{"term":"Tu as une lettre.","back":"You've got mail.","scene":"post office","src":"tatoeba:4599597","by":"sacredceltic","enId":"2255433","enBy":"CK","auto":true}
+{"term":"Je vais à la poste.","back":"I'm going to the post office.","scene":"post office","src":"tatoeba:8630285","by":"Julien_PDC","enId":"2585545","enBy":"CK","auto":true}
+{"term":"Je vais à la banque.","back":"I'm going to the bank.","scene":"at the bank","src":"tatoeba:6632","by":"TRANG","enId":"256982","enBy":"CK","auto":true}
+{"term":"Dois-je signer ici ?","back":"Must I sign here?","scene":"forms and offices","src":"tatoeba:3272798","by":"nimfeo","enId":"3272797","auto":true}
+{"term":"Je suis à la banque.","back":"I'm at the bank.","scene":"at the bank","src":"tatoeba:5149826","by":"nbrr","enId":"2549518","enBy":"CK","auto":true}
+{"term":"J'ignore son adresse.","back":"I don't know her address.","scene":"forms and offices","src":"tatoeba:1967038","by":"sacredceltic","enId":"396328","enBy":"CK","auto":true}
+{"term":"Ne va pas à la poste.","back":"Don't go to the post office.","scene":"post office","src":"tatoeba:12284166","by":"MeLearningJapanese","enId":"11619817","enBy":"timmartin","auto":true}
+{"term":"Quel bel appartement !","back":"What a beautiful apartment!","scene":"renting a flat","src":"tatoeba:13209122","by":"saillier","enId":"12064322","enBy":"CK","auto":true}
+{"term":"Je connais son adresse.","back":"I know her address.","scene":"forms and offices","src":"tatoeba:374028","by":"zmoo","enId":"309397","enBy":"CK","auto":true}
+{"term":"Donne-moi ton adresse !","back":"Give me your address.","scene":"forms and offices","src":"tatoeba:1846030","by":"sacredceltic","enId":"1845501","enBy":"CK","auto":true}
+{"term":"Nous sommes à la banque.","back":"We're at the bank.","scene":"at the bank","src":"tatoeba:6631151","by":"Aiji","enId":"3365629","enBy":"CK","auto":true}
+{"term":"Sors de mon appartement.","back":"Get out of my apartment.","scene":"renting a flat","src":"tatoeba:7849207","by":"Aiji","enId":"2891200","enBy":"CK","auto":true}
+{"term":"Je lui donnai mon adresse.","back":"I gave him my address.","scene":"forms and offices","src":"tatoeba:1316350","by":"sacredceltic","enId":"260429","enBy":"CK","auto":true}
+{"term":"Tu cherches un appartement.","back":"You're looking for an apartment.","scene":"renting a flat","src":"tatoeba:4511863","by":"Amastan","enId":"10268982","enBy":"glossboss","auto":true}
+{"term":"Demain, j'irai à la banque.","back":"I'll go to the bank tomorrow.","scene":"at the bank","src":"tatoeba:13707040","by":"felix63","enId":"13714319","enBy":"zogwarg","auto":true}
+{"term":"Nous vivons en appartement.","back":"We live in an apartment.","scene":"renting a flat","src":"tatoeba:474046","by":"sacredceltic","enId":"464408","enBy":"lukaszpp","auto":true}
+{"term":"Je déteste cet appartement.","back":"I hate this apartment.","scene":"renting a flat","src":"tatoeba:2334554","by":"sacredceltic","enId":"2334123","enBy":"CK","auto":true}
+{"term":"La banque est aussi là, non ?","back":"The bank is there too, isn't it?","scene":"at the bank","src":"tatoeba:530187","by":"sacredceltic","enId":"403098","enBy":"Ramses","auto":true}
+{"term":"Je travaille dans une banque.","back":"I work in a bank.","scene":"at the bank","src":"tatoeba:663092","by":"U2FS","enId":"663084","enBy":"CM","auto":true}
+{"term":"J'essaie de trouver la poste.","back":"I'm trying to find the post office.","scene":"post office","src":"tatoeba:10494915","by":"lbdx","enId":"9806669","enBy":"CK","auto":true}
+{"term":"Je ne connais pas son adresse.","back":"I don't know his address.","scene":"forms and offices","src":"tatoeba:127819","by":"sacredceltic","enId":"261278","enBy":"CK","auto":true}
+{"term":"Ne lui donnez pas son adresse.","back":"Don't let him know her address.","scene":"forms and offices","src":"tatoeba:133772","by":"Micsmithel","enId":"309398","enBy":"CK","auto":true}
+{"term":"Je dois me rendre à la banque.","back":"I have to go to the bank.","scene":"at the bank","src":"tatoeba:1237661","by":"sacredceltic","enId":"256981","enBy":"CK","auto":true}
+{"term":"Dis-moi quelle est ton adresse.","back":"Tell me what your address is.","scene":"forms and offices","src":"tatoeba:8496301","by":"Aiji","enId":"6849243","enBy":"CK","auto":true}
+{"term":"Tu as un très joli appartement.","back":"You have a very nice apartment.","scene":"renting a flat","src":"tatoeba:12013377","by":"lbdx","enId":"5992834","enBy":"Hybrid","auto":true}
+{"term":"Mon appartement est trop grand.","back":"My apartment is too big.","scene":"renting a flat","src":"tatoeba:12916125","by":"lbdx","enId":"5964668","enBy":"mailohilohi","auto":true}
+{"term":"Je suis dans le bureau de poste.","back":"I'm in the post office.","scene":"post office","src":"tatoeba:2736069","by":"Aiji","enId":"2724256","enBy":"sundown","auto":true}
+{"term":"Est-elle déjà venue à la banque ?","back":"Has she come to the bank before?","scene":"at the bank","src":"tatoeba:3273678","by":"nimfeo","enId":"3273638","enBy":"ddnktr","auto":true}
+{"term":"Je ne vous dirai pas mon adresse.","back":"I won't tell you my address.","scene":"forms and offices","src":"tatoeba:8396032","by":"Aiji","enId":"7798727","enBy":"CK","auto":true}
+{"term":"Je vous ai trouvé un appartement.","back":"I found you an apartment.","scene":"renting a flat","src":"tatoeba:10546564","by":"felix63","enId":"10752647","enBy":"ddnktr","auto":true}
+{"term":"Je ne suis pas sûr de son adresse.","back":"I don't know his address for certain.","scene":"forms and offices","src":"tatoeba:949266","by":"sacredceltic","enId":"286669","enBy":"jakov","auto":true}
+{"term":"Je viens juste d'aller à la banque.","back":"I've just been to the bank.","scene":"at the bank","src":"tatoeba:942449","by":"sacredceltic","enId":"40158","enBy":"CK","auto":true}
+{"term":"Écrivez votre nom et votre adresse.","back":"Write your name and address.","scene":"forms and offices","src":"tatoeba:1988391","by":"Cocorico","enId":"70366","enBy":"CK","auto":true}
+{"term":"Je dois aller à la banque ce matin.","back":"I have to go to the bank this morning.","scene":"at the bank","src":"tatoeba:3777066","by":"Joelle","enId":"3777877","enBy":"crana","auto":true}
+{"term":"Je passerai à la poste en rentrant.","back":"I'll drop by the post office on the way home.","scene":"post office","src":"tatoeba:9766200","by":"lbdx","enId":"763157","enBy":"CK","auto":true}
+{"term":"Faites-moi connaître votre adresse.","back":"Let me know your address.","scene":"forms and offices","src":"tatoeba:11453440","by":"Aiji","enId":"70573","enBy":"CK","auto":true}
+{"term":"On doit s'attaquer à ces problèmes.","back":"We need to address those issues.","scene":"forms and offices","src":"tatoeba:12240037","by":"Aiji","enId":"9458343","enBy":"CK","auto":true}
+{"term":"Votre appartement me plaît beaucoup.","back":"I like your apartment very much.","scene":"renting a flat","src":"tatoeba:6063881","by":"christian63","enId":"7920882","enBy":"AlanF_US","auto":true}
+{"term":"Mon frère travaille dans une banque.","back":"My brother works in a bank.","scene":"at the bank","src":"tatoeba:7785","by":"sacredceltic","enId":"250734","enBy":"CK","auto":true}
+{"term":"N'oublie pas de poster cette lettre.","back":"Don't forget to mail this letter.","scene":"post office","src":"tatoeba:1243714","by":"sacredceltic","enId":"321128","enBy":"CK","auto":true}
+{"term":"Tu peux obtenir un prêt d'une banque.","back":"You can get a loan from a bank.","scene":"at the bank","src":"tatoeba:482853","by":"sacredceltic","enId":"16201","enBy":"CK","auto":true}
+{"term":"Fais-moi part de ta nouvelle adresse.","back":"Let me know your new address.","scene":"forms and offices","src":"tatoeba:887770","by":"sacredceltic","enId":"70543","enBy":"CK","auto":true}
+{"term":"Par ailleurs, quelle est ton adresse?","back":"By the way, what's your address?","scene":"forms and offices","src":"tatoeba:4738320","by":"Scorpionvenin14","enId":"4737845","enBy":"patgfisher","auto":true}
+{"term":"Je posterai cette lettre aujourd'hui.","back":"I'll mail this letter today.","scene":"post office","src":"tatoeba:5304013","by":"Scorpionvenin14","enId":"242443","enBy":"CK","auto":true}
+{"term":"Je dois penser à poster cette lettre.","back":"I have to remember to mail this letter.","scene":"post office","src":"tatoeba:6485045","by":"GB3","enId":"6485043","enBy":"CK","auto":true}
+{"term":"Je m'arrêterai à la poste en rentrant.","back":"I'll stop by the post office on the way home.","scene":"post office","src":"tatoeba:9766172","by":"lbdx","enId":"2690589","enBy":"Joseph","auto":true}
+{"term":"Nous avons envoyé le livre par la poste.","back":"We sent the book by mail.","scene":"post office","src":"tatoeba:2049159","by":"Amastan","enId":"8356047","enBy":"Ergulis","auto":true}
+{"term":"Nous devons demander un prêt à la banque.","back":"We need to apply to the bank for a loan.","scene":"at the bank","src":"tatoeba:11776827","by":"lbdx","enId":"4001360","enBy":"AlanF_US","auto":true}
+{"term":"Cet appartement me fait me sentir chez moi.","back":"This apartment makes me feel at home.","scene":"renting a flat","src":"tatoeba:6308645","by":"Scorpionvenin14","enId":"6308626","enBy":"carlosalberto","auto":true}
+{"term":"Nous rêvons de revenir dans notre appartement.","back":"We're dreaming about coming back to our apartment.","scene":"renting a flat","src":"tatoeba:11576541","by":"Aiji","enId":"2905887","enBy":"AlanF_US","auto":true}
+{"term":"Notre appartement commence à avoir de la gueule.","back":"Our apartment is starting to look pretty cool.","scene":"renting a flat","src":"tatoeba:1723000","by":"sacredceltic","enId":"1723815","enBy":"belgavox","auto":true}
+{"term":"Nous recherchons un appartement avec deux chambres.","back":"We're looking for an apartment with two bedrooms.","scene":"renting a flat","src":"tatoeba:468630","by":"sacredceltic","enId":"464462","enBy":"lukaszpp","auto":true}
+{"term":"Veuillez prendre note de mon adresse.","back":"Please write down my address.","scene":"forms and offices","src":"tatoeba:1821913","by":"sacredceltic","enId":"251158","enBy":"CK","auto":true}
+{"term":"Veuillez noter ici votre adresse de contact.","back":"Please write down your contact address here.","scene":"forms and offices","src":"tatoeba:1391130","by":"sacredceltic","enId":"326318","enBy":"CK","auto":true}
+{"term":"As-tu reçu mon paquet ?","back":"Did you receive my parcel?","scene":"post office","src":"tatoeba:1850957","by":"Rovo","enId":"11935715","enBy":"sundown","auto":true}
+{"term":"Qui vous a donné ce paquet ?","back":"Who gave you that package?","scene":"post office","src":"tatoeba:7883086","by":"Aiji","enId":"3151159","enBy":"CK","auto":true}
+{"term":"J'aimerais assurer ce paquet.","back":"I would like to insure this package.","scene":"post office","src":"tatoeba:3258112","by":"nimfeo","enId":"3258113","enBy":"CM","auto":true}
+{"term":"J'aimerais retirer de l'argent.","back":"I'd like to withdraw money.","scene":"at the bank","src":"tatoeba:5499970","by":"Scorpionvenin14","enId":"5499963","enBy":"tanay","auto":true}
+{"term":"As-tu noté sa nouvelle adresse ?","back":"Did you write down his new address?","scene":"forms and offices","src":"tatoeba:133776","by":"dominiko","enId":"8293784","enBy":"sundown","auto":true}
+{"term":"À qui appartient cet appartement ?","back":"Who does this apartment belong to?","scene":"renting a flat","src":"tatoeba:2840349","by":"Micsmithel","enId":"11095128","enBy":"ddnktr","auto":true}
+{"term":"Habitez-vous toujours à la même adresse ?","back":"Do you still live at the same address?","scene":"forms and offices","src":"tatoeba:11329192","by":"lbdx","enId":"6247190","enBy":"CK","auto":true}
+{"term":"Avez-vous apporté votre carte d'identité ?","back":"Have you brought your ID card with you?","scene":"forms and offices","src":"tatoeba:478868","by":"sacredceltic","enId":"474600","enBy":"minshirui","auto":true}
+{"term":"Note son adresse.","back":"Write down his address.","scene":"forms and offices","src":"tatoeba:1131270","by":"sysko","enId":"465105","enBy":"CM","auto":true}
+{"term":"Je vais noter l'adresse.","back":"Let me write down the address.","scene":"forms and offices","src":"tatoeba:4017712","by":"Scorpionvenin14","enId":"4017376","enBy":"CK","auto":true}
+{"term":"À qui sont ces papiers ?","back":"Whose documents are these?","scene":"forms and offices","src":"tatoeba:6981774","by":"felix63","enId":"8723253","enBy":"deniko","auto":true}
+{"term":"Il nous faut nous retirer.","back":"We must withdraw.","scene":"at the bank","src":"tatoeba:4777538","by":"sacredceltic","enId":"2241411","enBy":"CK","auto":true}
+{"term":"Écris clairement l'adresse !","back":"Write the address clearly.","scene":"forms and offices","src":"tatoeba:3245271","by":"sacredceltic","enId":"2270595","enBy":"_undertoad","auto":true}
+{"term":"Je viens de recevoir un paquet.","back":"I have just received a package.","scene":"post office","src":"tatoeba:3259962","by":"nimfeo","enId":"3259963","auto":true}
+{"term":"Je dois aller retirer de l'argent.","back":"I have to take some money out of the bank.","scene":"at the bank","src":"tatoeba:9118","by":"sacredceltic","enId":"18457","enBy":"CK","auto":true}
+{"term":"Est-ce que la banque était fermée ?","back":"Was the bank closed?","scene":"at the bank","src":"tatoeba:4962357","by":"franlexcois","enId":"3825701","enBy":"CK","auto":true}
+{"term":"Tu peux facilement trouver la banque.","back":"You can easily find the bank.","scene":"at the bank","src":"tatoeba:1347658","by":"sacredceltic","enId":"48624","enBy":"CK","auto":true}
+{"term":"Cet appartement appartient à ma tante.","back":"My aunt owns this apartment.","scene":"renting a flat","src":"tatoeba:2840351","by":"Micsmithel","enId":"7773607","enBy":"karloelkebekio","auto":true}
+{"term":"Il faut apporter ce paquet à la poste.","back":"This package must be brought to the post office.","scene":"post office","src":"tatoeba:3259644","by":"Aiji","enId":"3259645","auto":true}
+{"term":"Le paquet n'est-il pas encore arrivé ?","back":"Hasn't the parcel arrived yet?","scene":"post office","src":"tatoeba:835105","by":"sacredceltic","enId":"372405","enBy":"ilayde","auto":true}
+{"term":"Mon mari et moi avons un compte joint.","back":"My husband and I have a joint bank account.","scene":"at the bank","src":"tatoeba:11299708","by":"lbdx","enId":"2744893","enBy":"sharptoothed","auto":true}
+{"term":"Je jetai l'étrange paquet sur la table.","back":"I threw the strange package on the table.","scene":"post office","src":"tatoeba:974710","by":"sacredceltic","enId":"1176237","enBy":"paula_guisard","auto":true}
+{"term":"Je partage un appartement avec mon frère.","back":"I share an apartment with my brother.","scene":"renting a flat","src":"tatoeba:135203","by":"Aiji","enId":"321898","enBy":"CK","auto":true}
+{"term":"Je vais noter votre nom et votre adresse.","back":"I will write down your name and address.","scene":"forms and offices","src":"tatoeba:1589862","by":"Petrus","enId":"70365","enBy":"CK","auto":true}
+{"term":"Cette personne n'habite plus à cette adresse.","back":"This person no longer lives at this address.","scene":"forms and offices","src":"tatoeba:10553189","by":"lbdx","enId":"10553061","enBy":"catimini","auto":true}
+{"term":"Faites-moi savoir quand vous recevrez le paquet.","back":"Let me know when you get the package.","scene":"post office","src":"tatoeba:128471","by":"dominiko","enId":"267681","enBy":"CK","auto":true}
+{"term":"Merci de me contacter par courrier.","back":"Please contact me by mail.","scene":"post office","src":"tatoeba:971217","by":"sacredceltic","enId":"965526","enBy":"CK","auto":true}
+{"term":"Tu as du courrier.","back":"You have mail.","scene":"post office","src":"tatoeba:4599598","by":"sacredceltic","enId":"2254996","enBy":"CK","auto":true}
+{"term":"Je suis employé de banque.","back":"I'm a bank clerk.","scene":"at the bank","src":"tatoeba:6633","by":"Cocorico","enId":"256984","enBy":"CK","auto":true}
+{"term":"Je reçois peu de courrier.","back":"I don't get much mail.","scene":"post office","src":"tatoeba:2069646","by":"sacredceltic","enId":"1887226","enBy":"CK","auto":true}
+{"term":"Cette banque a beaucoup d'agences.","back":"This bank has many branches.","scene":"at the bank","src":"tatoeba:11167816","by":"lbdx","enId":"7264505","enBy":"Hybrid","auto":true}
+{"term":"Ma sœur est secrétaire dans une banque.","back":"My sister works in a bank as a secretary.","scene":"at the bank","src":"tatoeba:372268","by":"nimfeo","enId":"245598","enBy":"CK","auto":true}
+{"term":"Ma sœur travaille comme secrétaire dans une banque.","back":"My sister works as a secretary at a bank.","scene":"at the bank","src":"tatoeba:538585","by":"zmoo","enId":"508797","enBy":"kebukebu","auto":true}
+{"term":"En cas de changement d'adresse, veuillez-nous contacter.","back":"If the address changes, please contact us.","scene":"forms and offices","src":"tatoeba:1412740","by":"martin9","enId":"1926401","enBy":"dexique","auto":true}
+{"term":"Dois-tu louer une voiture ?","back":"Do you have to rent a car?","scene":"renting a flat","src":"tatoeba:3669956","by":"sacredceltic","enId":"3671055","enBy":"speedwell","auto":true}
+{"term":"Où est-ce que je peux louer un vélo ?","back":"Where can I rent a bike?","scene":"renting a flat","src":"tatoeba:9029333","by":"Equilingual","enId":"6796490","enBy":"CK","auto":true}
+{"term":"Pouvons-nous louer un bateau de pêche ici ?","back":"Can we rent a fishing boat here?","scene":"renting a flat","src":"tatoeba:7862808","by":"Aiji","enId":"2006429","enBy":"CK","auto":true}
+{"term":"Veuillez payer deux mois de loyer comme caution.","back":"Please pay a deposit of two month's rent.","scene":"at the bank","src":"tatoeba:8274087","by":"dolomitt","enId":"72933","enBy":"CM","auto":true}
+{"term":"Pourrais-tu mettre ces documents sur mon bureau ?","back":"Could you put those documents on my desk?","scene":"forms and offices","src":"tatoeba:6841272","by":"Aiji","enId":"3355245","enBy":"CK","auto":true}
+{"term":"As-tu payé le loyer ?","back":"Have you paid the rent?","scene":"renting a flat","src":"tatoeba:7802596","by":"Aiji","enId":"2470561","enBy":"Hybrid","auto":true}
+{"term":"Je veux louer une voiture.","back":"I want to rent a car.","scene":"renting a flat","src":"tatoeba:4134818","by":"Scorpionvenin14","enId":"4134771","enBy":"allasobirova","auto":true}
+{"term":"As-tu loué un appartement ?","back":"Did you rent an apartment?","scene":"renting a flat","src":"tatoeba:334105","by":"Lumpawurump","enId":"67769","enBy":"CK","auto":true}
+{"term":"Je veux déposer de l'argent.","back":"I want to deposit some money.","scene":"at the bank","src":"tatoeba:135520","by":"nimfeo","enId":"324789","enBy":"CK","auto":true}
+{"term":"J'aimerais louer une voiture.","back":"I'd like to rent a car.","scene":"renting a flat","src":"tatoeba:13791","by":"Julien_PDC","enId":"29477","enBy":"CK","auto":true}
+{"term":"Voulez-vous louer votre maison ?","back":"Do you want to rent your house?","scene":"renting a flat","src":"tatoeba:3662057","by":"THURET","enId":"2258170","enBy":"_undertoad","auto":true}
+{"term":"Avez-vous besoin d'une caution ?","back":"Do you need a deposit?","scene":"at the bank","src":"tatoeba:5306822","by":"Aiji","enId":"3779391","enBy":"tanay","auto":true}
+{"term":"J'aimerais louer un bateau à moteur.","back":"I'd like to rent a motorboat.","scene":"renting a flat","src":"tatoeba:9766155","by":"lbdx","enId":"4132878","enBy":"CK","auto":true}
+{"term":"J'aimerais jeter un œil à ces documents.","back":"I'd like to take a look at those documents.","scene":"forms and offices","src":"tatoeba:12330513","by":"lbdx","enId":"1936338","enBy":"CK","auto":true}
+{"term":"Avez-vous l'intention de louer une voiture ?","back":"Do you plan to rent a car?","scene":"renting a flat","src":"tatoeba:7414007","by":"lbdx","enId":"6026740","enBy":"CK","auto":true}
+{"term":"Excusez-moi, je voudrais bien louer une voiture.","back":"Excuse me. I'd like to rent a car.","scene":"renting a flat","src":"tatoeba:566231","by":"sacredceltic","enId":"51486","auto":true}
+{"term":"Je louerai une voiture.","back":"I'll rent a car.","scene":"renting a flat","src":"tatoeba:7088890","by":"Aiji","enId":"2549521","enBy":"CK","auto":true}
+{"term":"Cette maison est à louer.","back":"That house is for rent.","scene":"renting a flat","src":"tatoeba:1259595","by":"sacredceltic","enId":"1258652","enBy":"CK","auto":true}
+{"term":"Louons des vélos là-bas !","back":"Let's rent bicycles over there.","scene":"renting a flat","src":"tatoeba:3642480","by":"sacredceltic","enId":"576884","enBy":"CK","auto":true}
+{"term":"Cette chambre est à louer.","back":"This room is for rent.","scene":"renting a flat","src":"tatoeba:1328767","by":"sacredceltic","enId":"57307","enBy":"CK","auto":true}
+{"term":"On loue les bateaux à l'heure.","back":"You can rent a boat by the hour.","scene":"renting a flat","src":"tatoeba:1450173","by":"sacredceltic","enId":"1449317","enBy":"CK","auto":true}
+{"term":"Mon fils, voici tes documents.","back":"My son, here are your documents.","scene":"forms and offices","src":"tatoeba:4463902","by":"nimfeo","enId":"11024314","enBy":"tjwhale","auto":true}
+{"term":"Ne lui indiquez pas son adresse !","back":"Don't tell him her address.","scene":"forms and offices","src":"tatoeba:10783630","by":"sacredceltic","enId":"10783624","enBy":"hecko","auto":true}
+{"term":"Nous louons des films tout le temps.","back":"We rent movies all the time.","scene":"renting a flat","src":"tatoeba:5515926","by":"alexisslay","enId":"5515319","enBy":"CK","auto":true}
+{"term":"Cet entrepôt est à louer, pas à vendre.","back":"This warehouse is for lease, not for sale.","scene":"renting a flat","src":"tatoeba:10228081","by":"lbdx","enId":"10158000","enBy":"CK","auto":true}
+{"term":"On ne peut pas travailler sans électricité.","back":"We can't work without electricity.","scene":"renting a flat","src":"tatoeba:5389569","by":"Aiji","enId":"4131049","enBy":"dan1ruusianspanish","auto":true}
+{"term":"Nous voulons louer un appartement en ville.","back":"We want to rent a town flat.","scene":"renting a flat","src":"tatoeba:9576505","by":"Aiji","enId":"10708099","enBy":"sundown","auto":true}
+{"term":"Ce vampire travaille pour une banque du sang.","back":"This vampire works for a blood bank.","scene":"at the bank","src":"tatoeba:3625501","by":"sacredceltic","enId":"3618462","enBy":"Hybrid","auto":true}
+{"term":"Je ne peux pas imaginer vivre sans électricité.","back":"I can't imagine living without electricity.","scene":"renting a flat","src":"tatoeba:5364625","by":"Aiji","enId":"2538286","enBy":"CK","auto":true}
+{"term":"Vous avez fouillé chaque pièce de mon appartement.","back":"You searched every room in my apartment.","scene":"renting a flat","src":"tatoeba:11876694","by":"zogwarg","enId":"3760880","enBy":"Eldad","auto":true}
+{"term":"Comment avez-vous meublé votre appartement ?","back":"How have you furnished your apartment?","scene":"renting a flat","src":"tatoeba:11297559","by":"lbdx","enId":"2253469","enBy":"_undertoad","auto":true}
+{"term":"Mon loyer a augmenté.","back":"My rent has gone up.","scene":"renting a flat","src":"tatoeba:8285909","by":"Aiji","enId":"2548172","enBy":"CK","auto":true}
+{"term":"Nous augmenterons le loyer le mois prochain.","back":"We'll increase the rent next month.","scene":"renting a flat","src":"tatoeba:11238358","by":"lbdx","enId":"8950513","enBy":"CK","auto":true}
+{"term":"Nous signons un nouveau bail la semaine prochaine.","back":"We're signing a new lease next week.","scene":"renting a flat","src":"tatoeba:10073980","by":"lbdx","enId":"10073762","enBy":"CK","auto":true}
+{"term":"Nous déménageons de cet appartement le mois prochain.","back":"We're moving out of this apartment next month.","scene":"renting a flat","src":"tatoeba:532884","by":"sacredceltic","enId":"325027","enBy":"CK","auto":true}
+{"term":"Où est l'ambassade russe ?","back":"Where is the Russian embassy?","scene":"forms and offices","src":"tatoeba:1895103","by":"Amastan","enId":"1759411","enBy":"loghaD","auto":true}
+{"term":"Où est l'ambassade américaine ?","back":"Where's the US embassy?","scene":"forms and offices","src":"tatoeba:8538136","by":"Aiji","enId":"7948736","enBy":"AlanF_US","auto":true}
+{"term":"Dois-je laisser une garantie ?","back":"Do I have to leave a deposit?","scene":"at the bank","src":"tatoeba:941042","by":"sacredceltic","enId":"273624","enBy":"CK","auto":true}
+{"term":"Voulez-vous mon adresse e-mail ?","back":"Do you want my email address?","scene":"forms and offices","src":"tatoeba:7957243","by":"Micsmithel","enId":"3472469","enBy":"Ricardo14","auto":true}
+{"term":"J'aimerais appeler mon ambassade.","back":"I would like to call my embassy.","scene":"forms and offices","src":"tatoeba:8437304","by":"lbdx","enId":"4303023","enBy":"Globetrotter","auto":true}
+{"term":"L'ambassade est-elle ici à droite ?","back":"Is the embassy here to the right?","scene":"forms and offices","src":"tatoeba:457175","by":"sacredceltic","enId":"403088","enBy":"Ramses","auto":true}
+{"term":"As-tu mis toutes tes économies à la banque ?","back":"Have you put all your savings in the bank?","scene":"at the bank","src":"tatoeba:6559963","by":"Micsmithel","enId":"6581281","enBy":"Eccles17","auto":true}
+{"term":"Ça doit être la mairie.","back":"That must be the city hall.","scene":"forms and offices","src":"tatoeba:10607","by":"sacredceltic","enId":"67130","enBy":"CK","auto":true}
+{"term":"Je travaille à l'ambassade.","back":"I work at the embassy.","scene":"forms and offices","src":"tatoeba:900444","by":"sacredceltic","enId":"873636","enBy":"CK","auto":true}
+{"term":"Il faut que j'appelle l'ambassade.","back":"I need to call the embassy.","scene":"forms and offices","src":"tatoeba:6474195","by":"Aiji","enId":"4302983","enBy":"Globetrotter","auto":true}
+{"term":"Vous devez confirmer votre adresse mail.","back":"You need to confirm your e-mail address.","scene":"forms and offices","src":"tatoeba:4585110","by":"dadidas","enId":"4584970","enBy":"gleki","auto":true}
+{"term":"Pouvez-vous signer ici, s'il vous plaît ?","back":"Could you sign here, please?","scene":"forms and offices","src":"tatoeba:11238","by":"sacredceltic","enId":"61518","enBy":"CK","auto":true}
+{"term":"Puis-je avoir votre signature ici, je vous prie ?","back":"May I have your signature here, please?","scene":"forms and offices","src":"tatoeba:1732980","by":"sacredceltic","enId":"632859","enBy":"blay_paul","auto":true}
+{"term":"Puis-je te la louer ?","back":"Can I rent it to you?","scene":"renting a flat","src":"tatoeba:10468000","by":"Julien_PDC","enId":"10640795","enBy":"samir_t","auto":true}
+{"term":"Où est le distributeur ?","back":"Where is the bank machine?","scene":"at the bank","src":"tatoeba:5800064","by":"Toynop","enId":"5790258","enBy":"Eccles17","auto":true}
+{"term":"Veuillez ouvrir le colis.","back":"Please open the package.","scene":"post office","src":"tatoeba:1907783","by":"sacredceltic","enId":"1907147","enBy":"CK","auto":true}
+{"term":"As-tu un compte bancaire ?","back":"Do you have a bank account?","scene":"at the bank","src":"tatoeba:5920242","by":"Aiji","enId":"3898288","enBy":"AlanF_US","auto":true}
+{"term":"Puis-je louer des raquettes ?","back":"Can I rent rackets?","scene":"renting a flat","src":"tatoeba:13755","by":"Lulantis","enId":"29802","enBy":"Dejo","auto":true}
+{"term":"Puis-je avoir une signature ?","back":"May I have a signature?","scene":"forms and offices","src":"tatoeba:1564225","by":"sacredceltic","enId":"70896","auto":true}
+{"term":"Où puis-je louer un costume ?","back":"Where can I rent a costume?","scene":"renting a flat","src":"tatoeba:1977307","by":"sacredceltic","enId":"1977303","enBy":"Spamster","auto":true}
+{"term":"Où est la boîte aux lettres ?","back":"Where's the mail box?","scene":"post office","src":"tatoeba:3627414","by":"fleur74","enId":"4077307","enBy":"CK","auto":true}
+{"term":"Où puis-je louer une voiture ?","back":"Where can I rent a car?","scene":"renting a flat","src":"tatoeba:5301152","by":"Aiji","enId":"265608","enBy":"Dejo","auto":true}
+{"term":"As-tu une adresse électronique ?","back":"Do you have an e-mail address?","scene":"forms and offices","src":"tatoeba:784378","by":"sacredceltic","enId":"434558","enBy":"lukaszpp","auto":true}
+{"term":"Avez-vous des timbres étrangers ?","back":"Do you have any foreign stamps?","scene":"post office","src":"tatoeba:495894","by":"sacredceltic","enId":"21940","enBy":"CK","auto":true}
+{"term":"Où est l’ambassade australienne ?","back":"Where's the Australian embassy?","scene":"forms and offices","src":"tatoeba:4107646","by":"Aiji","enId":"7855043","enBy":"CK","auto":true}
+{"term":"Veuillez remplir ces formulaires.","back":"Please fill out these forms.","scene":"forms and offices","src":"tatoeba:6843632","by":"Aiji","enId":"4015853","enBy":"CK","auto":true}
+{"term":"Où puis-je acquérir des timbres ?","back":"Where do I get stamps?","scene":"post office","src":"tatoeba:9539120","by":"sacredceltic","enId":"272461","enBy":"CK","auto":true}
+{"term":"Ouvrez le paquet, s'il vous plaît.","back":"Please undo the package.","scene":"post office","src":"tatoeba:8925861","by":"lbdx","enId":"320950","enBy":"buster_blu","auto":true}
+{"term":"Pouvez-vous remplir ce formulaire ?","back":"Can you fill in this form?","scene":"forms and offices","src":"tatoeba:1309620","by":"sacredceltic","enId":"11074118","enBy":"sundown","auto":true}
+{"term":"Puis-je avoir votre nom et adresse ?","back":"May I have your name and address?","scene":"forms and offices","src":"tatoeba:1357921","by":"sacredceltic","enId":"993115","enBy":"CK","auto":true}
+{"term":"Avez-vous une compresse chauffante ?","back":"Do you have a heating pad?","scene":"renting a flat","src":"tatoeba:8915782","by":"lbdx","enId":"6691666","enBy":"Eccles17","auto":true}
+{"term":"Y a-t-il une poste à proximité d'ici ?","back":"Is there a post office around here?","scene":"post office","src":"tatoeba:824556","by":"sacredceltic","enId":"61362","enBy":"CK","auto":true}
+{"term":"Où se trouve l’ambassade australienne ?","back":"Where is the Australian embassy?","scene":"forms and offices","src":"tatoeba:4612341","by":"Aiji","enId":"1759176","enBy":"loghaD","auto":true}
+{"term":"Veuillez d'abord remplir ce formulaire.","back":"Please fill in this form first.","scene":"forms and offices","src":"tatoeba:6285865","by":"Aiji","enId":"11994421","enBy":"sundown","auto":true}
+{"term":"Y a-t-il une lettre pour moi ce matin ?","back":"Is there any mail for me this morning?","scene":"post office","src":"tatoeba:8394299","by":"zarisi","enId":"62599","enBy":"CK","auto":true}
+{"term":"Coller l'étiquette-adresse à cet endroit.","back":"Please affix the address label here.","scene":"forms and offices","src":"tatoeba:432859","by":"qdii","enId":"432858","enBy":"FeuDRenais","auto":true}
+{"term":"Puis-je déposer les objets de valeur ici ?","back":"Can I deposit valuables here?","scene":"at the bank","src":"tatoeba:9313","by":"dominiko","enId":"20149","enBy":"Zifre","auto":true}
+{"term":"Remplissez ce formulaire, s'il vous plaît.","back":"Please fill out this form.","scene":"forms and offices","src":"tatoeba:11477","by":"sacredceltic","enId":"56538","enBy":"CK","auto":true}
+{"term":"S'il vous plaît, remplissez ce formulaire.","back":"Please fill in this form.","scene":"forms and offices","src":"tatoeba:2667574","by":"Julien_PDC","enId":"2665970","enBy":"CK","auto":true}
+{"term":"Veuillez me donner votre adresse permanente.","back":"Please give me your permanent address.","scene":"forms and offices","src":"tatoeba:474154","by":"sacredceltic","enId":"16859","enBy":"CK","auto":true}
+{"term":"Merci de porter votre âge sur le formulaire.","back":"Please put your age on the form.","scene":"forms and offices","src":"tatoeba:1101509","by":"sacredceltic","enId":"680114","enBy":"Source_VOA","auto":true}
+{"term":"Pouvez-vous traduire ces documents pour moi ?","back":"Can you translate those documents for me?","scene":"forms and offices","src":"tatoeba:8349663","by":"Aiji","enId":"3329666","enBy":"CK","auto":true}
+{"term":"Pouvez-vous m'aider à remplir ce formulaire ?","back":"Can you help me fill out this form?","scene":"forms and offices","src":"tatoeba:11354318","by":"lbdx","enId":"8216211","enBy":"CK","auto":true}
+{"term":"S'il te plaît, envoie-le par courrier express.","back":"Please send it by express mail.","scene":"post office","src":"tatoeba:2058844","by":"Amastan","enId":"274520","enBy":"CK","auto":true}
+{"term":"Veuillez remplir ce formulaire de candidature.","back":"Please fill in this application form.","scene":"forms and offices","src":"tatoeba:6841214","by":"Aiji","enId":"58338","enBy":"CK","auto":true}
+{"term":"Y a-t-il un chauffage central dans ce bâtiment ?","back":"Is there central heating in this building?","scene":"renting a flat","src":"tatoeba:1088192","by":"sacredceltic","enId":"1088103","enBy":"Scott","auto":true}
+{"term":"Veuillez saisir une adresse électronique valide.","back":"Please enter a valid email address.","scene":"forms and offices","src":"tatoeba:12318748","by":"lbdx","enId":"2595737","enBy":"CK","auto":true}
+{"term":"Veuillez venir récupérer vos colis à la réception.","back":"Please come pick up your package at the reception.","scene":"post office","src":"tatoeba:1453880","by":"sacredceltic","enId":"1452753","enBy":"Spamster","auto":true}
+{"term":"Peux-tu nous dire à quoi ressemblait le braqueur ?","back":"Can you tell us what the bank robber looked like?","scene":"at the bank","src":"tatoeba:6402462","by":"Aiji","enId":"3204901","enBy":"CK","auto":true}
+{"term":"Est-ce que je peux expédier cette lettre maintenant ?","back":"Can I send this letter now?","scene":"post office","src":"tatoeba:12708567","by":"Rovo","enId":"12999902","enBy":"rul","auto":true}
+{"term":"Vous n'avez pas de mél ?","back":"You don't have an email address?","scene":"forms and offices","src":"tatoeba:13953","by":"sacredceltic","enId":"3271405","auto":true}
+{"term":"Exigez-vous un acompte ?","back":"Do you require a deposit?","scene":"at the bank","src":"tatoeba:11217775","by":"lbdx","enId":"2959465","enBy":"sharptoothed","auto":true}
+{"term":"Qu'y a-t-il dans le paquet ?","back":"What's in the package?","scene":"post office","src":"tatoeba:5326505","by":"Aiji","enId":"2646200","enBy":"CK","auto":true}
+{"term":"Pourquoi veux-tu des timbres ?","back":"Why do you want stamps?","scene":"post office","src":"tatoeba:1182824","by":"sacredceltic","enId":"36628","enBy":"CK","auto":true}
+{"term":"Quelle est ton adresse électronique ?","back":"What's your email address?","scene":"forms and offices","src":"tatoeba:948132","by":"sacredceltic","enId":"2838173","enBy":"CK","auto":true}
+{"term":"J'aimerais ouvrir un compte bancaire.","back":"I'd like to open a bank account.","scene":"at the bank","src":"tatoeba:2350628","by":"Amastan","enId":"2459475","enBy":"sharptoothed","auto":true}
+{"term":"Connais-tu son adresse électronique ?","back":"Do you know his email address?","scene":"forms and offices","src":"tatoeba:4931289","by":"sacredceltic","enId":"5075508","enBy":"jhomel","auto":true}
+{"term":"Tu as mis un timbre sur l'enveloppe ?","back":"Did you put a stamp on the envelope?","scene":"post office","src":"tatoeba:7695848","by":"Maxence","enId":"44179","enBy":"CK","auto":true}
+{"term":"Je veux désencombrer mon appartement.","back":"I want to declutter my apartment.","scene":"renting a flat","src":"tatoeba:9013328","by":"lbdx","enId":"2490801","enBy":"Hybrid","auto":true}
+{"term":"Le courrier est-il livré le dimanche ?","back":"Is mail delivered on Sunday?","scene":"post office","src":"tatoeba:6186148","by":"Aiji","enId":"4860458","enBy":"Muelisto","auto":true}
+{"term":"Je cherche un distributeur de billets.","back":"I'm looking for an ATM.","scene":"at the bank","src":"tatoeba:7458818","by":"Micsmithel","enId":"7446663","enBy":"Luiaard","auto":true}
+{"term":"Veux-tu voir ma collection de timbres ?","back":"Do you want to see my stamp collection?","scene":"post office","src":"tatoeba:12760854","by":"felix63","enId":"3871280","enBy":"CK","auto":true}
+{"term":"Cuisines-tu au gaz ou à l'électricité ?","back":"Do you cook by gas or electricity?","scene":"renting a flat","src":"tatoeba:1762806","by":"Aiji","enId":"63752","auto":true}
+{"term":"Avez-vous rempli tous les formulaires ?","back":"Did you fill out all the forms?","scene":"forms and offices","src":"tatoeba:12619794","by":"lbdx","enId":"8991435","enBy":"CK","auto":true}
+{"term":"Ne vérifies-tu pas tes messages vocaux ?","back":"Don't you check your voice mail?","scene":"post office","src":"tatoeba:3979797","by":"sacredceltic","enId":"3730903","enBy":"CM","auto":true}
+{"term":"Vous êtes sûr d'avoir la bonne adresse ?","back":"Are you sure you have the right address?","scene":"forms and offices","src":"tatoeba:4017709","by":"Scorpionvenin14","enId":"4017378","enBy":"CK","auto":true}
+{"term":"Comment vérifier votre compte bancaire ?","back":"How do you verify your bank account?","scene":"at the bank","src":"tatoeba:11684377","by":"vandpatr","enId":"11695866","enBy":"ddnktr","auto":true}
+{"term":"Je souhaite mettre ma maison en location.","back":"I want to rent out my house.","scene":"renting a flat","src":"tatoeba:11947030","by":"lbdx","enId":"6962930","enBy":"sabretou","auto":true}
+{"term":"J'aimerais envoyer ce colis immédiatement.","back":"I want to send this parcel at once.","scene":"post office","src":"tatoeba:2058007","by":"Amastan","enId":"58459","auto":true}
+{"term":"Je voudrais déterminer mon solde bancaire.","back":"I'd like to find out my bank balance.","scene":"at the bank","src":"tatoeba:13452395","by":"sacredceltic","enId":"245208","enBy":"CK","auto":true}
+{"term":"Vas-tu renouveler ton bail à son échéance ?","back":"Are you going to renew your lease when it expires?","scene":"renting a flat","src":"tatoeba:8898978","by":"lbdx","enId":"2599999","enBy":"sharptoothed","auto":true}
+{"term":"Qu'est-ce qui cause l'électricité statique ?","back":"What causes static electricity?","scene":"renting a flat","src":"tatoeba:10824101","by":"lbdx","enId":"9638088","enBy":"CK","auto":true}
+{"term":"Est-il possible que ce soit la bonne adresse ?","back":"Can this possibly be the right address?","scene":"forms and offices","src":"tatoeba:3923407","by":"sacredceltic","enId":"3731620","enBy":"CM","auto":true}
+{"term":"Quelle est l'adresse de la nouvelle librairie ?","back":"What is the address of the new bookshop?","scene":"forms and offices","src":"tatoeba:5654439","by":"Yemana","enId":"269186","enBy":"Eldad","auto":true}
+{"term":"Je voudrais envoyer ceci par courrier recommandé.","back":"I'd like to send this by registered mail.","scene":"post office","src":"tatoeba:2054298","by":"Amastan","enId":"54945","enBy":"CK","auto":true}
+{"term":"Quels autres formulaires ai-je besoin de remplir ?","back":"What other forms do I need to fill out?","scene":"forms and offices","src":"tatoeba:7063805","by":"Aiji","enId":"2534281","enBy":"CK","auto":true}
+{"term":"Comment puis-je désactiver mon compte sur ce site ?","back":"How can I deactivate my account on this site?","scene":"at the bank","src":"tatoeba:547830","by":"sacredceltic","enId":"508106","enBy":"arezoo","auto":true}
+{"term":"Quand j'étais petit, je collectionnais les timbres.","back":"When I was little, I collected stamps.","scene":"post office","src":"tatoeba:6876680","by":"Micsmithel","enId":"6900885","enBy":"kaiperkins271","auto":true}
+{"term":"J'ai ton adresse.","back":"I've got your address.","scene":"forms and offices","src":"tatoeba:12498217","by":"Rovo","enId":"12502868","enBy":"rul","auto":true}
+{"term":"J'ai son adresse.","back":"I have his address.","scene":"forms and offices","src":"tatoeba:12498233","by":"Rovo","enId":"12499560","enBy":"Miktsoanit","auto":true}
+{"term":"J'ai oublié mon mél.","back":"I forgot my email address.","scene":"forms and offices","src":"tatoeba:2196334","by":"sacredceltic","enId":"937844","enBy":"CK","auto":true}
+{"term":"Nous nous vouvoyons.","back":"We address each other as \"vous\".","scene":"forms and offices","src":"tatoeba:8680006","by":"Micsmithel","enId":"1349972","enBy":"sacredceltic","auto":true}
+{"term":"J'ai oublié l'adresse.","back":"I forgot the address.","scene":"forms and offices","src":"tatoeba:7820711","by":"Yemana","enId":"5769800","enBy":"mailohilohi","auto":true}
+{"term":"J'ai un colis pour toi.","back":"I have a package for you.","scene":"post office","src":"tatoeba:8031083","by":"Aiji","enId":"2358771","enBy":"CK","auto":true}
+{"term":"Inscris ici ton adresse.","back":"Write your address here.","scene":"forms and offices","src":"tatoeba:844158","by":"sacredceltic","enId":"17065","enBy":"CK","auto":true}
+{"term":"J'ai un ami à la mairie.","back":"I have a friend at City Hall.","scene":"forms and offices","src":"tatoeba:2137652","by":"sacredceltic","enId":"1970114","enBy":"CK","auto":true}
+{"term":"J'ai oublié ton adresse.","back":"I've forgotten your address.","scene":"forms and offices","src":"tatoeba:5561933","by":"sacredceltic","enId":"1344002","enBy":"Chrikaru","auto":true}
+{"term":"J'ai un bel appartement.","back":"I have a nice apartment.","scene":"renting a flat","src":"tatoeba:7368175","by":"tras","enId":"6666488","enBy":"CK","auto":true}
+{"term":"J'ai loué un appartement.","back":"I've rented an apartment.","scene":"renting a flat","src":"tatoeba:7553001","by":"Aiji","enId":"4999904","enBy":"CK","auto":true}
+{"term":"Je n'ai pas reçu le colis.","back":"I didn't receive the parcel.","scene":"post office","src":"tatoeba:5645744","by":"narnar","enId":"13871112","enBy":"zogwarg","auto":true}
+{"term":"J'ai un très vieux timbre.","back":"I have a very old stamp.","scene":"post office","src":"tatoeba:1013087","by":"sacredceltic","enId":"261415","enBy":"CK","auto":true}
+{"term":"Je n'ai pas l'adresse, là.","back":"I don't have the address now.","scene":"forms and offices","src":"tatoeba:1203534","by":"sacredceltic","enId":"472112","enBy":"CK","auto":true}
+{"term":"Ce n'est pas ma signature.","back":"That's not my signature.","scene":"forms and offices","src":"tatoeba:4855527","by":"sacredceltic","enId":"2713480","enBy":"CK","auto":true}
+{"term":"Je vais déballer le colis.","back":"I'm going to unwrap the package.","scene":"post office","src":"tatoeba:9695002","by":"lbdx","enId":"2267220","enBy":"_undertoad","auto":true}
+{"term":"J'ai pu trouver son adresse.","back":"I could find his address.","scene":"forms and offices","src":"tatoeba:127716","by":"Julien_PDC","enId":"1312943","enBy":"eadbannon","auto":true}
+{"term":"J'ai été au bureau de poste.","back":"I've been to the post office.","scene":"post office","src":"tatoeba:5503502","by":"Aiji","enId":"2359279","enBy":"CK","auto":true}
+{"term":"J'ai toujours payé le loyer.","back":"I've always paid the rent.","scene":"renting a flat","src":"tatoeba:6322064","by":"Aiji","enId":"3821203","enBy":"CK","auto":true}
+{"term":"J'aime bien ton appartement.","back":"I like your apartment.","scene":"renting a flat","src":"tatoeba:11167786","by":"blizb","enId":"7878155","enBy":"CK","auto":true}
+{"term":"C'est l'ambassade américaine.","back":"This is the American Embassy.","scene":"forms and offices","src":"tatoeba:2159886","by":"Micsmithel","enId":"871558","enBy":"CM","auto":true}
+{"term":"J'ai un paquet ici pour vous.","back":"I have a package here for you.","scene":"post office","src":"tatoeba:7438054","by":"Aiji","enId":"3917656","enBy":"CK","auto":true}
+{"term":"J'ai besoin de ces documents.","back":"I need those documents.","scene":"forms and offices","src":"tatoeba:7793996","by":"Aiji","enId":"3017316","enBy":"AlanF_US","auto":true}
+{"term":"A-t-il rempli le formulaire ?","back":"Has he completed the form?","scene":"forms and offices","src":"tatoeba:8434463","by":"marioo","enId":"8208347","enBy":"josivangoncalves","auto":true}
+{"term":"J'ai acheté quelques timbres.","back":"I bought a few stamps.","scene":"post office","src":"tatoeba:11118727","by":"Aiji","enId":"700451","enBy":"kurthc","auto":true}
+{"term":"Je n'ai pas l'adresse sur moi.","back":"I don't have the address with me.","scene":"forms and offices","src":"tatoeba:451474","by":"sacredceltic","enId":"266463","enBy":"CK","auto":true}
+{"term":"Mon appartement est minuscule.","back":"My apartment is tiny.","scene":"renting a flat","src":"tatoeba:11379225","by":"lbdx","enId":"7538441","enBy":"CK","auto":true}
+{"term":"Je ne chauffe pas votre maison.","back":"I'm not heating your house.","scene":"renting a flat","src":"tatoeba:1942701","by":"Amastan","enId":"2848547","enBy":"AlanF_US","auto":true}
+{"term":"Veuillez remplir ce formulaire.","back":"Fill this form in, please.","scene":"forms and offices","src":"tatoeba:570467","by":"sacredceltic","enId":"11477871","enBy":"sundown","auto":true}
+{"term":"Je n'ai aucune chambre à louer.","back":"I don't have any rooms for rent.","scene":"renting a flat","src":"tatoeba:2421345","by":"sacredceltic","enId":"2315272","enBy":"CK","auto":true}
+{"term":"Je n'ai pas de compte bancaire.","back":"I don't have a bank account.","scene":"at the bank","src":"tatoeba:8252820","by":"Aiji","enId":"6264989","enBy":"CK","auto":true}
+{"term":"J'ai envoyé le colis par avion.","back":"I sent the package by airmail.","scene":"post office","src":"tatoeba:9690368","by":"lbdx","enId":"9528598","enBy":"CK","auto":true}
+{"term":"J'ai des timbres dans ma poche.","back":"I've got some stamps in my pocket.","scene":"post office","src":"tatoeba:11524849","by":"Aiji","enId":"10764101","enBy":"sundown","auto":true}
+{"term":"J'ai envoyé le paquet par avion.","back":"I sent the parcel by airmail.","scene":"post office","src":"tatoeba:1082610","by":"nimfeo","enId":"1176914","enBy":"bart","auto":true}
+{"term":"Nom et adresse, s'il vous plait.","back":"Name and address, please.","scene":"forms and offices","src":"tatoeba:128356","by":"christian63","enId":"266466","enBy":"CK","auto":true}
+{"term":"Je n'ai pas pu louer de voiture.","back":"I couldn't rent a car.","scene":"renting a flat","src":"tatoeba:8352413","by":"Aiji","enId":"5265471","enBy":"CK","auto":true}
+{"term":"C'est moi qui ai envoyé ce colis.","back":"I'm the one who sent this package.","scene":"post office","src":"tatoeba:3056863","by":"Amastan","enId":"10247711","enBy":"ddnktr","auto":true}
+{"term":"C'est mon adresse professionnelle.","back":"This is my business address.","scene":"forms and offices","src":"tatoeba:1034570","by":"sacredceltic","enId":"56209","enBy":"CK","auto":true}
+{"term":"Je n'ai pas encore payé mon loyer.","back":"I haven't paid my rent yet.","scene":"renting a flat","src":"tatoeba:9762109","by":"lbdx","enId":"6353919","enBy":"CK","auto":true}
+{"term":"C'est l'appartement de mes parents.","back":"It's my parents' apartment.","scene":"renting a flat","src":"tatoeba:8641183","by":"Julien_PDC","enId":"12343997","enBy":"Miktsoanit","auto":true}
+{"term":"J'ai pris le forfait le moins cher.","back":"I chose the cheapest package.","scene":"post office","src":"tatoeba:10324744","by":"Julien_PDC","enId":"14045857","enBy":"carlosalberto","auto":true}
+{"term":"J'ai emprunté une voiture à un ami.","back":"I rent a car from my friend.","scene":"renting a flat","src":"tatoeba:127976","by":"nimfeo","enId":"262036","auto":true}
+{"term":"J'ai oublié le code du coffre-fort.","back":"I forgot the code for the safe deposit box.","scene":"at the bank","src":"tatoeba:10518041","by":"lbdx","enId":"10489899","enBy":"AlanF_US","auto":true}
+{"term":"Allume le chauffage si tu as froid.","back":"Turn on the heating if you're cold.","scene":"renting a flat","src":"tatoeba:12636960","by":"lbdx","enId":"12964611","enBy":"sundown","auto":true}
+{"term":"L'enveloppe est dépourvue d'adresse.","back":"This envelope has no address.","scene":"forms and offices","src":"tatoeba:7873983","by":"sacredceltic","enId":"5734698","enBy":"CM","auto":true}
+{"term":"Conservez ces documents en lieu sûr.","back":"Keep these documents in a safe place.","scene":"forms and offices","src":"tatoeba:11232405","by":"lbdx","enId":"6529009","enBy":"CK","auto":true}
+{"term":"Je n'ai pas encore reçu mon courrier.","back":"I haven't received my mail yet.","scene":"post office","src":"tatoeba:3258539","by":"nimfeo","enId":"3258540","auto":true}
+{"term":"Nous devons aborder plusieurs sujets.","back":"We have several topics to address.","scene":"forms and offices","src":"tatoeba:13023150","by":"felix63","enId":"13889952","enBy":"zogwarg","auto":true}
+{"term":"Puis-je vous demander votre adresse ?","back":"Might I ask your address?","scene":"forms and offices","src":"tatoeba:128355","by":"dominiko","enId":"266465","enBy":"CM","auto":true}
+{"term":"Tu n'as pas signé tous les documents.","back":"You didn't sign all the documents.","scene":"forms and offices","src":"tatoeba:7001396","by":"Micsmithel","enId":"6997769","enBy":"CK","auto":true}
+{"term":"Inscrivez votre nom et votre adresse.","back":"Put down your name and address.","scene":"forms and offices","src":"tatoeba:9576623","by":"Aiji","enId":"2890396","enBy":"sharptoothed","auto":true}
+{"term":"J'ai reçu un prospectus de la banque.","back":"I've received a circular from the bank.","scene":"at the bank","src":"tatoeba:10498610","by":"lbdx","enId":"2258904","enBy":"_undertoad","auto":true}
+{"term":"Cette banque a été braquée deux fois.","back":"That bank was held up twice.","scene":"at the bank","src":"tatoeba:11277446","by":"lbdx","enId":"68445","enBy":"CK","auto":true}
+{"term":"Je m'adresse aux gens avec politesse.","back":"I address people politely.","scene":"forms and offices","src":"tatoeba:11941384","by":"Amastan","enId":"1728331","enBy":"Amastan","auto":true}
+{"term":"Mon appartement n'est pas très grand.","back":"My apartment isn't very large.","scene":"renting a flat","src":"tatoeba:11948274","by":"lbdx","enId":"6699062","enBy":"CK","auto":true}
+{"term":"Cette chambre forte est impénétrable.","back":"That bank vault is impenetrable.","scene":"at the bank","src":"tatoeba:12662886","by":"lbdx","enId":"11696399","enBy":"ddnktr","auto":true}
+{"term":"Nous avons acheté beaucoup de timbres.","back":"We bought a lot of stamps.","scene":"post office","src":"tatoeba:3257944","by":"nimfeo","enId":"3257945","enBy":"CM","auto":true}
+{"term":"J'ai une grande collection de timbres.","back":"I have a large collection of stamps.","scene":"post office","src":"tatoeba:6254","by":"TRANG","enId":"259027","enBy":"CK","auto":true}
+{"term":"Cette lettre porte un timbre étranger.","back":"This letter bears a foreign stamp.","scene":"post office","src":"tatoeba:715492","by":"qdii","enId":"58669","auto":true}
+{"term":"J'ai apporté les documents à mon chef.","back":"I brought the documents to my boss.","scene":"forms and offices","src":"tatoeba:4263084","by":"LaghmanC","enId":"4262950","enBy":"JFMorais","auto":true}
+{"term":"Je possède quelques très vieux timbres.","back":"I own some very old stamps.","scene":"post office","src":"tatoeba:1013089","by":"sacredceltic","enId":"1008773","enBy":"AOCinJAPAN","auto":true}
+{"term":"Cette école est dépourvue de chauffage.","back":"This school has no heating.","scene":"renting a flat","src":"tatoeba:3648847","by":"sacredceltic","enId":"59927","enBy":"CK","auto":true}
+{"term":"On a l'intention de braquer une banque.","back":"We intend to rob a bank.","scene":"at the bank","src":"tatoeba:11963584","by":"lbdx","enId":"9921862","enBy":"lucasmg123","auto":true}
+{"term":"Je me demande de qui provient ce paquet.","back":"I wonder who this package is from.","scene":"post office","src":"tatoeba:5707281","by":"Aiji","enId":"3734712","enBy":"CK","auto":true}
+{"term":"J'ai failli oublier de poster la lettre.","back":"I almost forgot to mail the letter.","scene":"post office","src":"tatoeba:11942672","by":"lbdx","enId":"5850509","enBy":"CK","auto":true}
+{"term":"Nous avons déjà acheté des timbres lundi.","back":"We already bought stamps on Monday.","scene":"post office","src":"tatoeba:1016083","by":"Batko","enId":"1742381","enBy":"belgavox","auto":true}
+{"term":"Mon frère aime collectionner les timbres.","back":"My brother likes to collect stamps.","scene":"post office","src":"tatoeba:129458","by":"Aiji","enId":"1169890","enBy":"etoile","auto":true}
+{"term":"Je m'adresse à mon professeur en berbère.","back":"I address my teacher in Berber.","scene":"forms and offices","src":"tatoeba:2215387","by":"Rovo","enId":"1709079","enBy":"Amastan","auto":true}
+{"term":"Nous devons nous pencher sur ce problème.","back":"We have to address that problem.","scene":"forms and offices","src":"tatoeba:7028792","by":"Aiji","enId":"4529526","enBy":"CK","auto":true}
+{"term":"Dois-je remplir ce formulaire maintenant ?","back":"Should I fill in this form now?","scene":"forms and offices","src":"tatoeba:331229","by":"TRANG","enId":"65921","enBy":"CK","auto":true}
+{"term":"J'ai les documents que vous avez demandés.","back":"I've got the documents you asked for.","scene":"forms and offices","src":"tatoeba:9077976","by":"Aiji","enId":"2359702","enBy":"CK","auto":true}
+{"term":"Nous devons répondre à ces préoccupations.","back":"We need to address these concerns.","scene":"forms and offices","src":"tatoeba:12267181","by":"lbdx","enId":"9694342","enBy":"CK","auto":true}
+{"term":"Cette maison n'a pas de chauffage central.","back":"This house doesn't have central heating.","scene":"renting a flat","src":"tatoeba:12609186","by":"lbdx","enId":"8824385","enBy":"Ergulis","auto":true}
+{"term":"Nous devons solliciter le prêt à la banque.","back":"We must ask the bank for the loan.","scene":"at the bank","src":"tatoeba:482860","by":"sacredceltic","enId":"18442","enBy":"Dejo","auto":true}
+{"term":"Ce barrage nous fournit eau et électricité.","back":"This dam supplies us with water and electricity.","scene":"renting a flat","src":"tatoeba:6939997","by":"Aiji","enId":"60907","enBy":"CM","auto":true}
+{"term":"Ma copine habite aux alentours de la poste.","back":"My girlfriend lives near the post office.","scene":"post office","src":"tatoeba:12246946","by":"Rovo","enId":"12245956","enBy":"Miktsoanit","auto":true}
+{"term":"Cette automobile fonctionne à l'électricité.","back":"This car runs on electricity.","scene":"renting a flat","src":"tatoeba:15169","by":"nimfeo","enId":"12447349","enBy":"sundown","auto":true}
+{"term":"Mon appartement est en désordre et encombré.","back":"My apartment is messy and cluttered.","scene":"renting a flat","src":"tatoeba:11229535","by":"lbdx","enId":"2490804","enBy":"Hybrid","auto":true}
+{"term":"Je dois faire renouveler ma carte d'identité.","back":"I need to renew my ID card.","scene":"forms and offices","src":"tatoeba:916558","by":"sacredceltic","enId":"915843","enBy":"papabear","auto":true}
+{"term":"Mon passe-temps est la collection de timbres.","back":"My hobby is stamp collecting.","scene":"post office","src":"tatoeba:937985","by":"sacredceltic","enId":"251146","enBy":"CK","auto":true}
+{"term":"Nous disposons d'un bon système de chauffage.","back":"We have a good heating system.","scene":"renting a flat","src":"tatoeba:1348511","by":"sacredceltic","enId":"65602","enBy":"CK","auto":true}
+{"term":"Je vais tenter de sous-louer mon appartement.","back":"I am going to attempt to sublet my apartment.","scene":"renting a flat","src":"tatoeba:13209869","by":"lbdx","enId":"11535870","enBy":"letsgolanguages","auto":true}
+{"term":"Quoi qu'il arrive, le courrier sera distribué.","back":"Come what may, the mail will get delivered.","scene":"post office","src":"tatoeba:1182884","by":"sacredceltic","enId":"36789","enBy":"Dejo","auto":true}
+{"term":"Viens. Je vais te montrer mes nouveaux timbres.","back":"Come. I will show you my new stamps.","scene":"post office","src":"tatoeba:4584549","by":"Amastan","enId":"11035306","enBy":"tjwhale","auto":true}
+{"term":"Ce climatiseur consomme beaucoup d'électricité.","back":"This air conditioner uses a lot of electricity.","scene":"renting a flat","src":"tatoeba:10973834","by":"lbdx","enId":"10314808","enBy":"CK","auto":true}
+{"term":"Tu as une adresse électronique facile à retenir.","back":"You have an easy-to-remember email address.","scene":"forms and offices","src":"tatoeba:1737955","by":"sacredceltic","enId":"10982476","enBy":"sundown","auto":true}
+{"term":"J'ai oublié mon adresse de courrier électronique.","back":"I've forgotten my email address.","scene":"forms and offices","src":"tatoeba:858520","by":"Micsmithel","enId":"937846","enBy":"spockofvulcan","auto":true}
+{"term":"Mon appartement est plus confortable que le tien.","back":"My apartment is more comfortable than yours.","scene":"renting a flat","src":"tatoeba:4524062","by":"pfpillon","enId":"4523910","enBy":"AlanF_US","auto":true}
+{"term":"Ma mission consiste à photographier les documents.","back":"My mission is to photograph the documents.","scene":"forms and offices","src":"tatoeba:458471","by":"sacredceltic","enId":"250946","enBy":"CM","auto":true}
+{"term":"J'aime chercher et collectionner les timbres-poste.","back":"I like looking for and collecting postage stamps.","scene":"post office","src":"tatoeba:8537474","by":"Aiji","enId":"2854689","enBy":"AlanF_US","auto":true}
+{"term":"Cette climatisation consomme beaucoup d'électricité.","back":"This air conditioner consumes a lot of electricity.","scene":"renting a flat","src":"tatoeba:6851547","by":"GB3","enId":"61314","enBy":"Eldad","auto":true}
+{"term":"Nous effectuerons le paiement par virement bancaire.","back":"We will make the payment by bank transfer.","scene":"at the bank","src":"tatoeba:12958752","by":"lbdx","enId":"18411","enBy":"CK","auto":true}
+{"term":"Ce formulaire doit être complété en trois exemplaires.","back":"This form must be filled out in triplicate.","scene":"forms and offices","src":"tatoeba:809879","by":"sacredceltic","enId":"660087","enBy":"darinmex","auto":true}
+{"term":"Mon passe-temps est de collectionner les timbres étrangers.","back":"My hobby is collecting foreign stamps.","scene":"post office","src":"tatoeba:6736863","by":"Aiji","enId":"251135","enBy":"CK","auto":true}
+{"term":"Nous avons un mandat pour perquisitionner votre appartement.","back":"We have a warrant to search your apartment.","scene":"renting a flat","src":"tatoeba:12175916","by":"lbdx","enId":"3728635","enBy":"CM","auto":true}

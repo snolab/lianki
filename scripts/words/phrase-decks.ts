@@ -19,7 +19,15 @@ import {
  * One curated line: `src` is "tatoeba:<id>" or "generated"; `by` is the
  * Tatoeba sentence's author, credited in SOURCES.md (not in the deck file).
  */
-export type CuratedLine = Omit<PhraseEntry, "src"> & { src: string; by?: string };
+export type CuratedLine = Omit<PhraseEntry, "src"> & {
+  src: string;
+  by?: string;
+  /** Picked by data (scene-sentences.ts), not by hand: the deck says so in its source. */
+  auto?: boolean;
+  /** The back is this Tatoeba English sentence, by this author (credited, not in the deck). */
+  enId?: string;
+  enBy?: string;
+};
 
 export type PhraseListMeta = {
   id: string;
@@ -36,9 +44,12 @@ export type PhraseListMeta = {
   license: string;
 };
 
-export const LANG_NAME: Record<string, string> = { ja: "Japanese", zh: "Chinese" };
+export const LANG_NAME: Record<string, string> = { ja: "Japanese", zh: "Chinese", fr: "French" };
 export const PHRASE_SOURCE =
   "Phrases: Tatoeba (tatoeba.org) sentences written by native speakers, each linked in its src; lines marked generated were written for Lianki and checked for natural use";
+/** The source of a deck whose every line was picked by data (build-scene-sentences.ts). */
+export const PHRASE_SOURCE_AUTO =
+  "Sentences: Tatoeba (tatoeba.org) sentences written by native speakers, each linked in its src, with their English translation; sorted into scenarios by one concept list for every language over the English (scripts/words/scene-lexicon.ts), easiest first by word frequency (FrequencyWords via the frequency lists)";
 export const PHRASE_LICENSE = "CC BY 2.0 FR (Tatoeba sentences)";
 
 const normSrc = (src: string): string => {
@@ -70,12 +81,42 @@ export function parseDrops(text: string): Set<string> {
   );
 }
 
+/** A Tatoeba sentence on a card, and the English one on its back when that is Tatoeba's too. */
+export type Credit = { id: string; by?: string; enId?: string; enBy?: string };
+
+export const phraseCreditsFile = (lang: string) => `credits/tatoeba-phrases-${lang}.tsv`;
+
+/**
+ * The credits files of the decks picked by data, by path: per sentence its
+ * id and author, and its English translation's id and author (the format of
+ * credits/tatoeba-<lang>.tsv).
+ */
+export function creditFiles(credits: Built["credits"]): Map<string, string> {
+  const out = new Map<string, string[]>();
+  for (const c of credits) {
+    if (!c.file) continue;
+    const rows = out.get(c.file) ?? [
+      `# Tatoeba (tatoeba.org) sentences in the ${c.lang} scenario sentence decks, CC BY 2.0 FR.`,
+      "# Each sentence and its author: https://tatoeba.org/sentences/show/<id>",
+      "# deck\tsentence id\tauthor\tEnglish translation id\ttranslation author",
+    ];
+    out.set(c.file, rows);
+    for (const s of c.sentences)
+      rows.push([c.id, s.id, s.by ?? "", s.enId ?? "", s.enBy ?? ""].join("\t"));
+  }
+  return new Map([...out].map(([f, rows]) => [f, rows.join("\n") + "\n"]));
+}
+
 export type Built = {
   files: { file: string; json: object }[];
   lists: PhraseListMeta[];
   problems: string[];
-  /** Per deck, its Tatoeba sentences and their authors, for SOURCES.md. */
-  credits: { id: string; sentences: { id: string; by?: string }[] }[];
+  /**
+   * Per deck, its Tatoeba sentences and their authors, for SOURCES.md, or
+   * for `credits/tatoeba-phrases-<lang>.tsv` when the deck was picked by
+   * data (`file`): those are too many to list inline.
+   */
+  credits: { id: string; lang: string; file?: string; sentences: Credit[] }[];
 };
 
 /**
@@ -101,7 +142,7 @@ export function buildPhraseDecks(
     const used = seen.get(lang) ?? new Set<string>();
     seen.set(lang, used);
     const entries: PhraseEntry[] = [];
-    const sentences: { id: string; by?: string }[] = [];
+    const sentences: Credit[] = [];
     for (const line of lines) {
       const e: PhraseEntry = {
         term: line.term.trim(),
@@ -121,7 +162,12 @@ export function buildPhraseDecks(
       used.add(e.term);
       entries.push(e);
       const tid = tatoebaId(e.src);
-      if (tid) sentences.push({ id: tid, ...(line.by ? { by: line.by } : {}) });
+      if (tid)
+        sentences.push({
+          id: tid,
+          ...(line.by ? { by: line.by } : {}),
+          ...(line.enId ? { enId: line.enId, ...(line.enBy ? { enBy: line.enBy } : {}) } : {}),
+        });
     }
     if (!entries.length) continue;
     const id = phraseListId(lang, scenario);
@@ -132,11 +178,16 @@ export function buildPhraseDecks(
       level: "Phrases",
       kind: "phrase" as const,
       scenario,
-      source: PHRASE_SOURCE,
+      source: lines.every((l) => l.auto) ? PHRASE_SOURCE_AUTO : PHRASE_SOURCE,
       license: PHRASE_LICENSE,
     };
     files.push({ file: `${id}.json`, json: { ...meta, entries } });
-    credits.push({ id, sentences });
+    credits.push({
+      id,
+      lang,
+      ...(lines.every((l) => l.auto) ? { file: phraseCreditsFile(lang) } : {}),
+      sentences,
+    });
     lists.push({
       ...meta,
       order: SCENARIOS.indexOf(scenario) + 1,
@@ -189,11 +240,13 @@ export function withCredits(md: string, credits: Built["credits"]): string {
   const lines = credits.map(
     (c) =>
       `- \`${c.id}\`: ` +
-      (c.sentences.length
-        ? c.sentences
-            .map((s) => `[#${s.id}](${tatoebaUrl(s.id)})${s.by ? ` ${s.by}` : ""}`)
-            .join(", ")
-        : "no Tatoeba sentences"),
+      (c.file
+        ? `${c.sentences.length} Tatoeba sentences and their English translations, each with its author, in [${c.file}](${c.file})`
+        : c.sentences.length
+          ? c.sentences
+              .map((s) => `[#${s.id}](${tatoebaUrl(s.id)})${s.by ? ` ${s.by}` : ""}`)
+              .join(", ")
+          : "no Tatoeba sentences"),
   );
   return `${md.slice(0, a + CREDITS_START.length)}\n\n${lines.join("\n")}\n\n${md.slice(b)}`;
 }

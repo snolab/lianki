@@ -28,7 +28,7 @@
 import { createReadStream, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
-import { MAX_TERM } from "@/lib/words/phrases";
+import { phraseRule } from "@/lib/words/phrases";
 
 const [DL, OUT] = process.argv.slice(2);
 if (!DL || !OUT) {
@@ -37,7 +37,7 @@ if (!DL || !OUT) {
 }
 const CODES = { ja: "jpn", zh: "cmn" } as const;
 /** A little over the deck limit: the curator may trim punctuation. */
-const max = (lang: string) => (MAX_TERM[lang] ?? 20) + 2;
+const max = (lang: string) => phraseRule(lang).max + 2;
 
 const natives: Record<string, Set<string>> = { jpn: new Set(), cmn: new Set() };
 for (const l of readFileSync(join(DL, "ul/user_languages.csv"), "utf8").split("\n")) {

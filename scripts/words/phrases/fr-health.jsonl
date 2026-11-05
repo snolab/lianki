@@ -1,0 +1,738 @@
+// fr-health: written by build-scene-sentences.ts; edit the lexicon, not this file
+{"term":"Où as-tu mal ?","back":"Where do you have pain?","scene":"seeing a doctor","src":"tatoeba:1328947","by":"sacredceltic","enId":"403283","enBy":"CK","auto":true}
+{"term":"Où est l'hôpital ?","back":"Where's the hospital?","scene":"seeing a doctor","src":"tatoeba:3627804","by":"fleur74","enId":"2254663","enBy":"CK","auto":true}
+{"term":"Où est le docteur ?","back":"Where's the doctor?","scene":"seeing a doctor","src":"tatoeba:5662068","by":"Aiji","enId":"2254661","enBy":"CK","auto":true}
+{"term":"As-tu mal à la tête ?","back":"Do you have a headache?","scene":"seeing a doctor","src":"tatoeba:5554266","by":"Akenaseryan","enId":"280173","enBy":"CK","auto":true}
+{"term":"Quand êtes-vous tombé malade ?","back":"When did you get ill?","scene":"seeing a doctor","src":"tatoeba:7361031","by":"felix63","enId":"10013001","enBy":"sundown","auto":true}
+{"term":"Depuis quand est-elle malade ?","back":"How long has she been ill?","scene":"seeing a doctor","src":"tatoeba:15560","by":"sacredceltic","enId":"10700529","enBy":"sundown","auto":true}
+{"term":"Combien de temps as-tu été malade ?","back":"How long were you sick?","scene":"seeing a doctor","src":"tatoeba:5367083","by":"alexisslay","enId":"5367047","enBy":"Mateon1","auto":true}
+{"term":"Combien de temps dois-je rester à l'hôpital ?","back":"How long do I have to stay in the hospital?","scene":"seeing a doctor","src":"tatoeba:7849158","by":"Aiji","enId":"4250327","enBy":"CK","auto":true}
+{"term":"Es-tu malade ?","back":"Are you ill?","scene":"seeing a doctor","src":"tatoeba:1181159","by":"sacredceltic","enId":"2038411","enBy":"Spamster","auto":true}
+{"term":"Merci, docteur.","back":"Thank you, Doctor.","scene":"seeing a doctor","src":"tatoeba:10147597","by":"felix63","enId":"272771","enBy":"CM","auto":true}
+{"term":"Qui est malade ?","back":"Who's ill?","scene":"seeing a doctor","src":"tatoeba:3469074","by":"Lulantis","enId":"3454195","enBy":"CK","auto":true}
+{"term":"N'as-tu plus mal ?","back":"Are you no longer in pain?","scene":"seeing a doctor","src":"tatoeba:1986575","by":"sacredceltic","enId":"1714241","enBy":"gleki","auto":true}
+{"term":"Te sens-tu malade ?","back":"Do you feel sick?","scene":"seeing a doctor","src":"tatoeba:457651","by":"sacredceltic","enId":"20295","enBy":"CK","auto":true}
+{"term":"Tu as toujours mal ?","back":"Are you still in pain?","scene":"seeing a doctor","src":"tatoeba:10494604","by":"lbdx","enId":"6356931","enBy":"CK","auto":true}
+{"term":"Que mange le docteur ?","back":"What's the doctor eating?","scene":"seeing a doctor","src":"tatoeba:13446017","by":"Rovo","enId":"13466066","enBy":"rul","auto":true}
+{"term":"Cela fait-il très mal ?","back":"Are you in much pain?","scene":"seeing a doctor","src":"tatoeba:1097854","by":"sacredceltic","enId":"2951526","enBy":"CK","auto":true}
+{"term":"Es-tu vraiment malade ?","back":"Are you really sick?","scene":"seeing a doctor","src":"tatoeba:3640049","by":"sacredceltic","enId":"3636388","enBy":"CK","auto":true}
+{"term":"Es-tu toujours malade ?","back":"Are you still sick?","scene":"seeing a doctor","src":"tatoeba:6210269","by":"Aiji","enId":"4495067","enBy":"CK","auto":true}
+{"term":"Est-elle encore malade ?","back":"Is she still sick?","scene":"seeing a doctor","src":"tatoeba:6589014","by":"GB3","enId":"6588430","enBy":"Eccles17","auto":true}
+{"term":"Suis-je malade, docteur ?","back":"Am I sick, Doctor?","scene":"seeing a doctor","src":"tatoeba:6540294","by":"felix63","enId":"6544584","enBy":"barryo","auto":true}
+{"term":"Vous sentez-vous malade ?","back":"Are you feeling sick?","scene":"seeing a doctor","src":"tatoeba:576477","by":"sacredceltic","enId":"20279","enBy":"CK","auto":true}
+{"term":"Dois-je aller à l'hôpital ?","back":"Have I got to go to hospital?","scene":"seeing a doctor","src":"tatoeba:1077465","by":"sacredceltic","enId":"12489250","enBy":"sundown","auto":true}
+{"term":"Travailles-tu à l'hôpital ?","back":"Do you work at the hospital?","scene":"seeing a doctor","src":"tatoeba:13499911","by":"sacredceltic","enId":"7807354","enBy":"sharris123","auto":true}
+{"term":"Dois-je rester à l'hôpital ?","back":"Do I have to stay in hospital?","scene":"seeing a doctor","src":"tatoeba:1359074","by":"sacredceltic","enId":"2981350","enBy":"pne","auto":true}
+{"term":"Tu as mal quand tu fais ça ?","back":"Do you feel pain when you do that?","scene":"seeing a doctor","src":"tatoeba:9934925","by":"Micsmithel","enId":"9853905","enBy":"NurseMeeks","auto":true}
+{"term":"T’as toujours mal à la tête ?","back":"Do you still have a headache?","scene":"seeing a doctor","src":"tatoeba:4869051","by":"gillux","enId":"2725845","enBy":"WestofEden","auto":true}
+{"term":"Que faisiez-vous à l'hôpital ?","back":"What were you doing at the hospital?","scene":"seeing a doctor","src":"tatoeba:7802604","by":"Aiji","enId":"2641399","enBy":"CK","auto":true}
+{"term":"Comment s'appelle mon docteur ?","back":"How is my doctor called?","scene":"seeing a doctor","src":"tatoeba:1528296","by":"martin9","enId":"2806409","auto":true}
+{"term":"Qu'est-ce qui ne va pas chez moi ?","back":"What's wrong with me?","scene":"seeing a doctor","src":"tatoeba:1017339","by":"sacredceltic","enId":"38219","enBy":"CK","auto":true}
+{"term":"Je veux travailler dans un hôpital.","back":"I want to work in a hospital.","scene":"seeing a doctor","src":"tatoeba:5661711","by":"Yemana","enId":"5661463","enBy":"marcj794","auto":true}
+{"term":"Pourquoi as-tu besoin d'un docteur ?","back":"Why do you need a doctor?","scene":"seeing a doctor","src":"tatoeba:5377555","by":"Aiji","enId":"3738440","enBy":"CK","auto":true}
+{"term":"J'aimerais travailler dans un hôpital.","back":"I'd like to work at a hospital.","scene":"seeing a doctor","src":"tatoeba:5314058","by":"Aiji","enId":"2894529","enBy":"CK","auto":true}
+{"term":"Pourquoi ne trouves-tu pas l'hôpital ?","back":"Why can't you find the hospital?","scene":"seeing a doctor","src":"tatoeba:5800055","by":"Toynop","enId":"5790230","enBy":"Eccles17","auto":true}
+{"term":"Que m'est-il arrivé ? Suis-je malade ?","back":"What happened to me? Am I sick?","scene":"seeing a doctor","src":"tatoeba:13326837","by":"genes1s","enId":"2096942","enBy":"marcelostockle","auto":true}
+{"term":"Comment vous sentez-vous, aujourd'hui ?","back":"How are we feeling today?","scene":"seeing a doctor","src":"tatoeba:3797862","by":"sacredceltic","enId":"3732039","enBy":"CM","auto":true}
+{"term":"Tu es malade.","back":"You're ill.","scene":"seeing a doctor","src":"tatoeba:2078689","by":"Amastan","enId":"11444395","enBy":"sundown","auto":true}
+{"term":"Je suis malade.","back":"I'm ill.","scene":"seeing a doctor","src":"tatoeba:459031","by":"sacredceltic","enId":"448236","enBy":"CK","auto":true}
+{"term":"Va à l'hôpital.","back":"Go to the hospital.","scene":"seeing a doctor","src":"tatoeba:1781895","by":"kenigberg","enId":"20096","enBy":"yifen238","auto":true}
+{"term":"J'en peux plus !","back":"I'm sick of it!","scene":"seeing a doctor","src":"tatoeba:517874","by":"zmoo","enId":"530221","enBy":"wma","auto":true}
+{"term":"Tu étais malade.","back":"You were sick.","scene":"seeing a doctor","src":"tatoeba:2078457","by":"Amastan","enId":"2255283","enBy":"CK","auto":true}
+{"term":"Ça fait mal ici.","back":"It hurts here.","scene":"seeing a doctor","src":"tatoeba:4901027","by":"sacredceltic","enId":"456097","enBy":"lukaszpp","auto":true}
+{"term":"J’ai été malade.","back":"I have been sick.","scene":"seeing a doctor","src":"tatoeba:10707946","by":"AutoBot","enId":"10707942","enBy":"AutoBot","auto":true}
+{"term":"Je me sens drôle.","back":"I feel dizzy.","scene":"seeing a doctor","src":"tatoeba:624586","by":"qdii","enId":"436583","enBy":"lukaszpp","auto":true}
+{"term":"Je me sens malade.","back":"I feel ill.","scene":"seeing a doctor","src":"tatoeba:6674","by":"siggg","enId":"10707865","enBy":"AutoBot","auto":true}
+{"term":"Vous êtes malade !","back":"You're sick!","scene":"seeing a doctor","src":"tatoeba:1156517","by":"Korekorin","enId":"34756","enBy":"CM","auto":true}
+{"term":"Je suis si malade.","back":"I am so sick.","scene":"seeing a doctor","src":"tatoeba:2164003","by":"sacredceltic","enId":"2163129","enBy":"Source_VOA","auto":true}
+{"term":"Appelle l'hôpital.","back":"Call the hospital.","scene":"seeing a doctor","src":"tatoeba:11154028","by":"lbdx","enId":"2245029","enBy":"CK","auto":true}
+{"term":"J’ai mal à la tête.","back":"I have a headache.","scene":"seeing a doctor","src":"tatoeba:10505605","by":"pkill","enId":"1712","enBy":"CK","auto":true}
+{"term":"Tu me rends malade.","back":"You make me sick.","scene":"seeing a doctor","src":"tatoeba:1890462","by":"sacredceltic","enId":"1886969","enBy":"Spamster","auto":true}
+{"term":"Ça ne fera pas mal.","back":"It won't hurt.","scene":"seeing a doctor","src":"tatoeba:4901051","by":"sacredceltic","enId":"627050","enBy":"CK","auto":true}
+{"term":"Allons à l'hôpital.","back":"Let's go to the hospital.","scene":"seeing a doctor","src":"tatoeba:5420026","by":"Aiji","enId":"2007551","enBy":"CK","auto":true}
+{"term":"Appelez le docteur.","back":"Call the doctor.","scene":"seeing a doctor","src":"tatoeba:6604173","by":"Ursetoli","enId":"5152887","enBy":"CarpeLanam","auto":true}
+{"term":"J'irai à l'hôpital.","back":"I'll go to the hospital.","scene":"seeing a doctor","src":"tatoeba:7774693","by":"Aiji","enId":"7773312","enBy":"CM","auto":true}
+{"term":"Ma mère est malade.","back":"My mother is sick.","scene":"seeing a doctor","src":"tatoeba:8436843","by":"zarisi","enId":"6357962","enBy":"CK","auto":true}
+{"term":"Nous sommes malades.","back":"We're sick.","scene":"seeing a doctor","src":"tatoeba:2078700","by":"Amastan","enId":"2203348","enBy":"CK","auto":true}
+{"term":"Mon fils est malade.","back":"My son is sick.","scene":"seeing a doctor","src":"tatoeba:9092581","by":"Julien_PDC","enId":"9092624","enBy":"CN","auto":true}
+{"term":"Ton fils est malade.","back":"Your son is sick.","scene":"seeing a doctor","src":"tatoeba:9092587","by":"Julien_PDC","enId":"5493690","enBy":"robmen","auto":true}
+{"term":"Ma fille est malade.","back":"My daughter is ill.","scene":"seeing a doctor","src":"tatoeba:9092594","by":"Julien_PDC","enId":"12837233","enBy":"sundown","auto":true}
+{"term":"Ta fille est malade.","back":"Your daughter is sick.","scene":"seeing a doctor","src":"tatoeba:9092608","by":"Julien_PDC","enId":"9092621","enBy":"CN","auto":true}
+{"term":"Ma tête me fait mal.","back":"My head hurts.","scene":"seeing a doctor","src":"tatoeba:545374","by":"sacredceltic","enId":"456425","enBy":"lukaszpp","auto":true}
+{"term":"Je vais être malade.","back":"I'm going to be sick.","scene":"seeing a doctor","src":"tatoeba:1945307","by":"sacredceltic","enId":"1890986","enBy":"CK","auto":true}
+{"term":"Je me sentis malade.","back":"I felt ill.","scene":"seeing a doctor","src":"tatoeba:2110519","by":"sacredceltic","enId":"729621","enBy":"CM","auto":true}
+{"term":"Je vais à l'hôpital.","back":"I'm going to the hospital.","scene":"seeing a doctor","src":"tatoeba:5452339","by":"alexisslay","enId":"2544761","enBy":"CK","auto":true}
+{"term":"Ce monde est malade.","back":"This world is sick.","scene":"seeing a doctor","src":"tatoeba:11077395","by":"Aiji","enId":"5756808","enBy":"CM","auto":true}
+{"term":"Je suis à l'hôpital.","back":"I'm in the hospital.","scene":"seeing a doctor","src":"tatoeba:11154051","by":"lbdx","enId":"2548238","enBy":"CK","auto":true}
+{"term":"Ma femme est malade.","back":"My wife is ill.","scene":"seeing a doctor","src":"tatoeba:11988500","by":"lbdx","enId":"5769035","enBy":"Hybrid","auto":true}
+{"term":"Je serai à l'hôpital.","back":"I'll be at the hospital.","scene":"seeing a doctor","src":"tatoeba:5951345","by":"Aiji","enId":"2546106","enBy":"CK","auto":true}
+{"term":"Ton frère est malade.","back":"Your brother is ill.","scene":"seeing a doctor","src":"tatoeba:6703279","by":"GB3","enId":"10209534","enBy":"sundown","auto":true}
+{"term":"Je suis tombé malade.","back":"I fell ill.","scene":"seeing a doctor","src":"tatoeba:12225865","by":"Orange","enId":"13022240","enBy":"Aghanim","auto":true}
+{"term":"Je n'étais pas malade.","back":"I wasn't sick.","scene":"seeing a doctor","src":"tatoeba:2078482","by":"Amastan","enId":"5852894","enBy":"CK","auto":true}
+{"term":"Tu n'étais pas malade.","back":"You were not ill.","scene":"seeing a doctor","src":"tatoeba:2078485","by":"Amastan","enId":"9193395","enBy":"Nylez","auto":true}
+{"term":"Je ne suis pas malade.","back":"I'm not ill.","scene":"seeing a doctor","src":"tatoeba:2078712","by":"Amastan","enId":"10787835","enBy":"sundown","auto":true}
+{"term":"Tu es un grand malade.","back":"You're seriously ill.","scene":"seeing a doctor","src":"tatoeba:886027","by":"sacredceltic","enId":"8326189","enBy":"CK","auto":true}
+{"term":"Je suis un peu malade.","back":"I'm a bit ill.","scene":"seeing a doctor","src":"tatoeba:3710072","by":"Scorpionvenin14","enId":"10821776","enBy":"sundown","auto":true}
+{"term":"Vous êtes très malade.","back":"You're very sick.","scene":"seeing a doctor","src":"tatoeba:6623692","by":"Micsmithel","enId":"2549172","enBy":"CK","auto":true}
+{"term":"Mon enfant est malade.","back":"My child is sick.","scene":"seeing a doctor","src":"tatoeba:10699662","by":"lbdx","enId":"10696154","enBy":"tokzyk","auto":true}
+{"term":"Notre fille est malade.","back":"Our daughter is ill.","scene":"seeing a doctor","src":"tatoeba:9092632","by":"Julien_PDC","enId":"13824018","enBy":"tieguy","auto":true}
+{"term":"Vous avez l'air malade.","back":"You look sick.","scene":"seeing a doctor","src":"tatoeba:1407107","by":"sacredceltic","enId":"317727","enBy":"CK","auto":true}
+{"term":"Dis que je suis malade.","back":"Say I'm ill.","scene":"seeing a doctor","src":"tatoeba:1989064","by":"nimfeo","enId":"10787739","enBy":"sundown","auto":true}
+{"term":"Je me sens très malade.","back":"I feel very sick.","scene":"seeing a doctor","src":"tatoeba:3652144","by":"sacredceltic","enId":"52009","enBy":"CK","auto":true}
+{"term":"Je ne suis plus malade.","back":"I'm no longer ill.","scene":"seeing a doctor","src":"tatoeba:12698950","by":"lbdx","enId":"10787842","enBy":"sundown","auto":true}
+{"term":"Montre-moi où tu as mal.","back":"Show me where it hurts.","scene":"seeing a doctor","src":"tatoeba:560198","by":"sacredceltic","enId":"2234198","enBy":"lutao","auto":true}
+{"term":"Je me sens comme malade.","back":"I feel kind of sick.","scene":"seeing a doctor","src":"tatoeba:2416704","by":"sacredceltic","enId":"2325990","enBy":"CK","auto":true}
+{"term":"Nous serons à l'hôpital.","back":"We'll be at the hospital.","scene":"seeing a doctor","src":"tatoeba:7776376","by":"Aiji","enId":"3823718","enBy":"CK","auto":true}
+{"term":"Tu dois voir un docteur.","back":"You must see a doctor.","scene":"seeing a doctor","src":"tatoeba:8010576","by":"Aiji","enId":"28055","enBy":"CK","auto":true}
+{"term":"Je suis vraiment malade.","back":"I'm really sick.","scene":"seeing a doctor","src":"tatoeba:10794057","by":"nimfeo","enId":"5853010","enBy":"CK","auto":true}
+{"term":"Il a l'air d'être malade.","back":"It looks as if he were sick.","scene":"seeing a doctor","src":"tatoeba:133253","by":"nimfeo","enId":"303153","enBy":"al_ex_an_der","auto":true}
+{"term":"J'en ai assez d'attendre.","back":"I'm sick of waiting.","scene":"seeing a doctor","src":"tatoeba:4550701","by":"sacredceltic","enId":"3185563","enBy":"CK","auto":true}
+{"term":"Personne ne tomba malade.","back":"No one got sick.","scene":"seeing a doctor","src":"tatoeba:5573136","by":"Aiji","enId":"3820832","enBy":"CK","auto":true}
+{"term":"Je ne me sens pas malade.","back":"I don't feel sick.","scene":"seeing a doctor","src":"tatoeba:5597405","by":"nimfeo","enId":"1887222","enBy":"CK","auto":true}
+{"term":"Je ne veux pas avoir mal.","back":"I don't want to be in pain.","scene":"seeing a doctor","src":"tatoeba:6167008","by":"Aiji","enId":"2012637","enBy":"CK","auto":true}
+{"term":"Dis-lui que tu es malade.","back":"Tell him you're ill.","scene":"seeing a doctor","src":"tatoeba:6475550","by":"Joelle","enId":"11852045","enBy":"sundown","auto":true}
+{"term":"Mes enfants sont malades.","back":"My children are sick.","scene":"seeing a doctor","src":"tatoeba:6890807","by":"GB3","enId":"6273245","enBy":"CK","auto":true}
+{"term":"Je me sens un peu malade.","back":"I feel slightly sick.","scene":"seeing a doctor","src":"tatoeba:11675503","by":"Aiji","enId":"5165772","enBy":"CK","auto":true}
+{"term":"Nous n'étions pas malades.","back":"We weren't ill.","scene":"seeing a doctor","src":"tatoeba:2078498","by":"Amastan","enId":"10569590","enBy":"sundown","auto":true}
+{"term":"Montre-moi où ça fait mal.","back":"Show me where the pain is.","scene":"seeing a doctor","src":"tatoeba:1103607","by":"sacredceltic","enId":"5059619","enBy":"AlanF_US","auto":true}
+{"term":"Mon mal de tête est parti.","back":"My headache is gone.","scene":"seeing a doctor","src":"tatoeba:1967689","by":"sacredceltic","enId":"758246","enBy":"vgigregg","auto":true}
+{"term":"On doit aller à l'hôpital.","back":"We need to get to hospital.","scene":"seeing a doctor","src":"tatoeba:6936889","by":"Aiji","enId":"11075867","enBy":"sundown","auto":true}
+{"term":"Ça me donne mal à la tête.","back":"It's giving me a headache.","scene":"seeing a doctor","src":"tatoeba:7089218","by":"Aiji","enId":"3151386","enBy":"CK","auto":true}
+{"term":"Je dois aller à l’hôpital.","back":"I need to go to the hospital.","scene":"seeing a doctor","src":"tatoeba:10704872","by":"AutoBot","enId":"2674986","enBy":"AlanF_US","auto":true}
+{"term":"Dis-leur que tu es malade.","back":"Tell them you're sick.","scene":"seeing a doctor","src":"tatoeba:10757154","by":"TheSnail","enId":"3907798","enBy":"CH","auto":true}
+{"term":"Nous ne sommes pas malades.","back":"We're not ill.","scene":"seeing a doctor","src":"tatoeba:2078729","by":"Amastan","enId":"10569589","enBy":"sundown","auto":true}
+{"term":"Tu dois aller à l'hôpital !","back":"We have to get you to the hospital.","scene":"seeing a doctor","src":"tatoeba:3451931","by":"Scorpionvenin14","enId":"3312374","enBy":"CK","auto":true}
+{"term":"Je ne veux pas être malade.","back":"I don't want to be sick.","scene":"seeing a doctor","src":"tatoeba:6180758","by":"Julien_PDC","enId":"12130327","enBy":"zogwarg","auto":true}
+{"term":"J'en ai assez des hôpitaux.","back":"I'm sick of hospitals.","scene":"seeing a doctor","src":"tatoeba:6318279","by":"Aiji","enId":"3185576","enBy":"CK","auto":true}
+{"term":"Tu me donnes mal à la tête.","back":"You're giving me a headache.","scene":"seeing a doctor","src":"tatoeba:7695240","by":"Maxence","enId":"3151091","enBy":"CK","auto":true}
+{"term":"On dirait que tu es malade.","back":"It looks like you're sick.","scene":"seeing a doctor","src":"tatoeba:8333582","by":"theachaean","enId":"13823739","enBy":"tieguy","auto":true}
+{"term":"J'en ai par dessus la tête !","back":"I'm so sick of it!","scene":"seeing a doctor","src":"tatoeba:750745","by":"Cocorico","enId":"14062025","enBy":"Myrano_","auto":true}
+{"term":"J'en ai assez de l'entendre.","back":"I'm sick of hearing it.","scene":"seeing a doctor","src":"tatoeba:1317225","by":"sacredceltic","enId":"264395","enBy":"CK","auto":true}
+{"term":"Ne dis pas du mal des morts.","back":"Don't speak ill of the dead.","scene":"seeing a doctor","src":"tatoeba:11225301","by":"lbdx","enId":"3183455","enBy":"CK","auto":true}
+{"term":"Je sors de l'hôpital demain.","back":"I'm getting out of the hospital tomorrow.","scene":"seeing a doctor","src":"tatoeba:11699565","by":"lbdx","enId":"7117431","enBy":"CM","auto":true}
+{"term":"Je me sens mieux aujourd'hui.","back":"I feel better today.","scene":"seeing a doctor","src":"tatoeba:337339","by":"sysko","enId":"242822","enBy":"CK","auto":true}
+{"term":"Je travaille dans un hôpital.","back":"I work in a hospital.","scene":"seeing a doctor","src":"tatoeba:464073","by":"sacredceltic","enId":"455781","enBy":"lukaszpp","auto":true}
+{"term":"Ne dis pas du mal des autres.","back":"Don't speak ill of others.","scene":"seeing a doctor","src":"tatoeba:1130008","by":"sacredceltic","enId":"269931","enBy":"CK","auto":true}
+{"term":"Faut que j'aille à l'hôpital.","back":"I gotta go to the hospital.","scene":"seeing a doctor","src":"tatoeba:4056292","by":"Scorpionvenin14","enId":"4055178","enBy":"OkumuraShintaro","auto":true}
+{"term":"Je ne veux pas tomber malade.","back":"I don't want to get ill.","scene":"seeing a doctor","src":"tatoeba:6180788","by":"Aiji","enId":"11926815","enBy":"sundown","auto":true}
+{"term":"Je suis celui qui est malade.","back":"I'm the one who's sick.","scene":"seeing a doctor","src":"tatoeba:6322010","by":"Aiji","enId":"2546495","enBy":"CK","auto":true}
+{"term":"Cette musique me rend malade.","back":"This music makes me sick.","scene":"seeing a doctor","src":"tatoeba:7124870","by":"Aiji","enId":"3820835","enBy":"CK","auto":true}
+{"term":"Nous savons que tu es malade.","back":"We know you're sick.","scene":"seeing a doctor","src":"tatoeba:7526022","by":"tras","enId":"3185568","enBy":"CK","auto":true}
+{"term":"Je suis de garde à l'hôpital.","back":"I'm on call in the hospital.","scene":"seeing a doctor","src":"tatoeba:11154039","by":"lbdx","enId":"9564963","enBy":"DJ_Saidez","auto":true}
+{"term":"Tu devrais aller à l'hôpital.","back":"You should go to the hospital.","scene":"seeing a doctor","src":"tatoeba:11154059","by":"lbdx","enId":"4197988","enBy":"Sereptie","auto":true}
+{"term":"Ça me cause des maux de tête !","back":"That gives me a headache!","scene":"seeing a doctor","src":"tatoeba:821542","by":"sacredceltic","enId":"43742","enBy":"CK","auto":true}
+{"term":"J'en ai plus qu'assez de lire.","back":"I'm sick and tired of reading.","scene":"seeing a doctor","src":"tatoeba:1108870","by":"sacredceltic","enId":"1108220","enBy":"nata23","auto":true}
+{"term":"Je me sens tout à coup malade.","back":"I suddenly feel sick.","scene":"seeing a doctor","src":"tatoeba:2407351","by":"sacredceltic","enId":"2406820","enBy":"CK","auto":true}
+{"term":"Nous savons que vous avez mal.","back":"We know you're in pain.","scene":"seeing a doctor","src":"tatoeba:7771201","by":"Aiji","enId":"5446756","enBy":"CK","auto":true}
+{"term":"Je ne me sens pas bien du tout.","back":"I don't feel well at all.","scene":"seeing a doctor","src":"tatoeba:1000778","by":"sacredceltic","enId":"3348227","enBy":"_undertoad","auto":true}
+{"term":"Je suis fatiguée d'être malade.","back":"I'm tired of being sick.","scene":"seeing a doctor","src":"tatoeba:5951347","by":"Aiji","enId":"3820834","enBy":"CK","auto":true}
+{"term":"Je me sens juste un peu malade.","back":"I'm just feeling a little sick.","scene":"seeing a doctor","src":"tatoeba:11352102","by":"Aiji","enId":"2541359","enBy":"CK","auto":true}
+{"term":"Il faut que j'aille à l'hôpital.","back":"I have to go to hospital.","scene":"seeing a doctor","src":"tatoeba:2665758","by":"Aiji","enId":"1744809","enBy":"Amastan","auto":true}
+{"term":"Il faut que tu voies un docteur.","back":"You need to see a doctor.","scene":"seeing a doctor","src":"tatoeba:6930120","by":"Aiji","enId":"28059","enBy":"CK","auto":true}
+{"term":"Je sais que je vais être malade.","back":"I know I'm going to be sick.","scene":"seeing a doctor","src":"tatoeba:7874014","by":"sacredceltic","enId":"2376006","enBy":"CK","auto":true}
+{"term":"Prenez ceci trois fois par jour.","back":"Take this three times a day.","scene":"seeing a doctor","src":"tatoeba:11166412","by":"lbdx","enId":"8749044","enBy":"fishda","auto":true}
+{"term":"Je suis une personne très malade.","back":"I'm a very sick person.","scene":"seeing a doctor","src":"tatoeba:10540909","by":"felix63","enId":"10540930","enBy":"CM","auto":true}
+{"term":"Mon frère est malade depuis hier.","back":"My brother has been sick since yesterday.","scene":"seeing a doctor","src":"tatoeba:805678","by":"sacredceltic","enId":"251524","enBy":"CK","auto":true}
+{"term":"Je pense que je vais être malade.","back":"I think I'm going to be sick.","scene":"seeing a doctor","src":"tatoeba:1945306","by":"sacredceltic","enId":"1944085","enBy":"Spamster","auto":true}
+{"term":"Je suis un homme toujours malade.","back":"I am a man that is always sick.","scene":"seeing a doctor","src":"tatoeba:7046438","by":"Micsmithel","enId":"773312","enBy":"marloncori","auto":true}
+{"term":"Tu devrais aller voir un docteur.","back":"You should go see a doctor.","scene":"seeing a doctor","src":"tatoeba:8823969","by":"Aiji","enId":"5308284","enBy":"mailohilohi","auto":true}
+{"term":"Ça va peut-être faire un peu mal.","back":"This may hurt a little.","scene":"seeing a doctor","src":"tatoeba:10318087","by":"Akenaseryan","enId":"6050377","enBy":"Hybrid","auto":true}
+{"term":"Je ne veux pas aller à l'hôpital.","back":"I don't want to go to the hospital.","scene":"seeing a doctor","src":"tatoeba:11154031","by":"lbdx","enId":"2323296","enBy":"CK","auto":true}
+{"term":"Mon mal de tête commence à passer.","back":"My headache is beginning to pass.","scene":"seeing a doctor","src":"tatoeba:1124280","by":"sysko","enId":"6694907","enBy":"Eccles17","auto":true}
+{"term":"Je suis un peu malade aujourd'hui.","back":"I'm kind of sick today.","scene":"seeing a doctor","src":"tatoeba:1600858","by":"sacredceltic","enId":"36215","enBy":"CM","auto":true}
+{"term":"Je ne me sens pas vraiment malade.","back":"I don't really feel sick.","scene":"seeing a doctor","src":"tatoeba:2509190","by":"sacredceltic","enId":"2276167","enBy":"CK","auto":true}
+{"term":"Ne t'en fais pas. Je suis docteur.","back":"Don't worry. I'm a doctor.","scene":"seeing a doctor","src":"tatoeba:7045068","by":"Aiji","enId":"2275362","enBy":"CK","auto":true}
+{"term":"Il faut que tu ailles à l'hôpital.","back":"You need to get to a hospital.","scene":"seeing a doctor","src":"tatoeba:7553069","by":"Aiji","enId":"3387676","enBy":"CK","auto":true}
+{"term":"Je ne tombe presque jamais malade.","back":"I hardly ever get sick.","scene":"seeing a doctor","src":"tatoeba:8437047","by":"lbdx","enId":"5938963","enBy":"CK","auto":true}
+{"term":"Je suis trop malade pour faire ça.","back":"I'm too sick to do that.","scene":"seeing a doctor","src":"tatoeba:8976924","by":"Aiji","enId":"6687217","enBy":"CK","auto":true}
+{"term":"C’est exactement ce qu’il me faut.","back":"It’s just what the doctor ordered.","scene":"seeing a doctor","src":"tatoeba:10630556","by":"AutoBot","enId":"10630555","enBy":"AutoBot","auto":true}
+{"term":"Ça me rend malade de vous écouter.","back":"It makes me sick to listen to you.","scene":"seeing a doctor","src":"tatoeba:11041167","by":"Aiji","enId":"2841493","enBy":"AlanF_US","auto":true}
+{"term":"Vous êtes une personne très malade.","back":"You're a very sick person.","scene":"seeing a doctor","src":"tatoeba:10328458","by":"Julien_PDC","enId":"2713320","enBy":"CK","auto":true}
+{"term":"Je suis trop malade pour travailler.","back":"I'm too sick to work.","scene":"seeing a doctor","src":"tatoeba:6631744","by":"felix63","enId":"6814123","enBy":"Eccles17","auto":true}
+{"term":"Mon père est maintenant à l'hôpital.","back":"My father is in the hospital now.","scene":"seeing a doctor","src":"tatoeba:134873","by":"Aiji","enId":"319138","enBy":"CK","auto":true}
+{"term":"Je ne veux pas que tu tombes malade.","back":"I don't want you to get ill.","scene":"seeing a doctor","src":"tatoeba:12176046","by":"lbdx","enId":"12579567","enBy":"sundown","auto":true}
+{"term":"Votre docteur dit que vous irez bien.","back":"Your doctor says you're going to be OK.","scene":"seeing a doctor","src":"tatoeba:7290416","by":"Aiji","enId":"3831471","enBy":"CK","auto":true}
+{"term":"Je suis malade depuis très longtemps.","back":"I've been sick for a very long time.","scene":"seeing a doctor","src":"tatoeba:7849139","by":"Aiji","enId":"3733123","enBy":"CK","auto":true}
+{"term":"Vous feriez mieux d'appeler le docteur.","back":"You'd better call the doctor.","scene":"seeing a doctor","src":"tatoeba:7763257","by":"Aiji","enId":"774780","enBy":"CM","auto":true}
+{"term":"Ton mal de tête semble déjà aller mieux.","back":"Your headache seems to be getting better already.","scene":"seeing a doctor","src":"tatoeba:8991800","by":"felix63","enId":"11676550","enBy":"tieguy","auto":true}
+{"term":"Ma mère a été malade pendant deux jours.","back":"My mother was sick for two days.","scene":"seeing a doctor","src":"tatoeba:337856","by":"Barbiche0","enId":"1819030","enBy":"pne","auto":true}
+{"term":"Ta mère vient d'appeler. Elle est malade.","back":"Your mother just called. She's sick.","scene":"seeing a doctor","src":"tatoeba:6774921","by":"felix63","enId":"6900619","enBy":"kaiperkins271","auto":true}
+{"term":"Je suis un peu malade ces derniers temps.","back":"I've been a little sick lately.","scene":"seeing a doctor","src":"tatoeba:5659713","by":"Scorpionvenin14","enId":"5659381","enBy":"CK","auto":true}
+{"term":"Je sors de l'hôpital la semaine prochaine.","back":"I get out of the hospital next week.","scene":"seeing a doctor","src":"tatoeba:6866956","by":"GB3","enId":"5170397","enBy":"tabular","auto":true}
+{"term":"Ma mère est malade depuis le mois dernier.","back":"My mother has been sick since last month.","scene":"seeing a doctor","src":"tatoeba:6879660","by":"GB3","enId":"320814","enBy":"CK","auto":true}
+{"term":"Je n'aimerais pas travailler dans un hôpital.","back":"I wouldn't like to work in a hospital.","scene":"seeing a doctor","src":"tatoeba:1490860","by":"martin9","enId":"1491043","enBy":"niceguydave","auto":true}
+{"term":"Quand es-tu sortie de l'hôpital ?","back":"When did you get out of the hospital?","scene":"seeing a doctor","src":"tatoeba:11182870","by":"lbdx","enId":"2954174","enBy":"CK","auto":true}
+{"term":"Où se trouve l'hôpital le plus proche ?","back":"Where's the nearest hospital?","scene":"seeing a doctor","src":"tatoeba:5803148","by":"Toynop","enId":"1740507","enBy":"CK","auto":true}
+{"term":"Combien de temps as-tu été médecin ici ?","back":"How long have you been a doctor here?","scene":"seeing a doctor","src":"tatoeba:4215668","by":"GB3","enId":"4135183","enBy":"CK","auto":true}
+{"term":"Depuis combien de temps as-tu cette douleur ?","back":"How long have you had this pain?","scene":"seeing a doctor","src":"tatoeba:5955805","by":"Aiji","enId":"66355","enBy":"CK","auto":true}
+{"term":"Es-tu médecin ?","back":"Are you a doctor?","scene":"seeing a doctor","src":"tatoeba:10371","by":"Archibald","enId":"502228","enBy":"marauder016","auto":true}
+{"term":"Est-elle médecin ?","back":"Is she a doctor?","scene":"seeing a doctor","src":"tatoeba:3282698","by":"sacredceltic","enId":"312527","enBy":"CK","auto":true}
+{"term":"Je veux un médecin.","back":"I want a doctor.","scene":"seeing a doctor","src":"tatoeba:4692214","by":"sacredceltic","enId":"2011303","enBy":"CK","auto":true}
+{"term":"C’est grave, docteur ?","back":"Is it serious, doctor?","scene":"seeing a doctor","src":"tatoeba:3789178","by":"gillux","enId":"10666090","enBy":"sundown","auto":true}
+{"term":"Que dirait le médecin ?","back":"What'd the doctor say?","scene":"seeing a doctor","src":"tatoeba:1328779","by":"sacredceltic","enId":"28001","enBy":"CK","auto":true}
+{"term":"Je veux devenir médecin.","back":"I want to become a doctor.","scene":"seeing a doctor","src":"tatoeba:1070335","by":"sacredceltic","enId":"3777832","enBy":"CK","auto":true}
+{"term":"Quel âge a cet hôpital ?","back":"How old is this hospital?","scene":"seeing a doctor","src":"tatoeba:10464020","by":"Julien_PDC","enId":"9373669","enBy":"CK","auto":true}
+{"term":"Avez-vous des douleurs ?","back":"Are you in pain?","scene":"seeing a doctor","src":"tatoeba:12427157","by":"Rovo","enId":"2549572","enBy":"CK","auto":true}
+{"term":"N'êtes-vous pas médecin ?","back":"Are you not a doctor?","scene":"seeing a doctor","src":"tatoeba:11922400","by":"zogwarg","enId":"11922396","enBy":"CK","auto":true}
+{"term":"Es-tu sérieusement malade ?","back":"Are you seriously ill?","scene":"seeing a doctor","src":"tatoeba:3640046","by":"sacredceltic","enId":"3636390","enBy":"CK","auto":true}
+{"term":"Vous êtes vraiment médecin ?","back":"Are you really a doctor?","scene":"seeing a doctor","src":"tatoeba:10940278","by":"lbdx","enId":"2713494","enBy":"CK","auto":true}
+{"term":"Quelle sorte de dingue es-tu ?","back":"What kind of sick weirdo are you?","scene":"seeing a doctor","src":"tatoeba:3848605","by":"sacredceltic","enId":"3731936","enBy":"CM","auto":true}
+{"term":"T'es-tu rendu chez le médecin ?","back":"Did you go to the doctor?","scene":"seeing a doctor","src":"tatoeba:882146","by":"sacredceltic","enId":"28063","enBy":"CK","auto":true}
+{"term":"Pourquoi veux-tu être médecin ?","back":"Why do you want to be a doctor?","scene":"seeing a doctor","src":"tatoeba:1352952","by":"sacredceltic","enId":"36486","enBy":"CK","auto":true}
+{"term":"Veux-tu retourner à l'hôpital ?","back":"Do you want to go back to the hospital?","scene":"seeing a doctor","src":"tatoeba:13480935","by":"sacredceltic","enId":"2026350","enBy":"CK","auto":true}
+{"term":"Êtes-vous allé voir un médecin ?","back":"Did you go to see a doctor?","scene":"seeing a doctor","src":"tatoeba:10847","by":"sacredceltic","enId":"64765","enBy":"CK","auto":true}
+{"term":"Je veux que tu ailles chez le médecin.","back":"I want you to go see a doctor.","scene":"seeing a doctor","src":"tatoeba:5899600","by":"Aiji","enId":"1887902","enBy":"CK","auto":true}
+{"term":"Pourquoi tu ne changes pas de médecin ?","back":"Why don't you change your doctor?","scene":"seeing a doctor","src":"tatoeba:822063","by":"Aiji","enId":"8533160","enBy":"sundown","auto":true}
+{"term":"Pourquoi avez vous besoin d'un médecin ?","back":"What do you need a doctor for?","scene":"seeing a doctor","src":"tatoeba:5490729","by":"pititnatole","enId":"4015884","enBy":"CK","auto":true}
+{"term":"Je veux que vous alliez chez le médecin.","back":"I want you to go to the doctor.","scene":"seeing a doctor","src":"tatoeba:5899601","by":"Aiji","enId":"2014326","enBy":"CK","auto":true}
+{"term":"Je veux être médecin quand je serai grand.","back":"I want to be a doctor when I grow up.","scene":"seeing a doctor","src":"tatoeba:6462306","by":"lapinhibou","enId":"5831999","enBy":"CK","auto":true}
+{"term":"Veuillez m'excuser, mais je me sens malade.","back":"Excuse me, but I feel sick.","scene":"seeing a doctor","src":"tatoeba:1339347","by":"sacredceltic","enId":"51488","enBy":"CK","auto":true}
+{"term":"Que faites-vous lorsque vous tombez malade ?","back":"What do you do when you get sick?","scene":"seeing a doctor","src":"tatoeba:8537583","by":"Aiji","enId":"7189508","enBy":"AlanF_US","auto":true}
+{"term":"J'aimerais avoir un rendez-vous avec le docteur.","back":"I would like to make an appointment with the doctor.","scene":"seeing a doctor","src":"tatoeba:3273223","by":"nimfeo","enId":"3273222","auto":true}
+{"term":"Ne peux-tu comprendre la douleur de tes parents ?","back":"Can't you understand the pain of your parents?","scene":"seeing a doctor","src":"tatoeba:477237","by":"sacredceltic","enId":"17516","enBy":"Eldad","auto":true}
+{"term":"J'aimerais prendre rendez-vous pour voir le docteur.","back":"I'd like to make an appointment to see the doctor.","scene":"seeing a doctor","src":"tatoeba:128656","by":"Aiji","enId":"269795","enBy":"CK","auto":true}
+{"term":"Je serai médecin.","back":"I'm going to be a doctor.","scene":"seeing a doctor","src":"tatoeba:4585901","by":"sacredceltic","enId":"5205098","enBy":"CK","auto":true}
+{"term":"Vous êtes médecin.","back":"You are a doctor.","scene":"seeing a doctor","src":"tatoeba:561910","by":"sacredceltic","enId":"20125","enBy":"CK","auto":true}
+{"term":"Dis à ton médecin.","back":"Tell your doctor.","scene":"seeing a doctor","src":"tatoeba:11964262","by":"Amastan","enId":"11697493","enBy":"Amastan","auto":true}
+{"term":"Va voir un médecin !","back":"Go see a doctor.","scene":"seeing a doctor","src":"tatoeba:4403918","by":"sacredceltic","enId":"4401084","enBy":"CK","auto":true}
+{"term":"Je me sens en forme.","back":"I'm feeling fit.","scene":"seeing a doctor","src":"tatoeba:4682074","by":"sacredceltic","enId":"33524","enBy":"CK","auto":true}
+{"term":"La douleur est vive.","back":"It's a sharp pain.","scene":"seeing a doctor","src":"tatoeba:10705474","by":"AutoBot","enId":"10705467","enBy":"AutoBot","auto":true}
+{"term":"Va voir ton médecin.","back":"See your doctor.","scene":"seeing a doctor","src":"tatoeba:11682149","by":"Amastan","enId":"8251508","enBy":"Amastan","auto":true}
+{"term":"Appelle ton médecin.","back":"Call your doctor.","scene":"seeing a doctor","src":"tatoeba:14042122","by":"Myrano_","enId":"14025664","enBy":"rul","auto":true}
+{"term":"J'appelle le médecin.","back":"I'm calling the doctor.","scene":"seeing a doctor","src":"tatoeba:11963151","by":"zogwarg","enId":"11963150","enBy":"CK","auto":true}
+{"term":"Cette fête est dingue.","back":"This party is sick.","scene":"seeing a doctor","src":"tatoeba:1958146","by":"sacredceltic","enId":"1955980","enBy":"Spamster","auto":true}
+{"term":"Il me faut un médecin.","back":"I need a doctor.","scene":"seeing a doctor","src":"tatoeba:2475249","by":"sacredceltic","enId":"2280312","enBy":"CK","auto":true}
+{"term":"Je suis votre médecin.","back":"I'm your doctor.","scene":"seeing a doctor","src":"tatoeba:4542987","by":"sacredceltic","enId":"2248324","enBy":"CK","auto":true}
+{"term":"Va chercher un médecin !","back":"Get a doctor.","scene":"seeing a doctor","src":"tatoeba:4626034","by":"sacredceltic","enId":"2986062","enBy":"CK","auto":true}
+{"term":"N'est-elle pas médecin ?","back":"Isn't she a doctor?","scene":"seeing a doctor","src":"tatoeba:4760223","by":"sacredceltic","enId":"312528","enBy":"CK","auto":true}
+{"term":"On a la tête qui tourne.","back":"We're dizzy.","scene":"seeing a doctor","src":"tatoeba:7414652","by":"lbdx","enId":"2202787","enBy":"CK","auto":true}
+{"term":"Je dois voir un médecin.","back":"I need to see a doctor.","scene":"seeing a doctor","src":"tatoeba:10708735","by":"AutoBot","enId":"6271665","enBy":"CK","auto":true}
+{"term":"Je l'emmène à l'hôpital.","back":"I'm taking him to the hospital.","scene":"seeing a doctor","src":"tatoeba:10722474","by":"lbdx","enId":"3909046","enBy":"CH","auto":true}
+{"term":"Cet hôpital est à vendre.","back":"This hospital is for sale.","scene":"seeing a doctor","src":"tatoeba:6138503","by":"Aiji","enId":"5358135","enBy":"CK","auto":true}
+{"term":"Notre planète est malade.","back":"Our planet is ill.","scene":"seeing a doctor","src":"tatoeba:10336477","by":"felix63","enId":"10336482","enBy":"sundown","auto":true}
+{"term":"Vous n’êtes pas un médecin.","back":"You're not a doctor.","scene":"seeing a doctor","src":"tatoeba:519991","by":"zmoo","enId":"520153","enBy":"kebukebu","auto":true}
+{"term":"Tu devrais voir un médecin.","back":"You should see a doctor.","scene":"seeing a doctor","src":"tatoeba:1418033","by":"sacredceltic","enId":"405716","enBy":"CK","auto":true}
+{"term":"Tu devrais voir le médecin.","back":"You should see the doctor.","scene":"seeing a doctor","src":"tatoeba:1418034","by":"sacredceltic","enId":"1748914","enBy":"belgavox","auto":true}
+{"term":"Je suis médecin maintenant.","back":"I'm a doctor now.","scene":"seeing a doctor","src":"tatoeba:6210326","by":"Aiji","enId":"5858209","enBy":"CK","auto":true}
+{"term":"Je t’emmènerai à l'hôpital.","back":"I'll take you to the hospital.","scene":"seeing a doctor","src":"tatoeba:6285940","by":"Aiji","enId":"2542489","enBy":"CK","auto":true}
+{"term":"Mon médecin est très gentil.","back":"My doctor is very kind.","scene":"seeing a doctor","src":"tatoeba:6715369","by":"felix63","enId":"6716549","enBy":"Eccles17","auto":true}
+{"term":"Je suis fier d'être docteur.","back":"I'm proud of being a doctor.","scene":"seeing a doctor","src":"tatoeba:332305","by":"TRANG","enId":"10098480","enBy":"CK","auto":true}
+{"term":"Ma fille est souvent malade.","back":"My daughter is often sick.","scene":"seeing a doctor","src":"tatoeba:3660927","by":"sacredceltic","enId":"2595649","enBy":"WestofEden","auto":true}
+{"term":"J'en ai assez de vos excuses.","back":"I'm sick of your excuses.","scene":"seeing a doctor","src":"tatoeba:4545821","by":"sacredceltic","enId":"4016019","enBy":"CK","auto":true}
+{"term":"J'en ai assez de ses excuses.","back":"I'm sick of her excuses.","scene":"seeing a doctor","src":"tatoeba:4551976","by":"sacredceltic","enId":"261257","enBy":"CK","auto":true}
+{"term":"Fais ce que le médecin a dit.","back":"Do what the doctor said.","scene":"seeing a doctor","src":"tatoeba:6960058","by":"Caku","enId":"5006723","enBy":"Lindoula","auto":true}
+{"term":"Je dois aller chez le médecin.","back":"I have to go to the doctor.","scene":"seeing a doctor","src":"tatoeba:6036946","by":"christian63","enId":"6037016","enBy":"zumley","auto":true}
+{"term":"Mon but est de devenir médecin.","back":"My aim is to be a doctor.","scene":"seeing a doctor","src":"tatoeba:7600","by":"trotter","enId":"251994","enBy":"CK","auto":true}
+{"term":"Notre meilleur ami est médecin.","back":"Our best friend is a doctor.","scene":"seeing a doctor","src":"tatoeba:1035276","by":"sacredceltic","enId":"847133","enBy":"Source_Benedict_1921","auto":true}
+{"term":"J'aurais dû appeler un médecin.","back":"I should've called a doctor.","scene":"seeing a doctor","src":"tatoeba:4236665","by":"sacredceltic","enId":"2361697","enBy":"CK","auto":true}
+{"term":"Je me suis retrouvé à l'hôpital.","back":"I wound up in the hospital.","scene":"seeing a doctor","src":"tatoeba:9548846","by":"Julien_PDC","enId":"3724584","enBy":"CM","auto":true}
+{"term":"Mon rêve est de devenir médecin.","back":"My dream is to be a doctor.","scene":"seeing a doctor","src":"tatoeba:7608","by":"sacredceltic","enId":"251933","enBy":"sacredceltic","auto":true}
+{"term":"Appelle le médecin tout de suite.","back":"Call the doctor right away.","scene":"seeing a doctor","src":"tatoeba:331832","by":"pierrephi","enId":"52102","enBy":"CK","auto":true}
+{"term":"Je vous trouverai un bon médecin.","back":"I will find you a good doctor.","scene":"seeing a doctor","src":"tatoeba:477119","by":"sacredceltic","enId":"17433","enBy":"CK","auto":true}
+{"term":"Il faut que j'appelle le médecin.","back":"I must send for the doctor.","scene":"seeing a doctor","src":"tatoeba:2058722","by":"Amastan","enId":"256033","enBy":"CK","auto":true}
+{"term":"Tu devrais demander à un médecin.","back":"You should ask a doctor.","scene":"seeing a doctor","src":"tatoeba:3606542","by":"sacredceltic","enId":"3608116","enBy":"panamicua","auto":true}
+{"term":"Mon enfant a besoin d'un médecin.","back":"My child needs a doctor.","scene":"seeing a doctor","src":"tatoeba:10700537","by":"lbdx","enId":"10696229","enBy":"tokzyk","auto":true}
+{"term":"Je n'étais pas malade à l'époque.","back":"I wasn't sick then.","scene":"seeing a doctor","src":"tatoeba:11761988","by":"Aiji","enId":"2548831","enBy":"CK","auto":true}
+{"term":"N'aie pas peur de voir un médecin.","back":"Don't be afraid of seeing the doctor.","scene":"seeing a doctor","src":"tatoeba:5455264","by":"Aiji","enId":"28067","enBy":"CM","auto":true}
+{"term":"Nous devons t'emmener à l'hôpital.","back":"We need to get you to a hospital.","scene":"seeing a doctor","src":"tatoeba:5689715","by":"Yemana","enId":"5688289","enBy":"CK","auto":true}
+{"term":"On doit vous emmener à un hôpital.","back":"We have to get you to a hospital.","scene":"seeing a doctor","src":"tatoeba:6186167","by":"Aiji","enId":"3312376","enBy":"CK","auto":true}
+{"term":"Je déteste la nourriture d'hôpital.","back":"I hate hospital food.","scene":"seeing a doctor","src":"tatoeba:2398174","by":"sacredceltic","enId":"2396099","enBy":"CK","auto":true}
+{"term":"Je l'emmènerai avec moi à l'hôpital.","back":"I'll take him with me to the hospital.","scene":"seeing a doctor","src":"tatoeba:920722","by":"sacredceltic","enId":"917802","enBy":"Shiawase","auto":true}
+{"term":"Je ne suis pas allé chez le médecin.","back":"I didn't go to the doctor.","scene":"seeing a doctor","src":"tatoeba:4468586","by":"Mutusen","enId":"13752726","enBy":"qwertydiy","auto":true}
+{"term":"Vous ne ressemblez pas à un médecin.","back":"You don't look like a doctor.","scene":"seeing a doctor","src":"tatoeba:5963301","by":"Aiji","enId":"3358348","enBy":"CK","auto":true}
+{"term":"Il faut que je retourne à l'hôpital.","back":"I need to get back to the hospital.","scene":"seeing a doctor","src":"tatoeba:6083114","by":"Aiji","enId":"2361654","enBy":"CK","auto":true}
+{"term":"Tu devrais faire voir ça à un médecin.","back":"You should show that to a doctor.","scene":"seeing a doctor","src":"tatoeba:1418036","by":"sacredceltic","enId":"12296543","enBy":"Miktsoanit","auto":true}
+{"term":"Je ne savais pas que tu étais médecin.","back":"I didn't know you were a doctor.","scene":"seeing a doctor","src":"tatoeba:5660191","by":"Scorpionvenin14","enId":"5660179","enBy":"CK","auto":true}
+{"term":"J'aimerais que la douleur disparaisse.","back":"I wish the pain would go away.","scene":"seeing a doctor","src":"tatoeba:6324170","by":"Aiji","enId":"2542582","enBy":"CK","auto":true}
+{"term":"Il nous faut t'emmener dans un hôpital.","back":"We've got to get you to a hospital.","scene":"seeing a doctor","src":"tatoeba:2404050","by":"sacredceltic","enId":"2402176","enBy":"CK","auto":true}
+{"term":"Voici l'hôpital dans lequel je suis né.","back":"This is the hospital I was born in.","scene":"seeing a doctor","src":"tatoeba:5353811","by":"Scorpionvenin14","enId":"5353733","enBy":"orge","auto":true}
+{"term":"Je ne suis pas médecin, mais professeur.","back":"I'm a teacher, not a doctor.","scene":"seeing a doctor","src":"tatoeba:6829","by":"Archibald","enId":"12899436","enBy":"rul","auto":true}
+{"term":"Vous devriez faire voir ça à un médecin.","back":"You should have a doctor look at that.","scene":"seeing a doctor","src":"tatoeba:1418037","by":"sacredceltic","enId":"1415904","enBy":"CK","auto":true}
+{"term":"Je ne veux jamais te voir devenir malade.","back":"I never want to see you get sick.","scene":"seeing a doctor","src":"tatoeba:1140415","by":"sacredceltic","enId":"1140160","enBy":"CK","auto":true}
+{"term":"Tu devrais voir tout de suite un médecin.","back":"You should go see a doctor immediately.","scene":"seeing a doctor","src":"tatoeba:2745163","by":"Rovo","enId":"12130300","enBy":"zogwarg","auto":true}
+{"term":"Je pense que vous devriez voir un médecin.","back":"I think you should see a doctor.","scene":"seeing a doctor","src":"tatoeba:13939","by":"sacredceltic","enId":"28054","enBy":"CK","auto":true}
+{"term":"Je te donnerai une lettre pour ton médecin.","back":"I'll give you a letter for your doctor.","scene":"seeing a doctor","src":"tatoeba:1135472","by":"nimfeo","enId":"1135470","enBy":"AlanF_US","auto":true}
+{"term":"Vous devez vous occuper de votre mère malade.","back":"You should take care of your sick mother.","scene":"seeing a doctor","src":"tatoeba:373892","by":"zmoo","enId":"9587","enBy":"Zifre","auto":true}
+{"term":"Je suis resté à l'hôpital plusieurs semaines.","back":"I spent several weeks in hospital.","scene":"seeing a doctor","src":"tatoeba:691388","by":"sysko","enId":"11027953","enBy":"sundown","auto":true}
+{"term":"As-tu tes médicaments ?","back":"Do you have your pills?","scene":"at the pharmacy","src":"tatoeba:3392355","by":"sacredceltic","enId":"3391101","enBy":"Hybrid","auto":true}
+{"term":"Où sont tes médicaments ?","back":"Where's your medication?","scene":"at the pharmacy","src":"tatoeba:8080136","by":"Aiji","enId":"2254686","enBy":"CK","auto":true}
+{"term":"Pouvez-vous supporter la douleur ?","back":"Can you stand the pain?","scene":"seeing a doctor","src":"tatoeba:8114549","by":"Aiji","enId":"4502272","enBy":"CK","auto":true}
+{"term":"Veuillez expliquer comment prendre le médicament.","back":"Please explain how to take the medicine.","scene":"at the pharmacy","src":"tatoeba:2129845","by":"sacredceltic","enId":"324227","auto":true}
+{"term":"Quelle maladie ai-je ?","back":"What illness do I have?","scene":"seeing a doctor","src":"tatoeba:908467","by":"sacredceltic","enId":"435200","enBy":"CK","auto":true}
+{"term":"Es-tu sous traitement ?","back":"Are you on medication?","scene":"at the pharmacy","src":"tatoeba:10705512","by":"AutoBot","enId":"10697322","enBy":"sundown","auto":true}
+{"term":"Je veux être infirmière.","back":"I want to be a nurse.","scene":"seeing a doctor","src":"tatoeba:6689","by":"TRANG","enId":"256727","enBy":"CK","auto":true}
+{"term":"As-tu pris ton médicament ?","back":"Did you take your medication?","scene":"at the pharmacy","src":"tatoeba:7667311","by":"felix63","enId":"6562302","enBy":"Hybrid","auto":true}
+{"term":"As-tu pris tes médicaments ?","back":"Have you taken your medicine?","scene":"at the pharmacy","src":"tatoeba:8764654","by":"zarisi","enId":"2888232","enBy":"CK","auto":true}
+{"term":"As-tu acheté les médicaments ?","back":"Did you buy the medicine?","scene":"at the pharmacy","src":"tatoeba:6463019","by":"Aiji","enId":"1632038","enBy":"Amastan","auto":true}
+{"term":"As-tu déjà pris ton médicament ?","back":"Have you taken your medicine yet?","scene":"at the pharmacy","src":"tatoeba:457150","by":"sacredceltic","enId":"16380","enBy":"CK","auto":true}
+{"term":"Ce médicament agit-il rapidement ?","back":"Does the medicine act quickly?","scene":"at the pharmacy","src":"tatoeba:1540971","by":"sacredceltic","enId":"43557","enBy":"sundown","auto":true}
+{"term":"Pourquoi veux-tu être infirmière ?","back":"Why do you want to be a nurse?","scene":"seeing a doctor","src":"tatoeba:3435093","by":"Rovo","enId":"36407","enBy":"CK","auto":true}
+{"term":"Pourquoi prends-tu ce médicament ?","back":"Why do you take that medicine?","scene":"at the pharmacy","src":"tatoeba:6479789","by":"Aiji","enId":"2892926","enBy":"CK","auto":true}
+{"term":"Est-ce que ce médecin est aveugle ?","back":"Is that doctor blind?","scene":"seeing a doctor","src":"tatoeba:10677819","by":"AutoBot","enId":"13860049","enBy":"rul","auto":true}
+{"term":"À tout hasard, seriez-vous médecin ?","back":"Are you a doctor by any chance?","scene":"seeing a doctor","src":"tatoeba:11900818","by":"zogwarg","enId":"11900732","enBy":"CK","auto":true}
+{"term":"Tu ne serais pas malade, par hasard ?","back":"Are you sick by any chance?","scene":"seeing a doctor","src":"tatoeba:8384232","by":"felix63","enId":"13714357","enBy":"zogwarg","auto":true}
+{"term":"Je veux que tu prennes ce médicament.","back":"I want you to take this medicine.","scene":"at the pharmacy","src":"tatoeba:2015757","by":"sacredceltic","enId":"2015227","enBy":"CK","auto":true}
+{"term":"La douleur te réveille-t-elle la nuit ?","back":"Does the pain wake you up at night?","scene":"seeing a doctor","src":"tatoeba:9869888","by":"Micsmithel","enId":"9853814","enBy":"NurseMeeks","auto":true}
+{"term":"Je veux que tu ailles voir l'infirmière.","back":"I want you to go see the nurse.","scene":"seeing a doctor","src":"tatoeba:2490592","by":"sacredceltic","enId":"2014325","enBy":"CK","auto":true}
+{"term":"Tu prends des médicaments en ce moment ?","back":"Are you on any medication right now?","scene":"at the pharmacy","src":"tatoeba:7050262","by":"Aiji","enId":"4014061","enBy":"CK","auto":true}
+{"term":"J'aimerais trouver un médecin parlant français.","back":"I'd like to find a French-speaking doctor.","scene":"seeing a doctor","src":"tatoeba:7769718","by":"Aiji","enId":"2451251","enBy":"CK","auto":true}
+{"term":"Prends-tu des médicaments pour des problèmes de santé ?","back":"Do you take any medication for any medical issues?","scene":"at the pharmacy","src":"tatoeba:9926206","by":"Micsmithel","enId":"9849577","enBy":"NurseMeeks","auto":true}
+{"term":"Pourquoi avez-vous arrêté de prendre votre médicament ?","back":"Why did you stop taking your medicine?","scene":"at the pharmacy","src":"tatoeba:11450682","by":"lbdx","enId":"10161095","enBy":"CK","auto":true}
+{"term":"J'en ai marre de lui.","back":"I'm sick of him.","scene":"seeing a doctor","src":"tatoeba:1003011","by":"sacredceltic","enId":"8480516","enBy":"CH","auto":true}
+{"term":"J'en ai marre de toi.","back":"I'm sick of you.","scene":"seeing a doctor","src":"tatoeba:4550739","by":"sacredceltic","enId":"2549498","enBy":"CK","auto":true}
+{"term":"Prends un médicament !","back":"Take medicine.","scene":"at the pharmacy","src":"tatoeba:4578488","by":"sacredceltic","enId":"324240","enBy":"shekitten","auto":true}
+{"term":"Amène-moi à l'hôpital.","back":"Take me to hospital.","scene":"seeing a doctor","src":"tatoeba:5527761","by":"Hivalnid","enId":"11064022","enBy":"sundown","auto":true}
+{"term":"Voici mes médicaments.","back":"This is my medication.","scene":"at the pharmacy","src":"tatoeba:10704901","by":"AutoBot","enId":"10704899","enBy":"AutoBot","auto":true}
+{"term":"J'en ai marre de tout.","back":"I'm sick of everything.","scene":"seeing a doctor","src":"tatoeba:12310849","by":"lbdx","enId":"8927616","enBy":"CK","auto":true}
+{"term":"Ma sœur est infirmière.","back":"My sister is a nurse.","scene":"seeing a doctor","src":"tatoeba:6889293","by":"GB3","enId":"2779109","enBy":"CK","auto":true}
+{"term":"J'en ai marre de mentir.","back":"I'm sick of lying.","scene":"seeing a doctor","src":"tatoeba:3559400","by":"sacredceltic","enId":"3555622","enBy":"Hybrid","auto":true}
+{"term":"J'en ai marre de ce jeu.","back":"I'm sick of this game.","scene":"seeing a doctor","src":"tatoeba:4561791","by":"sacredceltic","enId":"2547127","enBy":"CK","auto":true}
+{"term":"J’ai des maux de ventre.","back":"I have a stomachache.","scene":"seeing a doctor","src":"tatoeba:10707932","by":"AutoBot","enId":"64954","enBy":"CK","auto":true}
+{"term":"Je supportais la douleur.","back":"I bore the pain.","scene":"seeing a doctor","src":"tatoeba:2209629","by":"Amastan","enId":"11078488","enBy":"sundown","auto":true}
+{"term":"Je souhaite être docteur.","back":"I wish to be a doctor.","scene":"seeing a doctor","src":"tatoeba:6830","by":"TRANG","enId":"256020","enBy":"CK","auto":true}
+{"term":"Montrez-moi votre langue.","back":"Show me your tongue.","scene":"seeing a doctor","src":"tatoeba:128912","by":"sacredceltic","enId":"6049413","enBy":"mailohilohi","auto":true}
+{"term":"Ma fille a attrapé froid.","back":"My daughter caught a cold.","scene":"seeing a doctor","src":"tatoeba:554808","by":"sacredceltic","enId":"556617","enBy":"Pun_intended","auto":true}
+{"term":"J'en ai marre du poisson !","back":"I'm sick of fish.","scene":"seeing a doctor","src":"tatoeba:4550626","by":"sacredceltic","enId":"2006411","enBy":"CK","auto":true}
+{"term":"J'en ai marre du français.","back":"I'm sick of French.","scene":"seeing a doctor","src":"tatoeba:9847017","by":"Micsmithel","enId":"2451678","enBy":"CK","auto":true}
+{"term":"Ce médicament vous aidera.","back":"This medicine will help you.","scene":"at the pharmacy","src":"tatoeba:10705575","by":"AutoBot","enId":"413825","enBy":"CK","auto":true}
+{"term":"J'en ai marre de faire ça.","back":"I'm sick of doing that.","scene":"seeing a doctor","src":"tatoeba:11706442","by":"lbdx","enId":"6271443","enBy":"CK","auto":true}
+{"term":"J'en ai marre de l'anglais.","back":"I'm sick of English.","scene":"seeing a doctor","src":"tatoeba:6792","by":"RaspaKrusto","enId":"2064503","enBy":"halfb1t","auto":true}
+{"term":"Ma sœur a épousé un médecin.","back":"My sister married a doctor.","scene":"seeing a doctor","src":"tatoeba:1016809","by":"sacredceltic","enId":"251904","enBy":"CK","auto":true}
+{"term":"J'en ai marre d'être malade.","back":"I'm sick of being sick.","scene":"seeing a doctor","src":"tatoeba:3451144","by":"Scorpionvenin14","enId":"1273618","enBy":"CM","auto":true}
+{"term":"Je suis l'infirmier de nuit.","back":"I'm the night shift nurse.","scene":"seeing a doctor","src":"tatoeba:9950813","by":"Micsmithel","enId":"9969753","enBy":"CK","auto":true}
+{"term":"Ne le descends pas en public.","back":"Don't speak ill of him in public.","scene":"seeing a doctor","register":"casual","src":"tatoeba:730353","by":"U2FS","enId":"270621","auto":true}
+{"term":"Je ne ressens aucune douleur.","back":"I don't feel any pain.","scene":"seeing a doctor","src":"tatoeba:5792148","by":"alexisslay","enId":"5792059","enBy":"CK","auto":true}
+{"term":"J'en ai marre de cet endroit.","back":"I'm sick of this place.","scene":"seeing a doctor","src":"tatoeba:7079893","by":"Aiji","enId":"3185582","enBy":"CK","auto":true}
+{"term":"Je me suis senti mal à l'aise.","back":"I felt ill at ease.","scene":"seeing a doctor","src":"tatoeba:9548060","by":"Julien_PDC","enId":"262173","enBy":"CK","auto":true}
+{"term":"Je ne prends aucun traitement.","back":"I don't take any medication.","scene":"at the pharmacy","src":"tatoeba:2534617","by":"sacredceltic","enId":"2276208","enBy":"CK","auto":true}
+{"term":"J'en ai marre de cette guerre.","back":"I'm sick of this war.","scene":"seeing a doctor","src":"tatoeba:4561807","by":"sacredceltic","enId":"2547682","enBy":"CK","auto":true}
+{"term":"Tu dois prendre ce médicament.","back":"You should take this medicine.","scene":"at the pharmacy","src":"tatoeba:9165795","by":"Julien_PDC","enId":"9162074","enBy":"CK","auto":true}
+{"term":"Ton chat a l'air d'être malade.","back":"Your cat looks sick.","scene":"seeing a doctor","src":"tatoeba:8291087","by":"felix63","enId":"13306195","enBy":"rul","auto":true}
+{"term":"Dois-je prendre ce médicament ?","back":"Must I take this medicine?","scene":"at the pharmacy","src":"tatoeba:11475","by":"Archibald","enId":"56585","auto":true}
+{"term":"Je ne supporte plus la douleur.","back":"I cannot bear the pain any more.","scene":"seeing a doctor","src":"tatoeba:572199","by":"sacredceltic","enId":"18382","enBy":"CK","auto":true}
+{"term":"Je dois prendre des médicaments.","back":"I have to take medicine.","scene":"at the pharmacy","src":"tatoeba:6000","by":"TRANG","enId":"5999","enBy":"CK","auto":true}
+{"term":"Cette jeune dame est infirmière.","back":"That young lady is a nurse.","scene":"seeing a doctor","src":"tatoeba:1259612","by":"sacredceltic","enId":"1258603","enBy":"CK","auto":true}
+{"term":"Ton père est un médecin célèbre.","back":"Your dad is a famous doctor.","scene":"seeing a doctor","src":"tatoeba:8042369","by":"Rovo","enId":"13823818","enBy":"tieguy","auto":true}
+{"term":"Je suis l'infirmier du week-end.","back":"I am the weekend nurse.","scene":"seeing a doctor","src":"tatoeba:9950823","by":"Micsmithel","enId":"9943104","enBy":"NurseMeeks","auto":true}
+{"term":"Je me suis réveillé à l'hôpital.","back":"I woke up in the hospital.","scene":"seeing a doctor","src":"tatoeba:12992423","by":"lbdx","enId":"5741200","enBy":"CM","auto":true}
+{"term":"Un bon médicament a mauvais goût.","back":"Good medicine tastes bitter.","scene":"at the pharmacy","src":"tatoeba:135635","by":"Aiji","enId":"2256963","enBy":"archer_root","auto":true}
+{"term":"Ce bâtiment blanc est un hôpital.","back":"That white building is a hospital.","scene":"seeing a doctor","src":"tatoeba:1059123","by":"sacredceltic","enId":"67860","enBy":"CK","auto":true}
+{"term":"J'en ai marre de cette situation.","back":"I'm sick and tired of this situation.","scene":"seeing a doctor","src":"tatoeba:6375625","by":"Scorpionvenin14","enId":"6375611","enBy":"OsoHombre","auto":true}
+{"term":"Ce médicament calmera la douleur.","back":"This medicine will assuage the pain.","scene":"seeing a doctor","src":"tatoeba:8501577","by":"lbdx","enId":"6328565","enBy":"carlosalberto","auto":true}
+{"term":"J’ai déjà ressenti cette douleur.","back":"I've had this pain before.","scene":"seeing a doctor","src":"tatoeba:10707788","by":"AutoBot","enId":"10707786","enBy":"AutoBot","auto":true}
+{"term":"Nous avons un médicament pour toi.","back":"We have medicine for you.","scene":"at the pharmacy","src":"tatoeba:2058373","by":"sacredceltic","enId":"1893840","enBy":"CK","auto":true}
+{"term":"J'en ai marre des vidéos de chats.","back":"I'm sick of cat videos.","scene":"seeing a doctor","src":"tatoeba:12456726","by":"lbdx","enId":"5933845","enBy":"mailohilohi","auto":true}
+{"term":"Mon animal de compagnie est malade.","back":"My pet is sick.","scene":"seeing a doctor","src":"tatoeba:1388291","by":"sacredceltic","enId":"1388183","enBy":"marcelostockle","auto":true}
+{"term":"J'en ai marre de manger du poisson.","back":"I'm sick of eating fish.","scene":"seeing a doctor","src":"tatoeba:6400071","by":"Aiji","enId":"2006410","enBy":"CK","auto":true}
+{"term":"J'en ai tellement marre de tout ça.","back":"I'm so sick of all this.","scene":"seeing a doctor","src":"tatoeba:11231356","by":"lbdx","enId":"5187260","enBy":"CK","auto":true}
+{"term":"J'en ai assez de tous ces appareils.","back":"I'm sick of all these devices.","scene":"seeing a doctor","src":"tatoeba:6579184","by":"GB3","enId":"6577498","enBy":"Eccles17","auto":true}
+{"term":"Je ne peux pas supporter la douleur.","back":"I can't bear the pain.","scene":"seeing a doctor","src":"tatoeba:11524868","by":"Aiji","enId":"278300","enBy":"CK","auto":true}
+{"term":"Prends ce médicament entre les repas.","back":"Take this medicine between meals.","scene":"at the pharmacy","src":"tatoeba:613496","by":"Archibald","enId":"56556","enBy":"CK","auto":true}
+{"term":"Je ne peux plus supporter la douleur.","back":"I can't bear the pain anymore.","scene":"seeing a doctor","src":"tatoeba:6285952","by":"Aiji","enId":"2713115","enBy":"CK","auto":true}
+{"term":"Ce médicament combat les maux de tête.","back":"This drug acts against headache.","scene":"seeing a doctor","src":"tatoeba:595379","by":"qdii","enId":"56594","auto":true}
+{"term":"Je n’ai jamais ressenti cette douleur.","back":"I've never had this pain before.","scene":"seeing a doctor","src":"tatoeba:10707802","by":"AutoBot","enId":"10707799","enBy":"AutoBot","auto":true}
+{"term":"J'avais du mal à supporter la douleur.","back":"I could hardly endure the pain.","scene":"seeing a doctor","src":"tatoeba:13308093","by":"lbdx","enId":"254580","enBy":"CK","auto":true}
+{"term":"J’ai besoin de plus de ces médicaments.","back":"I need more of this medication.","scene":"at the pharmacy","src":"tatoeba:10704911","by":"AutoBot","enId":"10704909","enBy":"AutoBot","auto":true}
+{"term":"Je vais chez le médecin, cet après-midi.","back":"I'm going to go to the doctor this afternoon.","scene":"seeing a doctor","src":"tatoeba:11043","by":"sacredceltic","enId":"63133","enBy":"CK","auto":true}
+{"term":"Je ne peux plus supporter cette douleur.","back":"I can't stand this pain any more.","scene":"seeing a doctor","src":"tatoeba:11413","by":"Lulantis","enId":"57813","enBy":"CK","auto":true}
+{"term":"Prenez ce médicament avant chaque repas.","back":"Take this medicine before each meal.","scene":"at the pharmacy","src":"tatoeba:128554","by":"nimfeo","enId":"268757","enBy":"CK","auto":true}
+{"term":"Prends ce médicament après chaque repas.","back":"Take this medicine after each meal.","scene":"at the pharmacy","src":"tatoeba:335732","by":"TRANG","enId":"56554","enBy":"CK","auto":true}
+{"term":"Je pouvais à peine supporter la douleur.","back":"I could barely stand the pain.","scene":"seeing a doctor","src":"tatoeba:7793941","by":"Aiji","enId":"2730078","enBy":"AlanF_US","auto":true}
+{"term":"Prenez le médicament trois fois par jour.","back":"Take the medicine three times a day.","scene":"at the pharmacy","src":"tatoeba:428770","by":"Archibald","enId":"73079","enBy":"CK","auto":true}
+{"term":"Vous devez immédiatement voir un médecin.","back":"You are to see a doctor at once.","scene":"seeing a doctor","src":"tatoeba:1077093","by":"sacredceltic","enId":"70021","auto":true}
+{"term":"Amenez-le chez le médecin, il est malade.","back":"Take him to the doctor. He's sick.","scene":"seeing a doctor","src":"tatoeba:9756046","by":"agrakal","enId":"11905039","enBy":"purple_ice","auto":true}
+{"term":"Je prends ces médicaments tous les jours.","back":"I take this medication every day.","scene":"at the pharmacy","src":"tatoeba:10704905","by":"AutoBot","enId":"10704903","enBy":"AutoBot","auto":true}
+{"term":"Prenez ce médicament toutes les six heures.","back":"Take this medicine every six hours.","scene":"at the pharmacy","src":"tatoeba:5655094","by":"Yemana","enId":"72414","enBy":"CK","auto":true}
+{"term":"Je prends ces médicaments depuis des années.","back":"I have been taking this medication for years.","scene":"at the pharmacy","src":"tatoeba:10704908","by":"AutoBot","enId":"10704906","enBy":"AutoBot","auto":true}
+{"term":"Je ressens des douleurs dans mes deux genoux.","back":"I can feel pain in both of my knees.","scene":"seeing a doctor","src":"tatoeba:11390769","by":"lbdx","enId":"4498501","enBy":"CK","auto":true}
+{"term":"Nous l'avons immédiatement envoyé à l'hôpital.","back":"We sent him immediately to the hospital.","scene":"seeing a doctor","src":"tatoeba:8486438","by":"Aiji","enId":"6030638","enBy":"AlanF_US","auto":true}
+{"term":"Il faut que j'appelle le docteur immédiatement.","back":"I must send for the doctor at once.","scene":"seeing a doctor","src":"tatoeba:868378","by":"Ppjet6","enId":"253972","auto":true}
+{"term":"Ce médicament ne fonctionne que chez les hommes.","back":"This medicine only works for men.","scene":"at the pharmacy","src":"tatoeba:12523654","by":"Rovo","enId":"11195072","enBy":"CK","auto":true}
+{"term":"Ma grand-mère est tombée malade la semaine dernière.","back":"My grandmother became sick last week.","scene":"seeing a doctor","src":"tatoeba:129008","by":"dominiko","enId":"273915","enBy":"CK","auto":true}
+{"term":"« Pourquoi prends-tu ce médicament ? » « Pour dormir. »","back":"\"Why do you take this medicine?\" \"To sleep.\"","scene":"at the pharmacy","src":"tatoeba:6864302","by":"felix63","enId":"6882604","enBy":"kaiperkins271","auto":true}
+{"term":"Prenez ce médicament. Vous vous sentirez rapidement mieux.","back":"Take this medicine. You will feel better soon.","scene":"at the pharmacy","src":"tatoeba:11476","by":"sacredceltic","enId":"56584","auto":true}
+{"term":"As-tu un médecin traitant ?","back":"Do you have a primary care doctor?","scene":"seeing a doctor","src":"tatoeba:9934857","by":"Micsmithel","enId":"9849532","enBy":"NurseMeeks","auto":true}
+{"term":"Quel est ton médecin traitant ?","back":"Which doctor is attending you?","scene":"seeing a doctor","src":"tatoeba:1589810","by":"Petrus","enId":"38116","enBy":"CK","auto":true}
+{"term":"Quand a été construit cet hôpital ?","back":"When was this hospital built?","scene":"seeing a doctor","src":"tatoeba:10487543","by":"lbdx","enId":"10463398","enBy":"CK","auto":true}
+{"term":"Souffres-tu beaucoup ?","back":"Are you in a lot of pain?","scene":"seeing a doctor","src":"tatoeba:6363621","by":"Aiji","enId":"3738244","enBy":"CK","auto":true}
+{"term":"Tu souffres, n'est-ce pas ?","back":"You're in pain, aren't you?","scene":"seeing a doctor","src":"tatoeba:2402487","by":"sacredceltic","enId":"2402258","enBy":"CK","auto":true}
+{"term":"Quiconque se sent-il malade ?","back":"Does anyone feel ill?","scene":"seeing a doctor","src":"tatoeba:3671210","by":"sacredceltic","enId":"12476398","enBy":"sundown","auto":true}
+{"term":"J'aimerais recevoir une seconde opinion.","back":"I'd like to get a second opinion.","scene":"seeing a doctor","src":"tatoeba:8110909","by":"Aiji","enId":"4250336","enBy":"CK","auto":true}
+{"term":"As-tu déjà ressenti une douleur à la poitrine ?","back":"Have you ever experienced chest pain?","scene":"seeing a doctor","src":"tatoeba:9950816","by":"Micsmithel","enId":"9849460","enBy":"NurseMeeks","auto":true}
+{"term":"Est-ce que ces médicaments agissent sur l'estomac ?","back":"Does the medicine act on the stomach?","scene":"at the pharmacy","src":"tatoeba:12266","by":"sak_sm","enId":"43553","auto":true}
+{"term":"Nous souffrons.","back":"We're in pain.","scene":"seeing a doctor","src":"tatoeba:4801666","by":"sacredceltic","enId":"2240596","enBy":"CK","auto":true}
+{"term":"Je ne souffre pas.","back":"I'm not in pain.","scene":"seeing a doctor","src":"tatoeba:11071147","by":"Aiji","enId":"2549507","enBy":"CK","auto":true}
+{"term":"J’ai mal à la poitrine.","back":"I have chest pain.","scene":"seeing a doctor","src":"tatoeba:2267990","by":"MartinShadock","enId":"10695756","enBy":"CK","auto":true}
+{"term":"Tu as l'air de souffrir.","back":"You look like you're in pain.","scene":"seeing a doctor","src":"tatoeba:7060873","by":"Aiji","enId":"954766","enBy":"CK","auto":true}
+{"term":"J’ai un foutu mal de crâne !","back":"I have a terrible headache!","scene":"seeing a doctor","src":"tatoeba:374348","by":"zmoo","enId":"1483362","enBy":"Dejo","auto":true}
+{"term":"Je souffre de maux d'estomac.","back":"I suffer from a stomach ache.","scene":"seeing a doctor","src":"tatoeba:1839291","by":"sacredceltic","enId":"28151","enBy":"Zifre","auto":true}
+{"term":"J'en ai marre de ces disputes.","back":"I'm sick of these arguments.","scene":"seeing a doctor","src":"tatoeba:6378723","by":"Scorpionvenin14","enId":"6378701","enBy":"OsoHombre","auto":true}
+{"term":"Soigne-toi. Ne tombe pas malade.","back":"Take care of yourself. Don't get sick.","scene":"seeing a doctor","src":"tatoeba:3260209","by":"nimfeo","enId":"462488","enBy":"lukaszpp","auto":true}
+{"term":"J’ai une douleur dans la poitrine.","back":"I have a pain in my chest.","scene":"seeing a doctor","src":"tatoeba:10705533","by":"AutoBot","enId":"436637","enBy":"lukaszpp","auto":true}
+{"term":"J'en ai marre d'écouter ses plaintes.","back":"I'm sick of listening to her complaints.","scene":"seeing a doctor","src":"tatoeba:497242","by":"sacredceltic","enId":"24036","enBy":"CK","auto":true}
+{"term":"Je ne peux pas fumer. Je suis malade.","back":"I cannot smoke. I am sick.","scene":"seeing a doctor","src":"tatoeba:11667845","by":"Amastan","enId":"1688791","enBy":"Amastan","auto":true}
+{"term":"Je te conseille d'écouter ton médecin.","back":"I advise you to listen to your doctor.","scene":"seeing a doctor","src":"tatoeba:1101389","by":"sacredceltic","enId":"680094","enBy":"Source_VOA","auto":true}
+{"term":"Je suis fatigué d'écouter tes plaintes.","back":"I'm sick of listening to your complaints.","scene":"seeing a doctor","src":"tatoeba:9025","by":"sacredceltic","enId":"17266","enBy":"CK","auto":true}
+{"term":"Mon travail me cause des maux d'estomac.","back":"My job is giving me a stomachache.","scene":"seeing a doctor","src":"tatoeba:1450153","by":"sacredceltic","enId":"1449756","enBy":"CK","auto":true}
+{"term":"Je souffre chaque minute de chaque jour.","back":"I'm in pain every minute of every day.","scene":"seeing a doctor","src":"tatoeba:5603410","by":"Aiji","enId":"4499538","enBy":"CK","auto":true}
+{"term":"J'en ai assez des conférences, ces temps-ci.","back":"I'm sick of conferences these days.","scene":"seeing a doctor","src":"tatoeba:4990230","by":"sacredceltic","enId":"321611","enBy":"CM","auto":true}
+{"term":"Gardez le médicament hors de portée des enfants.","back":"Keep the medicine away from children.","scene":"at the pharmacy","src":"tatoeba:135471","by":"RaspaKrusto","enId":"324241","auto":true}
+{"term":"Je suis vraiment fatigué de toutes ces disputes.","back":"I'm sick and tired of all this bickering.","scene":"seeing a doctor","src":"tatoeba:955804","by":"sacredceltic","enId":"953847","enBy":"CK","auto":true}
+{"term":"Je prends ce traitement depuis de nombreuses années.","back":"I have been taking this medication for many years.","scene":"at the pharmacy","src":"tatoeba:10699660","by":"lbdx","enId":"10696203","enBy":"tokzyk","auto":true}
+{"term":"Je peux vérifier ta température ?","back":"Can I check your temperature?","scene":"seeing a doctor","src":"tatoeba:9869957","by":"Micsmithel","enId":"9849485","enBy":"NurseMeeks","auto":true}
+{"term":"Préférerais-tu être examiné par une infirmière ?","back":"Would you prefer to be examined by a female nurse?","scene":"seeing a doctor","src":"tatoeba:9950512","by":"Micsmithel","enId":"9943108","enBy":"NurseMeeks","auto":true}
+{"term":"Préférerais-tu te faire examiner par un infirmier ?","back":"Would you prefer to be examined by a male nurse?","scene":"seeing a doctor","src":"tatoeba:9983508","by":"Micsmithel","enId":"9943107","enBy":"NurseMeeks","auto":true}
+{"term":"As-tu de la fièvre ?","back":"Have you any fever?","scene":"seeing a doctor","src":"tatoeba:129828","by":"gillux","enId":"282097","enBy":"al_ex_an_der","auto":true}
+{"term":"Comment s'appellent ces pilules ?","back":"What are those pills called?","scene":"at the pharmacy","src":"tatoeba:7790923","by":"Aiji","enId":"4016806","enBy":"CK","auto":true}
+{"term":"Voyez-vous des patients le samedi ?","back":"Do you see patients on Saturdays?","scene":"seeing a doctor","src":"tatoeba:6285949","by":"Aiji","enId":"279539","enBy":"CK","auto":true}
+{"term":"Avez-vous pris vos pilules ce matin ?","back":"Did you take your pills this morning?","scene":"at the pharmacy","src":"tatoeba:12161423","by":"lbdx","enId":"7264450","enBy":"Hybrid","auto":true}
+{"term":"J’ai la fièvre.","back":"I have a fever.","scene":"seeing a doctor","src":"tatoeba:10505355","by":"pkill","enId":"282102","enBy":"CK","auto":true}
+{"term":"Tu as de la fièvre.","back":"You've got a fever.","scene":"seeing a doctor","src":"tatoeba:4599959","by":"sacredceltic","enId":"3331079","enBy":"CK","auto":true}
+{"term":"Je prends la pilule.","back":"I'm on the pill.","scene":"at the pharmacy","src":"tatoeba:3364199","by":"Blabla","enId":"3384252","enBy":"petersmr","auto":true}
+{"term":"J’ai la fièvre jaune.","back":"I have yellow fever.","scene":"seeing a doctor","src":"tatoeba:10686928","by":"AutoBot","enId":"10686925","enBy":"AutoBot","auto":true}
+{"term":"J’ai beaucoup de fièvre.","back":"I have a high fever.","scene":"seeing a doctor","src":"tatoeba:8569","by":"zmoo","enId":"387437","enBy":"CK","auto":true}
+{"term":"Je suis en congé maladie.","back":"I'm on sick leave.","scene":"seeing a doctor","src":"tatoeba:8185529","by":"Aiji","enId":"5859393","enBy":"CK","auto":true}
+{"term":"Mon front brûlait de fièvre.","back":"My forehead burned with fever.","scene":"seeing a doctor","src":"tatoeba:1117813","by":"Sibelius","enId":"21247","enBy":"moman","auto":true}
+{"term":"Tu dois prendre ces pilules.","back":"You need to take these pills.","scene":"at the pharmacy","src":"tatoeba:7862679","by":"Aiji","enId":"3356334","enBy":"CK","auto":true}
+{"term":"J'en ai assez de vos indices.","back":"I'm sick of your hints.","scene":"seeing a doctor","src":"tatoeba:7804282","by":"Aiji","enId":"4329015","enBy":"AlanF_US","auto":true}
+{"term":"Je dois vous prendre le pouls.","back":"I need to take your pulse.","scene":"seeing a doctor","src":"tatoeba:4052468","by":"GB3","enId":"3733479","enBy":"CK","auto":true}
+{"term":"Devrais-je prendre ce remède ?","back":"Should I take this medicine?","scene":"at the pharmacy","src":"tatoeba:5561941","by":"sacredceltic","enId":"1476752","enBy":"weihaiping","auto":true}
+{"term":"Je ne me lasse jamais de danser.","back":"I never get sick of dancing.","scene":"seeing a doctor","src":"tatoeba:7043","by":"Cocorico","enId":"254993","enBy":"CK","auto":true}
+{"term":"Ce médicament est très efficace.","back":"This medicine is very effective.","scene":"at the pharmacy","src":"tatoeba:11294583","by":"lbdx","enId":"7767756","enBy":"sharris123","auto":true}
+{"term":"Il semble que j'aie de la fièvre.","back":"I seem to have a fever.","scene":"seeing a doctor","src":"tatoeba:12846","by":"sacredceltic","enId":"38381","enBy":"CK","auto":true}
+{"term":"Prends ce remède après les repas.","back":"Take this medicine after meals.","scene":"at the pharmacy","src":"tatoeba:1351754","by":"sacredceltic","enId":"268688","enBy":"CK","auto":true}
+{"term":"Ce remède te fera te sentir mieux.","back":"This medicine will make you feel better.","scene":"at the pharmacy","src":"tatoeba:139886","by":"sacredceltic","enId":"56571","enBy":"CK","auto":true}
+{"term":"Laisse-moi prendre ta température.","back":"Let me take your temperature.","scene":"seeing a doctor","src":"tatoeba:341817","by":"TRANG","enId":"275248","enBy":"CK","auto":true}
+{"term":"Prenez deux de ces pilules rouges.","back":"Take two of these red pills.","scene":"at the pharmacy","src":"tatoeba:6318246","by":"Aiji","enId":"3170688","enBy":"CK","auto":true}
+{"term":"Ce médecin est un homme de culture.","back":"This doctor is a man of culture.","scene":"seeing a doctor","src":"tatoeba:458883","by":"sacredceltic","enId":"843952","enBy":"J_S","auto":true}
+{"term":"N'oublie pas de prendre ta pilule !","back":"Don't forget to take your pills.","scene":"at the pharmacy","src":"tatoeba:2254313","by":"sacredceltic","enId":"2240155","enBy":"Hybrid","auto":true}
+{"term":"Ne dis pas de mal de tes camarades.","back":"Don't speak ill of your classmates.","scene":"seeing a doctor","src":"tatoeba:12934527","by":"lbdx","enId":"62902","enBy":"CK","auto":true}
+{"term":"Prends cette pilule. Ça t'aidera à dormir.","back":"Take this pill. It'll help you sleep.","scene":"at the pharmacy","src":"tatoeba:7699888","by":"Maxence","enId":"7298399","enBy":"CK","auto":true}
+{"term":"Dans mon cas, ce médicament a été efficace.","back":"That medicine worked well for me.","scene":"at the pharmacy","src":"tatoeba:1491182","by":"Rovo","enId":"43554","enBy":"CK","auto":true}
+{"term":"Je travaille dans un laboratoire d'hôpital.","back":"I work in a hospital laboratory.","scene":"seeing a doctor","src":"tatoeba:5678037","by":"Scorpionvenin14","enId":"5675446","enBy":"CK","auto":true}
+{"term":"Le docteur le guérira peut-être de son cancer.","back":"That doctor may cure him of his cancer.","scene":"seeing a doctor","src":"tatoeba:10471","by":"sacredceltic","enId":"68583","auto":true}
+{"term":"Aucun médicament ne peut guérir cette maladie.","back":"No medicine can cure this disease.","scene":"at the pharmacy","src":"tatoeba:335476","by":"TRANG","enId":"36571","enBy":"CK","auto":true}
+{"term":"Vous devriez vous faire examiner par un médecin.","back":"You should get examined by a doctor.","scene":"seeing a doctor","src":"tatoeba:11185365","by":"lbdx","enId":"11535728","enBy":"letsgolanguages","auto":true}
+{"term":"Prenez ce remède. Vous vous sentirez bientôt mieux.","back":"Take this medicine. You'll soon feel better.","scene":"at the pharmacy","src":"tatoeba:5313696","by":"nimfeo","enId":"4348268","enBy":"negativeclock","auto":true}
+{"term":"Nous devons enquêter sur la disparition du médecin.","back":"We have to look into the disappearance of the doctor.","scene":"seeing a doctor","src":"tatoeba:11377435","by":"Aiji","enId":"49638","enBy":"CK","auto":true}
+{"term":"Présentes-tu souvent ce symptôme ?","back":"Do you have this symptom often?","scene":"seeing a doctor","src":"tatoeba:1853365","by":"sacredceltic","enId":"29986","enBy":"CK","auto":true}
+{"term":"Peux-tu décrire ton mal de ventre ?","back":"Can you describe your stomach pain?","scene":"seeing a doctor","src":"tatoeba:9926241","by":"Micsmithel","enId":"9849644","enBy":"NurseMeeks","auto":true}
+{"term":"Quels sont vos symptômes ?","back":"What are your symptoms?","scene":"seeing a doctor","src":"tatoeba:10074759","by":"Micsmithel","enId":"3194297","enBy":"Alhumaidany_1990","auto":true}
+{"term":"Quels symptômes montrez-vous ?","back":"What symptoms do you have?","scene":"seeing a doctor","src":"tatoeba:1182814","by":"sacredceltic","enId":"36602","enBy":"CK","auto":true}
+{"term":"Lorsque je mords, cette dent me fait mal.","back":"When I bite down, this tooth hurts.","scene":"seeing a doctor","src":"tatoeba:917038","by":"sacredceltic","enId":"21189","enBy":"CK","auto":true}
+{"term":"Pensez-vous que les plantes ressentent la douleur ?","back":"Do you think that plants feel pain?","scene":"seeing a doctor","src":"tatoeba:7928336","by":"Aiji","enId":"4013873","enBy":"CK","auto":true}
+{"term":"Le médicament existe-t-il aussi sous forme de gouttes ?","back":"Does the medicine come in droplet form?","scene":"at the pharmacy","src":"tatoeba:998675","by":"sacredceltic","enId":"9140118","enBy":"sundown","auto":true}
+{"term":"C’est une douleur sourde.","back":"It's a dull pain.","scene":"seeing a doctor","src":"tatoeba:10705482","by":"AutoBot","enId":"10705477","enBy":"AutoBot","auto":true}
+{"term":"Ce médicament réduira la douleur.","back":"This medicine will reduce the pain.","scene":"seeing a doctor","src":"tatoeba:6283037","by":"Aiji","enId":"3636050","enBy":"CK","auto":true}
+{"term":"Ma gorge me fait mal quand j'avale.","back":"My throat hurts when I swallow.","scene":"seeing a doctor","src":"tatoeba:128541","by":"sacredceltic","enId":"268673","enBy":"CK","auto":true}
+{"term":"Connais-tu un bon dentiste ?","back":"Do you know a good dentist?","scene":"seeing a doctor","src":"tatoeba:1039401","by":"sysko","enId":"434598","enBy":"lukaszpp","auto":true}
+{"term":"Te brosses-tu bien les dents ?","back":"Are you brushing your teeth properly?","scene":"seeing a doctor","src":"tatoeba:1014186","by":"sacredceltic","enId":"40194","enBy":"CK","auto":true}
+{"term":"Je voudrais consulter un médecin.","back":"I'd like to see a doctor.","scene":"seeing a doctor","src":"tatoeba:15042","by":"sacredceltic","enId":"28045","enBy":"CK","auto":true}
+{"term":"Es-tu allergique à des médicaments ?","back":"Are you allergic to any medicines?","scene":"seeing a doctor","src":"tatoeba:5798287","by":"Toynop","enId":"5789011","enBy":"CK","auto":true}
+{"term":"Pourquoi ne pas consulter le médecin ?","back":"Why not see the doctor?","scene":"seeing a doctor","src":"tatoeba:1868901","by":"Rovo","enId":"28060","enBy":"CK","auto":true}
+{"term":"J'aimerais devenir dentiste plus tard.","back":"I'd like to be a dentist in the future.","scene":"seeing a doctor","src":"tatoeba:7141567","by":"Aiji","enId":"1689985","enBy":"mookeee","auto":true}
+{"term":"Êtes-vous allergique à quelque chose ?","back":"Are you allergic to anything?","scene":"seeing a doctor","src":"tatoeba:10699102","by":"lbdx","enId":"2835703","enBy":"CK","auto":true}
+{"term":"Prends une profonde inspiration, je te prie.","back":"Take a deep breath, please.","scene":"seeing a doctor","src":"tatoeba:1339755","by":"sacredceltic","enId":"274366","enBy":"CK","auto":true}
+{"term":"Êtes-vous allergique à certains médicaments ?","back":"Are you allergic to any medications?","scene":"seeing a doctor","src":"tatoeba:8008199","by":"Aiji","enId":"4014533","enBy":"CK","auto":true}
+{"term":"Pourquoi as-tu consulté le médecin à ce moment-là ?","back":"Why did you visit the doctor that time?","scene":"seeing a doctor","src":"tatoeba:9926058","by":"Micsmithel","enId":"9851463","enBy":"NurseMeeks","auto":true}
+{"term":"Quelle plaie.","back":"What a pain!","scene":"seeing a doctor","src":"tatoeba:404356","by":"qdii","enId":"282276","enBy":"CK","auto":true}
+{"term":"Tu es pénible !","back":"You are a pain!","scene":"seeing a doctor","src":"tatoeba:9076000","by":"Julien_PDC","enId":"13862263","enBy":"tieguy","auto":true}
+{"term":"Tu as la grippe.","back":"You're ill with flu.","scene":"seeing a doctor","src":"tatoeba:7998329","by":"Micsmithel","enId":"237637","enBy":"sundown","auto":true}
+{"term":"Je suis dentiste.","back":"I'm a dentist.","scene":"seeing a doctor","src":"tatoeba:7769794","by":"Aiji","enId":"5852824","enBy":"CK","auto":true}
+{"term":"Tu es vraiment pénible.","back":"You're a real pain.","scene":"seeing a doctor","src":"tatoeba:8386455","by":"Aiji","enId":"5576343","enBy":"AlanF_US","auto":true}
+{"term":"Je vais chez le dentiste.","back":"I'm going to the dentist.","scene":"seeing a doctor","src":"tatoeba:8663109","by":"Julien_PDC","enId":"9011730","enBy":"jaydenms","auto":true}
+{"term":"Je dois voir un dentiste.","back":"I've got to see a dentist.","scene":"seeing a doctor","src":"tatoeba:563870","by":"sacredceltic","enId":"263606","enBy":"CK","auto":true}
+{"term":"J'en ai ras le bol de ça.","back":"I'm sick and tired of this.","scene":"seeing a doctor","src":"tatoeba:10779757","by":"lbdx","enId":"5767597","enBy":"Hybrid","auto":true}
+{"term":"Je vais chez le dentiste demain.","back":"I'm going to see the dentist tomorrow.","scene":"seeing a doctor","src":"tatoeba:135384","by":"Cocorico","enId":"6872996","enBy":"CK","auto":true}
+{"term":"Tu devrais consulter un médecin.","back":"You should consult a doctor.","scene":"seeing a doctor","src":"tatoeba:3606541","by":"sacredceltic","enId":"3608115","enBy":"panamicua","auto":true}
+{"term":"Tu devrais consulter un dentiste.","back":"You should see a dentist.","scene":"seeing a doctor","src":"tatoeba:613912","by":"Archibald","enId":"10900311","enBy":"sundown","auto":true}
+{"term":"Marie est dentiste, n'est-ce pas ?","back":"Mary is a dentist, isn't she?","scene":"seeing a doctor","src":"tatoeba:12077916","by":"Rovo","enId":"7381171","enBy":"CF","auto":true}
+{"term":"Ma dent me fait incroyablement mal.","back":"My tooth is giving me unbelievable pain.","scene":"seeing a doctor","src":"tatoeba:8553322","by":"Aiji","enId":"2099986","enBy":"AlanF_US","auto":true}
+{"term":"J'espère que je deviendrai dentiste.","back":"I hope I will become a dentist in the future.","scene":"seeing a doctor","src":"tatoeba:333540","by":"sysko","enId":"258630","auto":true}
+{"term":"Mon fils n'apprécie pas le dentiste.","back":"My child dislikes the dentist.","scene":"seeing a doctor","src":"tatoeba:672069","by":"qdii","enId":"250988","auto":true}
+{"term":"Vous devriez aller chez un dentiste.","back":"You should go see a dentist.","scene":"seeing a doctor","src":"tatoeba:1100383","by":"sacredceltic","enId":"1096293","enBy":"CK","auto":true}
+{"term":"Je vais aller chez le dentiste demain.","back":"I'll go to the dentist tomorrow.","scene":"seeing a doctor","src":"tatoeba:5678007","by":"Scorpionvenin14","enId":"5675607","enBy":"CK","auto":true}
+{"term":"Je ne veux pas aller chez le dentiste.","back":"I don't want to go to the dentist.","scene":"seeing a doctor","src":"tatoeba:8701040","by":"Aiji","enId":"3839272","enBy":"Hybrid","auto":true}
+{"term":"Je ne savais pas que tu étais dentiste.","back":"I didn't know you were a dentist.","scene":"seeing a doctor","src":"tatoeba:5688340","by":"Aiji","enId":"2314972","enBy":"CK","auto":true}
+{"term":"Tu ferais mieux de consulter le médecin.","back":"You'd better consult the doctor.","scene":"seeing a doctor","src":"tatoeba:468956","by":"sacredceltic","enId":"16317","enBy":"CK","auto":true}
+{"term":"Tu ferais mieux de consulter un docteur.","back":"You'd better see a doctor.","scene":"seeing a doctor","src":"tatoeba:1399270","by":"Delapouite","enId":"2659685","enBy":"WestofEden","auto":true}
+{"term":"J'étais malade d'inquiétude à ton sujet.","back":"I've been worrying sick about you.","scene":"seeing a doctor","src":"tatoeba:1464853","by":"sacredceltic","enId":"1463079","enBy":"Spamster","auto":true}
+{"term":"Je suis habitué à la douleur maintenant.","back":"I'm used to the pain now.","scene":"seeing a doctor","src":"tatoeba:6935980","by":"Aiji","enId":"5189355","enBy":"CK","auto":true}
+{"term":"Tu ferais mieux d'aller chez le dentiste.","back":"You'd better go to the dentist.","scene":"seeing a doctor","src":"tatoeba:905361","by":"U2FS","enId":"9953514","enBy":"CK","auto":true}
+{"term":"Je suis allergique à quelques médicaments.","back":"I'm allergic to some medicine.","scene":"seeing a doctor","src":"tatoeba:135469","by":"Micsmithel","enId":"324224","enBy":"CM","auto":true}
+{"term":"Laisse-moi te présenter à un bon dentiste.","back":"Let me introduce you to a good dentist.","scene":"seeing a doctor","src":"tatoeba:1140605","by":"sacredceltic","enId":"1140080","enBy":"CK","auto":true}
+{"term":"Avez-vous une toux ?","back":"Do you have a cough?","scene":"seeing a doctor","src":"tatoeba:7499181","by":"Micsmithel","enId":"3318983","enBy":"CK","auto":true}
+{"term":"Où est la pharmacie ?","back":"Where's the pharmacy?","scene":"at the pharmacy","src":"tatoeba:4099413","by":"GB3","enId":"4099322","enBy":"CK","auto":true}
+{"term":"As-tu mal aux dents ?","back":"Do you have toothache?","scene":"seeing a doctor","src":"tatoeba:8664976","by":"Micsmithel","enId":"6176075","enBy":"sundown","auto":true}
+{"term":"Où se situe la douleur ?","back":"Where is the pain?","scene":"seeing a doctor","src":"tatoeba:1314488","by":"sacredceltic","enId":"403284","enBy":"CK","auto":true}
+{"term":"Avez-vous mal au ventre ?","back":"Do you have a stomach ache?","scene":"seeing a doctor","src":"tatoeba:3366611","by":"Rovo","enId":"4284642","enBy":"seltsameseeds","auto":true}
+{"term":"Y a-t-il un médecin à bord ?","back":"Is there a doctor on board?","scene":"seeing a doctor","src":"tatoeba:474076","by":"sacredceltic","enId":"463451","enBy":"CK","auto":true}
+{"term":"Tire la langue, s'il te plait.","back":"Please stick out your tongue.","scene":"seeing a doctor","src":"tatoeba:919185","by":"sacredceltic","enId":"577813","enBy":"CK","auto":true}
+{"term":"As-tu des douleurs au ventre ?","back":"Do you have stomach pain?","scene":"seeing a doctor","src":"tatoeba:3366614","by":"Rovo","enId":"3383986","enBy":"petersmr","auto":true}
+{"term":"Où puis-je trouver un hôpital?","back":"Where can I find a hospital?","scene":"seeing a doctor","src":"tatoeba:4049494","by":"Scorpionvenin14","enId":"4049461","enBy":"CK","auto":true}
+{"term":"As-tu des douleurs en urinant ?","back":"Do you have pain when urinating?","scene":"seeing a doctor","src":"tatoeba:9890023","by":"Micsmithel","enId":"9853791","enBy":"NurseMeeks","auto":true}
+{"term":"Il y a un hôpital aux alentours ?","back":"Is there a hospital around here?","scene":"seeing a doctor","src":"tatoeba:5527762","by":"Hivalnid","enId":"5529573","enBy":"mailohilohi","auto":true}
+{"term":"Y a-t-il un hôpital à proximité ?","back":"Is there a hospital nearby?","scene":"seeing a doctor","src":"tatoeba:8285864","by":"Aiji","enId":"3525534","enBy":"CK","auto":true}
+{"term":"Puis-je parler à l'infirmier-chef ?","back":"Can I speak to the head nurse?","scene":"seeing a doctor","src":"tatoeba:1347692","by":"sacredceltic","enId":"318749","enBy":"CK","auto":true}
+{"term":"Où est la pharmacie la plus proche ?","back":"Where's the nearest chemist?","scene":"at the pharmacy","src":"tatoeba:549517","by":"zmoo","enId":"11434072","enBy":"sundown","auto":true}
+{"term":"Excusez-moi. C'est ça la pharmacie ?","back":"Excuse me. Is that the pharmacy?","scene":"at the pharmacy","src":"tatoeba:587569","by":"qdii","enId":"12566940","enBy":"rul","auto":true}
+{"term":"Lequel d'entre vous est le docteur ?","back":"Which one of you is the doctor?","scene":"seeing a doctor","src":"tatoeba:10703529","by":"lbdx","enId":"10703362","enBy":"CK","auto":true}
+{"term":"As-tu des médicaments contre la toux ?","back":"Do you have any cough medicine?","scene":"seeing a doctor","src":"tatoeba:337272","by":"TRANG","enId":"21838","enBy":"CK","auto":true}
+{"term":"Quand cette douleur est-elle apparue ?","back":"When did this pain start?","scene":"seeing a doctor","src":"tatoeba:10074768","by":"Micsmithel","enId":"9849663","enBy":"CK","auto":true}
+{"term":"Souffres-tu d'une allergie alimentaire ?","back":"Do you have a food allergy?","scene":"seeing a doctor","src":"tatoeba:6861577","by":"Micsmithel","enId":"6608777","enBy":"Hybrid","auto":true}
+{"term":"Où se trouve la pharmacie la plus proche ?","back":"Where is the closest pharmacy?","scene":"at the pharmacy","src":"tatoeba:6060069","by":"christian63","enId":"6060900","enBy":"colwem","auto":true}
+{"term":"Puis-je faire jouer mon assurance maladie ?","back":"Can I use my medical insurance?","scene":"seeing a doctor","src":"tatoeba:1101079","by":"sysko","enId":"27890","enBy":"CK","auto":true}
+{"term":"Depuis combien de temps as-tu cette éruption ?","back":"How long have you had this rash?","scene":"seeing a doctor","src":"tatoeba:10074781","by":"Micsmithel","enId":"4250343","enBy":"CK","auto":true}
+{"term":"Y a-t-il quelque chose qui soulage ta douleur ?","back":"Is there anything that makes your pain better?","scene":"seeing a doctor","src":"tatoeba:9889392","by":"Micsmithel","enId":"9849650","enBy":"NurseMeeks","auto":true}
+{"term":"Y a-t-il quelque chose qui aggrave ta douleur ?","back":"Is there anything that makes your pain feel worse?","scene":"seeing a doctor","src":"tatoeba:9889420","by":"Micsmithel","enId":"9849651","enBy":"NurseMeeks","auto":true}
+{"term":"S'il vous plaît, débarrassez-moi de cette douleur.","back":"Please rid me of this pain.","scene":"seeing a doctor","src":"tatoeba:9735697","by":"lbdx","enId":"38841","enBy":"Mediabat","auto":true}
+{"term":"Où puis-je trouver une pharmacie ouverte le week-end?","back":"Where can I find a pharmacy that's open on the weekends?","scene":"at the pharmacy","src":"tatoeba:5645839","by":"narnar","enId":"5664805","enBy":"mailohilohi","auto":true}
+{"term":"As-tu le vertige ?","back":"Do you feel dizzy?","scene":"seeing a doctor","src":"tatoeba:8648969","by":"Micsmithel","enId":"9341973","enBy":"CK","auto":true}
+{"term":"Qu'a dit le médecin ?","back":"What did the doctor say?","scene":"seeing a doctor","src":"tatoeba:1425915","by":"sacredceltic","enId":"416946","enBy":"blay_paul","auto":true}
+{"term":"Est-il encore malade ?","back":"Is he still ill?","scene":"seeing a doctor","src":"tatoeba:8714865","by":"Julien_PDC","enId":"12417110","enBy":"sundown","auto":true}
+{"term":"M. Brun est-il médecin ?","back":"Is Mr. Brown a doctor?","scene":"seeing a doctor","src":"tatoeba:1079897","by":"sacredceltic","enId":"882696","auto":true}
+{"term":"Es-tu un malade mental ?","back":"Are you mentally ill?","scene":"seeing a doctor","src":"tatoeba:1553998","by":"sacredceltic","enId":"1553867","enBy":"Spamster","auto":true}
+{"term":"Ta migraine est passée ?","back":"Is your headache gone?","scene":"seeing a doctor","src":"tatoeba:3899961","by":"gillux","enId":"2727084","enBy":"WestofEden","auto":true}
+{"term":"Ton père est-il médecin ?","back":"Is your father a doctor?","scene":"seeing a doctor","src":"tatoeba:2580663","by":"sacredceltic","enId":"609041","enBy":"CK","auto":true}
+{"term":"Dois-je être hospitalisé ?","back":"Do I have to be admitted to the hospital?","scene":"seeing a doctor","src":"tatoeba:10704881","by":"AutoBot","enId":"10704880","enBy":"AutoBot","auto":true}
+{"term":"As-tu des étourdissements ?","back":"Are you having dizzy spells?","scene":"seeing a doctor","src":"tatoeba:7124802","by":"Micsmithel","enId":"6682877","enBy":"Eccles17","auto":true}
+{"term":"Quel est ton groupe sanguin ?","back":"What's your blood type?","scene":"seeing a doctor","src":"tatoeba:374904","by":"sysko","enId":"528304","enBy":"fanty","auto":true}
+{"term":"Est-ce que j'ai de la fièvre ?","back":"Do I have a fever?","scene":"seeing a doctor","src":"tatoeba:6373721","by":"Aiji","enId":"2904855","enBy":"CM","auto":true}
+{"term":"As-tu une allergie médicamenteuse ?","back":"Are you allergic to any medicine?","scene":"seeing a doctor","src":"tatoeba:1044284","by":"sacredceltic","enId":"324225","enBy":"CK","auto":true}
+{"term":"Suis-je obligé d'être hospitalisé ?","back":"Do I have to be hospitalized?","scene":"seeing a doctor","src":"tatoeba:1403650","by":"sysko","enId":"281919","enBy":"CK","auto":true}
+{"term":"À quels aliments es-tu allergique ?","back":"What foods are you allergic to?","scene":"seeing a doctor","src":"tatoeba:4235521","by":"sacredceltic","enId":"4228319","enBy":"CK","auto":true}
+{"term":"Êtes-vous allergique aux arachides ?","back":"Are you allergic to peanuts?","scene":"seeing a doctor","src":"tatoeba:6716779","by":"Aiji","enId":"3821559","enBy":"CK","auto":true}
+{"term":"Qu'est-ce qui aide à guérir la toux ?","back":"What helps cure a cough?","scene":"seeing a doctor","src":"tatoeba:8652994","by":"Aiji","enId":"6707173","enBy":"AlanF_US","auto":true}
+{"term":"Avez-vous songé à devenir infirmière ?","back":"Have you ever thought of becoming a nurse?","scene":"seeing a doctor","src":"tatoeba:15004","by":"Archibald","enId":"20981","enBy":"kebukebu","auto":true}
+{"term":"La toux dérange-t-elle votre sommeil ?","back":"Does the cough disturb your sleep?","scene":"seeing a doctor","src":"tatoeba:894810","by":"sacredceltic","enId":"1507568","enBy":"corvard","auto":true}
+{"term":"Es-tu allergique à certains aliments ?","back":"Are you allergic to any foods?","scene":"seeing a doctor","src":"tatoeba:9965063","by":"Micsmithel","enId":"9849603","enBy":"NurseMeeks","auto":true}
+{"term":"Est-ce qu'il ressemblait à un docteur ?","back":"Did he look like a doctor?","scene":"seeing a doctor","src":"tatoeba:12179","by":"sak_sm","enId":"46022","enBy":"CK","auto":true}
+{"term":"Comment as-tu su qu'elle était malade ?","back":"How did you get to know she was ill?","scene":"seeing a doctor","register":"casual","src":"tatoeba:14536","by":"Aiji","enId":"308093","enBy":"sundown","auto":true}
+{"term":"Vous n'êtes pas dentiste, n'est-ce pas ?","back":"You're not a dentist, are you?","scene":"seeing a doctor","src":"tatoeba:11484522","by":"Rovo","enId":"6898293","enBy":"CK","auto":true}
+{"term":"As-tu l'impression d'avoir de la fièvre ?","back":"Do you feel like you have a fever?","scene":"seeing a doctor","src":"tatoeba:9937104","by":"Micsmithel","enId":"9849457","enBy":"NurseMeeks","auto":true}
+{"term":"Prends-tu régulièrement des médicaments ?","back":"Are you taking any medicine regularly?","scene":"at the pharmacy","src":"tatoeba:10074773","by":"Micsmithel","enId":"25023","enBy":"CK","auto":true}
+{"term":"Est-ce qu'il ressent une quelconque douleur ?","back":"Is he experiencing some kind of pain?","scene":"seeing a doctor","src":"tatoeba:3273078","by":"Micsmithel","enId":"3273077","auto":true}
+{"term":"Qu' y a-t-il dans votre armoire à pharmacie ?","back":"What's in your medicine cabinet?","scene":"at the pharmacy","src":"tatoeba:6386825","by":"Scorpionvenin14","enId":"6386824","enBy":"xmoffx","auto":true}
+{"term":"As-tu eu des douleurs abdominales récemment ?","back":"Have you had abdominal pain recently?","scene":"seeing a doctor","src":"tatoeba:9867522","by":"Micsmithel","enId":"9849464","enBy":"NurseMeeks","auto":true}
+{"term":"La douleur est-elle lancinante ou constante ?","back":"Is the pain throbbing or constant?","scene":"seeing a doctor","src":"tatoeba:9867523","by":"Micsmithel","enId":"9851482","enBy":"NurseMeeks","auto":true}
+{"term":"J'aimerais faire quelques examens additionnels.","back":"I'd like to run a few more tests.","scene":"seeing a doctor","src":"tatoeba:2015706","by":"sacredceltic","enId":"2015237","enBy":"CK","auto":true}
+{"term":"Ce médicament soulage-t-il vraiment la douleur ?","back":"Does this medicine really relieve pain?","scene":"seeing a doctor","src":"tatoeba:2169042","by":"sacredceltic","enId":"12457040","enBy":"Glat64","auto":true}
+{"term":"Avez-vous de la fièvre ? Vous semblez fiévreuse.","back":"Do you have a fever? You look flushed.","scene":"seeing a doctor","src":"tatoeba:4302275","by":"Scorpionvenin14","enId":"4300638","enBy":"Ronin1134","auto":true}
+{"term":"As-tu souffert de douleurs thoraciques récemment ?","back":"Have you had chest pain recently?","scene":"seeing a doctor","src":"tatoeba:9869892","by":"Micsmithel","enId":"9849461","enBy":"NurseMeeks","auto":true}
+{"term":"As-tu déjà séjourné dans un hôpital psychiatrique ?","back":"Have you ever been hospitalized in a psychiatric hospital?","scene":"seeing a doctor","src":"tatoeba:9969090","by":"Micsmithel","enId":"9849520","enBy":"NurseMeeks","auto":true}
+{"term":"Avez-vous été vacciné contre la grippe cette année ?","back":"Have you had your flu jab this season?","scene":"seeing a doctor","src":"tatoeba:10569190","by":"lbdx","enId":"10283358","enBy":"sundown","auto":true}
+{"term":"Comment puis-je contacter un docteur qui parle japonais ?","back":"How can I contact a Japanese-speaking doctor?","scene":"seeing a doctor","src":"tatoeba:129767","by":"Aiji","enId":"281660","enBy":"CN","auto":true}
+{"term":"Souffrez-vous de maladies qui nécessitent un traitement ?","back":"Do you suffer from diseases that require medication?","scene":"at the pharmacy","src":"tatoeba:10699652","by":"lbdx","enId":"10696178","enBy":"tokzyk","auto":true}
+{"term":"Que faites-vous habituellement lorsque vous tombez malade ?","back":"What do you usually do when you get sick?","scene":"seeing a doctor","src":"tatoeba:8537584","by":"Aiji","enId":"7189513","enBy":"AlanF_US","auto":true}
+{"term":"Prenez-vous des médicaments contre l'excès de cholestérol ?","back":"Do you take medication for high cholesterol?","scene":"at the pharmacy","src":"tatoeba:12002901","by":"Rovo","enId":"12239325","enBy":"Miktsoanit","auto":true}
+{"term":"J'ai mal.","back":"I'm in pain.","scene":"seeing a doctor","src":"tatoeba:12773650","by":"lbdx","enId":"2248039","enBy":"CK","auto":true}
+{"term":"J’ai un rhume.","back":"I have a cold.","scene":"seeing a doctor","src":"tatoeba:12229815","by":"Orange","enId":"321954","enBy":"CK","auto":true}
+{"term":"J’ai une toux.","back":"I have a cough.","scene":"seeing a doctor","src":"tatoeba:10707900","by":"AutoBot","enId":"51340","enBy":"CK","auto":true}
+{"term":"Ma toux empire.","back":"My cough is getting worse.","scene":"seeing a doctor","src":"tatoeba:1072321","by":"sacredceltic","enId":"250602","enBy":"CK","auto":true}
+{"term":"Tu me répugnes.","back":"You make me feel sick.","scene":"seeing a doctor","src":"tatoeba:7339894","by":"Micsmithel","enId":"6994556","enBy":"Hybrid","auto":true}
+{"term":"C'est un hôpital.","back":"It's a hospital.","scene":"seeing a doctor","src":"tatoeba:6055147","by":"verdakoro","enId":"13816610","enBy":"frpzzd","auto":true}
+{"term":"Tu as l'air pâle.","back":"You look pale.","scene":"seeing a doctor","src":"tatoeba:457607","by":"sacredceltic","enId":"16224","enBy":"CK","auto":true}
+{"term":"J’ai la leucémie.","back":"I have leukemia.","scene":"seeing a doctor","src":"tatoeba:10705529","by":"AutoBot","enId":"10701126","enBy":"AlanF_US","auto":true}
+{"term":"Tu es casse-pieds.","back":"You're a pain in the neck.","scene":"seeing a doctor","src":"tatoeba:13267231","by":"lbdx","enId":"1879930","enBy":"CK","auto":true}
+{"term":"Ta toux m'inquiète.","back":"Your cough worries me.","scene":"seeing a doctor","src":"tatoeba:3260345","by":"Micsmithel","enId":"3260346","enBy":"CM","auto":true}
+{"term":"J'ai attrapé froid.","back":"I've caught a cold.","scene":"seeing a doctor","src":"tatoeba:134955","by":"Cocorico","enId":"319755","enBy":"CK","auto":true}
+{"term":"Ma mère est alitée.","back":"My mother is sick in bed.","scene":"seeing a doctor","src":"tatoeba:1268284","by":"sacredceltic","enId":"251853","enBy":"CK","auto":true}
+{"term":"J'éternue beaucoup.","back":"I sneeze a lot.","scene":"seeing a doctor","src":"tatoeba:1313857","by":"sacredceltic","enId":"29987","enBy":"CK","auto":true}
+{"term":"Tu n'es pas malade.","back":"You're not sick.","scene":"seeing a doctor","src":"tatoeba:1845724","by":"sacredceltic","enId":"1841497","enBy":"CK","auto":true}
+{"term":"Je tousse beaucoup.","back":"I cough a lot.","scene":"seeing a doctor","src":"tatoeba:6843808","by":"Aiji","enId":"5840513","enBy":"CK","auto":true}
+{"term":"J'ai une toux sèche.","back":"I have a dry cough.","scene":"seeing a doctor","src":"tatoeba:10999","by":"sysko","enId":"63522","enBy":"CK","auto":true}
+{"term":"Mon père est toubib.","back":"My father is a doctor.","scene":"seeing a doctor","src":"tatoeba:464150","by":"sacredceltic","enId":"251657","enBy":"CK","auto":true}
+{"term":"Tu n'es pas médecin.","back":"You're no doctor.","scene":"seeing a doctor","src":"tatoeba:2508091","by":"sacredceltic","enId":"2218223","enBy":"CK","auto":true}
+{"term":"J'ai de l'urticaire.","back":"I have hives.","scene":"seeing a doctor","src":"tatoeba:4678667","by":"sacredceltic","enId":"52456","enBy":"CK","auto":true}
+{"term":"J'ai pris froid hier.","back":"I caught a cold yesterday.","scene":"seeing a doctor","src":"tatoeba:6467","by":"TRANG","enId":"257807","enBy":"Swift","auto":true}
+{"term":"C'est un bon hôpital.","back":"This is a good hospital.","scene":"seeing a doctor","src":"tatoeba:13348253","by":"genes1s","enId":"2779127","enBy":"CK","auto":true}
+{"term":"Tu auras des vertiges.","back":"You'll be dizzy.","scene":"seeing a doctor","src":"tatoeba:2073476","by":"Amastan","enId":"10803457","enBy":"Lebensfreude","auto":true}
+{"term":"J'ai attrapé un rhume.","back":"I caught a cold.","scene":"seeing a doctor","src":"tatoeba:6507","by":"TRANG","enId":"261585","enBy":"CK","auto":true}
+{"term":"Mon oreille bourdonne.","back":"I have a ringing in my ears.","scene":"seeing a doctor","src":"tatoeba:430839","by":"chtof","enId":"264412","enBy":"CK","auto":true}
+{"term":"Tu n'as pas de fièvre.","back":"You have no fever.","scene":"seeing a doctor","src":"tatoeba:452312","by":"sacredceltic","enId":"393938","enBy":"blay_paul","auto":true}
+{"term":"Tu as l'air très pâle.","back":"You look very pale.","scene":"seeing a doctor","src":"tatoeba:512269","by":"Biptaste","enId":"15912","enBy":"CK","auto":true}
+{"term":"J'ai le nez qui coule.","back":"I have a runny nose.","scene":"seeing a doctor","src":"tatoeba:588413","by":"sacredceltic","enId":"318207","enBy":"CK","auto":true}
+{"term":"J'ai un peu de fièvre.","back":"I have a little fever.","scene":"seeing a doctor","src":"tatoeba:919036","by":"sacredceltic","enId":"1744333","enBy":"belgavox","auto":true}
+{"term":"Je n'ai pas de fièvre.","back":"I have no fever.","scene":"seeing a doctor","src":"tatoeba:965792","by":"sacredceltic","enId":"282112","enBy":"CK","auto":true}
+{"term":"J'ai une rage de dent.","back":"I have toothache.","scene":"seeing a doctor","src":"tatoeba:6965948","by":"Yemana","enId":"6954573","enBy":"CK","auto":true}
+{"term":"Tu es malade et alitée.","back":"You are sick and confined to bed.","scene":"seeing a doctor","src":"tatoeba:2296773","by":"Amastan","enId":"7762379","enBy":"karloelkebekio","auto":true}
+{"term":"Je n'ai plus de fièvre.","back":"I don't have a fever anymore.","scene":"seeing a doctor","src":"tatoeba:10150234","by":"felix63","enId":"11099491","enBy":"ddnktr","auto":true}
+{"term":"J'ai dû attraper froid.","back":"I must have caught a cold.","scene":"seeing a doctor","src":"tatoeba:335973","by":"Cocorico","enId":"319770","enBy":"CK","auto":true}
+{"term":"J'ai souvent le hoquet.","back":"I hiccup a lot.","scene":"seeing a doctor","src":"tatoeba:796084","by":"U2FS","enId":"53088","enBy":"CK","auto":true}
+{"term":"C'est un grand hôpital.","back":"It's a big hospital.","scene":"seeing a doctor","src":"tatoeba:8758554","by":"Aiji","enId":"3315148","enBy":"CK","auto":true}
+{"term":"J'ai des selles molles.","back":"I have soft stools.","scene":"seeing a doctor","src":"tatoeba:10661513","by":"AutoBot","enId":"266561","enBy":"shekitten","auto":true}
+{"term":"J'ai besoin d'insuline.","back":"I need insulin.","scene":"seeing a doctor","src":"tatoeba:10703601","by":"lbdx","enId":"10696108","enBy":"tokzyk","auto":true}
+{"term":"J’ai mal quand j’urine.","back":"I have pain when urinating.","scene":"seeing a doctor","src":"tatoeba:10708532","by":"AutoBot","enId":"282427","enBy":"AutoBot","auto":true}
+{"term":"Ma toux s'est aggravée.","back":"My cough has gotten worse.","scene":"seeing a doctor","src":"tatoeba:11172223","by":"lbdx","enId":"10147162","enBy":"ddnktr","auto":true}
+{"term":"On n'a rien sans effort.","back":"No pain, no gain!","scene":"seeing a doctor","src":"tatoeba:946078","by":"sacredceltic","enId":"1285558","enBy":"enteka","auto":true}
+{"term":"J'ai le rhume des foins.","back":"I have hay fever.","scene":"seeing a doctor","src":"tatoeba:949892","by":"sacredceltic","enId":"593236","enBy":"CK","auto":true}
+{"term":"J'ai la tête qui tourne.","back":"I'm dizzy.","scene":"seeing a doctor","src":"tatoeba:1519890","by":"sacredceltic","enId":"2111740","enBy":"CK","auto":true}
+{"term":"Ce n'est pas un hôpital.","back":"It's not a hospital.","scene":"seeing a doctor","src":"tatoeba:5403579","by":"Aiji","enId":"7198997","enBy":"CK","auto":true}
+{"term":"J'ai un peu mal au flanc.","back":"I have a slight pain in my side.","scene":"seeing a doctor","src":"tatoeba:15640","by":"Aiji","enId":"326586","enBy":"CK","auto":true}
+{"term":"J'ai une douleur au bras.","back":"I have pain in my arm.","scene":"seeing a doctor","src":"tatoeba:431565","by":"qdii","enId":"5587435","enBy":"CK","auto":true}
+{"term":"Je compatis à sa douleur.","back":"I feel her pain.","scene":"seeing a doctor","src":"tatoeba:2066095","by":"sacredceltic","enId":"2064125","enBy":"Spamster","auto":true}
+{"term":"Je compatis à ta douleur.","back":"I feel your pain.","scene":"seeing a doctor","src":"tatoeba:2066099","by":"sacredceltic","enId":"1533866","enBy":"Spamster","auto":true}
+{"term":"Tu n'as pas l'air malade.","back":"You don't look ill.","scene":"seeing a doctor","src":"tatoeba:8387644","by":"Aiji","enId":"11894957","enBy":"sundown","auto":true}
+{"term":"J'ai un léger mal de tête.","back":"I have a slight headache.","scene":"seeing a doctor","src":"tatoeba:128476","by":"sacredceltic","enId":"267771","enBy":"CK","auto":true}
+{"term":"J'ai été chez le dentiste.","back":"I've been to the dentist.","scene":"seeing a doctor","src":"tatoeba:576471","by":"sacredceltic","enId":"263609","enBy":"CM","auto":true}
+{"term":"J'ai ici une vive douleur.","back":"I have a burning pain here.","scene":"seeing a doctor","src":"tatoeba:820396","by":"sacredceltic","enId":"61739","enBy":"CK","auto":true}
+{"term":"C'est un remède de cheval.","back":"This is a strong medicine.","scene":"at the pharmacy","src":"tatoeba:867600","by":"U2FS","enId":"13771718","enBy":"qwertydiy","auto":true}
+{"term":"J'ignore s'il est médecin.","back":"I don't know if he is a doctor.","scene":"seeing a doctor","src":"tatoeba:1118071","by":"sacredceltic","enId":"260013","enBy":"CK","auto":true}
+{"term":"Pas de peine, que du gain.","back":"No pain, all gain.","scene":"seeing a doctor","src":"tatoeba:1225727","by":"sacredceltic","enId":"1225721","enBy":"tsayng","auto":true}
+{"term":"J'ai une affreuse douleur.","back":"I have a terrible pain.","scene":"seeing a doctor","src":"tatoeba:1286617","by":"sacredceltic","enId":"1286498","enBy":"CK","auto":true}
+{"term":"J'ai une douleur aiguë là.","back":"I have a sharp pain here.","scene":"seeing a doctor","src":"tatoeba:1335608","by":"sacredceltic","enId":"61778","enBy":"CK","auto":true}
+{"term":"Je n'ai pas vu de médecin.","back":"I haven't seen a doctor.","scene":"seeing a doctor","src":"tatoeba:4434684","by":"sacredceltic","enId":"2360236","enBy":"CK","auto":true}
+{"term":"C'est une vieille douleur.","back":"It's an old pain.","scene":"seeing a doctor","src":"tatoeba:5382937","by":"Aiji","enId":"3446845","enBy":"CK","auto":true}
+{"term":"J'appellerai la pharmacie.","back":"I'll call the pharmacy.","scene":"at the pharmacy","src":"tatoeba:6615877","by":"GB3","enId":"6615767","enBy":"Eccles17","auto":true}
+{"term":"Tu es un vrai casse-pieds.","back":"You're a real pain in the neck.","scene":"seeing a doctor","src":"tatoeba:12176214","by":"lbdx","enId":"7112469","enBy":"CM","auto":true}
+{"term":"Je n'avais pas de vertiges.","back":"I wasn't dizzy.","scene":"seeing a doctor","src":"tatoeba:2073268","by":"Amastan","enId":"5645095","enBy":"mailohilohi","auto":true}
+{"term":"Je pense qu'il est docteur.","back":"I think he is a doctor.","scene":"seeing a doctor","src":"tatoeba:13937","by":"Aiji","enId":"28075","enBy":"CK","auto":true}
+{"term":"Je n'ai plus mal à la tête.","back":"My headache has gone.","scene":"seeing a doctor","src":"tatoeba:590264","by":"qdii","enId":"280175","enBy":"CK","auto":true}
+{"term":"Je compatis à leur douleur.","back":"I feel their pain.","scene":"seeing a doctor","src":"tatoeba:2066102","by":"sacredceltic","enId":"2064123","enBy":"Spamster","auto":true}
+{"term":"Je suis allergique au maïs.","back":"I'm allergic to corn.","scene":"seeing a doctor","src":"tatoeba:4429465","by":"Lalac","enId":"4428228","enBy":"CK","auto":true}
+{"term":"Je suis allergique au kiwi.","back":"I am allergic to kiwi.","scene":"seeing a doctor","src":"tatoeba:9704577","by":"lbdx","enId":"8775529","enBy":"User87977","auto":true}
+{"term":"J'essaie de ne pas tousser.","back":"I'm trying not to cough.","scene":"seeing a doctor","src":"tatoeba:11172219","by":"lbdx","enId":"5938867","enBy":"CK","auto":true}
+{"term":"Je crois que j'ai un rhume.","back":"I think I have a cold.","scene":"seeing a doctor","src":"tatoeba:13390180","by":"lbdx","enId":"2407766","enBy":"CK","auto":true}
+{"term":"Vous êtes malades et alités.","back":"You are sick and bedridden.","scene":"seeing a doctor","src":"tatoeba:2296796","by":"Amastan","enId":"3209889","auto":true}
+{"term":"J'ai mal à la tête ce matin.","back":"I have a headache this morning.","scene":"seeing a doctor","src":"tatoeba:3260375","by":"Aiji","enId":"3260376","enBy":"CK","auto":true}
+{"term":"Je crois qu'elle est malade.","back":"I think she is sick.","scene":"seeing a doctor","src":"tatoeba:14725","by":"Whidou","enId":"261324","enBy":"CK","auto":true}
+{"term":"J'ai un petit peu de fièvre.","back":"I have a small fever.","scene":"seeing a doctor","src":"tatoeba:134753","by":"Aiji","enId":"919264","enBy":"Scott","auto":true}
+{"term":"Je crains de m'être enrhumé.","back":"I'm afraid I caught a cold.","scene":"seeing a doctor","src":"tatoeba:139632","by":"Micsmithel","enId":"38376","enBy":"CM","auto":true}
+{"term":"J'ai une allergie au pollen.","back":"I'm allergic to pollen.","scene":"seeing a doctor","src":"tatoeba:1000103","by":"sacredceltic","enId":"23694","enBy":"Ivan24","auto":true}
+{"term":"Aucun médecin n'est un dieu.","back":"No doctor is a god.","scene":"seeing a doctor","src":"tatoeba:3320648","by":"Malape","enId":"10767715","enBy":"samir_t","auto":true}
+{"term":"Aucun médecin n'est parfait.","back":"No doctor is perfect.","scene":"seeing a doctor","src":"tatoeba:3320649","by":"Malape","enId":"2880568","enBy":"AlanF_US","auto":true}
+{"term":"C'est ce qui me rend malade.","back":"That's what's making me sick.","scene":"seeing a doctor","src":"tatoeba:6285861","by":"Aiji","enId":"3185601","enBy":"CK","auto":true}
+{"term":"J'ai un ami qui est docteur.","back":"I have a friend who's a doctor.","scene":"seeing a doctor","src":"tatoeba:8386421","by":"Aiji","enId":"2358719","enBy":"CK","auto":true}
+{"term":"Tu m'as donné mal à la tête.","back":"You gave me a headache.","scene":"seeing a doctor","src":"tatoeba:8976938","by":"Aiji","enId":"5037323","enBy":"AlanF_US","auto":true}
+{"term":"J'ai une douleur à l'épaule.","back":"I have a pain in the shoulder.","scene":"seeing a doctor","src":"tatoeba:11472316","by":"Aiji","enId":"239264","auto":true}
+{"term":"J'ai un de ces maux de têtes…","back":"I have such a headache.","scene":"seeing a doctor","src":"tatoeba:3255663","by":"nimfeo","enId":"3255664","auto":true}
+{"term":"Il paraît qu'elle est malade.","back":"It seems like she's ill.","scene":"seeing a doctor","src":"tatoeba:3259652","by":"Aiji","enId":"7070856","enBy":"verymuchso","auto":true}
+{"term":"Ma main gauche est engourdie.","back":"My left hand is numb.","scene":"seeing a doctor","src":"tatoeba:8364","by":"sacredceltic","enId":"499957","enBy":"blay_paul","auto":true}
+{"term":"J'ai un violent mal de dents.","back":"I have a bad toothache.","scene":"seeing a doctor","src":"tatoeba:13167","by":"sacredceltic","enId":"34695","enBy":"CK","auto":true}
+{"term":"Je dois aller à la pharmacie.","back":"I have to go to the pharmacy.","scene":"at the pharmacy","src":"tatoeba:891597","by":"sacredceltic","enId":"8953591","enBy":"Nylez","auto":true}
+{"term":"Mon mal de tête s'est arrêté.","back":"My headache stopped.","scene":"seeing a doctor","src":"tatoeba:1032153","by":"sacredceltic","enId":"6694906","enBy":"Eccles17","auto":true}
+{"term":"J'ai d'affreux maux de dents.","back":"I've got terrible toothache.","scene":"seeing a doctor","src":"tatoeba:1054154","by":"sacredceltic","enId":"10579712","enBy":"sundown","auto":true}
+{"term":"Je me sens un peu souffrante.","back":"I'm feeling a bit ill.","scene":"seeing a doctor","src":"tatoeba:1147978","by":"sacredceltic","enId":"9719771","enBy":"ariarin","auto":true}
+{"term":"Ma main droite est ankylosée.","back":"My right hand is numb.","scene":"seeing a doctor","src":"tatoeba:1152723","by":"sacredceltic","enId":"27064","enBy":"CK","auto":true}
+{"term":"Je suis allergique au gluten.","back":"I'm allergic to gluten.","scene":"seeing a doctor","src":"tatoeba:1711561","by":"sacredceltic","enId":"1689836","enBy":"Spamster","auto":true}
+{"term":"Je suis allergique aux chats.","back":"I'm allergic to cats.","scene":"seeing a doctor","src":"tatoeba:4462985","by":"gaetan","enId":"2547791","enBy":"CK","auto":true}
+{"term":"Je n'exerce plus la médecine.","back":"I don't practice medicine anymore.","scene":"at the pharmacy","src":"tatoeba:8412180","by":"lbdx","enId":"3723336","enBy":"CM","auto":true}
+{"term":"J'ai vraiment le tournis, là.","back":"I feel really dizzy now.","scene":"seeing a doctor","src":"tatoeba:12441212","by":"lbdx","enId":"12291852","enBy":"CK","auto":true}
+{"term":"Nous sommes malades et alités.","back":"We're ill in bed.","scene":"seeing a doctor","src":"tatoeba:2296786","by":"Amastan","enId":"10999868","enBy":"sundown","auto":true}
+{"term":"J'ai un mal de dents terrible.","back":"I have a terrible toothache.","scene":"seeing a doctor","src":"tatoeba:3258628","by":"Aiji","enId":"263578","enBy":"CK","auto":true}
+{"term":"J'ai une vache de douleur ici.","back":"I have a bad pain here.","scene":"seeing a doctor","src":"tatoeba:1317212","by":"sacredceltic","enId":"62141","enBy":"CK","auto":true}
+{"term":"Je n'ai pas vraiment de rhume.","back":"I don't really have a cold.","scene":"seeing a doctor","src":"tatoeba:1842879","by":"sacredceltic","enId":"1841688","enBy":"CK","auto":true}
+{"term":"Je pense qu'il va être malade.","back":"I think he's going to be sick.","scene":"seeing a doctor","src":"tatoeba:1947481","by":"sacredceltic","enId":"1946831","enBy":"Spamster","auto":true}
+{"term":"Je n'ai pas besoin de médecin.","back":"I don't need a doctor.","scene":"seeing a doctor","src":"tatoeba:2505294","by":"sacredceltic","enId":"2276127","enBy":"CK","auto":true}
+{"term":"C'est vraiment un bon hôpital.","back":"That's a really good hospital.","scene":"seeing a doctor","src":"tatoeba:3591604","by":"sacredceltic","enId":"3591177","enBy":"CK","auto":true}
+{"term":"Je suis allergique aux chiens.","back":"I'm allergic to dogs.","scene":"seeing a doctor","src":"tatoeba:3674694","by":"dafp","enId":"2547790","enBy":"CK","auto":true}
+{"term":"J'en ai marre d'en avoir marre.","back":"I'm sick and tired of being sick and tired.","scene":"seeing a doctor","src":"tatoeba:3940","by":"TRANG","enId":"2130","enBy":"Ricardo14","auto":true}
+{"term":"J'ai une douleur chronique ici.","back":"I have a chronic pain here.","scene":"seeing a doctor","src":"tatoeba:11216","by":"sacredceltic","enId":"61724","auto":true}
+{"term":"Es-tu malade ? Tu sembles pâle.","back":"Are you ill? You look pale.","scene":"seeing a doctor","src":"tatoeba:134786","by":"Julien_PDC","enId":"10782251","enBy":"sundown","auto":true}
+{"term":"Ce médicament a un goût atroce.","back":"This medicine tastes awful.","scene":"at the pharmacy","src":"tatoeba:986331","by":"sacredceltic","enId":"8330086","enBy":"shekitten","auto":true}
+{"term":"J'ai une douleur lancinante là.","back":"I have a throbbing pain here.","scene":"seeing a doctor","src":"tatoeba:1347168","by":"sacredceltic","enId":"62147","enBy":"CK","auto":true}
+{"term":"Je n'en peux plus de me battre.","back":"I'm sick of fighting.","scene":"seeing a doctor","src":"tatoeba:2053730","by":"sacredceltic","enId":"1891117","enBy":"CK","auto":true}
+{"term":"Je me fais porter pâle, demain.","back":"I'm calling in sick tomorrow.","scene":"seeing a doctor","src":"tatoeba:2576402","by":"sacredceltic","enId":"2543033","enBy":"CK","auto":true}
+{"term":"J'ai un peu la tête qui tourne.","back":"I'm a little dizzy.","scene":"seeing a doctor","src":"tatoeba:3626665","by":"sacredceltic","enId":"2548743","enBy":"CK","auto":true}
+{"term":"J'ai la nausée tous les matins.","back":"I feel sick every morning.","scene":"seeing a doctor","src":"tatoeba:5760314","by":"Yemana","enId":"5759778","enBy":"Hybrid","auto":true}
+{"term":"Je prends parfois un somnifère.","back":"I sometimes take a sleeping pill.","scene":"at the pharmacy","src":"tatoeba:10982277","by":"lbdx","enId":"8224935","enBy":"CK","auto":true}
+{"term":"J'ai de nouveau un mal de tête.","back":"I have a headache again.","scene":"seeing a doctor","src":"tatoeba:11919788","by":"zogwarg","enId":"11654912","enBy":"sundown","auto":true}
+{"term":"Je crois que je couve un rhume.","back":"I think I'm coming down with a cold.","scene":"seeing a doctor","src":"tatoeba:12936657","by":"lbdx","enId":"2407893","enBy":"CK","auto":true}
+{"term":"J’ai rendez-vous chez le toubib.","back":"I have an appointment with the doctor.","scene":"seeing a doctor","src":"tatoeba:10497647","by":"pkill","enId":"436657","enBy":"lukaszpp","auto":true}
+{"term":"Je pense que je vais m'évanouir.","back":"I think I'm going to faint.","scene":"seeing a doctor","src":"tatoeba:576507","by":"sacredceltic","enId":"20307","enBy":"CK","auto":true}
+{"term":"J'ai contracté un mauvais rhume.","back":"I've caught a bad cold.","scene":"seeing a doctor","src":"tatoeba:1291921","by":"sacredceltic","enId":"28914","enBy":"CK","auto":true}
+{"term":"Je ne sais pas s'il est médecin.","back":"I don't know if he's a doctor.","scene":"seeing a doctor","src":"tatoeba:1370903","by":"sacredceltic","enId":"1344202","enBy":"CK","auto":true}
+{"term":"Je pense qu'elle va être malade.","back":"I think she's going to be sick.","scene":"seeing a doctor","src":"tatoeba:1947482","by":"sacredceltic","enId":"1946830","enBy":"Spamster","auto":true}
+{"term":"Je me sens juste un peu étourdi.","back":"I just feel a little dizzy.","scene":"seeing a doctor","src":"tatoeba:2370023","by":"sacredceltic","enId":"2362158","enBy":"CK","auto":true}
+{"term":"J'en ai ras-le-bol des réunions.","back":"I'm sick of meetings.","scene":"seeing a doctor","src":"tatoeba:5963316","by":"Aiji","enId":"3185571","enBy":"CK","auto":true}
+{"term":"Je travaille dans une pharmacie.","back":"I work in a pharmacy.","scene":"at the pharmacy","src":"tatoeba:6556174","by":"Aiji","enId":"819846","enBy":"PaulLambeth","auto":true}
+{"term":"Je sais que tu n'es pas médecin.","back":"I know you aren't a doctor.","scene":"seeing a doctor","src":"tatoeba:7527259","by":"tras","enId":"7521240","enBy":"CK","auto":true}
+{"term":"Ce médecin est un homme cultivé.","back":"That doctor is a cultured man.","scene":"seeing a doctor","src":"tatoeba:7815883","by":"Aiji","enId":"2436206","enBy":"AlanF_US","auto":true}
+{"term":"J'ai un mal de tête depuis hier.","back":"I've had a headache since yesterday.","scene":"seeing a doctor","src":"tatoeba:8015975","by":"Aiji","enId":"2267248","enBy":"_undertoad","auto":true}
+{"term":"Cet imposteur se disait médecin.","back":"That impostor called himself a doctor.","scene":"seeing a doctor","src":"tatoeba:8412247","by":"lbdx","enId":"8375828","enBy":"AlanF_US","auto":true}
+{"term":"Tu n'as pas pris ton médicament.","back":"You didn't take your medicine.","scene":"at the pharmacy","src":"tatoeba:11914969","by":"lbdx","enId":"7204891","enBy":"Hybrid","auto":true}
+{"term":"Je n'ai ressenti aucune douleur.","back":"I didn't feel any pain.","scene":"seeing a doctor","src":"tatoeba:12899575","by":"lbdx","enId":"6271953","enBy":"CK","auto":true}
+{"term":"J'ai dû attraper froid hier soir.","back":"I must've caught a cold last night.","scene":"seeing a doctor","src":"tatoeba:3255685","by":"nimfeo","enId":"10498094","enBy":"DJ_Saidez","auto":true}
+{"term":"Je n'ai pas bien dormi récemment.","back":"I haven't slept well recently.","scene":"seeing a doctor","src":"tatoeba:9154","by":"sacredceltic","enId":"18679","enBy":"CK","auto":true}
+{"term":"Je vais vous faire une injection.","back":"I'll give you a shot.","scene":"seeing a doctor","src":"tatoeba:129363","by":"Micsmithel","enId":"277659","enBy":"CK","auto":true}
+{"term":"Je n'en peux plus des hamburgers.","back":"I'm sick and tired of hamburgers.","scene":"seeing a doctor","src":"tatoeba:588046","by":"sacredceltic","enId":"31546","enBy":"CK","auto":true}
+{"term":"Remonte ta manche, s'il te plaît.","back":"Roll up your sleeve, please.","scene":"seeing a doctor","src":"tatoeba:10074765","by":"Micsmithel","enId":"2891822","enBy":"CK","auto":true}
+{"term":"Vous devez manger plus de fibres.","back":"You need to eat more fibre.","scene":"seeing a doctor","src":"tatoeba:11575854","by":"lbdx","enId":"11153061","enBy":"sundown","auto":true}
+{"term":"J'ai une douleur persistante ici.","back":"I have a persistent pain here.","scene":"seeing a doctor","src":"tatoeba:12459540","by":"lbdx","enId":"61819","enBy":"CK","auto":true}
+{"term":"Je crois que je couve une grippe.","back":"I think I'm coming down with the flu.","scene":"seeing a doctor","src":"tatoeba:12936659","by":"lbdx","enId":"2483348","enBy":"sharptoothed","auto":true}
+{"term":"J'ai rendez-vous chez le dentiste.","back":"I have a dentist appointment.","scene":"seeing a doctor","src":"tatoeba:1082433","by":"Aiji","enId":"1574914","enBy":"erikspen","auto":true}
+{"term":"Je vous délivrerai une ordonnance.","back":"I'll give you a prescription.","scene":"at the pharmacy","src":"tatoeba:128413","by":"sacredceltic","enId":"266989","enBy":"CK","auto":true}
+{"term":"J'ai soudain été pris de vertiges.","back":"I suddenly became dizzy.","scene":"seeing a doctor","src":"tatoeba:2407354","by":"sacredceltic","enId":"2406818","enBy":"CK","auto":true}
+{"term":"Mets le thermomètre sous ton bras.","back":"Put the thermometer under your arm.","scene":"seeing a doctor","src":"tatoeba:7050301","by":"Aiji","enId":"3010214","enBy":"CK","auto":true}
+{"term":"Je suis allergique aux sulfamides.","back":"I'm allergic to sulfa drugs.","scene":"seeing a doctor","src":"tatoeba:10705569","by":"AutoBot","enId":"11874918","enBy":"shekitten","auto":true}
+{"term":"J'ai attrapé froid le mois dernier.","back":"I caught a cold last month.","scene":"seeing a doctor","src":"tatoeba:621418","by":"qdii","enId":"259049","enBy":"CK","auto":true}
+{"term":"Il semble évident qu'il est malade.","back":"It seems obvious that he is sick.","scene":"seeing a doctor","src":"tatoeba:891039","by":"U2FS","enId":"414634","enBy":"CK","auto":true}
+{"term":"Ne fume pas ici, c'est un hôpital !","back":"Don't smoke here, it's a hospital!","scene":"seeing a doctor","src":"tatoeba:2160047","by":"Aiji","enId":"2160043","auto":true}
+{"term":"J'ai une douleur aigüe à l'estomac.","back":"I have a sharp pain in the stomach.","scene":"seeing a doctor","src":"tatoeba:4218217","by":"sacredceltic","enId":"4195550","enBy":"User66640","auto":true}
+{"term":"J'ai passé une semaine à l'hôpital.","back":"I spent a week in hospital.","scene":"seeing a doctor","src":"tatoeba:4451195","by":"franlexcois","enId":"2338695","enBy":"anndiana","auto":true}
+{"term":"J'ai entendu qu'il était souffrant.","back":"I hear he is ill.","scene":"seeing a doctor","src":"tatoeba:6000379","by":"PERCE_NEIGE","enId":"303106","enBy":"CM","auto":true}
+{"term":"J'ai été malade pendant neuf jours.","back":"I've been sick for nine days.","scene":"seeing a doctor","src":"tatoeba:7372027","by":"tras","enId":"7371474","enBy":"Eccles17","auto":true}
+{"term":"Ce médicament soulagera la douleur.","back":"This medicine will alleviate the pain.","scene":"seeing a doctor","src":"tatoeba:8868846","by":"lbdx","enId":"6328564","enBy":"carlosalberto","auto":true}
+{"term":"J'ai des vertiges quand je me lève.","back":"I get dizzy spells when I stand up.","scene":"seeing a doctor","src":"tatoeba:11752624","by":"lbdx","enId":"325428","enBy":"CK","auto":true}
+{"term":"J'ai une douleur à mon petit orteil.","back":"I have a pain in my little toe.","scene":"seeing a doctor","src":"tatoeba:129073","by":"Aiji","enId":"274478","enBy":"CK","auto":true}
+{"term":"N'en as-tu pas assez de manger ici ?","back":"Aren't you sick of eating here?","scene":"seeing a doctor","src":"tatoeba:1850214","by":"sacredceltic","enId":"1847850","enBy":"CK","auto":true}
+{"term":"Je pense qu'il nous faut un médecin.","back":"I think we need a doctor.","scene":"seeing a doctor","src":"tatoeba:2412206","by":"sacredceltic","enId":"2408438","enBy":"CK","auto":true}
+{"term":"Je me sentis un peu pris de vertige.","back":"I felt a little dizzy.","scene":"seeing a doctor","src":"tatoeba:2416823","by":"sacredceltic","enId":"2326208","enBy":"CK","auto":true}
+{"term":"J'en ai assez de vos récriminations.","back":"I'm sick of your complaints.","scene":"seeing a doctor","src":"tatoeba:4557420","by":"sacredceltic","enId":"1891120","enBy":"CK","auto":true}
+{"term":"Je n'éprouve pas la moindre douleur.","back":"I'm not in any pain.","scene":"seeing a doctor","src":"tatoeba:4862795","by":"sacredceltic","enId":"2548224","enBy":"CK","auto":true}
+{"term":"J'ai une allergie aux fruits de mer.","back":"I am allergic to seafood.","scene":"seeing a doctor","src":"tatoeba:9749289","by":"felix63","enId":"13700272","enBy":"Pars","auto":true}
+{"term":"On dirait que j'ai attrapé un rhume.","back":"It seems I've caught a cold.","scene":"seeing a doctor","src":"tatoeba:10512405","by":"lbdx","enId":"10498060","enBy":"CK","auto":true}
+{"term":"Je suis allergique à la pénicilline.","back":"I'm allergic to penicillin.","scene":"seeing a doctor","src":"tatoeba:10705552","by":"AutoBot","enId":"8338444","enBy":"CK","auto":true}
+{"term":"J'ai l'intention de devenir médecin.","back":"I intend to become a doctor.","scene":"seeing a doctor","src":"tatoeba:12144797","by":"lbdx","enId":"11871595","enBy":"CK","auto":true}
+{"term":"Je crois que je couve quelque chose.","back":"I think I'm coming down with something.","scene":"seeing a doctor","src":"tatoeba:12936652","by":"lbdx","enId":"6687026","enBy":"Eccles17","auto":true}
+{"term":"Je n'ai plus envie d'être infirmière.","back":"I don't want to be a nurse any more.","scene":"seeing a doctor","src":"tatoeba:1490859","by":"martin9","enId":"1491047","enBy":"niceguydave","auto":true}
+{"term":"Nous sommes au lit avec de la fièvre.","back":"We are bedridden with fever.","scene":"seeing a doctor","src":"tatoeba:2286815","by":"Amastan","enId":"5216043","enBy":"Theocracy","auto":true}
+{"term":"J'en ai assez de votre récrimination.","back":"I am sick of your complaint.","scene":"seeing a doctor","src":"tatoeba:474173","by":"sacredceltic","enId":"16911","enBy":"papabear","auto":true}
+{"term":"Je suis allergique aux fruits de mer.","back":"I'm allergic to seafood.","scene":"seeing a doctor","src":"tatoeba:3777873","by":"kamillel","enId":"3774701","enBy":"Hybrid","auto":true}
+{"term":"J'ai parfois une douleur à l'estomac.","back":"I sometimes have a pain in my stomach.","scene":"seeing a doctor","src":"tatoeba:10074783","by":"Micsmithel","enId":"553815","enBy":"CK","auto":true}
+{"term":"J’ai une douleur colique sur le côté.","back":"I have colic pain in my side.","scene":"seeing a doctor","src":"tatoeba:10707242","by":"AutoBot","enId":"10707240","enBy":"AutoBot","auto":true}
+{"term":"Je ne savais pas qu'elle était malade.","back":"I didn't know she was ill.","scene":"seeing a doctor","src":"tatoeba:127783","by":"Aiji","enId":"708099","enBy":"Eldad","auto":true}
+{"term":"J'ai été constipé pendant trois jours.","back":"I have been constipated for three days.","scene":"seeing a doctor","src":"tatoeba:454800","by":"Archibald","enId":"2660302","enBy":"WestofEden","auto":true}
+{"term":"Les bons traitements ont un goût amer.","back":"Good medicine is bitter to the mouth.","scene":"at the pharmacy","src":"tatoeba:991754","by":"sacredceltic","enId":"728693","enBy":"Martha","auto":true}
+{"term":"Je suis juste un peu pris de vertiges.","back":"I'm just a little dizzy.","scene":"seeing a doctor","src":"tatoeba:1650822","by":"sacredceltic","enId":"1650171","enBy":"Spamster","auto":true}
+{"term":"Ce médicament n'est pas toxique en soi.","back":"This medicine is not a poison in itself.","scene":"at the pharmacy","src":"tatoeba:1357167","by":"sacredceltic","enId":"56612","auto":true}
+{"term":"Ce remède n'a pas d'effets secondaires.","back":"This medicine has no harmful side-effects.","scene":"at the pharmacy","src":"tatoeba:1500262","by":"sacredceltic","enId":"662813","enBy":"bluepie88","auto":true}
+{"term":"Vraisemblablement tu as juste un rhume.","back":"You probably just have a cold.","scene":"seeing a doctor","src":"tatoeba:1982339","by":"nimfeo","enId":"40873","enBy":"CK","auto":true}
+{"term":"Je me demande s'il est vraiment malade.","back":"I wonder if he's really sick.","scene":"seeing a doctor","src":"tatoeba:4835435","by":"sacredceltic","enId":"303131","enBy":"CK","auto":true}
+{"term":"J'ai une faible tolérance à la douleur.","back":"I have a low tolerance for pain.","scene":"seeing a doctor","src":"tatoeba:12468681","by":"lbdx","enId":"6663795","enBy":"CK","auto":true}
+{"term":"J'ai une grande tolérance à la douleur.","back":"I have a high threshold for pain.","scene":"seeing a doctor","src":"tatoeba:12470173","by":"lbdx","enId":"6663306","enBy":"CK","auto":true}
+{"term":"J'ai une douleur aiguë dans la poitrine.","back":"I have a sharp pain in my chest.","scene":"seeing a doctor","src":"tatoeba:339969","by":"sysko","enId":"18953","enBy":"CK","auto":true}
+{"term":"Ce traitement fonctionne instantanément.","back":"This medication works instantly.","scene":"at the pharmacy","src":"tatoeba:3284189","by":"sacredceltic","enId":"827218","enBy":"Scott","auto":true}
+{"term":"Je prévois de me déguiser comme médecin.","back":"I'm planning to disguise myself as a doctor.","scene":"seeing a doctor","src":"tatoeba:5373536","by":"Scorpionvenin14","enId":"28035","enBy":"AMIKEMA","auto":true}
+{"term":"J'ai rendez-vous chez le dentiste lundi.","back":"I have a dentist appointment on Monday.","scene":"seeing a doctor","src":"tatoeba:7971071","by":"Aiji","enId":"868992","enBy":"ColinG","auto":true}
+{"term":"J'ai une allergie sévère aux cacahuètes.","back":"I'm severely allergic to peanuts.","scene":"seeing a doctor","src":"tatoeba:7982943","by":"Aiji","enId":"2540893","enBy":"CK","auto":true}
+{"term":"J'ai acheté ce médicament pour mon père.","back":"I bought this medicine for my father.","scene":"at the pharmacy","src":"tatoeba:9065973","by":"Aiji","enId":"5053330","enBy":"CarpeLanam","auto":true}
+{"term":"Ce médicament est utile en cas de rhume.","back":"This medicine is good for a cold.","scene":"at the pharmacy","src":"tatoeba:12655654","by":"lbdx","enId":"56591","enBy":"Eldad","auto":true}
+{"term":"Mon mal de tête s'est finalement dissipé.","back":"My headache is finally gone.","scene":"seeing a doctor","src":"tatoeba:3598651","by":"sacredceltic","enId":"3597414","enBy":"CK","auto":true}
+{"term":"Mettez-le dans un hôpital psychiatrique !","back":"Put him in a psychiatric hospital!","scene":"seeing a doctor","src":"tatoeba:8976813","by":"Aiji","enId":"4329284","enBy":"AlanF_US","auto":true}
+{"term":"Je te préviens, je suis gravement malade !","back":"I'm warning you, I'm seriously ill!","scene":"seeing a doctor","src":"tatoeba:6017951","by":"christian63","enId":"6018943","enBy":"zumley","auto":true}
+{"term":"J'ai une entière confiance en mon médecin.","back":"I have complete faith in my doctor.","scene":"seeing a doctor","src":"tatoeba:6827","by":"sysko","enId":"256032","enBy":"CK","auto":true}
+{"term":"Mon père est hospitalisé depuis deux mois.","back":"My father has been in hospital for two months.","scene":"seeing a doctor","src":"tatoeba:355144","by":"Barbiche0","enId":"251624","enBy":"BE","auto":true}
+{"term":"Prends ce médicament quand tu as un rhume.","back":"Take this medicine when you have a cold.","scene":"seeing a doctor","src":"tatoeba:584892","by":"sacredceltic","enId":"63731","enBy":"CK","auto":true}
+{"term":"Je ressentis une douleur soudaine au côté.","back":"I felt a sudden pain in my side.","scene":"seeing a doctor","src":"tatoeba:1354141","by":"sacredceltic","enId":"256858","enBy":"CK","auto":true}
+{"term":"Ce médicament soulagera votre mal de tête.","back":"This medicine will soothe your headache.","scene":"seeing a doctor","src":"tatoeba:1431493","by":"Julien_PDC","enId":"56625","enBy":"CK","auto":true}
+{"term":"Je suis votre médecin, pas votre bourreau.","back":"I'm your doctor, not your executioner.","scene":"seeing a doctor","src":"tatoeba:5531824","by":"guyniv","enId":"5531751","enBy":"AlanF_US","auto":true}
+{"term":"J'ai vraiment besoin des pilules pour moi.","back":"I really need the pills for myself.","scene":"at the pharmacy","src":"tatoeba:5649951","by":"Scorpionvenin14","enId":"5649493","enBy":"Schierbeck","auto":true}
+{"term":"Mon fils est allergique aux antibiotiques.","back":"My son is allergic to antibiotics.","scene":"seeing a doctor","src":"tatoeba:6603990","by":"aperitero","enId":"6603852","enBy":"Hybrid","auto":true}
+{"term":"J'en ai assez de vos allusions grossières.","back":"I'm sick of your crass hints.","scene":"seeing a doctor","src":"tatoeba:12179925","by":"lbdx","enId":"4329014","enBy":"AlanF_US","auto":true}
+{"term":"Votre toux est la conséquence du tabagisme.","back":"Your cough is the consequence of smoking.","scene":"seeing a doctor","src":"tatoeba:585162","by":"sacredceltic","enId":"63261","enBy":"Dejo","auto":true}
+{"term":"Mon ordonnance est prête chez le pharmacien.","back":"My prescription is ready at the pharmacist's.","scene":"at the pharmacy","src":"tatoeba:3259608","by":"Aiji","enId":"3259609","enBy":"sundown","auto":true}
+{"term":"Cette infirmière est très gentille et polie.","back":"That nurse is very kind and polite.","scene":"seeing a doctor","src":"tatoeba:459643","by":"sacredceltic","enId":"68475","enBy":"CK","auto":true}
+{"term":"Je suppose que je suis légèrement indisposé.","back":"I am slightly ill, I assume.","scene":"seeing a doctor","src":"tatoeba:2096690","by":"sacredceltic","enId":"2095581","enBy":"gleki","auto":true}
+{"term":"Cette injection aidera à atténuer la douleur.","back":"This shot will help numb the pain.","scene":"seeing a doctor","src":"tatoeba:590534","by":"sacredceltic","enId":"590531","enBy":"darinmex","auto":true}
+{"term":"Cet écureuil fait une allergie aux noisettes.","back":"This squirrel has a nut allergy.","scene":"seeing a doctor","src":"tatoeba:5662761","by":"Yemana","enId":"3531541","enBy":"robbieheslop","auto":true}
+{"term":"C'est seulement maintenant que je suis malade.","back":"I am sick only now.","scene":"seeing a doctor","src":"tatoeba:7048765","by":"Micsmithel","enId":"773314","enBy":"marloncori","auto":true}
+{"term":"Je vais vous administrer un anesthésique local.","back":"I'll give you a local anesthetic.","scene":"seeing a doctor","src":"tatoeba:1479203","by":"sacredceltic","enId":"1477698","enBy":"CK","auto":true}
+{"term":"Je ne supporte plus ces fenêtres publicitaires.","back":"I'm sick of seeing pop-up ads.","scene":"seeing a doctor","src":"tatoeba:14036374","by":"Myrano_","enId":"10107418","enBy":"ddnktr","auto":true}
+{"term":"Ce médicament devrait vous aider à vous rétablir.","back":"This medicine should help you get well.","scene":"at the pharmacy","src":"tatoeba:11146248","by":"Aiji","enId":"3162023","enBy":"CK","auto":true}
+{"term":"Vous avez envoyé des médicaments de votre pharmacie.","back":"You sent medicine from your pharmacy.","scene":"at the pharmacy","src":"tatoeba:8553190","by":"Aiji","enId":"2006599","enBy":"AlanF_US","auto":true}
+{"term":"Cet hôpital a beaucoup d'équipements flambant neufs.","back":"This hospital has a lot of brand-new equipment.","scene":"seeing a doctor","src":"tatoeba:10765062","by":"lbdx","enId":"10763426","enBy":"AlanF_US","auto":true}
+{"term":"Ce médicament aide à soulager la douleur musculaire.","back":"This medicine helps relieve muscle pain.","scene":"seeing a doctor","src":"tatoeba:12683058","by":"Olcyx","enId":"56605","enBy":"CK","auto":true}
+{"term":"Votre enfant a-t-il été vacciné contre la coqueluche ?","back":"Has your child been vaccinated against whooping cough?","scene":"seeing a doctor","src":"tatoeba:12982158","by":"lbdx","enId":"12982157","enBy":"rul","auto":true}
+{"term":"J'aurais besoin de faire quelques tests supplémentaires.","back":"I'll need to run some more tests.","scene":"seeing a doctor","src":"tatoeba:1111929","by":"sacredceltic","enId":"1111704","enBy":"Scott","auto":true}
+{"term":"Est-il un vrai médecin ? Il parle tellement normalement.","back":"Is he a real doctor? He talks so normally.","scene":"seeing a doctor","src":"tatoeba:1447295","by":"sacredceltic","enId":"1445796","enBy":"human600","auto":true}
