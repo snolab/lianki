@@ -16,7 +16,14 @@ const MODEL = join(
 );
 const CLIP = join(homedir(), "lianki-voice-clips/2026-10-29T14-09-40-446Z-6.wav");
 const ready = existsSync(PY) && existsSync(MODEL) && existsSync(CLIP);
-const PORT = 5199;
+/** A free port, not a fixed one: a dev server (the debug widget's :5199) may hold it. */
+function freePort(): number {
+  const srv = Bun.serve({ port: 0, fetch: () => new Response() });
+  const port = srv.port!;
+  srv.stop(true);
+  return port;
+}
+const PORT = ready ? freePort() : 0;
 
 describe.skipIf(!ready)("local STT server (SenseVoice)", () => {
   let proc: ReturnType<typeof Bun.spawn> | null = null;

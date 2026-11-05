@@ -78,11 +78,29 @@ cannot be changed afterwards without it showing.
 
 ## Showing it
 
-Flag `levels` (docs/feature-flags.md): on, every signed-in user can read their
-own level from `GET /api/levels/me`; off (default), only the owner. The owner's
-debug view is `/dev/levels` ("My level": badge, tier, study days, first paid
-day, the last 14 study days, then the badge gallery). No other UI shows a
-level until the owner asks.
+Flag `levels` (docs/feature-flags.md): on, everyone sees their level; off
+(default), only the owner. The gate is `levelsOn(flags, owner)` in
+`lib/level-progress.ts`, decided on the server.
+
+- **Nav chip** — `app/components/LevelChip.tsx`, next to the avatar in the top
+  bar (AppShell), signed-in users only: the 20px badge, the name beside it
+  from `sm` up (phones: the badge alone, so the bar stays uncrowded). Links to
+  /profile; its accessible name is "Your level: {level}". It reads
+  `GET /api/levels/me` once per tab, kept in memory for 60 s (business data,
+  so not sessionStorage — docs/ui-state.md); no polling.
+- **Profile card** — `app/components/LevelCard.tsx` on /profile, read on the
+  server: the 96px badge, the name from the locale's ladder, study days so far
+  (paid, or days kept from a lapsed Pro), the progress line, and the row of all
+  six levels with the ones not reached drawn faint (`locked`). The progress
+  line (`levelProgress` / `progressText`): paid → "再学 N 天升到 …" with N
+  from the data (plural form by `Intl.PluralRules`); free → "Get Pro to reach
+  …" (links /membership); guest → "Sign up to reach …" (links /sign-in); lv6
+  → the top. A signed-out visitor gets /profile with the guest card only while
+  levels are on; otherwise /profile still sends them to sign in.
+- Strings: dictionary `learner-level-ui` (`app/components/level-ui.content.ts`),
+  each key with its context line.
+- `/dev/levels` (owner only) — the debug view: badge, tier, study days, first
+  paid day, the last 14 study days, then the badge gallery.
 
 ## Open
 

@@ -19,6 +19,7 @@ import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
 import { NavRows } from "@/lib/nav/islands/NavRows";
 import { DevServerDot, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
 import { LiveViewBoot, LiveViewChip, type LiveViewShell } from "./LiveView";
+import { LevelChip } from "./LevelChip";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -52,6 +53,8 @@ interface AppShellProps {
   liveView?: LiveViewShell;
   /** Flag-gated nav items this viewer gets (lib/app-nav.ts `flag`), decided by the server. */
   navShown?: string[];
+  /** Learner levels shown to this viewer (lib/level-progress.ts `levelsOn`), decided by the server. */
+  levels?: boolean;
   children: React.ReactNode;
 }
 
@@ -64,6 +67,7 @@ export function AppShell({
   devSwitch,
   liveView,
   navShown,
+  levels,
   children,
 }: AppShellProps) {
   const pathname = usePathname();
@@ -234,6 +238,7 @@ export function AppShell({
 
         <div className="ms-auto flex items-center gap-3">
           <LanguageSwitcher />
+          {user && levels && <LevelChip />}
           {user ? (
             <div className="relative" ref={profileRef}>
               <button

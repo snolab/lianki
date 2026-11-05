@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/levels/me — the caller's learner level (docs/levels.md): tier,
  * study days since the first paid day, the next level. Behind the `levels`
- * flag; the owner sees it while it is off. Anyone else: 404. No UI reads it
- * yet.
+ * flag; the owner sees it while it is off. Anyone else: 404. Read by the nav
+ * chip (app/components/LevelChip.tsx).
  */
 export async function GET() {
   const user = await authUserOrNull();
