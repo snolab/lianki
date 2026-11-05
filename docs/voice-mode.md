@@ -224,7 +224,7 @@ nothing but the chat.
 
 ```bash
 QA_BASE=http://localhost:<port> QA_EMAIL=<an OWNER_EMAILS address> \
-  bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-voice-mode.mjs
+  bun scripts/qa/qa-voice-mode.mjs
 ```
 
 The QA never plays anything. Its transcripts are text handed to

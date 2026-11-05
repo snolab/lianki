@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { Glob } from "bun";
 import {
+  FAKE_MIC_ARGS,
   MUTE_ARGS,
   SILENT_INIT,
   launchPersistentSilent,
@@ -14,7 +15,9 @@ import {
 // launch that skips scripts/qa/silent.mjs fails here.
 const SOURCES = ["scripts/**/*.{ts,mjs,js}", "tests/**/*.{ts,mjs,js}"];
 const DIRECT = /\b\w+\.(launch|newContext|launchPersistentContext)\s*\(/;
-const ALLOWED = new Set(["scripts/qa/silent.mjs"]);
+// qa-audio-free's control launches bare on purpose, to show its checks can fail;
+// that page renders into a buffer and never plays.
+const ALLOWED = new Set(["scripts/qa/silent.mjs", "scripts/qa/qa-audio-free.mjs"]);
 
 function launchers(): { file: string; line: number; text: string }[] {
   const hits: { file: string; line: number; text: string }[] = [];
@@ -43,7 +46,7 @@ describe("QA browsers are silent", () => {
 
   test("Chromium is muted and every page is silenced", () => {
     expect(MUTE_ARGS).toContain("--mute-audio");
-    for (const part of ["HTMLMediaElement", "AudioNode", "speechSynthesis"]) {
+    for (const part of ["HTMLMediaElement", "AudioNode", "SpeechSynthesis.prototype"]) {
       expect(SILENT_INIT).toContain(part);
     }
     expect(() => new Function(SILENT_INIT)).not.toThrow();
@@ -53,36 +56,86 @@ describe("QA browsers are silent", () => {
     expect(readFileSync("playwright.config.ts", "utf8")).toContain("--mute-audio");
   });
 
-  test("qa:all mutes the Mac around its browser suites, not around its build", () => {
-    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-    expect(pkg.scripts["qa:all"]).not.toContain("with-muted-mac");
+  test("qa:all runs the audio-free proof before every other suite", () => {
     const src = readFileSync("scripts/qa/qa-all.mjs", "utf8");
-    expect(src).toContain("scripts/qa/with-muted-mac.sh");
-    const hold = src.indexOf("await holdMute()");
-    expect(hold).toBeGreaterThan(src.indexOf('step("OpenNext build'));
-    expect(hold).toBeLessThan(src.indexOf("await releaseMute();"));
+    const suites = src.slice(src.indexOf("const suites = ["));
+    expect(suites.indexOf("qa-audio-free.mjs")).toBeGreaterThan(0);
+    expect(suites.indexOf("qa-audio-free.mjs")).toBeLessThan(suites.indexOf("qa-api.mjs"));
   });
 
-  test("what cannot make a sound never mutes: unit tests, lint, typecheck", () => {
-    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-    for (const name of ["test:unit", "lint", "typecheck", "fix"])
-      expect(String(pkg.scripts[name])).not.toContain("with-muted-mac");
-    const hook = readFileSync(".husky/pre-push", "utf8").split("\n");
-    const qa = hook.indexOf("bun run qa:all");
-    expect(qa).toBeGreaterThan(0);
-    const before = hook.slice(0, qa).filter((l) => !l.startsWith("#"));
-    expect(before.join("\n")).not.toContain("with-muted-mac");
-    // No unit test reaches the real sound: only the wrapper's own, with its fake.
-    const hits = [...new Glob("unit/**/*.{ts,tsx}").scanSync(".")].filter((f) =>
-      /with-muted-mac\.sh|osascript|set volume/.test(
-        readFileSync(f, "utf8").replace(/\/\/.*$/gm, ""),
-      ),
+  test("always headless: no launch asks for a window", () => {
+    const hits = [...new Glob("{scripts,tests}/**/*.{ts,mjs,js}").scanSync(".")].filter(
+      (f) =>
+        !f.includes("node_modules") && /headless:\s*(?!true\b)\S/.test(readFileSync(f, "utf8")),
     );
-    expect(hits.sort()).toEqual(["unit/qa-muted-mac.test.ts", "unit/qa-silent.test.ts"]);
+    expect(hits).toEqual([]);
+  });
+});
+
+// Owner, 2026-11-06: "if u doesn't make audio at all, then u don't need to
+// mute/unmute my Mac". Nothing in a test or QA path touches the sound, and nothing
+// can speak or play outside a muted browser.
+describe("QA leaves the Mac's sound alone", () => {
+  // Spelled apart so this file does not match itself; it is excluded by name too.
+  const SOUND = new RegExp(
+    [
+      "osa" + "script",
+      "set vol" + "ume",
+      "output mu" + "ted",
+      "get volume set" + "tings",
+      "with-muted" + "-mac",
+      "af" + "play",
+      "\\bff" + "play\\b",
+      "\\ba" + "play\\b",
+      "\\bpa" + "play\\b",
+      "es" + "peak",
+      "sound" + "device",
+      "py" + "audio",
+      "play" + "sound",
+    ].join("|"),
+  );
+  // `say` is everyday English, and a word in chat messages here: only running it counts.
+  const RUNS_SAY =
+    /(?:spawn|spawnSync|exec|execSync|execFile|execFileSync)\(\s*\[?\s*["'`]say\b|Bun\.spawn(?:Sync)?\(\s*\[\s*["'`]say\b|\$`say\b/;
+
+  const files = () =>
+    [
+      ...new Glob("{scripts,tests,unit,.husky}/**/*").scanSync({ cwd: ".", dot: true }),
+      "package.json",
+      "playwright.config.ts",
+    ].filter((f) => !f.includes("node_modules") && f !== "unit/qa-silent.test.ts");
+
+  test("no mute, volume or playback call in scripts, tests, unit tests, hooks", () => {
+    expect(files().filter((f) => SOUND.test(readFileSync(f, "utf8")))).toEqual([]);
+  });
+
+  test("nothing runs the speech command", () => {
+    expect(files().filter((f) => RUNS_SAY.test(readFileSync(f, "utf8")))).toEqual([]);
+  });
+
+  test("a shell script's `say` is its own function, not the Mac's speech command", () => {
+    const bad = files().filter((f) => {
+      if (!f.endsWith(".sh") && !f.startsWith(".husky/")) return false;
+      const src = readFileSync(f, "utf8");
+      return /^\s*say\b(?!\(\))/m.test(src) && !/^\s*(function\s+)?say\s*\(\)/m.test(src);
+    });
+    expect(bad).toEqual([]);
+  });
+
+  test("a QA suite that grants the microphone gets fake media devices", () => {
+    const hits = [...new Glob("scripts/qa/**/*.{ts,mjs}").scanSync(".")].filter((f) =>
+      /"microphone"/.test(readFileSync(f, "utf8")),
+    );
+    expect(hits).toContain("scripts/qa/qa-voice-mode.mjs");
+    for (const f of hits)
+      expect(readFileSync(f, "utf8")).toContain("--use-fake-device-for-media-stream");
+    expect(FAKE_MIC_ARGS).toEqual(["--use-fake-device-for-media-stream"]);
+    expect(readFileSync("playwright.config.ts", "utf8")).toContain(FAKE_MIC_ARGS[0]);
   });
 });
 
 describe("the silent helpers", () => {
+  const CHROMIUM = ["--mute-audio", "--use-fake-device-for-media-stream"];
   const fakeType = (name: string) => {
     const calls: unknown[][] = [];
     const ctx = {
@@ -104,11 +157,11 @@ describe("the silent helpers", () => {
 
   test("Chromium launches get --mute-audio, kept with their own args", async () => {
     const f = fakeType("chromium");
-    await launchSilent(f.type as never, { args: ["--x"], headless: true } as never);
+    await launchSilent(f.type as never, { args: ["--x"], headless: false } as never);
     await launchSilent(f.type as never);
     expect(f.calls).toEqual([
-      ["launch", { args: ["--x", "--mute-audio"], headless: true }],
-      ["launch", { args: ["--mute-audio"] }],
+      ["launch", { args: ["--x", ...CHROMIUM], headless: true }],
+      ["launch", { args: CHROMIUM, headless: true }],
     ]);
   });
 
@@ -116,6 +169,41 @@ describe("the silent helpers", () => {
     const f = fakeType("webkit");
     await launchSilent(f.type as never, { headless: true } as never);
     expect(f.calls).toEqual([["launch", { headless: true }]]);
+  });
+
+  test("Firefox launches keep their own prefs, with the volume at zero and speech off", async () => {
+    const f = fakeType("firefox");
+    await launchSilent(f.type as never, { firefoxUserPrefs: { a: 1 } } as never);
+    expect(f.calls).toEqual([
+      [
+        "launch",
+        {
+          headless: true,
+          firefoxUserPrefs: {
+            a: 1,
+            "media.volume_scale": "0.0",
+            "media.webspeech.synth.enabled": false,
+          },
+        },
+      ],
+    ]);
+  });
+
+  test("a launched browser's contexts and newPage() all get the init script, once", async () => {
+    const scripts: string[] = [];
+    const ctx = {
+      addInitScript: async (s: string) => void scripts.push(s),
+      newPage: async () => "page",
+    };
+    const type = {
+      name: () => "webkit",
+      launch: async () => ({ newContext: async () => ctx, newPage: async () => "bare page" }),
+    };
+    const browser = await launchSilent(type as never);
+    expect(await browser.newPage()).toBe("page" as never);
+    expect(scripts).toEqual([SILENT_INIT]);
+    await newSilentContext(browser);
+    expect(scripts).toEqual([SILENT_INIT, SILENT_INIT]);
   });
 
   test("every new context gets the silencing init script", async () => {
@@ -139,12 +227,10 @@ describe("the silent helpers", () => {
   test("persistent contexts are muted and silenced", async () => {
     const f = fakeType("chromium");
     await launchPersistentSilent(f.type as never, "/tmp/x", { headless: false } as never);
-    expect(f.calls).toEqual([
-      ["persistent", "/tmp/x", { headless: false, args: ["--mute-audio"] }],
-    ]);
+    expect(f.calls).toEqual([["persistent", "/tmp/x", { headless: true, args: CHROMIUM }]]);
     expect(f.ctx.scripts).toEqual([SILENT_INIT]);
     const w = fakeType("webkit");
     await launchPersistentSilent(w.type as never, "/tmp/y");
-    expect(w.calls).toEqual([["persistent", "/tmp/y", {}]]);
+    expect(w.calls).toEqual([["persistent", "/tmp/y", { headless: true }]]);
   });
 });

@@ -1,6 +1,8 @@
 import type { Browser, BrowserContext, BrowserType, LaunchOptions } from "playwright";
 
 export declare const MUTE_ARGS: string[];
+export declare const FAKE_MIC_ARGS: string[];
+export declare const FIREFOX_SILENT_PREFS: Record<string, string | boolean>;
 export declare const SILENT_INIT: string;
 export declare function launchSilent(type: BrowserType, options?: LaunchOptions): Promise<Browser>;
 export declare function newSilentContext(
