@@ -3,6 +3,7 @@ import { db } from "@/app/db";
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { PreferencesD1Repo } from "@/lib/repos/d1Repos";
+import { isValidTimeZone } from "@/lib/tree/tz";
 
 const Preferences = db.collection("preferences");
 
@@ -34,8 +35,11 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
 
     if (dbBackend() === "d1") {
-      const prefs = await new PreferencesD1Repo(getD1(), user.id).get();
+      const repo = new PreferencesD1Repo(getD1(), user.id);
+      const prefs = await repo.get();
       return NextResponse.json({
+        // IANA zone, or null when unknown: clients then show UTC, written out.
+        timeZone: await repo.timeZone(),
         mobileExcludePatterns: prefs?.mobileExcludePatterns ?? [],
         reviewOrder: prefs?.reviewOrder ?? DEFAULT_REVIEW_ORDER,
         watchTracking: asWatchTracking(prefs?.watchTracking),
@@ -95,7 +99,20 @@ export async function POST(req: NextRequest) {
       body.watchTracking === undefined ? undefined : asWatchTracking(body.watchTracking);
 
     if (dbBackend() === "d1") {
-      await new PreferencesD1Repo(getD1(), user.id).set(patterns, reviewOrder, watchTracking);
+      const repo = new PreferencesD1Repo(getD1(), user.id);
+      // Only a time-zone update ({timeZone}) leaves the other preferences alone.
+      if (body.timeZone !== undefined) {
+        if (body.timeZone !== null && !isValidTimeZone(body.timeZone))
+          return NextResponse.json({ error: "Unknown time zone" }, { status: 400 });
+        await repo.setTimeZone(body.timeZone);
+        if (
+          body.mobileExcludePatterns === undefined &&
+          reviewOrder === undefined &&
+          watchTracking === undefined
+        )
+          return NextResponse.json({ success: true });
+      }
+      await repo.set(patterns, reviewOrder, watchTracking);
       return NextResponse.json({ success: true });
     }
 
