@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getKey } from "@lianki/debug-chat/storage-keys";
 import { pageIsDirty, reloadDecision, whenClean } from "@/lib/page-dirty";
+import { onLivePage } from "@/lib/live-view/live-page";
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
 
@@ -39,6 +40,9 @@ export function NewVersionNotice() {
 
   useEffect(() => {
     if (typeof WebSocket === "undefined") return;
+    // The owner's live preview is a dev build: its id never matches the one
+    // announced, so neither the notice nor the reload-once applies there.
+    if (onLivePage()) return;
     // An open socket means the network is never idle, which test runners
     // wait for: under automation, only when a test asks for it.
     try {

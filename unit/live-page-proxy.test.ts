@@ -21,6 +21,7 @@ import {
   STORM_LOADS,
   STORM_WINDOW_MS,
   badgeHtml,
+  noticeHtml,
   createLivePage,
   mayBeLive,
   openLiveCookie,
@@ -40,6 +41,7 @@ import {
 } from "@/lib/live-view/rules";
 import { clearPointer, writeSigned, type LiveViewDb } from "@/lib/live-view/server";
 import { LIVE_PAGE_ORIGINS } from "@/lib/live-view/origins";
+import { LIVE_PAGE_GLOBAL, onLivePage } from "@/lib/live-view/live-page";
 import {
   FAILS_PER_IP,
   WORKER_TOKEN_ID,
@@ -541,6 +543,25 @@ describe("pieces", () => {
     expect(h).toContain("pushState");
     expect(badgeHtml(ID, "</script><b>", "/")).not.toContain("</script><b>");
     expect(badgeHtml(ID, "<b>", "/")).toContain("\\u003cb>");
+  });
+});
+
+describe("on the page", () => {
+  test("badge and notice sit bottom-centre, above the safe area", () => {
+    for (const h of [badgeHtml(ID, "x@abcdef1", "/"), noticeHtml("why", "/")]) {
+      expect(h).toContain("left:50%;transform:translateX(-50%)");
+      expect(h).toContain("env(safe-area-inset-bottom, 0px)");
+      expect(h).not.toContain("left:12px");
+    }
+  });
+
+  test("a live page is known as one, so the New version notice stays away", () => {
+    expect(badgeHtml(ID, "x@abcdef1", "/")).toContain(`window.${LIVE_PAGE_GLOBAL}=ID`);
+    expect(onLivePage(`?live=${ID}`, {})).toBe(true);
+    expect(onLivePage(`?a=1&live=${ID}&b=2`, {})).toBe(true);
+    expect(onLivePage("?a=1", { [LIVE_PAGE_GLOBAL]: ID })).toBe(true);
+    for (const s of ["", "?live=off", "?live=on", "?olive=1", "?live=1x"])
+      expect(onLivePage(s, {})).toBe(false);
   });
 });
 
