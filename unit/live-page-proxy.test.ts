@@ -8,6 +8,7 @@
  * `page` origin (rules.ts) and the gate's Worker entry (preview-gate.ts).
  */
 import { beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import { b64url } from "@/lib/stt-ticket";
@@ -170,7 +171,7 @@ describe("who gets the dev page", () => {
     expect(upCalls[0].url).toBe(`${PAGE}/words?x=1`);
     const body = await r.text();
     expect(body).toContain("dev page");
-    expect(body).toContain('id="lk-live-badge"');
+    expect(body).toContain('"lk-live-badge"');
     expect(r.headers.get(LIVE_ID_HEADER)).toBe(ID);
     expect(r.headers.get("cache-control")).toBe("no-store");
     expect(r.headers.get("content-security-policy")).toBe("frame-ancestors 'self'");
@@ -538,8 +539,8 @@ describe("pieces", () => {
     expect(STORM_LOADS).toBe(6);
     expect(STORM_WINDOW_MS).toBe(20_000);
     expect(h).toContain("pushState");
-    expect(badgeHtml(ID, "<script>", "/")).not.toContain("<script>·");
-    expect(badgeHtml(ID, "<b>", "/")).toContain("&lt;b&gt;");
+    expect(badgeHtml(ID, "</script><b>", "/")).not.toContain("</script><b>");
+    expect(badgeHtml(ID, "<b>", "/")).toContain("\\u003cb>");
   });
 });
 
@@ -646,6 +647,69 @@ describe("the gate's Worker entry", () => {
     );
     expect(up[LIVE_GATE_HEADER]).toBeUndefined();
     expect(up.accept).toBe("text/html");
+  });
+});
+
+describe("the service worker leaves live pages alone (public/sw.js)", () => {
+  const sw = readFileSync("public/sw.js", "utf8");
+  function load() {
+    const handlers: Record<string, (e: unknown) => void> = {};
+    const put: string[] = [];
+    const caches = {
+      open: async () => ({
+        match: async () => undefined,
+        put: async (r: { url?: string } | string) =>
+          void put.push(String((r as { url?: string }).url ?? r)),
+      }),
+      match: async () => undefined,
+      keys: async () => [],
+    };
+    const self = {
+      addEventListener: (k: string, f: (e: unknown) => void) => (handlers[k] = f),
+      location: { origin: "https://lianki.com" },
+    };
+    const fns = new Function(
+      "self",
+      "caches",
+      "fetch",
+      `${sw}\nreturn { cacheable, networkThenCache };`,
+    )(self, caches, async () => new Response("x", { headers: { "x-lk-live": "1" } })) as {
+      cacheable: (r: Response) => boolean;
+      networkThenCache: (r: unknown) => Promise<Response>;
+    };
+    const fetchEvent = (url: string, referrer = "", accept = "*/*") => {
+      let responded = false;
+      handlers.fetch({
+        request: { method: "GET", url, referrer, headers: new Headers({ accept }) },
+        respondWith: () => (responded = true),
+      });
+      return responded;
+    };
+    return { fns, fetchEvent, put };
+  }
+
+  test("a ?live page and what it loads go straight to the network", () => {
+    const { fetchEvent } = load();
+    expect(fetchEvent(`https://lianki.com/words?live=${ID}`, "", "text/html")).toBe(false);
+    expect(
+      fetchEvent(
+        "https://lianki.com/_next/static/chunks/a.js",
+        `https://lianki.com/words?live=${ID}`,
+      ),
+    ).toBe(false);
+    // Everything else as before.
+    expect(
+      fetchEvent("https://lianki.com/_next/static/chunks/a.js", "https://lianki.com/words"),
+    ).toBe(true);
+    expect(fetchEvent("https://lianki.com/words", "", "text/html")).toBe(true);
+  });
+
+  test("a live answer (x-lk-live) is never cached", async () => {
+    const { fns, put } = load();
+    expect(fns.cacheable(new Response("x", { headers: { "x-lk-live": "1" } }))).toBe(false);
+    expect(fns.cacheable(new Response("x"))).toBe(true);
+    await fns.networkThenCache({ url: "https://lianki.com/_next/x" });
+    expect(put).toEqual([]);
   });
 });
 
