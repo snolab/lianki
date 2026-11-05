@@ -335,6 +335,24 @@ const dictionary = {
       sw: "Imeshindwa kutafsiri",
       mr: "भाषांतर करता आले नाही",
     }),
+    ownKey: t({
+      en: "Your own key",
+      zh: "用你自己的 key",
+      ja: "自分のキーを使用",
+      ko: "내 키 사용",
+      hi: "आपकी अपनी कुंजी",
+      es: "Con tu propia clave",
+      fr: "Avec votre propre clé",
+      ar: "بمفتاحك الخاص",
+      bn: "আপনার নিজের কী",
+      pt: "Com sua própria chave",
+      ru: "Ваш собственный ключ",
+      ur: "آپ کی اپنی کلید",
+      id: "Kunci Anda sendiri",
+      de: "Eigener Schlüssel",
+      sw: "Ufunguo wako mwenyewe",
+      mr: "तुमची स्वतःची की",
+    }),
     makePhraseCard: t({
       en: "Make a card",
       zh: "制作卡片",
@@ -555,6 +573,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Placeholder on the reader's selection card, under the selected text, while its machine translation (always started by itself, for a phrase, sentence, paragraph or hand-made selection; there is no Translate button) is on its way. A short progressive phrase ending in an ellipsis.",
   translateFailed:
     "Short error on the reader's selection card when the machine translation of the selected text could not be made (offline, over the limit, or a server failure). The line itself is tappable to retry, followed by ' · Retry'. A short phrase.",
+  ownKey:
+    "Small tag under a translation or word meaning on the reader's selection card when it was made by the learner's own AI provider and API key (Settings → Your own AI), called from their browser: no Lianki credits were used and the result is not shared. 'key' means an API key, not a keyboard key; in Chinese keep 'key' in Latin letters. A short noun phrase.",
   makePhraseCard:
     "Button on the reader's selection card when the learner selected a phrase (several words, or a multi-character expression) that is not yet one of their flashcards, or an inflected word whose dictionary form is not yet one: makes a spaced-repetition flashcard for that phrase (or for the word's dictionary form) in the book's own word list. An imperative phrase; 'card' means a flashcard.",
   readFromHere:
