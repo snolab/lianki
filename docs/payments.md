@@ -210,7 +210,7 @@ top-up reads "¥600 → 600 credits". `/dev/credits` and `/dev/gift-codes` say �
   or `topup:<top-up refId>`; gift `<code>:<userId>`; admin `admin:<uuid>`;
   AI reply `ai:<userId>:<line id>` (the `ai` reservation and its `refund`
   share it — docs/partner-ai.md, "Credits"; tables `credit_ai_charge`,
-  `credit_ai_carry` in `0039_ai_credits.sql`).
+  `credit_ai_carry` in `0041_ai_credits.sql`).
 - USD-priced costs (AI calls) become credits at `CREDITS_PER_USD`
   (`lib/payments/credits.ts`), the one place to change when the credit unit
   is redesigned.
