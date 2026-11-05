@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { readFileSync } from "node:fs";
+import { useBackend, useD1 } from "./support/testMocks";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import {
@@ -9,7 +10,7 @@ import {
   isOwner,
   setOwnerSnapshot,
 } from "@/lib/owner";
-import { refreshOwners } from "@/lib/owner-store";
+import { refreshOwners, refreshOwnersFrom } from "@/lib/owner-store";
 import {
   grantOwner,
   listOwners,
@@ -20,7 +21,7 @@ import {
   type SiteRoleDb,
 } from "@/lib/site-role";
 import { ownersGet, ownersPost } from "@/lib/site-role-route";
-import { CLI_ACTOR, commandSql, inlineSql, parseArgs } from "../scripts/dev/owner-role";
+import { CLI_ACTOR, commandSql, inlineSql, parseArgs } from "../scripts/dev/owner-role-sql";
 
 const MAIN = "snomiao@gmail.com";
 const SEEDED = "snomiao+admin@gmail.com";
@@ -211,6 +212,22 @@ describe("refreshOwners", () => {
   it("no database (off the D1 backend): nobody", async () => {
     expect(await refreshOwners(() => null)).toEqual([]);
     expect(isOwner(SEEDED)).toBe(false);
+    useBackend("mongodb");
+    expect(await refreshOwners()).toEqual([]);
+    expect(isOwner(SEEDED)).toBe(false);
+  });
+
+  it("the default database is the request's D1; a webhook passes its own", async () => {
+    useBackend("d1");
+    useD1(d1);
+    try {
+      expect(await refreshOwners()).toEqual([SEEDED]);
+      clearOwnerCache();
+      expect(await refreshOwnersFrom(d1)).toEqual([SEEDED]);
+      expect(isOwner(SEEDED)).toBe(true);
+    } finally {
+      useBackend("mongodb");
+    }
   });
 
   it("a missing table (before the migration) fails closed too", async () => {
@@ -414,6 +431,16 @@ describe("/api/dev/owners", () => {
     expect((await ownersPost(post({ op: "grant", email: "nope" }), ME, write)).status).toBe(400);
     expect((await ownersPost(post({ op: "revoke", email: "nope" }), ME, write)).status).toBe(400);
     expect((await ownersPost(post({ op: "wat" }), ME, write)).status).toBe(400);
+    const garbled = new Request("https://lianki.com/api/dev/owners", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://lianki.com",
+        host: "lianki.com",
+      },
+      body: "{",
+    });
+    expect((await ownersPost(garbled, ME, write)).status).toBe(400);
     const cross = post(
       { op: "grant", email: "evil@example.com" },
       { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
@@ -438,7 +465,7 @@ describe("owner checks with no session to refresh the list", () => {
       "lib/payments/stripe-webhook.ts",
     ]) {
       const src = readFileSync(f, "utf8");
-      expect({ f, refreshed: src.indexOf("await refreshOwners(") >= 0 }).toEqual({
+      expect({ f, refreshed: /await refreshOwners(From)?\(/.test(src) }).toEqual({
         f,
         refreshed: true,
       });

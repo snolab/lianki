@@ -24,6 +24,10 @@ function defaultDb(): OwnerReadDb | null {
   return dbBackend() === "d1" ? (getD1() as unknown as OwnerReadDb) : null;
 }
 
+/** refreshOwners for code that holds its own D1 and has no session (a webhook). */
+export const refreshOwnersFrom = (d1: unknown): Promise<string[]> =>
+  refreshOwners(() => d1 as OwnerReadDb);
+
 /**
  * The active owners, oldest grant first, at most OWNER_CACHE_MS old; [] when
  * they cannot be read. Never throws. `db` and `now` are for callers without a

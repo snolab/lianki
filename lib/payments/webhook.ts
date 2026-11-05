@@ -18,8 +18,7 @@
  *   200, since a retry cannot fix it.
  */
 import { isOwner } from "@/lib/owner";
-import { refreshOwners } from "@/lib/owner-store";
-import type { OwnerReadDb } from "@/lib/site-role";
+import { refreshOwnersFrom } from "@/lib/owner-store";
 import {
   creditTestTopup,
   creditTopup,
@@ -36,7 +35,7 @@ export interface WebhookReply {
 
 /** A webhook has no session, so it refreshes the owner list itself (lib/owner-store.ts). */
 async function ownerAccount(d1: D1WithBatch, userId: string): Promise<boolean> {
-  await refreshOwners(() => d1 as unknown as OwnerReadDb);
+  await refreshOwnersFrom(d1);
   return isOwner(await emailOf(d1, userId));
 }
 
