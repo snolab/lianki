@@ -59,9 +59,41 @@ takes any.
 - **No sounds.** No `cue` is passed to `createMic`.
 - The estimator (`adaptive.ts`) learns the owner's voice; it is not fed from here.
 
+## Pages
+
+Three addresses, one gate (`lib/vibe/page-gate.ts`): 404 unless `read.vibe` is on
+and this is the owner.
+
+| address | what |
+| --- | --- |
+| `/vibe` | the list, newest first (`VibeList.tsx`, `listDocs`): title, date, languages, length, last update; ⋯ Rename and Delete |
+| `/vibe/new` | where Start lives (`VibeClient.tsx`) |
+| `/vibe/<id>` | one conversation's log (`getDocLog`): its lines, languages and 新词, with Keep going |
+
+- `<id>` is `vibe_doc.id`, `crypto.randomUUID()`: random, not a count. Someone
+  else's id, or none, is 404, as for a doc that does not exist.
+- **The address follows the first line.** `/vibe/new` becomes `/vibe/<id>` by
+  `history.replaceState` once a line is saved, without leaving the page, so a stop
+  that heard nothing leaves no entry and no address. The list reads through a join
+  on the material, so a start that heard nothing (material NULL) is not on it.
+- **Delete** asks once by the browser's confirm, as a /read row does. A material's
+  delete takes its row and its R2 content at once, so there is no undo to offer.
+- **Rename** is the material's (`PATCH /api/read/<id>`); `title_custom` keeps it
+  through later lines.
+- A `/vibe?doc=<id>` or `?id=<id>` link redirects to `/vibe/<id>`. No such link was
+  ever written; the redirect is there for any by hand.
+- **Live.** On the recording page the view is the session itself. Any other device
+  on `/vibe/<id>` while the doc is not stopped follows it through the reader's
+  stream (`useBookStream`).
+- **Keep going** is a tap on the log, by the same rules as Start: trusted click,
+  server first (`state: running`), then the Mac and the mic. It reopens a stopped
+  conversation, since leaving the page stops it and that is how one comes back. Only
+  that tap reopens: a late "paused" gets 409. One writer at a time: it closes any
+  other open conversation, whose page then ends. Opening a log never opens a mic.
+
 ## Starting
 
-/vibe opens to a simple page (`StartPage` in `VibeClient.tsx`): the title, one line
+`/vibe/new` is a simple page (`StartPage` in `VibeClient.tsx`): the title, one line
 on what happens, Start, one line to the user, and the recognised languages. No
 form, no dialog, no language picker, nothing to accept.
 
@@ -76,7 +108,7 @@ dismissal, no tap, no delay.
   the Mac and the microphone: a refusal opens nothing. Nothing starts on load,
   from a URL or from a command.
 - Resume after a pause is by tap too. A reload or leaving the page ends the
-  conversation, and the next one is a new tap on Start.
+  run; the next is a tap on Start or on Keep going.
 - `vibe_doc.other_lang` and `consent_ms` are 0052's columns, read by nothing now:
   `''` and the time of the tap are written.
 
@@ -158,7 +190,7 @@ as in any book: that is his tap, on that text.
 
 ## 新词
 
-The New words tab on /vibe (`VibeWords.tsx`, `lib/vibe/new-words.ts`) lists the
+The New words tab on a conversation (`VibeWords.tsx`, `lib/vibe/new-words.ts`) lists the
 words heard: no card first, then due, learning, known, each by how often it was
 heard. Each carries the reader's own mark (`.lk-book [data-f]`, `famMap`) and its
 language (the line it was first heard in). There is no speaker: see above.
@@ -206,7 +238,7 @@ A failure in one job does not stop the other, and either still fails the run. It
 takes the material, its R2 content and its reader rows. A word card the user made
 from the doc stays in their deck: it is theirs.
 
-Delete at any time: the /read row menu, or the button on /vibe's end screen.
+Delete at any time: /vibe's ⋯ menu, the /read row menu, or the button on the log.
 `vibe_doc` goes with the material (`ON DELETE CASCADE`). A start that heard nothing
 and was never stopped (the tab closed) leaves a `vibe_doc` row with no text and
 nothing in /read; for a user with no number it simply stays.
@@ -220,6 +252,6 @@ nothing in /read; for a user with no number it simply stays.
 | writes | `lib/vibe/store.ts` |
 | sweep | `lib/vibe/retention.ts`, `worker.ts` |
 | session | `lib/vibe/session.ts` (pure), `lib/vibe/browser.ts` (the browser's half) |
-| page | `app/(app)/vibe/` |
+| pages | `app/(app)/vibe/`, `lib/vibe/page-gate.ts` |
 | 新词 | `app/(app)/vibe/VibeWords.tsx`, `lib/vibe/new-words.ts` |
 | tests | `unit/vibe.test.ts`, `unit/vibe-words.test.ts`; `scripts/qa/qa-vibe.mjs` (fake mic, stub VAD, a stand-in Mac, invented text; no real microphone, no sound) |

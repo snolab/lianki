@@ -165,17 +165,13 @@ function EndScreen({
   docId,
   busy,
   onContinue,
-  onAgain,
 }: {
   view: VibeView;
   docId: string | null;
   busy: boolean;
   onContinue: () => void;
-  onAgain: () => void;
 }) {
   const t = useIntlayer("vibe-page");
-  const router = useRouter();
-  const [arm, setArm] = useState(false);
   const notes: Partial<Record<EndReason, string>> = {
     refused: t.endRefused.value,
     "not-tapped": t.endRefused.value,
@@ -185,60 +181,66 @@ function EndScreen({
     full: t.endFull.value,
   };
   const note = view.end ? notes[view.end] : undefined;
-  const material = view.material;
   return (
-    <div className="mb-6 flex flex-col gap-3" data-testid="vibe-ended">
+    <div className="mb-4 flex flex-col items-start gap-3" data-testid="vibe-ended">
       {view.end && <p className="font-medium">{t.ended}</p>}
       {note && (
         <p className={DIM} data-testid="vibe-end-note">
           {note}
         </p>
       )}
-      <div className="flex flex-wrap gap-3">
-        {material && docId && (
-          <button
-            type="button"
-            className={PRIMARY}
-            disabled={busy}
-            data-testid="vibe-continue"
-            // A script's click is not his tap, as on Start.
-            onClick={(e: MouseEvent) => {
-              if (e.isTrusted) onContinue();
-            }}
-          >
-            {t.keepGoing}
-          </button>
-        )}
-        {material && (
-          <Link
-            href={`/read/${material}`}
-            className={`${QUIET} inline-flex items-center`}
-            data-testid="vibe-open"
-          >
-            {t.open}
-          </Link>
-        )}
-        <button type="button" className={QUIET} onClick={onAgain} data-testid="vibe-again">
-          {t.again}
+      {view.material && docId && (
+        <button
+          type="button"
+          className={PRIMARY}
+          disabled={busy}
+          data-testid="vibe-continue"
+          // A script's click is not his tap, as on Start.
+          onClick={(e: MouseEvent) => {
+            if (e.isTrusted) onContinue();
+          }}
+        >
+          {t.keepGoing}
         </button>
-        {material && (
-          <button
-            type="button"
-            className={QUIET}
-            data-testid="vibe-delete"
-            onClick={async () => {
-              if (!arm) return setArm(true);
-              const r = await fetch(`/api/read/${material}`, { method: "DELETE" }).catch(
-                () => null,
-              );
-              if (r?.ok) router.replace("/vibe");
-              else setArm(false);
-            }}
-          >
-            {arm ? t.deleteConfirm : t.deleteDoc}
-          </button>
-        )}
-      </div>
+      )}
+    </div>
+  );
+}
+
+/** Under the text, so the log is what the page opens on. */
+function LogActions({ material, onAgain }: { material: string | null; onAgain: () => void }) {
+  const t = useIntlayer("vibe-page");
+  const router = useRouter();
+  const [arm, setArm] = useState(false);
+  return (
+    <div className="mt-8 flex flex-wrap gap-3" data-testid="vibe-log-actions">
+      {material && (
+        <Link
+          href={`/read/${material}`}
+          className={`${QUIET} inline-flex items-center`}
+          data-testid="vibe-open"
+        >
+          {t.open}
+        </Link>
+      )}
+      <button type="button" className={QUIET} onClick={onAgain} data-testid="vibe-again">
+        {t.again}
+      </button>
+      {material && (
+        <button
+          type="button"
+          className={QUIET}
+          data-testid="vibe-delete"
+          onClick={async () => {
+            if (!arm) return setArm(true);
+            const r = await fetch(`/api/read/${material}`, { method: "DELETE" }).catch(() => null);
+            if (r?.ok) router.replace("/vibe");
+            else setArm(false);
+          }}
+        >
+          {arm ? t.deleteConfirm : t.deleteDoc}
+        </button>
+      )}
     </div>
   );
 }
@@ -377,13 +379,7 @@ export default function VibeClient({ locale, doc }: { locale: string; doc?: Vibe
         </p>
       )}
       {view.status === "stopped" && (
-        <EndScreen
-          view={view}
-          docId={docId}
-          busy={opening}
-          onContinue={() => void keepGoing()}
-          onAgain={again}
-        />
+        <EndScreen view={view} docId={docId} busy={opening} onContinue={() => void keepGoing()} />
       )}
       <div className="mb-4 flex gap-2" role="tablist">
         {(["text", "words"] as const).map((k) => (
@@ -405,6 +401,7 @@ export default function VibeClient({ locale, doc }: { locale: string; doc?: Vibe
       ) : (
         <VibeWords material={view.material} lines={view.lines} locale={locale} />
       )}
+      {view.status === "stopped" && <LogActions material={view.material} onAgain={again} />}
     </div>
   );
 }
