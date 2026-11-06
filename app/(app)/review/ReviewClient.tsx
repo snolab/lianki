@@ -15,13 +15,16 @@ import {
   gradeKey,
   installGuideHref,
   keyAction,
+  nextCardFrom,
   openPlaceholderTab,
   optionsFrom,
+  PLATFORMS,
   RATINGS,
   returnStep,
   sendTabTo,
   stateAfterOpen,
   type GradeOption,
+  type NextCard,
   type ReturnEvent,
   type ReturnState,
   type Platform,
@@ -30,6 +33,7 @@ import {
 } from "@/lib/review-ui";
 import type { VoiceAccess } from "@/lib/words/voice-access";
 import { handleUtterance } from "@/lib/words/voice-dispatch";
+import { reviewTitle } from "@/lib/review-title";
 import { VoiceBadge, useVoiceMode, useVoicePref, voiceOutcomeLabel } from "../words/VoiceMode";
 
 /**
@@ -56,7 +60,13 @@ const tutorialStore = createUiStore(
 
 type Phase =
   | { s: "loading" }
-  | { s: "card"; card: ReviewCard; options: GradeOption[] | null }
+  | {
+      s: "card";
+      card: ReviewCard;
+      options: GradeOption[] | null;
+      /** After this card: undefined not known (yet), null nothing else is due. */
+      next?: NextCard | null;
+    }
   | { s: "notCard"; url: string }
   | { s: "done" }
   | { s: "signedOut" }
@@ -109,20 +119,35 @@ export default function ReviewClient({
       .catch(() => {});
   }, []);
 
-  /** Show a card, then fetch its four intervals. */
-  const show = useCallback((card: ReviewCard, options: GradeOption[] | null = null) => {
-    setRet((r) => returnStep(r, "card"));
-    setConfirmDelete(false);
-    setPhase({ s: "card", card, options });
-    if (options) return;
-    getJson(api.options(card.id))
+  /** What a grade would move on to: a plain read, nothing is marked or scheduled. */
+  const refreshNext = useCallback((card: ReviewCard) => {
+    getJson(api.nextAfter(card.url))
       .then((j) =>
         setPhase((p) =>
-          p.s === "card" && p.card.id === card.id ? { ...p, options: optionsFrom(j) } : p,
+          p.s === "card" && p.card.id === card.id ? { ...p, next: nextCardFrom(j) } : p,
         ),
       )
       .catch(() => {});
   }, []);
+
+  /** Show a card, then fetch its four intervals and what comes after it. */
+  const show = useCallback(
+    (card: ReviewCard, options: GradeOption[] | null = null) => {
+      setRet((r) => returnStep(r, "card"));
+      setConfirmDelete(false);
+      setPhase({ s: "card", card, options });
+      refreshNext(card);
+      if (options) return;
+      getJson(api.options(card.id))
+        .then((j) =>
+          setPhase((p) =>
+            p.s === "card" && p.card.id === card.id ? { ...p, options: optionsFrom(j) } : p,
+          ),
+        )
+        .catch(() => {});
+    },
+    [refreshNext],
+  );
 
   const fail = useCallback((e: unknown) => {
     setPhase(e instanceof HttpError && e.status === 401 ? { s: "signedOut" } : { s: "error" });
@@ -289,6 +314,12 @@ export default function ReviewClient({
   /** Step 6: the user is back from the card's tab — ask, prominently. */
   const back = phase.s === "card" && ret === "back";
 
+  // More cards may have come due while the card's page was being read.
+  const shownCard = phase.s === "card" ? phase.card : null;
+  useEffect(() => {
+    if (back && shownCard) refreshNext(shownCard);
+  }, [back, shownCard, refreshNext]);
+
   const gradeLabel: Record<Rating, string> = {
     1: t.again.value,
     2: t.hard.value,
@@ -314,140 +345,177 @@ export default function ReviewClient({
     4: "grade-easy",
   };
 
-  const renderCard = (card: ReviewCard, options: GradeOption[] | null) => (
-    <section
-      className="lk-fs-cards flex min-h-0 flex-1 flex-col gap-4 rounded-2xl border border-black/10 dark:border-white/10 bg-white/60 dark:bg-gray-900/60 p-5 sm:p-6"
-      data-testid="review-card"
-      aria-busy={busy}
-    >
-      {/* What the card is: scrolls inside the card when it is long, so the
+  const renderCard = (
+    card: ReviewCard,
+    options: GradeOption[] | null,
+    next: NextCard | null | undefined,
+  ) => (
+    <>
+      <section
+        className="lk-fs-cards flex flex-1 flex-col gap-4 rounded-2xl border border-black/10 dark:border-white/10 bg-white/60 dark:bg-gray-900/60 p-5 sm:p-6"
+        data-testid="review-card"
+        aria-busy={busy}
+      >
+        {/* What the card is: scrolls inside the card when it is long, so the
           actions below always stay on screen. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-        <div className="my-auto min-w-0 space-y-2 py-1">
-          {flash && (
-            <p role="status" className="text-sm opacity-80">
-              {flash}
-            </p>
+        <div className="flex min-h-16 flex-[1_1_0px] flex-col overflow-y-auto overscroll-contain">
+          <div className="my-auto min-w-0 space-y-2 py-1">
+            {flash && (
+              <p role="status" className="text-sm opacity-80">
+                {flash}
+              </p>
+            )}
+            <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.upNext}</p>
+            <h2 className="text-2xl sm:text-3xl font-semibold leading-snug break-words">
+              {reviewTitle(card.title, card.url) ?? card.url}
+            </h2>
+            <p className="text-sm opacity-60 break-all">{card.url}</p>
+          </div>
+        </div>
+
+        <div className="shrink-0 space-y-4" data-testid="review-actions">
+          <div className="space-y-2">
+            <a
+              href={card.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setRet((r) => returnStep(r, "open"))}
+              className={
+                back
+                  ? "flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-blue-600 px-5 py-2 text-base font-semibold text-blue-600 dark:text-blue-400"
+                  : "flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-3 text-lg font-semibold text-white"
+              }
+              data-testid="open-card"
+            >
+              {t.openCard} <span aria-hidden>↗</span>
+            </a>
+            {!back && (
+              <p className="lk-review-help text-sm opacity-70">
+                {ret === "idle" ? t.openHint : t.opened}
+              </p>
+            )}
+          </div>
+
+          {back && (
+            <h3
+              ref={promptRef}
+              tabIndex={-1}
+              role="status"
+              className="text-center text-2xl font-semibold outline-none"
+              data-testid="return-prompt"
+            >
+              {t.returnPrompt}
+            </h3>
           )}
-          <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.upNext}</p>
-          <h2 className="text-2xl sm:text-3xl font-semibold leading-snug break-words">
-            {card.title ?? card.url}
-          </h2>
-          <p className="text-sm opacity-60 break-all">{card.url}</p>
-        </div>
-      </div>
 
-      <div className="shrink-0 space-y-4" data-testid="review-actions">
-        <div className="space-y-2">
-          <a
-            href={card.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => setRet((r) => returnStep(r, "open"))}
-            className={
-              back
-                ? "flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-blue-600 px-5 py-2 text-base font-semibold text-blue-600 dark:text-blue-400"
-                : "flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-3 text-lg font-semibold text-white"
-            }
-            data-testid="open-card"
-          >
-            {t.openCard} <span aria-hidden>↗</span>
-          </a>
-          {!back && <p className="text-sm opacity-70">{ret === "idle" ? t.openHint : t.opened}</p>}
-        </div>
-
-        {back && (
-          <h3
-            ref={promptRef}
-            tabIndex={-1}
-            role="status"
-            className="text-center text-2xl font-semibold outline-none"
-            data-testid="return-prompt"
-          >
-            {t.returnPrompt}
-          </h3>
-        )}
-
-        <div
-          className={`grid grid-cols-4 gap-2 ${back ? "rounded-2xl p-2" : ""}`}
-          style={
-            back
-              ? {
-                  boxShadow: "0 0 0 3px oklch(0.62 0.19 259.8 / 0.55)",
-                  background: "oklch(0.62 0.19 259.8 / 0.08)",
-                }
-              : undefined
-          }
-          role="group"
-          aria-label={back ? t.returnPrompt.value : t.title.value}
-        >
-          {RATINGS.map((r) => {
-            const due = options?.find((o) => o.rating === r)?.due;
-            return (
-              <button
-                key={r}
-                type="button"
-                disabled={busy}
-                onClick={() => void grade(r)}
-                className={`${gradeTone[r]} flex min-h-16 flex-col items-center justify-center rounded-xl border-2 px-1 py-2 font-semibold disabled:opacity-50`}
-                style={{
-                  borderColor: "var(--grade)",
-                  color: "var(--grade)",
-                  background: "oklch(from var(--grade) l c h / 0.08)",
-                }}
-                data-testid={`grade-${r}`}
-              >
-                <span className="text-base leading-tight">{gradeLabel[r]}</span>
-                <span className="text-xs tabular-nums opacity-80">
-                  {due ?? "…"}
-                  {modality === "keyboard" && <kbd className="ms-1 opacity-70">{gradeKey(r)}</kbd>}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          {confirmDelete ? (
+          <div className="space-y-2">
+            {/* Two pairs, so a row too narrow for all four becomes two by two,
+              never three and one. Each button is as wide as its one-line
+              contents at any width, locale and text size. */}
             <div
-              role="alertdialog"
-              aria-label={t.deleteCard.value}
-              className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-blue-600/40 p-3"
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label={back ? t.returnPrompt.value : t.title.value}
+              data-testid="review-grades"
             >
-              <p className="w-full">{t.deleteAsk}</p>
-              <button
-                type="button"
-                autoFocus
-                disabled={busy}
-                onClick={() => void remove()}
-                className="min-h-10 rounded-lg bg-blue-600 px-4 font-semibold text-white"
-                data-testid="delete-yes"
-              >
-                {t.deleteYes}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(false)}
-                className="min-h-10 rounded-lg border border-black/15 dark:border-white/15 px-4"
-              >
-                {t.deleteNo}
-              </button>
+              {[RATINGS.slice(0, 2), RATINGS.slice(2)].map((pair) => (
+                <div key={pair[0]} className="flex min-w-fit flex-1 flex-wrap gap-2">
+                  {pair.map((r) => {
+                    const due = options?.find((o) => o.rating === r)?.due;
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void grade(r)}
+                        className={`${gradeTone[r]} flex min-h-16 flex-1 flex-col items-center justify-center whitespace-nowrap rounded-xl border-2 px-1 py-2 font-semibold disabled:opacity-50`}
+                        style={{
+                          borderColor: "var(--grade)",
+                          color: "var(--grade)",
+                          background: "oklch(from var(--grade) l c h / 0.08)",
+                        }}
+                        data-testid={`grade-${r}`}
+                      >
+                        <span className="text-base leading-tight">{gradeLabel[r]}</span>
+                        <span
+                          className="text-xs tabular-nums opacity-80"
+                          data-testid="grade-interval"
+                        >
+                          {due ?? "…"}
+                        </span>
+                        {modality === "keyboard" && (
+                          <kbd className="fs-10 font-normal leading-tight opacity-60">
+                            {gradeKey(r)}
+                          </kbd>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              className="min-h-10 rounded-lg px-2 opacity-70 hover:opacity-100 underline-offset-2 hover:underline"
-              data-testid="delete-card"
-            >
-              {t.deleteCard}
-            </button>
-          )}
-        </div>
+            <p className="lk-review-help text-xs opacity-70" data-testid="review-auto-advance">
+              {t.autoAdvance}
+            </p>
+          </div>
 
-        {modality === "keyboard" && <p className="text-xs opacity-60">{t.keys}</p>}
-      </div>
-    </section>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {confirmDelete ? (
+              <div
+                role="alertdialog"
+                aria-label={t.deleteCard.value}
+                className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-blue-600/40 p-3"
+              >
+                <p className="w-full">{t.deleteAsk}</p>
+                <button
+                  type="button"
+                  autoFocus
+                  disabled={busy}
+                  onClick={() => void remove()}
+                  className="min-h-10 rounded-lg bg-blue-600 px-4 font-semibold text-white"
+                  data-testid="delete-yes"
+                >
+                  {t.deleteYes}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="min-h-10 rounded-lg border border-black/15 dark:border-white/15 px-4"
+                >
+                  {t.deleteNo}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="min-h-10 rounded-lg px-2 opacity-70 hover:opacity-100 underline-offset-2 hover:underline"
+                data-testid="delete-card"
+              >
+                {t.deleteCard}
+              </button>
+            )}
+          </div>
+
+          {modality === "keyboard" && <p className="text-xs opacity-60">{t.keys}</p>}
+        </div>
+      </section>
+      <p className="flex shrink-0 items-baseline gap-2 px-1 text-sm" data-testid="review-next">
+        <span className="shrink-0 font-semibold opacity-70">{t.nextUp}</span>
+        {next ? (
+          <span
+            className="min-w-0 truncate opacity-70"
+            dir="auto"
+            title={next.url}
+            data-testid="review-next-card"
+          >
+            {reviewTitle(next.title, next.url) ?? next.url}
+          </span>
+        ) : (
+          <span className="min-w-0 truncate opacity-70">{next === null ? t.nextNone : "—"}</span>
+        )}
+      </p>
+    </>
   );
 
   // The due card fills the window (owner, 2026-11-05: "full page size so
@@ -478,7 +546,7 @@ export default function ReviewClient({
               {t.loading}
             </p>
           )}
-          {phase.s === "card" && renderCard(phase.card, phase.options)}
+          {phase.s === "card" && renderCard(phase.card, phase.options, phase.next)}
         </div>
       ) : (
         heading
@@ -607,7 +675,7 @@ export default function ReviewClient({
 
 /**
  * The owner's 8 steps, side by side: this page (no userscript) and the
- * userscript. iPhone or Android changes step 5; folded per device.
+ * userscript. iPhone, Android or a desktop browser changes step 5; folded per device.
  */
 function Tutorial() {
   const t = useIntlayer("review-page");
@@ -615,8 +683,8 @@ function Tutorial() {
   const collapsed = useUi(tutorialStore, (s) => s.collapsed);
   const picked = useUi(tutorialStore, (s) => s.platform);
   const [detected, setDetected] = useState<Platform>("ios");
-  useEffect(() => setDetected(detectPlatform(navigator.userAgent)), []);
-  const platform: Platform = picked === "ios" || picked === "android" ? picked : detected;
+  useEffect(() => setDetected(detectPlatform(navigator.userAgent, navigator.maxTouchPoints)), []);
+  const platform: Platform = PLATFORMS.find((p) => p === picked) ?? detected;
   const you = t.whoYou;
   const lianki = t.whoLianki;
   const steps = [
@@ -624,7 +692,11 @@ function Tutorial() {
     [lianki, t.flow2Without, null],
     [lianki, t.flow3Without, t.flow3With],
     [you, t.flow4Without, t.flow4With],
-    [you, platform === "android" ? t.flow5WithoutAndroid : t.flow5WithoutIos, t.flow5With],
+    [
+      you,
+      { ios: t.flow5WithoutIos, android: t.flow5WithoutAndroid, web: t.flow5WithoutWeb }[platform],
+      t.flow5With,
+    ],
     [lianki, t.flow6Without, t.flow6With],
     [you, t.flow7, null],
     [lianki, t.flow8Without, t.flow8With],
@@ -643,7 +715,7 @@ function Tutorial() {
             aria-label={t.tutorialTitle.value}
             className="inline-flex rounded-lg border border-black/15 dark:border-white/15 p-0.5 text-sm"
           >
-            {(["ios", "android"] as const).map((p) => (
+            {PLATFORMS.map((p) => (
               <button
                 key={p}
                 type="button"
@@ -652,7 +724,7 @@ function Tutorial() {
                 onClick={() => tutorialStore.setState({ platform: p })}
                 className={`min-h-10 rounded-md px-3 ${platform === p ? "bg-blue-600 text-white" : ""}`}
               >
-                {p === "ios" ? t.iphone : t.android}
+                {{ ios: t.iphone, android: t.android, web: t.web }[p]}
               </button>
             ))}
           </div>
