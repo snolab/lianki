@@ -35,6 +35,12 @@
  *   POST /api/version/progress An agent's report (scripts/dev/progress.ts),
  *                              with Authorization: Bearer <PROGRESS_TOKEN>.
  *                              503 while that secret is unset.
+ *   GET  /api/version/read-stream?book=<id>
+ *                              WebSocket for an open reader following a live
+ *                              Google Doc (read-stream.ts). The user's own hub,
+ *                              named by the cookie, as for the debug pages.
+ *   POST /internal/read-stream The main Worker, over its service binding: a
+ *                              book of that user changed.
  *   GET/POST /internal/friends The main Worker's owner-only /api/dev/friends,
  *                              over its PUSH binding: list chat users, read
  *                              one's thread, Block or unblock (debug.ts).
@@ -65,6 +71,7 @@ import { PROGRESS_OWNER_HEADER, progressGate } from "./progress";
 
 export { DebugHub } from "./debug";
 export { ProgressHub } from "./progress";
+export { ReadStreamHub } from "./read-stream";
 
 type Socket = WebSocket & { accept?: () => void };
 type State = {
@@ -80,6 +87,8 @@ export type Env = {
   DEBUG: Namespace;
   /** Optional only so older test envs type-check; deployed, it is always bound. */
   PROGRESS?: Namespace;
+  /** Optional only so older test envs type-check; deployed, it is always bound. */
+  READ_STREAM?: Namespace;
   MAIN?: Fetcher;
   /** The main Worker's DebugSessions RPC entrypoint (worker.ts): is a session still live? */
   SESSIONS?: { live(user: string, session: string): Promise<unknown> };
@@ -143,6 +152,25 @@ export default {
     if (url.pathname === "/api/version/ws") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
       return env.HUB.get(env.HUB.idFromName("version")).fetch(req);
+    }
+    if (url.pathname === "/api/version/read-stream") {
+      if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
+      // The cookie decides whose hub this is; the query cannot name another's.
+      const who = await debugIdentity(req, env.MAIN);
+      if (!who || !env.READ_STREAM) return new Response("forbidden", { status: 403 });
+      return env.READ_STREAM.get(env.READ_STREAM.idFromName(who.userId)).fetch(req);
+    }
+    if (url.pathname === "/internal/read-stream" && req.method === "POST" && isInternal(url)) {
+      if (!env.READ_STREAM) return new Response("not bound", { status: 503 });
+      const text = await req.text();
+      let user: unknown;
+      try {
+        user = (JSON.parse(text) as { user?: unknown }).user;
+      } catch {}
+      if (typeof user !== "string" || !user) return new Response("bad body", { status: 400 });
+      return env.READ_STREAM.get(env.READ_STREAM.idFromName(user)).fetch(
+        new Request(req.url, { method: "POST", body: text }),
+      );
     }
     if (url.pathname === "/api/version/debug") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
