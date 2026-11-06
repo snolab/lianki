@@ -27,8 +27,11 @@ import {
   tokenMayCall,
 } from "@/lib/box-oauth/rules";
 import {
+  bindingByClient,
   bindingByOrigin,
+  boxUser,
   insertBinding,
+  listBindings,
   liveToken,
   revokeBox,
   validNewBox,
@@ -85,6 +88,9 @@ describe("the route allowlist", () => {
       "/api/debug/stt",
       "/api/payments/checkout",
       "/api/gift-codes/redeem",
+      "/api/byok/proxy",
+      "/api/profile/email",
+      "/api/profile/email/confirm",
       "/api/invite",
       "/api/token",
       "/api/cli-login/token",
@@ -426,6 +432,37 @@ describe("the store", () => {
       .prepare("SELECT kind FROM security_audit WHERE kind LIKE 'box.%' ORDER BY id")
       .all<{ kind: string }>();
     expect(results.map((r) => r.kind)).toEqual(["box.bind", "box.revoke"]);
+  });
+
+  test("the owner's list: the account's email, live ones first", async () => {
+    await bind();
+    await revokeBox(box(), "c1", "owner", NOW);
+    await bind({ clientId: "c2", origin: OTHER, userId: "u2" });
+    const list = await listBindings(box());
+    expect(list.map((b) => [b.clientId, b.email, b.revokedAt !== null])).toEqual([
+      ["c2", "u2@test.example", false],
+      ["c1", "u1@test.example", true],
+    ]);
+    expect(list[0].scopes).toEqual(RW);
+    expect(await bindingByClient(box(), "c1")).toBeNull();
+    expect((await bindingByClient(box(), "c2"))?.origin).toBe(OTHER);
+  });
+
+  test("revoking an unknown box changes nothing", async () => {
+    expect(await revokeBox(box(), "nobody", "owner", NOW)).toBe(false);
+  });
+
+  test("revoke works on a database with no batch", async () => {
+    await bind();
+    await addToken(db);
+    const plain = { prepare: (sql: string) => db.prepare(sql) } as unknown as BoxDb;
+    expect(await revokeBox(plain, "c1", "owner", NOW)).toBe(true);
+    expect(await liveToken(box(), await boxTokenHash(TOKEN), NOW)).toBeNull();
+  });
+
+  test("the user the app sees", async () => {
+    expect((await boxUser(box(), "u1"))?.email).toBe("u1@test.example");
+    expect(await boxUser(box(), "nobody")).toBeNull();
   });
 
   test("after a revoke the origin and the account can be bound again", async () => {

@@ -70,8 +70,8 @@ stored hashed. The browser keeps them in that tab's sessionStorage.
   `tokenMayCall` (`rules.ts`), the account's own study data. A new route is closed
   until someone adds it. Never `/api/dev*`, `/api/debug`, payments, invites and
   gift codes, API tokens, CLI login, previews, connections, or `/api/auth`, so
-  no email or login change. BYOK keys are browser-only today and any route for
-  them would be closed the same way. Encoded and otherwise odd paths are refused,
+  no email or login change. The BYOK relay (`/api/byok/proxy`) and email change
+  (`/api/profile/email`) are closed too. Encoded and otherwise odd paths are refused,
   so the list cannot be walked around.
 - **Scopes.** `box:read` is GET and HEAD, minus the GETs that write (grading,
   deleting, `/repeat`). `box:write` adds the rest. Read-only routes take no
