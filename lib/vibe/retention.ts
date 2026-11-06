@@ -1,8 +1,7 @@
-// The transcript retention sweep (docs/vibe.md, "Retention"), run once a day by
-// the Worker's existing Cron Trigger (worker.ts `scheduled`): nothing new polls.
-// A transcript goes when its newest line is older than its owner's retention.
+// The optional delete-after-N-days sweep (docs/vibe.md, "Keeping"), run once a day
+// by the Worker's existing Cron Trigger (worker.ts `scheduled`): nothing new polls.
+// Only a number the user chose counts: with none, their docs are never looked at.
 import { deleteReaderRows, type D1Batch } from "@/lib/read/reader-store";
-import { RETENTION_DEFAULT_DAYS } from "./gate";
 
 const DAY_MS = 86_400_000;
 /** At most this many per pass; passes repeat until none are left (a bound on one run). */
@@ -30,12 +29,12 @@ export async function sweepVibeDocs(
       .prepare(
         `SELECT d.id, d.user_id, d.material_id, m.r2_key, m.content_hash
          FROM vibe_doc d
-         LEFT JOIN vibe_settings s ON s.user_id = d.user_id
+         JOIN vibe_settings s ON s.user_id = d.user_id AND s.chosen = 1
          LEFT JOIN read_materials m ON m.id = d.material_id AND m.user_id = d.user_id
-         WHERE d.last_ms + COALESCE(s.retention_days, ?) * ${DAY_MS} <= ?
+         WHERE d.last_ms + s.retention_days * ${DAY_MS} <= ?
          LIMIT ${PAGE}`,
       )
-      .bind(RETENTION_DEFAULT_DAYS, nowMs)
+      .bind(nowMs)
       .all<Row>();
     const rows = results ?? [];
     for (const r of rows) {

@@ -4,7 +4,7 @@ import { useIntlayer } from "next-intlayer";
 import type { BookMeta } from "@/lib/read/book";
 
 /**
- * A /vibe transcript in the reader: one line on what it is, and the mark that
+ * A /vibe doc in the reader: one line on what it is, and the mark that
  * keeps its text off any chat line (packages/debug-chat/src/scene.ts).
  */
 export function VibeDocNote({ book }: { book?: Pick<BookMeta, "source"> | null }) {

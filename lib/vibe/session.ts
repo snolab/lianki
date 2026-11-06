@@ -4,8 +4,7 @@
 // a fake VAD and a fake Mac.
 //
 // What this session is careful about:
-// - It starts only from start({consent: true}), which the consent screen's button
-//   calls; the server is asked first, so a refusal never opens the microphone.
+// - It starts only from start({tap: true}), which the start page's button calls; the server is asked first, so a refusal never opens the microphone.
 // - The text goes to `api.lines` and nowhere else: no chat, no command taps, no
 //   clip sink, no cue, no cloud fallback. This file imports none of them.
 // - Pausing stops the feed at once: the tracks stop, the utterance under way is
@@ -39,14 +38,7 @@ export type VibeStatus = "idle" | "starting" | "running" | "paused" | "stopped";
 /** Why it is paused. "user": his tap; the rest stopped by themselves and say so. */
 export type PauseReason = "user" | "hidden" | "offline" | "stt" | "mic" | "server";
 /** Why it ended, when it did not end by his tap. */
-export type EndReason =
-  | "consent-required"
-  | "refused"
-  | "no-stt"
-  | "no-mic"
-  | "full"
-  | "gone"
-  | "user";
+export type EndReason = "not-tapped" | "refused" | "no-stt" | "no-mic" | "full" | "gone" | "user";
 
 export type VibeLine = { text: string; lang?: string };
 
@@ -66,7 +58,7 @@ export type VibeView = {
 export type ApiResult<T> = ({ ok: true } & T) | { ok: false; status: number };
 
 export type VibeApi = {
-  start(b: { consent: true; otherLang: string; title: string }): Promise<ApiResult<{ id: string }>>;
+  start(b: { tap: true; title: string }): Promise<ApiResult<{ id: string }>>;
   lines(
     id: string,
     b: { from: number; lines: string[] },
@@ -358,13 +350,13 @@ export function createVibeSession(d: VibeDeps) {
   return {
     view: () => view,
     /**
-     * The consent screen's Start. Nothing else starts a conversation. Without
-     * consent, or with the server refusing, the microphone is never asked for.
+     * The start page's button. Nothing else starts a conversation. Without the
+     * tap, or with the server refusing, the microphone is never asked for.
      */
-    async start(o: { consent: boolean; otherLang: string; title: string }): Promise<void> {
+    async start(o: { tap: boolean; title: string }): Promise<void> {
       if (view.status === "starting" || view.status === "running" || view.status === "paused")
         return;
-      if (o.consent !== true) return emit({ status: "stopped", end: "consent-required" });
+      if (o.tap !== true) return emit({ status: "stopped", end: "not-tapped" });
       view = { status: "starting", lines: [], interim: "", lost: 0, material: null };
       d.onView(view);
       queue.length = 0;
@@ -372,7 +364,7 @@ export function createVibeSession(d: VibeDeps) {
       sent = 0;
       total = 0;
       const r = await d.api
-        .start({ consent: true, otherLang: o.otherLang, title: o.title })
+        .start({ tap: true, title: o.title })
         .catch(() => ({ ok: false as const, status: 0 }));
       if (!r.ok) return emit({ status: "stopped", end: "refused" });
       id = r.id;
@@ -414,7 +406,7 @@ export function createVibeSession(d: VibeDeps) {
       if (view.status === "idle" || view.status === "stopped") return Promise.resolve();
       return end("user");
     },
-    /** Back to the consent screen after a stop. */
+    /** Back to the start page after a stop. */
     reset() {
       if (view.status !== "stopped") return;
       view = { status: "idle", lines: [], interim: "", lost: 0, material: null };

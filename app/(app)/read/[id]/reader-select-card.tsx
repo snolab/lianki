@@ -39,7 +39,8 @@ export interface UnitView {
 }
 
 export interface CardActions {
-  copyLink: () => void;
+  /** Absent on a private /vibe doc: nothing there offers an address to pass on (docs/vibe.md). */
+  copyLink?: () => void;
   copyText?: () => void;
   readFrom?: () => void;
   /** Say exactly the selected text (a hand-made selection). */
@@ -250,13 +251,17 @@ export function SelectCard({
                   },
                 ]
               : []),
-            {
-              action: "copy-link",
-              icon: "link",
-              label: t.copyLink.value,
-              run: actions.copyLink,
-              testId: "read-select-link",
-            },
+            ...(actions.copyLink
+              ? [
+                  {
+                    action: "copy-link",
+                    icon: "link" as const,
+                    label: t.copyLink.value,
+                    run: actions.copyLink,
+                    testId: "read-select-link",
+                  },
+                ]
+              : []),
           ]}
         />
         <button

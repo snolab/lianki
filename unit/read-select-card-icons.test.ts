@@ -28,6 +28,15 @@ const html = renderToStaticMarkup(
 );
 const buttons = [...html.matchAll(/<button[^>]*>(.*?)<\/button>/g)];
 
+describe("Copy link", () => {
+  test("a private /vibe doc's card has no action to pass an address on", () => {
+    const src = readFileSync("app/(app)/read/[id]/ReaderV2.tsx", "utf8");
+    expect(src).toMatch(/book\?\.source === "vibe"\s*\?\s*\{\}\s*:\s*\{\s*copyLink:/);
+    const card = readFileSync("app/(app)/read/[id]/reader-select-card.tsx", "utf8");
+    expect(card).toContain("...(actions.copyLink");
+  });
+});
+
 describe("CardIcons", () => {
   test("three icon buttons, in order, each with its label as aria-label and title", () => {
     expect(buttons.map((b) => b[0].match(/data-action="([^"]+)"/)?.[1])).toEqual([

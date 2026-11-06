@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * /vibe (docs/vibe.md): the consent screen, then the live transcript with an
+ * /vibe (docs/vibe.md): a simple start page, then the live text with an
  * indicator that is always on screen and one tap to pause or stop. The session
  * itself (lib/vibe/session.ts) is built only when Start is tapped, by a real
  * gesture; leaving the page stops it. No sounds at any point.
  */
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { VibeWords } from "./VibeWords";
 import Link from "next/link";
 import { useIntlayer } from "next-intlayer";
@@ -17,8 +17,6 @@ import {
   type PauseReason,
   type VibeView,
 } from "@/lib/vibe/session";
-
-export type ConsentText = { heading: string; lines: string[]; rtl: boolean };
 
 const BUTTON =
   "min-h-11 px-5 rounded-lg font-medium disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2";
@@ -34,89 +32,30 @@ function langName(code: string, locale: string): string {
   }
 }
 
-function ConsentBlock({ text, lang, testid }: { text: ConsentText; lang: string; testid: string }) {
-  return (
-    <section lang={lang} dir={text.rtl ? "rtl" : "ltr"} data-testid={testid}>
-      <h2 className="text-xl font-semibold leading-snug mb-2">{text.heading}</h2>
-      {text.lines.map((l) => (
-        <p key={l} className="leading-relaxed mb-1.5">
-          {l}
-        </p>
-      ))}
-    </section>
-  );
-}
-
-function ConsentScreen({
-  locale,
-  consent,
-  busy,
-  onStart,
-}: {
-  locale: string;
-  consent: Record<string, ConsentText>;
-  busy: boolean;
-  onStart: (otherLang: string) => void;
-}) {
+function StartPage({ busy, onStart }: { busy: boolean; onStart: () => void }) {
   const t = useIntlayer("vibe-page");
-  const codes = useMemo(() => Object.keys(consent), [consent]);
-  // Not the user's own language to begin with: the point is the other person's.
-  const [other, setOther] = useState(() => codes.find((c) => c !== locale) ?? locale);
-  const mine = consent[locale] ?? consent.en;
   return (
-    <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-[var(--background)] text-[var(--foreground)]"
-      style={{ paddingTop: "max(16px, env(safe-area-inset-top))" }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={t.title.value}
-      data-testid="vibe-consent"
-    >
-      <div className="mx-auto flex min-h-full max-w-xl flex-col gap-5 px-4">
-        <label className="block text-sm">
-          <span className={DIM}>{t.theirLanguage}</span>
-          <select
-            value={other}
-            onChange={(e) => setOther(e.target.value)}
-            data-testid="vibe-consent-lang"
-            className="mt-1 block w-full min-h-11 rounded-lg border border-[oklch(0.7_0_0)] bg-transparent px-3 dark:border-[oklch(0.45_0_0)]"
-          >
-            {codes.map((c) => (
-              <option key={c} value={c}>
-                {langName(c, c)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <ConsentBlock text={consent[other]} lang={other} testid="vibe-consent-other" />
-        {other !== locale && <ConsentBlock text={mine} lang={locale} testid="vibe-consent-mine" />}
-        <p className={`text-sm ${DIM}`}>{t.recognised}</p>
-        {/* Always on screen, however long the statement runs in this language. */}
-        <div
-          className="sticky bottom-0 mt-auto flex gap-3 bg-[oklch(from_var(--background)_l_c_h/0.92)] pt-3 backdrop-blur-md"
-          style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}
-        >
-          <button
-            type="button"
-            className={`${PRIMARY} flex-1`}
-            disabled={busy}
-            data-testid="vibe-start"
-            // A script's click is not his tap (as the voiceprint panel's Agree).
-            onClick={(e: MouseEvent) => {
-              if (e.isTrusted) onStart(other);
-            }}
-          >
-            {t.start}
-          </button>
-          <Link
-            href="/read"
-            className={`${QUIET} flex flex-1 items-center justify-center`}
-            data-testid="vibe-cancel"
-          >
-            {t.cancel}
-          </Link>
-        </div>
-      </div>
+    <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 pb-32 pt-6" data-testid="vibe-home">
+      <h1 className="text-2xl font-semibold">{t.title}</h1>
+      <p className="leading-relaxed">{t.intro}</p>
+      <button
+        type="button"
+        className={PRIMARY}
+        disabled={busy}
+        data-testid="vibe-start"
+        // A script's click is not his tap (as the voiceprint panel's Agree).
+        onClick={(e: MouseEvent) => {
+          if (e.isTrusted) onStart();
+        }}
+      >
+        {t.start}
+      </button>
+      <p className="leading-relaxed" data-testid="vibe-care">
+        {t.yourCare}
+      </p>
+      <p className={`text-sm ${DIM}`} data-testid="vibe-recognised">
+        {t.recognised}
+      </p>
     </div>
   );
 }
@@ -217,7 +156,7 @@ function EndScreen({ view, onAgain }: { view: VibeView; onAgain: () => void }) {
   const [gone, setGone] = useState(false);
   const notes: Partial<Record<EndReason, string>> = {
     refused: t.endRefused.value,
-    "consent-required": t.endRefused.value,
+    "not-tapped": t.endRefused.value,
     gone: t.endRefused.value,
     "no-stt": t.endNoStt.value,
     "no-mic": t.endNoMic.value,
@@ -269,13 +208,7 @@ function EndScreen({ view, onAgain }: { view: VibeView; onAgain: () => void }) {
   );
 }
 
-export default function VibeClient({
-  locale,
-  consent,
-}: {
-  locale: string;
-  consent: Record<string, ConsentText>;
-}) {
+export default function VibeClient({ locale }: { locale: string }) {
   const t = useIntlayer("vibe-page");
   const [view, setView] = useState<VibeView | null>(null);
   const [opening, setOpening] = useState(false);
@@ -290,7 +223,7 @@ export default function VibeClient({
     [],
   );
 
-  const start = async (otherLang: string) => {
+  const start = async () => {
     if (opening) return;
     setOpening(true);
     try {
@@ -300,8 +233,7 @@ export default function VibeClient({
       session.current = s;
       const when = new Date().toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
       await s.start({
-        consent: true,
-        otherLang,
+        tap: true,
         title: t.docTitle.value.replaceAll("{when}", when),
       });
     } finally {
@@ -309,8 +241,7 @@ export default function VibeClient({
     }
   };
 
-  if (!view || view.status === "idle")
-    return <ConsentScreen locale={locale} consent={consent} busy={opening} onStart={start} />;
+  if (!view || view.status === "idle") return <StartPage busy={opening} onStart={start} />;
 
   return (
     // The transcript never rides on a chat line (packages/debug-chat/src/scene.ts).
