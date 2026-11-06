@@ -194,6 +194,8 @@ export async function scopeSession(
   words: RangeWord[],
   gloss?: Gloss,
   now: Date = new Date(),
+  /** A word with no card yet: what it may be shown with, before a swipe commits it. */
+  previewGloss: Gloss | undefined = gloss,
 ): Promise<{ items: ScopeItem[]; lists: WordList[]; missing: string[] }> {
   const matched = await matchAll(db, email, book, words);
   const missing = matched.filter((m) => !m.hit).map((m) => m.x.w);
@@ -206,8 +208,10 @@ export async function scopeSession(
     matched.flatMap((m) => (m.hit ? [{ listId: m.hit.listId, term: m.hit.term }] : [])),
   );
   const rowOf = (hit: DeckCard | null) => (hit ? rows.get(`${hit.listId}\u0000${hit.term}`) : null);
-  // A meaning for each word that has none: a new word, or a card made without one.
-  await glossIn(matched, (m) => !m.x.back && !rowOf(m.hit)?.back, gloss);
+  // A meaning for each word that has none: a card made without one, and a new word
+  // (a preview: only what costs nothing, the rest when a swipe commits it).
+  await glossIn(matched, (m) => !!m.hit && !m.x.back && !rowOf(m.hit)?.back, gloss);
+  await glossIn(matched, (m) => !m.hit && !m.x.back, previewGloss);
   const items: ScopeItem[] = [];
   const seen = new Set<string>();
   /** His cards that have no meaning yet, and the one found for them now. */
@@ -494,6 +498,8 @@ export async function addGradedEntries(
   email: string,
   book: BookCtx,
   words: RangeWord[],
+  /** The meaning of a card the grade just made, when it was shown without one. */
+  gloss?: Gloss,
 ): Promise<number> {
   const list = await findBookList(db, email, book.hash);
   if (!list) return 0;
@@ -502,12 +508,20 @@ export async function addGradedEntries(
   // entry without a card would be a new word to /words, carded twice if
   // another list gets it first. Not synced yet: 0, and the device asks again.
   const own = matched.filter((m) => m.hit?.listId === list.id);
+  await glossIn(own, (m) => !m.x.back, gloss);
   const entries = own.map(({ x, hit }) => ({
     term: hit!.term,
     reading: clip(x.reading, 200),
     back: clip(x.back, 1000) ?? "",
     ex: clip(x.ex, 1000),
   }));
-  await runAll(db, entryStatements(db, email, list.id, entries));
+  await runAll(db, [
+    ...entryStatements(db, email, list.id, entries),
+    ...backfillStatements(
+      db,
+      email,
+      entries.filter((e) => e.back).map((e) => ({ listId: list.id, term: e.term, back: e.back })),
+    ),
+  ]);
   return entries.length;
 }

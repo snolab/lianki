@@ -41,24 +41,6 @@ const dictionary = {
       mr: "थेट दस्तऐवजाशी पुन्हा जोडत आहे…",
       ko: "실시간 문서에 다시 연결하는 중…",
     }),
-    addToLearn: t({
-      en: "Add to learn",
-      zh: "加入学习",
-      hi: "सीखने में जोड़ें",
-      es: "Añadir para aprender",
-      fr: "Ajouter à apprendre",
-      ar: "أضف للتعلّم",
-      bn: "শেখার তালিকায় যোগ করুন",
-      pt: "Adicionar para aprender",
-      ru: "Добавить в изучение",
-      ur: "سیکھنے میں شامل کریں",
-      id: "Tambahkan untuk dipelajari",
-      de: "Zum Lernen hinzufügen",
-      ja: "学習に追加",
-      sw: "Ongeza ili ujifunze",
-      mr: "शिकण्यात जोडा",
-      ko: "학습에 추가",
-    }),
     added: t({
       en: "Added to your deck",
       zh: "已加入你的牌组",
@@ -137,9 +119,8 @@ const dictionary = {
 const context = {
   latest:
     "Small label on the card that, when nothing is selected, shows the translation of the sentences just written in the live Google Doc: the newest text.",
-  addToLearn:
-    "Button on the card shown when the reader taps a word in the live text under the book: makes a flashcard for that word in the user's deck.",
-  added: "Confirmation on the same card, replacing the button, once the word's flashcard was made.",
+  added:
+    "Confirmation on the same card, replacing its drag slider, once the word's flashcard was made.",
   lookingUp: "Shown on the same card while the tapped word's meaning is being fetched.",
   noMeaning: "Shown on the same card when no meaning could be found for the tapped word.",
   live: "Small status pill at the top of the reader while the book is following a Google Doc: the text on screen updates as the doc is edited.",

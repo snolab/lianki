@@ -131,7 +131,7 @@ import {
   unmakeCards,
   type RangeWord,
 } from "./reader-word-review";
-import { afterGrade, missingWords, paraWords, spanWords } from "@/lib/read/word-review";
+import { afterGrade, MIN_BATCH, missingWords, paraWords, spanWords } from "@/lib/read/word-review";
 import {
   COMBO_MS,
   type ComboCtx,
@@ -1712,7 +1712,7 @@ function Reader({
         fam && u.kind !== "word" && u.kind !== "phrase"
           ? missingWords(lineWords(u).words).length
           : 0;
-      if (n > 0) a.makeCards = { n, run: () => makeLine(u) };
+      if (n >= MIN_BATCH) a.makeCards = { n, run: () => makeLine(u) };
     }
     // His own selection: read exactly it (the same voice and rules as a tap's).
     if (u.kind === "range" && view.text) a.readAloud = () => tapRef.current(u, false);
@@ -2056,6 +2056,7 @@ function Reader({
             title={material.title}
             sourceUrl={book?.sourceUrl}
             busy={!!sel.unit}
+            mirror={mirror}
           />
         )}
         {/* The book's end: the same way back as the toolbar's ←, no scrolling up. */}

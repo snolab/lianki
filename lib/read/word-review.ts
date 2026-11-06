@@ -26,6 +26,12 @@ import type { Fam, Sentence } from "./reader-model";
 import { foldsOf, termKeys } from "./words";
 
 /** The source of a book's own word list: its content hash. */
+/**
+ * 制卡 is a batch action, for several words at once: a single new word has no
+ * button, its swipe or slider adds it (owner, 2026-11-06).
+ */
+export const MIN_BATCH = 2;
+
 export const bookListSource = (hash: string) => `book:${hash}`;
 
 /** One of his cards, as the in-place review matches it. */
