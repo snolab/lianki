@@ -7,7 +7,7 @@ import { useIntlayer } from "next-intlayer";
 import { APP_NAV } from "@/lib/app-nav";
 import { Icon } from "@/app/components/icons";
 import { loadCatalog } from "@/lib/words/catalog-cache";
-import { HOME_EXPLORE, homeFeatureShot } from "@/lib/home-features";
+import { HOME_EXPLORE } from "@/lib/home-features";
 import { FeatureCard } from "./FeatureCard";
 
 /** The page-card features, behind "Advanced". */
@@ -109,24 +109,17 @@ export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.explore}</h2>
         <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {HOME_EXPLORE.map((k) => {
-            const light = homeFeatureShot(k, "light");
-            const dark = homeFeatureShot(k, "dark");
-            return (
-              <li key={k}>
-                <FeatureCard
-                  featureKey={k}
-                  href={item(k).href}
-                  icon={item(k).icon}
-                  label={label(k)}
-                  desc={t.cards[k].value}
-                  shot={
-                    light && dark ? { light, dark, alt: `${t.shotAlt.value}: ${label(k)}` } : null
-                  }
-                />
-              </li>
-            );
-          })}
+          {HOME_EXPLORE.map((k) => (
+            <li key={k}>
+              <FeatureCard
+                featureKey={k}
+                href={item(k).href}
+                icon={item(k).icon}
+                label={label(k)}
+                desc={t.cards[k].value}
+              />
+            </li>
+          ))}
         </ul>
       </section>
 

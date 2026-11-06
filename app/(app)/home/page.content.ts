@@ -239,24 +239,6 @@ const dictionary = {
       mr: "कोणतेही वेब पेज कार्ड म्हणून जतन करून येथे उजळणी करा, किंवा यूजरस्क्रिप्टने थेट त्याच पेजवर",
       ko: "어떤 웹페이지든 카드로 저장해 여기서 복습하거나, 유저스크립트로 그 페이지에서 바로 복습",
     }),
-    shotAlt: t({
-      en: "Screenshot",
-      zh: "截图",
-      hi: "स्क्रीनशॉट",
-      es: "Captura de pantalla",
-      fr: "Capture d'écran",
-      ar: "لقطة شاشة",
-      bn: "স্ক্রিনশট",
-      pt: "Captura de tela",
-      ru: "Снимок экрана",
-      ur: "اسکرین شاٹ",
-      id: "Tangkapan layar",
-      de: "Bildschirmfoto",
-      ja: "スクリーンショット",
-      sw: "Picha ya skrini",
-      mr: "स्क्रीनशॉट",
-      ko: "스크린샷",
-    }),
     cards: {
       alphabet: t({
         en: "Learn a writing system: from symbol to sound and back",
@@ -389,7 +371,7 @@ const dictionary = {
 };
 
 const CARD =
-  "One-line explanation on a feature card under the Explore heading on Home, below the feature's name, over a faint screenshot of it. Plain words for a language learner, what the feature does for them; a short sentence or phrase without a final full stop, at most about 12 words.";
+  "One-line explanation on a feature card under the Explore heading on Home, below the feature's name, over a small drawing of it. Plain words for a language learner, what the feature does for them; a short sentence or phrase without a final full stop, at most about 12 words.";
 
 const context: KeyContext<typeof dictionary.content> = {
   title: "Page title and main heading of the Home page, also the browser tab title. One noun.",
@@ -412,8 +394,6 @@ const context: KeyContext<typeof dictionary.content> = {
     "Small uppercase heading above the page-card features on Home (sites, review, card list). LiCards is the product name of the feature that turns web pages into cards: never translate it; keep LiCards in every language except Chinese, which uses 链卡.",
   advancedHint:
     "One-line explanation under the LiCards heading on Home of what the feature does: any web page can be saved as a review card; it is reviewed on the site's own Review page, or directly on that page if the browser userscript is installed. Do not repeat the name LiCards here.",
-  shotAlt:
-    "Start of the alt text (screen readers) of the screenshot behind each feature card on Home, followed by a colon and the feature's name, e.g. 'Screenshot: Alphabets'. One noun.",
   cards: {
     alphabet: `${CARD} Alphabets: drills a writing system (kana, Hangul, Cyrillic…) both ways, symbol to sound and sound to symbol.`,
     learn: `${CARD} Learn: imports study material from recommended lists, YouTube playlists or any URL the learner gives.`,
