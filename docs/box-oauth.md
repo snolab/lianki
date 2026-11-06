@@ -8,18 +8,18 @@ no shared cookie. Owner's decision: Slack, 2026-11-05.
 **Dark:** behind the flag `box.oauth`, off. With it off, everything here answers
 as if it did not exist.
 
-| piece                         | where                                                       |
-| ----------------------------- | ----------------------------------------------------------- |
-| pure rules: origins, allowlist, scopes | `lib/box-oauth/rules.ts`                           |
-| the Worker's gate             | `lib/box-oauth/gate.ts`, called first in `worker.ts`        |
-| provider (better-auth plugin), binding hook | `lib/box-oauth/provider.ts`, `auth-impl.ts`   |
-| lianki.com's entry to the flow | `app/box-authorize/route.ts`                               |
-| which plugin routes answer    | `app/api/auth/[...all]/route.ts`                            |
-| binding, revoke, token lookup | `lib/box-oauth/store.ts`, `db/migrations/0048_box_oauth.sql` |
-| owner's page and API          | `/dev/box-clients`, `app/api/dev/box-clients/route.ts`      |
-| the app's view of a token     | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`    |
-| the box's browser side        | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge` |
-| tests                         | `unit/box-oauth.test.ts`, `scripts/qa/qa-box-oauth.mjs`     |
+| piece                                       | where                                                                   |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| pure rules: origins, allowlist, scopes      | `lib/box-oauth/rules.ts`                                                |
+| the Worker's gate                           | `lib/box-oauth/gate.ts`, called first in `worker.ts`                    |
+| provider (better-auth plugin), binding hook | `lib/box-oauth/provider.ts`, `auth-impl.ts`                             |
+| lianki.com's entry to the flow              | `app/box-authorize/route.ts`                                            |
+| which plugin routes answer                  | `app/api/auth/[...all]/route.ts`                                        |
+| binding, revoke, token lookup               | `lib/box-oauth/store.ts`, `db/migrations/0048_box_oauth.sql`            |
+| owner's page and API                        | `/dev/box-clients`, `app/api/dev/box-clients/route.ts`                  |
+| the app's view of a token                   | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`                |
+| the box's browser side                      | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge` |
+| tests                                       | `unit/box-oauth.test.ts`, `scripts/qa/qa-box-oauth.mjs`                 |
 
 ## For the owner: set up a box
 
@@ -115,6 +115,14 @@ lianki.com page load clears that cookie, browser-wide, so it is no boundary (an
 open finding of the #600 review, not fixed here). A token is minted only through
 the navigation rule above, never through a route on that block, and
 `unit/box-oauth.test.ts` checks each of those writes is closed to a token as well.
+
+## How it was tested
+
+`scripts/qa/qa-box-oauth.mjs`, in a real browser: the provider is the OpenNext
+Worker under `wrangler dev` on local D1, the box a separate `next dev`. It has not
+run against production, where the flag is off. On 127.0.0.1 the two share a site,
+as a box and lianki.com do, but the box is http and registered as a native client;
+a real box is https and `web`.
 
 ## Known limits
 

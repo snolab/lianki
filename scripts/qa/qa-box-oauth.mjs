@@ -3,13 +3,17 @@
  * End to end for a box signing in through lianki.com (docs/box-oauth.md), in a
  * real browser against the real provider code: the OpenNext Worker under
  * `wrangler dev` on local D1 as lianki.com, and a second, separate `next dev`
- * as the box on another origin. Nothing leaves this machine.
+ * as the box on another origin, from its own checkout (a shared .next breaks it).
+ * Nothing leaves this machine.
  *
- *   PROVIDER=http://localhost:<port> BOX=http://localhost:<port> OWNER=<email> \
+ *   PROVIDER=http://127.0.0.1:<port> BOX=http://127.0.0.1:<port> OWNER=<email> \
  *     bun scripts/qa/qa-box-oauth.mjs setup     # prints the client id for the box's env
  *   … bun scripts/qa/qa-box-oauth.mjs run
  *
- * The provider needs DEV_EMAIL_PASSWORD_AUTH=1 and the flag on in its local D1.
+ * The provider needs DEV_EMAIL_PASSWORD_AUTH=1, and in its local D1 the flag on and
+ * OWNER in site_role. Use 127.0.0.1, not localhost: the plugin allows http only for a
+ * native client on a loopback address. The box needs LIANKI_BOX_CLIENT_ID and
+ * LIANKI_BOX_PROVIDER. It ends by revoking, so `setup` again before another `run`.
  * Not part of qa:all: it needs a second server.
  */
 import { chromium } from "playwright";
