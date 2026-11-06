@@ -34,6 +34,17 @@ export function sameOriginQuery(query: any, origin: string) {
   return { ...query, url: { ...query.url, $regex: new RegExp(`^${escaped}/`) } };
 }
 
+/**
+ * Urls containing any of these strings. They come from the query, and are text
+ * the user typed (a domain or a url, never a pattern; the userscript leaves its
+ * regex rules out), so every regex character is literal: a `+` matches a `+`, a
+ * stray `(` can't fail the request, and nobody gets to run a slow pattern on the
+ * Worker.
+ */
+export function excludeDomainsRegExp(excludeDomains: string[]): RegExp {
+  return new RegExp(excludeDomains.map((d) => d.replace(/[\\^$.*+?()[\]{}|/]/g, "\\$&")).join("|"));
+}
+
 export function buildNextDueQuery(excludeDomains: string[], excludeUrl?: string) {
   const query: any = {
     "card.due": { $lte: new Date() },
@@ -45,7 +56,7 @@ export function buildNextDueQuery(excludeDomains: string[], excludeUrl?: string)
   if (excludeDomains.length > 0) {
     query.url = {
       ...query.url,
-      $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+      $not: excludeDomainsRegExp(excludeDomains),
     };
   }
   return query;

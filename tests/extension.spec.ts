@@ -9,9 +9,9 @@ import { launchPersistentSilent } from "../scripts/qa/silent.mjs";
 // unpacked dist/ into real Chromium, navigate to a matched page, and assert the
 // content script executed (it stamps <html data-lianki-ext="loaded">).
 //
-// Extensions require a headed/new-headless Chromium — run under a display:
+// Extensions need new-headless Chromium (channel "chromium"); no display needed:
 //   bun --cwd packages/ext run build
-//   xvfb-run -a bunx playwright test tests/extension.spec.ts
+//   bunx playwright test tests/extension.spec.ts
 //
 // Skips itself (rather than failing) if dist/ hasn't been built.
 
@@ -25,7 +25,7 @@ test("MV3 content script loads and runs in Chromium", async () => {
   let context: BrowserContext | undefined;
   try {
     context = await launchPersistentSilent(chromium, userDataDir, {
-      headless: false,
+      channel: "chromium",
       args: [
         `--disable-extensions-except=${distPath}`,
         `--load-extension=${distPath}`,

@@ -2795,7 +2795,7 @@ describe("DebugHub agent edits of voice messages", () => {
     let on = true;
     const SESSIONS = {
       live: async () => "live",
-      flag: async (k: string) => (asked.push(k), on),
+      flag: async (k: string) => (k === "stt.polish-off" ? (asked.push(k), on) : false),
     };
     const s = setup({ SESSIONS });
     const owner = s.page();
@@ -3152,5 +3152,391 @@ describe("DebugHub page errors", () => {
     expect(got).toHaveLength(1);
     expect(got[0].message.length).toBe(500);
     expect(got[0].stack.length).toBe(1500);
+  });
+});
+
+describe("DebugHub continuous speech (stt.merge)", () => {
+  const T0 = 5_000_000;
+  /** Page-clock marks: spoken from `start`, last voiced at `end`, ended one endpoint later. */
+  const timing = (start: number, end: number) => ({
+    t_speechStart: T0 + start,
+    t_lastVoice: T0 + end,
+    t_speechEnd: T0 + end + 600,
+  });
+  const say = (id: string, text: string, start: number, end: number, more = {}) => ({
+    type: "chat",
+    id,
+    text,
+    source: "stt",
+    timing: timing(start, end),
+    ...more,
+  });
+  const askOne = { type: "ask", askId: "q1", question: "Which?", options: ["X", "Y"] };
+  const rig = async (flags: Record<string, unknown> = { "stt.merge": true }) => {
+    const SESSIONS = {
+      live: async () => "live",
+      flag: async (k: string) => flags[k] ?? false,
+    };
+    const s = setup({ SESSIONS });
+    const owner = s.page();
+    const c = s.controller("main lane");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    /** F1 then F2, under the 1400 ms silence: the owner's example. */
+    const two = async () => {
+      await s.msg(owner, say("a", "那你能不能给，", 0, 1000));
+      await s.msg(owner, say("b", "给我显示一个按钮。", 2000, 4000, { continues: "a" }));
+    };
+    const lines = () =>
+      [...s.storage.store.entries()]
+        .filter(([k]) => k.startsWith("msg:"))
+        .sort(([x], [y]) => x.localeCompare(y))
+        .map(([, v]) => v as Record<string, unknown>);
+    const ownerIds = () =>
+      lines()
+        .filter((l) => l.from === "owner")
+        .map((l) => l.id);
+    return { s, owner, c, two, lines, ownerIds };
+  };
+
+  it("merges a continuation: one line, complete text, every part's raw kept, marked edited", async () => {
+    const { owner, c, two, lines } = await rig();
+    await two();
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).toMatchObject({
+      id: "a",
+      text: "那你能不能给，给我显示一个按钮。",
+      raw: "那你能不能给，给我显示一个按钮。",
+      edited: { by: "merge", count: 0 },
+    });
+    expect((lines()[0].parts as { id: string; text: string }[]).map((p) => [p.id, p.text])).toEqual(
+      [
+        ["a", "那你能不能给，"],
+        ["b", "给我显示一个按钮。"],
+      ],
+    );
+    // Listeners and pages: the existing edited event, the whole line, no new chat line.
+    for (const ws of [c, owner]) {
+      expect(ws.last("edited")).toMatchObject({
+        id: "a",
+        text: "那你能不能给，给我显示一个按钮。",
+        merged: { id: "b", text: "给我显示一个按钮。" },
+      });
+      expect(chats(ws).map((m) => m.id)).toEqual(["a"]);
+    }
+  });
+
+  it("flag off: today's behaviour, even for a page that asks; no stamp, no merge", async () => {
+    const { owner, c, two, lines } = await rig({});
+    await two();
+    expect(lines().map((l) => l.id)).toEqual(["a", "b"]);
+    expect(lines()[0].mergeable).toBeUndefined();
+    expect(c.last("edited")).toBeUndefined();
+    expect(owner.last("edited")).toBeUndefined();
+  });
+
+  it("an unsure flag (busy, an error) is off", async () => {
+    for (const flag of [async () => "busy", async () => Promise.reject(new Error("d1"))]) {
+      const s = setup({ SESSIONS: { live: async () => "live", flag } });
+      const owner = s.page();
+      await s.msg(owner, say("a", "first part,", 0, 1000));
+      expect((chats(owner)[0] as { mergeable?: true }).mergeable).toBeUndefined();
+    }
+  });
+
+  it("a line that only looks finished stays separate with no signed voiceprint", async () => {
+    const { s, owner, lines } = await rig();
+    await s.msg(owner, say("a", "那你能不能给。", 0, 1000));
+    await s.msg(owner, say("b", "给我显示一个按钮。", 1700, 3000, { continues: "a" }));
+    expect(lines().map((l) => l.id)).toEqual(["a", "b"]);
+  });
+
+  it("a line that only looks finished merges when the Mac signed both as him; the tag stays honest", async () => {
+    const mac = await speakerKey();
+    const s = setup({
+      STT_SPEAKER_PUB: mac.pub,
+      SESSIONS: { live: async () => "live", flag: async (k: string) => k === "stt.merge" },
+    });
+    const owner = s.page();
+    const proof = (text: string, uid: string) =>
+      mac.sign({
+        decision: "me",
+        score: 0.5,
+        text,
+        uid: uid.padEnd(16, "x"),
+        thread: "owner",
+        at: 1_000_000,
+      });
+    await s.msg(
+      owner,
+      say("a", "那你能不能给。", 0, 1000, { speakerProof: [await proof("那你能不能给", "u1")] }),
+    );
+    await s.msg(
+      owner,
+      say("b", "给我显示一个按钮。", 1700, 3000, {
+        continues: "a",
+        speakerProof: [await proof("给我显示一个按钮", "u2")],
+      }),
+    );
+    const [line] = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as { text: string; speaker?: { decision: string; signed?: string[] } });
+    expect(line.text).toBe("那你能不能给。给我显示一个按钮。");
+    expect(line.speaker?.decision).toBe("me");
+    expect(line.speaker?.signed).toEqual(["那你能不能给", "给我显示一个按钮"]);
+  });
+
+  it("no merge when the page did not ask, or asked for another line", async () => {
+    const { s, owner, lines } = await rig();
+    await s.msg(owner, say("a", "first part,", 0, 1000));
+    await s.msg(owner, say("b", "second part.", 2000, 3000));
+    await s.msg(owner, say("c", "third part.", 4000, 5000, { continues: "a" }));
+    expect(lines().map((l) => l.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("no merge past the window, after a question, or with no timestamps", async () => {
+    for (const [first, second] of [
+      [say("a", "one thing,", 0, 1000), say("b", "two more.", 5000, 6000, { continues: "a" })],
+      [say("a", "这是什么？", 0, 1000), say("b", "再说一遍。", 1500, 2000, { continues: "a" })],
+      [
+        { type: "chat", id: "a", text: "one thing,", source: "stt" },
+        { type: "chat", id: "b", text: "two more.", source: "stt", continues: "a" },
+      ],
+    ]) {
+      const { s, owner, lines } = await rig();
+      await s.msg(owner, first);
+      await s.msg(owner, second);
+      expect(lines().map((l) => l.id)).toEqual(["a", "b"]);
+    }
+  });
+
+  it("an agent's reply, or an ask card, in between keeps it a new line", async () => {
+    const { s, owner, c, lines } = await rig();
+    await s.msg(owner, say("a", "first part,", 0, 1000));
+    await s.msg(c, { type: "say", text: "on it" });
+    await s.msg(owner, say("b", "second part.", 1500, 3000, { continues: "a" }));
+    expect(lines().map((l) => l.text)).toEqual(["first part,", "on it", "second part."]);
+    expect(owner.last("edited")).toBeUndefined();
+
+    const r = await rig();
+    await r.s.msg(r.owner, say("a", "first part,", 0, 1000));
+    await r.s.msg(r.c, askOne);
+    await r.s.msg(r.owner, say("b", "second part.", 1500, 3000, { continues: "a" }));
+    expect(r.ownerIds()).toEqual(["a", "b"]);
+  });
+
+  it("an agent only working on it (a busy beat) does not stop the merge; it hears the whole line", async () => {
+    const { s, owner, c, lines } = await rig();
+    await s.msg(owner, say("a", "那你能不能给，", 0, 1000));
+    await s.msg(c, { type: "busy" });
+    await s.msg(owner, say("b", "给我显示一个按钮。", 2000, 4000, { continues: "a" }));
+    expect(lines()).toHaveLength(1);
+    expect(c.last("edited")).toMatchObject({ text: "那你能不能给，给我显示一个按钮。" });
+  });
+
+  it("a typed line, a page moved, or a line with a selection stays separate", async () => {
+    const typed = await rig();
+    await typed.s.msg(typed.owner, say("a", "first part,", 0, 1000));
+    await typed.s.msg(typed.owner, { type: "chat", id: "t", text: "typed", continues: "a" });
+    expect(typed.lines().map((l) => l.id)).toEqual(["a", "t"]);
+
+    const moved = await rig();
+    await moved.s.msg(moved.owner, say("a", "first part,", 0, 1000));
+    await moved.s.msg(moved.owner, { type: "page", label: "/review pwa iPhone" });
+    await moved.s.msg(moved.owner, say("b", "second part.", 1500, 3000, { continues: "a" }));
+    expect(moved.lines().map((l) => l.id)).toEqual(["a", "b"]);
+
+    const sel = await rig();
+    await sel.s.msg(sel.owner, say("a", "first part,", 0, 1000));
+    await sel.s.msg(
+      sel.owner,
+      say("b", "second part.", 1500, 3000, { continues: "a", context: { selection: "x" } }),
+    );
+    expect(sel.lines().map((l) => l.id)).toEqual(["a", "b"]);
+  });
+
+  it("another device's voice line never amends this one", async () => {
+    const { s, owner, lines } = await rig();
+    const other = s.page("/words Macintosh");
+    await s.msg(owner, say("a", "first part,", 0, 1000));
+    await s.msg(other, say("b", "second part.", 1500, 3000, { continues: "a" }));
+    expect(lines().map((l) => l.id)).toEqual(["a", "b"]);
+  });
+
+  it("a short answer stands alone: fragments cannot become an approval", async () => {
+    const { s, owner, lines } = await rig();
+    await s.msg(owner, say("a", "yes.", 0, 500));
+    await s.msg(owner, say("b", "go ahead and do it,", 800, 2000, { continues: "a" }));
+    await s.msg(owner, say("c", "ok.", 2400, 2800, { continues: "b" }));
+    expect(lines().map((l) => l.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("an ask card waiting right before, or tapped since, keeps the fragments apart", async () => {
+    const { s, owner, c, ownerIds, lines } = await rig();
+    await s.msg(c, askOne);
+    await s.msg(owner, say("a", "first part,", 0, 1000));
+    await s.msg(owner, say("b", "second part.", 1500, 3000, { continues: "a" }));
+    expect(ownerIds()).toEqual(["a", "b"]);
+    // A tap is its own act, and no spoken line near it becomes part of it.
+    await s.msg(owner, { type: "answer", askId: "q1", choices: { q1: ["o1"] } });
+    expect(lines()[0].answer).toBeDefined();
+    await s.msg(owner, say("c", "third part.", 3500, 4500, { continues: "b" }));
+    expect(ownerIds()).toEqual(["a", "b", "c"]);
+  });
+
+  it("friends' threads never merge, even if a page asks", async () => {
+    const { s } = await rig();
+    const f = await s.friend();
+    await s.msg(f, say("fa", "first part,", 0, 1000));
+    await s.msg(f, say("fb", "second part.", 1500, 3000, { continues: "fa" }));
+    expect(chats(f).map((m) => m.id)).toEqual(["fa", "fb"]);
+    expect((chats(f)[0] as { mergeable?: true }).mergeable).toBeUndefined();
+    expect(f.last("edited")).toBeUndefined();
+  });
+
+  it("the message cap holds: a merged line over MAX_CHAT stays two lines", async () => {
+    const { s, owner, lines } = await rig();
+    await s.msg(owner, say("a", `${"字".repeat(3000)}，`, 0, 1000));
+    await s.msg(owner, say("b", `${"词".repeat(1500)}。`, 1500, 3000, { continues: "a" }));
+    expect(lines().map((l) => l.id)).toEqual(["a", "b"]);
+  });
+
+  it("undo splits it back into the original lines, in place, for pages and listeners", async () => {
+    const { s, owner, c, two, lines } = await rig();
+    await two();
+    await s.msg(c, { type: "say", text: "reply" });
+    await s.msg(owner, { type: "unmerge", id: "a" });
+    expect(lines().map((l) => l.text)).toEqual(["那你能不能给，", "给我显示一个按钮。", "reply"]);
+    expect(lines()[0].parts).toBeUndefined();
+    expect(lines()[0].edited).toBeUndefined();
+    expect(lines()[1].source).toBe("stt");
+    expect(lines()[1].timing).toMatchObject({ t_speechStart: T0 + 2000 });
+    const ev = c.last("edited") as { split: { id: string }[] };
+    expect(ev.split.map((x) => x.id)).toEqual(["a", "b"]);
+    expect(owner.last("edited")).toEqual(ev);
+    // The next line goes after the reply, and the history a page reconnects to agrees.
+    await s.msg(owner, say("n", "next.", 9000, 9500));
+    expect(
+      lines()
+        .map((l) => l.text)
+        .at(-1),
+    ).toBe("next.");
+    expect((await s.hub.history()).map((m) => m.text)).toEqual(
+      lines().map((l) => l.text as string),
+    );
+    // Only a merged line.
+    await s.msg(owner, { type: "unmerge", id: "b" });
+    expect(owner.last("error")?.error).toContain("not a merged line");
+  });
+
+  it("split lines merge no further", async () => {
+    const { s, owner, two, lines } = await rig();
+    await two();
+    await s.msg(owner, { type: "unmerge", id: "a" });
+    await s.msg(owner, say("c", "more.", 4200, 4800, { continues: "b" }));
+    expect(lines().map((l) => l.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("undo does not reach a friend's page", async () => {
+    const { s, owner, two, lines } = await rig();
+    const f = await s.friend();
+    await two();
+    await s.msg(f, { type: "unmerge", id: "a" });
+    expect(f.last("error")?.error).toContain("owner");
+    expect(
+      lines()
+        .filter((l) => l.from === "owner")
+        .map((l) => l.id),
+    ).toEqual(["a"]);
+    expect(owner.last("edited")?.split).toBeUndefined();
+  });
+
+  it("undo works after the flag went off", async () => {
+    const flags: Record<string, unknown> = { "stt.merge": true };
+    const { s, owner, two, lines } = await rig(flags);
+    await two();
+    flags["stt.merge"] = false;
+    s.tick(60_000);
+    await s.msg(owner, { type: "unmerge", id: "a" });
+    expect(lines().map((l) => l.id)).toEqual(["a", "b"]);
+  });
+
+  it("re-polish: refused while spoken, due once at the passage's end, read from the merged raw", async () => {
+    const { s, owner, c, two, lines } = await rig();
+    await two();
+    const polished = "那你能不能给。给我显示一个按钮。";
+    await s.msg(c, { type: "edit", id: "a", text: polished });
+    expect(c.last("error")?.error).toContain("still being spoken");
+    await s.msg(owner, { type: "passage-end" });
+    expect(c.last("polish-due")).toMatchObject({
+      id: "a",
+      raw: "那你能不能给，给我显示一个按钮。",
+      parts: 2,
+    });
+    await s.msg(c, { type: "edit", id: "a", text: polished });
+    expect(lines()[0]).toMatchObject({
+      text: polished,
+      raw: "那你能不能给，给我显示一个按钮。",
+      edited: { count: 1 },
+    });
+    // Settled: nothing more joins it; the next passage is a new line.
+    await s.msg(owner, say("c", "more.", 4500, 5000, { continues: "a" }));
+    expect(lines().map((l) => l.id)).toEqual(["a", "c"]);
+    // Told twice, due once.
+    await s.msg(owner, { type: "passage-end" });
+    expect(c.sent.filter((m) => m.type === "polish-due")).toHaveLength(1);
+  });
+
+  it("later words may correct earlier ones: the parts are the polish's context", async () => {
+    const { s, owner, c, lines } = await rig();
+    await s.msg(owner, say("a", "我们用流失传输，", 0, 1000));
+    await s.msg(owner, say("b", "流式传输比较快。", 1500, 3000, { continues: "a" }));
+    await s.msg(owner, { type: "passage-end" });
+    await s.msg(c, { type: "edit", id: "a", text: "我们用流式传输，流式传输比较快。" });
+    expect(lines()[0].text).toBe("我们用流式传输，流式传输比较快。");
+  });
+
+  it("a polish of the first fragment is dropped by the merge, and cannot land after it", async () => {
+    const { s, owner, c, lines } = await rig();
+    await s.msg(owner, say("a", "hello world,", 0, 1000));
+    await s.msg(c, { type: "edit", id: "a", text: "Hello world," });
+    await s.msg(owner, say("b", "and more.", 1500, 3000, { continues: "a" }));
+    expect(lines()[0]).toMatchObject({
+      text: "hello world, and more.",
+      raw: "hello world, and more.",
+      edited: { by: "merge", count: 1 },
+    });
+    await s.msg(owner, { type: "passage-end" });
+    await s.msg(c, { type: "edit", id: "a", text: "Hello world," });
+    expect(c.last("error")?.error).toContain("not polished");
+  });
+
+  it("stt.polish-off on: merges with no rewrite, and no lane is woken to polish", async () => {
+    const { s, owner, c, two, lines } = await rig({ "stt.merge": true, "stt.polish-off": true });
+    await two();
+    await s.msg(owner, { type: "passage-end" });
+    expect(lines()[0].text).toBe("那你能不能给，给我显示一个按钮。");
+    expect(c.last("polish-due")).toBeUndefined();
+  });
+
+  it("no polish-due for a line that was not merged, and a single line polishes as before", async () => {
+    const { s, owner, c, lines } = await rig();
+    await s.msg(owner, say("a", "only one.", 0, 1000));
+    await s.msg(owner, { type: "passage-end" });
+    expect(c.last("polish-due")).toBeUndefined();
+    await s.msg(c, { type: "edit", id: "a", text: "Only one." });
+    expect(lines()[0]).toMatchObject({ text: "Only one.", raw: "only one." });
+  });
+
+  it("the flag is asked at most once per 30 s, and never for a typed line", async () => {
+    const asked: string[] = [];
+    const s = setup({
+      SESSIONS: { live: async () => "live", flag: async (k: string) => (asked.push(k), false) },
+    });
+    const owner = s.page();
+    await s.msg(owner, { type: "chat", id: "t", text: "typed" });
+    expect(asked).toEqual([]);
+    await s.msg(owner, say("a", "first.", 0, 1000));
+    await s.msg(owner, say("b", "second.", 5000, 6000));
+    expect(asked).toEqual(["stt.merge"]);
   });
 });

@@ -86,6 +86,11 @@ export type ReadSpeakerDeps = {
    * word read aloud) holds it, and goes on from the same sentence after.
    */
   owner?(o: Omit<AudioOwnerOpts, "id" | "target">): AudioOwner;
+  /**
+   * Called as a line starts: ms to wait before it, so the output device is
+   * awake (packages/debug-chat output-bed.ts `begin`).
+   */
+  preroll?(): number;
 };
 export type SpeakCallbacks = {
   onend(): void;
@@ -106,7 +111,7 @@ export const readTtsUrl = (text: string, lang: string) =>
   `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`;
 
 /** A tiny silent WAV, played in a gesture so iOS lets the element play later. */
-function silentWav(): string {
+export function silentWav(): string {
   const n = 80;
   const b = new Uint8Array(44 + n);
   const v = new DataView(b.buffer);
@@ -521,7 +526,20 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
           },
         }) ?? null;
       if (owner && !owner.claim()) parked = true;
-      else begin(0);
+      else {
+        const wait = d.preroll?.() ?? 0;
+        if (wait > 0) {
+          // In the tap: the browser voice's first line would come after it (iOS).
+          try {
+            d.synth()?.speak(d.utterance(""));
+          } catch {}
+          // `timer`: a cancel or a yield clears it; a resume starts the line itself.
+          timer = d.setTimer(() => {
+            timer = null;
+            if (live() && !parked) begin(0);
+          }, wait);
+        } else begin(0);
+      }
       return cancel;
     },
     cancel() {

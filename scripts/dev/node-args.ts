@@ -61,6 +61,8 @@ export function chatLine(
     ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
     ...(typeof m.wakeReason === "string" ? { wakeReason: m.wakeReason } : {}),
     ...(m.edited && typeof m.edited === "object" ? { raw: m.raw, edited: m.edited } : {}),
+    // Continuous speech (stt.merge): how many utterances the line is made of.
+    ...(Array.isArray(m.parts) ? { parts: m.parts.length } : {}),
     // Attached with the + menu (attach.ts): {selection, path?, title?, host?}.
     ...(m.context && typeof m.context === "object" ? { context: m.context } : {}),
     // Files sent with the line: [{id,name,type,size}]; fetch one with `eval.ts inbox get <id>`.

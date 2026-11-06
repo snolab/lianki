@@ -115,6 +115,9 @@ export function pickTiming(
   const end = best[1].t_speechEnd as number;
   const used = [...marks].filter(([, m]) => (m.t_speechEnd ?? 0) <= end).map(([k]) => k);
   const { dropped: _d, ...timing } = best[1];
+  // A line joined from several utterances began when the first of them did.
+  const starts = used.flatMap((k) => marks.get(k)?.t_speechStart ?? []);
+  if (starts.length) timing.t_speechStart = Math.min(...starts);
   return { timing: { ...timing, t_sent: now }, used };
 }
 

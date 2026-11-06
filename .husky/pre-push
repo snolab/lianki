@@ -52,6 +52,4 @@ MINGW* | MSYS* | CYGWIN*)
   ;;
 esac
 
-# qa:all mutes the Mac around its browser suites only (scripts/qa/with-muted-mac.sh).
-# Nothing above touches the sound.
 bun run qa:all

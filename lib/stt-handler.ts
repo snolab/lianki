@@ -3,12 +3,13 @@
  * "Speech to text"). The body is one utterance's audio, its Content-Type its
  * format (STT_MIMES, else 415). Signed-in users only; at most STT_MAX_BYTES; rate limited per user.
  * `?model=` is honoured for the owner only (from STT_MODELS), `?lang=` is an
- * optional hint (none = detect). Answers {text, model, ms, language?}. Logs
+ * optional hint (none = detect). Answers {text, model, ms, language?, signals?}. Logs
  * sizes and timings only — never the audio or the text.
  *
  * The route (app/api/debug/stt/route.ts) only wires in the session, the
  * Workers AI client and the rate limiter, so this is tested on its own.
  */
+import type { SttSignals } from "@lianki/debug-chat/stt-guard";
 import {
   DEFAULT_STT_MODEL,
   FALLBACK_STT_MODEL,
@@ -40,7 +41,7 @@ export type SttDeps = {
     model: SttModel;
     lang?: string;
     hint?: SttHint;
-  }) => Promise<{ text: string; language?: string }>;
+  }) => Promise<{ text: string; language?: string; signals?: SttSignals }>;
   /** A fixed-window counter: may `key` make one more request out of `max`? */
   limit: (key: string, max: number) => { allowed: boolean; retryAfterMs: number };
   clock?: () => number;
@@ -75,7 +76,7 @@ export async function handleStt(req: Request, d: SttDeps): Promise<Response> {
   const hint = sttHint(url.searchParams.get("hint"));
   const t0 = clock();
   let used = model;
-  let out: { text: string; language?: string };
+  let out: { text: string; language?: string; signals?: SttSignals };
   try {
     out = await d.transcribe({ audio, mime, model, lang, hint });
   } catch (e) {
@@ -107,5 +108,6 @@ export async function handleStt(req: Request, d: SttDeps): Promise<Response> {
     model: used,
     ms,
     ...(out.language ? { language: out.language } : {}),
+    ...(out.signals ? { signals: out.signals } : {}),
   });
 }

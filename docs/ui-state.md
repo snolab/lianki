@@ -77,27 +77,27 @@ target that is not built yet.
 
 ### Routing, panels, modals
 
-| State                               | Where                                    | Status                                                                         |
-| ----------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
-| current word list                   | URL `?list=`, then session `lk:ui:words` | done (/words, /alphabets)                                                      |
-| /words Settings panel open          | session `lk:ui:words`                    | done                                                                           |
-| /words list picker: folded groups   | session `lk:ui:words` (`collapsed`)      | done (was local `lk:words-collapsed:<base>`, carried over once)                |
-| /words "Add a list": unfolded nodes | local `lk:words-add-open:<base>`         | done: per device (owner, 2026-11-03 20:12 JST); folding hides the whole branch |
-| /words keyboard help strip (`?`)    | session `lk:ui:words`                    | done                                                                           |
-| swipe tuner panel open              | session `lk:ui:swipe-tuner`              | done                                                                           |
-| /read reading position (line)       | local `lk:read-pos:<id>`                 | done (this device; → the server with the book-as-goal plan)                    |
-| /read v2 position (anchor)      | server `/api/read/[id]/progress`; local `lk:read-anchor:<id>` as cache | done: line, piece, offset, never pixels; newest wins (lib/read/reader-pos.ts) |
-| /read v2 word marks level       | local `lk:pref:read-marks`            | done: off / unknown / all (default all); `html[data-read-marks]`, CSS only |
-| /read auto-advance (read on)        | local `lk:pref:read-auto`                | done: per device, off by default (owner, 2026-11-03); lib/read/player.ts       |
-| slip action sheet open              | memory (it is modal, closed on refresh)  | intentional; back closes it (below)                                            |
-| /read word review open (what it covers) | URL `?review=p<line>` · `?review=r<l0>.<t0>-<l1>.<t1>` (lib/read/review-ref.ts) | done (owner, 2026-11-05): refresh, Back / Forward and a link open it again; the reader's deep-link addresses, stable across reloads |
-| /read word review: card in focus, list scroll | session `lk:ui:words` `focus` / `anchors`, key `review:<book>:<ref>` | done: a refresh lands on the same card while it is still in the review |
-| sidebar collapsed                   | local `lk:sidebar`                       | → `lk:pref:sidebar`                                                            |
-| phone drawer open                   | memory, `navUi` (lib/nav/ui-store.ts)    | done: the bottom island opens it too                                           |
-| recent pages (nav)                  | session `lk:ui:nav`                      | done                                                                           |
-| pinned pages (nav)                  | local `lk:pref:nav-pins`                 | done                                                                           |
-| first-run answer                    | local `lk:first-run`                     | a device fact, stays                                                           |
-| /review tutorial folded, platform   | local `lk:pref:review-tutorial`          | done (a device preference: iPhone or Android steps)                            |
+| State                                         | Where                                                                           | Status                                                                                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| current word list                             | URL `?list=`, then session `lk:ui:words`                                        | done (/words, /alphabets)                                                                                                           |
+| /words Settings panel open                    | session `lk:ui:words`                                                           | done                                                                                                                                |
+| /words list picker: folded groups             | session `lk:ui:words` (`collapsed`)                                             | done (was local `lk:words-collapsed:<base>`, carried over once)                                                                     |
+| /words "Add a list": unfolded nodes           | local `lk:words-add-open:<base>`                                                | done: per device (owner, 2026-11-03 20:12 JST); folding hides the whole branch                                                      |
+| /words keyboard help strip (`?`)              | session `lk:ui:words`                                                           | done                                                                                                                                |
+| swipe tuner panel open                        | session `lk:ui:swipe-tuner`                                                     | done                                                                                                                                |
+| /read reading position (line)                 | local `lk:read-pos:<id>`                                                        | done (this device; → the server with the book-as-goal plan)                                                                         |
+| /read v2 position (anchor)                    | server `/api/read/[id]/progress`; local `lk:read-anchor:<id>` as cache          | done: line, piece, offset, never pixels; newest wins (lib/read/reader-pos.ts)                                                       |
+| /read v2 word marks level                     | local `lk:pref:read-marks`                                                      | done: off / unknown / all (default all); `html[data-read-marks]`, CSS only                                                          |
+| /read auto-advance (read on)                  | local `lk:pref:read-auto`                                                       | done: per device, off by default (owner, 2026-11-03); lib/read/player.ts                                                            |
+| slip action sheet open                        | memory (it is modal, closed on refresh)                                         | intentional; back closes it (below)                                                                                                 |
+| /read word review open (what it covers)       | URL `?review=p<line>` · `?review=r<l0>.<t0>-<l1>.<t1>` (lib/read/review-ref.ts) | done (owner, 2026-11-05): refresh, Back / Forward and a link open it again; the reader's deep-link addresses, stable across reloads |
+| /read word review: card in focus, list scroll | session `lk:ui:words` `focus` / `anchors`, key `review:<book>:<ref>`            | done: a refresh lands on the same card while it is still in the review                                                              |
+| sidebar collapsed                             | local `lk:sidebar`                                                              | → `lk:pref:sidebar`                                                                                                                 |
+| phone drawer open                             | memory, `navUi` (lib/nav/ui-store.ts)                                           | done: the bottom island opens it too                                                                                                |
+| recent pages (nav)                            | session `lk:ui:nav`                                                             | done                                                                                                                                |
+| pinned pages (nav)                            | local `lk:pref:nav-pins`                                                        | done                                                                                                                                |
+| first-run answer                              | local `lk:first-run`                                                            | a device fact, stays                                                                                                                |
+| /review tutorial folded, platform             | local `lk:pref:review-tutorial`                                                 | done (a device preference: iPhone, Android or web steps)                                                                            |
 
 ### Chat widget (packages/debug-chat, another lane)
 
@@ -126,13 +126,13 @@ target that is not built yet.
 
 ### Search, filter, sort, study mode
 
-| State                                                                            | Where                            | Status                                                             |
-| -------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------ |
+| State                                                                            | Where                            | Status                                                                                                                         |
+| -------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | /words scroll position                                                           | session `lk:ui:words` anchors    | done: the word at the top, per list, restored when the queue loads; written at once on Back, hide or leave (lib/page-leave.ts) |
-| show all meanings, speak on swipe, grade tones, server voice, scroll after swipe | local `lk:words-*` (usePref)     | device prefs → `lk:pref:words`                                     |
-| list picker search / filter / sort                                               | — (none on /words today)         | → URL when added (shareable)                                       |
-| study mode (one list, a group, "study all")                                      | URL `?list=` (`all`, a group id) | done                                                               |
-| home pins, home language                                                         | local `lk:home:*`                | device prefs → `lk:pref:home`                                      |
+| show all meanings, speak on swipe, grade tones, server voice, scroll after swipe | local `lk:words-*` (usePref)     | device prefs → `lk:pref:words`                                                                                                 |
+| list picker search / filter / sort                                               | — (none on /words today)         | → URL when added (shareable)                                                                                                   |
+| study mode (one list, a group, "study all")                                      | URL `?list=` (`all`, a group id) | done                                                                                                                           |
+| home pins, home language                                                         | local `lk:home:*`                | device prefs → `lk:pref:home`                                                                                                  |
 
 ### Read-aloud
 
@@ -153,12 +153,12 @@ target that is not built yet.
 
 ### Your own AI (docs/byok.md)
 
-| State                                     | Where                                  | Status                                                                                  |
-| ----------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
-| own AI on/off, provider, URL, model, key  | local `lk:byok`                        | done: **device only, never synced, never sent to Lianki**; "Remove" deletes it          |
-| privacy notice acknowledged (version)     | local `lk:byok-ack`                    | done: device only; a new notice version asks again                                      |
-| provider, URL, model when synced          | local `lk:byok-backend` → `byok.backend` | done: opt-in 「同步到我的账号」, signed-in only; never the key                         |
-| own-AI translations and meanings          | memory (`own:` keys in the hooks)      | done: this tab only, never a shared server cache                                        |
+| State                                    | Where                                    | Status                                                                         |
+| ---------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
+| own AI on/off, provider, URL, model, key | local `lk:byok`                          | done: **device only, never synced, never sent to Lianki**; "Remove" deletes it |
+| privacy notice acknowledged (version)    | local `lk:byok-ack`                      | done: device only; a new notice version asks again                             |
+| provider, URL, model when synced         | local `lk:byok-backend` → `byok.backend` | done: opt-in 「同步到我的账号」, signed-in only; never the key                 |
+| own-AI translations and meanings         | memory (`own:` keys in the hooks)        | done: this tab only, never a shared server cache                               |
 
 ### Not UI state (left alone)
 
@@ -189,7 +189,7 @@ folds the sheet; it does not leave the page. `useBackToClose(open, close)`
   (`dropOrphan`). The entry stays, so one back after such a reload changes
   nothing on screen.
 - **Pinned in the URL** (the /read word review, `?review=`): `useBackToClose(open,
-  close, { url, adopt, exit })`. Opening pushes its one entry _with_ that
+close, { url, adopt, exit })`. Opening pushes its one entry _with_ that
   address (without Next.js's keys, so its patched `pushState` moves the router
   to it too); Back returns to the address without it. A reload or a link opens
   it from the address and `adopt`s the entry it is on: no second entry. If

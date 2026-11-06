@@ -561,12 +561,142 @@ keeps the first STT text as `raw` (only the first), takes the polished
 `text`, and gets `edited: {at, by, count}` (`by` = the agent id, else the
 controller's label). Pages and listeners hear `{type:"edited", …}`.
 
+A spoken line that continues the last one can amend it (below): the rules for that,
+and how its polish waits for the passage's end, are in the next section.
+
 **On the page.** The line changes in place (a floating line too) and is
 never read aloud again. A small muted sparkle after it marks it polished
 (tooltip "Polished", zh 已润色; long press on touch shows it). A tap shows
 the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
+
+## Continuous speech amends the last line
+
+The owner, 2026-11-06 01:13 JST: "连续的语音输入应该能够有能力编辑已经发出去的消息", and 01:14:
+later words carry what the earlier ones really were, so polish the whole passage
+afterwards. Flag **`stt.merge`** at `/dev/flags`, default off. Off, nothing changes:
+the hub stamps nothing, the page never asks. Rule and helpers:
+`packages/debug-chat/src/voice-merge.ts`; hub: `merge`, `unmerge`, `passageEnd` in
+`workers/push/src/debug.ts`.
+
+**How it flows.** With the flag on the hub stamps an owner's voice line `mergeable`.
+The page's next spoken line carries `continues: <that id>` when `mergeVerdict` passes
+locally and no voice command ran since. The hub runs the verdict again and alone
+decides. Yes: the line changes in place and its `id` and `at` stay the first part's.
+No: an ordinary new line, as ever.
+
+### When an utterance continues the last one
+
+All of these, or it is a new line:
+
+| Check | Why |
+| ----- | --- |
+| The thread's **very latest line**, by anyone, and `continues` names it | an agent's reply or ask card in between keeps it apart |
+| Same page label (path + device), same `to` | another device, or a page he moved to, is a new turn |
+| Both `source: "stt"`, the earlier one stamped, not settled, not split | typed lines and friends' never |
+| No ask card open right before it, none answered since | an answer stays its own explicit act |
+| No selection or files on either, neither through the wake word | such a line is about those, or a new turn |
+| Neither is a short answer (`SHORT_ANSWERS`: yes, ok, 是, 行, はい…), nor tagged `other` | fragments cannot add up to an approval; a stranger is not his next words |
+| Under `MAX_CHAT` joined, under `MAX_MERGE_PARTS` (40, a Durable Object value's bound) | caps hold |
+| The earlier line does not end in `? ？ ! ！` | that ended it, however soon he went on |
+
+Then a **signal and its window**; no timestamps means no merge:
+
+| Signal | Window | Reading |
+| ------ | ------ | ------- |
+| `cut`: the capture hit `MAX_UTTERANCE_MS` (`t_cut`) | next start ≤ `JOIN_WINDOW_MS` (2500) after its end | it never stopped by itself |
+| `open`: ends in a clause mark or no mark (`, ， 、 ; : …`, also `，。`) | same | a text signal, read from punctuation classes, any script |
+| `quick`: a plain stop, voice-to-voice silence ≤ `redemptionMs` (1400), **and the Mac's voiceprint signed both lines as him** | as stated | the 600 ms endpoint cut where the VAD's own would not have |
+
+Neither window is new. `JOIN_WINDOW_MS` rejoined about 17 of 18 cut lines on his
+clips (#357). `redemptionMs` is the silence the VAD itself treats as inside one
+utterance. New marks on the line's timing: `t_speechStart`, `t_cut`.
+
+**Why `quick` needs the voiceprint: the evidence.** 211 recorded finals in
+`~/lianki-voice-clips` (2026-10-29 to 10-31, read as text and timestamps only):
+
+- 195 of 210 end in a plain `。` or `.`, 11 in a question mark, 4 in no mark. "No
+  sentence end" barely exists as a signal: STT stops every fragment. His own example,
+  "那你能不能给。", ends in a stop.
+- Gap plus plain stop alone would merge 83 of 181 neighbouring pairs. 66 of those
+  involve junk (`The.`, `Yeah.`, room talk transcribed), and most of the other 17 read
+  as room talk or separate things ("…这里跳转过去。" + "谁给你咖啡放名箱吗。"): noise restarts
+  the VAD as fast as he does, and the clips' 800 ms pad hides anything finer. The
+  blip guard drops most of the junk today, not the room talk.
+- So a plain stop alone is not enough, and the signed tag is the one thing the voice
+  path has that tells him from the room. Cost: with no print on the device (or the
+  cloud STT, whose 1400 ms endpoint leaves no such gap anyway), only `cut` and `open`
+  merge, and his example stays two bubbles there.
+
+The count is a hand reading of a small, noisy, pre-guard set. The rule starts here
+because a wrong merge is worse than two bubbles; `debug.merge` and
+`debug.merge-refused` (with a reason) in `wrangler tail lianki-push` are what to tune
+it from.
+
+### An agent already on it
+
+A busy beat does not stop a merge: `--ack` beats every line at once, so a beat
+would block nearly all of them. Only a line it has *said* counts. An agent working
+on the first fragment hears `{type:"edited", text, parts, merged}` with the complete
+text and **must read it again before it acts or replies**. Once it has replied, the
+next utterance is a new line, which is also the way to tell it something more.
+
+### What a listener hears
+
+`{type:"edited", id, thread, text, raw, edited, parts, merged:{id, text}}`, the
+existing event: `text` is the whole line so far. `eval.ts chat` prints it (`parts` as a
+count) and `--ack` beats for it as for a new line. `edit --last` targets it as usual.
+An undo: `{type:"edited", …, split:[{id, text, at}…]}`.
+
+### Polish, once, when the passage ends
+
+- A merge resets the text to the merged raw, so polish reads what was heard, never the
+  last polish (errors do not compound). Every part stays in `parts`. `edited.by` is
+  `merge`, `edited.count` still counts polishes only.
+- While a merged line is being spoken an `edit` is refused (`still being spoken`). A
+  polish of the first fragment that arrives late fails `polishCheck`: it drops words.
+- The page sends `{type:"passage-end"}` after `PASSAGE_END_MS` (the same 2500) with no
+  speech heard and no transcript out, only for a merged line. The hub settles the line
+  and tells listeners `{type:"polish-due", id, text, raw, parts}`, once. **That is the
+  lane's cue to run `eval.ts edit` on it.** After 30 s (`MAX_UTTERANCE_MS`) with no
+  passage-end (a page gone) an `edit` is taken again, but nobody is told: the raw stands.
+- The rules are `polishCheck`'s, unchanged. New: a merged line's parts are in its
+  context, so a word later in the passage may correct an earlier one (流失 → 流式).
+- `stt.polish-off` on: merges happen, no polish-due goes out, every edit stays refused.
+- A single voice line polishes as before, at once. No polish-due, so no extra wake.
+
+**Cost.** Polish is the lane's Claude turn; the hub calls no model, so nothing new
+is billed per call. Today N fragments are N lines and up to N polishes. Merged, they
+are N wakes (each `edited` is a wake, as the chat line was) plus one for `polish-due`,
+and exactly one polish, however long the passage; flag off, nothing. `MAX_EDITS` (3)
+still caps a line's polishes, and a settled line takes no more parts. Hub: one flag
+read per 30 s on voice lines (`flag()`'s budget is 60 a minute), one storage write per
+merge, one uncached `flag()` read per passage for `stt.polish-off`.
+
+### Undo
+
+A small ↩ beside the sparkle on a merged line (`debug-chat-unmerge`). `{type:"unmerge",
+id}` from an owner's page splits it back into the lines it came from, in their place in
+the thread even after a reply, each with its own raw text, time, timing and speaker tag.
+Honest about what the hub stores: nothing is lost, and a polish goes with the merge. The
+split lines merge no further. It works with the flag off too.
+
+### Voice commands, cues, guards
+
+- **Commands.** A command is kept by a tap (`voiceTap`) before the chat sees it, so
+  it never merges, and `micTaps().kept()` moves, so the lines around it stay apart.
+- **Cue.** A line the page asks to merge plays `amend`, one soft note at half the send
+  cue's level, under the send cue's switch and rules (voice-mode.md, "Cues"). The hub
+  may still refuse (a reply on its way): then a new line came with the soft note. Rare,
+  and not worth waiting a round trip for.
+- **Hallucination guard, blips, voiceprint filter.** They drop a final before it reaches
+  the draft, so a dropped line sends nothing and asks nothing. The line after it may
+  still continue the one before: the dropped one was never said.
+- **Speaker tag.** The weakest of the parts with all their signed words; a part with
+  none leaves the line with none, so an unverified part never rides on a verified one.
+- **Friends.** Their lines never get the stamp, and friends' lines still can never
+  be edited (`friendChat` returns before any of this).
 
 ## Voiceprint: enrolment and delete by a tap
 

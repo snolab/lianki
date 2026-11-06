@@ -99,6 +99,42 @@ const dictionary = {
       mr: "चालू: आवाज वाजत असतानाही बोलता येते, पण आवाज पातळ वाटतो. बंद: चांगला आवाज; आवाज वाजत असताना माइक थांबतो. लगेच लागू",
       ko: "켜짐: 재생 중에도 말할 수 있지만 음질이 떨어집니다. 꺼짐: 음질이 좋고, 재생 중에는 마이크가 잠시 멈춥니다. 바로 적용",
     }),
+    keepAwake: t({
+      en: "Keep speaker awake",
+      zh: "保持扬声器唤醒",
+      hi: "स्पीकर को जगाए रखें",
+      es: "Mantener el altavoz activo",
+      fr: "Garder le haut-parleur éveillé",
+      ar: "إبقاء مكبر الصوت نشطًا",
+      bn: "স্পিকার সক্রিয় রাখুন",
+      pt: "Manter o alto-falante ativo",
+      ru: "Не давать динамику засыпать",
+      ur: "اسپیکر کو جاگتا رکھیں",
+      id: "Jaga speaker tetap aktif",
+      de: "Lautsprecher wach halten",
+      ja: "スピーカーを起こしておく",
+      sw: "Weka spika macho",
+      mr: "स्पीकर जागा ठेवा",
+      ko: "스피커 깨어 있게 유지",
+    }),
+    keepAwakeHint: t({
+      en: "Plays an inaudible sound while reading aloud or while the mic is on, so the first sound of a line is not cut off. Uses a little more battery",
+      zh: "朗读或麦克风开启时播放听不见的声音，避免每句开头的音被吞掉。略微多耗电",
+      hi: "पढ़कर सुनाते समय या माइक चालू रहने पर न सुनाई देने वाली ध्वनि चलाता है, ताकि पंक्ति की पहली ध्वनि न कटे। बैटरी थोड़ी ज़्यादा खर्च होती है",
+      es: "Reproduce un sonido inaudible durante la lectura en voz alta o con el micrófono activo, para que no se corte el primer sonido de cada frase. Gasta un poco más de batería",
+      fr: "Joue un son inaudible pendant la lecture à voix haute ou quand le micro est actif, pour que le premier son d’une phrase ne soit pas coupé. Consomme un peu plus de batterie",
+      ar: "يشغّل صوتًا غير مسموع أثناء القراءة بصوت عالٍ أو عند تشغيل الميكروفون، حتى لا يُقطع أول صوت في الجملة. يستهلك البطارية أكثر قليلًا",
+      bn: "জোরে পড়ার সময় বা মাইক চালু থাকলে অশ্রাব্য শব্দ বাজায়, যাতে বাক্যের প্রথম ধ্বনি কেটে না যায়। ব্যাটারি একটু বেশি খরচ হয়",
+      pt: "Toca um som inaudível durante a leitura em voz alta ou com o microfone ligado, para o primeiro som da frase não ser cortado. Gasta um pouco mais de bateria",
+      ru: "Воспроизводит неслышимый звук во время чтения вслух или при включённом микрофоне, чтобы не обрезалось начало фразы. Немного больше расход батареи",
+      ur: "بلند آواز میں پڑھتے وقت یا مائیک آن ہونے پر نہ سنائی دینے والی آواز چلاتا ہے، تاکہ جملے کی پہلی آواز نہ کٹے۔ بیٹری کچھ زیادہ خرچ ہوتی ہے",
+      id: "Memutar suara yang tak terdengar saat membaca nyaring atau saat mikrofon aktif, agar bunyi pertama kalimat tidak terpotong. Baterai sedikit lebih boros",
+      de: "Spielt beim Vorlesen oder bei aktivem Mikrofon einen unhörbaren Ton, damit der erste Laut eines Satzes nicht abgeschnitten wird. Braucht etwas mehr Akku",
+      ja: "読み上げ中やマイクのオン中に聞こえない音を流し、文の最初の音が切れないようにします。バッテリーを少し多く使います",
+      sw: "Hucheza sauti isiyosikika wakati wa kusoma kwa sauti au maikrofoni ikiwa imewashwa, ili sauti ya kwanza ya sentensi isikatwe. Hutumia betri kidogo zaidi",
+      mr: "मोठ्याने वाचताना किंवा माइक चालू असताना ऐकू न येणारा आवाज वाजवते, जेणेकरून ओळीचा पहिला ध्वनी कापला जात नाही. बॅटरी थोडी जास्त वापरते",
+      ko: "소리 내어 읽는 동안이나 마이크가 켜져 있을 때 들리지 않는 소리를 재생해 문장의 첫소리가 잘리지 않게 합니다. 배터리를 조금 더 사용합니다",
+    }),
     listening: t({
       en: "Voice commands on",
       zh: "语音口令已开启",
@@ -311,6 +347,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "/words study view, Settings sheet: the label of an on/off switch (a pill) beside 'Voice commands' for the microphone's echo cancellation. On, the learner can talk while the app reads words aloud, but on Android phones the speaker switches to a phone-call sound (thinner). Off, the app's audio sounds better and the microphone stops listening while anything plays. The common technical term for this audio feature; a short noun phrase.",
   echoCancelHint:
     "/words study view, Settings sheet: a small visible line under the 'Echo cancellation' switch explaining both positions: on = you can speak while audio plays, worse sound quality; off = better sound quality, the microphone pauses (does not listen) while audio plays. 'Audio' is the app reading words aloud and its assistant's replies. The change applies immediately. Keep the On:/Off: structure. No final period.",
+  keepAwake:
+    "/words study view, Settings sheet: the label of an on/off switch (a pill) among the read-aloud settings. On, the app plays a sound too quiet to hear while it reads aloud or the microphone is on, so the device's speaker or Bluetooth link does not fall asleep and cut off the start of a spoken line. 'Awake' is the opposite of the hardware's sleep; 'speaker' stands for any sound output, headphones too. A short imperative phrase.",
+  keepAwakeHint:
+    "/words study view, Settings sheet: a small visible line under the 'Keep speaker awake' switch: what it does (an inaudible sound during reading aloud or while the microphone is on), why (the first sound of a spoken line is not cut off), and its cost (a little more battery). A 'line' is a word or sentence the app says. Two short sentences. No final period.",
   listening:
     "/words study view: a small glass badge floating over the bottom of the word list while voice commands are on and the microphone is listening. A short status phrase.",
   sayHint:
