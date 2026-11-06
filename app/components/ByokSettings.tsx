@@ -477,6 +477,11 @@ export function ByokSettings({
           </div>
           <span className="text-xs opacity-70">
             {preset.keyless ? c.keyless : device.backend.relay ? c.keyHereRelay : c.keyHere}
+            {signedIn && !preset.keyless && (
+              <span className="block" data-testid="byok-key-signout">
+                {c.keySignOut}
+              </span>
+            )}
           </span>
         </div>
 

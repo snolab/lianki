@@ -88,3 +88,41 @@ describe("signOut (the menu's Sign out)", () => {
     }
   });
 });
+
+describe("the user's own AI key at sign-out", () => {
+  const forgetting = (opts: { fail?: boolean } = {}) => {
+    const t = env(opts);
+    const order: string[] = [];
+    const e = {
+      ...t.e,
+      forgetByok: () => order.push("forget"),
+      fetch: (u: string, i?: RequestInit) => {
+        order.push("post");
+        return t.e.fetch(u, i);
+      },
+    };
+    return { e, order };
+  };
+
+  it("is forgotten first, before the network", async () => {
+    const { e, order } = forgetting();
+    await signOut("/", e);
+    expect(order).toEqual(["forget", "post"]);
+  });
+
+  it("is forgotten when the sign-out request fails too", async () => {
+    const { e, order } = forgetting({ fail: true });
+    expect(await signOut("/", e)).toBe(false);
+    expect(order).toContain("forget");
+  });
+
+  it("the default clears lk:byok, and every button goes through signOut", () => {
+    expect(readFileSync("lib/sign-out.ts", "utf8")).toContain("forgetByok: () => removeDevice()");
+    for (const f of [
+      "app/components/AppShell.tsx",
+      "app/components/Header.tsx",
+      "app/auth/logout/SignOutButton.tsx",
+    ])
+      expect(readFileSync(f, "utf8")).toContain('import { signOut } from "@/lib/sign-out"');
+  });
+});

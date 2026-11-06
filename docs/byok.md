@@ -33,6 +33,13 @@ disabled checkbox behind the flag `byok.sync`.
 | `lk:byok-ack`     | `{v: <notice version>, at}`: the privacy notice was acknowledged | device only                            |
 | `lk:byok-backend` | `{provider, baseUrl, model, relay?}` or `null`                  | **synced** as `byok.backend`, opt-in   |
 
+Signing out removes `lk:byok` from the device, key and form together (owner's
+card, 2026-11-06; `lib/sign-out.ts`, before anything else, on every sign-out
+path in the app), and Settings says the key will need entering again. It covers
+this browser's sign-out only: a session ended from elsewhere, or simply expired,
+leaves the key until the next sign-out or "Remove". `lk:byok-ack` and the synced
+`lk:byok-backend` stay.
+
 - The **backend** (`ByokBackend`: provider, base URL, model) is not secret and
   is the one shape both modes share. When the user ticks 「同步到我的账号」
   it is written to `lk:byok-backend` and follows the account through

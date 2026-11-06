@@ -47,6 +47,8 @@ for (const [name, type] of [
     check(Boolean(await sessionCookie()), `${name}: session cookie set`);
 
     await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+    // The user's own AI key (docs/byok.md) must not outlive the session here.
+    await page.evaluate(() => localStorage.setItem("lk:byok", '{"v":1,"apiKey":"qa-not-a-key"}'));
     await page.locator("[data-profile-menu]").click();
     const button = page.locator("[data-sign-out]");
     await button.waitFor({ timeout: 10000 });
@@ -57,6 +59,10 @@ for (const [name, type] of [
     await page.waitForLoadState("networkidle").catch(() => {});
     check(!(await sessionCookie()), `${name}: session cookie cleared`);
     check(!(await getSession())?.user, `${name}: server has no session`);
+    check(
+      (await page.evaluate(() => localStorage.getItem("lk:byok"))) === null,
+      `${name}: the BYOK key is gone from this device`,
+    );
     check(new URL(page.url()).pathname !== "/profile", `${name}: left the page (${page.url()})`);
     // The service worker caches every page it serves; the signed-in ones must be gone
     // (it may already have cached the signed-out landing page again).
