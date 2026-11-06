@@ -208,6 +208,7 @@ async function tap(k) {
   await sleep(400);
 }
 async function scroll(dy) {
+  // macOS only: in headless Chromium on Linux this gesture scrolls nothing (qa-read-play.mjs).
   await cdp.send("Input.synthesizeScrollGesture", {
     x: 195,
     y: 400,
