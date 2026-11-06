@@ -4,6 +4,7 @@
 // is touched: 401 without a session, 404 otherwise (the feature does not
 // exist for this user, or the book is not theirs).
 
+import { exampleFinder } from "./gloss";
 import { offSiteHeaders } from "@/lib/security/route-guard";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
@@ -142,6 +143,7 @@ export async function bookCtxOf(ctx: ReaderCtx) {
       lang: book.lang,
       lem: statsLemmas(words.stats),
       names: new Set(words.stats.names),
+      exampleOf: exampleFinder(ctx.material.lines),
     },
     // A book word, or a phrase of the book's words (a phrase card: the same path as a word's).
     own: (w: string) => own.has(w) || bookPhrase(w, book.lang, (x) => own.has(x)),
