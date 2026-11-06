@@ -93,9 +93,12 @@ Stateless: the browser sends the key in `Authorization: Bearer …` and
 `{provider, baseUrl, model, messages, maxTokens, temperature?}` as JSON; the
 server builds the provider request from those fields only, forwards it,
 streams the answer back, and forgets both. Nothing is stored, cached or
-charged; no account is needed (a session, if any, only gets its own rate
-counter, and is read from the cookie alone so the key never reaches session
-lookup).
+charged. **A free account is needed** (owner's card, 2026-11-06): a request with
+no session gets `401 {"proxyError":"sign-in"}` before any limit is counted or the key
+is read, and Settings disables the checkbox for a guest, with a sign-in link and
+a plain reason. Calling the provider straight from the browser stays open to
+anyone. The session is read from the cookie alone, so the key never reaches
+session lookup.
 
 **Allowlist, not an open proxy** (owner, 15:35 JST: "we should make a allow
 list, or we will be dangerously open proxy"). The relay forwards only to a
@@ -157,7 +160,8 @@ answered `403 dns` to every provider, because workerd throws on `redirect:
 "error"` (2026-11-05, found by the post-deploy smoke, fixed). After changing the
 outgoing calls, run the relay's modules in `wrangler dev --local` (under Node;
 wrangler cannot forward requests under Bun), then POST to production with a
-throwaway invalid key: an allowlisted provider must answer `502 auth`.
+throwaway invalid key. With no session it must answer `401 sign-in`; signed in, an
+allowlisted provider must answer `502 auth`.
 
 **Residual risks.**
 

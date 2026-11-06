@@ -152,6 +152,8 @@ export function ByokSettings({
         return c.errEmpty.value;
       case "relay-refused":
         return c.errRelayRefused.value;
+      case "sign-in":
+        return c.errRelaySignIn.value;
       case "rate":
         return c.errRate.value;
       case "too-large":
@@ -264,7 +266,11 @@ export function ByokSettings({
     setBusy(false);
     // Browser-direct failed the way a relay fixes, and this provider may be relayed.
     const relayFixes =
-      !r.ok && !backend.relay && !!preset.relay && (r.kind === "cors" || r.kind === "opaque-auth");
+      signedIn &&
+      !r.ok &&
+      !backend.relay &&
+      !!preset.relay &&
+      (r.kind === "cors" || r.kind === "opaque-auth");
     setSuggestRelay(relayFixes && relayable(backend.provider, u.url));
     setStatus(
       r.ok
@@ -313,7 +319,8 @@ export function ByokSettings({
       <input
         type="checkbox"
         className="mt-1 h-5 w-5 shrink-0"
-        checked={!!device.backend.relay}
+        checked={signedIn && !!device.backend.relay}
+        disabled={!signedIn}
         onChange={(e) => {
           setSuggestRelay(false);
           setStatus(null);
@@ -326,6 +333,15 @@ export function ByokSettings({
         <span className="block text-sm opacity-75">
           {c.relayHint.value.replaceAll("{name}", preset.name)}
         </span>
+        {!signedIn && (
+          <a
+            href="/sign-in?to=%2Fpreferences"
+            className="block text-sm font-medium underline underline-offset-2"
+            data-testid="byok-relay-sign-in"
+          >
+            {c.relaySignIn}
+          </a>
+        )}
       </span>
     </label>
   ) : null;
