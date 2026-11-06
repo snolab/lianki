@@ -149,6 +149,30 @@ doc is private speech; the tidy would send it to a model.
 Selecting text in the reader can still translate it through the metered route,
 as in any book: that is his tap, on that text.
 
+## 新词
+
+The New words tab on /vibe (`VibeWords.tsx`, `lib/vibe/new-words.ts`) lists the
+words heard: no card first, then due, learning, known, each by how often it was
+heard. Each carries the reader's own mark (`.lk-book [data-f]`, `famMap`) and its
+language (the line it was first heard in). There is no speaker: see above.
+
+A tap opens a card built on `NewWordStrip`, the reader's shared preview. **Nothing
+is created without a swipe:**
+
+- The list reads `GET /api/read/<id>/words` and a `batch-grade` probe, when a new
+  line is saved. Nothing polls.
+- The card's meaning is `fetchGloss` with `own: null`, so `cached: true`: decks and
+  shared glosses, no model, no credits. The user's own AI key is not used here
+  either, since that would send the sentence somewhere before a swipe.
+- Only the slider's grade calls `commit`, held `GRADE_HOLD_MS` as a reader grade
+  is. Undo in the hold sends nothing. Then one `batch-grade` makes the card in the
+  book's own deck and grades it; the AI meaning and its charge happen there. Undo
+  after that takes both back.
+- A word that already has a card shows its mark and "Already in your deck". Due
+  words are reviewed in /words or the reader, not here.
+
+On another device, tapping a word in `/read/<id>` opens the same preview.
+
 ## Retention
 
 30 days by default, from a doc's **newest line**. `/preferences` has the number
@@ -174,4 +198,5 @@ Delete at any time: the /read row menu, or the button on /vibe's end screen.
 | sweep | `lib/vibe/retention.ts`, `worker.ts` |
 | session | `lib/vibe/session.ts` (pure), `lib/vibe/browser.ts` (the browser's half) |
 | page | `app/(app)/vibe/` |
-| tests | `unit/vibe.test.ts`; `scripts/qa/qa-vibe.mjs` (fake mic, stub VAD, a stand-in Mac, invented text; no real microphone, no sound) |
+| 新词 | `app/(app)/vibe/VibeWords.tsx`, `lib/vibe/new-words.ts` |
+| tests | `unit/vibe.test.ts`, `unit/vibe-words.test.ts`; `scripts/qa/qa-vibe.mjs` (fake mic, stub VAD, a stand-in Mac, invented text; no real microphone, no sound) |

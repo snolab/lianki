@@ -7,6 +7,7 @@
  * gesture; leaving the page stops it. No sounds at any point.
  */
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { VibeWords } from "./VibeWords";
 import Link from "next/link";
 import { useIntlayer } from "next-intlayer";
 import { vibeBrowserDeps } from "@/lib/vibe/browser";
@@ -278,6 +279,7 @@ export default function VibeClient({
   const t = useIntlayer("vibe-page");
   const [view, setView] = useState<VibeView | null>(null);
   const [opening, setOpening] = useState(false);
+  const [tab, setTab] = useState<"text" | "words">("text");
   const session = useRef<ReturnType<typeof createVibeSession> | null>(null);
 
   // Leaving the page ends it: nothing goes on listening behind another page.
@@ -327,7 +329,26 @@ export default function VibeClient({
         />
       )}
       {view.status === "stopped" && <EndScreen view={view} onAgain={() => setView(null)} />}
-      <Transcript view={view} locale={locale} />
+      <div className="mb-4 flex gap-2" role="tablist">
+        {(["text", "words"] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            aria-selected={tab === k}
+            data-testid={`vibe-tab-${k}`}
+            className={`min-h-11 rounded-lg px-4 ${tab === k ? "font-semibold underline underline-offset-4" : DIM}`}
+            onClick={() => setTab(k)}
+          >
+            {k === "text" ? t.tabText : t.tabWords}
+          </button>
+        ))}
+      </div>
+      {tab === "text" ? (
+        <Transcript view={view} locale={locale} />
+      ) : (
+        <VibeWords material={view.material} lines={view.lines} locale={locale} />
+      )}
     </div>
   );
 }
