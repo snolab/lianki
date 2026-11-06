@@ -209,6 +209,9 @@ export function prefBindings(): PrefBinding[] {
     plain("lab.immersionTranspose", "lk:lab:immersion:transpose", bool10, false),
     // lib/read/sense-pick.ts: which entry a word in a book means, per word and sentence.
     plain("read.sensePicks", "lk:read-sense-picks", jsonCodec, {}),
+    // lib/read/polish-offer.ts: the offer to tidy a raw transcript.
+    plain("read.polishOffer", "lk:read-polish-offer", bool10, true),
+    plain("read.polishSkips", "lk:read-polish-skips", jsonCodec, []),
     // lib/titles/client.ts: the difference from the default title rules.
     plain("titles.rules", "lk:title-rules", jsonCodec, { off: [], add: [] }),
     plain("chat-voice.rate", "lk:agent-speech-rate", num, 1.5),
