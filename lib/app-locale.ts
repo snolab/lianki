@@ -22,6 +22,9 @@ export const LOCALE_PICK_KEY = "lk:ui-locale";
 
 export const APP_ROUTES = [
   "add-note",
+  // A box's sign-in (docs/box-oauth.md): lianki.com's entry, and the box's return.
+  "box-authorize",
+  "box-callback",
   "cli-login",
   "ai-vocab",
   "alphabet",
