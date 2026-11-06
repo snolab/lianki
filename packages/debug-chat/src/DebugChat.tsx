@@ -69,6 +69,8 @@ import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
 import { BAR_CONTROL, barGeometry } from "./bar-geometry";
 import { DebugMic, canCapture, pageCues, pageMic, voiceDevice } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
+import { micTaps } from "./mic-taps";
+import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
 import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
@@ -551,8 +553,14 @@ export type DebugChatProps = {
       context?: ChatContext;
       /** Files sent with the line (files.ts): the host's refs, already uploaded. */
       attachments?: AttachmentRef[];
+      /** This spoken line asks to amend that one (voice-merge.ts); the hub decides. */
+      continues?: string;
     },
   ) => boolean;
+  /** The speech after a merged line went quiet: the passage is over (hub: polish-due). */
+  onPassageEnd?: () => void;
+  /** The undo on a merged line: split it back into the lines it was made from. */
+  onUnmerge?: (id: string) => void;
   /**
    * A tap on an ask card (AskCard.tsx): the page sends {type:"answer",
    * askId, choices}; the hub stamps it. Absent (an older page): the choice
@@ -699,6 +707,8 @@ export function DebugChat({
   messages,
   onSend,
   onAnswer,
+  onPassageEnd,
+  onUnmerge,
   sessions = [],
   onEnd,
   evalRan = false,
@@ -1942,6 +1952,10 @@ export function DebugChat({
     return () => ro.disconnect();
   }, [open]);
 
+  const messagesNow = useRef(messages);
+  messagesNow.current = messages;
+  /** How many commands the mic's taps had kept at the last spoken line. */
+  const tapsAtVoice = useRef(0);
   /** Send the draft; true when it went out. */
   const submit = (): boolean => {
     clearTimeout(timer.current);
@@ -1982,12 +1996,32 @@ export function DebugChat({
     const timing = source ? voiceLatency().take() : undefined;
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
-    const speakerProof = source ? takeSpeaker().proofs : (clearSpeaker(), undefined);
+    const heardFrom = source ? takeSpeaker() : (clearSpeaker(), undefined);
+    const speakerProof = heardFrom?.proofs;
     // What was attached with the + menu rides along, this line only.
     const context = uiStore.getState().attached ?? undefined;
     const attachments = hasFiles ? pending.get().flatMap((p) => (p.ref ? [p.ref] : [])) : [];
+    // Continuous speech (voice-merge.ts): asks to amend the line before, if it is
+    // stamped mergeable (the flag is on) and no command ran since. The hub decides.
+    const tapsNow = micTaps().kept?.() ?? 0;
+    const lastLine = messagesNow.current.at(-1);
+    const continues =
+      source &&
+      lastLine &&
+      tapsAtVoice.current === tapsNow &&
+      mergeVerdict(lastLine, {
+        text,
+        ...(timing ? { timing } : {}),
+        ...(to === ROOT_NODE ? {} : { to }),
+        ...(context ? { context } : {}),
+        ...(heardFrom?.tag ? { speaker: heardFrom.tag } : {}),
+        attachments,
+      }).ok
+        ? lastLine.id
+        : undefined;
     const opts = {
       ...(attachments.length ? { attachments } : {}),
+      ...(continues ? { continues } : {}),
       ...(source ? { source } : {}),
       ...(source && timing ? { timing } : {}),
       ...(source && speakerProof?.length ? { speakerProof } : {}),
@@ -2013,10 +2047,17 @@ export function DebugChat({
     if (!source) learnSttHint(text);
     // A spoken line went out, by whichever path (the join, Enter, the debounce):
     // one cue for it (cues.ts), here and nowhere else. Typed lines are silent.
-    else
+    else {
+      // Amending the last line is not a new message: its own softer cue. The page asks by
+      // the rule the hub applies, so they agree but for a reply already on its way.
       window.dispatchEvent(
-        new CustomEvent(VOICE_SENT_EVENT, { detail: { sound: pageCues().send() } }),
+        new CustomEvent(VOICE_SENT_EVENT, {
+          detail: { sound: continues ? pageCues().amend() : pageCues().send() },
+        }),
       );
+      tapsAtVoice.current = tapsNow;
+      passage.current?.final();
+    }
     // Sent: an interruption is over, and the queue (still relevant) reads on.
     voice().resume();
     draftRef.current = "";
@@ -2087,6 +2128,27 @@ export function DebugChat({
     setTimer: (f, ms) => setTimeout(f, ms),
     clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
   });
+  /**
+   * The end of a passage: a second join, on what was already sent. No speech for
+   * PASSAGE_END_MS after a spoken line, with nothing being heard or transcribed, and
+   * if that line is a merged one the hub is told (one polish for all of it).
+   */
+  const passage = useRef<ReturnType<typeof createJoiner> | null>(null);
+  const passageEnd = () => {
+    const mic = (globalThis as { __lkMic?: { view?: () => { state: string } } }).__lkMic?.view?.();
+    if (micPending.current || mic?.state === "capturing") return passage.current?.final();
+    if (messagesNow.current.findLast((m) => m.from === "owner")?.parts) onPassageEndRef.current?.();
+  };
+  const passageEndRef = useRef(passageEnd);
+  passageEndRef.current = passageEnd;
+  const onPassageEndRef = useRef(onPassageEnd);
+  onPassageEndRef.current = onPassageEnd;
+  passage.current ??= createJoiner({
+    send: () => passageEndRef.current(),
+    joinMs: () => PASSAGE_END_MS,
+    setTimer: (f, ms) => setTimeout(f, ms),
+    clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+  });
   const sendVoiceRef = useRef(sendVoice);
   sendVoiceRef.current = sendVoice;
   /** Uploads finished: a held send goes now; files alone send after the usual pause. */
@@ -2100,11 +2162,15 @@ export function DebugChat({
   };
   useEffect(() => pending.subscribe(() => afterUpload.current()), [pending]);
   useEffect(() => {
-    const on = () => joiner.current?.speechStart();
+    const on = () => {
+      joiner.current?.speechStart();
+      passage.current?.speechStart();
+    };
     window.addEventListener(VOICE_CAPTURE_EVENT, on);
     return () => {
       window.removeEventListener(VOICE_CAPTURE_EVENT, on);
       joiner.current?.cancel();
+      passage.current?.cancel();
     };
   }, []);
   const dictated = (t: string) => {
@@ -2112,6 +2178,7 @@ export function DebugChat({
     if (isBlip(t)) {
       voice().log({ ev: "stt-blip", text: t.slice(0, 40) });
       joiner.current?.idle();
+      passage.current?.idle();
       return;
     }
     voiceLatency().shown();
@@ -2268,12 +2335,27 @@ export function DebugChat({
         m.text
       ),
       mark: (
-        <PolishedMark
-          icon={polishedIcon}
-          label={strings?.polished ? t.polished : ui.polished}
-          showRaw={raw}
-          onToggle={() => toggleRaw(m.id)}
-        />
+        <>
+          <PolishedMark
+            icon={polishedIcon}
+            label={strings?.polished ? t.polished : ui.polished}
+            showRaw={raw}
+            onToggle={() => toggleRaw(m.id)}
+          />
+          {m.parts && onUnmerge ? (
+            <button
+              type="button"
+              data-testid="debug-chat-unmerge"
+              title={t.unmerge}
+              aria-label={t.unmerge}
+              className="pointer-events-auto ms-1 inline-flex select-none items-center align-baseline text-[0.85em] leading-none text-gray-500"
+              style={{ opacity: 0.75 }}
+              onClick={() => onUnmerge(m.id)}
+            >
+              ↩
+            </button>
+          ) : null}
+        </>
       ),
     };
   };
@@ -2531,7 +2613,10 @@ export function DebugChat({
             micPending.current = n;
             setInterim(text);
             // The speech after a held line came to nothing: hold it again.
-            if (!n && !text) joiner.current?.idle();
+            if (!n && !text) {
+              joiner.current?.idle();
+              passage.current?.idle();
+            }
             arm(); // stops a debounce under way, or restarts it once all is in
           }}
           onActive={(on) => {

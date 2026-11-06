@@ -1,3 +1,4 @@
+import { offSiteHeaders } from "@/lib/security/route-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
@@ -32,6 +33,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Material not found" }, { status: 404 });
   }
 
+  // The two backfills below are saved for next time, so another site's link
+  // gets the same answer without saving them.
+  const saving = !offSiteHeaders(await headers());
   const mw = await materialWords(material, session.user.id);
   const { text, stats } = mw;
   let fullBook = mw.book;
@@ -46,10 +50,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       continues: fullBook.continues,
     });
     fullBook = { ...fullBook, shape };
-    try {
-      await replaceReadMaterialContent(session.user.id, id, JSON.stringify(fullBook));
-    } catch (err) {
-      console.error("read: shape backfill failed", err);
+    if (saving) {
+      try {
+        await replaceReadMaterialContent(session.user.id, id, JSON.stringify(fullBook));
+      } catch (err) {
+        console.error("read: shape backfill failed", err);
+      }
     }
   }
   // The word list itself is /api/read/[id]/words; the header needs the counts.
@@ -64,7 +70,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (dbBackend() === "d1") {
     v2.readerV2 = readerV2On(await readFlags(), isOwner(session.user.email));
     v2.bookHash = await hashOf(material);
-    if (!material.contentHash) {
+    if (!material.contentHash && saving) {
       try {
         await saveContentHash(getD1(), session.user.id, id, v2.bookHash);
       } catch (err) {

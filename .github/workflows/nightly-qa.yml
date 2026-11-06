@@ -53,7 +53,7 @@ jobs:
       - name: qa:all
         run: bun run qa:all
       # MV3 extension smoke test — loads the built extension into the image's
-      # Chromium (headed under xvfb) and asserts the content script runs.
+      # Chromium (new-headless, always) and asserts the content script runs.
       - name: Extension smoke test
         run: bun run test:ext
       - name: "Alert #lianki when nightly QA fails"

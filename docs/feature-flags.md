@@ -49,12 +49,15 @@ with no deploy and no secret change.
 | `words.voice-mode`     | everyone gets the /words voice commands switch (off: the owner's preview only) — [voice-mode.md](voice-mode.md) |
 | `read.reader-v2`       | everyone gets reader v2: sentence review units, swipe grades, synced position, notes, exposure log (off: the owner only) — [books-plan.md](books-plan.md), "Review units" |
 | `stt.polish-off`       | the agent can no longer polish the owner's voice lines; the chat keeps only what STT heard (off: polish from context only) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached |
+| `stt.merge`            | a spoken line that continues the last one amends it instead of adding a bubble; the agent hears the complete line, and the passage is polished once at its end; undo splits it back (off: one line per utterance) — [dev-debug-widget.md](dev-debug-widget.md), "Continuous speech amends the last line". Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `connections.google`   | every signed-in user gets /connections (Google Drive, `drive.file`) and the private Google Docs import on /read (off: the owner only) — [connections.md](connections.md) |
+| `stt.voiceprint-filter` | the owner's local STT does not transcribe or post a line that clearly is not his voice, on devices where he has enrolled; his route only, not a security gate (off: as ever, only counting what it would have stopped) — [local-stt.md](local-stt.md), "Only my voice" |
 | `partner.ai-reply`     | every signed-in user but the owner gets the Learning Partner chat on every page, answered by DeepSeek on Workers AI (off: debug-mode friends only, lanes answer) — [partner-ai.md](partner-ai.md). Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `self-intro.import`    | every signed-in user gets the /self-intro import step: write about yourself or add files, AI lists facts to confirm; files never stored (off: the owner only) — [self-intro-import.md](self-intro-import.md) |
 | `live.custom-frontend` | allowlisted users (`/dev/live-frontends`) can register their own tunnel and see their own frontend at `?live=<id>`, only they, /api stays production (off: the owner only) — [custom-frontend.md](custom-frontend.md) |
 | `box.oauth`            | my-<hash> boxes sign in through lianki.com, each only as its bound account, and call allowlisted /api routes with a short-lived token (off: every route of it answers 404) — [box-oauth.md](box-oauth.md) |
 | `my-box`               | allowlisted users (`/dev/live-frontends`) can register their own tunnel and see their own frontend at `?live=<id>`, only they, /api stays production (off: the owner only) — [custom-frontend.md](custom-frontend.md) |
+| `read.gdoc-stream`     | every user gets the userscript's "Stream to Lianki" switch on Google Docs, and live readers at `/read/<id>?streamingFrom=google-docs` (off: the owner only) — [connections.md](connections.md), "Live stream" |
 | `books.catalogue`      | every visitor gets /books, the public-domain library, and can add its books to their own reading (off: the owner only) — [books-plan.md](books-plan.md), "The catalogue: /books" |
 | `levels`               | every user sees their learner level: a chip by the avatar in the nav (signed in) and a level card on /profile (guests too), from `GET /api/levels/me`; study days are recorded either way (off: the owner only) — [levels.md](levels.md) |
 | `byok.sync`            | everyone sees the disabled 「同步 API key」 row (即将推出, with its warning) in Settings → 自己的 AI; nothing on the server stores a key yet (off: the owner only) — [byok.md](byok.md) |
@@ -135,8 +138,8 @@ on deploy. Instead:
 2. Anything reading `feature_flags` with its own SQL has to follow the same
    order. `activeForCookie` (`lib/live-view/custom.ts`) does, with `COALESCE`.
    `flagLive` (`lib/debug-session.ts`) and `flagOn` (`lib/partner-ai.ts`) do
-   not: they read `stt.polish-off` and `partner.ai-reply`, so renaming one of
-   those means changing them too.
+   not: they read `stt.polish-off`, `stt.merge` and `partner.ai-reply`, so renaming
+   one of those means changing them too.
 3. The first change at `/dev/flags` writes the row under the new key. The old
    row and its log entries stay as history. The API refuses the old key (400),
    so a `/dev/flags` tab left open across the deploy needs a reload.

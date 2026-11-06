@@ -129,6 +129,12 @@ Content-Type: audio/webm | audio/ogg | audio/mp4 | audio/wav | audio/mpeg   (cod
   the owner named explicitly is not replaced, so the bench sees real errors.
 - **Logs.** `debug.stt` with model, bytes, ms, the transcript's length, the
   hint and the detected language. Never the audio or the text.
+- **Data.** [Cloudflare's data usage page](https://developers.cloudflare.com/workers-ai/platform/data-usage/)
+  (read on 2026-11-06): customer content is not used to train models, and inputs
+  and outputs are not retained after the request for standard inference (AI
+  Gateway logging would change that; we do not use it here). It is still a third
+  party hearing the audio: other people's voices do not go there without their
+  agreement.
 
 ### Which model, and why
 

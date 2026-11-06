@@ -16,6 +16,8 @@
  * 3. A hard navigation (location.replace) to the landing page: no client
  *    router cache or bfcache entry of a signed-in page is left to go back to.
  */
+import { exitOutputBed } from "@lianki/debug-chat/output-bed";
+
 export const SIGN_OUT_PATH = "/api/auth/sign-out";
 /** public/sw.js KEEP_CACHES: the only cache that is not per-account. */
 export const SIGN_OUT_KEEP_CACHES = ["lianki-audio-v1"];
@@ -32,6 +34,8 @@ export async function signOut(to = "/", env?: SignOutEnv): Promise<boolean> {
     caches: typeof caches === "undefined" ? undefined : caches,
     replace: (url) => location.replace(url),
   };
+  // Nothing of the page's audio keeps running past the account (docs/voice-mode.md).
+  exitOutputBed("sign-out");
   let ok = false;
   try {
     const r = await e.fetch(SIGN_OUT_PATH, {

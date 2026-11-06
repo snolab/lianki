@@ -18,6 +18,7 @@ import { dueMs } from "./ems";
 import {
   buildNextDueQuery,
   compareHLC,
+  excludeDomainsRegExp,
   type HLC,
   newServerHLC,
   sameOriginQuery,
@@ -312,7 +313,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const query: any = { "card.due": { $lte: new Date() } };
       if (excludeDomains.length > 0) {
         query.url = {
-          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+          $not: excludeDomainsRegExp(excludeDomains),
         };
       }
 

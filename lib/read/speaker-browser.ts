@@ -2,9 +2,12 @@
 // suites, which use fakes, never load them).
 import type { PageAudio } from "@lianki/debug-chat/page-audio";
 import { audioOwner, audioOwnerId } from "@lianki/debug-chat/audio-claim";
+import { outputBed } from "@lianki/debug-chat/output-bed";
 import { createReadSpeaker, type AudioLike, type ReadSpeakerDeps, type UtterLike } from "./speaker";
 
 export function browserReadSpeaker(pageAudio: () => PageAudio, mode: () => "speech" | "cloud") {
+  // Listening for taps from now on (the Play tap comes after this).
+  outputBed();
   return createReadSpeaker({
     mode,
     synth: () =>
@@ -20,5 +23,6 @@ export function browserReadSpeaker(pageAudio: () => PageAudio, mode: () => "spee
     setTimer: (f, ms) => setTimeout(f, ms),
     clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
     owner: (o) => audioOwner({ ...o, id: audioOwnerId("read") }),
+    preroll: () => outputBed().begin(),
   });
 }

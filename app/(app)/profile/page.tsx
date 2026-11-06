@@ -8,6 +8,7 @@ import PasskeysCard from "./PasskeysCard";
 import { ProfileFields } from "./ProfileFields";
 import { DebugOnly } from "./DebugOnly";
 import { dbBackend } from "@/lib/d1";
+import { isEmailConfigured } from "@/lib/email";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { connectionsOn } from "@/lib/connections/gate";
@@ -80,6 +81,7 @@ export default async function ProfilePage() {
             email={user.email}
             image={user.image ?? null}
             editable={dbBackend() === "d1"}
+            emailEditable={dbBackend() === "d1" && isEmailConfigured()}
           />
         </div>
         <PasskeysCard />

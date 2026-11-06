@@ -6,6 +6,7 @@
  * the app never sees a token or a cookie.
  */
 import { beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import { FLAGS } from "@/lib/flags";
@@ -342,6 +343,14 @@ async function addToken(
     )
     .run();
 }
+
+describe("the GETs that write", () => {
+  test("the same list as app/fsrs.ts: a new one there must be closed to box:read too", () => {
+    const src = readFileSync("app/fsrs.ts", "utf8");
+    const there = /function isMutatingGet[^]*?return (\/.*?\/i)\.test/.exec(src)?.[1];
+    expect(there).toBe(String(isMutatingGet).match(/return (\/.*?\/i)\.test/)?.[1]);
+  });
+});
 
 describe("the token hash", () => {
   test("is the plugin's: base64url SHA-256 of the value without its prefix", async () => {

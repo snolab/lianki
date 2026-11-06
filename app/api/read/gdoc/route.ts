@@ -26,31 +26,17 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { hit } from "@/lib/security/throttle";
-import {
-  findReadMaterialBySource,
-  getReadMaterialContent,
-  replaceReadMaterialText,
-  saveReadMaterial,
-} from "@/lib/getReadMaterialsCollection";
 import { fetchGdocHtml, GdocError } from "@/lib/gdoc/fetch";
 import { parseGdocHtml } from "@/lib/gdoc/parse";
-import { gdocIdOf, gdocSourceKey, gdocUrlOf } from "@/lib/gdoc/url";
+import { gdocIdOf } from "@/lib/gdoc/url";
 import { fetchDriveHtml } from "@/lib/gdoc/drive";
 import { connectionsOn } from "@/lib/connections/gate";
 import { ConnectionError, accessToken, forget, googleConfig } from "@/lib/connections/google";
 import type { D1Like } from "@/lib/d1/types";
-import { bookMetaOf, checkBook, parseBookMeta } from "@/lib/read/book";
-import { prepareBook } from "@/lib/read/prep-server";
-import { hashOf, readerBook, readerV2On } from "@/lib/read/reader-book";
-import {
-  carrySentenceCards,
-  carrySentenceCardsByText,
-  dropRawText,
-  unchangedLines,
-  type D1Batch,
-} from "@/lib/read/reader-store";
-import { sentenceCarryMap } from "@/lib/read/sentence-cards";
-import { bookHash } from "@/lib/read/units";
+import { checkBook } from "@/lib/read/book";
+import { storeGdocBook } from "@/lib/read/gdoc-store";
+import { readerV2On } from "@/lib/read/reader-book";
+import type { D1Batch } from "@/lib/read/reader-store";
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 
@@ -137,59 +123,6 @@ export async function POST(request: NextRequest) {
       checked.error === "too-much-text" ? 413 : 422,
     );
   }
-  // The import pipeline (docs/books-plan.md): detect, then bite size at his
-  // own pace, each line in its own language. A Docs line break is a paragraph.
   const db = getD1() as unknown as D1Batch;
-  const { book: b, shape } = await prepareBook(checked.book, {
-    db,
-    userId,
-    splitBreaks: true,
-  });
-  const meta = bookMetaOf(b, { source: "gdoc", sourceUrl: gdocUrlOf(id), shape });
-  const content = JSON.stringify(meta);
-  const hash = await bookHash(b.lines);
-  const key = gdocSourceKey(id);
-
-  const prev = await findReadMaterialBySource(userId, key);
-  if (prev) {
-    const pid = String(prev._id);
-    const prevHash = await hashOf(prev);
-    if (prevHash !== hash) {
-      const same = unchangedLines(prev.lines, b.lines);
-      await carrySentenceCards(db, userId, prevHash, hash, same);
-      // Lines cut anew (bite size, a polish undone): the rest by sentence text.
-      const prevMeta = parseBookMeta(await getReadMaterialContent(prev));
-      const kept = new Set(same.map(([o]) => o));
-      if (kept.size < prev.lines.length) {
-        const oldB = readerBook(prev.lines, prevMeta, prevHash);
-        const newB = readerBook(b.lines, meta, hash);
-        await carrySentenceCardsByText(
-          db,
-          userId,
-          prevHash,
-          hash,
-          sentenceCarryMap(oldB.sentences, oldB.lines, newB.sentences, newB.lines),
-        );
-      }
-    }
-    // The doc's text is the raw text now: a polish of the old one goes with it.
-    await dropRawText(db, userId, pid);
-    await replaceReadMaterialText(userId, pid, b.title, b.lines, content, hash);
-    return NextResponse.json({
-      id: pid,
-      title: b.title,
-      lineCount: b.lines.length,
-      updated: true,
-      changed: prevHash !== hash,
-    });
-  }
-
-  const material = await saveReadMaterial(userId, b.title, content, b.lines, hash, key);
-  return NextResponse.json({
-    id: String(material._id),
-    title: material.title,
-    lineCount: material.lines.length,
-    updated: false,
-    changed: true,
-  });
+  return NextResponse.json(await storeGdocBook(db, userId, id, checked.book));
 }

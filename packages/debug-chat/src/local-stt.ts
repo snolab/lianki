@@ -152,6 +152,13 @@ export function packPcm(tag: number, samples: Float32Array): Uint8Array {
   return out;
 }
 
+/** The final's `filtered`, as far as it can be trusted to be one. */
+const filterOf = (x: unknown): FilterVerdict | undefined => {
+  const f = x as { reason?: unknown; score?: unknown } | null | undefined;
+  if (!f || typeof f.reason !== "string") return undefined;
+  return { reason: f.reason, ...(typeof f.score === "number" ? { score: f.score } : {}) };
+};
+
 export type LocalFinal = {
   text: string;
   model: string;
@@ -171,7 +178,17 @@ export type LocalFinal = {
   proof?: string;
   /** On an enrolment sentence: whether it was kept, and why not. */
   enrol?: EnrolSentence;
+  /**
+   * The voiceprint filter stopped it on the Mac: the text is empty, nothing was
+   * decoded, and it must not go to the cloud or the clip sink either.
+   */
+  filtered?: FilterVerdict;
+  /** The filter is not on; this is what it would have stopped (a count, the line still lands). */
+  wouldFilter?: string;
 };
+
+/** Why the Mac's voiceprint filter stopped a final (scripts/local-stt/voiceprint.py filter_reason). */
+export type FilterVerdict = { reason: string; score?: number };
 
 /** The server's verdict on one enrolment sentence (scripts/local-stt/voiceprint.py Enrolment.add). */
 export type EnrolSentence = {
@@ -282,6 +299,12 @@ export function createLocalStt(
      * Mac signs it, with a fresh id per utterance, into each speaker proof.
      */
     thread?: string;
+    /**
+     * The voiceprint filter on this socket (docs/local-stt.md, "Only my voice"):
+     * asked when it opens and at each utterance, and told to the Mac when it
+     * changes. Not given, or failing: no filter, exactly as without one.
+     */
+    filter?: () => boolean | Promise<boolean>;
   } = {},
 ): LocalStt {
   const urls = (Array.isArray(url) ? url : url.split(/[\s,]+/)).filter(Boolean);
@@ -368,6 +391,9 @@ export function createLocalStt(
     error?: string;
     speaker?: unknown;
     speakerProof?: unknown;
+    filtered?: unknown;
+    wouldFilter?: unknown;
+    on?: unknown;
     enrol?: unknown;
   };
   const enrolOf = (raw: unknown): EnrolSentence | undefined => {
@@ -396,6 +422,7 @@ export function createLocalStt(
       clearTimer(r.timer);
       return r.resolve(m as Record<string, unknown>);
     }
+    if (m.t === "filter") return void d.log?.({ ev: "voice-filter", on: m.on });
     const p = m.id === undefined ? undefined : utts.get(m.id);
     if (!p) return;
     if (m.t === "partial" && typeof m.text === "string" && !p.resolve) {
@@ -408,6 +435,7 @@ export function createLocalStt(
       utts.delete(m.id as number);
       const speaker = cleanSpeaker(m.speaker);
       const enrol = enrolOf(m.enrol);
+      const filtered = filterOf(m.filtered);
       p.resolve({
         text: m.text ?? "",
         model: `local:${m.model ?? "?"}`,
@@ -420,6 +448,8 @@ export function createLocalStt(
           ? { proof: m.speakerProof }
           : {}),
         ...(enrol ? { enrol } : {}),
+        ...(filtered ? { filtered } : {}),
+        ...(typeof m.wouldFilter === "string" ? { wouldFilter: m.wouldFilter } : {}),
       });
     } else if (m.t === "error") {
       clearTimer(p.timer);
@@ -496,6 +526,8 @@ export function createLocalStt(
           JSON.stringify({ t: "hello", device: d.device, ...(d.thread ? { thread: d.thread } : {}) }),
         );
       } catch {}
+    filterSent = false; // a new socket starts with the filter off
+    syncFilter();
     setSt("ready");
     d.log?.({ ev: "local-stt", state: "ready", model, via: hostOf(u) });
     const go = [...waiting];
@@ -677,11 +709,26 @@ export function createLocalStt(
       },
     };
   };
+  /** What the Mac was last told about the filter on this socket. */
+  let filterSent = false;
+  /** Ask whether the filter should be on, and tell the Mac when that changed; off on any failure. */
+  const syncFilter = () => {
+    if (!d.filter) return;
+    void Promise.resolve()
+      .then(d.filter)
+      .catch(() => false)
+      .then((on) => {
+        if (on === filterSent || !live()) return;
+        filterSent = on;
+        send(JSON.stringify({ t: "filter", on }));
+      });
+  };
   /** An utterance on the open socket (the steady path). */
   const stream = (onPartial: (t: string) => void, began = now(), opts?: BeginOpts): LocalUtt => {
     const id = nextId++;
     const p: Pending = { onPartial, began };
     utts.set(id, p);
+    syncFilter();
     const enrol = opts?.enrol;
     // A fresh id per utterance when the page says who it is: signed into its speaker proof.
     const uid = d.device ? utteranceId() : undefined;

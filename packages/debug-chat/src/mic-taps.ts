@@ -26,6 +26,8 @@ export type MicTaps = {
   pinned(): boolean;
   /** Offer a final transcript to the taps: true when one kept it. A throwing tap keeps nothing. */
   offer(text: string): boolean;
+  /** How many transcripts a tap has kept: a command between two lines keeps them apart. */
+  kept(): number;
   /** Called when the first pin is taken (the session puts the mic back in active mode). */
   onPin(f: () => void): () => void;
 };
@@ -34,6 +36,7 @@ export function createMicTaps(): MicTaps {
   const taps: MicTap[] = [];
   const pinListeners = new Set<() => void>();
   let pins = 0;
+  let kept = 0;
   return {
     tap(f) {
       taps.unshift(f);
@@ -53,10 +56,14 @@ export function createMicTaps(): MicTaps {
       };
     },
     pinned: () => pins > 0,
+    kept: () => kept,
     offer(text) {
       for (const f of [...taps]) {
         try {
-          if (f(text)) return true;
+          if (f(text)) {
+            kept++;
+            return true;
+          }
         } catch {
           // A broken tap never swallows speech: the chat still gets it.
         }

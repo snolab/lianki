@@ -56,6 +56,17 @@ export function optionsFrom(json: unknown): GradeOption[] {
   return out.sort((a, b) => a.rating - b.rating);
 }
 
+/** The card a grade would move on to, as `GET /api/fsrs/next-url` names it. */
+export type NextCard = { url: string; title: string | null };
+
+/** A card, null when nothing else is due, undefined for an answer that says neither. */
+export function nextCardFrom(json: unknown): NextCard | null | undefined {
+  const j = json as { url?: unknown; title?: unknown } | null;
+  if (j?.url === null) return null;
+  if (typeof j?.url !== "string") return undefined;
+  return { url: j.url, title: typeof j.title === "string" && j.title ? j.title : null };
+}
+
 /** Only http(s) pages are cards; anything else is never opened from here. */
 export function isHttpUrl(raw: string | null | undefined): raw is string {
   if (!raw) return false;
@@ -73,6 +84,8 @@ const q = (v: string) => encodeURIComponent(v);
 export const api = {
   due: () => "/api/fsrs/due?limit=1",
   get: (url: string) => `/api/fsrs/get?url=${q(url)}`,
+  /** The pick a grade of the card at `url` would make next; reads, marks nothing. */
+  nextAfter: (url: string) => `/api/fsrs/next-url?excludeUrl=${q(url)}`,
   options: (id: string) => `/api/fsrs/options?id=${q(id)}`,
   stats: () => "/api/fsrs/stats",
   /** The same GET the bare /api/fsrs/repeat page sends. */
@@ -238,21 +251,28 @@ export function sendTabTo(tab: TabHandle | null, url: string | null): boolean {
 
 // ── Platform (which tutorial) ────────────────────────────────────────────────
 
-export type Platform = "ios" | "android";
+export const PLATFORMS = ["ios", "android", "web"] as const;
+export type Platform = (typeof PLATFORMS)[number];
 
 /**
- * iPhone or Android, for the tutorial's wording. Only Android says so in its
- * user agent; iPhones, iPads (which report a Mac) and desktops all get the
- * iPhone steps, and the toggle switches.
+ * Which steps the tutorial shows first: the visitor's phone, or the web steps
+ * on a desktop browser. An iPad reports a Mac, and only its touch points give
+ * it away. The toggle switches.
  */
-export function detectPlatform(userAgent: string): Platform {
-  return /android/i.test(userAgent) ? "android" : "ios";
+export function detectPlatform(userAgent: string, maxTouchPoints = 0): Platform {
+  if (/android/i.test(userAgent)) return "android";
+  if (/iphone|ipad|ipod|mobi/i.test(userAgent)) return "ios";
+  if (/macintosh/i.test(userAgent) && maxTouchPoints > 1) return "ios";
+  return "web";
 }
 
 /** Where the userscript install guide for that platform lives. */
 export function installGuideHref(p: Platform, locale = "en"): string {
-  const slug =
-    p === "android" ? "2026-02-25-android-installation-guide" : "2025-02-23-ios-installation-guide";
+  const slug = {
+    ios: "2025-02-23-ios-installation-guide",
+    android: "2026-02-25-android-installation-guide",
+    web: "2025-02-22-browser-installation-guide",
+  }[p];
   return `/${locale}/blog/${slug}`;
 }
 
