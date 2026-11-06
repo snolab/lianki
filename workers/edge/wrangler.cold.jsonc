@@ -1,0 +1,17 @@
+// The cold-start deployment of the spike (docs/framework-migration.md, section 8;
+// scripts/measure-cold.ts): the same code on a workers.dev URL with NO bindings.
+// No MAIN, no D1, no R2, no secrets, no tail consumer, no route, so a public URL
+// reaches nothing: GET /api/preferences is 401 for a guest and 500 with a session
+// cookie (no D1 to read it from), anything else 503. Never add a production
+// binding here.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lianki-edge-spike",
+  "main": "src/index.ts",
+  "workers_dev": true,
+  "preview_urls": false,
+  "upload_source_maps": false,
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "DB_BACKEND": "d1" },
+}

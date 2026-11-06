@@ -38,7 +38,7 @@ the same rule as KOMOJU:
 
 | `STRIPE_SECRET_KEY` | flag `payments.stripe.live` | mode     | who can see and pay            |
 | ------------------- | --------------------------- | -------- | ------------------------------ |
-| `sk_test_…`         | off                         | **test** | the owner (`OWNER_EMAILS`) only |
+| `sk_test_…`         | off                         | **test** | the owner (`site_role`) only |
 | `sk_live_…`         | **on**                      | **live** | everyone                       |
 | `sk_live_…`         | off                         | **off**  | nobody — no test mode on a live key |
 | anything else       | anything                    | **off**  | nobody: checkout answers 503   |
@@ -256,7 +256,7 @@ person per code.
 The wallet is provider-plural (`lib/payments/providers/`). A provider is
 listed on `/membership` only when it is **implemented, every one of its
 `envKeys` is set** on the Worker, and its mode is not off. A provider in
-**test mode** is listed for the owner (`OWNER_EMAILS`) only, labelled
+**test mode** is listed for the owner (`site_role`) only, labelled
 "(test)", and its webhook credits the owner only — and only to the test
 ledger — so a test card can never become anyone's real credits.
 
