@@ -1519,54 +1519,61 @@ html[data-read-marks="unknown"] .lk-book [data-pf="n"] {
 }
 
 /* Feature cards under Explore on /home (app/(app)/home/FeatureCard.tsx): name
- * and one line of explanation over a faint screenshot of the feature. One
- * frame only (the card's hairline); the screenshot sits behind a scrim in the
- * page's own colour, strongest where the text is, and the text keeps the
- * page-colour halo used on glass. The text sets the height; the image is out
- * of the flow, so it loading never moves layout. */
+ * and one line of explanation over a drawing of the feature (FeatureArt.tsx).
+ * One frame only (the card's hairline). The scrim in the page's own colour
+ * belongs to the text, so it grows with a long translation, and the text keeps
+ * the page-colour halo used on glass. The text sets the height; the drawing is
+ * out of the flow. */
 .lk-feature-card {
   position: relative;
   isolation: isolate;
   display: flex;
   height: 100%;
-  min-height: 10.5rem;
+  min-height: 13rem;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 0.25rem;
   overflow: hidden;
   border-radius: 0.75rem;
   border: 1px solid oklch(from currentColor l c h / 0.12);
-  padding: 0.75rem 1rem;
   text-shadow:
     0 0 3px var(--background),
     0 0 6px var(--background);
+}
+.lk-feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 2rem 1rem 0.75rem;
+  background: linear-gradient(
+    to top,
+    oklch(from var(--background) l c h / 0.94) calc(100% - 2rem),
+    oklch(from var(--background) l c h / 0)
+  );
 }
 .lk-feature-card::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(
-    to top,
-    oklch(from var(--background) l c h / 0.96) 62%,
-    oklch(from var(--background) l c h / 0.5)
-  );
 }
 .lk-feature-card:hover::after {
   background-color: oklch(from currentColor l c h / 0.05);
 }
-.lk-feature-shot {
+.lk-feature-art {
+  --ink: color-mix(in oklch, var(--foreground) 70%, var(--background));
+  --seal: var(--brand);
+  --wash: oklch(from var(--foreground) l c h / 0.1);
+  --sheet: var(--background);
   position: absolute;
   inset: 0;
   z-index: -2;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: 50% 0;
+  overflow: visible; /* the roadmap's hills reach the card's edges */
 }
 @media (prefers-reduced-transparency: reduce) {
-  .lk-feature-card::after {
-    background: oklch(from var(--background) l c h / 0.9);
+  .lk-feature-text {
+    background: oklch(from var(--background) l c h / 0.96);
   }
 }
 
