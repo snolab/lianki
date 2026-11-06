@@ -279,7 +279,7 @@ const run = Bun.spawnSync(
     "lianki",
     "--local",
     "--file",
-    "db/migrations/0050_host_session_cookie.sql",
+    "db/migrations/0051_host_session_cookie.sql",
   ],
   { stdout: "ignore", stderr: "ignore" },
 );

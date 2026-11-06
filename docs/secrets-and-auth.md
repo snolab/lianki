@@ -20,7 +20,7 @@ https path.
 
 The change signs everyone out once. `__Secure-better-auth.*` is read by nothing, and
 the Worker sends each one back expired (`lib/security/legacy-session-cookies.ts`).
-Migration 0050 deletes the old session rows. That code can go once the old cookies
+Migration 0051 deletes the old session rows. That code can go once the old cookies
 have aged out, 7 days after the change.
 
 ## Magic-link email

@@ -128,6 +128,6 @@ describe("the old cookies", () => {
 });
 
 test("the old sign-ins end with the deploy: a migration deletes them", () => {
-  const files = readFileSync("db/migrations/0050_host_session_cookie.sql", "utf8");
+  const files = readFileSync("db/migrations/0051_host_session_cookie.sql", "utf8");
   expect(files).toContain("DELETE FROM session;");
 });
