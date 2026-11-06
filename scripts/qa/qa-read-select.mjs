@@ -269,11 +269,13 @@ async function desktop(scheme) {
   check(c?.kind === "para", `a triple-click selects the paragraph (${c?.kind})`);
   check(c?.domSel === "", `no native selection (${JSON.stringify(c?.domSel?.slice(0, 20))})`);
   check(c?.actions.includes("read-from"), `paragraph actions (${c?.actions})`);
-  // The paragraph translates by itself, in one call (owner, 2026-11-05 00:37 JST).
+  // The paragraph translates by itself, as its whole sentences (owner, 2026-11-06).
   const paraTr = await until(page, async () => !!(await translationShown(page)), 5000);
   check(
-    paraTr && asked.some((t) => t.replace(/\s+/g, " ").trim() === w.para),
-    `the paragraph is translated by itself, whole (${asked.length} asked)`,
+    paraTr &&
+      asked.some((t) => t.replace(/\s+/g, " ").trim() === w.sentence) &&
+      asked.every((t) => w.para.includes(t.replace(/\s+/g, " ").trim())),
+    `the paragraph is translated by itself, sentence by sentence (${asked.length} asked)`,
   );
   // The word map arrives on its own after the book: wait for it.
   const famShown = await until(

@@ -10,6 +10,8 @@ import { cleanTranslation, normText, translateMessages, translationKey } from ".
 
 /** Model calls per user per window: a guard against runaway cost, not a quota shown to anyone. */
 const AI_LIMIT = { windowMs: 10 * 60_000, max: 60 };
+/** The same guard for someone reading a live doc: the card follows every new sentence. */
+export const AI_LIMIT_LIVE = { windowMs: 10 * 60_000, max: 600 };
 /** The answer's ceiling: a translation runs to a few tokens per source character at most. */
 const maxTokens = (chars: number) => Math.min(8000, 200 + chars * 2);
 
@@ -25,7 +27,7 @@ export type TranslateResult =
 export async function translate(
   db: D1Like,
   input: { text: string; to: string; from: string | null },
-  ai: { userId: string; complete?: Complete },
+  ai: { userId: string; complete?: Complete; limit?: { windowMs: number; max: number } },
 ): Promise<TranslateResult> {
   const text = normText(input.text);
   if (!text) return { ok: false, error: "empty" };
@@ -38,7 +40,7 @@ export async function translate(
 
   const complete = ai.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
   if (!complete) return { ok: false, error: "not-configured" };
-  if (!(await routeLimit(`read-translate:${ai.userId}`, AI_LIMIT)).allowed)
+  if (!(await routeLimit(`read-translate:${ai.userId}`, ai.limit ?? AI_LIMIT)).allowed)
     return { ok: false, error: "busy" };
   let out = "";
   let usd = 0;

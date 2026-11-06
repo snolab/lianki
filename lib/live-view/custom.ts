@@ -430,6 +430,28 @@ export async function sessionTag(token: string): Promise<string> {
   return b64url(h).slice(0, 22);
 }
 
+type SessionMarkDb = {
+  prepare(q: string): { bind(...v: unknown[]): { first<T>(): Promise<T | null> } };
+};
+
+/** This session has opened a custom frontend: see db/migrations/0050_custom_live_session.sql. */
+export async function markCustomSession(db: SessionMarkDb, tag: string, now: number) {
+  await db
+    .prepare(
+      "INSERT INTO custom_live_session (tag, first_at, last_at) VALUES (?1, ?2, ?2) ON CONFLICT(tag) DO UPDATE SET last_at = ?2 RETURNING tag",
+    )
+    .bind(tag, now)
+    .first();
+}
+
+export async function customSessionMarked(db: SessionMarkDb, tag: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT tag FROM custom_live_session WHERE tag = ?1")
+    .bind(tag)
+    .first();
+  return row !== null;
+}
+
 export async function sealCustomCookie(secret: string, c: CustomCookie): Promise<string> {
   const body = `c.${c.id}.${c.userId}.${c.until}.${c.owner ? 1 : 0}.${c.session}`;
   return `${body}.${await mac(secret, body)}`;

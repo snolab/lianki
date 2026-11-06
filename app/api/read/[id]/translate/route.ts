@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { badRequest, bodyOf, json, readerCtx } from "@/lib/read/reader-route";
 import { MAX_TRANSLATE_CHARS, langTag } from "@/lib/read/translate";
-import { translate } from "@/lib/read/translate-server";
+import { flagIn } from "@/lib/flags";
+import { readFlags } from "@/lib/flags-store";
+import { isOwner } from "@/lib/owner";
+import { AI_LIMIT_LIVE, translate } from "@/lib/read/translate-server";
 
 /**
  * POST /api/read/[id]/translate — the reader's Translate: the selected text
@@ -21,7 +24,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (typeof body?.text !== "string" || !body.text.trim()) return badRequest("text is required");
   if (body.text.length > MAX_TRANSLATE_CHARS) return badRequest("text is too long");
   const from = langTag(body.from);
-  const r = await translate(ctx.db, { text: body.text, to, from }, { userId: ctx.userId });
+  // Who may read a live doc: its card follows every new sentence.
+  const live = isOwner(ctx.email) || flagIn(await readFlags(), "read.gdoc-stream");
+  const r = await translate(
+    ctx.db,
+    { text: body.text, to, from },
+    { userId: ctx.userId, ...(live ? { limit: AI_LIMIT_LIVE } : {}) },
+  );
   if (r.ok) return json({ text: r.text, cached: r.cached });
   const status = { empty: 400, busy: 429, "model-failed": 502, "not-configured": 503 }[r.error];
   return json({ error: r.error }, status);

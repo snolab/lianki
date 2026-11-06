@@ -54,6 +54,24 @@ export function headOf(w: string, lem: Lemmas | null | undefined): string {
  * Wiktionary's — short senses separated by "; " — so a generated one reads
  * the same on the slip.
  */
+/** The longest example sent to the model. */
+const EXAMPLE_MAX = 1000;
+
+/**
+ * Finds a word's first line in the book, by plain text in any language. Lowered
+ * once, on the first call: most requests need no example at all.
+ */
+export function exampleFinder(lines: readonly string[]): (word: string) => string | null {
+  let lowered: string[] | null = null;
+  return (word) => {
+    const key = word.toLowerCase();
+    if (!key) return null;
+    lowered ??= lines.map((l) => l.toLowerCase());
+    const i = lowered.findIndex((l) => l.includes(key));
+    return i < 0 ? null : lines[i].slice(0, EXAMPLE_MAX);
+  };
+}
+
 export function glossMessages(lang: string, words: readonly { term: string; ex: string | null }[]) {
   const list = words.map((x) => ({ word: x.term, example: x.ex ?? undefined }));
   return [

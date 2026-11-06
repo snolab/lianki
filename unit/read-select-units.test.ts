@@ -24,7 +24,13 @@ import {
   type Meaning,
 } from "@/lib/read/select-meaning";
 import { bookMeanings, readBookMeanings } from "@/lib/read/select-meaning-server";
-import { autoPieces, sentenceSpan, transKey, translationPlan } from "@/lib/read/select-translate";
+import {
+  autoPieces,
+  sentenceSpan,
+  transKey,
+  translationPlan,
+  wholeSentenceRange,
+} from "@/lib/read/select-translate";
 import { MAX_TRANSLATE_CHARS } from "@/lib/read/translate";
 import { formLabel, formLabels, type FormTagKey } from "@/lib/read/form-tags";
 
@@ -226,7 +232,7 @@ describe("the book's meanings (server, pure)", () => {
   });
 });
 
-describe("translation: whole sentences, whole paragraphs", () => {
+describe("translation: whole sentences, stitched", () => {
   const p0 = "Le soleil brille. Les oiseaux chantent. Il fait beau.";
   const p1 = "Une phrase seule.";
   const p2 = "Deux phrases ici. Et une autre.";
@@ -240,10 +246,28 @@ describe("translation: whole sentences, whole paragraphs", () => {
   const shape = (u: Unit) =>
     translationPlan(u, sentences)?.map((b) => b.map((p) => `${p.level}:${p.line}.${p.s}`));
 
-  test("a sentence is itself; a paragraph is one piece", () => {
+  test("a hand-made range is drawn grown to its whole sentences", () => {
+    const u = {
+      kind: "range" as const,
+      l0: 0,
+      t0: tokIn(0, "brille"),
+      l1: 0,
+      t1: tokIn(0, "oiseaux"),
+    };
+    const g = wholeSentenceRange(u, sentences);
+    expect(g.t0).toBeLessThanOrEqual(u.t0);
+    expect(g.t1).toBeGreaterThan(u.t1);
+    expect(wholeSentenceRange(u, () => null)).toEqual(u);
+  });
+
+  test("a sentence is itself; a paragraph is its sentences", () => {
     expect(shape({ kind: "sentence", line: 0, s: 1 })).toEqual([["sentence:0.1"]]);
-    expect(shape({ kind: "para", line: 0 })).toEqual([["para:0.-1"]]);
-    expect(translationPlan({ kind: "para", line: 0 }, sentences)![0][0].text).toBe(p0);
+    expect(shape({ kind: "para", line: 0 })).toEqual([
+      ["sentence:0.0", "sentence:0.1", "sentence:0.2"],
+    ]);
+    expect(translationPlan({ kind: "para", line: 0 }, sentences)![0][0].text).toBe(
+      "Le soleil brille.",
+    );
     expect(translationPlan({ kind: "word", line: 0, t: 0 }, sentences)).toBeNull();
   });
 
@@ -269,17 +293,17 @@ describe("translation: whole sentences, whole paragraphs", () => {
     expect(sentenceSpan(paras[0], tokIn(0, "brille"), tokIn(0, "oiseaux"))).toEqual([0, 1]);
   });
 
-  test("grown to every sentence, a range is the paragraph", () => {
+  test("grown to every sentence, a range is still its sentences", () => {
     const u: Unit = { kind: "range", l0: 0, t0: tokIn(0, "soleil"), l1: 0, t1: tokIn(0, "beau") };
-    expect(shape(u)).toEqual([["para:0.-1"]]);
+    expect(shape(u)).toEqual([["sentence:0.0", "sentence:0.1", "sentence:0.2"]]);
   });
 
-  test("across paragraphs, covering one whole: every paragraph whole, one call each, in order", () => {
+  test("across paragraphs: the sentences it touches, a block per paragraph", () => {
     const u: Unit = { kind: "range", l0: 0, t0: tokIn(0, "beau"), l1: 2, t1: tokIn(2, "Deux") };
-    expect(shape(u)).toEqual([["para:0.-1"], ["para:1.-1"], ["para:2.-1"]]);
+    expect(shape(u)).toEqual([["sentence:0.2"], ["sentence:1.0"], ["sentence:2.0"]]);
   });
 
-  test("across paragraphs, covering none whole: their sentences", () => {
+  test("the tail of one paragraph and the head of the next: their sentences", () => {
     // The tail of one paragraph and the head of the next: their sentences.
     const u: Unit = { kind: "range", l0: 2, t0: tokIn(2, "autre"), l1: 3, t1: tokIn(3, "Encore") };
     expect(shape(u)).toEqual([["sentence:2.1"], ["sentence:3.0"]]);
@@ -303,7 +327,7 @@ describe("translation: whole sentences, whole paragraphs", () => {
       { kind: "range", l0: 0, t0: tokIn(0, "beau"), l1: 2, t1: tokIn(2, "Deux") },
       sentences,
     )!;
-    expect(autoPieces(three, p0.length + p1.length).size).toBe(2);
+    expect(autoPieces(three, "Il fait beau.".length + p1.length).size).toBe(2);
     expect(autoPieces(three).size).toBe(3);
   });
 

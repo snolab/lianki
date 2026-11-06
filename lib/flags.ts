@@ -149,6 +149,11 @@ export const FLAGS = {
       "Google 文档实时同步：所有用户都能在 Google 文档页面上用用户脚本打开“同步到 Lianki”，这个文档之后每次改动都会更新到自己的 /read，打开 /read/<id>?streamingFrom=google-docs 的阅读页会实时更新并重新标记词。只同步用户自己打开开关的文档，且要保持文档标签页开着。关闭（默认）= 只有你本人能用。",
     default: false,
   },
+  "read.live-polish": {
+    description:
+      "实时文档的 AI 润色：所有用户都能把正在同步的 Google 文档内容润色成演讲文稿（去口头禅、重复和说错的开头），每攒够几句完整的句子润色一次，只处理新内容。用 DeepSeek V4.1 Flash，约 $0.03/小时文稿（估算），费用由 Cloudflare 账号承担，不扣用户额度，所以打开前要想好成本。原文保留，不写回文档。关闭（默认）= 只有你本人能用。",
+    default: false,
+  },
   "books.catalogue": {
     description:
       "公版书库 /books：所有登录用户都能看到公版书目录（只收美国公版且所有作者/译者/编者去世 80 年以上的原文，每本标明来源和授权），点一下导入成自己的书，之后在 /read 里阅读。原文不进仓库，服务器按需从来源（Project Gutenberg）下载一次，缓存在 R2 里给所有人共用。关闭（默认）= 只有你本人能看到和导入。",

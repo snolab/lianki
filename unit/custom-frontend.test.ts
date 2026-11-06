@@ -38,6 +38,7 @@ import {
   POINTER_CACHE_MS,
   createLivePage,
   customFrontendBlocked,
+  mayBeBlockedWrite,
 } from "@/lib/live-view/page-proxy";
 
 const SECRET = "s".repeat(64);
@@ -478,6 +479,113 @@ describe("subresources and the backend", () => {
     expect(customFrontendBlocked("POST", "/api/auth/sign-out")).toBe(false);
     expect(customFrontendBlocked("GET", "/api/dev/whoami")).toBe(false);
     expect(customFrontendBlocked("POST", "/api/read/x/grade")).toBe(false);
+  });
+
+  test("a normal page load clears the cookie, but the session stays blocked", async () => {
+    const { lp, cookie } = await enter();
+    const session = cookieFor("tok-k.sig");
+    // In another tab: a document without ?live clears the live cookie.
+    const plain = await lp.handle(
+      req("/en", { ...DOC, cookie: `${cookie}; ${session}` }),
+      ENV(),
+      next,
+    );
+    expect(plain.headers.get("set-cookie") ?? "").toContain("Max-Age=0");
+    // The frontend's tab is still running, now with the session cookie alone.
+    for (const [m, p] of [
+      ["POST", "/api/token"],
+      ["DELETE", "/API/Token/x"],
+      ["POST", "/api/dev/flags"],
+      ["POST", "/api/cli-login/approve"],
+      ["POST", "/api/auth/update-user"],
+    ]) {
+      const r = await lp.handle(req(p, { cookie: session }, m), ENV(), next);
+      expect({ p, s: r.status }).toEqual({ p, s: 403 });
+      expect((await r.json()).error).toContain("Sign out and sign in again");
+    }
+    expect(mayBeBlockedWrite(req("/api/token", { cookie: session }, "POST"))).toBe(true);
+  });
+
+  test("the blocked session can still leave, and use the app", async () => {
+    const { lp } = await enter();
+    const session = cookieFor("tok-k.sig");
+    nextCalls = [];
+    for (const [m, p] of [
+      ["POST", "/api/auth/sign-out"],
+      ["POST", "/api/read/x/grade"],
+      ["POST", "/api/live-previews"],
+      ["GET", "/api/token"],
+    ]) {
+      const r = await lp.handle(req(p, { cookie: session }, m), ENV(), next);
+      expect({ p, s: r.status }).toEqual({ p, s: 200 });
+    }
+    expect(nextCalls).toHaveLength(4);
+  });
+
+  test("another session of the same user is not blocked, nor one that opened nothing", async () => {
+    const { lp } = await enter();
+    const r = await lp.handle(
+      req("/api/token", { cookie: cookieFor("tok-other.sig") }, "POST"),
+      ENV(),
+      next,
+    );
+    expect(r.status).toBe(200);
+  });
+
+  test("the mark holds no token", async () => {
+    await enter();
+    const rows = raw.raw().prepare("SELECT tag FROM custom_live_session").all() as {
+      tag: string;
+    }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].tag).not.toContain("tok-k");
+  });
+
+  test("no mark, no frontend: the production page", async () => {
+    const id = await register();
+    const before = upCalls.length;
+    const broken = {
+      ...ENV(),
+      DB: {
+        prepare: (q: string) => {
+          if (q.includes("custom_live_session")) throw new Error("d1");
+          return (db as never as { prepare: (q: string) => unknown }).prepare(q);
+        },
+      } as never,
+    };
+    const r = await live().handle(
+      req(`/en?live=${id}`, { ...DOC, cookie: cookieFor("tok-k.sig") }),
+      broken,
+      next,
+    );
+    expect(upCalls).toHaveLength(before);
+    expect(await r.text()).toContain("prod");
+  });
+
+  test("a failed look-up refuses the write", async () => {
+    const broken = {
+      ...ENV(),
+      DB: {
+        prepare: () => {
+          throw new Error("d1");
+        },
+      } as never,
+    };
+    const r = await live().handle(
+      req("/api/token", { cookie: cookieFor("tok-k.sig") }, "POST"),
+      broken,
+      next,
+    );
+    expect(r.status).toBe(403);
+  });
+
+  test("a write with no session cookie, or to anything else, is never looked up", () => {
+    expect(mayBeBlockedWrite(req("/api/token", {}, "POST"))).toBe(false);
+    expect(mayBeBlockedWrite(req("/api/token", { cookie: "a=b" }, "POST"))).toBe(false);
+    const s = cookieFor("t.s");
+    expect(mayBeBlockedWrite(req("/api/read/x", { cookie: s }, "POST"))).toBe(false);
+    expect(mayBeBlockedWrite(req("/api/token", { cookie: s }, "GET"))).toBe(false);
+    expect(mayBeBlockedWrite(req("/api/auth/sign-out", { cookie: s }, "POST"))).toBe(false);
   });
 
   test("host-escape paths are refused; service worker scripts 403", async () => {

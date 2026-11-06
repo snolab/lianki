@@ -7,7 +7,10 @@
 //          shows its switch only then.
 //   POST { docId, html, title? } → the book, stored as a Docs import is; an
 //          open reader (/read/<id>?streamingFrom=google-docs) is told through
-//          lianki-push.
+//          lianki-push, and fetches it.
+//   POST { book, ops } → live edits from Google's channel, passed through
+//          lianki-push to that user's open readers, and stored nowhere: the
+//          next save holds them. Every edit, so no D1 write here.
 //
 // The body becomes the sender's own book and nobody else's. Gate: a session,
 // D1, reader v2, and flag `read.gdoc-stream` or the owner.
@@ -25,11 +28,24 @@ import { checkBook } from "@/lib/read/book";
 import { storeGdocBook } from "@/lib/read/gdoc-store";
 import { readerV2On } from "@/lib/read/reader-book";
 import type { D1Batch } from "@/lib/read/reader-store";
-import { readJsonCapped, tooMany } from "@/lib/security/route-guard";
+import { routeLimit, readJsonCapped, tooMany } from "@/lib/security/route-guard";
+import type { TailOp } from "@/lib/read/gdoc-tail";
 
 const DOC_ID = /^[A-Za-z0-9_-]{25,128}$/;
 /** Sends per user per window (D1 counter). The userscript sends after a pause in the edits. */
 const RATE = { windowMs: 10 * 60_000, max: 400 };
+/** Live edits per user per window, counted per isolate. */
+const LIVE_RATE = { windowMs: 60_000, max: 600 };
+const LIVE_MAX_OPS = 500;
+const BOOK_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+const isOp = (o: unknown): o is TailOp => {
+  const v = o as Record<string, unknown> | null;
+  return (
+    (Number.isInteger(v?.i) && typeof v?.s === "string") ||
+    (Number.isInteger(v?.si) && Number.isInteger(v?.ei))
+  );
+};
 
 const fail = (error: string, status: number) =>
   NextResponse.json({ error }, { status, headers: { "cache-control": "no-store" } });
@@ -47,7 +63,10 @@ async function gate() {
 }
 
 /** Tell the user's open readers; a miss only means they update on the next change. */
-function tellReaders(userId: string, book: string, hash: string) {
+function tellReaders(
+  userId: string,
+  message: { book: string; hash: string } | { book: string; ops: TailOp[] },
+) {
   try {
     const { env, ctx } = getCloudflareContext();
     const push = (env as unknown as { PUSH?: { fetch: typeof fetch } }).PUSH;
@@ -56,7 +75,7 @@ function tellReaders(userId: string, book: string, hash: string) {
       push
         .fetch("https://lianki-push/internal/read-stream", {
           method: "POST",
-          body: JSON.stringify({ user: userId, book, hash }),
+          body: JSON.stringify({ user: userId, ...message }),
         })
         .catch(() => undefined),
     );
@@ -72,12 +91,27 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const userId = await gate();
   if (!userId) return fail("Not found", 404);
-  const limited = await tooMany(`read-gdoc-stream:${userId}`, RATE);
-  if (limited) return limited;
-
   const body = await readJsonCapped(request, GDOC_LIMITS.maxHtmlChars + 4096);
   if (!body.ok) return fail(body.status === 413 ? "too-large" : "bad-body", body.status);
-  const { docId, html, title } = (body.value ?? {}) as Record<string, unknown>;
+  const { docId, html, title, book, ops } = (body.value ?? {}) as Record<string, unknown>;
+
+  if (ops !== undefined) {
+    if (
+      typeof book !== "string" ||
+      !BOOK_ID.test(book) ||
+      !Array.isArray(ops) ||
+      ops.length > LIVE_MAX_OPS ||
+      !ops.every(isOp)
+    )
+      return fail("bad-body", 400);
+    const live = await routeLimit(`read-gdoc-live:${userId}`, LIVE_RATE, null);
+    if (!live.allowed) return fail("rate-limited", 429);
+    tellReaders(userId, { book, ops: ops as TailOp[] });
+    return NextResponse.json({ ok: true });
+  }
+
+  const limited = await tooMany(`read-gdoc-stream:${userId}`, RATE);
+  if (limited) return limited;
   if (typeof docId !== "string" || !DOC_ID.test(docId)) return fail("bad-doc", 400);
   if (typeof html !== "string" || !html) return fail("bad-body", 400);
 
@@ -90,6 +124,6 @@ export async function POST(request: NextRequest) {
     return checked.error === "too-much-text" ? fail("too-much-text", 413) : fail("no-text", 422);
   }
   const stored = await storeGdocBook(getD1() as unknown as D1Batch, userId, docId, checked.book);
-  if (stored.changed) tellReaders(userId, stored.id, stored.hash);
+  if (stored.changed) tellReaders(userId, { book: stored.id, hash: stored.hash });
   return NextResponse.json({ id: stored.id, changed: stored.changed, hash: stored.hash });
 }

@@ -92,6 +92,11 @@ export interface BookCtx {
   lem?: Lemmas | null;
   /** Names of the book (counted as known): never made into a card unless he has one. */
   names?: ReadonlySet<string>;
+  /**
+   * A line of the stored book that holds this word, for the model's prompt when
+   * it generates a shared gloss (lib/read/gloss-server.ts). Absent: no example.
+   */
+  exampleOf?: (word: string) => string | null;
 }
 
 /** One word of the review: his card's list and term, or the book list's new word. */

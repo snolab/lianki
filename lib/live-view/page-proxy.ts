@@ -57,6 +57,8 @@ import {
   isCustomId,
   openCustomCookie,
   sealCustomCookie,
+  customSessionMarked,
+  markCustomSession,
   sessionTag,
   sessionToken,
   type CustomPreview,
@@ -135,15 +137,52 @@ export type ResolvedCustom = {
  * API or CLI token (it would outlive the preview), registering more previews,
  * anything under /api/dev or /api/dev-access, and better-auth's account
  * changes (all but sign-out). Refused while the browser holds a custom live
- * cookie; any page without ?live clears it.
+ * cookie; any page without ?live clears it, and that frontend's tab can still be
+ * running, so `accountWriteBlocked` also holds them for the whole session.
  */
 export function customFrontendBlocked(method: string, p: string): boolean {
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
   const path = p.toLowerCase().replace(/\/+$/, "");
+  if (/^\/api\/(live-previews)(\/|$)/.test(path)) return true;
+  return sessionBlocked(method, path);
+}
+
+/**
+ * What stays refused for a session that has opened a custom frontend, whatever
+ * its cookie says, until a new sign-in (owner's card, 2026-11-06). Registering
+ * previews is left out: a user manages those from a normal tab, and it mints
+ * nothing that outlives the preview. Sign-out is left out so they can get out.
+ */
+function sessionBlocked(method: string, p: string): boolean {
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
+  const path = p.toLowerCase().replace(/\/+$/, "");
   if (/^\/api\/(dev|dev-access)(\/|$)/.test(path)) return true;
-  if (/^\/api\/(token|cli-login|live-previews|live-view)(\/|$)/.test(path)) return true;
+  if (/^\/api\/(token|cli-login|live-view)(\/|$)/.test(path)) return true;
   if (/^\/api\/auth(\/|$)/.test(path)) return path !== "/api/auth/sign-out";
   return false;
+}
+
+/** Cheap: could this request need the session check? worker.ts asks before anything else. */
+export function mayBeBlockedWrite(req: Request): boolean {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return false;
+  if (!sessionToken(req.headers.get("cookie"))) return false;
+  return sessionBlocked(req.method, new URL(req.url).pathname);
+}
+
+/**
+ * The session opened a custom frontend, so this account write is refused. A
+ * failed look-up refuses too: this is the guard, and D1 being down stops the
+ * write anyway. Sign-in is a new session, so sign-out comes first.
+ */
+async function accountWriteBlocked(req: Request, url: URL, db: LiveDb | undefined) {
+  if (!db || !sessionBlocked(req.method, url.pathname)) return false;
+  const token = sessionToken(req.headers.get("cookie"));
+  if (!token) return false;
+  try {
+    return await customSessionMarked(db, await sessionTag(token));
+  } catch {
+    return true;
+  }
 }
 
 /** The cheap first look: could this request be live at all? */
@@ -624,6 +663,7 @@ export function createLivePage(d: LiveDeps) {
     id: string,
     secret: string,
     enabled: boolean,
+    env: LiveEnv,
     next: Next,
   ): Promise<Response> {
     const resolve = d.resolveCustom ?? ((r: Request, i: string) => customByApi(r, i, next));
@@ -640,6 +680,13 @@ export function createLivePage(d: LiveDeps) {
     }
     const upUrl = upstreamUrl(target, url);
     if (!upUrl) return fallback(next, req, url, "path refused");
+    // Before any of its code can run. No mark, no frontend: the production page.
+    try {
+      if (!env.DB) throw new Error("no db");
+      await markCustomSession(env.DB, await sessionTag(token), now());
+    } catch {
+      return fallback(next, req, url, "could not record this session");
+    }
     let r: Response;
     try {
       r = await proxiedCustom(req, upUrl, target, DOC_TIMEOUT_MS);
@@ -737,22 +784,25 @@ export function createLivePage(d: LiveDeps) {
     /** `next`: production for this request (OpenNext, with this request's env and ctx). */
     async handle(req: Request, env: LiveEnv, next: Next): Promise<Response> {
       const isOwner = d.isOwner ?? ((r: Request) => ownerByWhoami(r, next));
-      if (!mayBeLive(req.url, req.headers.get("cookie"))) return next(req);
+      const blockable = mayBeBlockedWrite(req);
+      if (!blockable && !mayBeLive(req.url, req.headers.get("cookie"))) return next(req);
       const url = new URL(req.url);
+      const refuse = (error: string) =>
+        new Response(JSON.stringify({ error }), {
+          status: 403,
+          headers: { "content-type": "application/json", "cache-control": "no-store" },
+        });
       // A custom frontend's JS may not make account-level writes (above).
       if (
         readCookie(req.headers.get("cookie"), LIVE_COOKIE)?.startsWith("c.") &&
         customFrontendBlocked(req.method, url.pathname)
       )
-        return new Response(
-          JSON.stringify({
-            error: "Not available from a custom frontend; open lianki.com without ?live",
-          }),
-          {
-            status: 403,
-            headers: { "content-type": "application/json", "cache-control": "no-store" },
-          },
+        return refuse("Not available from a custom frontend; open lianki.com without ?live");
+      if (blockable && (await accountWriteBlocked(req, url, env.DB)))
+        return refuse(
+          "This session opened a custom frontend, so this is off. Sign out and sign in again.",
         );
+      if (!mayBeLive(req.url, req.headers.get("cookie"))) return next(req);
       const kind = requestKind(req, url);
       if (kind === "other") return next(req);
       const secret = env.LIVE_GATE_SECRET ?? "";
@@ -770,7 +820,7 @@ export function createLivePage(d: LiveDeps) {
           return res;
         }
         // A custom frontend's id: its registrant only (docs/custom-frontend.md).
-        if (isCustomId(param)) return customDocument(req, url, param, secret, enabled, next);
+        if (isCustomId(param)) return customDocument(req, url, param, secret, enabled, env, next);
         // Leaving a custom frontend: anyone may clear their own cookie.
         if (param === "off" && raw?.startsWith("c.")) {
           const u = new URL(url);

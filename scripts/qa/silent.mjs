@@ -44,6 +44,18 @@ export const SILENT_INIT = `(() => {
     for (const type of ["loadstart", "loadedmetadata", "canplay", "play", "playing"])
       window.addEventListener(type, (e) => { if (e.target instanceof M) hush(e.target); }, true);
     for (const el of document.querySelectorAll("audio,video")) hush(el);
+    // At the parse too: Firefox replaces an iframe's first document, and an element
+    // made in the old one never sends those events. The realm's prototypes stay.
+    const inner = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
+    Object.defineProperty(Element.prototype, "innerHTML", {
+      configurable: true,
+      enumerable: inner.enumerable,
+      get: inner.get,
+      set(v) {
+        inner.set.call(this, v);
+        for (const el of this.querySelectorAll("audio,video")) hush(el);
+      },
+    });
   } catch {}
   try {
     const AN = window.AudioNode;

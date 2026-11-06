@@ -143,6 +143,8 @@ export interface ReaderSelect {
 }
 
 export function useReaderSelect(o: {
+  /** How a hand-made range is drawn: grown to whole sentences. */
+  grownRange?: (u: Extract<Unit, { kind: "range" }>) => Unit;
   listRef: RefObject<HTMLDivElement | null>;
   ctx: ComboCtx;
   /** A fling is still moving: a tap then stops it, it selects nothing. */
@@ -338,7 +340,8 @@ export function useReaderSelect(o: {
     let frame = 0;
     const paint = () => {
       frame = 0;
-      const els = unitElements(root, unit, (n) => ctxRef.current.chapterRange(n));
+      const drawn = unit.kind === "range" && o.grownRange ? o.grownRange(unit) : unit;
+      const els = unitElements(root, drawn, (n) => ctxRef.current.chapterRange(n));
       // Element backgrounds also end above a deck phrase's bar (#552: a WebKit
       // ::highlight reached down over it).
       markSelected(root, els);

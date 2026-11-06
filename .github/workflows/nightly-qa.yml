@@ -52,12 +52,18 @@ jobs:
       # needed — wrangler runs D1/R2 locally.
       - name: qa:all
         run: bun run qa:all
+        # Firefox (qa-audio-free) refuses to start as root when $HOME is another
+        # user's: Actions sets /github/home, owned by the image's pwuser.
+        env:
+          HOME: /root
       # MV3 extension smoke test — loads the built extension into the image's
       # Chromium (new-headless, always) and asserts the content script runs.
       - name: Extension smoke test
         run: bun run test:ext
       - name: "Alert #lianki when nightly QA fails"
         if: failure()
+        # A container job's default shell is sh, which dies on ${GITHUB_SHA::7}.
+        shell: bash
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
