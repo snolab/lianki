@@ -86,9 +86,10 @@ async function getCode(ctx, clientId, scope) {
   });
   const page = await ctx.newPage();
   let code = null;
-  await page.route(`${BOX}/box-callback**`, (route) => {
-    code = new URL(route.request().url()).searchParams.get("code");
-    return route.fulfill({ status: 200, body: "held" });
+  // Seen on its way to the box. The box's page does not spend it: no state of its own.
+  page.on("request", (r) => {
+    if (r.url().startsWith(`${BOX}/box-callback`) && r.isNavigationRequest())
+      code = new URL(r.url()).searchParams.get("code");
   });
   await page.goto(`${PROVIDER}/box-authorize?${q}`);
   for (let i = 0; i < 40 && !code; i++) await page.waitForTimeout(250);
@@ -491,7 +492,10 @@ async function run() {
     refreshAfter.status >= 400,
     `${refreshAfter.status}`,
   );
-  check("a new code cannot be had", !(await getCode(ctx, clientId, "box:read")).code);
+  check(
+    "a new code cannot be had",
+    wrongPkce.code && !(await getCode(ctx, clientId, "box:read")).code,
+  );
 
   // A read-only box, for real.
   const rebound = await owner.request.post(`${PROVIDER}/api/dev/box-clients`, {
@@ -506,6 +510,7 @@ async function run() {
   const rbare = await browser.newContext();
   const rtok = (await (await exchange(rbare, ro, rc.code, rc.verifier)).json()).access_token;
   await rbare.close();
+  check("a read-only client can get box:read: the check above means something", Boolean(rc.code));
   check("box:read reads", (await raw(rtok, "/api/prefs")).status === 200);
   const rw = await raw(rtok, "/api/prefs", "PATCH");
   check("box:read cannot write", rw.status === 403, `${rw.status}`);
