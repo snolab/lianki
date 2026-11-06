@@ -5,6 +5,7 @@ import {
   LIVE_POLISH_MAX_PASSAGES,
 } from "@/lib/read/live-polish";
 import { livePolishAi, mayPolishLive } from "@/lib/read/live-polish-server";
+import { polishRefused } from "@/lib/read/polish-offer";
 import { badRequest, bodyOf, json, readerCtx } from "@/lib/read/reader-route";
 
 /**
@@ -24,6 +25,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
   if (!(await mayPolishLive(ctx.email))) return json({ error: "Not found" }, 404);
+  if (polishRefused((await ctx.load()).words.book)) return badRequest("not offered");
   const body = (await bodyOf(req)) as { passages?: unknown; before?: unknown } | null;
   const passages = body?.passages;
   if (

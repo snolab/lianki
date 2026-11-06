@@ -115,6 +115,10 @@ localhost, is taken (`localSttFrom`). The server accepts only lianki.com (and
 localhost) origins. Its main port is reachable only from the tailnet; the
 tunnel listener (next section) only with a ticket.
 
+/vibe ([vibe.md](vibe.md)) uses this server with its own mic and its own socket:
+tailnet only (never the tunnel below), no hello, no filter, no cloud fallback, no
+clip sink.
+
 ## Off the tailnet: wss://stt.lianki.com
 
 A second route for the phone when Tailscale is off, approved by the owner on

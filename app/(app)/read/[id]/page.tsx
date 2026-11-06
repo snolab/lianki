@@ -44,7 +44,11 @@ export default async function ReadMaterialPage({
   // The reader v2 fills the screen: the window scrolls the whole book.
   if (pick === "v2")
     return (
-      <ReaderV2 id={id} isLoggedIn={!!user} streaming={query.streamingFrom === "google-docs"} />
+      <ReaderV2
+        id={id}
+        isLoggedIn={!!user}
+        streaming={query.streamingFrom === "google-docs" || query.streamingFrom === "vibe"}
+      />
     );
 
   return (

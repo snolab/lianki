@@ -22,11 +22,16 @@ export const SKIPS_MAX = 40;
 export const deviceSkipKey = (id: string) => `lk:read-polish-skip:${id}`;
 
 /**
- * Sources whose text is never offered the tidy. Empty today: `source` says only
- * epub, gdoc or preset, none of which tells a speech transcript. A source that
- * does (a future speech or /vibe import) goes here.
+ * Sources whose text is never offered the tidy, however it is opened: a /vibe
+ * conversation (docs/vibe.md) is private speech, and the tidy sends it to a
+ * model. The routes refuse it too (`polishRefused`).
  */
-const NEVER_OFFERED = new Set<BookSource>();
+const NEVER_OFFERED = new Set<BookSource>(["vibe"]);
+
+/** The polish routes' check: this text is never sent to the tidy. */
+export function polishRefused(book: Pick<BookMeta, "source"> | null | undefined): boolean {
+  return !!book && NEVER_OFFERED.has(book.source);
+}
 
 export interface OfferState {
   book: Pick<BookMeta, "source" | "shape" | "polished"> | null | undefined;
@@ -57,7 +62,8 @@ export function offerShown({ book, stream, offerOn, skipped }: OfferState): bool
  * transcript he knows is one). Never an edited book, never twice.
  */
 export function polishActionShown(book: OfferState["book"]): boolean {
-  return !!book && !book.polished && (!!book.shape?.raw || book.source === "gdoc");
+  if (!book || book.polished || NEVER_OFFERED.has(book.source)) return false;
+  return !!book.shape?.raw || book.source === "gdoc";
 }
 
 /** A stored list (untrusted): the ids that look like ids, the newest SKIPS_MAX. */

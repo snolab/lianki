@@ -312,6 +312,17 @@ async function energy(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   };
 }
 
+/**
+ * The browser's half of a mic, for another listener than the chat (/vibe,
+ * docs/vibe.md): the same stream and VADs, with no chat, cue, estimator, clip
+ * sink or cloud attached. The caller owns the stream and stops it.
+ */
+export const voiceCapture = () => ({
+  getStream: micStream as () => Promise<MediaStream>,
+  load: (ev: VadEvents, s: MediaStream) => silero(ev, s),
+  fallback: (ev: VadEvents, s: MediaStream) => energy(ev, s),
+});
+
 /** How long the mic says a line was stopped by the voiceprint filter. */
 const FILTERED_NOTE_MS = 3_000;
 

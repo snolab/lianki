@@ -16,7 +16,6 @@
 // D1, reader v2, and flag `read.gdoc-stream` or the owner.
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { auth } from "@/auth";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { flagIn, type FlagValues } from "@/lib/flags";
@@ -30,6 +29,7 @@ import { readerV2On } from "@/lib/read/reader-book";
 import type { D1Batch } from "@/lib/read/reader-store";
 import { routeLimit, readJsonCapped, tooMany } from "@/lib/security/route-guard";
 import type { TailOp } from "@/lib/read/gdoc-tail";
+import { tellReaders } from "@/lib/read/tell-readers";
 
 const DOC_ID = /^[A-Za-z0-9_-]{25,128}$/;
 /** Sends per user per window (D1 counter). The userscript sends after a pause in the edits. */
@@ -60,28 +60,6 @@ async function gate() {
   if (!userId) return null;
   if (dbBackend() !== "d1") return null;
   return streamOn(await readFlags(), isOwner(session.user.email ?? null)) ? userId : null;
-}
-
-/** Tell the user's open readers; a miss only means they update on the next change. */
-function tellReaders(
-  userId: string,
-  message: { book: string; hash: string } | { book: string; ops: TailOp[] },
-) {
-  try {
-    const { env, ctx } = getCloudflareContext();
-    const push = (env as unknown as { PUSH?: { fetch: typeof fetch } }).PUSH;
-    if (!push) return;
-    ctx.waitUntil(
-      push
-        .fetch("https://lianki-push/internal/read-stream", {
-          method: "POST",
-          body: JSON.stringify({ user: userId, ...message }),
-        })
-        .catch(() => undefined),
-    );
-  } catch {
-    // Not on the Worker.
-  }
 }
 
 export async function GET() {

@@ -8,6 +8,8 @@ import { ByokSettings } from "@/app/components/ByokSettings";
 import { readFlags } from "@/lib/flags-store";
 import { flagIn } from "@/lib/flags";
 import { isOwner } from "@/lib/owner";
+import { vibeAllowed } from "@/lib/vibe/gate";
+import { VibeRetention } from "../vibe/VibeRetention";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +36,16 @@ export default async function PreferencesPage() {
     );
   // The API key's account sync (managed mode) is only drawn, disabled, behind
   // `byok.sync`; the owner sees it while it is off (docs/byok.md).
-  const showKeySync = isOwner(user.email) || flagIn(await readFlags(), "byok.sync");
+  const flags = await readFlags();
+  const showKeySync = isOwner(user.email) || flagIn(flags, "byok.sync");
+  const vibe = vibeAllowed(flags, isOwner(user.email));
 
   return (
     <div className="flex flex-col">
       {/* Main Content */}
       <div className="flex-grow">
         <PreferencesClient showKeySync={showKeySync} />
+        {vibe && <VibeRetention />}
       </div>
     </div>
   );
