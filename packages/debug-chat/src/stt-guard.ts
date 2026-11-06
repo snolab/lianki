@@ -20,8 +20,8 @@ export type SttSignals = {
    * Mean log probability of the decoded tokens, weighted by segment length.
    * Logged for tuning; no gate reads it: real speech and noise overlap (owner
    * −3.71…−0.05, noise −1.15…−0.21 on turbo). Whisper's other signal,
-   * no_speech_prob, is not here at all: large-v3-turbo said 0 on every clip,
-   * speech or noise, on Workers AI and on mlx-whisper alike.
+   * no_speech_prob, is not here at all: large-v3-turbo said 0 on Workers AI and
+   * under 0.0005 on mlx-whisper, on every clip, speech or noise.
    */
   logprob?: number;
   /** The share of the audio the route's own VAD kept as speech, 0–1 (cloud turbo). */
@@ -152,7 +152,7 @@ export const STOCK_PHRASES: readonly StockPhrase[] = [
 
 /**
  * The gates, all in one place (docs/workers-ai.md, "Silence guard", has the
- * measurements). 211 of the owner's clips, read only, stand for real speech;
+ * measurements). 211 of the owner's clips stand for real speech;
  * 120 windows of recorded café, restaurant and traffic noise (DEMAND) and 82
  * generated non-speech clips stand for the rest.
  */

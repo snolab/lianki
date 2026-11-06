@@ -200,11 +200,11 @@ VAD and still play: they say speech was heard, not that a line went out.
 | --- | --- | --- | --- |
 | Workers AI turbo | present, **0 on all 243 texts**, speech or noise | present; overlaps | `duration_after_vad`, `language_probability`, `compression_ratio` |
 | Workers AI `whisper` (the fallback) | absent | absent | `text`, `word_count` only |
-| Nova-3 (owner's bench) | absent | absent | a word confidence; not read |
-| mlx-whisper (turbo weights) | present, **0 on every clip** | present; overlaps | `compression_ratio` |
-| SenseVoice (sherpa-onnx) | absent | `ys_log_probs` is empty | `event`, always `Speech` on noise |
+| Nova-3 (owner's bench) | not measured | not measured | not in this run; `readStt` reads only its transcript and language |
+| mlx-whisper (turbo weights) | present, **under 0.0005 on every clip**, speech or noise | present; overlaps | `compression_ratio` |
+| SenseVoice (sherpa-onnx) | absent | `ys_log_probs` is empty | `event`: `Speech` on all 120 DEMAND windows, `BGM` on 8 of 82 generated clips and 3 of the owner's 211, so it does not sort speech from noise |
 
-So no gate reads `no_speech_prob` (these weights never raise it) or
+Only Workers AI turbo and the fallback were measured live. So no gate reads `no_speech_prob` (these weights never raise it) or
 `avg_logprob` alone (the owner's real clips run −3.71…−0.05 on turbo; noise
 that gave text −1.15…−0.21). `logprob` is passed along and logged, for later
 tuning. The guard does read:
@@ -233,15 +233,18 @@ matched, however faint. Two kinds:
   clearly, it stays.
 
 From a CTC decoder (SenseVoice) both need the weak evidence and nothing is cut
-out of a longer line: it wrote no stock phrase on any of 413 clips, so when
+out of a longer line: it wrote no stock phrase on the owner's 211 clips or the 46 captured
+non-speech ones, so when
 one comes from it, he said it. Everyday short thanks ("Thank you very much",
 수고하셨습니다) are not listed even though the fallback model says them on noise,
 since the weak evidence would drop the real thing.
 
-**Measured over the corpus**, 211 of the owner's clips (read only) and 202
+**Measured over the corpus**, 211 of the owner's clips and 202
 non-speech clips (120 DEMAND windows of café, restaurant and traffic at −45 to
 −20 dB, 82 generated); "captured" means Silero would have handed the clip over
-at all (≥ 0.3 for 250 ms):
+at all (≥ 0.3 for 250 ms). The owner's clips were not deleted or changed, but
+their audio was sent to Workers AI for the turbo row. That should not have
+happened, and no clip goes to a cloud service for a measurement again:
 
 | route | owner's clips dropped by the guard | captured non-speech with text that still posts |
 | --- | --- | --- |

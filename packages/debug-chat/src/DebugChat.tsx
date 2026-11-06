@@ -3058,7 +3058,7 @@ export function DebugChat({
       {/* What the silence guard dropped (stt-dropped.ts): the owner's, on this device; a tap puts it back in the box. */}
       {owner && !friend && droppedLines().length > 0 && (
         <div data-testid="debug-menu-dropped" className="flex flex-col px-3 py-1.5">
-          <span className="opacity-60">{ui.droppedLines}</span>
+          <span className="opacity-60">{strings?.droppedLines ? t.droppedLines : ui.droppedLines}</span>
           {droppedLines().map((l) => (
             <button
               key={l.at}
