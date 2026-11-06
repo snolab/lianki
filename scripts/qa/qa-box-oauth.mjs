@@ -69,6 +69,58 @@ const pageApi = (page, path, init = {}) =>
     [path, init],
   );
 
+const b64url = (buf) => Buffer.from(buf).toString("base64url");
+
+/** Walks the real flow in a real page and stops at the box's callback, holding the code. */
+async function getCode(ctx, clientId, scope) {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const q = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: `${BOX}/box-callback`,
+    scope,
+    state: "qa",
+    code_challenge: b64url(digest),
+    code_challenge_method: "S256",
+  });
+  const page = await ctx.newPage();
+  let code = null;
+  await page.route(`${BOX}/box-callback**`, (route) => {
+    code = new URL(route.request().url()).searchParams.get("code");
+    return route.fulfill({ status: 200, body: "held" });
+  });
+  await page.goto(`${PROVIDER}/box-authorize?${q}`);
+  for (let i = 0; i < 40 && !code; i++) await page.waitForTimeout(250);
+  await page.close();
+  return { code, verifier };
+}
+
+/** The token endpoint from outside a browser, as the gate sees a box. */
+const exchange = (ctx, clientId, code, verifier) =>
+  ctx.request.post(`${PROVIDER}/api/auth/oauth2/token`, {
+    headers: { origin: BOX, cookie: "" },
+    form: {
+      grant_type: "authorization_code",
+      client_id: clientId,
+      code,
+      redirect_uri: `${BOX}/box-callback`,
+      code_verifier: verifier,
+    },
+  });
+
+/** A token call with no browser to block it, so the status is the server's own. */
+const raw = (token, path, method = "GET") =>
+  fetch(`${PROVIDER}${path}`, {
+    method,
+    headers: {
+      authorization: `Bearer ${token}`,
+      origin: BOX,
+      ...(method === "GET" ? {} : { "content-type": "application/json" }),
+    },
+    ...(method === "GET" ? {} : { body: JSON.stringify({ ops: [] }) }),
+  });
+
 async function run() {
   const { clientId } = JSON.parse(readFileSync(STATE, "utf8"));
   const browser = await chromium.launch({ args: ["--mute-audio"] });
@@ -200,6 +252,78 @@ async function run() {
     refreshed.expires > 0 && refreshed.expires <= 900,
     `${refreshed.expires}s`,
   );
+
+  // PKCE and one-time codes, with real codes. Cookies stripped: the browser context's
+  // request API would otherwise add them, and a cookie is refused by itself.
+  const bare = await browser.newContext();
+  const wrongPkce = await getCode(ctx, clientId, "box:read box:write offline_access");
+  check("a real code is issued", Boolean(wrongPkce.code));
+  const bad = await exchange(bare, clientId, wrongPkce.code, "x".repeat(50));
+  check(
+    "a real code with the wrong verifier gets no token",
+    bad.status() >= 400,
+    `${bad.status()}`,
+  );
+  const good = await getCode(ctx, clientId, "box:read box:write offline_access");
+  const first = await exchange(bare, clientId, good.code, good.verifier);
+  const firstBody = await first.json().catch(() => ({}));
+  check(
+    "the right verifier gets one",
+    first.status() === 200 && Boolean(firstBody.access_token),
+    `${first.status()}`,
+  );
+  const replayed = await exchange(bare, clientId, good.code, good.verifier);
+  check(
+    "the same code again gets nothing: one-time",
+    replayed.status() >= 400,
+    `${replayed.status()}`,
+  );
+  check("the token response sets no cookie", !first.headers()["set-cookie"]);
+  await bare.close();
+
+  const live = firstBody.access_token;
+  check("the token works without a browser", (await raw(live, "/api/prefs")).status === 200);
+  const withCookie = await fetch(`${PROVIDER}/api/prefs`, {
+    headers: {
+      authorization: `Bearer ${live}`,
+      origin: BOX,
+      cookie: "better-auth.session_token=x",
+    },
+  });
+  check("a token with a cookie is refused", withCookie.status === 400, `${withCookie.status}`);
+  const otherOrigin = await fetch(`${PROVIDER}/api/prefs`, {
+    headers: { authorization: `Bearer ${live}`, origin: "https://my-0000000000000000.lianki.com" },
+  });
+  check(
+    "a token from another origin is refused",
+    otherOrigin.status === 403,
+    `${otherOrigin.status}`,
+  );
+  const noOrigin = await fetch(`${PROVIDER}/api/prefs`, {
+    headers: { authorization: `Bearer ${live}` },
+  });
+  check("a token with no origin is refused", noOrigin.status === 403, `${noOrigin.status}`);
+  const noBack = await fetch(`${PROVIDER}/api/prefs`, {
+    headers: { authorization: "Bearer lkb_0000000000000000000000000000", origin: BOX },
+  });
+  check("an unknown token gets 401", noBack.status === 401, `${noBack.status}`);
+  const sibling = await ctx.request.post(`${PROVIDER}/api/prefs`, {
+    headers: { origin: BOX, "sec-fetch-site": "same-site", "content-type": "application/json" },
+    data: {},
+  });
+  check(
+    "a sibling's cookie request to /api is refused",
+    sibling.status() === 403,
+    `${sibling.status()}`,
+  );
+
+  // The real limit, on its own token.
+  let limited = 0;
+  for (let i = 0; i < 40 && !limited; i++) {
+    const batch = await Promise.all(Array.from({ length: 10 }, () => raw(live, "/api/levels/me")));
+    limited = batch.find((r) => r.status === 429) ? (i + 1) * 10 : 0;
+  }
+  check("the per-token limit bites", limited >= 300 && limited <= 330, `after ${limited} requests`);
 
   // Replay of the one-time code and a wrong verifier.
   const replay = await page.evaluate(
@@ -351,26 +475,56 @@ async function run() {
     headers: { origin: PROVIDER, "content-type": "application/json" },
   });
   check("the owner revokes the box", rev.ok(), `${rev.status()}`);
-  const after = await direct("/api/prefs").catch(() => ({ status: 0 }));
-  check("its token stops at once", after.status !== 200, `${after.status}`);
-  const refreshAfter = await page.evaluate(
-    async ([u, c]) => {
-      const t = JSON.parse(sessionStorage.getItem("lk:box:tokens"));
-      const r = await fetch(u, {
-        method: "POST",
-        credentials: "omit",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          client_id: c,
-          refresh_token: t.refresh,
-        }),
-      }).catch(() => ({ status: 0 }));
-      return r.status;
-    },
-    [`${PROVIDER}/api/auth/oauth2/token`, clientId],
+  check("its token gets 401 from the server", (await raw(access, "/api/prefs")).status === 401);
+  const t = JSON.parse(await page.evaluate(() => sessionStorage.getItem("lk:box:tokens")));
+  const refreshAfter = await fetch(`${PROVIDER}/api/auth/oauth2/token`, {
+    method: "POST",
+    headers: { origin: BOX, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: clientId,
+      refresh_token: t.refresh,
+    }),
+  });
+  check(
+    "its refresh token is refused by the server",
+    refreshAfter.status >= 400,
+    `${refreshAfter.status}`,
   );
-  check("nor can it refresh", refreshAfter !== 200, `${refreshAfter}`);
+  check("a new code cannot be had", !(await getCode(ctx, clientId, "box:read")).code);
+
+  // A read-only box, for real.
+  const rebound = await owner.request.post(`${PROVIDER}/api/dev/box-clients`, {
+    data: { op: "add", origin: BOX, email: MEMBER, scopes: ["box:read"] },
+    headers: { origin: PROVIDER, "content-type": "application/json" },
+  });
+  const ro = (await rebound.json()).clientId;
+  check("the same origin and account can be bound again after a revoke", Boolean(ro));
+  const beyond = await getCode(ctx, ro, "box:read box:write offline_access");
+  check("a read-only client cannot get box:write", !beyond.code);
+  const rc = await getCode(ctx, ro, "box:read offline_access");
+  const rbare = await browser.newContext();
+  const rtok = (await (await exchange(rbare, ro, rc.code, rc.verifier)).json()).access_token;
+  await rbare.close();
+  check("box:read reads", (await raw(rtok, "/api/prefs")).status === 200);
+  const rw = await raw(rtok, "/api/prefs", "PATCH");
+  check("box:read cannot write", rw.status === 403, `${rw.status}`);
+  const rg = await raw(rtok, "/api/fsrs/delete/nothing");
+  check("box:read cannot use a GET that writes", rg.status === 403, `${rg.status}`);
+  const dup = await owner.request.post(`${PROVIDER}/api/dev/box-clients`, {
+    data: { op: "add", origin: "http://127.0.0.1:3999", email: MEMBER, scopes: ["box:read"] },
+    headers: { origin: PROVIDER, "content-type": "application/json" },
+  });
+  check("one account cannot have a second box", dup.status() === 409, `${dup.status()}`);
+  const notOwner = await browser.newContext();
+  await signUp(notOwner, MEMBER);
+  const hidden = await notOwner.request.get(`${PROVIDER}/api/dev/box-clients`);
+  check("the owner's route is 404 to anyone else", hidden.status() === 404, `${hidden.status()}`);
+  await notOwner.close();
+  await owner.request.post(`${PROVIDER}/api/dev/box-clients`, {
+    data: { op: "revoke", clientId: ro },
+    headers: { origin: PROVIDER, "content-type": "application/json" },
+  });
   await owner.close();
 
   await browser.close();
