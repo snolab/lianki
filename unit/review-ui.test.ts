@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { reviewTitle } from "@/lib/review-title";
 import { activeNavKey, APP_NAV } from "@/lib/app-nav";
 import { isAppRoute } from "@/lib/app-locale";
 import {
@@ -10,6 +11,7 @@ import {
   gradeKey,
   installGuideHref,
   isHttpUrl,
+  nextCardFrom,
   keyAction,
   openPlaceholderTab,
   optionsFrom,
@@ -222,20 +224,50 @@ describe("auto-open (step 3)", () => {
 });
 
 describe("tutorial platform", () => {
-  test("Android says so; everything else gets the iPhone steps", () => {
+  test("each phone keeps its own steps; a desktop browser gets the web steps", () => {
     expect(
       detectPlatform("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130"),
     ).toBe("android");
     expect(
       detectPlatform("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15"),
     ).toBe("ios");
-    expect(detectPlatform("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe("ios");
+    const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)";
+    expect(detectPlatform(mac)).toBe("web");
+    expect(detectPlatform(mac, 5)).toBe("ios"); // an iPad reports a Mac
+    expect(detectPlatform("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130", 10)).toBe("web");
+    expect(detectPlatform("Mozilla/5.0 (X11; Linux x86_64) Firefox/130")).toBe("web");
   });
   test("install guides are the en blog posts, under the locale", () => {
+    expect(installGuideHref("web", "zh")).toBe("/zh/blog/2025-02-22-browser-installation-guide");
     expect(installGuideHref("ios")).toBe("/en/blog/2025-02-23-ios-installation-guide");
     expect(installGuideHref("android", "ja")).toBe(
       "/ja/blog/2026-02-25-android-installation-guide",
     );
+  });
+});
+
+describe("next-up strip", () => {
+  test("asks for the pick a grade of this card would make", () => {
+    expect(api.nextAfter("https://a.test/x?y=1")).toBe(
+      "/api/fsrs/next-url?excludeUrl=https%3A%2F%2Fa.test%2Fx%3Fy%3D1",
+    );
+  });
+  test("a plain title stays, and no title stays null for the url to show", () => {
+    expect(reviewTitle("A plain title", "https://a.test/")).toBe("A plain title");
+    expect(reviewTitle(null, "https://a.test/")).toBeNull();
+  });
+  test("a card, nothing else due, or not known", () => {
+    expect(nextCardFrom({ url: "https://a.test/", title: "A" })).toEqual({
+      url: "https://a.test/",
+      title: "A",
+    });
+    expect(nextCardFrom({ url: "https://a.test/", title: "" })).toEqual({
+      url: "https://a.test/",
+      title: null,
+    });
+    expect(nextCardFrom({ url: null, title: null })).toBeNull();
+    expect(nextCardFrom({ error: "x" })).toBeUndefined();
+    expect(nextCardFrom(null)).toBeUndefined();
   });
 });
 

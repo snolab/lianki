@@ -26,6 +26,8 @@ import { voiceQuality } from "@lianki/debug-chat/wire";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
 import { AUDIO_PRIO, audioOwner, audioOwnerId } from "@lianki/debug-chat/audio-claim";
 import { AEC_EVENT, aecOn, applyAec } from "@lianki/debug-chat/aec";
+import { keepAwakeOn, outputBed, setKeepAwake } from "@lianki/debug-chat/output-bed";
+import { silentWav } from "@/lib/read/speaker";
 import {
   createContext,
   startTransition,
@@ -223,7 +225,13 @@ import {
   undoTarget,
   withPendingRenames,
 } from "@/lib/words/pending";
-import { playGradeTone, sharedAudioContext, unlockGradeTones, type GradeTone } from "./gradeSound";
+import {
+  playGradeTone,
+  sharedAudioContext,
+  suspendSharedAudio,
+  unlockGradeTones,
+  type GradeTone,
+} from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
 
 /**
@@ -1016,6 +1024,35 @@ function useAecSwitch(): [boolean, (on: boolean) => void] {
   return [on, set];
 }
 
+/**
+ * "Keep speaker awake" (packages/debug-chat output-bed.ts), device-local
+ * (docs/prefs-sync.md). Read after mount: the server has no localStorage.
+ */
+function useKeepAwakeSwitch(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(true);
+  useEffect(() => setOn(keepAwakeOn()), []);
+  const set = useCallback((next: boolean) => {
+    setOn(next);
+    setKeepAwake(next);
+  }, []);
+  return [on, set];
+}
+
+/**
+ * The first clip plays after the pre-roll, past the tap: an element that has
+ * played in the tap may play later without one (iOS). Silent, then paused.
+ */
+function unlockClip() {
+  const silent = silentWav();
+  const c = clipPool().take(silent);
+  void c.el.play().then(
+    () => {
+      if (c.el.src === silent) c.el.pause();
+    },
+    () => {},
+  );
+}
+
 /** `serverVoice`: always use the server's recordings, never the browser's. */
 function useSpeech(serverVoice = false) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -1066,6 +1103,14 @@ function useSpeech(serverVoice = false) {
   const unfollow = useCallback(() => {
     follow.current?.();
     follow.current = null;
+  }, []);
+  useEffect(() => {
+    // Listening for taps from now on; on the way out the clips' context stops too.
+    const off = outputBed().onExit(suspendSharedAudio);
+    return () => {
+      off();
+      suspendSharedAudio();
+    };
   }, []);
   useEffect(() => {
     setAvailable(true);
@@ -1302,6 +1347,11 @@ function useSpeech(serverVoice = false) {
         cancel,
         setTimeout: (fn, ms) => setTimeout(fn, ms),
         clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+        preroll: () => {
+          const ms = outputBed().begin();
+          if (ms > 0) unlockClip();
+          return ms;
+        },
         // A word read aloud pauses the reader's paragraph, and pauses for Li (audio-claim.ts).
         owner: (h) => audioOwner({ ...h, id: audioOwnerId("words"), prio: AUDIO_PRIO.card }),
       }),
@@ -4656,6 +4706,7 @@ export function Study({
   const voiceOn = voice !== "off" && voicePref;
   const vtext = useIntlayer("words-voice-mode");
   const [aec, setAecPill] = useAecSwitch();
+  const [keepAwake, setKeepAwakePill] = useKeepAwakeSwitch();
   /** The card a command acts on: the touch focus, or the desktop cursor. */
   const currentRow = () => (touch ? focusNow.current : rowRef.current);
   /** Touch: bring a focused row into the part of the list the glass leaves uncovered. */
@@ -5214,6 +5265,17 @@ export function Study({
                 label={text.serverVoice.value}
                 hint={text.serverVoiceHint.value}
               />
+            )}
+            {(speech.on || voiceOn) && (
+              <span className="flex w-full flex-col items-start gap-1" data-keep-awake-setting>
+                <TogglePill
+                  on={keepAwake}
+                  onChange={setKeepAwakePill}
+                  label={vtext.keepAwake.value}
+                  hint={vtext.keepAwakeHint.value}
+                />
+                <span className="fs-10 opacity-60">{vtext.keepAwakeHint}</span>
+              </span>
             )}
             {debug && <WhisperModeSetting text={text} />}
             {speech.on && serverVoice && (

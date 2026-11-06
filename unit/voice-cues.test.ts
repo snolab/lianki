@@ -24,7 +24,7 @@ import {
   scheduleCue,
   setCue,
 } from "@lianki/debug-chat/cues";
-import { type VadEvents, createMic } from "@lianki/debug-chat/mic";
+import { MAX_UTTERANCE_MS, type VadEvents, createMic } from "@lianki/debug-chat/mic";
 import { prefBindings } from "@/lib/prefs/bindings";
 
 const FRAME = 1600; // 0.1 s at 16 kHz
@@ -198,7 +198,8 @@ describe("cueAllowed: the switches, his mute, read-aloud", () => {
     ...o,
   });
   it("each cue plays by default", () => {
-    for (const k of ["send", "start", "end"] as const) expect(cueAllowed(k, gate())).toBe(true);
+    for (const k of ["send", "amend", "start", "end"] as const)
+      expect(cueAllowed(k, gate())).toBe(true);
   });
   it("its switch, his mute and a silenced page stop all of them", () => {
     for (const k of ["send", "start", "end"] as const) {
@@ -244,6 +245,18 @@ describe("the send cue", () => {
     expect(kinds(r.notes)).toEqual(["send"]);
   });
 
+  it("an amended line has its own softer cue, held over a capture like the send cue", async () => {
+    expect(CUES.amend.gain).toBeLessThan(CUES.send.gain);
+    const r = cueRig();
+    r.cues.capture(true);
+    expect(r.cues.amend()).toBe(true);
+    await settle();
+    expect(r.notes).toEqual([]);
+    r.cues.capture(false);
+    await settle();
+    expect(kinds(r.notes)).toEqual(["amend"]);
+  });
+
   it("a context that will not run drops the cue: it never sounds late at his next tap", async () => {
     const r = cueRig({ state: "suspended" });
     r.cues.send();
@@ -283,6 +296,48 @@ describe("the send cue", () => {
     expect(r.cues.guard()).toBe(false);
     expect(r.cues.quiet()).toBe(true);
     expect(r.idles.length).toBe(1);
+  });
+});
+
+describe("what the mic marks for continuous speech (voice-merge.ts)", () => {
+  const ended = (marks: Record<string, unknown>[]) =>
+    marks.find((m) => m.t_speechEnd !== undefined);
+
+  it("each utterance carries its own VAD start; one the cap cut carries t_cut", async () => {
+    const marks: Record<string, unknown>[] = [];
+    let cap: (() => void) | undefined;
+    const r = await micRig({
+      timing: (_seq, m) => void marks.push(m),
+      setTimer: (f, ms) => {
+        if (ms === MAX_UTTERANCE_MS) cap = f;
+        return 0;
+      },
+      clearTimer: () => {},
+    });
+    r.vad().onSpeechStart();
+    r.frames(5);
+    r.end(5);
+    expect(typeof ended(marks)?.t_speechStart).toBe("number");
+    expect(ended(marks)?.t_cut).toBeUndefined();
+    await settle();
+    // Past the end cue's guard: the next one marks its own, and the cap cuts it.
+    marks.length = 0;
+    r.advance(1000);
+    r.vad().onSpeechStart();
+    r.frames(5);
+    cap?.();
+    expect(r.did).toContain("flush");
+    r.end(5);
+    expect(typeof ended(marks)?.t_speechStart).toBe("number");
+    expect(typeof ended(marks)?.t_cut).toBe("number");
+    await settle();
+    // A cut is that utterance's alone.
+    marks.length = 0;
+    r.advance(1000);
+    r.vad().onSpeechStart();
+    r.frames(5);
+    r.end(5);
+    expect(ended(marks)?.t_cut).toBeUndefined();
   });
 });
 
@@ -528,6 +583,8 @@ describe("the wiring", () => {
     const i = chat.indexOf("pageCues().send()");
     const before = chat.slice(chat.lastIndexOf("const submit = ", i), i);
     expect(before).toContain("if (!source) learnSttHint(text);");
+    // A line that amended the last one is not a new message: its own cue instead.
+    expect(chat).toContain("continues ? pageCues().amend() : pageCues().send()");
     expect(chat).not.toContain("playSentTick");
   });
   it("the two switches are in the chat's menu, each with its own key", () => {

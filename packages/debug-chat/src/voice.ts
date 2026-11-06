@@ -42,7 +42,7 @@
  */
 import { speechRate } from "./speech-rate";
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
-import { cloudOut, cloudSkip, outMode } from "./voice-out";
+import { cloudOut, cloudSkip, existingCtx, outMode } from "./voice-out";
 import { micAec } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
@@ -50,6 +50,7 @@ import { getKey } from "./storage-keys";
 import { hideStops, isDesktop } from "./voice-bg";
 import { reportPageError } from "./page-errors";
 import { AUDIO_PRIO, audioOwner, audioOwnerId } from "./audio-claim";
+import { outputBed } from "./output-bed";
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
 export const RESUME_TAIL_MS = 400;
@@ -292,6 +293,11 @@ export function createVoice(d: {
    * When Li speaks is not changed by it.
    */
   owner?: { claim(): boolean; release(): void };
+  /**
+   * Asked before each sentence: ms to wait, so the output device is awake
+   * (output-bed.ts `begin`). 0 once the bed has run long enough, or has none.
+   */
+  preroll?: () => number;
 }) {
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
   const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
@@ -415,11 +421,23 @@ export function createVoice(d: {
     };
   };
 
+  /** Waiting out the pre-roll: the first sentence comes when it fires. */
+  let preroll: unknown = null;
   /** Speak the head of the queue, if nothing is playing and nothing waits (the caller emits). */
   const next = () => {
-    if (current || pauses.size || !canSpeak()) return;
+    if (current || preroll !== null || pauses.size || !canSpeak()) return;
     const head = queue[0];
     if (!head) return;
+    const wait = d.preroll?.() ?? 0;
+    if (wait > 0) {
+      // A stop or an interruption meanwhile: this finds nothing to say, or a pause.
+      preroll = setTimer(() => {
+        preroll = null;
+        next();
+        emit();
+      }, wait);
+      return;
+    }
     const e = epoch;
     const done = () => {
       if (e !== epoch) return;
@@ -927,6 +945,7 @@ export function voice(): Voice {
       }
     },
     mode: outMode,
+    preroll: () => outputBed().begin(),
     owner: audioOwner({ id: audioOwnerId("li"), prio: AUDIO_PRIO.li }),
     // The open track's mode (aec.ts), so hold and barge-in match what the mic does.
     aec: micAec,
@@ -944,5 +963,9 @@ export function voice(): Voice {
     },
   });
   g[KEY] = v;
+  // Leaving: the voice context stops too, unless the mic still runs on it.
+  outputBed().onExit(() => {
+    if (!v.state().mic) void existingCtx()?.suspend().catch(() => {});
+  });
   return gateVoice(v);
 }

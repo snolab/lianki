@@ -75,6 +75,18 @@ export type ChatMessage = {
   /** Set when the agent polished the line: when, by which agent, and how many times. */
   edited?: EditMark;
   /**
+   * Stamped by the hub only, with flag `stt.merge` on (voice-merge.ts): an owner's
+   * voice line the next utterance may amend. Absent = always a new line.
+   */
+  mergeable?: true;
+  /** Stamped by the hub: the merged passage ended, so nothing more joins it and polish may read it. */
+  settled?: true;
+  /**
+   * A merged line: the utterances it was made from, as heard, oldest first.
+   * `raw` is their text joined; `id` and `at` are the first one's. Undo splits it back.
+   */
+  parts?: MergedPart[];
+  /**
    * A voice line's timestamps on the sender's clock (VoiceTiming; the page's
    * latency record, packages/debug-chat/src/latency.ts). Optional: older pages
    * send none, and an older hub drops it.
@@ -91,6 +103,8 @@ export type ChatMessage = {
    * off. The chat lane sets it with {type: "wake", mode}.
    */
   wake?: "active" | "passive";
+  /** Why the mic is in that mode (wake.ts WakeReason). */
+  wakeReason?: string;
   /**
    * The Mac's speaker check on a voice line (SpeakerTag; docs/local-stt.md,
    * "Voiceprint"), as the owner's page reported it. Only on `source: "stt"`
@@ -144,6 +158,16 @@ export type AnsweredEvent = {
 export type MessageSource = "stt";
 /** An agent's polish of a voice line (ChatMessage.edited). */
 export type EditMark = { at: number; by: string; count: number };
+/** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
+export type MergedPart = {
+  id: string;
+  text: string;
+  at: number;
+  timing?: VoiceTiming;
+  speaker?: SpeakerTag;
+  wake?: "active" | "passive";
+  wakeReason?: ChatMessage["wakeReason"];
+};
 /** How many times the agent may polish one voice line. */
 export const MAX_EDITS = 3;
 /**
@@ -157,12 +181,35 @@ export type EditedEvent = {
   text: string;
   raw: string;
   edited: EditMark;
+  /** A merge (voice-merge.ts): every part so far. */
+  parts?: MergedPart[];
+  /** A merge: the utterance that just joined (the hub's answer to its `id`). */
+  merged?: { id: string; text: string };
+  /** An undo: the lines this one goes back to, in order; the first keeps this id. */
+  split?: ChatMessage[];
+};
+
+/** The hub to the listeners: a merged passage ended, polish it now, from `raw`. */
+export type PolishDueEvent = {
+  type: "polish-due";
+  id: string;
+  thread: string;
+  text: string;
+  raw: string;
+  parts: number;
 };
 
 /** A message updated by an EditedEvent; any other message is returned as is. */
 export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "type">): M {
   if (m.id !== e.id || (m.thread ?? "owner") !== e.thread) return m;
-  return { ...m, text: e.text, raw: e.raw, edited: e.edited };
+  return { ...m, text: e.text, raw: e.raw, edited: e.edited, ...(e.parts ? { parts: e.parts } : {}) };
+}
+
+/** The list after an EditedEvent: the line changed in place, or split back into its lines. */
+export function applyEditTo<M extends ChatMessage>(list: M[], e: Omit<EditedEvent, "type">): M[] {
+  if (!e.split) return list.map((m) => applyEdit(m, e));
+  const split = e.split as M[];
+  return list.flatMap((m) => (m.id === e.id && (m.thread ?? "owner") === e.thread ? split : [m]));
 }
 
 /**
@@ -403,6 +450,8 @@ export type ChatStrings = {
   statusOffline: string;
   /** The mark on a voice line the agent polished (tooltip and label). */
   polished: string;
+  /** The undo on a line several utterances were merged into. */
+  unmerge: string;
   /** Voice-clip recording (ClipsBadge.tsx): the badge's title while it records. */
   clipsRecording: string;
   /** The badge's button that stops recording. */
@@ -488,6 +537,18 @@ export type ChatStrings = {
   vpFailed: string;
   /** Button and screen-reader label that closes the voiceprint panel (shown as ✕ or under a finished step). Imperative verb, one word. */
   vpClose: string;
+  /** Status line in the voiceprint panel: the owner's 'Only my voice' filter is working: speech that does not match his voiceprint is dropped on his Mac before it is transcribed. Keep 'Mac'; one sentence. */
+  vpFilterOn: string;
+  /** Status line in the voiceprint panel: the 'Only my voice' filter is switched off, so all speech is transcribed as usual. One sentence. */
+  vpFilterOff: string;
+  /** Status line in the voiceprint panel: the 'Only my voice' filter is switched on but cannot work (this phone or computer has no voiceprint yet, or the check on the Mac is unavailable), so all speech is transcribed as usual. Keep 'Mac'; one sentence. */
+  vpFilterWaiting: string;
+  /** Count in the voiceprint panel: {n} spoken lines were dropped today by the 'Only my voice' filter because the voice did not match; {score} is the last match score, a small decimal like 0.07. Keep both placeholders; short. */
+  vpFilterCount: string;
+  /** Count in the voiceprint panel, while the filter is off: {n} spoken lines today that the 'Only my voice' filter would have dropped (they were still sent). Keep the placeholder; short. */
+  vpFilterWould: string;
+  /** Checkbox in the voiceprint panel that pauses the 'Only my voice' filter on the phone or computer in hand only. A short statement. */
+  vpFilterPause: string;
   /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: the owner's Mac confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
@@ -562,6 +623,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   listening: "Your {name} is listening ({n})",
   statusOffline: "Your {name} is offline · messages wait until it is back",
   polished: "Polished by your {name}",
+  unmerge: "Split back into the separate messages",
   clipsRecording: "Recording",
   clipsStop: "Stop",
   clipsScreenOn: "Screen kept on",
@@ -605,6 +667,12 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpFailed: "Voiceprint: something went wrong ({error})",
   vpClose: "Close",
   vpVerified: "Your voice, verified",
+  vpFilterOn: "Only my voice: on. Speech that does not match is dropped on your Mac.",
+  vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
+  vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on your Mac. Until then all speech is transcribed as usual.",
+  vpFilterCount: "Dropped today: {n}. Voice did not match (last score {score}).",
+  vpFilterWould: "Would have been dropped today: {n} (still sent).",
+  vpFilterPause: "Pause on this device",
   notReadHidden: "· not read aloud: the page was in the background",
   attachOpen: "Add or attach",
   attachGroupAdd: "Add",
@@ -796,6 +864,10 @@ export type VoiceTiming = {
   t_sent?: number;
   sttServerMs?: number;
   audioMs?: number;
+  /** The VAD's start of the first utterance in the line (voice-merge.ts: the gap to the line before). */
+  t_speechStart?: number;
+  /** The capture hit MAX_UTTERANCE_MS and was cut: it did not end by silence. */
+  t_cut?: number;
 };
 export const VOICE_TIMING_KEYS = [
   "t_lastVoice",
@@ -806,6 +878,8 @@ export const VOICE_TIMING_KEYS = [
   "t_sent",
   "sttServerMs",
   "audioMs",
+  "t_speechStart",
+  "t_cut",
 ] as const satisfies readonly (keyof VoiceTiming)[];
 
 /**

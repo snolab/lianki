@@ -360,22 +360,31 @@ export function voiceBgWords(
 }
 
 /** The mic's local-STT dot (MicButton.tsx, docs/local-stt.md): what each state says. */
-export type LocalSttStrings = { ready: string; connecting: string; down: string };
+export type LocalSttStrings = {
+  ready: string;
+  connecting: string;
+  down: string;
+  /** Brief note over the mic: the owner's "only my voice" filter dropped a line, because the voice did not match. Short. */
+  filtered: string;
+};
 const LOCAL_STT: Record<"en" | "zh" | "ja", LocalSttStrings> = {
   en: {
     ready: "Local speech model connected",
     connecting: "Connecting to the local speech model…",
     down: "Local speech model unreachable: using the cloud",
+    filtered: "Not your voice: not sent",
   },
   zh: {
     ready: "已连接本地语音模型",
     connecting: "正在连接本地语音模型…",
     down: "本地语音模型连不上，改用云端识别",
+    filtered: "不是你的声音，没有发送",
   },
   ja: {
     ready: "ローカル音声モデルに接続済み",
     connecting: "ローカル音声モデルに接続中…",
     down: "ローカル音声モデルに接続できません。クラウドで認識します",
+    filtered: "あなたの声ではないため送信しませんでした",
   },
 };
 export function localSttStrings(

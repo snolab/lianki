@@ -32,7 +32,7 @@ import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
 import type { SttSignals } from "./stt-guard";
 import { noteDropped } from "./stt-dropped";
-import { VOICE_DEVICE_KEY, deviceSlug, noteSpeaker } from "./voiceprint";
+import { VOICE_DEVICE_KEY, deviceSlug, filterSwitch, filterVerdict, noteFiltered, noteSpeaker, subscribeFiltered } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
 import { MIC_BOX, MIC_RING } from "./bar-geometry";
@@ -104,7 +104,7 @@ export function pageCues(): Cues {
     allowed: (kind) => {
       const st = voice().state();
       return cueAllowed(kind, {
-        on: cueOn(kind === "send" ? CUE_SEND_KEY : CUE_SPEECH_KEY),
+        on: cueOn(kind === "send" || kind === "amend" ? CUE_SEND_KEY : CUE_SPEECH_KEY),
         muted: !speechEnabled(),
         silenced: silenceHere() !== null,
         speaking: st.speaking,
@@ -312,6 +312,9 @@ async function energy(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   };
 }
 
+/** How long the mic says a line was stopped by the voiceprint filter. */
+const FILTERED_NOTE_MS = 3_000;
+
 /** This device's slug for the voiceprint (voiceprint.ts; localStorage lk:agent-voice-device overrides it). */
 export const voiceDevice = () => {
   let o: string | null = null;
@@ -379,8 +382,10 @@ function session(): MicSession {
       };
     },
     // The device goes along, so the Mac scores finals against this device's voiceprint.
-    localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner" }),
+    localStt: (url) =>
+      createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner", filter: filterSwitch() }),
     speaker: noteSpeaker,
+    filtered: (r) => void v.log({ ev: "voice-filtered", mode: "passive", n: noteFiltered("filtered", r).n, ...r }),
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
     // localStorage lk:agent-wake = "0" turns the wake word off (never passive).
     kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),
@@ -398,6 +403,8 @@ function session(): MicSession {
           // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
           try {
             const f = await local;
+            // The filter stopped it on the Mac: not text, not the cloud, not the clip sink.
+            if (filterVerdict(f, durationMs, (ev) => v.log(ev))) return "";
             out = f;
             via = "local";
             v.log({
@@ -645,13 +652,29 @@ export function DebugMic({
       window.removeEventListener("keydown", unlock, true);
     };
   }, [micIsOn]);
+  // A line the voiceprint filter stopped says so, for a moment: he should see his words go.
+  const [stopped, setStopped] = useState(false);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const off = subscribeFiltered(() => {
+      setStopped(true);
+      clearTimeout(t);
+      t = setTimeout(() => setStopped(false), FILTERED_NOTE_MS);
+    });
+    return () => {
+      off();
+      clearTimeout(t);
+    };
+  }, []);
   const note = view.error
     ? micErrorNote(view.error)
     : view.state !== "off" && view.kws === "failed"
       ? ws.failed
       : view.state !== "off" && view.kws === "needs-wifi"
         ? ws.wifi
-        : null;
+        : view.state !== "off" && stopped
+          ? localSttStrings().filtered
+          : null;
 
   useEffect(() => {
     if (state === "off") return;
