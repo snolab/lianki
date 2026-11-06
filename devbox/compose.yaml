@@ -17,6 +17,8 @@ services:
       DEVBOX_PUBLIC_URL: ${DEVBOX_PUBLIC_URL:-}
       DEVBOX_DSH: ${DEVBOX_DSH:-1}
       DEVBOX_DSH_PUBLIC_HOST: ${DEVBOX_DSH_PUBLIC_HOST:-}
+      DEVBOX_LIANKI_CLIENT_ID: ${DEVBOX_LIANKI_CLIENT_ID:-}
+      DEVBOX_LIANKI_SCOPE: ${DEVBOX_LIANKI_SCOPE:-}
     # DEEPSEEK_API_KEY for dsh, and nothing else secret. Optional file.
     env_file:
       - path: ${DEVBOX_ENV_FILE:-.env}

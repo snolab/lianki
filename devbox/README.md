@@ -77,6 +77,14 @@ Boxes on the owner's Mac (2026-11-05):
 
 The owner's own box (`snomiao`) is for trying the setup before the friend.
 
+### Signing in through lianki.com
+
+Set `DEVBOX_LIANKI_CLIENT_ID` in the box's env file, from `/dev/box-clients`, and
+the box's own sign-in and sign-up are gone: it signs in through lianki.com as one
+bound account and calls the production API with a short-lived token. Dark behind
+the flag `box.oauth`; leave the variable empty until that is on, or the box cannot
+sign in at all. [docs/box-oauth.md](../docs/box-oauth.md).
+
 ## Security boundaries
 
 - **No owner credential in the image or volume.** No GitHub token, no

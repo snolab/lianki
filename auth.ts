@@ -9,6 +9,7 @@
  * requests that actually need auth.
  */
 import type { Auth } from "./auth-impl";
+import { BOX_IDENTITY_HEADER } from "./lib/box-oauth/identity";
 import { refreshOwners } from "./lib/owner-store";
 
 export type { Auth };
@@ -31,6 +32,17 @@ export const auth: Pick<Auth, "api"> = {
     get:
       (_target, endpoint) =>
       async (...args: unknown[]) => {
+        // A box token's request (lib/box-oauth/gate.ts): that account, or nobody.
+        // There is no cookie on it to fall back to.
+        if (endpoint === "getSession") {
+          const headers = (args[0] as { headers?: Headers } | undefined)?.headers;
+          if (headers?.has(BOX_IDENTITY_HEADER)) {
+            const { boxSessionFrom } = await import("./lib/box-oauth/app-session");
+            const box = await boxSessionFrom(headers);
+            if (box) await refreshOwners();
+            return box;
+          }
+        }
         const api = (await getAuth()).api as Record<PropertyKey, (...a: unknown[]) => unknown>;
         const out = await api[endpoint](...args);
         // isOwner() is synchronous and answers from a snapshot of site_role

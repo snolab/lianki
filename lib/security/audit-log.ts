@@ -26,6 +26,8 @@ export type AuditKind =
   | "live-preview.revoke"
   | "live-frontend.allow"
   | "live-frontend.disallow"
+  | "box.bind"
+  | "box.revoke"
   | "email.change"
   // Written by lib/site-role.ts in one batch with the role change; listed here
   // so the log's kinds are in one place.

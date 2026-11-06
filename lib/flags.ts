@@ -159,6 +159,11 @@ export const FLAGS = {
       "my-box，用自己机器上的前端（docs/custom-frontend.md；原名 live.custom-frontend）：白名单里的用户（在 /dev/live-frontends 添加/移除）可以登记自己的 Cloudflare 快速隧道（https://<名字>.trycloudflare.com，最长 8 小时，每人同时最多 3 个；现在只接受这种隧道，登记要在浏览器控制台调用 /api/live-previews，还没有界面），然后在 lianki.com/<页面>?live=<id> 看到自己开发服务器上的前端页面。页面里的请求走 /api 和 /auth，永远是正式版，用的是他在 lianki.com 上自己的账号和权限；他的开发服务器收不到任何 cookie 或登录信息，服务器端渲染时都是未登录状态。只有登记的本人能看到（别人打开同一链接只看到正式版），页面有严格的 CSP（只能连 lianki.com 和他的隧道）。关闭（默认）= 只有你本人能登记和使用。",
     default: false,
   },
+  "box.oauth": {
+    description:
+      "开发盒通过 lianki.com 登录（docs/box-oauth.md）：my-<hash> 盒子用 OAuth（PKCE）登录，只能用绑定的那一个账号（在 /dev/box-clients 绑定/撤销），用短期令牌访问允许的 API 路由，只能碰这个账号自己的数据。关闭时：相关路由一律 404，盒子无法登录。",
+    default: false,
+  },
   levels: {
     description:
       "学习等级（种子→莲 / 炼气→炼虚）：所有用户都能看到自己的等级（未注册 / 免费 / 付费，付费后按累计有效学习天数升：100、365、1000 天）——登录后导航栏头像旁有一个小徽章，/profile 上有等级卡片（徽章、等级名、学习天数、离下一级还差几天；未注册的访客在 /profile 也能看到自己的等级和注册提示）。学习天数不论开关都在记录。关闭（默认）= 只有你本人能看到。",

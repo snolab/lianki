@@ -60,7 +60,7 @@ secrets or settings: it is always on.
 session's own user; nothing in a request can name a user.
 
 - **better-auth's HTTP `/update-user` is closed**: `disabledPaths:
-  ["/update-user"]`, because over HTTP it would store any string as a name or
+["/update-user"]`, because over HTTP it would store any string as a name or
   image. `POST /api/profile/name` and `/api/profile/avatar` validate and then call
   `auth.api.updateUser` server-side, which `disabledPaths` does not touch.
 - **Name** (`cleanName`): NFC, control and bidi-override characters out, spaces
@@ -284,8 +284,7 @@ strips it before anything reaches next dev. It also keys the HMAC of the
 frontend's ([custom-frontend.md](custom-frontend.md)), which never send it
 anywhere. Unset: every `?live=` gets the production page.
 
-The only other copy is `liveSecret` in `.dev-whole-page.json` (gitignored,
-0600) in the dev server's worktree. Set or rotate it (a secret: the owner's
+The only other copy is `liveSecret` in `.dev-whole-page.json` (gitignored, 0600) in the dev server's worktree. Set or rotate it (a secret: the owner's
 tap first), never by echoing it:
 
 ```bash
@@ -340,6 +339,7 @@ owner's OK first):
   | bunx wrangler secret put STT_SPEAKER_PUB -c workers/push/wrangler.jsonc
 oxmgr restart lianki-stt   # the server loads the key and signs from then on
 ```
+
 The cloudflared tunnel's own credentials (`~/.cloudflared/<uuid>.json`,
 `cert.pem`) are separate: mode 0600, on the Mac only, never committed;
 whoever holds the credentials file can run a connector for the tunnel.
@@ -363,6 +363,14 @@ Zone · Read), `~/.config/lianki/preview-tunnel-token` (the tunnel's run
 token, from the API, for `cloudflared --token-file`), and `previewKey` in
 `.dev-whole-page.json` (seals the gate's session cookie; delete it to end
 every tunnel session).
+
+## Box tokens (no new secret)
+
+A my-box signs in through lianki.com with OAuth and PKCE
+([box-oauth.md](box-oauth.md)). No secret is added: the client is public, tokens
+are stored hashed by better-auth's plugin, and the one-minute identity the
+Worker's gate hands the app is signed with a key derived from `AUTH_SECRET`.
+Nothing of this is in a box.
 
 ## CLI login (`lianki auth`, API tokens)
 
