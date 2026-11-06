@@ -36,6 +36,8 @@ export type ByokErrorKind =
   | "timeout"
   /** 200, but no text in the answer. */
   | "empty"
+  /** Lianki's relay needs a signed-in (free) account; going straight from the browser does not. */
+  | "sign-in"
   /** Lianki's relay refused the backend (not on its allowlist, or not a public address). */
   | "relay-refused"
   /** Lianki's relay is busy for this device or account: wait a minute. */
@@ -137,7 +139,7 @@ export function relayRequest(
     url: "/api/byok/proxy",
     init: {
       method: "POST",
-      // Same origin: the session cookie only counts toward the user's own limit.
+      // Same origin: the relay needs the session cookie (a free account).
       credentials: "same-origin",
       cache: "no-store",
       headers: { "content-type": "application/json", authorization: `Bearer ${a.apiKey}` },
@@ -165,6 +167,8 @@ function relayError(kind: unknown, status?: unknown): ByokResult {
       return { ok: false, kind: "timeout" };
     case "rate":
       return { ok: false, kind: "rate" };
+    case "sign-in":
+      return { ok: false, kind: "sign-in" };
     case "too-large":
       return { ok: false, kind: "too-large" };
     case "network":

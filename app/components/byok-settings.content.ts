@@ -1000,6 +1000,42 @@ const dictionary = {
       mr: "Lianki च्या फॉरवर्डरने हा पत्ता नाकारला: ते फक्त यादीतील प्रदात्यांच्या सार्वजनिक पत्त्यांवर पाठवते.",
       ko: "Lianki 전달이 이 주소를 거부했습니다. 목록에 있는 제공자의 공개 주소로만 전달합니다.",
     }),
+    errRelaySignIn: t({
+      en: "Going through Lianki needs a free account. Sign in, or turn this off to connect straight from your browser.",
+      zh: "经 Lianki 转发需要免费账号。请登录，或关闭此项，改为从浏览器直接连接。",
+      hi: "Lianki के ज़रिए भेजने के लिए मुफ़्त खाता चाहिए। साइन इन करें, या इसे बंद करके अपने ब्राउज़र से सीधे कनेक्ट करें।",
+      es: "Pasar por Lianki requiere una cuenta gratuita. Inicia sesión o desactiva esta opción para conectarte directamente desde tu navegador.",
+      fr: "Passer par Lianki nécessite un compte gratuit. Connectez-vous, ou désactivez cette option pour vous connecter directement depuis votre navigateur.",
+      ar: "يتطلب المرور عبر Lianki حسابًا مجانيًا. سجّل الدخول، أو أوقف هذا الخيار للاتصال مباشرة من متصفحك.",
+      bn: "Lianki-র মাধ্যমে পাঠাতে একটি বিনামূল্যের অ্যাকাউন্ট দরকার। সাইন ইন করুন, অথবা এটি বন্ধ করে আপনার ব্রাউজার থেকে সরাসরি সংযোগ করুন।",
+      pt: "Passar pelo Lianki requer uma conta gratuita. Entre na sua conta ou desative esta opção para conectar diretamente pelo navegador.",
+      ru: "Для передачи через Lianki нужен бесплатный аккаунт. Войдите или отключите этот параметр, чтобы подключаться напрямую из браузера.",
+      ur: "Lianki کے ذریعے بھیجنے کے لیے مفت اکاؤنٹ درکار ہے۔ سائن ان کریں، یا اسے بند کر کے اپنے براؤزر سے براہ راست جڑیں۔",
+      id: "Melewati Lianki memerlukan akun gratis. Masuklah, atau matikan opsi ini untuk terhubung langsung dari browser Anda.",
+      de: "Die Weiterleitung über Lianki erfordert ein kostenloses Konto. Melde dich an oder schalte dies aus, um dich direkt aus deinem Browser zu verbinden.",
+      ja: "Lianki 経由での転送には無料アカウントが必要です。サインインするか、これをオフにしてブラウザから直接接続してください。",
+      sw: "Kupitia Lianki kunahitaji akaunti ya bure. Ingia, au zima hili ili uunganishe moja kwa moja kutoka kwenye kivinjari chako.",
+      mr: "Lianki मार्फत पाठवण्यासाठी मोफत खाते लागते. साइन इन करा, किंवा हे बंद करून तुमच्या ब्राउझरवरून थेट कनेक्ट करा.",
+      ko: "Lianki를 거치려면 무료 계정이 필요합니다. 로그인하거나, 이 옵션을 끄고 브라우저에서 바로 연결하세요.",
+    }),
+    relaySignIn: t({
+      en: "Sign in with a free account to use this",
+      zh: "登录免费账号即可使用",
+      hi: "इसका उपयोग करने के लिए मुफ़्त खाते से साइन इन करें",
+      es: "Inicia sesión con una cuenta gratuita para usarlo",
+      fr: "Connectez-vous avec un compte gratuit pour l’utiliser",
+      ar: "سجّل الدخول بحساب مجاني لاستخدام هذا",
+      bn: "এটি ব্যবহার করতে একটি বিনামূল্যের অ্যাকাউন্ট দিয়ে সাইন ইন করুন",
+      pt: "Entre com uma conta gratuita para usar",
+      ru: "Войдите с бесплатным аккаунтом, чтобы использовать это",
+      ur: "اسے استعمال کرنے کے لیے مفت اکاؤنٹ سے سائن ان کریں",
+      id: "Masuk dengan akun gratis untuk menggunakannya",
+      de: "Melde dich mit einem kostenlosen Konto an, um dies zu nutzen",
+      ja: "無料アカウントでサインインすると使えます",
+      sw: "Ingia kwa akaunti ya bure ili kutumia hili",
+      mr: "हे वापरण्यासाठी मोफत खात्याने साइन इन करा",
+      ko: "무료 계정으로 로그인하면 사용할 수 있습니다",
+    }),
     errRate: t({
       en: "Too many requests through Lianki's relay. Wait a minute and try again.",
       zh: "经 Lianki 转发的请求太多了。请等一分钟再试。",
@@ -1161,6 +1197,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Error in Settings → Your own AI when 'Relay through Lianki (not stored)' is on but the base URL was changed from the provider's standard address: Lianki forwards only to that address; picking the provider again restores it, or the learner can turn relaying off. {name} is the provider's name; keep {name}.",
   errRelayRefused:
     "Error in Settings → Your own AI after a test through Lianki's relay: Lianki's server refused to forward to this address, because it forwards only to the public addresses of the providers in the list. One factual sentence.",
+  errRelaySignIn:
+    "Error in Settings → Your own AI, after a test or a call through Lianki's relay ('Go through Lianki, not stored') with nobody signed in: says why, a free account fixes it, and that without the relay the browser connects straight to the provider with no account. Two short sentences. Sign in is an instruction.",
+  relaySignIn:
+    "Link under the disabled 'Go through Lianki' checkbox in Settings → Your own AI, shown to a visitor who is not signed in: opens the sign-in page. A free account is enough, and the rest of this feature works without one. Imperative, one line.",
   errRate:
     "Error in Settings → Your own AI and the reader when Lianki's relay limits how many requests it forwards per minute (Lianki's own limit, not the provider's): wait a minute and try again. Two short sentences.",
   errTooLarge:

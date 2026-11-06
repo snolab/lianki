@@ -552,6 +552,30 @@ let goalId;
   );
 }
 {
+  // The BYOK relay needs a session; with one it goes on to its own checks.
+  const relay = (headers) =>
+    fetch(`${BASE}/api/byok/proxy`, {
+      method: "POST",
+      headers: {
+        connection: "close",
+        origin: BASE,
+        "content-type": "application/json",
+        authorization: "Bearer qa-not-a-key",
+        ...headers,
+      },
+      body: JSON.stringify({ provider: "qa-no-such-provider" }),
+    });
+  const guest = await relay({});
+  const guestBody = await guest.json().catch(() => null);
+  rec(
+    "BYOK  the relay answers 401 sign-in with no session",
+    guest.status === 401 && guestBody?.proxyError === "sign-in",
+    `HTTP ${guest.status} ${guestBody?.proxyError}`,
+  );
+  const signedIn = await relay({ cookie });
+  rec("BYOK  the relay goes on with a session", signedIn.status !== 401, `HTTP ${signedIn.status}`);
+}
+{
   const push = "https://example.com/qa-pushed";
   const r = await call("POST", "/api/fsrs/bulk-upsert", {
     notes: [
