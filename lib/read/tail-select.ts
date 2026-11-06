@@ -62,6 +62,29 @@ export function tailPlan(u: TailUnit | null, paras: TailParas): TransPlan | null
   return plan.length ? plan : null;
 }
 
+/** How many of the newest sentences the card follows when nothing is selected. */
+export const LATEST_SENTENCES = 3;
+
+const FINISHED = /\p{Sentence_Terminal}["'”’」』)）]*\s*$/u;
+
+/**
+ * Nothing selected: the card follows the newest whole sentences. A sentence
+ * still being written would ask again at every word, so it joins only once the
+ * text rests (`resting`).
+ */
+export function latestPlan(paras: TailParas, resting: boolean): TransPlan | null {
+  for (let p = paras.length - 1; p >= 0; p--) {
+    const ss = paras[p].sentences;
+    const block = ss.flatMap((x, s) => {
+      const text = normText(x.text);
+      const done = s < ss.length - 1 || resting || FINISHED.test(x.text);
+      return text && done ? [{ level: "sentence" as const, line: p, s, text }] : [];
+    });
+    if (block.length) return [block.slice(-LATEST_SENTENCES)];
+  }
+  return null;
+}
+
 /** The markup a save sends: the book's lines and the tail, as the Docs parser reads them. */
 export function tailHtml(lines: readonly string[], tail: string): string {
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

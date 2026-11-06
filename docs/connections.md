@@ -132,7 +132,10 @@ Flag `read.gdoc-stream` (off: the owner only).
    book does not hold yet. The tail has the book's selection rules
    (`lib/read/tail-select.ts`): tap, combo, a hand selection grown to whole
    sentences, stitched translation; a word's meaning and card need it in the
-   book, so a tap on one written since the last save saves first.
+   book, so a tap on one written since the last save saves first. With nothing
+   selected, the card follows the newest whole sentences, and the unfinished one
+   once the text rests (`latestPlan`). Each is translated once, through the same
+   metered translate route; its × stops following for that visit.
 
 Limits: it runs only while the doc is open in a tab with the userscript, so the
 writer's side is desktop only (the reader can be any device). Word marks in the

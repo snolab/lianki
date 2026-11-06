@@ -2078,6 +2078,7 @@ function Reader({
             lines={lines}
             title={material.title}
             sourceUrl={book?.sourceUrl}
+            busy={!!sel.unit}
           />
         )}
         {/* The book's end: the same way back as the toolbar's ←, no scrolling up. */}

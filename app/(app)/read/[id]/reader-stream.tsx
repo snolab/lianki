@@ -23,6 +23,7 @@ import { cutPara, learningBand, type Fam } from "@/lib/read/reader-model";
 import {
   tailHolds,
   tailHtml,
+  latestPlan,
   tailNext,
   tailPlan,
   tailRange,
@@ -150,6 +151,9 @@ const postJson = (url: string, body: unknown) =>
  * /api/words/familiarity. A word's meaning and card need it in the book, so a
  * tap on one written since the last save saves first.
  */
+/** How long the text is still before an unfinished sentence is translated too. */
+const REST_MS = 1500;
+
 export function LiveTail({
   id,
   text,
@@ -159,6 +163,7 @@ export function LiveTail({
   lines,
   title,
   sourceUrl,
+  busy = false,
 }: {
   id: string;
   text: string;
@@ -168,6 +173,8 @@ export function LiveTail({
   lines: readonly string[];
   title: string;
   sourceUrl?: string;
+  /** Something in the book is selected: its card has the screen. */
+  busy?: boolean;
 }) {
   const t = useIntlayer("read-gdoc-stream");
   const ts = useIntlayer("read-select");
@@ -210,13 +217,32 @@ export function LiveTail({
       .catch(() => {});
   }, [wanted, normLang]);
 
-  // Translation: the reader's own, unit by unit. A plan is rebuilt only when the
-  // unit changes, so new text arriving does not ask again.
-  const plan = useMemo(
+  // Translation: the reader's own, unit by unit. A selection's plan is rebuilt
+  // only when the unit changes, so new text arriving does not ask again.
+  const unitPlan = useMemo(
     () => tailPlan(unit, paras),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [unit],
   );
+  // Nothing selected: the newest sentences, from the book once the tail is saved.
+  const [dismissed, setDismissed] = useState(false);
+  const [resting, setResting] = useState(false);
+  useEffect(() => {
+    setResting(false);
+    const timer = setTimeout(() => setResting(true), REST_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+  const lastLine = lines[lines.length - 1];
+  const latestParas = useMemo(
+    () => (paras.length ? paras : lastLine?.trim() ? [cutPara(lastLine, lang, normLang)] : []),
+    [paras, lastLine, lang, normLang],
+  );
+  const following = !unit && !card && !dismissed && !busy;
+  const latest = following ? latestPlan(latestParas, resting) : null;
+  const latestKey = latest ? JSON.stringify(latest) : "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const latestStable = useMemo(() => latest, [latestKey]);
+  const plan = unitPlan ?? latestStable;
   const trans = useSelectTranslate(id, to, lang && lang !== "und" ? lang : undefined, plan);
 
   /** Bring the book up to date, for a word written since the last save. */
@@ -280,6 +306,11 @@ export function LiveTail({
     setUnit(null);
     setCard(null);
   }, []);
+  /** The card's ×: on the card that follows the text, it stops following. */
+  const dismiss = () => {
+    if (!unit && !card) setDismissed(true);
+    close();
+  };
 
   const onTap = (e: React.MouseEvent) => {
     if (getSelection()?.isCollapsed === false) return;
@@ -401,7 +432,7 @@ export function LiveTail({
             type="button"
             className="float-end opacity-60"
             aria-label={String(ts.clear.value ?? ts.clear)}
-            onClick={close}
+            onClick={dismiss}
           >
             ×
           </button>
@@ -436,6 +467,7 @@ export function LiveTail({
           )}
           {plan && (
             <div data-testid="read-live-translation">
+              {!unit && <p className="mb-1 text-xs opacity-60">{t.latest}</p>}
               {blocks.every((b) => b.every((x) => x === null || x === false)) && !trans.failed ? (
                 <p className="opacity-60">{ts.translating}</p>
               ) : (

@@ -2,6 +2,8 @@
 import { describe, expect, it } from "bun:test";
 import { cutPara } from "@/lib/read/reader-model";
 import {
+  LATEST_SENTENCES,
+  latestPlan,
   tailHolds,
   tailHtml,
   tailNext,
@@ -57,6 +59,37 @@ describe("tailPlan", () => {
       ["Three four.", "Five six."],
       ["Seven eight."],
     ]);
+  });
+});
+
+describe("latestPlan", () => {
+  const plan = (t: string, resting: boolean) =>
+    latestPlan([cutPara(t, "en")], resting)
+      ?.flat()
+      .map((x) => x.text);
+  it("follows the newest whole sentences, a bounded number", () => {
+    const six = "A one. B two. C three. D four. E five. F six.";
+    const out = plan(six, false)!;
+    expect(out).toHaveLength(LATEST_SENTENCES);
+    expect(out.at(-1)).toBe("F six.");
+  });
+  it("adds the sentence still being written only once the text rests", () => {
+    expect(plan("Done here. Still writ", false)).toEqual(["Done here."]);
+    expect(plan("Done here. Still writ", true)).toEqual(["Done here.", "Still writ"]);
+  });
+  it("knows finished sentences in other scripts, closing quotes too", () => {
+    expect(latestPlan([cutPara("今日は寒い。", "ja")], false)?.flat()).toHaveLength(1);
+    expect(latestPlan([cutPara("「はい。」", "ja")], false)?.flat()).toHaveLength(1);
+  });
+  it("looks back a paragraph when the last has nothing to show, and may have nothing", () => {
+    const paragraphs = ["Earlier one.", "unfinished"].map((p) => cutPara(p, "en"));
+    expect(
+      latestPlan(paragraphs, false)
+        ?.flat()
+        .map((x) => x.text),
+    ).toEqual(["Earlier one."]);
+    expect(latestPlan([], true)).toBeNull();
+    expect(latestPlan([cutPara("unfinished", "en")], false)).toBeNull();
   });
 });
 

@@ -113,10 +113,30 @@ const dictionary = {
       mr: "अर्थ सापडला नाही",
       ko: "뜻을 찾을 수 없음",
     }),
+    latest: t({
+      en: "Latest",
+      zh: "最新内容",
+      hi: "नवीनतम",
+      es: "Lo último",
+      fr: "Dernières phrases",
+      ar: "الأحدث",
+      bn: "সর্বশেষ",
+      pt: "Mais recente",
+      ru: "Последнее",
+      ur: "تازہ ترین",
+      id: "Terbaru",
+      de: "Neueste",
+      ja: "最新の内容",
+      sw: "Za hivi punde",
+      mr: "नवीनतम",
+      ko: "최신 내용",
+    }),
   },
 };
 
 const context = {
+  latest:
+    "Small label on the card that, when nothing is selected, shows the translation of the sentences just written in the live Google Doc: the newest text.",
   addToLearn:
     "Button on the card shown when the reader taps a word in the live text under the book: makes a flashcard for that word in the user's deck.",
   added: "Confirmation on the same card, replacing the button, once the word's flashcard was made.",
