@@ -1886,7 +1886,7 @@ function Reader({
     <CardGradeArea
       plan={cardGrade.plan}
       intervals={cardGrade.intervals}
-      context={glossWord?.ex}
+      context={selMeaning ? null : senseSpan?.sentence}
       locale={String(locale)}
       mirror={mirror}
       openedAt={cardGrade.openedAt}

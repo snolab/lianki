@@ -13,6 +13,7 @@
 // press that starts inside the gesture that opened the card is ignored.
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { flushSync } from "react-dom";
 import { useIntlayer } from "next-intlayer";
 import { fill } from "@/lib/nav/nav-core";
 import { hintParts, type HandlePlan } from "@/lib/read/batch-grade";
@@ -141,14 +142,16 @@ export function NewWordStrip({
             type="button"
             data-testid="read-new-word-add"
             data-rating={r}
-            className="sr-only min-h-11 rounded-full px-3 text-sm focus:not-sr-only focus:bg-[oklch(0.5_0_0/0.1)]"
+            className="sr-only min-h-11 rounded-full px-3 text-sm focus:not-sr-only focus:bg-[oklch(0.5_0_0/0.1)] focus:px-3"
             onClick={(e) => {
-              // The button goes with the strip: focus stays on the card, on the knob (undo).
+              // The button goes with the strip: after this click has bubbled (gone by
+              // then, it would count as a click off the card), and focus stays on the
+              // card, on the knob (undo).
               const card = e.currentTarget.closest("[data-select-card]");
-              onCommit(r);
-              requestAnimationFrame(() =>
-                card?.querySelector<HTMLElement>("[role=slider]")?.focus(),
-              );
+              setTimeout(() => {
+                flushSync(() => onCommit(r));
+                card?.querySelector<HTMLElement>("[role=slider]")?.focus();
+              }, 0);
             }}
           >
             {fill(t.addAs.value, { grade: named(r) })}

@@ -134,13 +134,26 @@ async function run(device, scheme, touch) {
   check(!!w, `a word without a card is on screen (${w?.text})`);
   if (!w) return ctx.close();
   const tapWord = () => (touch ? page.touchscreen.tap(w.x, w.y) : page.mouse.click(w.x, w.y));
+  /** The word's card, freshly opened (a tap on an open word would widen or close it). */
+  const reopen = async () => {
+    const close = page.getByTestId("read-select-close");
+    if (await close.isVisible().catch(() => false)) await close.click();
+    await page.waitForTimeout(800);
+    await tapWord();
+  };
 
   // A tap on the word: a preview with the slider, no button, nothing stored.
   await tapWord();
   const knob = page.getByTestId("read-grade-knob");
-  const preview = page.getByTestId("read-new-word-context");
+  // The strip's idle hint says it is not added (the fixture's account reads English).
+  const preview = page.getByTestId("read-grade-hint").filter({ hasText: /not added yet/i });
   check(await until(page, () => knob.isVisible(), 15000), "a word without a card: the slider");
-  check(await preview.isVisible(), "the preview shows the word's sentence");
+  check(await until(page, () => preview.isVisible()), "the hint: not added yet");
+  check(
+    (await page.getByTestId("read-select-meaning").isVisible()) ||
+      (await page.getByTestId("read-new-word-context").isVisible()),
+    "the preview shows a meaning there already is, else the word's sentence",
+  );
   const noButton = async () =>
     (await page.locator("[data-action=make-cards],[data-action=make-phrase]").count()) === 0;
   check(await noButton(), "no 制卡 button on a word's card");
@@ -151,7 +164,7 @@ async function run(device, scheme, touch) {
   await page.waitForTimeout(300);
   await tapWord();
   check(await until(page, () => knob.isVisible(), 8000), "closed and reopened: still a preview");
-  check(await preview.isVisible(), "still no card after closing it");
+  check(await until(page, () => preview.isVisible()), "still no card after closing it");
   await page.waitForTimeout(700);
 
   // The whole rating system: each grade with its next interval, as /words.
@@ -247,7 +260,7 @@ async function run(device, scheme, touch) {
   await page.waitForTimeout(800);
 
   // Up: the batch is taken back by the server.
-  await tapWord();
+  await reopen();
   await until(page, () => knob.isVisible());
   await page.waitForTimeout(700);
   const undone = page.waitForResponse(
@@ -268,14 +281,15 @@ async function run(device, scheme, touch) {
   else await mouseDrag(page, 56, 0);
   await toast.waitFor({ timeout: 2000 });
   await toast.locator("button").click();
-  check(await until(page, () => preview.isVisible(), 2000), "toast Undo: a preview again");
   await page.waitForTimeout(GRADE_WAIT);
   check(writes.length === n1, "toast Undo while held: nothing sent");
+  // A tap on the toast is a tap off the card, which closes: the word is still only a preview.
+  await reopen();
+  check(await until(page, () => preview.isVisible()), "toast Undo: a preview again");
 
   // Desktop: keys grade the open card's word.
   if (!touch) {
-    await page.waitForTimeout(800);
-    await tapWord();
+    await reopen();
     await until(page, () => knob.isVisible());
     await page.waitForTimeout(600);
     const before = writes.length;
@@ -295,7 +309,11 @@ async function run(device, scheme, touch) {
     await page.keyboard.press("Enter");
     check(await until(page, () => toast.isVisible(), 2000), "Enter on the button commits (toast)");
     check(
-      await page.evaluate(() => document.activeElement?.getAttribute("role") === "slider"),
+      await until(
+        page,
+        () => page.evaluate(() => document.activeElement?.getAttribute("role") === "slider"),
+        1500,
+      ),
       "focus stays on the card (the knob)",
     );
     check(await until(page, () => writes.length > before, 12000), "its batch is sent");
@@ -304,6 +322,40 @@ async function run(device, scheme, touch) {
       `the button's grade goes through (${writes.at(-1)?.rating})`,
     );
   }
+
+  // A word no deck knows: no model asked, so the word in its sentence (the fixture has names).
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(800);
+  const context = page.getByTestId("read-new-word-context");
+  const spots = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid=reader-book] [data-t][data-f="u"]')]
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.top > 120 && r.bottom < innerHeight * 0.6 && r.width > 18)
+      .slice(0, 8)
+      .map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 })),
+  );
+  let shown = false;
+  for (const p of spots) {
+    if (touch) await page.touchscreen.tap(p.x, p.y);
+    else await page.mouse.click(p.x, p.y);
+    await page.waitForTimeout(1200);
+    shown = await context.isVisible();
+    if (shown) {
+      await page.screenshot({ path: join(OUT, `context-${tag}.png`) });
+      break;
+    }
+    await page
+      .getByTestId("read-select-close")
+      .click()
+      .catch(() => {});
+    await page.waitForTimeout(800);
+  }
+  check(shown, `no meaning without a model: the word's sentence on the card (${spots.length})`);
+  check(others.length === 0, `still no make-cards or model gloss (${others})`);
+  await page
+    .getByTestId("read-select-close")
+    .click()
+    .catch(() => {});
 
   // A sentence: two quick clicks; its handle grades that sentence.
   await page.keyboard.press("Escape").catch(() => {});
