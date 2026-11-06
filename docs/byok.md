@@ -81,10 +81,13 @@ Only what can run from the browser:
   `own: true`, which runs the decks and the shared `word_gloss` rows only
   (no model, no charge) and returns `ask: {lang, term}` when they have
   nothing; the browser asks the provider for that headword. The answer stays
-  in the tab, never in `word_gloss`. (Without a key, the same card asks with
-  `cached: true`: decks and `word_gloss` only, the model runs when the word
-  is committed. With a key, each selected word still asks the user's own
-  provider, as they chose; no Lianki credits.)
+  in the tab, never in `word_gloss`. (Without a key, the same tap runs our model
+  through `chargeAi`.) The live doc's word card does the same. A /vibe doc asks
+  nobody before a swipe: decks and `word_gloss` only (docs/vibe.md).
+- **Committing that word**: the slider's `batch-grade` carries `own: true` and
+  the answer the user saw, which goes on their own card (still never in
+  `word_gloss`). `own: true` means no model of ours on that call, so nothing is
+  charged; when their provider found nothing, the card is made without a meaning.
 - Both show 「用你自己的 key」 on the result.
 
 With 「经 Lianki 转发」 on, both go through the relay instead; nothing else

@@ -339,7 +339,6 @@ describe("the reader with the user's own AI", () => {
     expect(JSON.parse(String(calls[0].init.body))).toEqual({
       w: "boa",
       ex: null,
-      cached: true,
     });
   });
 

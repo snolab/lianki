@@ -1333,7 +1333,8 @@ function Reader({
       ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null,
     };
   }, [sel.unit, selMeaning, signedIn, material.readerV2, para]);
-  const selGloss = useSelectGloss(id, glossWord);
+  // A /vibe doc is private speech: nothing leaves it before a swipe (docs/vibe.md).
+  const selGloss = useSelectGloss(id, glossWord, book?.source === "vibe");
   // A phrase, a sentence, a paragraph or a range: its whole units translated
   // by themselves (lib/read/select-translate.ts). Not when it is a deck card.
   const plan = useMemo(

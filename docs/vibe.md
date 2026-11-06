@@ -200,9 +200,12 @@ is created without a swipe:**
 
 - The list reads `GET /api/read/<id>/words` and a `batch-grade` probe, when a new
   line is saved. Nothing polls.
-- The card's meaning is `fetchGloss` with `own: null`, so `cached: true`: decks and
+- The card's meaning is `fetchCachedGloss`, so `cached: true`: decks and
   shared glosses, no model, no credits. The user's own AI key is not used here
-  either, since that would send the sentence somewhere before a swipe.
+  either, since that would send the sentence somewhere before a swipe. Elsewhere a
+  tap does ask the model (books-plan.md, "Grading from the selection card"); here it
+  never does, and the gloss route enforces that for a doc of this kind
+  (`glossMayAskModel`).
 - Only the slider's grade calls `commit`, held `GRADE_HOLD_MS` as a reader grade
   is. Undo in the hold sends nothing. Then one `batch-grade` makes the card in the
   book's own deck and grades it; the AI meaning and its charge happen there. Undo
@@ -210,7 +213,9 @@ is created without a swipe:**
 - A word that already has a card shows its mark and "Already in your deck". Due
   words are reviewed in /words or the reader, not here.
 
-On another device, tapping a word in `/read/<id>` opens the same preview.
+On another device, tapping a word in `/read/<id>` opens the same preview, with the
+same rule for its meaning. With the user's own AI on, its slider asks no model of
+ours either, so a word nothing has a meaning for is carded without one.
 
 ## Keeping
 

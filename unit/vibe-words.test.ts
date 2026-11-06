@@ -237,7 +237,7 @@ describe("no card without a swipe", () => {
 
   it("the page opens words read-only: its gloss asks no model, and no card route but on commit", () => {
     const src = readFileSync("app/(app)/vibe/VibeWords.tsx", "utf8");
-    expect(src).toContain("fetchGloss(material, h.w, firstHeard(h.w, lines)?.text ?? null, null)");
+    expect(src).toContain("fetchCachedGloss(material, h.w, firstHeard(h.w, lines)?.text ?? null)");
     expect(src).not.toContain("make-cards");
     expect(src).toContain("onCommit={(r) => desk.commit(");
     // onPreview and the rest of the strip's events do nothing here.

@@ -110,3 +110,14 @@ export function parseGlosses(text: string, asked: readonly string[]): Map<string
   }
   return out;
 }
+
+/**
+ * Whether a tap on a word may ask our model: not with the user's own AI on
+ * (`own`: his provider, no credits), not when only what exists is wanted
+ * (`cached`), and never on a /vibe doc, whatever the request says: private
+ * speech has no gloss made from it before a swipe (docs/vibe.md).
+ */
+export const glossMayAskModel = (
+  req: { own?: unknown; cached?: unknown },
+  source: string | null | undefined,
+) => req.own !== true && req.cached !== true && source !== "vibe";

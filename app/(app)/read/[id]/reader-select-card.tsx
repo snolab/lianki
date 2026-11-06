@@ -93,7 +93,7 @@ export interface CardTranslation {
 }
 
 /** The tag on a result the user's own AI made: no credits, nothing shared. */
-function OwnKeyTag({ label }: { label: ReactNode }) {
+export function OwnKeyTag({ label }: { label: ReactNode }) {
   return (
     <span
       className="ms-1.5 inline-block rounded-full bg-[oklch(0.62_0.12_250/0.14)] px-1.5 align-middle text-[0.7rem] leading-5 text-[oklch(0.45_0.12_250)] dark:bg-[oklch(0.72_0.12_250/0.18)] dark:text-[oklch(0.8_0.1_250)]"

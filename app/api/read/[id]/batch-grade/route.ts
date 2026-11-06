@@ -24,9 +24,11 @@ import type { BookCtx, RangeWord } from "@/lib/read/book-word-list";
  *
  * One validated call per batch: only the selection's due or never-graded
  * sentences and its due or new words are graded (words without a card get
- * one in the list of their own language first, as make-cards files them; a
- * word's AI meaning, and its cost, come only here). `undo` takes a batch — or a paragraph
- * swipe's grade already sent — back to exactly the states before it.
+ * one in the list of their own language first, as make-cards files them, with
+ * the meaning the tap already found: decks, word_gloss or the words' own `back`,
+ * so a word the tap paid for is not paid for again). `own: true` (a user's own AI
+ * on, docs/byok.md): no model of ours here at all. `undo` takes a batch — or a
+ * paragraph swipe's grade already sent — back to exactly the states before it.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
@@ -64,8 +66,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   const words = body.words === undefined ? [] : rangeWords(body.words, own);
   if (!words) return badRequest("words are invalid");
-  const glossFor = (b: BookCtx) => (ws: RangeWord[]) =>
-    fillGlosses(ctx.db, b, ws, { userId: ctx.userId });
+  const ai = body.own === true ? null : { userId: ctx.userId };
+  const glossFor = (b: BookCtx) => (ws: RangeWord[]) => fillGlosses(ctx.db, b, ws, ai);
   const r = await gradeBatch(c, { ...body, day }, words, new Date(), glossFor);
   return r.ok ? json(r.res) : badRequest(r.error);
 }

@@ -8,8 +8,8 @@
 // where those flags stay off. A throwaway account, made-up text under a fake doc
 // id, and a stubbed stream socket. Checks:
 //
-// - a tap on a word of the tail: the slider, no add button, the gloss asked with
-//   `cached: true`, no card made;
+// - a tap on a word of the tail: the slider, no add button, its meaning asked of
+//   the route (no model set up here: qa-read-tap-gloss.mjs has a stubbed one), no card made;
 // - a real touch drag short of a level adds nothing;
 // - a drag past a level adds it with that grade; the toast's Undo takes it back,
 //   and the word is a preview again.
@@ -95,8 +95,6 @@ async function run(scheme) {
   page.on("request", (q) => {
     if (q.method() !== "POST") return;
     if (q.url().includes("/make-cards")) others.push("make-cards");
-    if (q.url().includes("/gloss") && !JSON.parse(q.postData() || "{}").cached)
-      others.push("gloss with the model");
     if (q.url().includes("/batch-grade")) {
       const b = JSON.parse(q.postData() || "{}");
       if (!b.probe) writes.push(b);
@@ -152,7 +150,7 @@ async function run(scheme) {
   await drag(56, true);
   await page.waitForTimeout(600);
   check(writes.length === 0, `short of a level: nothing sent (${writes.length})`);
-  check(others.length === 0, `no make-cards or model gloss before the commit (${others})`);
+  check(others.length === 0, `no make-cards before the commit (${others})`);
 
   // Past a level: added with that grade.
   await drag(56);
