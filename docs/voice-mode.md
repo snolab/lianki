@@ -265,6 +265,66 @@ tested by anything automatic, because it takes a speaker and a mic: how the tone
 sound, and whether a real cue leaks into the real VAD. Its log line `cue-echo-drop`
 counts the leaks the guard caught.
 
+## Keep speaker awake
+
+The owner, 2026-11-05 23:47 JST, after hearing the first sound of each line cut
+on /words and outside Lianki too: keep the output device awake. **Whether this
+fixes it is unproven until he has listened.** `packages/debug-chat/src/output-bed.ts`.
+
+What was measured first (2026-11-05, 23:45 JST, files and a no-device Linux
+container only): 257 production clips all have a lead-in (shortest 50 ms, French
+and English about 420 ms, Chinese about 445 ms) with the first consonant in it,
+and 57 plays through the real clip pool in Chromium reached the gain node whole.
+The Kokoro clips open with 255–347 ms of literal zeros. So the suspect is a
+device that sleeps on digital silence and wakes only on the first real sound.
+That part is reasoning, not a measurement.
+
+| Rule | How |
+| ---- | --- |
+| Level | white noise, peak -72 dBFS (RMS about -77), `BED_DBFS` |
+| Route | its own AudioContext's destination: the same device as the clips (nothing sets a sinkId), and each stop closes the context |
+| Starts | only inside a gesture. A line with no gesture plays at once with no bed (a reply arriving by itself, typed chat past the linger); the next tap while it plays starts the bed |
+| Runs | while a line is due or playing and 60 s after (`LINGER_MS`, a card's thinking time), or while the mic is on, passive mic included |
+| Pre-roll | `begin()` returns the ms to wait, 300 at most (`PREROLL_MS`): the sequencer (/words), `speak` (the reader) and `next` (Li) start their first line after it. Later lines wait for nothing |
+| Stops | the linger's end, setting off, `pagehide`, the page hidden, `signOut()`. After a hide or sign-out only a new gesture starts it. /words' context and Li's (mic off) are suspended on the same exit, and /words' also on leaving /words |
+| Setting | /words Settings, under Read aloud: "Keep speaker awake", `lk:voice-keep-awake`, device-local, on unless `"0"`. It governs /words, the reader and Li |
+
+The first play after a pre-roll is past the tap, so the tap unlocks what will
+play: /words plays a silent clip in a pool element (`unlockClip`), the reader
+has its Play tap's `unlock` plus an empty utterance, and Li has its mic-tap unlock.
+
+### The mic
+
+- **No digital path.** The bed is connected to nothing but its own destination.
+  It never calls `pageAudio().start`, so it takes no mic hold, adds no echo-guard
+  text and leaves half-duplex alone. Measured: Chromium's real
+  echoCancellation/noiseSuppression/autoGainControl path, fake mic file, four
+  12 s runs with and without the bed: frame levels within 0.2 dB. (Fake output:
+  this does not show the echo canceller seeing the bed as a playback reference.)
+- **By air, on speaker.** -77 dBFS RMS is about 40 dB under the speech clips and,
+  at a typical 80–90 dB SPL full scale near the mic, about 3–13 dB SPL: under any
+  room's noise, so the VAD floor, AGC and STT should hear only the room. The
+  energy VAD's `on` is 0.02 (-34 dBFS), 43 dB over the bed even with no air gap.
+- **Echo canceller.** As remembered from WebRTC's AEC3 defaults (not checked in
+  a run): playback under about -50 dBFS counts as inactive, so the bed should
+  neither train the filter nor trigger suppression.
+
+### What only a real device can tell
+
+Whether the cut goes away at all. Whether -72 dBFS wakes each route: a Bluetooth
+codec may drop it as inaudible, and a low OS volume attenuates it before the amp.
+Whether it stays inaudible: by calculation a faint hiss is possible only at
+maximum volume on sealed earphones in a silent room (lower `BED_DBFS` if so).
+iOS: whether the unlocks hold across the pre-roll, whether a running context
+changes the audio session, mixes with or stops other apps' audio, or counts
+against the context limit (this page can hold several while the mic is on).
+
+Battery: by reasoning only, not measured. While the bed runs the audio path
+cannot power down, on top of a small noise loop. With the mic on it is already
+up for capture, so the bed adds little. Without the mic the cost is bounded by
+the 60 s linger, and it never runs hidden, so it cannot drain a locked phone.
+The passive mic is the longest case.
+
 ## Safety: what voice can reach
 
 Only the six `VoiceActions`: move, grade, show, read, undo and exit (which
