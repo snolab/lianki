@@ -30,6 +30,7 @@
  * (lib/stt-ticket.ts); it is fetched when the race starts, fresh each time.
  */
 
+import type { SttSignals } from "./stt-guard";
 import { reportPageError } from "./page-errors";
 import { type SpeakerTag, cleanSpeaker } from "./wire";
 import { isDesktop, sttMayReopen } from "./voice-bg";
@@ -152,6 +153,20 @@ export function packPcm(tag: number, samples: Float32Array): Uint8Array {
   return out;
 }
 
+/**
+ * The Mac's signals, only numbers and the decoder's kind passed on. A server
+ * older than this sends none: it only ever ran SenseVoice by default, ctc.
+ */
+export function localSignals(raw: unknown): SttSignals {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+  const logprob = num(r.logprob);
+  return {
+    decoder: r.decoder === "whisper" ? "whisper" : "ctc",
+    ...(logprob !== undefined ? { logprob } : {}),
+  };
+}
+
 /** The final's `filtered`, as far as it can be trusted to be one. */
 const filterOf = (x: unknown): FilterVerdict | undefined => {
   const f = x as { reason?: unknown; score?: unknown } | null | undefined;
@@ -178,6 +193,8 @@ export type LocalFinal = {
   proof?: string;
   /** On an enrolment sentence: whether it was kept, and why not. */
   enrol?: EnrolSentence;
+  /** The decoder and its confidence, for the silence guard (stt-guard.ts). */
+  signals?: SttSignals;
   /**
    * The voiceprint filter stopped it on the Mac: the text is empty, nothing was
    * decoded, and it must not go to the cloud or the clip sink either.
@@ -395,6 +412,7 @@ export function createLocalStt(
     wouldFilter?: unknown;
     on?: unknown;
     enrol?: unknown;
+    signals?: unknown;
   };
   const enrolOf = (raw: unknown): EnrolSentence | undefined => {
     if (!raw || typeof raw !== "object") return undefined;
@@ -448,6 +466,7 @@ export function createLocalStt(
           ? { proof: m.speakerProof }
           : {}),
         ...(enrol ? { enrol } : {}),
+        signals: localSignals(m.signals),
         ...(filtered ? { filtered } : {}),
         ...(typeof m.wouldFilter === "string" ? { wouldFilter: m.wouldFilter } : {}),
       });

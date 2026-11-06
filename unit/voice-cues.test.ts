@@ -116,6 +116,7 @@ async function micRig(over: Partial<Parameters<typeof createMic>[0]> = {}, rig =
   const uploads: number[] = [];
   const logs: Record<string, unknown>[] = [];
   const mic = createMic({
+    guard: { minFrameRms: 0 },
     load: async (e) => {
       ev = e;
       return {

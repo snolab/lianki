@@ -368,6 +368,7 @@ describe("createLocalStt", () => {
       ms: 40,
       endToFinalMs: 60,
       firstPartialMs: 400,
+      signals: { decoder: "ctc" },
     });
     expect(partials).toEqual(["你好"]);
   });

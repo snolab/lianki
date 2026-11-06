@@ -370,7 +370,7 @@ class Server:
             if isinstance(res[0], BaseException):
                 await send({"t": "error", "id": u.id, "error": str(res[0])[:200]})
                 return
-            text, lang, auto_lang = res[0]
+            text, lang, auto_lang, *more = res[0]
             spk = None if isinstance(res[1], BaseException) else res[1]
             if isinstance(res[1], BaseException):
                 log(f"speaker check failed: {type(res[1]).__name__}: {res[1]}")
@@ -385,6 +385,8 @@ class Server:
                 "audioMs": int(len(audio) / RATE * 1000),
                 "endToFinalMs": ms,
                 "firstPartialMs": u.first_partial_ms,
+                # The page's silence guard (stt-guard.ts): numbers and the decoder's kind, never text.
+                "signals": {"decoder": getattr(self.engine, "decoder", "ctc"), **(more[0] if more else {})},
             }
             if auto_lang:
                 msg["langAuto"] = auto_lang  # what auto-detect said before the short-utterance pick

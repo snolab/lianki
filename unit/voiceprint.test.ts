@@ -629,6 +629,7 @@ function micWith(o: {
   const logs: Record<string, unknown>[] = [];
   let woke = 0;
   const mic = createMic({
+    guard: { minFrameRms: 0 }, // the fake audio is zeros; unit/stt-guard.test.ts has the gate
     load: async (e) => {
       ev = e;
       return { start() {}, pause() {}, flush() {}, destroy() {} };

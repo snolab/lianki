@@ -63,6 +63,7 @@ import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
+import { droppedLines, forgetDropped, keepDroppedLines } from "./stt-dropped";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
@@ -2173,10 +2174,12 @@ export function DebugChat({
       passage.current?.cancel();
     };
   }, []);
+  // Only the hub-verified owner's page keeps dropped lines, in memory (stt-dropped.ts).
+  useEffect(() => keepDroppedLines(owner && !friend), [owner, friend]);
   const dictated = (t: string) => {
     // A blip (one short Latin word, or only 嗯/呃) is not a line; short answers pass.
     if (isBlip(t)) {
-      voice().log({ ev: "stt-blip", text: t.slice(0, 40) });
+      voice().log({ ev: "stt-blip", chars: t.length });
       joiner.current?.idle();
       passage.current?.idle();
       return;
@@ -3051,6 +3054,30 @@ export function DebugChat({
           </span>
           {t.vpMenu}
         </button>
+      )}
+      {/* What the silence guard dropped (stt-dropped.ts): the owner's, on this device; a tap puts it back in the box. */}
+      {owner && !friend && droppedLines().length > 0 && (
+        <div data-testid="debug-menu-dropped" className="flex flex-col px-3 py-1.5">
+          <span className="opacity-60">{ui.droppedLines}</span>
+          {droppedLines().map((l) => (
+            <button
+              key={l.at}
+              type="button"
+              role="menuitem"
+              title={l.reason}
+              onClick={() => {
+                forgetDropped(l);
+                const next = joinText(draftRef.current, l.text);
+                draftRef.current = next;
+                setDraft(next);
+                setMenu(false);
+              }}
+              className="truncate py-0.5 text-start"
+            >
+              {l.text}
+            </button>
+          ))}
+        </div>
       )}
       {/* Voice clips (clips.ts): a tap turns this window's recording on; the badge stops it. */}
       {!friend && !embedded && !clipsHub?.on && clipsCanStart && (
