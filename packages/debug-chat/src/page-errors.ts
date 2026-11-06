@@ -241,13 +241,54 @@ export function typedText(doc: Document): string[] {
   return out;
 }
 
+/** A failed fetch this long after the page was hidden is the page going away, not the network. */
+export const NETWORK_AFTER_HIDE_MS = 1000;
+
+/**
+ * Is a failed /api fetch a real network failure worth a report? Not when it
+ * was aborted: an AbortError, or its signal aborted (WebKit throws a plain
+ * TypeError "Load failed" for an aborted fetch, so the signal decides; the
+ * /words audio prefetcher, lib/words/audio-cache, cancels its TTS fetches
+ * this way). Not while the page is going away (pagehide, beforeunload,
+ * hidden), nor within NETWORK_AFTER_HIDE_MS after it was hidden.
+ */
+export function isReportableNetworkFailure(d: {
+  error: unknown;
+  signalAborted: boolean;
+  unloading: boolean;
+  now: number;
+  hiddenAt: number | null;
+}): boolean {
+  if ((d.error as { name?: string } | null)?.name === "AbortError") return false;
+  if (d.signalAborted || d.unloading) return false;
+  return d.hiddenAt === null || d.now - d.hiddenAt >= NETWORK_AFTER_HIDE_MS;
+}
+
 /**
  * Hook the page: error / unhandledrejection, console.error, fetch to
  * same-origin /api/*, media and image load errors. Returns the uninstall.
  * The reporter's own work never re-enters it.
  */
-export function installPageErrorHooks(win: Win, reporter: PageErrorReporter): () => void {
+export function installPageErrorHooks(
+  win: Win,
+  reporter: PageErrorReporter,
+  now: () => number = () => Date.now(),
+): () => void {
   let busy = false;
+  /** The page is going away (pagehide, beforeunload, hidden), and when it was hidden. */
+  let unloading = false;
+  let hiddenAt: number | null = null;
+  const away = () => {
+    unloading = true;
+    hiddenAt = now();
+  };
+  const back = () => {
+    unloading = false;
+  };
+  const onVisibility = () => {
+    if (win.document?.visibilityState === "hidden") away();
+    else back();
+  };
   const report = (e: RawPageError) => {
     if (busy) return;
     busy = true;
@@ -294,6 +335,10 @@ export function installPageErrorHooks(win: Win, reporter: PageErrorReporter): ()
   };
   win.addEventListener("error", onError, true);
   win.addEventListener("unhandledrejection", onRejection);
+  win.addEventListener("pagehide", away);
+  win.addEventListener("beforeunload", away);
+  win.addEventListener("pageshow", back);
+  win.document?.addEventListener?.("visibilitychange", onVisibility);
 
   const origError = win.console.error;
   const wrappedError = function (this: Console, ...args: unknown[]) {
@@ -333,8 +378,15 @@ export function installPageErrorHooks(win: Win, reporter: PageErrorReporter): ()
         });
       return res;
     } catch (e) {
-      const aborted = (e as { name?: string })?.name === "AbortError";
-      if (watched && url && !aborted)
+      const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+      const real = isReportableNetworkFailure({
+        error: e,
+        signalAborted: !!signal?.aborted,
+        unloading,
+        now: now(),
+        hiddenAt,
+      });
+      if (watched && url && real)
         report({
           kind: "network",
           message: `${method} ${url.pathname} failed: ${argText(e)}`,
@@ -348,6 +400,10 @@ export function installPageErrorHooks(win: Win, reporter: PageErrorReporter): ()
   return () => {
     win.removeEventListener("error", onError, true);
     win.removeEventListener("unhandledrejection", onRejection);
+    win.removeEventListener("pagehide", away);
+    win.removeEventListener("beforeunload", away);
+    win.removeEventListener("pageshow", back);
+    win.document?.removeEventListener?.("visibilitychange", onVisibility);
     if (win.console.error === wrappedError) win.console.error = origError;
     if (win.fetch === wrappedFetch) win.fetch = origFetch;
     if (current === report) current = null;
