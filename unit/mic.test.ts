@@ -30,9 +30,6 @@ import {
   TICK_GAIN,
   TICK_MS,
   HALLUCINATIONS,
-  HALLUCINATION_MAX_MS,
-  HALLUCINATION_MIN_PROB,
-  isHallucination,
   isHallucinationPhrase,
   stripHallucinationTail,
   cleanTranscript,
@@ -231,6 +228,7 @@ function harness(over: Partial<Parameters<typeof createMic>[0]> = {}) {
   const uploads: Up[] = [];
   const mic = createMic({
     load: v.factory,
+    guard: { minFrameRms: 0 }, // the fake audio is zeros; unit/stt-guard.test.ts has the gate
     upload: (wav, info) =>
       new Promise((resolve, reject) =>
         uploads.push({ ...info, samples: (wav.length - 44) / 2, resolve, reject }),
@@ -874,7 +872,7 @@ describe("the Whisper hallucination guard", () => {
     expect(stripHallucinationTail("下一个词，谢谢观看")).toBe("下一个词，");
     expect(stripHallucinationTail("次の単語。ご視聴ありがとうございました。")).toBe("次の単語。");
     expect(stripHallucinationTail("Next word. Thanks for watching!")).toBe("Next word.");
-    // Nothing but a credit: left for isHallucination (length and loudness) to judge.
+    // Nothing but a credit: left for judgeFinal (length and loudness) to judge.
     expect(stripHallucinationTail("感谢观看。")).toBe("感谢观看。");
     // A credit-like phrase inside the sentence stays.
     expect(stripHallucinationTail("他说感谢观看这个视频的人")).toBe("他说感谢观看这个视频的人");
@@ -887,15 +885,6 @@ describe("the Whisper hallucination guard", () => {
     expect(isHallucinationPhrase("おやすみなさい、また明日。")).toBe(false);
     expect(isHallucinationPhrase("")).toBe(false);
     expect(isHallucinationPhrase("。")).toBe(false);
-  });
-
-  it("drops the phrase from a short or faint utterance, keeps it from a long clear one", () => {
-    expect(isHallucination(PHRASE, 600, 0.9)).toBe(true);
-    expect(isHallucination(PHRASE, HALLUCINATION_MAX_MS - 1)).toBe(true);
-    expect(isHallucination(PHRASE, 3000, HALLUCINATION_MIN_PROB - 0.1)).toBe(true);
-    expect(isHallucination(PHRASE, 3000, 0.9)).toBe(false);
-    expect(isHallucination(PHRASE, 3000)).toBe(false);
-    expect(isHallucination("こんにちは。", 300, 0.1)).toBe(false);
   });
 
   /** One utterance of `sec` seconds of 0.1 s frames at speech probability `prob`, transcribed as `text`. */
@@ -916,14 +905,18 @@ describe("the Whisper hallucination guard", () => {
   it("createMic: a hallucination in a short segment is dropped and logged", async () => {
     const r = await say(PHRASE, 0.5, 0.9);
     expect(r.texts).toEqual([]);
-    expect(r.logs).toEqual([{ ev: "stt-hallucination", text: PHRASE, ms: 500, prob: 0.9 }]);
+    expect(r.logs).toMatchObject([
+      { ev: "stt-dropped", reason: "stock-courtesy", ms: 500, prob: 0.9 },
+    ]);
   });
 
   it("createMic: a hallucination in a long but faint segment is dropped", async () => {
     const r = await say(PHRASE, 3, 0.3);
     expect(r.texts).toEqual([]);
     // No frame reached speech: no speech at all.
-    expect(r.logs).toMatchObject([{ ev: "stt-hallucination", ms: 0, prob: 0.3 }]);
+    expect(r.logs).toMatchObject([
+      { ev: "stt-dropped", reason: "no-speech-frames", ms: 0, prob: 0.3 },
+    ]);
   });
 
   it("createMic: the same phrase said at length and clearly is kept", async () => {
@@ -961,7 +954,7 @@ describe("the Whisper hallucination guard", () => {
     expect(stripHallucinationTail("Hello there. Thanks for watching!")).toBe("Hello there.");
     expect(stripHallucinationTail("嗯 字幕志愿者 李宗盛")).toBe("嗯");
     expect(stripHallucinationTail("好的。我说中文，有时夹杂日本語和English。")).toBe("好的。");
-    // All phrase: left for isHallucination to judge; no phrase: unchanged.
+    // All phrase: left for judgeFinal to judge; no phrase: unchanged.
     expect(stripHallucinationTail("谢谢观看")).toBe("谢谢观看");
     expect(stripHallucinationTail("我喜欢李宗盛")).toBe("我喜欢李宗盛");
     expect(stripHallucinationTail("今天天气不错")).toBe("今天天气不错");
@@ -971,7 +964,7 @@ describe("the Whisper hallucination guard", () => {
     const r = await say("明天见。谢谢观看", 2, 0.9);
     expect(r.texts).toEqual(["明天见。"]);
     expect(r.logs).toEqual([
-      { ev: "stt-cleaned", prompt: 0, phrase: 1, repeat: 0, dropped: false, text: "谢谢观看" },
+      { ev: "stt-cleaned", prompt: 0, phrase: 1, repeat: 0, dropped: false, removedChars: 4 },
     ]);
   });
 
@@ -1053,7 +1046,7 @@ describe("cleanTranscript", () => {
       expect(clean(t).text).toBe(t);
   });
 
-  it("leaves a message of stock phrases alone to isHallucination", () => {
+  it("leaves a message of stock phrases alone to judgeFinal", () => {
     for (const t of ["感谢观看。", "谢谢观看 谢谢观看", "Thanks for watching!"])
       expect(clean(t)).toMatchObject({ text: t, drop: false, phrase: 0 });
   });

@@ -27,6 +27,7 @@ import type { ByokPreset } from "./presets";
 
 export type ProxyErrorKind =
   | "origin" // not a same-origin JSON POST
+  | "sign-in" // no session: the relay needs a (free) account
   | "too-large" // request or answer over the cap
   | "input" // the JSON is not what the relay takes
   | "key" // no / malformed key header
@@ -187,11 +188,18 @@ export async function handleProxy(req: Request, deps: ProxyDeps): Promise<Respon
     return fail("origin", 403);
   }
 
+  // A free account is enough (owner's card, 2026-11-06): before the limits, so a
+  // stranger's calls can't use up the global budget, and before the key is read.
+  if (!deps.userId) {
+    done("sign-in", 401);
+    return fail("sign-in", 401);
+  }
+
   // Rate limits before anything else is read: per IP, per user, and global.
   const checks = [deps.hit("byok-proxy:global", PROXY_RATE.global)];
   if (deps.ip && deps.ip !== "unknown")
     checks.push(deps.hit(`byok-proxy:ip:${deps.ip}`, PROXY_RATE.ip));
-  if (deps.userId) checks.push(deps.hit(`byok-proxy:user:${deps.userId}`, PROXY_RATE.user));
+  checks.push(deps.hit(`byok-proxy:user:${deps.userId}`, PROXY_RATE.user));
   let rate: Awaited<ReturnType<RateHit>>[] | null = null;
   try {
     rate = await Promise.all(checks);

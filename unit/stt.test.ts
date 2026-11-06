@@ -39,7 +39,10 @@ describe("STT models", () => {
       }),
     ).toEqual({ text: "hi", language: "en" });
     expect(readStt("@cf/deepgram/nova-3", null)).toEqual({ text: "" });
-    expect(readStt("@cf/openai/whisper", { text: " a " })).toEqual({ text: "a" });
+    expect(readStt("@cf/openai/whisper", { text: " a " })).toEqual({
+      text: "a",
+      signals: { decoder: "whisper" },
+    });
     // Nova-3's spaces between Japanese words go; spaces next to Latin stay.
     expect(
       readStt("@cf/deepgram/nova-3", {
@@ -55,6 +58,7 @@ describe("STT models", () => {
       }),
     ).toEqual({ text: "君を生かすも僕次第だ。 I see 君は", language: "ja" });
     expect(readStt("@cf/openai/whisper-large-v3-turbo", { transcription_info: {} })).toEqual({
+      signals: { decoder: "whisper" },
       text: "",
     });
   });

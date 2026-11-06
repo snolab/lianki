@@ -37,6 +37,8 @@ class SenseVoice:
     """SenseVoice-Small (FunASR) via sherpa-onnx: non-autoregressive, ~10 ms per audio second."""
 
     name = "sensevoice"
+    #: For the page's silence guard (stt-guard.ts): CTC writes no sentence it did not hear.
+    decoder = "ctc"
 
     def __init__(self, model_dir: str | None = None, threads: int = 4):
         import sherpa_onnx
@@ -256,6 +258,7 @@ class MlxWhisper:
     """whisper-large-v3-turbo on MLX (Apple GPU). Autoregressive: each decode costs the whole window."""
 
     name = "mlx-whisper"
+    decoder = "whisper"
     PROMPT = "以下是普通话的句子，使用简体中文和标点。日本語とEnglishも混ざります。"
 
     def __init__(self, repo: str = "mlx-community/whisper-large-v3-turbo"):
@@ -265,15 +268,36 @@ class MlxWhisper:
         self.model = repo.split("/")[-1]
         self.repo = repo
 
-    def transcribe(self, audio: np.ndarray) -> tuple[str, str]:
-        r = self.mw.transcribe(
+    def _run(self, audio: np.ndarray) -> dict:
+        return self.mw.transcribe(
             audio,
             path_or_hf_repo=self.repo,
             initial_prompt=self.PROMPT,
             condition_on_previous_text=False,
         )
+
+    def transcribe(self, audio: np.ndarray) -> tuple[str, str]:
+        r = self._run(audio)
         lang = r.get("language") or ""
         return tidy(r.get("text", ""), lang), lang
+
+    def final(self, audio: np.ndarray) -> tuple[str, str, None, dict]:
+        """As transcribe, plus what the page's silence guard reads (numbers only, never text)."""
+        r = self._run(audio)
+        lang = r.get("language") or ""
+        return tidy(r.get("text", ""), lang), lang, None, segment_signals(r.get("segments") or [])
+
+
+def segment_signals(segments: list[dict]) -> dict:
+    """Whisper's logprob, weighted by segment length; a NaN segment (it happens) does not count."""
+    w = lp = 0.0
+    for s in segments:
+        a = s.get("avg_logprob")
+        if a is None or a != a:
+            continue
+        d = max(float(s.get("end", 0)) - float(s.get("start", 0)), 0.01)
+        w, lp = w + d, lp + float(a) * d
+    return {"logprob": round(lp / w, 3)} if w else {}
 
 
 class DeepFilter:

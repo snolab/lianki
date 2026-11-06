@@ -113,7 +113,8 @@ POST /api/debug/stt[?model=<id>][&lang=<bcp47>]
 Content-Type: audio/webm | audio/ogg | audio/mp4 | audio/wav | audio/mpeg   (codecs= ignored)
 <raw audio bytes, ≤ 2 MiB>
 
-200 {"text": "…", "model": "@cf/openai/whisper-large-v3-turbo", "ms": 812, "language": "ja"}
+200 {"text": "…", "model": "@cf/openai/whisper-large-v3-turbo", "ms": 812, "language": "ja",
+     "signals": {"decoder": "whisper", "vadShare": 0.94, "logprob": -0.3}}   (see "Silence guard")
 401 guest · 405 not POST · 415 other type · 413 too large · 400 empty
 429 over the limit (Retry-After) · 502 the model(s) failed
 ```
@@ -177,15 +178,91 @@ the device's language. Dictated lines never teach it, so a misheard line
 can't make the next one worse.
 
 Silence hallucinations (「ご視聴ありがとうございました。」, "Thanks for
-watching" — Whisper's subtitle credits) are handled twice. Turbo is sent
-`STT_ANTI_HALLUCINATION` (`condition_on_previous_text: false`,
-`no_speech_threshold: 0.5`; both in its input schema, not yet verified live).
-The mic then drops a final transcript that is one of `HALLUCINATIONS`
-(normalized: NFKC, no punctuation or spaces) when the utterance had under
-`HALLUCINATION_MAX_MS` of speech or a mean Silero probability under
-`HALLUCINATION_MIN_PROB` (`isHallucination`, `packages/debug-chat/src/mic.ts`).
-Each drop is a `stt-hallucination` devLog event with `{text, ms, prob}`, to
-tune those two.
+watching", 「明镜需要您的支持」 — Whisper's subtitle credits) are handled
+twice. Turbo is sent `STT_ANTI_HALLUCINATION` (`condition_on_previous_text:
+false`, `no_speech_threshold: 0.5`), and the mic then runs the silence guard
+below on every final.
+
+### Silence guard
+
+The owner, 2026-11-06 01:00 JST: 「明镜需要您的支持」 showed up in the chat and
+was never said. `packages/debug-chat/src/stt-guard.ts` holds the phrases and
+limits as data, with one engine (`judgeFinal`) and no per-language code. It
+runs inside `createMic`'s `send`, on every final from any route, before the
+queue. So a dropped line reaches no command tap, no chat line, no send or send
+cue (`dictated` starts those, and only a chat line reaches it), and no polish
+(which only edits a line that was sent). The start and end cues follow the
+VAD and still play: they say speech was heard, not that a line went out.
+
+**What each route really returns.** Measured 2026-11-06, live and on files:
+
+| route | no_speech_prob | avg_logprob | other |
+| --- | --- | --- | --- |
+| Workers AI turbo | present, **0 on all 243 texts**, speech or noise | present; overlaps | `duration_after_vad`, `language_probability`, `compression_ratio` |
+| Workers AI `whisper` (the fallback) | absent | absent | `text`, `word_count` only |
+| Nova-3 (owner's bench) | not measured | not measured | not in this run; `readStt` reads only its transcript and language |
+| mlx-whisper (turbo weights) | present, **under 0.0005 on every clip**, speech or noise | present; overlaps | `compression_ratio` |
+| SenseVoice (sherpa-onnx) | absent | `ys_log_probs` is empty | `event`: `Speech` on all 120 DEMAND windows, `BGM` on 8 of 82 generated clips and 3 of the owner's 211, so it does not sort speech from noise |
+
+Only Workers AI turbo and the fallback were measured live. So no gate reads `no_speech_prob` (these weights never raise it) or
+`avg_logprob` alone (the owner's real clips run −3.71…−0.05 on turbo; noise
+that gave text −1.15…−0.21). `logprob` is passed along and logged, for later
+tuning. The guard does read:
+
+| gate | reason logged | limit (`STT_GUARD`) | based on |
+| --- | --- | --- | --- |
+| loudest 32 ms frame | `silent-audio` | 0.008 | the owner's quietest of 211 clips peaks at 0.0101 |
+| Silero speech, when it ran | `no-speech-frames` | 32 ms | all 211 clips reach one frame ≥ 0.5; noise windows mostly have none |
+| turbo's own VAD share | `route-vad` | 0.25 | owner's lowest with text 0.295; noise down to 0.108 |
+| stock phrase, whole line | `stock-credit`, `stock-courtesy` | below | |
+
+**The phrases.** The whole line, normalized (NFKC, case, punctuation, spacing,
+Traditional folded onto Simplified), must be one phrase or a run of them; `…`
+stands for at most 40 characters and never opens a phrase. So 「他说感谢观看这个
+视频的人」, "Thanks for watching my talk" and 「什么是明镜与点点栏目」 are not
+matched, however faint. Two kinds:
+
+- **credit** (明镜…, 请不吝点赞…, 字幕志愿者…, Amara credits): no one says it as
+  a whole line. From a Whisper decoder it goes on the words alone, because
+  weak evidence would miss it: 3 of 5 请不吝… on café noise came with 3.9–4.9 s
+  of Silero "speech" at a mean over 0.6 and a logprob near −0.2. The cost: read
+  aloud on its own to cloud Whisper, it is dropped too.
+- **courtesy** ("Thanks for watching", 谢谢观看, anything whose slot could be
+  prose): dropped only with weak evidence, under 1.2 s of speech or a mean
+  probability under 0.5 (the mic's limits from 2026-10). Said at length and
+  clearly, it stays.
+
+From a CTC decoder (SenseVoice) both need the weak evidence and nothing is cut
+out of a longer line: it wrote no stock phrase on the owner's 211 clips or the 46 captured
+non-speech ones, so when
+one comes from it, he said it. Everyday short thanks ("Thank you very much",
+수고하셨습니다) are not listed even though the fallback model says them on noise,
+since the weak evidence would drop the real thing.
+
+**Measured over the corpus**, 211 of the owner's clips and 202
+non-speech clips (120 DEMAND windows of café, restaurant and traffic at −45 to
+−20 dB, 82 generated); "captured" means Silero would have handed the clip over
+at all (≥ 0.3 for 250 ms). The owner's clips were not deleted or changed, but
+their audio was sent to Workers AI for the turbo row. That should not have
+happened, and no clip goes to a cloud service for a measurement again:
+
+| route | owner's clips dropped by the guard | captured non-speech with text that still posts |
+| --- | --- | --- |
+| turbo + `?hint=zh` | 7 of 196 with text (all credits SenseVoice did not hear: he said 0–8 other characters) | 2 of 46 |
+| fallback `whisper` | not run | 35 of 46 ("Thank you very much." mostly) |
+| SenseVoice | 0 of 211 | 46 of 46, stray words ("Yeah.", "The."); the blip rule catches single ones |
+| mlx-whisper | 16 of 203 with text (made-up credits again) | 30 of 46, mostly word salad at a poor logprob |
+
+Turbo's other 61 of 196 owner's clips were already cleaned away as prompt
+echoes (`cleanTranscript`): cloud Whisper reads the prompt back on many short
+clips.
+
+**Logs.** Each drop is a `stt-dropped` devLog event: reason, `chars`, `ms`,
+`prob`, decoder, logprob, VAD share. These reach the Worker logs, so never the
+words (docs/local-stt.md). `stt-cleaned`, `stt-blip`, `voice-utt` and
+`voice-utt-page` carry a length instead of text for the same reason. The text
+stays in `stt-dropped.ts`: in memory on the owner's own page, last 20, shown
+under the chat's + menu when there are any. A tap puts a line back in the box.
 
 **Whisper's additions inside real speech (2026-10-31).** In the field the
 cloud route also mixed its own text into what the owner said, e.g.
@@ -216,8 +293,9 @@ through `cleanTranscript` (`mic.ts`), which takes out:
 
 If nothing meaningful is left, the message is dropped. Each cleaning is a
 `stt-cleaned` devLog event with the counts `{prompt, phrase, repeat,
-dropped}` and the removed text (Whisper's, not the user's), up to 80
-characters.
+dropped, removedChars}`, never the text. A phrase is cut only from a Whisper
+decoder, and only as a clause of its own: 「他说感谢观看」 stays, while 「明天见。
+谢谢观看」 loses its tail, and so does a real "…Thanks for watching." there.
 
 Request formats, all verified live: turbo takes JSON with the audio in
 base64; Whisper and Nova-3 take the raw bytes with their Content-Type, Nova-3

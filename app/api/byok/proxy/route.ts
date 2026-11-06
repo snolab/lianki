@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/byok/proxy — Lianki's relay for the user's own AI key
  * (docs/byok.md "The relay"): forwards one call to an ALLOWLISTED provider
- * (lib/byok/presets.ts `relay`) and forgets the key and the text. No account
- * needed; a signed-in user only gets their own rate-limit counter. Every
+ * (lib/byok/presets.ts `relay`) and forgets the key and the text. A free account
+ * is needed; calling the provider straight from the browser needs none. Every
  * guard is in lib/byok/proxy-server.ts and lib/byok/proxy-guard.ts.
  */
 const resolve = dohResolver();

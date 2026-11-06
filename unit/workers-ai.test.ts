@@ -295,7 +295,7 @@ describe("workersAiTranscribe", () => {
         model: "@cf/openai/whisper-large-v3-turbo",
         lang: "ja-JP",
       }),
-    ).toEqual({ text: "こんにちは", language: "ja" });
+    ).toEqual({ text: "こんにちは", language: "ja", signals: { decoder: "whisper" } });
     expect(JSON.parse(String(calls[0].init.body))).toEqual({
       audio: "AQID",
       task: "transcribe",
@@ -334,6 +334,7 @@ describe("workersAiTranscribe", () => {
     expect(
       await workersAiTranscribe({ audio, mime: "audio/webm", model: "@cf/openai/whisper" }),
     ).toEqual({
+      signals: { decoder: "whisper" },
       text: "hi",
     });
     expect(calls[0].url).toEndWith("/run/@cf/openai/whisper");

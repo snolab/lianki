@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
 import { BYOK_PRESETS, RELAY_PRESETS, presetOf } from "@/lib/byok/presets";
 import {
   checkBackend,
@@ -695,14 +696,13 @@ describe("handleProxy", () => {
       "byok-proxy:user:user-1",
     ]);
     hits = [];
-    await handleProxy(req(), deps({ userId: null, ip: "unknown" }));
-    expect(hits).toEqual(["byok-proxy:global"]);
+    await handleProxy(req(), deps({ ip: "unknown" }));
+    expect(hits.sort()).toEqual(["byok-proxy:global", "byok-proxy:user:user-1"]);
 
     // The real in-memory counter (the D1 one has its own tests): IP limit reached → 429.
     const ip = `203.0.113.${Math.floor(Math.random() * 200)}-${crypto.randomUUID()}`;
     const mem = deps({
       ip,
-      userId: null,
       hit: async (key, limit) => checkRateLimit(key.replace("global", `global-${ip}`), limit),
     });
     let last: Response | null = null;
@@ -870,5 +870,37 @@ describe("client: 经 Lianki 转发", () => {
         KEY,
       ),
     ).toBeNull();
+  });
+});
+
+describe("the relay needs an account", () => {
+  it("no session: 401 sign-in, before any counter, the key, or the provider", async () => {
+    calls = [];
+    hits = [];
+    const lines: Record<string, string | number>[] = [];
+    const res = await handleProxy(req(), deps({ userId: null, log: (l) => lines.push(l) }));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ proxyError: "sign-in" });
+    expect(hits).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(lines[0]).toMatchObject({ outcome: "sign-in", status: 401 });
+  });
+
+  it("another site still gets 403 first", async () => {
+    const res = await handleProxy(
+      new Request("https://lianki.com/api/byok/proxy", { method: "POST", body: "{}" }),
+      deps({ userId: null }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("the browser side turns it into its own kind, and Settings has a reason", () => {
+    expect(readFileSync("lib/byok/call.ts", "utf8")).toContain(
+      'return { ok: false, kind: "sign-in" }',
+    );
+    const ui = readFileSync("app/components/ByokSettings.tsx", "utf8");
+    expect(ui).toContain("c.errRelaySignIn.value");
+    expect(ui).toContain("disabled={!signedIn}");
+    expect(ui).toContain('data-testid="byok-relay-sign-in"');
   });
 });
