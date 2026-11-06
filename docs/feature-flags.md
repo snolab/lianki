@@ -9,8 +9,41 @@ with no deploy and no secret change.
 | prerequisite checks        | `lib/flag-prereqs.ts`                         |
 | read / write, cache        | `lib/flags-store.ts`                          |
 | tables                     | `db/migrations/0027_feature_flags.sql`: `feature_flags` (key, enabled, updated_at, updated_by) and `feature_flag_log` (every change) |
-| toggle page / API          | `app/(app)/dev/flags/` (`FlagCard.tsx`: one switch, its reasons), `app/api/dev/flags/route.ts` |
-| tests                      | `unit/flags.test.ts`, `unit/flag-prereqs.test.ts` |
+| toggle page / API          | `app/(app)/dev/flags/` (`FlagCard.tsx`: one row, its switch and reasons; `flag-view.ts`: sections, search, filters, links), `app/api/dev/flags/route.ts` |
+| tests                      | `unit/flags.test.ts`, `unit/flag-prereqs.test.ts`, `unit/flag-view.test.ts`, `unit/flag-anchor.test.ts`; browser, local D1 only: `scripts/qa/qa-flags.mjs` |
+
+## The page
+
+One compact row per flag: name, state and the switch, which is one tap as ever
+(a payment flag still asks before turning on). Tapping the name unfolds the
+description and the last change. A prerequisite's reason and the money note
+stay on the folded row, because they say why the switch does nothing.
+
+- **Sections come from the registry.** A flag's `group`, else its key's prefix.
+  A group with one flag goes to 其他, so a new prefix adds no heading until it
+  has a second flag. `GROUP_LABELS` (`flag-view.ts`) only gives a group its words;
+  a group not listed there shows its id.
+- **已全面打开 (shipped) is a view, folded by default.** A flag is there when it is
+  on, reaches every user (no `audience`), is not a payment flag and fails no
+  prerequisite. Nothing about it changes a value; its switch works as anywhere.
+  **Set `audience` on a new flag that does not reach every user once on**, or this
+  view will call it shipped.
+- **Search** covers the key, an old key and the description. **Filters**: 全部 /
+  开着 / 默认关 (every default is off, so that is "off now"), and 7 天内改过, from the
+  row's `updated_at`. There is no "on for me": the store has one value per flag,
+  and who else a flag lets in (`|| owner`) lives in each feature's gate.
+- **A link always arrives.** `#<key>`, or an old key through `FLAG_OLD_KEYS`, opens
+  the section and the row, scrolls and highlights, whatever is typed or filtered.
+  The row stays until the search or a filter next changes. It changes no stored
+  state: the device's folded sections and filters are as they were.
+- **A row just toggled stays put** until the search or a filter next changes, even
+  if it no longer matches or now counts as shipped, so the switch can be undone
+  with the same finger.
+- **No table of contents.** Seven sections over about two screens: the headings
+  and the search already do it, and a sticky bar costs phone height for good. If
+  sections and screens grow, `app/(app)/books/BooksToc.tsx` is the pattern.
+- Filters and folded sections are per device (`lk:pref:flags-view`,
+  [ui-state.md](ui-state.md)). The search text and unfolded rows are memory.
 
 ## Rules
 
@@ -54,7 +87,6 @@ with no deploy and no secret change.
 | `stt.voiceprint-filter` | the owner's local STT does not transcribe or post a line that clearly is not his voice, on devices where he has enrolled; his route only, not a security gate (off: as ever, only counting what it would have stopped) — [local-stt.md](local-stt.md), "Only my voice" |
 | `partner.ai-reply`     | every signed-in user but the owner gets the Learning Partner chat on every page, answered by DeepSeek on Workers AI (off: debug-mode friends only, lanes answer) — [partner-ai.md](partner-ai.md). Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `self-intro.import`    | every signed-in user gets the /self-intro import step: write about yourself or add files, AI lists facts to confirm; files never stored (off: the owner only) — [self-intro-import.md](self-intro-import.md) |
-| `live.custom-frontend` | allowlisted users (`/dev/live-frontends`) can register their own tunnel and see their own frontend at `?live=<id>`, only they, /api stays production (off: the owner only) — [custom-frontend.md](custom-frontend.md) |
 | `box.oauth`            | my-<hash> boxes sign in through lianki.com, each only as its bound account, and call allowlisted /api routes with a short-lived token (off: every route of it answers 404) — [box-oauth.md](box-oauth.md) |
 | `my-box`               | allowlisted users (`/dev/live-frontends`) can register their own tunnel and see their own frontend at `?live=<id>`, only they, /api stays production (off: the owner only) — [custom-frontend.md](custom-frontend.md) |
 | `read.gdoc-stream`     | every user gets the userscript's "Stream to Lianki" switch on Google Docs, and live readers at `/read/<id>?streamingFrom=google-docs` (off: the owner only) — [connections.md](connections.md), "Live stream" |
@@ -104,7 +136,9 @@ Turning a payment flag off is the kill switch: no new payment starts within
 
 1. Add the key to `FLAGS` in `lib/flags.ts`: `"<area>.<feature>"`, a
    description in the owner's language (Chinese; what turning it on does), and
-   `default: false`. Nothing else: no migration, no secret.
+   `default: false`. Nothing else: no migration, no secret. Add `audience` if it
+   will not reach every user once on, and `group` if its prefix reads badly on
+   the page ("The page", above).
 2. Gate the feature on the server:
 
    ```ts

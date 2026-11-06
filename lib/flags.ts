@@ -85,6 +85,16 @@ export interface FlagDef {
   requires?: readonly PrereqCheck[];
   /** Turning it on moves real money: the owner confirms by typing in Slack first. */
   money?: true;
+  /**
+   * The section on /dev/flags, when the key's prefix does not read well or would
+   * stand alone. Default: the prefix, the text before the first dot.
+   */
+  group?: string;
+  /**
+   * Who it reaches once ON, when that is not every user. /dev/flags only counts
+   * a flag as shipped (on for everyone) without this. Default: every user.
+   */
+  audience?: "owner" | "allowlist";
 }
 
 export const FLAGS = {
@@ -106,6 +116,7 @@ export const FLAGS = {
     description:
       "/words 语音口令模式：设置里出现「语音口令」开关，打开后不用唤醒词，说「下一张、上一张、上下左右、重来/困难/良好/简单、显示答案、再读一遍、撤销、退出语音模式」来操作。关闭时只有站长本人能预览。",
     default: false,
+    group: "stt",
   },
   "read.reader-v2": {
     description:
@@ -116,33 +127,39 @@ export const FLAGS = {
     description:
       "只听我的声音：你本机语音识别（Mac 上的 SenseVoice）只转写和你声纹匹配的话；明显不是你声音的一句话不转写、不发送，也不走云端。需要先在这台设备录声纹（聊天菜单 → 声纹）；没有声纹、或模型出问题时，一切照旧。只作用于你自己的本地语音路线，从不用于其他用户，也不是安全门：语音依然不能批准任何敏感操作。关闭（默认）= 照旧，只统计「本来会被过滤」的句数。",
     default: false,
+    audience: "owner",
   },
   "stt.polish-off": {
     description:
       "关闭语音消息的自动润色：打开后，助手不能再改写你的语音消息，聊天里只留识别原文。关闭（默认）= 照旧：助手只按上下文（最近的消息、当前页面、屏幕上的词）改错字和标点，不改原意；原文一直保留，点 ✨ 可看。",
     default: false,
+    audience: "owner",
   },
   "stt.merge": {
     description:
       "连续语音合并：打开后，你接着说的话如果明显是上一句的延续，会并入你刚发的那条语音消息，而不是多出一个气泡；助手收到的是完整的一句，等你说完后再按上下文润色一次整段。只并你自己刚发的语音、中间没有任何人说话、没有问答卡片；语音口令不会被合并。合并后的消息有 ✨ 和撤销按钮，撤销可拆回原来的几条。关闭（默认）= 照旧：每段语音各发一条。",
     default: false,
+    audience: "owner",
   },
   "partner.ai-reply": {
     description:
       "学习伙伴由 AI 回复（除你以外的所有用户）：打开后，普通登录用户在任意页面都能看到学习伙伴聊天框（不用调试模式），他们的消息由 Cloudflare Workers AI 上的 DeepSeek 模型在服务器端回复，只读他们自己的词表、到期卡片和学习计划。你的线程永远不经过模型，仍是你的 Claude 通道；通道先回复则 AI 不再回复。每人每日 token 上限和全站每日花费上限在 lib/partner-ai-config.ts。关闭（默认）= 照旧：只有调试模式的朋友能聊，由开发通道回复。",
     default: false,
     requires: ["workers-ai.credentials", "ai-credits.migration"],
+    group: "ai",
   },
   "connections.google": {
     description:
       "Google 连接（/connections）：所有登录用户都能连接自己的 Google 账号（只授权 drive.file：只有在 Lianki 里用 Google 选择器打开的文件），在 /read 导入自己的非公开 Google 文档。和 Google 登录完全分开，断开不影响登录。需要先在 GCP 控制台完成设置（docs/connections.md）。关闭（默认）= 只有你本人能用。",
     default: false,
     requires: ["google.oauth-client", "google.picker-key", "auth-secret"],
+    group: "read",
   },
   "self-intro.import": {
     description:
       "自我介绍从「导入关于你的材料」开始：所有登录用户都能在 /self-intro 写一段关于自己的话、或放进文件（简历、个人资料、文章、PDF、Word、照片、手写笔记的照片，可多个），AI 一次识别成一条条事实，用户逐条保留/修改/删除；还缺的或不确定的，学习伙伴一次问一个问题（可打字或点选建议答案），回答也变成待确认的信息；确认后再填进自我介绍。文件只用来识别，不保存；只保存用户确认的内容。关闭（默认）= 只有你本人能看到导入这一步，其他人照旧手动填写。",
     default: false,
+    group: "ai",
   },
   "read.gdoc-stream": {
     description:
@@ -158,16 +175,20 @@ export const FLAGS = {
     description:
       "公版书库 /books：所有登录用户都能看到公版书目录（只收美国公版且所有作者/译者/编者去世 80 年以上的原文，每本标明来源和授权），点一下导入成自己的书，之后在 /read 里阅读。原文不进仓库，服务器按需从来源（Project Gutenberg）下载一次，缓存在 R2 里给所有人共用。关闭（默认）= 只有你本人能看到和导入。",
     default: false,
+    group: "read",
   },
   "my-box": {
     description:
       "my-box，用自己机器上的前端（docs/custom-frontend.md；原名 live.custom-frontend）：白名单里的用户（在 /dev/live-frontends 添加/移除）可以登记自己的 Cloudflare 快速隧道（https://<名字>.trycloudflare.com，最长 8 小时，每人同时最多 3 个；现在只接受这种隧道，登记要在浏览器控制台调用 /api/live-previews，还没有界面），然后在 lianki.com/<页面>?live=<id> 看到自己开发服务器上的前端页面。页面里的请求走 /api 和 /auth，永远是正式版，用的是他在 lianki.com 上自己的账号和权限；他的开发服务器收不到任何 cookie 或登录信息，服务器端渲染时都是未登录状态。只有登记的本人能看到（别人打开同一链接只看到正式版），页面有严格的 CSP（只能连 lianki.com 和他的隧道）。关闭（默认）= 只有你本人能登记和使用。",
     default: false,
+    group: "box",
+    audience: "allowlist",
   },
   "box.oauth": {
     description:
       "开发盒通过 lianki.com 登录（docs/box-oauth.md）：my-<hash> 盒子用 OAuth（PKCE）登录，只能用绑定的那一个账号（在 /dev/box-clients 绑定/撤销），用短期令牌访问允许的 API 路由，只能碰这个账号自己的数据。关闭时：相关路由一律 404，盒子无法登录。",
     default: false,
+    audience: "allowlist",
   },
   levels: {
     description:
@@ -178,11 +199,13 @@ export const FLAGS = {
     description:
       "/vibe 对话模式（docs/vibe.md）：和外国朋友对话时互相学语言。声音只在你的 Mac 上转成文字（不存、不上传），文字存进你账号里的一篇私有文档（/read 可读，默认 30 天后删除），每次开始前都有一屏同意说明。打开后：只有你本人能开始。关闭（默认）= 任何人都不能开始，包括你本人（没有 owner 例外），服务器也拒绝写入；已有的文档仍可阅读和删除。",
     default: false,
+    audience: "owner",
   },
   "byok.sync": {
     description:
       "「自己的 AI」里的「同步 API key 到账号」（托管模式）草稿：所有登录用户都能看到这一行（显示「即将推出」和提醒：打开后 Lianki 服务器会保存你的 key（加密）；关闭会删除服务器上的副本）。现在只是界面，点不了，服务器上没有任何保存 key 的代码。提供方 / 地址 / 模型的同步不受这个开关影响，已经可以用。关闭（默认）= 只有你本人能看到这一行。",
     default: false,
+    group: "ai",
   },
 } as const satisfies Record<string, FlagDef>;
 
