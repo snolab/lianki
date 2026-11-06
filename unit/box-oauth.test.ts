@@ -530,6 +530,20 @@ describe("the gate", () => {
     expect(seen).toBeNull();
   });
 
+  test("on a dev server, its own pages are not a box", async () => {
+    const res = await boxGate(
+      new Request("http://localhost:3911/api/dev/box-clients", {
+        method: "POST",
+        headers: { origin: "http://localhost:3911", cookie: "better-auth.session_token=x" },
+      }),
+      { ...env(), NODE_ENV: "development" },
+      deps,
+      app,
+    );
+    expect(res.status).toBe(200);
+    expect(seen?.headers.get("cookie")).toContain("session_token");
+  });
+
   test("the budget runs out per token", async () => {
     allowed = false;
     const res = await call("/api/prefs", { headers: tokenHeaders() });

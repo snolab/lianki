@@ -107,7 +107,8 @@ export async function boxGate(
   const dev = env.NODE_ENV === "development";
   const bearer = clean.headers.get("authorization") ?? "";
   const isToken = bearer.startsWith(`Bearer ${BOX_TOKEN_PREFIX}`);
-  const fromBox = isBoxOrigin(origin, dev);
+  // This server's own pages are never a box (on localhost they would match).
+  const fromBox = origin !== url.origin && isBoxOrigin(origin, dev);
   if (!isToken && !fromBox) return next(clean);
   if (!url.pathname.startsWith("/api/")) return next(clean);
 
