@@ -43,7 +43,8 @@ import {
   type MeaningIndex,
   type PhraseSpan,
 } from "@/lib/read/select-meaning";
-import { translationPlan } from "@/lib/read/select-translate";
+import type { Sentence } from "@/lib/read/reader-model";
+import { translationPlan, wholeSentenceRange } from "@/lib/read/select-translate";
 import { formLabels } from "@/lib/read/form-tags";
 import {
   initialPlayer,
@@ -98,7 +99,7 @@ import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
 import { PolishOffer, RawTranscript } from "./reader-polish";
-import { StreamBadge, useBookStream } from "./reader-stream";
+import { LiveTail, StreamBadge, useBookStream } from "./reader-stream";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { useItemWords, type ItemPlan } from "./use-item-words";
@@ -245,7 +246,7 @@ export function ReaderV2({
   const t = useIntlayer("read-reader");
   const [material, setMaterial] = useState<Material | null>(null);
   const [loading, setLoading] = useState(true);
-  const streamState = useBookStream<Material>(id, streaming && isLoggedIn, setMaterial);
+  const stream = useBookStream<Material>(id, streaming && isLoggedIn, setMaterial);
 
   useEffect(() => {
     let live = true;
@@ -283,13 +284,29 @@ export function ReaderV2({
     );
   return (
     <>
-      {streaming && isLoggedIn && <StreamBadge state={streamState} />}
-      <Reader id={id} material={material} signedIn={isLoggedIn} />
+      {streaming && isLoggedIn && <StreamBadge state={stream.state} />}
+      <Reader
+        id={id}
+        material={material}
+        signedIn={isLoggedIn}
+        liveTail={streaming && isLoggedIn ? stream.tail : null}
+      />
     </>
   );
 }
 
-function Reader({ id, material, signedIn }: { id: string; material: Material; signedIn: boolean }) {
+function Reader({
+  id,
+  material,
+  signedIn,
+  liveTail = null,
+}: {
+  id: string;
+  material: Material;
+  signedIn: boolean;
+  /** A live Google Doc's text not saved into the book yet (null: not following one). */
+  liveTail?: string | null;
+}) {
   const t = useIntlayer("read-reader");
   const tp = useIntlayer("read-player");
   const tw = useIntlayer("words-page");
@@ -680,7 +697,10 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   );
   /** Says what a click of the combo selected (set below, with the card's strings). */
   const tapRef = useRef<(u: Unit, continued: boolean) => void>(() => {});
+  /** Declared below the selection, which needs it only once it draws. */
+  const lineSentencesRef = useRef<(l: number) => readonly Sentence[] | null>(() => null);
   const sel = useReaderSelect({
+    grownRange: (u) => wholeSentenceRange(u, (l) => lineSentencesRef.current(l)),
     listRef,
     ctx: comboCtx,
     scrolling: () => performance.now() - lastScrollAt.current < 100,
@@ -1187,6 +1207,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     (l: number) => (lines[l]?.trim() ? para(l).sentences : null),
     [lines, para],
   );
+  lineSentencesRef.current = lineSentences;
   /** The selection's tokens in one paragraph [line, t0, t1], or null (a range over paragraphs, a sentence…). */
   const selSpan = useMemo(() => {
     const u = sel.unit;
@@ -2047,6 +2068,19 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           grades={grades}
           row={row}
         />
+        {liveTail !== null && (
+          <LiveTail
+            id={id}
+            text={liveTail}
+            lang={lang}
+            normLang={normLang}
+            to={String(locale)}
+            lines={lines}
+            title={material.title}
+            sourceUrl={book?.sourceUrl}
+            busy={!!sel.unit}
+          />
+        )}
         {/* The book's end: the same way back as the toolbar's ←, no scrolling up. */}
         {loaded && <ReaderBack variant="end" label={t.back.value} />}
         {/* Room for the last item to reach the eye line. */}

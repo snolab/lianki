@@ -4,17 +4,14 @@
 // keyed by the unit's own text, so a sentence and a paragraph are separate
 // entries).
 //
+// Owner, 2026-11-06: whole sentences are the unit, always. A selection grows to
+// whole sentences, each is translated once and cached as itself, and the card
+// stitches them in order, so growing a selection asks only for the new ones.
+//
 // - **A sentence** (the combo's sentence level): that sentence.
-// - **A paragraph**: the paragraph in one call — more fluent than its
-//   sentences one by one.
-// - **A hand-made range in one paragraph**: its ragged head and tail grown
-//   to whole sentences (Intl.Segmenter's, lib/read/reader-model.ts), each
-//   sentence translated and cached on its own; grown to the whole paragraph,
-//   it is the paragraph.
-// - **A range across paragraphs**: when it covers a paragraph whole, every
-//   paragraph it touches is taken whole, one call each, shown in order;
-//   when it only joins the tail of one to the head of the next, their
-//   sentences.
+// - **A paragraph**: its sentences.
+// - **A hand-made range**: its ragged head and tail grown to whole sentences
+//   (Intl.Segmenter's, lib/read/reader-model.ts), a block per paragraph.
 //
 // - **A phrase** that is no deck card (the caller passes none for a card):
 //   the phrase itself, one piece (owner, 2026-11-05 02:11 JST: no Translate
@@ -74,14 +71,6 @@ const sentencePieces = (line: number, ss: readonly Sentence[], s0: number, s1: n
   return out;
 };
 
-/** A whole paragraph: one piece, or its sentences when it is longer than one call takes. */
-function paraPieces(line: number, ss: readonly Sentence[]): TransPiece[] {
-  const text = normText(ss.map((s) => s.text).join(""));
-  if (!text) return [];
-  if (text.length <= MAX_TRANSLATE_CHARS) return [{ level: "para", line, s: -1, text }];
-  return sentencePieces(line, ss, 0, ss.length - 1);
-}
-
 /** What a selected unit translates as, or null when it is not translated by itself. */
 export function translationPlan(
   u: Unit,
@@ -99,26 +88,37 @@ export function translationPlan(
     }
     if (u.kind === "para") {
       const ss = sentences(u.line);
-      return ss ? [paraPieces(u.line, ss)] : [];
+      return ss ? [sentencePieces(u.line, ss, 0, ss.length - 1)] : [];
     }
     if (u.kind !== "range") return null;
-    const parts = rangeParts(u).flatMap((p) => {
+    return rangeParts(u).flatMap((p) => {
       const ss = sentences(p.line);
       const span = ss && sentenceSpan(ss, p.from, p.to);
-      return ss && span
-        ? [{ line: p.line, ss, span, whole: span[0] === 0 && span[1] === ss.length - 1 }]
-        : [];
+      return ss && span ? [sentencePieces(p.line, ss, span[0], span[1])] : [];
     });
-    const allWhole = parts.length > 1 && parts.some((p) => p.whole);
-    return parts.map((p) =>
-      allWhole || p.whole
-        ? paraPieces(p.line, p.ss)
-        : sentencePieces(p.line, p.ss, p.span[0], p.span[1]),
-    );
   })();
   if (!plan) return null;
   const out = plan.filter((b) => b.length);
   return out.length ? out : null;
+}
+
+/**
+ * A hand-made range as it is drawn: grown to the whole sentences it touches,
+ * which is what gets translated. The unit itself keeps the words he picked, for
+ * a phrase card.
+ */
+export function wholeSentenceRange(
+  u: Extract<Unit, { kind: "range" }>,
+  sentences: (line: number) => readonly Sentence[] | null,
+): Extract<Unit, { kind: "range" }> {
+  const edge = (line: number, t: number, last: boolean) => {
+    const ss = sentences(line);
+    const span = ss && sentenceSpan(ss, t, t);
+    if (!ss || !span) return t;
+    const toks = ss[span[0]].segs.filter((g) => g.t >= 0);
+    return toks.length ? toks[last ? toks.length - 1 : 0].t : t;
+  };
+  return { ...u, t0: edge(u.l0, u.t0, false), t1: edge(u.l1, u.t1, true) };
 }
 
 /** The plan's pieces in order, and which are translated by themselves (within the bound). */

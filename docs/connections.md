@@ -107,27 +107,39 @@ Flag `read.gdoc-stream` (off: the owner only).
    `GET /api/read/gdoc/stream`; a 200 shows its **Stream to Lianki** switch.
    **Nothing is sent until the user turns it on for that doc**
    (`lk:gdoc-stream:<id>`, per doc, kept across reloads).
-2. Docs draws text on canvases, so the script notes `fillText` on the page's
-   prototype (`src/gdoc-stream.ts`, the reason for `@grant unsafeWindow`). After
-   a pause (or at most a few seconds into a burst) it reads the page's own
-   `/document/d/<id>/export?format=html` and sends it if different. While the
-   tab is hidden, drawing may stop, so a slow timer checks too: the only timer,
-   Google-bound, on a switched-on doc only. `DOMParser` is unavailable there
-   (Docs enforces Trusted Types), and an answer under half the previous size is
-   believed only when it repeats (a rare short answer was seen in testing).
-3. `POST /api/read/gdoc/stream {docId, html, title}` parses and stores it as any
-   Docs import (`lib/read/gdoc-store.ts`: same `gdoc:<id>` book; cards of
-   unchanged lines carried; a polish dropped). The body only ever becomes the
-   sender's own book.
-4. The route tells lianki-push (`/internal/read-stream`), whose per-user
-   `ReadStreamHub` (`workers/push/src/read-stream.ts`) tells readers open at
-   `/read/<id>?streamingFrom=google-docs` (`reader-stream.tsx`). They fetch the
-   book, keep their place, and follow only if already at the end. Marks refresh
-   with the book. Only the book id and hash cross the hub, and nothing is stored.
+2. **Live edits** go straight to the reader. The Docs page receives each edit
+   on Google's own channel (its `/bind` stream): `{"ty":"is","ibi":<index>,"s":
+   "<text>"}` inserts, `{"ty":"ds","si":…,"ei":…}` deletes. `src/gdoc-stream.ts`
+   sees them as the page reads `responseText` (the reason for `@grant
+   unsafeWindow`), and posts `{book, ops}`, which only passes through lianki-push
+   to the user's own open readers and is stored nowhere. Measured 2026-11-06:
+   about 120 ms from Google to the Mac. **Undocumented format**: if it changes,
+   nothing arrives here and only saves (3) update the reader.
+3. **Saving** uses the export, after a pause in the edits (and again once when
+   the export should have caught up): it lagged the page by 1.6 to 5.4 s in
+   testing, which is why it is not the live path. Canvas `fillText` also asks for
+   a save, since it is how typing in the same tab is seen (that tab's own edits
+   are not on its channel). `POST /api/read/gdoc/stream {docId, html, title}`
+   stores it as any Docs import (`lib/read/gdoc-store.ts`: same `gdoc:<id>` book;
+   cards of unchanged lines carried; a polish dropped). `DOMParser` is unavailable
+   on Docs (Trusted Types); an answer under half the previous size is believed
+   only when it repeats.
+4. **The reader** (`/read/<id>?streamingFrom=google-docs`, `reader-stream.tsx`)
+   treats the doc as **append only** (`lib/read/gdoc-tail.ts`): edits at the end
+   grow a tail under the book, revisions inside the tail apply, anything earlier
+   waits for the next save. Only new words are cut, looked up and flashed. On a
+   save it fetches the book, keeps its place, and the tail keeps only what the
+   book does not hold yet. The tail has the book's selection rules
+   (`lib/read/tail-select.ts`): tap, combo, a hand selection grown to whole
+   sentences, stitched translation; a word's meaning and card need it in the
+   book, so a tap on one written since the last save saves first. With nothing
+   selected, the card follows the newest whole sentences, and the unfinished one
+   once the text rests (`latestPlan`). Each is translated once, through the same
+   metered translate route; its × stops following for that visit.
 
-Limits: it runs only while the doc is open in a tab with the userscript, so
-desktop only as the writer (the reader can be any device). Not yet measured on a
-truly hidden tab: test tooling keeps a tab "visible".
+Limits: it runs only while the doc is open in a tab with the userscript, so the
+writer's side is desktop only (the reader can be any device). Word marks in the
+tail are learning or not recognised; "new" needs the save.
 
 ## Tokens at rest
 
