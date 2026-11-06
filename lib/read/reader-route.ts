@@ -4,6 +4,7 @@
 // is touched: 401 without a session, 404 otherwise (the feature does not
 // exist for this user, or the book is not theirs).
 
+import { offSiteHeaders } from "@/lib/security/route-guard";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/auth";
@@ -36,7 +37,8 @@ export const json = <T>(body: T, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 
 export async function readerCtx(materialId: string): Promise<ReaderCtx | NextResponse> {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const reqHeaders = await headers();
+  const session = await auth.api.getSession({ headers: reqHeaders });
   const userId = session?.user?.id;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (dbBackend() !== "d1") return notFound();
@@ -46,7 +48,8 @@ export async function readerCtx(materialId: string): Promise<ReaderCtx | NextRes
   if (!material) return notFound();
   const db = getD1() as unknown as D1Batch;
   const hash = await hashOf(material);
-  if (!material.contentHash) {
+  // Saved for next time, so another site's link just answers without saving.
+  if (!material.contentHash && !offSiteHeaders(reqHeaders)) {
     try {
       await saveContentHash(db, userId, String(material._id), hash);
     } catch (err) {
