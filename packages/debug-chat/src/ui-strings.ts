@@ -108,6 +108,8 @@ export type UiStrings = {
   askExpired: string;
   askAnswered: string;
   askSent: string;
+  /** The ask-jump button's label, for a host that passes no strings (ChatStrings.askJump). */
+  askJump: string;
   /**
    * Compact mode (compact-view.ts), until the host passes localized ones
    * (ChatStrings): the menu switch, and the compact line's tap hint.
@@ -175,6 +177,7 @@ export const UI_EN: UiStrings = {
   askExpired: "Expired",
   askAnswered: "Answered",
   askSent: "Sent",
+  askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",
   aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while anything plays. Takes effect at once.",
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
@@ -228,6 +231,7 @@ export const UI_ZH: UiStrings = {
   askExpired: "已过期",
   askAnswered: "已回答",
   askSent: "已发送",
+  askJump: "跳到上方最近的未回答问题。上方未回答：{count}",
   aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，播放声音时麦克风暂停收音。立即生效。",
   cueSend: "语音消息发出时提示音",
   cueSpeech: "开始和结束说话时提示音",
@@ -281,6 +285,7 @@ export const UI_JA: UiStrings = {
   askExpired: "期限切れ",
   askAnswered: "回答済み",
   askSent: "送信しました",
+  askJump: "上にある一番近い未回答の質問へ移動。上の未回答：{count}",
   aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、音声の再生中はマイクが一時停止します。すぐに反映されます。",
   cueSend: "音声メッセージ送信時の音",
   cueSpeech: "話し始めと話し終わりの音",

@@ -185,6 +185,24 @@ function Harness() {
         ask,
       }),
     );
+  // The hub's `answered` from another device: the stamp on the line, no tap here.
+  (globalThis as { __answerAsk?: (askId: string) => void }).__answerAsk = (askId) =>
+    setMessages((l) =>
+      l.map((m) =>
+        m.ask?.askId === askId
+          ? {
+              ...m,
+              answer: {
+                choices: { [m.ask.questions[0]!.id]: [m.ask.questions[0]!.options[0]!.id] },
+                source: "tap" as const,
+                thread: "owner",
+                label: "/other device",
+                at: Date.now(),
+              },
+            }
+          : m,
+      ),
+    );
   (globalThis as { __polish?: (text: string) => void }).__polish = (text) =>
     setMessages((l) => {
       const i = l.findLastIndex((m) => m.from === "owner" && !m.thread);

@@ -569,6 +569,24 @@ const learningPartnerContent = {
       mr: "संपूर्ण चॅट दाखवा",
       ko: "전체 채팅 보기",
     }),
+    askJump: t({
+      en: "Go to the nearest unanswered question above. Unanswered above: {count}",
+      zh: "跳到上方最近的未回答问题。上方未回答：{count}",
+      hi: "ऊपर के सबसे नज़दीकी बिना जवाब वाले सवाल पर जाएँ। ऊपर बिना जवाब: {count}",
+      es: "Ir a la pregunta sin responder más cercana, más arriba. Sin responder más arriba: {count}",
+      fr: "Aller à la question sans réponse la plus proche, plus haut. Sans réponse plus haut : {count}",
+      ar: "الانتقال إلى أقرب سؤال بلا إجابة في الأعلى. بلا إجابة في الأعلى: {count}",
+      bn: "ওপরের সবচেয়ে কাছের উত্তর না দেওয়া প্রশ্নে যান। ওপরে উত্তর বাকি: {count}",
+      pt: "Ir para a pergunta sem resposta mais próxima, mais acima. Sem resposta mais acima: {count}",
+      ru: "Перейти к ближайшему вопросу без ответа выше. Без ответа выше: {count}",
+      ur: "اوپر کے قریب ترین بغیر جواب سوال پر جائیں۔ اوپر بغیر جواب: {count}",
+      id: "Buka pertanyaan belum dijawab terdekat di atas. Belum dijawab di atas: {count}",
+      de: "Zur nächsten unbeantworteten Frage weiter oben springen. Unbeantwortet weiter oben: {count}",
+      ja: "上にある一番近い未回答の質問へ移動。上の未回答：{count}",
+      sw: "Nenda kwenye swali la karibu zaidi lisilojibiwa hapo juu. Yasiyojibiwa hapo juu: {count}",
+      mr: "वरील सर्वात जवळच्या उत्तर न दिलेल्या प्रश्नावर जा. वर उत्तर न दिलेले: {count}",
+      ko: "위쪽에서 가장 가까운 미답변 질문으로 이동. 위쪽 미답변: {count}",
+    }),
     vpMenu: t({
       en: "Voiceprint",
       zh: "声纹",
@@ -1872,6 +1890,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "On/off switch in the chat's menu, saved on this device only: when on, the open chat shrinks to just its latest message (one short line over the input) whenever the text input is not focused, to cut distraction while talking by voice. Names the setting as a short noun phrase, not a command.",
   compactShowAll:
     "Tooltip and screen-reader hint on that single latest-message line: tapping it brings back the whole chat log. Imperative phrase, short.",
+  askJump:
+    "Screen-reader label and tooltip of a round up-arrow button floating above the chat's text box. It shows while a question the assistant asked (with tappable answers) is still unanswered and has scrolled off above the visible messages; a tap jumps up to the nearest one. Imperative, then a count: keep {count} as is, a number, worded so it needs no plural form.",
   vpMenu:
     "Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name.",
   vpTitle:
