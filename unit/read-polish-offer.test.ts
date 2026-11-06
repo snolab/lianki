@@ -1,11 +1,19 @@
 // When the reader offers to tidy a raw transcript (lib/read/polish-offer.ts).
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
+  OFFER_KEY,
+  SKIPS_KEY,
   SKIPS_MAX,
+  carryDeviceSkip,
   checkSkips,
+  deviceSkipKey,
   offerShown,
   polishActionShown,
+  readOfferOn,
+  readSkipped,
   withSkip,
+  writeOfferOn,
+  writeSkip,
   type OfferState,
 } from "@/lib/read/polish-offer";
 import { checkPref } from "@/lib/prefs/schema";
@@ -96,5 +104,71 @@ describe("the list of texts he said no to", () => {
     expect(JSON.stringify(full).length).toBeLessThan(2048);
     expect(checkPref("read.polishSkips", ["https://example.test"])).toBeUndefined();
     expect(checkPref("read.polishSkips", [...full, uuid(99)])).toBeUndefined();
+  });
+});
+
+describe("where his answers are kept", () => {
+  const real = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  let store: Map<string, string>;
+  const fake = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  };
+  beforeEach(() => {
+    store = new Map();
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: fake });
+  });
+  afterEach(() => {
+    if (real) Object.defineProperty(globalThis, "localStorage", real);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  });
+
+  it("the switch: on until he says otherwise", () => {
+    expect(readOfferOn()).toBe(true);
+    writeOfferOn(false);
+    expect(store.get(OFFER_KEY)).toBe("0");
+    expect(readOfferOn()).toBe(false);
+    writeOfferOn(true);
+    expect(readOfferOn()).toBe(true);
+  });
+
+  it("a no goes on the account's list and on this device", () => {
+    expect(readSkipped("a")).toBe(false);
+    writeSkip("a");
+    expect(readSkipped("a")).toBe(true);
+    expect(readSkipped("b")).toBe(false);
+    expect(JSON.parse(store.get(SKIPS_KEY)!)).toEqual(["a"]);
+    expect(store.get(deviceSkipKey("a"))).toBe("1");
+  });
+
+  it("a text off the account's list stays quiet on this device", () => {
+    store.set(deviceSkipKey("old"), "1");
+    expect(readSkipped("old")).toBe(true);
+  });
+
+  it("an old no on this device is carried to the account, once", () => {
+    store.set(deviceSkipKey("old"), "1");
+    carryDeviceSkip("old");
+    carryDeviceSkip("old");
+    carryDeviceSkip("never-declined");
+    expect(JSON.parse(store.get(SKIPS_KEY)!)).toEqual(["old"]);
+  });
+
+  it("junk on the device reads as no list", () => {
+    store.set(SKIPS_KEY, "{not json");
+    expect(readSkipped("a")).toBe(false);
+  });
+
+  it("storage that throws: on, not skipped, and writing does not throw", () => {
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("private window");
+      },
+    });
+    expect(readOfferOn()).toBe(true);
+    expect(readSkipped("a")).toBe(false);
+    expect(() => writeSkip("a")).not.toThrow();
   });
 });
