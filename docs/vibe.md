@@ -222,8 +222,19 @@ in the contents sheet, however the doc is opened. `shape.raw` is stored false, a
 `POST /api/read/[id]/polish` and `polish-live` refuse it (`polishRefused`). Sending
 lines to a model is for translation only.
 
-Selecting text in the reader can still translate it through the metered route,
-as in any book: that is his tap, on that text.
+### Where its text goes
+
+Private speech does not go into, or come out of, anything shared across users.
+
+| path | what happens on a /vibe doc |
+| --- | --- |
+| Selecting text in `/read/<id>` (`POST /api/read/<id>/translate`, `translateSelection`) | Never `read_translation`. A selection that is a whole line uses that line's row in `vibe_translation`, so it is paid once whether it came from here or from the log, and it shows in the log's column. A sentence of a longer line or a phrase goes to the model and is not stored; the tab holds the answer. Doc found by `isVibeMaterial` and asked for under the signed-in user. |
+| `word_gloss` (dictionary, shared) | A **single word's** generated gloss is written, by design: a headword and its meaning, with no sentence. It happens when a card is committed (`batch-grade`, `make-cards`), never before a swipe. A **phrase** of a doc (`bookPhrase`: up to 200 characters, so it can be a whole spoken clause) is generated for that card and not written (`BookCtx.privateText`). |
+| Clips in R2 `tts/` (`/api/words/tts`, shared by language and text) | A text of two or more words found in the user's own /vibe doc, or in an example on one of their `book:` lists, is voiced and not kept (`isPrivateSpeech`, on the server, so every client is covered). Cards outlive docs, and a list does not say what kind of book it came from, so an ordinary book's card example is treated the same; a clip already in R2 is still served. A single word stays shareable, as above. |
+| A card's sentence (`word_list_entries.ex`, `word_cards`) | The user's own rows, scoped by email. It stays after the doc is deleted: the card is theirs. |
+| The material (`read_materials`, R2 `read/<id>`) | The row and the object are this material's. `content_hash` is only looked up within `user_id`. |
+| `shared_books` | Written only by a confirmed public-domain import from a link. Nothing here reaches it. |
+| Logs and models | Cost lines carry counts only. There is no AI Gateway: calls go straight to the Workers AI endpoint. The model does see the line (translation, a word's example). `/api/words/tts` takes the text in its query string, and the Worker's observability is on, so a sentence read by the cloud voice can appear in the account's Workers Logs. |
 
 ## 新词
 

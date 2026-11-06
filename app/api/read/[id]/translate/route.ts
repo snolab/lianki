@@ -5,6 +5,8 @@ import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { AI_LIMIT_LIVE, translate } from "@/lib/read/translate-server";
+import { isVibeMaterial } from "@/lib/vibe/private-speech";
+import { translateSelection } from "@/lib/vibe/translate-server";
 
 /**
  * POST /api/read/[id]/translate — the reader's Translate: the selected text
@@ -14,6 +16,9 @@ import { AI_LIMIT_LIVE, translate } from "@/lib/read/translate-server";
  *
  * 400 bad input · 429 over the per-user limit · 502 the model failed ·
  * 503 Workers AI not configured. Logs never carry the text.
+ *
+ * A /vibe doc is private speech, so it never reads or writes the shared cache
+ * (docs/vibe.md, "Where its text goes").
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
@@ -26,11 +31,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const from = langTag(body.from);
   // Who may read a live doc: its card follows every new sentence.
   const live = isOwner(ctx.email) || flagIn(await readFlags(), "read.gdoc-stream");
-  const r = await translate(
-    ctx.db,
-    { text: body.text, to, from },
-    { userId: ctx.userId, ...(live ? { limit: AI_LIMIT_LIVE } : {}) },
-  );
+  const limit = live ? { limit: AI_LIMIT_LIVE } : {};
+  const input = { text: body.text, to, from };
+  const r = isVibeMaterial(ctx.material)
+    ? await translateSelection(ctx.db, ctx.userId, ctx.material, input, limit, Date.now())
+    : await translate(ctx.db, input, { userId: ctx.userId, ...limit });
   if (r.ok) return json({ text: r.text, cached: r.cached });
   const status = { empty: 400, busy: 429, "model-failed": 502, "not-configured": 503 }[r.error];
   return json({ error: r.error }, status);

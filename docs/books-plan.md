@@ -740,7 +740,8 @@ selecting DOM text.
   translates the selected word … paragraph or hand-made range into the UI
   locale with the Learning Partner's model on Workers AI, and the card shows it
   under the text. Cached in D1 `read_translation` by SHA-256 of target + text
-  (the text itself is not stored), so the same text and target are paid once;
+  (the text itself is not stored), so the same text and target are paid once
+  (never for a /vibe doc: [vibe.md](vibe.md), "Where its text goes");
   60 model calls per user per 10 min (a cost guard); the real cost goes to
   `chargeAi` (`gloss-server.ts`), the one charge seam until the credits
   redesign.

@@ -8,6 +8,7 @@ import { isWorkersAiConfigured, workersAiOpenAI } from "@/lib/workers-ai";
 import type { BookCtx, RangeWord } from "./book-word-list";
 import { glossMessages, headOf, lookupGloss, parseGlosses, type GlossEntry } from "./gloss";
 import { readPublicText } from "./lemma-server";
+import { phraseTokens } from "./select-meaning";
 import { langMatches, termKeys } from "./words";
 
 type Index = { lists: { lang: string; file: string }[] };
@@ -121,6 +122,7 @@ async function generate(
   lang: string,
   words: { term: string; ex: string | null }[],
   ai: { userId: string; complete: Complete },
+  share: (term: string) => boolean = () => true,
 ): Promise<Map<string, string>> {
   const chunks: (typeof words)[] = [];
   for (let i = 0; i < words.length; i += BATCH) chunks.push(words.slice(i, i + BATCH));
@@ -128,12 +130,13 @@ async function generate(
   const made = new Map(done.flatMap((d) => [...d.got]));
   const at = new Date().toISOString();
   for (const [term, back] of made)
-    await db
-      .prepare(
-        "INSERT INTO word_gloss (lang, term, back, model, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(lang, term) DO NOTHING",
-      )
-      .bind(lang, term, back, PARTNER_AI_MODEL, at)
-      .run();
+    if (share(term))
+      await db
+        .prepare(
+          "INSERT INTO word_gloss (lang, term, back, model, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(lang, term) DO NOTHING",
+        )
+        .bind(lang, term, back, PARTNER_AI_MODEL, at)
+        .run();
   const usd = done.reduce((n, d) => n + d.usd, 0);
   if (usd > 0) await chargeAi(ai.userId, { usd, words: made.size });
   return made;
@@ -145,8 +148,9 @@ const AI_LIMIT = { windowMs: 10 * 60_000, max: 30 };
 /**
  * The range's words with a meaning wherever one can be found: the device's
  * deck meaning, else the decks over the book's lemmas, else word_gloss,
- * else (with `ai`) the model — written to word_gloss before it is used. A
- * deck hit also suggests its headword as the new card's term.
+ * else (with `ai`) the model — written to word_gloss before it is used, unless
+ * it is a phrase of private speech (`book.privateText`). A deck hit also
+ * suggests its headword as the new card's term.
  */
 export async function fillGlosses(
   db: D1Like,
@@ -173,13 +177,20 @@ export async function fillGlosses(
     .filter(([h]) => !known.has(h))
     .map(([term, w]) => ({ term, ex: book.exampleOf?.(w) ?? null }));
   const complete = ai?.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
+  const share = (term: string) => !book.privateText || phraseTokens(term, book.lang).length < 2;
   if (
     ai &&
     complete &&
     ask.length &&
     (await routeLimit(`read-gloss:${ai.userId}`, AI_LIMIT)).allowed
   )
-    for (const [term, back] of await generate(db, book.lang, ask, { userId: ai.userId, complete }))
+    for (const [term, back] of await generate(
+      db,
+      book.lang,
+      ask,
+      { userId: ai.userId, complete },
+      share,
+    ))
       known.set(term, back);
   return out.map((x) => {
     if (x.back) return x;

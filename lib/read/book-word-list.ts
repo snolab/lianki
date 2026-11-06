@@ -97,6 +97,11 @@ export interface BookCtx {
    * it generates a shared gloss (lib/read/gloss-server.ts). Absent: no example.
    */
   exampleOf?: (word: string) => string | null;
+  /**
+   * Private speech (a /vibe doc): a phrase of it is the speaker's own words, so a
+   * meaning generated for one stays on this card and out of the shared word_gloss.
+   */
+  privateText?: boolean;
 }
 
 /** One word of the review: his card's list and term, or the book list's new word. */

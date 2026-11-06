@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
+import { dbBackend, getD1 } from "@/lib/d1";
 import { devBridgeUser } from "@/lib/dev-bridge-user";
 import { isWorkersAiConfigured, speechModel, workersAiSpeech } from "@/lib/workers-ai";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { logSanitizedError } from "@/lib/safeError";
 import { getCachedTTS, getVoiceClip, putCachedTTS } from "@/lib/ttsCache";
+import { isPrivateSpeech } from "@/lib/vibe/private-speech";
 import { wordsTts } from "@/lib/words-tts";
 
 /**
@@ -28,6 +30,8 @@ export const GET = async (req: NextRequest) => {
       speechModel,
       speech: workersAiSpeech,
       log: (where, err) => logSanitizedError(where, err, {}),
+      isPrivate: async (email, text, lang) =>
+        dbBackend() === "d1" && isPrivateSpeech(getD1(), email, text, lang),
     },
     req.signal,
   );
