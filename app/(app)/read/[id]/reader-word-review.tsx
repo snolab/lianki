@@ -6,8 +6,10 @@
 // Study of WordsClient: its rows, swipe, mirror, undo, marks, FSRS cards)
 // over the book, given only the paragraph's words — each on his existing
 // card when any of his lists has it, else as a new word of the book's list
-// (POST /api/read/[id]/word-session). 「制卡」 makes a card for each word that
-// has none (POST /api/read/[id]/make-cards), with an undo toast.
+// (POST /api/read/[id]/word-session). A new word is a row that stores nothing
+// until a swipe grades it (owner, 2026-11-06). 「制卡」 is only the batch: with
+// several words missing, a card for each (POST /api/read/[id]/make-cards), with
+// an undo toast.
 //
 // The overlay covers the reader; the page under it keeps its place, and
 // closing (✕, the exit button, back) returns focus to the reader.
@@ -22,7 +24,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
 import { useIntlayer } from "next-intlayer";
 import { catalogWords, type CatalogWord } from "@/lib/read/dict";
 import type { Sentence } from "@/lib/read/reader-model";
-import { orderWords, type ParaWord } from "@/lib/read/word-review";
+import { MIN_BATCH, orderWords, type ParaWord } from "@/lib/read/word-review";
 import { foldsOf } from "@/lib/read/words";
 import { fill } from "@/lib/nav/nav-core";
 import { useBackToClose } from "@/lib/use-back-to-close";
@@ -248,7 +250,7 @@ export function WordReview({
       <div className="lk-glass fixed inset-x-0 top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-end border-b border-[var(--glass-line)] px-3 pb-1">
         <div className="flex w-full items-center gap-2">
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
-          {missing > 0 && (
+          {missing >= MIN_BATCH && (
             <button
               type="button"
               disabled={busy}

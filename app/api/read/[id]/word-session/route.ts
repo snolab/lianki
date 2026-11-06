@@ -22,6 +22,9 @@ import { fillGlosses } from "@/lib/read/gloss-server";
  * language, lib/read/word-review.ts matchCard) or as a new word of the
  * book's list; grades then go through /api/words/lists/<id>/review as on
  * /words. `graded`: new words just graded join the book list's entries.
+ *
+ * A word with no card is only a preview here: the decks and word_gloss, no model,
+ * no charge. A swipe is what commits it, so its AI meaning comes with `graded`.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
@@ -34,26 +37,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!graded) return badRequest("graded words are required");
     let added = 0;
     for (const g of byLang(book, langs, graded)) {
-      const glossed = await fillGlosses(ctx.db, g.book, g.words, null);
-      added += await addGradedEntries(ctx.db, ctx.email, g.book, glossed);
+      const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, { userId: ctx.userId });
+      added += await addGradedEntries(ctx.db, ctx.email, g.book, g.words, gloss);
     }
     return json({ added });
   }
   const words = rangeWords(body?.words, own);
   if (!words) return badRequest("words are required");
-  // A meaning for every word lacking one: the decks over the book's lemmas,
-  // the generated glosses, the model (lib/read/gloss.ts). Each word in its
-  // own language (a book that mixes languages: reader-route byLang).
+  // A meaning for every card lacking one: the decks over the book's lemmas, the
+  // generated glosses, the model (lib/read/gloss.ts); a preview without the model.
+  // Each word in its own language (a book that mixes languages: reader-route byLang).
   const groups = byLang(book, langs, words);
   if (groups.length === 1) {
     const g = groups[0];
     const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, { userId: ctx.userId });
-    return json(await scopeSession(ctx.db, ctx.email, g.book, g.words, gloss));
+    const preview = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, null);
+    return json(await scopeSession(ctx.db, ctx.email, g.book, g.words, gloss, undefined, preview));
   }
   const parts = [];
   for (const g of groups) {
     const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, { userId: ctx.userId });
-    parts.push(await scopeSession(ctx.db, ctx.email, g.book, g.words, gloss));
+    const preview = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, null);
+    parts.push(await scopeSession(ctx.db, ctx.email, g.book, g.words, gloss, undefined, preview));
   }
   // In the range's order, as one group gives them.
   const at = new Map(words.map((w, i) => [w.w, i]));

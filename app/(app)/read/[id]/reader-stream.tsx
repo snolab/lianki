@@ -11,6 +11,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import { fill } from "@/lib/nav/nav-core";
+import type { SwipeRating } from "@/lib/words/swipe";
+import { NewWordStrip, useGradeWords } from "./reader-grade-handle";
+import { MadeToast } from "./reader-word-review";
 import {
   EMPTY_TAIL,
   applyTailOps,
@@ -161,9 +165,14 @@ type WordCard = {
   term?: string;
   back?: string | null;
   state: "looking" | "ready" | "failed";
+  /** performance.now() when it opened: the opening tap is no press on its knob. */
+  openedAt: number;
   adding?: boolean;
-  added?: boolean;
+  /** The batch that added it, for its undo. */
+  added?: string;
 };
+
+const noPreview = () => {};
 
 const postJson = (url: string, body: unknown) =>
   fetch(url, {
@@ -192,6 +201,7 @@ export function LiveTail({
   title,
   sourceUrl,
   busy = false,
+  mirror = false,
 }: {
   id: string;
   text: string;
@@ -203,8 +213,14 @@ export function LiveTail({
   sourceUrl?: string;
   /** Something in the book is selected: its card has the screen. */
   busy?: boolean;
+  /** The swipe's sides are swapped (Settings). */
+  mirror?: boolean;
 }) {
   const t = useIntlayer("read-gdoc-stream");
+  const tg = useIntlayer("read-grade-handle");
+  const tr = useIntlayer("read-word-review");
+  const { grades } = useGradeWords();
+  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const ts = useIntlayer("read-select");
   const [fam, setFam] = useState<Map<string, Fam>>(() => new Map());
   const [unit, setUnit] = useState<TailUnit | null>(null);
@@ -306,9 +322,10 @@ export function LiveTail({
   const openWord = useCallback(
     async (word: string, w: string, ex: string) => {
       const f = fam.get(w);
-      setCard({ word, w, ex, fam: f, state: "looking" });
+      setCard({ word, w, ex, fam: f, state: "looking", openedAt: performance.now() });
       try {
-        const r = await onBook("gloss", { w, ex });
+        // A preview: what meaning there already is, no model (the commit brings it).
+        const r = await onBook("gloss", { w, ex, cached: true });
         const d = r.ok ? ((await r.json()) as { term?: string; back?: string | null }) : null;
         setCard((c) =>
           c?.w === w
@@ -324,17 +341,43 @@ export function LiveTail({
     [fam, onBook],
   );
 
-  const addWord = async () => {
+  /** The slider's grade adds the word: its card and that grade, one batch, one undo. */
+  const commit = async (rating: SwipeRating) => {
     if (!card) return;
-    const { w, ex } = card;
+    const { w, ex, fam: was } = card;
+    const clientId = crypto.randomUUID();
+    const day = new Date().toLocaleDateString("en-CA");
     setCard({ ...card, adding: true });
+    const same = (f: (c: WordCard) => WordCard) => setCard((c) => (c?.w === w ? f(c) : c));
     try {
-      const r = await onBook("make-cards", { words: [{ w, ex }] });
+      const r = await onBook("batch-grade", {
+        clientId,
+        rating,
+        words: [{ w, ex }],
+        day,
+        swipedAt: new Date().toISOString(),
+      });
       if (!r.ok) throw new Error(String(r.status));
       setFam((prev) => new Map(prev).set(w, "l1"));
-      setCard((c) => (c?.w === w ? { ...c, adding: false, added: true, fam: "l1" } : c));
+      same((c) => ({ ...c, adding: false, added: clientId, fam: "l1" }));
+      setToast({
+        text: fill(tg.added.value, { grade: grades[rating] }),
+        undo: () =>
+          void onBook("batch-grade", { undo: clientId, day }).then((u) => {
+            if (!u.ok) return setToast({ text: tg.failed.value });
+            setFam((prev) => {
+              const next = new Map(prev);
+              if (was) next.set(w, was);
+              else next.delete(w);
+              return next;
+            });
+            same((c) => ({ ...c, added: undefined, fam: was, openedAt: performance.now() }));
+            setToast({ text: tg.undone.value });
+          }),
+      });
     } catch {
-      setCard((c) => (c?.w === w ? { ...c, adding: false } : c));
+      same((c) => ({ ...c, adding: false }));
+      setToast({ text: tg.failed.value });
     }
   };
 
@@ -467,6 +510,14 @@ export function LiveTail({
           </p>
         ))}
       </div>
+      {toast && (
+        <MadeToast
+          text={toast.text}
+          undoLabel={tr.undo.value}
+          onUndo={toast.undo}
+          onDone={() => setToast(null)}
+        />
+      )}
       {open && (
         <div
           ref={cardEl}
@@ -500,16 +551,18 @@ export function LiveTail({
                 (card.added ? (
                   <p className="mt-2 text-sm opacity-70">{t.added}</p>
                 ) : (
+                  !card.adding &&
                   (!card.fam || card.fam === "u" || card.fam === "n") && (
-                    <button
-                      type="button"
-                      className="btn btn-sm mt-2"
-                      disabled={card.adding}
-                      data-testid="read-live-add"
-                      onClick={addWord}
-                    >
-                      {t.addToLearn}
-                    </button>
+                    <NewWordStrip
+                      intervals={null}
+                      mirror={mirror}
+                      openedAt={card.openedAt}
+                      canUndo={false}
+                      lastWhat={null}
+                      onPreview={noPreview}
+                      onCommit={(r) => void commit(r)}
+                      onUndo={noPreview}
+                    />
                   )
                 ))}
             </>

@@ -948,7 +948,12 @@ it in the text, not a list of toasts.
     hold, so an Undo while held spends nothing. A tap, a drag short of a level
     or closing the card stores and spends nothing. Keyboard: keys 1–4, or a
     button per grade (hidden until focused, read by screen readers).
-    The several-word 制卡 (N) stays on a sentence, paragraph or range.
+    The several-word 制卡 (N) stays on a sentence, paragraph, range or word
+    review, from two words up (`MIN_BATCH`): it is a batch action. A review
+    list's new word is the same kind of preview: a row, no model
+    (`word-session`), its swipe the commit (`graded` brings the AI meaning,
+    onto the card as well). The live doc's card (`LiveTail`) has the same
+    `NewWordStrip`, and sends its batch at once, with an undo toast.
   - a **sentence**: that sentence's FSRS card (the reader's per-sentence
     grade, `gradeFor`, granularity `sentence`). Never takes words along.
   - a **hand-made range** (several sentences, several paragraphs): every due

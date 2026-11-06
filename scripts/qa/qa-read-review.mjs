@@ -179,8 +179,9 @@ async function run(device, scheme, touch) {
     aim.marked > 0 && aim.hidden === 0,
     `each example's word is highlighted and in view (${JSON.stringify(aim)})`,
   );
+  // Several new words: the batch 制卡 stays at the top (one alone has only its swipe).
   const makeTop = page.getByTestId("read-review-make");
-  check(await makeTop.isVisible(), "制卡 at the top of the review");
+  check(await makeTop.isVisible(), "the batch 制卡 at the top of the review");
   await page.screenshot({ path: join(OUT, `review-${tag}.png`) });
 
   // Grade the first word: /words' own review endpoint.
