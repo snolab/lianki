@@ -11,7 +11,14 @@ import { FLAGS } from "@/lib/flags";
 import type { D1Batch } from "@/lib/read/reader-store";
 import { polishActionShown, offerShown, polishRefused } from "@/lib/read/polish-offer";
 import { parseBookMeta, type BookMeta } from "@/lib/read/book";
-import { linesReply, settingsPutReply, startReply, stateReply, vibeUserId } from "@/lib/vibe/api";
+import {
+  linesReply,
+  settingsGetReply,
+  settingsPutReply,
+  startReply,
+  stateReply,
+  vibeUserId,
+} from "@/lib/vibe/api";
 import { checkRetention, vibeAllowed } from "@/lib/vibe/gate";
 import { sweepVibeDocs } from "@/lib/vibe/retention";
 import {
@@ -238,6 +245,67 @@ describe("the transcript", () => {
     const t = performance.now();
     await linesReply(db, "u1", id, { from: 3000, lines: ["one more"] }, T0);
     expect(performance.now() - t).toBeLessThan(1000);
+  });
+});
+
+describe("the routes' answers", () => {
+  it("a malformed body is refused before anything is written", async () => {
+    const id = await start();
+    for (const body of [
+      null,
+      7,
+      {},
+      { from: -1, lines: ["x"] },
+      { from: 0.5, lines: ["x"] },
+      { from: 0 },
+      { from: 0, lines: [] },
+    ])
+      expect((await linesReply(db, "u1", id, body, T0)).status).toBe(400);
+    const many = Array.from({ length: 101 }, () => "x");
+    expect((await linesReply(db, "u1", id, { from: 0, lines: many }, T0)).status).toBe(400);
+    for (const body of [null, {}, { state: "deleted" }])
+      expect((await stateReply(db, "u1", id, body)).status).toBe(400);
+    expect(
+      (await startReply(db, "u1", { consent: true, otherLang: "French!", title: "x" }, T0)).status,
+    ).toBe(400);
+    expect(
+      (await startReply(db, "u1", { consent: true, otherLang: "fr", title: "   " }, T0)).status,
+    ).toBe(400);
+  });
+
+  it("lines of nothing add nothing, and say how far it has got", async () => {
+    const id = await start();
+    const r = await linesReply(db, "u1", id, { from: 0, lines: ["  ", "\u0000"] }, T0);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ next: 0, material: null, langs: [] });
+    expect(r.appended).toBeUndefined();
+    const ok = await linesReply(db, "u1", id, { from: 0, lines: ["a real invented line"] }, T0);
+    expect(ok.appended?.material).toBe(ok.body.material as string);
+  });
+
+  it("the setting reads back", async () => {
+    expect(await settingsGetReply(db, "u1")).toEqual({ status: 200, body: { days: 30 } });
+    await settingsPutReply(db, "u1", { days: 12 }, T0);
+    expect(await settingsGetReply(db, "u1")).toEqual({ status: 200, body: { days: 12 } });
+    await settingsPutReply(db, "u1", { days: 14 }, T0);
+    expect((await settingsGetReply(db, "u1")).body.days).toBe(14);
+    expect((await settingsPutReply(db, "u1", null, T0)).status).toBe(400);
+  });
+
+  it("stopping twice is fine; a doc whose material was deleted is gone", async () => {
+    const id = await start();
+    const r = await linesReply(db, "u1", id, { from: 0, lines: ["about to be deleted"] }, T0);
+    await stateReply(db, "u1", id, { state: "stopped" });
+    expect((await stateReply(db, "u1", id, { state: "stopped" })).status).toBe(200);
+    const live = await start();
+    await linesReply(db, "u1", live, { from: 0, lines: ["about to be deleted too"] }, T0);
+    const m = await db
+      .prepare("SELECT material_id FROM vibe_doc WHERE id = ?")
+      .bind(live)
+      .first<{ material_id: string }>();
+    await deleteReadMaterial("u1", m!.material_id);
+    expect((await linesReply(db, "u1", live, { from: 1, lines: ["late"] }, T0)).status).toBe(404);
+    expect(r.status).toBe(200);
   });
 });
 
