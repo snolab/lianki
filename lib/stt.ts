@@ -3,6 +3,7 @@
  * text"): which Workers AI models may be asked for, what they cost, and how
  * their answers are read. Shared by /api/debug/stt and the STT bench. No I/O.
  */
+import type { SttSignals } from "@lianki/debug-chat/stt-guard";
 import { STT_PROMPT, STT_PROMPT_ZH } from "@lianki/debug-chat/stt-hint";
 
 /**
@@ -120,7 +121,10 @@ const obj = (v: unknown): Json | undefined =>
  * (and `languages`/`detected_language` when present). Whisper:
  * `text`, with `transcription_info.language` when the model reports it.
  */
-export function readStt(model: SttModel, result: unknown): { text: string; language?: string } {
+export function readStt(
+  model: SttModel,
+  result: unknown,
+): { text: string; language?: string; signals?: SttSignals } {
   const r = obj(result) ?? {};
   if (model === "@cf/deepgram/nova-3") {
     const ch = obj((obj(r.results)?.channels as unknown[] | undefined)?.[0]);
@@ -134,7 +138,35 @@ export function readStt(model: SttModel, result: unknown): { text: string; langu
   }
   const text = typeof r.text === "string" ? r.text : "";
   const lang = obj(r.transcription_info)?.language;
+  const signals = whisperSignals(r);
   return typeof lang === "string" && lang
-    ? { text: text.trim(), language: lang }
-    : { text: text.trim() };
+    ? { text: text.trim(), language: lang, signals }
+    : { text: text.trim(), signals };
+}
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+/**
+ * What Whisper said besides the text, for the mic's silence guard. Only what
+ * is there: `@cf/openai/whisper` answers text and word_count, nothing else
+ * (measured 2026-11-06); turbo has segments and its VAD's durations.
+ */
+function whisperSignals(r: Json): SttSignals {
+  const out: SttSignals = { decoder: "whisper" };
+  const info = obj(r.transcription_info);
+  const dur = num(info?.duration);
+  const kept = num(info?.duration_after_vad);
+  if (dur && kept !== undefined) out.vadShare = Math.round((kept / dur) * 1000) / 1000;
+  const segs = Array.isArray(r.segments) ? r.segments.map(obj).filter((s) => !!s) : [];
+  let w = 0;
+  let lp = 0;
+  for (const s of segs) {
+    const logprob = num(s.avg_logprob);
+    if (logprob === undefined) continue;
+    const len = Math.max((num(s.end) ?? 0) - (num(s.start) ?? 0), 0.01);
+    w += len;
+    lp += logprob * len;
+  }
+  if (w) out.logprob = Math.round((lp / w) * 1000) / 1000;
+  return out;
 }

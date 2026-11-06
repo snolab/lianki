@@ -98,6 +98,7 @@ import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
 import { PolishOffer, RawTranscript } from "./reader-polish";
+import { StreamBadge, useBookStream } from "./reader-stream";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { useItemWords, type ItemPlan } from "./use-item-words";
@@ -231,10 +232,20 @@ function useTouch() {
   return touch;
 }
 
-export function ReaderV2({ id, isLoggedIn }: { id: string; isLoggedIn: boolean }) {
+export function ReaderV2({
+  id,
+  isLoggedIn,
+  streaming = false,
+}: {
+  id: string;
+  isLoggedIn: boolean;
+  /** ?streamingFrom=google-docs: the text follows the doc as it is edited. */
+  streaming?: boolean;
+}) {
   const t = useIntlayer("read-reader");
   const [material, setMaterial] = useState<Material | null>(null);
   const [loading, setLoading] = useState(true);
+  const streamState = useBookStream<Material>(id, streaming && isLoggedIn, setMaterial);
 
   useEffect(() => {
     let live = true;
@@ -270,7 +281,12 @@ export function ReaderV2({ id, isLoggedIn }: { id: string; isLoggedIn: boolean }
         </Link>
       </div>
     );
-  return <Reader id={id} material={material} signedIn={isLoggedIn} />;
+  return (
+    <>
+      {streaming && isLoggedIn && <StreamBadge state={streamState} />}
+      <Reader id={id} material={material} signedIn={isLoggedIn} />
+    </>
+  );
 }
 
 function Reader({ id, material, signedIn }: { id: string; material: Material; signedIn: boolean }) {

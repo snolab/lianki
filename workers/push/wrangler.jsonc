@@ -16,12 +16,14 @@
       { "name": "HUB", "class_name": "VersionHub" },
       { "name": "DEBUG", "class_name": "DebugHub" },
       { "name": "PROGRESS", "class_name": "ProgressHub" },
+      { "name": "READ_STREAM", "class_name": "ReadStreamHub" },
     ],
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["VersionHub"] },
     { "tag": "v2", "new_sqlite_classes": ["DebugHub"] },
     { "tag": "v3", "new_sqlite_classes": ["ProgressHub"] },
+    { "tag": "v4", "new_sqlite_classes": ["ReadStreamHub"] },
   ],
   // Asks the main Worker whether a debug socket's cookie is the owner's
   // (/api/dev/whoami). Circular with its PUSH binding to us; that is allowed.

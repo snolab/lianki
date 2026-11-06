@@ -73,6 +73,7 @@ describe("the mic session and the taps", () => {
     const logs: Record<string, unknown>[] = [];
     let spots = 0;
     const deps: MicDeps = {
+      guard: { minFrameRms: 0 },
       getStream: async () => ({ id: "s", getTracks: () => [{ readyState: "live", stop() {} }] }),
       load: async (ev) => {
         events = ev;
