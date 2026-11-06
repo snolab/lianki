@@ -18,8 +18,12 @@ import {
   ENROL_SENTENCES,
   type EnrolDeps,
   type EnrolView,
+  type FilterInfo,
   createEnrolment,
   enrolBusy,
+  filterFlag,
+  filterPaused,
+  readTally,
 } from "./voiceprint";
 import { notifyDirty, registerDirtyCheck } from "@lianki/ui-state/dirty";
 import type { ChatStrings } from "./wire";
@@ -56,6 +60,7 @@ export function panelDeps(o: {
     request: (m) => c.request(m),
     ticket: (op, device, t) => voiceprintTicket(op, device, { keepAudio: t?.keepAudio }),
     capture: o.capture,
+    filterInfo: async (state) => ({ flag: await filterFlag(), paused: filterPaused(), state, tally: readTally() }),
     log: o.log,
     close: () => c.close(),
   };
@@ -144,6 +149,36 @@ export function VoiceprintPanel({
     unreachable: t.vpUnreachable,
   };
 
+  /** "Only my voice": what it does right now, today's counts, and this device's pause. */
+  const filterBlock = (f: FilterInfo) => {
+    const active = f.flag && !f.paused && f.state === "on";
+    return (
+      <div data-testid="debug-voiceprint-filter" data-state={active ? "on" : f.state} style={{ marginTop: 10 }}>
+        {note(!f.flag || f.paused ? t.vpFilterOff : active ? t.vpFilterOn : t.vpFilterWaiting)}
+        {f.tally.n > 0 &&
+          note(
+            t.vpFilterCount
+              .replaceAll("{n}", String(f.tally.n))
+              .replaceAll("{score}", f.tally.score === undefined ? "–" : f.tally.score.toFixed(2)),
+            "debug-voiceprint-filter-count",
+          )}
+        {f.tally.would > 0 &&
+          note(t.vpFilterWould.replaceAll("{n}", String(f.tally.would)), "debug-voiceprint-filter-would")}
+        {f.flag && (
+          <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, fontSize: "calc(12px * var(--lk-fs-k, 1))" }} className="pointer-events-auto">
+            <input
+              type="checkbox"
+              data-testid="debug-voiceprint-filter-pause"
+              checked={f.paused}
+              onChange={(e) => c.pauseFilter(e.currentTarget.checked)}
+            />
+            {t.vpFilterPause}
+          </label>
+        )}
+      </div>
+    );
+  };
+
   let body: React.ReactNode = null;
   switch (view.step) {
     case "closed":
@@ -166,6 +201,7 @@ export function VoiceprintPanel({
             note(t.vpNone)
           )}
           {!view.local && note(t.vpOff, "debug-voiceprint-off")}
+          {view.filter && filterBlock(view.filter)}
           {row(
             <>
               {view.local && btn("debug-voiceprint-enrol", t.vpEnrol, () => c.enrol(), { primary: true, trusted: true })}

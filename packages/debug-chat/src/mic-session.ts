@@ -29,7 +29,7 @@ import {
   createMic,
   keepStream,
 } from "./mic";
-import type { LocalFinal, LocalState } from "./local-stt";
+import type { FilterVerdict, LocalFinal, LocalState } from "./local-stt";
 import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
 import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
@@ -113,6 +113,8 @@ export type MicDeps = {
   localStt?: (url: string) => LocalClient;
   /** Each kept final's speaker tag and the Mac's signed proof of it (voiceprint.ts noteSpeaker). */
   speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
+  /** A passive utterance the Mac's voiceprint filter stopped (voiceprint.ts noteFiltered). */
+  filtered?: (v: FilterVerdict) => void;
   /** A final utterance's timestamps (createMic's `timing`; latency.ts). */
   timing?: (seq: number, marks: UttMarks) => void;
   /**
@@ -309,6 +311,7 @@ export function createMicSession(
     log: (ev) => deps.log?.(ev),
     timing: (seq, m) => deps.timing?.(seq, m),
     speaker: (t, p) => deps.speaker?.(t, p),
+    filtered: (v) => deps.filtered?.(v),
   });
   const unhold = deps.subscribeHold?.((h) => mic.hold(h));
   // A voice mode turning on wakes the mic: commands need no "Linky".

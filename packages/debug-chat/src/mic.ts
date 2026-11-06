@@ -17,6 +17,7 @@
 import type { UttMarks } from "./latency";
 import type { BeginOpts, LocalFinal, LocalUtt } from "./local-stt";
 import { STT_PROMPTS } from "./stt-hint";
+import type { FilterVerdict } from "./local-stt";
 import type { SpeakerTag } from "./wire";
 import type { SpotResult, WakeSpot } from "./wake";
 
@@ -875,6 +876,8 @@ export function createMic(d: {
   enrol?: EnrolTap;
   /** Each kept final's speaker tag from the Mac and its signed proof (undefined: the cloud, or no check there). */
   speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
+  /** A passive utterance the Mac's voiceprint filter stopped (the active ones: MicButton's upload). */
+  filtered?: (v: FilterVerdict) => void;
   /** The adaptive estimator (adaptive.ts); without it the endpoint is the fixed one. */
   adapt?: MicAdapt;
   /**
@@ -1215,14 +1218,15 @@ export function createMic(d: {
             if (!local) return wake();
             local.then(
               (f) => {
-                if (f.speaker?.decision !== "other") return wake(f);
+                if (f.speaker?.decision !== "other" && !f.filtered) return wake(f);
+                if (f.filtered) d.filtered?.(f.filtered);
                 otherDrops++;
                 d.log?.({
                   ev: "speaker-other",
                   mode: "passive",
                   n: otherDrops,
-                  score: f.speaker.score,
-                  model: f.speaker.model,
+                  score: f.speaker?.score,
+                  model: f.speaker?.model,
                 });
                 drop();
               },

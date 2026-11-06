@@ -488,6 +488,18 @@ export type ChatStrings = {
   vpFailed: string;
   /** Button and screen-reader label that closes the voiceprint panel (shown as ✕ or under a finished step). Imperative verb, one word. */
   vpClose: string;
+  /** Status line in the voiceprint panel: the owner's 'Only my voice' filter is working: speech that does not match his voiceprint is dropped on his Mac before it is transcribed. Keep 'Mac'; one sentence. */
+  vpFilterOn: string;
+  /** Status line in the voiceprint panel: the 'Only my voice' filter is switched off, so all speech is transcribed as usual. One sentence. */
+  vpFilterOff: string;
+  /** Status line in the voiceprint panel: the 'Only my voice' filter is switched on but cannot work (this phone or computer has no voiceprint yet, or the check on the Mac is unavailable), so all speech is transcribed as usual. Keep 'Mac'; one sentence. */
+  vpFilterWaiting: string;
+  /** Count in the voiceprint panel: {n} spoken lines were dropped today by the 'Only my voice' filter because the voice did not match; {score} is the last match score, a small decimal like 0.07. Keep both placeholders; short. */
+  vpFilterCount: string;
+  /** Count in the voiceprint panel, while the filter is off: {n} spoken lines today that the 'Only my voice' filter would have dropped (they were still sent). Keep the placeholder; short. */
+  vpFilterWould: string;
+  /** Checkbox in the voiceprint panel that pauses the 'Only my voice' filter on the phone or computer in hand only. A short statement. */
+  vpFilterPause: string;
   /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: the owner's Mac confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
@@ -605,6 +617,12 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpFailed: "Voiceprint: something went wrong ({error})",
   vpClose: "Close",
   vpVerified: "Your voice, verified",
+  vpFilterOn: "Only my voice: on. Speech that does not match is dropped on your Mac.",
+  vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
+  vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on your Mac. Until then all speech is transcribed as usual.",
+  vpFilterCount: "Dropped today: {n}. Voice did not match (last score {score}).",
+  vpFilterWould: "Would have been dropped today: {n} (still sent).",
+  vpFilterPause: "Pause on this device",
   notReadHidden: "· not read aloud: the page was in the background",
   attachOpen: "Add or attach",
   attachGroupAdd: "Add",

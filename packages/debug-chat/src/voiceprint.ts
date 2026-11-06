@@ -132,6 +132,131 @@ export function clearSpeaker(): void {
   tagList().splice(0);
 }
 
+// ---------------------------------------------------------------- the filter
+// "Only my voice" (docs/local-stt.md): the Mac drops finals that do not match
+// his print. It is the /dev/flags switch and this device's pause; the tally
+// below is what he sees of it, on this device only: counts and the last reason,
+// never any text. Not a security gate: voice approves nothing either way.
+
+/** localStorage: "off" pauses the filter on this device, whatever the flag says. */
+export const VOICE_FILTER_KEY = "lk:agent-voice-filter";
+/** localStorage: today's tally on this device (FilterTally). */
+export const VOICE_FILTERED_KEY = "lk:agent-voice-filtered";
+/** How long the flag's answer is kept: at most this after a change, at the next utterance. */
+export const FILTER_FLAG_TTL_MS = 30_000;
+
+export type FilterTally = {
+  /** Local date, YYYY-MM-DD: the counts are for this day. */
+  day: string;
+  /** Stopped by the filter. */
+  n: number;
+  /** Would have been stopped, while the filter was not on (the line still landed). */
+  would: number;
+  reason?: string;
+  score?: number;
+};
+export type FilterInfo = {
+  /** The /dev/flags switch. */
+  flag: boolean;
+  paused: boolean;
+  /** The Mac's word: "on", "no-print" (this device has none), "off" (its check is off or broken). */
+  state: string;
+  tally: FilterTally;
+};
+
+const today = () => new Date().toLocaleDateString("en-CA");
+const store = () => {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return undefined;
+  }
+};
+export function readTally(): FilterTally {
+  const fresh: FilterTally = { day: today(), n: 0, would: 0 };
+  try {
+    const t = JSON.parse(store()?.getItem(VOICE_FILTERED_KEY) ?? "null") as FilterTally | null;
+    if (t && t.day === fresh.day && typeof t.n === "number" && typeof t.would === "number") return t;
+  } catch {}
+  return fresh;
+}
+const filteredSubs = new Set<() => void>();
+/** A stopped final, for the mic's note; returns an unsubscribe. */
+export function subscribeFiltered(f: () => void): () => void {
+  filteredSubs.add(f);
+  return () => void filteredSubs.delete(f);
+}
+/** Count one final: stopped, or (the filter not on) one it would have stopped. Never any text. */
+export function noteFiltered(kind: "filtered" | "would", v: { reason?: string; score?: number }): FilterTally {
+  const t = readTally();
+  if (kind === "filtered") t.n++;
+  else t.would++;
+  if (v.reason) t.reason = v.reason;
+  if (typeof v.score === "number") t.score = v.score;
+  try {
+    store()?.setItem(VOICE_FILTERED_KEY, JSON.stringify(t));
+  } catch {}
+  if (kind === "filtered") for (const f of filteredSubs) f();
+  return t;
+}
+/** Count a final's verdict and log it (never its text). True: the filter stopped it, so it goes nowhere. */
+export function filterVerdict(
+  f: Pick<LocalFinal, "filtered" | "wouldFilter" | "speaker">,
+  durationMs: number,
+  log?: (ev: Record<string, unknown>) => void,
+): boolean {
+  if (f.filtered) {
+    const { n } = noteFiltered("filtered", f.filtered);
+    log?.({ ev: "voice-filtered", durationMs, n, ...f.filtered });
+    return true;
+  }
+  if (f.wouldFilter) {
+    const score = f.speaker?.score;
+    const { would } = noteFiltered("would", { reason: f.wouldFilter, score });
+    log?.({ ev: "voice-would-filter", durationMs, would, reason: f.wouldFilter, score });
+  }
+  return false;
+}
+export function filterPaused(): boolean {
+  try {
+    return store()?.getItem(VOICE_FILTER_KEY) === "off";
+  } catch {
+    return false;
+  }
+}
+export function setFilterPaused(on: boolean): void {
+  try {
+    if (on) store()?.setItem(VOICE_FILTER_KEY, "off");
+    else store()?.removeItem(VOICE_FILTER_KEY);
+  } catch {}
+}
+/** The /dev/flags switch (owner only: anyone else, and any failure, reads as off). */
+export async function filterFlag(f: typeof fetch = fetch): Promise<boolean> {
+  try {
+    const r = await f("/api/dev/voice-filter", { headers: { accept: "application/json" } });
+    return r.ok && (await r.json()).on === true;
+  } catch {
+    return false;
+  }
+}
+/**
+ * For the mic's socket (local-stt.ts `filter`): whether the filter is on for
+ * the next utterance. Asked at each utterance, never by a timer; a pause counts
+ * at once, a flag change after at most FILTER_FLAG_TTL_MS.
+ */
+export function filterSwitch(ask: () => Promise<boolean> = filterFlag, now: () => number = Date.now) {
+  let at = -Infinity;
+  let last: Promise<boolean> = Promise.resolve(false);
+  return (): Promise<boolean> | boolean => {
+    if (filterPaused()) return false;
+    if (now() - at >= FILTER_FLAG_TTL_MS) {
+      at = now();
+      last = ask().catch(() => false);
+    }
+    return last;
+  };
+}
+
 // ---------------------------------------------------------------- the enrolment card
 export type PrintInfo = { device: string; model: string; n: number; updated?: string; audio?: boolean };
 
@@ -140,7 +265,7 @@ export type EnrolView =
   /** Asking the Mac what is enrolled. */
   | { step: "loading" }
   /** What is enrolled, with Enrol and Delete. `local`: false when the Mac's check is off or unreachable. */
-  | { step: "status"; prints: PrintInfo[]; local: boolean }
+  | { step: "status"; prints: PrintInfo[]; local: boolean; filter?: FilterInfo }
   /** Before anything is recorded: what is kept, where; a tap to agree. */
   | { step: "consent"; keepAudio: boolean }
   /** Reading: sentence `index`, `kept` so far, and why the last one was not kept. */
@@ -182,6 +307,8 @@ export type EnrolDeps = {
     onFinal: (f: Promise<LocalFinal> | null) => void,
     id?: string,
   ): Promise<void> | void;
+  /** The "Only my voice" line of the panel: `state` is the Mac's word, in its status answer. */
+  filterInfo?(state: string): Promise<FilterInfo>;
   log?: (ev: Record<string, unknown>) => void;
 };
 
@@ -275,10 +402,18 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         const r = await d.request({ t: "voiceprint", op: "status", ticket });
         if (my !== run) return;
         const prints = Array.isArray(r.prints) ? (r.prints as PrintInfo[]) : [];
-        set({ step: "status", prints, local: r.ok === true });
+        // Never in the way of the rest of the panel.
+        const filter = await d.filterInfo?.(String(r.filter ?? "off")).catch(() => undefined);
+        if (my !== run) return;
+        set({ step: "status", prints, local: r.ok === true, ...(filter ? { filter } : {}) });
       } catch {
         if (my === run) set({ step: "status", prints: [], local: false });
       }
+    },
+    /** The panel's switch: pause the filter on this device. Counts from the next utterance. */
+    pauseFilter(on: boolean) {
+      setFilterPaused(on);
+      if (view.step === "status" && view.filter) set({ ...view, filter: { ...view.filter, paused: on } });
     },
     /** "Enrol this device": the consent card, nothing recorded yet. */
     enrol() {

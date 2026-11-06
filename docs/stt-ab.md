@@ -581,7 +581,8 @@ model, stands in for the second embedding.)
 - **Noise and a talker under him still cost his own speech.** At 0 dB, CAM++
   rejects 30–100% of his clips and ERes2NetV2 25–75%. The tag must therefore
   only ever drop "other" in passive mode, never in active mode (#380's
-  design), and "unknown" must pass.
+  design), and "unknown" must pass. The filter he asked for since (off by
+  default) has its own far lower line: [local-stt.md](local-stt.md), "Only my voice".
 
 ### Pick
 
@@ -606,6 +607,109 @@ real voices are three men and a few test speakers, not his family. The
 streaming Paraformer was left out of the full run to keep memory down. On
 a 2-clip smoke test it trailed SenseVoice (clean 0.07 vs 0.03, 5 dB 0.56 vs
 0.37).
+
+## Re-check by a second engine
+
+The owner's question (2026-11-06): does sending a line to the cloud to be read
+again make it more accurate, for instance when SenseVoice is unsure?
+`scripts/local-stt/recheck-eval.py`, on all 211 saved clips (820 s), files only.
+Transcripts stayed in a private file and were deleted; this page has numbers only.
+
+**Answer: no. Do not add it.** On the references there is, no policy leaves the
+lines better than SenseVoice alone. It breaks more than it fixes, costs at least
+0.8 s per line, and brings Whisper's hallucinations. SenseVoice stays the only
+engine, and the polish from context (#313) stays the place for homophones.
+
+**What was run, and what was not.**
+
+- **Whisper below is the local stand-in**, not the cloud: mlx-whisper
+  large-v3-turbo, the weights Workers AI runs, with the route's `?hint=zh` prompt
+  and anti-hallucination settings, `HF_HUB_OFFLINE=1`.
+- **"As recorded" is the real cloud:** what Workers AI answered at the time on the
+  14 clips that went there in 2026-10. Nothing new was sent. **Cloud cost: $0.**
+- **No clip left this Mac.** Some hold other people's voices and only the print
+  can clear a clip, so `recheck-eval.py cloud` refuses to start until a real print
+  exists, and sends only clips it scores `me`.
+
+**How strong the references are: weak.** Nobody has listened to these clips,
+because audio is never played on this Mac. There are two sets, both by an agent,
+both reconciled from the engines' own readings plus the chat around them. That
+leans towards SenseVoice: `refs-agent.json`, 20 clips (see "References"), and a
+sample of 14 made for this (15 were drawn at random from clips with at least 3 s of
+speech at 10 dB that scored at least 0.4 against a throwaway mean of his clips; one
+mumbled clip had no usable reading). All 34 are iPhone: no Android clip made the
+sample, so the phone he mostly uses now is not measured here. The chat polish's raw
+and edited lines were not usable: the local chat log holds no `edited` event, and
+the saved clips stop on 2026-10-31, so they could not be joined.
+
+| engine | n | CER | exact clips |
+| --- | --- | --- | --- |
+| **SenseVoice** | 34 | **0.049** | **22** |
+| Whisper turbo, local stand-in | 34 | 0.125 | 16 |
+| SenseVoice, the first 20 | 20 | 0.066 | 11 |
+| Whisper, the first 20 | 20 | 0.171 | 9 |
+| SenseVoice, the 14 clips that went to the cloud | 14 | 0.088 | – |
+| **Workers AI as recorded, those 14 (real cloud)** | 14 | 0.154 | – |
+
+**Fixes against breaks.** Each policy swaps in Whisper's reading when it fires. It
+is generous to Whisper: a reading the guard would drop keeps SenseVoice's line. A
+change of 0.02 CER or more counts. 34 clips, SenseVoice alone 0.049:
+
+| send to the re-check | sent | fixed | broke | CER after |
+| --- | --- | --- | --- | --- |
+| every line | 34 | 5 | **14** | 0.125 |
+| lowest 50 % of confidence | 17 | 4 | **9** | 0.107 |
+| lowest 25 % of confidence | 8 | 3 | 3 | 0.067 |
+| under 3 s of speech | 6 | 0 | 4 | 0.092 |
+| SNR under 15 dB | 1 | 0 | 1 | 0.055 |
+| confidence, its line picked with the clip left out | 1 | 0 | 1 | 0.054 |
+
+The 25 % row ties, but it picked its line with the answers in hand, and it is
+still worse than doing nothing. With 34 clips and these references the exact
+figures are soft. The direction is not: the real cloud's 14 agree with the
+stand-in, and the earlier sections found the same (0.17 against 0.042).
+
+**Confidence.** sherpa-onnx gives no per-token score for SenseVoice (0 returned,
+checked again on 2.0.1). What can stand in is the CTC head through onnxruntime, as
+the language pick already does (`LangPicker`): the mean log-probability per emitted
+token. It does carry signal, chance that a wrong clip scores lower than a right one:
+
+| signal | AUC, 34 clips | 20 clips | 14 clear ones |
+| --- | --- | --- | --- |
+| token log-prob, mean | 0.85 | 0.76 | 0.65 |
+| frame log-prob, mean | 0.86 | 0.76 | 0.69 |
+| worst token | 0.87 | 0.74 | 0.77 |
+| the two engines disagreeing | 0.80 | 0.78 | 0.79 |
+| SNR, speech length | no better than chance | | |
+
+So "SenseVoice is unsure" is detectable, more or less, at the price of a second pass
+on longer finals (about 2× a decode; 197 ms median here at background priority).
+The trouble is the other half: when SenseVoice is unsure, the audio is usually
+hard, and Whisper is no better on it. If a mark is ever wanted, the use would be
+showing a shaky line as shaky, not swapping it.
+
+**Hallucinations** (text rules over all 211 clips, which include background talk
+and many short fragments):
+
+| | any | prompt echo | stock phrase | loop | too dense to be speech | under 1.5 s of speech |
+| --- | --- | --- | --- | --- | --- | --- |
+| Whisper turbo, stand-in | **66 (31 %)** | 51 | 7 | 3 | 13 | **40 of 82** |
+| SenseVoice | 0 | 0 | 0 | 0 | 0 | 0 of 82 |
+
+SenseVoice's 0 means none of these patterns: its garbled readings of mumbling are
+not counted. The prompt echoes may run higher on MLX than on Workers AI, whose field
+rate was 5 of 104 ("Field metrics"); `cleanTranscript` strips them either way.
+
+**Latency and cost, if it were built.** Workers AI's documented 812 ms plus the
+upload, against SenseVoice's 66 ms end to final: at least +0.8 s per line sent, and
+more on a phone's radio. (Whisper on MLX here: median 706 ms, p90 4.2 s, max 16.9 s,
+at low priority beside the live server.) Money is no reason either way: at his rate
+of about 310 spoken lines a day and 3.9 s each, every line would be 20 minutes a day,
+$0.01 a day, inside Workers AI's free daily allowance.
+
+**Once his print exists**, a small real run is ready, at most 30 clips, under $0.01:
+`recheck-eval.py cloud --limit 30 --out <private file>` (needs `CLOUDFLARE_AI_TOKEN`).
+Only clips scored `me` go. Expected to confirm the row above, not to change it.
 
 ## Follow-ups this found (not in this PR)
 
