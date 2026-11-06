@@ -53,6 +53,8 @@ export type VibeView = {
   lost: number;
   /** The /read material, once the first line is stored. */
   material: string | null;
+  /** The conversation's id: its address, /vibe/<id>. */
+  doc?: string | null;
 };
 
 export type ApiResult<T> = ({ ok: true } & T) | { ok: false; status: number };
@@ -137,6 +139,8 @@ export function createVibeSession(d: VibeDeps) {
   const queue: { index: number; text: string }[] = [];
   let sent = 0;
   let total = 0;
+  /** Lines the page was opened with that a line number on the server counts past. */
+  let seqBase = 0;
   let pumping: Promise<void> | null = null;
   let keepalive = false;
   /** Ending: a failure on the last send is not a pause. */
@@ -186,7 +190,8 @@ export function createVibeSession(d: VibeDeps) {
           const lines = [...view.lines];
           r.langs.forEach((lang, i) => {
             const at = batch[batch.length - r.langs.length + i]?.index;
-            if (at !== undefined && lines[at]) lines[at] = { ...lines[at], lang };
+            if (at !== undefined && lines[at - seqBase])
+              lines[at - seqBase] = { ...lines[at - seqBase], lang };
           });
           emit({ lines, material: r.material ?? view.material });
         }
@@ -347,6 +352,23 @@ export function createVibeSession(d: VibeDeps) {
     if (was && reason !== "offline") await d.api.state(was, "paused", keepalive).catch(() => null);
   }
 
+  /** With the conversation open on the server: the chat's mic out, then the Mac and the mic. */
+  async function begin(): Promise<void> {
+    releaseChat = d.holdChatMic();
+    const got = await open();
+    // Stopped while opening (the page left): `end` has said everything already.
+    if (got === "stale") return;
+    if (got !== "ok") {
+      const was = id;
+      id = null;
+      if (was) await d.api.state(was, "stopped", false).catch(() => null);
+      return finish(got === "mic" ? "no-mic" : "no-stt");
+    }
+    emit({ status: "running" });
+    unwatch = d.watchPage((why) => void pause(why));
+    if (d.isHidden?.()) void pause("hidden");
+  }
+
   return {
     view: () => view,
     /**
@@ -363,24 +385,48 @@ export function createVibeSession(d: VibeDeps) {
       ending = false;
       sent = 0;
       total = 0;
+      seqBase = 0;
       const r = await d.api
         .start({ tap: true, title: o.title })
         .catch(() => ({ ok: false as const, status: 0 }));
       if (!r.ok) return emit({ status: "stopped", end: "refused" });
       id = r.id;
-      releaseChat = d.holdChatMic();
-      const got = await open();
-      // Stopped while opening (the page left): `end` has said everything already.
-      if (got === "stale") return;
-      if (got !== "ok") {
-        const was = id;
-        id = null;
-        await d.api.state(was, "stopped", false).catch(() => null);
-        return finish(got === "mic" ? "no-mic" : "no-stt");
-      }
-      emit({ status: "running" });
-      unwatch = d.watchPage((why) => void pause(why));
-      if (d.isHidden?.()) void pause("hidden");
+      emit({ doc: r.id });
+      await begin();
+    },
+    /**
+     * The log page's Keep going: more of the same conversation, by a tap as Start
+     * is. The server is asked first, so a refusal never opens the microphone.
+     */
+    async continueDoc(o: {
+      tap: boolean;
+      id: string;
+      material: string | null;
+      lines: VibeLine[];
+      next: number;
+    }): Promise<void> {
+      if (view.status === "starting" || view.status === "running" || view.status === "paused")
+        return;
+      if (o.tap !== true) return;
+      view = {
+        status: "starting",
+        lines: o.lines,
+        interim: "",
+        lost: 0,
+        material: o.material,
+        doc: o.id,
+      };
+      d.onView(view);
+      queue.length = 0;
+      ending = false;
+      keepalive = false;
+      sent = o.next;
+      total = o.next;
+      seqBase = o.next - o.lines.length;
+      const r = await d.api.state(o.id, "running", false).catch(() => null);
+      if (!r?.ok) return emit({ status: "stopped", end: "refused" });
+      id = o.id;
+      await begin();
     },
     /** His tap on Pause. */
     pause: () => pause("user"),
