@@ -16,6 +16,7 @@ import { headOf } from "@/lib/read/gloss";
  * tap shows the meaning by itself). The same path as 制卡's meanings
  * (lib/read/gloss-server.ts fillGlosses): the decks over the book's lemmas,
  * the shared word_gloss rows, else the model — its real cost through chargeAi.
+ * `ex` never reaches a shared row: the model's example is the stored book's line.
  *
  *   { w, ex? }  → { term, back }   (back null: none found, or a name of the book)
  *

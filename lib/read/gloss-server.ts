@@ -165,8 +165,13 @@ export async function fillGlosses(
   if (!open.length) return out;
   const head = (x: RangeWord) => headOf(x.w, book.lem);
   const known = await cachedGlosses(db, book.lang, [...new Set(open.map(head))]);
-  const ex = new Map(open.map((x) => [head(x), x.ex ?? null]));
-  const ask = [...ex].filter(([h]) => !known.has(h)).map(([term, e]) => ({ term, ex: e }));
+  // What the model makes goes into word_gloss, which everyone shares, so its
+  // example is a line of the stored book, never text from this request (owner's
+  // card, 2026-11-06). `x.ex` stays what it was: that device's own card.
+  const surface = new Map(open.map((x) => [head(x), x.w]));
+  const ask = [...surface]
+    .filter(([h]) => !known.has(h))
+    .map(([term, w]) => ({ term, ex: book.exampleOf?.(w) ?? null }));
   const complete = ai?.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
   if (
     ai &&

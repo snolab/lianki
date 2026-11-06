@@ -8,7 +8,7 @@ import { testSchema } from "@/lib/d1/testSchema";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { WordsD1Repo } from "@/lib/repos/wordsD1";
 import { parseLemmas } from "@/lib/read/lemma";
-import { glossMessages, headOf, lookupGloss, parseGlosses } from "@/lib/read/gloss";
+import { exampleFinder, glossMessages, headOf, lookupGloss, parseGlosses } from "@/lib/read/gloss";
 import { chargeAi, fillGlosses, type Complete } from "@/lib/read/gloss-server";
 import { scopeSession, type BookCtx, type RangeWord } from "@/lib/read/book-word-list";
 
@@ -37,6 +37,36 @@ describe("rules", () => {
     ]);
     expect([...got]).toEqual([["fauve", "wild animal; tawny"]]);
     expect(parseGlosses("no json", ["fauve"]).size).toBe(0);
+  });
+});
+
+describe("the example a shared gloss is made from", () => {
+  test("the word's first stored line, by plain text in any language", () => {
+    const find = exampleFinder(["Le chat dort.", "猫が寝ている。", "Encore le chat."]);
+    expect(find("CHAT")).toBe("Le chat dort.");
+    expect(find("猫")).toBe("猫が寝ている。");
+    expect(find("absent")).toBeNull();
+    expect(find("")).toBeNull();
+  });
+
+  test("a long line is cut", () => {
+    expect(exampleFinder(["x".repeat(5000)])("x")).toHaveLength(1000);
+  });
+
+  test("a book with no finder: no example, never the request's", async () => {
+    const d1 = createTestD1(testSchema());
+    const asked: string[] = [];
+    const complete: Complete = async (body) => {
+      asked.push((body.messages as { content: string }[])[1].content);
+      return { choices: [{ message: { content: '{"boa": "boa"}' } }] };
+    };
+    await fillGlosses(
+      d1,
+      { hash: "h", title: "t", lang: "fr" },
+      [{ w: "boa", ex: "text from the request" }],
+      { userId: "u2", complete },
+    );
+    expect(JSON.parse(asked[0])).toEqual([{ word: "boa" }]);
   });
 });
 
@@ -81,9 +111,15 @@ describe("filling and backfilling (D1)", () => {
       };
     };
     const ai = { userId: "u1", complete };
-    const out = await fillGlosses(d1, book, [{ w: "boa", ex: "un serpent boa" }], ai);
+    const withBook = {
+      ...book,
+      exampleOf: exampleFinder(["Rien ici.", "Un serpent BOA dormait."]),
+    };
+    const out = await fillGlosses(d1, withBook, [{ w: "boa", ex: "text from the request" }], ai);
     expect(out[0]).toMatchObject({ term: "boa", back: "boa (snake); feather boa" });
-    expect(JSON.parse(asked[0])).toEqual([{ word: "boa", example: "un serpent boa" }]);
+    // The stored line, whatever the request said: this answer is shared.
+    expect(JSON.parse(asked[0])).toEqual([{ word: "boa", example: "Un serpent BOA dormait." }]);
+    expect(asked[0]).not.toContain("text from the request");
     // Again: from word_gloss, the model not asked.
     await fillGlosses(d1, book, [{ w: "boa", ex: null }], ai);
     expect(asked).toHaveLength(1);
