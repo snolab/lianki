@@ -24,9 +24,9 @@ export const BOX_CALLBACK_PATH = "/box-callback";
 export const BOX_AUTHORIZE_PATH = "/box-authorize";
 
 const BOX_ORIGIN = /^https:\/\/my-[0-9a-f]{12,64}\.lianki\.com$/;
-const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1):[0-9]{2,5}$/;
+const LOCAL_ORIGIN = /^http:\/\/127\.0\.0\.1:[0-9]{2,5}$/;
 
-/** A box's origin as the browser sends it: my-<hash>, or localhost on a dev server only. */
+/** A box's origin as the browser sends it: my-<hash>, or 127.0.0.1 on a dev server only. */
 export function isBoxOrigin(origin: string | null | undefined, dev = false): boolean {
   if (!origin) return false;
   return BOX_ORIGIN.test(origin) || (dev && LOCAL_ORIGIN.test(origin));

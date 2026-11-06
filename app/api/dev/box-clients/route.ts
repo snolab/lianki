@@ -67,23 +67,36 @@ export const POST = async (req: Request) => {
   const scopes = [...(b.scopes as string[]), SCOPE_REFRESH].filter((s) =>
     (BOX_SCOPES as readonly string[]).includes(s),
   );
-  const created = (await (
-    auth.api as unknown as {
-      adminCreateOAuthClient(a: { body: Record<string, unknown> }): Promise<{ client_id: string }>;
-    }
-  ).adminCreateOAuthClient({
-    body: {
-      redirect_uris: [redirectUriFor(origin)],
-      token_endpoint_auth_method: "none",
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      scope: scopes.join(" "),
-      client_name: "Lianki box",
-      type: "user-agent-based",
-      skip_consent: true,
-      require_pkce: true,
-    },
-  })) as { client_id: string };
+  let created: { client_id: string };
+  try {
+    created = (await (
+      auth.api as unknown as {
+        adminCreateOAuthClient(a: {
+          headers: Headers;
+          body: Record<string, unknown>;
+        }): Promise<{ client_id: string }>;
+      }
+    ).adminCreateOAuthClient({
+      headers: req.headers,
+      body: {
+        redirect_uris: [redirectUriFor(origin)],
+        token_endpoint_auth_method: "none",
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        scope: scopes.join(" "),
+        client_name: "Lianki box",
+        // Only a dev server's http://127.0.0.1 is native: the plugin allows http
+        // nowhere else, and a real box is always https (validNewBox).
+        application_type: origin.startsWith("https:") ? "web" : "native",
+        skip_consent: true,
+        require_pkce: true,
+      },
+    })) as { client_id: string };
+  } catch (e) {
+    // The plugin's refusal, as an answer: nothing was created.
+    const body = (e as { body?: { error_description?: string; error?: string } }).body;
+    return bad(body?.error_description ?? body?.error ?? "could not create the client");
+  }
   const ok = await insertBinding(
     db(),
     { clientId: created.client_id, origin, userId: target.id, scopes },

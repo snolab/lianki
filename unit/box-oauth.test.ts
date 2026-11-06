@@ -60,8 +60,9 @@ describe("origins", () => {
     ])
       expect(isBoxOrigin(o)).toBe(false);
   });
-  test("localhost only on a dev server", () => {
-    expect(isBoxOrigin("http://localhost:3201", true)).toBe(true);
+  test("127.0.0.1 only on a dev server", () => {
+    expect(isBoxOrigin("http://127.0.0.1:3201", true)).toBe(true);
+    expect(isBoxOrigin("http://localhost:3201", true)).toBe(false);
     expect(isBoxOrigin("http://evil.test:3201", true)).toBe(false);
   });
 });
@@ -285,7 +286,7 @@ describe("scopes and new boxes", () => {
     expect(validNewBox("https://evil.test", ["box:read"], false)).not.toBeNull();
     expect(validNewBox(ORIGIN, [], false)).not.toBeNull();
     expect(validNewBox(ORIGIN, ["admin"], false)).not.toBeNull();
-    expect(validNewBox("http://localhost:3201", ["box:read"], false)).not.toBeNull();
+    expect(validNewBox("http://127.0.0.1:3201", ["box:read"], false)).not.toBeNull();
   });
   test("the flag ships off", () => {
     expect(FLAGS[BOX_FLAG].default).toBe(false);
@@ -394,7 +395,7 @@ describe("the store", () => {
       .first<{ revoked: string }>();
     expect(t?.revoked).toBeTruthy();
     const { results } = await db
-      .prepare("SELECT kind FROM security_audit ORDER BY id")
+      .prepare("SELECT kind FROM security_audit WHERE kind LIKE 'box.%' ORDER BY id")
       .all<{ kind: string }>();
     expect(results.map((r) => r.kind)).toEqual(["box.bind", "box.revoke"]);
   });
@@ -532,9 +533,9 @@ describe("the gate", () => {
 
   test("on a dev server, its own pages are not a box", async () => {
     const res = await boxGate(
-      new Request("http://localhost:3911/api/dev/box-clients", {
+      new Request("http://127.0.0.1:3911/api/dev/box-clients", {
         method: "POST",
-        headers: { origin: "http://localhost:3911", cookie: "better-auth.session_token=x" },
+        headers: { origin: "http://127.0.0.1:3911", cookie: "better-auth.session_token=x" },
       }),
       { ...env(), NODE_ENV: "development" },
       deps,

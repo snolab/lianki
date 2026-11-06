@@ -12,6 +12,7 @@
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { getD1 } from "@/lib/d1";
+import { isOwner } from "@/lib/owner";
 import {
   ACCESS_TOKEN_SECONDS,
   isFirstPartyNavigation,
@@ -41,7 +42,10 @@ export function boxProviderPlugin() {
     validateRedirectUri: (uri, registered) => registered.includes(uri),
     allowDynamicClientRegistration: false,
     allowUnauthenticatedClientRegistration: false,
-    clientPrivileges: () => false,
+    // Clients are made only by /api/dev/box-clients, as the owner. Every client
+    // route over HTTP is shut anyway (app/api/auth/[...all]/route.ts).
+    clientPrivileges: ({ action, user }: { action: string; user?: { email?: string | null } }) =>
+      action === "create" && isOwner(user?.email),
     silenceWarnings: { oauthAuthServerConfig: true, openidConfig: true },
   } as Parameters<typeof oauthProvider>[0]);
 }
