@@ -409,8 +409,9 @@ async function run(colorScheme, email) {
   );
   check(
     await page.evaluate(() => {
-      const el = document.querySelector('.lk-book [data-f="n"]');
-      return !!el && getComputedStyle(el).textDecorationStyle === "dotted";
+      // Dotted in a dictionary, dashed outside it: which depends on the doc's main language.
+      const el = document.querySelector('.lk-book [data-f="n"], .lk-book [data-f="u"]');
+      return !!el && ["dotted", "dashed"].includes(getComputedStyle(el).textDecorationStyle);
     }),
     "each carries the reader's own mark, drawn",
   );
