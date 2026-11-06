@@ -769,21 +769,20 @@ describe("createMic: hold while the agent speaks", () => {
 });
 
 describe("scheduleTick: the voice-send sound", () => {
-  it("schedules two sine oscillators through one gain with a fast attack and exponential decay", () => {
+  it("schedules two sine notes in turn, each with a fast attack and an exponential decay", () => {
     const calls: string[] = [];
     const oscs: { type: string; hz: number; start: number; stop: number; to: unknown }[] = [];
-    const gain = {
-      gain: {
-        setValueAtTime: (v: number, t: number) => calls.push(`set ${v} ${t}`),
-        linearRampToValueAtTime: (v: number, t: number) => calls.push(`lin ${v} ${t}`),
-        exponentialRampToValueAtTime: (v: number, t: number) => calls.push(`exp ${v} ${t}`),
-      },
-      connect: (n: unknown) => calls.push(`gain→${n}`),
-    };
     const ctx = {
       currentTime: 10,
       destination: "out",
-      createGain: () => gain,
+      createGain: () => ({
+        gain: {
+          setValueAtTime: (v: number, t: number) => calls.push(`set ${v} ${t}`),
+          linearRampToValueAtTime: (v: number, t: number) => calls.push(`lin ${v} ${t}`),
+          exponentialRampToValueAtTime: (v: number, t: number) => calls.push(`exp ${v} ${t}`),
+        },
+        connect: (n: unknown) => calls.push(`gain→${n}`),
+      }),
       createOscillator: () => {
         const o = { type: "", hz: 0, start: -1, stop: -1, to: null as unknown };
         oscs.push(o);
@@ -804,19 +803,22 @@ describe("scheduleTick: the voice-send sound", () => {
     const end = scheduleTick(ctx);
     expect(end).toBeCloseTo(10 + TICK_MS / 1000);
     expect(TICK_MS).toBeGreaterThanOrEqual(60);
-    expect(TICK_MS).toBeLessThanOrEqual(90);
-    expect(calls).toEqual([
+    expect(TICK_MS).toBeLessThanOrEqual(150);
+    expect(calls.slice(0, 4)).toEqual([
       "set 0.0001 10",
       `lin ${TICK_GAIN} 10.005`,
-      `exp 0.0001 ${end}`,
+      "exp 0.0001 10.05",
       "gain→out",
     ]);
-    expect(oscs.map((o) => [o.type, o.hz, o.to === gain, o.stop])).toEqual([
-      ["sine", 880, true, end],
-      ["sine", 1320, true, end],
+    // One after the other, so the second note is as loud as the first.
+    expect(oscs.map((o) => [o.type, o.hz])).toEqual([
+      ["sine", 880],
+      ["sine", 1320],
     ]);
     expect(oscs[0].start).toBe(10);
-    expect(oscs[1].start).toBeCloseTo(10.03);
+    expect(oscs[0].stop).toBeCloseTo(10.05);
+    expect(oscs[1].start).toBeCloseTo(10.05);
+    expect(oscs[1].stop).toBeCloseTo(end);
   });
 });
 

@@ -286,6 +286,14 @@ export const HALLUCINATION_MAX_MS = 1_200;
 export const HALLUCINATION_MIN_PROB = 0.5;
 /** A frame at or over this probability counts as speech, for the speech length. */
 export const SPEECH_FRAME_PROB = 0.5;
+/** Speech outside a cue's window, as the cues count it: the VAD's lowest start threshold (whisper)… */
+export const CUE_VOICED_PROB = 0.2;
+/** …or the energy gate's (the fallback VAD gives no probability). */
+export const CUE_VOICED_RMS = 0.02;
+/** This much confirms an utterance (a false start ends before it): the start cue plays. */
+export const CUE_CONFIRM_MS = 250;
+/** This much shows a VAD start inside a cue's window was him, not the cue. */
+export const CUE_REAL_MS = 96;
 
 /** For matching: NFKC, lowercased, without punctuation, symbols or whitespace. */
 export function normalizeTranscript(s: string): string {
@@ -869,6 +877,13 @@ export function createMic(d: {
   speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
   /** The adaptive estimator (adaptive.ts); without it the endpoint is the fixed one. */
   adapt?: MicAdapt;
+  /**
+   * The start and end cues (cues.ts). `guard()`: a cue is playing, so what is
+   * heard now is not counted as speech (see `shadow` below). `edge`: this
+   * utterance's speech was confirmed, or it ended and was kept. Never for a
+   * passive (wake-gated) utterance or an enrolment sentence.
+   */
+  cue?: { guard(): boolean; edge(edge: "start" | "end"): void };
   now?: () => number;
   setTimer?: (f: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -915,6 +930,17 @@ export function createMic(d: {
   let gated = false;
   /** The utterance being captured is an enrolment sentence: only the enrolment hears it. */
   let enrolling = false;
+  /**
+   * A VAD start inside a cue's window: it may be the cue itself or him. The
+   * audio is kept from the start as usual, but nobody hears of the capture
+   * (no ducking, no held send cancelled) until CUE_REAL_MS of speech comes
+   * outside a cue's window; an utterance without that is dropped.
+   */
+  let shadow = false;
+  /** Speech heard this utterance outside any cue's window, in samples. */
+  let voicedOut = 0;
+  /** This utterance passed on its start cue. */
+  let startCued = false;
   /** Lines dropped in passive mode because the speaker check said "other" (logged as a count). */
   let otherDrops = 0;
   /** VAD pause/start calls, in order. */
@@ -973,7 +999,11 @@ export function createMic(d: {
     onSpeechStart() {
       if (g !== gen || held) return;
       tainted = false;
-      set("capturing");
+      voicedOut = 0;
+      startCued = false;
+      shadow = !!d.cue?.guard() && !d.enrol?.active();
+      if (shadow) state = "capturing";
+      else set("capturing");
       resetLive();
       speechLen = probSum = probN = 0;
       lastVoice = undefined;
@@ -997,7 +1027,7 @@ export function createMic(d: {
       utt = gated
         ? null
         : d.stream?.()?.begin((text) => {
-          if (g !== gen || held) return;
+          if (g !== gen || held || shadow) return;
           const seq = cur ?? (cur = q.add());
           ep.partial = text;
           q.partial(seq, text);
@@ -1006,11 +1036,29 @@ export function createMic(d: {
     },
     onFrame(frame, prob) {
       if (g !== gen) return;
-      if (!held) d.adapt?.frame(frame, prob, state === "capturing");
+      // A cue's own sound teaches nothing and counts as nothing; it is still kept as audio.
+      const guarded = !!d.cue?.guard();
+      if (!held && !guarded && !shadow) d.adapt?.frame(frame, prob, state === "capturing");
       // The noise floor: Silero's probability on what is heard between utterances.
-      if (prob !== undefined && state === "listening") ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
+      if (prob !== undefined && state === "listening" && !guarded)
+        ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
       if (state !== "capturing") return;
-      if (utt && prob !== undefined && !ep.sent) {
+      if (
+        d.cue &&
+        !guarded &&
+        (prob !== undefined ? prob >= CUE_VOICED_PROB : rms(frame) >= CUE_VOICED_RMS)
+      ) {
+        voicedOut += frame.length;
+        if (shadow && voicedOut >= toSamples(CUE_REAL_MS)) {
+          shadow = false;
+          d.onState("capturing");
+        }
+        if (!startCued && !shadow && !gated && !enrolling && voicedOut >= toSamples(CUE_CONFIRM_MS)) {
+          startCued = true;
+          d.cue.edge("start");
+        }
+      }
+      if (utt && prob !== undefined && !ep.sent && !guarded) {
         // Streaming: our own end of speech, ENDPOINT_MS under a threshold over the floor.
         const a = d.adapt?.state();
         if (prob >= endpointThreshold(ep.floor, a?.endpointMargin, a?.endpointMin)) {
@@ -1030,7 +1078,7 @@ export function createMic(d: {
           void vad?.flush();
         }
       }
-      if (prob !== undefined) {
+      if (prob !== undefined && !guarded && !shadow) {
         d.onProb?.(prob);
         probSum += prob;
         probN++;
@@ -1056,6 +1104,7 @@ export function createMic(d: {
     onMisfire() {
       d.adapt?.end(false);
       if (g !== gen || held) return;
+      shadow = false;
       clearTimer(cap);
       dropUtt();
       resetLive();
@@ -1064,14 +1113,32 @@ export function createMic(d: {
     },
     onSpeechEnd(audio) {
       // Only speech that is kept teaches the speech level (never the agent's echo).
-      d.adapt?.end(g === gen && !held && !tainted);
+      d.adapt?.end(g === gen && !held && !tainted && !shadow);
       const u = utt;
       utt = null;
       // Heard while the agent spoke (or begun before it did): the reply's echo, dropped.
-      if (held || tainted) return void u?.cancel();
+      if (held || tainted) {
+        shadow = false;
+        return void u?.cancel();
+      }
       clearTimer(cap);
       const mine = g === gen;
+      // A cue's own sound, with no speech of his after it: as if it had never started.
+      if (shadow) {
+        shadow = false;
+        u?.cancel();
+        speechLen = probSum = probN = 0;
+        lastVoice = undefined;
+        if (mine) {
+          resetLive();
+          dropCur();
+          if (state === "capturing") set("listening");
+          d.log?.({ ev: "cue-echo-drop", ms: toMs(audio.length) });
+        }
+        return;
+      }
       if (mine && state === "capturing") set("listening");
+      if (mine && !gated && !enrolling) d.cue?.edge("end");
       const seq = mine && cur !== null ? cur : q.add();
       if (mine) {
         cur = null;
@@ -1412,55 +1479,6 @@ export function sideClip(
 
 /** The custom DOM event fired on window when a spoken sentence is sent by itself. */
 export const VOICE_SENT_EVENT = "lk:voice-sent";
-/** The send tick: two soft sine tones, this loud at their peak, this long in all. */
-export const TICK_GAIN = 0.08;
-export const TICK_MS = 80;
 
-/** The slice of an AudioContext the tick uses (a fake in the tests). */
-export type TickContext = {
-  currentTime: number;
-  destination: unknown;
-  createOscillator(): {
-    type: string;
-    frequency: { setValueAtTime(v: number, t: number): unknown };
-    connect(n: unknown): unknown;
-    start(t: number): void;
-    stop(t: number): void;
-  };
-  createGain(): {
-    gain: {
-      setValueAtTime(v: number, t: number): unknown;
-      linearRampToValueAtTime(v: number, t: number): unknown;
-      exponentialRampToValueAtTime(v: number, t: number): unknown;
-    };
-    connect(n: unknown): unknown;
-  };
-};
-
-/**
- * A short, soft "tick" when a spoken sentence goes out: two sine tones (the
- * second a fifth up, 30 ms later) through one gain with a 5 ms attack and an
- * exponential decay, TICK_MS long, peaking at TICK_GAIN. Web Audio only — no
- * <audio> element — so iOS keeps it silent when the ringer is muted.
- */
-export function scheduleTick(ctx: TickContext, at = ctx.currentTime) {
-  const end = at + TICK_MS / 1000;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.0001, at);
-  g.gain.linearRampToValueAtTime(TICK_GAIN, at + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.0001, end);
-  g.connect(ctx.destination);
-  const tones: [number, number][] = [
-    [880, at],
-    [1320, at + 0.03],
-  ];
-  for (const [hz, t] of tones) {
-    const o = ctx.createOscillator();
-    o.type = "sine";
-    o.frequency.setValueAtTime(hz, t);
-    o.connect(g);
-    o.start(t);
-    o.stop(end);
-  }
-  return end;
-}
+// The cues' synth moved to cues.ts; the mic's callers still find it here.
+export { TICK_GAIN, TICK_MS, type TickContext, scheduleTick } from "./cues";

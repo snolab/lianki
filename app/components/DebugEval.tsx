@@ -32,6 +32,7 @@ import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
+import { spokenOf } from "@lianki/debug-chat/rich-text";
 import { voice } from "@lianki/debug-chat/voice";
 import { isDesktop, keepHub, onTakeover, voiceBusy } from "@lianki/debug-chat/voice-bg";
 import { useVoiceTitleHint } from "./useVoiceTitleHint";
@@ -448,7 +449,10 @@ export function DebugEval({
             spokenIds.current.add(m.id);
             // Never a quiet line; a hidden page reads the newest one when it is
             // back (speak-rules.ts): the line itself is the meta.
-            const spoken = fresh && (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text, m);
+            // Its words, not its markup (rich-text.ts): a line of only code says nothing.
+            const said = spokenOf(m);
+            const spoken =
+              fresh && !!said && (tabsRef.current?.isSpeaker() ?? true) && speakReply(said, m);
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);

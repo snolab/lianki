@@ -10,6 +10,7 @@
  */
 import type { Auth } from "./auth-impl";
 import { BOX_IDENTITY_HEADER } from "./lib/box-oauth/identity";
+import { refreshOwners } from "./lib/owner-store";
 
 export type { Auth };
 export { hasSessionCookie, passwordAuthEnabled } from "./lib/auth-env";
@@ -37,11 +38,19 @@ export const auth: Pick<Auth, "api"> = {
           const headers = (args[0] as { headers?: Headers } | undefined)?.headers;
           if (headers?.has(BOX_IDENTITY_HEADER)) {
             const { boxSessionFrom } = await import("./lib/box-oauth/app-session");
-            return boxSessionFrom(headers);
+            const box = await boxSessionFrom(headers);
+            if (box) await refreshOwners();
+            return box;
           }
         }
         const api = (await getAuth()).api as Record<PropertyKey, (...a: unknown[]) => unknown>;
-        return api[endpoint](...args);
+        const out = await api[endpoint](...args);
+        // isOwner() is synchronous and answers from a snapshot of site_role
+        // (lib/owner.ts): have it fresh before a signed-in user is handed back.
+        // A guest costs nothing; a failed read means nobody is the owner.
+        if (endpoint === "getSession" && (out as { user?: unknown } | null)?.user)
+          await refreshOwners();
+        return out;
       },
   }),
 };

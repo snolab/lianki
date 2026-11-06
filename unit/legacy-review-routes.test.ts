@@ -117,3 +117,53 @@ describe("legacy review flow, byte for byte", () => {
     matchFixture("delete.json", await render(await get(`/api/fsrs/delete?id=${ID}`)));
   });
 });
+
+// Security (docs/security-measures.md, section 10): the pages above escape
+// what they show, and the GETs that write refuse another site's navigation.
+describe("legacy review flow, hostile input", () => {
+  const evil = "<img src=x onerror=alert(1)>";
+
+  test("a title or url from the query is never markup on the grading page", async () => {
+    const q = new URLSearchParams({ url: `javascript:alert(1)//${evil}`, title: evil });
+    const res = await get(`/api/fsrs/repeat/?${q}`);
+    const body = await res.text();
+    expect(body).not.toContain("<img");
+    expect(body).not.toContain('href="javascript:alert');
+    expect(body).toContain("&lt;img src=x onerror=alert(1)&gt;");
+  });
+
+  test("another site's link to a GET that writes gets 403, and nothing changes", async () => {
+    const cross = (path: string) =>
+      fsrsHandler(
+        new Request(`http://localhost${path}`, {
+          headers: { "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate" },
+        }),
+        EMAIL,
+      );
+    for (const path of [
+      `/api/fsrs/delete?id=${ID}`,
+      `/api/fsrs/review/4/?id=${ID}`,
+      `/api/fsrs/repeat/?url=${encodeURIComponent("https://example.net/new")}`,
+    ])
+      expect((await cross(path)).status).toBe(403);
+    expect(await notes.countDocuments({})).toBe(2);
+    expect((await notes.findOne({ _id: new ObjectId(ID) }))?.log).toEqual([]);
+  });
+
+  test("a sibling host's fetch to a GET that writes gets 403 too", async () => {
+    const res = await fsrsHandler(
+      new Request(`http://localhost/api/fsrs/delete?id=${ID}`, {
+        headers: { "sec-fetch-site": "same-site", "sec-fetch-mode": "cors" },
+      }),
+      EMAIL,
+    );
+    expect(res.status).toBe(403);
+    expect(await notes.countDocuments({})).toBe(2);
+  });
+
+  test("an error is plain text", async () => {
+    const res = await get(`/api/fsrs/delete?id=nope${encodeURIComponent(evil)}`);
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toStartWith("text/plain");
+  });
+});

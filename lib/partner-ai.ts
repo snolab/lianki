@@ -1,6 +1,7 @@
 import { isUserId } from "@/lib/dev-eval";
 import { isFlagKey } from "@/lib/flags";
-import { isOwner, ownerEmails } from "@/lib/owner";
+import { normalizeEmail } from "@/lib/owner";
+import { readOwnerEmails } from "@/lib/site-role";
 import {
   reserveAi,
   reserveCredits,
@@ -39,8 +40,8 @@ import {
  * never by anything in the history, the page text or the model's output.
  * The model has no tools to call: the "tools" are read-only summaries run
  * here before the call, so a prompt cannot make it fetch anything else.
- * The owner (OWNER_EMAILS) is refused, and so is everyone when OWNER_EMAILS
- * is unset (fail closed: then no one can be told apart from the owner).
+ * An owner (site_role) is refused, and so is everyone when the owners cannot
+ * be read (fail closed: then no one can be told apart from an owner).
  *
  * Credits (docs/partner-ai.md, "Credits"): before the call, the worst case
  * of this reply is reserved from the user's wallet (lib/payments/ai-credits.ts);
@@ -55,7 +56,6 @@ export type PartnerDb = D1WithBatch;
 
 export type PartnerEnv = {
   DB?: PartnerDb;
-  OWNER_EMAILS?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_AI_TOKEN?: string;
   CLOUDFLARE_API_TOKEN?: string;
@@ -251,7 +251,10 @@ export async function partnerReply(
   const req = parsePartnerRequest(raw);
   if (!req) return { ok: false, error: "bad-input" };
   const db = env.DB;
-  if (!db || !ownerEmails(env.OWNER_EMAILS).length) return { ok: false, error: "not-configured" };
+  if (!db) return { ok: false, error: "not-configured" };
+  // Owners unknown (none, or D1 failing): refuse, or the owner could be served as a user.
+  const owners = await readOwnerEmails(db).catch(() => [] as string[]);
+  if (!owners.length) return { ok: false, error: "not-configured" };
   if (!(await flagOn(db))) return { ok: false, error: "off" };
   const { results } = await db
     .prepare("SELECT email FROM user WHERE id = ?")
@@ -259,7 +262,7 @@ export async function partnerReply(
     .all<{ email: string | null }>();
   const email = results[0]?.email;
   if (!email) return { ok: false, error: "no-user" };
-  if (isOwner(email, env.OWNER_EMAILS)) return { ok: false, error: "owner" };
+  if (owners.includes(normalizeEmail(email))) return { ok: false, error: "owner" };
   const account = env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const token = (env.CLOUDFLARE_AI_TOKEN || env.CLOUDFLARE_API_TOKEN)?.trim();
   if (!account || !token) return { ok: false, error: "not-configured" };

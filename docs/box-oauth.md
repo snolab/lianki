@@ -15,7 +15,7 @@ as if it did not exist.
 | provider (better-auth plugin), binding hook | `lib/box-oauth/provider.ts`, `auth-impl.ts`   |
 | lianki.com's entry to the flow | `app/box-authorize/route.ts`                               |
 | which plugin routes answer    | `app/api/auth/[...all]/route.ts`                            |
-| binding, revoke, token lookup | `lib/box-oauth/store.ts`, `db/migrations/0047_box_oauth.sql` |
+| binding, revoke, token lookup | `lib/box-oauth/store.ts`, `db/migrations/0048_box_oauth.sql` |
 | owner's page and API          | `/dev/box-clients`, `app/api/dev/box-clients/route.ts`      |
 | the app's view of a token     | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`    |
 | the box's browser side        | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge` |
@@ -121,7 +121,7 @@ the navigation rule above, never through a route on that block, and
 - **Client-side only.** The box's `fetch` goes to lianki.com, but its server
   components still read the box's own (empty) session and local D1, so
   server-rendered parts show a signed-out shell. `authClient.useSession` is empty.
-- **An owner's own box.** Bound to an `OWNER_EMAILS` account, admin routes stay
+- **An owner's own box.** Bound to an owner's account (`site_role`), admin routes stay
   closed, but on allowlisted routes `isOwner` is true, so owner-only feature
   previews apply. Accepted (owner's direction, 2026-11-05): tokens never reach
   admin routes, which is what matters.
