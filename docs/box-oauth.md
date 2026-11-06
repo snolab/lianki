@@ -138,7 +138,7 @@ a real box is https and `web`.
 - **Cookie tossing.** A box is a subdomain, so its JS can set a cookie with
   `Domain=lianki.com`, which lianki.com then receives. The `__Host-` names on every
   better-auth cookie close that ([secrets-and-auth.md](secrets-and-auth.md), "The session
-  cookie"). Other cookies, such as `lk_lang`, can still be planted.
+  cookie"). Cookies outside better-auth, such as the language one or `lk_device`, can still be planted.
 
 ## Edge gate (designed, not built)
 
