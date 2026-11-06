@@ -147,6 +147,8 @@ async function run(colorScheme, email) {
   await page.waitForTimeout(31_000); // the flag cache
   const off = await page.goto(`${BASE}/vibe`);
   check(off.status() === 404, "flag off: /vibe is 404 for the owner");
+  check((await page.goto(`${BASE}/vibe/new`)).status() === 404, "flag off: /vibe/new is 404 too");
+  await page.goto(`${BASE}/vibe`);
   const refused = await page.evaluate(
     async () =>
       (
@@ -162,7 +164,12 @@ async function run(colorScheme, email) {
   setFlag(true);
   await page.waitForTimeout(31_000);
   await page.goto(`${BASE}/vibe`);
+  await page.waitForSelector('[data-testid="vibe-list"]');
+  const listedBefore = await page.locator('[data-testid="vibe-row"]').count();
+  await page.screenshot({ path: join(OUT, `list-before-${colorScheme}.png`) });
+  await page.click('[data-testid="vibe-new"]');
   await page.waitForSelector('[data-testid="vibe-start"]');
+  check(new URL(page.url()).pathname === "/vibe/new", "New conversation goes to /vibe/new");
   check(gum.length === 0, "the page opens no microphone");
   check(macOpen.size === 0, "the page opens no socket to the Mac");
   check(
@@ -236,7 +243,7 @@ async function run(colorScheme, email) {
   await page.waitForSelector('[data-testid="vibe-retention-note"]');
   check(puts.length === 2 && puts[1].includes("null"), "clearing it turns it off");
   page.off("request", notePut);
-  await page.goto(`${BASE}/vibe`);
+  await page.goto(`${BASE}/vibe/new`);
   await page.waitForSelector('[data-testid="vibe-start"]');
   check(gum.length === 0, "still no microphone");
 
@@ -259,6 +266,10 @@ async function run(colorScheme, email) {
     });
   check(gum.length === 1, "Start opens the (fake) microphone once");
   check(macOpen.size === 1, "and one socket to the Mac");
+  check(
+    new URL(page.url()).pathname === "/vibe/new",
+    "no address of its own before a line is heard",
+  );
   await page.screenshot({ path: join(OUT, `running-empty-${colorScheme}.png`) });
 
   await speak(page);
@@ -274,6 +285,13 @@ async function run(colorScheme, email) {
       document.querySelectorAll('[data-testid="vibe-line"][data-lang]:not([data-lang=""])')
         .length === 2,
   );
+  await page.waitForFunction(() => /^\/vibe\/[0-9a-f-]{36}$/.test(location.pathname));
+  check(true, "with a line heard, the address is the conversation's");
+  check(
+    (await page.locator('[data-testid="vibe-indicator"][data-state="running"]').count()) === 1,
+    "and it goes on running: the address changed without leaving the page",
+  );
+  const logPath = new URL(page.url()).pathname;
   const langs = await page.$$eval('[data-testid="vibe-line"]', (e) => e.map((x) => x.dataset.lang));
   check(langs.includes("zh"), `each line shows its language (${langs})`);
   await page.screenshot({ path: join(OUT, `running-${colorScheme}.png`) });
@@ -324,6 +342,57 @@ async function run(colorScheme, email) {
   await page.click('[data-testid="vibe-stop"]');
   await page.waitForSelector('[data-testid="vibe-ended"]');
 
+  // Back into it later: the log, by its address, stays readable and can go on.
+  await page.goto(`${BASE}${logPath}`);
+  await page.waitForSelector('[data-testid="vibe-ended"]');
+  check(
+    (await page.locator('[data-testid="vibe-line"]').count()) === 3,
+    "the log shows what was said, after a reload",
+  );
+  check(gum.length === 2, "and opens no microphone by itself");
+  check(
+    (await page.textContent('[data-testid="vibe-langs"]')).length > 0,
+    "and shows the conversation's languages",
+  );
+  await page.waitForTimeout(100);
+  await page.screenshot({ path: join(OUT, `log-${colorScheme}.png`) });
+  const material = (await page.getAttribute('[data-testid="vibe-open"]', "href")).split("/").pop();
+  await page.evaluate(() => document.querySelector('[data-testid="vibe-continue"]').click());
+  await page.waitForTimeout(300);
+  check(gum.length === 2, "a scripted click does not go on");
+  await page.click('[data-testid="vibe-continue"]');
+  await page.waitForSelector('[data-testid="vibe-indicator"][data-state="running"]');
+  check(gum.length === 3, "Keep going opens the (fake) microphone");
+
+  // Another device on the same address follows it (the push service stubbed).
+  const follower = await ctx.newPage();
+  let push = null;
+  await follower.routeWebSocket(/read-stream/, (ws) => {
+    push = ws;
+  });
+  await follower.goto(`${BASE}${logPath}`);
+  await follower.waitForSelector('[data-testid="vibe-line"]');
+  await follower.waitForFunction(
+    () => document.querySelectorAll('[data-testid="vibe-line"]').length === 3,
+  );
+  await page.bringToFront();
+  await speak(page);
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid="vibe-line"]').length === 4,
+  );
+  const liveHref = await page.getAttribute('[data-testid="vibe-all"]', "href");
+  await page.waitForTimeout(300);
+  push?.send(JSON.stringify({ book: material }));
+  await follower.waitForFunction(
+    () => document.querySelectorAll('[data-testid="vibe-line"]').length === 4,
+    { timeout: 10_000 },
+  );
+  check(liveHref === "/vibe", "a follower on the address sees the new line, live");
+  await follower.close();
+
+  await page.click('[data-testid="vibe-stop"]');
+  await page.waitForSelector('[data-testid="vibe-ended"]');
+
   // 新词: reading the list and opening a word store nothing and ask no model.
   const writes = [];
   page.on("request", (r) => {
@@ -340,8 +409,9 @@ async function run(colorScheme, email) {
   );
   check(
     await page.evaluate(() => {
-      const el = document.querySelector('.lk-book [data-f="n"]');
-      return !!el && getComputedStyle(el).textDecorationStyle === "dotted";
+      // Dotted in a dictionary, dashed outside it: which depends on the doc's main language.
+      const el = document.querySelector('.lk-book [data-f="n"], .lk-book [data-f="u"]');
+      return !!el && ["dotted", "dashed"].includes(getComputedStyle(el).textDecorationStyle);
     }),
     "each carries the reader's own mark, drawn",
   );
@@ -418,6 +488,55 @@ async function run(colorScheme, email) {
   await page.waitForTimeout(3_000);
   check(!asked.length, "following it live sends no line to a model by itself");
 
+  // The list: its row, a rename, an old link, and a start that heard nothing.
+  await page.goto(`${BASE}/vibe`);
+  await page.waitForSelector('[data-testid="vibe-row"]');
+  check(
+    (await page.locator('[data-testid="vibe-row"]').count()) === listedBefore + 1,
+    "the conversation is on the list",
+  );
+  const meta = await page.locator('[data-testid="vibe-row"]').first().innerText();
+  check(/\b20\d\d\b/.test(meta) && /Lines: 4/.test(meta), `its row has date and length (${meta})`);
+  check(/French|Chinese/.test(meta), "and its languages");
+  check(!/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(meta), "no ambiguous date");
+  await page.waitForTimeout(100);
+  await page.screenshot({ path: join(OUT, `list-${colorScheme}.png`) });
+  const row = page.locator('[data-testid="vibe-row"]').first();
+  await row.locator('[data-testid="read-row-menu"]').click();
+  await page.screenshot({ path: join(OUT, `list-menu-${colorScheme}.png`) });
+  await page.click('[data-testid="read-row-rename"]');
+  await page.fill('[data-testid="read-row-title-input"]', "An invented coffee");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="vibe-row-title"]')
+      ?.textContent?.includes("An invented coffee"),
+  );
+  await page.reload();
+  await page.waitForSelector('[data-testid="vibe-row"]');
+  check(
+    (await page.locator('[data-testid="vibe-row-title"]').first().textContent()) ===
+      "An invented coffee",
+    "a rename stays",
+  );
+  await page.goto(`${BASE}/vibe?doc=${logPath.split("/").pop()}`);
+  check(new URL(page.url()).pathname === logPath, "an old /vibe link with a doc goes to its log");
+  await page.goto(`${BASE}/vibe/new`);
+  await page.click('[data-testid="vibe-start"]');
+  await page.waitForSelector('[data-testid="vibe-indicator"][data-state="running"]');
+  await page.click('[data-testid="vibe-stop"]');
+  await page.waitForSelector('[data-testid="vibe-ended"]');
+  check(
+    new URL(page.url()).pathname === "/vibe/new",
+    "a stop that heard nothing stays on /vibe/new",
+  );
+  await page.goto(`${BASE}/vibe`);
+  await page.waitForSelector('[data-testid="vibe-list"]');
+  check(
+    (await page.locator('[data-testid="vibe-row"]').count()) === listedBefore + 1,
+    "and leaves no entry",
+  );
+
   // A fresh, non-owner account gets none of it.
   const stranger = await newSilentContext(browser, { ...devices["iPhone 13"] });
   const email2 = `qa+vibe-${Date.now()}@lianki.test`;
@@ -433,15 +552,32 @@ async function run(colorScheme, email) {
   );
   const p2 = await stranger.newPage();
   check((await p2.goto(`${BASE}/vibe`)).status() === 404, "/vibe is 404 for it with the flag on");
+  check((await p2.goto(`${BASE}/vibe/new`)).status() === 404, "/vibe/new too");
+  check((await p2.goto(`${BASE}${logPath}`)).status() === 404, "and the log's address");
   await stranger.close();
 
-  // The doc can be deleted from the end screen's route at any time.
-  const del = await page.evaluate(
-    async (i) => (await fetch(`/api/read/${i}`, { method: "DELETE" })).status,
-    id,
+  // The list's ⋯ menu deletes it, asking once.
+  await page.goto(`${BASE}/vibe`);
+  await page.waitForSelector('[data-testid="vibe-row"]');
+  let asked2 = 0;
+  page.once("dialog", (d) => {
+    asked2++;
+    void d.accept();
+  });
+  const before = await page.locator('[data-testid="vibe-row"]').count();
+  await page
+    .locator('[data-testid="vibe-row"]')
+    .first()
+    .locator('[data-testid="read-row-menu"]')
+    .click();
+  await page.click('[data-testid="read-row-delete"]');
+  await page.waitForFunction(
+    (n) => document.querySelectorAll('[data-testid="vibe-row"]').length === n,
+    before - 1,
   );
-  check(del === 200, "the owner deletes it");
+  check(asked2 === 1, "the owner deletes it from the list, asked once");
   check((await page.request.get(`${BASE}/api/read/${id}`)).status() === 404, "and it is gone");
+  check((await page.goto(`${BASE}${logPath}`)).status() === 404, "from its address too");
 
   check(!lines.length, `no cloud STT or clip request (${lines.join(", ")})`);
   await ctx.close();

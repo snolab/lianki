@@ -6,17 +6,32 @@
  * itself (lib/vibe/session.ts) is built only when Start is tapped, by a real
  * gesture; leaving the page stops it. No sounds at any point.
  */
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useRouter } from "next/navigation";
 import { VibeWords } from "./VibeWords";
 import Link from "next/link";
 import { useIntlayer } from "next-intlayer";
+import { detectLangs } from "@/lib/read/lang-detect";
 import { vibeBrowserDeps } from "@/lib/vibe/browser";
 import {
   createVibeSession,
   type EndReason,
   type PauseReason,
+  type VibeLine,
   type VibeView,
 } from "@/lib/vibe/session";
+import { useBookStream } from "../read/[id]/reader-stream";
+import { langName } from "./lang-name";
+
+/** The conversation /vibe/<id> opens on. */
+export type VibeDocProps = {
+  id: string;
+  material: string;
+  title: string;
+  status: "running" | "paused" | "stopped";
+  next: number;
+  lines: VibeLine[];
+};
 
 const BUTTON =
   "min-h-11 px-5 rounded-lg font-medium disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2";
@@ -24,18 +39,13 @@ const PRIMARY = `${BUTTON} bg-[oklch(0.5_0.16_255)] text-[oklch(0.99_0_0)]`;
 const QUIET = `${BUTTON} border border-[oklch(0.7_0_0)] dark:border-[oklch(0.45_0_0)]`;
 const DIM = "text-[oklch(0.45_0_0)] dark:text-[oklch(0.72_0_0)]";
 
-function langName(code: string, locale: string): string {
-  try {
-    return new Intl.DisplayNames([locale], { type: "language" }).of(code) ?? code;
-  } catch {
-    return code;
-  }
-}
-
 function StartPage({ busy, onStart }: { busy: boolean; onStart: () => void }) {
   const t = useIntlayer("vibe-page");
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 pb-32 pt-6" data-testid="vibe-home">
+      <Link href="/vibe" className={`text-sm underline ${DIM}`} data-testid="vibe-all">
+        {t.allConversations}
+      </Link>
       <h1 className="text-2xl font-semibold">{t.title}</h1>
       <p className="leading-relaxed">{t.intro}</p>
       <button
@@ -150,10 +160,18 @@ function Transcript({ view, locale }: { view: VibeView; locale: string }) {
   );
 }
 
-function EndScreen({ view, onAgain }: { view: VibeView; onAgain: () => void }) {
+function EndScreen({
+  view,
+  docId,
+  busy,
+  onContinue,
+}: {
+  view: VibeView;
+  docId: string | null;
+  busy: boolean;
+  onContinue: () => void;
+}) {
   const t = useIntlayer("vibe-page");
-  const [arm, setArm] = useState(false);
-  const [gone, setGone] = useState(false);
   const notes: Partial<Record<EndReason, string>> = {
     refused: t.endRefused.value,
     "not-tapped": t.endRefused.value,
@@ -163,57 +181,95 @@ function EndScreen({ view, onAgain }: { view: VibeView; onAgain: () => void }) {
     full: t.endFull.value,
   };
   const note = view.end ? notes[view.end] : undefined;
-  const material = view.material;
   return (
-    <div className="mb-6 flex flex-col gap-3" data-testid="vibe-ended">
-      <h1 className="text-xl font-semibold">{t.ended}</h1>
+    <div className="mb-4 flex flex-col items-start gap-3" data-testid="vibe-ended">
+      {view.end && <p className="font-medium">{t.ended}</p>}
       {note && (
         <p className={DIM} data-testid="vibe-end-note">
           {note}
         </p>
       )}
-      <div className="flex flex-wrap gap-3">
-        {material && !gone && (
-          <Link
-            href={`/read/${material}`}
-            className={`${PRIMARY} inline-flex items-center`}
-            data-testid="vibe-open"
-          >
-            {t.open}
-          </Link>
-        )}
-        <button type="button" className={QUIET} onClick={onAgain} data-testid="vibe-again">
-          {t.again}
+      {view.material && docId && (
+        <button
+          type="button"
+          className={PRIMARY}
+          disabled={busy}
+          data-testid="vibe-continue"
+          // A script's click is not his tap, as on Start.
+          onClick={(e: MouseEvent) => {
+            if (e.isTrusted) onContinue();
+          }}
+        >
+          {t.keepGoing}
         </button>
-        {material && !gone && (
-          <button
-            type="button"
-            className={QUIET}
-            data-testid="vibe-delete"
-            onClick={async () => {
-              if (!arm) return setArm(true);
-              const r = await fetch(`/api/read/${material}`, { method: "DELETE" }).catch(
-                () => null,
-              );
-              if (r?.ok) setGone(true);
-              else setArm(false);
-            }}
-          >
-            {arm ? t.deleteConfirm : t.deleteDoc}
-          </button>
-        )}
-      </div>
-      {gone && <p data-testid="vibe-deleted">{t.deleted}</p>}
+      )}
     </div>
   );
 }
 
-export default function VibeClient({ locale }: { locale: string }) {
+/** Under the text, so the log is what the page opens on. */
+function LogActions({ material, onAgain }: { material: string | null; onAgain: () => void }) {
   const t = useIntlayer("vibe-page");
-  const [view, setView] = useState<VibeView | null>(null);
+  const router = useRouter();
+  const [arm, setArm] = useState(false);
+  return (
+    <div className="mt-8 flex flex-wrap gap-3" data-testid="vibe-log-actions">
+      {material && (
+        <Link
+          href={`/read/${material}`}
+          className={`${QUIET} inline-flex items-center`}
+          data-testid="vibe-open"
+        >
+          {t.open}
+        </Link>
+      )}
+      <button type="button" className={QUIET} onClick={onAgain} data-testid="vibe-again">
+        {t.again}
+      </button>
+      {material && (
+        <button
+          type="button"
+          className={QUIET}
+          data-testid="vibe-delete"
+          onClick={async () => {
+            if (!arm) return setArm(true);
+            const r = await fetch(`/api/read/${material}`, { method: "DELETE" }).catch(() => null);
+            if (r?.ok) router.replace("/vibe");
+            else setArm(false);
+          }}
+        >
+          {arm ? t.deleteConfirm : t.deleteDoc}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const withLangs = (lines: readonly string[]): VibeLine[] => {
+  const langs = detectLangs(lines);
+  return lines.map((text, i) => ({ text, lang: langs[i] }));
+};
+
+export default function VibeClient({ locale, doc }: { locale: string; doc?: VibeDocProps }) {
+  const t = useIntlayer("vibe-page");
+  const router = useRouter();
+  const [view, setView] = useState<VibeView | null>(() =>
+    doc
+      ? {
+          status: "stopped",
+          lines: doc.lines,
+          interim: "",
+          lost: 0,
+          material: doc.material,
+          doc: doc.id,
+        }
+      : null,
+  );
+  const [title, setTitle] = useState(doc?.title ?? "");
   const [opening, setOpening] = useState(false);
   const [tab, setTab] = useState<"text" | "words">("text");
   const session = useRef<ReturnType<typeof createVibeSession> | null>(null);
+  const [mine, setMine] = useState(false);
 
   // Leaving the page ends it: nothing goes on listening behind another page.
   useEffect(
@@ -223,23 +279,75 @@ export default function VibeClient({ locale }: { locale: string }) {
     [],
   );
 
+  // Once there is something to come back to, the address is the conversation's.
+  // Before the first line there is none: a stop that heard nothing leaves no entry.
+  const docId = view?.doc ?? null;
+  const hasText = !!view?.material;
+  useEffect(() => {
+    if (!doc && docId && hasText) window.history.replaceState(null, "", `/vibe/${docId}`);
+  }, [doc, docId, hasText]);
+
+  // Another device recording this conversation: follow it, as the reader does.
+  const follow = useCallback((m: { lines: string[] }) => {
+    setView((v) => (v ? { ...v, lines: withLangs(m.lines) } : v));
+  }, []);
+  useBookStream<{ lines: string[] }>(
+    doc?.material ?? "",
+    !!doc && !mine && doc.status !== "stopped",
+    follow,
+  );
+
+  /** Only now: the mic's code, the Mac's address and the chat's hold are all loaded by this tap. */
+  const getSession = async () => {
+    setMine(true);
+    session.current ??= createVibeSession({ ...(await vibeBrowserDeps()), onView: setView });
+    return session.current;
+  };
+
   const start = async () => {
     if (opening) return;
     setOpening(true);
     try {
-      // Only now: the mic's code, the Mac's address and the chat's hold are all loaded by this tap.
-      const deps = await vibeBrowserDeps();
-      const s = createVibeSession({ ...deps, onView: setView });
-      session.current = s;
+      const s = await getSession();
       const when = new Date().toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
-      await s.start({
+      const name = t.docTitle.value.replaceAll("{when}", when);
+      setTitle(name);
+      await s.start({ tap: true, title: name });
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  const keepGoing = async () => {
+    if (opening || !view?.doc) return;
+    setOpening(true);
+    try {
+      const s = await getSession();
+      await s.continueDoc({
         tap: true,
-        title: t.docTitle.value.replaceAll("{when}", when),
+        id: view.doc,
+        material: view.material,
+        lines: [...view.lines],
+        next: s.view().doc === view.doc ? s.sent() : (doc?.next ?? view.lines.length),
       });
     } finally {
       setOpening(false);
     }
   };
+
+  const again = () => {
+    if (doc) return router.push("/vibe/new");
+    session.current?.reset();
+    setView(null);
+    setTitle("");
+    window.history.replaceState(null, "", "/vibe/new");
+  };
+
+  const langs = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const l of view?.lines ?? []) if (l.lang) n.set(l.lang, (n.get(l.lang) ?? 0) + 1);
+    return [...n].sort((a, b) => b[1] - a[1]).map(([l]) => l);
+  }, [view?.lines]);
 
   if (!view || view.status === "idle") return <StartPage busy={opening} onStart={start} />;
 
@@ -259,7 +367,20 @@ export default function VibeClient({ locale }: { locale: string }) {
           onStop={() => void session.current?.stop()}
         />
       )}
-      {view.status === "stopped" && <EndScreen view={view} onAgain={() => setView(null)} />}
+      <Link href="/vibe" className={`text-sm underline ${DIM}`} data-testid="vibe-all">
+        {t.allConversations}
+      </Link>
+      <h1 className="mb-1 mt-2 text-xl font-semibold" data-testid="vibe-title">
+        {title}
+      </h1>
+      {!!langs.length && (
+        <p className={`mb-3 text-sm ${DIM}`} data-testid="vibe-langs">
+          {langs.map((l) => langName(l, locale)).join(", ")}
+        </p>
+      )}
+      {view.status === "stopped" && (
+        <EndScreen view={view} docId={docId} busy={opening} onContinue={() => void keepGoing()} />
+      )}
       <div className="mb-4 flex gap-2" role="tablist">
         {(["text", "words"] as const).map((k) => (
           <button
@@ -280,6 +401,7 @@ export default function VibeClient({ locale }: { locale: string }) {
       ) : (
         <VibeWords material={view.material} lines={view.lines} locale={locale} />
       )}
+      {view.status === "stopped" && <LogActions material={view.material} onAgain={again} />}
     </div>
   );
 }

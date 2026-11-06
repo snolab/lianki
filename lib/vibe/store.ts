@@ -146,16 +146,17 @@ export async function appendLines(
   // Text first, then the count: a failure between them repeats a line rather than losing one.
   await db
     .prepare(
-      "UPDATE vibe_doc SET material_id = ?, next_seq = ?, last_ms = ? WHERE id = ? AND user_id = ?",
+      "UPDATE vibe_doc SET material_id = ?, next_seq = ?, last_ms = ?, langs = ? WHERE id = ? AND user_id = ?",
     )
-    .bind(materialId, next, now, id, userId)
+    .bind(materialId, next, now, JSON.stringify(langsByLines(langs)), id, userId)
     .run();
   return { ok: true, next, materialId, hash, langs: langs.slice(-fresh.length) };
 }
 
 /**
- * Pause, resume, stop. Stopped is final (the next conversation is a new tap on
- * Start). A stopped conversation that heard nothing leaves no row.
+ * Pause, resume, stop. A tap on Keep going reopens a stopped conversation; only
+ * that does, so a late "paused" cannot. One writer at a time: reopening one closes
+ * any other. A stopped conversation that heard nothing leaves no row.
  */
 export async function setDocState(
   db: D1Batch,
@@ -165,7 +166,21 @@ export async function setDocState(
 ): Promise<"ok" | "not-found" | "stopped"> {
   const doc = await docOf(db, userId, id);
   if (!doc) return "not-found";
-  if (doc.status === "stopped") return state === "stopped" ? "ok" : "stopped";
+  if (doc.status === "stopped" && state !== "running")
+    return state === "stopped" ? "ok" : "stopped";
+  if (state === "running") {
+    await db.batch([
+      db
+        .prepare(
+          "UPDATE vibe_doc SET status = 'stopped' WHERE user_id = ? AND status != 'stopped' AND id != ?",
+        )
+        .bind(userId, id),
+      db
+        .prepare("UPDATE vibe_doc SET status = 'running' WHERE id = ? AND user_id = ?")
+        .bind(id, userId),
+    ]);
+    return "ok";
+  }
   if (state === "stopped" && !doc.material_id) {
     await db.prepare("DELETE FROM vibe_doc WHERE id = ? AND user_id = ?").bind(id, userId).run();
     return "ok";
@@ -175,6 +190,92 @@ export async function setDocState(
     .bind(state, id, userId)
     .run();
   return "ok";
+}
+
+/** The languages of these per-line languages, most lines first. */
+export function langsByLines(langs: readonly (string | null | undefined)[]): string[] {
+  const n = new Map<string, number>();
+  for (const l of langs) if (l) n.set(l, (n.get(l) ?? 0) + 1);
+  return [...n].sort((a, b) => b[1] - a[1]).map(([l]) => l);
+}
+
+export type VibeRow = {
+  id: string;
+  material: string;
+  title: string;
+  startedMs: number;
+  lastMs: number;
+  /** How many lines were heard. */
+  lines: number;
+  langs: string[];
+};
+
+type RowDb = {
+  id: string;
+  material: string;
+  title: string;
+  started_ms: number;
+  last_ms: number;
+  next_seq: number;
+  langs: string | null;
+  status: VibeState;
+};
+
+const ROW = `SELECT d.id, d.material_id AS material, m.title, d.started_ms, d.last_ms, d.next_seq, d.langs, d.status
+  FROM vibe_doc d JOIN read_materials m ON m.id = d.material_id AND m.user_id = d.user_id`;
+
+const rowOf = async (userId: string, r: RowDb): Promise<VibeRow> => {
+  let langs: string[] | null = r.langs ? (JSON.parse(r.langs) as string[]) : null;
+  if (!langs) {
+    const m = await getReadMaterialById(userId, r.material);
+    langs = langsByLines(detectLangs(m?.lines ?? []));
+  }
+  return {
+    id: r.id,
+    material: r.material,
+    title: r.title,
+    startedMs: r.started_ms,
+    lastMs: r.last_ms,
+    lines: r.next_seq,
+    langs,
+  };
+};
+
+/**
+ * /vibe's list: conversations with something in them, newest first. The join
+ * leaves out a start that heard nothing, whose material_id is still NULL.
+ */
+export async function listDocs(db: D1Batch, userId: string, limit = 500): Promise<VibeRow[]> {
+  const { results } = await db
+    .prepare(`${ROW} WHERE d.user_id = ? ORDER BY d.last_ms DESC LIMIT ?`)
+    .bind(userId, limit)
+    .all<RowDb>();
+  return Promise.all((results ?? []).map((r) => rowOf(userId, r)));
+}
+
+/** /vibe/<id>: this user's own conversation with its lines; null for anything else. */
+export async function getDocLog(
+  db: D1Batch,
+  userId: string,
+  id: string,
+): Promise<
+  (VibeRow & { status: VibeState; next: number; text: string[]; lineLangs: string[] }) | null
+> {
+  const r = await db
+    .prepare(`${ROW} WHERE d.id = ? AND d.user_id = ?`)
+    .bind(id, userId)
+    .first<RowDb>();
+  if (!r) return null;
+  const m = await getReadMaterialById(userId, r.material);
+  if (!m) return null;
+  const lineLangs = detectLangs(m.lines);
+  return {
+    ...(await rowOf(userId, { ...r, langs: JSON.stringify(langsByLines(lineLangs)) })),
+    status: r.status,
+    next: r.next_seq,
+    text: m.lines,
+    lineLangs,
+  };
 }
 
 /** The number the user chose; null when none: kept until deleted. */

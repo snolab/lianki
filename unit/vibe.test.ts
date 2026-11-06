@@ -28,7 +28,7 @@ import {
   type VibeStt,
   type VibeView,
 } from "@/lib/vibe/session";
-import { getRetentionDays, setRetentionDays } from "@/lib/vibe/store";
+import { getDocLog, getRetentionDays, listDocs, setRetentionDays } from "@/lib/vibe/store";
 import { createMicTaps, micTaps } from "@lianki/debug-chat/mic-taps";
 import { createMicSession } from "@lianki/debug-chat/mic-session";
 import type { LocalState } from "@lianki/debug-chat/local-stt";
@@ -112,9 +112,16 @@ describe("the gate", () => {
   });
 
   it("the page is gated on the server too, with no owner bypass", () => {
-    const page = readFileSync("app/(app)/vibe/page.tsx", "utf8");
-    expect(page).toContain("vibeAllowed(await readFlags()");
-    expect(page).toContain("notFound()");
+    const gate = readFileSync("lib/vibe/page-gate.ts", "utf8");
+    expect(gate).toContain("vibeAllowed(await readFlags()");
+    expect(gate).toContain("notFound()");
+    for (const p of ["page.tsx", "new/page.tsx", "[id]/page.tsx"]) {
+      const page = readFileSync(`app/(app)/vibe/${p}`, "utf8");
+      expect(page).toContain("await vibePage()");
+      expect(page).toContain('dynamic = "force-dynamic"');
+    }
+    const log = readFileSync("app/(app)/vibe/[id]/page.tsx", "utf8");
+    expect(log).toContain("if (!log) notFound();");
   });
 
   it("mic starts only from the start button, by a real tap", () => {
@@ -219,7 +226,7 @@ describe("the transcript", () => {
     expect(await db.prepare("SELECT id FROM vibe_doc").bind().first()).toBeNull();
   });
 
-  it("paused and stopped refuse writes; resume opens them; stop is final", async () => {
+  it("paused and stopped refuse writes; a tap's running opens them, nothing else does", async () => {
     const id = await start();
     await linesReply(db, "u1", id, { from: 0, lines: ["before the pause"] }, T0);
     expect((await stateReply(db, "u1", id, { state: "paused" })).status).toBe(200);
@@ -229,9 +236,29 @@ describe("the transcript", () => {
     expect(ok.status).toBe(200);
     await stateReply(db, "u1", id, { state: "stopped" });
     expect((await linesReply(db, "u1", id, { from: 2, lines: ["late"] }, T0)).status).toBe(409);
-    expect((await stateReply(db, "u1", id, { state: "running" })).status).toBe(409);
+    // A late pause from an old page does not reopen it.
+    expect((await stateReply(db, "u1", id, { state: "paused" })).status).toBe(409);
+    expect((await linesReply(db, "u1", id, { from: 2, lines: ["late"] }, T0)).status).toBe(409);
     const m = await getReadMaterialById("u1", ok.body.material as string);
     expect(m!.lines).toEqual(["before the pause", "after"]);
+    // Keep going on the log page: more of the same conversation.
+    expect((await stateReply(db, "u1", id, { state: "running" })).status).toBe(200);
+    expect((await linesReply(db, "u1", id, { from: 2, lines: ["more"] }, T0)).status).toBe(200);
+    expect((await getReadMaterialById("u1", ok.body.material as string))!.lines).toEqual([
+      "before the pause",
+      "after",
+      "more",
+    ]);
+  });
+
+  it("reopening one conversation closes any other: one writer at a time", async () => {
+    const a = await start();
+    await linesReply(db, "u1", a, { from: 0, lines: ["first conversation"] }, T0);
+    const b = await start();
+    await linesReply(db, "u1", b, { from: 0, lines: ["second conversation"] }, T0);
+    await stateReply(db, "u1", a, { state: "running" });
+    expect((await linesReply(db, "u1", b, { from: 1, lines: ["late"] }, T0)).status).toBe(409);
+    expect((await linesReply(db, "u1", a, { from: 1, lines: ["on"] }, T0)).status).toBe(200);
   });
 
   it("a new start closes the open conversation", async () => {
@@ -318,6 +345,75 @@ describe("the routes' answers", () => {
     await deleteReadMaterial("u1", m!.material_id);
     expect((await linesReply(db, "u1", live, { from: 1, lines: ["late"] }, T0)).status).toBe(404);
     expect(r.status).toBe(200);
+  });
+});
+
+describe("the pages", () => {
+  it("the list: newest first, with languages and length; a start that heard nothing is not in it", async () => {
+    const a = await start();
+    await linesReply(db, "u1", a, { from: 0, lines: ["Hello there, how are you?"] }, T0);
+    const b = await start();
+    await linesReply(
+      db,
+      "u1",
+      b,
+      { from: 0, lines: ["你好，很高兴认识你。", "I am well, and you?", "我也很好，谢谢。"] },
+      T0 + DAY,
+    );
+    const empty = await start();
+    const rows = await listDocs(db, "u1");
+    expect(rows.map((r) => r.id)).toEqual([b, a]);
+    expect(rows.some((r) => r.id === empty)).toBe(false);
+    expect(rows[0]).toMatchObject({ lines: 3, lastMs: T0 + DAY, title: "Conversation" });
+    expect(rows[0].langs[0]).toBe("zh");
+    expect(rows[0].langs).toContain("en");
+    expect(await listDocs(db, "u2")).toEqual([]);
+    expect(await stateReply(db, "u1", empty, { state: "stopped" })).toMatchObject({ status: 200 });
+    expect((await listDocs(db, "u1")).length).toBe(2);
+  });
+
+  it("a doc from before the langs column still shows its languages", async () => {
+    const a = await start();
+    await linesReply(db, "u1", a, { from: 0, lines: ["Hello there, how are you?"] }, T0);
+    d1.exec(`UPDATE vibe_doc SET langs = NULL WHERE id = '${a}'`);
+    expect((await listDocs(db, "u1"))[0].langs).toEqual(["en"]);
+  });
+
+  it("the log: its lines and languages, for its owner only", async () => {
+    const a = await start();
+    await linesReply(db, "u1", a, { from: 0, lines: ["Hello there, how are you?"] }, T0);
+    const log = await getDocLog(db, "u1", a);
+    expect(log).toMatchObject({ next: 1, status: "running", text: ["Hello there, how are you?"] });
+    expect(log!.lineLangs).toEqual(["en"]);
+    expect(await getDocLog(db, "u2", a)).toBeNull();
+    expect(await getDocLog(db, "u1", "no-such-doc")).toBeNull();
+    const empty = await start();
+    expect(await getDocLog(db, "u1", empty)).toBeNull();
+  });
+
+  it("ids are random", async () => {
+    const a = await start();
+    const b = await start();
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(a).not.toBe(b);
+  });
+
+  it("a rename survives the next line", async () => {
+    const a = await start();
+    const r = await linesReply(db, "u1", a, { from: 0, lines: ["first line said"] }, T0);
+    const { renameReadMaterial } = await import("@/lib/getReadMaterialsCollection");
+    await renameReadMaterial("u1", r.body.material as string, "Coffee with a friend");
+    await linesReply(db, "u1", a, { from: 1, lines: ["second line said"] }, T0);
+    expect((await listDocs(db, "u1"))[0].title).toBe("Coffee with a friend");
+  });
+
+  it("deleting the material takes it off the list and off its address", async () => {
+    const a = await start();
+    const r = await linesReply(db, "u1", a, { from: 0, lines: ["about to go"] }, T0);
+    const { deleteReadMaterial } = await import("@/lib/getReadMaterialsCollection");
+    await deleteReadMaterial("u1", r.body.material as string);
+    expect(await listDocs(db, "u1")).toEqual([]);
+    expect(await getDocLog(db, "u1", a)).toBeNull();
   });
 });
 
@@ -682,6 +778,56 @@ describe("the session: starting", () => {
     expect(vibeRoute("off")).toBeNull();
     expect(vibeRoute("ws://localhost:5193")).toBe("ws://localhost:5193/");
     expect(vibeRoute("wss://mac.ts.net/x wss://stt.lianki.com")).toBe("wss://mac.ts.net/x");
+  });
+});
+
+describe("the session: keep going", () => {
+  const more = {
+    id: "doc",
+    material: "mat",
+    lines: [{ text: "said before", lang: "fr" }],
+    next: 1,
+  };
+
+  it("only by a tap; a refusal opens nothing", async () => {
+    const h = harness();
+    await h.s.continueDoc({ tap: false, ...more });
+    expect(h.states).toEqual([]);
+    expect(h.gum).not.toHaveBeenCalled();
+    const r = harness({
+      api: {
+        start: async () => ({ ok: true, id: "doc" }),
+        lines: async () => ({ ok: false, status: 409 }),
+        state: async () => ({ ok: false, status: 404 }),
+      },
+    });
+    await r.s.continueDoc({ tap: true, ...more });
+    expect(r.gum).not.toHaveBeenCalled();
+    expect(r.s.view()).toMatchObject({ status: "stopped", end: "refused" });
+  });
+
+  it("asks the server, then the mic, and adds after what is there", async () => {
+    const h = harness();
+    await h.s.continueDoc({ tap: true, ...more });
+    await settle();
+    expect(h.states).toEqual(["running"]);
+    expect(h.gum).toHaveBeenCalledTimes(1);
+    expect(h.s.view()).toMatchObject({ status: "running", doc: "doc", material: "mat" });
+    await h.say("something new was said");
+    expect(h.posted).toEqual([{ from: 1, lines: ["something new was said"] }]);
+    expect(h.s.view().lines).toEqual([
+      { text: "said before", lang: "fr" },
+      { text: "something new was said", lang: "en" },
+    ]);
+  });
+
+  it("a stop on a log page does not delete the doc: it has text", async () => {
+    const h = harness();
+    await h.s.continueDoc({ tap: true, ...more });
+    await settle();
+    await h.s.stop();
+    expect(h.s.view()).toMatchObject({ status: "stopped", material: "mat", doc: "doc" });
+    expect(h.states).toEqual(["running", "stopped"]);
   });
 });
 
