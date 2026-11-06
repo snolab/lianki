@@ -10,7 +10,8 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.25
+// @grant       unsafeWindow
+// @version     2.24.26
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -49,6 +50,7 @@ import {
 } from "@lianki/core/watchStats";
 import { heatmapBuckets, rateColor, videoDifficulty } from "@lianki/core/difficulty";
 import { dueWindow, isProvablyDeleted } from "@lianki/core/duePrune";
+import { startGdocStream } from "./gdoc-stream";
 import { mirrorPartnerSwitch, startPartner } from "./partner";
 
 declare const GM_xmlhttpRequest: Function;
@@ -3929,6 +3931,10 @@ function main() {
   // ── Learning Partner on every site (docs/dev-debug-widget.md, "On every site") ──
   // The owner's only, opt-in (debug mode on lianki.com); a no-op for everyone else.
   let stopPartner = () => {};
+  if (location.hostname === "docs.google.com") {
+    startGdocStream({ origin: ORIGIN, gmFetch, getValue: GM_getValue, setValue: GM_setValue });
+  }
+
   startPartner({
     origin: ORIGIN,
     src: typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
