@@ -135,7 +135,9 @@ Flag `read.gdoc-stream` (off: the owner only).
    book, so a tap on one written since the last save saves first. With nothing
    selected, the card follows the newest whole sentences, and the unfinished one
    once the text rests (`latestPlan`). Each is translated once, through the same
-   metered translate route; its × stops following for that visit.
+   metered translate route (a higher per-user limit for who may read a live doc,
+   60 per 10 min was used up within minutes); a hidden tab does not follow; its ×
+   stops following for that visit.
 
 Limits: it runs only while the doc is open in a tab with the userscript, so the
 writer's side is desktop only (the reader can be any device). Word marks in the

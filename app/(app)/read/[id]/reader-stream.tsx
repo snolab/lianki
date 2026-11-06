@@ -237,7 +237,15 @@ export function LiveTail({
     () => (paras.length ? paras : lastLine?.trim() ? [cutPara(lastLine, lang, normLang)] : []),
     [paras, lastLine, lang, normLang],
   );
-  const following = !unit && !card && !dismissed && !busy;
+  // Nobody is reading a hidden tab: following it would only spend.
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    const on = () => setHidden(document.hidden);
+    on();
+    document.addEventListener("visibilitychange", on);
+    return () => document.removeEventListener("visibilitychange", on);
+  }, []);
+  const following = !unit && !card && !dismissed && !busy && !hidden;
   const latest = following ? latestPlan(latestParas, resting) : null;
   const latestKey = latest ? JSON.stringify(latest) : "";
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -365,6 +373,19 @@ export function LiveTail({
       clearTimeout(timer);
       document.removeEventListener("selectionchange", on);
     };
+  }, []);
+
+  // A tap outside the tail and its card clears the selection, as in the book.
+  useEffect(() => {
+    const on = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (root.current?.contains(t) || cardEl.current?.contains(t)) return;
+      if (getSelection()?.isCollapsed === false) return;
+      setUnit(null);
+      setCard(null);
+    };
+    document.addEventListener("click", on);
+    return () => document.removeEventListener("click", on);
   }, []);
 
   // Double and triple clicks are the combo's, not the browser's selection.
