@@ -13,7 +13,7 @@ import {
 import { displayTitle } from "@/lib/titles/client";
 import { titleRulesForUser, titleRulesFrom } from "@/lib/titles/server";
 import type { D1Like } from "@/lib/d1/types";
-import { cardFromDue, cardFromGet } from "@/lib/review-ui";
+import { reviewTitle } from "@/lib/review-title";
 
 const YT = "https://www.youtube.com/watch?v=x";
 const ZH = "https://www.zhihu.com/question/1";
@@ -363,10 +363,10 @@ describe("the server's rules for a user", () => {
 });
 
 describe("/review shows the cleaned title", () => {
-  const raw = { _id: "a", url: YT, title: "(3) Foo", card: { due: "2026-11-06" } };
-  it("from either answer, and never loses the card's url", () => {
-    expect(cardFromDue({ cards: [raw] })).toMatchObject({ title: "Foo", url: YT });
-    expect(cardFromGet(raw)).toMatchObject({ title: "Foo", url: YT });
+  it("through the one function the current card and the next-up strip call", () => {
+    expect(reviewTitle("(3) Foo", YT)).toBe("Foo");
+    expect(reviewTitle("(3) Foo", OTHER)).toBe("(3) Foo");
+    expect(reviewTitle(null, YT)).toBeNull();
   });
 });
 
