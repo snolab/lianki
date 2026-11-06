@@ -373,7 +373,10 @@ export function termKeys(term: string, reading: string | null | undefined, lang:
   for (const k of keys.slice()) add(stripElision(k, lang));
   for (const k of keys.slice()) add(unligate(k, lang));
   const readingKeys = langRules(lang).reading;
-  if (readingKeys && reading && readingKeys.test(reading)) add(reading);
+  // A one-character reading says nothing: 野 is read の, and the book's の is no
+  // sign of that card. The same bound as foldsOf's; a card whose term is that
+  // character still answers to it, through the term.
+  if (readingKeys && reading && reading.length >= 2 && readingKeys.test(reading)) add(reading);
   return keys;
 }
 /** What one card gives its term: the deck's score, and whether mastered. */
