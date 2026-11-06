@@ -336,7 +336,11 @@ describe("the reader with the user's own AI", () => {
     expect(b).toEqual(a);
     expect(await fetchGloss("book2", "boa", null, null, { fetch: f })).toEqual(a);
     expect(calls.length).toBe(1);
-    expect(JSON.parse(String(calls[0].init.body))).toEqual({ w: "boa", ex: null });
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      w: "boa",
+      ex: null,
+      cached: true,
+    });
   });
 
   it("nothing found anywhere: no meaning, and no provider call without an `ask`", async () => {

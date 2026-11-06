@@ -1198,7 +1198,6 @@ function Reader({
     /** Opened by this item grade (afterGrade): an undo of it closes the review. */
     from?: GradeReceipt;
   } | null>(null);
-  const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
   const reviewBack = useRef<HTMLElement | null>(null);
   const famChanged = useCallback(() => setFamTick((n) => n + 1), []);
   const closeReview = useCallback(() => setReview(null), []);
@@ -1308,7 +1307,7 @@ function Reader({
       // The lemma file's own tags, named in his language (lib/read/form-tags.ts): data, no model.
       tags: formLabels(head.sets, formTags).join(" / ") || null,
     };
-    return { w, card, ex: ss[sentenceOfToken(ss, u.t)]?.text.trim() || null };
+    return { card };
   }, [sel.unit, para, heads, meanIdx, normLang, formTags]);
   // A word that is no card of his: its gloss by itself (use-select-gloss.ts).
   const glossWord = useMemo(() => {
@@ -1484,6 +1483,7 @@ function Reader({
     setEasyToast((x) => (x?.receipt === receipt ? null : x));
   };
 
+  const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
   const makeLine = useCallback(
     (u: ReviewUnit) => {
       const { ss, words } = lineWords(u);
@@ -1696,49 +1696,13 @@ function Reader({
     ) {
       // The word's, the phrase's and the sentence's own paragraph; a range's own words.
       a.reviewWords = () => openReview(u);
-      const n = fam ? missingWords(lineWords(u).words).length : 0;
+      // Several words at once. A single new word has no button: its slider adds it.
+      const n =
+        fam && u.kind !== "word" && u.kind !== "phrase"
+          ? missingWords(lineWords(u).words).length
+          : 0;
       if (n > 0) a.makeCards = { n, run: () => makeLine(u) };
     }
-    // A phrase that is no card yet: 制卡 for it, in the book's own deck, as a word's.
-    if (
-      signedIn &&
-      material.readerV2 &&
-      hash &&
-      selSpan &&
-      selSpan.t1 > selSpan.t0 &&
-      !(selMeaning && !selMeaning.card.other)
-    ) {
-      const ss = para(selSpan.line).sentences;
-      const s0 = sentenceOfToken(ss, selSpan.t0);
-      const w = phraseKey(tokenText(ss, selSpan.t0, selSpan.t1));
-      if (w && s0 >= 0 && s0 === sentenceOfToken(ss, selSpan.t1))
-        a.makePhrase = () =>
-          void makeCards(id, [
-            { w, ex: ss[s0].text.trim() || null, term: null, reading: null, back: null },
-          ])
-            .then((r) => {
-              setMade({
-                text: fill(tr.madeCards.value, { n: String(r.terms.length) }),
-                terms: r.terms,
-              });
-              famChanged();
-            })
-            .catch(() => setMade({ text: tr.makeFailed.value }));
-    }
-    // An inflected word whose lemma he has no card for: 制作卡片 makes the lemma's card.
-    if (signedIn && material.readerV2 && hash && selLemma && !selLemma.card.href)
-      a.makePhrase = () =>
-        void makeCards(id, [
-          { w: selLemma.w, ex: selLemma.ex, term: selLemma.card.lemma, reading: null, back: null },
-        ])
-          .then((r) => {
-            setMade({
-              text: fill(tr.madeCards.value, { n: String(r.terms.length) }),
-              terms: r.terms,
-            });
-            famChanged();
-          })
-          .catch(() => setMade({ text: tr.makeFailed.value }));
     // His own selection: read exactly it (the same voice and rules as a tap's).
     if (u.kind === "range" && view.text) a.readAloud = () => tapRef.current(u, false);
     return a;
@@ -1760,11 +1724,6 @@ function Reader({
     openReview,
     makeLine,
     lineWords,
-    selSpan,
-    selMeaning,
-    selLemma,
-    tr,
-    famChanged,
   ]);
 
   // ── Grading the selection from its card (use-card-grade.ts) ──
@@ -1879,7 +1838,6 @@ function Reader({
     [sentenceOfSid, para],
   );
   const [gradeToast, setGradeToast] = useState<{ text: string; undo: boolean } | null>(null);
-  const [making, setMaking] = useState(false);
   const cardGrade = useCardGrade({
     id,
     on: signedIn && !!material.readerV2 && !!material.bookHash,
@@ -1906,14 +1864,16 @@ function Reader({
   const gradeCard = (r: SwipeRating) => {
     const plan = cardGrade.plan;
     if (plan.mode !== "grade" || !cardGrade.grade(r)) return false;
-    setMade(null);
     setGradeToast({
-      text: fill(tg.graded.value, {
-        target: gradeWords.describe(plan, r),
-        grade: gradeWords.grades[r],
-      }),
+      text: plan.preview
+        ? fill(tg.added.value, { grade: gradeWords.grades[r] })
+        : fill(tg.graded.value, {
+            target: gradeWords.describe(plan, r),
+            grade: gradeWords.grades[r],
+          }),
       undo: true,
     });
+    setMade(null);
     return true;
   };
   const undoCard = () => {
@@ -1926,6 +1886,7 @@ function Reader({
     <CardGradeArea
       plan={cardGrade.plan}
       intervals={cardGrade.intervals}
+      context={glossWord?.ex}
       locale={String(locale)}
       mirror={mirror}
       openedAt={cardGrade.openedAt}
@@ -1933,17 +1894,6 @@ function Reader({
       lastWhat={cardGrade.lastWhat}
       next={cardGrade.next}
       onNextShown={cardGrade.clearNext}
-      making={making}
-      onMake={() => {
-        const u = sel.unit;
-        if (!u) return;
-        setMaking(true);
-        void cardWords(u)
-          .then((w) => makeCards(id, w))
-          .then(() => famChanged())
-          .catch(() => setGradeToast({ text: tr.makeFailed.value, undo: false }))
-          .finally(() => setMaking(false));
-      }}
       onPreview={cardGrade.preview}
       onGrade={(r) => void gradeCard(r)}
       onUndo={() => void undoCard()}

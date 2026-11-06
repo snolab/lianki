@@ -108,6 +108,19 @@ async function run(device, scheme, touch) {
   await click();
   await page.waitForTimeout(300);
   let acts = await actions(page);
+  // A single new word has its slider, not a button (reader-grade-handle.tsx NewWordStrip).
+  check(!acts.some(([a]) => a === "make-cards"), "a word's card has no 制卡 button");
+  check(
+    acts.some(([a]) => a === "review-words"),
+    `the word's card offers the review (${acts.map((a) => a[0])})`,
+  );
+  // Its sentence: 制卡 for its several words. A quick second tap widens the selection.
+  await click();
+  await page.waitForFunction(
+    () => document.querySelector("[data-testid=read-select-card]")?.dataset.kind === "sentence",
+  );
+  await page.waitForTimeout(300);
+  acts = await actions(page);
   const make = acts.find(([a]) => a === "make-cards");
   check(
     acts.some(([a]) => a === "review-words"),

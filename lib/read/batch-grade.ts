@@ -7,8 +7,10 @@
 // - Only due cards and new items are graded. A word: its card due now, or a
 //   new card (never reviewed). A sentence: never graded, or due now. Not-due
 //   ones are skipped and counted; the server applies the same filter again.
-// - A word or phrase without a card offers 制卡 first; the handle comes once
-//   the card exists. One not due: no handle, only when it is due.
+// - A word or phrase without a card is a preview: nothing of it is stored, and
+//   the handle's grade is what makes the card and grades it, in one batch
+//   (owner, 2026-11-06 15:56 JST: "你就直接用滑条，不用显示制卡按钮"). One not
+//   due: no handle, only when it is due.
 // - A range graded Easy takes its new and due words along (same batch, one
 //   undo); any other grade opens the range's word review when it has some.
 //   A single sentence never takes words along.
@@ -93,8 +95,6 @@ export function splitWords(
 export type HandlePlan =
   /** Nothing to grade here (a chapter, the book, signed out, still loading). */
   | { mode: "none" }
-  /** A word or phrase with no card: 制卡 first. */
-  | { mode: "make"; target: "word" | "phrase"; w: string }
   /** A word or phrase not due: when it is. */
   | { mode: "notDue"; target: "word" | "phrase"; due: string }
   /** The handle; `disabled` when nothing in the selection is due or new. */
@@ -106,9 +106,11 @@ export type HandlePlan =
       skipped: number;
       /** Words graded: a word or phrase's own card; a range's due + new words (Easy only). */
       words: WordProbe[];
-      /** A range's words with no card yet (Easy makes them, then grades them). */
+      /** Words with no card yet: a range's (Easy makes them, then grades them), a preview's own. */
       make: WordProbe[];
       disabled: "nothingDue" | null;
+      /** A word or phrase with no card: nothing is stored until a grade commits it. */
+      preview?: true;
     };
 
 export type UnitKind = "word" | "phrase" | "sentence" | "para" | "range" | "chapter" | "book";
@@ -141,7 +143,17 @@ export function handlePlan(
     const p = probe.words[0];
     if (!p) return { mode: "none" };
     const s = wordState(p, now);
-    if (s.kind === "nocard") return { mode: "make", target: kind, w: p.w };
+    if (s.kind === "nocard")
+      return {
+        mode: "grade",
+        target: kind,
+        sentences: [],
+        skipped: 0,
+        words: [],
+        make: [p],
+        disabled: null,
+        preview: true,
+      };
     if (s.kind === "notDue") return { mode: "notDue", target: kind, due: s.due };
     return {
       mode: "grade",
@@ -172,7 +184,7 @@ export function batchOf(
   rating: SwipeRating,
 ): { sentences: string[]; words: WordProbe[]; make: WordProbe[]; openReview: boolean } {
   if (plan.target === "word" || plan.target === "phrase")
-    return { sentences: [], words: plan.words, make: [], openReview: false };
+    return { sentences: [], words: plan.words, make: plan.make, openReview: false };
   if (plan.target === "para") return { sentences: [], words: [], make: [], openReview: false };
   // A single sentence never takes words along; a range does, on Easy.
   const range = plan.target === "sentences" || plan.words.length + plan.make.length > 0;

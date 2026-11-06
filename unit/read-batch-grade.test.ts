@@ -30,6 +30,7 @@ import {
   type WordProbe,
 } from "@/lib/read/batch-grade";
 import { gradeBatch, probeBatch, undoBatch, type BatchCtx } from "@/lib/read/batch-grade-server";
+import { commitPending } from "@/app/(app)/read/[id]/use-card-grade";
 
 const NOW = Date.parse("2026-11-05T03:00:00Z");
 const probe = (o: Partial<WordProbe>): WordProbe => ({
@@ -58,13 +59,19 @@ describe("states", () => {
     });
   });
 
-  test("the plan: a due word gets the handle, a new word 制卡 first, a not-due word its due", () => {
+  test("the plan: a due word gets the handle, a new word a preview, a not-due word its due", () => {
     const p = (w: WordProbe) => handlePlan("word", { sentences: {}, words: [w] }, [], NOW);
     expect(p(probe({})).mode).toBe("grade");
-    expect(p(probe({ listId: null, term: null, due: null, reps: 0, w: "zèbre" }))).toEqual({
-      mode: "make",
+    const zebra = probe({ listId: null, term: null, due: null, reps: 0, w: "zèbre" });
+    expect(p(zebra)).toEqual({
+      mode: "grade",
       target: "word",
-      w: "zèbre",
+      sentences: [],
+      skipped: 0,
+      words: [],
+      make: [zebra],
+      disabled: null,
+      preview: true,
     });
     expect(p(probe({ due: "2026-11-20T00:00:00Z" }))).toEqual({
       mode: "notDue",
@@ -86,6 +93,36 @@ describe("states", () => {
       NOW,
     );
     expect(pl).toMatchObject({ mode: "grade", target: "phrase" });
+  });
+});
+
+describe("a new word's preview: nothing stored until a grade commits it", () => {
+  const zebra = probe({ listId: null, term: null, due: null, reps: 0, w: "zèbre" });
+  const plan = handlePlan("word", { sentences: {}, words: [zebra] }, [], NOW);
+  test("its one grade makes the card; every grade gets its interval", () => {
+    if (plan.mode !== "grade") throw new Error(plan.mode);
+    expect(batchOf(plan, 2)).toEqual({
+      sentences: [],
+      words: [],
+      make: [zebra],
+      openReview: false,
+    });
+    const withNext = { ...zebra, next: { 3: "2026-11-08T03:00:00Z" } };
+    const spans = gradeIntervals({ ...plan, make: [withNext] }, { words: [withNext] }, NOW);
+    expect(spans[3]).toEqual([3 * 86_400_000, 3 * 86_400_000]);
+  });
+  test("once committed it cannot be committed again, until its batch is done or undone", () => {
+    const batch = (state: "held" | "sending" | "sent" | "undone") => ({
+      kind: "batch" as const,
+      state,
+      flash: { words: ["zèbre"] },
+    });
+    expect(commitPending([], "zèbre")).toBe(false);
+    expect(commitPending([batch("held")], "zèbre")).toBe(true);
+    expect(commitPending([batch("sending")], "zèbre")).toBe(true);
+    expect(commitPending([batch("sent")], "zèbre")).toBe(false);
+    expect(commitPending([batch("undone")], "zèbre")).toBe(false);
+    expect(commitPending([batch("held")], "chat")).toBe(false);
   });
 });
 
@@ -263,6 +300,119 @@ describe("one batch, the shared write paths, one undo", () => {
     if (pp.mode !== "grade") throw new Error("no handle");
     expect(gradeIntervals(pp, r.res, NOW, [sid(1, 0), sid(1, 1)])[1]).not.toBeNull();
     expect(gradeIntervals(pp, null, NOW)[1]).toBeNull();
+  });
+
+  const rowsOf = async (table: string) =>
+    (await d1
+      .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE email = ?`)
+      .bind(EMAIL)
+      .first<{ n: number }>())!.n;
+  const allRows = async () => ({
+    lists: await rowsOf("word_lists"),
+    cards: await rowsOf("word_cards"),
+    entries: await rowsOf("word_list_entries"),
+    reviews: await rowsOf("word_reviews"),
+  });
+
+  test("a new word: the probe stores nothing", async () => {
+    const before = await allRows();
+    const r = await probeBatch(c, [], [w("zèbre")], new Date(NOW));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.res.words[0]).toMatchObject({ w: "zèbre", listId: null, due: null, reps: 0 });
+    // Every grade's interval shows before anything exists.
+    expect(Object.keys(r.res.words[0].next ?? {})).toEqual(["1", "2", "3", "4"]);
+    expect(await allRows()).toEqual(before);
+  });
+
+  test("commit: the card, with the chosen grade, its meaning asked once; deck made once", async () => {
+    const asked: string[] = [];
+    const glossFor = () => async (ws: { w: string }[]) => {
+      asked.push(...ws.map((x) => x.w));
+      return ws.map((x) => ({ ...x, back: `meaning of ${x.w}` }));
+    };
+    const lists0 = await rowsOf("word_lists");
+    for (const [i, word] of ["zèbre", "passe"].entries()) {
+      const rating = i === 0 ? 2 : 4;
+      const r = await gradeBatch(
+        c,
+        { clientId: `batch-new-${i}`, rating },
+        [w(word)],
+        new Date(NOW),
+        glossFor,
+      );
+      if (!r.ok) throw new Error(r.error);
+      expect(r.res.words).toMatchObject([{ w: word, term: word, made: true }]);
+      const row = await cardRow(word);
+      expect(row!.reps).toBe(1);
+      const reviews = await d1
+        .prepare("SELECT rating FROM word_reviews WHERE email = ? AND term = ?")
+        .bind(EMAIL, word)
+        .all<{ rating: number }>();
+      expect(reviews.results.map((x) => x.rating)).toEqual([rating]);
+    }
+    expect(asked).toEqual(["zèbre", "passe"]);
+    // One book list, made by the first commit, whatever else he has.
+    expect(await rowsOf("word_lists")).toBe(lists0 + 1);
+  });
+
+  test("a commit sent twice (the same client id) adds and charges nothing more", async () => {
+    let asked = 0;
+    const glossFor = () => async (ws: { w: string }[]) => {
+      asked++;
+      return ws.map((x) => ({ ...x, back: "m" }));
+    };
+    const body = { clientId: "batch-new-twice", rating: 3 };
+    await gradeBatch(c, body, [w("zèbre")], new Date(NOW), glossFor);
+    const second = await gradeBatch(c, body, [w("zèbre")], new Date(NOW), glossFor);
+    expect(second).toMatchObject({ ok: true, res: { duplicate: true, words: [] } });
+    expect(asked).toBe(1);
+    expect((await cardRow("zèbre"))!.reps).toBe(1);
+  });
+
+  test("undo after a commit removes the card, its entry and its grade", async () => {
+    const before = await allRows();
+    const r = await gradeBatch(
+      c,
+      { clientId: "batch-new-undo", rating: 3 },
+      [w("zèbre")],
+      new Date(NOW),
+    );
+    expect(r.ok).toBe(true);
+    expect(await cardRow("zèbre")).not.toBeNull();
+    const u = await undoBatch(c, "batch-new-undo", "2026-11-05");
+    expect(u).toEqual({ restored: 1, changed: 0 });
+    expect(await cardRow("zèbre")).toBeNull();
+    const after = await allRows();
+    // Cards, entries and reviews as before; the book's (empty) list stays, as after 制卡's undo.
+    expect({ ...after, lists: before.lists }).toEqual(before);
+    expect(after.lists).toBe(before.lists + 1);
+  });
+
+  test("a book that mixes languages: filed, probed and undone in the word's own list", async () => {
+    const hashEn = `${c.bctx.hash}~en`;
+    const mixed: BatchCtx = {
+      ...c,
+      byLang: (ws) => [{ book: { ...c.bctx, hash: hashEn, lang: "en" }, words: ws }],
+    };
+    const r = await gradeBatch(
+      mixed,
+      { clientId: "batch-new-lang", rating: 3 },
+      [w("house")],
+      new Date(NOW),
+    );
+    if (!r.ok) throw new Error(r.error);
+    const row = await d1
+      .prepare(
+        "SELECT l.source FROM word_cards c JOIN word_lists l ON l.email = c.email AND l.id = c.list_id WHERE c.email = ? AND c.term = 'house'",
+      )
+      .bind(EMAIL)
+      .first<{ source: string }>();
+    expect(row!.source).toContain("~en");
+    const p = await probeBatch(mixed, [], [w("house")], new Date(NOW));
+    if (!p.ok) throw new Error(p.error);
+    expect(p.res.words[0].listId).toBe(r.res.words[0].listId);
+    await undoBatch(mixed, "batch-new-lang", "2026-11-05", [c.bctx.hash, hashEn]);
+    expect(await cardRow("house")).toBeNull();
   });
 
   test("a word batch: graded through /words' review; undo restores the card exactly", async () => {

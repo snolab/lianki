@@ -1,7 +1,9 @@
 // A selected word's meaning, fetched once per tab (the hook:
 // app/(app)/read/[id]/use-select-gloss.ts). POST /api/read/[id]/gloss: the
 // decks over the book's lemmas, the shared word_gloss rows, else the model
-// (charged through chargeAi).
+// (charged through chargeAi). The selection card previews a word that is no
+// card yet, so it asks with `cached: true`: the decks and word_gloss only, no
+// model, no charge; the model comes when the word is committed (batch-grade).
 //
 // With the user's own AI on (docs/byok.md), the route is asked with
 // `own: true`: decks and word_gloss only, no model, no charge. What they lack
@@ -54,7 +56,7 @@ export function fetchGloss(
       method: "POST",
       headers: { "content-type": "application/json" },
       // Only the word and its sentence: the user's key and backend never come here.
-      body: JSON.stringify(own ? { w, ex, own: true } : { w, ex }),
+      body: JSON.stringify(own ? { w, ex, own: true } : { w, ex, cached: true }),
     })
       .then((r) => (r.ok ? (r.json() as Promise<Answer>) : null))
       .then(async (g): Promise<Gloss | null> => {

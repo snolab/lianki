@@ -7,10 +7,12 @@
 // the local D1). Throwaway accounts and the public-domain fixture EPUB only:
 //
 // - tapping or clicking the text never grades (no batch-grade write);
-// - a word with no card offers 制卡; once made, the handle appears;
-// - a tap on the knob never grades; a drag past a level does (one batch,
-//   sent after the hold); keys 1–4 grade on desktop;
-// - dragging the knob up takes the batch back (the server's undo);
+// - a word with no card is a preview, with no 制卡 button: a tap, a drag short of
+//   a level or closing the card stores nothing and asks no model;
+// - a tap on the knob never grades; a drag past a level adds it and grades it
+//   (one batch, sent after the hold); keys 1–4 and the hidden buttons do too;
+// - the toast's Undo and U drop a held batch; dragging the knob up takes a sent
+//   one back (the server's undo), and the word is a preview again;
 // - a sentence gets the handle and its drag grades that sentence.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -50,7 +52,14 @@ async function setup(ctx, tag) {
   page.on("pageerror", (e) => errs.push(e.message));
   // Every write the handle makes: grades and undos (the probe is a read).
   const writes = [];
+  // Whatever else could store or spend on a new word.
+  const others = [];
   page.on("request", (q) => {
+    if (q.method() === "POST" && q.url().includes("/make-cards")) others.push("make-cards");
+    if (q.method() === "POST" && q.url().includes("/gloss")) {
+      const g = JSON.parse(q.postData() || "{}");
+      if (!g.cached && !g.own) others.push("gloss with the model");
+    }
     if (!q.url().includes("/batch-grade") || q.method() !== "POST") return;
     const b = JSON.parse(q.postData() || "{}");
     if (!b.probe) writes.push(b);
@@ -63,7 +72,7 @@ async function setup(ctx, tag) {
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   await until(page, () => page.evaluate(() => !!document.querySelector(".lk-book [data-f]")));
-  return { page, errs, writes };
+  return { page, errs, writes, others };
 }
 
 /** A not-recognised or new word (no card yet) in a long paragraph, on screen. */
@@ -117,7 +126,7 @@ async function run(device, scheme, touch) {
   console.log(`— ${tag}`);
   const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: scheme });
   await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
-  const { page, errs, writes } = await setup(ctx, tag);
+  const { page, errs, writes, others } = await setup(ctx, tag);
   const cdp = touch ? await ctx.newCDPSession(page) : null;
   await page.mouse.wheel(0, 700);
   await page.waitForTimeout(600);
@@ -126,16 +135,24 @@ async function run(device, scheme, touch) {
   if (!w) return ctx.close();
   const tapWord = () => (touch ? page.touchscreen.tap(w.x, w.y) : page.mouse.click(w.x, w.y));
 
-  // A tap on the word: its card, 制卡 first, nothing graded.
+  // A tap on the word: a preview with the slider, no button, nothing stored.
   await tapWord();
-  const make = page.getByTestId("read-grade-make");
-  check(await until(page, () => make.isVisible()), "a word without a card: 制卡 on the card");
-  await page.screenshot({ path: join(OUT, `make-${tag}.png`) });
-  await make.click();
   const knob = page.getByTestId("read-grade-knob");
-  check(await until(page, () => knob.isVisible(), 15000), "once the card exists, the handle");
+  const preview = page.getByTestId("read-new-word-context");
+  check(await until(page, () => knob.isVisible(), 15000), "a word without a card: the slider");
+  check(await preview.isVisible(), "the preview shows the word's sentence");
+  const noButton = async () =>
+    (await page.locator("[data-action=make-cards],[data-action=make-phrase]").count()) === 0;
+  check(await noButton(), "no 制卡 button on a word's card");
   await page.waitForTimeout(700);
-  await page.screenshot({ path: join(OUT, `handle-${tag}.png`) });
+  await page.screenshot({ path: join(OUT, `preview-${tag}.png`) });
+  // Closing it stores nothing; the word is the same preview when it comes back.
+  await page.getByTestId("read-select-close").click();
+  await page.waitForTimeout(300);
+  await tapWord();
+  check(await until(page, () => knob.isVisible(), 8000), "closed and reopened: still a preview");
+  check(await preview.isVisible(), "still no card after closing it");
+  await page.waitForTimeout(700);
 
   // The whole rating system: each grade with its next interval, as /words.
   const IV = /\d+(s|m|h|d|mo|y)/;
@@ -215,7 +232,13 @@ async function run(device, scheme, touch) {
   const toast = page.getByTestId("read-made-toast");
   check(await until(page, () => toast.isVisible(), 2000), "the grade's compact toast");
   await page.screenshot({ path: join(OUT, `graded-${tag}.png`) });
+  await page
+    .getByTestId("read-grade-next")
+    .waitFor({ timeout: 2000 })
+    .catch(() => {});
+  check(!(await preview.isVisible()), "committed: not a preview any more, nor a second commit");
   check(writes.length === 0, `held: nothing sent yet, and no tap graded (${writes.length})`);
+  check(others.length === 0, `no make-cards or model gloss before the commit (${others})`);
   check(await until(page, () => writes.length > 0, 12000), "the batch is sent after the hold");
   check(
     writes[0]?.rating === 3 && writes[0]?.words?.length === 1 && !writes[0]?.sentences?.length,
@@ -236,6 +259,18 @@ async function run(device, scheme, touch) {
   const u = await undone.catch(() => null);
   const ub = u ? await u.json().catch(() => null) : null;
   check(!!u && u.ok() && ub?.restored >= 1, `dragging up undoes it (${JSON.stringify(ub)})`);
+  check(await until(page, () => preview.isVisible(), 8000), "undone: the card is gone, a preview");
+
+  // The toast's Undo on a fresh commit: dropped while held, nothing sent.
+  await page.waitForTimeout(700);
+  const n1 = writes.length;
+  if (touch) await touchDrag(cdp, page, 56, 0);
+  else await mouseDrag(page, 56, 0);
+  await toast.waitFor({ timeout: 2000 });
+  await toast.locator("button").click();
+  check(await until(page, () => preview.isVisible(), 2000), "toast Undo: a preview again");
+  await page.waitForTimeout(GRADE_WAIT);
+  check(writes.length === n1, "toast Undo while held: nothing sent");
 
   // Desktop: keys grade the open card's word.
   if (!touch) {
@@ -249,6 +284,25 @@ async function run(device, scheme, touch) {
     await page.keyboard.press("u");
     await page.waitForTimeout(GRADE_WAIT);
     check(writes.length === before, "U while held: dropped, nothing sent");
+
+    // Without dragging: a focusable button per grade, shown on focus.
+    await until(page, () => preview.isVisible());
+    const good = page.locator("[data-testid=read-new-word-add][data-rating='3']");
+    await good.focus();
+    await page.screenshot({ path: join(OUT, `buttons-${tag}.png`) });
+    const box = await good.boundingBox();
+    check(box && box.height >= 40, `the focused button shows, full size (${box?.height})`);
+    await page.keyboard.press("Enter");
+    check(await until(page, () => toast.isVisible(), 2000), "Enter on the button commits (toast)");
+    check(
+      await page.evaluate(() => document.activeElement?.getAttribute("role") === "slider"),
+      "focus stays on the card (the knob)",
+    );
+    check(await until(page, () => writes.length > before, 12000), "its batch is sent");
+    check(
+      writes.at(-1)?.rating === 3,
+      `the button's grade goes through (${writes.at(-1)?.rating})`,
+    );
   }
 
   // A sentence: two quick clicks; its handle grades that sentence.
@@ -290,6 +344,7 @@ async function run(device, scheme, touch) {
 const GRADE_WAIT = 9000;
 await run(devices["Desktop Chrome"], "light", false);
 await run(devices["iPhone 15"], "dark", true);
+await run(devices["iPhone 15"], "light", true);
 await browser.close();
 console.log(failed ? `\n${failed} failed` : "\nall passed");
 process.exit(failed ? 1 : 0);

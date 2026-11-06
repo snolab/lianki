@@ -46,10 +46,8 @@ export interface CardActions {
   readAloud?: () => void;
   /** Review every word of the selection's paragraph (a range: its own words) in /words' review (reader-word-review.tsx). */
   reviewWords?: () => void;
-  /** 制卡: `n` words of the paragraph have no card in any of his lists. */
+  /** 制卡 for several words: `n` words of the sentence, paragraph or range have no card. */
   makeCards?: { n: number; run: () => void };
-  /** A card for the selected phrase, in the book's own deck (the same path as a word's). */
-  makePhrase?: () => void;
 }
 
 /** A deck card's meaning on the card. */
@@ -76,7 +74,7 @@ export interface CardMeaning {
 export interface CardLemma {
   form: string;
   lemma: string;
-  /** The /words list holding his lemma card; null when he has none (制作卡片 makes it). */
+  /** The /words list holding his lemma card; null when he has none (the handle's grade makes it). */
   href: string | null;
   /** A grammatical label ("simple past · 3sg"), once the lemma file carries tags. */
   tags?: string | null;
@@ -161,7 +159,7 @@ export function SelectCard({
   translateFailed?: (() => void) | null;
   /** He picked another language's entry as the meaning here (its choice, lib/read/sense-pick.ts). */
   onPickSense?: ((choice: string) => void) | null;
-  /** The grade handle (or 制卡 / when it is due), under the actions (reader-grade-handle.tsx). */
+  /** The grade handle (or when it is due), under the actions (reader-grade-handle.tsx). */
   grade?: ReactNode;
   onClose: () => void;
 }) {
@@ -469,16 +467,6 @@ export function SelectCard({
             data-action="make-cards"
           >
             {fill(tr.makeCards.value, { n: nf.format(actions.makeCards.n) })}
-          </button>
-        )}
-        {actions.makePhrase && (
-          <button
-            type="button"
-            className={btn}
-            onClick={actions.makePhrase}
-            data-action="make-phrase"
-          >
-            {t.makePhraseCard}
           </button>
         )}
         {actions.readFrom && (
