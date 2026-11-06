@@ -62,6 +62,8 @@ jobs:
         run: bun run test:ext
       - name: "Alert #lianki when nightly QA fails"
         if: failure()
+        # A container job's default shell is sh, which dies on ${GITHUB_SHA::7}.
+        shell: bash
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
