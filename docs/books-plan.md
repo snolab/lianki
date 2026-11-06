@@ -156,7 +156,7 @@ One path for a Google Doc import (`lib/read/prep.ts`, `prep-server.ts`):
    the lower end, at his speed (`readSamples` → `itemBounds`, else the
    prior); a sentence longer than that cut at a pause (clause punctuation, a
    filler), else between words. Headings, chapters and marks follow.
-3. **Polish** (AI, optional): offered in the reader only when `shape.raw`
+3. **Polish** (AI, optional): offered in the reader only when `shape.raw` (and not while the page follows a live doc, nor after a no: `lib/read/polish-offer.ts`; the action stays in the contents sheet)
    (「这像是未整理的转写稿，要整理吗？」 / 整理转写稿), never silent.
    `POST /api/read/[id]/polish`: chunks of ~3,000 characters through the
    partner model, each checked to keep every word (punctuation, case,

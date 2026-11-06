@@ -140,6 +140,12 @@ Flag `read.gdoc-stream` (off: the owner only).
    60 per 10 min was used up within minutes); a hidden tab does not follow; its ×
    stops following for that visit.
 
+The raw-transcript offer (`lib/read/polish-offer.ts`) never shows on this page
+(owner, 2026-11-06: "when we are still in meeting"). The socket's states are the
+reader's, not the writer's, and the writer sends no end, so "ended" means the
+doc was opened without `?streamingFrom`; a socket gone offline has not ended.
+The tidy action stays in the contents sheet; the next save drops a polish (3).
+
 Limits: it runs only while the doc is open in a tab with the userscript, so the
 writer's side is desktop only (the reader can be any device). Word marks in the
 tail are learning or not recognised; "new" needs the save.

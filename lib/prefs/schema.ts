@@ -94,6 +94,8 @@ const sensePicks = z
   )
   .refine((m) => Object.keys(m).length <= 24)
   .refine((m) => !Object.entries(m).some(([k, v]) => placeLike(k) || placeLike(v)));
+/** Materials he said no to tidying (lib/read/polish-offer.ts): ids, under the 2 KB cap. */
+const polishSkips = z.array(z.string().regex(/^[A-Za-z0-9_-]{1,40}$/)).max(40);
 /** A BYOK backend exactly as lib/byok/config.ts cleans it (no key field can pass). */
 const byokBackend = z
   .object({
@@ -152,6 +154,9 @@ export const PREF_SCHEMAS = {
   "lab.immersionTranspose": z.boolean(),
   // /read: which language's entry a word means where it stands
   "read.sensePicks": sensePicks,
+  // /read: the offer to tidy a raw transcript, off for good or for some texts
+  "read.polishOffer": z.boolean(),
+  "read.polishSkips": polishSkips,
   // page titles: cleaning notification prefixes
   "titles.rules": titleRules,
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
