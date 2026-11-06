@@ -155,8 +155,8 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   // ?lang= sticks in a cookie: switch back so the English names below match.
   await page.goto(`${BASE}/home?lang=en`, { waitUntil: "networkidle" });
 
-  // Explore cards on /home: a line of explanation each, and a screenshot
-  // behind it that loads without moving anything (layout-shift total ≈ 0).
+  // Explore cards on /home: a line of explanation each, and a drawing behind
+  // it with no words in it and no layout shift (total ≈ 0).
   {
     const cls = await ctx.newPage();
     await cls.addInitScript(() => {
@@ -172,22 +172,23 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     await cls.waitForTimeout(800);
     const info = await cls.evaluate(() =>
       [...document.querySelectorAll("[data-feature]")].map((a) => {
-        const img = a.querySelector("img");
+        const art = a.querySelector("svg.lk-feature-art");
+        const box = art?.getBoundingClientRect();
         return {
           text: a.textContent?.trim().length ?? 0,
           h: a.getBoundingClientRect().height,
-          img: !!img,
-          loaded: !!img && img.complete && img.naturalWidth > 0,
-          sized: !!img && !!img.getAttribute("width") && img.getAttribute("loading") === "lazy",
-          alt: img?.alt ?? "",
+          art: !!box && box.width > 0 && box.height > 0,
+          hidden: art?.getAttribute("aria-hidden") === "true",
+          wordless: !!art && !art.textContent?.trim() && !art.querySelector("text"),
+          img: !!a.querySelector("img"),
         };
       }),
     );
     const shift = await cls.evaluate(() => window.__cls);
     check(
       info.length === 7 &&
-        info.every((c) => c.text > 20 && c.h >= 160 && c.img && c.loaded && c.sized && c.alt),
-      `/home Explore: 7 cards, each with a line of text and a loaded, sized, lazy screenshot with alt (${JSON.stringify(info[0])})`,
+        info.every((c) => c.text > 20 && c.h >= 160 && c.art && c.hidden && c.wordless && !c.img),
+      `/home Explore: 7 cards, each with a line of text over a wordless drawing (${JSON.stringify(info[0])})`,
     );
     check(shift < 0.01, `/home Explore cards cause no layout shift (CLS ${shift.toFixed(4)})`);
     await cls.close();
