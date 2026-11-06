@@ -1,9 +1,9 @@
-// /vibe (docs/vibe.md): the gate, consent, pause, retention, account isolation,
+// /vibe (docs/vibe.md): the gate, the start tap, pause, keeping, account isolation,
 // and ambient text never leaving for anything but its own transcript. Every line
 // here is invented text. No microphone, no audio: a fake VAD drives the real mic
 // core, and a fake Mac answers.
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
@@ -67,12 +67,7 @@ beforeEach(() => {
 });
 
 const start = async (user = "u1") => {
-  const r = await startReply(
-    db,
-    user,
-    { consent: true, otherLang: "fr", title: "Conversation" },
-    T0,
-  );
+  const r = await startReply(db, user, { tap: true, title: "Conversation" }, T0);
   expect(r.status).toBe(200);
   return r.body.id as string;
 };
@@ -131,35 +126,54 @@ describe("the gate", () => {
   });
 });
 
-describe("consent", () => {
-  it("the server refuses a start without it", async () => {
-    for (const body of [{}, { consent: false }, { consent: "true" }, { consent: 1 }, null]) {
-      const r = await startReply(db, "u1", { otherLang: "fr", title: "x", ...body }, T0);
-      expect(r).toEqual({ status: 400, body: { error: "consent-required" } });
+describe("starting", () => {
+  it("the server opens nothing without the tap", async () => {
+    for (const body of [{}, { tap: false }, { tap: "true" }, { tap: 1 }, { consent: true }, null]) {
+      const r = await startReply(db, "u1", { title: "x", ...body }, T0);
+      expect(r).toEqual({ status: 400, body: { error: "tap-required" } });
     }
     const { results } = await db.prepare("SELECT id FROM vibe_doc").bind().all();
     expect(results).toEqual([]);
   });
 
-  it("records when it was given, and in what language", async () => {
+  it("the tap alone starts: no language, no statement to accept", async () => {
     const id = await start();
     const row = await db
-      .prepare("SELECT consent_ms, other_lang, status FROM vibe_doc WHERE id = ?")
+      .prepare("SELECT status, started_ms FROM vibe_doc WHERE id = ?")
       .bind(id)
-      .first<{ consent_ms: number; other_lang: string; status: string }>();
-    expect(row).toEqual({ consent_ms: T0, other_lang: "fr", status: "running" });
+      .first<{ status: string; started_ms: number }>();
+    expect(row).toEqual({ status: "running", started_ms: T0 });
   });
 
-  it("every locale has the whole statement, and Cancel starts nothing", async () => {
-    const consent = (await import("@/app/(app)/vibe/vibe-consent.content")).default;
-    const locales = (await import("@/lib/constants")).BLOG_LOCALES;
-    for (const leaf of Object.values(consent.content) as { translation: Record<string, string> }[])
-      for (const l of locales) expect(leaf.translation[l]?.length).toBeGreaterThan(5);
-    const keep = (consent.content.keep as unknown as { translation: Record<string, string> })
-      .translation;
-    for (const l of locales) expect(keep[l]).toContain("{days}");
+  it("the page is a simple one: no form, no dialog, the tap's trust check kept", () => {
     const client = readFileSync("app/(app)/vibe/VibeClient.tsx", "utf8");
-    expect(client).toMatch(/href="\/read"[^>]*data-testid="vibe-cancel"/);
+    for (const gone of ['role="dialog"', "<select", "vibe-consent", "vibe-cancel", "ConsentScreen"])
+      expect(client).not.toContain(gone);
+    expect(client).toContain("if (e.isTrusted) onStart();");
+    expect(existsSync("app/(app)/vibe/vibe-consent.content.ts")).toBe(false);
+  });
+
+  it("the line to the user is on the start page, in every locale, and asks for nothing", async () => {
+    const page = (await import("@/app/(app)/vibe/page.content")).default;
+    const locales = (await import("@/lib/constants")).BLOG_LOCALES;
+    const leaf = (k: string) =>
+      (page.content as unknown as Record<string, { translation: Record<string, string> }>)[k]
+        .translation;
+    for (const k of ["yourCare", "intro", "recognised", "retentionOff"])
+      for (const l of locales) expect(leaf(k)[l]?.length).toBeGreaterThan(0);
+    const client = readFileSync("app/(app)/vibe/VibeClient.tsx", "utf8");
+    expect(client).toContain("{t.yourCare}");
+    // Text, not a control: nothing to dismiss before Start.
+    expect(client).toMatch(/<p[^>]*data-testid="vibe-care"[^>]*>\s*\{t\.yourCare\}\s*<\/p>/);
+  });
+
+  it("no fixed retention, and no legal wording, anywhere in its text", async () => {
+    const page = (await import("@/app/(app)/vibe/page.content")).default;
+    const text = JSON.stringify(page.content);
+    expect(text).not.toMatch(/\{days\}|30 days|30 天|30天|\bconsent\b/i);
+    expect(readFileSync("lib/flags.ts", "utf8")).not.toContain("30 天");
+    expect(readFileSync("docs/vibe.md", "utf8")).not.toMatch(/30 days by default|默认 30/);
+    expect(readFileSync("app/(app)/vibe/VibeRetention.tsx", "utf8")).not.toMatch(/\b30\b/);
   });
 });
 
@@ -265,12 +279,7 @@ describe("the routes' answers", () => {
     expect((await linesReply(db, "u1", id, { from: 0, lines: many }, T0)).status).toBe(400);
     for (const body of [null, {}, { state: "deleted" }])
       expect((await stateReply(db, "u1", id, body)).status).toBe(400);
-    expect(
-      (await startReply(db, "u1", { consent: true, otherLang: "French!", title: "x" }, T0)).status,
-    ).toBe(400);
-    expect(
-      (await startReply(db, "u1", { consent: true, otherLang: "fr", title: "   " }, T0)).status,
-    ).toBe(400);
+    expect((await startReply(db, "u1", { tap: true, title: "   " }, T0)).status).toBe(400);
   });
 
   it("lines of nothing add nothing, and say how far it has got", async () => {
@@ -284,12 +293,15 @@ describe("the routes' answers", () => {
   });
 
   it("the setting reads back", async () => {
-    expect(await settingsGetReply(db, "u1")).toEqual({ status: 200, body: { days: 30 } });
+    expect(await settingsGetReply(db, "u1")).toEqual({ status: 200, body: { days: null } });
     await settingsPutReply(db, "u1", { days: 12 }, T0);
     expect(await settingsGetReply(db, "u1")).toEqual({ status: 200, body: { days: 12 } });
     await settingsPutReply(db, "u1", { days: 14 }, T0);
     expect((await settingsGetReply(db, "u1")).body.days).toBe(14);
     expect((await settingsPutReply(db, "u1", null, T0)).status).toBe(400);
+    expect((await settingsPutReply(db, "u1", {}, T0)).status).toBe(400);
+    expect((await settingsPutReply(db, "u1", { days: null }, T0)).body).toEqual({ days: null });
+    expect((await settingsGetReply(db, "u1")).body.days).toBeNull();
   });
 
   it("stopping twice is fine; a doc whose material was deleted is gone", async () => {
@@ -341,20 +353,89 @@ describe("account isolation", () => {
 
 describe("retention", () => {
   const seed = async (user: string, atMs: number, text = "an invented line") => {
-    const r0 = await startReply(db, user, { consent: true, otherLang: "ja", title: "T" }, atMs);
+    const r0 = await startReply(db, user, { tap: true, title: "T" }, atMs);
     const id = r0.body.id as string;
     const r = await linesReply(db, user, id, { from: 0, lines: [text] }, atMs);
     return { id, material: r.body.material as string };
   };
 
-  it("defaults to 30 days and counts from the newest line", async () => {
-    expect(await getRetentionDays(db, "u1")).toBe(30);
+  /** What #647 could leave behind: a bare row, as the old field saved on blur. */
+  const legacyRow = (user: string, days: number) =>
+    d1.exec(
+      `INSERT INTO vibe_settings (user_id, retention_days, updated_ms) VALUES ('${user}', ${days}, 0)`,
+    );
+
+  it("unset means never: the sweep leaves their docs alone, however old", async () => {
+    expect(await getRetentionDays(db, "u1")).toBeNull();
+    const { material } = await seed("u1", T0);
+    expect(await sweepVibeDocs(db, null, T0 + 10_000 * DAY)).toBe(0);
+    expect(await getReadMaterialById("u1", material)).not.toBeNull();
+  });
+
+  it("a chosen number counts from the newest line", async () => {
+    await setRetentionDays(db, "u1", 30, T0);
     const { material } = await seed("u1", T0);
     expect(await sweepVibeDocs(db, null, T0 + 30 * DAY - 1)).toBe(0);
     expect(await getReadMaterialById("u1", material)).not.toBeNull();
     expect(await sweepVibeDocs(db, null, T0 + 30 * DAY)).toBe(1);
     expect(await getReadMaterialById("u1", material)).toBeNull();
     expect(await db.prepare("SELECT id FROM vibe_doc").bind().first()).toBeNull();
+  });
+
+  it("turned off again, the sweep skips them, and no row or doc went anywhere", async () => {
+    await setRetentionDays(db, "u1", 1, T0);
+    const { material } = await seed("u1", T0);
+    await settingsPutReply(db, "u1", { days: null }, T0);
+    expect(await getRetentionDays(db, "u1")).toBeNull();
+    expect(await sweepVibeDocs(db, null, T0 + 400 * DAY)).toBe(0);
+    expect(await getReadMaterialById("u1", material)).not.toBeNull();
+  });
+
+  it("a legacy 30, or any row the old field saved, is not a choice", async () => {
+    legacyRow("u1", 30);
+    const { material } = await seed("u1", T0);
+    expect(await getRetentionDays(db, "u1")).toBeNull();
+    expect(await sweepVibeDocs(db, null, T0 + 400 * DAY)).toBe(0);
+    expect(await getReadMaterialById("u1", material)).not.toBeNull();
+    // Choosing afterwards counts, even the same number.
+    await setRetentionDays(db, "u1", 30, T0);
+    expect(await getRetentionDays(db, "u1")).toBe(30);
+  });
+
+  it("the migration: 30 stays unset, a typed number stays chosen, no row deleted", () => {
+    const all = testSchema();
+    const [before, after] = all.split("ALTER TABLE vibe_settings ADD COLUMN chosen");
+    const fresh = createTestD1(before);
+    for (const u of ["a", "b"])
+      fresh.exec(
+        `INSERT INTO user (id, email, name, emailVerified, createdAt, updatedAt) VALUES ('${u}', '${u}@example.com', '${u}', 1, 0, 0)`,
+      );
+    fresh.exec(
+      `INSERT INTO vibe_settings (user_id, retention_days, updated_ms) VALUES ('a', 30, 0)`,
+    );
+    fresh.exec(
+      `INSERT INTO vibe_settings (user_id, retention_days, updated_ms) VALUES ('b', 7, 0)`,
+    );
+    fresh.exec(`ALTER TABLE vibe_settings ADD COLUMN chosen${after}`);
+    const rows = fresh.prepare(
+      "SELECT user_id, retention_days, chosen FROM vibe_settings ORDER BY user_id",
+    );
+    return rows
+      .bind()
+      .all()
+      .then(({ results }) =>
+        expect(results).toEqual([
+          { user_id: "a", retention_days: 30, chosen: 0 },
+          { user_id: "b", retention_days: 7, chosen: 1 },
+        ]),
+      );
+  });
+
+  it("the Preferences field saves only a change, and shows off by default", () => {
+    const src = readFileSync("app/(app)/vibe/VibeRetention.tsx", "utf8");
+    expect(src).toContain("if (text === stored.current) return;");
+    expect(src).toContain('useState("")');
+    expect(src).toContain("placeholder={t.retentionOff.value}");
   });
 
   it("follows the user's setting, per user", async () => {
@@ -379,12 +460,14 @@ describe("retention", () => {
     const m = await getReadMaterialById("u1", material);
     expect(m!.r2Key).toBeTruthy();
     const deleted: string[] = [];
+    await setRetentionDays(db, "u1", 30, T0);
     await sweepVibeDocs(db, { delete: async (k) => void deleted.push(k) }, T0 + 31 * DAY);
     expect(deleted).toEqual([m!.r2Key!]);
   });
 
-  it("clears a start that never heard anything, and leaves other materials alone", async () => {
-    await startReply(db, "u1", { consent: true, otherLang: "ja", title: "T" }, T0);
+  it("with a number, clears a start that never heard anything, and leaves other materials", async () => {
+    await setRetentionDays(db, "u1", 30, T0);
+    await startReply(db, "u1", { tap: true, title: "T" }, T0);
     const { saveReadMaterial } = await import("@/lib/getReadMaterialsCollection");
     const other = await saveReadMaterial("u1", "A book", "a", ["a"]);
     expect(await sweepVibeDocs(db, null, T0 + 40 * DAY)).toBe(1);
@@ -552,15 +635,15 @@ function harness(over: Partial<VibeDeps> & { stt?: () => VibeStt | null } = {}) 
   };
 }
 const go = (s: ReturnType<typeof createVibeSession>) =>
-  s.start({ consent: true, otherLang: "fr", title: "Conversation" });
+  s.start({ tap: true, title: "Conversation" });
 
 describe("the session: starting", () => {
-  it("without consent: no server call, no microphone", async () => {
+  it("without the tap: no server call, no microphone", async () => {
     const h = harness();
-    await h.s.start({ consent: false, otherLang: "fr", title: "x" });
+    await h.s.start({ tap: false, title: "x" });
     expect(h.apiStart).not.toHaveBeenCalled();
     expect(h.gum).not.toHaveBeenCalled();
-    expect(h.s.view().end).toBe("consent-required");
+    expect(h.s.view().end).toBe("not-tapped");
   });
 
   it("server refusal (flag off): the microphone is never asked for", async () => {

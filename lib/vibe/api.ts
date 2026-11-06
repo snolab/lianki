@@ -6,6 +6,7 @@ import { cleanTitle } from "@/lib/read/title";
 import { checkRetention, vibeAllowed } from "./gate";
 import {
   appendLines,
+  clearRetentionDays,
   getRetentionDays,
   setDocState,
   setRetentionDays,
@@ -36,8 +37,8 @@ export function vibeUserId(
 const asObject = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 
 /**
- * POST /api/vibe, the consent screen's start button. `consent` must be exactly
- * true: there is no other way to open a conversation.
+ * POST /api/vibe, the start page's button. `tap` must be exactly true: there is
+ * no other way to open a conversation.
  */
 export async function startReply(
   db: D1Batch,
@@ -46,12 +47,10 @@ export async function startReply(
   now: number,
 ): Promise<Reply> {
   const b = asObject(raw);
-  if (b.consent !== true) return nope(400, "consent-required");
-  const otherLang = typeof b.otherLang === "string" ? b.otherLang : "";
-  if (!/^[a-z]{2,3}$/.test(otherLang)) return nope(400, "bad-language");
+  if (b.tap !== true) return nope(400, "tap-required");
   const title = cleanTitle(b.title);
   if (!title) return nope(400, "bad-title");
-  return { status: 200, body: { id: await startDoc(db, userId, { title, otherLang, now }) } };
+  return { status: 200, body: { id: await startDoc(db, userId, { title, now }) } };
 }
 
 export const MAX_BATCH_LINES = 100;
@@ -114,7 +113,12 @@ export async function settingsPutReply(
   raw: unknown,
   now: number,
 ): Promise<Reply> {
-  const days = checkRetention(asObject(raw).days);
+  const asked = asObject(raw).days;
+  if (asked === null) {
+    await clearRetentionDays(db, userId, now);
+    return { status: 200, body: { days: null } };
+  }
+  const days = checkRetention(asked);
   if (days === null) return nope(400, "bad-days");
   await setRetentionDays(db, userId, days, now);
   return { status: 200, body: { days } };

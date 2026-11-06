@@ -11,7 +11,6 @@ import { detectLangs, primaryLang, toRuns } from "@/lib/read/lang-detect";
 import { checkShape, type TextShape } from "@/lib/read/prep";
 import { carrySentenceCards, unchangedLines, type D1Batch } from "@/lib/read/reader-store";
 import { bookHash } from "@/lib/read/units";
-import { RETENTION_DEFAULT_DAYS } from "./gate";
 
 export type VibeState = "running" | "paused" | "stopped";
 
@@ -35,13 +34,15 @@ export function cleanLine(raw: unknown): string {
 }
 
 /**
- * The start button's write. The caller has checked the gate and the consent.
+ * The start button's write. The caller has checked the gate and the tap.
+ * other_lang and consent_ms are 0052's columns, read by nothing now
+ * (db/migrations/0053_vibe_keep_until_deleted.sql).
  * One writer at a time: any other open conversation of this user closes.
  */
 export async function startDoc(
   db: D1Batch,
   userId: string,
-  o: { title: string; otherLang: string; now: number },
+  o: { title: string; now: number },
 ): Promise<string> {
   const id = crypto.randomUUID();
   await db.batch([
@@ -51,9 +52,9 @@ export async function startDoc(
     db
       .prepare(
         `INSERT INTO vibe_doc (id, user_id, title, status, other_lang, consent_ms, started_ms, last_ms)
-         VALUES (?, ?, ?, 'running', ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, 'running', '', ?, ?, ?)`,
       )
-      .bind(id, userId, o.title, o.otherLang, o.now, o.now, o.now),
+      .bind(id, userId, o.title, o.now, o.now, o.now),
   ]);
   return id;
 }
@@ -153,8 +154,8 @@ export async function appendLines(
 }
 
 /**
- * Pause, resume, stop. Stopped is final (the next conversation goes through
- * consent again). A stopped conversation that heard nothing leaves no row.
+ * Pause, resume, stop. Stopped is final (the next conversation is a new tap on
+ * Start). A stopped conversation that heard nothing leaves no row.
  */
 export async function setDocState(
   db: D1Batch,
@@ -176,12 +177,13 @@ export async function setDocState(
   return "ok";
 }
 
-export async function getRetentionDays(db: D1Batch, userId: string): Promise<number> {
+/** The number the user chose; null when none: kept until deleted. */
+export async function getRetentionDays(db: D1Batch, userId: string): Promise<number | null> {
   const row = await db
-    .prepare("SELECT retention_days FROM vibe_settings WHERE user_id = ?")
+    .prepare("SELECT retention_days FROM vibe_settings WHERE user_id = ? AND chosen = 1")
     .bind(userId)
     .first<{ retention_days: number }>();
-  return row?.retention_days ?? RETENTION_DEFAULT_DAYS;
+  return row?.retention_days ?? null;
 }
 
 export async function setRetentionDays(
@@ -192,9 +194,17 @@ export async function setRetentionDays(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO vibe_settings (user_id, retention_days, updated_ms) VALUES (?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET retention_days = excluded.retention_days, updated_ms = excluded.updated_ms`,
+      `INSERT INTO vibe_settings (user_id, retention_days, chosen, updated_ms) VALUES (?, ?, 1, ?)
+       ON CONFLICT(user_id) DO UPDATE SET retention_days = excluded.retention_days, chosen = 1, updated_ms = excluded.updated_ms`,
     )
     .bind(userId, days, now)
+    .run();
+}
+
+/** Off: no number, so the sweep skips this user. */
+export async function clearRetentionDays(db: D1Batch, userId: string, now: number): Promise<void> {
+  await db
+    .prepare("UPDATE vibe_settings SET chosen = 0, updated_ms = ? WHERE user_id = ?")
+    .bind(now, userId)
     .run();
 }

@@ -12,8 +12,7 @@ export function vibeAllowed(flags: FlagValues | null | undefined, owner: boolean
   return flagIn(flags, VIBE_FLAG) && owner;
 }
 
-/** The owner's choice: 30 days unless the user sets another number. */
-export const RETENTION_DEFAULT_DAYS = 30;
+/** Kept until deleted, unless the user sets a number of days (docs/vibe.md, "Keeping"). */
 export const RETENTION_MIN_DAYS = 1;
 export const RETENTION_MAX_DAYS = 3650;
 

@@ -153,7 +153,7 @@ async function run(colorScheme, email) {
         await fetch("/api/vibe", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ consent: true, otherLang: "fr", title: "x" }),
+          body: JSON.stringify({ tap: true, title: "x" }),
         })
       ).status,
   );
@@ -162,31 +162,83 @@ async function run(colorScheme, email) {
   setFlag(true);
   await page.waitForTimeout(31_000);
   await page.goto(`${BASE}/vibe`);
-  await page.waitForSelector('[data-testid="vibe-consent"]');
-  check(gum.length === 0, "the consent screen opens no microphone");
-  check(macOpen.size === 0, "the consent screen opens no socket to the Mac");
-  const box = await page.locator('[data-testid="vibe-consent"]').boundingBox();
+  await page.waitForSelector('[data-testid="vibe-start"]');
+  check(gum.length === 0, "the page opens no microphone");
+  check(macOpen.size === 0, "the page opens no socket to the Mac");
+  check(
+    (await page.locator('[role="dialog"], [data-testid="vibe-home"] select').count()) === 0,
+    "no form: no dialog, no language picker",
+  );
+  const body = await page.innerText("body");
+  check(!/30 (days|天)|自动删除/.test(body), "no 30-day text, and no deletion promise");
+  check(
+    (await page.getAttribute('[data-testid="vibe-start"]', "disabled")) === null,
+    "Start is ready at once: nothing to dismiss first",
+  );
+  check(await page.isVisible('[data-testid="vibe-care"]'), "the line to the user is beside Start");
+  check(await page.isVisible('[data-testid="vibe-recognised"]'), "the recognised-languages line");
   const vw = page.viewportSize();
-  check(box.width === vw.width && box.height === vw.height, "the consent screen fills the screen");
   const startBox = await page.locator('[data-testid="vibe-start"]').boundingBox();
   check(
     startBox.y >= 0 && startBox.y + startBox.height <= vw.height,
     "Start is on screen without scrolling",
   );
-  await page.selectOption('[data-testid="vibe-consent-lang"]', "fr");
   check(
-    (await page.textContent('[data-testid="vibe-consent-other"]')).includes("Cloudflare"),
-    "the statement names where the text goes, in the other person's language",
+    (await page.evaluate(() => document.documentElement.scrollWidth)) <= vw.width,
+    "no sideways scroll at phone width",
   );
   await page.waitForTimeout(100);
-  await page.screenshot({ path: join(OUT, `consent-fr-${colorScheme}.png`) });
-  await page.selectOption('[data-testid="vibe-consent-lang"]', "ar");
-  check(
-    (await page.getAttribute('[data-testid="vibe-consent-other"]', "dir")) === "rtl",
-    "right-to-left languages read right to left",
+  await page.screenshot({ path: join(OUT, `start-${colorScheme}.png`) });
+
+  // A start without the tap's field opens nothing on the server.
+  const noTap = await page.evaluate(
+    async () =>
+      (
+        await fetch("/api/vibe", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: "x" }),
+        })
+      ).status,
   );
-  await page.screenshot({ path: join(OUT, `consent-ar-${colorScheme}.png`) });
-  await page.selectOption('[data-testid="vibe-consent-lang"]', "fr");
+  check(noTap === 400, "the server refuses a start without the tap");
+
+  // Off by default on /preferences, and leaving the field saves nothing.
+  const puts = [];
+  const notePut = (r) => {
+    if (r.method() === "PUT" && r.url().includes("/api/vibe/settings")) puts.push(r.postData());
+  };
+  page.on("request", notePut);
+  const fieldReady = () =>
+    page.waitForFunction(() => {
+      const f = document.querySelector('[data-testid="vibe-retention"]');
+      return f && !f.disabled;
+    });
+  await page.goto(`${BASE}/preferences`);
+  const field = page.locator('[data-testid="vibe-retention"]');
+  await fieldReady();
+  check((await field.inputValue()) === "", "retention is off by default");
+  await field.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(OUT, `preferences-${colorScheme}.png`) });
+  await field.focus();
+  await field.blur();
+  await page.waitForTimeout(300);
+  check(!puts.length, "tapping in and out of the field saves nothing");
+  await field.fill("45");
+  await field.blur();
+  await page.waitForSelector('[data-testid="vibe-retention-note"]');
+  check(puts.length === 1 && puts[0].includes("45"), "a number the user types is saved");
+  await page.reload();
+  await fieldReady();
+  check((await field.inputValue()) === "45", "and reads back");
+  await field.fill("");
+  await field.blur();
+  await page.waitForSelector('[data-testid="vibe-retention-note"]');
+  check(puts.length === 2 && puts[1].includes("null"), "clearing it turns it off");
+  page.off("request", notePut);
+  await page.goto(`${BASE}/vibe`);
+  await page.waitForSelector('[data-testid="vibe-start"]');
+  check(gum.length === 0, "still no microphone");
 
   // A script's click is not a tap.
   await page.evaluate(() => document.querySelector('[data-testid="vibe-start"]').click());
@@ -336,7 +388,7 @@ async function run(colorScheme, email) {
   );
   await page.screenshot({ path: join(OUT, `ended-${colorScheme}.png`) });
 
-  // The doc, in /read: no polish offer, the private mark, and the note.
+  // The doc, in /read: no polish offer, no 30-day text, nothing to share, the private mark.
   const href = await page.getAttribute('[data-testid="vibe-open"]', "href");
   await page.goto(`${BASE}${href}`);
   await page.waitForSelector('[data-testid="vibe-doc-note"]', { timeout: 30_000 });
@@ -345,6 +397,12 @@ async function run(colorScheme, email) {
     "no polish offer when opened from the list",
   );
   check((await page.locator("[data-lk-private-screen]").count()) > 0, "the page is marked private");
+  check(
+    !/30 (days|天)|自动删除|deleted automatically/.test(
+      await page.textContent('[data-testid="vibe-doc-note"]'),
+    ),
+    "the note promises no deletion",
+  );
   await page.waitForTimeout(800);
   await page.screenshot({ path: join(OUT, `reader-${colorScheme}.png`) });
   await page.goto(`${BASE}${href}?streamingFrom=vibe`);

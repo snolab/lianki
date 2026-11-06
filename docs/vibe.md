@@ -1,10 +1,13 @@
-# /vibe: a conversation becomes a private doc
+# /vibe: a conversation diary
 
 The owner asked for this on 2026-11-06: he talks with a foreigner, each learning
-the other's language; the conversation is heard live, transcribed into a private
-doc read in /read, and the words heard are offered as a 新词 list. His card
-answers: keep all speakers' text (no voice filter); the text is stored in the
-account (D1), readable in /read on any device.
+the other's language; what's said becomes private text he reads back in /read,
+and the words heard are offered as a 新词 list. All speakers' text is kept (no
+voice filter), in his account (D1), readable on any device.
+
+**It is his personal memory, like a diary**: "not a legal contract and not for
+sharing" (owner, 18:23 JST 2026-11-06). So no form to get through, nothing to
+share, nothing deleted unless he asked. The wording stays plain and warm.
 
 **Dark.** Flag [`read.vibe`](https://lianki.com/dev/flags#read.vibe), default
 off. **Off means nobody can start it, the owner included**: unlike every other
@@ -14,7 +17,7 @@ row all answer 404 otherwise (`lib/vibe/gate.ts`, `lib/vibe/route.ts`). Document
 already written stay readable and deletable with the flag off.
 
 ```
-consent screen ─ tap ─▶ POST /api/vibe {consent:true} ─ 404 flag off: no mic, nothing
+start page ─ tap ─▶ POST /api/vibe {tap:true} ─ 404 flag off: no mic, nothing
                         │
 phone mic ─ Silero VAD ─ frames ─▶ wss://<mac>.ts.net/lianki-stt  (tailnet only, audio ends here)
                         ◀─ partial, final text ─  SenseVoice on the Mac
@@ -37,7 +40,7 @@ Nothing here is a second pipeline.
 | Per-line language | `lib/read/lang-detect.ts` `detectLangs`, `toRuns` | stored as `BookMeta.langs`, shown per line |
 | The reader, live | `reader-stream.tsx` `useBookStream`, ReaderV2, lianki-push `read-stream` | `?streamingFrom=vibe`; finals only, and `LiveTail` is not mounted, since its card would translate the newest line by itself |
 | Material storage, privacy, delete | `lib/getReadMaterialsCollection.ts`, `DELETE /api/read/[id]`, the /read row menu | as is; cards carried by `carrySentenceCards` as a re-import does |
-| Daily trigger | `worker.ts` `scheduled` (the ledger's cron) | retention sweep beside the anchor |
+| Daily trigger | `worker.ts` `scheduled` (the ledger's cron) | the optional delete-after-N-days sweep, beside the anchor |
 
 ## Audio
 
@@ -56,29 +59,31 @@ takes any.
 - **No sounds.** No `cue` is passed to `createMic`.
 - The estimator (`adaptive.ts`) learns the owner's voice; it is not fed from here.
 
-## Consent
+## Starting
 
-Every start goes through one full screen (`VibeClient.tsx`): the statement in the
-language picked for the other person, plus the user's own; Start, Cancel. Cancel
-is a link back to /read that opens nothing.
+/vibe opens to a simple page (`StartPage` in `VibeClient.tsx`): the title, one line
+on what happens, Start, one line to the user, and the recognised languages. No
+form, no dialog, no language picker, nothing to accept.
 
-- Text: `vibe-consent.content.ts`, all 16 locales, each key with its context line.
-  The page's server component reads it once per locale.
-- It says: this conversation is being transcribed; the sound is not recorded or
-  uploaded; the text is stored in my Lianki account, on Cloudflare; only I can see
-  it unless I share it; when it is deleted (the user's own number); and you can
-  say no.
+**The line to the user** (`yourCare`): this page turns what's said nearby into
+text, and it's up to you to make sure the people around you are happy with that.
+It is addressed to the user and nobody else (owner: "that user has their own
+responsibilities to make everyone happy"). It is plain text beside Start: no
+dismissal, no tap, no delay.
+
 - **Start is the only way in.** It ignores untrusted clicks (as the voiceprint
-  panel does). `POST /api/vibe` needs `consent: true` exactly, and is asked
-  *before* the Mac and the microphone: a refusal opens nothing. Nothing starts on
-  load, from a URL or from a command. `vibe_doc.consent_ms` and `other_lang` record it.
-- Resume after a pause is the same conversation, so it does not ask again. A new
-  conversation, a reload, or leaving the page does.
+  panel does). `POST /api/vibe` needs `tap: true` exactly, and is asked *before*
+  the Mac and the microphone: a refusal opens nothing. Nothing starts on load,
+  from a URL or from a command.
+- Resume after a pause is by tap too. A reload or leaving the page ends the
+  conversation, and the next one is a new tap on Start.
+- `vibe_doc.other_lang` and `consent_ms` are 0052's columns, read by nothing now:
+  `''` and the time of the tap are written.
 
 ## While it runs
 
-An indicator stays on screen (`Indicator`): a red dot and "Transcribing", Pause,
-Stop. No sounds.
+A small indicator stays on screen (`Indicator`): a red dot and "Transcribing",
+Pause, Stop, each one tap. No sounds.
 
 **Pause** (`lib/vibe/session.ts`): tracks stopped, the utterance under way
 cancelled on the Mac, socket closed, all at once. Finals that land later belong
@@ -124,10 +129,12 @@ and a deliberate tap on the chat mic in a tab opened after the start.
 A `read_materials` row with `source_key` `vibe:<id>`, `BookMeta.source` `"vibe"`.
 It appears in /read like any other; `/api/read/[id]` and every reader route ask
 for the signed-in user's own row, and a deep link by hash resolves only to the
-reader's own copy. There is no public or shared path.
+reader's own copy. There is no public or shared path, and nothing on the page
+offers one: the reader's selection card has no Copy link on these docs
+(`copyLink` is left out for source `vibe`).
 
-`vibe_doc` (migration 0052) holds what makes it a transcript: status, consent,
-`next_seq`, `last_ms`. Its `material_id` stays NULL until the first line, so a
+`vibe_doc` (migration 0052) holds what makes it a transcript: status, `next_seq`,
+`last_ms`. Its `material_id` stays NULL until the first line, so a
 start with nothing said leaves nothing in /read, and stop deletes the row.
 
 - `next_seq` makes a retry harmless: a batch overlapping what is held adds only
@@ -137,7 +144,7 @@ start with nothing said leaves nothing in /read, and stop deletes the row.
 - **Speakers: not labelled.** SenseVoice has no diarisation. The transcript shows
   each line's language and nothing about who said it.
 - **Languages.** SenseVoice knows zh, yue, en, ja, ko. Other languages come out
-  wrong; the consent screen tells the user.
+  wrong; one short line on the start page says so.
 
 ### No polish
 
@@ -173,11 +180,25 @@ is created without a swipe:**
 
 On another device, tapping a word in `/read/<id>` opens the same preview.
 
-## Retention
+## Keeping
 
-30 days by default, from a doc's **newest line**. `/preferences` has the number
-(`VibeRetention.tsx`, 1–3650, `vibe_settings`). It applies to every doc of that
-user at once, since the sweep reads it at run time.
+**Kept until deleted.** Nothing is deleted by itself unless the user set a number.
+
+`/preferences` has that number (`VibeRetention.tsx`, 1–3650), empty and "Off" by
+default. It counts from a doc's **newest line** and applies to every doc of that
+user at once, since the sweep reads it at run time. Clearing the field turns it
+off again. The field saves only what the user changed.
+
+`vibe_settings.chosen` is what makes a number count. The sweep joins on
+`chosen = 1`, so a user with none is never looked at.
+
+**A row from before this (0052, #647).** That field started at the old default of
+30 and saved on blur, so tapping in and out wrote a 30 nobody chose. No other path
+wrote a row: a start never did. Migration 0053 adds `chosen`, 0 by default, and
+sets 1 only where the number is not 30, since any other number could only have
+been typed. So an old 30 reads as off, whoever typed it; choosing 30 afterwards
+counts. Nothing is deleted in the transition. Should the column be missing, the
+sweep fails and deletes nothing.
 
 The sweep is `sweepVibeDocs` (`lib/vibe/retention.ts`), in the Worker's existing
 daily Cron Trigger next to the study ledger's anchor. No new trigger, no polling.
@@ -186,7 +207,9 @@ takes the material, its R2 content and its reader rows. A word card the user mad
 from the doc stays in their deck: it is theirs.
 
 Delete at any time: the /read row menu, or the button on /vibe's end screen.
-`vibe_doc` goes with the material (`ON DELETE CASCADE`).
+`vibe_doc` goes with the material (`ON DELETE CASCADE`). A start that heard nothing
+and was never stopped (the tab closed) leaves a `vibe_doc` row with no text and
+nothing in /read; for a user with no number it simply stays.
 
 ## Code
 

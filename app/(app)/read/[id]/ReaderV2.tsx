@@ -1681,8 +1681,12 @@ function Reader({
           })()
         : view.text;
     const a: CardActions = {
-      copyLink: () =>
-        void copy(unitLink(location.origin, material.bookHash ?? id, u), ts.linkCopied.value),
+      ...(book?.source === "vibe"
+        ? {}
+        : {
+            copyLink: () =>
+              void copy(unitLink(location.origin, material.bookHash ?? id, u), ts.linkCopied.value),
+          }),
       readFrom: () => {
         const i = unitBlock(u);
         if (i < 0) return;
