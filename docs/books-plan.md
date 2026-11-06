@@ -772,14 +772,14 @@ selecting DOM text.
     `bookPhrase`), into the book's own deck (`book:<hash>`, named after the
     book, made once);
   - a sentence, a paragraph or a hand-made range translates by itself once
-    the selection rests (the combo interval): a ragged range grows to whole
-    sentences, each translated and cached on its own; grown to a whole
-    paragraph, the paragraph in one call; a range across paragraphs that
-    covers one whole takes every paragraph it touches whole, one call each,
-    in order. The cache unit is the sentence or paragraph (`read_translation`
-    keyed by its own text, no migration); the device keeps this tab's
-    answers and never asks twice. A long selection stops at a bound and
-    Translate asks for the rest.
+    the selection rests (the combo interval), in **whole sentences** (owner,
+    2026-11-06): a range is drawn grown to the sentences it touches, each
+    sentence is translated once and cached as itself, and the card stitches
+    them in order, so growing a selection asks only for the new ones. The unit
+    keeps the words he picked, for a phrase card. The cache unit is the sentence
+    (`read_translation` keyed by its own text, no migration); the device keeps
+    this tab's answers and never asks twice. A long selection stops at a bound
+    and the card asks for the rest as it is scrolled.
   "New to me" on a word logs a
   `select` exposure (no list API yet: extracts become cards later). QA:
   `scripts/qa/qa-read-select.mjs`.

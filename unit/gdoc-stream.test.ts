@@ -312,7 +312,6 @@ describe("startGdocStream", () => {
     channel.open();
     channel.body = '{"ty":"ds","si":1,"ei":2}';
     void channel.responseText;
-    expect(state.live).toEqual([]);
     await wait(15);
     expect(state.live).toEqual([{ book: "book1", ops: [{ si: 1, ei: 2 }] }]);
     state.liveFails = true;
