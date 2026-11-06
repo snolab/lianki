@@ -11,6 +11,7 @@ import { ByokSettings } from "@/app/components/ByokSettings";
 import { Icon } from "@/app/components/icons";
 import { TEXT_AREAS, textSizeStore } from "@/lib/text-size";
 import { useTextSizes } from "@/lib/use-text-size";
+import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
 
 type FilterType = "domain" | "title" | "url";
 
@@ -211,6 +212,9 @@ export default function PreferencesClient({ showKeySync = false }: { showKeySync
 
       {/* Your own AI — the key on this device only (docs/byok.md) */}
       <ByokSettings showKeySync={showKeySync} />
+
+      {/* Page titles — follows the account (docs/title-clean.md) */}
+      <TitleRulesSettings />
 
       {/* Next-card order */}
       <section className="mb-10">

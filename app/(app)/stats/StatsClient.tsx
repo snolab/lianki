@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import type { WatchOverview } from "@/lib/repos/watchStatsD1";
+import { displayTitle } from "@/lib/titles/client";
 
 const HEATMAP_WEEKS = 26;
 
@@ -213,7 +214,7 @@ export default function StatsClient() {
                     className="flex-1 truncate hover:underline"
                     title={v.url}
                   >
-                    {v.title || v.url}
+                    {displayTitle(v.title, v.url) || v.url}
                   </a>
                   {v.coverage != null && (
                     <span className="text-xs opacity-50 tabular-nums shrink-0">

@@ -18,6 +18,8 @@ import { SyncStatusBanner } from "./components/SyncStatusBanner";
 import { HotkeyHelp } from "@/app/components/HotkeyHelp";
 import { appLocale } from "@/lib/app-locale.server";
 import { LIANKI_USERSCRIPT_VERSION } from "@/lib/userscript-version";
+import { cleanTitle } from "@lianki/core/titleClean";
+import { titleRulesForUser } from "@/lib/titles/server";
 
 export const dynamic = "force-dynamic";
 
@@ -146,6 +148,7 @@ async function LoggedInView({
   async function Cards({ page = 0, size = 100 }) {
     const email = await authEmail();
     const FSRSNotes = getNotesCollection(email);
+    const titleRules = await titleRulesForUser();
     const list = await sflow(
       FSRSNotes.find({ "card.due": { $exists: true } }, { sort: { "card.due": 1 } })
         .skip(page * size)
@@ -173,7 +176,7 @@ async function LoggedInView({
           <li key={note._id.toString()} className="break-words overflow-hidden">
             {due} <ReviewHistory logs={logs} />{" "}
             <a href={url} className="break-all">
-              {title || url}
+              {(title && cleanTitle(title, { url, rules: titleRules })) || url}
             </a>
             <DeleteButton url={url} title={title} />
           </li>
