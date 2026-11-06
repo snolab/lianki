@@ -16,7 +16,7 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     // Silent (owner, 2026-10-31): scripts/qa/silent.mjs has the rest.
-    launchOptions: { args: ["--mute-audio"] },
+    launchOptions: { args: ["--mute-audio", "--use-fake-device-for-media-stream"] },
     extraHTTPHeaders: {
       Accept: "text/html,application/xhtml+xml",
     },

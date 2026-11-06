@@ -23,10 +23,8 @@ async function test() {
   console.log("🧪 Starting E2E Offline-First Sync Test\n");
 
   const isCI = process.env.CI || !process.env.DISPLAY;
-  console.log(`Mode: ${isCI ? "headless (CI)" : "headed (local)"}\n`);
 
   const browser = await launchSilent(chromium, {
-    headless: isCI ? true : false,
     slowMo: isCI ? 100 : 500,
   });
 
