@@ -212,6 +212,8 @@ export function prefBindings(): PrefBinding[] {
     // lib/read/polish-offer.ts: the offer to tidy a raw transcript.
     plain("read.polishOffer", "lk:read-polish-offer", bool10, true),
     plain("read.polishSkips", "lk:read-polish-skips", jsonCodec, []),
+    // lib/read/translator-notes.ts: translator's notes in the reader's translations.
+    plain("read.translatorNotes", "lk:read-translator-notes", bool10, true),
     // lib/vibe/translations.ts: a language's share before /vibe translates into it.
     plain("vibe.translateMinPct", "lk:vibe-translate-min-pct", num, 20),
     // lib/titles/client.ts: the difference from the default title rules.

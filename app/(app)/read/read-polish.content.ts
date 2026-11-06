@@ -167,6 +167,42 @@ const dictionary = {
       sw: "Maandishi yakionekana kama nakala isiyohaririwa, kisomaji huuliza kama yapangwe, baada ya kuacha kuandikwa. Ikizimwa hakiulizi kamwe; bado unaweza kupanga kutoka kwenye yaliyomo ya kisomaji.",
       mr: "मजकूर संपादित न केलेल्या प्रतिलेखासारखा दिसला तर, लिहिणे थांबल्यावर रीडर तो नीटनेटका करायचा का ते विचारतो. बंद केल्यास विचारत नाही; रीडरच्या अनुक्रमणिकेतून तरीही नीटनेटका करता येतो.",
     }),
+    prefNotes: t({
+      en: "Translator's notes",
+      zh: "译注",
+      ja: "訳注",
+      ko: "역주",
+      hi: "अनुवादक की टिप्पणियाँ",
+      es: "Notas del traductor",
+      fr: "Notes du traducteur",
+      ar: "ملاحظات المترجم",
+      bn: "অনুবাদকের টীকা",
+      pt: "Notas do tradutor",
+      ru: "Примечания переводчика",
+      ur: "مترجم کے نوٹس",
+      id: "Catatan penerjemah",
+      de: "Anmerkungen des Übersetzers",
+      sw: "Maelezo ya mtafsiri",
+      mr: "अनुवादकाच्या टिपा",
+    }),
+    prefNotesHelp: t({
+      en: "Translations in the reader add a short note in brackets when a cultural difference really matters: an idiom, politeness, a taboo, wordplay. Most sentences have none.",
+      zh: "阅读器的翻译在文化差异确实重要时（习语、礼貌程度、禁忌、双关）会加一条简短的括号注释。大多数句子没有。",
+      ja: "リーダーの翻訳で、文化の違いが本当に重要なとき（慣用句、敬語、タブー、言葉遊び）に、かっこで短い注を添えます。ほとんどの文には付きません。",
+      ko: "리더의 번역에서 문화 차이가 정말 중요할 때(관용구, 높임말, 금기, 말장난) 괄호로 짧은 주석을 붙입니다. 대부분의 문장에는 없습니다.",
+      hi: "रीडर के अनुवाद में, जब सांस्कृतिक अंतर सचमुच मायने रखता हो (मुहावरा, शिष्टता, वर्जना, शब्द-क्रीड़ा), कोष्ठक में छोटी टिप्पणी जुड़ती है। ज़्यादातर वाक्यों में नहीं होती।",
+      es: "Las traducciones del lector añaden una nota breve entre paréntesis cuando una diferencia cultural importa de verdad: un modismo, la cortesía, un tabú, un juego de palabras. La mayoría de las frases no la lleva.",
+      fr: "Les traductions du lecteur ajoutent une courte note entre parenthèses quand une différence culturelle compte vraiment : expression idiomatique, politesse, tabou, jeu de mots. La plupart des phrases n’en ont pas.",
+      ar: "تضيف ترجمات القارئ ملاحظة قصيرة بين قوسين عندما يكون الفرق الثقافي مهمًا حقًا: تعبير اصطلاحي، أو أدب الخطاب، أو محظور، أو تلاعب بالألفاظ. معظم الجمل بلا ملاحظة.",
+      bn: "রিডারের অনুবাদে সাংস্কৃতিক পার্থক্য সত্যিই গুরুত্বপূর্ণ হলে (বাগধারা, সৌজন্য, নিষিদ্ধ বিষয়, শব্দের খেলা) বন্ধনীতে ছোট টীকা যোগ হয়। বেশিরভাগ বাক্যে থাকে না।",
+      pt: "As traduções do leitor acrescentam uma nota curta entre parênteses quando uma diferença cultural importa de verdade: expressão idiomática, cortesia, tabu, jogo de palavras. A maioria das frases não tem.",
+      ru: "В переводах читалки появляется короткое примечание в скобках, когда культурное различие действительно важно: идиома, вежливость, табу, игра слов. У большинства предложений его нет.",
+      ur: "ریڈر کے ترجموں میں جب ثقافتی فرق واقعی اہم ہو (محاورہ، آداب، ممنوع بات، لفظی کھیل) تو قوسین میں مختصر نوٹ شامل ہوتا ہے۔ زیادہ تر جملوں میں نہیں ہوتا۔",
+      id: "Terjemahan di pembaca menambahkan catatan singkat dalam kurung saat perbedaan budaya benar-benar penting: idiom, tingkat kesopanan, tabu, permainan kata. Sebagian besar kalimat tidak memilikinya.",
+      de: "Übersetzungen im Reader bekommen eine kurze Anmerkung in Klammern, wenn ein kultureller Unterschied wirklich zählt: Redewendung, Höflichkeit, Tabu, Wortspiel. Die meisten Sätze haben keine.",
+      sw: "Tafsiri za kisomaji huongeza maelezo mafupi kwenye mabano tofauti ya kitamaduni inapokuwa muhimu kweli: nahau, adabu, mwiko, mchezo wa maneno. Sentensi nyingi hazina.",
+      mr: "रीडरमधील भाषांतरात सांस्कृतिक फरक खरोखर महत्त्वाचा असतो तेव्हा (म्हण, सभ्यता, निषिद्ध गोष्ट, शब्दखेळ) कंसात छोटी टीप जोडली जाते. बहुतेक वाक्यांना नसते.",
+    }),
     working: t({
       en: "Tidying…",
       zh: "整理中…",
@@ -259,6 +295,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
   note: "Small explanatory line under the banner's buttons: what tidying does (punctuation, paragraphs, languages separated), that only hesitation sounds such as 'um' are dropped and no other word changes (use that language's own hesitation sound), and that the raw text stays viewable. Three short sentences.",
   partial:
     "Small line at the top of a tidied transcript, followed by a count like (12/14), when the AI could not tidy every part: those parts keep their original text and nothing was lost. One short sentence.",
+  prefNotes:
+    "On/off switch name in the Preferences section about the reader: whether its translations may carry translator's notes explaining a cultural difference. A short noun phrase.",
+  prefNotesHelp:
+    "Small help text under that switch: when a note appears (a cultural difference that really matters, such as an idiom, politeness, a taboo or wordplay), that it is short and in brackets, and that most sentences have none.",
   working:
     "Status text on the tidy button while the AI works through the transcript (can take a minute). Progressive, ends with an ellipsis.",
   failed:
