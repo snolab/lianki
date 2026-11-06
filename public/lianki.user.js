@@ -11,7 +11,7 @@
 // @grant       GM_deleteValue
 // @grant       GM_info
 // @grant       unsafeWindow
-// @version     2.24.27
+// @version     2.24.28
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -1920,8 +1920,26 @@
     return rules;
   }
 
+  // lib/read/gdoc-tail.ts
+  var OP = /\{"ty":"is","ibi":(\d+),"s":"((?:[^"\\]|\\.)*)"\}|\{"ty":"ds","si":(\d+),"ei":(\d+)\}/g;
+  function parseBindOps(chunk) {
+    const ops = [];
+    let consumed = 0;
+    for (const m of chunk.matchAll(OP)) {
+      consumed = (m.index ?? 0) + m[0].length;
+      if (m[1] === undefined) {
+        ops.push({ si: Number(m[3]), ei: Number(m[4]) });
+        continue;
+      }
+      try {
+        ops.push({ i: Number(m[1]), s: JSON.parse(`"${m[2]}"`) });
+      } catch {}
+    }
+    return { ops, consumed };
+  }
+
   // src/gdoc-stream.ts
-  var TIMING = { quietMs: 800, maxWaitMs: 2500, hiddenCheckMs: 5000, retryShortMs: 1500 };
+  var TIMING = { quietMs: 4000, maxWaitMs: 20000, exportLagMs: 6000, retryShortMs: 1500 };
   function docIdOfPath(path) {
     return /^\/document\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]{25,128})(?:\/|$)/.exec(path)?.[1] ?? null;
   }
@@ -1934,7 +1952,7 @@
   function startGdocStream(deps) {
     const id = docIdOfPath(location.pathname);
     if (!id) return;
-    const { quietMs, maxWaitMs, hiddenCheckMs, retryShortMs } = { ...TIMING, ...deps.timing };
+    const { quietMs, maxWaitMs, exportLagMs, retryShortMs } = { ...TIMING, ...deps.timing };
     const key = `lk:gdoc-stream:${id}`;
     const zh = /^zh\b/i.test(navigator.language);
     const label = {
@@ -1948,7 +1966,11 @@
     let suspect = null;
     let quiet;
     let deadline;
-    let hiddenTimer;
+    let lastSignal = 0;
+    let lagCheck;
+    let bookId = null;
+    let liveQueue = [];
+    let liveBusy = false;
     let busy = false;
     let dirty = false;
     let blockedUntil = 0;
@@ -1975,6 +1997,8 @@
       }
       if (!res.ok) return res.status === 422;
       const d = await res.json();
+      bookId = d.id;
+      sendLive();
       const url = `${deps.origin}/read/${d.id}?streamingFrom=google-docs`;
       if (link) {
         link.href = url;
@@ -1985,6 +2009,25 @@
         pending = null;
       }
       return true;
+    };
+    const sendLive = async () => {
+      if (liveBusy || !bookId || !liveQueue.length || !on) return;
+      if (Date.now() < blockedUntil) return;
+      liveBusy = true;
+      const ops = liveQueue;
+      liveQueue = [];
+      try {
+        await deps.gmFetch(`${deps.origin}/api/read/gdoc/stream`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ book: bookId, ops }),
+        });
+      } catch (err) {
+        console.warn("[Lianki] Docs live edit failed", err);
+      }
+      liveBusy = false;
+      sendLive();
     };
     const check = async () => {
       clearTimeout(quiet);
@@ -2019,19 +2062,17 @@
       if (dirty) {
         dirty = false;
         check();
+      } else if (Date.now() - lastSignal < exportLagMs) {
+        clearTimeout(lagCheck);
+        lagCheck = setTimeout(() => void check(), exportLagMs);
       }
     };
     const signal = () => {
       if (!on) return;
+      lastSignal = Date.now();
       clearTimeout(quiet);
       quiet = setTimeout(() => void check(), quietMs);
       deadline ??= setTimeout(() => void check(), maxWaitMs);
-    };
-    const onVisibility = () => {
-      clearInterval(hiddenTimer);
-      hiddenTimer = undefined;
-      if (on && document.hidden) hiddenTimer = setInterval(() => void check(), hiddenCheckMs);
-      else if (on) signal();
     };
     let hooked = false;
     const hook = () => {
@@ -2044,6 +2085,34 @@
         signal();
         return original.apply(this, args);
       };
+      const xhr = page.XMLHttpRequest.prototype;
+      const text = Object.getOwnPropertyDescriptor(xhr, "responseText");
+      if (!text?.get) return;
+      const read = new WeakMap();
+      const open = xhr.open;
+      xhr.open = function (...args) {
+        read.set(this, 0);
+        return open.apply(this, args);
+      };
+      Object.defineProperty(xhr, "responseText", {
+        configurable: true,
+        get() {
+          const v = text.get.call(this);
+          try {
+            if (on && v && /\/bind(\?|$)/.test(this.responseURL)) {
+              const from = read.get(this) ?? v.length;
+              const { ops, consumed } = parseBindOps(v.slice(from));
+              read.set(this, from + consumed);
+              if (ops.length) {
+                liveQueue.push(...ops);
+                signal();
+                sendLive();
+              }
+            }
+          } catch {}
+          return v;
+        },
+      });
     };
     const setOn = (next) => {
       on = next;
@@ -2055,11 +2124,12 @@
       } else {
         clearTimeout(quiet);
         clearTimeout(deadline);
+        clearTimeout(lagCheck);
         deadline = undefined;
         last = null;
+        liveQueue = [];
         if (link) link.style.display = "none";
       }
-      onVisibility();
     };
     const mount = () => {
       const host = document.createElement("div");
@@ -2090,7 +2160,6 @@
       .then((res) => {
         if (!res.ok) return;
         mount();
-        document.addEventListener("visibilitychange", onVisibility);
         if (deps.getValue(key, false) === true) {
           setOn(true);
         }
