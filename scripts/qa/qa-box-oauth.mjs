@@ -262,7 +262,7 @@ async function run() {
   const bad = await exchange(bare, clientId, wrongPkce.code, "x".repeat(50));
   check(
     "a real code with the wrong verifier gets no token",
-    bad.status() >= 400,
+    Boolean(wrongPkce.code) && bad.status() >= 400,
     `${bad.status()}`,
   );
   const good = await getCode(ctx, clientId, "box:read box:write offline_access");
@@ -276,13 +276,21 @@ async function run() {
   const replayed = await exchange(bare, clientId, good.code, good.verifier);
   check(
     "the same code again gets nothing: one-time",
-    replayed.status() >= 400,
+    first.status() === 200 && replayed.status() >= 400,
     `${replayed.status()}`,
   );
   check("the token response sets no cookie", !first.headers()["set-cookie"]);
   await bare.close();
 
-  const live = firstBody.access_token;
+  // A replayed code also ends what that code issued (RFC 6749 4.1.2).
+  const burnt = await raw(firstBody.access_token, "/api/prefs");
+  check("a replay revokes the token that code issued", burnt.status === 401, `${burnt.status}`);
+
+  const again = await getCode(ctx, clientId, "box:read box:write offline_access");
+  const fresh = await browser.newContext();
+  const live = (await (await exchange(fresh, clientId, again.code, again.verifier)).json())
+    .access_token;
+  await fresh.close();
   check("the token works without a browser", (await raw(live, "/api/prefs")).status === 200);
   const withCookie = await fetch(`${PROVIDER}/api/prefs`, {
     headers: {
