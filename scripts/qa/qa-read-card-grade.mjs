@@ -8,7 +8,8 @@
 //
 // - tapping or clicking the text never grades (no batch-grade write);
 // - a word with no card is a preview, with no 制卡 button: a tap, a drag short of
-//   a level or closing the card stores nothing and asks no model;
+//   a level or closing the card stores nothing (the tap may ask for its meaning:
+//   no model is set up here; qa-read-tap-gloss.mjs has that with a stubbed one);
 // - a tap on the knob never grades; a drag past a level adds it and grades it
 //   (one batch, sent after the hold); keys 1–4 and the hidden buttons do too;
 // - the toast's Undo and U drop a held batch; dragging the knob up takes a sent
@@ -56,10 +57,6 @@ async function setup(ctx, tag) {
   const others = [];
   page.on("request", (q) => {
     if (q.method() === "POST" && q.url().includes("/make-cards")) others.push("make-cards");
-    if (q.method() === "POST" && q.url().includes("/gloss")) {
-      const g = JSON.parse(q.postData() || "{}");
-      if (!g.cached && !g.own) others.push("gloss with the model");
-    }
     if (!q.url().includes("/batch-grade") || q.method() !== "POST") return;
     const b = JSON.parse(q.postData() || "{}");
     if (!b.probe) writes.push(b);
@@ -251,7 +248,7 @@ async function run(device, scheme, touch) {
     .catch(() => {});
   check(!(await preview.isVisible()), "committed: not a preview any more, nor a second commit");
   check(writes.length === 0, `held: nothing sent yet, and no tap graded (${writes.length})`);
-  check(others.length === 0, `no make-cards or model gloss before the commit (${others})`);
+  check(others.length === 0, `no make-cards before the commit (${others})`);
   check(await until(page, () => writes.length > 0, 12000), "the batch is sent after the hold");
   check(
     writes[0]?.rating === 3 && writes[0]?.words?.length === 1 && !writes[0]?.sentences?.length,
@@ -323,7 +320,7 @@ async function run(device, scheme, touch) {
     );
   }
 
-  // A word no deck knows: no model asked, so the word in its sentence (the fixture has names).
+  // A word with no meaning found (no model here): the word in its sentence.
   await page.keyboard.press("Escape").catch(() => {});
   await page.waitForTimeout(800);
   const context = page.getByTestId("read-new-word-context");
@@ -350,8 +347,8 @@ async function run(device, scheme, touch) {
       .catch(() => {});
     await page.waitForTimeout(800);
   }
-  check(shown, `no meaning without a model: the word's sentence on the card (${spots.length})`);
-  check(others.length === 0, `still no make-cards or model gloss (${others})`);
+  check(shown, `no meaning found: the word's sentence on the card (${spots.length})`);
+  check(others.length === 0, `still no make-cards (${others})`);
   await page
     .getByTestId("read-select-close")
     .click()

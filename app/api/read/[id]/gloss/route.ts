@@ -8,7 +8,7 @@ import {
   readerCtx,
 } from "@/lib/read/reader-route";
 import { fillGlosses } from "@/lib/read/gloss-server";
-import { headOf } from "@/lib/read/gloss";
+import { glossMayAskModel, headOf } from "@/lib/read/gloss";
 import { draftOwn } from "@/lib/read/live-polish-server";
 
 /**
@@ -21,9 +21,9 @@ import { draftOwn } from "@/lib/read/live-polish-server";
  *
  *   { w, ex? }  → { term, back }   (back null: none found, or a name of the book)
  *
- * With `cached: true` (the selection card's preview of a word that is no card
- * yet): the decks and word_gloss only — no model, no charge. A meaning the model
- * must make is made when the word is committed (batch-grade), not before.
+ * With `cached: true`, and always on a /vibe doc (private speech, docs/vibe.md):
+ * the decks and word_gloss only — no model, no charge. A meaning the model must
+ * make is then made when the word is committed (batch-grade), not before.
  *
  * With `own: true` (the user's own AI is on, docs/byok.md): the decks and
  * word_gloss only — no model, no charge — and, when they have nothing,
@@ -50,11 +50,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const words = rangeWords([{ w: body?.w, ex: body?.ex }], taken);
   if (!words?.length) return badRequest("a word of the book is required");
   const byok = body?.own === true;
-  const noModel = byok || body?.cached === true;
-  const [x] = await fillGlosses(ctx.db, book, words, noModel ? null : { userId: ctx.userId });
+  const source = (await ctx.load()).words.book?.source;
+  const ai = glossMayAskModel(body ?? {}, source) ? { userId: ctx.userId } : null;
+  const [x] = await fillGlosses(ctx.db, book, words, ai);
   const back = x.back ?? null;
   if (!byok) return json({ term: x.term ?? x.w, back });
-  const open = !back && book.lang !== "und" && !book.names?.has(x.w);
+  const open = !back && source !== "vibe" && book.lang !== "und" && !book.names?.has(x.w);
   return json({
     term: x.term ?? x.w,
     back,

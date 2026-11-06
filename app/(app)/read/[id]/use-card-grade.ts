@@ -16,7 +16,9 @@
 //   server to exactly the states before. Drag up, the toast, U or ⌘Z.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { activeByok, type ByokActive } from "@/lib/byok/config";
 import { GRADE_HOLD_MS } from "@/lib/read/reader-server";
+import { glossSettled, withTabGloss } from "@/lib/read/select-gloss-fetch";
 import type { GradeReceipt } from "@/lib/read/reader-adapter";
 import {
   batchOf,
@@ -52,6 +54,8 @@ type Entry =
       timer?: ReturnType<typeof setTimeout>;
       /** Undo asked while it was on its way: taken back once it lands. */
       undoAfter?: boolean;
+      /** A new word's commit: the words, to carry the meaning its tap found. */
+      commit?: { words: RangeWord[]; own: ByokActive | null };
       flash: FlashTargets;
       what: string;
       at: number;
@@ -185,7 +189,16 @@ export function useCardGrade(o: {
       if (e.state !== "held") return;
       clearTimeout(e.timer);
       e.state = "sending";
-      post(base, e.body, keepalive)
+      const c = e.commit;
+      const go = () =>
+        post(
+          base,
+          c ? { ...e.body, words: withTabGloss(cfg.current.id, c.words, c.own) } : e.body,
+          keepalive,
+        );
+      // The tap's model call still on its way: wait for it, or the commit would pay for
+      // a second one. Leaving the page cannot wait, and sends what is known.
+      (c && !keepalive ? glossSettled(cfg.current.id, c.words, c.own).then(go) : go())
         .then(() => {
           e.state = "sent";
           if (e.undoAfter) return undoSent(e);
@@ -253,6 +266,7 @@ export function useCardGrade(o: {
         lines: c.linesOf(unit),
       };
       const id = newId();
+      const own = plan.preview ? activeByok() : null;
       const e: Extract<Entry, { kind: "batch" }> = {
         kind: "batch",
         id,
@@ -263,7 +277,9 @@ export function useCardGrade(o: {
           words: ws,
           day: localDay(),
           swipedAt: new Date().toISOString(),
+          ...(own ? { own: true } : {}),
         },
+        ...(plan.preview ? { commit: { words: ws, own } } : {}),
         state: "held",
         flash,
         what,

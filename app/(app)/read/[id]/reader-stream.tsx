@@ -12,8 +12,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { fill } from "@/lib/nav/nav-core";
+import { activeByok } from "@/lib/byok/config";
+import { fetchGloss } from "@/lib/read/select-gloss-fetch";
 import type { SwipeRating } from "@/lib/words/swipe";
 import { NewWordStrip, useGradeWords } from "./reader-grade-handle";
+import { OwnKeyTag } from "./reader-select-card";
 import { MadeToast } from "./reader-word-review";
 import {
   EMPTY_TAIL,
@@ -164,7 +167,9 @@ type WordCard = {
   fam?: Fam;
   term?: string;
   back?: string | null;
-  state: "looking" | "ready" | "failed";
+  /** Its meaning came from the user's own AI (docs/byok.md). */
+  own?: boolean;
+  state: "looking" | "ready";
   /** performance.now() when it opened: the opening tap is no press on its knob. */
   openedAt: number;
   adding?: boolean;
@@ -323,28 +328,25 @@ export function LiveTail({
     async (word: string, w: string, ex: string) => {
       const f = fam.get(w);
       setCard({ word, w, ex, fam: f, state: "looking", openedAt: performance.now() });
-      try {
-        // A preview: what meaning there already is, no model (the commit brings it).
-        const r = await onBook("gloss", { w, ex, cached: true });
-        const d = r.ok ? ((await r.json()) as { term?: string; back?: string | null }) : null;
-        setCard((c) =>
-          c?.w === w
-            ? d
-              ? { ...c, term: d.term ?? word, back: d.back ?? null, state: "ready" }
-              : { ...c, state: "failed" }
-            : c,
-        );
-      } catch {
-        setCard((c) => (c?.w === w ? { ...c, state: "failed" } : c));
-      }
+      // The meaning, at once (owner's card, 2026-11-06 18:18 JST): charged through
+      // chargeAi or asked of his own AI, once per tab; the word is still only a preview.
+      // No meaning (none found, or the route refused): the word shows, and can be added.
+      const g = await fetchGloss(id, w, ex, activeByok(), {
+        post: (body) => onBook("gloss", body),
+      });
+      setCard((c) =>
+        c?.w === w
+          ? { ...c, term: g?.term ?? word, back: g?.back ?? null, own: g?.own, state: "ready" }
+          : c,
+      );
     },
-    [fam, onBook],
+    [fam, id, onBook],
   );
 
   /** The slider's grade adds the word: its card and that grade, one batch, one undo. */
   const commit = async (rating: SwipeRating) => {
     if (!card) return;
-    const { w, ex, fam: was } = card;
+    const { w, ex, term, back, fam: was } = card;
     const clientId = crypto.randomUUID();
     const day = new Date().toLocaleDateString("en-CA");
     setCard({ ...card, adding: true });
@@ -353,9 +355,11 @@ export function LiveTail({
       const r = await onBook("batch-grade", {
         clientId,
         rating,
-        words: [{ w, ex }],
+        // The meaning the tap found: nothing is asked or charged for it again.
+        words: [back ? { w, ex, term, back } : { w, ex }],
         day,
         swipedAt: new Date().toISOString(),
+        ...(activeByok() ? { own: true } : {}),
       });
       if (!r.ok) throw new Error(String(r.status));
       setFam((prev) => new Map(prev).set(w, "l1"));
@@ -540,11 +544,8 @@ export function LiveTail({
             <>
               <p className="text-xl font-semibold">{card.term ?? card.word}</p>
               <p className="mt-1">
-                {card.state === "looking"
-                  ? t.lookingUp
-                  : card.state === "failed"
-                    ? ts.translateFailed
-                    : (card.back ?? t.noMeaning)}
+                {card.state === "looking" ? t.lookingUp : (card.back ?? t.noMeaning)}
+                {card.own && <OwnKeyTag label={ts.ownKey} />}
               </p>
               <p className="mt-2 text-sm opacity-60">{card.ex}</p>
               {card.state === "ready" &&
