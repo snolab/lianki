@@ -33,8 +33,11 @@ export function sharedAudioContext(): AudioContext | null {
  */
 export function suspendSharedAudio() {
   if (ctx?.state !== "running") return;
-  void ctx.suspend().catch(() => {});
-  unlockGradeTones();
+  // From an effect's cleanup: a throw here would take the whole page down with it.
+  try {
+    void ctx.suspend().catch(() => {});
+    unlockGradeTones();
+  } catch {}
 }
 
 function audio(): AudioContext | null {
