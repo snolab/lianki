@@ -17,13 +17,12 @@ export interface GdocStreamDeps {
   gmFetch: (url: string, opts?: Record<string, unknown>) => Promise<any>;
   getValue: (key: string, fallback?: unknown) => any;
   setValue: (key: string, value: unknown) => void;
+  /** Tests only: shorter waits. */
+  timing?: Partial<typeof TIMING>;
 }
 
 /** After the last draw, how long to wait; and the most a stream of draws can delay a read. */
-const QUIET_MS = 800;
-const MAX_WAIT_MS = 2500;
-const HIDDEN_CHECK_MS = 5000;
-const RETRY_SHORT_MS = 1500;
+const TIMING = { quietMs: 800, maxWaitMs: 2500, hiddenCheckMs: 5000, retryShortMs: 1500 };
 
 export function docIdOfPath(path: string): string | null {
   return /^\/document\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]{25,128})(?:\/|$)/.exec(path)?.[1] ?? null;
@@ -42,6 +41,7 @@ export function looksTruncated(next: string, prev: string | null): boolean {
 export function startGdocStream(deps: GdocStreamDeps): void {
   const id = docIdOfPath(location.pathname);
   if (!id) return;
+  const { quietMs, maxWaitMs, hiddenCheckMs, retryShortMs } = { ...TIMING, ...deps.timing };
   const key = `lk:gdoc-stream:${id}`;
   const zh = /^zh\b/i.test(navigator.language);
   const label = {
@@ -115,7 +115,7 @@ export function startGdocStream(deps: GdocStreamDeps): void {
       if (html !== null && html !== last) {
         if (looksTruncated(html, last) && suspect !== html) {
           suspect = html;
-          setTimeout(() => void check(), RETRY_SHORT_MS);
+          setTimeout(() => void check(), retryShortMs);
         } else {
           suspect = null;
           ok = await send(html);
@@ -137,14 +137,14 @@ export function startGdocStream(deps: GdocStreamDeps): void {
   const signal = () => {
     if (!on) return;
     clearTimeout(quiet);
-    quiet = setTimeout(() => void check(), QUIET_MS);
-    deadline ??= setTimeout(() => void check(), MAX_WAIT_MS);
+    quiet = setTimeout(() => void check(), quietMs);
+    deadline ??= setTimeout(() => void check(), maxWaitMs);
   };
 
   const onVisibility = () => {
     clearInterval(hiddenTimer);
     hiddenTimer = undefined;
-    if (on && document.hidden) hiddenTimer = setInterval(() => void check(), HIDDEN_CHECK_MS);
+    if (on && document.hidden) hiddenTimer = setInterval(() => void check(), hiddenCheckMs);
     else if (on) signal();
   };
 
