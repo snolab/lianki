@@ -929,6 +929,9 @@ export function createMic(d: {
   let probN = 0;
   /** When the last frame at or over SPEECH_FRAME_PROB was heard (Silero only). */
   let lastVoice: number | undefined;
+  /** The current capture's VAD start, and when the cap cut it (voice-merge.ts reads both). */
+  let speechStart: number | undefined;
+  let cutAt: number | undefined;
   /** The utterance being captured began in passive mode: only the wake gate hears it. */
   let gated = false;
   /** The utterance being captured is an enrolment sentence: only the enrolment hears it. */
@@ -1011,7 +1014,12 @@ export function createMic(d: {
       speechLen = probSum = probN = 0;
       lastVoice = undefined;
       clearTimer(cap);
-      cap = setTimer(() => void vad?.flush(), MAX_UTTERANCE_MS);
+      speechStart = now();
+      cutAt = undefined;
+      cap = setTimer(() => {
+        cutAt = now();
+        void vad?.flush();
+      }, MAX_UTTERANCE_MS);
       dropUtt();
       ep.heard = ep.sent = false;
       ep.quiet = 0;
@@ -1164,11 +1172,14 @@ export function createMic(d: {
       const prob = probN ? Math.round((probSum / probN) * 1000) / 1000 : undefined;
       speechLen = probSum = probN = 0;
       d.timing?.(seq, {
+        ...(speechStart !== undefined ? { t_speechStart: speechStart } : {}),
+        ...(cutAt !== undefined ? { t_cut: cutAt } : {}),
         ...(lastVoice !== undefined ? { t_lastVoice: lastVoice } : {}),
         t_speechEnd: now(),
         audioMs: toMs(audio.length),
       });
       lastVoice = undefined;
+      speechStart = cutAt = undefined;
       pending();
       if (gated && d.wake) {
         // Passive: nothing leaves the phone unless "Linky" is in it.

@@ -206,6 +206,7 @@ files and no TTS.
 | Cue     | When                                                                      | Sound                                  |
 | ------- | ------------------------------------------------------------------------- | -------------------------------------- |
 | `send`  | a spoken line went out (`submit` in DebugChat, `source: "stt"`): any path | 880 → 1320 Hz, 110 ms, peak 0.16       |
+| `amend` | a spoken line asked to amend the last one (flag `stt.merge`, [dev-debug-widget.md](dev-debug-widget.md), "Continuous speech amends the last line") | 1046.5 Hz, 60 ms, peak 0.08 |
 | `start` | speech confirmed: 250 ms voiced since the VAD's start                     | 523 → 784 Hz, rising, 90 ms, peak 0.05 |
 | `end`   | the VAD ended an utterance that was kept                                  | 784 → 523 Hz, falling, 90 ms, peak 0.05 |
 
@@ -217,7 +218,7 @@ page makes no cue (speak-rules.ts). `lk:voice-out` changes nothing: the cues pla
 the page's AudioContext with either output. There are no quiet hours.
 
 **One per what.** The send cue has one call, in `submit`, after the line went
-out: the join, Enter and the debounce all pass there, and a line that could not
+out (`amend` takes its place on a line that joins the one before, follows its switch and rules, and adds nothing else): the join, Enter and the debounce all pass there, and a line that could not
 be sent plays nothing until the send that works. Typed lines are silent. A start
 cue plays at most once an utterance, and not within 1.5 s of the last start or end
 (`CUE_START_GAP_MS`), so talk resuming after a pause does not chime again. A false
@@ -283,6 +284,7 @@ nothing but the chat.
 | `lib/words/voice-dispatch.ts`              | utterance → outcome → one of the screen's actions; `voiceTap` (pure) |
 | `lib/words/voice-access.ts`                | flag + owner → `on` / `preview` / `off`                     |
 | `lib/words/voice-mic.ts`                   | browser glue to `__lkMic` (lazy import)                     |
+| `packages/debug-chat/src/voice-merge.ts`   | continuous speech amending the last line (flag `stt.merge`); a kept command keeps lines apart |
 | `packages/debug-chat/src/mic-taps.ts`      | command taps and pins on the page's mic                     |
 | `app/(app)/words/VoiceMode.tsx`            | the hook, the switch (`useVoicePref`), the badge, its labels; any screen |
 | `app/(app)/review/ReviewClient.tsx`        | /review's registration: the grades and exit                 |

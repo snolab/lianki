@@ -90,6 +90,17 @@
  * `raw`; `edited: {at, by, count}` marks it. Pages and listeners hear
  * {type:"edited", id, thread, text, raw, edited}. Friends' lines never.
  *
+ * Continuous speech (flag stt.merge, voice-merge.ts; docs/dev-debug-widget.md,
+ * "Continuous speech amends the last line"). With the flag on, an owner's voice
+ * line is stamped `mergeable`. A next voice line carrying `continues: <that id>`
+ * amends it, if it is still the thread's very latest line and mergeVerdict and
+ * the checks in merge() pass; else it is a new line, as ever. Same edit path:
+ * pages and listeners hear {type:"edited", …, parts, merged}, with the complete
+ * text. Every part's raw text is kept in `parts`; {type:"unmerge", id} from an
+ * owner's page splits the line back. {type:"passage-end"} from the page that
+ * spoke tells the listeners {type:"polish-due", …}: one polish for the passage,
+ * read from the merged raw text, none while it is still being spoken.
+ *
  * Resumable grants. The owner's Allow hands the controller a random grant
  * token; only its SHA-256 is stored (`grant:<hash>`), and reconnecting with
  * it (header x-debug-token, or x-liagent-token via index.ts) restores what
@@ -202,9 +213,24 @@ import {
   askText,
   checkChoices,
 } from "../../../packages/debug-chat/src/ask";
-import type { AnsweredEvent, SpeakerTag, SttScene } from "../../../packages/debug-chat/src/wire";
+import type {
+  AnsweredEvent,
+  PolishDueEvent,
+  SpeakerTag,
+  SttScene,
+} from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
 import { polishCheck, polishContext } from "../../../packages/debug-chat/src/polish";
+import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
+import {
+  type MergeCandidate,
+  UNMERGE_BY,
+  lastPartAt,
+  mergeLines,
+  mergeVerdict,
+  partTexts,
+  splitLine,
+} from "../../../packages/debug-chat/src/voice-merge";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
   HISTORY_LINES,
@@ -401,6 +427,8 @@ const aiUserKey = (day: string, userId: string) => `ai:${day}:u:${userId}`;
 const aiSiteKey = (day: string) => `ai:${day}:site`;
 /** The owner's off switch for agent polish (lib/flags.ts, /dev/flags). */
 export const POLISH_OFF_FLAG = "stt.polish-off";
+/** The owner's switch for continuous speech amending the last line (voice-merge.ts). */
+export const MERGE_FLAG = "stt.merge";
 /** At most one live-session check per grant in this long (a burst of uses asks once). */
 const SESSION_CHECK_MIN_MS = 30_000;
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
@@ -521,6 +549,7 @@ export class DebugHub {
   private checkedAt = new Map<string, number>();
   /** The last read of PARTNER_AI_FLAG (AI_FLAG_CACHE_MS). */
   private aiFlag?: { at: number; on: boolean };
+  private mergeFlag?: { at: number; on: boolean };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
@@ -728,10 +757,15 @@ export class DebugHub {
     const count = line.edited?.count ?? 0;
     if (count >= MAX_EDITS) return fail(`message ${m.id} was already polished ${MAX_EDITS} times`);
     if (m.text === line.text) return fail(`message ${m.id} already reads that way`);
+    // A merged passage is polished once, when it ended: the raw text is still growing.
+    if (line.parts && !line.settled && this.now() - lastPartAt(line) < MAX_UTTERANCE_MS)
+      return fail(`message ${m.id} is still being spoken: polish it on polish-due`);
     // Held to the context (polish.ts): the raw STT text against the thread's
     // other lines, the page it was spoken on, and the words on its screen.
     const raw = line.raw ?? line.text;
     const recent = [...kept].filter(([k]) => k !== key).map(([, x]) => x.text);
+    // A merged line's parts are context too: later words correct what earlier ones really were.
+    recent.push(...partTexts(line));
     const v = polishCheck(raw, m.text, polishContext(line, recent));
     if (!v.ok) return fail(`not polished, the raw line stands: ${v.reason}`);
     if (await this.polishOff())
@@ -764,15 +798,174 @@ export class DebugHub {
         head: head(m.text),
       }),
     );
+    this.tellEdit(out, line.to, ws);
+  }
+
+  /** An edit of an owner's line: its pages, and the listeners by the line's node. */
+  private tellEdit(out: EditedEvent, to: string | undefined, sender?: Socket) {
     for (const { ws: p } of this.pages(OWNER_THREAD)) send(p, out);
     let told = false;
     for (const { ws: l, a } of this.listeners()) {
-      const route = routeTo(a.node, line.to);
+      const route = routeTo(a.node, to);
       if (!route) continue;
-      if (l === ws) told = true;
+      if (l === sender) told = true;
       send(l, route === "observed" ? { ...out, observed: true } : out);
     }
-    if (!told) send(ws, out);
+    if (sender && !told) send(sender, out);
+  }
+
+  /**
+   * Is MERGE_FLAG on? Asked of the main Worker at most once per AI_FLAG_CACHE_MS,
+   * voice lines only. Only exactly true is on: no binding, "busy", an error, all off.
+   */
+  private async mergeOn(): Promise<boolean> {
+    const t = this.now();
+    if (this.mergeFlag && t - this.mergeFlag.at < AI_FLAG_CACHE_MS) return this.mergeFlag.on;
+    const ask = this.sessions?.flag?.bind(this.sessions);
+    let on = false;
+    try {
+      on = !!ask && (await ask(MERGE_FLAG)) === true;
+    } catch {}
+    this.mergeFlag = { at: t, on };
+    return on;
+  }
+
+  /**
+   * The owner's voice line amends his last one, when it asked to and everything
+   * holds (voice-merge.ts). False: it goes out as a new line. Reads and writes
+   * storage only, so no other event lands in between (the Durable Object's gate).
+   */
+  private async merge(
+    page: PageAtt,
+    cur: MergeCandidate & { id: string; at: number; continues: string },
+  ): Promise<boolean> {
+    const kept = [
+      ...(await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(OWNER_THREAD).prefix,
+        reverse: true,
+        limit: CHAT_HISTORY,
+      })),
+    ];
+    const refuse = (reason: string) => {
+      console.log(JSON.stringify({ msg: "debug.merge-refused", id: cur.id, reason }));
+      return false;
+    };
+    const latest = kept[0];
+    // The thread's very latest line, by anyone: an agent's reply or card keeps them apart.
+    if (!latest || latest[1].id !== cur.continues) return refuse("not-latest");
+    const [key, prev] = latest;
+    // The same page on the same path: another device, or a page he moved to, is a new turn.
+    if (prev.label !== page.label) return refuse("other-page");
+    // A card waiting for him just before it, or one tapped since: an answer stays its own act.
+    const before = kept[1]?.[1];
+    if (before?.ask && askState(before, cur.at) === "open") return refuse("open-ask");
+    if (kept.some(([, x]) => x.answer && x.answer.at >= prev.at)) return refuse("answered");
+    const v = mergeVerdict(prev, cur);
+    if (!v.ok) return refuse(v.reason);
+    const next = mergeLines(prev, cur, cur.at);
+    await this.ctx.storage.put(key, next);
+    console.log(
+      JSON.stringify({
+        msg: "debug.merge",
+        id: prev.id,
+        part: cur.id,
+        signal: v.signal,
+        parts: next.parts?.length,
+        len: next.text.length,
+        head: head(next.text),
+      }),
+    );
+    this.tellEdit(
+      {
+        type: "edited",
+        id: prev.id,
+        thread: OWNER_THREAD,
+        text: next.text,
+        raw: next.raw as string,
+        edited: next.edited as EditedEvent["edited"],
+        parts: next.parts,
+        merged: { id: cur.id, text: cur.text },
+      },
+      prev.to,
+    );
+    return true;
+  }
+
+  /**
+   * The owner's undo on a merged line: it goes back to the lines it was made
+   * from, in its place in the thread, whatever came after it. Polish is dropped
+   * with the merge: what stands is what was heard. Never gated by the flag:
+   * turning it off must not strand a line already merged.
+   */
+  private async unmerge(ws: Socket, page: PageAtt, id: string) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    if (page.thread !== OWNER_THREAD) return fail("only the owner's lines are merged");
+    const { prefix, seq: seqKey } = threadKeys(OWNER_THREAD);
+    const kept = [
+      ...(await this.ctx.storage.list<ChatMessage>({ prefix, reverse: true, limit: CHAT_HISTORY })),
+    ];
+    const at = kept.findIndex(([, x]) => x.id === id);
+    const line = at < 0 ? undefined : kept[at][1];
+    if (!line?.parts) return fail(`message ${id} is not a merged line`);
+    const lines = splitLine(line).map((x) => ({ ...x, thread: OWNER_THREAD }));
+    const grow = lines.length - 1;
+    const seqOf = (k: string) => Number(k.slice(prefix.length));
+    const seq = seqOf(kept[at][0]);
+    // Newest first: each line moves up by what the split adds, onto a key already moved.
+    for (const [k, x] of kept.slice(0, at))
+      await this.ctx.storage.put(msgKey(OWNER_THREAD, seqOf(k) + grow), x);
+    for (const [i, x] of lines.entries())
+      await this.ctx.storage.put(msgKey(OWNER_THREAD, seq + i), x);
+    const top = ((await this.ctx.storage.get<number>(seqKey)) ?? seq) + grow;
+    await this.ctx.storage.put(seqKey, top);
+    for (let s = top - CHAT_HISTORY; s > top - CHAT_HISTORY - grow && s > 0; s--)
+      await this.ctx.storage.delete(msgKey(OWNER_THREAD, s));
+    console.log(JSON.stringify({ msg: "debug.unmerge", id, lines: lines.length }));
+    this.tellEdit(
+      {
+        type: "edited",
+        id,
+        thread: OWNER_THREAD,
+        text: lines[0].text,
+        raw: lines[0].text,
+        edited: { at: this.now(), by: UNMERGE_BY, count: 0 },
+        split: lines,
+      },
+      line.to,
+    );
+  }
+
+  /**
+   * The page that spoke went quiet after a merged line. Nothing more joins it,
+   * and the listeners hear it is time for its one polish. With stt.polish-off on
+   * (or unsure) they hear nothing, so no lane wakes for it: the raw line stands.
+   */
+  private async passageEnd(page: PageAtt) {
+    if (page.thread !== OWNER_THREAD) return;
+    const kept = await this.ctx.storage.list<ChatMessage>({
+      prefix: threadKeys(OWNER_THREAD).prefix,
+      reverse: true,
+      limit: CHAT_HISTORY,
+    });
+    const latest = [...kept].find(([, x]) => x.from === "owner");
+    if (!latest) return;
+    const [key, line] = latest;
+    if (!line.parts || line.settled || line.label !== page.label) return;
+    await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
+    if ((line.edited?.count ?? 0) >= MAX_EDITS || (await this.polishOff())) return;
+    const out: PolishDueEvent = {
+      type: "polish-due",
+      id: line.id,
+      thread: OWNER_THREAD,
+      text: line.text,
+      raw: line.raw ?? line.text,
+      parts: line.parts.length,
+    };
+    console.log(JSON.stringify({ msg: "debug.polish-due", id: line.id, parts: out.parts }));
+    for (const { ws: l, a } of this.agents()) {
+      const route = routeTo(a.node, line.to);
+      if (route) send(l, route === "observed" ? { ...out, observed: true } : out);
+    }
   }
 
   /**
@@ -1659,8 +1852,28 @@ export class DebugHub {
       // Files are the owner's only (the upload is owner-only): a friend's refs are dropped.
       if (page.thread !== OWNER_THREAD)
         return this.friendChat(ws, page, m.id, m.text, m.context, m.scene);
-      const line = (speaker: SpeakerTag | undefined) =>
-        this.post({
+      const line = async (speaker: SpeakerTag | undefined) => {
+        // Voice lines only: a typed line never asks the flag, never merges, never waits.
+        const merging = m.source === "stt" && (await this.mergeOn());
+        if (
+          merging &&
+          m.continues &&
+          (await this.merge(page, {
+            id: m.id,
+            at: t,
+            continues: m.continues,
+            text: m.text,
+            ...(m.timing ? { timing: m.timing } : {}),
+            ...(m.to ? { to: m.to } : {}),
+            ...(m.wake ? { wake: m.wake } : {}),
+            ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
+            ...(m.context ? { context: m.context } : {}),
+            ...(m.attachments ? { attachments: m.attachments } : {}),
+            ...(speaker ? { speaker } : {}),
+          }))
+        )
+          return;
+        return this.post({
           id: m.id,
           from: "owner",
           label: page.label,
@@ -1679,7 +1892,9 @@ export class DebugHub {
           // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
           // approvals later must rely on this, never on what a page says.
           ...(speaker ? { speaker } : {}),
+          ...(merging ? { mergeable: true as const } : {}),
         });
+      };
       // A voice line with the Mac's signed attestations: verified first, then stored.
       if (m.source === "stt" && m.speakerProof?.length)
         return verifySpeakerProofs(
@@ -1692,6 +1907,8 @@ export class DebugHub {
         ).then(line);
       return line(undefined);
     }
+    if (m.type === "passage-end") return this.passageEnd(page);
+    if (m.type === "unmerge") return this.unmerge(ws, page, m.id);
     // A tap on an ask card: stamped here, never by the page or an agent.
     if (m.type === "answer") return this.answer(ws, page, m.askId, m.choices);
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.

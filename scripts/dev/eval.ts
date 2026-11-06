@@ -111,6 +111,15 @@
  *       the agent polishes one, {"type":"edited","id","thread","text","raw",
  *       "edited"} follows.
  *
+ *       With flag stt.merge on, an utterance that continues the last one amends it
+ *       instead of adding a line: {"type":"edited",…,"parts":N,"merged":{id,text}},
+ *       and `text` is the COMPLETE line, one you may already have been shown, so
+ *       read it again before you act or reply. When the passage ends,
+ *       {"type":"polish-due","id","text","raw","parts"} follows: polish then, from
+ *       `raw`, not before (the hub refuses it). An undo is {"type":"edited",…,
+ *       "split":[{id,text,at}…]}: the owner says those were separate lines.
+ *       (docs/dev-debug-widget.md, "Continuous speech amends the last line".)
+ *
  *   bun scripts/dev/eval.ts edit [<msgId>|--last] [--no-pair] "polished text"   (or - for stdin)
  *       Polish the owner's latest line when it came from the mic (STT gets
  *       words wrong, and has no context): the hub keeps the first STT text as
@@ -516,7 +525,9 @@ function chat(out?: string, errorsOnly = false) {
           answer: m.answer,
           labels: m.labels,
         });
-      else if (m.type === "edited")
+      else if (m.type === "edited") {
+        // A line grew: the agent heard it, like any new line (--ack).
+        if (m.merged && ackFlag && m.observed !== true) ws.send(beatMessage({}));
         print({
           type: "edited",
           id: m.id,
@@ -524,6 +535,24 @@ function chat(out?: string, errorsOnly = false) {
           text: m.text,
           raw: m.raw,
           edited: m.edited,
+          // Continuous speech (stt.merge): `text` is the whole line so far; read it again.
+          ...(Array.isArray(m.parts) ? { parts: m.parts.length } : {}),
+          ...(m.merged ? { merged: m.merged } : {}),
+          // Undo: the line went back to these separate lines, as heard.
+          ...(Array.isArray(m.split)
+            ? { split: m.split.map((x: Msg) => ({ id: x.id, text: x.text, at: x.at })) }
+            : {}),
+          ...(m.observed === true ? { observed: true } : {}),
+        });
+      } else if (m.type === "polish-due")
+        // A merged passage ended: polish `raw` once now (edit --last), or leave it.
+        print({
+          type: "polish-due",
+          id: m.id,
+          thread: m.thread ?? "owner",
+          text: m.text,
+          raw: m.raw,
+          parts: m.parts,
           ...(m.observed === true ? { observed: true } : {}),
         });
       else if (m.type === "pages-idle" || m.type === "pages-back") {

@@ -51,6 +51,12 @@ export function voiceTune(
   return t;
 }
 
+/**
+ * The wait that rejoined about 17 of the 18 cut lines (above, #357): the voice
+ * path's one measured figure for how long a cut sentence takes to go on.
+ */
+export const JOIN_WINDOW_MS = 2500;
+
 /** Short answers that always pass the blip guard. */
 const SHORT_ANSWERS = new Set([
   "yes",
@@ -69,16 +75,22 @@ const SHORT_ANSWERS = new Set([
   "どうぞ",
 ]);
 
+const bareWords = (text: string) =>
+  text
+    .normalize("NFKC")
+    .replace(/[\p{P}\p{S}\s]/gu, "")
+    .toLowerCase();
+
+/** One of the short answers, whole: it stands alone and never joins another line. */
+export const isShortAnswer = (text: string) => SHORT_ANSWERS.has(bareWords(text));
+
 /**
  * A final not worth a line of its own: a single Latin word of at most 8
  * letters (a cough, a "hmm", half a word), or only 嗯/呃 — unless it is one
  * of the short answers.
  */
 export function isBlip(text: string): boolean {
-  const t = text
-    .normalize("NFKC")
-    .replace(/[\p{P}\p{S}\s]/gu, "")
-    .toLowerCase();
+  const t = bareWords(text);
   if (!t) return true;
   if (SHORT_ANSWERS.has(t)) return false;
   if (/^[嗯呃]+$/u.test(t)) return true;

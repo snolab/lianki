@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   type ChatMessage,
+  applyEditTo,
   type Heartbeat,
   type EditedEvent,
   type HubState,
-  applyEdit,
   type PairInfo,
   type Sender,
   chunkMessages,
@@ -464,7 +464,9 @@ export function DebugEval({
           // The agent polished a voice line: it changes in place, and is never read aloud again.
           const e = msg as unknown as EditedEvent;
           if (typeof e.id !== "string" || typeof e.text !== "string") return;
-          setMessages((list) => list.map((m) => applyEdit(m, e)));
+          setMessages((list) => trimHistory(applyEditTo(list, e)));
+          // A line that amended another has no echo of its own: this is its answer.
+          if (e.merged) voiceLatency().heard({ id: e.merged.id, from: "owner", at: e.edited.at });
           return;
         }
         if (msg.type !== "eval") return;
@@ -643,6 +645,7 @@ export function DebugEval({
       speakerProof?: string[];
       context?: ChatContext;
       attachments?: AttachmentRef[];
+      continues?: string;
     },
   ) => {
     const sock = sockRef.current;
@@ -675,6 +678,7 @@ export function DebugEval({
           text,
           ...(to ? { to } : {}),
           ...(opts?.source === "stt" ? { source: "stt" } : {}),
+          ...(opts?.source === "stt" && opts.continues ? { continues: opts.continues } : {}),
           ...(timing ? { timing } : {}),
           ...(wake === "active" || wake === "passive" ? { wake } : {}),
           ...(speakerProof?.length ? { speakerProof } : {}),
@@ -695,6 +699,15 @@ export function DebugEval({
     } catch {
       return false;
     }
+  };
+
+  /** A plain message to the hub, on this page's socket. */
+  const sendHub = (m: { type: "passage-end" } | { type: "unmerge"; id: string }) => {
+    const sock = sockRef.current;
+    if (!sock || sock.readyState !== WebSocket.OPEN) return;
+    try {
+      sock.send(JSON.stringify(m));
+    } catch {}
   };
 
   /** A tap on an ask card: only which options; the hub stamps who, where, when and source "tap". */
@@ -757,6 +770,8 @@ export function DebugEval({
           messages={messages}
           onSend={sendChat}
           onAnswer={sendAnswer}
+          onPassageEnd={() => sendHub({ type: "passage-end" })}
+          onUnmerge={(id) => sendHub({ type: "unmerge", id })}
           nodes={state?.nodes}
           notice={
             friend === "blocked"
