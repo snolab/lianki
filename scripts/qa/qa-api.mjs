@@ -261,6 +261,26 @@ for (const [name, bytes, label] of [
   );
 }
 
+// ── EMAIL CHANGE (docs/secrets-and-auth.md, "Changing the email") ──
+// QA has no mail provider, so the request stops at mail-off; the rest is in
+// unit/email-change.test.ts. Dead links must read as dead on the real D1.
+{
+  const asked = await call("POST", "/api/profile/email", { email: "qa-new@lianki.test" });
+  rec(
+    "EMAIL  request refused without a mail provider",
+    asked.status === 503,
+    `HTTP ${asked.status}`,
+  );
+  const dead = await call("POST", "/api/profile/email/confirm", {
+    token: `nobody.${"0".repeat(64)}`,
+  });
+  rec("EMAIL  an unknown link is dead", dead.status === 400, `HTTP ${dead.status}`);
+  const page = await call("GET", "/profile/email-confirm");
+  rec("EMAIL  the confirmation page loads", page.status === 200, `HTTP ${page.status}`);
+  const still = await call("GET", "/api/auth/get-session");
+  rec("EMAIL  nothing changed", still.data?.user?.email === EMAIL, "");
+}
+
 // ── CREATE ──
 {
   const r = await call("POST", "/api/fsrs/add", { url: U1, title: "QA One" });
