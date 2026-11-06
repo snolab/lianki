@@ -27,7 +27,7 @@ import { launchSilent, newSilentContext } from "./silent.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const OUT = process.argv[2] || "test-results/read-polish-offer";
 const PW = "qa-test-pass-1234";
-const FLAGS = ["read.reader-v2", "read.gdoc-stream"];
+const FLAGS = ["read.reader-v2", "read.gdoc-stream", "read.live-polish"];
 mkdirSync(OUT, { recursive: true });
 
 let failed = 0;
@@ -231,6 +231,46 @@ async function run(device, scheme) {
     );
     await page.screenshot({ path: join(OUT, `tidied-sheet-${tag}.png`) });
   }
+
+  // 整理's second choice: the speech draft over the book, with a stubbed model.
+  const d = await addDoc(ctx, `${scheme}9`);
+  await page.route(`**/api/read/${d}/polish-live`, async (r) => {
+    const { passages } = r.request().postDataJSON();
+    const answer = passages.map((p, i) =>
+      i === 0 && passages.length > 1
+        ? null
+        : { text: `Draft: ${p.slice(0, 60)}.`, thin: i % 2 === 1 },
+    );
+    return r.fulfill({ json: { passages: answer } });
+  });
+  await open(page, d);
+  await openSheet(page);
+  await page.getByTestId("read-draft-open").waitFor({ timeout: 5000 });
+  await page.screenshot({ path: join(OUT, `tidy-entry-${tag}.png`) });
+  const keptY = await page.evaluate(() => window.scrollY);
+  await page.getByTestId("read-draft-open").click();
+  await page.getByTestId("read-draft").waitFor({ timeout: 5000 });
+  await page.getByTestId("read-draft-flag").first().waitFor({ timeout: 15000 });
+  check(
+    (await page.getByTestId("read-draft-count").textContent()).includes("/"),
+    "the draft says how far it has got",
+  );
+  await page.screenshot({ path: join(OUT, `speech-draft-${tag}.png`) });
+  await page.getByTestId("read-live-tail").locator("[data-tail-w]").first().click();
+  await page.getByTestId("read-live-card").waitFor({ timeout: 5000 });
+  check(true, "a word of the draft opens its card");
+  await page.screenshot({ path: join(OUT, `speech-draft-word-${tag}.png`) });
+  await page
+    .getByRole("button", { name: /×|clear/i })
+    .first()
+    .click()
+    .catch(() => {});
+  await page.getByTestId("read-draft-close").click();
+  check(
+    (await page.getByTestId("read-draft").count()) === 0 &&
+      (await page.evaluate(() => window.scrollY)) === keptY,
+    "closing it leaves the original where it was",
+  );
 
   check(errs.length === 0, `no page errors (${errs.join("; ").slice(0, 200)})`);
   await ctx.close();

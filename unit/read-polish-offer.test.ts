@@ -15,6 +15,7 @@ import {
   writeOfferOn,
   writeSkip,
   type OfferState,
+  draftChoiceShown,
 } from "@/lib/read/polish-offer";
 import { checkPref } from "@/lib/prefs/schema";
 import type { TextShape } from "@/lib/read/prep";
@@ -170,5 +171,25 @@ describe("where his answers are kept", () => {
     expect(readOfferOn()).toBe(true);
     expect(readSkipped("a")).toBe(false);
     expect(() => writeSkip("a")).not.toThrow();
+  });
+});
+
+describe("the speech draft's choice", () => {
+  const raw = { source: "paste", shape: { raw: true } } as never;
+  it("is for who may polish, on a raw text, a Google Doc or a tidied text", () => {
+    expect(draftChoiceShown(raw, true)).toBe(true);
+    expect(draftChoiceShown(raw, false)).toBe(false);
+    expect(draftChoiceShown({ source: "gdoc" } as never, true)).toBe(true);
+    expect(
+      draftChoiceShown(
+        { source: "paste", polished: { at: "", chunks: 1, kept: 1 } } as never,
+        true,
+      ),
+    ).toBe(true);
+    expect(draftChoiceShown({ source: "paste" } as never, true)).toBe(false);
+    expect(draftChoiceShown(null, true)).toBe(false);
+  });
+  it("is never offered on a /vibe conversation", () => {
+    expect(draftChoiceShown({ source: "vibe", shape: { raw: true } } as never, true)).toBe(false);
   });
 });
