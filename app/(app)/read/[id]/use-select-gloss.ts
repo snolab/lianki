@@ -1,10 +1,11 @@
 "use client";
 
-// A selected word that is no card of his gets its meaning by itself (owner,
-// 2026-11-05 02:11 JST: the card's 查词 — a Wiktionary tab — went; a tap
-// already shows a card's meaning, so a word with no card shows its gloss the
-// same way). The fetch (our route, or the user's own AI — docs/byok.md) is
-// lib/read/select-gloss-fetch.ts. Asked once the selection rests (the combo
+// A selected word that is no card of his shows the meaning there already is
+// (owner, 2026-11-05 02:11 JST: the card's 查词 — a Wiktionary tab — went): the
+// decks and the shared word_gloss rows, or the user's own AI (docs/byok.md).
+// Nothing of ours is spent on a preview (owner, 2026-11-06): with no meaning the
+// card shows the word in its sentence, and the model runs when the word is
+// committed. The fetch is lib/read/select-gloss-fetch.ts. Asked once the selection rests (the combo
 // interval), so the levels a quick combo passes through cost nothing; a word
 // asked in this tab is never asked again.
 

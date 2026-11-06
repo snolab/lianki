@@ -767,8 +767,8 @@ selecting DOM text.
     detects phrases by itself (the combo's phrase level, extraction, a
     suggestion) admits only non-compositional ones, from a data list or
     flagged by the model, never "any n words in a row";
-  - a phrase that is no card yet gets 制作卡片: the same `make-cards` path as
-    a word (the server accepts a phrase of the book's words,
+  - a phrase that is no card yet is a preview, as a word (the slider adds it,
+    "Grading from the selection card" below; the server accepts a phrase of the book's words,
     `bookPhrase`), into the book's own deck (`book:<hash>`, named after the
     book, made once);
   - a sentence, a paragraph or a hand-made range translates by itself once
@@ -936,10 +936,19 @@ it in the text, not a list of toasts.
   /words: a steep drag can never grade.
 - **What each unit grades** (`lib/read/batch-grade.ts` `handlePlan`):
   - a **word** or **phrase**: its own card, only when due or new (never
-    reviewed). No card (in the book's list but never studied, or not
-    recognised at all) → 制卡 first (the same make-cards path: the book's own
-    deck, meaning from the decks and lemmas, then the AI gloss through
-    `chargeAi`), then the handle. Not due → no handle, "3 天后到期".
+    reviewed). Not due → no handle, "3 天后到期". No card (in the book's list
+    but never studied, or not recognised at all) → **a preview** (owner,
+    2026-11-06 15:56 JST: "你就直接用滑条，不用显示制卡按钮";
+    `NewWordStrip`): nothing is stored, the card shows what meaning there
+    already is (decks, shared `word_gloss`: the gloss route's `cached: true`, no
+    model) and the word's sentence, and the slider's grade adds it in one
+    batch: card (`makeCards`, into the book's own deck, of the word's language,
+    created once per book when it has none), the grade, one undo that removes
+    both. The AI gloss through `chargeAi` comes only in that send, after the
+    hold, so an Undo while held spends nothing. A tap, a drag short of a level
+    or closing the card stores and spends nothing. Keyboard: keys 1–4, or a
+    button per grade (hidden until focused, read by screen readers).
+    The several-word 制卡 (N) stays on a sentence, paragraph or range.
   - a **sentence**: that sentence's FSRS card (the reader's per-sentence
     grade, `gradeFor`, granularity `sentence`). Never takes words along.
   - a **hand-made range** (several sentences, several paragraphs): every due

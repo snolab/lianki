@@ -20,6 +20,7 @@ import { GRADE_HOLD_MS } from "@/lib/read/reader-server";
 import type { GradeReceipt } from "@/lib/read/reader-adapter";
 import {
   batchOf,
+  commitPending,
   gradeIntervals,
   handlePlan,
   intervalLabel,
@@ -162,8 +163,12 @@ export function useCardGrade(o: {
   const plan: HandlePlan = useMemo(() => {
     if (!o.on || !u) return { mode: "none" };
     const p = probe?.key === key ? probe.p : null;
-    return handlePlan(u.kind, p, sids, Date.now());
-  }, [o.on, u, probe, key, sids]);
+    const base = handlePlan(u.kind, p, sids, Date.now());
+    // Committed: its due and the undo show until the probe finds the real card.
+    return base.mode === "grade" && base.preview && commitPending(stack, base.make[0]?.w)
+      ? { mode: "none" }
+      : base;
+  }, [o.on, u, probe, key, sids, stack]);
   /** Each grade's next interval, as /words labels it ("3d", "1d–5d" over a batch). */
   const intervals = useMemo((): Record<SwipeRating, string | null> | null => {
     const p = probe?.key === key ? probe.p : null;
@@ -271,7 +276,7 @@ export function useCardGrade(o: {
       const p = probe?.key === key ? probe.p : null;
       const due =
         plan.target === "word" || plan.target === "phrase"
-          ? plan.words[0]?.next?.[r]
+          ? [...plan.words, ...plan.make][0]?.next?.[r]
           : plan.target === "sentence"
             ? p?.sentenceNext?.[sids[0] ?? ""]?.[r]
             : undefined;

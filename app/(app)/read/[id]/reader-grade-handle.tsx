@@ -13,6 +13,7 @@
 // press that starts inside the gesture that opened the card is ignored.
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { flushSync } from "react-dom";
 import { useIntlayer } from "next-intlayer";
 import { fill } from "@/lib/nav/nav-core";
 import { hintParts, type HandlePlan } from "@/lib/read/batch-grade";
@@ -77,13 +78,99 @@ export function useGradeWords() {
 }
 
 /**
- * The card's grade area for the plan: 制卡 for a word or phrase with no
- * card, when it is due for one not due, else the handle — and, briefly after
- * a grade, when it comes back.
+ * A new word's strip (owner, 2026-11-06 15:56 JST): the word is only a preview
+ * and nothing of it is stored; the knob's grade is what adds it. Past a level,
+ * or one of the buttons (keyboard, screen reader; hidden until focused), calls
+ * `onCommit`; short of a level, or leaving, nothing happens. It knows no plan,
+ * book or endpoint, so any surface that shows an uncarded word can use it.
+ */
+export function NewWordStrip({
+  context,
+  intervals,
+  mirror,
+  openedAt,
+  canUndo,
+  lastWhat,
+  onPreview,
+  onCommit,
+  onUndo,
+}: {
+  /** The sentence the word was met in (shown as the preview's context). */
+  context?: string | null;
+  intervals: Record<SwipeRating, string | null> | null;
+  mirror: boolean;
+  openedAt: number;
+  canUndo: boolean;
+  lastWhat: string | null;
+  onPreview: (r: SwipeRating | null, undo: boolean) => void;
+  onCommit: (r: SwipeRating) => void;
+  onUndo: () => void;
+}) {
+  const t = useIntlayer("read-grade-handle");
+  const { grades } = useGradeWords();
+  const named = (r: SwipeRating) => (intervals?.[r] ? `${grades[r]} · ${intervals[r]}` : grades[r]);
+  return (
+    <>
+      {context && (
+        <p className="mt-1 line-clamp-2 text-sm opacity-75" data-testid="read-new-word-context">
+          {context}
+        </p>
+      )}
+      <GradeHandle
+        enabled
+        reason={null}
+        label={t.addKnob.value}
+        canUndo={canUndo}
+        mirror={mirror}
+        openedAt={openedAt}
+        hint={(s) =>
+          s.undo && lastWhat
+            ? fill(t.undo.value, { what: lastWhat })
+            : s.rating
+              ? fill(t.previewAdd.value, { grade: named(s.rating) })
+              : t.previewIdle.value
+        }
+        onPreview={onPreview}
+        onGrade={onCommit}
+        onUndo={onUndo}
+      />
+      <KeyRow intervals={intervals} grades={grades} />
+      <div className="flex flex-wrap justify-center gap-1">
+        {([1, 2, 3, 4] as const).map((r) => (
+          <button
+            key={r}
+            type="button"
+            data-testid="read-new-word-add"
+            data-rating={r}
+            className="sr-only min-h-11 rounded-full px-3 text-sm focus:not-sr-only focus:bg-[oklch(0.5_0_0/0.1)] focus:px-3"
+            onClick={(e) => {
+              // The button goes with the strip: after this click has bubbled (gone by
+              // then, it would count as a click off the card), and focus stays on the
+              // card, on the knob (undo).
+              const card = e.currentTarget.closest("[data-select-card]");
+              setTimeout(() => {
+                flushSync(() => onCommit(r));
+                card?.querySelector<HTMLElement>("[role=slider]")?.focus();
+              }, 0);
+            }}
+          >
+            {fill(t.addAs.value, { grade: named(r) })}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * The card's grade area for the plan: when it is due for one not due, a new
+ * word's strip for a word or phrase with no card, else the handle — and,
+ * briefly after a grade, when it comes back.
  */
 export function CardGradeArea({
   plan,
   intervals = null,
+  context = null,
   locale,
   mirror,
   openedAt,
@@ -91,8 +178,6 @@ export function CardGradeArea({
   lastWhat,
   next,
   onNextShown,
-  making,
-  onMake,
   onPreview,
   onGrade,
   onUndo,
@@ -100,6 +185,8 @@ export function CardGradeArea({
   plan: HandlePlan;
   /** Each grade's next interval ("3d", "1d–5d"), null while unknown. */
   intervals?: Record<SwipeRating, string | null> | null;
+  /** A word with no card: the sentence it was met in. */
+  context?: string | null;
   locale: string;
   mirror: boolean;
   openedAt: number;
@@ -107,8 +194,6 @@ export function CardGradeArea({
   lastWhat: string | null;
   next: string | null;
   onNextShown: () => void;
-  making: boolean;
-  onMake: () => void;
   onPreview: (r: SwipeRating | null, undo: boolean) => void;
   onGrade: (r: SwipeRating) => void;
   onUndo: () => void;
@@ -140,23 +225,6 @@ export function CardGradeArea({
         onUndo={onUndo}
       />
     );
-  if (plan.mode === "make")
-    return (
-      <>
-        <div className="mt-1.5 flex justify-center">
-          <button
-            type="button"
-            disabled={making}
-            onClick={onMake}
-            data-testid="read-grade-make"
-            className="min-h-11 rounded-full border border-[var(--glass-line)] px-4 text-sm font-medium hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-50"
-          >
-            {t.makeCard}
-          </button>
-        </div>
-        {undoOnly(null)}
-      </>
-    );
   if (plan.mode === "notDue")
     return (
       <>
@@ -175,6 +243,20 @@ export function CardGradeArea({
         {nextLine}
         {undoOnly(null)}
       </>
+    );
+  if (plan.preview)
+    return (
+      <NewWordStrip
+        context={context}
+        intervals={intervals}
+        mirror={mirror}
+        openedAt={openedAt}
+        canUndo={canUndo}
+        lastWhat={lastWhat}
+        onPreview={onPreview}
+        onCommit={onGrade}
+        onUndo={onUndo}
+      />
     );
   return (
     <>
@@ -254,6 +336,7 @@ type Drag = {
 export function GradeHandle({
   enabled,
   reason,
+  label,
   canUndo,
   mirror,
   openedAt,
@@ -266,6 +349,8 @@ export function GradeHandle({
   enabled: boolean;
   /** Why it is greyed out (nothing due). */
   reason: string | null;
+  /** The knob's name for a screen reader, when it is not a plain grade. */
+  label?: string;
   /** A batch made with the handle can be taken back (drag up). */
   canUndo: boolean;
   mirror: boolean;
@@ -403,7 +488,7 @@ export function GradeHandle({
           ref={knob}
           role="slider"
           tabIndex={enabled || canUndo ? 0 : -1}
-          aria-label={t.knobLabel.value}
+          aria-label={label ?? t.knobLabel.value}
           aria-disabled={!(enabled || canUndo) || undefined}
           aria-valuemin={1}
           aria-valuemax={4}

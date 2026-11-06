@@ -81,7 +81,10 @@ Only what can run from the browser:
   `own: true`, which runs the decks and the shared `word_gloss` rows only
   (no model, no charge) and returns `ask: {lang, term}` when they have
   nothing; the browser asks the provider for that headword. The answer stays
-  in the tab, never in `word_gloss`.
+  in the tab, never in `word_gloss`. (Without a key, the same card asks with
+  `cached: true`: decks and `word_gloss` only, the model runs when the word
+  is committed. With a key, each selected word still asks the user's own
+  provider, as they chose; no Lianki credits.)
 - Both show 「用你自己的 key」 on the result.
 
 With 「经 Lianki 转发」 on, both go through the relay instead; nothing else

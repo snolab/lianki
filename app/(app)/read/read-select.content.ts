@@ -353,24 +353,6 @@ const dictionary = {
       sw: "Ufunguo wako mwenyewe",
       mr: "तुमची स्वतःची की",
     }),
-    makePhraseCard: t({
-      en: "Make a card",
-      zh: "制作卡片",
-      ja: "カードを作る",
-      ko: "카드 만들기",
-      hi: "कार्ड बनाएँ",
-      es: "Crear tarjeta",
-      fr: "Créer une carte",
-      ar: "أنشئ بطاقة",
-      bn: "কার্ড তৈরি করুন",
-      pt: "Criar cartão",
-      ru: "Создать карточку",
-      ur: "کارڈ بنائیں",
-      id: "Buat kartu",
-      de: "Karte erstellen",
-      sw: "Tengeneza kadi",
-      mr: "कार्ड बनवा",
-    }),
     readFromHere: t({
       en: "Read from here",
       zh: "从这里朗读",
@@ -575,8 +557,6 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Short error on the reader's selection card when the machine translation of the selected text could not be made (offline, over the limit, or a server failure). The line itself is tappable to retry, followed by ' · Retry'. A short phrase.",
   ownKey:
     "Small tag under a translation or word meaning on the reader's selection card when it was made by the learner's own AI provider and API key (Settings → Your own AI), called from their browser: no Lianki credits were used and the result is not shared. 'key' means an API key, not a keyboard key; in Chinese keep 'key' in Latin letters. A short noun phrase.",
-  makePhraseCard:
-    "Button on the reader's selection card when the learner selected a phrase (several words, or a multi-character expression) that is not yet one of their flashcards, or an inflected word whose dictionary form is not yet one: makes a spaced-repetition flashcard for that phrase (or for the word's dictionary form) in the book's own word list. An imperative phrase; 'card' means a flashcard.",
   readFromHere:
     "Button on the reader's selection card: starts read-aloud (text to speech) at the passage holding the selected unit and goes on from there. An imperative phrase.",
   knownShare:

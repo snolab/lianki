@@ -44,7 +44,16 @@ export interface BatchCtx {
   book: ReaderBook;
   w: WordContext;
   bctx: BookCtx;
+  /**
+   * A book that mixes languages: its words by language, each with the book as
+   * that language needs it (reader-route byLang), as make-cards files them.
+   * Left out: one group, `bctx`.
+   */
+  byLang?: (words: RangeWord[]) => { book: BookCtx; words: RangeWord[] }[];
 }
+
+const langGroups = (c: BatchCtx, words: RangeWord[]) =>
+  c.byLang ? c.byLang(words) : [{ book: c.bctx, words }];
 
 const asProbe = (t: WordTarget, next?: WordProbe["next"]): WordProbe => {
   const c = parseCard(t.card);
@@ -113,7 +122,13 @@ export async function probeBatch(
     sentences[sid] = rows.get(sid)?.due ?? null;
     sentenceNext[sid] = previewDues((r) => gradeSentence(card, r, now, false).due);
   }
-  const targets = words.length ? await wordTargets(c.db, c.email, c.bctx, words) : [];
+  const targets = (
+    await Promise.all(
+      langGroups(c, words).map((g) =>
+        g.words.length ? wordTargets(c.db, c.email, g.book, g.words) : [],
+      ),
+    )
+  ).flat();
   const lists = targets.some((t) => t.listId)
     ? new Map((await new WordsD1Repo(c.db, c.email).lists()).map((l) => [l.id, l.params]))
     : new Map();
@@ -168,7 +183,7 @@ export async function gradeBatch(
   },
   words: RangeWord[],
   now: Date,
-  gloss?: Gloss,
+  glossFor?: (book: BookCtx) => Gloss,
 ): Promise<{ ok: true; res: BatchResult } | { ok: false; error: string }> {
   const rating = body.rating;
   if (rating !== 1 && rating !== 2 && rating !== 3 && rating !== 4)
@@ -186,14 +201,22 @@ export async function gradeBatch(
   const t = now.getTime();
   const { grade: gs, skipped } = splitSentences(sids, await sentenceDues(c, sids), t);
 
-  const { undoWords, outWords, skippedWords } = await gradeWords(
-    c,
-    words,
-    rating,
-    body.day,
-    now,
-    gloss,
-  );
+  const undoWords: UndoWord[] = [];
+  const outWords: BatchResult["words"] = [];
+  let skippedWords = 0;
+  for (const g of langGroups(c, words)) {
+    const r = await gradeWords(
+      { ...c, bctx: g.book },
+      g.words,
+      rating,
+      body.day,
+      now,
+      glossFor?.(g.book),
+    );
+    undoWords.push(...r.undoWords);
+    outWords.push(...r.outWords);
+    skippedWords += r.skippedWords;
+  }
   // Sentences through the reader's own grade (FSRS per sentence, its read and undo record).
   if (gs.length) {
     const r = await gradeFor(
@@ -328,6 +351,8 @@ export async function undoBatch(
   c: Pick<BatchCtx, "db" | "ref" | "email" | "bctx">,
   id: unknown,
   day: string | undefined,
+  /** Every list the batch may have made cards in (a book that mixes languages). */
+  hashes: readonly string[] = [c.bctx.hash],
 ): Promise<{ restored: number; changed: number } | null> {
   if (typeof id !== "string" || !CLIENT_ID.test(id)) return null;
   const rec = await undoRecord(c.db, c.ref.userId, id);
@@ -354,7 +379,7 @@ export async function undoBatch(
     if (await repo.undo(x.listId, x.term, d)) restored++;
     if (x.made) unmake.push(x.term);
   }
-  if (unmake.length) await unmakeCards(c.db, c.email, c.bctx.hash, unmake);
+  if (unmake.length) for (const h of hashes) await unmakeCards(c.db, c.email, h, unmake);
   const s = await revertSentences(c.db, c.ref, id, rec.sentences);
   return { restored: restored + s.restored, changed: changed + s.changed };
 }
