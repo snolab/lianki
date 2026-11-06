@@ -53,23 +53,9 @@ const boxDeps = {
     (await hit(db as unknown as ThrottleDb, `box-token:${tokenHash}`, BOX_TOKEN_REQUESTS)).allowed,
 };
 
-function afterBox(req: Request, env: LiveEnv, ctx: Ctx): Promise<Response> {
-  if (!mayBeLive(req.url, req.headers.get("cookie"))) return nextFetch(req, env, ctx);
-  // One per isolate (its pointer cache); production is per request.
-  live ??= createLivePage({
-    respond101: (up, headers) =>
-      new Response(null, {
-        status: 101,
-        headers,
-        webSocket: (up as Response & { webSocket?: unknown }).webSocket,
-      } as ResponseInit),
-  });
-  return live.handle(req, env, (r) => nextFetch(r, env, ctx));
-}
-
 export default {
   ...handler,
-  fetch(req: Request, env: LiveEnv & BoxEnv, ctx: Ctx): Promise<Response> {
+  fetch(req: Request, env: LiveEnv, ctx: Ctx): Promise<Response> {
     if (siblingRequestRefused(req))
       return Promise.resolve(
         Response.json(
@@ -78,7 +64,7 @@ export default {
         ),
       );
     // Box tokens and box origins (docs/box-oauth.md). A request with neither goes straight on.
-    return boxGate(req, env, boxDeps, (r) => afterBox(r, env, ctx));
+    return boxGate(req, env as unknown as BoxEnv, boxDeps, (r) => afterBox(r, env, ctx));
   },
   /**
    * The Cron Trigger (wrangler.jsonc `triggers`, just after UTC midnight):
@@ -154,4 +140,19 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
     if (!allowInbox()) return { ok: false, error: "busy" };
     return inboxOp(this.env.DB as unknown as InboxDb, req);
   }
+}
+
+/** The live preview's check, behind the sibling guard and the box gate. */
+function afterBox(req: Request, env: LiveEnv, ctx: Ctx): Promise<Response> {
+  if (!mayBeLive(req.url, req.headers.get("cookie"))) return nextFetch(req, env, ctx);
+  // One per isolate (its pointer cache); production is per request.
+  live ??= createLivePage({
+    respond101: (up, headers) =>
+      new Response(null, {
+        status: 101,
+        headers,
+        webSocket: (up as Response & { webSocket?: unknown }).webSocket,
+      } as ResponseInit),
+  });
+  return live.handle(req, env, (r) => nextFetch(r, env, ctx));
 }

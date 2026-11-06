@@ -18,6 +18,7 @@
  */
 import { chromium } from "playwright";
 import { readFileSync, writeFileSync } from "node:fs";
+import { launchSilent, newSilentContext } from "./silent.mjs";
 
 const PROVIDER = process.env.PROVIDER;
 const BOX = process.env.BOX;
@@ -47,10 +48,10 @@ async function signUp(ctx, email) {
 }
 
 async function setup() {
-  const browser = await chromium.launch({ args: ["--mute-audio"] });
-  const ctx = await browser.newContext();
+  const browser = await launchSilent(chromium);
+  const ctx = await newSilentContext(browser);
   await signUp(ctx, OWNER);
-  const member = await browser.newContext();
+  const member = await newSilentContext(browser);
   await signUp(member, MEMBER);
   await member.close();
   const r = await ctx.request.post(`${PROVIDER}/api/dev/box-clients`, {
@@ -128,10 +129,10 @@ const raw = (token, path, method = "GET") =>
 
 async function run() {
   const { clientId } = JSON.parse(readFileSync(STATE, "utf8"));
-  const browser = await chromium.launch({ args: ["--mute-audio"] });
+  const browser = await launchSilent(chromium);
 
   // The bound member signs in at the provider, then opens the box.
-  const ctx = await browser.newContext();
+  const ctx = await newSilentContext(browser);
   await signUp(ctx, MEMBER);
   const page = await ctx.newPage();
   const cross = [];
@@ -260,7 +261,7 @@ async function run() {
 
   // PKCE and one-time codes, with real codes. Cookies stripped: the browser context's
   // request API would otherwise add them, and a cookie is refused by itself.
-  const bare = await browser.newContext();
+  const bare = await newSilentContext(browser);
   const wrongPkce = await getCode(ctx, clientId, "box:read box:write offline_access");
   check("a real code is issued", Boolean(wrongPkce.code));
   const bad = await exchange(bare, clientId, wrongPkce.code, "x".repeat(50));
@@ -291,7 +292,7 @@ async function run() {
   check("a replay revokes the token that code issued", burnt.status === 401, `${burnt.status}`);
 
   const again = await getCode(ctx, clientId, "box:read box:write offline_access");
-  const fresh = await browser.newContext();
+  const fresh = await newSilentContext(browser);
   const live = (await (await exchange(fresh, clientId, again.code, again.verifier)).json())
     .access_token;
   await fresh.close();
@@ -399,7 +400,7 @@ async function run() {
   );
 
   // Any other account is refused at the provider.
-  const other = await browser.newContext();
+  const other = await newSilentContext(browser);
   await signUp(other, STRANGER);
   const op = await other.newPage();
   await op.goto(`${BOX}/sign-in`);
@@ -468,7 +469,7 @@ async function run() {
   await other.close();
 
   // A box with no account gets the sign-in of lianki.com, not its own.
-  const anon = await browser.newContext();
+  const anon = await newSilentContext(browser);
   const ap = await anon.newPage();
   await ap.goto(`${BOX}/sign-in`);
   await ap.waitForURL(`${PROVIDER}/sign-in**`, { timeout: 60_000 });
@@ -481,7 +482,7 @@ async function run() {
   await anon.close();
 
   // The one owner action.
-  const owner = await browser.newContext();
+  const owner = await newSilentContext(browser);
   await signUp(owner, OWNER);
   const rev = await owner.request.post(`${PROVIDER}/api/dev/box-clients`, {
     data: { op: "revoke", clientId },
@@ -519,7 +520,7 @@ async function run() {
   const beyond = await getCode(ctx, ro, "box:read box:write offline_access");
   check("a read-only client cannot get box:write", !beyond.code);
   const rc = await getCode(ctx, ro, "box:read offline_access");
-  const rbare = await browser.newContext();
+  const rbare = await newSilentContext(browser);
   const rtok = (await (await exchange(rbare, ro, rc.code, rc.verifier)).json()).access_token;
   await rbare.close();
   check("a read-only client can get box:read: the check above means something", Boolean(rc.code));
@@ -533,7 +534,7 @@ async function run() {
     headers: { origin: PROVIDER, "content-type": "application/json" },
   });
   check("one account cannot have a second box", dup.status() === 409, `${dup.status()}`);
-  const notOwner = await browser.newContext();
+  const notOwner = await newSilentContext(browser);
   await signUp(notOwner, MEMBER);
   const hidden = await notOwner.request.get(`${PROVIDER}/api/dev/box-clients`);
   check("the owner's route is 404 to anyone else", hidden.status() === 404, `${hidden.status()}`);
