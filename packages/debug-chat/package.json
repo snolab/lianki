@@ -53,6 +53,7 @@
     "./voice-merge": "./src/voice-merge.ts",
     "./voice-tune": "./src/voice-tune.ts",
     "./ask": "./src/ask.ts",
+    "./ask-above": "./src/ask-above.ts",
     "./clips": "./src/clips.ts",
     "./clips-store": "./src/clips-store.ts",
     "./ClipsBadge": "./src/ClipsBadge.tsx",
