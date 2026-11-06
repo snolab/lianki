@@ -219,6 +219,16 @@ describe("the signed identity", () => {
     expect(hasSessionCookie(new Headers({ [BOX_IDENTITY_HEADER]: "x" }))).toBe(true);
     expect(hasSessionCookie(new Headers())).toBe(false);
   });
+  test("on a box there is no session at all, cookie or not", () => {
+    process.env.LIANKI_BOX_CLIENT_ID = "c1";
+    try {
+      expect(hasSessionCookie(new Headers({ cookie: "better-auth.session_token=x" }))).toBe(false);
+      expect(hasSessionCookie(new Headers({ [BOX_IDENTITY_HEADER]: "x" }))).toBe(false);
+    } finally {
+      delete process.env.LIANKI_BOX_CLIENT_ID;
+    }
+    expect(hasSessionCookie(new Headers({ cookie: "better-auth.session_token=x" }))).toBe(true);
+  });
 });
 
 describe("what may start the plugin's authorize", () => {

@@ -35,6 +35,8 @@ export function passwordAuthEnabled(): boolean {
  * callers may skip loading better-auth altogether — the common guest case.
  */
 export function hasSessionCookie(headers: Headers): boolean {
+  // A box has no session of its own (docs/box-oauth.md), so better-auth never loads there.
+  if (process.env.LIANKI_BOX_CLIENT_ID) return false;
   // A box token's signed identity counts too: auth.ts answers it with no cookie.
   if (headers.has("x-lk-box-identity")) return true;
   return headers.get("cookie")?.includes("better-auth.session_token=") ?? false;
