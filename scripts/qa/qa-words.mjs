@@ -2090,9 +2090,11 @@ try {
             native: document.querySelectorAll(".slip-native").length > 0,
           };
         });
+      // These /words loads wait for "load", not "networkidle": WebKit has hung 30 s
+      // on the latter (#603). The listitem wait after each says the page rendered.
       for (const when of ["load", "reload"]) {
-        if (when === "load") await w.goto(listUrl, { waitUntil: "networkidle" });
-        else await w.reload({ waitUntil: "networkidle" });
+        if (when === "load") await w.goto(listUrl, { waitUntil: "load" });
+        else await w.reload({ waitUntil: "load" });
         await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
         await w.waitForTimeout(800);
         const o = await opening();
@@ -2163,7 +2165,7 @@ try {
           document.head.append(st);
         }),
       );
-      await w.reload({ waitUntil: "networkidle" });
+      await w.reload({ waitUntil: "load" });
       await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
       await w.waitForTimeout(800);
       const layout = () =>
@@ -2270,7 +2272,7 @@ try {
       await w.emulateMedia({ colorScheme: null });
       await w.setViewportSize({ width: 414, height: 848 });
       // Fresh layout for the swipe checks below, as before the resizes.
-      await w.reload({ waitUntil: "networkidle" });
+      await w.reload({ waitUntil: "load" });
       await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
       await w.waitForTimeout(800);
       if (variant === "native") {
