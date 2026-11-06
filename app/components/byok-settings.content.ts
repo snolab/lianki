@@ -190,6 +190,24 @@ const dictionary = {
       mr: "API key टाकल्यावर तुमच्या प्रदात्याकडून मॉडेलची यादी येते. तुम्ही मॉडेलचे नाव स्वतःही लिहू शकता.",
       ko: "API 키를 입력하면 제공업체에서 모델 목록을 가져옵니다. 모델 이름을 직접 입력할 수도 있습니다.",
     }),
+    keySignOut: t({
+      en: "Signing out removes the key from this device, so you'll need to enter it again.",
+      zh: "退出登录会把 key 从这台设备上删除，之后需要重新输入。",
+      hi: "साइन आउट करने पर कुंजी इस डिवाइस से हट जाती है, इसलिए आपको इसे फिर से दर्ज करना होगा।",
+      es: "Al cerrar sesión, la clave se elimina de este dispositivo y tendrás que volver a introducirla.",
+      fr: "La déconnexion supprime la clé de cet appareil : vous devrez la saisir à nouveau.",
+      ar: "يؤدي تسجيل الخروج إلى إزالة المفتاح من هذا الجهاز، لذا ستحتاج إلى إدخاله مرة أخرى.",
+      bn: "সাইন আউট করলে কী এই ডিভাইস থেকে মুছে যায়, তাই আপনাকে আবার এটি লিখতে হবে।",
+      pt: "Ao sair da conta, a chave é removida deste dispositivo e você precisará inseri-la novamente.",
+      ru: "При выходе из аккаунта ключ удаляется с этого устройства, и его придётся ввести заново.",
+      ur: "سائن آؤٹ کرنے سے کلید اس ڈیوائس سے ہٹ جاتی ہے، اس لیے آپ کو اسے دوبارہ درج کرنا ہوگا۔",
+      id: "Keluar dari akun akan menghapus kunci dari perangkat ini, jadi Anda perlu memasukkannya lagi.",
+      de: "Beim Abmelden wird der Schlüssel von diesem Gerät entfernt, du musst ihn dann erneut eingeben.",
+      ja: "サインアウトするとキーはこの端末から削除されるため、もう一度入力が必要です。",
+      sw: "Kutoka kwenye akaunti huondoa ufunguo kwenye kifaa hiki, kwa hiyo utahitaji kuuingiza tena.",
+      mr: "साइन आउट केल्यावर की या डिव्हाइसवरून काढली जाते, त्यामुळे ती पुन्हा टाकावी लागेल.",
+      ko: "로그아웃하면 이 기기에서 키가 삭제되므로 다시 입력해야 합니다.",
+    }),
     apiKey: t({
       en: "API key",
       zh: "API key",
@@ -1114,6 +1132,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Field label in Settings → Your own AI: the name of the AI model to use at the provider (e.g. gpt-4o-mini). One noun.",
   modelHint:
     "Help text under the model field in Settings → Your own AI, while the field has no list yet: the choices come from the AI provider once the learner has entered their API key, or they may type a model name themselves. In Chinese keep 'API key' in Latin letters. One or two short sentences.",
+  keySignOut:
+    "Help text under the API key field in Settings → Your own AI, shown to signed-in users: signing out of Lianki deletes the saved API key from this device, so they must type it again after signing back in. A full sentence. 'Signing out' means leaving the Lianki account; in Chinese keep 'key' as in the other strings here.",
   apiKey:
     "Field label in Settings → Your own AI: the secret API key from the AI provider (a password-like field). In Chinese keep 'API key' in Latin letters. Short noun.",
   keyHere:
