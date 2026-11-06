@@ -28,6 +28,10 @@ import { personKey } from "@/lib/rateLimit";
  * rate limit, but a generated clip is not written to R2 and no response is
  * kept by the browser (`no-store`) — the chat replays from its own in-memory
  * blob URLs.
+ *
+ * `isPrivate` (lib/vibe/private-speech.ts): a sentence the user's own private
+ * text holds is treated as `store=0` whatever the client sent, since a clip in
+ * R2 is shared by everyone who asks for the same text.
  */
 const MISS_WINDOW_MS = 10 * 60_000;
 // The server voice is the default: a fast session of new words (word + example
@@ -58,6 +62,8 @@ export type WordsTtsDeps = {
     signal?: AbortSignal;
   }): Promise<{ audio: Uint8Array<ArrayBuffer>; contentType: string }>;
   log(where: string, err: unknown): void;
+  /** Is this text the user's own private words? Asked once, on a miss about to be kept. */
+  isPrivate?(email: string, text: string, lang: string): Promise<boolean>;
 };
 
 const json = (body: unknown, status: number, headers?: Record<string, string>) =>
@@ -74,8 +80,8 @@ export async function wordsTts(
   const { lang, text } = ttsParams(params);
   if (!text || text.length > MAX_TTS_TEXT)
     return json({ error: `text: 1–${MAX_TTS_TEXT} characters` }, 400);
-  const store = storeParam(params);
-  const keep = store ? CACHE_HEADERS : NO_STORE_HEADERS;
+  let store = storeParam(params);
+  const keep = () => (store ? CACHE_HEADERS : NO_STORE_HEADERS);
 
   try {
     const clip = await deps.getVoiceClip(voiceKey(lang, text));
@@ -105,12 +111,21 @@ export async function wordsTts(
         headers: {
           "Content-Type": sniffAudioType(Buffer.from(cached)),
           "X-Voice": "melotts-cached",
-          ...keep,
+          ...keep(),
         },
       });
   } catch (err) {
     deps.log("words.tts.cache.lookup", err);
   }
+
+  // Unknown counts as private: a clip not kept costs a second generation at most.
+  if (store && deps.isPrivate)
+    try {
+      if (await deps.isPrivate(email, text, lang)) store = false;
+    } catch (err) {
+      store = false;
+      deps.log("words.tts.private", err);
+    }
 
   // The same limit whether or not the clip is kept: store=0 cannot be used to
   // generate more than a word session may.
@@ -133,7 +148,7 @@ export async function wordsTts(
         deps.log("words.tts.cache.save", err);
       }
     return new Response(audio, {
-      headers: { "Content-Type": contentType, "X-Voice": "melotts", ...keep },
+      headers: { "Content-Type": contentType, "X-Voice": "melotts", ...keep() },
     });
   } catch (err) {
     deps.log("words.tts.generate", err);
