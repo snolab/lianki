@@ -1,15 +1,41 @@
 // The model call of the live polish (rules: live-polish.ts). Nothing about the
 // text is logged.
+import { flagIn } from "@/lib/flags";
+import { readFlags } from "@/lib/flags-store";
+import { isOwner } from "@/lib/owner";
 import { PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
 import { routeLimit } from "@/lib/security/route-guard";
 import { isWorkersAiConfigured } from "@/lib/workers-ai";
 import { chargeAi, workersAiComplete, type Complete } from "./gloss-server";
-import { LIVE_POLISH_MODEL, checkLivePolish, livePolishMessages } from "./live-polish";
+import { LIVE_POLISH_MODEL, checkLivePolish, isDraftWord, livePolishMessages } from "./live-polish";
 
 /** Calls per user per window: a live talk makes a few a minute. */
 const LIMIT = { windowMs: 10 * 60_000, max: 120 };
 /** The answer's ceiling: about the same text back. */
 const maxTokens = (chars: number) => Math.min(8000, 300 + chars * 2);
+
+/** Tapping words of the draft: a card or a meaning at a time, by hand. */
+const DRAFT_WORD_LIMIT = { windowMs: 10 * 60_000, max: 120 };
+
+/** Who may have a live doc polished: the owner, or everyone once the flag is on. */
+export async function mayPolishLive(email: string | null) {
+  return isOwner(email) || flagIn(await readFlags(), "read.live-polish");
+}
+
+/**
+ * The words a gloss or card route takes with `draft: true`: the polish rewrites,
+ * so the draft holds words no save of the book has, and nothing stores the draft
+ * to check them against. So one word at a time, limited, and only for who may
+ * polish; anyone else keeps the book's words. Null: over the limit.
+ */
+export async function draftOwn(
+  own: (w: string) => boolean,
+  ctx: { userId: string; email: string | null },
+): Promise<((w: string) => boolean) | null> {
+  if (!(await mayPolishLive(ctx.email))) return own;
+  if (!(await routeLimit(`read-draft-word:${ctx.userId}`, DRAFT_WORD_LIMIT)).allowed) return null;
+  return (w) => own(w) || isDraftWord(w);
+}
 
 export type LivePolish =
   | { ok: true; text: string }

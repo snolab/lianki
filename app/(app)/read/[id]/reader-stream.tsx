@@ -5,8 +5,9 @@
  * lianki-push brings each live edit, shown at once as the tail under the book
  * (only the new words are cut and looked up), and says when the book was saved;
  * then the book is fetched and the tail keeps only what it does not hold yet.
- * Nothing polls. The Reader stays mounted, so the place on the page is kept;
- * someone already at the end follows the new text down.
+ * Nothing polls. A live doc opens at its newest words; the Reader stays mounted,
+ * so the place on the page is kept, and someone at the end follows the new text
+ * down. Scrolling up stops the following.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
@@ -41,6 +42,33 @@ const followDown = (follow: boolean) => {
   if (follow)
     requestAnimationFrame(() => window.scrollTo({ top: document.documentElement.scrollHeight }));
 };
+
+/**
+ * To the page's end and staying there while the rows above measure themselves,
+ * until the height rests, or the reader scrolls for themselves.
+ */
+export function settleAtEnd(beforeScroll: () => void) {
+  let lastHeight = -1;
+  let rests = 0;
+  let frames = 0;
+  let frame = 0;
+  const stop = () => {
+    cancelAnimationFrame(frame);
+    for (const ev of ["wheel", "touchstart", "keydown"]) window.removeEventListener(ev, stop);
+  };
+  const step = () => {
+    const height = document.documentElement.scrollHeight;
+    rests = height === lastHeight ? rests + 1 : 0;
+    lastHeight = height;
+    beforeScroll();
+    window.scrollTo({ top: height });
+    if (rests < 10 && ++frames < 240) frame = requestAnimationFrame(step);
+    else stop();
+  };
+  for (const ev of ["wheel", "touchstart", "keydown"])
+    window.addEventListener(ev, stop, { passive: true });
+  frame = requestAnimationFrame(step);
+}
 
 export function useBookStream<M extends { lines: string[] }>(
   id: string,

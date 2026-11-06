@@ -99,7 +99,7 @@ import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
 import { PolishOffer, RawTranscript } from "./reader-polish";
-import { LiveTail, StreamBadge, useBookStream } from "./reader-stream";
+import { LiveTail, StreamBadge, settleAtEnd, useBookStream } from "./reader-stream";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { useItemWords, type ItemPlan } from "./use-item-words";
@@ -795,6 +795,15 @@ function Reader({
     restored.current = true;
     const linked = decodeUnit(location.hash);
     if (linked && openLinkRef.current(linked)) return;
+    // A live doc is read at its newest words, not where it was left.
+    if (liveTail !== null) {
+      prog.current = true;
+      vz().scrollToIndex(blocks.length - 1, { align: "end" });
+      settleAtEnd(() => {
+        prog.current = true;
+      });
+      return;
+    }
     let live = true;
     data.anchor(id).then((a) => {
       if (!live || !a) return;

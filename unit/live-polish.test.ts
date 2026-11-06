@@ -1,12 +1,14 @@
 // The polish of a live doc's text (docs/connections.md, "Polish").
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   LIVE_POLISH_MAX_CHARS,
   checkLivePolish,
+  isDraftWord,
   livePolishMessages,
   nextPolishBatch,
 } from "@/lib/read/live-polish";
-import { livePolishAi } from "@/lib/read/live-polish-server";
+import { setOwnerSnapshot } from "@/lib/owner";
+import { draftOwn, livePolishAi, mayPolishLive } from "@/lib/read/live-polish-server";
 
 describe("livePolishMessages", () => {
   it("marks the passage as material, and the draft as context only", () => {
@@ -101,5 +103,34 @@ describe("livePolishAi", () => {
     const r = await livePolishAi("hello", "", { userId: `n${Math.random()}` });
     Object.assign(process.env, saved);
     expect(r).toEqual({ ok: false, error: "not-configured" });
+  });
+});
+
+describe("draft words", () => {
+  const own = (w: string) => w === "book";
+  const owner = "owner@example.com";
+  beforeAll(() => setOwnerSnapshot([owner]));
+  afterAll(() => setOwnerSnapshot([]));
+  it("takes one word, never a phrase or a sentence", () => {
+    expect(isDraftWord("polished")).toBe(true);
+    expect(isDraftWord("two words")).toBe(false);
+    expect(isDraftWord("x".repeat(65))).toBe(false);
+  });
+  it("takes a word only the draft holds, from who may polish", async () => {
+    expect(await mayPolishLive(owner)).toBe(true);
+    const taken = await draftOwn(own, { userId: `d${Math.random()}`, email: owner });
+    expect(taken?.("book")).toBe(true);
+    expect(taken?.("draftonly")).toBe(true);
+    expect(taken?.("two words")).toBe(false);
+  });
+  it("keeps the book's words for anyone else", async () => {
+    const taken = await draftOwn(own, { userId: "someone", email: "other@example.com" });
+    expect(taken).toBe(own);
+  });
+  it("is limited per user", async () => {
+    const ctx = { userId: `d${Math.random()}`, email: owner };
+    let last;
+    for (let i = 0; i < 121; i++) last = await draftOwn(own, ctx);
+    expect(last).toBeNull();
   });
 });
