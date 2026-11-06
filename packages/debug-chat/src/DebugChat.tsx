@@ -14,6 +14,8 @@ import {
 import { createPortal, flushSync } from "react-dom";
 import { useUi } from "@lianki/ui-state";
 import { chatFold, chatPrefs, chatUi } from "./ui-store";
+import { lineTier, richOf, spokenOf } from "./rich-text";
+import { RichBody, RichLine } from "./RichText";
 import {
   COMPACT_BLUR_MS,
   COMPACT_PEEK_MS,
@@ -65,7 +67,8 @@ import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageS
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
 import { BAR_CONTROL, barGeometry } from "./bar-geometry";
-import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
+import { DebugMic, canCapture, pageCues, pageMic, voiceDevice } from "./MicButton";
+import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
 import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
@@ -749,6 +752,22 @@ export function DebugChat({
     const f = () => setAecState(aecOn());
     window.addEventListener(AEC_EVENT, f);
     return () => window.removeEventListener(AEC_EVENT, f);
+  }, []);
+  /** The voice cues' two switches (cues.ts), synced with the account. */
+  const [cueSend, setCueSend] = useState(() => cueOn(CUE_SEND_KEY));
+  const [cueSpeech, setCueSpeech] = useState(() => cueOn(CUE_SPEECH_KEY));
+  // Another tab's change, or another device's arriving (docs/prefs-sync.md).
+  useEffect(() => {
+    const f = () => {
+      setCueSend(cueOn(CUE_SEND_KEY));
+      setCueSpeech(cueOn(CUE_SPEECH_KEY));
+    };
+    window.addEventListener("storage", f);
+    window.addEventListener("lk:pref-applied", f);
+    return () => {
+      window.removeEventListener("storage", f);
+      window.removeEventListener("lk:pref-applied", f);
+    };
   }, []);
   /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
   const [rate, setRate] = useState(speechRate);
@@ -1992,6 +2011,12 @@ export function DebugChat({
     if (pending.get().length) pending.take();
     // A typed line says which language the owner speaks: the mic's STT hint.
     if (!source) learnSttHint(text);
+    // A spoken line went out, by whichever path (the join, Enter, the debounce):
+    // one cue for it (cues.ts), here and nowhere else. Typed lines are silent.
+    else
+      window.dispatchEvent(
+        new CustomEvent(VOICE_SENT_EVENT, { detail: { sound: pageCues().send() } }),
+      );
     // Sent: an interruption is over, and the queue (still relevant) reads on.
     voice().resume();
     draftRef.current = "";
@@ -2054,12 +2079,7 @@ export function DebugChat({
    * hub's edit is the agent's). The cost is up to joinMs on a line that is
    * really done; it is tunable, and 0 sends at once.
    */
-  const sendVoice = () => {
-    if (submit()) {
-      const sound = playSentTick();
-      window.dispatchEvent(new CustomEvent(VOICE_SENT_EVENT, { detail: { sound } }));
-    }
-  };
+  const sendVoice = () => void submit();
   const joiner = useRef<ReturnType<typeof createJoiner> | null>(null);
   joiner.current ??= createJoiner({
     send: () => sendVoiceRef.current(),
@@ -2242,7 +2262,7 @@ export function DebugChat({
     return {
       text: raw ? (
         <span data-testid="debug-chat-raw" className="text-gray-500">
-          {m.raw}
+          <RichBody rich={richOf(m.raw, "markdown")} onOpenPage={onOpenPage} />
         </span>
       ) : (
         m.text
@@ -2657,7 +2677,7 @@ export function DebugChat({
                 agentName: t.name,
                 you: t.you,
               })}
-              text={p.text}
+              text={lineText(m, p.text)}
               mark={
                 m.speaker?.decision === "me" ? (
                   <>
@@ -2775,6 +2795,41 @@ export function DebugChat({
           {aec ? "◉" : "○"}
         </span>
         {ui.aec}
+      </button>
+      {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-cue-send"
+        aria-checked={cueSend}
+        onClick={() => {
+          setCueSend(!cueSend);
+          setCue(CUE_SEND_KEY, !cueSend);
+          notePrefWrite();
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {cueSend ? "◉" : "○"}
+        </span>
+        {strings?.cueSend ? t.cueSend : ui.cueSend}
+      </button>
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-cue-speech"
+        aria-checked={cueSpeech}
+        onClick={() => {
+          setCueSpeech(!cueSpeech);
+          setCue(CUE_SPEECH_KEY, !cueSpeech);
+          notePrefWrite();
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {cueSpeech ? "◉" : "○"}
+        </span>
+        {strings?.cueSpeech ? t.cueSpeech : ui.cueSpeech}
       </button>
       {/* Compact mode (compact-view.ts): this device only (lk:pref:chat-view). */}
       <button
@@ -3088,7 +3143,7 @@ export function DebugChat({
     if (!left) return;
     for (const m of messages) {
       if (m.from !== "agent" || historyIds.current!.has(m.id) || claimed.current.has(m.id)) continue;
-      const n = sentenceCount(m.text);
+      const n = sentenceCount(spokenOf(m, { embedded }));
       if (!n || n > left) continue;
       claimed.current.add(m.id);
       readDispatch({ type: "enqueue", id: m.id, n });
@@ -3145,11 +3200,12 @@ export function DebugChat({
       el.focus({ preventScroll: true });
     }
     for (const { r, m } of resumeItems) {
-      const ranges = sentenceRanges(m.text);
+      const said = spokenOf(m, { embedded });
+      const ranges = sentenceRanges(said);
       const start = ranges[r.from]?.start;
       if (start === undefined) continue;
       claimed.current.add(m.id);
-      if (v.reply(m.text.slice(start)))
+      if (v.reply(said.slice(start)))
         readDispatch({ type: "enqueue", id: m.id, n: ranges.length - r.from, from: r.from });
     }
     if (focusHack && el) {
@@ -3171,22 +3227,45 @@ export function DebugChat({
         ?.hasBeenActive === true;
     if (voice().state().mic || activated) resumeNow();
   }, [resumeItems.length]);
-  /** An agent line in its sentences, each coloured by how far the reading got. */
+  /**
+   * A line's text in full: markdown by its tier (rich-text.ts), and an agent
+   * line in its sentences, each coloured by how far the reading got.
+   */
   const readText = (m: ChatMessage, text: ReactNode) => {
-    if (m.from !== "agent" || typeof text !== "string") return text;
-    return sentenceRanges(text).map((r, idx) => {
-      const st = sentenceState(readP, m.id, idx);
-      return (
-        <span
-          key={r.start}
-          data-read={st}
-          style={st === "spoken" ? SPOKEN_STYLE : st === "speaking" ? SPEAKING_STYLE : undefined}
-        >
-          {text.slice(r.start, r.end)}
-        </span>
-      );
-    });
+    if (typeof text !== "string") return text;
+    const rich = richOf(text, lineTier(m, { embedded }));
+    if (m.from !== "agent") return <RichBody rich={rich} onOpenPage={onOpenPage} />;
+    return (
+      <RichBody
+        rich={rich}
+        onOpenPage={onOpenPage}
+        read={{
+          ranges: sentenceRanges(rich.spoken),
+          wrap: (idx, key, children) => {
+            const st = sentenceState(readP, m.id, idx);
+            return (
+              <span
+                key={key}
+                data-read={st}
+                style={
+                  st === "spoken" ? SPOKEN_STYLE : st === "speaking" ? SPEAKING_STYLE : undefined
+                }
+              >
+                {children}
+              </span>
+            );
+          },
+        }}
+      />
+    );
   };
+  /** A line in the one-line views: its words with their links, no blocks. */
+  const lineText = (m: ChatMessage, text: ReactNode) =>
+    typeof text === "string" ? (
+      <RichLine rich={richOf(text, lineTier(m, { embedded }))} onOpenPage={onOpenPage} />
+    ) : (
+      text
+    );
   /** Who said each line, and where a run of one sender's lines starts (avatar-rules.ts). */
   const whos = messages.map((m) =>
     lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you }),
@@ -3223,8 +3302,8 @@ export function DebugChat({
               "aria-controls": "debug-chat-column",
               "aria-expanded": false,
               onClick: (e: React.MouseEvent) => {
-                // Its polish mark is its own button (shows the raw STT text).
-                if ((e.target as HTMLElement).closest("button")) return;
+                // Its polish mark is its own button (shows the raw STT text); a link is a link.
+                if ((e.target as HTMLElement).closest("button, a")) return;
                 peek();
               },
               onKeyDown: (e: React.KeyboardEvent) => {
@@ -3245,15 +3324,17 @@ export function DebugChat({
           size={AVATAR_PX}
           hidden
         />
-        <p
+        <div
           className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
         >
           <span className="sr-only">{who.name}: </span>
           {m.ask
             ? m.ask.questions.length === 1
-              ? m.ask.questions[0]!.question
+              ? lineText(m, m.ask.questions[0]!.question)
               : ""
-            : readText(m, p.text)}
+            : asLine
+              ? lineText(m, p.text)
+              : readText(m, p.text)}
           {m.ask && (
             <AskCard
               ask={m.ask}
@@ -3264,7 +3345,7 @@ export function DebugChat({
           )}
           {p.mark}
           {asLine && <span className="sr-only"> · {showAll}</span>}
-        </p>
+        </div>
       </div>
     );
   };
@@ -3541,7 +3622,7 @@ export function DebugChat({
                 size={AVATAR_PX}
                 hidden
               />
-              <p className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+              <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
                 {node && (
                   <span
                     aria-hidden
@@ -3586,7 +3667,7 @@ export function DebugChat({
                         ) : null}
                         {m.ask
                           ? m.ask.questions.length === 1
-                            ? m.ask.questions[0]!.question
+                            ? lineText(m, m.ask.questions[0]!.question)
                             : ""
                           : readText(m, polish(m).text)}
                         {m.ask && (
@@ -3620,7 +3701,7 @@ export function DebugChat({
                     </span>
                   );
                 })}
-              </p>
+              </div>
             </li>
           );
         })}

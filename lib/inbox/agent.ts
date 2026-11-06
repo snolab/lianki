@@ -9,7 +9,6 @@
  * `get` mints a single-use, 60 s download ticket; the agent fetches
  * /api/dev/inbox/<id> with it in the x-inbox-ticket header.
  */
-import { ownerEmails } from "@/lib/owner";
 import { INBOX } from "./config";
 import { isInboxId } from "./keys";
 import { type InboxDb, getItem, listItemsOf, markProcessed, mintTicket } from "./store";
@@ -25,12 +24,14 @@ export function parseInboxOp(raw: unknown): InboxOp | null {
   return null;
 }
 
-async function ownerIds(db: InboxDb, raw: string | undefined): Promise<string[]> {
-  const emails = ownerEmails(raw);
-  if (!emails.length) return [];
+/** The accounts of the active owners, by exact address (site_role, lib/site-role.ts). */
+async function ownerIds(db: InboxDb): Promise<string[]> {
   const { results } = await db
-    .prepare(`SELECT id FROM user WHERE lower(email) IN (${emails.map(() => "?").join(",")})`)
-    .bind(...emails)
+    .prepare(
+      `SELECT u.id AS id FROM user u JOIN site_role r ON lower(trim(u.email)) = r.email
+       WHERE r.role = 'owner' AND r.revoked_at IS NULL`,
+    )
+    .bind()
     .all<{ id: string }>();
   return results.map((r) => r.id);
 }
@@ -44,12 +45,12 @@ export type InboxAnswer =
 export async function inboxOp(
   db: InboxDb | undefined,
   raw: unknown,
-  opts: { ownerEmails?: string; now?: () => number },
+  opts: { now?: () => number } = {},
 ): Promise<InboxAnswer> {
   const op = parseInboxOp(raw);
   if (!db) return { ok: false, error: "no database" };
   if (!op) return { ok: false, error: "bad inbox op" };
-  const owners = await ownerIds(db, opts.ownerEmails);
+  const owners = await ownerIds(db);
   const now = (opts.now ?? Date.now)();
   const view = (i: Awaited<ReturnType<typeof getItem>> & {}) => ({
     id: i.id,

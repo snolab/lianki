@@ -116,6 +116,13 @@ export type ChatMessage = {
    * polish may draw on (polish.ts), so it fixes words from context, not guesses.
    */
   scene?: SttScene;
+  /**
+   * Stamped by the hub only (workers/push/src/debug.ts `say`): an agent line
+   * said in the owner's thread by a pairing he approved. It alone lets a line
+   * use the HTML subset (rich-text.ts lineTier). Never read from what a sender
+   * sends, and absent on friends' lines, the partner AI's and older lines.
+   */
+  ownerGrant?: true;
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -419,6 +426,10 @@ export type ChatStrings = {
   /** Menu switch: a tap on clipsStart also sets an auto-stop; `{n}` = minutes. */
   clipsAutoStop: string;
   /** Menu switch: compact mode (compact-view.ts), this device only. */
+  /** The chat menu's switch: a tone when a spoken line goes out. */
+  cueSend: string;
+  /** The chat menu's switch: soft tones when he starts and stops speaking. */
+  cueSpeech: string;
   compactIdle: string;
   /** The compact line's tooltip and screen-reader hint: a tap shows the whole chat. */
   compactShowAll: string;
@@ -562,6 +573,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsSaveFailed: "Saving failed",
   clipsStart: "Record voice clips",
   clipsAutoStop: "Auto-stop after {n} min",
+  cueSend: "Sound when a voice message is sent",
+  cueSpeech: "Sound when speech starts and ends",
   compactIdle: "Only the last message while not typing",
   compactShowAll: "Show the whole chat",
   vpMenu: "Voiceprint",

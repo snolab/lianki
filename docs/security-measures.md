@@ -15,8 +15,8 @@ passkey — there is no password login in production.
 
 | surface                                   | what                                                  |
 | ----------------------------------------- | ----------------------------------------------------- |
-| `/dev/*` pages                            | users, friends, gift codes, membership grants, credits, feature flags, roadmap, A/B |
-| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, credits, flags, stt-ticket, dev-tokens, dev-handoff |
+| `/dev/*` pages                            | users, friends, gift codes, membership grants, credits, feature flags, owners, roadmap, A/B |
+| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, credits, flags, owners, stt-ticket, dev-tokens, dev-handoff |
 | `https://preview.lianki.com` (tunnel to the owner's dev server, production D1) | 503 to everything without a dev access token; the token signs in as the owner only (docs/dev-whole-page.md, "Off the tailnet") |
 | `POST /api/dev-access/verify`             | the dev server gate's token check: `DEV_BRIDGE_SECRET` only, 401 otherwise |
 | `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac) | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7) |
@@ -35,19 +35,21 @@ input-bounded and rate-limited. Gift-code management moved from
 prefix; redeeming stays at `/api/gift-codes/redeem`.
 
 **Layer 1, in the app.** Every `/dev` page and `/api/dev` route checks
-`isOwner()` (`lib/owner.ts`, `OWNER_EMAILS` in `wrangler.jsonc`) and answers
-**404** to everyone else, so the surface is not even discoverable. Unset
-`OWNER_EMAILS` fails closed. `unit/security.test.ts` fails if a `/dev` page or
+`isOwner()` (`lib/owner.ts`, the `site_role` table,
+[secrets-and-auth.md](secrets-and-auth.md), "The owner role") and answers
+**404** to everyone else, so the surface is not even discoverable. A D1 error
+fails closed: nobody is the owner. `unit/security.test.ts` fails if a `/dev` page or
 `/api/dev` route is added without the gate; `qa:api` checks a signed-in
 non-owner gets 404 from each.
 
 **Layer 2, at the edge: Cloudflare Access** on `lianki.com/dev` and
-`lianki.com/api/dev` (each covers its subpaths), allowing only the owner
-emails. Prepared, not applied — `scripts/ops/cloudflare-access.ts`:
+`lianki.com/api/dev` (each covers its subpaths), allowing only the
+addresses given with `--email` (Access keeps its own list; it does not follow
+`site_role`). Prepared, not applied — `scripts/ops/cloudflare-access.ts`:
 
 ```bash
-bun scripts/ops/cloudflare-access.ts --dry-run   # the policy and app it would create
-CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… bun scripts/ops/cloudflare-access.ts
+bun scripts/ops/cloudflare-access.ts --dry-run --email a@b.c   # the policy and app it would create
+CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… bun scripts/ops/cloudflare-access.ts --email a@b.c
 bun scripts/ops/cloudflare-access.ts --verify    # /dev/users must now redirect to Access
 ```
 
@@ -152,6 +154,12 @@ or bodies. Nothing is stored. Residual risk (DNS rebinding) is in that doc.
   UTC (and on demand: Actions → Security scans → Run workflow). Baseline means
   spider + passive checks only — headers, cookies, information leaks — no
   attack payloads, so it is safe against production. Tuning in `.zap/rules.tsv`.
+- **CodeQL** (`.github/workflows/codeql.yml`, since 2026-11-05, owner's
+  approval): static analysis of the JS/TS source, `security-extended`
+  queries, on every PR, every push to `main` and Wednesdays. Its own
+  workflow and not a required check, so it never holds a merge or the
+  deploy. Findings are under Security → Code scanning. The repository's
+  "default setup" stays off: the workflow file is the setup.
 
 **Reading the reports.** Open the run → Artifacts:
 
@@ -304,9 +312,11 @@ D1 row in `security_audit` (`db/migrations/0040_security_audit.sql`,
 serial, branch@sha) and the owner's stop; dev token mint, revoke, revoke all,
 and the profile menu's handoff (actor: the user id; subject: the token id);
 custom frontends: a preview registered or revoked, a user added to or
-removed from the allowlist ([custom-frontend.md](custom-frontend.md)).
-Ids and labels only, never a token or a pointer. Best effort: a failed audit
-insert is logged and never undoes the write. Read it with
+removed from the allowlist ([custom-frontend.md](custom-frontend.md)); the
+owner role granted or revoked (the address is the detail; written in one batch
+with the change, so that one cannot go unrecorded).
+Ids and labels only, never a token or a pointer. Otherwise best effort: a failed
+audit insert is logged and never undoes the write. Read it with
 `wrangler d1 execute lianki --remote --command "SELECT * FROM security_audit ORDER BY id DESC LIMIT 50"`.
 
 **The dev-token cap is one statement.** At most 20 live named tokens: the
@@ -320,7 +330,7 @@ auth or gate secret is sent up. A strict CSP (scripts and connections:
 lianki.com and that tunnel only; inline scripts by nonce). The cookie is
 bound to the session and re-checked in D1 within 5 s. Under it the Worker
 refuses token minting, `/api/dev` writes and better-auth account changes.
-Allowlist and flag `live.custom-frontend`; at most 3 previews of at most
+Allowlist and flag `my-box`; at most 3 previews of at most
 8 h per user, the cap in one `INSERT`.
 
 ## 9. The CLI login (`lianki auth login`)
@@ -361,6 +371,66 @@ and before every call, and errors never carry the provider's message. No
 server code stores a key; the managed mode waits for the owner's approval.
 The audit (prefs sync, page errors, chat context, analytics) is in
 [byok.md](byok.md), "Never leaving the device". Tests: `unit/byok.test.ts`.
+
+## 11. Sibling hosts
+
+A browser counts every `*.lianki.com` host as the same site as lianki.com, so
+a page on one (a user's box, a dev tunnel) gets the SameSite=Lax session cookie
+sent with its requests here. `worker.ts` answers 403, before any route, to a
+cookie-carrying request marked `Sec-Fetch-Site: same-site` that goes to `/api`
+(any method, because some GETs write) or writes to any other path (server
+actions POST to page URLs) (`lib/security/same-site-guard.ts`). Reading a page
+or following a link from a sibling still works.
+
+What it does not cover:
+
+- **lianki-push** (`/api/version/*`, its own Worker route): its cookie sockets
+  have their own check, `Origin` must be exactly `https://lianki.com`
+  (`workers/push/src/auth.ts`); the other routes there take bearer tokens.
+- **A browser without Fetch Metadata** passes.
+- **Cookies set by a sibling.** A page there can still set a cookie for
+  `Domain=lianki.com`. Only a separate registrable domain for those pages stops
+  that, and it would stop the same-site requests as well.
+- **Reading** needs CORS, which `/api` does not answer for siblings, so this
+  guard is about writes.
+
+## 12. Route limits, body caps and the legacy pages (2026-11-05)
+
+A review pass (Claude, with Codex as a second opinion) fixed these on main;
+tests in `unit/security-hardening.test.ts`.
+
+- **Limits in D1, not memory** (`lib/security/route-guard.ts`: `tooMany` /
+  `routeLimit` over `auth_throttle`; the memory counter only without D1):
+  | route                         | limit                                  |
+  | ----------------------------- | -------------------------------------- |
+  | `POST /api/contact` (no sign-in) | 5 per IP per hour, 60 per hour overall |
+  | `POST /api/gift-codes/redeem` | 10 tries per user, 30 per IP, per 10 min (wrong codes count) |
+  | `POST /api/roadmap/generate`  | 10 per account per hour                |
+  | `POST /api/import/youtube`    | 10 per account per hour; 20 pages (1000 videos) per import |
+  | `POST /api/words/telemetry`   | 120 batches per account per 10 min     |
+  | reader gloss / translate / polish; `/api/tts`, `/api/translate`, polyglot, self-intro, ai-sentences (model calls) | the same numbers as before, now in D1; per person (canonical email, hashed) except the reader's, per account. These count operations: one polish can make several model calls |
+  Still per isolate (`lib/rateLimit.ts`): `/api/words/tts`, `/api/debug/stt`,
+  the self-intro import and the FSRS bulk-mutation guard.
+- **Body caps** (`readJsonCapped`: Content-Length, then the stream):
+  contact 32 KB, roadmap and YouTube 4 KB, words telemetry 128 KB,
+  `POST /api/read` 12 MB, and pasted text there to a book's own caps.
+- **Slack**: contact-form text is escaped (`&`, `<`, `>`) and sent with
+  `mrkdwn: false` and no unfurling: no labelled links, mentions or formatting
+  from a sender (Slack may still link a bare URL by itself).
+- **Legacy HTML** (`app/fsrs.ts`: `/api/fsrs/repeat`, `/next`, the preview
+  lists): every title and url is HTML-escaped, links are http(s) only, values
+  in inline scripts can't close them (`lib/security/escape.ts`), and errors
+  are plain text. These pages have no CSP, so escaping is the whole defence.
+- **GETs that write** (`/api/fsrs/review/*`, `/api/fsrs/delete`,
+  `/api/fsrs/repeat`): kept as GETs for installed userscripts and the CLI,
+  a top-level navigation from another site gets 403 (Fetch Metadata; browsers
+  without it pass). Sibling `*.lianki.com` hosts: section 11.
+  `POST /api/fsrs/delete` exists too, and the list page uses it.
+- **Pro days** from gift codes, invites and Stripe payments are added in
+  SQL inside the grant's batch, so two at once both count; a gift code's
+  use is given back if its grant fails.
+- **The reachability probe** follows redirects by hand (5 hops), checking
+  each one against the private-host list.
 
 ## Owner checklist
 

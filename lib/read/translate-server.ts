@@ -3,7 +3,7 @@
 // real cost settled through the one charge seam (chargeAi, gloss-server.ts).
 import type { D1Like } from "@/lib/d1/types";
 import { PARTNER_AI_MODEL, PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { routeLimit } from "@/lib/security/route-guard";
 import { isWorkersAiConfigured } from "@/lib/workers-ai";
 import { chargeAi, workersAiComplete, type Complete } from "./gloss-server";
 import { cleanTranslation, normText, translateMessages, translationKey } from "./translate";
@@ -38,7 +38,7 @@ export async function translate(
 
   const complete = ai.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
   if (!complete) return { ok: false, error: "not-configured" };
-  if (!checkRateLimit(`read-translate:${ai.userId}`, AI_LIMIT).allowed)
+  if (!(await routeLimit(`read-translate:${ai.userId}`, AI_LIMIT)).allowed)
     return { ok: false, error: "busy" };
   let out = "";
   let usd = 0;

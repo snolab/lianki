@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "@/lib/i18n-context";
 
 const preferencesPageContent = {
   key: "preferences-page",
@@ -77,7 +78,43 @@ const preferencesPageContent = {
       sw: "Mapendeleo",
       mr: "प्राधान्ये",
     }),
+    resetSection: t({
+      en: "Reset to default",
+      zh: "恢复默认",
+      ja: "デフォルトに戻す",
+      ko: "기본값으로 재설정",
+      hi: "डिफ़ॉल्ट पर रीसेट करें",
+      es: "Restablecer valores predeterminados",
+      fr: "Rétablir les valeurs par défaut",
+      ar: "إعادة التعيين إلى الافتراضي",
+      bn: "ডিফল্টে রিসেট করুন",
+      pt: "Restaurar padrão",
+      ru: "Сбросить настройки",
+      ur: "طے شدہ پر بحال کریں",
+      id: "Atur ulang ke bawaan",
+      de: "Auf Standard zurücksetzen",
+      sw: "Rudisha chaguo-msingi",
+      mr: "डीफॉल्टवर रीसेट करा",
+    }),
     reviewOrder: {
+      defaultMark: t({
+        en: "(default)",
+        zh: "（默认）",
+        ja: "（デフォルト）",
+        ko: "(기본값)",
+        hi: "(डिफ़ॉल्ट)",
+        es: "(predeterminado)",
+        fr: "(par défaut)",
+        ar: "(افتراضي)",
+        bn: "(ডিফল্ট)",
+        pt: "(padrão)",
+        ru: "(по умолчанию)",
+        ur: "(طے شدہ)",
+        id: "(bawaan)",
+        de: "(Standard)",
+        sw: "(chaguo-msingi)",
+        mr: "(डीफॉल्ट)",
+      }),
       heading: t({
         en: "Next card order",
         zh: "下一张卡片顺序",
@@ -194,22 +231,22 @@ const preferencesPageContent = {
 
     mobileFilters: {
       heading: t({
-        en: "Mobile Review Filters",
-        zh: "移动端复习过滤器",
-        ja: "モバイルレビューフィルター",
-        ko: "모바일 복습 필터",
-        hi: "मोबाइल समीक्षा फ़िल्टर",
-        es: "Filtros de Revisión Móvil",
-        fr: "Filtres de Révision Mobile",
-        ar: "مرشحات المراجعة على الهاتف المحمول",
-        bn: "মোবাইল পর্যালোচনা ফিল্টার",
-        pt: "Filtros de Revisão Móvel",
-        ru: "Фильтры Мобильного Обзора",
-        ur: "موبائل جائزہ فلٹرز",
-        id: "Filter Tinjauan Seluler",
-        de: "Mobile Überprüfungsfilter",
-        sw: "Vichujio vya Mapitio ya Simu",
-        mr: "मोबाइल पुनरावलोकन फिल्टर",
+        en: "Review Filters",
+        zh: "复习过滤器",
+        ja: "レビューフィルター",
+        ko: "복습 필터",
+        hi: "समीक्षा फ़िल्टर",
+        es: "Filtros de Revisión",
+        fr: "Filtres de Révision",
+        ar: "مرشحات المراجعة",
+        bn: "পর্যালোচনা ফিল্টার",
+        pt: "Filtros de Revisão",
+        ru: "Фильтры обзора",
+        ur: "جائزہ فلٹرز",
+        id: "Filter Tinjauan",
+        de: "Überprüfungsfilter",
+        sw: "Vichujio vya Mapitio",
+        mr: "पुनरावलोकन फिल्टर",
       }),
       description: t({
         en: "Filter cards from your mobile review queue by domain, title, or URL pattern. Useful for preventing app hijacking or excluding certain types of content on mobile.",
@@ -817,4 +854,15 @@ const preferencesPageContent = {
   },
 } satisfies DeclarationContent;
 
-export default preferencesPageContent;
+export default {
+  ...preferencesPageContent,
+  title: "/preferences — the settings page",
+  description: describeKeys("The signed-in settings page. Only recent keys have a line so far.", {
+    resetSection:
+      "Screen-reader label and tooltip of a small icon button beside a section heading on the settings page: puts that section's settings back to their defaults (unsaved until Save). Imperative verb, short.",
+    "reviewOrder.defaultMark":
+      "Marks one radio option in 'Next card order' as the one used unless changed, shown right after its label, e.g. 'Just came due first (default)'. Keep the parentheses, in the locale's own style.",
+    "mobileFilters.heading":
+      "Section heading on the settings page: filters that keep matching cards out of the review queue. The word 'mobile' was removed on purpose; the description below it says where they apply. Short noun phrase.",
+  }),
+} satisfies DeclarationContent;

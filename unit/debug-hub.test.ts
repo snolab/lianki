@@ -348,6 +348,7 @@ type Chat = {
     to?: string;
     quiet?: true;
     loud?: true;
+    ownerGrant?: true;
   };
 };
 const chats = (ws: FakeSocket) =>
@@ -384,6 +385,59 @@ describe("DebugHub chat", () => {
     await msg(c, { type: "say", text: "on it" });
     expect(chats(p).at(-1)).toMatchObject({ from: "agent", label: "main lane", text: "on it" });
     expect(c.last("said")?.id).toBe(chats(p).at(-1)?.id as string);
+  });
+
+  it("HTML's trust stamp: only the hub's, only on an approved pairing's say in the owner's thread", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = s.controller("main lane");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner) });
+    await s.msg(c, { type: "say", text: "stamped" });
+    expect(chats(owner).at(-1)).toMatchObject({ from: "agent", thread: "owner", ownerGrant: true });
+    // Kept with the line: the same after a reload.
+    expect((await s.hub.history()).at(-1)?.ownerGrant).toBe(true);
+
+    // The owner's own typing, even asking for it.
+    await s.msg(owner, { type: "chat", id: "o1", text: "<b>mine</b>", ownerGrant: true });
+    const mine = chats(owner).at(-1)!;
+    expect(mine).toMatchObject({ from: "owner", text: "<b>mine</b>" });
+    expect(mine.ownerGrant).toBeUndefined();
+
+    // A friend, asking for it and naming the owner's thread: their own thread, no stamp.
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, {
+      type: "chat",
+      id: "f1",
+      text: "<script>x</script>",
+      ownerGrant: true,
+      thread: "owner",
+      from: "agent",
+      label: "main lane",
+    });
+    const said = chats(f).at(-1)!;
+    expect(said).toMatchObject({ from: "friend", thread: "f1" });
+    expect(said.ownerGrant).toBeUndefined();
+    expect(chats(owner).some((m) => m.text === "<script>x</script>")).toBe(false);
+
+    // His agent answering in a friend's thread: not the owner's thread, so no stamp.
+    await s.msg(c, { type: "say", text: "<b>to you</b>", to: "f1" });
+    const reply = chats(f).at(-1)!;
+    expect(reply).toMatchObject({ from: "agent", thread: "f1", text: "<b>to you</b>" });
+    expect(reply.ownerGrant).toBeUndefined();
+
+    // A say can't ask for it either way: the hub decides, not the message.
+    await s.msg(c, { type: "say", text: "again", to: "f1", ownerGrant: true });
+    expect(chats(f).at(-1)?.ownerGrant).toBeUndefined();
+    // An ask is no plain say: its question has no HTML to carry.
+    expect((await s.hub.history("f1")).every((m) => m.ownerGrant === undefined)).toBe(true);
+  });
+
+  it("an unapproved controller can't say at all, so can't be stamped", async () => {
+    const { page, controller, msg } = setup();
+    const p = page();
+    const c = controller("stranger");
+    await msg(c, { type: "say", text: "<b>hi</b>" });
+    expect(chats(p).some((m) => m.text === "<b>hi</b>")).toBe(false);
   });
 
   it("say --quiet: the hub keeps the flag (true only) and forwards it, live and in history; an old loud is dropped", async () => {

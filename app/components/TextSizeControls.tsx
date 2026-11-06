@@ -91,7 +91,6 @@ export function TextSizeControls({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
           <span className="min-w-0 flex-1 text-xs opacity-60">{text.hint}</span>
-          <span className="text-sm">{reset}</span>
         </div>
       )}
     </div>
