@@ -263,6 +263,7 @@ test("/dev/flags card: who changed it and when, in JST", () => {
         updatedBy: BY,
       },
       busy: false,
+      expanded: true,
       onToggle() {},
     }),
   );
