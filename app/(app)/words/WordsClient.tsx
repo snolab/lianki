@@ -212,6 +212,7 @@ const SwipeGradesIsland = island("words.swipeGrades", SwipeGrades);
 const SwipeFeelIsland = island("words.swipeFeel", SwipeFeelSource);
 const SwipeTunerIsland = island("words.swipeTuner", SwipeTuner);
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
+import { WORDS_ADD_HASH } from "@/lib/home-features";
 import { newScan, takeNewIndices, type NewScan } from "@/lib/words/take-new";
 import { dueFetchLimit, MAX_DUE_FETCH, nextBatch, orderDue } from "@/lib/words/review-first";
 import { countGradedNew, unseenLeft } from "@/lib/words/unseen";
@@ -1896,7 +1897,10 @@ function useListParam(base: string): [string | null, (id: string | null) => void
   useEffect(() => {
     let first = read();
     const kept = ui.getState().listId;
-    if (first === null && kept) {
+    // The Word lists card on /home comes for the "Add a list" tree, not this
+    // tab's list.
+    const forAdding = location.hash === `#${WORDS_ADD_HASH}`;
+    if (first === null && kept && !forAdding) {
       const url = new URL(location.href);
       url.searchParams.set("list", kept);
       history.replaceState(history.state, "", url);
@@ -1917,6 +1921,7 @@ function useListParam(base: string): [string | null, (id: string | null) => void
       const url = new URL(location.href);
       if (next) url.searchParams.set("list", next);
       else url.searchParams.delete("list");
+      url.hash = ""; // done with the tree: coming back must not scroll to it again
       history.pushState(null, "", url);
       ui.setState({ listId: next });
       setId(next);
@@ -2712,6 +2717,13 @@ function ListPicker({
   // lists, languages or whole branches, then add them all in one go. Adding
   // never starts studying: the learner stays here and opens a list himself.
   const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES), [builtIn]);
+  // A link to #add-list arrives before the tree exists, so the browser finds
+  // nothing to scroll to; scroll once the tree is on the page.
+  useEffect(() => {
+    if (location.hash === `#${WORDS_ADD_HASH}`) {
+      document.getElementById(WORDS_ADD_HASH)?.scrollIntoView({ block: "start" });
+    }
+  }, []);
   const [ticked, setTicked] = useState<Set<string>>(() => new Set());
   const [openKeys, setOpenKeys] = useState<Set<string>>(
     () =>
@@ -3068,7 +3080,7 @@ function ListPicker({
         {config.imports && <ImportLink />}
       </div>
 
-      <div className="space-y-2" data-add-tree>
+      <div id={WORDS_ADD_HASH} className="scroll-mt-20 space-y-2" data-add-tree>
         <h2 className="text-sm font-medium opacity-80">{text.addList}</h2>
         <div role="tree" aria-multiselectable className="-mx-2">
           {addTree.map((n) => (

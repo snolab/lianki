@@ -240,6 +240,24 @@ const dictionary = {
       ko: "어떤 웹페이지든 카드로 저장해 여기서 복습하거나, 유저스크립트로 그 페이지에서 바로 복습",
     }),
     cards: {
+      words: t({
+        en: "Browse lists by language and exam, and add the ones you want",
+        zh: "按语言和考试浏览单词表，把想学的加进来",
+        hi: "भाषा और परीक्षा के अनुसार शब्द सूचियाँ देखें और जो पढ़नी हों उन्हें जोड़ें",
+        es: "Explora listas por idioma y examen, y añade las que quieras",
+        fr: "Parcourez les listes par langue et par examen, ajoutez celles de votre choix",
+        ar: "تصفّح قوائم الكلمات حسب اللغة والامتحان، وأضف ما تريد دراسته",
+        bn: "ভাষা ও পরীক্ষা অনুযায়ী শব্দ তালিকা দেখুন, যেগুলো পড়তে চান যোগ করুন",
+        pt: "Explore listas por idioma e exame e adicione as que quiser",
+        ru: "Смотрите списки по языку и экзамену и добавляйте нужные",
+        ur: "زبان اور امتحان کے لحاظ سے الفاظ کی فہرستیں دیکھیں اور جو پڑھنی ہوں شامل کریں",
+        id: "Jelajahi daftar menurut bahasa dan ujian, lalu tambahkan yang kamu mau",
+        de: "Listen nach Sprache und Prüfung durchsuchen und die gewünschten hinzufügen",
+        ja: "言語や試験ごとに単語リストを探し、学びたいものを追加",
+        sw: "Vinjari orodha kwa lugha na mtihani, kisha ongeza unazotaka",
+        mr: "भाषा आणि परीक्षेनुसार शब्दसूची पाहा आणि हव्या त्या अभ्यासासाठी जोडा",
+        ko: "언어와 시험별로 단어 목록을 둘러보고 공부할 목록을 추가하세요",
+      }),
       alphabet: t({
         en: "Learn a writing system: from symbol to sound and back",
         zh: "学一种文字：从字母到读音，再从读音到字母",
@@ -376,7 +394,7 @@ const CARD =
 const context: KeyContext<typeof dictionary.content> = {
   title: "Page title and main heading of the Home page, also the browser tab title. One noun.",
   wordsTitle:
-    "Heading of the first Home section, which shows the user's vocabulary word lists. Plural noun phrase.",
+    "Heading of the first Home section, which shows the user's vocabulary word lists; also the name on the Word lists feature card under Explore. Plural noun phrase.",
   due: "Text after a big number on Home: how many words are due for review today, e.g. '16 due today'.",
   lists: "Small text after a number on Home: how many word lists the user studies, e.g. '3 lists'.",
   cont: "Button on Home that resumes studying the due words. Imperative verb, very short.",
@@ -395,6 +413,7 @@ const context: KeyContext<typeof dictionary.content> = {
   advancedHint:
     "One-line explanation under the LiCards heading on Home of what the feature does: any web page can be saved as a review card; it is reviewed on the site's own Review page, or directly on that page if the browser userscript is installed. Do not repeat the name LiCards here.",
   cards: {
+    words: `${CARD} Word lists: tapping opens the tree of built-in vocabulary lists on /words, sorted by language and then by exam or word frequency, where the learner ticks the lists to add. Exam means a language exam such as TOEFL or JLPT. Distinct from Learn, which imports other study material.`,
     alphabet: `${CARD} Alphabets: drills a writing system (kana, Hangul, Cyrillic…) both ways, symbol to sound and sound to symbol.`,
     learn: `${CARD} Learn: imports study material from recommended lists, YouTube playlists or any URL the learner gives.`,
     aiVocab: `${CARD} AI vocabulary: AI writes new example sentences around the words being learned. AI stays as AI where the language uses it.`,

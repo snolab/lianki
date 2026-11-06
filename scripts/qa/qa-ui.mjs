@@ -186,11 +186,25 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     );
     const shift = await cls.evaluate(() => window.__cls);
     check(
-      info.length === 7 &&
+      info.length === 8 &&
         info.every((c) => c.text > 20 && c.h >= 160 && c.art && c.hidden && c.wordless && !c.img),
-      `/home Explore: 7 cards, each with a line of text over a wordless drawing (${JSON.stringify(info[0])})`,
+      `/home Explore: 8 cards, each with a line of text over a wordless drawing (${JSON.stringify(info[0])})`,
     );
     check(shift < 0.01, `/home Explore cards cause no layout shift (CLS ${shift.toFixed(4)})`);
+    // The Word lists card opens the "Add a list" tree, in view, even when this
+    // tab would otherwise reopen the list it last studied.
+    await cls.goto(`${BASE}/words?list=all`, { waitUntil: "networkidle" });
+    await cls.goto(`${BASE}/home`, { waitUntil: "networkidle" });
+    await cls.locator('[data-feature="words"]').click();
+    await cls.waitForURL(/\/words#add-list$/);
+    const tree = cls.locator("[data-add-tree]");
+    await tree.waitFor();
+    await cls.waitForTimeout(300);
+    const top = await tree.evaluate((el) => el.getBoundingClientRect().top);
+    check(
+      new URL(cls.url()).search === "" && top >= 0 && top < 844 / 2,
+      `/home Word lists card lands on the Add a list tree (url ${cls.url()}, top ${Math.round(top)})`,
+    );
     await cls.close();
   }
 

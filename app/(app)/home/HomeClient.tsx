@@ -7,7 +7,7 @@ import { useIntlayer } from "next-intlayer";
 import { APP_NAV } from "@/lib/app-nav";
 import { Icon } from "@/app/components/icons";
 import { loadCatalog } from "@/lib/words/catalog-cache";
-import { HOME_EXPLORE } from "@/lib/home-features";
+import { HOME_EXPLORE, HOME_EXPLORE_HREF } from "@/lib/home-features";
 import { FeatureCard } from "./FeatureCard";
 
 /** The page-card features, behind "Advanced". */
@@ -113,9 +113,9 @@ export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
             <li key={k}>
               <FeatureCard
                 featureKey={k}
-                href={item(k).href}
+                href={HOME_EXPLORE_HREF[k] ?? item(k).href}
                 icon={item(k).icon}
-                label={label(k)}
+                label={k === "words" ? t.wordsTitle.value : label(k)}
                 desc={t.cards[k].value}
               />
             </li>
