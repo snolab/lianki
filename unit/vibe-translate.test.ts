@@ -18,6 +18,8 @@ import {
   conversationLangs,
   createTranslator,
   MIN_SHARE_DEFAULT,
+  MIN_SHARE_KEY,
+  readShare,
   targetsOf,
 } from "@/lib/vibe/translations";
 
@@ -51,6 +53,31 @@ describe("which languages", () => {
     expect(targetsOf("a", ["a"])).toEqual([]);
     expect(targetsOf("a", ["a", "b"])).toEqual(["b"]);
     expect(targetsOf(undefined, ["a", "b"])).toEqual([]);
+  });
+});
+
+describe("the setting", () => {
+  const g = globalThis as unknown as { localStorage?: unknown };
+  const had = g.localStorage;
+  const withStored = (getItem: () => string | null) => {
+    g.localStorage = { getItem };
+    try {
+      return readShare();
+    } finally {
+      g.localStorage = had;
+    }
+  };
+  it("is the user's number; unset, out of range or unreadable is the default", () => {
+    expect(withStored(() => "35")).toBe(35);
+    expect(withStored(() => null)).toBe(20);
+    expect(withStored(() => "0")).toBe(20);
+    expect(withStored(() => "abc")).toBe(20);
+    expect(
+      withStored(() => {
+        throw new Error("private window");
+      }),
+    ).toBe(20);
+    expect(MIN_SHARE_KEY).toBe("lk:vibe-translate-min-pct");
   });
 });
 
