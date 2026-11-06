@@ -58,7 +58,7 @@ describe("home feature drawings", () => {
       expect(svg).not.toContain("<text");
       expect(svg).not.toContain("<image");
       // Tags only: nothing but markup, so nothing a reader would read.
-      expect(svg.replace(/<[^>]*>/g, "")).toBe("");
+      expect(svg).not.toMatch(/>[^<]/);
       const colours = [...svg.matchAll(/(?:fill|stroke)="([^"]*)"/g)].map((m) => m[1]);
       for (const c of colours) expect(c).toMatch(/^(none|var\(--(ink|seal|wash|sheet)\))$/);
     }
