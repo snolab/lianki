@@ -131,11 +131,11 @@ describe("the shipped view", () => {
 describe("search", () => {
   test("by key and by description, ignoring case", () => {
     expect(matchesSearch(row("read.vibe"), "VIBE")).toBe(true);
-    expect(matchesSearch(row("read.vibe"), "对话模式")).toBe(true);
+    expect(matchesSearch(row("read.vibe"), "对话日记")).toBe(true);
     expect(matchesSearch(row("read.vibe"), "stripe")).toBe(false);
   });
   test("every term must match, in any order; blank matches all", () => {
-    expect(matchesSearch(row("read.vibe"), "  对话模式   vibe ")).toBe(true);
+    expect(matchesSearch(row("read.vibe"), "  对话日记   vibe ")).toBe(true);
     expect(matchesSearch(row("read.vibe"), "vibe stripe")).toBe(false);
     expect(matchesSearch(row("read.vibe"), "   ")).toBe(true);
   });
