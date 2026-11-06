@@ -113,6 +113,21 @@ export function PolishOffer({
   );
 }
 
+/** A tidied transcript with parts left as they were: said, never silent. */
+export function PolishCoverage({ book }: { book?: BookMeta | null }) {
+  const t = useIntlayer("read-polish");
+  const p = book?.polished;
+  if (!p || p.kept >= p.chunks) return null;
+  return (
+    <p
+      data-testid="read-polish-coverage"
+      className="mx-auto mb-4 w-full max-w-[38em] px-5 text-xs opacity-70"
+    >
+      {t.partial} ({p.kept}/{p.chunks})
+    </p>
+  );
+}
+
 /** The action itself, in the contents sheet: there whether or not the offer is. */
 export function PolishAction({ id, book }: { id: string; book?: BookMeta | null }) {
   const t = useIntlayer("read-polish");

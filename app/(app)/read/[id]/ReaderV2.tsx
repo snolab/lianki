@@ -98,7 +98,7 @@ import { useTextSizes } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
-import { PolishAction, PolishOffer, RawTranscript } from "./reader-polish";
+import { PolishAction, PolishCoverage, PolishOffer, RawTranscript } from "./reader-polish";
 import {
   LiveTail,
   StreamBadge,
@@ -2077,7 +2077,10 @@ function Reader({
           </p>
         )}
         {signedIn && material.readerV2 && loaded && (
-          <PolishOffer id={id} book={book} stream={streamState} />
+          <>
+            <PolishOffer id={id} book={book} stream={streamState} />
+            <PolishCoverage book={book} />
+          </>
         )}
         <BookList
           blocks={blocks}

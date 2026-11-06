@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
-import { LIVE_POLISH_CONTEXT_CHARS, LIVE_POLISH_MAX_CHARS } from "@/lib/read/live-polish";
+import {
+  LIVE_POLISH_CONTEXT_CHARS,
+  LIVE_POLISH_MAX_CHARS,
+  LIVE_POLISH_MAX_PASSAGES,
+} from "@/lib/read/live-polish";
 import { livePolishAi, mayPolishLive } from "@/lib/read/live-polish-server";
 import { badRequest, bodyOf, json, readerCtx } from "@/lib/read/reader-route";
 
 /**
- * POST /api/read/[id]/polish-live — a passage of a live doc as a speech draft
+ * POST /api/read/[id]/polish-live — passages of a live doc as a speech draft
  * (lib/read/live-polish.ts; docs/connections.md, "Polish"):
  *
- *   { text, before? }  → { text }
+ *   { passages: string[], before? }  → { passages: ({ text, thin } | null)[] }
+ *
+ * One answer per passage, in order. null: it has no counterpart, thin: its edit
+ * is much shorter than it. The reader flags both and keeps the original.
  *
  * Stores nothing and changes no book: the raw text stays the book's. The flag
  * `read.live-polish`, or the owner; 404 to anyone else. 400 bad input · 429 over
@@ -17,13 +24,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
   if (!(await mayPolishLive(ctx.email))) return json({ error: "Not found" }, 404);
-  const body = (await bodyOf(req)) as { text?: unknown; before?: unknown } | null;
-  if (typeof body?.text !== "string" || !body.text.trim()) return badRequest("text is required");
-  if (body.text.length > LIVE_POLISH_MAX_CHARS) return badRequest("text is too long");
+  const body = (await bodyOf(req)) as { passages?: unknown; before?: unknown } | null;
+  const passages = body?.passages;
+  if (
+    !Array.isArray(passages) ||
+    !passages.length ||
+    passages.length > LIVE_POLISH_MAX_PASSAGES ||
+    !passages.every((p) => typeof p === "string" && p.trim())
+  )
+    return badRequest("passages are required");
+  if (passages.join("").length > LIVE_POLISH_MAX_CHARS) return badRequest("too long");
   const before =
-    typeof body.before === "string" ? body.before.slice(-LIVE_POLISH_CONTEXT_CHARS) : "";
-  const r = await livePolishAi(body.text, before, { userId: ctx.userId });
-  if (r.ok) return json({ text: r.text });
+    typeof body?.before === "string" ? body.before.slice(-LIVE_POLISH_CONTEXT_CHARS) : "";
+  const r = await livePolishAi(passages as string[], before, { userId: ctx.userId });
+  if (r.ok) return json({ passages: r.passages });
   const status = { busy: 429, "model-failed": 502, "not-configured": 503 }[r.error];
   return json({ error: r.error }, status);
 }
