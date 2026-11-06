@@ -26,7 +26,7 @@ export type TranslateResult =
  */
 export async function translate(
   db: D1Like,
-  input: { text: string; to: string; from: string | null },
+  input: { text: string; to: string; from: string | null; notes?: boolean },
   ai: {
     userId: string;
     complete?: Complete;
@@ -42,7 +42,7 @@ export async function translate(
 ): Promise<TranslateResult> {
   const text = normText(input.text);
   if (!text) return { ok: false, error: "empty" };
-  const key = await translationKey(input.to, text);
+  const key = await translationKey(input.to, text, input.notes);
   const hit = ai.cache
     ? await ai.cache.get(key)
     : ((
@@ -62,7 +62,7 @@ export async function translate(
   try {
     const r = await complete({
       model: PARTNER_AI_MODEL,
-      messages: translateMessages(text, input.to, input.from),
+      messages: translateMessages(text, input.to, input.from, input.notes),
       max_tokens: maxTokens(text.length),
       temperature: 0.2,
       reasoning_effort: PARTNER_AI_REASONING,

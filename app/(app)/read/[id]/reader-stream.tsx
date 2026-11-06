@@ -38,6 +38,7 @@ import {
   type TailUnit,
 } from "@/lib/read/tail-select";
 import { SETTLE_MS } from "./use-reader-select";
+import { TranslatedText } from "./translated-text";
 import { useSelectTranslate } from "./use-select-translate";
 
 export type StreamState = "connecting" | "live" | "offline";
@@ -579,7 +580,7 @@ export function LiveTail({
                     {b.map((x, j) =>
                       x === false ? null : (
                         <span key={j} className={`me-1 ${x === null ? "opacity-60" : ""}`}>
-                          {x ?? "…"}
+                          <TranslatedText text={x ?? "…"} />
                         </span>
                       ),
                     )}

@@ -317,6 +317,24 @@ const dictionary = {
       sw: "Inatafsiri…",
       mr: "भाषांतर होत आहे…",
     }),
+    translatorNote: t({
+      en: "Translator's note:",
+      zh: "译注：",
+      ja: "訳注：",
+      ko: "역주:",
+      hi: "अनुवादक की टिप्पणी:",
+      es: "Nota del traductor:",
+      fr: "Note du traducteur :",
+      ar: "ملاحظة المترجم:",
+      bn: "অনুবাদকের টীকা:",
+      pt: "Nota do tradutor:",
+      ru: "Прим. перев.:",
+      ur: "مترجم کا نوٹ:",
+      id: "Catatan penerjemah:",
+      de: "Anm. d. Übers.:",
+      sw: "Maelezo ya mtafsiri:",
+      mr: "अनुवादकाची टीप:",
+    }),
     translateFailed: t({
       en: "Could not translate",
       zh: "未能翻译",
@@ -553,6 +571,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Tappable word at the end of the error line on the reader's selection card when the automatic machine translation of the selected text failed (shown as 'Could not translate · Retry'); tapping the line asks for the translation again. Only shown in that error state. A short imperative verb.",
   translating:
     "Placeholder on the reader's selection card, under the selected text, while its machine translation (always started by itself, for a phrase, sentence, paragraph or hand-made selection; there is no Translate button) is on its way. A short progressive phrase ending in an ellipsis.",
+  translatorNote:
+    "Label inside the brackets of a note the AI translator adds after a phrase in a translation, explaining a cultural difference; the note's own text follows it. Short, ends the way this language introduces a note.",
   translateFailed:
     "Short error on the reader's selection card when the machine translation of the selected text could not be made (offline, over the limit, or a server failure). The line itself is tappable to retry, followed by ' · Retry'. A short phrase.",
   ownKey:

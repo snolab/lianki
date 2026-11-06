@@ -1,6 +1,27 @@
 {
   "stop": ["il", "di", "che", "è", "non", "per", "una", "sono", "gli", "della", "ho"],
-  "elisions": ["l", "d", "c", "m", "t", "s", "n", "dell", "dall", "nell", "sull", "all", "un", "quell", "quest", "po"],
-  "folds": [["es", ""], ["s", ""], ["x", ""]],
+  "elisions": [
+    "l",
+    "d",
+    "c",
+    "m",
+    "t",
+    "s",
+    "n",
+    "dell",
+    "dall",
+    "nell",
+    "sull",
+    "all",
+    "un",
+    "quell",
+    "quest",
+    "po"
+  ],
+  "folds": [
+    ["es", ""],
+    ["s", ""],
+    ["x", ""]
+  ],
   "abbreviations": ["sig", "sigg", "dott", "prof", "ing", "avv"]
 }

@@ -22,8 +22,8 @@ export const translated = new Map<string, string>();
 const inflight = new Map<string, Promise<string | null>>();
 
 /** The cache key a unit is kept under, by who translated it. */
-export const transKeyOf = (own: ByokActive | null, to: string, text: string) =>
-  own ? `own:${transKey(to, text)}` : transKey(to, text);
+export const transKeyOf = (own: ByokActive | null, to: string, text: string, notes = false) =>
+  `${own ? "own:" : ""}${notes ? "notes:" : ""}${transKey(to, text)}`;
 
 /** The answer's ceiling, as the server's (lib/read/translate-server.ts). */
 const maxTokens = (chars: number) => Math.min(8000, 200 + chars * 2);
@@ -35,10 +35,11 @@ export async function translateOwn(
   from: string | undefined,
   text: string,
   deps?: ByokDeps,
+  notes = false,
 ): Promise<string | null> {
   const r = await byokComplete(
     own,
-    translateMessages(text, to, from ?? null),
+    translateMessages(text, to, from ?? null, notes),
     { maxTokens: maxTokens(text.length), temperature: 0.2 },
     deps,
   );
@@ -51,19 +52,20 @@ export function fetchPiece(
   from: string | undefined,
   text: string,
   own: ByokActive | null = activeByok(),
+  notes = false,
 ) {
-  const k = transKeyOf(own, to, text);
+  const k = transKeyOf(own, to, text, notes);
   const hit = translated.get(k);
   if (hit !== undefined) return Promise.resolve(hit);
   let p = inflight.get(k);
   if (!p) {
     p = (
       own
-        ? translateOwn(own, to, from, text)
+        ? translateOwn(own, to, from, text, undefined, notes)
         : fetch(`/api/read/${id}/translate`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ text, to, from }),
+            body: JSON.stringify({ text, to, from, ...(notes ? { notes } : {}) }),
           })
             .then((r) => (r.ok ? r.json() : null))
             .then((d: { text?: string } | null) => d?.text || null)
