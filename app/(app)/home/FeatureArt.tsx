@@ -10,6 +10,29 @@ import type { HomeFeatureKey } from "@/lib/home-features";
  * above the card's text and its scrim, and the whole width always shows.
  */
 const DRAWINGS: Record<HomeFeatureKey, ReactNode> = {
+  // A fan of lists; the top one's rows have checkboxes, two of them ticked.
+  words: (
+    <>
+      <g transform="rotate(12 104 90)">
+        <path d="M78 10Q118 7 158 9 161 48 158 86 118 89 80 87 76 48 78 10Z" fill="var(--wash)" />
+      </g>
+      <g transform="rotate(5 96 90)">
+        <path d="M68 10Q108 7 148 9 151 50 148 90 108 93 70 91 66 50 68 10Z" fill="var(--sheet)" />
+        <path d="M126 28H140M126 50H140M126 72H140" strokeWidth="2.2" />
+      </g>
+      <path
+        d="M24 10Q68 7 114 9 117 50 114 94 68 97 26 95 22 50 24 10Z"
+        fill="var(--sheet)"
+        strokeWidth="2.8"
+      />
+      <rect x="34" y="21" width="15" height="15" rx="3" fill="var(--seal)" stroke="var(--seal)" />
+      <path d="M38 29L41 32 46 25" stroke="var(--sheet)" />
+      <rect x="34" y="44" width="15" height="15" rx="3" strokeWidth="2.2" />
+      <rect x="34" y="67" width="15" height="15" rx="3" fill="var(--seal)" stroke="var(--seal)" />
+      <path d="M38 75L41 78 46 71" stroke="var(--sheet)" />
+      <path d="M58 29Q78 27 104 29M58 52Q72 50 92 52M58 75Q76 73 100 75" />
+    </>
+  ),
   // A brush stroke in a practice square, both ways with its sound.
   alphabet: (
     <>

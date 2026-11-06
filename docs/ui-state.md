@@ -28,6 +28,8 @@ Rules:
 - **The URL wins** when it carries the same state. sessionStorage only fills
   in when the URL is silent. For example, `/words` with no `?list=` reopens
   this tab's list by replacing the address, with no extra history entry.
+  `/words#add-list` (the Word lists card on /home) is not silent: it stays on
+  the list picker and scrolls to the "Add a list" tree.
 - **Per-tab isolation is the default** for UI state. Two tabs on /words keep
   their own list, scroll and panels. A preference that should follow you
   across tabs goes in localStorage, and other tabs pick it up through the

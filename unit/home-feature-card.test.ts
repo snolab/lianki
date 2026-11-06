@@ -8,7 +8,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FeatureArt } from "@/app/(app)/home/FeatureArt";
 import { FeatureCard } from "@/app/(app)/home/FeatureCard";
-import { HOME_EXPLORE } from "@/lib/home-features";
+import { HOME_EXPLORE, HOME_EXPLORE_HREF } from "@/lib/home-features";
 import { APP_NAV } from "@/lib/app-nav";
 import navHome from "@/app/(app)/home/page.content";
 
@@ -41,6 +41,11 @@ describe("home feature drawings", () => {
       expect(APP_NAV.some((n) => n.key === k)).toBe(true);
       expect(cards[k]).toBeDefined();
     }
+  });
+
+  test("eight cards; Word lists is one card and opens the Add a list tree", () => {
+    expect(HOME_EXPLORE.length).toBe(8);
+    expect(HOME_EXPLORE_HREF.words).toBe("/words#add-list");
   });
 
   test("each is its own drawing, decorative, and stays small", () => {
