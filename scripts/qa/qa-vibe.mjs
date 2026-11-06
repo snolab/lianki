@@ -271,6 +271,69 @@ async function run(colorScheme, email) {
 
   await page.click('[data-testid="vibe-stop"]');
   await page.waitForSelector('[data-testid="vibe-ended"]');
+
+  // 新词: reading the list and opening a word store nothing and ask no model.
+  const writes = [];
+  page.on("request", (r) => {
+    if (/batch-grade|make-cards/.test(r.url()) && !(r.postData() ?? "").includes('"probe"'))
+      writes.push(r.postData() ?? "");
+    if (/\/gloss/.test(r.url()) && !(r.postData() ?? "").includes('"cached":true'))
+      writes.push(`uncached gloss ${r.postData()}`);
+  });
+  await page.click('[data-testid="vibe-tab-words"]');
+  await page.waitForSelector('[data-testid="vibe-word"]');
+  check(
+    (await page.locator('[data-testid="vibe-word"][data-kind="new"]').count()) > 1,
+    "the words heard are listed as new",
+  );
+  check(
+    await page.evaluate(() => {
+      const el = document.querySelector('.lk-book [data-f="n"]');
+      return !!el && getComputedStyle(el).textDecorationStyle === "dotted";
+    }),
+    "each carries the reader's own mark, drawn",
+  );
+  await page.screenshot({ path: join(OUT, `words-${colorScheme}.png`) });
+  const first = page.locator('[data-testid="vibe-word"][data-kind="new"]').first();
+  const heardWord = await first.getAttribute("data-word");
+  await first.click();
+  await page.waitForSelector('[data-testid="vibe-word-card"]');
+  await page.waitForSelector('[data-testid="vibe-word-meaning"]');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, `word-card-${colorScheme}.png`) });
+  await page.click('[data-testid="vibe-word-close"]');
+  check(!writes.length, `opening and closing a word writes nothing (${writes.join(" | ")})`);
+
+  // The slider's grade makes the card; Undo in the hold sends nothing.
+  await first.click();
+  const knob = page.locator('[data-testid="vibe-word-card"] [role=slider]');
+  const swipe = async () => {
+    await page.waitForTimeout(600); // past the press that opened the card (OPENING_MS)
+    const k = await knob.boundingBox();
+    await page.mouse.move(k.x + k.width / 2, k.y + k.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(k.x + k.width / 2 + 70, k.y + k.height / 2, { steps: 8 });
+    await page.mouse.move(k.x + k.width / 2 + 170, k.y + k.height / 2, { steps: 8 });
+    await page.mouse.up();
+  };
+  await swipe();
+  await page.waitForSelector('[data-testid="vibe-word-added"]');
+  await page.click('[data-testid="vibe-word-undo"]');
+  await page.waitForTimeout(300);
+  check(!writes.length, "Undo in the hold sends nothing");
+  await swipe();
+  await page.waitForSelector('[data-testid="vibe-word-added"]');
+  check(!writes.length, "a swipe is held before it is sent");
+  const done = page.waitForResponse(
+    (r) => /batch-grade/.test(r.url()) && !(r.request().postData() ?? "").includes('"probe"'),
+    { timeout: 12_000 },
+  );
+  const res2 = await done;
+  check(res2.ok(), `after the hold, one batch makes the card (${res2.status()})`);
+  check(
+    writes.length === 1 && writes[0].includes(JSON.stringify(heardWord)),
+    "only that word was sent",
+  );
   await page.screenshot({ path: join(OUT, `ended-${colorScheme}.png`) });
 
   // The doc, in /read: no polish offer, the private mark, and the note.
