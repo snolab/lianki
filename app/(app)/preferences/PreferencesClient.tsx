@@ -12,6 +12,8 @@ import { Icon } from "@/app/components/icons";
 import { TEXT_AREAS, textSizeStore } from "@/lib/text-size";
 import { useTextSizes } from "@/lib/use-text-size";
 import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
+import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
+import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
 
 type FilterType = "domain" | "title" | "url";
 
@@ -25,6 +27,41 @@ interface FilterPattern {
 }
 
 /** A section heading with its reset button (only when there is something to reset). */
+/** The reader's offer to tidy a raw transcript: on until he says otherwise. */
+function ReaderSettings() {
+  const t = useIntlayer("read-polish");
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    const read = () => setOn(readOfferOn());
+    read();
+    window.addEventListener(PREF_APPLIED_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(PREF_APPLIED_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, []);
+  return (
+    <section className="mb-10 max-w-md" data-section="reader">
+      <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">{t.prefHeading}</h2>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={on}
+          data-testid="pref-polish-offer"
+          onChange={(e) => {
+            setOn(e.target.checked);
+            writeOfferOn(e.target.checked);
+          }}
+          className="w-4 h-4 rounded"
+        />
+        <span>{t.prefOffer}</span>
+      </label>
+      <p className="text-xs text-gray-500 mt-2 ml-6">{t.prefHelp}</p>
+    </section>
+  );
+}
+
 function SectionHeading({
   children,
   label,
@@ -215,6 +252,9 @@ export default function PreferencesClient({ showKeySync = false }: { showKeySync
 
       {/* Page titles — follows the account (docs/title-clean.md) */}
       <TitleRulesSettings />
+
+      {/* Reader — follows the account (lib/read/polish-offer.ts) */}
+      <ReaderSettings />
 
       {/* Next-card order */}
       <section className="mb-10">
