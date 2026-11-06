@@ -3,7 +3,7 @@
 /**
  * The 新词 list on /vibe (docs/vibe.md): the words heard, marked as in the reader,
  * and a card to add one: NewWordStrip, the reader's own preview. Opening a word
- * stores nothing and asks no model (`fetchGloss` with no user's key: `cached:
+ * stores nothing and asks no model (`fetchCachedGloss`: `cached:
  * true`); only the slider's grade makes a card, through lib/vibe/new-words.ts.
  * Follows new lines as they are saved; nothing polls.
  */
@@ -12,7 +12,7 @@ import { useIntlayer } from "next-intlayer";
 import type { WordProbe } from "@/lib/read/batch-grade";
 import type { WordRow } from "@/lib/read/reader-model";
 import { GRADE_HOLD_MS } from "@/lib/read/reader-server";
-import { fetchGloss, type Gloss } from "@/lib/read/select-gloss-fetch";
+import { fetchCachedGloss, type Gloss } from "@/lib/read/select-gloss-fetch";
 import {
   createCommits,
   firstHeard,
@@ -132,7 +132,7 @@ export function VibeWords({
     setGloss(null);
     if (!material) return;
     // No user's key here: decks and shared glosses only, no model before a swipe.
-    void fetchGloss(material, h.w, firstHeard(h.w, lines)?.text ?? null, null).then((g) =>
+    void fetchCachedGloss(material, h.w, firstHeard(h.w, lines)?.text ?? null).then((g) =>
       setGloss({ w: h.w, g }),
     );
   };

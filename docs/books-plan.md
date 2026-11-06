@@ -939,21 +939,27 @@ it in the text, not a list of toasts.
     reviewed). Not due → no handle, "3 天后到期". No card (in the book's list
     but never studied, or not recognised at all) → **a preview** (owner,
     2026-11-06 15:56 JST: "你就直接用滑条，不用显示制卡按钮";
-    `NewWordStrip`): nothing is stored, the card shows what meaning there
-    already is (decks, shared `word_gloss`: the gloss route's `cached: true`, no
-    model) and the word's sentence, and the slider's grade adds it in one
-    batch: card (`makeCards`, into the book's own deck, of the word's language,
-    created once per book when it has none), the grade, one undo that removes
-    both. The AI gloss through `chargeAi` comes only in that send, after the
-    hold, so an Undo while held spends nothing. A tap, a drag short of a level
-    or closing the card stores and spends nothing. Keyboard: keys 1–4, or a
-    button per grade (hidden until focused, read by screen readers).
+    `NewWordStrip`): nothing is stored, the card shows the word's meaning and
+    its sentence, and the slider's grade adds it in one batch: card
+    (`makeCards`, into the book's own deck, of the word's language, created once
+    per book when it has none), the grade, one undo that removes both. The
+    meaning comes on the tap (owner's card, 2026-11-06 18:18 JST: 恢复，点开就查释义，
+    要花积分): decks, shared `word_gloss`, else the AI gloss through `chargeAi`,
+    written to `word_gloss`, so a second tap, on any device, spends nothing. The
+    commit does not pay again: it carries the tap's meaning, and a tap's call still
+    on its way is waited for before the batch is sent (`withTabGloss`,
+    `glossSettled`). A tap stores nothing; a drag short of a level, closing the
+    card or an Undo stores and spends nothing more than the tap did. Keyboard:
+    keys 1–4, or a button per grade (hidden until focused, read by screen readers).
     The several-word 制卡 (N) stays on a sentence, paragraph, range or word
     review, from two words up (`MIN_BATCH`): it is a batch action. A review
-    list's new word is the same kind of preview: a row, no model
-    (`word-session`), its swipe the commit (`graded` brings the AI meaning,
+    list's new word is a preview too, and opening the list asks no model
+    (`word-session`): its swipe is the commit (`graded` brings the AI meaning,
     onto the card as well). The live doc's card (`LiveTail`) has the same
-    `NewWordStrip`, and sends its batch at once, with an undo toast.
+    `NewWordStrip` and the same tap's meaning (its slider shows once that has
+    answered), and sends its batch at once, with an undo toast. A /vibe doc asks
+    no model before a swipe, in the reader as on /vibe (docs/vibe.md); the gloss
+    route refuses it whatever the request says.
   - a **sentence**: that sentence's FSRS card (the reader's per-sentence
     grade, `gradeFor`, granularity `sentence`). Never takes words along.
   - a **hand-made range** (several sentences, several paragraphs): every due
