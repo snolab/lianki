@@ -7,7 +7,54 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import { notePrefWrite } from "@lianki/ui-state/account";
 import { RETENTION_MAX_DAYS, RETENTION_MIN_DAYS, checkRetention } from "@/lib/vibe/gate";
+import {
+  MIN_SHARE_DEFAULT,
+  MIN_SHARE_KEY,
+  MIN_SHARE_MAX,
+  MIN_SHARE_MIN,
+  readShare,
+} from "@/lib/vibe/translations";
+
+/** A language's share of a conversation before lines are translated into it. */
+function TranslateShare() {
+  const t = useIntlayer("vibe-page");
+  const [pct, setPct] = useState(String(MIN_SHARE_DEFAULT));
+  useEffect(() => setPct(String(readShare())), []);
+  const save = () => {
+    const n = Number(pct);
+    if (!Number.isInteger(n) || n < MIN_SHARE_MIN || n > MIN_SHARE_MAX)
+      return setPct(String(readShare()));
+    try {
+      localStorage.setItem(MIN_SHARE_KEY, String(n));
+      notePrefWrite();
+    } catch {
+      // a private window: for this visit only
+    }
+  };
+  return (
+    <>
+      <label className="mt-6 flex flex-wrap items-center gap-2">
+        <span>{t.translateShare}</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MIN_SHARE_MIN}
+          max={MIN_SHARE_MAX}
+          value={pct}
+          onChange={(e) => setPct(e.target.value)}
+          onBlur={save}
+          data-testid="vibe-translate-share"
+          className="min-h-11 w-28 rounded-lg border border-[oklch(0.7_0_0)] bg-transparent px-3 dark:border-[oklch(0.45_0_0)]"
+        />
+      </label>
+      <p className="mt-2 text-sm text-[oklch(0.45_0_0)] dark:text-[oklch(0.72_0_0)]">
+        {t.translateShareHelp}
+      </p>
+    </>
+  );
+}
 
 export function VibeRetention() {
   const t = useIntlayer("vibe-page");
@@ -77,6 +124,7 @@ export function VibeRetention() {
       <p className="mt-2 text-sm text-[oklch(0.45_0_0)] dark:text-[oklch(0.72_0_0)]">
         {t.retentionHelp}
       </p>
+      <TranslateShare />
     </section>
   );
 }

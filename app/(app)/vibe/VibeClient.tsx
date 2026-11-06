@@ -8,11 +8,12 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
-import { VibeWords } from "./VibeWords";
+import { useVibeWords } from "./VibeWords";
 import Link from "next/link";
 import { useIntlayer } from "next-intlayer";
 import { detectLangs } from "@/lib/read/lang-detect";
-import { vibeBrowserDeps } from "@/lib/vibe/browser";
+import { segmentsOf, wordLang } from "@/lib/read/words";
+import { askTranslation, vibeBrowserDeps } from "@/lib/vibe/browser";
 import {
   createVibeSession,
   type EndReason,
@@ -20,6 +21,12 @@ import {
   type VibeLine,
   type VibeView,
 } from "@/lib/vibe/session";
+import {
+  createTranslator,
+  readShare,
+  type Asked,
+  type TranslationRow,
+} from "@/lib/vibe/translations";
 import { useBookStream } from "../read/[id]/reader-stream";
 import { langName } from "./lang-name";
 
@@ -31,6 +38,7 @@ export type VibeDocProps = {
   status: "running" | "paused" | "stopped";
   next: number;
   lines: VibeLine[];
+  translations: TranslationRow[];
 };
 
 const BUTTON =
@@ -62,6 +70,9 @@ function StartPage({ busy, onStart }: { busy: boolean; onStart: () => void }) {
       </button>
       <p className="leading-relaxed" data-testid="vibe-care">
         {t.yourCare}
+      </p>
+      <p className={`text-sm ${DIM}`} data-testid="vibe-sent-to-model">
+        {t.sentToModel}
       </p>
       <p className={`text-sm ${DIM}`} data-testid="vibe-recognised">
         {t.recognised}
@@ -133,14 +144,101 @@ function Indicator({
   );
 }
 
-function Transcript({ view, locale }: { view: VibeView; locale: string }) {
+type Words = ReturnType<typeof useVibeWords>;
+
+const segsOf = (text: string, lang?: string) => segmentsOf(text, wordLang(lang ?? null));
+
+/** A line, every word with the reader's mark, and a tap for its card. Nothing is stored by a tap. */
+function Marked({ text, lang, words }: { text: string; lang?: string; words: Words }) {
+  const segs = useMemo(() => segsOf(text, lang), [text, lang]);
+  return (
+    <>
+      {segs.map((g, i) => {
+        if (!g.word) return g.text;
+        const word = g.word;
+        const f = words.famOf(word);
+        return (
+          <button
+            key={i}
+            type="button"
+            className="inline text-start"
+            data-testid="vibe-w"
+            data-word={word}
+            data-f={f === "k" ? undefined : f}
+            onClick={() => words.openAt(word, text)}
+          >
+            {g.text}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+function Translated({
+  line,
+  to,
+  state,
+  words,
+}: {
+  line: VibeLine;
+  to: string;
+  state: Asked | undefined;
+  words: Words;
+}) {
+  const t = useIntlayer("vibe-page");
+  if (state === undefined) return null;
+  if (state === "asking")
+    return (
+      <p className={DIM} data-testid="vibe-tr-asking" data-to={to}>
+        …
+      </p>
+    );
+  if (state === "failed")
+    return (
+      <p className={`text-sm ${DIM}`} data-testid="vibe-tr-failed" data-to={to} data-of={line.text}>
+        {t.notTranslated}
+      </p>
+    );
+  return (
+    <p className="leading-relaxed" lang={to} dir="auto" data-testid="vibe-tr" data-to={to}>
+      <Marked text={state} lang={to} words={words} />
+    </p>
+  );
+}
+
+function Transcript({
+  view,
+  locale,
+  translator,
+  words,
+}: {
+  view: VibeView;
+  locale: string;
+  translator: ReturnType<typeof createTranslator>;
+  words: Words;
+}) {
   const t = useIntlayer("vibe-page");
   return (
-    <ol className="flex flex-col gap-3" data-testid="vibe-lines">
+    // lk-book: the reader's own marks (globals.css, data-f).
+    <ol className="lk-book flex flex-col gap-3" data-testid="vibe-lines">
       {view.lines.map((l, i) => (
-        <li key={i} className="leading-relaxed" data-testid="vibe-line" data-lang={l.lang ?? ""}>
-          {l.lang && <span className={`me-2 text-xs ${DIM}`}>{langName(l.lang, locale)}</span>}
-          {l.text}
+        <li key={i} className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+          <div className="leading-relaxed" data-testid="vibe-line" data-lang={l.lang ?? ""}>
+            {l.lang && <span className={`me-2 text-xs ${DIM}`}>{langName(l.lang, locale)}</span>}
+            <Marked text={l.text} lang={l.lang} words={words} />
+          </div>
+          <div data-testid="vibe-translations">
+            {translator.shownFor(l).map((to) => (
+              <Translated
+                key={to}
+                line={l}
+                to={to}
+                state={translator.get(l.text, to)}
+                words={words}
+              />
+            ))}
+          </div>
         </li>
       ))}
       {!!view.interim && (
@@ -267,7 +365,6 @@ export default function VibeClient({ locale, doc }: { locale: string; doc?: Vibe
   );
   const [title, setTitle] = useState(doc?.title ?? "");
   const [opening, setOpening] = useState(false);
-  const [tab, setTab] = useState<"text" | "words">("text");
   const session = useRef<ReturnType<typeof createVibeSession> | null>(null);
   const [mine, setMine] = useState(false);
 
@@ -343,35 +440,108 @@ export default function VibeClient({ locale, doc }: { locale: string; doc?: Vibe
     window.history.replaceState(null, "", "/vibe/new");
   };
 
+  if (!view || view.status === "idle") return <StartPage busy={opening} onStart={start} />;
+
+  return (
+    <Conversation
+      view={view}
+      locale={locale}
+      title={title}
+      mine={mine}
+      known={doc?.translations ?? EMPTY}
+      docId={docId}
+      opening={opening}
+      onPause={() => void session.current?.pause()}
+      onResume={() => void session.current?.resume()}
+      onStop={() => void session.current?.stop()}
+      onContinue={() => void keepGoing()}
+      onAgain={again}
+    />
+  );
+}
+
+const EMPTY: TranslationRow[] = [];
+
+function Conversation(p: {
+  view: VibeView;
+  locale: string;
+  title: string;
+  mine: boolean;
+  known: TranslationRow[];
+  docId: string | null;
+  opening: boolean;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
+  onContinue: () => void;
+  onAgain: () => void;
+}) {
+  const { view, locale, docId } = p;
+  const t = useIntlayer("vibe-page");
+  const [tab, setTab] = useState<"text" | "words">("text");
+  const [version, bump] = useState(0);
+
+  // Sent only by the page recording it (or finishing what it heard), never while
+  // paused, and never by opening a log (docs/vibe.md, "Translations").
+  const may = useRef({ mine: p.mine, status: view.status, doc: docId });
+  may.current = { mine: p.mine, status: view.status, doc: docId };
+  const translator = useRef<ReturnType<typeof createTranslator> | null>(null);
+  translator.current ??= createTranslator(
+    {
+      ask: (text, to, from) =>
+        may.current.doc ? askTranslation(may.current.doc, text, to, from) : Promise.resolve("wait"),
+      canRun: () =>
+        may.current.mine && (may.current.status === "running" || may.current.status === "stopped"),
+      minPct: readShare,
+      onChange: () => bump((n) => n + 1),
+    },
+    p.known,
+  );
+  const tr = translator.current;
+  useEffect(() => {
+    tr.update(view.lines);
+  }, [tr, view.lines, view.status, p.mine]);
+
+  const shown = useMemo(() => {
+    const out = new Set<string>();
+    const add = (text: string, lang?: string) => {
+      for (const g of segsOf(text, lang)) if (g.word) out.add(g.word);
+    };
+    for (const l of view.lines) {
+      add(l.text, l.lang);
+      for (const to of tr.shownFor(l)) {
+        const got = tr.get(l.text, to);
+        if (got && got !== "asking" && got !== "failed") add(got, to);
+      }
+    }
+    return [...out];
+    // `version` is what says a translation arrived; `tr` itself does not change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tr, view.lines, version]);
+  const words = useVibeWords({ material: view.material, lines: view.lines, locale, shown });
+
   const langs = useMemo(() => {
     const n = new Map<string, number>();
-    for (const l of view?.lines ?? []) if (l.lang) n.set(l.lang, (n.get(l.lang) ?? 0) + 1);
+    for (const l of view.lines) if (l.lang) n.set(l.lang, (n.get(l.lang) ?? 0) + 1);
     return [...n].sort((a, b) => b[1] - a[1]).map(([l]) => l);
-  }, [view?.lines]);
-
-  if (!view || view.status === "idle") return <StartPage busy={opening} onStart={start} />;
+  }, [view.lines]);
 
   return (
     // The transcript never rides on a chat line (packages/debug-chat/src/scene.ts).
     <div
       data-lk-private-screen=""
-      className="mx-auto min-h-screen max-w-xl px-4 pb-32"
+      className="mx-auto min-h-screen max-w-xl px-4 pb-32 md:max-w-4xl"
       style={{ paddingTop: view.status === "stopped" ? 24 : 96 }}
       data-testid="vibe-page"
     >
       {view.status !== "stopped" && (
-        <Indicator
-          view={view}
-          onPause={() => void session.current?.pause()}
-          onResume={() => void session.current?.resume()}
-          onStop={() => void session.current?.stop()}
-        />
+        <Indicator view={view} onPause={p.onPause} onResume={p.onResume} onStop={p.onStop} />
       )}
       <Link href="/vibe" className={`text-sm underline ${DIM}`} data-testid="vibe-all">
         {t.allConversations}
       </Link>
       <h1 className="mb-1 mt-2 text-xl font-semibold" data-testid="vibe-title">
-        {title}
+        {p.title}
       </h1>
       {!!langs.length && (
         <p className={`mb-3 text-sm ${DIM}`} data-testid="vibe-langs">
@@ -379,7 +549,7 @@ export default function VibeClient({ locale, doc }: { locale: string; doc?: Vibe
         </p>
       )}
       {view.status === "stopped" && (
-        <EndScreen view={view} docId={docId} busy={opening} onContinue={() => void keepGoing()} />
+        <EndScreen view={view} docId={docId} busy={p.opening} onContinue={p.onContinue} />
       )}
       <div className="mb-4 flex gap-2" role="tablist">
         {(["text", "words"] as const).map((k) => (
@@ -397,11 +567,12 @@ export default function VibeClient({ locale, doc }: { locale: string; doc?: Vibe
         ))}
       </div>
       {tab === "text" ? (
-        <Transcript view={view} locale={locale} />
+        <Transcript view={view} locale={locale} translator={tr} words={words} />
       ) : (
-        <VibeWords material={view.material} lines={view.lines} locale={locale} />
+        words.list
       )}
-      {view.status === "stopped" && <LogActions material={view.material} onAgain={again} />}
+      {words.card}
+      {view.status === "stopped" && <LogActions material={view.material} onAgain={p.onAgain} />}
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   createCommits,
   firstHeard,
   heardWords,
+  PROBE_MAX,
   probeWords,
   type HeardWord,
   type WordKind,
@@ -36,9 +37,29 @@ const postGrade = (material: string, body: unknown, keepalive = false) =>
     keepalive,
   }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))));
 
-function useHeard(material: string | null, lineCount: number) {
+function useHeard(material: string | null, lineCount: number, shown: readonly string[]) {
   const [rows, setRows] = useState<WordRow[]>([]);
   const [probes, setProbes] = useState<Map<string, WordProbe>>(() => new Map());
+  const [others, setOthers] = useState<Map<string, WordProbe>>(() => new Map());
+  // Words on screen that are not the doc's own counted words (a translation's):
+  // whether each has a card, by the same probe. Read only.
+  const asked = useRef(new Set<string>());
+  const extra = shown.filter((w) => !asked.current.has(w));
+  const extraKey = extra.join("\n");
+  useEffect(() => {
+    if (!material || !extraKey) return;
+    const words = extraKey.split("\n").slice(0, PROBE_MAX);
+    for (const w of words) asked.current.add(w);
+    void postGrade(material, { probe: { words: words.map((w) => ({ w })) } })
+      .then((p) =>
+        setOthers((m) => {
+          const next = new Map(m);
+          for (const x of (p as { words: WordProbe[] }).words) next.set(x.w, x);
+          return next;
+        }),
+      )
+      .catch(() => {});
+  }, [material, extraKey]);
   useEffect(() => {
     if (!material) return;
     let live = true;
@@ -57,21 +78,28 @@ function useHeard(material: string | null, lineCount: number) {
       live = false;
     };
   }, [material, lineCount]);
-  return { rows, probes };
+  return { rows, probes, others };
 }
 
-export function VibeWords({
+/**
+ * The words of a conversation, on either column or in the list: the marks, and the
+ * one card a tap opens. `shown` is every word on screen.
+ */
+export function useVibeWords({
   material,
   lines,
   locale,
+  shown,
 }: {
   material: string | null;
   lines: readonly VibeLine[];
   locale: string;
+  shown: readonly string[];
 }) {
   const t = useIntlayer("vibe-page");
-  const { rows, probes } = useHeard(material, lines.length);
+  const { rows, probes, others } = useHeard(material, lines.length, shown);
   const [open, setOpen] = useState<HeardWord | null>(null);
+  const [context, setContext] = useState<string | null>(null);
   const [, bump] = useState(0);
   const [gloss, setGloss] = useState<{ w: string; g: Gloss | null } | null>(null);
   const [failed, setFailed] = useState(false);
@@ -125,16 +153,31 @@ export function VibeWords({
     }
   };
 
-  const openWord = (h: HeardWord) => {
+  const openWord = (h: HeardWord, where?: string) => {
+    const ctx = where ?? firstHeard(h.w, lines)?.text ?? null;
     setOpen(h);
+    setContext(ctx);
     setFailed(false);
     setOpenedAt(performance.now());
     setGloss(null);
     if (!material) return;
     // No user's key here: decks and shared glosses only, no model before a swipe.
-    void fetchCachedGloss(material, h.w, firstHeard(h.w, lines)?.text ?? null).then((g) =>
-      setGloss({ w: h.w, g }),
-    );
+    void fetchCachedGloss(material, h.w, ctx).then((g) => setGloss({ w: h.w, g }));
+  };
+
+  const byWord = useMemo(() => new Map(words.map((h) => [h.w, h])), [words]);
+  /** A word in a line or a translation, whether or not the doc counted it. */
+  const heardOf = (w: string): HeardWord => {
+    const known = byWord.get(w);
+    if (known) return known;
+    const carded = !!others.get(w)?.due;
+    return {
+      w,
+      count: 0,
+      fam: carded ? "l2" : "u",
+      kind: carded ? "learning" : "new",
+      carded,
+    };
   };
 
   const card = open && (
@@ -186,14 +229,14 @@ export function VibeWords({
         ) : (
           <SwipeFeelProvider>
             <NewWordStrip
-              context={firstHeard(open.w, lines)?.text ?? null}
+              context={context}
               intervals={null}
               mirror={mirror}
               openedAt={openedAt}
               canUndo={false}
               lastWhat={null}
               onPreview={() => {}}
-              onCommit={(r) => desk.commit(open.w, firstHeard(open.w, lines)?.text ?? null, r)}
+              onCommit={(r) => desk.commit(open.w, context, r)}
               onUndo={() => {}}
             />
           </SwipeFeelProvider>
@@ -202,7 +245,7 @@ export function VibeWords({
     </div>
   );
 
-  return (
+  const list = (
     <div data-testid="vibe-words">
       {!words.length && <p className={DIM}>{t.wordsEmpty}</p>}
       {/* lk-book: the reader's own marks (globals.css, data-f). */}
@@ -228,7 +271,13 @@ export function VibeWords({
           </li>
         ))}
       </ul>
-      {card}
     </div>
   );
+
+  return {
+    list,
+    card,
+    famOf: (w: string) => heardOf(w).fam,
+    openAt: (w: string, where: string) => openWord(heardOf(w), where),
+  };
 }

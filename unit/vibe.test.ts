@@ -104,7 +104,7 @@ describe("the gate", () => {
       }
     };
     walk("app/api/vibe");
-    expect(routes.length).toBe(4);
+    expect(routes.length).toBe(5);
     for (const r of routes) expect(readFileSync(r, "utf8")).toMatch(/vibeWrite|vibeGate/);
     const gate = readFileSync("lib/vibe/route.ts", "utf8");
     expect(gate).toContain("vibeUserId(");
