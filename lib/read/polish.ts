@@ -9,7 +9,9 @@
 // by: the polished chunk's words (letters and digits, NFKC, lower case) must
 // be the raw chunk's, in order, but for hesitation sounds (LangData.fillers),
 // which it may drop. A chunk that fails keeps its raw text. The raw text is
-// kept beside the polished one (read_material_raw), never overwritten.
+// kept beside the polished one (read_material_raw), never overwritten. So it can
+// neither shorten nor summarise; a chunk kept raw shows in the reader
+// (PolishCoverage). What the user is told is this rule: read-polish.content.ts.
 //
 // Pure: the model call and the store are lib/read/polish-server.ts.
 
