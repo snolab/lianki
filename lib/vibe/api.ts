@@ -2,8 +2,11 @@
 // that), so the gate and the refusals are unit-tested as they run.
 import type { FlagValues } from "@/lib/flags";
 import type { D1Batch } from "@/lib/read/reader-store";
+import { langTag } from "@/lib/read/translate";
+import type { Complete } from "@/lib/read/gloss-server";
 import { cleanTitle } from "@/lib/read/title";
 import { checkRetention, vibeAllowed } from "./gate";
+import { translateLine } from "./translate-server";
 import {
   appendLines,
   clearRetentionDays,
@@ -101,6 +104,39 @@ export async function stateReply(
   if (r === "not-found") return NOT_FOUND;
   if (r === "stopped") return nope(409, "stopped");
   return { status: 200, body: { state } };
+}
+
+/** POST /api/vibe/[id]/translate: one finished line, into one language. */
+export async function translateLineReply(
+  db: D1Batch,
+  userId: string,
+  id: string,
+  raw: unknown,
+  now: number,
+  complete?: Complete,
+): Promise<Reply> {
+  const b = asObject(raw);
+  const to = langTag(b.to);
+  if (!to || typeof b.text !== "string") return nope(400, "bad-body");
+  const r = await translateLine(
+    db,
+    userId,
+    id,
+    { text: b.text, to, from: langTag(b.from) },
+    now,
+    complete,
+  );
+  if (r.ok) return { status: 200, body: { text: r.text, cached: r.cached } };
+  const status = {
+    "not-found": 404,
+    paused: 409,
+    "not-a-line": 400,
+    empty: 400,
+    busy: 429,
+    "model-failed": 502,
+    "not-configured": 503,
+  };
+  return nope(status[r.error], r.error);
 }
 
 export async function settingsGetReply(db: D1Batch, userId: string): Promise<Reply> {

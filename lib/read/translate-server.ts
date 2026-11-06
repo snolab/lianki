@@ -27,16 +27,31 @@ export type TranslateResult =
 export async function translate(
   db: D1Like,
   input: { text: string; to: string; from: string | null },
-  ai: { userId: string; complete?: Complete; limit?: { windowMs: number; max: number } },
+  ai: {
+    userId: string;
+    complete?: Complete;
+    limit?: { windowMs: number; max: number };
+    /** The charge's name in the logs. */
+    what?: string;
+    /** Instead of the shared read_translation: a private text keeps its own (lib/vibe). */
+    cache?: {
+      get(key: string): Promise<string | null>;
+      put(key: string, out: string, model: string): Promise<void>;
+    };
+  },
 ): Promise<TranslateResult> {
   const text = normText(input.text);
   if (!text) return { ok: false, error: "empty" };
   const key = await translationKey(input.to, text);
-  const hit = await db
-    .prepare("SELECT out FROM read_translation WHERE key = ?")
-    .bind(key)
-    .first<{ out: string }>();
-  if (hit) return { ok: true, text: hit.out, cached: true };
+  const hit = ai.cache
+    ? await ai.cache.get(key)
+    : ((
+        await db
+          .prepare("SELECT out FROM read_translation WHERE key = ?")
+          .bind(key)
+          .first<{ out: string }>()
+      )?.out ?? null);
+  if (hit) return { ok: true, text: hit, cached: true };
 
   const complete = ai.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
   if (!complete) return { ok: false, error: "not-configured" };
@@ -57,13 +72,16 @@ export async function translate(
   } catch (err) {
     console.error("read.translate: model failed", String(err).slice(0, 200));
   }
-  if (usd > 0) await chargeAi(ai.userId, { usd, what: "read.translate", chars: text.length });
+  if (usd > 0)
+    await chargeAi(ai.userId, { usd, what: ai.what ?? "read.translate", chars: text.length });
   if (!out) return { ok: false, error: "model-failed" };
-  await db
-    .prepare(
-      "INSERT INTO read_translation (key, target, out, model, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(key) DO NOTHING",
-    )
-    .bind(key, input.to, out, PARTNER_AI_MODEL, new Date().toISOString())
-    .run();
+  if (ai.cache) await ai.cache.put(key, out, PARTNER_AI_MODEL);
+  else
+    await db
+      .prepare(
+        "INSERT INTO read_translation (key, target, out, model, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(key) DO NOTHING",
+      )
+      .bind(key, input.to, out, PARTNER_AI_MODEL, new Date().toISOString())
+      .run();
   return { ok: true, text: out, cached: false };
 }

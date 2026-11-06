@@ -5,6 +5,8 @@
 // No `device` or `filter` goes to the Mac: every speaker is kept (the owner's
 // choice), so the voiceprint filter stays off on this socket.
 import type { MicTaps } from "@lianki/debug-chat/mic-taps";
+import { activeByok } from "@/lib/byok/config";
+import { translateOwn } from "@/lib/read/select-translate-fetch";
 import type { ApiResult, VibeApi, VibeDeps } from "./session";
 import { vibeRoute } from "./session";
 
@@ -17,6 +19,25 @@ async function postJson<T>(url: string, body: unknown, keepalive: boolean): Prom
   });
   if (!res.ok) return { ok: false, status: res.status };
   return { ok: true, ...((await res.json()) as T) };
+}
+
+/** One line's translation: the user's own AI from this browser, else our route. */
+export async function askTranslation(
+  doc: string,
+  text: string,
+  to: string,
+  from: string,
+): Promise<string | null | "wait"> {
+  const own = activeByok();
+  if (own) return translateOwn(own, to, from, text);
+  const res = await fetch(`/api/vibe/${encodeURIComponent(doc)}/translate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text, to, from }),
+  });
+  if (res.status === 409) return "wait";
+  if (!res.ok) return null;
+  return ((await res.json()) as { text?: string }).text || null;
 }
 
 export const vibeApi: VibeApi = {

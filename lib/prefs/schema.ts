@@ -157,6 +157,8 @@ export const PREF_SCHEMAS = {
   // /read: the offer to tidy a raw transcript, off for good or for some texts
   "read.polishOffer": z.boolean(),
   "read.polishSkips": polishSkips,
+  // /vibe: a language's share of a conversation, in percent, before lines go into it
+  "vibe.translateMinPct": z.number().int().min(1).max(99),
   // page titles: cleaning notification prefixes
   "titles.rules": titleRules,
   // the chat's voice (packages/debug-chat); echo cancel stays on the device

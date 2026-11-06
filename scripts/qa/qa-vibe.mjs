@@ -136,6 +136,17 @@ async function run(colorScheme, email) {
       lines.push(`BAD ${r.url()}`);
   });
 
+  finals = 0; // the same lines each run
+
+  // The model is stubbed: an invented answer, and a failure for one line.
+  const translateAsks = [];
+  await page.route("**/api/vibe/*/translate", async (r) => {
+    const b = r.request().postDataJSON();
+    translateAsks.push(`${b.text}>${b.to}`);
+    if (b.text === "下一张") return r.fulfill({ status: 502, json: { error: "model-failed" } });
+    return r.fulfill({ json: { text: `Invented ${b.to} words for this`, cached: false } });
+  });
+
   const res = await page.request.post(`${BASE}/api/auth/sign-in/email`, {
     headers: { origin: BASE, "content-type": "application/json" },
     data: { email, password: PW },
@@ -184,6 +195,10 @@ async function run(colorScheme, email) {
   );
   check(await page.isVisible('[data-testid="vibe-care"]'), "the line to the user is beside Start");
   check(await page.isVisible('[data-testid="vibe-recognised"]'), "the recognised-languages line");
+  check(
+    await page.isVisible('[data-testid="vibe-sent-to-model"]'),
+    "the page says lines go to a model for translation",
+  );
   const vw = page.viewportSize();
   const startBox = await page.locator('[data-testid="vibe-start"]').boundingBox();
   check(
@@ -294,6 +309,59 @@ async function run(colorScheme, email) {
   const logPath = new URL(page.url()).pathname;
   const langs = await page.$$eval('[data-testid="vibe-line"]', (e) => e.map((x) => x.dataset.lang));
   check(langs.includes("zh"), `each line shows its language (${langs})`);
+
+  // A translation beside or under each line, into the other language, never its own.
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid="vibe-tr"]').length === 2,
+  );
+  check(
+    await page.$$eval('[data-testid="vibe-lines"] li', (lis) =>
+      lis.every((li) => {
+        const own = li.querySelector('[data-testid="vibe-line"]')?.dataset.lang;
+        return [...li.querySelectorAll('[data-testid="vibe-tr"]')].every(
+          (t) => t.dataset.to !== own,
+        );
+      }),
+    ),
+    "no line is translated into its own language",
+  );
+  const placed = () =>
+    page.evaluate(() => {
+      const l = document.querySelector('[data-testid="vibe-line"]').getBoundingClientRect();
+      const t = document.querySelector('[data-testid="vibe-tr"]').getBoundingClientRect();
+      return { under: t.top >= l.bottom - 1, beside: t.left >= l.right - 1 };
+    });
+  check((await placed()).under, "at phone width it is stacked under the line");
+  await page.screenshot({ path: join(OUT, `translated-phone-${colorScheme}.png`) });
+  const phone = page.viewportSize();
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.waitForTimeout(100);
+  check((await placed()).beside, "on a wide screen it is a column beside the line");
+  await page.screenshot({ path: join(OUT, `translated-wide-${colorScheme}.png`) });
+  await page.setViewportSize(phone);
+
+  // Every word is marked and tappable, on both columns; a tap stores nothing.
+  const wordWrites = [];
+  const noteWordWrite = (r) => {
+    if (/batch-grade|make-cards/.test(r.url()) && !(r.postData() ?? "").includes('"probe"'))
+      wordWrites.push(r.url());
+  };
+  page.on("request", noteWordWrite);
+  check(
+    (await page.locator('[data-testid="vibe-line"] [data-testid="vibe-w"]').count()) > 3,
+    "a line's words can be tapped",
+  );
+  const trWord = page.locator('[data-testid="vibe-tr"] [data-testid="vibe-w"]').first();
+  check((await trWord.count()) === 1, "and so can a translation's");
+  await trWord.click();
+  await page.waitForSelector('[data-testid="vibe-word-card"]');
+  await page.screenshot({ path: join(OUT, `word-from-column-${colorScheme}.png`) });
+  await page.click('[data-testid="vibe-word-close"]');
+  await page.locator('[data-testid="vibe-line"] [data-testid="vibe-w"]').first().click();
+  await page.waitForSelector('[data-testid="vibe-word-card"]');
+  await page.click('[data-testid="vibe-word-close"]');
+  check(!wordWrites.length, "tapping a word in either column makes no card");
+  page.off("request", noteWordWrite);
   await page.screenshot({ path: join(OUT, `running-${colorScheme}.png`) });
 
   const stuck = await page.evaluate(() => {
@@ -313,9 +381,19 @@ async function run(colorScheme, email) {
   await page.waitForTimeout(200);
   check(macOpen.size === 0, "Pause closes the socket to the Mac");
   await page.screenshot({ path: join(OUT, `paused-${colorScheme}.png`) });
+  const asksPaused = translateAsks.length;
+  const pausedAnswer = await page.request.post(
+    `${BASE}/api/vibe/${logPath.split("/").pop()}/translate`,
+    {
+      headers: { origin: BASE, "content-type": "application/json" },
+      data: { text: LINES[0], to: "de", from: "fr" },
+    },
+  );
+  check(pausedAnswer.status() === 409, "the server refuses a translation while paused");
   const held = finals;
   await page.waitForTimeout(300);
   check(finals === held, "nothing reaches the Mac while paused");
+  check(translateAsks.length === asksPaused, "the page asks for no translation while paused");
 
   await page.click('[data-testid="vibe-resume"]');
   await page.waitForSelector('[data-testid="vibe-indicator"][data-state="running"]');
@@ -342,7 +420,24 @@ async function run(colorScheme, email) {
   await page.click('[data-testid="vibe-stop"]');
   await page.waitForSelector('[data-testid="vibe-ended"]');
 
+  // A failed line says so, calmly, and its text is untouched.
+  if (translateAsks.some((a) => a.startsWith("下一张"))) {
+    await page.waitForSelector('[data-testid="vibe-tr-failed"]');
+    check(
+      await page.$$eval('[data-testid="vibe-line"]', (e) =>
+        e.some((x) => x.textContent.includes("下一张")),
+      ),
+      "a failed translation shows the line untranslated",
+    );
+    await page.screenshot({ path: join(OUT, `failed-${colorScheme}.png`) });
+  }
+
   // Back into it later: the log, by its address, stays readable and can go on.
+  const oldDoc = logPath.split("/").pop();
+  sql(
+    `INSERT OR IGNORE INTO vibe_translation (doc_id, target, line, out, model, created_ms) VALUES ('${oldDoc}', 'de', '${LINES[0].replaceAll("'", "''")}', 'A kept invented line', 'qa', 0)`,
+  );
+  const asksBefore = translateAsks.length;
   await page.goto(`${BASE}${logPath}`);
   await page.waitForSelector('[data-testid="vibe-ended"]');
   check(
@@ -350,6 +445,8 @@ async function run(colorScheme, email) {
     "the log shows what was said, after a reload",
   );
   check(gum.length === 2, "and opens no microphone by itself");
+  await page.waitForTimeout(500);
+  check(translateAsks.length === asksBefore, "opening a log sends nothing to a model");
   check(
     (await page.textContent('[data-testid="vibe-langs"]')).length > 0,
     "and shows the conversation's languages",

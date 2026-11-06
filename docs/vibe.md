@@ -178,12 +178,49 @@ start with nothing said leaves nothing in /read, and stop deletes the row.
 - **Languages.** SenseVoice knows zh, yue, en, ja, ko. Other languages come out
   wrong; one short line on the start page says so.
 
+### Translations
+
+Owner, 18:31 JST 2026-11-06: "automatically recognize every word and translate
+sentence to each others languages", "as a new column". **His explicit choice to send
+lines to a model**, which changes the earlier rule of no text to a model on /vibe.
+It is narrow: finished lines, translation only. The start page says so in one line
+(`sentToModel`). Polish stays refused, below.
+
+- **Which languages** (`lib/vibe/translations.ts`, `conversationLangs`): any language
+  making up more than the setting's share of the lines so far with a detected
+  language. No fixed pair and no per-language code. The share is
+  `vibe.translateMinPct` (`lk:vibe-translate-min-pct`, /preferences), 20 by default:
+  the owner's number. Exactly 20% does not count.
+- **Which lines**: each into those languages but its own. A language that reaches
+  its share later brings the earlier lines along, newest first, two at a time.
+- **The path**: `POST /api/vibe/<id>/translate`, `translateLine`, which is the reader's
+  `translate()` (model, limiter `AI_LIMIT_LIVE`, `chargeAi` as `vibe.translate`, which only logs the cost today: the user is not charged credits).
+  Refused unless the text is one of the doc's lines. With the user's own AI on, the
+  browser calls their provider (`translateOwn`), and the answer stays in the tab, as
+  in the reader (docs/byok.md).
+- **Private**: not in the shared `read_translation`. `vibe_translation` (0055) holds
+  one row per doc, language and line; it goes with the doc (`ON DELETE CASCADE`, through
+  `vibe_doc`). That row is the cache: a line is never charged twice.
+- **When**: a paused conversation sends nothing, on the page (`canRun`) and on the
+  server (409). Opening a log sends nothing and costs nothing: it shows what its rows
+  hold. A stop lets the page finish the lines it heard. A line a stop or an older doc
+  left out stays blank until Keep going brings it along.
+- **A failure** shows that line with a calm "not translated" and touches nothing else.
+  It is not asked again by itself, so nothing can spend in a loop.
+- **Layout**: a second column from `sm` up; stacked under each line on a phone.
+
+Every word on either column carries the reader's mark and opens the same card as the
+新词 list: a preview (`fetchGloss` cached, no model), a slider, nothing created
+without a swipe. A line's words have the full marks (`famMap`). A translation's words
+are not the doc's counted words, so they have only what the probe tells: a card or
+none (`data-f` `l2` or `u`), without the reader's learning bands.
+
 ### No polish
 
 `NEVER_OFFERED` in `lib/read/polish-offer.ts` holds `"vibe"`: no offer, no action
 in the contents sheet, however the doc is opened. `shape.raw` is stored false, and
-`POST /api/read/[id]/polish` and `polish-live` refuse it (`polishRefused`). The
-doc is private speech; the tidy would send it to a model.
+`POST /api/read/[id]/polish` and `polish-live` refuse it (`polishRefused`). Sending
+lines to a model is for translation only.
 
 Selecting text in the reader can still translate it through the metered route,
 as in any book: that is his tap, on that text.
@@ -256,7 +293,8 @@ nothing in /read; for a user with no number it simply stays.
 | routes | `app/api/vibe/{route,[id]/lines,[id]/state,settings}`, answers in `lib/vibe/api.ts`, gate in `lib/vibe/route.ts` |
 | writes | `lib/vibe/store.ts` |
 | sweep | `lib/vibe/retention.ts`, `worker.ts` |
+| translations | `lib/vibe/translations.ts` (pure), `lib/vibe/translate-server.ts`, `app/api/vibe/[id]/translate` |
 | session | `lib/vibe/session.ts` (pure), `lib/vibe/browser.ts` (the browser's half) |
 | pages | `app/(app)/vibe/`, `lib/vibe/page-gate.ts` |
 | 新词 | `app/(app)/vibe/VibeWords.tsx`, `lib/vibe/new-words.ts` |
-| tests | `unit/vibe.test.ts`, `unit/vibe-words.test.ts`; `scripts/qa/qa-vibe.mjs` (fake mic, stub VAD, a stand-in Mac, invented text; no real microphone, no sound) |
+| tests | `unit/vibe.test.ts`, `unit/vibe-words.test.ts`, `unit/vibe-translate.test.ts`; `scripts/qa/qa-vibe.mjs` (fake mic, stub VAD, a stand-in Mac, invented text; no real microphone, no sound) |
