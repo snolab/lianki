@@ -55,6 +55,7 @@ export const APP_ROUTES = [
   "self-intro",
   "sign-in",
   "stats",
+  "vibe",
   "words",
   "sites",
 ] as const;

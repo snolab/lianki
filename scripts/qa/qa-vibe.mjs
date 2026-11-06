@@ -1,0 +1,340 @@
+// /vibe QA (docs/vibe.md): silent, iPhone size, light and dark screenshots. No
+// real microphone and no real speech anywhere: Chromium's fake media device
+// (silent.mjs) stands in for the mic, the VAD's script is a stub this test drives,
+// and a small WebSocket server here stands in for the owner's Mac, answering
+// invented text. Nothing plays and nothing is recorded.
+//
+//   QA_BASE=http://localhost:3417 QA_EMAIL=<an owner in the local site_role> \
+//     QA_PASSWORD=… bun scripts/qa/qa-vibe.mjs [outDir]
+//
+// Against qa:all's wrangler dev (--keep). Flips read.vibe in the LOCAL D1 itself
+// (`wrangler d1 execute --local`), and turns it back off at the end.
+import { spawnSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { chromium, devices } from "playwright";
+import { launchSilent, newSilentContext } from "./silent.mjs";
+
+const BASE = process.env.QA_BASE || "http://localhost:3000";
+const OUT = process.argv[2] || "test-results/vibe";
+const PW = process.env.QA_PASSWORD || "qa-test-pass-1234";
+mkdirSync(OUT, { recursive: true });
+
+let failed = 0;
+const check = (ok, name) => {
+  console.log(`${ok ? "✓" : "✗"} ${name}`);
+  if (!ok) failed++;
+};
+
+const sql = (command) => {
+  const r = spawnSync(
+    "bunx",
+    ["wrangler", "d1", "execute", "lianki", "--local", "--command", command],
+    {
+      encoding: "utf8",
+    },
+  );
+  if (r.status !== 0) throw new Error(`local d1: ${r.stderr}`);
+};
+const setFlag = (on) =>
+  sql(
+    on
+      ? "INSERT OR REPLACE INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('read.vibe', 1, datetime('now'), 'qa')"
+      : "DELETE FROM feature_flags WHERE key = 'read.vibe'",
+  );
+
+// The stand-in for the Mac: says ready, and answers each utterance with the next invented line.
+const LINES = [
+  "Bonjour, je m'appelle Léa et je viens de Lyon.",
+  "你好，很高兴认识你，你学中文多久了？",
+  "下一张",
+];
+let finals = 0;
+const macOpen = new Set();
+const mac = Bun.serve({
+  port: 0,
+  fetch(req, s) {
+    return s.upgrade(req) ? undefined : new Response("no", { status: 400 });
+  },
+  websocket: {
+    open(ws) {
+      macOpen.add(ws);
+      ws.send(JSON.stringify({ t: "ready", engine: "qa", model: "qa" }));
+    },
+    close(ws) {
+      macOpen.delete(ws);
+    },
+    message(ws, m) {
+      if (typeof m !== "string") return;
+      const d = JSON.parse(m);
+      if (d.t !== "end") return;
+      ws.send(
+        JSON.stringify({
+          t: "final",
+          id: d.id,
+          text: LINES[finals++ % LINES.length],
+          lang: "en",
+          model: "qa",
+          ms: 1,
+          audioMs: 1000,
+          signals: { decoder: "ctc" },
+        }),
+      );
+    },
+  },
+});
+
+// The VAD's script: real getUserMedia still runs (on the fake device); this hands control to the test.
+const VAD_STUB = `window.vad = { MicVAD: { new: async (o) => {
+  window.__vadOptions = o;
+  return { start: async () => {}, pause: async () => {}, destroy: async () => { window.__vadDestroyed = (window.__vadDestroyed||0)+1; } };
+} } };`;
+
+const speak = (page) =>
+  page.evaluate(async () => {
+    const o = window.__vadOptions;
+    o.onSpeechStart();
+    for (let i = 0; i < 3; i++)
+      o.onFrameProcessed({ isSpeech: 0.9 }, new Float32Array(512).fill(0.2));
+    await o.onSpeechEnd(new Float32Array(16000).fill(0.2));
+  });
+
+// The full Chromium in new headless mode: the headless shell has no media stack.
+// The fake capture device keeps the real microphone out of reach.
+const browser = await launchSilent(chromium, {
+  channel: "chromium",
+  args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
+});
+
+async function run(colorScheme, email) {
+  const ctx = await newSilentContext(browser, {
+    ...devices["iPhone 13"],
+    colorScheme,
+    permissions: ["microphone"],
+  });
+  await ctx.addInitScript(
+    `try { localStorage.setItem("lk:agent-local-stt", "ws://localhost:${mac.port}"); } catch {}`,
+  );
+  const page = await ctx.newPage();
+  await page.route("**/vad-web@*/**", (r) =>
+    r.fulfill({ contentType: "text/javascript", body: VAD_STUB }),
+  );
+  await page.route("**/onnxruntime-web@*/**", (r) =>
+    r.fulfill({ contentType: "text/javascript", body: "" }),
+  );
+  const gum = [];
+  await page.exposeFunction("__noteGum", () => void gum.push(Date.now()));
+  await ctx.addInitScript(`(() => {
+    const m = navigator.mediaDevices; if (!m) return;
+    const real = m.getUserMedia.bind(m);
+    m.getUserMedia = (c) => { window.__noteGum(); window.__tracks = window.__tracks || [];
+      return real(c).then((s) => { window.__tracks.push(...s.getTracks()); return s; }); };
+  })();`);
+  const lines = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/debug/stt") || r.url().includes("clip"))
+      lines.push(`BAD ${r.url()}`);
+  });
+
+  const res = await page.request.post(`${BASE}/api/auth/sign-in/email`, {
+    headers: { origin: BASE, "content-type": "application/json" },
+    data: { email, password: PW },
+  });
+  check(res.ok(), `signed in (${colorScheme})`);
+
+  // Flag off: no page, no route, for the owner too.
+  setFlag(false);
+  await page.waitForTimeout(31_000); // the flag cache
+  const off = await page.goto(`${BASE}/vibe`);
+  check(off.status() === 404, "flag off: /vibe is 404 for the owner");
+  const refused = await page.evaluate(
+    async () =>
+      (
+        await fetch("/api/vibe", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ consent: true, otherLang: "fr", title: "x" }),
+        })
+      ).status,
+  );
+  check(refused === 404, "flag off: the server refuses a start");
+
+  setFlag(true);
+  await page.waitForTimeout(31_000);
+  await page.goto(`${BASE}/vibe`);
+  await page.waitForSelector('[data-testid="vibe-consent"]');
+  check(gum.length === 0, "the consent screen opens no microphone");
+  check(macOpen.size === 0, "the consent screen opens no socket to the Mac");
+  const box = await page.locator('[data-testid="vibe-consent"]').boundingBox();
+  const vw = page.viewportSize();
+  check(box.width === vw.width && box.height === vw.height, "the consent screen fills the screen");
+  const startBox = await page.locator('[data-testid="vibe-start"]').boundingBox();
+  check(
+    startBox.y >= 0 && startBox.y + startBox.height <= vw.height,
+    "Start is on screen without scrolling",
+  );
+  await page.selectOption('[data-testid="vibe-consent-lang"]', "fr");
+  check(
+    (await page.textContent('[data-testid="vibe-consent-other"]')).includes("Cloudflare"),
+    "the statement names where the text goes, in the other person's language",
+  );
+  await page.waitForTimeout(100);
+  await page.screenshot({ path: join(OUT, `consent-fr-${colorScheme}.png`) });
+  await page.selectOption('[data-testid="vibe-consent-lang"]', "ar");
+  check(
+    (await page.getAttribute('[data-testid="vibe-consent-other"]', "dir")) === "rtl",
+    "right-to-left languages read right to left",
+  );
+  await page.screenshot({ path: join(OUT, `consent-ar-${colorScheme}.png`) });
+  await page.selectOption('[data-testid="vibe-consent-lang"]', "fr");
+
+  // A script's click is not a tap.
+  await page.evaluate(() => document.querySelector('[data-testid="vibe-start"]').click());
+  await page.waitForTimeout(300);
+  check(gum.length === 0, "a scripted click starts nothing");
+
+  page.on("pageerror", (e) => console.log("page error:", String(e).slice(0, 300)));
+  page.on("console", (m) => {
+    if (m.type() === "error" || m.text().startsWith("vibe "))
+      console.log("console:", m.text().slice(0, 300));
+  });
+  await page.click('[data-testid="vibe-start"]');
+  await page
+    .waitForSelector('[data-testid="vibe-indicator"][data-state="running"]', { timeout: 15_000 })
+    .catch(async (e) => {
+      console.log("page says:", (await page.innerText("body")).slice(0, 300));
+      throw e;
+    });
+  check(gum.length === 1, "Start opens the (fake) microphone once");
+  check(macOpen.size === 1, "and one socket to the Mac");
+  await page.screenshot({ path: join(OUT, `running-empty-${colorScheme}.png`) });
+
+  await speak(page);
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid="vibe-line"]').length === 1,
+  );
+  await speak(page);
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid="vibe-line"]').length === 2,
+  );
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('[data-testid="vibe-line"][data-lang]:not([data-lang=""])')
+        .length === 2,
+  );
+  const langs = await page.$$eval('[data-testid="vibe-line"]', (e) => e.map((x) => x.dataset.lang));
+  check(langs.includes("zh"), `each line shows its language (${langs})`);
+  await page.screenshot({ path: join(OUT, `running-${colorScheme}.png`) });
+
+  const stuck = await page.evaluate(() => {
+    const r = document.querySelector('[data-testid="vibe-indicator"]').getBoundingClientRect();
+    window.scrollTo(0, 1e6);
+    return r.top;
+  });
+  check(stuck === 0, "the indicator stays at the top");
+
+  // Spoken "下一张" is text: nothing moved, no chat line.
+  await page.click('[data-testid="vibe-pause"]');
+  await page.waitForSelector('[data-testid="vibe-indicator"][data-state="paused"]');
+  check(
+    await page.evaluate(() => window.__tracks.every((t) => t.readyState === "ended")),
+    "Pause stops the microphone's tracks",
+  );
+  await page.waitForTimeout(200);
+  check(macOpen.size === 0, "Pause closes the socket to the Mac");
+  await page.screenshot({ path: join(OUT, `paused-${colorScheme}.png`) });
+  const held = finals;
+  await page.waitForTimeout(300);
+  check(finals === held, "nothing reaches the Mac while paused");
+
+  await page.click('[data-testid="vibe-resume"]');
+  await page.waitForSelector('[data-testid="vibe-indicator"][data-state="running"]');
+  check(gum.length === 2, "Resume is a new (fake) microphone");
+  await speak(page);
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid="vibe-line"]').length === 3,
+  );
+
+  // Hiding the page pauses it, with its reason on screen.
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForSelector('[data-testid="vibe-why"]');
+  check(
+    await page.isVisible('[data-testid="vibe-indicator"][data-state="paused"]'),
+    "a hidden page pauses, visibly",
+  );
+  await page.evaluate(() => {
+    delete document.visibilityState;
+  });
+
+  await page.click('[data-testid="vibe-stop"]');
+  await page.waitForSelector('[data-testid="vibe-ended"]');
+  await page.screenshot({ path: join(OUT, `ended-${colorScheme}.png`) });
+
+  // The doc, in /read: no polish offer, the private mark, and the note.
+  const href = await page.getAttribute('[data-testid="vibe-open"]', "href");
+  await page.goto(`${BASE}${href}`);
+  await page.waitForSelector('[data-testid="vibe-doc-note"]', { timeout: 30_000 });
+  check(
+    (await page.locator('[data-testid="read-polish-offer"]').count()) === 0,
+    "no polish offer when opened from the list",
+  );
+  check((await page.locator("[data-lk-private-screen]").count()) > 0, "the page is marked private");
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: join(OUT, `reader-${colorScheme}.png`) });
+  await page.goto(`${BASE}${href}?streamingFrom=vibe`);
+  await page.waitForSelector('[data-testid="vibe-doc-note"]', { timeout: 30_000 });
+  check(
+    (await page.locator('[data-testid="read-polish-offer"]').count()) === 0,
+    "no polish offer while following it live",
+  );
+  const asked = [];
+  page.on("request", (r) => {
+    if (/\/api\/read\/.*\/(translate|gloss|polish)/.test(r.url())) asked.push(r.url());
+  });
+  await page.waitForTimeout(3_000);
+  check(!asked.length, "following it live sends no line to a model by itself");
+
+  // A fresh, non-owner account gets none of it.
+  const stranger = await newSilentContext(browser, { ...devices["iPhone 13"] });
+  const email2 = `qa+vibe-${Date.now()}@lianki.test`;
+  const su = await stranger.request.post(`${BASE}/api/auth/sign-up/email`, {
+    headers: { origin: BASE, "content-type": "application/json" },
+    data: { email: email2, password: "qa-test-pass-1234", name: "QA" },
+  });
+  check(su.ok(), "a second account signs up");
+  const id = href.split("/").pop();
+  check(
+    (await stranger.request.get(`${BASE}/api/read/${id}`)).status() === 404,
+    "it cannot read the transcript",
+  );
+  const p2 = await stranger.newPage();
+  check((await p2.goto(`${BASE}/vibe`)).status() === 404, "/vibe is 404 for it with the flag on");
+  await stranger.close();
+
+  // The doc can be deleted from the end screen's route at any time.
+  const del = await page.evaluate(
+    async (i) => (await fetch(`/api/read/${i}`, { method: "DELETE" })).status,
+    id,
+  );
+  check(del === 200, "the owner deletes it");
+  check((await page.request.get(`${BASE}/api/read/${id}`)).status() === 404, "and it is gone");
+
+  check(!lines.length, `no cloud STT or clip request (${lines.join(", ")})`);
+  await ctx.close();
+}
+
+try {
+  const email = process.env.QA_EMAIL;
+  if (!email) throw new Error("QA_EMAIL: an owner in the local site_role");
+  await run("light", email);
+  await run("dark", email);
+} finally {
+  setFlag(false);
+  await browser.close();
+  mac.stop(true);
+}
+console.log(failed ? `${failed} FAILED` : "all passed");
+process.exit(failed ? 1 : 0);

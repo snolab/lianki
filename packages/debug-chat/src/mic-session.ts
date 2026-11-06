@@ -59,6 +59,9 @@ export const MIC_SESSION_V = 13;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
+/** Shown by the button when a tap finds another listener owns the room. */
+export const MIC_BLOCKED_NOTE = "in use by a conversation";
+
 /** The slice of a MediaStream the session uses. */
 export type StreamLike = {
   id: string;
@@ -327,6 +330,11 @@ export function createMicSession(
     if (wake.mode() !== "active") wake.set("active", "voice-mode");
   });
 
+  // /vibe owns the room (mic-taps.ts block): this mic goes off and stays off.
+  const unblock = taps.onBlock?.(() => {
+    if (mic.state() !== "off") void session.off();
+  });
+
   const session = {
     v: MIC_SESSION_V,
     view: () => view,
@@ -360,6 +368,7 @@ export function createMicSession(
     wake: (c: WakeCommand, reason?: WakeReason) => command(c, reason),
     /** A tap: on (remembered for a reload), back to active from passive, or an explicit off. */
     async toggle() {
+      if (taps.blocked?.()) return void emit({ error: new Error(MIC_BLOCKED_NOTE) });
       emit({ error: null });
       if (mic.state() !== "off" && wake.mode() === "passive") return void wake.set("active", "tap");
       if (mic.state() === "off") {
@@ -462,6 +471,7 @@ export function createMicSession(
     async retire() {
       unhold?.();
       unpin();
+      unblock?.();
       listeners.clear();
       sink = null;
       const s = stream;
@@ -475,7 +485,7 @@ export function createMicSession(
     },
     /** After a reload with the mic on: resume without a gesture if we may, else wait for a tap. */
     async autoResume() {
-      if (!store.get()) return;
+      if (!store.get() || taps.blocked?.()) return;
       const tap = (reason: string) => {
         emit({ resume: true });
         deps.log?.({ ev: "mic-resume", path: "tap", reason });

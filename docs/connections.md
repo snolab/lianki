@@ -150,6 +150,9 @@ Limits: it runs only while the doc is open in a tab with the userscript, so the
 writer's side is desktop only (the reader can be any device). Word marks in the
 tail are learning or not recognised; "new" needs the save.
 
+/vibe transcripts ([vibe.md](vibe.md)) use the same reader stream at
+`?streamingFrom=vibe`: saves only, without `LiveTail`, so nothing is translated by itself.
+
 ## Polish (a live doc as a speech draft)
 
 Owner, 2026-11-06: fillers out, professional speech draft level, incrementally,

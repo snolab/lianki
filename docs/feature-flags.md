@@ -61,6 +61,7 @@ with no deploy and no secret change.
 | `read.live-polish`     | every user gets the AI polish of a live doc's text into a speech draft (off: the owner only) — [connections.md](connections.md), "Polish" |
 | `books.catalogue`      | every visitor gets /books, the public-domain library, and can add its books to their own reading (off: the owner only) — [books-plan.md](books-plan.md), "The catalogue: /books" |
 | `levels`               | every user sees their learner level: a chip by the avatar in the nav (signed in) and a level card on /profile (guests too), from `GET /api/levels/me`; study days are recorded either way (off: the owner only) — [levels.md](levels.md) |
+| `read.vibe`            | the owner, and only the owner, can start /vibe: a conversation transcribed on his Mac into a private doc. **Off: nobody, the owner included** (no bypass) — [vibe.md](vibe.md) |
 | `byok.sync`            | everyone sees the disabled 「同步 API key」 row (即将推出, with its warning) in Settings → 自己的 AI; nothing on the server stores a key yet (off: the owner only) — [byok.md](byok.md) |
 
 ## Prerequisites

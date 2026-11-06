@@ -6,6 +6,8 @@ import { isOwner } from "@/lib/owner";
 import { readerV2On } from "@/lib/read/reader-book";
 import { connectionsOn } from "@/lib/connections/gate";
 import { booksOn } from "@/lib/books/gate";
+import { vibeAllowed } from "@/lib/vibe/gate";
+import { VibeEntry } from "../vibe/VibeDocNote";
 
 export default async function ReadPage() {
   const user = await authUserOrNull();
@@ -29,6 +31,7 @@ export default async function ReadPage() {
               ? " Your materials are stored securely in your account."
               : " Sign in to save your materials."}
           </p>
+          {!!flags && vibeAllowed(flags, owner) && <VibeEntry />}
           <ReadListClient isLoggedIn={!!user} gdoc={gdoc} drive={drive} books={books} />
         </div>
       </div>

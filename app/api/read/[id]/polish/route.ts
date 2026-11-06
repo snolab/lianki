@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getReadMaterialContent, replaceReadMaterialText } from "@/lib/getReadMaterialsCollection";
 import { bookMetaOf, parseBookMeta, type ParsedBook } from "@/lib/read/book";
 import { applyPolish, polishChunks } from "@/lib/read/polish";
+import { polishRefused } from "@/lib/read/polish-offer";
 import { polishChunksAi } from "@/lib/read/polish-server";
 import { prepareBook } from "@/lib/read/prep-server";
 import { readerBook } from "@/lib/read/reader-book";
@@ -38,6 +39,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const { book: current, words } = await ctx.load();
   const meta = words.book;
   if (!meta) return badRequest("not a book");
+  if (polishRefused(meta)) return badRequest("not offered");
   const mid = ctx.ref.materialId;
 
   const kept = await readRawText(ctx.db, ctx.userId, mid);

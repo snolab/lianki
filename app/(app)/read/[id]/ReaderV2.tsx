@@ -98,6 +98,7 @@ import { useTextSizes } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
+import { VibeDocNote } from "../../vibe/VibeDocNote";
 import { PolishAction, PolishCoverage, PolishOffer, RawTranscript } from "./reader-polish";
 import {
   LiveTail,
@@ -2026,6 +2027,7 @@ function Reader({
             {t.loading}
           </p>
         )}
+        <VibeDocNote book={book} />
         {signedIn && material.readerV2 && loaded && (
           <>
             <PolishOffer id={id} book={book} stream={streamState} />
@@ -2042,7 +2044,8 @@ function Reader({
           grades={grades}
           row={row}
         />
-        {liveTail !== null && (
+        {/* Not on a /vibe transcript: its card translates the newest line by itself (docs/vibe.md). */}
+        {liveTail !== null && book?.source !== "vibe" && (
           <LiveTail
             id={id}
             text={liveTail}

@@ -17,7 +17,7 @@ import { checkShape, type TextShape } from "./prep";
 
 export const BOOK_KIND = "lianki-book";
 
-export type BookSource = "epub" | "gdoc" | "preset";
+export type BookSource = "epub" | "gdoc" | "preset" | "vibe";
 
 /** Where a catalogue book (/books) came from, shown in the book: lib/books/catalogue.ts. */
 export interface BookCredit {
@@ -38,7 +38,7 @@ export interface BookChapter {
 export interface BookMeta {
   kind: typeof BOOK_KIND;
   v: 1;
-  /** Imported from: an EPUB file, or a Google Doc (lib/gdoc). */
+  /** Imported from: an EPUB file, a Google Doc (lib/gdoc), or a conversation (/vibe, lib/vibe). */
   source: BookSource;
   /** The Google Doc's link, for a "gdoc" book; the source page, for a "preset" one. */
   sourceUrl?: string;
@@ -304,7 +304,8 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
     return {
       kind: BOOK_KIND,
       v: 1,
-      source: m.source === "gdoc" || m.source === "preset" ? m.source : "epub",
+      source:
+        m.source === "gdoc" || m.source === "preset" || m.source === "vibe" ? m.source : "epub",
       ...(m.source === "preset" ? presetCredit(m) : {}),
       ...(m.source === "gdoc" &&
       typeof m.sourceUrl === "string" &&

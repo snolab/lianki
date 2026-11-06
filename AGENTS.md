@@ -113,6 +113,7 @@ that are expensive to rediscover.
 | Learning Partner AI replies for users (DeepSeek, caps)        | [docs/partner-ai.md](docs/partner-ai.md)                            |
 | Users' own AI key and backend (BYOK, browser-only, presets)   | [docs/byok.md](docs/byok.md)                                        |
 | The owner's local streaming speech-to-text (mic → his Mac)    | [docs/local-stt.md](docs/local-stt.md)                              |
+| /vibe: a conversation transcribed into a private doc          | [docs/vibe.md](docs/vibe.md)                                        |
 | Whole-page dev server on prod D1 (owner only, home LAN)       | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
 | A friend's dev container (devbox: agents, local D1, tunnel)   | [devbox/README.md](devbox/README.md)                                |
 | A box signing in through lianki.com (OAuth, token gate)       | [docs/box-oauth.md](docs/box-oauth.md)                              |

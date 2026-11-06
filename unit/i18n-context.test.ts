@@ -23,6 +23,8 @@ import inviteCard from "@/app/(app)/membership/invite-card.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
 import readEpub from "@/app/(app)/read/read-epub.content";
 import readGdoc from "@/app/(app)/read/read-gdoc.content";
+import vibePage from "@/app/(app)/vibe/page.content";
+import vibeConsent from "@/app/(app)/vibe/vibe-consent.content";
 import readPolish from "@/app/(app)/read/read-polish.content";
 import readPlayer from "@/app/(app)/read/read-player.content";
 import readWords from "@/app/(app)/read/read-words.content";
@@ -95,6 +97,8 @@ describe.each([
   ["credit-units", creditUnits],
   ["read-epub", readEpub],
   ["read-gdoc", readGdoc],
+  ["vibe-page", vibePage],
+  ["vibe-consent", vibeConsent],
   ["read-polish", readPolish],
   ["read-player", readPlayer],
   ["read-words", readWords],
