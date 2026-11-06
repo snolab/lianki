@@ -48,6 +48,8 @@ export const PREF_KEYS = [
   "chat-voice.rate",
   "chat-voice.out",
   "chat-voice.speak",
+  "chat-voice.cueSend",
+  "chat-voice.cueSpeech",
 ];
 
 const RATINGS = { again: 1, hard: 2, good: 3, easy: 4, 1: 1, 2: 2, 3: 3, 4: 4 };

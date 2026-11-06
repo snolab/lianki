@@ -2278,6 +2278,8 @@ export class DebugHub {
           text,
           at: t,
           ...dest,
+          // A friend's pairing never gets here (it cannot chat), nor the partner AI (aiReply).
+          ...(dest.thread === OWNER_THREAD ? { ownerGrant: true as const } : {}),
           ...(from !== ROOT_NODE ? { taskPath: from } : {}),
           ...(who ? { agentId: who } : {}),
           ...(node ? { to: node } : {}),

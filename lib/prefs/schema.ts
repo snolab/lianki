@@ -126,6 +126,9 @@ export const PREF_SCHEMAS = {
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),
   "chat-voice.speak": z.boolean(),
+  // The voice cues' two switches (packages/debug-chat cues.ts).
+  "chat-voice.cueSend": z.boolean(),
+  "chat-voice.cueSpeech": z.boolean(),
   // the user's own AI backend (not the key), when they sync it; null: not synced
   "byok.backend": z.union([z.null(), byokBackend]),
 } as const satisfies Record<string, z.ZodType>;

@@ -196,6 +196,74 @@ Voice mode uses the page's one mic session, `__lkMic`
   voice mode starting on a fresh page and the auto-resume both toggled, and
   the second toggle turned the mic straight off (found by the QA).
 
+## Cues
+
+The owner, 2026-11-05 23:40–23:41 JST: "语音识别完发出去消息的时候要有声音",
+and the start and end of speech heard too, on VAD events rather than the mic
+opening or closing. `packages/debug-chat/src/cues.ts`, tones from Web Audio, no
+files and no TTS.
+
+| Cue     | When                                                                      | Sound                                  |
+| ------- | ------------------------------------------------------------------------- | -------------------------------------- |
+| `send`  | a spoken line went out (`submit` in DebugChat, `source: "stt"`): any path | 880 → 1320 Hz, 110 ms, peak 0.16       |
+| `start` | speech confirmed: 250 ms voiced since the VAD's start                     | 523 → 784 Hz, rising, 90 ms, peak 0.05 |
+| `end`   | the VAD ended an utterance that was kept                                  | 784 → 523 Hz, falling, 90 ms, peak 0.05 |
+
+**Switches.** The chat's ⋯ menu, with the other voice settings: `lk:voice-cue-send`
+and `lk:voice-cue-speech`, on by default, synced with the account
+([prefs-sync.md](prefs-sync.md)). "Replies silent" (his mute,
+`lk:agent-chat-speak`) silences all three, even with the mic on. A phone's hidden
+page makes no cue (speak-rules.ts). `lk:voice-out` changes nothing: the cues play on
+the page's AudioContext with either output. There are no quiet hours.
+
+**One per what.** The send cue has one call, in `submit`, after the line went
+out: the join, Enter and the debounce all pass there, and a line that could not
+be sent plays nothing until the send that works. Typed lines are silent. A start
+cue plays at most once an utterance, and not within 1.5 s of the last start or end
+(`CUE_START_GAP_MS`), so talk resuming after a pause does not chime again. A false
+start plays nothing, because the VAD's start alone never plays it: `onMisfire`
+comes before the 250 ms, or the frames never score as speech. Nothing plays for a
+passive (wake-gated) utterance, so room talk never chimes; nor for a voiceprint
+sentence, which must stay clean; nor for speech dropped by a hold or flushed by
+turning the mic off. A command line kept by a tap (voice mode) was captured, so it
+gets start and end, but no send cue: it was not sent.
+
+**Not captured, and not costing his words.** The mic is open when a cue plays. It
+is never held for one: `hold` drops the speech under way and pauses the VAD, which
+would cut his first words. Instead:
+
+- `pageCues().guard()` is on for the cue, the context's output latency and 150 ms
+  more. Frames heard meanwhile stay in the audio, but do not count: not towards
+  the noise floor, the speech level, the barge-in judge, the endpoint, or the
+  speech that confirms an utterance.
+- A VAD start inside the window is a **shadow capture**: the audio is kept from the
+  start as always, but nobody hears of it (no ducking, no held send cancelled, no
+  partial shown). 96 ms voiced after the window makes it a normal capture, audio
+  whole. An utterance that ends without that is dropped: no upload, no transcript,
+  no cue, `{ev: "cue-echo-drop"}` in the debug log. The cost: a reply under about
+  100 ms of voice, begun inside the window and over by its end, is dropped.
+- A send cue over a capture waits for the capture's end. Its tone would otherwise
+  go into the recording.
+- The start cue does play over his words, by design, so only with echo cancellation
+  on (`lk:voice-aec`). With it off the start cue stays silent; end and send play.
+- Start and end stay silent while Li reads a reply (a leak of her voice would
+  chime). The send cue is mixed over the reading.
+
+**Read-aloud.** A cue claims nothing from the page's audio owner (audio-claim.ts)
+and goes straight to the context's destination: it does not pause the reading, and
+the reading's ducking does not touch it. The context is suspended when the mic goes
+off and nothing is read, but only once the last cue has ended (`idle`).
+
+**A context that will not run.** A reload's auto-resume opens the mic with no tap,
+and on Chrome the AudioContext then stays suspended until one. A cue that cannot
+start within 250 ms is dropped, never left to sound at the next tap; while the mic
+is on, any tap on the page starts the context.
+
+Tests: `unit/voice-cues.test.ts` (a mocked AudioContext and fake VAD events). Not
+tested by anything automatic, because it takes a speaker and a mic: how the tones
+sound, and whether a real cue leaks into the real VAD. Its log line `cue-echo-drop`
+counts the leaks the guard caught.
+
 ## Safety: what voice can reach
 
 Only the six `VoiceActions`: move, grade, show, read, undo and exit (which
@@ -223,7 +291,7 @@ nothing but the chat.
 | `scripts/qa/qa-voice-mode.mjs`             | end to end, desktop and phone, silent: text fixtures to the taps, fake mic, muted |
 
 ```bash
-QA_BASE=http://localhost:<port> QA_EMAIL=<an OWNER_EMAILS address> \
+QA_BASE=http://localhost:<port> QA_EMAIL=<an owner in site_role> \
   bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-voice-mode.mjs
 ```
 

@@ -1,0 +1,23 @@
+{
+  "name": "lianki-edge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Spike only (docs/framework-migration.md, section 7): the Hono front Worker. Not deployed by CI, no zone route. Its own package and lockfile, so the root install, and with it the deployed lianki Worker, does not change.",
+  "type": "module",
+  "scripts": {
+    "dev": "bunx --bun vite dev",
+    "build": "bunx --bun vite build",
+    "compare": "bun scripts/compare-local.ts"
+  },
+  "dependencies": {
+    "hono": "4.13.16"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.64.0",
+    "vite": "8.1.6",
+    "wrangler": "4.151.0"
+  },
+  "patchedDependencies": {
+    "miniflare@5.20261012.0-beta": "../../patches/miniflare@5.20261012.0-beta.patch"
+  }
+}

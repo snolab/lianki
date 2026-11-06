@@ -186,7 +186,12 @@ function d1() {
   return d;
 }
 const rows = (d: ReturnType<typeof createTestD1>) =>
-  d.raw().prepare("SELECT kind, actor, subject, detail FROM security_audit ORDER BY id").all() as {
+  d
+    .raw()
+    .prepare(
+      "SELECT kind, actor, subject, detail FROM security_audit WHERE kind NOT LIKE 'site-role.%' ORDER BY id",
+    )
+    .all() as {
     kind: string;
     actor: string;
     subject: string | null;

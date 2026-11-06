@@ -16,7 +16,7 @@
  */
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
-import { defaultFlags, FLAGS, isFlagKey, type FlagKey } from "./flags";
+import { defaultFlags, FLAG_KEYS, FLAGS, isFlagKey, storedFlagRow, type FlagKey } from "./flags";
 
 export type D1WithBatch = D1Like & { batch(stmts: D1StmtLike[]): Promise<unknown> };
 
@@ -53,8 +53,13 @@ export async function loadFlags(d1: D1Like): Promise<FlagSnapshot> {
     .prepare("SELECT key, enabled FROM feature_flags")
     .all<{ key: string; enabled: number }>();
   const values = defaultFlags();
-  // Unknown keys are ignored; only exactly 1 is on.
-  for (const r of results) if (isFlagKey(r.key)) values[r.key] = r.enabled === 1;
+  const rows = new Map(results.map((r) => [r.key, r]));
+  // Unknown keys are ignored (a renamed flag's old key is read through its new
+  // one); only exactly 1 is on.
+  for (const key of FLAG_KEYS) {
+    const r = storedFlagRow(rows, key);
+    if (r) values[key] = r.enabled === 1;
+  }
   return values;
 }
 
@@ -128,7 +133,7 @@ export async function listFlags(d1: D1Like): Promise<FlagRow[]> {
     .all<{ key: string; enabled: number; updated_at: string; updated_by: string }>();
   const byKey = new Map(results.map((r) => [r.key, r]));
   return (Object.keys(FLAGS) as FlagKey[]).map((key) => {
-    const r = byKey.get(key);
+    const r = storedFlagRow(byKey, key);
     return {
       key,
       description: FLAGS[key].description,

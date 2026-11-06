@@ -28,6 +28,7 @@ import {
   type ThrottleDb,
 } from "@/lib/security/throttle";
 import { mailLocale } from "@/lib/sign-in-mail";
+import { readOwnerEmails, type OwnerReadDb } from "@/lib/site-role";
 import { PROFILE } from "./config";
 import {
   emailChangedMail,
@@ -64,8 +65,6 @@ export type EmailDeps = {
   db: () => EmailDb;
   send: (mail: SendEmailInput) => Promise<unknown>;
   mailOn: () => boolean;
-  /** OWNER_EMAILS: the role goes by address, in the Worker's configuration. */
-  ownerEmails: () => string[];
   /** Where the link points: configured, never from the request's headers. */
   origin: () => string;
   now?: () => number;
@@ -88,8 +87,23 @@ export function cleanEmail(raw: unknown): string | null {
   return e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : null;
 }
 
-const isOwnerAddress = (d: EmailDeps, email: string) =>
-  d.ownerEmails().some((o) => canonicalEmail(o) === canonicalEmail(email));
+/**
+ * The active owners, read from D1 each time and not from the isolate's snapshot:
+ * that one fails closed to "nobody", which here would let an owner's address move.
+ * A failed read throws, so nothing changes.
+ */
+const activeOwners = (db: EmailDb) => readOwnerEmails(db as unknown as OwnerReadDb);
+
+/** The role goes by this exact address (lib/owner.ts): moving it would drop the role. */
+const isOwnerAddress = (owners: string[], email: string) => owners.includes(email.toLowerCase());
+
+/** Stricter for a target: an alias of an owner's address is refused too. */
+const isOwnerAlias = (owners: string[], email: string) =>
+  owners.some((o) => canonicalEmail(o) === canonicalEmail(email));
+
+/** ?1 old address, ?2 new address. Holds inside the batch, so a grant made just now still counts. */
+const NO_OWNER_INVOLVED = `NOT EXISTS (SELECT 1 FROM site_role
+  WHERE email IN (lower(?1), lower(?2)) AND revoked_at IS NULL)`;
 
 /** Does another account hold this address, in its exact or its canonical form? */
 async function takenByAnother(db: EmailDb, userId: string, email: string) {
@@ -113,8 +127,10 @@ export async function requestEmailChange(req: Request, d: EmailDeps): Promise<Re
   const who = await d.who();
   if (!who) return json({ error: "unauthorized" }, 401);
   if (!d.mailOn()) return json({ error: "mail-off" }, 503);
-  // The role is the address in OWNER_EMAILS: moving it here would lock him out of /dev.
-  if (isOwnerAddress(d, who.email)) return json({ error: "owner" }, 403);
+  const db = d.db();
+  const owners = await activeOwners(db);
+  // The role is the address in site_role: moving it here would lock its holder out of /dev.
+  if (isOwnerAddress(owners, who.email)) return json({ error: "owner" }, 403);
   const body = (await req.json().catch(() => null)) as { email?: unknown } | null;
   const email = cleanEmail(body?.email);
   if (!email) return json({ error: "invalid" }, 400);
@@ -123,7 +139,6 @@ export async function requestEmailChange(req: Request, d: EmailDeps): Promise<Re
   // A stolen old cookie must not be enough, as better-auth's fresh sessions for passkeys.
   if (now - who.sessionCreatedMs >= PROFILE.emailFreshMs)
     return json({ error: "sign-in-again" }, 403);
-  const db = d.db();
   const mine = await hit(db, `profile-email:${who.id}`, PROFILE.emailLimit, now);
   if (!mine.allowed)
     return json({ error: "rate-limited" }, 429, {
@@ -140,7 +155,7 @@ export async function requestEmailChange(req: Request, d: EmailDeps): Promise<Re
   if (!target.allowed) return sent();
 
   const locale = mailLocale(req);
-  const taken = isOwnerAddress(d, email) || (await takenByAnother(db, who.id, email));
+  const taken = isOwnerAlias(owners, email) || (await takenByAnother(db, who.id, email));
   try {
     if (taken) {
       await d.send({ to: email, ...emailTakenMail(locale) });
@@ -201,9 +216,10 @@ export async function confirmEmailChange(req: Request, d: EmailDeps): Promise<Re
   if (user?.email !== row.oldEmail) return invalid();
 
   const unavailable = () => json({ error: "unavailable" }, 409);
+  const owners = await activeOwners(db);
   if (
-    isOwnerAddress(d, row.oldEmail) ||
-    isOwnerAddress(d, row.newEmail) ||
+    isOwnerAddress(owners, row.oldEmail) ||
+    isOwnerAlias(owners, row.newEmail) ||
     (await takenByAnother(db, userId, row.newEmail))
   )
     return unavailable();
@@ -213,7 +229,8 @@ export async function confirmEmailChange(req: Request, d: EmailDeps): Promise<Re
     await db.batch([
       db
         .prepare(
-          "UPDATE user SET email = ?1, email_canonical = ?2, emailVerified = 1, updatedAt = ?3 WHERE id = ?4 AND email = ?5",
+          `UPDATE user SET email = ?1, email_canonical = ?2, emailVerified = 1, updatedAt = ?3
+           WHERE id = ?4 AND email = ?5 AND ${NO_OWNER_INVOLVED.replaceAll("?1", "?5").replaceAll("?2", "?1")}`,
         )
         .bind(
           row.newEmail,
@@ -231,13 +248,25 @@ export async function confirmEmailChange(req: Request, d: EmailDeps): Promise<Re
           )
           .bind(row.newEmail, old[0], old[1], userId),
       ),
-      db.prepare("DELETE FROM email_change_request WHERE userId = ?1").bind(userId),
+      db
+        .prepare(
+          // Likewise: a change that didn't happen keeps its link.
+          `DELETE FROM email_change_request WHERE userId = ?1
+           AND EXISTS (SELECT 1 FROM user WHERE id = ?1 AND email = ?2)`,
+        )
+        .bind(userId, row.newEmail),
     ]);
   } catch {
     // UNIQUE: the address was taken just now, or stray rows hold it. All rolled back.
     logFailure("email-change.conflict");
     return unavailable();
   }
+  const moved = await db
+    .prepare("SELECT email FROM user WHERE id = ?1")
+    .bind(userId)
+    .first<{ email: string }>();
+  // The batch can succeed having moved nothing: a guard above held, or a race was lost.
+  if (moved?.email !== row.newEmail) return unavailable();
   await audit(db, { kind: "email.change", actor: userId }, now);
   try {
     await d.send({

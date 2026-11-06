@@ -16,8 +16,17 @@ import {
   sideClip,
   postStt,
   resample,
-  scheduleTick,
 } from "./mic";
+import {
+  CUE_SEND_KEY,
+  CUE_SPEECH_KEY,
+  type CueContext,
+  type Cues,
+  cueAllowed,
+  cueOn,
+  createCues,
+} from "./cues";
+import { silenceHere } from "./speak-rules";
 import { voiceLatency, noteSttVia } from "./latency";
 import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
@@ -27,7 +36,7 @@ import { createKws } from "./wake-kws";
 import { MIC_BOX, MIC_RING } from "./bar-geometry";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
-import { voice } from "./voice";
+import { speechEnabled, voice } from "./voice";
 import { captureHeld, pageAudio } from "./page-audio";
 import { ECHO_WINDOW_MS, echoScore } from "./echo";
 import { micAec, onOpened } from "./aec";
@@ -72,19 +81,36 @@ const LOCAL_DOT = {
   down: "oklch(0.65 0 0)",
 } as const;
 
+/** Suspend the context when nothing needs it: the mic off, nothing being read, no cue playing. */
+const suspendIdle = () => {
+  const st = voice().state();
+  if (!st.mic && !st.speaking && pageCues().quiet())
+    void existingCtx()?.suspend().catch(() => {});
+};
+
 /**
- * The soft tick for a spoken sentence sent by itself (scheduleTick), on the
- * mic's AudioContext; never while the agent speaks, never without the mic
- * (so typed sends are silent). Web Audio only, so a muted iPhone stays quiet.
+ * The page's voice cues (cues.ts), one for every copy of this module: the
+ * guard must be the one the page's mic session asks. Made on first use, on the
+ * mic's AudioContext (made here when a reload's auto-resume or a voice mode
+ * opened the mic without a tap; it then waits for the page's next tap).
  */
-export function playSentTick(): boolean {
-  const c = existingCtx();
-  if (!c || c.state === "closed" || voice().state().speaking) return false;
-  void c.resume().then(
-    () => scheduleTick(c as unknown as Parameters<typeof scheduleTick>[0]),
-    () => {},
-  );
-  return true;
+const CUES_KEY = "__lkCues";
+export function pageCues(): Cues {
+  const g = globalThis as unknown as Record<string, Cues | undefined>;
+  return (g[CUES_KEY] ??= createCues({
+    ctx: () => audioCtx() as unknown as CueContext | null,
+    allowed: (kind) => {
+      const st = voice().state();
+      return cueAllowed(kind, {
+        on: cueOn(kind === "send" ? CUE_SEND_KEY : CUE_SPEECH_KEY),
+        muted: !speechEnabled(),
+        silenced: silenceHere() !== null,
+        speaking: st.speaking,
+        aec: micAec(),
+      });
+    },
+    idle: suspendIdle,
+  }));
 }
 
 type MicVAD = {
@@ -306,6 +332,10 @@ const wakeOff = () => {
 function session(): MicSession {
   const v = voice();
   return micSession({
+    cue: {
+      guard: () => pageCues().guard(),
+      edge: (edge) => void (edge === "start" ? pageCues().speechStart() : pageCues().speechEnd()),
+    },
     getStream: micStream,
     // Learns nothing while the agent's voice is out (adaptive.ts).
     adapt: micAdapt(voiceAdapt(() => v.state().speaking)),
@@ -318,12 +348,16 @@ function session(): MicSession {
       // The user starts talking: over the agent it ducks (a barge-in if they
       // keep going), else the reading pauses; it reads on once they are done.
       if (s === "capturing") {
+        pageCues().capture(true);
         v.userSpeech();
         // A line held for joining waits for this speech (voice-tune.ts createJoiner).
         window.dispatchEvent(new Event(VOICE_CAPTURE_EVENT));
       }
-      else if (last === "capturing") v.userIdle();
-      if (!active && !v.state().speaking) void existingCtx()?.suspend().catch(() => {});
+      else if (last === "capturing") {
+        pageCues().capture(false);
+        v.userIdle();
+      }
+      if (!active) suspendIdle();
     },
     onProb: (p) => v.userFrame(p),
     // Only with lk:voice-aec off: else the mic stays open and the user can barge in.
@@ -591,6 +625,21 @@ export function DebugMic({
   const state = view.state;
   const pending = view.pending;
   const ws = wakeStrings();
+  // A mic opened without a tap (a reload's auto-resume): the cues' context starts on his next one.
+  const micIsOn = state !== "off";
+  useEffect(() => {
+    if (!micIsOn) return;
+    const unlock = () => {
+      const c = audioCtx();
+      if (c && c.state !== "running") void c.resume().catch(() => {});
+    };
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("keydown", unlock, true);
+    return () => {
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+    };
+  }, [micIsOn]);
   const note = view.error
     ? micErrorNote(view.error)
     : view.state !== "off" && view.kws === "failed"
@@ -677,7 +726,7 @@ export function DebugMic({
           if (gesture?.wasDrag()) return;
           // Barge in: the reading stops (it reads on later), and capture resumes at once.
           if (speaking) return voice().interrupt("tap");
-          // Made in this gesture, so iOS lets it play the send tick (and cloud replies) later.
+          // Made in this gesture, so iOS lets it play the cues (and cloud replies) later.
           if (state === "off") {
             void audioCtx()?.resume().catch(() => {});
             // The cloud reads replies when this device has no speechSynthesis voice (voice.ts).

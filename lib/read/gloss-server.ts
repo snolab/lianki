@@ -3,7 +3,7 @@
 // and the model for what neither has.
 import type { D1Like } from "@/lib/d1/types";
 import { PARTNER_AI_MODEL, PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { routeLimit } from "@/lib/security/route-guard";
 import { isWorkersAiConfigured, workersAiOpenAI } from "@/lib/workers-ai";
 import type { BookCtx, RangeWord } from "./book-word-list";
 import { glossMessages, headOf, lookupGloss, parseGlosses, type GlossEntry } from "./gloss";
@@ -168,7 +168,12 @@ export async function fillGlosses(
   const ex = new Map(open.map((x) => [head(x), x.ex ?? null]));
   const ask = [...ex].filter(([h]) => !known.has(h)).map(([term, e]) => ({ term, ex: e }));
   const complete = ai?.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
-  if (ai && complete && ask.length && checkRateLimit(`read-gloss:${ai.userId}`, AI_LIMIT).allowed)
+  if (
+    ai &&
+    complete &&
+    ask.length &&
+    (await routeLimit(`read-gloss:${ai.userId}`, AI_LIMIT)).allowed
+  )
     for (const [term, back] of await generate(db, book.lang, ask, { userId: ai.userId, complete }))
       known.set(term, back);
   return out.map((x) => {

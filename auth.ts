@@ -9,6 +9,7 @@
  * requests that actually need auth.
  */
 import type { Auth } from "./auth-impl";
+import { refreshOwners } from "./lib/owner-store";
 
 export type { Auth };
 export { hasSessionCookie, passwordAuthEnabled } from "./lib/auth-env";
@@ -31,7 +32,13 @@ export const auth: Pick<Auth, "api"> = {
       (_target, endpoint) =>
       async (...args: unknown[]) => {
         const api = (await getAuth()).api as Record<PropertyKey, (...a: unknown[]) => unknown>;
-        return api[endpoint](...args);
+        const out = await api[endpoint](...args);
+        // isOwner() is synchronous and answers from a snapshot of site_role
+        // (lib/owner.ts): have it fresh before a signed-in user is handed back.
+        // A guest costs nothing; a failed read means nobody is the owner.
+        if (endpoint === "getSession" && (out as { user?: unknown } | null)?.user)
+          await refreshOwners();
+        return out;
       },
   }),
 };

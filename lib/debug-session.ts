@@ -1,5 +1,6 @@
 import { isSessionTag, isUserId, sessionTag } from "@/lib/dev-eval";
-import { isOwner } from "@/lib/owner";
+import { normalizeEmail } from "@/lib/owner";
+import { readOwnerEmails } from "@/lib/site-role";
 import { isFlagKey } from "@/lib/flags";
 
 /**
@@ -30,16 +31,19 @@ export async function sessionLive(
   db: SessionDb | null | undefined,
   user: unknown,
   tag: unknown,
-  opts: { ownerEmails?: string; now?: () => number } = {},
+  opts: { now?: () => number } = {},
 ): Promise<boolean> {
   if (!db || !isUserId(user) || !isSessionTag(tag)) return false;
   const { results } = await db
     .prepare(SQL)
     .bind(user)
     .all<{ id: string; expiresAt: string | number; email: string | null }>();
+  // Straight from site_role, no snapshot. Like the session read above, a D1
+  // error throws: renewal stops and the hub treats it as unsure, not as gone.
+  const owners = await readOwnerEmails(db);
   const t = (opts.now ?? Date.now)();
   for (const s of results) {
-    if (!isOwner(s.email, opts.ownerEmails)) return false;
+    if (!owners.includes(normalizeEmail(s.email))) return false;
     if (new Date(s.expiresAt).getTime() > t && (await sessionTag(s.id)) === tag) return true;
   }
   return false;

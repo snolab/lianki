@@ -54,8 +54,9 @@ no third-party API key. Non-streaming in v1.
   mode on that device. The owner's pages are unchanged.
 - **The owner, never.** Three checks: the hub routes only non-owner threads
   (the thread comes from the session the main Worker verified on connect);
-  the RPC looks the user up by id and refuses `OWNER_EMAILS`; and with
-  `OWNER_EMAILS` unset it refuses everyone (fail closed).
+  the RPC looks the user up by id and refuses an active owner in `site_role`;
+  and with no owner readable (none, or D1 failing) it refuses everyone (fail
+  closed).
 
 ## Memory and takeover
 

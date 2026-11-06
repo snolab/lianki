@@ -74,7 +74,7 @@ export function providerOpenTo(
   flags: FlagValues = {},
 ): boolean {
   const mode = providerMode(p, env, flags);
-  return mode === "live" || (mode === "test" && isOwner(email, env.OWNER_EMAILS));
+  return mode === "live" || (mode === "test" && isOwner(email));
 }
 
 export function enabledProviders(env: Env = process.env, flags: FlagValues = {}) {

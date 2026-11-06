@@ -6,6 +6,7 @@
  * no-op.
  */
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
+import { EXTEND_PRO_SQL } from "./credits-store";
 import { extendedProEnd, passFor } from "./passes";
 
 type D1WithBatch = D1Like & { batch(stmts: D1StmtLike[]): Promise<unknown> };
@@ -71,14 +72,28 @@ export async function fulfilCheckout(
           at,
           opts.testMode ? 1 : 0,
         ),
+      // The bump itself is computed in SQL, and the payment row then records
+      // what it set: two different payments at once both count (the JS value
+      // above was read before either wrote).
+      d1.prepare(EXTEND_PRO_SQL).bind(at, pass.days, userId),
       d1
-        .prepare("UPDATE user SET proEndsAt = ?, updatedAt = ? WHERE id = ?")
-        .bind(proEndsAt.toISOString(), at, userId),
+        .prepare(
+          "UPDATE payment SET proEndsAt = (SELECT proEndsAt FROM user WHERE id = ?) WHERE id = ?",
+        )
+        .bind(userId, session.id),
     ]);
   } catch (e) {
     // Two deliveries racing past the SELECT: the primary key lets one through.
     if (/UNIQUE|PRIMARY KEY/i.test(String(e))) return { status: "duplicate" };
     throw e;
   }
-  return { status: "applied", userId, proEndsAt };
+  const set = await d1
+    .prepare("SELECT proEndsAt FROM payment WHERE id = ?")
+    .bind(session.id)
+    .first<{ proEndsAt: string | null }>();
+  return {
+    status: "applied",
+    userId,
+    proEndsAt: set?.proEndsAt ? new Date(set.proEndsAt) : proEndsAt,
+  };
 }

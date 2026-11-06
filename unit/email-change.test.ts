@@ -46,6 +46,11 @@ const rows = (sql: string, ...args: (string | number)[]) =>
     .prepare(sql)
     .all(...args)
     .map((r) => ({ ...r }));
+const grant = (email: string) =>
+  raw
+    .raw()
+    .prepare("INSERT INTO site_role (email, granted_by, granted_at) VALUES (?, 't', 1)")
+    .run(email);
 const addUser = (id: string, email: string, canonical = email) =>
   raw
     .raw()
@@ -109,6 +114,7 @@ const errorOf = async (r: Response) => ((await r.json()) as { error?: string }).
 beforeEach(() => {
   raw = createTestD1(SCHEMA);
   raw.raw().exec("PRAGMA foreign_keys = OFF"); // seed() makes rows with made-up user ids
+  grant("owner+admin@gmail.com");
   addUser("u1", OLD);
   mails = [];
   mailOn = true;
@@ -123,7 +129,6 @@ beforeEach(() => {
       mails.push(m);
     },
     mailOn: () => mailOn,
-    ownerEmails: () => ["owner+admin@gmail.com"],
     origin: () => BASE,
     now: () => now,
   };
@@ -153,6 +158,33 @@ describe("what has to hold before anything starts", () => {
   test("an old session has to sign in again", async () => {
     me!.sessionCreatedMs = T0 - PROFILE.emailFreshMs;
     expect(await errorOf(await ask())).toBe("sign-in-again");
+    expect(mails).toEqual([]);
+  });
+  test("a revoked owner is an ordinary user again", async () => {
+    raw.raw().exec("UPDATE site_role SET revoked_at = 2 WHERE email = 'owner+admin@gmail.com'");
+    me = { id: "u1", email: "owner+admin@gmail.com", sessionCreatedMs: T0 };
+    expect(await (await ask()).json()).toEqual({ status: "sent" });
+  });
+  test("owner means the exact address: an alias's own account is not refused as one", async () => {
+    me = { id: "u1", email: "owner@gmail.com", sessionCreatedMs: T0 };
+    expect((await ask()).status).toBe(200);
+  });
+  test("the owner list can't be read: nothing happens", async () => {
+    const real = deps.db();
+    deps.db = () =>
+      new Proxy(real, {
+        get(t, k) {
+          if (k !== "prepare") {
+            const v = Reflect.get(t, k);
+            return typeof v === "function" ? v.bind(t) : v;
+          }
+          return (q: string) => {
+            if (q.includes("site_role")) throw new Error("D1 down");
+            return t.prepare(q);
+          };
+        },
+      });
+    await expect(ask()).rejects.toThrow("D1 down");
     expect(mails).toEqual([]);
   });
   test("the owner's address can't move: the role goes by it, with its reason", async () => {
@@ -254,9 +286,9 @@ describe("the confirmation", () => {
     // A notice to the old address, without the new one in full.
     expect(mails.map((m) => m.to)).toEqual([OLD]);
     expect(mails[0]!.text).not.toContain(NEW);
-    expect(rows("SELECT kind, actor, subject, detail FROM security_audit")).toEqual([
-      { kind: "email.change", actor: "u1", subject: null, detail: null },
-    ]);
+    expect(
+      rows("SELECT kind, actor, subject, detail FROM security_audit WHERE kind = 'email.change'"),
+    ).toEqual([{ kind: "email.change", actor: "u1", subject: null, detail: null }]);
   });
   test("a mixed-case stored address moves its rows too", async () => {
     raw.raw().exec(`UPDATE user SET email = 'Ada@Example.com' WHERE id = 'u1'`);
@@ -306,10 +338,40 @@ describe("the confirmation", () => {
     expect(countAt(OLD).every((n) => n === 1)).toBe(true);
     expect(rows("SELECT email FROM user WHERE id = 'u1'")).toEqual([{ email: OLD }]);
   });
-  test("the owner's address can't be taken by a request made before it was the owner's", async () => {
+  test("the new address was made an owner's after the request: refused", async () => {
     const token = await start();
-    deps.ownerEmails = () => [NEW];
+    grant(NEW);
     expect(await errorOf(await confirm(token))).toBe("unavailable");
+    expect(rows("SELECT email FROM user WHERE id = 'u1'")).toEqual([{ email: OLD }]);
+  });
+  test("the old address was made an owner's after the request: refused", async () => {
+    const token = await start();
+    grant(OLD);
+    expect(await errorOf(await confirm(token))).toBe("unavailable");
+  });
+  test("a grant landing between the checks and the batch still stops it, and the link stays", async () => {
+    seed(OLD, "a");
+    const token = await start();
+    const real = deps.db();
+    deps.db = () =>
+      new Proxy(real, {
+        get(t, k) {
+          if (k !== "batch") {
+            const v = Reflect.get(t, k);
+            return typeof v === "function" ? v.bind(t) : v;
+          }
+          return (stmts: never[]) => {
+            grant(NEW);
+            return t.batch(stmts);
+          };
+        },
+      });
+    const r = await confirm(token);
+    expect(r.status).toBe(409);
+    expect(rows("SELECT email FROM user WHERE id = 'u1'")).toEqual([{ email: OLD }]);
+    expect(countAt(OLD).every((n) => n === 1)).toBe(true);
+    expect(rows("SELECT userId FROM email_change_request")).toEqual([{ userId: "u1" }]);
+    expect(rows("SELECT * FROM security_audit WHERE kind = 'email.change'")).toEqual([]);
   });
   test("a key conflict half way rolls the whole change back", async () => {
     seed(OLD, "a");
@@ -398,7 +460,8 @@ describe("edges", () => {
 
 describe("the list of email-keyed tables", () => {
   /** Columns named email that hold something else, or aren't keys of user data. */
-  const NOT_A_KEY = new Set(["user"]);
+  // user: moved by its own statement. site_role: an owner's address never moves.
+  const NOT_A_KEY = new Set(["user", "site_role"]);
   test("covers every table with an `email` column", () => {
     const tables = rows("SELECT name FROM sqlite_master WHERE type = 'table'") as {
       name: string;

@@ -247,7 +247,9 @@ describe("the store", () => {
     expect(await previewFor(db, id, v, t)).toBeNull();
     expect(await listPreviews(db, KISHO, t)).toEqual([]);
     const { results } = await raw
-      .prepare("SELECT kind, actor, subject FROM security_audit ORDER BY id")
+      .prepare(
+        "SELECT kind, actor, subject FROM security_audit WHERE kind NOT LIKE 'site-role.%' ORDER BY id",
+      )
       .all<{ kind: string; actor: string; subject: string }>();
     expect(results.map((r) => r.kind)).toEqual([
       "live-frontend.allow",
@@ -533,6 +535,34 @@ describe("subresources and the backend", () => {
         body: "<html><body>prod</body></html>",
       });
     }
+  });
+
+  test("a subresource reads the flag under its old key until the new key has a row", async () => {
+    const OLD = "live.custom-frontend";
+    const setRow = (key: string, on: 0 | 1) =>
+      raw
+        .prepare(
+          `INSERT INTO feature_flags (key, enabled, updated_at, updated_by) VALUES (?1, ?2, 'x', 'x')
+           ON CONFLICT(key) DO UPDATE SET enabled = ?2`,
+        )
+        .bind(key, on)
+        .run();
+    const { lp, cookie } = await enter();
+    upstream = async () => new Response("chunk");
+    const get = async () => {
+      t += POINTER_CACHE_MS;
+      const r = await lp.handle(
+        req("/_next/static/a.js", { cookie: `${cookie}; ${cookieFor("tok-k.sig")}` }),
+        ENV(),
+        next,
+      );
+      return r.text();
+    };
+    await raw.prepare("DELETE FROM feature_flags WHERE key = ?1").bind(CUSTOM_FRONTEND_FLAG).run();
+    await setRow(OLD, 1);
+    expect(await get()).toBe("chunk");
+    await setRow(CUSTOM_FRONTEND_FLAG, 0);
+    expect(await get()).toBe("<html><body>prod</body></html>");
   });
 
   test("the default resolver asks the app's /api/live-previews/<id> with the Cookie only", async () => {

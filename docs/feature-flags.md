@@ -28,7 +28,7 @@ with no deploy and no secret change.
   arrives past the window is not acted on — it reads as all off
   (`flags.read-stale`).
 - **Owner only.** The page and `/api/dev/flags` answer 404 to anyone but
-  `OWNER_EMAILS` (the admin gate, [security-measures.md](security-measures.md)
+  an owner in `site_role` (the admin gate, [security-measures.md](security-measures.md)
   §1; `unit/security.test.ts` enforces it), and sit under Cloudflare Access's
   `/dev` and `/api/dev` paths once that is applied.
 - **CSRF**: `POST /api/dev/flags` must be a same-origin JSON `fetch` —
@@ -52,7 +52,7 @@ with no deploy and no secret change.
 | `connections.google`   | every signed-in user gets /connections (Google Drive, `drive.file`) and the private Google Docs import on /read (off: the owner only) — [connections.md](connections.md) |
 | `partner.ai-reply`     | every signed-in user but the owner gets the Learning Partner chat on every page, answered by DeepSeek on Workers AI (off: debug-mode friends only, lanes answer) — [partner-ai.md](partner-ai.md). Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `self-intro.import`    | every signed-in user gets the /self-intro import step: write about yourself or add files, AI lists facts to confirm; files never stored (off: the owner only) — [self-intro-import.md](self-intro-import.md) |
-| `live.custom-frontend` | allowlisted users (`/dev/live-frontends`) can register their own tunnel and see their own frontend at `?live=<id>`, only they, /api stays production (off: the owner only) — [custom-frontend.md](custom-frontend.md) |
+| `my-box`               | allowlisted users (`/dev/live-frontends`) can register their own tunnel and see their own frontend at `?live=<id>`, only they, /api stays production (off: the owner only) — [custom-frontend.md](custom-frontend.md) |
 | `books.catalogue`      | every visitor gets /books, the public-domain library, and can add its books to their own reading (off: the owner only) — [books-plan.md](books-plan.md), "The catalogue: /books" |
 | `levels`               | every user sees their learner level: a chip by the avatar in the nav (signed in) and a level card on /profile (guests too), from `GET /api/levels/me`; study days are recorded either way (off: the owner only) — [levels.md](levels.md) |
 | `byok.sync`            | everyone sees the disabled 「同步 API key」 row (即将推出, with its warning) in Settings → 自己的 AI; nothing on the server stores a key yet (off: the owner only) — [byok.md](byok.md) |
@@ -118,6 +118,40 @@ Turning a payment flag off is the kill switch: no new payment starts within
    `/dev/flags` when ready (for a check first, the owner can gate on
    `isOwner` as well inside the feature).
 5. Unit-test both sides of the flag.
+
+## Renaming a flag
+
+A key is the row's primary key in `feature_flags`, and a stored row whose key
+left the registry is ignored, so changing a key alone would turn its switch off
+on deploy. Instead:
+
+1. Rename the key in `FLAGS` and add `"<new>": "<old>"` to `FLAG_OLD_KEYS`
+   (`lib/flags.ts`). `loadFlags` and `listFlags` take the state from the new
+   key's row if there is one, whatever its value, else from the old key's. No
+   migration and no write: the switch reads the same before and after the
+   deploy.
+2. Anything reading `feature_flags` with its own SQL has to follow the same
+   order. `activeForCookie` (`lib/live-view/custom.ts`) does, with `COALESCE`.
+   `flagLive` (`lib/debug-session.ts`) and `flagOn` (`lib/partner-ai.ts`) do
+   not: they read `stt.polish-off` and `partner.ai-reply`, so renaming one of
+   those means changing them too.
+3. The first change at `/dev/flags` writes the row under the new key. The old
+   row and its log entries stay as history. The API refuses the old key (400),
+   so a `/dev/flags` tab left open across the deploy needs a reload.
+4. Remove the entry and the `COALESCE` branch only once production has a row
+   under the new key:
+
+   ```bash
+   wrangler d1 execute lianki --remote --command "SELECT key, enabled FROM feature_flags WHERE key = '<new>'"
+   ```
+
+   If the owner never touches the switch there is no such row. Copy it first
+   with a migration, deployed before the removal:
+   `INSERT INTO feature_flags SELECT '<new>', enabled, updated_at, updated_by FROM feature_flags WHERE key = '<old>' ON CONFLICT(key) DO NOTHING`.
+
+| new key  | old key                | since      | remove when                       |
+| -------- | ---------------------- | ---------- | --------------------------------- |
+| `my-box` | `live.custom-frontend` | 2026-11-05 | production has a row for `my-box` |
 
 ## Removing a flag
 

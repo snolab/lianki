@@ -117,7 +117,7 @@ log(`✓ dashboard loaded: ${await page.title()}`);
 await page.goto(`${BASE}/roadmap`, { waitUntil: "networkidle" });
 log(`✓ roadmap loaded: ${await page.title()}`);
 
-// 5b. …and still a 404 for a signed-in user who is not in OWNER_EMAILS.
+// 5b. …and still a 404 for a signed-in user who is not an owner (site_role).
 {
   const r = await ctx.request.get(`${BASE}/dev/roadmap`, { maxRedirects: 0 });
   if (r.status() === 404) log("✓ /dev/roadmap is 404 for a signed-in non-owner");

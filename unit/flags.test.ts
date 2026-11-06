@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import type { D1Like } from "@/lib/d1/types";
-import { defaultFlags, FLAG_KEYS, FLAGS, flagIn, isFlagKey } from "@/lib/flags";
+import { defaultFlags, FLAG_KEYS, FLAG_OLD_KEYS, FLAGS, flagIn, isFlagKey } from "@/lib/flags";
 import {
   clearFlagCache,
   FLAG_CACHE_MS,
@@ -129,6 +129,55 @@ describe("store", () => {
     expect(Object.keys(v).sort()).toEqual([...FLAG_KEYS].sort());
     expect(v["payments.komoju.live"]).toBe(false);
     expect((await listFlags(d1)).map((f) => f.key)).toEqual(FLAG_KEYS);
+  });
+
+  describe("a renamed flag keeps its stored state", () => {
+    const put = (key: string, enabled: 0 | 1) =>
+      d1
+        .raw()
+        .prepare(
+          "INSERT INTO feature_flags (key, enabled, updated_at, updated_by) VALUES (?, ?, ?, ?)",
+        )
+        .run(key, enabled, NOW.toISOString(), BY);
+    const OLD = "live.custom-frontend";
+
+    test("an old key is never a registry key, and points at one", () => {
+      expect(FLAG_OLD_KEYS["my-box"]).toBe(OLD);
+      for (const [key, old] of Object.entries(FLAG_OLD_KEYS)) {
+        expect(isFlagKey(key)).toBe(true);
+        expect(isFlagKey(old)).toBe(false);
+      }
+    });
+
+    test("no row under the new key: the old key's value, on or off", async () => {
+      put(OLD, 1);
+      expect((await loadFlags(d1))["my-box"]).toBe(true);
+      const on = (await listFlags(d1)).find((f) => f.key === "my-box");
+      expect(on).toMatchObject({ enabled: true, updatedAt: NOW.toISOString(), updatedBy: BY });
+
+      d1.raw().prepare("UPDATE feature_flags SET enabled = 0 WHERE key = ?").run(OLD);
+      expect((await loadFlags(d1))["my-box"]).toBe(false);
+    });
+
+    test("no row under either key is off", async () => {
+      expect((await loadFlags(d1))["my-box"]).toBe(false);
+    });
+
+    test("a row under the new key wins, even off over an old on", async () => {
+      put(OLD, 1);
+      put("my-box", 0);
+      expect((await loadFlags(d1))["my-box"]).toBe(false);
+      expect((await listFlags(d1)).find((f) => f.key === "my-box")?.enabled).toBe(false);
+    });
+
+    test("setFlag writes the new key, leaves the old row, and refuses the old key", async () => {
+      put(OLD, 1);
+      await setFlag(d1, "my-box", false, BY, NOW);
+      expect((await loadFlags(d1))["my-box"]).toBe(false);
+      const old = d1.raw().prepare("SELECT enabled FROM feature_flags WHERE key = ?").get(OLD);
+      expect(old).toEqual({ enabled: 1 });
+      await expect(setFlag(d1, OLD, true, BY, NOW)).rejects.toBeInstanceOf(FlagError);
+    });
   });
 
   test("the table refuses a value other than 0 or 1", () => {
