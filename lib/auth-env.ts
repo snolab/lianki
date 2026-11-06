@@ -29,9 +29,37 @@ export function passwordAuthEnabled(): boolean {
   return runtimeNodeEnv() !== "production" && process.env.DEV_EMAIL_PASSWORD_AUTH === "1";
 }
 
+export const SESSION_COOKIE_PREFIX = "__Host-better-auth";
+
 /**
- * True when the request carries a better-auth session cookie (plain or
- * `__Secure-` prefixed). Without one, `getSession` can only answer null, so
+ * better-auth's cookie options (docs/secrets-and-auth.md, "The session cookie").
+ * A `__Host-` cookie cannot be set by a subdomain, so a my-<hash> box cannot plant
+ * one on lianki.com (cookie tossing). This covers every better-auth cookie, also the
+ * OAuth state and the passkey challenge, not just the session.
+ *
+ * better-auth prepends `__Secure-` to any name of its own accord, so a `__Host-` name
+ * alone would come out as `__Secure-__Host-…`: hence `useSecureCookies: false`, with
+ * Secure put back through the default attributes. It adds no Domain, and Path is "/".
+ *
+ * On https only: a browser refuses a `__Host-` cookie over http, so `next dev` and
+ * qa:all keep the plain name.
+ */
+export function authCookieOptions(baseURL: string | undefined): {
+  useSecureCookies?: false;
+  cookiePrefix?: string;
+  defaultCookieAttributes?: { secure: true };
+} {
+  if (!baseURL?.startsWith("https://")) return {};
+  return {
+    useSecureCookies: false,
+    cookiePrefix: SESSION_COOKIE_PREFIX,
+    defaultCookieAttributes: { secure: true },
+  };
+}
+
+/**
+ * True when the request carries a better-auth session cookie (plain, or with its
+ * `__Host-` prefix; an old `__Secure-` one also counts, and then getSession says nobody). Without one, `getSession` can only answer null, so
  * callers may skip loading better-auth altogether — the common guest case.
  */
 export function hasSessionCookie(headers: Headers): boolean {

@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
-import { auth } from "@/auth";
-import { flagIn } from "@/lib/flags";
-import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
 import { LIVE_POLISH_CONTEXT_CHARS, LIVE_POLISH_MAX_CHARS } from "@/lib/read/live-polish";
-import { livePolishAi } from "@/lib/read/live-polish-server";
+import { livePolishAi, mayPolishLive } from "@/lib/read/live-polish-server";
 import { badRequest, bodyOf, json, readerCtx } from "@/lib/read/reader-route";
 
 /**
@@ -21,9 +16,7 @@ import { badRequest, bodyOf, json, readerCtx } from "@/lib/read/reader-route";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!(isOwner(session?.user?.email ?? null) || flagIn(await readFlags(), "read.live-polish")))
-    return json({ error: "Not found" }, 404);
+  if (!(await mayPolishLive(ctx.email))) return json({ error: "Not found" }, 404);
   const body = (await bodyOf(req)) as { text?: unknown; before?: unknown } | null;
   if (typeof body?.text !== "string" || !body.text.trim()) return badRequest("text is required");
   if (body.text.length > LIVE_POLISH_MAX_CHARS) return badRequest("text is too long");

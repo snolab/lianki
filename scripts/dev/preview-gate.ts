@@ -801,7 +801,8 @@ export function upstreamHeaders(
     .split(";")
     .map((c) => c.trim())
     .filter(
-      (c) => c && !c.startsWith(`${SESSION_COOKIE}=`) && !/^(__Secure-)?better-auth\./.test(c),
+      (c) =>
+        c && !c.startsWith(`${SESSION_COOKIE}=`) && !/^(__Secure-|__Host-)?better-auth\./.test(c),
     );
   if (cookies.length) out.cookie = cookies.join("; ");
   else delete out.cookie;
