@@ -426,6 +426,11 @@ tests in `unit/security-hardening.test.ts`.
   a top-level navigation from another site gets 403 (Fetch Metadata; browsers
   without it pass). Sibling `*.lianki.com` hosts: section 11.
   `POST /api/fsrs/delete` exists too, and the list page uses it.
+  `GET /api/invite` sends such a link to `/membership` instead of writing, and
+  `GET /api/read/<id>` (and the reader routes under it) answers as usual
+  without saving its backfills.
+- **`excludeDomains`** is literal text, never a regex; gift and invite codes
+  are drawn without modulo bias.
 - **Pro days** from gift codes, invites and Stripe payments are added in
   SQL inside the grant's batch, so two at once both count; a gift code's
   use is given back if its grant fails.

@@ -109,8 +109,13 @@ export function cappedJsonError(status: 400 | 413): NextResponse {
  * neither header and pass.
  */
 export function offSiteWritingGet(req: Request): boolean {
-  const site = req.headers.get("sec-fetch-site")?.toLowerCase();
-  const mode = req.headers.get("sec-fetch-mode")?.toLowerCase();
+  return offSiteHeaders(req.headers);
+}
+
+/** The same rule, for a route that has only `next/headers`. */
+export function offSiteHeaders(h: Headers): boolean {
+  const site = h.get("sec-fetch-site")?.toLowerCase();
+  const mode = h.get("sec-fetch-mode")?.toLowerCase();
   return site === "same-site" || (site === "cross-site" && mode === "navigate");
 }
 

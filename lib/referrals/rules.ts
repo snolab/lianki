@@ -26,9 +26,17 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
 // No 0/O, 1/I/L: codes get read aloud and typed from screenshots.
 const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 
+/** Bytes from here up are thrown away: keeping them would favour the first letters. */
+const UNBIASED_BELOW = 256 - (256 % ALPHABET.length);
+
 export function newCode(length = 8): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return [...bytes].map((b) => ALPHABET[b % ALPHABET.length]).join("");
+  let code = "";
+  while (code.length < length) {
+    for (const b of crypto.getRandomValues(new Uint8Array(length))) {
+      if (b < UNBIASED_BELOW && code.length < length) code += ALPHABET[b % ALPHABET.length];
+    }
+  }
+  return code;
 }
 
 /** Normalise what a person typed or a link carried; null when it cannot be a code. */

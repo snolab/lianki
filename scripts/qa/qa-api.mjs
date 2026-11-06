@@ -514,6 +514,24 @@ let goalId;
   );
 }
 {
+  // GET /api/invite writes, so another site's link goes to the page instead.
+  const offSite = await fetch(`${BASE}/api/invite`, {
+    redirect: "manual",
+    headers: {
+      connection: "close",
+      cookie,
+      "sec-fetch-site": "cross-site",
+      "sec-fetch-mode": "navigate",
+    },
+  });
+  rec(
+    "INVITE  another site's link goes to /membership",
+    offSite.status === 303 &&
+      new URL(offSite.headers.get("location") ?? "/", BASE).pathname === "/membership",
+    `HTTP ${offSite.status}`,
+  );
+}
+{
   const push = "https://example.com/qa-pushed";
   const r = await call("POST", "/api/fsrs/bulk-upsert", {
     notes: [

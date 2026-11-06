@@ -5,6 +5,7 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import { INVITE_COOKIE } from "@/lib/referrals/cookie";
 import { normaliseCode } from "@/lib/referrals/rules";
 import { claimInvite, inviteSummary, type D1WithBatch } from "@/lib/referrals/store";
+import { offSiteHeaders } from "@/lib/security/route-guard";
 
 async function signedIn() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -12,10 +13,15 @@ async function signedIn() {
 }
 
 /** The signed-in user's invite link and how their invites are doing. */
-export async function GET() {
+export async function GET(req: Request) {
   if (dbBackend() !== "d1") return NextResponse.json({ error: "Unavailable" }, { status: 503 });
   const user = await signedIn();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // This GET writes: it makes the code and settles invite rewards. From another
+  // site's link it writes nothing and goes to the page that shows all this,
+  // whose own same-origin fetch comes back here. Invite links are /i/CODE.
+  if (offSiteHeaders(await headers()))
+    return NextResponse.redirect(new URL("/membership", req.url), 303);
   return NextResponse.json(await inviteSummary(getD1() as unknown as D1WithBatch, user.id));
 }
 
