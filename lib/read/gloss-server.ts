@@ -122,7 +122,7 @@ async function generate(
   lang: string,
   words: { term: string; ex: string | null }[],
   ai: { userId: string; complete: Complete },
-  share: (term: string) => boolean = () => true,
+  share: (term: string) => boolean,
 ): Promise<Map<string, string>> {
   const chunks: (typeof words)[] = [];
   for (let i = 0; i < words.length; i += BATCH) chunks.push(words.slice(i, i + BATCH));

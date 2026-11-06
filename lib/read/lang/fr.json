@@ -1,9 +1,45 @@
 {
   "stop": ["le", "la", "les", "et", "est", "une", "dans", "que", "pas", "il", "je", "du"],
-  "elisions": ["l", "d", "j", "m", "n", "s", "t", "c", "qu", "jusqu", "lorsqu", "puisqu", "quoiqu", "presqu"],
-  "ligatures": [["œ", "oe"], ["æ", "ae"]],
-  "folds": [["es", ""], ["s", ""], ["x", ""], ["e", ""]],
-  "abbreviations": ["m", "mm", "mme", "mmes", "mlle", "mlles", "mgr", "st", "ste", "dr", "mr", "mrs"],
+  "elisions": [
+    "l",
+    "d",
+    "j",
+    "m",
+    "n",
+    "s",
+    "t",
+    "c",
+    "qu",
+    "jusqu",
+    "lorsqu",
+    "puisqu",
+    "quoiqu",
+    "presqu"
+  ],
+  "ligatures": [
+    ["œ", "oe"],
+    ["æ", "ae"]
+  ],
+  "folds": [
+    ["es", ""],
+    ["s", ""],
+    ["x", ""],
+    ["e", ""]
+  ],
+  "abbreviations": [
+    "m",
+    "mm",
+    "mme",
+    "mmes",
+    "mlle",
+    "mlles",
+    "mgr",
+    "st",
+    "ste",
+    "dr",
+    "mr",
+    "mrs"
+  ],
   "lemmas": true,
   "fillers": ["euh", "hum"]
 }

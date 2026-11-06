@@ -12,7 +12,10 @@ import { translateSelection } from "@/lib/vibe/translate-server";
  * POST /api/read/[id]/translate — the reader's Translate: the selected text
  * in the learner's language, on the selection card (lib/read/translate.ts).
  *
- *   { text, to, from? }  → { text, cached }
+ *   { text, to, from?, notes? }  → { text, cached }
+ *
+ * `notes: true`: the text may hold translator's notes in ⟦ ⟧, cached apart
+ * (lib/read/translate.ts).
  *
  * 400 bad input · 429 over the per-user limit · 502 the model failed ·
  * 503 Workers AI not configured. Logs never carry the text.
@@ -23,7 +26,12 @@ import { translateSelection } from "@/lib/vibe/translate-server";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
-  const body = (await bodyOf(req)) as { text?: unknown; to?: unknown; from?: unknown } | null;
+  const body = (await bodyOf(req)) as {
+    text?: unknown;
+    to?: unknown;
+    from?: unknown;
+    notes?: unknown;
+  } | null;
   const to = langTag(body?.to);
   if (!to) return badRequest("to is required");
   if (typeof body?.text !== "string" || !body.text.trim()) return badRequest("text is required");
@@ -32,7 +40,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // Who may read a live doc: its card follows every new sentence.
   const live = isOwner(ctx.email) || flagIn(await readFlags(), "read.gdoc-stream");
   const limit = live ? { limit: AI_LIMIT_LIVE } : {};
-  const input = { text: body.text, to, from };
+  const input = { text: body.text, to, from, notes: body.notes === true };
   const r = isVibeMaterial(ctx.material)
     ? await translateSelection(ctx.db, ctx.userId, ctx.material, input, limit, Date.now())
     : await translate(ctx.db, input, { userId: ctx.userId, ...limit });

@@ -14,6 +14,7 @@
 // scrolls it, and a failure's error line is its retry. Not modal: the book stays clickable under it, so the
 // next quick click widens the selection.
 
+import { TranslatedText } from "./translated-text";
 import { useEffect, useRef, type ReactNode } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import type { Fam } from "@/lib/read/reader-model";
@@ -405,7 +406,7 @@ export function SelectCard({
                 {b.map((x, j) =>
                   x === false ? null : (
                     <span key={j} className={`me-1 ${x === null ? "opacity-60" : ""}`}>
-                      {x ?? "…"}
+                      <TranslatedText text={x ?? "…"} />
                     </span>
                   ),
                 )}

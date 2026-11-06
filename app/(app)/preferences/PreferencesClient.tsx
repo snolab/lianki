@@ -14,6 +14,7 @@ import { useTextSizes } from "@/lib/use-text-size";
 import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
+import { readNotesOn, writeNotesOn } from "@/lib/read/translator-notes";
 
 type FilterType = "domain" | "title" | "url";
 
@@ -31,8 +32,12 @@ interface FilterPattern {
 function ReaderSettings() {
   const t = useIntlayer("read-polish");
   const [on, setOn] = useState(true);
+  const [notes, setNotes] = useState(true);
   useEffect(() => {
-    const read = () => setOn(readOfferOn());
+    const read = () => {
+      setOn(readOfferOn());
+      setNotes(readNotesOn());
+    };
     read();
     window.addEventListener(PREF_APPLIED_EVENT, read);
     window.addEventListener("storage", read);
@@ -58,6 +63,20 @@ function ReaderSettings() {
         <span>{t.prefOffer}</span>
       </label>
       <p className="text-xs text-gray-500 mt-2 ml-6">{t.prefHelp}</p>
+      <label className="flex items-center gap-2 cursor-pointer mt-4">
+        <input
+          type="checkbox"
+          checked={notes}
+          data-testid="pref-translator-notes"
+          onChange={(e) => {
+            setNotes(e.target.checked);
+            writeNotesOn(e.target.checked);
+          }}
+          className="w-4 h-4 rounded"
+        />
+        <span>{t.prefNotes}</span>
+      </label>
+      <p className="text-xs text-gray-500 mt-2 ml-6">{t.prefNotesHelp}</p>
     </section>
   );
 }

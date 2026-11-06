@@ -74,14 +74,16 @@ const NO_CACHE = { get: async () => null, put: async () => {} };
  * A selection in /read on a /vibe doc (POST /api/read/[id]/translate): never the
  * shared read_translation. vibe_translation holds whole lines, so a selection that
  * is one uses that line's row, and pays for it once, here or on the log. Anything
- * else (a sentence of a longer line, a phrase) is not stored at all. `material` is
- * the signed-in user's own (readerCtx); the doc is asked for under the same user.
+ * else (a sentence of a longer line, a phrase) is not stored at all, and neither
+ * is an answer with translator's notes: a line's row is its plain translation, the
+ * one the log shows. `material` is the signed-in user's own (readerCtx); the doc is
+ * asked for under the same user.
  */
 export async function translateSelection(
   db: D1Batch,
   userId: string,
   material: Pick<ReadMaterial, "_id" | "lines">,
-  input: { text: string; to: string; from: string | null },
+  input: { text: string; to: string; from: string | null; notes?: boolean },
   ai: { limit?: { windowMs: number; max: number }; complete?: Complete },
   now: number,
 ): Promise<TranslateResult> {
@@ -90,7 +92,7 @@ export async function translateSelection(
     .bind(String(material._id), userId)
     .first<{ id: string }>();
   const line = cleanLine(input.text);
-  const docId = doc && material.lines.includes(line) ? doc.id : null;
+  const docId = doc && !input.notes && material.lines.includes(line) ? doc.id : null;
   return translate(db, docId ? { ...input, text: line } : input, {
     userId,
     what: "vibe.translate",

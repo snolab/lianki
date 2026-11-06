@@ -150,6 +150,25 @@ describe("the reader's translate on a /vibe doc", () => {
     expect(await shared()).toEqual([]);
   });
 
+  it("translator's notes are not a line's row: neither read from it nor written to it", async () => {
+    const { id, material } = await convo();
+    const notes = () =>
+      translateSelection(
+        db,
+        "u1",
+        material,
+        { text: SHORT, to: "fr", from: "en", notes: true },
+        { complete: model },
+        T0,
+      );
+    expect(await notes()).toMatchObject({ cached: false });
+    expect(await docTranslations(db, id)).toEqual([]);
+    await select(material, SHORT);
+    expect(await notes()).toMatchObject({ cached: false });
+    expect((await docTranslations(db, id)).length).toBe(1);
+    expect(await shared()).toEqual([]);
+  });
+
   it("a second account gets nothing", async () => {
     const { material } = await convo("u1");
     await select(material, SHORT);

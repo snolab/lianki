@@ -13,6 +13,8 @@ import {
   langTag,
   normText,
   translateMessages,
+  translationKey,
+  translationParts,
 } from "@/lib/read/translate";
 import { translate } from "@/lib/read/translate-server";
 
@@ -97,5 +99,38 @@ describe("translate (D1)", () => {
     );
     expect(r).toEqual({ ok: false, error: "model-failed" });
     expect(d1.raw().prepare("SELECT COUNT(*) AS n FROM read_translation").get()).toEqual({ n: 0 });
+  });
+});
+
+describe("translator's notes", () => {
+  test("the prompt names the note's language and limits; without notes, none", () => {
+    const on = translateMessages("Bonjour", "zh", "fr", true)[0].content;
+    expect(on).toContain("translator's note in Chinese");
+    expect(on).toContain("Most texts need none");
+    expect(translateMessages("Bonjour", "zh", "fr")[0].content).toContain("no notes");
+  });
+  test("a translation made without notes does not pass as one made with them", async () => {
+    expect(await translationKey("zh", "a", true)).not.toBe(await translationKey("zh", "a"));
+    const d1 = createTestD1(testSchema());
+    let calls = 0;
+    const complete: Complete = async () => {
+      calls++;
+      return { choices: [{ message: { content: "x" } }] };
+    };
+    const input = { text: "note key", to: "zh", from: null };
+    await translate(d1, input, { userId: "n1", complete });
+    await translate(d1, { ...input, notes: true }, { userId: "n1", complete });
+    await translate(d1, { ...input, notes: true }, { userId: "n1", complete });
+    expect(calls).toBe(2);
+  });
+  test("a translation is cut at its notes; a broken marker never shows", () => {
+    expect(translationParts("先生⟦honorific⟧好。")).toEqual([
+      { text: "先生", note: false },
+      { text: "honorific", note: true },
+      { text: "好。", note: false },
+    ]);
+    expect(translationParts("plain")).toEqual([{ text: "plain", note: false }]);
+    expect(translationParts("a⟦cut off")).toEqual([{ text: "a", note: false }]);
+    expect(translationParts("a⟧b⟦ ⟧")).toEqual([{ text: "ab", note: false }]);
   });
 });

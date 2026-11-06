@@ -20,6 +20,7 @@ import {
   type TransPlan,
 } from "@/lib/read/select-translate";
 import { fetchPiece, transKeyOf, translated } from "@/lib/read/select-translate-fetch";
+import { readNotesOn } from "@/lib/read/translator-notes";
 import { activeByok } from "@/lib/byok/config";
 import type { CardTranslation } from "./reader-select-card";
 
@@ -34,7 +35,9 @@ export function useSelectTranslate(
 ) {
   /** The user's own AI, read when the plan changes (a settings change applies to the next selection). */
   const own = useMemo(() => (plan ? activeByok() : null), [plan]);
-  const key = useCallback((p: TransPiece) => transKeyOf(own, to, p.text), [own, to]);
+  /** Read the same way: the switch in Preferences (lib/read/translator-notes.ts). */
+  const notes = useMemo(() => (plan ? readNotesOn() : false), [plan]);
+  const key = useCallback((p: TransPiece) => transKeyOf(own, to, p.text, notes), [own, to, notes]);
   /** A unit's text; null on its way; false not asked (past the bound) or failed. */
   const [got, setGot] = useState<Record<string, string | null | false>>({});
   const [failed, setFailed] = useState(false);
@@ -59,7 +62,7 @@ export function useSelectTranslate(
     const lane = async () => {
       while (live && next < queue.length) {
         const p = queue[next++];
-        const out = await fetchPiece(id, to, from, p.text, own);
+        const out = await fetchPiece(id, to, from, p.text, own, notes);
         if (!live) return;
         if (out === null) setFailed(true);
         setGot((g) => ({ ...g, [key(p)]: out ?? false }));
@@ -76,7 +79,7 @@ export function useSelectTranslate(
       live = false;
       if (timer) clearTimeout(timer);
     };
-  }, [plan, room, tries, id, to, from, key, own]);
+  }, [plan, room, tries, id, to, from, key, own, notes]);
 
   const translation = useMemo<CardTranslation | null>(
     () =>

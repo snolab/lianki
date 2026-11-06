@@ -156,6 +156,7 @@ export const PREF_SCHEMAS = {
   "read.sensePicks": sensePicks,
   // /read: the offer to tidy a raw transcript, off for good or for some texts
   "read.polishOffer": z.boolean(),
+  "read.translatorNotes": z.boolean(),
   "read.polishSkips": polishSkips,
   // /vibe: a language's share of a conversation, in percent, before lines go into it
   "vibe.translateMinPct": z.number().int().min(1).max(99),
