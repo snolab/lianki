@@ -9,6 +9,20 @@
   [secrets-backup-plan.md](secrets-backup-plan.md), not done yet). `.dev.vars` is auto-created from `.dev.vars.example` on the first
   `qa:all` run.
 
+## The session cookie
+
+On https every better-auth cookie is `__Host-better-auth.*` (`authCookieOptions`,
+`lib/auth-env.ts`), so a subdomain such as a my-box cannot plant one on lianki.com
+(cookie tossing). It does not stop a subdomain's page _sending_ the cookie: that is
+`lib/security/same-site-guard.ts`. On http (`next dev`, qa:all) the name stays plain,
+because a browser refuses `__Host-` there. `scripts/qa/qa-host-cookie.mjs` runs the
+https path.
+
+The change signs everyone out once. `__Secure-better-auth.*` is read by nothing, and
+the Worker sends each one back expired (`lib/security/legacy-session-cookies.ts`).
+Migration 0051 deletes the old session rows. That code can go once the old cookies
+have aged out, 7 days after the change.
+
 ## Magic-link email
 
 Sent through **Resend's HTTP API** (`lib/email.ts`), not SMTP. This is a hard
