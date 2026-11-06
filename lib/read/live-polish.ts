@@ -50,6 +50,9 @@ export function checkLivePolish(raw: string, out: string | null | undefined): st
   return text;
 }
 
+/** A word of the draft in no save of the book: one word, never a phrase or a sentence. */
+export const isDraftWord = (w: string) => w.length <= 64 && !/\s/u.test(w);
+
 /** The sentences ready to polish: finished ones not done yet, once enough have gathered or the text rests. */
 export function nextPolishBatch(
   sentences: readonly string[],

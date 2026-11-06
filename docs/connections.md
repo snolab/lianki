@@ -129,7 +129,8 @@ Flag `read.gdoc-stream` (off: the owner only).
    grow a tail under the book, revisions inside the tail apply, anything earlier
    waits for the next save. Only new words are cut, looked up and flashed. On a
    save it fetches the book, keeps its place, and the tail keeps only what the
-   book does not hold yet. The tail has the book's selection rules
+   book does not hold yet. It opens at the end (a deep link still wins; ordinary
+   books keep their place); scrolling up stops the following. The tail has the book's selection rules
    (`lib/read/tail-select.ts`): tap, combo, a hand selection grown to whole
    sentences, stitched translation; a word's meaning and card need it in the
    book, so a tap on one written since the last save saves first. With nothing
@@ -149,7 +150,9 @@ Owner, 2026-11-06: fillers out, professional speech draft level, incrementally. 
 (`lib/read/live-polish.ts`): a few finished sentences at a time, the draft before
 them as context only, never polished again. It rewrites, so unlike the transcript
 polish it has no word check, only a size check. It stores nothing: the raw text
-stays the book's, and nothing goes back to the doc.
+stays the book's, and nothing goes back to the doc. The polish may write a word
+no save of the book holds, so `gloss` and `make-cards` take `draft: true`: for who
+may polish, one word at a time, 120 per 10 minutes (`draftOwn`).
 
 Model: DeepSeek V4.1 Flash on Workers AI, the owner's choice (`READ_POLISH_MODEL`
 overrides), $0.30 / M in, $1.20 / M out on 2026-11-06. Estimate, not measured: about

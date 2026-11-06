@@ -9,6 +9,7 @@ import {
 } from "@/lib/read/reader-route";
 import { fillGlosses } from "@/lib/read/gloss-server";
 import { headOf } from "@/lib/read/gloss";
+import { draftOwn } from "@/lib/read/live-polish-server";
 
 /**
  * POST /api/read/[id]/gloss — the meaning of a selected book word that is no
@@ -24,14 +25,24 @@ import { headOf } from "@/lib/read/gloss";
  * word_gloss only — no model, no charge — and, when they have nothing,
  * `ask: { lang, term }`: the headword the browser asks the user's own
  * provider for. That answer stays on the device; nothing is written here.
+ *
+ * With `draft: true`: a word of a live doc's speech draft, which may be in no
+ * save of the book (live-polish-server.ts draftOwn). 429 over its limit.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
   if (!ctx.email) return badRequest("no email");
-  const body = (await bodyOf(req)) as { w?: unknown; ex?: unknown; own?: unknown } | null;
+  const body = (await bodyOf(req)) as {
+    w?: unknown;
+    ex?: unknown;
+    own?: unknown;
+    draft?: unknown;
+  } | null;
   const { book, own } = await bookCtxOf(ctx);
-  const words = rangeWords([{ w: body?.w, ex: body?.ex }], own);
+  const taken = body?.draft === true ? await draftOwn(own, ctx) : own;
+  if (!taken) return json({ error: "busy" }, 429);
+  const words = rangeWords([{ w: body?.w, ex: body?.ex }], taken);
   if (!words?.length) return badRequest("a word of the book is required");
   const byok = body?.own === true;
   const [x] = await fillGlosses(ctx.db, book, words, byok ? null : { userId: ctx.userId });

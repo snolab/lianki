@@ -11,6 +11,7 @@ import {
 } from "@/lib/read/reader-route";
 import { makeCards, unmakeCards, type RangeWord } from "@/lib/read/book-word-list";
 import { fillGlosses } from "@/lib/read/gloss-server";
+import { draftOwn } from "@/lib/read/live-polish-server";
 
 /**
  * POST /api/read/[id]/make-cards — 制卡: a card in the book's own list (of
@@ -20,12 +21,15 @@ import { fillGlosses } from "@/lib/read/gloss-server";
  *
  *   { words: [{ w, ex, term?, reading?, back? }] }  → { listId, terms }
  *   { undo: [term, …] }                            → { removed }  (only cards still unreviewed)
+ *
+ * With `draft: true`: words of a live doc's speech draft, which may be in no save
+ * of the book (live-polish-server.ts draftOwn). 429 over its limit.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
   if (!ctx.email) return badRequest("no email");
-  const body = (await bodyOf(req)) as { words?: unknown; undo?: unknown } | null;
+  const body = (await bodyOf(req)) as { words?: unknown; undo?: unknown; draft?: unknown } | null;
   if (body?.undo !== undefined) {
     if (!Array.isArray(body.undo) || body.undo.length > 400)
       return badRequest("terms are required");
@@ -38,7 +42,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return json({ removed });
   }
   const { book, own, langs } = await bookCtxOf(ctx);
-  const words = rangeWords(body?.words, own);
+  const taken = body?.draft === true ? await draftOwn(own, ctx) : own;
+  if (!taken) return json({ error: "busy" }, 429);
+  const words = rangeWords(body?.words, taken);
   if (!words) return badRequest("words are required");
   // Each word in its own language's list (a book that mixes languages).
   let listId: string | null = null;
