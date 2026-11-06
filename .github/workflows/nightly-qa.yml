@@ -52,6 +52,10 @@ jobs:
       # needed — wrangler runs D1/R2 locally.
       - name: qa:all
         run: bun run qa:all
+        # Firefox (qa-audio-free) refuses to start as root when $HOME is another
+        # user's: Actions sets /github/home, owned by the image's pwuser.
+        env:
+          HOME: /root
       # MV3 extension smoke test — loads the built extension into the image's
       # Chromium (new-headless, always) and asserts the content script runs.
       - name: Extension smoke test

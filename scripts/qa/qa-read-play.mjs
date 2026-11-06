@@ -212,13 +212,18 @@ for (let tries = 0; tries < 5; tries++) {
     [x, y],
   );
   if (!onList) continue;
-  await cdp.send("Input.synthesizeScrollGesture", {
-    x,
-    y,
-    yDistance: -250,
-    gestureSourceType: "touch",
-    speed: 1200,
-  });
+  // Touch points, not Input.synthesizeScrollGesture: in headless Chromium on
+  // Linux that gesture sends no touchmove and scrolls nothing, on any page
+  // (macOS scrolls), so the nightly's list never saw a finger. 250 px in ~200 ms.
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  for (let k = 1; k <= 12; k++) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x, y: Math.max(1, y - (250 * k) / 12) }],
+    });
+    await page.waitForTimeout(16);
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   if (await page.getByTestId("read-follow").isVisible()) break;
 }
 // Let the flick's momentum settle before taking where he left it.

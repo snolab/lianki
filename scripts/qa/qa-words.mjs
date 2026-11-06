@@ -1471,6 +1471,11 @@ try {
           const x0 = scroller?.scrollLeft ?? 0;
           // No snap for the probe: it would land on a detent (every a px).
           if (scroller) scroller.style.scrollSnapType = "none";
+          // The slip stays slid, as under a finger: with none down, the scrollend
+          // of this write sends it home at once (settle, native-slip-gesture.ts),
+          // and that glide's first step lands inside the frames below.
+          const held = (e) => e.stopPropagation();
+          row.addEventListener("scrollend", held, true);
           if (scroller) scroller.scrollLeft = x0 - 30;
           else row.style.transform = "translateX(30px)";
           await frames();
@@ -1481,6 +1486,7 @@ try {
             scroller.style.scrollSnapType = "";
           } else row.style.transform = "";
           await frames();
+          row.removeEventListener("scrollend", held, true);
           return { paths, slid, faceMoved: Math.round(face - rb.left) };
         }, motion);
         await shot(m, `cords-${variant}-motion-${motion}`);
