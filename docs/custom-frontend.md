@@ -199,6 +199,19 @@ Anything else under `/api` works the same way, with the same rules, but it
 is internal: it may change without notice. The reader routes need the flag
 `read.reader-v2` (or the owner), as for our own reader.
 
+**Account writes, per session** (owner's card, 2026-11-06). The live cookie
+alone couldn't hold the block: a normal page in another tab clears it while the
+frontend's tab keeps running. So opening a custom frontend also marks the session
+in D1 (`custom_live_session`, a hash of the session token), before any of its code
+runs. A marked session gets 403 on the writes above, from every tab, until a new
+sign-in. Sign-out stays open so the user can get there. Registering previews stays
+open from a normal tab. This is an interim measure, not the separate origin:
+
+- A frontend tab left open through a new sign-in has the new session's cookie, and
+  that session is not marked until it opens a frontend again.
+- Writes outside that list, such as spending credits, were never blocked.
+- It shares `localStorage` with lianki.com, including a BYOK key.
+
 **Not available:**
 
 - **Server-side session.** The dev server gets no cookie, so it renders every

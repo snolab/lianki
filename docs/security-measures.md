@@ -329,8 +329,12 @@ it; anyone else gets production and the live cookie cleared. No cookie,
 auth or gate secret is sent up. A strict CSP (scripts and connections:
 lianki.com and that tunnel only; inline scripts by nonce). The cookie is
 bound to the session and re-checked in D1 within 5 s. Under it the Worker
-refuses token minting, `/api/dev` writes and better-auth account changes.
-Allowlist and flag `my-box`; at most 3 previews of at most
+refuses token minting, `/api/dev` writes and better-auth account changes. A
+normal page clears that cookie while the frontend's tab may still be running, so
+opening one also marks the session in D1 (`custom_live_session`, a hash of the
+token), and those writes stay refused for that session until a new sign-in. This
+is interim, not a separate origin ([custom-frontend.md](custom-frontend.md),
+"Account writes, per session"). Allowlist and flag `my-box`; at most 3 previews of at most
 8 h per user, the cap in one `INSERT`.
 
 ## 9. The CLI login (`lianki auth login`)

@@ -22,7 +22,12 @@ import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
 import type { InboxDb } from "./lib/inbox/store";
 
-import { createLivePage, mayBeLive, type LiveEnv } from "./lib/live-view/page-proxy";
+import {
+  createLivePage,
+  mayBeBlockedWrite,
+  mayBeLive,
+  type LiveEnv,
+} from "./lib/live-view/page-proxy";
 import { siblingRequestRefused } from "./lib/security/same-site-guard";
 import { anchorDue, type LianDb } from "./lib/lian/anchor";
 import { boxGate, type BoxEnv } from "./lib/box-oauth/gate";
@@ -144,7 +149,8 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
 
 /** The live preview's check, behind the sibling guard and the box gate. */
 function afterBox(req: Request, env: LiveEnv, ctx: Ctx): Promise<Response> {
-  if (!mayBeLive(req.url, req.headers.get("cookie"))) return nextFetch(req, env, ctx);
+  if (!mayBeLive(req.url, req.headers.get("cookie")) && !mayBeBlockedWrite(req))
+    return nextFetch(req, env, ctx);
   // One per isolate (its pointer cache); production is per request.
   live ??= createLivePage({
     respond101: (up, headers) =>
