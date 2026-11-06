@@ -748,6 +748,38 @@ page. A voice line (stt) is **never** enough to approve anything sensitive:
 it can be misheard, overheard or played from a speaker. A typed line is no
 approval either. Ask with a card and act on the `answered` event.
 
+### The up-arrow to a question above
+
+Owner, 2026-11-06 15:32 JST: "liagent 提问滑过屏幕，如果上面有未回答的问题，我们要显示一个向上箭头按钮，点击跳到未回答提问".
+While an open ask card has scrolled off above the log's view, a round up-arrow
+(`debug-chat-ask-jump`) floats just over the bar; with several it shows their
+number. Each tap goes to the nearest above and it is gone when none is. Rules:
+`ask-above.ts`; DOM: `ask-above-dom.ts`.
+
+- **Which count.** `askState` "open" only. An answer from any device arrives as
+  the hub's `answered`, DebugEval stamps the line, and the card stops counting in
+  that render. An expiry is read at the next render or tap: no timer for it, so
+  a card past its deadline can stay counted until then, and a tap never goes to it.
+- **Above.** One IntersectionObserver rooted at the log, its region running from
+  the top edge (less `ABOVE_INSET_PX`, the fade) down past any history's end. With
+  the plain view as the region, a card jumped from below the view to above it in
+  one frame never intersects and is never reported. A card whose pills still show
+  is not above.
+- **Place.** Left of scroll-down's slot, shown or not: a jump brings that button up,
+  and a second tap on the same spot must not land on it. While it shows, the log
+  keeps `JUMP_ROW_PX` free at its bottom (at rest it grows by that, so 3 lines still
+  show), so it covers no line or pill of a newer card. Hidden under a panel, the +
+  menu and the inbox.
+- **At rest** the log is 3 lines, too short for a card, so a tap holds it open
+  (`held: "open"`, via `wireLogHold`'s `onReady`), glass and all, until a press
+  outside the chat, as a press on the history while typing does.
+- **Not in compact mode.** The log is hidden there and the compact view shows the
+  newest two open asks itself; a third and older has no arrow.
+
+Checks: `bun scripts/dev/debug-chat-ask-jump-qa.mjs --shots <dir>` (silent browsers,
+Chromium and WebKit, 390×844, light and dark); the rules in
+`unit/chat-ask-above.test.ts`.
+
 ## Compact mode: only the last message while not typing
 
 For talking to the chat by voice with less on screen (owner, 2026-11-01:

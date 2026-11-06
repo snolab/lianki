@@ -106,6 +106,15 @@ import { PolishedMark } from "./PolishedMark";
 import { LINE_SELECTABLE } from "./copy-line";
 import { type Held, logEngaged, typingLook } from "./log-engage";
 import { wireLogHold } from "./log-hold-dom";
+import {
+  JUMP_ROW_PX,
+  asksAbove,
+  jumpLabel,
+  jumpTop,
+  nearestAbove,
+  openAskIds,
+} from "./ask-above";
+import { lineIn, watchAsksAbove } from "./ask-above-dom";
 import { installSelectFence } from "./select-fence-dom";
 import {
   barInGlass,
@@ -698,6 +707,8 @@ const AVATAR_PX = 18;
 
 /** The input grows to about five lines, then scrolls inside itself. */
 const INPUT_MAX_PX = 128;
+
+const NONE_ABOVE: ReadonlySet<string> = new Set();
 
 /** The one panel over the log. */
 type Panel = "none" | "menu" | "tree" | "voiceprint";
@@ -1328,6 +1339,10 @@ export function DebugChat({
   const shown = useRef(messages.length);
   /** The log overflows (or is scrolled): its top edge fades. */
   const [fade, setFade] = useState(false);
+  /** The lines whose ask card is above the log's view (ask-above-dom.ts). */
+  const [askCardsAbove, setAskCardsAbove] = useState<ReadonlySet<string>>(NONE_ABOVE);
+  /** Sets `held` through log-hold-dom.ts, which drops it on a press outside the chat. */
+  const holdLog = useRef<((held: Held) => void) | null>(null);
   /**
    * The input has focus: the log opens to 30vh. Otherwise it shows only the
    * last 3 lines, scrolled to the end.
@@ -2085,6 +2100,45 @@ export function DebugChat({
   const engaged = logEngaged({ typing, plusMenu: attachMenu || picking, micActive, held });
   const busyRef = useRef(false);
   busyRef.current = engaged && !held;
+  // Open asks above the view (ask-above.ts). Only the shown log has a view: the
+  // compact line shows its open asks itself, and a drag's full-screen log is
+  // under the finger. An answer (from any device) arrives in `messages`, an
+  // expiry is read on the next render or tap, so neither needs a timer.
+  const openAsks = openAskIds(messages, Date.now());
+  const openAsksKey = openAsks.join("\n");
+  const askWatch = open && !tree && !compact && fullLog === "off";
+  useEffect(() => {
+    const el = log.current;
+    if (!el || !askWatch || !openAsksKey) {
+      setAskCardsAbove(NONE_ABOVE);
+      return;
+    }
+    return watchAsksAbove(el, openAsksKey.split("\n"), setAskCardsAbove);
+  }, [askWatch, openAsksKey]);
+  const asksUp = askWatch ? asksAbove(openAsks, askCardsAbove) : [];
+  /** Nothing over the bar has the place the button would take. */
+  const askJumpShown = asksUp.length > 0 && !attachMenu && !inboxOpen && panel === "none";
+  const askJumpText = jumpLabel(
+    strings?.askJump ? t.askJump : ui.askJump,
+    asksUp.length,
+  );
+  /** One tap: the nearest question above, at the log's top, with the log open to read and answer it. */
+  const jumpToAsk = () => {
+    const el = log.current;
+    const id = nearestAbove(asksAbove(openAskIds(messages, Date.now()), askCardsAbove));
+    const line = id && el && lineIn(el, id);
+    if (!id || !el || !line) return;
+    atEnd.current = false;
+    el.scrollTop = jumpTop({
+      scrollTop: el.scrollTop,
+      lineTop: line.getBoundingClientRect().top,
+      rootTop: el.getBoundingClientRect().top,
+    });
+    hold(COMPACT_SCROLL_MS);
+    if (!typing && !micActive) holdLog.current?.("open");
+    // The observer says so a frame later; a quick second tap goes on from here.
+    setAskCardsAbove((s) => new Set([...s].filter((x) => x !== id)));
+  };
   // At rest the history is click-through; a press-and-hold on it engages it
   // and selects the line under the finger (log-hold-dom.ts). Events only.
   useEffect(
@@ -2097,6 +2151,9 @@ export function DebugChat({
         chat: () => root.current,
         busy: () => busyRef.current,
         onHeld: setHeld,
+        onReady: (hold) => {
+          holdLog.current = hold;
+        },
       }),
     [],
   );
@@ -3679,7 +3736,8 @@ export function DebugChat({
             return;
           }
           // Shrunk: land on the newest lines again, now that the height settled.
-          if (!typing && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
+          // Not when held open: it grew (a jump to an ask), and he is reading there.
+          if (!typingNow && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
           onLogScroll();
         }}
         data-full={fullLog === "off" ? undefined : fullLog}
@@ -3688,12 +3746,14 @@ export function DebugChat({
             expanded: typingNow || micActive || (compactPref && expanded),
             fade,
             touch: engaged,
+            reserve: askJumpShown ? JUMP_ROW_PX : 0,
           }),
         )}
       >
       <ol
         data-testid="debug-chat-log"
         className="m-0 list-none space-y-0.5 p-0"
+        style={askJumpShown ? { paddingBottom: JUMP_ROW_PX } : undefined}
       >
         {messages.length === 0 && (
           <li className="text-gray-500">{t.hint}</li>
@@ -4020,6 +4080,43 @@ export function DebugChat({
               e.currentTarget.value = "";
             }}
           />
+        )}
+        {askJumpShown && (
+          // Left of the scroll-down button's place, whether or not it shows: a
+          // jump brings that button up, and a second tap here must not land on it.
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end"
+            style={{ paddingInlineEnd: 32 }}
+          >
+            <button
+              type="button"
+              data-testid="debug-chat-ask-jump"
+              data-count={asksUp.length}
+              // Keeps the input's focus, so the keyboard and the log stay.
+              onPointerDown={(e) => e.preventDefault()}
+              aria-label={askJumpText}
+              title={askJumpText}
+              onClick={jumpToAsk}
+              style={{
+                background: "oklch(0.5 0.17 255)",
+                color: "oklch(0.98 0 0)",
+                height: 32,
+                minWidth: 40,
+                padding: "0 10px",
+                gap: 4,
+                fontSize: 13,
+                fontWeight: 600,
+                lineHeight: 1,
+                boxShadow: "0 1px 4px oklch(0 0 0 / 0.3)",
+              }}
+              className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full"
+            >
+              {asksUp.length > 1 && <span aria-hidden>{asksUp.length}</span>}
+              <span aria-hidden style={{ display: "inline-flex", fontSize: 16 }}>
+                <Icon name="arrowUp" />
+              </span>
+            </button>
+          </div>
         )}
         {open && scrolledUp && (
           // The row stays click-through; only the button takes taps.

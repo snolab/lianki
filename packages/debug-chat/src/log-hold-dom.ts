@@ -38,6 +38,8 @@ export function wireLogHold(o: {
   busy: () => boolean;
   /** `held` changed. */
   onHeld: (held: Held) => void;
+  /** Gets the way to set `held` from outside, so a press outside drops that too. */
+  onReady?: (hold: (held: Held) => void) => void;
 }): () => void {
   if (typeof window === "undefined" || typeof document === "undefined") return () => {};
   const win = window;
@@ -53,6 +55,7 @@ export function wireLogHold(o: {
     held = v;
     o.onHeld(v);
   };
+  o.onReady?.(setHeld);
   /** The press a hold may come of: where and which pointer. */
   let press: { id: number; x: number; y: number } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
