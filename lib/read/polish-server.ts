@@ -2,7 +2,7 @@
 // model per chunk, its real cost settled through the one charge seam
 // (chargeAi), and a per-user limit. Nothing about the text is logged.
 import { PARTNER_AI_MODEL, PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { routeLimit } from "@/lib/security/route-guard";
 import { isWorkersAiConfigured } from "@/lib/workers-ai";
 import { chargeAi, workersAiComplete, type Complete } from "./gloss-server";
 import { checkPolish, polishMessages, type PolishChunk } from "./polish";
@@ -27,7 +27,7 @@ export async function polishChunksAi(
   if (chunks.length > POLISH_MAX_CHUNKS) return { ok: false, error: "too-long" };
   const complete = ai.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
   if (!complete) return { ok: false, error: "not-configured" };
-  if (!checkRateLimit(`read-polish:${ai.userId}`, POLISH_LIMIT).allowed)
+  if (!(await routeLimit(`read-polish:${ai.userId}`, POLISH_LIMIT)).allowed)
     return { ok: false, error: "busy" };
   const polished: (string[] | null)[] = chunks.map(() => null);
   let usd = 0;

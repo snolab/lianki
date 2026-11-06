@@ -7,7 +7,8 @@ import {
 } from "@/lib/workers-ai";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import { checkRateLimit, personKey } from "@/lib/rateLimit";
+import { routeLimit } from "@/lib/security/route-guard";
+import { accountKey } from "@/lib/security/throttle";
 import { logSanitizedError } from "@/lib/safeError";
 
 const RATE_LIMIT_WINDOW_MS = 10 * 60_000;
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 
-    const rateLimit = checkRateLimit(personKey("ai-new-word", email), {
+    const rateLimit = await routeLimit(await accountKey("ai-new-word", email), {
       windowMs: RATE_LIMIT_WINDOW_MS,
       max: RATE_LIMIT_MAX_REQUESTS,
     });

@@ -293,7 +293,7 @@ nothing but the chat.
 | `scripts/qa/qa-voice-mode.mjs`             | end to end, desktop and phone, silent: text fixtures to the taps, fake mic, muted |
 
 ```bash
-QA_BASE=http://localhost:<port> QA_EMAIL=<an OWNER_EMAILS address> \
+QA_BASE=http://localhost:<port> QA_EMAIL=<an owner in site_role> \
   bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-voice-mode.mjs
 ```
 

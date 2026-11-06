@@ -28,7 +28,7 @@ with no deploy and no secret change.
   arrives past the window is not acted on — it reads as all off
   (`flags.read-stale`).
 - **Owner only.** The page and `/api/dev/flags` answer 404 to anyone but
-  `OWNER_EMAILS` (the admin gate, [security-measures.md](security-measures.md)
+  an owner in `site_role` (the admin gate, [security-measures.md](security-measures.md)
   §1; `unit/security.test.ts` enforces it), and sit under Cloudflare Access's
   `/dev` and `/api/dev` paths once that is applied.
 - **CSRF**: `POST /api/dev/flags` must be a same-origin JSON `fetch` —

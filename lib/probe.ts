@@ -90,6 +90,9 @@ export function classifyProbeError(err: unknown): ProbeVerdict {
   return { reachable: true, reason: "network" };
 }
 
+/** Redirect hops the probe follows, each one checked like the first url. */
+export const MAX_PROBE_REDIRECTS = 5;
+
 /** Narrower than `typeof fetch` so a test can pass a plain function. */
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -116,19 +119,44 @@ export async function probeReachability(
     // GET, not HEAD: enough hosts answer HEAD with a 4xx or drop it outright
     // that a HEAD-only probe reports healthy pages as odd. The body is never
     // read, so the response is abandoned after the headers arrive.
-    const res = await doFetch(url.toString(), {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { "user-agent": "lianki-reachability-probe" },
-    });
+    // Redirects are followed by hand, each hop checked like the first: a
+    // public url must not bounce the probe onto a private host.
+    let at = url;
+    let res: Response;
+    for (let hop = 0; ; hop++) {
+      res = await doFetch(at.toString(), {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: { "user-agent": "lianki-reachability-probe" },
+      });
+      const loc = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+      if (!loc) break;
+      try {
+        await res.body?.cancel();
+      } catch {}
+      let next: URL;
+      try {
+        next = new URL(loc, at);
+      } catch {
+        return { reachable: true, status: res.status, reason: "ok" };
+      }
+      // Somewhere we won't go: the site answered, which is all we ask.
+      if (
+        hop >= MAX_PROBE_REDIRECTS ||
+        (next.protocol !== "http:" && next.protocol !== "https:") ||
+        isProbablePrivate(next.hostname)
+      )
+        return { reachable: true, status: res.status, finalUrl: at.toString(), reason: "ok" };
+      at = next;
+    }
     // Any HTTP status means something answered. 403 from a bot wall, 404 on a
     // page that still renders content — all reachable. Status is reported for
     // /data to show, never used to judge.
     return {
       reachable: true,
       status: res.status,
-      finalUrl: res.url || url.toString(),
+      finalUrl: res.url || at.toString(),
       reason: "ok",
     };
   } catch (err) {

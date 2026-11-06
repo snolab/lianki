@@ -194,7 +194,7 @@ export async function creditTopup(
  * concurrent extensions both count (a JS read-modify-write would lose one).
  * Same ISO format as `Date.toISOString()`, which the rest of the code writes.
  */
-const EXTEND_PRO_SQL =
+export const EXTEND_PRO_SQL =
   "UPDATE user SET proEndsAt = strftime('%Y-%m-%dT%H:%M:%fZ', CASE WHEN julianday(proEndsAt) > julianday(?1) THEN proEndsAt ELSE ?1 END, '+' || ?2 || ' days'), updatedAt = ?1 WHERE id = ?3";
 
 /** The reverse, never ending before now. */

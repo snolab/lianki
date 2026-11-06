@@ -30,7 +30,9 @@ export default function DeleteButton({ url, title }: DeleteButtonProps) {
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`/api/fsrs/delete?url=${encodeURIComponent(url)}`);
+      const response = await fetch(`/api/fsrs/delete?url=${encodeURIComponent(url)}`, {
+        method: "POST",
+      });
 
       if (response.ok) {
         window.location.reload();

@@ -84,7 +84,7 @@ export default {
   },
 };
 
-type Env = { DB?: SessionDb; OWNER_EMAILS?: string } & Omit<PartnerEnv, "DB" | "OWNER_EMAILS">;
+type Env = { DB?: SessionDb } & Omit<PartnerEnv, "DB">;
 
 /** At most 60 checks a minute per isolate, whoever asks. */
 const allow = rateLimiter(60, 60_000);
@@ -101,7 +101,7 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
    */
   async live(user: unknown, tag: unknown): Promise<"live" | "gone" | "busy"> {
     if (!allow()) return "busy";
-    const ok = await sessionLive(this.env.DB, user, tag, { ownerEmails: this.env.OWNER_EMAILS });
+    const ok = await sessionLive(this.env.DB, user, tag);
     return ok ? "live" : "gone";
   }
 
@@ -136,6 +136,6 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
    */
   async inbox(req: unknown): Promise<InboxAnswer> {
     if (!allowInbox()) return { ok: false, error: "busy" };
-    return inboxOp(this.env.DB as unknown as InboxDb, req, { ownerEmails: this.env.OWNER_EMAILS });
+    return inboxOp(this.env.DB as unknown as InboxDb, req);
   }
 }

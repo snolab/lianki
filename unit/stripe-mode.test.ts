@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1 } from "@/lib/d1/testDb";
+import { clearOwnerCache, setOwnerSnapshot } from "@/lib/owner";
 import { testSchema } from "@/lib/d1/testSchema";
 import {
   buyPassWithCredits,
@@ -45,13 +46,14 @@ const WH = "whsec_unit";
 const saved = { ...process.env };
 const realFetch = globalThis.fetch;
 afterEach(() => {
+  clearOwnerCache();
   process.env = { ...saved };
   globalThis.fetch = realFetch;
 });
 
 /** The key on the Worker; the live FLAG is passed to the functions that start a payment. */
 function env(mode: "test" | "live" | "none", key?: string) {
-  process.env.OWNER_EMAILS = OWNER;
+  setOwnerSnapshot([OWNER]);
   if (mode === "none") {
     delete process.env.STRIPE_SECRET_KEY;
     delete process.env.STRIPE_WEBHOOK_SECRET;
@@ -151,12 +153,15 @@ describe("stripeMode", () => {
   });
 
   test("test mode is the owner's alone; live is everyone's", () => {
-    const t = { STRIPE_SECRET_KEY: "sk_test_a", STRIPE_WEBHOOK_SECRET: "w", OWNER_EMAILS: OWNER };
+    setOwnerSnapshot([OWNER]);
+    const t = { STRIPE_SECRET_KEY: "sk_test_a", STRIPE_WEBHOOK_SECRET: "w" };
     expect(stripeOpenTo(OWNER, t)).toBe(true);
     expect(stripeOpenTo(" Owner@X.com ", t)).toBe(true);
     expect(stripeOpenTo("u@x.com", t)).toBe(false);
     expect(stripeOpenTo(null, t)).toBe(false);
-    expect(stripeOpenTo(OWNER, { ...t, OWNER_EMAILS: "" })).toBe(false);
+    clearOwnerCache();
+    expect(stripeOpenTo(OWNER, t)).toBe(false); // owners unknown: nobody
+    setOwnerSnapshot([OWNER]);
     const live = { ...t, STRIPE_SECRET_KEY: "sk_live_a" };
     expect(stripeOpenTo("u@x.com", live, LIVE)).toBe(true);
     expect(stripeOpenTo(null, live, LIVE)).toBe(true);
