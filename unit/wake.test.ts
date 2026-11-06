@@ -342,6 +342,7 @@ function gated(
   let woke = 0;
   let answer = "what's next";
   const mic = createMic({
+    guard: { minFrameRms: 0 }, // the fake audio is zeros; unit/stt-guard.test.ts has the gate
     load: async (e) => {
       ev = e;
       return { start() {}, pause() {}, flush() {}, destroy() {} };
@@ -546,6 +547,7 @@ describe("the mic session's wake mode", () => {
       null;
     let loads = 0;
     const deps: MicDeps = {
+      guard: { minFrameRms: 0 },
       getStream: async () => ({ id: "s", getTracks: () => [{ readyState: "live", stop() {} }] }),
       load: async (ev) => {
         events = ev;
@@ -626,6 +628,7 @@ describe("the mic session's wake mode", () => {
     const texts: string[] = [];
     const logs: Record<string, unknown>[] = [];
     const s = createMicSession({
+      guard: { minFrameRms: 0 },
       getStream: async () => ({ id: "s", getTracks: () => [{ readyState: "live", stop() {} }] }),
       load: async (ev) => {
         events = ev;
