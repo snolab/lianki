@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { docIdOfPath, looksTruncated, startGdocStream, stripImages } from "../src/gdoc-stream";
 
-const ID = "1sjI70BwObP8uDjzenBLOE6H9YcNXa5auMhIQ1eE_WwA";
+const ID = "fake_doc_id_for_tests_0123456789abcdefABCD";
 
 describe("docIdOfPath", () => {
   it("finds the doc on an editor path, with or without an account", () => {
