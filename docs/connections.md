@@ -143,6 +143,20 @@ Limits: it runs only while the doc is open in a tab with the userscript, so the
 writer's side is desktop only (the reader can be any device). Word marks in the
 tail are learning or not recognised; "new" needs the save.
 
+## Polish (a live doc as a speech draft)
+
+Owner, 2026-11-06: fillers out, professional speech draft level, incrementally. `POST /api/read/[id]/polish-live {text, before?}`
+(`lib/read/live-polish.ts`): a few finished sentences at a time, the draft before
+them as context only, never polished again. It rewrites, so unlike the transcript
+polish it has no word check, only a size check. It stores nothing: the raw text
+stays the book's, and nothing goes back to the doc.
+
+Model: DeepSeek V4.1 Flash on Workers AI, the owner's choice (`READ_POLISH_MODEL`
+overrides), $0.30 / M in, $1.20 / M out on 2026-11-06. Estimate, not measured: about
+$0.03 an hour of text (18,000 characters an hour, 36 calls). Paid by the Cloudflare account: `chargeAi`
+only logs today, no user credits are taken. Flag `read.live-polish`, off: the
+owner only.
+
 ## Tokens at rest
 
 | what                  | where                                                                      |
