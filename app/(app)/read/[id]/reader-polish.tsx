@@ -3,40 +3,70 @@
 // The transcript polish in the reader (docs/books-plan.md, "Import
 // pipeline", step 3): the offer when the import's detector found a raw
 // speech-to-text transcript (BookMeta.shape.raw), never applied without his
-// tap; and the raw text kept beside a polished one, shown on request.
+// tap, and when it may show (lib/read/polish-offer.ts); the same action in the
+// contents sheet; and the raw text kept beside a polished one, shown on request.
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import type { BookMeta } from "@/lib/read/book";
+import {
+  carryDeviceSkip,
+  offerShown,
+  polishActionShown,
+  readOfferOn,
+  readSkipped,
+  writeOfferOn,
+  writeSkip,
+  type OfferState,
+} from "@/lib/read/polish-offer";
 
-/** "No thanks" for this text on this device (a per-viewer convenience, docs/ui-state.md). */
-const skipKey = (id: string) => `lk:read-polish-skip:${id}`;
-
-function skipped(id: string): boolean {
-  try {
-    return localStorage.getItem(skipKey(id)) === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function PolishOffer({ id, book }: { id: string; book?: BookMeta | null }) {
-  const t = useIntlayer("read-polish");
-  const [hidden, setHidden] = useState(() => typeof window !== "undefined" && skipped(id));
+/** Run the polish; on success the text changed, so the reader starts again on it. */
+function usePolishRun(id: string) {
   const [state, setState] = useState<"idle" | "working" | "failed">("idle");
-  if (!book?.shape?.raw || book.polished || hidden) return null;
-  const run = async () => {
+  const run = useCallback(async () => {
     setState("working");
     try {
       const r = await fetch(`/api/read/${id}/polish`, { method: "POST" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      // The text changed: the reader starts again on the polished one.
       window.location.reload();
     } catch (err) {
       console.error("read: polish failed", err);
       setState("failed");
     }
-  };
+  }, [id]);
+  return { state, run };
+}
+
+export function PolishOffer({
+  id,
+  book,
+  stream,
+}: {
+  id: string;
+  book?: BookMeta | null;
+  stream: OfferState["stream"];
+}) {
+  const t = useIntlayer("read-polish");
+  const { state, run } = usePolishRun(id);
+  const [offerOn, setOfferOn] = useState(readOfferOn);
+  const [skipped, setSkipped] = useState(() => readSkipped(id));
+  // His answer from another device or tab lands here while the page is open.
+  useEffect(() => {
+    carryDeviceSkip(id);
+    const read = () => {
+      setOfferOn(readOfferOn());
+      setSkipped(readSkipped(id));
+    };
+    read();
+    window.addEventListener(PREF_APPLIED_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(PREF_APPLIED_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, [id]);
+  if (!offerShown({ book, stream, offerOn, skipped })) return null;
   return (
     <div
       data-testid="read-polish-offer"
@@ -55,21 +85,66 @@ export function PolishOffer({ id, book }: { id: string; book?: BookMeta | null }
         </button>
         <button
           type="button"
+          data-testid="read-polish-skip"
           disabled={state === "working"}
           onClick={() => {
-            try {
-              localStorage.setItem(skipKey(id), "1");
-            } catch {
-              // a private window: hidden for this visit only
-            }
-            setHidden(true);
+            writeSkip(id);
+            setSkipped(true);
           }}
           className="rounded-lg px-3 py-1.5 opacity-80"
         >
           {t.skip}
         </button>
+        <button
+          type="button"
+          data-testid="read-polish-never"
+          disabled={state === "working"}
+          onClick={() => {
+            writeOfferOn(false);
+            setOfferOn(false);
+          }}
+          className="rounded-lg px-3 py-1.5 opacity-80"
+        >
+          {t.never}
+        </button>
       </div>
       <p className="mt-2 text-xs opacity-70">{state === "failed" ? t.failed : t.note}</p>
+    </div>
+  );
+}
+
+/** A tidied transcript with parts left as they were: said, never silent. */
+export function PolishCoverage({ book }: { book?: BookMeta | null }) {
+  const t = useIntlayer("read-polish");
+  const p = book?.polished;
+  if (!p || p.kept >= p.chunks) return null;
+  return (
+    <p
+      data-testid="read-polish-coverage"
+      className="mx-auto mb-4 w-full max-w-[38em] px-5 text-xs opacity-70"
+    >
+      {t.partial} ({p.kept}/{p.chunks})
+    </p>
+  );
+}
+
+/** The action itself, in the contents sheet: there whether or not the offer is. */
+export function PolishAction({ id, book }: { id: string; book?: BookMeta | null }) {
+  const t = useIntlayer("read-polish");
+  const { state, run } = usePolishRun(id);
+  if (!polishActionShown(book)) return null;
+  return (
+    <div className="mb-3" data-testid="read-polish-action">
+      <button
+        type="button"
+        data-testid="read-polish-menu"
+        disabled={state === "working"}
+        onClick={run}
+        className="text-sm underline opacity-80 disabled:opacity-60"
+      >
+        {state === "working" ? t.working : t.polish}
+      </button>
+      <p className="mt-1 text-xs opacity-70">{state === "failed" ? t.failed : t.note}</p>
     </div>
   );
 }

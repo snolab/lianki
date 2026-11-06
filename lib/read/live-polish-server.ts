@@ -7,12 +7,19 @@ import { PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
 import { routeLimit } from "@/lib/security/route-guard";
 import { isWorkersAiConfigured } from "@/lib/workers-ai";
 import { chargeAi, workersAiComplete, type Complete } from "./gloss-server";
-import { LIVE_POLISH_MODEL, checkLivePolish, isDraftWord, livePolishMessages } from "./live-polish";
+import {
+  LIVE_POLISH_MODEL,
+  isDraftWord,
+  livePolishMessages,
+  parseLivePolish,
+  type LivePolished,
+} from "./live-polish";
 
 /** Calls per user per window: a live talk makes a few a minute. */
 const LIMIT = { windowMs: 10 * 60_000, max: 120 };
-/** The answer's ceiling: about the same text back. */
-const maxTokens = (chars: number) => Math.min(8000, 300 + chars * 2);
+/** The answer's ceiling: about the same text back, in its tags. */
+const maxTokens = (chars: number, passages: number) =>
+  Math.min(8000, 300 + chars * 2 + passages * 20);
 
 /** Tapping words of the draft: a card or a meaning at a time, by hand. */
 const DRAFT_WORD_LIMIT = { windowMs: 10 * 60_000, max: 120 };
@@ -38,11 +45,11 @@ export async function draftOwn(
 }
 
 export type LivePolish =
-  | { ok: true; text: string }
+  | { ok: true; passages: LivePolished[] }
   | { ok: false; error: "not-configured" | "busy" | "model-failed" };
 
 export async function livePolishAi(
-  text: string,
+  passages: readonly string[],
   before: string,
   ai: { userId: string; complete?: Complete; model?: string },
 ): Promise<LivePolish> {
@@ -50,18 +57,21 @@ export async function livePolishAi(
   if (!complete) return { ok: false, error: "not-configured" };
   if (!(await routeLimit(`read-live-polish:${ai.userId}`, LIMIT)).allowed)
     return { ok: false, error: "busy" };
+  const chars = passages.reduce((n, p) => n + p.length, 0);
   try {
     const r = await complete({
       model: ai.model || process.env.READ_POLISH_MODEL || LIVE_POLISH_MODEL,
-      messages: livePolishMessages(text, before),
-      max_tokens: maxTokens(text.length),
+      messages: livePolishMessages(passages, before),
+      max_tokens: maxTokens(chars, passages.length),
       temperature: 0.2,
       reasoning_effort: PARTNER_AI_REASONING,
     });
     const usd = costUsd(r.usage?.prompt_tokens ?? 0, r.usage?.completion_tokens ?? 0);
-    if (usd > 0) await chargeAi(ai.userId, { usd, what: "read.live-polish", chars: text.length });
-    const out = checkLivePolish(text, r.choices?.[0]?.message?.content);
-    return out === null ? { ok: false, error: "model-failed" } : { ok: true, text: out };
+    if (usd > 0) await chargeAi(ai.userId, { usd, what: "read.live-polish", chars });
+    const content = r.choices?.[0]?.message?.content;
+    // Nothing back at all is a failed call, not a text of nothing but fillers.
+    if (!content?.includes("<p ")) return { ok: false, error: "model-failed" };
+    return { ok: true, passages: parseLivePolish(passages, content) };
   } catch (err) {
     // The error only: never the text.
     console.error("read.live-polish: model failed", String(err).slice(0, 200));

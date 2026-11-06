@@ -98,8 +98,14 @@ import { useTextSizes } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
-import { PolishOffer, RawTranscript } from "./reader-polish";
-import { LiveTail, StreamBadge, settleAtEnd, useBookStream } from "./reader-stream";
+import { PolishAction, PolishCoverage, PolishOffer, RawTranscript } from "./reader-polish";
+import {
+  LiveTail,
+  StreamBadge,
+  settleAtEnd,
+  useBookStream,
+  type StreamState,
+} from "./reader-stream";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { useItemWords, type ItemPlan } from "./use-item-words";
@@ -290,6 +296,7 @@ export function ReaderV2({
         material={material}
         signedIn={isLoggedIn}
         liveTail={streaming && isLoggedIn ? stream.tail : null}
+        streamState={streaming && isLoggedIn ? stream.state : null}
       />
     </>
   );
@@ -300,12 +307,15 @@ function Reader({
   material,
   signedIn,
   liveTail = null,
+  streamState = null,
 }: {
   id: string;
   material: Material;
   signedIn: boolean;
   /** A live Google Doc's text not saved into the book yet (null: not following one). */
   liveTail?: string | null;
+  /** That stream's socket (null: not following one): no polish offer while there is one. */
+  streamState?: StreamState | null;
 }) {
   const t = useIntlayer("read-reader");
   const tp = useIntlayer("read-player");
@@ -2016,7 +2026,12 @@ function Reader({
             {t.loading}
           </p>
         )}
-        {signedIn && material.readerV2 && loaded && <PolishOffer id={id} book={book} />}
+        {signedIn && material.readerV2 && loaded && (
+          <>
+            <PolishOffer id={id} book={book} stream={streamState} />
+            <PolishCoverage book={book} />
+          </>
+        )}
         <BookList
           blocks={blocks}
           lines={lines}
@@ -2193,6 +2208,7 @@ function Reader({
 
         {sheet === "toc" && (
           <Sheet title={t.contents.value} onClose={closeSheet} closeLabel={t.close.value}>
+            {signedIn && material.readerV2 && <PolishAction id={id} book={book} />}
             {material.words && <BookScan id={id} words={material.words} flat />}
             <BookSourceNote book={book} className="mt-3" />
             {signedIn && material.readerV2 && <RawTranscript id={id} book={book} />}

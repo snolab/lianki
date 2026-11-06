@@ -140,19 +140,30 @@ Flag `read.gdoc-stream` (off: the owner only).
    60 per 10 min was used up within minutes); a hidden tab does not follow; its ×
    stops following for that visit.
 
+The raw-transcript offer (`lib/read/polish-offer.ts`) never shows on this page
+(owner, 2026-11-06: "when we are still in meeting"). The socket's states are the
+reader's, not the writer's, and the writer sends no end, so "ended" means the
+doc was opened without `?streamingFrom`; a socket gone offline has not ended.
+The tidy action stays in the contents sheet; the next save drops a polish (3).
+
 Limits: it runs only while the doc is open in a tab with the userscript, so the
 writer's side is desktop only (the reader can be any device). Word marks in the
 tail are learning or not recognised; "new" needs the save.
 
 ## Polish (a live doc as a speech draft)
 
-Owner, 2026-11-06: fillers out, professional speech draft level, incrementally. `POST /api/read/[id]/polish-live {text, before?}`
-(`lib/read/live-polish.ts`): a few finished sentences at a time, the draft before
-them as context only, never polished again. It rewrites, so unlike the transcript
-polish it has no word check, only a size check. It stores nothing: the raw text
-stays the book's, and nothing goes back to the doc. The polish may write a word
-no save of the book holds, so `gloss` and `make-cards` take `draft: true`: for who
-may polish, one word at a time, 120 per 10 minutes (`draftOwn`).
+Owner, 2026-11-06: fillers out, professional speech draft level, incrementally,
+and (same day) never shorter by leaving things out: the first version polished only
+the last 1500 characters and the new text, so the draft held 2,361 of 59,194
+characters. Now the whole doc, in order. `POST /api/read/[id]/polish-live {passages,
+before?}` (`lib/read/live-polish.ts`) takes whole sentences grouped into passages,
+because a doc's paragraphs can run to 17,000 characters, and answers one edit per
+passage by its number. A passage with no answer, cut off or grown by half comes back
+null, and one under half its length comes back `thin`: the reader flags both and keeps
+the original. It rewrites, so unlike the transcript polish it has no word check. It
+stores nothing: the raw text stays the book's, and nothing goes back to the doc. The
+polish may write a word no save of the book holds, so `gloss` and `make-cards` take
+`draft: true`: for who may polish, one word at a time, 120 per 10 minutes (`draftOwn`).
 
 Model: DeepSeek V4.1 Flash on Workers AI, the owner's choice (`READ_POLISH_MODEL`
 overrides), $0.30 / M in, $1.20 / M out on 2026-11-06. Estimate, not measured: about
