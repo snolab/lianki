@@ -20,6 +20,7 @@ import { GRADE_HOLD_MS } from "@/lib/read/reader-server";
 import type { GradeReceipt } from "@/lib/read/reader-adapter";
 import {
   batchOf,
+  commitPending,
   gradeIntervals,
   handlePlan,
   intervalLabel,
@@ -62,19 +63,6 @@ const newId = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const localDay = () => new Date().toLocaleDateString("en-CA");
-
-/** This word's batch is held or on its way: a preview already committed, not to commit twice. */
-export const commitPending = (entries: readonly CommitEntry[], w: string | undefined) =>
-  !!w &&
-  entries.some(
-    (e) =>
-      e.kind === "batch" &&
-      (e.state === "held" || e.state === "sending") &&
-      e.flash.words.includes(w),
-  );
-type CommitEntry =
-  | { kind: "batch"; state: "held" | "sending" | "sent" | "undone"; flash: { words: string[] } }
-  | { kind: "para" };
 
 const post = (url: string, body: unknown, keepalive = false) =>
   fetch(url, {

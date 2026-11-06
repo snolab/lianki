@@ -20,6 +20,7 @@ import { formatInterval, previewInterval } from "@/lib/words/schedule";
 import { gradeSentence } from "@/lib/read/sentence-cards";
 import {
   batchOf,
+  commitPending,
   gradeIntervals,
   intervalLabel,
   handlePlan,
@@ -30,7 +31,6 @@ import {
   type WordProbe,
 } from "@/lib/read/batch-grade";
 import { gradeBatch, probeBatch, undoBatch, type BatchCtx } from "@/lib/read/batch-grade-server";
-import { commitPending } from "@/app/(app)/read/[id]/use-card-grade";
 
 const NOW = Date.parse("2026-11-05T03:00:00Z");
 const probe = (o: Partial<WordProbe>): WordProbe => ({

@@ -178,6 +178,19 @@ export function handlePlan(
   };
 }
 
+/** This word's batch is held or on its way: a preview already committed, not to commit twice. */
+export const commitPending = (
+  entries: readonly { kind: string; state?: string; flash: { words: string[] } }[],
+  w: string | undefined,
+) =>
+  !!w &&
+  entries.some(
+    (e) =>
+      e.kind === "batch" &&
+      (e.state === "held" || e.state === "sending") &&
+      e.flash.words.includes(w),
+  );
+
 /** What one grade of the plan writes, and whether the range's word review opens after it. */
 export function batchOf(
   plan: Extract<HandlePlan, { mode: "grade" }>,
