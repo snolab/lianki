@@ -168,6 +168,10 @@ stores nothing: the raw text stays the book's, and nothing goes back to the doc.
 polish may write a word no save of the book holds, so `gloss` and `make-cards` take
 `draft: true`: for who may polish, one word at a time, 120 per 10 minutes (`draftOwn`).
 
+Where: the second choice of 整理 in the reader's contents sheet
+(`reader-draft.tsx`, over the book, tab memory only, so not saved). Its words take
+the live tail's tap, combo and slider (`draft: true`).
+
 Model: DeepSeek V4.1 Flash on Workers AI, the owner's choice (`READ_POLISH_MODEL`
 overrides), $0.30 / M in, $1.20 / M out on 2026-11-06. Estimate, not measured: about
 $0.03 an hour of text (18,000 characters an hour, 36 calls). Paid by the Cloudflare account: `chargeAi`

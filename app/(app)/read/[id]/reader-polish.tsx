@@ -12,6 +12,7 @@ import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import type { BookMeta } from "@/lib/read/book";
 import {
   carryDeviceSkip,
+  draftChoiceShown,
   offerShown,
   polishActionShown,
   readOfferOn,
@@ -128,23 +129,60 @@ export function PolishCoverage({ book }: { book?: BookMeta | null }) {
   );
 }
 
-/** The action itself, in the contents sheet: there whether or not the offer is. */
-export function PolishAction({ id, book }: { id: string; book?: BookMeta | null }) {
+/**
+ * 整理, in the contents sheet (owner's card, 2026-11-06): one entry, two choices
+ * under their own rules. Punctuation only never changes a word and is saved
+ * (lib/read/polish.ts); the speech draft rewrites and is not saved
+ * (lib/read/live-polish.ts). Each says which.
+ */
+export function TidyEntry({
+  id,
+  book,
+  draftAllowed,
+  onDraft,
+}: {
+  id: string;
+  book?: BookMeta | null;
+  draftAllowed: boolean;
+  onDraft: () => void;
+}) {
   const t = useIntlayer("read-polish");
   const { state, run } = usePolishRun(id);
-  if (!polishActionShown(book)) return null;
+  const punctuate = polishActionShown(book);
+  const draft = draftChoiceShown(book, draftAllowed);
+  if (!punctuate && !draft) return null;
   return (
     <div className="mb-3" data-testid="read-polish-action">
-      <button
-        type="button"
-        data-testid="read-polish-menu"
-        disabled={state === "working"}
-        onClick={run}
-        className="text-sm underline opacity-80 disabled:opacity-60"
-      >
-        {state === "working" ? t.working : t.polish}
-      </button>
-      <p className="mt-1 text-xs opacity-70">{state === "failed" ? t.failed : t.note}</p>
+      <p className="text-sm font-medium">{t.tidyTitle}</p>
+      {punctuate && (
+        <div className="mt-1.5">
+          <button
+            type="button"
+            data-testid="read-polish-menu"
+            disabled={state === "working"}
+            onClick={run}
+            className="text-sm underline opacity-80 disabled:opacity-60"
+          >
+            {state === "working" ? t.working : t.punctuate}
+          </button>
+          <p className="mt-1 text-xs opacity-70">
+            {state === "failed" ? t.failed : t.note} {state !== "failed" && t.punctuateSaved}
+          </p>
+        </div>
+      )}
+      {draft && (
+        <div className="mt-2">
+          <button
+            type="button"
+            data-testid="read-draft-open"
+            onClick={onDraft}
+            className="text-sm underline opacity-80"
+          >
+            {t.draft}
+          </button>
+          <p className="mt-1 text-xs opacity-70">{t.draftNote}</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -70,3 +70,111 @@ export function parseLivePolish(
 
 /** A word of the draft in no save of the book: one word, never a phrase or a sentence. */
 export const isDraftWord = (w: string) => w.length <= 64 && !/\s/u.test(w);
+
+/** A passage closes at this many characters of whole sentences, and never runs past the most. */
+const PASSAGE_MIN_CHARS = 300;
+const PASSAGE_MAX_CHARS = 1000;
+const SENTENCE_END = /\p{Sentence_Terminal}["'”’」』)）]*\s*/gu;
+
+/**
+ * A paragraph cut into passages of whole sentences (a doc's paragraph can run to
+ * 17,000 characters). Greedy from the start, so more text at the end never moves
+ * an earlier passage; the last one stays `open` until a sentence closes it.
+ */
+export function passagesOf(line: string): { raw: string; open: boolean }[] {
+  const out: { raw: string; open: boolean }[] = [];
+  let start = 0;
+  const close = (end: number) => {
+    out.push({ raw: line.slice(start, end), open: false });
+    start = end;
+  };
+  for (const m of line.matchAll(SENTENCE_END)) {
+    const end = m.index + m[0].length;
+    while (end - start > PASSAGE_MAX_CHARS) close(start + PASSAGE_MAX_CHARS);
+    if (end - start >= PASSAGE_MIN_CHARS) close(end);
+  }
+  while (line.length - start > PASSAGE_MAX_CHARS) close(start + PASSAGE_MAX_CHARS);
+  if (line.slice(start).trim()) out.push({ raw: line.slice(start), open: true });
+  return out.filter((p) => p.raw.trim());
+}
+
+export type DraftSlot = {
+  raw: string;
+  /** Still being written: asked for only once the text rests. */
+  open: boolean;
+  state: "wait" | "busy" | "done" | "none" | "fail";
+  text?: string;
+  thin?: boolean;
+  tries: number;
+  /** Skipped among others: asked once more on its own before it counts as having no counterpart. */
+  solo?: boolean;
+};
+
+/**
+ * The draft's slots for the text, position by position: only a passage whose
+ * text changed starts over. `growing`: the text's end is still being written.
+ */
+export function draftSlots(
+  prev: readonly DraftSlot[],
+  lines: readonly string[],
+  growing: boolean,
+): DraftSlot[] {
+  const want = lines.flatMap((l, i) =>
+    passagesOf(l).map((p) => ({ ...p, open: p.open && growing && i === lines.length - 1 })),
+  );
+  return want.map((w, i) =>
+    prev[i]?.raw === w.raw
+      ? { ...prev[i], open: w.open }
+      : { raw: w.raw, open: w.open, state: "wait", tries: 0 },
+  );
+}
+
+/** The next passages to ask for, in order: what fits one call, ending at anything not ready. */
+export function nextDraftBatch(
+  slots: readonly DraftSlot[],
+  resting: boolean,
+  maxChars = 1200,
+): number[] {
+  const ready = (x: DraftSlot) => x.state === "wait" && (!x.open || resting);
+  const first = slots.findIndex(ready);
+  if (first < 0) return [];
+  const take = [first];
+  if (slots[first].solo) return take;
+  let chars = slots[first].raw.length;
+  for (let i = first + 1; i < slots.length && take.length < LIVE_POLISH_MAX_PASSAGES; i++) {
+    const x = slots[i];
+    if (!ready(x) || x.solo || chars + x.raw.length > maxChars) break;
+    take.push(i);
+    chars += x.raw.length;
+  }
+  return take;
+}
+
+/**
+ * A call's answer on its slot. A passage skipped among others goes back to be
+ * asked alone; only then does it count as having no counterpart.
+ */
+export function settleSlot(x: DraftSlot, answer: LivePolished, alone: boolean): DraftSlot {
+  if (answer) return { ...x, state: "done", text: answer.text, thin: answer.thin };
+  return alone ? { ...x, state: "none" } : { ...x, state: "wait", solo: true };
+}
+
+/** A failed call on its slot: tried a few times, then flagged with the original shown. */
+export function failSlot(x: DraftSlot, count: boolean): DraftSlot {
+  const tries = x.tries + (count ? 1 : 0);
+  return { ...x, tries, state: tries >= 3 ? "fail" : "wait" };
+}
+
+/**
+ * What the reader shows: the settled passages from the start, in order, each its
+ * text or the original when it has no counterpart.
+ */
+export function draftShown(slots: readonly DraftSlot[]) {
+  const shown: { text: string; flag: "none" | "fail" | "thin" | null }[] = [];
+  for (const x of slots) {
+    if (x.state === "done") shown.push({ text: x.text ?? x.raw, flag: x.thin ? "thin" : null });
+    else if (x.state === "none" || x.state === "fail") shown.push({ text: x.raw, flag: x.state });
+    else break;
+  }
+  return shown;
+}

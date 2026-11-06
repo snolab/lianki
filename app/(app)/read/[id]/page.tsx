@@ -1,6 +1,7 @@
 import { ReadViewClient } from "./ReadViewClient";
 import { ReaderV2 } from "./ReaderV2";
 import { authUserOrNull } from "@/app/signInEmail";
+import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { readerPick } from "@/lib/read/reader-access";
@@ -48,6 +49,7 @@ export default async function ReadMaterialPage({
         id={id}
         isLoggedIn={!!user}
         streaming={query.streamingFrom === "google-docs" || query.streamingFrom === "vibe"}
+        draftAllowed={isOwner(user?.email) || flagIn(flags, "read.live-polish")}
       />
     );
 

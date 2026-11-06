@@ -66,6 +66,15 @@ export function polishActionShown(book: OfferState["book"]): boolean {
   return !!book.shape?.raw || book.source === "gdoc";
 }
 
+/**
+ * The sheet's second choice, the speech draft (lib/read/live-polish.ts): for who
+ * may polish, on what the first choice is for or has already tidied.
+ */
+export function draftChoiceShown(book: OfferState["book"], allowed: boolean): boolean {
+  if (!allowed || !book || NEVER_OFFERED.has(book.source)) return false;
+  return !!book.shape?.raw || book.source === "gdoc" || !!book.polished;
+}
+
 /** A stored list (untrusted): the ids that look like ids, the newest SKIPS_MAX. */
 export function checkSkips(v: unknown): string[] {
   if (!Array.isArray(v)) return [];

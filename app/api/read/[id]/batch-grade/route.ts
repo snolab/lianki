@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { draftOwn } from "@/lib/read/live-polish-server";
 import {
   badRequest,
   bodyOf,
@@ -64,7 +65,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const r = await probeBatch(c, p.sentences, words, new Date());
     return r.ok ? json(r.res) : badRequest(r.error);
   }
-  const words = body.words === undefined ? [] : rangeWords(body.words, own);
+  const taken = body.draft === true ? await draftOwn(own, ctx) : own;
+  if (!taken) return json({ error: "busy" }, 429);
+  const words = body.words === undefined ? [] : rangeWords(body.words, taken);
   if (!words) return badRequest("words are invalid");
   const ai = body.own === true ? null : { userId: ctx.userId };
   const glossFor = (b: BookCtx) => (ws: RangeWord[]) => fillGlosses(ctx.db, b, ws, ai);

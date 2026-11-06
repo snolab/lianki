@@ -1,6 +1,16 @@
 // The polish of a live doc's text (docs/connections.md, "Polish").
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { isDraftWord, livePolishMessages, parseLivePolish } from "@/lib/read/live-polish";
+import {
+  draftShown,
+  draftSlots,
+  failSlot,
+  isDraftWord,
+  livePolishMessages,
+  nextDraftBatch,
+  parseLivePolish,
+  passagesOf,
+  settleSlot,
+} from "@/lib/read/live-polish";
 import { setOwnerSnapshot } from "@/lib/owner";
 import { draftOwn, livePolishAi, mayPolishLive } from "@/lib/read/live-polish-server";
 
@@ -128,5 +138,68 @@ describe("draft words", () => {
     let last;
     for (let i = 0; i < 121; i++) last = await draftOwn(own, ctx);
     expect(last).toBeNull();
+  });
+});
+
+describe("the draft's passages", () => {
+  const sentence = (n: number) => `${"x".repeat(n - 1)}.`;
+  it("closes at whole sentences, and more text never moves an earlier passage", () => {
+    const text = sentence(200) + sentence(200) + sentence(200);
+    const a = passagesOf(text);
+    expect(a.map((p) => [p.raw.length, p.open])).toEqual([
+      [400, false],
+      [200, true],
+    ]);
+    const b = passagesOf(text + sentence(150));
+    expect(b[0]).toEqual(a[0]);
+    expect(b[1].raw.length).toBe(350);
+  });
+  it("cuts a run with no sentence end, and leaves out blanks", () => {
+    expect(passagesOf("y".repeat(2500)).map((p) => p.raw.length)).toEqual([1000, 1000, 500]);
+    expect(passagesOf(`${"y".repeat(1500)}.`).map((p) => p.raw.length)).toEqual([1000, 501]);
+    expect(passagesOf("   ")).toEqual([]);
+  });
+  it("keeps a slot whose text did not change; the last is open only while written", () => {
+    const one = draftSlots([], ["one", "two"], true);
+    expect(one.map((x) => x.open)).toEqual([false, true]);
+    const done = settleSlot(one[0], { text: "One.", thin: false }, true);
+    const two = draftSlots([done, one[1]], ["one", "two more"], false);
+    expect(two[0].state).toBe("done");
+    expect(two[1]).toEqual({ raw: "two more", open: false, state: "wait", tries: 0 });
+  });
+  it("asks in order, what fits one call, and waits for an open passage to rest", () => {
+    const slots = draftSlots([], ["a".repeat(700), "b".repeat(400), "c".repeat(400), "d"], true);
+    expect(nextDraftBatch(slots, false)).toEqual([0, 1]);
+    const rest = slots.map((x, i) => (i < 3 ? { ...x, state: "done" as const } : x));
+    expect(nextDraftBatch(rest, false)).toEqual([]);
+    expect(nextDraftBatch(rest, true)).toEqual([3]);
+    const solo = [{ ...slots[0], solo: true }, ...slots.slice(1)];
+    expect(nextDraftBatch(solo, false)).toEqual([0]);
+    expect(nextDraftBatch([slots[1], { ...slots[2], solo: true }], false)).toEqual([0]);
+  });
+  it("asks a skipped passage again alone before it has no counterpart; failure stops at three", () => {
+    const [x] = draftSlots([], ["a"], false);
+    expect(settleSlot(x, null, false)).toMatchObject({ state: "wait", solo: true });
+    expect(settleSlot(x, null, true).state).toBe("none");
+    expect(failSlot(x, false)).toMatchObject({ state: "wait", tries: 0 });
+    expect(failSlot({ ...x, tries: 2 }, true).state).toBe("fail");
+  });
+  it("shows settled passages in order, the original for a flagged one, nothing past a gap", () => {
+    const [a, b, c, d, e] = draftSlots([], ["a", "b", "c", "d", "e"], false);
+    expect(
+      draftShown([
+        settleSlot(a, { text: "A", thin: false }, true),
+        settleSlot(b, { text: "B", thin: true }, true),
+        settleSlot(c, null, true),
+        failSlot({ ...d, tries: 2 }, true),
+        e,
+        settleSlot(a, { text: "after the gap", thin: false }, true),
+      ]),
+    ).toEqual([
+      { text: "A", flag: null },
+      { text: "B", flag: "thin" },
+      { text: "c", flag: "none" },
+      { text: "d", flag: "fail" },
+    ]);
   });
 });

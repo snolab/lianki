@@ -99,7 +99,8 @@ import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
 import { VibeDocNote } from "../../vibe/VibeDocNote";
-import { PolishAction, PolishCoverage, PolishOffer, RawTranscript } from "./reader-polish";
+import { PolishCoverage, PolishOffer, RawTranscript, TidyEntry } from "./reader-polish";
+import { SpeechDraft } from "./reader-draft";
 import {
   LiveTail,
   StreamBadge,
@@ -244,9 +245,12 @@ export function ReaderV2({
   id,
   isLoggedIn,
   streaming = false,
+  draftAllowed = false,
 }: {
   id: string;
   isLoggedIn: boolean;
+  /** Who may have a text rewritten as a speech draft: the owner, or `read.live-polish`. */
+  draftAllowed?: boolean;
   /** ?streamingFrom=google-docs: the text follows the doc as it is edited. */
   streaming?: boolean;
 }) {
@@ -296,6 +300,7 @@ export function ReaderV2({
         id={id}
         material={material}
         signedIn={isLoggedIn}
+        draftAllowed={draftAllowed}
         liveTail={streaming && isLoggedIn ? stream.tail : null}
         streamState={streaming && isLoggedIn ? stream.state : null}
       />
@@ -307,6 +312,7 @@ function Reader({
   id,
   material,
   signedIn,
+  draftAllowed = false,
   liveTail = null,
   streamState = null,
 }: {
@@ -314,6 +320,7 @@ function Reader({
   material: Material;
   signedIn: boolean;
   /** A live Google Doc's text not saved into the book yet (null: not following one). */
+  draftAllowed?: boolean;
   liveTail?: string | null;
   /** That stream's socket (null: not following one): no polish offer while there is one. */
   streamState?: StreamState | null;
@@ -1186,6 +1193,9 @@ function Reader({
   const [sheet, setSheet] = useState<null | "toc" | "aa">(null);
   const closeSheet = useCallback(() => setSheet(null), []);
   useBackToClose(sheet !== null, closeSheet);
+  const [draftOn, setDraftOn] = useState(false);
+  const closeDraft = useCallback(() => setDraftOn(false), []);
+  useBackToClose(draftOn, closeDraft);
   // A sheet over the book takes the selection's place.
   const clearSel = sel.clear;
   useEffect(() => {
@@ -2050,6 +2060,19 @@ function Reader({
           row={row}
         />
         {/* Not on a /vibe transcript: its card translates the newest line by itself (docs/vibe.md). */}
+        {draftOn && (
+          <SpeechDraft
+            id={id}
+            lines={lines}
+            tail={liveTail}
+            lang={lang}
+            normLang={normLang}
+            to={String(locale)}
+            title={material.title}
+            mirror={mirror}
+            onClose={closeDraft}
+          />
+        )}
         {liveTail !== null && book?.source !== "vibe" && (
           <LiveTail
             id={id}
@@ -2217,7 +2240,17 @@ function Reader({
 
         {sheet === "toc" && (
           <Sheet title={t.contents.value} onClose={closeSheet} closeLabel={t.close.value}>
-            {signedIn && material.readerV2 && <PolishAction id={id} book={book} />}
+            {signedIn && material.readerV2 && (
+              <TidyEntry
+                id={id}
+                book={book}
+                draftAllowed={draftAllowed}
+                onDraft={() => {
+                  closeSheet();
+                  setDraftOn(true);
+                }}
+              />
+            )}
             {material.words && <BookScan id={id} words={material.words} flat />}
             <BookSourceNote book={book} className="mt-3" />
             {signedIn && material.readerV2 && <RawTranscript id={id} book={book} />}

@@ -9,7 +9,7 @@
  * so the place on the page is kept, and someone at the end follows the new text
  * down. Scrolling up stops the following.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useIntlayer } from "next-intlayer";
 import { fill } from "@/lib/nav/nav-core";
 import { activeByok } from "@/lib/byok/config";
@@ -208,6 +208,7 @@ export function LiveTail({
   sourceUrl,
   busy = false,
   mirror = false,
+  draft,
 }: {
   id: string;
   text: string;
@@ -221,6 +222,8 @@ export function LiveTail({
   busy?: boolean;
   /** The swipe's sides are swapped (Settings). */
   mirror?: boolean;
+  /** The speech draft's text, not the doc's: its words may be in no save, and a paragraph may carry a flag. */
+  draft?: { flags: readonly (ReactNode | null)[] };
 }) {
   const t = useIntlayer("read-gdoc-stream");
   const tg = useIntlayer("read-grade-handle");
@@ -316,13 +319,15 @@ export function LiveTail({
   }, [sourceUrl, lines, text, title]);
 
   /** A book route, saving first once if it says the word is not in the book. */
+  const isDraft = !!draft;
   const onBook = useCallback(
     async (path: string, body: unknown) => {
+      if (isDraft) return postJson(`/api/read/${id}/${path}`, { ...(body as object), draft: true });
       let r = await postJson(`/api/read/${id}/${path}`, body);
       if (r.status === 400 && (await save())) r = await postJson(`/api/read/${id}/${path}`, body);
       return r;
     },
-    [id, save],
+    [id, save, isDraft],
   );
 
   const openWord = useCallback(
@@ -491,6 +496,14 @@ export function LiveTail({
       >
         {paras.map((para, p) => (
           <p key={p} className="mb-4">
+            {draft?.flags[p] && (
+              <span
+                className="mb-1 block select-none text-xs text-[oklch(0.55_0.17_25)]"
+                data-testid="read-draft-flag"
+              >
+                {draft.flags[p]}
+              </span>
+            )}
             {para.sentences.map((x, s) =>
               x.segs.map((g, j) => {
                 const f = g.w ? fam.get(g.w) : undefined;
@@ -499,7 +512,7 @@ export function LiveTail({
                 return (
                   <span
                     key={`${s}.${j}`}
-                    className="lk-live-new"
+                    className={draft ? undefined : "lk-live-new"}
                     data-tail-p={p}
                     data-tail-s={s}
                     data-tail-t={g.t >= 0 ? g.t : undefined}
