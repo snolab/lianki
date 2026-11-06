@@ -76,6 +76,10 @@ The userscript and the extension have no path to `/api/prefs`, so
 `lk:preferences` cache like the other preferences (up to an hour old). They coerce
 it again on arrival: the cache is not trusted either.
 
+The `workers/edge` spike's copy of that route (local only, no production route)
+does not answer `titleRules`. Porting the route has to add it, or the userscript
+silently falls back to the defaults.
+
 ## Where it applies
 
 **Capture:** the userscript and the extension (`pageTitle()`, which share one
