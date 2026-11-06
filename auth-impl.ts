@@ -19,7 +19,7 @@ import { db, mongoClient } from "./app/db";
 import { cfRequestProps, dbBackend, getD1, workerWaitUntil } from "./lib/d1";
 import { securityPlugin } from "./lib/security/auth-plugin";
 import type { ThrottleDb } from "./lib/security/throttle";
-import { passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
+import { authCookieOptions, passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
 import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
 import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
 import { notifySignedOut } from "./lib/push-signed-out";
@@ -85,6 +85,9 @@ function baseOptions() {
     secret: process.env.AUTH_SECRET,
     baseURL:
       process.env.BETTER_AUTH_BASE_URL ?? process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
+    advanced: authCookieOptions(
+      process.env.BETTER_AUTH_BASE_URL ?? process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
+    ),
     // Allow both www and non-www (the canonical domain is non-www).
     // Deployed origins plus a localhost QA origin derived from
     // BETTER_AUTH_BASE_URL, so qa:all can run on any port. Only localhost is

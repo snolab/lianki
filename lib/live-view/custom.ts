@@ -411,13 +411,13 @@ function same(a: string, b: string): boolean {
   return d === 0;
 }
 
-/** The session cookie's value (`better-auth.session_token`, with or without `__Secure-`). */
+/** The session cookie's value (`better-auth.session_token`, with its `__Host-` prefix on https). */
 export function sessionToken(cookie: string | null): string | null {
   for (const part of (cookie ?? "").split(";")) {
     const i = part.indexOf("=");
     if (i < 0) continue;
     const k = part.slice(0, i).trim();
-    if (k === "__Secure-better-auth.session_token" || k === "better-auth.session_token") {
+    if (k === "__Host-better-auth.session_token" || k === "better-auth.session_token") {
       const v = part.slice(i + 1).trim();
       if (v) return v;
     }

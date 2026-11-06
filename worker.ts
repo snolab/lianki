@@ -24,6 +24,7 @@ import type { InboxDb } from "./lib/inbox/store";
 
 import { createLivePage, mayBeLive, type LiveEnv } from "./lib/live-view/page-proxy";
 import { siblingRequestRefused } from "./lib/security/same-site-guard";
+import { clearLegacyCookies, legacyCookieNames } from "./lib/security/legacy-session-cookies";
 import { anchorDue, type LianDb } from "./lib/lian/anchor";
 import { boxGate, type BoxEnv } from "./lib/box-oauth/gate";
 import type { BoxDb } from "./lib/box-oauth/store";
@@ -64,7 +65,10 @@ export default {
         ),
       );
     // Box tokens and box origins (docs/box-oauth.md). A request with neither goes straight on.
-    return boxGate(req, env as unknown as BoxEnv, boxDeps, (r) => afterBox(r, env, ctx));
+    const out = boxGate(req, env as unknown as BoxEnv, boxDeps, (r) => afterBox(r, env, ctx));
+    // The session cookie's old name: expired on the way back (docs/secrets-and-auth.md).
+    const old = legacyCookieNames(req.headers.get("cookie"));
+    return old.length ? out.then((res) => clearLegacyCookies(res, old)) : out;
   },
   /**
    * The Cron Trigger (wrangler.jsonc `triggers`, just after UTC midnight):

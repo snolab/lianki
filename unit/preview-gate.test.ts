@@ -336,7 +336,7 @@ describe("what reaches the app, and what comes back", () => {
         host: HOST,
         origin: `https://${HOST}`,
         referer: `https://${HOST}/words?x=1`,
-        cookie: `${SESSION_COOKIE}=v; __Secure-better-auth.session_token=stolen; lk_pref=1`,
+        cookie: `${SESSION_COOKIE}=v; __Secure-better-auth.session_token=stolen; __Host-better-auth.session_token=stolen; lk_pref=1`,
         "cf-connecting-ip": "1.2.3.4",
         "x-forwarded-host": "evil",
       },

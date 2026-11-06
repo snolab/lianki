@@ -48,7 +48,7 @@ const OTHER = "u_other";
 const OWNER = "u_owner";
 const SESS: Record<string, string> = { "tok-k.sig": KISHO, "tok-o.sig": OTHER, "tok-w.sig": OWNER };
 const cookieFor = (tok: string, extra = "") =>
-  `__Secure-better-auth.session_token=${tok}${extra ? `; ${extra}` : ""}`;
+  `__Host-better-auth.session_token=${tok}${extra ? `; ${extra}` : ""}`;
 
 let raw: TestD1Database;
 let db: CustomDb;

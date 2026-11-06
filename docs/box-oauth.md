@@ -136,8 +136,9 @@ a real box is https and `web`.
 - **Token in the page.** Any script on the box can read the tab's token. That
   is the box's own code and the box's own account, and the token is short-lived.
 - **Cookie tossing.** A box is a subdomain, so its JS can set a cookie with
-  `Domain=lianki.com`, which lianki.com then receives. The approved `__Host-`
-  session cookie closes that for the session (its own PR, not this one).
+  `Domain=lianki.com`, which lianki.com then receives. The `__Host-` names on every
+  better-auth cookie close that ([secrets-and-auth.md](secrets-and-auth.md), "The session
+  cookie"). Other cookies, such as `lk_lang`, can still be planted.
 
 ## Edge gate (designed, not built)
 
