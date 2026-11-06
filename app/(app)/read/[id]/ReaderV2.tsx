@@ -98,7 +98,7 @@ import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { BookSourceNote } from "../BookSourceNote";
 import { PolishOffer, RawTranscript } from "./reader-polish";
-import { StreamBadge, useBookStream } from "./reader-stream";
+import { LiveTail, StreamBadge, useBookStream } from "./reader-stream";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { useItemWords, type ItemPlan } from "./use-item-words";
@@ -245,7 +245,7 @@ export function ReaderV2({
   const t = useIntlayer("read-reader");
   const [material, setMaterial] = useState<Material | null>(null);
   const [loading, setLoading] = useState(true);
-  const streamState = useBookStream<Material>(id, streaming && isLoggedIn, setMaterial);
+  const stream = useBookStream<Material>(id, streaming && isLoggedIn, setMaterial);
 
   useEffect(() => {
     let live = true;
@@ -283,13 +283,24 @@ export function ReaderV2({
     );
   return (
     <>
-      {streaming && isLoggedIn && <StreamBadge state={streamState} />}
-      <Reader id={id} material={material} signedIn={isLoggedIn} />
+      {streaming && isLoggedIn && <StreamBadge state={stream.state} />}
+      <Reader id={id} material={material} signedIn={isLoggedIn} liveTail={stream.tail} />
     </>
   );
 }
 
-function Reader({ id, material, signedIn }: { id: string; material: Material; signedIn: boolean }) {
+function Reader({
+  id,
+  material,
+  signedIn,
+  liveTail = "",
+}: {
+  id: string;
+  material: Material;
+  signedIn: boolean;
+  /** A live Google Doc's text not saved into the book yet. */
+  liveTail?: string;
+}) {
   const t = useIntlayer("read-reader");
   const tp = useIntlayer("read-player");
   const tw = useIntlayer("words-page");
@@ -2047,6 +2058,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
           grades={grades}
           row={row}
         />
+        {liveTail && <LiveTail text={liveTail} lang={normLang} />}
         {/* The book's end: the same way back as the toolbar's ←, no scrolling up. */}
         {loaded && <ReaderBack variant="end" label={t.back.value} />}
         {/* Room for the last item to reach the eye line. */}

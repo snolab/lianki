@@ -1291,6 +1291,21 @@ html[data-motion="off"] *::after {
   }
 }
 
+/* A live Google Doc's newly arrived words flash once. */
+.lk-live-new {
+  animation: lk-live-new 1.2s ease-out;
+}
+@keyframes lk-live-new {
+  from {
+    background: oklch(0.93 0.07 95);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-live-new {
+    animation: none;
+  }
+}
+
 /* Word marks by familiarity (html[data-read-marks]; switching repaints only).
  * The line style is the cue: solid = learning (by band), dotted = new,
  * dashed = not recognised; mastered and names carry none. */

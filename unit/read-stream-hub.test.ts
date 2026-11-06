@@ -66,6 +66,14 @@ describe("ReadStreamHub", () => {
     expect(sockets[1].ws.sent).toEqual([]);
   });
 
+  it("passes live edits through to that book's sockets", async () => {
+    const { hub: h, sockets } = hub();
+    await h.fetch(new Request("https://x/s?book=a"));
+    const ops = [{ i: 1, s: "x" }];
+    await h.fetch(publish({ book: "a", ops }));
+    expect(sockets[0].ws.sent).toEqual([JSON.stringify({ book: "a", ops })]);
+  });
+
   it("refuses a bad book or body, and survives a dead socket", async () => {
     const { hub: h, sockets } = hub();
     expect((await h.fetch(new Request("https://x/s?book=../x"))).status).toBe(400);

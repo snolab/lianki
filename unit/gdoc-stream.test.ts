@@ -32,7 +32,7 @@ describe("looksTruncated", () => {
 
 describe("startGdocStream", () => {
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  const timing = { quietMs: 5, maxWaitMs: 20, hiddenCheckMs: 10, retryShortMs: 5 };
+  const timing = { quietMs: 5, maxWaitMs: 20, exportLagMs: 8, retryShortMs: 5 };
   const g = globalThis as unknown as Record<string, unknown>;
   const saved = new Map<string, unknown>();
   const stub = (name: string, value: unknown) => {
@@ -58,7 +58,8 @@ describe("startGdocStream", () => {
       listeners: new Map<string, () => void>(),
       button: null as null | { textContent: string; click: () => void },
       link: null as null | { href: string; style: { display: string } },
-      hidden: false,
+      live: [] as unknown[],
+      liveFails: false,
       reads: 0,
     };
     const el = (tag: string) => {
@@ -80,6 +81,14 @@ describe("startGdocStream", () => {
       };
       return e;
     };
+    class Xhr {
+      body = "";
+      constructor(public responseURL: string) {}
+      open() {}
+      get responseText() {
+        return this.body;
+      }
+    }
     class Canvas {
       fillText(..._: unknown[]) {
         return "drawn";
@@ -89,16 +98,15 @@ describe("startGdocStream", () => {
     stub("navigator", { language: "en-US" });
     stub("document", {
       title: "Notes - Google Docs",
-      get hidden() {
-        return state.hidden;
-      },
       addEventListener: (n: string, f: () => void) => state.listeners.set(n, f),
       createElement: el,
       documentElement: { append() {} },
     });
     stub("CanvasRenderingContext2D", Canvas);
+    stub("XMLHttpRequest", Xhr);
     stub("window", {
       CanvasRenderingContext2D: Canvas,
+      XMLHttpRequest: Xhr,
       open: () => {
         const w = { location: { href: "" } };
         state.opened.push(w);
@@ -117,7 +125,13 @@ describe("startGdocStream", () => {
     );
     const gmFetch = async (_url: string, o: { method?: string; body?: string } = {}) => {
       if (o.method !== "POST") return { ok: opts.enabled !== false };
-      state.posted.push(JSON.parse(o.body as string));
+      const sent = JSON.parse(o.body as string);
+      if (sent.ops) {
+        if (state.liveFails) throw new Error("offline");
+        state.live.push(sent);
+        return { ok: true, status: 200 };
+      }
+      state.posted.push(sent);
       return {
         ok: state.postStatus < 300,
         status: state.postStatus,
@@ -250,19 +264,78 @@ describe("startGdocStream", () => {
     expect(state.button!.textContent).toBe("Stop streaming");
   });
 
-  it("while hidden, a slow timer still finds changes; visible again, it stops", async () => {
+  it("passes live edits on at once, without the export, once the book is known", async () => {
     const { state } = page({ streamed: true });
     await wait(15);
-    state.hidden = true;
-    state.listeners.get("visibilitychange")!();
-    state.html = "<p>edited elsewhere</p>";
-    await wait(30);
-    expect(state.posted.at(-1)?.html).toBe("<p>edited elsewhere</p>");
-    state.hidden = false;
-    state.listeners.get("visibilitychange")!();
-    await wait(15);
+    const X = g.XMLHttpRequest as unknown as new (url: string) => {
+      responseText: string;
+      body: string;
+    };
     const reads = state.reads;
-    await wait(30);
+    const channel = new X("https://docs.google.com/document/d/x/bind?VER=8");
+    channel.body = "old";
+    expect(channel.responseText).toBe("old");
+    channel.body += '[{"ty":"is","ibi":10,"s":"new"}]';
+    expect(channel.responseText).toContain("new");
+    // Read twice: sent once.
+    void channel.responseText;
+    await wait(2);
+    expect(state.live).toEqual([{ book: "book1", ops: [{ i: 10, s: "new" }] }]);
     expect(state.reads).toBe(reads);
+
+    // Other requests are not looked at, and the switch off stops it.
+    const other = new X("https://docs.google.com/document/d/x/save");
+    other.body = "a";
+    void other.responseText;
+    other.body += '{"ty":"is","ibi":99,"s":"nope"}';
+    void other.responseText;
+    state.button!.click();
+    channel.body += '{"ty":"is","ibi":13,"s":"later"}';
+    void channel.responseText;
+    await wait(2);
+    expect(state.live.length).toBe(1);
+  });
+
+  it("holds edits until the book is known, and survives a failed send", async () => {
+    const { state } = page({ streamed: true });
+    const X = g.XMLHttpRequest as unknown as new (url: string) => {
+      responseText: string;
+      body: string;
+    };
+    await wait(0);
+    const channel = new X("https://docs.google.com/d/bind") as never as {
+      responseText: string;
+      body: string;
+      open(): void;
+    };
+    // Opened after the hook: its very first chunk counts.
+    channel.open();
+    channel.body = '{"ty":"ds","si":1,"ei":2}';
+    void channel.responseText;
+    expect(state.live).toEqual([]);
+    await wait(15);
+    expect(state.live).toEqual([{ book: "book1", ops: [{ si: 1, ei: 2 }] }]);
+    state.liveFails = true;
+    channel.body += '{"ty":"is","ibi":3,"s":"x"}';
+    void channel.responseText;
+    await wait(2);
+    state.liveFails = false;
+    channel.body += '{"ty":"is","ibi":4,"s":"y"}';
+    void channel.responseText;
+    await wait(2);
+    expect(state.live.at(-1)).toEqual({ book: "book1", ops: [{ i: 4, s: "y" }] });
+  });
+
+  it("looks once more when the export should have caught up", async () => {
+    const { state } = page({ streamed: true });
+    await wait(15);
+    const Canvas = g.CanvasRenderingContext2D as new () => { fillText(s: string): string };
+    const reads = state.reads;
+    new Canvas().fillText("x");
+    await wait(7);
+    state.html = "<p>caught up late</p>";
+    await wait(25);
+    expect(state.posted.at(-1)?.html).toBe("<p>caught up late</p>");
+    expect(state.reads).toBeGreaterThan(reads + 1);
   });
 });

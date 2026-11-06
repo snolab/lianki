@@ -1,15 +1,17 @@
 /**
  * Live Google Docs (docs/connections.md, "Live stream"), the Docs page's side.
  *
- * The page already holds the live doc. Google draws its text on canvases, so a
- * burst of `fillText` means something changed (measured 2026-11-06: 9 bursts,
- * 9 changed exports while the owner typed from his phone). The page then reads
- * its own export with the user's login and sends it to Lianki.
+ * Two speeds. The page receives each edit on Google's own channel, so those go
+ * straight to the reader (measured 2026-11-06: about 120 ms from Google to the
+ * Mac). The export lags that by seconds (1.6 to 5.4 s measured), so it only
+ * saves the book, after a pause. Canvas draws also ask for a save: they are how
+ * typing in this very tab is seen, and they keep saving working if the channel's
+ * undocumented format ever changes.
  *
- * Only a doc the user switched on is ever sent; the switch is remembered per
- * doc. A hidden tab may stop drawing, so while hidden a slow timer checks too:
- * the one network timer here, to Google, only on a doc that is switched on.
+ * Only a doc the user switched on is ever sent; the switch is remembered per doc.
  */
+import { parseBindOps, type TailOp } from "../lib/read/gdoc-tail";
+
 declare const unsafeWindow: Window & typeof globalThis;
 
 export interface GdocStreamDeps {
@@ -22,7 +24,7 @@ export interface GdocStreamDeps {
 }
 
 /** After the last draw, how long to wait; and the most a stream of draws can delay a read. */
-const TIMING = { quietMs: 800, maxWaitMs: 2500, hiddenCheckMs: 5000, retryShortMs: 1500 };
+const TIMING = { quietMs: 4000, maxWaitMs: 20_000, exportLagMs: 6000, retryShortMs: 1500 };
 
 export function docIdOfPath(path: string): string | null {
   return /^\/document\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]{25,128})(?:\/|$)/.exec(path)?.[1] ?? null;
@@ -41,7 +43,7 @@ export function looksTruncated(next: string, prev: string | null): boolean {
 export function startGdocStream(deps: GdocStreamDeps): void {
   const id = docIdOfPath(location.pathname);
   if (!id) return;
-  const { quietMs, maxWaitMs, hiddenCheckMs, retryShortMs } = { ...TIMING, ...deps.timing };
+  const { quietMs, maxWaitMs, exportLagMs, retryShortMs } = { ...TIMING, ...deps.timing };
   const key = `lk:gdoc-stream:${id}`;
   const zh = /^zh\b/i.test(navigator.language);
   const label = {
@@ -56,7 +58,11 @@ export function startGdocStream(deps: GdocStreamDeps): void {
   let suspect: string | null = null;
   let quiet: ReturnType<typeof setTimeout> | undefined;
   let deadline: ReturnType<typeof setTimeout> | undefined;
-  let hiddenTimer: ReturnType<typeof setInterval> | undefined;
+  let lastSignal = 0;
+  let lagCheck: ReturnType<typeof setTimeout> | undefined;
+  let bookId: string | null = null;
+  let liveQueue: TailOp[] = [];
+  let liveBusy = false;
   let busy = false;
   let dirty = false;
   let blockedUntil = 0;
@@ -86,6 +92,8 @@ export function startGdocStream(deps: GdocStreamDeps): void {
     }
     if (!res.ok) return res.status === 422; // No text yet: nothing to retry.
     const d = await res.json();
+    bookId = d.id;
+    void sendLive();
     const url = `${deps.origin}/read/${d.id}?streamingFrom=google-docs`;
     if (link) {
       link.href = url;
@@ -96,6 +104,28 @@ export function startGdocStream(deps: GdocStreamDeps): void {
       pending = null;
     }
     return true;
+  };
+
+  /** In order, one at a time: what arrived meanwhile goes together next. */
+  const sendLive = async () => {
+    if (liveBusy || !bookId || !liveQueue.length || !on) return;
+    if (Date.now() < blockedUntil) return;
+    liveBusy = true;
+    const ops = liveQueue;
+    liveQueue = [];
+    try {
+      await deps.gmFetch(`${deps.origin}/api/read/gdoc/stream`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ book: bookId, ops }),
+      });
+    } catch (err) {
+      // The next save brings the text anyway.
+      console.warn("[Lianki] Docs live edit failed", err);
+    }
+    liveBusy = false;
+    void sendLive();
   };
 
   const check = async () => {
@@ -131,37 +161,66 @@ export function startGdocStream(deps: GdocStreamDeps): void {
     if (dirty) {
       dirty = false;
       void check();
+    } else if (Date.now() - lastSignal < exportLagMs) {
+      // The export may not hold the last edit yet: look once more when it should.
+      clearTimeout(lagCheck);
+      lagCheck = setTimeout(() => void check(), exportLagMs);
     }
   };
 
   const signal = () => {
     if (!on) return;
+    lastSignal = Date.now();
     clearTimeout(quiet);
     quiet = setTimeout(() => void check(), quietMs);
     deadline ??= setTimeout(() => void check(), maxWaitMs);
   };
 
-  const onVisibility = () => {
-    clearInterval(hiddenTimer);
-    hiddenTimer = undefined;
-    if (on && document.hidden) hiddenTimer = setInterval(() => void check(), hiddenCheckMs);
-    else if (on) signal();
-  };
-
-  // Docs draws in the page's own world, which the script's sandbox does not
-  // share: the hook goes on the page's canvas prototype. Installed once, only
-  // for a doc switched on; it just notes the draw.
+  // Both live in the page's own world, which the script's sandbox does not
+  // share. Installed once, only for a doc switched on; they only look.
   let hooked = false;
   const hook = () => {
     if (hooked) return;
     hooked = true;
-    const page = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
-    const proto = (page as any).CanvasRenderingContext2D.prototype;
+    const page = (typeof unsafeWindow !== "undefined" ? unsafeWindow : window) as any;
+    const proto = page.CanvasRenderingContext2D.prototype;
     const original = proto.fillText;
     proto.fillText = function (this: unknown, ...args: unknown[]) {
       signal();
       return original.apply(this, args);
     };
+    const xhr = page.XMLHttpRequest.prototype;
+    const text = Object.getOwnPropertyDescriptor(xhr, "responseText");
+    if (!text?.get) return;
+    const read = new WeakMap<object, number>();
+    // A channel opened from now on is read from its start.
+    const open = xhr.open;
+    xhr.open = function (this: object, ...args: unknown[]) {
+      read.set(this, 0);
+      return open.apply(this, args);
+    };
+    Object.defineProperty(xhr, "responseText", {
+      configurable: true,
+      get(this: XMLHttpRequest) {
+        const v = text.get!.call(this) as string;
+        try {
+          if (on && v && /\/bind(\?|$)/.test(this.responseURL)) {
+            // A channel already open when this was installed: only what comes next.
+            const from = read.get(this) ?? v.length;
+            const { ops, consumed } = parseBindOps(v.slice(from));
+            read.set(this, from + consumed);
+            if (ops.length) {
+              liveQueue.push(...ops);
+              signal();
+              void sendLive();
+            }
+          }
+        } catch {
+          // The page's own read must never fail because of this.
+        }
+        return v;
+      },
+    });
   };
 
   const setOn = (next: boolean) => {
@@ -174,11 +233,12 @@ export function startGdocStream(deps: GdocStreamDeps): void {
     } else {
       clearTimeout(quiet);
       clearTimeout(deadline);
+      clearTimeout(lagCheck);
       deadline = undefined;
       last = null;
+      liveQueue = [];
       if (link) link.style.display = "none";
     }
-    onVisibility();
   };
 
   const mount = () => {
@@ -211,7 +271,6 @@ export function startGdocStream(deps: GdocStreamDeps): void {
     .then((res: { ok: boolean }) => {
       if (!res.ok) return;
       mount();
-      document.addEventListener("visibilitychange", onVisibility);
       if (deps.getValue(key, false) === true) {
         setOn(true);
       }
