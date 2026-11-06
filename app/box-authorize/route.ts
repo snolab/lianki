@@ -53,12 +53,13 @@ export const GET = async (req: Request) => {
   const user = await authUserOrNull();
   if (!user) {
     const back = `${BOX_AUTHORIZE_PATH}?${query}`;
-    const res = NextResponse.redirect(
-      new URL(`/sign-in?${new URLSearchParams({ [SIGN_IN_RETURN_PARAM]: back })}`, url.origin),
-      302,
-    );
-    for (const [k, v] of Object.entries(HEADERS)) res.headers.set(k, v);
-    return res;
+    return new NextResponse(null, {
+      status: 302,
+      headers: {
+        ...HEADERS,
+        location: `/sign-in?${new URLSearchParams({ [SIGN_IN_RETURN_PARAM]: back })}`,
+      },
+    });
   }
   if (user.id !== box.userId)
     return refused(

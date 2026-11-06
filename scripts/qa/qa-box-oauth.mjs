@@ -90,19 +90,17 @@ async function run() {
   check("a box token is held", access.startsWith("lkb_"));
 
   const prefs = await pageApi(page, "/api/prefs");
-  check(
-    "the page's /api call reaches the provider as this account",
-    prefs.status === 200,
-    `${prefs.status}`,
-  );
+  const me = await (await ctx.request.get(`${PROVIDER}/api/auth/get-session`)).json();
+  check("the page's /api call reaches the provider", prefs.status === 200, `${prefs.status}`);
+  check("as the bound account, not just any", JSON.parse(prefs.text || "{}").user === me?.user?.id);
   const put = await pageApi(page, "/api/prefs", {
-    method: "POST",
+    method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ values: {} }),
+    body: JSON.stringify({ ops: [] }),
   });
   check(
-    "a write with box:write gets past the gate to the route",
-    put.status !== 401 && put.status !== 403 && put.status !== 404,
+    "a write with box:write reaches the route",
+    put.status === 200 || put.status === 400,
     `${put.status}`,
   );
 
@@ -145,6 +143,62 @@ async function run() {
   check(
     "no cookie is set by a box response",
     cross.every((r) => !r.headers()["set-cookie"]),
+  );
+
+  const refreshed = await page.evaluate(
+    async ([u, c]) => {
+      const t = JSON.parse(sessionStorage.getItem("lk:box:tokens"));
+      const r = await fetch(u, {
+        method: "POST",
+        credentials: "omit",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          client_id: c,
+          refresh_token: t.refresh,
+        }),
+      });
+      const b = await r.json().catch(() => ({}));
+      // The old refresh token is spent: rotation.
+      const again = await fetch(u, {
+        method: "POST",
+        credentials: "omit",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          client_id: c,
+          refresh_token: t.refresh,
+        }),
+      });
+      if (b.access_token)
+        sessionStorage.setItem(
+          "lk:box:tokens",
+          JSON.stringify({
+            access: b.access_token,
+            refresh: b.refresh_token,
+            until: Date.now() + b.expires_in * 1000,
+          }),
+        );
+      return {
+        status: r.status,
+        access: b.access_token ?? "",
+        changed: b.refresh_token !== t.refresh,
+        again: again.status,
+        expires: b.expires_in,
+      };
+    },
+    [`${PROVIDER}/api/auth/oauth2/token`, clientId],
+  );
+  check(
+    "refresh gives a new token",
+    refreshed.status === 200 && refreshed.access.startsWith("lkb_"),
+    `${refreshed.status}`,
+  );
+  check("and rotates the refresh token", refreshed.changed);
+  check(
+    "tokens are short-lived",
+    refreshed.expires > 0 && refreshed.expires <= 900,
+    `${refreshed.expires}s`,
   );
 
   // Replay of the one-time code and a wrong verifier.
@@ -299,6 +353,24 @@ async function run() {
   check("the owner revokes the box", rev.ok(), `${rev.status()}`);
   const after = await direct("/api/prefs").catch(() => ({ status: 0 }));
   check("its token stops at once", after.status !== 200, `${after.status}`);
+  const refreshAfter = await page.evaluate(
+    async ([u, c]) => {
+      const t = JSON.parse(sessionStorage.getItem("lk:box:tokens"));
+      const r = await fetch(u, {
+        method: "POST",
+        credentials: "omit",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          client_id: c,
+          refresh_token: t.refresh,
+        }),
+      }).catch(() => ({ status: 0 }));
+      return r.status;
+    },
+    [`${PROVIDER}/api/auth/oauth2/token`, clientId],
+  );
+  check("nor can it refresh", refreshAfter !== 200, `${refreshAfter}`);
   await owner.close();
 
   await browser.close();

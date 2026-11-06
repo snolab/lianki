@@ -60,6 +60,13 @@ export async function sha256B64Url(s: string): Promise<string> {
     .replace(/=+$/, "");
 }
 
+/** As the plugin stores an access token: the hash of the value without its prefix. */
+export function boxTokenHash(token: string): Promise<string> {
+  return sha256B64Url(
+    token.startsWith(BOX_TOKEN_PREFIX) ? token.slice(BOX_TOKEN_PREFIX.length) : token,
+  );
+}
+
 function withCors(res: Response, origin: string): Response {
   const out = new Response(res.body, res);
   out.headers.delete("set-cookie");
@@ -154,7 +161,7 @@ export async function boxGate(
   const fail = (status: number, error: string) =>
     json(status, error, origin && fromBox ? cors(origin) : undefined);
   if (!m) return fail(401, "Invalid token");
-  const hash = await sha256B64Url(m[1]);
+  const hash = await boxTokenHash(m[1]);
   const token = await liveToken(db, hash, now);
   if (!token) return fail(401, "Invalid token");
   if (origin !== token.origin) return json(403, "Wrong origin for this token");

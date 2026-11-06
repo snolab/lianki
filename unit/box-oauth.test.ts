@@ -11,7 +11,7 @@ import { testSchema } from "@/lib/d1/testSchema";
 import { FLAGS } from "@/lib/flags";
 import { customFrontendBlocked } from "@/lib/live-view/page-proxy";
 import { boxApiUrl } from "@/lib/box-oauth/client";
-import { boxGate, mayBeBox, sha256B64Url, type GateDeps } from "@/lib/box-oauth/gate";
+import { boxGate, boxTokenHash, mayBeBox, sha256B64Url, type GateDeps } from "@/lib/box-oauth/gate";
 import { BOX_IDENTITY_HEADER, signBoxIdentity, verifyBoxIdentity } from "@/lib/box-oauth/identity";
 import {
   BOX_FLAG,
@@ -334,7 +334,7 @@ async function addToken(
       "INSERT INTO oauthAccessToken (id, token, clientId, userId, expiresAt, createdAt, scopes) VALUES ('t1', ?1, 'c1', ?2, ?3, ?4, ?5)",
     )
     .bind(
-      await sha256B64Url(TOKEN),
+      await boxTokenHash(TOKEN),
       opts.user ?? "u1",
       new Date(opts.expires ?? NOW + 60_000).toISOString(),
       new Date(NOW).toISOString(),
@@ -342,6 +342,15 @@ async function addToken(
     )
     .run();
 }
+
+describe("the token hash", () => {
+  test("is the plugin's: base64url SHA-256 of the value without its prefix", async () => {
+    // Pinned to the plugin (authorize-*.mjs strips opts.prefix before hashing). If an
+    // upgrade changes this, every token is refused; qa-box-oauth.mjs catches that too.
+    expect(await boxTokenHash("lkb_abc")).toBe(await sha256B64Url("abc"));
+    expect(await sha256B64Url("abc")).toBe("ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0");
+  });
+});
 
 describe("the store", () => {
   let db: TestD1Database;
@@ -367,7 +376,7 @@ describe("the store", () => {
   test("a token of another account than the bound one is no token", async () => {
     await bind();
     await addToken(db, { user: "u2" });
-    expect(await liveToken(box(), await sha256B64Url(TOKEN), NOW)).toBeNull();
+    expect(await liveToken(box(), await boxTokenHash(TOKEN), NOW)).toBeNull();
   });
 
   test("never more scope than the owner granted", async () => {
@@ -378,19 +387,19 @@ describe("the store", () => {
       NOW,
     );
     await addToken(db);
-    expect((await liveToken(box(), await sha256B64Url(TOKEN), NOW))?.scopes).toEqual(["box:read"]);
+    expect((await liveToken(box(), await boxTokenHash(TOKEN), NOW))?.scopes).toEqual(["box:read"]);
   });
 
   test("expired is no token", async () => {
     await bind();
     await addToken(db, { expires: NOW - 1 });
-    expect(await liveToken(box(), await sha256B64Url(TOKEN), NOW)).toBeNull();
+    expect(await liveToken(box(), await boxTokenHash(TOKEN), NOW)).toBeNull();
   });
 
   test("revoke ends the box and every token, once, and is audited", async () => {
     await bind();
     await addToken(db);
-    const hash = await sha256B64Url(TOKEN);
+    const hash = await boxTokenHash(TOKEN);
     expect(await liveToken(box(), hash, NOW)).not.toBeNull();
     expect(await revokeBox(box(), "c1", "owner", NOW)).toBe(true);
     expect(await liveToken(box(), hash, NOW)).toBeNull();
