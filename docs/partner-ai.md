@@ -34,15 +34,15 @@ internal HTTP route to protect. The model call uses the existing
 `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_AI_TOKEN` Worker secrets — no new secret,
 no third-party API key. Non-streaming in v1.
 
-| piece | where |
-| --- | --- |
-| numbers (model, prices, caps, limits) | `lib/partner-ai-config.ts` — the one place |
-| model call, prompt, read-only data | `lib/partner-ai.ts` |
-| RPC method | `worker.ts` `DebugSessions.partnerReply` (120 / min per isolate) |
-| routing, caps, takeover | `workers/push/src/debug.ts` `friendChat` → `aiReply` |
-| who sees the chat | `app/layout.tsx` `partnerOpenFor` → `OwnerBoots` → `DebugEval partnerOpen` |
-| strings (16 locales, with context) | `app/components/learning-partner.content.ts` `aiHint`, `aiStatus`, `aiLimit`, `aiFailed` |
-| tests | `unit/partner-ai.test.ts` |
+| piece                                 | where                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| numbers (model, prices, caps, limits) | `lib/partner-ai-config.ts` — the one place                                               |
+| model call, prompt, read-only data    | `lib/partner-ai.ts`                                                                      |
+| RPC method                            | `worker.ts` `DebugSessions.partnerReply` (120 / min per isolate)                         |
+| routing, caps, takeover               | `workers/push/src/debug.ts` `friendChat` → `aiReply`                                     |
+| who sees the chat                     | `app/layout.tsx` `partnerOpenFor` → `OwnerBoots` → `DebugEval partnerOpen`               |
+| strings (16 locales, with context)    | `app/components/learning-partner.content.ts` `aiHint`, `aiStatus`, `aiLimit`, `aiFailed` |
+| tests                                 | `unit/partner-ai.test.ts`                                                                |
 
 ## Who gets it
 
@@ -94,12 +94,12 @@ own data. A `<think>` block is stripped; replies are cut to 2,000 characters.
 
 All in `lib/partner-ai-config.ts`; per JST day (reset 00:00 JST):
 
-| limit | value |
-| --- | --- |
+| limit              | value                                                       |
+| ------------------ | ----------------------------------------------------------- |
 | per user, messages | 30 per 10 min (the existing friend limit, before the model) |
-| per user, tokens | `USER_DAILY_TOKENS` = 60,000 (≈ 40–80 typical messages) |
-| site-wide, spend | `SITE_DAILY_USD` = $2 at list price |
-| per reply | `MAX_OUTPUT_TOKENS` = 600; 30 s timeout |
+| per user, tokens   | `USER_DAILY_TOKENS` = 60,000 (≈ 40–80 typical messages)     |
+| site-wide, spend   | `SITE_DAILY_USD` = $2 at list price                         |
+| per reply          | `MAX_OUTPUT_TOKENS` = 600; 30 s timeout                     |
 
 Prices (model page, 2026-11-03): $0.30 / M input, $1.20 / M output tokens.
 A typical message (~1,500 in, ~150 out) is ≈ $0.0006.
@@ -129,7 +129,7 @@ caps and before the model:
    they are settled at no cost (refunded in full). Run on every request — no
    timer, no polling.
 2. **Reserve.** The reply's worst case — `reserveInTokens(history + page
-   characters)` input tokens plus `MAX_OUTPUT_TOKENS` at the list prices —
+characters)` input tokens plus `MAX_OUTPUT_TOKENS` at the list prices —
    converted with `CREDITS_PER_USD` (`lib/payments/credits.ts`, the one place
    USD becomes credits) and rounded up to whole credits, is debited: an `ai`
    ledger row (refId `ai:<userId>:<line id>`), the balance change and a
@@ -180,3 +180,12 @@ The request shape (`reasoning_effort: "none"`, `max_completion_tokens`) is
 from the model's documentation; the call was not run against the live API
 before merge. When the owner turns the flag on, check `wrangler tail lianki-push`
 for `partner.reply` with `ok: true` and plausible token counts.
+
+A hub call to the main Worker that fails logs `debug.rpc-failed` (an error,
+with the method and flag key only), and the friend's page gets `ai-failed`
+("No reply this time…"). Call the SESSIONS stub's methods on the stub itself:
+`stub.flag.bind(stub)` is sent by workerd as a call of a method named "bind",
+which the main Worker refuses. That is how every flag read failed in
+production from #482 (2026-11-03) until #681, so the AI never answered and
+nothing said so. `unit/support/rpc-stub.ts` makes the suites' stubs refuse
+the same way.
