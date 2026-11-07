@@ -629,6 +629,8 @@ export type ChatStrings = {
   attachFileRemove: string;
   /** Menu item in the + menu's View group: opens the list of files sent in the chat (the inbox). One word, a noun. */
   inbox: string;
+  /** Menu item in the + menu's View group: opens the page with the account's past chat lines (the history). One word, a noun. */
+  chatHistory: string;
   /** Grey line in the inbox list when no file has been sent yet. One short sentence. */
   inboxEmpty: string;
   /** Grey line at the top of the inbox list: how much the user has stored. {size} is like "12 MB", {n} a count of files. Keep both placeholders. */
@@ -746,6 +748,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   attachTooBig: "Too large",
   attachFileRemove: "Remove this file",
   inbox: "Inbox",
+  chatHistory: "History",
   inboxEmpty: "Nothing here yet.",
   inboxUsage: "{size} stored · {n} files",
   inboxUsageQuota: "{size} of {quota} used · {n} files",

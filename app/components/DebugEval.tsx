@@ -864,6 +864,8 @@ export function DebugEval({
           treeRepo="snolab/lianki"
           // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
           files={owner && !isFriend ? ownerFiles : undefined}
+          // The account's chat history (docs/chat-history.md): every signed-in user's own.
+          onHistory={() => router.push("/chat/history")}
           agentAvatar={AGENT_AVATAR}
           viewer={viewer}
           fullScreen={fullScreen}

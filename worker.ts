@@ -22,6 +22,8 @@ import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
 import { type ChatTokenAnswer, type ChatTokenDb, chatTokenCheck } from "./lib/chat-token";
 import type { InboxDb } from "./lib/inbox/store";
+import { type ChatLogDb, chatLogOp } from "./lib/chat-log";
+import type { ChatLogAnswer } from "./lib/chat-log-line";
 
 import {
   createLivePage,
@@ -123,6 +125,8 @@ const allowInbox = rateLimiter(60, 60_000);
 const allowPartner = rateLimiter(120, 60_000);
 // `lianki chat` checks: each token is limited in D1 too (lib/chat-token.ts CHAT_LIMITS).
 const allowChatToken = rateLimiter(600, 60_000);
+/** The hub's chat-history writes (lib/chat-log.ts): one per kept line, per isolate. */
+const allowChatLog = rateLimiter(600, 60_000);
 
 export class DebugSessions extends WorkerEntrypoint<Env> {
   /**
@@ -191,6 +195,14 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async chatToken(req: unknown): Promise<ChatTokenAnswer> {
     if (!allowChatToken()) return { ok: false, error: "rate" };
     return chatTokenCheck(this.env.DB as unknown as ChatTokenDb, req);
+   * The account's chat history (lib/chat-log.ts; docs/chat-history.md): the
+   * hub writes each line of a thread as it keeps it, and its owner-thread
+   * history once (backfill). The thread decides the accounts: the active
+   * owners for "owner", else that user alone. "busy" over the rate limit.
+   */
+  async chatLog(req: unknown): Promise<ChatLogAnswer> {
+    if (!allowChatLog()) return { ok: false, error: "busy" };
+    return chatLogOp(this.env.DB as unknown as ChatLogDb, req);
   }
 }
 

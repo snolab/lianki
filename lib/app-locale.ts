@@ -31,6 +31,8 @@ export const APP_ROUTES = [
   // app/auth/logout, outside app/(app)/: the sign-out page (lib/sign-out.ts).
   "auth",
   "books",
+  // /chat/history (docs/chat-history.md).
+  "chat",
   "connections",
   "contact",
   "contacts",

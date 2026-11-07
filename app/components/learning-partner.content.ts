@@ -1577,6 +1577,24 @@ const learningPartnerContent = {
       mr: "ही फाइल काढा",
       ko: "이 파일 빼기",
     }),
+    chatHistory: t({
+      en: "History",
+      zh: "聊天记录",
+      hi: "इतिहास",
+      es: "Historial",
+      fr: "Historique",
+      ar: "السجل",
+      bn: "ইতিহাস",
+      pt: "Histórico",
+      ru: "История",
+      ur: "ہسٹری",
+      id: "Riwayat",
+      de: "Verlauf",
+      ja: "履歴",
+      sw: "Historia",
+      mr: "इतिहास",
+      ko: "기록",
+    }),
     inbox: t({
       en: "Inbox",
       zh: "收件箱",
@@ -2182,6 +2200,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Small red note on a file chip just above the chat input: the file is bigger than the size allowed, so it was not uploaded. Two or three words, no full stop.",
   attachFileRemove:
     "Screen-reader label of the × button on a file chip just above the chat input: takes that one file off the message before it is sent (the upload is dropped). Imperative verb phrase.",
+  chatHistory:
+    "Menu item in the chat's + menu, under the View heading: opens the page that lists every past line of this chat (the user's own, and the assistant's), kept with the user's account, searchable by date. One word, a noun, as a browser's or messenger's History (chat history, not world history).",
   inbox:
     "Menu item in the chat's + menu, under the View heading, and the title of the panel it opens: the list of files the user has sent in the chat (pasted, dropped or picked), kept for the assistant to read. One word, a noun, like a mail inbox.",
   inboxEmpty:

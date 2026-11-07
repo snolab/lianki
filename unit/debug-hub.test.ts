@@ -3639,3 +3639,101 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     expect(line.source).toBeUndefined();
   });
 });
+
+describe("DebugHub chat history (lib/chat-log.ts over SESSIONS.chatLog)", () => {
+  type Req = { op: string; thread: string; id?: string; lines: Record<string, unknown>[] };
+  const withLog = (fail = false) => {
+    const reqs: Req[] = [];
+    const SESSIONS = {
+      live: async () => "live",
+      chatLog: async (r: Req) => {
+        if (fail) throw new Error("d1 down");
+        reqs.push(structuredClone(r));
+        return { ok: true, written: r.lines.length };
+      },
+    };
+    return { reqs, s: setup({ SESSIONS }) };
+  };
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("main lane");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+
+  it("each kept line is written: text, lane, time; never the page's context or screen", async () => {
+    const { reqs, s } = withLog();
+    const owner = s.page("/vibe pwa iPhone");
+    const c = await agent(s, owner);
+    await s.msg(owner, {
+      type: "chat",
+      id: "m1",
+      text: "what did she say",
+      context: { text: "PRIVATE TRANSCRIPT", url: "https://lianki.com/vibe/abc" },
+    });
+    await s.msg(c, { type: "say", text: "【codex】 looking", lane: "codex" });
+    expect(reqs.map((r) => [r.op, r.thread])).toEqual([
+      ["put", "owner"],
+      ["put", "owner"],
+    ]);
+    expect(reqs[0]!.lines).toEqual([
+      {
+        id: "m1",
+        from: "owner",
+        lane: null,
+        text: "what did she say",
+        at: 1_000_000,
+        ask: false,
+        answer: null,
+      },
+    ]);
+    expect(reqs[1]!.lines[0]).toMatchObject({ from: "agent", lane: "codex", text: "looking" });
+    expect(JSON.stringify(reqs)).not.toContain("PRIVATE");
+    expect(JSON.stringify(reqs)).not.toContain("/vibe");
+  });
+
+  it("an ask card is flagged, and its answer updates it", async () => {
+    const { reqs, s } = withLog();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, { type: "ask", askId: "k1", question: "Ship?", options: ["Yes", "No"] });
+    await s.msg(owner, { type: "answer", askId: "k1", choices: { q1: "o2" } });
+    expect(reqs.map((r) => r.op)).toEqual(["put", "update"]);
+    expect(reqs[0]!.lines[0]).toMatchObject({ ask: true, answer: null });
+    expect(reqs[1]!.lines[0]).toMatchObject({ ask: true, answer: "No" });
+  });
+
+  it("a friend's line goes to their own thread", async () => {
+    const { reqs, s } = withLog();
+    const f = await s.friend("f9", "f9@x.com");
+    await s.msg(f, { type: "chat", id: "x1", text: "hello partner" });
+    expect(reqs[0]).toMatchObject({ op: "put", thread: "f9" });
+    expect(reqs[0]!.lines[0]).toMatchObject({ from: "friend", text: "hello partner" });
+  });
+
+  it("the history being down never stops the chat", async () => {
+    const { s } = withLog(true);
+    const owner = s.page();
+    await s.msg(owner, { type: "chat", id: "m1", text: "still here" });
+    expect(chats(owner).at(-1)).toMatchObject({ id: "m1", text: "still here" });
+  });
+
+  it("POST /internal/chat-backfill writes the owner thread's stored lines; 503 without the binding", async () => {
+    const { reqs, s } = withLog();
+    const owner = s.page();
+    await s.msg(owner, { type: "chat", id: "m1", text: "one" });
+    await s.msg(owner, { type: "chat", id: "m2", text: "two" });
+    const res = await s.hub.fetch(
+      new Request("https://lianki-push/internal/chat-backfill", { method: "POST" }),
+    );
+    expect(res.status).toBe(200);
+    const last = reqs.at(-1)!;
+    expect(last.op).toBe("backfill");
+    expect(last.thread).toBe("owner");
+    expect(last.lines.map((l) => l.id)).toEqual(["m1", "m2"]);
+    const bare = setup();
+    const r2 = await bare.hub.fetch(
+      new Request("https://lianki-push/internal/chat-backfill", { method: "POST" }),
+    );
+    expect(r2.status).toBe(503);
+  });
+});
