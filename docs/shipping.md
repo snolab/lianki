@@ -48,7 +48,7 @@ unit suite, 30 s to several minutes):
   bundles (`scripts/pre-commit.ts`, plan in `scripts/pre-commit-plan.ts`).
 - **`pre-push`** — cheapest first, so a failure surfaces in seconds:
   `bun run lint` (whole repo), typecheck, the unit suite with its coverage
-  gate, then `qa:all`.
+  gate, then `qa:all`. The last two run behind the machine-wide lock, below.
 
 So a commit can be locally unchecked for types and tests until it is pushed;
 nothing reaches `main` that way, because `main` takes only PRs and the required
@@ -67,6 +67,53 @@ hoisted install; verified 2026-10-14). There the nightly run is the only
 integration gate; `LIANKI_QA_ON_WINDOWS=1` forces the local run, for example to
 re-test after an OpenNext upgrade. WSL counts as Linux and runs the gate
 normally.
+
+## One heavy run at a time
+
+The unit suite and `qa:all` go behind one machine-wide lock, so parallel agents
+queue instead of running at once: time-sensitive tests time out under load, and
+that reads as a broken test. `scripts/dev/machine-lock.ts` wraps a command and
+waits its turn; the lock is the file `/tmp/lianki-gate.lock`, the same path from
+every worktree. A waiter prints who holds it (pid, worktree, command, start time)
+and at most one line a minute after that.
+
+| Run                                                 | Lock                                                |
+| --------------------------------------------------- | --------------------------------------------------- |
+| `git push` (pre-push): unit suite + `qa:all`        | held as one stretch, so nobody gets in between      |
+| `bun run qa:all`, with any flags                    | takes it                                            |
+| `bun run test:unit`, with flags only                | takes it                                            |
+| `bun test unit/x.test.ts`, `bun run test:unit unit/x.test.ts` | no: a single file must stay fast          |
+| bare `bun test` (the whole suite, by hand)          | no: bun's own command can't be wrapped. Heavy, so prefer `bun run test:unit` |
+| `bun scripts/qa/qa-all.mjs` directly, a single `qa-*.mjs` or Playwright suite | no                        |
+| `bun run lint`, `bun run typecheck`                 | no: measured 0.5 s and 1.8 s (6 s CPU) on 2026-11-07, and they fail fast |
+| CI (`CI` set)                                       | no: each runner has its machine to itself           |
+
+Rules it keeps:
+
+- **Dead holders are taken over, live ones never.** Dead means the pid is gone, a
+  zombie, or now belongs to a process with another start time (pid reuse). Age
+  counts for nothing: past 30 minutes a waiter prints a warning and keeps waiting.
+  If `ps` can't answer, a pid that exists counts as alive.
+- **Released on exit, failure and signals.** INT, TERM and HUP go to the command,
+  and the lock is held until the command is gone. After a `kill -9` of the wrapper
+  the command can outlive it; the next waiter takes over, so the two can overlap.
+- **Nested use just runs**: the wrapper hands its token down in the environment
+  (`LIANKI_GATE_TOKEN`), which is how pre-push reaches `test:unit` and `qa:all`
+  inside its own hold. A token from a finished run does not count.
+- **It sits outside the per-checkout lock** in `qa-all.mjs` (`.wrangler/qa-all.lock`),
+  which remains for a direct `bun scripts/qa/qa-all.mjs`. Waiters are not served in
+  arrival order. If the file can't be used at all it warns and runs unlocked, so a
+  broken `/tmp` never pushes anyone towards `--no-verify`.
+
+**Don't loop failed pushes.** The hook is one attempt, and nothing in code retries.
+If a time-sensitive suite times out, look at the load first (`uptime`); if it is
+high, wait for it to come down, then retry once. A second failure is a real failure:
+read it.
+
+The manual `mkdir /tmp/lianki-push.lock` from older agent briefs is no longer needed:
+drop it. It stays safe while some agents still use it, because the order only runs
+one way: they hold the old lock and then enter the new one, and nothing holding the
+new lock ever takes the old one.
 
 ## Deploy order
 

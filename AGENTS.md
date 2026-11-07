@@ -19,6 +19,10 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - `.env.local` and `.dev.vars` are gitignored and have no other copy — never
   delete them. An encrypted backup is proposed in
   [docs/secrets-backup-plan.md](docs/secrets-backup-plan.md) (not done yet).
+- **Don't loop failed pushes.** The hook is one attempt, with no retries in code.
+  If a time-sensitive suite times out, look at the load first (`uptime`); if it is
+  high, wait, then retry once. See
+  [docs/shipping.md](docs/shipping.md), "One heavy run at a time".
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
@@ -27,10 +31,11 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 ```bash
 bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
-bun test               # unit tests
+bun test unit/x.test.ts  # one test file, no queue
+bun run test:unit      # whole unit suite: waits for the machine-wide lock
 bun fix                # oxlint --fix + oxfmt
 bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run it)
-bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push)
+bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push); machine-wide lock
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 

@@ -31,17 +31,26 @@ fi
 set -e
 bun run lint
 bun run typecheck
+
+# The heavy part holds the machine-wide lock as one stretch: parallel agents queue
+# here instead of timing out each other's tests, and no one gets in between the
+# unit suite and qa:all. Both take the lock themselves when run by hand; inside
+# this they see it is theirs and just run. Lint and typecheck stay outside: short,
+# and they fail fast. One attempt, never a retry: docs/shipping.md, "One heavy run
+# at a time".
+#
+# Inside: skip qa:all, and only qa:all, on native Windows (Git Bash / MSYS), where
+# it cannot pass: the OpenNext Cloudflare packaging breaks there. With bun's
+# isolated linker its traced copy turns directory symlinks into file symlinks
+# ("Access is denied" in esbuild); with a hoisted install the Worker boots but
+# every route fails with ChunkLoadError on Turbopack server chunks. Verified
+# 2026-10-14; neither failure involves the code being pushed. The nightly CI run
+# of the identical `qa:all` on Linux is the gate there. WSL is not affected
+# (uname = Linux). Set LIANKI_QA_ON_WINDOWS=1 to run it anyway (e.g. after an
+# OpenNext upgrade).
+bun scripts/dev/machine-lock.ts --label "git push: unit suite, qa:all" -- sh -ec '
 bun run test:unit -- --coverage
 
-# Skip qa:all — only qa:all, the checks above have run — on native Windows (Git
-# Bash / MSYS), where it cannot pass: the OpenNext Cloudflare packaging breaks
-# there. With bun's isolated linker its traced copy turns directory symlinks
-# into file symlinks ("Access is denied" in esbuild); with a hoisted install the
-# Worker boots but every route fails with ChunkLoadError on Turbopack server
-# chunks. Verified 2026-10-14; neither failure involves the code being pushed.
-# The nightly CI run of the identical `qa:all` on Linux is the gate there. WSL
-# is not affected (uname = Linux). Set LIANKI_QA_ON_WINDOWS=1 to run it anyway
-# (e.g. after an OpenNext upgrade).
 case "$(uname -s 2>/dev/null)" in
 MINGW* | MSYS* | CYGWIN*)
   if [ "${LIANKI_QA_ON_WINDOWS:-}" != "1" ]; then
@@ -53,3 +62,4 @@ MINGW* | MSYS* | CYGWIN*)
 esac
 
 bun run qa:all
+'
