@@ -2,6 +2,7 @@
 
 import { isEntrySource } from "@/lib/words/entry-list";
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
+import { pageLeaving } from "@/lib/page-leaving";
 import { useTextScale } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { SettingsSheet } from "./SettingsSheet";
@@ -4979,10 +4980,17 @@ export function Study({
   // The headwords of the same words (the lemma file's), for the card's word in its example.
   const heads = useRef<HeadMap>(new Map());
   const [, setFamRev] = useState(0);
+  // Nothing is asked once the page starts to leave (lib/page-leaving.ts): WebKit
+  // refuses a fetch started while the next page loads and reports it as a page
+  // error, caught or not. Held while the list is up.
+  useEffect(() => pageLeaving().watch(), []);
   useEffect(() => {
     const want = missingWords(queue.slice(from, to), fam.current);
     if (!want.size) return;
     const t = setTimeout(() => {
+      const leaving = pageLeaving().signal;
+      // Not asked: the next window asks, should the leave be called off.
+      if (leaving.aborted) return;
       for (const [lang, all] of want)
         for (let k = 0; k < all.length; k += 500) {
           const words = all.slice(k, k + 500);
@@ -4992,6 +5000,7 @@ export function Study({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ lang, words }),
+            signal: leaving,
           })
             .then((r) => (r.ok ? r.json() : null))
             .then((j: { hits?: Record<string, FamHit>; heads?: unknown } | null) => {
@@ -5001,7 +5010,12 @@ export function Study({
               if (j?.hits) recordHits(fam.current, lang, words, j.hits);
               setFamRev((n) => n + 1);
             })
-            .catch(() => {});
+            .catch(() => {
+              // Cut by a leave: not asked after all, should the page stay.
+              if (!leaving.aborted) return;
+              const m = fam.current.get(lang);
+              for (const w of words) if (m?.get(w) === null) m.delete(w);
+            });
         }
     }, 250);
     return () => clearTimeout(t);
@@ -5553,6 +5567,9 @@ export function Study({
             // the user activation full screen needs.
             onPointerUp={touch ? resumeFullscreen : undefined}
             role="list"
+            // Measured and opened (the opening scroll above has run): what a
+            // test waits for after a load, instead of the network going quiet.
+            data-ready={listReady && measured ? "" : undefined}
           >
             {/* The paper, scrolling with the rows: one composited layer the
             height of the whole content (both over-scroll pads included),
