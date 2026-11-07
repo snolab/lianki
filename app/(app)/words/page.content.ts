@@ -1149,6 +1149,24 @@ const dictionary = {
       mr: "आणखी लोड होत आहे…",
       ko: "더 불러오는 중…",
     }),
+    meaningNotFound: t({
+      en: "No meaning yet",
+      zh: "暂无释义",
+      hi: "अभी कोई अर्थ नहीं",
+      es: "Aún sin significado",
+      fr: "Pas encore de sens",
+      ar: "لا معنى بعد",
+      bn: "এখনও অর্থ নেই",
+      pt: "Ainda sem significado",
+      ru: "Значения пока нет",
+      ur: "ابھی کوئی معنی نہیں",
+      id: "Belum ada arti",
+      de: "Noch keine Bedeutung",
+      ja: "まだ意味がありません",
+      sw: "Bado hakuna maana",
+      mr: "अजून अर्थ नाही",
+      ko: "아직 뜻이 없습니다",
+    }),
     allReviewedBack: t({
       en: "All reviewed. Press Enter to go back.",
       zh: "都复习完了，按回车返回。",
@@ -2381,6 +2399,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
   hard: "/words study view: name of the second review grade (Again/Hard/Good/Easy): remembered, but with difficulty. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
   good: "/words study view: name of the third review grade (Again/Hard/Good/Easy): remembered correctly, the normal answer. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
   easy: "/words study view: name of the highest review grade (Again/Hard/Good/Easy): remembered effortlessly, so the next review is far away. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
+  meaningNotFound:
+    "The book reader's word review list: small muted text in a word row's meaning cell, where a dictionary definition of that word would be, when no definition could be found or the lookup failed. A calm statement, not an error; the row can still be graded. Meaning here is a word's definition. Keep it a very short noun phrase.",
   allReviewedBack:
     "/words study view and the book reader's paragraph word review: screen-reader-only status (aria-live polite), announced once when the last word left to review has just been graded and keyboard focus has moved to the back button at the end of the list (back to the word lists, or back to the book). Tells the listener the review is done and that Enter goes back. Two short sentences; keep the key name Enter as the keyboards of that language label it.",
   everyWordLearned:

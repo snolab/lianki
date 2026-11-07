@@ -9,7 +9,8 @@
 // (POST /api/read/[id]/word-session). A new word is a row that stores nothing
 // until a swipe grades it (owner, 2026-11-06). 「制卡」 is only the batch: with
 // several words missing, a card for each (POST /api/read/[id]/make-cards), with
-// an undo toast.
+// an undo toast. A row near the screen gets its meaning and its example's
+// translation by itself (lib/read/review-row-fill.ts), the same asks as a tap.
 //
 // The overlay covers the reader; the page under it keeps its place, and
 // closing (✕, the exit button, back) returns focus to the reader.
@@ -20,12 +21,25 @@
 // tab (`lk:ui:words`, under `reviewKey`). docs/ui-state.md.
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { useIntlayer } from "next-intlayer";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import { useIntlayer, useLocale } from "next-intlayer";
+import { activeByok } from "@/lib/byok/config";
 import { catalogWords, type CatalogWord } from "@/lib/read/dict";
 import type { Sentence } from "@/lib/read/reader-model";
 import { MIN_BATCH, orderWords, type ParaWord } from "@/lib/read/word-review";
 import { foldsOf } from "@/lib/read/words";
+import { createRowFill } from "@/lib/read/review-row-fill";
+import { fetchCachedGloss, fetchGloss } from "@/lib/read/select-gloss-fetch";
+import { fetchPiece } from "@/lib/read/select-translate-fetch";
+import { readNotesOn } from "@/lib/read/translator-notes";
 import { fill } from "@/lib/nav/nav-core";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import type { BackOptions } from "@/lib/back-to-close";
@@ -144,10 +158,13 @@ export function WordReview({
   onChanged,
   place,
   pin,
+  cachedOnly = false,
 }: {
   id: string;
   title: string;
   words: RangeWord[];
+  /** A /vibe doc's private speech: its meanings ask no model before a swipe (docs/vibe.md). */
+  cachedOnly?: boolean;
   /** Where this review's position is kept in the tab (reviewKey). */
   place?: string;
   /** Its history entry: the address with `?review=`, or the one it was opened from. */
@@ -206,21 +223,49 @@ export function WordReview({
     byTerm.current = m;
   }, [session, words]);
 
+  const { locale } = useLocale();
+  const to = String(locale);
+  // Read when the review opens, as a selection reads them when it changes.
+  const own = useMemo(() => (cachedOnly ? null : activeByok()), [cachedOnly]);
+  const rowFill = useMemo(() => {
+    const ownNow = activeByok();
+    const notes = readNotesOn();
+    return createRowFill({
+      to,
+      // The new words only: a card has its meaning, or the session looked for one.
+      wordOf: (listId, term) => byTerm.current.get(`${listId}\u0000${term}`),
+      gloss: (w, ex) => (cachedOnly ? fetchCachedGloss(id, w, ex) : fetchGloss(id, w, ex, own)),
+      // The reader's own path: the shared cache and its charge, his own AI, or
+      // a /vibe doc's private path (the route tells).
+      translate: (text, lang) =>
+        fetchPiece(id, to, lang && lang !== "und" ? lang : undefined, text, ownNow, notes),
+    });
+  }, [id, to, own, cachedOnly]);
+
   const onGrade = useCallback(
     (listId: string, term: string, isNew: boolean) => {
       touched();
       // A new word of the book's list: its meaning and sentence join the list.
       const w = byTerm.current.get(`${listId}\u0000${term}`);
       if (!isNew || !w) return;
+      // Asked for it already (or asking now): the commit carries that answer and
+      // pays for nothing again. `own`: no model of ours, even with no answer.
+      const found = rowFill.meaningOf(listId, term);
       // The grade syncs through /words' queue; its entry is added once the
       // card is there (a few tries, then the next review backfills it).
       const tryAdd = (n: number) =>
-        post<{ added: number }>(`/api/read/${id}/word-session`, { graded: [w] })
+        Promise.resolve(found)
+          .then((g) =>
+            post<{ added: number }>(`/api/read/${id}/word-session`, {
+              graded: [g?.back ? { ...w, term: w.term ?? g.term, back: g.back } : w],
+              ...(own ? { own: true } : {}),
+            }),
+          )
           .then((r) => r.added > 0 || Promise.reject(new Error("not yet")))
           .catch(() => n < 3 && setTimeout(() => tryAdd(n + 1), 1000 * 3 ** n));
       setTimeout(() => tryAdd(0), 800);
     },
-    [id, touched],
+    [id, touched, rowFill, own],
   );
 
   const make = () => {
@@ -278,7 +323,13 @@ export function WordReview({
           key={v}
           lists={session.lists}
           onExit={() => close.current()}
-          scope={{ items: session.items, onGrade, exitLabel: t.backToBook.value, key: place }}
+          scope={{
+            items: session.items,
+            onGrade,
+            exitLabel: t.backToBook.value,
+            key: place,
+            fill: rowFill,
+          }}
         />
       ) : (
         <p className="px-4 pt-[calc(5rem+env(safe-area-inset-top))] text-sm opacity-70">

@@ -82,8 +82,12 @@ Only what can run from the browser:
   (no model, no charge) and returns `ask: {lang, term}` when they have
   nothing; the browser asks the provider for that headword. The answer stays
   in the tab, never in `word_gloss`. (Without a key, the same tap runs our model
-  through `chargeAi`.) The live doc's word card does the same. A /vibe doc asks
-  nobody before a swipe: decks and `word_gloss` only (docs/vibe.md).
+  through `chargeAi`.) The live doc's word card does the same, and so does a
+  review list's new word as its row comes near the screen
+  (`lib/read/review-row-fill.ts`), whose example's translation goes to the
+  provider as the selection card's does. Its swipe sends `own: true` with
+  `graded`, so our model is never asked for it. A /vibe doc asks nobody for a
+  meaning before a swipe: decks and `word_gloss` only (docs/vibe.md).
 - **Committing that word**: the slider's `batch-grade` carries `own: true` and
   the answer the user saw, which goes on their own card (still never in
   `word_gloss`). `own: true` means no model of ours on that call, so nothing is
@@ -95,7 +99,7 @@ changes (still no charge, still nothing written).
 
 There is no AI word split or sense pick on the client today; when one is
 added, it takes the same path. Server-side features — Learning Partner
-replies, the background gloss fill (制卡, the word review), polish — keep
+replies, the background gloss fill (制卡), polish — keep
 using our backend and credits, and the settings text says so. **The relay
 does not change that**: it only carries the browser's own calls; no
 server-side feature is switched to a user's key.

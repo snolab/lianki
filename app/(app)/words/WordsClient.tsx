@@ -148,6 +148,7 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
+import type { Patch, RowFill } from "@/lib/read/review-row-fill";
 import {
   TrayBack,
   focusStillFree,
@@ -412,6 +413,8 @@ function flushSwipes(beacon = false) {
 }
 /** A word whose next due falls inside this window comes back in this session. */
 const SESSION_WINDOW_MS = 20 * 60_000;
+/** "Near the screen" for a review list's rows: this share of the list's height beyond it. */
+const NEAR_VIEW = 25;
 
 type Rating = 1 | 2 | 3 | 4;
 type CatalogMeta = {
@@ -476,6 +479,8 @@ type Entry = {
   scene?: string;
 };
 type Item = Entry & {
+  /** A review list's new word with no meaning yet (lib/read/review-row-fill.ts). */
+  backState?: "loading" | "none";
   kind: "due" | "new" | "again";
   newIndex?: number;
   /** The list it belongs to — a "study all" screen mixes lists. */
@@ -3627,6 +3632,8 @@ export type StudyScope = {
   exitLabel?: string;
   /** Shown in the toolbar after the title (the reader's 制卡). */
   toolbar?: React.ReactNode;
+  /** Fills rows as they come near the screen (lib/read/review-row-fill.ts). Stable. */
+  fill?: RowFill;
   /**
    * This review's place in the tab's UI state (`lk:ui:words`): the list's
    * scroll and the card in focus, kept apart from the lists' own sessions so
@@ -4900,6 +4907,36 @@ export function Study({
   const OVERSCAN = 20;
   const from = Math.max(0, Math.floor((scrollTop - pad) / ROW_H) - OVERSCAN);
   const to = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H) + OVERSCAN);
+  // A review list's rows ask for what they lack as they come near the screen:
+  // the observer, not the window above, which renders far more than is seen.
+  const rowFill = scope?.fill;
+  const nearRows = useRef<IntersectionObserver | null>(null);
+  useEffect(() => {
+    if (!rowFill || !listEl) return;
+    const patch: Patch = (listId, term, p) =>
+      setQueue((q) => q.map((x) => (x.listId === listId && x.term === term ? { ...x, ...p } : x)));
+    const io = new IntersectionObserver(
+      (seen) => {
+        for (const e of seen) {
+          const it = queueNow.current[Number((e.target as HTMLElement).dataset.i)];
+          if (!it) continue;
+          if (e.isIntersecting) rowFill.enter(it, patch);
+          else rowFill.leave(it);
+        }
+      },
+      { root: listEl, rootMargin: `${NEAR_VIEW}% 0px` },
+    );
+    nearRows.current = io;
+    return () => {
+      nearRows.current = null;
+      io.disconnect();
+    };
+  }, [rowFill, listEl]);
+  useEffect(() => {
+    const io = nearRows.current;
+    if (!io || !listEl) return;
+    for (const r of listEl.querySelectorAll("[data-i]")) io.observe(r);
+  }, [rowFill, listEl, from, to, queue.length]);
 
   // Audio, in the owner's order: the rows on screen, then their neighbours
   // outward across the rendered window, then a few past it. Each scroll
@@ -4994,7 +5031,8 @@ export function Study({
     const family = getComputedStyle(document.body).fontFamily;
     const cache = new Map<string, { back: number; ex: number }>();
     return (it: Item) => {
-      const k = keyOf(it);
+      // With what it shows: a review list's row is filled once it is near the screen.
+      const k = `${keyOf(it)}\u0000${it.back.length}\u0000${it.exTr?.length ?? 0}`;
       let w = cache.get(k);
       if (!w && ctx) {
         ctx.font = `400 ${14 * cardScale}px ${family}`;
@@ -5678,8 +5716,48 @@ export function Study({
                             {config.readingOnBack && it.reading && it.reading !== it.term && (
                               <bdi className="mr-2 font-medium">{it.reading}</bdi>
                             )}
-                            {it.back}
+                            {it.back ||
+                              (it.backState === "loading" ? (
+                                <span className="opacity-50" data-row-meaning="loading">
+                                  …
+                                </span>
+                              ) : it.backState === "none" ? (
+                                <span className="opacity-60" data-row-meaning="none">
+                                  {text.meaningNotFound}
+                                </span>
+                              ) : null)}
                           </Glance>
+                        );
+                      // A review list's translation has its own line, under the
+                      // sentence: inline, a long sentence would cut it off (owner,
+                      // 2026-11-07 16:39). Same row height; each line slides or
+                      // aims at its word as a one-line cell does.
+                      if (scope && it.ex && it.exTr)
+                        return (
+                          <span key={k} className={`${span} flex min-w-0 flex-col`}>
+                            <Glance
+                              active={glancing && show}
+                              title={show ? it.ex : undefined}
+                              className={look}
+                            >
+                              <bdi lang={it.lang} data-row-example>
+                                <MarkedExample
+                                  text={it.ex}
+                                  lang={it.lang}
+                                  fam={fam.current}
+                                  heads={heads.current}
+                                  forms={[it.term, it.reading]}
+                                />
+                              </bdi>
+                            </Glance>
+                            <Glance
+                              active={glancing && show}
+                              title={show ? it.exTr : undefined}
+                              className={`text-xs opacity-60 transition-[filter] duration-75 ${show ? "" : "slip-blank"}`}
+                            >
+                              <span data-row-ex-tr>{it.exTr}</span>
+                            </Glance>
+                          </span>
                         );
                       return (
                         <Glance

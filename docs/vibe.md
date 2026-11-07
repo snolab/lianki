@@ -253,7 +253,8 @@ is created without a swipe:**
   either, since that would send the sentence somewhere before a swipe. Elsewhere a
   tap does ask the model (books-plan.md, "Grading from the selection card"); here it
   never does, and the gloss route enforces that for a doc of this kind
-  (`glossMayAskModel`).
+  (`glossMayAskModel`). A review list opened from the doc does the same for its
+  rows (`fetchCachedGloss`, `lib/read/review-row-fill.ts`).
 - Only the slider's grade calls `commit`, held `GRADE_HOLD_MS` as a reader grade
   is. Undo in the hold sends nothing. Then one `batch-grade` makes the card in the
   book's own deck and grades it; the AI meaning and its charge happen there. Undo

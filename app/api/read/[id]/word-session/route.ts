@@ -24,20 +24,24 @@ import { fillGlosses } from "@/lib/read/gloss-server";
  * /words. `graded`: new words just graded join the book list's entries.
  *
  * A word with no card is only a preview here: the decks and word_gloss, no model,
- * no charge. A swipe is what commits it, so its AI meaning comes with `graded`.
+ * no charge. Opening a list never asks the model for it: a row near the screen
+ * asks /api/read/[id]/gloss, as a tap does (lib/read/review-row-fill.ts), and the
+ * swipe's `graded` carries that answer. A word that has none gets its AI meaning
+ * here, unless `own: true` (the user's own AI, docs/byok.md): no model of ours.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
   if (!ctx.email) return badRequest("no email");
-  const body = (await bodyOf(req)) as { words?: unknown; graded?: unknown } | null;
+  const body = (await bodyOf(req)) as { words?: unknown; graded?: unknown; own?: unknown } | null;
   const { book, own, langs } = await bookCtxOf(ctx);
   if (body?.graded !== undefined) {
     const graded = rangeWords(body.graded, own);
     if (!graded) return badRequest("graded words are required");
     let added = 0;
     for (const g of byLang(book, langs, graded)) {
-      const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, { userId: ctx.userId });
+      const ai = body.own === true ? null : { userId: ctx.userId };
+      const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, ai);
       added += await addGradedEntries(ctx.db, ctx.email, g.book, g.words, gloss);
     }
     return json({ added });

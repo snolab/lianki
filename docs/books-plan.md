@@ -955,8 +955,17 @@ it in the text, not a list of toasts.
     The several-word 制卡 (N) stays on a sentence, paragraph, range or word
     review, from two words up (`MIN_BATCH`): it is a batch action. A review
     list's new word is a preview too, and opening the list asks no model
-    (`word-session`): its swipe is the commit (`graded` brings the AI meaning,
-    onto the card as well). The live doc's card (`LiveTail`) has the same
+    (`word-session`): a row in or near view gets its meaning as a tap does
+    (owner, 2026-11-06 23:07 JST: "gain/issues have no explaination"; the card's
+    恢复：点开就查释义), through `fetchGloss`, a few at a time, each word once
+    (`lib/read/review-row-fill.ts`, an IntersectionObserver in Study, no timers).
+    Decks, `word_gloss`, else the AI gloss through `chargeAi` (which only logs for
+    now), written to `word_gloss`. The swipe is the commit: `graded` carries that
+    meaning and asks no model again, and a word that has none gets its AI meaning
+    there. A failed lookup reads 「暂无释义」 and the row still swipes. The example's
+    translation comes the same way, on its own line under the sentence
+    (`fetchPiece`: the reader's shared cache, with translator's notes by his
+    preference, in brackets), and not when the list's language is already his. The live doc's card (`LiveTail`) has the same
     `NewWordStrip` and the same tap's meaning (its slider shows once that has
     answered), and sends its batch at once, with an undo toast. A /vibe doc asks
     no model before a swipe, in the reader as on /vibe (docs/vibe.md); the gloss

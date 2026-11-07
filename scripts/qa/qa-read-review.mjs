@@ -19,6 +19,9 @@
 // - the review is pinned in the URL (?review=): a reload opens it again on the
 //   same card (the tab's sessionStorage), and Back closes it on the book.
 //
+// - a row near the screen fills itself: a new word's meaning, its example's
+//   translation; never the whole list, each word once (the model stubbed at the routes).
+//
 // The reader v2 needs `?reader=v2` on a dev server, or the read.reader-v2
 // flag on in the local D1 for wrangler dev.
 import { mkdirSync } from "node:fs";
@@ -564,17 +567,209 @@ async function plainWordsBack(device) {
   await ctx.close();
 }
 
-await plainWordsBack(devices["Desktop Chrome"]);
-// Easy (nothing comes back), and Again and Good (a copy waits): the same end.
-await lastCardBack(devices["Desktop Chrome"], { last: "Digit4", leave: "Enter" });
-await lastCardBack(devices["Desktop Chrome"], { last: "Digit1", leave: "KeyG" });
-await lastCardBack(devices["Desktop Chrome"], { last: "Digit3", leave: "KeyG", scheme: "dark" });
-await lastCardBack(devices["iPhone 13"], { leave: "KeyG" });
-await lastCardBack(devices["iPhone 13"], { leave: "Enter", scheme: "dark" });
-await offscreenInsert(devices["Desktop Chrome"]);
-await run(devices["iPhone 13"], "light", true);
-await run(devices["iPhone 13"], "dark", true);
-await run(devices["Desktop Chrome"], "light", false);
+/**
+ * A review list's rows fill themselves as they come near the screen: a new word's
+ * meaning (owner, 2026-11-06 23:07 JST: "gain/issues have no explaination") and
+ * the example's translation (2026-11-07 16:39), never the whole list on opening,
+ * each word once, and the swipe's commit carries the meaning. The model is
+ * stubbed at the routes: this checks what the page asks and shows, not a model.
+ */
+async function rowsFill(device, scheme, touch) {
+  const tag = `fill-${touch ? "iphone" : "desktop"}-${scheme}`;
+  console.log(`— ${tag}`);
+  const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: scheme });
+  await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
+  const { page, errs, id } = await setup(ctx, tag);
+  const glossed = [];
+  const translated = [];
+  const graded = [];
+  let failing = null;
+  await ctx.route("**/api/read/*/gloss", (r) => {
+    const { w } = r.request().postDataJSON();
+    glossed.push(w);
+    if (w === failing) return r.fulfill({ status: 500, body: "{}" });
+    return r.fulfill({ json: { term: w, back: `QA meaning of ${w}` } });
+  });
+  await ctx.route("**/api/read/*/translate", (r) => {
+    const { text } = r.request().postDataJSON();
+    translated.push(text);
+    return r.fulfill({ json: { text: `译文：${text.slice(0, 40)}`, cached: false } });
+  });
+  // Every word new with no meaning, so each row has something to ask for
+  // (a local deck may know some); the first of them fails.
+  await ctx.route("**/api/read/*/word-session", async (r) => {
+    const body = r.request().postDataJSON();
+    if (body.graded) {
+      graded.push(...body.graded);
+      return r.fallback();
+    }
+    const res = await r.fetch();
+    const json = await res.json();
+    for (const it of json.items) if (!it.card) it.back = "";
+    failing = json.items.find((it) => !it.card)?.w ?? null;
+    return r.fulfill({ response: res, json });
+  });
+  // Every back shown, so the screenshots show what a row holds when focused.
+  await page.evaluate(() => localStorage.setItem("lk:words-show-all", "1"));
+  // His language is not the book's: the address gives it.
+  await page.goto(`/zh/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
+  await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(800);
+  const w = await aWord(page);
+  check(!!w, `${tag}: a word in a long paragraph is on screen`);
+  if (!w) return ctx.close();
+  if (touch) await page.touchscreen.tap(w.x, w.y);
+  else await page.mouse.click(w.x, w.y);
+  await page.waitForTimeout(300);
+  await page.locator("[data-action=review-words]").click();
+  const list = page.locator("[data-testid=read-word-review] [role=list]");
+  await until(page, async () => (await list.locator("[data-i]").count()) > 0);
+  await until(page, async () => translated.length > 0, 5000);
+  await page.waitForTimeout(1200);
+  const n = await list.evaluate(async (el) => {
+    const top = el.scrollTop;
+    el.scrollTop = 0;
+    const h = parseFloat(getComputedStyle(el.querySelector("[data-i]")).height) || 40;
+    el.scrollTop = top;
+    return Math.round(el.scrollHeight / h);
+  });
+  const atOpening = { gloss: glossed.length, trans: translated.length };
+  check(
+    atOpening.gloss > 0 && atOpening.gloss <= 26,
+    `${tag}: opening asks meanings only near the screen (${atOpening.gloss} of about ${n} rows)`,
+  );
+  check(
+    atOpening.trans > 0 && atOpening.trans <= 26,
+    `${tag}: and translations only near the screen (${atOpening.trans})`,
+  );
+  check(
+    new Set(glossed).size === glossed.length,
+    `${tag}: no word asked twice (${glossed.length} asks)`,
+  );
+  const shown = await page.evaluate(() => ({
+    meaning: document.querySelectorAll("[data-testid=read-word-review] [data-i]").length,
+    tr: document.querySelector("[data-row-ex-tr]")?.textContent ?? "",
+    none: document.querySelectorAll("[data-row-meaning=none]").length,
+    meanings: [...document.querySelectorAll("[data-testid=read-word-review] [data-i]")].filter(
+      (r) => r.textContent.includes("QA meaning of"),
+    ).length,
+  }));
+  check(shown.tr.startsWith("译文："), `${tag}: a row shows its example's translation`);
+  check(shown.meanings > 0, `${tag}: rows show their meaning (${shown.meanings})`);
+  check(shown.none === 1, `${tag}: the failed lookup reads calmly (${shown.none})`);
+  // The translation has its own line, inside the row.
+  const fits = await page.evaluate(() => {
+    const t = document.querySelector("[data-row-ex-tr]");
+    const r = t.closest("[data-i]").getBoundingClientRect();
+    const b = t.getBoundingClientRect();
+    return b.height > 0 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1;
+  });
+  check(fits, `${tag}: its line fits in the row`);
+  await page.screenshot({ path: join(OUT, `${tag}.png`) });
+
+  // Further down: more asks, and not everything at once.
+  const before = glossed.length;
+  await list.evaluate((el) => {
+    el.scrollTop += el.clientHeight * 2;
+  });
+  await until(page, async () => glossed.length > before, 5000);
+  await page.waitForTimeout(800);
+  check(glossed.length > before, `${tag}: scrolling asks for the rows it reaches`);
+  check(
+    new Set(glossed).size === glossed.length,
+    `${tag}: still no word asked twice (${glossed.length} asks)`,
+  );
+  await list.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await page.waitForTimeout(800);
+
+  // The failed row still grades; the next row's commit carries its meaning.
+  const asks = glossed.length;
+  const grade = async (i) => {
+    if (!touch) return page.keyboard.press("Digit3");
+    const cdp = await ctx.newCDPSession(page);
+    const b = await list.locator(`[data-i="${i}"]`).boundingBox();
+    const y = b.y + b.height / 2;
+    const x = b.x + 60;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+    for (let d = 1; d <= 12; d++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: x + d * 12, y }],
+      });
+      await page.waitForTimeout(16);
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
+  await grade(0);
+  await page.waitForTimeout(700);
+  await grade(1);
+  check(
+    await until(page, async () => graded.length >= 2, 8000),
+    `${tag}: the row with no meaning and the next both grade (${graded.length})`,
+  );
+  const failed = graded.find((g) => g.w === failing);
+  const other = graded.find((g) => g.w !== failing);
+  check(!!failed && !failed.back, `${tag}: the failed word commits with no meaning to carry`);
+  check(
+    other?.back === `QA meaning of ${other?.w}`,
+    `${tag}: the commit carries the row's meaning (${other?.back})`,
+  );
+  check(glossed.length === asks, `${tag}: and asks for nothing again`);
+  check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
+  await ctx.close();
+}
+
+/** His language is the book's: no translation is asked for. */
+async function noTranslationInOwnLanguage(device) {
+  const tag = "fill-own-language";
+  console.log(`— ${tag}`);
+  const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: "light" });
+  await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
+  const { page, errs } = await setup(ctx, tag);
+  let asked = 0;
+  await ctx.route("**/api/read/*/translate", (r) => {
+    asked++;
+    return r.fulfill({ json: { text: "x", cached: false } });
+  });
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(800);
+  const w = await aWord(page);
+  await page.mouse.click(w.x, w.y);
+  await page.waitForTimeout(300);
+  await page.locator("[data-action=review-words]").click();
+  const rows = page.locator("[data-testid=read-word-review] [role=list] [data-i]");
+  await until(page, async () => (await rows.count()) > 0);
+  const before = asked;
+  await page.waitForTimeout(1500);
+  check(asked === before, `${tag}: an English sentence for an English reader asks nothing`);
+  check((await page.locator("[data-row-ex-tr]").count()) === 0, `${tag}: and shows no line for it`);
+  check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
+  await ctx.close();
+}
+
+await rowsFill(devices["Desktop Chrome"], "light", false);
+await rowsFill(devices["Desktop Chrome"], "dark", false);
+await rowsFill(devices["iPhone 13"], "light", true);
+await rowsFill(devices["iPhone 13"], "dark", true);
+// QA_ONLY=fill: just the rows filling themselves.
+if (process.env.QA_ONLY !== "fill") {
+  await noTranslationInOwnLanguage(devices["Desktop Chrome"]);
+  await plainWordsBack(devices["Desktop Chrome"]);
+  // Easy (nothing comes back), and Again and Good (a copy waits): the same end.
+  await lastCardBack(devices["Desktop Chrome"], { last: "Digit4", leave: "Enter" });
+  await lastCardBack(devices["Desktop Chrome"], { last: "Digit1", leave: "KeyG" });
+  await lastCardBack(devices["Desktop Chrome"], { last: "Digit3", leave: "KeyG", scheme: "dark" });
+  await lastCardBack(devices["iPhone 13"], { leave: "KeyG" });
+  await lastCardBack(devices["iPhone 13"], { leave: "Enter", scheme: "dark" });
+  await offscreenInsert(devices["Desktop Chrome"]);
+  await run(devices["iPhone 13"], "light", true);
+  await run(devices["iPhone 13"], "dark", true);
+  await run(devices["Desktop Chrome"], "light", false);
+}
 await browser.close();
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed");
 process.exit(failed ? 1 : 0);
