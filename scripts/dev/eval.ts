@@ -95,7 +95,7 @@
  *       Deleting needs the owner's own session (the chat's + → Inbox →
  *       Delete): `inbox rm` only says so.
  *
- *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] "text"   (or - for stdin)
+ *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane <lane>] [--voice <id>] "text"   (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
@@ -106,6 +106,11 @@
  *       usual rules). A hidden page never speaks; it reads the newest line
  *       once it is visible again. --loud is deprecated: accepted and
  *       ignored (a plain say), so older commands still work.
+ *
+ *       Lanes (docs/dev-debug-widget.md, "Lanes and voices"): --lane main|codex|agy
+ *       (default $LIANKI_LANE) gives the line that lane's avatar, name tag and
+ *       voice; --voice main|calm|bright reads it in another voice. A line
+ *       starting "【codex】" or "【agy】" gets its lane the same way.
  *
  *       A line spoken into the widget's mic carries "source":"stt"; when
  *       the agent polishes one, {"type":"edited","id","thread","text","raw",
@@ -197,9 +202,11 @@ import { randomBytes } from "node:crypto";
 import {
   LOUD_DEPRECATED,
   type NodeOpts,
+  type SayLane,
   type SayVolume,
   chatLine,
   nodeOpts,
+  sayLane,
   sayVolume,
 } from "./node-args";
 import { routeTo } from "@/lib/dev-eval";
@@ -289,6 +296,12 @@ const exitOnIdle = boolFlag("--exit-on-idle");
 const ackFlag = boolFlag("--ack");
 /** say: shown on his page, never read aloud (FYI, progress, deploy notices). */
 const quietFlag = boolFlag("--quiet");
+/**
+ * say: the lane saying it and the voice to read it in (packages/debug-chat/src/voices.ts).
+ * --lane defaults to $LIANKI_LANE, so a lane's shell sets it once; --voice to the lane's.
+ */
+const laneFlag = flag("--lane") ?? (process.env.LIANKI_LANE || undefined);
+const voiceFlag = flag("--voice");
 /** say: deprecated, a no-op (a plain say); accepted so old commands still work. */
 const loudFlag = boolFlag("--loud");
 const labelFlag = flag("--label");
@@ -630,7 +643,7 @@ function chat(out?: string, errorsOnly = false) {
 }
 
 /** Reply with the saved grant (to the owner, or `to` a friend); resolves once the hub has it. */
-function say(text: string, to?: string, volume: SayVolume = {}): Promise<Msg> {
+function say(text: string, to?: string, volume: SayVolume & SayLane = {}): Promise<Msg> {
   return sendOnce(
     {
       type: "say",
@@ -1075,11 +1088,16 @@ async function main() {
     if (loudFlag) console.error(LOUD_DEPRECATED);
     if (!text) {
       console.error(
-        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] "text" | -',
+        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane main|codex|agy] [--voice main|calm|bright] "text" | -',
       );
       process.exit(2);
     }
-    console.log(JSON.stringify(await say(text, to, volume)));
+    const lane = sayLane(laneFlag, voiceFlag);
+    if ("error" in lane) {
+      console.error(lane.error);
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await say(text, to, { ...volume, ...lane })));
     return;
   }
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];

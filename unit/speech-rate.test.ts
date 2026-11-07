@@ -95,7 +95,8 @@ describe("the rate reaches the outputs", () => {
       fetch: async () => ({
         ok: true,
         status: 200,
-        headers: { get: () => null },
+        // The chat lane's own English speaker answered (voices.ts), so nothing is shifted.
+        headers: { get: (k: string) => (k === "X-Voice" ? "aura-2" : null) },
         blob: async () => new Blob(["x"]),
       }),
       element: () => el,

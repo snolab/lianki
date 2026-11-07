@@ -33,6 +33,7 @@
     "./scene": "./src/scene.ts",
     "./polish": "./src/polish.ts",
     "./voice": "./src/voice.ts",
+    "./voices": "./src/voices.ts",
     "./voiceprint": "./src/voiceprint.ts",
     "./VoiceprintPanel": "./src/VoiceprintPanel.tsx",
     "./speak-rules": "./src/speak-rules.ts",

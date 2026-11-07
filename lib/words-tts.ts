@@ -3,6 +3,7 @@ import { MELOTTS_LANGS, sniffAudioType } from "@/lib/workers-ai";
 import { VOICE_CREDITS, voiceKey } from "@/lib/voice";
 import { MAX_TTS_TEXT, ttsParams } from "@/lib/voice-clip";
 import { personKey } from "@/lib/rateLimit";
+import { auraSpeakers } from "@lianki/debug-chat/voices";
 
 /**
  * /api/words/tts's logic (app/api/words/tts/route.ts wires the real I/O).
@@ -29,6 +30,11 @@ import { personKey } from "@/lib/rateLimit";
  * kept by the browser (`no-store`) — the chat replays from its own in-memory
  * blob URLs.
  *
+ * `speaker` (the chat's lanes, packages/debug-chat/src/voices.ts): an Aura-2
+ * speaker the lane table names for this language, so a lane reads in a voice
+ * of its own. Anything else is ignored. A recording (one voice) is skipped
+ * for it; if Aura-2 fails, MeloTTS answers (X-Voice: melotts), never nothing.
+ *
  * `isPrivate` (lib/vibe/private-speech.ts): a sentence the user's own private
  * text holds is treated as `store=0` whatever the client sent, since a clip in
  * R2 is shared by everyone who asks for the same text.
@@ -46,6 +52,15 @@ export const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 /** `store=0` (only that spelling) opts out of keeping a generated clip. */
 export const storeParam = (params: URLSearchParams) => params.get("store") !== "0";
 
+/** `speaker=`, kept only when the lane table names it for `lang` (else no speaker). */
+export function speakerParam(params: URLSearchParams, lang: string): string | undefined {
+  const s = params.get("speaker")?.trim().toLowerCase();
+  return s && auraSpeakers()[lang]?.includes(s) ? s : undefined;
+}
+
+/** X-Voice of a clip in a lane's own Aura-2 speaker. */
+export const AURA_VOICE = "aura-2";
+
 export type WordsTtsDeps = {
   getVoiceClip(key: string): Promise<Uint8Array | null>;
   getCachedTTS(key: string): Promise<Uint8Array | null>;
@@ -59,6 +74,7 @@ export type WordsTtsDeps = {
   speech(opts: {
     text: string;
     lang: string;
+    speaker?: string;
     signal?: AbortSignal;
   }): Promise<{ audio: Uint8Array<ArrayBuffer>; contentType: string }>;
   log(where: string, err: unknown): void;
@@ -81,17 +97,20 @@ export async function wordsTts(
   if (!text || text.length > MAX_TTS_TEXT)
     return json({ error: `text: 1–${MAX_TTS_TEXT} characters` }, 400);
   let store = storeParam(params);
+  const speaker = speakerParam(params, lang);
   const keep = () => (store ? CACHE_HEADERS : NO_STORE_HEADERS);
 
-  try {
-    const clip = await deps.getVoiceClip(voiceKey(lang, text));
-    if (clip)
-      return new Response(Buffer.from(clip), {
-        headers: { "Content-Type": "audio/mpeg", "X-Voice": "recorded", ...PUBLIC_CACHE_HEADERS },
-      });
-  } catch (err) {
-    deps.log("words.tts.voice.lookup", err);
-  }
+  // A recording is in the language's one voice: not for a lane's own speaker.
+  if (!speaker)
+    try {
+      const clip = await deps.getVoiceClip(voiceKey(lang, text));
+      if (clip)
+        return new Response(Buffer.from(clip), {
+          headers: { "Content-Type": "audio/mpeg", "X-Voice": "recorded", ...PUBLIC_CACHE_HEADERS },
+        });
+    } catch (err) {
+      deps.log("words.tts.voice.lookup", err);
+    }
 
   // 404, not 400: the client remembers the language has no server voice —
   // unless only this text is missing (X-Voice: miss).
@@ -102,7 +121,7 @@ export async function wordsTts(
 
   const key = crypto
     .createHash("sha256")
-    .update(`${deps.speechModel()}:words:${lang}:${text}`)
+    .update(`${speaker ? `${AURA_VOICE}:${speaker}` : deps.speechModel()}:words:${lang}:${text}`)
     .digest("hex");
   try {
     const cached = await deps.getCachedTTS(key);
@@ -110,7 +129,7 @@ export async function wordsTts(
       return new Response(Buffer.from(cached), {
         headers: {
           "Content-Type": sniffAudioType(Buffer.from(cached)),
-          "X-Voice": "melotts-cached",
+          "X-Voice": speaker ? AURA_VOICE : "melotts-cached",
           ...keep(),
         },
       });
@@ -140,15 +159,25 @@ export async function wordsTts(
   if (!deps.isConfigured()) return json({ error: "Speech is not configured" }, 503);
 
   try {
-    const { audio, contentType } = await deps.speech({ text, lang, signal });
-    if (store)
+    let voiced = speaker ? AURA_VOICE : "melotts";
+    const said = speaker
+      ? await deps.speech({ text, lang, speaker, signal }).catch((err) => {
+          // Never silence: the language's one voice instead.
+          deps.log("words.tts.aura", err);
+          voiced = "melotts";
+          return deps.speech({ text, lang, signal });
+        })
+      : await deps.speech({ text, lang, signal });
+    const { audio, contentType } = said;
+    // A fallback clip is not kept under the speaker's key.
+    if (store && voiced === (speaker ? AURA_VOICE : "melotts"))
       try {
         await deps.putCachedTTS(key, audio, { lang, textLength: text.length, source: "words" });
       } catch (err) {
         deps.log("words.tts.cache.save", err);
       }
     return new Response(audio, {
-      headers: { "Content-Type": contentType, "X-Voice": "melotts", ...keep() },
+      headers: { "Content-Type": contentType, "X-Voice": voiced, ...keep() },
     });
   } catch (err) {
     deps.log("words.tts.generate", err);

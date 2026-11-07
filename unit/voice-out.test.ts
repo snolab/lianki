@@ -206,7 +206,8 @@ describe("voice-out: the page's AudioContext and cloud output", () => {
         } finally {
           Object.assign(URL, { createObjectURL: saved.c, revokeObjectURL: saved.r });
         }
-        expect(fetched[0]).toBe("/api/words/tts?lang=en&text=Hi.&store=0");
+        // The chat lane's own English voice (voices.ts: Aura-2 luna).
+        expect(fetched[0]).toBe("/api/words/tts?lang=en&text=Hi.&store=0&speaker=luna");
         expect(made.length).toBeGreaterThan(60);
         expect(revoked.length).toBeGreaterThan(0);
       },
@@ -296,7 +297,7 @@ describe("voice-out: createCloudOut", () => {
     await tick();
     expect(r.out.gain()).toBe(r.gain);
     expect(r.calls).toContainEqual(["set", 0.25, 1]);
-    expect(r.fetched).toEqual(["/api/words/tts?lang=en&text=Hello.&store=0"]);
+    expect(r.fetched).toEqual(["/api/words/tts?lang=en&text=Hello.&store=0&speaker=luna"]);
     r.el.onloadedmetadata?.();
     await tick();
     expect(r.el.plays).toBe(1);
@@ -380,7 +381,7 @@ describe("voice-out: createCloudOut", () => {
     r.out.prepare?.("One.", "en");
     r.out.prepare?.("One.", "en");
     r.out.prepare?.("Привет.", "ru"); // cannot: nothing fetched
-    expect(r.fetched).toEqual(["/api/words/tts?lang=en&text=One.&store=0"]);
+    expect(r.fetched).toEqual(["/api/words/tts?lang=en&text=One.&store=0&speaker=luna"]);
     for (let i = 0; i < 70; i++) r.out.prepare?.(`Clip ${i}.`, "en");
     await tick();
     expect(r.revoked.length).toBeGreaterThan(0);

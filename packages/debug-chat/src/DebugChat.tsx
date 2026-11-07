@@ -199,6 +199,8 @@ import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
+import { withLane } from "./voices";
+import { LaneTag, laneAvatar } from "./LaneMark";
 import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
@@ -765,7 +767,7 @@ type Panel = "none" | "menu" | "tree" | "voiceprint";
 export function DebugChat({
   live,
   listeners,
-  messages,
+  messages: rawMessages,
   onSend,
   onAnswer,
   onPassageEnd,
@@ -809,6 +811,9 @@ export function DebugChat({
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
+  /** Agent lines with their lane (voices.ts): a `【lane】` prefix becomes the name tag and mark. */
+  const messages = useMemo(() => rawMessages.map(withLane), [rawMessages]);
+  const laneOpts = { laneAvatar };
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
   const clipsAuto = useUi(clipsDevice(), (s) => s.autoStop);
@@ -3027,6 +3032,7 @@ export function DebugChat({
                 avatarFor,
                 agentName: t.name,
                 you: t.you,
+                ...laneOpts,
               })}
               text={lineText(m, p.text)}
               mark={
@@ -3650,7 +3656,15 @@ export function DebugChat({
   }
   /** Who said each line, and where a run of one sender's lines starts (avatar-rules.ts). */
   const whos = messages.map((m) =>
-    lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you }),
+    lineAvatar(m, {
+      friend,
+      viewer,
+      agentAvatar,
+      avatarFor,
+      agentName: t.name,
+      you: t.you,
+      ...laneOpts,
+    }),
   );
   const starts = runStarts(
     messages.map((m, i) => ({
@@ -3666,7 +3680,15 @@ export function DebugChat({
    * the whole chat back.
    */
   const compactRow = (m: ChatMessage, line: boolean) => {
-    const who = lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you });
+    const who = lineAvatar(m, {
+      friend,
+      viewer,
+      agentAvatar,
+      avatarFor,
+      agentName: t.name,
+      you: t.you,
+      ...laneOpts,
+    });
     const p = polish(m);
     const showAll = strings?.compactShowAll ? t.compactShowAll : ui.compactShowAll;
     const asLine = line && !m.ask;
@@ -3710,6 +3732,7 @@ export function DebugChat({
           className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
         >
           <span className="sr-only">{who.name}: </span>
+          {m.lane && <LaneTag lane={m.lane} inline />}
           {m.ask
             ? m.ask.questions.length === 1
               ? lineText(m, m.ask.questions[0]!.question)
@@ -4065,6 +4088,8 @@ export function DebugChat({
                 hidden
               />
               <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+                {/* A lane's name tag (voices.ts), once per run; lines with no lane have none. */}
+                {m0.lane && <LaneTag lane={m0.lane} agentName={t.name} />}
                 {node && (
                   <span
                     aria-hidden
@@ -4817,6 +4842,7 @@ function FloatLine({
         />
       </span>
       <span className="sr-only">{who.name}: </span>
+      {m.lane && <LaneTag lane={m.lane} inline />}
       {text}
       {mark}
     </li>
