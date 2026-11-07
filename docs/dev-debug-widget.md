@@ -246,6 +246,12 @@ broadcast, is `{type, pending: null, sessions: [], listeners}` only: no
 pairing, session, grant, page label or id, node or `self` (`pageState` in
 `workers/push/src/debug.ts`). The label is host + path, never the query.
 
+The owner's own box (`box:chat`, [box-oauth.md](box-oauth.md), "Chat on the
+owner's box") uses the same subprotocol with a ticket of its own audience
+(`lianki-box-chat`), good only from the exact box origin it names. Such a socket
+is chat-only too, may also send voice amends and ask-card taps, and the hub asks
+the main Worker before each line it takes from it.
+
 **The frame: private typing (owner, 2026-11-01).** A shadow widget cannot
 keep keys private: the host page's capture listeners on document or window
 see every `KeyboardEvent.key` (and composed `input` events) before any

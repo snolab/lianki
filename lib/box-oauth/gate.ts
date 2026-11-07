@@ -14,7 +14,7 @@
  */
 import { signBoxIdentity, BOX_IDENTITY_HEADER } from "./identity";
 import { BOX_FLAG, BOX_TOKEN_PREFIX, isBoxOrigin, isCorsProviderPath, tokenMayCall } from "./rules";
-import { bindingByOrigin, liveToken, type BoxDb } from "./store";
+import { bindingByOrigin, isSiteOwnerUser, liveToken, type BoxDb } from "./store";
 
 export type BoxEnv = {
   DB?: BoxDb;
@@ -171,6 +171,9 @@ export async function boxGate(
       answer.status,
       answer.reason === "scope" ? "Out of scope" : "Not available to a box",
     );
+  // box:chat acts as the owner: only while the account is a site owner, read now.
+  if (answer.chat && !(await isSiteOwnerUser(db, token.userId).catch(() => false)))
+    return fail(403, "Out of scope");
   if (!(await deps.allow(db, hash)))
     return json(429, "Too many requests", { ...cors(origin), "retry-after": "60" });
   if (!env.AUTH_SECRET) return fail(503, "Not configured");

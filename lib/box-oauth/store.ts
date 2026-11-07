@@ -6,7 +6,7 @@
  * live, so one account has one box and one box has one account.
  */
 import { audit, type AuditDb } from "@/lib/security/audit-log";
-import { isBoxOrigin, parseScopes } from "./rules";
+import { SCOPE_CHAT, isBoxOrigin, parseScopes } from "./rules";
 
 export interface BoxStmt {
   bind(...v: unknown[]): BoxStmt;
@@ -174,12 +174,89 @@ export async function liveToken(
   if (!r || !(Date.parse(r.expiresAt) > now)) return null;
   // Never more than the owner granted, whatever the token row says.
   const bound = parseScopes(r.boundScopes);
-  return {
-    clientId: r.clientId,
-    userId: r.userId,
-    origin: r.origin,
-    scopes: parseScopes(r.scopes).filter((s) => bound.includes(s)),
-  };
+  const scopes = parseScopes(r.scopes).filter((s) => bound.includes(s) && s !== SCOPE_CHAT);
+  // box:chat is the binding's alone (rules.ts): it lasts exactly as long as the grant.
+  if (bound.includes(SCOPE_CHAT)) scopes.push(SCOPE_CHAT);
+  return { clientId: r.clientId, userId: r.userId, origin: r.origin, scopes };
+}
+
+/**
+ * Is this account a site owner right now (site_role, lib/site-role.ts)? Read
+ * from D1 each time, never from a cache: box:chat is refused the moment the
+ * role is revoked. Exact address, as lib/owner.ts compares them.
+ */
+export async function isSiteOwnerUser(db: BoxDb, userId: string): Promise<boolean> {
+  const r = await db
+    .prepare(
+      `SELECT 1 AS ok FROM user u JOIN site_role s ON s.email = lower(trim(u.email))
+       WHERE u.id = ?1 AND s.role = 'owner' AND s.revoked_at IS NULL LIMIT 1`,
+    )
+    .bind(userId)
+    .first<{ ok: number }>();
+  return r?.ok === 1;
+}
+
+export type ChatGrant = "granted" | "removed" | "unchanged" | "no-box" | "not-owner";
+
+/**
+ * The owner grants or removes box:chat on a live binding. Granting is refused
+ * unless the binding's account is a site owner. Removing needs no check. Each
+ * change is in security_audit.
+ */
+export async function setBoxChat(
+  db: BoxDb,
+  clientId: string,
+  on: boolean,
+  by: string,
+  now = Date.now(),
+): Promise<ChatGrant> {
+  const live = await bindingByClient(db, clientId);
+  if (!live) return "no-box";
+  const has = live.scopes.includes(SCOPE_CHAT);
+  if (on && !(await isSiteOwnerUser(db, live.userId))) return "not-owner";
+  if (has === on) return "unchanged";
+  const scopes = on ? [...live.scopes, SCOPE_CHAT] : live.scopes.filter((s) => s !== SCOPE_CHAT);
+  await db
+    .prepare("UPDATE box_binding SET scopes = ?1 WHERE client_id = ?2 AND revoked_at IS NULL")
+    .bind(scopes.join(" "), clientId)
+    .run();
+  await audit(
+    db as unknown as AuditDb,
+    {
+      kind: on ? "box.chat-grant" : "box.chat-remove",
+      actor: by,
+      subject: live.userId,
+      detail: clientId,
+    },
+    now,
+  );
+  return on ? "granted" : "removed";
+}
+
+/**
+ * May the hub keep a box's chat socket (lianki-push asks before each line it
+ * takes from one)? The client's binding is live with box:chat and its account a
+ * site owner. The flag is the caller's to check.
+ */
+export async function boxChatLive(db: BoxDb, clientId: unknown): Promise<boolean> {
+  if (typeof clientId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(clientId)) return false;
+  const b = await bindingByClient(db, clientId);
+  return !!b && b.scopes.includes(SCOPE_CHAT) && (await isSiteOwnerUser(db, b.userId));
+}
+
+/**
+ * The binding a box:chat request may act for, checked at use: the live binding
+ * of that client, for that account, holding box:chat, whose account is a site
+ * owner now. Anything else is null.
+ */
+export async function chatBinding(
+  db: BoxDb,
+  clientId: string,
+  userId: string,
+): Promise<Binding | null> {
+  const b = await bindingByClient(db, clientId);
+  if (!b || b.userId !== userId || !b.scopes.includes(SCOPE_CHAT)) return null;
+  return (await isSiteOwnerUser(db, userId)) ? b : null;
 }
 
 /** The user row the app sees for a verified identity. */

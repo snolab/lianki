@@ -28,6 +28,10 @@ export type AuditKind =
   | "live-frontend.disallow"
   | "box.bind"
   | "box.revoke"
+  // box:chat on an owner's box (docs/box-oauth.md, "Chat on the owner's box").
+  | "box.chat-grant"
+  | "box.chat-remove"
+  | "box.chat-ticket"
   | "email.change"
   // Written by lib/site-role.ts in one batch with the role change; listed here
   // so the log's kinds are in one place.

@@ -6,6 +6,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import {
+  boxChatHub,
   boxSignOut,
   finishBoxSignIn,
   installBoxFetch,
@@ -314,5 +315,41 @@ describe("signing out", () => {
   test("nothing held: no call", async () => {
     await boxSignOut(config);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("the chat hub on a box (box:chat)", () => {
+  test("signed out: no hub at all", () => {
+    expect(boxChatHub()).toBeNull();
+  });
+
+  test("a ticket through the box's fetch: POST to lianki.com with the token, the hub at lianki.com", async () => {
+    hold("lkb_a", "lkr_a");
+    answer = () => Response.json({ ticket: "t.sig", exp: 1 });
+    const hub = boxChatHub();
+    expect(hub?.url).toBe("wss://lianki.com/api/version/debug");
+    expect(await hub?.ticket()).toBe("t.sig");
+    expect(calls[0].url).toBe(`${PROVIDER}/api/box/chat-ticket`);
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.credentials).toBe("omit");
+    expect(new Headers(calls[0].init.headers).get("authorization")).toBe("Bearer lkb_a");
+  });
+
+  test("a busy or broken answer is no ticket, and the next connect may ask again", async () => {
+    hold("lkb_a", "lkr_a");
+    answer = () => new Response("busy", { status: 429 });
+    expect(await boxChatHub()?.ticket()).toBeNull();
+    answer = () => Response.json({ ticket: 42 });
+    expect(await boxChatHub()?.ticket()).toBeNull();
+    answer = () => Promise.reject(new Error("offline"));
+    expect(await boxChatHub()?.ticket()).toBeNull();
+    expect(boxChatHub()).not.toBeNull();
+  });
+
+  test("refused (no box:chat): this page load does not ask again", async () => {
+    hold("lkb_a", "lkr_a");
+    answer = () => new Response(null, { status: 404 });
+    expect(await boxChatHub()?.ticket()).toBeNull();
+    expect(boxChatHub()).toBeNull();
   });
 });

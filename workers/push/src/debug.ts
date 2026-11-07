@@ -246,7 +246,7 @@ import {
   jstDay,
   reserveInTokens,
 } from "../../../lib/partner-ai-config";
-import { EMBED_HEADER } from "./auth";
+import { BOX_HEADER, EMBED_HEADER } from "./auth";
 import {
   ETA_AGENT,
   ETA_FLAG,
@@ -330,6 +330,13 @@ type PageAtt = {
    * pairing or a grant's pages, never joins a recording session.
    */
   embed?: true;
+  /**
+   * The owner's box (docs/box-oauth.md, "Chat on the owner's box"): an embed
+   * page from that box client's exact origin. Chat only as above, plus what
+   * the chat itself needs (voice amends, ask-card taps). Each line it sends is
+   * checked with the main Worker first; revoked, it is closed.
+   */
+  box?: string;
 };
 /** A recording window session (`clips:<sid>`), see "Voice-clip recording" above. */
 type ClipsRec = {
@@ -425,6 +432,8 @@ type SessionsRpc = {
   partnerReply?(req: PartnerRequest): Promise<unknown>;
   /** The chat inbox's agent ops (lib/inbox/agent.ts); an older main Worker has none. */
   inbox?(req: { op: string; id?: string }): Promise<unknown>;
+  /** May this box keep chatting (docs/box-oauth.md)? An older main Worker has none: no. */
+  boxChat?(clientId: string): Promise<unknown>;
 };
 /** How long the hub trusts its read of PARTNER_AI_FLAG (as lib/flags-store.ts's FLAG_CACHE_MS). */
 const AI_FLAG_CACHE_MS = 30_000;
@@ -460,6 +469,12 @@ export const IDENTITY_HEADERS = {
 } as const;
 /** The main Worker tells the hub a session was deleted (sign-out), over its PUSH binding. */
 const SIGNED_OUT_PATH = "/internal/signed-out";
+/** The main Worker tells the hub a box lost box:chat, over its PUSH binding. */
+const BOX_CLOSED_PATH = "/internal/box-closed";
+/** A box chat socket closed because its box lost box:chat (hub-side, on purpose). */
+export const BOX_CLOSED = 4401;
+/** What a box page may send (docs/box-oauth.md): the chat, and nothing of eval or recording. */
+const BOX_PAGE_TYPES = new Set(["chat", "page", "passage-end", "unmerge", "answer"]);
 type Att = PageAtt | ControllerAtt;
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
@@ -475,6 +490,9 @@ const send = (ws: Socket, msg: unknown) => {
     ws.send(JSON.stringify(msg));
   } catch {}
 };
+/** A box page's label starts with "box ", so the agent and the page list tell it apart. */
+const boxLabel = (label: string, isBox: boolean) =>
+  isBox ? cleanLabel(`box ${label}`, MAX_LABEL) : label;
 const close = (ws: Socket, code: number, reason: string) => {
   try {
     ws.close(code, reason);
@@ -1090,6 +1108,7 @@ export class DebugHub {
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
+    if (url.pathname === BOX_CLOSED_PATH) return this.boxClosedApi(req);
     const control = url.pathname.endsWith("/control");
     let who: Identity | undefined;
     if (!control) {
@@ -1124,8 +1143,10 @@ export class DebugHub {
     const pair = new WebSocketPair();
     const ws = pair[1];
     this.ctx.acceptWebSocket(ws);
+    // Which box client a ticket socket is (index.ts verified its origin); only ever with a ticket.
+    const box = embed ? (req.headers.get(BOX_HEADER) ?? undefined) : undefined;
     if (control) await this.connectController(ws, url, req.headers.get(TOKEN_HEADER));
-    else await this.connectPage(ws, url, who, embed);
+    else await this.connectPage(ws, url, who, embed, box);
     // The browser fails a socket whose offered subprotocol is not selected.
     return new Response(null, {
       status: 101,
@@ -1447,12 +1468,14 @@ export class DebugHub {
    * history and its audience's state. A blocked friend is told and closed.
    * Called without an identity (the unit tests' shorthand) it is an owner page.
    */
-  async connectPage(ws: Socket, url: URL, who?: Identity, ticketSocket = false) {
+  async connectPage(ws: Socket, url: URL, who?: Identity, ticketSocket = false, box?: string) {
     // A page that says another site frames it (lib/frame-context.ts) is chat-only
     // like a ticket socket: no pairing, no Allow, no eval, no clips (defence in
     // depth: the page itself never connects from such a frame).
     const embed = ticketSocket || url.searchParams.get("frame") === "foreign";
-    const label = cleanLabel(url.searchParams.get("label"), MAX_LABEL);
+    const isBox = ticketSocket && !!box;
+    // A box's lines say so, for the agent: "box /words …".
+    const label = boxLabel(cleanLabel(url.searchParams.get("label"), MAX_LABEL), isBox);
     // The tab's own id (kept across reloads), so "this page" grants survive them.
     const tab = url.searchParams.get("tab");
     const id = isPageId(tab) ? tab : crypto.randomUUID().slice(0, 8);
@@ -1496,7 +1519,7 @@ export class DebugHub {
         // A chat-only page (a ticket socket, or a page another site frames) never
         // carries the owner's session: no eval grant is ever bound to or renewed on it.
         ...(embed
-          ? { embed: true as const }
+          ? { embed: true as const, ...(isBox ? { box } : {}) }
           : who?.owner && who.session
             ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
             : {}),
@@ -1831,10 +1854,80 @@ export class DebugHub {
   private fromPage(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
     // An embedded page (another site) may only chat and say where it is:
     // no answers, no pairings, no results, no clips, no page errors.
+    // The owner's box may also amend voice lines and tap ask cards, and only
+    // while the main Worker still says its box:chat is live.
+    if (page.box) {
+      const em = parsePageMessage(raw);
+      if (!em || !BOX_PAGE_TYPES.has(em.type)) return;
+      return this.boxStillChats(ws, page).then((ok) =>
+        ok ? this.fromPageChecked(ws, page, raw) : undefined,
+      );
+    }
     if (page.embed) {
       const em = parsePageMessage(raw);
       if (!em || (em.type !== "chat" && em.type !== "page")) return;
     }
+    return this.fromPageChecked(ws, page, raw);
+  }
+
+  /**
+   * Asked before each line a box sends: "live", or the socket closes
+   * ("gone": box:chat removed, box revoked, account no longer an owner, flag
+   * off; a main Worker without the check counts as gone). Unsure (busy, an
+   * error): this line is dropped and the page told; the socket stays.
+   */
+  private async boxStillChats(ws: Socket, page: PageAtt): Promise<boolean> {
+    // Called on the stub itself: an RPC method taken off it with .bind is refused
+    // ("The RPC receiver does not implement the method"), at least under wrangler dev.
+    const rpc = this.sessions;
+    let said: unknown = "gone";
+    try {
+      if (rpc?.boxChat && page.box) said = await rpc.boxChat(page.box);
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.box-check-failed", error: String(e).slice(0, 200) }),
+      );
+      said = "unsure";
+    }
+    if (said === "live") return true;
+    if (said === "gone") {
+      console.log(JSON.stringify({ msg: "debug.box-closed", why: "check" }));
+      close(ws, BOX_CLOSED, "box chat ended");
+      return false;
+    }
+    if (said !== "unsure")
+      console.log(JSON.stringify({ msg: "debug.box-check", said: String(said) }));
+    send(ws, { type: "error", error: "not sent: try again in a moment" });
+    return false;
+  }
+
+  /**
+   * POST /internal/box-closed {client}: that box lost box:chat. Its chat
+   * sockets close now. Reached only over the main Worker's PUSH binding.
+   */
+  private async boxClosedApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let body: { client?: unknown };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      return Response.json({ error: "bad json" }, { status: 400 });
+    }
+    const client = body.client;
+    if (typeof client !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(client))
+      return Response.json({ error: "expected {client}" }, { status: 400 });
+    let closed = 0;
+    for (const { ws, a } of this.sockets("page"))
+      if (a.box === client) {
+        close(ws, BOX_CLOSED, "box chat ended");
+        closed++;
+      }
+    if (closed) this.broadcast();
+    console.log(JSON.stringify({ msg: "debug.box-closed", why: "notice", closed }));
+    return Response.json({ ok: true, closed });
+  }
+
+  private fromPageChecked(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
     const cm = clipsParse(raw, parseClipsPageMessage);
     if (cm) return page.thread === OWNER_THREAD ? this.clipsFromPage(ws, page, cm) : undefined;
     const m = parsePageMessage(raw);
@@ -1842,11 +1935,12 @@ export class DebugHub {
     const t = this.now();
     if (m.type === "page") {
       // Only this socket's own label; silent: the agent hears it, the chat never shows it.
-      if (m.label === page.label) return;
-      ws.serializeAttachment({ ...page, label: m.label } satisfies PageAtt);
+      const label = boxLabel(m.label, !!page.box);
+      if (label === page.label) return;
+      ws.serializeAttachment({ ...page, label } satisfies PageAtt);
       const moved = {
         type: "page-changed",
-        label: m.label,
+        label,
         thread: page.thread,
         ...(page.email ? { email: page.email } : {}),
         at: t,
