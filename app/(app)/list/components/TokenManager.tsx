@@ -7,6 +7,7 @@ import {
   ExpiryPicker,
   PermissionPicker,
   expiryBody,
+  textOf,
   type Expiry,
 } from "@/app/components/TokenPickers";
 
@@ -32,7 +33,7 @@ type Listing = { account: string; tokens: Token[] };
 
 export default function TokenManager() {
   const c = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
-  const s = (k: string) => String(c[k] ?? "");
+  const s = (k: string) => textOf(c[k]);
   const { locale } = useLocale();
   const [list, setList] = useState<Listing | null>(null);
   const [name, setName] = useState("");

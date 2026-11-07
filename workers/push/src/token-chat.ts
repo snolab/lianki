@@ -167,7 +167,11 @@ export class TokenChat {
       if (!isUserId(a.userId) || typeof a.lane !== "string" || !a.lane)
         return { ok: false, error: "unavailable" };
       return a;
-    } catch {
+    } catch (e) {
+      // The error only: the request (and its token) is never logged.
+      console.error(
+        JSON.stringify({ msg: "debug.token-check-failed", error: String(e).slice(0, 200) }),
+      );
       return { ok: false, error: "unavailable" };
     }
   }

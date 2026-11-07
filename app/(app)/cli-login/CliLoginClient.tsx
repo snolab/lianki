@@ -7,6 +7,7 @@ import {
   ExpiryPicker,
   PermissionPicker,
   expiryBody,
+  textOf,
   type Expiry,
 } from "@/app/components/TokenPickers";
 
@@ -66,8 +67,8 @@ export default function CliLoginClient(p: {
   async function approve() {
     // The token gets exactly what is picked here: no default permission, no default expiry.
     const exp = expiryBody(expiry);
-    if (scopes.length === 0) return setMissing(String(tok.errScopes ?? ""));
-    if (!exp) return setMissing(String(tok.errExpiry ?? ""));
+    if (scopes.length === 0) return setMissing(textOf(tok.errScopes));
+    if (!exp) return setMissing(textOf(tok.errExpiry));
     setMissing(null);
     setBusy(true);
     setFailed(false);

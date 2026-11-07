@@ -25,7 +25,7 @@ export function PermissionPicker(p: {
   disabled?: boolean;
 }) {
   const c = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
-  const s = (k: string) => String(c[k] ?? "");
+  const s = (k: string) => textOf(c[k]);
   return (
     <fieldset className="space-y-2" disabled={p.disabled}>
       <legend className="text-sm font-medium mb-1">{s("permissions")}</legend>
@@ -59,7 +59,7 @@ export function ExpiryPicker(p: {
   disabled?: boolean;
 }) {
   const c = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
-  const s = (k: string) => String(c[k] ?? "");
+  const s = (k: string) => textOf(c[k]);
   const today = Date.now();
   const min = isoDay(today + 86_400_000);
   const max = isoDay(today + (MAX_EXPIRY_DAYS - 1) * 86_400_000);
@@ -114,6 +114,10 @@ export function ExpiryPicker(p: {
     </fieldset>
   );
 }
+
+/** An intlayer node (or a plain string) as text: useIntlayer gives nodes; `.value` is the string. */
+export const textOf = (v: unknown): string =>
+  typeof v === "string" ? v : String((v as { value?: unknown } | null | undefined)?.value ?? "");
 
 /** The expiry as the server takes it, or null when none is picked. */
 export const expiryBody = (e: Expiry) =>
