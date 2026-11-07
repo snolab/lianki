@@ -282,7 +282,7 @@ export function createCloudOut(d: {
     },
     gain: () => gain,
     prepare(text, lang, voice) {
-      const speaker = voice ? cloudVoice(voice, lang).speaker : undefined;
+      const speaker = cloudVoice(voice ?? "main", lang).speaker;
       if (!cloudSkip(text, lang)) fetchClip(text, lang, speaker).catch(ignore);
     },
     play(s, ev: PlayEvents): Playback {
@@ -307,7 +307,7 @@ export function createCloudOut(d: {
         return pb;
       }
       // A lane's cloud voice: its own speaker where the engine has several, else the one voice shifted.
-      const lane = s.voice ? cloudVoice(s.voice, s.lang) : { shift: 1 };
+      const lane = cloudVoice(s.voice ?? "main", s.lang);
       fetchClip(s.text, s.lang, lane.speaker).then(
         (url) => {
           if (!live()) return;
@@ -328,7 +328,7 @@ export function createCloudOut(d: {
             a.currentTime = s.at;
             // The speed, pitch kept (a resume after a duck keeps it: it is per play).
             // A lane with no voice of its own here: shifted, its pitch moving with the speed.
-            const shift = fellBack.has(url) && s.voice ? VOICES[s.voice].shift : lane.shift;
+            const shift = fellBack.has(url) ? VOICES[s.voice ?? "main"].shift : lane.shift;
             const rate = (s.rate ?? 1) * shift;
             const keepPitch = shift === 1;
             a.defaultPlaybackRate = rate;

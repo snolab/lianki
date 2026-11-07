@@ -968,16 +968,11 @@ export function voice(): Voice {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = lang;
       const voices = speechSynthesis.getVoices();
-      if (!id || id === "main") {
-        const pick = pickVoice(voices, lang);
-        if (pick) u.voice = pick;
-      } else {
-        // Another lane: its own voice model, else main's at its pitch and speed (voices.ts).
-        const r = resolveVoices(voices, lang, pickVoice)[id];
-        if (r.voice) u.voice = r.voice;
-        u.pitch = r.pitch;
-        u.rate = r.rate;
-      }
+      // Each lane its own voice model (voices.ts); main is the chat lane's cute voice.
+      const r = resolveVoices(voices, lang, pickVoice)[id ?? "main"];
+      if (r.voice) u.voice = r.voice;
+      u.pitch = r.pitch;
+      u.rate = r.rate;
       alive.add(u);
       u.addEventListener("end", () => alive.delete(u));
       u.addEventListener("error", () => alive.delete(u));

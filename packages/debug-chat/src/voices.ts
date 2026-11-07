@@ -10,12 +10,14 @@
  * Which lane a line is from: its `lane` field (eval.ts say --lane), else a
  * leading `【lane】` prefix in its text (what the lanes write today), which is
  * then taken off the shown and spoken text. A line with neither is the main
- * lane and looks and sounds exactly as before.
+ * lane and looks as before.
  *
- * Device voices (speechSynthesis): main keeps today's pick (wire.ts
- * pickVoice). Every other voice takes a different installed voice *model*
- * (another name, not a variant of the same one), in this order of passes,
- * each pass over the voices in VOICE_IDS order:
+ * Device voices (speechSynthesis): main — the chat lane, a cute, young,
+ * bright voice (owner, 2026-11-07 20:34 JST) — takes the first natural voice
+ * it prefers, else today's pick (wire.ts pickVoice), a little higher. Every
+ * other voice takes a different installed voice *model* (another name, not a
+ * variant of the same one), in this order of passes, each pass over the
+ * voices in VOICE_IDS order:
  *   1. a natural voice it prefers by name (VoiceSpec.prefer),
  *   2. any other natural voice of the language,
  *   3. an Eloquence voice it prefers (Apple's Reed, Flo, …: robotic but a
@@ -49,7 +51,10 @@ export type VoiceSpec = {
    * in one list: a voice's name is its own across languages. Empty = main.
    */
   prefer: readonly string[];
-  /** Last resort, on a device with no other voice left: the main voice at this pitch… */
+  /**
+   * Main: its pitch always. The others: only as the last resort, on a
+   * device with no other voice left (main's voice at this pitch…)
+   */
   pitch: number;
   /** …and this speed factor (times the owner's reading speed). */
   rate: number;
@@ -63,8 +68,28 @@ export type VoiceSpec = {
 };
 
 export const VOICES: Readonly<Record<VoiceId, VoiceSpec>> = {
-  // Today's voice, unchanged: pickVoice on the device, MeloTTS in the cloud.
-  main: { prefer: [], pitch: 1, rate: 1, cloud: {}, shift: 1 },
+  // The chat lane: cute, young and bright (a cat-girl feel), a little higher.
+  main: {
+    prefer: [
+      "Meijia",
+      "Xiaoyi",
+      "Lili",
+      "Shasha",
+      "Nicky",
+      "Zoe",
+      "Ava",
+      "Samantha",
+      "O-ren",
+      "Nanami",
+      "Sora",
+      "Yuna",
+      "SunHi",
+    ],
+    pitch: 1.1,
+    rate: 1,
+    cloud: { aura: { en: "luna", es: "celeste" } },
+    shift: 1.06,
+  },
   // Lower and calmer: male and deeper voices first.
   calm: {
     prefer: [
@@ -98,17 +123,17 @@ export const VOICES: Readonly<Record<VoiceId, VoiceSpec>> = {
     pitch: 0.8,
     rate: 0.92,
     cloud: { aura: { en: "orion", es: "nestor" } },
-    shift: 0.9,
+    shift: 0.88,
   },
-  // Higher and brighter: lighter female voices first.
+  // Higher and brighter: lighter female voices first (main's picks go to main first).
   bright: {
     prefer: [
       "Lili",
-      "Meijia",
-      "Yu-shu",
       "Shasha",
-      "Xiaoyi",
+      "Yu-shu",
       "Xiaoxiao",
+      "Meijia",
+      "Tingting",
       "Karen",
       "Moira",
       "Tessa",
@@ -121,8 +146,10 @@ export const VOICES: Readonly<Record<VoiceId, VoiceSpec>> = {
       "Kate",
       "Tara",
       "O-ren",
+      "Kyoko",
       "Nanami",
       "Sora",
+      "Yuna",
       "SunHi",
       "Amelie",
       "Monica",
@@ -132,10 +159,10 @@ export const VOICES: Readonly<Record<VoiceId, VoiceSpec>> = {
       "Sandy",
       "Grandma",
     ],
-    pitch: 1.25,
+    pitch: 1.4,
     rate: 1.06,
     cloud: { aura: { en: "thalia", es: "carina" } },
-    shift: 1.12,
+    shift: 1.2,
   },
 };
 
@@ -322,7 +349,6 @@ export function resolveVoices<V extends VoiceLike>(
   lang: string,
   pick: (voices: readonly V[], lang: string) => V | undefined,
 ): Record<VoiceId, DeviceVoice<V>> {
-  const main = pick(voices, lang);
   const want = [norm(lang), ...(SIBLING_LOCALES[lang] ?? []).map(norm)];
   // The language's own locale first, then its siblings; within, best grade first.
   const pool = voices
@@ -330,8 +356,16 @@ export function resolveVoices<V extends VoiceLike>(
     .map((v, i) => ({ v, i, loc: want.indexOf(norm(v.lang)) }))
     .sort((a, b) => a.loc - b.loc || grade(b.v) - grade(a.v) || a.i - b.i)
     .map((x) => x.v);
+  // Main: the first natural voice it prefers, else today's pick.
+  let mainPref: { v: V; rank: number } | null = null;
+  for (const v of pool) {
+    const rank = voiceTier(v) === 2 ? prefIndex(v, VOICES.main.prefer) : Infinity;
+    if (Number.isFinite(rank) && (!mainPref || rank < mainPref.rank)) mainPref = { v, rank };
+  }
+  const main = mainPref?.v ?? pick(voices, lang);
   const taken = new Set<string>(main ? [baseName(main)] : []);
-  const out = { main: { voice: main, pitch: 1, rate: 1, shared: false } } as Record<
+  const m = VOICES.main;
+  const out = { main: { voice: main, pitch: m.pitch, rate: m.rate, shared: false } } as Record<
     VoiceId,
     DeviceVoice<V>
   >;

@@ -84,7 +84,12 @@ describe("lanes: who said a line", () => {
     expect(withLane(plain)).toBe(plain);
     const owner = { from: "owner", text: "【codex】hi" };
     expect(withLane(owner)).toBe(owner);
-    expect(withLane({ from: "agent", text: "【codex】hi", id: "2" })).toEqual({
+    const line: { from: string; text: string; id: string; lane?: string } = {
+      from: "agent",
+      text: "【codex】hi",
+      id: "2",
+    };
+    expect(withLane(line)).toEqual({
       from: "agent",
       text: "hi",
       id: "2",
@@ -111,7 +116,7 @@ describe("lanes: who said a line", () => {
       seed: "agent:Claude",
       mine: false,
     });
-    const mark = { lane: "codex" };
+    const mark = "codex-mark.svg";
     const codex = lineAvatar(
       { ...base, text: "hi", lane: "codex" },
       { agentAvatar: "logo.svg", laneAvatar: () => mark },
@@ -125,12 +130,13 @@ describe("lanes: who said a line", () => {
 });
 
 describe("device voices: a different voice model per lane", () => {
-  it("macOS as installed here: zh gets Tingting / Meijia / Eloquence, en three natural voices", () => {
+  it("macOS as installed here: zh gets Meijia / Eloquence Reed / Tingting, en three natural voices", () => {
     expect(names(resolveVoices(MAC, "zh-CN", pickVoice))).toEqual({
-      main: "Tingting",
+      // The chat lane's cute voice: Meijia (Taiwan Mandarin, young and bright).
+      main: "Meijia",
       // No natural male Mandarin voice installed: the preferred Eloquence one.
       calm: "Reed",
-      bright: "Meijia",
+      bright: "Tingting",
     });
     expect(names(resolveVoices(MAC, "en-US", pickVoice))).toEqual({
       main: "Samantha",
@@ -151,21 +157,20 @@ describe("device voices: a different voice model per lane", () => {
       v("zh-CN", "Li-mu (Premium)", "com.apple.voice.premium.zh-CN.Li-mu"),
     ];
     const r = resolveVoices(list, "zh-CN", pickVoice);
-    // Main is today's pick (the best grade: Li-mu Premium); the others take what is left.
     expect(names(r)).toEqual({
-      main: "Li-mu (Premium)",
-      calm: "Tingting",
+      main: "Meijia",
+      calm: "Li-mu (Premium)",
       bright: "Lili (Enhanced)",
     });
     expect(r.calm.pitch).toBe(1);
     expect(r.calm.shared).toBe(false);
-    // Tingting the default: Li-mu goes to calm.
+    // No Meijia: main takes Lili, the next cute one.
     const t = resolveVoices(
       [v("zh-CN", "Tingting"), v("zh-CN", "Lili"), v("zh-CN", "Li-mu")],
       "zh-CN",
       pickVoice,
     );
-    expect(names(t)).toEqual({ main: "Tingting", calm: "Li-mu", bright: "Lili" });
+    expect(names(t)).toEqual({ main: "Lili", calm: "Li-mu", bright: "Tingting" });
   });
 
   it("never the same model twice, and never a novelty voice", () => {
@@ -187,14 +192,14 @@ describe("device voices: a different voice model per lane", () => {
 
   it("one voice only: main's voice with the lane's pitch and speed (the last resort)", () => {
     const r = resolveVoices([v("ko-KR", "Yuna")], "ko-KR", pickVoice);
-    expect(r.main).toMatchObject({ pitch: 1, rate: 1, shared: false });
+    expect(r.main).toMatchObject({ pitch: VOICES.main.pitch, rate: 1, shared: false });
     expect(r.calm).toMatchObject({
       pitch: VOICES.calm.pitch,
       rate: VOICES.calm.rate,
       shared: true,
     });
     expect(r.calm.voice?.name).toBe("Yuna");
-    expect(r.bright.pitch).toBeGreaterThan(1);
+    expect(r.bright.pitch).toBeGreaterThan(VOICES.main.pitch);
     expect(r.calm.pitch).toBeLessThan(1);
   });
 
@@ -211,18 +216,22 @@ describe("device voices: a different voice model per lane", () => {
       "zh-CN",
       pickVoice,
     );
-    expect(names(r)).toEqual({ main: "Tingting", calm: "Tingting", bright: "Meijia" });
+    expect(names(r)).toEqual({ main: "Meijia", calm: "Meijia", bright: "Tingting" });
     expect(r.calm.shared).toBe(true);
   });
 });
 
 describe("cloud voices", () => {
-  it("Aura-2 speakers for en and es; one voice shifted elsewhere; main untouched", () => {
+  it("Aura-2 speakers for en and es, main's too; one voice shifted elsewhere", () => {
     expect(cloudVoice("calm", "en-US")).toEqual({ speaker: "orion", shift: 1 });
     expect(cloudVoice("bright", "es")).toEqual({ speaker: "carina", shift: 1 });
     expect(cloudVoice("calm", "zh-CN")).toEqual({ shift: VOICES.calm.shift });
-    expect(cloudVoice("main", "en")).toEqual({ shift: 1 });
-    expect(auraSpeakers()).toEqual({ en: ["orion", "thalia"], es: ["nestor", "carina"] });
+    expect(cloudVoice("main", "en")).toEqual({ speaker: "luna", shift: 1 });
+    expect(cloudVoice("main", "zh")).toEqual({ shift: VOICES.main.shift });
+    expect(auraSpeakers()).toEqual({
+      en: ["luna", "orion", "thalia"],
+      es: ["celeste", "nestor", "carina"],
+    });
   });
 
   it("the route keeps only a speaker the table names for that language", () => {
@@ -334,9 +343,10 @@ describe("cloud voices", () => {
     // Aura failed on the route (MeloTTS answered): shifted too, never silent.
     await play({ text: "Bye.", lang: "en", at: 0, volume: 1, rate: 1, voice: "calm" });
     expect(el.playbackRate).toBeCloseTo(VOICES.calm.shift, 5);
-    // Main: as before.
+    // Main (no voice on the line): the chat lane's own speaker.
+    voiceHeader = AURA_VOICE;
     await play({ text: "Yo.", lang: "en", at: 0, volume: 1, rate: 1 });
-    expect(fetched.at(-1)).toBe("/api/words/tts?lang=en&text=Yo.&store=0");
+    expect(fetched.at(-1)).toBe("/api/words/tts?lang=en&text=Yo.&store=0&speaker=luna");
     expect(el.playbackRate).toBe(1);
     expect(el.preservesPitch).toBe(true);
   });

@@ -1275,8 +1275,10 @@ with neither is main, exactly as before. `say --voice main|calm|bright`
 reads one line in another voice. The hub checks both ids against the table
 and stores them with the line.
 
-**Device voices** (speechSynthesis). Main keeps today's pick (`pickVoice`).
-The others each take a different installed voice *model* — another name,
+**Device voices** (speechSynthesis). Main, the chat lane, is cute: a
+young, bright voice with a cat-girl feel (owner, 2026-11-07 20:34 JST) — the
+first natural voice it prefers (Meijia, Lili, Nicky, Samantha, O-ren, …),
+else today's pick (`pickVoice`), always at pitch 1.1. The others each take a different installed voice *model* — another name,
 never a Compact/Enhanced variant of one already in use — in four passes: a
 natural voice the lane prefers by name, any natural voice, a preferred
 Eloquence voice (Apple's Reed, Flo, …: robotic, but a different model), any
@@ -1288,18 +1290,19 @@ en-US).
 
 | lane  | voice  | prefers (any language)                     | last resort      |
 | ----- | ------ | ------------------------------------------ | ---------------- |
-| main  | main   | today's pick                               | —                |
+| main  | main   | Meijia, Lili, Nicky, Samantha, O-ren, Sora | (pitch 1.1 always) |
 | codex | calm   | Li-mu, Daniel, Otoya, … then Reed, Rocko   | pitch 0.8, ×0.92 |
-| agy   | bright | Lili, Meijia, Karen, Moira, O-ren, … Flo   | pitch 1.25, ×1.06 |
+| agy   | bright | Lili, Tingting, Karen, Kyoko, … then Flo   | pitch 1.4, ×1.06 |
 
 **Cloud voices** (`lk:voice-out` = cloud). Where an engine has several
 voices for the language the lane gets its own speaker: Workers AI Aura-2,
-English (codex `orion`, agy `thalia`) and Spanish (`nestor`, `carina`),
+English (main `luna`, codex `orion`, agy `thalia`) and Spanish (`celeste`,
+`nestor`, `carina`),
 asked as `/api/words/tts?…&speaker=` (the route keeps only speakers the
 table names; a recording is skipped; an Aura-2 failure answers with MeloTTS,
 never nothing). Everywhere else the cloud has one voice (MeloTTS), so the
-clip plays shifted — `shift` 0.9 / 1.12, pitch and speed together — the last
-resort. The pre-rendered Kokoro/VOICEVOX/Piper clips are fixed texts and are
+clip plays shifted — `shift` main 1.06, codex 0.88, agy 1.2, pitch and speed
+together — the last resort. The pre-rendered Kokoro/VOICEVOX/Piper clips are fixed texts and are
 not used for live lines.
 
 The owner's mute, quiet lines and the hidden-page rule are unchanged: a
