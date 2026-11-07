@@ -25,6 +25,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { launchSilent } from "../qa/silent.mjs";
 
 const ROOT = join(import.meta.dir, "../..");
 const PUB = join(ROOT, "public");
@@ -217,7 +218,7 @@ writeFileSync(join(PUB, "icon.svg"), svg);
 console.log(`icon.svg ${svg.length} bytes`);
 
 // ── rasters ─────────────────────────────────────────────────────────────────
-const browser = await chromium.launch();
+const browser = await launchSilent(chromium);
 const page = await browser.newPage({ colorScheme: "light" });
 const svgUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
 
