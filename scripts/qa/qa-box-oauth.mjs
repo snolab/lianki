@@ -17,13 +17,19 @@
  * Not part of qa:all: it needs a second server.
  */
 import { chromium } from "playwright";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 
 const PROVIDER = process.env.PROVIDER;
 const BOX = process.env.BOX;
 const OWNER = process.env.OWNER;
-const STATE = process.env.STATE ?? "/tmp/qa-box-oauth.json";
+// The client id between `setup` and a run: in the repo's gitignored .wrangler/, owner-only,
+// never a shared temp dir.
+const STATE = process.env.STATE ?? ".wrangler/qa-box-oauth.json";
+const saveState = (v) => {
+  mkdirSync(".wrangler", { recursive: true });
+  writeFileSync(STATE, JSON.stringify(v), { mode: 0o600 });
+};
 const PASSWORD = "qa-box-oauth-pass-1";
 const MEMBER = "qa-box-member@lianki.test";
 const STRANGER = "qa-box-stranger@lianki.test";
@@ -60,7 +66,7 @@ async function setup() {
   });
   const body = await r.json();
   if (!r.ok()) throw new Error(`bind: ${r.status()} ${JSON.stringify(body)}`);
-  writeFileSync(STATE, JSON.stringify({ clientId: body.clientId }));
+  saveState({ clientId: body.clientId });
   console.log(`clientId=${body.clientId}`);
   await browser.close();
 }
@@ -698,7 +704,7 @@ async function chatSetup() {
   const granted = await boxes(ctx, { op: "chat", clientId: body.clientId, on: true });
   const row = (await granted.json()).boxes?.find((b) => b.clientId === body.clientId);
   check("box:chat is granted on the owner's box", granted.ok() && row?.scopes.includes("box:chat"));
-  writeFileSync(STATE, JSON.stringify({ clientId: body.clientId }));
+  saveState({ clientId: body.clientId });
   console.log(`clientId=${body.clientId}`);
   await browser.close();
   if (failed) process.exit(1);
@@ -959,7 +965,7 @@ async function evalSetup() {
   const granted = await boxes(ctx, { op: "eval", clientId: body.clientId, on: true });
   const row = (await granted.json()).boxes?.find((b) => b.clientId === body.clientId);
   check("box:eval is granted on the owner's box", granted.ok() && row?.scopes.includes("box:eval"));
-  writeFileSync(STATE, JSON.stringify({ clientId: body.clientId }));
+  saveState({ clientId: body.clientId });
   console.log(`clientId=${body.clientId}`);
   await browser.close();
   if (failed) process.exit(1);
