@@ -77,6 +77,25 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   its scope. Any valid token reads the whole tree (`show`). The token is
   --token, LIANKI_PROGRESS_TOKEN, PROGRESS_TOKEN or .dev.vars.
 
+  ETA pings (flag chat.eta-bar, owner only). --eta is the agent's own
+  estimate, given each time it reports: a duration from now (25m, 1h30m) or an
+  ISO time with its zone. The hub turns it into the node's etaAt on its own
+  clock; a new --eta moves it; free text ("after CI") is shown, no timer.
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe" --status doing --eta 25m
+  The owner's chat shows one summary bar above the input (weighted progress,
+  time left, next due; packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens
+  this tree, which lists every timed task with its own bar and time left.
+  When etaAt passes on an open node, the hub (Durable Object alarm; also an
+  owner page's one timer sending {type:"eta", id}) marks it etaSent and asks
+  the chat hub (POST /internal/eta over the DEBUG binding, lib/eta-ping.ts) to
+  post one line in the owner's thread, to "/":
+    "ETA reached for <task> (<id>): report to the owner"
+  from "agent", agentId "eta", source "eta", quiet. Every listener at "/" (the
+  chat lane's `eval.ts chat`) hears it as it hears his lines; eval.ts prints it
+  with "source":"eta","auto":true. It is never the owner speaking, never an
+  answer to an ask card, never an approval. One line per estimate, whatever
+  number of pages are open; a done node gets none.
+
   Limits: name 40, task 120, note 280, needs 120; 200 nodes (oldest done
   dropped first); done nodes pruned after 24 h (Durable Object alarm); a
   200-event log; 30 writes/min per name, 120 in all. Unset secret: 503.

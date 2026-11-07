@@ -19,12 +19,16 @@
  * prefetch" and a left border by node), one addresses another ("from →
  * to"), and the owner's line to a node shows "→ /words › prefetch". Typing
  * "@/" offers the listed nodes; `?target=/words/prefetch` starts with that chip.
+ * `?eta`: the ETA bar on (eta.ts), the tree a feed of timed tasks set with
+ * `__etaSet([{id, title, start, at, done?, doneAt?, sent?}])`; `__etaDue`
+ * records each {type:"eta"} the page's timer would send.
  * `?full` passes the full-screen flag (partner.fullscreen on), with the app's Back handling.
  */
 import { type Ask, askText } from "@lianki/debug-chat/ask";
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
+import type { TreeEta, TreeNode } from "@lianki/debug-chat/state-tree";
 import { openBackToClose } from "@/lib/back-to-close";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
@@ -117,6 +121,44 @@ const NODES: ChatMessage[] = [
   },
 ];
 const HARNESS_NODES = ["/words", "/words/prefetch", "/words/audio", "/home/sites"];
+
+/** `?eta`: a live tree feed whose nodes carry estimates, set by `__etaSet`. */
+type HarnessEta = TreeEta & { title: string };
+const etaFeed = (() => {
+  let tasks: HarnessEta[] = [];
+  const subs = new Set<(v: TreeNode) => void>();
+  const root = (): TreeNode => ({
+    title: "",
+    links: [],
+    children: [
+      {
+        title: "/words",
+        links: [],
+        children: tasks.map((t) => ({
+          title: t.title,
+          status: t.done ? ("done" as const) : ("doing" as const),
+          done: !!t.done,
+          live: true,
+          eta: { id: t.id, start: t.start, at: t.at, done: t.done, doneAt: t.doneAt, sent: t.sent },
+          links: [],
+          children: [],
+        })),
+      },
+    ],
+  });
+  (globalThis as { __etaSet?: (t: HarnessEta[]) => void }).__etaSet = (t) => {
+    tasks = t;
+    for (const s of subs) s(root());
+  };
+  return {
+    subscribe(onUpdate: (v: TreeNode, meta?: { live?: boolean }) => void) {
+      const s = (v: TreeNode) => onUpdate(v, { live: true });
+      subs.add(s);
+      s(root());
+      return () => void subs.delete(s);
+    },
+  };
+})();
 
 function Harness() {
   /** `__remount()`: the chat unmounts and mounts again, as a hot swap does. */
@@ -290,7 +332,15 @@ function Harness() {
         selfPage="p1"
         // The tree: docs/state-tree.md (`?statictree`: a small static outline;
         // `?notree`: none, for the lk:tree-src fallback).
-        treeSource={q.has("notree") || q.has("statictree") ? undefined : () => STATE_TREE_MD}
+        treeSource={
+          q.has("eta")
+            ? etaFeed
+            : q.has("notree") || q.has("statictree")
+              ? undefined
+              : () => STATE_TREE_MD
+        }
+        etaBar={q.has("eta")}
+        onEtaDue={(id) => record("__etaDue", id)}
         treeRepo="snolab/lianki"
         renderTree={q.has("statictree") ? () => <HarnessTree /> : undefined}
         // Minimized: a single title, a group (collapsed; tap to list it), a next

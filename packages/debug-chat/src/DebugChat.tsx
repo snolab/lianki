@@ -65,6 +65,8 @@ import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { droppedLines, forgetDropped, keepDroppedLines } from "./stt-dropped";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
+import { EtaBar, EtaList } from "./EtaBar";
+import { type EtaTask, etaClock, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
 import { BAR_CONTROL, barGeometry } from "./bar-geometry";
@@ -690,6 +692,19 @@ export type DebugChatProps = {
    */
   files?: ChatFiles;
   /**
+   * The ETA bar (eta.ts, flag chat.eta-bar; the owner's pages only): a summary
+   * of the tree's timed tasks above the input, a tap opens the tree, which
+   * lists each. Needs `treeSource`.
+   */
+  etaBar?: boolean;
+  /** This page's timer saw a task's estimate run out, unsent: tell the hub (once per estimate). */
+  onEtaDue?: (id: string) => void;
+  /**
+   * Set by DebugChatHost when the hot tree (the dev server's outline) took
+   * `treeSource`'s place: the host's live source, which the ETA bar reads.
+   */
+  etaSource?: TreeSource;
+  /**
    * Full screen for this viewer (full-screen.ts): the host's server-side read
    * of the flag `partner.fullscreen`. Off, only the owner's pages (`owner`)
    * get it. Never on another site (`embedded`).
@@ -782,6 +797,9 @@ export function DebugChat({
   portalRoot,
   attach = true,
   files,
+  etaBar = false,
+  onEtaDue,
+  etaSource,
   fullScreen: fullScreenFlag = false,
   backToClose,
 }: DebugChatProps) {
@@ -1083,6 +1101,30 @@ export function DebugChat({
   }, [tree]);
   /** The host's tree (StateTree.tsx), loaded while it is open or the bar shows its frontier. */
   const treeData = useTreeSource(treeSource, treeRev, treeRepo);
+  /** The tree's timed tasks (eta.ts), and the clock that moves their bars. */
+  const etaData = useTreeSource(etaBar ? etaSource : undefined, 0, treeRepo);
+  const etaRoot = etaSource ? etaData.root : treeData.root;
+  const etaList = useMemo<EtaTask[]>(
+    () => (etaBar && (etaSource ?? treeSource) ? etaTasks(etaRoot) : []),
+    [etaBar, etaSource, treeSource, etaRoot],
+  );
+  const [etaNow, setEtaNow] = useState(() => Date.now());
+  const onEtaDueRef = useRef(onEtaDue);
+  onEtaDueRef.current = onEtaDue;
+  const etaClockRef = useRef<ReturnType<typeof etaClock> | null>(null);
+  useEffect(() => {
+    if (!etaBar) return;
+    const c = etaClock({ onDue: (id) => onEtaDueRef.current?.(id), onTick: setEtaNow });
+    etaClockRef.current = c;
+    return () => {
+      c.stop();
+      etaClockRef.current = null;
+    };
+  }, [etaBar]);
+  useEffect(() => {
+    setEtaNow(Date.now());
+    etaClockRef.current?.update(etaList);
+  }, [etaList]);
   /** Without a host tree: the dev fragment at lk:tree-src (TreeFragment.tsx). */
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
@@ -2926,6 +2968,7 @@ export function DebugChat({
           `min-w-0 flex-1 ${!floating ? "h-[30vh]" : ""}`,
         )}
       >
+        {etaBar && <EtaList tasks={etaList} now={etaNow} strings={t} />}
         {treeContent}
       </div>
     </div>
@@ -4064,6 +4107,9 @@ export function DebugChat({
       </ol>
       </div>
       {compact && compactEl}
+      {open && !tree && etaBar && (
+        <EtaBar tasks={etaList} now={etaNow} strings={t} onOpen={() => setPanel("tree")} />
+      )}
       {open && warning && (
         <div
           role="alert"

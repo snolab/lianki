@@ -1400,6 +1400,27 @@ the bundled copy and the dot is gone.
 `{subscribe(onUpdate) → unsubscribe}`: the WebSocket progress feed
 (`feat/live-roadmap`, parked) will be another such feed.
 
+## ETA bar
+
+Flag `chat.eta-bar` (owner only; the root layout reads it and passes
+`etaBar` down to DebugChat). Every live state-tree node with an estimate
+(`progress.ts --eta 25m`, its `etaAt`; docs/state-tree.md, "ETA pings") is a
+timed task (`eta.ts etaTasks`, read from the overlaid tree). Above the input,
+one line (`EtaBar.tsx`): a small clock drawn in place, a bar of the progress
+weighted by each estimate, then "Title · 25m left" for one task, or "3 tasks
+· 1h 5m left · next in 5m" for several; a tap opens the state tree, whose top
+lists each task with its own bar and time left (`EtaList`). Progress is time
+against the estimate (a done task is full and leaves after 8 s); times are
+whole minutes rounded up, in Intl's narrow units. Strings: `eta*` in
+learning-partner.content.ts, each with its context line.
+
+One timer per page (`etaClock`), armed to the soonest of an estimate, a done
+task leaving, or a label's next minute; re-armed on every tree update; no
+interval, no polling. When an estimate passes unsent, the page sends
+{type:"eta", id} on the progress socket (once per estimate per page); the hub
+also has its own alarm, marks the node sent and posts at most one line, so
+two devices never ping twice and no page needs to be open.
+
 ## UI state across a refresh and a hot swap
 
 The chat's session UI state is one store, `chat`, made with the shared

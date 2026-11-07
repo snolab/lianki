@@ -9,6 +9,10 @@
  *   bun scripts/dev/progress.ts resolve --id /@owner/agent-yes-527 --note "merged"
  *   bun scripts/dev/progress.ts show
  *
+ * `--eta 25m` (or an ISO time) is the agent's own estimate; it sets the node's
+ * etaAt, which drives the owner's ETA bar and the one "ETA reached" line the
+ * agents get when it passes (docs/state-tree.md, "ETA pings").
+ *
  * The site is LIANKI_URL (default: the production site, as for eval.ts). The
  * token is --token, else LIANKI_PROGRESS_TOKEN, else PROGRESS_TOKEN, else
  * PROGRESS_TOKEN from .dev.vars in this checkout or the main one.
@@ -16,6 +20,10 @@
 import { BASE } from "./eval-socket";
 import { PROGRESS_USAGE, parseProgressArgs } from "./progress-args";
 import { postProgress, progressToken } from "./progress-client";
+
+/** "2026-11-07 20:30 JST": when the estimate runs out, as the owner reads times. */
+const etaJst = (at: number) =>
+  `${new Date(at + 9 * 3_600_000).toISOString().slice(0, 16).replace("T", " ")} JST`;
 
 const args = process.argv.slice(2);
 if (args.includes("--help") || args.includes("-h")) {
@@ -54,6 +62,7 @@ else if (cmd.cmd === "resolve")
     `progress: resolved ${(res.resolved as string[]).join(", ") || "nothing (already done)"}`,
   );
 else {
-  const e = res.entry as { id: string; status: string; rev: number };
-  console.log(`progress: ${e.id} ${e.status} (rev ${e.rev}, ${res.readers ?? 0} watching)`);
+  const e = res.entry as { id: string; status: string; rev: number; etaAt?: number };
+  const eta = e.etaAt ? `, ETA ${etaJst(e.etaAt)}` : "";
+  console.log(`progress: ${e.id} ${e.status} (rev ${e.rev}${eta}, ${res.readers ?? 0} watching)`);
 }

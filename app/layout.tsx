@@ -11,6 +11,7 @@ import { LOCALE_HEADER, PARTNER_FRAME_HEADER, resolveLocale } from "@/lib/app-lo
 import { LANG_TAGS } from "@/lib/constants";
 import { type FlagValues, flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
+import { ETA_FLAG } from "@/lib/eta-ping";
 import { isOwner } from "@/lib/owner";
 import { boxConfig } from "@/lib/box-oauth/mode";
 import { BoxApiBridge } from "./components/BoxApiBridge";
@@ -104,6 +105,9 @@ export default async function RootLayout({
   const open = partnerFrame ? false : await partnerOpenFor(flags);
   // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
   const chatFull = flagIn(flags, "partner.fullscreen");
+  // The owner's ETA bar (lib/eta-ping.ts): the chat shows it only on his pages.
+  const etaBar = flagIn(flags, ETA_FLAG);
+  const boots = { strings: partner, leave, open, chatFull, etaBar };
   const box = boxConfig();
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
@@ -151,9 +155,7 @@ export default async function RootLayout({
         {/* The band behind the status bar's white clock (home-screen app only). */}
         <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
-          {partnerFrame ? null : (
-            <OwnerBoots strings={partner} leave={leave} open={open} chatFull={chatFull} />
-          )}
+          {partnerFrame ? null : <OwnerBoots {...boots} />}
           {/* A box signed in through lianki.com (docs/box-oauth.md): every page, landing included. */}
           {box ? <BoxApiBridge config={box}>{children}</BoxApiBridge> : children}
         </IntlayerServerProvider>

@@ -71,6 +71,15 @@ function apply(n: TreeNode, e: ProgressEntry, waiting: boolean, repo?: string) {
   else delete n.needsOwner;
   n.assignee = { type: e.assignee.type, name: e.assignee.name };
   if (e.action) n.action = e.action;
+  if (e.etaAt !== undefined && e.kind !== "group" && e.kind !== "person")
+    n.eta = {
+      id: e.id,
+      start: Math.min(e.created, e.etaAt),
+      at: e.etaAt,
+      ...(n.done ? { done: true, doneAt: e.at } : {}),
+      ...(e.etaSent === e.etaAt ? { sent: true } : {}),
+    };
+  else delete n.eta;
   const live = liveNote(e);
   if (live) n.note = n.note ? `${live}\n${n.note}` : live;
   const extra = [
@@ -143,6 +152,8 @@ type Sock = {
   onclose: ((ev: unknown) => void) | null;
   onerror: ((ev: unknown) => void) | null;
   close(): void;
+  send?(data: string): void;
+  readyState?: number;
 };
 export type LiveDeps = {
   /** The base outline (markdown). */
@@ -175,13 +186,35 @@ export const browserWake = (fn: () => void) => {
   };
 };
 
+/** The live tree, and a way to tell the hub something on its socket. */
+export type LiveTreeSource = TreeSource & {
+  subscribe: Extract<TreeSource, { subscribe: unknown }>["subscribe"];
+  /**
+   * Sends on the open progress socket (one of this source's subscriptions):
+   * {type:"eta", id} when this page's ETA timer went off (eta.ts). False with
+   * none open; the hub's alarm pings anyway.
+   */
+  send(msg: { type: "eta"; id: string }): boolean;
+};
+
 /** The outline with live progress laid over it, pushed on every hub message. */
-export function liveTreeSource(deps: LiveDeps): TreeSource {
+export function liveTreeSource(deps: LiveDeps): LiveTreeSource {
+  /** Every subscription's open socket. */
+  const openSocks = new Set<Sock>();
   const open = deps.socket ?? ((u: string) => new WebSocket(u) as unknown as Sock);
   const later = deps.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));
   const cancel = deps.clearTimeout ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   const wake = deps.onWake ?? browserWake;
   return {
+    send(msg) {
+      for (const s of openSocks)
+        try {
+          if (s.readyState !== undefined && s.readyState !== 1) continue;
+          s.send?.(JSON.stringify(msg));
+          return true;
+        } catch {}
+      return false;
+    },
     subscribe(onUpdate, onError) {
       let base: TreeNode | null = null;
       let view: ProgressView = { rows: [], log: [] };
@@ -222,6 +255,7 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
         const sock = open(deps.url);
         ws = sock;
         sock.onopen = () => {
+          openSocks.add(sock);
           failures = 0;
           loadBase();
         };
@@ -233,6 +267,7 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
           push();
         };
         const lost = () => {
+          openSocks.delete(sock);
           if (ws !== sock) return;
           ws = null;
           if (live) {
