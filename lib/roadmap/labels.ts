@@ -10,13 +10,7 @@ export function fill(template: string, vars: Record<string, string | number>): s
  * "other" text by writing it as a label ("Шагов: {n}"), per the key's context.
  */
 export function countLabel(locale: string, n: number, one: string, other: string): string {
-  let isOne = n === 1;
-  try {
-    isOne = new Intl.PluralRules(locale).select(n) === "one";
-  } catch {}
-  let num = String(n);
-  try {
-    num = n.toLocaleString(locale);
-  } catch {}
-  return fill(isOne ? one : other, { n: num });
+  // `locale` is one of the app's 16 locale codes, always valid BCP 47.
+  const isOne = new Intl.PluralRules(locale).select(n) === "one";
+  return fill(isOne ? one : other, { n: n.toLocaleString(locale) });
 }
