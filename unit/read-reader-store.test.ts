@@ -5,10 +5,9 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
-import { flagIn } from "@/lib/flags";
 import type { BookMeta } from "@/lib/read/book";
 import { BOOK_KIND } from "@/lib/read/book";
-import { chapterOf, hashOf, readerBook, readerV2On, type ReaderBook } from "@/lib/read/reader-book";
+import { chapterOf, hashOf, readerBook, type ReaderBook } from "@/lib/read/reader-book";
 import { sentenceId } from "@/lib/read/reader-api";
 import {
   dueFor,
@@ -85,13 +84,6 @@ describe("json_each statements stay small", () => {
 });
 
 describe("the gate", () => {
-  it("reader v2: the flag for everyone, else the owner alone; off by default", () => {
-    expect(flagIn({}, "read.reader-v2")).toBe(false);
-    expect(readerV2On({}, false)).toBe(false);
-    expect(readerV2On(null, true)).toBe(true);
-    expect(readerV2On({ "read.reader-v2": true }, false)).toBe(true);
-  });
-
   it("granularity is one of three", () => {
     expect(parseGranularity("time")).toBe("time");
     expect(parseGranularity("page")).toBeNull();

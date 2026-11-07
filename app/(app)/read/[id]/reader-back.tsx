@@ -1,8 +1,7 @@
 /**
  * The reader's way back to its parent, the list of books on /read. One
  * source of truth for the href and the label: the top of the page (the ←
- * in the v2 toolbar, the text link in the classic reader) and the end of the
- * book (after the last paragraph, so he leaves without scrolling up) both
+ * in the toolbar) and the end of the book (after the last paragraph, so he leaves without scrolling up) both
  * render this, so they always point to the same place.
  */
 import Link from "next/link";
@@ -16,8 +15,8 @@ export function ReaderBack({
 }: {
   /** read-reader `back` ("Back to books"). */
   label: string;
-  /** icon: the v2 toolbar's ←; text: the classic header link; end: the book's last line. */
-  variant: "icon" | "text" | "end";
+  /** icon: the toolbar's ←; end: the book's last line. */
+  variant: "icon" | "end";
 }) {
   if (variant === "icon")
     return (
@@ -29,16 +28,6 @@ export function ReaderBack({
         className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-lg"
       >
         <span aria-hidden>←</span>
-      </Link>
-    );
-  if (variant === "text")
-    return (
-      <Link
-        href={READER_PARENT_HREF}
-        data-testid="reader-back"
-        className="text-sm text-[oklch(0.55_0.01_260)] hover:text-[oklch(0.35_0.01_260)] dark:text-[oklch(0.72_0.01_260)] dark:hover:text-[oklch(0.9_0.01_260)]"
-      >
-        ← {label}
       </Link>
     );
   // The end of the book: centred, in the flow (never fixed), so the safe-area

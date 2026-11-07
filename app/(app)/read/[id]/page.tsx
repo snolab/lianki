@@ -1,11 +1,10 @@
-import { ReadViewClient } from "./ReadViewClient";
 import { ReaderV2 } from "./ReaderV2";
-import { ReaderChoice } from "./ReaderChoice";
+import { BoxReader } from "./BoxReader";
 import { authUserOrNull } from "@/app/signInEmail";
 import { boxConfig } from "@/lib/box-oauth/mode";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
-import { draftAllowedFor, readerPick } from "@/lib/read/reader-access";
+import { draftAllowedFor } from "@/lib/read/reader-access";
 import { resolveReadId } from "@/lib/read/book-link";
 import { findReadMaterialIdByHash } from "@/lib/getReadMaterialsCollection";
 import { notFound, redirect } from "next/navigation";
@@ -37,45 +36,29 @@ export default async function ReadMaterialPage({
     redirect(`/read/${encodeURIComponent(target.id)}${q.size ? `?${q}` : ""}`);
   }
   const owner = isOwner(user?.email);
-  const dev = process.env.NODE_ENV === "development";
   const streaming = query.streamingFrom === "google-docs" || query.streamingFrom === "vibe";
 
   // On a box this server's flags are its local D1's and it has no session: the
-  // browser picks from production's flags for the bound account instead
-  // (docs/box-oauth.md, "Flags on a box").
+  // live-draft gate is decided in the browser from production's flags for the
+  // bound account instead (docs/box-oauth.md, "Flags on a box").
   if (boxConfig())
     return (
-      <ReaderChoice
+      <BoxReader
         id={id}
         isLoggedIn={!!user}
         streaming={streaming}
-        dev={dev}
-        query={query.reader ?? null}
         serverFlags={flags}
         serverOwner={owner}
       />
     );
 
-  const pick = readerPick({ flags, owner, dev, query: query.reader });
-
-  // The reader v2 fills the screen: the window scrolls the whole book.
-  if (pick === "v2")
-    return (
-      <ReaderV2
-        id={id}
-        isLoggedIn={!!user}
-        streaming={streaming}
-        draftAllowed={draftAllowedFor(flags, owner)}
-      />
-    );
-
+  // The reader fills the screen: the window scrolls the whole book.
   return (
-    <div className="flex flex-col">
-      <div className="flex-grow px-4 sm:px-6 lg:px-8 py-8">
-        <div className="max-w-4xl mx-auto">
-          <ReadViewClient id={id} isLoggedIn={!!user} />
-        </div>
-      </div>
-    </div>
+    <ReaderV2
+      id={id}
+      isLoggedIn={!!user}
+      streaming={streaming}
+      draftAllowed={draftAllowedFor(flags, owner)}
+    />
   );
 }

@@ -3,8 +3,8 @@
 //
 //   QA_BASE=http://localhost:3417 bun scripts/qa/qa-read-polish-offer.mjs [outDir]
 //
-// Against a local `wrangler dev`: it turns the flags read.reader-v2 and
-// read.gdoc-stream on in the local D1, and off again at the end. Not in qa:all,
+// Against a local `wrangler dev`: it turns the flags read.gdoc-stream and
+// read.live-polish on in the local D1, and off again at the end. Not in qa:all,
 // where those flags stay off.
 //
 // Signs up a throwaway account and stores a made-up transcript under a fake doc
@@ -27,7 +27,7 @@ import { launchSilent, newSilentContext } from "./silent.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const OUT = process.argv[2] || "test-results/read-polish-offer";
 const PW = "qa-test-pass-1234";
-const FLAGS = ["read.reader-v2", "read.gdoc-stream", "read.live-polish"];
+const FLAGS = ["read.gdoc-stream", "read.live-polish"];
 mkdirSync(OUT, { recursive: true });
 
 let failed = 0;

@@ -18,7 +18,7 @@ import {
   resolveBoxUser,
   type BoxSessionDeps,
 } from "@/lib/box-oauth/session";
-import { draftAllowedFor, readerPick } from "@/lib/read/reader-access";
+import { draftAllowedFor } from "@/lib/read/reader-access";
 import { insertBinding, type BoxDb } from "@/lib/box-oauth/store";
 import { signOut } from "@/lib/sign-out";
 
@@ -315,12 +315,12 @@ describe("flags on a box: production's, for the bound account", () => {
       async () => ({ user }),
       async (email) => {
         asked.push(email);
-        return { flags: { "read.reader-v2": true }, owner: false };
+        return { flags: { "read.live-polish": true }, owner: false };
       },
     );
     expect(await res.json()).toEqual({
       user,
-      flags: { "read.reader-v2": true },
+      flags: { "read.live-polish": true },
       owner: false,
     });
     expect(asked).toEqual(["ann@test.example"]);
@@ -350,11 +350,11 @@ describe("flags on a box: production's, for the bound account", () => {
     const a = await resolveBoxAccount(
       page({
         user: { name: "Ann", email: "a@test.example" },
-        flags: { "read.reader-v2": true, "box.oauth": "yes", "no.such-flag": true },
+        flags: { "read.live-polish": true, "box.oauth": "yes", "no.such-flag": true },
         owner: true,
       }),
     );
-    expect(a?.flags).toEqual({ "read.reader-v2": true });
+    expect(a?.flags).toEqual({ "read.live-polish": true });
     expect(a?.owner).toBe(true);
     expect(boxFlagsFrom(null)).toEqual({});
     expect(boxFlagsFrom([true])).toEqual({});
@@ -373,14 +373,14 @@ describe("flags on a box: production's, for the bound account", () => {
     const local = { flags: {}, owner: false };
     const account = {
       user: { name: "A", email: "a@test.example", image: null },
-      flags: { "read.reader-v2": true },
+      flags: { "read.live-polish": true },
       owner: false,
     };
     const view = flagViewOn({ account }, local);
-    expect(view).toEqual({ flags: { "read.reader-v2": true }, owner: false });
-    expect(readerPick({ ...view, dev: true })).toBe("v2");
-    // The bug: the box's server alone (empty local flags, no session) picked v1.
-    expect(readerPick({ ...local, dev: true })).toBe("v1");
+    expect(view).toEqual({ flags: { "read.live-polish": true }, owner: false });
+    expect(draftAllowedFor(view.flags, view.owner)).toBe(true);
+    // The box's server alone (empty local flags, no session) says no.
+    expect(draftAllowedFor(local.flags, local.owner)).toBe(false);
     // Off a box, or a box tab not signed in: the server's answer stands.
     expect(flagViewOn(null, local)).toBe(local);
     expect(flagViewOn({ account: null }, local)).toBe(local);
@@ -392,7 +392,6 @@ describe("flags on a box: production's, for the bound account", () => {
       { account: { user: owner, flags: {}, owner: true } },
       { flags: { "read.live-polish": true }, owner: false },
     );
-    expect(readerPick({ ...view, dev: false })).toBe("v2");
     expect(draftAllowedFor(view.flags, view.owner)).toBe(true);
     expect(draftAllowedFor({}, false)).toBe(false);
     expect(draftAllowedFor({ "read.live-polish": true }, false)).toBe(true);

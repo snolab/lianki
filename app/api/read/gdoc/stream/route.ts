@@ -13,7 +13,7 @@
 //          next save holds them. Every edit, so no D1 write here.
 //
 // The body becomes the sender's own book and nobody else's. Gate: a session,
-// D1, reader v2, and flag `read.gdoc-stream` or the owner.
+// D1, and flag `read.gdoc-stream` or the owner.
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/auth";
@@ -25,7 +25,6 @@ import { parseGdocHtml } from "@/lib/gdoc/parse";
 import { isOwner } from "@/lib/owner";
 import { checkBook } from "@/lib/read/book";
 import { storeGdocBook } from "@/lib/read/gdoc-store";
-import { readerV2On } from "@/lib/read/reader-book";
 import type { D1Batch } from "@/lib/read/reader-store";
 import { routeLimit, readJsonCapped, tooMany } from "@/lib/security/route-guard";
 import type { TailOp } from "@/lib/read/gdoc-tail";
@@ -51,7 +50,7 @@ const fail = (error: string, status: number) =>
   NextResponse.json({ error }, { status, headers: { "cache-control": "no-store" } });
 
 function streamOn(flags: FlagValues | null | undefined, owner: boolean): boolean {
-  return readerV2On(flags, owner) && (owner || flagIn(flags, "read.gdoc-stream"));
+  return owner || flagIn(flags, "read.gdoc-stream");
 }
 
 async function gate() {
