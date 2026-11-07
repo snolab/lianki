@@ -242,6 +242,12 @@ nothing, caches nothing, and deletes what an older worker cached
 (`unit/sw-box.test.ts`). A browser picks the new worker up on its next
 navigation; the reload after that is clean.
 
+Cloudflare in front of the box then did the same in the browser's HTTP cache: it
+turns next dev's `no-cache` (and `max-age=0`) into the zone's 4-hour browser TTL.
+On a box (`LIANKI_DEVBOX=1`) `next.config.mjs` sends `Cache-Control: no-store` on
+every response, which Cloudflare leaves alone. A browser that cached chunks before
+that keeps them until it revalidates: one hard reload (Cmd+Shift+R) clears them.
+
 ## Known limits
 
 - **Client-side only.** The box's `fetch` goes to lianki.com, but its server
