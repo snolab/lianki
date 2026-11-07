@@ -231,6 +231,17 @@ run against production, where the flag is off. On 127.0.0.1 the two share a site
 as a box and lianki.com do, but the box is http and registered as a native client;
 a real box is https and `web`.
 
+## The service worker on a box
+
+A box runs `next dev`, whose chunk names stay the same across edits and
+restarts. The site's service worker (`public/sw.js`) caches `/_next/static`
+cache-first, so on a box it served the previous build's chunks next to the new
+ones and the page never hydrated (2026-11-07: a spinner forever, and the box's
+fetch never reached lianki.com). On a `my-<hash>` host the worker now answers
+nothing, caches nothing, and deletes what an older worker cached
+(`unit/sw-box.test.ts`). A browser picks the new worker up on its next
+navigation; the reload after that is clean.
+
 ## Known limits
 
 - **Client-side only.** The box's `fetch` goes to lianki.com, but its server
