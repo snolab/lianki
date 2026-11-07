@@ -14,6 +14,7 @@ import {
   BOX_CHAT_STT_PATH,
   BOX_CHAT_TICKET_PATH,
   SCOPE_CHAT,
+  boxHubUrl,
   tokenMayCall,
 } from "@/lib/box-oauth/rules";
 import {
@@ -145,6 +146,19 @@ describe("the routes box:chat opens", () => {
   });
 });
 
+describe("small pieces", () => {
+  test("the hub is the provider's /api/version/debug over ws(s)", () => {
+    expect(boxHubUrl("https://lianki.com")).toBe("wss://lianki.com/api/version/debug");
+    expect(boxHubUrl("http://127.0.0.1:3911")).toBe("ws://127.0.0.1:3911/api/version/debug");
+  });
+  test("off the Worker there is no PUSH binding: the notice is a no, never a throw", async () => {
+    expect(await notifyBoxClosed("c1")).toBe(false);
+    expect(
+      await notifyBoxClosed("c1", { fetch: async () => new Response("", { status: 503 }) }),
+    ).toBe(false);
+  });
+});
+
 describe("the scope on the binding", () => {
   let db: TestD1Database;
   beforeEach(async () => {
@@ -265,6 +279,24 @@ describe("the gate on the chat routes", () => {
     expect(seen).toBeNull();
   });
 
+  test("the owner check failing (a D1 error) refuses, never lets through", async () => {
+    await setBoxChat(box(db), "c1", true, "u1", NOW);
+    const flaky = {
+      prepare: (sql: string) => {
+        if (sql.includes("site_role")) throw new Error("d1 down");
+        return db.prepare(sql);
+      },
+    } as unknown as BoxDb;
+    const res = await boxGate(
+      new Request(`https://lianki.com${BOX_CHAT_TICKET_PATH}`, { method: "POST", headers: tok() }),
+      { DB: flaky, AUTH_SECRET: SECRET },
+      deps,
+      app,
+    );
+    expect(res.status).toBe(403);
+    expect(seen).toBeNull();
+  });
+
   test("a forged identity header never arrives; GET is refused", async () => {
     await setBoxChat(box(db), "c1", true, "u1", NOW);
     await call(BOX_CHAT_TICKET_PATH, { [BOX_IDENTITY_HEADER]: "u1.c1.9999999999999.00" });
@@ -337,6 +369,18 @@ describe("the ticket route", () => {
     expect((await chatTicketResponse(await ident(), deps({ sign: async () => null }))).status).toBe(
       503,
     );
+    // A bad key throws: still 503, nothing minted.
+    const broken = deps({ sign: () => Promise.reject(new Error("bad jwk")) });
+    expect((await chatTicketResponse(await ident(), broken)).status).toBe(503);
+    // A D1 error on the check is a refusal.
+    const flaky = deps({
+      db: {
+        prepare: () => {
+          throw new Error("d1 down");
+        },
+      } as unknown as BoxDb,
+    });
+    expect((await chatTicketResponse(await ident(), flaky)).status).toBe(403);
   });
 });
 
