@@ -126,7 +126,8 @@ wraps every page from the root layout (landing and blog included). With a token
 in the tab it calls `GET /api/box/me` through the box's fetch. That route is on the
 allowlist, read-only, exactly that path, takes no parameter, and answers only a
 request carrying the gate's signed identity (404 otherwise, so lianki.com's own pages
-get nothing new). It returns the bound account's name, email and avatar.
+get nothing new). It returns the bound account's name, email and avatar, and
+production's flags and owner role for it ("Flags on a box", below).
 
 Until the answer comes, the page is a spinner: the server's HTML never holds a
 "Sign in" link. Then `useShellUser` gives the header and account menu the account.
@@ -147,6 +148,29 @@ Still signed out, because they are drawn on the box's server:
   switch and live view.
 
 The Learning Partner chat works on a box only with `box:chat`, below.
+
+### Flags on a box
+
+A box's own server reads its **local** D1 (usually an empty `feature_flags`, so
+every flag off) and has no session (so `isOwner` is false). A page that decides
+on the server would show the box what an anonymous user with every flag off
+sees, not what the bound account sees on lianki.com. The owner hit this on
+2026-11-07: his box showed the old reader at `/read/<id>`, because
+`read.reader-v2` was off in the box's D1 and the server did not know him.
+
+So `/api/box/me` also answers **production's flags** (`readFlags()`, the same
+30 s cache as every lianki.com request) and **whether the bound account is a
+site owner**. `BoxApiBridge` reads them in the same call it already makes before
+the page renders, so it costs no extra request and no flash. Client components
+decide with `useFlagView({ flags, owner })`: on a signed-in box, production's
+answer; otherwise the server's. They are read once per page load (a full reload
+picks up a flip at /dev/flags). Only registry keys with boolean values are kept;
+an older lianki.com that does not send them means all off, not the owner.
+
+Used today by `/read/[id]` (`ReaderChoice`: which reader, and the live-draft
+gate). Other server-decided parts listed above still read the box's own D1; move
+one to `useFlagView` when a box needs it. No sync of the local D1 is needed or
+done.
 
 ## Chat on the owner's box (`box:chat`)
 
