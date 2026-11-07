@@ -13,5 +13,7 @@ export function boxConfig(): BoxConfig | null {
     clientId,
     provider: process.env.LIANKI_BOX_PROVIDER || "https://lianki.com",
     scope: process.env.LIANKI_BOX_SCOPE || BOX_SCOPES.join(" "),
+    // The chat hub, when it is not the provider's /api/version/debug (local QA only).
+    ...(process.env.LIANKI_BOX_HUB ? { hub: process.env.LIANKI_BOX_HUB } : {}),
   };
 }

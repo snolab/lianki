@@ -8,9 +8,11 @@ import {
   insertBinding,
   listBindings,
   revokeBox,
+  setBoxChat,
   validNewBox,
   type BoxDb,
 } from "@/lib/box-oauth/store";
+import { notifyBoxClosed } from "@/lib/box-oauth/push-close";
 import { isOwner } from "@/lib/owner";
 import { sameOriginJsonPost } from "@/lib/security/same-origin";
 
@@ -20,6 +22,7 @@ import { sameOriginJsonPost } from "@/lib/security/same-origin";
  * it is turned on.
  * - GET → { boxes: [...] };
  * - POST (same-origin JSON) `{ op: "add", origin, email, scopes }` |
+ *   `{ op: "chat", clientId, on }`: box:chat on or off (a site owner's box only) |
  *   `{ op: "revoke", clientId }`: the one action that ends a box and its tokens.
  */
 const NO_STORE = { "cache-control": "no-store" };
@@ -49,9 +52,20 @@ export const POST = async (req: Request) => {
   if (b.op === "revoke") {
     if (typeof b.clientId !== "string") return bad("clientId required");
     if (!(await revokeBox(db(), b.clientId, by.id))) return bad("no live box with that client");
+    await notifyBoxClosed(b.clientId);
     return NextResponse.json({ boxes: await listBindings(db()) }, { headers: NO_STORE });
   }
-  if (b.op !== "add") return bad("op must be add or revoke");
+  if (b.op === "chat") {
+    // box:chat (docs/box-oauth.md, "Chat on the owner's box"): a site owner's box only.
+    if (typeof b.clientId !== "string") return bad("clientId required");
+    if (typeof b.on !== "boolean") return bad("on must be true or false");
+    const r = await setBoxChat(db(), b.clientId, b.on, by.id);
+    if (r === "no-box") return bad("no live box with that client");
+    if (r === "not-owner") return bad("box:chat is only for a box bound to a site owner", 403);
+    if (!b.on) await notifyBoxClosed(b.clientId);
+    return NextResponse.json({ boxes: await listBindings(db()) }, { headers: NO_STORE });
+  }
+  if (b.op !== "add") return bad("op must be add, chat or revoke");
 
   const problem = validNewBox(b.origin, b.scopes, runtimeNodeEnv() === "development");
   if (problem) return bad(problem);

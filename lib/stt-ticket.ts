@@ -30,13 +30,28 @@ export const PARTNER_TICKET_AUD = "lianki-partner";
 /** The subprotocol a userscript's hub socket offers beside its ticket. */
 export const PARTNER_SUBPROTOCOL = "lianki-partner";
 /**
+ * The same keys sign the chat tickets of an owner's box (docs/box-oauth.md,
+ * "Chat on the owner's box"): a third audience, and each one names the box's
+ * exact origin (`org`) and client (`cid`). lianki-push takes it only from that
+ * origin, under the partner subprotocol.
+ */
+export const BOX_CHAT_TICKET_AUD = "lianki-box-chat";
+/**
  * The userscript asks for a partner ticket with this header (value "1"). A
  * web page cannot send it cross-origin without a CORS preflight, which the
  * route never answers.
  */
 export const PARTNER_TICKET_HEADER = "x-lianki-userscript";
 
-export type SttTicketPayload = { aud: string; jti: string; iat: number; exp: number };
+export type SttTicketPayload = {
+  aud: string;
+  jti: string;
+  iat: number;
+  exp: number;
+  /** A box chat ticket only: the box's exact origin and its client id. */
+  org?: string;
+  cid?: string;
+};
 
 const ED = { name: "Ed25519" } as const;
 
@@ -76,7 +91,15 @@ function randomJti(): string {
 
 export async function signSttTicket(
   key: CryptoKey,
-  o: { now?: number; jti?: string; ttlS?: number; aud?: string } = {},
+  o: {
+    now?: number;
+    jti?: string;
+    ttlS?: number;
+    aud?: string;
+    /** A box chat ticket's origin and client (BOX_CHAT_TICKET_AUD). */
+    org?: string;
+    cid?: string;
+  } = {},
 ): Promise<{ ticket: string; exp: number }> {
   const iat = Math.floor((o.now ?? Date.now()) / 1000);
   const exp = iat + (o.ttlS ?? STT_TICKET_TTL_S);
@@ -85,6 +108,8 @@ export async function signSttTicket(
     jti: o.jti ?? randomJti(),
     iat,
     exp,
+    ...(o.org ? { org: o.org } : {}),
+    ...(o.cid ? { cid: o.cid } : {}),
   };
   const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
   const sig = new Uint8Array(await crypto.subtle.sign(ED, key, new TextEncoder().encode(body)));
