@@ -11,6 +11,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -221,6 +222,11 @@ describe("the lock file", () => {
     expect(existsSync(lock)).toBe(false);
     release(lock, me.token); // already gone: fine
     expect(readLock(lock)).toBeNull();
+  });
+
+  test.skipIf(process.platform === "win32")("the lock file is private to this user", () => {
+    tryAcquire(lock, makeHolder("me"));
+    expect(statSync(lock).mode & 0o777).toBe(0o600);
   });
 
   test("leaves no temp files behind", () => {

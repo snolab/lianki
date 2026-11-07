@@ -146,7 +146,10 @@ export function readLock(path: string): Seen | null {
 
 function createExclusive(path: string, content: string): boolean {
   const tmp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  writeFileSync(tmp, content);
+  // /tmp is shared: O_EXCL so a planted symlink is not followed, and only this user
+  // can read or replace it. Another user's run can't read the lock, so it warns and
+  // runs unlocked.
+  writeFileSync(tmp, content, { flag: "wx", mode: 0o600 });
   try {
     linkSync(tmp, path);
     return true;
