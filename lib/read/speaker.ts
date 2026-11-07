@@ -26,6 +26,10 @@
 // - A browser voice that never starts (no engine behind the API, as on some
 //   Androids, or `onend` fired at once with nothing said) counts as a failure
 //   after WATCHDOG_MS, rather than an instant "end" that would race ahead.
+// - While the chat mic is on, the clips play through the voice AudioContext
+//   (`route`), as Li's own voice does (voice-out.ts): iOS's capture unit
+//   ducks a bare <audio> element to near silence (owner, 2026-11-07: the
+//   reader "plays" — currentTime runs — but nothing is heard).
 // - Each line holds the chat mic while it plays, echo cancellation or not
 //   (page-audio.ts `always`), and its text goes to the echo guard, so the
 //   book read aloud is never transcribed into the chat.
@@ -73,7 +77,20 @@ export type ReadSpeakerDeps = {
     url: string,
     init?: { signal?: AbortSignal },
   ): Promise<{ ok: boolean; status: number; blob(): Promise<Blob> }>;
-  audio(): AudioLike;
+  /**
+   * A new element for `route` (from `route()`; null: a bare element). The
+   * reader's clips play through the voice AudioContext while the chat mic
+   * captures: on iOS the capture's voice-processing unit ducks any other
+   * audio to near silence, so a bare element is inaudible then (owner,
+   * 2026-11-07 21:07 JST: "朗读没声音" with the mic on).
+   */
+  audio(route?: unknown): AudioLike;
+  /**
+   * Where elements should play now: an opaque token (the running voice
+   * context while the mic is on), or null for a bare element. Each route
+   * keeps its own pair of elements (a routed element cannot be unrouted).
+   */
+  route?(): unknown;
   toUrl(b: Blob): string;
   revoke(u: string): void;
   pageAudio(): PageAudio;
@@ -105,6 +122,18 @@ export type SpeakCallbacks = {
   /** Its rank for the page's audio (AUDIO_PRIO; default: a paragraph). */
   prio?: number;
 };
+
+/**
+ * Where the reader's clips play: through the chat's voice AudioContext while
+ * the mic is on and that context runs (the one Li's voice plays through, so
+ * iOS's capture unit does not duck it), else a bare element (null).
+ */
+export function readRoute<C extends { state: string }>(
+  pa: Pick<PageAudio, "mic">,
+  ctx: C | null,
+): C | null {
+  return pa.mic() && ctx && ctx.state === "running" ? ctx : null;
+}
 
 export const baseLang = (lang: string) => lang.toLowerCase().split(/[-_]/)[0];
 export const readTtsUrl = (text: string, lang: string) =>
@@ -139,15 +168,30 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
   /** Bumped by every speak and cancel: callbacks of older ones are ignored. */
   let turn = 0;
   let stopCurrent: (() => void) | null = null;
-  /** Two elements, taking turns: one plays while the next sentence loads in the other. */
-  let els: [AudioLike, AudioLike] | null = null;
-  const pair = () => (els ??= [d.audio(), d.audio()]);
-  const pauseAll = () => {
-    for (const a of els ?? []) {
-      try {
-        a.pause();
-      } catch {}
+  /** Two elements per route, taking turns: one plays while the next sentence loads in the other. */
+  const pairs = new Map<unknown, [AudioLike, AudioLike]>();
+  const routeNow = (): unknown => {
+    try {
+      return d.route?.() ?? null;
+    } catch {
+      return null;
     }
+  };
+  const pair = (r: unknown = routeNow()): [AudioLike, AudioLike] => {
+    let p = pairs.get(r);
+    if (!p) {
+      p = [d.audio(r), d.audio(r)];
+      pairs.set(r, p);
+    }
+    return p;
+  };
+  const pauseAll = () => {
+    for (const p of pairs.values())
+      for (const a of p) {
+        try {
+          a.pause();
+        } catch {}
+      }
   };
   type Clip = { p: Promise<Blob>; done: boolean };
   /** Cloud clips by "lang\ntext", oldest first (a Map keeps insertion order). */
@@ -413,6 +457,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         const cur = () => live() && mine === attempt;
         if (!cloudOk) return fail(from, "cloud", `no server voice for ${lang}`);
         const L = baseLang(lang);
+        // The route as this attempt starts (the mic on or off): a resume picks again.
         const [a0, a1] = pair();
         /** Chunk i plays in one element while i + 1 loads in the other. */
         const slot = (i: number) => ((i - from) % 2 === 0 ? a0 : a1);
