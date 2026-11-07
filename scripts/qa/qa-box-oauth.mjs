@@ -17,13 +17,19 @@
  * Not part of qa:all: it needs a second server.
  */
 import { chromium } from "playwright";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 
 const PROVIDER = process.env.PROVIDER;
 const BOX = process.env.BOX;
 const OWNER = process.env.OWNER;
-const STATE = process.env.STATE ?? "/tmp/qa-box-oauth.json";
+// The client id between `setup` and a run: in the repo's gitignored .wrangler/, owner-only,
+// never a shared temp dir.
+const STATE = process.env.STATE ?? ".wrangler/qa-box-oauth.json";
+const saveState = (v) => {
+  mkdirSync(".wrangler", { recursive: true });
+  writeFileSync(STATE, JSON.stringify(v), { mode: 0o600 });
+};
 const PASSWORD = "qa-box-oauth-pass-1";
 const MEMBER = "qa-box-member@lianki.test";
 const STRANGER = "qa-box-stranger@lianki.test";
@@ -60,7 +66,7 @@ async function setup() {
   });
   const body = await r.json();
   if (!r.ok()) throw new Error(`bind: ${r.status()} ${JSON.stringify(body)}`);
-  writeFileSync(STATE, JSON.stringify({ clientId: body.clientId }));
+  saveState({ clientId: body.clientId });
   console.log(`clientId=${body.clientId}`);
   await browser.close();
 }
@@ -698,7 +704,7 @@ async function chatSetup() {
   const granted = await boxes(ctx, { op: "chat", clientId: body.clientId, on: true });
   const row = (await granted.json()).boxes?.find((b) => b.clientId === body.clientId);
   check("box:chat is granted on the owner's box", granted.ok() && row?.scopes.includes("box:chat"));
-  writeFileSync(STATE, JSON.stringify({ clientId: body.clientId }));
+  saveState({ clientId: body.clientId });
   console.log(`clientId=${body.clientId}`);
   await browser.close();
   if (failed) process.exit(1);
@@ -959,17 +965,22 @@ async function evalSetup() {
   const granted = await boxes(ctx, { op: "eval", clientId: body.clientId, on: true });
   const row = (await granted.json()).boxes?.find((b) => b.clientId === body.clientId);
   check("box:eval is granted on the owner's box", granted.ok() && row?.scopes.includes("box:eval"));
-  writeFileSync(STATE, JSON.stringify({ clientId: body.clientId }));
+  saveState({ clientId: body.clientId });
   console.log(`clientId=${body.clientId}`);
   await browser.close();
   if (failed) process.exit(1);
 }
 
 /** eval.ts's side: an unauthenticated sender socket (no Origin), as the CLI opens it. */
-async function sender(label) {
+async function sender(label, apiToken) {
   const got = [];
-  const ws = new WebSocket(`${PUSH_WS}/api/version/debug/control?label=${label}`);
+  // With an eval token (docs/secrets-and-auth.md "Eval tokens"), as eval.ts sends LIANKI_TOKEN.
+  const ws = new WebSocket(
+    `${PUSH_WS}/api/version/debug/control?label=${label}`,
+    apiToken ? { headers: { authorization: `Bearer ${apiToken}` } } : undefined,
+  );
   ws.onmessage = (e) => got.push(JSON.parse(String(e.data)));
+  ws.onclose = (e) => got.push({ type: "closed", code: e.code });
   await new Promise((ok, no) => {
     ws.onopen = ok;
     ws.onerror = () => no(new Error("sender socket refused"));
@@ -1044,6 +1055,52 @@ async function evalRun() {
   );
   const err = await wait(() => s.got.find((m) => m.type === "page-error"));
   check("its page errors reach the agent", String(err?.message ?? "").includes(run), err?.message);
+
+  // An eval token: the owner makes it on lianki.com, a sender uses it, no tap.
+  const api = (method, data) =>
+    ctx.request.fetch(`${PROVIDER}/api/token`, {
+      method,
+      data,
+      // No Origin: under wrangler dev the Worker sees another host than PROVIDER, and
+      // /api/token takes JSON from its own origin or from a client that sends none.
+      headers: { "content-type": "application/json" },
+    });
+  const tooLong = await api("POST", { name: "qa-eval", scopes: ["eval"], expiry: { days: 90 } });
+  check(
+    "an eval token past 30 days is refused",
+    tooLong.status() === 400,
+    `${tooLong.status()} ${(await tooLong.text()).slice(0, 120)}`,
+  );
+  const made = await api("POST", { name: "qa-eval", scopes: ["eval"], expiry: { days: 7 } });
+  const tok = await made.json();
+  check("the owner makes an eval token", made.ok() && tok.scopes?.includes("eval"));
+  const ts = await sender(`qa-token-${run}`, tok.token);
+  check(
+    "a sender with it is approved with no tap",
+    Boolean(await wait(() => ts.last("approved")?.via === "token")),
+    String(ts.last("error")?.error ?? ""),
+  );
+  ts.send({ type: "eval", code: "location.origin", target: "box" });
+  const tres = await wait(() => ts.last("result"));
+  check(
+    "its eval reaches the box page (box:eval on)",
+    tres?.ok === true && String(tres?.value).includes(new URL(BOX).host),
+    JSON.stringify(tres),
+  );
+  await api("DELETE", { id: tok.id });
+  // The revoke notice closes it; if the local registry drops that, the next eval is refused.
+  if (!(await wait(() => ts.last("closed"), 5_000)))
+    ts.send({ type: "eval", code: "1", target: "box" });
+  check(
+    "revoking the token ends it",
+    Boolean(await wait(() => ts.last("closed")?.code === 4498, 10_000)),
+    JSON.stringify(ts.last("closed")),
+  );
+  const again = await sender(`qa-token2-${run}`, tok.token);
+  check(
+    "and it is refused after",
+    Boolean(await wait(() => again.last("closed")?.code === 4498, 10_000)),
+  );
 
   // Off on /dev/box-clients: no more eval there; the chat goes on.
   const off = await boxes(ctx, { op: "eval", clientId, on: false });

@@ -221,3 +221,64 @@ describe("eval-socket: the rest of the plumbing", () => {
     expect(await quiet).toEqual([]);
   });
 });
+
+describe("eval-socket: an eval token (LIANKI_TOKEN)", () => {
+  const TOK = `lk_${"a".repeat(64)}`;
+  const withToken = async <T>(v: string | undefined, f: () => Promise<T>) => {
+    const was = process.env.LIANKI_TOKEN;
+    if (v === undefined) delete process.env.LIANKI_TOKEN;
+    else process.env.LIANKI_TOKEN = v;
+    try {
+      return await f();
+    } finally {
+      if (was === undefined) delete process.env.LIANKI_TOKEN;
+      else process.env.LIANKI_TOKEN = was;
+    }
+  };
+
+  it("only an lk_ token counts", () => {
+    expect(sock.evalApiToken(TOK)).toBe(TOK);
+    expect(sock.evalApiToken(` ${TOK}\n`)).toBe(TOK);
+    for (const bad of [undefined, "", "lk_short", "tok1", `Bearer ${TOK}`])
+      expect(sock.evalApiToken(bad)).toBeUndefined();
+  });
+
+  it("connects with it in Authorization, no saved grant, no pairing", async () => {
+    await withToken(TOK, async () => {
+      const got = sock.controller({ label: "agent" }).evalSocket();
+      await tick();
+      const ws = last();
+      expect(ws.opts?.headers?.authorization).toBe(`Bearer ${TOK}`);
+      expect(ws.url).not.toContain(TOK);
+      ws.emit({ type: "error", error: "noise first" });
+      ws.emit({ type: "approved", scope: "eval", until: Date.now() + HOUR, via: "token" });
+      expect((await got) as unknown).toBe(ws);
+      expect(existsSync(EVAL)).toBe(false);
+    });
+  });
+
+  it("a refused token (a lane's chat-only one) falls back to the saved grant", async () => {
+    writeFileSync(EVAL, grantFileBody("tok1", Date.now() + HOUR));
+    await withToken(TOK, async () => {
+      const got = sock.controller({ label: "agent" }).evalSocket();
+      await tick();
+      last().shut(4498, "eval token refused");
+      await tick();
+      const resumed = last();
+      expect(resumed.opts?.headers?.["x-debug-token"]).toBe("tok1");
+      resumed.emit({ type: "approved", scope: "eval", until: Date.now() + HOUR, resumed: true });
+      expect((await got) as unknown).toBe(resumed);
+    });
+  });
+
+  it("any other close is an error; --for never uses it", async () => {
+    await withToken(TOK, async () => {
+      const got = sock.controller({ label: "agent" }).evalSocket();
+      await tick();
+      last().shut(4503, "unsure");
+      await expect(got).rejects.toThrow("eval token: socket closed (4503 unsure)");
+      const friend = sock.controller({ label: "agent", forEmail: "f@example.com" }).evalSocket();
+      await expect(friend).rejects.toThrow("--for needs the chat grant");
+    });
+  });
+});

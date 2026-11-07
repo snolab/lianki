@@ -9,9 +9,13 @@
  *   with its account (no row, no match) or a sign-out everywhere (all of the
  *   account's tokens are deleted, auth-impl.ts).
  * - **Explicit permissions**, chosen at creation from SCOPES (data, below).
- *   Nothing else is selectable: eval, pairing, grants and admin are not
+ *   Nothing else is selectable: pairing, grants and admin are not
  *   permissions a token can hold (FORBIDDEN_SCOPES), so no route can ask for
  *   them. A route asks for one scope; a token without it is refused.
+ * - **`eval`, the site owner's alone** (OWNER_SCOPES; docs/secrets-and-auth.md,
+ *   "Eval tokens"): run code on the owner's open pages with no pairing tap.
+ *   Offered and accepted only for a site owner's session, at most
+ *   EVAL_MAX_DAYS, and checked again at every use (lib/eval-token.ts).
  * - **Required expiry**, picked by the user: EXPIRY_DAYS or a date, at most
  *   MAX_EXPIRY_DAYS ahead. No silent "forever".
  * - **Last used**, written at most once a minute (LAST_USED_EVERY_MS).
@@ -42,13 +46,25 @@ export const SCOPES = [
   { id: "chat:read", group: "chat" }, // read lines, listen
   { id: "chat:write", group: "chat" }, // post a line
   { id: "chat:ask", group: "chat" }, // post an ask card (only a tap answers it)
+  // Run code on the owner's open pages (eval.ts, lianki-dev), no pairing tap:
+  // a site owner's token only (OWNER_SCOPES), at most EVAL_MAX_DAYS.
+  { id: "eval", group: "owner" },
 ] as const;
 
 export type ScopeId = (typeof SCOPES)[number]["id"];
 export const SCOPE_IDS: readonly ScopeId[] = SCOPES.map((s) => s.id);
 
 /** Never a permission, whatever is sent: a request naming one is refused outright. */
-export const FORBIDDEN_SCOPES = ["eval", "pair", "grant", "admin", "answer", "owner"] as const;
+export const FORBIDDEN_SCOPES = ["pair", "grant", "admin", "answer", "owner"] as const;
+
+/**
+ * Permissions only a site owner may give a token (site_role, read live at
+ * creation and at every use). Anyone else is never offered them, and a
+ * request naming one is refused as if it did not exist.
+ */
+export const OWNER_SCOPES: readonly ScopeId[] = ["eval"];
+/** An eval token lives at most this long (owner's decision, 2026-11-07). */
+export const EVAL_MAX_DAYS = 30;
 
 /** What a row from before scopes may do. */
 export const LEGACY_SCOPES: readonly ScopeId[] = ["study"];
@@ -79,13 +95,18 @@ export function cleanTokenName(raw: unknown): string | null {
   return s && [...s].length <= MAX_NAME ? s : null;
 }
 
-/** The scope list as sent: known ids only, at least one, no forbidden one; else null. */
-export function parseScopes(raw: unknown): ScopeId[] | null {
+/**
+ * The scope list as sent: known ids only, at least one, no forbidden one; else
+ * null. OWNER_SCOPES count only with `owner` (the caller has checked that the
+ * session is a site owner's); otherwise they are unknown.
+ */
+export function parseScopes(raw: unknown, opts: { owner?: boolean } = {}): ScopeId[] | null {
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > SCOPES.length * 2) return null;
   const out = new Set<ScopeId>();
   for (const s of raw) {
     if (typeof s !== "string") return null;
     if (!(SCOPE_IDS as readonly string[]).includes(s)) return null;
+    if (!opts.owner && (OWNER_SCOPES as readonly string[]).includes(s)) return null;
     out.add(s as ScopeId);
   }
   return SCOPE_IDS.filter((s) => out.has(s));

@@ -21,6 +21,7 @@ import { partnerReply, type PartnerEnv } from "./lib/partner-ai";
 import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
 import { type ChatTokenAnswer, type ChatTokenDb, chatTokenCheck } from "./lib/chat-token";
+import { type EvalTokenAnswer, type EvalTokenDb, evalTokenCheck } from "./lib/eval-token";
 import type { InboxDb } from "./lib/inbox/store";
 import { type ChatLogDb, chatLogOp } from "./lib/chat-log";
 import type { ChatLogAnswer } from "./lib/chat-log-line";
@@ -211,6 +212,17 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async chatToken(req: unknown): Promise<ChatTokenAnswer> {
     if (!allowChatToken()) return { ok: false, error: "rate" };
     return chatTokenCheck(this.env.DB as unknown as ChatTokenDb, req);
+  }
+
+  /**
+   * An eval token (lib/eval-token.ts): may this API token run code on the
+   * owner's pages now? Asked when a sender connects with one and before each
+   * eval it sends; each use is audited. Deny by default; a D1 error throws and
+   * the hub refuses.
+   */
+  async evalToken(req: unknown): Promise<EvalTokenAnswer> {
+    if (!allowChatToken()) return { ok: false, error: "rate" };
+    return evalTokenCheck(this.env.DB as unknown as EvalTokenDb, req);
   }
 
   /**

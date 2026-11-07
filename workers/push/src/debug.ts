@@ -146,6 +146,14 @@
  * pairing, grant, inbox, clips or answer. A token ask's `answered` goes to
  * that thread's pages and the same lane's token sockets only.
  *
+ * Eval tokens (lib/eval-token.ts; docs/secrets-and-auth.md, "Eval tokens"). A
+ * controller that connects with an API token holding `eval` (index.ts passes
+ * it as EVAL_TOKEN_HEADER, from Authorization only) is approved by the main
+ * Worker, not a tap: an eval session in the owner's thread until the token
+ * expires, on every owner page (a box's only with box:eval). The main Worker
+ * checks it again, and audits, before each eval; a refusal closes it, as does
+ * a revoke notice. Only its hash and tag are kept, never the token.
+ *
  * Voice-clip recording (packages/debug-chat/src/clips.ts). The switch is a
  * window session's, held here, never in an origin's storage. An owner page
  * knocks with `?ws=<its window's session id>&dev=<device id>` (and
@@ -409,6 +417,14 @@ type ControllerAtt = {
   node?: string;
   /** The node's assignee (`?agent=`): the agent's id on its lines. */
   assignee?: string;
+  /**
+   * An eval token's sender (lib/eval-token.ts; docs/secrets-and-auth.md, "Eval
+   * tokens"): the token's SHA-256 (never the secret), its tag and its account.
+   * Approved by the main Worker, not a tap; every eval it sends is asked again.
+   */
+  evalToken?: string;
+  tokenTag?: string;
+  tokenUser?: string;
 } & PairInfo;
 /**
  * A stored grant (`grant:<sha256 of its token>`). `scope` absent = "chat"
@@ -450,6 +466,14 @@ type SessionsRpc = {
   partnerReply?(req: PartnerRequest): Promise<unknown>;
   /** The chat inbox's agent ops (lib/inbox/agent.ts); an older main Worker has none. */
   inbox?(req: { op: string; id?: string }): Promise<unknown>;
+  /** An eval token's connect or use (lib/eval-token.ts); an older main Worker has none: refused. */
+  evalToken?(req: {
+    op: "connect" | "use";
+    token?: string;
+    tokenHash?: string;
+    len?: number;
+    target?: string;
+  }): Promise<unknown>;
   /** `lianki chat`: an API token's check for one chat operation (lib/chat-token.ts). */
   chatToken?(req: { op: string; token?: string; tokenHash?: string }): Promise<unknown>;
   /** May this box keep chatting (docs/box-oauth.md)? An older main Worker has none: no. */
@@ -481,6 +505,8 @@ const dormantPair = (hash: string) => `${DORMANT}${hash.slice(0, 40)}`;
 type Rate = { start: number; count: number };
 /** The header a controller resumes its chat grant with. */
 const TOKEN_HEADER = "x-debug-token";
+/** An eval token (lib/eval-token.ts), set by index.ts from the sender's Authorization header only. */
+export const EVAL_TOKEN_HEADER = "x-debug-eval-token";
 /** Who a page is: set by index.ts from the main Worker's answer, never by the page. */
 export const IDENTITY_HEADERS = {
   user: "x-debug-user",
@@ -526,6 +552,29 @@ const send = (ws: Socket, msg: unknown) => {
     ws.send(JSON.stringify(msg));
   } catch {}
 };
+/** The main Worker's yes to an eval token (lib/eval-token.ts), or null for anything else. */
+function evalTokenOk(
+  v: unknown,
+): { id: string; tag: string; name: string; expiresAt: number; userId?: string } | null {
+  if (!v || typeof v !== "object") return null;
+  const r = v as Record<string, unknown>;
+  if (
+    r.ok !== true ||
+    typeof r.id !== "string" ||
+    !/^[0-9a-f]{64}$/.test(r.id) ||
+    typeof r.tag !== "string" ||
+    typeof r.name !== "string" ||
+    typeof r.expiresAt !== "number"
+  )
+    return null;
+  return {
+    id: r.id,
+    tag: r.tag,
+    name: r.name,
+    expiresAt: r.expiresAt,
+    ...(typeof r.userId === "string" ? { userId: r.userId } : {}),
+  };
+}
 /** A box page's label starts with "box ", so the agent and the page list tell it apart. */
 const boxLabel = (label: string, isBox: boolean) =>
   isBox ? cleanLabel(`box ${label}`, MAX_LABEL) : label;
@@ -1219,7 +1268,7 @@ export class DebugHub {
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
-    if (url.pathname === REVOKED_PATH) return this.tokens.revoked(req);
+    if (url.pathname === REVOKED_PATH) return this.tokensRevoked(req);
     if (url.pathname === CHAT_PATH) {
       if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return this.tokens.http(req);
       const pair = new WebSocketPair();
@@ -1265,7 +1314,13 @@ export class DebugHub {
     this.ctx.acceptWebSocket(ws);
     // Which box client a ticket socket is (index.ts verified its origin); only ever with a ticket.
     const box = embed ? (req.headers.get(BOX_HEADER) ?? undefined) : undefined;
-    if (control) await this.connectController(ws, url, req.headers.get(TOKEN_HEADER));
+    if (control)
+      await this.connectController(
+        ws,
+        url,
+        req.headers.get(TOKEN_HEADER),
+        req.headers.get(EVAL_TOKEN_HEADER),
+      );
     else await this.connectPage(ws, url, who, embed, box);
     // The browser fails a socket whose offered subprotocol is not selected.
     return new Response(null, {
@@ -1685,7 +1740,9 @@ export class DebugHub {
    * page to ask. `?scope=chat` asks for the 30-day chat grant; anything else
    * for eval (and chat) for EVAL_GRANT_MS. Allow grants exactly what was asked.
    */
-  async connectController(ws: Socket, url: URL, token?: string | null) {
+  async connectController(ws: Socket, url: URL, token?: string | null, evalToken?: string | null) {
+    // An eval token is the owner's own grant, made on his token page: no tap, no friend.
+    if (evalToken) return this.tokenController(ws, url, evalToken);
     const forKey = url.searchParams.get("for")?.trim();
     if (forKey) return this.pairForFriend(ws, url, forKey, token);
     if (token) return this.resume(ws, url, token);
@@ -1790,6 +1847,129 @@ export class DebugHub {
    * Reconnecting with a grant token: its scope (and an eval grant's pages)
    * again, no prompt, even with no page open — or 4498 if it is not live.
    */
+  /**
+   * A sender with an eval token (lib/eval-token.ts): the main Worker says
+   * whether the token is live, holds `eval`, and belongs to a site owner now
+   * (and audits the connect). Then it is an eval session on every owner page,
+   * until the token expires, with no tap; a box page only while that box holds
+   * box:eval (its own checks). Refused: closed (GRANT_INVALID); unsure: closed
+   * so the sender retries. Nothing is stored here but the token's hash.
+   */
+  private async tokenController(ws: Socket, url: URL, token: string) {
+    const rpc = this.sessions;
+    let said: unknown;
+    try {
+      said = rpc?.evalToken ? await rpc.evalToken({ op: "connect", token }) : undefined;
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.eval-token-failed", error: String(e).slice(0, 200) }),
+      );
+      send(ws, { type: "error", error: "eval token: could not check it now; try again" });
+      return close(ws, 4503, "eval token unsure");
+    }
+    const ok = evalTokenOk(said);
+    if (!ok) {
+      const why = (said as { error?: unknown } | undefined)?.error;
+      send(ws, { type: "error", error: `eval token refused (${String(why ?? "unavailable")})` });
+      console.log(JSON.stringify({ msg: "debug.eval-token-refused", why: String(why ?? "none") }));
+      return close(ws, 4498, "eval token refused");
+    }
+    const until = Math.min(ok.expiresAt, Number.MAX_SAFE_INTEGER);
+    if (!(until > this.now())) {
+      send(ws, { type: "error", error: "eval token refused (expired)" });
+      return close(ws, 4498, "eval token refused");
+    }
+    const a: ControllerAtt = {
+      role: "controller",
+      pair: crypto.randomUUID(),
+      code: shortCode(crypto.getRandomValues(new Uint8Array(2))),
+      label: cleanLabel(url.searchParams.get("label"), 80) || `token ${ok.name}`,
+      at: this.now(),
+      until,
+      scope: "eval",
+      evalToken: ok.id,
+      tokenTag: ok.tag,
+      ...(ok.userId ? { tokenUser: ok.userId } : {}),
+      ...(url.searchParams.get("beat") === "1" ? { beat: true } : {}),
+      ...whereOf(url),
+    };
+    ws.serializeAttachment(a);
+    send(ws, { type: "approved", until, scope: "eval", via: "token" });
+    send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
+    console.log(
+      JSON.stringify({ msg: "debug.eval-token", pair: a.pair, label: a.label, tag: ok.tag }),
+    );
+    this.broadcast();
+  }
+
+  /**
+   * Before each eval an eval-token sender sends: the main Worker checks the
+   * token again (revoked, expired, no longer an owner) and audits the use.
+   * Refused: the sender is closed. Unsure: this eval is not sent.
+   */
+  private async evalTokenStillOk(
+    ws: Socket,
+    c: ControllerAtt,
+    v: { code: string; target?: string },
+  ): Promise<boolean> {
+    const rpc = this.sessions;
+    let said: unknown;
+    try {
+      said = rpc?.evalToken
+        ? await rpc.evalToken({
+            op: "use",
+            tokenHash: c.evalToken,
+            len: v.code.length,
+            ...(v.target ? { target: v.target } : {}),
+          })
+        : undefined;
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.eval-token-failed", error: String(e).slice(0, 200) }),
+      );
+      send(ws, { type: "error", error: "not sent: the eval token could not be checked now" });
+      return false;
+    }
+    if (evalTokenOk(said)) return true;
+    const why = (said as { error?: unknown } | undefined)?.error;
+    if (why === "rate") {
+      send(ws, { type: "error", error: "not sent: this eval token is over its rate limit" });
+      return false;
+    }
+    send(ws, { type: "revoked", error: `eval token refused (${String(why ?? "unavailable")})` });
+    close(ws, 4498, "eval token refused");
+    this.broadcast(ws);
+    return false;
+  }
+
+  /**
+   * POST /internal/chat-tokens/revoked {tags?, userId?} (lib/push-chat-tokens.ts):
+   * those tokens' eval senders close here, then their chat sockets (token-chat.ts).
+   */
+  private async tokensRevoked(req: Request): Promise<Response> {
+    const text = req.method === "POST" ? await req.text() : "";
+    let body: { tags?: unknown; userId?: unknown } = {};
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {}
+    const tags = Array.isArray(body.tags) ? body.tags : [];
+    const user = isUserId(body.userId) ? body.userId : undefined;
+    let n = 0;
+    for (const { ws, a } of this.sockets("controller"))
+      if (a.tokenTag && (tags.includes(a.tokenTag) || (user && a.tokenUser === user))) {
+        send(ws, { type: "revoked" });
+        close(ws, 4498, "eval token revoked");
+        n++;
+      }
+    if (n) {
+      console.log(JSON.stringify({ msg: "debug.eval-token-revoked", closed: n }));
+      this.broadcast();
+    }
+    return this.tokens.revoked(
+      new Request(req.url, { method: req.method, headers: req.headers, body: text || undefined }),
+    );
+  }
+
   private async resume(ws: Socket, url: URL, token: string) {
     const live = await this.liveGrant(token);
     if (!live) {
@@ -2905,6 +3085,21 @@ export class DebugHub {
     }
     if (c.scope === "chat")
       return send(ws, { type: "error", error: "this session is chat-only: it cannot eval" });
+    const ev = m.value;
+    // An eval token: the main Worker checks it again, and audits this use, first.
+    if (c.evalToken)
+      return this.evalTokenStillOk(ws, c, ev).then((ok) =>
+        ok ? this.dispatchEval(ws, att(ws) as ControllerAtt, ev) : undefined,
+      );
+    return this.dispatchEval(ws, c, ev);
+  }
+
+  /** One eval to the pages a sender reaches (and the box's, each asked first). */
+  private dispatchEval(
+    ws: Socket,
+    c: ControllerAtt,
+    ev: { code: string; target?: string },
+  ): void | Promise<void> {
     const id = crypto.randomUUID().slice(0, 8);
     const labels: string[] = [];
     // Only the pages of the audience that approved this pairing — or the ones it named.
@@ -2917,7 +3112,6 @@ export class DebugHub {
           ? "the page you were authorized for is not connected now; this socket closes if it stays away 5 min (the grant stays: reconnect with its token)"
           : "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
       });
-    const ev = m.value;
     const targets = reach.filter((p) => !p.a.embed && matchesTarget(p.a.label, ev.target));
     const deliver = (to: typeof targets) => {
       for (const p of to) {

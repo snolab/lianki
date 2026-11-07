@@ -281,10 +281,15 @@ async function main(): Promise<number> {
   if (argv instanceof Error) fail(EXIT.usage, `${argv.message}\n${json ? "" : USAGE[sub]}`.trim());
   // Nothing to send with: say so before eval.ts opens a socket (lanes never pair).
   const f = await facts(g, rest, false);
+  // serve with an eval token (LIANKI_TOKEN, docs/secrets-and-auth.md "Eval tokens")
+  // needs no saved grant: eval.ts connects with the token.
+  const evalToken = /^lk_[0-9a-f]{64}$/.test(process.env.LIANKI_TOKEN?.trim() ?? "");
   // voices --cloud asks no page: no grant needed. voices otherwise reads pages: eval.
   const cloudOnly = sub === "voices" && rest.includes("--cloud");
   const has =
-    cloudOnly || (sub === "serve" || sub === "voices" ? f.evalGrant : f.chatGrant || f.evalGrant);
+    cloudOnly ||
+    (sub === "serve" && evalToken) ||
+    (sub === "serve" || sub === "voices" ? f.evalGrant : f.chatGrant || f.evalGrant);
   if (!g.pair && !has)
     fail(EXIT.notReady, doctorFindings(f).find((x) => x.check === "grant")!.line);
   return runEval(sub, repo, argv);

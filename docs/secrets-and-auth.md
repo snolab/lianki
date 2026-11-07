@@ -399,10 +399,10 @@ login`'s and the agent lanes' tokens.
   (better-auth `/revoke-sessions`, or `/delete-user` if ever enabled) deletes
   every token of the account (`lib/api-token-signout.ts`).
 - **Permissions as data** (`SCOPES`): `study` (cards, reviews, settings: what
-  every token could do before), `chat:read`, `chat:write`, `chat:ask`.
-  Chosen at creation; a route asks for one. `eval`, `pair`, `grant`,
-  `admin`, `answer` are not permissions at all (`FORBIDDEN_SCOPES`): a
-  request naming one is refused. Card and settings routes (`authEmailOrToken`,
+  every token could do before), `chat:read`, `chat:write`, `chat:ask`, and
+  `eval` for a site owner only ("Eval tokens", below). Chosen at creation; a
+  route asks for one. `pair`, `grant`, `admin`, `answer` are not permissions
+  at all (`FORBIDDEN_SCOPES`): a request naming one is refused. Card and settings routes (`authEmailOrToken`,
   `apiTokenUser`) need `study`, so a chat-only lane token reaches none of them.
   The other way round, `study` never reaches the chat: the Learning Partner
   ticket (`/api/debug/partner-ticket`, `lib/partner-ticket-auth.ts`) takes a
@@ -426,6 +426,50 @@ login`'s and the agent lanes' tokens.
   `.use` (when last used is written), `.refused` (a known token expired, out
   of scope or over its rate limit; at most 5 per 10 min per token).
 - **Chat**: `lianki chat` ([lianki-dev-cli.md](lianki-dev-cli.md), "lianki chat").
+
+### Eval tokens (`eval`): code on the owner's pages, no tap
+
+Owner's decision by tap card, 2026-11-07 ("这样做"). **The trust boundary, in
+plain words: whoever holds an eval token can run any code on the owner's open
+pages, lianki.com and his box, with no pairing tap. Making the token is the
+grant.** A leaked token means arbitrary code on his signed-in pages until it is
+revoked or expires. He accepted that risk.
+
+- **Only a site owner can make one.** `eval` is in `OWNER_SCOPES`
+  (`lib/api-tokens.ts`). Settings → API tokens offers it only when the session's
+  account is a site owner (`site_role`, read from D1 at that moment). Anyone else
+  never sees it, and a request naming it gets the same 400 as an unknown
+  permission. The CLI login (`lianki auth login`) never offers or accepts it.
+- **At most 30 days** (`EVAL_MAX_DAYS`). The expiry is required as for every
+  token. A row from before expiry dates is never an eval token.
+- **Shown once, stored hashed, bound to his account.** This works as for every
+  token: one click on the page revokes it, and a sign-out everywhere deletes it.
+- **Checked at every use** (`lib/eval-token.ts`, `DebugSessions.evalToken` over
+  the SESSIONS binding):
+  - when a sender connects with it (`Authorization: Bearer lk_…` on
+    `/api/version/debug/control`, which lianki-push turns into an internal
+    header, refusing any copy a client sends);
+  - again before every eval it sends.
+
+  Each time it checks that the token is live, holds `eval`, and that its
+  account is a site owner now. Up to 300 uses per 10 minutes per token.
+
+- **Every use is audited.** Each connect and each eval writes an
+  `api-token.eval` row to `security_audit`: the token's tag, its name, the
+  code's length and the target, never the code or the token. A refused use is
+  `api-token.refused`.
+- **What it reaches.** The owner's thread, as an eval session (code and chat)
+  until the token expires. It reaches every owner page without a tap. A box page
+  is reached only while that box holds `box:eval` (box-oauth.md, "Code on the
+  owner's box"); the box keeps its own per-use checks. It never reaches a
+  friend's pages and never opens a friend's preview. A revoke notice
+  (`/internal/chat-tokens/revoked`) closes its sender at once; the per-use check
+  catches one the notice missed. "End" on a page closes that sender's socket but
+  does not revoke the token: Revoke on the token page does.
+- **Use**: `LIANKI_TOKEN=lk_… bun scripts/dev/eval.ts --target box '<code>'`, or
+  `lianki-dev serve` with LIANKI_TOKEN set. Without a token, or with a lane's
+  chat-only token (refused for eval), `eval.ts` uses the saved grant and the
+  pairing flow exactly as before.
 
 ## CLI login (`lianki auth`, API tokens)
 

@@ -1658,6 +1658,28 @@ Tests use a fake audio clock and fake elements, with no sound:
 `unit/audio-claim.test.ts`, `unit/read-speaker.test.ts` ("pauses for a
 higher sound") and `unit/voice-session.test.ts` ("Li owns the page's audio").
 
+## Eval tokens: code without the tap
+
+Owner's decision by tap card, 2026-11-07. Besides the pairing (a tap on a page,
+8 hours, renewed while his page is open), a sender can connect with an **eval
+token**. That is an API token with the `eval` permission, which only a site
+owner can make, for at most 30 days ([secrets-and-auth.md](secrets-and-auth.md),
+"Eval tokens"). **Whoever holds it can run code on his open pages, lianki.com and
+his box, with no tap.** Making the token is the grant.
+
+- `LIANKI_TOKEN=lk_… bun scripts/dev/eval.ts '<code>'` (and `lianki-dev serve`)
+  sends it as `Authorization: Bearer` on the control socket. The hub asks the
+  main Worker (`DebugSessions.evalToken`) at connect and before every eval. Each
+  use is audited (`api-token.eval`). A refusal closes the sender (4498).
+- It is an eval session in the owner's thread, listed on his pages like any
+  other, labelled `token <name>`. It reaches every owner page, and a box page
+  only while that box holds `box:eval`. It never reaches a friend's pages.
+- Revoke on the token page closes it at once. End on a page closes only that
+  socket.
+- Without a token the pairing flow is unchanged. A lane's chat-only
+  `LIANKI_TOKEN` is refused for eval, and `eval.ts` then falls back to the saved
+  grant.
+
 ## Page errors
 
 The owner's pages report their own errors to the agent, so it can watch them
