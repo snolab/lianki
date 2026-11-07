@@ -35,7 +35,7 @@ import { siblingRequestRefused } from "./lib/security/same-site-guard";
 import { clearLegacyCookies, legacyCookieNames } from "./lib/security/legacy-session-cookies";
 import { anchorDue, type LianDb } from "./lib/lian/anchor";
 import { boxGate, type BoxEnv } from "./lib/box-oauth/gate";
-import { boxChatLive, type BoxDb } from "./lib/box-oauth/store";
+import { boxChatLive, boxEvalLive, type BoxDb } from "./lib/box-oauth/store";
 import { BOX_FLAG } from "./lib/box-oauth/rules";
 import { hit, type Limit, type ThrottleDb } from "./lib/security/throttle";
 import type { D1Batch } from "./lib/read/reader-store";
@@ -125,6 +125,8 @@ const allowInbox = rateLimiter(60, 60_000);
 const allowPartner = rateLimiter(120, 60_000);
 // `lianki chat` checks: each token is limited in D1 too (lib/chat-token.ts CHAT_LIMITS).
 const allowChatToken = rateLimiter(600, 60_000);
+/** The owner's box's page powers: asked at connect, per eval sent and per page error. */
+const allowBoxEval = rateLimiter(300, 60_000);
 /** The hub's chat-history writes (lib/chat-log.ts): one per kept line, per isolate. */
 const allowChatLog = rateLimiter(600, 60_000);
 
@@ -162,6 +164,20 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
     const db = this.env.DB as unknown as BoxDb;
     if (!(await flagLive(db as unknown as SessionDb, BOX_FLAG))) return "gone";
     return (await boxChatLive(db, clientId)) ? "live" : "gone";
+  }
+
+  /**
+   * May this box's page hold the owner's page powers: eval, pairing, page
+   * errors (docs/box-oauth.md, "Code on the owner's box")? "live" only while
+   * box.oauth is on and the client's binding is live with box:chat and box:eval
+   * for a site owner; "gone" otherwise; "busy" over the rate limit. A D1 error
+   * throws: the hub treats it as unsure and does not use the power then.
+   */
+  async boxEval(clientId: unknown): Promise<"live" | "gone" | "busy"> {
+    if (!allowBoxEval()) return "busy";
+    const db = this.env.DB as unknown as BoxDb;
+    if (!(await flagLive(db as unknown as SessionDb, BOX_FLAG))) return "gone";
+    return (await boxEvalLive(db, clientId)) ? "live" : "gone";
   }
 
   /**

@@ -8,20 +8,21 @@ no shared cookie. Owner's decision: Slack, 2026-11-05.
 **Dark:** behind the flag `box.oauth`, off. With it off, everything here answers
 as if it did not exist.
 
-| piece                                       | where                                                                               |
-| ------------------------------------------- | ----------------------------------------------------------------------------------- |
-| pure rules: origins, allowlist, scopes      | `lib/box-oauth/rules.ts`                                                            |
-| the Worker's gate                           | `lib/box-oauth/gate.ts`, called first in `worker.ts`                                |
-| provider (better-auth plugin), binding hook | `lib/box-oauth/provider.ts`, `auth-impl.ts`                                         |
-| lianki.com's entry to the flow              | `app/box-authorize/route.ts`                                                        |
-| which plugin routes answer                  | `app/api/auth/[...all]/route.ts`                                                    |
-| binding, revoke, token lookup               | `lib/box-oauth/store.ts`, `db/migrations/0049_box_oauth.sql`                        |
-| owner's page and API                        | `/dev/box-clients`, `app/api/dev/box-clients/route.ts`                              |
-| the app's view of a token                   | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`                            |
-| the box's browser side                      | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge`             |
-| the box's signed-in view                    | `lib/box-oauth/session.ts`, `me.ts`, `app/api/box/me`, `BoxApiBridge`               |
-| chat on the owner's box (`box:chat`)        | `lib/box-oauth/chat-ticket.ts`, `app/api/box/chat-ticket`, `workers/push/src/auth.ts` |
-| tests                                       | `unit/box-oauth.test.ts`, `unit/box-session.test.ts`, `unit/box-chat.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
+| piece                                       | where                                                                                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| pure rules: origins, allowlist, scopes      | `lib/box-oauth/rules.ts`                                                                                                              |
+| the Worker's gate                           | `lib/box-oauth/gate.ts`, called first in `worker.ts`                                                                                  |
+| provider (better-auth plugin), binding hook | `lib/box-oauth/provider.ts`, `auth-impl.ts`                                                                                           |
+| lianki.com's entry to the flow              | `app/box-authorize/route.ts`                                                                                                          |
+| which plugin routes answer                  | `app/api/auth/[...all]/route.ts`                                                                                                      |
+| binding, revoke, token lookup               | `lib/box-oauth/store.ts`, `db/migrations/0049_box_oauth.sql`                                                                          |
+| owner's page and API                        | `/dev/box-clients`, `app/api/dev/box-clients/route.ts`                                                                                |
+| the app's view of a token                   | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`                                                                              |
+| the box's browser side                      | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge`                                                               |
+| the box's signed-in view                    | `lib/box-oauth/session.ts`, `me.ts`, `app/api/box/me`, `BoxApiBridge`                                                                 |
+| chat on the owner's box (`box:chat`)        | `lib/box-oauth/chat-ticket.ts`, `app/api/box/chat-ticket`, `workers/push/src/auth.ts`                                                 |
+| code on the owner's box (`box:eval`)        | `lib/box-oauth/store.ts` (`setBoxEval`, `boxEvalLive`), `worker.ts` (`boxEval`), `workers/push/src/debug.ts`                          |
+| tests                                       | `unit/box-oauth.test.ts`, `unit/box-session.test.ts`, `unit/box-chat.test.ts`, `unit/box-eval.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
 
 ## For the owner: set up a box
 
@@ -197,10 +198,10 @@ the binding holds it. Removing it takes effect on the next request.
 **What it opens, and nothing more.** Two routes, POST, exact paths
 (`tokenMayCall`; without the scope they are 404 to a token as before):
 
-| route                       | what                                                              |
-| --------------------------- | ----------------------------------------------------------------- |
-| `POST /api/box/chat-ticket` | a 60 s single-use ticket for the hub socket                      |
-| `POST /api/debug/stt`       | the chat mic's transcription (cloud STT, the owner's limits)     |
+| route                       | what                                                         |
+| --------------------------- | ------------------------------------------------------------ |
+| `POST /api/box/chat-ticket` | a 60 s single-use ticket for the hub socket                  |
+| `POST /api/debug/stt`       | the chat mic's transcription (cloud STT, the owner's limits) |
 
 No other `/api/debug*` or any `/api/dev*` route: no eval, no pairing, no
 page-error log, no inbox upload, no state tree, no local STT ticket. Read-aloud
@@ -226,7 +227,7 @@ exact origin and client id. lianki-push (`boxChatTicket` in
 box origin; the hub burns its id once. A partner ticket is never a box ticket and
 the other way round; a lianki.com cookie page can never claim to be a box.
 
-**What the socket may do.** It is the owner's thread, as an embedded page: no eval
+**What the socket may do.** Without `box:eval` (below), it is the owner's thread, as an embedded page: no eval
 ever reaches it, it never counts for a pairing or a grant, never joins a recording
 session, and its `state` carries no pairings, sessions or pages. Beyond the plain
 partner widget's `chat` and `page`, it may send `passage-end` and `unmerge` (voice
@@ -246,6 +247,69 @@ until it reloads.
 **To use it** (after both Workers are deployed): on `/dev/box-clients`, turn on
 chat for the owner's box; on the box, open any page with `?debug=1` once (the
 chat follows debug mode, as on lianki.com).
+
+## Code on the owner's box (`box:eval`)
+
+Owner's decision, by tap card, 2026-11-07 ("允许 box 的令牌直接用聊天接口……包括执行代码和配对"),
+and his reason (22:40 JST): the box exists so the frontend can be changed live,
+so running code on its pages is its purpose. **The trust boundary, in plain
+words: with `box:eval` on, any script on that box can run code on the owner's
+pages through the hub.** Its own code, its dependencies, anything an agent runs
+there can pair with the hub (the owner still taps Allow), take an eval grant
+that covers every page (lianki.com's included when he allows "all"), and send
+page errors to the agents. That is on top of everything `box:chat` already
+gives.
+
+**Who can have it.** Only a box that holds `box:chat` and whose binding's
+account is a site owner. It is never implied by `box:chat`: the owner turns it
+on per box on `/dev/box-clients` ("允许盒子上的代码执行", behind its own warning and
+confirm) and off with "关闭盒子上的代码执行". Turning chat off removes it too;
+revoking the box ends it with everything else. Each grant and removal is in
+`security_audit` (`box.eval-grant`, `box.eval-remove`).
+
+**Never on a token.** Like `box:chat` it is the binding's alone, and unlike it
+it never rides on a box token (`liveToken` drops it) and opens no HTTP route.
+Only the hub uses it, by asking the main Worker.
+
+**Fail closed.** (1) Grant: `setBoxEval` refuses a box that is not a site
+owner's or lacks `box:chat`. (2) The hub asks the main Worker
+(`DebugSessions.boxEval`, an RPC with no URL; flag on, binding live with both
+scopes, account a site owner, read from D1 each time) at connect, before each
+eval it sends to that box, and before each pairing answer, result or page error
+it takes from it. "gone" drops the box's pages back to chat-only; unsure drops
+that one eval or message. A main Worker without the check counts as gone.
+(3) Removal also tells lianki-push (`/internal/box-closed` with `scope: "eval"`),
+which drops that box's pages to chat-only at once; their chat goes on.
+
+**What the box page then is.** An owner page in the hub: listed in the pages,
+labelled `box <path>`, sent the whole state (pairings, grants, pages), reached
+by eval (`eval.ts --target box`, or by its page id in a grant), able to answer
+a pairing (the modal shows there; the tap on that page is still the only
+approval), and its page errors are forwarded. Still never: clips or recording,
+a session, or renewal. A grant approved on a box page carries no session, so it
+lasts its 8 hours and then needs a tap. The 8-hour grants approved elsewhere
+reach box pages like any page they cover.
+
+**Hot replace on a box.** A box runs `next dev` on its own tree, so its own
+edits already reach its pages by HMR. For the Mac's working tree:
+
+- the widget hot-load (`lk:debug-widget-src`) follows the owner's page, which a
+  box chat page already is, so it worked with `box:chat` alone;
+- hot islands (`lk:slots-src`) need a code-run grant for the page, which a box
+  page can only hold with `box:eval`: from it, the grant in the hub's state
+  turns them on as on lianki.com;
+- live view (`?live=`, the Dev parts chip) is lianki.com's Worker serving dev
+  code at lianki.com's own address. It does not apply to a box, which is dev
+  code already.
+
+The Mac's dev servers answer CORS only for lianki.com, loopback and
+`LIANKI_DEV_ORIGINS`, so the box's exact origin goes in that variable where they
+run (never in the repo).
+
+**To use it**: with chat on, turn on code on `/dev/box-clients`, then reload the
+box page (a page connected before the grant stays chat-only until it
+reconnects). `bun scripts/dev/eval.ts --target box '<code>'` pairs as usual; the
+prompt shows on the box page too.
 
 ## How it was tested
 
