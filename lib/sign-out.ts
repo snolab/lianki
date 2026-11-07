@@ -32,7 +32,19 @@ type SignOutEnv = {
   caches?: Pick<CacheStorage, "keys" | "delete">;
   replace: (url: string) => void;
   forgetByok?: () => void;
+  /** Ends the session instead of step 1: a box revokes its token at lianki.com. */
+  endSession?: () => Promise<boolean>;
 };
+
+let endSession: (() => Promise<boolean>) | undefined;
+
+/**
+ * On a box (docs/box-oauth.md) there is no cookie session: step 1 revokes the
+ * box's token instead (BoxApiBridge sets this). Steps 0, 2 and 3 are the same.
+ */
+export function setSignOutSession(end: (() => Promise<boolean>) | undefined): void {
+  endSession = end;
+}
 
 export async function signOut(to = "/", env?: SignOutEnv): Promise<boolean> {
   const e: SignOutEnv = env ?? {
@@ -40,19 +52,23 @@ export async function signOut(to = "/", env?: SignOutEnv): Promise<boolean> {
     caches: typeof caches === "undefined" ? undefined : caches,
     replace: (url) => location.replace(url),
     forgetByok: () => removeDevice(),
+    endSession,
   };
   e.forgetByok?.();
   // Nothing of the page's audio keeps running past the account (docs/voice-mode.md).
   exitOutputBed("sign-out");
   let ok = false;
   try {
-    const r = await e.fetch(SIGN_OUT_PATH, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    });
-    ok = r.ok;
+    if (e.endSession) ok = await e.endSession();
+    else {
+      const r = await e.fetch(SIGN_OUT_PATH, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      ok = r.ok;
+    }
   } catch {
     // Offline: the cookie stays; still leave, the next page shows who is signed in.
   }

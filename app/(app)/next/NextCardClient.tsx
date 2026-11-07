@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import { useEffect, useState } from "react";
 import { readLocalStore } from "@/app/lib/localStore";
@@ -28,12 +29,14 @@ import { pickNextDue } from "@/lib/next-card";
 type Phase = { state: "looking" } | { state: "empty" } | { state: "going"; url: string };
 
 export default function NextCardClient({
-  isLoggedIn,
+  isLoggedIn: serverSignedIn,
   listHref,
 }: {
   isLoggedIn: boolean;
   listHref: string;
 }) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const [phase, setPhase] = useState<Phase>({ state: "looking" });
 
   useEffect(() => {

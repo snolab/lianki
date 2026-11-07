@@ -9,6 +9,7 @@ import { Icon } from "./icons";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useState } from "react";
 import { island } from "@/lib/islands/Island";
+import { useShellUser } from "./BoxApiBridge";
 
 /** The brand, hot-swappable in dev (docs/dev-hot-islands.md). */
 const BrandIsland = island("header.brand", BrandName);
@@ -48,8 +49,10 @@ export function Header({
   membershipLabel,
   signOutLabel,
   roadmapLabel,
-  user,
+  user: serverUser,
 }: HeaderProps) {
+  // On a box, the account lianki.com named for its token (BoxApiBridge).
+  const user = useShellUser(serverUser);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   return (
@@ -114,7 +117,7 @@ export function Header({
                     alt={user.name}
                     src={user.image}
                     // An upload of ours is already small, and next/image's loader can't fetch /api/*.
-                    unoptimized={isOwnAvatar(user.image)}
+                    unoptimized={isOwnAvatar(user.image) || user.image.startsWith("blob:")}
                     width={32}
                     height={32}
                   />

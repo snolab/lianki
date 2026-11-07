@@ -21,6 +21,7 @@ import { NavRows } from "@/lib/nav/islands/NavRows";
 import { DevServerDot, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
 import { LiveViewBoot, LiveViewChip, type LiveViewShell } from "./LiveView";
 import { LevelChip } from "./LevelChip";
+import { useShellUser } from "./BoxApiBridge";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -63,7 +64,7 @@ export function AppShell({
   locale,
   appName,
   labels,
-  user,
+  user: serverUser,
   firstRun,
   devSwitch,
   liveView,
@@ -72,6 +73,8 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const pathname = usePathname();
+  // On a box, the account lianki.com named for its token (BoxApiBridge).
+  const user = useShellUser(serverUser);
   const [collapsed, setCollapsed] = useState(false);
   // The nav store (lib/nav/ui-store.ts): the bottom island opens the drawer too.
   const drawerOpen = useUi(navUi, (s) => s.drawerOpen);
@@ -262,7 +265,7 @@ export function AppShell({
                     alt={user.name}
                     src={user.image}
                     // An upload of ours is already small, and next/image's loader can't fetch /api/*.
-                    unoptimized={isOwnAvatar(user.image)}
+                    unoptimized={isOwnAvatar(user.image) || user.image.startsWith("blob:")}
                     width={32}
                     height={32}
                   />

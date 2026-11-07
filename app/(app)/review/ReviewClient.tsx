@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -88,7 +89,7 @@ const fill = (s: string, vars: Record<string, string | number>) =>
   s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 
 export default function ReviewClient({
-  isLoggedIn,
+  isLoggedIn: serverSignedIn,
   initialUrl,
   voice = "off",
 }: {
@@ -97,6 +98,8 @@ export default function ReviewClient({
   /** Who may use voice commands (lib/words/voice-access.ts). */
   voice?: VoiceAccess;
 }) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("review-page");
   const [phase, setPhase] = useState<Phase>(isLoggedIn ? { s: "loading" } : { s: "signedOut" });
   const [counts, setCounts] = useState<{ due: number; total: number } | null>(null);

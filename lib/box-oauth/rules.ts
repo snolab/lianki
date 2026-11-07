@@ -20,6 +20,8 @@ export const CODE_SECONDS = 60;
 
 /** Each box's one redirect URI is its origin plus this. */
 export const BOX_CALLBACK_PATH = "/box-callback";
+/** The account a box token belongs to: display name, email, avatar (app/api/box/me). */
+export const BOX_ME_PATH = "/api/box/me";
 /** lianki.com's entry to the flow; it signs the user in, then goes to the plugin. */
 export const BOX_AUTHORIZE_PATH = "/box-authorize";
 
@@ -85,7 +87,7 @@ export function isMutatingGet(pathname: string): boolean {
  * better-auth (email and login changes). `readOnly` routes take no writes even
  * with box:write.
  */
-const ALLOWED: readonly { prefix: string; readOnly?: boolean }[] = [
+const ALLOWED: readonly { prefix: string; readOnly?: boolean; exact?: boolean }[] = [
   { prefix: "/api/fsrs" },
   { prefix: "/api/words" },
   { prefix: "/api/read" },
@@ -99,6 +101,10 @@ const ALLOWED: readonly { prefix: string; readOnly?: boolean }[] = [
   { prefix: "/api/levels", readOnly: true },
   { prefix: "/api/lian", readOnly: true },
   { prefix: "/api/membership", readOnly: true },
+  // Who the box is signed in as: the bound account's name, email and avatar only.
+  { prefix: BOX_ME_PATH, readOnly: true, exact: true },
+  // Uploaded avatars, public already (no session): so a box can show the account's own.
+  { prefix: "/api/avatar", readOnly: true },
 ];
 
 /** Paths under an allowed prefix that are still closed to a token. */
@@ -125,7 +131,9 @@ export function tokenMayCall(
   scopes: readonly string[],
 ): RouteAnswer {
   if (suspiciousPath(pathname)) return { ok: false, status: 404, reason: "path" };
-  const route = ALLOWED.find((r) => pathname === r.prefix || pathname.startsWith(`${r.prefix}/`));
+  const route = ALLOWED.find(
+    (r) => pathname === r.prefix || (!r.exact && pathname.startsWith(`${r.prefix}/`)),
+  );
   if (!route || DENIED_WITHIN.some((re) => re.test(pathname)))
     return { ok: false, status: 404, reason: "path" };
   const m = method.toUpperCase();

@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import Link from "next/link";
 import { Icon } from "@/app/components/icons";
@@ -104,13 +105,15 @@ function SiteRow({
 
 export default function SitesClient({
   locale,
-  isLoggedIn,
+  isLoggedIn: serverSignedIn,
   preferred,
 }: {
   locale: string;
   isLoggedIn: boolean;
   preferred: ImmersionLanguage[];
 }) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("home-page");
   const ordered = useMemo(() => orderImmersionLanguages(preferred), [preferred]);
   const focus = preferred[0] ?? null;

@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import { isEntrySource } from "@/lib/words/entry-list";
 import Link from "next/link";
@@ -19,7 +20,9 @@ const ADVANCED = ["sites", "review", "cards"];
  * page-card features (sites, page review, the card list and its userscript)
  * last, under Advanced.
  */
-export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
+export default function HomeClient({ isLoggedIn: serverSignedIn }: { isLoggedIn: boolean }) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("nav-home");
   // Nav labels live in two dictionaries, as in the app shell: landing-page
   // has learn / aiVocab / polyglot / roadmap, app-shell the rest.
