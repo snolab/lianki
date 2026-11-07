@@ -30,14 +30,7 @@ import {
   cleanScene,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
-import {
-  LANE_IDS,
-  type LaneId,
-  VOICE_IDS,
-  type VoiceId,
-  isLaneId,
-  isVoiceId,
-} from "../packages/debug-chat/src/voices";
+import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "../packages/debug-chat/src/voices";
 import { cleanProofs } from "./speaker-proof";
 import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
 
@@ -212,8 +205,11 @@ export type ControllerMessage =
       quiet?: true;
       /** `say --lane`: which lane says it (packages/debug-chat/src/voices.ts). */
       lane?: LaneId;
-      /** `say --voice`: the voice to read it in (absent = the lane's). */
-      voice?: VoiceId;
+      /**
+       * `say --voice`: the voice to read it in (absent = the lane's): a table id
+       * or a typed one (voices.ts parseLineVoice: device:, melo:, aura:, eleven:).
+       */
+      voice?: string;
     }
   | { type: "busy"; to?: string; label?: string }
   /**
@@ -419,10 +415,10 @@ export function parseControllerMessage(
     // Only the table's ids are kept: an unknown lane or voice is refused, not guessed.
     if (m.lane !== undefined && !isLaneId(m.lane))
       return { ok: false, error: `unknown lane: ${String(m.lane)} (${LANE_IDS.join(", ")})` };
-    if (m.voice !== undefined && !isVoiceId(m.voice))
-      return { ok: false, error: `unknown voice: ${String(m.voice)} (${VOICE_IDS.join(", ")})` };
+    const parsed = m.voice === undefined ? undefined : parseLineVoice(m.voice);
+    if (parsed && "error" in parsed) return { ok: false, error: parsed.error };
     const lane = isLaneId(m.lane) ? m.lane : undefined;
-    const voice = isVoiceId(m.voice) ? m.voice : undefined;
+    const voice = parsed ? (m.voice as string) : undefined;
     return {
       ok: true,
       value: {

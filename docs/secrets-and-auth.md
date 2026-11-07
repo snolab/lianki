@@ -386,6 +386,91 @@ are stored hashed by better-auth's plugin, and the one-minute identity the
 Worker's gate hands the app is signed with a key derived from `AUTH_SECRET`.
 Nothing of this is in a box.
 
+## API tokens (`lk_…`): fine-grained, one account, expiring
+
+Owner decision 2026-11-07: tokens work like GitHub's fine-grained personal
+access tokens. One system (`api_tokens`, `lib/api-tokens.ts`,
+`db/migrations/0056_api_token_scopes.sql`) for the userscript's, `lianki auth
+login`'s and the agent lanes' tokens.
+
+- **One account.** `user_id` (and the email) are fixed when the token is made
+  and joined to the live `user` row on every use. A token acts only as that
+  account, never another, and dies with it. A sign-out everywhere
+  (better-auth `/revoke-sessions`, or `/delete-user` if ever enabled) deletes
+  every token of the account (`lib/api-token-signout.ts`).
+- **Permissions as data** (`SCOPES`): `study` (cards, reviews, settings: what
+  every token could do before), `chat:read`, `chat:write`, `chat:ask`, and
+  `eval` for a site owner only ("Eval tokens", below). Chosen at creation; a
+  route asks for one. `pair`, `grant`, `admin`, `answer` are not permissions
+  at all (`FORBIDDEN_SCOPES`): a request naming one is refused. Card and settings routes (`authEmailOrToken`,
+  `apiTokenUser`) need `study`, so a chat-only lane token reaches none of them.
+  The other way round, `study` never reaches the chat: the Learning Partner
+  ticket (`/api/debug/partner-ticket`, `lib/partner-ticket-auth.ts`) takes a
+  token only with `chat:read` and `chat:write`, and only the owner's (the
+  ticket opens the owner's thread, chat only). No other `/api/debug/*` or
+  `/api/dev*` route takes a token.
+- **Required expiry**: 7, 30, 90 or 365 days, or a date, at most 366 days. No
+  default. Rows from before 0056 read as `study` with no expiry (shown so).
+- **Last used** (written at most once a minute), shown on the page.
+- **Secret once.** Only the SHA-256 is stored; the page shows the secret once.
+  Ids, the audit log and hub sockets carry the hash (or its first 16 hex, the
+  `tag`), never the token. No token in a URL: `DELETE /api/token` takes
+  `{id}` in the body.
+- **Page**: Settings (`/preferences`) → API tokens
+  (`app/(app)/list/components/TokenManager.tsx`, strings in
+  `app/components/api-tokens.content.ts`): the owning account, each token's
+  name, permissions, created, expiry, last used, and one-click Revoke; the
+  form takes name, permissions and expiry. `/api/token` (`lib/api-token-api.ts`)
+  takes a browser session only; a token can never make or list tokens.
+- **Audit** (`security_audit`): `api-token.create`, `.revoke`, `.revoke-all`,
+  `.use` (when last used is written), `.refused` (a known token expired, out
+  of scope or over its rate limit; at most 5 per 10 min per token).
+- **Chat**: `lianki chat` ([lianki-dev-cli.md](lianki-dev-cli.md), "lianki chat").
+
+### Eval tokens (`eval`): code on the owner's pages, no tap
+
+Owner's decision by tap card, 2026-11-07 ("这样做"). **The trust boundary, in
+plain words: whoever holds an eval token can run any code on the owner's open
+pages, lianki.com and his box, with no pairing tap. Making the token is the
+grant.** A leaked token means arbitrary code on his signed-in pages until it is
+revoked or expires. He accepted that risk.
+
+- **Only a site owner can make one.** `eval` is in `OWNER_SCOPES`
+  (`lib/api-tokens.ts`). Settings → API tokens offers it only when the session's
+  account is a site owner (`site_role`, read from D1 at that moment). Anyone else
+  never sees it, and a request naming it gets the same 400 as an unknown
+  permission. The CLI login (`lianki auth login`) never offers or accepts it.
+- **At most 30 days** (`EVAL_MAX_DAYS`). The expiry is required as for every
+  token. A row from before expiry dates is never an eval token.
+- **Shown once, stored hashed, bound to his account.** This works as for every
+  token: one click on the page revokes it, and a sign-out everywhere deletes it.
+- **Checked at every use** (`lib/eval-token.ts`, `DebugSessions.evalToken` over
+  the SESSIONS binding):
+  - when a sender connects with it (`Authorization: Bearer lk_…` on
+    `/api/version/debug/control`, which lianki-push turns into an internal
+    header, refusing any copy a client sends);
+  - again before every eval it sends.
+
+  Each time it checks that the token is live, holds `eval`, and that its
+  account is a site owner now. Up to 300 uses per 10 minutes per token.
+
+- **Every use is audited.** Each connect and each eval writes an
+  `api-token.eval` row to `security_audit`: the token's tag, its name, the
+  code's length and the target, never the code or the token. A refused use is
+  `api-token.refused`.
+- **What it reaches.** The owner's thread, as an eval session (code and chat)
+  until the token expires. It reaches every owner page without a tap. A box page
+  is reached only while that box holds `box:eval` (box-oauth.md, "Code on the
+  owner's box"); the box keeps its own per-use checks. It never reaches a
+  friend's pages and never opens a friend's preview. A revoke notice
+  (`/internal/chat-tokens/revoked`) closes its sender at once; the per-use check
+  catches one the notice missed. "End" on a page closes that sender's socket but
+  does not revoke the token: Revoke on the token page does.
+- **Use**: `LIANKI_TOKEN=lk_… bun scripts/dev/eval.ts --target box '<code>'`, or
+  `lianki-dev serve` with LIANKI_TOKEN set. Without a token, or with a lane's
+  chat-only token (refused for eval), `eval.ts` uses the saved grant and the
+  pairing flow exactly as before.
+
 ## CLI login (`lianki auth`, API tokens)
 
 `lianki auth login` (the npm package `lianki`, `packages/lianki-cli`; run it
@@ -406,9 +491,11 @@ The browser flow (default), a loopback flow with a one-time code and PKCE:
 2. The page needs a signed-in user (owner or anyone), checks every parameter
    (the redirect only `http://127.0.0.1:<port>/cb` or `http://[::1]:<port>/cb`),
    and shows what Approve creates: an API token named `lianki CLI <hostname>`
-   for that account, and where the code goes. Deny tells the CLI and creates
-   nothing.
-3. Approve (same-origin JSON, the page's request id and the state) turns the
+   for that account, and where the code goes. The user ticks its permissions
+   and picks its expiry there (see "API tokens" below; neither has a default,
+   and Approve refuses without both). Deny tells the CLI and creates nothing.
+3. Approve (same-origin JSON, the page's request id, the state, the permissions
+   and the expiry) turns the
    request into a one-time code (60 s) and the page goes to
    `http://127.0.0.1:<port>/cb?code=…&state=…`.
 4. The CLI checks the state, then POSTs the code, the verifier and the

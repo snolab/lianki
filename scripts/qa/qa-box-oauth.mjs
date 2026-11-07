@@ -17,13 +17,19 @@
  * Not part of qa:all: it needs a second server.
  */
 import { chromium } from "playwright";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 
 const PROVIDER = process.env.PROVIDER;
 const BOX = process.env.BOX;
 const OWNER = process.env.OWNER;
-const STATE = process.env.STATE ?? "/tmp/qa-box-oauth.json";
+// The client id between `setup` and a run: in the repo's gitignored .wrangler/, owner-only,
+// never a shared temp dir.
+const STATE = process.env.STATE ?? ".wrangler/qa-box-oauth.json";
+const saveState = (v) => {
+  mkdirSync(".wrangler", { recursive: true });
+  writeFileSync(STATE, JSON.stringify(v), { mode: 0o600 });
+};
 const PASSWORD = "qa-box-oauth-pass-1";
 const MEMBER = "qa-box-member@lianki.test";
 const STRANGER = "qa-box-stranger@lianki.test";
@@ -60,7 +66,7 @@ async function setup() {
   });
   const body = await r.json();
   if (!r.ok()) throw new Error(`bind: ${r.status()} ${JSON.stringify(body)}`);
-  writeFileSync(STATE, JSON.stringify({ clientId: body.clientId }));
+  saveState({ clientId: body.clientId });
   console.log(`clientId=${body.clientId}`);
   await browser.close();
 }
@@ -698,7 +704,7 @@ async function chatSetup() {
   const granted = await boxes(ctx, { op: "chat", clientId: body.clientId, on: true });
   const row = (await granted.json()).boxes?.find((b) => b.clientId === body.clientId);
   check("box:chat is granted on the owner's box", granted.ok() && row?.scopes.includes("box:chat"));
-  writeFileSync(STATE, JSON.stringify({ clientId: body.clientId }));
+  saveState({ clientId: body.clientId });
   console.log(`clientId=${body.clientId}`);
   await browser.close();
   if (failed) process.exit(1);
@@ -914,6 +920,229 @@ async function chat() {
   process.exit(failed ? 1 : 0);
 }
 
+// ── Code on the owner's box (box:eval, docs/box-oauth.md "Code on the owner's box") ──
+//
+//   PROVIDER=… BOX=… OWNER=… bun scripts/qa/qa-box-oauth.mjs code-setup
+//   … PUSH=… TICKET_KEY=… bun … code
+//
+// The same three servers as `chat`. code-setup binds the owner's box and checks
+// box:eval is refused for a member's box and before box:chat, then grants both.
+// code: the box page shows the pairing of a sender (eval.ts's socket, from here),
+// only its own Allow tap approves it, an eval by label reaches the box page and
+// its result and page errors come back; turning box:eval off ends that while the
+// chat goes on; revoke ends the rest. Silent: no audio, no mic.
+//
+// Local registry note (2026-11-07): start lianki-push only after the provider says
+// "Ready"; one started first answered every SESSIONS call with "Worker … not found"
+// although it listed the binding as connected (a restart of lianki-push fixed it).
+
+async function evalSetup() {
+  const browser = await launchSilent(chromium);
+  const ctx = await owner(browser);
+  const m = await newSilentContext(browser);
+  await signUp(m, MEMBER);
+  await m.close();
+  const mb = await boxes(ctx, { op: "add", origin: BOX, email: MEMBER, scopes: ["box:read"] });
+  const mid = (await mb.json()).clientId;
+  const refused = await boxes(ctx, { op: "eval", clientId: mid, on: true });
+  check("box:eval is refused for a member's box", refused.status() === 403, `${refused.status()}`);
+  await boxes(ctx, { op: "revoke", clientId: mid });
+  const ob = await boxes(ctx, {
+    op: "add",
+    origin: BOX,
+    email: OWNER,
+    scopes: ["box:read", "box:write"],
+  });
+  const body = await ob.json();
+  if (!ob.ok()) throw new Error(`bind: ${ob.status()} ${JSON.stringify(body)}`);
+  const early = await boxes(ctx, { op: "eval", clientId: body.clientId, on: true });
+  check("box:eval needs box:chat first", early.status() === 409, `${early.status()}`);
+  await boxes(ctx, { op: "chat", clientId: body.clientId, on: true });
+  const chatRow = (
+    await (await boxes(ctx, { op: "chat", clientId: body.clientId, on: true })).json()
+  ).boxes?.find((b) => b.clientId === body.clientId);
+  check("box:chat alone does not imply box:eval", !chatRow?.scopes.includes("box:eval"));
+  const granted = await boxes(ctx, { op: "eval", clientId: body.clientId, on: true });
+  const row = (await granted.json()).boxes?.find((b) => b.clientId === body.clientId);
+  check("box:eval is granted on the owner's box", granted.ok() && row?.scopes.includes("box:eval"));
+  saveState({ clientId: body.clientId });
+  console.log(`clientId=${body.clientId}`);
+  await browser.close();
+  if (failed) process.exit(1);
+}
+
+/** eval.ts's side: an unauthenticated sender socket (no Origin), as the CLI opens it. */
+async function sender(label, apiToken) {
+  const got = [];
+  // With an eval token (docs/secrets-and-auth.md "Eval tokens"), as eval.ts sends LIANKI_TOKEN.
+  const ws = new WebSocket(
+    `${PUSH_WS}/api/version/debug/control?label=${label}`,
+    apiToken ? { headers: { authorization: `Bearer ${apiToken}` } } : undefined,
+  );
+  ws.onmessage = (e) => got.push(JSON.parse(String(e.data)));
+  ws.onclose = (e) => got.push({ type: "closed", code: e.code });
+  await new Promise((ok, no) => {
+    ws.onopen = ok;
+    ws.onerror = () => no(new Error("sender socket refused"));
+  });
+  return {
+    ws,
+    got,
+    send: (m) => ws.send(JSON.stringify(m)),
+    last: (type) => got.filter((m) => m.type === type).at(-1) ?? null,
+  };
+}
+
+async function evalRun() {
+  const { clientId } = JSON.parse(readFileSync(STATE, "utf8"));
+  const browser = await launchSilent(chromium);
+  const ctx = await owner(browser);
+  const run = Math.random().toString(36).slice(2, 8);
+  const p = await peer(run);
+  const page = await ctx.newPage();
+  await page.goto(`${BOX}/sign-in`);
+  await page.waitForURL(`${BOX}/home**`, { timeout: 90_000 });
+  await settled(page);
+  await page.goto(`${BOX}/home?debug=1`);
+  await settled(page);
+  await page.waitForSelector("[data-debug-chat]", { timeout: 30_000 });
+
+  // A sender knocks: the box page is an owner page that can be asked.
+  const s = await sender(`qa-box-eval-${run}`);
+  const modal = await page
+    .waitForSelector('[data-testid="debug-modal"]', { timeout: 15_000 })
+    .catch(() => null);
+  check("the pairing prompt shows on the box page", Boolean(modal));
+  const code = await page.textContent('[data-testid="debug-modal-code"]').catch(() => "");
+  check(
+    "with the sender's code",
+    Boolean(code) && JSON.stringify(s.got).includes(String(code).trim()),
+  );
+  check("nothing is approved before the tap", !s.last("approved"));
+  // A line in the chat is no approval.
+  p.say(`allow ${run}`);
+  await new Promise((r) => setTimeout(r, 1000));
+  check("a chat line does not approve it", !s.last("approved"));
+  await page.click('[data-testid="debug-modal-allow"]');
+  check(
+    "the tap on the box page approves it (eval)",
+    Boolean(await wait(() => s.last("approved")?.scope === "eval")),
+    String(s.last("approved")?.scope ?? s.last("error")?.error ?? ""),
+  );
+
+  s.send({ type: "eval", code: "location.origin", target: "box" });
+  const res = await wait(() => s.last("result"));
+  const sent = s.last("sent");
+  check(
+    "an eval by label reaches the box page, and only the box",
+    sent?.delivered >= 1 && sent.labels.every((l) => l.startsWith("box ")),
+    `${sent?.delivered}`,
+  );
+  check(
+    "and its result comes back",
+    res?.ok === true && String(res?.value).includes(new URL(BOX).host),
+    JSON.stringify(res),
+  );
+  check("labelled as the box", String(res?.page ?? "").startsWith("box "), res?.page);
+
+  // A page error on the box reaches the agent.
+  await page.evaluate(
+    (r) =>
+      setTimeout(() => {
+        throw new Error(`qa box error ${r}`);
+      }),
+    run,
+  );
+  const err = await wait(() => s.got.find((m) => m.type === "page-error"));
+  check("its page errors reach the agent", String(err?.message ?? "").includes(run), err?.message);
+
+  // An eval token: the owner makes it on lianki.com, a sender uses it, no tap.
+  const api = (method, data) =>
+    ctx.request.fetch(`${PROVIDER}/api/token`, {
+      method,
+      data,
+      // No Origin: under wrangler dev the Worker sees another host than PROVIDER, and
+      // /api/token takes JSON from its own origin or from a client that sends none.
+      headers: { "content-type": "application/json" },
+    });
+  const tooLong = await api("POST", { name: "qa-eval", scopes: ["eval"], expiry: { days: 90 } });
+  check(
+    "an eval token past 30 days is refused",
+    tooLong.status() === 400,
+    `${tooLong.status()} ${(await tooLong.text()).slice(0, 120)}`,
+  );
+  const made = await api("POST", { name: "qa-eval", scopes: ["eval"], expiry: { days: 7 } });
+  const tok = await made.json();
+  check("the owner makes an eval token", made.ok() && tok.scopes?.includes("eval"));
+  const ts = await sender(`qa-token-${run}`, tok.token);
+  check(
+    "a sender with it is approved with no tap",
+    Boolean(await wait(() => ts.last("approved")?.via === "token")),
+    String(ts.last("error")?.error ?? ""),
+  );
+  ts.send({ type: "eval", code: "location.origin", target: "box" });
+  const tres = await wait(() => ts.last("result"));
+  check(
+    "its eval reaches the box page (box:eval on)",
+    tres?.ok === true && String(tres?.value).includes(new URL(BOX).host),
+    JSON.stringify(tres),
+  );
+  await api("DELETE", { id: tok.id });
+  // The revoke notice closes it; if the local registry drops that, the next eval is refused.
+  if (!(await wait(() => ts.last("closed"), 5_000)))
+    ts.send({ type: "eval", code: "1", target: "box" });
+  check(
+    "revoking the token ends it",
+    Boolean(await wait(() => ts.last("closed")?.code === 4498, 10_000)),
+    JSON.stringify(ts.last("closed")),
+  );
+  const again = await sender(`qa-token2-${run}`, tok.token);
+  check(
+    "and it is refused after",
+    Boolean(await wait(() => again.last("closed")?.code === 4498, 10_000)),
+  );
+
+  // Off on /dev/box-clients: no more eval there; the chat goes on.
+  const off = await boxes(ctx, { op: "eval", clientId, on: false });
+  const row = (await off.json()).boxes?.find((b) => b.clientId === clientId);
+  check(
+    "the owner turns box:eval off, box:chat stays",
+    off.ok() && row?.scopes.includes("box:chat") && !row?.scopes.includes("box:eval"),
+  );
+  await new Promise((r) => setTimeout(r, 1500));
+  const before = s.got.filter((m) => m.type === "result").length;
+  s.send({ type: "eval", code: "1+1", target: "box" });
+  await wait(() => s.got.filter((m) => m.type === "sent").length >= 2, 8_000);
+  check(
+    "an eval is no longer delivered",
+    s.last("sent")?.delivered === 0,
+    JSON.stringify(s.last("sent")),
+  );
+  await new Promise((r) => setTimeout(r, 1000));
+  check("and no result comes", s.got.filter((m) => m.type === "result").length === before);
+  const line = `qa still chatting ${run}`;
+  await page.fill('[data-testid="debug-chat-input"]', line);
+  await page.keyboard.press("Enter");
+  check("the chat still works", Boolean(await wait(() => p.heard(line))));
+
+  // Back on, a reload, then revoke: everything ends.
+  await boxes(ctx, { op: "eval", clientId, on: true });
+  await boxes(ctx, { op: "revoke", clientId });
+  s.send({ type: "eval", code: "2+2", target: "box" });
+  await wait(() => s.got.filter((m) => m.type === "sent").length >= 3, 8_000);
+  check(
+    "after revoke nothing reaches the box",
+    s.last("sent")?.delivered === 0,
+    JSON.stringify(s.last("sent")),
+  );
+
+  s.ws.close();
+  p.ws.close();
+  await browser.close();
+  console.log(failed ? `${failed} FAILED` : "all passed");
+  process.exit(failed ? 1 : 0);
+}
+
 const cmd = process.argv[2];
 await (cmd === "setup"
   ? setup()
@@ -921,4 +1150,8 @@ await (cmd === "setup"
     ? chatSetup()
     : cmd === "chat"
       ? chat()
-      : run());
+      : cmd === "code-setup"
+        ? evalSetup()
+        : cmd === "code"
+          ? evalRun()
+          : run());

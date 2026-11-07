@@ -13,8 +13,7 @@
 //     bunx wrangler dev --port 3491 --local --var CLOUDFLARE_ACCOUNT_ID:qa --var CLOUDFLARE_AI_TOKEN:qa
 //     QA_BASE=http://localhost:3491 bun scripts/qa/qa-read-tap-gloss.mjs [outDir]
 //
-// It turns the flags read.reader-v2 and read.gdoc-stream on in the local D1, and
-// off at the end. Rebuild afterwards: that bundle is for this script only.
+// It turns the flag read.gdoc-stream on in the local D1, and off at the end. Rebuild afterwards: that bundle is for this script only.
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
@@ -27,7 +26,7 @@ const STUB_PORT = Number(process.env.QA_STUB_PORT || 3499);
 const OUT = process.argv[2] || "test-results/read-tap-gloss";
 const FIXTURE = "unit/fixtures/epub/pg7256-gift-of-the-magi.epub";
 const PW = "qa-test-pass-1234";
-const FLAGS = ["read.reader-v2", "read.gdoc-stream"];
+const FLAGS = ["read.gdoc-stream"];
 const STUB_BACK = (w) => `stub meaning of ${w}`;
 mkdirSync(OUT, { recursive: true });
 
@@ -165,7 +164,7 @@ async function openBook(page) {
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
   await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.goto(`/read/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   await until(page, () => page.evaluate(() => !!document.querySelector(".lk-book [data-f]")));

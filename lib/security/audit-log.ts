@@ -32,7 +32,22 @@ export type AuditKind =
   | "box.chat-grant"
   | "box.chat-remove"
   | "box.chat-ticket"
+  // box:eval on an owner's box (docs/box-oauth.md, "Code on the owner's box").
+  | "box.eval-grant"
+  | "box.eval-remove"
   | "email.change"
+  // API tokens (lib/api-tokens.ts): made, revoked (one, or all with a sign-out
+  // everywhere), used (at most once a minute per token, when last_used_at is
+  // written), and refused for a known token (expired, missing the permission,
+  // over its rate limit). Subject: the token's tag; detail: name and scopes.
+  | "api-token.create"
+  | "api-token.revoke"
+  | "api-token.revoke-all"
+  | "api-token.use"
+  | "api-token.refused"
+  // An eval token's every use: a sender connecting, and each eval it sends
+  // (lib/eval-token.ts). Subject: the token's tag.
+  | "api-token.eval"
   // Written by lib/site-role.ts in one batch with the role change; listed here
   // so the log's kinds are in one place.
   | "site-role.grant"

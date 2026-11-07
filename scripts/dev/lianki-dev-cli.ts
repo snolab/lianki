@@ -43,6 +43,7 @@ export const errorLine = (exit: number, message: string) =>
 
 export const SUBCOMMANDS = [
   "say",
+  "voices",
   "ask",
   "inbox",
   "listen",
@@ -63,7 +64,8 @@ export const USAGE: Record<Sub | "main", string> = {
   main: `usage: lianki-dev <command> [options]
 
   say       a chat line to the owner (or --to a thread)
-  ask       an ask card with tappable options
+  voices    the voice ids say --voice takes: the phone's own, and the cloud's
+  ask      an ask card with tappable options
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
   serve     hold an eval session (eval.ts serve)
@@ -79,12 +81,26 @@ ${GLOBAL}
   --pair        let this run ask the owner's devices to pair (not with --as)
 ${EXITS}
 \`lianki-dev <command> --help\` for one command.`,
-  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--voice main|calm|bright] "text" | -
+  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--voice <id>] "text" | -
   One chat line with the saved grant, then exit (eval.ts say). - reads stdin.
   With --as <lane> the text is sent as 【<lane>】text. Read aloud unless --quiet,
   in the lane's own voice (codex, agy: docs/dev-debug-widget.md, "Lanes and
-  voices"); --voice picks another one for this line.
+  voices"); --voice picks another one for this line:
+    main | calm | bright   the lane table's voices
+    device:<name>          a voice the phone has (lianki-dev voices), read with
+                           speech even when the output is cloud
+    melo:<lang>            the cloud's MeloTTS voice (en es fr zh ja ko)
+    aura:<speaker>         a Workers AI Aura-2 speaker (luna orion thalia celeste nestor carina)
+    eleven:<id>            an ElevenLabs public preview clip (its own words)
+  An unknown id is refused; a voice the phone lacks falls back to the lane's.
   stdout: the hub's {"type":"said",…} (with --json, as "data").
+${GLOBAL}
+${EXITS}`,
+  voices: `usage: lianki-dev voices [--cloud] [--target <text>]
+  The ids say --voice takes, as one JSON line (eval.ts voices): each open
+  debug page's device voices, read once over the eval channel (needs the
+  saved eval grant; never pairs unless --pair), zh, ja and en first; and
+  the cloud's list. --cloud: the cloud's list only, no page asked.
 ${GLOBAL}
 ${EXITS}`,
   ask: `usage: lianki-dev ask [--to owner|<email>] --q "question" --opt "a" --opt "b" [--multi] [--q …] [--wait] [--timeout <s>]
@@ -249,9 +265,81 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
     if ((op === "get" || op === "done") && !rest[1]) return new Error(`inbox ${op} needs <id>`);
     return ["inbox", ...(rest.length ? rest : ["list"]), ...pair];
   }
+  if (sub === "voices") {
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i]!;
+      if (a === "--target") {
+        if (rest[++i] === undefined) return new Error("--target needs a value");
+      } else if (a !== "--cloud") return new Error(`voices: unknown argument ${a}`);
+    }
+    return ["voices", ...rest, ...pair];
+  }
   if (sub === "listen") return ["chat", ...rest, ...pair];
   if (sub === "serve") return ["serve", ...rest, ...pair];
   return new Error(`${sub} does not run eval.ts`);
+}
+
+/**
+ * With a lane token (LIANKI_TOKEN, made at lianki.com/preferences → API tokens
+ * with the chat permissions): the argv for the public CLI's `lianki chat …`
+ * (packages/lianki-cli), which posts as the token's name in the token
+ * account's own thread. No `--to`, `--task-path`, `--agent` or `--label`:
+ * those need the grant path (unset LIANKI_TOKEN). An `--opt "*Yes"` is the
+ * recommended one, as with eval.ts. One question per ask.
+ */
+export function chatArgv(
+  sub: Sub,
+  rest: string[],
+  stdin?: string,
+): (string[] & { stdin?: string }) | Error {
+  if (sub === "say") {
+    let text: string | undefined;
+    const out: string[] = [];
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i]!;
+      if (a === "--") {
+        text = rest.slice(i + 1).join(" ");
+        break;
+      }
+      if (a === "--quiet") out.push(a);
+      else if (a === "--loud") continue;
+      else if (a.startsWith("--"))
+        return new Error(`say: ${a} needs the grant path (unset LIANKI_TOKEN)`);
+      else if (text === undefined) text = a === "-" ? (stdin ?? "") : a;
+      else return new Error(`say takes one text (quote it): ${a}`);
+    }
+    const body = (text ?? "").trim();
+    if (!body) return new Error("say needs a text (or - for stdin)");
+    // The text goes on stdin (`-`), so one starting with "-" is never read as a flag.
+    return Object.assign(["chat", "say", ...out, "-"], { stdin: body });
+  }
+  if (sub === "ask") {
+    const out: string[] = [];
+    let q = 0;
+    let n = 0;
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i]!;
+      if (a === "--q") {
+        if (++q > 1) return new Error("ask: one --q per ask with a lane token");
+        out.push(a, rest[++i] ?? "");
+      } else if (a === "--opt") {
+        const v = rest[++i] ?? "";
+        n++;
+        if (v.startsWith("*")) out.push("--opt", v.slice(1), "--recommend", String(n));
+        else out.push("--opt", v);
+      } else if (a === "--timeout") out.push(a, rest[++i] ?? "");
+      else if (a === "--wait" || a === "--multi") out.push(a);
+      else return new Error(`ask: ${a} needs the grant path (unset LIANKI_TOKEN)`);
+    }
+    if (!q || !n) return new Error('ask needs --q "question" and at least one --opt');
+    return ["chat", "ask", ...out];
+  }
+  if (sub === "listen") {
+    if (rest.length)
+      return new Error(`listen: ${rest[0]} needs the grant path (unset LIANKI_TOKEN)`);
+    return ["chat", "listen", "--json"];
+  }
+  return new Error(`${sub} has no lane-token path`);
 }
 
 /** progress: --agent defaults to the lane, on a report only. */

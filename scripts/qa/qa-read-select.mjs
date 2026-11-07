@@ -147,7 +147,7 @@ async function open(ctx) {
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
   await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.goto(`/read/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   await page.waitForTimeout(800);
@@ -370,7 +370,7 @@ async function desktop(scheme) {
   // The deep link opens at the unit, flashed, its card shown.
   const u = new URL(link);
   const linkPage = await ctx.newPage();
-  await linkPage.goto(`${u.pathname}?reader=v2${u.hash}`, { waitUntil: "load" });
+  await linkPage.goto(`${u.pathname}${u.hash}`, { waitUntil: "load" });
   await linkPage.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   const landed = await until(
     linkPage,

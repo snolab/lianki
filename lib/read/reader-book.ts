@@ -2,7 +2,6 @@
 // cached per isolate by content hash (a few books, small typed arrays), and
 // the access rule. docs/books-plan.md, "Review units".
 
-import { flagIn, type FlagValues } from "@/lib/flags";
 import type { ReadMaterial } from "@/lib/getReadMaterialsCollection";
 import type { BookMeta } from "./book";
 import { sentenceWords, type SentenceWords } from "./familiarity";
@@ -10,11 +9,6 @@ import type { Paragraph } from "./reader-api";
 import { bookHash, chapterRanges, paragraphsOf, segmentBook, type BookSentences } from "./units";
 import { langAt } from "./lang-detect";
 import { wordLang } from "./words";
-
-/** Reader v2 for this user: the flag for everyone, else the owner alone. */
-export function readerV2On(flags: FlagValues | null | undefined, owner: boolean): boolean {
-  return flagIn(flags, "read.reader-v2") || owner;
-}
 
 export interface ReaderBook {
   hash: string;

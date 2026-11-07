@@ -1,12 +1,11 @@
-// The /read player (app/(app)/read/[id]/ReadViewClient.tsx) as a pure state
+// The /read player (app/(app)/read/[id]/ReaderV2.tsx) as a pure state
 // machine, so its rules are tested without a browser (unit/read-player.test.ts).
 //
 // Play reads the current line aloud. What happens when the line's audio has
 // really ended depends on the mode:
 //
 // - **wait** (default): the player waits for the reader — "your turn". He
-//   moves on with Next, by tapping a line, or by reading the line aloud
-//   himself with the chat mic on (shadowing, `shadowVerdict`).
+//   moves on by grading the paragraph (a swipe) or by tapping another one.
 // - **auto** (`lk:pref:read-auto`, per device): it reads on, line after line.
 //
 // Headings are read and then always read on (there is nothing to practise in
@@ -15,7 +14,6 @@
 // late `onend` can never advance twice. A failure stops playback with its
 // message instead of racing ahead.
 
-import { echoScore, normalizeEcho } from "@lianki/debug-chat/echo";
 import { primaryLang } from "./lang-detect";
 
 export type PlayerStatus = "idle" | "speaking" | "waiting" | "ended" | "error";
@@ -94,24 +92,6 @@ export function playerReducer(s: PlayerState, e: PlayerEvent, cfg: PlayerCfg): P
       if (s.status !== "speaking" || e.token !== s.token) return s;
       return { status: "error", line: s.line, token: s.token, error: e.error };
   }
-}
-
-/**
- * Shadowing: what the reader has said aloud since the line ended, against the
- * line. `consume` (close enough to be his reading of it, so the chat must not
- * post it) and `done` (all of it read: move on).
- */
-export const SHADOW_CONSUME = 0.3;
-export const SHADOW_DONE = 0.6;
-export function shadowVerdict(heard: readonly string[], line: string) {
-  const last = heard[heard.length - 1] ?? "";
-  const one = echoScore(last, [line]).score;
-  const joined = heard.join(" ");
-  const all = echoScore(joined, [line]).score;
-  // A substring scores 1, so how much of the line was said is checked apart.
-  const covered = normalizeEcho(joined).length / Math.max(1, normalizeEcho(line).length);
-  const consume = one >= SHADOW_CONSUME;
-  return { consume, done: consume && all >= SHADOW_DONE && covered >= SHADOW_DONE };
 }
 
 /** The line in utterances of at most `max` chars: sentence ends first, then clauses, then spaces. */

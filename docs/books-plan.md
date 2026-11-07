@@ -113,7 +113,7 @@ numerals; Hindi loans).
   DRM-free only (#448 refuses DRM). Needs a ToS line and a takedown contact
   before it opens beyond the owner.
 - **A Google Doc** (owner, 2026-11-04): paste a docs.google.com/document
-  link on /read (behind the reader-v2 gate). The server reduces it to the
+  link on /read (signed in, D1). The server reduces it to the
   doc id and fetches only Google's HTML export for it (`lib/gdoc/`; redirects
   only to Google's export hosts, inline images dropped while streaming, 8 MB
   of markup, 20 imports per 10 minutes per user). Works for docs shared
@@ -290,8 +290,7 @@ title's own language, the source link visible inside the imported book.
   its one action is the primary.
 - **Gate:** flag `books.catalogue` (off: the owner only), D1 only; the nav
   item carries `flag` in `lib/app-nav.ts` and the layout passes the visible
-  ones. Not tied to `read.reader-v2`: an added book opens in whichever reader
-  the user has.
+  ones. An added book opens in the reader.
 
 ### Admission rule: public domain per country (owner, 02:18 JST 2026-11-05)
 
@@ -719,7 +718,7 @@ selecting DOM text.
   `data-read-marks` rules as the words. Never a text-decoration, so a
   selection's highlight does not recolour it. QA:
   `scripts/qa/qa-read-phrase-marks.mjs`.
-- **Built** (reader v2, behind `read.reader-v2`): the rules in
+- **Built** (reader v2): the rules in
   `lib/read/reader-select.ts` (levels, fragments; unit-tested), the listener
   and highlight in `app/(app)/read/[id]/use-reader-select.ts`, the card in
   `reader-select-card.tsx`. Every level is drawn as `data-sel` on the unit's
@@ -736,7 +735,7 @@ selecting DOM text.
   (`lib/read/book-link.ts`). Gloss is a Wiktionary search in a new tab.
   **Translate is ours** (owner, 2026-11-04 14:58 JST: "dont [go to google
   translate], lets use ai credits and our api"): `POST /api/read/[id]/translate`
-  (`lib/read/translate.ts`, `translate-server.ts`; the reader-v2 gate)
+  (`lib/read/translate.ts`, `translate-server.ts`; the reader routes' gate)
   translates the selected word … paragraph or hand-made range into the UI
   locale with the Learning Partner's model on Workers AI, and the card shows it
   under the text. Cached in D1 `read_translation` by SHA-256 of target + text
@@ -1086,7 +1085,8 @@ own paragraphs (no chunks):
 ## Review units (owner, Slack 2026-11-03 ~19:45–20:00 JST)
 
 The owner's final design for what the reader reviews. Built behind the flag
-`read.reader-v2` (off by default; always on for the owner). Contract:
+`read.reader-v2` until 2026-11-07, when the old reader and the flag were
+removed: every signed-in user on D1 has it. Contract:
 `lib/read/reader-api.ts`; pure libs `lib/read/units.ts` (segmentation, ids,
 items) and `lib/read/familiarity.ts` (aggregation); store
 `lib/read/reader-store.ts`; tables `db/migrations/0030_reader_v2.sql`.
@@ -1172,10 +1172,16 @@ items) and `lib/read/familiarity.ts` (aggregation); store
   the material is the user's own; every query is keyed by `user_id`.
   Deleting a book deletes its reader rows.
 
-### Built: the reader v2 UI (2026-11-03, behind `read.reader-v2`)
+### Built: the reader v2 UI (2026-11-03; the only reader since 2026-11-07)
 
-`app/(app)/read/[id]/ReaderV2.tsx` (rows: `reader-blocks.tsx`). The old reader
-stays while the flag is off; the owner always gets v2, on lianki.com too (the same rule as its backend, `readerV2On`).
+`app/(app)/read/[id]/ReaderV2.tsx` (rows: `reader-blocks.tsx`). The first reader
+(`ReadViewClient.tsx`) and the flag `read.reader-v2` were removed on 2026-11-07
+(owner: "you can delete the old reader completely"). What only it had, and the
+new one does not: Next / Replay / Pause buttons while waiting, Reset, the j/k,
+n/Enter and Home/End keys, shadowing (reading the line aloud with the chat mic
+on moved to the next one), the visible status line, line numbers and the line
+counter, a slider to jump anywhere, chapter ← / → buttons. Its word scan panel
+and the title and author moved to the top of the new reader.
 
 - The whole book on the window's scroll, virtualised (`@tanstack/react-virtual`,
   measured heights); the EPUB's paragraphs, headings, emphasis and joins as

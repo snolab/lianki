@@ -23,6 +23,7 @@ import {
   type Global,
   type Sub,
   USAGE,
+  chatArgv,
   childExit,
   doctorExit,
   doctorFindings,
@@ -163,6 +164,22 @@ async function runEval(sub: Sub, repo: string, argv: string[]): Promise<number> 
   return code;
 }
 
+/** `lianki chat …` from this checkout's packages/lianki-cli; LIANKI_TOKEN passes through the environment. */
+async function runChat(sub: Sub, repo: string, rest: string[], stdin?: string): Promise<number> {
+  const argv = chatArgv(sub, rest, stdin);
+  if (argv instanceof Error) fail(EXIT.usage, argv.message);
+  const cli = join(repo, "packages", "lianki-cli", "lianki.mjs");
+  const child = Bun.spawn([process.execPath, cli, ...argv, ...(json ? ["--json"] : [])], {
+    cwd: repo,
+    env: { ...process.env, LIANKI_URL: HUB },
+    stdin: argv.stdin !== undefined ? new TextEncoder().encode(argv.stdin) : "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => child.kill(sig));
+  return await child.exited;
+}
+
 async function progress(g: Global, rest: string[], repo: string | undefined): Promise<number> {
   const cmd = parseProgressArgs(progressArgv(rest, g));
   if (cmd instanceof Error) fail(EXIT.usage, `progress: ${cmd.message}\n${PROGRESS_USAGE}`);
@@ -255,11 +272,24 @@ async function main(): Promise<number> {
   if (!repo)
     fail(EXIT.notReady, "no Lianki checkout here: pass --repo <path> (or set LIANKI_REPO)");
   const stdin = sub === "say" && rest.includes("-") ? await Bun.stdin.text() : undefined;
+  // A lane token (LIANKI_TOKEN): say/ask/listen go through the public CLI's
+  // `lianki chat`, in that token account's own thread, labelled with its name.
+  // No grant, no pairing; without a token the grant path below is unchanged.
+  if (process.env.LIANKI_TOKEN && !g.pair && (sub === "say" || sub === "ask" || sub === "listen"))
+    return runChat(sub, repo, rest, stdin);
   const argv = evalArgv(sub, rest, g, stdin);
   if (argv instanceof Error) fail(EXIT.usage, `${argv.message}\n${json ? "" : USAGE[sub]}`.trim());
   // Nothing to send with: say so before eval.ts opens a socket (lanes never pair).
   const f = await facts(g, rest, false);
-  const has = sub === "serve" ? f.evalGrant : f.chatGrant || f.evalGrant;
+  // serve with an eval token (LIANKI_TOKEN, docs/secrets-and-auth.md "Eval tokens")
+  // needs no saved grant: eval.ts connects with the token.
+  const evalToken = /^lk_[0-9a-f]{64}$/.test(process.env.LIANKI_TOKEN?.trim() ?? "");
+  // voices --cloud asks no page: no grant needed. voices otherwise reads pages: eval.
+  const cloudOnly = sub === "voices" && rest.includes("--cloud");
+  const has =
+    cloudOnly ||
+    (sub === "serve" && evalToken) ||
+    (sub === "serve" || sub === "voices" ? f.evalGrant : f.chatGrant || f.evalGrant);
   if (!g.pair && !has)
     fail(EXIT.notReady, doctorFindings(f).find((x) => x.check === "grant")!.line);
   return runEval(sub, repo, argv);

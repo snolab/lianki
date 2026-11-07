@@ -6,7 +6,7 @@
  * live, so one account has one box and one box has one account.
  */
 import { audit, type AuditDb } from "@/lib/security/audit-log";
-import { SCOPE_CHAT, isBoxOrigin, parseScopes } from "./rules";
+import { SCOPE_CHAT, SCOPE_EVAL, isBoxOrigin, parseScopes } from "./rules";
 
 export interface BoxStmt {
   bind(...v: unknown[]): BoxStmt;
@@ -174,7 +174,10 @@ export async function liveToken(
   if (!r || !(Date.parse(r.expiresAt) > now)) return null;
   // Never more than the owner granted, whatever the token row says.
   const bound = parseScopes(r.boundScopes);
-  const scopes = parseScopes(r.scopes).filter((s) => bound.includes(s) && s !== SCOPE_CHAT);
+  // box:eval never rides on a token: it opens no route, and the hub asks the binding itself.
+  const scopes = parseScopes(r.scopes).filter(
+    (s) => bound.includes(s) && s !== SCOPE_CHAT && s !== SCOPE_EVAL,
+  );
   // box:chat is the binding's alone (rules.ts): it lasts exactly as long as the grant.
   if (bound.includes(SCOPE_CHAT)) scopes.push(SCOPE_CHAT);
   return { clientId: r.clientId, userId: r.userId, origin: r.origin, scopes };
@@ -215,11 +218,21 @@ export async function setBoxChat(
   const has = live.scopes.includes(SCOPE_CHAT);
   if (on && !(await isSiteOwnerUser(db, live.userId))) return "not-owner";
   if (has === on) return "unchanged";
-  const scopes = on ? [...live.scopes, SCOPE_CHAT] : live.scopes.filter((s) => s !== SCOPE_CHAT);
+  // box:eval rides on the chat socket: removing chat removes it too.
+  const hadEval = live.scopes.includes(SCOPE_EVAL);
+  const scopes = on
+    ? [...live.scopes, SCOPE_CHAT]
+    : live.scopes.filter((s) => s !== SCOPE_CHAT && s !== SCOPE_EVAL);
   await db
     .prepare("UPDATE box_binding SET scopes = ?1 WHERE client_id = ?2 AND revoked_at IS NULL")
     .bind(scopes.join(" "), clientId)
     .run();
+  if (!on && hadEval)
+    await audit(
+      db as unknown as AuditDb,
+      { kind: "box.eval-remove", actor: by, subject: live.userId, detail: clientId },
+      now,
+    );
   await audit(
     db as unknown as AuditDb,
     {
@@ -231,6 +244,63 @@ export async function setBoxChat(
     now,
   );
   return on ? "granted" : "removed";
+}
+
+export type EvalGrant = ChatGrant | "needs-chat";
+
+/**
+ * The owner grants or removes box:eval (docs/box-oauth.md, "Code on the
+ * owner's box") on a live binding. Granting is refused unless the binding's
+ * account is a site owner and the binding holds box:chat already (eval rides
+ * on the chat socket); it is never implied by box:chat. Removing needs no
+ * check. Each change is in security_audit.
+ */
+export async function setBoxEval(
+  db: BoxDb,
+  clientId: string,
+  on: boolean,
+  by: string,
+  now = Date.now(),
+): Promise<EvalGrant> {
+  const live = await bindingByClient(db, clientId);
+  if (!live) return "no-box";
+  const has = live.scopes.includes(SCOPE_EVAL);
+  if (on && !(await isSiteOwnerUser(db, live.userId))) return "not-owner";
+  if (on && !live.scopes.includes(SCOPE_CHAT)) return "needs-chat";
+  if (has === on) return "unchanged";
+  const scopes = on ? [...live.scopes, SCOPE_EVAL] : live.scopes.filter((s) => s !== SCOPE_EVAL);
+  await db
+    .prepare("UPDATE box_binding SET scopes = ?1 WHERE client_id = ?2 AND revoked_at IS NULL")
+    .bind(scopes.join(" "), clientId)
+    .run();
+  await audit(
+    db as unknown as AuditDb,
+    {
+      kind: on ? "box.eval-grant" : "box.eval-remove",
+      actor: by,
+      subject: live.userId,
+      detail: clientId,
+    },
+    now,
+  );
+  return on ? "granted" : "removed";
+}
+
+/**
+ * May a box's page hold the owner's page powers (eval, pairing, page errors)?
+ * The hub asks at connect and before each use. The client's binding is live
+ * with box:chat and box:eval, and its account a site owner now. The flag is
+ * the caller's to check.
+ */
+export async function boxEvalLive(db: BoxDb, clientId: unknown): Promise<boolean> {
+  if (typeof clientId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(clientId)) return false;
+  const b = await bindingByClient(db, clientId);
+  return (
+    !!b &&
+    b.scopes.includes(SCOPE_CHAT) &&
+    b.scopes.includes(SCOPE_EVAL) &&
+    (await isSiteOwnerUser(db, b.userId))
+  );
 }
 
 /**

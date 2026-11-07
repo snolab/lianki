@@ -700,6 +700,11 @@ export type DebugChatProps = {
    */
   files?: ChatFiles;
   /**
+   * The host keeps the account's chat history (Lianki: /chat/history,
+   * docs/chat-history.md): the + menu's View group gets History, which calls this.
+   */
+  onHistory?: () => void;
+  /**
    * The ETA bar (eta.ts, flag chat.eta-bar; the owner's pages only): a summary
    * of the tree's timed tasks above the input, a tap opens the tree, which
    * lists each. Needs `treeSource`.
@@ -805,6 +810,7 @@ export function DebugChat({
   portalRoot,
   attach = true,
   files,
+  onHistory,
   etaBar = false,
   onEtaDue,
   etaSource,
@@ -4402,6 +4408,7 @@ export function DebugChat({
             upload={!!filesRef.current}
             onPickFiles={pickFiles}
             onInbox={filesRef.current?.list && !notice ? () => setInboxOpen(true) : undefined}
+            onHistory={notice ? undefined : onHistory}
             onClose={closeAttachMenu}
           />
         )}

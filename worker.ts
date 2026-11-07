@@ -20,7 +20,11 @@ import { flagLive, rateLimiter, sessionLive, type SessionDb } from "./lib/debug-
 import { partnerReply, type PartnerEnv } from "./lib/partner-ai";
 import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
+import { type ChatTokenAnswer, type ChatTokenDb, chatTokenCheck } from "./lib/chat-token";
+import { type EvalTokenAnswer, type EvalTokenDb, evalTokenCheck } from "./lib/eval-token";
 import type { InboxDb } from "./lib/inbox/store";
+import { type ChatLogDb, chatLogOp } from "./lib/chat-log";
+import type { ChatLogAnswer } from "./lib/chat-log-line";
 
 import {
   createLivePage,
@@ -32,7 +36,7 @@ import { siblingRequestRefused } from "./lib/security/same-site-guard";
 import { clearLegacyCookies, legacyCookieNames } from "./lib/security/legacy-session-cookies";
 import { anchorDue, type LianDb } from "./lib/lian/anchor";
 import { boxGate, type BoxEnv } from "./lib/box-oauth/gate";
-import { boxChatLive, type BoxDb } from "./lib/box-oauth/store";
+import { boxChatLive, boxEvalLive, type BoxDb } from "./lib/box-oauth/store";
 import { BOX_FLAG } from "./lib/box-oauth/rules";
 import { hit, type Limit, type ThrottleDb } from "./lib/security/throttle";
 import type { D1Batch } from "./lib/read/reader-store";
@@ -120,6 +124,12 @@ const allow = rateLimiter(60, 60_000);
 const allowInbox = rateLimiter(60, 60_000);
 /** The Learning Partner's AI replies: their own budget (the hub caps per user and per day). */
 const allowPartner = rateLimiter(120, 60_000);
+// `lianki chat` checks: each token is limited in D1 too (lib/chat-token.ts CHAT_LIMITS).
+const allowChatToken = rateLimiter(600, 60_000);
+/** The owner's box's page powers: asked at connect, per eval sent and per page error. */
+const allowBoxEval = rateLimiter(300, 60_000);
+/** The hub's chat-history writes (lib/chat-log.ts): one per kept line, per isolate. */
+const allowChatLog = rateLimiter(600, 60_000);
 
 export class DebugSessions extends WorkerEntrypoint<Env> {
   /**
@@ -158,6 +168,20 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   }
 
   /**
+   * May this box's page hold the owner's page powers: eval, pairing, page
+   * errors (docs/box-oauth.md, "Code on the owner's box")? "live" only while
+   * box.oauth is on and the client's binding is live with box:chat and box:eval
+   * for a site owner; "gone" otherwise; "busy" over the rate limit. A D1 error
+   * throws: the hub treats it as unsure and does not use the power then.
+   */
+  async boxEval(clientId: unknown): Promise<"live" | "gone" | "busy"> {
+    if (!allowBoxEval()) return "busy";
+    const db = this.env.DB as unknown as BoxDb;
+    if (!(await flagLive(db as unknown as SessionDb, BOX_FLAG))) return "gone";
+    return (await boxEvalLive(db, clientId)) ? "live" : "gone";
+  }
+
+  /**
    * The Learning Partner's AI reply for one non-owner user's thread
    * (lib/partner-ai.ts; docs/partner-ai.md). The hub sends the verified user
    * id, the thread's latest lines and the page context; this reads only that
@@ -178,6 +202,38 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async inbox(req: unknown): Promise<InboxAnswer> {
     if (!allowInbox()) return { ok: false, error: "busy" };
     return inboxOp(this.env.DB as unknown as InboxDb, req);
+  }
+
+  /**
+   * `lianki chat`: may this API token do this chat operation, and in whose
+   * thread (lib/chat-token.ts)? The hub posts and reads only in the thread
+   * this names. Deny by default; a D1 error throws and the hub refuses.
+   */
+  async chatToken(req: unknown): Promise<ChatTokenAnswer> {
+    if (!allowChatToken()) return { ok: false, error: "rate" };
+    return chatTokenCheck(this.env.DB as unknown as ChatTokenDb, req);
+  }
+
+  /**
+   * An eval token (lib/eval-token.ts): may this API token run code on the
+   * owner's pages now? Asked when a sender connects with one and before each
+   * eval it sends; each use is audited. Deny by default; a D1 error throws and
+   * the hub refuses.
+   */
+  async evalToken(req: unknown): Promise<EvalTokenAnswer> {
+    if (!allowChatToken()) return { ok: false, error: "rate" };
+    return evalTokenCheck(this.env.DB as unknown as EvalTokenDb, req);
+  }
+
+  /**
+   * The account's chat history (lib/chat-log.ts; docs/chat-history.md): the
+   * hub writes each line of a thread as it keeps it, and its owner-thread
+   * history once (backfill). The thread decides the accounts: the active
+   * owners for "owner", else that user alone. "busy" over the rate limit.
+   */
+  async chatLog(req: unknown): Promise<ChatLogAnswer> {
+    if (!allowChatLog()) return { ok: false, error: "busy" };
+    return chatLogOp(this.env.DB as unknown as ChatLogDb, req);
   }
 }
 

@@ -459,8 +459,20 @@ let goalId;
 
 // ── TOKEN ──
 {
-  const r = await call("POST", "/api/token", { name: "qa-token" });
+  const r = await call("POST", "/api/token", {
+    name: "qa-token",
+    scopes: ["study"],
+    expiry: { days: 7 },
+  });
   rec("TOKEN mint", r.status === 200 || r.status === 201, `HTTP ${r.status}`);
+  const none = await call("POST", "/api/token", { name: "qa-forever", scopes: ["study"] });
+  rec("TOKEN refused without an expiry", none.status === 400, `HTTP ${none.status}`);
+  const evil = await call("POST", "/api/token", {
+    name: "qa-eval",
+    scopes: ["chat:read", "eval"],
+    expiry: { days: 7 },
+  });
+  rec("TOKEN refused with eval", evil.status === 400, `HTTP ${evil.status}`);
   const list = await call("GET", "/api/token");
   rec("TOKEN list", list.status === 200, `HTTP ${list.status}`);
 }

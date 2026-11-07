@@ -196,8 +196,8 @@ pages use. Shapes are the routes' own; for the reader they are typed in
 | settings | `/api/prefs`                                       | GET / PUT    | synced settings ([prefs-sync.md](prefs-sync.md))                                                  |
 
 Anything else under `/api` works the same way, with the same rules, but it
-is internal: it may change without notice. The reader routes need the flag
-`read.reader-v2` (or the owner), as for our own reader.
+is internal: it may change without notice. The reader routes need a
+signed-in user on the D1 backend, as for our own reader.
 
 **Account writes, per session** (owner's card, 2026-11-06). The live cookie
 alone couldn't hold the block: a normal page in another tab clears it while the

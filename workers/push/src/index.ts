@@ -44,12 +44,23 @@
  *   GET/POST /internal/friends The main Worker's owner-only /api/dev/friends,
  *                              over its PUSH binding: list chat users, read
  *                              one's thread, Block or unblock (debug.ts).
+ *   POST /api/version/chat     `lianki chat say|ask|read` with an API token
+ *   GET  /api/version/chat     (Authorization: Bearer lk_…), or a WebSocket for
+ *                              `lianki chat listen` (the token in its first
+ *                              message). Only the token account's own thread
+ *                              (token-chat.ts); no browser Origin.
+ *   POST /internal/chat-tokens/revoked
+ *                              The main Worker: those API tokens' listening
+ *                              sockets close at once.
  *   POST /internal/box-closed  The main Worker, when a box loses box:chat
  *                              (removed or revoked): body {client}. That box's
  *                              chat sockets close (docs/box-oauth.md).
  *   POST /internal/signed-out  The main Worker, when a sign-in session is
  *                              deleted (sign-out): body {session: its tag}.
  *                              Every eval grant renewing on it stops at once.
+ *   POST /internal/chat-backfill The main Worker's /api/chat/history, for the
+ *                              owner: the owner thread's stored history into
+ *                              the owners' accounts in D1, once (debug.ts).
  *
  * /internal/* is answered only on the binding's own hostname (lianki-push):
  * there is no workers.dev URL, and the zone route covers /api/version/* only.
@@ -71,7 +82,8 @@ import {
   offersPartner,
   partnerTicket,
 } from "./auth";
-import { IDENTITY_HEADERS } from "./debug";
+import { CHAT_BACKFILL_PATH, EVAL_TOKEN_HEADER, IDENTITY_HEADERS } from "./debug";
+import { CHAT_PATH, REVOKED_PATH } from "./token-chat";
 import { PROGRESS_OWNER_HEADER, progressGate } from "./progress";
 
 export { DebugHub } from "./debug";
@@ -256,13 +268,35 @@ export default {
         return new Response("x-debug-token and x-liagent-token differ", { status: 400 });
       if (theirs && !ours) headers.set("x-debug-token", theirs);
       headers.delete("x-liagent-token");
+      // An eval token (lib/eval-token.ts): `Authorization: Bearer lk_…`. The hub
+      // asks the main Worker about it; only this route's header can carry it.
+      headers.delete(EVAL_TOKEN_HEADER);
+      const bearer = /^Bearer (lk_[0-9a-f]{64})$/.exec(headers.get("authorization") ?? "");
+      headers.delete("authorization");
+      if (bearer) headers.set(EVAL_TOKEN_HEADER, bearer[1]);
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
-    // Friends, and a signed-out session (it stops eval-grant renewal bound to it).
+    // `lianki chat`: an API token's say/ask/read (POST) or listen (WebSocket),
+    // each in its account's own thread (token-chat.ts). The hub asks the main
+    // Worker about the token; nothing here is trusted. Not for browser pages:
+    // a request with an Origin is refused, and no identity header passes.
+    if (url.pathname === CHAT_PATH) {
+      if (req.headers.get("origin")) return new Response("forbidden", { status: 403 });
+      const headers = new Headers(req.headers);
+      for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
+      headers.delete(DEV_BRIDGE_HEADER);
+      headers.delete(EMBED_HEADER);
+      headers.delete("cookie");
+      return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
+    }
+    // Friends, a signed-out session (it stops eval-grant renewal bound to it),
+    // and revoked API tokens (their listening sockets close).
     if (
       (url.pathname.startsWith("/internal/friends") ||
         url.pathname === "/internal/signed-out" ||
-        url.pathname === "/internal/box-closed") &&
+        url.pathname === REVOKED_PATH ||
+        url.pathname === "/internal/box-closed" ||
+        url.pathname === CHAT_BACKFILL_PATH) &&
       isInternal(url)
     )
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);

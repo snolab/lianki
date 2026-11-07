@@ -40,6 +40,7 @@ import {
 import { BOX_HEADER, EMBED_HEADER, boxChatTicket, partnerTicket } from "@/workers/push/src/auth";
 import push, { type Env } from "@/workers/push/src/index";
 import { BOX_CLOSED, DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
+import { rpcStub } from "./support/rpc-stub";
 
 const ORIGIN = "https://my-0123456789abcdef.lianki.com";
 const OTHER = "https://my-fedcba9876543210.lianki.com";
@@ -626,7 +627,7 @@ describe("DebugHub: a box socket", () => {
         getWebSockets: () => sockets,
         storage: fakeStorage(),
       },
-      { SESSIONS },
+      { SESSIONS: rpcStub(SESSIONS) },
       () => T,
     );
     const exp = Math.floor(T / 1000) + 60;

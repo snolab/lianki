@@ -45,7 +45,9 @@ import profileEdit from "@/app/(app)/profile/profile-edit.content";
 import byokSettings from "@/app/components/byok-settings.content";
 import titleRules from "@/app/components/title-rules.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
+import apiTokens from "@/app/components/api-tokens.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
+import chatHistoryPage from "@/app/(app)/chat/history/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -120,7 +122,9 @@ describe.each([
   ["byok-settings", byokSettings],
   ["title-rules", titleRules],
   ["privacy-page", privacyPage],
+  ["api-tokens", apiTokens],
   ["roadmap-page", roadmapPage],
+  ["chat-history-page", chatHistoryPage],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

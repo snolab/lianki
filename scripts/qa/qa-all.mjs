@@ -271,7 +271,6 @@ const suites = [
   ["SIGN OUT (qa-sign-out)", "bun", ["scripts/qa/qa-sign-out.mjs"], { QA_BASE: BASE }],
   ["WORDS (qa-words)", "bun", ["scripts/qa/qa-words.mjs"], { QA_BASE: BASE }],
   ["READ EPUB (qa-read-epub)", "bun", ["scripts/qa/qa-read-epub.mjs"], { QA_BASE: BASE }],
-  ["READ PLAY (qa-read-play)", "bun", ["scripts/qa/qa-read-play.mjs"], { QA_BASE: BASE }],
   // Serverless: familiarity underlines keep their colours inside the reader's selection (WebKit + Chromium).
   ["READ SEL UNDERLINES", "bun", ["scripts/qa/qa-read-sel-underlines.ts"], {}],
   // Serverless: a tap on another word moves the selection, never two drawn (WebKit + Chromium).

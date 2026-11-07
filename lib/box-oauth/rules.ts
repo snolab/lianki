@@ -22,6 +22,17 @@ export const BOX_SCOPES = [SCOPE_READ, SCOPE_WRITE, SCOPE_REFRESH] as const;
  * the box can then chat as the owner.
  */
 export const SCOPE_CHAT = "box:chat";
+/**
+ * The owner's page powers on his own box (docs/box-oauth.md, "Code on the
+ * owner's box"): over the box:chat socket, the box's pages take eval from a
+ * paired sender, can answer a pairing (the owner's tap on that page), and send
+ * page errors. Like box:chat it is the binding's alone and never in a token,
+ * granted on /dev/box-clients only for a site owner's box that holds box:chat
+ * already, and never implied by box:chat. It opens no HTTP route: the hub asks
+ * the main Worker (DebugSessions.boxEval) at connect and before each use. Any
+ * script on the box can then run code on the owner's pages through the hub.
+ */
+export const SCOPE_EVAL = "box:eval";
 /** Mints a chat ticket for the hub (app/api/box/chat-ticket). */
 export const BOX_CHAT_TICKET_PATH = "/api/box/chat-ticket";
 /** The chat mic's transcription (app/api/debug/stt). */
@@ -159,7 +170,8 @@ const ALLOWED: readonly { prefix: string; readOnly?: boolean; exact?: boolean }[
   { prefix: "/api/levels", readOnly: true },
   { prefix: "/api/lian", readOnly: true },
   { prefix: "/api/membership", readOnly: true },
-  // Who the box is signed in as: the bound account's name, email and avatar only.
+  // Who the box is signed in as: the bound account's name, email and avatar,
+  // plus production's flags and its owner role (docs/box-oauth.md, "Flags on a box").
   { prefix: BOX_ME_PATH, readOnly: true, exact: true },
   // Uploaded avatars, public already (no session): so a box can show the account's own.
   { prefix: "/api/avatar", readOnly: true },

@@ -22,8 +22,7 @@
 // - a row near the screen fills itself: a new word's meaning, its example's
 //   translation; never the whole list, each word once (the model stubbed at the routes).
 //
-// The reader v2 needs `?reader=v2` on a dev server, or the read.reader-v2
-// flag on in the local D1 for wrangler dev.
+// Against a local server on D1 (wrangler dev).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, devices } from "playwright";
@@ -64,7 +63,7 @@ async function setup(ctx, tag) {
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
   await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.goto(`/read/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   // The word map: marks on the words.
@@ -625,7 +624,7 @@ async function rowsFill(device, scheme, touch) {
   // Every back shown, so the screenshots show what a row holds when focused.
   await page.evaluate(() => localStorage.setItem("lk:words-show-all", "1"));
   // His language is not the book's: the address gives it.
-  await page.goto(`/zh/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.goto(`/zh/read/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   await page.mouse.wheel(0, 900);

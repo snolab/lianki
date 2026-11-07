@@ -54,6 +54,15 @@ export type ChatMessage = {
   email?: string;
   sender?: Sender;
   /**
+   * A line posted with an API token (`lianki chat`, workers/push/src/token-chat.ts):
+   * `via: "token"`, and `tokenLane` is the token's name, which the text also
+   * starts with as 【name】 (and `lane` is set when that name is a known lane,
+   * voices.ts). Stamped by the hub only. An ask card on such a line is
+   * answered to that token lane alone.
+   */
+  via?: "token";
+  tokenLane?: string;
+  /**
    * The state-tree node an agent line comes from ("/words/prefetch"; absent =
    * the main thread). Shown as a muted subtitle under the agent's avatar.
    */
@@ -104,8 +113,12 @@ export type ChatMessage = {
    * `【lane】` prefix in the text says it, else none (looks as before).
    */
   lane?: LaneId;
-  /** The voice to read it in (voices.ts VOICES; `say --voice`). Absent = its lane's. */
-  voice?: VoiceId;
+  /**
+   * The voice to read it in (`say --voice`): a table id (voices.ts VOICES) or
+   * a line's own (voices.ts parseLineVoice: device:, melo:, aura:, eleven:).
+   * Absent = its lane's.
+   */
+  voice?: VoiceId | (string & {});
   /**
    * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
    * "active", or "passive" (it came through "Linky"). Absent = the mic was
@@ -620,6 +633,8 @@ export type ChatStrings = {
   attachFileRemove: string;
   /** Menu item in the + menu's View group: opens the list of files sent in the chat (the inbox). One word, a noun. */
   inbox: string;
+  /** Menu item in the + menu's View group: opens the page with the account's past chat lines (the history). One word, a noun. */
+  chatHistory: string;
   /** Grey line in the inbox list when no file has been sent yet. One short sentence. */
   inboxEmpty: string;
   /** Grey line at the top of the inbox list: how much the user has stored. {size} is like "12 MB", {n} a count of files. Keep both placeholders. */
@@ -737,6 +752,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   attachTooBig: "Too large",
   attachFileRemove: "Remove this file",
   inbox: "Inbox",
+  chatHistory: "History",
   inboxEmpty: "Nothing here yet.",
   inboxUsage: "{size} stored · {n} files",
   inboxUsageQuota: "{size} of {quota} used · {n} files",

@@ -274,8 +274,12 @@ try {
     { timeout: 20000 },
   );
   // Sign-in ends in a full page load of /home; let it land, or the goto below
-  // aborts it mid-flight (net::ERR_ABORTED).
-  await page.waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: 20000 });
+  // aborts it mid-flight (net::ERR_ABORTED). Landed = committed: waiting for
+  // /home's own "load" as well timed out at 20 s under load, for nothing.
+  await page.waitForURL((u) => /\/home|\/list/.test(u.toString()), {
+    timeout: 20000,
+    waitUntil: "commit",
+  });
   check(true, "signed in");
 
   // Only errors on the page under test count; sign-in's local Turnstile stub is noisy.
@@ -2088,14 +2092,64 @@ try {
         localStorage.setItem("lk:swipe-ab", v);
       }, variant);
       const w = await c.newPage();
-      // WebKit reports a word-audio prefetch that a reload cuts off as a page
-      // error ("… due to access control checks."). The prefetch is aborted on
-      // purpose; it used to stop early only because a 503 silenced the language.
-      const cutPrefetch = (m) =>
-        m.includes("/api/words/tts?") && m.includes("due to access control checks");
+      // WebKit refuses a fetch the old page starts while the next one is
+      // loading, and reports it as a page error ("<url> due to access control
+      // checks."), caught or not. The page stops asking for familiarity marks
+      // once it starts to leave (WordsClient, beforeunload), so that one is a
+      // real error; the word-audio prefetch is let through, and only while one
+      // of this section's own loads is under way: from the call until the next
+      // page commits (goto/reload resolve at "commit" below).
+      let leaving = false;
+      // Exactly "[Fetch API cannot load ][http:]//<this host>/api/words/tts?<query> due to …".
+      const clip = `//${new URL(listUrl).host}/api/words/tts?`;
+      const cut = " due to access control checks.";
+      const cutPrefetch = (m) => {
+        const u = m.replace(/^(?:Fetch API cannot load )?(?:https?:)?\/\/?/, "//");
+        return (
+          u.startsWith(clip) && u.endsWith(cut) && !/\s/.test(u.slice(clip.length, -cut.length))
+        );
+      };
       w.on("pageerror", (e) => {
-        if (!cutPrefetch(e.message)) errs.push(`PAGEERROR (${tag}) ${e.message}`);
+        if (leaving && cutPrefetch(e.message)) return;
+        errs.push(`PAGEERROR (${tag}) ${e.message}`);
       });
+      /**
+       * Load the page and wait for the list itself, not for the network: "load"
+       * and "networkidle" have hung 30 s in WebKit under load (#603, #616) on
+       * requests the checks don't need. data-ready says the list is measured
+       * and its opening scroll is placed; then the layout must hold still.
+       */
+      const load = async (go) => {
+        leaving = true;
+        try {
+          await go();
+        } finally {
+          leaving = false;
+        }
+        await w.locator('[role="list"][data-ready]').waitFor({ timeout: 30000 });
+        await settled();
+      };
+      /** The first row, the list's scroll and the page hold still for 10 frames (fonts loaded). */
+      const settled = () =>
+        w.evaluate(
+          () =>
+            new Promise((done) => {
+              const end = performance.now() + 10000;
+              let last = "";
+              let same = 0;
+              const tick = () => {
+                const row = document.querySelector('[role="listitem"]')?.getBoundingClientRect();
+                const list = document.querySelector('[role="list"]');
+                const k = `${row?.top}|${row?.height}|${list?.scrollTop}|${scrollY}|${innerHeight}`;
+                same = k === last ? same + 1 : 0;
+                last = k;
+                if ((same >= 10 && document.fonts.status === "loaded") || performance.now() > end)
+                  done();
+                else requestAnimationFrame(tick);
+              };
+              requestAnimationFrame(tick);
+            }),
+        );
       const opening = () =>
         w.evaluate(() => {
           const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
@@ -2106,13 +2160,9 @@ try {
             native: document.querySelectorAll(".slip-native").length > 0,
           };
         });
-      // These /words loads wait for "load", not "networkidle": WebKit has hung 30 s
-      // on the latter (#603). The listitem wait after each says the page rendered.
       for (const when of ["load", "reload"]) {
-        if (when === "load") await w.goto(listUrl, { waitUntil: "load" });
-        else await w.reload({ waitUntil: "load" });
-        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-        await w.waitForTimeout(800);
+        if (when === "load") await load(() => w.goto(listUrl, { waitUntil: "commit" }));
+        else await load(() => w.reload({ waitUntil: "commit" }));
         const o = await opening();
         check(
           o.scrollY === 0 && Math.abs(o.off) <= 3 && o.native === (variant === "native"),
@@ -2181,9 +2231,7 @@ try {
           document.head.append(st);
         }),
       );
-      await w.reload({ waitUntil: "load" });
-      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-      await w.waitForTimeout(800);
+      await load(() => w.reload({ waitUntil: "commit" }));
       const layout = () =>
         w.evaluate(() => {
           const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
@@ -2289,9 +2337,7 @@ try {
       await w.emulateMedia({ colorScheme: null });
       await w.setViewportSize({ width: 414, height: 848 });
       // Fresh layout for the swipe checks below, as before the resizes.
-      await w.reload({ waitUntil: "load" });
-      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-      await w.waitForTimeout(800);
+      await load(() => w.reload({ waitUntil: "commit" }));
       if (variant === "native") {
         // At rest the face covers the label strip; a completed swipe (the
         // touch sequence iOS gives: touchstart, pointercancel as the scroller
@@ -2343,20 +2389,26 @@ try {
       } else {
         // ?swipe=native: that page load only, never stored — also in an iframe.
         const sep = listUrl.includes("?") ? "&" : "?";
-        await w.goto(`${listUrl}${sep}swipe=native`, { waitUntil: "networkidle" });
-        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        await load(() => w.goto(`${listUrl}${sep}swipe=native`, { waitUntil: "commit" }));
         const forced = await w.evaluate(() => ({
           native: document.querySelectorAll(".slip-native").length > 0,
           stored: localStorage.getItem("lk:swipe-ab"),
         }));
-        await w.setContent(
-          `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
-        );
+        // setContent replaces the document without leaving it; its own "load"
+        // would wait for the whole framed page, so it waits for the framed list.
+        leaving = true;
+        try {
+          await w.setContent(
+            `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
+            { waitUntil: "commit" },
+          );
+        } finally {
+          leaving = false;
+        }
         const fr = w.frameLocator("iframe");
-        await fr.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        await fr.locator('[role="list"][data-ready]').waitFor({ timeout: 30000 });
         const framed = await fr.locator(".slip-native").count();
-        await w.goto(listUrl, { waitUntil: "networkidle" });
-        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        await load(() => w.goto(listUrl, { waitUntil: "commit" }));
         const plain = await w.locator(".slip-native").count();
         check(
           forced.native && forced.stored === "js" && framed > 0 && plain === 0,

@@ -77,16 +77,16 @@ waits its turn; the lock is the file `/tmp/lianki-gate.lock`, the same path from
 every worktree. A waiter prints who holds it (pid, worktree, command, start time)
 and at most one line a minute after that.
 
-| Run                                                 | Lock                                                |
-| --------------------------------------------------- | --------------------------------------------------- |
-| `git push` (pre-push): unit suite + `qa:all`        | held as one stretch, so nobody gets in between      |
-| `bun run qa:all`, with any flags                    | takes it                                            |
-| `bun run test:unit`, with flags only                | takes it                                            |
-| `bun test unit/x.test.ts`, `bun run test:unit unit/x.test.ts` | no: a single file must stay fast          |
-| bare `bun test` (the whole suite, by hand)          | no: bun's own command can't be wrapped. Heavy, so prefer `bun run test:unit` |
-| `bun scripts/qa/qa-all.mjs` directly, a single `qa-*.mjs` or Playwright suite | no                        |
-| `bun run lint`, `bun run typecheck`                 | no: measured 0.5 s and 1.8 s (6 s CPU) on 2026-11-07, and they fail fast |
-| CI (`CI` set)                                       | no: each runner has its machine to itself           |
+| Run                                                                           | Lock                                                                         |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `git push` (pre-push): unit suite + `qa:all`                                  | held as one stretch, so nobody gets in between                               |
+| `bun run qa:all`, with any flags                                              | takes it                                                                     |
+| `bun run test:unit`, with flags only                                          | takes it                                                                     |
+| `bun test unit/x.test.ts`, `bun run test:unit unit/x.test.ts`                 | no: a single file must stay fast                                             |
+| bare `bun test` (the whole suite, by hand)                                    | no: bun's own command can't be wrapped. Heavy, so prefer `bun run test:unit` |
+| `bun scripts/qa/qa-all.mjs` directly, a single `qa-*.mjs` or Playwright suite | no                                                                           |
+| `bun run lint`, `bun run typecheck`                                           | no: measured 0.5 s and 1.8 s (6 s CPU) on 2026-11-07, and they fail fast     |
+| CI (`CI` set)                                                                 | no: each runner has its machine to itself                                    |
 
 Rules it keeps:
 
@@ -109,6 +109,19 @@ Rules it keeps:
 If a time-sensitive suite times out, look at the load first (`uptime`); if it is
 high, wait for it to come down, then retry once. A second failure is a real failure:
 read it.
+
+Two WebKit traps the suites already avoid (2026-11-07, `qa-words`):
+
+- **Waiting for the network.** `waitUntil: "load"` or `"networkidle"` hung 30 s
+  in WebKit at load 6–10, on requests no check needs. Navigate with
+  `waitUntil: "commit"` and wait for the page's own readiness: `/words` sets
+  `data-ready` on its `[role="list"]` once it is measured and opened.
+- **`<url> due to access control checks.` as a page error.** WebKit says this
+  about a fetch the old page _starts_ while the next page loads, caught or not;
+  under load that window is seconds long. Fix the page (`lib/page-leaving.ts`:
+  start nothing from `beforeunload` on — `pagehide` is too late) rather than filtering
+  the message; a filter, if any, is for one URL and only while the suite's own
+  navigation is under way.
 
 The manual `mkdir /tmp/lianki-push.lock` from older agent briefs is no longer needed:
 drop it. It stays safe while some agents still use it, because the order only runs

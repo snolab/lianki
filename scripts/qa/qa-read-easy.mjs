@@ -4,8 +4,7 @@
 //
 //   QA_BASE=http://localhost:<port> bun scripts/qa/qa-read-easy.mjs [outDir]
 //
-// Against `wrangler dev` on the local D1 (qa:all -- --keep) with the flag
-// read.reader-v2 on there. A throwaway account and the public-domain fixture
+// Against `wrangler dev` on the local D1 (qa:all -- --keep). A throwaway account and the public-domain fixture
 // EPUB only:
 //
 // - dragged to Easy, the hint names how many words go Easy with it;
@@ -57,7 +56,7 @@ async function setup(ctx, tag, swipe) {
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
   await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2&swipe=${swipe}`, { waitUntil: "load" });
+  await page.goto(`/read/${id}?swipe=${swipe}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   await until(page, () => page.evaluate(() => !!document.querySelector(".lk-book [data-f]")));

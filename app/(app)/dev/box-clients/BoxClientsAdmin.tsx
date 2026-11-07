@@ -14,6 +14,10 @@ type Box = {
 const CHAT_WARNING =
   "警告：允许后，这个盒子上的任何脚本都能以你的身份使用 Li 聊天：读聊天记录、发消息、用麦克风转写、点问答卡（包括批准）。只有绑定到站点所有者账号的盒子能开。随时可以关闭，撤销盒子也会关闭。";
 
+/** What box:eval lets the box do (docs/box-oauth.md, "Code on the owner's box"). */
+const EVAL_WARNING =
+  "警告：允许后，这个盒子上的任何脚本都能通过聊天中枢在你的页面上执行代码：盒子页面会出现配对请求（仍需你在那个页面上点允许），配对后的发送端能在盒子页面上执行代码，页面错误也会发给代理。盒子的依赖、代理在盒子上运行的任何东西都算在内。只有已开聊天、绑定到站点所有者账号的盒子能开。随时可以关闭；关闭聊天或撤销盒子也会关闭它。";
+
 /** Owner-only and Chinese only, like the other /dev pages. */
 export default function BoxClientsAdmin() {
   const [boxes, setBoxes] = useState<Box[]>([]);
@@ -110,6 +114,29 @@ export default function BoxClientsAdmin() {
                     允许盒子上的聊天（box:chat）
                   </button>
                 )}
+                {b.scopes.includes("box:chat") &&
+                  (b.scopes.includes("box:eval") ? (
+                    <button
+                      className="btn btn-xs"
+                      type="button"
+                      data-box-eval-off
+                      onClick={() => void post({ op: "eval", clientId: b.clientId, on: false })}
+                    >
+                      关闭盒子上的代码执行
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-xs btn-error"
+                      type="button"
+                      data-box-eval-on
+                      onClick={() => {
+                        if (confirm(EVAL_WARNING))
+                          void post({ op: "eval", clientId: b.clientId, on: true });
+                      }}
+                    >
+                      允许盒子上的代码执行（box:eval）
+                    </button>
+                  ))}
                 <button
                   className="btn btn-xs"
                   type="button"
@@ -122,6 +149,11 @@ export default function BoxClientsAdmin() {
             {!b.revokedAt && b.scopes.includes("box:chat") && (
               <p className="text-warning mt-1" data-box-chat-warning>
                 {CHAT_WARNING}
+              </p>
+            )}
+            {!b.revokedAt && b.scopes.includes("box:eval") && (
+              <p className="text-error mt-1" data-box-eval-warning>
+                {EVAL_WARNING}
               </p>
             )}
           </li>

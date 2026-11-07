@@ -29,6 +29,7 @@ import {
 } from "@/lib/push-signed-out";
 import { type SessionDb, rateLimiter, sessionLive } from "@/lib/debug-session";
 import { TestD1Database } from "@/lib/d1/testDb";
+import { rpcStub } from "./support/rpc-stub";
 
 class FakeSocket implements Socket {
   sent: Record<string, unknown>[] = [];
@@ -135,7 +136,7 @@ function setup(o: { noMain?: boolean } = {}) {
   const main = fakeMain();
   const hub = new DebugHub(
     { acceptWebSocket: () => {}, getWebSockets: () => sockets, storage },
-    o.noMain ? undefined : { SESSIONS: main },
+    o.noMain ? undefined : { SESSIONS: rpcStub(main) },
     () => t,
   );
   const add = () => {

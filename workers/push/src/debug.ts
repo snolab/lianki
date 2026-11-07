@@ -139,6 +139,21 @@
  * friend's preview, and a grant approved without a session (the dev bridge,
  * an older main Worker) are never renewed.
  *
+ * Token chat (token-chat.ts; `lianki chat`). A third kind of socket, and
+ * POST calls, at /api/version/chat: an API token's say / ask / read / listen,
+ * only in its account's own thread (the owner's, or that user's), as an agent
+ * line labelled with the token's name. Never a page or a controller: no eval,
+ * pairing, grant, inbox, clips or answer. A token ask's `answered` goes to
+ * that thread's pages and the same lane's token sockets only.
+ *
+ * Eval tokens (lib/eval-token.ts; docs/secrets-and-auth.md, "Eval tokens"). A
+ * controller that connects with an API token holding `eval` (index.ts passes
+ * it as EVAL_TOKEN_HEADER, from Authorization only) is approved by the main
+ * Worker, not a tap: an eval session in the owner's thread until the token
+ * expires, on every owner page (a box's only with box:eval). The main Worker
+ * checks it again, and audits, before each eval; a refusal closes it, as does
+ * a revoke notice. Only its hash and tag are kept, never the token.
+ *
  * Voice-clip recording (packages/debug-chat/src/clips.ts). The switch is a
  * window session's, held here, never in an origin's storage. An owner page
  * knocks with `?ws=<its window's session id>&dev=<device id>` (and
@@ -246,7 +261,9 @@ import {
   jstDay,
   reserveInTokens,
 } from "../../../lib/partner-ai-config";
+import { CHAT_PATH, REVOKED_PATH, TokenChat, tokenAtt } from "./token-chat";
 import { BOX_HEADER, EMBED_HEADER } from "./auth";
+import { type ChatLogRequest, chatLogLine } from "../../../lib/chat-log-line";
 import {
   ETA_AGENT,
   ETA_FLAG,
@@ -337,6 +354,15 @@ type PageAtt = {
    * checked with the main Worker first; revoked, it is closed.
    */
   box?: string;
+  /**
+   * The owner's box with box:eval (docs/box-oauth.md, "Code on the owner's
+   * box"): then not `embed`, but an owner page in full, minus clips and
+   * renewal (it carries no session or device): it takes eval, can answer a
+   * pairing, sends page errors, and gets the whole state. Asked of the main
+   * Worker at connect, before each eval sent to it and before each such
+   * message it sends; gone, the page drops back to chat-only.
+   */
+  boxEval?: true;
 };
 /** A recording window session (`clips:<sid>`), see "Voice-clip recording" above. */
 type ClipsRec = {
@@ -391,6 +417,14 @@ type ControllerAtt = {
   node?: string;
   /** The node's assignee (`?agent=`): the agent's id on its lines. */
   assignee?: string;
+  /**
+   * An eval token's sender (lib/eval-token.ts; docs/secrets-and-auth.md, "Eval
+   * tokens"): the token's SHA-256 (never the secret), its tag and its account.
+   * Approved by the main Worker, not a tap; every eval it sends is asked again.
+   */
+  evalToken?: string;
+  tokenTag?: string;
+  tokenUser?: string;
 } & PairInfo;
 /**
  * A stored grant (`grant:<sha256 of its token>`). `scope` absent = "chat"
@@ -432,9 +466,25 @@ type SessionsRpc = {
   partnerReply?(req: PartnerRequest): Promise<unknown>;
   /** The chat inbox's agent ops (lib/inbox/agent.ts); an older main Worker has none. */
   inbox?(req: { op: string; id?: string }): Promise<unknown>;
+  /** An eval token's connect or use (lib/eval-token.ts); an older main Worker has none: refused. */
+  evalToken?(req: {
+    op: "connect" | "use";
+    token?: string;
+    tokenHash?: string;
+    len?: number;
+    target?: string;
+  }): Promise<unknown>;
+  /** `lianki chat`: an API token's check for one chat operation (lib/chat-token.ts). */
+  chatToken?(req: { op: string; token?: string; tokenHash?: string }): Promise<unknown>;
   /** May this box keep chatting (docs/box-oauth.md)? An older main Worker has none: no. */
   boxChat?(clientId: string): Promise<unknown>;
+  /** May this box hold the owner's page powers (docs/box-oauth.md)? An older main Worker has none: no. */
+  boxEval?(clientId: string): Promise<unknown>;
+  /** The account's chat history (lib/chat-log.ts); an older main Worker has none: not kept. */
+  chatLog?(req: ChatLogRequest): Promise<unknown>;
 };
+/** POST, from the main Worker over its binding: the owner thread's history into D1, once. */
+export const CHAT_BACKFILL_PATH = "/internal/chat-backfill";
 /** How long the hub trusts its read of PARTNER_AI_FLAG (as lib/flags-store.ts's FLAG_CACHE_MS). */
 const AI_FLAG_CACHE_MS = 30_000;
 /** The AI's spinner is re-sent this often while the model works (the page's BUSY_MS is 12 s). */
@@ -455,6 +505,8 @@ const dormantPair = (hash: string) => `${DORMANT}${hash.slice(0, 40)}`;
 type Rate = { start: number; count: number };
 /** The header a controller resumes its chat grant with. */
 const TOKEN_HEADER = "x-debug-token";
+/** An eval token (lib/eval-token.ts), set by index.ts from the sender's Authorization header only. */
+export const EVAL_TOKEN_HEADER = "x-debug-eval-token";
 /** Who a page is: set by index.ts from the main Worker's answer, never by the page. */
 export const IDENTITY_HEADERS = {
   user: "x-debug-user",
@@ -475,6 +527,16 @@ const BOX_CLOSED_PATH = "/internal/box-closed";
 export const BOX_CLOSED = 4401;
 /** What a box page may send (docs/box-oauth.md): the chat, and nothing of eval or recording. */
 const BOX_PAGE_TYPES = new Set(["chat", "page", "passage-end", "unmerge", "answer"]);
+/** What a box page with box:eval may send besides: pairing answers, results, page errors. */
+const BOX_EVAL_TYPES = new Set([
+  "allow",
+  "deny",
+  "revoke",
+  "end-page",
+  "result",
+  "chunk",
+  "page-error",
+]);
 type Att = PageAtt | ControllerAtt;
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
@@ -490,6 +552,29 @@ const send = (ws: Socket, msg: unknown) => {
     ws.send(JSON.stringify(msg));
   } catch {}
 };
+/** The main Worker's yes to an eval token (lib/eval-token.ts), or null for anything else. */
+function evalTokenOk(
+  v: unknown,
+): { id: string; tag: string; name: string; expiresAt: number; userId?: string } | null {
+  if (!v || typeof v !== "object") return null;
+  const r = v as Record<string, unknown>;
+  if (
+    r.ok !== true ||
+    typeof r.id !== "string" ||
+    !/^[0-9a-f]{64}$/.test(r.id) ||
+    typeof r.tag !== "string" ||
+    typeof r.name !== "string" ||
+    typeof r.expiresAt !== "number"
+  )
+    return null;
+  return {
+    id: r.id,
+    tag: r.tag,
+    name: r.name,
+    expiresAt: r.expiresAt,
+    ...(typeof r.userId === "string" ? { userId: r.userId } : {}),
+  };
+}
 /** A box page's label starts with "box ", so the agent and the page list tell it apart. */
 const boxLabel = (label: string, isBox: boolean) =>
   isBox ? cleanLabel(`box ${label}`, MAX_LABEL) : label;
@@ -574,12 +659,15 @@ export class DebugHub {
   /** When each grant's session was last checked (the per-grant rate limit). */
   private checkedAt = new Map<string, number>();
   /** The last read of PARTNER_AI_FLAG (AI_FLAG_CACHE_MS). */
-  private aiFlag?: { at: number; on: boolean };
+  /** `unsure`: the flag could not be read (an RPC error, "busy"); the AI cannot answer then. */
+  private aiFlag?: { at: number; on: boolean; unsure?: true };
   private mergeFlag?: { at: number; on: boolean };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
   private aiTurn = new Map<string, number>();
+  /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
+  private tokens: TokenChat;
 
   constructor(
     private ctx: DebugState,
@@ -589,6 +677,15 @@ export class DebugHub {
     // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
     this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
     this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    this.tokens = new TokenChat({
+      now: () => this.now(),
+      rpc: () => this.sessions,
+      sockets: () => this.ctx.getWebSockets(),
+      post: (m) => this.post(m),
+      history: (thread) => this.history(thread),
+      blocked: async (userId) =>
+        (await this.ctx.storage.get<FriendRecord>(friendKey(userId)))?.blocked === true,
+    });
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
     // hibernates, so it costs no wake-up.
@@ -689,7 +786,8 @@ export class DebugHub {
       type: "state",
       pending,
       sessions,
-      listeners: agents.length + ai,
+      // Lanes listening with an API token in this thread count too (token-chat.ts).
+      listeners: agents.length + ai + this.tokens.count(who),
       pages,
       ...(nodes.length ? { nodes } : {}),
     };
@@ -751,6 +849,57 @@ export class DebugHub {
       const route = routeTo(a.node, m.to);
       if (route) send(ws, route === "observed" ? { ...out, observed: true } : out);
     }
+    // API-token listeners: their own thread only (token-chat.ts).
+    await this.tokens.chat(m);
+    // Sent first: the account's history never holds the chat up.
+    const line = chatLogLine(m);
+    if (line) await this.chatLog({ op: "put", thread: m.thread, lines: [line] });
+  }
+
+  /**
+   * Keeps the account's history in step (lib/chat-log.ts, docs/chat-history.md)
+   * over SESSIONS.chatLog. Never fails the chat: no binding, "busy" or an error
+   * leaves the line in the hub as ever, and is logged.
+   */
+  private async chatLog(req: ChatLogRequest): Promise<unknown> {
+    // Called on the stub itself: `.bind` is sent as an RPC named "bind" and refused (#681).
+    if (!this.sessions?.chatLog) return undefined;
+    try {
+      const out = (await this.sessions.chatLog(req)) as
+        | { ok?: boolean; error?: string }
+        | undefined;
+      if (out && out.ok === false)
+        console.log(JSON.stringify({ msg: "debug.chat-log", op: req.op, error: out.error }));
+      return out;
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.chat-log", op: req.op, error: String(e).slice(0, 200) }),
+      );
+      return undefined;
+    }
+  }
+
+  /** A changed line (polish, merge, answer) in the account's history, where it is still kept. */
+  private async chatLogUpdate(thread: string, m: ChatMessage) {
+    const line = chatLogLine(m);
+    if (line) await this.chatLog({ op: "update", thread, lines: [line] });
+  }
+
+  /**
+   * POST /internal/chat-backfill: the owner thread's stored history into the
+   * owners' accounts, once each (lib/chat-log.ts records it: a second call
+   * writes nothing, so a line deleted since stays deleted). From the main
+   * Worker's history route over its PUSH binding; index.ts answers it on the
+   * binding's hostname alone.
+   */
+  private async backfillApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    if (!this.sessions?.chatLog)
+      return Response.json({ error: "no chat history binding" }, { status: 503 });
+    const lines = (await this.history(OWNER_THREAD)).map(chatLogLine).filter((l) => l !== null);
+    const out = await this.chatLog({ op: "backfill", thread: OWNER_THREAD, lines });
+    if (!out) return Response.json({ error: "chat history unreachable" }, { status: 502 });
+    return Response.json({ lines: lines.length, ...(out as object) });
   }
 
   /**
@@ -805,6 +954,7 @@ export class DebugHub {
       edited: { at: t, by, count: count + 1 },
     };
     await this.ctx.storage.put(key, next);
+    await this.chatLogUpdate(OWNER_THREAD, next);
     const out: EditedEvent = {
       type: "edited",
       id: line.id,
@@ -838,6 +988,7 @@ export class DebugHub {
       send(l, route === "observed" ? { ...out, observed: true } : out);
     }
     if (sender && !told) send(sender, out);
+    this.tokens.edited(out).catch(() => {});
   }
 
   /**
@@ -847,10 +998,9 @@ export class DebugHub {
   private async mergeOn(): Promise<boolean> {
     const t = this.now();
     if (this.mergeFlag && t - this.mergeFlag.at < AI_FLAG_CACHE_MS) return this.mergeFlag.on;
-    const ask = this.sessions?.flag?.bind(this.sessions);
     let on = false;
     try {
-      on = !!ask && (await ask(MERGE_FLAG)) === true;
+      on = (await this.flagValue(MERGE_FLAG)) === true;
     } catch {}
     this.mergeFlag = { at: t, on };
     return on;
@@ -890,6 +1040,7 @@ export class DebugHub {
     if (!v.ok) return refuse(v.reason);
     const next = mergeLines(prev, cur, cur.at);
     await this.ctx.storage.put(key, next);
+    await this.chatLogUpdate(OWNER_THREAD, next);
     console.log(
       JSON.stringify({
         msg: "debug.merge",
@@ -947,6 +1098,12 @@ export class DebugHub {
     for (let s = top - CHAT_HISTORY; s > top - CHAT_HISTORY - grow && s > 0; s--)
       await this.ctx.storage.delete(msgKey(OWNER_THREAD, s));
     console.log(JSON.stringify({ msg: "debug.unmerge", id, lines: lines.length }));
+    await this.chatLog({
+      op: "split",
+      thread: OWNER_THREAD,
+      id,
+      lines: lines.map(chatLogLine).filter((l) => l !== null),
+    });
     this.tellEdit(
       {
         type: "edited",
@@ -1060,6 +1217,7 @@ export class DebugHub {
       at: t,
     };
     await this.ctx.storage.put(key, { ...line, answer } satisfies ChatMessage);
+    await this.chatLogUpdate(page.thread, { ...line, answer });
     const labels: Record<string, string[]> = {};
     for (const q of (line.ask as Ask).questions)
       labels[q.id] = (choices[q.id] ?? []).map(
@@ -1070,6 +1228,8 @@ export class DebugHub {
       JSON.stringify({ msg: "debug.answer", thread: page.thread, page: page.label, askId }),
     );
     for (const { ws: p } of this.pages(page.thread)) send(p, out);
+    // An ask posted with an API token: its own lane alone hears the answer (token-chat.ts).
+    if (line.via === "token") return this.tokens.answered(page.thread, line, out);
     for (const { ws: l, a } of this.listeners())
       if (audience(a) === page.thread || page.thread === OWNER_THREAD || !a.forUser)
         send(l, page.thread === OWNER_THREAD ? out : { ...out, thread: page.thread });
@@ -1108,7 +1268,16 @@ export class DebugHub {
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
+    if (url.pathname === REVOKED_PATH) return this.tokensRevoked(req);
+    if (url.pathname === CHAT_PATH) {
+      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return this.tokens.http(req);
+      const pair = new WebSocketPair();
+      this.ctx.acceptWebSocket(pair[1]);
+      this.tokens.opened(pair[1]);
+      return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
+    }
     if (url.pathname === BOX_CLOSED_PATH) return this.boxClosedApi(req);
+    if (url.pathname === CHAT_BACKFILL_PATH) return this.backfillApi(req);
     const control = url.pathname.endsWith("/control");
     let who: Identity | undefined;
     if (!control) {
@@ -1145,7 +1314,13 @@ export class DebugHub {
     this.ctx.acceptWebSocket(ws);
     // Which box client a ticket socket is (index.ts verified its origin); only ever with a ticket.
     const box = embed ? (req.headers.get(BOX_HEADER) ?? undefined) : undefined;
-    if (control) await this.connectController(ws, url, req.headers.get(TOKEN_HEADER));
+    if (control)
+      await this.connectController(
+        ws,
+        url,
+        req.headers.get(TOKEN_HEADER),
+        req.headers.get(EVAL_TOKEN_HEADER),
+      );
     else await this.connectPage(ws, url, who, embed, box);
     // The browser fails a socket whose offered subprotocol is not selected.
     return new Response(null, {
@@ -1222,7 +1397,7 @@ export class DebugHub {
     if (!ping) return Response.json({ error: "expected {id, title, etaAt}" }, { status: 400 });
     let on: unknown = false;
     try {
-      on = await this.sessions?.flag?.(ETA_FLAG);
+      on = await this.flagValue(ETA_FLAG);
     } catch {
       return Response.json({ error: "flag unreadable" }, { status: 503 });
     }
@@ -1319,10 +1494,9 @@ export class DebugHub {
    * polish as before, so the deploy order never matters.
    */
   private async polishOff(): Promise<boolean> {
-    const ask = this.sessions?.flag?.bind(this.sessions);
-    if (!ask) return false;
+    if (!this.sessions?.flag) return false;
     try {
-      return (await ask(POLISH_OFF_FLAG)) !== false;
+      return (await this.flagValue(POLISH_OFF_FLAG)) !== false;
     } catch {
       return true;
     }
@@ -1474,6 +1648,8 @@ export class DebugHub {
     // depth: the page itself never connects from such a frame).
     const embed = ticketSocket || url.searchParams.get("frame") === "foreign";
     const isBox = ticketSocket && !!box;
+    // The owner's box with box:eval: an owner page (minus clips and renewal), asked now.
+    const boxEval = isBox && box ? (await this.boxEvalSays(box)) === "live" : false;
     // A box's lines say so, for the agent: "box /words …".
     const label = boxLabel(cleanLabel(url.searchParams.get("label"), MAX_LABEL), isBox);
     // The tab's own id (kept across reloads), so "this page" grants survive them.
@@ -1518,11 +1694,13 @@ export class DebugHub {
         at: this.now(),
         // A chat-only page (a ticket socket, or a page another site frames) never
         // carries the owner's session: no eval grant is ever bound to or renewed on it.
-        ...(embed
-          ? { embed: true as const, ...(isBox ? { box } : {}) }
-          : who?.owner && who.session
-            ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
-            : {}),
+        ...(boxEval
+          ? { box, boxEval: true as const }
+          : embed
+            ? { embed: true as const, ...(isBox ? { box } : {}) }
+            : who?.owner && who.session
+              ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
+              : {}),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
     // The page's own avatar (older pages ignore an unknown type).
@@ -1562,7 +1740,9 @@ export class DebugHub {
    * page to ask. `?scope=chat` asks for the 30-day chat grant; anything else
    * for eval (and chat) for EVAL_GRANT_MS. Allow grants exactly what was asked.
    */
-  async connectController(ws: Socket, url: URL, token?: string | null) {
+  async connectController(ws: Socket, url: URL, token?: string | null, evalToken?: string | null) {
+    // An eval token is the owner's own grant, made on his token page: no tap, no friend.
+    if (evalToken) return this.tokenController(ws, url, evalToken);
     const forKey = url.searchParams.get("for")?.trim();
     if (forKey) return this.pairForFriend(ws, url, forKey, token);
     if (token) return this.resume(ws, url, token);
@@ -1667,6 +1847,129 @@ export class DebugHub {
    * Reconnecting with a grant token: its scope (and an eval grant's pages)
    * again, no prompt, even with no page open — or 4498 if it is not live.
    */
+  /**
+   * A sender with an eval token (lib/eval-token.ts): the main Worker says
+   * whether the token is live, holds `eval`, and belongs to a site owner now
+   * (and audits the connect). Then it is an eval session on every owner page,
+   * until the token expires, with no tap; a box page only while that box holds
+   * box:eval (its own checks). Refused: closed (GRANT_INVALID); unsure: closed
+   * so the sender retries. Nothing is stored here but the token's hash.
+   */
+  private async tokenController(ws: Socket, url: URL, token: string) {
+    const rpc = this.sessions;
+    let said: unknown;
+    try {
+      said = rpc?.evalToken ? await rpc.evalToken({ op: "connect", token }) : undefined;
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.eval-token-failed", error: String(e).slice(0, 200) }),
+      );
+      send(ws, { type: "error", error: "eval token: could not check it now; try again" });
+      return close(ws, 4503, "eval token unsure");
+    }
+    const ok = evalTokenOk(said);
+    if (!ok) {
+      const why = (said as { error?: unknown } | undefined)?.error;
+      send(ws, { type: "error", error: `eval token refused (${String(why ?? "unavailable")})` });
+      console.log(JSON.stringify({ msg: "debug.eval-token-refused", why: String(why ?? "none") }));
+      return close(ws, 4498, "eval token refused");
+    }
+    const until = Math.min(ok.expiresAt, Number.MAX_SAFE_INTEGER);
+    if (!(until > this.now())) {
+      send(ws, { type: "error", error: "eval token refused (expired)" });
+      return close(ws, 4498, "eval token refused");
+    }
+    const a: ControllerAtt = {
+      role: "controller",
+      pair: crypto.randomUUID(),
+      code: shortCode(crypto.getRandomValues(new Uint8Array(2))),
+      label: cleanLabel(url.searchParams.get("label"), 80) || `token ${ok.name}`,
+      at: this.now(),
+      until,
+      scope: "eval",
+      evalToken: ok.id,
+      tokenTag: ok.tag,
+      ...(ok.userId ? { tokenUser: ok.userId } : {}),
+      ...(url.searchParams.get("beat") === "1" ? { beat: true } : {}),
+      ...whereOf(url),
+    };
+    ws.serializeAttachment(a);
+    send(ws, { type: "approved", until, scope: "eval", via: "token" });
+    send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
+    console.log(
+      JSON.stringify({ msg: "debug.eval-token", pair: a.pair, label: a.label, tag: ok.tag }),
+    );
+    this.broadcast();
+  }
+
+  /**
+   * Before each eval an eval-token sender sends: the main Worker checks the
+   * token again (revoked, expired, no longer an owner) and audits the use.
+   * Refused: the sender is closed. Unsure: this eval is not sent.
+   */
+  private async evalTokenStillOk(
+    ws: Socket,
+    c: ControllerAtt,
+    v: { code: string; target?: string },
+  ): Promise<boolean> {
+    const rpc = this.sessions;
+    let said: unknown;
+    try {
+      said = rpc?.evalToken
+        ? await rpc.evalToken({
+            op: "use",
+            tokenHash: c.evalToken,
+            len: v.code.length,
+            ...(v.target ? { target: v.target } : {}),
+          })
+        : undefined;
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.eval-token-failed", error: String(e).slice(0, 200) }),
+      );
+      send(ws, { type: "error", error: "not sent: the eval token could not be checked now" });
+      return false;
+    }
+    if (evalTokenOk(said)) return true;
+    const why = (said as { error?: unknown } | undefined)?.error;
+    if (why === "rate") {
+      send(ws, { type: "error", error: "not sent: this eval token is over its rate limit" });
+      return false;
+    }
+    send(ws, { type: "revoked", error: `eval token refused (${String(why ?? "unavailable")})` });
+    close(ws, 4498, "eval token refused");
+    this.broadcast(ws);
+    return false;
+  }
+
+  /**
+   * POST /internal/chat-tokens/revoked {tags?, userId?} (lib/push-chat-tokens.ts):
+   * those tokens' eval senders close here, then their chat sockets (token-chat.ts).
+   */
+  private async tokensRevoked(req: Request): Promise<Response> {
+    const text = req.method === "POST" ? await req.text() : "";
+    let body: { tags?: unknown; userId?: unknown } = {};
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {}
+    const tags = Array.isArray(body.tags) ? body.tags : [];
+    const user = isUserId(body.userId) ? body.userId : undefined;
+    let n = 0;
+    for (const { ws, a } of this.sockets("controller"))
+      if (a.tokenTag && (tags.includes(a.tokenTag) || (user && a.tokenUser === user))) {
+        send(ws, { type: "revoked" });
+        close(ws, 4498, "eval token revoked");
+        n++;
+      }
+    if (n) {
+      console.log(JSON.stringify({ msg: "debug.eval-token-revoked", closed: n }));
+      this.broadcast();
+    }
+    return this.tokens.revoked(
+      new Request(req.url, { method: req.method, headers: req.headers, body: text || undefined }),
+    );
+  }
+
   private async resume(ws: Socket, url: URL, token: string) {
     const live = await this.liveGrant(token);
     if (!live) {
@@ -1837,6 +2140,9 @@ export class DebugHub {
     if (ws.readyState !== undefined && ws.readyState > 1) return;
     // The auto-response normally answers it before the hub sees it.
     if (raw === KEEPALIVE.ping) return ws.send(KEEPALIVE.pong);
+    // An API-token socket: never a page or a controller (token-chat.ts).
+    const ta = tokenAtt(ws);
+    if (ta) return this.tokens.message(ws, ta, raw);
     const a = att(ws);
     if (a?.role === "page") return this.fromPage(ws, a, raw);
     if (a?.role !== "controller") return;
@@ -1858,9 +2164,15 @@ export class DebugHub {
     // while the main Worker still says its box:chat is live.
     if (page.box) {
       const em = parsePageMessage(raw);
-      if (!em || !BOX_PAGE_TYPES.has(em.type)) return;
-      return this.boxStillChats(ws, page).then((ok) =>
-        ok ? this.fromPageChecked(ws, page, raw) : undefined,
+      if (!em) return;
+      if (BOX_PAGE_TYPES.has(em.type))
+        return this.boxStillChats(ws, page).then((ok) =>
+          ok ? this.fromPageChecked(ws, page, raw) : undefined,
+        );
+      // box:eval: pairing answers, results and page errors, each checked first.
+      if (!page.boxEval || !BOX_EVAL_TYPES.has(em.type)) return;
+      return this.boxStillEvals(ws, page).then((ok) =>
+        ok ? this.fromPageChecked(ws, att(ws) as PageAtt, raw) : undefined,
       );
     }
     if (page.embed) {
@@ -1901,13 +2213,68 @@ export class DebugHub {
     return false;
   }
 
+  /** The main Worker's word on a box's page powers: "live", "gone", or "unsure". */
+  private async boxEvalSays(cid: string): Promise<"live" | "gone" | "unsure"> {
+    // Called on the stub itself, as boxChat (a .bind-ed RPC method is refused).
+    const rpc = this.sessions;
+    try {
+      if (!rpc?.boxEval) return "gone";
+      const said = await rpc.boxEval(cid);
+      if (said === "live" || said === "gone") return said;
+      console.log(JSON.stringify({ msg: "debug.box-eval-check", said: String(said) }));
+      return "unsure";
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.box-eval-check-failed", error: String(e).slice(0, 200) }),
+      );
+      return "unsure";
+    }
+  }
+
   /**
-   * POST /internal/box-closed {client}: that box lost box:chat. Its chat
-   * sockets close now. Reached only over the main Worker's PUSH binding.
+   * Asked before each eval-power message a box page sends (a pairing answer,
+   * a result, a page error): "live", or the box's pages drop back to
+   * chat-only ("gone": box:eval removed, or anything box:chat needs). Unsure:
+   * this message is dropped; the page keeps its powers.
+   */
+  private async boxStillEvals(ws: Socket, page: PageAtt): Promise<boolean> {
+    if (!page.box) return false;
+    const said = await this.boxEvalSays(page.box);
+    if (said === "live") return true;
+    if (said === "gone") this.boxEvalEnded(page.box);
+    else send(ws, { type: "error", error: "not sent: try again in a moment" });
+    return false;
+  }
+
+  /**
+   * A box lost box:eval: its pages become chat-only embed pages again (no
+   * eval, no pairing, minimal state). Its chat goes on while box:chat holds.
+   */
+  private boxEvalEnded(cid: string): number {
+    let n = 0;
+    for (const { ws, a } of this.sockets("page")) {
+      if (a.box !== cid || !a.boxEval) continue;
+      const { boxEval: _gone, ...rest } = a;
+      const next: PageAtt = { ...rest, embed: true };
+      ws.serializeAttachment(next);
+      send(ws, pageState(next, this.state(next.thread)));
+      n++;
+    }
+    if (n) {
+      console.log(JSON.stringify({ msg: "debug.box-eval-ended", pages: n }));
+      this.broadcast();
+    }
+    return n;
+  }
+
+  /**
+   * POST /internal/box-closed {client, scope?}: that box lost box:chat. Its
+   * chat sockets close now. With `scope: "eval"` it lost box:eval only: its
+   * pages drop back to chat-only. Reached only over the main Worker's PUSH binding.
    */
   private async boxClosedApi(req: Request): Promise<Response> {
     if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
-    let body: { client?: unknown };
+    let body: { client?: unknown; scope?: unknown };
     try {
       body = (await req.json()) as typeof body;
     } catch {
@@ -1916,6 +2283,7 @@ export class DebugHub {
     const client = body.client;
     if (typeof client !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(client))
       return Response.json({ error: "expected {client}" }, { status: 400 });
+    if (body.scope === "eval") return Response.json({ ok: true, ended: this.boxEvalEnded(client) });
     let closed = 0;
     for (const { ws, a } of this.sockets("page"))
       if (a.box === client) {
@@ -2141,7 +2509,11 @@ export class DebugHub {
       ...(context ? { context } : {}),
     });
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
-    if (await this.aiOn()) await this.aiReply(page, email, t, context, scene, id);
+    const ai = await this.aiState();
+    if (ai === "on") await this.aiReply(page, email, t, context, scene, id);
+    // The AI could not even be asked: the page says so, rather than leave the line unanswered.
+    else if (ai === "unsure")
+      for (const { ws } of this.pages(page.thread)) send(ws, { type: "ai-failed" });
   }
 
   /**
@@ -2160,15 +2532,49 @@ export class DebugHub {
    * it was (the lanes answer).
    */
   private async aiOn(): Promise<boolean> {
+    return (await this.aiState()) === "on";
+  }
+
+  /**
+   * aiOn, telling "off" from "unsure": the flag could not be read (an RPC
+   * error, already logged as debug.rpc-failed, or "busy"). A friend's line
+   * then gets ai-failed ("No reply this time…") instead of silence.
+   */
+  private async aiState(): Promise<"on" | "off" | "unsure"> {
     const t = this.now();
-    if (this.aiFlag && t - this.aiFlag.at < AI_FLAG_CACHE_MS) return this.aiFlag.on;
-    const ask = this.sessions?.flag?.bind(this.sessions);
-    let on = false;
+    const cached = this.aiFlag;
+    if (cached && t - cached.at < AI_FLAG_CACHE_MS)
+      return cached.on ? "on" : cached.unsure ? "unsure" : "off";
+    let said: unknown = false;
+    let unsure = false;
     try {
-      on = !!ask && !!this.sessions?.partnerReply && (await ask(PARTNER_AI_FLAG)) === true;
-    } catch {}
-    this.aiFlag = { at: t, on };
-    return on;
+      if (this.sessions?.partnerReply) said = await this.flagValue(PARTNER_AI_FLAG);
+    } catch {
+      unsure = true;
+    }
+    if (said === "busy") unsure = true;
+    const on = !unsure && said === true;
+    this.aiFlag = { at: t, on, ...(unsure ? { unsure: true as const } : {}) };
+    return on ? "on" : unsure ? "unsure" : "off";
+  }
+
+  /**
+   * A flag's value from the main Worker's DebugSessions.flag; undefined with
+   * no binding. Called on the stub itself, never through `.bind(stub)`: workerd
+   * sends that as a call of a method named "bind", which the main Worker
+   * refuses ("The RPC receiver does not implement the method") — every flag
+   * read made that way failed in production from #482 until #681.
+   * A failure is logged as debug.rpc-failed and thrown.
+   */
+  private async flagValue(key: string): Promise<unknown> {
+    const rpc = this.sessions;
+    if (!rpc?.flag) return undefined;
+    try {
+      return await rpc.flag(key);
+    } catch (e) {
+      rpcFailed("flag", e, key);
+      throw e;
+    }
   }
 
   /**
@@ -2188,8 +2594,8 @@ export class DebugHub {
     msgId?: string,
   ) {
     const thread = page.thread;
-    const ask = this.sessions?.partnerReply?.bind(this.sessions);
-    if (thread === OWNER_THREAD || !isUserId(thread) || !ask) return;
+    const rpc = this.sessions;
+    if (thread === OWNER_THREAD || !isUserId(thread) || !rpc?.partnerReply) return;
     const t = this.now();
     const day = jstDay(t);
     const userKey = aiUserKey(day, thread);
@@ -2255,13 +2661,15 @@ export class DebugHub {
     };
     let res: PartnerResult;
     try {
-      res = ((await ask(req)) ?? {
+      // On the stub itself: see flagValue.
+      res = ((await rpc.partnerReply(req)) ?? {
         ok: false,
         error: "model-failed",
         billed: "unknown",
       }) as PartnerResult;
-    } catch {
+    } catch (e) {
       // The RPC failed: the model may have run. Keep the reservation.
+      rpcFailed("partnerReply", e);
       res = { ok: false, error: "model-failed", billed: "unknown" };
     } finally {
       clearInterval(timer);
@@ -2542,7 +2950,8 @@ export class DebugHub {
     let a: Record<string, unknown>;
     try {
       a = ((await sessions.inbox(req)) ?? {}) as Record<string, unknown>;
-    } catch {
+    } catch (e) {
+      rpcFailed("inbox", e, req.op);
       return send(ws, { type: "error", error: "the inbox did not answer" });
     }
     console.log(JSON.stringify({ msg: "debug.inbox", op: req.op, ok: a.ok === true }));
@@ -2676,6 +3085,21 @@ export class DebugHub {
     }
     if (c.scope === "chat")
       return send(ws, { type: "error", error: "this session is chat-only: it cannot eval" });
+    const ev = m.value;
+    // An eval token: the main Worker checks it again, and audits this use, first.
+    if (c.evalToken)
+      return this.evalTokenStillOk(ws, c, ev).then((ok) =>
+        ok ? this.dispatchEval(ws, att(ws) as ControllerAtt, ev) : undefined,
+      );
+    return this.dispatchEval(ws, c, ev);
+  }
+
+  /** One eval to the pages a sender reaches (and the box's, each asked first). */
+  private dispatchEval(
+    ws: Socket,
+    c: ControllerAtt,
+    ev: { code: string; target?: string },
+  ): void | Promise<void> {
     const id = crypto.randomUUID().slice(0, 8);
     const labels: string[] = [];
     // Only the pages of the audience that approved this pairing — or the ones it named.
@@ -2688,11 +3112,35 @@ export class DebugHub {
           ? "the page you were authorized for is not connected now; this socket closes if it stays away 5 min (the grant stays: reconnect with its token)"
           : "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
       });
-    for (const p of reach) {
-      if (p.a.embed || !matchesTarget(p.a.label, m.value.target)) continue;
-      send(p.ws, { type: "eval", id, code: m.value.code, to: c.pair });
-      labels.push(p.a.label);
-    }
+    const targets = reach.filter((p) => !p.a.embed && matchesTarget(p.a.label, ev.target));
+    const deliver = (to: typeof targets) => {
+      for (const p of to) {
+        send(p.ws, { type: "eval", id, code: ev.code, to: c.pair });
+        labels.push(p.a.label);
+      }
+      this.evalSent(ws, c, ev, id, labels);
+    };
+    // The owner's box (box:eval): asked of the main Worker before each eval it is sent.
+    const boxes = [...new Set(targets.map((p) => p.a.box).filter((b): b is string => !!b))];
+    if (!boxes.length) return deliver(targets);
+    return Promise.all(boxes.map(async (b) => [b, await this.boxEvalSays(b)] as const)).then(
+      (said) => {
+        const live = new Set(said.filter(([, s]) => s === "live").map(([b]) => b));
+        for (const [b, s] of said) if (s === "gone") this.boxEvalEnded(b);
+        deliver(targets.filter((p) => !p.a.box || live.has(p.a.box)));
+      },
+    );
+  }
+
+  /** The agent hears where an eval went (and the log says so). */
+  private evalSent(
+    ws: Socket,
+    c: ControllerAtt,
+    v: { code: string; target?: string },
+    id: string,
+    labels: string[],
+  ) {
+    const m = { value: v };
     console.log(
       JSON.stringify({
         msg: "debug.eval",
@@ -3053,6 +3501,22 @@ export class DebugHub {
   webSocketError(ws: Socket): void | Promise<void> {
     return this.webSocketClose(ws, 1011);
   }
+}
+
+/**
+ * A call to the main Worker's DebugSessions failed: an error event in the
+ * Worker's logs (`wrangler tail lianki-push`), never silence. The method and a
+ * flag key or op only: no user, no text.
+ */
+function rpcFailed(method: string, e: unknown, what?: string) {
+  console.error(
+    JSON.stringify({
+      msg: "debug.rpc-failed",
+      method,
+      ...(what ? { what: what.slice(0, 64) } : {}),
+      error: String(e).slice(0, 200),
+    }),
+  );
 }
 
 /** A controller's {type:"inbox", op, id?}, or null (any other message). Bounded before the RPC. */

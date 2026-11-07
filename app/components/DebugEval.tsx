@@ -335,6 +335,8 @@ export function DebugEval({
 
     /** A box chat ticket is being fetched (docs/box-oauth.md, "Chat on the owner's box"). */
     let boxPending = false;
+    /** This effect was cleaned up (unmount, or React running it twice in dev): a late ticket opens nothing. */
+    let disposed = false;
     const connect = () => {
       if (ws || boxPending) return;
       // On the owner's box: lianki.com's hub with a ticket (box:chat), never a cookie,
@@ -346,7 +348,8 @@ export function DebugEval({
         boxPending = true;
         void hub.ticket().then((ticket) => {
           boxPending = false;
-          if (ticket && !ws && wanted()) openSock(hub.url, [PARTNER_SUBPROTOCOL, ticket]);
+          if (ticket && !ws && !disposed && wanted())
+            openSock(hub.url, [PARTNER_SUBPROTOCOL, ticket]);
         });
         return;
       }
@@ -644,6 +647,7 @@ export function DebugEval({
       window.removeEventListener("storage", onStorage);
       clearTimeout(hideToast);
       clearTimeout(beatTimer.current);
+      disposed = true;
       disconnect();
       unhookErrors();
     };
@@ -864,6 +868,8 @@ export function DebugEval({
           treeRepo="snolab/lianki"
           // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
           files={owner && !isFriend ? ownerFiles : undefined}
+          // The account's chat history (docs/chat-history.md): every signed-in user's own.
+          onHistory={() => router.push("/chat/history")}
           agentAvatar={AGENT_AVATAR}
           viewer={viewer}
           fullScreen={fullScreen}
