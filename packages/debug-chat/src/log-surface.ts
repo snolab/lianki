@@ -25,22 +25,15 @@ export function logSurface({
   expanded,
   fade,
   touch = false,
-  reserve = 0,
 }: {
   expanded: boolean;
   fade: boolean;
   /** The input is in use or the mic on: the log takes the touch (LOG_TOUCH). */
   touch?: boolean;
-  /** Px the log's bottom gives to a control's row: at rest it grows by them, so 3 lines still show. */
-  reserve?: number;
 }) {
   const mask = expanded ? FADE : FADE_SHORT;
-  const style = {
-    ...(fade ? { maskImage: mask, WebkitMaskImage: mask } : {}),
-    ...(reserve && !expanded ? { maxHeight: `calc(4.4rem + ${reserve}px)` } : {}),
-  };
   return {
-    style: Object.keys(style).length ? style : undefined,
+    style: fade ? { maskImage: mask, WebkitMaskImage: mask } : undefined,
     className: `min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${expanded ? "max-h-[30vh]" : "max-h-[4.4rem]"}${touch ? ` ${LOG_TOUCH}` : ""}`,
   };
 }

@@ -107,10 +107,14 @@ import { LINE_SELECTABLE } from "./copy-line";
 import { type Held, logEngaged, typingLook } from "./log-engage";
 import { wireLogHold } from "./log-hold-dom";
 import {
-  JUMP_ROW_PX,
+  JUMP_END_PX,
+  JUMP_GAP_PX,
+  JUMP_H_PX,
   asksAbove,
   jumpLabel,
+  jumpRoom,
   jumpTop,
+  jumpWidth,
   nearestAbove,
   openAskIds,
 } from "./ask-above";
@@ -1937,6 +1941,9 @@ export function DebugChat({
     const mine = added > 0 && messages.at(-1)?.from !== "agent";
     if (atEnd.current || mine) {
       log.current?.scrollTo({ top: log.current.scrollHeight });
+      // Its scroll event can land after the newest run grew (the arrow's
+      // room, a card): this pin's own, not him leaving the end.
+      if (log.current) pinnedAt.current = log.current.scrollTop;
       atEnd.current = true;
       setScrolledUp(false);
       setBelow(0);
@@ -3746,14 +3753,12 @@ export function DebugChat({
             expanded: typingNow || micActive || (compactPref && expanded),
             fade,
             touch: engaged,
-            reserve: askJumpShown ? JUMP_ROW_PX : 0,
           }),
         )}
       >
       <ol
         data-testid="debug-chat-log"
         className="m-0 list-none space-y-0.5 p-0"
-        style={askJumpShown ? { paddingBottom: JUMP_ROW_PX } : undefined}
       >
         {messages.length === 0 && (
           <li className="text-gray-500">{t.hint}</li>
@@ -3767,24 +3772,30 @@ export function DebugChat({
           (time), polish mark, waiting tag, so the hub's history, the polish
           edit (one line id), read-aloud and the anchoring are unchanged.
         */}
-        {runsOf(starts).map((run) => {
+        {runsOf(starts).map((run, r, runs) => {
           const i0 = run[0]!;
           const m0 = messages[i0]!;
           const who = whos[i0]!;
           // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m0);
+          // The up-arrow floats at the log's end: the newest run keeps room
+          // beside it (ask-above.ts jumpRoom), never an empty row under it.
+          const room = askJumpShown && r === runs.length - 1 ? jumpRoom(asksUp.length) : null;
           return (
             <li
               key={m0.id}
               data-testid="debug-chat-run"
               data-from={m0.from}
               data-node={node?.node}
+              data-jump-room={room ? room.end : undefined}
               className="flex items-start gap-1.5 leading-snug"
-              style={
-                node
-                  ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 }
-                  : undefined
-              }
+              style={{
+                ...(node ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 } : {}),
+                // A short run sits at the bottom of its room: nothing blank under it.
+                ...(room
+                  ? { paddingInlineEnd: room.end, minHeight: room.minHeight, alignItems: "flex-end" }
+                  : {}),
+              }}
             >
               <Avatar
                 src={who.src}
@@ -4085,8 +4096,8 @@ export function DebugChat({
           // Left of the scroll-down button's place, whether or not it shows: a
           // jump brings that button up, and a second tap here must not land on it.
           <div
-            className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end"
-            style={{ paddingInlineEnd: 32 }}
+            className="pointer-events-none absolute inset-x-0 bottom-full flex justify-end"
+            style={{ paddingInlineEnd: JUMP_END_PX, marginBottom: JUMP_GAP_PX }}
           >
             <button
               type="button"
@@ -4100,8 +4111,8 @@ export function DebugChat({
               style={{
                 background: "oklch(0.5 0.17 255)",
                 color: "oklch(0.98 0 0)",
-                height: 32,
-                minWidth: 40,
+                height: JUMP_H_PX,
+                width: jumpWidth(asksUp.length),
                 padding: "0 10px",
                 gap: 4,
                 fontSize: 13,

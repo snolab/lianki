@@ -1,11 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import type { Ask, AskAnswer } from "@lianki/debug-chat/ask";
 import {
+  JUMP_END_PX,
+  JUMP_GAP_PX,
+  JUMP_H_PX,
   JUMP_INSET_PX,
   asksAbove,
   isAbove,
   jumpLabel,
+  jumpRoom,
   jumpTop,
+  jumpWidth,
   nearestAbove,
   openAskIds,
 } from "@lianki/debug-chat/ask-above";
@@ -102,5 +107,23 @@ describe("jumpTop", () => {
 describe("jumpLabel", () => {
   it("fills in the count", () => {
     expect(jumpLabel("Above: {count}", 3)).toBe("Above: 3");
+  });
+});
+
+// Owner, 2026-11-07 18:10 JST: "滚动不在正确的位置，它的下面半个窗口是空的": the
+// arrow's empty row under the newest line. Room beside the newest run instead.
+describe("jumpRoom", () => {
+  it("is room at the end side, never a row under the last line", () => {
+    const r = jumpRoom(1);
+    expect(Object.keys(r).sort()).toEqual(["end", "minHeight"]);
+    expect(r.minHeight).toBe(JUMP_H_PX + JUMP_GAP_PX);
+  });
+  it("clears the button and its slot, whatever the count", () => {
+    for (const n of [1, 2, 9, 10, 99])
+      expect(jumpRoom(n).end).toBeGreaterThan(JUMP_END_PX + jumpWidth(n));
+  });
+  it("is wider with a count beside the arrow", () => {
+    expect(jumpWidth(1)).toBeLessThan(jumpWidth(3));
+    expect(jumpWidth(3)).toBeLessThan(jumpWidth(12));
   });
 });
