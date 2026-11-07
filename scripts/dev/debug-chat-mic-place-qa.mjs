@@ -3,17 +3,21 @@
  * The mic keeps its place on the screen (owner, 2026-11-07 19:27 JST:
  * "我们把麦克风跟另外几个按钮排到一起吧……这样折叠的时候，它位置就不会变").
  * The mic sits in the bar's cluster, [mark | + | mic | input] open and
- * [mark | Li | mic] folded (bar-geometry.ts), and full screen keeps the bar at
- * the panel's span (full-screen.ts fullBarSpan). This measures the mic's rect
+ * [mark | Li | mic] folded (bar-geometry.ts). This measures the mic's rect
  * (getBoundingClientRect) in every state and fails on a move over 0.5 px:
  *
- *   at rest (open, not typing) → open (typing) → full screen → back → folded
- *   (a tap on the mark) → open again (the pill's Li) → full screen from a
+ *   at rest (open, not typing) → open (typing) → back from full screen →
+ *   folded (a tap on the mark) → open again (the pill's Li) → back to a
  *   panel dragged sideways
  *
- * and checks the cluster's touch areas (44 px), that the up-arrow and
- * scroll-down cover none of the mic, and the mic's order in the bar. Both
- * engines, light and dark, 414×848 and 320×568, on the local /harness with the
+ * Full screen (owner, 2026-11-07 20:30 JST) spans the bar across the screen
+ * less 8 px gutters, or across the sidebar wider than 35em (full-screen.ts
+ * fullBarSpan): there the mic keeps its height and its offset in the bar, and
+ * moves sideways to where the bar starts (reported per size), the same from a
+ * dragged panel. It also checks the cluster's touch areas (44 px), the grip,
+ * that the up-arrow and scroll-down cover none of the mic, and the mic's order
+ * in the bar. Both engines, light and dark, 414×848, 390×844, 320×568 and
+ * 1280×800, on the local /harness with the
  * hot widget (as debug-chat-bar-qa.mjs). Browsers are muted (qa/silent.mjs);
  * getUserMedia is refused: nothing is recorded or played.
  *
@@ -174,6 +178,21 @@ async function run(engine, name, scheme, vp) {
       JSON.stringify(bar.hits),
     );
 
+    // The grip (owner, 2026-11-07 20:34 JST): six dots, grab, labelled.
+    const grip = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="debug-chat-pill-min"]');
+      return {
+        dots: el.querySelectorAll('[data-testid="debug-chat-grip"] circle').length,
+        cursor: getComputedStyle(el).cursor,
+        label: el.getAttribute("aria-label") ?? "",
+      };
+    });
+    check(
+      grip.dots === 6 && grip.cursor === "grab" && grip.label.length > 0,
+      `${tag} the grip: six dots, cursor grab, labelled`,
+      JSON.stringify(grip),
+    );
+
     // Open: typing.
     await page.locator(sel("debug-chat-input")).focus();
     await settle();
@@ -232,19 +251,39 @@ async function run(engine, name, scheme, vp) {
     });
     await settle();
 
-    // Full screen, and back.
+    // Full screen, and back. The bar spans the screen less the panel's 8 px
+    // gutters (a phone) or the sidebar (wider than 35em), the cluster at its
+    // left: the mic keeps its offset in the bar and its height; it moves
+    // sideways by where the bar now starts (0 px at 320, where the panel
+    // already spans the screen).
+    const barRest = await page.locator(sel("debug-chat-pill")).boundingBox();
     await page.locator(sel("debug-chat-fullscreen")).click();
     await settle();
     check((await isFull()) === 1, `${tag} full screen is on`);
-    same(rest, await mic(), "full screen");
+    const sec = await page.locator(SECTION).boundingBox();
+    const sidebar = vp.width >= 35 * 16;
+    const barStart = sidebar ? sec.x + 8 + 1 : 8; // the sidebar's 1 px border and 0.5rem padding
+    const fullMic = await mic();
+    const want = { ...rest, x: barStart + (rest.x - barRest.x) };
+    same(want, fullMic, `full screen (${sidebar ? "sidebar" : "phone"})`);
+    const fullBar = await page.locator(sel("debug-chat-pill")).boundingBox();
     const col = await page.locator(sel("debug-chat-column")).boundingBox();
     check(
-      col.width >= vp.width - 2 * 12 - 1,
+      sidebar
+        ? Math.abs(fullBar.width - col.width) <= 1
+        : Math.abs(fullBar.width - (vp.width - 16)) <= 0.5,
+      `${tag} full screen: the bar spans ${sidebar ? "the sidebar, as the log" : "the screen less 8 px gutters"} (${r1(fullBar.width)} px)`,
+      fmt(fullBar),
+    );
+    check(
+      col.width >= (sidebar ? fullBar.width - 1 : vp.width - 2 * 12 - 1),
       `${tag} full screen: the log still takes the width`,
       fmt(col),
     );
     const side = await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth);
     check(side, `${tag} full screen: no horizontal scroll`);
+    table.at(-1).full = fmt(fullMic);
+    table.at(-1).moved = r1(fullMic.x - rest.x);
     await shot("4-full");
     await page.locator(sel("debug-chat-fullscreen")).click();
     await settle();
@@ -264,7 +303,8 @@ async function run(engine, name, scheme, vp) {
     check((await fold()) === "open", `${tag} the Li opens it again`);
     same(rest, await mic(), "open again");
 
-    // A panel dragged sideways: full screen keeps its span too.
+    // A panel dragged sideways: full screen puts the bar at the same place as
+    // from a resting panel (the bar spans the screen; the drag is kept for the way back).
     // (At 320 px the panel has only its 8 px inset to move into.)
     const dragX = vp.width > 400 ? -40 : -6;
     await load({ x: dragX, y: 0 });
@@ -275,7 +315,12 @@ async function run(engine, name, scheme, vp) {
     );
     await page.locator(sel("debug-chat-fullscreen")).click();
     await settle();
-    same(left, await mic(), "full screen from a dragged panel");
+    same(fullMic, await mic(), "full screen from a dragged panel");
+    await page.locator(sel("debug-chat-fullscreen")).click();
+    await settle();
+    same(left, await mic(), "back to the dragged panel");
+    await page.locator(sel("debug-chat-fullscreen")).click();
+    await settle();
     await page.locator(sel("debug-chat-fullscreen")).click();
     await settle();
     await ctx.close();
@@ -292,15 +337,20 @@ try {
     for (const scheme of ["light", "dark"])
       for (const vp of [
         { width: 414, height: 848 },
+        { width: 390, height: 844 },
         { width: 320, height: 568 },
+        { width: 1280, height: 800 },
       ])
         await run(engine, name, scheme, vp);
 } finally {
   server.kill();
 }
 
-console.log("\nthe mic at rest (x,y w×h), the same in every state that passed:");
-for (const t of table) console.log(`  ${t.at}: ${t.rest}`);
+console.log(
+  "\nthe mic (x,y w×h): at rest, the same typing, scrolled, folded and open again;" +
+    " in full screen, and how far it moved sideways entering it:",
+);
+for (const t of table) console.log(`  ${t.at}: rest ${t.rest} · full ${t.full} · Δx ${t.moved}`);
 if (failures.length) {
   console.error(`\n${failures.length} check(s) failed`);
   process.exit(1);

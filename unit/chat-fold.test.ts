@@ -20,10 +20,10 @@ const at = (fold: FoldState["fold"], edge: FoldState["edge"] = "right"): FoldSta
 });
 
 describe("foldNext", () => {
-  it("the mark folds one step at a time: open → pill → tucked", () => {
+  it("the mark toggles open ⇄ pill: the third level (tucked) is removed", () => {
     expect(foldNext(at("open"), { type: "mark" })).toEqual(at("pill"));
-    expect(foldNext(at("pill"), { type: "mark" })).toEqual(at("tucked"));
-    expect(foldNext(at("pill", "left"), { type: "mark" })).toEqual(at("tucked", "left"));
+    expect(foldNext(at("pill"), { type: "mark" })).toEqual(at("open"));
+    expect(foldNext(at("pill", "left"), { type: "mark" })).toEqual(at("open", "left"));
   });
   it("the handle brings the pill back, never the full chat", () => {
     expect(foldNext(at("tucked"), { type: "handle" })).toEqual(at("pill"));
@@ -35,9 +35,9 @@ describe("foldNext", () => {
     expect(foldNext(at("open"), { type: "minimize" })).toEqual(at("pill"));
     expect(foldNext(at("tucked"), { type: "minimize" })).toEqual(at("tucked"));
   });
-  it("a pill pushed against an edge tucks into that edge", () => {
+  it("a pill pushed against an edge no longer tucks: it stays a pill at that edge", () => {
     expect(foldNext(at("pill"), { type: "dropped", nearest: "left", against: "left" })).toEqual(
-      at("tucked", "left"),
+      at("pill", "left"),
     );
   });
   it("any other drop only follows the nearest edge (mirroring on the left)", () => {
