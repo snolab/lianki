@@ -49,6 +49,7 @@ re-exports for the hub and the sender.
 | `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
 | `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
 | `compact-view.ts`                                        | compact mode: last message only, when to fold again      |
+| `full-screen.ts`                                         | full screen: who gets it, the box above the keyboard     |
 | `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
 | `typing-glass.ts`                                        | the chat box's own frost while typing                    |
 | `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
@@ -779,6 +780,62 @@ number. Each tap goes to the nearest above and it is gone when none is. Rules:
 Checks: `bun scripts/dev/debug-chat-ask-jump-qa.mjs --shots <dir>` (silent browsers,
 Chromium and WebKit, 390×844, light and dark); the rules in
 `unit/chat-ask-above.test.ts`.
+
+## Full screen
+
+Owner, 2026-11-07 (speech, confirmed by repeating it): "给我的伙伴全屏". The open
+chat can fill the whole app, on the iPhone home-screen app and on a desktop.
+Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
+`unit/chat-fullscreen.test.ts`.
+
+- **Who.** Flag **`partner.fullscreen`** (`/dev/flags`, default off): on, every
+  chat user gets it; off, only the owner's pages (`flag || owner`, the hub's
+  verified `owner`). The root layout reads the flag once per request and passes
+  it down (`OwnerBoots` → `DebugEval` → the widget's `fullScreen` prop). Never
+  on another site (`embedded`: the userscript's widget, `/embed/partner`).
+- **The control.** A round button with its own SVG (four corners out; in full
+  screen, four corners in), 32 px over the open panel's top corner, 40 px in
+  full screen at the top corner under the notch; both have the 40 px tap area
+  (`tap-40`). Labels `fullScreen` / `fullScreenExit` (learning-partner.content.ts,
+  16 locales with context; `ui-strings.ts` en/zh/ja for hosts with no strings).
+- **Ways back.** The same button, Escape (after the tree's and the + menu's own
+  Escape; it never turns the mic off), and Back: entering by a tap pushes one
+  history entry through the host's `backToClose` (Lianki: `openBackToClose`,
+  docs/ui-state.md "Back closes an overlay"). Full screen restored by a reload
+  pushes none (the browser may skip an entry pushed with no gesture): the button
+  and Escape still work. Minimizing to the pill leaves it; reopening comes back
+  full screen, since the choice is kept.
+- **Nothing remounts.** The same section, log, input and mic are restyled in
+  place, so the thread, the draft, its focus and caret, and the mic are as they
+  were. The line being read keeps its place on screen across the switch (as far
+  as the log's scroll allows); at the end it stays at the end. The panel's own
+  position is untouched, so the way back lands where it was.
+- **Kept per device**: `lk:pref:chat-view` `full` (`chatPrefs`), never synced;
+  other tabs on the device follow it through the `storage` event, as compact does.
+- **Layout.** The box is the visual viewport, from `visualViewport` resize and
+  scroll events (no polling): with the on-screen keyboard up (iOS shrinks and pans
+  only the visual viewport) the box shrinks to the visible area, so the composer
+  stays above the keyboard and the bottom safe area is not padded (`data-kb`).
+  Pinch-zoomed, it is the layout viewport. The notch and landscape sides pad with
+  `env(safe-area-inset-*)`; the content is one column of at most 48rem, centred on
+  a wide screen; no horizontal scroll at 320 px. The log takes the height the bar
+  leaves and always takes the touch.
+- **Glass.** The typing glass with the sheet's tint and blur, covering the chat's
+  area, which in full screen is the screen; nothing outside the chat is blurred.
+  The bar keeps its own box there, and the `@/…` completions get theirs, since the
+  glass behind them is the log.
+- **Everything else as ever.** History scroll, scroll-down, the up-arrow to an
+  unanswered ask (#641) and the cards, markdown, the mic, the + menu. Compact mode
+  waits while full screen is up (it is for reading the whole chat) and applies
+  again on the way back; the drag-on-the-bar full-screen log is not started (the
+  drag only scrolls).
+
+Checks: `bun scripts/dev/debug-chat-fullscreen-qa.mjs [--shots <dir>]` (silent
+Chromium and WebKit, 390×844, 320×568 and 1280×800, light and dark; the gate,
+toggle, draft, focus, the same elements, the anchor line, side scroll, Escape,
+Back, reload, an emulated keyboard, scroll-down, the arrow and a card). Not
+covered by emulation: a real iPhone home-screen app's keyboard, its pan, and the
+safe areas.
 
 ## Compact mode: only the last message while not typing
 

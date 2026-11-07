@@ -485,6 +485,10 @@ export type ChatStrings = {
   compactShowAll: string;
   /** The up-arrow over the log (ask-above.ts): its screen-reader label; `{count}` is how many are above. */
   askJump: string;
+  /** The round button at the open chat's top corner that makes it fill the whole app (full-screen.ts). */
+  fullScreen: string;
+  /** The same button in full screen: back to the small chat panel, as it was. */
+  fullScreenExit: string;
   // The voiceprint panel (VoiceprintPanel.tsx, voiceprint.ts; docs/local-stt.md, "Voiceprint").
   /** Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name. */
   vpMenu: string;
@@ -644,6 +648,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   compactIdle: "Only the last message while not typing",
   compactShowAll: "Show the whole chat",
   askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",
+  fullScreen: "Full screen",
+  fullScreenExit: "Exit full screen",
   vpMenu: "Voiceprint",
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",

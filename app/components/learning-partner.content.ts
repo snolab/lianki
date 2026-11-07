@@ -587,6 +587,42 @@ const learningPartnerContent = {
       mr: "वरील सर्वात जवळच्या उत्तर न दिलेल्या प्रश्नावर जा. वर उत्तर न दिलेले: {count}",
       ko: "위쪽에서 가장 가까운 미답변 질문으로 이동. 위쪽 미답변: {count}",
     }),
+    fullScreen: t({
+      en: "Full screen",
+      zh: "全屏",
+      hi: "फ़ुल स्क्रीन",
+      es: "Pantalla completa",
+      fr: "Plein écran",
+      ar: "ملء الشاشة",
+      bn: "পূর্ণ স্ক্রিন",
+      pt: "Tela cheia",
+      ru: "Во весь экран",
+      ur: "فل اسکرین",
+      id: "Layar penuh",
+      de: "Vollbild",
+      ja: "全画面表示",
+      sw: "Skrini nzima",
+      mr: "पूर्ण स्क्रीन",
+      ko: "전체 화면",
+    }),
+    fullScreenExit: t({
+      en: "Exit full screen",
+      zh: "退出全屏",
+      hi: "फ़ुल स्क्रीन से बाहर निकलें",
+      es: "Salir de pantalla completa",
+      fr: "Quitter le plein écran",
+      ar: "الخروج من ملء الشاشة",
+      bn: "পূর্ণ স্ক্রিন থেকে বেরোন",
+      pt: "Sair da tela cheia",
+      ru: "Выйти из полноэкранного режима",
+      ur: "فل اسکرین سے باہر نکلیں",
+      id: "Keluar dari layar penuh",
+      de: "Vollbild beenden",
+      ja: "全画面表示を終了",
+      sw: "Toka kwenye skrini nzima",
+      mr: "पूर्ण स्क्रीनमधून बाहेर पडा",
+      ko: "전체 화면 종료",
+    }),
     vpMenu: t({
       en: "Voiceprint",
       zh: "声纹",
@@ -1892,6 +1928,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Tooltip and screen-reader hint on that single latest-message line: tapping it brings back the whole chat log. Imperative phrase, short.",
   askJump:
     "Screen-reader label and tooltip of a round up-arrow button floating above the chat's text box. It shows while a question the assistant asked (with tappable answers) is still unanswered and has scrolled off above the visible messages; a tap jumps up to the nearest one. Imperative, then a count: keep {count} as is, a number, worded so it needs no plural form.",
+  fullScreen:
+    "Screen-reader label and tooltip of a round icon button (four corners pointing outward, no text) at the top corner of the open chat panel: a tap makes the chat fill the whole app screen, with the same conversation, draft and microphone. Use the platform's usual term for the full-screen command (as on a video player), a short noun phrase or command.",
+  fullScreenExit:
+    "Screen-reader label and tooltip of the same round icon button (four corners pointing inward) while the chat fills the whole screen: a tap returns it to the small chat panel where it was. Use the platform's usual 'exit full screen' command, short imperative.",
   vpMenu:
     "Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name.",
   vpTitle:
