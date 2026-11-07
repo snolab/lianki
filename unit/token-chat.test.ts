@@ -580,3 +580,74 @@ describe("/api/token (the token page's API)", () => {
     );
   });
 });
+
+describe("/api/token: the rest of the refusals", () => {
+  const deps = (who: typeof OWNER | null) => ({
+    who: async () => who,
+    db: () => d1 as unknown as D1Like & ChatTokenDb,
+    revoked: async () => {},
+    maxTokens: 2,
+    now: () => t,
+  });
+  const req = (method: string, body?: string, h: Record<string, string> = {}) =>
+    new Request("https://lianki.com/api/token", {
+      method,
+      headers: { "content-type": "application/json", ...h },
+      ...(body === undefined ? {} : { body }),
+    });
+  const good = JSON.stringify({ name: "x", scopes: ["chat:read"], expiry: { days: 7 } });
+
+  it("method, content type, cross-site fetch, bad JSON, bad name, the cap, unknown id", async () => {
+    expect((await tokenApi(req("PUT", good), deps(OWNER))).status).toBe(405);
+    expect(
+      (await tokenApi(req("POST", good, { "content-type": "text/plain" }), deps(OWNER))).status,
+    ).toBe(403);
+    expect(
+      (await tokenApi(req("POST", good, { "sec-fetch-site": "cross-site" }), deps(OWNER))).status,
+    ).toBe(403);
+    expect((await tokenApi(req("POST", "{nope"), deps(OWNER))).status).toBe(400);
+    const noName = JSON.stringify({ name: "  ", scopes: ["chat:read"], expiry: { days: 7 } });
+    expect((await tokenApi(req("POST", noName), deps(OWNER))).status).toBe(400);
+    // No Origin at all (a script with the session) is fine; the cap is per account.
+    expect((await tokenApi(req("POST", good), deps(OWNER))).status).toBe(200);
+    expect((await tokenApi(req("POST", good), deps(OWNER))).status).toBe(200);
+    expect((await tokenApi(req("POST", good), deps(OWNER))).status).toBe(409);
+    expect((await tokenApi(req("POST", good), deps(ALICE))).status).toBe(200);
+    const unknownId = JSON.stringify({ id: "f".repeat(64) });
+    expect((await tokenApi(req("DELETE", unknownId), deps(OWNER))).status).toBe(404);
+    expect((await tokenApi(req("DELETE", JSON.stringify({ id: "x" })), deps(OWNER))).status).toBe(
+      404,
+    );
+  });
+});
+
+describe("notifyTokensRevoked", () => {
+  it("sends tags (never ids or tokens) and the user over the binding; never throws", async () => {
+    const { notifyTokensRevoked } = await import("@/lib/push-chat-tokens");
+    const sent: { url: string; body: string }[] = [];
+    const ok = {
+      fetch: async (url: string, init?: RequestInit) => {
+        sent.push({ url, body: String(init?.body) });
+        return new Response("{}");
+      },
+    };
+    await notifyTokensRevoked({ ids: ["a".repeat(64)], userId: "u1" }, ok);
+    expect(sent[0]!.url).toBe("https://lianki-push/internal/chat-tokens/revoked");
+    expect(JSON.parse(sent[0]!.body)).toEqual({ tags: ["a".repeat(16)], userId: "u1" });
+    await notifyTokensRevoked(
+      { ids: [] },
+      { fetch: async () => new Response("no", { status: 503 }) },
+    );
+    await notifyTokensRevoked(
+      { userId: "u1" },
+      {
+        fetch: async () => {
+          throw new Error("down");
+        },
+      },
+    );
+    await notifyTokensRevoked({ userId: "u1" }, null);
+    // Off the Worker (tests, dev) there is no binding: nothing is sent.
+    await notifyTokensRevoked({ userId: "u1" });
+  });
+});

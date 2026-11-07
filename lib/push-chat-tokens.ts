@@ -23,8 +23,10 @@ function push(): Fetcher | null {
   }
 }
 
-export async function notifyTokensRevoked(r: { ids?: string[]; userId?: string }): Promise<void> {
-  const p = push();
+export async function notifyTokensRevoked(
+  r: { ids?: string[]; userId?: string },
+  p: Fetcher | null = push(),
+): Promise<void> {
   if (!p) return;
   try {
     const res = await p.fetch("https://lianki-push/internal/chat-tokens/revoked", {
