@@ -345,6 +345,15 @@ type PageAtt = {
    * checked with the main Worker first; revoked, it is closed.
    */
   box?: string;
+  /**
+   * The owner's box with box:eval (docs/box-oauth.md, "Code on the owner's
+   * box"): then not `embed`, but an owner page in full, minus clips and
+   * renewal (it carries no session or device): it takes eval, can answer a
+   * pairing, sends page errors, and gets the whole state. Asked of the main
+   * Worker at connect, before each eval sent to it and before each such
+   * message it sends; gone, the page drops back to chat-only.
+   */
+  boxEval?: true;
 };
 /** A recording window session (`clips:<sid>`), see "Voice-clip recording" above. */
 type ClipsRec = {
@@ -444,6 +453,8 @@ type SessionsRpc = {
   chatToken?(req: { op: string; token?: string; tokenHash?: string }): Promise<unknown>;
   /** May this box keep chatting (docs/box-oauth.md)? An older main Worker has none: no. */
   boxChat?(clientId: string): Promise<unknown>;
+  /** May this box hold the owner's page powers (docs/box-oauth.md)? An older main Worker has none: no. */
+  boxEval?(clientId: string): Promise<unknown>;
 };
 /** How long the hub trusts its read of PARTNER_AI_FLAG (as lib/flags-store.ts's FLAG_CACHE_MS). */
 const AI_FLAG_CACHE_MS = 30_000;
@@ -485,6 +496,16 @@ const BOX_CLOSED_PATH = "/internal/box-closed";
 export const BOX_CLOSED = 4401;
 /** What a box page may send (docs/box-oauth.md): the chat, and nothing of eval or recording. */
 const BOX_PAGE_TYPES = new Set(["chat", "page", "passage-end", "unmerge", "answer"]);
+/** What a box page with box:eval may send besides: pairing answers, results, page errors. */
+const BOX_EVAL_TYPES = new Set([
+  "allow",
+  "deny",
+  "revoke",
+  "end-page",
+  "result",
+  "chunk",
+  "page-error",
+]);
 type Att = PageAtt | ControllerAtt;
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
@@ -1508,6 +1529,8 @@ export class DebugHub {
     // depth: the page itself never connects from such a frame).
     const embed = ticketSocket || url.searchParams.get("frame") === "foreign";
     const isBox = ticketSocket && !!box;
+    // The owner's box with box:eval: an owner page (minus clips and renewal), asked now.
+    const boxEval = isBox && box ? (await this.boxEvalSays(box)) === "live" : false;
     // A box's lines say so, for the agent: "box /words …".
     const label = boxLabel(cleanLabel(url.searchParams.get("label"), MAX_LABEL), isBox);
     // The tab's own id (kept across reloads), so "this page" grants survive them.
@@ -1552,11 +1575,13 @@ export class DebugHub {
         at: this.now(),
         // A chat-only page (a ticket socket, or a page another site frames) never
         // carries the owner's session: no eval grant is ever bound to or renewed on it.
-        ...(embed
-          ? { embed: true as const, ...(isBox ? { box } : {}) }
-          : who?.owner && who.session
-            ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
-            : {}),
+        ...(boxEval
+          ? { box, boxEval: true as const }
+          : embed
+            ? { embed: true as const, ...(isBox ? { box } : {}) }
+            : who?.owner && who.session
+              ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
+              : {}),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
     // The page's own avatar (older pages ignore an unknown type).
@@ -1895,9 +1920,15 @@ export class DebugHub {
     // while the main Worker still says its box:chat is live.
     if (page.box) {
       const em = parsePageMessage(raw);
-      if (!em || !BOX_PAGE_TYPES.has(em.type)) return;
-      return this.boxStillChats(ws, page).then((ok) =>
-        ok ? this.fromPageChecked(ws, page, raw) : undefined,
+      if (!em) return;
+      if (BOX_PAGE_TYPES.has(em.type))
+        return this.boxStillChats(ws, page).then((ok) =>
+          ok ? this.fromPageChecked(ws, page, raw) : undefined,
+        );
+      // box:eval: pairing answers, results and page errors, each checked first.
+      if (!page.boxEval || !BOX_EVAL_TYPES.has(em.type)) return;
+      return this.boxStillEvals(ws, page).then((ok) =>
+        ok ? this.fromPageChecked(ws, att(ws) as PageAtt, raw) : undefined,
       );
     }
     if (page.embed) {
@@ -1938,13 +1969,68 @@ export class DebugHub {
     return false;
   }
 
+  /** The main Worker's word on a box's page powers: "live", "gone", or "unsure". */
+  private async boxEvalSays(cid: string): Promise<"live" | "gone" | "unsure"> {
+    // Called on the stub itself, as boxChat (a .bind-ed RPC method is refused).
+    const rpc = this.sessions;
+    try {
+      if (!rpc?.boxEval) return "gone";
+      const said = await rpc.boxEval(cid);
+      if (said === "live" || said === "gone") return said;
+      console.log(JSON.stringify({ msg: "debug.box-eval-check", said: String(said) }));
+      return "unsure";
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.box-eval-check-failed", error: String(e).slice(0, 200) }),
+      );
+      return "unsure";
+    }
+  }
+
   /**
-   * POST /internal/box-closed {client}: that box lost box:chat. Its chat
-   * sockets close now. Reached only over the main Worker's PUSH binding.
+   * Asked before each eval-power message a box page sends (a pairing answer,
+   * a result, a page error): "live", or the box's pages drop back to
+   * chat-only ("gone": box:eval removed, or anything box:chat needs). Unsure:
+   * this message is dropped; the page keeps its powers.
+   */
+  private async boxStillEvals(ws: Socket, page: PageAtt): Promise<boolean> {
+    if (!page.box) return false;
+    const said = await this.boxEvalSays(page.box);
+    if (said === "live") return true;
+    if (said === "gone") this.boxEvalEnded(page.box);
+    else send(ws, { type: "error", error: "not sent: try again in a moment" });
+    return false;
+  }
+
+  /**
+   * A box lost box:eval: its pages become chat-only embed pages again (no
+   * eval, no pairing, minimal state). Its chat goes on while box:chat holds.
+   */
+  private boxEvalEnded(cid: string): number {
+    let n = 0;
+    for (const { ws, a } of this.sockets("page")) {
+      if (a.box !== cid || !a.boxEval) continue;
+      const { boxEval: _gone, ...rest } = a;
+      const next: PageAtt = { ...rest, embed: true };
+      ws.serializeAttachment(next);
+      send(ws, pageState(next, this.state(next.thread)));
+      n++;
+    }
+    if (n) {
+      console.log(JSON.stringify({ msg: "debug.box-eval-ended", pages: n }));
+      this.broadcast();
+    }
+    return n;
+  }
+
+  /**
+   * POST /internal/box-closed {client, scope?}: that box lost box:chat. Its
+   * chat sockets close now. With `scope: "eval"` it lost box:eval only: its
+   * pages drop back to chat-only. Reached only over the main Worker's PUSH binding.
    */
   private async boxClosedApi(req: Request): Promise<Response> {
     if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
-    let body: { client?: unknown };
+    let body: { client?: unknown; scope?: unknown };
     try {
       body = (await req.json()) as typeof body;
     } catch {
@@ -1953,6 +2039,7 @@ export class DebugHub {
     const client = body.client;
     if (typeof client !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(client))
       return Response.json({ error: "expected {client}" }, { status: 400 });
+    if (body.scope === "eval") return Response.json({ ok: true, ended: this.boxEvalEnded(client) });
     let closed = 0;
     for (const { ws, a } of this.sockets("page"))
       if (a.box === client) {
@@ -2766,11 +2853,36 @@ export class DebugHub {
           ? "the page you were authorized for is not connected now; this socket closes if it stays away 5 min (the grant stays: reconnect with its token)"
           : "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
       });
-    for (const p of reach) {
-      if (p.a.embed || !matchesTarget(p.a.label, m.value.target)) continue;
-      send(p.ws, { type: "eval", id, code: m.value.code, to: c.pair });
-      labels.push(p.a.label);
-    }
+    const ev = m.value;
+    const targets = reach.filter((p) => !p.a.embed && matchesTarget(p.a.label, ev.target));
+    const deliver = (to: typeof targets) => {
+      for (const p of to) {
+        send(p.ws, { type: "eval", id, code: ev.code, to: c.pair });
+        labels.push(p.a.label);
+      }
+      this.evalSent(ws, c, ev, id, labels);
+    };
+    // The owner's box (box:eval): asked of the main Worker before each eval it is sent.
+    const boxes = [...new Set(targets.map((p) => p.a.box).filter((b): b is string => !!b))];
+    if (!boxes.length) return deliver(targets);
+    return Promise.all(boxes.map(async (b) => [b, await this.boxEvalSays(b)] as const)).then(
+      (said) => {
+        const live = new Set(said.filter(([, s]) => s === "live").map(([b]) => b));
+        for (const [b, s] of said) if (s === "gone") this.boxEvalEnded(b);
+        deliver(targets.filter((p) => !p.a.box || live.has(p.a.box)));
+      },
+    );
+  }
+
+  /** The agent hears where an eval went (and the log says so). */
+  private evalSent(
+    ws: Socket,
+    c: ControllerAtt,
+    v: { code: string; target?: string },
+    id: string,
+    labels: string[],
+  ) {
+    const m = { value: v };
     console.log(
       JSON.stringify({
         msg: "debug.eval",

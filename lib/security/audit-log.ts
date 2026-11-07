@@ -32,6 +32,9 @@ export type AuditKind =
   | "box.chat-grant"
   | "box.chat-remove"
   | "box.chat-ticket"
+  // box:eval on an owner's box (docs/box-oauth.md, "Code on the owner's box").
+  | "box.eval-grant"
+  | "box.eval-remove"
   | "email.change"
   // API tokens (lib/api-tokens.ts): made, revoked (one, or all with a sign-out
   // everywhere), used (at most once a minute per token, when last_used_at is

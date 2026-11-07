@@ -20,6 +20,9 @@
  *       agent — contains <text>) and print each page's result as JSON. With
  *       no `serve` session running it resumes the saved eval grant; only with
  *       none (or a refused one) does it pair, and waits for that one answer.
+ *       The owner's box (box:eval, docs/box-oauth.md "Code on the owner's
+ *       box") is a page like any other: its labels start with "box ", so
+ *       `--target box` reaches only the box, `--target "box /words"` one page.
  *
  *   --no-pair  fail instead of asking the owner (for the chat agent).
  *

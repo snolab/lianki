@@ -61,7 +61,7 @@ re-exports for the hub and the sender.
 | `debug-chat-tabs.ts`, `tap-gesture.ts`                   | one voice per device; taps and drags                     |
 | `wire.ts`, `icons.tsx`, `LiagentMark.tsx`                | wire types and helpers; icons; the liagent mark          |
 | `Avatar.tsx`, `avatar-rules.ts`                          | the log's avatars: the component; its pure rules         |
-| `rich-text.ts`, `RichText.tsx`, `chat-links.ts`          | markdown, the HTML subset, links; trust tiers             |
+| `rich-text.ts`, `RichText.tsx`, `chat-links.ts`          | markdown, the HTML subset, links; trust tiers            |
 | `node-path.ts`                                           | state-tree node paths: validation, routing, rendering    |
 | `scripts/dev/debug-widget-build.ts`                      | Bun.build with React from the page, plus Tailwind CSS    |
 | `scripts/dev/debug-widget-server.ts`                     | serve, watch, SSE `reload`, tailnet or tunnel            |
@@ -259,6 +259,15 @@ owner's box") uses the same subprotocol with a ticket of its own audience
 is chat-only too, may also send voice amends and ask-card taps, and the hub asks
 the main Worker before each line it takes from it.
 
+With `box:eval` as well (box-oauth.md, "Code on the owner's box"), that box's
+socket is an owner page instead: listed, labelled `box <path>`, sent the whole
+state, reached by eval (`eval.ts --target box`), able to answer a pairing with
+the owner's tap on that page, and its page errors go to the agents. It never
+records clips and carries no session, so a grant approved there is never
+renewed (8 hours, then a tap). The hub asks the main Worker (`boxEval`) at
+connect, before each eval it sends there and before each pairing answer, result
+or page error it takes; gone, the page drops back to chat-only.
+
 **The frame: private typing (owner, 2026-11-01).** A shadow widget cannot
 keep keys private: the host page's capture listeners on document or window
 see every `KeyboardEvent.key` (and composed `input` events) before any
@@ -302,7 +311,7 @@ own document; the host page never sees them.
   Tests: `unit/partner-frame-route.test.ts`, `unit/partner-ticket-hub.test.ts`;
   the real route in a frame: `scripts/qa/qa-partner-frame-route.ts` (in qa:all).
 - **Blocked → read-only**: the shadow widget (`mountPartner({readOnly:
-  true})`) shows the replies, and in place of the input a note ("This site
+true})`) shows the replies, and in place of the input a note ("This site
   blocks private typing…") with a link to reply on lianki.com. No key is
   asked for on such a site.
 - **ScriptCat's network rules** ("移除 CSP、改写请求头"): an options-page
@@ -315,13 +324,13 @@ own document; the host page never sees them.
 why instead of the chat (strings `EmbedStrings` in `ui-strings.ts`, by the
 browser's language):
 
-| Blocker     | When                                                                                         |
-| ----------- | -------------------------------------------------------------------------------------------- |
+| Blocker     | When                                                                                                 |
+| ----------- | ---------------------------------------------------------------------------------------------------- |
 | `pageRealm` | the manager runs the script in the page's own JS realm (the site could patch WebSocket, read memory) |
-| `connect`   | a CSP `connect-src` report names the hub, or the socket constructor throws                  |
-| `styles`    | constructed sheets unsupported and the `<style>` fallback blocked                           |
-| `script`    | a CSP report on eval/inline script or Trusted Types                                          |
-| `load`      | the widget threw while rendering                                                            |
+| `connect`   | a CSP `connect-src` report names the hub, or the socket constructor throws                           |
+| `styles`    | constructed sheets unsupported and the `<style>` fallback blocked                                    |
+| `script`    | a CSP report on eval/inline script or Trusted Types                                                  |
+| `load`      | the widget threw while rendering                                                                     |
 
 Isolation is decided fail-closed from the manager's own `GM_info` only (a
 binding in our scope, never a page global; `window.Object` and the like can
@@ -604,24 +613,24 @@ No: an ordinary new line, as ever.
 
 All of these, or it is a new line:
 
-| Check | Why |
-| ----- | --- |
-| The thread's **very latest line**, by anyone, and `continues` names it | an agent's reply or ask card in between keeps it apart |
-| Same page label (path + device), same `to` | another device, or a page he moved to, is a new turn |
-| Both `source: "stt"`, the earlier one stamped, not settled, not split | typed lines and friends' never |
-| No ask card open right before it, none answered since | an answer stays its own explicit act |
-| No selection or files on either, neither through the wake word | such a line is about those, or a new turn |
+| Check                                                                                   | Why                                                                      |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| The thread's **very latest line**, by anyone, and `continues` names it                  | an agent's reply or ask card in between keeps it apart                   |
+| Same page label (path + device), same `to`                                              | another device, or a page he moved to, is a new turn                     |
+| Both `source: "stt"`, the earlier one stamped, not settled, not split                   | typed lines and friends' never                                           |
+| No ask card open right before it, none answered since                                   | an answer stays its own explicit act                                     |
+| No selection or files on either, neither through the wake word                          | such a line is about those, or a new turn                                |
 | Neither is a short answer (`SHORT_ANSWERS`: yes, ok, 是, 行, はい…), nor tagged `other` | fragments cannot add up to an approval; a stranger is not his next words |
-| Under `MAX_CHAT` joined, under `MAX_MERGE_PARTS` (40, a Durable Object value's bound) | caps hold |
-| The earlier line does not end in `? ？ ! ！` | that ended it, however soon he went on |
+| Under `MAX_CHAT` joined, under `MAX_MERGE_PARTS` (40, a Durable Object value's bound)   | caps hold                                                                |
+| The earlier line does not end in `? ？ ! ！`                                            | that ended it, however soon he went on                                   |
 
 Then a **signal and its window**; no timestamps means no merge:
 
-| Signal | Window | Reading |
-| ------ | ------ | ------- |
-| `cut`: the capture hit `MAX_UTTERANCE_MS` (`t_cut`) | next start ≤ `JOIN_WINDOW_MS` (2500) after its end | it never stopped by itself |
-| `open`: ends in a clause mark or no mark (`, ， 、 ; : …`, also `，。`) | same | a text signal, read from punctuation classes, any script |
-| `quick`: a plain stop, voice-to-voice silence ≤ `redemptionMs` (1400), **and the Mac's voiceprint signed both lines as him** | as stated | the 600 ms endpoint cut where the VAD's own would not have |
+| Signal                                                                                                                       | Window                                             | Reading                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------- |
+| `cut`: the capture hit `MAX_UTTERANCE_MS` (`t_cut`)                                                                          | next start ≤ `JOIN_WINDOW_MS` (2500) after its end | it never stopped by itself                                 |
+| `open`: ends in a clause mark or no mark (`, ， 、 ; : …`, also `，。`)                                                      | same                                               | a text signal, read from punctuation classes, any script   |
+| `quick`: a plain stop, voice-to-voice silence ≤ `redemptionMs` (1400), **and the Mac's voiceprint signed both lines as him** | as stated                                          | the 600 ms endpoint cut where the VAD's own would not have |
 
 Neither window is new. `JOIN_WINDOW_MS` rejoined about 17 of 18 cut lines on his
 clips (#357). `redemptionMs` is the silence the VAD itself treats as inside one
@@ -651,7 +660,7 @@ it from.
 ### An agent already on it
 
 A busy beat does not stop a merge: `--ack` beats every line at once, so a beat
-would block nearly all of them. Only a line it has *said* counts. An agent working
+would block nearly all of them. Only a line it has _said_ counts. An agent working
 on the first fragment hears `{type:"edited", text, parts, merged}` with the complete
 text and **must read it again before it acts or replies**. Once it has replied, the
 next utterance is a new line, which is also the way to tell it something more.
@@ -1058,9 +1067,9 @@ with its links.
 
 **Tiers** (`lineTier`), from what the hub stamps, never from the text:
 
-| Tier       | Who                                                                        | Gets                                                   |
-| ---------- | -------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `html`     | an agent line with the hub's `ownerGrant`, in the owner's thread, not embedded | markdown, the HTML subset, images from `IMAGE_ORIGINS` |
+| Tier       | Who                                                                                     | Gets                                                   |
+| ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `html`     | an agent line with the hub's `ownerGrant`, in the owner's thread, not embedded          | markdown, the HTML subset, images from `IMAGE_ORIGINS` |
 | `markdown` | everyone else: friends, the partner AI, his agents in a friend's thread, his own typing | markdown; raw HTML shows as text, an image as its alt  |
 
 `ownerGrant` is set only in the hub's `say`, when the thread is the owner's:
@@ -1191,11 +1200,11 @@ There is no time of day in it, and no setting
 
 **Which `say` to use** (agents, read this):
 
-| Line                                                                     | Command                   | Read aloud                          |
-| ------------------------------------------------------------------------ | ------------------------- | ----------------------------------- |
-| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                               |
-| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules      |
-| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line              |
+| Line                                                                     | Command                   | Read aloud                     |
+| ------------------------------------------------------------------------ | ------------------------- | ------------------------------ |
+| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                          |
+| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules |
+| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line         |
 
 Default to `--quiet` whenever the line is not a reply to him. `--loud` is
 deprecated: `eval.ts` still accepts it and prints a note, and the line goes
@@ -1219,7 +1228,6 @@ toggle on and either the mic used in this tab or the input focused):
    wins. The menu row says "Replies read aloud (mic used)" while it holds,
    "Replies read aloud while typing" when only the focus rule applies.
 
-
 1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
 2. **Hidden page or locked screen** (`document.visibilityState` "hidden"),
    **on a phone**: never spoken (the browser would not let it). On a
@@ -1241,14 +1249,14 @@ There, switching to another tab or window stops nothing, with no grace
 period: the mic keeps listening and the reading goes on until he stops it.
 The paths that used to stop it, all now phone-only on a computer:
 
-| Path | What it did on hide |
-| --- | --- |
-| `voice.ts` `gateVoice` visibilitychange | `voice().stop()`: the reading and its queue |
-| `speak-rules.ts` `silenceHere` | every new line silent while hidden |
-| `DebugChat.tsx` hide effect | stopped the reading (mic off) |
-| `DebugChat.tsx` reading-left mirror | froze the "read on next page" queue |
-| `DebugEval.tsx` hub socket `wanted()` | disconnected 30 s after hide: no lines out, no replies in |
-| `local-stt.ts` `visible()` | a dropped STT socket waited for the page to be visible again |
+| Path                                    | What it did on hide                                          |
+| --------------------------------------- | ------------------------------------------------------------ |
+| `voice.ts` `gateVoice` visibilitychange | `voice().stop()`: the reading and its queue                  |
+| `speak-rules.ts` `silenceHere`          | every new line silent while hidden                           |
+| `DebugChat.tsx` hide effect             | stopped the reading (mic off)                                |
+| `DebugChat.tsx` reading-left mirror     | froze the "read on next page" queue                          |
+| `DebugEval.tsx` hub socket `wanted()`   | disconnected 30 s after hide: no lines out, no replies in    |
+| `local-stt.ts` `visible()`              | a dropped STT socket waited for the page to be visible again |
 
 The hub socket now stays while the voice is busy (mic on, speaking, or
 queued; `keepHub`), and the local STT socket reopens on its close event
@@ -1313,7 +1321,7 @@ and stores them with the line.
 **Device voices** (speechSynthesis). Main, the chat lane, is cute: a
 young, bright voice with a cat-girl feel (owner, 2026-11-07 20:34 JST) — the
 first natural voice it prefers (Meijia, Lili, Nicky, Samantha, O-ren, …),
-else today's pick (`pickVoice`), always at pitch 1.1. The others each take a different installed voice *model* — another name,
+else today's pick (`pickVoice`), always at pitch 1.1. The others each take a different installed voice _model_ — another name,
 never a Compact/Enhanced variant of one already in use — in four passes: a
 natural voice the lane prefers by name, any natural voice, a preferred
 Eloquence voice (Apple's Reed, Flo, …: robotic, but a different model), any
@@ -1323,11 +1331,11 @@ A language's other locales that read it the same way are data
 (`SIBLING_LOCALES`: zh-TW for zh-CN, not Cantonese zh-HK; en-GB/AU/… for
 en-US).
 
-| lane  | voice  | prefers (any language)                     | last resort      |
-| ----- | ------ | ------------------------------------------ | ---------------- |
+| lane  | voice  | prefers (any language)                     | last resort        |
+| ----- | ------ | ------------------------------------------ | ------------------ |
 | main  | main   | Meijia, Lili, Nicky, Samantha, O-ren, Sora | (pitch 1.1 always) |
-| codex | calm   | Li-mu, Daniel, Otoya, … then Reed, Rocko   | pitch 0.8, ×0.92 |
-| agy   | bright | Lili, Tingting, Karen, Kyoko, … then Flo   | pitch 1.4, ×1.06 |
+| codex | calm   | Li-mu, Daniel, Otoya, … then Reed, Rocko   | pitch 0.8, ×0.92   |
+| agy   | bright | Lili, Tingting, Karen, Kyoko, … then Flo   | pitch 1.4, ×1.06   |
 
 **Cloud voices** (`lk:voice-out` = cloud). Where an engine has several
 voices for the language the lane gets its own speaker: Workers AI Aura-2,
@@ -1436,13 +1444,13 @@ soon" and paste/drop do nothing.
 (`isOwner`, 404 for anyone else, friends included, as every `/api/dev`
 route); the chat passes `files` only on the owner's own pages.
 
-| route | what |
-| --- | --- |
-| `POST /api/dev/inbox` | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
-| `GET /api/dev/inbox` | his files and usage (settles accrued storage cost) |
-| `PATCH /api/dev/inbox` | `{ids, line}`: the chat line they were sent with |
-| `GET /api/dev/inbox/<id>` | the file: his session, or an agent's ticket in `x-inbox-ticket` |
-| `DELETE /api/dev/inbox/<id>` | his own session only; the object and the row go |
+| route                        | what                                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `POST /api/dev/inbox`        | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
+| `GET /api/dev/inbox`         | his files and usage (settles accrued storage cost)                                                   |
+| `PATCH /api/dev/inbox`       | `{ids, line}`: the chat line they were sent with                                                     |
+| `GET /api/dev/inbox/<id>`    | the file: his session, or an agent's ticket in `x-inbox-ticket`                                      |
+| `DELETE /api/dev/inbox/<id>` | his own session only; the object and the row go                                                      |
 
 - **Keys**: `inbox/<user id>/<yyyy>/<mm>/<id>` (`lib/inbox/keys.ts`); the name
   never goes into a key. D1 `inbox_item` (id, owner, name, type, size,
@@ -1576,10 +1584,10 @@ The widget bundle can be hot-loaded with its own copy of every module, so the
 two sides share no module state. The contract is two window events
 (`packages/debug-chat/src/audio-claim.ts`, used on both sides):
 
-| event               | detail         | meaning                                                                                                                                                                                     |
-| ------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lk:audio-claim`    | `{ id, prio }` | cancelable, "I am about to play". An owner holding or waiting with a higher `prio` calls `preventDefault()`, and the claimer waits. One holding with an equal or lower `prio` pauses and waits (the newest of equals wins). |
-| `lk:audio-release`  | `{ id }`       | "I am done". Each waiter claims again. A higher waiter cancels a lower one's claim, so the highest goes first.                                                                                 |
+| event              | detail         | meaning                                                                                                                                                                                                                     |
+| ------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lk:audio-claim`   | `{ id, prio }` | cancelable, "I am about to play". An owner holding or waiting with a higher `prio` calls `preventDefault()`, and the claimer waits. One holding with an equal or lower `prio` pauses and waits (the newest of equals wins). |
+| `lk:audio-release` | `{ id }`       | "I am done". Each waiter claims again. A higher waiter cancels a lower one's claim, so the highest goes first.                                                                                                              |
 
 - Only an owner that is holding or waiting listens. An idle one needs no
   cleanup.

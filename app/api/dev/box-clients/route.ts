@@ -9,10 +9,11 @@ import {
   listBindings,
   revokeBox,
   setBoxChat,
+  setBoxEval,
   validNewBox,
   type BoxDb,
 } from "@/lib/box-oauth/store";
-import { notifyBoxClosed } from "@/lib/box-oauth/push-close";
+import { notifyBoxClosed, notifyBoxEvalEnded } from "@/lib/box-oauth/push-close";
 import { isOwner } from "@/lib/owner";
 import { sameOriginJsonPost } from "@/lib/security/same-origin";
 
@@ -22,7 +23,10 @@ import { sameOriginJsonPost } from "@/lib/security/same-origin";
  * it is turned on.
  * - GET → { boxes: [...] };
  * - POST (same-origin JSON) `{ op: "add", origin, email, scopes }` |
- *   `{ op: "chat", clientId, on }`: box:chat on or off (a site owner's box only) |
+ *   `{ op: "chat", clientId, on }`: box:chat on or off (a site owner's box only;
+ *   off also removes box:eval) |
+ *   `{ op: "eval", clientId, on }`: box:eval on or off (a site owner's box that
+ *   holds box:chat) |
  *   `{ op: "revoke", clientId }`: the one action that ends a box and its tokens.
  */
 const NO_STORE = { "cache-control": "no-store" };
@@ -65,7 +69,19 @@ export const POST = async (req: Request) => {
     if (!b.on) await notifyBoxClosed(b.clientId);
     return NextResponse.json({ boxes: await listBindings(db()) }, { headers: NO_STORE });
   }
-  if (b.op !== "add") return bad("op must be add, chat or revoke");
+  if (b.op === "eval") {
+    // box:eval (docs/box-oauth.md, "Code on the owner's box"): a site owner's
+    // box that holds box:chat; never implied by it.
+    if (typeof b.clientId !== "string") return bad("clientId required");
+    if (typeof b.on !== "boolean") return bad("on must be true or false");
+    const r = await setBoxEval(db(), b.clientId, b.on, by.id);
+    if (r === "no-box") return bad("no live box with that client");
+    if (r === "not-owner") return bad("box:eval is only for a box bound to a site owner", 403);
+    if (r === "needs-chat") return bad("turn on box:chat first", 409);
+    if (!b.on) await notifyBoxEvalEnded(b.clientId);
+    return NextResponse.json({ boxes: await listBindings(db()) }, { headers: NO_STORE });
+  }
+  if (b.op !== "add") return bad("op must be add, chat, eval or revoke");
 
   const problem = validNewBox(b.origin, b.scopes, runtimeNodeEnv() === "development");
   if (problem) return bad(problem);
