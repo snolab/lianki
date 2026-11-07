@@ -161,6 +161,7 @@ that are expensive to rediscover.
 | UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |
 | Leaving Next.js: Vite + RR7 + Hono strangler plan             | [docs/framework-migration.md](docs/framework-migration.md)          |
 | Node tree, study plan, calendar, Google Calendar (design)     | [docs/calendar-plan.md](docs/calendar-plan.md)                      |
+| /roadmap: progress from cards, what to build next             | [docs/roadmap-next.md](docs/roadmap-next.md)                        |
 
 <!-- BEGIN:nextjs-agent-rules -->
 
