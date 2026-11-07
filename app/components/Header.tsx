@@ -64,7 +64,7 @@ export function Header({
           className="flex items-center gap-2 text-2xl font-bold hover:opacity-80 transition-opacity"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
-          <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
+          <img src="/icon.svg?v=4" alt="" width={28} height={28} />
           <BrandIsland appName={appName} locale={locale} />
         </Link>
 
