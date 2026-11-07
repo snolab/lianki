@@ -1329,8 +1329,11 @@ English (main `luna`, codex `orion`, agy `thalia`) and Spanish (`celeste`,
 asked as `/api/words/tts?…&speaker=` (the route keeps only speakers the
 table names; a recording is skipped; an Aura-2 failure answers with MeloTTS,
 never nothing). Everywhere else the cloud has one voice (MeloTTS), so the
-clip plays shifted — `shift` main 1.06, codex 0.88, agy 1.2, pitch and speed
-together — the last resort. The pre-rendered Kokoro/VOICEVOX/Piper clips are fixed texts and are
+clip plays at the lane's own speed — `shift` main 1 (his reading speed as it
+is), codex 0.88, agy 1.2 — always with its pitch kept, the last resort. No
+pitch shift (2026-11-07): on the owner's iPhone a pitch-free clip through the
+voice context stalled mid-word (currentTime frozen ~200 ms, "续续" dropped),
+and he does not want pitch tweaks. The pre-rendered Kokoro/VOICEVOX/Piper clips are fixed texts and are
 not used for live lines.
 
 The owner's mute, quiet lines and the hidden-page rule are unchanged: a

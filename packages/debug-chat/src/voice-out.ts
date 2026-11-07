@@ -306,7 +306,7 @@ export function createCloudOut(d: {
         fail(skip);
         return pb;
       }
-      // A lane's cloud voice: its own speaker where the engine has several, else the one voice shifted.
+      // A lane's cloud voice: its own speaker where the engine has several, else the one voice at its own speed.
       const lane = cloudVoice(s.voice ?? "main", s.lang);
       fetchClip(s.text, s.lang, lane.speaker).then(
         (url) => {
@@ -327,14 +327,14 @@ export function createCloudOut(d: {
             // Resume by offset: where the interrupted clip stopped (else its start).
             a.currentTime = s.at;
             // The speed, pitch kept (a resume after a duck keeps it: it is per play).
-            // A lane with no voice of its own here: shifted, its pitch moving with the speed.
+            // A lane with no voice of its own here: its own speed, pitch still kept —
+            // a pitch-free clip stalls mid-word on iOS (voices.ts, "Cloud voices").
             const shift = fellBack.has(url) ? VOICES[s.voice ?? "main"].shift : lane.shift;
             const rate = (s.rate ?? 1) * shift;
-            const keepPitch = shift === 1;
             a.defaultPlaybackRate = rate;
             a.playbackRate = rate;
-            a.preservesPitch = keepPitch;
-            a.webkitPreservesPitch = keepPitch;
+            a.preservesPitch = true;
+            a.webkitPreservesPitch = true;
             a.play().then(
               () => live() && ev.onstart?.(),
               (e: unknown) => {
