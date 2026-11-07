@@ -704,7 +704,7 @@ export function DebugMic({
   const passive = state !== "off" && view.wake === "passive" && !speaking;
   const wakeLabel = view.kws === "loading" ? ws.loading : ws.passive;
   return (
-    // The chat bar's last control, right of the input.
+    // In the chat bar's cluster, after the + (open) or the pill's Li (folded).
     <div className="relative flex shrink-0">
       <style>{MIC_PULSE}</style>
       {/* What the ring shows, for screen readers: said on each change of state. */}
@@ -715,7 +715,8 @@ export function DebugMic({
         <span
           role="alert"
           data-testid="debug-chat-mic-note"
-          className="pointer-events-none absolute end-0 bottom-full mb-2 whitespace-nowrap fs-10"
+          // From the mic's start, over the bar: the mic is near the box's inner edge.
+          className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap fs-10"
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {note}
@@ -724,6 +725,7 @@ export function DebugMic({
       <button
         type="button"
         data-testid="debug-chat-mic"
+        data-lk-tap
         data-state={state}
         data-resume={(view.resume && state === "off") || undefined}
         data-status={status}

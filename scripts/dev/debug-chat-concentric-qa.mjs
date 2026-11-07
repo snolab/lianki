@@ -1,16 +1,18 @@
 #!/usr/bin/env bun
 /**
- * The chat bar's mic is concentric with the bar's corner
- * (packages/debug-chat/src/DebugChat.tsx, MicButton.tsx): the centre of the
- * mic's circle sits on the centre of the bar's bottom-right corner arc,
- * within 0.5 px, in every state the bar takes:
+ * The chat bar's mic and the bar's corner (packages/debug-chat/src/DebugChat.tsx,
+ * MicButton.tsx, bar-geometry.ts). Folded, the mic is the pill's last control:
+ * the centre of its circle sits on the centre of the bar's bottom-right corner
+ * arc, within 0.5 px. Open, it is in the cluster [mark | + | mic | input]
+ * (owner, 2026-11-07: the mic keeps its place as the chat folds): its centre
+ * is on the bottom arc's line, and folding leaves the circle where it was.
  *
  *   - expanded (one line), minimized, a draft of several lines (the bar grows
- *     and the mic stays in the bottom-right arc), the chat's text size at 150%
+ *     and the controls stay on the bottom line), the chat's text size at 150%
  *   - 390×844 and 412×915, light and dark
- *   - the bar's round controls are [mark | + | input | mic] expanded and
- *     [mark | mic] minimized (no tree button since 2026-11-03: the state tree
- *     is in the + menu), each centred on the mic's line (one line box high)
+ *   - the bar's round controls are [mark | + | mic] expanded (then the
+ *     input) and [mark | mic] minimized (the pill's Li is not a button), each
+ *     centred on the mic's line (one line box high)
  *
  * The rule (R = d/2 + g, the nested-radius rule): the bar's radius is
  * --lk-bar-r = border + padding + line/2, and the mic's circle is the
@@ -107,6 +109,8 @@ const measure = () => {
     h: b.height,
     d: Math.min(right - left, bottom - top),
     square: Math.abs(right - left - (bottom - top)),
+    mx: mc.x,
+    my: mc.y,
     dx: mc.x - arc.x,
     dy: mc.y - arc.y,
     delta: Math.hypot(mc.x - arc.x, mc.y - arc.y),
@@ -145,10 +149,28 @@ try {
         if (!m) return check(false, `${at} ${state}: bar and mic found`);
         results.push({ at, state, ...m });
         const f = (n) => n.toFixed(2);
-        check(
-          m.delta <= MAX_DELTA,
-          `${at} ${state}: mic centre on the corner arc's centre (Δ ${f(m.delta)} px: dx ${f(m.dx)}, dy ${f(m.dy)}; R ${f(m.r)}, d ${f(m.d)}, bar ${f(m.h)} tall)`,
-        );
+        // Folded, the mic is the pill's last control, in its corner. Open, it is in
+        // the cluster [mark | + | mic | input], on the bottom arc's line, at the very
+        // place it has folded (checked below; debug-chat-mic-place-qa.mjs for all states).
+        if (state === "minimized")
+          check(
+            m.delta <= MAX_DELTA,
+            `${at} ${state}: mic centre on the corner arc's centre (Δ ${f(m.delta)} px: dx ${f(m.dx)}, dy ${f(m.dy)}; R ${f(m.r)}, d ${f(m.d)}, bar ${f(m.h)} tall)`,
+          );
+        else
+          check(
+            Math.abs(m.dy) <= MAX_DELTA,
+            `${at} ${state}: mic centre on the bottom arc's line (dy ${f(m.dy)} px; bar ${f(m.h)} tall)`,
+          );
+        if (state === "minimized") {
+          const open = results.find((r) => r.at === at && r.state === "one line");
+          check(
+            !!open &&
+              Math.abs(open.mx - m.mx) <= MAX_DELTA &&
+              Math.abs(open.my - m.my) <= MAX_DELTA,
+            `${at} folded: the mic's circle is where it was open (Δx ${f(open.mx - m.mx)}, Δy ${f(open.my - m.my)})`,
+          );
+        }
         check(
           m.square <= 0.5,
           `${at} ${state}: the mic's circle is square (off by ${f(m.square)})`,
@@ -165,7 +187,7 @@ try {
           m.lineOff <= MAX_DELTA,
           `${at} ${state}: the mark and the + are centred on the mic's line (off by ${f(m.lineOff)} px)`,
         );
-        if (state === "one line" || state === "minimized")
+        if (state === "minimized")
           check(
             m.topDelta <= MAX_DELTA,
             `${at} ${state}: one line high, also on the top-right arc's centre (Δ ${f(m.topDelta)} px)`,
@@ -216,7 +238,7 @@ try {
   server.kill();
 }
 
-const worst = Math.max(...results.map((r) => r.delta));
+const worst = Math.max(...results.filter((r) => r.state === "minimized").map((r) => r.delta));
 console.log(`\nworst Δ ${worst.toFixed(2)} px over ${results.length} measurements`);
 if (failures.length) {
   console.error(`${failures.length} check(s) failed`);

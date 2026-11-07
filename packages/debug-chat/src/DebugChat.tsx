@@ -69,7 +69,7 @@ import { EtaBar, EtaList } from "./EtaBar";
 import { type EtaTask, etaClock, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
-import { BAR_CONTROL, barGeometry } from "./bar-geometry";
+import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry } from "./bar-geometry";
 import { DebugMic, canCapture, pageCues, pageMic, voiceDevice } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
@@ -185,6 +185,7 @@ import {
   FULL_SCREEN_STYLE,
   FULL_TOP_VAR,
   escapeLeaves,
+  fullBarSpan,
   fullBottomPad,
   fullScreenAllowed,
   fullScreenBox,
@@ -236,6 +237,8 @@ const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back throug
 /** A minimized scrub shows this many lines at a time. */
 const SCRUB_LINES = 3;
 const POS_KEY = "lk:debug-chat-pos";
+/** After an up-arrow tap, how long its card is put back at the top if the run reflows. */
+const REALIGN_MS = 1500;
 /** The chat bar: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
 
@@ -391,6 +394,8 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
     // The keyboard lift (keyboard-lift.ts) is a CSS variable set straight on
     // the box from visualViewport events: no render, and never saved.
     offset: { transform: `translate(${pos.x}px, calc(${pos.y}px - var(${KB_LIFT_VAR}, 0px)))` },
+    /** The box's sideways offset from its home: full screen keeps the bar at the panel's span. */
+    dx: pos.x,
     handle,
     begin,
     moveTo,
@@ -853,7 +858,7 @@ export function DebugChat({
   const [rate, setRate] = useState(speechRate);
   /** A drag of the box ended (useDrag): its edge, or a tuck (fold.ts). */
   const onDrop = useRef((_at: DropSpan) => {});
-  const { offset, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
+  const { offset, dx: boxDx, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
     (bar) => onDrop.current(bar),
   );
   /**
@@ -2240,9 +2245,34 @@ export function DebugChat({
     });
     hold(COMPACT_SCROLL_MS);
     if (!typing && !micActive) holdLog.current?.("open");
+    jumpedTo.current = { id, at: Date.now() };
     // The observer says so a frame later; a quick second tap goes on from here.
     setAskCardsAbove((s) => new Set([...s].filter((x) => x !== id)));
   };
+  /**
+   * The card a tap just brought in. When the arrow then hides (or its count
+   * changes), the newest run's side room goes or shrinks and the run reflows:
+   * a card inside a long run of one sender's lines moved up past the view's
+   * top (#664). Put it back at the top once, in the same frame.
+   */
+  const jumpedTo = useRef<{ id: string; at: number } | null>(null);
+  useLayoutEffect(() => {
+    const j = jumpedTo.current;
+    const el = log.current;
+    if (!j || !el) return;
+    if (Date.now() - j.at > REALIGN_MS) {
+      jumpedTo.current = null;
+      return;
+    }
+    const line = lineIn(el, j.id);
+    if (!line) return;
+    el.scrollTop = jumpTop({
+      scrollTop: el.scrollTop,
+      lineTop: line.getBoundingClientRect().top,
+      rootTop: el.getBoundingClientRect().top,
+    });
+    if (!askJumpShown) jumpedTo.current = null;
+  }, [askJumpShown, asksUp.length]);
   /**
    * Into full screen and back (full-screen.ts). Only the view changes: the
    * line being read keeps its place on screen across the switch (at the end,
@@ -2777,7 +2807,7 @@ export function DebugChat({
    * edge) to move the box. The liagent mark: a tap minimizes or restores
    * (after 280 ms), a double tap opens the menu. It is its own drag handle,
    * so its click still lands on it. The state tree is in the + menu (its
-   * "View" group; AttachMenu.tsx). The mic is the bar's last control (micEl).
+   * "View" group; AttachMenu.tsx). The mic follows them (micEl).
    */
   const controls = (
     <>
@@ -2798,7 +2828,8 @@ export function DebugChat({
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
         style={{ ...handle.style, ...BAR_CONTROL }}
-        className="tap-40 relative flex w-10 shrink-0 items-center justify-center rounded-full"
+        data-lk-tap
+        className="tap-40 relative flex shrink-0 items-center justify-center rounded-full"
       >
         {open ? <LiagentMark size={18} /> : <TuckArrow edge={edge} />}
         <span
@@ -2810,7 +2841,8 @@ export function DebugChat({
       {!open && (
         // The pill's Li: a tap opens the chat again (the mark beside it now
         // tucks). Part of the pill, not a button of its own: it drags as the
-        // pill does. Screen readers restore from the menu.
+        // pill does. Screen readers restore from the menu. It takes the +'s
+        // slot, as wide, so the mic after it keeps its place.
         <span
           aria-hidden
           data-testid="debug-chat-restore"
@@ -2819,7 +2851,8 @@ export function DebugChat({
           {...handle}
           onClick={() => !wasDrag() && foldBy({ type: "restore" })}
           style={{ ...handle.style, ...BAR_CONTROL, cursor: "pointer" }}
-          className="tap-40 flex w-8 shrink-0 items-center justify-center"
+          data-lk-tap
+          className="tap-40 flex shrink-0 items-center justify-center"
         >
           <LiagentMark size={18} />
         </span>
@@ -2827,9 +2860,12 @@ export function DebugChat({
     </>
   );
   /**
-   * The mic, after the input: at the bar's far right when expanded, and next
-   * to the connections when minimized (the input's slot is 0 wide then). It is
-   * always this one node, so its live state and gestures survive the switch.
+   * The mic, in the cluster with the mark and the + (owner, 2026-11-07:
+   * "我们把麦克风跟另外几个按钮排到一起吧……这样折叠的时候，它位置就不会变"):
+   * [mark | + | mic | input] open, [mark | Li | mic] folded, the Li in the +'s
+   * slot, so the mic keeps its place on the screen as the chat folds, and in
+   * full screen (the bar keeps the panel's span there). It is always this one
+   * node, so its live state and gestures survive the switch.
    */
   const micEl = (
     <>
@@ -3598,13 +3634,20 @@ export function DebugChat({
       />
     );
   };
-  /** A line in the one-line views: its words with their links, no blocks. */
-  const lineText = (m: ChatMessage, text: ReactNode) =>
-    typeof text === "string" ? (
+  /**
+   * A line in the one-line views: its words with their links, no blocks. A
+   * function declaration, hoisted: the folded pill's floating lines (floatLine,
+   * above) render with it before this point, and as a `const` that threw
+   * "Cannot access 'lineText' before initialization" and took the chat down
+   * as soon as a line floated (debug-chat-fold-qa, debug-chat-bar-qa).
+   */
+  function lineText(m: ChatMessage, text: ReactNode) {
+    return typeof text === "string" ? (
       <RichLine rich={richOf(text, lineTier(m, { embedded }))} onOpenPage={onOpenPage} />
     ) : (
       text
     );
+  }
   /** Who said each line, and where a run of one sender's lines starts (avatar-rules.ts). */
   const whos = messages.map((m) =>
     lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you }),
@@ -4213,12 +4256,21 @@ export function DebugChat({
         }}
         // On the left edge the row runs right to left (fold.ts): the mark on
         // the inner side, folding right. The text inside stays left to right.
-        style={{ gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr", direction: mirrorRow ? "rtl" : undefined }}
+        // Full screen: the bar keeps the panel's span (full-screen.ts fullBarSpan), so the mic stays put.
+        style={{
+          gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr",
+          direction: mirrorRow ? "rtl" : undefined,
+          ...(full ? fullBarSpan(boxDx) : {}),
+        }}
       >
         <div style={LTR}>
         {open && (shownTarget !== ROOT_NODE || completions.length > 0) && (
           // The target node (a chip: × back to the main thread) and "@/…" completions.
-          <div className="pointer-events-none absolute start-20 bottom-full mb-1 flex max-w-[calc(100%-6rem)] flex-col items-start gap-1">
+          // Over the input, which starts after the cluster [mark | + | mic].
+          <div
+            style={{ insetInlineStart: INPUT_START, maxWidth: `calc(100% - ${INPUT_START} - 1rem)` }}
+            className="pointer-events-none absolute bottom-full mb-1 flex flex-col items-start gap-1"
+          >
             {completions.length > 0 && (
               <ul
                 role="listbox"
@@ -4378,8 +4430,8 @@ export function DebugChat({
           </div>
         )}
         </div>
-        {/* One container: [minimize | connections | input | mic]; minimized, the
-        input's slot closes to 0 and leaves [minimize | connections | mic]. No title bar:
+        {/* One container: [mark | + | mic | input]; minimized, the input's slot
+        closes to 0 and leaves [mark | Li | mic], the mic where it was. No title bar:
         the mark drags the box, minimizes it and opens the menu (status,
         read-aloud, pages, sessions); its dot is the connection. No End chat
         here: the chat hibernates and wakes by itself. */}
@@ -4401,7 +4453,7 @@ export function DebugChat({
           style={{
             // Radius, padding and the line box as variables: the mic is concentric
             // with the corner by construction (bar-geometry.ts).
-            ...barGeometry(open),
+            ...barGeometry(),
             background: INPUT_BG,
             // Aside while the log spans the screen; it keeps the pointer (captured).
             opacity: barAside ? 0 : undefined,
@@ -4424,6 +4476,8 @@ export function DebugChat({
               className="lk-drain absolute inset-x-3 top-0 h-0.5 bg-blue-600/60"
             />
           )}
+          {/* The controls' 44 px touch areas (bar-geometry.ts TAP_44_CSS). */}
+          <style>{TAP_44_CSS}</style>
           {controls}
           {/* + : add to Lianki, attach to the line, view the state tree
           (AttachMenu.tsx). Open only; without `attach` (or with a notice) it
@@ -4438,6 +4492,8 @@ export function DebugChat({
               onToggle={() => setAttachMenu((v) => !v)}
             />
           )}
+          {/* The mic, after the + (open) or the pill's Li (folded): one place on screen. */}
+          {micEl}
           {/* The input: gone while minimized (inert, so it can't take focus or
           be read), fading out as its slot closes. */}
           <div
@@ -4625,7 +4681,6 @@ export function DebugChat({
               </>
             )}
           </div>
-          {micEl}
           {!open && unread > 0 && (
             <span
               data-testid="debug-chat-pill-unread"
