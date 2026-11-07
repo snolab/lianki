@@ -19,14 +19,21 @@ const PRECACHE_URLS = ["/manifest.json"];
 const OFFLINE_SHELLS = ["/words", "/alphabet"];
 
 /**
- * A my-<hash> box (devbox/README.md) runs `next dev`, whose chunk names stay the
- * same across edits and restarts. Cache-first /_next/static there served the
- * previous build's code next to the new one, and the page never hydrated
- * (2026-11-07: the box's spinner stayed, its fetch never went to lianki.com).
- * On a box this worker caches nothing, answers nothing, and drops what an older
- * one cached.
+ * A my-<hash> or my-<name> box (devbox/README.md) runs `next dev`, whose chunk
+ * names stay the same across edits and restarts. Cache-first /_next/static there
+ * served the previous build's code next to the new one, and the page never
+ * hydrated (2026-11-07: the box's spinner stayed, its fetch never went to
+ * lianki.com). On a box this worker caches nothing, answers nothing, and drops
+ * what an older one cached.
+ *
+ * Deliberately broader than the box host rule (lib/box-oauth/rules.ts,
+ * isBoxHost): any my-*.lianki.com, since caching nothing is the safe side and a
+ * static file cannot import it. unit/sw-box.test.ts holds that every host the
+ * rule accepts is caught here.
  */
-const IS_BOX = /^my-[0-9a-f]{12,64}\.lianki\.com$/.test(self.location.hostname);
+const SW_HOST = self.location.hostname || "";
+const IS_BOX =
+  SW_HOST.startsWith("my-") && SW_HOST.endsWith(".lianki.com") && SW_HOST.split(".").length === 3;
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

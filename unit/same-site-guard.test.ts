@@ -28,6 +28,13 @@ describe("requests from a sibling *.lianki.com host", () => {
     expect(refused("/en", sibling, "OPTIONS")).toBe(false);
   });
 
+  test("a named box host is a sibling like any other: its cookie-carrying /api call is refused", () => {
+    const fromNamedBox = { ...sibling, origin: "https://my-example.lianki.com" };
+    expect(refused("/api/prefs", fromNamedBox, "GET")).toBe(true);
+    expect(refused("/en/list", fromNamedBox)).toBe(true);
+    expect(refused("/en/list", fromNamedBox, "GET")).toBe(false);
+  });
+
   test("without the cookie there is nothing to protect", () => {
     expect(refused("/api/token", { "sec-fetch-site": "same-site" })).toBe(false);
   });

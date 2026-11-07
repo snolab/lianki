@@ -351,7 +351,7 @@ export async function boxUser(db: BoxDb, userId: string): Promise<BoxUserRow | n
 
 export function validNewBox(origin: unknown, scopes: unknown, dev: boolean): string | null {
   if (typeof origin !== "string" || !isBoxOrigin(origin, dev))
-    return "origin must be exactly https://my-<hash>.lianki.com";
+    return "origin must be exactly https://my-<hash>.lianki.com or https://my-<name>.lianki.com (name: 3-30 of a-z, 0-9, inner hyphens; not reserved)";
   if (!Array.isArray(scopes) || scopes.length === 0) return "scopes required";
   if (!scopes.every((s) => s === "box:read" || s === "box:write"))
     return "scopes: box:read and/or box:write";

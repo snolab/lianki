@@ -133,7 +133,7 @@ export async function boxChatTicket(
 ): Promise<BoxChatTicket | null> {
   const origin = req.headers.get("origin");
   // lianki.com signs a ticket only for a live binding's origin, which is
-  // https://my-<hash>.lianki.com in production (a dev server's binding may be loopback).
+  // https://my-<hash|name>.lianki.com in production (a dev server's binding may be loopback).
   if (!origin || !pub || !isBoxOrigin(origin, true)) return null;
   const offered = (req.headers.get("sec-websocket-protocol") ?? "")
     .split(",")

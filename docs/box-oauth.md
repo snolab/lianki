@@ -1,7 +1,8 @@
 # A box signs in through lianki.com
 
 A my-box ([devbox/README.md](../devbox/README.md)) runs its owner's code on
-`my-<hash>.lianki.com`. With this, that code signs in through lianki.com and
+`my-<hash>.lianki.com` or a named `my-<name>.lianki.com` (one rule for both:
+`isBoxHost` in `lib/box-oauth/rules.ts`, reserved names as data). With this, that code signs in through lianki.com and
 uses the production API as one Lianki account, through a short-lived token and
 no shared cookie. Owner's decision: Slack, 2026-11-05.
 
@@ -27,7 +28,8 @@ as if it did not exist.
 ## For the owner: set up a box
 
 1. `/dev/box-clients`: bind the box's exact origin to one account, read or
-   read + write. Copy the client id (not a secret).
+   read + write. The host's shape only lets it be bound; the binding is the
+   authority, so a well-formed host nobody bound (hex or named) gets nothing. Copy the client id (not a secret).
 2. In the box's gitignored env file, set `DEVBOX_LIANKI_CLIENT_ID=<id>` (and
    `DEVBOX_LIANKI_SCOPE=box:read offline_access` for a read-only box), and
    recreate the box. Its own sign-in and sign-up are gone from then on.
@@ -327,7 +329,7 @@ A box runs `next dev`, whose chunk names stay the same across edits and
 restarts. The site's service worker (`public/sw.js`) caches `/_next/static`
 cache-first, so on a box it served the previous build's chunks next to the new
 ones and the page never hydrated (2026-11-07: a spinner forever, and the box's
-fetch never reached lianki.com). On a `my-<hash>` host the worker now answers
+fetch never reached lianki.com). On a `my-*.lianki.com` host (any box, hex or named) the worker now answers
 nothing, caches nothing, and deletes what an older worker cached
 (`unit/sw-box.test.ts`). A browser picks the new worker up on its next
 navigation; the reload after that is clean.

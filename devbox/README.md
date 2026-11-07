@@ -158,7 +158,7 @@ config stay in `~/.cloudflared` (0600); the repo holds only the script.
 
 ```bash
 devbox/host-tunnel.sh create    # tunnel lianki-devbox-<name> + ~/.cloudflared/lianki-devbox-<name>.yml
-OWNER_APPROVED_DNS=1 devbox/host-tunnel.sh dns    # CNAME my-<hash>.lianki.com — owner's typed OK first
+OWNER_APPROVED_DNS=1 devbox/host-tunnel.sh dns    # CNAME my-<hash or name>.lianki.com — owner's typed OK first
 devbox/host-tunnel.sh status
 # connector, kept up by oxmgr (as lianki-preview-tunnel is):
 oxmgr start --name lianki-devbox-<name>-tunnel --restart always --cwd ~ \
@@ -175,15 +175,29 @@ hash (`openssl rand -hex 8`), kept only in that box's gitignored env file
 in the repo; `host-tunnel.sh` reads it from the env file and refuses without it.
 The hash hides the URL but is not a login: anyone who has it can open the page.
 
+**Or a named host, `my-<name>.lianki.com`** (owner, 2026-11-07): the name is 3–30
+of `a-z`, `0-9` and single inner hyphens (no hyphen first or last, no `--`),
+lowercase only. Some names are reserved for lianki.com itself (`my-admin`,
+`my-api`, `my-www`, …): the list is data, `BOX_RESERVED_NAMES` in
+`lib/box-oauth/rules.ts`. A named host is guessable, so it hides nothing; what it
+may do comes only from its exact origin's binding on `/dev/box-clients`, and an
+unbound named host gets nothing from lianki.com. Both forms are one rule,
+`isBoxHost` in `lib/box-oauth/rules.ts`, used by the Worker's gate, the bind
+form, lianki-push's chat ticket and (through `scripts/dev/box-host.ts`)
+`host-tunnel.sh`; the service worker's own check is broader on purpose and
+tested against it (`unit/sw-box.test.ts`).
+
 The first records, `devbox-kishouzet` and `devbox-snomiao`, are out of the
 ingress (they answer 404) and are still to be deleted: neither cloudflared nor
 wrangler's OAuth can delete a DNS record, so that needs an API token with
 Zone · DNS · Edit.
 
-Ingress: `my-<hash>.lianki.com → http://127.0.0.1:<DEVBOX_DEV_PORT>`,
+Ingress: `my-<hash or name>.lianki.com → http://127.0.0.1:<DEVBOX_DEV_PORT>`,
 everything else 404. Set `DEVBOX_PUBLIC_URL` in the env file first, then run
 `create`, `dns` and recreate the box, so sign-in and `allowedDevOrigins` use
-that host. The
+that host. Moving a box to a new host is the same, plus a new binding: the
+binding is to the exact origin, so revoke the old one on `/dev/box-clients`, bind
+the new origin, and put its new client id in `DEVBOX_LIANKI_CLIENT_ID`. The
 public dev server is open to anyone who has the URL, which is acceptable
 because it holds only local throwaway data (any email and password signs up); the production-facing view of the friend's
 frontend comes through Lianki's custom-frontend `?live` feature instead.
