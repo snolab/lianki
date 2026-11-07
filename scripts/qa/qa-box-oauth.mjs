@@ -916,15 +916,19 @@ async function chat() {
 
 // ── Code on the owner's box (box:eval, docs/box-oauth.md "Code on the owner's box") ──
 //
-//   PROVIDER=… BOX=… OWNER=… bun scripts/qa/qa-box-oauth.mjs eval-setup
-//   … PUSH=… TICKET_KEY=… bun … eval
+//   PROVIDER=… BOX=… OWNER=… bun scripts/qa/qa-box-oauth.mjs code-setup
+//   … PUSH=… TICKET_KEY=… bun … code
 //
-// The same three servers as `chat`. eval-setup binds the owner's box and checks
+// The same three servers as `chat`. code-setup binds the owner's box and checks
 // box:eval is refused for a member's box and before box:chat, then grants both.
-// eval: the box page shows the pairing of a sender (eval.ts's socket, from here),
+// code: the box page shows the pairing of a sender (eval.ts's socket, from here),
 // only its own Allow tap approves it, an eval by label reaches the box page and
 // its result and page errors come back; turning box:eval off ends that while the
 // chat goes on; revoke ends the rest. Silent: no audio, no mic.
+//
+// Local registry note (2026-11-07): start lianki-push only after the provider says
+// "Ready"; one started first answered every SESSIONS call with "Worker … not found"
+// although it listed the binding as connected (a restart of lianki-push fixed it).
 
 async function evalSetup() {
   const browser = await launchSilent(chromium);
@@ -1012,12 +1016,17 @@ async function evalRun() {
   check(
     "the tap on the box page approves it (eval)",
     Boolean(await wait(() => s.last("approved")?.scope === "eval")),
-    JSON.stringify(s.last("approved") ?? s.last("error")),
+    String(s.last("approved")?.scope ?? s.last("error")?.error ?? ""),
   );
 
   s.send({ type: "eval", code: "location.origin", target: "box" });
   const res = await wait(() => s.last("result"));
-  check("an eval by label reaches the box page", s.last("sent")?.delivered === 1);
+  const sent = s.last("sent");
+  check(
+    "an eval by label reaches the box page, and only the box",
+    sent?.delivered >= 1 && sent.labels.every((l) => l.startsWith("box ")),
+    `${sent?.delivered}`,
+  );
   check(
     "and its result comes back",
     res?.ok === true && String(res?.value).includes(new URL(BOX).host),
@@ -1084,8 +1093,8 @@ await (cmd === "setup"
     ? chatSetup()
     : cmd === "chat"
       ? chat()
-      : cmd === "eval-setup"
+      : cmd === "code-setup"
         ? evalSetup()
-        : cmd === "eval"
+        : cmd === "code"
           ? evalRun()
           : run());
