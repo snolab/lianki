@@ -1,6 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useIntlayer } from "next-intlayer";
+import type { ScopeId } from "@/lib/api-tokens";
+import {
+  ExpiryPicker,
+  PermissionPicker,
+  expiryBody,
+  textOf,
+  type Expiry,
+} from "@/app/components/TokenPickers";
 
 export type CliLoginLabels = {
   title: string;
@@ -50,15 +59,24 @@ export default function CliLoginClient(p: {
 }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [scopes, setScopes] = useState<ScopeId[]>([]);
+  const [expiry, setExpiry] = useState<Expiry>(null);
+  const [missing, setMissing] = useState<string | null>(null);
+  const tok = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
 
   async function approve() {
+    // The token gets exactly what is picked here: no default permission, no default expiry.
+    const exp = expiryBody(expiry);
+    if (scopes.length === 0) return setMissing(textOf(tok.errScopes));
+    if (!exp) return setMissing(textOf(tok.errExpiry));
+    setMissing(null);
     setBusy(true);
     setFailed(false);
     try {
       const r = await fetch("/api/cli-login/approve", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ request: p.requestId, state: p.state }),
+        body: JSON.stringify({ request: p.requestId, state: p.state, scopes, expiry: exp }),
       });
       const j = (await r.json().catch(() => ({}))) as { redirect?: string };
       if (!r.ok || !j.redirect) throw new Error(String(r.status));
@@ -83,7 +101,14 @@ export default function CliLoginClient(p: {
         text={p.labels.details}
         fill={{ name: p.name, email: p.email, address: p.redirectUri }}
       />
+      <PermissionPicker value={scopes} onChange={setScopes} disabled={busy} />
+      <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
       <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{p.labels.warning}</p>
+      {missing && (
+        <p role="alert" className="text-red-500 text-sm">
+          {missing}
+        </p>
+      )}
       {failed && (
         <p role="alert" className="text-red-500 text-sm">
           {p.labels.failed}

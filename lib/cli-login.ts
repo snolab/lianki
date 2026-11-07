@@ -20,6 +20,7 @@
  * the redirect, matched as a whole string and rebuilt from its parts, so no
  * userinfo, other host, other path, query or fragment can get through.
  */
+import { type ScopeId, createToken, parseExpiry, parseScopes } from "@/lib/api-tokens";
 import type { D1Like } from "@/lib/d1/types";
 import { sha256Hex } from "@/lib/security/throttle";
 import type { Limit } from "@/lib/security/throttle";
@@ -116,6 +117,8 @@ type Row = {
   name: string;
   stage: string;
   expires_ms: number;
+  scopes: string | null;
+  token_expires_at: string | null;
 };
 
 /** The page: start a pending request for this user. Returns the id for its Approve button. */
@@ -153,25 +156,41 @@ export type ApproveResult = { ok: true; redirect: string } | { ok: false; status
 /**
  * Approve: the request must be this user's, still pending and unexpired, and
  * the state must match. It becomes a one-time code; the redirect carries it.
+ * The permissions and expiry the user picked on the page (lib/api-tokens.ts:
+ * at least one permission, an expiry, no default for either) go with it, and
+ * the token is minted with exactly those.
  */
 export async function approveRequest(
   db: D1Like,
-  a: { requestId: unknown; userId: string; state: unknown },
+  a: { requestId: unknown; userId: string; state: unknown; scopes: unknown; expiry: unknown },
   now = Date.now(),
 ): Promise<ApproveResult> {
   if (typeof a.requestId !== "string" || !B64URL.test(a.requestId) || a.requestId.length > 64)
     return { ok: false, status: 400 };
   if (!validState(a.state)) return { ok: false, status: 400 };
+  const scopes: ScopeId[] | null = parseScopes(a.scopes);
+  const expiresAt = parseExpiry(a.expiry, now);
+  if (!scopes || !expiresAt) return { ok: false, status: 400 };
   const hash = await sha256Hex(a.requestId);
   const code = randomId();
   // One UPDATE decides it, so two clicks cannot both get a code.
   const row = await db
     .prepare(
-      `UPDATE cli_login SET stage = 'code', code_hash = ?, expires_ms = ?
+      `UPDATE cli_login SET stage = 'code', code_hash = ?, expires_ms = ?, scopes = ?,
+         token_expires_at = ?
        WHERE request_hash = ? AND user_id = ? AND stage = 'pending' AND expires_ms > ? AND state = ?
        RETURNING redirect_uri, state`,
     )
-    .bind(await sha256Hex(code), now + CODE_TTL_MS, hash, a.userId, now, a.state)
+    .bind(
+      await sha256Hex(code),
+      now + CODE_TTL_MS,
+      JSON.stringify(scopes),
+      expiresAt.toISOString(),
+      hash,
+      a.userId,
+      now,
+      a.state,
+    )
     .first<{ redirect_uri: string; state: string }>();
   if (!row) return { ok: false, status: 404 };
   const redirect = loopbackRedirect(row.redirect_uri);
@@ -183,7 +202,16 @@ export async function approveRequest(
 }
 
 export type ExchangeResult =
-  | { ok: true; token: string; tokenHash: string; name: string; email: string }
+  | {
+      ok: true;
+      token: string;
+      tokenHash: string;
+      name: string;
+      email: string;
+      userId: string;
+      scopes: ScopeId[];
+      expiresAt: string;
+    }
   | { ok: false; status: number; error: string };
 
 /**
@@ -201,7 +229,8 @@ export async function exchangeCode(
   const row = await db
     .prepare(
       `UPDATE cli_login SET stage = 'used' WHERE code_hash = ? AND stage = 'code'
-       RETURNING user_id, email, redirect_uri, state, challenge, name, stage, expires_ms`,
+       RETURNING user_id, email, redirect_uri, state, challenge, name, stage, expires_ms,
+         scopes, token_expires_at`,
     )
     .bind(await sha256Hex(x.code))
     .first<Row>();
@@ -210,17 +239,30 @@ export async function exchangeCode(
   if (typeof x.redirectUri !== "string" || x.redirectUri !== row.redirect_uri)
     return bad("redirect_uri");
   if (!sameString(await s256(x.verifier), row.challenge)) return bad("code_verifier");
+  // A code approved before permissions were picked on the page has none: refused.
+  let picked: unknown = null;
+  try {
+    picked = row.scopes ? JSON.parse(row.scopes) : null;
+  } catch {}
+  const scopes = parseScopes(picked);
+  if (!scopes || !row.token_expires_at) return bad("invalid_grant");
 
-  const hex = [...crypto.getRandomValues(new Uint8Array(32))]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  const token = `lk_${hex}`;
-  const tokenHash = await sha256Hex(token);
-  await db
-    .prepare("INSERT INTO api_tokens (token_hash, email, name, created_at) VALUES (?, ?, ?, ?)")
-    .bind(tokenHash, row.email, row.name, new Date(now).toISOString())
-    .run();
-  return { ok: true, token, tokenHash, name: row.name, email: row.email };
+  const { token, id: tokenHash } = await createToken(
+    db,
+    { userId: row.user_id, email: row.email },
+    { name: row.name, scopes, expiresAt: new Date(row.token_expires_at) },
+    now,
+  );
+  return {
+    ok: true,
+    token,
+    tokenHash,
+    name: row.name,
+    email: row.email,
+    userId: row.user_id,
+    scopes,
+    expiresAt: row.token_expires_at,
+  };
 }
 
 /**

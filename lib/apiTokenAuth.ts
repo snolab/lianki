@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
-import { ApiTokensD1Repo } from "@/lib/repos/d1Repos";
+import { checkToken } from "@/lib/api-tokens";
 
 /**
  * Bearer API-token lookup, following DB_BACKEND like every other data route.
@@ -34,13 +34,20 @@ const defaultDeps: TokenLookupDeps = {
   },
 };
 
-/** The email owning this plain API token, or null when unknown or revoked. */
+/**
+ * The email owning this plain API token, or null when unknown, revoked,
+ * expired, its account gone, or without the `study` permission (a chat-only
+ * lane token reaches no card or settings route; lib/api-tokens.ts).
+ */
 export async function getEmailByToken(
   token: string,
   deps: TokenLookupDeps = defaultDeps,
 ): Promise<string | null> {
   if (!token) return null;
   const tokenHash = hashToken(token);
-  if (deps.backend() === "d1") return new ApiTokensD1Repo(deps.d1()).emailByHash(tokenHash);
+  if (deps.backend() === "d1") {
+    const r = await checkToken(deps.d1(), token, "study");
+    return r.ok ? r.user.email : null;
+  }
   return deps.mongoEmailByHash(tokenHash);
 }

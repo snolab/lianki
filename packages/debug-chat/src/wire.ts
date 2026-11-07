@@ -54,6 +54,15 @@ export type ChatMessage = {
   email?: string;
   sender?: Sender;
   /**
+   * A line posted with an API token (`lianki chat`, workers/push/src/token-chat.ts):
+   * `via: "token"`, and `tokenLane` is the token's name, which the text also
+   * starts with as 【name】 (and `lane` is set when that name is a known lane,
+   * voices.ts). Stamped by the hub only. An ask card on such a line is
+   * answered to that token lane alone.
+   */
+  via?: "token";
+  tokenLane?: string;
+  /**
    * The state-tree node an agent line comes from ("/words/prefetch"; absent =
    * the main thread). Shown as a muted subtitle under the agent's avatar.
    */

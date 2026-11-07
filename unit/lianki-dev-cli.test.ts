@@ -11,6 +11,7 @@ import {
   type Global,
   SUBCOMMANDS,
   USAGE,
+  chatArgv,
   childExit,
   doctorExit,
   doctorFindings,
@@ -330,4 +331,39 @@ describe("lianki-dev say against a stub hub", () => {
     expect((await run(["say"], true)).exitCode).toBe(EXIT.usage);
     expect((await run(["say", "--help"], true)).exitCode).toBe(EXIT.ok);
   }, 20_000);
+});
+
+describe("lane token: say/ask/listen through lianki chat", () => {
+  it("say sends the text on stdin; flags of the grant path are refused", () => {
+    const a = chatArgv("say", ["--quiet", "-x looks like a flag"]);
+    if (a instanceof Error) throw a;
+    expect([...a]).toEqual(["chat", "say", "--quiet", "-"]);
+    expect(a.stdin).toBe("-x looks like a flag");
+    expect(chatArgv("say", ["--to", "bob@x.com", "hi"])).toBeInstanceOf(Error);
+    expect(chatArgv("say", [])).toBeInstanceOf(Error);
+  });
+  it("ask: one question, *option is the recommended one, --wait passes", () => {
+    expect(chatArgv("ask", ["--q", "Ship?", "--opt", "*Yes", "--opt", "No", "--wait"])).toEqual([
+      "chat",
+      "ask",
+      "--q",
+      "Ship?",
+      "--opt",
+      "Yes",
+      "--recommend",
+      "1",
+      "--opt",
+      "No",
+      "--wait",
+    ]);
+    expect(chatArgv("ask", ["--q", "a", "--opt", "x", "--q", "b", "--opt", "y"])).toBeInstanceOf(
+      Error,
+    );
+    expect(chatArgv("ask", ["--to", "x", "--q", "a", "--opt", "x"])).toBeInstanceOf(Error);
+  });
+  it("listen is the JSON stream; serve and inbox have no token path", () => {
+    expect(chatArgv("listen", [])).toEqual(["chat", "listen", "--json"]);
+    expect(chatArgv("serve", [])).toBeInstanceOf(Error);
+    expect(chatArgv("inbox", [])).toBeInstanceOf(Error);
+  });
 });

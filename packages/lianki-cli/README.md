@@ -27,7 +27,8 @@ lianki auth login
 ```
 
 This opens lianki.com in your browser. Sign in there if you are not already,
-check the page, and press **Approve**. The page sends a one-time code back to
+check the page, tick the token's permissions, pick when it expires, and press
+**Approve**. The page sends a one-time code back to
 the CLI (on `127.0.0.1`), and the CLI trades it for an API token named
 `lianki CLI <your computer>`. The token itself is never put in a URL.
 
@@ -47,7 +48,7 @@ lianki auth logout      # revoke the token on the server and forget it
 ### Without a browser (servers, CI, agents)
 
 Make a token at [lianki.com/preferences](https://lianki.com/preferences)
-→ **API Tokens**, then either:
+→ **API tokens** (a name, its permissions, an expiry), then either:
 
 ```bash
 export LIANKI_TOKEN=lk_…                  # used by every command; nothing stored
@@ -77,6 +78,40 @@ while url=$(lianki next --json | jq -er .data.card.url); do
   open "$url"; read -p "again/hard/good/easy: " r; lianki review "$url" "$r"
 done
 ```
+
+## Tokens: permissions and expiry
+
+Like GitHub's fine-grained tokens, every token belongs to the account that
+made it, acts only as that account, has only the permissions picked when it
+was made, and expires (at most a year; there is no "never"). The token page
+shows each token's permissions, expiry and last use, with one-click Revoke.
+
+| permission   | lets the token                                              |
+| ------------ | ----------------------------------------------------------- |
+| `study`      | review, add and change cards; read and change your settings |
+| `chat:read`  | read and follow your own chat (`chat read`, `chat listen`)  |
+| `chat:write` | post in your own chat (`chat say`)                          |
+| `chat:ask`   | post question cards in your own chat (`chat ask`)           |
+
+No token can run code, pair a device, answer a card or reach another
+account's chat.
+
+## Chat
+
+Your own chat thread only: your Learning Partner's. Lines show the token's
+name as 【name】. Only your own tap on lianki.com answers a question card.
+
+```bash
+lianki chat say "finished chapter 3"
+echo "from a script" | lianki chat say -
+lianki chat ask --q "Review now?" --opt Yes --opt Later --recommend 1 --wait
+lianki chat read --limit 20
+lianki chat listen --json        # one JSON line an event, until Ctrl-C
+```
+
+`listen` and `ask --wait` need Node.js 22+ or Bun (a WebSocket). An agent
+uses its own token: `LIANKI_TOKEN=lk_… lianki chat say …`; the line shows that
+token's name.
 
 ## Settings
 
@@ -149,8 +184,17 @@ lianki settings set --help
 | `settings list` | `{ settings: { <key>: value \| null } }`                                                       |
 | `settings get`  | `{ key, value }`                                                                               |
 | `settings set`  | `{ key, value }`                                                                               |
+| `chat say`      | `{ id, lane }`                                                                                 |
+| `chat ask`      | `{ id, askId, lane, answer: null }`, or with `--wait` `{ id, askId, answer: { choices, labels, at } }` |
+| `chat read`     | `{ thread, lane, messages: [{ id, from, label, text, at, ask?, answer? }] }`                  |
 
 Within `v: 1` fields are only ever added; removing or renaming one bumps `v`.
+
+## Changes in 0.3.0
+
+- New: `chat say | ask | read | listen`, in your own chat thread.
+- `auth login`: the approval page asks for the token's permissions and expiry.
+- A token refused for a missing permission says so (exit 2, `auth_refused`).
 
 ## Changes in 0.2.0
 
