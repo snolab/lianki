@@ -77,6 +77,13 @@ const nextConfig = {
         { key: "Cache-Control", value: "no-store" },
       ],
     },
+    // A friend's dev box (devbox/README.md) is `next dev` behind Cloudflare, which
+    // turns next dev's "no-cache" into the zone's 4-hour browser TTL. Chunk names
+    // stay the same across edits there, so the browser kept running old code for
+    // hours (2026-11-07). Cloudflare leaves "no-store" alone.
+    ...(process.env.LIANKI_DEVBOX === "1"
+      ? [{ source: "/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] }]
+      : []),
   ],
 };
 
