@@ -139,6 +139,13 @@
  * friend's preview, and a grant approved without a session (the dev bridge,
  * an older main Worker) are never renewed.
  *
+ * Token chat (token-chat.ts; `lianki chat`). A third kind of socket, and
+ * POST calls, at /api/version/chat: an API token's say / ask / read / listen,
+ * only in its account's own thread (the owner's, or that user's), as an agent
+ * line labelled with the token's name. Never a page or a controller: no eval,
+ * pairing, grant, inbox, clips or answer. A token ask's `answered` goes to
+ * that thread's pages and the same lane's token sockets only.
+ *
  * Voice-clip recording (packages/debug-chat/src/clips.ts). The switch is a
  * window session's, held here, never in an origin's storage. An owner page
  * knocks with `?ws=<its window's session id>&dev=<device id>` (and
