@@ -128,7 +128,7 @@ const dictionary = {
         ru: "Дорожная карта",
         ur: "روڈ میپ",
         id: "Peta Jalan",
-        de: "Lernpfad",
+        de: "Roadmap",
         sw: "Ramani ya Njia",
         mr: "रोडमॅप",
       }),
@@ -473,7 +473,8 @@ const context: KeyContext<typeof dictionary.content> = {
       "Link in the landing page header to the page that imports cards from files such as Anki decks. One short verb or noun.",
     aiVocab:
       "Link in the landing page header to the AI vocabulary generator. Keep AI as is; very short noun phrase.",
-    roadmap: "Header link to the public roadmap page listing planned features. One noun.",
+    roadmap:
+      "Header and sidebar link to /roadmap, and the name of its card on Home: the page where the learner writes a wish and gets a step-by-step plan toward it (not a product roadmap of planned features). Owner, 2026-11-07: just 'Roadmap', no 'AI' or 'learning'. One noun; same word as the /roadmap page heading.",
   },
   hero: {
     title:

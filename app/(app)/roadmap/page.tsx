@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import { authUserOrNull } from "@/app/signInEmail";
 import { redirect } from "next/navigation";
@@ -12,9 +13,10 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await appLocale();
+  const { metadata } = getIntlayer("roadmap-page", locale);
   return {
-    title: "Learning Roadmap — Lianki",
-    description: "AI-generated learning roadmaps with spaced repetition progress tracking",
+    title: metadata.title,
+    description: metadata.description,
     ...generateAppHreflangMetadata(locale, "/roadmap"),
   };
 }
