@@ -27,6 +27,8 @@
     "./page-audio": "./src/page-audio.ts",
     "./output-bed": "./src/output-bed.ts",
     "./audio-claim": "./src/audio-claim.ts",
+    "./li-audio": "./src/li-audio.ts",
+    "./li-client": "./src/li-client.ts",
     "./page-errors": "./src/page-errors.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
     "./wire": "./src/wire.ts",
