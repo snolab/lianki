@@ -16,15 +16,23 @@ export async function notifyBoxClosed(
   clientId: string,
   push: Fetcher | null = pushBinding(),
 ): Promise<boolean> {
-  if (!push) return false;
+  if (!push) {
+    console.error(JSON.stringify({ event: "box.closed-notice", ok: false, why: "no binding" }));
+    return false;
+  }
   try {
     const res = await push.fetch(BOX_CLOSED_URL, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ client: clientId }),
     });
+    if (!res.ok)
+      console.error(JSON.stringify({ event: "box.closed-notice", ok: false, status: res.status }));
     return res.ok;
-  } catch {
+  } catch (e) {
+    console.error(
+      JSON.stringify({ event: "box.closed-notice", ok: false, why: String(e).slice(0, 160) }),
+    );
     return false;
   }
 }

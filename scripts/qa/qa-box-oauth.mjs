@@ -646,4 +646,279 @@ async function run() {
   process.exit(failed ? 1 : 0);
 }
 
-await (process.argv[2] === "setup" ? setup() : run());
+// ── The Li chat on the owner's box (box:chat, docs/box-oauth.md "Chat on the owner's box") ──
+//
+//   PROVIDER=… BOX=… OWNER=<site owner email> bun scripts/qa/qa-box-oauth.mjs chat-setup
+//   … PUSH=http://127.0.0.1:<port> TICKET_KEY=<path to the JWK> bun … chat
+//
+// Three servers: the provider (its STT_TICKET_KEY = the JWK), lianki-push under
+// `wrangler dev -c workers/push/wrangler.jsonc` (PARTNER_TICKET_PUB = its public
+// half), and the box (LIANKI_BOX_HUB=ws://…PUSH/api/version/debug). The key is a
+// throwaway made for the run. A peer socket (a partner ticket, signed here) stands
+// in for the owner's other page. Silent: nothing speaks, the mic is never opened
+// (the STT check posts a few bytes through the box's fetch).
+//
+// Local dev registry notes (2026-11-07): run the provider with a name of its own
+// (`wrangler dev --name lianki-boxchat-qa`) and point lianki-push's MAIN/SESSIONS at
+// it in a copy of its config, or another session's local `lianki` answers. The
+// provider's PUSH notice (/internal/box-closed) got 503 from the local registry,
+// so locally the hub's per-line check is what closes the socket; both are logged.
+
+const owner = async (browser) => {
+  const c = await newSilentContext(browser);
+  await signUp(c, OWNER);
+  return c;
+};
+const boxes = (ctx, data) =>
+  ctx.request.post(`${PROVIDER}/api/dev/box-clients`, {
+    data,
+    headers: { origin: PROVIDER, "content-type": "application/json" },
+  });
+
+async function chatSetup() {
+  const browser = await launchSilent(chromium);
+  const ctx = await owner(browser);
+  const m = await newSilentContext(browser);
+  await signUp(m, MEMBER);
+  await m.close();
+  // A member's box can never get box:chat.
+  const mb = await boxes(ctx, { op: "add", origin: BOX, email: MEMBER, scopes: ["box:read"] });
+  const mid = (await mb.json()).clientId;
+  const refused = await boxes(ctx, { op: "chat", clientId: mid, on: true });
+  check("box:chat is refused for a member's box", refused.status() === 403, `${refused.status()}`);
+  await boxes(ctx, { op: "revoke", clientId: mid });
+  const ob = await boxes(ctx, {
+    op: "add",
+    origin: BOX,
+    email: OWNER,
+    scopes: ["box:read", "box:write"],
+  });
+  const body = await ob.json();
+  if (!ob.ok()) throw new Error(`bind: ${ob.status()} ${JSON.stringify(body)}`);
+  const granted = await boxes(ctx, { op: "chat", clientId: body.clientId, on: true });
+  const row = (await granted.json()).boxes?.find((b) => b.clientId === body.clientId);
+  check("box:chat is granted on the owner's box", granted.ok() && row?.scopes.includes("box:chat"));
+  writeFileSync(STATE, JSON.stringify({ clientId: body.clientId }));
+  console.log(`clientId=${body.clientId}`);
+  await browser.close();
+  if (failed) process.exit(1);
+}
+
+/** A socket in the owner's thread that is not the box: the owner's other page, as a partner ticket. */
+async function peer(tag) {
+  const { importTicketKey, signSttTicket, PARTNER_TICKET_AUD, PARTNER_SUBPROTOCOL } =
+    await import("../../lib/stt-ticket.ts");
+  const key = await importTicketKey(readFileSync(process.env.TICKET_KEY, "utf8"));
+  const { ticket } = await signSttTicket(key, { aud: PARTNER_TICKET_AUD });
+  const got = [];
+  const ws = new WebSocket(`${PUSH_WS}/api/version/debug?label=qa-peer-${tag}`, {
+    protocols: [PARTNER_SUBPROTOCOL, ticket],
+    headers: { origin: "https://qa-peer.lianki.test" },
+  });
+  ws.onmessage = (e) => got.push(JSON.parse(String(e.data)));
+  await new Promise((ok, no) => {
+    ws.onopen = ok;
+    ws.onerror = () => no(new Error("peer socket refused"));
+  });
+  return {
+    ws,
+    got,
+    say: (text) => ws.send(JSON.stringify({ type: "chat", id: crypto.randomUUID(), text })),
+    heard: (text) =>
+      got.find((m) => m.type === "chat" && m.message?.text === text)?.message ?? null,
+  };
+}
+
+const PUSH_WS = (process.env.PUSH ?? "").replace(/^http/, "ws");
+const wait = async (f, ms = 15_000) => {
+  for (let t = 0; t < ms; t += 250) {
+    const v = await f();
+    if (v) return v;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return null;
+};
+
+/** A box chat ticket straight from the provider, as the box's token. */
+const ticketFor = async (access) => {
+  const r = await fetch(`${PROVIDER}/api/box/chat-ticket`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${access}`, origin: BOX },
+  });
+  return { status: r.status, ticket: r.ok ? (await r.json()).ticket : null };
+};
+/** Does lianki-push open a socket for this ticket from this origin? */
+const opens = (ticket, origin) =>
+  new Promise((done) => {
+    const ws = new WebSocket(`${PUSH_WS}/api/version/debug?label=qa-probe`, {
+      protocols: ["lianki-partner", ticket],
+      headers: { origin },
+    });
+    ws.onopen = () => {
+      ws.close();
+      done(true);
+    };
+    ws.onerror = () => done(false);
+  });
+
+const chatText = (page) =>
+  page.evaluate(() => document.querySelector("[data-debug-chat]")?.textContent ?? "");
+
+async function chat() {
+  const { clientId } = JSON.parse(readFileSync(STATE, "utf8"));
+  const browser = await launchSilent(chromium);
+  const ctx = await owner(browser);
+  // Every socket's close code, in the page (4401 = the hub ended a box's chat).
+  await ctx.addInitScript(() => {
+    const Native = WebSocket;
+    window.__qaCloses = [];
+    window.WebSocket = class extends Native {
+      constructor(...a) {
+        super(...a);
+        this.addEventListener("close", (e) => window.__qaCloses.push(e.code));
+      }
+    };
+  });
+  const run = Math.random().toString(36).slice(2, 8);
+  const p = await peer(run);
+  const before = `qa before ${run}`;
+  p.say(before);
+  await wait(() => p.heard(before));
+
+  const page = await ctx.newPage();
+  // The hub socket's traffic, by message type only, for a failure's detail.
+  const frames = [];
+  page.on("websocket", (ws) => {
+    if (!ws.url().includes("/api/version/debug")) return;
+    const kind = (dir) => (f) => {
+      try {
+        frames.push(`${dir}:${JSON.parse(String(f.payload)).type}`);
+      } catch {
+        frames.push(`${dir}:?`);
+      }
+    };
+    ws.on("framesent", kind("out"));
+    ws.on("framereceived", kind("in"));
+    ws.on("close", () => frames.push("closed"));
+  });
+  await page.goto(`${BOX}/sign-in`);
+  await page.waitForURL(`${BOX}/home**`, { timeout: 90_000 });
+  await settled(page);
+  await page.goto(`${BOX}/home?debug=1`);
+  await settled(page);
+  await page.waitForSelector("[data-debug-chat]", { timeout: 30_000 });
+  check(
+    "the chat loads on the box with the owner's history",
+    Boolean(await wait(async () => (await chatText(page)).includes(before))),
+  );
+  check(
+    "the box holds no cookie of lianki.com's session",
+    !(await page.evaluate(() => document.cookie)).includes("session"),
+  );
+
+  const line = `qa from the box ${run}`;
+  await page.fill('[data-testid="debug-chat-input"]', line);
+  await page.keyboard.press("Enter");
+  const posted = await wait(() => p.heard(line));
+  check(
+    "a line typed on the box reaches the owner's thread",
+    Boolean(posted),
+    posted ? "" : frames.slice(-12).join(" "),
+  );
+  check("labelled as the box", String(posted?.label ?? "").startsWith("box "), posted?.label);
+  const reply = `qa reply ${run}`;
+  p.say(reply);
+  check(
+    "a line in the owner's thread reaches the box",
+    Boolean(await wait(async () => (await chatText(page)).includes(reply))),
+  );
+
+  const stt = await page.evaluate(async () => {
+    const r = await fetch("/api/debug/stt", {
+      method: "POST",
+      headers: { "content-type": "audio/wav" },
+      body: new Uint8Array(64),
+    });
+    return r.status;
+  });
+  check("the mic's STT route is open to box:chat", stt !== 403 && stt !== 404, `${stt}`);
+
+  const access = JSON.parse(
+    await page.evaluate(() => sessionStorage.getItem("lk:box:tokens")),
+  ).access;
+  const t1 = await ticketFor(access);
+  check("a ticket is minted for the box's token", t1.status === 200 && Boolean(t1.ticket));
+  check(
+    "lianki-push refuses it from another box",
+    !(await opens(t1.ticket, "https://my-0000000000000000.lianki.com")),
+  );
+  check(
+    "and from lianki.com",
+    !(await opens((await ticketFor(access)).ticket, "https://lianki.com")),
+  );
+  const t2 = (await ticketFor(access)).ticket;
+  check("from its own box it opens once", await opens(t2, BOX));
+  check("and never twice", !(await opens(t2, BOX)));
+  const forged = await fetch(`${PROVIDER}/api/box/chat-ticket`, {
+    method: "POST",
+    headers: { origin: BOX, "x-lk-box-identity": "x.y.9999999999999.00" },
+  });
+  check("a forged identity gets no ticket", !forged.ok, `${forged.status}`);
+
+  // Off on /dev/box-clients: the socket ends, and the routes close.
+  const off = await boxes(ctx, { op: "chat", clientId, on: false });
+  check("the owner turns box:chat off", off.ok(), `${off.status()}`);
+  const ended = await wait(() => page.evaluate(() => window.__qaCloses.includes(4401)), 8_000);
+  if (!ended) {
+    // The notice is best effort; the hub's check on the next line must end it.
+    await page.fill('[data-testid="debug-chat-input"]', `qa after off ${run}`);
+    await page.keyboard.press("Enter");
+  }
+  check(
+    `the box's socket is closed (${ended ? "notice" : "per-line check"})`,
+    Boolean(ended || (await wait(() => page.evaluate(() => window.__qaCloses.includes(4401))))),
+  );
+  check("no line of it reaches the thread", !p.heard(`qa after off ${run}`));
+  check("no ticket without box:chat", (await ticketFor(access)).status === 404);
+  const sttOff = await page.evaluate(async () => {
+    const r = await fetch("/api/debug/stt", { method: "POST", body: new Uint8Array(64) });
+    return r.status;
+  });
+  check("nor the STT route", sttOff === 404, `${sttOff}`);
+
+  // On again, then revoke: the same.
+  await boxes(ctx, { op: "chat", clientId, on: true });
+  await page.goto(`${BOX}/home?debug=1`);
+  await settled(page);
+  check(
+    "on again, the chat is back",
+    Boolean(await wait(async () => (await chatText(page)).includes(reply))),
+  );
+  await boxes(ctx, { op: "revoke", clientId });
+  check(
+    "revoke closes the box's socket",
+    Boolean(await wait(() => page.evaluate(() => window.__qaCloses.includes(4401)), 8_000)) ||
+      (await (async () => {
+        await page.fill('[data-testid="debug-chat-input"]', `qa after revoke ${run}`);
+        await page.keyboard.press("Enter");
+        return Boolean(
+          await wait(() => page.evaluate(() => window.__qaCloses.includes(4401)), 8_000),
+        );
+      })()),
+  );
+  check("and no ticket after it", (await ticketFor(access)).status === 401);
+
+  p.ws.close();
+  await browser.close();
+  console.log(failed ? `${failed} FAILED` : "all passed");
+  process.exit(failed ? 1 : 0);
+}
+
+const cmd = process.argv[2];
+await (cmd === "setup"
+  ? setup()
+  : cmd === "chat-setup"
+    ? chatSetup()
+    : cmd === "chat"
+      ? chat()
+      : run());

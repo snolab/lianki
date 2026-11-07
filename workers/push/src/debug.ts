@@ -1877,11 +1877,16 @@ export class DebugHub {
    * error): this line is dropped and the page told; the socket stays.
    */
   private async boxStillChats(ws: Socket, page: PageAtt): Promise<boolean> {
-    const ask = this.sessions?.boxChat?.bind(this.sessions);
+    // Called on the stub itself: an RPC method taken off it with .bind is refused
+    // ("The RPC receiver does not implement the method"), at least under wrangler dev.
+    const rpc = this.sessions;
     let said: unknown = "gone";
     try {
-      if (ask && page.box) said = await ask(page.box);
-    } catch {
+      if (rpc?.boxChat && page.box) said = await rpc.boxChat(page.box);
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.box-check-failed", error: String(e).slice(0, 200) }),
+      );
       said = "unsure";
     }
     if (said === "live") return true;
@@ -1890,6 +1895,8 @@ export class DebugHub {
       close(ws, BOX_CLOSED, "box chat ended");
       return false;
     }
+    if (said !== "unsure")
+      console.log(JSON.stringify({ msg: "debug.box-check", said: String(said) }));
     send(ws, { type: "error", error: "not sent: try again in a moment" });
     return false;
   }
@@ -1916,6 +1923,7 @@ export class DebugHub {
         closed++;
       }
     if (closed) this.broadcast();
+    console.log(JSON.stringify({ msg: "debug.box-closed", why: "notice", closed }));
     return Response.json({ ok: true, closed });
   }
 
