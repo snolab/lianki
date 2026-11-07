@@ -2037,13 +2037,15 @@ function Reader({
         {/* Reserve, don't push: the strip's height of room above the book at rest. */}
         <div aria-hidden className="h-[3.25rem]" />
         {/* A /books book: its source link and licence, above the text (docs/books-plan.md). */}
-        {/* The book's title and author, as the first reader had them; they scroll
-            away with the text (the strip names the chapter). */}
-        {loaded && (
-          <header className="mx-auto max-w-[42rem] px-5 pb-2" data-testid="reader-title">
-            <h1 className="text-xl font-semibold leading-snug">{material.title}</h1>
-            {book?.author && <p className="text-sm opacity-70">{book.author}</p>}
-          </header>
+        {/* The author, as the first reader showed it (the strip names the book
+            or its chapter); it scrolls away with the text. */}
+        {loaded && book?.author && (
+          <p
+            className="mx-auto max-w-[42rem] px-5 pb-2 text-sm opacity-70"
+            data-testid="reader-author"
+          >
+            {book.author}
+          </p>
         )}
         <BookSourceNote book={book} className="mx-auto max-w-[42rem] px-5 pb-3" />
         {/* The book's words, as the first reader showed them at the top: straight

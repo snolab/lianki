@@ -58,11 +58,13 @@ await page.screenshot({ path: join(OUT, "read-list-light.png") });
 await picker.setInputFiles(FIXTURE);
 await page.waitForURL(/\/read\/[^/]+$/, { timeout: 30000 });
 const id = page.url().split("/").pop();
-await page
-  .getByRole("heading", { name: "The Gift of the Magi", exact: true })
-  .waitFor({ timeout: 15000 });
-check(await page.getByText("O. Henry", { exact: true }).isVisible(), "author shown");
 await page.getByTestId("reader-v2").waitFor({ timeout: 15000 });
+await page.getByTestId("reader-author").waitFor({ timeout: 15000 });
+check((await page.getByTestId("reader-author").innerText()) === "O. Henry", "author shown");
+check(
+  (await page.locator("[data-reader-chapter]").innerText()).includes("Gift of the Magi"),
+  "the strip names the book",
+);
 await page.locator("[data-testid=reader-book] [data-item]").first().waitFor({ timeout: 15000 });
 await page.getByTestId("reader-ring").click();
 const chapters = page.locator('[data-testid="reader-toc"] li');
@@ -140,7 +142,7 @@ check(
   });
   const p = await dark.newPage();
   await p.goto(`/read/${id}`, { waitUntil: "networkidle" });
-  await p.getByRole("heading", { name: "The Gift of the Magi", exact: true }).waitFor();
+  await p.getByTestId("reader-v2").waitFor({ timeout: 15000 });
   await p.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: 30000 });
   await p.screenshot({ path: join(OUT, "read-top-open-phone-dark.png") });
   await p.goto("/read", { waitUntil: "networkidle" });
