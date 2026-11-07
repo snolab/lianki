@@ -1300,8 +1300,8 @@ oklch disc, `LaneMark.tsx`); main has no mark, so its lines look as before.
 `$LIANKI_LANE`), else a leading `【codex】` / `【agy】` in its text. The prefix
 is then taken off what is shown and read (the name tag says it). A line
 with neither is main, exactly as before. `say --voice main|calm|bright`
-reads one line in another voice. The hub checks both ids against the table
-and stores them with the line.
+reads one line in another voice (or one of its own: "A line's own voice"
+below). The hub checks both ids and stores them with the line.
 
 **Device voices** (speechSynthesis). Main, the chat lane, is cute: a
 young, bright voice with a cat-girl feel (owner, 2026-11-07 20:34 JST) — the
@@ -1342,6 +1342,63 @@ lane changes which voice reads a line, never whether.
 Tests: `unit/voices.test.ts` (lane resolution, voice picks on fake voice
 lists including this Mac's, fallbacks, the cloud speaker and shift, the
 route's speaker, `say --lane/--voice`).
+
+### A line's own voice
+
+Owner, 2026-11-07 22:34 JST: one line can name the exact voice it is read
+in, so he hears candidates for Li by just receiving them. `say --voice`
+(eval.ts and `lianki-dev say`) takes, besides `main|calm|bright`:
+
+| id                | what plays                                                                                     |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `device:<name>`   | that voice of the phone (speechSynthesis), as it is; **even when his output is cloud**          |
+| `melo:<lang>`     | the cloud's MeloTTS voice of `en es fr zh ja ko` (the clip asked in that language)              |
+| `aura:<speaker>`  | a Workers AI Aura-2 speaker of the table (`luna orion thalia` en, `celeste nestor carina` es)  |
+| `eleven:<id>`     | an ElevenLabs **public preview clip** (its own words, not the line's), straight from ElevenLabs |
+| `local:<name>`    | reserved for Mac-local engines (Kokoro, VOICEVOX): refused until one is built                   |
+
+One strict parser (`voices.ts parseLineVoice`) is used by the CLI, the hub
+and the page: an unknown kind, speaker, language or ElevenLabs id is
+refused, never guessed. A device name is checked only for shape (letters,
+digits, spaces, `()（）._'’-`, ≤ 64), since each device has its own; it matches
+the exact name, then any case, then the same model at its best grade
+(`device:Meijia` finds "Meijia (Enhanced)"). **Never silence:** a device
+voice this phone lacks reads the line in its lane's voice by the usual
+route; a cloud voice with no cloud output, or an ElevenLabs preview that
+cannot play (refused before a tap on iOS, gone), reads it in the lane's
+voice too. The same words in another voice are a new line (the 10-minute
+re-delivery check keys on voice and text), so a demo in three voices plays three
+times.
+
+**Finding ids:** `eval.ts voices --no-pair` (or `lianki-dev voices`) reads
+each open debug page's `speechSynthesis.getVoices()` once over the eval
+channel (read only, never a loop) and prints them as ids, zh, ja and en
+first, with the cloud's list; `--cloud` prints the cloud's list without
+asking any page.
+
+**ElevenLabs.** Paid voices, not wired into Li: no key, no generation, no
+copy in R2. Only the premade voices ElevenLabs lists to anyone
+(`GET /v1/voices`, no key) with a preview on its public storage are in
+`ELEVEN_PREVIEWS` (Jessica, Sarah, Bella, Matilda, Alice, Lily, River, all
+English). The community library the chat lane found (Lulu zh-TW, Kaori,
+Pipi, Kano ja, Auri en) lists voices and previews only to a signed-in
+account (checked 2026-11-07: "You must be logged in to use filters" / "to
+fetch more than 3 voices"), so none of those is here. Their storage sends no
+CORS headers, so a preview plays on its own element, not through the voice
+context (which would play it as silence); `unlock()` primes that element in
+the same tap. The app sets no `media-src` CSP, so nothing needed opening.
+
+**On a box** (docs/box-oauth.md) the chat reads lines the same way: the
+line's `lane` and `voice` reach `speakReply` as on lianki.com, and
+`/api/words/tts?…&speaker=` goes to lianki.com through the box's fetch. Two
+differences, found 2026-11-07: the gate's CORS answer exposed no app header,
+so the page could not read `X-Voice` and took every lane clip as fallen back
+to the one voice (fixed: `access-control-expose-headers: X-Voice,
+Retry-After, Content-Disposition`; and a missing X-Voice no longer counts as
+a fallback); and `lk:voice-out` is per origin in localStorage — it is the
+synced pref `chat-voice.out` (docs/prefs-sync.md), so the box takes his
+account's value after its first prefs pull, and until then reads with
+speech. A `device:`/`aura:`/`melo:` voice ignores the output mode either way.
 
 ## The + menu: add to Lianki, attach the page selection
 

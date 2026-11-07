@@ -43,6 +43,7 @@ export const errorLine = (exit: number, message: string) =>
 
 export const SUBCOMMANDS = [
   "say",
+  "voices",
   "ask",
   "inbox",
   "listen",
@@ -63,7 +64,8 @@ export const USAGE: Record<Sub | "main", string> = {
   main: `usage: lianki-dev <command> [options]
 
   say       a chat line to the owner (or --to a thread)
-  ask       an ask card with tappable options
+  voices    the voice ids say --voice takes: the phone's own, and the cloud's
+  ask      an ask card with tappable options
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
   serve     hold an eval session (eval.ts serve)
@@ -79,12 +81,26 @@ ${GLOBAL}
   --pair        let this run ask the owner's devices to pair (not with --as)
 ${EXITS}
 \`lianki-dev <command> --help\` for one command.`,
-  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--voice main|calm|bright] "text" | -
+  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--voice <id>] "text" | -
   One chat line with the saved grant, then exit (eval.ts say). - reads stdin.
   With --as <lane> the text is sent as 【<lane>】text. Read aloud unless --quiet,
   in the lane's own voice (codex, agy: docs/dev-debug-widget.md, "Lanes and
-  voices"); --voice picks another one for this line.
+  voices"); --voice picks another one for this line:
+    main | calm | bright   the lane table's voices
+    device:<name>          a voice the phone has (lianki-dev voices), read with
+                           speech even when the output is cloud
+    melo:<lang>            the cloud's MeloTTS voice (en es fr zh ja ko)
+    aura:<speaker>         a Workers AI Aura-2 speaker (luna orion thalia celeste nestor carina)
+    eleven:<id>            an ElevenLabs public preview clip (its own words)
+  An unknown id is refused; a voice the phone lacks falls back to the lane's.
   stdout: the hub's {"type":"said",…} (with --json, as "data").
+${GLOBAL}
+${EXITS}`,
+  voices: `usage: lianki-dev voices [--cloud] [--target <text>]
+  The ids say --voice takes, as one JSON line (eval.ts voices): each open
+  debug page's device voices, read once over the eval channel (needs the
+  saved eval grant; never pairs unless --pair), zh, ja and en first; and
+  the cloud's list. --cloud: the cloud's list only, no page asked.
 ${GLOBAL}
 ${EXITS}`,
   ask: `usage: lianki-dev ask [--to owner|<email>] --q "question" --opt "a" --opt "b" [--multi] [--q …] [--wait] [--timeout <s>]
@@ -248,6 +264,15 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
     if (!["list", "get", "done", "rm"].includes(op)) return new Error(`inbox: unknown op ${op}`);
     if ((op === "get" || op === "done") && !rest[1]) return new Error(`inbox ${op} needs <id>`);
     return ["inbox", ...(rest.length ? rest : ["list"]), ...pair];
+  }
+  if (sub === "voices") {
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i]!;
+      if (a === "--target") {
+        if (rest[++i] === undefined) return new Error("--target needs a value");
+      } else if (a !== "--cloud") return new Error(`voices: unknown argument ${a}`);
+    }
+    return ["voices", ...rest, ...pair];
   }
   if (sub === "listen") return ["chat", ...rest, ...pair];
   if (sub === "serve") return ["serve", ...rest, ...pair];

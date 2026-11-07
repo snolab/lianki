@@ -12,6 +12,7 @@ JSON envelope, so an agent reads both the same way.
 | command    | runs                                    | needs                        |
 | ---------- | --------------------------------------- | ---------------------------- |
 | `say`      | `eval.ts say`                           | saved grant, network         |
+| `voices`   | `eval.ts voices` (`--cloud`: no page)   | saved eval grant, network    |
 | `ask`      | `eval.ts ask`                           | saved grant, network         |
 | `inbox`    | `eval.ts inbox list\|get\|done`         | saved grant, network         |
 | `listen`   | `eval.ts chat` (one JSON line an event) | saved grant, network         |
@@ -22,6 +23,8 @@ JSON envelope, so an agent reads both the same way.
 
 ```bash
 lianki-dev say --as codex "PR #670 is green"        # → 【codex】PR #670 is green
+lianki-dev say --voice device:Meijia "你好呀"         # one line in a phone voice (ids: lianki-dev voices)
+lianki-dev voices                                   # the phone's device voices + the cloud's, as ids
 lianki-dev ask --as judge --q "Ship it?" --opt Yes --opt No --wait
 lianki-dev progress --as codex --path /dev/cli --task "CLI" --status doing --pct 40 --eta 30m
 lianki-dev doctor --as codex                        # what is missing here

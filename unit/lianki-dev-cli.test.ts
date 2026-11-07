@@ -93,6 +93,24 @@ describe("lianki-dev: --as labelling", () => {
     expect(labelText("【codex】hello", "codex")).toBe("【codex】hello");
     expect(labelText("hello", undefined)).toBe("hello");
   });
+  it("say --voice passes a line's own voice id on; voices runs eval.ts voices, never pairing", () => {
+    expect(evalArgv("say", ["--voice", "device:Meijia", "你好"], g())).toEqual([
+      "say",
+      "--voice",
+      "device:Meijia",
+      "你好",
+      "--no-pair",
+    ]);
+    expect(evalArgv("voices", [], g())).toEqual(["voices", "--no-pair"]);
+    expect(evalArgv("voices", ["--cloud"], g())).toEqual(["voices", "--cloud", "--no-pair"]);
+    expect(evalArgv("voices", ["--target", "iPhone"], g())).toEqual([
+      "voices",
+      "--target",
+      "iPhone",
+      "--no-pair",
+    ]);
+    expect(evalArgv("voices", ["--loop"], g())).toBeInstanceOf(Error);
+  });
   it("say: labels the text, keeps its flags, adds --no-pair, never --quiet", () => {
     expect(evalArgv("say", ["--to", "owner", "hi there"], g({ lane: "codex" }))).toEqual([
       "say",

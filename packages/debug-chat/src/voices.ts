@@ -420,3 +420,179 @@ export function auraSpeakers(): Record<string, string[]> {
       (out[lang] ??= []).includes(s) || out[lang]!.push(s);
   return out;
 }
+
+// ---- A line's own voice --------------------------------------------------
+//
+// Besides the table's ids (main, calm, bright), one line may name the exact
+// voice to read it in (`say --voice <id>`; docs/dev-debug-widget.md, "A
+// line's own voice"). The ids, all data, checked by one strict parser:
+//   device:<name>   a voice the device itself has (speechSynthesis), by name;
+//                   read with speech even when the voice output is cloud
+//   melo:<lang>     the cloud's one MeloTTS voice of that language
+//   aura:<speaker>  a Workers AI Aura-2 speaker of the table (English, Spanish)
+//   eleven:<id>     an ElevenLabs voice's public preview clip (its own words, not
+//                   the line's): no key, no generation, played from ElevenLabs
+//   local:<name>    reserved for Mac-local engines (Kokoro, VOICEVOX); none yet
+// A voice this device cannot play falls back to the line's lane voice, as if
+// none was named: never silence.
+
+/** Languages the cloud's MeloTTS reads (lib/workers-ai.ts MELOTTS_LANGS). */
+export const MELO_LANGS = ["en", "es", "fr", "zh", "ja", "ko"] as const;
+
+/**
+ * ElevenLabs voices whose preview clips ElevenLabs publishes for anyone to
+ * hear: its premade voices (`GET /v1/voices` lists them with `preview_url`,
+ * no key). Its community library (Lulu, Kaori, Pipi, Kano, Auri…) lists
+ * voices and previews only to a signed-in account (checked 2026-11-07), so
+ * none of those is here. Paid voices, not wired into Li: a line can only play
+ * the preview, which says its own words.
+ */
+export type ElevenVoice = { id: string; name: string; lang: string; note: string; preview: string };
+const EL = "https://storage.googleapis.com/eleven-public-prod/premade/voices/";
+const eleven = (id: string, name: string, note: string, file: string): ElevenVoice => ({
+  id,
+  name,
+  lang: "en",
+  note,
+  preview: `${EL}${id}/${file}.mp3`,
+});
+export const ELEVEN_PREVIEWS: readonly ElevenVoice[] = [
+  eleven("cgSgspJ2msm6clMCkdW9", "Jessica", "playful, bright, cute", "56a97bf8-b69b-448f-846c-c3a11683d45a"),
+  eleven("EXAVITQu4vr4xnSDxMaL", "Sarah", "young, reassuring", "01a3e33c-6e99-4ee7-8543-ff2216a32186"),
+  eleven("hpp4J3VqNfWAUOO0d1Us", "Bella", "bright, warm", "dab0f5ba-3aa4-48a8-9fad-f138fea1126d"),
+  eleven("XrExE9yKIg1WjnnlVkGX", "Matilda", "upbeat", "b930e18d-6b4d-466e-bab2-0ae97c6d8535"),
+  eleven("Xb7hH8MSUJpSbSDYk0k2", "Alice", "clear, British", "d10f7534-11f6-41fe-a012-2de1e482d336"),
+  eleven("pFZP5JQG7iQjIQuC4Bku", "Lily", "velvety, British", "89b68b35-b3dd-4348-a84a-a3c13a3c2b30"),
+  eleven("SAz9YHcvj6GT2YYXdXww", "River", "relaxed, neutral", "e6c95f0b-2227-491a-b3d7-2249240decb7"),
+];
+
+/** Mac-local engines a `local:` id may name: none is built yet (reserved). */
+export const LOCAL_ENGINES: readonly string[] = [];
+
+/** A line's voice, parsed. */
+export type LineVoice =
+  | { kind: "table"; id: VoiceId }
+  | { kind: "device"; name: string }
+  | { kind: "melo"; lang: string }
+  | { kind: "aura"; speaker: string; lang: string }
+  | { kind: "eleven"; id: string; preview: string };
+
+/** The longest voice id a line may carry. */
+export const LINE_VOICE_MAX = 80;
+/** A device voice's name: letters, digits, spaces and ()（）.-_'’ — no URL, no markup. */
+const DEVICE_NAME = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} ()（）._'’-]{0,63}$/u;
+
+/**
+ * A line's voice id → what it names, or why it is refused. Strict: an
+ * unknown kind, speaker, language or ElevenLabs id is an error, never
+ * guessed or dropped. A device name is only checked for its shape (each
+ * device has its own voices); one the device lacks falls back when read.
+ */
+export function parseLineVoice(raw: unknown): LineVoice | { error: string } {
+  if (typeof raw !== "string" || !raw || raw.length > LINE_VOICE_MAX)
+    return { error: `a voice id is 1–${LINE_VOICE_MAX} chars` };
+  if (isVoiceId(raw)) return { kind: "table", id: raw };
+  const kinds = `${VOICE_IDS.join(", ")}, device:<name>, melo:<lang>, aura:<speaker>, eleven:<id> (local:<name> reserved)`;
+  const m = /^([a-z]+):(.*)$/s.exec(raw);
+  if (!m) return { error: `unknown voice ${raw}: one of ${kinds}` };
+  const kind = m[1]!;
+  const rest = m[2]!;
+  if (kind === "device") {
+    if (rest.trim() !== rest || !DEVICE_NAME.test(rest))
+      return { error: `not a device voice name: ${JSON.stringify(rest)}` };
+    return { kind: "device", name: rest };
+  }
+  if (kind === "melo") {
+    if (!(MELO_LANGS as readonly string[]).includes(rest))
+      return { error: `unknown melo language ${rest}: one of ${MELO_LANGS.join(", ")}` };
+    return { kind: "melo", lang: rest };
+  }
+  if (kind === "aura") {
+    const all = auraSpeakers();
+    const lang = Object.keys(all).find((l) => all[l]!.includes(rest));
+    if (!lang)
+      return { error: `unknown aura speaker ${rest}: one of ${Object.values(all).flat().join(", ")}` };
+    return { kind: "aura", speaker: rest, lang };
+  }
+  if (kind === "eleven") {
+    const v = ELEVEN_PREVIEWS.find((e) => e.id === rest);
+    if (!v)
+      return {
+        error: `unknown eleven voice ${rest}: one of ${ELEVEN_PREVIEWS.map((e) => `${e.id} (${e.name})`).join(", ")}`,
+      };
+    return { kind: "eleven", id: v.id, preview: v.preview };
+  }
+  if (kind === "local")
+    return {
+      error: LOCAL_ENGINES.length
+        ? `unknown local voice ${rest}: one of ${LOCAL_ENGINES.join(", ")}`
+        : "local:<name> is reserved for Mac-local engines; none is built yet",
+    };
+  return { error: `unknown voice ${raw}: one of ${kinds}` };
+}
+
+/** A voice id a line may carry: the table's or a typed one the parser takes. */
+export const isLineVoiceId = (raw: unknown): raw is string => !("error" in parseLineVoice(raw));
+
+/** A line's typed voice (not one of the table's ids), or undefined. */
+export function lineVoiceOf(raw: unknown): Exclude<LineVoice, { kind: "table" }> | undefined {
+  const r = parseLineVoice(raw);
+  return "error" in r || r.kind === "table" ? undefined : r;
+}
+
+/**
+ * The device voice a `device:<name>` names: the exact name, else the same
+ * name in another case, else the same model ("Meijia" → "Meijia (Enhanced)",
+ * best grade first). Undefined: this device does not have it.
+ */
+export function findDeviceVoice<V extends VoiceLike>(voices: readonly V[], name: string): V | undefined {
+  const q = name.toLowerCase();
+  const base = baseName({ lang: "", name });
+  return (
+    voices.find((v) => v.name === name) ??
+    voices.find((v) => (v.name ?? "").toLowerCase() === q) ??
+    voices.filter((v) => baseName(v) === base).sort((a, b) => grade(b) - grade(a))[0]
+  );
+}
+
+/** The cloud and ElevenLabs voice ids a line may name (`eval.ts voices`). */
+export function cloudVoiceIds(): { id: string; lang: string; note: string }[] {
+  const out: { id: string; lang: string; note: string }[] = MELO_LANGS.map((l) => ({
+    id: `melo:${l}`,
+    lang: l,
+    note: "MeloTTS: the cloud's one voice of the language",
+  }));
+  for (const [lang, speakers] of Object.entries(auraSpeakers()))
+    for (const s of speakers) out.push({ id: `aura:${s}`, lang, note: "Workers AI Aura-2" });
+  for (const e of ELEVEN_PREVIEWS)
+    out.push({
+      id: `eleven:${e.id}`,
+      lang: e.lang,
+      note: `ElevenLabs ${e.name} (${e.note}): its public preview clip only, in its own words; a paid voice, not wired into Li`,
+    });
+  return out;
+}
+
+/** A device's voices as `device:<name>` ids, its languages zh, ja, en first. */
+export function deviceVoiceIds(
+  voices: readonly VoiceLike[],
+): { id: string; name: string; lang: string; tier: "natural" | "eloquence" | "novelty" }[] {
+  const first = ["zh", "ja", "en"];
+  const rank = (l: string) => {
+    const i = first.indexOf(norm(l).split("-")[0]!);
+    return i < 0 ? first.length : i;
+  };
+  return voices
+    .filter((v) => typeof v.name === "string" && DEVICE_NAME.test(v.name))
+    .map((v, i) => ({ v, i }))
+    .sort(
+      (a, b) =>
+        rank(a.v.lang) - rank(b.v.lang) || norm(a.v.lang).localeCompare(norm(b.v.lang)) || a.i - b.i,
+    )
+    .map(({ v }) => ({
+      id: `device:${v.name}`,
+      name: v.name!,
+      lang: v.lang,
+      tier: (["novelty", "eloquence", "natural"] as const)[voiceTier(v)],
+    }));
+}

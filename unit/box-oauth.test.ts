@@ -542,6 +542,8 @@ describe("the gate", () => {
     const res = await call("/api/prefs", { headers: tokenHeaders() });
     expect(res.status).toBe(200);
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    // The chat's X-Voice (lane speakers) and /words' miss are readable on the box.
+    expect(res.headers.get("access-control-expose-headers")).toContain("X-Voice");
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
     expect(res.headers.get("set-cookie")).toBeNull();
     expect(seen?.headers.get("authorization")).toBeNull();

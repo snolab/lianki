@@ -112,6 +112,21 @@
  *       voice; --voice main|calm|bright reads it in another voice. A line
  *       starting "【codex】" or "【agy】" gets its lane the same way.
  *
+ *       A line's own voice (docs/dev-debug-widget.md, "A line's own voice"):
+ *       --voice device:<name> (a voice the phone has, read with speech even
+ *       when his output is cloud), melo:<lang>, aura:<speaker>, or
+ *       eleven:<id> (an ElevenLabs public preview clip, its own words).
+ *       local:<name> is reserved. An unknown id is refused; a device voice
+ *       the page lacks falls back to the lane's voice, never silence.
+ *
+ *   bun scripts/dev/eval.ts voices [--no-pair] [--target <text>] [--cloud]
+ *       The ids --voice takes: each open debug page's device voices (read
+ *       once from speechSynthesis over the eval channel; zh, ja, en first)
+ *       and the cloud's list, as one JSON line {"type":"voices","pages":
+ *       [{label,ok,device:[{id,name,lang,tier}]}],"cloud":[{id,lang,note}]}.
+ *       --cloud: the cloud's list only, no page asked. Use --no-pair from an
+ *       agent: each unpaired run would prompt the owner's devices.
+ *
  *       A line spoken into the widget's mic carries "source":"stt"; when
  *       the agent polishes one, {"type":"edited","id","thread","text","raw",
  *       "edited"} follows.
@@ -210,6 +225,7 @@ import {
   sayVolume,
 } from "./node-args";
 import { routeTo } from "@/lib/dev-eval";
+import { VOICES_PROBE, voicesReport } from "./voices-list";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
 import { DEAD, PONG, keepalive } from "./keepalive";
@@ -286,6 +302,8 @@ for (let i = 0; i < args.length; ) {
   } else i++;
 }
 const noPair = boolFlag("--no-pair");
+/** voices: the cloud's list only, no page asked. */
+const cloudOnly = boolFlag("--cloud");
 /** ask: wait for the tap and print the answer (or time out). */
 const waitFlag = boolFlag("--wait");
 /** edit: the owner's latest line, instead of an id. */
@@ -1088,7 +1106,7 @@ async function main() {
     if (loudFlag) console.error(LOUD_DEPRECATED);
     if (!text) {
       console.error(
-        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane main|codex|agy] [--voice main|calm|bright] "text" | -',
+        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane main|codex|agy] [--voice main|calm|bright|device:<name>|melo:<lang>|aura:<speaker>|eleven:<id>] "text" | -   (ids: eval.ts voices)',
       );
       process.exit(2);
     }
@@ -1098,6 +1116,20 @@ async function main() {
       process.exit(2);
     }
     console.log(JSON.stringify(await say(text, to, { ...volume, ...lane })));
+    return;
+  }
+  if (args[0] === "voices") {
+    // Read once from the pages (never a loop); --cloud asks no page at all.
+    let results: Msg[] | null = null;
+    if (!cloudOnly) {
+      results = await viaSession(VOICES_PROBE);
+      if (!results) {
+        const ws = await evalSocket();
+        results = await run(ws, VOICES_PROBE, target);
+        ws.close();
+      }
+    }
+    console.log(JSON.stringify(voicesReport(results)));
     return;
   }
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];

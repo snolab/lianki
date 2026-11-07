@@ -104,8 +104,12 @@ export type ChatMessage = {
    * `【lane】` prefix in the text says it, else none (looks as before).
    */
   lane?: LaneId;
-  /** The voice to read it in (voices.ts VOICES; `say --voice`). Absent = its lane's. */
-  voice?: VoiceId;
+  /**
+   * The voice to read it in (`say --voice`): a table id (voices.ts VOICES) or
+   * a line's own (voices.ts parseLineVoice: device:, melo:, aura:, eleven:).
+   * Absent = its lane's.
+   */
+  voice?: VoiceId | (string & {});
   /**
    * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
    * "active", or "passive" (it came through "Linky"). Absent = the mic was
