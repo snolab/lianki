@@ -29,8 +29,12 @@
  *
  * Cloud voices (voice-out.ts, /api/words/tts): a speaker on an engine that
  * has several for the language (Workers AI Aura-2: English and Spanish).
- * Elsewhere the cloud has one voice (MeloTTS), so the clip is played shifted
- * (`shift`: pitch and speed together) as the last resort.
+ * Elsewhere the cloud has one voice (MeloTTS), so the clip is played at a
+ * lane's own speed (`shift`), its pitch kept, as the last resort. Never a
+ * pitch shift: on iOS a clip played pitch-free through the voice context
+ * stalls mid-word (owner's iPhone, 2026-11-07: "续续" dropped; the clip's
+ * currentTime froze ~200 ms while it "played"), and the owner does not want
+ * pitch tweaks anyway. Main has no shift: his reading speed as it is.
  *
  * Pure: unit/voices.test.ts.
  */
@@ -62,7 +66,7 @@ export type VoiceSpec = {
   cloud: { aura?: Readonly<Record<string, string>> };
   /**
    * Cloud last resort, where the cloud has one voice for the language: the
-   * clip plays at this speed with its pitch moving with it (1 = as is).
+   * clip plays at this speed (times his reading speed), pitch kept (1 = as is).
    */
   shift: number;
 };
@@ -88,7 +92,7 @@ export const VOICES: Readonly<Record<VoiceId, VoiceSpec>> = {
     pitch: 1.1,
     rate: 1,
     cloud: { aura: { en: "luna", es: "celeste" } },
-    shift: 1.06,
+    shift: 1,
   },
   // Lower and calmer: male and deeper voices first.
   calm: {

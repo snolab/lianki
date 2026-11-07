@@ -287,7 +287,7 @@ describe("cloud voices", () => {
     ]);
   });
 
-  it("the page asks for the speaker, and shifts a clip that has no voice of its own", async () => {
+  it("the page asks for the speaker; a clip with no voice of its own plays at its speed, pitch kept", async () => {
     const fetched: string[] = [];
     const el = {
       src: "",
@@ -332,17 +332,23 @@ describe("cloud voices", () => {
     expect(fetched.at(-1)).toBe("/api/words/tts?lang=en&text=Hi.&store=0&speaker=orion");
     expect(el.playbackRate).toBe(1.5);
     expect(el.preservesPitch).toBe(true);
-    // zh: the one MeloTTS voice, shifted (pitch moves with the speed).
+    // zh: the one MeloTTS voice at the lane's speed, pitch kept (a pitch-free clip stalls on iOS).
     voiceHeader = "melotts";
     await play({ text: "好。", lang: "zh-CN", at: 0, volume: 1, rate: 1, voice: "bright" });
     expect(fetched.at(-1)).toBe(
       `/api/words/tts?lang=zh&text=${encodeURIComponent("好。")}&store=0`,
     );
     expect(el.playbackRate).toBeCloseTo(VOICES.bright.shift, 5);
-    expect(el.preservesPitch).toBe(false);
+    expect(el.preservesPitch).toBe(true);
     // Aura failed on the route (MeloTTS answered): shifted too, never silent.
     await play({ text: "Bye.", lang: "en", at: 0, volume: 1, rate: 1, voice: "calm" });
     expect(el.playbackRate).toBeCloseTo(VOICES.calm.shift, 5);
+    expect(el.preservesPitch).toBe(true);
+    // Main in zh (owner, 2026-11-07): his own reading speed, no shift, pitch kept.
+    voiceHeader = "melotts";
+    await play({ text: "好。", lang: "zh-CN", at: 0, volume: 1, rate: 1.5 });
+    expect(el.playbackRate).toBe(1.5);
+    expect(el.preservesPitch).toBe(true);
     // Main (no voice on the line): the chat lane's own speaker.
     voiceHeader = AURA_VOICE;
     await play({ text: "Yo.", lang: "en", at: 0, volume: 1, rate: 1 });
