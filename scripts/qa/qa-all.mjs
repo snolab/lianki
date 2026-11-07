@@ -230,6 +230,11 @@ process.on("SIGINT", () => {
   stopServer();
   process.exit(130);
 });
+// The machine lock forwards a TERM here; without this wrangler dev outlives the run.
+process.on("SIGTERM", () => {
+  stopServer();
+  process.exit(143);
+});
 server.on("exit", (code) => {
   if (!stopped) err(`wrangler dev exited early (code ${code})`);
 });
