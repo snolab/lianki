@@ -2100,12 +2100,17 @@ try {
       // of this section's own loads is under way: from the call until the next
       // page commits (goto/reload resolve at "commit" below).
       let leaving = false;
-      const host = new URL(listUrl).host.replace(/[.]/g, "\\.");
-      const cutPrefetch = new RegExp(
-        `^(?:Fetch API cannot load )?(?:https?:)?//${host}/api/words/tts\\?\\S+ due to access control checks\\.$`,
-      );
+      // Exactly "[Fetch API cannot load ][http:]//<this host>/api/words/tts?<query> due to …".
+      const clip = `//${new URL(listUrl).host}/api/words/tts?`;
+      const cut = " due to access control checks.";
+      const cutPrefetch = (m) => {
+        const u = m.replace(/^(?:Fetch API cannot load )?(?:https?:)?\/\/?/, "//");
+        return (
+          u.startsWith(clip) && u.endsWith(cut) && !/\s/.test(u.slice(clip.length, -cut.length))
+        );
+      };
       w.on("pageerror", (e) => {
-        if (leaving && cutPrefetch.test(e.message.replace(/^\//, "//"))) return;
+        if (leaving && cutPrefetch(e.message)) return;
         errs.push(`PAGEERROR (${tag}) ${e.message}`);
       });
       /**
