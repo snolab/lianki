@@ -19,6 +19,10 @@ export const PROGRESS_USAGE = `usage:
   bun scripts/dev/progress.ts grant --node <id> --agent <name> [--ttl 8h]
   bun scripts/dev/progress.ts resolve --id <id> [--note "the answer"]
   bun scripts/dev/progress.ts show
+--eta is your own estimate, given each time: a duration from now (15m, 1h30m, 2h) or an ISO time
+(2026-11-07T21:00+09:00). It sets the node's etaAt: the owner's chat shows a bar running to it, and
+when it passes the agents get one automatic line "ETA reached for <task> (<id>): report to the owner".
+Report again with a new --eta to move it; free text ("after CI") shows as written, with no timer.
 Every form takes --token <token> (else LIANKI_PROGRESS_TOKEN, PROGRESS_TOKEN, or .dev.vars).`;
 
 export type ProgressCommand = { token?: string } & (

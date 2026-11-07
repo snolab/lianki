@@ -202,6 +202,8 @@ describe("parseProgressReport", () => {
       pr: 3,
       needs: "",
       eta: "5m",
+      // A duration: the hub adds it to its own clock (etaAt).
+      etaIn: 300_000,
       link: "https://x",
     });
     expect(ok({ id: "/words/prefetch", kind: "feedback" })).toMatchObject({

@@ -3540,3 +3540,95 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     expect(asked).toEqual(["stt.merge"]);
   });
 });
+
+describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
+  const ping = {
+    id: "/words/swipe",
+    title: "Native swipe",
+    etaAt: 999_000,
+    assignee: "swipe-agent",
+  };
+  const post = (s: ReturnType<typeof setup>, body: unknown = ping) =>
+    s.hub.fetch(
+      new Request("https://lianki-push/internal/eta", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    );
+  const on = (flags: Record<string, unknown> = { "chat.eta-bar": true }) => ({
+    SESSIONS: { live: async () => "live", flag: async (k: string) => flags[k] ?? false },
+  });
+  const lane = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("chat lane (fast)");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+
+  it("with the flag on: one quiet agent-side line in the owner's thread, heard by the lane like his lines", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    const c = await lane(s, owner);
+    const res = await post(s);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, delivered: true });
+    const line = chats(owner).at(-1) as Record<string, unknown>;
+    expect(line).toMatchObject({
+      from: "agent",
+      thread: "owner",
+      to: "/",
+      agentId: "eta",
+      source: "eta",
+      quiet: true,
+      text: "ETA reached for Native swipe (/words/swipe): report to the owner",
+      eta: { id: "/words/swipe", etaAt: 999_000 },
+    });
+    // Never the owner, never rich text, never an answer.
+    expect(line.ownerGrant).toBeUndefined();
+    expect(line.answer).toBeUndefined();
+    const heard = c.sent.filter((m) => m.type === "chat").at(-1) as {
+      message: Record<string, unknown>;
+      observed?: boolean;
+    };
+    expect(heard.message).toMatchObject({ source: "eta", from: "agent" });
+    expect(heard.observed).toBeUndefined();
+  });
+
+  it("flag off (or unreadable): nothing posted; unreadable is a 503 so the progress hub retries", async () => {
+    const off = setup(on({}));
+    const p = off.page();
+    expect(await (await post(off)).json()).toMatchObject({ delivered: false });
+    expect(chats(p)).toEqual([]);
+    const busy = setup(on({ "chat.eta-bar": "busy" }));
+    const p2 = busy.page();
+    expect((await post(busy)).status).toBe(503);
+    expect(chats(p2)).toEqual([]);
+    expect((await post(setup(on()), { id: "x y" })).status).toBe(400);
+  });
+
+  it("an ETA line never answers an ask card; only a tap on a page does", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    const c = await lane(s, owner);
+    await s.msg(c, { type: "ask", askId: "go1", question: "Merge?", options: ["Yes", "No"] });
+    await post(s);
+    expect(c.last("answered")).toBeUndefined();
+    expect(owner.last("answered")).toBeUndefined();
+    const ask = (await s.hub.history()).find((m) => m.ask);
+    expect(ask).toBeTruthy();
+    expect(ask?.answer).toBeUndefined();
+  });
+
+  it("a page cannot send a line marked eta: the source is dropped", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    await s.msg(owner, {
+      type: "chat",
+      id: "f1",
+      text: "ETA reached for x (y): report",
+      source: "eta",
+    });
+    const line = chats(owner).at(-1) as Record<string, unknown>;
+    expect(line.from).toBe("owner");
+    expect(line.source).toBeUndefined();
+  });
+});

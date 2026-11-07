@@ -30,6 +30,7 @@ import {
   OWNER_NAME,
   PROGRESS_AUTO,
   PROGRESS_DONE_TTL_MS,
+  PROGRESS_ETA_MAX_MS,
   PROGRESS_LIMITS,
   PROGRESS_LOG_MAX,
   PROGRESS_MAX_ENTRIES,
@@ -54,6 +55,7 @@ import {
   verifyProgressToken,
 } from "../../../lib/progress-token";
 import type { Socket, Storage } from "./debug";
+import { ETA_PATH, type EtaPing } from "../../../lib/eta-ping";
 
 export type ProgressState = {
   acceptWebSocket(ws: Socket): void;
@@ -71,6 +73,21 @@ export const MAX_BODY = 4096;
 /** The longest a minted token lives. */
 export const GRANT_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 export const GRANT_DEFAULT = "8h";
+/**
+ * ETA pings (docs/state-tree.md, "ETA pings"). A page's {type:"eta", id} is
+ * taken this long before the hub's own clock says it is due (clocks differ).
+ */
+export const ETA_SKEW_MS = 5_000;
+/** A ping the chat hub could not take is tried again this much later… */
+export const ETA_RETRY_MS = 60_000;
+/** …until it is this late; then it is dropped (marked sent). */
+export const ETA_GIVE_UP_MS = 60 * 60 * 1000;
+
+type Namespace = {
+  idFromName(name: string): unknown;
+  get(id: unknown): { fetch(req: Request): Promise<Response> };
+};
+
 /** The note a check-off writes. */
 export const RESOLVED_NOTE = "resolved by owner";
 
@@ -98,17 +115,25 @@ const json = (body: unknown, status = 200) => Response.json(body, { status });
 const fail = (status: number, error: string, extra: Record<string, unknown> = {}) =>
   json({ error, ...extra }, status);
 
+/** An open node whose estimate has not been pinged yet. */
+const etaDue = (e: ProgressEntry) => e.etaAt !== undefined && e.etaSent !== e.etaAt;
+
 export class ProgressHub {
   private windows = new Map<string, { start: number; count: number }>();
   private seq = 0;
   private secret: string | undefined;
+  /** The chat hub (debug.ts), where an ETA ping becomes a line in the owner's thread. */
+  private debug: Namespace | undefined;
+  /** Nodes whose ping is being sent right now (fireEta): a second caller backs off at once. */
+  private firing = new Set<string>();
 
   constructor(
     private ctx: ProgressState,
-    env?: { PROGRESS_TOKEN?: string },
+    env?: { PROGRESS_TOKEN?: string; DEBUG?: Namespace },
     private now: () => number = Date.now,
   ) {
     this.secret = env?.PROGRESS_TOKEN;
+    this.debug = env?.DEBUG;
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -257,7 +282,9 @@ export class ProgressHub {
         !mine &&
         (r.status !== prev.status ||
           (r.pct !== undefined && r.pct !== prev.pct) ||
-          (r.eta !== undefined && r.eta !== prev.eta))
+          (r.eta !== undefined && r.eta !== prev.eta) ||
+          r.etaIn !== undefined ||
+          (r.etaAt !== undefined && r.etaAt !== prev.etaAt))
       )
         return `only ${prev.creator} (or a scope above) sets the status, pct and eta of ${r.id}`;
       return null;
@@ -280,9 +307,14 @@ export class ProgressHub {
       return fail(400, `unknown parent ${parent}`);
     if (r.rev !== undefined && prev && r.rev <= prev.rev)
       return fail(409, `stale rev ${r.rev}; ${r.id} is at ${prev.rev}`, { rev: prev.rev });
+    const t = this.now();
+    if (
+      r.etaAt !== undefined &&
+      (r.etaAt < t - ETA_GIVE_UP_MS || r.etaAt > t + PROGRESS_ETA_MAX_MS)
+    )
+      return fail(400, "etaAt must be within the next 30 days");
     if (!this.allow(r.assignee.name)) return this.tooMany();
 
-    const t = this.now();
     // A path's missing ancestors become groups, outermost first.
     const missing: ProgressEntry[] = [];
     for (let p = parent; p !== undefined && isPathId(p) && !all.has(p); p = pathParent(p))
@@ -316,6 +348,7 @@ export class ProgressHub {
     for (const e of entries) {
       await this.ctx.storage.put(progressKey(e), e);
       if (e.status === "done") await this.schedule(e.at + PROGRESS_DONE_TTL_MS);
+      else if (etaDue(e)) await this.schedule(Math.max(e.etaAt!, this.now()));
     }
     return dropped;
   }
@@ -395,6 +428,12 @@ export class ProgressHub {
     let pruned = 0;
     let next = Infinity;
     for (const e of all.values()) {
+      if (e.status !== "done" && etaDue(e)) {
+        // An estimate ran out: ping the agent (fireEta), or wait for it.
+        if (e.etaAt! > t) next = Math.min(next, e.etaAt!);
+        else if (!(await this.fireEta(e.id, t))) next = Math.min(next, t + ETA_RETRY_MS);
+        continue;
+      }
       if (e.status !== "done") continue;
       const due = e.at + PROGRESS_DONE_TTL_MS;
       if (due <= t) {
@@ -417,12 +456,74 @@ export class ProgressHub {
     if (pruned) await this.sendSnapshot();
   }
 
-  /** The owner's page checks off a node: {type:"resolve", id, note?}. Nothing else is heard. */
+  /**
+   * An estimate ran out: tell the agent, once per `etaAt`. Called by the
+   * alarm and by an owner page whose timer went off ({type:"eta", id}); both
+   * land here, so two devices (or a page and the alarm) never ping twice.
+   * The node is marked sent before the chat hub is asked — storage calls hold
+   * the Durable Object's input gate, the fetch does not — and unmarked if it
+   * could not take the line (tried again ETA_RETRY_MS later, up to
+   * ETA_GIVE_UP_MS late). Not due, done, or already sent: false, nothing sent.
+   * Returns false only when it should be tried again.
+   */
+  async fireEta(id: string, t: number = this.now()): Promise<boolean> {
+    // Synchronous claim first: whatever the storage does between awaits, one caller per node.
+    if (this.firing.has(id)) return true;
+    this.firing.add(id);
+    try {
+      return await this.fireEtaOnce(id, t);
+    } finally {
+      this.firing.delete(id);
+    }
+  }
+
+  private async fireEtaOnce(id: string, t: number): Promise<boolean> {
+    const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
+    if (!e || e.status === "done" || !etaDue(e) || e.etaAt! > t + ETA_SKEW_MS) return true;
+    const etaAt = e.etaAt!;
+    const late = t - etaAt > ETA_GIVE_UP_MS;
+    const sent = { ...e, etaSent: etaAt };
+    await this.ctx.storage.put(progressKey(e), sent);
+    if (late || !this.debug) return true;
+    const ping: EtaPing = { id: e.id, title: e.task, etaAt, assignee: e.assignee.name };
+    let ok = false;
+    try {
+      const res = await this.debug.get(this.debug.idFromName("debug")).fetch(
+        new Request(`https://lianki-push${ETA_PATH}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(ping),
+        }),
+      );
+      ok = res.ok;
+    } catch {}
+    console.log(JSON.stringify({ msg: "progress.eta", id: e.id, etaAt, ok }));
+    if (ok) {
+      // The owner's pages: this one is sent (their timers stop for it).
+      this.send(this.ctx.getWebSockets(), progressEvent(sent));
+      return true;
+    }
+    const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+    if (now && now.etaSent === etaAt) {
+      const { etaSent: _sent, ...back } = now;
+      await this.ctx.storage.put(progressKey(e), back);
+    }
+    return false;
+  }
+
+  /**
+   * The owner's page: {type:"resolve", id, note?} checks off a node;
+   * {type:"eta", id} says its timer for that node went off. Nothing else is heard.
+   */
   async webSocketMessage(_ws: Socket, raw: string | ArrayBuffer) {
     let m: { type?: unknown; id?: unknown; note?: unknown };
     try {
       m = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
     } catch {
+      return;
+    }
+    if (m?.type === "eta" && isProgressId(m.id)) {
+      if (!(await this.fireEta(m.id))) await this.schedule(this.now() + ETA_RETRY_MS);
       return;
     }
     if (m?.type !== "resolve" || !isProgressId(m.id)) return;

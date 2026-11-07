@@ -248,6 +248,14 @@ import {
 } from "../../../lib/partner-ai-config";
 import { EMBED_HEADER } from "./auth";
 import {
+  ETA_AGENT,
+  ETA_FLAG,
+  ETA_LABEL,
+  ETA_PATH,
+  etaLineText,
+  parseEtaPing,
+} from "../../../lib/eta-ping";
+import {
   CLIPS_GONE_MS,
   CLIPS_HIDDEN_MS,
   type ClipsControl,
@@ -1081,6 +1089,7 @@ export class DebugHub {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
+    if (url.pathname === ETA_PATH) return this.etaApi(req);
     const control = url.pathname.endsWith("/control");
     let who: Identity | undefined;
     if (!control) {
@@ -1171,6 +1180,49 @@ export class DebugHub {
     const rec = await this.block(body.userId, body.action === "block");
     if (!rec) return Response.json({ error: "no such chat user" }, { status: 404 });
     return Response.json({ ok: true, friend: { userId: body.userId, ...rec } });
+  }
+
+  /**
+   * POST /internal/eta {id, title, etaAt, assignee?}: a state-tree estimate ran
+   * out (lib/eta-ping.ts). From the progress hub alone, over its DEBUG binding:
+   * index.ts forwards no request to this path. With flag chat.eta-bar on, one
+   * line in the owner's thread addressed to the main node ("/"), so every
+   * listener there hears it as it hears his lines: `from: "agent"` (never
+   * the owner), `agentId: "eta"`, `source: "eta"`, quiet. It never answers an
+   * ask (only a page's tap does) and never carries ownerGrant. 503 when the
+   * flag cannot be read: the progress hub tries again.
+   */
+  private async etaApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let ping: ReturnType<typeof parseEtaPing> = null;
+    try {
+      ping = parseEtaPing(await req.json());
+    } catch {}
+    if (!ping) return Response.json({ error: "expected {id, title, etaAt}" }, { status: 400 });
+    let on: unknown = false;
+    try {
+      on = await this.sessions?.flag?.(ETA_FLAG);
+    } catch {
+      return Response.json({ error: "flag unreadable" }, { status: 503 });
+    }
+    if (on === "busy") return Response.json({ error: "flag unreadable" }, { status: 503 });
+    if (on !== true) return Response.json({ ok: true, delivered: false, reason: "flag off" });
+    const line: ChatMessage & { thread: string } = {
+      id: crypto.randomUUID().slice(0, 8),
+      from: "agent",
+      label: ETA_LABEL,
+      text: etaLineText(ping),
+      at: this.now(),
+      thread: OWNER_THREAD,
+      to: ROOT_NODE,
+      agentId: ETA_AGENT,
+      source: "eta",
+      quiet: true,
+      eta: { id: ping.id, etaAt: ping.etaAt },
+    };
+    await this.post(line);
+    console.log(JSON.stringify({ msg: "debug.eta", id: ping.id, etaAt: ping.etaAt }));
+    return Response.json({ ok: true, delivered: true, listeners: this.agents().length });
   }
 
   /**

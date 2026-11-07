@@ -119,7 +119,8 @@ export function AttachButton({
       onClick={onToggle}
       // One line box high, as the bar's other controls (bar-geometry.ts).
       style={BAR_CONTROL}
-      className="tap-40 relative flex w-10 shrink-0 items-center justify-center self-end rounded-full text-base text-gray-500 dark:text-gray-400"
+      data-lk-tap
+      className="tap-40 relative flex shrink-0 items-center justify-center self-end rounded-full text-base text-gray-500 dark:text-gray-400"
     >
       <Icon name="plus" />
       {sessions > 0 && (

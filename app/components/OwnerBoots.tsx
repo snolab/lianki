@@ -12,6 +12,7 @@ export function OwnerBoots({
   strings,
   leave,
   open = false,
+  etaBar = false,
   chatFull = false,
   liHub = false,
 }: {
@@ -19,6 +20,8 @@ export function OwnerBoots({
   leave: string;
   /** The Learning Partner for every signed-in user (partner.ai-reply on; docs/partner-ai.md). */
   open?: boolean;
+  /** Flag chat.eta-bar: the owner's ETA bar in the chat (lib/eta-ping.ts). */
+  etaBar?: boolean;
   /** The chat's full screen for every chat user (partner.fullscreen on); off, the owner only. */
   chatFull?: boolean;
   /** Flag `voice.li-hub`: Li's sound hub observes the owner's pages (docs/li-sound-hub.md). */
@@ -29,7 +32,13 @@ export function OwnerBoots({
       <ServiceWorkerRegistration />
       <LeaveGuard message={leave} />
       <NewVersionNotice />
-      <DebugEval strings={strings} partnerOpen={open} fullScreen={chatFull} liHub={liHub} />
+      <DebugEval
+        strings={strings}
+        partnerOpen={open}
+        fullScreen={chatFull}
+        etaBar={etaBar}
+        liHub={liHub}
+      />
     </>
   );
 }

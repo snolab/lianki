@@ -2,6 +2,9 @@
   "name": "lianki-monorepo",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "lianki-dev": "scripts/dev/lianki-dev.ts"
+  },
   "engines": {
     "node": ">=22.12"
   },

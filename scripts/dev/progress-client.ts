@@ -5,13 +5,20 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-/** --token, else LIANKI_PROGRESS_TOKEN, else PROGRESS_TOKEN, else .dev.vars (this checkout, then the main one). */
-export function progressToken(flag?: string): string | undefined {
+/**
+ * --token, else LIANKI_PROGRESS_TOKEN, else PROGRESS_TOKEN, else .dev.vars
+ * (the checkout `root`, then its main one). `root` defaults to this file's
+ * checkout; scripts/dev/lianki.ts passes the one given by --repo.
+ */
+export function progressToken(
+  flag?: string,
+  root = join(import.meta.dir, "..", ".."),
+): string | undefined {
   const env = flag || process.env.LIANKI_PROGRESS_TOKEN || process.env.PROGRESS_TOKEN;
   if (env) return env;
-  const roots = [join(import.meta.dir, "..", "..")];
+  const roots = [root];
   const git = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
-    cwd: import.meta.dir,
+    cwd: root,
   });
   if (git.success) roots.push(dirname(git.stdout.toString().trim()));
   for (const root of roots) {

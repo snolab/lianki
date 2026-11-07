@@ -94,7 +94,16 @@ export type ProgressReport = {
   status: ProgressStatus;
   kind?: ProgressKind;
   pct?: number;
+  /**
+   * The agent's estimate as written: a duration from now ("15m", "1h30m"),
+   * an ISO time, or free text. A duration or a time sets `etaAt`; free text
+   * clears it (no bar, no ping). Every report that carries it revises it.
+   */
   eta?: string;
+  /** When the estimate runs out (ms): sent as is, or worked out by the hub from `eta`. */
+  etaAt?: number;
+  /** `eta` as a duration (ms): the hub adds it to its own clock (parseProgressReport sets it). */
+  etaIn?: number;
   pr?: number;
   needs?: string;
   ref?: string;
@@ -110,8 +119,14 @@ export type ProgressNote = { at: number; by: string; text: string };
  * its status, pct and eta), `by` wrote it last, `rev` is its revision,
  * `created` / `at` when it was first / last written.
  */
-export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind"> & {
+export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind" | "etaIn"> & {
   kind: ProgressKind;
+  /**
+   * The `etaAt` the hub already sent its ping for ("ETA reached for …",
+   * workers/push/src/progress.ts fireEta). A revised `etaAt` differs, so it
+   * pings again at the new time.
+   */
+  etaSent?: number;
   creator: string;
   by: string;
   rev: number;
@@ -246,6 +261,15 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
   }
   if (f.needs !== undefined) out.needs = f.needs;
   for (const k of ["eta", "ref", "action", "note"] as const) if (f[k]) out[k] = f[k];
+  if (b.etaAt !== undefined && b.etaAt !== null) {
+    if (typeof b.etaAt !== "number" || !Number.isInteger(b.etaAt) || b.etaAt <= 0)
+      return new Error("etaAt must be a time in milliseconds");
+    out.etaAt = b.etaAt;
+  } else if (out.eta) {
+    const e = parseEta(out.eta);
+    if (e && "in" in e) out.etaIn = e.in;
+    else if (e) out.etaAt = e.at;
+  }
   return out;
 }
 
@@ -263,6 +287,10 @@ export function mergeProgress(
   const pick = <K extends "pct" | "eta" | "pr" | "ref" | "action" | "link">(k: K) =>
     r[k] ?? prev?.[k];
   const needs = r.needs === undefined ? prev?.needs : r.needs || undefined;
+  // A new estimate replaces the old one; free text clears the time; none keeps it.
+  const etaAt =
+    r.etaAt ??
+    (r.etaIn !== undefined ? at + r.etaIn : r.eta !== undefined ? undefined : prev?.etaAt);
   const notes = [...(prev?.notes ?? [])];
   if (r.note) notes.push({ at, by: r.assignee.name, text: r.note });
   const entry: ProgressEntry = {
@@ -284,6 +312,8 @@ export function mergeProgress(
     if (v !== undefined) (entry as Record<string, unknown>)[k] = v;
   }
   if (needs) entry.needs = needs;
+  if (etaAt !== undefined) entry.etaAt = etaAt;
+  if (prev?.etaSent !== undefined) entry.etaSent = prev.etaSent;
   if (notes.length) entry.notes = notes.slice(-PROGRESS_NOTES_MAX);
   return entry;
 }
@@ -492,6 +522,32 @@ export function progressAgo(at: number, now: number): string {
   const h = Math.floor(min / 60);
   if (h < 24) return `${h} h ago`;
   return `${Math.floor(h / 24)} d ago`;
+}
+
+/** The longest estimate the hub takes: a month. */
+export const PROGRESS_ETA_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * An agent's `--eta`: a duration from now ("15m", "1h30m", "90s", "2d") or
+ * an ISO time with its zone ("2026-11-07T20:30+09:00"). Anything else (free
+ * text, "after CI") is null: shown as written, with no bar and no ping.
+ */
+export function parseEta(s: string): { in: number } | { at: number } | null {
+  const t = s.trim();
+  const parts =
+    /^(?:(\d+(?:\.\d+)?)\s*d)?\s*(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+(?:\.\d+)?)\s*m(?:in)?)?\s*(?:(\d+(?:\.\d+)?)\s*s)?$/i.exec(
+      t,
+    );
+  if (t && parts && parts.slice(1).some((x) => x !== undefined)) {
+    const [d, h, m, sec] = parts.slice(1).map((x) => Number(x ?? 0));
+    const ms = Math.round(((d! * 24 + h!) * 60 + m!) * 60_000 + sec! * 1000);
+    return ms > 0 && ms <= PROGRESS_ETA_MAX_MS ? { in: ms } : null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/.test(t)) {
+    const at = Date.parse(t);
+    return Number.isFinite(at) ? { at } : null;
+  }
+  return null;
 }
 
 /** "8h", "30m", "2d", "90s" → milliseconds; an Error otherwise. */

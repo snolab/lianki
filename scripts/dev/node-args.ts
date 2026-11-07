@@ -55,6 +55,11 @@ export function chatLine(
     ...(typeof m.agentId === "string" ? { agentId: m.agentId } : {}),
     // "stt": spoken into the widget's mic, so `eval.ts edit` may polish it.
     ...(m.source === "stt" ? { source: "stt" } : {}),
+    // "eta": automatic, from the hubs when a state-tree estimate ran out (lib/eta-ping.ts).
+    // Not the owner speaking, never an answer or an approval: report on that node to him.
+    ...(m.source === "eta"
+      ? { source: "eta", auto: true, ...(m.eta && typeof m.eta === "object" ? { eta: m.eta } : {}) }
+      : {}),
     // A voice line's timestamps on the page's clock (VoiceTiming; latency.ts).
     ...(m.timing && typeof m.timing === "object" ? { timing: m.timing } : {}),
     // The mic's wake-word mode when it was sent (docs/wake-word.md), and why it was in it.
