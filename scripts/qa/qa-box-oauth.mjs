@@ -134,7 +134,7 @@ const settled = (page) =>
   });
 
 /** Signed in on the box: what the page shows and what it can ask. */
-async function signedInView(ctx, page) {
+async function signedInView(ctx, page, boxCookies) {
   const html = await (await ctx.request.get(`${BOX}/home`)).text();
   check(
     "the box's server HTML is a spinner, not a sign-in link",
@@ -159,11 +159,12 @@ async function signedInView(ctx, page) {
     "and gives only name, email and avatar",
     JSON.stringify(Object.keys(user).sort()) === '["email","image","name"]',
   );
-  const cookies = (await ctx.cookies(BOX)).map((c) => c.name);
+  // On 127.0.0.1 the two servers share one cookie jar (cookies ignore the port),
+  // so what counts is that no box response sets one.
   check(
-    "no session cookie on the box",
-    !cookies.some((n) => /session|auth/i.test(n)),
-    cookies.join(","),
+    "the box sets no session cookie",
+    !boxCookies.some((c) => /session|auth/i.test(c)),
+    boxCookies.join(" | ").slice(0, 120),
   );
 
   // The landing page has its own header (app/[locale]).
@@ -222,8 +223,11 @@ async function run() {
   await signUp(ctx, MEMBER);
   const page = await ctx.newPage();
   const cross = [];
+  const boxCookies = [];
   page.on("response", (r) => {
     if (r.url().startsWith(`${PROVIDER}/api/`)) cross.push(r);
+    const set = r.url().startsWith(BOX) && r.headers()["set-cookie"];
+    if (set) boxCookies.push(set.split(";")[0]);
   });
   await page.goto(`${BOX}/sign-in`);
   await page.waitForURL(`${BOX}/home**`, { timeout: 90_000 });
@@ -235,7 +239,7 @@ async function run() {
 
   // The box's signed-in view (docs/box-oauth.md): header, menu and pages show the
   // account from lianki.com; the server's HTML holds a spinner, never "Sign in".
-  await signedInView(ctx, page);
+  await signedInView(ctx, page, boxCookies);
 
   const prefs = await pageApi(page, "/api/prefs");
   const me = await (await ctx.request.get(`${PROVIDER}/api/auth/get-session`)).json();
