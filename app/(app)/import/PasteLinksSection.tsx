@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import { useMemo, useState } from "react";
 import { extractLinks } from "@/lib/extract-urls";
@@ -17,7 +18,9 @@ const CHUNK = 500;
 
 type Outcome = { created: number; existed: number; failed: number; rejected: string[] };
 
-export default function PasteLinksSection({ isLoggedIn }: { isLoggedIn: boolean }) {
+export default function PasteLinksSection({ isLoggedIn: serverSignedIn }: { isLoggedIn: boolean }) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const [text, setText] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [outcome, setOutcome] = useState<Outcome | null>(null);

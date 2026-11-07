@@ -127,6 +127,93 @@ const raw = (token, path, method = "GET") =>
     ...(method === "GET" ? {} : { body: JSON.stringify({ ops: [] }) }),
   });
 
+const signInLinks = (page) => page.locator('header a[href="/sign-in"]').count();
+const settled = (page) =>
+  page.waitForFunction(() => !document.querySelector('[data-box-session="loading"]'), null, {
+    timeout: 30_000,
+  });
+
+/** Signed in on the box: what the page shows and what it can ask. */
+async function signedInView(ctx, page, boxCookies) {
+  const html = await (await ctx.request.get(`${BOX}/home`)).text();
+  check(
+    "the box's server HTML is a spinner, not a sign-in link",
+    html.includes('data-box-session="loading"') && !html.includes('href="/sign-in"'),
+  );
+  await settled(page);
+  await page.waitForSelector("[data-profile-menu]", { timeout: 30_000 });
+  check("the header shows the account, no sign-in link", (await signInLinks(page)) === 0);
+  await page.click("[data-profile-menu]");
+  const named = await page.locator("[data-debug-name]").innerText();
+  check("the account menu names the bound account", named.includes(MEMBER), named);
+  await page.keyboard.press("Escape");
+
+  const who = await pageApi(page, "/api/box/me");
+  const user = JSON.parse(who.text || "{}").user ?? {};
+  check(
+    "/api/box/me names the bound account",
+    who.status === 200 && user.email === MEMBER,
+    `${who.status}`,
+  );
+  check(
+    "and gives only name, email and avatar",
+    JSON.stringify(Object.keys(user).sort()) === '["email","image","name"]',
+  );
+  // On 127.0.0.1 the two servers share one cookie jar (cookies ignore the port),
+  // so what counts is that no box response sets one.
+  check(
+    "the box sets no session cookie",
+    !boxCookies.some((c) => /session|auth/i.test(c)),
+    boxCookies.join(" | ").slice(0, 120),
+  );
+
+  // The landing page has its own header (app/[locale]).
+  await page.goto(`${BOX}/en`);
+  await settled(page);
+  await page.waitForTimeout(500);
+  check("the landing page's header is signed in too", (await signInLinks(page)) === 0);
+
+  // A page that redirects on the server stops at /sign-in instead of going round.
+  await page.goto(`${BOX}/learn`);
+  await page.waitForSelector("[data-box-signed-in]", { timeout: 30_000 });
+  check("a server-gated page does not loop through lianki.com", page.url().startsWith(BOX));
+
+  await page.goto(`${BOX}/home`);
+  await settled(page);
+}
+
+/** Sign-out on the box revokes at lianki.com and leaves no token behind. */
+async function boxSignOutCheck(browser, clientId) {
+  const ctx = await newSilentContext(browser);
+  await signUp(ctx, MEMBER);
+  const page = await ctx.newPage();
+  await page.goto(`${BOX}/sign-in`);
+  await page.waitForURL(`${BOX}/home**`, { timeout: 90_000 });
+  await settled(page);
+  const before = JSON.parse(await page.evaluate(() => sessionStorage.getItem("lk:box:tokens")));
+  await page.click("[data-profile-menu]");
+  await page.click("[data-sign-out]");
+  await page.waitForURL((u) => !u.pathname.startsWith("/home"), { timeout: 30_000 });
+  await settled(page);
+  await page.waitForSelector('header a[href="/sign-in"]', { timeout: 30_000 });
+  check("after sign-out the box's header offers sign-in", true);
+  check(
+    "and the tab holds no token",
+    (await page.evaluate(() => sessionStorage.getItem("lk:box:tokens"))) === null,
+  );
+  const refresh = await fetch(`${PROVIDER}/api/auth/oauth2/token`, {
+    method: "POST",
+    headers: { origin: BOX, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: clientId,
+      refresh_token: before.refresh,
+    }),
+  });
+  check("its refresh token is revoked at lianki.com", refresh.status >= 400, `${refresh.status}`);
+  await ctx.close();
+}
+
 async function run() {
   const { clientId } = JSON.parse(readFileSync(STATE, "utf8"));
   const browser = await launchSilent(chromium);
@@ -136,8 +223,11 @@ async function run() {
   await signUp(ctx, MEMBER);
   const page = await ctx.newPage();
   const cross = [];
+  const boxCookies = [];
   page.on("response", (r) => {
     if (r.url().startsWith(`${PROVIDER}/api/`)) cross.push(r);
+    const set = r.url().startsWith(BOX) && r.headers()["set-cookie"];
+    if (set) boxCookies.push(set.split(";")[0]);
   });
   await page.goto(`${BOX}/sign-in`);
   await page.waitForURL(`${BOX}/home**`, { timeout: 90_000 });
@@ -146,6 +236,10 @@ async function run() {
   const stored = await page.evaluate(() => sessionStorage.getItem("lk:box:tokens") ?? "");
   const access = JSON.parse(stored || "{}").access ?? "";
   check("a box token is held", access.startsWith("lkb_"));
+
+  // The box's signed-in view (docs/box-oauth.md): header, menu and pages show the
+  // account from lianki.com; the server's HTML holds a spinner, never "Sign in".
+  await signedInView(ctx, page, boxCookies);
 
   const prefs = await pageApi(page, "/api/prefs");
   const me = await (await ctx.request.get(`${PROVIDER}/api/auth/get-session`)).json();
@@ -467,6 +561,8 @@ async function run() {
   );
   await home.close();
   await other.close();
+
+  await boxSignOutCheck(browser, clientId);
 
   // A box with no account gets the sign-in of lianki.com, not its own.
   const anon = await newSilentContext(browser);

@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 /**
  * The reader v2 (flag `read.reader-v2`; docs/books-plan.md, the 2026-11-03
@@ -243,7 +244,7 @@ function useTouch() {
 
 export function ReaderV2({
   id,
-  isLoggedIn,
+  isLoggedIn: serverSignedIn,
   streaming = false,
   draftAllowed = false,
 }: {
@@ -254,6 +255,8 @@ export function ReaderV2({
   /** ?streamingFrom=google-docs: the text follows the doc as it is edited. */
   streaming?: boolean;
 }) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("read-reader");
   const [material, setMaterial] = useState<Material | null>(null);
   const [loading, setLoading] = useState(true);

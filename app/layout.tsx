@@ -12,6 +12,8 @@ import { LANG_TAGS } from "@/lib/constants";
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
+import { boxConfig } from "@/lib/box-oauth/mode";
+import { BoxApiBridge } from "./components/BoxApiBridge";
 
 /**
  * The Learning Partner opened to users (`partner.ai-reply`, docs/partner-ai.md):
@@ -98,6 +100,7 @@ export default async function RootLayout({
   // The unsaved-changes confirm (LeaveGuard, leave-guard.content.ts).
   const leave = String(getIntlayer("leave-guard", locale as never).unsaved);
   const open = partnerFrame ? false : await partnerOpenFor();
+  const box = boxConfig();
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
       <head>
@@ -145,7 +148,8 @@ export default async function RootLayout({
         <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
           {partnerFrame ? null : <OwnerBoots strings={partner} leave={leave} open={open} />}
-          {children}
+          {/* A box signed in through lianki.com (docs/box-oauth.md): every page, landing included. */}
+          {box ? <BoxApiBridge config={box}>{children}</BoxApiBridge> : children}
         </IntlayerServerProvider>
       </body>
     </html>
