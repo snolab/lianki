@@ -10,6 +10,9 @@ import type { ChatStrings } from "./wire";
  * where EtaList shows each task. Nothing when there is no timed task.
  */
 
+/** A tap on the bar must not take focus from the input (the keyboard stays). */
+export const keepFocus = (e: { preventDefault(): void }) => e.preventDefault();
+
 const TRACK = "oklch(0.6 0.02 260 / 0.25)";
 const FILL = "oklch(0.62 0.14 250)";
 const FILL_PAST = "oklch(0.68 0.16 60)";
@@ -102,7 +105,7 @@ export function EtaBar({
       data-pct={sum.pct}
       aria-label={`${text} · ${sum.pct}% — ${strings.etaOpen}`}
       title={strings.etaOpen}
-      onMouseDown={(e) => e.preventDefault()}
+      onMouseDown={keepFocus}
       onClick={onOpen}
       className="pointer-events-auto mb-1 flex w-full min-w-0 items-center gap-1.5 border-0 bg-transparent px-2 py-0.5 text-start fs-10 text-inherit"
     >

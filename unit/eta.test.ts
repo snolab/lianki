@@ -7,7 +7,7 @@ import {
 } from "@/workers/push/src/progress";
 import type { Socket, Storage } from "@/workers/push/src/debug";
 import { type ProgressEntry, mergeProgress, parseEta, parseProgressReport } from "@/lib/progress";
-import { overlayProgress } from "@/lib/progress-tree";
+import { liveTreeSource, overlayProgress } from "@/lib/progress-tree";
 import { ETA_PATH, etaLineText, parseEtaPing } from "@/lib/eta-ping";
 import { FLAGS } from "@/lib/flags";
 import { parseProgressArgs } from "@/scripts/dev/progress-args";
@@ -23,7 +23,16 @@ import {
   shortLeft,
   taskFraction,
 } from "@lianki/debug-chat/eta";
-import { summaryText } from "@lianki/debug-chat/EtaBar";
+import {
+  EtaBar,
+  EtaClockIcon,
+  EtaList,
+  keepFocus,
+  summaryText,
+  taskState,
+} from "@lianki/debug-chat/EtaBar";
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
 import { CHAT_STRINGS_EN } from "@lianki/debug-chat/wire";
 
 const ROOT = "root-secret";
@@ -474,5 +483,117 @@ describe("the page: summary, short times, the one timer", () => {
     clock.update([task({ at: 10 * MIN }), task({ id: "/s", at: 10 * MIN, sent: true })]);
     expect(due).toEqual(["/a"]);
     expect(clock.armed()).toBe(false);
+  });
+});
+
+describe("the bar and the list, rendered", () => {
+  const two = [task({ id: "/a", at: 10 * MIN }), task({ id: "/b", title: "B", at: 30 * MIN })];
+  const html = (el: Parameters<typeof renderToString>[0]) =>
+    renderToString(el).replace(/<!-- -->/g, "");
+
+  it("the bar: summary, percent, a label naming what a tap does; nothing without tasks", () => {
+    const out = html(
+      createElement(EtaBar, {
+        tasks: two,
+        now: 5 * MIN,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+        lang: "en",
+      }),
+    );
+    expect(out).toContain('data-testid="debug-chat-eta-bar"');
+    expect(out).toContain("2 tasks · 25m left · next in 5m");
+    expect(out).toContain('data-pct="25"');
+    expect(out).toContain(CHAT_STRINGS_EN.etaOpen);
+    expect(out).toContain("<svg");
+    expect(out).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i); // oklch only
+    const past = html(
+      createElement(EtaBar, {
+        tasks: two,
+        now: 40 * MIN,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+      }),
+    );
+    expect(past).toContain("2 tasks · ETA reached");
+    const done = html(
+      createElement(EtaBar, {
+        tasks: [task({ done: true, doneAt: 0 }), task({ id: "/b", done: true, doneAt: 0 })],
+        now: 1000,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+      }),
+    );
+    expect(done).toContain("2 tasks · done");
+    expect(
+      html(
+        createElement(EtaBar, { tasks: [], now: 0, strings: CHAT_STRINGS_EN, onOpen: () => {} }),
+      ),
+    ).toBe("");
+  });
+
+  it("the list: one row per task with its state; nothing without tasks", () => {
+    const out = html(
+      createElement(EtaList, {
+        tasks: [...two, task({ id: "/c", title: "C", done: true, doneAt: 12 * MIN - 1000 })],
+        now: 12 * MIN,
+        strings: CHAT_STRINGS_EN,
+        lang: "en",
+      }),
+    );
+    expect(out.match(/data-testid="debug-chat-eta-row"/g)?.length).toBe(3);
+    expect(out).toContain('data-state="reached"');
+    expect(out).toContain('data-state="running"');
+    expect(out).toContain('data-state="done"');
+    expect(out).toContain("18m left");
+    expect(out).toContain(CHAT_STRINGS_EN.etaList);
+    expect(html(createElement(EtaList, { tasks: [], now: 0, strings: CHAT_STRINGS_EN }))).toBe("");
+    expect(html(createElement(EtaClockIcon, { size: 10 }))).toContain('width="10"');
+    expect(taskState(task({ done: true }), 0, CHAT_STRINGS_EN)).toBe("done");
+    let kept = false;
+    keepFocus({ preventDefault: () => (kept = true) });
+    expect(kept).toBe(true);
+  });
+});
+
+describe('the page\'s {type:"eta"} on the progress socket', () => {
+  it("goes out on an open socket of the live source; false with none", () => {
+    const sent: string[] = [];
+    const socks: Record<string, any>[] = [];
+    const src = liveTreeSource({
+      base: () => "# t\n",
+      url: "wss://h/p",
+      socket: () => {
+        const s = {
+          onopen: null,
+          onmessage: null,
+          onclose: null,
+          onerror: null,
+          readyState: 1,
+          close() {},
+          send: (d: string) => sent.push(d),
+        };
+        socks.push(s);
+        return s as never;
+      },
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+      onWake: () => () => {},
+    });
+    const off = src.subscribe(() => {});
+    expect(src.send({ type: "eta", id: "/a" })).toBe(false); // not open yet
+    socks[0]!.onopen({});
+    expect(src.send({ type: "eta", id: "/a" })).toBe(true);
+    expect(sent).toEqual([JSON.stringify({ type: "eta", id: "/a" })]);
+    socks[0]!.readyState = 3;
+    expect(src.send({ type: "eta", id: "/a" })).toBe(false);
+    socks[0]!.readyState = 1;
+    socks[0]!.send = () => {
+      throw new Error("closed");
+    };
+    expect(src.send({ type: "eta", id: "/a" })).toBe(false);
+    socks[0]!.onclose({});
+    expect(src.send({ type: "eta", id: "/a" })).toBe(false);
+    off();
   });
 });
