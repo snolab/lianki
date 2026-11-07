@@ -20,7 +20,8 @@ as if it did not exist.
 | the app's view of a token                   | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`                            |
 | the box's browser side                      | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge`             |
 | the box's signed-in view                    | `lib/box-oauth/session.ts`, `me.ts`, `app/api/box/me`, `BoxApiBridge`               |
-| tests                                       | `unit/box-oauth.test.ts`, `unit/box-session.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
+| chat on the owner's box (`box:chat`)        | `lib/box-oauth/chat-ticket.ts`, `app/api/box/chat-ticket`, `workers/push/src/auth.ts` |
+| tests                                       | `unit/box-oauth.test.ts`, `unit/box-session.test.ts`, `unit/box-chat.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
 
 ## For the owner: set up a box
 
@@ -69,7 +70,8 @@ stored hashed. The browser keeps them in that tab's sessionStorage.
   port leniency.
 - **Deny by default.** A token reaches only the routes listed in
   `tokenMayCall` (`rules.ts`), the account's own study data. A new route is closed
-  until someone adds it. Never `/api/dev*`, `/api/debug`, payments, invites and
+  until someone adds it. Never `/api/dev*`, `/api/debug` (except the chat mic, with
+  `box:chat` below), payments, invites and
   gift codes, API tokens, CLI login, previews, connections, or `/api/auth`, so
   no email or login change. The BYOK relay (`/api/byok/proxy`) and email change
   (`/api/profile/email`) are closed too. Encoded and otherwise odd paths are refused,
@@ -144,11 +146,82 @@ Still signed out, because they are drawn on the box's server:
 - Server-decided extras: the level chip, flag-gated nav items, the owner's dev
   switch and live view.
 
-**The Learning Partner chat does not work on a box.** It talks only over the
-lianki-push WebSocket (`/api/version/debug`), which takes a lianki.com Origin with the
-session cookie, or a site-owner ticket. A box page has neither. Its HTTP routes
-(`/api/debug/*`, `/api/dev/*`) are closed to tokens, by design; only cloud TTS
-(`/api/words/tts`) passes. Opening any of that is the owner's decision.
+The Learning Partner chat works on a box only with `box:chat`, below.
+
+## Chat on the owner's box (`box:chat`)
+
+Owner's decision, by tap card, 2026-11-07: the Li chat (Learning Partner, with
+voice) works on his own box, signed in through the box token. **He accepted that
+any script running on the box can then use the chat as him**: read the owner's
+chat history, send lines to the agents, transcribe with the mic, and tap ask
+cards, approvals included. That is the box's own code, its dependencies, and
+anything an agent runs there.
+
+**Who can have it.** Only a box whose binding's account is a site owner
+(`site_role`, [secrets-and-auth.md](secrets-and-auth.md), "The owner role"). The
+owner turns it on per box on `/dev/box-clients` ("允许盒子上的聊天", behind a
+warning and a confirm) and off with "关闭盒子上的聊天". Revoking the box ends it
+with everything else. Each grant, removal and ticket mint is in `security_audit`
+(`box.chat-grant`, `box.chat-remove`, `box.chat-ticket`). A box without it sees
+no change at all.
+
+**The scope is the binding's, not the token's.** `box:chat` is never asked for in
+the OAuth flow (it is not in `BOX_SCOPES`), so no box env changes and no new
+sign-in: `liveToken` gives every live token of a binding `box:chat` exactly while
+the binding holds it. Removing it takes effect on the next request.
+
+**What it opens, and nothing more.** Two routes, POST, exact paths
+(`tokenMayCall`; without the scope they are 404 to a token as before):
+
+| route                       | what                                                              |
+| --------------------------- | ----------------------------------------------------------------- |
+| `POST /api/box/chat-ticket` | a 60 s single-use ticket for the hub socket                      |
+| `POST /api/debug/stt`       | the chat mic's transcription (cloud STT, the owner's limits)     |
+
+No other `/api/debug*` or any `/api/dev*` route: no eval, no pairing, no
+page-error log, no inbox upload, no state tree, no local STT ticket. Read-aloud
+uses the TTS routes a box already had.
+
+**Fail closed, four times.** (1) Grant: `setBoxChat` refuses a binding whose
+account is not a site owner. (2) The gate: a `box:chat` route also needs the
+token's account to be a site owner, read from D1 on that request
+(`isSiteOwnerUser`, no cache). (3) The routes: `chat-ticket` and `stt` check the
+signed identity's binding again (`boxChatCaller`: live, same account, holds the
+scope, site owner). (4) The hub: before it takes each line from a box socket it
+asks the main Worker (`DebugSessions.boxChat`, an RPC with no URL): flag on,
+binding live with the scope, account a site owner. "gone", or a main Worker that
+has no such check, closes the socket (4401). An unsure answer drops that line only.
+
+**The socket.** The page fetches a ticket through the box's fetch (token,
+`credentials: "omit"`), then opens `wss://lianki.com/api/version/debug` from the
+box's origin offering `Sec-WebSocket-Protocol: lianki-partner, <ticket>`, never the
+ticket in the URL (`DebugEval`, `boxChatHub` in `client.ts`). The ticket is signed
+with the partner key under its own audience (`lianki-box-chat`) and names the box's
+exact origin and client id. lianki-push (`boxChatTicket` in
+`workers/push/src/auth.ts`) takes it only from that exact origin, which must be a
+box origin; the hub burns its id once. A partner ticket is never a box ticket and
+the other way round; a lianki.com cookie page can never claim to be a box.
+
+**What the socket may do.** It is the owner's thread, as an embedded page: no eval
+ever reaches it, it never counts for a pairing or a grant, never joins a recording
+session, and its `state` carries no pairings, sessions or pages. Beyond the plain
+partner widget's `chat` and `page`, it may send `passage-end` and `unmerge` (voice
+lines amending each other) and `answer` (an ask-card tap). Its lines' label starts
+with `box `, so agents can tell where a line or a tap came from.
+
+**Ending it.** Removal and revoke also tell lianki-push over the PUSH binding
+(`/internal/box-closed`, the client id only), which closes that box's sockets at
+once. That notice is best effort; the per-line check above is what guarantees a
+socket that outlived it can say nothing.
+
+**Not changed.** The box still holds no cookie, and its tokens stay in the tab's
+sessionStorage. A ticket lives 60 s and works once; a box page asks for one per
+connect (20 a minute at most per box), and a refused page does not ask again
+until it reloads.
+
+**To use it** (after both Workers are deployed): on `/dev/box-clients`, turn on
+chat for the owner's box; on the box, open any page with `?debug=1` once (the
+chat follows debug mode, as on lianki.com).
 
 ## How it was tested
 

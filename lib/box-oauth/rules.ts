@@ -13,6 +13,21 @@ export const SCOPE_WRITE = "box:write";
 export const SCOPE_REFRESH = "offline_access";
 /** Scopes a box may hold, in the plugin's terms. */
 export const BOX_SCOPES = [SCOPE_READ, SCOPE_WRITE, SCOPE_REFRESH] as const;
+/**
+ * The Learning Partner chat on the owner's own box (docs/box-oauth.md, "Chat on
+ * the owner's box"). Held by the binding, never asked for in the OAuth flow
+ * (so it is not in BOX_SCOPES): the owner grants and removes it on
+ * /dev/box-clients, only for a binding whose account is a site owner, and every
+ * live token of that binding carries it while the binding does. Any script on
+ * the box can then chat as the owner.
+ */
+export const SCOPE_CHAT = "box:chat";
+/** Mints a chat ticket for the hub (app/api/box/chat-ticket). */
+export const BOX_CHAT_TICKET_PATH = "/api/box/chat-ticket";
+/** The chat mic's transcription (app/api/debug/stt). */
+export const BOX_CHAT_STT_PATH = "/api/debug/stt";
+/** The only routes box:chat opens: POST, exact paths, and nothing else needs it. */
+const CHAT_ROUTES = new Set([BOX_CHAT_TICKET_PATH, BOX_CHAT_STT_PATH]);
 
 export const ACCESS_TOKEN_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_SECONDS = 24 * 60 * 60;
@@ -121,7 +136,8 @@ const READ_METHODS = new Set(["GET", "HEAD"]);
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export type RouteAnswer =
-  | { ok: true }
+  /** `chat`: a box:chat route; the gate also checks the account is a site owner. */
+  | { ok: true; chat?: true }
   | { ok: false; status: 403 | 404 | 405; reason: "path" | "method" | "scope" };
 
 /** May a token with these scopes make this request? */
@@ -131,6 +147,12 @@ export function tokenMayCall(
   scopes: readonly string[],
 ): RouteAnswer {
   if (suspiciousPath(pathname)) return { ok: false, status: 404, reason: "path" };
+  if (CHAT_ROUTES.has(pathname)) {
+    // Without the scope the route does not exist for a token, as before box:chat.
+    if (!scopes.includes(SCOPE_CHAT)) return { ok: false, status: 404, reason: "path" };
+    if (method.toUpperCase() !== "POST") return { ok: false, status: 405, reason: "method" };
+    return { ok: true, chat: true };
+  }
   const route = ALLOWED.find(
     (r) => pathname === r.prefix || (!r.exact && pathname.startsWith(`${r.prefix}/`)),
   );
@@ -146,6 +168,10 @@ export function tokenMayCall(
     : scopes.includes(SCOPE_READ) || scopes.includes(SCOPE_WRITE);
   return allowed ? { ok: true } : { ok: false, status: 403, reason: "scope" };
 }
+
+/** The box's chat socket, from its origin: wss://lianki.com/api/version/debug. */
+export const boxHubUrl = (provider: string) =>
+  `${provider.replace(/^http/, "ws")}/api/version/debug`;
 
 /**
  * The plugin's authorize route answers only this: a top-level navigation by

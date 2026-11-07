@@ -17,6 +17,8 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { boxChatHub } from "@/lib/box-oauth/client";
+import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import {
   type ChatContext,
@@ -302,7 +304,23 @@ export function DebugEval({
       } catch {}
     };
 
+    /** A box chat ticket is being fetched (docs/box-oauth.md, "Chat on the owner's box"). */
+    let boxPending = false;
     const connect = () => {
+      if (ws || boxPending) return;
+      // On the owner's box: lianki.com's hub with a ticket (box:chat), never a cookie.
+      const box = boxChatHub();
+      if (!box)
+        return openSock(
+          `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug`,
+        );
+      boxPending = true;
+      void box.ticket().then((ticket) => {
+        boxPending = false;
+        if (ticket && !ws && wanted()) openSock(box.url, [PARTNER_SUBPROTOCOL, ticket]);
+      });
+    };
+    const openSock = (base: string, protocols?: string[]) => {
       if (ws) return;
       if (!unhook && !friendRef.current) unhook = installPageErrorHooks(window, reporter);
       const label = pageLabel();
@@ -320,7 +338,8 @@ export function DebugEval({
         clipsQ = clipsConnectQuery();
       } catch {}
       const sock = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
+        `${base}?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
+        protocols,
       );
       ws = sock;
       sockRef.current = sock;

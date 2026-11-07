@@ -4,12 +4,13 @@
  * sessionStorage, and every API call goes to the provider with
  * `credentials: "omit"`.
  */
-import { BOX_AUTHORIZE_PATH, BOX_CALLBACK_PATH } from "./rules";
+import { BOX_AUTHORIZE_PATH, BOX_CALLBACK_PATH, BOX_CHAT_TICKET_PATH, boxHubUrl } from "./rules";
 
 const PENDING = "lk:box:pending";
 const TOKENS = "lk:box:tokens";
 
-export type BoxConfig = { clientId: string; provider: string; scope: string };
+/** `hub`: the chat socket's URL, when it is not the provider's own (a local QA run only). */
+export type BoxConfig = { clientId: string; provider: string; scope: string; hub?: string };
 type Tokens = { access: string; refresh: string | null; until: number };
 
 const b64url = (b: Uint8Array) =>
@@ -147,8 +148,45 @@ export function boxApiUrl(input: string, here: string): string | null {
   return `${u.pathname}${u.search}`;
 }
 
+let installed: BoxConfig | null = null;
+/** This page load was refused a chat ticket (no box:chat): it does not ask again. */
+let chatRefused = false;
+
+export type BoxChatHub = {
+  /** wss://lianki.com/api/version/debug */
+  url: string;
+  /** A fresh 60 s, single-use ticket for one socket, or null (no box:chat, signed out). */
+  ticket: () => Promise<string | null>;
+};
+
+/**
+ * The Learning Partner's hub on a box (docs/box-oauth.md, "Chat on the owner's
+ * box"): null off a box, without a token, or once refused. DebugEval opens its
+ * socket there with the ticket, in Sec-WebSocket-Protocol, never in the URL.
+ */
+export function boxChatHub(): BoxChatHub | null {
+  const c = installed;
+  if (!c || chatRefused || !hasBoxTokens()) return null;
+  return {
+    url: c.hub || boxHubUrl(c.provider),
+    ticket: async () => {
+      try {
+        // Through the box's fetch: to lianki.com, with the token.
+        const r = await fetch(BOX_CHAT_TICKET_PATH, { method: "POST" });
+        if (r.status === 403 || r.status === 404) chatRefused = true;
+        if (!r.ok) return null;
+        const b = (await r.json()) as { ticket?: unknown };
+        return typeof b.ticket === "string" ? b.ticket : null;
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
 export function installBoxFetch(c: BoxConfig): void {
   if (original) return;
+  installed = c;
   original = fetch.bind(globalThis);
   const send = (path: string, init: RequestInit, access: string | undefined) => {
     const headers = new Headers(init.headers);

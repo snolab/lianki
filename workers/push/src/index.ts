@@ -44,6 +44,9 @@
  *   GET/POST /internal/friends The main Worker's owner-only /api/dev/friends,
  *                              over its PUSH binding: list chat users, read
  *                              one's thread, Block or unblock (debug.ts).
+ *   POST /internal/box-closed  The main Worker, when a box loses box:chat
+ *                              (removed or revoked): body {client}. That box's
+ *                              chat sockets close (docs/box-oauth.md).
  *   POST /internal/signed-out  The main Worker, when a sign-in session is
  *                              deleted (sign-out): body {session: its tag}.
  *                              Every eval grant renewing on it stops at once.
@@ -59,9 +62,11 @@
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
 import {
+  BOX_HEADER,
   DEBUG_ORIGIN,
   DEV_BRIDGE_HEADER,
   EMBED_HEADER,
+  boxChatTicket,
   debugIdentity,
   offersPartner,
   partnerTicket,
@@ -178,17 +183,23 @@ export default {
       // widget on another site, or the lianki.com frame inside it): its ticket
       // alone, never a cookie; chat-only in the owner's thread (debug.ts).
       // Any other socket: the cookie alone, and only from https://lianki.com.
+      // The owner's box (docs/box-oauth.md) offers the same subprotocol with a box
+      // chat ticket, good only from the box origin it names.
       if (offersPartner(req) || req.headers.get("origin") !== DEBUG_ORIGIN) {
-        const t = await partnerTicket(req, env.PARTNER_TICKET_PUB);
+        const t: { jti: string; exp: number; cid?: string } | null =
+          (await partnerTicket(req, env.PARTNER_TICKET_PUB)) ??
+          (await boxChatTicket(req, env.PARTNER_TICKET_PUB));
         if (!t) return new Response("forbidden", { status: 403 });
         const headers = new Headers(req.headers);
         for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
         headers.delete(DEV_BRIDGE_HEADER);
+        headers.delete(BOX_HEADER);
         headers.delete("cookie");
         headers.set(IDENTITY_HEADERS.user, "owner");
         headers.set(IDENTITY_HEADERS.email, "");
         headers.set(IDENTITY_HEADERS.owner, "1");
         headers.set(EMBED_HEADER, `${t.jti}.${t.exp}`);
+        if (t.cid) headers.set(BOX_HEADER, t.cid);
         return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
       }
       const who = await debugIdentity(req, env.MAIN);
@@ -197,8 +208,9 @@ export default {
       // Only what the main Worker said: a page cannot claim any of these itself.
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
       headers.delete(DEV_BRIDGE_HEADER);
-      // A lianki.com page is never an embedded one, whatever it sends.
+      // A lianki.com page is never an embedded one, nor a box, whatever it sends.
       headers.delete(EMBED_HEADER);
+      headers.delete(BOX_HEADER);
       headers.set(IDENTITY_HEADERS.user, who.userId);
       headers.set(IDENTITY_HEADERS.email, who.email);
       headers.set(IDENTITY_HEADERS.owner, who.owner ? "1" : "0");
@@ -248,7 +260,9 @@ export default {
     }
     // Friends, and a signed-out session (it stops eval-grant renewal bound to it).
     if (
-      (url.pathname.startsWith("/internal/friends") || url.pathname === "/internal/signed-out") &&
+      (url.pathname.startsWith("/internal/friends") ||
+        url.pathname === "/internal/signed-out" ||
+        url.pathname === "/internal/box-closed") &&
       isInternal(url)
     )
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);
