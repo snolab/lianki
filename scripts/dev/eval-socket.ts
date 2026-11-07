@@ -263,7 +263,7 @@ export function controller({ label, labelFlag, forEmail, noPair, node, agent }: 
         ws.onmessage = null;
         ws.onclose = null;
         console.error(
-          `Eval token accepted until ${new Date(Number(m.until)).toLocaleString()} (LIANKI_TOKEN).`,
+          `Eval token accepted until ${new Date(Number(m.until)).toISOString()} (LIANKI_TOKEN).`,
         );
         resolve({ ws });
       };

@@ -1061,10 +1061,16 @@ async function evalRun() {
     ctx.request.fetch(`${PROVIDER}/api/token`, {
       method,
       data,
-      headers: { origin: PROVIDER, "content-type": "application/json" },
+      // No Origin: under wrangler dev the Worker sees another host than PROVIDER, and
+      // /api/token takes JSON from its own origin or from a client that sends none.
+      headers: { "content-type": "application/json" },
     });
   const tooLong = await api("POST", { name: "qa-eval", scopes: ["eval"], expiry: { days: 90 } });
-  check("an eval token past 30 days is refused", tooLong.status() === 400, `${tooLong.status()}`);
+  check(
+    "an eval token past 30 days is refused",
+    tooLong.status() === 400,
+    `${tooLong.status()} ${(await tooLong.text()).slice(0, 120)}`,
+  );
   const made = await api("POST", { name: "qa-eval", scopes: ["eval"], expiry: { days: 7 } });
   const tok = await made.json();
   check("the owner makes an eval token", made.ok() && tok.scopes?.includes("eval"));
