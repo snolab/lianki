@@ -125,7 +125,13 @@ export type PartnerStrings = ChatStrings & {
 export function DebugEval({
   strings,
   partnerOpen = false,
-}: { strings?: Partial<PartnerStrings>; partnerOpen?: boolean } = {}) {
+  etaBar = false,
+}: {
+  strings?: Partial<PartnerStrings>;
+  partnerOpen?: boolean;
+  /** Flag chat.eta-bar (lib/eta-ping.ts): the ETA bar on the owner's chat, and its pings. */
+  etaBar?: boolean;
+} = {}) {
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const stringsRef = useRef(strings);
@@ -792,6 +798,9 @@ export function DebugEval({
           owner={owner && !isFriend}
           strings={friendStrings}
           treeSource={owner && !isFriend ? ownerTree : undefined}
+          etaBar={etaBar && owner && !isFriend}
+          // This page's ETA timer went off: the hub pings the agent at most once per estimate.
+          onEtaDue={(id) => ownerTree?.send({ type: "eta", id })}
           treeRepo="snolab/lianki"
           // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
           files={owner && !isFriend ? ownerFiles : undefined}

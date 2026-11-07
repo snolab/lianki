@@ -12,18 +12,21 @@ export function OwnerBoots({
   strings,
   leave,
   open = false,
+  etaBar = false,
 }: {
   strings: PartnerStrings;
   leave: string;
   /** The Learning Partner for every signed-in user (partner.ai-reply on; docs/partner-ai.md). */
   open?: boolean;
+  /** Flag chat.eta-bar: the owner's ETA bar in the chat (lib/eta-ping.ts). */
+  etaBar?: boolean;
 }) {
   return (
     <>
       <ServiceWorkerRegistration />
       <LeaveGuard message={leave} />
       <NewVersionNotice />
-      <DebugEval strings={strings} partnerOpen={open} />
+      <DebugEval strings={strings} partnerOpen={open} etaBar={etaBar} />
     </>
   );
 }

@@ -168,7 +168,9 @@ export function DebugChatHost({
     () => pickTreeSource(src, rest.treeSource),
     [src, rest.treeSource],
   );
-  const props = { ...rest, treeSource };
+  // The ETA bar reads the host's own (live) source even when the hot tree replaced it.
+  const etaSource = rest.etaBar && treeSource !== rest.treeSource ? rest.treeSource : undefined;
+  const props = { ...rest, treeSource, ...(etaSource ? { etaSource } : {}) };
   if (!w.Chat) return <DebugChat {...props} note={note} />;
   const Remote = w.Chat;
   return (

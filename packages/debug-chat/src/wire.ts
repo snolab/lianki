@@ -69,7 +69,7 @@ export type ChatMessage = {
    * sent as heard, or sent unchanged. Absent = typed (or dictation edited
    * before sending). Only such a line may be polished by the agent (`edit`).
    */
-  source?: MessageSource;
+  source?: LineSource;
   /** The STT text as first heard, kept once the agent has polished the line. */
   raw?: string;
   /** Set when the agent polished the line: when, by which agent, and how many times. */
@@ -137,6 +137,11 @@ export type ChatMessage = {
    * sends, and absent on friends' lines, the partner AI's and older lines.
    */
   ownerGrant?: true;
+  /**
+   * `source: "eta"` lines only: the state-tree node whose estimate ran out,
+   * and that estimate (lib/eta-ping.ts). Automatic, never the owner speaking.
+   */
+  eta?: { id: string; etaAt: number };
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -156,6 +161,12 @@ export type AnsweredEvent = {
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
 export type MessageSource = "stt";
+/**
+ * A stored line's source: MessageSource, or "eta" — an automatic line the
+ * hubs put in the owner's thread when a state-tree estimate ran out
+ * (lib/eta-ping.ts). Stamped by the hub only; a page can never send it.
+ */
+export type LineSource = MessageSource | "eta";
 /** An agent's polish of a voice line (ChatMessage.edited). */
 export type EditMark = { at: number; by: string; count: number };
 /** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
@@ -612,6 +623,20 @@ export type ChatStrings = {
   inboxKeep: string;
   /** Button and screen-reader label that closes the inbox list. Imperative verb, one word. */
   inboxClose: string;
+  /** Part of the one-line progress bar above the chat input, when several tasks the assistant is working on have a time estimate: how many there are. {n} becomes a number; keep it. A short count, no verb; other parts follow after a middle dot. */
+  etaTasks: string;
+  /** Part of the progress bar above the chat input, and of each task's row in the state tree: how much time is left until the assistant's estimate runs out. {t} becomes a short duration such as '25m' or '1h 5m' (already localized); keep it. Very short, no full stop. */
+  etaLeft: string;
+  /** Part of the progress bar above the chat input when several tasks have estimates: how soon the next one is due. {t} becomes a short duration such as '5m' (already localized); keep it. Very short, no full stop. */
+  etaNext: string;
+  /** Shown in the progress bar above the chat input and in a task's row in the state tree instead of the time left, once the assistant's own time estimate for the work has passed (the work may still be going on; the assistant is asked to report). Very short status phrase, no full stop. */
+  etaReached: string;
+  /** Shown for a few seconds in the progress bar above the chat input and in a task's row in the state tree when that task was finished. One word, a status (past participle or adjective). */
+  etaDone: string;
+  /** Screen-reader label and tooltip of the progress bar above the chat input: tapping it opens the state tree (the status panel) listing every task with its own bar and time left. Imperative verb phrase. */
+  etaOpen: string;
+  /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
+  etaList: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -703,6 +728,13 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   inboxDeleteConfirm: "Delete for good?",
   inboxKeep: "Keep",
   inboxClose: "Close",
+  etaTasks: "{n} tasks",
+  etaLeft: "{t} left",
+  etaNext: "next in {t}",
+  etaReached: "ETA reached",
+  etaDone: "done",
+  etaOpen: "Show all tasks and their ETAs in the state tree",
+  etaList: "Timed tasks",
   attachQuoted: "Quoted from the page",
   attachGroupView: "View",
   attachTree: "State tree",
