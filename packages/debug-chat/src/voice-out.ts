@@ -19,6 +19,10 @@
 import { noteOpened } from "./aec";
 import { encodeWav } from "./mic";
 import type { CloudOut, PlayEvents, Playback } from "./voice";
+import { VOICES, cloudVoice } from "./voices";
+
+/** The route's X-Voice for a clip in a lane's own cloud speaker (lib/words-tts.ts). */
+export const AURA_VOICE = "aura-2";
 
 export const VOICE_OUT_KEY = "lk:voice-out";
 export type OutMode = "speech" | "cloud";
@@ -147,8 +151,10 @@ export type CtxLike = {
  * again, so the route does not keep it in R2 and sends it `no-store`; a
  * replay comes from `clips` below (blob URLs in memory), not the HTTP cache.
  */
-export const ttsUrl = (text: string, lang: string) =>
-  `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}&store=0`;
+export const ttsUrl = (text: string, lang: string, speaker?: string) =>
+  `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}&store=0${
+    speaker ? `&speaker=${encodeURIComponent(speaker)}` : ""
+  }`;
 
 /** Why a sentence cannot be fetched at all (null: try the route). */
 export function cloudSkip(text: string, lang: string): string | null {
@@ -191,6 +197,8 @@ export function createCloudOut(d: {
     });
   };
   const clips = new Map<string, Promise<string>>();
+  /** Clips that came back in the route's one voice though a speaker was asked for. */
+  const fellBack = new Set<string>();
   let el: ElementLike | null = null;
   let gain: GainLike | null = null;
   let wired = false;
@@ -220,20 +228,27 @@ export function createCloudOut(d: {
     return el;
   };
 
-  const fetchClip = (text: string, lang: string): Promise<string> => {
-    const key = `${lang}\n${text}`;
+  /** `speaker`: a lane's own cloud voice (voices.ts cloudVoice); absent = the language's one voice. */
+  const fetchClip = (text: string, lang: string, speaker?: string): Promise<string> => {
+    const key = `${lang}\n${speaker ?? ""}\n${text}`;
     const have = clips.get(key);
     if (have) return have;
-    const p = d.fetch(ttsUrl(text, lang.split(/[-_]/)[0])).then(async (r) => {
+    const p = d.fetch(ttsUrl(text, lang.split(/[-_]/)[0], speaker)).then(async (r) => {
       if (!r.ok) throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);
-      return toUrl(await r.blob());
+      const url = toUrl(await r.blob());
+      // The speaker was asked for but the route answered with its one voice (it fell back).
+      if (speaker && r.headers.get("X-Voice") !== AURA_VOICE) fellBack.add(url);
+      return url;
     });
     clips.set(key, p);
     p.catch(() => clips.delete(key));
     if (clips.size > CLIP_CACHE) {
       const [k, old] = clips.entries().next().value as [string, Promise<string>];
       clips.delete(k);
-      old.then(revoke, ignore);
+      old.then((u) => {
+        fellBack.delete(u);
+        revoke(u);
+      }, ignore);
     }
     return p;
   };
@@ -266,8 +281,9 @@ export function createCloudOut(d: {
       a.play().then(() => me === turn && a.src === silent && a.pause(), ignore);
     },
     gain: () => gain,
-    prepare(text, lang) {
-      if (!cloudSkip(text, lang)) fetchClip(text, lang).catch(ignore);
+    prepare(text, lang, voice) {
+      const speaker = voice ? cloudVoice(voice, lang).speaker : undefined;
+      if (!cloudSkip(text, lang)) fetchClip(text, lang, speaker).catch(ignore);
     },
     play(s, ev: PlayEvents): Playback {
       const me = ++turn;
@@ -290,7 +306,9 @@ export function createCloudOut(d: {
         fail(skip);
         return pb;
       }
-      fetchClip(s.text, s.lang).then(
+      // A lane's cloud voice: its own speaker where the engine has several, else the one voice shifted.
+      const lane = s.voice ? cloudVoice(s.voice, s.lang) : { shift: 1 };
+      fetchClip(s.text, s.lang, lane.speaker).then(
         (url) => {
           if (!live()) return;
           const a = element();
@@ -309,11 +327,14 @@ export function createCloudOut(d: {
             // Resume by offset: where the interrupted clip stopped (else its start).
             a.currentTime = s.at;
             // The speed, pitch kept (a resume after a duck keeps it: it is per play).
-            const rate = s.rate ?? 1;
+            // A lane with no voice of its own here: shifted, its pitch moving with the speed.
+            const shift = fellBack.has(url) && s.voice ? VOICES[s.voice].shift : lane.shift;
+            const rate = (s.rate ?? 1) * shift;
+            const keepPitch = shift === 1;
             a.defaultPlaybackRate = rate;
             a.playbackRate = rate;
-            a.preservesPitch = true;
-            a.webkitPreservesPitch = true;
+            a.preservesPitch = keepPitch;
+            a.webkitPreservesPitch = keepPitch;
             a.play().then(
               () => live() && ev.onstart?.(),
               (e: unknown) => {

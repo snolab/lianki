@@ -6,6 +6,7 @@
  */
 
 import type { Ask, AskAnswer } from "./ask";
+import type { LaneId, VoiceId } from "./voices";
 
 export * from "./node-path";
 
@@ -97,6 +98,14 @@ export type ChatMessage = {
    * shown, never read aloud. Only ever `true`; the hub drops anything else.
    */
   quiet?: true;
+  /**
+   * The lane an agent line is from (voices.ts LANES: "main", "codex",
+   * "agy"; `say --lane`): its avatar, name tag and voice. Absent = a
+   * `【lane】` prefix in the text says it, else none (looks as before).
+   */
+  lane?: LaneId;
+  /** The voice to read it in (voices.ts VOICES; `say --voice`). Absent = its lane's. */
+  voice?: VoiceId;
   /**
    * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
    * "active", or "passive" (it came through "Linky"). Absent = the mic was

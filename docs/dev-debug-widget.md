@@ -1260,6 +1260,55 @@ cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
 `unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
 `unit/node-args.test.ts`.
 
+## Lanes and voices
+
+Several agents talk in the owner's chat — the chat lane (main), codex and
+agy — and he tells them apart by ear and by eye (owner, 2026-11-07). One
+table holds all of it as data: `packages/debug-chat/src/voices.ts` (`LANES`,
+`VOICES`). A lane has a voice id, a name tag and a mark (a small SVG on an
+oklch disc, `LaneMark.tsx`); main has no mark, so its lines look as before.
+
+**Which lane.** A line's `lane` field (`eval.ts say --lane codex`, default
+`$LIANKI_LANE`), else a leading `【codex】` / `【agy】` in its text. The prefix
+is then taken off what is shown and read (the name tag says it). A line
+with neither is main, exactly as before. `say --voice main|calm|bright`
+reads one line in another voice. The hub checks both ids against the table
+and stores them with the line.
+
+**Device voices** (speechSynthesis). Main keeps today's pick (`pickVoice`).
+The others each take a different installed voice *model* — another name,
+never a Compact/Enhanced variant of one already in use — in four passes: a
+natural voice the lane prefers by name, any natural voice, a preferred
+Eloquence voice (Apple's Reed, Flo, …: robotic, but a different model), any
+Eloquence voice. Novelty voices (Bahh, Zarvox, …) are never used. Only when
+nothing is left does the lane reuse main's voice at its own pitch and speed.
+A language's other locales that read it the same way are data
+(`SIBLING_LOCALES`: zh-TW for zh-CN, not Cantonese zh-HK; en-GB/AU/… for
+en-US).
+
+| lane  | voice  | prefers (any language)                     | last resort      |
+| ----- | ------ | ------------------------------------------ | ---------------- |
+| main  | main   | today's pick                               | —                |
+| codex | calm   | Li-mu, Daniel, Otoya, … then Reed, Rocko   | pitch 0.8, ×0.92 |
+| agy   | bright | Lili, Meijia, Karen, Moira, O-ren, … Flo   | pitch 1.25, ×1.06 |
+
+**Cloud voices** (`lk:voice-out` = cloud). Where an engine has several
+voices for the language the lane gets its own speaker: Workers AI Aura-2,
+English (codex `orion`, agy `thalia`) and Spanish (`nestor`, `carina`),
+asked as `/api/words/tts?…&speaker=` (the route keeps only speakers the
+table names; a recording is skipped; an Aura-2 failure answers with MeloTTS,
+never nothing). Everywhere else the cloud has one voice (MeloTTS), so the
+clip plays shifted — `shift` 0.9 / 1.12, pitch and speed together — the last
+resort. The pre-rendered Kokoro/VOICEVOX/Piper clips are fixed texts and are
+not used for live lines.
+
+The owner's mute, quiet lines and the hidden-page rule are unchanged: a
+lane changes which voice reads a line, never whether.
+
+Tests: `unit/voices.test.ts` (lane resolution, voice picks on fake voice
+lists including this Mac's, fallbacks, the cloud speaker and shift, the
+route's speaker, `say --lane/--voice`).
+
 ## The + menu: add to Lianki, attach the page selection
 
 The round **+** at the start of the chat input (owner, 2026-11-03) opens one

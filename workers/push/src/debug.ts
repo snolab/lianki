@@ -2521,7 +2521,7 @@ export class DebugHub {
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to, node, agentId, quiet } = m.value;
+      const { text, to, node, agentId, quiet, lane, voice } = m.value;
       // The sender's node: what the line says, within the node its socket listens at.
       const home = c.node ?? ROOT_NODE;
       const from = m.value.taskPath ?? home;
@@ -2554,6 +2554,9 @@ export class DebugHub {
           ...(node ? { to: node } : {}),
           // say --quiet (already a boolean): shown, never read aloud.
           ...(quiet ? { quiet } : {}),
+          // Its lane and voice (packages/debug-chat/src/voices.ts), already checked against the table.
+          ...(lane ? { lane } : {}),
+          ...(voice ? { voice } : {}),
         };
         console.log(
           JSON.stringify({
@@ -2564,6 +2567,8 @@ export class DebugHub {
             ...(said.taskPath ? { taskPath: said.taskPath } : {}),
             ...(said.to ? { to: said.to } : {}),
             ...(quiet ? { quiet } : {}),
+            ...(lane ? { lane } : {}),
+            ...(voice ? { voice } : {}),
             len: text.length,
             // A reply in a user's thread may quote them: only the owner's thread logs its start.
             ...(said.thread === OWNER_THREAD ? { head: head(text) } : {}),

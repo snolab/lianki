@@ -20,7 +20,14 @@
 import { hiddenSilences, isDesktop } from "./voice-bg";
 
 /** What a line says about being read aloud (ChatMessage's fields). */
-export type SpeakMeta = { id?: unknown; quiet?: unknown; ask?: unknown };
+export type SpeakMeta = {
+  id?: unknown;
+  quiet?: unknown;
+  ask?: unknown;
+  /** Its lane and voice (voices.ts): which voice reads it, never whether. */
+  lane?: unknown;
+  voice?: unknown;
+};
 
 /** Quiet: `say --quiet`. An ask card is read like any other line. */
 export const isQuiet = (m: SpeakMeta) => m.quiet === true;

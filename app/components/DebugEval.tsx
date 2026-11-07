@@ -32,6 +32,7 @@ import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
+import { withLane } from "@lianki/debug-chat/voices";
 import { spokenOf } from "@lianki/debug-chat/rich-text";
 import { voice } from "@lianki/debug-chat/voice";
 import { isDesktop, keepHub, onTakeover, voiceBusy } from "@lianki/debug-chat/voice-bg";
@@ -432,7 +433,8 @@ export function DebugEval({
           return;
         }
         if (msg.type === "history" && Array.isArray(msg.messages)) {
-          const list = trimHistory(msg.messages as ChatMessage[]);
+          // A `【lane】` prefix becomes the line's lane (voices.ts): its mark, tag and voice.
+          const list = trimHistory((msg.messages as ChatMessage[]).map(withLane));
           for (const m of list)
             if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
           setMessages(list);
@@ -446,7 +448,7 @@ export function DebugEval({
           return;
         }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
-          const m = msg.message as ChatMessage;
+          const m = withLane(msg.message as ChatMessage);
           if (typeof m.text !== "string" || typeof m.id !== "string") return;
           setMessages((list) =>
             list.some((x) => x.id === m.id) ? list : trimHistory([...list, m]),
