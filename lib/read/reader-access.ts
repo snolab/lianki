@@ -1,15 +1,26 @@
 /**
  * Which reader /read/[id] shows (docs/books-plan.md): the reader v2 by the
- * same rule as its backend (lib/read/reader-book.ts readerV2On): the
- * `read.reader-v2` flag is on, or the reader is the owner (in production
- * too). Everyone else needs the flag. `?reader=v1` / `?reader=v2` choose for
- * one page load — v2 only for the owner, or on a local dev server (QA).
- * Decided on the server, handed to the page.
+ * same rule as its backend (readerV2On, which lib/read/reader-book.ts
+ * re-exports): the `read.reader-v2` flag is on, or the reader is the owner
+ * (in production too). Everyone else needs the flag. `?reader=v1` /
+ * `?reader=v2` choose for one page load — v2 only for the owner, or on a local
+ * dev server (QA). Decided on the server, handed to the page; on a box, in the
+ * browser from production's flags (app/(app)/read/[id]/ReaderChoice.tsx).
+ * Imports only lib/flags, so the browser can run it.
  */
-import type { FlagValues } from "@/lib/flags";
-import { readerV2On } from "./reader-book";
+import { flagIn, type FlagValues } from "@/lib/flags";
 
 export type ReaderPick = "v1" | "v2";
+
+/** Reader v2 for this user: the flag for everyone, else the owner alone. */
+export function readerV2On(flags: FlagValues | null | undefined, owner: boolean): boolean {
+  return flagIn(flags, "read.reader-v2") || owner;
+}
+
+/** May this reader start a live draft (the owner, or `read.live-polish`)? */
+export function draftAllowedFor(flags: FlagValues | null | undefined, owner: boolean): boolean {
+  return owner || flagIn(flags, "read.live-polish");
+}
 
 export function readerPick(o: {
   flags: FlagValues | null | undefined;

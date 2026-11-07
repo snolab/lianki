@@ -1,10 +1,11 @@
 import { ReadViewClient } from "./ReadViewClient";
 import { ReaderV2 } from "./ReaderV2";
+import { ReaderChoice } from "./ReaderChoice";
 import { authUserOrNull } from "@/app/signInEmail";
-import { flagIn } from "@/lib/flags";
+import { boxConfig } from "@/lib/box-oauth/mode";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
-import { readerPick } from "@/lib/read/reader-access";
+import { draftAllowedFor, readerPick } from "@/lib/read/reader-access";
 import { resolveReadId } from "@/lib/read/book-link";
 import { findReadMaterialIdByHash } from "@/lib/getReadMaterialsCollection";
 import { notFound, redirect } from "next/navigation";
@@ -35,12 +36,27 @@ export default async function ReadMaterialPage({
       for (const x of Array.isArray(v) ? v : v === undefined ? [] : [v]) q.append(k, x);
     redirect(`/read/${encodeURIComponent(target.id)}${q.size ? `?${q}` : ""}`);
   }
-  const pick = readerPick({
-    flags,
-    owner: isOwner(user?.email),
-    dev: process.env.NODE_ENV === "development",
-    query: query.reader,
-  });
+  const owner = isOwner(user?.email);
+  const dev = process.env.NODE_ENV === "development";
+  const streaming = query.streamingFrom === "google-docs" || query.streamingFrom === "vibe";
+
+  // On a box this server's flags are its local D1's and it has no session: the
+  // browser picks from production's flags for the bound account instead
+  // (docs/box-oauth.md, "Flags on a box").
+  if (boxConfig())
+    return (
+      <ReaderChoice
+        id={id}
+        isLoggedIn={!!user}
+        streaming={streaming}
+        dev={dev}
+        query={query.reader ?? null}
+        serverFlags={flags}
+        serverOwner={owner}
+      />
+    );
+
+  const pick = readerPick({ flags, owner, dev, query: query.reader });
 
   // The reader v2 fills the screen: the window scrolls the whole book.
   if (pick === "v2")
@@ -48,8 +64,8 @@ export default async function ReadMaterialPage({
       <ReaderV2
         id={id}
         isLoggedIn={!!user}
-        streaming={query.streamingFrom === "google-docs" || query.streamingFrom === "vibe"}
-        draftAllowed={isOwner(user?.email) || flagIn(flags, "read.live-polish")}
+        streaming={streaming}
+        draftAllowed={draftAllowedFor(flags, owner)}
       />
     );
 

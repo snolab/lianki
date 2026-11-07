@@ -116,7 +116,8 @@ const ALLOWED: readonly { prefix: string; readOnly?: boolean; exact?: boolean }[
   { prefix: "/api/levels", readOnly: true },
   { prefix: "/api/lian", readOnly: true },
   { prefix: "/api/membership", readOnly: true },
-  // Who the box is signed in as: the bound account's name, email and avatar only.
+  // Who the box is signed in as: the bound account's name, email and avatar,
+  // plus production's flags and its owner role (docs/box-oauth.md, "Flags on a box").
   { prefix: BOX_ME_PATH, readOnly: true, exact: true },
   // Uploaded avatars, public already (no session): so a box can show the account's own.
   { prefix: "/api/avatar", readOnly: true },
