@@ -12,7 +12,14 @@ import { join } from "node:path";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { EmptyTray } from "@/app/(app)/words/EmptyTray";
-import { TrayBack, reviewEnded, studyFinished } from "@/app/(app)/words/study-done-back";
+import {
+  TrayBack,
+  focusStillFree,
+  inTypingField,
+  listDone,
+  reviewEnded,
+  studyFinished,
+} from "@/app/(app)/words/study-done-back";
 
 const app = join(import.meta.dir, "../app/(app)");
 const words = readFileSync(join(app, "words/WordsClient.tsx"), "utf8");
@@ -31,9 +38,12 @@ describe("TrayBack", () => {
     expect(h).toContain("<span>Back to the book</span>");
     // The picture is decoration inside the button: hidden from screen readers.
     expect(h).toMatch(/<span aria-hidden="true" data-empty-tray="true" class="block"><svg/);
-    // A 44px tap target with a keyboard focus ring.
+    // A 44px tap target. The focused look is plain :focus, so it also shows
+    // after a swipe, where a browser may not count the focus as visible.
     expect(h).toContain("min-h-11");
-    expect(h).toContain("focus-visible:ring-2");
+    expect(h).toContain("focus:ring-[3px]");
+    expect(h).toContain("focus:bg-[oklch(");
+    expect(h).not.toContain("focus-visible:");
     // Colours are oklch only.
     expect(h).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i);
   });
@@ -74,7 +84,7 @@ describe("reviewEnded: the last word to review was just graded (focus goes to th
   test("a correction of an earlier word when all are done: no focus jump (#511)", () => {
     expect(reviewEnded({ ...end, first: false })).toBe(false);
   });
-  test("a missed word waiting to come back (#536, off screen or not due yet): not the end", () => {
+  test("a fetched word about to join below: not the end", () => {
     expect(reviewEnded({ ...end, waiting: 1 })).toBe(false);
   });
   test("another new or due word still ungraded in the list: not the end", () => {
@@ -88,12 +98,52 @@ describe("reviewEnded: the last word to review was just graded (focus goes to th
   });
 });
 
+describe("the focus target and the G key", () => {
+  test("listDone: what G waits for", () => {
+    const done = { exhausted: true, left: 0, waiting: 0 };
+    expect(listDone(done)).toBe(true);
+    expect(listDone({ ...done, left: 1 })).toBe(false);
+    expect(listDone({ ...done, waiting: 1 })).toBe(false);
+    expect(listDone({ ...done, exhausted: false })).toBe(false);
+  });
+  test("the focus moved on to something real stays there; nothing yields", () => {
+    const body = { id: "body" } as unknown as Element;
+    const row = { id: "row" } as unknown as Element;
+    const chat = { id: "chat" } as unknown as Element;
+    expect(focusStillFree(row, row, body)).toBe(true);
+    // The row it was on left the window, or a tap landed on nothing.
+    expect(focusStillFree(body, row, body)).toBe(true);
+    expect(focusStillFree(null, row, body)).toBe(true);
+    expect(focusStillFree(chat, row, body)).toBe(false);
+  });
+  test("never while typing in a field", () => {
+    for (const tagName of ["INPUT", "TEXTAREA", "SELECT"]) {
+      expect(inTypingField({ tagName })).toBe(true);
+    }
+    expect(inTypingField({ tagName: "DIV", isContentEditable: true })).toBe(true);
+    expect(inTypingField({ tagName: "BUTTON" })).toBe(false);
+    expect(inTypingField({ tagName: "BODY" })).toBe(false);
+  });
+  test("Study wires G to the same exit, only once the list is done", () => {
+    expect(words).toMatch(
+      /e\.code === "KeyG"\) \{[^}]*if \(loading \|\| loadError \|\| !listDone\(listNow\(\)\)\) return;\s*onExit\(\);/,
+    );
+    // The typing check comes before any study key.
+    expect(words.indexOf("if (inTypingField(t)) return;")).toBeLessThan(
+      words.indexOf('e.code === "KeyG"'),
+    );
+    // A scoped review counts every row; /words only what is due or new.
+    expect(words).toContain("!!scope || x.kind");
+    // A missed word's copy does not hold the end back.
+    expect(words).toContain("requeue.current.later.filter((w) => w.from < 0).length");
+  });
+});
+
 describe("Study's end of the list", () => {
   test("the end of the review focuses the way back and says so, politely", () => {
     expect(words).toContain("const first = !gradesNow.current.has(i);");
-    expect(words).toContain("waiting: requeue.current.later.length,");
     // Focus moved on meanwhile (the chat input): left there.
-    expect(words).toContain("document.activeElement !== backFrom.current");
+    expect(words).toContain("focusStillFree(document.activeElement, backFrom.current");
     expect(words).toMatch(/btn\.focus\(\{ preventScroll: true, focusVisible: true \}/);
     expect(words).toContain('behavior: motionOff() ? "auto" : "smooth"');
     expect(words).toMatch(/role="status" aria-live="polite" className="sr-only" data-review-ended/);

@@ -15,7 +15,7 @@
 // - a missed word coming back due never joins inside the viewport: with the
 //   tail on screen it waits, nothing on screen moves; scrolled up, it joins
 //   off screen (lib/words/requeue.ts offscreenSlot; a fake clock that runs).
-// - the last card graded by keyboard focuses 返回书本; Enter goes back;
+// - the last card graded, by key or swipe, focuses 返回书本; Enter or G goes back;
 // - the review is pinned in the URL (?review=): a reload opens it again on the
 //   same card (the tab's sessionStorage), and Back closes it on the book.
 //
@@ -395,14 +395,19 @@ async function offscreenInsert(device) {
 }
 
 /**
- * The last card graded by keyboard: focus goes to the end-of-list way back
- * (返回书本), a polite status says so, and Enter goes back to the book (the
- * owner, 2026-11-05 13:37 JST). A correction afterwards never pulls the focus.
+ * The last card graded: focus goes to the end-of-list way back (返回书本), it
+ * looks focused, a polite status says so, and Enter or G goes back to the book
+ * (the owner, 2026-11-05 13:37 JST; 2026-11-06, 2026-11-07). Whatever the grade:
+ * a miss's copy waiting to come back does not hold the end. G does nothing
+ * before that, or in a field. A correction afterwards never pulls the focus.
+ *
+ * `last`: the key for the last card, or null to swipe every card (touch).
+ * `leave`: the key that goes back.
  */
-async function lastCardBack(device) {
-  const tag = "last-card-desktop";
+async function lastCardBack(device, { scheme = "light", last, leave }) {
+  const tag = `last-card-${last ?? "swipe"}-${leave}-${scheme}`;
   console.log(`— ${tag}`);
-  const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: "light" });
+  const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: scheme });
   await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
   const { page, errs } = await setup(ctx, tag);
   await page.mouse.wheel(0, 900);
@@ -410,7 +415,8 @@ async function lastCardBack(device) {
   const w = await aWord(page);
   check(!!w, `${tag}: a word in a long paragraph is on screen`);
   if (!w) return ctx.close();
-  await page.mouse.click(w.x, w.y);
+  if (last) await page.mouse.click(w.x, w.y);
+  else await page.touchscreen.tap(w.x, w.y);
   await page.waitForTimeout(300);
   await page.locator("[data-action=review-words]").click();
   const list = page.locator("[data-testid=read-word-review] [role=list]");
@@ -428,43 +434,143 @@ async function lastCardBack(device) {
   });
   const onBack = () =>
     page.evaluate(() => document.activeElement?.dataset?.testid === "study-done-back");
+  const open = async () => (await page.getByTestId("read-word-review").count()) > 0;
+  const cdp = last ? null : await ctx.newCDPSession(page);
+  /** One finger across row i, as /words' swipe; the list then moves the next one up. */
+  const swipe = async (i) => {
+    const row = list.locator(`[data-i="${i}"]`);
+    await row.waitFor();
+    await page.waitForTimeout(500);
+    const b = await row.boundingBox();
+    const y = b.y + b.height / 2;
+    const x = b.x + 60;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+    for (let d = 1; d <= 12; d++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: x + d * 12, y }],
+      });
+      await page.waitForTimeout(16);
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
   // Easy on every card but the last (Easy: days away, nothing comes back).
   for (let i = 0; i < n - 1; i++) {
-    await page.keyboard.press("Digit4");
+    if (last) await page.keyboard.press("Digit4");
+    else await swipe(i);
     await page.waitForTimeout(60);
   }
   await page.waitForTimeout(300);
   check(!(await onBack()), `${tag}: one card of ${n} left, the focus stays on the list`);
-  await page.keyboard.press("Digit4");
+  await page.keyboard.press("KeyG");
+  await page.waitForTimeout(200);
+  check(await open(), `${tag}: G does nothing before the list is done`);
+  if (last) await page.keyboard.press(last);
+  else await swipe(n - 1);
   check(await until(page, onBack, 3000), `${tag}: the last card graded, focus on 返回书本`);
   const said = await page.evaluate(
     () => document.querySelector("[data-review-ended]")?.textContent ?? "",
   );
   check(said.length > 0, `${tag}: a polite status says so ("${said}")`);
+  // Let the list come to rest.
+  await page.waitForTimeout(700);
   const seen = await page.evaluate(() => {
     const b = document.activeElement.getBoundingClientRect();
     return b.top >= 0 && b.bottom <= innerHeight;
   });
   check(seen, `${tag}: the button is scrolled into view`);
-  await page.screenshot({ path: join(OUT, `last-card-back.png`) });
-  // A correction when all are done: the focus is not pulled back to it.
-  await page.evaluate(() => document.activeElement.blur());
-  await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("Digit3");
-  await page.waitForTimeout(500);
-  check(!(await onBack()), `${tag}: a correction does not move the focus to 返回书本`);
-  // Back on the button, Enter goes back to the book.
-  await page.getByTestId("study-done-back").focus();
-  await page.keyboard.press("Enter");
+  const look = await page.evaluate(() => getComputedStyle(document.activeElement).boxShadow);
+  check(/oklch|rgb|lab/.test(look), `${tag}: it looks focused, however it got there (${look})`);
+  await page.screenshot({ path: join(OUT, `${tag}.png`) });
+
+  if (last) {
+    // A correction when all are done: the focus is not pulled back to it.
+    await page.evaluate(() => document.activeElement.blur());
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("Digit3");
+    await page.waitForTimeout(500);
+    check(!(await onBack()), `${tag}: a correction does not move the focus to 返回书本`);
+    await page.getByTestId("study-done-back").focus();
+  }
+  // In a field G is a letter.
+  await page.evaluate(() => {
+    const f = document.createElement("input");
+    f.id = "qa-field";
+    document.querySelector("[data-testid=read-word-review]").append(f);
+    f.focus();
+  });
+  await page.keyboard.press("KeyG");
+  await page.waitForTimeout(200);
   check(
-    await until(page, async () => !(await page.getByTestId("read-word-review").count())),
-    `${tag}: Enter on 返回书本 closes the review`,
+    (await open()) && (await page.inputValue("#qa-field")) === "g",
+    `${tag}: G in a field stays a letter`,
+  );
+  await page.evaluate(() => document.getElementById("qa-field").remove());
+  await page.getByTestId("study-done-back").focus();
+  // Back on the button, Enter or G goes back to the book.
+  await page.keyboard.press(leave);
+  check(
+    await until(page, async () => !(await open())),
+    `${tag}: ${leave} on 返回书本 closes the review`,
   );
   check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
   await ctx.close();
 }
 
-await lastCardBack(devices["Desktop Chrome"]);
+/** Plain /words has the same end: the same focus, its own label, G goes back to the lists. */
+async function plainWordsBack(device) {
+  const tag = "plain-words";
+  console.log(`— ${tag}`);
+  const ctx = await newSilentContext(browser, { ...device, baseURL: BASE, colorScheme: "light" });
+  await ctx.route("**/api/words/tts*", (r) => r.fulfill({ status: 503, body: "{}" }));
+  const { page, errs, id } = await setup(ctx, tag);
+  const made = await page.evaluate(async (id) => {
+    const ws = [...document.querySelectorAll(".lk-book [data-t]")]
+      .map((e) => e.textContent.trim().toLowerCase())
+      .filter((w) => /^[a-z]{4,}$/.test(w));
+    const words = [...new Set(ws)].slice(0, 4).map((w) => ({ w, ex: `QA ${w}.`, back: "qa" }));
+    const r = await fetch(`/api/read/${id}/make-cards`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ words }),
+    });
+    return r.json();
+  }, id);
+  check(made.terms?.length > 1 && !!made.listId, `${tag}: a small list (${made.terms?.length})`);
+  await page.goto(`/words?list=${made.listId}`, { waitUntil: "networkidle" });
+  const rows = page.locator('[role="list"] [data-i]');
+  await rows.first().waitFor({ timeout: 15000 });
+  const n = made.terms.length;
+  const onBack = () =>
+    page.evaluate(() => document.activeElement?.dataset?.testid === "study-done-back");
+  for (let i = 0; i < n - 1; i++) {
+    await page.keyboard.press("Digit4");
+    await page.waitForTimeout(150);
+  }
+  await page.keyboard.press("KeyG");
+  await page.waitForTimeout(200);
+  check(page.url().includes("list="), `${tag}: G does nothing before the list is done`);
+  await page.keyboard.press("Digit3");
+  check(await until(page, onBack, 8000), `${tag}: the last card graded, focus on the way back`);
+  const label = await page.evaluate(() => document.activeElement.textContent.trim());
+  check(label === "← lists", `${tag}: it is its own way back ("${label}")`);
+  await page.screenshot({ path: join(OUT, `${tag}.png`) });
+  await page.keyboard.press("KeyG");
+  check(
+    await until(page, async () => !new URL(page.url()).searchParams.has("list")),
+    `${tag}: G goes back to the lists (${page.url()})`,
+  );
+  check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
+  await ctx.close();
+}
+
+await plainWordsBack(devices["Desktop Chrome"]);
+// Easy (nothing comes back), and Again and Good (a copy waits): the same end.
+await lastCardBack(devices["Desktop Chrome"], { last: "Digit4", leave: "Enter" });
+await lastCardBack(devices["Desktop Chrome"], { last: "Digit1", leave: "KeyG" });
+await lastCardBack(devices["Desktop Chrome"], { last: "Digit3", leave: "KeyG", scheme: "dark" });
+await lastCardBack(devices["iPhone 13"], { leave: "KeyG" });
+await lastCardBack(devices["iPhone 13"], { leave: "Enter", scheme: "dark" });
 await offscreenInsert(devices["Desktop Chrome"]);
 await run(devices["iPhone 13"], "light", true);
 await run(devices["iPhone 13"], "dark", true);
