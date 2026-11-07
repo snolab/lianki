@@ -82,7 +82,7 @@ import {
   offersPartner,
   partnerTicket,
 } from "./auth";
-import { CHAT_BACKFILL_PATH, IDENTITY_HEADERS } from "./debug";
+import { CHAT_BACKFILL_PATH, EVAL_TOKEN_HEADER, IDENTITY_HEADERS } from "./debug";
 import { CHAT_PATH, REVOKED_PATH } from "./token-chat";
 import { PROGRESS_OWNER_HEADER, progressGate } from "./progress";
 
@@ -268,6 +268,12 @@ export default {
         return new Response("x-debug-token and x-liagent-token differ", { status: 400 });
       if (theirs && !ours) headers.set("x-debug-token", theirs);
       headers.delete("x-liagent-token");
+      // An eval token (lib/eval-token.ts): `Authorization: Bearer lk_…`. The hub
+      // asks the main Worker about it; only this route's header can carry it.
+      headers.delete(EVAL_TOKEN_HEADER);
+      const bearer = /^Bearer (lk_[0-9a-f]{64})$/.exec(headers.get("authorization") ?? "");
+      headers.delete("authorization");
+      if (bearer) headers.set(EVAL_TOKEN_HEADER, bearer[1]);
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
     // `lianki chat`: an API token's say/ask/read (POST) or listen (WebSocket),

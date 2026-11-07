@@ -11,12 +11,19 @@
  * `expiry` is {days} (EXPIRY_DAYS) or {date}; there is no default. Writes are
  * JSON from this origin (a cross-site form cannot send JSON; a cross-site
  * fetch carries its own Origin), and each is in the security audit log.
+ *
+ * `eval` (OWNER_SCOPES) is listed and accepted only when the session's account
+ * is a site owner, read now (`siteOwner`), and only with an expiry of at most
+ * EVAL_MAX_DAYS. For anyone else it does not exist: the same 400 as any
+ * unknown permission.
  */
 import type { D1Like } from "@/lib/d1/types";
 import {
+  EVAL_MAX_DAYS,
   EXPIRY_DAYS,
   FORBIDDEN_SCOPES,
   MAX_EXPIRY_DAYS,
+  OWNER_SCOPES,
   SCOPES,
   type TokenOwner,
   cleanTokenName,
@@ -33,6 +40,8 @@ export type TokenApiDeps = {
   /** The session's account, or null for a guest. */
   who: () => Promise<TokenOwner | null>;
   db: () => D1Like & AuditDb;
+  /** Is this account a site owner now? Only then is `eval` offered or accepted. Absent: no. */
+  siteOwner?: (userId: string) => Promise<boolean>;
   /** Revoked tokens' listening sockets close (lib/push-chat-tokens.ts). */
   revoked: (ids: string[]) => Promise<void>;
   /** At most this many live tokens per account. */
@@ -59,14 +68,18 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
   if (!owner) return json({ error: "Sign in" }, 401);
   const db = deps.db();
 
-  if (req.method === "GET")
+  const isOwner = async () => (deps.siteOwner ? deps.siteOwner(owner.userId) : false);
+  if (req.method === "GET") {
+    const site = await isOwner();
     return json({
       account: owner.email,
-      scopes: SCOPES,
+      scopes: site ? SCOPES : SCOPES.filter((s) => !OWNER_SCOPES.includes(s.id)),
       expiryDays: EXPIRY_DAYS,
       maxExpiryDays: MAX_EXPIRY_DAYS,
+      ...(site ? { evalMaxDays: EVAL_MAX_DAYS } : {}),
       tokens: await listTokens(db, owner, now),
     });
+  }
 
   if (req.method !== "POST" && req.method !== "DELETE") return json({ error: "Method" }, 405);
   if (!jsonWrite(req)) return json({ error: "Forbidden" }, 403);
@@ -93,11 +106,19 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
     body.scopes.some((s) => (FORBIDDEN_SCOPES as readonly unknown[]).includes(s))
   )
     return json({ error: "scopes: that permission does not exist for tokens" }, 400);
-  const scopes = parseScopes(body.scopes);
+  // An owner-only permission asks site_role first; for anyone else it does not exist.
+  const wantsOwner =
+    Array.isArray(body.scopes) &&
+    body.scopes.some((s) => (OWNER_SCOPES as readonly unknown[]).includes(s));
+  if (wantsOwner && !(await isOwner()))
+    return json({ error: "scopes: that permission does not exist for tokens" }, 400);
+  const scopes = parseScopes(body.scopes, { owner: wantsOwner });
   if (!scopes) return json({ error: "scopes: pick at least one permission" }, 400);
   const expiresAt = parseExpiry(body.expiry, now);
   if (!expiresAt)
     return json({ error: `expiry: pick a duration or a date up to ${MAX_EXPIRY_DAYS} days` }, 400);
+  if (wantsOwner && expiresAt.getTime() > now + EVAL_MAX_DAYS * 86_400_000)
+    return json({ error: `expiry: a token with eval lasts at most ${EVAL_MAX_DAYS} days` }, 400);
   const live = (await listTokens(db, owner, now)).filter((t) => !t.expired).length;
   if (live >= (deps.maxTokens ?? MAX_TOKENS))
     return json({ error: "Too many tokens: revoke one first" }, 409);
