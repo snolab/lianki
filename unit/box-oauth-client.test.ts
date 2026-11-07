@@ -346,6 +346,11 @@ describe("the chat hub on a box (box:chat)", () => {
     expect(boxChatHub()).not.toBeNull();
   });
 
+  test("given the box's config it is a hub even when asked first (hydration order)", () => {
+    hold("lkb_a", "lkr_a");
+    expect(boxChatHub(config)?.url).toBe("wss://lianki.com/api/version/debug");
+  });
+
   test("refused (no box:chat): this page load does not ask again", async () => {
     hold("lkb_a", "lkr_a");
     answer = () => new Response(null, { status: 404 });

@@ -164,7 +164,10 @@ export type BoxChatHub = {
  * box"): null off a box, without a token, or once refused. DebugEval opens its
  * socket there with the ticket, in Sec-WebSocket-Protocol, never in the URL.
  */
-export function boxChatHub(): BoxChatHub | null {
+export function boxChatHub(config?: BoxConfig): BoxChatHub | null {
+  // The chat may connect before BoxApiBridge has rendered (hydration order):
+  // given the box's config, the box's fetch is put in place here first.
+  if (config) installBoxFetch(config);
   const c = installed;
   if (!c || chatRefused || !hasBoxTokens()) return null;
   return {

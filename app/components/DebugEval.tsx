@@ -17,7 +17,7 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
-import { boxChatHub } from "@/lib/box-oauth/client";
+import { type BoxConfig, boxChatHub } from "@/lib/box-oauth/client";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import {
@@ -134,7 +134,13 @@ export function DebugEval({
   etaBar = false,
   fullScreen = false,
   liHub = false,
+  box = null,
 }: {
+  /**
+   * On a box: its sign-in config (lib/box-oauth/mode.ts). The chat then talks only
+   * to lianki.com's hub with a box:chat ticket, never to the box's own host.
+   */
+  box?: BoxConfig | null;
   strings?: Partial<PartnerStrings>;
   partnerOpen?: boolean;
   /** Flag chat.eta-bar (lib/eta-ping.ts): the ETA bar on the owner's chat, and its pings. */
@@ -146,6 +152,8 @@ export function DebugEval({
 } = {}) {
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
+  const boxRef = useRef(box);
+  boxRef.current = box;
   const stringsRef = useRef(strings);
   stringsRef.current = strings;
   /** The hub said this friend's thread is answered by the AI. */
@@ -329,17 +337,22 @@ export function DebugEval({
     let boxPending = false;
     const connect = () => {
       if (ws || boxPending) return;
-      // On the owner's box: lianki.com's hub with a ticket (box:chat), never a cookie.
-      const box = boxChatHub();
-      if (!box)
-        return openSock(
-          `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug`,
-        );
-      boxPending = true;
-      void box.ticket().then((ticket) => {
-        boxPending = false;
-        if (ticket && !ws && wanted()) openSock(box.url, [PARTNER_SUBPROTOCOL, ticket]);
-      });
+      // On the owner's box: lianki.com's hub with a ticket (box:chat), never a cookie,
+      // and never the box's own host. Decided from the server's config, not from
+      // whether BoxApiBridge has rendered yet: hydration can run this effect first.
+      const hub = boxChatHub(boxRef.current ?? undefined);
+      if (boxRef.current) {
+        if (!hub) return;
+        boxPending = true;
+        void hub.ticket().then((ticket) => {
+          boxPending = false;
+          if (ticket && !ws && wanted()) openSock(hub.url, [PARTNER_SUBPROTOCOL, ticket]);
+        });
+        return;
+      }
+      openSock(
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug`,
+      );
     };
     const openSock = (base: string, protocols?: string[]) => {
       if (ws) return;
