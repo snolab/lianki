@@ -17,8 +17,27 @@ import { type Ask, type AskAnswer, askState } from "./ask";
 export const ABOVE_INSET_PX = 24;
 /** A jump puts the question this far under the top edge, clear of the fade (2.5rem). */
 export const JUMP_INSET_PX = 44;
-/** The room the button's row takes at the log's bottom, so it covers no line or pill. */
-export const JUMP_ROW_PX = 36;
+/** The button's height, and the gap between it and the bar. */
+export const JUMP_H_PX = 32;
+export const JUMP_GAP_PX = 4;
+/** The button's end edge stays this far from the log's end: scroll-down's slot. */
+export const JUMP_END_PX = 32;
+
+/** The button's width: the arrow alone, or the count beside it. */
+export const jumpWidth = (count: number) => (count > 1 ? (count > 9 ? 60 : 52) : 40);
+
+/**
+ * The room the newest run of lines keeps beside the button, at the log's end
+ * (owner, 2026-11-07 18:10 JST: "滚动不在正确的位置，它的下面半个窗口是空的": a
+ * whole empty row under the last line left the bottom of the 3-line log
+ * blank). Not a row: room at the end side of the newest run, that run at
+ * least the button's height, so the button covers no line or pill and the
+ * newest line still sits at the log's bottom.
+ */
+export const jumpRoom = (count: number) => ({
+  end: JUMP_END_PX + jumpWidth(count) + 6,
+  minHeight: JUMP_H_PX + JUMP_GAP_PX,
+});
 
 /** The ids of the lines whose ask can still be answered, oldest first. */
 export function openAskIds(
