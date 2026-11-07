@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createLeaving } from "../lib/page-leaving";
+import { createLeaving, pageLeaving } from "../lib/page-leaving";
 
 function fakeWindow() {
   const on = new Map<string, Set<() => void>>();
@@ -50,5 +50,23 @@ describe("page leaving", () => {
     expect(w.count()).toBe(0);
     // Nobody listening: nothing is left over for the next holder.
     expect(l.signal.aborted).toBe(false);
+  });
+
+  test("pageLeaving is one per window", () => {
+    const w = fakeWindow();
+    const g = globalThis as { window?: unknown };
+    const had = "window" in g;
+    const prev = g.window;
+    g.window = w;
+    try {
+      const a = pageLeaving();
+      expect(pageLeaving()).toBe(a);
+      const release = a.watch();
+      expect(w.count()).toBe(4);
+      release();
+    } finally {
+      if (had) g.window = prev;
+      else delete g.window;
+    }
   });
 });
