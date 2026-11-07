@@ -181,6 +181,9 @@ describe("the page's parameters", () => {
   });
 });
 
+/** What the user picks on /cli-login: permissions and an expiry (no defaults). */
+const PICK = { scopes: ["study", "chat:read"], expiry: { days: 30 } };
+
 describe("the code exchange", () => {
   async function flow(now = T0) {
     const verifier = randomId(48);
@@ -204,7 +207,7 @@ describe("the code exchange", () => {
     const { verifier, params, requestId } = await flow();
     const a = await approveRequest(
       db(),
-      { requestId, userId: "u1", state: params.state },
+      { requestId, userId: "u1", state: params.state, ...PICK },
       T0 + 1000,
     );
     if (!a.ok) throw new Error("approve failed");
@@ -245,23 +248,35 @@ describe("the code exchange", () => {
   test("a state mismatch, another user, or a second click gets no code", async () => {
     const { params, requestId } = await flow();
     expect(
-      await approveRequest(db(), { requestId, userId: "u1", state: randomId(24) }, T0 + 1),
+      await approveRequest(db(), { requestId, userId: "u1", state: randomId(24), ...PICK }, T0 + 1),
     ).toEqual({ ok: false, status: 404 });
     expect(
-      await approveRequest(db(), { requestId, userId: "u2", state: params.state }, T0 + 1),
+      await approveRequest(db(), { requestId, userId: "u2", state: params.state, ...PICK }, T0 + 1),
     ).toEqual({ ok: false, status: 404 });
     expect(
-      await approveRequest(db(), { requestId: "x/y", userId: "u1", state: params.state }, T0 + 1),
+      await approveRequest(
+        db(),
+        { requestId: "x/y", userId: "u1", state: params.state, ...PICK },
+        T0 + 1,
+      ),
     ).toEqual({ ok: false, status: 400 });
-    expect(await approveRequest(db(), { requestId, userId: "u1", state: 5 }, T0 + 1)).toEqual({
+    expect(
+      await approveRequest(db(), { requestId, userId: "u1", state: 5, ...PICK }, T0 + 1),
+    ).toEqual({
       ok: false,
       status: 400,
     });
     expect(
-      (await approveRequest(db(), { requestId, userId: "u1", state: params.state }, T0 + 1)).ok,
+      (
+        await approveRequest(
+          db(),
+          { requestId, userId: "u1", state: params.state, ...PICK },
+          T0 + 1,
+        )
+      ).ok,
     ).toBe(true);
     expect(
-      await approveRequest(db(), { requestId, userId: "u1", state: params.state }, T0 + 2),
+      await approveRequest(db(), { requestId, userId: "u1", state: params.state, ...PICK }, T0 + 2),
     ).toEqual({ ok: false, status: 404 });
   });
 
@@ -270,7 +285,7 @@ describe("the code exchange", () => {
     expect(
       await approveRequest(
         db(),
-        { requestId, userId: "u1", state: params.state },
+        { requestId, userId: "u1", state: params.state, ...PICK },
         T0 + PENDING_TTL_MS,
       ),
     ).toEqual({ ok: false, status: 404 });
@@ -278,7 +293,11 @@ describe("the code exchange", () => {
 
   test("the code expires after 60 s, and an expired code is burnt", async () => {
     const { verifier, params, requestId } = await flow();
-    const a = await approveRequest(db(), { requestId, userId: "u1", state: params.state }, T0);
+    const a = await approveRequest(
+      db(),
+      { requestId, userId: "u1", state: params.state, ...PICK },
+      T0,
+    );
     if (!a.ok) throw new Error("approve failed");
     const x = { code: codeOf(a.redirect), verifier, redirectUri: params.redirectUri };
     expect(await exchangeCode(db(), x, T0 + CODE_TTL_MS)).toEqual({
@@ -291,7 +310,11 @@ describe("the code exchange", () => {
 
   test("a wrong verifier mints nothing and burns the code", async () => {
     const { verifier, params, requestId } = await flow();
-    const a = await approveRequest(db(), { requestId, userId: "u1", state: params.state }, T0);
+    const a = await approveRequest(
+      db(),
+      { requestId, userId: "u1", state: params.state, ...PICK },
+      T0,
+    );
     if (!a.ok) throw new Error("approve failed");
     const code = codeOf(a.redirect);
     expect(
@@ -309,7 +332,11 @@ describe("the code exchange", () => {
 
   test("the redirect it was sent to must match; malformed input is refused up front", async () => {
     const { verifier, params, requestId } = await flow();
-    const a = await approveRequest(db(), { requestId, userId: "u1", state: params.state }, T0);
+    const a = await approveRequest(
+      db(),
+      { requestId, userId: "u1", state: params.state, ...PICK },
+      T0,
+    );
     if (!a.ok) throw new Error("approve failed");
     expect(
       await exchangeCode(
@@ -503,7 +530,7 @@ describe("/api/cli-login/token", async () => {
       { userId: "u1", email: "u1@example.com" },
       { redirectUri, state, challenge: await s256(verifier), host: "mac" },
     );
-    const a = await approveRequest(db(), { requestId, userId: "u1", state });
+    const a = await approveRequest(db(), { requestId, userId: "u1", state, ...PICK });
     if (!a.ok) throw new Error("approve failed");
     const r = await post({
       code: new URL(a.redirect).searchParams.get("code"),

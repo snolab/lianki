@@ -31,6 +31,11 @@ beforeEach(async () => {
   });
   useD1(d1);
   useBackend("d1");
+  d1.raw()
+    .prepare(
+      "INSERT INTO user (id, email, emailVerified, createdAt, updatedAt) VALUES ('u1', ?, 1, '2026-11-01', '2026-11-01')",
+    )
+    .run(EMAIL);
   await repo.insert({
     tokenHash: hashToken(TOKEN),
     email: EMAIL,
@@ -55,6 +60,30 @@ describe("getEmailByToken on D1 (production)", () => {
     expect(await getEmailByToken("lk_unknown")).toBeNull();
     expect(await getEmailByToken("")).toBeNull();
     expect(mongoAsked).toEqual([]);
+  });
+
+  test("a token from before scopes (NULL) keeps cards and settings", async () => {
+    expect(await getEmailByToken(TOKEN)).toBe(EMAIL);
+  });
+
+  test("a chat-only token, an expired one, or one whose account is gone is refused", async () => {
+    const set = (sql: string, ...v: unknown[]) =>
+      d1
+        .raw()
+        .prepare(sql)
+        .run(...(v as never[]));
+    set("UPDATE api_tokens SET scopes = ?", JSON.stringify(["chat:read", "chat:write"]));
+    expect(await getEmailByToken(TOKEN)).toBeNull();
+    set("UPDATE api_tokens SET scopes = ?, expires_at = ?", '["study"]', "2000-01-01T00:00:00Z");
+    expect(await getEmailByToken(TOKEN)).toBeNull();
+    set("UPDATE api_tokens SET expires_at = ?", "2999-01-01T00:00:00Z");
+    expect(await getEmailByToken(TOKEN)).toBe(EMAIL);
+    // Bound to account u1: another account with the same address is not it.
+    set("UPDATE api_tokens SET user_id = 'u2'");
+    expect(await getEmailByToken(TOKEN)).toBeNull();
+    set("UPDATE api_tokens SET user_id = 'u1'");
+    set("DELETE FROM user");
+    expect(await getEmailByToken(TOKEN)).toBeNull();
   });
 
   test("the lookup module does not import MongoDB statically", () => {

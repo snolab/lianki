@@ -1,6 +1,6 @@
 {
   "name": "lianki",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Command-line client for Lianki (FSRS spaced repetition), made for agents: progressive help, --json, stable exit codes.",
   "type": "module",
   "bin": {

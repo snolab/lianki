@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
 /**
- * POST /api/cli-login/approve {request, state} → {redirect}
+ * POST /api/cli-login/approve {request, state, scopes, expiry} → {redirect}
  *
  * The Approve button of /cli-login (lib/cli-login.ts): the signed-in user's
  * pending request, same origin only, becomes a one-time code, and the answer
@@ -26,11 +26,15 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as {
     request?: unknown;
     state?: unknown;
+    scopes?: unknown;
+    expiry?: unknown;
   } | null;
   const out = await approveRequest(getD1() as unknown as D1Like, {
     requestId: body?.request,
     userId: user.id,
     state: body?.state,
+    scopes: body?.scopes,
+    expiry: body?.expiry,
   });
   if (!out.ok)
     return NextResponse.json({ error: "Refused" }, { status: out.status, headers: NO_STORE });

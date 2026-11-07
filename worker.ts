@@ -20,6 +20,7 @@ import { flagLive, rateLimiter, sessionLive, type SessionDb } from "./lib/debug-
 import { partnerReply, type PartnerEnv } from "./lib/partner-ai";
 import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
+import { type ChatTokenAnswer, type ChatTokenDb, chatTokenCheck } from "./lib/chat-token";
 import type { InboxDb } from "./lib/inbox/store";
 
 import {
@@ -119,6 +120,8 @@ const allow = rateLimiter(60, 60_000);
 const allowInbox = rateLimiter(60, 60_000);
 /** The Learning Partner's AI replies: their own budget (the hub caps per user and per day). */
 const allowPartner = rateLimiter(120, 60_000);
+// `lianki chat` checks: each token is limited in D1 too (lib/chat-token.ts CHAT_LIMITS).
+const allowChatToken = rateLimiter(600, 60_000);
 
 export class DebugSessions extends WorkerEntrypoint<Env> {
   /**
@@ -164,6 +167,16 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async inbox(req: unknown): Promise<InboxAnswer> {
     if (!allowInbox()) return { ok: false, error: "busy" };
     return inboxOp(this.env.DB as unknown as InboxDb, req);
+  }
+
+  /**
+   * `lianki chat`: may this API token do this chat operation, and in whose
+   * thread (lib/chat-token.ts)? The hub posts and reads only in the thread
+   * this names. Deny by default; a D1 error throws and the hub refuses.
+   */
+  async chatToken(req: unknown): Promise<ChatTokenAnswer> {
+    if (!allowChatToken()) return { ok: false, error: "rate" };
+    return chatTokenCheck(this.env.DB as unknown as ChatTokenDb, req);
   }
 }
 

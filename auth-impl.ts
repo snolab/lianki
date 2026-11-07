@@ -25,6 +25,10 @@ import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsor
 import { notifySignedOut } from "./lib/push-signed-out";
 import { setEmailCanonical } from "./lib/canonical-email-d1";
 import { boxBindingHook, boxProviderPlugin } from "./lib/box-oauth/provider";
+import { apiTokenSignOutPlugin } from "./lib/api-token-signout";
+import { notifyTokensRevoked } from "./lib/push-chat-tokens";
+import type { D1Like } from "./lib/d1/types";
+import type { AuditDb } from "./lib/security/audit-log";
 
 // The heavy half of auth: better-auth, its plugins, zod, kysely. Only ever
 // reached through the dynamic import in ./auth.ts, so it is one shared async
@@ -226,6 +230,11 @@ function baseOptions() {
         waitUntil: (p) => {
           if (!workerWaitUntil(p)) void p;
         },
+      }),
+      // A sign-out everywhere (or the account deleted) revokes every API token of the account.
+      apiTokenSignOutPlugin({
+        getDb: () => (dbBackend() === "d1" ? (getD1() as unknown as D1Like & AuditDb) : null),
+        revoked: (r) => notifyTokensRevoked(r),
       }),
       nextCookies(), // must be last — handles Set-Cookie in server actions
     ],

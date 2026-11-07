@@ -247,6 +247,7 @@ import {
   reserveInTokens,
 } from "../../../lib/partner-ai-config";
 import { EMBED_HEADER } from "./auth";
+import { CHAT_PATH, REVOKED_PATH, TokenChat, tokenAtt } from "./token-chat";
 import {
   ETA_AGENT,
   ETA_FLAG,
@@ -425,6 +426,8 @@ type SessionsRpc = {
   partnerReply?(req: PartnerRequest): Promise<unknown>;
   /** The chat inbox's agent ops (lib/inbox/agent.ts); an older main Worker has none. */
   inbox?(req: { op: string; id?: string }): Promise<unknown>;
+  /** `lianki chat`: an API token's check for one chat operation (lib/chat-token.ts). */
+  chatToken?(req: { op: string; token?: string; tokenHash?: string }): Promise<unknown>;
 };
 /** How long the hub trusts its read of PARTNER_AI_FLAG (as lib/flags-store.ts's FLAG_CACHE_MS). */
 const AI_FLAG_CACHE_MS = 30_000;
@@ -562,6 +565,8 @@ export class DebugHub {
   private agentAt = new Map<string, number>();
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
   private aiTurn = new Map<string, number>();
+  /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
+  private tokens: TokenChat;
 
   constructor(
     private ctx: DebugState,
@@ -571,6 +576,15 @@ export class DebugHub {
     // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
     this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
     this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    this.tokens = new TokenChat({
+      now: () => this.now(),
+      rpc: () => this.sessions,
+      sockets: () => this.ctx.getWebSockets(),
+      post: (m) => this.post(m),
+      history: (thread) => this.history(thread),
+      blocked: async (userId) =>
+        (await this.ctx.storage.get<FriendRecord>(friendKey(userId)))?.blocked === true,
+    });
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
     // hibernates, so it costs no wake-up.
@@ -671,7 +685,8 @@ export class DebugHub {
       type: "state",
       pending,
       sessions,
-      listeners: agents.length + ai,
+      // Lanes listening with an API token in this thread count too (token-chat.ts).
+      listeners: agents.length + ai + this.tokens.count(who),
       pages,
       ...(nodes.length ? { nodes } : {}),
     };
@@ -733,6 +748,8 @@ export class DebugHub {
       const route = routeTo(a.node, m.to);
       if (route) send(ws, route === "observed" ? { ...out, observed: true } : out);
     }
+    // API-token listeners: their own thread only (token-chat.ts).
+    await this.tokens.chat(m);
   }
 
   /**
@@ -820,6 +837,7 @@ export class DebugHub {
       send(l, route === "observed" ? { ...out, observed: true } : out);
     }
     if (sender && !told) send(sender, out);
+    this.tokens.edited(out).catch(() => {});
   }
 
   /**
@@ -1052,6 +1070,8 @@ export class DebugHub {
       JSON.stringify({ msg: "debug.answer", thread: page.thread, page: page.label, askId }),
     );
     for (const { ws: p } of this.pages(page.thread)) send(p, out);
+    // An ask posted with an API token: its own lane alone hears the answer (token-chat.ts).
+    if (line.via === "token") return this.tokens.answered(page.thread, line, out);
     for (const { ws: l, a } of this.listeners())
       if (audience(a) === page.thread || page.thread === OWNER_THREAD || !a.forUser)
         send(l, page.thread === OWNER_THREAD ? out : { ...out, thread: page.thread });
@@ -1090,6 +1110,14 @@ export class DebugHub {
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
+    if (url.pathname === REVOKED_PATH) return this.tokens.revoked(req);
+    if (url.pathname === CHAT_PATH) {
+      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return this.tokens.http(req);
+      const pair = new WebSocketPair();
+      this.ctx.acceptWebSocket(pair[1]);
+      this.tokens.opened(pair[1]);
+      return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
+    }
     const control = url.pathname.endsWith("/control");
     let who: Identity | undefined;
     if (!control) {
@@ -1814,6 +1842,9 @@ export class DebugHub {
     if (ws.readyState !== undefined && ws.readyState > 1) return;
     // The auto-response normally answers it before the hub sees it.
     if (raw === KEEPALIVE.ping) return ws.send(KEEPALIVE.pong);
+    // An API-token socket: never a page or a controller (token-chat.ts).
+    const ta = tokenAtt(ws);
+    if (ta) return this.tokens.message(ws, ta, raw);
     const a = att(ws);
     if (a?.role === "page") return this.fromPage(ws, a, raw);
     if (a?.role !== "controller") return;

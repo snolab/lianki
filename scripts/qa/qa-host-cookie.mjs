@@ -119,7 +119,7 @@ const minted = await mainPage.evaluate(async () => {
   const r = await fetch("/api/token", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: "qa" }),
+    body: JSON.stringify({ name: "qa", scopes: ["study"], expiry: { days: 7 } }),
   });
   return { status: r.status, body: await r.json().catch(() => ({})) };
 });

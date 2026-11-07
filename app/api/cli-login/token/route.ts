@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { EXCHANGES_PER_IP, exchangeCode, revokeSelf } from "@/lib/cli-login";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
-import { clientIp, hit, ipKey, type ThrottleDb } from "@/lib/security/throttle";
+import { tagOf } from "@/lib/api-tokens";
+import { type AuditDb, audit } from "@/lib/security/audit-log";
+import { clientIp, hit, ipKey, sha256Hex, type ThrottleDb } from "@/lib/security/throttle";
+import { notifyTokensRevoked } from "@/lib/push-chat-tokens";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +44,21 @@ export async function POST(req: Request) {
   });
   if (!out.ok)
     return NextResponse.json({ error: out.error }, { status: out.status, headers: NO_STORE });
+  await audit(db as unknown as AuditDb, {
+    kind: "api-token.create",
+    actor: out.userId,
+    subject: tagOf(out.tokenHash),
+    detail: `${out.name} [${out.scopes.join(" ")}] until ${out.expiresAt} (cli login)`,
+  });
   return NextResponse.json(
-    { token: out.token, id: out.tokenHash, name: out.name, email: out.email },
+    {
+      token: out.token,
+      id: out.tokenHash,
+      name: out.name,
+      email: out.email,
+      scopes: out.scopes,
+      expiresAt: out.expiresAt,
+    },
     { headers: NO_STORE },
   );
 }
@@ -56,6 +72,21 @@ export async function DELETE(req: Request) {
       { error: "Bearer token required" },
       { status: 401, headers: NO_STORE },
     );
-  const ok = await revokeSelf(getD1() as unknown as D1Like, m[1]);
+  const db = getD1() as unknown as D1Like;
+  const id = await sha256Hex(m[1]);
+  const row = await db
+    .prepare("SELECT user_id, email, name FROM api_tokens WHERE token_hash = ?")
+    .bind(id)
+    .first<{ user_id: string | null; email: string; name: string }>();
+  const ok = await revokeSelf(db, m[1]);
+  if (ok && row) {
+    await audit(db as unknown as AuditDb, {
+      kind: "api-token.revoke",
+      actor: row.user_id ?? row.email,
+      subject: tagOf(id),
+      detail: `${row.name} (lianki auth logout)`,
+    });
+    await notifyTokensRevoked({ ids: [id] });
+  }
   return NextResponse.json({ ok }, { status: ok ? 200 : 404, headers: NO_STORE });
 }

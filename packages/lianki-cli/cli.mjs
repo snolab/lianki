@@ -65,6 +65,8 @@ export class CliError extends Error {
 }
 const usage = (msg, hint) => new CliError("usage", EXIT.usage, msg, hint);
 const LOGIN_HINT = "lianki auth login   (agents: set LIANKI_TOKEN=lk_… or pass --token)";
+const SCOPE_HINT =
+  "the token lacks that permission: make one that has it at lianki.com/preferences → API tokens, or lianki auth login again";
 
 // ── Context: where, who, how to print ─────────────────────────────────────
 
@@ -153,7 +155,12 @@ async function call(c, token, { method = "GET", path, query, body }) {
   const said = (data && typeof data.error === "string" && data.error) || text.slice(0, 200);
   const detail = said.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
   if (r.status === 401 || r.status === 403)
-    throw new CliError("auth_refused", EXIT.auth, `${c.site} refused the token (${r.status})`, LOGIN_HINT);
+    throw new CliError(
+      "auth_refused",
+      EXIT.auth,
+      `${c.site} refused the token (${r.status}${/^(unknown|expired|scope|blocked)$/.test(detail) ? `: ${detail}` : ""})`,
+      detail === "scope" ? SCOPE_HINT : LOGIN_HINT,
+    );
   // The FSRS router answers a missing card with a 500 "Error: note not found".
   if (r.status === 404 || /note not found/i.test(detail))
     throw new CliError("not_found", EXIT.notFound, detail && !/^404$/.test(detail) ? detail : "not found");
@@ -474,6 +481,184 @@ async function cmdSettingsSet(c) {
   emit(c, "settings set", { key: c.argv.key, value: won }, (d) => `${d.key} = ${JSON.stringify(d.value)}`);
 }
 
+// ── chat ──────────────────────────────────────────────────────────────────
+//
+// Your own chat thread only (your Learning Partner's; the owner's thread for
+// the owner), with a token that has the chat permissions (lianki.com/preferences
+// → API tokens). Lines carry the token's name as 【name】. No eval, no pairing:
+// the server has nothing of the kind for a token. Only your tap on lianki.com
+// answers an ask card.
+
+export const CHAT_PATH = "/api/version/chat";
+const DEFAULT_WAIT = "10m";
+
+/** "90s", "10m", "2h", or a number of seconds → ms; null when it is none of those. */
+export function parseDuration(raw) {
+  const m = /^(\d+(?:\.\d+)?)(s|m|h)?$/.exec(String(raw).trim());
+  if (!m) return null;
+  const n = Number(m[1]) * (m[2] === "h" ? 3_600_000 : m[2] === "m" ? 60_000 : 1000);
+  return n > 0 && n <= 7 * 24 * 3_600_000 ? n : null;
+}
+
+/** The ask as the server takes it: one question (--q, --opt…; --recommend n marks option n). */
+export function askBody(argv) {
+  const q = typeof argv.q === "string" ? argv.q.trim() : "";
+  if (!q) throw usage("ask needs --q \"the question\"", 'lianki chat ask --q "Ship it?" --opt Yes --opt No');
+  const opts = (Array.isArray(argv.opt) ? argv.opt : argv.opt === undefined ? [] : [argv.opt]).map(String);
+  if (opts.length < 1 || opts.length > 8) throw usage("ask needs 1–8 --opt");
+  const rec = argv.recommend === undefined ? 0 : Number(argv.recommend);
+  if (!Number.isInteger(rec) || rec < 0 || rec > opts.length) throw usage(`--recommend must be 1–${opts.length}`);
+  return {
+    question: q,
+    options: opts.map((label, i) => ({ label, ...(rec === i + 1 ? { recommended: true } : {}) })),
+    ...(argv.multi ? { multi: true } : {}),
+  };
+}
+
+const wsUrl = (c) => {
+  const u = new URL(CHAT_PATH, c.base + "/");
+  u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+  return u.toString();
+};
+
+/**
+ * One chat socket: authenticated with the token in its first message (never
+ * the URL). `onEvent` gets each event; resolves when it returns true, or
+ * rejects on a refusal, a close or the timeout.
+ */
+function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
+  const WS = c.deps.WebSocket ?? globalThis.WebSocket;
+  if (!WS)
+    throw new CliError("usage", EXIT.usage, "this needs a WebSocket: Node.js 22 or newer, or Bun", "bunx lianki …");
+  return new Promise((resolve, reject) => {
+    let done = false;
+    let ws;
+    const finish = (err, value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try {
+        ws.close(1000);
+      } catch {}
+      if (err) reject(err);
+      else resolve(value);
+    };
+    const timer = timeoutMs ? setTimeout(() => finish(new CliError("timeout", EXIT.server, "timed out waiting")), timeoutMs) : null;
+    try {
+      ws = new WS(wsUrl(c));
+    } catch (e) {
+      return finish(new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`));
+    }
+    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, ...(history ? { history } : {}) }));
+    ws.onmessage = async (ev) => {
+      let m;
+      try {
+        m = JSON.parse(typeof ev.data === "string" ? ev.data : String(ev.data));
+      } catch {
+        return;
+      }
+      if (m.type === "ready") {
+        try {
+          await onReady?.(ws, m);
+        } catch (e) {
+          return finish(e);
+        }
+      }
+      if (m.type === "error" && !m.retryAfterMs && /^(unknown|expired|scope|blocked)$/.test(m.error))
+        return finish(
+          new CliError("auth_refused", EXIT.auth, `${c.site} refused the token (${m.error})`, m.error === "scope" ? SCOPE_HINT : LOGIN_HINT),
+        );
+      if (m.type === "error" && m.error === "rate")
+        return finish(new CliError("refused", EXIT.refused, `${c.site} refused it: rate limit for this token`));
+      if (m.type === "revoked" || m.type === "expired")
+        return finish(new CliError("auth_refused", EXIT.auth, `the token was ${m.type === "revoked" ? "revoked" : "expired"}`, LOGIN_HINT));
+      try {
+        if (onEvent && (await onEvent(m))) finish(null, m);
+      } catch (e) {
+        finish(e);
+      }
+    };
+    ws.onerror = () => {};
+    ws.onclose = (ev) =>
+      finish(
+        ev?.code === 4401
+          ? new CliError("auth_refused", EXIT.auth, `${c.site} refused the token${ev.reason ? ` (${ev.reason})` : ""}`, LOGIN_HINT)
+          : new CliError("network", EXIT.server, `the chat socket closed (${ev?.code ?? "?"}${ev?.reason ? ` ${ev.reason}` : ""})`),
+      );
+  });
+}
+
+async function cmdChatSay(c) {
+  const token = await needToken(c);
+  const parts = (c.argv.text ?? []).map(String);
+  const text = parts.length === 1 && parts[0] === "-" ? (await c.deps.readStdin()).trim() : parts.join(" ").trim();
+  if (!text) throw usage("say needs text (or - to read it from stdin)", 'lianki chat say "PR #12 is green"');
+  const { data } = await call(c, token, {
+    method: "POST",
+    path: CHAT_PATH,
+    body: { op: "say", text, ...(c.argv.quiet ? { quiet: true } : {}) },
+  });
+  emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
+}
+
+async function cmdChatAsk(c) {
+  const body = askBody(c.argv);
+  const token = await needToken(c);
+  if (!c.argv.wait) {
+    const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "ask", ...body } });
+    return emit(c, "chat ask", { id: data.id, askId: data.askId, lane: data.lane ?? null, answer: null }, (d) => `asked ${d.askId}`);
+  }
+  const wait = parseDuration(c.argv.timeout ?? DEFAULT_WAIT);
+  if (!wait) throw usage("--timeout is like 90s, 10m or 2h");
+  let asked = null;
+  const answered = await chatSocket(c, token, {
+    timeoutMs: wait,
+    onReady: (ws) => ws.send(JSON.stringify({ type: "ask", ...body })),
+    onEvent: (m) => {
+      if (m.type === "asked") asked = m;
+      if (m.type === "error" && !asked) throw new CliError("refused", EXIT.refused, `${c.site} refused it: ${m.error}`);
+      return m.type === "answered" && asked && m.askId === asked.askId;
+    },
+  });
+  const labels = answered.labels ?? {};
+  emit(
+    c,
+    "chat ask",
+    { id: asked.id, askId: asked.askId, answer: { choices: answered.answer?.choices ?? {}, labels, at: answered.answer?.at ?? null } },
+    (d) => Object.values(d.answer.labels).flat().join(", "),
+  );
+}
+
+async function cmdChatRead(c) {
+  const token = await needToken(c);
+  const limit = Number(c.argv.limit ?? 30);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw usage("--limit must be 1–100");
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "read", limit } });
+  const messages = Array.isArray(data.messages) ? data.messages : [];
+  emit(c, "chat read", { thread: data.thread ?? null, lane: data.lane ?? null, messages }, (d) =>
+    d.messages.length ? d.messages.map(chatLine).join("\n") : "no messages",
+  );
+}
+
+const chatLine = (m) =>
+  `${new Date(m.at).toISOString().slice(0, 19).replace("T", " ")}  ${m.from === "agent" ? m.label || "agent" : m.from}: ${m.text}`;
+
+async function cmdChatListen(c) {
+  const token = await needToken(c);
+  const history = Number(c.argv.history ?? 0);
+  if (!Number.isInteger(history) || history < 0 || history > 100) throw usage("--history must be 0–100");
+  // One JSON line an event, as it comes; stops on Ctrl-C, a revoke or an expiry.
+  await chatSocket(c, token, {
+    history,
+    onEvent: (m) => {
+      if (m.type === "history") for (const x of m.messages ?? []) c.deps.out(c.json ? JSON.stringify({ type: "chat", message: x, history: true }) : chatLine(x));
+      else if (m.type === "chat") c.deps.out(c.json ? JSON.stringify(m) : chatLine(m.message));
+      else if (c.json || m.type === "answered") c.deps.out(JSON.stringify(m));
+      return false;
+    },
+  });
+}
+
 // ── Parser ────────────────────────────────────────────────────────────────
 
 const EPILOG =
@@ -624,6 +809,57 @@ function build(args, deps, box) {
             act(cmdSettingsSet),
           ),
         [["lianki settings list", ""]],
+      ),
+    )
+    .command("chat", "Your own chat thread: say, ask, read, listen", (y) =>
+      examples(
+        sub(y)
+          .usage("lianki chat <say|ask|read|listen> — your own chat thread only; lines show the token's name")
+          .command(
+            "say <text..>",
+            "Post a line (- reads it from stdin)",
+            (y) =>
+              examples(y.positional("text", { type: "string", describe: "The line" }).option("quiet", { type: "boolean", describe: "Shown, never read aloud" }), [
+                ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
+                ["git log -1 --format=%s | lianki chat say -", ""],
+              ]),
+            act(cmdChatSay),
+          )
+          .command(
+            "ask",
+            "Post an ask card; only your tap on lianki.com answers it",
+            (y) =>
+              examples(
+                y
+                  .option("q", { type: "string", describe: "The question" })
+                  .option("opt", { type: "string", array: true, describe: "An option (1–8; repeat)" })
+                  .option("recommend", { type: "number", describe: "Mark option n as recommended" })
+                  .option("multi", { type: "boolean", describe: "More than one option may be picked" })
+                  .option("wait", { type: "boolean", describe: "Wait for the tap and print the answer" })
+                  .option("timeout", { type: "string", describe: `How long --wait waits (default ${DEFAULT_WAIT})` }),
+                [['lianki chat ask --q "Ship it?" --opt Yes --opt No --recommend 1 --wait', "prints the option tapped"]],
+              ),
+            act(cmdChatAsk),
+          )
+          .command(
+            "read",
+            "The latest lines",
+            (y) => examples(y.option("limit", { type: "number", default: 30, describe: "How many (1–100)" }), [["lianki chat read --limit 10 --json", ""]]),
+            act(cmdChatRead),
+          )
+          .command(
+            "listen",
+            "Follow the thread live (one JSON line an event with --json)",
+            (y) =>
+              examples(y.option("history", { type: "number", default: 0, describe: "First print the last n lines (0–100)" }), [
+                ["lianki chat listen --json | jq -c 'select(.type==\"chat\")'", "every new line"],
+              ]),
+            act(cmdChatListen),
+          )
+          .epilogue(
+            "Needs a token with the chat permissions (lianki.com/preferences → API tokens). An agent lane uses its own token: LIANKI_TOKEN=lk_… lianki chat say …",
+          ),
+        [['lianki chat say "hello"', ""]],
       ),
     )
     .example("lianki auth login", "sign in through the browser")

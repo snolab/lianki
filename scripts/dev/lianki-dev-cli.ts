@@ -252,6 +252,69 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
   return new Error(`${sub} does not run eval.ts`);
 }
 
+/**
+ * With a lane token (LIANKI_TOKEN, made at lianki.com/preferences → API tokens
+ * with the chat permissions): the argv for the public CLI's `lianki chat …`
+ * (packages/lianki-cli), which posts as the token's name in the token
+ * account's own thread. No `--to`, `--task-path`, `--agent` or `--label`:
+ * those need the grant path (unset LIANKI_TOKEN). An `--opt "*Yes"` is the
+ * recommended one, as with eval.ts. One question per ask.
+ */
+export function chatArgv(
+  sub: Sub,
+  rest: string[],
+  stdin?: string,
+): (string[] & { stdin?: string }) | Error {
+  if (sub === "say") {
+    let text: string | undefined;
+    const out: string[] = [];
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i]!;
+      if (a === "--") {
+        text = rest.slice(i + 1).join(" ");
+        break;
+      }
+      if (a === "--quiet") out.push(a);
+      else if (a === "--loud") continue;
+      else if (a.startsWith("--"))
+        return new Error(`say: ${a} needs the grant path (unset LIANKI_TOKEN)`);
+      else if (text === undefined) text = a === "-" ? (stdin ?? "") : a;
+      else return new Error(`say takes one text (quote it): ${a}`);
+    }
+    const body = (text ?? "").trim();
+    if (!body) return new Error("say needs a text (or - for stdin)");
+    // The text goes on stdin (`-`), so one starting with "-" is never read as a flag.
+    return Object.assign(["chat", "say", ...out, "-"], { stdin: body });
+  }
+  if (sub === "ask") {
+    const out: string[] = [];
+    let q = 0;
+    let n = 0;
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i]!;
+      if (a === "--q") {
+        if (++q > 1) return new Error("ask: one --q per ask with a lane token");
+        out.push(a, rest[++i] ?? "");
+      } else if (a === "--opt") {
+        const v = rest[++i] ?? "";
+        n++;
+        if (v.startsWith("*")) out.push("--opt", v.slice(1), "--recommend", String(n));
+        else out.push("--opt", v);
+      } else if (a === "--timeout") out.push(a, rest[++i] ?? "");
+      else if (a === "--wait" || a === "--multi") out.push(a);
+      else return new Error(`ask: ${a} needs the grant path (unset LIANKI_TOKEN)`);
+    }
+    if (!q || !n) return new Error('ask needs --q "question" and at least one --opt');
+    return ["chat", "ask", ...out];
+  }
+  if (sub === "listen") {
+    if (rest.length)
+      return new Error(`listen: ${rest[0]} needs the grant path (unset LIANKI_TOKEN)`);
+    return ["chat", "listen", "--json"];
+  }
+  return new Error(`${sub} has no lane-token path`);
+}
+
 /** progress: --agent defaults to the lane, on a report only. */
 export function progressArgv(rest: string[], g: Global): string[] {
   if (!g.lane || rest.includes("--agent") || rest.some((a) => a.startsWith("--agent=")))
