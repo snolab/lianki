@@ -11,6 +11,7 @@ import {
 } from "@lianki/ui-state";
 import {
   anchorTop,
+  centredTop,
   cleanWordsUi,
   migrateCollapsed,
   setAnchor,
@@ -282,5 +283,14 @@ describe("/words UI store", () => {
     expect(anchorTop(5, { ...o, max: 300 })).toBe(300);
     expect(topIndex(420, o)).toBe(5);
     expect(topIndex(0, o)).toBe(0);
+  });
+
+  it("a list opens with its first card in the middle of the screen", () => {
+    // Over-scroll 0.8 × 700 above the first row: its centre at 350.
+    expect(centredTop({ pad: 560, rowH: 66, viewH: 700 })).toBe(243);
+    const top = centredTop({ pad: 560, rowH: 66, viewH: 700 });
+    expect(560 + 33 - top).toBe(350);
+    // Never above the top of the list.
+    expect(centredTop({ pad: 10, rowH: 44, viewH: 700 })).toBe(0);
   });
 });

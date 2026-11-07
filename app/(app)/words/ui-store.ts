@@ -113,6 +113,17 @@ export function anchorTop(
   return Math.max(0, o.max === undefined ? top : Math.min(o.max, top));
 }
 
+/**
+ * The scrollTop that opens a list with its first card in the middle of the
+ * screen (owner, 2026-11-07 17:50 JST: "进入复习列表应该把第一张卡滚动到屏幕中间而不是在顶上").
+ * Computed, not measured: the rows are windowed, so the first one may not be
+ * rendered yet, and the opening sets it at once (no animation, so reduced
+ * motion has nothing to skip). The over-scroll above the first row
+ * (OVERSCROLL_FRACTION of the height) always leaves room for it.
+ */
+export const centredTop = (o: { pad: number; rowH: number; viewH: number }) =>
+  Math.max(0, Math.round(o.pad + o.rowH / 2 - o.viewH / 2));
+
 /** The index of the row at the top of the screen, for a scrollTop. */
 export const topIndex = (scrollTop: number, o: { pad: number; rowH: number; barTop: number }) =>
   Math.max(0, Math.floor((scrollTop + o.barTop - o.pad) / o.rowH + 0.5));

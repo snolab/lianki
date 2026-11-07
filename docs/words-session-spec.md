@@ -49,6 +49,12 @@ they land. Design details that are still open are marked **open**.
 - **Binding cords at a fixed position**: dragging a slip never carries the
   cords along (old and new swipe).
 - A slip showing "↓ back"/「回来了」 is locked: no swipe, grade or undo (#427).
+- **The first card opens in the middle** (2026-11-07 17:50 JST: "进入复习列表应该
+  把第一张卡滚动到屏幕中间而不是在顶上"): /words and the reader's review list open
+  with the first card's centre at the screen's centre, set at once on opening
+  (no animation) and held there until the list is moved (`centredTop`,
+  `app/(app)/words/ui-store.ts`). A word remembered further down still opens
+  just under the toolbar.
 - **Grade keys 1–4** (2026-11-04, PC, also the /read word review): a word not
   graded yet is graded like a swipe — the list scrolls one row and the cursor
   moves to the next word. A correction (re-grading a graded word) never

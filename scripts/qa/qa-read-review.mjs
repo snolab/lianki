@@ -397,6 +397,14 @@ async function offscreenInsert(device) {
   await ctx.close();
 }
 
+/** How far the first card's centre is from the list's centre, px (owner, 2026-11-07 17:50 JST). */
+const firstOffCentre = (page) =>
+  page.evaluate(() => {
+    const list = document.querySelector('[role="list"]').getBoundingClientRect();
+    const row = document.querySelector('[role="list"] [data-i="0"]').getBoundingClientRect();
+    return Math.round(row.top + row.height / 2 - (list.top + list.height / 2));
+  });
+
 /**
  * The last card graded: focus goes to the end-of-list way back (返回书本), it
  * looks focused, a polite status says so, and Enter or G goes back to the book
@@ -426,6 +434,8 @@ async function lastCardBack(device, { scheme = "light", last, leave }) {
   const rows = list.locator("[data-i]");
   await until(page, async () => (await rows.count()) > 0);
   await page.waitForTimeout(400);
+  const off = await firstOffCentre(page);
+  check(Math.abs(off) <= 3, `${tag}: the list opens with its first card in the middle (${off}px)`);
   // The rows are windowed: the count is the last row's index, scrolled to the end.
   const n = await list.evaluate(async (el) => {
     el.scrollTop = el.scrollHeight;
@@ -543,6 +553,9 @@ async function plainWordsBack(device) {
   await page.goto(`/words?list=${made.listId}`, { waitUntil: "networkidle" });
   const rows = page.locator('[role="list"] [data-i]');
   await rows.first().waitFor({ timeout: 15000 });
+  await page.waitForTimeout(400);
+  const off = await firstOffCentre(page);
+  check(Math.abs(off) <= 3, `${tag}: /words opens with its first card in the middle (${off}px)`);
   const n = made.terms.length;
   const onBack = () =>
     page.evaluate(() => document.activeElement?.dataset?.testid === "study-done-back");
@@ -755,8 +768,15 @@ await rowsFill(devices["Desktop Chrome"], "light", false);
 await rowsFill(devices["Desktop Chrome"], "dark", false);
 await rowsFill(devices["iPhone 13"], "light", true);
 await rowsFill(devices["iPhone 13"], "dark", true);
+// QA_ONLY=centre: just the openings (and the last card's way back).
+if (process.env.QA_ONLY === "centre") {
+  await plainWordsBack(devices["Desktop Chrome"]);
+  await lastCardBack(devices["Desktop Chrome"], { last: "Digit4", leave: "Enter" });
+  await lastCardBack(devices["iPhone 13"], { leave: "KeyG" });
+  await lastCardBack(devices["iPhone 13"], { leave: "Enter", scheme: "dark" });
+}
 // QA_ONLY=fill: just the rows filling themselves.
-if (process.env.QA_ONLY !== "fill") {
+if (process.env.QA_ONLY !== "fill" && process.env.QA_ONLY !== "centre") {
   await noTranslationInOwnLanguage(devices["Desktop Chrome"]);
   await plainWordsBack(devices["Desktop Chrome"]);
   // Easy (nothing comes back), and Again and Good (a copy waits): the same end.

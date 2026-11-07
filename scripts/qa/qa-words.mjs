@@ -445,7 +445,10 @@ try {
       const list = document.querySelector('[role="list"]');
       const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
       const before = list.scrollTop;
-      list.scrollTop = before + 120;
+      // From the opening (the first word in the middle): far enough that it
+      // reaches the bar, and 20px further.
+      const first = list.querySelector('[role="listitem"]').getBoundingClientRect();
+      list.scrollTop = before + Math.max(120, first.top - bar.bottom + 20);
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const covered = [...list.querySelectorAll('[role="listitem"]')].some((row) => {
         const b = row.getBoundingClientRect();
@@ -1344,14 +1347,15 @@ try {
         );
       }
       // The list runs under the glass toolbar; it opens with the first word
-      // just below it, not behind it.
-      const barBottom = await m
-        .locator("[data-words-top]")
-        .evaluate((el) => el.getBoundingClientRect().bottom);
-      const firstTop = (await mrows.nth(0).boundingBox()).y;
+      // in the middle of the screen (owner, 2026-11-07 17:50 JST).
+      const off = await m.evaluate(() => {
+        const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+        const list = document.querySelector('[role="list"]').getBoundingClientRect();
+        return Math.round(row.top + row.height / 2 - (list.top + list.height / 2));
+      });
       check(
-        firstTop >= barBottom - 2 && firstTop - barBottom < 50,
-        `${tag} the list opens with the first word just under the toolbar (${Math.round(firstTop - barBottom)}px)`,
+        Math.abs(off) <= 3,
+        `${tag} the list opens with the first word in the middle of the screen (${off}px)`,
       );
       // Parity: the face of a slip — the row itself (A) or the scroller's
       // face (B) — carries the same paper, node line and seam; the cords are
@@ -2056,7 +2060,7 @@ try {
   }
 
   // iPhone on WebKit, both swipe variants: the page itself never scrolls, and
-  // the list opens with its first word right under the glass toolbar — on
+  // the list opens with its first word in the middle of the screen — on
   // load, on reload, and when the list is shown again (pageshow).
   {
     const { webkit, devices } = await import("playwright");
@@ -2088,11 +2092,11 @@ try {
       });
       const opening = () =>
         w.evaluate(() => {
-          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
-          const row = document.querySelector('[role="listitem"]').getBoundingClientRect().top;
+          const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+          const list = document.querySelector('[role="list"]').getBoundingClientRect();
           return {
             scrollY: Math.round(scrollY),
-            gap: Math.round(row - bar),
+            off: Math.round(row.top + row.height / 2 - (list.top + list.height / 2)),
             native: document.querySelectorAll(".slip-native").length > 0,
           };
         });
@@ -2105,8 +2109,8 @@ try {
         await w.waitForTimeout(800);
         const o = await opening();
         check(
-          o.scrollY === 0 && o.gap >= 0 && o.gap < 4 && o.native === (variant === "native"),
-          `${tag} ${when}: the page doesn't scroll and the first word sits right under the toolbar (${JSON.stringify(o)})`,
+          o.scrollY === 0 && Math.abs(o.off) <= 3 && o.native === (variant === "native"),
+          `${tag} ${when}: the page doesn't scroll and the first word sits in the middle (${JSON.stringify(o)})`,
         );
       }
       // The paper scrolls with the list (always, since 2026-11-03): a layer
@@ -2178,20 +2182,21 @@ try {
         w.evaluate(() => {
           const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
           const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+          const list = document.querySelector('[role="list"]').getBoundingClientRect();
           return {
             scrollY: Math.round(scrollY),
             docH: document.documentElement.scrollHeight,
             innerH: innerHeight,
             barH: Math.round(bar.height),
-            gap: Math.round(row.top - bar.bottom),
+            off: Math.round(row.top + row.height / 2 - (list.top + list.height / 2)),
             sheet: !!document.querySelector("[data-words-settings]"),
           };
         });
       const pageFits = (o) => o.scrollY === 0 && o.docH <= o.innerH;
       let o = await layout();
       check(
-        pageFits(o) && o.gap >= 0 && o.gap < 4,
-        `${tag} 414×848 + safe area: the page is exactly the window, first word under the toolbar (${JSON.stringify(o)})`,
+        pageFits(o) && Math.abs(o.off) <= 3,
+        `${tag} 414×848 + safe area: the page is exactly the window, first word in the middle (${JSON.stringify(o)})`,
       );
       await toggleSettings(w);
       await w.waitForTimeout(400);
@@ -2201,15 +2206,15 @@ try {
         `${tag} no "Paper scrolls with the list" switch: the paper always scrolls`,
       );
       check(
-        o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
+        o.sheet && o.barH <= 72 && pageFits(o) && Math.abs(o.off) <= 3,
         `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
       );
       await toggleSettings(w);
       await w.waitForTimeout(400);
       o = await layout();
       check(
-        !o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
-        `${tag} settings closed: the first word is still right under the toolbar (${JSON.stringify(o)})`,
+        !o.sheet && o.barH <= 72 && pageFits(o) && Math.abs(o.off) <= 3,
+        `${tag} settings closed: the first word is still in the middle (${JSON.stringify(o)})`,
       );
       // Settings is a modal sheet (SettingsSheet, owner 2026-11-03): bounded by
       // the visible viewport, its body scrolls inside itself to the last row,
