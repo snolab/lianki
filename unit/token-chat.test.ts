@@ -299,11 +299,12 @@ describe("the hub: own thread only", () => {
     expect(line).toMatchObject({
       from: "agent",
       via: "token",
-      lane: "my-mac",
+      tokenLane: "my-mac",
       label: "my-mac",
       text: "【my-mac】hello",
       thread: ALICE.userId,
     });
+    expect(line.lane).toBeUndefined(); // "my-mac" is not a known lane: the prefix stays
     // The `thread`/`to` it sent are ignored: nobody else's thread got it.
     expect(bobPage.of("chat")).toEqual([]);
     expect(ownerPage.of("chat")).toEqual([]);
@@ -431,7 +432,8 @@ describe("ask cards: only a tap answers, only the asking lane hears it", () => {
     const askId = asked.body.askId as string;
     const card = owner.of("chat").at(-1)?.message as Record<string, unknown>;
     expect(card).toMatchObject({
-      lane: "codex",
+      tokenLane: "codex",
+      lane: "codex", // a known lane: its mark and voice
       via: "token",
       text: "【codex】Ship it? — Yes / No",
     });
@@ -486,7 +488,7 @@ describe("helpers", () => {
       text: "q",
       at: 1,
       via: "token" as const,
-      lane: "codex",
+      tokenLane: "codex",
       answer: { choices: {}, source: "tap" as const, thread: "owner", label: "", at: 1 },
     };
     expect(forLane(m, "codex").answer).toBeTruthy();

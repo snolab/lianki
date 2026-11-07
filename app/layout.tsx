@@ -105,9 +105,11 @@ export default async function RootLayout({
   const open = partnerFrame ? false : await partnerOpenFor(flags);
   // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
   const chatFull = flagIn(flags, "partner.fullscreen");
+  // Li's sound hub, observing only (docs/li-sound-hub.md); the owner's pages only.
+  const liHub = flagIn(flags, "voice.li-hub");
   // The owner's ETA bar (lib/eta-ping.ts): the chat shows it only on his pages.
   const etaBar = flagIn(flags, ETA_FLAG);
-  const boots = { strings: partner, leave, open, chatFull, etaBar };
+  const boots = { strings: partner, leave, open, chatFull, etaBar, liHub };
   const box = boxConfig();
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>

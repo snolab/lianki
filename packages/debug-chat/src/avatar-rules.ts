@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from "react";
 import type { ChatMessage, Sender } from "./wire";
+import { LANES, type LaneId, isLaneId } from "./voices";
 
 /**
  * What an avatar shows: picture URLs in fallback order (each that fails to
@@ -63,8 +64,17 @@ export function lineAvatar(
     agentName?: string;
     /** The viewer's own name on their lines, localized. */
     you?: string;
+    /** A lane's own mark (LaneMark.tsx laneAvatar); undefined = the agent's avatar. */
+    laneAvatar?: (lane: LaneId) => AvatarSource | undefined;
   },
 ): LineAvatar {
+  // A lane with a mark of its own (voices.ts LANES): its mark and name.
+  const lane = m.from === "agent" && isLaneId(m.lane) ? LANES[m.lane] : null;
+  if (lane?.mark && lane.name) {
+    // Without the drawn mark (another host): its initial on its own colour, never the agent's logo.
+    const src = opts.laneAvatar?.(m.lane!);
+    return { src, name: lane.name, initialFrom: lane.name, seed: `lane:${m.lane}`, mine: false };
+  }
   if (m.from === "agent") {
     // The node's assignee, when the line names one; else the controller's label.
     const name = m.agentId || m.label || opts.agentName || "agent";

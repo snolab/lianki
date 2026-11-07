@@ -623,6 +623,24 @@ const learningPartnerContent = {
       mr: "पूर्ण स्क्रीनमधून बाहेर पडा",
       ko: "전체 화면 종료",
     }),
+    dragGrip: t({
+      en: "Move the chat: drag. Tap to fold or open, double-tap for the menu",
+      zh: "拖动以移动聊天。点按折叠或展开，双击打开菜单",
+      hi: "चैट को खिसकाने के लिए खींचें। मोड़ने या खोलने के लिए टैप करें, मेनू के लिए दो बार टैप करें",
+      es: "Arrastra para mover el chat. Toca para plegarlo o abrirlo; toca dos veces para el menú",
+      fr: "Faites glisser pour déplacer le chat. Touchez pour le replier ou l'ouvrir, touchez deux fois pour le menu",
+      ar: "اسحب لتحريك الدردشة. انقر لطيّها أو فتحها، وانقر مرتين لفتح القائمة",
+      bn: "চ্যাট সরাতে টেনে আনুন। ভাঁজ করতে বা খুলতে ট্যাপ করুন, মেনুর জন্য দুবার ট্যাপ করুন",
+      pt: "Arraste para mover o chat. Toque para recolher ou abrir; toque duas vezes para o menu",
+      ru: "Перетащите, чтобы переместить чат. Нажмите, чтобы свернуть или открыть, дважды — для меню",
+      ur: "چیٹ کو ہٹانے کے لیے گھسیٹیں۔ سمیٹنے یا کھولنے کے لیے ٹیپ کریں، مینو کے لیے دو بار ٹیپ کریں",
+      id: "Seret untuk memindahkan obrolan. Ketuk untuk melipat atau membuka, ketuk dua kali untuk menu",
+      de: "Ziehen, um den Chat zu verschieben. Tippen zum Ein- oder Ausklappen, zweimal tippen für das Menü",
+      ja: "ドラッグでチャットを移動。タップで折りたたむ／開く、ダブルタップでメニュー",
+      sw: "Buruta ili kusogeza gumzo. Gusa ili kukunja au kufungua, gusa mara mbili kwa menyu",
+      mr: "चॅट हलवण्यासाठी ओढा. दुमडण्यासाठी किंवा उघडण्यासाठी टॅप करा, मेनूसाठी दोनदा टॅप करा",
+      ko: "드래그하여 채팅 이동. 탭하면 접거나 열고, 두 번 탭하면 메뉴",
+    }),
     vpMenu: t({
       en: "Voiceprint",
       zh: "声纹",
@@ -2058,6 +2076,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Screen-reader label and tooltip of a round icon button (four corners pointing outward, no text) at the top corner of the open chat panel: a tap makes the chat fill the whole app screen, with the same conversation, draft and microphone. Use the platform's usual term for the full-screen command (as on a video player), a short noun phrase or command.",
   fullScreenExit:
     "Screen-reader label and tooltip of the same round icon button (four corners pointing inward) while the chat fills the whole screen: a tap returns it to the small chat panel where it was. Use the platform's usual 'exit full screen' command, short imperative.",
+  dragGrip:
+    "Screen-reader label and tooltip of a small grip icon (six dots, no text) at the left end of the chat's input bar, beside the + button. Dragging it moves the chat box around the screen; a single tap folds the chat into a small pill, or opens it again from the pill; a double tap opens the chat's menu. Describe all three gestures briefly, the drag first; 'chat' is the chat box with the Learning Partner.",
   vpMenu:
     "Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name.",
   vpTitle:

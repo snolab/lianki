@@ -6,6 +6,7 @@
  */
 
 import type { Ask, AskAnswer } from "./ask";
+import type { LaneId, VoiceId } from "./voices";
 
 export * from "./node-path";
 
@@ -54,12 +55,13 @@ export type ChatMessage = {
   sender?: Sender;
   /**
    * A line posted with an API token (`lianki chat`, workers/push/src/token-chat.ts):
-   * `via: "token"`, and `lane` is the token's name, which the text also starts
-   * with as 【lane】. Stamped by the hub only. An ask card on such a line is
-   * answered to that lane alone.
+   * `via: "token"`, and `tokenLane` is the token's name, which the text also
+   * starts with as 【name】 (and `lane` is set when that name is a known lane,
+   * voices.ts). Stamped by the hub only. An ask card on such a line is
+   * answered to that token lane alone.
    */
   via?: "token";
-  lane?: string;
+  tokenLane?: string;
   /**
    * The state-tree node an agent line comes from ("/words/prefetch"; absent =
    * the main thread). Shown as a muted subtitle under the agent's avatar.
@@ -105,6 +107,14 @@ export type ChatMessage = {
    * shown, never read aloud. Only ever `true`; the hub drops anything else.
    */
   quiet?: true;
+  /**
+   * The lane an agent line is from (voices.ts LANES: "main", "codex",
+   * "agy"; `say --lane`): its avatar, name tag and voice. Absent = a
+   * `【lane】` prefix in the text says it, else none (looks as before).
+   */
+  lane?: LaneId;
+  /** The voice to read it in (voices.ts VOICES; `say --voice`). Absent = its lane's. */
+  voice?: VoiceId;
   /**
    * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
    * "active", or "passive" (it came through "Linky"). Absent = the mic was
@@ -508,6 +518,8 @@ export type ChatStrings = {
   fullScreen: string;
   /** The same button in full screen: back to the small chat panel, as it was. */
   fullScreenExit: string;
+  /** The six-dot grip at the bar's left end: drag to move the chat, tap to fold or open it, double-tap for the menu. */
+  dragGrip: string;
   // The voiceprint panel (VoiceprintPanel.tsx, voiceprint.ts; docs/local-stt.md, "Voiceprint").
   /** Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name. */
   vpMenu: string;
@@ -683,6 +695,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",
   fullScreen: "Full screen",
   fullScreenExit: "Exit full screen",
+  dragGrip: "Move the chat: drag. Tap to fold or open, double-tap for the menu",
   vpMenu: "Voiceprint",
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",

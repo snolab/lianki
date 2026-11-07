@@ -183,9 +183,12 @@ import {
   FULL_LOG_STYLE,
   FULL_PB_VAR,
   FULL_SCREEN_STYLE,
+  FULL_SIDEBAR_STYLE,
   FULL_TOP_VAR,
+  SIDEBAR_QUERY,
   escapeLeaves,
   fullBarSpan,
+  sidebarReserve,
   fullBottomPad,
   fullScreenAllowed,
   fullScreenBox,
@@ -199,6 +202,8 @@ import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
+import { withLane } from "./voices";
+import { LaneTag, laneAvatar } from "./LaneMark";
 import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
@@ -220,8 +225,6 @@ const OPEN_KEY = "lk:debug-chat-open";
 const END_CONFIRM_MS = 3_000;
 /** In the input while the bar is held. */
 const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
-/** The mark's gestures, for its title and aria-description. */
-const MARK_HINT = "Tap: minimize or restore · double-tap: menu · drag: move the chat";
 /** Text inside the mirrored row stays left to right; LTR adds no box of its own. */
 const LTR_TEXT = { direction: "ltr" } as const;
 const LTR = { display: "contents", direction: "ltr" } as const;
@@ -765,7 +768,7 @@ type Panel = "none" | "menu" | "tree" | "voiceprint";
 export function DebugChat({
   live,
   listeners,
-  messages,
+  messages: rawMessages,
   onSend,
   onAnswer,
   onPassageEnd,
@@ -809,6 +812,9 @@ export function DebugChat({
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
+  /** Agent lines with their lane (voices.ts): a `【lane】` prefix becomes the name tag and mark. */
+  const messages = useMemo(() => rawMessages.map(withLane), [rawMessages]);
+  const laneOpts = { laneAvatar };
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
   const clipsAuto = useUi(clipsDevice(), (s) => s.autoStop);
@@ -827,6 +833,24 @@ export function DebugChat({
   const full = fullScreenOn({ allowed: fullAllowed, pref: fullPref, open });
   const fullOn = useRef(full);
   fullOn.current = full;
+  /** Wider than SIDEBAR_QUERY (35em): full screen is a sidebar docked right; the media query's change event, no polling. */
+  const [sidebar, setSidebar] = useState(
+    () => typeof matchMedia !== "undefined" && matchMedia(SIDEBAR_QUERY).matches,
+  );
+  useEffect(() => {
+    if (typeof matchMedia === "undefined") return;
+    const mq = matchMedia(SIDEBAR_QUERY);
+    const on = () => setSidebar(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const asSidebar = full && sidebar;
+  // The sidebar leaves the page usable beside it: the page reflows clear of it.
+  useEffect(() => {
+    if (!asSidebar || typeof document === "undefined") return;
+    return sidebarReserve(document.documentElement);
+  }, [asSidebar]);
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
   const [aec, setAecState] = useState(aecOn);
@@ -858,7 +882,7 @@ export function DebugChat({
   const [rate, setRate] = useState(speechRate);
   /** A drag of the box ended (useDrag): its edge, or a tuck (fold.ts). */
   const onDrop = useRef((_at: DropSpan) => {});
-  const { offset, dx: boxDx, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
+  const { offset, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
     (bar) => onDrop.current(bar),
   );
   /**
@@ -869,8 +893,17 @@ export function DebugChat({
   const foldStore = chatFold();
   const tuckedPref = useUi(foldStore, (s) => s.tucked);
   const edge = useUi(foldStore, (s) => s.edge);
-  const fold: Fold = open ? "open" : tuckedPref ? "tucked" : "pill";
-  const tucked = fold === "tucked";
+  /**
+   * The third level, tucked into the screen edge, is removed for now (owner,
+   * 2026-11-07 20:32 JST: useless, to be rethought; fold.ts never steps into
+   * it). A device that saved it shows the plain pill, and the saved value is
+   * cleared. The handle's code stays dormant until it is rethought.
+   */
+  const fold: Fold = open ? "open" : "pill";
+  const tucked = (fold as Fold) === "tucked";
+  useEffect(() => {
+    if (tuckedPref) foldStore.setState({ tucked: false });
+  }, [tuckedPref]);
   const mirrorRow = mirrored(edge);
   const foldNow = useRef<FoldState>({ fold, edge });
   foldNow.current = { fold, edge };
@@ -2546,8 +2579,7 @@ export function DebugChat({
     foldStore.setState({ tucked: tuckNow, edge: next.edge });
     if ((next.fold === "open") !== open) toggle(next.fold === "open");
   };
-  // A drag of the box ended: it follows its nearest edge, and a pill pushed
-  // against one tucks into it.
+  // A drag of the box ended: it follows its nearest edge (no tuck: that level is removed).
   onDrop.current = (bar) => {
     const vw = innerWidth;
     foldBy({
@@ -2557,7 +2589,7 @@ export function DebugChat({
     });
   };
   gripAct.current = {
-    // Open: minimize into the pill. The pill: tuck it into the edge.
+    // Open: minimize into the pill. The pill: open it again.
     single: () => {
       setPanel("none");
       foldBy({ type: "mark" });
@@ -2815,10 +2847,10 @@ export function DebugChat({
         type="button"
         data-drag-handle
         data-testid="debug-chat-pill-min"
-        // On the pill it is the tuck arrow (fold.ts): the pill's Li restores.
-        aria-label={open ? "Minimize chat" : `${ui.tuckChat}${unread ? `, ${unread} new` : ""}`}
-        aria-description={MARK_HINT}
-        title={open ? MARK_HINT : ui.tuckChat}
+        // The grip (owner, 2026-11-07 20:34 JST: it did not look draggable):
+        // six dots, grab / grabbing. A tap folds or opens, a double tap the menu.
+        aria-label={`${t.dragGrip}${!open && unread ? `, ${unread} new` : ""}`}
+        title={t.dragGrip}
         aria-expanded={open}
         {...handle}
         onPointerDown={(e) => {
@@ -2827,11 +2859,16 @@ export function DebugChat({
           if (!fullOn.current) handle.onPointerDown(e);
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
-        style={{ ...handle.style, ...BAR_CONTROL }}
+        style={{
+          ...handle.style,
+          ...BAR_CONTROL,
+          // Full screen does not drag; elsewhere grab, grabbing while held.
+          cursor: full ? "pointer" : holding ? "grabbing" : "grab",
+        }}
         data-lk-tap
         className="tap-40 relative flex shrink-0 items-center justify-center rounded-full"
       >
-        {open ? <LiagentMark size={18} /> : <TuckArrow edge={edge} />}
+        <GripDots />
         <span
           aria-hidden
           className="absolute end-1.5 top-1 size-1.5 rounded-full"
@@ -3027,6 +3064,7 @@ export function DebugChat({
                 avatarFor,
                 agentName: t.name,
                 you: t.you,
+                ...laneOpts,
               })}
               text={lineText(m, p.text)}
               mark={
@@ -3650,7 +3688,15 @@ export function DebugChat({
   }
   /** Who said each line, and where a run of one sender's lines starts (avatar-rules.ts). */
   const whos = messages.map((m) =>
-    lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you }),
+    lineAvatar(m, {
+      friend,
+      viewer,
+      agentAvatar,
+      avatarFor,
+      agentName: t.name,
+      you: t.you,
+      ...laneOpts,
+    }),
   );
   const starts = runStarts(
     messages.map((m, i) => ({
@@ -3666,7 +3712,15 @@ export function DebugChat({
    * the whole chat back.
    */
   const compactRow = (m: ChatMessage, line: boolean) => {
-    const who = lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you });
+    const who = lineAvatar(m, {
+      friend,
+      viewer,
+      agentAvatar,
+      avatarFor,
+      agentName: t.name,
+      you: t.you,
+      ...laneOpts,
+    });
     const p = polish(m);
     const showAll = strings?.compactShowAll ? t.compactShowAll : ui.compactShowAll;
     const asLine = line && !m.ask;
@@ -3710,6 +3764,7 @@ export function DebugChat({
           className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
         >
           <span className="sr-only">{who.name}: </span>
+          {m.lane && <LaneTag lane={m.lane} inline />}
           {m.ask
             ? m.ask.questions.length === 1
               ? lineText(m, m.ask.questions[0]!.question)
@@ -3904,7 +3959,7 @@ export function DebugChat({
         // Only the slide into or out of the edge animates: a drag follows the finger.
         transition: sliding && !holding ? "opacity 150ms, transform 220ms ease-out" : undefined,
         // Full screen: the visible area, edge to edge (the panel's place is kept).
-        ...(full ? FULL_SCREEN_STYLE : {}),
+        ...(full ? (sidebar ? FULL_SIDEBAR_STYLE : FULL_SCREEN_STYLE) : {}),
       }}
       className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing: typingNow, plusMenu, micActive, fullLog: fullLog !== "off" || full }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${full ? "pointer-events-auto" : "pointer-events-none"} lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
@@ -4065,6 +4120,8 @@ export function DebugChat({
                 hidden
               />
               <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+                {/* A lane's name tag (voices.ts), once per run; lines with no lane have none. */}
+                {m0.lane && <LaneTag lane={m0.lane} agentName={t.name} />}
                 {node && (
                   <span
                     aria-hidden
@@ -4256,11 +4313,12 @@ export function DebugChat({
         }}
         // On the left edge the row runs right to left (fold.ts): the mark on
         // the inner side, folding right. The text inside stays left to right.
-        // Full screen: the bar keeps the panel's span (full-screen.ts fullBarSpan), so the mic stays put.
+        // Full screen: the bar spans the screen (or the sidebar), the cluster
+        // at its left and the input taking the rest (full-screen.ts fullBarSpan).
         style={{
           gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr",
-          direction: mirrorRow ? "rtl" : undefined,
-          ...(full ? fullBarSpan(boxDx) : {}),
+          direction: mirrorRow && !full ? "rtl" : undefined,
+          ...(full ? fullBarSpan(sidebar) : {}),
         }}
       >
         <div style={LTR}>
@@ -4708,22 +4766,20 @@ export function DebugChat({
   );
 }
 
-/** The pill's mark as the tuck arrow: an arrow into a bar, pointing at the edge it tucks into. */
-function TuckArrow({ edge }: { edge: "left" | "right" }) {
+/** The bar's drag grip: a vertical six-dot grip (two columns of three), its own SVG. */
+function GripDots() {
   return (
     <svg
+      data-testid="debug-chat-grip"
       viewBox="0 0 18 18"
       width={18}
       height={18}
       aria-hidden
-      style={edge === "left" ? { transform: "scaleX(-1)" } : undefined}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      fill="currentColor"
     >
-      <path d="M3 9h9M8.5 5.5 12 9l-3.5 3.5M15 4v10" />
+      {[3.5, 9, 14.5].flatMap((y) =>
+        [6.5, 11.5].map((x) => <circle key={`${x},${y}`} cx={x} cy={y} r={1.6} />),
+      )}
     </svg>
   );
 }
@@ -4817,6 +4873,7 @@ function FloatLine({
         />
       </span>
       <span className="sr-only">{who.name}: </span>
+      {m.lane && <LaneTag lane={m.lane} inline />}
       {text}
       {mark}
     </li>

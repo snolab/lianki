@@ -73,6 +73,16 @@ export function workersAiProvider() {
 export const MELOTTS_LANGS = new Set(["en", "es", "fr", "zh", "ja", "ko"]);
 
 /**
+ * Deepgram Aura-2 on Workers AI: several voices (speakers), English and
+ * Spanish only. The chat's lanes use it for a voice of their own
+ * (packages/debug-chat/src/voices.ts); everything else stays on MeloTTS.
+ */
+export const AURA2_MODEL: Readonly<Record<string, string>> = {
+  en: "@cf/deepgram/aura-2-en",
+  es: "@cf/deepgram/aura-2-es",
+};
+
+/**
  * Resolve the language to synthesize in. An explicit locale from the caller
  * wins — several clients already send one, and it beats guessing — but a
  * region-tagged or unsupported value falls back to the script heuristic rather
@@ -135,18 +145,25 @@ export function sniffAudioType(buf: Uint8Array): string {
 export async function workersAiSpeech(opts: {
   text: string;
   lang?: string;
+  /** An Aura-2 speaker (AURA2_MODEL's languages only): that voice instead of MeloTTS's one. */
+  speaker?: string;
   signal?: AbortSignal;
 }): Promise<{ audio: Buffer<ArrayBuffer>; contentType: string }> {
   const { apiToken } = requireConfig();
   const lang = opts.lang || guessTtsLang(opts.text);
+  const aura = opts.speaker ? AURA2_MODEL[lang] : undefined;
 
-  const res = await fetch(`${apiBase()}/run/${speechModel()}`, {
+  const res = await fetch(`${apiBase()}/run/${aura ?? speechModel()}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt: opts.text, lang: melottsCode(lang) }),
+    body: JSON.stringify(
+      aura
+        ? { text: opts.text, speaker: opts.speaker, encoding: "mp3" }
+        : { prompt: opts.text, lang: melottsCode(lang) },
+    ),
     signal: opts.signal,
   });
 

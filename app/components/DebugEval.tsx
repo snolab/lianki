@@ -17,6 +17,8 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { boxChatHub } from "@/lib/box-oauth/client";
+import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import {
   type ChatContext,
@@ -32,6 +34,7 @@ import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
+import { withLane } from "@lianki/debug-chat/voices";
 import { spokenOf } from "@lianki/debug-chat/rich-text";
 import { voice } from "@lianki/debug-chat/voice";
 import { isDesktop, keepHub, onTakeover, voiceBusy } from "@lianki/debug-chat/voice-bg";
@@ -130,6 +133,7 @@ export function DebugEval({
   partnerOpen = false,
   etaBar = false,
   fullScreen = false,
+  liHub = false,
 }: {
   strings?: Partial<PartnerStrings>;
   partnerOpen?: boolean;
@@ -137,6 +141,8 @@ export function DebugEval({
   etaBar?: boolean;
   /** `partner.fullscreen` on: the chat's full screen for every chat user (off: the owner only). */
   fullScreen?: boolean;
+  /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
+  liHub?: boolean;
 } = {}) {
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
@@ -191,6 +197,23 @@ export function DebugEval({
   useIslands();
   // The tab title says when Lianki's voice runs on in the background (voice-bg.ts).
   useVoiceTitleHint();
+  // Li's sound hub, phase 0 (docs/li-sound-hub.md): it only observes, on the
+  // owner's pages with `voice.li-hub` on. Off, the module is not even loaded.
+  const liOn = liHub && owner && friend === null;
+  useEffect(() => {
+    if (!liOn) return;
+    let stop = () => {};
+    let gone = false;
+    void import("@lianki/debug-chat/li-client")
+      .then(({ startLiClient }) => {
+        if (!gone) stop = startLiClient({ on: true, log: devLog });
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+      stop();
+    };
+  }, [liOn]);
   /** Live view (docs/live-view.md): the signed pointer, verified on this page. */
   const liveState = useLiveView();
   /** This device's tabs agree on one to read replies aloud (BroadcastChannel). */
@@ -302,7 +325,23 @@ export function DebugEval({
       } catch {}
     };
 
+    /** A box chat ticket is being fetched (docs/box-oauth.md, "Chat on the owner's box"). */
+    let boxPending = false;
     const connect = () => {
+      if (ws || boxPending) return;
+      // On the owner's box: lianki.com's hub with a ticket (box:chat), never a cookie.
+      const box = boxChatHub();
+      if (!box)
+        return openSock(
+          `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug`,
+        );
+      boxPending = true;
+      void box.ticket().then((ticket) => {
+        boxPending = false;
+        if (ticket && !ws && wanted()) openSock(box.url, [PARTNER_SUBPROTOCOL, ticket]);
+      });
+    };
+    const openSock = (base: string, protocols?: string[]) => {
       if (ws) return;
       if (!unhook && !friendRef.current) unhook = installPageErrorHooks(window, reporter);
       const label = pageLabel();
@@ -320,7 +359,8 @@ export function DebugEval({
         clipsQ = clipsConnectQuery();
       } catch {}
       const sock = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
+        `${base}?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
+        protocols,
       );
       ws = sock;
       sockRef.current = sock;
@@ -432,7 +472,8 @@ export function DebugEval({
           return;
         }
         if (msg.type === "history" && Array.isArray(msg.messages)) {
-          const list = trimHistory(msg.messages as ChatMessage[]);
+          // A `【lane】` prefix becomes the line's lane (voices.ts): its mark, tag and voice.
+          const list = trimHistory((msg.messages as ChatMessage[]).map(withLane));
           for (const m of list)
             if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
           setMessages(list);
@@ -446,7 +487,7 @@ export function DebugEval({
           return;
         }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
-          const m = msg.message as ChatMessage;
+          const m = withLane(msg.message as ChatMessage);
           if (typeof m.text !== "string" || typeof m.id !== "string") return;
           setMessages((list) =>
             list.some((x) => x.id === m.id) ? list : trimHistory([...list, m]),

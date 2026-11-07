@@ -79,9 +79,11 @@ ${GLOBAL}
   --pair        let this run ask the owner's devices to pair (not with --as)
 ${EXITS}
 \`lianki-dev <command> --help\` for one command.`,
-  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] "text" | -
+  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--voice main|calm|bright] "text" | -
   One chat line with the saved grant, then exit (eval.ts say). - reads stdin.
-  With --as <lane> the text is sent as 【<lane>】text. Read aloud unless --quiet.
+  With --as <lane> the text is sent as 【<lane>】text. Read aloud unless --quiet,
+  in the lane's own voice (codex, agy: docs/dev-debug-widget.md, "Lanes and
+  voices"); --voice picks another one for this line.
   stdout: the hub's {"type":"said",…} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
@@ -204,7 +206,7 @@ export function labelText(text: string, lane: string | undefined): string {
 }
 
 /** say's flags that take a value: everything else not a flag is the text. */
-const SAY_VALUED = new Set(["--to", "--task-path", "--agent", "--label"]);
+const SAY_VALUED = new Set(["--to", "--task-path", "--agent", "--label", "--voice"]);
 
 /**
  * The argv for `eval.ts <cmd> …` that a subcommand runs, or an Error (usage).

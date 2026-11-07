@@ -83,7 +83,7 @@ What the server does (`workers/push/src/token-chat.ts`, `lib/chat-token.ts`):
   connects 30 per 10 min, in D1). Deny by default; the answer names the one
   thread. Nothing in a request can name a thread.
 - A token's line is an **agent line** (`from: "agent"`, `via: "token"`,
-  `lane` = the token's name, text `【lane】…`): it never speaks as the owner
+  `tokenLane` = the token's name, text `【name】…`; a token named codex, agy or main also gets that lane's `lane`, mark and voice): it never speaks as the owner
   or the user.
 - **Ask cards**: only a tap on a page of that thread answers one; a token (or
   controller) never can. The `answered` event goes to the thread's pages and

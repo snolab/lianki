@@ -20,7 +20,7 @@
  * socket is not a controller and none of the controller's messages reach it.
  *
  * Lines. A token's line is an agent line (`from: "agent"`, never the owner's
- * or the user's words), `via: "token"`, `lane` = the token's name, its text
+ * or the user's words), `via: "token"`, `tokenLane` = the token's name (and `lane`, voices.ts, when that names a known lane: codex, agy, main), its text
  * starting 【lane】, label the lane. So the owner's lanes (eval.ts listeners)
  * and pages see who posted it, and a token can never speak as the owner.
  *
@@ -39,6 +39,7 @@
 import type { ChatMessage, EditedEvent } from "../../../packages/debug-chat/src/wire";
 import { type Ask, parseAsk, askText } from "../../../packages/debug-chat/src/ask";
 import { OWNER_THREAD, chatText, isUserId } from "../../../lib/dev-eval";
+import { laneOf } from "../../../packages/debug-chat/src/voices";
 
 export const CHAT_PATH = "/api/version/chat";
 export const REVOKED_PATH = "/internal/chat-tokens/revoked";
@@ -130,7 +131,7 @@ export function laneText(lane: string, text: string): string | undefined {
 
 /** May this lane see the answer on this line? Only on its own ask. */
 const ownsAsk = (m: ChatMessage, lane: string | undefined) =>
-  m.via === "token" && lane !== undefined && m.lane === lane;
+  m.via === "token" && lane !== undefined && m.tokenLane === lane;
 /** A line as one token sees it: another lane's (or a controller's) answer left out. */
 export function forLane(m: ChatMessage, lane: string | undefined): ChatMessage {
   if (!m.answer || ownsAsk(m, lane)) return m;
@@ -183,6 +184,9 @@ export class TokenChat {
   }
 
   private line(thread: string, lane: string, text: string, extra: Partial<ChatMessage> = {}) {
+    // A token named after a known lane (voices.ts LANES: codex, agy, main…)
+    // gets that lane's mark and voice; any other name stays a 【name】 prefix.
+    const known = laneOf({ text: `【${lane}】` }).lane;
     return {
       id: crypto.randomUUID().slice(0, 8),
       from: "agent" as const,
@@ -191,7 +195,8 @@ export class TokenChat {
       at: this.host.now(),
       thread,
       via: "token" as const,
-      lane,
+      tokenLane: lane,
+      ...(known ? { lane: known } : {}),
       ...extra,
     } satisfies ChatMessage & { thread: string };
   }
@@ -425,10 +430,10 @@ export class TokenChat {
 
   /** A tap answered `line` in `thread`: only a token ask's own lane hears it. */
   async answered(thread: string, line: ChatMessage, out: unknown) {
-    if (line.via !== "token" || !line.lane) return;
+    if (line.via !== "token" || !line.tokenLane) return;
     await Promise.all(
       this.authed(thread)
-        .filter(({ a }) => a.lane === line.lane)
+        .filter(({ a }) => a.lane === line.tokenLane)
         .map(async ({ ws, a }) => {
           if (await this.fresh(ws, a)) send(ws, out);
         }),

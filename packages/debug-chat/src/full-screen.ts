@@ -68,29 +68,53 @@ const RESERVE = "var(--lk-bottom-reserve, 0px)";
 /** The panel's width and its inset from the right edge (DebugChat.tsx, the section's classes). */
 export const PANEL_W = "min(20rem, calc(100vw - 1rem))";
 export const PANEL_RIGHT = "calc(0.5rem + env(safe-area-inset-right))";
-/** Full screen's side padding, FULL_SCREEN_STYLE's, in viewport units (the section spans the viewport). */
-const FULL_PAD_RIGHT = "max(0.75rem, env(safe-area-inset-right), calc((100vw - 48rem) / 2))";
 
 /**
- * Full screen keeps the bar at the panel's span: its width, its right inset
- * and the box's sideways offset (`dx`, a drag's), so the mark, the + and the
- * mic do not move as the chat fills the screen (owner, 2026-11-07: the mic's
- * place must not change). Only the log takes the whole column. A panel dragged
- * up still has its bar at the bottom in full screen: the log is above it.
+ * Where full screen becomes a sidebar. Owner, 2026-11-07 20:3x JST: "35em":
+ * wider than this, full screen is a full-height panel docked to the right
+ * edge, the page still usable beside it; narrower, it is the whole screen,
+ * the input across its full width. In em, as he gave it (a media query's em
+ * is the browser's default text size, so a larger default text gets the
+ * phone layout a little sooner).
  */
-export function fullBarSpan(dx: number) {
+export const SIDEBAR_QUERY = "(min-width: 35em)";
+
+/**
+ * The sidebar's width. The app has no drag-to-resize pattern yet, so a fixed
+ * one: 20rem (the panel's own width) at the breakpoint, growing with the
+ * window up to 28rem, which keeps the chat's lines readable and leaves the
+ * page most of a desktop window.
+ */
+export const SIDEBAR_W = "clamp(20rem, 32vw, 28rem)";
+
+/** Full screen's side padding (FULL_SCREEN_STYLE), and the bar's gutter there: the panel's own 0.5rem inset. */
+const PAD = (side: "left" | "right") => `max(0.75rem, env(safe-area-inset-${side}))`;
+const GUTTER = (side: "left" | "right") => `max(0.5rem, env(safe-area-inset-${side}))`;
+
+/**
+ * The bar in full screen (owner, 2026-11-07 20:30 JST: the input spans the
+ * screen): the full width inside the safe areas, less the panel's own 0.5rem
+ * gutter, so the cluster [mark | + | mic] is at its left and the input takes
+ * the rest. The gutter is the panel's right inset, so where the panel already
+ * spans the screen (320 px) the mic does not move at all; on a wider phone it
+ * moves left to that gutter. In the sidebar the bar spans the sidebar, as the
+ * log does. A panel dragged up still has its bar at the bottom: the log is
+ * above it.
+ */
+export function fullBarSpan(sidebar: boolean) {
+  if (sidebar) return { alignSelf: "stretch", width: "auto" } as const;
   return {
-    width: PANEL_W,
-    alignSelf: "flex-end",
-    marginRight: `calc(${PANEL_RIGHT} - ${FULL_PAD_RIGHT})`,
-    translate: `${Math.round(dx * 100) / 100}px 0`,
+    alignSelf: "stretch",
+    width: "auto",
+    marginLeft: `calc(${GUTTER("left")} - ${PAD("left")})`,
+    marginRight: `calc(${GUTTER("right")} - ${PAD("right")})`,
   } as const;
 }
 
 /**
- * The section's style in full screen: the visible area, edge to edge; the
- * content in a readable column (48rem at most, centred on a wide screen),
- * clear of the notch, the home indicator and a landscape notch's sides.
+ * The section's style in full screen on a phone (narrower than
+ * SIDEBAR_QUERY): the visible area, edge to edge, clear of the notch, the
+ * home indicator and a landscape notch's sides.
  */
 export const FULL_SCREEN_STYLE = {
   transform: "none",
@@ -103,9 +127,41 @@ export const FULL_SCREEN_STYLE = {
   borderRadius: 0,
   paddingTop: "calc(env(safe-area-inset-top) + 4px)",
   paddingBottom: `var(${FULL_PB_VAR}, ${fullBottomPad(false)})`,
-  paddingLeft: "max(0.75rem, env(safe-area-inset-left), calc((100% - 48rem) / 2))",
-  paddingRight: "max(0.75rem, env(safe-area-inset-right), calc((100% - 48rem) / 2))",
+  paddingLeft: PAD("left"),
+  paddingRight: PAD("right"),
 } as const;
+
+/**
+ * Full screen on a wider screen (SIDEBAR_QUERY): a full-height sidebar docked
+ * to the right edge, SIDEBAR_W wide; log and bar fill its width. The page
+ * beside it stays usable (sidebarReserve).
+ */
+export const FULL_SIDEBAR_STYLE = {
+  ...FULL_SCREEN_STYLE,
+  left: "auto",
+  width: SIDEBAR_W,
+  paddingLeft: "0.5rem",
+  paddingRight: GUTTER("right"),
+  borderLeft: "1px solid color-mix(in oklch, currentColor 18%, transparent)",
+} as const;
+
+/** The page root's variable while the sidebar is up: its width, for a host's own fixed bars. */
+export const SIDEBAR_RESERVE_VAR = "--lk-chat-side";
+
+/**
+ * While the sidebar is up the page's root is padded on the right by its
+ * width, so the page's content reflows beside it instead of under it and
+ * scrolls as ever. Returns the way back (the root's own padding restored).
+ */
+export function sidebarReserve(root: HTMLElement) {
+  const before = root.style.paddingRight;
+  root.style.setProperty(SIDEBAR_RESERVE_VAR, SIDEBAR_W);
+  root.style.paddingRight = `var(${SIDEBAR_RESERVE_VAR})`;
+  return () => {
+    root.style.removeProperty(SIDEBAR_RESERVE_VAR);
+    root.style.paddingRight = before;
+  };
+}
 
 /** The log in full screen: it takes the height the bar leaves, and scrolls inside it. */
 export const FULL_LOG_STYLE = { maxHeight: "none", flex: "1 1 0%", minHeight: 0 } as const;

@@ -246,6 +246,12 @@ broadcast, is `{type, pending: null, sessions: [], listeners}` only: no
 pairing, session, grant, page label or id, node or `self` (`pageState` in
 `workers/push/src/debug.ts`). The label is host + path, never the query.
 
+The owner's own box (`box:chat`, [box-oauth.md](box-oauth.md), "Chat on the
+owner's box") uses the same subprotocol with a ticket of its own audience
+(`lianki-box-chat`), good only from the exact box origin it names. Such a socket
+is chat-only too, may also send voice amends and ask-card taps, and the hub asks
+the main Worker before each line it takes from it.
+
 **The frame: private typing (owner, 2026-11-01).** A shadow widget cannot
 keep keys private: the host page's capture listeners on document or window
 see every `KeyboardEvent.key` (and composed `input` events) before any
@@ -832,9 +838,22 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   only the visual viewport) the box shrinks to the visible area, so the composer
   stays above the keyboard and the bottom safe area is not padded (`data-kb`).
   Pinch-zoomed, it is the layout viewport. The notch and landscape sides pad with
-  `env(safe-area-inset-*)`; the content is one column of at most 48rem, centred on
-  a wide screen; no horizontal scroll at 320 px. The log takes the height the bar
-  leaves and always takes the touch.
+  `env(safe-area-inset-*)`; no horizontal scroll at 320 px. The log takes the
+  height the bar leaves and always takes the touch.
+- **Phone or sidebar** (owner, 2026-11-07 20:31–20:34 JST). Narrower than
+  `SIDEBAR_QUERY`, `(min-width: 35em)` (his number, in em), full screen is the
+  whole screen. Wider, it is a full-height sidebar docked to the right edge,
+  `SIDEBAR_W` = `clamp(20rem, 32vw, 28rem)` wide (no drag-to-resize pattern
+  exists in the app, so a fixed width: 409.6 px at 1280), with a 1 px oklch
+  left border. The page beside it stays usable: while it is up the page's root
+  is padded on the right by its width (`--lk-chat-side`, `sidebarReserve`), so
+  the page reflows clear of it and scrolls as ever. A host's own fixed bars do
+  not reflow by themselves; they can read `--lk-chat-side`.
+- **The bar spans it** (owner, 2026-11-07 20:30 JST: the input across the full
+  width). On a phone the bar is the screen's width less the safe areas and the
+  panel's own 0.5rem gutter (`fullBarSpan`); in the sidebar it is the
+  sidebar's width, as the log. The cluster `[grip | + | mic]` is at its left
+  (also on a left-edge, mirrored panel) and the input takes the rest.
 - **Glass.** The typing glass with the sheet's tint and blur, covering the chat's
   area, which in full screen is the screen; nothing outside the chat is blurred.
   The bar keeps its own box there, and the `@/…` completions get theirs, since the
@@ -846,8 +865,9 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   drag only scrolls).
 
 Checks: `bun scripts/dev/debug-chat-fullscreen-qa.mjs [--shots <dir>]` (silent
-Chromium and WebKit, 390×844, 320×568 and 1280×800, light and dark; the gate,
-toggle, draft, focus, the same elements, the anchor line, side scroll, Escape,
+Chromium and WebKit, 414×896, 390×844, 320×568 and 1280×800, light and dark; the gate,
+toggle, the sidebar, the bar's and input's widths, overlaps, the page beside the
+sidebar, draft, focus, the same elements, the anchor line, side scroll, Escape,
 Back, reload, an emulated keyboard, scroll-down, the arrow and a card). Not
 covered by emulation: a real iPhone home-screen app's keyboard, its pan, and the
 safe areas.
@@ -896,12 +916,20 @@ and the unit tests are in `unit/chat-fold.test.ts` and `unit/anchor.test.ts`.
   so the side follows the way the bar folded. The screen third no longer
   decides it, which fixes "folds left but lines right-aligned". The
   floating box is still clamped on screen (`anchor.ts`).
-- **Pill → tucked.** On the pill the same mark becomes a tuck arrow, and a
-  tap slides the chat into its edge. A pill dragged flush against an edge
-  tucks into that edge too. The pill's Li (part of the pill, not a new
-  button) opens the chat again, as does the menu's Restore row or
-  `chat.open`.
-- **The handle.** Tucked, the chat leaves one thumb-sized handle. Its shape
+- **The third level, tucked, is removed for now** (owner, 2026-11-07
+  20:32 JST: "第三级别", the edge-snapped fold, useless, to be rethought).
+  The mark steps open → pill → tucked no more: on the pill a tap on the
+  mark opens the chat again, and a pill dragged flush against an edge stays
+  a pill there. A device that saved `tucked` shows the plain pill and the
+  saved value is cleared. The handle code below stays dormant until it is
+  rethought; nothing reaches it.
+- **The grip** (owner, 2026-11-07 20:34 JST: the handle did not look
+  draggable). The mark is a six-dot vertical grip (its own SVG, `GripDots`),
+  `cursor: grab`, `grabbing` while held, labelled `dragGrip` (16 locales,
+  with context). Its 44 px touch area, place and gestures are unchanged.
+- **Pill → open.** The pill's Li (part of the pill, not a new button) opens
+  the chat again, as does the grip, the menu's Restore row or `chat.open`.
+- **The handle (dormant).** Tucked, the chat left one thumb-sized handle. Its shape
   is set by `HANDLE_SHAPE` in fold.ts: `"half"` (a half circle bulging from
   the edge, the default) or `"square"` (a rounded square). The owner has
   not picked one yet. The handle's touch area starts `TOUCH_INSET` in from
@@ -1259,6 +1287,58 @@ Tests: `unit/speak-rules.test.ts` (the rules, the gate, the missed line, the
 cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
 `unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
 `unit/node-args.test.ts`.
+
+## Lanes and voices
+
+Several agents talk in the owner's chat — the chat lane (main), codex and
+agy — and he tells them apart by ear and by eye (owner, 2026-11-07). One
+table holds all of it as data: `packages/debug-chat/src/voices.ts` (`LANES`,
+`VOICES`). A lane has a voice id, a name tag and a mark (a small SVG on an
+oklch disc, `LaneMark.tsx`); main has no mark, so its lines look as before.
+
+**Which lane.** A line's `lane` field (`eval.ts say --lane codex`, default
+`$LIANKI_LANE`), else a leading `【codex】` / `【agy】` in its text. The prefix
+is then taken off what is shown and read (the name tag says it). A line
+with neither is main, exactly as before. `say --voice main|calm|bright`
+reads one line in another voice. The hub checks both ids against the table
+and stores them with the line.
+
+**Device voices** (speechSynthesis). Main, the chat lane, is cute: a
+young, bright voice with a cat-girl feel (owner, 2026-11-07 20:34 JST) — the
+first natural voice it prefers (Meijia, Lili, Nicky, Samantha, O-ren, …),
+else today's pick (`pickVoice`), always at pitch 1.1. The others each take a different installed voice *model* — another name,
+never a Compact/Enhanced variant of one already in use — in four passes: a
+natural voice the lane prefers by name, any natural voice, a preferred
+Eloquence voice (Apple's Reed, Flo, …: robotic, but a different model), any
+Eloquence voice. Novelty voices (Bahh, Zarvox, …) are never used. Only when
+nothing is left does the lane reuse main's voice at its own pitch and speed.
+A language's other locales that read it the same way are data
+(`SIBLING_LOCALES`: zh-TW for zh-CN, not Cantonese zh-HK; en-GB/AU/… for
+en-US).
+
+| lane  | voice  | prefers (any language)                     | last resort      |
+| ----- | ------ | ------------------------------------------ | ---------------- |
+| main  | main   | Meijia, Lili, Nicky, Samantha, O-ren, Sora | (pitch 1.1 always) |
+| codex | calm   | Li-mu, Daniel, Otoya, … then Reed, Rocko   | pitch 0.8, ×0.92 |
+| agy   | bright | Lili, Tingting, Karen, Kyoko, … then Flo   | pitch 1.4, ×1.06 |
+
+**Cloud voices** (`lk:voice-out` = cloud). Where an engine has several
+voices for the language the lane gets its own speaker: Workers AI Aura-2,
+English (main `luna`, codex `orion`, agy `thalia`) and Spanish (`celeste`,
+`nestor`, `carina`),
+asked as `/api/words/tts?…&speaker=` (the route keeps only speakers the
+table names; a recording is skipped; an Aura-2 failure answers with MeloTTS,
+never nothing). Everywhere else the cloud has one voice (MeloTTS), so the
+clip plays shifted — `shift` main 1.06, codex 0.88, agy 1.2, pitch and speed
+together — the last resort. The pre-rendered Kokoro/VOICEVOX/Piper clips are fixed texts and are
+not used for live lines.
+
+The owner's mute, quiet lines and the hidden-page rule are unchanged: a
+lane changes which voice reads a line, never whether.
+
+Tests: `unit/voices.test.ts` (lane resolution, voice picks on fake voice
+lists including this Mac's, fallbacks, the cloud speaker and shift, the
+route's speaker, `say --lane/--voice`).
 
 ## The + menu: add to Lianki, attach the page selection
 
@@ -1620,10 +1700,11 @@ The mic is in one cluster with the chat's other buttons: `[mark | + | mic |
 input]` open, `[mark | Li | mic]` folded, the pill's Li in the +'s slot. Every
 slot is `CONTROL_W` (44 px) and the bar's padding is the same folded and open
 (`bar-geometry.ts`), and the fold keeps the mark where it was, so the mic does
-not move as the chat folds. Full screen keeps the bar at the panel's span
-(`fullBarSpan` in full-screen.ts: the panel's width, right inset and sideways
-drag offset; the bottom pad includes `--lk-bottom-reserve`, as the panel rests
-above it), and only the log takes the whole column. The cluster's touch areas
+not move as the chat folds. Full screen spans the bar across the screen
+(owner, 2026-11-07 20:30 JST; see "Full screen"): the mic keeps its height
+and its offset in the bar (the bottom pad includes `--lk-bottom-reserve`, as
+the panel rests above it) and moves sideways only to where the bar now starts,
+the panel's own 8 px gutter. The cluster's touch areas
 are 44 px each way (`TAP_44_CSS`, a `<style>` of the bar's own, so another
 site's page has it too). The up-arrow and scroll-down sit over the bar's other
 end and never cover the mic.
@@ -1634,17 +1715,21 @@ Where it still moves, and why:
   full screen the bar goes to the bottom, as the log fills the screen above it.
 - **Restoring a pill dragged near the right edge**: the open bar is wider, and
   `fit` slides the box back on screen, so the cluster shifts with it.
-- **A wide screen** (desktop): the bar stays at the panel's place on the right
-  while the log is a centred 48rem column.
+- **Entering full screen**: the bar spans the screen, so the mic goes left to
+  the 8 px gutter: measured, 78 px at 414, 54 px at 390, none at 320 (the
+  panel already spans it), and 72.6 px into the sidebar at 1280 (it starts at
+  the sidebar's left). From a panel dragged sideways it lands at that same
+  place; the way back returns it to the panel's.
 - **The keyboard**: the panel lifts by `--lk-kb-lift` and full screen follows
   the visual viewport; both put the bar above the keyboard, but only emulation
   has checked that they agree.
 
 `bun scripts/dev/debug-chat-mic-place-qa.mjs [--shots <dir>]` measures the mic's
-rect at rest, typing, scrolled up with the up-arrow and scroll-down, in full
-screen and back, folded by the mark, open again by the Li, and in full screen
-from a panel dragged sideways, at 414×848 and 320×568, Chromium and WebKit,
-light and dark, and fails on a move over 0.5 px.
+rect at rest, typing, scrolled up with the up-arrow and scroll-down, back
+from full screen, folded by the mark, open again by the Li, and back to a
+panel dragged sideways, and fails on a move over 0.5 px; in full screen it
+checks the mic at the bar's start, the bar's width and the grip, at 414×848,
+390×844, 320×568 and 1280×800, Chromium and WebKit, light and dark.
 
 `bun scripts/dev/debug-chat-scroll-qa.mjs` checks the log's scroll on an
 Android-sized touch viewport (412×915). A drag on the empty input scrolls

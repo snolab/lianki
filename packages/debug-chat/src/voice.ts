@@ -51,6 +51,7 @@ import { hideStops, isDesktop } from "./voice-bg";
 import { reportPageError } from "./page-errors";
 import { AUDIO_PRIO, audioOwner, audioOwnerId } from "./audio-claim";
 import { outputBed } from "./output-bed";
+import { type VoiceId, laneOf, resolveVoices, voiceIdOf } from "./voices";
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
 export const RESUME_TAIL_MS = 400;
@@ -191,7 +192,7 @@ export function isBargeIn(probs: readonly number[], min = BARGE_IN_PROB): boolea
 export type UtterLike = {
   text: string;
   volume?: number;
-  /** The reading speed (speech-rate.ts). */
+  /** The reading speed (speech-rate.ts); `utter` may set a factor first (a lane's last resort). */
   rate?: number;
   onend: ((e?: unknown) => void) | null;
   onerror: ((e?: unknown) => void) | null;
@@ -219,9 +220,9 @@ export type PlayEvents = {
 };
 /** The cloud output (voice-out.ts createCloudOut). */
 export type CloudOut = {
-  prepare?(text: string, lang: string): void;
+  prepare?(text: string, lang: string, voice?: VoiceId): void;
   play(
-    s: { text: string; lang: string; at: number; volume: number; rate?: number },
+    s: { text: string; lang: string; at: number; volume: number; rate?: number; voice?: VoiceId },
     ev: PlayEvents,
   ): Playback;
 };
@@ -251,7 +252,8 @@ export type VoiceState = {
 export type Why = "speech" | "tap" | "typing";
 export type OutMode = "speech" | "cloud";
 
-type Sentence = { text: string; lang: string; from: number; at: number };
+/** `voice`: the line's voice (voices.ts), absent = main. */
+type Sentence = { text: string; lang: string; from: number; at: number; voice?: VoiceId };
 /** What the agent said, and when (for the echo guard). */
 type Said = { text: string; start: number; end?: number };
 
@@ -263,8 +265,8 @@ export type EchoCheck = EchoScore & {
 
 export function createVoice(d: {
   synth: () => SynthLike | null;
-  /** A new utterance for `text` in `lang` (the browser picks a voice). */
-  utter: (text: string, lang: string) => UtterLike;
+  /** A new utterance for `text` in `lang`, in `voice` (voices.ts; absent = main). */
+  utter: (text: string, lang: string, voice?: VoiceId) => UtterLike;
   /** The speaker toggle. */
   enabled: () => boolean;
   /** The focus rule: this tab is visible and the chat input has focus. */
@@ -374,11 +376,11 @@ export function createVoice(d: {
     const s = d.synth();
     if (!s) return null;
     const from = head.from;
-    const u = d.utter(head.text.slice(from), head.lang);
+    const u = d.utter(head.text.slice(from), head.lang, head.voice);
     // iOS cannot change it mid-utterance: a duck applies from the next sentence.
     if (level !== 1) u.volume = level;
     // The speed, as set now: a change applies from the next utterance.
-    u.rate = d.rate?.() ?? 1;
+    u.rate = Math.min(10, (d.rate?.() ?? 1) * (u.rate ?? 1));
     u.onboundary = (b) => {
       if (e !== epoch || !current) return;
       if (b.name && b.name !== "word") return;
@@ -503,7 +505,14 @@ export function createVoice(d: {
     current = { p: null as unknown as Playback, mark: head.from, said: rec };
     const p = c
       ? c.play(
-          { text: head.text, lang: head.lang, at: head.at, volume: level, rate: d.rate?.() ?? 1 },
+          {
+            text: head.text,
+            lang: head.lang,
+            at: head.at,
+            volume: level,
+            rate: d.rate?.() ?? 1,
+            ...(head.voice ? { voice: head.voice } : {}),
+          },
           ev,
         )
       : speech(head, ev, e);
@@ -526,7 +535,7 @@ export function createVoice(d: {
       from: head.from || undefined,
     });
     // Fetch the next one while this plays.
-    if (queue[1]) routeFor(queue[1].lang)?.prepare?.(queue[1].text, queue[1].lang);
+    if (queue[1]) routeFor(queue[1].lang)?.prepare?.(queue[1].text, queue[1].lang, queue[1].voice);
     clearTimer(tail);
     speaking = true;
   };
@@ -637,8 +646,12 @@ export function createVoice(d: {
      * re-sending it) is not read again from its start. `meta` is the line
      * itself (its id, quiet); voice() gates on it (gateVoice) first.
      */
-    reply(text: string, _meta?: SpeakMeta): boolean {
+    reply(said: string, meta?: SpeakMeta): boolean {
       if (!canSpeak() || !api.shouldSpeak()) return false;
+      // Its lane's voice; a `【lane】` prefix is not read out (voices.ts).
+      const text = laneOf({ lane: meta?.lane, text: said }).text;
+      const v = voiceIdOf({ voice: meta?.voice, lane: meta?.lane, text: said });
+      const voice = v === "main" ? undefined : v;
       const t = now();
       if (recent.some((r) => r.text === text && t - r.at < REPLY_DEDUPE_MS)) {
         log({ ev: "voice-reply-dup", chars: text.length });
@@ -649,9 +662,9 @@ export function createVoice(d: {
       const lang = pickLang(text);
       const add = sentences(text)
         .flatMap((s) => chunk(s))
-        .map((t) => ({ text: t, lang, from: 0, at: 0 }));
+        .map((t) => ({ text: t, lang, from: 0, at: 0, ...(voice ? { voice } : {}) }));
       if (!add.length) return false;
-      if (!queue.length) routeFor(lang)?.prepare?.(add[0].text, lang);
+      if (!queue.length) routeFor(lang)?.prepare?.(add[0].text, lang, voice);
       queue.push(...add);
       next();
       emit();
@@ -951,11 +964,15 @@ export function voice(): Voice {
     aec: micAec,
     rate: () => speechRate(),
     report: (message) => reportPageError({ kind: "media", message }),
-    utter: (text, lang) => {
+    utter: (text, lang, id) => {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = lang;
-      const pick = pickVoice(speechSynthesis.getVoices(), lang);
-      if (pick) u.voice = pick;
+      const voices = speechSynthesis.getVoices();
+      // Each lane its own voice model (voices.ts); main is the chat lane's cute voice.
+      const r = resolveVoices(voices, lang, pickVoice)[id ?? "main"];
+      if (r.voice) u.voice = r.voice;
+      u.pitch = r.pitch;
+      u.rate = r.rate;
       alive.add(u);
       u.addEventListener("end", () => alive.delete(u));
       u.addEventListener("error", () => alive.delete(u));

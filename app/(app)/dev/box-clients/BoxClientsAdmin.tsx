@@ -10,6 +10,10 @@ type Box = {
   revokedAt: number | null;
 };
 
+/** What box:chat lets the box do (docs/box-oauth.md, "Chat on the owner's box"). */
+const CHAT_WARNING =
+  "警告：允许后，这个盒子上的任何脚本都能以你的身份使用 Li 聊天：读聊天记录、发消息、用麦克风转写、点问答卡（包括批准）。只有绑定到站点所有者账号的盒子能开。随时可以关闭，撤销盒子也会关闭。";
+
 /** Owner-only and Chinese only, like the other /dev pages. */
 export default function BoxClientsAdmin() {
   const [boxes, setBoxes] = useState<Box[]>([]);
@@ -83,13 +87,42 @@ export default function BoxClientsAdmin() {
               {b.revokedAt ? " · 已撤销" : ""}
             </div>
             {!b.revokedAt && (
-              <button
-                className="btn btn-xs mt-1"
-                type="button"
-                onClick={() => void post({ op: "revoke", clientId: b.clientId })}
-              >
-                撤销
-              </button>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {b.scopes.includes("box:chat") ? (
+                  <button
+                    className="btn btn-xs"
+                    type="button"
+                    data-box-chat-off
+                    onClick={() => void post({ op: "chat", clientId: b.clientId, on: false })}
+                  >
+                    关闭盒子上的聊天
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-xs btn-warning"
+                    type="button"
+                    data-box-chat-on
+                    onClick={() => {
+                      if (confirm(CHAT_WARNING))
+                        void post({ op: "chat", clientId: b.clientId, on: true });
+                    }}
+                  >
+                    允许盒子上的聊天（box:chat）
+                  </button>
+                )}
+                <button
+                  className="btn btn-xs"
+                  type="button"
+                  onClick={() => void post({ op: "revoke", clientId: b.clientId })}
+                >
+                  撤销
+                </button>
+              </div>
+            )}
+            {!b.revokedAt && b.scopes.includes("box:chat") && (
+              <p className="text-warning mt-1" data-box-chat-warning>
+                {CHAT_WARNING}
+              </p>
             )}
           </li>
         ))}

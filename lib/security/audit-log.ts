@@ -28,6 +28,10 @@ export type AuditKind =
   | "live-frontend.disallow"
   | "box.bind"
   | "box.revoke"
+  // box:chat on an owner's box (docs/box-oauth.md, "Chat on the owner's box").
+  | "box.chat-grant"
+  | "box.chat-remove"
+  | "box.chat-ticket"
   | "email.change"
   // API tokens (lib/api-tokens.ts): made, revoked (one, or all with a sign-out
   // everywhere), used (at most once a minute per token, when last_used_at is

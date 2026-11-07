@@ -2,14 +2,19 @@
 /**
  * Browser checks for the chat's full screen (full-screen.ts) on the local
  * /harness page, hot widget, in Chromium and WebKit, light and dark, at iPhone
- * size (390×844), the narrowest phone (320×568) and a desktop (1280×800):
+ * size (414×896, 390×844), the narrowest phone (320×568) and a desktop (1280×800):
  *
  *   - the flag gate: no button without `?full` (the harness is not the owner)
  *   - the button: an svg, a 40px tap target, labelled; a tap fills the screen
- *     and the same button returns to the panel, at the same place and size
+ *     (a phone) or opens the right sidebar (wider than 35em), and the same
+ *     button returns to the panel, at the same place and size
  *   - the switch keeps the thread, the draft, the focus, the line being read,
  *     and the very same input and mic elements (nothing remounts)
- *   - no horizontal scroll at 320 px; the column is capped on a desktop
+ *   - the bar: the screen's width less the 8 px gutters on a phone, the
+ *     sidebar's width (the log's) on a desktop; the input takes what it gained;
+ *     nothing in the bar overlaps
+ *   - the sidebar leaves the page beside it uncovered, reflowed and scrolling
+ *   - no horizontal scroll at 320 px
  *   - Escape and Back leave full screen; a reload keeps it (per device)
  *   - the keyboard, as far as emulation goes: the visual viewport shrunk and
  *     panned (iOS), the box follows it and the bar stays above its bottom
@@ -61,6 +66,7 @@ const check = (ok, what, detail = "") => {
   if (!ok) failures.push(what);
 };
 
+const r = (n) => Math.round(n * 10) / 10;
 const FULL = '[data-testid="debug-chat-fullscreen"]';
 const SECTION = "[data-debug-widget] section[data-debug-chat]";
 const COL = '[data-testid="debug-chat-column"]';
@@ -162,6 +168,8 @@ async function run(engine, name, scheme, vp) {
     check(hit.cls, `${tag} 40px tap target (tap-40)`, JSON.stringify(hit));
     check(!!(await page.locator(FULL).getAttribute("aria-label")), `${tag} labelled`);
     const panel = await box(SECTION);
+    const barPanel = await box(BAR);
+    const inputPanel = await box(INPUT);
     await shot("panel");
 
     // Typing a draft, scrolled up a little: then into full screen.
@@ -194,14 +202,32 @@ async function run(engine, name, scheme, vp) {
     await settle();
     check(await isFull(), `${tag} a tap: full screen`);
     const fs = await box(SECTION);
+    // Wider than the owner's 35em (full-screen.ts SIDEBAR_QUERY): a sidebar
+    // docked right, full height, 20–28rem; narrower: the whole screen.
+    const sidebar = await page.evaluate(() => matchMedia("(min-width: 35em)").matches);
     check(
-      Math.abs(fs.x) <= 1 &&
-        Math.abs(fs.y) <= 1 &&
-        Math.abs(fs.width - vp.width) <= 1 &&
-        Math.abs(fs.height - vp.height) <= 1,
-      `${tag} fills the screen`,
-      JSON.stringify(fs),
+      sidebar === !phone,
+      `${tag} ${phone ? "a phone: full screen" : "a desktop: the sidebar"}`,
     );
+    if (sidebar)
+      check(
+        Math.abs(fs.x + fs.width - vp.width) <= 1 &&
+          Math.abs(fs.y) <= 1 &&
+          Math.abs(fs.height - vp.height) <= 1 &&
+          fs.width >= 20 * 16 - 1 &&
+          fs.width <= 28 * 16 + 1,
+        `${tag} the sidebar: docked right, full height (${fs.width} px wide)`,
+        JSON.stringify(fs),
+      );
+    else
+      check(
+        Math.abs(fs.x) <= 1 &&
+          Math.abs(fs.y) <= 1 &&
+          Math.abs(fs.width - vp.width) <= 1 &&
+          Math.abs(fs.height - vp.height) <= 1,
+        `${tag} fills the screen`,
+        JSON.stringify(fs),
+      );
     const after = await page.evaluate(
       ([c, id]) => {
         const row = document.querySelector(`${c} [data-msg="${id}"]`);
@@ -240,8 +266,81 @@ async function run(engine, name, scheme, vp) {
     const bar = await box(BAR);
     check(col.height > vp.height * 0.5, `${tag} the log takes the height`, `${col.height}`);
     check(bar.y + bar.height <= vp.height, `${tag} the bar is on screen`, JSON.stringify(bar));
-    if (!phone)
-      check(col.width <= 48 * 16 + 1, `${tag} desktop: a readable column (48rem)`, `${col.width}`);
+    // The bar: the screen less the safe areas and the panel's 0.5rem gutter
+    // (no safe areas in emulation); in the sidebar, the sidebar's width, as the log.
+    if (sidebar) {
+      check(
+        Math.abs(bar.width - col.width) <= 1 && Math.abs(bar.x - col.x) <= 1,
+        `${tag} sidebar: bar and log share the width (${r(bar.width)} / ${r(col.width)})`,
+        JSON.stringify({ bar, col }),
+      );
+      check(
+        bar.x >= fs.x && bar.x + bar.width <= fs.x + fs.width + 0.5,
+        `${tag} sidebar: the bar inside it`,
+      );
+      // The page beside it: not covered, reflowed clear of it, and it still scrolls.
+      const pageSide = await page.evaluate((sideX) => {
+        const tall = document.createElement("div");
+        tall.id = "lk-qa-tall";
+        tall.style.cssText = "height:3000px;width:100%;background:transparent";
+        document.body.append(tall);
+        const hit = document.elementFromPoint(sideX / 2, innerHeight / 2);
+        const before = scrollY;
+        scrollTo(0, 400);
+        const scrolled = scrollY - before;
+        scrollTo(0, before);
+        const right = tall.getBoundingClientRect().right;
+        tall.remove();
+        return { covered: !!hit?.closest("[data-debug-widget]"), scrolled, right };
+      }, fs.x);
+      check(!pageSide.covered, `${tag} sidebar: the page beside it is not covered`);
+      check(
+        pageSide.scrolled > 0,
+        `${tag} sidebar: the page beside it still scrolls`,
+        JSON.stringify(pageSide),
+      );
+      check(
+        pageSide.right <= fs.x + 1,
+        `${tag} sidebar: the page's content reflows clear of it`,
+        JSON.stringify(pageSide),
+      );
+    } else {
+      check(
+        Math.abs(bar.x - 8) <= 0.5 && Math.abs(bar.width - (vp.width - 16)) <= 0.5,
+        `${tag} phone: the bar spans the screen less the 8 px gutters (${r(bar.width)} px)`,
+        JSON.stringify(bar),
+      );
+    }
+    const inputFull = await box(INPUT);
+    // The input takes all the bar gained (at 320 px the panel already spans the screen).
+    check(
+      bar.width >= barPanel.width - 0.5 &&
+        (vp.width <= 320 || inputFull.width > inputPanel.width) &&
+        Math.abs(inputFull.width - inputPanel.width - (bar.width - barPanel.width)) <= 1,
+      `${tag} the input grows with the bar (${r(inputPanel.width)} → ${r(inputFull.width)})`,
+      JSON.stringify({ inputPanel, inputFull, barPanel, bar }),
+    );
+    // Nothing in the bar overlaps: mark, +, mic, input in a row.
+    const rowOk = await page.evaluate(() => {
+      const ids = [
+        "debug-chat-pill-min",
+        "debug-chat-attach",
+        "debug-chat-mic",
+        "debug-chat-input",
+      ];
+      const bs = ids
+        .map((id) => document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect())
+        .filter(Boolean);
+      let ok = bs.length >= 3;
+      for (let i = 1; i < bs.length; i++) if (bs[i].left < bs[i - 1].right - 0.5) ok = false;
+      const fsBtn = document
+        .querySelector('[data-testid="debug-chat-fullscreen"]')
+        .getBoundingClientRect();
+      const bar = document.querySelector('[data-testid="debug-chat-pill"]').getBoundingClientRect();
+      if (fsBtn.bottom > bar.top + 0.5) ok = false;
+      return { ok, xs: bs.map((b) => [Math.round(b.left), Math.round(b.right)]) };
+    });
+    check(rowOk.ok, `${tag} nothing in the bar overlaps`, JSON.stringify(rowOk));
     const side = await noSideScroll();
     check(side.ok, `${tag} no horizontal scroll`, JSON.stringify(side));
     check((await page.locator(`${COL} strong`).count()) > 0, `${tag} markdown renders`);
@@ -397,6 +496,7 @@ try {
   ])
     for (const scheme of ["light", "dark"])
       for (const vp of [
+        { width: 414, height: 896 },
         { width: 390, height: 844 },
         { width: 320, height: 568 },
         { width: 1280, height: 800 },

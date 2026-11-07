@@ -5,6 +5,14 @@
  * docs/dev-debug-widget.md, "Node paths".
  */
 import { ROOT_NODE, agentIdOf, nodePath } from "@/lib/dev-eval";
+import {
+  LANE_IDS,
+  type LaneId,
+  VOICE_IDS,
+  type VoiceId,
+  isLaneId,
+  isVoiceId,
+} from "@/packages/debug-chat/src/voices";
 
 export type NodeOpts = { node?: string; agent?: string };
 
@@ -84,6 +92,18 @@ export type SayVolume = { quiet?: true };
 /** The say's flags as sent to the hub. */
 export function sayVolume(f: { quiet: boolean }): SayVolume {
   return f.quiet ? { quiet: true } : {};
+}
+
+/** A say's lane and voice as sent to the hub (packages/debug-chat/src/voices.ts). */
+export type SayLane = { lane?: LaneId; voice?: VoiceId };
+
+/** `--lane` / `--voice` checked against the table: an unknown one is an error, never dropped. */
+export function sayLane(lane?: string, voice?: string): SayLane | { error: string } {
+  if (lane !== undefined && !isLaneId(lane))
+    return { error: `unknown --lane ${lane}: one of ${LANE_IDS.join(", ")}` };
+  if (voice !== undefined && !isVoiceId(voice))
+    return { error: `unknown --voice ${voice}: one of ${VOICE_IDS.join(", ")}` };
+  return { ...(lane ? { lane } : {}), ...(voice ? { voice } : {}) };
 }
 
 /** Printed (stderr) when an old command still passes `say --loud`: it does nothing now. */

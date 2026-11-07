@@ -33,7 +33,8 @@ import { siblingRequestRefused } from "./lib/security/same-site-guard";
 import { clearLegacyCookies, legacyCookieNames } from "./lib/security/legacy-session-cookies";
 import { anchorDue, type LianDb } from "./lib/lian/anchor";
 import { boxGate, type BoxEnv } from "./lib/box-oauth/gate";
-import type { BoxDb } from "./lib/box-oauth/store";
+import { boxChatLive, type BoxDb } from "./lib/box-oauth/store";
+import { BOX_FLAG } from "./lib/box-oauth/rules";
 import { hit, type Limit, type ThrottleDb } from "./lib/security/throttle";
 import type { D1Batch } from "./lib/read/reader-store";
 import { sweepVibeDocs, type VibeBlobs } from "./lib/vibe/retention";
@@ -144,6 +145,19 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async flag(key: unknown): Promise<boolean | "busy"> {
     if (!allow()) return "busy";
     return flagLive(this.env.DB, key);
+  }
+
+  /**
+   * May the hub keep this box's chat socket (docs/box-oauth.md, "Chat on the
+   * owner's box")? "live" only while box.oauth is on and the client's binding is
+   * live with box:chat for a site owner; "gone" otherwise; "busy" over the rate
+   * limit. A D1 error throws: the hub drops the line then.
+   */
+  async boxChat(clientId: unknown): Promise<"live" | "gone" | "busy"> {
+    if (!allow()) return "busy";
+    const db = this.env.DB as unknown as BoxDb;
+    if (!(await flagLive(db as unknown as SessionDb, BOX_FLAG))) return "gone";
+    return (await boxChatLive(db, clientId)) ? "live" : "gone";
   }
 
   /**
