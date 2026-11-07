@@ -9,7 +9,7 @@ import type { PartnerStrings } from "./components/DebugEval";
 import { OwnerBoots } from "./components/OwnerBoots";
 import { LOCALE_HEADER, PARTNER_FRAME_HEADER, resolveLocale } from "@/lib/app-locale";
 import { LANG_TAGS } from "@/lib/constants";
-import { flagIn } from "@/lib/flags";
+import { type FlagValues, flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { boxConfig } from "@/lib/box-oauth/mode";
@@ -21,8 +21,8 @@ import { BoxApiBridge } from "./components/BoxApiBridge";
  * default), or a guest, or the owner: false, and nothing changes. The session
  * is only looked up while the flag is on.
  */
-async function partnerOpenFor(): Promise<boolean> {
-  if (!flagIn(await readFlags(), "partner.ai-reply")) return false;
+async function partnerOpenFor(flags: FlagValues): Promise<boolean> {
+  if (!flagIn(flags, "partner.ai-reply")) return false;
   try {
     const { authSessionOrNull } = await import("./signInEmail");
     const user = (await authSessionOrNull())?.user;
@@ -99,7 +99,11 @@ export default async function RootLayout({
   ) as unknown as PartnerStrings;
   // The unsaved-changes confirm (LeaveGuard, leave-guard.content.ts).
   const leave = String(getIntlayer("leave-guard", locale as never).unsaved);
-  const open = partnerFrame ? false : await partnerOpenFor();
+  // One read per request, passed to everything that decides (docs/feature-flags.md).
+  const flags: FlagValues = partnerFrame ? {} : await readFlags();
+  const open = partnerFrame ? false : await partnerOpenFor(flags);
+  // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
+  const chatFull = flagIn(flags, "partner.fullscreen");
   const box = boxConfig();
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
@@ -147,7 +151,9 @@ export default async function RootLayout({
         {/* The band behind the status bar's white clock (home-screen app only). */}
         <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
-          {partnerFrame ? null : <OwnerBoots strings={partner} leave={leave} open={open} />}
+          {partnerFrame ? null : (
+            <OwnerBoots strings={partner} leave={leave} open={open} chatFull={chatFull} />
+          )}
           {/* A box signed in through lianki.com (docs/box-oauth.md): every page, landing included. */}
           {box ? <BoxApiBridge config={box}>{children}</BoxApiBridge> : children}
         </IntlayerServerProvider>

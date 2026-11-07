@@ -51,6 +51,7 @@ import {
   typedText,
 } from "@lianki/debug-chat/page-errors";
 import { grantUntil } from "@/lib/islands/rules";
+import { openBackToClose } from "@/lib/back-to-close";
 import { frameContext } from "@/lib/frame-context";
 import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
@@ -64,6 +65,8 @@ const TOAST_MS = 4_000;
 const RELABEL_MS = 300;
 /** The agent's avatar in the chat log: Lianki's own logo (public/icon-192.png). */
 const AGENT_AVATAR = "/icon-192.png";
+/** The chat's full screen gets the app's Back-closes-an-overlay entry (lib/back-to-close.ts). */
+const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
 /** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
 const TAB_KEY = "lk:debug-tab";
 /** The build the page runs, on each page-error ("dev" under next dev). */
@@ -125,7 +128,13 @@ export type PartnerStrings = ChatStrings & {
 export function DebugEval({
   strings,
   partnerOpen = false,
-}: { strings?: Partial<PartnerStrings>; partnerOpen?: boolean } = {}) {
+  fullScreen = false,
+}: {
+  strings?: Partial<PartnerStrings>;
+  partnerOpen?: boolean;
+  /** `partner.fullscreen` on: the chat's full screen for every chat user (off: the owner only). */
+  fullScreen?: boolean;
+} = {}) {
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const stringsRef = useRef(strings);
@@ -797,6 +806,9 @@ export function DebugEval({
           files={owner && !isFriend ? ownerFiles : undefined}
           agentAvatar={AGENT_AVATAR}
           viewer={viewer}
+          fullScreen={fullScreen}
+          // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
+          backToClose={backToCloseChat}
         />
       )}
       {/* A pairing request: a big modal on every open page of its audience. */}

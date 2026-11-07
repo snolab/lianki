@@ -45,6 +45,7 @@
     "./aec": "./src/aec.ts",
     "./anchor": "./src/anchor.ts",
     "./fold": "./src/fold.ts",
+    "./full-screen": "./src/full-screen.ts",
     "./detent": "./src/detent.ts",
     "./keyboard-lift": "./src/keyboard-lift.ts",
     "./joystick": "./src/joystick.ts",

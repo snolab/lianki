@@ -19,11 +19,13 @@
  * prefetch" and a left border by node), one addresses another ("from →
  * to"), and the owner's line to a node shows "→ /words › prefetch". Typing
  * "@/" offers the listed nodes; `?target=/words/prefetch` starts with that chip.
+ * `?full` passes the full-screen flag (partner.fullscreen on), with the app's Back handling.
  */
 import { type Ask, askText } from "@lianki/debug-chat/ask";
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
+import { openBackToClose } from "@/lib/back-to-close";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 import { voice } from "@lianki/debug-chat/voice";
@@ -274,6 +276,8 @@ function Harness() {
         hot
         agentAvatar={<LiagentMark size={14} />}
         viewer={{ id: "v1", name: "Harness Owner", avatars: q.has("nopic") ? [] : [PIC] }}
+        fullScreen={q.has("full")}
+        backToClose={(onBack) => openBackToClose(window, onBack)}
         live
         listeners={q.has("offline") ? 0 : 1}
         messages={messages}

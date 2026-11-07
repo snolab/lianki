@@ -117,6 +117,7 @@ target that is not built yet.
 | speech rate, voice out, echo cancel | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec` | → `lk:pref:chat-voice`                                     |
 | voice cues: send, speech start/end  | local `lk:voice-cue-send`, `lk:voice-cue-speech` → account  | done: chat ⋯ menu, on by default (voice-mode.md, "Cues")   |
 | compact mode (last message only)    | local `lk:pref:chat-view` (`chatPrefs`, off by default)      | done: per device, never synced                             |
+| full screen                         | local `lk:pref:chat-view` `full` (`chatPrefs`, off by default) | done: per device, never synced; the button, Escape or Back leave it (dev-debug-widget.md, "Full screen") |
 | tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)              | done: per device, never synced                             |
 
 ### Cards and the swipe

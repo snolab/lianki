@@ -148,6 +148,12 @@ export const FLAGS = {
     requires: ["workers-ai.credentials", "ai-credits.migration"],
     group: "ai",
   },
+  // No `audience`: on, it reaches everyone who has the Learning Partner chat.
+  "partner.fullscreen": {
+    description:
+      "学习伙伴全屏：所有能看到学习伙伴聊天框的用户，在打开的聊天框右上角都有一个全屏按钮，点一下聊天铺满整个应用（iPhone 主屏幕应用和电脑都一样），右上角的按钮、Esc 或返回键回到原来的小聊天框。同一个对话、草稿、滚动位置和麦克风，切换时都不变；是否全屏只记在这台设备上。关闭（默认）= 只有你本人能用。",
+    default: false,
+  },
   "connections.google": {
     description:
       "Google 连接（/connections）：所有登录用户都能连接自己的 Google 账号（只授权 drive.file：只有在 Lianki 里用 Google 选择器打开的文件），在 /read 导入自己的非公开 Google 文档。和 Google 登录完全分开，断开不影响登录。需要先在 GCP 控制台完成设置（docs/connections.md）。关闭（默认）= 只有你本人能用。",
