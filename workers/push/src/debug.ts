@@ -255,6 +255,7 @@ import {
 } from "../../../lib/partner-ai-config";
 import { CHAT_PATH, REVOKED_PATH, TokenChat, tokenAtt } from "./token-chat";
 import { BOX_HEADER, EMBED_HEADER } from "./auth";
+import { type ChatLogRequest, chatLogLine } from "../../../lib/chat-log-line";
 import {
   ETA_AGENT,
   ETA_FLAG,
@@ -455,7 +456,11 @@ type SessionsRpc = {
   boxChat?(clientId: string): Promise<unknown>;
   /** May this box hold the owner's page powers (docs/box-oauth.md)? An older main Worker has none: no. */
   boxEval?(clientId: string): Promise<unknown>;
+  /** The account's chat history (lib/chat-log.ts); an older main Worker has none: not kept. */
+  chatLog?(req: ChatLogRequest): Promise<unknown>;
 };
+/** POST, from the main Worker over its binding: the owner thread's history into D1, once. */
+export const CHAT_BACKFILL_PATH = "/internal/chat-backfill";
 /** How long the hub trusts its read of PARTNER_AI_FLAG (as lib/flags-store.ts's FLAG_CACHE_MS). */
 const AI_FLAG_CACHE_MS = 30_000;
 /** The AI's spinner is re-sent this often while the model works (the page's BUSY_MS is 12 s). */
@@ -797,6 +802,55 @@ export class DebugHub {
     }
     // API-token listeners: their own thread only (token-chat.ts).
     await this.tokens.chat(m);
+    // Sent first: the account's history never holds the chat up.
+    const line = chatLogLine(m);
+    if (line) await this.chatLog({ op: "put", thread: m.thread, lines: [line] });
+  }
+
+  /**
+   * Keeps the account's history in step (lib/chat-log.ts, docs/chat-history.md)
+   * over SESSIONS.chatLog. Never fails the chat: no binding, "busy" or an error
+   * leaves the line in the hub as ever, and is logged.
+   */
+  private async chatLog(req: ChatLogRequest): Promise<unknown> {
+    // Called on the stub itself: `.bind` is sent as an RPC named "bind" and refused (#681).
+    if (!this.sessions?.chatLog) return undefined;
+    try {
+      const out = (await this.sessions.chatLog(req)) as
+        | { ok?: boolean; error?: string }
+        | undefined;
+      if (out && out.ok === false)
+        console.log(JSON.stringify({ msg: "debug.chat-log", op: req.op, error: out.error }));
+      return out;
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.chat-log", op: req.op, error: String(e).slice(0, 200) }),
+      );
+      return undefined;
+    }
+  }
+
+  /** A changed line (polish, merge, answer) in the account's history, where it is still kept. */
+  private async chatLogUpdate(thread: string, m: ChatMessage) {
+    const line = chatLogLine(m);
+    if (line) await this.chatLog({ op: "update", thread, lines: [line] });
+  }
+
+  /**
+   * POST /internal/chat-backfill: the owner thread's stored history into the
+   * owners' accounts, once each (lib/chat-log.ts records it: a second call
+   * writes nothing, so a line deleted since stays deleted). From the main
+   * Worker's history route over its PUSH binding; index.ts answers it on the
+   * binding's hostname alone.
+   */
+  private async backfillApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    if (!this.sessions?.chatLog)
+      return Response.json({ error: "no chat history binding" }, { status: 503 });
+    const lines = (await this.history(OWNER_THREAD)).map(chatLogLine).filter((l) => l !== null);
+    const out = await this.chatLog({ op: "backfill", thread: OWNER_THREAD, lines });
+    if (!out) return Response.json({ error: "chat history unreachable" }, { status: 502 });
+    return Response.json({ lines: lines.length, ...(out as object) });
   }
 
   /**
@@ -851,6 +905,7 @@ export class DebugHub {
       edited: { at: t, by, count: count + 1 },
     };
     await this.ctx.storage.put(key, next);
+    await this.chatLogUpdate(OWNER_THREAD, next);
     const out: EditedEvent = {
       type: "edited",
       id: line.id,
@@ -936,6 +991,7 @@ export class DebugHub {
     if (!v.ok) return refuse(v.reason);
     const next = mergeLines(prev, cur, cur.at);
     await this.ctx.storage.put(key, next);
+    await this.chatLogUpdate(OWNER_THREAD, next);
     console.log(
       JSON.stringify({
         msg: "debug.merge",
@@ -993,6 +1049,12 @@ export class DebugHub {
     for (let s = top - CHAT_HISTORY; s > top - CHAT_HISTORY - grow && s > 0; s--)
       await this.ctx.storage.delete(msgKey(OWNER_THREAD, s));
     console.log(JSON.stringify({ msg: "debug.unmerge", id, lines: lines.length }));
+    await this.chatLog({
+      op: "split",
+      thread: OWNER_THREAD,
+      id,
+      lines: lines.map(chatLogLine).filter((l) => l !== null),
+    });
     this.tellEdit(
       {
         type: "edited",
@@ -1106,6 +1168,7 @@ export class DebugHub {
       at: t,
     };
     await this.ctx.storage.put(key, { ...line, answer } satisfies ChatMessage);
+    await this.chatLogUpdate(page.thread, { ...line, answer });
     const labels: Record<string, string[]> = {};
     for (const q of (line.ask as Ask).questions)
       labels[q.id] = (choices[q.id] ?? []).map(
@@ -1165,6 +1228,7 @@ export class DebugHub {
       return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
     }
     if (url.pathname === BOX_CLOSED_PATH) return this.boxClosedApi(req);
+    if (url.pathname === CHAT_BACKFILL_PATH) return this.backfillApi(req);
     const control = url.pathname.endsWith("/control");
     let who: Identity | undefined;
     if (!control) {

@@ -113,3 +113,24 @@ export function TreeIcon() {
     </svg>
   );
 }
+
+/** The + menu's History row: a clock with an arrow running back round it. */
+export function HistoryIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" />
+      <path d="M3.5 4v4h4" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  );
+}

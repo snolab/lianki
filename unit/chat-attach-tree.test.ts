@@ -43,6 +43,13 @@ describe("the + menu's View group", () => {
     expect(html).toContain(t.attachTree);
   });
 
+  it("History (docs/chat-history.md) comes before the tree, only when the host keeps it", () => {
+    const html = menu({ attach: false, onHistory: noop });
+    expect(order(html)).toEqual(["debug-chat-attach-history", "debug-chat-attach-tree"]);
+    expect(html).toContain(`>${t.chatHistory}<`);
+    expect(menu({ attach: false })).not.toContain("debug-chat-attach-history");
+  });
+
   it("is a checkbox item, checked while the tree is open", () => {
     expect(menu()).toMatch(/role="menuitemcheckbox" aria-checked="false"/);
     expect(menu({ tree: true })).toMatch(/role="menuitemcheckbox" aria-checked="true"/);
