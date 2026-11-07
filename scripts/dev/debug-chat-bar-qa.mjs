@@ -154,11 +154,14 @@ try {
         noTree: !q("debug-chat-tree-button"),
         expanded: q("debug-chat-pill-min").getAttribute("aria-expanded"),
         width: bar.getBoundingClientRect().width,
-        // The mic sits at the far right, after the input.
-        micRight:
-          bar.getBoundingClientRect().right - q("debug-chat-mic").getBoundingClientRect().right,
-        micAfterInput:
-          q("debug-chat-mic").getBoundingClientRect().left >= ta.getBoundingClientRect().right - 1,
+        // The mic is in the cluster, right after the + and before the input
+        // (bar-geometry.ts: it keeps its place as the chat folds).
+        micAfterPlus:
+          q("debug-chat-mic").getBoundingClientRect().left -
+          q("debug-chat-attach").getBoundingClientRect().right,
+        micBeforeInput:
+          q("debug-chat-mic").getBoundingClientRect().right <= ta.getBoundingClientRect().left + 1,
+        micRect: q("debug-chat-mic").getBoundingClientRect().toJSON(),
       };
     });
     check(r.inBar, "expanded: controls and input share one container");
@@ -170,8 +173,8 @@ try {
     );
     check(r.expanded === "true", "minimize button has aria-expanded=true");
     check(
-      r.micAfterInput && r.micRight < 6,
-      `expanded: the mic is at the far right, after the input (${r.micRight}px from the edge)`,
+      r.micBeforeInput && Math.abs(r.micAfterPlus) < 1,
+      `expanded: the mic sits right after the +, before the input (${r.micAfterPlus}px)`,
     );
     // Tag the mic node: it must be the same one after minimizing.
     await page.evaluate(() => {
@@ -179,9 +182,9 @@ try {
     });
     const order = await tabOrder(page);
     check(
-      // (Four controls now; the walk takes five steps and stays on the last.)
+      // (Four controls now, the input last; the walk stays on it.)
       order.slice(0, 4).join() ===
-        "debug-chat-pill-min,debug-chat-attach,debug-chat-input,debug-chat-mic",
+        "debug-chat-pill-min,debug-chat-attach,debug-chat-mic,debug-chat-input",
       `expanded focus order: ${order.join(" → ")}`,
     );
     // Tap the mark: minimizes after the double-tap window, the bar shrinks.
@@ -199,8 +202,13 @@ try {
         same: mic.__qaTag === 1,
         nextToMenu:
           mic.getBoundingClientRect().left - q("debug-chat-restore").getBoundingClientRect().right,
+        rect: mic.getBoundingClientRect().toJSON(),
       };
     });
+    check(
+      Math.abs(m.rect.x - r.micRect.x) < 0.5 && Math.abs(m.rect.y - r.micRect.y) < 0.5,
+      `minimized: the mic has not moved (${r.micRect.x},${r.micRect.y} → ${m.rect.x},${m.rect.y})`,
+    );
     check(m.same, "the mic is the same DOM node across minimize");
     check(
       Math.abs(m.nextToMenu) < 4,
@@ -1069,7 +1077,7 @@ try {
         };
       });
     const inside = (m) => m.box.l >= 8 - 0.5 && m.box.r <= m.vw - 8 + 0.5;
-    await dragBarTo(330);
+    await dragBarTo(310); // the pill is 138 px: clear of the edge, so it does not tuck
     let m = await measure();
     check(
       // Near the right edge: from the pill's left, unless the gutter clamps it.
@@ -1079,7 +1087,7 @@ try {
         inside(m),
       `bar right: from the pill's left, text left, on screen (${JSON.stringify(m)})`,
     );
-    await dragBarTo(70);
+    await dragBarTo(90);
     m = await measure();
     check(
       // Nearer the left edge: mirrored, right edges together unless clamped.
@@ -1090,7 +1098,7 @@ try {
       `bar left: mirrored, right edges together, text right, on screen (${JSON.stringify(m)})`,
     );
     // The tree, minimized, with the bar near the right edge: fully on screen.
-    await dragBarTo(330);
+    await dragBarTo(310); // the pill is 138 px: clear of the edge, so it does not tuck
     await openTreeMinimized(page);
     await page.waitForTimeout(400);
     const t = await page.evaluate(() => {
@@ -1302,6 +1310,8 @@ try {
     const page = await ctx.newPage();
     await page.goto(`${ORIGIN}/harness?min`);
     await page.waitForSelector('[data-testid="debug-chat-frontier-id"]', { timeout: 30_000 });
+    // The pill's lines can re-render once as the box is placed: measure after that.
+    await page.waitForTimeout(400);
     const box = await page.locator('[data-testid="debug-chat-frontier-id"]').boundingBox();
     const cdp = await ctx.newCDPSession(page);
     const pt = { x: box.x + box.width / 2, y: box.y + box.height / 2 };

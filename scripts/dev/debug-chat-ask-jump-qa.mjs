@@ -270,6 +270,25 @@ async function run(engine, name, scheme) {
       return el.scrollHeight - el.scrollTop - el.clientHeight;
     }, COL);
     check(gap <= 24, `${tag} and lands on the newest lines`, `${gap}`);
+
+    // A card inside one long run of the agent's lines: the arrow's side room goes
+    // with the arrow and the run reflows; the card must stay in view (#664).
+    await page.goto(`${ORIGIN}/harness?open&nofrontier&notree`);
+    await page.waitForSelector("[data-debug-widget] [data-debug-chat]", { timeout: 60_000 });
+    await settle();
+    await lines(100, 14);
+    await pushAsk("r1");
+    await lines(200, 14);
+    await settle();
+    check((await count()) === 1, `${tag} long run: the arrow is up`, `${await count()}`);
+    await page.locator(JUMP).tap();
+    await page.waitForTimeout(700);
+    const inRun = await cardInView("r1");
+    check(
+      inRun.card && (await count()) === 0,
+      `${tag} long run: the tapped card stays in view after the run reflows`,
+      JSON.stringify({ ...inRun, count: await count() }),
+    );
   } finally {
     await browser.close();
   }

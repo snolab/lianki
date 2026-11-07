@@ -774,7 +774,10 @@ number. Each tap goes to the nearest above and it is gone when none is. Rules:
   an empty row under the last line: that row (#641, `JUMP_ROW_PX`) grew the resting
   log from 70 to 106 px with 43 px blank under the newest line, the owner's
   2026-11-07 18:10 JST "滚动不在正确的位置，它的下面半个窗口是空的". Hidden under a
-  panel, the + menu and the inbox.
+  panel, the + menu and the inbox. When a tap hides the arrow (or changes its
+  count) the room goes or narrows and the run reflows; a card inside a long run
+  of one sender's lines then moved up past the top, so for 1.5 s after a tap
+  (`REALIGN_MS`) the tapped card is put back at the top in the same frame.
 - **At rest** the log is 3 lines, too short for a card, so a tap holds it open
   (`held: "open"`, via `wireLogHold`'s `onReady`), glass and all, until a press
   outside the chat, as a press on the history while typing does.
@@ -1275,8 +1278,8 @@ menu in three groups (`packages/debug-chat/src/AttachMenu.tsx`, `attach.ts`):
   Add group's "Add a link as a card".
 - **View** (查看) — **State tree** (状态树): toggles the state tree, as the
   bar's tree button did (owner, 2026-11-03: "状态树功能藏到加号里"; the bar
-  has no tree button now, so it is `[mark | + | input | mic]`, and minimized
-  `[mark | mic]`). A `menuitemcheckbox`, checked while the tree is open, with
+  has no tree button now, so it is `[mark | + | mic | input]`, and minimized
+  `[mark | Li | mic]`). A `menuitemcheckbox`, checked while the tree is open, with
   the eval/preview sessions' count; while there are any, the + shows a small
   dot (pulsing when code just ran), so they are not lost with the button. The
   button's sideways drag through detents is gone; a tap on a chip opens it,
@@ -1568,17 +1571,19 @@ renders. `?min` (or `?open`) starts minimized (or expanded), `?notree` and
 `bun scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]` does that on its
 own: it starts the server on a free port, loads the hot widget into
 `/harness`, and checks the chat bar expanded and minimized (one container,
-focus order, 16px input, 40px targets, the inert input, the mic clickable and
+focus order, 16px input, 40px targets (44 px since the mic joined the cluster), the inert input, the mic clickable and
 its drag gestures, floating lines). getUserMedia is stubbed, so nothing is
 recorded. `--shots` also saves light/dark × expanded/minimized at 390px.
 
 The bar's round corner controls are concentric with its border by
 construction (`bar-geometry.ts`): the nested-radius rule, inner radius =
 outer radius − (border + padding), as Apple's iOS 26 `ConcentricRectangle`
-does. The bar's radius is `--lk-bar-r = border + padding + line/2`, and the
-mic's circle is the line-sized square in its inner bottom-right, so one line
-high the bar's right end is a semicircle around the mic, and a taller draft
-keeps the mic on the bottom-right arc. Text size does not scale it (only
+does. The bar's radius is `--lk-bar-r = border + padding + line/2`. Folded,
+the mic is the pill's last control and its circle is the line-sized square in
+the inner bottom-right, so the pill's right end is a semicircle around the
+mic; open, the same circle sits beside the input on the bottom line (see "The
+mic keeps its place" below), and a taller draft keeps the controls on the
+bottom line. Text size does not scale it (only
 text scales). The geometry is inline styles, never new Tailwind classes: a
 stylesheet that has not generated a new class (the whole-page dev server's
 stale CSS on 2026-11-03) left the bar with no radius and no border. `bun scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]`
@@ -1586,6 +1591,39 @@ measures both centres (getBoundingClientRect) at 390×844 and 412×915, light
 and dark, one line, four lines, text at 150% and minimized, and fails over
 0.5px. A control added in a corner (a + at the left end) takes its circle
 from the same variables.
+
+### The mic keeps its place
+
+Owner, 2026-11-07 19:27 JST: "我们把麦克风跟另外几个按钮排到一起吧……这样折叠的时候，它位置就不会变".
+The mic is in one cluster with the chat's other buttons: `[mark | + | mic |
+input]` open, `[mark | Li | mic]` folded, the pill's Li in the +'s slot. Every
+slot is `CONTROL_W` (44 px) and the bar's padding is the same folded and open
+(`bar-geometry.ts`), and the fold keeps the mark where it was, so the mic does
+not move as the chat folds. Full screen keeps the bar at the panel's span
+(`fullBarSpan` in full-screen.ts: the panel's width, right inset and sideways
+drag offset; the bottom pad includes `--lk-bottom-reserve`, as the panel rests
+above it), and only the log takes the whole column. The cluster's touch areas
+are 44 px each way (`TAP_44_CSS`, a `<style>` of the bar's own, so another
+site's page has it too). The up-arrow and scroll-down sit over the bar's other
+end and never cover the mic.
+
+Where it still moves, and why:
+
+- **A panel dragged up the screen** (`lk:debug-chat-pos` with a y offset): in
+  full screen the bar goes to the bottom, as the log fills the screen above it.
+- **Restoring a pill dragged near the right edge**: the open bar is wider, and
+  `fit` slides the box back on screen, so the cluster shifts with it.
+- **A wide screen** (desktop): the bar stays at the panel's place on the right
+  while the log is a centred 48rem column.
+- **The keyboard**: the panel lifts by `--lk-kb-lift` and full screen follows
+  the visual viewport; both put the bar above the keyboard, but only emulation
+  has checked that they agree.
+
+`bun scripts/dev/debug-chat-mic-place-qa.mjs [--shots <dir>]` measures the mic's
+rect at rest, typing, scrolled up with the up-arrow and scroll-down, in full
+screen and back, folded by the mark, open again by the Li, and in full screen
+from a panel dragged sideways, at 414×848 and 320×568, Chromium and WebKit,
+light and dark, and fails on a move over 0.5 px.
 
 `bun scripts/dev/debug-chat-scroll-qa.mjs` checks the log's scroll on an
 Android-sized touch viewport (412×915). A drag on the empty input scrolls

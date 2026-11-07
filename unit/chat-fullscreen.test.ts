@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resetUiStores } from "@lianki/ui-state";
+import { readFileSync } from "node:fs";
 import {
   FULL_SCREEN_STYLE,
+  PANEL_RIGHT,
+  PANEL_W,
   escapeLeaves,
+  fullBarSpan,
   fullBottomPad,
   fullScreenAllowed,
   fullScreenBox,
@@ -125,6 +129,26 @@ describe("the box follows the visible area (the keyboard)", () => {
   it("pads the home indicator only while no keyboard covers it", () => {
     expect(fullBottomPad(false)).toContain("safe-area-inset-bottom");
     expect(fullBottomPad(true)).not.toContain("safe-area-inset-bottom");
+  });
+  it("rests the bar above the bottom island's reserve, as the panel does", () => {
+    expect(fullBottomPad(false)).toContain("--lk-bottom-reserve");
+    expect(FULL_SCREEN_STYLE.paddingBottom).toContain("--lk-bottom-reserve");
+  });
+  it("keeps the bar at the panel's span, so the mic does not move", () => {
+    const s = fullBarSpan(-37.5);
+    expect(s.width).toBe(PANEL_W);
+    expect(s.alignSelf).toBe("flex-end");
+    // The panel's right inset, less full screen's own side padding.
+    expect(s.marginRight).toContain(PANEL_RIGHT);
+    expect(s.marginRight).toContain("48rem");
+    // A dragged panel's sideways offset goes with it.
+    expect(s.translate).toBe("-37.5px 0");
+    expect(fullBarSpan(0).translate).toBe("0px 0");
+  });
+  it("names the panel's own width and inset (the section's classes)", () => {
+    const src = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
+    expect(src).toContain(`w-[${PANEL_W.replaceAll(" ", "")}]`);
+    expect(src).toContain(`right-[${PANEL_RIGHT.replaceAll(" ", "")}]`);
   });
   it("respects the notch and the landscape sides, and caps the column", () => {
     expect(FULL_SCREEN_STYLE.paddingTop).toContain("safe-area-inset-top");

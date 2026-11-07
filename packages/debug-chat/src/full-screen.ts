@@ -56,9 +56,36 @@ export const FULL_TOP_VAR = "--lk-full-top";
 export const FULL_H_VAR = "--lk-full-h";
 export const FULL_PB_VAR = "--lk-full-pb";
 
-/** The bottom padding: the home indicator's safe area, unless the keyboard covers it. */
+/**
+ * The bottom padding: the home indicator's safe area, unless the keyboard
+ * covers it, and the host's bottom island's reserve, as the panel rests above
+ * it: so the bar, and the mic in it, stay where the panel had them.
+ */
 export const fullBottomPad = (keyboard: boolean) =>
-  keyboard ? "8px" : "calc(env(safe-area-inset-bottom) + 8px)";
+  keyboard ? "8px" : `calc(env(safe-area-inset-bottom) + 8px + ${RESERVE})`;
+
+const RESERVE = "var(--lk-bottom-reserve, 0px)";
+/** The panel's width and its inset from the right edge (DebugChat.tsx, the section's classes). */
+export const PANEL_W = "min(20rem, calc(100vw - 1rem))";
+export const PANEL_RIGHT = "calc(0.5rem + env(safe-area-inset-right))";
+/** Full screen's side padding, FULL_SCREEN_STYLE's, in viewport units (the section spans the viewport). */
+const FULL_PAD_RIGHT = "max(0.75rem, env(safe-area-inset-right), calc((100vw - 48rem) / 2))";
+
+/**
+ * Full screen keeps the bar at the panel's span: its width, its right inset
+ * and the box's sideways offset (`dx`, a drag's), so the mark, the + and the
+ * mic do not move as the chat fills the screen (owner, 2026-11-07: the mic's
+ * place must not change). Only the log takes the whole column. A panel dragged
+ * up still has its bar at the bottom in full screen: the log is above it.
+ */
+export function fullBarSpan(dx: number) {
+  return {
+    width: PANEL_W,
+    alignSelf: "flex-end",
+    marginRight: `calc(${PANEL_RIGHT} - ${FULL_PAD_RIGHT})`,
+    translate: `${Math.round(dx * 100) / 100}px 0`,
+  } as const;
+}
 
 /**
  * The section's style in full screen: the visible area, edge to edge; the
@@ -75,7 +102,7 @@ export const FULL_SCREEN_STYLE = {
   width: "auto",
   borderRadius: 0,
   paddingTop: "calc(env(safe-area-inset-top) + 4px)",
-  paddingBottom: `var(${FULL_PB_VAR}, calc(env(safe-area-inset-bottom) + 8px))`,
+  paddingBottom: `var(${FULL_PB_VAR}, ${fullBottomPad(false)})`,
   paddingLeft: "max(0.75rem, env(safe-area-inset-left), calc((100% - 48rem) / 2))",
   paddingRight: "max(0.75rem, env(safe-area-inset-right), calc((100% - 48rem) / 2))",
 } as const;
