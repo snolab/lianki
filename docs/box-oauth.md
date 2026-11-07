@@ -264,7 +264,9 @@ a pairing (the modal shows there; the tap on that page is still the only
 approval), and its page errors are forwarded. Still never: clips or recording,
 a session, or renewal. A grant approved on a box page carries no session, so it
 lasts its 8 hours and then needs a tap. The 8-hour grants approved elsewhere
-reach box pages like any page they cover.
+reach box pages like any page they cover. So does an eval token
+([secrets-and-auth.md](secrets-and-auth.md), "Eval tokens"), and only while the
+box holds `box:eval`.
 
 **Hot replace on a box.** A box runs `next dev` on its own tree, so its own
 edits already reach its pages by HMR. For the Mac's working tree:

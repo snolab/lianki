@@ -29,7 +29,8 @@ type Token = {
   lastUsedAt: string | null;
   expired: boolean;
 };
-type Listing = { account: string; tokens: Token[] };
+/** `scopes`: what this account may pick (`eval` only for a site owner, lib/api-token-api.ts). */
+type Listing = { account: string; tokens: Token[]; scopes?: { id: ScopeId }[] };
 
 export default function TokenManager() {
   const c = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
@@ -108,6 +109,7 @@ export default function TokenManager() {
     "chat:read": s("scopeChatRead"),
     "chat:write": s("scopeChatWrite"),
     "chat:ask": s("scopeChatAsk"),
+    eval: s("scopeEval"),
   };
 
   return (
@@ -224,7 +226,12 @@ export default function TokenManager() {
           />
           <span className="block text-xs opacity-70 mt-1">{s("nameHint")}</span>
         </label>
-        <PermissionPicker value={scopes} onChange={setScopes} disabled={busy} />
+        <PermissionPicker
+          value={scopes}
+          onChange={setScopes}
+          disabled={busy}
+          offered={list?.scopes?.map((x) => x.id)}
+        />
         <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
         {error && (
           <p role="alert" className="text-sm text-red-600 dark:text-red-400">

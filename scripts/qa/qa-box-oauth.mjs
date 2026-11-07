@@ -972,10 +972,15 @@ async function evalSetup() {
 }
 
 /** eval.ts's side: an unauthenticated sender socket (no Origin), as the CLI opens it. */
-async function sender(label) {
+async function sender(label, apiToken) {
   const got = [];
-  const ws = new WebSocket(`${PUSH_WS}/api/version/debug/control?label=${label}`);
+  // With an eval token (docs/secrets-and-auth.md "Eval tokens"), as eval.ts sends LIANKI_TOKEN.
+  const ws = new WebSocket(
+    `${PUSH_WS}/api/version/debug/control?label=${label}`,
+    apiToken ? { headers: { authorization: `Bearer ${apiToken}` } } : undefined,
+  );
   ws.onmessage = (e) => got.push(JSON.parse(String(e.data)));
+  ws.onclose = (e) => got.push({ type: "closed", code: e.code });
   await new Promise((ok, no) => {
     ws.onopen = ok;
     ws.onerror = () => no(new Error("sender socket refused"));
@@ -1050,6 +1055,46 @@ async function evalRun() {
   );
   const err = await wait(() => s.got.find((m) => m.type === "page-error"));
   check("its page errors reach the agent", String(err?.message ?? "").includes(run), err?.message);
+
+  // An eval token: the owner makes it on lianki.com, a sender uses it, no tap.
+  const api = (method, data) =>
+    ctx.request.fetch(`${PROVIDER}/api/token`, {
+      method,
+      data,
+      headers: { origin: PROVIDER, "content-type": "application/json" },
+    });
+  const tooLong = await api("POST", { name: "qa-eval", scopes: ["eval"], expiry: { days: 90 } });
+  check("an eval token past 30 days is refused", tooLong.status() === 400, `${tooLong.status()}`);
+  const made = await api("POST", { name: "qa-eval", scopes: ["eval"], expiry: { days: 7 } });
+  const tok = await made.json();
+  check("the owner makes an eval token", made.ok() && tok.scopes?.includes("eval"));
+  const ts = await sender(`qa-token-${run}`, tok.token);
+  check(
+    "a sender with it is approved with no tap",
+    Boolean(await wait(() => ts.last("approved")?.via === "token")),
+    String(ts.last("error")?.error ?? ""),
+  );
+  ts.send({ type: "eval", code: "location.origin", target: "box" });
+  const tres = await wait(() => ts.last("result"));
+  check(
+    "its eval reaches the box page (box:eval on)",
+    tres?.ok === true && String(tres?.value).includes(new URL(BOX).host),
+    JSON.stringify(tres),
+  );
+  await api("DELETE", { id: tok.id });
+  // The revoke notice closes it; if the local registry drops that, the next eval is refused.
+  if (!(await wait(() => ts.last("closed"), 5_000)))
+    ts.send({ type: "eval", code: "1", target: "box" });
+  check(
+    "revoking the token ends it",
+    Boolean(await wait(() => ts.last("closed")?.code === 4498, 10_000)),
+    JSON.stringify(ts.last("closed")),
+  );
+  const again = await sender(`qa-token2-${run}`, tok.token);
+  check(
+    "and it is refused after",
+    Boolean(await wait(() => again.last("closed")?.code === 4498, 10_000)),
+  );
 
   // Off on /dev/box-clients: no more eval there; the chat goes on.
   const off = await boxes(ctx, { op: "eval", clientId, on: false });

@@ -19,6 +19,18 @@ import {
 export const BASE = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
 /** How long to wait for the pages' results after sending. */
 export const RESULT_MS = 20_000;
+
+/**
+ * LIANKI_TOKEN, when it is an API token (lk_…): eval.ts then runs code with it
+ * (it must hold `eval`; docs/secrets-and-auth.md, "Eval tokens") instead of the
+ * saved grant or a pairing. Anything else in it is ignored here.
+ */
+export function evalApiToken(
+  raw: string | undefined = process.env.LIANKI_TOKEN,
+): string | undefined {
+  const t = raw?.trim();
+  return t && /^lk_[0-9a-f]{64}$/.test(t) ? t : undefined;
+}
 const PAIR_MS = 2 * 60_000;
 
 export type Msg = Record<string, unknown> & { type?: string };
@@ -229,6 +241,44 @@ export function controller({ label, labelFlag, forEmail, noPair, node, agent }: 
     });
   }
 
+  /**
+   * Connect with an eval token (docs/secrets-and-auth.md, "Eval tokens"): the
+   * hub asks lianki.com about it and approves without a tap, or refuses it
+   * (closed with GRANT_INVALID: `refused`). Anything else rejects.
+   */
+  function tokenEval(apiToken: string): Promise<{ ws: WebSocket } | { refused: string }> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(controlUrl(undefined, undefined, "eval"), {
+        headers: { authorization: `Bearer ${apiToken}` },
+      } as unknown as string[]);
+      const give = setTimeout(() => {
+        ws.close();
+        reject(new Error("no answer from the hub within 15 s"));
+      }, 15_000);
+      ws.onmessage = (e) => {
+        const m = JSON.parse(String(e.data)) as Msg;
+        if (m.type === "error") console.error(String(m.error));
+        if (m.type !== "approved") return;
+        clearTimeout(give);
+        ws.onmessage = null;
+        ws.onclose = null;
+        console.error(
+          `Eval token accepted until ${new Date(Number(m.until)).toLocaleString()} (LIANKI_TOKEN).`,
+        );
+        resolve({ ws });
+      };
+      ws.onclose = (e) => {
+        clearTimeout(give);
+        const why = `${e.code}${e.reason ? ` ${e.reason}` : ""}`;
+        if (e.code === GRANT_INVALID)
+          resolve({
+            refused: `LIANKI_TOKEN is not an eval token (${why}): it needs the eval permission, the site owner's account, and not to be expired or revoked`,
+          });
+        else reject(new Error(`eval token: socket closed (${why})`));
+      };
+    });
+  }
+
   /** Whether this process has asked the owner already: it does so at most once. */
   let paired = false;
 
@@ -239,6 +289,14 @@ export function controller({ label, labelFlag, forEmail, noPair, node, agent }: 
    * it never falls back to prompting. (evalStep has the rules.)
    */
   async function evalSocket(): Promise<WebSocket> {
+    // An eval token (LIANKI_TOKEN with `eval`): no saved grant, no pairing. A
+    // lane's chat-only token is refused here; then the saved grant, as before.
+    const apiToken = forEmail ? undefined : evalApiToken();
+    if (apiToken) {
+      const r = await tokenEval(apiToken);
+      if ("ws" in r) return r.ws;
+      console.error(`${r.refused}; using the saved eval grant instead.`);
+    }
     const token = forEmail ? undefined : loadEvalToken();
     let step = evalStep({ token, noPair, paired });
     if (step.kind === "resume") {

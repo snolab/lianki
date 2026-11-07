@@ -281,7 +281,10 @@ async function main(): Promise<number> {
   if (argv instanceof Error) fail(EXIT.usage, `${argv.message}\n${json ? "" : USAGE[sub]}`.trim());
   // Nothing to send with: say so before eval.ts opens a socket (lanes never pair).
   const f = await facts(g, rest, false);
-  const has = sub === "serve" ? f.evalGrant : f.chatGrant || f.evalGrant;
+  // serve with an eval token (LIANKI_TOKEN, docs/secrets-and-auth.md "Eval tokens")
+  // needs no saved grant: eval.ts connects with the token.
+  const evalToken = /^lk_[0-9a-f]{64}$/.test(process.env.LIANKI_TOKEN?.trim() ?? "");
+  const has = sub === "serve" ? f.evalGrant || evalToken : f.chatGrant || f.evalGrant;
   if (!g.pair && !has)
     fail(EXIT.notReady, doctorFindings(f).find((x) => x.check === "grant")!.line);
   return runEval(sub, repo, argv);

@@ -44,6 +44,8 @@ export type EvalTokenAnswer =
       /** The token's public id (its SHA-256), and its short tag. */
       id: string;
       tag: string;
+      /** The token's account (the owner's user id): a sign-out everywhere closes its senders. */
+      userId: string;
       /** The token's name: the sender's label. */
       name: string;
       /** When the token stops working (ms). */
@@ -111,7 +113,14 @@ export async function evalTokenCheck(
     },
     now,
   );
-  return { ok: true, id: c.id, tag: tagOf(c.id), name: c.name, expiresAt: expires };
+  return {
+    ok: true,
+    id: c.id,
+    tag: tagOf(c.id),
+    userId: c.user.id,
+    name: c.name,
+    expiresAt: expires,
+  };
 }
 
 async function refused(db: EvalTokenDb, userId: string, id: string, detail: string, now: number) {

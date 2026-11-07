@@ -146,6 +146,14 @@
  * pairing, grant, inbox, clips or answer. A token ask's `answered` goes to
  * that thread's pages and the same lane's token sockets only.
  *
+ * Eval tokens (lib/eval-token.ts; docs/secrets-and-auth.md, "Eval tokens"). A
+ * controller that connects with an API token holding `eval` (index.ts passes
+ * it as EVAL_TOKEN_HEADER, from Authorization only) is approved by the main
+ * Worker, not a tap: an eval session in the owner's thread until the token
+ * expires, on every owner page (a box's only with box:eval). The main Worker
+ * checks it again, and audits, before each eval; a refusal closes it, as does
+ * a revoke notice. Only its hash and tag are kept, never the token.
+ *
  * Voice-clip recording (packages/debug-chat/src/clips.ts). The switch is a
  * window session's, held here, never in an origin's storage. An owner page
  * knocks with `?ws=<its window's session id>&dev=<device id>` (and
@@ -544,6 +552,29 @@ const send = (ws: Socket, msg: unknown) => {
     ws.send(JSON.stringify(msg));
   } catch {}
 };
+/** The main Worker's yes to an eval token (lib/eval-token.ts), or null for anything else. */
+function evalTokenOk(
+  v: unknown,
+): { id: string; tag: string; name: string; expiresAt: number; userId?: string } | null {
+  if (!v || typeof v !== "object") return null;
+  const r = v as Record<string, unknown>;
+  if (
+    r.ok !== true ||
+    typeof r.id !== "string" ||
+    !/^[0-9a-f]{64}$/.test(r.id) ||
+    typeof r.tag !== "string" ||
+    typeof r.name !== "string" ||
+    typeof r.expiresAt !== "number"
+  )
+    return null;
+  return {
+    id: r.id,
+    tag: r.tag,
+    name: r.name,
+    expiresAt: r.expiresAt,
+    ...(typeof r.userId === "string" ? { userId: r.userId } : {}),
+  };
+}
 /** A box page's label starts with "box ", so the agent and the page list tell it apart. */
 const boxLabel = (label: string, isBox: boolean) =>
   isBox ? cleanLabel(`box ${label}`, MAX_LABEL) : label;
@@ -3054,6 +3085,21 @@ export class DebugHub {
     }
     if (c.scope === "chat")
       return send(ws, { type: "error", error: "this session is chat-only: it cannot eval" });
+    const ev = m.value;
+    // An eval token: the main Worker checks it again, and audits this use, first.
+    if (c.evalToken)
+      return this.evalTokenStillOk(ws, c, ev).then((ok) =>
+        ok ? this.dispatchEval(ws, att(ws) as ControllerAtt, ev) : undefined,
+      );
+    return this.dispatchEval(ws, c, ev);
+  }
+
+  /** One eval to the pages a sender reaches (and the box's, each asked first). */
+  private dispatchEval(
+    ws: Socket,
+    c: ControllerAtt,
+    ev: { code: string; target?: string },
+  ): void | Promise<void> {
     const id = crypto.randomUUID().slice(0, 8);
     const labels: string[] = [];
     // Only the pages of the audience that approved this pairing — or the ones it named.
@@ -3066,7 +3112,6 @@ export class DebugHub {
           ? "the page you were authorized for is not connected now; this socket closes if it stays away 5 min (the grant stays: reconnect with its token)"
           : "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
       });
-    const ev = m.value;
     const targets = reach.filter((p) => !p.a.embed && matchesTarget(p.a.label, ev.target));
     const deliver = (to: typeof targets) => {
       for (const p of to) {

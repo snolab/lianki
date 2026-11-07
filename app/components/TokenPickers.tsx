@@ -1,7 +1,14 @@
 "use client";
 
 import { useIntlayer } from "next-intlayer";
-import { EXPIRY_DAYS, MAX_EXPIRY_DAYS, SCOPES, type ScopeId } from "@/lib/api-tokens";
+import {
+  EXPIRY_DAYS,
+  MAX_EXPIRY_DAYS,
+  OWNER_SCOPES,
+  SCOPES,
+  SCOPE_IDS,
+  type ScopeId,
+} from "@/lib/api-tokens";
 import { isoDay } from "@/lib/dates";
 
 /**
@@ -17,19 +24,27 @@ const SCOPE_TEXT: Record<ScopeId, { label: string; hint: string }> = {
   "chat:read": { label: "scopeChatRead", hint: "scopeChatReadHint" },
   "chat:write": { label: "scopeChatWrite", hint: "scopeChatWriteHint" },
   "chat:ask": { label: "scopeChatAsk", hint: "scopeChatAskHint" },
+  eval: { label: "scopeEval", hint: "scopeEvalHint" },
 };
 
 export function PermissionPicker(p: {
   value: ScopeId[];
   onChange: (v: ScopeId[]) => void;
   disabled?: boolean;
+  /**
+   * What the server offers this account (GET /api/token `scopes`): `eval` only
+   * to a site owner. Absent (the CLI login page): everything but OWNER_SCOPES.
+   */
+  offered?: readonly ScopeId[];
 }) {
   const c = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
   const s = (k: string) => textOf(c[k]);
+  const offered = p.offered ?? SCOPE_IDS.filter((id) => !OWNER_SCOPES.includes(id));
+  const owner = offered.some((id) => OWNER_SCOPES.includes(id));
   return (
     <fieldset className="space-y-2" disabled={p.disabled}>
       <legend className="text-sm font-medium mb-1">{s("permissions")}</legend>
-      {SCOPES.map(({ id }) => {
+      {SCOPES.filter(({ id }) => offered.includes(id)).map(({ id }) => {
         const on = p.value.includes(id);
         return (
           <label key={id} className="flex items-start gap-2 text-sm cursor-pointer">
@@ -48,7 +63,7 @@ export function PermissionPicker(p: {
           </label>
         );
       })}
-      <p className="text-xs opacity-70">{s("never")}</p>
+      <p className="text-xs opacity-70">{s(owner ? "neverOwner" : "never")}</p>
     </fieldset>
   );
 }
