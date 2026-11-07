@@ -17,13 +17,19 @@
  * Not part of qa:all: it needs a second server.
  */
 import { chromium } from "playwright";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync as write } from "node:fs";
+import { dirname } from "node:path";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 
 const PROVIDER = process.env.PROVIDER;
 const BOX = process.env.BOX;
 const OWNER = process.env.OWNER;
-const STATE = process.env.STATE ?? "/tmp/qa-box-oauth.json";
+// The client id between `setup` and `run`: in the repo's gitignored .wrangler/, not the shared temp dir.
+const STATE = process.env.STATE ?? ".wrangler/qa-box-oauth.json";
+const writeFileSync = (path, data) => {
+  mkdirSync(dirname(path), { recursive: true });
+  write(path, data, { mode: 0o600 });
+};
 const PASSWORD = "qa-box-oauth-pass-1";
 const MEMBER = "qa-box-member@lianki.test";
 const STRANGER = "qa-box-stranger@lianki.test";
