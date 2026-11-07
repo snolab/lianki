@@ -10,9 +10,6 @@ import { bookHash, chapterRanges, paragraphsOf, segmentBook, type BookSentences 
 import { langAt } from "./lang-detect";
 import { wordLang } from "./words";
 
-/** The access rule lives with the page's pick (light enough for the browser). */
-export { readerV2On } from "./reader-access";
-
 export interface ReaderBook {
   hash: string;
   /** The book's primary language. */

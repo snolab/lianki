@@ -64,7 +64,7 @@ export function ReadListClient({
   books = false,
 }: {
   isLoggedIn: boolean;
-  /** Google Docs import shown (the reader-v2 gate, page.tsx). */
+  /** Google Docs import shown (signed in on D1, page.tsx). */
   gdoc?: boolean;
   /** Private docs through Google Drive offered (connectionsOn, docs/connections.md). */
   drive?: boolean;

@@ -3,8 +3,7 @@
 //
 //   QA_BASE=http://localhost:3471 bun scripts/qa/qa-read-card-grade.mjs [outDir]
 //
-// Against a local server on D1 (qa:all's wrangler dev, read.reader-v2 on in
-// the local D1). Throwaway accounts and the public-domain fixture EPUB only:
+// Against a local server on D1 (qa:all's wrangler dev). Throwaway accounts and the public-domain fixture EPUB only:
 //
 // - tapping or clicking the text never grades (no batch-grade write);
 // - a word with no card is a preview, with no 制卡 button: a tap, a drag short of
@@ -65,7 +64,7 @@ async function setup(ctx, tag) {
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
   await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.goto(`/read/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   await until(page, () => page.evaluate(() => !!document.querySelector(".lk-book [data-f]")));

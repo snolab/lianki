@@ -3,9 +3,8 @@
 //
 //   QA_BASE=http://localhost:3482 bun scripts/qa/qa-read-live-new-word.mjs [outDir]
 //
-// Against a local `wrangler dev`: it turns the flags read.reader-v2 and
-// read.gdoc-stream on in the local D1, and off again at the end. Not in qa:all,
-// where those flags stay off. A throwaway account, made-up text under a fake doc
+// Against a local `wrangler dev`: it turns the flag read.gdoc-stream on
+// in the local D1, and off again at the end. Not in qa:all, where it stays off. A throwaway account, made-up text under a fake doc
 // id, and a stubbed stream socket. Checks:
 //
 // - a tap on a word of the tail: the slider, no add button, its meaning asked of
@@ -22,7 +21,7 @@ import { launchSilent, newSilentContext } from "./silent.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const OUT = process.argv[2] || "test-results/read-live-new-word";
 const PW = "qa-test-pass-1234";
-const FLAGS = ["read.reader-v2", "read.gdoc-stream"];
+const FLAGS = ["read.gdoc-stream"];
 mkdirSync(OUT, { recursive: true });
 
 let failed = 0;

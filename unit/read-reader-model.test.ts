@@ -21,7 +21,6 @@ import {
 } from "@/lib/read/reader-model";
 import { CHROME_FULL, chromeStep } from "@/lib/read/reader-chrome";
 import { anchorAt, loadAnchor, newestAnchor, parseAnchor, saveAnchor } from "@/lib/read/reader-pos";
-import { readerPick } from "@/lib/read/reader-access";
 import { localReaderData } from "@/lib/read/reader-adapter";
 
 /** A sentence of n words (capitalised: a sentence break needs one). */
@@ -217,7 +216,8 @@ describe("reader position", () => {
     expect(loadAnchor("b", s)).toEqual({ line: 12, off: 0, at: 0 });
     saveAnchor("b", { line: 30, off: 0.25, at: 5 }, s);
     expect(loadAnchor("b", s)).toEqual({ line: 30, off: 0.25, at: 5 });
-    expect(s.getItem("lk:read-pos:b")).toBe("30");
+    // The first reader is gone: its key is only read, never written.
+    expect(s.getItem("lk:read-pos:b")).toBe("12");
   });
 
   it("checks stored anchors and keeps the newest", () => {
@@ -249,22 +249,6 @@ describe("reader position", () => {
       at: 3,
     });
     expect(anchorAt(rects, 1000)).toBeNull();
-  });
-});
-
-describe("reader access", () => {
-  const o = { flags: {}, owner: false, dev: false };
-  it("is v2 for the owner or with the flag on, as its backend (readerV2On)", () => {
-    expect(readerPick(o)).toBe("v1");
-    expect(readerPick({ ...o, flags: { "read.reader-v2": true } })).toBe("v2");
-    expect(readerPick({ ...o, owner: true })).toBe("v2");
-    expect(readerPick({ ...o, owner: true, query: "v1" })).toBe("v1");
-  });
-  it("lets ?reader= choose: v2 only for the owner or a local dev server", () => {
-    expect(readerPick({ ...o, query: "v2" })).toBe("v1");
-    expect(readerPick({ ...o, query: "v2", dev: true })).toBe("v2");
-    expect(readerPick({ ...o, query: "v2", owner: true })).toBe("v2");
-    expect(readerPick({ ...o, flags: { "read.reader-v2": true }, query: "v1" })).toBe("v1");
   });
 });
 

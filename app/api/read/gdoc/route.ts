@@ -17,7 +17,7 @@
 // sentences whose words did not change follow them to their new ids.
 //
 // Gate: as every reader-v2 route (lib/read/reader-route.ts): a session, D1,
-// and the `read.reader-v2` flag or the owner. Rate-limited per user.
+// and the material being the user's. Rate-limited per user.
 
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
@@ -35,7 +35,6 @@ import { ConnectionError, accessToken, forget, googleConfig } from "@/lib/connec
 import type { D1Like } from "@/lib/d1/types";
 import { checkBook } from "@/lib/read/book";
 import { storeGdocBook } from "@/lib/read/gdoc-store";
-import { readerV2On } from "@/lib/read/reader-book";
 import type { D1Batch } from "@/lib/read/reader-store";
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
@@ -68,7 +67,6 @@ export async function POST(request: NextRequest) {
   if (dbBackend() !== "d1") return fail("Not found", 404);
   const flags = await readFlags();
   const owner = isOwner(session.user.email ?? null);
-  if (!readerV2On(flags, owner)) return fail("Not found", 404);
 
   let body: unknown;
   try {

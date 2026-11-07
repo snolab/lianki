@@ -8,9 +8,8 @@
 // by reading time (lib/read/units.ts); grading an item grades each of its
 // sentences, so changing granularity loses no history.
 //
-// Every route below answers 404 unless reader v2 is on for the signed-in user
-// (flag `read.reader-v2`, or the owner), and only ever reads or writes that
-// user's rows for a material they own.
+// Every route below needs a signed-in user on D1 (else 401 / 404), and only
+// ever reads or writes that user's rows for a material they own.
 
 /** What one swipe grades: a sentence, a paragraph, or a span of reading time. */
 export type Granularity = "sentence" | "paragraph" | "time";

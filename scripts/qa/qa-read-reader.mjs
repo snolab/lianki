@@ -1,4 +1,4 @@
-// /read reader v2 QA (flag read.reader-v2; ?reader=v2 on a local dev server):
+// /read reader QA:
 // silent, iPhone and Android sizes, light and dark screenshots.
 //
 //   QA_BASE=http://localhost:3417 bun scripts/qa/qa-read-reader.mjs [outDir]
@@ -125,7 +125,7 @@ async function run(deviceName, scheme, swipe = "js") {
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
   await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2&swipe=${swipe}`, { waitUntil: "load" });
+  await page.goto(`/read/${id}?swipe=${swipe}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   const tag = `${deviceName.replace(/\W/g, "-")}-${scheme}-${swipe}`;
@@ -320,7 +320,7 @@ async function perf() {
   check(res.ok(), `long book imported (${lines.length} lines, ${res.status()})`);
   const id = (await res.json()).id;
   const cdp = await ctx.newCDPSession(page);
-  await page.goto(`/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.goto(`/read/${id}`, { waitUntil: "load" });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor({ timeout: 30000 });
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
   const t0 = Date.now();
