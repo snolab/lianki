@@ -300,6 +300,28 @@ describe("/api/chat/history handlers", () => {
     expect(backfills).toBe(1);
   });
 
+  it("a failing backfill still answers; no D1 lists nothing and deletes nothing; bad bodies are 400", async () => {
+    who = { id: "own1", owner: true };
+    const broken = {
+      ...deps(),
+      backfill: async () => {
+        throw new Error("push down");
+      },
+    };
+    const r = await getHistory(new Request("https://lianki.com/api/chat/history"), broken);
+    expect(((await r.json()) as { lines: unknown[] }).lines.length).toBe(1);
+    const noDb = { ...deps(), db: () => null };
+    const empty = await getHistory(new Request("https://lianki.com/api/chat/history"), noDb);
+    expect(await empty.json()).toEqual({ lines: [], next: null });
+    const req = (body: string) =>
+      new Request("https://lianki.com/api/chat/history", { method: "DELETE", body });
+    expect((await deleteHistory(req('{"id":"o1"}'), noDb)).status).toBe(404);
+    expect((await deleteHistory(req("not json"), deps())).status).toBe(400);
+    expect(await chatLogOp(db, { op: "split", thread: "owner", lines: [] } as never)).toMatchObject(
+      { ok: false },
+    );
+  });
+
   it("delete: a line, a day; a range over a day and a bit is refused", async () => {
     who = { id: "own1", owner: true };
     expect((await del({ from: T0, to: T0 + 30 * 3600_000 })).status).toBe(400);
