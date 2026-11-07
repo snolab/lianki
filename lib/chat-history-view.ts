@@ -22,18 +22,20 @@ export function dayRange(day: string): { from: number; to: number } {
   return { from: new Date(y, m - 1, d).getTime(), to: new Date(y, m - 1, d + 1).getTime() };
 }
 
+const ENTITIES: Record<string, string> = { lt: "<", gt: ">", quot: '"', "#39": "'", amp: "&" };
+
 /** An agent line's text without the rich-text tags (rich-text.ts): history shows it plain. */
 export function plainText(text: string): string {
   if (!text.includes("<")) return text;
-  return text
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|li|div)>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&")
+  let s = text.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|li|div)>/gi, "\n");
+  // Until nothing is left to take: a tag split by another ("<scr<b>ipt>") goes too.
+  for (let prev = ""; prev !== s; ) {
+    prev = s;
+    s = s.replace(/<[^<>]*>/g, "");
+  }
+  // Entities in one pass, after the tags: the page renders this as text, never as HTML.
+  return s
+    .replace(/&(lt|gt|quot|#39|amp);/g, (_m, e: string) => ENTITIES[e] ?? _m)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
