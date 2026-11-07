@@ -2,8 +2,8 @@
 import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 /**
- * The reader v2 (flag `read.reader-v2`; docs/books-plan.md, the 2026-11-03
- * reader sections). The whole book in one continuous scroll of the WINDOW
+ * The /read reader, the only one since 2026-11-07 (docs/books-plan.md, the
+ * 2026-11-03 reader sections). The whole book in one continuous scroll of the WINDOW
  * (no inner scroller, so browser bars collapse and the island's capsule
  * works), virtualised with measured heights. The book as it is: its own
  * paragraphs and headings, a readable measure, flat (design-principles.md:
@@ -109,7 +109,7 @@ import {
   useBookStream,
   type StreamState,
 } from "./reader-stream";
-import { getLocalMaterial } from "./ReadViewClient";
+import { getLocalMaterial } from "./local-material";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { useItemWords, type ItemPlan } from "./use-item-words";
 import {
@@ -189,7 +189,7 @@ export const readMarks = createUiStore(
   },
 );
 
-/** Read on item after item (local `lk:pref:read-auto`, the first reader's key). */
+/** Read on item after item (local `lk:pref:read-auto`). */
 const AUTO_KEY = "lk:pref:read-auto";
 const loadAuto = () => {
   try {
@@ -2037,7 +2037,24 @@ function Reader({
         {/* Reserve, don't push: the strip's height of room above the book at rest. */}
         <div aria-hidden className="h-[3.25rem]" />
         {/* A /books book: its source link and licence, above the text (docs/books-plan.md). */}
+        {/* The author, as the first reader showed it (the strip names the book
+            or its chapter); it scrolls away with the text. */}
+        {loaded && book?.author && (
+          <p
+            className="mx-auto max-w-[42rem] px-5 pb-2 text-sm opacity-70"
+            data-testid="reader-author"
+          >
+            {book.author}
+          </p>
+        )}
         <BookSourceNote book={book} className="mx-auto max-w-[42rem] px-5 pb-3" />
+        {/* The book's words, as the first reader showed them at the top: straight
+            on the page (no frame), the details folded on a phone. */}
+        {loaded && material.words && (
+          <div className="mx-auto max-w-[42rem] px-5 pb-4" data-testid="reader-scan-top">
+            <BookScan id={id} words={material.words} flat collapsible />
+          </div>
+        )}
 
         {/* The book */}
         {!loaded && (

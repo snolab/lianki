@@ -7,13 +7,12 @@
 //
 //   QA_BASE=http://localhost:3417 bun scripts/qa/qa-drive-pick.mjs [outDir]
 //
-// Against qa:all's wrangler dev (--keep) with the read.reader-v2 and
-// connections.google flags on in its local D1:
+// Against qa:all's wrangler dev (--keep) with the connections.google flag on
+// in its local D1:
 //   bunx wrangler d1 execute lianki --local --command "INSERT OR REPLACE INTO
 //   feature_flags (key, enabled, updated_at, updated_by) VALUES
-//   ('read.reader-v2', 1, datetime('now'), 'qa'), ('connections.google', 1,
-//   datetime('now'), 'qa')"
-// (delete the rows after; the other read suites expect them off).
+//   ('connections.google', 1, datetime('now'), 'qa')"
+// (delete the row after; the other read suites expect it off).
 //
 // Checks: the button and the three-step how-to show next to "Import Google
 // Doc"; a tap opens the Picker with multi-select on and no preselected doc;

@@ -5,12 +5,8 @@
 //
 //   QA_BASE=http://localhost:3417 bun scripts/qa/qa-read-phrase-marks.mjs [outDir]
 //
-// Against a local server on D1 where reader v2 shows: a dev server
-// (`?reader=v2`), or qa:all's wrangler dev (--keep) with the read.reader-v2
-// flag on in its local D1 (`bunx wrangler d1 execute lianki --local --command
-// "INSERT OR REPLACE INTO feature_flags VALUES ('read.reader-v2', 1,
-// datetime('now'), 'qa')"`; delete the row after, the other read suites
-// expect v1). Signs up throwaway accounts and imports the public-domain
+// Against a local server on D1, such as qa:all's wrangler dev (--keep).
+// Signs up throwaway accounts and imports the public-domain
 // fixture EPUB. His cards' meanings (GET /api/read/[id]/meanings) are
 // answered here with one phrase card made of three words on screen, and
 // those words are made learning cards in the word map, so no model is needed:
@@ -239,7 +235,7 @@ async function run(engine, device, scheme) {
   await page.goto("/read", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
   await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
-  const url = `/read/${page.url().split("/").pop()}?reader=v2`;
+  const url = `/read/${page.url().split("/").pop()}`;
   await page.goto(url, { waitUntil: "load" });
   await page
     .locator("[data-testid=reader-book] [data-item]")

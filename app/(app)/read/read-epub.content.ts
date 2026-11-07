@@ -2,8 +2,7 @@ import { t, type DeclarationContent } from "intlayer";
 import { describeKeys } from "@/lib/i18n-context";
 
 /**
- * EPUB import on /read (ReadListClient.tsx, lib/epub/) and the chapter
- * navigation of an imported book in the reader (read/[id]/ReadViewClient.tsx).
+ * EPUB import on /read (ReadListClient.tsx, lib/epub/).
  */
 const dictionary = {
   key: "read-epub",
@@ -170,60 +169,6 @@ const dictionary = {
       sw: "Kuleta kumeshindikana. Tafadhali jaribu tena.",
       mr: "आयात अयशस्वी झाली. कृपया पुन्हा प्रयत्न करा.",
     }),
-    chapters: t({
-      en: "Chapters",
-      zh: "章节",
-      ja: "章",
-      ko: "장 목록",
-      hi: "अध्याय",
-      es: "Capítulos",
-      fr: "Chapitres",
-      ar: "الفصول",
-      bn: "অধ্যায়সমূহ",
-      pt: "Capítulos",
-      ru: "Главы",
-      ur: "ابواب",
-      id: "Bab",
-      de: "Kapitel",
-      sw: "Sura",
-      mr: "प्रकरणे",
-    }),
-    prevChapter: t({
-      en: "Previous chapter",
-      zh: "上一章",
-      ja: "前の章",
-      ko: "이전 장",
-      hi: "पिछला अध्याय",
-      es: "Capítulo anterior",
-      fr: "Chapitre précédent",
-      ar: "الفصل السابق",
-      bn: "আগের অধ্যায়",
-      pt: "Capítulo anterior",
-      ru: "Предыдущая глава",
-      ur: "پچھلا باب",
-      id: "Bab sebelumnya",
-      de: "Vorheriges Kapitel",
-      sw: "Sura iliyotangulia",
-      mr: "मागील प्रकरण",
-    }),
-    nextChapter: t({
-      en: "Next chapter",
-      zh: "下一章",
-      ja: "次の章",
-      ko: "다음 장",
-      hi: "अगला अध्याय",
-      es: "Capítulo siguiente",
-      fr: "Chapitre suivant",
-      ar: "الفصل التالي",
-      bn: "পরের অধ্যায়",
-      pt: "Próximo capítulo",
-      ru: "Следующая глава",
-      ur: "اگلا باب",
-      id: "Bab berikutnya",
-      de: "Nächstes Kapitel",
-      sw: "Sura inayofuata",
-      mr: "पुढील प्रकरण",
-    }),
   },
 };
 
@@ -245,19 +190,13 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Error after picking an e-book whose text is longer than what one reading material can hold. A full sentence.",
   errFailed:
     "Generic error when saving the imported e-book failed (network or server problem); the user can try again. Two short sentences.",
-  chapters:
-    "Screen-reader label of the drop-down in the reader of an imported book that lists the book's chapters and jumps to the chosen one. A plural noun.",
-  prevChapter:
-    "Button (with a left arrow) in the reader of an imported book: jumps to the start of the previous chapter. A short noun phrase.",
-  nextChapter:
-    "Button (with a right arrow) in the reader of an imported book: jumps to the start of the next chapter. A short noun phrase.",
 };
 
 export default {
   ...dictionary,
-  title: "/read — EPUB import and book chapter navigation",
+  title: "/read — EPUB import",
   description: describeKeys(
-    "Importing an e-book file (EPUB) as private reading material on /read, its error messages, and moving between the book's chapters in the reader.",
+    "Importing an e-book file (EPUB) as private reading material on /read, and its error messages.",
     context,
   ),
 } satisfies DeclarationContent;

@@ -4,6 +4,7 @@
  * lianki.com who its token belongs to (/api/box/me, through the box's fetch)
  * and the header, the account menu and the pages read that instead.
  */
+import { FLAG_KEYS, type FlagValues } from "@/lib/flags";
 import { isOwnAvatar } from "@/lib/profile/avatar";
 import { BOX_ME_PATH } from "./rules";
 import type { BoxMe } from "./me";
@@ -21,8 +22,41 @@ export type BoxSessionDeps = {
 
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : null);
 
+/**
+ * What the tab is signed in as: the account, and production's flags and owner
+ * role for it ("Flags on a box"), so the box's pages decide as lianki.com
+ * would rather than from the box's own local D1. Read once per page load.
+ */
+export type BoxAccount = { user: BoxMe; flags: FlagValues; owner: boolean };
+
+/** Only registry keys, only booleans: an unknown or odd value is left out (off). */
+export function boxFlagsFrom(raw: unknown): FlagValues {
+  const out: FlagValues = {};
+  if (!raw || typeof raw !== "object") return out;
+  const r = raw as Record<string, unknown>;
+  for (const k of FLAG_KEYS) if (typeof r[k] === "boolean") out[k] = r[k];
+  return out;
+}
+
+export type FlagView = { flags: FlagValues | null | undefined; owner: boolean };
+
+/**
+ * The flags and owner role a page decides by. `box` is null off a box; on a
+ * box signed in through lianki.com, production's answer for the bound account
+ * wins over the box server's (its local D1, no session). A box tab not signed
+ * in has no account to ask about: the server's answer stands.
+ */
+export function flagViewOn(box: { account: BoxAccount | null } | null, server: FlagView): FlagView {
+  return box?.account ? { flags: box.account.flags, owner: box.account.owner } : server;
+}
+
 /** The account this tab is signed in as, or null: no token, refused, or lianki.com unreachable. */
 export async function resolveBoxUser(d: BoxSessionDeps): Promise<BoxMe | null> {
+  return (await resolveBoxAccount(d))?.user ?? null;
+}
+
+/** As resolveBoxUser, with production's flags and the owner role (none: all off, not owner). */
+export async function resolveBoxAccount(d: BoxSessionDeps): Promise<BoxAccount | null> {
   if (!d.hasTokens()) return null;
   let res: Response;
   try {
@@ -35,12 +69,20 @@ export async function resolveBoxUser(d: BoxSessionDeps): Promise<BoxMe | null> {
     return null;
   }
   if (!res.ok) return null;
-  const body = (await res.json().catch(() => null)) as { user?: Record<string, unknown> } | null;
+  const body = (await res.json().catch(() => null)) as {
+    user?: Record<string, unknown>;
+    flags?: unknown;
+    owner?: unknown;
+  } | null;
   const email = text(body?.user?.email, 320);
   if (!email) return null;
   const name = text(body?.user?.name, 200) || email;
   const image = await avatar(text(body?.user?.image, 2048), d);
-  return { name, email, image };
+  return {
+    user: { name, email, image },
+    flags: boxFlagsFrom(body?.flags),
+    owner: body?.owner === true,
+  };
 }
 
 /**

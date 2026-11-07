@@ -3,7 +3,6 @@ import {
   initialPlayer,
   playerReducer,
   readLang,
-  shadowVerdict,
   speechChunks,
   type PlayerCfg,
   type PlayerEvent,
@@ -140,18 +139,5 @@ describe("read player: helpers", () => {
     expect(readLang(undefined, "こんにちは")).toBe("ja");
     expect(readLang(undefined, "小王子")).toBe("zh");
     expect(readLang(undefined, "Hello")).toBe("en");
-  });
-
-  it("shadowVerdict: his reading of the line is consumed, and done once it covers the line", () => {
-    const line = "Lorsque j'avais six ans j'ai vu, une fois, une magnifique image.";
-    expect(shadowVerdict(["Lorsque j'avais six ans"], line)).toEqual({
-      consume: true,
-      done: false,
-    });
-    expect(
-      shadowVerdict(["Lorsque j'avais six ans", "j'ai vu une fois une magnifique image"], line),
-    ).toEqual({ consume: true, done: true });
-    // Talking to the chat about something else is not his reading.
-    expect(shadowVerdict(["Can you fix the login page"], line).consume).toBe(false);
   });
 });

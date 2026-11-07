@@ -284,7 +284,12 @@ async function main(): Promise<number> {
   // serve with an eval token (LIANKI_TOKEN, docs/secrets-and-auth.md "Eval tokens")
   // needs no saved grant: eval.ts connects with the token.
   const evalToken = /^lk_[0-9a-f]{64}$/.test(process.env.LIANKI_TOKEN?.trim() ?? "");
-  const has = sub === "serve" ? f.evalGrant || evalToken : f.chatGrant || f.evalGrant;
+  // voices --cloud asks no page: no grant needed. voices otherwise reads pages: eval.
+  const cloudOnly = sub === "voices" && rest.includes("--cloud");
+  const has =
+    cloudOnly ||
+    (sub === "serve" && evalToken) ||
+    (sub === "serve" || sub === "voices" ? f.evalGrant : f.chatGrant || f.evalGrant);
   if (!g.pair && !has)
     fail(EXIT.notReady, doctorFindings(f).find((x) => x.check === "grant")!.line);
   return runEval(sub, repo, argv);

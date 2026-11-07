@@ -505,3 +505,118 @@ describe("voice-out: a context the browser will not run (no tap since the page l
     expect(r.events).toEqual([]);
   });
 });
+
+describe("voice-out: an ElevenLabs preview (a line's eleven:<id>)", () => {
+  type El = {
+    src: string;
+    paused: boolean;
+    volume: number;
+    plays: string[];
+    refuse?: boolean;
+    onended: (() => void) | null;
+    onerror: (() => void) | null;
+    onloadedmetadata: (() => void) | null;
+    play(): Promise<void>;
+    pause(): void;
+    load(): void;
+  };
+  const fakeEl = (): El => {
+    const e: El = {
+      src: "",
+      paused: true,
+      volume: 1,
+      plays: [],
+      onended: null,
+      onerror: null,
+      onloadedmetadata: null,
+      play() {
+        if (e.refuse)
+          return Promise.reject(Object.assign(new Error("no"), { name: "NotAllowedError" }));
+        e.paused = false;
+        e.plays.push(e.src);
+        return Promise.resolve();
+      },
+      pause() {
+        e.paused = true;
+      },
+      load() {},
+    };
+    return e;
+  };
+  const pick = {
+    kind: "eleven" as const,
+    id: "x",
+    preview: "https://storage.googleapis.com/eleven-public-prod/x.mp3",
+  };
+  const s = { text: "Hi.", lang: "en", at: 0, volume: 0.5, pick };
+  const out = (plain?: El) => {
+    const main = fakeEl();
+    const fetched: string[] = [];
+    const o = createCloudOut({
+      fetch: async (u) => {
+        fetched.push(u);
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          blob: async () => new Blob(["x"]),
+        };
+      },
+      element: () => main as never,
+      ...(plain ? { plain: () => plain as never } : {}),
+      ctx: () => null,
+      toUrl: () => "blob:x",
+    });
+    return { o, main, fetched };
+  };
+
+  it("plays on its own element, never fetching the route; stop and volume act on it", async () => {
+    const p = fakeEl();
+    const { o, main, fetched } = out(p);
+    const ev: string[] = [];
+    o.prepare?.("Hi.", "en", undefined, pick);
+    const pb = o.play(s, {
+      onstart: () => ev.push("start"),
+      onend: () => ev.push("end"),
+      onerror: () => ev.push("err"),
+    });
+    await tick();
+    expect(p.plays).toEqual([pick.preview]);
+    expect(p.volume).toBe(0.5);
+    expect(main.plays).toEqual([]);
+    expect(fetched).toEqual([]);
+    expect(ev).toEqual(["start"]);
+    pb.volume(0.25, 80);
+    expect(p.volume).toBe(0.25);
+    expect(pb.stop()).toEqual({});
+    expect(p.paused).toBe(true);
+    expect(pb.stop()).toEqual({});
+    p.onended?.();
+    expect(ev).toEqual(["start"]);
+  });
+
+  it("no preview element, a refused play or a load error: onfail (the session reads the line)", async () => {
+    const fails: string[] = [];
+    const ev = { onend: () => {}, onerror: () => {}, onfail: (r: string) => void fails.push(r) };
+    out().o.play(s, ev);
+    const refused = fakeEl();
+    refused.refuse = true;
+    out(refused).o.play(s, ev);
+    const broken = fakeEl();
+    out(broken).o.play(s, ev);
+    broken.onerror?.();
+    await tick();
+    expect(fails.sort()).toEqual(
+      ["no element for a preview", "play NotAllowedError", "preview error"].sort(),
+    );
+  });
+
+  it("unlock() primes the preview element in the same tap", () => {
+    const p = fakeEl();
+    const { o, main } = out(p);
+    withGlobals({ btoa: globalThis.btoa }, () => o.unlock());
+    expect(main.plays).toHaveLength(1);
+    expect(p.plays).toHaveLength(1);
+    expect(p.plays[0]).toStartWith("data:audio/wav");
+  });
+});

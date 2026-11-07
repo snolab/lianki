@@ -362,5 +362,7 @@ describe("the page's helpers", () => {
   it("an agent line's rich-text tags are shown plain", () => {
     expect(plainText("<b>Done</b> &amp; shipped<br>next")).toBe("Done & shipped\nnext");
     expect(plainText("no tags")).toBe("no tags");
+    expect(plainText("a<scr<b>ipt>b")).toBe("ab");
+    expect(plainText("x &amp;lt; y <i>z</i>")).toBe("x &lt; y z");
   });
 });

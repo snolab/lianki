@@ -48,9 +48,20 @@ const json = (status: number, error: string, extra?: HeadersInit) =>
 function cors(origin: string): Record<string, string> {
   return {
     "access-control-allow-origin": origin,
+    "access-control-expose-headers": BOX_EXPOSED_HEADERS,
     vary: "Origin",
   };
 }
+
+/**
+ * The app's own response headers a box page reads (CORS hides all but the
+ * safelisted ones otherwise): X-Voice tells the chat whether a clip is a
+ * lane's own speaker (voice-out.ts) and /words a missing recording
+ * (lib/words/audio-cache.ts); Retry-After a rate limit; Content-Disposition a
+ * file's name (the inbox). Without it, on a box every lane clip counted as
+ * fallen back to the one voice (2026-11-07).
+ */
+export const BOX_EXPOSED_HEADERS = "X-Voice, Retry-After, Content-Disposition";
 
 export async function sha256B64Url(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -72,6 +83,7 @@ function withCors(res: Response, origin: string): Response {
   out.headers.delete("set-cookie");
   out.headers.delete("access-control-allow-credentials");
   out.headers.set("access-control-allow-origin", origin);
+  out.headers.set("access-control-expose-headers", BOX_EXPOSED_HEADERS);
   out.headers.append("vary", "Origin");
   return out;
 }

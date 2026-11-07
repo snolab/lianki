@@ -3,7 +3,6 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
-import { readerV2On } from "@/lib/read/reader-book";
 import { connectionsOn } from "@/lib/connections/gate";
 import { booksOn } from "@/lib/books/gate";
 import { vibeAllowed } from "@/lib/vibe/gate";
@@ -11,10 +10,10 @@ import { VibeEntry } from "../vibe/VibeDocNote";
 
 export default async function ReadPage() {
   const user = await authUserOrNull();
-  // Google Docs import: the reader-v2 gate, as its route (app/api/read/gdoc).
+  // Google Docs import: signed in on D1, as its route (app/api/read/gdoc).
   const flags = user && dbBackend() === "d1" ? await readFlags() : null;
   const owner = isOwner(user?.email ?? null);
-  const gdoc = !!flags && readerV2On(flags, owner);
+  const gdoc = !!flags;
   // Private docs through the Google connection (docs/connections.md).
   const drive = gdoc && connectionsOn(flags, owner);
   // The link to /books, the public-domain library (books.catalogue, or the owner).

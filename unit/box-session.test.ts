@@ -11,7 +11,14 @@ import { boxGate, boxTokenHash, type GateDeps } from "@/lib/box-oauth/gate";
 import { BOX_IDENTITY_HEADER, signBoxIdentity } from "@/lib/box-oauth/identity";
 import { boxMeResponse } from "@/lib/box-oauth/me";
 import { BOX_ME_PATH, tokenMayCall } from "@/lib/box-oauth/rules";
-import { resolveBoxUser, type BoxSessionDeps } from "@/lib/box-oauth/session";
+import {
+  boxFlagsFrom,
+  flagViewOn,
+  resolveBoxAccount,
+  resolveBoxUser,
+  type BoxSessionDeps,
+} from "@/lib/box-oauth/session";
+import { draftAllowedFor } from "@/lib/read/reader-access";
 import { insertBinding, type BoxDb } from "@/lib/box-oauth/store";
 import { signOut } from "@/lib/sign-out";
 
@@ -294,5 +301,99 @@ describe("sign-out on a box", () => {
     expect(ended).toBe(1);
     expect(posts).toEqual([]);
     expect(replaced).toEqual(["/"]);
+  });
+});
+
+describe("flags on a box: production's, for the bound account", () => {
+  const user = { name: "Ann", email: "ann@test.example", image: null };
+  const id = new Headers({ [BOX_IDENTITY_HEADER]: "x" });
+
+  test("the route adds production's flags and the owner role for that account", async () => {
+    const asked: string[] = [];
+    const res = await boxMeResponse(
+      id,
+      async () => ({ user }),
+      async (email) => {
+        asked.push(email);
+        return { flags: { "read.live-polish": true }, owner: false };
+      },
+    );
+    expect(await res.json()).toEqual({
+      user,
+      flags: { "read.live-polish": true },
+      owner: false,
+    });
+    expect(asked).toEqual(["ann@test.example"]);
+  });
+
+  test("nobody signed in: the view is never read", async () => {
+    let read = 0;
+    const res = await boxMeResponse(
+      id,
+      async () => null,
+      async () => {
+        read++;
+        return { flags: {}, owner: true };
+      },
+    );
+    expect(res.status).toBe(401);
+    expect(read).toBe(0);
+  });
+
+  const page = (body: unknown): BoxSessionDeps => ({
+    hasTokens: () => true,
+    forget: () => {},
+    fetch: async () => Response.json(body),
+  });
+
+  test("the page keeps registry flags only, booleans only", async () => {
+    const a = await resolveBoxAccount(
+      page({
+        user: { name: "Ann", email: "a@test.example" },
+        flags: { "read.live-polish": true, "box.oauth": "yes", "no.such-flag": true },
+        owner: true,
+      }),
+    );
+    expect(a?.flags).toEqual({ "read.live-polish": true });
+    expect(a?.owner).toBe(true);
+    expect(boxFlagsFrom(null)).toEqual({});
+    expect(boxFlagsFrom([true])).toEqual({});
+  });
+
+  test("an older lianki.com without flags: all off, not the owner", async () => {
+    const a = await resolveBoxAccount(page({ user: { email: "a@test.example" } }));
+    expect(a).toEqual({
+      user: { name: "a@test.example", email: "a@test.example", image: null },
+      flags: {},
+      owner: false,
+    });
+  });
+
+  test("on a signed-in box, production's view wins over the box server's local D1", () => {
+    const local = { flags: {}, owner: false };
+    const account = {
+      user: { name: "A", email: "a@test.example", image: null },
+      flags: { "read.live-polish": true },
+      owner: false,
+    };
+    const view = flagViewOn({ account }, local);
+    expect(view).toEqual({ flags: { "read.live-polish": true }, owner: false });
+    expect(draftAllowedFor(view.flags, view.owner)).toBe(true);
+    // The box's server alone (empty local flags, no session) says no.
+    expect(draftAllowedFor(local.flags, local.owner)).toBe(false);
+    // Off a box, or a box tab not signed in: the server's answer stands.
+    expect(flagViewOn(null, local)).toBe(local);
+    expect(flagViewOn({ account: null }, local)).toBe(local);
+  });
+
+  test("production's owner is the owner on his box, whatever the box's local D1 says", () => {
+    const owner = { name: "O", email: "o@test.example", image: null };
+    const view = flagViewOn(
+      { account: { user: owner, flags: {}, owner: true } },
+      { flags: { "read.live-polish": true }, owner: false },
+    );
+    expect(draftAllowedFor(view.flags, view.owner)).toBe(true);
+    expect(draftAllowedFor({}, false)).toBe(false);
+    expect(draftAllowedFor({ "read.live-polish": true }, false)).toBe(true);
   });
 });

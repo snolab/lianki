@@ -1,10 +1,10 @@
-import { ReadViewClient } from "./ReadViewClient";
 import { ReaderV2 } from "./ReaderV2";
+import { BoxReader } from "./BoxReader";
 import { authUserOrNull } from "@/app/signInEmail";
-import { flagIn } from "@/lib/flags";
+import { boxConfig } from "@/lib/box-oauth/mode";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
-import { readerPick } from "@/lib/read/reader-access";
+import { draftAllowedFor } from "@/lib/read/reader-access";
 import { resolveReadId } from "@/lib/read/book-link";
 import { findReadMaterialIdByHash } from "@/lib/getReadMaterialsCollection";
 import { notFound, redirect } from "next/navigation";
@@ -35,31 +35,30 @@ export default async function ReadMaterialPage({
       for (const x of Array.isArray(v) ? v : v === undefined ? [] : [v]) q.append(k, x);
     redirect(`/read/${encodeURIComponent(target.id)}${q.size ? `?${q}` : ""}`);
   }
-  const pick = readerPick({
-    flags,
-    owner: isOwner(user?.email),
-    dev: process.env.NODE_ENV === "development",
-    query: query.reader,
-  });
+  const owner = isOwner(user?.email);
+  const streaming = query.streamingFrom === "google-docs" || query.streamingFrom === "vibe";
 
-  // The reader v2 fills the screen: the window scrolls the whole book.
-  if (pick === "v2")
+  // On a box this server's flags are its local D1's and it has no session: the
+  // live-draft gate is decided in the browser from production's flags for the
+  // bound account instead (docs/box-oauth.md, "Flags on a box").
+  if (boxConfig())
     return (
-      <ReaderV2
+      <BoxReader
         id={id}
         isLoggedIn={!!user}
-        streaming={query.streamingFrom === "google-docs" || query.streamingFrom === "vibe"}
-        draftAllowed={isOwner(user?.email) || flagIn(flags, "read.live-polish")}
+        streaming={streaming}
+        serverFlags={flags}
+        serverOwner={owner}
       />
     );
 
+  // The reader fills the screen: the window scrolls the whole book.
   return (
-    <div className="flex flex-col">
-      <div className="flex-grow px-4 sm:px-6 lg:px-8 py-8">
-        <div className="max-w-4xl mx-auto">
-          <ReadViewClient id={id} isLoggedIn={!!user} />
-        </div>
-      </div>
-    </div>
+    <ReaderV2
+      id={id}
+      isLoggedIn={!!user}
+      streaming={streaming}
+      draftAllowed={draftAllowedFor(flags, owner)}
+    />
   );
 }
