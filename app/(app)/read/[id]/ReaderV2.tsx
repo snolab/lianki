@@ -2182,6 +2182,7 @@ function Reader({
             words={review.words}
             place={reviewKey(id, review.ref)}
             pin={reviewPin}
+            cachedOnly={book?.source === "vibe"}
             returnTo={reviewBack}
             onClose={closeReview}
             onChanged={famChanged}
