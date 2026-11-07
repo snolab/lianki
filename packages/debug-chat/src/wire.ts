@@ -500,6 +500,8 @@ export type ChatStrings = {
   fullScreen: string;
   /** The same button in full screen: back to the small chat panel, as it was. */
   fullScreenExit: string;
+  /** The six-dot grip at the bar's left end: drag to move the chat, tap to fold or open it, double-tap for the menu. */
+  dragGrip: string;
   // The voiceprint panel (VoiceprintPanel.tsx, voiceprint.ts; docs/local-stt.md, "Voiceprint").
   /** Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name. */
   vpMenu: string;
@@ -675,6 +677,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",
   fullScreen: "Full screen",
   fullScreenExit: "Exit full screen",
+  dragGrip: "Move the chat: drag. Tap to fold or open, double-tap for the menu",
   vpMenu: "Voiceprint",
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",

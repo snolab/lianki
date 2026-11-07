@@ -4,12 +4,13 @@
  *
  * - open: the bar and its log, as before;
  * - pill: the bar folded toward its mark into a pill, the mark still under the
- *   pointer. The mark is now a tuck arrow; the pill's Li restores it;
- * - tucked: slid into the screen edge, leaving one big handle. A tap on it, or
- *   a press-and-drag that starts on it, brings the pill back.
+ *   pointer. The mark and the pill's Li both open it again;
+ * - tucked, the third level: slid into the screen edge, leaving one big
+ *   handle. REMOVED for now (owner, 2026-11-07 20:32 JST: useless, to be
+ *   rethought): nothing steps into it; a saved `tucked` shows the pill. Its
+ *   handle code stays dormant (DebugChat.tsx tuckEl).
  *
- * `edge` is the screen edge the chat keeps to: it tucks into that edge, and
- * on the left everything mirrors (the mark on the inner side, folding right,
+ * `edge` is the screen edge the chat keeps to: on the left everything mirrors (the mark on the inner side, folding right,
  * the floating lines right-aligned to the pill). It follows the box after
  * each drag. Kept per device (localStorage `lk:pref:chat-fold`).
  */
@@ -20,7 +21,7 @@ export type Edge = "left" | "right";
 export type FoldState = { fold: Fold; edge: Edge };
 
 export type FoldEvent =
-  /** The mark's single tap: open → pill → tucked. */
+  /** The mark's single tap: open ⇄ pill. */
   | { type: "mark" }
   /** The pill's Li, chat.open, the menu's Restore, a floating line's tap. */
   | { type: "restore" }
@@ -34,7 +35,7 @@ export type FoldEvent =
 export function foldNext(s: FoldState, ev: FoldEvent): FoldState {
   switch (ev.type) {
     case "mark":
-      return { ...s, fold: s.fold === "open" ? "pill" : "tucked" };
+      return { ...s, fold: s.fold === "open" ? "pill" : "open" };
     case "restore":
       return { ...s, fold: "open" };
     case "minimize":
@@ -42,8 +43,7 @@ export function foldNext(s: FoldState, ev: FoldEvent): FoldState {
     case "handle":
       return s.fold === "tucked" ? { ...s, fold: "pill" } : s;
     case "dropped":
-      // Only the pill tucks: an open bar pushed against the edge just stays there.
-      if (s.fold === "pill" && ev.against) return { fold: "tucked", edge: ev.against };
+      // Pushed against an edge it just stays there (the tuck is removed).
       return { ...s, edge: ev.nearest };
   }
 }

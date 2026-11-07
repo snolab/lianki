@@ -3,10 +3,15 @@ import { resetUiStores } from "@lianki/ui-state";
 import { readFileSync } from "node:fs";
 import {
   FULL_SCREEN_STYLE,
+  FULL_SIDEBAR_STYLE,
   PANEL_RIGHT,
   PANEL_W,
+  SIDEBAR_QUERY,
+  SIDEBAR_RESERVE_VAR,
+  SIDEBAR_W,
   escapeLeaves,
   fullBarSpan,
+  sidebarReserve,
   fullBottomPad,
   fullScreenAllowed,
   fullScreenBox,
@@ -134,27 +139,55 @@ describe("the box follows the visible area (the keyboard)", () => {
     expect(fullBottomPad(false)).toContain("--lk-bottom-reserve");
     expect(FULL_SCREEN_STYLE.paddingBottom).toContain("--lk-bottom-reserve");
   });
-  it("keeps the bar at the panel's span, so the mic does not move", () => {
-    const s = fullBarSpan(-37.5);
-    expect(s.width).toBe(PANEL_W);
-    expect(s.alignSelf).toBe("flex-end");
-    // The panel's right inset, less full screen's own side padding.
-    expect(s.marginRight).toContain(PANEL_RIGHT);
-    expect(s.marginRight).toContain("48rem");
-    // A dragged panel's sideways offset goes with it.
-    expect(s.translate).toBe("-37.5px 0");
-    expect(fullBarSpan(0).translate).toBe("0px 0");
+  it("on a phone the bar spans the screen inside the safe areas, at the panel's 0.5rem gutter", () => {
+    const s = fullBarSpan(false);
+    expect(s.width).toBe("auto");
+    expect(s.alignSelf).toBe("stretch");
+    // Out of full screen's 0.75rem padding to the panel's own 0.5rem inset, and the safe areas.
+    expect(s.marginLeft).toContain("0.5rem");
+    expect(s.marginLeft).toContain("safe-area-inset-left");
+    expect(s.marginRight).toContain("safe-area-inset-right");
+    expect(PANEL_RIGHT).toContain("0.5rem");
+  });
+  it("in the sidebar the bar spans the sidebar, as the log does", () => {
+    expect(fullBarSpan(true)).toEqual({ alignSelf: "stretch", width: "auto" });
+  });
+  it("is a right sidebar from the owner's 35em up, the page beside it kept clear", () => {
+    expect(SIDEBAR_QUERY).toBe("(min-width: 35em)");
+    expect(FULL_SIDEBAR_STYLE.left).toBe("auto");
+    expect(FULL_SIDEBAR_STYLE.right).toBe(0);
+    expect(FULL_SIDEBAR_STYLE.width).toBe(SIDEBAR_W);
+    expect(FULL_SIDEBAR_STYLE.borderLeft).toContain("oklch");
+    const style = new Map<string, string>([["padding-right", "3px"]]);
+    const root = {
+      style: {
+        get paddingRight() {
+          return style.get("padding-right") ?? "";
+        },
+        set paddingRight(v: string) {
+          style.set("padding-right", v);
+        },
+        setProperty: (k: string, v: string) => void style.set(k, v),
+        removeProperty: (k: string) => void style.delete(k),
+      },
+    } as unknown as HTMLElement;
+    const back = sidebarReserve(root);
+    expect(style.get(SIDEBAR_RESERVE_VAR)).toBe(SIDEBAR_W);
+    expect(root.style.paddingRight).toBe(`var(${SIDEBAR_RESERVE_VAR})`);
+    back();
+    expect(style.has(SIDEBAR_RESERVE_VAR)).toBe(false);
+    expect(root.style.paddingRight).toBe("3px");
   });
   it("names the panel's own width and inset (the section's classes)", () => {
     const src = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
     expect(src).toContain(`w-[${PANEL_W.replaceAll(" ", "")}]`);
     expect(src).toContain(`right-[${PANEL_RIGHT.replaceAll(" ", "")}]`);
   });
-  it("respects the notch and the landscape sides, and caps the column", () => {
+  it("respects the notch and the landscape sides", () => {
     expect(FULL_SCREEN_STYLE.paddingTop).toContain("safe-area-inset-top");
     expect(FULL_SCREEN_STYLE.paddingLeft).toContain("safe-area-inset-left");
     expect(FULL_SCREEN_STYLE.paddingRight).toContain("safe-area-inset-right");
-    expect(FULL_SCREEN_STYLE.paddingLeft).toContain("48rem");
+    expect(FULL_SIDEBAR_STYLE.paddingRight).toContain("safe-area-inset-right");
   });
 });
 
@@ -171,6 +204,7 @@ describe("strings", () => {
   it("has English defaults and the package's fallbacks", () => {
     expect(CHAT_STRINGS_EN.fullScreen).toBe("Full screen");
     expect(CHAT_STRINGS_EN.fullScreenExit).toBe("Exit full screen");
+    expect(CHAT_STRINGS_EN.dragGrip).toContain("drag");
     for (const lang of ["en", "zh", "ja"]) {
       expect(uiStrings(lang).fullScreen.length).toBeGreaterThan(0);
       expect(uiStrings(lang).fullScreenExit.length).toBeGreaterThan(0);
