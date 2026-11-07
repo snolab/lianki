@@ -20,12 +20,9 @@ import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { booksOn } from "@/lib/books/gate";
 import { levelsOn } from "@/lib/level-progress";
-import { boxConfig } from "@/lib/box-oauth/mode";
-import { BoxApiBridge } from "@/app/components/BoxApiBridge";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   announceBuild();
-  const box = boxConfig();
   const locale = await appLocale();
   const lang = LANG_TAGS[locale] ?? locale;
   const dir = isRTLLocale(locale) ? "rtl" : "ltr";
@@ -66,7 +63,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <IntlayerServerProvider locale={locale}>
-      {box && <BoxApiBridge config={box} />}
       <IntlayerClientProvider locale={locale}>
         <div lang={lang} dir={dir} className="min-h-screen">
           <AppShell

@@ -87,6 +87,19 @@ export async function finishBoxSignIn(
   return null;
 }
 
+/** Does this tab hold a box sign-in that can still be used (or refreshed)? */
+export function hasBoxTokens(): boolean {
+  const t = readJson<Tokens>(TOKENS);
+  return Boolean(t && (t.refresh || t.until > Date.now()));
+}
+
+/** The provider refused the tokens: forget them, so /sign-in starts again. */
+export function forgetBoxTokens(): void {
+  try {
+    sessionStorage.removeItem(TOKENS);
+  } catch {}
+}
+
 let refreshing: Promise<boolean> | null = null;
 
 async function refresh(c: BoxConfig): Promise<boolean> {

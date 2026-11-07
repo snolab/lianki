@@ -111,13 +111,17 @@ async function run(engine, name, scheme, vp) {
       .locator(`${SECTION}[data-fullscreen]`)
       .count()
       .then((n) => n > 0);
-  const lines = (from, n) =>
+  // `turns`: the owner and the agent take turns, so each line is its own run.
+  const lines = (from, n, turns = false) =>
     page.evaluate(
-      ([from, n]) => {
+      ([from, n, turns]) => {
         for (let i = from; i < from + n; i++)
-          globalThis.__push(`#${i}# ${"a line of the chat that takes some room ".repeat(2)}`);
+          globalThis.__push(
+            `#${i}# ${"a line of the chat that takes some room ".repeat(2)}`,
+            turns && i % 2 ? "owner" : "agent",
+          );
       },
-      [from, n],
+      [from, n, turns],
     );
   const noSideScroll = () =>
     page.evaluate(() => {
@@ -263,7 +267,7 @@ async function run(engine, name, scheme, vp) {
     await settle();
     await toEnd();
     await settle();
-    await lines(100, phone ? 30 : 160);
+    await lines(100, phone ? 30 : 160, true);
     await settle();
     await toEnd();
     await settle();
@@ -280,9 +284,13 @@ async function run(engine, name, scheme, vp) {
       const inView = await page.evaluate((c) => {
         const log = document.querySelector(c).getBoundingClientRect();
         const card = document.querySelector('[data-ask="f1"]')?.getBoundingClientRect();
-        return !!card && card.top >= log.top - 1 && card.bottom <= log.bottom + 1;
+        return {
+          ok: !!card && card.top >= log.top - 1 && card.bottom <= log.bottom + 1,
+          log: [log.top, log.bottom],
+          card: card && [card.top, card.bottom],
+        };
       }, COL);
-      check(inView, `${tag} a tap: the card in view`);
+      check(inView.ok, `${tag} a tap: the card in view`, JSON.stringify(inView));
       await tap('[data-ask="f1"] [data-option="no"]');
       await settle();
       const st = await page.locator('[data-ask="f1"]').getAttribute("data-state");

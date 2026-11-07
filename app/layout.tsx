@@ -12,6 +12,8 @@ import { LANG_TAGS } from "@/lib/constants";
 import { type FlagValues, flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
+import { boxConfig } from "@/lib/box-oauth/mode";
+import { BoxApiBridge } from "./components/BoxApiBridge";
 
 /**
  * The Learning Partner opened to users (`partner.ai-reply`, docs/partner-ai.md):
@@ -102,6 +104,7 @@ export default async function RootLayout({
   const open = partnerFrame ? false : await partnerOpenFor(flags);
   // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
   const chatFull = flagIn(flags, "partner.fullscreen");
+  const box = boxConfig();
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
       <head>
@@ -151,7 +154,8 @@ export default async function RootLayout({
           {partnerFrame ? null : (
             <OwnerBoots strings={partner} leave={leave} open={open} chatFull={chatFull} />
           )}
-          {children}
+          {/* A box signed in through lianki.com (docs/box-oauth.md): every page, landing included. */}
+          {box ? <BoxApiBridge config={box}>{children}</BoxApiBridge> : children}
         </IntlayerServerProvider>
       </body>
     </html>

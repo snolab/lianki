@@ -18,6 +18,7 @@ import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import wordsListPreview from "@/app/(app)/words/list-preview.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import textSize from "@/app/components/text-size.content";
+import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
@@ -91,6 +92,7 @@ describe.each([
   ["words-list-preview", wordsListPreview],
   ["leave-guard", leaveGuard],
   ["text-size", textSize],
+  ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],
   ["invite-card", inviteCard],
   ["credit-units", creditUnits],

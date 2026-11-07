@@ -767,10 +767,14 @@ number. Each tap goes to the nearest above and it is gone when none is. Rules:
   one frame never intersects and is never reported. A card whose pills still show
   is not above.
 - **Place.** Left of scroll-down's slot, shown or not: a jump brings that button up,
-  and a second tap on the same spot must not land on it. While it shows, the log
-  keeps `JUMP_ROW_PX` free at its bottom (at rest it grows by that, so 3 lines still
-  show), so it covers no line or pill of a newer card. Hidden under a panel, the +
-  menu and the inbox.
+  and a second tap on the same spot must not land on it. While it shows, the newest
+  run of lines keeps room beside it (`jumpRoom`: its end padding is the button's
+  width and slot, its height at least the button's, its text at the bottom), so it
+  covers no line or pill and the newest line still sits at the log's bottom. Never
+  an empty row under the last line: that row (#641, `JUMP_ROW_PX`) grew the resting
+  log from 70 to 106 px with 43 px blank under the newest line, the owner's
+  2026-11-07 18:10 JST "滚动不在正确的位置，它的下面半个窗口是空的". Hidden under a
+  panel, the + menu and the inbox.
 - **At rest** the log is 3 lines, too short for a card, so a tap holds it open
   (`held: "open"`, via `wireLogHold`'s `onReady`), glass and all, until a press
   outside the chat, as a press on the history while typing does.
@@ -779,7 +783,15 @@ number. Each tap goes to the nearest above and it is gone when none is. Rules:
 
 Checks: `bun scripts/dev/debug-chat-ask-jump-qa.mjs --shots <dir>` (silent browsers,
 Chromium and WebKit, 390×844, light and dark); the rules in
-`unit/chat-ask-above.test.ts`.
+`unit/chat-ask-above.test.ts`. `bun scripts/dev/debug-chat-newline-qa.mjs [--shots <dir>]`
+checks that each new line (the agent's and the owner's) lands at the log's bottom,
+readable, with at most a few px under it, with and without the arrow, and that the
+arrow covers no line's text or pill (text rects), at 414×848 and 320×568, both engines
+and themes, at rest and typing.
+
+When the log looks wrong on his phone, `bun scripts/dev/chat-scroll-diag.ts` reads it
+once through `eval.ts --no-pair` (read-only, never pairs): the log's box and scroll,
+paddings, the newest line and the blank under it, the arrow, the bar, the open asks.
 
 ## Full screen
 

@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -38,7 +39,9 @@ function localToRow(card: LocalCard): NoteRow {
   };
 }
 
-export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
+export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn: boolean }) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("data-page");
 
   // ── Stores ────────────────────────────────────────────────────────────────

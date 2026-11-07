@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import { useState, useEffect, useRef } from "react";
 import { useIntlayer } from "next-intlayer";
@@ -57,7 +58,7 @@ function saveLocalMaterials(materials: ReadMaterial[]): void {
 }
 
 export function ReadListClient({
-  isLoggedIn,
+  isLoggedIn: serverSignedIn,
   gdoc = false,
   drive = false,
   books = false,
@@ -70,6 +71,8 @@ export function ReadListClient({
   /** The public-domain library /books is open to this viewer (lib/books/gate.ts). */
   books?: boolean;
 }) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const router = useRouter();
   const [materials, setMaterials] = useState<ReadMaterial[]>([]);
   const [isImporting, setIsImporting] = useState(false);

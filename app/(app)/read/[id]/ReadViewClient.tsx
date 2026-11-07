@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
@@ -88,7 +89,15 @@ const outMode = (): "speech" | "cloud" => {
 /** A shadowed utterance must have begun after the line ended (less this slack). */
 const SHADOW_SLACK_MS = 200;
 
-export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boolean }) {
+export function ReadViewClient({
+  id,
+  isLoggedIn: serverSignedIn,
+}: {
+  id: string;
+  isLoggedIn: boolean;
+}) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const [material, setMaterial] = useState<
     (ReadMaterial & { book?: BookMeta; words?: WordsSummary }) | null
   >(null);
