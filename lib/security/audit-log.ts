@@ -27,6 +27,10 @@ export type AuditKind =
   | "live-frontend.allow"
   | "live-frontend.disallow"
   | "box.bind"
+  // A bind refused because the account is not on the my-box allowlist
+  // (docs/box-oauth.md, "Who may have a box"). The list's own changes are
+  // live-frontend.allow / live-frontend.disallow: it is the same list.
+  | "box.bind-refused"
   | "box.revoke"
   // box:chat on an owner's box (docs/box-oauth.md, "Chat on the owner's box").
   | "box.chat-grant"

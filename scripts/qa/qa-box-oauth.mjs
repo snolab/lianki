@@ -60,9 +60,21 @@ async function setup() {
   const member = await newSilentContext(browser);
   await signUp(member, MEMBER);
   await member.close();
-  const r = await ctx.request.post(`${PROVIDER}/api/dev/box-clients`, {
-    data: { op: "add", origin: BOX, email: MEMBER, scopes: ["box:read", "box:write"] },
-    headers: { origin: PROVIDER, "content-type": "application/json" },
+  const post = (data) =>
+    ctx.request.post(`${PROVIDER}/api/dev/box-clients`, {
+      data,
+      headers: { origin: PROVIDER, "content-type": "application/json" },
+    });
+  // Default deny: off the my-box list, no box (docs/box-oauth.md, "Who may have a box").
+  const unlisted = await post({ op: "add", origin: BOX, email: MEMBER, scopes: ["box:read"] });
+  if (unlisted.status() !== 403) throw new Error(`an unlisted bind gave ${unlisted.status()}`);
+  const listed = await post({ op: "allow", who: MEMBER });
+  if (!listed.ok()) throw new Error(`allow: ${listed.status()}`);
+  const r = await post({
+    op: "add",
+    origin: BOX,
+    email: MEMBER,
+    scopes: ["box:read", "box:write"],
   });
   const body = await r.json();
   if (!r.ok()) throw new Error(`bind: ${r.status()} ${JSON.stringify(body)}`);
@@ -641,10 +653,17 @@ async function run() {
   const hidden = await notOwner.request.get(`${PROVIDER}/api/dev/box-clients`);
   check("the owner's route is 404 to anyone else", hidden.status() === 404, `${hidden.status()}`);
   await notOwner.close();
-  await owner.request.post(`${PROVIDER}/api/dev/box-clients`, {
-    data: { op: "revoke", clientId: ro },
+  // Off the my-box list: the box is revoked with it, and its token stops at once.
+  const listed = await (await owner.request.get(`${PROVIDER}/api/dev/box-clients`)).json();
+  const member = listed.allowed?.find((a) => a.email === MEMBER);
+  const off = await owner.request.post(`${PROVIDER}/api/dev/box-clients`, {
+    data: { op: "disallow", userId: member?.userId ?? "" },
     headers: { origin: PROVIDER, "content-type": "application/json" },
   });
+  check("the owner takes the member off the box list", off.ok(), `${off.status()}`);
+  const after = (await off.json()).boxes?.find((b) => b.clientId === ro);
+  check("which revokes their box", Boolean(after?.revokedAt));
+  check("and its token at once", (await raw(rtok, "/api/prefs")).status === 401);
   await owner.close();
 
   await browser.close();
@@ -687,6 +706,7 @@ async function chatSetup() {
   const m = await newSilentContext(browser);
   await signUp(m, MEMBER);
   await m.close();
+  await boxes(ctx, { op: "allow", who: MEMBER });
   // A member's box can never get box:chat.
   const mb = await boxes(ctx, { op: "add", origin: BOX, email: MEMBER, scopes: ["box:read"] });
   const mid = (await mb.json()).clientId;
@@ -942,6 +962,7 @@ async function evalSetup() {
   const m = await newSilentContext(browser);
   await signUp(m, MEMBER);
   await m.close();
+  await boxes(ctx, { op: "allow", who: MEMBER });
   const mb = await boxes(ctx, { op: "add", origin: BOX, email: MEMBER, scopes: ["box:read"] });
   const mid = (await mb.json()).clientId;
   const refused = await boxes(ctx, { op: "eval", clientId: mid, on: true });

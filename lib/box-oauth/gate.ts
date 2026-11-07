@@ -141,7 +141,7 @@ export async function boxGate(
   // Preflight: what a browser asks before the real request.
   if (clean.method === "OPTIONS") {
     if (!origin || !fromBox) return next(clean);
-    const box = await bindingByOrigin(db, origin);
+    const box = await bindingByOrigin(db, origin).catch(() => null);
     if (!box) return new Response(null, { status: 403, headers: { vary: "Origin" } });
     return new Response(null, {
       status: 204,
@@ -160,7 +160,7 @@ export async function boxGate(
 
   // The PKCE exchange, refresh and revoke, cross-origin from a box.
   if (!isToken && isCorsProviderPath(url.pathname) && clean.method === "POST") {
-    const box = origin ? await bindingByOrigin(db, origin) : null;
+    const box = origin ? await bindingByOrigin(db, origin).catch(() => null) : null;
     if (!box || !origin) return json(403, "Not a registered box");
     const res = await next(forwardable(clean, url.origin));
     return withCors(res, origin);
@@ -174,7 +174,8 @@ export async function boxGate(
     json(status, error, origin && fromBox ? cors(origin) : undefined);
   if (!m) return fail(401, "Invalid token");
   const hash = await boxTokenHash(m[1]);
-  const token = await liveToken(db, hash, now);
+  // A lookup that fails is no token: closed, never through.
+  const token = await liveToken(db, hash, now).catch(() => null);
   if (!token) return fail(401, "Invalid token");
   if (origin !== token.origin) return json(403, "Wrong origin for this token");
   const answer = tokenMayCall(clean.method, url.pathname, token.scopes);

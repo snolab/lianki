@@ -278,16 +278,25 @@ export async function listAllowed(db: CustomDb) {
   return results;
 }
 
-/** Add a user by email (owner only, checked by the caller). The user id, or null when no such user. */
+/**
+ * Add a user by email or user id (owner only, checked by the caller). The one
+ * my-box allowlist: custom frontends and boxes alike (docs/box-oauth.md, "Who
+ * may have a box"). The user id, or null when no such user.
+ */
 export async function allowByEmail(
   db: CustomDb,
-  email: string,
+  emailOrId: string,
   by: string,
   now = Date.now(),
 ): Promise<string | null> {
+  const who = emailOrId.trim();
   const u = await db
-    .prepare("SELECT id FROM user WHERE email = ?1 COLLATE NOCASE")
-    .bind(email.trim())
+    .prepare(
+      who.includes("@")
+        ? "SELECT id FROM user WHERE email = ?1 COLLATE NOCASE"
+        : "SELECT id FROM user WHERE id = ?1",
+    )
+    .bind(who)
     .first<{ id: string }>();
   if (!u) return null;
   await db

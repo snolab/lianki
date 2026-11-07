@@ -8,7 +8,11 @@ type Box = {
   email: string | null;
   scopes: string[];
   revokedAt: number | null;
+  /** On the my-box allowlist (or a site owner). A box whose account is not does nothing. */
+  allowed?: boolean;
 };
+
+type Allowed = { userId: string; email: string | null; name: string | null };
 
 /** What box:chat lets the box do (docs/box-oauth.md, "Chat on the owner's box"). */
 const CHAT_WARNING =
@@ -21,6 +25,8 @@ const EVAL_WARNING =
 /** Owner-only and Chinese only, like the other /dev pages. */
 export default function BoxClientsAdmin() {
   const [boxes, setBoxes] = useState<Box[]>([]);
+  const [allowed, setAllowed] = useState<Allowed[]>([]);
+  const [who, setWho] = useState("");
   const [origin, setOrigin] = useState("");
   const [email, setEmail] = useState("");
   const [write, setWrite] = useState(false);
@@ -29,7 +35,10 @@ export default function BoxClientsAdmin() {
   useEffect(() => {
     fetch("/api/dev/box-clients")
       .then((r) => r.json())
-      .then((d) => setBoxes(d.boxes ?? []))
+      .then((d) => {
+        setBoxes(d.boxes ?? []);
+        setAllowed(d.allowed ?? []);
+      })
       .catch(() => setNote("读取失败"));
   }, []);
 
@@ -43,12 +52,63 @@ export default function BoxClientsAdmin() {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return setNote(d.error ?? "失败");
     setBoxes(d.boxes ?? []);
+    setAllowed(d.allowed ?? []);
     if (d.clientId)
       setNote(`client id：${d.clientId}（写进盒子的 env 文件 DEVBOX_LIANKI_CLIENT_ID）`);
   }
 
   return (
     <div className="space-y-4">
+      <section className="space-y-2 border rounded p-2" data-box-allowlist>
+        <h2 className="font-bold text-sm">盒子名单（my-box，默认不允许）</h2>
+        <p className="text-xs opacity-70">
+          只有名单上的账号能绑定盒子、用盒子地址和盒子上的聊天；和「自定义前端」是同一个名单。
+          站点所有者不用加。移除一个人会立刻撤销他的盒子、停止他的预览。
+        </p>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (who.trim()) void post({ op: "allow", who: who.trim() });
+          }}
+        >
+          <input
+            className="input input-bordered input-sm flex-1"
+            placeholder="账号邮箱或用户 id"
+            aria-label="账号邮箱或用户 id"
+            value={who}
+            onChange={(e) => setWho(e.target.value)}
+          />
+          <button className="btn btn-sm" type="submit">
+            加入名单
+          </button>
+        </form>
+        {allowed.length === 0 ? (
+          <p className="text-xs opacity-60">名单是空的。</p>
+        ) : (
+          <ul className="text-sm space-y-1">
+            {allowed.map((a) => (
+              <li key={a.userId} className="flex items-center justify-between gap-2 break-all">
+                <span>
+                  {a.email ?? a.userId}
+                  {a.name ? ` (${a.name})` : ""}
+                </span>
+                <button
+                  className="btn btn-xs"
+                  type="button"
+                  data-box-disallow
+                  onClick={() => {
+                    if (confirm(`移除 ${a.email ?? a.userId}？他的盒子会被撤销，预览会全部停止。`))
+                      void post({ op: "disallow", userId: a.userId });
+                  }}
+                >
+                  移除
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <form
         className="space-y-2"
         onSubmit={(e) => {
@@ -89,6 +149,7 @@ export default function BoxClientsAdmin() {
             <div className="opacity-70">
               {b.email ?? "?"} · {b.scopes.join(" ")}
               {b.revokedAt ? " · 已撤销" : ""}
+              {!b.revokedAt && b.allowed === false ? " · 不在名单上，盒子不能用" : ""}
             </div>
             {!b.revokedAt && (
               <div className="flex flex-wrap gap-2 mt-1">

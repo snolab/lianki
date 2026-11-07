@@ -12,7 +12,8 @@ first user is kishouzet (frontend only). Later it will be everyone.
 
 **Phase 1 (this):** behind the flag `my-box` (the owner can use
 it while it is off), for users on an allowlist the owner keeps at
-`/dev/live-frontends`. Code: `lib/live-view/custom.ts` (rules, store, CSP,
+`/dev/live-frontends` — the one my-box allowlist, shared with boxes
+([box-oauth.md](box-oauth.md), "Who may have a box"). Code: `lib/live-view/custom.ts` (rules, store, CSP,
 cookie), the custom branch of `lib/live-view/page-proxy.ts` (in `worker.ts`,
 before OpenNext), `app/api/live-previews/`, `app/api/dev/live-frontends/`,
 `db/migrations/0045_live_previews.sql`. Tests: `unit/custom-frontend.test.ts`,
@@ -24,8 +25,9 @@ bridge**.
 ## For the owner: turn it on
 
 1. `/dev/flags`: turn on `my-box`.
-2. `/dev/live-frontends`: add the user by their sign-in email. Removing them
-   later also stops all their previews at once. The same page lists every
+2. `/dev/live-frontends` (or `/dev/box-clients`, the same list): add the
+   user by their sign-in email. Removing them later also stops all their
+   previews and revokes their box at once. The same page lists every
    active preview, each with a **stop** button.
 
 Every add, remove, registration and revoke is a row in `security_audit`
