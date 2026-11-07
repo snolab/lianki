@@ -1,9 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import {
+  ELEVEN_PREVIEWS,
   LANES,
   VOICES,
   auraSpeakers,
   cloudVoice,
+  cloudVoiceIds,
+  deviceVoiceIds,
+  findDeviceVoice,
+  isLineVoiceId,
+  parseLineVoice,
   laneOf,
   resolveVoices,
   voiceIdOf,
@@ -411,5 +417,97 @@ describe("say: --lane / --voice to the hub", () => {
       ok: true,
       value: { type: "say", text: "hi" },
     });
+  });
+
+  it("a line's own voice passes both checks as sent; an unknown one is refused by both", () => {
+    const say = (o: object) =>
+      parseControllerMessage(JSON.stringify({ type: "say", text: "hi", ...o }));
+    for (const id of ["device:Meijia", "melo:zh", "aura:luna", "eleven:cgSgspJ2msm6clMCkdW9"]) {
+      expect(sayLane(undefined, id)).toEqual({ voice: id });
+      expect(say({ voice: id })).toEqual({
+        ok: true,
+        value: { type: "say", text: "hi", voice: id },
+      });
+    }
+    for (const id of ["aura:zeus", "melo:de", "eleven:nope", "local:kokoro", "siri:x", "device:"]) {
+      expect(sayLane(undefined, id)).toHaveProperty("error");
+      expect(say({ voice: id }).ok).toBe(false);
+    }
+  });
+});
+
+describe("parseLineVoice: one strict parser for a line's voice", () => {
+  it("takes the table's ids and each kind, with what it names", () => {
+    expect(parseLineVoice("calm")).toEqual({ kind: "table", id: "calm" });
+    expect(parseLineVoice("device:Samantha (Enhanced)")).toEqual({
+      kind: "device",
+      name: "Samantha (Enhanced)",
+    });
+    expect(parseLineVoice("device:Google 普通话（中国大陆）")).toMatchObject({ kind: "device" });
+    expect(parseLineVoice("device:O-ren")).toMatchObject({ kind: "device", name: "O-ren" });
+    expect(parseLineVoice("melo:ja")).toEqual({ kind: "melo", lang: "ja" });
+    expect(parseLineVoice("aura:celeste")).toEqual({
+      kind: "aura",
+      speaker: "celeste",
+      lang: "es",
+    });
+    expect(parseLineVoice("eleven:cgSgspJ2msm6clMCkdW9")).toMatchObject({
+      kind: "eleven",
+      preview: expect.stringMatching(/^https:\/\/storage\.googleapis\.com\/eleven-public-prod\//),
+    });
+  });
+
+  it("refuses unknown kinds, speakers, languages and ids, and names that are not names", () => {
+    for (const bad of [
+      "",
+      "Main",
+      "aura:Luna",
+      "aura:zeus",
+      "melo:jp",
+      "eleven:",
+      "local:kokoro",
+      "device: Meijia",
+      "device:https://x.ts.net/a",
+      "device:<b>",
+      "device:a\nb",
+      `device:${"a".repeat(80)}`,
+      3,
+      null,
+    ])
+      expect(parseLineVoice(bad)).toHaveProperty("error");
+    expect((parseLineVoice("local:kokoro") as { error: string }).error).toContain("reserved");
+  });
+
+  it("finds a device voice by exact name, any case, or its model at the best grade", () => {
+    const vs = [
+      { lang: "zh-TW", name: "Meijia", voiceURI: "com.apple.voice.compact.zh-TW.Meijia" },
+      {
+        lang: "zh-TW",
+        name: "Meijia (Enhanced)",
+        voiceURI: "com.apple.voice.enhanced.zh-TW.Meijia",
+      },
+      { lang: "en-US", name: "Samantha" },
+    ];
+    expect(findDeviceVoice(vs, "Meijia")?.name).toBe("Meijia");
+    expect(findDeviceVoice(vs, "samantha")?.name).toBe("Samantha");
+    expect(findDeviceVoice(vs.slice(1), "Meijia")?.name).toBe("Meijia (Enhanced)");
+    expect(findDeviceVoice(vs, "Kyoko")).toBeUndefined();
+  });
+
+  it("lists the ids: devices zh, ja, en first; the cloud's and ElevenLabs' previews", () => {
+    const ids = deviceVoiceIds([
+      { lang: "fr-FR", name: "Thomas" },
+      { lang: "en-US", name: "Samantha" },
+      { lang: "ja-JP", name: "Kyoko" },
+      { lang: "zh-CN", name: "Tingting" },
+      { lang: "en-US", name: "Bad <name>" },
+    ]).map((v) => v.id);
+    expect(ids).toEqual(["device:Tingting", "device:Kyoko", "device:Samantha", "device:Thomas"]);
+    const cloud = cloudVoiceIds().map((v) => v.id);
+    expect(cloud).toContain("melo:zh");
+    expect(cloud).toContain("aura:luna");
+    expect(cloud).toContain("eleven:cgSgspJ2msm6clMCkdW9");
+    for (const id of cloud) expect(isLineVoiceId(id)).toBe(true);
+    for (const e of ELEVEN_PREVIEWS) expect(e.preview).not.toContain("?");
   });
 });

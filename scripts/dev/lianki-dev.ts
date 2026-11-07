@@ -281,7 +281,10 @@ async function main(): Promise<number> {
   if (argv instanceof Error) fail(EXIT.usage, `${argv.message}\n${json ? "" : USAGE[sub]}`.trim());
   // Nothing to send with: say so before eval.ts opens a socket (lanes never pair).
   const f = await facts(g, rest, false);
-  const has = sub === "serve" ? f.evalGrant : f.chatGrant || f.evalGrant;
+  // voices --cloud asks no page: no grant needed. voices otherwise reads pages: eval.
+  const cloudOnly = sub === "voices" && rest.includes("--cloud");
+  const has =
+    cloudOnly || (sub === "serve" || sub === "voices" ? f.evalGrant : f.chatGrant || f.evalGrant);
   if (!g.pair && !has)
     fail(EXIT.notReady, doctorFindings(f).find((x) => x.check === "grant")!.line);
   return runEval(sub, repo, argv);
