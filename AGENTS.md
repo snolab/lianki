@@ -39,6 +39,12 @@ bun run qa:all         # full integration gate — pre-push, and CI nightly (not
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 
+Agent lanes talk to the owner and the state tree through **one CLI**,
+`lianki-dev` (`bun scripts/dev/lianki-dev.ts`), not ad-hoc
+`eval.ts`/`progress.ts` calls: `lianki-dev say --as <lane> "…"`, `ask`,
+`inbox`, `listen`, `progress`, and `lianki-dev doctor` when something fails.
+A lane never pairs. [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md).
+
 ## Where requests actually go (cut over 2026-10-06)
 
 **`lianki.com` is served by the `lianki` Cloudflare Worker** — the OpenNext
@@ -125,6 +131,7 @@ that are expensive to rediscover.
 | The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
 | Hot-swapping headless core modules (kernel, swap, leak tests) | [docs/hot-core.md](docs/hot-core.md)                                |
 | The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
+| `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                    |
 | Hot islands: swappable components, shared state               | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
 | Live view: dev JS or whole dev pages (?live=) on lianki.com   | [docs/live-view.md](docs/live-view.md)                              |
 | Custom frontends: a user's own dev server at ?live, the /api contract | [docs/custom-frontend.md](docs/custom-frontend.md)          |
