@@ -1,0 +1,403 @@
+/* Material plan cards on /membership (PlanCards.tsx), preview only:
+ * ?card=paper (宣紙: fibres, deckled edge, 洒金 + seal chop for Pro),
+ * ?card=wood (木目: grain, carved title, inlaid seal, varnish),
+ * ?card=marble (大理石: veins, polish, engraved title, inlaid seal).
+ * Light = paper / pale wood / white stone; dark = ink paper, lacquer, black
+ * stone. Each card reads its colours from --plan-* set per skin and tier.
+ * Textures are the SVG tiles in public/membership (scripts/gen-membership-materials.ts). */
+
+.lk-plans {
+  display: grid;
+  gap: 1.5rem;
+}
+@media (min-width: 768px) {
+  .lk-plans {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.lk-plan {
+  position: relative;
+  isolation: isolate;
+  padding: 1.75rem 1.5rem 1.6rem;
+  color: var(--plan-ink);
+}
+.lk-plan-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  filter: var(--plan-shadow, none);
+}
+.lk-plan-face {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--plan-radius, 0);
+  background: var(--plan-tex), var(--plan-bg);
+  background-blend-mode: var(--plan-blend, normal);
+  box-shadow: var(--plan-edge, none);
+}
+
+.lk-plan-title {
+  margin: 0;
+  font-size: 1.6rem;
+  line-height: 1.25;
+  color: var(--plan-title, var(--plan-ink));
+  text-shadow: var(--plan-carve, none);
+}
+.lk-plan--pro .lk-plan-title {
+  padding-right: 4.25rem;
+}
+.lk-plan-stroke {
+  display: none;
+}
+.lk-plan-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  line-height: 1.5;
+}
+.lk-plan-list li {
+  gap: 0.6rem;
+}
+.lk-plan-mark {
+  flex: none;
+  width: 1.2em;
+  height: 1.2em;
+  margin-top: 0.15em;
+  fill: var(--plan-yes);
+  filter: var(--plan-mark-carve, none);
+}
+.lk-plan-mark[data-no] {
+  fill: var(--plan-no);
+}
+
+.lk-plan-chop {
+  position: absolute;
+  top: 1.2rem;
+  right: 1.2rem;
+  display: block;
+  line-height: 0;
+}
+.lk-plan-chop img {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.lk-plan-btn,
+.lk-plan-btn2 {
+  padding: 0.6rem 1.5rem;
+  font-weight: 600;
+  border-radius: var(--plan-btn-radius, 4px);
+  transition:
+    background-color 150ms,
+    transform 150ms;
+}
+.lk-plan-btn {
+  color: var(--plan-btn-ink, oklch(0.97 0.015 85));
+  background: var(--brand);
+  box-shadow: var(--plan-btn-edge, none);
+}
+.lk-plan-btn:hover:not(:disabled) {
+  background: oklch(from var(--brand) calc(l - 0.04) c h);
+}
+.lk-plan-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.lk-plan-btn:disabled {
+  opacity: 0.6;
+}
+.lk-plan-btn2 {
+  color: var(--plan-ink);
+  border: 1px solid var(--plan-line);
+  box-shadow: var(--plan-btn2-edge, none);
+}
+.lk-plan-btn2:hover {
+  background: var(--plan-hover);
+}
+
+/* ── 纸 Paper ─────────────────────────────────────────────────────────── */
+[data-skin="paper"] .lk-plan {
+  --plan-shadow: drop-shadow(0 1px 1px oklch(0.3 0.03 60 / 0.16))
+    drop-shadow(0 8px 14px oklch(0.3 0.03 60 / 0.1));
+  --plan-line: oklch(0.3 0.02 60 / 0.45);
+  --plan-hover: oklch(0.3 0.02 60 / 0.06);
+  --plan-btn-radius: 3px;
+  --plan-btn-edge: inset 0 0 0 1px oklch(0.42 0.17 22 / 0.6);
+  --plan-blend: multiply, normal;
+  /* the relief (lit paper, globals --relief) is multiplied into the sheet */
+  --plan-tex-base: var(--relief), url(/membership/fibres-light.svg), var(--fibres);
+  padding-top: 2rem;
+}
+[data-skin="paper"] .lk-plan-face {
+  -webkit-mask-box-image: url(/membership/deckle.svg) 16 round;
+  mask-border: url(/membership/deckle.svg) 16 round;
+}
+[data-skin="paper"] .lk-plan-title {
+  font-family: var(--font-brush);
+  font-size: 1.9rem;
+  letter-spacing: 0.04em;
+}
+[data-skin="paper"] .lk-plan-stroke {
+  display: block;
+  width: 9rem;
+  height: 0.7rem;
+  margin: 0.2rem 0 0 -0.2rem;
+  fill: var(--plan-stroke);
+}
+[data-skin="paper"] .lk-plan-chop img {
+  transform: rotate(-5deg);
+  mix-blend-mode: var(--plan-chop-blend, multiply);
+  opacity: 0.93;
+  animation: lk-plan-stamp 320ms var(--min-jerk) 120ms both;
+}
+@keyframes lk-plan-stamp {
+  from {
+    transform: rotate(-5deg) scale(1.5);
+    opacity: 0;
+  }
+}
+[data-skin="paper"] .lk-plan--free {
+  --plan-bg: oklch(0.968 0.013 88);
+  --plan-tex: var(--plan-tex-base);
+  --plan-ink: oklch(0.25 0.015 60);
+  --plan-stroke: oklch(0.25 0.015 60 / 0.85);
+  --plan-yes: oklch(0.3 0.015 60);
+  --plan-no: oklch(0.53 0.12 25 / 0.8);
+}
+[data-skin="paper"] .lk-plan--pro {
+  /* 洒金宣: an older, warmer sheet flecked with gold leaf */
+  --plan-bg: oklch(0.928 0.034 80);
+  --plan-tex:
+    var(--relief), url(/membership/flecks.svg), url(/membership/fibres-light.svg), var(--fibres);
+  --plan-blend: multiply, normal, normal, normal;
+  --plan-ink: oklch(0.24 0.02 55);
+  --plan-stroke: oklch(0.24 0.02 55 / 0.88);
+  --plan-yes: var(--brand);
+}
+@media (prefers-color-scheme: dark) {
+  [data-skin="paper"] .lk-plan {
+    --plan-shadow: drop-shadow(0 1px 1px oklch(0 0 0 / 0.5))
+      drop-shadow(0 8px 16px oklch(0 0 0 / 0.4));
+    --plan-line: oklch(0.9 0.02 85 / 0.4);
+    --plan-hover: oklch(0.9 0.02 85 / 0.07);
+    --plan-blend: screen, normal;
+    --plan-tex-base: var(--relief), url(/membership/fibres-dark.svg), var(--fibres);
+    --plan-chop-blend: normal;
+  }
+  [data-skin="paper"] .lk-plan--free {
+    /* 墨染紙: paper dyed with ink */
+    --plan-bg: oklch(0.24 0.008 70);
+    --plan-ink: oklch(0.9 0.02 85);
+    --plan-stroke: oklch(0.88 0.02 85 / 0.8);
+    --plan-yes: oklch(0.88 0.02 85);
+    --plan-no: oklch(0.68 0.13 25);
+  }
+  [data-skin="paper"] .lk-plan--pro {
+    /* 瓷青紙: indigo sutra paper, gold ink */
+    --plan-bg: oklch(0.3 0.06 262);
+    --plan-tex: url(/membership/flecks.svg), url(/membership/fibres-dark.svg);
+    --plan-blend: normal;
+    --plan-ink: oklch(0.92 0.035 88);
+    --plan-title: oklch(0.85 0.1 86);
+    --plan-stroke: oklch(0.82 0.1 86 / 0.85);
+    --plan-yes: oklch(0.84 0.1 86);
+  }
+}
+
+/* ── 木 Wood ─────────────────────────────────────────────────────────── */
+[data-skin="wood"] .lk-plan {
+  --plan-radius: 10px;
+  --plan-shadow: drop-shadow(0 2px 2px oklch(0.2 0.03 50 / 0.25))
+    drop-shadow(0 10px 16px oklch(0.2 0.03 50 / 0.18));
+  /* a bevelled board edge */
+  --plan-edge:
+    inset 0 1px 0 oklch(1 0 0 / 0.3), inset 0 -2px 0 oklch(0.15 0.04 50 / 0.3),
+    inset 0 0 0 1px oklch(0.2 0.04 50 / 0.3);
+  --plan-btn-radius: 6px;
+  --plan-btn-edge:
+    inset 0 1px 0 oklch(1 0 0 / 0.22), inset 0 -2px 0 oklch(0.25 0.1 22 / 0.5),
+    0 1px 2px oklch(0.15 0.03 40 / 0.35);
+  --plan-btn2-edge: inset 0 1px 1px oklch(0.1 0.03 40 / 0.25), 0 1px 0 oklch(1 0 0 / 0.14);
+  /* engraved: shadow on the upper lip of the cut, light on the lower */
+  --plan-carve: 0 -1px 0 oklch(0.15 0.04 50 / 0.45), 0 1px 0 oklch(1 0 0 / 0.35);
+  --plan-mark-carve: drop-shadow(0 1px 0 oklch(1 0 0 / 0.3));
+  /* light varnish: a soft sheen over the grain */
+  --plan-varnish: linear-gradient(170deg, oklch(1 0 0 / 0.12), oklch(1 0 0 / 0) 40%);
+}
+[data-skin="wood"] .lk-plan-face {
+  background-size:
+    auto,
+    640px 220px,
+    auto;
+}
+[data-skin="wood"] .lk-plan-title {
+  font-family: var(--font-antique);
+  font-size: 1.75rem;
+  letter-spacing: 0.03em;
+}
+/* the seal set into a recess in the board */
+[data-skin="wood"] .lk-plan-chop,
+[data-skin="marble"] .lk-plan-chop {
+  padding: 3px;
+  border-radius: 7px;
+  background: oklch(0.15 0.03 40 / 0.35);
+  box-shadow:
+    inset 0 1px 2px oklch(0 0 0 / 0.55),
+    0 1px 0 oklch(1 0 0 / 0.22);
+}
+[data-skin="wood"] .lk-plan-chop img,
+[data-skin="marble"] .lk-plan-chop img {
+  width: 3.1rem;
+  height: 3.1rem;
+}
+[data-skin="wood"] .lk-plan--free {
+  /* 檜: pale hinoki */
+  --plan-bg: oklch(0.86 0.05 78);
+  --plan-tex: var(--plan-varnish), url(/membership/wood-light.svg);
+  --plan-ink: oklch(0.27 0.04 55);
+  --plan-title: oklch(0.36 0.05 55);
+  --plan-yes: oklch(0.38 0.06 55);
+  --plan-no: oklch(0.5 0.13 28);
+  --plan-line: oklch(0.27 0.04 55 / 0.45);
+  --plan-hover: oklch(0.27 0.04 55 / 0.07);
+}
+[data-skin="wood"] .lk-plan--pro {
+  /* 胡桃: walnut, gold-filled carving */
+  --plan-bg: oklch(0.43 0.07 50);
+  --plan-tex: var(--plan-varnish), url(/membership/wood-light.svg);
+  --plan-ink: oklch(0.95 0.025 80);
+  --plan-title: oklch(0.84 0.11 85);
+  --plan-carve: 0 -1px 0 oklch(0.15 0.04 45 / 0.75), 0 1px 0 oklch(1 0 0 / 0.16);
+  --plan-yes: oklch(0.84 0.11 85);
+  --plan-mark-carve: drop-shadow(0 -1px 0 oklch(0.15 0.04 45 / 0.6));
+  --plan-line: oklch(0.95 0.025 80 / 0.45);
+  --plan-hover: oklch(0.95 0.025 80 / 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  [data-skin="wood"] .lk-plan {
+    --plan-shadow: drop-shadow(0 2px 2px oklch(0 0 0 / 0.5))
+      drop-shadow(0 10px 18px oklch(0 0 0 / 0.4));
+    --plan-carve: 0 -1px 0 oklch(0 0 0 / 0.7), 0 1px 0 oklch(1 0 0 / 0.12);
+    --plan-mark-carve: drop-shadow(0 -1px 0 oklch(0 0 0 / 0.6));
+    --plan-varnish: linear-gradient(170deg, oklch(1 0 0 / 0.07), oklch(1 0 0 / 0) 40%);
+  }
+  [data-skin="wood"] .lk-plan--free {
+    /* dark walnut, oiled */
+    --plan-bg: oklch(0.31 0.04 50);
+    --plan-tex: var(--plan-varnish), url(/membership/wood-dark.svg);
+    --plan-ink: oklch(0.9 0.025 80);
+    --plan-title: oklch(0.86 0.03 80);
+    --plan-yes: oklch(0.86 0.03 80);
+    --plan-no: oklch(0.7 0.13 28);
+    --plan-line: oklch(0.9 0.025 80 / 0.4);
+    --plan-hover: oklch(0.9 0.025 80 / 0.07);
+  }
+  [data-skin="wood"] .lk-plan--pro {
+    /* 黒漆: black lacquer, the grain only just showing */
+    --plan-bg: oklch(0.19 0.018 40);
+    --plan-tex: var(--plan-varnish), url(/membership/wood-dark.svg);
+    --plan-ink: oklch(0.92 0.025 80);
+  }
+}
+
+/* ── 大理石 Marble ───────────────────────────────────────────────────── */
+[data-skin="marble"] .lk-plan {
+  --plan-radius: 4px;
+  --plan-shadow: drop-shadow(0 1px 1px oklch(0.2 0.01 250 / 0.22))
+    drop-shadow(0 10px 18px oklch(0.2 0.01 250 / 0.14));
+  /* polished: a crisp lit arris, a soft reflection across the top */
+  --plan-edge:
+    inset 0 1px 0 oklch(1 0 0 / 0.75), inset 0 0 0 1px oklch(0.4 0.01 250 / 0.18),
+    inset 0 -1px 0 oklch(0.3 0.01 250 / 0.18);
+  --plan-polish: linear-gradient(160deg, oklch(1 0 0 / 0.4), oklch(1 0 0 / 0) 34%);
+  --plan-carve: 0 1px 0 oklch(1 0 0 / 0.85), 0 -1px 0 oklch(0.3 0.01 250 / 0.3);
+  --plan-mark-carve: drop-shadow(0 1px 0 oklch(1 0 0 / 0.7));
+  --plan-btn-radius: 3px;
+  --plan-btn-edge:
+    inset 0 1px 0 oklch(1 0 0 / 0.3), inset 0 -1px 0 oklch(0.3 0.12 22 / 0.5),
+    0 1px 2px oklch(0.2 0.01 250 / 0.25);
+  --plan-btn2-edge: inset 0 1px 1px oklch(0.2 0.01 250 / 0.18), 0 1px 0 oklch(1 0 0 / 0.6);
+}
+/* one slab per card: stone does not repeat */
+[data-skin="marble"] .lk-plan-face {
+  background-size: auto, cover;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+[data-skin="marble"] .lk-plan--pro .lk-plan-face {
+  background-position:
+    0 0,
+    70% 30%;
+}
+[data-skin="marble"] .lk-plan-title {
+  font-family: var(--font-antique);
+  font-size: 1.75rem;
+  letter-spacing: 0.06em;
+}
+[data-skin="marble"] .lk-plan--free {
+  /* Carrara: white, grey veins */
+  --plan-bg: oklch(0.955 0.005 90);
+  --plan-tex: var(--plan-polish), url(/membership/marble-gray.svg);
+  --plan-ink: oklch(0.26 0.01 250);
+  --plan-title: oklch(0.4 0.012 250);
+  --plan-yes: oklch(0.36 0.012 250);
+  --plan-no: oklch(0.52 0.15 25);
+  --plan-line: oklch(0.26 0.01 250 / 0.4);
+  --plan-hover: oklch(0.26 0.01 250 / 0.06);
+}
+[data-skin="marble"] .lk-plan--pro {
+  /* Calacatta: cream, gold veins; the title inlaid in seal red */
+  --plan-bg: oklch(0.945 0.018 85);
+  --plan-tex: var(--plan-polish), url(/membership/marble-gold.svg);
+  --plan-ink: oklch(0.25 0.015 60);
+  --plan-title: var(--brand);
+  --plan-carve: 0 1px 0 oklch(1 0 0 / 0.85), 0 -1px 0 oklch(0.3 0.1 22 / 0.35);
+  --plan-yes: var(--brand);
+  --plan-line: oklch(0.25 0.015 60 / 0.4);
+  --plan-hover: oklch(0.25 0.015 60 / 0.06);
+}
+@media (prefers-color-scheme: dark) {
+  [data-skin="marble"] .lk-plan {
+    --plan-shadow: drop-shadow(0 1px 1px oklch(0 0 0 / 0.55))
+      drop-shadow(0 10px 18px oklch(0 0 0 / 0.45));
+    --plan-edge: inset 0 1px 0 oklch(1 0 0 / 0.16), inset 0 0 0 1px oklch(1 0 0 / 0.06);
+    --plan-polish: linear-gradient(160deg, oklch(1 0 0 / 0.09), oklch(1 0 0 / 0) 34%);
+    --plan-carve: 0 -1px 0 oklch(0 0 0 / 0.8), 0 1px 0 oklch(1 0 0 / 0.14);
+    --plan-mark-carve: drop-shadow(0 -1px 0 oklch(0 0 0 / 0.7));
+    --plan-btn2-edge: inset 0 1px 1px oklch(0 0 0 / 0.4), 0 1px 0 oklch(1 0 0 / 0.1);
+  }
+  [data-skin="marble"] .lk-plan--free {
+    /* Nero Marquina: black, pale veins */
+    --plan-bg: oklch(0.18 0.005 250);
+    --plan-tex: var(--plan-polish), url(/membership/marble-pale.svg);
+    --plan-ink: oklch(0.92 0.008 85);
+    --plan-title: oklch(0.82 0.01 85);
+    --plan-yes: oklch(0.85 0.01 85);
+    --plan-no: oklch(0.7 0.14 25);
+    --plan-line: oklch(0.92 0.008 85 / 0.35);
+    --plan-hover: oklch(0.92 0.008 85 / 0.07);
+  }
+  [data-skin="marble"] .lk-plan--pro {
+    /* Portoro: black, gold veins, gold-leaf title */
+    --plan-bg: oklch(0.17 0.01 60);
+    --plan-tex: var(--plan-polish), url(/membership/marble-gold.svg);
+    --plan-ink: oklch(0.93 0.02 85);
+    --plan-title: oklch(0.84 0.1 85);
+    --plan-yes: oklch(0.84 0.1 85);
+    --plan-line: oklch(0.93 0.02 85 / 0.35);
+    --plan-hover: oklch(0.93 0.02 85 / 0.07);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-skin="paper"] .lk-plan-chop img {
+    animation: none;
+  }
+  .lk-plan-btn,
+  .lk-plan-btn2 {
+    transition: none;
+  }
+  .lk-plan-btn:active:not(:disabled) {
+    transform: none;
+  }
+}
