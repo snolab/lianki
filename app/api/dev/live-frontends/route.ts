@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
+import { disallowBoxUser } from "@/lib/box-oauth/allowlist";
+import { notifyBoxClosed } from "@/lib/box-oauth/push-close";
+import type { BoxDb } from "@/lib/box-oauth/store";
 import {
   allowByEmail,
-  disallow,
   listAllPreviews,
   listAllowed,
   revokePreview,
@@ -14,10 +16,11 @@ import { sameOriginJsonPost } from "@/lib/security/same-origin";
 
 /**
  * Owner-only: who may register a custom frontend (docs/custom-frontend.md),
- * and every active preview. 404 for anyone else.
+ * and every active preview. 404 for anyone else. The list is the one my-box
+ * allowlist, shared with boxes (lib/box-oauth/allowlist.ts, /dev/box-clients).
  * - GET → { allowed: [...], previews: [...] };
  * - POST (same-origin JSON) `{ op: "add", email }` | `{ op: "remove", userId }`
- *   (also revokes that user's previews) | `{ op: "revoke", id }`. Audited.
+ *   (also revokes that user's previews and box) | `{ op: "revoke", id }`. Audited.
  */
 const NO_STORE = { "cache-control": "no-store" };
 const notFound = () => new NextResponse(null, { status: 404 });
@@ -51,7 +54,9 @@ export const POST = async (req: Request) => {
     if (!(await allowByEmail(db(), b.email, by.id))) return bad("no user with that email");
   } else if (b.op === "remove") {
     if (typeof b.userId !== "string" || !b.userId) return bad("userId required");
-    await disallow(db(), b.userId, by.id);
+    // The same list as boxes: removing someone also revokes their box.
+    const { revokedClientId } = await disallowBoxUser(db() as unknown as BoxDb, b.userId, by.id);
+    if (revokedClientId) await notifyBoxClosed(revokedClientId);
   } else if (b.op === "revoke") {
     if (typeof b.id !== "string") return bad("id required");
     await revokePreview(db(), b.id, { userId: by.id, owner: true });

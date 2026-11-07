@@ -106,6 +106,14 @@ describe("one account's token cannot read another's", () => {
         .bind(id, `${id}@test.example`, `Name ${id}`, at)
         .run();
     }
+    // Both on the my-box allowlist; tests of the list itself take them off.
+    for (const id of ["u1", "u2"])
+      await db
+        .prepare(
+          "INSERT INTO live_frontend_allow (user_id, added_by, added_at) VALUES (?1, 'test', 1)",
+        )
+        .bind(id)
+        .run();
     for (const [client, origin, user, token] of [
       ["c1", BOX_A, "u1", TOKEN_A],
       ["c2", BOX_B, "u2", TOKEN_B],

@@ -105,7 +105,11 @@ export default function LiveFrontendsAdmin() {
                   className={btn}
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm(`移除 ${a.email ?? a.userId}？他的预览会全部停止。`))
+                    if (
+                      window.confirm(
+                        `移除 ${a.email ?? a.userId}？他的预览会全部停止，盒子也会被撤销。`,
+                      )
+                    )
                       void op({ op: "remove", userId: a.userId }, "已移除");
                   }}
                 >

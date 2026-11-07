@@ -22,7 +22,8 @@ export default async function DevLiveFrontendsPage() {
         名单上的用户可以登记自己的 Cloudflare 隧道，在 lianki.com/?live=&lt;id&gt;
         看到自己开发的前端；/api 和 /auth 永远是正式版，只用他自己的账号和权限，只有他本人能看到。
         还需要打开开关 <code>my-box</code>
-        （/dev/flags）。移除一个人会同时停止他所有的预览。
+        （/dev/flags）。这个名单和 /dev/box-clients
+        的盒子名单是同一个：移除一个人会同时停止他所有的预览，并撤销他的盒子。
         每次改动都记在安全审计日志里。说明：docs/custom-frontend.md。
       </p>
       <LiveFrontendsAdmin />

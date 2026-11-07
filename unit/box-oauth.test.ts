@@ -399,6 +399,14 @@ async function setup() {
       )
       .bind(id, `${id}@test.example`, now)
       .run();
+  // Both on the my-box allowlist; tests of the list itself take them off.
+  for (const id of ["u1", "u2"])
+    await db
+      .prepare(
+        "INSERT INTO live_frontend_allow (user_id, added_by, added_at) VALUES (?1, 'test', 1)",
+      )
+      .bind(id)
+      .run();
   await db
     .prepare(
       "INSERT INTO oauthClient (id, clientId, redirectUris, createdAt, updatedAt) VALUES ('c1', 'c1', '[]', ?1, ?1)",

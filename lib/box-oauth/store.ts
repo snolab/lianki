@@ -48,33 +48,71 @@ const toBinding = (r: Row): Binding => ({
 
 const COLS = "client_id, origin, user_id, scopes, created_at, revoked_at";
 
-/** The live binding of a client, or null. */
-export async function bindingByClient(db: BoxDb, clientId: string): Promise<Binding | null> {
+/**
+ * The box allowlist (docs/box-oauth.md, "Who may have a box"): my-box is a
+ * premium feature, default deny. A user may have a box, and a box may do
+ * anything at all, only while that user is on the owner's list — the same list
+ * as custom frontends (`live_frontend_allow`, /dev/box-clients and
+ * /dev/live-frontends) — or is a site owner, who approves the list. As SQL, so
+ * every lookup a box's use goes through reads it in the same query, live.
+ */
+const allowedUser = (col: string) =>
+  `(EXISTS (SELECT 1 FROM live_frontend_allow la WHERE la.user_id = ${col})
+    OR EXISTS (SELECT 1 FROM user ou JOIN site_role os ON os.email = lower(trim(ou.email))
+               WHERE ou.id = ${col} AND os.role = 'owner' AND os.revoked_at IS NULL))`;
+
+/** May this account have a box (bind time)? */
+export async function isBoxAllowed(db: BoxDb, userId: string): Promise<boolean> {
   const r = await db
-    .prepare(`SELECT ${COLS} FROM box_binding WHERE client_id = ?1 AND revoked_at IS NULL`)
-    .bind(clientId)
+    .prepare(`SELECT 1 AS ok FROM user u WHERE u.id = ?1 AND ${allowedUser("u.id")}`)
+    .bind(userId)
+    .first<{ ok: number }>();
+  return r?.ok === 1;
+}
+
+async function liveBinding(
+  db: BoxDb,
+  where: "client_id" | "origin" | "user_id",
+  value: string,
+  allowedOnly: boolean,
+): Promise<Binding | null> {
+  const r = await db
+    .prepare(
+      `SELECT ${COLS} FROM box_binding b WHERE b.${where} = ?1 AND b.revoked_at IS NULL${
+        allowedOnly ? ` AND ${allowedUser("b.user_id")}` : ""
+      }`,
+    )
+    .bind(value)
     .first<Row>();
   return r ? toBinding(r) : null;
 }
 
-/** The live binding of an origin, or null. */
-export async function bindingByOrigin(db: BoxDb, origin: string): Promise<Binding | null> {
-  const r = await db
-    .prepare(`SELECT ${COLS} FROM box_binding WHERE origin = ?1 AND revoked_at IS NULL`)
-    .bind(origin)
-    .first<Row>();
-  return r ? toBinding(r) : null;
-}
+/** The live binding of a client whose account is on the box allowlist, or null. */
+export const bindingByClient = (db: BoxDb, clientId: string) =>
+  liveBinding(db, "client_id", clientId, true);
 
-export async function listBindings(db: BoxDb): Promise<(Binding & { email: string | null })[]> {
+/** The live binding of an origin whose account is on the box allowlist, or null. */
+export const bindingByOrigin = (db: BoxDb, origin: string) =>
+  liveBinding(db, "origin", origin, true);
+
+/** The owner's view: a live binding whatever the allowlist says, so it can still be revoked. */
+const anyBindingByClient = (db: BoxDb, clientId: string) =>
+  liveBinding(db, "client_id", clientId, false);
+export const anyBindingByUser = (db: BoxDb, userId: string) =>
+  liveBinding(db, "user_id", userId, false);
+
+export async function listBindings(
+  db: BoxDb,
+): Promise<(Binding & { email: string | null; allowed: boolean })[]> {
   const { results } = await db
     .prepare(
-      `SELECT b.client_id, b.origin, b.user_id, b.scopes, b.created_at, b.revoked_at, u.email AS email
+      `SELECT b.client_id, b.origin, b.user_id, b.scopes, b.created_at, b.revoked_at, u.email AS email,
+              ${allowedUser("b.user_id")} AS allowed
        FROM box_binding b LEFT JOIN user u ON u.id = b.user_id
        ORDER BY b.revoked_at IS NOT NULL, b.created_at DESC LIMIT 200`,
     )
-    .all<Row & { email: string | null }>();
-  return results.map((r) => ({ ...toBinding(r), email: r.email }));
+    .all<Row & { email: string | null; allowed: number }>();
+  return results.map((r) => ({ ...toBinding(r), email: r.email, allowed: r.allowed === 1 }));
 }
 
 export type NewBinding = { clientId: string; origin: string; userId: string; scopes: string[] };
@@ -116,7 +154,7 @@ export async function revokeBox(
   by: string,
   now = Date.now(),
 ): Promise<boolean> {
-  const live = await bindingByClient(db, clientId);
+  const live = await anyBindingByClient(db, clientId);
   if (!live) return false;
   const iso = new Date(now).toISOString();
   const stmts = [
@@ -146,7 +184,7 @@ export type TokenRow = {
   origin: string;
 };
 
-/** A live token joined to its live binding: the same account, or no answer at all. */
+/** A live token joined to its live binding: the same account, on the box allowlist, or no answer at all. */
 export async function liveToken(
   db: BoxDb,
   tokenHash: string,
@@ -160,7 +198,8 @@ export async function liveToken(
        JOIN box_binding b ON b.client_id = t.clientId AND b.user_id = t.userId
        JOIN oauthClient c ON c.clientId = t.clientId
        WHERE t.token = ?1 AND t.revoked IS NULL AND b.revoked_at IS NULL
-         AND (c.disabled IS NULL OR c.disabled = 0)`,
+         AND (c.disabled IS NULL OR c.disabled = 0)
+         AND ${allowedUser("b.user_id")}`,
     )
     .bind(tokenHash)
     .first<{
@@ -213,7 +252,7 @@ export async function setBoxChat(
   by: string,
   now = Date.now(),
 ): Promise<ChatGrant> {
-  const live = await bindingByClient(db, clientId);
+  const live = await anyBindingByClient(db, clientId);
   if (!live) return "no-box";
   const has = live.scopes.includes(SCOPE_CHAT);
   if (on && !(await isSiteOwnerUser(db, live.userId))) return "not-owner";
@@ -262,7 +301,7 @@ export async function setBoxEval(
   by: string,
   now = Date.now(),
 ): Promise<EvalGrant> {
-  const live = await bindingByClient(db, clientId);
+  const live = await anyBindingByClient(db, clientId);
   if (!live) return "no-box";
   const has = live.scopes.includes(SCOPE_EVAL);
   if (on && !(await isSiteOwnerUser(db, live.userId))) return "not-owner";

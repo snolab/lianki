@@ -23,10 +23,41 @@ as if it did not exist.
 | the box's signed-in view                    | `lib/box-oauth/session.ts`, `me.ts`, `app/api/box/me`, `BoxApiBridge`                                                                 |
 | chat on the owner's box (`box:chat`)        | `lib/box-oauth/chat-ticket.ts`, `app/api/box/chat-ticket`, `workers/push/src/auth.ts`                                                 |
 | code on the owner's box (`box:eval`)        | `lib/box-oauth/store.ts` (`setBoxEval`, `boxEvalLive`), `worker.ts` (`boxEval`), `workers/push/src/debug.ts`                          |
-| tests                                       | `unit/box-oauth.test.ts`, `unit/box-session.test.ts`, `unit/box-chat.test.ts`, `unit/box-eval.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
+| tests                                       | `unit/box-oauth.test.ts`, `unit/box-allowlist.test.ts`, `unit/box-session.test.ts`, `unit/box-chat.test.ts`, `unit/box-eval.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
+
+## Who may have a box
+
+my-box is a premium feature (owner, 2026-11-07): **default deny**, only for
+users the owner approves. One list covers all of it: binding a box, its
+address (the origin it is bound to), box chat, and custom frontends
+([custom-frontend.md](custom-frontend.md)). It is the table
+`live_frontend_allow`, kept on `/dev/box-clients` (add by email or user id,
+remove) and shown on `/dev/live-frontends` as well; code in
+`lib/box-oauth/allowlist.ts`. A site owner (`site_role`) approves the list and
+needs no row of their own.
+
+- **Bind time.** `/dev/box-clients` refuses to bind an account that is not on
+  the list (403, and a `box.bind-refused` row in `security_audit`).
+- **Every use.** The list is part of the SQL of every lookup a box's use goes
+  through (`lib/box-oauth/store.ts`): `bindingByOrigin` (preflight, code
+  exchange), `liveToken` (every token request, so the chat-ticket and STT
+  routes too), `bindingByClient` (`/box-authorize`, the OAuth provider's
+  checks, `chatBinding`, the hub's `boxChatLive` and `boxEvalLive`). A binding
+  whose account is off the list is no box at all, read live on each request.
+  `box:chat` and `box:eval` still also need the account to be a site owner.
+- **Removing someone** revokes their box (binding, client, every token; the
+  hub's chat socket is told to close) and stops their previews, at once.
+  Adding them back does not revive a revoked box: bind it again.
+- **Audit.** Adds and removes are `live-frontend.allow` /
+  `live-frontend.disallow` (the list's kinds from before it covered boxes),
+  plus `box.revoke` for the box a removal ends.
+
+A box bound before the list existed stops working until its account is added
+(the binding shows "不在名单上" on `/dev/box-clients`); that is the default deny.
 
 ## For the owner: set up a box
 
+0. `/dev/box-clients`: put the account on the box list (above).
 1. `/dev/box-clients`: bind the box's exact origin to one account, read or
    read + write. The host's shape only lets it be bound; the binding is the
    authority, so a well-formed host nobody bound (hex or named) gets nothing. Copy the client id (not a secret).
