@@ -86,7 +86,8 @@ const LOCAL_DOT = {
 /** Suspend the context when nothing needs it: the mic off, nothing being read, no cue playing. */
 const suspendIdle = () => {
   const st = voice().state();
-  if (!st.mic && !st.speaking && pageCues().quiet())
+  // Not while the page plays: the reader's clips play through it while the mic is on (lib/read/speaker.ts).
+  if (!st.mic && !st.speaking && pageCues().quiet() && !pageAudio().playing())
     void existingCtx()?.suspend().catch(() => {});
 };
 

@@ -322,6 +322,20 @@ iOS: whether the unlocks hold across the pre-roll, whether a running context
 changes the audio session, mixes with or stops other apps' audio, or counts
 against the context limit (this page can hold several while the mic is on).
 
+### Page audio while the mic captures (iOS)
+
+While the chat mic captures, iOS's voice-processing unit ducks every other
+sound on the page to near silence. A bare `<audio>` element is one of those
+sounds: on 2026-11-07 the reader's word and sentence clips played on the
+owner's iPhone (`playing`, currentTime advancing, volume 1) and nothing was
+heard. Li's voice was audible because voice-out.ts routes its element through
+the voice AudioContext. So the reader does the same: while the mic is on and
+that context runs (`readRoute`, lib/read/speaker.ts), its clips play in a pair
+of elements routed into that context; otherwise a bare pair, as before. The
+mic does not suspend the context while page audio plays (MicButton
+`suspendIdle`). The ringer switch was ruled out on the device; the bed's own
+context does not cause it.
+
 Battery: by reasoning only, not measured. While the bed runs the audio path
 cannot power down, on top of a small noise loop. With the mic on it is already
 up for capture, so the bed adds little. Without the mic the cost is bounded by
