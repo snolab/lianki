@@ -2038,6 +2038,13 @@ function Reader({
         <div aria-hidden className="h-[3.25rem]" />
         {/* A /books book: its source link and licence, above the text (docs/books-plan.md). */}
         <BookSourceNote book={book} className="mx-auto max-w-[42rem] px-5 pb-3" />
+        {/* The book's words, as the first reader showed them at the top: straight
+            on the page (no frame), the details folded on a phone. */}
+        {loaded && material.words && (
+          <div className="mx-auto max-w-[42rem] px-5 pb-4" data-testid="reader-scan-top">
+            <BookScan id={id} words={material.words} flat collapsible />
+          </div>
+        )}
 
         {/* The book */}
         {!loaded && (
