@@ -2194,7 +2194,7 @@ export class DebugHub {
    * no binding. Called on the stub itself, never through `.bind(stub)`: workerd
    * sends that as a call of a method named "bind", which the main Worker
    * refuses ("The RPC receiver does not implement the method") — every flag
-   * read made that way failed in production from #482 until this was fixed.
+   * read made that way failed in production from #482 until #681.
    * A failure is logged as debug.rpc-failed and thrown.
    */
   private async flagValue(key: string): Promise<unknown> {

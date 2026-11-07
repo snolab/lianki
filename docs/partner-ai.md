@@ -186,6 +186,6 @@ with the method and flag key only), and the friend's page gets `ai-failed`
 ("No reply this time…"). Call the SESSIONS stub's methods on the stub itself:
 `stub.flag.bind(stub)` is sent by workerd as a call of a method named "bind",
 which the main Worker refuses. That is how every flag read failed in
-production from #482 (2026-11-03) until #NNN, so the AI never answered and
+production from #482 (2026-11-03) until #681, so the AI never answered and
 nothing said so. `unit/support/rpc-stub.ts` makes the suites' stubs refuse
 the same way.
