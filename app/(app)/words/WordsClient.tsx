@@ -199,6 +199,7 @@ import {
 import { notePrefWrite, PREF_APPLIED_EVENT, useUi } from "@lianki/ui-state";
 import {
   anchorTop,
+  centredTop,
   setFocusKey,
   migrateCollapsed,
   setAnchor,
@@ -4419,8 +4420,8 @@ export function Study({
     if (listEl) syncScroll(listEl.scrollTop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listEl, pad, viewH, ROW_H]);
-  // Open with the first row just under the glass toolbar, not half a screen
-  // down. Re-applied until the person moves the list themselves: whenever the
+  // Open with the first row in the middle of the screen (owner, 2026-11-07
+  // 17:50 JST). Re-applied until the person moves the list themselves: whenever the
   // list element is (re)mounted (the queue can reload, e.g. from the offline
   // copy and then the server), the measured heights or the over-scroll
   // change (fonts, safe areas and the toolbar settle late on iOS), and on
@@ -4450,7 +4451,8 @@ export function Study({
     };
   }, [listEl]);
   // Where the reader was in this tab (ui-store.ts): the same opening, aimed
-  // at that word instead of the first, while it is still in the queue.
+  // at that word instead of the first, while it is still in the queue. The
+  // first card itself opens in the middle of the screen (centredTop).
   const studyKey = scope?.key ?? lists.map((l) => l.id).join(",");
   const anchor = useUi(ui, (s) => s.anchors[studyKey] ?? null);
   const anchorAt = useMemo(
@@ -4461,8 +4463,11 @@ export function Study({
     if (!listEl || !listReady || !measured) return;
     if (opened.current.el !== listEl) opened.current = { el: listEl, moved: false };
     if (opened.current.moved) return;
-    listEl.scrollTop = anchorTop(anchorAt, { pad, rowH: ROW_H, barTop: bar.top }) ?? pad - bar.top;
-  }, [listEl, listReady, measured, pad, bar.top, shownAt, anchorAt]);
+    listEl.scrollTop =
+      anchorAt > 0
+        ? anchorTop(anchorAt, { pad, rowH: ROW_H, barTop: bar.top })!
+        : centredTop({ pad, rowH: ROW_H, viewH });
+  }, [listEl, listReady, measured, pad, bar.top, shownAt, anchorAt, viewH]);
   /** Remember the word at the top once the reader has moved the list (not the opening's own scroll). */
   const anchorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** The anchor write still waiting for the scroll to stop, if any. */
