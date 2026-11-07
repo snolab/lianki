@@ -18,7 +18,7 @@ import {
   oneLine,
 } from "./attach";
 import { BAR_CONTROL } from "./bar-geometry";
-import { Icon, type IconName, TreeIcon } from "./icons";
+import { HistoryIcon, Icon, type IconName, TreeIcon } from "./icons";
 import type { ChatContext, ChatStrings } from "./wire";
 
 type Memory = ReturnType<typeof createSelectionMemory>;
@@ -153,6 +153,7 @@ export function AttachMenu({
   upload = false,
   onPickFiles,
   onInbox,
+  onHistory,
   onClose,
 }: {
   t: ChatStrings;
@@ -173,6 +174,8 @@ export function AttachMenu({
   onPickFiles?: (accept?: string) => void;
   /** The host lists stored files: the View group's Inbox opens them. */
   onInbox?: () => void;
+  /** The host keeps the chat's history: the View group's History opens it. */
+  onHistory?: () => void;
   onClose: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -305,6 +308,28 @@ export function AttachMenu({
             <Icon name="uploadSimple" />
           </span>
           <span className="min-w-0 flex-1 truncate">{t.inbox}</span>
+        </button>
+      )}
+      {onHistory && (
+        <button
+          type="button"
+          role="menuitem"
+          data-testid="debug-chat-attach-history"
+          onPointerDown={keep}
+          onClick={() => {
+            onClose();
+            onHistory();
+          }}
+          className={`${row} hover:bg-[oklch(0.5_0_0/0.08)]`}
+        >
+          <span
+            aria-hidden
+            className={badge}
+            style={{ background: "oklch(0.6 0.1 255 / 0.14)", color: "oklch(0.5 0.12 255)" }}
+          >
+            <HistoryIcon />
+          </span>
+          <span className="min-w-0 flex-1 truncate">{t.chatHistory}</span>
         </button>
       )}
       <button

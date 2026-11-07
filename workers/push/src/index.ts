@@ -58,6 +58,9 @@
  *   POST /internal/signed-out  The main Worker, when a sign-in session is
  *                              deleted (sign-out): body {session: its tag}.
  *                              Every eval grant renewing on it stops at once.
+ *   POST /internal/chat-backfill The main Worker's /api/chat/history, for the
+ *                              owner: the owner thread's stored history into
+ *                              the owners' accounts in D1, once (debug.ts).
  *
  * /internal/* is answered only on the binding's own hostname (lianki-push):
  * there is no workers.dev URL, and the zone route covers /api/version/* only.
@@ -79,7 +82,7 @@ import {
   offersPartner,
   partnerTicket,
 } from "./auth";
-import { IDENTITY_HEADERS } from "./debug";
+import { CHAT_BACKFILL_PATH, IDENTITY_HEADERS } from "./debug";
 import { CHAT_PATH, REVOKED_PATH } from "./token-chat";
 import { PROGRESS_OWNER_HEADER, progressGate } from "./progress";
 
@@ -286,7 +289,8 @@ export default {
       (url.pathname.startsWith("/internal/friends") ||
         url.pathname === "/internal/signed-out" ||
         url.pathname === REVOKED_PATH ||
-        url.pathname === "/internal/box-closed") &&
+        url.pathname === "/internal/box-closed" ||
+        url.pathname === CHAT_BACKFILL_PATH) &&
       isInternal(url)
     )
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);

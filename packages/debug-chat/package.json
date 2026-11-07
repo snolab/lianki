@@ -12,6 +12,7 @@
     "./DebugChatHost": "./src/DebugChatHost.tsx",
     "./DebugPairModal": "./src/DebugPairModal.tsx",
     "./LiagentMark": "./src/LiagentMark.tsx",
+    "./LaneMark": "./src/LaneMark.tsx",
     "./MicButton": "./src/MicButton.tsx",
     "./StateTree": "./src/StateTree.tsx",
     "./state-tree": "./src/state-tree.ts",
