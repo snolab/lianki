@@ -404,6 +404,11 @@ login`'s and the agent lanes' tokens.
   `admin`, `answer` are not permissions at all (`FORBIDDEN_SCOPES`): a
   request naming one is refused. Card and settings routes (`authEmailOrToken`,
   `apiTokenUser`) need `study`, so a chat-only lane token reaches none of them.
+  The other way round, `study` never reaches the chat: the Learning Partner
+  ticket (`/api/debug/partner-ticket`, `lib/partner-ticket-auth.ts`) takes a
+  token only with `chat:read` and `chat:write`, and only the owner's (the
+  ticket opens the owner's thread, chat only). No other `/api/debug/*` or
+  `/api/dev*` route takes a token.
 - **Required expiry**: 7, 30, 90 or 365 days, or a date, at most 366 days. No
   default. Rows from before 0056 read as `study` with no expiry (shown so).
 - **Last used** (written at most once a minute), shown on the page.

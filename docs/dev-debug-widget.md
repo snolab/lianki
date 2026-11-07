@@ -231,10 +231,17 @@ time. So nothing lands in the site's storage and no request goes to the site.
 `embedded` also drops the mic and voice-clip recording.
 
 **Auth.** The userscript fetches a 60 s single-use ticket with
-GM_xmlhttpRequest (its lianki.com session or `lk:token`, header
-`x-lianki-userscript: 1`), signed with the STT ticket key under another
+GM_xmlhttpRequest (its lianki.com session, or `lk:token` only when that
+token holds both `chat:read` and `chat:write`; header `x-lianki-userscript: 1`),
+signed with the STT ticket key under another
 audience (`lianki-partner`, `lib/stt-ticket.ts`). It is offered in
 `Sec-WebSocket-Protocol: lianki-partner, <ticket>`, never in the URL.
+The ticket names no account (it always opens the owner's thread), so
+the route (`lib/partner-ticket-auth.ts`) gives one to the owner only: a
+`study` token (cards and settings) or a token of another account gets 404,
+and a token that does not qualify leaves the session to decide
+(`unit/partner-ticket-route.test.ts`). No other `/api/debug/*` or
+`/api/dev*` route takes an API token at all (same test).
 lianki-push (`workers/push/src/auth.ts` `partnerTicket`) verifies it with
 `PARTNER_TICKET_PUB` and the hub burns its jti (`pjti:*`) before accepting.
 The split is strict: from https://lianki.com only the cookie counts; from any

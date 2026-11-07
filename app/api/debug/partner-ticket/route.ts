@@ -1,41 +1,43 @@
-import { NextResponse } from "next/server";
-import { authEmailOrToken } from "@/lib/authEmailOrToken";
+import { authUserOrNull } from "@/app/signInEmail";
+import { dbBackend, getD1 } from "@/lib/d1";
+import type { D1Like } from "@/lib/d1/types";
 import { isOwner } from "@/lib/owner";
 import { refreshOwners } from "@/lib/owner-store";
-import {
-  PARTNER_TICKET_AUD,
-  PARTNER_TICKET_HEADER,
-  importTicketKey,
-  signSttTicket,
-} from "@/lib/stt-ticket";
+import { partnerTicket } from "@/lib/partner-ticket-auth";
+import { importTicketKey } from "@/lib/stt-ticket";
 
 /**
  * A 60 s, single-use ticket for the Learning Partner on another site
  * (docs/dev-debug-widget.md, "On every site"). The userscript fetches it with
- * GM_xmlhttpRequest (its lianki.com session or `lk:token`), then offers it to
- * lianki-push in Sec-WebSocket-Protocol, never in the URL. lianki-push checks
- * it with the public key and binds that socket to the owner's chat thread:
- * chat only, never eval, never a pairing.
+ * GM_xmlhttpRequest (its lianki.com session, or `lk:token` when that token
+ * holds chat:read and chat:write), then offers it to lianki-push in
+ * Sec-WebSocket-Protocol, never in the URL. lianki-push checks it with the
+ * public key and binds that socket to the owner's chat thread: chat only,
+ * never eval, never a pairing.
  *
- * Owner only, as the hot widget: 404 for anyone else. 503 while the signing
- * key (STT_TICKET_KEY, shared with the STT tickets under another audience)
- * is not set. POST, so nothing caches or prefetches it.
+ * Owner only, as the hot widget: 404 for anyone else, and for a token without
+ * the chat permissions (a `study` token is cards and settings, never a chat
+ * ticket; lib/partner-ticket-auth.ts). 503 while the signing key
+ * (STT_TICKET_KEY, shared with the STT tickets under another audience) is not
+ * set. POST, so nothing caches or prefetches it.
  */
-export const POST = async (req: Request) => {
-  if (req.headers.get(PARTNER_TICKET_HEADER) !== "1")
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const email = await authEmailOrToken(req);
-  // A bearer token reads no session, so nothing has refreshed the owner list yet.
-  await refreshOwners();
-  if (!isOwner(email)) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const raw = process.env.STT_TICKET_KEY;
-  if (!raw) return NextResponse.json({ error: "Partner tickets are off" }, { status: 503 });
-  let key: CryptoKey;
-  try {
-    key = await importTicketKey(raw);
-  } catch {
-    return NextResponse.json({ error: "Partner tickets are off" }, { status: 503 });
-  }
-  const { ticket, exp } = await signSttTicket(key, { aud: PARTNER_TICKET_AUD });
-  return NextResponse.json({ ticket, exp }, { headers: { "cache-control": "no-store" } });
-};
+export const POST = (req: Request) =>
+  partnerTicket(req, {
+    backend: dbBackend,
+    d1: () => getD1() as unknown as D1Like,
+    sessionEmail: async () => (await authUserOrNull())?.email ?? null,
+    isOwner: async (email) => {
+      // A bearer token reads no session, so nothing has refreshed the owner list yet.
+      await refreshOwners();
+      return isOwner(email);
+    },
+    key: async () => {
+      const raw = process.env.STT_TICKET_KEY;
+      if (!raw) return null;
+      try {
+        return await importTicketKey(raw);
+      } catch {
+        return null;
+      }
+    },
+  });
