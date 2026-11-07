@@ -407,6 +407,40 @@ describe("lianki-push: a box chat ticket", () => {
     expect(await boxChatTicket(req(), k.pub, seen, NOW + 1000)).toBeNull();
   });
 
+  test("a named box's ticket works from that named origin only", async () => {
+    const k = await keys();
+    const named = "https://my-example.lianki.com";
+    const { ticket } = await signSttTicket(k.priv, {
+      aud: BOX_CHAT_TICKET_AUD,
+      org: named,
+      cid: "c1",
+      now: NOW,
+    });
+    for (const origin of [
+      ORIGIN,
+      "https://my-example.lianki.com.evil.com",
+      "https://my-other.lianki.com",
+    ])
+      expect(
+        await boxChatTicket(upgrade({ origin, ...offer(ticket) }), k.pub, new Map(), NOW),
+      ).toBeNull();
+    const req = upgrade({ origin: named, ...offer(ticket) });
+    expect(await boxChatTicket(req, k.pub, new Map(), NOW)).toMatchObject({ cid: "c1" });
+  });
+
+  test("a reserved name is never a box, even with a ticket naming it", async () => {
+    const k = await keys();
+    const reserved = "https://my-admin.lianki.com";
+    const { ticket } = await signSttTicket(k.priv, {
+      aud: BOX_CHAT_TICKET_AUD,
+      org: reserved,
+      cid: "c1",
+      now: NOW,
+    });
+    const req = upgrade({ origin: reserved, ...offer(ticket) });
+    expect(await boxChatTicket(req, k.pub, new Map(), NOW)).toBeNull();
+  });
+
   test("refused from another box, lianki.com, any other site, or no origin", async () => {
     const k = await keys();
     const { ticket } = await signSttTicket(k.priv, {

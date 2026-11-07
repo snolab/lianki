@@ -1,10 +1,11 @@
 /**
- * public/sw.js on a my-<hash> box (`next dev`): it must answer nothing and cache
+ * public/sw.js on a my-<hash> or my-<name> box (`next dev`): it must answer nothing and cache
  * nothing, and clear what an older worker cached, or the page runs the previous
  * build's chunks next to the new ones and never hydrates. On lianki.com nothing
  * changes.
  */
 import { describe, expect, test } from "bun:test";
+import { isBoxHost } from "@/lib/box-oauth/rules";
 
 type Handler = (e: Record<string, unknown>) => void;
 
@@ -56,6 +57,46 @@ describe("the service worker on a box", () => {
     expect(sw.deleted).toEqual(["lianki-v2"]);
     for (const p of ["/_next/static/chunks/a.js", "/_next/x", "/home", "/icon.png"])
       expect(await sw.settle("fetch", get(`https://${host}${p}`))).toBe(false);
+  });
+
+  test("a named box is a box too", async () => {
+    const host = "my-example.lianki.com";
+    const sw = await load(host, ["lianki-v2"]);
+    await sw.settle("install");
+    expect(sw.opened).toEqual([]);
+    await sw.settle("activate");
+    expect(sw.deleted).toEqual(["lianki-v2"]);
+    expect(await sw.settle("fetch", get(`https://${host}/_next/static/chunks/a.js`))).toBe(false);
+  });
+
+  test("every host the box rule accepts is a box here (the worker's check is broader)", async () => {
+    const hosts = [
+      "my-0123456789abcdef.lianki.com",
+      `my-${"a".repeat(64)}.lianki.com`,
+      "my-example.lianki.com",
+      "my-a1b.lianki.com",
+      "my-team-2.lianki.com",
+      `my-${"x".repeat(30)}.lianki.com`,
+    ];
+    for (const host of hosts) {
+      expect(isBoxHost(host)).toBe(true);
+      const sw = await load(host, []);
+      await sw.settle("install");
+      expect(sw.opened).toEqual([]);
+    }
+  });
+
+  test("look-alikes and other hosts keep caching", async () => {
+    for (const host of [
+      "my-example.lianki.com.evil.com",
+      "x.my-example.lianki.com",
+      "dev.lianki.com",
+      "localhost",
+    ]) {
+      const sw = await load(host, []);
+      await sw.settle("install");
+      expect(sw.opened).toContain("lianki-v2");
+    }
   });
 
   test("on lianki.com it still caches and answers", async () => {

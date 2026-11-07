@@ -18,6 +18,8 @@ import {
   BOX_FLAG,
   authPathOf,
   cleanAuthorizeQuery,
+  BOX_RESERVED_NAMES,
+  isBoxHost,
   isBoxOrigin,
   isFirstPartyNavigation,
   isMutatingGet,
@@ -42,15 +44,24 @@ import { signInReturnPath } from "@/lib/dev-server-switch";
 
 const ORIGIN = "https://my-0123456789abcdef.lianki.com";
 const OTHER = "https://my-fedcba9876543210.lianki.com";
+/** A made-up named box: the form is what is tested, never a real box's name. */
+const NAMED = "https://my-example.lianki.com";
 const SECRET = "x".repeat(40);
 const TOKEN = `lkb_${"a".repeat(32)}`;
 const RW = ["box:read", "box:write"];
 
 describe("origins", () => {
-  test("only my-<hash>.lianki.com, exactly", () => {
+  test("only my-<hash>.lianki.com or my-<name>.lianki.com, exactly", () => {
     expect(isBoxOrigin(ORIGIN)).toBe(true);
+    expect(isBoxOrigin(NAMED)).toBe(true);
     for (const o of [
-      "https://my-short.lianki.com",
+      "https://my-ab.lianki.com",
+      "https://my-example.lianki.com.evil.com",
+      "https://my-example.lianki.com/",
+      "https://my-example.lianki.com:443",
+      "http://my-example.lianki.com",
+      "https://my-admin.lianki.com",
+      "https://MY-EXAMPLE.lianki.com",
       "http://my-0123456789abcdef.lianki.com",
       "https://my-0123456789abcdef.lianki.com.evil.test",
       "https://evil.test/my-0123456789abcdef.lianki.com",
@@ -68,6 +79,71 @@ describe("origins", () => {
     expect(isBoxOrigin("http://127.0.0.1:3201", true)).toBe(true);
     expect(isBoxOrigin("http://localhost:3201", true)).toBe(false);
     expect(isBoxOrigin("http://evil.test:3201", true)).toBe(false);
+  });
+});
+
+describe("box hosts", () => {
+  test("the hex form, 12 to 64 lowercase hex", () => {
+    for (const h of ["0123456789ab", "0123456789abcdef", "a".repeat(64)])
+      expect(isBoxHost(`my-${h}.lianki.com`)).toBe(true);
+    for (const h of ["a".repeat(65), "0123456789ABCDEF"])
+      expect(isBoxHost(`my-${h}.lianki.com`)).toBe(false);
+  });
+
+  test("the named form: 3 to 30 of a-z, 0-9, inner single hyphens", () => {
+    for (const n of ["example", "abc", "a1b", "my-team-2", "x".repeat(30), "123"])
+      expect(isBoxHost(`my-${n}.lianki.com`)).toBe(true);
+    for (const n of [
+      "ab",
+      "x".repeat(31),
+      "-example",
+      "example-",
+      "ex--ample",
+      "ex_ample",
+      "ex.ample",
+      "Example",
+      "EXAMPLE",
+      "exämple",
+      "ex ample",
+      "",
+    ])
+      expect(isBoxHost(`my-${n}.lianki.com`)).toBe(false);
+  });
+
+  test("reserved names are refused, whatever their shape", () => {
+    for (const n of ["admin", "api", "www"]) expect(BOX_RESERVED_NAMES).toContain(n);
+    for (const n of BOX_RESERVED_NAMES) expect(isBoxHost(`my-${n}.lianki.com`)).toBe(false);
+  });
+
+  test("look-alikes, other parents, punycode and other levels are not boxes", () => {
+    for (const h of [
+      "my-example.lianki.com.evil.com",
+      "my-example.lianki.co",
+      "my-example.lianki.com.",
+      "my-example.evil-lianki.com",
+      "my-examplelianki.com",
+      "x.my-example.lianki.com",
+      "my-example.x.lianki.com",
+      "xn--my-exmple-cua.lianki.com",
+      "my-xn--exmple-cua.lianki.com",
+      "my-example.xn--lianki-com.com",
+      "my-.lianki.com",
+      "my.lianki.com",
+      "example.lianki.com",
+      "lianki.com",
+      " my-example.lianki.com",
+      "my-example.lianki.com\n",
+      "",
+      null,
+      undefined,
+    ])
+      expect(isBoxHost(h)).toBe(false);
+  });
+
+  test("the URL parser's own form of a Unicode host is not a box", () => {
+    const host = new URL("https://my-exämple.lianki.com").hostname;
+    expect(host.startsWith("xn--")).toBe(true);
+    expect(isBoxHost(host)).toBe(false);
   });
 });
 
@@ -300,6 +376,8 @@ describe("scopes and new boxes", () => {
   });
   test("validNewBox", () => {
     expect(validNewBox(ORIGIN, ["box:read"], false)).toBeNull();
+    expect(validNewBox(NAMED, ["box:read"], false)).toBeNull();
+    expect(validNewBox("https://my-www.lianki.com", ["box:read"], false)).not.toBeNull();
     expect(validNewBox("https://evil.test", ["box:read"], false)).not.toBeNull();
     expect(validNewBox(ORIGIN, [], false)).not.toBeNull();
     expect(validNewBox(ORIGIN, ["admin"], false)).not.toBeNull();
@@ -631,6 +709,61 @@ describe("the gate", () => {
     const no = await call("/api/prefs", { method: "OPTIONS", headers: { origin: OTHER } });
     expect(no.status).toBe(403);
     expect(no.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  describe("a named box host", () => {
+    const named = (over: Record<string, string> = {}) => tokenHeaders({ origin: NAMED, ...over });
+
+    test("unbound, it gets nothing: no CORS, no token use, no code exchange", async () => {
+      const pre = await call("/api/prefs", { method: "OPTIONS", headers: { origin: NAMED } });
+      expect(pre.status).toBe(403);
+      expect(pre.headers.get("access-control-allow-origin")).toBeNull();
+      const res = await call("/api/prefs", { headers: named() });
+      expect(res.status).toBe(403);
+      expect(res.headers.get("access-control-allow-origin")).toBeNull();
+      const code = await call("/api/auth/oauth2/token", {
+        method: "POST",
+        headers: { origin: NAMED },
+        body: "grant_type=x",
+      });
+      expect(code.status).toBe(403);
+      expect(seen).toBeNull();
+    });
+
+    test("bound, it works like a hex box, and only from its own origin", async () => {
+      const named2 = await setup();
+      db = named2;
+      await insertBinding(
+        db as unknown as BoxDb,
+        { clientId: "c1", origin: NAMED, userId: "u1", scopes: RW },
+        "owner",
+        NOW,
+      );
+      await addToken(db);
+      const res = await call("/api/prefs", { headers: named() });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("access-control-allow-origin")).toBe(NAMED);
+      expect(await verifyBoxIdentity(SECRET, seen?.headers.get(BOX_IDENTITY_HEADER), NOW)).toEqual({
+        userId: "u1",
+        clientId: "c1",
+      });
+      seen = null;
+      for (const origin of [
+        ORIGIN,
+        "https://my-other-name.lianki.com",
+        "https://my-example.lianki.com.evil.com",
+      ])
+        expect((await call("/api/prefs", { headers: named({ origin }) })).status).toBe(403);
+      expect(seen).toBeNull();
+    });
+
+    test("a reserved name is not a box, even with a token", async () => {
+      const res = await call("/api/prefs", {
+        headers: named({ origin: "https://my-admin.lianki.com" }),
+      });
+      expect(res.status).toBe(403);
+      expect(seen).toBeNull();
+    });
   });
 
   test("the code exchange: a registered box only, no cookie reaches the app", async () => {

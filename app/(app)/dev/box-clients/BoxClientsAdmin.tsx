@@ -59,7 +59,7 @@ export default function BoxClientsAdmin() {
       >
         <input
           className="input input-bordered w-full"
-          placeholder="https://my-<hash>.lianki.com"
+          placeholder="https://my-<hash 或名字>.lianki.com"
           value={origin}
           onChange={(e) => setOrigin(e.target.value)}
         />

@@ -1,5 +1,5 @@
 /**
- * Pure rules for signing a my-<hash> box in through lianki.com
+ * Pure rules for signing a my-<hash> or my-<name> box in through lianki.com
  * (docs/box-oauth.md). No imports, so the Worker's gate, the auth route and the
  * tests all read the same lists. Everything is deny by default.
  */
@@ -40,13 +40,56 @@ export const BOX_ME_PATH = "/api/box/me";
 /** lianki.com's entry to the flow; it signs the user in, then goes to the plugin. */
 export const BOX_AUTHORIZE_PATH = "/box-authorize";
 
-const BOX_ORIGIN = /^https:\/\/my-[0-9a-f]{12,64}\.lianki\.com$/;
+/**
+ * A box's public host (devbox/README.md, "Tunnel"): one level under lianki.com,
+ * `my-<hash>` (12–64 lowercase hex, `openssl rand -hex 8`) or `my-<name>`
+ * (3–30 of a-z, 0-9 and single hyphens, no hyphen first or last). Both forms
+ * look the same to everything after this check. The shape is only a filter:
+ * what a host may do comes from its exact origin's row in `box_binding`, so a
+ * well-formed host nobody bound gets nothing. The one pattern for every
+ * caller: this module, the service worker's test of its own check, and
+ * devbox/host-tunnel.sh (through scripts/dev/box-host.ts).
+ */
+const BOX_HOST = /^my-(?:[0-9a-f]{12,64}|[a-z0-9](?:[a-z0-9]|-(?!-)){1,28}[a-z0-9])\.lianki\.com$/;
+
+/**
+ * `my-<name>` labels kept back for lianki.com's own use, whatever the
+ * binding table says. Data, not code: add to it, never special-case a name.
+ */
+export const BOX_RESERVED_NAMES: readonly string[] = [
+  "admin",
+  "api",
+  "app",
+  "auth",
+  "box",
+  "cdn",
+  "dev",
+  "docs",
+  "dsh",
+  "help",
+  "login",
+  "mail",
+  "root",
+  "static",
+  "status",
+  "support",
+  "www",
+];
+
+/** A box's hostname: `my-<hash>.lianki.com` or `my-<name>.lianki.com`, not reserved. */
+export function isBoxHost(hostname: string | null | undefined): boolean {
+  if (!hostname || !BOX_HOST.test(hostname)) return false;
+  const name = hostname.slice("my-".length, -".lianki.com".length);
+  return !BOX_RESERVED_NAMES.includes(name);
+}
+
 const LOCAL_ORIGIN = /^http:\/\/127\.0\.0\.1:[0-9]{2,5}$/;
 
-/** A box's origin as the browser sends it: my-<hash>, or 127.0.0.1 on a dev server only. */
+/** A box's origin as the browser sends it: https:// + a box host, or 127.0.0.1 on a dev server only. */
 export function isBoxOrigin(origin: string | null | undefined, dev = false): boolean {
   if (!origin) return false;
-  return BOX_ORIGIN.test(origin) || (dev && LOCAL_ORIGIN.test(origin));
+  if (origin.startsWith("https://") && isBoxHost(origin.slice("https://".length))) return true;
+  return dev && LOCAL_ORIGIN.test(origin);
 }
 
 export const redirectUriFor = (origin: string) => `${origin}${BOX_CALLBACK_PATH}`;

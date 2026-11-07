@@ -19,7 +19,8 @@ export default async function DevBoxClientsPage() {
     <main lang="zh" className="max-w-2xl mx-auto px-4 py-8 space-y-6">
       <h1 className="font-brush text-4xl">开发盒登录</h1>
       <p className="text-sm opacity-70">
-        每个开发盒（my-&lt;hash&gt;.lianki.com）只能用绑定的那一个账号登录，一个账号也只有一个盒子。
+        每个开发盒（my-&lt;hash&gt;.lianki.com 或
+        my-&lt;名字&gt;.lianki.com）只能用绑定的那一个账号登录，一个账号也只有一个盒子。
         盒子用该账号自己的权限访问 lianki.com 的 API，只能碰允许的路由。还需要打开开关{" "}
         <code>box.oauth</code>（/dev/flags）。「撤销」会立刻让这个盒子的所有令牌失效。
         说明：docs/box-oauth.md。
