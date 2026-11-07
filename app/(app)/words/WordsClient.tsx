@@ -148,7 +148,14 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
-import { TrayBack, reviewEnded, studyFinished } from "./study-done-back";
+import {
+  TrayBack,
+  focusStillFree,
+  inTypingField,
+  listDone,
+  reviewEnded,
+  studyFinished,
+} from "./study-done-back";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -4053,6 +4060,22 @@ export function Study({
     setRow(rowRef.current);
   }, []);
 
+  /** A row to get through: in a scoped review, all of them; else new, or due by now. */
+  const toReview = (x: Item, t: number) =>
+    !!scope || x.kind === "new" || !x.card || dueOf(x.card) <= t;
+  /** What decides the list is done (`listDone`), as of now, not the last render. */
+  const listNow = (except = -1) => {
+    const t = Date.now();
+    return {
+      exhausted: exhaustedNow.current,
+      left: queue.filter(
+        (x, j) => j !== except && !gradesNow.current.has(j) && !retired(j) && toReview(x, t),
+      ).length,
+      // A word fetched to join below (from -1), not a missed word's own copy.
+      waiting: requeue.current.later.filter((w) => w.from < 0).length,
+    };
+  };
+
   /**
    * Grade one word. Works the same online and offline: the new card is
    * computed here (same FSRS params as the server), and the review joins the
@@ -4085,17 +4108,11 @@ export function Study({
     );
     insertDue.current();
     // The last word to review, just graded: focus goes to the way back.
-    const t = now.getTime();
-    const toReview = (x: Item) => x.kind === "new" || !x.card || dueOf(x.card) <= t;
     if (
       reviewEnded({
         first,
-        reviewable: toReview(it),
-        exhausted: exhaustedNow.current,
-        left: queue.filter(
-          (x, j) => j !== i && !gradesNow.current.has(j) && !retired(j) && toReview(x),
-        ).length,
-        waiting: requeue.current.later.length,
+        reviewable: toReview(it, now.getTime()),
+        ...listNow(i),
       })
     ) {
       backFrom.current = document.activeElement;
@@ -4224,7 +4241,7 @@ export function Study({
       if (sheetOpen.current) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      if (inTypingField(t)) return;
       // The end-of-list way back, focused: Enter / Space press it.
       if (
         (e.code === "Enter" || e.code === "Space") &&
@@ -4253,7 +4270,11 @@ export function Study({
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.code === "KeyV") speech.toggle();
       else if (e.code === "KeyE") setShowAll((v) => !v);
-      else if (keyRating(e)) keyGrade(row, keyRating(e)!);
+      else if (e.code === "KeyG") {
+        // Back, once the list is done (the way back has the focus by then).
+        if (loading || loadError || !listDone(listNow())) return;
+        onExit();
+      } else if (keyRating(e)) keyGrade(row, keyRating(e)!);
       else return;
       e.preventDefault();
     };
@@ -4327,8 +4348,9 @@ export function Study({
     if (!backCue) return;
     const el = listRef.current;
     const btn = el?.querySelector<HTMLButtonElement>("[data-testid=study-done-back]");
-    if (!el || !btn || document.activeElement !== backFrom.current) return;
-    // The ring shows whatever input graded (focusVisible, where supported).
+    if (!el || !btn) return;
+    if (!focusStillFree(document.activeElement, backFrom.current, document.body)) return;
+    // The ring shows whatever input graded (TrayBack's :focus look).
     btn.focus({ preventScroll: true, focusVisible: true } as FocusOptions);
     const list = el.getBoundingClientRect();
     const b = btn.getBoundingClientRect();

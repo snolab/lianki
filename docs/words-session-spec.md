@@ -54,6 +54,16 @@ they land. Design details that are still open are marked **open**.
   moves to the next word. A correction (re-grading a graded word) never
   scrolls the view, but the cursor still moves to the next word
   (`keyGradeMove`, lib/words/advance.ts).
+- **The last card focuses the way back** (2026-11-05, then 2026-11-06/07: "swiped
+  last card… should focus into 返回", "review last word in list should focus
+  into return btn"): grading the last word, by swipe or 1–4 with any grade,
+  moves real focus to the button below the list and scrolls it into view; it
+  looks focused (a `:focus` ring and tint) after a swipe too. Enter or G press
+  it. G does nothing before the list is done or while typing in a field. A
+  missed word's copy does not hold the end back: it can only join once the
+  tail has left the screen. In a reader review every row counts; on /words a
+  word browsed ahead of its due does not (`reviewEnded`, `listDone`,
+  `app/(app)/words/study-done-back.tsx`).
 
 ## The window (phase 2, **open**: design options go to the owner in Slack)
 
