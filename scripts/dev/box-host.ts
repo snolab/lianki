@@ -11,8 +11,11 @@ export function boxHostOf(url: string | undefined): string | null {
   return m && isBoxHost(m[1]) ? m[1] : null;
 }
 
-if (import.meta.main) {
-  const host = boxHostOf(process.argv[2]);
-  if (!host) process.exit(1);
-  console.log(host);
+/** The exit code: 0 with the host printed, 1 with nothing. */
+export function main(url: string | undefined, print: (s: string) => void = console.log): number {
+  const host = boxHostOf(url);
+  if (host) print(host);
+  return host ? 0 : 1;
 }
+
+if (import.meta.main) process.exit(main(process.argv[2]));
