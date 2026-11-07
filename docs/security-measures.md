@@ -314,7 +314,11 @@ and the profile menu's handoff (actor: the user id; subject: the token id);
 custom frontends: a preview registered or revoked, a user added to or
 removed from the allowlist ([custom-frontend.md](custom-frontend.md)); the
 owner role granted or revoked (the address is the detail; written in one batch
-with the change, so that one cannot go unrecorded).
+with the change, so that one cannot go unrecorded); API tokens made, revoked
+(one, or all with a sign-out everywhere), used (once a minute at most) and
+refused (a known token expired, out of scope or over its rate limit) — subject
+the token's tag, detail its name and permissions
+([secrets-and-auth.md](secrets-and-auth.md), "API tokens").
 Ids and labels only, never a token or a pointer. Otherwise best effort: a failed
 audit insert is logged and never undoes the write. Read it with
 `wrangler d1 execute lianki --remote --command "SELECT * FROM security_audit ORDER BY id DESC LIMIT 50"`.
