@@ -574,7 +574,8 @@ export class DebugHub {
   /** When each grant's session was last checked (the per-grant rate limit). */
   private checkedAt = new Map<string, number>();
   /** The last read of PARTNER_AI_FLAG (AI_FLAG_CACHE_MS). */
-  private aiFlag?: { at: number; on: boolean };
+  /** `unsure`: the flag could not be read (an RPC error, "busy"); the AI cannot answer then. */
+  private aiFlag?: { at: number; on: boolean; unsure?: true };
   private mergeFlag?: { at: number; on: boolean };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
@@ -847,10 +848,9 @@ export class DebugHub {
   private async mergeOn(): Promise<boolean> {
     const t = this.now();
     if (this.mergeFlag && t - this.mergeFlag.at < AI_FLAG_CACHE_MS) return this.mergeFlag.on;
-    const ask = this.sessions?.flag?.bind(this.sessions);
     let on = false;
     try {
-      on = !!ask && (await ask(MERGE_FLAG)) === true;
+      on = (await this.flagValue(MERGE_FLAG)) === true;
     } catch {}
     this.mergeFlag = { at: t, on };
     return on;
@@ -1222,7 +1222,7 @@ export class DebugHub {
     if (!ping) return Response.json({ error: "expected {id, title, etaAt}" }, { status: 400 });
     let on: unknown = false;
     try {
-      on = await this.sessions?.flag?.(ETA_FLAG);
+      on = await this.flagValue(ETA_FLAG);
     } catch {
       return Response.json({ error: "flag unreadable" }, { status: 503 });
     }
@@ -1319,10 +1319,9 @@ export class DebugHub {
    * polish as before, so the deploy order never matters.
    */
   private async polishOff(): Promise<boolean> {
-    const ask = this.sessions?.flag?.bind(this.sessions);
-    if (!ask) return false;
+    if (!this.sessions?.flag) return false;
     try {
-      return (await ask(POLISH_OFF_FLAG)) !== false;
+      return (await this.flagValue(POLISH_OFF_FLAG)) !== false;
     } catch {
       return true;
     }
@@ -2141,7 +2140,11 @@ export class DebugHub {
       ...(context ? { context } : {}),
     });
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
-    if (await this.aiOn()) await this.aiReply(page, email, t, context, scene, id);
+    const ai = await this.aiState();
+    if (ai === "on") await this.aiReply(page, email, t, context, scene, id);
+    // The AI could not even be asked: the page says so, rather than leave the line unanswered.
+    else if (ai === "unsure")
+      for (const { ws } of this.pages(page.thread)) send(ws, { type: "ai-failed" });
   }
 
   /**
@@ -2160,15 +2163,49 @@ export class DebugHub {
    * it was (the lanes answer).
    */
   private async aiOn(): Promise<boolean> {
+    return (await this.aiState()) === "on";
+  }
+
+  /**
+   * aiOn, telling "off" from "unsure": the flag could not be read (an RPC
+   * error, already logged as debug.rpc-failed, or "busy"). A friend's line
+   * then gets ai-failed ("No reply this time…") instead of silence.
+   */
+  private async aiState(): Promise<"on" | "off" | "unsure"> {
     const t = this.now();
-    if (this.aiFlag && t - this.aiFlag.at < AI_FLAG_CACHE_MS) return this.aiFlag.on;
-    const ask = this.sessions?.flag?.bind(this.sessions);
-    let on = false;
+    const cached = this.aiFlag;
+    if (cached && t - cached.at < AI_FLAG_CACHE_MS)
+      return cached.on ? "on" : cached.unsure ? "unsure" : "off";
+    let said: unknown = false;
+    let unsure = false;
     try {
-      on = !!ask && !!this.sessions?.partnerReply && (await ask(PARTNER_AI_FLAG)) === true;
-    } catch {}
-    this.aiFlag = { at: t, on };
-    return on;
+      if (this.sessions?.partnerReply) said = await this.flagValue(PARTNER_AI_FLAG);
+    } catch {
+      unsure = true;
+    }
+    if (said === "busy") unsure = true;
+    const on = !unsure && said === true;
+    this.aiFlag = { at: t, on, ...(unsure ? { unsure: true as const } : {}) };
+    return on ? "on" : unsure ? "unsure" : "off";
+  }
+
+  /**
+   * A flag's value from the main Worker's DebugSessions.flag; undefined with
+   * no binding. Called on the stub itself, never through `.bind(stub)`: workerd
+   * sends that as a call of a method named "bind", which the main Worker
+   * refuses ("The RPC receiver does not implement the method") — every flag
+   * read made that way failed in production from #482 until this was fixed.
+   * A failure is logged as debug.rpc-failed and thrown.
+   */
+  private async flagValue(key: string): Promise<unknown> {
+    const rpc = this.sessions;
+    if (!rpc?.flag) return undefined;
+    try {
+      return await rpc.flag(key);
+    } catch (e) {
+      rpcFailed("flag", e, key);
+      throw e;
+    }
   }
 
   /**
@@ -2188,8 +2225,8 @@ export class DebugHub {
     msgId?: string,
   ) {
     const thread = page.thread;
-    const ask = this.sessions?.partnerReply?.bind(this.sessions);
-    if (thread === OWNER_THREAD || !isUserId(thread) || !ask) return;
+    const rpc = this.sessions;
+    if (thread === OWNER_THREAD || !isUserId(thread) || !rpc?.partnerReply) return;
     const t = this.now();
     const day = jstDay(t);
     const userKey = aiUserKey(day, thread);
@@ -2255,13 +2292,15 @@ export class DebugHub {
     };
     let res: PartnerResult;
     try {
-      res = ((await ask(req)) ?? {
+      // On the stub itself: see flagValue.
+      res = ((await rpc.partnerReply(req)) ?? {
         ok: false,
         error: "model-failed",
         billed: "unknown",
       }) as PartnerResult;
-    } catch {
+    } catch (e) {
       // The RPC failed: the model may have run. Keep the reservation.
+      rpcFailed("partnerReply", e);
       res = { ok: false, error: "model-failed", billed: "unknown" };
     } finally {
       clearInterval(timer);
@@ -2542,7 +2581,8 @@ export class DebugHub {
     let a: Record<string, unknown>;
     try {
       a = ((await sessions.inbox(req)) ?? {}) as Record<string, unknown>;
-    } catch {
+    } catch (e) {
+      rpcFailed("inbox", e, req.op);
       return send(ws, { type: "error", error: "the inbox did not answer" });
     }
     console.log(JSON.stringify({ msg: "debug.inbox", op: req.op, ok: a.ok === true }));
@@ -3053,6 +3093,22 @@ export class DebugHub {
   webSocketError(ws: Socket): void | Promise<void> {
     return this.webSocketClose(ws, 1011);
   }
+}
+
+/**
+ * A call to the main Worker's DebugSessions failed: an error event in the
+ * Worker's logs (`wrangler tail lianki-push`), never silence. The method and a
+ * flag key or op only: no user, no text.
+ */
+function rpcFailed(method: string, e: unknown, what?: string) {
+  console.error(
+    JSON.stringify({
+      msg: "debug.rpc-failed",
+      method,
+      ...(what ? { what: what.slice(0, 64) } : {}),
+      error: String(e).slice(0, 200),
+    }),
+  );
 }
 
 /** A controller's {type:"inbox", op, id?}, or null (any other message). Bounded before the RPC. */

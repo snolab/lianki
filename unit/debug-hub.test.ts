@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { DebugHub, type Socket, type Storage, hashToken } from "@/workers/push/src/debug";
+import { rpcStub } from "./support/rpc-stub";
 import push, { type Env, VersionHub } from "@/workers/push/src/index";
 import { DEV_BRIDGE_HEADER, debugIdentity } from "@/workers/push/src/auth";
 import {
@@ -77,6 +78,12 @@ function fakeStorage(
   };
 }
 
+/** SESSIONS behaves like a real service-binding stub (unit/support/rpc-stub.ts). */
+function withRpc(env: unknown) {
+  const e = env as { SESSIONS?: object } | undefined;
+  return e?.SESSIONS ? { ...e, SESSIONS: rpcStub(e.SESSIONS) } : env;
+}
+
 function setup(env?: unknown, storage = fakeStorage()) {
   const sockets: FakeSocket[] = [];
   let t = 1_000_000;
@@ -86,7 +93,7 @@ function setup(env?: unknown, storage = fakeStorage()) {
       getWebSockets: () => sockets,
       storage,
     },
-    env,
+    withRpc(env),
     () => t,
   );
   const page = (label = "/words pwa iPhone") => {
