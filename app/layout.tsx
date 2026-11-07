@@ -157,7 +157,7 @@ export default async function RootLayout({
         {/* The band behind the status bar's white clock (home-screen app only). */}
         <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
-          {partnerFrame ? null : <OwnerBoots {...boots} />}
+          {partnerFrame ? null : <OwnerBoots {...boots} box={box} />}
           {/* A box signed in through lianki.com (docs/box-oauth.md): every page, landing included. */}
           {box ? <BoxApiBridge config={box}>{children}</BoxApiBridge> : children}
         </IntlayerServerProvider>

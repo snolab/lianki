@@ -2,6 +2,7 @@ import { ServiceWorkerRegistration } from "./ServiceWorkerRegistration";
 import { NewVersionNotice } from "./NewVersionNotice";
 import { DebugEval, type PartnerStrings } from "./DebugEval";
 import { LeaveGuard } from "./LeaveGuard";
+import type { BoxConfig } from "@/lib/box-oauth/client";
 
 /**
  * What every page but the partner frame mounts: the service worker, the
@@ -15,7 +16,10 @@ export function OwnerBoots({
   etaBar = false,
   chatFull = false,
   liHub = false,
+  box = null,
 }: {
+  /** On a box (docs/box-oauth.md): its sign-in config, so the chat uses lianki.com's hub. */
+  box?: BoxConfig | null;
   strings: PartnerStrings;
   leave: string;
   /** The Learning Partner for every signed-in user (partner.ai-reply on; docs/partner-ai.md). */
@@ -38,6 +42,7 @@ export function OwnerBoots({
         fullScreen={chatFull}
         etaBar={etaBar}
         liHub={liHub}
+        box={box}
       />
     </>
   );
