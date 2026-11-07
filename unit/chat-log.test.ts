@@ -322,6 +322,18 @@ describe("/api/chat/history handlers", () => {
     );
   });
 
+  it("a chat:read reader reads its own account, not the session's; deleting is the session's", async () => {
+    who = { id: "own1", owner: true };
+    const viaToken = { ...deps(), reader: async () => ({ id: "fr1", owner: false }) };
+    const r = await getHistory(new Request("https://lianki.com/api/chat/history"), viaToken);
+    expect(((await r.json()) as { lines: unknown[] }).lines).toEqual([]);
+    expect(backfills).toBe(0);
+    const none = { ...deps(), reader: async () => null };
+    expect(
+      (await getHistory(new Request("https://lianki.com/api/chat/history"), none)).status,
+    ).toBe(404);
+  });
+
   it("delete: a line, a day; a range over a day and a bit is refused", async () => {
     who = { id: "own1", owner: true };
     expect((await del({ from: T0, to: T0 + 30 * 3600_000 })).status).toBe(400);

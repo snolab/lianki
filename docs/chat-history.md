@@ -83,7 +83,7 @@ Linked from the chat's + menu, View group, "History" (`onHistory`, DebugChat;
 nothing in a request names an account. No session: 404. A line of another
 account answers 404, as one that does not exist.
 
-**`lianki chat` tokens (PR #678).** Not on main when this shipped. The hook is
-`HistoryDeps.reader`: when tokens land, it also accepts a Bearer token with
-`chat:read` (`checkToken(db, token, "chat:read")`) and answers that token's
-account. Deleting stays with the session.
+**`lianki chat` tokens (#678).** A Bearer API token holding `chat:read`
+reads its own account's history (`GET /api/chat/history`; the route's
+`reader`, `checkToken(db, token, "chat:read")`); no backfill runs on a token's
+read. Deleting stays with the session.

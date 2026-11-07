@@ -5,11 +5,9 @@
  * caller's own account id: there is no parameter naming an account, and a
  * line of another account answers 404 as one that does not exist.
  *
- * Who may read: the session's user. Hook for `lianki chat` tokens
- * (fine-grained API tokens, PR #678): when they are on main, `reader` also
- * accepts a Bearer token holding `chat:read` (lib/chat-token.ts /
- * lib/api-tokens.ts checkToken(db, token, "chat:read")) and answers that
- * token's account. Deleting stays with the session alone.
+ * Who may read: the session's user, or a `lianki chat` API token holding
+ * `chat:read` (lib/api-tokens.ts checkToken; the route's `reader`), which
+ * reads that token's own account. Deleting stays with the session alone.
  */
 import {
   CHAT_LOG_MAX_QUERY,
@@ -27,10 +25,7 @@ export type HistoryUser = { id: string; owner: boolean };
 export type HistoryDeps = {
   /** The session's user (a deleting caller), or null. */
   who: () => Promise<HistoryUser | null>;
-  /**
-   * Who may read: the session's user; the chat:read token hook goes here
-   * (see above). Defaults to `who`.
-   */
+  /** Who may read: the session's user, or a chat:read token's account. Defaults to `who`. */
   reader?: (req: Request) => Promise<HistoryUser | null>;
   db: () => ChatLogDb | null;
   /** Asks lianki-push to copy the owner thread's stored history in, once (null: no binding). */

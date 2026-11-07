@@ -195,6 +195,9 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async chatToken(req: unknown): Promise<ChatTokenAnswer> {
     if (!allowChatToken()) return { ok: false, error: "rate" };
     return chatTokenCheck(this.env.DB as unknown as ChatTokenDb, req);
+  }
+
+  /**
    * The account's chat history (lib/chat-log.ts; docs/chat-history.md): the
    * hub writes each line of a thread as it keeps it, and its owner-thread
    * history once (backfill). The thread decides the accounts: the active

@@ -3,6 +3,8 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { isOwner } from "@/lib/owner";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { ChatLogDb } from "@/lib/chat-log";
+import type { D1Like } from "@/lib/d1/types";
+import { checkToken } from "@/lib/api-tokens";
 import { type HistoryDeps, deleteHistory, getHistory } from "@/lib/chat-history-api";
 
 /**
@@ -24,10 +26,21 @@ function push(): Fetcher | null {
   }
 }
 
+const who = async () => {
+  const u = await authUserOrNull();
+  return u?.id && u.email ? { id: u.id, owner: isOwner(u.email) } : null;
+};
+
 const deps: HistoryDeps = {
-  who: async () => {
-    const u = await authUserOrNull();
-    return u?.id && u.email ? { id: u.id, owner: isOwner(u.email) } : null;
+  who,
+  // `lianki chat` tokens (lib/api-tokens.ts): a Bearer token with chat:read reads its
+  // own account's history; no backfill on a token's read. Otherwise the session.
+  reader: async (req) => {
+    const bearer = /^Bearer (\S+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
+    if (!bearer) return who();
+    if (dbBackend() !== "d1") return null;
+    const r = await checkToken(getD1() as unknown as D1Like, bearer, "chat:read");
+    return r.ok ? { id: r.user.id, owner: false } : null;
   },
   db: () => (dbBackend() === "d1" ? (getD1() as unknown as ChatLogDb) : null),
   backfill: async () => {
