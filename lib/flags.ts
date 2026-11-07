@@ -207,6 +207,13 @@ export const FLAGS = {
     default: false,
     audience: "owner",
   },
+  "voice.li-hub": {
+    description:
+      "声音都经过 Li（第 0 步，只观察，docs/li-sound-hub.md）：打开后，在你本人的页面上（调试模式），Li 记录谁在用麦克风（聊天麦克风、对话日记的录音）、谁在出声（Li 的朗读、/words 读词、阅读器朗读、页面上的 <audio> 和浏览器语音），写进 Worker 日志：每次变化一条 audio-owner，两个录音同时开着或两个声音同时在放时一条 audio-conflict。不改变任何声音或麦克风的行为。关闭（默认）= 完全不运行，和以前一模一样。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
   "byok.sync": {
     description:
       "「自己的 AI」里的「同步 API key 到账号」（托管模式）草稿：所有登录用户都能看到这一行（显示「即将推出」和提醒：打开后 Lianki 服务器会保存你的 key（加密）；关闭会删除服务器上的副本）。现在只是界面，点不了，服务器上没有任何保存 key 的代码。提供方 / 地址 / 模型的同步不受这个开关影响，已经可以用。关闭（默认）= 只有你本人能看到这一行。",

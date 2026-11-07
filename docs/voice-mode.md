@@ -167,6 +167,9 @@ context line.
 
 ## Where the speech comes from
 
+Every mic and sound on the page is moving under one hub, Li's; phase 0 only
+observes ([li-sound-hub.md](li-sound-hub.md), flag `voice.li-hub`).
+
 Voice mode uses the page's one mic session, `__lkMic`
 ([dev-debug-widget.md](dev-debug-widget.md), packages/debug-chat
 `mic-session.ts`). This is the same VAD, echo guard and STT as the chat mic:

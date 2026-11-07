@@ -129,11 +129,14 @@ export function DebugEval({
   strings,
   partnerOpen = false,
   fullScreen = false,
+  liHub = false,
 }: {
   strings?: Partial<PartnerStrings>;
   partnerOpen?: boolean;
   /** `partner.fullscreen` on: the chat's full screen for every chat user (off: the owner only). */
   fullScreen?: boolean;
+  /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
+  liHub?: boolean;
 } = {}) {
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
@@ -188,6 +191,23 @@ export function DebugEval({
   useIslands();
   // The tab title says when Lianki's voice runs on in the background (voice-bg.ts).
   useVoiceTitleHint();
+  // Li's sound hub, phase 0 (docs/li-sound-hub.md): it only observes, on the
+  // owner's pages with `voice.li-hub` on. Off, the module is not even loaded.
+  const liOn = liHub && owner && friend === null;
+  useEffect(() => {
+    if (!liOn) return;
+    let stop = () => {};
+    let gone = false;
+    void import("@lianki/debug-chat/li-client")
+      .then(({ startLiClient }) => {
+        if (!gone) stop = startLiClient({ on: true, log: devLog });
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+      stop();
+    };
+  }, [liOn]);
   /** Live view (docs/live-view.md): the signed pointer, verified on this page. */
   const liveState = useLiveView();
   /** This device's tabs agree on one to read replies aloud (BroadcastChannel). */

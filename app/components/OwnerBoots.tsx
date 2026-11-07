@@ -13,6 +13,7 @@ export function OwnerBoots({
   leave,
   open = false,
   chatFull = false,
+  liHub = false,
 }: {
   strings: PartnerStrings;
   leave: string;
@@ -20,13 +21,15 @@ export function OwnerBoots({
   open?: boolean;
   /** The chat's full screen for every chat user (partner.fullscreen on); off, the owner only. */
   chatFull?: boolean;
+  /** Flag `voice.li-hub`: Li's sound hub observes the owner's pages (docs/li-sound-hub.md). */
+  liHub?: boolean;
 }) {
   return (
     <>
       <ServiceWorkerRegistration />
       <LeaveGuard message={leave} />
       <NewVersionNotice />
-      <DebugEval strings={strings} partnerOpen={open} fullScreen={chatFull} />
+      <DebugEval strings={strings} partnerOpen={open} fullScreen={chatFull} liHub={liHub} />
     </>
   );
 }

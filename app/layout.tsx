@@ -104,6 +104,8 @@ export default async function RootLayout({
   const open = partnerFrame ? false : await partnerOpenFor(flags);
   // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
   const chatFull = flagIn(flags, "partner.fullscreen");
+  // Li's sound hub, observing only (docs/li-sound-hub.md); the owner's pages only.
+  const liHub = flagIn(flags, "voice.li-hub");
   const box = boxConfig();
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
@@ -152,7 +154,13 @@ export default async function RootLayout({
         <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
           {partnerFrame ? null : (
-            <OwnerBoots strings={partner} leave={leave} open={open} chatFull={chatFull} />
+            <OwnerBoots
+              strings={partner}
+              leave={leave}
+              open={open}
+              chatFull={chatFull}
+              liHub={liHub}
+            />
           )}
           {/* A box signed in through lianki.com (docs/box-oauth.md): every page, landing included. */}
           {box ? <BoxApiBridge config={box}>{children}</BoxApiBridge> : children}

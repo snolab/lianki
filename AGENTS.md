@@ -139,6 +139,7 @@ that are expensive to rediscover.
 | /self-intro import: files/text → facts → review; privacy      | [docs/self-intro-import.md](docs/self-intro-import.md)              |
 | /books public-domain library: catalogue rule, slugs, R2 cache | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
 | Voice mode: spoken commands per screen, grammar, mic taps     | [docs/voice-mode.md](docs/voice-mode.md)                            |
+| All sound through Li: `__lkLi` hub, who holds mic / plays     | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |
 | /words owner spec: tall slips, window, review-first, voice    | [docs/words-session-spec.md](docs/words-session-spec.md)            |
 | Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
