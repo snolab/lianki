@@ -22,12 +22,14 @@
  * `?eta`: the ETA bar on (eta.ts), the tree a feed of timed tasks set with
  * `__etaSet([{id, title, start, at, done?, doneAt?, sent?}])`; `__etaDue`
  * records each {type:"eta"} the page's timer would send.
+ * `?full` passes the full-screen flag (partner.fullscreen on), with the app's Back handling.
  */
 import { type Ask, askText } from "@lianki/debug-chat/ask";
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
 import type { TreeEta, TreeNode } from "@lianki/debug-chat/state-tree";
+import { openBackToClose } from "@/lib/back-to-close";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 import { voice } from "@lianki/debug-chat/voice";
@@ -316,6 +318,8 @@ function Harness() {
         hot
         agentAvatar={<LiagentMark size={14} />}
         viewer={{ id: "v1", name: "Harness Owner", avatars: q.has("nopic") ? [] : [PIC] }}
+        fullScreen={q.has("full")}
+        backToClose={(onBack) => openBackToClose(window, onBack)}
         live
         listeners={q.has("offline") ? 0 : 1}
         messages={messages}

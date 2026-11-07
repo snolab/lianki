@@ -118,7 +118,10 @@ describe("chatPrefs (per device)", () => {
     expect(chatPrefs().getState().compact).toBe(false);
     expect(uiKey("chat-view", "local")).toBe("lk:pref:chat-view");
     chatPrefs().setState({ compact: true });
-    expect(JSON.parse(data.get("lk:pref:chat-view")!).state).toEqual({ compact: true });
+    expect(JSON.parse(data.get("lk:pref:chat-view")!).state).toEqual({
+      compact: true,
+      full: false,
+    });
     resetUiStores();
     expect(chatPrefs().getState().compact).toBe(true);
   });

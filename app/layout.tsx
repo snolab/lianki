@@ -9,7 +9,7 @@ import type { PartnerStrings } from "./components/DebugEval";
 import { OwnerBoots } from "./components/OwnerBoots";
 import { LOCALE_HEADER, PARTNER_FRAME_HEADER, resolveLocale } from "@/lib/app-locale";
 import { LANG_TAGS } from "@/lib/constants";
-import { flagIn } from "@/lib/flags";
+import { type FlagValues, flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { ETA_FLAG } from "@/lib/eta-ping";
 import { isOwner } from "@/lib/owner";
@@ -22,8 +22,8 @@ import { BoxApiBridge } from "./components/BoxApiBridge";
  * default), or a guest, or the owner: false, and nothing changes. The session
  * is only looked up while the flag is on.
  */
-async function partnerOpenFor(): Promise<boolean> {
-  if (!flagIn(await readFlags(), "partner.ai-reply")) return false;
+async function partnerOpenFor(flags: FlagValues): Promise<boolean> {
+  if (!flagIn(flags, "partner.ai-reply")) return false;
   try {
     const { authSessionOrNull } = await import("./signInEmail");
     const user = (await authSessionOrNull())?.user;
@@ -100,10 +100,14 @@ export default async function RootLayout({
   ) as unknown as PartnerStrings;
   // The unsaved-changes confirm (LeaveGuard, leave-guard.content.ts).
   const leave = String(getIntlayer("leave-guard", locale as never).unsaved);
-  const open = partnerFrame ? false : await partnerOpenFor();
+  // One read per request, passed to everything that decides (docs/feature-flags.md).
+  const flags: FlagValues = partnerFrame ? {} : await readFlags();
+  const open = partnerFrame ? false : await partnerOpenFor(flags);
+  // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
+  const chatFull = flagIn(flags, "partner.fullscreen");
   // The owner's ETA bar (lib/eta-ping.ts): the chat shows it only on his pages.
-  const etaBar = partnerFrame ? false : flagIn(await readFlags(), ETA_FLAG);
-  const boots = { strings: partner, leave, open, etaBar };
+  const etaBar = flagIn(flags, ETA_FLAG);
+  const boots = { strings: partner, leave, open, chatFull, etaBar };
   const box = boxConfig();
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>

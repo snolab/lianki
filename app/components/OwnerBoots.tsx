@@ -13,6 +13,7 @@ export function OwnerBoots({
   leave,
   open = false,
   etaBar = false,
+  chatFull = false,
 }: {
   strings: PartnerStrings;
   leave: string;
@@ -20,13 +21,15 @@ export function OwnerBoots({
   open?: boolean;
   /** Flag chat.eta-bar: the owner's ETA bar in the chat (lib/eta-ping.ts). */
   etaBar?: boolean;
+  /** The chat's full screen for every chat user (partner.fullscreen on); off, the owner only. */
+  chatFull?: boolean;
 }) {
   return (
     <>
       <ServiceWorkerRegistration />
       <LeaveGuard message={leave} />
       <NewVersionNotice />
-      <DebugEval strings={strings} partnerOpen={open} etaBar={etaBar} />
+      <DebugEval strings={strings} partnerOpen={open} fullScreen={chatFull} etaBar={etaBar} />
     </>
   );
 }

@@ -178,6 +178,18 @@ import {
   pushedAgainst,
 } from "./fold";
 import { keyboardLift } from "./keyboard-lift";
+import {
+  FULL_H_VAR,
+  FULL_LOG_STYLE,
+  FULL_PB_VAR,
+  FULL_SCREEN_STYLE,
+  FULL_TOP_VAR,
+  escapeLeaves,
+  fullBottomPad,
+  fullScreenAllowed,
+  fullScreenBox,
+  fullScreenOn,
+} from "./full-screen";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
 import { type ScrollBox, forwardWheel } from "./wheel-forward";
@@ -692,6 +704,19 @@ export type DebugChatProps = {
    * `treeSource`'s place: the host's live source, which the ETA bar reads.
    */
   etaSource?: TreeSource;
+  /**
+   * Full screen for this viewer (full-screen.ts): the host's server-side read
+   * of the flag `partner.fullscreen`. Off, only the owner's pages (`owner`)
+   * get it. Never on another site (`embedded`).
+   */
+  fullScreen?: boolean;
+  /**
+   * The host's "Back closes an overlay" (Lianki: lib/back-to-close.ts
+   * openBackToClose, docs/ui-state.md): opening full screen by a tap pushes
+   * one history entry, Back runs `onBack`, and the returned close consumes the
+   * entry when full screen ends any other way. Absent: Escape and the button only.
+   */
+  backToClose?: (onBack: () => void) => () => void;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -775,6 +800,8 @@ export function DebugChat({
   etaBar = false,
   onEtaDue,
   etaSource,
+  fullScreen: fullScreenFlag = false,
+  backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
@@ -786,6 +813,15 @@ export function DebugChat({
     const v = read(OPEN_KEY);
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
   });
+  /**
+   * Full screen (full-screen.ts): the open chat fills the app. Chosen per
+   * device (ui-store.ts chatPrefs `full`); `flag || owner`, never on another site.
+   */
+  const fullAllowed = fullScreenAllowed({ flag: fullScreenFlag, owner, embedded });
+  const fullPref = useUi(chatPrefs(), (s) => s.full);
+  const full = fullScreenOn({ allowed: fullAllowed, pref: fullPref, open });
+  const fullOn = useRef(full);
+  fullOn.current = full;
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
   const [aec, setAecState] = useState(aecOn);
@@ -874,9 +910,10 @@ export function DebugChat({
   const setMenu = (v: boolean) => setPanel((p) => (v ? "menu" : p === "menu" ? "none" : p));
   // Expanding, minimizing or opening the tree refits (fit itself is fresh each render).
   // Tucked, the box is past the edge on purpose: never pulled back on screen.
+  // Full screen places itself; the panel's own place is kept for the way back.
   useLayoutEffect(() => {
-    if (!tucked) fit(root.current, open);
-  }, [open, tree]);
+    if (!tucked && !full) fit(root.current, open);
+  }, [open, tree, full]);
   /** The floating box's side and left edge (px from the bar row's left), anchor.ts. */
   const [place, setPlace] = useState<{ side: AnchorSide; left: number }>({
     side: "left",
@@ -978,6 +1015,20 @@ export function DebugChat({
     const bar = box?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
     const vv = typeof visualViewport === "undefined" ? null : visualViewport;
     if (!box || !bar) return;
+    // Full screen: the box is the visible area (full-screen.ts), so the bar
+    // already sits above the keyboard; no lift.
+    if (fullOn.current) {
+      const b = fullScreenBox({ innerHeight, vv });
+      box.style.setProperty(FULL_TOP_VAR, `${b.top}px`);
+      box.style.setProperty(FULL_H_VAR, `${b.height}px`);
+      box.style.setProperty(FULL_PB_VAR, fullBottomPad(b.keyboard));
+      if (b.keyboard) box.dataset.kb = "";
+      else delete box.dataset.kb;
+      box.style.setProperty(KB_LIFT_VAR, "0px");
+      delete box.dataset.kbLift;
+      return;
+    }
+    delete box.dataset.kb;
     const cur = liftOf(box);
     let next = vv
       ? keyboardLift({
@@ -1473,7 +1524,8 @@ export function DebugChat({
     expanded,
     typing,
     tree,
-    fullLog: fullLog !== "off",
+    // Full screen is for reading the whole chat: compact waits until it ends.
+    fullLog: fullLog !== "off" || full,
   });
   /** The whole chat, from the compact line: for reading, so a longer hold. */
   const peek = () => {
@@ -1488,7 +1540,7 @@ export function DebugChat({
       expanded,
       typing: typingNow,
       scrolledUp,
-      busy: panel !== "none" || fullLog !== "off",
+      busy: panel !== "none" || fullLog !== "off" || full,
       holdUntil: holdUntil.current,
       now: Date.now(),
     });
@@ -1496,7 +1548,7 @@ export function DebugChat({
     if (d === "now") return setExpanded(false);
     const t = setTimeout(() => setFoldTick((n) => n + 1), d);
     return () => clearTimeout(t);
-  }, [compactPref, open, expanded, typingNow, scrolledUp, panel, fullLog, foldTick]);
+  }, [compactPref, open, expanded, typingNow, scrolledUp, panel, fullLog, full, foldTick]);
   // A reply arriving while the whole chat is up: he is reading it, so the
   // fold waits for its reading time (float-lines.ts dwellMs).
   const lastMsg = messages.at(-1);
@@ -1560,8 +1612,9 @@ export function DebugChat({
     start: (from: "mic" | "input" = "mic") => {
       const el = log.current;
       // The tree in the log's place: the drag scrolls it; no full-screen log.
-      if (tree) fullRef.current.lastDy = 0;
-      if (!el || !open || tree) return;
+      // Full screen: the log already spans it, so the drag only scrolls.
+      if (tree || full) fullRef.current.lastDy = 0;
+      if (!el || !open || tree || full) return;
       // Compact: the log comes back first, so it can be measured.
       if (compact) flushSync(() => setExpanded(true));
       const r = el.getBoundingClientRect();
@@ -1627,7 +1680,9 @@ export function DebugChat({
     },
   };
   /** The log's surface props, full screen: lifted to the visible top, or its own snapped box. */
-  const fullSurface = (p: ReturnType<typeof logSurface>) => {
+  const fullSurface = (p: ReturnType<typeof logSurface>, fullScreenNow = false) => {
+    // Full screen: the log takes the height the bar leaves (full-screen.ts).
+    if (fullScreenNow) return { ...p, style: { ...p.style, ...FULL_LOG_STYLE } };
     if (fullLog === "off") return p;
     const box = fullRef.current.box;
     const transition = reducedMotion() || box ? "none" : WIPE;
@@ -2188,6 +2243,70 @@ export function DebugChat({
     // The observer says so a frame later; a quick second tap goes on from here.
     setAskCardsAbove((s) => new Set([...s].filter((x) => x !== id)));
   };
+  /**
+   * Into full screen and back (full-screen.ts). Only the view changes: the
+   * line being read keeps its place on screen across the switch (at the end,
+   * the resize re-pin keeps the newest line); the draft, its focus and the
+   * mic are the same elements, untouched.
+   */
+  const fullAnchor = useRef<ReturnType<typeof anchorNow>>(null);
+  /** Entered by a tap in this page: it owns one history entry (Back leaves full screen). */
+  const fullByTap = useRef(false);
+  const setFull = (on: boolean, byTap = false) => {
+    if (on === fullOn.current) return;
+    fullAnchor.current = atEnd.current ? null : anchorNow();
+    fullByTap.current = on && byTap;
+    chatPrefs().setState({ full: on });
+  };
+  useLayoutEffect(() => {
+    const el = log.current;
+    const a = fullAnchor.current;
+    fullAnchor.current = null;
+    if (!el || !a) return;
+    const row = el.querySelector<HTMLElement>(`[data-testid=debug-chat-line][data-msg="${a.id}"]`);
+    if (!row) return;
+    const v = el.getBoundingClientRect();
+    el.scrollTop = anchorScrollTop({
+      before: a.top,
+      after: row.getBoundingClientRect().top,
+      height: a.height,
+      view: { top: v.top, bottom: v.bottom },
+      scrollTop: el.scrollTop,
+      maxScroll: el.scrollHeight - el.clientHeight,
+    });
+  }, [full]);
+  // Back leaves full screen (docs/ui-state.md, "Back closes an overlay"), only
+  // when a tap here opened it: an entry pushed at load, with no gesture, is
+  // one the browser may skip. Left any other way, the entry is consumed.
+  useEffect(() => {
+    if (!full || !fullByTap.current || !backToClose) return;
+    const close = backToClose(() => {
+      fullByTap.current = false;
+      chatPrefs().setState({ full: false });
+    });
+    return () => {
+      fullByTap.current = false;
+      close();
+    };
+  }, [full]);
+  /** The + menu or the inbox is up: their own Escape closes them first. */
+  const attachMenuNow = useRef(false);
+  attachMenuNow.current = attachMenu || inboxOpen;
+  // Escape leaves full screen, after the tree's and the + menu's own Escape.
+  // Caught before the mic's Escape (which turns it off): leaving full screen
+  // never does.
+  useEffect(() => {
+    if (!full) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (!escapeLeaves({ full: fullOn.current, panelOpen: panelNow.current !== "none", plusMenu: attachMenuNow.current }))
+        return;
+      e.stopPropagation();
+      setFull(false);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [full]);
   // At rest the history is click-through; a press-and-hold on it engages it
   // and selects the line under the finger (log-hold-dom.ts). Events only.
   useEffect(
@@ -2674,7 +2793,8 @@ export function DebugChat({
         {...handle}
         onPointerDown={(e) => {
           unlockSpeech();
-          handle.onPointerDown(e);
+          // Full screen does not move: the panel keeps its place for the way back.
+          if (!fullOn.current) handle.onPointerDown(e);
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
         style={{ ...handle.style, ...BAR_CONTROL }}
@@ -3669,7 +3789,8 @@ export function DebugChat({
     typing: typingNow,
     plusMenu,
     open,
-    fullLog: fullLog !== "off",
+    // Full screen: the glass is the whole chat area, which is the screen.
+    fullLog: fullLog !== "off" || full,
   });
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
@@ -3681,10 +3802,20 @@ export function DebugChat({
         matchMedia("(prefers-reduced-transparency: reduce)").matches,
       lightDark: has("color", "light-dark(#000, #fff)"),
     });
-    if (fullLog === "off") return look;
-    // The full-screen log: the same glass, with the sheet's stronger tint and
+    if (fullLog === "off" && !full) return look;
+    // The full-screen log (and full screen): the same glass, with the sheet's stronger tint and
     // blur (log-surface.ts SHEET_SCRIM, contrast-checked for a tall list).
     const sheet = sheetLook();
+    // Full screen: the chat is all there is to read, so the scrim is near-opaque
+    // (legible even where the blur is not drawn), still frosted over the page.
+    if (full && !sheet.solid)
+      return {
+        ...look,
+        background: has("color", "light-dark(#000, #fff)")
+          ? sheetScrim(true)
+          : "color-mix(in oklch, var(--background) 92%, transparent)",
+        filter: SHEET_FILTER,
+      };
     return { ...look, background: sheet.background, filter: sheet.solid ? "none" : SHEET_FILTER };
   })();
   return (
@@ -3701,6 +3832,8 @@ export function DebugChat({
       inert={tucked}
       aria-hidden={tucked || undefined}
       aria-label={t.chatWith}
+      // Full screen (full-screen.ts): the open chat fills the app.
+      data-fullscreen={full || undefined}
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       // Files dropped anywhere on the chat are attached (files.ts).
@@ -3727,8 +3860,10 @@ export function DebugChat({
           : offset.transform,
         // Only the slide into or out of the edge animates: a drag follows the finger.
         transition: sliding && !holding ? "opacity 150ms, transform 220ms ease-out" : undefined,
+        // Full screen: the visible area, edge to edge (the panel's place is kept).
+        ...(full ? FULL_SCREEN_STYLE : {}),
       }}
-      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing: typingNow, plusMenu, micActive, fullLog: fullLog !== "off" }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing: typingNow, plusMenu, micActive, fullLog: fullLog !== "off" || full }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${full ? "pointer-events-auto" : "pointer-events-none"} lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
@@ -3753,10 +3888,47 @@ export function DebugChat({
           // The full-screen log in its own box (out of the flow): the glass
           // follows it, the log's box and its few px of edge, never the screen.
           ...(fullLog !== "off" && fullRef.current.box ? glassAroundLog(fullRef.current.box) : {}),
+          // Full screen: the chat area is the screen, so the glass is too.
+          ...(full ? { inset: 0, borderRadius: 0, boxShadow: "none" } : {}),
           ...typingGlassMotion(typingGlassShown, reducedMotion()),
         }}
         className="pointer-events-none absolute -inset-1.5 -z-10 rounded-[1.5rem]"
       />
+      {/* Full screen and back (full-screen.ts): the open chat's top corner, in
+          the panel above its top edge, in full screen at the top of the screen
+          (in the flow, so the log starts under it). */}
+      {open && fullAllowed && !tucked && (
+        <div
+          className={
+            full
+              ? "pointer-events-none flex shrink-0 justify-end"
+              : "pointer-events-none absolute end-0 bottom-full mb-1 flex justify-end"
+          }
+        >
+          <button
+            type="button"
+            data-testid="debug-chat-fullscreen"
+            data-on={full || undefined}
+            aria-pressed={full}
+            aria-label={full ? t.fullScreenExit : t.fullScreen}
+            title={full ? t.fullScreenExit : t.fullScreen}
+            // Keeps the input's focus, so the keyboard and the draft's caret stay
+            // (WebKit moves the focus on the tap's mousedown, not its pointerdown).
+            onPointerDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setFull(!full, true)}
+            style={{
+              background: INPUT_BG,
+              width: full ? 40 : 32,
+              height: full ? 40 : 32,
+              fontSize: full ? 20 : 16,
+            }}
+            className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full border border-current/25 text-gray-600 backdrop-blur-md dark:text-gray-300"
+          >
+            <Icon name={full ? "cornersIn" : "cornersOut"} />
+          </button>
+        </div>
+      )}
       {/* Expanded, one or the other in the log's slot: the state tree, or the log. */}
       {open && tree && treePanel(false)}
       {/* The log: the messages, the newest at the bottom. Hidden minimized, and while the tree has its place. */}
@@ -3795,8 +3967,9 @@ export function DebugChat({
           logSurface({
             expanded: typingNow || micActive || (compactPref && expanded),
             fade,
-            touch: engaged,
+            touch: engaged || full,
           }),
+          full,
         )}
       >
       <ol
@@ -4052,9 +4225,10 @@ export function DebugChat({
                 aria-label="Nodes to address"
                 data-testid="debug-chat-nodes"
                 // Inside the typing glass, plain rows on the glass (no box of
-                // its own: one frame); a box only where no glass is behind it.
-                style={typingGlassShown ? undefined : { background: INPUT_BG }}
-                className={`pointer-events-auto max-w-full list-none overflow-hidden py-0.5 fs-11 ${typingGlassShown ? "" : "rounded-lg border border-current/25 backdrop-blur"}`}
+                // its own: one frame); a box only where no glass is behind it, and in
+                // full screen, where the list would sit straight on the log's lines.
+                style={typingGlassShown && !full ? undefined : { background: INPUT_BG }}
+                className={`pointer-events-auto max-w-full list-none overflow-hidden py-0.5 fs-11 ${typingGlassShown && !full ? "" : "rounded-lg border border-current/25 backdrop-blur"}`}
               >
                 {completions.map((n) => (
                   <li key={n} role="option" aria-selected={false}>
@@ -4219,7 +4393,7 @@ export function DebugChat({
           onPointerDown={(e) => {
             if ((e.target as HTMLElement).closest("button, textarea, p, [data-chat-restore]"))
               return;
-            handle.onPointerDown(e);
+            if (!fullOn.current) handle.onPointerDown(e);
           }}
           onPointerMove={(e) => e.target === e.currentTarget && handle.onPointerMove(e)}
           onPointerUp={(e) => e.target === e.currentTarget && handle.onPointerUp()}
@@ -4236,10 +4410,11 @@ export function DebugChat({
             ...(barAside ? { backdropFilter: "none", WebkitBackdropFilter: "none" } : {}),
             // While the typing glass is up it is the frame: the bar's own box
             // goes inside it (border transparent, width kept; no tint, no blur).
-            ...barInGlass(typingGlassShown),
+            // Full screen keeps the bar's own box: the glass there is the whole screen.
+            ...barInGlass(typingGlassShown && !full),
             transition: reducedMotion() ? undefined : `${FADE}, ${BAR_IN_GLASS_TRANSITION}`,
           }}
-          data-in-glass={typingGlassShown || undefined}
+          data-in-glass={(typingGlassShown && !full) || undefined}
           className={`pointer-events-auto relative flex items-end border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300`}
         >
           {armed > 0 && (

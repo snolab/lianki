@@ -42,7 +42,7 @@ describe("the partner frame route gets no owner boots", () => {
     const layout = readFileSync("app/layout.tsx", "utf8");
     expect(layout).not.toMatch(/<DebugEval\b/);
     expect(layout).not.toMatch(/<ServiceWorkerRegistration\b|<NewVersionNotice\b/);
-    expect(layout).toMatch(/partnerFrame \? null : <OwnerBoots /);
+    expect(layout).toMatch(/partnerFrame \? null : \(?\s*<OwnerBoots /);
     expect(layout).toMatch(/get\(PARTNER_FRAME_HEADER\) === "1"/);
     // The frame's own page never imports DebugEval or the islands either.
     for (const f of ["app/embed/partner/page.tsx", "app/embed/partner/PartnerFrame.tsx"]) {
