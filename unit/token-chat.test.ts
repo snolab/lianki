@@ -7,7 +7,15 @@
  */
 import { beforeEach, describe, expect, it } from "bun:test";
 import { DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
-import { RECHECK_MS, TOKEN_REFUSED, forLane, laneText } from "@/workers/push/src/token-chat";
+import {
+  AUTH_MS,
+  RECHECK_MS,
+  TOKEN_REFUSED,
+  TokenChat,
+  forLane,
+  laneText,
+  tokenAtt,
+} from "@/workers/push/src/token-chat";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import type { D1Like } from "@/lib/d1/types";
@@ -618,6 +626,216 @@ describe("/api/token: the rest of the refusals", () => {
     expect((await tokenApi(req("DELETE", JSON.stringify({ id: "x" })), deps(OWNER))).status).toBe(
       404,
     );
+  });
+});
+
+describe("TokenChat edges (a fake main Worker)", () => {
+  const TOK = `lk_${"1".repeat(64)}`;
+  const ID = "a".repeat(64);
+  const okAnswer = (over: Record<string, unknown> = {}) => ({
+    ok: true,
+    userId: "uX",
+    owner: false,
+    lane: "x",
+    id: ID,
+    tag: ID.slice(0, 16),
+    expiresAt: null,
+    ...over,
+  });
+  function edge(rpc: ((req: { op: string }) => unknown) | null, blocked = false) {
+    const sockets: FakeSocket[] = [];
+    let now = T0;
+    const posted: unknown[] = [];
+    const history = [
+      { id: "h1", from: "agent" as const, label: "x", text: "old", at: 1, thread: "uX" },
+    ];
+    const tc = new TokenChat({
+      now: () => now,
+      rpc: () => (rpc ? { chatToken: async (r) => rpc(r) } : undefined),
+      sockets: () => sockets,
+      post: async (m) => void posted.push(m),
+      history: async () => history,
+      blocked: async () => blocked,
+    });
+    const sock = () => {
+      const ws = new FakeSocket();
+      sockets.push(ws);
+      tc.opened(ws);
+      return ws;
+    };
+    const say = (ws: FakeSocket, m: unknown) =>
+      tc.message(ws, tokenAtt(ws)!, typeof m === "string" ? m : JSON.stringify(m));
+    const post = (body: unknown, auth = `Bearer ${TOK}`, method = "POST") =>
+      tc.http(
+        new Request("https://lianki.com/api/version/chat", {
+          method,
+          headers: { authorization: auth },
+          ...(method === "POST"
+            ? { body: typeof body === "string" ? body : JSON.stringify(body) }
+            : {}),
+        }),
+      );
+    return { tc, sockets, sock, say, post, posted, tick: (ms: number) => (now += ms) };
+  }
+
+  it("no RPC, a throwing RPC, a malformed answer, a bad user id: 503, nothing posted", async () => {
+    for (const rpc of [
+      null,
+      () => {
+        throw new Error("down");
+      },
+      () => null,
+      () => okAnswer({ userId: "has:colon" }),
+    ]) {
+      const e = edge(rpc);
+      expect((await e.post({ op: "say", text: "x" })).status).toBe(503);
+      expect(e.posted).toEqual([]);
+    }
+  });
+
+  it("HTTP: method, body size, JSON, op, rate (Retry-After), blocked, bad ask, read limit", async () => {
+    const e = edge(() => okAnswer());
+    expect((await e.post(null, undefined, "GET")).status).toBe(405);
+    expect((await e.post("x".repeat(20_000))).status).toBe(413);
+    expect((await e.post("[1]")).status).toBe(400);
+    expect((await e.post("{")).status).toBe(400);
+    expect((await e.post({ op: "eval" })).status).toBe(400);
+    expect((await e.post({ op: "say" })).status).toBe(400);
+    expect((await e.post({ op: "ask", question: "q", options: [] })).status).toBe(400);
+    const r = await e.post({ op: "read", limit: 1 });
+    expect(((await r.json()) as { thread: string }).thread).toBe("own");
+    const rated = edge(() => ({ ok: false, error: "rate", retryAfterMs: 1500 }));
+    const rr = await rated.post({ op: "say", text: "x" });
+    expect(rr.status).toBe(429);
+    expect(rr.headers.get("retry-after")).toBe("2");
+    expect((await edge(() => okAnswer(), true).post({ op: "say", text: "x" })).status).toBe(403);
+  });
+
+  it("sockets: blocked at auth, refused at auth, history, too slow, a binary frame", async () => {
+    const blocked = edge(() => okAnswer(), true);
+    const b = blocked.sock();
+    await blocked.say(b, { type: "auth", token: TOK });
+    expect(b.closed).toBe(TOKEN_REFUSED);
+    const rated = edge(() => ({ ok: false, error: "rate", retryAfterMs: 5 }));
+    const r = rated.sock();
+    await rated.say(r, { type: "auth", token: TOK });
+    expect(r.of("error")[0]).toMatchObject({ error: "rate", retryAfterMs: 5 });
+    const e = edge(() => okAnswer());
+    const h = e.sock();
+    await e.say(h, { type: "auth", token: TOK, history: 5 });
+    expect(h.of("history")[0]).toMatchObject({ messages: [{ id: "h1" }] });
+    const slow = e.sock();
+    e.tick(AUTH_MS + 1);
+    await e.say(slow, { type: "auth", token: TOK });
+    expect(slow.closed).toBe(TOKEN_REFUSED);
+    // A frame that is not JSON (or binary) is no auth: closed.
+    const bin = edge(() => okAnswer());
+    const s = bin.sock();
+    await bin.tc.message(s, tokenAtt(s)!, new ArrayBuffer(4));
+    expect(s.closed).toBe(TOKEN_REFUSED);
+  });
+
+  it("an authenticated socket: refused say, a thread that changed, a bad ask, a 5th socket", async () => {
+    let answer: unknown = okAnswer();
+    const e = edge(() => answer);
+    const ws = e.sock();
+    await e.say(ws, { type: "auth", token: TOK });
+    await e.say(ws, { type: "ask", question: "q", options: [] });
+    expect(ws.sent.at(-1)?.type).toBe("error");
+    await e.say(ws, "not json");
+    expect(ws.sent.at(-1)?.type).toBe("error");
+    answer = { ok: false, error: "rate", retryAfterMs: 9 };
+    await e.say(ws, { type: "say", text: "x" });
+    expect(ws.sent.at(-1)).toMatchObject({ error: "rate", retryAfterMs: 9 });
+    expect(ws.closed).toBeUndefined();
+    answer = { ok: false, error: "unknown" };
+    await e.say(ws, { type: "say", text: "x" });
+    expect(ws.closed).toBe(TOKEN_REFUSED);
+    // The account became the owner's mid-socket: its thread is no longer this one.
+    answer = okAnswer();
+    const w2 = e.sock();
+    await e.say(w2, { type: "auth", token: TOK });
+    answer = okAnswer({ owner: true });
+    await e.say(w2, { type: "say", text: "x" });
+    expect(w2.closed).toBe(TOKEN_REFUSED);
+    // MAX_SOCKETS_PER_TOKEN: the oldest closes.
+    answer = okAnswer();
+    const f = edge(() => answer);
+    const many: FakeSocket[] = [];
+    for (let i = 0; i < 5; i++) {
+      const s = f.sock();
+      f.tick(1);
+      await f.say(s, { type: "auth", token: TOK });
+      many.push(s);
+    }
+    expect(many[0]!.closed).toBe(4409);
+    expect(many[4]!.closed).toBeUndefined();
+  });
+
+  it("re-check: no answer skips the delivery; a refusal closes; edits reach owner sockets", async () => {
+    let answer: unknown = okAnswer({ owner: true });
+    const e = edge(() => answer);
+    const ws = e.sock();
+    await e.say(ws, { type: "auth", token: TOK });
+    const line = {
+      id: "l",
+      from: "agent" as const,
+      label: "x",
+      text: "t",
+      at: 1,
+      thread: OWNER_THREAD,
+    };
+    await e.tc.edited({ type: "edited", id: "l", thread: OWNER_THREAD, text: "t" } as never);
+    expect(ws.of("edited")).toHaveLength(1);
+    e.tick(RECHECK_MS + 1);
+    answer = { ok: false, error: "unavailable" };
+    await e.tc.chat(line);
+    expect(ws.of("chat")).toEqual([]);
+    expect(ws.closed).toBeUndefined();
+    answer = okAnswer({ owner: true });
+    await e.tc.chat(line);
+    expect(ws.of("chat")).toHaveLength(1);
+    e.tick(RECHECK_MS + 1);
+    answer = { ok: false, error: "scope" };
+    await e.tc.chat(line);
+    expect(ws.closed).toBe(TOKEN_REFUSED);
+  });
+
+  it("revoke notice: method, JSON, nothing named; by user", async () => {
+    const e = edge(() => okAnswer());
+    const ws = e.sock();
+    await e.say(ws, { type: "auth", token: TOK });
+    const rv = (body: string, method = "POST") =>
+      e.tc.revoked(
+        new Request("https://lianki-push/internal/chat-tokens/revoked", {
+          method,
+          ...(method === "POST" ? { body } : {}),
+        }),
+      );
+    expect((await rv("", "GET")).status).toBe(405);
+    expect((await rv("{")).status).toBe(400);
+    expect((await rv(JSON.stringify({ tags: ["nope"] }))).status).toBe(400);
+    expect((await rv(JSON.stringify({ userId: "uX" }))).status).toBe(200);
+    expect(ws.closed).toBe(TOKEN_REFUSED);
+  });
+
+  it("a socket that throws on send or close, or whose attachment cannot be read", () => {
+    const bad = {
+      send() {
+        throw new Error("gone");
+      },
+      close() {
+        throw new Error("gone");
+      },
+      serializeAttachment() {},
+      deserializeAttachment() {
+        throw new Error("gone");
+      },
+    };
+    expect(tokenAtt(bad)).toBeNull();
+    const e = edge(() => okAnswer());
+    e.tc.opened(bad);
+    expect(() => e.tc.count(OWNER_THREAD)).not.toThrow();
   });
 });
 
