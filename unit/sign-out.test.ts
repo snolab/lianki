@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { SIGN_OUT_KEEP_CACHES, SIGN_OUT_PATH, signOut } from "@/lib/sign-out";
+import { SIGN_OUT_KEEP_CACHES, SIGN_OUT_PATH, setSignOutSession, signOut } from "@/lib/sign-out";
 
 function env(opts: { fail?: boolean; status?: number } = {}) {
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -69,6 +69,34 @@ describe("signOut (the menu's Sign out)", () => {
       expect(await signOut("/en")).toBe(true);
       expect(replaced).toEqual(["/", "/en"]);
     } finally {
+      Object.assign(g, saved);
+    }
+  });
+
+  it("on a box: the session set by BoxApiBridge ends instead of the cookie POST", async () => {
+    const g = globalThis as Record<string, unknown>;
+    const saved = { fetch: g.fetch, caches: g.caches, location: g.location };
+    const t = env();
+    const replaced: string[] = [];
+    let ended = 0;
+    try {
+      g.fetch = t.e.fetch;
+      g.caches = t.e.caches;
+      g.location = { replace: (u: string) => replaced.push(u) };
+      setSignOutSession(async () => {
+        ended++;
+        return true;
+      });
+      expect(await signOut()).toBe(true);
+      expect(ended).toBe(1);
+      expect(t.calls).toEqual([]);
+      expect(replaced).toEqual(["/"]);
+      // Cleared (the bridge unmounted): back to better-auth's sign-out.
+      setSignOutSession(undefined);
+      await signOut();
+      expect(t.calls[0].url).toBe(SIGN_OUT_PATH);
+    } finally {
+      setSignOutSession(undefined);
       Object.assign(g, saved);
     }
   });
