@@ -18,8 +18,19 @@ const PRECACHE_URLS = ["/manifest.json"];
 /** Pages whose shell must open offline even with a different ?query. */
 const OFFLINE_SHELLS = ["/words", "/alphabet"];
 
+/**
+ * A my-<hash> box (devbox/README.md) runs `next dev`, whose chunk names stay the
+ * same across edits and restarts. Cache-first /_next/static there served the
+ * previous build's code next to the new one, and the page never hydrated
+ * (2026-11-07: the box's spinner stayed, its fetch never went to lianki.com).
+ * On a box this worker caches nothing, answers nothing, and drops what an older
+ * one cached.
+ */
+const IS_BOX = /^my-[0-9a-f]{12,64}\.lianki\.com$/.test(self.location.hostname);
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
+  if (IS_BOX) return;
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)));
 });
 
@@ -30,7 +41,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((k) => k !== CACHE_NAME && !KEEP_CACHES.includes(k))
+            .filter((k) => (IS_BOX || k !== CACHE_NAME) && !KEEP_CACHES.includes(k))
             .map((k) => caches.delete(k)),
         ),
       )
@@ -42,7 +53,7 @@ self.addEventListener("activate", (event) => {
 // fetched (its HTML and /_next/static chunks) so they are cached too.
 self.addEventListener("message", (event) => {
   const data = event.data;
-  if (!data || data.type !== "cache" || !Array.isArray(data.urls)) return;
+  if (IS_BOX || !data || data.type !== "cache" || !Array.isArray(data.urls)) return;
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
       Promise.all(
@@ -59,6 +70,8 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  // A box: everything straight from its dev server (IS_BOX above).
+  if (IS_BOX) return;
   const { request } = event;
   const url = new URL(request.url);
 
