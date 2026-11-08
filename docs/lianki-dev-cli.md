@@ -16,6 +16,7 @@ JSON envelope, so an agent reads both the same way.
 | `ask`      | `eval.ts ask`                           | saved grant, network         |
 | `inbox`    | `eval.ts inbox list\|get\|done`         | saved grant, network         |
 | `listen`   | `eval.ts chat` (one JSON line an event) | saved grant, network         |
+| `lane-listen` | `lane-listen.ts`: the owner lines addressed to this lane, to its agent ([lane-listen.md](lane-listen.md)) | the lane's token, network |
 | `serve`    | `eval.ts serve`                         | saved eval grant, network    |
 | `progress` | progress.ts's modules (with `--eta`)    | progress token, network      |
 | `whoami`   | lane, checkout, hub, grant/token found  | nothing                      |
@@ -51,7 +52,9 @@ lianki-dev <command> --help
   run `lianki chat …` instead of eval.ts: the label is the token's name, not
   `--as`, and `--to`, `--task-path`, `--agent`, more than one `--q` and
   listen's flags are usage errors (they need the grant path). `inbox`,
-  `serve` and `progress` are unchanged.
+  `serve` and `progress` are unchanged. With `--as <lane>` and no
+  `LIANKI_TOKEN`, the lane's file `~/.config/lianki/lanes/<lane>.token`
+  (0600) stands for it; never printed ([lane-listen.md](lane-listen.md)).
 - **Lanes never pair.** `--no-pair` is always passed to eval.ts; `--pair` is
   for a human at the terminal, and a usage error with a lane set. With no
   saved grant a command exits 2 before opening a socket.

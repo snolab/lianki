@@ -155,6 +155,7 @@ that are expensive to rediscover.
 | Hot-swapping headless core modules (kernel, swap, leak tests)         | [docs/hot-core.md](docs/hot-core.md)                                   |
 | The debug chat widget (packages/debug-chat), hot-loading              | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                   |
 | `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor        | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                       |
+| Which lane answers him ("codex, …"), codex/agy listeners      | [docs/lane-listen.md](docs/lane-listen.md)                          |
 | Hot islands: swappable components, shared state                       | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                     |
 | Live view: dev JS or whole dev pages (?live=) on lianki.com           | [docs/live-view.md](docs/live-view.md)                                 |
 | Custom frontends: a user's own dev server at ?live, the /api contract | [docs/custom-frontend.md](docs/custom-frontend.md)                     |

@@ -26,7 +26,7 @@
  *
  *   --no-pair  fail instead of asking the owner (for the chat agent).
  *
- *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>] [--exit-on-idle] [--ack]
+ *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>] [--exit-on-idle] [--ack] [--route chat|codex|agy]
  *       Listen to every chat thread: the owner's and each friend's (any
  *       signed-in user on a debug page). Pairs if there is no saved grant —
  *       prints {"type":"pending","code"} to stdout; the owner taps "Allow chat
@@ -228,6 +228,7 @@ import {
   sayVolume,
 } from "./node-args";
 import { routeTo } from "@/lib/dev-eval";
+import { isRouteLane, laneTakes } from "@/lib/lane-route";
 import { VOICES_PROBE, voicesReport } from "./voices-list";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
@@ -315,6 +316,13 @@ const lastFlag = boolFlag("--last");
 const exitOnIdle = boolFlag("--exit-on-idle");
 /** chat: answer each live owner/friend line at once with one busy beat ("heard you"). */
 const ackFlag = boolFlag("--ack");
+/**
+ * chat: --route <lane> (chat | codex | agy) keeps only the owner lines that
+ * lane answers (lib/lane-route.ts, docs/lane-listen.md): a line addressed
+ * "codex, …" or "agy, …" is left to that lane's own listener, not printed,
+ * not acked. Everything else (agent lines, friends, events) is unchanged.
+ */
+const routeFlag = flag("--route");
 /** say: shown on his page, never read aloud (FYI, progress, deploy notices). */
 const quietFlag = boolFlag("--quiet");
 /**
@@ -451,6 +459,13 @@ async function viaSession(code: string): Promise<Msg[] | null> {
  */
 function chat(out?: string, errorsOnly = false) {
   const seen = new Set<string>();
+  const route = errorsOnly ? undefined : routeFlag;
+  if (route !== undefined && !isRouteLane(route)) {
+    console.error(`chat: --route takes chat, codex or agy (got ${route})`);
+    process.exit(2);
+  }
+  /** Owner lines left to another lane (--route): their edits are not printed either. */
+  const routedAway = new Set<string>();
   let first = true;
   let backoff = 1_000;
   let asked = false;
@@ -467,6 +482,16 @@ function chat(out?: string, errorsOnly = false) {
     lagMs?: number,
   ): boolean => {
     if (typeof m.id !== "string" || seen.has(m.id)) return false;
+    // --route: an owner line for another lane is that lane's, not this listener's.
+    if (
+      route &&
+      m.from === "owner" &&
+      !laneTakes(route, { from: m.from, thread: m.thread, text: m.text })
+    ) {
+      seen.add(m.id);
+      routedAway.add(m.id);
+      return false;
+    }
     const line = chatLine(m, where, observed);
     if (!line) return false;
     seen.add(m.id);
@@ -559,7 +584,9 @@ function chat(out?: string, errorsOnly = false) {
           answer: m.answer,
           labels: m.labels,
         });
-      else if (m.type === "edited") {
+      else if (m.type === "edited" && typeof m.id === "string" && routedAway.has(m.id)) {
+        // Another lane's line grew: still that lane's (--route).
+      } else if (m.type === "edited") {
         // A line grew: the agent heard it, like any new line (--ack).
         if (m.merged && ackFlag && m.observed !== true) ws.send(beatMessage({}));
         print({
