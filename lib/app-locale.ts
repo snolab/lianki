@@ -26,7 +26,6 @@ export const APP_ROUTES = [
   "box-authorize",
   "box-callback",
   "cli-login",
-  "ai-vocab",
   "alphabet",
   // app/auth/logout, outside app/(app)/: the sign-out page (lib/sign-out.ts).
   "auth",
@@ -47,7 +46,6 @@ export const APP_ROUTES = [
   "list",
   "membership",
   "next",
-  "polyglot",
   "preferences",
   "privacy",
   "profile",

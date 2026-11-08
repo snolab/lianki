@@ -12,7 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: metadata.title,
     description: metadata.description,
-    ...generateAppHreflangMetadata(locale, "/polyglot"),
+    ...generateAppHreflangMetadata(locale, "/lab/polyglot"),
   };
 }
 

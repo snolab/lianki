@@ -40,7 +40,7 @@ describe("isAppRoute", () => {
   it("matches app routes and their subpaths", () => {
     expect(isAppRoute("/list")).toBe(true);
     expect(isAppRoute("/read/abc123")).toBe(true);
-    expect(isAppRoute("/ai-vocab/ja")).toBe(true);
+    expect(isAppRoute("/lab/ai-vocab/ja")).toBe(true);
     expect(isAppRoute("/dev/roadmap")).toBe(true);
   });
 

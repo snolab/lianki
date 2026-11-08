@@ -13,7 +13,7 @@
 import type { IconName } from "@/app/components/icons";
 import type { FlagKey } from "@/lib/flags";
 
-export type NavGroup = "main" | "advanced" | "data" | "account";
+export type NavGroup = "main" | "advanced" | "lab" | "data" | "account";
 
 export type NavItem = {
   key: string;
@@ -38,8 +38,6 @@ export const APP_NAV: NavItem[] = [
   { key: "words", href: "/words", icon: "textAa", group: "main" },
   { key: "alphabet", href: "/alphabet", icon: "textAUnderline", group: "main" },
   { key: "learn", href: "/learn", icon: "graduationCap", group: "main" },
-  { key: "aiVocab", href: "/ai-vocab", icon: "brain", group: "main" },
-  { key: "polyglot", href: "/polyglot", icon: "globeHemisphereWest", group: "main" },
   { key: "selfIntro", href: "/self-intro", icon: "userSound", group: "main" },
   { key: "read", href: "/read", icon: "bookOpen", group: "main" },
   { key: "books", href: "/books", icon: "books", group: "main", flag: "books.catalogue" },
@@ -48,7 +46,10 @@ export const APP_NAV: NavItem[] = [
   { key: "review", href: "/review", icon: "play", group: "advanced" },
   { key: "cards", href: "/list", icon: "cards", group: "advanced" },
   { key: "addNote", href: "/add-note", icon: "plusCircle", group: "advanced" },
-  { key: "lab", href: "/lab", icon: "flask", group: "advanced" },
+  // Experiments (实验室): /lab lists them all; each lives under /lab/<name>.
+  { key: "lab", href: "/lab", icon: "flask", group: "lab" },
+  { key: "aiVocab", href: "/lab/ai-vocab", icon: "brain", group: "lab" },
+  { key: "polyglot", href: "/lab/polyglot", icon: "globeHemisphereWest", group: "lab" },
   { key: "import", href: "/import", icon: "uploadSimple", group: "data" },
   { key: "data", href: "/data", icon: "database", group: "data" },
   { key: "preferences", href: "/preferences", icon: "gearSix", group: "account" },
@@ -60,7 +61,7 @@ export function visibleNav(shown: readonly string[] = []): NavItem[] {
   return APP_NAV.filter((i) => !i.flag || shown.includes(i.key));
 }
 
-export const NAV_GROUPS: NavGroup[] = ["main", "advanced", "data", "account"];
+export const NAV_GROUPS: NavGroup[] = ["main", "advanced", "lab", "data", "account"];
 
 /**
  * Which nav item a pathname belongs to. Longest matching href wins so

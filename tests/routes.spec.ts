@@ -215,9 +215,9 @@ test.describe("Auth-required pages (guest redirect)", () => {
     expect(errors).toHaveLength(0);
   });
 
-  test("/polyglot does not throw 500 server error", async ({ page }) => {
+  test("/lab/polyglot does not throw 500 server error", async ({ page }) => {
     const errors = collectErrors(page);
-    const response = await page.goto(url("/polyglot"));
+    const response = await page.goto(url("/lab/polyglot"));
     // BUG-2 regression: must not be 500
     expect(response?.status()).not.toBe(500);
     const crashMessage = page.locator("text=/Application error.*server-side/i");

@@ -35,8 +35,8 @@ const SIZE_FLOOR = 0.6;
 const PAGES = [
   "/list",
   "/sign-in",
-  "/ai-vocab",
-  "/ai-vocab/zh?lang=ja",
+  "/lab/ai-vocab",
+  "/lab/ai-vocab/zh?lang=ja",
   "/en/blog",
   "/data",
   "/read",

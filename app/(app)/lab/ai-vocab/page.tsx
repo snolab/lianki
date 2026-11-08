@@ -12,7 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
     title: "AI Vocabulary Practice — Lianki",
     description:
       "Practice vocabulary with AI-generated sentences. Get contextual example sentences for any word in your target language.",
-    ...generateAppHreflangMetadata(locale, "/ai-vocab"),
+    ...generateAppHreflangMetadata(locale, "/lab/ai-vocab"),
   };
 }
 

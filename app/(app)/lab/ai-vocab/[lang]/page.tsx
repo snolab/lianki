@@ -33,7 +33,7 @@ export async function generateMetadata({
   return {
     title: `AI Vocabulary Practice — ${langDisplay} — Lianki`,
     description: `Practice ${langInfo?.name ?? lang} vocabulary with AI-generated contextual sentences.`,
-    ...generateAppHreflangMetadata(locale, `/ai-vocab/${lang}`),
+    ...generateAppHreflangMetadata(locale, `/lab/ai-vocab/${lang}`),
   };
 }
 
@@ -49,7 +49,7 @@ export default async function AiVocabLangPage({ params }: { params: Promise<{ la
         <div className="flex items-center justify-center">
           <div className="text-center">
             <h1 className="text-2xl font-bold mb-4">Language not supported</h1>
-            <a href="/ai-vocab" className="text-blue-500 hover:underline">
+            <a href="/lab/ai-vocab" className="text-blue-500 hover:underline">
               ← Back to language selection
             </a>
           </div>

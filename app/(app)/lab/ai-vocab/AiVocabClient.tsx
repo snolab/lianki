@@ -27,7 +27,7 @@ export default function AiVocabClient({ title, description, selectLanguage }: Ai
   const router = useRouter();
 
   function handleSelectLanguage(langCode: string) {
-    router.push(`/ai-vocab/${langCode}`);
+    router.push(`/lab/ai-vocab/${langCode}`);
   }
 
   return (

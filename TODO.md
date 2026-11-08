@@ -116,7 +116,7 @@ Need to check and update if they have headers:
 
 - [ ] Profile page (`app/(app)/profile/page.tsx`)
 - [ ] Membership page (`app/(app)/membership/page.tsx`)
-- [ ] Polyglot page (`app/(app)/polyglot/page.tsx`)
+- [ ] Polyglot page (`app/(app)/lab/polyglot/page.tsx`)
 - [ ] Self-intro page (`app/(app)/self-intro/page.tsx`)
 - [ ] Add-note page (`app/(app)/add-note/page.tsx`)
 - [ ] Sign-in page (`app/(app)/sign-in/page.tsx`)
