@@ -302,7 +302,7 @@ export function ReaderV2({
     return (
       <div className="py-16 text-center">
         <p className="mb-4 opacity-70">{t.notFound}</p>
-        <Link href="/read" className="underline">
+        <Link href="/reader" className="underline">
           {t.back}
         </Link>
       </div>

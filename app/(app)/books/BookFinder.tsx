@@ -136,7 +136,7 @@ export function BookFinder({
         );
         return;
       }
-      router.push(`/read/${encodeURIComponent(data.id)}`);
+      router.push(`/reader/${encodeURIComponent(data.id)}`);
     } catch {
       setError(t.errFailed.value);
     } finally {
@@ -182,7 +182,7 @@ export function BookFinder({
           {c.curated ? t.inLibrary : t.canAdd}
         </span>
         {c.ownedId ? (
-          <a href={`/read/${encodeURIComponent(c.ownedId)}`} className={secondary}>
+          <a href={`/reader/${encodeURIComponent(c.ownedId)}`} className={secondary}>
             {t.owned}
           </a>
         ) : (

@@ -48,7 +48,7 @@ const page = await ctx.newPage();
 const errs = [];
 page.on("pageerror", (e) => errs.push(e.message));
 
-await page.goto("/read", { waitUntil: "networkidle" });
+await page.goto("/reader", { waitUntil: "networkidle" });
 const picker = page.locator('[data-testid="read-import-epub"] input[type="file"]');
 check(
   (await picker.getAttribute("accept")) === ".epub,application/epub+zip",
@@ -57,7 +57,7 @@ check(
 await page.screenshot({ path: join(OUT, "read-list-light.png") });
 
 await picker.setInputFiles(FIXTURE);
-await page.waitForURL(/\/read\/[^/]+$/, { timeout: budget(30000) });
+await page.waitForURL(/\/reader\/[^/]+$/, { timeout: budget(30000) });
 const id = page.url().split("/").pop();
 await page.getByTestId("reader-v2").waitFor({ timeout: budget(15000) });
 await page.getByTestId("reader-author").waitFor({ timeout: budget(15000) });
@@ -147,11 +147,11 @@ check(
     storageState: await ctx.storageState(),
   });
   const p = await dark.newPage();
-  await p.goto(`/read/${id}`, { waitUntil: "networkidle" });
+  await p.goto(`/reader/${id}`, { waitUntil: "networkidle" });
   await p.getByTestId("reader-v2").waitFor({ timeout: budget(15000) });
   await p.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: budget(30000) });
   await p.screenshot({ path: join(OUT, "read-top-open-phone-dark.png") });
-  await p.goto("/read", { waitUntil: "networkidle" });
+  await p.goto("/reader", { waitUntil: "networkidle" });
   await p.screenshot({ path: join(OUT, "read-list-dark.png") });
   await dark.close();
 }
@@ -165,7 +165,7 @@ for (const scheme of ["light", "dark"]) {
     storageState: { cookies: (await ctx.storageState()).cookies, origins: [] },
   });
   const p = await desk.newPage();
-  await p.goto(`/read/${id}`, { waitUntil: "networkidle" });
+  await p.goto(`/reader/${id}`, { waitUntil: "networkidle" });
   await p.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: budget(30000) });
   check(
     await p.locator(`${TOP} [data-testid="read-scan-details"]`).isVisible(),
@@ -177,7 +177,7 @@ for (const scheme of ["light", "dark"]) {
 
 // The list row: word count and ring.
 {
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   const row = page.locator('[data-testid="read-row-words"]').first();
   await row.waitFor({ timeout: budget(15000) });
   check(/[\d,]+ words · [\d,]+ different/.test(await row.innerText()), "list row word count");
@@ -193,7 +193,7 @@ for (const scheme of ["light", "dark"]) {
     `<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/><enc:CipherData><enc:CipherReference URI="OEBPS/5088469616467574847_7256-h-1.htm.xhtml"/></enc:CipherData></enc:EncryptedData></encryption>`,
   );
   const buffer = Buffer.from(await zip.generateAsync({ type: "uint8array" }));
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await picker.setInputFiles({ name: "drm.epub", mimeType: "application/epub+zip", buffer });
   const alert = page.locator('[data-testid="read-epub-error"]');
   await alert.waitFor({ timeout: budget(15000) });

@@ -39,7 +39,7 @@ export const APP_NAV: NavItem[] = [
   { key: "alphabet", href: "/alphabet", icon: "textAUnderline", group: "main" },
   { key: "learn", href: "/learn", icon: "graduationCap", group: "main" },
   { key: "selfIntro", href: "/self-intro", icon: "userSound", group: "main" },
-  { key: "read", href: "/read", icon: "bookOpen", group: "main" },
+  { key: "read", href: "/reader", icon: "bookOpen", group: "main" },
   { key: "books", href: "/books", icon: "books", group: "main", flag: "books.catalogue" },
   { key: "roadmap", href: "/roadmap", icon: "mapTrifold", group: "main" },
   { key: "sites", href: "/sites", icon: "globe", group: "advanced" },
@@ -65,7 +65,7 @@ export const NAV_GROUPS: NavGroup[] = ["main", "advanced", "lab", "data", "accou
 
 /**
  * Which nav item a pathname belongs to. Longest matching href wins so
- * `/read/abc` highlights Read rather than nothing.
+ * `/reader/abc` highlights Read rather than nothing.
  */
 export function activeNavKey(pathname: string): string | null {
   let best: NavItem | null = null;

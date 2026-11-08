@@ -3612,7 +3612,7 @@ function ImportLink() {
  */
 /**
  * A review of given words instead of a list's session: the reader's "review
- * this range's words" (app/(app)/read/[id]/reader-word-review.tsx). The same
+ * this range's words" (app/(app)/reader/[id]/reader-word-review.tsx). The same
  * study — rows, swipe, mirror, undo, marks, FSRS cards — with only these
  * words: no new-word intake, no further due words, the page not locked.
  */

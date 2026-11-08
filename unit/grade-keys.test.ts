@@ -32,7 +32,7 @@ describe("grade keys", () => {
 
   it("/words and the reader v2 both grade through keyRating, with no map of their own", () => {
     const root = join(import.meta.dir, "..");
-    for (const f of ["app/(app)/words/WordsClient.tsx", "app/(app)/read/[id]/ReaderV2.tsx"]) {
+    for (const f of ["app/(app)/words/WordsClient.tsx", "app/(app)/reader/[id]/ReaderV2.tsx"]) {
       const src = readFileSync(join(root, f), "utf8");
       expect(src).toContain("keyRating(e)");
       // No letter-keyed grade map (h: 1 …) of its own.

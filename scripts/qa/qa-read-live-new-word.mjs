@@ -99,7 +99,7 @@ async function run(scheme) {
       if (!b.probe) writes.push(b);
     }
   });
-  await page.goto(`/read/${id}?streamingFrom=google-docs`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}?streamingFrom=google-docs`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 30000 });
   await until(page, () => !!socket, 15000);
   await page.waitForTimeout(800);

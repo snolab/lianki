@@ -1,4 +1,4 @@
-// How the reader draws its selection (app/(app)/read/[id]/use-reader-select.ts):
+// How the reader draws its selection (app/(app)/reader/[id]/use-reader-select.ts):
 // `data-sel` on the selected unit's elements, an element background, so each
 // word keeps its own underline colour. One unit is drawn at a time: a tap on
 // another word must leave nothing on the first (owner, 2026-11-05 03:00 JST,

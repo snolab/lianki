@@ -94,7 +94,7 @@ export function startGdocStream(deps: GdocStreamDeps): void {
     const d = await res.json();
     bookId = d.id;
     void sendLive();
-    const url = `${deps.origin}/read/${d.id}?streamingFrom=google-docs`;
+    const url = `${deps.origin}/reader/${d.id}?streamingFrom=google-docs`;
     if (link) {
       link.href = url;
       link.style.display = "inline";

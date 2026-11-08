@@ -7,7 +7,7 @@ State-tree node `/import/any`. Status: design only, nothing built. Flag
 
 One place to drop **any** file — a word list, an Anki deck, a book, an
 article, a PDF handout, a photo of a vocabulary page — and get the right
-thing in Lianki: word books become /words lists, reading becomes /read
+thing in Lianki: word books become /words lists, reading becomes /reader
 material. The user does not choose a converter; an async job decides the
 shape, does the work and reports back.
 
@@ -24,7 +24,7 @@ shape, does the work and reports back.
    (e.g. "Front = column A, back = column C?" with Yes / Change), never a
    form up front.
 5. Done: "Added 1,240 words to _list.csv_" with **Open** (→ /words list or
-   /read document). Failed: one plain sentence why and **Retry** / **Delete
+   /reader document). Failed: one plain sentence why and **Retry** / **Delete
    file**.
 
 ## Architecture
@@ -55,10 +55,10 @@ which already does most of the storage side for the owner only.
   | ---------------------- | -------------------------------------------------------- | --------------------------------------------------------- |
   | txt / csv / tsv        | delimiter + header sniff; columns → term/back/reading/ex | /words list (`WordEntriesD1Repo`, as `/api/words/import`) |
   | Anki `.apkg`/`.colpkg` | the existing import (`/words/import`, `lib/words/anki`)  | /words list                                               |
-  | EPUB                   | the existing EPUB import (`lib/epub/`)                   | /read book                                                |
-  | PDF                    | text layer (`unpdf`, as self-intro); scans → image path  | /read, or /words if it is a list                          |
-  | DOCX / HTML            | text extraction as `lib/self-intro/import-parse.ts`      | /read or /words                                           |
-  | images                 | the multimodal model reads the page (as self-intro)      | /words (vocab page) or /read                              |
+  | EPUB                   | the existing EPUB import (`lib/epub/`)                   | /reader book                                                |
+  | PDF                    | text layer (`unpdf`, as self-intro); scans → image path  | /reader, or /words if it is a list                          |
+  | DOCX / HTML            | text extraction as `lib/self-intro/import-parse.ts`      | /reader or /words                                           |
+  | images                 | the multimodal model reads the page (as self-intro)      | /words (vocab page) or /reader                              |
 
 - **The agent step.** Only where rules cannot decide: one model call
   ([workers-ai.md](workers-ai.md), `PARTNER_AI_MODEL`) sees a **sample** (first
@@ -85,7 +85,7 @@ which already does most of the storage side for the owner only.
   cache, no public link. A file is fetched through the user's own session or
   a single-use ticket. Logs carry ids, sizes and costs, never content.
 - **Deleting** a file removes the R2 object and the row (usage updated in
-  the same batch); cards and /read material already made from it stay.
+  the same batch); cards and /reader material already made from it stay.
 
 ## Milestones
 
@@ -94,7 +94,7 @@ which already does most of the storage side for the owner only.
 | M1  | **First slice**: /import → drop a **txt or csv word list** → upload to R2 as the user's artifact (usage counted) → job (rules only, no model) → a /words list; status in a minimal task bar; flag dark, on for the owner | 4H   |
 | M2  | /artifacts list page: name, size, usage line, delete                                                                                                                                                                     | 1.5H |
 | M3  | Anki and EPUB through the same pipeline (reuse existing importers)                                                                                                                                                       | 2.5H |
-| M4  | PDF / DOCX / HTML text → /read; the agent step for "list or reading?" with one question in the task bar                                                                                                                  | 4H   |
+| M4  | PDF / DOCX / HTML text → /reader; the agent step for "list or reading?" with one question in the task bar                                                                                                                  | 4H   |
 | M5  | Images (vocab page photos) → /words via the multimodal model                                                                                                                                                             | 2.5H |
 | M6  | Queue consumer hardening: per-job CPU cap, retries, dead-letter, qa script with hostile files                                                                                                                            | 3H   |
 

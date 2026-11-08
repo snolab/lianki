@@ -122,7 +122,7 @@ Excel's TRUE/FALSE restored to true/false; NAWL's nine prefixes dropped.
 
 ## Reader dictionaries (lemma files)
 
-`/read` also uses a per-language lemma file, `public/words/lemma/<lang>.txt`
+`/reader` also uses a per-language lemma file, `public/words/lemma/<lang>.txt`
 (French first, 2026-11-03), to match a book's inflected forms to cards and to
 call a word "new" when the dictionary has it. Source: the kaikki.org English
 Wiktionary extract for the language, CC BY-SA 4.0 (and GFDL); headwords,
@@ -156,7 +156,7 @@ Hebrew sentences, 173,000 of them linked to English): a follow-up.
 
 ## Finnish (2026-11-04)
 
-Owner, 2026-11-04 01:21 JST, /read: "添加芬兰语的卡组". Built with the same
+Owner, 2026-11-04 01:21 JST, /reader: "添加芬兰语的卡组". Built with the same
 pipeline and sources as the other frequency lists; no new licence.
 
 | Part                     | Source                                                                                     | Licence                       |
@@ -164,11 +164,11 @@ pipeline and sources as the other frequency lists; no new licence.
 | Ranks (`fi-freq-1…6`)    | FrequencyWords `fi` (OpenSubtitles 2018)                                                     | CC BY-SA 4.0                  |
 | Meanings, inflected forms | English Wiktionary via the kaikki.org Finnish extract (form-of entries, declension and conjugation tables) | CC BY-SA 4.0 / GFDL |
 | Examples                 | Wiktionary usage examples, then Tatoeba Finnish sentences (`credits/tatoeba-fi.tsv`)        | CC BY-SA 4.0; CC BY 2.0 FR    |
-| /read lemma file (`lemma/fi.txt`) | kaikki.org Finnish extract; forms kept only when among FrequencyWords `fi`'s top 200,000 | CC BY-SA 4.0 / GFDL |
+| /reader lemma file (`lemma/fi.txt`) | kaikki.org Finnish extract; forms kept only when among FrequencyWords `fi`'s top 200,000 | CC BY-SA 4.0 / GFDL |
 
 Coverage by lemma: list 1 65.6%, lists 1–6 83.0%; the ceiling of the data
 is 88.1%, so the add tree offers the 50% and 80% lines, not 90/95%. The
-/read language data is `lib/read/lang/fi.json` (function words for guessing,
+/reader language data is `lib/read/lang/fi.json` (function words for guessing,
 abbreviations such as "esim." that do not end a sentence, the lemma file);
 no Finnish code. Read-aloud uses the device's Finnish voice (`fi-FI`); the
 server voice (MeloTTS) has no Finnish, as it has no German, Italian, Russian

@@ -78,11 +78,11 @@ async function open(ctx) {
   const page = await ctx.newPage();
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
-  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
+  await page.waitForURL(/\/reader\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   // The word map (marks on the words): 制卡 counts need it.
@@ -195,7 +195,7 @@ async function rangeCard(page, ctx, sel, tag) {
   const link = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
   const want = `#r=${sel.first.line}.${sel.first.t}-${sel.last.line}.${sel.last.t}`;
   check(
-    new RegExp(`/read/[0-9a-f]{16}${want.replace(/\./g, "\\.")}$`).test(link),
+    new RegExp(`/reader/[0-9a-f]{16}${want.replace(/\./g, "\\.")}$`).test(link),
     `the link names the range (${link}; want ${want}; ${status})`,
   );
 

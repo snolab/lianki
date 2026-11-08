@@ -124,7 +124,7 @@ describe("the chapter-up-to-here review in the URL", () => {
     expect(uptoRef(14)).toBe("u14");
     expect(decodeReviewRef("u14")).toEqual({ kind: "upto", line: 14 });
     expect(decodeReviewRef("u0")).toEqual({ kind: "upto", line: 0 });
-    expect(reviewOfHref("/read/x?review=u3")).toBe("u3");
+    expect(reviewOfHref("/reader/x?review=u3")).toBe("u3");
   });
   test("refuse anything else, the retired chapter and book refs too", () => {
     for (const bad of ["u", "u-1", "u01", "c3", "b", "b0", "x3", "u1.2"])

@@ -162,7 +162,7 @@ describe("getSession on a box's server", () => {
 describe("the way back after /sign-in", () => {
   test("a path on this host, with its query", () => {
     expect(boxReturnPath("/learn")).toBe("/learn");
-    expect(boxReturnPath("/read/abc?p=2")).toBe("/read/abc?p=2");
+    expect(boxReturnPath("/reader/abc?p=2")).toBe("/reader/abc?p=2");
   });
   test("never another host, never /sign-in, never odd bytes", () => {
     for (const v of [

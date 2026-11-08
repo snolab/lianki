@@ -115,7 +115,7 @@ export function ReadListClient({
     setGdocUrl(gdocUrlOf(id));
     setGdocPrivate(true);
     setDriveReturned(q.get("google"));
-    window.history.replaceState(null, "", "/read");
+    window.history.replaceState(null, "", "/reader");
   }, [drive, gdoc]);
 
   const gdocErrorText = (code: string | undefined): string =>
@@ -155,7 +155,7 @@ export function ReadListClient({
         return;
       }
       const saved = await res.json();
-      router.push(`/read/${saved.id}`);
+      router.push(`/reader/${saved.id}`);
     } catch (err) {
       console.error("Google Docs import failed:", err);
       setGdocError(gdocText.errFailed.value);
@@ -204,7 +204,7 @@ export function ReadListClient({
       }
       const saved = await res.json();
       // The reader's header shows the scan summary of what was imported.
-      router.push(`/read/${saved.id}`);
+      router.push(`/reader/${saved.id}`);
     } catch (err) {
       console.error("EPUB import failed:", err);
       setEpubError(epubText.errFailed.value);
@@ -257,7 +257,7 @@ export function ReadListClient({
           setImportText("");
           setImportTitle("");
           setIsImporting(false);
-          router.push(`/read/${newMaterial.id}`);
+          router.push(`/reader/${newMaterial.id}`);
         }
       } catch (err) {
         console.error("Failed to save material:", err);
@@ -279,7 +279,7 @@ export function ReadListClient({
       setImportText("");
       setImportTitle("");
       setIsImporting(false);
-      router.push(`/read/${newMaterial.id}`);
+      router.push(`/reader/${newMaterial.id}`);
     }
   };
 
@@ -388,11 +388,11 @@ export function ReadListClient({
               </button>
             )}
             {isLoggedIn && drive && (
-              <DrivePick page="/read" compact onImported={() => setReload((n) => n + 1)} />
+              <DrivePick page="/reader" compact onImported={() => setReload((n) => n + 1)} />
             )}
             {isLoggedIn && youtube && (
               <Link
-                href="/read/youtube"
+                href="/reader/youtube"
                 data-testid="read-import-youtube"
                 className="flex-1 py-4 text-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
               >
@@ -456,7 +456,7 @@ export function ReadListClient({
               url={gdocUrl}
               returned={driveReturned}
               errorText={gdocErrorText}
-              onImported={(id) => router.push(`/read/${id}`)}
+              onImported={(id) => router.push(`/reader/${id}`)}
             />
           )}
           {gdocError && (
@@ -540,7 +540,7 @@ export function ReadListClient({
                 />
               ) : (
                 <>
-                  <Link href={`/read/${material.id}`} className="flex-1 min-w-0">
+                  <Link href={`/reader/${material.id}`} className="flex-1 min-w-0">
                     <h3 className="font-medium truncate" data-testid="read-row-title">
                       {material.title}
                     </h3>
@@ -555,7 +555,7 @@ export function ReadListClient({
                     </p>
                   </Link>
                   {material.words && (
-                    <Link href={`/read/${material.id}`} className="ms-2" tabIndex={-1}>
+                    <Link href={`/reader/${material.id}`} className="ms-2" tabIndex={-1}>
                       <BookRing words={material.words} />
                     </Link>
                   )}

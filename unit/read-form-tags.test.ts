@@ -3,7 +3,7 @@
  * generic mapping from Wiktionary's tags to UI strings, for every language.
  */
 import { describe, expect, it } from "bun:test";
-import dict from "@/app/(app)/read/read-form-tags.content";
+import dict from "@/app/(app)/reader/read-form-tags.content";
 import {
   FORM_TAG_KEYS,
   FORM_TAGS,

@@ -167,7 +167,7 @@ that are expensive to rediscover.
 | /words new-word order: in order + pass, take turns, simulator         | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)               |
 | Exam word decks (CET, TOEFL, GRE…): sources, licences, gaps           | [docs/word-deck-sources.md](docs/word-deck-sources.md)                 |
 | /self-intro import: files/text → facts → review; privacy              | [docs/self-intro-import.md](docs/self-intro-import.md)                 |
-| Import any material: upload → job → /words or /read (stub)            | [docs/import-material.md](docs/import-material.md)                     |
+| Import any material: upload → job → /words or /reader (stub)            | [docs/import-material.md](docs/import-material.md)                     |
 | YouTube songs: timed lyric lines as example clips (stub)              | [docs/youtube-song-examples.md](docs/youtube-song-examples.md)         |
 | /books public-domain library: catalogue rule, slugs, R2 cache         | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"      |
 | Voice mode: spoken commands per screen, grammar, mic taps             | [docs/voice-mode.md](docs/voice-mode.md)                               |

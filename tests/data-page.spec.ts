@@ -192,7 +192,7 @@ test.describe("/data as a guest", () => {
 test.describe("app shell", () => {
   // The sidebar replaced a per-page <Header>; a page that lost its nav in that
   // sweep would still render fine on its own, so assert the shell explicitly.
-  const ROUTES = ["/data", "/list", "/import", "/learn", "/read", "/add-note", "/lab/ai-vocab"];
+  const ROUTES = ["/data", "/list", "/import", "/learn", "/reader", "/add-note", "/lab/ai-vocab"];
 
   for (const route of ROUTES) {
     test(`${route} renders the sidebar with a link to every feature`, async ({ page }) => {

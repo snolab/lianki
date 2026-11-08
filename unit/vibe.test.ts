@@ -599,7 +599,7 @@ describe("polish", () => {
     expect(m?.source).toBe("vibe");
   });
   it("the reader's live card, which translates the newest line by itself, is not on a transcript", () => {
-    expect(readFileSync("app/(app)/read/[id]/ReaderV2.tsx", "utf8")).toContain(
+    expect(readFileSync("app/(app)/reader/[id]/ReaderV2.tsx", "utf8")).toContain(
       'liveTail !== null && book?.source !== "vibe"',
     );
   });

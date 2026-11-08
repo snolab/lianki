@@ -49,7 +49,7 @@ export const APP_ROUTES = [
   "preferences",
   "privacy",
   "profile",
-  "read",
+  "reader",
   "review",
   "roadmap",
   "self-intro",

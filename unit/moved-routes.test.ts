@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { NextRequest } from "next/server";
 import { middleware } from "@/middleware";
-import { MOVED_ROUTES, movedPath } from "@/lib/moved-routes";
+import { MOVED_ROUTES, movedHref, movedPath } from "@/lib/moved-routes";
+import { cleanNavPins } from "@/lib/nav/ui-store";
 import { isAppRoute } from "@/lib/app-locale";
 
 // docs/url-principles.md, rule 9: an old address never breaks.
@@ -52,5 +53,37 @@ describe("middleware", () => {
     const res = go("/lab/polyglot");
     expect(res.headers.get("location")).toBeNull();
     expect(res.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  // 2026-11-09 (owner): /read is /reader. An open tab, a saved link, a chat
+  // link or a pinned page lands on the same book, review and query.
+  it("moves the reader, its books, their reviews and the YouTube import", () => {
+    const at = (p: string) => go(p).headers.get("location");
+    expect(go("/read").status).toBe(308);
+    expect(at("/read")).toBe("https://lianki.com/reader");
+    expect(at("/read?gdoc=abc&pick=drive")).toBe("https://lianki.com/reader?gdoc=abc&pick=drive");
+    expect(at("/read/0123456789abcdef?review=p12&streamingFrom=google-docs")).toBe(
+      "https://lianki.com/reader/0123456789abcdef?review=p12&streamingFrom=google-docs",
+    );
+    expect(at("/read/youtube")).toBe("https://lianki.com/reader/youtube");
+    expect(at("/zh/read/abc")).toBe("https://lianki.com/reader/abc?lang=zh");
+    // The new address, the API and a longer word are left alone.
+    expect(at("/reader/abc")).toBeNull();
+    expect(movedPath("/api/read/abc/items")).toBeNull();
+    expect(movedPath("/reading")).toBeNull();
+  });
+});
+
+describe("movedHref: kept hrefs (pins, recent pages)", () => {
+  it("moves the path and keeps the query and hash", () => {
+    expect(movedHref("/read/abc?review=p1#p=4")).toBe("/reader/abc?review=p1#p=4");
+    expect(movedHref("/read")).toBe("/reader");
+    expect(movedHref("/read#x")).toBe("/reader#x");
+    expect(movedHref("/words?x=1")).toBe("/words?x=1");
+  });
+  it("a pinned /read comes back as /reader", () => {
+    expect(cleanNavPins({ pinned: ["/words", "/read", "/reader"] })).toEqual({
+      pinned: ["/words", "/reader"],
+    });
   });
 });

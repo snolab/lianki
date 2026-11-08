@@ -39,7 +39,7 @@ describe("APP_ROUTES", () => {
 describe("isAppRoute", () => {
   it("matches app routes and their subpaths", () => {
     expect(isAppRoute("/list")).toBe(true);
-    expect(isAppRoute("/read/abc123")).toBe(true);
+    expect(isAppRoute("/reader/abc123")).toBe(true);
     expect(isAppRoute("/lab/ai-vocab/ja")).toBe(true);
     expect(isAppRoute("/dev/roadmap")).toBe(true);
   });
@@ -84,6 +84,6 @@ it("every sidebar page is an app route, so the locale middleware leaves it alone
 it("activeNavKey picks the longest matching sidebar href", async () => {
   const { activeNavKey } = await import("@/lib/app-nav");
   expect(activeNavKey("/words")).toBe("words");
-  expect(activeNavKey("/read/abc")).toBe("read");
+  expect(activeNavKey("/reader/abc")).toBe("read");
   expect(activeNavKey("/nowhere")).toBeNull();
 });

@@ -32,7 +32,7 @@ they land. Design details that are still open are marked **open**.
   cell on the focused row slides up to its end and back. The swipe keeps its
   finger distance: one detent is still the old row height (44px), apart from
   the row's own (`rowMetrics`, `lib/words/row-layout.ts`).
-- **The reader's review: one line more** (2026-11-08 19:16 JST, on /read:
+- **The reader's review: one line more** (2026-11-08 19:16 JST, on /reader:
   "increase the height of every card by one more line"): a review opened from
   the reader (`StudyScope.extraLines: 1`) makes every row one line of its back
   text taller (14px × 1.25, × the text size) and gives that line to the
@@ -64,7 +64,7 @@ they land. Design details that are still open are marked **open**.
   (no animation) and held there until the list is moved (`centredTop`,
   `app/(app)/words/ui-store.ts`). A word remembered further down still opens
   just under the toolbar.
-- **Grade keys 1–4** (2026-11-04, PC, also the /read word review): a word not
+- **Grade keys 1–4** (2026-11-04, PC, also the /reader word review): a word not
   graded yet is graded like a swipe — the list scrolls one row and the cursor
   moves to the next word. A correction (re-grading a graded word) never
   scrolls the view, but the cursor still moves to the next word

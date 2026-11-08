@@ -232,10 +232,10 @@ async function run(engine, device, scheme) {
   const errs = [];
   // (WebKit reports a fetch cut off by a navigation as "access control checks": not ours.)
   page.on("pageerror", (e) => /access control checks/.test(e.message) || errs.push(e.message));
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
-  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
-  const url = `/read/${page.url().split("/").pop()}`;
+  await page.waitForURL(/\/reader\/[^/?]+$/, { timeout: 30000 });
+  const url = `/reader/${page.url().split("/").pop()}`;
   await page.goto(url, { waitUntil: "load" });
   await page
     .locator("[data-testid=reader-book] [data-item]")

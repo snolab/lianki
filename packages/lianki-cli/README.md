@@ -123,7 +123,7 @@ lianki settings list                         # every setting and its value
 lianki settings get chat-voice.rate
 lianki settings set words.readAloud true
 lianki settings set chat-voice.rate 1.25
-lianki settings set nav-pins.pinned '["/words","/read"]'
+lianki settings set nav-pins.pinned '["/words","/reader"]'
 ```
 
 A value is read as JSON when it parses (`true`, `1.25`, `["/words"]`), and as

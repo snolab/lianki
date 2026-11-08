@@ -59,7 +59,7 @@ export function YtSongNew() {
         setError(errText(data.error ?? ""));
         return;
       }
-      router.push(`/read/${encodeURIComponent(data.id)}`);
+      router.push(`/reader/${encodeURIComponent(data.id)}`);
     } catch {
       setError(t.errFailed.value);
     } finally {
@@ -70,8 +70,8 @@ export function YtSongNew() {
   return (
     <div className="space-y-5" data-testid="yt-song-new">
       <div>
-        <Link href="/read" className="text-sm opacity-70 hover:underline">
-          ← /read
+        <Link href="/reader" className="text-sm opacity-70 hover:underline">
+          ← /reader
         </Link>
         <h1 className="mt-2 text-2xl font-bold">{t.entry}</h1>
         <p className="mt-2 text-sm opacity-80">{t.intro}</p>

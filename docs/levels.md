@@ -58,7 +58,7 @@ Hard to fake, by construction (owner, Slack 2026-11-05):
 - **Real reviews only.** A review counts if its card was on screen at least
   human reaction time (`HUMAN_REACTION_MS` = 1 s, the low end of the 1–3 s
   rule): /words sends `elapsedMs` only for the row in focus, so grades tapped
-  on other rows (mass-tapping) carry none and don't count; /read uses the
+  on other rows (mass-tapping) carry none and don't count; /reader uses the
   swipe's shown → swiped time, and a resent grade (same client id) is not a
   new read. Selection batch grades and the Easy-grades-the-words path don't
   count.

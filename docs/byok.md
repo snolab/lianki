@@ -18,8 +18,8 @@ disabled checkbox behind the flag `byok.sync`.
 | storage, URL rules, the notice  | `lib/byok/config.ts`                                            |
 | the call, errors, Test          | `lib/byok/call.ts`                                              |
 | settings UI, strings            | `app/components/ByokSettings.tsx`, `byok-settings.content.ts`   |
-| reader translation              | `app/(app)/read/[id]/use-select-translate.ts`                   |
-| reader word meaning (gloss)     | `app/(app)/read/[id]/use-select-gloss.ts`, `/api/read/[id]/gloss` (`own: true`) |
+| reader translation              | `app/(app)/reader/[id]/use-select-translate.ts`                   |
+| reader word meaning (gloss)     | `app/(app)/reader/[id]/use-select-gloss.ts`, `/api/read/[id]/gloss` (`own: true`) |
 | sync of the backend             | `byok.backend` in `lib/prefs/schema.ts` / `bindings.ts`         |
 | the relay (server)              | `app/api/byok/proxy/route.ts`, `lib/byok/proxy-server.ts`, guards in `lib/byok/proxy-guard.ts` |
 | the relay's allowlist (data)    | `relay: {host, paths}` on a preset in `lib/byok/presets.ts`     |
@@ -73,7 +73,7 @@ points.
 
 Only what can run from the browser:
 
-- **Selection-card translation** (/read): each unit goes to the provider;
+- **Selection-card translation** (/reader): each unit goes to the provider;
   `/api/read/[id]/translate` is not called, so nothing is charged and
   nothing is written to `read_translation`. Results stay in the tab's cache
   under `own:` keys.

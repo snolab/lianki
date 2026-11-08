@@ -2,7 +2,7 @@
 // "Combo-click expanding selection", owner 2026-11-03 18:38 JST). Pure and
 // isomorphic: the level state machine, the units' deep-link fragments and
 // the familiarity summary a unit's card shows. The DOM side (one delegated
-// listener, the highlight, the card) is in app/(app)/read/[id]/ReaderV2.tsx.
+// listener, the highlight, the card) is in app/(app)/reader/[id]/ReaderV2.tsx.
 //
 // - **Levels.** Each extra click within the double-click interval selects the
 //   next larger unit: word → phrase → sentence → paragraph → chapter → book.
@@ -14,7 +14,7 @@
 //   a paragraph is its line, a sentence its index in the line, a word its
 //   token index in the line (word-like segments from 0). With the book's
 //   content hash in the path they survive a re-import of the same text:
-//   `/read/<book>` · `#ch=<n>` · `#p=<line>` · `#s=<line>.<sentence>` ·
+//   `/reader/<book>` · `#ch=<n>` · `#p=<line>` · `#s=<line>.<sentence>` ·
 //   `#w=<line>.<token>` · `#ph=<line>.<start>-<end>` ·
 //   `#r=<line>.<token>-<line>.<token>` (a range he selected by hand).
 // - **Manual selection** (owner, 2026-11-03 22:25 JST: "我手动选择一串内容的时候

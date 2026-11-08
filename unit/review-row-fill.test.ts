@@ -22,7 +22,7 @@ import {
 } from "@/lib/read/review-row-fill";
 
 const app = join(import.meta.dir, "../app");
-const review = readFileSync(join(app, "(app)/read/[id]/reader-word-review.tsx"), "utf8");
+const review = readFileSync(join(app, "(app)/reader/[id]/reader-word-review.tsx"), "utf8");
 const words = readFileSync(join(app, "(app)/words/WordsClient.tsx"), "utf8");
 const route = readFileSync(join(app, "api/read/[id]/word-session/route.ts"), "utf8");
 

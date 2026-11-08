@@ -15,7 +15,7 @@ import type { PickerSetup } from "./picker-client";
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 /** The pages that offer the button; each comes back to itself after connecting. */
-export type PickPage = "/connections" | "/read";
+export type PickPage = "/connections" | "/reader";
 
 /** Where Google's consent returns to: the page, marked to open the Picker. */
 export function pickReturnTo(page: PickPage): string {

@@ -39,7 +39,7 @@ const PAGES = [
   "/lab/ai-vocab/zh?lang=ja",
   "/en/blog",
   "/data",
-  "/read",
+  "/reader",
   "/self-intro",
   "/home",
   "/sites",

@@ -27,7 +27,7 @@ import {
   type Asked,
   type TranslationRow,
 } from "@/lib/vibe/translations";
-import { useBookStream } from "../read/[id]/reader-stream";
+import { useBookStream } from "../reader/[id]/reader-stream";
 import { langName } from "./lang-name";
 
 /** The conversation /vibe/<id> opens on. */
@@ -314,7 +314,7 @@ function LogActions({ material, onAgain }: { material: string | null; onAgain: (
     <div className="mt-8 flex flex-wrap gap-3" data-testid="vibe-log-actions">
       {material && (
         <Link
-          href={`/read/${material}`}
+          href={`/reader/${material}`}
           className={`${QUIET} inline-flex items-center`}
           data-testid="vibe-open"
         >

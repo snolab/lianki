@@ -58,21 +58,21 @@ describe("decodeReviewRef", () => {
 });
 
 describe("the URL", () => {
-  const book = "https://lianki.com/read/abc?reader=v2#p=40";
+  const book = "https://lianki.com/reader/abc?reader=v2#p=40";
   it("sets the ref, keeping the other parameters and the fragment", () => {
-    expect(withReview(book, "p12")).toBe("/read/abc?reader=v2&review=p12#p=40");
-    expect(withReview("/read/abc", "r3.0-4.7")).toBe("/read/abc?review=r3.0-4.7");
+    expect(withReview(book, "p12")).toBe("/reader/abc?reader=v2&review=p12#p=40");
+    expect(withReview("/reader/abc", "r3.0-4.7")).toBe("/reader/abc?review=r3.0-4.7");
   });
   it("replaces a ref and drops it", () => {
     const on = withReview(book, "p12");
-    expect(withReview(on, "p13")).toBe("/read/abc?reader=v2&review=p13#p=40");
-    expect(withReview(on, null)).toBe("/read/abc?reader=v2#p=40");
-    expect(withReview("/read/abc?review=p1", null)).toBe("/read/abc");
+    expect(withReview(on, "p13")).toBe("/reader/abc?reader=v2&review=p13#p=40");
+    expect(withReview(on, null)).toBe("/reader/abc?reader=v2#p=40");
+    expect(withReview("/reader/abc?review=p1", null)).toBe("/reader/abc");
   });
   it("reads it back, only when it names a review", () => {
     expect(reviewOfHref(withReview(book, "r3.0-4.7"))).toBe("r3.0-4.7");
     expect(reviewOfHref(book)).toBeNull();
-    expect(reviewOfHref(`/read/abc?${REVIEW_PARAM}=nonsense`)).toBeNull();
+    expect(reviewOfHref(`/reader/abc?${REVIEW_PARAM}=nonsense`)).toBeNull();
   });
   it("keys the position by book and ref", () => {
     expect(reviewKey("abc", "p12")).toBe("review:abc:p12");

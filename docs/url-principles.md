@@ -49,7 +49,7 @@ should be a 名詞 instead of 動詞". Read this before adding or renaming a rou
 
 | Today                                                                             | Noun form                        | Note                               |
 | --------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------- |
-| `/read`, `/read/<id>`                                                             | `/reader`, `/reader/<id>`        | requested, queued                  |
+| `/read`, `/read/<id>`                                                             | `/reader`, `/reader/<id>`        | done 2026-11-09                    |
 | `/add-note`                                                                       | `/notes/new`                     | verb → noun + `new`                |
 | `/import`                                                                         | `/imports` (`/imports/new`)      | verb → noun                        |
 | `/learn`                                                                          | `/learning` or `/courses`        | owner to choose                    |

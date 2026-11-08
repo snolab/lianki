@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useIntlayer } from "next-intlayer";
 import { longDate, longDateTime } from "@/lib/dates";
 import type { VibeRow } from "@/lib/vibe/store";
-import { RowMenu, TitleEditor } from "../read/RowMenu";
+import { RowMenu, TitleEditor } from "../reader/RowMenu";
 import { langName } from "./lang-name";
 
 const DIM = "text-[oklch(0.45_0_0)] dark:text-[oklch(0.72_0_0)]";

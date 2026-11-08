@@ -24,7 +24,7 @@ One D1 row per line of the user's **own** thread (`chat_line`,
 **Never kept** (`lib/chat-log-line.ts` `chatLogLine` drops all of it): the
 page context attached with the + menu (`context`) and a voice line's screen
 text (`scene`) — page text, and on a private screen
-(`[data-lk-private-screen]`: /vibe, a transcript in /read) private speech,
+(`[data-lk-private-screen]`: /vibe, a transcript in /reader) private speech,
 which is not chat (docs/vibe.md); STT before polish (`raw`, `parts`); the page
 label (path, user agent); avatars, emails; attachment ids (files stay in the
 inbox); timings, speaker tags, wake modes. No audio and no clip ids are ever on

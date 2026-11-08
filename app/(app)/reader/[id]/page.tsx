@@ -34,7 +34,7 @@ export default async function ReadMaterialPage({
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(query))
       for (const x of Array.isArray(v) ? v : v === undefined ? [] : [v]) q.append(k, x);
-    redirect(`/read/${encodeURIComponent(target.id)}${q.size ? `?${q}` : ""}`);
+    redirect(`/reader/${encodeURIComponent(target.id)}${q.size ? `?${q}` : ""}`);
   }
   const owner = isDev(user?.email);
   const streaming = query.streamingFrom === "google-docs" || query.streamingFrom === "vibe";

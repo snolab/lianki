@@ -1,5 +1,5 @@
 // A selected word's meaning, fetched once per tab (the hook:
-// app/(app)/read/[id]/use-select-gloss.ts). POST /api/read/[id]/gloss: the
+// app/(app)/reader/[id]/use-select-gloss.ts). POST /api/read/[id]/gloss: the
 // decks over the book's lemmas, the shared word_gloss rows, else the model
 // (charged through chargeAi). A tap asks for it (owner's card, 2026-11-06 18:18
 // JST: 点开就查释义); the slider's commit then reuses it (`withTabGloss`).

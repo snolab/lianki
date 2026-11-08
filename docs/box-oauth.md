@@ -248,7 +248,7 @@ A box's own server reads its **local** D1 (usually an empty `feature_flags`, so
 every flag off) and has no session (so `isOwner` is false). A page that decides
 on the server would show the box what an anonymous user with every flag off
 sees, not what the bound account sees on lianki.com. The owner hit this on
-2026-11-07: his box showed the old reader at `/read/<id>`, because
+2026-11-07: his box showed the old reader at `/reader/<id>`, because
 `read.reader-v2` (since removed) was off in the box's D1 and the server did not
 know him.
 
@@ -261,7 +261,7 @@ answer; otherwise the server's. They are read once per page load (a full reload
 picks up a flip at /dev/flags). Only registry keys with boolean values are kept;
 an older lianki.com that does not send them means all off, not the owner.
 
-Used today by `/read/[id]` (`BoxReader`: the live-draft gate). Other server-decided parts listed above still read the box's own D1; move
+Used today by `/reader/[id]` (`BoxReader`: the live-draft gate). Other server-decided parts listed above still read the box's own D1; move
 one to `useFlagView` when a box needs it. No sync of the local D1 is needed or
 done.
 
