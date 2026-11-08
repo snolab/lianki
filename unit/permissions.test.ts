@@ -11,6 +11,7 @@ import {
   isDev,
   permissionHolders,
   setPermissionSnapshot,
+  type Grant,
 } from "@/lib/permissions";
 import { refreshPermissions, refreshPermissionsFrom } from "@/lib/permission-store";
 import { useBackend, useD1 } from "./support/testMocks";
@@ -206,7 +207,7 @@ describe("refreshPermissions", () => {
 describe("refreshPermissions: databases", () => {
   it("the default database is the request's D1; a webhook passes its own; off D1 nothing", async () => {
     await grantPermission(write(), "a@example.com", "dev", ME, T0);
-    const want = [{ email: "a@example.com", permission: "dev" }];
+    const want: Grant[] = [{ email: "a@example.com", permission: "dev" }];
     useBackend("d1");
     useD1(d1);
     try {
