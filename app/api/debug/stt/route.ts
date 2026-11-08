@@ -5,7 +5,7 @@ import { BOX_IDENTITY_HEADER } from "@/lib/box-oauth/identity";
 import type { BoxDb } from "@/lib/box-oauth/store";
 import { getD1 } from "@/lib/d1";
 import { devBridgeUser } from "@/lib/dev-bridge-user";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { STT_WINDOW_MS, handleStt } from "@/lib/stt-handler";
 import { workersAiTranscribe } from "@/lib/workers-ai";
@@ -26,7 +26,7 @@ export const POST = async (req: Request) => {
   const user = bridged === undefined ? await authUserOrNull() : bridged;
   return handleStt(req, {
     user: user?.id ? { id: user.id } : null,
-    owner: isOwner(user?.email),
+    owner: isDev(user?.email),
     transcribe: workersAiTranscribe,
     limit: (key, max) => checkRateLimit(key, { windowMs: STT_WINDOW_MS, max }),
   });

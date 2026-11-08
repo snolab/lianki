@@ -9,20 +9,21 @@ no shared cookie. Owner's decision: Slack, 2026-11-05.
 **Dark:** behind the flag `box.oauth`, off. With it off, everything here answers
 as if it did not exist.
 
-| piece                                       | where                                                                                                                                 |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| pure rules: origins, allowlist, scopes      | `lib/box-oauth/rules.ts`                                                                                                              |
-| the Worker's gate                           | `lib/box-oauth/gate.ts`, called first in `worker.ts`                                                                                  |
-| provider (better-auth plugin), binding hook | `lib/box-oauth/provider.ts`, `auth-impl.ts`                                                                                           |
-| lianki.com's entry to the flow              | `app/box-authorize/route.ts`                                                                                                          |
-| which plugin routes answer                  | `app/api/auth/[...all]/route.ts`                                                                                                      |
-| binding, revoke, token lookup               | `lib/box-oauth/store.ts`, `db/migrations/0049_box_oauth.sql`                                                                          |
-| owner's page and API                        | `/dev/box-clients`, `app/api/dev/box-clients/route.ts`                                                                                |
-| the app's view of a token                   | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`                                                                              |
-| the box's browser side                      | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge`                                                               |
-| the box's signed-in view                    | `lib/box-oauth/session.ts`, `me.ts`, `app/api/box/me`, `BoxApiBridge`                                                                 |
-| chat on the owner's box (`box:chat`)        | `lib/box-oauth/chat-ticket.ts`, `app/api/box/chat-ticket`, `workers/push/src/auth.ts`                                                 |
-| code on the owner's box (`box:eval`)        | `lib/box-oauth/store.ts` (`setBoxEval`, `boxEvalLive`), `worker.ts` (`boxEval`), `workers/push/src/debug.ts`                          |
+| piece                                       | where                                                                                                                                                                                          |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| pure rules: origins, allowlist, scopes      | `lib/box-oauth/rules.ts`                                                                                                                                                                       |
+| the Worker's gate                           | `lib/box-oauth/gate.ts`, called first in `worker.ts`                                                                                                                                           |
+| provider (better-auth plugin), binding hook | `lib/box-oauth/provider.ts`, `auth-impl.ts`                                                                                                                                                    |
+| lianki.com's entry to the flow              | `app/box-authorize/route.ts`                                                                                                                                                                   |
+| which plugin routes answer                  | `app/api/auth/[...all]/route.ts`                                                                                                                                                               |
+| binding, revoke, token lookup               | `lib/box-oauth/store.ts`, `db/migrations/0049_box_oauth.sql`                                                                                                                                   |
+| owner's page and API                        | `/dev/box-clients`, `app/api/dev/box-clients/route.ts`                                                                                                                                         |
+| the app's view of a token                   | `lib/box-oauth/identity.ts`, `app-session.ts`, `auth.ts`                                                                                                                                       |
+| the box's browser side                      | `lib/box-oauth/client.ts`, `/box-callback`, `BoxSignIn`, `BoxApiBridge`                                                                                                                        |
+| the box's signed-in view                    | `lib/box-oauth/session.ts`, `me.ts`, `app/api/box/me`, `BoxApiBridge`                                                                                                                          |
+| the box's server sees the sign-in           | `lib/box-oauth/server-session.ts`, `server-auth.ts`, `return-path.ts`, `auth.ts`, `BoxSignIn`                                                                                                  |
+| chat on the owner's box (`box:chat`)        | `lib/box-oauth/chat-ticket.ts`, `app/api/box/chat-ticket`, `workers/push/src/auth.ts`                                                                                                          |
+| code on the owner's box (`box:eval`)        | `lib/box-oauth/store.ts` (`setBoxEval`, `boxEvalLive`), `worker.ts` (`boxEval`), `workers/push/src/debug.ts`                                                                                   |
 | tests                                       | `unit/box-oauth.test.ts`, `unit/box-allowlist.test.ts`, `unit/box-session.test.ts`, `unit/box-locale.test.ts`, `unit/box-chat.test.ts`, `unit/box-eval.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
 
 ## Who may have a box
@@ -172,14 +173,58 @@ starts as on any signed-in device. An uploaded avatar is fetched from lianki.com
 the tokens. Sign-out (`lib/sign-out.ts`) then calls `boxSignOut`, which revokes the
 refresh token, instead of better-auth's cookie sign-out.
 
-Still signed out, because they are drawn on the box's server:
+The pages drawn on the box's server see the sign-in too: next section.
+Still decided from the box's own local D1: the flag-gated server extras (the
+level chip, flag-gated nav items).
 
-- `/learn` and `/lab/polyglot` redirect to `/sign-in`. On a box with a token, that page
-  says so and links to lianki.com, instead of going round the flow again.
-- `/list` and `/import` show their guest view; `/profile`, `/preferences`,
-  `/connections`, `/self-intro`, `/lab/ai-vocab` and the `/dev` pages read the server's user.
-- Server-decided extras: the level chip, flag-gated nav items, the owner's dev
-  switch and live view.
+### The box's server sees the sign-in
+
+Until 2026-11-09 the box's server saw nobody: the tokens are in the tab's
+sessionStorage, which a server never receives. So every page it decides said
+"sign in" to a signed-in tab: `/learn` and `/polyglot` redirected to
+`/sign-in`, `/list` and `/import` showed their guest view, and `/profile`,
+`/preferences`, `/connections`, `/self-intro`, `/ai-vocab`, `/chat/history`,
+`/roadmap` and the `/dev` pages read no user.
+
+Now (`server-session.ts`, `server-auth.ts`):
+
+- **The cookie.** Each time the tab gets a token (sign-in, refresh) and on every
+  page load, it writes the access token into one cookie of the box's own host:
+  `__Host-lk_box_at` (Secure, Path=/, no Domain, SameSite=Lax; `lk_box_at` on an
+  http QA box), lasting as long as the token (15 min). Never the refresh token.
+  A `__Host-` cookie goes to this host only: never to lianki.com or another box.
+  Sign-out, a refused token and a failed sign-in clear it.
+- **The server asks lianki.com.** On a box, `auth.api.getSession` (auth.ts)
+  never loads better-auth: it reads that cookie and calls `GET /api/box/me` as the
+  page does, with `Authorization: Bearer`, `Origin` = the box's own origin
+  (`BETTER_AUTH_BASE_URL`), no cookie, through the same gate. The answer (the
+  account's id, name, email, avatar, owner role) is kept 30 s per token. Anything
+  off is nobody: no cookie, a malformed one, an expired or revoked token,
+  lianki.com unreachable, no configured origin. There is no local session to fall
+  back to.
+- **What it opens.** Nothing on lianki.com: the server holds the same token the
+  page already does, from the same origin, and can call only what the token can.
+  `/api/box/me` now also says the account's `id`, so the box's server keys its
+  session by the real account. The owner role is lianki.com's for that account
+  (`setOwnerSnapshot`), so the box's own `/dev` pages show to the owner; their
+  calls still go to lianki.com, where a token never reaches `/api/dev`.
+- **Data drawn on the server is still the box's own.** A server page that reads
+  D1 itself (`/list`'s cards, `/roadmap`'s goals, `/connections`) reads the box's
+  local D1, signed in now but mostly empty. Client pages read lianki.com
+  through the box's fetch, as before. Server actions write the box's local D1
+  only.
+- **A stale cookie.** A tab left open past its token's 15 minutes still holds a
+  stale cookie when it navigates; the server then sends it to
+  `/sign-in?next=<the page>` (the middleware puts the path in `x-lk-box-path`, on
+  a box only). `BoxSignIn` refreshes the token, writes the cookie and goes
+  straight back. The same page twice within 20 s means the server still cannot
+  see it: then it says so instead of looping. Signed in with no `next`, it opens
+  `/home`.
+- **A new tab.** Its sessionStorage is empty but the cookie (another tab's) is
+  there, so the server draws it signed in. `BoxApiBridge` then runs the sign-in
+  round trip for that tab (lianki.com is signed in, so it is only redirects) and
+  comes back to the same page (`startBoxSignIn(config, back)`; `/box-callback`
+  opens `back`, else `/home`).
 
 The Learning Partner chat works on a box only with `box:chat`, below.
 
@@ -288,7 +333,14 @@ with `box `, so agents can tell where a line or a tap came from.
 once. That notice is best effort; the per-line check above is what guarantees a
 socket that outlived it can say nothing.
 
-**Not changed.** The box still holds no cookie, and its tokens stay in the tab's
+**Avatars.** The hub knows no name or picture for a box socket (a ticket, no
+identity), so the box's own lines once showed the initial of "owner"; the chat
+now takes the viewer from `/api/box/me` (`boxViewer`). Pictures stored on lines
+are `https://lianki.com/api/avatar/…`, which the sibling guard refused as a
+cookie-carrying same-site request until it let that one read through
+([security-measures.md](security-measures.md) §11).
+
+**Not changed.** The box holds no lianki.com cookie, and its refresh token stays in the tab's
 sessionStorage. A ticket lives 60 s and works once; a box page asks for one per
 connect (20 a minute at most per box), and a refused page does not ask again
 until it reloads.
@@ -427,9 +479,8 @@ that keeps them until it revalidates: one hard reload (Cmd+Shift+R) clears them.
 
 ## Known limits
 
-- **Client-side only.** The box's `fetch` goes to lianki.com, but its server
-  components still read the box's own (empty) session and local D1. The shell and
-  the client pages show the account (above); server-drawn parts do not.
+- **Server data is local.** The box's server knows the account (above), but
+  server components that read D1 read the box's local D1.
   `authClient.useSession` is empty (nothing in the app uses it).
 - **An owner's own box.** Bound to an owner's account (`site_role`), admin routes stay
   closed, but on allowlisted routes `isOwner` is true, so owner-only feature

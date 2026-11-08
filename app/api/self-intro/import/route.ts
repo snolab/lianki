@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { workersAiComplete } from "@/lib/read/gloss-server";
 import { isWorkersAiConfigured } from "@/lib/workers-ai";
 import { handleImport } from "@/lib/self-intro/import-handler";
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   const user = u?.id && u.email ? { id: u.id, email: u.email } : null;
   return handleImport(req, {
     user,
-    owner: isOwner(user?.email),
+    owner: isDev(user?.email),
     flags: user ? await readFlags() : {},
     configured: isWorkersAiConfigured(),
     complete: workersAiComplete,

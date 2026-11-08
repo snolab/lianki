@@ -2,6 +2,7 @@ import { intlayerMiddleware } from "next-intlayer/middleware";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { isSupportedLocale } from "@/lib/constants";
+import { BOX_PATH_HEADER } from "@/lib/box-oauth/return-path";
 import {
   DEFAULT_LOCALE,
   LOCALE_HEADER,
@@ -81,6 +82,10 @@ export function middleware(request: NextRequest) {
     // Decided here from the path alone; a request can never set or clear it itself.
     headers.delete(PARTNER_FRAME_HEADER);
     if (isPartnerFramePath(pathname)) headers.set(PARTNER_FRAME_HEADER, "1");
+    // The page to come back to after a box's /sign-in (lib/box-oauth/return-path.ts).
+    headers.delete(BOX_PATH_HEADER);
+    if (process.env.LIANKI_BOX_CLIENT_ID)
+      headers.set(BOX_PATH_HEADER, `${pathname}${request.nextUrl.search}`);
 
     const response = NextResponse.next({ request: { headers } });
     // An explicit ?lang= (a language switch, or a shared link) sticks, so the

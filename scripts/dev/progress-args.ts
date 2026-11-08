@@ -15,7 +15,7 @@ import {
 
 export const PROGRESS_USAGE = `usage:
   bun scripts/dev/progress.ts --agent <name> --task "<name>: <description>" --status <${PROGRESS_STATUSES.join("|")}>
-      [--path /words/prefetch | --id <slug> [--parent <id>]] [--done] [--pct 40] [--eta 15m]
+      [--path /words/prefetch | --id <slug> [--parent <id>]] [--done] [--pct 40] [--eta 15m [--late "why"]]
       [--pr 299] [--note "..."] [--needs "approve PR #299"] [--kind <${PROGRESS_KINDS.join("|")}>]
       [--ref <id>] [--action "<command or URL>"] [--link https://…] [--rev N] [--human]
   bun scripts/dev/progress.ts grant --node <id> --agent <name> [--ttl 8h]
@@ -28,7 +28,12 @@ refused; a title with no colon is taken, with a warning when it is over 20.
   e.g. --task "Swipe fix: the card snaps back on a short drag"
 --eta is your own estimate, given each time: a duration from now (15m, 1h30m, 2h) or an ISO time
 (2026-11-07T21:00+09:00). It sets the node's etaAt: the owner's chat shows a bar running to it, and
-when it passes the agents get one automatic line "ETA reached for <task> (<id>): report to the owner".
+when it passes the owning lane gets one automatic line "ETA reached for <task> (<id>)…".
+ETA overrun (standing rule): a task past its ETA and not done must, within 5 minutes, tell the owner
+WHY and a new "N minutes from now", in one call:
+  --eta 20m --late "CI queue was slow"      (the hub posts the reason and the new time in Li)
+Once the ETA has passed, a new --eta without --late is refused. No reason or new ETA within
+5 minutes: the owner is told "<name> 超时，未说明原因".
 Report again with a new --eta to move it; free text ("after CI") shows as written, with no timer.
 The hub also keeps, for agents only (never shown to the owner), each task's first estimate, start,
 end and actual time; "stats" lists your done tasks (30 days) with estimate vs actual and the
@@ -51,6 +56,7 @@ const STRINGS = [
   "task",
   "status",
   "eta",
+  "late",
   "note",
   "id",
   "parent",

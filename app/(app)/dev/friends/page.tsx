@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { isUserId } from "@/lib/dev-eval";
 import { friendThread, listFriends } from "@/lib/push-friends";
 import FriendsTable from "./FriendsTable";
@@ -29,7 +29,7 @@ export default async function DevFriendsPage({
   searchParams: Promise<{ thread?: string }>;
 }) {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isAdmin(user?.email)) notFound();
   const { thread } = await searchParams;
   const friends = await listFriends();
   if (!friends)

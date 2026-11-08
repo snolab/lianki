@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { MembershipD1Repo } from "@/lib/repos/d1Repos";
 import { extendPro, toDate, tierFor } from "@/lib/membership";
@@ -14,7 +14,7 @@ const MAX_DAYS = 3660;
 
 async function owner() {
   const user = await authUserOrNull();
-  return isOwner(user?.email) ? user : null;
+  return isAdmin(user?.email) ? user : null;
 }
 
 const view = (row: { email: string; trialEndsAt: string | null; proEndsAt: string | null }) => {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { GiftCodesClient } from "./GiftCodesClient";
 
 // Owner-only, like /dev/roadmap: everyone else gets a plain 404.
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default async function GiftCodesPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isAdmin(user?.email)) notFound();
   return (
     <main lang="zh" className="max-w-3xl mx-auto px-4 py-8 space-y-6">
       <header className="space-y-1">

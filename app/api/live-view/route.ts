@@ -3,7 +3,7 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { liveViewKeys } from "@/lib/live-view/keys";
 import { clearPointer, currentPointer, handleRequest, publicClaim } from "@/lib/live-view/server";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 
 /**
  * The live-view pointer (docs/live-view.md, lib/live-view/server.ts).
@@ -35,7 +35,7 @@ export const POST = async (req: Request) => {
 
 export const GET = async () => {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email) || dbBackend() !== "d1") return notFound();
+  if (!isDev(user?.email) || dbBackend() !== "d1") return notFound();
   const cur = await currentPointer(getD1(), await liveViewKeys(), Date.now(), LOCAL_OK);
   return NextResponse.json(
     cur ? { on: true, token: cur.token, claim: publicClaim(cur.claim) } : { on: false },
@@ -45,7 +45,7 @@ export const GET = async () => {
 
 export const DELETE = async () => {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email) || dbBackend() !== "d1") return notFound();
+  if (!isDev(user?.email) || dbBackend() !== "d1") return notFound();
   await clearPointer(getD1(), Date.now(), user?.id ?? "owner");
   return NextResponse.json({ on: false }, { headers: NO_STORE });
 };

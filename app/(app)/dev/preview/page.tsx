@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { dbBackend } from "@/lib/d1";
 import { safePreviewPath, signInUrlForPreview } from "@/lib/dev-server-switch";
 import PreviewEntryClient from "./PreviewEntryClient";
@@ -31,7 +31,7 @@ export default async function DevPreviewEntryPage({
   const user = await authUserOrNull();
   // Signed out: the normal sign-in, then back here with the same `to`.
   if (!user) redirect(signInUrlForPreview(to));
-  if (!isOwner(user.email) || dbBackend() !== "d1") notFound();
+  if (!isDev(user.email) || dbBackend() !== "d1") notFound();
   return (
     <main lang="zh" className="max-w-md mx-auto px-4 py-16 text-center space-y-4">
       <PreviewEntryClient to={to} />

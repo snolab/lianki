@@ -1,5 +1,5 @@
 import { dbBackend } from "@/lib/d1";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { TICKET_HEADER, download, remove } from "@/lib/inbox/handlers";
 import { inboxDeps } from "../deps";
 
@@ -11,7 +11,7 @@ import { inboxDeps } from "../deps";
  */
 type Ctx = { params: Promise<{ id: string }> };
 const off = () => Response.json({ error: "Not found" }, { status: 404 });
-const owner = () => inboxDeps.who().then((w) => !!w && isOwner(w.email));
+const owner = () => inboxDeps.who().then((w) => !!w && isDev(w.email));
 
 export const GET = async (req: Request, ctx: Ctx) => {
   if (dbBackend() !== "d1") return off();

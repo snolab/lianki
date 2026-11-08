@@ -399,13 +399,13 @@ describe("/api/dev/owners", () => {
     expect((await ownersPost(post({}), ME, () => null)).status).toBe(404);
   });
 
-  it("the route's gate is isOwner, per handler", () => {
+  it("the route's gate is isAdmin, per handler", () => {
     const src = readFileSync("app/api/dev/owners/route.ts", "utf8");
-    expect(src).toContain("isOwner(user?.email)");
+    expect(src).toContain("isAdmin(user?.email)");
     expect(src).toContain("ownersGet(await owner(), db)");
     expect(src).toContain("ownersPost(req, await owner(), db)");
     expect(readFileSync("app/(app)/dev/owners/page.tsx", "utf8")).toContain(
-      "if (!isOwner(user?.email)) notFound();",
+      "if (!isAdmin(user?.email)) notFound();",
     );
   });
 
@@ -465,7 +465,12 @@ describe("owner checks with no session to refresh the list", () => {
       "lib/payments/stripe-webhook.ts",
     ]) {
       const src = readFileSync(f, "utf8");
-      expect({ f, refreshed: /await refreshOwners(From)?\(/.test(src) }).toEqual({
+      expect({
+        f,
+        refreshed:
+          /await (Promise\.all\(\[)?refreshOwners(From)?\(/.test(src) &&
+          /refreshPermissions(From)?\(/.test(src),
+      }).toEqual({
         f,
         refreshed: true,
       });

@@ -74,10 +74,16 @@ function apply(n: TreeNode, e: ProgressEntry, waiting: boolean, repo?: string) {
   if (e.etaAt !== undefined && e.kind !== "group" && e.kind !== "person")
     n.eta = {
       id: e.id,
-      start: Math.min(e.created, e.etaAt),
+      // The Gantt row runs from when the work started (first "doing") to the estimate.
+      start: Math.min(e.startedAt ?? e.created, e.etaAt),
       at: e.etaAt,
-      ...(n.done ? { done: true, doneAt: e.at } : {}),
+      ...(n.done ? { done: true, doneAt: e.endedAt ?? e.at } : {}),
       ...(e.etaSent === e.etaAt ? { sent: true } : {}),
+      ...(e.pct != null ? { pct: e.pct } : {}),
+      // Queued for a slot or the gate: drawn after the one ahead (eta.ts ganttPlan).
+      ...(e.status === "waiting"
+        ? { queued: true, created: e.created, queuedMs: Math.max(60_000, e.etaAt - e.at) }
+        : {}),
     };
   else delete n.eta;
   const live = liveNote(e);

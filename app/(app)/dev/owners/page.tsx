@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner, normalizeEmail } from "@/lib/owner";
+import { isAdmin, normalizeEmail } from "@/lib/permissions";
 import OwnersAdmin from "./OwnersAdmin";
 
 // Owner-only, like every /dev page: anyone else gets a plain 404.
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 /** Who is the owner: the site_role table (lib/site-role.ts, docs/secrets-and-auth.md). */
 export default async function DevOwnersPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isAdmin(user?.email)) notFound();
   return (
     <main lang="zh" className="max-w-2xl mx-auto px-4 py-8 space-y-6">
       <h1 className="font-brush text-4xl">所有者</h1>

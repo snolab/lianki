@@ -4,8 +4,11 @@ import { createContext, useContext, useEffect, useState, useSyncExternalStore } 
 import {
   boxSignOut,
   forgetBoxTokens,
+  hasBoxCookie,
   hasBoxTokens,
   installBoxFetch,
+  startBoxSignIn,
+  syncBoxCookie,
   type BoxConfig,
 } from "@/lib/box-oauth/client";
 import type { BoxMe } from "@/lib/box-oauth/me";
@@ -71,6 +74,17 @@ export function BoxApiBridge({
       return true;
     });
     let live = true;
+    // A new tab of a browser signed in here: the box's server drew this page
+    // signed in (another tab's cookie), but this tab holds no token. It joins
+    // the sign-in (a round trip through lianki.com) and comes back to this page.
+    const own = location.pathname === "/box-callback" || location.pathname === "/sign-in";
+    if (!own && !hasBoxTokens() && hasBoxCookie()) {
+      void startBoxSignIn(config, `${location.pathname}${location.search}`);
+      return;
+    }
+    // The box's server sees this tab's sign-in through a cookie (server-session.ts):
+    // fresh on every page load.
+    void syncBoxCookie(config);
     void resolveBoxAccount({
       hasTokens: hasBoxTokens,
       forget: forgetBoxTokens,

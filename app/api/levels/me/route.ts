@@ -3,7 +3,7 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { userLevelOf } from "@/lib/study-days";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const user = await authUserOrNull();
-  const owner = isOwner(user?.email);
+  const owner = isDev(user?.email);
   if (!owner && !flagIn(await readFlags(), "levels"))
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (dbBackend() !== "d1") return NextResponse.json({ error: "Not found" }, { status: 404 });

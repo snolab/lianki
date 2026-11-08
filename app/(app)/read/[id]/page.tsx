@@ -3,7 +3,7 @@ import { BoxReader } from "./BoxReader";
 import { authUserOrNull } from "@/app/signInEmail";
 import { boxConfig } from "@/lib/box-oauth/mode";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { draftAllowedFor } from "@/lib/read/reader-access";
 import { resolveReadId } from "@/lib/read/book-link";
 import { findReadMaterialIdByHash } from "@/lib/getReadMaterialsCollection";
@@ -35,7 +35,7 @@ export default async function ReadMaterialPage({
       for (const x of Array.isArray(v) ? v : v === undefined ? [] : [v]) q.append(k, x);
     redirect(`/read/${encodeURIComponent(target.id)}${q.size ? `?${q}` : ""}`);
   }
-  const owner = isOwner(user?.email);
+  const owner = isDev(user?.email);
   const streaming = query.streamingFrom === "google-docs" || query.streamingFrom === "vibe";
 
   // On a box this server's flags are its local D1's and it has no session: the

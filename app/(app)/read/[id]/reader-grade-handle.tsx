@@ -17,6 +17,7 @@ import { flushSync } from "react-dom";
 import { useIntlayer } from "next-intlayer";
 import { fill } from "@/lib/nav/nav-core";
 import { hintParts, type HandlePlan } from "@/lib/read/batch-grade";
+import { afterGrade, LEVEL_KEY } from "@/lib/read/review-scope";
 import { followSwipe } from "@/lib/words/swipe-physics";
 import { SWIPE_CORE_IFACE, useSwipeFeel } from "@/lib/words/swipe-core";
 import {
@@ -43,7 +44,7 @@ export function useGradeWords() {
   const t = useIntlayer("read-grade-handle");
   const tw = useIntlayer("words-page");
   const nf = (n: number) => String(n);
-  const name = (p: GradePlan, n: number) =>
+  const targetName = (p: GradePlan, n: number) =>
     p.target === "sentences" ? fill(t.sentences.value, { n: nf(n) }) : t[p.target].value;
   const grades: Record<SwipeRating, string> = {
     1: tw.again.value,
@@ -51,12 +52,26 @@ export function useGradeWords() {
     3: tw.good.value,
     4: tw.easy.value,
   };
+  /**
+   * The levels' names on the handle: a paragraph's say what they do (owner,
+   * 2026-11-08 21:43 JST; lib/read/review-scope.ts afterGrade) — 本段 / 到本段 /
+   * (grade only) / 全标简单; anything else keeps the grade names.
+   */
+  const levels = (p: GradePlan): Record<SwipeRating, string> => {
+    if (p.target !== "para") return grades;
+    const out = {} as Record<SwipeRating, string>;
+    for (const r of [1, 2, 3, 4] as const) {
+      const k = LEVEL_KEY[afterGrade(r)];
+      out[r] = k ? t[k].value : PLAIN_LEVEL;
+    }
+    return out;
+  };
   /** "这 3 句 + 12 个词": the batch a grade `r` makes. */
   const describe = (p: GradePlan, r: SwipeRating) => {
     const h = hintParts(p, r);
     return h.words
-      ? `${name(p, h.n)} ${fill(t.plusWords.value, { n: nf(h.words) })}`
-      : name(p, h.n);
+      ? `${targetName(p, h.n)} ${fill(t.plusWords.value, { n: nf(h.words) })}`
+      : targetName(p, h.n);
   };
   const hint = (
     p: GradePlan,
@@ -71,10 +86,11 @@ export function useGradeWords() {
     const words = h.words ? ` ${fill(t.plusWords.value, { n: nf(h.words) })}` : "";
     // The grade with the interval it gives, as /words shows it ("良好 · 3d").
     const iv = intervals?.[s.rating];
-    const grade = iv ? `${grades[s.rating]} · ${iv}` : grades[s.rating];
-    return `${fill(t.graded.value, { target: name(p, h.n), grade })}${words}${skipped}`;
+    const name = levels(p)[s.rating];
+    const grade = iv ? `${name} · ${iv}` : name;
+    return `${fill(t.graded.value, { target: targetName(p, h.n), grade })}${words}${skipped}`;
   };
-  return { describe, hint, grades };
+  return { describe, hint, grades, levels };
 }
 
 /**
@@ -267,15 +283,19 @@ export function CardGradeArea({
         mirror={mirror}
         openedAt={openedAt}
         hint={(s) => words.hint(plan, s, canUndo ? lastWhat : null, intervals)}
+        names={words.levels(plan)}
         onPreview={onPreview}
         onGrade={onGrade}
         onUndo={onUndo}
       />
-      {!plan.disabled && <KeyRow intervals={intervals} grades={words.grades} />}
+      {!plan.disabled && <KeyRow intervals={intervals} grades={words.levels(plan)} />}
       {nextLine}
     </>
   );
 }
+
+/** A paragraph's level that only grades (Good by default): no words of its own. */
+const PLAIN_LEVEL = "—";
 
 /** A mouse and a keyboard: the four grade keys, each with its grade and interval. */
 const FINE = "(hover: hover) and (pointer: fine)";
@@ -341,6 +361,7 @@ export function GradeHandle({
   mirror,
   openedAt,
   hint,
+  names: levelNames,
   onPreview,
   onGrade,
   onUndo,
@@ -358,6 +379,8 @@ export function GradeHandle({
   openedAt: number;
   /** The hint line for a grade being dragged (mirror applied), the undo, or idle. */
   hint: (state: { rating: SwipeRating | null; undo: boolean }) => string;
+  /** Each level's name for a screen reader, when not the grade names (a paragraph's). */
+  names?: Record<SwipeRating, string>;
   /** The grade being dragged changed (null: none): the targets pulse. */
   onPreview: (r: SwipeRating | null, undo: boolean) => void;
   onGrade: (r: SwipeRating) => void;
@@ -459,7 +482,12 @@ export function GradeHandle({
     else if (r.kind === "undo") onUndo();
   };
 
-  const names = { 1: tw.again.value, 2: tw.hard.value, 3: tw.good.value, 4: tw.easy.value };
+  const names = levelNames ?? {
+    1: tw.again.value,
+    2: tw.hard.value,
+    3: tw.good.value,
+    4: tw.easy.value,
+  };
   const tint = shown.rating ? TINT[shown.rating] : shown.undo ? "oklch(0.6 0.02 250 / 0.3)" : null;
   return (
     <div className="mt-1.5" data-testid="read-grade-handle" data-enabled={enabled || undefined}>
