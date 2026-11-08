@@ -4,7 +4,7 @@
  * lianki.com who its token belongs to (/api/box/me, through the box's fetch)
  * and the header, the account menu and the pages read that instead.
  */
-import { FLAG_KEYS, type FlagValues } from "@/lib/flags";
+import { FLAG_KEYS, type FlagKey, type FlagValues } from "@/lib/flags";
 import { isOwnAvatar } from "@/lib/profile/avatar";
 import { BOX_ME_PATH } from "./rules";
 import type { BoxMe } from "./me";
@@ -102,4 +102,20 @@ async function avatar(image: string | null, d: BoxSessionDeps): Promise<string |
     }
   }
   return image.startsWith("https://") ? image : null;
+}
+
+/**
+ * Is a flag on for the owner's own chat (the ETA bar)? Off a box, the server's
+ * read (the chat checks the owner itself). On a box, the box server's read is
+ * its local D1's, so only production's answer for the signed-in account
+ * counts, and only for a site owner; not known yet, or signed out: off.
+ */
+export function ownerFlagOn(
+  onBox: boolean,
+  account: BoxAccount | null | undefined,
+  key: FlagKey,
+  server: boolean,
+): boolean {
+  if (!onBox) return server;
+  return !!account?.owner && account.flags[key] === true;
 }

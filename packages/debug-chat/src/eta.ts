@@ -197,3 +197,66 @@ export function etaClock(deps: EtaClockDeps) {
     armed: () => timer !== undefined,
   };
 }
+
+/**
+ * A task title is "name: description" (owner, 2026-11-08; ASCII ':' or
+ * full-width '：'). The bar and the minimized chat show the name only; the
+ * state tree's list shows both. No colon: it is all name. An empty name
+ * (a title starting with a colon) falls back to the description.
+ */
+export function splitTitle(title: string): { name: string; desc: string } {
+  const i = title.search(/[:：]/);
+  if (i < 0) return { name: title.trim(), desc: "" };
+  const name = title.slice(0, i).trim();
+  const desc = title.slice(i + 1).trim();
+  return name ? { name, desc } : { name: desc, desc: "" };
+}
+
+/** Is `a` an ancestor of `b` by path id ("/words" of "/words/swipe")? */
+const ancestorOf = (a: string, b: string) =>
+  a !== b && a.startsWith("/") && b.startsWith(a.endsWith("/") ? a : `${a}/`);
+const depthOf = (id: string) => (id.startsWith("/") ? id.split("/").filter(Boolean).length : 0);
+
+/**
+ * The minimized chat's two ends (owner, 2026-11-08 20:07 JST): the smallest
+ * unit, the soonest open leaf (an open task with no open task under it), and
+ * the largest, the open task whose estimate runs out last (the shallower on a
+ * tie). One open task, or both the same: `big` only. None open: null.
+ */
+export function etaEnds(
+  tasks: readonly EtaTask[],
+): { small?: EtaTask; big: EtaTask } | null {
+  const open = tasks.filter((t) => !t.done);
+  if (!open.length) return null;
+  const leaves = open.filter((a) => !open.some((b) => ancestorOf(a.id, b.id)));
+  const small = (leaves.length ? leaves : open).reduce((x, y) => (y.at < x.at ? y : x));
+  const big = open.reduce((x, y) =>
+    y.at > x.at || (y.at === x.at && depthOf(y.id) < depthOf(x.id)) ? y : x,
+  );
+  return small.id === big.id ? { big } : { small, big };
+}
+
+/** One end's part of the minimized line: the task's name and its minutes left, already worded. */
+export type EtaPart = { name: string; min: string };
+
+/**
+ * The minimized line's parts, "<small> 5 min · <big> 40 min", with `perMin`
+ * the localized "{n} min". Null without an open timed task.
+ */
+export function etaParts(
+  tasks: readonly EtaTask[],
+  now: number,
+  perMin: string,
+): EtaPart[] | null {
+  const ends = etaEnds(tasks);
+  if (!ends) return null;
+  const part = (t: EtaTask): EtaPart => ({
+    name: splitTitle(t.title).name,
+    min: perMin.replace("{n}", String(minutesLeft(t.at - now))),
+  });
+  return ends.small ? [part(ends.small), part(ends.big)] : [part(ends.big)];
+}
+
+/** The parts as one line of text (the title and the screen-reader label). */
+export const etaPartsText = (parts: readonly EtaPart[]) =>
+  parts.map((p) => `${p.name} ${p.min}`).join(" · ");

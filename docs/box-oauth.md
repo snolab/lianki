@@ -242,17 +242,19 @@ the OAuth flow (it is not in `BOX_SCOPES`), so no box env changes and no new
 sign-in: `liveToken` gives every live token of a binding `box:chat` exactly while
 the binding holds it. Removing it takes effect on the next request.
 
-**What it opens, and nothing more.** Two routes, POST, exact paths
-(`tokenMayCall`; without the scope they are 404 to a token as before):
+**What it opens, and nothing more.** Three routes, each with its one method,
+exact paths (`tokenMayCall`; without the scope they are 404 to a token as
+before):
 
 | route                       | what                                                         |
 | --------------------------- | ------------------------------------------------------------ |
 | `POST /api/box/chat-ticket` | a 60 s single-use ticket for the hub socket                  |
 | `POST /api/debug/stt`       | the chat mic's transcription (cloud STT, the owner's limits) |
+| `GET /api/dev/state-tree`   | the state tree's outline, for the chat's tree and ETA bar    |
 
 No other `/api/debug*` or any `/api/dev*` route: no eval, no pairing, no
-page-error log, no inbox upload, no state tree, no local STT ticket. Read-aloud
-uses the TTS routes a box already had.
+page-error log, no inbox upload, no state-tree writes or resolves, no local STT
+ticket. Read-aloud uses the TTS routes a box already had.
 
 **Fail closed, four times.** (1) Grant: `setBoxChat` refuses a binding whose
 account is not a site owner. (2) The gate: a `box:chat` route also needs the
@@ -294,6 +296,44 @@ until it reloads.
 **To use it** (after both Workers are deployed): on `/dev/box-clients`, turn on
 chat for the owner's box; on the box, open any page with `?debug=1` once (the
 chat follows debug mode, as on lianki.com).
+
+## The state tree on the owner's box
+
+The chat's tree and its ETA bar (flag `chat.eta-bar`) need two things a box
+lacked, both owner-only on lianki.com by cookie: the outline and the live
+progress socket. Without them the box's tree was empty and the bar, which
+shows only timed tasks, never appeared (2026-11-08).
+
+- **The outline**: `GET /api/dev/state-tree` through the box's fetch (its
+  token). The gate lets a box:chat token through as for the other chat routes
+  (site owner read now), and the route checks `boxChatCaller` again; anything
+  else, 404. The text is the bundled `docs/state-tree.md`, public in the repo
+  anyway.
+- **Live progress**: `wss://lianki.com/api/version/progress` from the box's
+  origin, offering `lianki-partner, <ticket>`: a fresh box chat ticket from
+  `/api/box/chat-ticket`, as the chat socket's (each socket mints its own).
+  lianki-push takes only a box chat ticket there (`boxChatTicket`: never a
+  partner ticket, only from the exact box origin it names) and hands the
+  progress hub the client id (`x-progress-box`) and the ticket's id, never the
+  owner header; a cookie page's own `x-progress-box` is stripped. The hub burns
+  the ticket once and asks the main Worker (`DebugSessions.boxChat`) at
+  connect; it asks again before sending to that socket once its last answer is
+  30 s old, and before each `{type:"eta"}` the box sends. "gone" (or a main
+  Worker without the check) closes it with 4401, after which the page does not
+  ask again until a wake; unsure skips that message. A box reader may send
+  `{type:"eta"}` only: it never resolves a node. Removal or revoke also closes
+  it at once: `/internal/box-closed` goes to both hubs (an eval-only notice to
+  the chat hub alone).
+
+The flag itself: the layout reads flags on the box's own server (its local
+D1, no session), so on a box `DebugEval` takes `chat.eta-bar` from
+production's answer for the signed-in account instead (`/api/box/me`, shared
+by `BoxApiBridge` through `useBoxAccount`; `ownerFlagOn`), and only for a site
+owner.
+
+`DebugEval` builds the live source only once the hub has said this is the
+owner's page, and on a box only while `boxChatHub` has one to give (a box
+refused a chat ticket gets no tree and no bar).
 
 ## Code on the owner's box (`box:eval`)
 

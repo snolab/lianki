@@ -18,6 +18,9 @@ import {
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
 import { type BoxConfig, boxChatHub } from "@/lib/box-oauth/client";
+import { useBoxAccount } from "./BoxApiBridge";
+import { ETA_FLAG } from "@/lib/eta-ping";
+import { ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import {
@@ -795,27 +798,43 @@ export function DebugEval({
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   const isFriend = friend !== null;
+  // On a box the layout's flag is the box server's own (its local D1, no
+  // session): production's answer for the signed-in account decides there.
+  const boxAccount = useBoxAccount();
+  const etaOn = ownerFlagOn(!!box, boxAccount, ETA_FLAG, etaBar);
   // A friend's thread answered by the AI says so: in the empty log and the status line.
   const friendStrings =
     isFriend && friendAi && strings?.aiHint
       ? { ...strings, hint: strings.aiHint, listening: strings.aiStatus ?? strings.listening }
       : strings;
   // The owner's tree: the bundled outline, with live progress laid over it.
-  const ownerTree = useMemo(
-    () =>
-      typeof window === "undefined"
-        ? undefined
-        : liveTreeSource({
-            base: async () => {
-              const r = await fetch("/api/dev/state-tree", { cache: "no-store" });
-              if (!r.ok) throw new Error(`HTTP ${r.status}`);
-              return r.text();
+  // Only made once this is the owner's page (the hub said so): nothing is asked before.
+  const treeOn = owner && !isFriend;
+  const ownerTree = useMemo(() => {
+    if (typeof window === "undefined" || !treeOn) return undefined;
+    // On the owner's box (docs/box-oauth.md): lianki.com's progress hub with a
+    // box chat ticket, never a cookie, never the box's own host. The outline
+    // comes through the box's fetch (its token). Not a box:chat box: no tree.
+    const box = boxRef.current ? boxChatHub(boxRef.current) : undefined;
+    if (box === null) return undefined;
+    return liveTreeSource({
+      base: async () => {
+        const r = await fetch("/api/dev/state-tree", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      },
+      url: box ? box.progressUrl : progressSocketUrl(location),
+      ...(box
+        ? {
+            protocols: async () => {
+              const t = await box.ticket();
+              return t ? [PARTNER_SUBPROTOCOL, t] : null;
             },
-            url: progressSocketUrl(location),
-            repo: "snolab/lianki",
-          }),
-    [],
-  );
+          }
+        : {}),
+      repo: "snolab/lianki",
+    });
+  }, [treeOn]);
   // The chat inbox's host side (lib/inbox/client.ts): an Anki package imports in one tap.
   const importDeck = strings?.importDeck ?? "Import as a deck";
   const ownerFiles = useMemo(
@@ -861,8 +880,8 @@ export function DebugEval({
           friend={isFriend}
           owner={owner && !isFriend}
           strings={friendStrings}
-          treeSource={owner && !isFriend ? ownerTree : undefined}
-          etaBar={etaBar && owner && !isFriend}
+          treeSource={treeOn ? ownerTree : undefined}
+          etaBar={etaOn && treeOn && !!ownerTree}
           // This page's ETA timer went off: the hub pings the agent at most once per estimate.
           onEtaDue={(id) => ownerTree?.send({ type: "eta", id })}
           treeRepo="snolab/lianki"

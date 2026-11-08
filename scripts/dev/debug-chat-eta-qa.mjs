@@ -9,7 +9,7 @@
  *   - the clock runs 5 minutes: the first estimate passes, the page's one
  *     timer reports it once (__etaDue), the line moves on
  *   - a revised estimate moves the line
- *   - a tap opens the state tree, listing each task with its bar and time left
+ *   - a tap opens the state tree, listing each task, its line filled to its progress, and its time left
  *   - a done task leaves after a moment
  *
  * Browsers are muted (scripts/qa/silent.mjs); getUserMedia is refused.
@@ -159,6 +159,39 @@ try {
     check((await rows.count()) === 2, `${scheme}: a done task stays a moment`);
     await page.clock.runFor(9_000);
     check((await rows.count()) === 1, `${scheme}: then leaves`);
+
+    // Minimized: the in-progress line is the nearest task and the last, in minutes.
+    await page.goto(`${ORIGIN}/harness?min&nofrontier&eta`);
+    await page.waitForSelector("[data-debug-widget] [data-debug-chat]", { timeout: 30_000 });
+    const t1 = await page.evaluate(() => Date.now());
+    await page.evaluate(
+      (t) => globalThis.__etaSet(t),
+      [
+        {
+          id: "/box",
+          title: "Box ETA: the bar on the owner's box",
+          start: t1 - 10 * MIN,
+          at: t1 + 40 * MIN,
+        },
+        {
+          id: "/box/fill",
+          title: "Fill line: the bar's own background",
+          start: t1 - 5 * MIN,
+          at: t1 + 5 * MIN,
+        },
+      ],
+    );
+    await page.clock.runFor(300);
+    const eta = page.locator('[data-testid="debug-chat-frontier-eta"]');
+    check(await eta.isVisible(), `${scheme}: minimized, the two ends show`);
+    const full = await eta.getAttribute("title");
+    check(full === "Fill line 5 min · Box ETA 40 min", `${scheme}: minimized line (${full})`);
+    const eb = await eta.boundingBox();
+    check(!!eb && eb.x >= 0 && eb.x + eb.width <= 390, `${scheme}: inside 390 px`);
+    if (SHOTS) {
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: join(SHOTS, `eta-min-${scheme}.png`) });
+    }
     await ctx.close();
   }
 } finally {

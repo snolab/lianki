@@ -65,7 +65,7 @@ import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
-import { type EtaTask, etaClock, etaTasks } from "./eta";
+import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
 import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry } from "./bar-geometry";
@@ -1297,13 +1297,30 @@ export function DebugChat({
       else if (top < box.top) el.scrollTop -= box.top - top;
     }
   }, [nav, open]);
-  /** The minimized bar's lines: the host's, else the tree's frontier. */
+  /**
+   * The minimized bar's lines: the host's, else the tree's frontier. With a
+   * timed task (the ETA bar on), its in-progress line is the two ends instead
+   * of the ≈ summary: "<nearest task> 5 min · <last task> 40 min" (eta.ts).
+   */
+  const treeLines = treeFrontier(treeData.root, {
+    locale: globalThis.document?.documentElement.lang,
+    inProgress: ui.nowDoing,
+  });
+  const etaLine = etaBar ? etaParts(etaList, etaNow, t.etaMinutes) : null;
   const shownFrontier =
     frontier ??
-    treeFrontier(treeData.root, {
-      locale: globalThis.document?.documentElement.lang,
-      inProgress: ui.nowDoing,
-    });
+    (etaLine
+      ? {
+          ...treeLines,
+          doing: {
+            text: etaPartsText(etaLine),
+            parts: etaLine,
+            items: etaList
+              .filter((x) => !x.done)
+              .map((x) => ({ title: x.title, path: x.id.startsWith("/") ? x.id : undefined })),
+          },
+        }
+      : treeLines);
   /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
   const [treeFade, setTreeFade] = useState(false);
   const onTreeScroll = () => {
@@ -1475,6 +1492,26 @@ export function DebugChat({
   /** The scrollTop the resize re-pin set, until its scroll event comes. */
   const pinnedAt = useRef<number | null>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
+  /**
+   * The ETA bar's height (margin included), 0 without it. The floating buttons
+   * above the input (scroll-down, ask jump) sit this much higher, so they never
+   * cover the bar (owner, 2026-11-08 19:58 JST, Android: all in one spot).
+   */
+  const [etaH, setEtaH] = useState(0);
+  const etaRo = useRef<ResizeObserver | null>(null);
+  const etaEl = useRef<HTMLDivElement | null>(null);
+  const setEtaBox = (el: HTMLDivElement | null) => {
+    if (etaEl.current === el) return;
+    etaRo.current?.disconnect();
+    etaEl.current = el;
+    if (!el) return setEtaH(0);
+    const read = () => setEtaH(Math.ceil(el.getBoundingClientRect().height));
+    read();
+    if (typeof ResizeObserver !== "undefined") {
+      etaRo.current = new ResizeObserver(read);
+      etaRo.current.observe(el);
+    }
+  };
   /** Messages that arrived while scrolled up: a dot on the scroll-down button. */
   const [below, setBelow] = useState(0);
   const shown = useRef(messages.length);
@@ -4192,8 +4229,11 @@ export function DebugChat({
       </ol>
       </div>
       {compact && compactEl}
-      {open && !tree && etaBar && (
-        <EtaBar tasks={etaList} now={etaNow} strings={t} onOpen={() => setPanel("tree")} />
+      {open && !tree && etaBar && etaList.length > 0 && (
+        // flow-root: the bar's own margin counts in the height the buttons above step over.
+        <div ref={setEtaBox} data-testid="debug-chat-eta-slot" className="flow-root">
+          <EtaBar tasks={etaList} now={etaNow} strings={t} onOpen={() => setPanel("tree")} />
+        </div>
       )}
       {open && warning && (
         <div
@@ -4413,7 +4453,7 @@ export function DebugChat({
           // jump brings that button up, and a second tap here must not land on it.
           <div
             className="pointer-events-none absolute inset-x-0 bottom-full flex justify-end"
-            style={{ paddingInlineEnd: JUMP_END_PX, marginBottom: JUMP_GAP_PX }}
+            style={{ paddingInlineEnd: JUMP_END_PX, marginBottom: JUMP_GAP_PX + etaH }}
           >
             <button
               type="button"
@@ -4447,7 +4487,10 @@ export function DebugChat({
         )}
         {open && scrolledUp && (
           // The row stays click-through; only the button takes taps.
-          <div className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end">
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-full flex justify-end"
+            style={{ marginBottom: 4 + etaH }}
+          >
             <button
               type="button"
               data-testid="debug-chat-bottom"

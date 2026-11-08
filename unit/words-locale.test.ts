@@ -20,6 +20,7 @@ const SAME_AS_EN = new Set([
   "offline:pt",
   "offline:de",
   "notes:fr", // "{n} notes" is French too
+  "etaMinutes:fr", // "{n} min" is the French abbreviation too
 ]);
 
 describe.each([

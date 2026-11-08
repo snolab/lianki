@@ -146,7 +146,7 @@ export function overlayProgress(
   return root;
 }
 
-type Sock = {
+export type Sock = {
   onopen: ((ev: unknown) => void) | null;
   onmessage: ((ev: { data: unknown }) => void) | null;
   onclose: ((ev: unknown) => void) | null;
@@ -161,13 +161,21 @@ export type LiveDeps = {
   /** The hub's WebSocket URL. */
   url: string;
   repo?: string;
-  socket?: (url: string) => Sock;
+  socket?: (url: string, protocols?: string[]) => Sock;
+  /**
+   * The subprotocols to offer, fetched before each connect: the owner's box
+   * offers a fresh box chat ticket (docs/box-oauth.md), never a cookie. null:
+   * none to be had now; counted as a failed connect.
+   */
+  protocols?: () => Promise<string[] | null>;
   setTimeout?: (fn: () => void, ms: number) => unknown;
   clearTimeout?: (t: unknown) => void;
   /** Called with a function to run when the network or the tab comes back; returns its remover. */
   onWake?: (fn: () => void) => () => void;
 };
 
+/** The hub closed a box's socket because that box lost box:chat (workers/push/src/progress.ts). */
+export const BOX_ENDED = 4401;
 /** Reconnect delays: 1 s doubling to 60 s; after GIVE_UP failures in a row, wait for a wake. */
 export const MAX_DELAY = 60_000;
 export const GIVE_UP = 10;
@@ -201,7 +209,7 @@ export type LiveTreeSource = TreeSource & {
 export function liveTreeSource(deps: LiveDeps): LiveTreeSource {
   /** Every subscription's open socket. */
   const openSocks = new Set<Sock>();
-  const open = deps.socket ?? ((u: string) => new WebSocket(u) as unknown as Sock);
+  const open = deps.socket ?? ((u: string, p?: string[]) => new WebSocket(u, p) as unknown as Sock);
   const later = deps.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));
   const cancel = deps.clearTimeout ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   const wake = deps.onWake ?? browserWake;
@@ -223,6 +231,8 @@ export function liveTreeSource(deps: LiveDeps): LiveTreeSource {
       let retry: unknown;
       let failures = 0;
       let stopped = false;
+      /** A ticket is being fetched for the next socket. */
+      let asking = false;
       const push = () => {
         if (stopped || !base) return;
         // The root itself, so its ≈ summaries (above the first ##) are kept.
@@ -248,11 +258,31 @@ export function liveTreeSource(deps: LiveDeps): LiveTreeSource {
           );
       };
       loadBase();
+      const retryLater = () => {
+        if (stopped || ++failures > GIVE_UP) return;
+        retry = later(connect, Math.min(MAX_DELAY, 1000 * 2 ** (failures - 1)));
+      };
       const connect = () => {
         if (retry !== undefined) cancel(retry);
         retry = undefined;
-        if (stopped || ws) return;
-        const sock = open(deps.url);
+        if (stopped || ws || asking) return;
+        if (!deps.protocols) return openSock();
+        asking = true;
+        deps.protocols().then(
+          (p) => {
+            asking = false;
+            if (stopped || ws) return;
+            if (p) openSock(p);
+            else retryLater();
+          },
+          () => {
+            asking = false;
+            if (!stopped && !ws) retryLater();
+          },
+        );
+      };
+      const openSock = (protocols?: string[]) => {
+        const sock = protocols ? open(deps.url, protocols) : open(deps.url);
         ws = sock;
         sock.onopen = () => {
           openSocks.add(sock);
@@ -274,10 +304,13 @@ export function liveTreeSource(deps: LiveDeps): LiveTreeSource {
             live = false;
             push();
           }
-          if (stopped || ++failures > GIVE_UP) return;
-          retry = later(connect, Math.min(MAX_DELAY, 1000 * 2 ** (failures - 1)));
+          retryLater();
         };
-        sock.onclose = lost;
+        sock.onclose = (ev) => {
+          // The box lost box:chat (the hub's 4401): no point asking again until a wake.
+          if ((ev as { code?: unknown } | null)?.code === BOX_ENDED) failures = GIVE_UP;
+          lost();
+        };
         sock.onerror = () => {
           lost();
           sock.close();
@@ -285,7 +318,7 @@ export function liveTreeSource(deps: LiveDeps): LiveTreeSource {
       };
       const off = wake(() => {
         loadBase();
-        if (ws) return;
+        if (ws || asking) return;
         failures = 0;
         connect();
       });

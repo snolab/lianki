@@ -155,6 +155,8 @@ let chatRefused = false;
 export type BoxChatHub = {
   /** wss://lianki.com/api/version/debug */
   url: string;
+  /** wss://lianki.com/api/version/progress: the state tree's live progress, on its own ticket. */
+  progressUrl: string;
   /** A fresh 60 s, single-use ticket for one socket, or null (no box:chat, signed out). */
   ticket: () => Promise<string | null>;
 };
@@ -170,8 +172,10 @@ export function boxChatHub(config?: BoxConfig): BoxChatHub | null {
   if (config) installBoxFetch(config);
   const c = installed;
   if (!c || chatRefused || !hasBoxTokens()) return null;
+  const url = c.hub || boxHubUrl(c.provider);
   return {
-    url: c.hub || boxHubUrl(c.provider),
+    url,
+    progressUrl: url.replace(/\/api\/version\/debug$/, "/api/version/progress"),
     ticket: async () => {
       try {
         // Through the box's fetch: to lianki.com, with the token.

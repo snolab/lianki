@@ -87,9 +87,11 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   ISO time with its zone. The hub turns it into the node's etaAt on its own
   clock; a new --eta moves it; free text ("after CI") is shown, no timer.
     bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe: drag with the finger" --status doing --eta 25m
-  The owner's chat shows one summary bar above the input (weighted progress,
-  time left, next due; packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens
-  this tree, which lists every timed task with its own bar and time left.
+  The owner's chat shows one summary line above the input, its background
+  filled to the weighted progress (time left, next due;
+  packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens this tree, which
+  lists every timed task, each line filled to its progress, with its time
+  left. His box shows the same, on a box chat ticket (docs/box-oauth.md).
   When etaAt passes on an open node, the hub (Durable Object alarm; also an
   owner page's one timer sending {type:"eta", id}) marks it etaSent and asks
   the chat hub (POST /internal/eta over the DEBUG binding, lib/eta-ping.ts) to
