@@ -122,7 +122,7 @@ describe("the entry from the gate page: `to` is a relative path only", () => {
   test("the route is owner-only and lands via the switch, never a token in a URL", () => {
     const page = readFileSync("app/(app)/dev/preview/page.tsx", "utf8");
     expect(page).toContain("notFound()");
-    expect(page).toContain("isOwner(");
+    expect(page).toContain("isDev(");
     expect(page).toContain("safePreviewPath(");
     const client = readFileSync("app/(app)/dev/preview/PreviewEntryClient.tsx", "utf8");
     expect(client).toContain("switchToDevServer(");
