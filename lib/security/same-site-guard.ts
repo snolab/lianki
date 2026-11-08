@@ -1,3 +1,6 @@
+/** An uploaded avatar's address (lib/profile/avatar.ts avatarPath), and nothing else. */
+const AVATAR_READ = /^\/api\/avatar\/[A-Za-z0-9_-]{1,64}\/[0-9a-f]{20}$/;
+
 /**
  * A browser counts every *.lianki.com host as the same site as lianki.com, so
  * a page on a sibling (a user's box, a dev tunnel) gets the SameSite=Lax session
@@ -14,6 +17,11 @@
  *   /api/fsrs/delete, /api/fsrs/repeat, /api/invite);
  * - a write to any other path: server actions POST to page URLs.
  *
+ * One exception: reading an uploaded avatar (`GET /api/avatar/<user>/<id>`,
+ * exactly that shape). The route takes no session and writes nothing, and a
+ * box's chat shows lianki.com avatars as plain <img>, which a browser sends with
+ * the cookie: refused, every picture there fell back to an initial (2026-11-09).
+ *
  * Reading a page or following a link from a sibling still works. Webhooks, API
  * tokens, the CLI and the userscript's requests never say `same-site`. A browser
  * that sends no Fetch Metadata passes. Kept free of imports: this runs on the
@@ -22,6 +30,8 @@
 export function siblingRequestRefused(req: Request): boolean {
   if (req.headers.get("sec-fetch-site")?.toLowerCase() !== "same-site") return false;
   if (!req.headers.get("cookie")) return false;
-  if (/^\/api(\/|$)/i.test(new URL(req.url).pathname)) return true;
+  const path = new URL(req.url).pathname;
+  if ((req.method === "GET" || req.method === "HEAD") && AVATAR_READ.test(path)) return false;
+  if (/^\/api(\/|$)/i.test(path)) return true;
   return req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
 }
