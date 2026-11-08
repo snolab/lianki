@@ -86,6 +86,31 @@ export function useItemWords(opts: {
   );
 
   const waitingSet = () => new Set([...waiting.current.values()].flat());
+  /**
+   * How many of a scope's words are due or new by the server's plan (a review
+   * opens only on one, owner 2026-11-08 22:01 JST); null: not known (the
+   * device's own reader, or the plan failed), the review opens as before.
+   */
+  const dueCount = useCallback(
+    async (words: RangeWord[]): Promise<number | null> => {
+      if (!on) return null;
+      if (!words.length) return 0;
+      try {
+        const r = await fetch(`/api/read/${id}/easy-plan`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ words: words.slice(0, MAX_WORDS) }),
+        });
+        if (!r.ok) return null;
+        const { words: plan } = (await r.json()) as { words: string[] };
+        return planLeft(plan, waitingSet()).length;
+      } catch {
+        return null;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [on, id],
+  );
   /** The plan's words not already in an Easy grade waiting to be sent. */
   const left = useCallback((p: ItemPlan) => planLeft(p.plan, waitingSet()), []);
   /** The count known now for the hint, or null (still being asked). */
@@ -99,6 +124,7 @@ export function useItemWords(opts: {
 
   return {
     planOf,
+    dueCount,
     countNow,
     left,
     /** An Easy grade's words wait in the hold: other items' counts leave them out. */

@@ -311,6 +311,14 @@ async function touchRun(swipe, scheme) {
       !(await page.getByTestId("read-word-review").count()),
       `${tag}: ${lv.scope}: ✕ closes it`,
     );
+    // Back in the text on the paragraph after the graded one (owner, 2026-11-08 20:33 JST).
+    const back = await page.evaluate(() =>
+      Number(document.activeElement?.closest("[data-index]")?.getAttribute("data-index") ?? -1),
+    );
+    check(
+      back > it.block,
+      `${tag}: ${lv.scope}: back on the next paragraph (${it.block} → ${back})`,
+    );
   }
   check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
   await ctx.close();

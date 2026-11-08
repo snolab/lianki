@@ -68,6 +68,7 @@ import {
   blockLine,
   blockOfAnchor,
   blockOfLine,
+  nextParaItem,
   blockSpeech,
   famMap,
   roughWords,
@@ -134,7 +135,7 @@ import {
   type RangeWord,
 } from "./reader-word-review";
 import { MIN_BATCH, missingWords, paraWords, spanWords } from "@/lib/read/word-review";
-import { afterGrade, scopeLines, scopeWords } from "@/lib/read/review-scope";
+import { afterGrade, afterScope, scopeLines, scopeWords } from "@/lib/read/review-scope";
 import {
   COMBO_MS,
   type ComboCtx,
@@ -988,14 +989,23 @@ function Reader({
       plan: Promise<ItemPlan | null>,
       seq: number,
       receipt: GradeReceipt,
+      /** The item that took its place (-1: none): focus goes there when a review closes. */
+      next: number,
     ) => void
   >(() => {});
   /** Grades given this visit: a review opens only if no grade came after its own. */
   const gradeSeq = useRef(0);
   const gradeAt = useCallback(
-    (index: number, raw: SwipeRating, el: HTMLElement | null): Promise<GradeReceipt | null> => {
+    (
+      index: number,
+      raw: SwipeRating,
+      el: HTMLElement | null,
+      /** The item that takes its place (default: the next item). */
+      to?: number,
+    ): Promise<GradeReceipt | null> => {
       const b = blocks[index];
       if (!b || b.kind !== "item") return Promise.resolve(null);
+      const next = to ?? nextItem(index);
       // The core reports the default side's grade; the mirror is applied once, here.
       const r = sideRating(raw, mirrored());
       const top = (el ?? rowEl(index))?.getBoundingClientRect().top ?? eye();
@@ -1019,7 +1029,7 @@ function Reader({
         })
         .then((receipt) => {
           undoStack.current.push({ receipt, index, top });
-          afterGradeRef.current(index, r, plan, seq, receipt);
+          afterGradeRef.current(index, r, plan, seq, receipt, next);
           setCanUndo(true);
           // A grade sent to the server can no longer be taken back.
           setTimeout(
@@ -1029,7 +1039,6 @@ function Reader({
           return receipt;
         });
       setLevelHint(null);
-      const next = nextItem(index);
       if (next < 0) return graded;
       // Its count is ready by the time he slides it.
       const nb = blocks[next];
@@ -1539,7 +1548,7 @@ function Reader({
       last.line - first.line <= RANGE_MAX_LINES;
     return whole || !ok ? `p${first.line}` : `r${first.line}.${t0}-${last.line}.${t1}`;
   };
-  afterGradeRef.current = (index, r, planP, seq, receipt) => {
+  afterGradeRef.current = (index, r, planP, seq, receipt, next) => {
     const b = blocks[index];
     if (b?.kind !== "item") return;
     const after = afterGrade(r);
@@ -1556,17 +1565,27 @@ function Reader({
     }
     const first = b.pieces[0].line;
     const last = b.pieces[b.pieces.length - 1].line;
-    const words: Promise<RangeWord[]> =
+    // The scope's words, and how many of them are due or new (null: not known).
+    const scope: Promise<{ w: RangeWord[]; due: number | null }> =
       after === "para"
-        ? planP.then((p) => (p && itemWords.left(p).length ? itemWords.reviewWords(p) : []))
-        : uptoWords(first, last);
+        ? planP.then((p) =>
+            p
+              ? { w: itemWords.reviewWords(p), due: itemWords.left(p).length }
+              : { w: [], due: null },
+          )
+        : uptoWords(first, last).then(async (w) => ({ w, due: await itemWords.dueCount(w) }));
     const ref = after === "para" ? itemRef(index) : uptoRef(last);
     const settled = new Promise((ok) => setTimeout(ok, Math.round(SWIPE_RETURN_S * 1000) + 50));
-    void Promise.all([words, settled]).then(([w]) => {
+    void Promise.all([scope, settled]).then(([{ w, due }]) => {
       // Not after a later grade or an undo, not over a sheet or another review.
-      if (!w.length || seq !== gradeSeq.current || document.querySelector("[aria-modal=true]"))
+      if (seq !== gradeSeq.current || document.querySelector("[aria-modal=true]")) return;
+      // No word due or new there: no review; he stays in the text, told why
+      // (owner, 2026-11-08 22:01 JST). No plan known (the device's own reader,
+      // a failed ask): quiet, as before.
+      if (afterScope(after, w.length, due) !== "review") {
+        if (due !== null) setGradeToast({ text: t.scopeEmpty.value, undo: false });
         return;
-      const next = nextItem(index);
+      }
       const el = rowEl(next >= 0 ? next : index);
       if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
       reviewBack.current = el ?? null;
@@ -1958,8 +1977,15 @@ function Reader({
     linesOf: cardLines,
     gradePara: (u, r) => {
       const i = blockOfLine(blocks, u.line);
+      // The reader moves on to the next paragraph, past the rest of a split
+      // one (owner, 2026-11-08 20:33 JST), and the card goes with it: before,
+      // the selection stayed on the graded paragraph.
+      const to = nextParaItem(blocks, u.line);
       // gradeAt applies the mirror to a raw side: hand it the side that names `r`.
-      return gradeAt(i, sideRating(r, mirrored()), rowEl(i));
+      const graded = gradeAt(i, sideRating(r, mirrored()), rowEl(i), to);
+      const nb = to >= 0 ? blocks[to] : null;
+      if (nb?.kind === "item") sel.select({ kind: "para", line: nb.pieces[0].line });
+      return graded;
     },
     revertPara,
     openReview: (u) => {

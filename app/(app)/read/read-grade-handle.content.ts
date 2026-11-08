@@ -409,6 +409,60 @@ const dictionary = {
       sw: "Imeshindwa kupima — jaribu tena",
       mr: "मूल्यांकन झाले नाही — पुन्हा प्रयत्न करा",
     }),
+    levelPara: t({
+      en: "This paragraph",
+      zh: "本段",
+      ja: "この段落",
+      ko: "이 문단",
+      hi: "यह अनुच्छेद",
+      es: "Este párrafo",
+      fr: "Ce paragraphe",
+      ar: "هذه الفقرة",
+      bn: "এই অনুচ্ছেদ",
+      pt: "Este parágrafo",
+      ru: "Этот абзац",
+      ur: "یہ پیراگراف",
+      id: "Paragraf ini",
+      de: "Dieser Absatz",
+      sw: "Aya hii",
+      mr: "हा परिच्छेद",
+    }),
+    levelUpTo: t({
+      en: "Up to here",
+      zh: "到本段",
+      ja: "ここまで",
+      ko: "여기까지",
+      hi: "यहाँ तक",
+      es: "Hasta aquí",
+      fr: "Jusqu'ici",
+      ar: "حتى هنا",
+      bn: "এখান পর্যন্ত",
+      pt: "Até aqui",
+      ru: "До этого места",
+      ur: "یہاں تک",
+      id: "Sampai sini",
+      de: "Bis hier",
+      sw: "Hadi hapa",
+      mr: "इथपर्यंत",
+    }),
+    levelEasy: t({
+      en: "All words Easy",
+      zh: "全标简单",
+      ja: "すべて簡単",
+      ko: "모두 쉬움",
+      hi: "सभी शब्द आसान",
+      es: "Todas Fácil",
+      fr: "Tous Facile",
+      ar: "كل الكلمات سهلة",
+      bn: "সব শব্দ সহজ",
+      pt: "Todas Fácil",
+      ru: "Все слова «Легко»",
+      ur: "سب الفاظ آسان",
+      id: "Semua kata Mudah",
+      de: "Alle Wörter Einfach",
+      sw: "Maneno yote Rahisi",
+      mr: "सर्व शब्द सोपे",
+    }),
   },
 };
 
@@ -453,6 +507,12 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Toast with an Undo button right after a word that was not a flashcard was added with the drag knob: it is now one of the learner's flashcards, with this grade; {grade} is the grade name (Again, Hard, Good or Easy). A past participle; agrees with 'word'. Keep {grade} and the colon.",
   failed:
     "Short error on the reader's selection card when a grade given with the grade handle could not be saved (offline or a server failure). Asks to try again.",
+  levelPara:
+    "Short name of the far-left level (Again by default) of the grade track on the reader's selection card when a whole paragraph is selected, shown instead of the grade name in the hint line and the key row: letting go there grades the paragraph and then opens the flashcard review of this paragraph's own words. A noun phrase of one to three words (zh: 本段, 'this paragraph').",
+  levelUpTo:
+    "Short name of the second-from-left level (Hard by default) of the grade track on the reader's selection card when a whole paragraph is selected, shown instead of the grade name: letting go there grades the paragraph and then opens the flashcard review of the words from the start of the current chapter up to and including this paragraph. A short phrase of one to three words (zh: 到本段, 'up to this paragraph').",
+  levelEasy:
+    "Short name of the far-right level (Easy by default) of the grade track on the reader's selection card when a whole paragraph is selected, shown instead of the grade name: letting go there grades the paragraph Easy and also marks all its words that are due or new as Easy (Easy is the same grade name as on the word cards). A short phrase (zh: 全标简单, 'mark them all Easy').",
 };
 
 export default {
