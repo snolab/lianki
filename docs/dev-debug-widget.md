@@ -1567,15 +1567,37 @@ Flag `chat.eta-bar` (owner only; the root layout reads it and passes
 `etaBar` down to DebugChat). Every live state-tree node with an estimate
 (`progress.ts --eta 25m`, its `etaAt`; docs/state-tree.md, "ETA pings") is a
 timed task (`eta.ts etaTasks`, read from the overlaid tree). Above the input,
-one line (`EtaBar.tsx`): a small clock drawn in place, "Title · 25m left" for
-one task, or "3 tasks · 1h 5m left · next in 5m" for several, and the percent;
-a tap opens the state tree, whose top lists each task with its time left
-(`EtaList`). There is no separate meter (owner, 2026-11-08): each line's own
-background is the bar, filled from the start edge to its progress (weighted
-by each estimate for the summary), blue running, amber past its estimate,
-green done. The colours are opaque `light-dark()` pairs (`ETA_COLORS`), one
-text colour per theme at WCAG AA (4.5:1) on the track and on every fill, which
-unit/eta.test.ts computes. Like everything in the chat, the line is dimmed with
+one line (`EtaBar.tsx`): a small clock drawn in place, "Title · 25M" for
+one task, or "3 tasks · 1.5H · next in 5M" for several, and the percent;
+a tap opens the state tree, whose top lists each task as a Gantt row
+(`EtaList`). There is no separate meter (owner, 2026-11-08): the summary
+line's own background is filled from the start edge to the progress
+(weighted by each estimate), blue running, red past its estimate, green done.
+
+Time labels (owner, 2026-11-08 20:34 JST), everywhere — bar, list, minimized
+line: one language-neutral form, `eta.ts compactTime`: under an hour "<n>M"
+(whole minutes, rounded up), from an hour hours to one decimal ("1H", "1.5H"
+for 1 h 29 min, "2.5H"; never "1h20m"); past due negative ("-5M", "-1.5H")
+and drawn red (`ETA_COLORS.late`, AA on every background of a row).
+
+The list is a Gantt chart (owner, 2026-11-08 20:24 and 2026-11-09 01:38–01:39
+JST). All rows share one axis (`ganttWindow`): the left edge is the earliest
+start of a shown task, the right edge the latest end (estimate, or when a done
+one finished, queued tasks at their computed ends); it rescales whenever the
+tasks change. A row's background is its bar (`ganttRow`): from when the work
+started (the node's first "doing", `startedAt`) to its etaAt, the agent's pct
+a deeper fill inside it, and past the estimate a red overrun on to now. Running
+tasks overlap freely; queued ones (status waiting: for an agent slot or the
+gate) run one after another in order of creation (`ganttPlan`): the first
+from when the soonest running task is due (or now), each next from the end of
+the one ahead, each as long as its estimate as posted. A red vertical line
+marks now on every row, labelled "Now" (language-neutral) on an axis strip
+under the rows, clamped to an edge outside the range; it moves with the page's
+one clock. No estimate, start, end or actual numbers are drawn — only each
+row's time left. Rows are full width, so it fits 360 px. The colours are
+opaque `light-dark()` pairs (`ETA_COLORS`): text, the muted description and the
+red at WCAG AA (4.5:1) on the track, the bar, the fill, the overrun and done,
+which unit/eta.test.ts computes. Like everything in the chat, the line is dimmed with
 the whole panel at rest (`opacity-60`) and full while the chat is in use.
 On the owner's box it works the same (docs/box-oauth.md, "The state tree on
 the owner's box").
@@ -1590,16 +1612,15 @@ Task titles are "name: description" (ASCII ':' or full-width '：';
 shows the name in bold and the description muted (`ETA_COLORS.muted`, AA on
 every fill too). Minimized, while any timed task is open, the in-progress line
 is the two ends instead of the ≈ summary (`etaEnds`, `etaParts`): the nearest
-open leaf and the open task due last, "Fill line 5 min · Box ETA 40 min", in
-whole minutes from now (`etaMinutes`, 16 locales). Each name truncates, the
-nearer one first; the minutes never do; the full line is the title. With no
-timed task the ≈ summary shows as before. Progress is time
-against the estimate (a done task is full and leaves after 8 s); times are
-whole minutes rounded up, in Intl's narrow units. Strings: `eta*` in
+open leaf and the open task due last, "Fill line 5M · Box ETA 1.5H"
+(compactTime; red and negative past due). Each name truncates, the
+nearer one first; the times never do; the full line is the title. With no
+timed task the ≈ summary shows as before. The summary's progress is time
+against the estimate (a done task is full and leaves after 8 s). Strings: `eta*` in
 learning-partner.content.ts, each with its context line.
 
 One timer per page (`etaClock`), armed to the soonest of an estimate, a done
-task leaving, or a label's next minute; re-armed on every tree update; no
+task leaving, or a label's next minute (past due too, as "-1M" counts on); re-armed on every tree update; no
 interval, no polling. When an estimate passes unsent, the page sends
 {type:"eta", id} on the progress socket (once per estimate per page); the hub
 also has its own alarm, marks the node sent and posts at most one line, so

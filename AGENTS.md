@@ -117,6 +117,13 @@ characters, because the owner's ETA bar shows only the name (a longer one is
 refused). `progress.ts stats` shows your estimate vs actual, to calibrate `--eta`. Use the token you were given (`--token` or
 `LIANKI_PROGRESS_TOKEN`); stay inside its scope.
 
+**ETA overrun is never silent.** A task that reaches its `--eta` unfinished
+tells the owner, within 5 minutes, the reason and a new "N minutes from now":
+`progress.ts … --status doing --eta 20m --late "<reason, in his language>"` —
+the hub posts both to him in Li. Past the ETA a new `--eta` without `--late`
+is refused; with nothing for 5 minutes he hears "<name> 超时，未说明原因".
+[docs/state-tree.md](docs/state-tree.md), "ETA overrun".
+
 ## Where to look
 
 Read the relevant file before working in that area — each one carries decisions
