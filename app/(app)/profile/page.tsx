@@ -1,7 +1,6 @@
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { authUserOrNull } from "@/app/signInEmail";
+import { authUserOrNull, signInRedirect } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
 import PasskeysCard from "./PasskeysCard";
@@ -46,7 +45,7 @@ export default async function ProfilePage() {
   // way up (sign up); with levels hidden, a guest goes to sign in as before.
   const level = await levelCardFor(signedIn?.email ?? null, locale);
   if (!signedIn) {
-    if (!level) redirect("/sign-in");
+    if (!level) return signInRedirect();
     const { heading } = getIntlayer("profile-page", locale);
     return (
       <div className="flex flex-col">

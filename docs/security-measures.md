@@ -13,18 +13,18 @@ passkey — there is no password login in production.
 
 **Admin surfaces** (audited 2026-10-30):
 
-| surface                                   | what                                                  |
-| ----------------------------------------- | ----------------------------------------------------- |
-| `/dev/*` pages                            | users, friends, gift codes, membership grants, credits, feature flags, owners, roadmap, A/B |
-| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, credits, flags, owners, stt-ticket, dev-tokens, dev-handoff |
-| `https://preview.lianki.com` (tunnel to the owner's dev server, production D1) | 503 to everything without a dev access token; the token signs in as the owner only (docs/dev-whole-page.md, "Off the tailnet") |
-| `POST /api/dev-access/verify`             | the dev server gate's token check: `DEV_BRIDGE_SECRET` only, 401 otherwise |
-| `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac) | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7) |
-| `/api/dev/inbox`, `/api/dev/inbox/<id>`   | the chat inbox (docs/dev-debug-widget.md, "Attachments and the inbox"): owner session only, 404 otherwise; a file is also readable with a single-use 60 s ticket that only an approved agent gets through lianki-push → `DebugSessions.inbox`; served as an attachment (sandboxed, nosniff) except safe image types |
-| `/api/live-view`                          | live view's pointer to the owner's dev JS: POST only with a pointer the Mac's Ed25519 key signed (serials only grow); GET/DELETE the owner's session, 404 otherwise (section 8) |
-| `/api/version/debug/control` (lianki-push) | remote-eval/chat controller: useless until the owner approves it on a page, or holds a grant |
-| `POST /api/version/progress` (lianki-push) | agent progress reports: `Authorization: Bearer PROGRESS_TOKEN` |
-| Cloudflare, GitHub, Resend, payment dashboards | the providers' own consoles                     |
+| surface                                                                        | what                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/dev/*` pages                                                                 | users, friends, gift codes, membership grants, credits, feature flags, owners, roadmap, A/B                                                                                                                                                                                                                         |
+| `/api/dev/*`                                                                   | whoami, log, friends, state-tree, membership, gift-codes, credits, flags, owners, stt-ticket, dev-tokens, dev-handoff                                                                                                                                                                                               |
+| `https://preview.lianki.com` (tunnel to the owner's dev server, production D1) | 503 to everything without a dev access token; the token signs in as the owner only (docs/dev-whole-page.md, "Off the tailnet")                                                                                                                                                                                      |
+| `POST /api/dev-access/verify`                                                  | the dev server gate's token check: `DEV_BRIDGE_SECRET` only, 401 otherwise                                                                                                                                                                                                                                          |
+| `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac)                 | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7)                                                                                                                                                                                                    |
+| `/api/dev/inbox`, `/api/dev/inbox/<id>`                                        | the chat inbox (docs/dev-debug-widget.md, "Attachments and the inbox"): owner session only, 404 otherwise; a file is also readable with a single-use 60 s ticket that only an approved agent gets through lianki-push → `DebugSessions.inbox`; served as an attachment (sandboxed, nosniff) except safe image types |
+| `/api/live-view`                                                               | live view's pointer to the owner's dev JS: POST only with a pointer the Mac's Ed25519 key signed (serials only grow); GET/DELETE the owner's session, 404 otherwise (section 8)                                                                                                                                     |
+| `/api/version/debug/control` (lianki-push)                                     | remote-eval/chat controller: useless until the owner approves it on a page, or holds a grant                                                                                                                                                                                                                        |
+| `POST /api/version/progress` (lianki-push)                                     | agent progress reports: `Authorization: Bearer PROGRESS_TOKEN`                                                                                                                                                                                                                                                      |
+| Cloudflare, GitHub, Resend, payment dashboards                                 | the providers' own consoles                                                                                                                                                                                                                                                                                         |
 
 `/api/debug/identity` and `/api/debug/stt` are not admin: any signed-in user
 reaches their own data there. The debug hub's pre-renewal session check is
@@ -100,12 +100,12 @@ into better-auth as a plugin (`lib/security/auth-plugin.ts`), with counters in
 D1 (`auth_throttle`, `db/migrations/0016_security.sql`) — not in Worker memory,
 which is per isolate and could be walked around:
 
-| what                                    | limit                                                   |
-| --------------------------------------- | ------------------------------------------------------- |
-| wrong codes for one **account**         | 10 failures in 15 min → account locked **30 min** (also gets no new codes) |
-| failed code or passkey checks from one **IP** | 10 failures in 15 min → IP locked **30 min**      |
-| one code                                | dies after 5 wrong tries (better-auth `allowedAttempts`) |
-| code mails                              | 5 per address, 20 per IP, per 15 min                     |
+| what                                          | limit                                                                      |
+| --------------------------------------------- | -------------------------------------------------------------------------- |
+| wrong codes for one **account**               | 10 failures in 15 min → account locked **30 min** (also gets no new codes) |
+| failed code or passkey checks from one **IP** | 10 failures in 15 min → IP locked **30 min**                               |
+| one code                                      | dies after 5 wrong tries (better-auth `allowedAttempts`)                   |
+| code mails                                    | 5 per address, 20 per IP, per 15 min                                       |
 
 A locked request gets **429** with `Retry-After`. A successful sign-in clears
 the account's failures. This meets PCI DSS v4.0 8.3.4 (≤ 10 attempts, ≥ 30
@@ -125,10 +125,10 @@ CI and the pre-commit hook scans each commit.
 **Uploads.** Nothing a user uploads is stored or served; imports are parsed in
 memory. `lib/security/upload-policy.ts`:
 
-| endpoint           | accepts                                   | max    |
-| ------------------ | ----------------------------------------- | ------ |
+| endpoint           | accepts                                          | max    |
+| ------------------ | ------------------------------------------------ | ------ |
 | `/api/import/anki` | `.apkg`, and must start with the zip magic bytes | 100 MB |
-| `/api/import/yaml` | `.yaml` / `.yml` (or a raw YAML body)     | 10 MB  |
+| `/api/import/yaml` | `.yaml` / `.yml` (or a raw YAML body)            | 10 MB  |
 
 Every other import takes JSON validated by zod.
 
@@ -274,7 +274,7 @@ Learning Partner widget and the hot islands from his dev server
 session, so:
 
 - **Only a signed pointer.** The Mac's Ed25519 key signs `{widget, islands,
-  branch, sha, serial, iat, exp ≤ 12 h}`. The public key is committed in
+branch, sha, serial, iat, exp ≤ 12 h}`. The public key is committed in
   `lib/live-view/keys.ts`. The server verifies before it stores and again
   before it serves, and the page verifies once more with WebCrypto. Sources
   must be one of the exact owner origins in `lib/live-view/origins.ts` (today
@@ -362,7 +362,7 @@ else can catch it ([secrets-and-auth.md](secrets-and-auth.md), "CLI login"):
   same-origin JSON and carry the page's random request id (stored hashed,
   10 minutes, bound to the session's user) and the state.
 - **Narrow reach.** Only `/api/prefs` takes the token as `Authorization:
-  Bearer` for a user's data (`lib/api-token-user.ts`; a test fails if any
+Bearer` for a user's data (`lib/api-token-user.ts`; a test fails if any
   other route imports it); a bad token is 401 with no fall back to the cookie.
   `DELETE /api/cli-login/token` lets a token revoke itself and nothing else.
 - **Limits.** The exchange: 10 per IP per 15 minutes (`auth_throttle`).
@@ -388,7 +388,11 @@ sent with its requests here. `worker.ts` answers 403, before any route, to a
 cookie-carrying request marked `Sec-Fetch-Site: same-site` that goes to `/api`
 (any method, because some GETs write) or writes to any other path (server
 actions POST to page URLs) (`lib/security/same-site-guard.ts`). Reading a page
-or following a link from a sibling still works.
+or following a link from a sibling still works. One read is let through: `GET`
+or `HEAD` of an uploaded avatar, exactly `/api/avatar/<user>/<20 hex>`. That
+route takes no session and writes nothing, and a box's chat shows those
+pictures as plain `<img>`, which the browser sends with the cookie
+(2026-11-09: every avatar there fell back to an initial).
 
 What it does not cover:
 
@@ -409,13 +413,13 @@ tests in `unit/security-hardening.test.ts`.
 
 - **Limits in D1, not memory** (`lib/security/route-guard.ts`: `tooMany` /
   `routeLimit` over `auth_throttle`; the memory counter only without D1):
-  | route                         | limit                                  |
+  | route | limit |
   | ----------------------------- | -------------------------------------- |
   | `POST /api/contact` (no sign-in) | 5 per IP per hour, 60 per hour overall |
   | `POST /api/gift-codes/redeem` | 10 tries per user, 30 per IP, per 10 min (wrong codes count) |
-  | `POST /api/roadmap/generate`  | 10 per account per hour                |
-  | `POST /api/import/youtube`    | 10 per account per hour; 20 pages (1000 videos) per import |
-  | `POST /api/words/telemetry`   | 120 batches per account per 10 min     |
+  | `POST /api/roadmap/generate` | 10 per account per hour |
+  | `POST /api/import/youtube` | 10 per account per hour; 20 pages (1000 videos) per import |
+  | `POST /api/words/telemetry` | 120 batches per account per 10 min |
   | reader gloss / translate / polish; `/api/tts`, `/api/translate`, polyglot, self-intro, ai-sentences (model calls) | the same numbers as before, now in D1; per person (canonical email, hashed) except the reader's, per account. These count operations: one polish can make several model calls |
   Still per isolate (`lib/rateLimit.ts`): `/api/words/tts`, `/api/debug/stt`,
   the self-intro import and the FSRS bulk-mutation guard.

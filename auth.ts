@@ -36,6 +36,12 @@ export const auth: Pick<Auth, "api"> = {
         // There is no cookie on it to fall back to.
         if (endpoint === "getSession") {
           const headers = (args[0] as { headers?: Headers } | undefined)?.headers;
+          // On a box's own server: the account its tab's token names, per
+          // lianki.com, or nobody. A box has no session of its own to fall back to.
+          if (process.env.LIANKI_BOX_CLIENT_ID) {
+            const { boxServerGetSession } = await import("./lib/box-oauth/server-auth");
+            return boxServerGetSession(headers);
+          }
           if (headers?.has(BOX_IDENTITY_HEADER)) {
             const { boxSessionFrom } = await import("./lib/box-oauth/app-session");
             const box = await boxSessionFrom(headers);
