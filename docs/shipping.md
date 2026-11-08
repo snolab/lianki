@@ -46,6 +46,18 @@ already finished (WORDS' Settings sheet read `translate: 0 50%` with its
 slide-in finished, 2026-11-08). A layout check measures with
 `reducedMotion: "reduce"` and after a fresh frame, not after a fixed wait.
 
+Two more from the merge queue of 2026-11-09 (state tree /infra/qa-words-flake):
+
+- **A drag waits for its preview before letting go.** dnd-kit drops where the
+  last _drawn_ frame put the row; on a busy runner React draws the move late,
+  and a release straight after `mouse.move` dropped a nest that was never
+  shown (#714). qa-words now waits for the indent (or the row making room)
+  before `mouse.up`, and polls the saved order on a load budget, not 10 × 300 ms.
+- **WebKit never leaves a `setContent` page that frames /words.** The goto
+  after it hung at `"commit"` for 40–49 s, the same step in both failures
+  (#709, #727) with the Worker idle meanwhile; no other WebKit load did. The
+  framed check now runs in a page of its own, closed after.
+
 main's deploy waits for this workflow on the push to `main` (no qa job there:
 it ran in the queue).
 
@@ -214,14 +226,14 @@ free GB, the number of gate runs at the time, and the worktree. Tune the
 thresholds from those lines, not from a guess. A suite that fails at low load is
 a real failure.
 
-| Run                                                     | Gate                                                    |
-| ------------------------------------------------------- | ------------------------------------------------------- |
-| `git push` (pre-push)                                   | only qa:all's time-sensitive suites wait for admission |
-| `bun run qa:all`, `bun scripts/qa/qa-all.mjs`           | the same: plain suites at once, sensitive ones admitted |
-| `bun run test:unit`, `bun test`, lint, typecheck        | no                                                      |
-| a single `qa-*.mjs` or Playwright suite, by hand        | no                                                      |
-| `bun scripts/dev/machine-lock.ts -- <cmd>`              | admits `<cmd>` as a whole, by the same rule             |
-| CI (`CI` set)                                           | no: each runner has its machine to itself               |
+| Run                                              | Gate                                                    |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| `git push` (pre-push)                            | only qa:all's time-sensitive suites wait for admission  |
+| `bun run qa:all`, `bun scripts/qa/qa-all.mjs`    | the same: plain suites at once, sensitive ones admitted |
+| `bun run test:unit`, `bun test`, lint, typecheck | no                                                      |
+| a single `qa-*.mjs` or Playwright suite, by hand | no                                                      |
+| `bun scripts/dev/machine-lock.ts -- <cmd>`       | admits `<cmd>` as a whole, by the same rule             |
+| CI (`CI` set)                                    | no: each runner has its machine to itself               |
 
 Rules it keeps:
 

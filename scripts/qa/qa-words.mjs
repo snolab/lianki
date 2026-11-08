@@ -2570,20 +2570,32 @@ try {
             native: document.querySelectorAll(".slip-native").length > 0,
             stored: localStorage.getItem("lk:swipe-ab"),
           }));
-          // setContent replaces the document without leaving it; its own "load"
-          // would wait for the whole framed page, so it waits for the framed list.
-          leaving = true;
-          try {
-            await w.setContent(
-              `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
-              { waitUntil: "commit" },
-            );
-          } finally {
-            leaving = false;
-          }
-          const fr = w.frameLocator("iframe");
+          // The framed load in a page of its own, closed after. Navigating away
+          // from a setContent document that frames /words never committed in
+          // WebKit on a busy runner (merge queue 2026-11-09, #709 and #727: the
+          // goto below hung 40–49 s at "commit", the same step both times, with
+          // the server idle); every other load here leaves a plain /words page.
+          const host = await c.newPage();
+          host.on("pageerror", (e) => {
+            if (!cutPrefetch(e.message)) errs.push(`PAGEERROR (${tag} iframe) ${e.message}`);
+          });
+          // The framing page is served on the site's own origin, under /api/ so the
+          // service worker lets it through to the route (a blank page's
+          // frame is no secure context in WebKit: no crypto.randomUUID). Its own
+          // "load" would wait for the whole framed page, so it waits for the
+          // framed list.
+          const frameUrl = `${new URL(listUrl).origin}/api/__qa-frame`;
+          await host.route(frameUrl, (r) =>
+            r.fulfill({
+              contentType: "text/html",
+              body: `<!doctype html><iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
+            }),
+          );
+          await host.goto(frameUrl, { waitUntil: "commit" });
+          const fr = host.frameLocator("iframe");
           await fr.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
           const framed = await fr.locator(".slip-native").count();
+          await host.close();
           await load(() => w.goto(listUrl, { waitUntil: "commit" }));
           const plain = await w.locator(".slip-native").count();
           check(
@@ -2685,40 +2697,96 @@ try {
       ringInfo.label.includes("words"),
     `each list shows its progress ring (${JSON.stringify(ringInfo)})`,
   );
-  const handles = page.getByRole("button", { name: "Drag to reorder" });
-  const before = (
-    await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
-  )
-    .filter((l) => l.lang === first.lang)
-    .map((l) => l.id);
-  const h2 = await handles.nth(1).boundingBox();
-  const h1 = await handles.nth(0).boundingBox();
+  // The drags below wait for what a person waits for, not for fixed times: the
+  // drop preview before letting go, the saved order before checking it. Under
+  // load (the phone passes run beside this, docs/shipping.md) React draws the
+  // preview frames late; a release before it lands drops where the last drawn
+  // frame said (merge queue 2026-11-09, #714: the nest was never sent).
+  const listIds = async () =>
+    (await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists))
+      .filter((l) => l.lang === first.lang)
+      .map((l) => ({ id: l.id, parentId: l.parentId ?? null }));
+  /** Polls the saved lists until `ok` holds or the budget runs out; returns the last read. */
+  const savedUntil = async (ok) => {
+    const end = Date.now() + budget(10000);
+    let got = await listIds();
+    while (!ok(got) && Date.now() < end) {
+      await page.waitForTimeout(250);
+      got = await listIds();
+    }
+    return got;
+  };
+  /** The rows are drawn in this order and none of them is moving. */
+  const rowsAtRest = (ids) =>
+    page.waitForFunction(
+      (ids) => {
+        const rows = [...document.querySelectorAll("[data-list-row]")];
+        const order = rows
+          .map((r) => r.getAttribute("data-list-row"))
+          .filter((x) => ids.includes(x));
+        return (
+          order.join() === ids.join() &&
+          rows.every((r) => {
+            const t = getComputedStyle(r).transform;
+            return (!t || t === "none") && r.getAnimations().length === 0;
+          })
+        );
+      },
+      ids,
+      { polling: "raf", timeout: budget(10000) },
+    );
+  const handleOf = (id) =>
+    page.locator(`[data-list-row="${id}"]`).getByRole("button", { name: "Drag to reorder" });
+  const before = (await listIds()).map((l) => l.id);
+  await rowsAtRest(before);
+  const h2 = await handleOf(before[1]).boundingBox();
+  const h1 = await handleOf(before[0]).boundingBox();
   await page.mouse.move(h2.x + h2.width / 2, h2.y + h2.height / 2);
   await page.mouse.down();
   await page.mouse.move(h1.x + h1.width / 2, h1.y - 10, { steps: 8 });
-  await page.mouse.up();
-  let after = before;
-  for (let i = 0; i < 10 && after.join() === before.join(); i++, await page.waitForTimeout(300))
-    after = (
-      await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
+  // The preview: the row it passes moves down to make room.
+  await page
+    .waitForFunction(
+      (id) => {
+        const t = getComputedStyle(document.querySelector(`[data-list-row="${id}"]`)).transform;
+        return !!t && t !== "none";
+      },
+      before[0],
+      { polling: "raf", timeout: budget(5000) },
     )
-      .filter((l) => l.lang === first.lang)
-      .map((l) => l.id);
+    .catch(() => {});
+  await page.mouse.up();
+  const after = (await savedUntil((ls) => ls[0]?.id === before[1] && ls[1]?.id === before[0])).map(
+    (l) => l.id,
+  );
   check(after[0] === before[1] && after[1] === before[0], "dragging a handle reorders the lists");
 
   // Drag the second row right: it nests under the first (Anki-style subdeck).
-  await page.waitForTimeout(500);
-  const n2 = await handles.nth(1).boundingBox();
+  await rowsAtRest(after.slice(0, 2));
+  const n2 = await handleOf(after[1]).boundingBox();
   await page.mouse.move(n2.x + n2.width / 2, n2.y + n2.height / 2);
   await page.mouse.down();
   await page.mouse.move(n2.x + n2.width / 2 + 40, n2.y + n2.height / 2, { steps: 8 });
+  // The preview: the dragged row is drawn one level in.
+  const indented = await page
+    .waitForFunction(
+      (id) =>
+        parseFloat(
+          getComputedStyle(document.querySelector(`[data-list-row="${id}"]`)).marginInlineStart,
+        ) > 0,
+      after[1],
+      { polling: "raf", timeout: budget(5000) },
+    )
+    .then(() => true)
+    .catch(() => false);
   await page.mouse.up();
-  let nested = null;
-  for (let i = 0; i < 10 && !nested?.parentId; i++, await page.waitForTimeout(300))
-    nested = (
-      await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
-    ).find((l) => l.id === after[1]);
-  check(nested?.parentId === after[0], "dragging right nests a list under the one above");
+  const nested = (
+    await savedUntil((ls) => ls.find((l) => l.id === after[1])?.parentId === after[0])
+  ).find((l) => l.id === after[1]);
+  check(
+    nested?.parentId === after[0],
+    `dragging right nests a list under the one above${indented ? "" : " (no indent shown while dragging)"}`,
+  );
 
   // A group: study it (its lists) and study all, with groups present.
   const group = await page.evaluate(
