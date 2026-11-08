@@ -134,7 +134,7 @@ import {
   type RangeWord,
 } from "./reader-word-review";
 import { MIN_BATCH, missingWords, paraWords, spanWords } from "@/lib/read/word-review";
-import { scopeLines, scopeOfRating, scopeWords, type ReviewScope } from "@/lib/read/review-scope";
+import { afterGrade, scopeLines, scopeWords } from "@/lib/read/review-scope";
 import {
   COMBO_MS,
   type ComboCtx,
@@ -166,7 +166,7 @@ import {
   reviewKey,
   reviewOfHref,
   reviewRef,
-  scopeRef,
+  uptoRef,
   withReview,
   type ReviewTarget,
 } from "@/lib/read/review-ref";
@@ -245,24 +245,8 @@ function useTouch() {
   return touch;
 }
 
-/** The review refs of a passage grade's wider scopes (lib/read/review-ref.ts). */
-type ScopeTarget = Extract<ReviewTarget, { kind: "upto" | "chapter" | "book" }>;
-const isScopeTarget = (t: ReviewTarget): t is ScopeTarget =>
-  t.kind === "upto" || t.kind === "chapter" || t.kind === "book";
-const scopeLine = (t: ScopeTarget) => (t.kind === "book" ? 0 : t.line);
-/** Each scope's hint while a passage rests on its level (read-reader). */
-const SCOPE_HINT = {
-  para: "scopePara",
-  upto: "scopeUpTo",
-  chapter: "scopeChapter",
-  book: "scopeBook",
-} as const;
-/** A wider scope's review title (read-word-review). */
-const SCOPE_TITLE = {
-  upto: "titleUpTo",
-  chapter: "titleChapter",
-  book: "titleBook",
-} as const;
+/** The review ref of the chapter-up-to-here review (lib/read/review-ref.ts). */
+type UptoTarget = Extract<ReviewTarget, { kind: "upto" }>;
 
 export function ReaderV2({
   id,
@@ -986,9 +970,10 @@ function Reader({
     return -1;
   };
 
-  // What follows a grade (lib/read/review-scope.ts): each level opens the
-  // word review over its scope — the item, its chapter so far, the chapter,
-  // the book (set below, where the review lives).
+  // What follows a grade (lib/read/review-scope.ts afterGrade): Again opens
+  // the item's word review, Hard its chapter's so far (set below, where the
+  // review lives), Good nothing, Easy grades the item's due and new words
+  // Easy with it.
   const itemWords = useItemWords({
     id,
     on: signedIn && data.source === "server",
@@ -1018,8 +1003,20 @@ function Reader({
       setAnnounce(fill(t.graded.value, { grade: gradeName(r) }));
       const seq = ++gradeSeq.current;
       const plan = itemWords.planOf(b);
+      // Easy: the words ride in the grade's own request, sent when its Undo
+      // hold ends; an undo inside the hold sends neither.
+      const easyWords =
+        afterGrade(r) === "easy"
+          ? plan.then((p) =>
+              p ? { day: new Date().toLocaleDateString("en-CA"), words: p.words } : null,
+            )
+          : undefined;
       const graded = data
-        .grade(rbook, b, r, { shownAt: shownAt.current.get(index) })
+        .grade(rbook, b, r, {
+          shownAt: shownAt.current.get(index),
+          easyWords,
+          onSent: easyWords ? () => setFamTick((n) => n + 1) : undefined,
+        })
         .then((receipt) => {
           undoStack.current.push({ receipt, index, top });
           afterGradeRef.current(index, r, plan, seq, receipt);
@@ -1048,7 +1045,7 @@ function Reader({
   );
   /** Closes the review a grade opened, when that grade is undone. */
   const undoneRef = useRef<(receipt: GradeReceipt) => void>(() => {});
-  /** Undo the last grade, or a given one, while its hold lasts. */
+  /** Undo the last grade, or (the Easy toast's Undo) this one, while its hold lasts. */
   const undoGrade = useCallback(
     (which: GradeReceipt | null) => {
       undoStack.current = undoStack.current.filter((e) => data.canUndo(e.receipt));
@@ -1059,6 +1056,7 @@ function Reader({
       setCanUndo(undoStack.current.length > 0);
       if (!last) return;
       void data.undo(rbook, last.receipt);
+      if (last.receipt.clientId) itemWords.release(last.receipt.clientId);
       gradeSeq.current++;
       undoneRef.current(last.receipt);
       setGrades((g) => {
@@ -1072,36 +1070,49 @@ function Reader({
       dispatch({ type: "select", line: last.index });
       requestAnimationFrame(() => placeBlock(last.index, last.top));
     },
-    [data, rbook, dispatch, placeBlock],
+    [data, rbook, dispatch, placeBlock, itemWords],
   );
   const undo = useCallback(() => undoGrade(null), [undoGrade]);
 
-  // ── The scope hint: while an item rests on a level, which words the
-  // review its grade opens covers (lib/read/review-scope.ts) ──
+  // ── The level hint: while an item rests on a level, what its grade does —
+  // Again / Hard: the review it opens; Easy: how many of its words go Easy
+  // with it (the server's plan); Good: nothing beyond the grade, no hint ──
   const [levelHint, setLevelHint] = useState<{
     index: number;
     top: number;
-    scope: ReviewScope;
+    kind: "para" | "upto" | "easy";
+    /** Easy: the words going Easy with it; null while the plan is asked. */
+    n: number | null;
   } | null>(null);
   const onLevel = useCallback(
     (index: number, k: number) => {
       const b = blocks[index];
       if (b?.kind !== "item") return;
       const g = levelRating(k);
-      if (!g) {
+      const after = g ? afterGrade(sideRating(g, mirrored())) : "none";
+      if (after === "none") {
         setLevelHint((h) => (h?.index === index ? null : h));
+        // A slide has started: ask the item's plan before it reaches a grade.
+        if (g) void itemWords.planOf(b);
         return;
       }
-      // A slide has started: ask the item's plan before it reaches a grade.
-      void itemWords.planOf(b);
-      const scope = scopeOfRating(sideRating(g, mirrored()));
+      const top = rowEl(index)?.getBoundingClientRect().top ?? 0;
+      const n = after === "easy" ? itemWords.countNow(b) : null;
       setLevelHint((h) =>
-        h?.index === index
-          ? h.scope === scope
-            ? h
-            : { ...h, scope }
-          : { index, top: rowEl(index)?.getBoundingClientRect().top ?? 0, scope },
+        h?.index === index && h.kind === after && h.n === n
+          ? h
+          : { index, top: h?.index === index ? h.top : top, kind: after, n },
       );
+      void itemWords
+        .planOf(b)
+        .then(
+          (p) =>
+            p &&
+            after === "easy" &&
+            setLevelHint((h) =>
+              h?.index === index && h.kind === "easy" ? { ...h, n: itemWords.left(p).length } : h,
+            ),
+        );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [blocks, itemWords],
@@ -1116,7 +1127,9 @@ function Reader({
     (receipt: GradeReceipt) => {
       undoStack.current = undoStack.current.filter((e) => e.receipt !== receipt);
       setCanUndo(undoStack.current.some((e) => data.canUndo(e.receipt)));
-      // A review it opened closes.
+      // An Easy grade's words go back with it (the same undo record), and a
+      // review it opened closes.
+      if (receipt.clientId) itemWords.release(receipt.clientId);
       gradeSeq.current++;
       undoneRef.current(receipt);
       void data
@@ -1131,7 +1144,7 @@ function Reader({
         return n;
       });
     },
-    [data, rbook],
+    [data, rbook, itemWords],
   );
   /** The card's grade keys and undo, when a selection's handle is there (set below). */
   const cardKeys = useRef<{ grade: (r: SwipeRating) => boolean; undo: () => boolean; at: number }>({
@@ -1225,8 +1238,8 @@ function Reader({
   const [review, setReview] = useState<{
     words: RangeWord[];
     range: boolean;
-    /** A passage grade's wider scope (review-scope.ts): its own title. */
-    scope?: Exclude<ReviewScope, "para">;
+    /** The chapter up to a passage (a Hard grade, review-scope.ts): its own title. */
+    upto?: boolean;
     ref: string;
     adopt: boolean;
     /** Opened by this item grade: an undo of it closes the review. */
@@ -1400,9 +1413,9 @@ function Reader({
     [para, fam, lineSentences],
   );
   /**
-   * The book's lines cut once for the wider scopes (lib/read/review-scope.ts):
-   * not the row cache (a chapter would push the rows on screen out), not the
-   * server. Headings and blank lines have no words.
+   * The book's lines cut once for the chapter-up-to-here review
+   * (lib/read/review-scope.ts): not the row cache (a chapter would push the
+   * rows on screen out), not the server. Headings and blank lines have no words.
    */
   const bookCut = useMemo(() => {
     const heads = new Set(book?.headings ?? []);
@@ -1417,11 +1430,11 @@ function Reader({
       return ss;
     };
   }, [lines, book, lineLang, normLang]);
-  /** A wider scope's review words, for a passage on lines first..last. */
-  const scopeRangeWords = useCallback(
-    (scope: Exclude<ReviewScope, "para">, first: number, last: number) => {
+  /** The chapter-up-to-here review's words, for a passage on lines first..last. */
+  const uptoWords = useCallback(
+    (first: number, last: number) => {
       const starts = chapters.map((c) => c.start);
-      const [from, to] = scopeLines(scope, first, last, starts, lines.length);
+      const [from, to] = scopeLines("upto", first, last, starts, lines.length);
       const { sentences, words } = scopeWords(from, to, bookCut, fam?.map ?? null);
       return words.length ? rangeWordsOf(words, sentences, normLang) : Promise.resolve([]);
     },
@@ -1448,14 +1461,13 @@ function Reader({
   // The review named in the URL (a refresh, Back / Forward, a link) opens
   // again over the book, once its lines and word map are in.
   const reviewRestored = useRef(false);
-  /** A wider scope's review named in the URL (a refresh, Back / Forward, a link). */
-  const openScope = (target: ScopeTarget, ref: string) => {
-    const line = scopeLine(target);
-    const el = rowEl(blockOfLine(blocks, line));
+  /** The chapter-up-to-here review named in the URL (a refresh, Back / Forward, a link). */
+  const openUpto = (target: UptoTarget, ref: string) => {
+    const el = rowEl(blockOfLine(blocks, target.line));
     if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
     reviewBack.current = el ?? null;
-    void scopeRangeWords(target.kind, line, line).then((w) => {
-      if (w.length) setReview({ words: w, range: false, scope: target.kind, ref, adopt: true });
+    void uptoWords(target.line, target.line).then((w) => {
+      if (w.length) setReview({ words: w, range: false, upto: true, ref, adopt: true });
       else history.replaceState(null, "", withReview(location.href, null));
     });
   };
@@ -1465,12 +1477,12 @@ function Reader({
     const ref = reviewOfHref(location.href);
     if (!ref || review) return;
     const target = decodeReviewRef(ref);
-    if (canReview && target && isScopeTarget(target) && scopeLine(target) < lines.length)
-      return void openScope(target, ref);
+    if (canReview && target?.kind === "upto" && target.line < lines.length)
+      return void openUpto(target, ref);
     const ok =
       canReview &&
       target &&
-      !isScopeTarget(target) &&
+      target.kind !== "upto" &&
       (target.kind === "para" ? target.line : target.l1) < lines.length &&
       (target.kind === "range" || !!lines[target.line]?.trim());
     if (ok) return openReview(target, true);
@@ -1499,13 +1511,15 @@ function Reader({
         : undefined,
     [review],
   );
-  // After an item's grade (lib/read/review-scope.ts; owner, 2026-11-08): the
-  // level picks the review's scope — Again the item's own words, Hard its
-  // chapter up to it, Good the chapter, Easy the book — and the review opens
-  // once the swipe has settled, when that scope has a word to review (the
-  // item's: a due or new one by the server's plan; wider: one he does not
-  // know yet by the word map), not after a later grade or an undo, not over
-  // a sheet or another review. Closing it focuses the next item.
+  // After an item's grade (lib/read/review-scope.ts afterGrade; owner,
+  // 2026-11-08, card d2cf3080): Again opens the item's own words' review,
+  // Hard the review of its chapter up to it — once the swipe has settled,
+  // when that scope has a word to review (the item's: a due or new one by the
+  // server's plan; the chapter's: one he does not know yet by the word map),
+  // not after a later grade or an undo, not over a sheet or another review;
+  // closing it focuses the next item. Good opens nothing. Easy shows how many
+  // words went Easy with it (Undo takes back the lot, inside the hold).
+  const [easyToast, setEasyToast] = useState<{ text: string; receipt: GradeReceipt } | null>(null);
   /** The URL ref of an item's review: its paragraph when it is one whole paragraph, else its token range. */
   const itemRef = (index: number) => {
     const b = blocks[index];
@@ -1528,14 +1542,25 @@ function Reader({
   afterGradeRef.current = (index, r, planP, seq, receipt) => {
     const b = blocks[index];
     if (b?.kind !== "item") return;
-    const scope = scopeOfRating(r);
+    const after = afterGrade(r);
+    if (after === "none") return;
+    if (after === "easy") {
+      void planP.then((p) => {
+        if (!p) return;
+        const left = itemWords.left(p);
+        if (receipt.clientId) itemWords.hold(receipt.clientId, left);
+        if (left.length)
+          setEasyToast({ text: fill(t.easyDone.value, { n: String(left.length) }), receipt });
+      });
+      return;
+    }
     const first = b.pieces[0].line;
     const last = b.pieces[b.pieces.length - 1].line;
     const words: Promise<RangeWord[]> =
-      scope === "para"
-        ? planP.then((p) => (p?.plan.length ? p.words : []))
-        : scopeRangeWords(scope, first, last);
-    const ref = scope === "para" ? itemRef(index) : scopeRef(scope, last);
+      after === "para"
+        ? planP.then((p) => (p && itemWords.left(p).length ? itemWords.reviewWords(p) : []))
+        : uptoWords(first, last);
+    const ref = after === "para" ? itemRef(index) : uptoRef(last);
     const settled = new Promise((ok) => setTimeout(ok, Math.round(SWIPE_RETURN_S * 1000) + 50));
     void Promise.all([words, settled]).then(([w]) => {
       // Not after a later grade or an undo, not over a sheet or another review.
@@ -1552,7 +1577,7 @@ function Reader({
       setReview({
         words: w,
         range: false,
-        ...(scope === "para" ? {} : { scope }),
+        ...(after === "upto" ? { upto: true } : {}),
         ref,
         adopt: false,
         from: receipt,
@@ -1561,6 +1586,7 @@ function Reader({
   };
   undoneRef.current = (receipt) => {
     setReview((rv) => (rv?.from === receipt ? null : rv));
+    setEasyToast((x) => (x?.receipt === receipt ? null : x));
   };
 
   const [made, setMade] = useState<{ text: string; terms?: string[] } | null>(null);
@@ -2256,8 +2282,8 @@ function Reader({
             title={
               review.range
                 ? tr.selectionTitle.value
-                : review.scope
-                  ? tr[SCOPE_TITLE[review.scope]].value
+                : review.upto
+                  ? tr.titleUpTo.value
                   : tr.title.value
             }
             words={review.words}
@@ -2277,15 +2303,30 @@ function Reader({
             onDone={() => setGradeToast(null)}
           />
         )}
+        {easyToast && !made && !gradeToast && (
+          <MadeToast
+            text={easyToast.text}
+            undoLabel={tr.undo.value}
+            onUndo={() => undoGrade(easyToast.receipt)}
+            onDone={() => setEasyToast(null)}
+          />
+        )}
         {levelHint && (
           <p
             aria-hidden
-            data-testid="read-scope-hint"
-            data-scope={levelHint.scope}
-            className="lk-glass pointer-events-none fixed inset-x-0 z-[var(--lk-z-overlay-toast)] mx-auto w-max max-w-[calc(100vw-2rem)] rounded-full border border-[var(--glass-line)] px-3 py-1 text-sm font-medium shadow-[0_8px_24px_-10px_oklch(0.22_0.015_65/0.4)]"
+            data-testid={levelHint.kind === "easy" ? "read-easy-hint" : "read-scope-hint"}
+            data-scope={levelHint.kind}
+            data-n={levelHint.n ?? undefined}
+            className={`lk-glass pointer-events-none fixed inset-x-0 z-[var(--lk-z-overlay-toast)] mx-auto w-max max-w-[calc(100vw-2rem)] rounded-full border border-[var(--glass-line)] px-3 py-1 text-sm font-medium shadow-[0_8px_24px_-10px_oklch(0.22_0.015_65/0.4)] ${levelHint.kind === "easy" ? "text-[oklch(0.42_0.12_150)] dark:text-[oklch(0.82_0.12_150)]" : ""}`}
             style={{ top: `max(calc(env(safe-area-inset-top) + 0.5rem), ${levelHint.top - 44}px)` }}
           >
-            {t[SCOPE_HINT[levelHint.scope]]}
+            {levelHint.kind === "para"
+              ? t.scopePara
+              : levelHint.kind === "upto"
+                ? t.scopeUpTo
+                : levelHint.n
+                  ? fill(t.easyHint.value, { n: String(levelHint.n) })
+                  : t.easyHintAlone.value}
           </p>
         )}
         {made && (

@@ -195,3 +195,9 @@ export function spanWords(
   }
   return { sentences, words };
 }
+
+// ── After a paragraph grade: its words graded Easy ─────────────────────────
+
+/** The words of a plan still to count: not already in an Easy grade waiting to be sent. */
+export const planLeft = (words: readonly string[], waiting: ReadonlySet<string>) =>
+  words.filter((w) => !waiting.has(w));

@@ -1,8 +1,9 @@
 "use client";
 
-// An item's words, for the narrowest review its grade opens (lib/read/
-// review-scope.ts: Again → 本段的词): it opens only when the item has a due or
-// new word. The set is the swiped item's words (its pieces' sentences,
+// An item's words, for what follows its grade (lib/read/review-scope.ts
+// afterGrade; owner, 2026-11-05 and 2026-11-08): Easy also grades its due
+// and new words Easy; Again opens its word review when it has such a word
+// (Hard opens the chapter's so far, Good nothing). The set is the swiped item's words (its pieces' sentences,
 // paraWords, as the review takes a paragraph's); which of them count comes
 // from the server's plan (POST /api/read/[id]/easy-plan, read-only), fetched
 // once per item when a slide starts or a grade needs it, and again after his
@@ -10,7 +11,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { pieceSentences, type Block, type Fam, type Para } from "@/lib/read/reader-model";
-import { paraWords } from "@/lib/read/word-review";
+import { paraWords, planLeft } from "@/lib/read/word-review";
 import { rangeWordsOf, type RangeWord } from "./reader-word-review";
 
 type Item = Extract<Block, { kind: "item" }>;
@@ -19,9 +20,9 @@ type Item = Extract<Block, { kind: "item" }>;
 const MAX_WORDS = 400;
 
 export interface ItemPlan {
-  /** The item's words, as the review sends them. */
+  /** The item's words, as the review and the Easy batch send them. */
   words: RangeWord[];
-  /** The ones due now or with no card, by the book's word. */
+  /** The ones an Easy grade would grade now (due, or no card), by the book's word. */
   plan: string[];
 }
 
@@ -41,6 +42,9 @@ export function useItemWords(opts: {
     cache.current.clear();
     known.current.clear();
   }, [fam]);
+  /** Words in Easy grades still waiting to be sent, by grade (an undo takes them back). */
+  const waiting = useRef(new Map<string, string[]>());
+
   const wordsOf = useCallback(
     (b: Item) => {
       const ss = b.pieces.flatMap((pc) => pieceSentences(para(pc.line), pc));
@@ -81,5 +85,29 @@ export function useItemWords(opts: {
     [on, id, wordsOf],
   );
 
-  return { planOf };
+  const waitingSet = () => new Set([...waiting.current.values()].flat());
+  /** The plan's words not already in an Easy grade waiting to be sent. */
+  const left = useCallback((p: ItemPlan) => planLeft(p.plan, waitingSet()), []);
+  /** The count known now for the hint, or null (still being asked). */
+  const countNow = useCallback(
+    (b: Item) => {
+      const p = known.current.get(b.id);
+      return p ? left(p).length : null;
+    },
+    [left],
+  );
+
+  return {
+    planOf,
+    countNow,
+    left,
+    /** An Easy grade's words wait in the hold: other items' counts leave them out. */
+    hold: useCallback((key: string, words: string[]) => waiting.current.set(key, words), []),
+    release: useCallback((key: string) => waiting.current.delete(key), []),
+    /** The review's words: the item's, without those an Easy grade waiting will grade. */
+    reviewWords: useCallback((p: ItemPlan) => {
+      const w = waitingSet();
+      return p.words.filter((x) => !w.has(x.w));
+    }, []),
+  };
 }
