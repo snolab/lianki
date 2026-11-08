@@ -174,3 +174,48 @@ export const FULL_LOG_STYLE = { maxHeight: "none", flex: "1 1 0%", minHeight: 0 
 export function escapeLeaves(d: { full: boolean; panelOpen: boolean; plusMenu: boolean }) {
   return d.full && !d.panelOpen && !d.plusMenu;
 }
+
+/** The window as fullScreenBack needs it: gesture listeners and whether the page has had one. */
+export type GestureWin = {
+  addEventListener(type: "pointerdown" | "keydown", fn: () => void, capture: boolean): void;
+  removeEventListener(type: "pointerdown" | "keydown", fn: () => void, capture: boolean): void;
+  navigator?: { userActivation?: { hasBeenActive: boolean } };
+};
+
+/**
+ * Back leaves full screen (owner, 2026-11-08: on a phone, Back must leave full
+ * screen first, never the page). While it is up, one history entry of its own
+ * sits on top (the host's `backToClose`, Lianki's openBackToClose): same URL,
+ * so `?live=` and the rest stay. Taken at once after a tap, or when the page
+ * already had a gesture (reopened from the pill, after a client navigation);
+ * full screen restored by a reload takes it at the first press or key, since
+ * Chrome lets Back skip an entry pushed with no gesture. Returns the way out:
+ * full screen left any other way consumes the entry (no orphan, no double back).
+ */
+export function fullScreenBack(
+  win: GestureWin,
+  backToClose: (onBack: () => void) => () => void,
+  onBack: () => void,
+  byTap: boolean,
+): () => void {
+  let close: (() => void) | null = null;
+  let done = false;
+  const off = () => {
+    win.removeEventListener("pointerdown", gesture, true);
+    win.removeEventListener("keydown", gesture, true);
+  };
+  function gesture() {
+    off();
+    if (!done) close ??= backToClose(onBack);
+  }
+  if (byTap || win.navigator?.userActivation?.hasBeenActive) gesture();
+  else {
+    win.addEventListener("pointerdown", gesture, true);
+    win.addEventListener("keydown", gesture, true);
+  }
+  return () => {
+    done = true;
+    off();
+    close?.();
+  };
+}

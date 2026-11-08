@@ -190,6 +190,7 @@ import {
   sidebarReserve,
   fullBottomPad,
   fullScreenAllowed,
+  fullScreenBack,
   fullScreenBox,
   fullScreenOn,
 } from "./full-screen";
@@ -2343,15 +2344,20 @@ export function DebugChat({
       maxScroll: el.scrollHeight - el.clientHeight,
     });
   }, [full]);
-  // Back leaves full screen (docs/ui-state.md, "Back closes an overlay"), only
-  // when a tap here opened it: an entry pushed at load, with no gesture, is
-  // one the browser may skip. Left any other way, the entry is consumed.
+  // Back leaves full screen (docs/ui-state.md, "Back closes an overlay";
+  // full-screen.ts fullScreenBack): its entry is taken at once after a tap,
+  // else at the first gesture. Left any other way, the entry is consumed.
   useEffect(() => {
-    if (!full || !fullByTap.current || !backToClose) return;
-    const close = backToClose(() => {
-      fullByTap.current = false;
-      chatPrefs().setState({ full: false });
-    });
+    if (!full || !backToClose) return;
+    const close = fullScreenBack(
+      window,
+      backToClose,
+      () => {
+        fullByTap.current = false;
+        chatPrefs().setState({ full: false });
+      },
+      fullByTap.current,
+    );
     return () => {
       fullByTap.current = false;
       close();
