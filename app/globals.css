@@ -671,9 +671,14 @@ html[data-motion="off"] .lk-ex-spoken {
   color: color-mix(in oklch, currentColor 55%, var(--background));
 }
 
-/* The slip's action sheet (/words, double tap): slides up, minimum jerk. */
+/* The slip's action sheet (/words, double tap): slides up, minimum jerk.
+ * Fill `backwards`, never `both`: the keyframes end at the element's own
+ * position, so a forward fill adds nothing — and WebKit could keep a stale
+ * mid-slide frame as the "finished" value (CI, 2026-11-08: the Settings sheet
+ * held translate 0 2.192% after its animation had finished, 13–330 px low).
+ * Without a forward fill the animation lets go when it ends. */
 .lk-sheet-in {
-  animation: lk-sheet-in 240ms var(--min-jerk) both;
+  animation: lk-sheet-in 240ms var(--min-jerk) backwards;
 }
 @keyframes lk-sheet-in {
   from {
@@ -1028,7 +1033,7 @@ html.lk-paper-scrolls body {
    * text. A modal holds the list still, so the blur is painted once. */
   background: var(--glass-bg-solid);
   max-height: calc(100% - 3.5rem - env(safe-area-inset-top));
-  animation: lk-sheet-in 240ms var(--min-jerk) both;
+  animation: lk-sheet-in 240ms var(--min-jerk) backwards; /* not `both`: see .lk-sheet-in */
 }
 @media (min-width: 40rem) {
   .lk-settings-panel {
