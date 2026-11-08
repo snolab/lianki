@@ -12,7 +12,8 @@ import {
   permissionHolders,
   setPermissionSnapshot,
 } from "@/lib/permissions";
-import { refreshPermissions } from "@/lib/permission-store";
+import { refreshPermissions, refreshPermissionsFrom } from "@/lib/permission-store";
+import { useBackend, useD1 } from "./support/testMocks";
 import {
   grantPermission,
   listGrants,
@@ -202,6 +203,39 @@ describe("refreshPermissions", () => {
   });
 });
 
+describe("refreshPermissions: databases", () => {
+  it("the default database is the request's D1; a webhook passes its own; off D1 nothing", async () => {
+    await grantPermission(write(), "a@example.com", "dev", ME, T0);
+    const want = [{ email: "a@example.com", permission: "dev" }];
+    useBackend("d1");
+    useD1(d1);
+    try {
+      expect(await refreshPermissions()).toEqual(want);
+      clearPermissionCache();
+      expect(await refreshPermissionsFrom(d1)).toEqual(want);
+      clearPermissionCache();
+      useBackend("mongodb");
+      expect(await refreshPermissions()).toEqual([]);
+    } finally {
+      useBackend("mongodb");
+    }
+  });
+
+  it("an answer that arrives after the cache window is dropped", async () => {
+    await grantPermission(write(), "a@example.com", "dev", ME, T0);
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      let calls = 0;
+      const clock = () => (calls++ === 0 ? T0 : T0 + PERMISSION_CACHE_MS);
+      expect(await refreshPermissions(read, clock)).toEqual([]);
+      expect(isDev("a@example.com", T0)).toBe(false);
+      expect(String(err.mock.calls[0]?.[0])).toContain("permissions.read-stale");
+    } finally {
+      err.mockRestore();
+    }
+  });
+});
+
 describe("/api/dev/permissions", () => {
   const post = (body: unknown) =>
     new Request("https://lianki.com/api/dev/permissions", {
@@ -259,6 +293,42 @@ describe("/api/dev/permissions", () => {
       write,
     );
     expect(bad.status).toBe(400);
+    const badRevoke = await permissionsPost(
+      post({ op: "revoke", email: "x", permission: "dev" }),
+      ME,
+      write,
+    );
+    expect(badRevoke.status).toBe(400);
+    const garbled = post({});
+    const notJson = new Request(garbled.url, {
+      method: "POST",
+      headers: garbled.headers,
+      body: "{not json",
+    });
+    expect((await permissionsPost(notJson, ME, write)).status).toBe(400);
+    const op = await permissionsPost(post({ op: "delete" }), ME, write);
+    expect(op.status).toBe(400);
+    expect(((await op.json()) as { error: string }).error).toBe("bad-op");
+    const none = await permissionsPost(
+      post({ op: "revoke", email: "b@example.com", permission: "dev" }),
+      ME,
+      write,
+    );
+    expect(none.status).toBe(409);
+    await permissionsPost(
+      post({ op: "grant", email: "b@example.com", permission: "dev" }),
+      ME,
+      write,
+    );
+    const ok = await permissionsPost(
+      post({ op: "revoke", email: "b@example.com", permission: "dev" }),
+      ME,
+      write,
+    );
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { result: string }).result).toBe("revoked");
+    const list = (await (await permissionsGet(ME, write)).json()) as { grants: unknown[] };
+    expect(list.grants).toHaveLength(1);
   });
 
   it("the route and page gate on isAdmin", () => {
@@ -313,6 +383,13 @@ describe("scripts/dev/permission.ts", () => {
     expect(() => parseArgs(["grant", "a@example.com", "owner"])).toThrow();
     expect(() => parseArgs(["grant", "a@example.com"])).toThrow();
     expect(parseArgs(["list", "--local"])).toEqual({ cmd: "list", local: true });
+    expect(commandSql({ cmd: "list", local: false }, T0)).toContain("FROM account_permission");
+    const revoke = commandSql(parseArgs(["revoke", "a@example.com", "dev"]), T0);
+    expect(revoke).toContain("UPDATE account_permission");
+    expect(revoke).toContain("'permission.revoke'");
+    expect(() => parseArgs(["frob", "a@example.com", "dev"])).toThrow();
+    expect(() => parseArgs(["grant", "nope", "dev"])).toThrow();
+    expect(() => parseArgs(["grant", "a@example.com", "dev", "extra"])).toThrow();
   });
 
   it("its statements run against the real schema", async () => {
