@@ -35,7 +35,7 @@ import {
 } from "./lianki-dev-cli";
 import { PROGRESS_USAGE, formatStats, parseProgressArgs } from "./progress-args";
 import { postProgress, progressToken } from "./progress-client";
-import { laneToken } from "./lane-listen";
+import { laneToken } from "./lane-listen-lib";
 import { type ProgressDone, progressStats } from "../../lib/progress";
 
 const HUB = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");

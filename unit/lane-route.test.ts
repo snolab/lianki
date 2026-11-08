@@ -1,7 +1,14 @@
 // lib/lane-route.ts: which lane answers an owner line (docs/lane-listen.md).
 // One matcher for every listener, so each line gets exactly one lane.
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_LANE, ROUTE_LANES, laneTakes, routeLine, testText } from "../lib/lane-route";
+import {
+  DEFAULT_LANE,
+  ROUTE_LANES,
+  isRouteLane,
+  laneTakes,
+  routeLine,
+  testText,
+} from "../lib/lane-route";
 
 const lanesOf = (t: string) => routeLine(t).lanes;
 
@@ -62,6 +69,14 @@ describe("routeLine: not addressed → the chat lane only", () => {
     const r = routeLine(text);
     expect(r.addressed).toBe(false);
     expect(r.lanes).toEqual([DEFAULT_LANE]);
+  });
+});
+
+describe("isRouteLane", () => {
+  it("knows the three lanes only", () => {
+    expect(ROUTE_LANES.every(isRouteLane)).toBe(true);
+    expect(isRouteLane("main")).toBe(false);
+    expect(isRouteLane(undefined)).toBe(false);
   });
 });
 

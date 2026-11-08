@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handoff, jst, laneToken, lineOf, tokenNeeded } from "../scripts/dev/lane-listen";
+import { handoff, jst, laneToken, lineOf, tokenNeeded } from "../scripts/dev/lane-listen-lib";
 
 const dir = mkdtempSync(join(tmpdir(), "lane-token-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
