@@ -326,9 +326,11 @@ export function WordReview({
           scope={{
             items: session.items,
             onGrade,
-            exitLabel: t.backToBook.value,
+            exitLabel: t.backToChapter.value,
             key: place,
             fill: rowFill,
+            // Every row one line taller than /words' (owner, 2026-11-08 19:16 JST).
+            extraLines: 1,
           }}
         />
       ) : (

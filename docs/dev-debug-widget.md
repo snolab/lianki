@@ -838,10 +838,13 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
 - **Ways back.** The same button, Escape (after the tree's and the + menu's own
   Escape; it never turns the mic off), and Back: entering by a tap pushes one
   history entry through the host's `backToClose` (Lianki: `openBackToClose`,
-  docs/ui-state.md "Back closes an overlay"). Full screen restored by a reload
-  pushes none (the browser may skip an entry pushed with no gesture): the button
-  and Escape still work. Minimizing to the pill leaves it; reopening comes back
-  full screen, since the choice is kept.
+  docs/ui-state.md "Back closes an overlay"), same URL so `?live=` stays.
+  Full screen restored by a reload takes its entry at the first press or key
+  (the browser may skip an entry pushed with no gesture), and reopened from the
+  pill at once, so Back leaves full screen first there too (owner, 2026-11-08;
+  `fullScreenBack`, unit/chat-fullscreen-back.test.ts). Left by the button or
+  Escape, the entry is consumed: no orphan, no double back. Minimizing to the
+  pill leaves it; reopening comes back full screen, since the choice is kept.
 - **Nothing remounts.** The same section, log, input and mic are restyled in
   place, so the thread, the draft, its focus and caret, and the mic are as they
   were. The line being read keeps its place on screen across the switch (as far

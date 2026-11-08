@@ -15,7 +15,7 @@
 // - a missed word coming back due never joins inside the viewport: with the
 //   tail on screen it waits, nothing on screen moves; scrolled up, it joins
 //   off screen (lib/words/requeue.ts offscreenSlot; a fake clock that runs).
-// - the last card graded, by key or swipe, focuses 返回书本; Enter or G goes back;
+// - the last card graded, by key or swipe, focuses 返回章节; Enter or G goes back;
 // - the review is pinned in the URL (?review=): a reload opens it again on the
 //   same card (the tab's sessionStorage), and Back closes it on the book.
 //
@@ -405,7 +405,7 @@ const firstOffCentre = (page) =>
   });
 
 /**
- * The last card graded: focus goes to the end-of-list way back (返回书本), it
+ * The last card graded: focus goes to the end-of-list way back (返回章节), it
  * looks focused, a polite status says so, and Enter or G goes back to the book
  * (the owner, 2026-11-05 13:37 JST; 2026-11-06, 2026-11-07). Whatever the grade:
  * a miss's copy waiting to come back does not hold the end. G does nothing
@@ -479,7 +479,7 @@ async function lastCardBack(device, { scheme = "light", last, leave }) {
   check(await open(), `${tag}: G does nothing before the list is done`);
   if (last) await page.keyboard.press(last);
   else await swipe(n - 1);
-  check(await until(page, onBack, 3000), `${tag}: the last card graded, focus on 返回书本`);
+  check(await until(page, onBack, 3000), `${tag}: the last card graded, focus on 返回章节`);
   const said = await page.evaluate(
     () => document.querySelector("[data-review-ended]")?.textContent ?? "",
   );
@@ -501,7 +501,7 @@ async function lastCardBack(device, { scheme = "light", last, leave }) {
     await page.keyboard.press("ArrowUp");
     await page.keyboard.press("Digit3");
     await page.waitForTimeout(500);
-    check(!(await onBack()), `${tag}: a correction does not move the focus to 返回书本`);
+    check(!(await onBack()), `${tag}: a correction does not move the focus to 返回章节`);
     await page.getByTestId("study-done-back").focus();
   }
   // In a field G is a letter.
@@ -523,7 +523,7 @@ async function lastCardBack(device, { scheme = "light", last, leave }) {
   await page.keyboard.press(leave);
   check(
     await until(page, async () => !(await open())),
-    `${tag}: ${leave} on 返回书本 closes the review`,
+    `${tag}: ${leave} on 返回章节 closes the review`,
   );
   check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
   await ctx.close();

@@ -3,6 +3,7 @@
 import { chromium } from "playwright";
 import { buildApkg } from "./apkg-fixture.mjs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
+import { budget } from "./load-budget.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 // QA_SHOTS=<dir>: also save screenshots of the list, to look at the layout.
 const shot = (pg, name) =>
@@ -83,7 +84,7 @@ const toPicker = async () => {
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
   if (!new URL(page.url()).searchParams.has("list")) return;
   const back = page.getByRole("button", { name: "← lists" }).first();
-  await back.waitFor({ timeout: 15000 });
+  await back.waitFor({ timeout: budget(15000) });
   await back.click();
 };
 /**
@@ -100,7 +101,7 @@ const addFromTree = async (c, { checks = false } = {}) => {
   if (checks)
     check(await node.locator("input").isChecked(), "a tapped list row ticks its checkbox");
   await page.locator("[data-add-selected]").click();
-  await page.locator("[data-added-toast]").waitFor({ timeout: 15000 });
+  await page.locator("[data-added-toast]").waitFor({ timeout: budget(15000) });
   await page.waitForTimeout(500);
   if (checks) {
     check(!new URL(page.url()).searchParams.has("list"), `still on the picker: ${page.url()}`);
@@ -225,7 +226,7 @@ async function revealOrder(pg, variant) {
                 e.closest("[data-reveal]"),
             ),
         [x, y],
-        { timeout: 2000 },
+        { timeout: budget(2000) },
       )
       .catch(() => {});
     mid = await hit();
@@ -254,10 +255,10 @@ async function toggleSettings(pg) {
   const sheet = pg.locator("[data-words-settings]");
   if (await sheet.count()) {
     await pg.locator("[data-words-settings-close]").click();
-    await sheet.waitFor({ state: "detached", timeout: 5000 });
+    await sheet.waitFor({ state: "detached", timeout: budget(5000) });
   } else {
     await pg.getByRole("button", { name: "Settings" }).click();
-    await sheet.waitFor({ timeout: 5000 });
+    await sheet.waitFor({ timeout: budget(5000) });
   }
 }
 
@@ -265,19 +266,19 @@ try {
   await page.goto(`${BASE}/sign-in`, { waitUntil: "networkidle" });
   await page.locator("#email").fill(EMAIL);
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.waitForSelector("#password", { timeout: 10000 });
+  await page.waitForSelector("#password", { timeout: budget(10000) });
   await page.locator("#password").fill(PW);
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForFunction(
     async () => (await (await fetch("/api/auth/get-session")).json())?.user,
     null,
-    { timeout: 20000 },
+    { timeout: budget(20000) },
   );
   // Sign-in ends in a full page load of /home; let it land, or the goto below
   // aborts it mid-flight (net::ERR_ABORTED). Landed = committed: waiting for
   // /home's own "load" as well timed out at 20 s under load, for nothing.
   await page.waitForURL((u) => /\/home|\/list/.test(u.toString()), {
-    timeout: 20000,
+    timeout: budget(20000),
     waitUntil: "commit",
   });
   check(true, "signed in");
@@ -325,7 +326,10 @@ try {
     );
     await eye.click();
     const dlg = page.locator('[role="dialog"]:has([data-list-preview])');
-    await dlg.locator("[data-preview-row]").first().waitFor({ timeout: 15000 });
+    await dlg
+      .locator("[data-preview-row]")
+      .first()
+      .waitFor({ timeout: budget(15000) });
     check(!(await node.locator("input").isChecked()), "the eye previews without ticking the row");
     check(
       (await dlg.locator("[data-preview-row]").first().locator("p").first().innerText()).startsWith(
@@ -362,21 +366,24 @@ try {
       "focus is inside the preview",
     );
     await page.keyboard.press("Escape");
-    await dlg.waitFor({ state: "detached", timeout: 5000 });
+    await dlg.waitFor({ state: "detached", timeout: budget(5000) });
     check(
       await page.evaluate(() => document.activeElement?.hasAttribute("data-list-preview-open")),
       "closing the preview returns focus to its eye",
     );
     await eye.click();
-    await dlg.waitFor({ timeout: 5000 });
+    await dlg.waitFor({ timeout: budget(5000) });
     await page.goBack();
-    await dlg.waitFor({ state: "detached", timeout: 5000 });
+    await dlg.waitFor({ state: "detached", timeout: budget(5000) });
     check(new URL(page.url()).pathname.endsWith("/words"), "back closes the preview, not the page");
     // A coverage band previews the union of its lists.
     const bandEye = page.locator("[data-coverage-bands] [data-list-preview-open]").first();
     if (await bandEye.count()) {
       await bandEye.click();
-      await dlg.locator("[data-preview-row]").first().waitFor({ timeout: 15000 });
+      await dlg
+        .locator("[data-preview-row]")
+        .first()
+        .waitFor({ timeout: budget(15000) });
       check(
         Number((await dlg.locator("[data-list-preview-size]").innerText()).replace(/\D/g, "")) >=
           entries.length,
@@ -384,13 +391,13 @@ try {
       );
       await shot(page, "list-preview-band");
       await dlg.locator("[data-words-settings-close]").click();
-      await dlg.waitFor({ state: "detached", timeout: 5000 });
+      await dlg.waitFor({ state: "detached", timeout: budget(5000) });
     }
   }
   await addFromTree(first, { checks: true });
 
   const rows = page.locator('[role="listitem"]');
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) >= 20, `the list opens with ${await rows.count()} words`);
   check((await page.locator("span.text-emerald-600").count()) > 0, "new words are shown in green");
   const statusOf = async (i) => (await rows.nth(i).locator("span.tabular-nums").innerText()).trim();
@@ -560,7 +567,7 @@ try {
     const [hrefBefore, , stateBefore] = await where();
     check(stateBefore?.__lkBack === undefined, "Escape left the sheet's history entry");
     await loose.click({ button: "right" });
-    await page.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+    await page.locator("[data-slip-sheet]").waitFor({ timeout: budget(3000) });
     const [hrefOpen, , stateOpen] = await where();
     check(
       hrefOpen === hrefBefore && typeof stateOpen?.__lkBack === "string",
@@ -569,7 +576,7 @@ try {
     await page.evaluate(() => history.back());
     await page
       .locator("[data-slip-sheet]")
-      .waitFor({ state: "detached", timeout: 3000 })
+      .waitFor({ state: "detached", timeout: budget(3000) })
       .catch(() => {});
     await page.waitForTimeout(300);
     const [hrefAfter] = await where();
@@ -584,7 +591,7 @@ try {
     // Reopen, close by Escape: the sheet's entry is consumed, so the next
     // back leaves /words for the page before, not a dead entry.
     await loose.click({ button: "right" });
-    await page.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+    await page.locator("[data-slip-sheet]").waitFor({ timeout: budget(3000) });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
     const [hrefEsc, , stateEsc] = await where();
@@ -646,7 +653,7 @@ try {
   await toggleSettings(page);
   await page.getByRole("switch", { name: "Show all meanings" }).click();
   await page.reload({ waitUntil: "networkidle" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) > 0, "a refresh lands back in the list");
   check(!(await blurred(5)), "Show all meanings is remembered across a refresh");
   // The open Settings panel is UI state of this tab (docs/ui-state.md): it
@@ -681,7 +688,7 @@ try {
     await page.waitForTimeout(600);
     const before = await topRow();
     await page.reload({ waitUntil: "networkidle" });
-    await rows.first().waitFor({ timeout: 15000 });
+    await rows.first().waitFor({ timeout: budget(15000) });
     await page.waitForTimeout(300);
     const after = await topRow();
     check(
@@ -692,7 +699,7 @@ try {
     const bare = new URL(page.url());
     bare.searchParams.delete("list");
     await page.goto(bare.href, { waitUntil: "networkidle" });
-    await rows.first().waitFor({ timeout: 15000 });
+    await rows.first().waitFor({ timeout: budget(15000) });
     check(
       new URL(page.url()).searchParams.get("list") === listUrl.searchParams.get("list"),
       `no ?list=: this tab's list reopens (${new URL(page.url()).search})`,
@@ -708,7 +715,7 @@ try {
       }
     });
     await page.reload({ waitUntil: "networkidle" });
-    await rows.first().waitFor({ timeout: 15000 });
+    await rows.first().waitFor({ timeout: budget(15000) });
   }
   // The server voice is the default (browser voices can mislead): moving to
   // a word plays the server's recording (stubbed: no AI call, nothing audible).
@@ -721,7 +728,7 @@ try {
   await toggleSettings(page);
   await page.keyboard.press("s");
   await page
-    .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
+    .waitForFunction(() => window.__played.length > 0, null, { timeout: budget(5000) })
     .catch(() => {});
   check((await page.evaluate(() => window.__played.length)) > 0, "Server voice plays server audio");
   // Server voice off, and no browser voice for the language: still the
@@ -735,7 +742,7 @@ try {
   });
   await page.keyboard.press("s");
   await page
-    .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
+    .waitForFunction(() => window.__played.length > 0, null, { timeout: budget(5000) })
     .catch(() => {});
   const voiceless = await page.evaluate(() => [window.__spoken.length, window.__played.length]);
   check(
@@ -854,7 +861,7 @@ try {
     const flag = () => page.evaluate(() => localStorage.getItem("lk:debug"));
     await page.locator("[data-profile-menu]").click();
     const name = page.locator("[data-debug-name]");
-    await name.waitFor({ timeout: 5000 });
+    await name.waitFor({ timeout: budget(5000) });
     for (let k = 0; k < 10; k++) await name.click();
     const on = await flag();
     for (let k = 0; k < 10; k++) await name.click();
@@ -879,7 +886,7 @@ try {
     // The profile menu marks the mode by name: "you@… · Learning Partner".
     await tab.locator("[data-profile-menu]").click();
     const name = tab.locator("[data-debug-name]");
-    await name.waitFor({ timeout: 5000 });
+    await name.waitFor({ timeout: budget(5000) });
     const marker = (await name.innerText()).trim();
     seen.menu = await debugText(tab);
     const flag = await tab.evaluate(() => [
@@ -901,7 +908,7 @@ try {
     await tab.waitForFunction(
       () => localStorage.getItem("lk:agent") === "0" && localStorage.getItem("lk:debug") === "0",
       null,
-      { timeout: 15000 },
+      { timeout: budget(15000) },
     );
     await tab.close();
   }
@@ -930,9 +937,12 @@ try {
       await p.goto(`${listUrl}${listUrl.includes("?") ? "&" : "?"}lang=${lang}`, {
         waitUntil: "networkidle",
       });
-      await p.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await p
+        .locator('[role="listitem"]')
+        .first()
+        .waitFor({ timeout: budget(15000) });
       await p.locator("[data-words-top] button[aria-expanded]").click();
-      await p.locator("[data-words-settings]").waitFor({ timeout: 5000 });
+      await p.locator("[data-words-settings]").waitFor({ timeout: budget(5000) });
       const htmlLang = await p.evaluate(() => document.documentElement.lang);
       const texts = await p.evaluate(() => {
         const out = [];
@@ -998,7 +1008,7 @@ try {
     );
     await deckLinks
       .first()
-      .waitFor({ timeout: 15000 })
+      .waitFor({ timeout: budget(15000) })
       .catch(() => {});
     const h1 = (await learn.locator("h1").first().innerText()).trim();
     check(
@@ -1109,7 +1119,7 @@ try {
   await page.reload({ waitUntil: "load" });
   await page.bringToFront();
   const notice = page.getByRole("button", { name: "New version · Refresh" });
-  await notice.waitFor({ timeout: 15000 }).catch(() => {});
+  await notice.waitFor({ timeout: budget(15000) }).catch(() => {});
   check(await notice.isVisible(), "a newer build pushed over the socket shows a Refresh button");
   // With the Learning Partner on, the page reloads itself once for that
   // build; when the reload still hears the old build is stale, it shows the
@@ -1123,7 +1133,7 @@ try {
     const onLoad = () => loads++;
     page.on("load", onLoad);
     await page.reload({ waitUntil: "load" });
-    await notice.waitFor({ timeout: 20000 }).catch(() => {});
+    await notice.waitFor({ timeout: budget(20000) }).catch(() => {});
     const shown = await notice.isVisible().catch(() => false);
     await page.waitForTimeout(3000); // a second auto-reload would land in here
     page.off("load", onLoad);
@@ -1138,7 +1148,7 @@ try {
   });
   await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
   await page.reload({ waitUntil: "load" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
 
   // Endless: grade 60 words in a row; more keep coming and all are saved.
   // 40 ms apart: still far faster than a person, slow enough for loading to keep up.
@@ -1192,7 +1202,7 @@ try {
   await page
     .locator('[data-sync="synced"]')
     .filter({ hasText: "synced" })
-    .waitFor({ timeout: 20000 });
+    .waitFor({ timeout: budget(20000) });
   await ctx.setOffline(true);
   for (let i = 0; i < 3; i++) {
     await page.keyboard.press("3");
@@ -1210,7 +1220,7 @@ try {
   await page.reload({ waitUntil: "load" }).catch(() => {});
   await rows
     .first()
-    .waitFor({ timeout: 15000 })
+    .waitFor({ timeout: budget(15000) })
     .catch(() => {});
   check((await rows.count()) > 0, "offline, the list reopens from the device");
   await ctx.setOffline(false);
@@ -1249,7 +1259,7 @@ try {
       m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
       await m.goto(page.url(), { waitUntil: "networkidle" });
       const mrows = m.locator('[role="listitem"]');
-      await mrows.first().waitFor({ timeout: 15000 });
+      await mrows.first().waitFor({ timeout: budget(15000) });
       if (variant === "native") {
         // The experimental switch, under its own heading in Settings.
         await toggleSettings(m);
@@ -1264,7 +1274,10 @@ try {
         );
         await sw.click();
         await toggleSettings(m);
-        await m.locator('[data-swipe="native"]').first().waitFor({ timeout: 5000 });
+        await m
+          .locator('[data-swipe="native"]')
+          .first()
+          .waitFor({ timeout: budget(5000) });
         check(
           (await m.evaluate(() => localStorage.getItem("lk:swipe-ab"))) === "native" &&
             (await m.locator('[data-swipe="native"]').count()) === (await mrows.count()),
@@ -1272,7 +1285,7 @@ try {
         );
         // Back to the top, as a fresh page would open.
         await m.reload({ waitUntil: "networkidle" });
-        await mrows.first().waitFor({ timeout: 15000 });
+        await mrows.first().waitFor({ timeout: budget(15000) });
         check(
           (await m.locator('[data-swipe="native"]').count()) > 0,
           `${tag} still native after a reload`,
@@ -1299,7 +1312,7 @@ try {
         await m.keyboard.press("Shift");
         await m
           .locator("text=? all keys")
-          .waitFor({ timeout: 3000 })
+          .waitFor({ timeout: budget(3000) })
           .catch(() => {});
         const typed = [await gestures(), await keys()].join();
         // On a phone the bottom island hides the strip, which lets taps
@@ -1348,7 +1361,7 @@ try {
         else if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
         await m
           .locator("text=/tap = show/")
-          .waitFor({ timeout: 3000 })
+          .waitFor({ timeout: budget(3000) })
           .catch(() => {});
         const touched = [await gestures(), await keys()].join();
         check(
@@ -1445,7 +1458,7 @@ try {
       const playedBefore = await m.evaluate(() => window.__played.length);
       await m.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await m
-        .waitForFunction((n) => window.__played.length > n, playedBefore, { timeout: 6000 })
+        .waitForFunction((n) => window.__played.length > n, playedBefore, { timeout: budget(6000) })
         .catch(() => {});
       check(
         ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > playedBefore,
@@ -1522,7 +1535,7 @@ try {
       await m.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
       await m
         .locator("[data-slip-sheet]")
-        .waitFor({ timeout: 3000 })
+        .waitFor({ timeout: budget(3000) })
         .catch(() => {});
       check(
         (await m.locator("[data-slip-sheet]").count()) === 1,
@@ -1564,11 +1577,11 @@ try {
       await m.waitForTimeout(400);
       const hrefBefore = await m.evaluate(() => location.href);
       await m.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
-      await m.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+      await m.locator("[data-slip-sheet]").waitFor({ timeout: budget(3000) });
       await m.evaluate(() => history.back());
       await m
         .locator("[data-slip-sheet]")
-        .waitFor({ state: "detached", timeout: 3000 })
+        .waitFor({ state: "detached", timeout: budget(3000) })
         .catch(() => {});
       check(
         (await m.locator("[data-slip-sheet]").count()) === 0 &&
@@ -1898,7 +1911,7 @@ try {
       await m.goto(u.href, { waitUntil: "networkidle" });
       await m.evaluate(() => localStorage.removeItem("lk:swipe-unsent"));
       const mrows = m.locator('[role="listitem"]');
-      await mrows.nth(3).waitFor({ timeout: 15000 });
+      await mrows.nth(3).waitFor({ timeout: budget(15000) });
       const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
       const touch = (type, x, y) =>
         cdp.send("Input.dispatchTouchEvent", {
@@ -1985,7 +1998,10 @@ try {
           u.searchParams.set("swipe", variant);
           u.searchParams.set("feel", feel);
           await m.goto(u.href, { waitUntil: "networkidle" });
-          await m.locator('[role="listitem"]').nth(8).waitFor({ timeout: 15000 });
+          await m
+            .locator('[role="listitem"]')
+            .nth(8)
+            .waitFor({ timeout: budget(15000) });
           const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
           const at = () =>
             m.evaluate(() => {
@@ -2126,7 +2142,7 @@ try {
         } finally {
           leaving = false;
         }
-        await w.locator('[role="list"][data-ready]').waitFor({ timeout: 30000 });
+        await w.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
         await settled();
       };
       /** The first row, the list's scroll and the page hold still for 10 frames (fonts loaded). */
@@ -2328,7 +2344,9 @@ try {
             });
           }
         await w.keyboard.press("Escape");
-        await w.locator("[data-words-settings]").waitFor({ state: "detached", timeout: 5000 });
+        await w
+          .locator("[data-words-settings]")
+          .waitFor({ state: "detached", timeout: budget(5000) });
         check(
           await w.evaluate(() => document.activeElement?.getAttribute("aria-label") === "Settings"),
           `${tag} ${vw}×${vh}: Esc closes the sheet and focus returns to the Settings button`,
@@ -2406,7 +2424,7 @@ try {
           leaving = false;
         }
         const fr = w.frameLocator("iframe");
-        await fr.locator('[role="list"][data-ready]').waitFor({ timeout: 30000 });
+        await fr.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
         const framed = await fr.locator(".slip-native").count();
         await load(() => w.goto(listUrl, { waitUntil: "commit" }));
         const plain = await w.locator(".slip-native").count();
@@ -2424,7 +2442,7 @@ try {
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
   await addFromTree({ id: "ja-hiragana", lang: "ja" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   const firstTerms = await rows.locator("span.font-medium.overflow-hidden").allInnerTexts();
   const fronts = firstTerms.map((t) => t.split("\n")[0].trim());
   check(fronts[0] === "あ", `alphabet starts with あ: ${fronts.slice(0, 3)}`);
@@ -2437,7 +2455,7 @@ try {
   await page.getByRole("button", { name: /Download for offline/ }).click();
   const saved = await page
     .getByText("Saved on this device ✓")
-    .waitFor({ timeout: 20000 })
+    .waitFor({ timeout: budget(20000) })
     .then(() => true)
     .catch(() => false);
   check(saved, "download for offline completes");
@@ -2445,10 +2463,10 @@ try {
   // Study all: with two lists, one queue mixes both.
   const second = catalog.find((c) => c.lang === first.lang && c.id !== first.id && !c.kind);
   await addFromTree(second);
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   await page.getByRole("button", { name: "← lists" }).first().click();
   await page.getByRole("button", { name: /Study all lists together/ }).click();
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check(page.url().includes("list=all"), "study all has its own URL");
   const sent = page.waitForResponse(
     (r) => r.url().includes("/review") && r.request().method() === "POST",
@@ -2460,7 +2478,7 @@ try {
   await toPicker();
   // Each row ends in its progress ring: a percentage, labelled for screen readers.
   const ring = page.locator("[data-progress]").first();
-  await ring.waitFor({ timeout: 10000 }).catch(() => {});
+  await ring.waitFor({ timeout: budget(10000) }).catch(() => {});
   const ringInfo = (await ring.count())
     ? await ring.evaluate((el) => ({
         pct: Number(el.getAttribute("data-progress")),
@@ -2536,10 +2554,10 @@ try {
     [group, after],
   );
   await page.goto(`${BASE}/words?list=${group}`, { waitUntil: "networkidle" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) > 0, "studying a group lists its words");
   await page.goto(`${BASE}/words?list=all`, { waitUntil: "networkidle" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) > 0, "study all works with groups present");
 
   // ── A row's ⋯ menu: rename (keyboard only), delete with Undo ──
@@ -2557,7 +2575,7 @@ try {
   });
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
   const groupMenu = page.getByRole("button", { name: /More actions for .QA group/ });
-  await groupMenu.waitFor({ timeout: 15000 });
+  await groupMenu.waitFor({ timeout: budget(15000) });
   const menuBox = await groupMenu.boundingBox();
   check(
     menuBox && menuBox.width >= 44 && menuBox.height >= 44,
@@ -2579,7 +2597,7 @@ try {
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter"); // Rename, the focused first item
   const field = page.getByRole("textbox", { name: /New name for .QA group/ });
-  await field.waitFor({ timeout: 5000 });
+  await field.waitFor({ timeout: budget(5000) });
   await field.fill("QA folder");
   await page.keyboard.press("Enter");
   const renamed = await waitFor((ls) => ls.find((l) => l.id === group)?.name === "QA folder");
@@ -2589,14 +2607,14 @@ try {
   );
   await page.reload({ waitUntil: "networkidle" });
   const folderMenu = page.getByRole("button", { name: /More actions for .QA folder/ });
-  await folderMenu.waitFor({ timeout: 15000 });
+  await folderMenu.waitFor({ timeout: budget(15000) });
   check(true, "the new name survives a reload");
 
   // Delete, then Undo: nothing is deleted.
   await folderMenu.click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   const toast = page.locator("[data-undo-delete]");
-  await toast.waitFor({ timeout: 5000 });
+  await toast.waitFor({ timeout: budget(5000) });
   check(
     (await toast.innerText()).includes("QA folder") && (await folderMenu.count()) === 0,
     "delete hides the row at once and shows an Undo notice",
@@ -2607,7 +2625,7 @@ try {
     "the Undo button takes the focus",
   );
   await undoButton.click();
-  await folderMenu.waitFor({ timeout: 5000 });
+  await folderMenu.waitFor({ timeout: budget(5000) });
   await page.waitForTimeout(9000); // past the undo window
   check(
     (await serverLists()).some((l) => l.id === group),
@@ -2617,7 +2635,7 @@ try {
   // Delete for real: it goes out when the notice runs out; the lists stay.
   await folderMenu.click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
-  await toast.waitFor({ timeout: 5000 });
+  await toast.waitFor({ timeout: budget(5000) });
   check(
     (await serverLists()).some((l) => l.id === group),
     "the delete waits for the Undo window",
@@ -2660,7 +2678,7 @@ try {
   );
   await page.dispatchEvent('[data-testid="apkg-drop"]', "drop", { dataTransfer: drop });
   const deckCard = page.locator('[data-testid="apkg-deck"]');
-  await deckCard.waitFor({ timeout: 15000 });
+  await deckCard.waitFor({ timeout: budget(15000) });
   check(
     (await deckCard.locator("h2").innerText()) === "QA Spanish",
     "a dropped .apkg shows its deck",
@@ -2697,7 +2715,7 @@ try {
   }
   await page.getByRole("button", { name: "Import", exact: true }).click();
   const done = page.locator('[data-testid="apkg-done"]');
-  await done.waitFor({ timeout: 15000 });
+  await done.waitFor({ timeout: budget(15000) });
   check((await done.innerText()).includes("3 added"), `import: ${await done.innerText()}`);
   const imported = (
     await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
@@ -2706,7 +2724,7 @@ try {
 
   await done.getByRole("link").click();
   await page.waitForURL(/[?&]list=/);
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   const firstTerm = await rows.nth(0).locator("span").first().innerText();
   check(
     (await page.locator('[role="list"]').innerText()).includes("hola"),
@@ -2739,13 +2757,13 @@ try {
     mimeType: "application/octet-stream",
     buffer: Buffer.from(apkg2),
   });
-  await deckCard.waitFor({ timeout: 15000 });
+  await deckCard.waitFor({ timeout: budget(15000) });
   check(
     (await deckCard.locator("select").last().inputValue()) === imported.id,
     "re-importing the same deck targets its list",
   );
   await page.getByRole("button", { name: "Import", exact: true }).click();
-  await done.waitFor({ timeout: 15000 });
+  await done.waitFor({ timeout: budget(15000) });
   const again = await done.innerText();
   check(again.includes("1 added") && again.includes("1 updated"), `re-import syncs: ${again}`);
   const after2 = (

@@ -265,10 +265,9 @@ The project uses Husky, split by speed:
   API/UI/sync/userscript suites against `wrangler dev` on local D1 (see the
   qa:all section above). CI runs qa:all only nightly, so this hook is the
   per-change integration gate.
-- the unit suite and qa:all wait for one machine-wide lock, so parallel agents
-  queue instead of timing out each other's tests; `bun run test:unit` and
-  `bun run qa:all` by hand take it too, `bun test unit/x.test.ts` does not
-  ([docs/shipping.md](docs/shipping.md), "One heavy run at a time")
+- only qa:all's time-sensitive suites wait, for load-based admission to a
+  machine-wide gate; everything else starts at once
+  ([docs/shipping.md](docs/shipping.md), "Admission by load")
 
 Never use `--no-verify` (AGENTS.md hard rule) — it skips the userscript meta
 sync and secret scan on commit, and every local gate on push.

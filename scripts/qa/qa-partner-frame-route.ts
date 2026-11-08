@@ -17,6 +17,7 @@
  */
 import { chromium } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
+import { budget } from "./load-budget.mjs";
 
 const BASE = (process.env.QA_BASE || "http://localhost:3000").replace(/\/$/, "");
 const QA_DIR = new URL(".", import.meta.url).pathname;
@@ -85,12 +86,12 @@ try {
       () => ((window as unknown as { __tickets?: number }).__tickets ?? 0) > 0,
       undefined,
       {
-        timeout: 10_000,
+        timeout: budget(10_000),
       },
     );
     check(true, "the frame asked the shell for a ticket, over the port");
     const input = frame.locator('[data-testid="debug-chat-input"]');
-    await input.waitFor({ timeout: 10_000 });
+    await input.waitFor({ timeout: budget(10_000) });
     await input.click();
     await p.keyboard.type("hello frame");
     const value = await input.inputValue();

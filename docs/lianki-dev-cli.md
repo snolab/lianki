@@ -26,7 +26,8 @@ lianki-dev say --as codex "PR #670 is green"        # → 【codex】PR #670 is 
 lianki-dev say --voice device:Meijia "你好呀"         # one line in a phone voice (ids: lianki-dev voices)
 lianki-dev voices                                   # the phone's device voices + the cloud's, as ids
 lianki-dev ask --as judge --q "Ship it?" --opt Yes --opt No --wait
-lianki-dev progress --as codex --path /dev/cli --task "CLI" --status doing --pct 40 --eta 30m
+lianki-dev progress --as codex --path /dev/cli --task "CLI: one entry for the lanes" --status doing --pct 40 --eta 30m
+lianki-dev progress stats --as codex --since 7d    # your done tasks: estimate vs actual, median ratio
 lianki-dev doctor --as codex                        # what is missing here
 lianki-dev <command> --help
 ```
@@ -35,7 +36,11 @@ lianki-dev <command> --help
 
 - `--as <lane>` or `LIANKI_LANE=<lane>` labels each `say` line and each
   `ask` question `【<lane>】` (until multi-lane chat ships), and is the
-  default `--agent` of a `progress` report.
+  default `--agent` of a `progress` report (and of `progress stats`).
+- A `progress --task` is "name: description" (':' or '：'): a name of 1–20
+  characters, then what it is — the owner's ETA bar shows only the name, the
+  list both. A longer name is a usage error; no colon and over 20 is a
+  warning. [docs/state-tree.md](state-tree.md), "Live progress".
 - With `LIANKI_TOKEN` set (a lane token, below), `say`, `ask` and `listen`
   run `lianki chat …` instead of eval.ts: the label is the token's name, not
   `--as`, and `--to`, `--task-path`, `--agent`, more than one `--q` and

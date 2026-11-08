@@ -63,7 +63,6 @@ import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
-import { droppedLines, forgetDropped, keepDroppedLines } from "./stt-dropped";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
@@ -191,6 +190,7 @@ import {
   sidebarReserve,
   fullBottomPad,
   fullScreenAllowed,
+  fullScreenBack,
   fullScreenBox,
   fullScreenOn,
 } from "./full-screen";
@@ -2381,15 +2381,20 @@ export function DebugChat({
       maxScroll: el.scrollHeight - el.clientHeight,
     });
   }, [full]);
-  // Back leaves full screen (docs/ui-state.md, "Back closes an overlay"), only
-  // when a tap here opened it: an entry pushed at load, with no gesture, is
-  // one the browser may skip. Left any other way, the entry is consumed.
+  // Back leaves full screen (docs/ui-state.md, "Back closes an overlay";
+  // full-screen.ts fullScreenBack): its entry is taken at once after a tap,
+  // else at the first gesture. Left any other way, the entry is consumed.
   useEffect(() => {
-    if (!full || !fullByTap.current || !backToClose) return;
-    const close = backToClose(() => {
-      fullByTap.current = false;
-      chatPrefs().setState({ full: false });
-    });
+    if (!full || !backToClose) return;
+    const close = fullScreenBack(
+      window,
+      backToClose,
+      () => {
+        fullByTap.current = false;
+        chatPrefs().setState({ full: false });
+      },
+      fullByTap.current,
+    );
     return () => {
       fullByTap.current = false;
       close();
@@ -2505,8 +2510,6 @@ export function DebugChat({
       passage.current?.cancel();
     };
   }, []);
-  // Only the hub-verified owner's page keeps dropped lines, in memory (stt-dropped.ts).
-  useEffect(() => keepDroppedLines(owner && !friend), [owner, friend]);
   const dictated = (t: string) => {
     // A blip (one short Latin word, or only 嗯/呃) is not a line; short answers pass.
     if (isBlip(t)) {
@@ -3398,30 +3401,6 @@ export function DebugChat({
           </span>
           {t.vpMenu}
         </button>
-      )}
-      {/* What the silence guard dropped (stt-dropped.ts): the owner's, on this device; a tap puts it back in the box. */}
-      {owner && !friend && droppedLines().length > 0 && (
-        <div data-testid="debug-menu-dropped" className="flex flex-col px-3 py-1.5">
-          <span className="opacity-60">{strings?.droppedLines ? t.droppedLines : ui.droppedLines}</span>
-          {droppedLines().map((l) => (
-            <button
-              key={l.at}
-              type="button"
-              role="menuitem"
-              title={l.reason}
-              onClick={() => {
-                forgetDropped(l);
-                const next = joinText(draftRef.current, l.text);
-                draftRef.current = next;
-                setDraft(next);
-                setMenu(false);
-              }}
-              className="truncate py-0.5 text-start"
-            >
-              {l.text}
-            </button>
-          ))}
-        </div>
       )}
       {/* Voice clips (clips.ts): a tap turns this window's recording on; the badge stops it. */}
       {!friend && !embedded && !clipsHub?.on && clipsCanStart && (

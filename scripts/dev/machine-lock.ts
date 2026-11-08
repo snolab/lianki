@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
- * One heavy test run at a time on this machine, across all worktrees: time-
- * sensitive tests time out when parallel agents run the suites at once.
+ * The machine-wide gate for time-sensitive test runs, across all worktrees: a run
+ * is admitted while the machine has room (load, memory), always at least one.
  *
  *   bun scripts/dev/machine-lock.ts [--whole-suite] [--label <text>] -- <command...>
  *
- * Waits for the lock, runs the command, passes on its exit code. The rules are
- * in docs/shipping.md, "One heavy run at a time"; the lock in machine-lock-lib.ts.
+ * Waits for admission, runs the command, passes on its exit code. The rules are
+ * in docs/shipping.md, "Admission by load"; the lock in machine-lock-lib.ts.
  * This file is the process side, tested through real child processes
  * (unit/machine-lock.test.ts).
  *
@@ -22,17 +22,16 @@ import { constants } from "node:os";
 import {
   type Holder,
   TOKEN_ENV,
-  describeHolder,
+  acquireGate,
+  gateRules,
   isCi,
   isNarrowedSuite,
-  isReentrant,
-  jst,
+  isReentrantAny,
   lockPath,
   makeHolder,
   parseLockArgs,
   release,
-  tryAcquire,
-  waitReporter,
+  slotPaths,
 } from "./machine-lock-lib";
 
 const say = (line: string) => console.error(`machine-lock: ${line}`);
@@ -44,15 +43,16 @@ if ("error" in parsed) {
 }
 const { command, label, wholeSuite } = parsed;
 
-const path = lockPath();
+const base = lockPath();
+const slots = slotPaths(base, gateRules().maxRuns);
 const pollMs = Number(process.env.LIANKI_GATE_POLL_MS) || 3000;
 let child: ChildProcess | null = null;
-let held: Holder | null = null;
+let held: { me: Holder; path: string } | null = null;
 
 process.on("exit", () => {
   if (!held) return;
   try {
-    release(path, held.token);
+    release(held.path, held.me.token);
   } catch {}
 });
 
@@ -81,34 +81,10 @@ function run(env: NodeJS.ProcessEnv): Promise<number> {
   });
 }
 
-async function acquire(me: Holder): Promise<void> {
-  const report = waitReporter();
-  const started = Date.now();
-  let waited = false;
-  for (;;) {
-    const r = tryAcquire(path, me);
-    for (const dead of r.tookOver) {
-      const who = dead.holder ? describeHolder(dead.holder) : "unreadable lock file";
-      say(`took over from a dead holder: ${who}`);
-    }
-    if (r.acquired) {
-      held = me;
-      if (waited) {
-        const s = Math.round((Date.now() - started) / 1000);
-        say(`acquired at ${jst(Date.now())}, after ${s} s`);
-      }
-      return;
-    }
-    waited = true;
-    for (const line of report(r.holder)) say(line);
-    await new Promise((done) => setTimeout(done, pollMs * (0.75 + Math.random() / 2)));
-  }
-}
-
 function needsLock(): boolean {
   if (isCi() || (wholeSuite && isNarrowedSuite(command))) return false;
   try {
-    return !isReentrant(path, process.env[TOKEN_ENV]);
+    return !isReentrantAny(slots, process.env[TOKEN_ENV]);
   } catch {
     return true;
   }
@@ -118,10 +94,10 @@ let env: NodeJS.ProcessEnv = process.env;
 if (needsLock()) {
   const me = makeHolder(label ?? command.join(" "));
   try {
-    await acquire(me);
+    held = await acquireGate(slots, me, { say, pollMs });
     env = { ...process.env, [TOKEN_ENV]: me.token };
   } catch (e) {
-    say(`warning: cannot use ${path} (${(e as Error).message}); running without the lock`);
+    say(`warning: cannot use ${base} (${(e as Error).message}); running without the lock`);
   }
 }
 process.exit(await run(env));

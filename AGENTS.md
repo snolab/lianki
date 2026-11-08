@@ -22,7 +22,7 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - **Don't loop failed pushes.** The hook is one attempt, with no retries in code.
   If a time-sensitive suite times out, look at the load first (`uptime`); if it is
   high, wait, then retry once. See
-  [docs/shipping.md](docs/shipping.md), "One heavy run at a time".
+  [docs/shipping.md](docs/shipping.md), "Admission by load".
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
@@ -32,10 +32,10 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
 bun test unit/x.test.ts  # one test file, no queue
-bun run test:unit      # whole unit suite: waits for the machine-wide lock
+bun run test:unit      # whole unit suite, starts at once
 bun fix                # oxlint --fix + oxfmt
 bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run it)
-bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push); machine-wide lock
+bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push); time-sensitive suites wait for load-based admission
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 
@@ -107,9 +107,11 @@ the same change; translators read it before every string. How:
 While working on Lianki, report to the live state tree
 ([docs/state-tree.md](docs/state-tree.md), "Live progress") at the start, at
 milestones, when blocked, and when done (with the PR):
-`bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<what>" --status doing --pct 40`
+`bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<name>: <description>" --status doing --pct 40 --eta 30m`
 (`--done --pr N` at the end; `--status waiting-owner --needs "…"` when the
-owner must act). Use the token you were given (`--token` or
+owner must act). The title is "name: description" with a name of at most 20
+characters, because the owner's ETA bar shows only the name (a longer one is
+refused). `progress.ts stats` shows your estimate vs actual, to calibrate `--eta`. Use the token you were given (`--token` or
 `LIANKI_PROGRESS_TOKEN`); stay inside its scope.
 
 ## Where to look

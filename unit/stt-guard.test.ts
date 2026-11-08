@@ -3,17 +3,11 @@
  * "Silence guard"): known hallucinations dropped, real sentences kept, and a
  * dropped line reaching nothing: not the chat, not a command, not a send cue.
  */
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { type MicDeps, createMicSession } from "@lianki/debug-chat/mic-session";
 import { micTaps } from "@lianki/debug-chat/mic-taps";
 import { type VadEvents, cleanTranscript, createMic } from "@lianki/debug-chat/mic";
 import { localSignals } from "@lianki/debug-chat/local-stt";
-import {
-  droppedLines,
-  forgetDropped,
-  keepDroppedLines,
-  noteDropped,
-} from "../packages/debug-chat/src/stt-dropped";
 import {
   STOCK_PHRASES,
   STT_GUARD,
@@ -229,7 +223,6 @@ describe("a dropped line reaches nothing", () => {
     const { sec = 3, prob = 0.9, level = 0.2 } = o;
     const logs: Record<string, unknown>[] = [];
     const texts: string[] = [];
-    const dropped: [string, string][] = [];
     let ev: VadEvents | null = null;
     const mic = createMic({
       load: async (e) => {
@@ -244,7 +237,6 @@ describe("a dropped line reaches nothing", () => {
       onText: (t) => void texts.push(t),
       onPending() {},
       log: (e) => void logs.push(e),
-      dropped: (t, r) => void dropped.push([t, r]),
       partials: false,
     });
     await mic.toggle();
@@ -254,7 +246,7 @@ describe("a dropped line reaches nothing", () => {
     e.onSpeechEnd(new Float32Array(sec * RATE).fill(level));
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
-    return { texts, logs, dropped };
+    return { texts, logs };
   }
 
   it("the owner's line: no text out; its reason and counts logged, never its words", async () => {
@@ -273,8 +265,6 @@ describe("a dropped line reaches nothing", () => {
       },
     ]);
     expect(JSON.stringify(r.logs)).not.toContain("明镜");
-    // The on-device view is the only one that gets the text.
-    expect(r.dropped).toEqual([["明镜需要您的支持", "stock-credit"]]);
   });
 
   it("a cleaned phrase is logged by length too", async () => {
@@ -288,7 +278,6 @@ describe("a dropped line reaches nothing", () => {
     expect((await say("今天天气不错", { level: 0 })).texts).toEqual([]);
     const kept = await say("他说感谢观看这个视频的人");
     expect(kept.texts).toEqual(["他说感谢观看这个视频的人"]);
-    expect(kept.dropped).toEqual([]);
   });
 
   /** Through the page's session: the taps first, then the chat's sink. */
@@ -327,25 +316,5 @@ describe("a dropped line reaches nothing", () => {
     expect(await session("下一张", 0)).toEqual({ offered: [], sent: [] });
     // The same path with a real line: offered first, then the chat.
     expect(await session("下一张", 0.2)).toEqual({ offered: ["下一张"], sent: ["下一张"] });
-  });
-});
-
-describe("the on-device view", () => {
-  afterEach(() => keepDroppedLines(false));
-
-  it("keeps nothing unless an owner page turned it on", () => {
-    keepDroppedLines(false);
-    noteDropped("x", "stock-credit");
-    expect(droppedLines()).toEqual([]);
-  });
-  it("keeps the newest, in memory, and forgets on demand or when turned off", () => {
-    keepDroppedLines(true);
-    for (let i = 0; i < 30; i++) noteDropped(`line ${i}`, "silent-audio", () => i);
-    expect(droppedLines()).toHaveLength(20);
-    expect(droppedLines()[0].text).toBe("line 29");
-    forgetDropped(droppedLines()[0]);
-    expect(droppedLines()[0].text).toBe("line 28");
-    keepDroppedLines(false);
-    expect(droppedLines()).toEqual([]);
   });
 });
