@@ -18,15 +18,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type Holder,
+  DEFAULT_SLOTS,
   LOCK_ENV,
   LONG_HOLD_MS,
   PROGRESS_EVERY_MS,
+  SLOTS_ENV,
   TOKEN_ENV,
   describeHolder,
   isCi,
   isHolderAlive,
   isNarrowedSuite,
   isReentrant,
+  isReentrantAny,
   jst,
   lockPath,
   makeHolder,
@@ -34,7 +37,10 @@ import {
   processStartTime,
   readLock,
   release,
+  slotCount,
+  slotPaths,
   tryAcquire,
+  tryAcquireSlot,
   waitReporter,
 } from "../scripts/dev/machine-lock-lib";
 
@@ -63,12 +69,15 @@ const until = async (what: string, ok: () => boolean) => {
   }
 };
 
-/** The test may itself run under the lock, or in CI: children start clean. */
+/**
+ * The test may itself run under the lock, or in CI: children start clean. One
+ * slot unless a test asks for more, so the one-slot rules are tested as such.
+ */
 const cleanEnv = (extra: Record<string, string> = {}) => {
   const env: NodeJS.ProcessEnv = { ...process.env };
   delete env.CI;
   delete env[TOKEN_ENV];
-  return { ...env, [LOCK_ENV]: lock, LIANKI_GATE_POLL_MS: "20", ...extra };
+  return { ...env, [LOCK_ENV]: lock, [SLOTS_ENV]: "1", LIANKI_GATE_POLL_MS: "20", ...extra };
 };
 
 /** Starts the wrapper around a shell line; stderr and stdout go to `<name>.log`. */
@@ -316,6 +325,74 @@ describe("the lock file", () => {
   });
 });
 
+describe("slots", () => {
+  test("two by default; a positive integer overrides, anything else is the default", () => {
+    expect(DEFAULT_SLOTS).toBe(2);
+    expect(slotCount({})).toBe(2);
+    expect(slotCount({ [SLOTS_ENV]: "1" })).toBe(1);
+    expect(slotCount({ [SLOTS_ENV]: "3" })).toBe(3);
+    for (const bad of ["0", "-1", "1.5", "two", ""])
+      expect(slotCount({ [SLOTS_ENV]: bad })).toBe(2);
+  });
+
+  test("slot 1 is the original lock path, so a wrapper from before slots meets this one", () => {
+    expect(slotPaths("/tmp/lianki-gate.lock", 2)).toEqual([
+      "/tmp/lianki-gate.lock",
+      "/tmp/lianki-gate.lock.2",
+    ]);
+    expect(slotPaths(lock, 1)).toEqual([lock]);
+  });
+
+  test("the first free slot is taken; when all are held, every live holder is named", () => {
+    const paths = slotPaths(lock, 2);
+    const a = makeHolder("a");
+    const b = makeHolder("b");
+    expect(tryAcquireSlot(paths, a)).toEqual({ acquired: true, path: paths[0], tookOver: [] });
+    expect(tryAcquireSlot(paths, b)).toEqual({ acquired: true, path: paths[1], tookOver: [] });
+    const c = tryAcquireSlot(paths, makeHolder("c"));
+    expect(c.acquired).toBe(false);
+    if (!c.acquired) expect(c.holders.map((h) => h.token)).toEqual([a.token, b.token]);
+
+    release(paths[0], a.token);
+    expect(tryAcquireSlot(paths, makeHolder("d"))).toMatchObject({
+      acquired: true,
+      path: paths[0],
+    });
+  });
+
+  test("a dead holder in either slot is taken over; a live one never", () => {
+    const paths = slotPaths(lock, 2);
+    const live = makeHolder("live");
+    plant(live, paths[0]);
+    const dead = fakeHolder({ token: "dead" });
+    plant(dead, paths[1]);
+    const r = tryAcquireSlot(paths, makeHolder("me"));
+    expect(r).toMatchObject({ acquired: true, path: paths[1] });
+    expect(r.tookOver.map((s) => s.holder?.token)).toEqual(["dead"]);
+    expect(readLock(paths[0])?.holder?.token).toBe(live.token);
+  });
+
+  test("re-entrant in whichever slot the live holder has", () => {
+    const paths = slotPaths(lock, 2);
+    plant(makeHolder("other"), paths[0]);
+    const me = makeHolder("me");
+    tryAcquireSlot(paths, me);
+    expect(readLock(paths[1])?.holder?.token).toBe(me.token);
+    expect(isReentrantAny(paths, me.token)).toBe(true);
+    expect(isReentrantAny(paths, "stale")).toBe(false);
+    expect(isReentrantAny(paths, undefined)).toBe(false);
+  });
+
+  test("a waiter names each holder of every slot once", () => {
+    const report = waitReporter(() => Date.parse("2026-11-07T01:00:00Z"));
+    const a = fakeHolder({ token: "a", pid: 1 });
+    const b = fakeHolder({ token: "b", pid: 2 });
+    expect(report([a, b]).filter((l) => l.startsWith("held by"))).toHaveLength(2);
+    expect(report([a, b])).toEqual([]);
+    expect(report([b])).toEqual([]);
+  });
+});
+
 describe("what a waiter prints", () => {
   test("times are JST and labelled", () => {
     expect(jst(Date.parse("2026-11-07T01:02:03Z"))).toBe("2026-11-07 10:02:03 JST");
@@ -429,6 +506,72 @@ describe("the wrapper, as real processes", () => {
       expect(existsSync(join(dir, "bad"))).toBe(false);
       expect(readFileSync(join(dir, "count"), "utf8")).toBe("x\n".repeat(6));
       expect(existsSync(lock)).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "two slots: two run at once, a third waits naming both, and runs when one ends",
+    async () => {
+      const two = { [SLOTS_ENV]: "2" };
+      const a = wrapper("a", blocker("a"), two, ["--label", "run a"]);
+      await until("a to start", () => up("a"));
+      const b = wrapper("b", blocker("b"), two, ["--label", "run b"]);
+      await until("b to start beside a", () => up("b"));
+      expect(readLock(`${lock}.2`)?.holder?.command).toBe("run b");
+
+      const c = wrapper("c", "echo c-ran >> order", two);
+      await until("c to wait", () => c.log().includes("waiting"));
+      expect(c.log()).toContain("all 2 slots are busy");
+      expect(c.log()).toContain("run a");
+      expect(c.log()).toContain("run b");
+      expect(existsSync(join(dir, "order"))).toBe(false);
+
+      go("b");
+      expect(await b.done).toBe(0);
+      expect(await c.done).toBe(0);
+      expect(readFileSync(join(dir, "order"), "utf8")).toBe("c-ran\n");
+      go("a");
+      expect(await a.done).toBe(0);
+      expect(existsSync(lock)).toBe(false);
+      expect(existsSync(`${lock}.2`)).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "two slots: a holder killed outright is taken over by a waiter",
+    async () => {
+      const two = { [SLOTS_ENV]: "2" };
+      const a = wrapper("a", blocker("a"), two);
+      await until("a to start", () => up("a"));
+      const b = wrapper("b", blocker("b"), two);
+      await until("b to start", () => up("b"));
+      const bCommand = Number(readFileSync(join(dir, "b.up"), "utf8"));
+      const c = wrapper("c", "echo c-ran >> order", two);
+      await until("c to wait", () => c.log().includes("waiting"));
+
+      b.child.kill("SIGKILL");
+      expect(await c.done).toBe(0);
+      expect(c.log()).toContain(`took over from a dead holder: pid ${b.child.pid}`);
+      process.kill(bCommand, "SIGKILL"); // it outlived its wrapper
+      go("a");
+      expect(await a.done).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "two slots, many contenders racing: never more than two running at once",
+    async () => {
+      plant(fakeHolder());
+      // Each run takes one of two seats with mkdir; a third seat taken = overlap.
+      const line = `if mkdir s1 2>/dev/null; then s=s1; elif mkdir s2 2>/dev/null; then s=s2; else echo overlap >> bad; s=; fi; echo x >> count; sleep 0.05; [ -n "$s" ] && rmdir $s`;
+      const all = Array.from({ length: 6 }, (_, i) => wrapper(`c${i}`, line, { [SLOTS_ENV]: "2" }));
+      expect(await Promise.all(all.map((c) => c.done))).toEqual([0, 0, 0, 0, 0, 0]);
+      expect(existsSync(join(dir, "bad"))).toBe(false);
+      expect(readFileSync(join(dir, "count"), "utf8")).toBe("x\n".repeat(6));
+      expect(readdirSync(dir).filter((f) => f.startsWith("gate.lock"))).toEqual([]);
     },
     TIMEOUT,
   );

@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
- * One heavy test run at a time on this machine, across all worktrees: time-
- * sensitive tests time out when parallel agents run the suites at once.
+ * At most two heavy test runs at a time on this machine, across all worktrees
+ * (LIANKI_GATE_SLOTS, default 2): more at once and time-sensitive tests time out.
  *
  *   bun scripts/dev/machine-lock.ts [--whole-suite] [--label <text>] -- <command...>
  *
- * Waits for the lock, runs the command, passes on its exit code. The rules are
- * in docs/shipping.md, "One heavy run at a time"; the lock in machine-lock-lib.ts.
+ * Waits for a free slot, runs the command, passes on its exit code. The rules are
+ * in docs/shipping.md, "Two heavy runs at a time"; the lock in machine-lock-lib.ts.
  * This file is the process side, tested through real child processes
  * (unit/machine-lock.test.ts).
  *
@@ -25,13 +25,15 @@ import {
   describeHolder,
   isCi,
   isNarrowedSuite,
-  isReentrant,
+  isReentrantAny,
   jst,
   lockPath,
   makeHolder,
   parseLockArgs,
   release,
-  tryAcquire,
+  slotCount,
+  slotPaths,
+  tryAcquireSlot,
   waitReporter,
 } from "./machine-lock-lib";
 
@@ -44,15 +46,16 @@ if ("error" in parsed) {
 }
 const { command, label, wholeSuite } = parsed;
 
-const path = lockPath();
+const base = lockPath();
+const slots = slotPaths(base, slotCount());
 const pollMs = Number(process.env.LIANKI_GATE_POLL_MS) || 3000;
 let child: ChildProcess | null = null;
-let held: Holder | null = null;
+let held: { me: Holder; path: string } | null = null;
 
 process.on("exit", () => {
   if (!held) return;
   try {
-    release(path, held.token);
+    release(held.path, held.me.token);
   } catch {}
 });
 
@@ -86,21 +89,22 @@ async function acquire(me: Holder): Promise<void> {
   const started = Date.now();
   let waited = false;
   for (;;) {
-    const r = tryAcquire(path, me);
+    const r = tryAcquireSlot(slots, me);
     for (const dead of r.tookOver) {
       const who = dead.holder ? describeHolder(dead.holder) : "unreadable lock file";
       say(`took over from a dead holder: ${who}`);
     }
     if (r.acquired) {
-      held = me;
+      held = { me, path: r.path };
       if (waited) {
         const s = Math.round((Date.now() - started) / 1000);
         say(`acquired at ${jst(Date.now())}, after ${s} s`);
       }
       return;
     }
+    if (!waited && slots.length > 1) say(`all ${slots.length} slots are busy`);
     waited = true;
-    for (const line of report(r.holder)) say(line);
+    for (const line of report(r.holders)) say(line);
     await new Promise((done) => setTimeout(done, pollMs * (0.75 + Math.random() / 2)));
   }
 }
@@ -108,7 +112,7 @@ async function acquire(me: Holder): Promise<void> {
 function needsLock(): boolean {
   if (isCi() || (wholeSuite && isNarrowedSuite(command))) return false;
   try {
-    return !isReentrant(path, process.env[TOKEN_ENV]);
+    return !isReentrantAny(slots, process.env[TOKEN_ENV]);
   } catch {
     return true;
   }
@@ -121,7 +125,7 @@ if (needsLock()) {
     await acquire(me);
     env = { ...process.env, [TOKEN_ENV]: me.token };
   } catch (e) {
-    say(`warning: cannot use ${path} (${(e as Error).message}); running without the lock`);
+    say(`warning: cannot use ${base} (${(e as Error).message}); running without the lock`);
   }
 }
 process.exit(await run(env));

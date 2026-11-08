@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
+import { budget } from "./load-budget.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const EMAIL = `qa+ui${Date.now()}@lianki.test`;
 const PW = "qa-test-pass-1234";
@@ -71,7 +72,7 @@ check(
 // 2. Email → Continue
 await page.locator("#email").fill(EMAIL);
 await page.getByRole("button", { name: "Continue" }).click();
-await page.waitForSelector("#password", { timeout: 10000 });
+await page.waitForSelector("#password", { timeout: budget(10000) });
 log("✓ advanced to password step");
 
 // 3. Password → Sign in (auto-signup on first use). With a platform
@@ -82,13 +83,13 @@ await page.getByRole("button", { name: /sign in/i }).click();
 {
   const suggestion = page.getByRole("heading", { name: "Sign in faster next time" });
   const offered = await suggestion
-    .waitFor({ timeout: 20000 })
+    .waitFor({ timeout: budget(20000) })
     .then(() => true)
     .catch(() => false);
   check(offered, "after an email sign-in, a passkey is offered");
   if (offered) {
     await Promise.all([
-      page.waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: 20000 }),
+      page.waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: budget(20000) }),
       page.getByRole("button", { name: "Not now" }).click(),
     ]);
     check(
@@ -217,13 +218,13 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   await phone.locator("header").getByRole("button", { name: "Menu", exact: true }).click();
   const drawer = phone.locator('[data-drawer][role="dialog"][aria-modal="true"]');
   const opened = await drawer
-    .waitFor({ timeout: 5000 })
+    .waitFor({ timeout: budget(5000) })
     .then(() => true)
     .catch(() => false);
   const backdrop = await phone.getByRole("button", { name: "Close menu" }).count();
   await phone.keyboard.press("Escape");
   const closed = await drawer
-    .waitFor({ state: "detached", timeout: 5000 })
+    .waitFor({ state: "detached", timeout: budget(5000) })
     .then(() => true)
     .catch(() => false);
   check(
@@ -236,20 +237,20 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   const island = phone.locator("[data-nav-island]");
   await island.getByRole("button", { name: /^Menu/ }).click();
   const viaIsland = await drawer
-    .waitFor({ timeout: 5000 })
+    .waitFor({ timeout: budget(5000) })
     .then(() => true)
     .catch(() => false);
   await phone.keyboard.press("Escape");
-  await drawer.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  await drawer.waitFor({ state: "detached", timeout: budget(5000) }).catch(() => {});
   await island.getByRole("button", { name: /^Search/ }).click();
   const palette = phone.getByRole("dialog", { name: "Search" });
   const searchOpen = await palette
-    .waitFor({ timeout: 5000 })
+    .waitFor({ timeout: budget(5000) })
     .then(() => true)
     .catch(() => false);
   await phone.keyboard.press("Escape");
   const searchClosed = await palette
-    .waitFor({ state: "detached", timeout: 5000 })
+    .waitFor({ state: "detached", timeout: budget(5000) })
     .then(() => true)
     .catch(() => false);
   check(
@@ -259,7 +260,7 @@ log(`✓ roadmap loaded: ${await page.title()}`);
 
   await phone.locator("[data-profile-menu]").click();
   const name = phone.locator("[data-debug-name]");
-  await name.waitFor({ timeout: 5000 });
+  await name.waitFor({ timeout: budget(5000) });
   await name.click();
   const stillOpen = await name.isVisible();
   // A plain tap on the page heading, outside the menu. Not locator.click():
@@ -267,7 +268,7 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   const h1Box = await phone.locator("h1").first().boundingBox();
   await phone.mouse.click(h1Box.x + 4, h1Box.y + h1Box.height / 2);
   const shut = await name
-    .waitFor({ state: "detached", timeout: 5000 })
+    .waitFor({ state: "detached", timeout: budget(5000) })
     .then(() => true)
     .catch(() => false);
   check(
@@ -285,16 +286,19 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   const input = page.locator("#profile-name");
   await input.fill("Not saved");
   await input.press("Escape");
-  await page.getByTestId("edit-name").waitFor({ timeout: 5000 });
+  await page.getByTestId("edit-name").waitFor({ timeout: budget(5000) });
   check(!(await page.getByText("Not saved").count()), "profile: Esc cancels the name edit");
   await page.getByTestId("edit-name").click();
   await input.fill("  Renamed QA ");
   await input.press("Enter");
-  await page.getByText("Renamed QA").first().waitFor({ timeout: 10000 });
+  await page
+    .getByText("Renamed QA")
+    .first()
+    .waitFor({ timeout: budget(10000) });
   await page.waitForFunction(
     () => document.querySelector("[data-profile-menu]")?.textContent?.includes("Renamed QA"),
     undefined,
-    { timeout: 10000 },
+    { timeout: budget(10000) },
   );
   check(true, "profile: Enter saves the name, and the nav shows it");
 
@@ -313,7 +317,7 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     mimeType: "image/png",
     buffer: Buffer.from(png, "base64"),
   });
-  await page.getByTestId("remove-avatar").waitFor({ timeout: 15000 });
+  await page.getByTestId("remove-avatar").waitFor({ timeout: budget(15000) });
   const size = await page.getByTestId("profile-avatar").evaluate(async (i) => {
     await i.decode();
     return [i.naturalWidth, i.naturalHeight];
@@ -322,7 +326,7 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     size[0] === 512 && size[1] === 512,
     `profile: picture cropped to a 512 px square (${size})`,
   );
-  await shown.locator('img[src^="/api/avatar/"]').waitFor({ timeout: 10000 });
+  await shown.locator('img[src^="/api/avatar/"]').waitFor({ timeout: budget(10000) });
   check(true, "…and the nav shows it without a reload");
 
   await page.getByTestId("avatar-file").setInputFiles({
@@ -330,11 +334,11 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     mimeType: "image/png",
     buffer: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"),
   });
-  await page.getByText("can't be used as a photo").waitFor({ timeout: 5000 });
+  await page.getByText("can't be used as a photo").waitFor({ timeout: budget(5000) });
   check(true, "profile: an SVG renamed .png is refused");
 
   await page.getByTestId("remove-avatar").click();
-  await page.getByTestId("remove-avatar").waitFor({ state: "detached", timeout: 10000 });
+  await page.getByTestId("remove-avatar").waitFor({ state: "detached", timeout: budget(10000) });
   check(true, "profile: the picture can be removed");
 }
 
@@ -342,10 +346,10 @@ log(`✓ roadmap loaded: ${await page.title()}`);
 // with it, then delete it.
 {
   await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
-  await page.getByText("No passkeys yet.").waitFor({ timeout: 10000 });
+  await page.getByText("No passkeys yet.").waitFor({ timeout: budget(10000) });
   await page.getByRole("button", { name: "Add a passkey" }).click();
   const list = page.getByTestId("passkey-list");
-  await list.waitFor({ timeout: 20000 });
+  await list.waitFor({ timeout: budget(20000) });
   check((await list.locator("li").count()) === 1, "profile: a passkey was added and is listed");
   check(/Chrome/.test(await list.locator("li").first().innerText()), "…named after the browser");
   check((await credentialCount()) === 1, "…and the authenticator holds one resident credential");
@@ -353,7 +357,7 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   await list.getByRole("button", { name: "Rename" }).click();
   await list.getByLabel("Passkey name").fill("QA key");
   await list.getByRole("button", { name: "Save" }).click();
-  await list.getByText("QA key").waitFor({ timeout: 10000 });
+  await list.getByText("QA key").waitFor({ timeout: budget(10000) });
   check(true, "profile: passkey renamed");
 
   const out = await page.evaluate(async () => {
@@ -378,16 +382,16 @@ log(`✓ roadmap loaded: ${await page.title()}`);
       .click()
       .catch(() => {});
   await page
-    .waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: 20000 })
+    .waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: budget(20000) })
     .catch(() => {});
   const back = await getSession();
   check(back?.user?.email === EMAIL, `signed back in with the passkey (url=${page.url()})`);
 
   await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
-  await list.waitFor({ timeout: 10000 });
+  await list.waitFor({ timeout: budget(10000) });
   await list.getByRole("button", { name: "Delete" }).click();
   await list.getByRole("button", { name: "Delete" }).click(); // confirm
-  await page.getByText("No passkeys yet.").waitFor({ timeout: 10000 });
+  await page.getByText("No passkeys yet.").waitFor({ timeout: budget(10000) });
   check(true, "profile: passkey deleted");
 }
 
@@ -396,7 +400,7 @@ log(`✓ roadmap loaded: ${await page.title()}`);
 {
   await page.goto(`${BASE}/preferences`, { waitUntil: "networkidle" });
   const box = page.getByTestId("title-rules");
-  await box.waitFor({ timeout: 10000 });
+  await box.waitFor({ timeout: budget(10000) });
   const after = box.getByTestId("title-rules-after");
   check(
     (await after.innerText()) === "怎么能让书里的信息成为自己的知识呢？ - 知乎",
@@ -413,13 +417,13 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   await page.waitForFunction(
     () => document.querySelector('[data-testid="title-rules-after"]')?.textContent === "hello",
     null,
-    { timeout: 5000 },
+    { timeout: budget(5000) },
   );
   check(true, "titles: a pattern of your own applies at once");
   // A pref PATCH goes out 1 s after the last change.
   const patch = await page
     .waitForResponse((r) => r.url().includes("/api/prefs") && r.request().method() === "PATCH", {
-      timeout: 8000,
+      timeout: budget(8000),
     })
     .catch(() => null);
   check(patch?.ok() === true, "titles: the change syncs to the account");
@@ -453,7 +457,7 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   await page.waitForFunction(
     () => document.querySelector('[data-testid="title-rules-after"]')?.textContent === "[QA] hello",
     null,
-    { timeout: 5000 },
+    { timeout: budget(5000) },
   );
   check(true, "titles: your own pattern can be removed");
 }

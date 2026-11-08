@@ -22,7 +22,7 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - **Don't loop failed pushes.** The hook is one attempt, with no retries in code.
   If a time-sensitive suite times out, look at the load first (`uptime`); if it is
   high, wait, then retry once. See
-  [docs/shipping.md](docs/shipping.md), "One heavy run at a time".
+  [docs/shipping.md](docs/shipping.md), "Two heavy runs at a time".
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 

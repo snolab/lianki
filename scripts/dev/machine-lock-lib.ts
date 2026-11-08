@@ -1,6 +1,7 @@
 /**
  * The lock itself behind `scripts/dev/machine-lock.ts`: one machine-wide gate
- * for the heavy local test runs (docs/shipping.md, "One heavy run at a time").
+ * for the heavy local test runs, two slots by default (docs/shipping.md, "Two
+ * heavy runs at a time").
  * The process side (waiting, the child, signals) is in machine-lock.ts.
  *
  * The lock is one file holding its holder as JSON. It appears by hard link, from
@@ -219,6 +220,53 @@ export function isReentrant(path: string, token: string | undefined): boolean {
   return holder?.token === token && isHolderAlive(holder);
 }
 
+// ── Slots: the lock is a semaphore of SLOTS_ENV slots (default 2) ─────────────
+//
+// Each slot is a lock file with exactly the rules above. Slot 1 is the original
+// path, so a wrapper from before slots (another branch's checkout) still meets
+// this one there: it only ever waits for slot 1, and the total stays at most
+// the slot count. Two runs at once is what the machine carries once the
+// time-sensitive suites budget for load (scripts/qa/load-budget.mjs).
+
+export const SLOTS_ENV = "LIANKI_GATE_SLOTS";
+export const DEFAULT_SLOTS = 2;
+
+/** How many heavy runs may hold the gate at once: a positive integer, else the default. */
+export function slotCount(env: Env = process.env): number {
+  const n = Number(env[SLOTS_ENV]);
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, 16) : DEFAULT_SLOTS;
+}
+
+/** The slot files: `<lock>`, `<lock>.2`, … */
+export function slotPaths(base: string, n: number): string[] {
+  return Array.from({ length: n }, (_, i) => (i === 0 ? base : `${base}.${i + 1}`));
+}
+
+export type SlotResult =
+  | { acquired: true; path: string; tookOver: Seen[] }
+  | { acquired: false; holders: Holder[]; tookOver: Seen[] };
+
+/**
+ * One attempt at every slot, in order; the first free one is taken. Not acquired:
+ * `holders` are the live holders seen (fewer than the slots = try again shortly).
+ */
+export function tryAcquireSlot(paths: string[], me: Holder): SlotResult {
+  const tookOver: Seen[] = [];
+  const holders: Holder[] = [];
+  for (const path of paths) {
+    const r = tryAcquire(path, me);
+    tookOver.push(...r.tookOver);
+    if (r.acquired) return { acquired: true, path, tookOver };
+    if (r.holder) holders.push(r.holder);
+  }
+  return { acquired: false, holders, tookOver };
+}
+
+/** Inside a live holder's run, whichever slot it holds. */
+export function isReentrantAny(paths: string[], token: string | undefined): boolean {
+  return paths.some((p) => isReentrant(p, token));
+}
+
 /** A time for the owner: JST, labelled. */
 export function jst(ms: number): string {
   return `${new Date(ms + 9 * 3_600_000).toISOString().slice(0, 19).replace("T", " ")} JST`;
@@ -237,21 +285,24 @@ const minutes = (ms: number) => Math.floor(ms / 60_000);
 export function waitReporter(now: () => number = Date.now) {
   const started = now();
   let lastProgress = started;
-  let named: string | null = null;
-  let warned: string | null = null;
-  return (holder: Holder | null): string[] => {
+  const named = new Set<string>();
+  const warned = new Set<string>();
+  /** `seen`: the live holder, or every slot's live holder. */
+  return (seen: Holder | Holder[] | null): string[] => {
     const lines: string[] = [];
     const at = now();
-    if (holder && holder.token !== named) {
-      named = holder.token;
-      lines.push(`held by ${describeHolder(holder)}; waiting`);
-    }
-    const ran = holder ? at - Date.parse(holder.startedAt) : 0;
-    if (holder && ran >= LONG_HOLD_MS && holder.token !== warned) {
-      warned = holder.token;
-      lines.push(
-        `warning: pid ${holder.pid} has been running ${minutes(ran)} min. It is alive, so it is not taken over; if it is stuck, look at it (ps -p ${holder.pid}).`,
-      );
+    for (const holder of seen ? [seen].flat() : []) {
+      if (!named.has(holder.token)) {
+        named.add(holder.token);
+        lines.push(`held by ${describeHolder(holder)}; waiting`);
+      }
+      const ran = at - Date.parse(holder.startedAt);
+      if (ran >= LONG_HOLD_MS && !warned.has(holder.token)) {
+        warned.add(holder.token);
+        lines.push(
+          `warning: pid ${holder.pid} has been running ${minutes(ran)} min. It is alive, so it is not taken over; if it is stuck, look at it (ps -p ${holder.pid}).`,
+        );
+      }
     }
     if (at - lastProgress >= PROGRESS_EVERY_MS) {
       lastProgress = at;

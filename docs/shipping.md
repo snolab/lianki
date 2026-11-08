@@ -68,14 +68,28 @@ integration gate; `LIANKI_QA_ON_WINDOWS=1` forces the local run, for example to
 re-test after an OpenNext upgrade. WSL counts as Linux and runs the gate
 normally.
 
-## One heavy run at a time
+## Two heavy runs at a time
 
-The unit suite and `qa:all` go behind one machine-wide lock, so parallel agents
-queue instead of running at once: time-sensitive tests time out under load, and
-that reads as a broken test. `scripts/dev/machine-lock.ts` wraps a command and
-waits its turn; the lock is the file `/tmp/lianki-gate.lock`, the same path from
-every worktree. A waiter prints who holds it (pid, worktree, command, start time)
+The unit suite and `qa:all` go behind one machine-wide gate with **two slots**, so
+a third parallel agent queues instead of piling on: past that, time-sensitive
+tests time out under load, and that reads as a broken test. `scripts/dev/machine-lock.ts`
+wraps a command and waits for a free slot; the slots are the files
+`/tmp/lianki-gate.lock` and `/tmp/lianki-gate.lock.2`, the same paths from every
+worktree. `LIANKI_GATE_SLOTS=1` makes it one at a time again (any positive integer
+works). A waiter prints who holds each slot (pid, worktree, command, start time)
 and at most one line a minute after that.
+
+Two at once is safe because the suites budget for load rather than for an idle
+Mac: every QA browser context gets Playwright's 30 s default as a **load budget**,
+and each explicit `timeout:` in a qa:all suite is `budget(ms)` —
+`scripts/qa/load-budget.mjs`, the idle figure times a factor that is 1 up to a
+load of half the cores and grows to at most 4 (`LIANKI_QA_SLOWDOWN` fixes it). Only
+how long a check may take changes, never what it checks. An interval the test
+itself must keep short is not scaled: `qa-read-sel-one` measures its two quick taps'
+pointerdown gap in the page and taps the pair again when the machine made them
+slower than the double-click interval, instead of judging a pair that was not quick.
+Before slots (2026-11-08), one run at a time cost a queue of up to one whole gate
+(~6 min) per agent ahead.
 
 | Run                                                                           | Lock                                                                         |
 | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -90,6 +104,9 @@ and at most one line a minute after that.
 
 Rules it keeps:
 
+- **Each slot is a lock with the same rules**, taken in order, so slot 1 is the
+  old single lock's path: a wrapper from a branch made before slots waits on slot 1
+  only, and the total still never passes two.
 - **Dead holders are taken over, live ones never.** Dead means the pid is gone, a
   zombie, or now belongs to a process with another start time (pid reuse). Age
   counts for nothing: past 30 minutes a waiter prints a warning and keeps waiting.
@@ -99,7 +116,7 @@ Rules it keeps:
   the command can outlive it; the next waiter takes over, so the two can overlap.
 - **Nested use just runs**: the wrapper hands its token down in the environment
   (`LIANKI_GATE_TOKEN`), which is how pre-push reaches `test:unit` and `qa:all`
-  inside its own hold. A token from a finished run does not count.
+  inside its own hold, whichever slot it has. A token from a finished run does not count.
 - **It sits outside the per-checkout lock** in `qa-all.mjs` (`.wrangler/qa-all.lock`),
   which remains for a direct `bun scripts/qa/qa-all.mjs`. Waiters are not served in
   arrival order. If the file can't be used at all it warns and runs unlocked, so a

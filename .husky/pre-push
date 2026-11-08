@@ -32,12 +32,12 @@ set -e
 bun run lint
 bun run typecheck
 
-# The heavy part holds the machine-wide lock as one stretch: parallel agents queue
-# here instead of timing out each other's tests, and no one gets in between the
-# unit suite and qa:all. Both take the lock themselves when run by hand; inside
-# this they see it is theirs and just run. Lint and typecheck stay outside: short,
-# and they fail fast. One attempt, never a retry: docs/shipping.md, "One heavy run
-# at a time".
+# The heavy part holds one slot of the machine-wide gate (two slots) as one
+# stretch: a third agent queues here instead of timing out everyone's tests, and
+# the slot is not given up between the unit suite and qa:all. Both take a slot
+# themselves when run by hand; inside this they see it is theirs and just run. Lint
+# and typecheck stay outside: short, and they fail fast. One attempt, never a
+# retry: docs/shipping.md, "Two heavy runs at a time".
 #
 # Inside: skip qa:all, and only qa:all, on native Windows (Git Bash / MSYS), where
 # it cannot pass: the OpenNext Cloudflare packaging breaks there. With bun's

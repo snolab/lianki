@@ -16,6 +16,7 @@ import { join } from "node:path";
 import JSZip from "jszip";
 import { chromium, devices } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
+import { budget } from "./load-budget.mjs";
 
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const OUT = process.argv[2] || "test-results/read-epub";
@@ -56,28 +57,31 @@ check(
 await page.screenshot({ path: join(OUT, "read-list-light.png") });
 
 await picker.setInputFiles(FIXTURE);
-await page.waitForURL(/\/read\/[^/]+$/, { timeout: 30000 });
+await page.waitForURL(/\/read\/[^/]+$/, { timeout: budget(30000) });
 const id = page.url().split("/").pop();
-await page.getByTestId("reader-v2").waitFor({ timeout: 15000 });
-await page.getByTestId("reader-author").waitFor({ timeout: 15000 });
+await page.getByTestId("reader-v2").waitFor({ timeout: budget(15000) });
+await page.getByTestId("reader-author").waitFor({ timeout: budget(15000) });
 check((await page.getByTestId("reader-author").innerText()) === "O. Henry", "author shown");
 check(
   (await page.locator("[data-reader-chapter]").innerText()).includes("Gift of the Magi"),
   "the strip names the book",
 );
-await page.locator("[data-testid=reader-book] [data-item]").first().waitFor({ timeout: 15000 });
+await page
+  .locator("[data-testid=reader-book] [data-item]")
+  .first()
+  .waitFor({ timeout: budget(15000) });
 await page.getByTestId("reader-ring").click();
 const chapters = page.locator('[data-testid="reader-toc"] li');
-await chapters.first().waitFor({ timeout: 15000 });
+await chapters.first().waitFor({ timeout: budget(15000) });
 check((await chapters.count()) === 3, `contents list 3 chapters (${await chapters.count()})`);
 await page.keyboard.press("Escape");
-await chapters.first().waitFor({ state: "detached", timeout: 5000 });
+await chapters.first().waitFor({ state: "detached", timeout: budget(5000) });
 
 // The scan summary of the imported book's words, at the top of the reader.
 const TOP = '[data-testid="reader-scan-top"]';
 {
   const scan = page.locator(`${TOP} [data-testid="read-scan"]`);
-  await scan.waitFor({ timeout: 15000 });
+  await scan.waitFor({ timeout: budget(15000) });
   const details = page.locator(`${TOP} [data-testid="read-scan-details"]`);
   check(!(await details.isVisible()), "on a phone the details start folded");
   await page.screenshot({ path: join(OUT, "read-top-folded-phone-light.png") });
@@ -93,7 +97,9 @@ const TOP = '[data-testid="reader-scan-top"]';
     tokens > 4800 && tokens < 5000 && distinct > 1250 && distinct < 1300,
     `header word count (${tokens} running, ${distinct} distinct)`,
   );
-  await page.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: 30000 });
+  await page
+    .locator(`${TOP} [data-testid="read-scan-mastered"]`)
+    .waitFor({ timeout: budget(30000) });
   const num = async (t) =>
     Number(
       (await page.locator(`${TOP} [data-testid="read-scan-${t}"]`).innerText()).replace(/\D/g, ""),
@@ -126,7 +132,7 @@ const TOP = '[data-testid="reader-scan-top"]';
 
 // Unfolded stays unfolded on this device.
 await page.reload({ waitUntil: "networkidle" });
-await page.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: 30000 });
+await page.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: budget(30000) });
 check(
   await page.locator(`${TOP} [data-testid="read-scan-details"]`).isVisible(),
   "the details stay open after a reload",
@@ -142,8 +148,8 @@ check(
   });
   const p = await dark.newPage();
   await p.goto(`/read/${id}`, { waitUntil: "networkidle" });
-  await p.getByTestId("reader-v2").waitFor({ timeout: 15000 });
-  await p.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: 30000 });
+  await p.getByTestId("reader-v2").waitFor({ timeout: budget(15000) });
+  await p.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: budget(30000) });
   await p.screenshot({ path: join(OUT, "read-top-open-phone-dark.png") });
   await p.goto("/read", { waitUntil: "networkidle" });
   await p.screenshot({ path: join(OUT, "read-list-dark.png") });
@@ -160,7 +166,7 @@ for (const scheme of ["light", "dark"]) {
   });
   const p = await desk.newPage();
   await p.goto(`/read/${id}`, { waitUntil: "networkidle" });
-  await p.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: 30000 });
+  await p.locator(`${TOP} [data-testid="read-scan-mastered"]`).waitFor({ timeout: budget(30000) });
   check(
     await p.locator(`${TOP} [data-testid="read-scan-details"]`).isVisible(),
     `desktop ${scheme}: the details start open`,
@@ -173,7 +179,7 @@ for (const scheme of ["light", "dark"]) {
 {
   await page.goto("/read", { waitUntil: "networkidle" });
   const row = page.locator('[data-testid="read-row-words"]').first();
-  await row.waitFor({ timeout: 15000 });
+  await row.waitFor({ timeout: budget(15000) });
   check(/[\d,]+ words · [\d,]+ different/.test(await row.innerText()), "list row word count");
   check((await page.locator('[data-testid="read-ring"]').count()) >= 1, "list row ring");
   await page.screenshot({ path: join(OUT, "read-list-words-light.png") });
@@ -190,7 +196,7 @@ for (const scheme of ["light", "dark"]) {
   await page.goto("/read", { waitUntil: "networkidle" });
   await picker.setInputFiles({ name: "drm.epub", mimeType: "application/epub+zip", buffer });
   const alert = page.locator('[data-testid="read-epub-error"]');
-  await alert.waitFor({ timeout: 15000 });
+  await alert.waitFor({ timeout: budget(15000) });
   check(/DRM-protected/.test(await alert.innerText()), "DRM EPUB refused with the message");
   await page.screenshot({ path: join(OUT, "read-drm-light.png") });
 }
