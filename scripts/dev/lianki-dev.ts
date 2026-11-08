@@ -35,6 +35,7 @@ import {
 } from "./lianki-dev-cli";
 import { PROGRESS_USAGE, formatStats, parseProgressArgs } from "./progress-args";
 import { postProgress, progressToken } from "./progress-client";
+import { laneToken } from "./lane-listen";
 import { type ProgressDone, progressStats } from "../../lib/progress";
 
 const HUB = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
@@ -116,6 +117,7 @@ async function facts(g: Global, rest: string[], network: boolean): Promise<Facts
     network: network ? await reach(HUB) : { error: "not checked" },
     progressToken: progressSource(repo, rest),
     sessionDirWritable,
+    ...(g.lane ? { laneToken: laneToken(g.lane).from } : {}),
   };
 }
 
@@ -280,6 +282,33 @@ async function main(): Promise<number> {
   if (sub === "progress") return progress(g, rest, repo);
   if (!repo)
     fail(EXIT.notReady, "no Lianki checkout here: pass --repo <path> (or set LIANKI_REPO)");
+  if (sub === "lane-listen") {
+    // The lane's own listener (docs/lane-listen.md): its own script, its own token.
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        join(repo, "scripts", "dev", "lane-listen.ts"),
+        "--repo",
+        repo,
+        ...(g.lane ? ["--as", g.lane] : []),
+        ...rest,
+      ],
+      { cwd: repo, stdin: "inherit", stdout: "inherit", stderr: "inherit" },
+    );
+    for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => child.kill(sig));
+    return await child.exited;
+  }
+  // A lane's own token in ~/.config/lianki/lanes/<lane>.token stands for LIANKI_TOKEN
+  // (read here, never printed), so `say --as codex` posts with codex's token.
+  if (
+    !process.env.LIANKI_TOKEN &&
+    g.lane &&
+    !g.pair &&
+    (sub === "say" || sub === "ask" || sub === "listen")
+  ) {
+    const t = laneToken(g.lane);
+    if (t.token) process.env.LIANKI_TOKEN = t.token;
+  }
   const stdin = sub === "say" && rest.includes("-") ? await Bun.stdin.text() : undefined;
   // A lane token (LIANKI_TOKEN): say/ask/listen go through the public CLI's
   // `lianki chat`, in that token account's own thread, labelled with its name.

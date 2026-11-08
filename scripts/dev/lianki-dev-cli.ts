@@ -47,6 +47,7 @@ export const SUBCOMMANDS = [
   "ask",
   "inbox",
   "listen",
+  "lane-listen",
   "serve",
   "progress",
   "whoami",
@@ -68,6 +69,7 @@ export const USAGE: Record<Sub | "main", string> = {
   ask      an ask card with tappable options
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
+  lane-listen  a lane's own listener: the owner lines addressed to it, handed to its agent
   serve     hold an eval session (eval.ts serve)
   progress  report to the state tree (progress.ts)
   whoami    lane, checkout, hub, which grant and token are present
@@ -117,6 +119,15 @@ ${EXITS}`,
   The chat listener (eval.ts chat): one JSON line per message or event, as
   eval.ts prints them (also with --json), and it stays connected. Never
   pairs unless --pair (a human, no --as).
+${GLOBAL}
+${EXITS}`,
+  "lane-listen": `usage: lianki-dev lane-listen --as codex|agy (--cwd <lane dir> | --deliver <ay keyword>) [--tests] [--dry-run]
+  The lane's own chat listener (scripts/dev/lane-listen.ts, docs/lane-listen.md):
+  listens with the lane's token, keeps the owner lines addressed to this lane
+  ("codex, …", "agy, …": lib/lane-route.ts) and hands each to the lane's agent
+  with \`ay send\` (from --cwd: \`ay send .\`). The lane answers with
+  \`lianki-dev say --as <lane>\`. --tests: also "[lane-test] …" agent lines.
+  Token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (exit 2 without).
 ${GLOBAL}
 ${EXITS}`,
   serve: `usage: lianki-dev serve [--label "…"]
@@ -366,6 +377,8 @@ export type Facts = {
   progressToken: "flag" | "env" | "dev.vars" | "none";
   /** Whether ~/.config/lianki (serve's session file) is writable. */
   sessionDirWritable: boolean;
+  /** The lane's own chat token: LIANKI_TOKEN, its file (~/.config/lianki/lanes/<lane>.token), or none. */
+  laneToken?: "env" | "file" | "none";
 };
 
 export type Finding = { check: string; level: "ok" | "warn" | "missing"; line: string };
@@ -427,6 +440,20 @@ export function doctorFindings(f: Facts): Finding[] {
           line: "~/.config/lianki not writable: `serve` cannot hold a session (say/ask/inbox do not need it)",
         },
   );
+  if (f.lane && f.laneToken)
+    out.push(
+      f.laneToken !== "none"
+        ? {
+            check: "lane-token",
+            level: "ok",
+            line: `lane token from ${f.laneToken} (say/ask/listen post as 【${f.lane}】 with it)`,
+          }
+        : {
+            check: "lane-token",
+            level: "warn",
+            line: `no lane token for ${f.lane}: say/ask use the saved grant; lane-listen needs one (the owner makes it at lianki.com/preferences → API tokens, docs/lane-listen.md)`,
+          },
+    );
   out.push({
     check: "lane",
     level: "ok",
