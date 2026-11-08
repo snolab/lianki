@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { finishBoxSignIn, type BoxConfig } from "@/lib/box-oauth/client";
+import { adoptAccountLocale } from "@/lib/box-oauth/locale";
 
 /** Trades the one-time code once, removes it from the URL, and goes to the app. */
 export default function BoxCallback({ config }: { config: BoxConfig }) {
@@ -13,7 +14,18 @@ export default function BoxCallback({ config }: { config: BoxConfig }) {
     const search = new URLSearchParams(location.search);
     history.replaceState(null, "", location.pathname);
     finishBoxSignIn(config, search)
-      .then((e) => (e ? setError(e) : location.replace("/home")))
+      .then(async (e) => {
+        if (e) return setError(e);
+        // The account's language, not the box host's guess (lib/box-oauth/locale.ts).
+        await adoptAccountLocale({
+          fetch: (url) => fetch(url),
+          languages: navigator.languages ?? [navigator.language],
+          setCookie: (line) => {
+            document.cookie = line;
+          },
+        });
+        location.replace("/home");
+      })
       .catch(() => setError("network"));
   }, [config]);
   if (error) return <code className="m-8 block">{error}</code>;

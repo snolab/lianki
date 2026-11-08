@@ -23,7 +23,7 @@ as if it did not exist.
 | the box's signed-in view                    | `lib/box-oauth/session.ts`, `me.ts`, `app/api/box/me`, `BoxApiBridge`                                                                 |
 | chat on the owner's box (`box:chat`)        | `lib/box-oauth/chat-ticket.ts`, `app/api/box/chat-ticket`, `workers/push/src/auth.ts`                                                 |
 | code on the owner's box (`box:eval`)        | `lib/box-oauth/store.ts` (`setBoxEval`, `boxEvalLive`), `worker.ts` (`boxEval`), `workers/push/src/debug.ts`                          |
-| tests                                       | `unit/box-oauth.test.ts`, `unit/box-allowlist.test.ts`, `unit/box-session.test.ts`, `unit/box-chat.test.ts`, `unit/box-eval.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
+| tests                                       | `unit/box-oauth.test.ts`, `unit/box-allowlist.test.ts`, `unit/box-session.test.ts`, `unit/box-locale.test.ts`, `unit/box-chat.test.ts`, `unit/box-eval.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
 
 ## Who may have a box
 
@@ -182,6 +182,20 @@ Still signed out, because they are drawn on the box's server:
   switch and live view.
 
 The Learning Partner chat works on a box only with `box:chat`, below.
+
+### The box's language
+
+A box is its own host, so lianki.com's `lang` cookie (host-only) never reaches
+it. Before this, the box's server guessed from Accept-Language, and the
+landing link it renders (`/<locale>`) seeded the box's own `lang` cookie with
+that guess, so the owner's box opened in French while lianki.com showed
+Chinese for the same account (2026-11-08). Now `/box-callback`, right after
+the code is traded, reads the account's `ui.locale` (`GET /api/prefs` through
+the box's fetch) and writes the box's `lang` and `NEXT_LOCALE` cookies before it
+opens `/home`: the language picked by hand on any device first, then the
+browser's languages, then English (`lib/box-oauth/locale.ts`). It never writes
+`lk:ui-locale`, which means "picked by hand" and would be uploaded; later
+changes arrive through `PrefSync` as on any device.
 
 ### Flags on a box
 
