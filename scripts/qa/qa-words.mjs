@@ -2402,7 +2402,26 @@ try {
           await w.setViewportSize({ width: vw, height: vh });
           await w.waitForTimeout(300);
           await toggleSettings(w);
-          await w.waitForTimeout(400);
+          // Wait for the sheet to finish sliding in, not a fixed 400 ms: on a CI
+          // runner (merge queue, 2026-11-08) it was measured mid-flight twice
+          // (panelTop 640, then 94, against 56 settled). Settled = no animation
+          // running and the same rect on two polls in a row.
+          await w.waitForFunction(
+            () => {
+              const d = document.querySelector("[data-words-settings-dialog]");
+              const p = document.querySelector("[data-words-settings]");
+              if (!d || !p) return false;
+              const r = p.getBoundingClientRect();
+              const k = `${Math.round(r.top)}:${Math.round(r.bottom)}:${innerHeight}`;
+              const same = window.__lkSheetRect === k;
+              window.__lkSheetRect = k;
+              return (
+                same && d.getAnimations({ subtree: true }).every((a) => a.playState !== "running")
+              );
+            },
+            null,
+            { polling: 100, timeout: budget(5000) },
+          );
           const fit = await w.evaluate(() => {
             const panel = document.querySelector("[data-words-settings]");
             const body = panel.querySelector("[data-words-settings-body]");
