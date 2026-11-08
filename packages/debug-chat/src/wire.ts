@@ -513,6 +513,8 @@ export type ChatStrings = {
   /** The chat menu's switch: soft tones when he starts and stops speaking. */
   cueSpeech: string;
   compactIdle: string;
+  /** The menu's collapsed Dev group (DevMenuGroup.tsx), the owner's pages only: its heading. */
+  devGroup: string;
   /** The compact line's tooltip and screen-reader hint: a tap shows the whole chat. */
   compactShowAll: string;
   /** The up-arrow over the log (ask-above.ts): its screen-reader label; `{count}` is how many are above. */
@@ -697,6 +699,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
   compactIdle: "Only the last message while not typing",
+  devGroup: "Dev",
   compactShowAll: "Show the whole chat",
   askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",
   fullScreen: "Full screen",
