@@ -2395,15 +2395,22 @@ try {
           (await w.locator("[data-words-top]").getByRole("button", { name: "Undo" }).count()) === 0,
           `${tag} the toolbar has no Undo button (Z / M, Esc and voice undo)`,
         );
+        // The sheet is measured where it rests, with no slide-in: on a busy CI
+        // runner (the phone passes run side by side since #704) WebKit can go
+        // without a rendering update for a while, and getComputedStyle then
+        // returns a stale mid-slide frame of a FINISHED animation (translate
+        // 0 50% with lk-sheet-in finished, 2026-11-08) — the sheet read
+        // 13–330 px low though it sits right on screen. The slide itself is
+        // not what this checks; the phone passes run with motion on and off.
+        await w.emulateMedia({ reducedMotion: "reduce" });
         for (const [vw, vh] of [
           [360, 640],
           [640, 360],
         ]) {
           await w.setViewportSize({ width: vw, height: vh });
           await w.waitForTimeout(300);
-          // The sheet sizes itself from visualViewport when it opens. On a CI
-          // runner WebKit's visual viewport lagged the resize (sheet at top 139,
-          // bottom 723 in a 640 px window): open it only once that has caught up.
+          // The sheet sizes itself from visualViewport when it opens: open it
+          // only once that matches the new window size.
           await w.waitForFunction(
             ([h]) => {
               const v = window.visualViewport;
@@ -2413,10 +2420,11 @@ try {
             { polling: 100, timeout: budget(5000) },
           );
           await toggleSettings(w);
-          // Wait for the sheet to finish sliding in, not a fixed 400 ms: on a CI
-          // runner (merge queue, 2026-11-08) it was measured mid-flight twice
-          // (panelTop 640, then 94, against 56 settled). Settled = no animation
-          // running and the same rect on two polls in a row.
+          // Settled: no animation running, the same rect on two polls in a row,
+          // after two frames have been drawn (a fresh rendering update).
+          await w.evaluate(
+            () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+          );
           await w.waitForFunction(
             () => {
               const d = document.querySelector("[data-words-settings-dialog]");
@@ -2451,6 +2459,23 @@ try {
               innerH: innerHeight,
               scrolls: body.scrollHeight > body.clientHeight ? body.scrollTop > 0 : true,
               overscroll: getComputedStyle(body).overscrollBehaviorY,
+              // Diagnostics (/infra/words-ci-fix): where the sheet's frame came from.
+              diag: (() => {
+                const d = document.querySelector("[data-words-settings-dialog]");
+                const dr = d.getBoundingClientRect();
+                const v = window.visualViewport;
+                return {
+                  dlg: [Math.round(dr.top), Math.round(dr.height), d.style.top, d.style.height],
+                  vv: v && [v.height, v.offsetTop, v.pageTop, v.scale],
+                  scroll: [scrollY, document.scrollingElement?.scrollTop],
+                  tr: getComputedStyle(panel).translate,
+                  tf: getComputedStyle(panel).transform,
+                  anim: d
+                    .getAnimations({ subtree: true })
+                    .map((a) => `${a.animationName || "t"}:${a.playState}:${a.currentTime}`),
+                  vis: document.visibilityState,
+                };
+              })(),
             };
           });
           // (WebKit's mobile emulation has no wheel: the body was scrolled to its
@@ -2485,7 +2510,7 @@ try {
             `${tag} ${vw}×${vh}: Esc closes the sheet and focus returns to the Settings button`,
           );
         }
-        await w.emulateMedia({ colorScheme: null });
+        await w.emulateMedia({ colorScheme: null, reducedMotion: null });
         await w.setViewportSize({ width: 414, height: 848 });
         // Fresh layout for the swipe checks below, as before the resizes.
         await load(() => w.reload({ waitUntil: "commit" }));

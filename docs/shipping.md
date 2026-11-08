@@ -28,18 +28,23 @@ CI runs **everything**; the pre-push hook runs only what a change reaches
 - `Lint + typecheck + unit` — oxlint + `oxfmt --check`, typecheck, the whole
   unit suite with its coverage gate (~20 s). Every PR, every merge group, every
   push to `main`; when it fails on a push to `main` it posts to Slack #lianki.
-- `qa:all (merge queue, report-only)` — the whole `bun run qa:all`, in the
-  Playwright image, on the `merge_group` event only (~6–7 min on a runner). So
-  every PR gets the full integration gate before it lands, while opening a PR
-  and main's deploy wait for neither. **Report-only for now**: WORDS "the
-  Settings sheet fits the screen" (360×640 WebKit iPhone) fails on main in CI
-  since #704, so a qa failure is a warning on the gate, not a block. It becomes
-  blocking (`QA_BLOCKING: "true"` in ci.yml) once that is fixed and green
-  twice in the queue — state tree `/infra/words-ci-fix`.
+- `qa:all (merge queue)` — the whole `bun run qa:all`, in the Playwright image,
+  on the `merge_group` event only (~6–7 min on a runner). So every PR gets the
+  full integration gate before it lands, while opening a PR and main's deploy
+  wait for neither. It blocks; `QA_BLOCKING: "false"` in ci.yml turns a
+  failure into a warning instead (used while WORDS' Settings-sheet check
+  failed in CI, 2026-11-08).
 - `Typecheck + unit` — the one required check (branch protection names it). A
-  tiny job that is green when the first job passed and (when `QA_BLOCKING`) the
-  qa job passed or was skipped (outside the merge queue). Adding the qa job
-  needed no change to branch protection.
+  tiny job that is green when the first job passed and the qa job passed or
+  was skipped (outside the merge queue). Adding the qa job needed no change to
+  branch protection.
+
+A CI runner is slower than a laptop, and the phone passes of qa-words run side
+by side (#704): WebKit there can go a while without a rendering update, and a
+`getComputedStyle` read then returns a stale frame — of an animation that has
+already finished (WORDS' Settings sheet read `translate: 0 50%` with its
+slide-in finished, 2026-11-08). A layout check measures with
+`reducedMotion: "reduce"` and after a fresh frame, not after a fixed wait.
 
 main's deploy waits for this workflow on the push to `main` (no qa job there:
 it ran in the queue).

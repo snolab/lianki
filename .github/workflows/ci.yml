@@ -9,16 +9,14 @@ name: CI
 # - `qa` — the whole `bun run qa:all` (OpenNext build → wrangler dev on local
 #   D1 → every suite), in the merge queue only; also nightly on main
 #   (nightly-qa.yml). A PR does not wait for it and main's deploy does not
-#   either (owner, 2026-10-31). REPORT-ONLY for now (QA_BLOCKING below).
+#   either (owner, 2026-10-31). Blocking (QA_BLOCKING below).
 # - `gate` — named `Typecheck + unit`, the one required check: green when
-#   `checks` passed and, once QA_BLOCKING is "true", `qa` passed or was skipped
-#   (it is skipped outside the merge queue). Branch protection is unchanged.
+#   `checks` passed and `qa` passed or was skipped (it is skipped outside the
+#   merge queue). Branch protection is unchanged.
 #
-# TODO(state tree /infra/words-ci-fix): WORDS "the Settings sheet fits the
-# screen" (360×640 WebKit iPhone) fails on main in CI since #704 (nightly
-# dispatch 2026-11-08, run 42484930543), so qa is report-only: a failure shows
-# as a warning on the gate, not a block. Set QA_BLOCKING: "true" once it is
-# green twice in the queue.
+# QA_BLOCKING "false" turns a qa failure into a warning on the gate. It was
+# "false" while WORDS' Settings-sheet check failed in CI (2026-11-08,
+# /infra/words-ci-fix); keep it "true" unless a CI-only failure needs the same.
 #
 # deploy-worker.yml runs on this workflow's success on main.
 on:
@@ -94,7 +92,7 @@ jobs:
   # (see the reasons there: browsers baked into the image, Node 24, HOME=/root
   # for Firefox). ~6-7 min on a runner.
   qa:
-    name: qa:all (merge queue, report-only)
+    name: qa:all (merge queue)
     if: github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -125,12 +123,11 @@ jobs:
         env:
           CHECKS: ${{ needs.checks.result }}
           QA: ${{ needs.qa.result }}
-          # TODO(/infra/words-ci-fix): "true" once WORDS is green in CI.
-          QA_BLOCKING: "false"
+          QA_BLOCKING: "true"
         run: |
           echo "checks: $CHECKS, qa: $QA, qa blocking: $QA_BLOCKING"
           [ "$CHECKS" = "success" ] || exit 1
           if [ "$QA" != "success" ] && [ "$QA" != "skipped" ]; then
             if [ "$QA_BLOCKING" = "true" ]; then exit 1; fi
-            echo "::warning title=qa:all (merge queue) $QA::report-only until /infra/words-ci-fix lands; see the qa job's log"
+            echo "::warning title=qa:all (merge queue) $QA::report-only (QA_BLOCKING false); see the qa job's log"
           fi
