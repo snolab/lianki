@@ -3,6 +3,7 @@
 import { chromium } from "playwright";
 import { buildApkg } from "./apkg-fixture.mjs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
+import { availableParallelism } from "node:os";
 import { budget } from "./load-budget.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 // QA_SHOTS=<dir>: also save screenshots of the list, to look at the layout.
@@ -124,6 +125,8 @@ page.on("pageerror", (e) => {
   if (!e.message.includes("Turnstile")) errs.push("PAGEERROR " + e.message);
 });
 let ok = true;
+/** The phone and WebKit passes, run beside the desktop flow (see below). */
+let phonesDone = Promise.resolve();
 
 /**
  * The grade reveal paints behind its slip: at rest the point over a label's
@@ -1231,18 +1234,40 @@ try {
   // default) and "native" (NativeSlipRow, the experimental "New swipe" — each
   // slip a native horizontal scroller, turned on by its Settings switch).
   // Both must look and behave the same; only the gesture mechanism differs.
-  {
-    const { devices } = await import("playwright");
+  //
+  // Every phone check below (these two, the heavy feel, the one-grade-one-row
+  // matrix) runs at the same time as the others, and as the WebKit iPhone
+  // block, each in a browser context of its own with an account of its own and
+  // the same catalog list freshly added: the swipe and mirror switches follow
+  // the account (lib/prefs/bindings.ts), so one phone's settings, grades and
+  // telemetry never reach another's. One after another they took ~150 s.
+  const { devices } = await import("playwright");
+  // The desktop's device state (what its page kept in localStorage: the help
+  // strip already learned, and so on) seeds every phone, as one shared phone
+  // context once was; its cookies, the desktop's account, never do.
+  const deskState = await ctx.storageState();
+  /** A fresh iPhone context, signed up on its own and holding `first`. */
+  const newPhone = async (name) => {
     const phone = await newSilentContext(browser, {
       ...devices["iPhone 13"],
-      storageState: await ctx.storageState(),
+      storageState: { cookies: [], origins: deskState.origins },
     });
+    await phone.addInitScript(() => localStorage.setItem("lk:first-run", "account"));
+    // A phone of its own: not the desktop's remembered keyboard.
+    await phone.addInitScript(() => localStorage.removeItem("lk:input-modality"));
+    // A new account (nothing graded) gets the first-visit gesture tip over the
+    // bottom slips (BottomIsland); the desktop account had graded, so its
+    // phone never saw it. Dismissed, as by its ✕ (lk:pref:nav-tip).
+    await phone.addInitScript(() =>
+      localStorage.setItem(
+        "lk:pref:nav-tip",
+        JSON.stringify({ state: { dismissed: true }, version: 1 }),
+      ),
+    );
     await phone.addInitScript(silentAudio);
     // This phone's speech API never speaks, like Firefox on Android: words
     // must come from the server instead (stubbed here — no AI call in QA).
     await phone.addInitScript(() => (window.__speechDead = true));
-    // A phone of its own: not the desktop's remembered keyboard.
-    await phone.addInitScript(() => localStorage.removeItem("lk:input-modality"));
     const ttsAsked = [];
     const ttsTexts = [];
     await phone.route("**/api/words/tts?*", (r) => {
@@ -1251,13 +1276,72 @@ try {
       ttsTexts.push(q.get("text"));
       return r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") });
     });
-    /** Variant A's slip look, to hold variant B's against. */
-    let lookA = null;
-    for (const variant of ["js", "native"]) {
-      const tag = `phone/${variant}:`;
+    const headers = { origin: BASE };
+    const email = `qa+words-${name}-${Date.now()}@lianki.test`;
+    const up = await phone.request.post(`${BASE}/api/auth/sign-up/email`, {
+      data: { email, password: PW, name: "QA Words" },
+      headers,
+    });
+    if (!up.ok()) throw new Error(`phone ${name}: sign-up ${up.status()}`);
+    const made = await phone.request.post(`${BASE}/api/words/lists`, {
+      data: { name: first.name, lang: first.lang, source: first.id },
+      headers,
+    });
+    if (!made.ok()) throw new Error(`phone ${name}: add list ${made.status()}`);
+    const { list } = await made.json();
+    return { phone, listUrl: `${BASE}/words?list=${list.id}`, ttsAsked, ttsTexts };
+  };
+  /**
+   * Waits until the list and every slip are at rest: list scroll, slip
+   * transforms and scrollers unchanged for `quiet` ms and at least 12 frames
+   * (so a slow machine, with fewer frames, waits longer). Replaces the fixed
+   * "the slip home, the list's scroll done" sleeps; capped by a load budget.
+   */
+  const settle = (pg, quiet = 400) =>
+    pg
+      .evaluate(
+        ([quiet, cap]) =>
+          new Promise((done) => {
+            const sig = () => {
+              const list = document.querySelector('[role="list"]');
+              const rows = [...document.querySelectorAll('[role="listitem"]')];
+              return [
+                Math.round(list?.scrollTop ?? 0),
+                document.querySelector('[role="listitem"].slip-loose')?.dataset.i,
+                ...rows.map((r) => {
+                  const s = r.querySelector(".slip-scroller");
+                  const t = getComputedStyle(r).transform;
+                  return s ? `${Math.round(s.scrollLeft)}${t}${s.style.cssText}` : t;
+                }),
+              ].join();
+            };
+            const end = performance.now() + cap;
+            let last = sig();
+            let since = performance.now();
+            let frames = 0;
+            const tick = () => {
+              const s = sig();
+              const now = performance.now();
+              if (s !== last) [last, since, frames] = [s, now, 0];
+              else frames++;
+              if ((now - since >= quiet && frames >= 12) || now > end) done();
+              else requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          }),
+        [quiet, budget(6000)],
+      )
+      .catch(() => {});
+  /** Variant A's slip look, to hold variant B's against (null if A threw first). */
+  let lookAResolve;
+  const lookA = new Promise((r) => (lookAResolve = r));
+  const firstPass = async (variant) => {
+    const tag = `phone/${variant}:`;
+    const { phone, listUrl, ttsAsked, ttsTexts } = await newPhone(variant);
+    try {
       const m = await phone.newPage();
       m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
-      await m.goto(page.url(), { waitUntil: "networkidle" });
+      await m.goto(listUrl, { waitUntil: "networkidle" });
       const mrows = m.locator('[role="listitem"]');
       await mrows.first().waitFor({ timeout: budget(15000) });
       if (variant === "native") {
@@ -1411,14 +1495,16 @@ try {
         look.image.includes("bamboo") && look.cords && look.grains === 3,
         `${tag} slips have the bamboo paper, cords, and a grain per row (${look.grains})`,
       );
-      if (variant === "js") lookA = look;
+      if (variant === "js") lookAResolve(look);
       else {
+        const a = await lookA;
         check(
-          look.image === lookA.image &&
-            look.size === lookA.size &&
-            look.classes === lookA.classes &&
-            look.width === lookA.width &&
-            look.left === lookA.left,
+          !!a &&
+            look.image === a.image &&
+            look.size === a.size &&
+            look.classes === a.classes &&
+            look.width === a.width &&
+            look.left === a.left,
           `${tag} the face matches A's slip: background layers, classes, place (${look.classes} · ${look.width}px@${look.left})`,
         );
         check(look.centred === 88, `${tag} each slip starts centred (scrollLeft ${look.centred})`);
@@ -1612,7 +1698,7 @@ try {
           }
           await m.waitForTimeout(80);
           await touch("touchEnd");
-          await m.waitForTimeout(900); // snap, scrollend, glide home
+          await settle(m); // snap, scrollend, glide home
           return;
         }
         await m.mouse.move(x, y);
@@ -1620,7 +1706,7 @@ try {
         for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y + (dy * k) / 8);
         await m.waitForTimeout(80); // stop before lifting: distance, not a flick
         await m.mouse.up();
-        await m.waitForTimeout(400);
+        await settle(m);
       };
       const before = await mStatus(3);
       await drag(3, 40, 45);
@@ -1735,7 +1821,7 @@ try {
           }
           await m.waitForTimeout(120);
           await touch("touchEnd");
-          await m.waitForTimeout(1500);
+          await settle(m);
           const left = await m.evaluate(
             (i) =>
               Math.round(
@@ -1896,16 +1982,22 @@ try {
         `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
       );
       await m.close();
+    } finally {
+      if (variant === "js") lookAResolve(null); // a no-op once resolved
+      await phone.close();
     }
-    // The heavy feel (lib/words/swipe-feel.ts, docs/swipe-core.md), opt-in per
-    // device, here by `?feel=heavy` for one page load: on both swipes the
-    // dragged slip lifts, a sideways drag grades by the same tiers, the slip
-    // springs home, and its telemetry says which feel it was.
-    for (const variant of ["js", "native"]) {
-      const tag = `phone/${variant}+heavy:`;
+  };
+  // The heavy feel (lib/words/swipe-feel.ts, docs/swipe-core.md), opt-in per
+  // device, here by `?feel=heavy` for one page load: on both swipes the
+  // dragged slip lifts, a sideways drag grades by the same tiers, the slip
+  // springs home, and its telemetry says which feel it was.
+  const heavyPass = async (variant) => {
+    const tag = `phone/${variant}+heavy:`;
+    const { phone, listUrl } = await newPhone(`${variant}-heavy`);
+    try {
       const m = await phone.newPage();
       m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
-      const u = new URL(page.url());
+      const u = new URL(listUrl);
       u.searchParams.set("swipe", variant);
       u.searchParams.set("feel", "heavy");
       await m.goto(u.href, { waitUntil: "networkidle" });
@@ -1949,7 +2041,7 @@ try {
         }
       if (cdp) await touch("touchEnd");
       else await m.mouse.up();
-      await m.waitForTimeout(1500);
+      await settle(m); // the spring home, the list's scroll
       const rest = await m.evaluate((native) => {
         const row = document.querySelectorAll('[role="listitem"]')[3];
         const sc = row.querySelector(".slip-scroller");
@@ -1976,468 +2068,512 @@ try {
         `${tag} it grades Good and its telemetry names the feel (${params})`,
       );
       await m.close();
+    } finally {
+      await phone.close();
     }
-    // One grade = one row (the owner, 2026-10-31: "it scrolls two rows"). In
-    // every mode — both swipes, both feels, animations on and off — grading
-    // the focused word moves the focus to the next row and scrolls the list
-    // by exactly one row; re-grading a word already graded moves neither
-    // (lib/words/advance.ts).
-    for (const variant of ["js", "native"])
-      for (const feel of ["light", "heavy"])
-        for (const motion of ["on", "off"]) {
-          const tag = `phone/${variant}+${feel}+motion-${motion}:`;
-          const m = await phone.newPage();
-          m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
-          // Off as the owner has it: Settings → Turn off animations
-          // (lk:pref:motion, <html data-motion="off">), not the system setting.
-          await m.addInitScript((off) => {
-            const v = { state: { animations: off ? "off" : "on" }, version: 1 };
-            localStorage.setItem("lk:pref:motion", JSON.stringify(v));
-          }, motion === "off");
-          const u = new URL(page.url());
-          u.searchParams.set("swipe", variant);
-          u.searchParams.set("feel", feel);
-          await m.goto(u.href, { waitUntil: "networkidle" });
-          await m
-            .locator('[role="listitem"]')
-            .nth(8)
-            .waitFor({ timeout: budget(15000) });
-          const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
-          const at = () =>
-            m.evaluate(() => {
-              const list = document.querySelector('[role="list"]');
-              const f = document.querySelector('[role="listitem"].slip-loose');
-              return { top: Math.round(list.scrollTop), focus: f ? Number(f.dataset.i) : -1 };
+  };
+  // One grade = one row (the owner, 2026-10-31: "it scrolls two rows"). In
+  // every mode — both swipes, both feels, animations on and off — grading
+  // the focused word moves the focus to the next row and scrolls the list
+  // by exactly one row; re-grading a word already graded moves neither
+  // (lib/words/advance.ts).
+  const rowPass = async (variant, feel, motion) => {
+    const tag = `phone/${variant}+${feel}+motion-${motion}:`;
+    const { phone, listUrl } = await newPhone(`${variant}-${feel}-${motion}`);
+    try {
+      const m = await phone.newPage();
+      m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      // Off as the owner has it: Settings → Turn off animations
+      // (lk:pref:motion, <html data-motion="off">), not the system setting.
+      await m.addInitScript((off) => {
+        const v = { state: { animations: off ? "off" : "on" }, version: 1 };
+        localStorage.setItem("lk:pref:motion", JSON.stringify(v));
+      }, motion === "off");
+      const u = new URL(listUrl);
+      u.searchParams.set("swipe", variant);
+      u.searchParams.set("feel", feel);
+      await m.goto(u.href, { waitUntil: "networkidle" });
+      await m
+        .locator('[role="listitem"]')
+        .nth(8)
+        .waitFor({ timeout: budget(15000) });
+      const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
+      const at = () =>
+        m.evaluate(() => {
+          const list = document.querySelector('[role="list"]');
+          const f = document.querySelector('[role="listitem"].slip-loose');
+          return { top: Math.round(list.scrollTop), focus: f ? Number(f.dataset.i) : -1 };
+        });
+      // The first ungraded row fully below the toolbar, or the focused one.
+      const target = (focused) =>
+        m.evaluate((focused) => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+          const rows = [...document.querySelectorAll('[role="listitem"]')];
+          const r = focused
+            ? document.querySelector('[role="listitem"].slip-loose')
+            : rows.find(
+                (x) =>
+                  x.getBoundingClientRect().top > bar.bottom + 4 && !x.querySelector(".lk-stamp"),
+              );
+          const b = r.getBoundingClientRect();
+          return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
+        }, focused);
+      const swipe = async ({ x, y }) => {
+        const dx = 70;
+        if (cdp) {
+          const t = (type, x, y) =>
+            cdp.send("Input.dispatchTouchEvent", {
+              type,
+              touchPoints: type === "touchEnd" ? [] : [{ x, y }],
             });
-          // The first ungraded row fully below the toolbar, or the focused one.
-          const target = (focused) =>
-            m.evaluate((focused) => {
-              const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
-              const rows = [...document.querySelectorAll('[role="listitem"]')];
-              const r = focused
-                ? document.querySelector('[role="listitem"].slip-loose')
-                : rows.find(
-                    (x) =>
-                      x.getBoundingClientRect().top > bar.bottom + 4 &&
-                      !x.querySelector(".lk-stamp"),
-                  );
-              const b = r.getBoundingClientRect();
-              return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
-            }, focused);
-          const swipe = async ({ x, y }) => {
-            const dx = 70;
-            if (cdp) {
-              const t = (type, x, y) =>
-                cdp.send("Input.dispatchTouchEvent", {
-                  type,
-                  touchPoints: type === "touchEnd" ? [] : [{ x, y }],
-                });
-              await t("touchStart", x, y);
-              for (let k = 1; k <= 8; k++) {
-                await t("touchMove", x + (dx * k) / 8, y);
-                await m.waitForTimeout(16);
-              }
-              await m.waitForTimeout(80);
-              await t("touchEnd");
-            } else {
-              await m.mouse.move(x, y);
-              await m.mouse.down();
-              for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y);
-              await m.waitForTimeout(80);
-              await m.mouse.up();
-            }
-            await m.waitForTimeout(1500); // the slip home, the list's scroll done
-          };
-          // Headless Chromium can drop a page's very first smooth scroll (no
-          // scroll event at all, on the account's fuller lists): one grade
-          // first, unmeasured, so the checks below see the steady state.
-          await swipe(await target(false));
-          const dm = await m.evaluate(() => document.documentElement.dataset.motion ?? "on");
-          check(dm === motion, `${tag} animations are ${motion} on the page (data-motion ${dm})`);
-          const steps = [];
-          for (let n = 0; n < 3; n++) {
-            const t = await target(true);
-            const a = await at();
-            await swipe(t);
-            const b = await at();
-            steps.push({ i: t.i, focus: b.focus - t.i, top: b.top - a.top });
+          await t("touchStart", x, y);
+          for (let k = 1; k <= 8; k++) {
+            await t("touchMove", x + (dx * k) / 8, y);
+            await m.waitForTimeout(16);
           }
-          check(
-            steps.every((s) => s.focus === 1 && s.top === 66),
-            `${tag} each grade moves the focus and the list by exactly one row (${JSON.stringify(steps)})`,
-          );
-          // Re-grade the row just graded (now one row above the focus): nothing moves.
-          const back = await m.evaluate(() => {
-            const f = document.querySelector('[role="listitem"].slip-loose');
-            const r = f.previousElementSibling;
-            const b = r.getBoundingClientRect();
-            return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
-          });
-          const a = await at();
-          await swipe(back);
-          const b = await at();
-          check(
-            b.top === a.top && b.focus === back.i,
-            `${tag} re-grading a graded word moves nothing (top ${a.top} → ${b.top}, focus ${a.focus} → ${b.focus}, row ${back.i})`,
-          );
-          await m.close();
+          await m.waitForTimeout(80);
+          await t("touchEnd");
+        } else {
+          await m.mouse.move(x, y);
+          await m.mouse.down();
+          for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y);
+          await m.waitForTimeout(80);
+          await m.mouse.up();
         }
-    await phone.close();
-  }
+        await settle(m); // the slip home, the list's scroll done
+      };
+      // Headless Chromium can drop a page's very first smooth scroll (no
+      // scroll event at all, on the account's fuller lists): one grade
+      // first, unmeasured, so the checks below see the steady state.
+      await swipe(await target(false));
+      const dm = await m.evaluate(() => document.documentElement.dataset.motion ?? "on");
+      check(dm === motion, `${tag} animations are ${motion} on the page (data-motion ${dm})`);
+      const steps = [];
+      for (let n = 0; n < 3; n++) {
+        const t = await target(true);
+        const a = await at();
+        await swipe(t);
+        const b = await at();
+        steps.push({ i: t.i, focus: b.focus - t.i, top: b.top - a.top });
+      }
+      check(
+        steps.every((s) => s.focus === 1 && s.top === 66),
+        `${tag} each grade moves the focus and the list by exactly one row (${JSON.stringify(steps)})`,
+      );
+      // Re-grade the row just graded (now one row above the focus): nothing moves.
+      const back = await m.evaluate(() => {
+        const f = document.querySelector('[role="listitem"].slip-loose');
+        const r = f.previousElementSibling;
+        const b = r.getBoundingClientRect();
+        return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
+      });
+      const a = await at();
+      await swipe(back);
+      const b = await at();
+      check(
+        b.top === a.top && b.focus === back.i,
+        `${tag} re-grading a graded word moves nothing (top ${a.top} → ${b.top}, focus ${a.focus} → ${b.focus}, row ${back.i})`,
+      );
+      await m.close();
+    } finally {
+      await phone.close();
+    }
+  };
 
   // iPhone on WebKit, both swipe variants: the page itself never scrolls, and
   // the list opens with its first word in the middle of the screen — on
-  // load, on reload, and when the list is shown again (pageshow).
-  {
-    const { webkit, devices } = await import("playwright");
+  // load, on reload, and when the list is shown again (pageshow). In its own
+  // browser, on an account and list of its own like each phone above.
+  const webkitPass = async () => {
+    const acct = await newPhone("webkit");
+    const { cookies } = await acct.phone.storageState();
+    const { listUrl } = acct;
+    await acct.phone.close();
+    const { webkit } = await import("playwright");
     const wk = await launchSilent(webkit);
-    const listUrl = page.url();
-    for (const variant of ["js", "native"]) {
-      const tag = `webkit-iphone/${variant}:`;
-      const c = await newSilentContext(wk, {
-        ...devices["iPhone 13"],
-        storageState: await ctx.storageState(),
-      });
-      await c.addInitScript(silentAudio);
-      // Stubbed as everywhere else (no AI call from QA).
-      await c.route("**/api/words/tts?*", (r) =>
-        r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
-      );
-      await c.addInitScript((v) => {
-        localStorage.setItem("lk:first-run", "account");
-        localStorage.setItem("lk:swipe-ab", v);
-      }, variant);
-      const w = await c.newPage();
-      // WebKit refuses a fetch the old page starts while the next one is
-      // loading, and reports it as a page error ("<url> due to access control
-      // checks."), caught or not. The page stops asking for familiarity marks
-      // once it starts to leave (WordsClient, beforeunload), so that one is a
-      // real error; the word-audio prefetch is let through, and only while one
-      // of this section's own loads is under way: from the call until the next
-      // page commits (goto/reload resolve at "commit" below).
-      let leaving = false;
-      // Exactly "[Fetch API cannot load ][http:]//<this host>/api/words/tts?<query> due to …".
-      const clip = `//${new URL(listUrl).host}/api/words/tts?`;
-      const cut = " due to access control checks.";
-      const cutPrefetch = (m) => {
-        const u = m.replace(/^(?:Fetch API cannot load )?(?:https?:)?\/\/?/, "//");
-        return (
-          u.startsWith(clip) && u.endsWith(cut) && !/\s/.test(u.slice(clip.length, -cut.length))
+    try {
+      for (const variant of ["js", "native"]) {
+        const tag = `webkit-iphone/${variant}:`;
+        const c = await newSilentContext(wk, {
+          ...devices["iPhone 13"],
+          storageState: { cookies, origins: deskState.origins },
+        });
+        await c.addInitScript(silentAudio);
+        // Stubbed as everywhere else (no AI call from QA).
+        await c.route("**/api/words/tts?*", (r) =>
+          r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
         );
-      };
-      w.on("pageerror", (e) => {
-        if (leaving && cutPrefetch(e.message)) return;
-        errs.push(`PAGEERROR (${tag}) ${e.message}`);
-      });
-      /**
-       * Load the page and wait for the list itself, not for the network: "load"
-       * and "networkidle" have hung 30 s in WebKit under load (#603, #616) on
-       * requests the checks don't need. data-ready says the list is measured
-       * and its opening scroll is placed; then the layout must hold still.
-       */
-      const load = async (go) => {
-        leaving = true;
-        try {
-          await go();
-        } finally {
-          leaving = false;
+        await c.addInitScript((v) => {
+          localStorage.setItem("lk:first-run", "account");
+          localStorage.setItem("lk:swipe-ab", v);
+        }, variant);
+        const w = await c.newPage();
+        // WebKit refuses a fetch the old page starts while the next one is
+        // loading, and reports it as a page error ("<url> due to access control
+        // checks."), caught or not. The page stops asking for familiarity marks
+        // once it starts to leave (WordsClient, beforeunload), so that one is a
+        // real error; the word-audio prefetch is let through, and only while one
+        // of this section's own loads is under way: from the call until the next
+        // page commits (goto/reload resolve at "commit" below).
+        let leaving = false;
+        // Exactly "[Fetch API cannot load ][http:]//<this host>/api/words/tts?<query> due to …".
+        const clip = `//${new URL(listUrl).host}/api/words/tts?`;
+        const cut = " due to access control checks.";
+        const cutPrefetch = (m) => {
+          const u = m.replace(/^(?:Fetch API cannot load )?(?:https?:)?\/\/?/, "//");
+          return (
+            u.startsWith(clip) && u.endsWith(cut) && !/\s/.test(u.slice(clip.length, -cut.length))
+          );
+        };
+        w.on("pageerror", (e) => {
+          if (leaving && cutPrefetch(e.message)) return;
+          errs.push(`PAGEERROR (${tag}) ${e.message}`);
+        });
+        /**
+         * Load the page and wait for the list itself, not for the network: "load"
+         * and "networkidle" have hung 30 s in WebKit under load (#603, #616) on
+         * requests the checks don't need. data-ready says the list is measured
+         * and its opening scroll is placed; then the layout must hold still.
+         */
+        const load = async (go) => {
+          leaving = true;
+          try {
+            await go();
+          } finally {
+            leaving = false;
+          }
+          await w.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
+          await settled();
+        };
+        /** The first row, the list's scroll and the page hold still for 10 frames (fonts loaded). */
+        const settled = () =>
+          w.evaluate(
+            () =>
+              new Promise((done) => {
+                const end = performance.now() + 10000;
+                let last = "";
+                let same = 0;
+                const tick = () => {
+                  const row = document.querySelector('[role="listitem"]')?.getBoundingClientRect();
+                  const list = document.querySelector('[role="list"]');
+                  const k = `${row?.top}|${row?.height}|${list?.scrollTop}|${scrollY}|${innerHeight}`;
+                  same = k === last ? same + 1 : 0;
+                  last = k;
+                  if ((same >= 10 && document.fonts.status === "loaded") || performance.now() > end)
+                    done();
+                  else requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+              }),
+          );
+        const opening = () =>
+          w.evaluate(() => {
+            const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+            const list = document.querySelector('[role="list"]').getBoundingClientRect();
+            return {
+              scrollY: Math.round(scrollY),
+              off: Math.round(row.top + row.height / 2 - (list.top + list.height / 2)),
+              native: document.querySelectorAll(".slip-native").length > 0,
+            };
+          });
+        for (const when of ["load", "reload"]) {
+          if (when === "load") await load(() => w.goto(listUrl, { waitUntil: "commit" }));
+          else await load(() => w.reload({ waitUntil: "commit" }));
+          const o = await opening();
+          check(
+            o.scrollY === 0 && Math.abs(o.off) <= 3 && o.native === (variant === "native"),
+            `${tag} ${when}: the page doesn't scroll and the first word sits in the middle (${JSON.stringify(o)})`,
+          );
         }
-        await w.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
-        await settled();
-      };
-      /** The first row, the list's scroll and the page hold still for 10 frames (fonts loaded). */
-      const settled = () =>
-        w.evaluate(
-          () =>
-            new Promise((done) => {
-              const end = performance.now() + 10000;
-              let last = "";
-              let same = 0;
-              const tick = () => {
-                const row = document.querySelector('[role="listitem"]')?.getBoundingClientRect();
-                const list = document.querySelector('[role="list"]');
-                const k = `${row?.top}|${row?.height}|${list?.scrollTop}|${scrollY}|${innerHeight}`;
-                same = k === last ? same + 1 : 0;
-                last = k;
-                if ((same >= 10 && document.fonts.status === "loaded") || performance.now() > end)
-                  done();
-                else requestAnimationFrame(tick);
-              };
-              requestAnimationFrame(tick);
-            }),
-        );
-      const opening = () =>
-        w.evaluate(() => {
-          const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
-          const list = document.querySelector('[role="list"]').getBoundingClientRect();
-          return {
-            scrollY: Math.round(scrollY),
-            off: Math.round(row.top + row.height / 2 - (list.top + list.height / 2)),
-            native: document.querySelectorAll(".slip-native").length > 0,
-          };
-        });
-      for (const when of ["load", "reload"]) {
-        if (when === "load") await load(() => w.goto(listUrl, { waitUntil: "commit" }));
-        else await load(() => w.reload({ waitUntil: "commit" }));
-        const o = await opening();
+        // The paper scrolls with the list (always, since 2026-11-03): a layer
+        // inside the list scrolls with the rows and the body behind it is plain.
+        // The cords' layer scrolls with them too.
+        const paper = () =>
+          w.evaluate(async () => {
+            const list = document.querySelector('[role="list"]');
+            const layer = list.querySelector("[data-paper-layer]");
+            const body = getComputedStyle(document.body).backgroundImage;
+            if (!layer) return { layer: false, bodyPaper: body.includes("url(") };
+            const at = () => Math.round(layer.getBoundingClientRect().top);
+            const before = at();
+            const top0 = list.scrollTop;
+            list.scrollTop = top0 + 200;
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const moved = before - at();
+            list.scrollTop = top0;
+            const cs = getComputedStyle(layer);
+            const cords = list.querySelector("[data-slip-cords]");
+            const cordsAt = () => Math.round(cords.getBoundingClientRect().top);
+            const c0 = cordsAt();
+            list.scrollTop = top0 + 200;
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const cordsMoved = c0 - cordsAt();
+            list.scrollTop = top0;
+            return {
+              cordsMoved,
+              layer: layer === list.firstElementChild,
+              bodyPaper: body.includes("url("),
+              pointer: cs.pointerEvents,
+              textured: cs.backgroundImage.includes("url("),
+              covers: Math.abs(layer.offsetHeight - list.scrollHeight) <= 1,
+              moved,
+            };
+          });
+        const on = await paper();
         check(
-          o.scrollY === 0 && Math.abs(o.off) <= 3 && o.native === (variant === "native"),
-          `${tag} ${when}: the page doesn't scroll and the first word sits in the middle (${JSON.stringify(o)})`,
+          on.layer &&
+            !on.bodyPaper &&
+            on.pointer === "none" &&
+            on.textured &&
+            on.covers &&
+            on.moved === 200 &&
+            on.cordsMoved === 200,
+          `${tag} the paper and the cords scroll with the rows, the body is plain (${JSON.stringify(on)})`,
         );
-      }
-      // The paper scrolls with the list (always, since 2026-11-03): a layer
-      // inside the list scrolls with the rows and the body behind it is plain.
-      // The cords' layer scrolls with them too.
-      const paper = () =>
-        w.evaluate(async () => {
-          const list = document.querySelector('[role="list"]');
-          const layer = list.querySelector("[data-paper-layer]");
-          const body = getComputedStyle(document.body).backgroundImage;
-          if (!layer) return { layer: false, bodyPaper: body.includes("url(") };
-          const at = () => Math.round(layer.getBoundingClientRect().top);
-          const before = at();
-          const top0 = list.scrollTop;
-          list.scrollTop = top0 + 200;
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          const moved = before - at();
-          list.scrollTop = top0;
-          const cs = getComputedStyle(layer);
-          const cords = list.querySelector("[data-slip-cords]");
-          const cordsAt = () => Math.round(cords.getBoundingClientRect().top);
-          const c0 = cordsAt();
-          list.scrollTop = top0 + 200;
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          const cordsMoved = c0 - cordsAt();
-          list.scrollTop = top0;
-          return {
-            cordsMoved,
-            layer: layer === list.firstElementChild,
-            bodyPaper: body.includes("url("),
-            pointer: cs.pointerEvents,
-            textured: cs.backgroundImage.includes("url("),
-            covers: Math.abs(layer.offsetHeight - list.scrollHeight) <= 1,
-            moved,
-          };
-        });
-      const on = await paper();
-      check(
-        on.layer &&
-          !on.bodyPaper &&
-          on.pointer === "none" &&
-          on.textured &&
-          on.covers &&
-          on.moved === 200 &&
-          on.cordsMoved === 200,
-        `${tag} the paper and the cords scroll with the rows, the body is plain (${JSON.stringify(on)})`,
-      );
-      const order = await revealOrder(w, variant);
-      check(
-        order === "card → label:3",
-        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
-      );
-      // The owner's iPhone PWA (414×848, a 48px status bar). env(safe-area-*)
-      // can't be emulated, so the body's safe-area padding and the toolbar's
-      // offset stand in for it — that padding once made the page 48px taller
-      // than the window, and iOS left it scrolled by that much.
-      await w.setViewportSize({ width: 414, height: 848 });
-      await w.addInitScript(() =>
-        document.addEventListener("DOMContentLoaded", () => {
-          const st = document.createElement("style");
-          st.textContent = "body{padding-top:48px!important}[data-words-top]{top:104px!important}";
-          document.head.append(st);
-        }),
-      );
-      await load(() => w.reload({ waitUntil: "commit" }));
-      const layout = () =>
-        w.evaluate(() => {
-          const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
-          const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
-          const list = document.querySelector('[role="list"]').getBoundingClientRect();
-          return {
-            scrollY: Math.round(scrollY),
-            docH: document.documentElement.scrollHeight,
-            innerH: innerHeight,
-            barH: Math.round(bar.height),
-            off: Math.round(row.top + row.height / 2 - (list.top + list.height / 2)),
-            sheet: !!document.querySelector("[data-words-settings]"),
-          };
-        });
-      const pageFits = (o) => o.scrollY === 0 && o.docH <= o.innerH;
-      let o = await layout();
-      check(
-        pageFits(o) && Math.abs(o.off) <= 3,
-        `${tag} 414×848 + safe area: the page is exactly the window, first word in the middle (${JSON.stringify(o)})`,
-      );
-      await toggleSettings(w);
-      await w.waitForTimeout(400);
-      o = await layout();
-      check(
-        (await w.getByRole("switch", { name: "Paper scrolls with the list" }).count()) === 0,
-        `${tag} no "Paper scrolls with the list" switch: the paper always scrolls`,
-      );
-      check(
-        o.sheet && o.barH <= 72 && pageFits(o) && Math.abs(o.off) <= 3,
-        `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
-      );
-      await toggleSettings(w);
-      await w.waitForTimeout(400);
-      o = await layout();
-      check(
-        !o.sheet && o.barH <= 72 && pageFits(o) && Math.abs(o.off) <= 3,
-        `${tag} settings closed: the first word is still in the middle (${JSON.stringify(o)})`,
-      );
-      // Settings is a modal sheet (SettingsSheet, owner 2026-11-03): bounded by
-      // the visible viewport, its body scrolls inside itself to the last row,
-      // the page never scrolls, focus goes back to the button. Short phones,
-      // both ways round, both schemes. The toolbar has no Undo button.
-      check(
-        (await w.locator("[data-words-top]").getByRole("button", { name: "Undo" }).count()) === 0,
-        `${tag} the toolbar has no Undo button (Z / M, Esc and voice undo)`,
-      );
-      for (const [vw, vh] of [
-        [360, 640],
-        [640, 360],
-      ]) {
-        await w.setViewportSize({ width: vw, height: vh });
-        await w.waitForTimeout(300);
+        const order = await revealOrder(w, variant);
+        check(
+          order === "card → label:3",
+          `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+        );
+        // The owner's iPhone PWA (414×848, a 48px status bar). env(safe-area-*)
+        // can't be emulated, so the body's safe-area padding and the toolbar's
+        // offset stand in for it — that padding once made the page 48px taller
+        // than the window, and iOS left it scrolled by that much.
+        await w.setViewportSize({ width: 414, height: 848 });
+        await w.addInitScript(() =>
+          document.addEventListener("DOMContentLoaded", () => {
+            const st = document.createElement("style");
+            st.textContent =
+              "body{padding-top:48px!important}[data-words-top]{top:104px!important}";
+            document.head.append(st);
+          }),
+        );
+        await load(() => w.reload({ waitUntil: "commit" }));
+        const layout = () =>
+          w.evaluate(() => {
+            const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+            const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+            const list = document.querySelector('[role="list"]').getBoundingClientRect();
+            return {
+              scrollY: Math.round(scrollY),
+              docH: document.documentElement.scrollHeight,
+              innerH: innerHeight,
+              barH: Math.round(bar.height),
+              off: Math.round(row.top + row.height / 2 - (list.top + list.height / 2)),
+              sheet: !!document.querySelector("[data-words-settings]"),
+            };
+          });
+        const pageFits = (o) => o.scrollY === 0 && o.docH <= o.innerH;
+        let o = await layout();
+        check(
+          pageFits(o) && Math.abs(o.off) <= 3,
+          `${tag} 414×848 + safe area: the page is exactly the window, first word in the middle (${JSON.stringify(o)})`,
+        );
         await toggleSettings(w);
         await w.waitForTimeout(400);
-        const fit = await w.evaluate(() => {
-          const panel = document.querySelector("[data-words-settings]");
-          const body = panel.querySelector("[data-words-settings-body]");
-          body.scrollTop = body.scrollHeight;
-          const p = panel.getBoundingClientRect();
-          const last = body.lastElementChild.getBoundingClientRect();
-          const b = body.getBoundingClientRect();
-          return {
-            modal:
-              panel.getAttribute("role") === "dialog" &&
-              panel.getAttribute("aria-modal") === "true",
-            panelTop: Math.round(p.top),
-            panelBottom: Math.round(p.bottom),
-            lastBottom: Math.round(last.bottom),
-            bodyBottom: Math.round(b.bottom),
-            innerH: innerHeight,
-            scrolls: body.scrollHeight > body.clientHeight ? body.scrollTop > 0 : true,
-            overscroll: getComputedStyle(body).overscrollBehaviorY,
-          };
-        });
-        // (WebKit's mobile emulation has no wheel: the body was scrolled to its
-        // end above; overscroll-behavior: contain keeps the page from following.)
-        await w.waitForTimeout(200);
-        const pageY = await w.evaluate(() => Math.round(scrollY));
+        o = await layout();
         check(
-          fit.modal &&
-            fit.panelTop >= 0 &&
-            fit.panelBottom <= fit.innerH &&
-            fit.lastBottom <= fit.bodyBottom + 1 &&
-            fit.scrolls &&
-            fit.overscroll === "contain" &&
-            pageY === 0,
-          `${tag} ${vw}×${vh}: the Settings sheet fits the screen and scrolls to its last row (${JSON.stringify({ ...fit, pageY })})`,
+          (await w.getByRole("switch", { name: "Paper scrolls with the list" }).count()) === 0,
+          `${tag} no "Paper scrolls with the list" switch: the paper always scrolls`,
         );
-        if (process.env.QA_SHOTS)
-          for (const colorScheme of ["light", "dark"]) {
-            await w.emulateMedia({ colorScheme });
-            await w.screenshot({
-              path: `${process.env.QA_SHOTS}/settings-sheet-${variant}-${vw}x${vh}-${colorScheme}.png`,
-            });
-          }
-        await w.keyboard.press("Escape");
-        await w
-          .locator("[data-words-settings]")
-          .waitFor({ state: "detached", timeout: budget(5000) });
         check(
-          await w.evaluate(() => document.activeElement?.getAttribute("aria-label") === "Settings"),
-          `${tag} ${vw}×${vh}: Esc closes the sheet and focus returns to the Settings button`,
+          o.sheet && o.barH <= 72 && pageFits(o) && Math.abs(o.off) <= 3,
+          `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
         );
-      }
-      await w.emulateMedia({ colorScheme: null });
-      await w.setViewportSize({ width: 414, height: 848 });
-      // Fresh layout for the swipe checks below, as before the resizes.
-      await load(() => w.reload({ waitUntil: "commit" }));
-      if (variant === "native") {
-        // At rest the face covers the label strip; a completed swipe (the
-        // touch sequence iOS gives: touchstart, pointercancel as the scroller
-        // takes over, a scroll to the Good level, touchend resting there)
-        // grades and glides back to centre.
-        const s = await w.evaluate(async () => {
-          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
-          const row = [...document.querySelectorAll(".slip-native")].find(
-            (x) => x.getBoundingClientRect().top > bar + 60,
+        await toggleSettings(w);
+        await w.waitForTimeout(400);
+        o = await layout();
+        check(
+          !o.sheet && o.barH <= 72 && pageFits(o) && Math.abs(o.off) <= 3,
+          `${tag} settings closed: the first word is still in the middle (${JSON.stringify(o)})`,
+        );
+        // Settings is a modal sheet (SettingsSheet, owner 2026-11-03): bounded by
+        // the visible viewport, its body scrolls inside itself to the last row,
+        // the page never scrolls, focus goes back to the button. Short phones,
+        // both ways round, both schemes. The toolbar has no Undo button.
+        check(
+          (await w.locator("[data-words-top]").getByRole("button", { name: "Undo" }).count()) === 0,
+          `${tag} the toolbar has no Undo button (Z / M, Esc and voice undo)`,
+        );
+        for (const [vw, vh] of [
+          [360, 640],
+          [640, 360],
+        ]) {
+          await w.setViewportSize({ width: vw, height: vh });
+          await w.waitForTimeout(300);
+          await toggleSettings(w);
+          await w.waitForTimeout(400);
+          const fit = await w.evaluate(() => {
+            const panel = document.querySelector("[data-words-settings]");
+            const body = panel.querySelector("[data-words-settings-body]");
+            body.scrollTop = body.scrollHeight;
+            const p = panel.getBoundingClientRect();
+            const last = body.lastElementChild.getBoundingClientRect();
+            const b = body.getBoundingClientRect();
+            return {
+              modal:
+                panel.getAttribute("role") === "dialog" &&
+                panel.getAttribute("aria-modal") === "true",
+              panelTop: Math.round(p.top),
+              panelBottom: Math.round(p.bottom),
+              lastBottom: Math.round(last.bottom),
+              bodyBottom: Math.round(b.bottom),
+              innerH: innerHeight,
+              scrolls: body.scrollHeight > body.clientHeight ? body.scrollTop > 0 : true,
+              overscroll: getComputedStyle(body).overscrollBehaviorY,
+            };
+          });
+          // (WebKit's mobile emulation has no wheel: the body was scrolled to its
+          // end above; overscroll-behavior: contain keeps the page from following.)
+          await w.waitForTimeout(200);
+          const pageY = await w.evaluate(() => Math.round(scrollY));
+          check(
+            fit.modal &&
+              fit.panelTop >= 0 &&
+              fit.panelBottom <= fit.innerH &&
+              fit.lastBottom <= fit.bodyBottom + 1 &&
+              fit.scrolls &&
+              fit.overscroll === "contain" &&
+              pageY === 0,
+            `${tag} ${vw}×${vh}: the Settings sheet fits the screen and scrolls to its last row (${JSON.stringify({ ...fit, pageY })})`,
           );
-          const b = row.getBoundingClientRect();
-          const y = b.top + b.height / 2;
-          const face = (x) => !!document.elementFromPoint(x, y)?.closest(".slip-face");
-          const sc = row.querySelector(".slip-scroller");
-          const a = parseFloat(getComputedStyle(row).getPropertyValue("--a"));
-          const out = {
-            rest: sc.scrollLeft,
-            a,
-            faceAtRest: face(b.left + 20) && face(b.right - 20),
-          };
-          const fire = (type, x) => {
-            const e = new Event(type, { bubbles: true });
-            const t = [{ clientX: x, clientY: y }];
-            Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : t });
-            Object.defineProperty(e, "changedTouches", { value: t });
-            sc.dispatchEvent(e);
-          };
-          fire("touchstart", 100);
-          sc.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-          sc.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
-          sc.scrollTo({ left: a, behavior: "instant" });
-          await new Promise((r) => setTimeout(r, 50));
-          out.slid = sc.scrollLeft;
-          fire("touchend", 100 + a);
-          await new Promise((r) => setTimeout(r, 1500));
-          out.after = sc.scrollLeft;
-          out.faceAfter = face(b.left + 20);
-          out.graded = !!row.querySelector(".slip-face .lk-stamp");
-          return out;
-        });
-        check(
-          s.faceAtRest && s.rest === 2 * s.a,
-          `${tag} at rest the slip's face covers its label strip (${JSON.stringify(s)})`,
-        );
-        check(
-          s.slid === s.a && s.graded && Math.abs(s.after - s.rest) < 1 && s.faceAfter,
-          `${tag} a completed swipe grades and the slip returns to centre (${JSON.stringify(s)})`,
-        );
-      } else {
-        // ?swipe=native: that page load only, never stored — also in an iframe.
-        const sep = listUrl.includes("?") ? "&" : "?";
-        await load(() => w.goto(`${listUrl}${sep}swipe=native`, { waitUntil: "commit" }));
-        const forced = await w.evaluate(() => ({
-          native: document.querySelectorAll(".slip-native").length > 0,
-          stored: localStorage.getItem("lk:swipe-ab"),
-        }));
-        // setContent replaces the document without leaving it; its own "load"
-        // would wait for the whole framed page, so it waits for the framed list.
-        leaving = true;
-        try {
-          await w.setContent(
-            `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
-            { waitUntil: "commit" },
+          if (process.env.QA_SHOTS)
+            for (const colorScheme of ["light", "dark"]) {
+              await w.emulateMedia({ colorScheme });
+              await w.screenshot({
+                path: `${process.env.QA_SHOTS}/settings-sheet-${variant}-${vw}x${vh}-${colorScheme}.png`,
+              });
+            }
+          await w.keyboard.press("Escape");
+          await w
+            .locator("[data-words-settings]")
+            .waitFor({ state: "detached", timeout: budget(5000) });
+          check(
+            await w.evaluate(
+              () => document.activeElement?.getAttribute("aria-label") === "Settings",
+            ),
+            `${tag} ${vw}×${vh}: Esc closes the sheet and focus returns to the Settings button`,
           );
-        } finally {
-          leaving = false;
         }
-        const fr = w.frameLocator("iframe");
-        await fr.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
-        const framed = await fr.locator(".slip-native").count();
-        await load(() => w.goto(listUrl, { waitUntil: "commit" }));
-        const plain = await w.locator(".slip-native").count();
-        check(
-          forced.native && forced.stored === "js" && framed > 0 && plain === 0,
-          `${tag} ?swipe=native applies to that load only (iframe too) and is never stored (${JSON.stringify({ ...forced, framed, plain })})`,
-        );
+        await w.emulateMedia({ colorScheme: null });
+        await w.setViewportSize({ width: 414, height: 848 });
+        // Fresh layout for the swipe checks below, as before the resizes.
+        await load(() => w.reload({ waitUntil: "commit" }));
+        if (variant === "native") {
+          // At rest the face covers the label strip; a completed swipe (the
+          // touch sequence iOS gives: touchstart, pointercancel as the scroller
+          // takes over, a scroll to the Good level, touchend resting there)
+          // grades and glides back to centre.
+          const s = await w.evaluate(async () => {
+            const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
+            const row = [...document.querySelectorAll(".slip-native")].find(
+              (x) => x.getBoundingClientRect().top > bar + 60,
+            );
+            const b = row.getBoundingClientRect();
+            const y = b.top + b.height / 2;
+            const face = (x) => !!document.elementFromPoint(x, y)?.closest(".slip-face");
+            const sc = row.querySelector(".slip-scroller");
+            const a = parseFloat(getComputedStyle(row).getPropertyValue("--a"));
+            const out = {
+              rest: sc.scrollLeft,
+              a,
+              faceAtRest: face(b.left + 20) && face(b.right - 20),
+            };
+            const fire = (type, x) => {
+              const e = new Event(type, { bubbles: true });
+              const t = [{ clientX: x, clientY: y }];
+              Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : t });
+              Object.defineProperty(e, "changedTouches", { value: t });
+              sc.dispatchEvent(e);
+            };
+            fire("touchstart", 100);
+            sc.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+            sc.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
+            sc.scrollTo({ left: a, behavior: "instant" });
+            await new Promise((r) => setTimeout(r, 50));
+            out.slid = sc.scrollLeft;
+            fire("touchend", 100 + a);
+            await new Promise((r) => setTimeout(r, 1500));
+            out.after = sc.scrollLeft;
+            out.faceAfter = face(b.left + 20);
+            out.graded = !!row.querySelector(".slip-face .lk-stamp");
+            return out;
+          });
+          check(
+            s.faceAtRest && s.rest === 2 * s.a,
+            `${tag} at rest the slip's face covers its label strip (${JSON.stringify(s)})`,
+          );
+          check(
+            s.slid === s.a && s.graded && Math.abs(s.after - s.rest) < 1 && s.faceAfter,
+            `${tag} a completed swipe grades and the slip returns to centre (${JSON.stringify(s)})`,
+          );
+        } else {
+          // ?swipe=native: that page load only, never stored — also in an iframe.
+          const sep = listUrl.includes("?") ? "&" : "?";
+          await load(() => w.goto(`${listUrl}${sep}swipe=native`, { waitUntil: "commit" }));
+          const forced = await w.evaluate(() => ({
+            native: document.querySelectorAll(".slip-native").length > 0,
+            stored: localStorage.getItem("lk:swipe-ab"),
+          }));
+          // setContent replaces the document without leaving it; its own "load"
+          // would wait for the whole framed page, so it waits for the framed list.
+          leaving = true;
+          try {
+            await w.setContent(
+              `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
+              { waitUntil: "commit" },
+            );
+          } finally {
+            leaving = false;
+          }
+          const fr = w.frameLocator("iframe");
+          await fr.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
+          const framed = await fr.locator(".slip-native").count();
+          await load(() => w.goto(listUrl, { waitUntil: "commit" }));
+          const plain = await w.locator(".slip-native").count();
+          check(
+            forced.native && forced.stored === "js" && framed > 0 && plain === 0,
+            `${tag} ?swipe=native applies to that load only (iframe too) and is never stored (${JSON.stringify({ ...forced, framed, plain })})`,
+          );
+        }
+        await w.close();
+        await c.close();
       }
-      await w.close();
-      await c.close();
+    } finally {
+      await wk.close();
     }
-    await wk.close();
-  }
+  };
+
+  // Every phone pass and the WebKit block at once, a few at a time, beside the
+  // rest of this desktop flow: each is a context (and account) of its own, so
+  // they only share the machine. Awaited before the page-error check below.
+  phonesDone = (async () => {
+    const passes = [
+      // The longest first.
+      ["webkit-iphone", webkitPass],
+      ["phone/js", () => firstPass("js")],
+      ["phone/native", () => firstPass("native")],
+      ["phone/js+heavy", () => heavyPass("js")],
+      ["phone/native+heavy", () => heavyPass("native")],
+    ];
+    for (const variant of ["js", "native"])
+      for (const feel of ["light", "heavy"])
+        for (const motion of ["on", "off"])
+          passes.push([
+            `phone/${variant}+${feel}+motion-${motion}`,
+            () => rowPass(variant, feel, motion),
+          ]);
+    // One idle core per pass, at most 8: more only queue for the same CPU.
+    const width = Math.max(2, Math.min(8, Math.floor(availableParallelism() / 2)));
+    let next = 0;
+    const lane = async () => {
+      for (let i; (i = next++) < passes.length; ) {
+        const [name, run] = passes[i];
+        await run().catch((e) => check(false, `${name}: threw: ${e.message}`));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(width, passes.length) }, lane));
+  })();
 
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
@@ -2782,10 +2918,12 @@ try {
     "a changed meaning is updated",
   );
 
+  await phonesDone;
   check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);
 } catch (e) {
   check(false, `threw: ${e.message}`);
 } finally {
+  await phonesDone.catch(() => {});
   await browser.close();
 }
 process.exit(ok ? 0 : 1);

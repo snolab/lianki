@@ -75,7 +75,9 @@ Time-sensitive suites go through one machine-wide gate, and the gate admits by
 the machine's **actual load**, not by a number of runs (owner, 2026-11-08). Until
 then it was one run at a time, and each agent ahead in the queue added a whole
 gate, about 6 min (measured 2026-11-08: lint 0.7 s, typecheck 1.8 s, unit +
-coverage 47 s, qa:all 295 s, of which qa-words 209 s).
+coverage 47 s, qa:all 295 s, of which qa-words 209 s). qa-words now runs its
+phone matrix and WebKit iPhone passes at once, each in a context with an
+account of its own, beside its desktop flow: 76–83 s at load 7 on 18 cores.
 
 **What waits and what does not.** Lint, typecheck, the unit suite, the OpenNext
 build, `wrangler dev` and the plain qa suites start at once: they are CPU work,
