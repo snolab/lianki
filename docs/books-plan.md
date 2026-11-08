@@ -876,42 +876,69 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   until the credits redesign (owner, 2026-11-04) it only logs
   `read.gloss.cost`.
 
-### After a paragraph's grade: four review scopes (owner, 2026-11-08, card ee79dfe4)
+### After a paragraph's grade: two reviews, nothing, Easy words (owner, 2026-11-08, card d2cf3080)
 
 The paragraph swipe stays the item's own grade (sides, mirror, the 8 s Undo
-hold, keys 1–4 / L K J H, all unchanged). What follows it used to be "open its
-word review" for Again / Hard / Good and "grade its words Easy" for Easy
-(2026-11-05). Since 2026-11-08 the four levels are four **scopes** of the same
-word review instead ("把这四个复习选项给取消掉…还是四个级别";
-`lib/read/review-scope.ts`):
+hold, keys 1–4 / L K J H, all unchanged). What follows it
+(`lib/read/review-scope.ts` `afterGrade`):
 
-| level (after the mirror) | scope          | the review's words                                   | `?review=` |
-| ------------------------ | -------------- | ---------------------------------------------------- | ---------- |
-| Again (1)                | 本段的词        | the swiped item's own words                          | `p…` / `r…` |
-| Hard (2)                 | 从本章开头到本段的词 | every paragraph from the chapter's start to the item | `u<line>`  |
-| Good (3)                 | 本章全部的词     | the whole chapter                                    | `c<line>`  |
-| Easy (4)                 | 整本书的词       | the whole book                                       | `b`        |
+| level (after the mirror) | after the grade                         | `?review=`  |
+| ------------------------ | --------------------------------------- | ----------- |
+| Again (1)                | review 本段的词: the swiped item's words | `p…` / `r…` |
+| Hard (2)                 | review 从本章开头到本段的词              | `u<line>`   |
+| Good (3)                 | nothing (the owner: "空着" for now)      | —           |
+| Easy (4)                 | its due and new words graded Easy       | —           |
 
-- **Which words:** the item's scope is the item's words, opened only when the
-  server's read-only plan (`POST /api/read/[id]/easy-plan`) has a due or new
-  word, as before. The wider scopes take the distinct words of their lines
-  without the ones the word map marks known ("k"), the unknown and weakest
-  first (`orderWords`), at most 400 (what `/word-session` takes in one call).
-  The chapter is the one the item ends in; no chapters means the whole book.
-- **Fast for a whole book:** the lines are cut once into a book-wide map in
-  the reader (not the row cache, which a chapter would flush; not the
-  server), familiarity comes from the word map already loaded, and nothing is
-  asked per paragraph. 5 000 lines take well under a second
-  (`unit/read-review-scope.test.ts`).
-- While an item rests on a level, a hint above it names the scope
-  (`read-scope-hint`, "复习本章全部的词"). There is no Easy toast and no Easy
-  word batch from the reader any more (the server still accepts
-  `GradeRequest.easyWords`; no client sends it).
-- The review opens once the swipe has settled — not after a later grade or an
+History: 2026-11-05 Again / Hard / Good opened the item's review and Easy
+graded its words Easy. #703 (2026-11-08, card ee79dfe4) made the four levels
+four widening review scopes (paragraph / chapter so far / chapter / book).
+Later that day (card d2cf3080) the owner kept the first two, left Good empty
+and put Easy back as it was; the chapter and book scopes and their
+`?review=c…` / `b` refs are gone.
+
+- **Again — the item's words:** opened only when the server's read-only plan
+  (`POST /api/read/[id]/easy-plan`) has a due or new word, without the words
+  of an Easy grade still waiting in its hold.
+- **Hard — the chapter up to here:** the distinct words of every line from
+  the chapter's start (the chapter the item ends in; no chapters: the book's
+  start) up to the item, without the ones the word map marks known ("k"),
+  the unknown and weakest first (`orderWords`), at most 400 (what
+  `/word-session` takes in one call). The lines are cut once into a
+  book-wide map in the reader (not the row cache, which a chapter would
+  flush; not the server), familiarity comes from the word map already
+  loaded, and nothing is asked per paragraph; 5 000 lines take well under a
+  second (`unit/read-review-scope.test.ts`).
+- **Easy** — by swipe on whichever side gives Easy for his mirror setting,
+  or by key H / 4 — also grades Easy every word of the **swiped item** (the
+  swipe unit: its pieces' sentences, `paraWords`, as the review takes a
+  paragraph's) that is due now on his card, and every word with no card
+  anywhere (carded in the book's list as 制卡, then Easy). A card not due yet
+  is not touched; names without a card are left out
+  (the selection card's batch path, `lib/read/batch-grade-server.ts`
+  `planWords` / `gradeWords`: grades through `WordsD1Repo.review`, rating 4,
+  as on /words). The swipe and the card's paragraph grade share this: both
+  go through `gradeAt`.
+- The Easy words ride in the item grade's own request
+  (`GradeRequest.easyWords`), sent when its Undo hold ends: U / ⌘Z / the ↶
+  pill / the toast's Undo inside the hold drops both, so nothing reaches the
+  server and nothing has to be reverted. Once sent, the words sit in the
+  grade's own undo record (`read_grade_undo.words`), so the card handle's
+  undo of a sent paragraph grade (`batch-grade { undo }`) restores the
+  sentences and every word exactly and removes the cards it made. The server
+  re-reads his cards and re-checks each due in that request (his email
+  only); a retried request grades nothing twice. Meanings for the new cards
+  as 制卡 finds them, waiting at most a few seconds.
+- **Hints:** while the item rests on a level, a hint above it says what the
+  grade does: Again "复习本段的词", Hard "复习从本章开头到本段的词"
+  (`read-scope-hint`, `data-scope`), Easy "段落简单 + N 个词记为简单"
+  (`read-easy-hint`; N from the plan, asked when a slide starts; "+ N" hidden
+  when N = 0). Good shows no hint. After an Easy grade a toast says how many
+  words went with it, with Undo.
+- A review opens once the swipe has settled — not after a later grade or an
   undo, not over a sheet. Undoing the grade inside the hold closes a review
   it opened. Closing it focuses the next item. Reading aloud is paused under
-  it, not stopped (audio-claim). A refresh or a link on `?review=u…/c…/b`
-  opens that scope's review again.
+  it, not stopped (audio-claim). A refresh or a link on `?review=u…` opens
+  the chapter's review again.
 
 ### Grading from the selection card (owner, 2026-11-05 02:50–03:20 JST)
 

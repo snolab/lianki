@@ -1,9 +1,9 @@
 /**
- * A paragraph grade's Easy words batch (the server path, still taken by a
- * GradeRequest with `easyWords`; lib/read/book-word-list.ts easyPlan /
- * gradeEasyWords, lib/read/reader-server.ts's hold), and which review scope
- * each swipe level opens (lib/read/review-scope.ts; the reader no longer
- * sends the Easy batch since 2026-11-08).
+ * A paragraph graded Easy grades its words Easy with it (a GradeRequest with
+ * `easyWords`; lib/read/book-word-list.ts easyPlan / gradeEasyWords,
+ * lib/read/reader-server.ts's hold), and what each swipe level does after the
+ * grade (lib/read/review-scope.ts afterGrade; owner, 2026-11-08, card
+ * d2cf3080): Again / Hard open a review, Good nothing, Easy the Easy batch.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { testSchema } from "@/lib/d1/testSchema";
@@ -22,7 +22,8 @@ import {
   type D1Batch,
 } from "@/lib/read/reader-store";
 import { bookHash } from "@/lib/read/units";
-import { scopeOfRating } from "@/lib/read/review-scope";
+import { afterGrade } from "@/lib/read/review-scope";
+import { planLeft } from "@/lib/read/word-review";
 import { serverReaderData } from "@/lib/read/reader-server";
 import type { ItemsResponse } from "@/lib/read/reader-api";
 import { levelRating, sideRating, type SwipeRating } from "@/lib/words/swipe";
@@ -170,12 +171,16 @@ describe("an Easy paragraph grade takes its words (D1, the batch path)", () => {
   });
 });
 
-describe("after a paragraph grade (lib/read/review-scope.ts)", () => {
-  it("each level opens one scope: the far left the paragraph, the far right the book", () => {
+describe("after a paragraph grade (lib/read/review-scope.ts afterGrade)", () => {
+  it("far left reviews the paragraph, far right grades its words Easy; Good opens nothing", () => {
     const at = (k: number, mirror: boolean) =>
-      scopeOfRating(sideRating(levelRating(k), mirror) as SwipeRating);
-    expect([-2, -1, 1, 2].map((k) => at(k, false))).toEqual(["para", "upto", "chapter", "book"]);
-    expect([-2, -1, 1, 2].map((k) => at(k, true))).toEqual(["book", "chapter", "upto", "para"]);
+      afterGrade(sideRating(levelRating(k), mirror) as SwipeRating);
+    expect([-2, -1, 1, 2].map((k) => at(k, false))).toEqual(["para", "upto", "none", "easy"]);
+    expect([-2, -1, 1, 2].map((k) => at(k, true))).toEqual(["easy", "none", "upto", "para"]);
+  });
+
+  it("counts leave out the words of an Easy grade still waiting to be sent", () => {
+    expect(planLeft(["chat", "loup", "ours"], new Set(["loup"]))).toEqual(["chat", "ours"]);
   });
 });
 

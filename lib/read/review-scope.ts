@@ -1,31 +1,36 @@
-// What follows a passage's grade in the reader (owner, 2026-11-08 ~20:10–20:30
-// JST, card ee79dfe4: "这四个复习选项给取消掉…还是四个级别"): the four grade
-// levels of a passage's swipe (or the card's handle) no longer mean "review
-// its words" ×3 and "its words go Easy" — each opens the word review
-// (reader-word-review.tsx) over a wider SCOPE of the book:
+// What follows a passage's grade in the reader. The four grade levels of a
+// passage's swipe (or the card's handle) grade the passage and then:
 //
-//   Again (1) → 本段的词            the passage's own words
-//   Hard  (2) → 从本章开头到本段的词  the chapter so far, up to and with this passage
-//   Good  (3) → 本章全部的词         the whole chapter
-//   Easy  (4) → 整本书的词           the whole book
+//   Again (1) → review 本段的词           the passage's own words
+//   Hard  (2) → review 从本章开头到本段的词 the chapter so far, up to and with this passage
+//   Good  (3) → nothing                   the passage's grade only
+//   Easy  (4) → its words go Easy          the passage's due and new words graded Easy
+//                                          (the grade's easyWords batch, Undo inside the hold)
 //
-// The passage itself is still graded with the level, as before. Pure, so the
-// ranges and the word pick are unit-tested (unit/read-review-scope.test.ts).
+// History: 2026-11-05 Again/Hard/Good opened the passage's review and Easy
+// graded its words Easy; 2026-11-08 (card ee79dfe4, #703) the four levels
+// widened the review to the paragraph / chapter so far / chapter / book;
+// 2026-11-08 later (card d2cf3080) the owner kept the first two, left Good
+// empty "for now" and put Easy back as before. Pure, so the ranges and the
+// word pick are unit-tested (unit/read-review-scope.test.ts).
 //
-// Fast for a whole book: the lines are cut once by the caller (a book-wide
+// Fast for a long chapter: the lines are cut once by the caller (a book-wide
 // index, not the row cache, not the server), the familiarity comes from the
 // book's word map, and nothing is asked per paragraph.
 
 import type { Fam, Sentence } from "./reader-model";
 import { needsReview, orderWords, spanWords, type ParaWord } from "./word-review";
 
-export type ReviewScope = "para" | "upto" | "chapter" | "book";
+/** The word reviews a passage's grade can open. */
+export type ReviewScope = "para" | "upto";
 
-/** Narrowest first: the grade levels 1–4 in order. */
-export const SCOPES: readonly ReviewScope[] = ["para", "upto", "chapter", "book"];
+/** What follows a passage's grade: a review's scope, nothing, or its words graded Easy. */
+export type AfterGrade = ReviewScope | "none" | "easy";
 
-/** The scope a passage's grade (after the mirror) opens. */
-export const scopeOfRating = (r: 1 | 2 | 3 | 4): ReviewScope => SCOPES[r - 1];
+const AFTER: readonly AfterGrade[] = ["para", "upto", "none", "easy"];
+
+/** What follows a passage's grade (the grade given, after the mirror). */
+export const afterGrade = (r: 1 | 2 | 3 | 4): AfterGrade => AFTER[r - 1];
 
 /** What the review endpoints take in one call (lib/read/reader-route.ts rangeWords). */
 export const MAX_SCOPE_WORDS = 400;
@@ -65,10 +70,8 @@ export function scopeLines(
 ): [number, number] {
   const end = Math.min(last + 1, nLines);
   if (scope === "para") return [first, end];
-  if (scope === "book") return [0, nLines];
-  const [cs, ce] = chapterSpan(chapterStarts, last, nLines);
-  const from = Math.min(first, cs);
-  return scope === "upto" ? [from, end] : [from, Math.max(ce, end)];
+  const [cs] = chapterSpan(chapterStarts, last, nLines);
+  return [Math.min(first, cs), end];
 }
 
 /**
