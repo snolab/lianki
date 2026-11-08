@@ -3,7 +3,7 @@
  * token comes from (never printed), reading both listeners' JSON lines, and
  * what the lane's agent is handed. Tested in unit/lane-listen.test.ts.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { type RouteLane, routeLine, testText } from "../../lib/lane-route";
@@ -27,10 +27,21 @@ export function laneToken(
   if (!lane || !/^[A-Za-z0-9._-]{1,40}$/.test(lane) || lane.includes(".."))
     return { from: "none", why: "no lane (--as) to look a token up for" };
   const path = laneTokenPath(lane, env);
-  if (!existsSync(path)) return { from: "none", why: `no token file ${path}` };
-  if (statSync(path).mode & 0o077)
-    return { from: "none", why: `${path} is readable by others: chmod 600 it` };
-  const t = readFileSync(path, "utf8").trim();
+  // One open file: its mode and its contents are the same file's.
+  let fd: number;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return { from: "none", why: `no token file ${path}` };
+  }
+  let t: string;
+  try {
+    if (fstatSync(fd).mode & 0o077)
+      return { from: "none", why: `${path} is readable by others: chmod 600 it` };
+    t = readFileSync(fd, "utf8").trim();
+  } finally {
+    closeSync(fd);
+  }
   if (!/^lk_[A-Za-z0-9_-]{16,}$/.test(t))
     return { from: "none", why: `${path} does not hold an lk_ token` };
   return { token: t, from: "file" };
