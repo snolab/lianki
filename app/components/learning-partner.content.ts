@@ -533,6 +533,24 @@ const learningPartnerContent = {
       mr: "टाइप करत नसताना फक्त शेवटचा संदेश",
       ko: "입력하지 않을 때는 마지막 메시지만",
     }),
+    devGroup: t({
+      en: "Dev",
+      zh: "开发",
+      hi: "डेवलपर",
+      es: "Desarrollo",
+      fr: "Développement",
+      ar: "المطوّر",
+      bn: "ডেভেলপার",
+      pt: "Desenvolvimento",
+      ru: "Разработка",
+      ur: "ڈیولپر",
+      id: "Pengembang",
+      de: "Entwicklung",
+      ja: "開発",
+      sw: "Msanidi",
+      mr: "डेव्हलपर",
+      ko: "개발",
+    }),
     compactShowAll: t({
       en: "Show the whole chat",
       zh: "显示完整聊天",
@@ -2084,6 +2102,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "On/off switch right under that one, on by default and following the account: when on, a soft rising tone plays when the microphone hears the user begin to speak, and a falling one when they finish. Speech means the user talking into the mic, not the app reading aloud. Short noun phrase, not a command.",
   compactIdle:
     "On/off switch in the chat's menu, saved on this device only: when on, the open chat shrinks to just its latest message (one short line over the input) whenever the text input is not focused, to cut distraction while talking by voice. Names the setting as a short noun phrase, not a command.",
+  devGroup:
+    "Heading of a collapsed section inside the chat's menu, shown only to the site's developer: a tap expands it to show internal diagnostics (voice latency, microphone levels, an echo-cancellation switch). A section heading noun, as in 'developer tools', not a verb; one or two words.",
   compactShowAll:
     "Tooltip and screen-reader hint on that single latest-message line: tapping it brings back the whole chat log. Imperative phrase, short.",
   askJump:

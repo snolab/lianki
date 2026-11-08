@@ -63,6 +63,7 @@ import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
+import { DevMenuGroup } from "./DevMenuGroup";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
@@ -3213,24 +3214,6 @@ export function DebugChat({
               ? "Replies read aloud while typing"
               : "Replies silent"}
       </button>
-      {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
-      <button
-        type="button"
-        role="menuitemcheckbox"
-        data-testid="debug-menu-aec"
-        aria-checked={aec}
-        title={ui.aecHint}
-        onClick={() => {
-          setAecState(!aec);
-          void applyAec(!aec);
-        }}
-        className="flex items-center gap-2 px-3 py-1.5 text-start"
-      >
-        <span aria-hidden className="w-[1em] text-center">
-          {aec ? "◉" : "○"}
-        </span>
-        {ui.aec}
-      </button>
       {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
       <button
         type="button"
@@ -3305,6 +3288,26 @@ export function DebugChat({
           </button>
         ))}
       </div>
+      {/* Dev (DevMenuGroup.tsx): internal diagnostics, on the owner's pages only, collapsed. */}
+      <DevMenuGroup owner={owner} label={t.devGroup}>
+      {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-aec"
+        aria-checked={aec}
+        title={ui.aecHint}
+        onClick={() => {
+          setAecState(!aec);
+          void applyAec(!aec);
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {aec ? "◉" : "○"}
+        </span>
+        {ui.aec}
+      </button>
       {/* The last voice line's path to its reply (latency.ts), when there is one or the mic is on. */}
       {(lastLatency || vs.mic) && (
         <div data-testid="debug-menu-latency" className="px-3 py-1 text-gray-500">
@@ -3356,6 +3359,7 @@ export function DebugChat({
           </div>
         </div>
       )}
+      </DevMenuGroup>
       {vs.queued > 0 && (
         <button
           type="button"
