@@ -123,7 +123,8 @@ try {
     const plays = page.locator("[data-yt-clip]");
     check((await plays.count()) === 3, `one ▶ per sung line (${await plays.count()})`);
 
-    const popup = page.getByTestId("yt-clip-popup");
+    // The sheet itself: the wrapper holds only fixed children, so it has no box of its own.
+    const popup = page.getByTestId("yt-clip-popup").locator("[role=dialog]");
     const shown = (want) =>
       popup.waitFor({ state: want ? "visible" : "hidden", timeout: 10000 }).then(
         () => true,
@@ -132,7 +133,7 @@ try {
     await plays.first().tap();
     check(await shown(true), "a tap on ▶ opens the popup");
     check((await page.locator("[data-select-card]").count()) === 0, "the ▶ tap opens no word card");
-    const box = await popup.locator("[role=dialog]").boundingBox();
+    const box = await popup.boundingBox();
     const vp = page.viewportSize();
     check(
       !!box && !!vp && Math.abs(box.y + box.height - vp.height) < 2 && box.width >= vp.width - 1,
