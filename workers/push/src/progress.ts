@@ -23,6 +23,11 @@
  * timers, no polling — and auto-created groups left empty go with it. At most
  * PROGRESS_MAX_ENTRIES are kept; past that the oldest done nodes go first.
  *
+ * Each task that goes done also leaves one record ({agent, id, title,
+ * estimateMs, actualMs, revisions}) in a durable stats log (keys "d:", the
+ * newest PROGRESS_STATS_MAX, PROGRESS_STATS_TTL_MS), read with GET /stats
+ * (`progress.ts stats`) by agents calibrating their ETAs; never sent to pages.
+ *
  * Writers are rate limited per name and in total, in memory: an evicted hub
  * starts a fresh window, which is fine for a limit meant to stop a runaway loop.
  */
@@ -34,6 +39,9 @@ import {
   PROGRESS_LIMITS,
   PROGRESS_LOG_MAX,
   PROGRESS_MAX_ENTRIES,
+  PROGRESS_STATS_MAX,
+  PROGRESS_STATS_TTL_MS,
+  type ProgressDone,
   type ProgressEntry,
   type ProgressEvent,
   type ProgressMessage,
@@ -46,6 +54,7 @@ import {
   parseProgressReport,
   parseTtl,
   pathParent,
+  progressDone,
   progressEvent,
   progressKey,
 } from "../../../lib/progress";
@@ -94,8 +103,10 @@ export const RESOLVED_NOTE = "resolved by owner";
 const PREFIX = "e:";
 /** Log keys sort in the order the events happened: time, then a sequence number. */
 const LOG = "l:";
-const logKey = (at: number, seq: number) =>
-  `${LOG}${String(at).padStart(15, "0")}:${String(seq).padStart(6, "0")}`;
+const logKey = (at: number, seq: number, prefix = LOG) =>
+  `${prefix}${String(at).padStart(15, "0")}:${String(seq).padStart(6, "0")}`;
+/** The stats log: one record per task that went done, kept PROGRESS_STATS_TTL_MS. */
+const DONE = "d:";
 
 /**
  * The checks index.ts makes before a token route reaches the hub. null = go
@@ -149,7 +160,8 @@ export class ProgressHub {
     const token = /^Bearer (\S+)$/.exec(req.headers.get("authorization") ?? "")?.[1] ?? "";
     const auth = this.secret ? await verifyProgressToken(this.secret, token, this.now()) : null;
     if (!auth) return fail(401, "unauthorized (wrong, forged or expired token)");
-    if (req.method === "GET") return json(await this.state());
+    if (req.method === "GET")
+      return json(path.endsWith("/stats") ? { done: await this.doneLog() } : await this.state());
     if (req.method !== "POST") return fail(405, "GET or POST");
     const body = await this.body(req);
     if (body instanceof Response) return body;
@@ -323,6 +335,7 @@ export class ProgressHub {
     const events = [...missing.map((e) => progressEvent(e)), progressEvent(entry, r.note)];
     const evicted = await this.store([...missing, entry], all);
     for (const ev of events) await this.append(ev);
+    await this.recordDone(prev, entry);
     if (evicted) await this.sendSnapshot();
     else for (const ev of events) this.send(this.ctx.getWebSockets(), ev);
     return json({ ok: true, entry, readers: this.ctx.getWebSockets().length });
@@ -361,6 +374,25 @@ export class ProgressHub {
       await this.ctx.storage.delete(k);
   }
 
+  /** A task that just went done: one record in the stats log, dropping old ones. */
+  private async recordDone(prev: ProgressEntry | undefined, e: ProgressEntry) {
+    if (e.status !== "done" || prev?.status === "done") return;
+    if (e.kind === "group" || e.kind === "person") return;
+    await this.ctx.storage.put(logKey(e.at, this.seq++ % 1_000_000, DONE), progressDone(e));
+    const cut = this.now() - PROGRESS_STATS_TTL_MS;
+    const all = [...(await this.ctx.storage.list<ProgressDone>({ prefix: DONE }))];
+    for (const [i, [k, d]] of all.entries())
+      if (i < all.length - PROGRESS_STATS_MAX || d.at < cut) await this.ctx.storage.delete(k);
+  }
+
+  /** The stats log, oldest first, without records past their 30 days. */
+  private async doneLog(): Promise<ProgressDone[]> {
+    const cut = this.now() - PROGRESS_STATS_TTL_MS;
+    return [...(await this.ctx.storage.list<ProgressDone>({ prefix: DONE })).values()].filter(
+      (d) => d.at >= cut,
+    );
+  }
+
   /**
    * The owner checks off a node: done, `needs` cleared, the answer noted. An
    * owner to-do also resolves the decision or approval it refs.
@@ -394,6 +426,7 @@ export class ProgressHub {
       await this.schedule(kept.at + PROGRESS_DONE_TTL_MS);
       const ev = progressEvent(kept, note);
       await this.append(ev);
+      await this.recordDone(was, kept);
       this.send(this.ctx.getWebSockets(), ev);
     }
     return json({ ok: true, resolved: done.map((e) => e.id) });
