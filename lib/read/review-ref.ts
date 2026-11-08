@@ -12,6 +12,9 @@
 // - `p<line>`: the paragraph. A word, a phrase or a sentence reviews its
 //   paragraph, so they all write the paragraph's ref (one URL per review).
 // - `r<l0>.<t0>-<l1>.<t1>`: a range he selected by hand, its own words.
+// - `u<line>`, `c<line>`, `b`: the wider scopes a passage's grade opens
+//   (lib/read/review-scope.ts): its chapter up to the passage ending on
+//   `line`, that whole chapter, the whole book.
 
 import { RANGE_MAX_LINES, type Unit } from "./reader-select";
 
@@ -20,7 +23,15 @@ export const REVIEW_PARAM = "review";
 /** What a review covers: a paragraph, or a range he selected by hand. */
 export type ReviewTarget =
   | { kind: "para"; line: number }
-  | { kind: "range"; l0: number; t0: number; l1: number; t1: number };
+  | { kind: "range"; l0: number; t0: number; l1: number; t1: number }
+  | { kind: "upto"; line: number }
+  | { kind: "chapter"; line: number }
+  | { kind: "book" };
+
+/** The ref of a passage grade's wider scope (review-scope.ts), the passage ending on `line`. */
+export function scopeRef(scope: "upto" | "chapter" | "book", line: number): string {
+  return scope === "book" ? "b" : `${scope === "upto" ? "u" : "c"}${line}`;
+}
 
 /** The ref of the review a unit's card opens, or null when its card has no review. */
 export function reviewRef(u: Unit): string | null {
@@ -40,12 +51,16 @@ export function reviewRef(u: Unit): string | null {
 const N = "(0|[1-9]\\d{0,6})";
 const PARA = new RegExp(`^p${N}$`);
 const RANGE = new RegExp(`^r${N}\\.${N}-${N}\\.${N}$`);
+const SCOPE = new RegExp(`^([uc])${N}$`);
 
 /** The review a ref names, or null for anything else (as decodeUnit checks a range). */
 export function decodeReviewRef(ref: string | null | undefined): ReviewTarget | null {
   if (!ref) return null;
   let m = PARA.exec(ref);
   if (m) return { kind: "para", line: +m[1] };
+  if (ref === "b") return { kind: "book" };
+  m = SCOPE.exec(ref);
+  if (m) return { kind: m[1] === "u" ? "upto" : "chapter", line: +m[2] };
   m = RANGE.exec(ref);
   if (!m) return null;
   const [l0, t0, l1, t1] = [+m[1], +m[2], +m[3], +m[4]];
