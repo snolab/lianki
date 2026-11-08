@@ -90,7 +90,11 @@ try {
       baseURL: BASE,
       colorScheme: scheme,
     });
-    await ctx.route(/youtube(-nocookie)?\.com|ytimg\.com|googlevideo\.com/, (r) => r.abort());
+    const blocked = /(^|\.)(youtube(-nocookie)?\.com|ytimg\.com|googlevideo\.com)$/;
+    await ctx.route(
+      (url) => blocked.test(url.hostname),
+      (r) => r.abort(),
+    );
     await signUp(ctx, scheme);
     // The server caches flags for 30 s (docs/feature-flags.md): wait for the switch to reach it.
     for (let i = 0; i < 25 && (await post(ctx, "")).status() === 404; i++)
