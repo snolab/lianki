@@ -160,6 +160,80 @@ try {
     check(errs.length === 0, `no page errors${errs.length ? `: ${errs[0]}` : ""}`);
     await ctx.close();
   }
+
+  // M2 + M3: cards made from the song's lines keep their line's clip, and /words
+  // plays it from the example. Desktop: the focused row shows its example.
+  {
+    console.log("— desktop /words");
+    const ctx = await newSilentContext(browser, {
+      baseURL: BASE,
+      viewport: { width: 1280, height: 800 },
+    });
+    const blocked = /(^|\.)(youtube(-nocookie)?\.com|ytimg\.com|googlevideo\.com)$/;
+    await ctx.route(
+      (url) => blocked.test(url.hostname),
+      (r) => r.abort(),
+    );
+    await signUp(ctx, "words");
+    const { id } = await (await post(ctx)).json();
+    const made = await ctx.request.post(`/api/read/${id}/make-cards`, {
+      data: {
+        words: [
+          { w: "morning", ex: "The morning light comes through the window", back: "the early day" },
+          { w: "sticks", ex: "Sing it again until it sticks", back: "stays in mind" },
+        ],
+      },
+      headers: { origin: BASE, "content-type": "application/json" },
+    });
+    const { listId, terms } = await made.json();
+    check(made.ok() && terms?.length === 2, `制卡 from the song's lines (${terms?.join(", ")})`);
+    const entries = await (await ctx.request.get(`/api/words/lists/${listId}/entries`)).json();
+    const list = Array.isArray(entries) ? entries : (entries.entries ?? []);
+    const clips = list.map((e) => (e.clip ? JSON.parse(e.clip) : null));
+    check(
+      clips.some((c) => c?.t0 === 1000 && c?.t1 === 5500) &&
+        clips.some((c) => c?.t0 === 12000 && c?.t1 === 20000),
+      "each card's entry keeps its own line's clip",
+    );
+
+    const page = await ctx.newPage();
+    const errs = [];
+    page.on("pageerror", (e) => errs.push(e.message));
+    await page.goto(`/words?list=${encodeURIComponent(listId)}`);
+    const play = page.locator("[data-yt-clip]");
+    const shownPlay = await play
+      .first()
+      .waitFor({ timeout: 30000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    check(shownPlay, "/words: the focused row's example has a ▶");
+    const sheet = page.getByTestId("yt-clip-popup").locator("[role=dialog]");
+    if (shownPlay) {
+      await play.first().click();
+      check(
+        await sheet.waitFor({ state: "visible", timeout: 10000 }).then(
+          () => true,
+          () => false,
+        ),
+        "/words: the ▶ opens the popup",
+      );
+      const box = await sheet.boundingBox();
+      check(!!box && Math.round(box.width) === 480, "on a desktop it is a card near the row");
+      await page.screenshot({ path: join(OUT, "words-popup.png") });
+      await page.keyboard.press("Escape");
+      check(
+        await sheet.waitFor({ state: "hidden", timeout: 10000 }).then(
+          () => true,
+          () => false,
+        ),
+        "/words: Escape closes it",
+      );
+    }
+    check(errs.length === 0, `no page errors${errs.length ? `: ${errs[0]}` : ""}`);
+    await ctx.close();
+  }
 } finally {
   setFlag(false);
   await browser.close();

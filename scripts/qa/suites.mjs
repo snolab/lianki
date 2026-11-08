@@ -132,7 +132,14 @@ export const SUITES = [
     args: ["scripts/qa/qa-yt-songs.mjs"],
     base: true,
     id: "yt-songs",
-    paths: ["app/(app)/reader/youtube/**", "app/api/read/youtube/**", "lib/yt-songs/**"],
+    paths: [
+      "app/(app)/reader/youtube/**",
+      "app/api/read/youtube/**",
+      "app/components/yt-clip/**",
+      "lib/yt-songs/**",
+      "lib/read/book-word-list.ts",
+      "lib/repos/wordEntriesD1.ts",
+    ],
     sensitive: false,
   },
   // Serverless: a tap on another word moves the selection, never two drawn (WebKit + Chromium).

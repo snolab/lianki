@@ -206,7 +206,7 @@ export function YtClipPopup({ ref }: { ref?: Ref<YtClipHandle> }) {
     <div hidden={!open} data-testid="yt-clip-popup">
       {/* A tap outside closes: the backdrop is clear, the page stays in view. */}
       <div
-        className="fixed inset-0 z-[60]"
+        className="fixed inset-0 z-[var(--lk-z-overlay-toast)]"
         aria-hidden
         onClick={close}
         data-testid="yt-clip-backdrop"
@@ -216,8 +216,8 @@ export function YtClipPopup({ ref }: { ref?: Ref<YtClipHandle> }) {
         aria-label={t.entry.value}
         className={
           place
-            ? "lk-glass fixed z-[61] rounded-2xl border border-[var(--glass-line)] p-3 shadow-xl"
-            : "lk-glass fixed inset-x-0 bottom-0 z-[61] rounded-t-2xl border-t border-[var(--glass-line)] px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl"
+            ? "lk-glass fixed z-[var(--lk-z-overlay-toast)] rounded-2xl border border-[var(--glass-line)] p-3 shadow-xl"
+            : "lk-glass fixed inset-x-0 bottom-0 z-[var(--lk-z-overlay-toast)] rounded-t-2xl border-t border-[var(--glass-line)] px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl"
         }
         style={place ? { top: place.top, left: place.left, width: CARD_W } : undefined}
       >

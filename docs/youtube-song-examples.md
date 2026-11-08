@@ -3,9 +3,38 @@
 State-tree node `/reader/yt-songs`. Owner said go (2026-11-09). Flag
 **`read.youtube-songs`**, default off; off, only the owner has it
 (<https://lianki.com/dev/flags#read.youtube-songs>,
-[feature-flags.md](feature-flags.md)). Status: **M1 built** — /reader →
-「+ YouTube song」 (`/reader/youtube`), `POST /api/read/youtube`, ▶ per line in
-the reader. M2–M5 not started.
+[feature-flags.md](feature-flags.md)). Status: **M1, M2 (word cards) and M3
+built** — /reader → 「+ YouTube song」 (`/reader/youtube`), `POST
+/api/read/youtube`, ▶ per line in the reader; a word card made from a song's
+line keeps that line's clip, and its example has a ▶ in /words and in the
+reader's word review. Not started: a line → sentence card with its clip (the
+rest of M2), M4, M5.
+
+**M2 + M3 as built**
+
+- **Stored**: `word_list_entries.clip` (migration 0059), JSON `{v, t0, t1}` in
+  ms with the song's offset applied — on the entry, beside `ex`, because the
+  example lives there (cards store none). Not on `word_cards`, so the notes /
+  cards sync (sync-merge-rules.md) is untouched.
+- **Set by the server only**: `bookCtxOf` (`lib/read/reader-route.ts`) gives a
+  song's `BookCtx.clipOf` (`songClipFinder`, `lib/yt-songs/card-clip.ts`): the
+  first line of the song that holds the example sentence gives the clip. 制卡,
+  a graded new word's entry and the review's backfill all go through
+  `entryStatements` (`lib/read/book-word-list.ts`), which writes it; an entry
+  made before (no clip yet, the same example) gets it then. A client never
+  sends a clip.
+- **Served**: `GET /api/words/lists/[id]/entries` (`WordEntriesD1Repo`) and the
+  reader's `word-session` items carry `clip`; `example-pick.ts` keeps a clip
+  with its own sentence.
+- **Played**: `YtClipProvider` / `SongClipButton` (`app/components/yt-clip/clip-context.tsx`)
+  — one popup per page, mounted on /words and around the reader (whose own line
+  ▶ uses the same player) only when songs are on for the viewer. The ▶ sits
+  before the example in the row (once the example shows) and in the slip's
+  sheet. Grading or moving to another row closes the popup. The popup is the
+  M1 one (bottom sheet on a phone, a card near the row on desktop), not yet
+  inside the floating word card (open question 1).
+- **Tests**: `unit/yt-song-cards.test.ts`; `qa-yt-songs` makes cards from a
+  song and plays one from /words.
 
 **M1 as built**
 
@@ -13,7 +42,7 @@ the reader. M2–M5 not started.
 | ------------------------ | --------------------------------------------------------------------------- |
 | parser, video id, timing | `lib/yt-songs/timed-text.ts` (`parseTimedText`, `videoIdOf`, `clipSeconds`) |
 | song → book, gate        | `lib/yt-songs/song.ts`, `lib/yt-songs/gate.ts` (`ytSongsOn`)                |
-| new-song page            | `app/(app)/reader/youtube/` (404 without the flag, owner excepted)            |
+| new-song page            | `app/(app)/reader/youtube/` (404 without the flag, owner excepted)          |
 | route                    | `app/api/read/youtube/route.ts` (same-origin JSON, 30 per 10 min)           |
 | player popup, ▶          | `app/components/yt-clip/`                                                   |
 | strings                  | `app/components/yt-clip/yt-songs.content.ts` (16 locales)                   |
@@ -163,13 +192,13 @@ where timings came from.
 
 ## Milestones
 
-| #   | slice                                                                                                                                                                                                   | ETA  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| #   | slice                                                                                                                                                                                                       | ETA  |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
 | M1  | **First slice**: /reader → YouTube song: URL + pasted LRC/SRT → lines in a /reader doc; ▶ per line plays t0→t1 in the popup (placement, play-after-tap fallback, close rules). Flag dark, on for the owner. | 3H   |
-| M2  | Words from a line → cards carrying `clip`; a line → sentence card                                                                                                                                       | 2.5H |
-| M3  | Review: ▶ on an example with a clip in /words and the read word review, popup in the floating card                                                                                                      | 2H   |
-| M4  | Tap-to-sync for plain lines + offset nudge                                                                                                                                                              | 2H   |
-| M5  | Owner-only local alignment (whisper on his Mac, his own audio file) → LRC                                                                                                                               | 3H   |
+| M2  | Words from a line → cards carrying `clip`; a line → sentence card                                                                                                                                           | 2.5H |
+| M3  | Review: ▶ on an example with a clip in /words and the read word review, popup in the floating card                                                                                                          | 2H   |
+| M4  | Tap-to-sync for plain lines + offset nudge                                                                                                                                                                  | 2H   |
+| M5  | Owner-only local alignment (whisper on his Mac, his own audio file) → LRC                                                                                                                                   | 3H   |
 
 ETAs include the local gate and ~10M pipeline.
 

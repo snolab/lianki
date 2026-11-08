@@ -113,6 +113,7 @@ import {
 import { getLocalMaterial } from "./local-material";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
 import { useSongClips } from "@/app/components/yt-clip/use-song-clips";
+import { YtClipProvider } from "@/app/components/yt-clip/clip-context";
 import { useItemWords, type ItemPlan } from "./use-item-words";
 import {
   SelectCard,
@@ -310,15 +311,17 @@ export function ReaderV2({
   return (
     <>
       {streaming && isLoggedIn && <StreamBadge state={stream.state} />}
-      <Reader
-        id={id}
-        material={material}
-        signedIn={isLoggedIn}
-        draftAllowed={draftAllowed}
-        liveTail={streaming && isLoggedIn ? stream.tail : null}
-        streamState={streaming && isLoggedIn ? stream.state : null}
-        ytSongs={ytSongs}
-      />
+      {/* YouTube songs: the page's one clip player, for a song's lines and the word review's examples. */}
+      <YtClipProvider on={ytSongs}>
+        <Reader
+          id={id}
+          material={material}
+          signedIn={isLoggedIn}
+          draftAllowed={draftAllowed}
+          liveTail={streaming && isLoggedIn ? stream.tail : null}
+          streamState={streaming && isLoggedIn ? stream.state : null}
+        />
+      </YtClipProvider>
     </>
   );
 }
@@ -330,13 +333,10 @@ function Reader({
   draftAllowed = false,
   liveTail = null,
   streamState = null,
-  ytSongs = false,
 }: {
   id: string;
   material: Material;
   signedIn: boolean;
-  /** YouTube songs are on for this viewer: a song's lines get their ▶. */
-  ytSongs?: boolean;
   /** A live Google Doc's text not saved into the book yet (null: not following one). */
   draftAllowed?: boolean;
   liveTail?: string | null;
@@ -348,8 +348,8 @@ function Reader({
   const tw = useIntlayer("words-page");
   const lines = material.lines;
   const book = material.book;
-  // A YouTube song: each sung line's ▶ and the popup player (use-song-clips.tsx).
-  const song = useSongClips(book, lines, ytSongs);
+  // A YouTube song: each sung line's ▶, in the provider's player (use-song-clips.tsx).
+  const song = useSongClips(book, lines);
   const touch = useTouch();
   const [variant, setVariant] = useState<"js" | "native">("js");
   const [mirror, setMirror] = useState(false);
@@ -2448,7 +2448,6 @@ function Reader({
           </Sheet>
         )}
       </div>
-      {song.popup}
     </SwipeFeelProvider>
   );
 }

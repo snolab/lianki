@@ -19,6 +19,7 @@ import type { RangeWord } from "./book-word-list";
 import { langIn } from "./lang-detect";
 import { cardIndex, statsLemmas, wordLang } from "./words";
 import { isVibeMaterial } from "@/lib/vibe/private-speech";
+import { songClipFinder } from "@/lib/yt-songs/card-clip";
 
 export interface ReaderCtx {
   userId: string;
@@ -142,6 +143,8 @@ export async function bookCtxOf(ctx: ReaderCtx) {
       names: new Set(words.stats.names),
       exampleOf: exampleFinder(ctx.material.lines),
       privateText: isVibeMaterial(ctx.material),
+      // A YouTube song: each card's example keeps its line's clip (docs/youtube-song-examples.md, M2).
+      clipOf: songClipFinder(words.book, ctx.material.lines),
     },
     // A book word, or a phrase of the book's words (a phrase card: the same path as a word's).
     own: (w: string) => own.has(w) || bookPhrase(w, book.lang, (x) => own.has(x)),
