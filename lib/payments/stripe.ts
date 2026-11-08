@@ -27,7 +27,7 @@
  * drops a customer's money). docs/payments.md, "Live mode and the kill switch".
  */
 import { flagIn, type FlagValues } from "@/lib/flags";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { stripeThreeDSecure } from "./checkout-policy";
 import { topupName } from "./credits";
 import type { CheckoutSessionLike } from "./fulfil";
@@ -79,7 +79,7 @@ export function stripeOpenTo(
   flags: FlagValues = {},
 ): boolean {
   const mode = stripeMode(env, flags);
-  return mode === "live" || (mode === "test" && isOwner(email));
+  return mode === "live" || (mode === "test" && isAdmin(email));
 }
 
 function paymentMethods(): string[] {

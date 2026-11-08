@@ -12,7 +12,7 @@ import { LANG_TAGS } from "@/lib/constants";
 import { type FlagValues, flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { ETA_FLAG } from "@/lib/eta-ping";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { boxConfig } from "@/lib/box-oauth/mode";
 import { BoxApiBridge } from "./components/BoxApiBridge";
 
@@ -27,7 +27,7 @@ async function partnerOpenFor(flags: FlagValues): Promise<boolean> {
   try {
     const { authSessionOrNull } = await import("./signInEmail");
     const user = (await authSessionOrNull())?.user;
-    return !!user?.id && !isOwner(user.email);
+    return !!user?.id && !isDev(user.email);
   } catch {
     return false;
   }

@@ -1,8 +1,9 @@
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { refreshOwners } from "@/lib/owner-store";
+import { refreshPermissions } from "@/lib/permission-store";
 import { partnerTicket } from "@/lib/partner-ticket-auth";
 import { importTicketKey } from "@/lib/stt-ticket";
 
@@ -28,8 +29,8 @@ export const POST = (req: Request) =>
     sessionEmail: async () => (await authUserOrNull())?.email ?? null,
     isOwner: async (email) => {
       // A bearer token reads no session, so nothing has refreshed the owner list yet.
-      await refreshOwners();
-      return isOwner(email);
+      await Promise.all([refreshOwners(), refreshPermissions()]);
+      return isDev(email);
     },
     key: async () => {
       const raw = process.env.STT_TICKET_KEY;

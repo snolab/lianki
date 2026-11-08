@@ -16,7 +16,7 @@ import {
   type BoxDb,
 } from "@/lib/box-oauth/store";
 import { notifyBoxClosed, notifyBoxEvalEnded } from "@/lib/box-oauth/push-close";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { audit, type AuditDb } from "@/lib/security/audit-log";
 import { sameOriginJsonPost } from "@/lib/security/same-origin";
 
@@ -40,7 +40,7 @@ const notFound = () => new NextResponse(null, { status: 404 });
 
 async function owner() {
   const user = await authUserOrNull();
-  return isOwner(user?.email) && user?.id ? user : null;
+  return isAdmin(user?.email) && user?.id ? user : null;
 }
 
 const db = () => getD1() as unknown as BoxDb;

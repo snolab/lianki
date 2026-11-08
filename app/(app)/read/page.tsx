@@ -2,7 +2,7 @@ import { ReadListClient } from "./ReadListClient";
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { connectionsOn } from "@/lib/connections/gate";
 import { booksOn } from "@/lib/books/gate";
 import { vibeAllowed } from "@/lib/vibe/gate";
@@ -12,7 +12,7 @@ export default async function ReadPage() {
   const user = await authUserOrNull();
   // Google Docs import: signed in on D1, as its route (app/api/read/gdoc).
   const flags = user && dbBackend() === "d1" ? await readFlags() : null;
-  const owner = isOwner(user?.email ?? null);
+  const owner = isDev(user?.email ?? null);
   const gdoc = !!flags;
   // Private docs through the Google connection (docs/connections.md).
   const drive = gdoc && connectionsOn(flags, owner);

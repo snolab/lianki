@@ -9,7 +9,7 @@ import { SessionDetailsCard } from "./SessionDetailsCard";
 import { dbBackend } from "@/lib/d1";
 import { isEmailConfigured } from "@/lib/email";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { connectionsOn } from "@/lib/connections/gate";
 import { getD1 } from "@/lib/d1";
 import { LEVEL_IDS, type LevelId } from "@/lib/levels";
@@ -19,7 +19,7 @@ import { LevelCard, type LevelCardLabels } from "@/app/components/LevelCard";
 
 /** The level card's data and strings, or null when levels are not shown to this viewer. */
 async function levelCardFor(email: string | null, locale: string) {
-  if (dbBackend() !== "d1" || !levelsOn(await readFlags(), isOwner(email))) return null;
+  if (dbBackend() !== "d1" || !levelsOn(await readFlags(), isDev(email))) return null;
   let view: LevelView;
   try {
     view = await userLevelOf(getD1(), email);
@@ -64,7 +64,7 @@ export default async function ProfilePage() {
   );
   // /connections while it ships dark: the owner, or everyone once connections.google is on.
   const connections =
-    dbBackend() === "d1" && connectionsOn(await readFlags(), isOwner(user.email))
+    dbBackend() === "d1" && connectionsOn(await readFlags(), isDev(user.email))
       ? String(getIntlayer("connections-page", locale).title)
       : null;
 

@@ -22,8 +22,9 @@
  * (`creditTestTopup`), never to the spendable balance, so test credits can buy
  * nothing and never become real credits, even after a switch to live.
  */
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { refreshOwnersFrom } from "@/lib/owner-store";
+import { refreshPermissionsFrom } from "@/lib/permission-store";
 import { rewardPurchase } from "@/lib/referrals/store";
 import { creditTestTopup, creditTopup, type D1WithBatch } from "./credits-store";
 import { fulfilCheckout } from "./fulfil";
@@ -62,8 +63,8 @@ export async function handleStripeWebhook(
   const testMode = mode === "test";
   if (testMode) {
     const userId = session.metadata?.userId || session.client_reference_id;
-    await refreshOwnersFrom(d1); // a webhook has no session
-    if (!userId || !isOwner(await emailOf(d1, userId))) {
+    await Promise.all([refreshOwnersFrom(d1), refreshPermissionsFrom(d1)]); // a webhook has no session
+    if (!userId || !isAdmin(await emailOf(d1, userId))) {
       console.warn(JSON.stringify({ event: "payments.stripe.test-ignored", session: session.id }));
       return { status: 200, body: { received: true, status: "ignored" } };
     }

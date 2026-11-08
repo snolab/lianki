@@ -8,14 +8,14 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { appLocale } from "@/lib/app-locale.server";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import type { D1Batch } from "@/lib/read/reader-store";
 import { vibeAllowed } from "./gate";
 
 export async function vibePage(): Promise<{ userId: string; db: D1Batch; locale: string }> {
   const user = await authUserOrNull();
   if (!user?.id || dbBackend() !== "d1") notFound();
-  if (!vibeAllowed(await readFlags(), isOwner(user.email ?? null))) notFound();
+  if (!vibeAllowed(await readFlags(), isDev(user.email ?? null))) notFound();
   return {
     userId: user.id,
     db: getD1() as unknown as D1Batch,

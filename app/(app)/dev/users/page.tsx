@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { listDevUsers } from "@/lib/repos/devUsersD1";
 import UsersTable from "./UsersTable";
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 
 export default async function DevUsersPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isAdmin(user?.email)) notFound();
   if (dbBackend() !== "d1") return <main className="p-8">D1 only.</main>;
   const rows = await listDevUsers(getD1());
   return (

@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import type { D1Batch } from "@/lib/read/reader-store";
 import { readJsonCapped } from "@/lib/security/route-guard";
 import { sameOriginJson } from "@/lib/security/same-origin";
@@ -18,7 +18,7 @@ export const reply = (r: Reply) =>
 export async function vibeGate(): Promise<{ userId: string; db: D1Batch } | null> {
   const session = await auth.api.getSession({ headers: await headers() });
   const id = session?.user?.id;
-  const who = id ? { userId: id, owner: isOwner(session.user.email ?? null) } : null;
+  const who = id ? { userId: id, owner: isDev(session.user.email ?? null) } : null;
   const userId = vibeUserId(who, who ? await readFlags() : null, dbBackend());
   return userId ? { userId, db: getD1() as unknown as D1Batch } : null;
 }

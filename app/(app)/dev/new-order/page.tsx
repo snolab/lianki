@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { dbBackend } from "@/lib/d1";
 import { loadRealData, type RealData } from "./real";
 import { NewOrderSim } from "./NewOrderSim";
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 
 export default async function DevNewOrderPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isDev(user?.email)) notFound();
   let real: RealData | null = null;
   let realError: string | null = null;
   if (dbBackend() === "d1")

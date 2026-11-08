@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { mintHandoff } from "@/lib/dev-access";
 import type { DevAccessDb } from "@/lib/dev-access";
@@ -13,7 +13,7 @@ import type { DevAccessDb } from "@/lib/dev-access";
  */
 export const POST = async () => {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email) || !user?.id || dbBackend() !== "d1")
+  if (!isDev(user?.email) || !user?.id || dbBackend() !== "d1")
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   const h = await mintHandoff(getD1() as unknown as DevAccessDb, {
     id: user.id,

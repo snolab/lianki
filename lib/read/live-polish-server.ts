@@ -2,7 +2,7 @@
 // text is logged.
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
 import { routeLimit } from "@/lib/security/route-guard";
 import { isWorkersAiConfigured } from "@/lib/workers-ai";
@@ -26,7 +26,7 @@ const DRAFT_WORD_LIMIT = { windowMs: 10 * 60_000, max: 120 };
 
 /** Who may have a live doc polished: the owner, or everyone once the flag is on. */
 export async function mayPolishLive(email: string | null) {
-  return isOwner(email) || flagIn(await readFlags(), "read.live-polish");
+  return isDev(email) || flagIn(await readFlags(), "read.live-polish");
 }
 
 /**

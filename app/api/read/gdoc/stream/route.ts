@@ -22,7 +22,7 @@ import { flagIn, type FlagValues } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { GDOC_LIMITS } from "@/lib/gdoc/fetch";
 import { parseGdocHtml } from "@/lib/gdoc/parse";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { checkBook } from "@/lib/read/book";
 import { storeGdocBook } from "@/lib/read/gdoc-store";
 import type { D1Batch } from "@/lib/read/reader-store";
@@ -58,7 +58,7 @@ async function gate() {
   const userId = session?.user?.id;
   if (!userId) return null;
   if (dbBackend() !== "d1") return null;
-  return streamOn(await readFlags(), isOwner(session.user.email ?? null)) ? userId : null;
+  return streamOn(await readFlags(), isDev(session.user.email ?? null)) ? userId : null;
 }
 
 export async function GET() {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { dbBackend } from "@/lib/d1";
 import TokensClient from "./TokensClient";
 
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 /** Dev access tokens for the dev server's tunnel (lib/dev-access.ts, docs/dev-whole-page.md). */
 export default async function DevTokensPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isDev(user?.email)) notFound();
   if (dbBackend() !== "d1") return <main className="p-8">D1 only.</main>;
   return (
     <main lang="zh" className="max-w-3xl mx-auto px-4 py-8 space-y-6">

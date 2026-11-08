@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { readFlags } from "@/lib/flags-store";
 import { boxMeResponse } from "@/lib/box-oauth/me";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,5 +15,5 @@ export const GET = (req: Request) =>
   boxMeResponse(
     req.headers,
     (headers) => auth.api.getSession({ headers }),
-    async (email) => ({ flags: await readFlags(), owner: isOwner(email) }),
+    async (email) => ({ flags: await readFlags(), owner: isDev(email) }),
   );

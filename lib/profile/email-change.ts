@@ -29,6 +29,7 @@ import {
 } from "@/lib/security/throttle";
 import { mailLocale } from "@/lib/sign-in-mail";
 import { readOwnerEmails, type OwnerReadDb } from "@/lib/site-role";
+import { readGrants } from "@/lib/account-permission";
 import { PROFILE } from "./config";
 import {
   emailChangedMail,
@@ -92,7 +93,12 @@ export function cleanEmail(raw: unknown): string | null {
  * that one fails closed to "nobody", which here would let an owner's address move.
  * A failed read throws, so nothing changes.
  */
-const activeOwners = (db: EmailDb) => readOwnerEmails(db as unknown as OwnerReadDb);
+const activeOwners = async (db: EmailDb) => {
+  const d = db as unknown as OwnerReadDb;
+  // Anyone holding a permission (account_permission) counts as well: grants go by address too.
+  const [owners, grants] = await Promise.all([readOwnerEmails(d), readGrants(d)]);
+  return [...new Set([...owners, ...grants.map((g) => g.email)])];
+};
 
 /** The role goes by this exact address (lib/owner.ts): moving it would drop the role. */
 const isOwnerAddress = (owners: string[], email: string) => owners.includes(email.toLowerCase());
@@ -103,6 +109,8 @@ const isOwnerAlias = (owners: string[], email: string) =>
 
 /** ?1 old address, ?2 new address. Holds inside the batch, so a grant made just now still counts. */
 const NO_OWNER_INVOLVED = `NOT EXISTS (SELECT 1 FROM site_role
+  WHERE email IN (lower(?1), lower(?2)) AND revoked_at IS NULL) AND NOT EXISTS (
+  SELECT 1 FROM account_permission
   WHERE email IN (lower(?1), lower(?2)) AND revoked_at IS NULL)`;
 
 /** Does another account hold this address, in its exact or its canonical form? */

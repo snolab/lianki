@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { dbBackend, getD1 } from "@/lib/d1";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { createGiftCode, listGiftCodes } from "@/lib/referrals/store";
 
 /**
@@ -12,7 +12,7 @@ import { createGiftCode, listGiftCodes } from "@/lib/referrals/store";
  */
 async function owner() {
   const session = await auth.api.getSession({ headers: await headers() });
-  return isOwner(session?.user?.email) ? session!.user : null;
+  return isAdmin(session?.user?.email) ? session!.user : null;
 }
 
 export async function GET() {

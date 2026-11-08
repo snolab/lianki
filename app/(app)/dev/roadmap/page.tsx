@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getIntlayer } from "intlayer";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { appLocale } from "@/lib/app-locale.server";
 import { StateTreeDoc } from "@/app/components/StateTreeDoc";
 import { ROADMAP, STATUS_ORDER, type RoadmapItem, type RoadmapStatus } from "./items";
@@ -31,7 +31,7 @@ const LINK = "text-blue-700 dark:text-blue-300 hover:underline";
 
 export default async function DevRoadmapPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isDev(user?.email)) notFound();
 
   const locale = await appLocale();
   const c = getIntlayer("dev-roadmap", locale);

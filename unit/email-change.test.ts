@@ -460,8 +460,9 @@ describe("edges", () => {
 
 describe("the list of email-keyed tables", () => {
   /** Columns named email that hold something else, or aren't keys of user data. */
-  // user: moved by its own statement. site_role: an owner's address never moves.
-  const NOT_A_KEY = new Set(["user", "site_role"]);
+  // user: moved by its own statement. site_role, account_permission: a
+  // permission holder's address never moves.
+  const NOT_A_KEY = new Set(["user", "site_role", "account_permission"]);
   test("covers every table with an `email` column", () => {
     const tables = rows("SELECT name FROM sqlite_master WHERE type = 'table'") as {
       name: string;
