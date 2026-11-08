@@ -148,6 +148,8 @@ that are expensive to rediscover.
 | A friend's dev container (devbox: agents, local D1, tunnel)   | [devbox/README.md](devbox/README.md)                                |
 | A box signing in through lianki.com (OAuth, token gate)       | [docs/box-oauth.md](docs/box-oauth.md)                              |
 | The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
+| Hosting the dev loader on lianki.com (design stub)            | [docs/loader-hosting.md](docs/loader-hosting.md)                    |
+| Li chat from the userscript pill: security gate (stub)        | [docs/userscript-li-chat.md](docs/userscript-li-chat.md)            |
 | Hot-swapping headless core modules (kernel, swap, leak tests) | [docs/hot-core.md](docs/hot-core.md)                                |
 | The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
 | `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                    |
@@ -163,6 +165,8 @@ that are expensive to rediscover.
 | /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
 | Exam word decks (CET, TOEFL, GRE…): sources, licences, gaps   | [docs/word-deck-sources.md](docs/word-deck-sources.md)              |
 | /self-intro import: files/text → facts → review; privacy      | [docs/self-intro-import.md](docs/self-intro-import.md)              |
+| Import any material: upload → job → /words or /read (stub)    | [docs/import-material.md](docs/import-material.md)                  |
+| YouTube songs: timed lyric lines as example clips (stub)      | [docs/youtube-song-examples.md](docs/youtube-song-examples.md)      |
 | /books public-domain library: catalogue rule, slugs, R2 cache | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
 | Voice mode: spoken commands per screen, grammar, mic taps     | [docs/voice-mode.md](docs/voice-mode.md)                            |
 | All sound through Li: `__lkLi` hub, who holds mic / plays     | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |
