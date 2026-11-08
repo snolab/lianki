@@ -30,7 +30,7 @@ import {
   keepStream,
 } from "./mic";
 import type { FilterVerdict, LocalFinal, LocalState } from "./local-stt";
-import type { SttDropReason, SttGuardLimits } from "./stt-guard";
+import type { SttGuardLimits } from "./stt-guard";
 import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
 import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
@@ -114,8 +114,6 @@ export type MicDeps = {
   /** Try to get the AudioContext running without a gesture; false if it stays suspended. */
   resumeAudio?: () => Promise<boolean>;
   log?: (ev: Record<string, unknown>) => void;
-  /** A final the silence guard dropped (createMic's `dropped`; stt-dropped.ts). */
-  dropped?: (text: string, reason: SttDropReason) => void;
   /** Overrides of the silence guard (createMic's `guard`), for tests. */
   guard?: Partial<SttGuardLimits>;
   /** A client for the local streaming STT at this URL (local-stt.ts createLocalStt). */
@@ -319,7 +317,6 @@ export function createMicSession(
     onProb: (p) => deps.onProb?.(p),
     log: (ev) => deps.log?.(ev),
     guard: deps.guard,
-    dropped: (t, r) => deps.dropped?.(t, r),
     timing: (seq, m) => deps.timing?.(seq, m),
     speaker: (t, p) => deps.speaker?.(t, p),
     filtered: (v) => deps.filtered?.(v),

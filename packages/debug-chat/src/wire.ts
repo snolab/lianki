@@ -512,7 +512,6 @@ export type ChatStrings = {
   cueSend: string;
   /** The chat menu's switch: soft tones when he starts and stops speaking. */
   cueSpeech: string;
-  droppedLines: string;
   compactIdle: string;
   /** The compact line's tooltip and screen-reader hint: a tap shows the whole chat. */
   compactShowAll: string;
@@ -695,7 +694,6 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsAutoStop: "Auto-stop after {n} min",
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
-  droppedLines: "Lines not sent, taken for noise",
   compactIdle: "Only the last message while not typing",
   compactShowAll: "Show the whole chat",
   askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",

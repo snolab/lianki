@@ -22,7 +22,6 @@ import {
   escapeRe,
   STOCK_PHRASES,
   STT_GUARD,
-  type SttDropReason,
   type SttGuardLimits,
   type SttSignals,
   judgeFinal,
@@ -809,8 +808,6 @@ export function createMic(d: {
   onProb?: (prob: number) => void;
   /** Debug events. They reach the Worker logs, so a dropped line is its reason and counts, never its text (`stt-dropped`). */
   log?: (ev: Record<string, unknown>) => void;
-  /** A dropped final's text, for the owner's on-device view only (stt-dropped.ts). */
-  dropped?: (text: string, reason: SttDropReason) => void;
   /** Overrides of the silence guard's limits (stt-guard.ts STT_GUARD), for tests. */
   guard?: Partial<SttGuardLimits>;
   /** Rolling partial chunks for long utterances (on unless false). */
@@ -1273,7 +1270,6 @@ export function createMic(d: {
               logprob: signals?.logprob,
               vadShare: signals?.vadShare,
             });
-            d.dropped?.(text, reason);
           }
           d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
           const other = spk?.decision === "other";
