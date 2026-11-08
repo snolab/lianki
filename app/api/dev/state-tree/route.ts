@@ -3,7 +3,7 @@ import { boxChatCaller } from "@/lib/box-oauth/chat-ticket";
 import { BOX_IDENTITY_HEADER } from "@/lib/box-oauth/identity";
 import type { BoxDb } from "@/lib/box-oauth/store";
 import { getD1 } from "@/lib/d1";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { STATE_TREE_MD } from "@/lib/state-tree.generated";
 
 const notFound = () => Response.json({ error: "Not found" }, { status: 404 });
@@ -24,7 +24,7 @@ export const GET = async (req: Request) => {
       .then(() => boxChatCaller(req.headers, process.env.AUTH_SECRET, getD1() as unknown as BoxDb))
       .catch(() => null);
     if (!ok) return notFound();
-  } else if (!isOwner((await authUserOrNull())?.email)) return notFound();
+  } else if (!isDev((await authUserOrNull())?.email)) return notFound();
   return new Response(STATE_TREE_MD, {
     headers: { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store" },
   });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
 import { FLAG_CACHE_MS, flagLog, listFlags, type D1WithBatch } from "@/lib/flags-store";
@@ -24,7 +24,7 @@ const notFound = () => new NextResponse(null, { status: 404 });
 
 async function owner() {
   const user = await authUserOrNull();
-  return isOwner(user?.email) && user?.email ? user : null;
+  return isAdmin(user?.email) && user?.email ? user : null;
 }
 
 const prereqContext = (): PrereqContext => ({

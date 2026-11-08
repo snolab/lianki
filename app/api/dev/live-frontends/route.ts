@@ -11,7 +11,7 @@ import {
   revokePreview,
   type CustomDb,
 } from "@/lib/live-view/custom";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { sameOriginJsonPost } from "@/lib/security/same-origin";
 
 /**
@@ -27,7 +27,7 @@ const notFound = () => new NextResponse(null, { status: 404 });
 
 async function owner() {
   const user = await authUserOrNull();
-  return isOwner(user?.email) && user?.id ? user : null;
+  return isDev(user?.email) && user?.id ? user : null;
 }
 
 const db = () => getD1() as unknown as CustomDb;

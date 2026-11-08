@@ -11,6 +11,7 @@
 import type { Auth } from "./auth-impl";
 import { BOX_IDENTITY_HEADER } from "./lib/box-oauth/identity";
 import { refreshOwners } from "./lib/owner-store";
+import { refreshPermissions } from "./lib/permission-store";
 
 export type { Auth };
 export { hasSessionCookie, passwordAuthEnabled } from "./lib/auth-env";
@@ -39,17 +40,18 @@ export const auth: Pick<Auth, "api"> = {
           if (headers?.has(BOX_IDENTITY_HEADER)) {
             const { boxSessionFrom } = await import("./lib/box-oauth/app-session");
             const box = await boxSessionFrom(headers);
-            if (box) await refreshOwners();
+            if (box) await Promise.all([refreshOwners(), refreshPermissions()]);
             return box;
           }
         }
         const api = (await getAuth()).api as Record<PropertyKey, (...a: unknown[]) => unknown>;
         const out = await api[endpoint](...args);
-        // isOwner() is synchronous and answers from a snapshot of site_role
-        // (lib/owner.ts): have it fresh before a signed-in user is handed back.
-        // A guest costs nothing; a failed read means nobody is the owner.
+        // isAdmin()/isDev() are synchronous and answer from a snapshot of the
+        // grants (lib/permissions.ts; step a also of site_role, lib/owner.ts):
+        // have it fresh before a signed-in user is handed back. A guest costs
+        // nothing; a failed read means nobody holds anything.
         if (endpoint === "getSession" && (out as { user?: unknown } | null)?.user)
-          await refreshOwners();
+          await Promise.all([refreshOwners(), refreshPermissions()]);
         return out;
       },
   }),

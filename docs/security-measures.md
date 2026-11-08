@@ -15,8 +15,8 @@ passkey — there is no password login in production.
 
 | surface                                   | what                                                  |
 | ----------------------------------------- | ----------------------------------------------------- |
-| `/dev/*` pages                            | users, friends, gift codes, membership grants, credits, feature flags, owners, roadmap, A/B |
-| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, credits, flags, owners, stt-ticket, dev-tokens, dev-handoff |
+| `/dev/*` pages                            | users, friends, gift codes, membership grants, credits, feature flags, owners, permissions, roadmap, A/B |
+| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, credits, flags, owners, permissions, stt-ticket, dev-tokens, dev-handoff |
 | `https://preview.lianki.com` (tunnel to the owner's dev server, production D1) | 503 to everything without a dev access token; the token signs in as the owner only (docs/dev-whole-page.md, "Off the tailnet") |
 | `POST /api/dev-access/verify`             | the dev server gate's token check: `DEV_BRIDGE_SECRET` only, 401 otherwise |
 | `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac) | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7) |
@@ -35,8 +35,9 @@ input-bounded and rate-limited. Gift-code management moved from
 prefix; redeeming stays at `/api/gift-codes/redeem`.
 
 **Layer 1, in the app.** Every `/dev` page and `/api/dev` route checks
-`isOwner()` (`lib/owner.ts`, the `site_role` table,
-[secrets-and-auth.md](secrets-and-auth.md), "The owner role") and answers
+`isAdmin()` or `isDev()` (`lib/permissions.ts`, the `account_permission` table;
+during the 2026-11-09 migration an active `site_role` owner also passes;
+[secrets-and-auth.md](secrets-and-auth.md), "Permissions") and answers
 **404** to everyone else, so the surface is not even discoverable. A D1 error
 fails closed: nobody is the owner. `unit/security.test.ts` fails if a `/dev` page or
 `/api/dev` route is added without the gate; `qa:api` checks a signed-in

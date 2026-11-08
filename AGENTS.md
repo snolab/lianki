@@ -129,6 +129,7 @@ that are expensive to rediscover.
 | Landing changes, CI, branch protection, post-deploy QA        | [docs/shipping.md](docs/shipping.md)                                |
 | Finding your way around the code                              | [docs/repo-map.md](docs/repo-map.md)                                |
 | Secrets, auth, OAuth config                                   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
+| Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Who is the owner: `site_role`, /dev/owners, break-glass CLI   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "The owner role" |
 | Google Drive connection (/connections), private Docs import   | [docs/connections.md](docs/connections.md)                          |
 | Anything calling an LLM or TTS                                | [docs/workers-ai.md](docs/workers-ai.md)                            |

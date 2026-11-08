@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { StateTreeDoc } from "@/app/components/StateTreeDoc";
 import { ROADMAP, STATUS_LABEL, STATUS_ORDER, type RoadmapStatus } from "./items";
 
@@ -23,7 +23,7 @@ const ACCENT: Record<RoadmapStatus, string> = {
 
 export default async function DevRoadmapPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isDev(user?.email)) notFound();
 
   return (
     <main lang="zh" className="max-w-3xl mx-auto px-4 py-8 space-y-10">

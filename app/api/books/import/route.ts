@@ -17,7 +17,7 @@ import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { hit } from "@/lib/security/throttle";
 import { findReadMaterialBySource, saveReadMaterial } from "@/lib/getReadMaterialsCollection";
 import { bookVisibleIn, catalogueBook, type CatalogueBook } from "@/lib/books/catalogue";
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   if (!userId) return fail("Unauthorized", 401);
   if (dbBackend() !== "d1") return fail("Not found", 404);
   const flags = await readFlags();
-  if (!booksOn(flags, isOwner(session.user.email ?? null))) return fail("Not found", 404);
+  if (!booksOn(flags, isDev(session.user.email ?? null))) return fail("Not found", 404);
 
   let body: unknown;
   try {
