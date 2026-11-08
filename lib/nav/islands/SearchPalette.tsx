@@ -24,6 +24,7 @@ import { type DocKind, GROUP_ORDER, type SearchDoc, scan } from "../search-docs"
 import { navPins, navUi } from "../ui-store";
 import { INDEX_EVENT, anchorWord, loadDocs, syncIndex } from "./search-idb";
 import { type NavText, str } from "./text";
+import { openExternal } from "@/lib/external-link";
 
 type Kind = PaletteItem["kind"] | DocKind | "plan" | "more" | "ankiweb";
 
@@ -300,7 +301,7 @@ export function SearchPalette({
     onClose();
     if (it.doc?.kind === "word" && it.doc.listId && it.doc.term)
       anchorWord(it.doc.listId, it.doc.term);
-    if (/^https?:/i.test(it.href)) window.open(it.href, "_blank", "noopener,noreferrer");
+    if (/^https?:/i.test(it.href)) openExternal(it.href);
     // /add-note reads its hash once, on load: a full navigation.
     else if (it.href.startsWith("/add-note#")) window.location.assign(it.href);
     else router.push(it.href);

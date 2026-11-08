@@ -12,6 +12,7 @@ import { Icon } from "@/app/components/icons";
 import { TEXT_AREAS, textSizeStore } from "@/lib/text-size";
 import { useTextSizes } from "@/lib/use-text-size";
 import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
+import { ExternalLinkSettings } from "@/app/components/ExternalLinkSettings";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
 import { readNotesOn, writeNotesOn } from "@/lib/read/translator-notes";
@@ -271,6 +272,9 @@ export default function PreferencesClient({ showKeySync = false }: { showKeySync
 
       {/* Page titles — follows the account (docs/title-clean.md) */}
       <TitleRulesSettings />
+
+      {/* Links to other sites — follows the account (lib/external-link.ts) */}
+      <ExternalLinkSettings />
 
       {/* Reader — follows the account (lib/read/polish-offer.ts) */}
       <ReaderSettings />

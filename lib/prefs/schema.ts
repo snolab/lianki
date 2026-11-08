@@ -18,6 +18,11 @@
  * short text in a restricted syntax and a host names a public site, because
  * per-site patterns are the point; device and tailnet hosts do not pass.
  *
+ * A third, by the owner (2026-11-09): `links.trustedHosts`, the sites the
+ * person said not to be asked about again before leaving for them
+ * (@lianki/core/externalLink). Bare public hosts only; device and tailnet
+ * hosts, IP addresses, schemes and paths do not pass.
+ *
  * A field whose shape changes gets a new key (`swipe-feel.tweaks2`); the old
  * row is then simply no longer read.
  */
@@ -35,6 +40,7 @@ import {
   TITLE_RULES_ADD_MAX,
   TITLE_RULES_OFF_MAX,
 } from "@lianki/core/titleClean";
+import { isTrustedHost, TRUSTED_HOSTS_MAX } from "@lianki/core/externalLink";
 
 // ── Limits ────────────────────────────────────────────────────────────────
 
@@ -162,6 +168,9 @@ export const PREF_SCHEMAS = {
   "vibe.translateMinPct": z.number().int().min(1).max(99),
   // page titles: cleaning notification prefixes
   "titles.rules": titleRules,
+  // links that leave Lianki: the disclaimer before another site, and its bypasses
+  "links.confirm": z.boolean(),
+  "links.trustedHosts": z.array(z.string().refine(isTrustedHost)).max(TRUSTED_HOSTS_MAX),
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),

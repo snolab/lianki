@@ -36,6 +36,7 @@ import type { VoiceAccess } from "@/lib/words/voice-access";
 import { handleUtterance } from "@/lib/words/voice-dispatch";
 import { reviewTitle } from "@/lib/review-title";
 import { VoiceBadge, useVoiceMode, useVoicePref, voiceOutcomeLabel } from "../words/VoiceMode";
+import { openExternal } from "@/lib/external-link";
 
 /**
  * /review: one due page card at a time, graded inside the site.
@@ -307,7 +308,7 @@ export default function ReviewClient({
       else if (act.kind === "cancel") setConfirmDelete(false);
       else if (act.kind === "open") {
         setRet((r) => returnStep(r, "open"));
-        window.open(phase.card.url, "_blank", "noopener,noreferrer");
+        openExternal(phase.card.url);
       }
     };
     addEventListener("keydown", onKey);
