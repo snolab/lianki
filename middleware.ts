@@ -12,6 +12,7 @@ import {
   localeFromAcceptLanguage,
   localeRoot,
 } from "@/lib/app-locale";
+import { movedPath } from "@/lib/moved-routes";
 
 const YEAR_S = 365 * 24 * 60 * 60;
 /** intlayer's locale header, which the root layout reads (app/layout.tsx, getRootLocale). */
@@ -43,9 +44,23 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(pathname.replace(/^\/cn/, "/zh"), request.url));
   }
 
-  // Legacy prefixed app routes: /ja/list → /list?lang=ja
   const [, maybeLocale, ...rest] = pathname.split("/");
   const restPath = `/${rest.join("/")}`;
+
+  // Moved pages (lib/moved-routes.ts): one permanent hop to the new address,
+  // subpath and query kept — also from a legacy locale prefix (/ja/polyglot).
+  const prefixed = isSupportedLocale(maybeLocale) && rest.length > 0;
+  const moved = movedPath(prefixed ? restPath : pathname);
+  if (moved) {
+    const target = new URL(moved, request.url);
+    target.search = searchParams.toString();
+    if (prefixed && maybeLocale !== DEFAULT_LOCALE && !target.searchParams.has(LOCALE_PARAM)) {
+      target.searchParams.set(LOCALE_PARAM, maybeLocale);
+    }
+    return NextResponse.redirect(target, 308);
+  }
+
+  // Legacy prefixed app routes: /ja/list → /list?lang=ja
   if (isSupportedLocale(maybeLocale) && rest.length > 0 && isAppRoute(restPath)) {
     const target = new URL(restPath, request.url);
     target.search = searchParams.toString();

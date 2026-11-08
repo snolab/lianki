@@ -10,7 +10,7 @@ import navHome from "@/app/(app)/home/page.content";
 import appShell from "@/app/components/app-shell.content";
 import landing from "@/app/[locale]/page.content";
 import learn from "@/app/(app)/learn/page.content";
-import polyglot from "@/app/(app)/polyglot/page.content";
+import polyglot from "@/app/(app)/lab/polyglot/page.content";
 import selfIntro from "@/app/(app)/self-intro/page.content";
 import wordsImport from "@/app/(app)/words/import/page.content";
 import wordsPhrases from "@/app/(app)/words/phrases.content";

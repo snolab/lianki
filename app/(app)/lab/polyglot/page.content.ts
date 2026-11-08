@@ -761,7 +761,7 @@ const context: KeyContext<typeof dictionary.content> = {
 
 export default {
   ...dictionary,
-  title: "/polyglot — the Polyglot Matrix",
+  title: "/lab/polyglot — the Polyglot Matrix",
   description: describeKeys(
     "The /polyglot page: the user picks a native language and languages to learn, answers common questions, AI fills a grid of answers per language, and the grid is saved as review cards. Lianki and LiCards (zh: 链卡) are product names, not translated.",
     flattenContext(context),

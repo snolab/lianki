@@ -81,7 +81,7 @@ export function Header({
           </Link>
 
           {/* AI Vocab Button */}
-          <Link href="/ai-vocab" className="text-base md:text-lg font-medium hover:underline">
+          <Link href="/lab/ai-vocab" className="text-base md:text-lg font-medium hover:underline">
             {aiVocabLabel}
           </Link>
 

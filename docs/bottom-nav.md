@@ -20,7 +20,7 @@ the easiest reach for the thumb.
 
 - **Create** offers a link as a card (paste it), words from an Anki deck
   (`/words/import`, .apkg), importing cards and backups (`/import`) and
-  making words with AI (`/ai-vocab`). Two things are left out because the app
+  making words with AI (`/lab/ai-vocab`). Two things are left out because the app
   has no path for them yet: typing in a single new word, and CSV import. Photo
   capture is left out for the same reason.
 - **With the chat input on the page** (debug mode, owner and friends), ＋

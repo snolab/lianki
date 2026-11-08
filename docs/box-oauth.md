@@ -174,10 +174,10 @@ refresh token, instead of better-auth's cookie sign-out.
 
 Still signed out, because they are drawn on the box's server:
 
-- `/learn` and `/polyglot` redirect to `/sign-in`. On a box with a token, that page
+- `/learn` and `/lab/polyglot` redirect to `/sign-in`. On a box with a token, that page
   says so and links to lianki.com, instead of going round the flow again.
 - `/list` and `/import` show their guest view; `/profile`, `/preferences`,
-  `/connections`, `/self-intro`, `/ai-vocab` and the `/dev` pages read the server's user.
+  `/connections`, `/self-intro`, `/lab/ai-vocab` and the `/dev` pages read the server's user.
 - Server-decided extras: the level chip, flag-gated nav items, the owner's dev
   switch and live view.
 

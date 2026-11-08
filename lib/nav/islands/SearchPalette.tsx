@@ -58,7 +58,7 @@ export function createItems(t: NavText): PaletteItem[] {
       href: "/import",
       keys: "apkg yaml",
     },
-    { id: "create:ai", kind: "create", title: t.aiWords, href: "/ai-vocab", keys: "ai" },
+    { id: "create:ai", kind: "create", title: t.aiWords, href: "/lab/ai-vocab", keys: "ai" },
   ];
 }
 
