@@ -72,17 +72,37 @@ async function setup(ctx, tag) {
 }
 
 /** A word in a long paragraph, on screen. */
-const aWord = (page) =>
-  page.evaluate(() => {
+async function aWord(page) {
+  // None reaches the band (a phone, short paragraphs there): the next one is
+  // brought to it, and the page left to settle before it is tapped.
+  const moved = await page.evaluate(() => {
+    const long = [...document.querySelectorAll("[data-testid=reader-book] p[data-line]")].filter(
+      (p) => p.querySelectorAll("[data-t]").length >= 12,
+    );
+    const inBand = (p) => {
+      const r = p.getBoundingClientRect();
+      return r.bottom > 120 && r.top < innerHeight * 0.7;
+    };
+    const below = long.find((p) => p.getBoundingClientRect().top >= 120);
+    if (long.some(inBand) || !below) return false;
+    window.scrollBy({ top: below.getBoundingClientRect().top - 160, behavior: "instant" });
+    return true;
+  });
+  if (moved) await page.waitForTimeout(800);
+  return page.evaluate(() => {
     for (const p of document.querySelectorAll("[data-testid=reader-book] p[data-line]")) {
-      if (p.querySelectorAll("[data-t]").length < 12) continue;
-      const el = p.querySelector("[data-t]");
-      const r = el.getBoundingClientRect();
-      if (r.top < 120 || r.bottom > innerHeight * 0.7) continue;
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      const ts = p.querySelectorAll("[data-t]");
+      if (ts.length < 12) continue;
+      // Any of its words in the band: a whole paragraph (#710) can start above the screen.
+      for (const el of ts) {
+        const r = el.getBoundingClientRect();
+        if (r.top < 120 || r.bottom > innerHeight * 0.7) continue;
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }
     }
     return null;
   });
+}
 
 const actions = (page) =>
   page.evaluate(() =>
@@ -101,8 +121,9 @@ async function run(device, scheme, touch) {
   // Scroll into the story so the review's return is visible.
   await page.mouse.wheel(0, 900);
   await page.waitForTimeout(600);
-  const y0 = await page.evaluate(() => scrollY);
   const w = await aWord(page);
+  await page.waitForTimeout(300);
+  const y0 = await page.evaluate(() => scrollY);
   check(!!w, "a word in a long paragraph is on screen");
   if (!w) return ctx.close();
   const click = () => (touch ? page.touchscreen.tap(w.x, w.y) : page.mouse.click(w.x, w.y));
@@ -154,6 +175,33 @@ async function run(device, scheme, touch) {
     await until(page, async () => (await rows.count()) > 0),
     `the review lists the words (${await rows.count()})`,
   );
+  // A bottom sheet, not the whole screen (owner, 2026-11-09 00:51 JST): the
+  // book shows above it; dragging its top band up makes it taller.
+  const sheetBox = () =>
+    page.getByTestId("read-word-review").evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top, h: r.height, vh: innerHeight };
+    });
+  await page.waitForTimeout(400);
+  const s0 = await sheetBox();
+  check(
+    s0.top > s0.vh * 0.1 && s0.top < s0.vh * 0.5,
+    `the review is a sheet with the book above it (top ${Math.round(s0.top)} of ${s0.vh})`,
+  );
+  const grab = await page.getByTestId("read-review-grab").boundingBox();
+  if (grab) {
+    const gx = grab.x + 24;
+    const gy = grab.y + 8;
+    await page.mouse.move(gx, gy);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) await page.mouse.move(gx, gy - i * 30);
+    await page.waitForTimeout(80);
+    await page.mouse.up();
+    await page.waitForTimeout(450);
+    const s1 = await sheetBox();
+    check(s1.h > s0.h + 20 && s1.top > 0, `dragged up, the sheet grows (${s0.h} → ${s1.h})`);
+  }
+  await page.screenshot({ path: join(OUT, `review-sheet-${tag}.png`) });
   // The card's word is highlighted in its sentence, and a long sentence's
   // cell is scrolled so the word is inside it (lib/words/example-target.ts).
   await page.waitForTimeout(300);
@@ -233,7 +281,8 @@ async function run(device, scheme, touch) {
     await tray.scrollIntoViewIfNeeded();
     await tray.click();
   } else await page.getByTestId("read-review-close").click();
-  await page.waitForTimeout(400);
+  // The sheet slides down before it closes.
+  await until(page, async () => !(await page.getByTestId("read-word-review").count()), 3000);
   check(
     !(await page.getByTestId("read-word-review").count()),
     `${touch && trayText ? "the end tray" : "✕"} closes the review`,
@@ -254,12 +303,17 @@ async function run(device, scheme, touch) {
   if (touch) {
     // A tap while the list still moves is a scroll's end, not a tap: let it rest.
     await page.waitForTimeout(1200);
-    // A row in the middle of the screen, clear of the bands over the list.
+    // A row in the lower part of the sheet, clear of the bands over the list.
     const p = await page.evaluate(() => {
       for (const r of document.querySelectorAll("[data-testid=read-word-review] [data-i]")) {
         const b = r.getBoundingClientRect();
         const y = b.top + b.height / 2;
-        if (y > innerHeight * 0.45 && y < innerHeight * 0.75 && !r.querySelector(".slip-loose"))
+        if (
+          r.dataset.i !== "0" &&
+          y > innerHeight * 0.45 &&
+          y < innerHeight * 0.85 &&
+          !r.querySelector(".slip-loose")
+        )
           return { x: b.left + b.width / 2, y };
       }
       return null;

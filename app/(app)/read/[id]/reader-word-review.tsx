@@ -12,8 +12,11 @@
 // an undo toast. A row near the screen gets its meaning and its example's
 // translation by itself (lib/read/review-row-fill.ts), the same asks as a tap.
 //
-// The overlay covers the reader; the page under it keeps its place, and
-// closing (✕, the exit button, back) returns focus to the reader.
+// A bottom sheet over the reader (owner, 2026-11-09 00:51 JST: not full
+// screen): it slides up, leaves a gap at the top where the book stays in
+// view, and its top band drags it taller, shorter or away (use-review-sheet.ts,
+// lib/read/review-sheet.ts). The page under it keeps its place, and closing
+// (✕, the exit button, Escape, a tap above it, back) returns focus to the reader.
 //
 // It is pinned in the URL (`?review=<ref>`, lib/read/review-ref.ts): opening
 // pushes one entry with that address, so Back closes it and a refresh or a
@@ -28,6 +31,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type RefObject,
 } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
@@ -45,6 +49,7 @@ import { useBackToClose } from "@/lib/use-back-to-close";
 import type { BackOptions } from "@/lib/back-to-close";
 import type { WordList } from "@/lib/repos/wordsD1";
 import type { StudyScope } from "@/app/(app)/words/WordsClient";
+import { SHEET_EASE, useReviewSheet } from "./use-review-sheet";
 
 type StudyProps = {
   lists: WordList[];
@@ -192,6 +197,9 @@ export function WordReview({
     changed.current = true;
   }, []);
   useBackToClose(true, () => close.current(), pin);
+  // A bottom sheet over the book (owner, 2026-11-09 00:51 JST): ✕, the exit
+  // button, Escape and a tap above it slide it down first.
+  const sheet = useReviewSheet(() => close.current());
 
   useLayoutEffect(() => {
     const back = returnTo.current;
@@ -282,80 +290,116 @@ export function WordReview({
 
   const missing = session?.missing.length ?? 0;
   return (
-    <div
-      ref={panel}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      tabIndex={-1}
-      data-testid="read-word-review"
-      className="fixed inset-0 z-[var(--lk-z-overlay)] isolate bg-[var(--background)] outline-none"
-    >
-      {/* The top band /words' toolbar sits under: the paragraph's title, 制卡, ✕. */}
-      <div className="lk-glass fixed inset-x-0 top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-end border-b border-[var(--glass-line)] px-3 pb-1">
-        <div className="flex w-full items-center gap-2">
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
-          {missing >= MIN_BATCH && (
+    <>
+      {/* The text above the sheet stays in view, a shade dimmer; a tap there closes it. */}
+      <div
+        aria-hidden
+        data-testid="read-review-scrim"
+        className="fixed inset-0 z-[var(--lk-z-overlay)] bg-[oklch(0.2_0.01_65/0.12)] transition-opacity duration-300 motion-reduce:transition-none dark:bg-[oklch(0_0_0/0.25)]"
+        style={{ opacity: sheet.shown ? 1 : 0 }}
+        onClick={() => sheet.dismiss()}
+      />
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        data-testid="read-word-review"
+        data-sheet-h={sheet.h}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && !e.defaultPrevented) sheet.dismiss();
+        }}
+        // A bottom sheet (lib/read/review-sheet.ts): its transform makes it the
+        // containing block of /words' fixed list, toolbar and strips, so they
+        // fill the sheet, not the window.
+        className="fixed inset-x-0 bottom-0 z-[var(--lk-z-overlay)] isolate mx-auto max-w-[56rem] overflow-hidden rounded-t-2xl border border-b-0 border-[var(--glass-line)] bg-[var(--background)] shadow-[0_-12px_40px_-12px_oklch(0.22_0.015_65/0.45)] outline-none"
+        style={
+          {
+            height: sheet.height,
+            transform: `translateY(${sheet.offset})`,
+            transition: sheet.dragging ? "none" : SHEET_EASE,
+            "--lk-sheet-inset-top": "0px",
+            "--nav-w": "0px",
+          } as CSSProperties
+        }
+      >
+        {/* The top band /words' toolbar sits under: the grab handle, the
+          paragraph's title, 制卡, ✕. Dragging it resizes or closes the sheet. */}
+        <div
+          className="lk-glass fixed inset-x-0 top-0 z-30 flex h-14 touch-none items-end border-b border-[var(--glass-line)] px-3 pb-1 select-none"
+          data-testid="read-review-grab"
+          onPointerDown={sheet.down}
+          onPointerMove={sheet.move}
+          onPointerUp={sheet.up}
+          onPointerCancel={sheet.cancel}
+        >
+          <span
+            aria-hidden
+            className="absolute top-1.5 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-[oklch(0.5_0.01_65/0.45)]"
+          />
+          <div className="flex w-full items-center gap-2">
+            <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
+            {missing >= MIN_BATCH && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={make}
+                data-testid="read-review-make"
+                className="min-h-10 rounded-full px-3 text-sm font-medium hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-50"
+              >
+                {fill(t.makeCards.value, { n: String(missing) })}
+              </button>
+            )}
             <button
               type="button"
-              disabled={busy}
-              onClick={make}
-              data-testid="read-review-make"
-              className="min-h-10 rounded-full px-3 text-sm font-medium hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-50"
+              onClick={() => sheet.dismiss()}
+              aria-label={t.close.value}
+              title={t.close.value}
+              data-testid="read-review-close"
+              className="grid h-10 w-10 place-items-center rounded-full text-lg opacity-70"
             >
-              {fill(t.makeCards.value, { n: String(missing) })}
+              ×
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => close.current()}
-            aria-label={t.close.value}
-            title={t.close.value}
-            data-testid="read-review-close"
-            className="grid h-10 w-10 place-items-center rounded-full text-lg opacity-70"
-          >
-            ×
-          </button>
+          </div>
         </div>
+        {session ? (
+          <Study
+            key={v}
+            lists={session.lists}
+            onExit={() => sheet.dismiss()}
+            scope={{
+              items: session.items,
+              onGrade,
+              exitLabel: t.backToChapter.value,
+              key: place,
+              fill: rowFill,
+              // Every row one line taller than /words' (owner, 2026-11-08 19:16 JST).
+              extraLines: 1,
+            }}
+          />
+        ) : (
+          <p className="px-4 pt-20 text-sm opacity-70">{failed ? t.loadFailed : t.loading}</p>
+        )}
+        {toast && (
+          <MadeToast
+            text={toast.text}
+            undoLabel={t.undo.value}
+            onUndo={
+              toast.terms?.length
+                ? () =>
+                    void unmakeCards(id, toast.terms!)
+                      .then(() => {
+                        touched();
+                        setV((x) => x + 1);
+                      })
+                      .catch(() => {})
+                : undefined
+            }
+            onDone={() => setToast(null)}
+          />
+        )}
       </div>
-      {session ? (
-        <Study
-          key={v}
-          lists={session.lists}
-          onExit={() => close.current()}
-          scope={{
-            items: session.items,
-            onGrade,
-            exitLabel: t.backToChapter.value,
-            key: place,
-            fill: rowFill,
-            // Every row one line taller than /words' (owner, 2026-11-08 19:16 JST).
-            extraLines: 1,
-          }}
-        />
-      ) : (
-        <p className="px-4 pt-[calc(5rem+env(safe-area-inset-top))] text-sm opacity-70">
-          {failed ? t.loadFailed : t.loading}
-        </p>
-      )}
-      {toast && (
-        <MadeToast
-          text={toast.text}
-          undoLabel={t.undo.value}
-          onUndo={
-            toast.terms?.length
-              ? () =>
-                  void unmakeCards(id, toast.terms!)
-                    .then(() => {
-                      touched();
-                      setV((x) => x + 1);
-                    })
-                    .catch(() => {})
-              : undefined
-          }
-          onDone={() => setToast(null)}
-        />
-      )}
-    </div>
+    </>
   );
 }
