@@ -297,7 +297,7 @@ export function SelectCard({
       )}
       {view.text !== null && (
         <p
-          className={`${u.kind === "word" ? "text-lg font-medium" : "line-clamp-3 text-sm opacity-90"}`}
+          className={`${u.kind === "word" ? "text-lg font-medium" : "line-clamp-4 text-sm opacity-90"}`}
           data-testid="read-select-text"
         >
           {view.text.trim()}
@@ -323,7 +323,7 @@ export function SelectCard({
         </p>
       )}
       {meaning && (
-        <div className="mt-1 max-h-[30vh] overflow-y-auto text-sm">
+        <div className="mt-1 max-h-[calc(30vh+1lh)] overflow-y-auto text-sm">
           {/* Another language's entry, or one of several: say whose (lib/read/sense-pick.ts). */}
           {meaning.lang && (meaning.cross || !!meaning.others?.length) && (
             <p className="text-xs opacity-70" data-testid="read-select-entry-lang">
@@ -391,7 +391,7 @@ export function SelectCard({
       )}
       {translation && translation.blocks.some((b) => b.some((x) => x !== false)) && (
         <div
-          className="mt-1 max-h-[40vh] space-y-1.5 overflow-y-auto text-sm"
+          className="mt-1 max-h-[calc(40vh+1lh)] space-y-1.5 overflow-y-auto text-sm"
           aria-live="polite"
           ref={transRef}
           onScroll={(e) => onMoreTranslation && nearEnd(e.currentTarget) && onMoreTranslation()}

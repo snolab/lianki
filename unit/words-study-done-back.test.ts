@@ -163,9 +163,9 @@ describe("Study's end of the list", () => {
     expect(words).toContain('t.closest?.("[data-testid=study-done-back]")');
   });
 
-  test("in the reader's paragraph review the exit closes the overlay, back to the book", () => {
+  test("in the reader's paragraph review the exit closes the overlay, back to the chapter", () => {
     expect(review).toContain("onExit={() => close.current()}");
-    expect(review).toContain("exitLabel: t.backToBook.value");
+    expect(review).toContain("exitLabel: t.backToChapter.value");
     // Closing returns focus to the paragraph the review was opened from.
     expect(review).toMatch(/return \(\) => back\?\.focus\(/);
   });

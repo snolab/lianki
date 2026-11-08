@@ -101,7 +101,7 @@ import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
-import { backParts, rowMetrics } from "@/lib/words/row-layout";
+import { backParts, ROW_LINE_LH, rowMetrics } from "@/lib/words/row-layout";
 import { withPickedExample, type Example } from "@/lib/words/example-pick";
 import {
   famLang,
@@ -1489,8 +1489,6 @@ function useSpeech(serverVoice = false) {
 const GLANCE_ACCEL = 450;
 const GLANCE_HOLD_START = 1.0;
 const GLANCE_HOLD_END = 1.2;
-/** Line height of a /words cell that wraps (Glance `lines`), in em. */
-const ROW_LINE_LH = 1.25;
 
 /**
  * A cell that would be cut off: on the active row it slides to its end,
@@ -3637,6 +3635,12 @@ export type StudyScope = {
   /** Fills rows as they come near the screen (lib/read/review-row-fill.ts). Stable. */
   fill?: RowFill;
   /**
+   * Lines of back text added to every row (lib/words/row-layout.ts rowMetrics):
+   * the row is that many lines of its own text taller, and its first back
+   * line may wrap that many times more. The reader's review: 1.
+   */
+  extraLines?: number;
+  /**
    * This review's place in the tab's UI state (`lk:ui:words`): the list's
    * scroll and the card in focus, kept apart from the lists' own sessions so
    * a refresh lands on the same card (lib/read/review-ref.ts reviewKey).
@@ -4297,7 +4301,9 @@ export function Study({
   // Rows are 1.5× their swipe unit (owner, 2026-11-03): SWIPE_A, the old row
   // height, stays the finger distance of one detent (lib/words/row-layout.ts).
   const cardScale = useTextScale("cards");
-  const { rowH: ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale);
+  // A scope may ask for more lines in every row (the reader's review: one).
+  const extraLines = scope?.extraLines ?? 0;
+  const { rowH: ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale, extraLines);
   const listRef = useRef<HTMLDivElement>(null);
   /** The list element as state, for effects that must start when it mounts. */
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
@@ -5725,7 +5731,9 @@ export function Study({
                       // The taller rows' room (owner, 2026-11-03): on a phone the
                       // first line (the example) may wrap once, the second stays
                       // one line; on desktop each column may take two lines.
-                      const lines = !touch || first ? 2 : 1;
+                      // A scope's extra lines go to the first line on a phone, to
+                      // each column on desktop (side by side: one line taller).
+                      const lines = !touch || first ? 2 + extraLines : 1;
                       if (k === "meaning")
                         return (
                           <Glance
@@ -5761,6 +5769,7 @@ export function Study({
                               active={glancing && show}
                               title={show ? it.ex : undefined}
                               className={look}
+                              lines={1 + extraLines}
                             >
                               <bdi lang={it.lang} data-row-example>
                                 <MarkedExample

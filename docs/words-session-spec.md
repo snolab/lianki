@@ -32,6 +32,15 @@ they land. Design details that are still open are marked **open**.
   cell on the focused row slides up to its end and back. The swipe keeps its
   finger distance: one detent is still the old row height (44px), apart from
   the row's own (`rowMetrics`, `lib/words/row-layout.ts`).
+- **The reader's review: one line more** (2026-11-08 19:16 JST, on /read:
+  "increase the height of every card by one more line"): a review opened from
+  the reader (`StudyScope.extraLines: 1`) makes every row one line of its back
+  text taller (14px × 1.25, × the text size) and gives that line to the
+  example (phone: the first back line; desktop: each column). /words' own rows
+  are unchanged. The reader's selection card shows one more line too: the
+  selected sentence or paragraph is clamped at 4 lines (was 3), a new word's
+  context at 3 (was 2), and the meaning and translation scrollers are one line
+  (`1lh`) taller.
 - **Familiarity inside examples** (19:32 JST): an example's words that have
   one of his cards are marked by how well he knows them — solid line = weak,
   dashed = learning, mastered and card-less words plain (the reader's scheme,

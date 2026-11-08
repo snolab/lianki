@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BACK_ORDER, backParts, rowMetrics } from "@/lib/words/row-layout";
+import { BACK_ORDER, backParts, ROW_LINE_PX, rowMetrics } from "@/lib/words/row-layout";
 import { sayParts } from "@/lib/words/say-parts";
 import {
   exampleSegments,
@@ -115,5 +115,23 @@ describe("rowMetrics (rows 1.5× taller, owner 2026-11-03 23:01 JST)", () => {
   test("both grow with the cards' text, never shrink under it", () => {
     expect(rowMetrics(true, 1.5)).toEqual({ rowH: 99, a: 66 });
     expect(rowMetrics(true, 0.85)).toEqual({ rowH: 66, a: 44 });
+  });
+});
+
+describe("rowMetrics extraLines (the reader's review, owner 2026-11-08 19:16 JST)", () => {
+  test("one more line is one line of the row's own text; the swipe unit stays", () => {
+    expect(ROW_LINE_PX).toBe(14 * 1.25);
+    expect(rowMetrics(true, 1, 1)).toEqual({ rowH: Math.round(66 + ROW_LINE_PX), a: 44 });
+    expect(rowMetrics(false, 1, 1)).toEqual({ rowH: Math.round(42 + ROW_LINE_PX), a: 28 });
+  });
+  test("the extra line grows with the cards' text too", () => {
+    expect(rowMetrics(true, 1.5, 1)).toEqual({
+      rowH: Math.round((66 + ROW_LINE_PX) * 1.5),
+      a: 66,
+    });
+  });
+  test("no extra lines (and never fewer): /words' own rows", () => {
+    expect(rowMetrics(true, 1, 0)).toEqual(rowMetrics(true, 1));
+    expect(rowMetrics(true, 1, -1)).toEqual(rowMetrics(true, 1));
   });
 });
