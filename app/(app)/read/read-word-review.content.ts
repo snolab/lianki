@@ -83,23 +83,23 @@ const dictionary = {
       sw: "Tendua",
       mr: "पूर्ववत करा",
     }),
-    backToBook: t({
-      en: "Back to the book",
-      zh: "返回书本",
-      ja: "本に戻る",
-      ko: "책으로 돌아가기",
-      hi: "किताब पर लौटें",
-      es: "Volver al libro",
-      fr: "Retour au livre",
-      ar: "العودة إلى الكتاب",
-      bn: "বইয়ে ফিরুন",
-      pt: "Voltar ao livro",
-      ru: "Назад к книге",
-      ur: "کتاب پر واپس",
-      id: "Kembali ke buku",
-      de: "Zurück zum Buch",
-      sw: "Rudi kwenye kitabu",
-      mr: "पुस्तकाकडे परत",
+    backToChapter: t({
+      en: "Back to the chapter",
+      zh: "返回章节",
+      ja: "章に戻る",
+      ko: "장으로 돌아가기",
+      hi: "अध्याय पर लौटें",
+      es: "Volver al capítulo",
+      fr: "Retour au chapitre",
+      ar: "العودة إلى الفصل",
+      bn: "অধ্যায়ে ফিরুন",
+      pt: "Voltar ao capítulo",
+      ru: "Назад к главе",
+      ur: "باب پر واپس",
+      id: "Kembali ke bab",
+      de: "Zurück zum Kapitel",
+      sw: "Rudi kwenye sura",
+      mr: "प्रकरणाकडे परत",
     }),
     loading: t({
       en: "Loading…",
@@ -202,8 +202,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
   close:
     "Screen-reader label and tooltip of the ✕ button that closes the word review opened over the book reader and returns to the book. An imperative verb.",
   undo: "Button on the toast shown after flashcards were made for a paragraph's words: removes those new cards again (only the ones not yet studied). An imperative verb.",
-  backToBook:
-    "Button at the top left of the word review opened from the book reader (the Words page's flashcard list, showing only the words of one paragraph): closes it and returns to the book at the same place. A short imperative phrase.",
+  backToChapter:
+    "Button at the top left of the word review opened from the book reader (the Words page's flashcard list, showing only the words of one paragraph): closes it and returns to the reader at the same place, inside the chapter (a chapter of the book, a section of a text) the learner was reading. Names the chapter, not the whole book (owner, 2026-11-08: zh 返回章节). A short imperative phrase.",
   loading:
     "Shown in the word review opened from the book reader while the paragraph's words and their flashcards load. A short progress phrase.",
   loadFailed:
