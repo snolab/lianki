@@ -12,6 +12,7 @@ import {
   learningBand,
   localItems,
   marksByLine,
+  nextParaItem,
   sentencesFromCuts,
   pieceSentences,
   railLevel,
@@ -348,5 +349,25 @@ describe("reader model: emphasis inside a word", () => {
     const p = cutPara("H2O boils.", "en", "en", null, [[1, 2, "sub"]]);
     const tok = p.sentences[0].segs.find((g) => g.t === 0);
     expect(tok?.parts).toEqual([{ text: "H" }, { text: "2", k: ["sub"] }, { text: "O" }]);
+  });
+});
+
+describe("nextParaItem: a paragraph's grade moves on to the next paragraph (owner, 2026-11-08 20:33 JST)", () => {
+  const blocks = [
+    { kind: "heading", line: 0 },
+    { kind: "item", id: "1.0", pieces: [{ line: 1, s0: 0, s1: 2 }] },
+    { kind: "item", id: "1.2", pieces: [{ line: 1, s0: 2, s1: -1 }] },
+    { kind: "heading", line: 2 },
+    { kind: "item", id: "3.0", pieces: [{ line: 3, s0: 0, s1: -1 }] },
+    { kind: "item", id: "4.0", pieces: [{ line: 4, s0: 0, s1: -1 }] },
+  ] as Parameters<typeof nextParaItem>[0];
+  it("skips the rest of a split paragraph and a heading", () => {
+    expect(nextParaItem(blocks, 1)).toBe(4);
+  });
+  it("the item right after a whole paragraph", () => {
+    expect(nextParaItem(blocks, 3)).toBe(5);
+  });
+  it("none after the last paragraph", () => {
+    expect(nextParaItem(blocks, 4)).toBe(-1);
   });
 });

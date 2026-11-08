@@ -32,6 +32,35 @@ const AFTER: readonly AfterGrade[] = ["para", "upto", "none", "easy"];
 /** What follows a passage's grade (the grade given, after the mirror). */
 export const afterGrade = (r: 1 | 2 | 3 | 4): AfterGrade => AFTER[r - 1];
 
+/**
+ * What a passage's grade does once its scope's words are known (owner,
+ * 2026-11-08 22:01 JST): a review opens only when the scope has at least one
+ * word due or new; with none it stays in the text and says so ("empty").
+ * `due`: how many of the scope's words are due or new; null: not known (no
+ * server plan, signed out), the review opens on any word as before.
+ */
+export function afterScope(
+  after: AfterGrade,
+  words: number,
+  due: number | null,
+): "review" | "empty" | "none" | "easy" {
+  if (after === "none" || after === "easy") return after;
+  if (!words) return "empty";
+  return due === null || due > 0 ? "review" : "empty";
+}
+
+/**
+ * The name each level of a passage's grade handle shows (owner, 2026-11-08
+ * 21:43 JST: the levels read as what they do, not Again/Hard/Good/Easy):
+ * the i18n key of read-grade-handle, or null for the level that only grades.
+ */
+export const LEVEL_KEY = {
+  para: "levelPara",
+  upto: "levelUpTo",
+  none: null,
+  easy: "levelEasy",
+} as const satisfies Record<AfterGrade, string | null>;
+
 /** What the review endpoints take in one call (lib/read/reader-route.ts rangeWords). */
 export const MAX_SCOPE_WORDS = 400;
 

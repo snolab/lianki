@@ -357,6 +357,20 @@ export function blockOfAnchor(blocks: readonly Block[], line: number, s = 0): nu
   return i;
 }
 
+/**
+ * The item a paragraph's grade moves on to (owner, 2026-11-08 20:33 JST: after
+ * rating a paragraph the reader goes to the NEXT paragraph): the first item
+ * after the one holding `line` that starts on a later line. The rest of a
+ * split paragraph is skipped, headings too. -1: none (the book's end).
+ */
+export function nextParaItem(blocks: readonly Block[], line: number): number {
+  for (let j = blockOfLine(blocks, line); j < blocks.length; j++) {
+    const b = blocks[j];
+    if (b.kind === "item" && b.pieces[0].line > line) return j;
+  }
+  return -1;
+}
+
 /** The first line a block shows. */
 export const blockLine = (b: Block) => (b.kind === "heading" ? b.line : b.pieces[0].line);
 
