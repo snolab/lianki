@@ -102,6 +102,11 @@ export interface BookCtx {
    * meaning generated for one stays on this card and out of the shared word_gloss.
    */
   privateText?: boolean;
+  /**
+   * A YouTube song (lib/yt-songs/card-clip.ts): the clip JSON of the line an
+   * example came from, stored on the word's entry. Absent: not a song.
+   */
+  clipOf?: (ex: string) => string | null;
 }
 
 /** One word of the review: his card's list and term, or the book list's new word. */
@@ -112,6 +117,8 @@ export interface ScopeItem {
   reading: string | null;
   back: string;
   ex: string | null;
+  /** The example's song clip JSON (a YouTube song), or null. */
+  clip: string | null;
   /** The stored ts-fsrs card JSON; null: no card yet (a new word). */
   card: string | null;
 }
@@ -131,6 +138,10 @@ export function isDueCard(card: string | null, now: Date): boolean {
 }
 
 const clip = (s: string | null | undefined, n: number) => (s ? s.slice(0, n) : null);
+
+/** The example's song clip (a YouTube song's line), worked out on the server only. */
+const clipOfEx = (book: BookCtx, ex: string | null | undefined) =>
+  ex && book.clipOf ? book.clipOf(ex.slice(0, 1000)) : null;
 
 /** Gives words without a meaning one where it can (lib/read/gloss-server.ts fillGlosses). */
 export type Gloss = (words: RangeWord[]) => Promise<RangeWord[]>;
@@ -238,6 +249,7 @@ export async function scopeSession(
       reading: r ? r.reading : clip(x.reading, 200),
       back,
       ex: clip(x.ex, 1000),
+      clip: clipOfEx(book, x.ex),
       card: r ? r.card : null,
     });
   }
@@ -252,7 +264,13 @@ export async function scopeSession(
         bookList,
         items
           .filter((it) => it.listId === bookList && it.card)
-          .map((it) => ({ term: it.term, reading: it.reading, back: it.back, ex: it.ex })),
+          .map((it) => ({
+            term: it.term,
+            reading: it.reading,
+            back: it.back,
+            ex: it.ex,
+            clip: it.clip,
+          })),
       ),
     );
   await runAll(db, backfillStatements(db, email, fill));
@@ -295,16 +313,23 @@ export function entryStatements(
   db: D1Like,
   email: string,
   listId: string,
-  entries: { term: string; reading: string | null; back: string; ex: string | null }[],
+  entries: {
+    term: string;
+    reading: string | null;
+    back: string;
+    ex: string | null;
+    /** A song line's clip JSON (lib/yt-songs/card-clip.ts), or none. */
+    clip?: string | null;
+  }[],
 ): D1StmtLike[] {
   const at = new Date().toISOString();
-  return entries.map((e) =>
+  return entries.flatMap((e) => [
     db
       .prepare(
         `INSERT OR IGNORE INTO word_list_entries
-           (email, list_id, key, position, term, back, reading, ex, updated_at)
+           (email, list_id, key, position, term, back, reading, ex, clip, updated_at)
          SELECT ?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM word_list_entries
-           WHERE email = ? AND list_id = ?), ?, ?, ?, ?, ?
+           WHERE email = ? AND list_id = ?), ?, ?, ?, ?, ?, ?
          WHERE EXISTS (SELECT 1 FROM word_cards WHERE email = ? AND list_id = ? AND term = ?)`,
       )
       .bind(
@@ -317,12 +342,24 @@ export function entryStatements(
         e.back,
         e.reading,
         e.ex,
+        e.clip ?? null,
         at,
         email,
         listId,
         e.term,
       ),
-  );
+    // An entry made before its song's clip was kept: the clip joins it, only
+    // where the example is this same line and no clip is there yet.
+    ...(e.clip && e.ex
+      ? [
+          db
+            .prepare(
+              "UPDATE word_list_entries SET clip = ? WHERE email = ? AND list_id = ? AND key = ? AND clip IS NULL AND ex = ?",
+            )
+            .bind(e.clip, email, listId, e.term, e.ex),
+        ]
+      : []),
+  ]);
 }
 
 async function runAll(db: D1Like, statements: D1StmtLike[]) {
@@ -401,6 +438,7 @@ export async function makeCards(
     reading: clip(x.reading, 200),
     back: clip(x.back, 1000) ?? "",
     ex: clip(x.ex, 1000),
+    clip: clipOfEx(book, x.ex),
   }));
   const statements = [
     // In the same transaction as a guard: a card made meanwhile under the
@@ -519,6 +557,7 @@ export async function addGradedEntries(
     reading: clip(x.reading, 200),
     back: clip(x.back, 1000) ?? "",
     ex: clip(x.ex, 1000),
+    clip: clipOfEx(book, x.ex),
   }));
   await runAll(db, [
     ...entryStatements(db, email, list.id, entries),

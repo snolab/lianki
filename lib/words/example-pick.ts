@@ -13,15 +13,26 @@
  * picks the best of the Wiktionary usage examples and Tatoeba sentences it
  * finds); emitting `exs` there is what turns this on for a deck.
  */
-export type Example = { ex: string; exTr?: string };
+export type Example = {
+  ex: string;
+  exTr?: string;
+  /** This example sung in a YouTube song (lib/yt-songs/card-clip.ts): it goes where its sentence goes. */
+  clip?: string;
+};
 
 /** The examples an entry offers: its `ex` first, then its alternatives; empty ones and repeats left out. */
-export function examplesOf(e: { ex?: string; exTr?: string; exs?: Example[] }): Example[] {
+export function examplesOf(e: {
+  ex?: string;
+  exTr?: string;
+  clip?: string;
+  exs?: Example[];
+}): Example[] {
   const out: Example[] = [];
   const add = (x: Example | undefined) => {
     if (x?.ex?.trim() && !out.some((o) => o.ex === x.ex)) out.push(x);
   };
-  if (e.ex) add({ ex: e.ex, ...(e.exTr ? { exTr: e.exTr } : {}) });
+  if (e.ex)
+    add({ ex: e.ex, ...(e.exTr ? { exTr: e.exTr } : {}), ...(e.clip ? { clip: e.clip } : {}) });
   for (const x of e.exs ?? []) add(x);
   return out;
 }
@@ -65,15 +76,18 @@ export function rememberExample(key: string, ex: string): void {
 }
 
 /** The entry with one of its examples chosen for this showing (unchanged with fewer than two). */
-export function withPickedExample<T extends { ex?: string; exTr?: string; exs?: Example[] }>(
-  e: T,
-  key: string,
-  rand: () => number = Math.random,
-): T {
+export function withPickedExample<
+  T extends { ex?: string; exTr?: string; clip?: string; exs?: Example[] },
+>(e: T, key: string, rand: () => number = Math.random): T {
   const all = examplesOf(e);
   if (all.length < 2) return e;
   const x = pickExample(all, lastExample(key), rand)!;
   rememberExample(key, x.ex);
-  const { exTr: _drop, ...rest } = e;
-  return { ...rest, ex: x.ex, ...(x.exTr ? { exTr: x.exTr } : {}) } as T;
+  const { exTr: _drop, clip: _clip, ...rest } = e;
+  return {
+    ...rest,
+    ex: x.ex,
+    ...(x.exTr ? { exTr: x.exTr } : {}),
+    ...(x.clip ? { clip: x.clip } : {}),
+  } as T;
 }

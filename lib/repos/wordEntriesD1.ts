@@ -8,6 +8,8 @@ export type ListEntry = {
   reading?: string;
   ex?: string;
   exTr?: string;
+  /** The example sung in a YouTube song: JSON {v, t0, t1} (lib/yt-songs/card-clip.ts). */
+  clip?: string;
 };
 
 export type SyncResult = {
@@ -31,6 +33,7 @@ type Row = {
   reading: string | null;
   ex: string | null;
   ex_tr: string | null;
+  clip?: string | null;
 };
 
 /** Rows per json_each statement: one bound JSON parameter, far below D1's 1 MB value cap. */
@@ -51,7 +54,7 @@ export class WordEntriesD1Repo {
   async entries(listId: string): Promise<ListEntry[]> {
     const { results } = await this.db
       .prepare(
-        `SELECT term, back, reading, ex, ex_tr FROM word_list_entries
+        `SELECT term, back, reading, ex, ex_tr, clip FROM word_list_entries
          WHERE email = ? AND list_id = ? ORDER BY position`,
       )
       .bind(this.email, listId)
@@ -61,6 +64,7 @@ export class WordEntriesD1Repo {
       if (r.reading) e.reading = r.reading;
       if (r.ex) e.ex = r.ex;
       if (r.ex_tr) e.exTr = r.ex_tr;
+      if (r.clip) e.clip = r.clip;
       return e;
     });
   }

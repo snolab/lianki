@@ -104,6 +104,11 @@ import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/word
 import { backParts, ROW_LINE_LH, rowMetrics } from "@/lib/words/row-layout";
 import { withPickedExample, type Example } from "@/lib/words/example-pick";
 import {
+  SongClipButton,
+  useClipPlayer,
+  YtClipProvider,
+} from "@/app/components/yt-clip/clip-context";
+import {
   famLang,
   famMark,
   missingWords,
@@ -473,6 +478,8 @@ type Entry = {
   /** An example sentence in the target language, and its English. */
   ex?: string;
   exTr?: string;
+  /** The example sung in a YouTube song: JSON {v, t0, t1} (lib/yt-songs/card-clip.ts). */
+  clip?: string;
   /** More example sentences, if the deck has them: one is shown per showing (lib/words/example-pick.ts). */
   exs?: Example[];
   /** Phrase decks: a usage note (English), casual / polite, and the moment it is said in. */
@@ -1946,10 +1953,13 @@ function useListParam(base: string): [string | null, (id: string | null) => void
 export default function WordsClient({
   config: given,
   voice = "off",
+  ytSongs = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
   voice?: VoiceAccess;
+  /** YouTube songs (`read.youtube-songs`, or the owner): an example with a song clip gets its ▶. */
+  ytSongs?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
@@ -2108,22 +2118,24 @@ export default function WordsClient({
     return (
       <>
         {undoToast}
-        <Study
-          key={listId}
-          config={config}
-          lists={studying}
-          catalog={fullCatalog}
-          voice={voice}
-          title={
-            listId === ALL
-              ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
-              : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
-          }
-          onExit={() => {
-            setListId(null);
-            refreshLists();
-          }}
-        />
+        <YtClipProvider on={ytSongs}>
+          <Study
+            key={listId}
+            config={config}
+            lists={studying}
+            catalog={fullCatalog}
+            voice={voice}
+            title={
+              listId === ALL
+                ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
+                : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
+            }
+            onExit={() => {
+              setListId(null);
+              refreshLists();
+            }}
+          />
+        </YtClipProvider>
       </>
     );
 
@@ -3623,6 +3635,8 @@ export type StudyScope = {
     reading?: string | null;
     back: string;
     ex?: string | null;
+    /** The example's song clip JSON (a YouTube song's line), or none. */
+    clip?: string | null;
     /** Stored ts-fsrs card JSON; null: a new word (its first grade makes the card). */
     card?: string | null;
   }[];
@@ -3691,6 +3705,11 @@ export function Study({
   const sheetOpen = useRef(false);
   // Back (the browser's, the phone's) folds the sheet instead of leaving /words.
   useBackToClose(sheet !== null, () => setSheet(null));
+  // A song clip playing (yt-clip): grading or moving to another row closes it.
+  const clipPlayer = useClipPlayer();
+  useEffect(() => {
+    clipPlayer?.close();
+  }, [row, grades, clipPlayer]);
   const sync = useSyncStatus();
   /** The queue was built from the offline copy. */
   const [offlineCopy, setOfflineCopy] = useState(false);
@@ -3833,7 +3852,7 @@ export function Study({
     // Several examples: one at random for this showing, frozen into the item.
     const e = withPickedExample(found, keyOf({ listId, term }));
     return {
-      ...(e.ex ? { ex: e.ex, exTr: e.exTr } : {}),
+      ...(e.ex ? { ex: e.ex, exTr: e.exTr, ...(e.clip ? { clip: e.clip } : {}) } : {}),
       ...(e.note ? { note: e.note } : {}),
       ...(e.register ? { register: e.register } : {}),
       ...(e.scene ? { scene: e.scene } : {}),
@@ -3991,6 +4010,7 @@ export function Study({
           reading: x.reading ?? undefined,
           back: x.back,
           ex: x.ex ?? undefined,
+          clip: x.clip ?? undefined,
           kind: x.card ? "due" : "new",
           listId: x.listId,
           lang: lang.get(x.listId) ?? "und",
@@ -5776,6 +5796,7 @@ export function Study({
                               className={look}
                               lines={1 + extraLines}
                             >
+                              {show && <SongClipButton clip={it.clip} text={it.ex} />}
                               <bdi lang={it.lang} data-row-example>
                                 <MarkedExample
                                   text={it.ex}
@@ -5807,6 +5828,7 @@ export function Study({
                         >
                           {it.ex ? (
                             <>
+                              {show && <SongClipButton clip={it.clip} text={it.ex} />}
                               <bdi lang={it.lang} data-row-example>
                                 <MarkedExample
                                   text={it.ex}
@@ -6007,6 +6029,7 @@ function SlipSheet({
             data-sheet-example
           >
             <div lang={item.lang} dir="auto">
+              <SongClipButton clip={item.clip} text={item.ex} />
               <MarkedExample
                 text={item.ex}
                 lang={item.lang}
