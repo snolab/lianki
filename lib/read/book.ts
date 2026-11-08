@@ -17,7 +17,18 @@ import { checkShape, type TextShape } from "./prep";
 
 export const BOOK_KIND = "lianki-book";
 
-export type BookSource = "epub" | "gdoc" | "preset" | "vibe";
+export type BookSource = "epub" | "gdoc" | "preset" | "vibe" | "youtube";
+
+/**
+ * A YouTube song (docs/youtube-song-examples.md): the video and each line's
+ * clip, `clips[i]` for `lines[i]`, [t0, t1] in ms before `offsetMs`. Nothing
+ * from YouTube is stored but the 11-character video id.
+ */
+export interface YtSongMeta {
+  v: string;
+  offsetMs: number;
+  clips: [number, number][];
+}
 
 /** Where a catalogue book (/books) came from, shown in the book: lib/books/catalogue.ts. */
 export interface BookCredit {
@@ -69,6 +80,8 @@ export interface BookMeta {
   shape?: TextShape;
   /** The AI polish of a raw transcript (lib/read/polish.ts); the raw text is kept beside it. */
   polished?: PolishInfo;
+  /** A YouTube song's video and line clips (source "youtube"). */
+  yt?: YtSongMeta;
 }
 
 /** A polish that was applied: when, and how many of its chunks passed the check. */
@@ -226,6 +239,7 @@ export function bookMetaOf(
     credit?: BookCredit;
     shape?: TextShape;
     polished?: PolishInfo;
+    yt?: YtSongMeta;
   } = { source: "epub" },
 ): BookMeta {
   return {
@@ -250,7 +264,33 @@ export function bookMetaOf(
     ...(book.langs?.length ? { langs: book.langs } : {}),
     ...(from.shape ? { shape: from.shape } : {}),
     ...(from.polished ? { polished: from.polished } : {}),
+    ...(from.yt ? { yt: from.yt } : {}),
   };
+}
+
+/**
+ * A stored song's clips, shape only (its lines are not known here): a video
+ * id, a sane offset, and non-empty [t0, t1] pairs in ms. Anything else drops
+ * the clips; the text stays readable.
+ */
+export function checkYt(v: unknown): YtSongMeta | null {
+  if (!v || typeof v !== "object") return null;
+  const y = v as Partial<Record<keyof YtSongMeta, unknown>>;
+  if (typeof y.v !== "string" || !/^[A-Za-z0-9_-]{11}$/.test(y.v)) return null;
+  const off = y.offsetMs;
+  const offsetMs =
+    typeof off === "number" && Number.isInteger(off) && Math.abs(off) <= 600_000 ? off : 0;
+  if (!Array.isArray(y.clips) || y.clips.length > 2_000) return null;
+  const clips: [number, number][] = [];
+  for (const c of y.clips as unknown[]) {
+    if (!Array.isArray(c) || c.length !== 2) return null;
+    const [t0, t1] = c as [unknown, unknown];
+    if (typeof t0 !== "number" || typeof t1 !== "number") return null;
+    if (!Number.isInteger(t0) || !Number.isInteger(t1)) return null;
+    if (t0 < 0 || t1 <= t0 || t1 > 36_000_000) return null;
+    clips.push([t0, t1]);
+  }
+  return { v: y.v, offsetMs, clips };
 }
 
 const cap = (v: unknown, max: number) =>
@@ -301,11 +341,18 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
       p && typeof p.at === "string" && Number.isInteger(p.chunks) && Number.isInteger(p.kept)
         ? { at: p.at.slice(0, 40), chunks: p.chunks!, kept: p.kept! }
         : null;
+    const yt = checkYt(m.yt);
     return {
       kind: BOOK_KIND,
       v: 1,
       source:
-        m.source === "gdoc" || m.source === "preset" || m.source === "vibe" ? m.source : "epub",
+        m.source === "gdoc" ||
+        m.source === "preset" ||
+        m.source === "vibe" ||
+        m.source === "youtube"
+          ? m.source
+          : "epub",
+      ...(m.source === "youtube" && yt ? { yt } : {}),
       ...(m.source === "preset" ? presetCredit(m) : {}),
       ...(m.source === "gdoc" &&
       typeof m.sourceUrl === "string" &&

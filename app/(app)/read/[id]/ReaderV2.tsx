@@ -112,6 +112,7 @@ import {
 } from "./reader-stream";
 import { getLocalMaterial } from "./local-material";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
+import { useSongClips } from "@/app/components/yt-clip/use-song-clips";
 import { useItemWords, type ItemPlan } from "./use-item-words";
 import {
   SelectCard,
@@ -254,11 +255,14 @@ export function ReaderV2({
   isLoggedIn: serverSignedIn,
   streaming = false,
   draftAllowed = false,
+  ytSongs = false,
 }: {
   id: string;
   isLoggedIn: boolean;
   /** Who may have a text rewritten as a speech draft: the owner, or `read.live-polish`. */
   draftAllowed?: boolean;
+  /** YouTube songs (`read.youtube-songs`, or the owner): a song's lines play their clip. */
+  ytSongs?: boolean;
   /** ?streamingFrom=google-docs: the text follows the doc as it is edited. */
   streaming?: boolean;
 }) {
@@ -313,6 +317,7 @@ export function ReaderV2({
         draftAllowed={draftAllowed}
         liveTail={streaming && isLoggedIn ? stream.tail : null}
         streamState={streaming && isLoggedIn ? stream.state : null}
+        ytSongs={ytSongs}
       />
     </>
   );
@@ -325,10 +330,13 @@ function Reader({
   draftAllowed = false,
   liveTail = null,
   streamState = null,
+  ytSongs = false,
 }: {
   id: string;
   material: Material;
   signedIn: boolean;
+  /** YouTube songs are on for this viewer: a song's lines get their ▶. */
+  ytSongs?: boolean;
   /** A live Google Doc's text not saved into the book yet (null: not following one). */
   draftAllowed?: boolean;
   liveTail?: string | null;
@@ -340,6 +348,8 @@ function Reader({
   const tw = useIntlayer("words-page");
   const lines = material.lines;
   const book = material.book;
+  // A YouTube song: each sung line's ▶ and the popup player (use-song-clips.tsx).
+  const song = useSongClips(book, lines, ytSongs);
   const touch = useTouch();
   const [variant, setVariant] = useState<"js" | "native">("js");
   const [mirror, setMirror] = useState(false);
@@ -2062,8 +2072,10 @@ function Reader({
       onLevel,
       underlay,
       scrolling,
+      clipOf: song.clipOf,
     }),
     [
+      song.clipOf,
       para,
       lineText,
       joinOf,
@@ -2436,6 +2448,7 @@ function Reader({
           </Sheet>
         )}
       </div>
+      {song.popup}
     </SwipeFeelProvider>
   );
 }

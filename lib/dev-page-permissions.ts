@@ -16,6 +16,7 @@ export const DEV_PAGE_PERMISSION: Record<string, Permission> = {
   owners: "admin",
   permissions: "admin",
   users: "admin",
+  design: "dev",
   levels: "dev",
   lian: "dev",
   "live-frontends": "dev",
