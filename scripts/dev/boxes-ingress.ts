@@ -77,11 +77,15 @@ export function ingressYaml(tunnelId: string, credentials: string, routes: BoxRo
   return lines.join("\n");
 }
 
-if (import.meta.main) {
-  const [dir, id, creds] = process.argv.slice(2);
+/** The command: the config on `out`, notes and errors on `err` (no host: a hash is private). */
+export function main(
+  [dir, id, creds]: (string | undefined)[],
+  out: (s: string) => void,
+  err: (s: string) => void,
+): number {
   if (!dir || !/^[0-9a-f-]{36}$/.test(id ?? "") || !creds) {
-    console.error("usage: boxes-ingress.ts <devbox dir> <tunnel id> <credentials file>");
-    process.exit(2);
+    err("usage: boxes-ingress.ts <devbox dir> <tunnel id> <credentials file>");
+    return 2;
   }
   const files = readdirSync(dir)
     .filter(isBoxEnvFile)
@@ -89,9 +93,15 @@ if (import.meta.main) {
     .map((file) => ({ file, text: readFileSync(join(dir, file), "utf8") }));
   const { routes, errors } = boxRoutes(files);
   if (errors.length) {
-    for (const e of errors) console.error(e);
-    process.exit(1);
+    for (const e of errors) err(e);
+    return 1;
   }
-  process.stdout.write(ingressYaml(id, creds, routes));
-  for (const r of routes) console.error(`  ${r.file}: ${r.name} -> 127.0.0.1:${r.port}`);
+  out(ingressYaml(id!, creds, routes));
+  for (const r of routes) err(`  ${r.file}: ${r.name} -> 127.0.0.1:${r.port}`);
+  return 0;
 }
+
+if (import.meta.main)
+  process.exit(
+    main(process.argv.slice(2), process.stdout.write.bind(process.stdout), console.error),
+  );

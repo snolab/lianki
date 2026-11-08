@@ -3,7 +3,16 @@
  * env files. Only hosts lianki.com's own rule accepts, exact, then 404.
  */
 import { describe, expect, test } from "bun:test";
-import { boxRoutes, ingressYaml, isBoxEnvFile, readBoxEnv } from "../scripts/dev/boxes-ingress";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  boxRoutes,
+  ingressYaml,
+  isBoxEnvFile,
+  main,
+  readBoxEnv,
+} from "../scripts/dev/boxes-ingress";
 
 const env = (url: string, port = "3200", name = "a") =>
   `DEVBOX_NAME=${name}\nDEVBOX_DEV_PORT=${port}\nDEEPSEEK_API_KEY=sk-secret\nDEVBOX_PUBLIC_URL=${url}\n`;
@@ -46,6 +55,55 @@ describe("box env files to tunnel rules", () => {
     );
     expect(yaml).not.toContain("sk-secret");
     expect(yaml).not.toContain("*");
+  });
+
+  test("the command reads a devbox dir, skips the example, refuses bad input", () => {
+    const dir = mkdtempSync(join(tmpdir(), "boxes-ingress-"));
+    try {
+      writeFileSync(join(dir, ".env"), env("https://my-example.lianki.com", "3200", "k"));
+      writeFileSync(join(dir, ".env.example"), env("https://my-other.lianki.com", "3201"));
+      writeFileSync(join(dir, "compose.yaml"), "x");
+      const id = "00000000-0000-0000-0000-000000000000";
+      const out: string[] = [];
+      const err: string[] = [];
+      expect(
+        main(
+          [dir, id, "/c.json"],
+          (s) => out.push(s),
+          (s) => err.push(s),
+        ),
+      ).toBe(0);
+      expect(out.join("")).toContain("  - hostname: my-example.lianki.com\n");
+      expect(out.join("")).not.toContain("my-other");
+      expect(err).toEqual(["  .env: k -> 127.0.0.1:3200"]);
+
+      expect(
+        main(
+          [dir, "not-an-id", "/c.json"],
+          () => {},
+          () => {},
+        ),
+      ).toBe(2);
+      expect(
+        main(
+          [undefined, id, "/c.json"],
+          () => {},
+          () => {},
+        ),
+      ).toBe(2);
+      writeFileSync(join(dir, ".env.bad"), env("https://dev.lianki.com", "3205"));
+      const bad: string[] = [];
+      expect(
+        main(
+          [dir, id, "/c.json"],
+          () => {},
+          (s) => bad.push(s),
+        ),
+      ).toBe(1);
+      expect(bad).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("a host lianki.com refuses, a bad port, or a clash is an error, not a rule", () => {
