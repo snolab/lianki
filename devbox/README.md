@@ -62,7 +62,7 @@ Each box is its own Compose project, container and volume, named after
 git push origin origin/main:refs/heads/friend/<name>       # the owner, once
 cp devbox/.env.example devbox/.env.<name>                   # DEVBOX_NAME, DEVBOX_ENV_FILE=.env.<name>, next free ports
 DEVBOX_ENV=.env.<name> devbox/box.sh up -d --build
-DEVBOX_ENV=.env.<name> devbox/host-tunnel.sh create
+devbox/boxes-tunnel.sh sync                                 # its public host: no DNS edit
 ```
 
 `DEVBOX_ENV_FILE=.env.<name>` makes the box read that file (and its
@@ -149,7 +149,65 @@ off (`DSH_TELEMETRY_MODE=DISABLED`); its DeepSeek session-log contribution is
 on by default and is switched off in the web UI under **Settings → General →
 Upload Session Log**.
 
+## One tunnel for every box (no DNS edit per box)
+
+Owner's request, 2026-11-08 (Slack, typed "確認" for the one wildcard record):
+a new box works without adding a DNS record. Since then the zone has **one
+wildcard CNAME, `*.lianki.com` → tunnel `lianki-boxes`**, a single connector on
+the Mac (oxmgr `lianki-boxes-tunnel`) whose ingress is made from the box env
+files:
+
+```bash
+# a new box: its env file with DEVBOX_PUBLIC_URL + DEVBOX_DEV_PORT, then
+devbox/boxes-tunnel.sh sync      # rewrites ~/.cloudflared/lianki-boxes.yml, restarts the connector
+devbox/boxes-tunnel.sh status
+```
+
+`sync` reads every `devbox/.env` and `devbox/.env.<name>` (only `DEVBOX_NAME`,
+`DEVBOX_DEV_PORT`, `DEVBOX_PUBLIC_URL`; `scripts/dev/boxes-ingress.ts`), puts in
+one exact rule per box host that passes `isBoxHost`, and ends with
+`http_status:404`. It refuses the whole config on a bad URL, a bad port, or two
+files with one host or one port. From a worktree, pass
+`DEVBOX_ENV_DIR=<main checkout>/devbox`. The restart drops every box's
+connection for a few seconds (HMR reconnects).
+
+**What the wildcard catches.** Only names with no DNS record of their own: an
+exact record always wins (RFC 4592), so `lianki.com`, `www`, `dev`, `preview`,
+the older boxes' own CNAMEs and any record made later keep going where they
+did. Checked on 2026-11-08 before and after: the same answers for all of them.
+A name nobody created (any `my-*` that is not in an env file, `dsh-<name>`
+before its record, `stt` until its tunnel exists) now gets the tunnel's 404
+where it used to get Cloudflare's 530 "no DNS". No Worker route changed: the
+Worker routes are `lianki.com/*`, `www.lianki.com/*` and two paths under
+`lianki.com`, none of which matches another subdomain.
+
+**Security is unchanged.** A host reaches a box only if an env file on the Mac
+names it; the binding on `/dev/box-clients` stays the only authority for what
+it may do on lianki.com, so an unbound box host still gets nothing there. dsh is
+never routed by this tunnel (dsh hosts need their own Access app and record,
+below), so `dsh-<name>` is a 404 here. TLS: the zone's Universal SSL
+certificate names `lianki.com` and `*.lianki.com` (checked 2026-11-08), which
+covers exactly one level, as box hosts are.
+
+**Why a tunnel and not a Worker.** A Worker on `*.lianki.com/*` would also run
+for `dev`, `preview`, `stt` and every other proxied name, so each would depend
+on its passthrough being right, and it would need a way from the Worker to the
+Mac (Workers VPC / a tunnel binding), unproven on this account. The wildcard
+record touches none of the explicit names, adds no auth system and no hop, and
+its 404 comes from cloudflared itself. The edge gate (docs/box-oauth.md, "Edge
+gate") can still be added in front later.
+
+**The older per-box tunnels** (`lianki-devbox-<name>`, below) keep serving the
+boxes that have their own CNAME, which wins over the wildcard. Both boxes are
+in the shared ingress as well, so deleting a box's own record (asked of the
+owner separately; it needs an API token with Zone · DNS · Edit) moves it to the
+shared tunnel with no other step, after which its own connector can stop.
+
 ## Tunnel (host side, nothing in the box)
+
+New boxes need none of this: see "One tunnel for every box" above. The
+per-box tunnel remains for the boxes that already have their own record, and
+for dsh.
 
 The friend sees the dev server through a **named Cloudflare tunnel run on the
 Mac** with the Mac's existing cloudflared login (`~/.cloudflared/cert.pem`,

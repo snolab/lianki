@@ -1,4 +1,8 @@
 #!/bin/bash
+# A new box needs none of this: devbox/boxes-tunnel.sh sync (the *.lianki.com
+# wildcard, README "One tunnel for every box"). This stays for boxes with their
+# own CNAME, and for dsh.
+#
 # Host side of a dev box's public URLs (devbox/README.md, "Tunnel"). Runs on the
 # Mac with the Mac's own cloudflared login (~/.cloudflared/cert.pem, made by
 # `cloudflared tunnel login`); nothing here goes into the container.
@@ -99,5 +103,5 @@ case "${1:-}" in
     cloudflared tunnel info "$TUNNEL" 2>/dev/null | tail -n +2 || true
     ;;
   *)
-    sed -n '2,17p' "$0"; exit 2 ;;
+    sed -n '2,21p' "$0"; exit 2 ;;
 esac
