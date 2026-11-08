@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getIntlayer } from "intlayer";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { appLocale } from "@/lib/app-locale.server";
 
-// Owner-only, gated like every /dev page (isOwner + a plain 404), so it moves
-// with them when that gate becomes the isDev permission. Not linked from the nav.
+// The isDev permission (lib/permissions.ts), like the other dev pages; anyone
+// else gets a plain 404. Listed in lib/dev-page-permissions.ts. Not in the nav.
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -50,7 +50,7 @@ const LINK = "text-blue-700 dark:text-blue-300 hover:underline";
 
 export default async function DevDesignPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isDev(user?.email)) notFound();
 
   const locale = await appLocale();
   const c = getIntlayer("dev-design", locale);

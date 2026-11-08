@@ -5,6 +5,8 @@
  * `credentials: "omit"`.
  */
 import { BOX_AUTHORIZE_PATH, BOX_CALLBACK_PATH, BOX_CHAT_TICKET_PATH, boxHubUrl } from "./rules";
+import { boxReturnPath } from "./return-path";
+import { BOX_AT_COOKIE, BOX_AT_COOKIE_HTTP } from "./server-session";
 
 const PENDING = "lk:box:pending";
 const TOKENS = "lk:box:tokens";
@@ -31,11 +33,13 @@ function readJson<T>(key: string): T | null {
 
 const redirectUri = () => `${location.origin}${BOX_CALLBACK_PATH}`;
 
-export async function startBoxSignIn(c: BoxConfig): Promise<void> {
+/** `back`: the page to open once signed in (boxReturnPath), else /home. */
+export async function startBoxSignIn(c: BoxConfig, back?: string | null): Promise<void> {
   const verifier = random();
   const state = random();
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-  sessionStorage.setItem(PENDING, JSON.stringify({ verifier, state }));
+  const to = boxReturnPath(back);
+  sessionStorage.setItem(PENDING, JSON.stringify({ verifier, state, ...(to ? { back: to } : {}) }));
   const q = new URLSearchParams({
     response_type: "code",
     client_id: c.clientId,
@@ -56,7 +60,54 @@ function keep(body: { access_token?: string; refresh_token?: string; expires_in?
     until: Date.now() + (body.expires_in ?? 0) * 1000,
   };
   sessionStorage.setItem(TOKENS, JSON.stringify(tokens));
+  mirrorCookie(tokens);
 }
+
+/**
+ * The access token, mirrored into one cookie of this host so the box's own
+ * server sees the sign-in too (server-session.ts). Host-only (`__Host-` on
+ * https): never sent to lianki.com or another box. Its life is the token's.
+ * The refresh token never leaves sessionStorage.
+ */
+function mirrorCookie(t: Tokens | null): void {
+  try {
+    const https = location.protocol === "https:";
+    const name = https ? BOX_AT_COOKIE : BOX_AT_COOKIE_HTTP;
+    const secs = t ? Math.floor((t.until - Date.now()) / 1000) : 0;
+    document.cookie =
+      secs > 0 && t
+        ? `${name}=${t.access}; Path=/; Max-Age=${secs}; SameSite=Lax${https ? "; Secure" : ""}`
+        : `${name}=; Path=/; Max-Age=0; SameSite=Lax${https ? "; Secure" : ""}`;
+  } catch {}
+}
+
+/**
+ * Make the box's server see this tab's sign-in: the token refreshed when it has
+ * under a minute left, then mirrored into the cookie. True when the cookie now
+ * holds this tab's usable token. A tab with none leaves the cookie alone: it
+ * may be another tab's (sign-out and a refused token clear it).
+ */
+export async function syncBoxCookie(c: BoxConfig): Promise<boolean> {
+  let t = readJson<Tokens>(TOKENS);
+  if (!t) return false;
+  if (t.until - Date.now() < 60_000 && (await refresh(c))) t = readJson<Tokens>(TOKENS);
+  const usable = !!t && t.until - Date.now() > 5_000;
+  mirrorCookie(usable ? t : null);
+  return usable;
+}
+
+/** Does this browser hold a box sign-in cookie (another tab's, maybe)? */
+export function hasBoxCookie(): boolean {
+  try {
+    return /(?:^|;\s*)(?:__Host-)?lk_box_at=lkb_/.test(document.cookie);
+  } catch {
+    return false;
+  }
+}
+
+let back: string | null = null;
+/** Where the finished sign-in goes: the page it started from, else /home. */
+export const boxSignInBack = () => back ?? "/home";
 
 const tokenRequest = (c: BoxConfig, form: Record<string, string>) =>
   nativeFetch()(`${c.provider}/api/auth/oauth2/token`, {
@@ -71,8 +122,9 @@ export async function finishBoxSignIn(
   c: BoxConfig,
   search: URLSearchParams,
 ): Promise<string | null> {
-  const pending = readJson<{ verifier: string; state: string }>(PENDING);
+  const pending = readJson<{ verifier: string; state: string; back?: string }>(PENDING);
   sessionStorage.removeItem(PENDING);
+  back = boxReturnPath(pending?.back);
   const error = search.get("error");
   if (error) return error.slice(0, 80);
   const code = search.get("code");
@@ -99,6 +151,7 @@ export function forgetBoxTokens(): void {
   try {
     sessionStorage.removeItem(TOKENS);
   } catch {}
+  mirrorCookie(null);
 }
 
 let refreshing: Promise<boolean> | null = null;
@@ -123,6 +176,7 @@ async function refresh(c: BoxConfig): Promise<boolean> {
 export async function boxSignOut(c: BoxConfig): Promise<void> {
   const t = readJson<Tokens>(TOKENS);
   sessionStorage.removeItem(TOKENS);
+  mirrorCookie(null);
   if (!t?.refresh) return;
   await nativeFetch()(`${c.provider}/api/auth/oauth2/revoke`, {
     method: "POST",

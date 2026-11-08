@@ -1379,12 +1379,13 @@ export class DebugHub {
   }
 
   /**
-   * POST /internal/eta {id, title, etaAt, assignee?}: a state-tree estimate ran
-   * out (lib/eta-ping.ts). From the progress hub alone, over its DEBUG binding:
+   * POST /internal/eta {id, title, etaAt, assignee?, kind?, reason?}: a
+   * state-tree estimate ran out, or its overrun was explained or went
+   * unexplained (lib/eta-ping.ts; docs/state-tree.md, "ETA overrun"). From the progress hub alone, over its DEBUG binding:
    * index.ts forwards no request to this path. With flag chat.eta-bar on, one
    * line in the owner's thread addressed to the main node ("/"), so every
    * listener there hears it as it hears his lines: `from: "agent"` (never
-   * the owner), `agentId: "eta"`, `source: "eta"`, quiet. It never answers an
+   * the owner), `agentId: "eta"`, `source: "eta"`; quiet for "due" only. It never answers an
    * ask (only a page's tap does) and never carries ownerGrant. 503 when the
    * flag cannot be read: the progress hub tries again.
    */
@@ -1407,17 +1408,25 @@ export class DebugHub {
       id: crypto.randomUUID().slice(0, 8),
       from: "agent",
       label: ETA_LABEL,
-      text: etaLineText(ping),
+      text: etaLineText(ping, this.now()),
       at: this.now(),
       thread: OWNER_THREAD,
       to: ROOT_NODE,
       agentId: ETA_AGENT,
       source: "eta",
-      quiet: true,
+      // The agents' line is quiet; the owner's (late, silent) is read aloud like any agent line.
+      ...(ping.kind === "late" || ping.kind === "silent" ? {} : { quiet: true }),
       eta: { id: ping.id, etaAt: ping.etaAt },
     };
     await this.post(line);
-    console.log(JSON.stringify({ msg: "debug.eta", id: ping.id, etaAt: ping.etaAt }));
+    console.log(
+      JSON.stringify({
+        msg: "debug.eta",
+        kind: ping.kind ?? "due",
+        id: ping.id,
+        etaAt: ping.etaAt,
+      }),
+    );
     return Response.json({ ok: true, delivered: true, listeners: this.agents().length });
   }
 

@@ -11,8 +11,8 @@
  * A done task stays LINGER_MS, then leaves.
  *
  * The timer (etaClock): one per page, armed to the soonest of: a task's
- * `at`, a done task leaving, the next change of a time-left label (they show
- * whole minutes, rounded up). Re-armed on every change of the tasks; nothing
+ * `at`, a done task leaving, the next change of a time label (compactTime:
+ * whole minutes, rounded up, counting on past due). Re-armed on every change of the tasks; nothing
  * polls. When a task's `at` passes and the hub has not said it pinged
  * (`sent`), `onDue(id)` is called once per (id, at) on this page: the host
  * sends {type:"eta", id} on the progress socket, and the hub (which also has
@@ -90,27 +90,78 @@ export function etaSummary(tasks: readonly EtaTask[], now: number): EtaSummary {
 export const minutesLeft = (ms: number) => (ms <= 0 ? 0 : Math.ceil(ms / 60_000));
 
 /**
- * A short time left: "25m", "1h 5m", "2d 3h" in the page's language (Intl's
- * narrow units, so nothing to translate). `ms` > 0.
+ * Every time label of the bar, the list and the minimized line, in one
+ * language-neutral form (owner, 2026-11-08 20:34 JST): under an hour "<n>M"
+ * (whole minutes, rounded up: "5M", "40M"); from an hour, hours to one
+ * decimal, rounded, a whole number without it ("1H", "1.5H" for 1 h 29 min,
+ * "2.5H"). Past due it is negative ("-5M", "-1.5H"), drawn red (EtaBar.tsx).
  */
-export function shortLeft(ms: number, lang?: string): string {
-  const unit = (n: number, u: "minute" | "hour" | "day") => {
-    try {
-      return new Intl.NumberFormat(lang || undefined, {
-        style: "unit",
-        unit: u,
-        unitDisplay: "narrow",
-      }).format(n);
-    } catch {
-      return `${n}${u[0]}`;
-    }
-  };
-  const min = minutesLeft(ms);
-  if (min < 60) return unit(Math.max(1, min), "minute");
-  const h = Math.floor(min / 60);
-  if (h < 24) return min % 60 ? `${unit(h, "hour")} ${unit(min % 60, "minute")}` : unit(h, "hour");
-  const d = Math.floor(h / 24);
-  return h % 24 ? `${unit(d, "day")} ${unit(h % 24, "hour")}` : unit(d, "day");
+export function compactTime(ms: number): string {
+  const min = minutesLeft(Math.abs(ms));
+  const sign = ms < 0 && min > 0 ? "-" : "";
+  if (min < 60) return `${sign}${min}M`;
+  return `${sign}${Math.round(min / 6) / 10}H`;
+}
+
+/** Past due: a negative label, drawn red. */
+export const isLate = (ms: number) => compactTime(ms).startsWith("-");
+
+/**
+ * The Gantt list's shared time axis (owner, 2026-11-09 01:39 JST): the left
+ * edge is the earliest start of a shown task, the right edge the latest end
+ * (its estimate, or when a done one finished; queued tasks at their computed
+ * ends — pass ganttPlan's tasks). It rescales whenever the tasks change; now
+ * is placed on it, clamped to an edge when outside (ganttRow). An empty
+ * range is widened to GANTT_MIN_SPAN_MS.
+ */
+export type GanttWindow = { lo: number; hi: number };
+export const GANTT_MIN_SPAN_MS = 60_000;
+/**
+ * Where the Gantt list draws each task (owner, 2026-11-09 01:38 JST): running
+ * tasks as they are, overlapping freely; queued ones (`queued`, status
+ * waiting) one after another, in order of creation: the first starts when the
+ * soonest running task is due (or now, if that is past or none runs), each
+ * next one when the one ahead is expected to finish; a queued bar is
+ * `queuedMs` long. Display only: the hub's estimates and pings keep `at`.
+ */
+export function ganttPlan(tasks: readonly EtaTask[], now: number): EtaTask[] {
+  const running = tasks.filter((t) => !t.done && !t.queued);
+  let next = Math.max(now, running.length ? Math.min(...running.map((t) => t.at)) : now);
+  const placed = new Map<string, EtaTask>();
+  const queue = tasks
+    .filter((t) => t.queued && !t.done)
+    .sort((a, b) => (a.created ?? a.start) - (b.created ?? b.start));
+  for (const t of queue) {
+    const len = Math.max(60_000, t.queuedMs ?? t.at - t.start);
+    placed.set(t.id, { ...t, start: next, at: next + len });
+    next += len;
+  }
+  return tasks.map((t) => placed.get(t.id) ?? t);
+}
+
+export function ganttWindow(tasks: readonly EtaTask[], now: number): GanttWindow | null {
+  const shown = shownTasks(tasks, now);
+  if (!shown.length) return null;
+  const lo = Math.min(...shown.map((t) => Math.min(t.start, t.at)));
+  const hi = Math.max(...shown.map((t) => (t.done && t.doneAt !== undefined ? t.doneAt : t.at)));
+  return { lo, hi: Math.max(hi, lo + GANTT_MIN_SPAN_MS) };
+}
+
+/**
+ * One row's bar on the axis, each in percent of the row's width: it starts
+ * at `left` (the task's start) and runs `plan` to its estimate; `fill` is how
+ * much of the planned part its progress covers (pct; a done task all of it);
+ * past the estimate, `over` runs on to now (or to when it finished late).
+ * `now` is where now is. No numbers are drawn: the bar is the timing.
+ */
+export type GanttRow = { left: number; plan: number; fill: number; over: number; now: number };
+export function ganttRow(t: EtaTask, w: GanttWindow, now: number): GanttRow {
+  const x = (ms: number) => Math.min(100, Math.max(0, ((ms - w.lo) / (w.hi - w.lo)) * 100));
+  const left = x(t.start);
+  const due = x(t.at);
+  const end = t.done ? x(t.doneAt ?? t.at) : x(now);
+  const pct = t.done ? 100 : Math.min(100, Math.max(0, t.pct ?? 0));
+  return { left, plan: Math.max(0, due - left), fill: pct, over: Math.max(0, end - due), now: x(now) };
 }
 
 /** The tasks due now that this page should report: open, past `at`, not sent. */
@@ -128,7 +179,13 @@ export function nextWake(tasks: readonly EtaTask[], now: number): number | null 
       continue;
     }
     const left = t.at - now;
-    if (left <= 0) continue;
+    if (left <= 0) {
+      // Past due, its label counts on ("-1M", "-2M"…): the next whole minute past.
+      // On a whole minute ("0M" at the estimate, "-1M" at one over), it changes right after.
+      const into = -left % 60_000;
+      wake = Math.min(wake, now + (into === 0 ? 1 : 60_000 - into));
+      continue;
+    }
     wake = Math.min(wake, t.at);
     // The label shows minutes rounded up: it changes when `left` crosses the next whole minute.
     const step = left - (minutesLeft(left) - 1) * 60_000;
@@ -236,23 +293,20 @@ export function etaEnds(
   return small.id === big.id ? { big } : { small, big };
 }
 
-/** One end's part of the minimized line: the task's name and its minutes left, already worded. */
-export type EtaPart = { name: string; min: string };
-
 /**
- * The minimized line's parts, "<small> 5 min · <big> 40 min", with `perMin`
- * the localized "{n} min". Null without an open timed task.
+ * One end's part of the minimized line: the task's name and its time left
+ * (compactTime); `late` when past due (drawn red).
  */
-export function etaParts(
-  tasks: readonly EtaTask[],
-  now: number,
-  perMin: string,
-): EtaPart[] | null {
+export type EtaPart = { name: string; min: string; late?: boolean };
+
+/** The minimized line's parts, "<small> 5M · <big> 1.5H". Null without an open timed task. */
+export function etaParts(tasks: readonly EtaTask[], now: number): EtaPart[] | null {
   const ends = etaEnds(tasks);
   if (!ends) return null;
   const part = (t: EtaTask): EtaPart => ({
     name: splitTitle(t.title).name,
-    min: perMin.replace("{n}", String(minutesLeft(t.at - now))),
+    min: compactTime(t.at - now),
+    ...(isLate(t.at - now) ? { late: true } : {}),
   });
   return ends.small ? [part(ends.small), part(ends.big)] : [part(ends.big)];
 }

@@ -1,6 +1,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { ChatLogDb } from "@/lib/chat-log";
 import type { D1Like } from "@/lib/d1/types";
@@ -28,7 +28,7 @@ function push(): Fetcher | null {
 
 const who = async () => {
   const u = await authUserOrNull();
-  return u?.id && u.email ? { id: u.id, owner: isOwner(u.email) } : null;
+  return u?.id && u.email ? { id: u.id, owner: isDev(u.email) } : null;
 };
 
 const deps: HistoryDeps = {

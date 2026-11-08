@@ -3,7 +3,7 @@ import { badRequest, bodyOf, json, readerCtx } from "@/lib/read/reader-route";
 import { MAX_TRANSLATE_CHARS, langTag } from "@/lib/read/translate";
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { AI_LIMIT_LIVE, translate } from "@/lib/read/translate-server";
 import { isVibeMaterial } from "@/lib/vibe/private-speech";
 import { translateSelection } from "@/lib/vibe/translate-server";
@@ -38,7 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (body.text.length > MAX_TRANSLATE_CHARS) return badRequest("text is too long");
   const from = langTag(body.from);
   // Who may read a live doc: its card follows every new sentence.
-  const live = isOwner(ctx.email) || flagIn(await readFlags(), "read.gdoc-stream");
+  const live = isDev(ctx.email) || flagIn(await readFlags(), "read.gdoc-stream");
   const limit = live ? { limit: AI_LIMIT_LIVE } : {};
   const input = { text: body.text, to, from, notes: body.notes === true };
   const r = isVibeMaterial(ctx.material)

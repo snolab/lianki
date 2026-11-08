@@ -316,6 +316,24 @@ const dictionary = {
       sw: "Maneno {n} yamepimwa Rahisi",
       mr: "{n} शब्द सोपे म्हणून नोंदले",
     }),
+    scopeEmpty: t({
+      en: "No words to review here",
+      zh: "这里没有要复习的词",
+      ja: "ここに復習する単語はありません",
+      ko: "여기에는 복습할 단어가 없어요",
+      hi: "यहाँ दोहराने के लिए कोई शब्द नहीं",
+      es: "No hay palabras que repasar aquí",
+      fr: "Aucun mot à réviser ici",
+      ar: "لا توجد كلمات للمراجعة هنا",
+      bn: "এখানে ঝালাই করার মতো কোনো শব্দ নেই",
+      pt: "Nenhuma palavra para revisar aqui",
+      ru: "Здесь нет слов для повторения",
+      ur: "یہاں دہرانے کے لیے کوئی لفظ نہیں",
+      id: "Tidak ada kata untuk diulas di sini",
+      de: "Hier gibt es keine Wörter zu wiederholen",
+      sw: "Hakuna maneno ya kurudia hapa",
+      mr: "इथे उजळणीसाठी एकही शब्द नाही",
+    }),
   },
 };
 
@@ -352,6 +370,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "The same hint when the passage has no words to grade with it: letting go grades only the passage Easy. Grade name as on the word cards (Easy). A short phrase, one line on a phone.",
   easyDone:
     "Toast after a passage was graded Easy: {n} of its words (due ones and never-studied ones) were graded Easy along with it; the toast has an Undo button that takes back the passage's grade and all of these word grades. Grade name as on the word cards. Keep {n} as is.",
+  scopeEmpty:
+    "Toast in the book reader after the learner graded a paragraph at a level that opens a word review (this paragraph's words, or the chapter's words up to here), when that range has no word due for review and no new word: no review opens, the learner stays in the text and the reader moves on to the next paragraph. A short full statement, fits one line on a phone.",
 };
 
 export default {

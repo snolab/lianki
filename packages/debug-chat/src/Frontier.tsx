@@ -12,6 +12,7 @@ import {
   shortId,
   shownAgentId,
 } from "./frontier-view";
+import { etaColor } from "./EtaBar";
 import { LINE_HALO } from "./log-surface";
 import { createLongPress } from "./tap-gesture";
 import { BLINK, uiStrings } from "./ui-strings";
@@ -176,7 +177,14 @@ export function FrontierLines({
                           </span>
                         )}
                         <span className="min-w-0 truncate">{p.name}</span>
-                        <span className="shrink-0 tabular-nums">{p.min}</span>
+                        <span
+                          data-late={p.late || undefined}
+                          className="shrink-0 tabular-nums"
+                          // Past due ("-5M"): red, as in the list (EtaBar.tsx ETA_COLORS.late).
+                          style={p.late ? { color: etaColor("late"), fontWeight: 600 } : undefined}
+                        >
+                          {p.min}
+                        </span>
                       </span>
                     ))}
                   </span>

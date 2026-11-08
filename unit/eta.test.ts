@@ -8,7 +8,7 @@ import {
 import type { Socket, Storage } from "@/workers/push/src/debug";
 import { type ProgressEntry, mergeProgress, parseEta, parseProgressReport } from "@/lib/progress";
 import { liveTreeSource, overlayProgress } from "@/lib/progress-tree";
-import { ETA_PATH, etaLineText, parseEtaPing } from "@/lib/eta-ping";
+import { ETA_EXPLAIN_MS, ETA_PATH, etaLineText, parseEtaPing } from "@/lib/eta-ping";
 import { FLAGS } from "@/lib/flags";
 import { parseProgressArgs } from "@/scripts/dev/progress-args";
 import { chatLine } from "@/scripts/dev/node-args";
@@ -23,7 +23,10 @@ import {
   etaSummary,
   etaTasks,
   nextWake,
-  shortLeft,
+  compactTime,
+  ganttPlan,
+  ganttRow,
+  ganttWindow,
   splitTitle,
   taskFraction,
 } from "@lianki/debug-chat/eta";
@@ -240,16 +243,20 @@ describe("the progress hub's ETA alarm and its single delivery", () => {
     await h.write({ id: "/words/swipe", eta: "5m" });
     h.tick(5 * MIN);
     await h.hub.alarm();
-    await h.write({ id: "/words/swipe", eta: "20m" });
-    expect(h.storage.alarm).toBe(h.now() + 20 * MIN);
-    h.tick(20 * MIN);
+    await h.write({ id: "/words/swipe", eta: "20m", late: "review took longer" });
+    // The alarm set for the silent check goes off first, finds it explained, waits for the new ETA.
+    h.tick(ETA_EXPLAIN_MS);
     await h.hub.alarm();
-    expect(h.pings.length).toBe(2);
+    expect(h.storage.alarm).toBe(h.now() + 15 * MIN);
+    h.tick(15 * MIN);
+    await h.hub.alarm();
+    // due, late (the owner's line), due again.
+    expect(h.pings.map((p) => p.kind ?? "due")).toEqual(["due", "late", "due"]);
     await h.write({ id: "/x/done", eta: "1m" });
     await h.write({ id: "/x/done", status: "done" });
     h.tick(2 * MIN);
     await h.hub.alarm();
-    expect(h.pings.length).toBe(2);
+    expect(h.pings.filter((p) => p.id === "/x/done")).toEqual([]);
   });
 
   it("no page open: the alarm alone delivers", async () => {
@@ -313,11 +320,101 @@ describe("the progress hub's ETA alarm and its single delivery", () => {
   });
 });
 
+describe("ETA overrun: the reason and a new ETA, or the owner is told", () => {
+  it("past its ETA, a new estimate without --late is refused; with it, the owner hears both", async () => {
+    const h = setup();
+    await h.write({ id: "/words/swipe", eta: "5m" });
+    // Before the ETA: revising needs no reason.
+    expect((await h.write({ id: "/words/swipe", eta: "6m" })).status).toBe(200);
+    h.tick(6 * MIN);
+    await h.hub.alarm();
+    const refused = await h.write({ id: "/words/swipe", eta: "20m" });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toContain("--late");
+    // Free text is a new estimate too.
+    expect((await h.write({ id: "/words/swipe", eta: "after CI" })).status).toBe(400);
+    // Progress without a new estimate, and done, still go through.
+    expect((await h.write({ id: "/words/swipe", pct: 80 })).status).toBe(200);
+    const ok = await h.write({ id: "/words/swipe", eta: "20m", late: "CI 排队" });
+    expect(ok.status).toBe(200);
+    expect(ok.body.told).toBe(true);
+    expect(ok.body.entry).toMatchObject({ lateReason: "CI 排队", etaAt: h.now() + 20 * MIN });
+    expect(h.pings.at(-1)).toMatchObject({
+      kind: "late",
+      reason: "CI 排队",
+      id: "/words/swipe",
+      etaAt: h.now() + 20 * MIN,
+    });
+    expect(h.entry("/words/swipe")?.notes?.at(-1)?.text).toBe("late: CI 排队");
+    // Explained: no "未说明原因" later.
+    h.tick(ETA_EXPLAIN_MS + MIN);
+    await h.hub.alarm();
+    expect(h.pings.filter((p) => p.kind === "silent")).toEqual([]);
+  });
+
+  it("no reason and no new ETA within ETA_EXPLAIN_MS: the owner is told once", async () => {
+    const h = setup();
+    await h.write({ id: "/words/swipe", eta: "5m" });
+    h.tick(5 * MIN);
+    await h.hub.alarm();
+    expect(h.pings.length).toBe(1);
+    expect(h.storage.alarm).toBe(h.entry("/words/swipe")!.etaAt! + ETA_EXPLAIN_MS);
+    h.tick(ETA_EXPLAIN_MS - 1000);
+    await h.hub.alarm();
+    expect(h.pings.length).toBe(1);
+    h.tick(1000);
+    await h.hub.alarm();
+    expect(h.pings.at(-1)).toMatchObject({ kind: "silent", id: "/words/swipe" });
+    expect(h.entry("/words/swipe")?.etaSilent).toBe(h.entry("/words/swipe")?.etaAt);
+    await h.hub.alarm();
+    expect(h.pings.length).toBe(2);
+    // A task done in the window is never reported.
+    await h.write({ id: "/b", eta: "1m" });
+    h.tick(MIN);
+    await h.hub.alarm();
+    await h.write({ id: "/b", status: "done" });
+    h.tick(ETA_EXPLAIN_MS);
+    await h.hub.alarm();
+    expect(h.pings.filter((p) => p.id === "/b").map((p) => p.kind ?? "due")).toEqual(["due"]);
+  });
+
+  it("a page's timer delivers the due line; the silent check is armed all the same", async () => {
+    const h = setup();
+    await h.write({ id: "/words/swipe", eta: "5m" });
+    const p = await h.page();
+    h.tick(5 * MIN);
+    await h.hub.webSocketMessage(p, JSON.stringify({ type: "eta", id: "/words/swipe" }));
+    expect(h.storage.alarm).toBe(h.entry("/words/swipe")!.etaAt! + ETA_EXPLAIN_MS);
+  });
+
+  it("the CLI: --late goes with a new --eta, never alone", () => {
+    const base = ["--agent", "a", "--task", "t", "--status", "doing"];
+    expect(parseProgressArgs([...base, "--eta", "20m", "--late", "slow CI"])).toMatchObject({
+      report: { late: "slow CI", etaIn: 20 * MIN },
+    });
+    expect(parseProgressArgs([...base, "--late", "slow CI"])).toBeInstanceOf(Error);
+    expect(parseProgressArgs([...base, "--eta", "after CI", "--late", "x"])).toBeInstanceOf(Error);
+  });
+});
+
 describe("the ETA line as the agents read it", () => {
   it("says what it is and is marked automatic in eval.ts chat output", () => {
-    expect(etaLineText({ id: "/words/swipe", title: "Native swipe" })).toBe(
-      "ETA reached for Native swipe (/words/swipe): report to the owner",
+    const due = etaLineText({
+      id: "/words/swipe",
+      title: "Native swipe: drag it",
+      etaAt: 0,
+      assignee: "swipe-agent",
+    });
+    expect(due).toContain("ETA reached for Native swipe: drag it (/words/swipe)");
+    expect(due).toContain("--agent swipe-agent --path /words/swipe");
+    expect(due).toContain('--eta <N>m --late "');
+    expect(due).toContain('"Native swipe 超时，未说明原因"');
+    expect(etaLineText({ id: "/a", title: "Box: x", etaAt: 0, kind: "silent" })).toBe(
+      "Box 超时，未说明原因",
     );
+    expect(
+      etaLineText({ id: "/a", title: "Box: x", etaAt: 20 * MIN, kind: "late", reason: "CI" }, 1),
+    ).toBe("Box 超时：CI。再要 20 分钟");
     expect(parseEtaPing({ id: "/a", title: "t", etaAt: 5 })).toEqual({
       id: "/a",
       title: "t",
@@ -396,11 +493,9 @@ describe("the page: summary, short times, the one timer", () => {
     expect(s.count).toBe(2);
     expect(s.leftMs).toBe(25 * MIN);
     expect(s.next?.id).toBe("/a");
-    expect(summaryText(tasks, 5 * MIN, CHAT_STRINGS_EN, "en")).toBe(
-      "2 tasks · 25m left · next in 5m",
-    );
-    expect(summaryText([tasks[0]!], 5 * MIN, CHAT_STRINGS_EN, "en")).toBe("A · 5m left");
-    expect(summaryText([tasks[0]!], 11 * MIN, CHAT_STRINGS_EN, "en")).toBe("A · ETA reached");
+    expect(summaryText(tasks, 5 * MIN, CHAT_STRINGS_EN)).toBe("2 tasks · 25M · next in 5M");
+    expect(summaryText([tasks[0]!], 5 * MIN, CHAT_STRINGS_EN)).toBe("A · 5M");
+    expect(summaryText([tasks[0]!], 11 * MIN, CHAT_STRINGS_EN)).toBe("A · -1M");
     expect(taskFraction(tasks[0]!, 20 * MIN)).toBe(1);
   });
 
@@ -410,18 +505,31 @@ describe("the page: summary, short times, the one timer", () => {
     expect(etaSummary([done], 4 * MIN + LINGER_MS).count).toBe(0);
   });
 
-  it("short times round minutes up", () => {
-    expect(shortLeft(30_000, "en")).toBe("1m");
-    expect(shortLeft(25 * MIN, "en")).toBe("25m");
-    expect(shortLeft(65 * MIN, "en")).toBe("1h 5m");
-    expect(shortLeft(120 * MIN, "en")).toBe("2h");
-    expect(shortLeft(27 * 60 * MIN, "en")).toBe("1d 3h");
+  it("one compact, language-neutral time format: <n>M under an hour, decimal H from it, minus past due", () => {
+    expect(compactTime(30_000)).toBe("1M");
+    expect(compactTime(5 * MIN)).toBe("5M");
+    expect(compactTime(40 * MIN)).toBe("40M");
+    expect(compactTime(59 * MIN + 30_000)).toBe("1H");
+    expect(compactTime(60 * MIN)).toBe("1H");
+    expect(compactTime(80 * MIN)).toBe("1.3H"); // not "1h20m"
+    expect(compactTime(89 * MIN)).toBe("1.5H");
+    expect(compactTime(120 * MIN)).toBe("2H");
+    expect(compactTime(150 * MIN)).toBe("2.5H");
+    expect(compactTime(27 * 60 * MIN)).toBe("27H");
+    expect(compactTime(0)).toBe("0M");
+    // Past due: negative, the same form.
+    expect(compactTime(-5 * MIN)).toBe("-5M");
+    expect(compactTime(-30_000)).toBe("-1M");
+    expect(compactTime(-89 * MIN)).toBe("-1.5H");
+    expect(compactTime(-120 * MIN)).toBe("-2H");
   });
 
-  it("wakes at the next label change or estimate, never for a past or sent one", () => {
+  it("wakes at the next label change or estimate; past due, at the next whole minute over", () => {
     expect(nextWake([task({ at: 10 * MIN })], 0)).toBe(MIN);
     expect(nextWake([task({ at: 10 * MIN })], 9 * MIN + 30_000)).toBe(10 * MIN);
-    expect(nextWake([task({ at: 10 * MIN })], 11 * MIN)).toBeNull();
+    // "-1M" turns "-2M" right after 11 min.
+    expect(nextWake([task({ at: 10 * MIN })], 11 * MIN)).toBe(11 * MIN + 1);
+    expect(nextWake([task({ at: 10 * MIN, done: true })], 11 * MIN)).toBeNull();
     expect(nextWake([task({ done: true, doneAt: 0 })], 1000)).toBe(LINGER_MS);
     expect(
       dueTasks([task({ at: 5, sent: true }), task({ id: "/b", at: 5 })], 10).map((t) => t.id),
@@ -467,7 +575,8 @@ describe("the page: summary, short times, the one timer", () => {
     expect(c.pending()).toEqual([30_000]);
     c.advance(90_000);
     expect(due).toEqual(["/a"]);
-    expect(c.pending()).toEqual([]);
+    // Past due, the label counts on: "0M" turns "-1M" at once.
+    expect(c.pending()).toEqual([90_001]);
     // The tree updates again (still unsent): no second report from this page.
     clock.update([task({ at: 90_000 })]);
     expect(due).toEqual(["/a"]);
@@ -487,7 +596,11 @@ describe("the page: summary, short times, the one timer", () => {
     c.advance(20 * MIN);
     clock.update([task({ at: 10 * MIN }), task({ id: "/s", at: 10 * MIN, sent: true })]);
     expect(due).toEqual(["/a"]);
-    expect(clock.armed()).toBe(false);
+    // Armed only for the labels counting on ("-10M" → "-11M"), never to report again.
+    expect(clock.armed()).toBe(true);
+    c.advance(5 * MIN);
+    expect(due).toEqual(["/a"]);
+    clock.stop();
   });
 });
 
@@ -503,11 +616,10 @@ describe("the bar and the list, rendered", () => {
         now: 5 * MIN,
         strings: CHAT_STRINGS_EN,
         onOpen: () => {},
-        lang: "en",
       }),
     );
     expect(out).toContain('data-testid="debug-chat-eta-bar"');
-    expect(out).toContain("2 tasks · 25m left · next in 5m");
+    expect(out).toContain('aria-label="2 tasks · 25M · next in 5M · 25%');
     expect(out).toContain('data-pct="25"');
     expect(out).toContain(CHAT_STRINGS_EN.etaOpen);
     expect(out).toContain("<svg");
@@ -524,7 +636,11 @@ describe("the bar and the list, rendered", () => {
         onOpen: () => {},
       }),
     );
-    expect(past).toContain("2 tasks · ETA reached");
+    expect(past).toContain('aria-label="2 tasks · -10M');
+    // A negative time is red.
+    expect(past).toMatch(
+      /data-testid="debug-chat-eta-time" data-late="true"[^>]*color:light-dark\(oklch\(0.47 0.17 27\)/,
+    );
     const done = html(
       createElement(EtaBar, {
         tasks: [task({ done: true, doneAt: 0 }), task({ id: "/b", done: true, doneAt: 0 })],
@@ -549,15 +665,22 @@ describe("the bar and the list, rendered", () => {
         tasks: [...two, task({ id: "/c", title: "C", done: true, doneAt: 12 * MIN - 1000 })],
         now: 12 * MIN,
         strings: CHAT_STRINGS_EN,
-        lang: "en",
       }),
     );
     expect(out.match(/data-testid="debug-chat-eta-row"/g)?.length).toBe(3);
     expect(out).toContain('data-state="reached"');
     expect(out).toContain('data-state="running"');
     expect(out).toContain('data-state="done"');
-    expect(out).toContain("18m left");
-    expect(out.match(/data-testid="debug-chat-eta-fill"/g)?.length).toBe(3);
+    // No duration numbers but the time left: "18M", and "-2M" (red) for the one past due.
+    expect(out).toContain(">18M<");
+    expect(out).toMatch(/data-late="true"[^>]*>-2M</);
+    expect(out.replace(/<[^>]*>/g, " ")).not.toMatch(/\d+m left|\d ?min\b/);
+    // Each row is a Gantt bar on the shared axis, with the red Now line and its label.
+    expect(out.match(/data-testid="debug-chat-eta-span"/g)?.length).toBe(3);
+    expect(out).toContain('data-testid="debug-chat-eta-over"');
+    expect(out).toContain('data-testid="debug-chat-eta-now-label"');
+    expect(out).toContain(">Now<");
+    expect(out).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i);
     // A "name: description" title: the name bold, the description muted.
     const row = html(
       createElement(EtaList, {
@@ -575,16 +698,16 @@ describe("the bar and the list, rendered", () => {
         now: MIN,
         strings: CHAT_STRINGS_EN,
         onOpen: () => {},
-        lang: "en",
       }),
     );
-    expect(one).toContain("Box ETA · 29m left");
+    expect(one).toContain('aria-label="Box ETA · 29M');
     expect(one).not.toContain("on the box");
     expect(out).not.toContain("debug-chat-eta-meter");
     expect(out).toContain(CHAT_STRINGS_EN.etaList);
     expect(html(createElement(EtaList, { tasks: [], now: 0, strings: CHAT_STRINGS_EN }))).toBe("");
     expect(html(createElement(EtaClockIcon, { size: 10 }))).toContain('width="10"');
     expect(taskState(task({ done: true }), 0, CHAT_STRINGS_EN)).toBe("done");
+    expect(taskState(task({ at: 0 }), 5 * MIN, CHAT_STRINGS_EN)).toBe("-5M");
     let kept = false;
     keepFocus({ preventDefault: () => (kept = true) });
     expect(kept).toBe(true);
@@ -632,17 +755,16 @@ describe("the minimized line: the nearest task and the last, in minutes", () => 
     expect(etaEnds([])).toBeNull();
   });
   it("the two numbers are whole minutes from now, rounded up; names only", () => {
-    const parts = etaParts(T, 2 * MIN + 1000, CHAT_STRINGS_EN.etaMinutes)!;
+    const parts = etaParts(T, 2 * MIN + 1000)!;
     expect(parts).toEqual([
-      { name: "ETA bar", min: "3 min" },
-      { name: "Box", min: "38 min" },
+      { name: "ETA bar", min: "3M" },
+      { name: "Box", min: "38M" },
     ]);
-    expect(etaPartsText(parts)).toBe("ETA bar 3 min · Box 38 min");
-    // Past due: 0, never negative.
-    expect(etaParts([task({ at: MIN })], 5 * MIN, "{n} 分钟")).toEqual([
-      { name: "A", min: "0 分钟" },
-    ]);
-    expect(etaParts([], 0, "{n} min")).toBeNull();
+    expect(etaPartsText(parts)).toBe("ETA bar 3M · Box 38M");
+    // Past due: negative, marked late (red).
+    expect(etaParts([task({ at: MIN })], 5 * MIN)).toEqual([{ name: "A", min: "-4M", late: true }]);
+    expect(etaParts([task({ at: 100 * MIN })], 10 * MIN)).toEqual([{ name: "A", min: "1.5H" }]);
+    expect(etaParts([], 0)).toBeNull();
   });
 });
 
@@ -655,14 +777,17 @@ describe("the line's fill keeps its text readable", () => {
   for (const theme of ["light", "dark"] as const)
     it(`${theme}: the text is AA (4.5:1) on the track and on every fill`, () => {
       const c = ETA_COLORS[theme];
-      for (const bg of [c.track, c.fill, c.past, c.done]) {
+      for (const bg of [c.track, c.bar, c.fill, c.past, c.done]) {
         expect(contrastRatio(lum(c.text), lum(bg))).toBeGreaterThanOrEqual(4.5);
         // A row's description, muted, too.
         expect(contrastRatio(lum(c.muted), lum(bg))).toBeGreaterThanOrEqual(4.5);
+        // A negative time, and the red Now line and its label, on every part of a row.
+        expect(contrastRatio(lum(c.late), lum(bg))).toBeGreaterThanOrEqual(4.5);
       }
-      // The fill still shows against the track.
-      for (const bg of [c.fill, c.past, c.done])
-        expect(contrastRatio(lum(c.track), lum(bg))).toBeGreaterThanOrEqual(1.2);
+      // The bar shows against the track, the progress and the overrun against the bar.
+      for (const bg of [c.bar, c.fill, c.past, c.done])
+        expect(contrastRatio(lum(c.track), lum(bg))).toBeGreaterThanOrEqual(1.1);
+      expect(contrastRatio(lum(c.bar), lum(c.fill))).toBeGreaterThanOrEqual(1.1);
     });
 });
 
@@ -705,5 +830,92 @@ describe('the page\'s {type:"eta"} on the progress socket', () => {
     socks[0]!.onclose({});
     expect(src.send({ type: "eta", id: "/a" })).toBe(false);
     off();
+  });
+});
+
+describe("the Gantt list: one axis, queued tasks in line, Now clamped", () => {
+  it("the axis runs from the earliest start to the latest end; it rescales with the tasks", () => {
+    const a = task({ id: "/a", start: 10 * MIN, at: 30 * MIN });
+    const b = task({ id: "/b", start: 20 * MIN, at: 50 * MIN });
+    expect(ganttWindow([a, b], 25 * MIN)).toEqual({ lo: 10 * MIN, hi: 50 * MIN });
+    // A done task ends when it finished.
+    const c = task({ id: "/c", start: 0, at: 40 * MIN, done: true, doneAt: 60 * MIN });
+    expect(ganttWindow([a, c], 60 * MIN)).toEqual({ lo: 0, hi: 60 * MIN });
+    expect(ganttWindow([a], 25 * MIN)).toEqual({ lo: 10 * MIN, hi: 30 * MIN });
+    expect(ganttWindow([], 0)).toBeNull();
+  });
+
+  it("a row: offset by its start, as long as its estimate, pct a deeper fill, overrun to now", () => {
+    const w = { lo: 0, hi: 100 * MIN };
+    expect(ganttRow(task({ start: 20 * MIN, at: 60 * MIN, pct: 50 }), w, 40 * MIN)).toEqual({
+      left: 20,
+      plan: 40,
+      fill: 50,
+      over: 0,
+      now: 40,
+    });
+    // Past its estimate: the overrun runs on to now.
+    expect(ganttRow(task({ start: 0, at: 50 * MIN }), w, 70 * MIN)).toMatchObject({
+      plan: 50,
+      over: 20,
+      fill: 0,
+    });
+    expect(ganttRow(task({ done: true, doneAt: 10 * MIN }), w, 70 * MIN).fill).toBe(100);
+  });
+
+  it("now outside the range is clamped to an edge", () => {
+    const w = { lo: 10 * MIN, hi: 20 * MIN };
+    expect(ganttRow(task({}), w, 0).now).toBe(0);
+    expect(ganttRow(task({}), w, 30 * MIN).now).toBe(100);
+    expect(ganttRow(task({}), w, 15 * MIN).now).toBe(50);
+  });
+
+  it("running tasks overlap; queued ones start one after another, in order of creation", () => {
+    const run1 = task({ id: "/r1", start: 0, at: 20 * MIN });
+    const run2 = task({ id: "/r2", start: 5 * MIN, at: 30 * MIN });
+    const q2 = task({ id: "/q2", queued: true, created: 2, queuedMs: 15 * MIN, start: 1, at: 99 });
+    const q1 = task({ id: "/q1", queued: true, created: 1, queuedMs: 10 * MIN, start: 1, at: 99 });
+    const plan = ganttPlan([run1, run2, q2, q1], 10 * MIN);
+    const at = (id: string) => plan.find((t) => t.id === id)!;
+    // Running: as they are.
+    expect(at("/r1")).toEqual(run1);
+    expect(at("/r2")).toEqual(run2);
+    // The first queued starts when the soonest running one is due; the next after it.
+    expect([at("/q1").start, at("/q1").at]).toEqual([20 * MIN, 30 * MIN]);
+    expect([at("/q2").start, at("/q2").at]).toEqual([30 * MIN, 45 * MIN]);
+    // The axis reaches the queue's computed end.
+    expect(ganttWindow(plan, 10 * MIN)).toEqual({ lo: 0, hi: 45 * MIN });
+    // Nothing running, or its estimate past: the queue starts now.
+    const alone = ganttPlan([q1], 10 * MIN);
+    expect([alone[0]!.start, alone[0]!.at]).toEqual([10 * MIN, 20 * MIN]);
+    const late = ganttPlan([task({ id: "/r", at: 5 * MIN }), q1], 10 * MIN);
+    expect(late[1]!.start).toBe(10 * MIN);
+  });
+
+  it("the tree marks a waiting task queued, with its estimate as posted", () => {
+    const root = overlayProgress({ title: "", links: [], children: [] }, [
+      {
+        id: "/q",
+        assignee: { type: "agent", name: "a" },
+        task: "q",
+        status: "waiting",
+        kind: "task",
+        creator: "a",
+        by: "a",
+        rev: 1,
+        created: 5,
+        at: 1000,
+        etaAt: 1000 + 20 * MIN,
+        startedAt: 500,
+        pct: 30,
+      } as ProgressEntry,
+    ]);
+    expect(etaTasks(root)[0]).toMatchObject({
+      queued: true,
+      created: 5,
+      queuedMs: 20 * MIN,
+      start: 500,
+      pct: 30,
+    });
   });
 });

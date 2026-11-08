@@ -187,6 +187,47 @@ Keep the same value as `PROGRESS_TOKEN=…` in `.dev.vars` (or export
 the owner's tree shows the hand-edited outline only. Rotating it invalidates
 every scoped token at once.
 
+## Permissions (`admin`, `dev`)
+
+**Every owner/dev/admin gate is a permission check** (owner's standing rule,
+2026-11-09): `isAdmin(email)` or `isDev(email)` from `lib/permissions.ts`, never
+an email list in code or env. The grants are rows in D1, table
+`account_permission` (`db/migrations/0058_account_permission.sql`,
+`lib/account-permission.ts`), one row per address and permission, revocable,
+managed at **`/dev/permissions`** (admin only, 404 otherwise). Every grant and
+revoke goes through an in-app confirm dialog and writes `permission.grant` /
+`permission.revoke` to `security_audit` (detail: `<permission> <address>`).
+
+- **`admin`** — people, money and grants: `/dev/permissions`, `/dev/owners`,
+  users, credits, membership, gift codes, friends, flags, box clients, and the
+  payment test mode.
+- **`dev`** — every other `/dev` page and `/api/dev` route, the dev bridge, live
+  view, the owner chat thread, and features shipped dark (`booksOn(flags, isDev(…))`).
+- Neither implies the other; each is its own grant. Which permission a `/dev`
+  page checks is listed in `lib/dev-page-permissions.ts` (a unit test keeps it
+  in step with the pages), and the `/dev` layout prints a small "who can see
+  this page" line under each page for viewers who hold that permission.
+- **Same rules as the owner role below**: exact address, synchronous checks from
+  an isolate snapshot refreshed by `auth.api.getSession` (`lib/permission-store.ts`),
+  fail closed, a revocation holds everywhere within 30 s. The only active
+  `admin` cannot be revoked (guard inside the `UPDATE`).
+- **No seed.** The migration inserts nobody: grants are added as data after the
+  owner approves them (a tap card), with the break-glass CLI:
+
+```bash
+bun scripts/dev/permission.ts list
+bun scripts/dev/permission.ts grant someone@example.com admin,dev
+bun scripts/dev/permission.ts revoke someone@example.com dev   # --local for the local D1
+```
+
+**Migration off `site_role` (2026-11-09), lockout-safe:**
+(a) shipped the table, the helpers, `/dev/permissions` and every call site on
+`isAdmin`/`isDev`, while an active `site_role` owner still passes both checks,
+so nothing changed; (b) the owner approves, and the grants are seeded with the
+CLI above; (c) the fallback, `lib/owner.ts`, `/dev/owners` and the direct
+`site_role` queries (box allowlist, chat log, inbox agent, debug session, chat
+and eval tokens, partner AI, email change) move to `account_permission`.
+
 ## The owner role (`site_role`)
 
 Who is the owner is a row in D1, table `site_role`

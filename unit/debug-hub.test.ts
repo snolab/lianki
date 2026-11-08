@@ -3586,9 +3586,12 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
       agentId: "eta",
       source: "eta",
       quiet: true,
-      text: "ETA reached for Native swipe (/words/swipe): report to the owner",
       eta: { id: "/words/swipe", etaAt: 999_000 },
     });
+    // It tells the owning lane exactly what to do: the reason and a new ETA, in one call.
+    expect(line.text).toContain("ETA reached for Native swipe (/words/swipe)");
+    expect(line.text).toContain('--late "');
+    expect(line.text).toContain("Native swipe 超时，未说明原因");
     // Never the owner, never rich text, never an answer.
     expect(line.ownerGrant).toBeUndefined();
     expect(line.answer).toBeUndefined();
@@ -3598,6 +3601,21 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     };
     expect(heard.message).toMatchObject({ source: "eta", from: "agent" });
     expect(heard.observed).toBeUndefined();
+  });
+
+  it("the owner's lines (late, silent) are read aloud: not quiet, his words", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    await post(s, { ...ping, title: "Swipe: drag it", kind: "silent" });
+    const silent = chats(owner).at(-1) as Record<string, unknown>;
+    expect(silent.text).toBe("Swipe 超时，未说明原因");
+    expect(silent.quiet).toBeUndefined();
+    await post(s, { ...ping, kind: "late", reason: "CI 排队", etaAt: Date.now() + 20 * 60_000 });
+    const late = chats(owner).at(-1) as Record<string, unknown>;
+    expect(late.text).toMatch(/^Native swipe 超时：CI 排队。再要 \d+ 分钟$/);
+    expect(late.quiet).toBeUndefined();
+    // A "late" without its reason is not one.
+    expect((await post(s, { ...ping, kind: "late" })).status).toBe(400);
   });
 
   it("flag off (or unreadable): nothing posted; unreadable is a 503 so the progress hub retries", async () => {

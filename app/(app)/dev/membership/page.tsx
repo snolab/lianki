@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import GrantPro from "./GrantPro";
 
 // Owner-only, like /dev/roadmap: anyone else gets a plain 404.
@@ -18,7 +18,7 @@ export default async function DevMembershipPage({
   searchParams: Promise<{ email?: string }>;
 }) {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isAdmin(user?.email)) notFound();
   return (
     <main lang="zh" className="max-w-xl mx-auto px-4 py-8 space-y-6">
       <h1 className="font-brush text-4xl">会员</h1>

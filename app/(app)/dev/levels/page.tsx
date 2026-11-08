@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getIntlayer } from "intlayer";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { LEVEL_IDS } from "@/lib/levels";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { recentStudyDays, userLevelOf, type StudyDayRow, type UserLevel } from "@/lib/study-days";
@@ -26,7 +26,7 @@ function names(locale: "zh" | "en"): LevelNames {
 
 export default async function DevLevelsPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isDev(user?.email)) notFound();
   const zh = names("zh");
   const en = names("en");
   let mine: { level: UserLevel; days: StudyDayRow[] } | null = null;

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { type AnchorRow, listAnchors } from "@/lib/lian/anchor";
 import { LianVerify } from "./LianVerify";
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 
 export default async function DevLianPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isDev(user?.email)) notFound();
   let anchors: AnchorRow[] = [];
   let stamps: Record<string, string> = {};
   let error: string | null = null;

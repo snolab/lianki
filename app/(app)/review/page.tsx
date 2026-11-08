@@ -5,7 +5,7 @@ import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import { appLocale } from "@/lib/app-locale.server";
 import { isHttpUrl } from "@/lib/review-ui";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { voiceAccess } from "@/lib/words/voice-access";
 import ReviewClient from "./ReviewClient";
 
@@ -39,7 +39,7 @@ export default async function ReviewPage({
     <ReviewClient
       isLoggedIn={isLoggedIn}
       initialUrl={url}
-      voice={voiceAccess(flags, isOwner(user?.email))}
+      voice={voiceAccess(flags, isDev(user?.email))}
     />
   );
 }

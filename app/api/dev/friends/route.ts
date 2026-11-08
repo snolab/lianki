@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { isUserId } from "@/lib/dev-eval";
 import { listFriends, setBlocked } from "@/lib/push-friends";
 
@@ -14,14 +14,14 @@ const noBinding = () =>
   NextResponse.json({ error: "lianki-push is not bound here" }, { status: 503 });
 
 export const GET = async () => {
-  if (!isOwner((await authUserOrNull())?.email)) return notFound();
+  if (!isAdmin((await authUserOrNull())?.email)) return notFound();
   const friends = await listFriends();
   if (!friends) return noBinding();
   return NextResponse.json({ friends }, { headers: { "cache-control": "no-store" } });
 };
 
 export const POST = async (req: Request) => {
-  if (!isOwner((await authUserOrNull())?.email)) return notFound();
+  if (!isAdmin((await authUserOrNull())?.email)) return notFound();
   const body = (await req.json().catch(() => ({}))) as { userId?: unknown; action?: unknown };
   if (!isUserId(body.userId) || (body.action !== "block" && body.action !== "unblock"))
     return NextResponse.json(

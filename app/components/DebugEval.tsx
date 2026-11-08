@@ -20,7 +20,7 @@ import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
 import { type BoxConfig, boxChatHub } from "@/lib/box-oauth/client";
 import { useBoxAccount } from "./BoxApiBridge";
 import { ETA_FLAG } from "@/lib/eta-ping";
-import { ownerFlagOn } from "@/lib/box-oauth/session";
+import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import {
@@ -890,7 +890,7 @@ export function DebugEval({
           // The account's chat history (docs/chat-history.md): every signed-in user's own.
           onHistory={() => router.push("/chat/history")}
           agentAvatar={AGENT_AVATAR}
-          viewer={viewer}
+          viewer={boxViewer(!!box, boxAccount, viewer)}
           fullScreen={fullScreen}
           // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
           backToClose={backToCloseChat}

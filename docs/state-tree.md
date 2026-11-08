@@ -90,18 +90,36 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   The owner's chat shows one summary line above the input, its background
   filled to the weighted progress (time left, next due;
   packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens this tree, which
-  lists every timed task, each line filled to its progress, with its time
-  left. His box shows the same, on a box chat ticket (docs/box-oauth.md).
+  lists every timed task as a Gantt row (docs/dev-debug-widget.md, "ETA
+  bar"). Time labels are "5M", "1.5H", and "-5M" in red past due. His box
+  shows the same, on a box chat ticket (docs/box-oauth.md).
   When etaAt passes on an open node, the hub (Durable Object alarm; also an
   owner page's one timer sending {type:"eta", id}) marks it etaSent and asks
   the chat hub (POST /internal/eta over the DEBUG binding, lib/eta-ping.ts) to
   post one line in the owner's thread, to "/":
-    "ETA reached for <task> (<id>): report to the owner"
+    "ETA reached for <task> (<id>): <lane>, within 5 min tell the owner WHY
+     and a new "N minutes from now" — bun scripts/dev/progress.ts … --eta <N>m
+     --late "<reason>" … Otherwise he is told "<name> 超时，未说明原因"."
   from "agent", agentId "eta", source "eta", quiet. Every listener at "/" (the
   chat lane's `eval.ts chat`) hears it as it hears his lines; eval.ts prints it
   with "source":"eta","auto":true. It is never the owner speaking, never an
   answer to an ask card, never an approval. One line per estimate, whatever
   number of pages are open; a done node gets none.
+
+  ETA overrun — a standing rule for every lane (owner, 2026-11-08 20:24 JST).
+  A task that reaches its ETA unfinished owes the owner, within 5 minutes
+  (ETA_EXPLAIN_MS), the REASON and a new "N minutes from now", in one call:
+    bun scripts/dev/progress.ts --agent <you> --path <node> --task "<same>" --status doing --eta 20m --late "CI 排队太久"
+  The hub stores the reason on the node (lateReason, and lateFor = the etaAt
+  it explains; a "late: …" note too) and posts the owner's thread
+  "<name> 超时：<reason>。再要 20 分钟" — read aloud, not quiet. Write the reason
+  in the owner's language. Once a node's etaAt has passed, a new --eta without
+  --late is refused (400); --late without an --eta that sets a time is a usage
+  error. Progress without a new estimate (--pct, a note) and --done need none.
+  If neither a reason nor a new estimate comes within 5 minutes of the
+  "ETA reached" line, the hub's alarm posts the owner "<name> 超时，未说明原因"
+  (read aloud), once per etaAt (marked etaSilent). Never let him find out
+  from that line.
 
   Timing, for agents only (never shown to the owner: his bar and list keep
   the time left and the names). Each node keeps startedAt (its first write

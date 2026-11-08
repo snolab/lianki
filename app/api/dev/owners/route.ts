@@ -1,6 +1,6 @@
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import type { SiteRoleDb } from "@/lib/site-role";
 import { ownersGet, ownersPost } from "@/lib/site-role-route";
 
@@ -12,7 +12,7 @@ import { ownersGet, ownersPost } from "@/lib/site-role-route";
  */
 async function owner() {
   const user = await authUserOrNull();
-  return isOwner(user?.email) && user?.id && user.email ? { id: user.id, email: user.email } : null;
+  return isAdmin(user?.email) && user?.id && user.email ? { id: user.id, email: user.email } : null;
 }
 
 const db = () => (dbBackend() === "d1" ? (getD1() as unknown as SiteRoleDb) : null);

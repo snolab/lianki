@@ -13,6 +13,7 @@ import { boxMeResponse } from "@/lib/box-oauth/me";
 import { BOX_ME_PATH, tokenMayCall } from "@/lib/box-oauth/rules";
 import {
   boxFlagsFrom,
+  boxViewer,
   flagViewOn,
   resolveBoxAccount,
   resolveBoxUser,
@@ -57,14 +58,14 @@ describe("the route's answer", () => {
     const res = await boxMeResponse(new Headers(), async () => ({ user }));
     expect(res.status).toBe(404);
   });
-  test("only name, email and avatar, never cached", async () => {
+  test("only id, name, email and avatar, never cached", async () => {
     const res = await boxMeResponse(new Headers({ [BOX_IDENTITY_HEADER]: "x" }), async () => ({
       user,
     }));
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(await res.json()).toEqual({
-      user: { name: "Ann", email: "ann@test.example", image: null },
+      user: { name: "Ann", email: "ann@test.example", image: null, id: "u1" },
     });
   });
   test("a bad identity is nobody: 401", async () => {
@@ -403,5 +404,27 @@ describe("flags on a box: production's, for the bound account", () => {
     expect(draftAllowedFor(view.flags, view.owner)).toBe(true);
     expect(draftAllowedFor({}, false)).toBe(false);
     expect(draftAllowedFor({ "read.live-polish": true }, false)).toBe(true);
+  });
+});
+
+describe("the chat's own lines on a box (boxViewer)", () => {
+  const account = {
+    user: { name: "Ann", email: "a@test.example", image: "blob:box/1" },
+    flags: {},
+    owner: true,
+  };
+  test("the hub names nobody on a box socket: the account fills it, not an initial", () => {
+    expect(boxViewer(true, account, undefined)).toEqual({ name: "Ann", avatars: ["blob:box/1"] });
+  });
+  test("what the hub did say comes first", () => {
+    expect(
+      boxViewer(true, account, { id: "h", name: "Hub", avatars: ["https://x.test/a"] }),
+    ).toEqual({ id: "h", name: "Hub", avatars: ["https://x.test/a", "blob:box/1"] });
+  });
+  test("off a box, or not signed in yet: the hub's answer as it is", () => {
+    const hub = { name: "Hub" };
+    expect(boxViewer(false, account, hub)).toBe(hub);
+    expect(boxViewer(true, null, hub)).toBe(hub);
+    expect(boxViewer(true, undefined, undefined)).toBeUndefined();
   });
 });

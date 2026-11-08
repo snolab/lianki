@@ -119,3 +119,20 @@ export function ownerFlagOn(
   if (!onBox) return server;
   return !!account?.owner && account.flags[key] === true;
 }
+
+/**
+ * Who the chat's own lines are from (the viewer's avatar and name). On
+ * lianki.com the hub says so on connect (`me`). A box's socket carries only a
+ * ticket, so the hub knows no name or picture for it and his own lines fell
+ * back to the initial of "owner" (2026-11-09): on a box, the account
+ * /api/box/me named fills what the hub left out.
+ */
+export function boxViewer<S extends { name?: string; avatars?: string[] }>(
+  onBox: boolean,
+  account: BoxAccount | null | undefined,
+  hub: S | undefined,
+): S | { name?: string; avatars?: string[] } | undefined {
+  if (!onBox || !account) return hub;
+  const avatars = [...(hub?.avatars ?? []), ...(account.user.image ? [account.user.image] : [])];
+  return { ...hub, name: hub?.name || account.user.name, ...(avatars.length ? { avatars } : {}) };
+}

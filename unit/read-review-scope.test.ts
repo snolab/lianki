@@ -10,6 +10,8 @@ import type { Fam, Sentence } from "@/lib/read/reader-model";
 import {
   MAX_SCOPE_WORDS,
   afterGrade,
+  afterScope,
+  LEVEL_KEY,
   chapterSpan,
   scopeLines,
   scopeWords,
@@ -127,5 +129,36 @@ describe("the chapter-up-to-here review in the URL", () => {
   test("refuse anything else, the retired chapter and book refs too", () => {
     for (const bad of ["u", "u-1", "u01", "c3", "b", "b0", "x3", "u1.2"])
       expect(decodeReviewRef(bad)).toBeNull();
+  });
+});
+
+describe("afterScope: a review opens only on a word due or new (owner, 2026-11-08 22:01 JST)", () => {
+  test("Again / Hard with a due or new word open the review", () => {
+    expect(afterScope("para", 5, 2)).toBe("review");
+    expect(afterScope("upto", 40, 1)).toBe("review");
+  });
+  test("no word due or new: no review, he stays in the text", () => {
+    expect(afterScope("para", 5, 0)).toBe("empty");
+    expect(afterScope("upto", 40, 0)).toBe("empty");
+    expect(afterScope("upto", 0, 0)).toBe("empty");
+    expect(afterScope("para", 0, null)).toBe("empty");
+  });
+  test("no plan known (the device's own reader): any word opens it, as before", () => {
+    expect(afterScope("upto", 3, null)).toBe("review");
+  });
+  test("Good and Easy open nothing", () => {
+    expect(afterScope("none", 9, 9)).toBe("none");
+    expect(afterScope("easy", 9, 9)).toBe("easy");
+  });
+});
+
+describe("LEVEL_KEY: a paragraph's handle names its levels by what they do", () => {
+  test("本段 / 到本段 / (grade only) / 全标简单", () => {
+    expect(([1, 2, 3, 4] as const).map((r) => LEVEL_KEY[afterGrade(r)])).toEqual([
+      "levelPara",
+      "levelUpTo",
+      null,
+      "levelEasy",
+    ]);
   });
 });

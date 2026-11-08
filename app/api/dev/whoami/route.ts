@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 
 /**
  * Is this session the owner's? lianki-push (workers/push) asks before it
@@ -9,6 +9,6 @@ import { isOwner } from "@/lib/owner";
  */
 export const GET = async () => {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!isDev(user?.email)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ owner: true }, { headers: { "cache-control": "no-store" } });
 };

@@ -117,6 +117,13 @@ characters, because the owner's ETA bar shows only the name (a longer one is
 refused). `progress.ts stats` shows your estimate vs actual, to calibrate `--eta`. Use the token you were given (`--token` or
 `LIANKI_PROGRESS_TOKEN`); stay inside its scope.
 
+**ETA overrun is never silent.** A task that reaches its `--eta` unfinished
+tells the owner, within 5 minutes, the reason and a new "N minutes from now":
+`progress.ts … --status doing --eta 20m --late "<reason, in his language>"` —
+the hub posts both to him in Li. Past the ETA a new `--eta` without `--late`
+is refused; with nothing for 5 minutes he hears "<name> 超时，未说明原因".
+[docs/state-tree.md](docs/state-tree.md), "ETA overrun".
+
 ## Where to look
 
 Read the relevant file before working in that area — each one carries decisions
@@ -129,6 +136,7 @@ that are expensive to rediscover.
 | Landing changes, CI, branch protection, post-deploy QA        | [docs/shipping.md](docs/shipping.md)                                |
 | Finding your way around the code                              | [docs/repo-map.md](docs/repo-map.md)                                |
 | Secrets, auth, OAuth config                                   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
+| Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Who is the owner: `site_role`, /dev/owners, break-glass CLI   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "The owner role" |
 | Google Drive connection (/connections), private Docs import   | [docs/connections.md](docs/connections.md)                          |
 | Anything calling an LLM or TTS                                | [docs/workers-ai.md](docs/workers-ai.md)                            |
@@ -141,6 +149,8 @@ that are expensive to rediscover.
 | A friend's dev container (devbox: agents, local D1, tunnel)   | [devbox/README.md](devbox/README.md)                                |
 | A box signing in through lianki.com (OAuth, token gate)       | [docs/box-oauth.md](docs/box-oauth.md)                              |
 | The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
+| Hosting the dev loader on lianki.com (design stub)            | [docs/loader-hosting.md](docs/loader-hosting.md)                    |
+| Li chat from the userscript pill: security gate (stub)        | [docs/userscript-li-chat.md](docs/userscript-li-chat.md)            |
 | Hot-swapping headless core modules (kernel, swap, leak tests) | [docs/hot-core.md](docs/hot-core.md)                                |
 | The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
 | `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                    |
@@ -156,6 +166,8 @@ that are expensive to rediscover.
 | /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
 | Exam word decks (CET, TOEFL, GRE…): sources, licences, gaps   | [docs/word-deck-sources.md](docs/word-deck-sources.md)              |
 | /self-intro import: files/text → facts → review; privacy      | [docs/self-intro-import.md](docs/self-intro-import.md)              |
+| Import any material: upload → job → /words or /read (stub)    | [docs/import-material.md](docs/import-material.md)                  |
+| YouTube songs: timed lyric lines as example clips (stub)      | [docs/youtube-song-examples.md](docs/youtube-song-examples.md)      |
 | /books public-domain library: catalogue rule, slugs, R2 cache | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
 | Voice mode: spoken commands per screen, grammar, mic taps     | [docs/voice-mode.md](docs/voice-mode.md)                            |
 | All sound through Li: `__lkLi` hub, who holds mic / plays     | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |

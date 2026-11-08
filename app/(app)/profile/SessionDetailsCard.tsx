@@ -1,4 +1,4 @@
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 
 type SessionLike = {
   session?: { expiresAt: Date; createdAt: Date; updatedAt: Date } | null;
@@ -26,7 +26,7 @@ export function SessionDetailsCard({
   title: string;
   session: SessionLike;
 }) {
-  if (!isOwner(viewerEmail)) return null;
+  if (!isDev(viewerEmail)) return null;
   return (
     <div
       data-testid="session-details"

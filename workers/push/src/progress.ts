@@ -73,7 +73,7 @@ import {
 } from "../../../lib/progress-token";
 import type { Socket, Storage } from "./debug";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
-import { ETA_PATH, type EtaPing } from "../../../lib/eta-ping";
+import { ETA_EXPLAIN_MS, ETA_PATH, type EtaPing } from "../../../lib/eta-ping";
 
 export type ProgressState = {
   acceptWebSocket(ws: Socket): void;
@@ -161,6 +161,12 @@ const fail = (status: number, error: string, extra: Record<string, unknown> = {}
 
 /** An open node whose estimate has not been pinged yet. */
 const etaDue = (e: ProgressEntry) => e.etaAt !== undefined && e.etaSent !== e.etaAt;
+/**
+ * Pinged, still at that estimate (no new one), and the owner not yet told it
+ * went unexplained (docs/state-tree.md, "ETA overrun"): due at etaAt + ETA_EXPLAIN_MS.
+ */
+const silentDue = (e: ProgressEntry) =>
+  e.status !== "done" && e.etaAt !== undefined && e.etaSent === e.etaAt && e.etaSilent !== e.etaAt;
 
 export class ProgressHub {
   private windows = new Map<string, { start: number; count: number }>();
@@ -462,6 +468,21 @@ export class ProgressHub {
       (r.etaAt < t - ETA_GIVE_UP_MS || r.etaAt > t + PROGRESS_ETA_MAX_MS)
     )
       return fail(400, "etaAt must be within the next 30 days");
+    // ETA overrun (docs/state-tree.md): past its estimate, a new one comes with the reason.
+    const newEstimate = r.eta !== undefined || r.etaIn !== undefined || r.etaAt !== undefined;
+    if (
+      prev &&
+      prev.status !== "done" &&
+      r.status !== "done" &&
+      prev.etaAt !== undefined &&
+      prev.etaAt <= t &&
+      newEstimate &&
+      !r.late
+    )
+      return fail(
+        400,
+        `${r.id} ran past its ETA: give the reason with the new estimate — --eta 20m --late "why" (the owner is told both)`,
+      );
     if (!this.allow(r.assignee.name)) return this.tooMany();
 
     // A path's missing ancestors become groups, outermost first.
@@ -475,7 +496,24 @@ export class ProgressHub {
     await this.recordDone(prev, entry);
     if (evicted) await this.sendSnapshot();
     else for (const ev of events) await this.send(this.ctx.getWebSockets(), ev);
-    return json({ ok: true, entry, readers: this.ctx.getWebSockets().length });
+    // The lane explained an overrun: the owner hears the reason and the new time.
+    const told =
+      r.late && entry.etaAt !== undefined
+        ? await this.tell({
+            id: entry.id,
+            title: entry.task,
+            etaAt: entry.etaAt,
+            assignee: entry.assignee.name,
+            kind: "late",
+            reason: r.late,
+          })
+        : undefined;
+    return json({
+      ok: true,
+      entry,
+      readers: this.ctx.getWebSockets().length,
+      ...(told === undefined ? {} : { told }),
+    });
   }
 
   /** Put nodes, making room past PROGRESS_MAX_ENTRIES; true if any were dropped. */
@@ -499,6 +537,7 @@ export class ProgressHub {
       await this.ctx.storage.put(progressKey(e), e);
       if (e.status === "done") await this.schedule(e.at + PROGRESS_DONE_TTL_MS);
       else if (etaDue(e)) await this.schedule(Math.max(e.etaAt!, this.now()));
+      else if (silentDue(e)) await this.schedule(Math.max(e.etaAt! + ETA_EXPLAIN_MS, this.now()));
     }
     return dropped;
   }
@@ -602,6 +641,17 @@ export class ProgressHub {
         // An estimate ran out: ping the agent (fireEta), or wait for it.
         if (e.etaAt! > t) next = Math.min(next, e.etaAt!);
         else if (!(await this.fireEta(e.id, t))) next = Math.min(next, t + ETA_RETRY_MS);
+        else {
+          const after = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+          if (after && silentDue(after)) next = Math.min(next, after.etaAt! + ETA_EXPLAIN_MS);
+        }
+        continue;
+      }
+      if (silentDue(e)) {
+        // Pinged and still unexplained: tell the owner (fireSilent), or wait for it.
+        const due = e.etaAt! + ETA_EXPLAIN_MS;
+        if (due > t) next = Math.min(next, due);
+        else if (!(await this.fireSilent(e.id, t))) next = Math.min(next, t + ETA_RETRY_MS);
         continue;
       }
       if (e.status !== "done") continue;
@@ -656,6 +706,25 @@ export class ProgressHub {
     await this.ctx.storage.put(progressKey(e), sent);
     if (late || !this.debug) return true;
     const ping: EtaPing = { id: e.id, title: e.task, etaAt, assignee: e.assignee.name };
+    const ok = await this.tell(ping);
+    if (ok) {
+      // The owner's pages: this one is sent (their timers stop for it).
+      await this.send(this.ctx.getWebSockets(), progressEvent(sent));
+      // The lane has ETA_EXPLAIN_MS to explain; then the owner is told it did not.
+      await this.schedule(etaAt + ETA_EXPLAIN_MS);
+      return true;
+    }
+    const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+    if (now && now.etaSent === etaAt) {
+      const { etaSent: _sent, ...back } = now;
+      await this.ctx.storage.put(progressKey(e), back);
+    }
+    return false;
+  }
+
+  /** One line through the chat hub (debug.ts ETA_PATH); true if it took it. */
+  private async tell(ping: EtaPing): Promise<boolean> {
+    if (!this.debug) return false;
     let ok = false;
     try {
       const res = await this.debug.get(this.debug.idFromName("debug")).fetch(
@@ -667,15 +736,41 @@ export class ProgressHub {
       );
       ok = res.ok;
     } catch {}
-    console.log(JSON.stringify({ msg: "progress.eta", id: e.id, etaAt, ok }));
-    if (ok) {
-      // The owner's pages: this one is sent (their timers stop for it).
-      await this.send(this.ctx.getWebSockets(), progressEvent(sent));
-      return true;
-    }
+    console.log(
+      JSON.stringify({
+        msg: "progress.eta",
+        kind: ping.kind ?? "due",
+        id: ping.id,
+        etaAt: ping.etaAt,
+        ok,
+      }),
+    );
+    return ok;
+  }
+
+  /**
+   * ETA overrun, unexplained: the "due" line went out ETA_EXPLAIN_MS ago and
+   * neither a reason nor a new estimate came. The owner is told "<name> 超时，
+   * 未说明原因", once per etaAt (marked first, unmarked if the chat hub could
+   * not take it; given up, marked, when very late). False: try again later.
+   */
+  async fireSilent(id: string, t: number = this.now()): Promise<boolean> {
+    const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
+    if (!e || !silentDue(e) || e.etaAt! + ETA_EXPLAIN_MS > t) return true;
+    const etaAt = e.etaAt!;
+    await this.ctx.storage.put(progressKey(e), { ...e, etaSilent: etaAt });
+    if (t - etaAt > ETA_GIVE_UP_MS || !this.debug) return true;
+    const ok = await this.tell({
+      id: e.id,
+      title: e.task,
+      etaAt,
+      assignee: e.assignee.name,
+      kind: "silent",
+    });
+    if (ok) return true;
     const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
-    if (now && now.etaSent === etaAt) {
-      const { etaSent: _sent, ...back } = now;
+    if (now && now.etaSilent === etaAt) {
+      const { etaSilent: _silent, ...back } = now;
       await this.ctx.storage.put(progressKey(e), back);
     }
     return false;

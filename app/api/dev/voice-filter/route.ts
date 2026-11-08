@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 
 /**
  * Whether the owner's page should turn the voiceprint filter on for its local
@@ -12,7 +12,7 @@ import { isOwner } from "@/lib/owner";
  */
 export const GET = async () => {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!isDev(user?.email)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(
     { on: flagIn(await readFlags(), "stt.voiceprint-filter") },
     { headers: { "cache-control": "no-store" } },

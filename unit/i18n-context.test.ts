@@ -17,6 +17,7 @@ import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import wordsListPreview from "@/app/(app)/words/list-preview.content";
 import leaveGuard from "@/app/components/leave-guard.content";
+import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
 import textSize from "@/app/components/text-size.content";
 import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
@@ -49,6 +50,7 @@ import apiTokens from "@/app/components/api-tokens.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
 import devDesign from "@/app/(app)/dev/design/page.content";
+import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -95,6 +97,7 @@ describe.each([
   ["words-voice-mode", wordsVoiceMode],
   ["words-list-preview", wordsListPreview],
   ["leave-guard", leaveGuard],
+  ["dev-permissions", devPermissions],
   ["text-size", textSize],
   ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],
@@ -127,6 +130,7 @@ describe.each([
   ["roadmap-page", roadmapPage],
   ["chat-history-page", chatHistoryPage],
   ["dev-design", devDesign],
+  ["dev-roadmap", devRoadmap],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

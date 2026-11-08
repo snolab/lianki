@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { DevAccessError, listTokens, mintToken, revokeAll } from "@/lib/dev-access";
 import type { DevAccessDb } from "@/lib/dev-access";
@@ -17,7 +17,7 @@ const db = () => getD1() as unknown as DevAccessDb;
 
 async function owner() {
   const user = await authUserOrNull();
-  return isOwner(user?.email) && user?.id ? { id: user.id, email: user.email } : null;
+  return isDev(user?.email) && user?.id ? { id: user.id, email: user.email } : null;
 }
 
 export const GET = async () => {
