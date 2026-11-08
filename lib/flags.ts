@@ -178,6 +178,11 @@ export const FLAGS = {
       "实时文档的 AI 润色：所有用户都能把正在同步的 Google 文档内容润色成演讲文稿（去口头禅、重复和说错的开头），每攒够几句完整的句子润色一次，只处理新内容。用 DeepSeek V4.1 Flash，约 $0.03/小时文稿（估算），费用由 Cloudflare 账号承担，不扣用户额度，所以打开前要想好成本。原文保留，不写回文档。关闭（默认）= 只有你本人能用。",
     default: false,
   },
+  "read.youtube-songs": {
+    description:
+      "YouTube 歌词例句（docs/youtube-song-examples.md，第一步）：所有登录用户都能在 /read 点「YouTube 歌曲」，贴一个 YouTube 链接和带时间的歌词（LRC、SRT 或 VTT），每句歌词变成 /read 里的一段，旁边的 ▶ 在弹窗里用 YouTube 官方播放器（youtube-nocookie）只播这一句（t0→t1）。不下载、不保存任何音视频，只存视频 id；歌词只存在用户自己的账号里，不共享。关闭（默认）= 只有你本人能用，其他人 /read/youtube 是 404，也看不到 ▶。",
+    default: false,
+  },
   "books.catalogue": {
     description:
       "公版书库 /books：所有登录用户都能看到公版书目录（只收美国公版且所有作者/译者/编者去世 80 年以上的原文，每本标明来源和授权），点一下导入成自己的书，之后在 /read 里阅读。原文不进仓库，服务器按需从来源（Project Gutenberg）下载一次，缓存在 R2 里给所有人共用。关闭（默认）= 只有你本人能看到和导入。",

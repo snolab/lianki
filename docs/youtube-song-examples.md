@@ -1,8 +1,28 @@
-# YouTube songs as example sentences (design stub)
+# YouTube songs as example sentences
 
 State-tree node `/read/yt-songs`. Owner said go (2026-11-09). Flag
-**`read.youtube-songs`**, default off, switched on for the owner when it ships
-([feature-flags.md](feature-flags.md)). Status: design only, nothing built.
+**`read.youtube-songs`**, default off; off, only the owner has it
+(<https://lianki.com/dev/flags#read.youtube-songs>,
+[feature-flags.md](feature-flags.md)). Status: **M1 built** — /read →
+「+ YouTube song」 (`/read/youtube`), `POST /api/read/youtube`, ▶ per line in
+the reader. M2–M5 not started.
+
+**M1 as built**
+
+| piece                    | where                                                                       |
+| ------------------------ | --------------------------------------------------------------------------- |
+| parser, video id, timing | `lib/yt-songs/timed-text.ts` (`parseTimedText`, `videoIdOf`, `clipSeconds`) |
+| song → book, gate        | `lib/yt-songs/song.ts`, `lib/yt-songs/gate.ts` (`ytSongsOn`)                |
+| new-song page            | `app/(app)/read/youtube/` (404 without the flag, owner excepted)            |
+| route                    | `app/api/read/youtube/route.ts` (same-origin JSON, 30 per 10 min)           |
+| player popup, ▶          | `app/components/yt-clip/`                                                   |
+| strings                  | `app/components/yt-clip/yt-songs.content.ts` (16 locales)                   |
+| tests                    | `unit/yt-songs.test.ts`                                                     |
+
+Not in M1: tap-to-sync and the offset nudge (M4; `[offset:]` in an LRC is
+read), the title from `getVideoData()` (the LRC's `[ti:]` or what he types),
+the popup inside the floating word card (M3). Words and sentence cards from
+a song's lines work as in any /read text; their clip on the card is M2.
 
 ## Goal
 
@@ -102,18 +122,27 @@ where timings came from.
   `t1` = next `t0` when missing, last line `t1 = t0 + 8 s` capped by the video
   duration once the player knows it. Video id from the URL: one regex, 11
   chars `[A-Za-z0-9_-]`.
-- **Storage (D1)**: the song is a /read material (`readMaterials`), source
-  `youtube:<videoId>`, its text the lines; a side row `yt_song_lines`
-  (`material_id`, `idx`, `t0_ms`, `t1_ms`) plus `offset_ms` on the material.
-  No R2: lyrics are small text.
+- **Storage (D1)**: the song is a /read material (`readMaterials`),
+  `source_key` `youtube:<videoId>` (the same video again updates it in
+  place), its text the lines. **As built in M1** the timings live in the
+  material's `BookMeta` (`source: "youtube"`, `yt: {v, offsetMs, clips}`,
+  `clips[i] = [t0, t1]` ms for `lines[i]`; `checkYt` in `lib/read/book.ts`)
+  instead of a side table: no migration, and it moves with the text. A
+  `yt_song_lines` table is only worth it if lines need querying on their own.
+  No R2: lyrics are small text. Songs are never offered the AI polish
+  (`lib/read/polish-offer.ts`): a rewrite would move words off their times.
 - **Cards**: the word's example gains an optional `clip: {v, t0, t1}`
   (milliseconds, offset already applied) next to `ex`/`exTr`; sync carries
   it like any other card field ([sync-merge-rules.md](sync-merge-rules.md)).
 - **Player** (`app/components/yt-clip/`): one client island wrapping the
   IFrame API script (`https://www.youtube.com/iframe_api`, loaded on first
-  tap only), `playClip({v, t0, t1})`, `close()`. CSP gains
+  tap only), `play(clip, anchor)`, `close()` (`YtClipPopup.tsx`; the ▶ is
+  `ClipButton.tsx`, which stops its events natively so the row's swipe and
+  word tap never see them; `use-song-clips.tsx` wires both into the reader).
+  The app pages send no CSP today (only `frame-ancestors` on
+  `/embed/partner`), so nothing to add; if one comes, it needs
   `frame-src https://www.youtube-nocookie.com` and
-  `script-src https://www.youtube.com` on the pages that use it.
+  `script-src https://www.youtube.com` on /read.
 - **No YouTube Data API calls in the first slices** (no quota spend); the
   title comes from the player's `getVideoData().title` once loaded, or the
   user types it.

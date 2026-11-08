@@ -50,6 +50,7 @@ import apiTokens from "@/app/components/api-tokens.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
 import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
+import ytSongs from "@/app/components/yt-clip/yt-songs.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -129,6 +130,7 @@ describe.each([
   ["roadmap-page", roadmapPage],
   ["chat-history-page", chatHistoryPage],
   ["dev-roadmap", devRoadmap],
+  ["yt-songs", ytSongs],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

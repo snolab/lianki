@@ -24,9 +24,11 @@ export const deviceSkipKey = (id: string) => `lk:read-polish-skip:${id}`;
 /**
  * Sources whose text is never offered the tidy, however it is opened: a /vibe
  * conversation (docs/vibe.md) is private speech, and the tidy sends it to a
- * model. The routes refuse it too (`polishRefused`).
+ * model. A YouTube song (docs/youtube-song-examples.md): each line is a sung
+ * line with its clip, and a rewrite would move the words off their times. The
+ * routes refuse both (`polishRefused`).
  */
-const NEVER_OFFERED = new Set<BookSource>(["vibe"]);
+const NEVER_OFFERED = new Set<BookSource>(["vibe", "youtube"]);
 
 /** The polish routes' check: this text is never sent to the tidy. */
 export function polishRefused(book: Pick<BookMeta, "source"> | null | undefined): boolean {
