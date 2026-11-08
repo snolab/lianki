@@ -2401,6 +2401,17 @@ try {
         ]) {
           await w.setViewportSize({ width: vw, height: vh });
           await w.waitForTimeout(300);
+          // The sheet sizes itself from visualViewport when it opens. On a CI
+          // runner WebKit's visual viewport lagged the resize (sheet at top 139,
+          // bottom 723 in a 640 px window): open it only once that has caught up.
+          await w.waitForFunction(
+            ([h]) => {
+              const v = window.visualViewport;
+              return !v || (Math.round(v.height) === h && Math.round(v.offsetTop) === 0);
+            },
+            [vh],
+            { polling: 100, timeout: budget(5000) },
+          );
           await toggleSettings(w);
           // Wait for the sheet to finish sliding in, not a fixed 400 ms: on a CI
           // runner (merge queue, 2026-11-08) it was measured mid-flight twice
