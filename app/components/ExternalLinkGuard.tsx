@@ -7,12 +7,12 @@ import {
   type LeaveRequest,
   leavingClick,
   type LinkClick,
-  readLinkTrust,
+  readLinkPolicy,
   setLeavePresenter,
   setLinkConfirm,
-  trustHost,
+  allowHost,
 } from "@/lib/external-link";
-import { trustedHostOf } from "@lianki/core/externalLink";
+import { allowedHostOf } from "@lianki/core/externalLink";
 
 export type ExternalLinkStrings = {
   title: string;
@@ -52,7 +52,7 @@ export function ExternalLinkGuard({ strings }: { strings: ExternalLinkStrings })
       setReq(r);
     };
     const onClick = (e: Event) => {
-      const hit = leavingClick(e as unknown as LinkClick, window.location.href, readLinkTrust());
+      const hit = leavingClick(e as unknown as LinkClick, window.location.href, readLinkPolicy());
       if (!hit) return;
       guardRel(hit.anchor);
       if (!hit.ask) return;
@@ -92,13 +92,13 @@ export function ExternalLinkGuard({ strings }: { strings: ExternalLinkStrings })
   function go() {
     if (!req) return;
     if (skipAll) setLinkConfirm(false);
-    else if (skipSite) trustHost(req.host);
+    else if (skipSite) allowHost(req.host);
     setReq(null);
     followLink(req.href, req.newTab);
   }
 
   if (!req) return null;
-  const canTrust = trustedHostOf(req.host) !== null;
+  const canAllow = allowedHostOf(req.host) !== null;
 
   return (
     <div
@@ -130,7 +130,7 @@ export function ExternalLinkGuard({ strings }: { strings: ExternalLinkStrings })
         </p>
 
         <div className="mt-4 space-y-1">
-          {canTrust && (
+          {canAllow && (
             <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
               <input
                 type="checkbox"

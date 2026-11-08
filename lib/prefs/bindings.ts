@@ -22,7 +22,7 @@ import { REGISTRY, type UiStore } from "@lianki/ui-state";
 import { CATALOG_URLS, type PrefKey } from "@/lib/prefs/schema";
 import { LOCALE_PICK_KEY } from "@/lib/app-locale";
 import { BYOK_BACKEND_KEY } from "@/lib/byok/config";
-import { LINK_CONFIRM_KEY, LINK_TRUSTED_KEY } from "@/lib/external-link";
+import { LINK_CONFIRM_KEY, LINK_ALLOWED_KEY } from "@/lib/external-link";
 
 type Ls = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const ls = (): Ls | null => {
@@ -221,7 +221,7 @@ export function prefBindings(): PrefBinding[] {
     plain("titles.rules", "lk:title-rules", jsonCodec, { off: [], add: [] }),
     // lib/external-link.ts: the disclaimer before another site, and the sites not asked about.
     plain("links.confirm", LINK_CONFIRM_KEY, bool10, true),
-    plain("links.trustedHosts", LINK_TRUSTED_KEY, jsonCodec, []),
+    plain("links.allowedHosts", LINK_ALLOWED_KEY, jsonCodec, []),
     plain("chat-voice.rate", "lk:agent-speech-rate", num, 1.5),
     plain("chat-voice.out", "lk:voice-out", text, "speech"),
     // The chat reads lk:agent-chat-speak, then its old name (storage-keys.ts).

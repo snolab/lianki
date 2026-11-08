@@ -132,11 +132,11 @@ try {
       .then(() =>
         page.evaluate(() => [
           localStorage.getItem("lk:link-confirm"),
-          localStorage.getItem("lk:link-trusted"),
+          localStorage.getItem("lk:link-allowed"),
         ]),
       );
     check(
-      stored[0] === "0" && JSON.parse(stored[1] ?? "[]").includes("example.com"),
+      stored[0] === "0" && stored[1] === JSON.stringify(["example.com"]),
       `${tag} both settings are kept for the account sync`,
     );
 

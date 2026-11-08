@@ -1,16 +1,29 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  addTrustedHost,
-  hostIsTrusted,
+  addAllowedHost,
+  hostIsAllowed,
   hostToConfirm,
   isOwnHost,
   leavingHost,
-  parseTrustedHosts,
-  trustedHostOf,
-  TRUSTED_HOSTS_BYTES,
-  TRUSTED_HOSTS_MAX,
+  parseAllowedHosts,
+  allowedHostOf,
+  ALLOWED_HOSTS_BYTES,
+  ALLOWED_HOSTS_MAX,
 } from "@lianki/core/externalLink";
-import { guardRel, leavingClick } from "@/lib/external-link";
+import {
+  allowHost,
+  followLink,
+  forgetAllowedHosts,
+  guardRel,
+  LINK_ALLOWED_KEY,
+  LINK_CONFIRM_KEY,
+  LINK_POLICY_EVENT,
+  leavingClick,
+  openExternal,
+  readLinkPolicy,
+  setLeavePresenter,
+  setLinkConfirm,
+} from "@/lib/external-link";
 import { checkPref } from "@/lib/prefs/schema";
 
 const HERE = "https://lianki.com/en/read/abc";
@@ -58,8 +71,8 @@ describe("external links: the host check", () => {
 
 describe("external links: the allowlist", () => {
   it("keeps public hosts only, without www.", () => {
-    expect(trustedHostOf("www.YouTube.com")).toBe("youtube.com");
-    expect(trustedHostOf("en.wikipedia.org")).toBe("en.wikipedia.org");
+    expect(allowedHostOf("www.YouTube.com")).toBe("youtube.com");
+    expect(allowedHostOf("en.wikipedia.org")).toBe("en.wikipedia.org");
     for (const h of [
       "localhost",
       "taku.onca-tint.ts.net",
@@ -70,35 +83,35 @@ describe("external links: the allowlist", () => {
       "",
       "x".repeat(130) + ".com",
     ])
-      expect(trustedHostOf(h)).toBeNull();
+      expect(allowedHostOf(h)).toBeNull();
   });
 
   it("matches the site and its subdomains, not look-alikes", () => {
     const hosts = ["wikipedia.org", "youtube.com"];
-    expect(hostIsTrusted("wikipedia.org", hosts)).toBe(true);
-    expect(hostIsTrusted("ja.wikipedia.org", hosts)).toBe(true);
-    expect(hostIsTrusted("www.youtube.com", hosts)).toBe(true);
-    expect(hostIsTrusted("notwikipedia.org", hosts)).toBe(false);
-    expect(hostIsTrusted("youtube.com.evil.io", hosts)).toBe(false);
+    expect(hostIsAllowed("wikipedia.org", hosts)).toBe(true);
+    expect(hostIsAllowed("ja.wikipedia.org", hosts)).toBe(true);
+    expect(hostIsAllowed("www.youtube.com", hosts)).toBe(true);
+    expect(hostIsAllowed("notwikipedia.org", hosts)).toBe(false);
+    expect(hostIsAllowed("youtube.com.evil.io", hosts)).toBe(false);
   });
 
   it("adds at the end without duplicates, dropping the oldest over the caps", () => {
-    expect(addTrustedHost(["a.com", "b.com"], "www.a.com")).toEqual(["b.com", "a.com"]);
-    expect(addTrustedHost(["a.com"], "localhost")).toEqual(["a.com"]);
+    expect(addAllowedHost(["a.com", "b.com"], "www.a.com")).toEqual(["b.com", "a.com"]);
+    expect(addAllowedHost(["a.com"], "localhost")).toEqual(["a.com"]);
     let list: string[] = [];
-    for (let i = 0; i < 200; i++) list = addTrustedHost(list, `site-number-${i}.example.com`);
-    expect(list.length).toBeLessThanOrEqual(TRUSTED_HOSTS_MAX);
-    expect(JSON.stringify(list).length).toBeLessThanOrEqual(TRUSTED_HOSTS_BYTES);
+    for (let i = 0; i < 200; i++) list = addAllowedHost(list, `site-number-${i}.example.com`);
+    expect(list.length).toBeLessThanOrEqual(ALLOWED_HOSTS_MAX);
+    expect(JSON.stringify(list).length).toBeLessThanOrEqual(ALLOWED_HOSTS_BYTES);
     expect(list.at(-1)).toBe("site-number-199.example.com");
-    expect(checkPref("links.trustedHosts", list)).toEqual(list);
+    expect(checkPref("links.allowedHosts", list)).toEqual(list);
   });
 
   it("a stored list is cleaned on read", () => {
-    expect(parseTrustedHosts(["a.com", "a.com", "x.ts.net", 3, "b.org"])).toEqual([
+    expect(parseAllowedHosts(["a.com", "a.com", "x.ts.net", 3, "b.org"])).toEqual([
       "a.com",
       "b.org",
     ]);
-    expect(parseTrustedHosts("a.com")).toEqual([]);
+    expect(parseAllowedHosts("a.com")).toEqual([]);
   });
 
   it("decides when to ask", () => {
@@ -114,7 +127,7 @@ describe("external links: the prefs schema", () => {
   it("takes the two settings in their shapes only", () => {
     expect(checkPref("links.confirm", false)).toBe(false);
     expect(checkPref("links.confirm", "0")).toBeUndefined();
-    expect(checkPref("links.trustedHosts", ["youtube.com"])).toEqual(["youtube.com"]);
+    expect(checkPref("links.allowedHosts", ["youtube.com"])).toEqual(["youtube.com"]);
     for (const bad of [
       "www.youtube.com",
       "https://youtube.com",
@@ -122,7 +135,7 @@ describe("external links: the prefs schema", () => {
       "localhost",
       "10.0.0.1",
     ])
-      expect(checkPref("links.trustedHosts", [bad])).toBeUndefined();
+      expect(checkPref("links.allowedHosts", [bad])).toBeUndefined();
   });
 });
 
@@ -189,5 +202,130 @@ describe("external links: the delegated click", () => {
     expect(hit?.ask).toBeNull();
     guardRel(hit!.anchor);
     expect(a.attrs.rel).toBe("external noopener noreferrer");
+  });
+
+  it("finds a link through closest() when there is no composed path", () => {
+    const a = {
+      tagName: "A",
+      getAttribute: (n: string) => (n === "href" ? "https://example.com/" : null),
+      hasAttribute: (n: string) => n === "href",
+    };
+    const span = { tagName: "SPAN", closest: () => a };
+    expect(leavingClick({ target: span }, HERE, ASK)?.ask).toBe("example.com");
+    expect(leavingClick({ target: { closest: () => null } }, HERE, ASK)).toBeNull();
+  });
+});
+
+describe("external links: on the device", () => {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const saved: Record<string, unknown> = {};
+  let store: Map<string, string>;
+  let events: string[];
+  let clicked: { href: string; rel: string; target: string; ok: boolean }[];
+  let opened: unknown[][];
+  let broken: boolean;
+  beforeEach(() => {
+    for (const k of ["localStorage", "window", "document"]) saved[k] = g[k];
+    store = new Map();
+    events = [];
+    clicked = [];
+    opened = [];
+    broken = false;
+    g.localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
+    g.window = {
+      location: { href: HERE, assign: (u: string) => opened.push(["assign", u]) },
+      dispatchEvent: (e: Event) => void events.push(e.type),
+      open: (...a: unknown[]) => void opened.push(a),
+    };
+    g.document = {
+      body: { appendChild: () => {} },
+      createElement: () => {
+        if (broken) throw new Error("no DOM");
+        const a = {
+          href: "",
+          rel: "",
+          target: "",
+          dataset: {} as Record<string, string>,
+          style: {},
+        };
+        return Object.assign(a, {
+          click: () =>
+            clicked.push({
+              href: a.href,
+              rel: a.rel,
+              target: a.target,
+              ok: "lkExtOk" in a.dataset,
+            }),
+          remove: () => {},
+        });
+      },
+    };
+  });
+  afterEach(() => {
+    for (const k of Object.keys(saved)) {
+      if (saved[k] === undefined) delete g[k];
+      else g[k] = saved[k];
+    }
+  });
+
+  it("reads asking as on, with no sites, when nothing is stored or it is garbage", () => {
+    expect(readLinkPolicy()).toEqual({ confirm: true, hosts: [] });
+    store.set(LINK_ALLOWED_KEY, "{not json");
+    expect(readLinkPolicy()).toEqual({ confirm: true, hosts: [] });
+  });
+
+  it("writes both settings where the prefs sync reads them, and tells the page", () => {
+    setLinkConfirm(false);
+    expect(store.get(LINK_CONFIRM_KEY)).toBe("0");
+    expect(readLinkPolicy().confirm).toBe(false);
+    setLinkConfirm(true);
+    expect(store.get(LINK_CONFIRM_KEY)).toBe("1");
+    allowHost("www.youtube.com");
+    allowHost("en.wikipedia.org");
+    allowHost("localhost");
+    expect(JSON.parse(store.get(LINK_ALLOWED_KEY)!)).toEqual(["youtube.com", "en.wikipedia.org"]);
+    forgetAllowedHosts(["youtube.com"]);
+    expect(readLinkPolicy().hosts).toEqual(["en.wikipedia.org"]);
+    forgetAllowedHosts();
+    expect(readLinkPolicy().hosts).toEqual([]);
+    expect(events.filter((e) => e === LINK_POLICY_EVENT).length).toBe(7);
+  });
+
+  it("follows a link without opener or referrer, in this tab or a new one", () => {
+    followLink("https://example.com/a", false);
+    followLink("https://example.com/b", true);
+    expect(clicked).toEqual([
+      { href: "https://example.com/a", rel: "noopener noreferrer", target: "", ok: true },
+      { href: "https://example.com/b", rel: "noopener noreferrer", target: "_blank", ok: true },
+    ]);
+    broken = true;
+    followLink("https://example.com/c", true);
+    followLink("https://example.com/d", false);
+    expect(opened).toEqual([
+      ["https://example.com/c", "_blank", "noopener,noreferrer"],
+      ["assign", "https://example.com/d"],
+    ]);
+  });
+
+  it("openExternal asks through the mounted guard, else goes at once", () => {
+    openExternal("https://example.com/x");
+    expect(clicked.length).toBe(1);
+    const asked: unknown[] = [];
+    const off = setLeavePresenter((r) => asked.push(r));
+    openExternal("https://example.com/y", { newTab: false });
+    expect(asked).toEqual([{ host: "example.com", href: "https://example.com/y", newTab: false }]);
+    allowHost("example.com");
+    openExternal("https://example.com/z");
+    expect(clicked.length).toBe(2);
+    off();
+    off();
+    store.delete(LINK_ALLOWED_KEY);
+    openExternal("https://example.org/");
+    expect(asked.length).toBe(1);
+    expect(clicked.length).toBe(3);
   });
 });

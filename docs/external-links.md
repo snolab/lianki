@@ -33,10 +33,10 @@ The rules are pure, in `packages/core/src/externalLink.ts`
 | Box in the dialog            | Local key          | Server key           | Value                                 |
 | ---------------------------- | ------------------ | -------------------- | ------------------------------------- |
 | Don't ask again for any site | `lk:link-confirm`  | `links.confirm`      | `"0"` / `false`: never ask            |
-| Don't ask again for this site | `lk:link-trusted` | `links.trustedHosts` | JSON list of hosts, newest last       |
+| Don't ask again for this site | `lk:link-allowed` | `links.allowedHosts` | JSON list of hosts, newest last       |
 
 Both are **synced** (docs/prefs-sync.md): written on the device, then pushed
-with the account. A trusted host is kept without `www.` and covers its
+with the account. An allowed host is kept without `www.` and covers its
 subdomains (`wikipedia.org` covers `ja.wikipedia.org`; the dialog stores the
 host it showed, so `en.wikipedia.org` covers only itself and below). Only a
 public host can be kept: the schema refuses schemes, paths, IP addresses,

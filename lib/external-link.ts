@@ -2,7 +2,7 @@
  * The disclaimer before leaving for another site, on the device
  * (@lianki/core/externalLink has the rules). Both bypasses are account
  * preferences (docs/prefs-sync.md): `links.confirm` in `lk:link-confirm`
- * ("1"/"0") and `links.trustedHosts` in `lk:link-trusted` (JSON). A writer
+ * ("1"/"0") and `links.allowedHosts` in `lk:link-allowed` (JSON). A writer
  * here calls notePrefWrite(), so the change follows the account.
  *
  * Links are caught by one delegated click handler (ExternalLinkGuard). Code
@@ -10,17 +10,17 @@
  */
 import { notePrefWrite } from "@lianki/ui-state/account";
 import {
-  addTrustedHost,
+  addAllowedHost,
   hostToConfirm,
   leavingHost,
-  type LinkTrust,
-  parseTrustedHosts,
+  type LinkPolicy,
+  parseAllowedHosts,
 } from "@lianki/core/externalLink";
 
 export const LINK_CONFIRM_KEY = "lk:link-confirm";
-export const LINK_TRUSTED_KEY = "lk:link-trusted";
+export const LINK_ALLOWED_KEY = "lk:link-allowed";
 /** Fired on window after this tab changed a bypass (the settings section re-reads). */
-export const LINK_TRUST_EVENT = "lk:link-trust";
+export const LINK_POLICY_EVENT = "lk:link-policy";
 
 const get = (k: string): string | null => {
   try {
@@ -36,10 +36,10 @@ const set = (k: string, v: string) => {
 };
 
 /** This device's copy of the two settings; unreadable storage reads as "ask". */
-export function readLinkTrust(): LinkTrust {
+export function readLinkPolicy(): LinkPolicy {
   let hosts: string[] = [];
   try {
-    hosts = parseTrustedHosts(JSON.parse(get(LINK_TRUSTED_KEY) ?? "[]"));
+    hosts = parseAllowedHosts(JSON.parse(get(LINK_ALLOWED_KEY) ?? "[]"));
   } catch {}
   return { confirm: get(LINK_CONFIRM_KEY) !== "0", hosts };
 }
@@ -47,7 +47,7 @@ export function readLinkTrust(): LinkTrust {
 function changed() {
   notePrefWrite();
   try {
-    window.dispatchEvent(new Event(LINK_TRUST_EVENT));
+    window.dispatchEvent(new Event(LINK_POLICY_EVENT));
   } catch {}
 }
 
@@ -58,15 +58,15 @@ export function setLinkConfirm(on: boolean) {
 }
 
 /** "Don't ask again for this site". */
-export function trustHost(host: string) {
-  set(LINK_TRUSTED_KEY, JSON.stringify(addTrustedHost(readLinkTrust().hosts, host)));
+export function allowHost(host: string) {
+  set(LINK_ALLOWED_KEY, JSON.stringify(addAllowedHost(readLinkPolicy().hosts, host)));
   changed();
 }
 
 /** Remove sites from the list (all of them when `hosts` is omitted). */
-export function forgetTrustedHosts(hosts?: readonly string[]) {
-  const keep = hosts ? readLinkTrust().hosts.filter((h) => !hosts.includes(h)) : [];
-  set(LINK_TRUSTED_KEY, JSON.stringify(keep));
+export function forgetAllowedHosts(hosts?: readonly string[]) {
+  const keep = hosts ? readLinkPolicy().hosts.filter((h) => !hosts.includes(h)) : [];
+  set(LINK_ALLOWED_KEY, JSON.stringify(keep));
   changed();
 }
 
@@ -114,7 +114,7 @@ export function followLink(href: string, newTab: boolean) {
  * the site needs it, else opens at once, in the same user gesture.
  */
 export function openExternal(href: string, { newTab = true }: { newTab?: boolean } = {}) {
-  const host = hostToConfirm(href, window.location.href, readLinkTrust());
+  const host = hostToConfirm(href, window.location.href, readLinkPolicy());
   const show = presenter();
   if (host && show) show({ host, href: new URL(href, window.location.href).href, newTab });
   else followLink(href, newTab);
@@ -142,7 +142,7 @@ export type LeavingClick = {
   anchor: ElLike;
   href: string;
   newTab: boolean;
-  /** The site to ask about; null: trusted, or asking is off — go without asking. */
+  /** The site to ask about; null: allowed, or asking is off — go without asking. */
   ask: string | null;
 };
 
@@ -163,7 +163,7 @@ function anchorOf(e: LinkClick): ElLike | null {
  * The click, when it follows a link to another site (else null: a link on
  * Lianki, a download, a link someone else already handled, or no link).
  */
-export function leavingClick(e: LinkClick, here: string, trust: LinkTrust): LeavingClick | null {
+export function leavingClick(e: LinkClick, here: string, policy: LinkPolicy): LeavingClick | null {
   if (e.defaultPrevented) return null;
   const middle = e.type === "auxclick";
   if (middle ? e.button !== 1 : (e.button ?? 0) !== 0) return null;
@@ -180,7 +180,7 @@ export function leavingClick(e: LinkClick, here: string, trust: LinkTrust): Leav
   const target = a.getAttribute?.("target");
   const newTab =
     middle || !!e.metaKey || !!e.ctrlKey || !!e.shiftKey || (!!target && target !== "_self");
-  return { anchor: a, href, newTab, ask: hostToConfirm(href, here, trust) };
+  return { anchor: a, href, newTab, ask: hostToConfirm(href, here, policy) };
 }
 
 /** rel="noopener noreferrer" on a link that leaves, keeping its other rel words. */

@@ -143,7 +143,7 @@ listed once.
 | Key               | Setting                                      | Class      | Server key           | Reason                                                                                                                         |
 | ----------------- | -------------------------------------------- | ---------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `lk:link-confirm` | ask before another site ("any site" box off) | **synced** | `links.confirm`      | owner, 2026-11-09: "for my account, all domains"                                                                               |
-| `lk:link-trusted` | sites not asked about ("this site" box)      | **synced** | `links.trustedHosts` | owner, 2026-11-09: kept with the account. A third exception to "nothing typed": bare public hosts only, newest 80, no device host |
+| `lk:link-allowed` | sites not asked about ("this site" box)      | **synced** | `links.allowedHosts` | owner, 2026-11-09: kept with the account. A third exception to "nothing typed": bare public hosts only, newest 80, no device host |
 
 ### Not prefs (left alone)
 

@@ -67,7 +67,7 @@ const SAMPLE: Record<string, unknown> = {
   "chat-voice.cueSend": false,
   "chat-voice.cueSpeech": false,
   "links.confirm": false,
-  "links.trustedHosts": ["en.wikipedia.org", "youtube.com"],
+  "links.allowedHosts": ["en.wikipedia.org", "youtube.com"],
 };
 
 describe("prefBindings", () => {
