@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
+import { useBackend, useD1 } from "./support/testMocks";
 import type { BookCtx, RangeWord } from "@/lib/read/book-word-list";
 import { fillGlosses, type Complete } from "@/lib/read/gloss-server";
 import {
@@ -214,6 +215,9 @@ describe("one charge per word", () => {
     });
     beforeEach(() => {
       d1 = createTestD1(testSchema());
+      // fillGlosses' rate limit reads getD1(): this file's own, never the last file's.
+      useD1(d1);
+      useBackend("d1");
       calls = 0;
     });
 

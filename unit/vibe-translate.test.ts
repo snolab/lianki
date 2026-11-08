@@ -331,8 +331,8 @@ describe("the route's answers", () => {
   });
 
   it("polish stays refused for these docs, and the reader's own translate cache is untouched", () => {
-    expect(readFileSync("lib/read/polish-offer.ts", "utf8")).toContain(
-      'NEVER_OFFERED = new Set<BookSource>(["vibe"])',
+    expect(readFileSync("lib/read/polish-offer.ts", "utf8")).toMatch(
+      /NEVER_OFFERED = new Set<BookSource>\(\[[^\]]*"vibe"[^\]]*\]\)/,
     );
     expect(readFileSync("lib/vibe/translate-server.ts", "utf8")).not.toContain(
       "read_translation (",
