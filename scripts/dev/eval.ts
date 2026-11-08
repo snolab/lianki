@@ -584,9 +584,9 @@ function chat(out?: string, errorsOnly = false) {
           answer: m.answer,
           labels: m.labels,
         });
-      else if (m.type === "edited" && typeof m.id === "string" && routedAway.has(m.id)) {
-        // Another lane's line grew: still that lane's (--route).
-      } else if (m.type === "edited") {
+      else if (m.type === "edited") {
+        // Another lane's line grew: still that lane's (--route), not printed here.
+        if (routedAway.has(String(m.id))) return;
         // A line grew: the agent heard it, like any new line (--ack).
         if (m.merged && ackFlag && m.observed !== true) ws.send(beatMessage({}));
         print({
