@@ -10,8 +10,6 @@ import {
   testText,
 } from "../lib/lane-route";
 
-const lanesOf = (t: string) => routeLine(t).lanes;
-
 describe("routeLine: addressed lines", () => {
   it.each([
     ["codex, 看一下 PR #700", ["codex"], "看一下 PR #700"],
