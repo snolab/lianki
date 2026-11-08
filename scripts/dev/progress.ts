@@ -3,11 +3,12 @@
  * Report to the live state tree (docs/state-tree.md, "Live progress"). One
  * request to lianki-push, then exit.
  *
- *   bun scripts/dev/progress.ts --agent swipe-agent --path /words/swipe --task "Native swipe" --status doing --pct 40
- *   bun scripts/dev/progress.ts --agent swipe-agent --path /words/swipe --task "Native swipe" --done --pr 310
+ *   bun scripts/dev/progress.ts --agent swipe-agent --path /words/swipe --task "Native swipe: drag the card with the finger" --status doing --pct 40
+ *   bun scripts/dev/progress.ts --agent swipe-agent --path /words/swipe --task "Native swipe: drag the card with the finger" --done --pr 310
  *   bun scripts/dev/progress.ts grant --node /words --agent swipe-agent --ttl 8h
  *   bun scripts/dev/progress.ts resolve --id /@owner/agent-yes-527 --note "merged"
  *   bun scripts/dev/progress.ts show
+ *   bun scripts/dev/progress.ts stats --agent swipe-agent --since 7d
  *
  * `--eta 25m` (or an ISO time) is the agent's own estimate; it sets the node's
  * etaAt, which drives the owner's ETA bar and the one "ETA reached" line the
@@ -18,7 +19,8 @@
  * PROGRESS_TOKEN from .dev.vars in this checkout or the main one.
  */
 import { BASE } from "./eval-socket";
-import { PROGRESS_USAGE, parseProgressArgs } from "./progress-args";
+import { PROGRESS_USAGE, formatStats, parseProgressArgs } from "./progress-args";
+import { type ProgressDone, progressStats } from "../../lib/progress";
 import { postProgress, progressToken } from "./progress-client";
 
 /** "2026-11-07 20:30 JST": when the estimate runs out, as the owner reads times. */
@@ -35,6 +37,7 @@ if (cmd instanceof Error) {
   console.error(`progress: ${cmd.message}\n${PROGRESS_USAGE}`);
   process.exit(2);
 }
+if (cmd.cmd === "report" && cmd.warning) console.error(`progress: warning: ${cmd.warning}`);
 const token = progressToken(cmd.token);
 if (!token) {
   console.error(
@@ -49,7 +52,9 @@ const [path, body] =
       ? ["/grant", { node: cmd.node, agent: cmd.agent, ttl: cmd.ttl }]
       : cmd.cmd === "resolve"
         ? ["/resolve", { id: cmd.id, note: cmd.note }]
-        : ["", undefined];
+        : cmd.cmd === "stats"
+          ? ["/stats", undefined]
+          : ["", undefined];
 const res = await postProgress(BASE, token, path, body);
 if (res instanceof Error) {
   console.error(`progress: ${res.message}`);
@@ -57,7 +62,11 @@ if (res instanceof Error) {
 }
 if (cmd.cmd === "grant") console.log(res.token);
 else if (cmd.cmd === "show") console.log(JSON.stringify(res, null, 2));
-else if (cmd.cmd === "resolve")
+else if (cmd.cmd === "stats") {
+  const since = Date.now() - cmd.since;
+  const done = (res.done ?? []) as ProgressDone[];
+  console.log(formatStats(progressStats(done, { agent: cmd.agent, since })));
+} else if (cmd.cmd === "resolve")
   console.log(
     `progress: resolved ${(res.resolved as string[]).join(", ") || "nothing (already done)"}`,
   );

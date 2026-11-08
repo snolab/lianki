@@ -133,6 +133,17 @@ export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind" | "etaI
   created: number;
   at: number;
   notes?: ProgressNote[];
+  /**
+   * Timing, for agents calibrating their ETAs (`progress.ts stats`); never
+   * shown to the owner. `startedAt`: the first write with status doing.
+   * `endedAt`: when it went done (cleared if it reopens). `estimateMs`: the
+   * first estimate that set a time, as a duration from when it was given;
+   * `etaRevisions`: how many estimates came after it (etaAt keeps moving).
+   */
+  startedAt?: number;
+  endedAt?: number;
+  estimateMs?: number;
+  etaRevisions?: number;
 };
 /** One write as broadcast and logged: the node after it (without its notes) and the note it added. */
 export type ProgressEvent = { type: "progress"; note?: string } & Omit<ProgressEntry, "notes">;
@@ -315,7 +326,121 @@ export function mergeProgress(
   if (etaAt !== undefined) entry.etaAt = etaAt;
   if (prev?.etaSent !== undefined) entry.etaSent = prev.etaSent;
   if (notes.length) entry.notes = notes.slice(-PROGRESS_NOTES_MAX);
+  const startedAt = prev?.startedAt ?? (r.status === "doing" ? at : undefined);
+  if (startedAt !== undefined) entry.startedAt = startedAt;
+  if (r.status === "done") entry.endedAt = prev?.status === "done" ? (prev.endedAt ?? at) : at;
+  // An estimate that sets a time: the first is kept, the later ones counted.
+  const estimate = r.etaIn ?? (r.etaAt !== undefined ? r.etaAt - at : undefined);
+  if (prev?.estimateMs !== undefined) {
+    entry.estimateMs = prev.estimateMs;
+    entry.etaRevisions = (prev.etaRevisions ?? 0) + (estimate !== undefined ? 1 : 0);
+  } else if (estimate !== undefined && estimate > 0) {
+    entry.estimateMs = estimate;
+    entry.etaRevisions = 0;
+  }
   return entry;
+}
+
+/** One done task, as the hub's durable stats log keeps it (PROGRESS_STATS_TTL_MS). */
+export type ProgressDone = {
+  at: number;
+  agent: string;
+  id: string;
+  title: string;
+  estimateMs?: number;
+  actualMs: number;
+  revisions: number;
+};
+/** The stats log keeps done tasks this long… */
+export const PROGRESS_STATS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** …and at most this many (the newest). */
+export const PROGRESS_STATS_MAX = 1000;
+
+/** A node that just went done → its stats record (from its start, else its creation, to its end). */
+export function progressDone(e: ProgressEntry): ProgressDone {
+  const end = e.endedAt ?? e.at;
+  const out: ProgressDone = {
+    at: end,
+    agent: e.creator === PROGRESS_AUTO ? e.by : e.creator,
+    id: e.id,
+    title: e.task,
+    actualMs: Math.max(0, end - (e.startedAt ?? e.created)),
+    revisions: e.etaRevisions ?? 0,
+  };
+  if (e.estimateMs !== undefined) out.estimateMs = e.estimateMs;
+  return out;
+}
+
+export type ProgressAgentStats = {
+  agent: string;
+  done: number;
+  /** Done tasks that had an estimate. */
+  estimated: number;
+  /** Median of actual / estimate over the estimated ones (1 = on time, 2 = took twice as long). */
+  medianRatio?: number;
+  tasks: ProgressDone[];
+};
+
+/** Per agent (most done first): the done tasks since `since`, and the median actual/estimate ratio. */
+export function progressStats(
+  records: Iterable<ProgressDone>,
+  opts: { agent?: string; since?: number } = {},
+): ProgressAgentStats[] {
+  const by = new Map<string, ProgressDone[]>();
+  for (const d of records) {
+    if (opts.agent !== undefined && d.agent !== opts.agent) continue;
+    if (opts.since !== undefined && d.at < opts.since) continue;
+    by.set(d.agent, [...(by.get(d.agent) ?? []), d]);
+  }
+  return [...by]
+    .map(([agent, tasks]) => {
+      const ratios = tasks
+        .filter((d) => d.estimateMs)
+        .map((d) => d.actualMs / d.estimateMs!)
+        .sort((a, b) => a - b);
+      const mid = ratios.length >> 1;
+      const out: ProgressAgentStats = {
+        agent,
+        done: tasks.length,
+        estimated: ratios.length,
+        tasks: tasks.sort((a, b) => a.at - b.at),
+      };
+      if (ratios.length)
+        out.medianRatio = ratios.length % 2 ? ratios[mid]! : (ratios[mid - 1]! + ratios[mid]!) / 2;
+      return out;
+    })
+    .sort((a, b) => b.done - a.done || a.agent.localeCompare(b.agent));
+}
+
+/** The longest name a task title may start with ("name: description"); the ETA bar shows only it. */
+export const PROGRESS_TITLE_NAME_MAX = 20;
+
+const graphemes = (s: string) =>
+  typeof Intl.Segmenter === "function"
+    ? [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)].length
+    : [...s].length;
+
+/**
+ * A task title is "name: description" (ASCII ':' or full-width '：'): the
+ * owner's ETA bar shows only the name, the full list both. With a colon, the
+ * name must be 1–PROGRESS_TITLE_NAME_MAX characters (graphemes): an Error.
+ * Without one, a title longer than that is still taken, with a warning.
+ */
+export function checkTaskTitle(task: string): { warning?: string } | Error {
+  const i = task.search(/[:：]/);
+  const example = `e.g. --task "Swipe fix: the card snaps back on a short drag"`;
+  if (i < 0)
+    return graphemes(task.trim()) > PROGRESS_TITLE_NAME_MAX
+      ? {
+          warning: `task titles are "name: description" — the ETA bar shows only the name (at most ${PROGRESS_TITLE_NAME_MAX} characters); ${example}`,
+        }
+      : {};
+  const n = graphemes(task.slice(0, i).trim());
+  if (n < 1 || n > PROGRESS_TITLE_NAME_MAX)
+    return new Error(
+      `the name before the colon in --task must be 1–${PROGRESS_TITLE_NAME_MAX} characters (it has ${n}): the ETA bar shows only the name; ${example}`,
+    );
+  return {};
 }
 
 /** A node created only because a descendant named it: a group (or the owner's person node). */

@@ -47,10 +47,15 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   owner: the outline shows as written. Nothing polls.
 
   Report (one POST, then exit):
-    bun scripts/dev/progress.ts --agent <you> --path /words/swipe       --task "Native swipe" --status doing --pct 40 --eta 15m
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe       --task "Native swipe: drag the card with the finger" --status doing --pct 40 --eta 15m
     … --done --pr 310        when it lands
     … --status blocked --note "why"
     … --status waiting-owner --needs "OK the preview" --kind approval
+  --task is "name: description" (':' or '：'): a short name of 1–20
+  characters (graphemes, not bytes), then what it is. The owner's ETA bar
+  shows only the name; the full list shows both. A longer name is refused
+  (with an example); a title with no colon still goes through, with a
+  warning when it is over 20.
   status: doing | blocked | waiting | waiting-owner | review | done
   kind:   task | decision | approval | feedback | person
   --path sets id and parent (missing ancestors become groups); --id/--parent
@@ -81,7 +86,7 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   estimate, given each time it reports: a duration from now (25m, 1h30m) or an
   ISO time with its zone. The hub turns it into the node's etaAt on its own
   clock; a new --eta moves it; free text ("after CI") is shown, no timer.
-    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe" --status doing --eta 25m
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe: drag with the finger" --status doing --eta 25m
   The owner's chat shows one summary bar above the input (weighted progress,
   time left, next due; packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens
   this tree, which lists every timed task with its own bar and time left.
@@ -95,6 +100,19 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   with "source":"eta","auto":true. It is never the owner speaking, never an
   answer to an ask card, never an approval. One line per estimate, whatever
   number of pages are open; a done node gets none.
+
+  Timing, for agents only (never shown to the owner: his bar and list keep
+  the time left and the names). Each node keeps startedAt (its first write
+  with status doing), endedAt (when it went done; cleared if it reopens),
+  estimateMs (the first --eta that set a time, as a duration from when it
+  was given) and etaRevisions (estimates after it). `show` returns them.
+  Each task that goes done (a report or the owner's check-off) also leaves
+  {agent, id, title, estimateMs, actualMs, revisions} in a durable stats log
+  (keys "d:", 30 days, newest 1000; never sent to pages), read with GET
+  /stats:
+    bun scripts/dev/progress.ts stats [--agent <you>] [--since 7d]
+  per agent, done tasks with estimate vs actual and the median actual/estimate
+  ratio — multiply your next --eta by it.
 
   Limits: name 40, task 120, note 280, needs 120; 200 nodes (oldest done
   dropped first); done nodes pruned after 24 h (Durable Object alarm); a

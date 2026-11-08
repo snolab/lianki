@@ -33,8 +33,9 @@ import {
   parseArgs,
   progressArgv,
 } from "./lianki-dev-cli";
-import { PROGRESS_USAGE, parseProgressArgs } from "./progress-args";
+import { PROGRESS_USAGE, formatStats, parseProgressArgs } from "./progress-args";
 import { postProgress, progressToken } from "./progress-client";
+import { type ProgressDone, progressStats } from "../../lib/progress";
 
 const HUB = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
 
@@ -183,6 +184,7 @@ async function runChat(sub: Sub, repo: string, rest: string[], stdin?: string): 
 async function progress(g: Global, rest: string[], repo: string | undefined): Promise<number> {
   const cmd = parseProgressArgs(progressArgv(rest, g));
   if (cmd instanceof Error) fail(EXIT.usage, `progress: ${cmd.message}\n${PROGRESS_USAGE}`);
+  if (cmd.cmd === "report" && cmd.warning) console.error(`progress: warning: ${cmd.warning}`);
   const token = progressToken(cmd.token, repo);
   if (!token)
     fail(
@@ -196,7 +198,9 @@ async function progress(g: Global, rest: string[], repo: string | undefined): Pr
         ? ["/grant", { node: cmd.node, agent: cmd.agent, ttl: cmd.ttl }]
         : cmd.cmd === "resolve"
           ? ["/resolve", { id: cmd.id, note: cmd.note }]
-          : ["", undefined];
+          : cmd.cmd === "stats"
+            ? ["/stats", undefined]
+            : ["", undefined];
   const res = await postProgress(HUB, token, path, body);
   if (res instanceof Error) {
     // postProgress words an HTTP refusal "<status> <body>"; anything else did not reach it.
@@ -205,7 +209,12 @@ async function progress(g: Global, rest: string[], repo: string | undefined): Pr
   }
   if (json) console.log(okLine("progress", res));
   else if (cmd.cmd === "show") console.log(JSON.stringify(res, null, 2));
-  else if (cmd.cmd === "grant") console.log(res.token);
+  else if (cmd.cmd === "stats") {
+    const done = (res.done ?? []) as ProgressDone[];
+    console.log(
+      formatStats(progressStats(done, { agent: cmd.agent, since: Date.now() - cmd.since })),
+    );
+  } else if (cmd.cmd === "grant") console.log(res.token);
   else if (cmd.cmd === "resolve")
     console.log(
       `progress: resolved ${(res.resolved as string[]).join(", ") || "nothing (already done)"}`,
