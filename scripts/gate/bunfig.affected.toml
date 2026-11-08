@@ -1,0 +1,8 @@
+# bunfig for the pre-push gate's affected-only unit run (scripts/gate/affected.ts).
+# Same as ../../bunfig.toml minus coverage: the per-file 90% threshold cannot
+# hold on a subset of the suites (a file is only partly exercised by the tests
+# that were picked), so the coverage gate runs on the full suite only — in CI on
+# every PR, and locally whenever the selector falls back to the full suite.
+[test]
+root = "unit"
+coverage = false

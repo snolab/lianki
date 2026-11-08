@@ -4,9 +4,9 @@ name: Nightly QA
 # local D1 → API + UI + sync + userscript suites), plus the extension smoke
 # test, against main once a night. It used to run on every push and PR, and
 # main's deploy waited ~4 min for it (owner, 2026-10-31: run it nightly). The
-# pre-push hook still runs the same qa:all on every pushed commit, so this
-# catches what slipped past that: a skipped hook, two PRs green apart and red
-# together, or drift in the runner image.
+# merge queue runs the same qa:all on every PR before it lands (ci.yml, `qa`),
+# and pre-push runs only the suites a change reaches; this catches what slipped
+# past both, and drift in the runner image.
 on:
   schedule:
     - cron: "0 18 * * *" # 03:00 JST

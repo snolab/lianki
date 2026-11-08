@@ -22,13 +22,30 @@ silently eat uncommitted work.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on PRs and pushes to `main`: one job,
-`Typecheck + unit` (oxlint + `oxfmt --check`, typecheck, unit tests with
-coverage, ~20 s). It is the only required check, and the only thing main's
-deploy waits for. When it fails on a push to `main` it posts to Slack #lianki.
+CI runs **everything**; the pre-push hook runs only what a change reaches
+(below, "Only what changed"). `.github/workflows/ci.yml` has three jobs:
+
+- `Lint + typecheck + unit` — oxlint + `oxfmt --check`, typecheck, the whole
+  unit suite with its coverage gate (~20 s). Every PR, every merge group, every
+  push to `main`; when it fails on a push to `main` it posts to Slack #lianki.
+- `qa:all (merge queue, report-only)` — the whole `bun run qa:all`, in the
+  Playwright image, on the `merge_group` event only (~6–7 min on a runner). So
+  every PR gets the full integration gate before it lands, while opening a PR
+  and main's deploy wait for neither. **Report-only for now**: WORDS "the
+  Settings sheet fits the screen" (360×640 WebKit iPhone) fails on main in CI
+  since #704, so a qa failure is a warning on the gate, not a block. It becomes
+  blocking (`QA_BLOCKING: "true"` in ci.yml) once that is fixed and green
+  twice in the queue — state tree `/infra/words-ci-fix`.
+- `Typecheck + unit` — the one required check (branch protection names it). A
+  tiny job that is green when the first job passed and (when `QA_BLOCKING`) the
+  qa job passed or was skipped (outside the merge queue). Adding the qa job
+  needed no change to branch protection.
+
+main's deploy waits for this workflow on the push to `main` (no qa job there:
+it ran in the queue).
 
 The integration gate, `qa:all (D1/Workers)` (`bun run qa:all` plus the
-extension smoke test, ~4 min), runs **nightly** on main at 03:00 JST in
+extension smoke test, ~8 min), also runs **nightly** on main at 03:00 JST in
 `.github/workflows/nightly-qa.yml` (or by hand: `gh workflow run nightly-qa.yml
 -R snolab/lianki`), and posts to #lianki when it fails. It left the per-push CI
 on 2026-10-31 so a deploy no longer waits for it. Node 24 (for `node:sqlite`);
@@ -47,27 +64,89 @@ unit suite, 30 s to several minutes):
   `lianki.meta.js` / `lib/userscript-version.ts` sync, the state-tree and blog
   bundles (`scripts/pre-commit.ts`, plan in `scripts/pre-commit-plan.ts`).
 - **`pre-push`** — cheapest first, so a failure surfaces in seconds:
-  `bun run lint` (whole repo), typecheck, the unit suite with its coverage
-  gate, then `qa:all`. Only qa:all's time-sensitive suites wait for the
-  machine-wide gate, below.
+  `bun run lint` (whole repo), typecheck, then **only the unit tests and
+  qa:all suites the change reaches** (next section). Only qa:all's
+  time-sensitive suites wait for the machine-wide gate, below.
 
 So a commit can be locally unchecked for types and tests until it is pushed;
 nothing reaches `main` that way, because `main` takes only PRs and the required
-CI check runs lint, typecheck and the unit suite with coverage on each one. The
-generated copies are each pinned by a unit test (`unit/state-tree.test.ts`,
-`unit/blog-corpus.test.ts`, `unit/userscript-version.test.ts`), so a missed
-regeneration fails pre-push and CI.
+CI check runs lint, typecheck and the unit suite with coverage on each one, and
+the merge queue runs the full qa:all. The generated copies are each pinned by a
+unit test (`unit/state-tree.test.ts`, `unit/blog-corpus.test.ts`,
+`unit/userscript-version.test.ts`), so a missed regeneration fails pre-push and
+CI.
 
-The `pre-push` hook's `qa:all` makes it the per-change integration gate, and a
-`--no-verify` skip lets a broken commit reach main until the nightly run. It
-skips automatically for deletion-only pushes. On **native Windows** (Git Bash)
-it skips `qa:all` only — lint, typecheck and the unit suite still run — because
+A `--no-verify` skip pushes a commit nothing local has tested; CI still runs
+everything before it lands. The hook skips automatically for deletion-only
+pushes. On **native Windows** (Git Bash)
+it skips qa only — lint, typecheck and the unit tests still run — because
 the OpenNext Cloudflare packaging cannot produce a working Worker there (symlink
 copy errors with bun's isolated linker, `ChunkLoadError` on every route with a
-hoisted install; verified 2026-10-14). There the nightly run is the only
+hoisted install; verified 2026-10-14). There CI's runs (merge queue, nightly) are the only
 integration gate; `LIANKI_QA_ON_WINDOWS=1` forces the local run, for example to
 re-test after an OpenNext upgrade. WSL counts as Linux and runs the gate
 normally.
+
+## Only what changed
+
+Owner, 2026-11-08: pre-push runs tests only for what changed; unchanged areas
+are not re-tested there at all, and the full set stays in CI.
+`scripts/gate/affected.ts` (logic in `scripts/gate/affected-lib.ts`, tests in
+`unit/affected-gate.test.ts`) does the selecting, and prints what it picked and
+why before it runs anything:
+
+```bash
+bun scripts/gate/affected.ts plan            # what a push would run now, and why
+LIANKI_GATE_CHANGED="lib/dates.ts" bun scripts/gate/affected.ts plan   # "what if I changed …"
+LIANKI_GATE_FULL=1 git push                  # the full local gate, as before
+```
+
+**Changed files** are the pushed commits (the hook passes their SHAs) against
+their merge base with `origin/main`, plus uncommitted edits to tracked files,
+since the tests run on the working tree. It does not fetch: a stale
+`origin/main` only makes the diff, and so the selection, bigger.
+
+**The graph** is static and errs toward running more. Every string literal in a
+code file that names a repo file is an edge: imports (`@/` and the other
+tsconfig aliases, relative paths, `index` files, `.js` → `.ts`), `await
+import()`, `mock.module()`, and also `readFileSync("app/fsrs.ts")` or
+`new URL("../worker.ts", import.meta.url)` in tests that read source. In
+`unit/**`, a literal naming a directory or a glob makes the test depend on
+everything under it (tests that walk `app/api` or scan `scripts/**`). An
+intlayer `useIntlayer("key")` reaches the `*.content.ts` declaring that key.
+A data file that lists paths it never loads opts out with the pragma
+`affected-gate: imports-only` (`scripts/qa/suites.mjs`). The literals per file
+are cached in `node_modules/.cache/lianki-affected/`, keyed by mtime and size;
+a selection takes ~40 ms warm, ~250 ms cold.
+
+**Unit:** the test files whose import closure contains a changed file, run
+without coverage (`scripts/gate/bunfig.affected.toml`) — bun's per-file 90%
+threshold cannot hold on a subset. **qa:** a suite runs when its own entry file
+(or anything it imports or reads) changed, or when a file the change reaches
+matches one of the suite's `paths` in `scripts/qa/suites.mjs` — route trees
+such as `app/(app)/words/**`, so `lib/words/x.ts` reaches WORDS through
+`app/(app)/words/page.tsx` without being listed. They run through
+`qa-all.mjs --suites=<id>,…`; when no chosen suite needs the Worker (the
+serverless READ SEL ones), the OpenNext build and `wrangler dev` are skipped
+too. No suite matched → none run, and it says so.
+
+**Falls back to everything** — the full unit suite with coverage, the full
+qa:all — when one of these changed (the lists are `UNIT_FULL` and `QA_FULL`
+in `affected-lib.ts`): `package.json`, `bun.lock`, `bunfig.toml`,
+`tsconfig.json`, `patches/**`, `unit/support/**`, the selector itself
+(`scripts/gate/**`), `.husky/pre-push`, the shared core `lib/d1/**`, `auth.ts`,
+`app/db.ts`; for qa also the Worker's build and serving (`next.config.*`,
+`open-next.config.ts`, `wrangler.jsonc`, `worker.ts`, `proxy.ts`,
+`intlayer.config.ts`, `db/migrations/**`) and qa:all's own machinery
+(`qa-all.mjs`, `gate-suites.ts`, `suites.mjs`, `silent.mjs`, `load-budget.mjs`,
+`machine-lock-lib.ts`). Also when there is no merge base with `origin/main`, or
+the graph cannot be built.
+
+What a static graph cannot see, CI can: a test that reaches a file only through
+a computed path, or a suite whose route was not mapped, still runs in full on
+the PR (unit + coverage) and in the merge queue (qa:all) before anything lands.
+When CI fails on something the local gate skipped, add the edge — a literal, a
+`paths` glob — rather than widening the fallback list.
 
 ## Admission by load
 
@@ -220,7 +299,8 @@ build's own plus `DebugSessions`.
 Don't confuse them when debugging a rejected push:
 
 - _Classic branch protection_ holds the required check (`Typecheck + unit`
-  only, since qa:all went nightly on 2026-10-31), `strict: false`,
+  only — since 2026-11-08 the gate job in ci.yml that also waits for the
+  merge-queue qa:all), `strict: false`,
   `enforce_admins: true`, and **no**
   required PR reviews. Read it with
   `gh api repos/snolab/lianki/branches/main/protection`.

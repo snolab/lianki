@@ -30,7 +30,8 @@
 | `scripts/ship.ts` | Land a commit on `main` |
 | `packages/lianki-cli/` | The npm package `lianki` (`bunx lianki`): plain ESM CLI, published by `publish-cli.yml` on a `lianki-cli-v*` tag (docs/shipping.md) |
 | `packages/desktop/` | Windows desktop shell — Tauri 2 window around lianki.com (`README.md` there) |
-| `.github/workflows/ci.yml` | Typecheck + unit, qa:all |
+| `.github/workflows/ci.yml` | lint + typecheck + unit (every PR); qa:all (merge queue); the required `Typecheck + unit` gate |
+| `scripts/gate/affected.ts` | pre-push selection: only the unit tests and qa suites a change reaches (docs/shipping.md, "Only what changed") |
 | `.github/workflows/deploy.yml` | CI/CD to Vercel |
 
 ## Userscript
