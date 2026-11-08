@@ -11,14 +11,37 @@
  *   350 ms), SYNC and PARTNER FRAME.
  *
  * `base: true` passes the Worker's URL as QA_BASE; `url: true` as LIANKI_URL
- * (Playwright runner suites).
+ * (Playwright runner suites). A suite with neither needs no Worker: when only
+ * such suites are selected, qa:all skips the OpenNext build and wrangler dev.
+ *
+ * `id` names the suite for `qa-all.mjs --suites=<id>,…`. `paths` (globs) say
+ * which files the suite covers, for the pre-push gate's affected-only run
+ * (scripts/gate/affected.ts, docs/shipping.md "Only what changed"): a suite
+ * runs when a file the change reaches through the import graph matches one of
+ * them, or when its own entry file (or anything it imports) changed. Map route
+ * trees, not libraries: a change to lib/words/x.ts reaches app/(app)/words/**
+ * through the graph by itself.
  */
+const SHELL = [
+  "app/layout.tsx",
+  "app/(app)/layout.tsx",
+  "app/[locale]/layout.tsx",
+  "app/components/**",
+  "app/globals.css",
+];
+const AUTH = ["app/api/auth/**", "app/auth/**", "app/(app)/sign-in/**", "lib/auth-*.ts"];
+const USERSCRIPT = ["src/**", "lianki.user.js", "public/lianki.user.js", "packages/core/**"];
+const READ = ["app/(app)/read/**", "app/api/read/**", "lib/read/**", "lib/epub/**"];
+// affected-gate: imports-only — the args below are run, not loaded here
+// (scripts/gate/affected-lib.ts; each suite's entry is matched on its own).
 export const SUITES = [
   // First: every suite after it relies on this layer, with nothing on the Mac behind it.
   {
     name: "AUDIO-FREE (qa-audio-free)",
     cmd: "bun",
     args: ["scripts/qa/qa-audio-free.mjs"],
+    id: "audio-free",
+    paths: ["scripts/qa/silent.mjs"],
     sensitive: false,
   },
   {
@@ -26,6 +49,8 @@ export const SUITES = [
     cmd: "bun",
     args: ["scripts/qa/qa-api.mjs"],
     base: true,
+    id: "api",
+    paths: ["app/api/**", "app/*.ts"],
     sensitive: false,
   },
   {
@@ -33,6 +58,14 @@ export const SUITES = [
     cmd: "bun",
     args: ["scripts/qa/qa-ui.mjs"],
     base: true,
+    id: "ui",
+    paths: [
+      ...SHELL,
+      ...AUTH,
+      "app/[locale]/**",
+      "app/(app)/{home,list,roadmap,profile,preferences,dev/roadmap}/**",
+      "app/api/{roadmap,preferences,prefs,profile}/**",
+    ],
     sensitive: false,
   },
   // The menu's Sign out on the Worker build, Chromium + WebKit (lib/sign-out.ts).
@@ -41,6 +74,8 @@ export const SUITES = [
     cmd: "bun",
     args: ["scripts/qa/qa-sign-out.mjs"],
     base: true,
+    id: "sign-out",
+    paths: [...SHELL, ...AUTH, "app/(app)/profile/**", "lib/sign-out.ts"],
     sensitive: false,
   },
   // Serverless: familiarity underlines keep their colours inside the reader's selection (WebKit + Chromium).
@@ -48,6 +83,9 @@ export const SUITES = [
     name: "READ SEL UNDERLINES",
     cmd: "bun",
     args: ["scripts/qa/qa-read-sel-underlines.ts"],
+    id: "read-sel-underlines",
+    // Serverless: only what its entry imports or reads (globals.css, select-mark).
+    paths: [],
     sensitive: false,
   },
   {
@@ -55,6 +93,8 @@ export const SUITES = [
     cmd: "bunx",
     args: ["playwright", "test", "tests/userscript-guest.spec.ts"],
     url: true,
+    id: "userscript-guest",
+    paths: USERSCRIPT,
     sensitive: false,
   },
   {
@@ -62,6 +102,8 @@ export const SUITES = [
     cmd: "bunx",
     args: ["playwright", "test", "tests/userscript-redirect.spec.ts"],
     url: true,
+    id: "userscript-redirect",
+    paths: [...USERSCRIPT, "lib/normalizeUrl.ts"],
     sensitive: false,
   },
   {
@@ -69,6 +111,8 @@ export const SUITES = [
     cmd: "bun",
     args: ["scripts/qa/qa-words.mjs"],
     base: true,
+    id: "words",
+    paths: ["app/(app)/words/**", "app/(app)/alphabet/**", "app/api/words/**", "lib/words/**"],
     sensitive: true,
   },
   {
@@ -76,15 +120,26 @@ export const SUITES = [
     cmd: "bun",
     args: ["scripts/qa/qa-read-epub.mjs"],
     base: true,
+    id: "read-epub",
+    paths: READ,
     sensitive: true,
   },
   // Serverless: a tap on another word moves the selection, never two drawn (WebKit + Chromium).
-  { name: "READ SEL ONE", cmd: "bun", args: ["scripts/qa/qa-read-sel-one.ts"], sensitive: true },
+  {
+    name: "READ SEL ONE",
+    id: "read-sel-one",
+    paths: [], // serverless: its entry's own imports (use-reader-select, reader-select)
+    cmd: "bun",
+    args: ["scripts/qa/qa-read-sel-one.ts"],
+    sensitive: true,
+  },
   {
     name: "SYNC (db-sync-matrix)",
     cmd: "bunx",
     args: ["playwright", "test", "tests/db-sync-matrix.spec.ts"],
     url: true,
+    id: "sync",
+    paths: [...USERSCRIPT, "app/api/fsrs/**", "app/(app)/list/**", "app/[locale]/**"],
     sensitive: true,
   },
   // The real /embed/partner in a frame on another origin: ready, ticket, private keys, no owner boots.
@@ -93,6 +148,14 @@ export const SUITES = [
     cmd: "bun",
     args: ["scripts/qa/qa-partner-frame-route.ts"],
     base: true,
+    id: "partner-frame",
+    paths: [
+      "app/embed/**",
+      "src/partner*.ts",
+      "packages/debug-chat/**",
+      "lib/partner-*.ts",
+      "app/api/chat/**",
+    ],
     sensitive: true,
   },
 ];

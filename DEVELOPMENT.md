@@ -259,12 +259,13 @@ The project uses Husky, split by speed:
 
 **`pre-push`** (before sharing, cheapest first):
 
-- `bun run lint` (whole repo, check-only), typecheck, then the unit suite with
-  its coverage gate (`bun run test:unit -- --coverage`) — about half a minute
-- then `bun run qa:all` — builds the OpenNext Worker and runs the
-  API/UI/sync/userscript suites against `wrangler dev` on local D1 (see the
-  qa:all section above). CI runs qa:all only nightly, so this hook is the
-  per-change integration gate.
+- `bun run lint` (whole repo, check-only), typecheck, then only the unit tests
+  that reach the change (`bun scripts/gate/affected.ts unit`)
+- then only the qa:all suites the change reaches (`bun scripts/gate/affected.ts
+  qa`, which runs `qa-all.mjs --suites=…`, or nothing). A change to the
+  toolchain, test setup or shared core runs the full unit suite with coverage
+  and the full qa:all; `LIANKI_GATE_FULL=1` forces it. CI runs everything
+  ([docs/shipping.md](docs/shipping.md), "Only what changed").
 - only qa:all's time-sensitive suites wait, for load-based admission to a
   machine-wide gate; everything else starts at once
   ([docs/shipping.md](docs/shipping.md), "Admission by load")

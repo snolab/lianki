@@ -11,8 +11,10 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - **NEVER `--no-verify`** — pre-commit (seconds, staged files only) scans
   secrets, runs oxlint --fix + oxfmt, and syncs the userscript build,
   `lianki.meta.js` and `@version`; pre-push runs whole-repo lint, typecheck,
-  the unit suite with its coverage gate, then `qa:all`. Bypassing causes meta
-  drift, broken userscript auto-updates, and failures CI finds later.
+  then only the unit tests and `qa:all` suites the change reaches
+  (`scripts/gate/affected.ts`; the full set, with coverage, runs in CI).
+  Bypassing causes meta drift, broken userscript auto-updates, and failures CI
+  finds later.
 - **NEVER `git reset --hard`** to move a branch — it silently destroys
   uncommitted work. Use `git reset --keep`, which aborts instead of overwriting.
 - Always bump `@version` in `lianki.user.js` when changing the userscript.
@@ -32,10 +34,11 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
 bun test unit/x.test.ts  # one test file, no queue
-bun run test:unit      # whole unit suite, starts at once
+bun run test:unit      # whole unit suite, starts at once (CI adds -- --coverage)
 bun fix                # oxlint --fix + oxfmt
 bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run it)
-bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push); time-sensitive suites wait for load-based admission
+bun run qa:all         # full integration gate — CI merge queue + nightly; time-sensitive suites wait for load-based admission
+bun scripts/gate/affected.ts plan  # what pre-push runs for this change, and why (LIANKI_GATE_FULL=1 push: everything)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 

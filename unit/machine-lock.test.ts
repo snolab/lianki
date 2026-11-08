@@ -852,7 +852,7 @@ describe("what is wired to the lock", () => {
     expect(pkg.scripts["test:unit"]).toBe("bun test");
     expect(pkg.scripts["qa:all"]).toBe("bun scripts/qa/qa-all.mjs");
     const qaAll = readFileSync(join(import.meta.dir, "../scripts/qa/qa-all.mjs"), "utf8");
-    expect(qaAll).toContain("await runSuites(SUITES, BASE, log)");
+    expect(qaAll).toContain("await runSuites(CHOSEN, BASE, log)");
   });
 
   test("the suites' time-sensitive tags are data in one list, and every suite has one", async () => {
@@ -865,11 +865,13 @@ describe("what is wired to the lock", () => {
     expect(sensitive).toEqual(["WORDS", "READ EPUB", "READ SEL ONE", "SYNC", "PARTNER FRAME"]);
   });
 
-  test("pre-push runs lint, typecheck, unit, qa:all in order, with no gate of its own", () => {
+  test("pre-push runs lint, typecheck, unit, qa in order, with no gate of its own", () => {
     const at = (s: string) => hook.indexOf(`\n${s}`);
     expect(at("bun run lint")).toBeLessThan(at("bun run typecheck"));
-    expect(at("bun run typecheck")).toBeLessThan(at("bun run test:unit"));
-    expect(at("bun run test:unit")).toBeLessThan(at("bun run qa:all"));
+    expect(at("bun run typecheck")).toBeLessThan(at("bun scripts/gate/affected.ts unit"));
+    expect(at("bun scripts/gate/affected.ts unit")).toBeLessThan(
+      at("bun scripts/gate/affected.ts qa"),
+    );
     expect(hook).not.toMatch(/\n[^#\n]*machine-lock/);
     expect(hook).not.toMatch(/\n[^#\n]*(until|while true|retry)/);
   });

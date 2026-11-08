@@ -1,12 +1,20 @@
 name: CI
 
-# Mirrors the pre-push hook minus qa:all: OXC lint + format check, typecheck, unit +
-# coverage. ~20 s, and it is the only check main's deploy waits for
-# (deploy-worker.yml runs on this workflow's success).
+# The full gate, where the pre-push hook runs only what a change can reach
+# (scripts/gate/affected.ts; owner, 2026-11-08: "unchanged areas are not
+# re-tested on pre-push; the full set stays in CI"):
 #
-# The integration gate (`bun run qa:all`, ~4 min) is not here: it runs in the
-# pre-push hook on every pushed commit, and nightly on main in nightly-qa.yml
-# (owner, 2026-10-31: the deploy should not wait for it).
+# - `checks` — OXC lint + format check, typecheck, the WHOLE unit suite with its
+#   coverage gate. Every PR, every merge group, every push to main (~20 s).
+# - `qa` — the whole `bun run qa:all` (OpenNext build → wrangler dev on local
+#   D1 → every suite), in the merge queue only, so nothing lands on main
+#   without it; also nightly on main (nightly-qa.yml). A PR does not wait for it
+#   and main's deploy does not either (owner, 2026-10-31).
+# - `gate` — named `Typecheck + unit`, the one required check: green when
+#   `checks` passed and `qa` passed or was skipped (it is skipped outside the
+#   merge queue). Branch protection is unchanged by adding `qa`.
+#
+# deploy-worker.yml runs on this workflow's success on main.
 on:
   push:
     branches: [main]
@@ -26,8 +34,8 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
-  unit:
-    name: Typecheck + unit
+  checks:
+    name: Lint + typecheck + unit
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -74,4 +82,44 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          bash scripts/ci/slack-alert.sh ":red_circle: main is red at ${GITHUB_SHA::7} — Typecheck + unit failed, so the deploy is held: ${RUN_URL}"
+          bash scripts/ci/slack-alert.sh ":red_circle: main is red at ${GITHUB_SHA::7} — Lint + typecheck + unit failed, so the deploy is held: ${RUN_URL}"
+
+  # The whole qa:all, merge queue only. Same container and steps as nightly-qa.yml
+  # (see the reasons there: browsers baked into the image, Node 24, HOME=/root
+  # for Firefox). ~6-7 min on a runner.
+  qa:
+    name: qa:all (merge queue)
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
+    env:
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && apt-get install -y unzip xvfb
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: qa:all
+        run: bun run qa:all
+        env:
+          HOME: /root
+
+  # The required check. Its name is what branch protection names, so it stays
+  # `Typecheck + unit` though it now stands for both jobs above.
+  gate:
+    name: Typecheck + unit
+    needs: [checks, qa]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: checks passed, qa passed or skipped
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          QA: ${{ needs.qa.result }}
+        run: |
+          echo "checks: $CHECKS, qa: $QA"
+          [ "$CHECKS" = "success" ] || exit 1
+          [ "$QA" = "success" ] || [ "$QA" = "skipped" ] || exit 1
