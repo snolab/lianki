@@ -1580,7 +1580,17 @@ The floating buttons above the input (scroll-down, ask jump) sit the bar's
 measured height higher (`etaH`, a ResizeObserver on its slot), so they never
 cover it (owner, 2026-11-08, Android); `scripts/dev/debug-chat-eta-overlap-qa.mjs`
 checks it at 412×915 and 390×844, light and dark, scrolled up, in and out of
-full screen. Progress is time
+full screen.
+
+Task titles are "name: description" (ASCII ':' or full-width '：';
+`eta.ts splitTitle`): the bar and the minimized chat show the name, the list
+shows the name in bold and the description muted (`ETA_COLORS.muted`, AA on
+every fill too). Minimized, while any timed task is open, the in-progress line
+is the two ends instead of the ≈ summary (`etaEnds`, `etaParts`): the nearest
+open leaf and the open task due last, "Fill line 5 min · Box ETA 40 min", in
+whole minutes from now (`etaMinutes`, 16 locales). Each name truncates, the
+nearer one first; the minutes never do; the full line is the title. With no
+timed task the ≈ summary shows as before. Progress is time
 against the estimate (a done task is full and leaves after 8 s); times are
 whole minutes rounded up, in Intl's narrow units. Strings: `eta*` in
 learning-partner.content.ts, each with its context line.

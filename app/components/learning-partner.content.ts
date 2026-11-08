@@ -1793,6 +1793,24 @@ const learningPartnerContent = {
       mr: "{n} कामे",
       ko: "작업 {n}개",
     }),
+    etaMinutes: t({
+      en: "{n} min",
+      zh: "{n} 分钟",
+      hi: "{n} मिनट",
+      es: "{n} min",
+      fr: "{n} min",
+      ar: "{n} د",
+      bn: "{n} মিনিট",
+      pt: "{n} min",
+      ru: "{n} мин",
+      ur: "{n} منٹ",
+      id: "{n} mnt",
+      de: "{n} Min.",
+      ja: "{n} 分",
+      sw: "dak. {n}",
+      mr: "{n} मि.",
+      ko: "{n}분",
+    }),
     etaLeft: t({
       en: "{t} left",
       zh: "还剩 {t}",
@@ -2222,6 +2240,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Button next to the delete question in the chat's inbox panel: cancels and keeps the file. Imperative verb, one word (keep, not save).",
   etaTasks:
     "Part of the one-line progress bar above the chat input, when several tasks the assistant is working on have a time estimate: how many there are. {n} becomes a number; keep it. A short count, no verb; other parts follow after a middle dot.",
+  etaMinutes:
+    "Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop.",
   etaLeft:
     "Part of the progress bar above the chat input, and of each task's row in the state tree: how much time is left until the assistant's estimate runs out. {t} becomes a short duration such as '25m' or '1h 5m' (already localized); keep it. Very short, no full stop.",
   etaNext:

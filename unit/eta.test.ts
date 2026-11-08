@@ -17,12 +17,17 @@ import {
   LINGER_MS,
   dueTasks,
   etaClock,
+  etaEnds,
+  etaParts,
+  etaPartsText,
   etaSummary,
   etaTasks,
   nextWake,
   shortLeft,
+  splitTitle,
   taskFraction,
 } from "@lianki/debug-chat/eta";
+import { FrontierLines } from "@lianki/debug-chat/Frontier";
 import {
   ETA_COLORS,
   EtaBar,
@@ -554,6 +559,28 @@ describe("the bar and the list, rendered", () => {
     expect(out).toContain('data-state="done"');
     expect(out).toContain("18m left");
     expect(out.match(/data-testid="debug-chat-eta-fill"/g)?.length).toBe(3);
+    // A "name: description" title: the name bold, the description muted.
+    const row = html(
+      createElement(EtaList, {
+        tasks: [task({ id: "/d", title: "Box ETA: on the box", at: 30 * MIN })],
+        now: MIN,
+        strings: CHAT_STRINGS_EN,
+      }),
+    );
+    expect(row).toMatch(/<span class="font-semibold">Box ETA<\/span>/);
+    expect(row).toMatch(/data-testid="debug-chat-eta-desc"[^>]*> on the box</);
+    // The bar shows the name only.
+    const one = html(
+      createElement(EtaBar, {
+        tasks: [task({ id: "/d", title: "Box ETA: on the box", at: 30 * MIN })],
+        now: MIN,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+        lang: "en",
+      }),
+    );
+    expect(one).toContain("Box ETA · 29m left");
+    expect(one).not.toContain("on the box");
     expect(out).not.toContain("debug-chat-eta-meter");
     expect(out).toContain(CHAT_STRINGS_EN.etaList);
     expect(html(createElement(EtaList, { tasks: [], now: 0, strings: CHAT_STRINGS_EN }))).toBe("");
@@ -562,6 +589,81 @@ describe("the bar and the list, rendered", () => {
     let kept = false;
     keepFocus({ preventDefault: () => (kept = true) });
     expect(kept).toBe(true);
+  });
+});
+
+describe("task titles: name, then description", () => {
+  it("splits at the first ASCII or full-width colon; no colon is all name", () => {
+    expect(splitTitle("Box ETA: the bar on my-snomiao")).toEqual({
+      name: "Box ETA",
+      desc: "the bar on my-snomiao",
+    });
+    expect(splitTitle("盒子进度条：在盒子上显示")).toEqual({
+      name: "盒子进度条",
+      desc: "在盒子上显示",
+    });
+    expect(splitTitle("a: b: c")).toEqual({ name: "a", desc: "b: c" });
+    expect(splitTitle("  Native swipe ")).toEqual({ name: "Native swipe", desc: "" });
+    expect(splitTitle(": only a description")).toEqual({ name: "only a description", desc: "" });
+  });
+});
+
+describe("the minimized line: the nearest task and the last, in minutes", () => {
+  const T = [
+    task({ id: "/box", title: "Box: the whole thing", start: 0, at: 40 * MIN }),
+    task({ id: "/box/eta", title: "ETA bar: on the box", start: 0, at: 5 * MIN }),
+    task({ id: "/box/docs", title: "Docs", start: 0, at: 12 * MIN }),
+    task({ id: "/old", title: "Old", at: 1 * MIN, done: true, doneAt: 0 }),
+  ];
+  it("small: the soonest open leaf; big: the open task due last", () => {
+    const e = etaEnds(T)!;
+    expect(e.small?.id).toBe("/box/eta");
+    expect(e.big.id).toBe("/box");
+    // An open parent due sooner than its child is not a leaf.
+    const p = etaEnds([
+      task({ id: "/w", at: 2 * MIN }),
+      task({ id: "/w/x", at: 9 * MIN }),
+      task({ id: "/z", at: 9 * MIN }),
+    ])!;
+    expect(p.small?.id).toBe("/w/x");
+    // A tie for last: the shallower.
+    expect(p.big.id).toBe("/z");
+    expect(etaEnds([task({ id: "/one" })])).toEqual({ big: task({ id: "/one" }) });
+    expect(etaEnds([task({ done: true })])).toBeNull();
+    expect(etaEnds([])).toBeNull();
+  });
+  it("the two numbers are whole minutes from now, rounded up; names only", () => {
+    const parts = etaParts(T, 2 * MIN + 1000, CHAT_STRINGS_EN.etaMinutes)!;
+    expect(parts).toEqual([
+      { name: "ETA bar", min: "3 min" },
+      { name: "Box", min: "38 min" },
+    ]);
+    expect(etaPartsText(parts)).toBe("ETA bar 3 min · Box 38 min");
+    // Past due: 0, never negative.
+    expect(etaParts([task({ at: MIN })], 5 * MIN, "{n} 分钟")).toEqual([
+      { name: "A", min: "0 分钟" },
+    ]);
+    expect(etaParts([], 0, "{n} min")).toBeNull();
+  });
+  it("drawn as parts: names truncate, minutes never; the full line in the title", () => {
+    const out = renderToString(
+      createElement(FrontierLines, {
+        frontier: {
+          doing: {
+            text: "ETA bar 3 min · Box 38 min",
+            parts: [
+              { name: "ETA bar", min: "3 min" },
+              { name: "Box", min: "38 min" },
+            ],
+          },
+        },
+      }),
+    ).replace(/<!-- -->/g, "");
+    expect(out).toContain('title="ETA bar 3 min · Box 38 min"');
+    expect(out.match(/data-testid="debug-chat-frontier-eta-part"/g)?.length).toBe(2);
+    expect(out).toMatch(/flex-shrink:100/);
+    expect(out).toMatch(/class="shrink-0 tabular-nums">3 min</);
+    expect(out).toMatch(/class="min-w-0 truncate">ETA bar</);
   });
 });
 
@@ -574,8 +676,11 @@ describe("the line's fill keeps its text readable", () => {
   for (const theme of ["light", "dark"] as const)
     it(`${theme}: the text is AA (4.5:1) on the track and on every fill`, () => {
       const c = ETA_COLORS[theme];
-      for (const bg of [c.track, c.fill, c.past, c.done])
+      for (const bg of [c.track, c.fill, c.past, c.done]) {
         expect(contrastRatio(lum(c.text), lum(bg))).toBeGreaterThanOrEqual(4.5);
+        // A row's description, muted, too.
+        expect(contrastRatio(lum(c.muted), lum(bg))).toBeGreaterThanOrEqual(4.5);
+      }
       // The fill still shows against the track.
       for (const bg of [c.fill, c.past, c.done])
         expect(contrastRatio(lum(c.track), lum(bg))).toBeGreaterThanOrEqual(1.2);

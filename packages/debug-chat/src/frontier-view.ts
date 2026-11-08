@@ -16,6 +16,12 @@ export type FrontierItem = { title: string; path?: string; assignee?: Assignee }
  */
 export type FrontierLine = {
   text: string;
+  /**
+   * Timed tasks (eta.ts etaParts): the line is drawn as these parts, each a
+   * name that truncates and minutes that never do, the first part yielding
+   * space first. `text` is the whole line (title, screen readers).
+   */
+  parts?: { name: string; min: string }[];
   count?: number;
   items?: FrontierItem[];
   assignee?: Assignee;

@@ -1,7 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { type EtaTask, etaSummary, shortLeft, shownTasks, taskFraction } from "./eta";
+import {
+  type EtaTask,
+  etaSummary,
+  shortLeft,
+  shownTasks,
+  splitTitle,
+  taskFraction,
+} from "./eta";
 import type { ChatStrings } from "./wire";
 
 /**
@@ -24,6 +31,7 @@ export const keepFocus = (e: { preventDefault(): void }) => e.preventDefault();
 export const ETA_COLORS = {
   light: {
     text: "oklch(0.3 0.02 260)",
+    muted: "oklch(0.45 0.02 260)",
     track: "oklch(0.96 0.006 260)",
     fill: "oklch(0.87 0.06 250)",
     past: "oklch(0.89 0.07 75)",
@@ -31,6 +39,7 @@ export const ETA_COLORS = {
   },
   dark: {
     text: "oklch(0.93 0.01 260)",
+    muted: "oklch(0.8 0.01 260)",
     track: "oklch(0.24 0.01 260)",
     fill: "oklch(0.38 0.08 250)",
     past: "oklch(0.4 0.07 65)",
@@ -41,6 +50,22 @@ export const ETA_COLORS = {
 type Tone = "fill" | "past" | "done";
 const both = (k: keyof (typeof ETA_COLORS)["light"]) =>
   `light-dark(${ETA_COLORS.light[k]}, ${ETA_COLORS.dark[k]})`;
+
+/** A list row's title: the name in bold, the description muted (both AA on every fill). */
+function TitleParts({ title }: { title: string }) {
+  const { name, desc } = splitTitle(title);
+  return (
+    <span title={title} className="min-w-0 flex-1 truncate">
+      <span className="font-semibold">{name}</span>
+      {desc && (
+        <span data-testid="debug-chat-eta-desc" style={{ color: both("muted") }}>
+          {" "}
+          {desc}
+        </span>
+      )}
+    </span>
+  );
+}
 
 /** A task's (or the summary's) tone: done, past its estimate, or running. */
 const toneOf = (done: boolean, past: boolean): Tone => (done ? "done" : past ? "past" : "fill");
@@ -112,7 +137,7 @@ export function taskState(t: EtaTask, now: number, s: EtaText, lang?: string) {
 export function summaryText(tasks: readonly EtaTask[], now: number, s: EtaText, lang?: string) {
   const sum = etaSummary(tasks, now);
   if (!sum.count) return "";
-  if (sum.only) return `${sum.only.title} · ${taskState(sum.only, now, s, lang)}`;
+  if (sum.only) return `${splitTitle(sum.only.title).name} · ${taskState(sum.only, now, s, lang)}`;
   const parts = [s.etaTasks.replace("{n}", String(sum.count))];
   if (sum.leftMs === null) parts.push(s.etaDone);
   else if (sum.leftMs <= 0) parts.push(s.etaReached);
@@ -200,7 +225,7 @@ export function EtaList({
               tone={toneOf(!!t.done, t.at <= now)}
               className="px-1.5 py-px"
             >
-              <span className="min-w-0 flex-1 truncate">{t.title}</span>
+              <TitleParts title={t.title} />
               <span className="shrink-0 tabular-nums">{taskState(t, now, strings, lang)}</span>
             </FillLine>
           </li>

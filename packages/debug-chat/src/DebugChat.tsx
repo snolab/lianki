@@ -66,7 +66,7 @@ import { learnSttHint } from "./stt-hint";
 import { droppedLines, forgetDropped, keepDroppedLines } from "./stt-dropped";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
-import { type EtaTask, etaClock, etaTasks } from "./eta";
+import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
 import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry } from "./bar-geometry";
@@ -1297,13 +1297,30 @@ export function DebugChat({
       else if (top < box.top) el.scrollTop -= box.top - top;
     }
   }, [nav, open]);
-  /** The minimized bar's lines: the host's, else the tree's frontier. */
+  /**
+   * The minimized bar's lines: the host's, else the tree's frontier. With a
+   * timed task (the ETA bar on), its in-progress line is the two ends instead
+   * of the ≈ summary: "<nearest task> 5 min · <last task> 40 min" (eta.ts).
+   */
+  const treeLines = treeFrontier(treeData.root, {
+    locale: globalThis.document?.documentElement.lang,
+    inProgress: ui.nowDoing,
+  });
+  const etaLine = etaBar ? etaParts(etaList, etaNow, t.etaMinutes) : null;
   const shownFrontier =
     frontier ??
-    treeFrontier(treeData.root, {
-      locale: globalThis.document?.documentElement.lang,
-      inProgress: ui.nowDoing,
-    });
+    (etaLine
+      ? {
+          ...treeLines,
+          doing: {
+            text: etaPartsText(etaLine),
+            parts: etaLine,
+            items: etaList
+              .filter((x) => !x.done)
+              .map((x) => ({ title: x.title, path: x.id.startsWith("/") ? x.id : undefined })),
+          },
+        }
+      : treeLines);
   /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
   const [treeFade, setTreeFade] = useState(false);
   const onTreeScroll = () => {

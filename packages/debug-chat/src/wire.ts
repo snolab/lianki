@@ -665,6 +665,8 @@ export type ChatStrings = {
   etaDone: string;
   /** Screen-reader label and tooltip of the progress bar above the chat input: tapping it opens the state tree (the status panel) listing every task with its own bar and time left. Imperative verb phrase. */
   etaOpen: string;
+  /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
+  etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
   etaList: string;
 };
@@ -769,6 +771,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaDone: "done",
   etaOpen: "Show all tasks and their ETAs in the state tree",
   etaList: "Timed tasks",
+  etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",
   attachGroupView: "View",
   attachTree: "State tree",
