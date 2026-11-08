@@ -227,7 +227,8 @@ export function quantile(sorted: readonly number[], q: number): number {
 /**
  * Item bounds for a user from their own reads in this language: speed = the
  * median words per second, lower = their LOW_Q read before a swipe, upper =
- * their HIGH_Q, never past the upper end of the 1–3 minute rule. Before
+ * their HIGH_Q, within the 1–3 minute rule (never under its lower end, never
+ * past its upper end). Before
  * MIN_SAMPLES reads: the prior speed, REACTION_SECONDS, and that upper end
  * (owner, 2026-11-05: a whole transcript paragraph came as one item). `seconds` is a span the user
  * picked for g=time.
@@ -245,8 +246,12 @@ export function itemBounds(
   const speeds = ok.map((s) => s.words / (s.dwellMs / 1000)).sort((a, b) => a - b);
   const wps = user ? quantile(speeds, 0.5) : PRIOR_WORDS_PER_SECOND;
   const minSeconds = user ? quantile(dwell, LOW_Q) : REACTION_SECONDS;
+  // Never under the rule's lower end either: his long reads are measured on
+  // the items he was given, so quick swipes over small items would teach
+  // smaller ones, down to a sentence each (owner, 2026-11-08 20:37 JST:
+  // every sentence its own block).
   const maxSeconds = user
-    ? Math.min(CHUNK_SECONDS.high, Math.max(minSeconds, quantile(dwell, HIGH_Q)))
+    ? Math.min(CHUNK_SECONDS.high, Math.max(minSeconds, CHUNK_SECONDS.low, quantile(dwell, HIGH_Q)))
     : CHUNK_SECONDS.high;
   const b: ItemBounds = {
     minSeconds,
