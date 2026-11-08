@@ -329,6 +329,8 @@ export function WordReview({
             exitLabel: t.backToBook.value,
             key: place,
             fill: rowFill,
+            // Every row one line taller than /words' (owner, 2026-11-08 19:16 JST).
+            extraLines: 1,
           }}
         />
       ) : (

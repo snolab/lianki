@@ -539,7 +539,7 @@ export function LiveTail({
       {open && (
         <div
           ref={cardEl}
-          className={`fixed inset-x-3 z-50 mx-auto max-h-[40vh] max-w-[34em] overflow-auto rounded-2xl bg-base-100/90 p-4 shadow-lg backdrop-blur ${above ? "top-3" : "bottom-3"}`}
+          className={`fixed inset-x-3 z-50 mx-auto max-h-[calc(40vh+1lh)] max-w-[34em] overflow-auto rounded-2xl bg-base-100/90 p-4 shadow-lg backdrop-blur ${above ? "top-3" : "bottom-3"}`}
           data-testid="read-live-card"
           onScroll={(e) => {
             const b = e.currentTarget;

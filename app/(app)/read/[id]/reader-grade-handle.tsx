@@ -112,7 +112,7 @@ export function NewWordStrip({
   return (
     <>
       {context && (
-        <p className="mt-1 line-clamp-2 text-sm opacity-75" data-testid="read-new-word-context">
+        <p className="mt-1 line-clamp-3 text-sm opacity-75" data-testid="read-new-word-context">
           {context}
         </p>
       )}
