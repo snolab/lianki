@@ -57,10 +57,16 @@ describe("QA browsers are silent", () => {
   });
 
   test("qa:all runs the audio-free proof before every other suite", () => {
-    const src = readFileSync("scripts/qa/qa-all.mjs", "utf8");
-    const suites = src.slice(src.indexOf("const suites = ["));
+    // The list is scripts/qa/suites.mjs; plain suites run first, in list order
+    // (scripts/qa/gate-suites.ts), so the first plain suite runs first of all.
+    const src = readFileSync("scripts/qa/suites.mjs", "utf8");
+    const suites = src.slice(src.indexOf("export const SUITES = ["));
     expect(suites.indexOf("qa-audio-free.mjs")).toBeGreaterThan(0);
     expect(suites.indexOf("qa-audio-free.mjs")).toBeLessThan(suites.indexOf("qa-api.mjs"));
+    expect(suites.slice(0, suites.indexOf("qa-audio-free.mjs"))).not.toContain("sensitive: true");
+    expect(readFileSync("scripts/qa/gate-suites.ts", "utf8")).toContain(
+      "for (const s of suites.filter((x) => !x.sensitive)) run(s);",
+    );
   });
 
   test("always headless: no launch asks for a window", () => {

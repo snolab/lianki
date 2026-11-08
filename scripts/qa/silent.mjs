@@ -14,6 +14,9 @@
 //   zero-gain node and turns off speechSynthesis. The app's own read-aloud switch
 //   (lk:words-sound) is left alone: turning it off hides the voice settings the
 //   suites test, and every audio output is already silent.
+// - Every context: Playwright's 30 s action/navigation default as a load budget
+//   (load-budget.mjs), so a busy machine is not read as a broken page.
+import { budget } from "./load-budget.mjs";
 
 export const MUTE_ARGS = ["--mute-audio"];
 /** A fake capture device: getUserMedia never reaches the real microphone. */
@@ -100,6 +103,14 @@ function silentOptions(type, options) {
 
 const silenced = new WeakSet();
 
+/** Playwright's own 30 s default, as a load budget; a suite's explicit timeouts still win. */
+function budgetDefaults(ctx) {
+  const ms = budget(30_000);
+  ctx.setDefaultTimeout?.(ms);
+  ctx.setDefaultNavigationTimeout?.(ms);
+  return ctx;
+}
+
 /** browserType.launch, muted. Its contexts and pages all carry the init script. */
 export async function launchSilent(type, options = {}) {
   const browser = await type.launch(silentOptions(type, options));
@@ -108,7 +119,7 @@ export async function launchSilent(type, options = {}) {
   browser.newContext = async (o) => {
     const ctx = await newContext(o);
     await ctx.addInitScript(SILENT_INIT);
-    return ctx;
+    return budgetDefaults(ctx);
   };
   browser.newPage = async (o) => (await browser.newContext(o)).newPage();
   silenced.add(browser);
@@ -119,12 +130,12 @@ export async function launchSilent(type, options = {}) {
 export async function newSilentContext(browser, options = {}) {
   const ctx = await browser.newContext(options);
   if (!silenced.has(browser)) await ctx.addInitScript(SILENT_INIT);
-  return ctx;
+  return budgetDefaults(ctx);
 }
 
 /** browserType.launchPersistentContext, muted and silenced. */
 export async function launchPersistentSilent(type, userDataDir, options = {}) {
   const ctx = await type.launchPersistentContext(userDataDir, silentOptions(type, options));
   await ctx.addInitScript(SILENT_INIT);
-  return ctx;
+  return budgetDefaults(ctx);
 }

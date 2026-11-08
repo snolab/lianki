@@ -7,6 +7,7 @@
 //   QA_BASE=http://localhost:3000 bun scripts/qa/qa-sign-out.mjs
 import { chromium, webkit } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
+import { budget } from "./load-budget.mjs";
 
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const PW = "qa-test-pass-1234";
@@ -39,10 +40,10 @@ for (const [name, type] of [
     await page.getByRole("button", { name: /sign in/i }).click();
     const notNow = page.getByRole("button", { name: "Not now" });
     await Promise.race([
-      page.waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: 30000 }),
-      notNow.waitFor({ timeout: 30000 }).then(() => notNow.click()),
+      page.waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: budget(30000) }),
+      notNow.waitFor({ timeout: budget(30000) }).then(() => notNow.click()),
     ]);
-    await page.waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: 30000 });
+    await page.waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: budget(30000) });
     check((await getSession())?.user?.email === email, `${name}: signed in`);
     check(Boolean(await sessionCookie()), `${name}: session cookie set`);
 
@@ -51,9 +52,9 @@ for (const [name, type] of [
     await page.evaluate(() => localStorage.setItem("lk:byok", '{"v":1,"apiKey":"qa-not-a-key"}'));
     await page.locator("[data-profile-menu]").click();
     const button = page.locator("[data-sign-out]");
-    await button.waitFor({ timeout: 10000 });
+    await button.waitFor({ timeout: budget(10000) });
     await Promise.all([
-      page.waitForURL((u) => !/\/profile/.test(u.pathname), { timeout: 30000 }),
+      page.waitForURL((u) => !/\/profile/.test(u.pathname), { timeout: budget(30000) }),
       button.click(),
     ]);
     await page.waitForLoadState("networkidle").catch(() => {});

@@ -18,23 +18,37 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type Holder,
+  LOAD_RATIO_ENV,
   LOCK_ENV,
   LONG_HOLD_MS,
+  MAX_RUNS_ENV,
+  MIN_FREE_GB_ENV,
   PROGRESS_EVERY_MS,
+  SETTLE_S_ENV,
   TOKEN_ENV,
+  acquireGate,
+  admission,
   describeHolder,
+  gateRules,
   isCi,
   isHolderAlive,
   isNarrowedSuite,
   isReentrant,
+  isReentrantAny,
   jst,
+  liveHolders,
   lockPath,
   makeHolder,
+  measureRoom,
   parseLockArgs,
+  parseVmStat,
   processStartTime,
   readLock,
   release,
+  shouldBackOff,
+  slotPaths,
   tryAcquire,
+  tryAcquireSlot,
   waitReporter,
 } from "../scripts/dev/machine-lock-lib";
 
@@ -63,12 +77,24 @@ const until = async (what: string, ok: () => boolean) => {
   }
 };
 
-/** The test may itself run under the lock, or in CI: children start clean. */
+/**
+ * The test may itself run under the lock, or in CI: children start clean. One
+ * run at a time unless a test asks for more (`roomy`), so the one-run rules are
+ * tested as such.
+ */
+/** Admission that only the cap limits: no load, memory or settle wait. */
+const roomy = (runs: number) => ({
+  [MAX_RUNS_ENV]: String(runs),
+  [LOAD_RATIO_ENV]: "1000",
+  [MIN_FREE_GB_ENV]: "0",
+  [SETTLE_S_ENV]: "0",
+});
+
 const cleanEnv = (extra: Record<string, string> = {}) => {
   const env: NodeJS.ProcessEnv = { ...process.env };
   delete env.CI;
   delete env[TOKEN_ENV];
-  return { ...env, [LOCK_ENV]: lock, LIANKI_GATE_POLL_MS: "20", ...extra };
+  return { ...env, [LOCK_ENV]: lock, [MAX_RUNS_ENV]: "1", LIANKI_GATE_POLL_MS: "20", ...extra };
 };
 
 /** Starts the wrapper around a shell line; stderr and stdout go to `<name>.log`. */
@@ -316,6 +342,152 @@ describe("the lock file", () => {
   });
 });
 
+describe("admission by load", () => {
+  const GB = 1024 ** 3;
+  const rules = gateRules({}, 18);
+  const T = Date.parse("2026-11-08T11:00:00Z");
+  const runningFor = (s: number, token = `r${s}`) =>
+    fakeHolder({ token, acquiredAt: new Date(T - s * 1000).toISOString() });
+  const room = (load: number, freeGb: number | null = 8) => ({
+    load,
+    cores: 18,
+    availBytes: freeGb === null ? null : freeGb * GB,
+  });
+
+  test("defaults: load under 0.9 x cores, 2 GB free, 15 s settle, cap = cores; env overrides", () => {
+    expect(rules).toEqual({ maxRuns: 18, loadRatio: 0.9, minFreeBytes: 2 * GB, settleMs: 15_000 });
+    expect(
+      gateRules(
+        {
+          [MAX_RUNS_ENV]: "3",
+          [LOAD_RATIO_ENV]: "0.5",
+          [MIN_FREE_GB_ENV]: "6",
+          [SETTLE_S_ENV]: "0",
+        },
+        18,
+      ),
+    ).toEqual({ maxRuns: 3, loadRatio: 0.5, minFreeBytes: 6 * GB, settleMs: 0 });
+    for (const bad of ["", "x", "-1"]) {
+      expect(gateRules({ [MAX_RUNS_ENV]: bad, [LOAD_RATIO_ENV]: bad }, 18)).toEqual(rules);
+    }
+    expect(gateRules({}, 0).maxRuns).toBe(1);
+  });
+
+  test("nothing else running: always admitted, however busy the machine", () => {
+    expect(admission([], room(500, 0.1), rules, T).admit).toBe(true);
+  });
+
+  test("beside others: admitted only with room — load and memory, both", () => {
+    const others = [runningFor(120)];
+    expect(admission(others, room(10), rules, T)).toEqual({
+      admit: true,
+      why: "room: load 10.0/16.2, mem 8.0 GB free",
+    });
+    expect(admission(others, room(16.2), rules, T)).toEqual({
+      admit: false,
+      why: "load 16.2/16.2 is too high (mem 8.0 GB free)",
+    });
+    expect(admission(others, room(4, 1.5), rules, T)).toEqual({
+      admit: false,
+      why: "mem 1.5 GB free, under 2.0 GB (load 4.0/16.2)",
+    });
+    // Memory unknown (vm_stat missing): judged by load alone.
+    expect(admission(others, room(4, null), rules, T).admit).toBe(true);
+  });
+
+  test("not while the newest run is younger than the settle time: loadavg lags", () => {
+    expect(admission([runningFor(120), runningFor(5)], room(1), rules, T)).toEqual({
+      admit: false,
+      why: "the newest run started 5 s ago; its load shows in 10 s",
+    });
+    expect(admission([runningFor(15)], room(1), rules, T).admit).toBe(true);
+    // A holder from before admission has only startedAt.
+    const old = fakeHolder({ startedAt: new Date(T - 3000).toISOString() });
+    expect(admission([old], room(1), rules, T).admit).toBe(false);
+  });
+
+  test("the cap is a safety net, not the normal limit", () => {
+    const capped = { ...rules, maxRuns: 2 };
+    expect(admission([runningFor(100, "a"), runningFor(90, "b")], room(0), capped, T)).toEqual({
+      admit: false,
+      why: "2 runs, the safety cap (LIANKI_GATE_MAX_RUNS)",
+    });
+  });
+
+  test("two admitted in the same moment: the later one backs off, exactly one stays", () => {
+    const a = runningFor(0, "a");
+    const b = { ...runningFor(0, "b") };
+    expect(shouldBackOff(a, [b], rules)).toBe(false);
+    expect(shouldBackOff(b, [a], rules)).toBe(true);
+    const later = runningFor(-2, "z");
+    expect(shouldBackOff(later, [a], rules)).toBe(true);
+    expect(shouldBackOff(a, [later], rules)).toBe(false);
+    expect(shouldBackOff(a, [runningFor(60, "old")], rules)).toBe(false);
+  });
+
+  test("vm_stat: free + inactive + speculative pages times the page size", () => {
+    const out = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                               10000.
+Pages active:                            900000.
+Pages inactive:                           20000.
+Pages speculative:                         5000.
+`;
+    expect(parseVmStat(out)).toBe(35000 * 16384);
+    expect(parseVmStat("garbage")).toBeNull();
+    const room = measureRoom();
+    expect(room.cores).toBeGreaterThan(0);
+    expect(room.availBytes === null || room.availBytes > 0).toBe(true);
+    expect(measureRoom("linux").availBytes).toBeGreaterThan(0);
+  });
+
+  test("the slot files: slot 1 is the old single lock's path", () => {
+    expect(slotPaths("/tmp/lianki-gate.lock", 2)).toEqual([
+      "/tmp/lianki-gate.lock",
+      "/tmp/lianki-gate.lock.2",
+    ]);
+  });
+
+  test("a waiter says why it waits, once per reason, and is admitted when room appears", async () => {
+    const paths = slotPaths(lock, 4);
+    const other = { ...makeHolder("other"), acquiredAt: new Date(T - 60_000).toISOString() };
+    plant(other, paths[0]);
+    let t = T;
+    let load = 30;
+    const lines: string[] = [];
+    let measured = 0;
+    const got = await acquireGate(paths, makeHolder("me"), {
+      say: (l) => lines.push(l),
+      pollMs: 1000,
+      roomEveryMs: 15_000,
+      rules,
+      now: () => t,
+      measure: () => (measured++, room(load)),
+      sleep: async (ms) => {
+        t += ms;
+        if (t - T > 40_000) load = 3;
+      },
+    });
+    expect(got.path).toBe(paths[1]);
+    expect(lines.filter((l) => l.startsWith("waiting: load"))).toHaveLength(1);
+    expect(lines.some((l) => l.startsWith("held by pid"))).toBe(true);
+    expect(lines.at(-1)).toContain("admitted at");
+    // Measured at most every 15 s while waiting, not on each poll.
+    expect(measured).toBeLessThanOrEqual(Math.ceil((t - T) / 15_000) + 1);
+    expect(readLock(paths[1])?.holder?.acquiredAt).toBe(got.me.acquiredAt);
+  });
+
+  test("re-entrant in whichever slot the live holder has", () => {
+    const paths = slotPaths(lock, 2);
+    plant(makeHolder("other"), paths[0]);
+    const me = makeHolder("me");
+    expect(tryAcquireSlot(paths, me)).toMatchObject({ acquired: true, path: paths[1] });
+    expect(isReentrantAny(paths, me.token)).toBe(true);
+    expect(isReentrantAny(paths, "stale")).toBe(false);
+    expect(isReentrantAny(paths, undefined)).toBe(false);
+    expect(liveHolders(paths, me.token).map((h) => h.command)).toEqual(["other"]);
+  });
+});
+
 describe("what a waiter prints", () => {
   test("times are JST and labelled", () => {
     expect(jst(Date.parse("2026-11-07T01:02:03Z"))).toBe("2026-11-07 10:02:03 JST");
@@ -429,6 +601,72 @@ describe("the wrapper, as real processes", () => {
       expect(existsSync(join(dir, "bad"))).toBe(false);
       expect(readFileSync(join(dir, "count"), "utf8")).toBe("x\n".repeat(6));
       expect(existsSync(lock)).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "cap 2: two run at once, a third waits naming both, and runs when one ends",
+    async () => {
+      const two = roomy(2);
+      const a = wrapper("a", blocker("a"), two, ["--label", "run a"]);
+      await until("a to start", () => up("a"));
+      const b = wrapper("b", blocker("b"), two, ["--label", "run b"]);
+      await until("b to start beside a", () => up("b"));
+      expect(readLock(`${lock}.2`)?.holder?.command).toBe("run b");
+
+      const c = wrapper("c", "echo c-ran >> order", two);
+      await until("c to wait", () => c.log().includes("waiting"));
+      expect(c.log()).toContain("waiting: 2 runs, the safety cap");
+      expect(c.log()).toContain("run a");
+      expect(c.log()).toContain("run b");
+      expect(existsSync(join(dir, "order"))).toBe(false);
+
+      go("b");
+      expect(await b.done).toBe(0);
+      expect(await c.done).toBe(0);
+      expect(readFileSync(join(dir, "order"), "utf8")).toBe("c-ran\n");
+      go("a");
+      expect(await a.done).toBe(0);
+      expect(existsSync(lock)).toBe(false);
+      expect(existsSync(`${lock}.2`)).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "cap 2: a holder killed outright (kill -9) is taken over by a waiter",
+    async () => {
+      const two = roomy(2);
+      const a = wrapper("a", blocker("a"), two);
+      await until("a to start", () => up("a"));
+      const b = wrapper("b", blocker("b"), two);
+      await until("b to start", () => up("b"));
+      const bCommand = Number(readFileSync(join(dir, "b.up"), "utf8"));
+      const c = wrapper("c", "echo c-ran >> order", two);
+      await until("c to wait", () => c.log().includes("waiting"));
+
+      b.child.kill("SIGKILL");
+      expect(await c.done).toBe(0);
+      expect(c.log()).toContain(`took over from a dead holder: pid ${b.child.pid}`);
+      process.kill(bCommand, "SIGKILL"); // it outlived its wrapper
+      go("a");
+      expect(await a.done).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "cap 2, many contenders racing: never more than two running at once",
+    async () => {
+      plant(fakeHolder());
+      // Each run takes one of two seats with mkdir; a third seat taken = overlap.
+      const line = `if mkdir s1 2>/dev/null; then s=s1; elif mkdir s2 2>/dev/null; then s=s2; else echo overlap >> bad; s=; fi; echo x >> count; sleep 0.05; [ -n "$s" ] && rmdir $s`;
+      const all = Array.from({ length: 6 }, (_, i) => wrapper(`c${i}`, line, roomy(2)));
+      expect(await Promise.all(all.map((c) => c.done))).toEqual([0, 0, 0, 0, 0, 0]);
+      expect(existsSync(join(dir, "bad"))).toBe(false);
+      expect(readFileSync(join(dir, "count"), "utf8")).toBe("x\n".repeat(6));
+      expect(readdirSync(dir).filter((f) => f.startsWith("gate.lock"))).toEqual([]);
     },
     TIMEOUT,
   );
@@ -610,19 +848,29 @@ describe("what is wired to the lock", () => {
   const pkg = JSON.parse(readFileSync(join(import.meta.dir, "../package.json"), "utf8"));
   const hook = readFileSync(join(import.meta.dir, "../.husky/pre-push"), "utf8");
 
-  test("the whole unit suite and qa:all go through it; a bare file run does not", () => {
-    expect(pkg.scripts["test:unit"]).toBe(
-      "bun scripts/dev/machine-lock.ts --whole-suite -- bun test",
-    );
-    expect(pkg.scripts["qa:all"]).toStartWith("bun scripts/dev/machine-lock.ts -- ");
+  test("the unit suite and qa:all start at once: only the time-sensitive suites wait", () => {
+    expect(pkg.scripts["test:unit"]).toBe("bun test");
+    expect(pkg.scripts["qa:all"]).toBe("bun scripts/qa/qa-all.mjs");
+    const qaAll = readFileSync(join(import.meta.dir, "../scripts/qa/qa-all.mjs"), "utf8");
+    expect(qaAll).toContain("await runSuites(SUITES, BASE, log)");
   });
 
-  test("pre-push holds it around the unit suite and qa:all, not around lint and typecheck", () => {
+  test("the suites' time-sensitive tags are data in one list, and every suite has one", async () => {
+    const { SUITES } = await import("../scripts/qa/suites.mjs");
+    expect(SUITES[0].name).toStartWith("AUDIO-FREE");
+    for (const s of SUITES) expect(typeof s.sensitive).toBe("boolean");
+    const sensitive = SUITES.filter((s: { sensitive: boolean }) => s.sensitive).map(
+      (s: { name: string }) => s.name.split(" (")[0],
+    );
+    expect(sensitive).toEqual(["WORDS", "READ EPUB", "READ SEL ONE", "SYNC", "PARTNER FRAME"]);
+  });
+
+  test("pre-push runs lint, typecheck, unit, qa:all in order, with no gate of its own", () => {
     const at = (s: string) => hook.indexOf(`\n${s}`);
     expect(at("bun run lint")).toBeLessThan(at("bun run typecheck"));
-    expect(at("bun run typecheck")).toBeLessThan(at("bun scripts/dev/machine-lock.ts"));
-    expect(at("bun scripts/dev/machine-lock.ts")).toBeLessThan(at("bun run test:unit"));
+    expect(at("bun run typecheck")).toBeLessThan(at("bun run test:unit"));
     expect(at("bun run test:unit")).toBeLessThan(at("bun run qa:all"));
+    expect(hook).not.toMatch(/\n[^#\n]*machine-lock/);
     expect(hook).not.toMatch(/\n[^#\n]*(until|while true|retry)/);
   });
 

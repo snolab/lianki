@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { budget } from "./scripts/qa/load-budget.mjs";
 
 const BASE_URL = process.env.LIANKI_URL || "https://lianki.com";
 
@@ -11,6 +12,10 @@ export default defineConfig({
   // waitForFunction timeouts. Without retries those flakes false-fail the
   // pre-push gate, pushing people toward --no-verify (forbidden).
   retries: 2,
+  // Playwright's own 30 s per test and 5 s per expect, as load budgets: under
+  // two gate runs at once the same page takes longer (scripts/qa/load-budget.mjs).
+  timeout: budget(30_000),
+  expect: { timeout: budget(5_000) },
   workers: process.env.CI ? 4 : undefined,
   reporter: "list",
   use: {
