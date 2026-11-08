@@ -149,13 +149,17 @@ describe("itemBounds: the user's own numbers, a scale-free prior before", () => 
     expect(b.speedSource).toBe("user");
     expect(b.wordsPerSecond).toBeCloseTo(2);
     expect(b.minSeconds).toBeCloseTo(3.8);
-    expect(b.maxSeconds).toBeCloseTo(18.2);
+    // His long reads (18.2 s here) never make items shorter than the rule's lower end.
+    expect(b.maxSeconds).toBe(CHUNK_SECONDS.low);
     // His long reads never make an item past the rule's upper end.
     const long = Array.from({ length: MIN_SAMPLES }, (_, i) => ({
       words: (i + 1) * 400,
       dwellMs: (i + 1) * 200_000,
     }));
     expect(itemBounds(long, "paragraph").maxSeconds).toBe(CHUNK_SECONDS.high);
+    // Quick swipes over sentence-sized items do not ratchet a paragraph into sentences.
+    const quick = Array.from({ length: 50 }, () => ({ words: 12, dwellMs: 2500 }));
+    expect(itemBounds(quick, "paragraph").maxSeconds).toBe(CHUNK_SECONDS.low);
     // Junk reads are ignored.
     expect(
       itemBounds([...samples.slice(1), { words: 0, dwellMs: 5 }], "sentence").boundsSource,
