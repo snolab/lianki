@@ -7,7 +7,7 @@
 import Link from "next/link";
 
 /** Where the reader goes back to. */
-export const READER_PARENT_HREF = "/read";
+export const READER_PARENT_HREF = "/reader";
 
 export function ReaderBack({
   label,

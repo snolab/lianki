@@ -175,7 +175,7 @@ describe("startGdocStream", () => {
     await wait(15);
     expect(state.values.get(`lk:gdoc-stream:${ID}`)).toBe(true);
     expect(state.posted).toEqual([{ docId: ID, html: "<p>one</p>", title: "Notes" }]);
-    const reader = `https://lianki.test/read/book1?streamingFrom=google-docs`;
+    const reader = `https://lianki.test/reader/book1?streamingFrom=google-docs`;
     expect(state.opened[0].location.href).toBe(reader);
     expect(state.link?.href).toBe(reader);
 

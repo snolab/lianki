@@ -31,7 +31,7 @@ const SHELL = [
 ];
 const AUTH = ["app/api/auth/**", "app/auth/**", "app/(app)/sign-in/**", "lib/auth-*.ts"];
 const USERSCRIPT = ["src/**", "lianki.user.js", "public/lianki.user.js", "packages/core/**"];
-const READ = ["app/(app)/read/**", "app/api/read/**", "lib/read/**", "lib/epub/**"];
+const READ = ["app/(app)/reader/**", "app/api/read/**", "lib/read/**", "lib/epub/**"];
 // affected-gate: imports-only — the args below are run, not loaded here
 // (scripts/gate/affected-lib.ts; each suite's entry is matched on its own).
 export const SUITES = [
@@ -132,7 +132,7 @@ export const SUITES = [
     args: ["scripts/qa/qa-yt-songs.mjs"],
     base: true,
     id: "yt-songs",
-    paths: ["app/(app)/read/youtube/**", "app/api/read/youtube/**", "lib/yt-songs/**"],
+    paths: ["app/(app)/reader/youtube/**", "app/api/read/youtube/**", "lib/yt-songs/**"],
     sensitive: false,
   },
   // Serverless: a tap on another word moves the selection, never two drawn (WebKit + Chromium).

@@ -1,7 +1,7 @@
 # Books: a public-domain library you can actually read (plan)
 
 Owner's vision, 2026-11-03 15:15–16:33 JST. Design only; nothing here is
-built yet except EPUB import on /read (#448) and a book's word count and
+built yet except EPUB import on /reader (#448) and a book's word count and
 progress (below).
 
 ## Why
@@ -17,7 +17,7 @@ _Le Petit Prince_ in French) is a test case, never a product default.
 
 ## The flow
 
-1. Open **阅读 /read**, pick a book: from the shared catalogue, or your own
+1. Open **阅读 /reader**, pick a book: from the shared catalogue, or your own
    copy (EPUB import, #448; paste; later URL/photo).
 2. Set it as a **goal** (optionally with a target date).
 3. Read it **progressively**: chunks of about 250 words (Latin scripts) or
@@ -113,7 +113,7 @@ numerals; Hindi loans).
   DRM-free only (#448 refuses DRM). Needs a ToS line and a takedown contact
   before it opens beyond the owner.
 - **A Google Doc** (owner, 2026-11-04): paste a docs.google.com/document
-  link on /read (signed in, D1). The server reduces it to the
+  link on /reader (signed in, D1). The server reduces it to the
   doc id and fetches only Google's HTML export for it (`lib/gdoc/`; redirects
   only to Google's export hosts, inline images dropped while streaming, 8 MB
   of markup, 20 imports per 10 minutes per user). Works for docs shared
@@ -188,7 +188,7 @@ then: a /books page for every user, grouped by language, stable slugs in the
 title's own language, the source link visible inside the imported book.
 
 - **Roles.** **/books** (nav "公版书库 / Public-domain library") is the shared
-  catalogue and never lists anyone's own books. **/read** (nav "我的阅读 / My
+  catalogue and never lists anyone's own books. **/reader** (nav "我的阅读 / My
   reading") is the user's own material — pasted text, EPUBs, Google Docs, and
   books added from /books — and never lists the catalogue, only a link to it.
   A /books card shows "已在我的阅读 · 打开" once added.
@@ -587,7 +587,7 @@ $0.12 for _Le Petit Prince_, about $0.8 for a long novel.
 ## Phases (agent hours)
 
 - **0 (2):** rights rule + checker; seed script for one catalogue language.
-- **1 (≈14):** chunking, chunk reading on /read with 「读完」 and a cursor,
+- **1 (≈14):** chunking, chunk reading on /reader with 「读完」 and a cursor,
   extraction + dedupe into a per-book list, roadmap goal with both bars.
   One book, one language, owner only, behind a flag.
 - **2 (≈10):** chat import, URL/photo import, tap-a-word glosses, partner
@@ -660,7 +660,7 @@ updated_at)`, written 1.5 s after scrolling stops and on `pagehide`; newest
   the book's list.
 - **Chrome.** Glass top strip (back, chapter, ring; hides on scroll down), a
   play pill at the right thumb (play/pause, auto, Aa), bottom island hidden on
-  `/read/[id]` (pending owner) which also ends the overlap bug. Aa sheet: a
+  `/reader/[id]` (pending owner) which also ends the overlap bug. Aa sheet: a
   new `read` text-size area (#436), line spacing, serif/sans, mark level.
 - **Options.** A, book page (recommended): free scroll + floating pill. B,
   teleprompter: current paragraph pinned to a reading line, the island
@@ -698,7 +698,7 @@ selecting DOM text.
 - **Addressable units (deep links).** Stable IDs that survive re-imports of
   the same content (derived from the content-hash book id of the dedupe plan
   and positions in `lines`):
-  `/read/<book>` · `#ch=<n>` · `#p=<line>` · `#s=<line>.<sentence>` ·
+  `/reader/<book>` · `#ch=<n>` · `#p=<line>` · `#s=<line>.<sentence>` ·
   `#w=<line>.<token>` · `#ph=<line>.<startToken>-<endToken>`. Opening a link
   scrolls the virtualised list to the anchor, flashes the unit and shows its
   card. Links open only for someone who has access to that book (own upload
@@ -720,7 +720,7 @@ selecting DOM text.
   `scripts/qa/qa-read-phrase-marks.mjs`.
 - **Built** (reader v2): the rules in
   `lib/read/reader-select.ts` (levels, fragments; unit-tested), the listener
-  and highlight in `app/(app)/read/[id]/use-reader-select.ts`, the card in
+  and highlight in `app/(app)/reader/[id]/use-reader-select.ts`, the card in
   `reader-select-card.tsx`. Every level is drawn as `data-sel` on the unit's
   elements (an element background, so each word keeps its underline colour),
   never the DOM selection, so the iOS selection menu never covers the card.
@@ -730,7 +730,7 @@ selecting DOM text.
   stayed painted on the words tapped before, so two taps showed two
   selections (owner, 2026-11-05 03:00 JST; QA `scripts/qa/qa-read-sel-one.ts`). The card takes the half of the
   screen away from the finger, so the next click lands on the book. Links
-  name the book by its content hash; `/read/<hash>` redirects to the
+  name the book by its content hash; `/reader/<hash>` redirects to the
   signed-in user's own copy of that text or answers 404
   (`lib/read/book-link.ts`). Gloss is a Wiktionary search in a new tab.
   **Translate is ours** (owner, 2026-11-04 14:58 JST: "dont [go to google
@@ -1209,7 +1209,7 @@ items) and `lib/read/familiarity.ts` (aggregation); store
 
 ### Built: the reader v2 UI (2026-11-03; the only reader since 2026-11-07)
 
-`app/(app)/read/[id]/ReaderV2.tsx` (rows: `reader-blocks.tsx`). The first reader
+`app/(app)/reader/[id]/ReaderV2.tsx` (rows: `reader-blocks.tsx`). The first reader
 (`ReadViewClient.tsx`) and the flag `read.reader-v2` were removed on 2026-11-07
 (owner: "you can delete the old reader completely"). What only it had, and the
 new one does not: Next / Replay / Pause buttons while waiting, Reset, the j/k,

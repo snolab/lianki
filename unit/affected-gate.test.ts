@@ -278,7 +278,7 @@ describe("the real suite list (scripts/qa/suites.mjs)", () => {
   test("route trees map to their suites", () => {
     const pick = (f: string) => SUITES.filter((s) => matchesAny(f, s.paths ?? [])).map((s) => s.id);
     expect(pick("app/(app)/words/page.tsx")).toEqual(["words"]);
-    expect(pick("app/(app)/read/[id]/page.tsx")).toEqual(["read-epub"]);
+    expect(pick("app/(app)/reader/[id]/page.tsx")).toEqual(["read-epub"]);
     expect(pick("packages/debug-chat/src/DebugChat.tsx")).toEqual(["partner-frame"]);
     expect(pick("src/lianki.user.ts")).toEqual(["userscript-guest", "userscript-redirect", "sync"]);
     expect(pick("app/components/AppShell.tsx")).toEqual(["ui", "sign-out"]);

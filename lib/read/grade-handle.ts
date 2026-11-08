@@ -1,4 +1,4 @@
-// The grade handle's gesture, pure (app/(app)/read/[id]/reader-grade-handle.tsx):
+// The grade handle's gesture, pure (app/(app)/reader/[id]/reader-grade-handle.tsx):
 // a knob resting in the middle of a track. The axis locks after the first
 // movement as on /words (lockAxis): sideways is a grade by the swipe's own
 // levels and release rule (lib/words/swipe.ts: swipeLevel with hysteresis,

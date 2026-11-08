@@ -1,5 +1,5 @@
 /**
- * The reader's word scan (BookScan in app/(app)/read/BookWords.tsx): a book's
+ * The reader's word scan (BookScan in app/(app)/reader/BookWords.tsx): a book's
  * distinct words sorted into mastered, learning, new, names and unrecognised.
  * Pure, so the panel's numbers are tested (unit/read-scan-buckets.test.ts).
  *

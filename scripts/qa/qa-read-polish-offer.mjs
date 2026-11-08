@@ -78,7 +78,7 @@ async function addDoc(ctx, n) {
 const offer = (page) => page.getByTestId("read-polish-offer");
 
 async function open(page, id, query = "") {
-  await page.goto(`/read/${id}${query}`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}${query}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 30000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor({ timeout: 30000 });
   await page.waitForTimeout(400);

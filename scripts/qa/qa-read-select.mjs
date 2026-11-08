@@ -143,11 +143,11 @@ async function open(ctx) {
   const page = await ctx.newPage();
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
-  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
+  await page.waitForURL(/\/reader\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   await page.waitForTimeout(800);
@@ -321,7 +321,7 @@ async function desktop(scheme) {
   await page.waitForTimeout(150);
   const link = await page.evaluate(() => navigator.clipboard.readText());
   check(
-    new RegExp(`/read/[0-9a-f]{16}#s=${w.line}\\.${w.s}$`).test(link),
+    new RegExp(`/reader/[0-9a-f]{16}#s=${w.line}\\.${w.s}$`).test(link),
     `the link names the book's hash and the sentence (${link})`,
   );
   check(
@@ -380,7 +380,7 @@ async function desktop(scheme) {
   check(landed, "a deep link opens its card");
   check(
     !/[0-9a-f]{16}/.test(new URL(linkPage.url()).pathname) &&
-      linkPage.url().includes(`/read/${id}`) &&
+      linkPage.url().includes(`/reader/${id}`) &&
       linkPage.url().endsWith(u.hash),
     `the hash path redirects to his copy, keeping the fragment (${linkPage.url()})`,
   );
@@ -407,7 +407,7 @@ async function desktop(scheme) {
     own.status() >= 300 && own.status() < 400,
     `the owner's hash link redirects (${own.status()})`,
   );
-  const nothing = await ctx.request.get(`/read/0000000000000000`, { maxRedirects: 0 });
+  const nothing = await ctx.request.get(`/reader/0000000000000000`, { maxRedirects: 0 });
   check(nothing.status() === 404, `a hash of nothing is 404 (${nothing.status()})`);
   const other = await newSilentContext(browser, { baseURL: BASE });
   const anon = await other.request.get(`${u.pathname}`, { maxRedirects: 0 });

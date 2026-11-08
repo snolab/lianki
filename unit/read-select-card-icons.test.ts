@@ -1,5 +1,5 @@
 /**
- * The selection card's icon group (app/(app)/read/[id]/reader-select-card.tsx,
+ * The selection card's icon group (app/(app)/reader/[id]/reader-select-card.tsx,
  * owner 2026-11-05 02:10 JST): read aloud, copy text and copy link are icons
  * only, each named by its label (aria-label and tooltip); no look-up button.
  */
@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CardIcons } from "@/app/(app)/read/[id]/reader-card-icons";
+import { CardIcons } from "@/app/(app)/reader/[id]/reader-card-icons";
 
 const noop = () => {};
 const html = renderToStaticMarkup(
@@ -30,9 +30,9 @@ const buttons = [...html.matchAll(/<button[^>]*>(.*?)<\/button>/g)];
 
 describe("Copy link", () => {
   test("a private /vibe doc's card has no action to pass an address on", () => {
-    const src = readFileSync("app/(app)/read/[id]/ReaderV2.tsx", "utf8");
+    const src = readFileSync("app/(app)/reader/[id]/ReaderV2.tsx", "utf8");
     expect(src).toMatch(/book\?\.source === "vibe"\s*\?\s*\{\}\s*:\s*\{\s*copyLink:/);
-    const card = readFileSync("app/(app)/read/[id]/reader-select-card.tsx", "utf8");
+    const card = readFileSync("app/(app)/reader/[id]/reader-select-card.tsx", "utf8");
     expect(card).toContain("...(actions.copyLink");
   });
 });
@@ -66,7 +66,7 @@ describe("CardIcons", () => {
 
   test("the card has no look-up action and no text buttons for copy or read aloud", () => {
     const src = readFileSync(
-      join(import.meta.dir, "../app/(app)/read/[id]/reader-select-card.tsx"),
+      join(import.meta.dir, "../app/(app)/reader/[id]/reader-select-card.tsx"),
       "utf8",
     );
     expect(src).not.toContain("lookUp");

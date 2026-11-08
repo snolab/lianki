@@ -1,5 +1,5 @@
 // The selection card's translation, one unit at a time (the hook:
-// app/(app)/read/[id]/use-select-translate.ts). From our API (POST
+// app/(app)/reader/[id]/use-select-translate.ts). From our API (POST
 // /api/read/[id]/translate — its shared cache, limiter and charge), or, with
 // the user's own AI on (docs/byok.md), from this browser straight to their
 // provider with their key: no Lianki credits, and the answer stays in this

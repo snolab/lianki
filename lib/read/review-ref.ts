@@ -1,6 +1,6 @@
 // The paragraph word review in the URL (docs/ui-state.md; owner, 2026-11-05
 // 01:30 JST: a refresh in the review dropped him back to the plain reader).
-// `/read/<id>?review=<ref>` names what the review covers, so a refresh, Back
+// `/reader/<id>?review=<ref>` names what the review covers, so a refresh, Back
 // and Forward and a shared link open it again. Its position (the card in focus,
 // the list's scroll) is per tab, in sessionStorage, keyed by `reviewKey`.
 //

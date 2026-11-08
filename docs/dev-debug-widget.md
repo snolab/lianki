@@ -1106,7 +1106,7 @@ and `unit/partner-ai.test.ts`.
 
 ## Copying a message
 
-Owner, 2026-11-05 01:34 JST, iPhone PWA on /read: "这里复制不了". The chat
+Owner, 2026-11-05 01:34 JST, iPhone PWA on /reader: "这里复制不了". The chat
 box is click-through (`pointer-events: none` on the section, so the page
 under it stays usable) and the log inherited it. iOS will not long-press
 select text that does not take the pointer, so there was no Copy. #537 made

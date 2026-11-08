@@ -50,7 +50,7 @@ export function BookCard({
         );
         return;
       }
-      router.push(`/read/${encodeURIComponent(data.id)}`);
+      router.push(`/reader/${encodeURIComponent(data.id)}`);
     } catch {
       setError(t.errFailed.value);
     } finally {
@@ -88,7 +88,7 @@ export function BookCard({
         </div>
         {ownedId ? (
           <Link
-            href={`/read/${encodeURIComponent(ownedId)}`}
+            href={`/reader/${encodeURIComponent(ownedId)}`}
             data-testid="books-owned"
             className={detail ? primary : quiet}
           >

@@ -1,7 +1,7 @@
 import { t, type DeclarationContent } from "intlayer";
 import { describeKeys } from "@/lib/i18n-context";
 
-/** The transcript polish offer in the reader (app/(app)/read/[id]/reader-polish.tsx). */
+/** The transcript polish offer in the reader (app/(app)/reader/[id]/reader-polish.tsx). */
 const dictionary = {
   key: "read-polish",
   content: {

@@ -1,4 +1,4 @@
-// Selecting in a live Google Doc's tail (app/(app)/read/[id]/reader-stream.tsx):
+// Selecting in a live Google Doc's tail (app/(app)/reader/[id]/reader-stream.tsx):
 // the book's rules, for text not saved into the book yet. A tap is the word, the
 // next taps of a combo its sentence and paragraph; a hand selection grows to
 // whole sentences. Whole sentences are what is translated (select-translate.ts).

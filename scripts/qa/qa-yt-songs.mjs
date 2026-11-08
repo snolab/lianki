@@ -1,4 +1,4 @@
-// YouTube songs on /read, M1 (docs/youtube-song-examples.md). Silent; iPhone
+// YouTube songs on /reader, M1 (docs/youtube-song-examples.md). Silent; iPhone
 // size, light and dark screenshots.
 //
 //   QA_BASE=http://localhost:3000 bun scripts/qa/qa-yt-songs.mjs [outDir]
@@ -9,8 +9,8 @@
 // network; the checks are ours (the ▶, the popup, its close rules), not
 // YouTube's player.
 //
-// - flag off, not the owner: /read/youtube and its route answer 404;
-// - flag on: a pasted LRC becomes a /read text, the same video again updates it;
+// - flag off, not the owner: /reader/youtube and its route answer 404;
+// - flag on: a pasted LRC becomes a /reader text, the same video again updates it;
 // - the reader: one ▶ per sung line; a tap opens the popup (a bottom sheet on a
 //   phone) without opening the word card; Escape, × and a tap outside close it.
 import { spawnSync } from "node:child_process";
@@ -76,8 +76,8 @@ try {
     const ctx = await newSilentContext(browser, { baseURL: BASE });
     await signUp(ctx, "off");
     const page = await ctx.newPage();
-    const res = await page.goto("/read/youtube");
-    check(res?.status() === 404, `flag off: /read/youtube is 404 (${res?.status()})`);
+    const res = await page.goto("/reader/youtube");
+    check(res?.status() === 404, `flag off: /reader/youtube is 404 (${res?.status()})`);
     check((await post(ctx)).status() === 404, "flag off: the route is 404");
     await ctx.close();
   }
@@ -109,7 +109,7 @@ try {
     const errs = [];
     page.on("pageerror", (e) => errs.push(e.message));
 
-    await page.goto("/read/youtube");
+    await page.goto("/reader/youtube");
     await page.getByTestId("yt-song-new").waitFor({ timeout: 30000 });
     await page.getByTestId("yt-song-url").fill(VIDEO);
     await page.getByTestId("yt-song-lyrics").fill(LRC);
@@ -117,7 +117,7 @@ try {
     check(/3/.test(count), `the form counts the timed lines (${count.trim()})`);
     await page.screenshot({ path: join(OUT, `new-${scheme}.png`) });
 
-    await page.goto(`/read/${id}`);
+    await page.goto(`/reader/${id}`);
     await page.getByTestId("reader-v2").waitFor({ timeout: 30000 });
     await page.locator("[data-testid=reader-book] [data-item]").first().waitFor({ timeout: 30000 });
     const plays = page.locator("[data-yt-clip]");

@@ -1,10 +1,10 @@
 # YouTube songs as example sentences
 
-State-tree node `/read/yt-songs`. Owner said go (2026-11-09). Flag
+State-tree node `/reader/yt-songs`. Owner said go (2026-11-09). Flag
 **`read.youtube-songs`**, default off; off, only the owner has it
 (<https://lianki.com/dev/flags#read.youtube-songs>,
-[feature-flags.md](feature-flags.md)). Status: **M1 built** — /read →
-「+ YouTube song」 (`/read/youtube`), `POST /api/read/youtube`, ▶ per line in
+[feature-flags.md](feature-flags.md)). Status: **M1 built** — /reader →
+「+ YouTube song」 (`/reader/youtube`), `POST /api/read/youtube`, ▶ per line in
 the reader. M2–M5 not started.
 
 **M1 as built**
@@ -13,7 +13,7 @@ the reader. M2–M5 not started.
 | ------------------------ | --------------------------------------------------------------------------- |
 | parser, video id, timing | `lib/yt-songs/timed-text.ts` (`parseTimedText`, `videoIdOf`, `clipSeconds`) |
 | song → book, gate        | `lib/yt-songs/song.ts`, `lib/yt-songs/gate.ts` (`ytSongsOn`)                |
-| new-song page            | `app/(app)/read/youtube/` (404 without the flag, owner excepted)            |
+| new-song page            | `app/(app)/reader/youtube/` (404 without the flag, owner excepted)            |
 | route                    | `app/api/read/youtube/route.ts` (same-origin JSON, 30 per 10 min)           |
 | player popup, ▶          | `app/components/yt-clip/`                                                   |
 | strings                  | `app/components/yt-clip/yt-songs.content.ts` (16 locales)                   |
@@ -22,12 +22,12 @@ the reader. M2–M5 not started.
 Not in M1: tap-to-sync and the offset nudge (M4; `[offset:]` in an LRC is
 read), the title from `getVideoData()` (the LRC's `[ti:]` or what he types),
 the popup inside the floating word card (M3). Words and sentence cards from
-a song's lines work as in any /read text; their clip on the card is M2.
+a song's lines work as in any /reader text; their clip on the card is M2.
 
 ## Goal
 
 A song the learner loves becomes study material. He pastes a YouTube link
-and the song's lyrics with timings; each line becomes a sentence in /read,
+and the song's lyrics with timings; each line becomes a sentence in /reader,
 its words become cards, and in word review the example sentence **plays that
 line** (t0 → t1) in YouTube's own player, inside a popup. Hearing the line
 sung is the point; the text alone is what we already have.
@@ -36,7 +36,7 @@ Not a goal: a lyrics catalogue, sharing lyrics, or any audio we hold.
 
 ## User flow
 
-1. **/read → New → YouTube song.** Paste a URL (`youtube.com/watch?v=`,
+1. **/reader → New → YouTube song.** Paste a URL (`youtube.com/watch?v=`,
    `youtu.be/`, `music.youtube.com/watch?v=`; only the video id is kept).
    The page shows the official player so he can check it is the right video.
 2. **Lyrics with timings.** One text box that takes:
@@ -47,9 +47,9 @@ Not a goal: a lyrics catalogue, sharing lyrics, or any audio we hold.
      last tap; a line's end is the next line's start.
      A global **offset nudge** (−/+ 0.1 s, "the words come early/late") fixes a
      file timed against a different upload of the same song.
-3. **Lines → /read.** The song opens as a /read document: one passage per
+3. **Lines → /reader.** The song opens as a /reader document: one passage per
    line, each with a small ▶ that plays that line in the popup. Words are
-   marked and graded as in any /read material (familiarity, the word sheet).
+   marked and graded as in any /reader material (familiarity, the word sheet).
 4. **Cards.** Words he adds from a line get that line as their example, with
    the clip attached `{videoId, t0, t1}`; a whole line can also become a
    sentence card.
@@ -122,7 +122,7 @@ where timings came from.
   `t1` = next `t0` when missing, last line `t1 = t0 + 8 s` capped by the video
   duration once the player knows it. Video id from the URL: one regex, 11
   chars `[A-Za-z0-9_-]`.
-- **Storage (D1)**: the song is a /read material (`readMaterials`),
+- **Storage (D1)**: the song is a /reader material (`readMaterials`),
   `source_key` `youtube:<videoId>` (the same video again updates it in
   place), its text the lines. **As built in M1** the timings live in the
   material's `BookMeta` (`source: "youtube"`, `yt: {v, offsetMs, clips}`,
@@ -142,7 +142,7 @@ where timings came from.
   The app pages send no CSP today (only `frame-ancestors` on
   `/embed/partner`), so nothing to add; if one comes, it needs
   `frame-src https://www.youtube-nocookie.com` and
-  `script-src https://www.youtube.com` on /read.
+  `script-src https://www.youtube.com` on /reader.
 - **No YouTube Data API calls in the first slices** (no quota spend); the
   title comes from the player's `getVideoData().title` once loaded, or the
   user types it.
@@ -165,7 +165,7 @@ where timings came from.
 
 | #   | slice                                                                                                                                                                                                   | ETA  |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| M1  | **First slice**: /read → YouTube song: URL + pasted LRC/SRT → lines in a /read doc; ▶ per line plays t0→t1 in the popup (placement, play-after-tap fallback, close rules). Flag dark, on for the owner. | 3H   |
+| M1  | **First slice**: /reader → YouTube song: URL + pasted LRC/SRT → lines in a /reader doc; ▶ per line plays t0→t1 in the popup (placement, play-after-tap fallback, close rules). Flag dark, on for the owner. | 3H   |
 | M2  | Words from a line → cards carrying `clip`; a line → sentence card                                                                                                                                       | 2.5H |
 | M3  | Review: ▶ on an example with a clip in /words and the read word review, popup in the floating card                                                                                                      | 2H   |
 | M4  | Tap-to-sync for plain lines + offset nudge                                                                                                                                                              | 2H   |

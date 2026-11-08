@@ -157,7 +157,7 @@ export const FLAGS = {
   },
   "connections.google": {
     description:
-      "Google 连接（/connections）：所有登录用户都能连接自己的 Google 账号（只授权 drive.file：只有在 Lianki 里用 Google 选择器打开的文件），在 /read 导入自己的非公开 Google 文档。和 Google 登录完全分开，断开不影响登录。需要先在 GCP 控制台完成设置（docs/connections.md）。关闭（默认）= 只有你本人能用。",
+      "Google 连接（/connections）：所有登录用户都能连接自己的 Google 账号（只授权 drive.file：只有在 Lianki 里用 Google 选择器打开的文件），在 /reader 导入自己的非公开 Google 文档。和 Google 登录完全分开，断开不影响登录。需要先在 GCP 控制台完成设置（docs/connections.md）。关闭（默认）= 只有你本人能用。",
     default: false,
     requires: ["google.oauth-client", "google.picker-key", "auth-secret"],
     group: "read",
@@ -170,7 +170,7 @@ export const FLAGS = {
   },
   "read.gdoc-stream": {
     description:
-      "Google 文档实时同步：所有用户都能在 Google 文档页面上用用户脚本打开“同步到 Lianki”，这个文档之后每次改动都会更新到自己的 /read，打开 /read/<id>?streamingFrom=google-docs 的阅读页会实时更新并重新标记词。只同步用户自己打开开关的文档，且要保持文档标签页开着。关闭（默认）= 只有你本人能用。",
+      "Google 文档实时同步：所有用户都能在 Google 文档页面上用用户脚本打开“同步到 Lianki”，这个文档之后每次改动都会更新到自己的 /reader，打开 /reader/<id>?streamingFrom=google-docs 的阅读页会实时更新并重新标记词。只同步用户自己打开开关的文档，且要保持文档标签页开着。关闭（默认）= 只有你本人能用。",
     default: false,
   },
   "read.live-polish": {
@@ -180,12 +180,12 @@ export const FLAGS = {
   },
   "read.youtube-songs": {
     description:
-      "YouTube 歌词例句（docs/youtube-song-examples.md，第一步）：所有登录用户都能在 /read 点「YouTube 歌曲」，贴一个 YouTube 链接和带时间的歌词（LRC、SRT 或 VTT），每句歌词变成 /read 里的一段，旁边的 ▶ 在弹窗里用 YouTube 官方播放器（youtube-nocookie）只播这一句（t0→t1）。不下载、不保存任何音视频，只存视频 id；歌词只存在用户自己的账号里，不共享。关闭（默认）= 只有你本人能用，其他人 /read/youtube 是 404，也看不到 ▶。",
+      "YouTube 歌词例句（docs/youtube-song-examples.md，第一步）：所有登录用户都能在 /reader 点「YouTube 歌曲」，贴一个 YouTube 链接和带时间的歌词（LRC、SRT 或 VTT），每句歌词变成 /reader 里的一段，旁边的 ▶ 在弹窗里用 YouTube 官方播放器（youtube-nocookie）只播这一句（t0→t1）。不下载、不保存任何音视频，只存视频 id；歌词只存在用户自己的账号里，不共享。关闭（默认）= 只有你本人能用，其他人 /reader/youtube 是 404，也看不到 ▶。",
     default: false,
   },
   "books.catalogue": {
     description:
-      "公版书库 /books：所有登录用户都能看到公版书目录（只收美国公版且所有作者/译者/编者去世 80 年以上的原文，每本标明来源和授权），点一下导入成自己的书，之后在 /read 里阅读。原文不进仓库，服务器按需从来源（Project Gutenberg）下载一次，缓存在 R2 里给所有人共用。关闭（默认）= 只有你本人能看到和导入。",
+      "公版书库 /books：所有登录用户都能看到公版书目录（只收美国公版且所有作者/译者/编者去世 80 年以上的原文，每本标明来源和授权），点一下导入成自己的书，之后在 /reader 里阅读。原文不进仓库，服务器按需从来源（Project Gutenberg）下载一次，缓存在 R2 里给所有人共用。关闭（默认）= 只有你本人能看到和导入。",
     default: false,
     group: "read",
   },
@@ -209,7 +209,7 @@ export const FLAGS = {
   },
   "read.vibe": {
     description:
-      "/vibe 对话日记（docs/vibe.md）：和外国朋友对话时互相学语言。声音只在你的 Mac 上转成文字（不存、不上传），文字存进你账号里的一篇私有文档（/read 可读，一直留着直到你删除；想自动删可在偏好设置里填天数）。/vibe 列出所有对话，/vibe/new 点一下「开始」就开始，没有表单，/vibe/<id> 是一段对话的记录。打开后：只有你本人能开始。关闭（默认）= 任何人都不能开始，包括你本人（没有 owner 例外），服务器也拒绝写入；已有的文档仍可阅读和删除。",
+      "/vibe 对话日记（docs/vibe.md）：和外国朋友对话时互相学语言。声音只在你的 Mac 上转成文字（不存、不上传），文字存进你账号里的一篇私有文档（/reader 可读，一直留着直到你删除；想自动删可在偏好设置里填天数）。/vibe 列出所有对话，/vibe/new 点一下「开始」就开始，没有表单，/vibe/<id> 是一段对话的记录。打开后：只有你本人能开始。关闭（默认）= 任何人都不能开始，包括你本人（没有 owner 例外），服务器也拒绝写入；已有的文档仍可阅读和删除。",
     default: false,
     audience: "owner",
   },

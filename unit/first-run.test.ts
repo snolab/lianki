@@ -47,7 +47,7 @@ describe("where it must not appear", () => {
   });
 
   test("still asks on ordinary app pages", () => {
-    for (const p of ["/list", "/fr/list", "/read", "/data", "/learn"]) {
+    for (const p of ["/list", "/fr/list", "/reader", "/data", "/learn"]) {
       expect(shouldAsk({ ...base, pathname: p })).toBe(true);
     }
   });

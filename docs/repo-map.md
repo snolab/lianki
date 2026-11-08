@@ -17,6 +17,8 @@
 | ---- | ------- |
 | `app/page.tsx` | Landing page |
 | `app/(app)/list/page.tsx` | Note listing — the page cards, named **LiCards** (zh 链卡) in the UI |
+| `app/(app)/reader/` | The reader: `/reader` (the books list) and `/reader/<id>` (a book, `ReaderV2.tsx`); the old `/read` 308s here (`lib/moved-routes.ts`). Its API stays `/api/read/**` |
+| `lib/moved-routes.ts` | Pages that moved (docs/url-principles.md): `middleware.ts` 308s the old path; pins and recent pages are moved on read (`movedHref`) |
 | `lib/app-locale.ts` | `?lang=` locale helpers + APP_ROUTES |
 | `app/fsrs.ts` | Core FSRS handler logic |
 | `app/db.ts` | MongoDB client |

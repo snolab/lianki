@@ -136,21 +136,23 @@ export interface ConnectState {
 }
 
 /**
- * Only our own pages that start a connection: /connections, /read with a doc
+ * Only our own pages that start a connection: /connections, /reader with a doc
  * to import, or either with `?pick=drive` (the Picker opens on return,
- * lib/connections/drive-pick.ts).
+ * lib/connections/drive-pick.ts). A connection started on the old /read
+ * (before 2026-11-09, docs/url-principles.md) comes back to /reader.
  */
 export function returnPath(raw: unknown): string {
   if (typeof raw !== "string") return "/connections";
+  const r = raw.replace(/^\/read(?=$|\?)/, "/reader");
   if (
-    raw === "/connections" ||
-    raw === "/read" ||
-    raw === "/connections?pick=drive" ||
-    raw === "/read?pick=drive"
+    r === "/connections" ||
+    r === "/reader" ||
+    r === "/connections?pick=drive" ||
+    r === "/reader?pick=drive"
   )
-    return raw;
-  const m = /^\/read\?gdoc=([A-Za-z0-9_-]{25,128})$/.exec(raw);
-  return m ? `/read?gdoc=${m[1]}` : "/connections";
+    return r;
+  const m = /^\/reader\?gdoc=([A-Za-z0-9_-]{25,128})$/.exec(r);
+  return m ? `/reader?gdoc=${m[1]}` : "/connections";
 }
 
 export async function newConnectState(

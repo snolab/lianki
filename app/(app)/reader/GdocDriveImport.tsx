@@ -36,7 +36,7 @@ export function GdocDriveImport(p: {
   const id = gdocIdOf(p.url);
 
   async function connect() {
-    const r = await startGoogleConnect(id ? `/read?gdoc=${id}` : "/read");
+    const r = await startGoogleConnect(id ? `/reader?gdoc=${id}` : "/reader");
     if (r !== "ok")
       setMsg({
         alert: true,

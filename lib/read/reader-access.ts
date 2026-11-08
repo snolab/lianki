@@ -1,6 +1,6 @@
 /**
  * Who may do what in the /read reader. Imports only lib/flags, so the browser
- * can run it (app/(app)/read/[id]/BoxReader.tsx decides on a box from
+ * can run it (app/(app)/reader/[id]/BoxReader.tsx decides on a box from
  * production's flags).
  */
 import { flagIn, type FlagValues } from "@/lib/flags";

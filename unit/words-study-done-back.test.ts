@@ -23,7 +23,7 @@ import {
 
 const app = join(import.meta.dir, "../app/(app)");
 const words = readFileSync(join(app, "words/WordsClient.tsx"), "utf8");
-const review = readFileSync(join(app, "read/[id]/reader-word-review.tsx"), "utf8");
+const review = readFileSync(join(app, "reader/[id]/reader-word-review.tsx"), "utf8");
 
 const html = (art: boolean) =>
   renderToStaticMarkup(

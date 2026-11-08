@@ -3,7 +3,7 @@
 /**
  * The New swipe's gesture (variant B, lib/words/swipe-ab.ts), shared by the
  * /words slip (NativeSlipRow in app/(app)/words/WordsClient.tsx) and the
- * /read reader's items (app/(app)/read/[id]/reader-blocks.tsx): each row is
+ * /read reader's items (app/(app)/reader/[id]/reader-blocks.tsx): each row is
  * its own horizontal scroller (public/proto/slip.html). The browser locks
  * the axis, follows the finger, coasts, snaps to the levels at 0, ±a, ±2a and
  * stops hard at ±2a — all on the compositor; script runs only as a gesture

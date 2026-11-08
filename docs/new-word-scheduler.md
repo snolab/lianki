@@ -39,7 +39,7 @@ there is no setting for it. `lib/words/review-first.ts`,
   there is none, so it waits — the slip reads "↓ back" — until a scroll, a
   resize or the list growing leaves one; no timer polls. A slot above the
   viewport scrolls the list by the rows inserted, so what is on screen
-  stays still. Same for /words and the /read paragraph review.
+  stays still. Same for /words and the /reader paragraph review.
 - Misses and learning steps still come back within minutes, as before.
 - Offline, only the saved copy of due cards is known, so new words follow it.
   Cached cards that fall due later in the same offline session are not

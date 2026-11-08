@@ -280,8 +280,8 @@ test.describe("Navigation flows", () => {
     }
   });
 
-  test("/read renders read page (BUG-4 regression)", async ({ page }) => {
-    const response = await page.goto(url("/read"));
+  test("/reader renders read page (BUG-4 regression)", async ({ page }) => {
+    const response = await page.goto(url("/reader"));
     expect(response?.status()).not.toBe(404);
     // Should either show the read UI or redirect to sign-in
     const finalUrl = page.url();

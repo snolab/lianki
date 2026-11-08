@@ -59,11 +59,11 @@ async function setup(ctx, tag) {
   const page = await ctx.newPage();
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
-  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
+  await page.waitForURL(/\/reader\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   // The word map: marks on the words.
@@ -365,7 +365,7 @@ async function run(device, scheme, touch) {
     "Back closes the reloaded review",
   );
   check(
-    !new URL(page.url()).searchParams.has("review") && /\/read\//.test(page.url()),
+    !new URL(page.url()).searchParams.has("review") && /\/reader\//.test(page.url()),
     `Back lands on the book (${page.url()})`,
   );
   check(await page.getByTestId("reader-v2").isVisible(), "the reader is under it");

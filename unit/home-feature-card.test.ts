@@ -20,13 +20,13 @@ describe("FeatureCard", () => {
     const html = renderToStaticMarkup(
       createElement(FeatureCard, {
         featureKey: "read",
-        href: "/read",
+        href: "/reader",
         icon: "bookOpen" as const,
         label: "Read",
         desc: "Read your own texts and books",
       }),
     );
-    expect(html).toContain('href="/read"');
+    expect(html).toContain('href="/reader"');
     expect(html).toContain("Read your own texts and books");
     expect(html).toContain("lk-feature-card");
     expect(html).toContain("lk-feature-art");

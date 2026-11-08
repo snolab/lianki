@@ -64,7 +64,7 @@ export function DrivePick(p: {
       if (out.kind === "cancelled") return setMsg(null);
       if (out.kind === "error") return setMsg({ alert: true, text: errText(out.code) });
       const { imported, failed } = out;
-      if (imported.length === 1 && !failed.length) return router.push(`/read/${imported[0].id}`);
+      if (imported.length === 1 && !failed.length) return router.push(`/reader/${imported[0].id}`);
       if (imported.length) p.onImported?.(imported);
       const parts = [
         imported.length ? t.imported.value.replace("{n}", String(imported.length)) : "",
@@ -91,7 +91,7 @@ export function DrivePick(p: {
     const open = autoPickOnReturn(s);
     window.history.replaceState(null, "", window.location.pathname + withoutPickParams(s));
     // /connections shows its own result line; /read has none but this.
-    const back = p.page === "/read" ? new URLSearchParams(s).get("google") : null;
+    const back = p.page === "/reader" ? new URLSearchParams(s).get("google") : null;
     if (open) void run(t.connectedOpening.value);
     else if (back === "not-configured") setMsg({ alert: true, text: d.notConfigured.value });
     else if (back && back !== "denied") setMsg({ alert: true, text: d.connectFailed.value });

@@ -2,7 +2,7 @@
 
 A **connection** lets Lianki open files a user chooses in another service.
 The first one is Google Drive, for importing the user's own **private Google
-Docs** into /read. Approved by the owner 2026-11-04 (Slack, ~16:20 JST).
+Docs** into /reader. Approved by the owner 2026-11-04 (Slack, ~16:20 JST).
 
 It is **separate from sign-in**. Signing in with Google is better-auth's
 `account` row with `openid email profile`; a connection is its own row in its
@@ -35,19 +35,19 @@ Ships **dark**: flag `connections.google` (off) — while off, only the owner
 4. **Disconnect** → `POST /api/connections/google/disconnect`: revoke at
    `oauth2.googleapis.com/revoke` (best effort), delete the row regardless.
 
-### Importing a private doc (/read)
+### Importing a private doc (/reader)
 
 `drive.file` reaches only files the user opened with Lianki **through the
 Google Picker**, so:
 
-1. The user pastes a docs.google.com link in the /read Google Docs import
+1. The user pastes a docs.google.com link in the /reader Google Docs import
    (the public-link import, `app/api/read/gdoc`, #513). When the public
    export answers `not-shared`, the page offers **Choose in Google Drive**
-   (`app/(app)/read/GdocDriveImport.tsx`).
+   (`app/(app)/reader/GdocDriveImport.tsx`).
 2. That calls `POST /api/connections/google/picker` (30 per user per 10 min):
    a short-lived `drive.file` access token, the Picker's browser key and the
    project number. Not connected (409): to Google's consent first, back to
-   `/read?gdoc=<id>`, where the import reopens on that doc.
+   `/reader?gdoc=<id>`, where the import reopens on that doc.
 3. The Picker (`lib/connections/picker-client.ts`, loaded on demand from
    apis.google.com) opens **preselected on that doc** (`DocsView.setFileIds`);
    picking it grants `drive.file` on exactly that file.
@@ -61,7 +61,7 @@ Google Picker**, so:
 ### Picking docs ("Choose docs from Google Drive")
 
 Owner, option A, 2026-11-05 10:50 JST: after connecting, /connections must
-lead somewhere. The connected card and /read's import row both carry
+lead somewhere. The connected card and /reader's import row both carry
 **Choose docs from Google Drive** (`app/(app)/connections/DrivePick.tsx`,
 flow in `lib/connections/drive-pick.ts`), with a three-step how-to under it:
 
@@ -69,11 +69,11 @@ flow in `lib/connections/drive-pick.ts`), with a three-step how-to under it:
    (`Feature.MULTISELECT_ENABLED`, `pickGoogleDocs`).
 2. Each picked doc goes through the same `POST /api/read/gdoc {via: "drive"}`
    as above, one after the other (so `source_key gdoc:<id>`, a re-import
-   updates the book). One imported → it opens in /read; several → the page
+   updates the book). One imported → it opens in /reader; several → the page
    says how many and its list reloads (/connections: `router.refresh()`;
-   /read: the materials list).
+   /reader: the materials list).
 3. Not connected, or the grant ended (409): Google's consent with
-   `return` `/connections?pick=drive` or `/read?pick=drive` (`returnPath`
+   `return` `/connections?pick=drive` or `/reader?pick=drive` (`returnPath`
    allows exactly these). Back with `?pick=drive&google=connected`, the
    Picker opens by itself (`autoPickOnReturn`), and both words leave the URL.
    A denial or failure never opens it.
@@ -88,7 +88,7 @@ with title, last sync (relative, the user's locale), Open, and **Sync again**
 never picked, so Drive refuses it (`not-granted`) and the public link is
 used. Either way it is the same import, so `carrySentenceCards` moves the
 sentence cards of unchanged lines to the new text. A title the user set
-with Rename (the /read row's ⋯ menu, `PATCH /api/read/<id>`) is kept:
+with Rename (the /reader row's ⋯ menu, `PATCH /api/read/<id>`) is kept:
 `read_materials.title_custom` (migration 0038) stops a re-import from
 replacing it, while the text still updates. The list also shows,
 read-only apart from Sync, while the connection is off but books exist.
@@ -96,7 +96,7 @@ read-only apart from Sync, while the connection is off but books exist.
 QA mocks the Picker (`window.gapi` / `google.picker` stubbed, the picker
 and import routes answered): `scripts/qa/qa-drive-pick.mjs`.
 
-## Live stream (a Google Docs tab → /read)
+## Live stream (a Google Docs tab → /reader)
 
 Owner, 2026-11-06: a doc edited during a meeting shows up in the reader as it
 is written, its words matched against his decks. The Docs page is already
@@ -124,7 +124,7 @@ Flag `read.gdoc-stream` (off: the owner only).
    cards of unchanged lines carried; a polish dropped). `DOMParser` is unavailable
    on Docs (Trusted Types); an answer under half the previous size is believed
    only when it repeats.
-4. **The reader** (`/read/<id>?streamingFrom=google-docs`, `reader-stream.tsx`)
+4. **The reader** (`/reader/<id>?streamingFrom=google-docs`, `reader-stream.tsx`)
    treats the doc as **append only** (`lib/read/gdoc-tail.ts`): edits at the end
    grow a tail under the book, revisions inside the tail apply, anything earlier
    waits for the next save. Only new words are cut, looked up and flashed. On a
@@ -221,7 +221,7 @@ owner only.
 | routes                         | `app/api/connections/google/{start,callback,picker,disconnect}`          |
 | page                           | `app/(app)/connections/`                                                 |
 | Drive export                   | `lib/gdoc/drive.ts`; import in `app/api/read/gdoc/route.ts`              |
-| Picker                         | `lib/connections/picker-client.ts`, `app/(app)/read/GdocDriveImport.tsx` |
+| Picker                         | `lib/connections/picker-client.ts`, `app/(app)/reader/GdocDriveImport.tsx` |
 | pick button, imported list     | `app/(app)/connections/{DrivePick,GdocImportList}.tsx`                   |
 | their logic                    | `lib/connections/{drive-pick,gdoc-imports}.ts`                           |
 | tests                          | `unit/connections.test.ts`, `unit/drive-pick.test.ts`                    |
@@ -251,6 +251,6 @@ button says the same; nothing else is affected.
 6. If the consent screen's **Audience** is "Testing", the account must be a
    listed test user (or publish the app; `drive.file` needs no review).
 
-Then on lianki.com (owner): /connections → Connect → /read → paste a private
+Then on lianki.com (owner): /connections → Connect → /reader → paste a private
 doc's link → Choose in Google Drive. When it works, `connections.google` on
 at `/dev/flags` opens it to everyone.

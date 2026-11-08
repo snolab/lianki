@@ -59,7 +59,7 @@
    --lk-fs-ui / --lk-fs-chat / --lk-fs-cards are the choices (set on <html>
    before first paint); --lk-fs-k is the factor in effect: the app's, times
    the area's inside .lk-fs-chat (the chat), .lk-fs-cards (study cards) and
-   .lk-fs-read (a book in the /read reader).
+   .lk-fs-read (a book in the /reader reader).
    Every Tailwind text-* size is re-pointed through it, and is redeclared in
    each area so it picks up that area's factor. A size in px is written
    fs-<px> (the utility below), never text-[<px>px], which would not scale. */
@@ -68,7 +68,7 @@
 }
 /* Stacking, for what is fixed over the page. Up to 50 (plain z-10…z-50): the
    page's own chrome, sheets and palettes. Above that, by name:
-   overlay        a full-screen app layer (the /read word review, first run)
+   overlay        a full-screen app layer (the /reader word review, first run)
    overlay-toast  a toast or popover over one (its undo toast, the language list)
    chat           the Li chat (packages/debug-chat), above every app layer and
                   usable while one is open
@@ -1130,7 +1130,7 @@ html[data-motion="off"] *::after {
   scroll-behavior: auto !important;
 }
 
-/* ── The /read reader v2 (app/(app)/read/[id]/ReaderV2.tsx) ─────────────────
+/* ── The /reader reader v2 (app/(app)/reader/[id]/ReaderV2.tsx) ─────────────────
  * The book as it is, flat: paragraphs on the page, no boxes. Sizes in em so
  * the `read` text size (.lk-fs-read) scales the book and its spacing. */
 .lk-book {

@@ -1,4 +1,4 @@
-// The /read player (app/(app)/read/[id]/ReaderV2.tsx) as a pure state
+// The /read player (app/(app)/reader/[id]/ReaderV2.tsx) as a pure state
 // machine, so its rules are tested without a browser (unit/read-player.test.ts).
 //
 // Play reads the current line aloud. What happens when the line's audio has

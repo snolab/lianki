@@ -25,7 +25,7 @@ import {
 import type { VibeLine } from "@/lib/vibe/session";
 import { SWIPE_MIRROR_KEY } from "@/lib/words/swipe";
 import { SwipeFeelProvider } from "@/lib/words/swipe-core";
-import { NewWordStrip } from "../read/[id]/reader-grade-handle";
+import { NewWordStrip } from "../reader/[id]/reader-grade-handle";
 
 const DIM = "text-[oklch(0.45_0_0)] dark:text-[oklch(0.72_0_0)]";
 

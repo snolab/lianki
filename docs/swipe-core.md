@@ -44,7 +44,7 @@ Android's gesture navigation takes a sideways drag that starts on a screen
 edge as Back, and no page can stop it (design-principles.md, "Edge
 gestures"). So no grade needs a drag from the edge: on /words the term
 starts past the stamp column and the meaning ends before the right-hand
-column, and on /read (touch) the text is inset by `--lk-edge-gesture`. When the
+column, and on /reader (touch) the text is inset by `--lk-edge-gesture`. When the
 system does take a gesture, it is a cancel, never a lift:
 
 - js swipe: `pointercancel`, or the page hidden, left, popped or blurred mid-

@@ -2,7 +2,7 @@
 // (use-reader-select.ts) over a small book, mounted the way ReaderV2 mounts it.
 import { useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { useReaderSelect } from "@/app/(app)/read/[id]/use-reader-select";
+import { useReaderSelect } from "@/app/(app)/reader/[id]/use-reader-select";
 import { COMBO_MS, type ComboCtx } from "@/lib/read/reader-select";
 
 const PARAS = [

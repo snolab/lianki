@@ -160,11 +160,11 @@ function watch(page) {
 }
 
 async function openBook(page) {
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
-  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
+  await page.waitForURL(/\/reader\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   await until(page, () => page.evaluate(() => !!document.querySelector(".lk-book [data-f]")));
@@ -449,7 +449,7 @@ async function liveCard(scheme) {
   const page = await ctx.newPage();
   const seen = watch(page);
   const cdp = await ctx.newCDPSession(page);
-  await page.goto(`/read/${id}?streamingFrom=google-docs`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}?streamingFrom=google-docs`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 30000 });
   await until(page, () => !!socket, 15000);
   await page.waitForTimeout(800);

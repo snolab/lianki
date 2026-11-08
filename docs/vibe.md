@@ -1,7 +1,7 @@
 # /vibe: a conversation diary
 
 The owner asked for this on 2026-11-06: he talks with a foreigner, each learning
-the other's language; what's said becomes private text he reads back in /read,
+the other's language; what's said becomes private text he reads back in /reader,
 and the words heard are offered as a 新词 list. All speakers' text is kept (no
 voice filter), in his account (D1), readable on any device.
 
@@ -25,7 +25,7 @@ phone mic ─ Silero VAD ─ frames ─▶ wss://<mac>.ts.net/lianki-stt  (tailn
 createMic: cleanTranscript, judgeFinal (the silence guard)
                         │ text only
 POST /api/vibe/<id>/lines ─▶ a read_materials row (source "vibe"), each line's language detected
-                        └ tellReaders ─▶ /read/<id>?streamingFrom=vibe on any device
+                        └ tellReaders ─▶ /reader/<id>?streamingFrom=vibe on any device
 ```
 
 ## What is reused
@@ -39,7 +39,7 @@ Nothing here is a second pipeline.
 | The Mac client | `local-stt.ts` `createLocalStt`, `localSttRoute` | no `device`, `thread` or `filter`: every speaker kept |
 | Per-line language | `lib/read/lang-detect.ts` `detectLangs`, `toRuns` | stored as `BookMeta.langs`, shown per line |
 | The reader, live | `reader-stream.tsx` `useBookStream`, ReaderV2, lianki-push `read-stream` | `?streamingFrom=vibe`; finals only, and `LiveTail` is not mounted, since its card would translate the newest line by itself |
-| Material storage, privacy, delete | `lib/getReadMaterialsCollection.ts`, `DELETE /api/read/[id]`, the /read row menu | as is; cards carried by `carrySentenceCards` as a re-import does |
+| Material storage, privacy, delete | `lib/getReadMaterialsCollection.ts`, `DELETE /api/read/[id]`, the /reader row menu | as is; cards carried by `carrySentenceCards` as a re-import does |
 | Daily trigger | `worker.ts` `scheduled` (the ledger's cron) | the optional delete-after-N-days sweep, beside the anchor |
 
 ## Audio
@@ -76,7 +76,7 @@ and this is the owner.
   `history.replaceState` once a line is saved, without leaving the page, so a stop
   that heard nothing leaves no entry and no address. The list reads through a join
   on the material, so a start that heard nothing (material NULL) is not on it.
-- **Delete** asks once by the browser's confirm, as a /read row does. A material's
+- **Delete** asks once by the browser's confirm, as a /reader row does. A material's
   delete takes its row and its R2 content at once, so there is no undo to offer.
 - **Rename** is the material's (`PATCH /api/read/<id>`); `title_custom` keeps it
   through later lines.
@@ -136,8 +136,8 @@ It pauses itself, saying why:
 A 404 on a line (the flag turned off, the doc deleted) ends the conversation; the
 flag's cache means within 30 s. Leaving the page ends it too.
 
-**Live reading on the same phone** ends up pausing, because opening /read hides
-/vibe. Another device follows it at `/read/<id>?streamingFrom=vibe`.
+**Live reading on the same phone** ends up pausing, because opening /reader hides
+/vibe. Another device follows it at `/reader/<id>?streamingFrom=vibe`.
 
 ## Nothing said is a command
 
@@ -159,7 +159,7 @@ and a deliberate tap on the chat mic in a tab opened after the start.
 ## The doc
 
 A `read_materials` row with `source_key` `vibe:<id>`, `BookMeta.source` `"vibe"`.
-It appears in /read like any other; `/api/read/[id]` and every reader route ask
+It appears in /reader like any other; `/api/read/[id]` and every reader route ask
 for the signed-in user's own row, and a deep link by hash resolves only to the
 reader's own copy. There is no public or shared path, and nothing on the page
 offers one: the reader's selection card has no Copy link on these docs
@@ -167,7 +167,7 @@ offers one: the reader's selection card has no Copy link on these docs
 
 `vibe_doc` (migration 0052) holds what makes it a transcript: status, `next_seq`,
 `last_ms`. Its `material_id` stays NULL until the first line, so a
-start with nothing said leaves nothing in /read, and stop deletes the row.
+start with nothing said leaves nothing in /reader, and stop deletes the row.
 
 - `next_seq` makes a retry harmless: a batch overlapping what is held adds only
   what is new; a gap is 409. Text is written before the count, so a failure
@@ -228,7 +228,7 @@ Private speech does not go into, or come out of, anything shared across users.
 
 | path | what happens on a /vibe doc |
 | --- | --- |
-| Selecting text in `/read/<id>` (`POST /api/read/<id>/translate`, `translateSelection`) | Never `read_translation`. A selection that is a whole line uses that line's row in `vibe_translation`, so it is paid once whether it came from here or from the log, and it shows in the log's column. A sentence of a longer line, a phrase, or an answer with translator's notes goes to the model and is not stored; the tab holds the answer. Doc found by `isVibeMaterial` and asked for under the signed-in user. |
+| Selecting text in `/reader/<id>` (`POST /api/read/<id>/translate`, `translateSelection`) | Never `read_translation`. A selection that is a whole line uses that line's row in `vibe_translation`, so it is paid once whether it came from here or from the log, and it shows in the log's column. A sentence of a longer line, a phrase, or an answer with translator's notes goes to the model and is not stored; the tab holds the answer. Doc found by `isVibeMaterial` and asked for under the signed-in user. |
 | `word_gloss` (dictionary, shared) | A **single word's** generated gloss is written, by design: a headword and its meaning, with no sentence. It happens when a card is committed (`batch-grade`, `make-cards`), never before a swipe. A **phrase** of a doc (`bookPhrase`: up to 200 characters, so it can be a whole spoken clause) is generated for that card and not written (`BookCtx.privateText`). |
 | Clips in R2 `tts/` (`/api/words/tts`, shared by language and text) | A text of two or more words found in the user's own /vibe doc, or in an example on one of their `book:` lists, is voiced and not kept (`isPrivateSpeech`, on the server, so every client is covered). Cards outlive docs, and a list does not say what kind of book it came from, so an ordinary book's card example is treated the same; a clip already in R2 is still served. A single word stays shareable, as above. |
 | A card's sentence (`word_list_entries.ex`, `word_cards`) | The user's own rows, scoped by email. It stays after the doc is deleted: the card is theirs. |
@@ -262,7 +262,7 @@ is created without a swipe:**
 - A word that already has a card shows its mark and "Already in your deck". Due
   words are reviewed in /words or the reader, not here.
 
-On another device, tapping a word in `/read/<id>` opens the same preview, with the
+On another device, tapping a word in `/reader/<id>` opens the same preview, with the
 same rule for its meaning. With the user's own AI on, its slider asks no model of
 ours either, so a word nothing has a meaning for is carded without one.
 
@@ -292,10 +292,10 @@ A failure in one job does not stop the other, and either still fails the run. It
 takes the material, its R2 content and its reader rows. A word card the user made
 from the doc stays in their deck: it is theirs.
 
-Delete at any time: /vibe's ⋯ menu, the /read row menu, or the button on the log.
+Delete at any time: /vibe's ⋯ menu, the /reader row menu, or the button on the log.
 `vibe_doc` goes with the material (`ON DELETE CASCADE`). A start that heard nothing
 and was never stopped (the tab closed) leaves a `vibe_doc` row with no text and
-nothing in /read; for a user with no number it simply stays.
+nothing in /reader; for a user with no number it simply stays.
 
 ## Code
 

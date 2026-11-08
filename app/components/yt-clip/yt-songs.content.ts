@@ -3,7 +3,7 @@ import { describeKeys } from "@/lib/i18n-context";
 
 /**
  * YouTube songs on /read (docs/youtube-song-examples.md): the new-song page
- * (app/(app)/read/youtube), the /read button, and the line player popup
+ * (app/(app)/reader/youtube), the /read button, and the line player popup
  * (YtClipPopup.tsx).
  */
 const dictionary = {

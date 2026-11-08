@@ -11,7 +11,7 @@ one ships dark behind the flag **`voice.li-hub`** (owner only, default off,
 | -------- | ------------------------------------------------------------------------------------------- |
 | mic      | the chat mic `__lkMic` (`mic-session.ts`, `mic.ts`, `MicButton.tsx`)                        |
 | mic      | command taps `__lkMicTaps` (`mic-taps.ts`): /words voice mode (`lib/words/voice-mic.ts`), /vibe's block |
-| mic      | `pageAudio().listen` (`page-audio.ts`): /read's shadowing, fed by the chat mic              |
+| mic      | `pageAudio().listen` (`page-audio.ts`): /reader's shadowing, fed by the chat mic              |
 | mic      | /vibe's own capture (`lib/vibe/browser.ts`, through `voiceCapture()`)                       |
 | sound    | Li's voice (`voice.ts`, `voice-out.ts`), /words read-aloud (`WordsClient.tsx`), the reader (`lib/read/speaker.ts`) |
 | sound    | `cues.ts`, `output-bed.ts`, `gradeSound.ts`, polyglot's and self-intro's `<audio>`          |
@@ -54,7 +54,7 @@ touches no DOM. Retiring takes a wrapper off only while it is still the hub's.
 **Not seen in phase 0:** Web Audio sounds (`cues.ts`, `output-bed.ts`,
 `gradeSound.ts`); which caller opened a capture (the view says who holds the
 mic, not whose stream is whose); a stream stopped with nothing else changing
-is counted until the next change; /read's shadowing listener (it uses the
+is counted until the next change; /reader's shadowing listener (it uses the
 chat mic, so it is not a separate capture).
 
 **Tests:** `unit/li-audio.test.ts` (fakes only: no mic, no sound): flag off
