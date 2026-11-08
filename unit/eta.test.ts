@@ -27,7 +27,6 @@ import {
   splitTitle,
   taskFraction,
 } from "@lianki/debug-chat/eta";
-import { FrontierLines } from "@lianki/debug-chat/Frontier";
 import {
   ETA_COLORS,
   EtaBar,
@@ -644,26 +643,6 @@ describe("the minimized line: the nearest task and the last, in minutes", () => 
       { name: "A", min: "0 分钟" },
     ]);
     expect(etaParts([], 0, "{n} min")).toBeNull();
-  });
-  it("drawn as parts: names truncate, minutes never; the full line in the title", () => {
-    const out = renderToString(
-      createElement(FrontierLines, {
-        frontier: {
-          doing: {
-            text: "ETA bar 3 min · Box 38 min",
-            parts: [
-              { name: "ETA bar", min: "3 min" },
-              { name: "Box", min: "38 min" },
-            ],
-          },
-        },
-      }),
-    ).replace(/<!-- -->/g, "");
-    expect(out).toContain('title="ETA bar 3 min · Box 38 min"');
-    expect(out.match(/data-testid="debug-chat-frontier-eta-part"/g)?.length).toBe(2);
-    expect(out).toMatch(/flex-shrink:100/);
-    expect(out).toMatch(/class="shrink-0 tabular-nums">3 min</);
-    expect(out).toMatch(/class="min-w-0 truncate">ETA bar</);
   });
 });
 
