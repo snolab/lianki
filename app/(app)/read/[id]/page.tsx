@@ -5,6 +5,7 @@ import { boxConfig } from "@/lib/box-oauth/mode";
 import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { draftAllowedFor } from "@/lib/read/reader-access";
+import { ytSongsOn } from "@/lib/yt-songs/gate";
 import { resolveReadId } from "@/lib/read/book-link";
 import { findReadMaterialIdByHash } from "@/lib/getReadMaterialsCollection";
 import { notFound, redirect } from "next/navigation";
@@ -59,6 +60,7 @@ export default async function ReadMaterialPage({
       isLoggedIn={!!user}
       streaming={streaming}
       draftAllowed={draftAllowedFor(flags, owner)}
+      ytSongs={!!user && ytSongsOn(flags, owner)}
     />
   );
 }

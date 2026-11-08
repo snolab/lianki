@@ -124,6 +124,17 @@ export const SUITES = [
     paths: READ,
     sensitive: true,
   },
+  // YouTube songs (docs/youtube-song-examples.md): flag gate, the ▶ per line, the popup's close rules.
+  // Every YouTube host blocked: no video, no sound, no network.
+  {
+    name: "YT SONGS (qa-yt-songs)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-yt-songs.mjs"],
+    base: true,
+    id: "yt-songs",
+    paths: ["app/(app)/read/youtube/**", "app/api/read/youtube/**", "lib/yt-songs/**"],
+    sensitive: false,
+  },
   // Serverless: a tap on another word moves the selection, never two drawn (WebKit + Chromium).
   {
     name: "READ SEL ONE",

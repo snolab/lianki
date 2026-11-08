@@ -6,6 +6,7 @@ import { isOwner } from "@/lib/owner";
 import { connectionsOn } from "@/lib/connections/gate";
 import { booksOn } from "@/lib/books/gate";
 import { vibeAllowed } from "@/lib/vibe/gate";
+import { ytSongsOn } from "@/lib/yt-songs/gate";
 import { VibeEntry } from "../vibe/VibeDocNote";
 
 export default async function ReadPage() {
@@ -18,6 +19,8 @@ export default async function ReadPage() {
   const drive = gdoc && connectionsOn(flags, owner);
   // The link to /books, the public-domain library (books.catalogue, or the owner).
   const books = !!flags && booksOn(flags, owner);
+  // A YouTube song with timed lyrics (read.youtube-songs, or the owner).
+  const youtube = !!flags && ytSongsOn(flags, owner);
 
   return (
     <div className="flex flex-col">
@@ -31,7 +34,13 @@ export default async function ReadPage() {
               : " Sign in to save your materials."}
           </p>
           {!!flags && vibeAllowed(flags, owner) && <VibeEntry />}
-          <ReadListClient isLoggedIn={!!user} gdoc={gdoc} drive={drive} books={books} />
+          <ReadListClient
+            isLoggedIn={!!user}
+            gdoc={gdoc}
+            drive={drive}
+            books={books}
+            youtube={youtube}
+          />
         </div>
       </div>
     </div>

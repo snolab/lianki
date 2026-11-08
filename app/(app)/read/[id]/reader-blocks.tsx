@@ -132,6 +132,7 @@ function PieceText({
   lang,
   last,
   join,
+  clip,
 }: {
   para: Para;
   piece: Piece;
@@ -140,6 +141,8 @@ function PieceText({
   lang: string;
   last: boolean;
   join?: "br" | "sp";
+  /** A sung line's ▶ (a YouTube song), before its first sentence. */
+  clip?: ReactNode;
 }) {
   const ss = pieceSentences(para, piece);
   const cont = piece.s0 > 0;
@@ -154,6 +157,7 @@ function PieceText({
       data-last={last ? "" : undefined}
       data-join={join}
     >
+      {!cont && clip}
       {ss.map((st, i) => (
         <span key={piece.s0 + i} data-s={piece.s0 + i}>
           {sentenceNodes(st.segs, fam, phrases)}
@@ -198,6 +202,8 @@ export type RowCommon = {
   scrolling: () => boolean;
   /** One /words-style swipe telemetry row (WordsClient logSwipe's shape). */
   log?: (row: SwipeLogRow) => void;
+  /** A YouTube song: the ▶ of a sung line (null: the line has no clip). */
+  clipOf?: (line: number) => ReactNode;
 };
 
 export const BlockRow = memo(function BlockRow(p: RowCommon) {
@@ -254,6 +260,7 @@ function ItemBody({ p }: { p: RowCommon }) {
             lang={p.langOf(pc.line)}
             last={i === b.pieces.length - 1}
             join={pc.s0 === 0 ? p.joinOf(pc.line) : undefined}
+            clip={p.clipOf?.(pc.line)}
           />
         ),
       )}

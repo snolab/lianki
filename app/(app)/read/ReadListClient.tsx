@@ -62,8 +62,11 @@ export function ReadListClient({
   gdoc = false,
   drive = false,
   books = false,
+  youtube = false,
 }: {
   isLoggedIn: boolean;
+  /** A YouTube song with timed lyrics can be added (lib/yt-songs/gate.ts). */
+  youtube?: boolean;
   /** Google Docs import shown (signed in on D1, page.tsx). */
   gdoc?: boolean;
   /** Private docs through Google Drive offered (connectionsOn, docs/connections.md). */
@@ -89,6 +92,7 @@ export function ReadListClient({
   const [epubBusy, setEpubBusy] = useState(false);
   const [epubError, setEpubError] = useState("");
   const gdocText = useIntlayer("read-gdoc");
+  const ytText = useIntlayer("yt-songs");
   const rowText = useIntlayer("read-row-menu");
   // The row whose title is a text field right now (row menu → Rename).
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -385,6 +389,15 @@ export function ReadListClient({
             )}
             {isLoggedIn && drive && (
               <DrivePick page="/read" compact onImported={() => setReload((n) => n + 1)} />
+            )}
+            {isLoggedIn && youtube && (
+              <Link
+                href="/read/youtube"
+                data-testid="read-import-youtube"
+                className="flex-1 py-4 text-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+              >
+                + {ytText.entry}
+              </Link>
             )}
           </div>
           {isLoggedIn && (
