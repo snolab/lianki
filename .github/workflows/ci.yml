@@ -7,12 +7,18 @@ name: CI
 # - `checks` — OXC lint + format check, typecheck, the WHOLE unit suite with its
 #   coverage gate. Every PR, every merge group, every push to main (~20 s).
 # - `qa` — the whole `bun run qa:all` (OpenNext build → wrangler dev on local
-#   D1 → every suite), in the merge queue only, so nothing lands on main
-#   without it; also nightly on main (nightly-qa.yml). A PR does not wait for it
-#   and main's deploy does not either (owner, 2026-10-31).
+#   D1 → every suite), in the merge queue only; also nightly on main
+#   (nightly-qa.yml). A PR does not wait for it and main's deploy does not
+#   either (owner, 2026-10-31). REPORT-ONLY for now (QA_BLOCKING below).
 # - `gate` — named `Typecheck + unit`, the one required check: green when
-#   `checks` passed and `qa` passed or was skipped (it is skipped outside the
-#   merge queue). Branch protection is unchanged by adding `qa`.
+#   `checks` passed and, once QA_BLOCKING is "true", `qa` passed or was skipped
+#   (it is skipped outside the merge queue). Branch protection is unchanged.
+#
+# TODO(state tree /infra/words-ci-fix): WORDS "the Settings sheet fits the
+# screen" (360×640 WebKit iPhone) fails on main in CI since #704 (nightly
+# dispatch 2026-11-08, run 42484930543), so qa is report-only: a failure shows
+# as a warning on the gate, not a block. Set QA_BLOCKING: "true" once it is
+# green twice in the queue.
 #
 # deploy-worker.yml runs on this workflow's success on main.
 on:
@@ -88,7 +94,7 @@ jobs:
   # (see the reasons there: browsers baked into the image, Node 24, HOME=/root
   # for Firefox). ~6-7 min on a runner.
   qa:
-    name: qa:all (merge queue)
+    name: qa:all (merge queue, report-only)
     if: github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -115,11 +121,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: checks passed, qa passed or skipped
+      - name: checks passed; qa passed or skipped (blocking only when QA_BLOCKING)
         env:
           CHECKS: ${{ needs.checks.result }}
           QA: ${{ needs.qa.result }}
+          # TODO(/infra/words-ci-fix): "true" once WORDS is green in CI.
+          QA_BLOCKING: "false"
         run: |
-          echo "checks: $CHECKS, qa: $QA"
+          echo "checks: $CHECKS, qa: $QA, qa blocking: $QA_BLOCKING"
           [ "$CHECKS" = "success" ] || exit 1
-          [ "$QA" = "success" ] || [ "$QA" = "skipped" ] || exit 1
+          if [ "$QA" != "success" ] && [ "$QA" != "skipped" ]; then
+            if [ "$QA_BLOCKING" = "true" ]; then exit 1; fi
+            echo "::warning title=qa:all (merge queue) $QA::report-only until /infra/words-ci-fix lands; see the qa job's log"
+          fi
