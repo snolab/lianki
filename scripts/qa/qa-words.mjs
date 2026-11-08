@@ -2579,12 +2579,19 @@ try {
           host.on("pageerror", (e) => {
             if (!cutPrefetch(e.message)) errs.push(`PAGEERROR (${tag} iframe) ${e.message}`);
           });
-          // setContent's own "load" would wait for the whole framed page, so it
-          // waits for the framed list.
-          await host.setContent(
-            `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
-            { waitUntil: "commit" },
+          // The framing page is served on the site's own origin, under /api/ so the
+          // service worker lets it through to the route (a blank page's
+          // frame is no secure context in WebKit: no crypto.randomUUID). Its own
+          // "load" would wait for the whole framed page, so it waits for the
+          // framed list.
+          const frameUrl = `${new URL(listUrl).origin}/api/__qa-frame`;
+          await host.route(frameUrl, (r) =>
+            r.fulfill({
+              contentType: "text/html",
+              body: `<!doctype html><iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
+            }),
           );
+          await host.goto(frameUrl, { waitUntil: "commit" });
           const fr = host.frameLocator("iframe");
           await fr.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
           const framed = await fr.locator(".slip-native").count();
