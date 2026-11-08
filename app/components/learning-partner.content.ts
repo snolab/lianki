@@ -515,24 +515,6 @@ const learningPartnerContent = {
       mr: "बोलणे सुरू व संपल्यावर आवाज",
       ko: "말하기 시작과 끝 알림음",
     }),
-    droppedLines: t({
-      en: "Lines not sent, taken for noise",
-      zh: "当作杂音、未发送的语音",
-      hi: "शोर समझकर न भेजी गई पंक्तियाँ",
-      es: "Frases no enviadas, tomadas por ruido",
-      fr: "Phrases non envoyées, prises pour du bruit",
-      ar: "عبارات لم تُرسل لاعتبارها ضوضاء",
-      bn: "আওয়াজ ভেবে পাঠানো হয়নি এমন লাইন",
-      pt: "Frases não enviadas, tomadas por ruído",
-      ru: "Неотправленные фразы, принятые за шум",
-      ur: "شور سمجھ کر نہ بھیجی گئی سطریں",
-      id: "Kalimat yang tidak dikirim karena dikira derau",
-      de: "Nicht gesendete Sätze, für Rauschen gehalten",
-      ja: "雑音と判断して送らなかった音声",
-      sw: "Sentensi zisizotumwa, zilidhaniwa kuwa kelele",
-      mr: "आवाज समजून न पाठवलेल्या ओळी",
-      ko: "잡음으로 판단해 보내지 않은 문장",
-    }),
     compactIdle: t({
       en: "Only the last message while not typing",
       zh: "不打字时只显示最后一条消息",
@@ -2082,8 +2064,6 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "On/off switch in the chat's menu, with the voice settings, on by default and following the account: when on, a short tone (no words) plays each time a message the user spoke was recognised and sent. Names the setting as a short noun phrase, not a command.",
   cueSpeech:
     "On/off switch right under that one, on by default and following the account: when on, a soft rising tone plays when the microphone hears the user begin to speak, and a falling one when they finish. Speech means the user talking into the mic, not the app reading aloud. Short noun phrase, not a command.",
-  droppedLines:
-    "Small heading in the chat's menu, shown only to the site owner and only when there is something under it. Below it are transcribed voice lines the app decided were background noise misheard as speech, and did not send; tapping one puts it back in the text box. A noun phrase naming that list, not a command or an error.",
   compactIdle:
     "On/off switch in the chat's menu, saved on this device only: when on, the open chat shrinks to just its latest message (one short line over the input) whenever the text input is not focused, to cut distraction while talking by voice. Names the setting as a short noun phrase, not a command.",
   compactShowAll:

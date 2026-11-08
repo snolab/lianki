@@ -260,9 +260,9 @@ clips.
 **Logs.** Each drop is a `stt-dropped` devLog event: reason, `chars`, `ms`,
 `prob`, decoder, logprob, VAD share. These reach the Worker logs, so never the
 words (docs/local-stt.md). `stt-cleaned`, `stt-blip`, `voice-utt` and
-`voice-utt-page` carry a length instead of text for the same reason. The text
-stays in `stt-dropped.ts`: in memory on the owner's own page, last 20, shown
-under the chat's + menu when there are any. A tap puts a line back in the box.
+`voice-utt-page` carry a length instead of text for the same reason. A dropped
+line's text is kept nowhere and shown nowhere: the chat menu's list of them was
+removed (owner, 2026-11-08: noise has nothing to do with the user).
 
 **Whisper's additions inside real speech (2026-10-31).** In the field the
 cloud route also mixed its own text into what the owner said, e.g.

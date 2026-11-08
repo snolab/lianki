@@ -31,7 +31,6 @@ import { voiceLatency, noteSttVia } from "./latency";
 import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
 import type { SttSignals } from "./stt-guard";
-import { noteDropped } from "./stt-dropped";
 import { VOICE_DEVICE_KEY, deviceSlug, filterSwitch, filterVerdict, noteFiltered, noteSpeaker, subscribeFiltered } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
@@ -514,7 +513,6 @@ function session(): MicSession {
       return (c.state as string) === "running";
     },
     log: (ev) => v.log(ev),
-    dropped: noteDropped,
     timing: (seq, m) => voiceLatency().mark(seq, m),
   });
 }
