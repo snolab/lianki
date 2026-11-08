@@ -306,7 +306,8 @@ async function touchRun(swipe, scheme) {
     check(lv.ref.test(ref ?? ""), `${tag}: ${lv.scope}: pinned in the URL (?review=${ref})`);
     await page.screenshot({ path: join(OUT, `review-${lv.scope}-${tag}.png`) });
     await page.getByTestId("read-review-close").click();
-    await page.waitForTimeout(400);
+    // The sheet slides down before it closes.
+    await until(page, async () => !(await page.getByTestId("read-word-review").count()), 3000);
     check(
       !(await page.getByTestId("read-word-review").count()),
       `${tag}: ${lv.scope}: ✕ closes it`,
@@ -388,6 +389,13 @@ async function playRun() {
     await until(page, async () => (await spoken()) > n + 1, 6000),
     `${tag}: closed, the reading goes on (${n} → ${await spoken()})`,
   );
+  // The sheet slides down first: wait for the reading itself, not just any sound.
+  await until(
+    page,
+    async () =>
+      (await page.evaluate(() => window.__spoken)).slice(n).some((x) => playing.includes(x)),
+    6000,
+  );
   // On from the sentence it was on: a line of the item that was playing, not the book's start.
   const resumed = (await page.evaluate(() => window.__spoken))
     .slice(n)
@@ -437,7 +445,8 @@ async function deskRun() {
     `${tag}: the same review (${title})`,
   );
   await page.getByTestId("read-review-close").click();
-  await page.waitForTimeout(400);
+  // The sheet slides down before it closes.
+  await until(page, async () => !(await page.getByTestId("read-word-review").count()), 3000);
   check(!(await page.getByTestId("read-word-review").count()), `${tag}: ✕ closes it`);
   await page.waitForTimeout(400);
   // Easy (H): the toast; Undo (U) inside the hold sends nothing.

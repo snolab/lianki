@@ -831,7 +831,13 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
 - **The popup is /words' own review:** `Study` of `WordsClient.tsx` with a
   `scope` (its rows, swipe, mirror, undo, marks, FSRS cards, grades sent
   through `/api/words/lists/<id>/review`), over the book
-  (`reader-word-review.tsx`, loaded on open). Scoped: only these words, no
+  (`reader-word-review.tsx`, loaded on open). Since 2026-11-09 (owner, 00:51
+  JST: "not full screen") a bottom sheet: it slides up to three quarters of
+  the screen with the book visible above, its top band drags it to half, to
+  nearly full (the notch and a strip of text stay) or away, and a tap above
+  it closes it (`lib/read/review-sheet.ts`, `use-review-sheet.ts`). Its
+  transform makes it the containing block of the list's fixed layers, and
+  `Study` measures its bands against the list's own box. Scoped: only these words, no
   new-word intake, no more due words, the page under it not locked. Order:
   unrecognised, new, learning weakest first, then the known ones
   (`lib/read/word-review.ts` `orderWords`). A card not due yet is left out

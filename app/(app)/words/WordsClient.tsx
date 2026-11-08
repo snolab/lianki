@@ -4517,17 +4517,20 @@ export function Study({
   }, [ROW_H, pad]);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
-  // hints change, the window turns), never polled.
+  // hints change, the window turns), never polled. Measured against the list's
+  // own box, not the window: a scoped review in a bottom sheet (the reader's,
+  // reader-word-review.tsx) has the list start below the top of the screen.
   useLayoutEffect(() => {
     const fit = () => {
       const top = topRef.current;
       const hint = hintRef.current;
+      const box = listEl?.getBoundingClientRect();
+      const boxTop = box?.top ?? 0;
+      const boxBottom = box?.bottom ?? window.innerHeight;
       const next = {
-        top: Math.round(top?.getBoundingClientRect().bottom ?? 0),
+        top: Math.round(top ? top.getBoundingClientRect().bottom - boxTop : 0),
         toolbar: Math.round(top?.offsetHeight ?? 0),
-        bottom: hint
-          ? Math.max(0, Math.round(window.innerHeight - hint.getBoundingClientRect().top))
-          : 0,
+        bottom: hint ? Math.max(0, Math.round(boxBottom - hint.getBoundingClientRect().top)) : 0,
       };
       setBar((b) =>
         b.top === next.top && b.bottom === next.bottom && b.toolbar === next.toolbar ? b : next,
@@ -4545,7 +4548,8 @@ export function Study({
   // The paper scrolls with the list (.lk-paper-layer): the body behind it is
   // plain, so the texture isn't drawn twice.
   useEffect(() => {
-    if (!listEl) return;
+    // A scoped review is an overlay: the page under it keeps its own look.
+    if (!listEl || scope) return;
     const root = document.documentElement;
     root.classList.add("lk-paper-scrolls");
     return () => root.classList.remove("lk-paper-scrolls");
@@ -5236,7 +5240,8 @@ export function Study({
         ref={topRef}
         data-words-top
         className="lk-words-bar lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
-        style={{ top: "calc(3.5rem + env(safe-area-inset-top))" }}
+        // Under the header; a scoped review in a sheet has no notch above it (--lk-sheet-inset-top).
+        style={{ top: "calc(3.5rem + var(--lk-sheet-inset-top, env(safe-area-inset-top)))" }}
       >
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <button

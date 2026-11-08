@@ -164,7 +164,8 @@ describe("Study's end of the list", () => {
   });
 
   test("in the reader's paragraph review the exit closes the overlay, back to the chapter", () => {
-    expect(review).toContain("onExit={() => close.current()}");
+    // The sheet slides down first, then closes (use-review-sheet.ts).
+    expect(review).toContain("onExit={() => sheet.dismiss()}");
     expect(review).toContain("exitLabel: t.backToChapter.value");
     // Closing returns focus to the paragraph the review was opened from.
     expect(review).toMatch(/return \(\) => back\?\.focus\(/);
