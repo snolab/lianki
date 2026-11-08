@@ -49,6 +49,7 @@ import privacyPage from "@/app/(app)/privacy/privacy.content";
 import apiTokens from "@/app/components/api-tokens.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
+import devDesign from "@/app/(app)/dev/design/page.content";
 import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
 import ytSongs from "@/app/components/yt-clip/yt-songs.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
@@ -129,6 +130,7 @@ describe.each([
   ["api-tokens", apiTokens],
   ["roadmap-page", roadmapPage],
   ["chat-history-page", chatHistoryPage],
+  ["dev-design", devDesign],
   ["dev-roadmap", devRoadmap],
   ["yt-songs", ytSongs],
 ])("%s", (_name, dict) => {

@@ -25,10 +25,7 @@ export const ROADMAP: RoadmapItem[] = [
   { id: "permissions", status: "doing" },
   { id: "boxAuth", status: "doing" },
   { id: "readerFixes", status: "doing" },
-  { id: "ganttList", status: "doing" },
   { id: "labMoves", status: "doing" },
-  { id: "designPage", status: "doing" },
-  { id: "devRoadmap", status: "doing" },
   { id: "scriptChat", status: "doing" },
   { id: "loaderHost", status: "doing" },
   // Waiting for the owner
@@ -46,6 +43,9 @@ export const ROADMAP: RoadmapItem[] = [
   { id: "ytSongs", status: "planned" },
   { id: "importAny", status: "planned" },
   // Done, newest first
+  { id: "designPage", status: "done", prs: [717] },
+  { id: "ganttList", status: "done", prs: [713] },
+  { id: "devRoadmap", status: "done", prs: [712] },
   { id: "reviewScopes", status: "done", prs: [703, 707] },
   { id: "gateSpeed", status: "done", prs: [701, 704, 706, 708] },
   { id: "chatDevGroup", status: "done", prs: [699, 705] },
