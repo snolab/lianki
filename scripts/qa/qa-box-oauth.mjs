@@ -13,7 +13,8 @@
  * The provider needs DEV_EMAIL_PASSWORD_AUTH=1, and in its local D1 the flag on and
  * OWNER in site_role. Use 127.0.0.1, not localhost: the plugin allows http only for a
  * native client on a loopback address. The box needs LIANKI_BOX_CLIENT_ID and
- * LIANKI_BOX_PROVIDER. It ends by revoking, so `setup` again before another `run`.
+ * LIANKI_BOX_PROVIDER, and BETTER_AUTH_BASE_URL=$BOX (its server asks the provider
+ * from that origin, lib/box-oauth/server-session.ts). It ends by revoking, so `setup` again before another `run`.
  * Not part of qa:all: it needs a second server.
  */
 import { chromium } from "playwright";
@@ -174,8 +175,8 @@ async function signedInView(ctx, page, boxCookies) {
     `${who.status}`,
   );
   check(
-    "and gives only name, email and avatar",
-    JSON.stringify(Object.keys(user).sort()) === '["email","image","name"]',
+    "and gives only id, name, email and avatar",
+    JSON.stringify(Object.keys(user).sort()) === '["email","id","image","name"]',
   );
   // On 127.0.0.1 the two servers share one cookie jar (cookies ignore the port),
   // so what counts is that no box response sets one.
@@ -191,10 +192,19 @@ async function signedInView(ctx, page, boxCookies) {
   await page.waitForTimeout(500);
   check("the landing page's header is signed in too", (await signInLinks(page)) === 0);
 
-  // A page that redirects on the server stops at /sign-in instead of going round.
+  // The box's server sees the tab's sign-in (its token cookie): a server-gated page opens.
   await page.goto(`${BOX}/learn`);
-  await page.waitForSelector("[data-box-signed-in]", { timeout: 30_000 });
-  check("a server-gated page does not loop through lianki.com", page.url().startsWith(BOX));
+  await settled(page);
+  check(
+    "a server-gated page opens signed in on the box",
+    new URL(page.url()).pathname === "/learn",
+  );
+  // A stale cookie: /sign-in refreshes it and comes straight back.
+  await ctx.clearCookies({ name: "lk_box_at" });
+  await page.goto(`${BOX}/learn`);
+  await page.waitForURL(`${BOX}/learn`, { timeout: 30_000 });
+  await settled(page);
+  check("without the cookie, /sign-in writes it again and returns to the page", true);
 
   await page.goto(`${BOX}/home`);
   await settled(page);

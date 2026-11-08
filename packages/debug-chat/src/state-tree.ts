@@ -59,6 +59,16 @@ export type TreeEta = {
   done?: boolean;
   doneAt?: number;
   sent?: boolean;
+  /** The agent's own progress, 0–100 (the Gantt row's deeper fill). */
+  pct?: number;
+  /**
+   * Queued (status waiting: for an agent slot or the gate): the Gantt list
+   * draws it after the one ahead (eta.ts ganttPlan), `created` orders the
+   * queue and `queuedMs` (its estimate as posted) is its length.
+   */
+  queued?: boolean;
+  created?: number;
+  queuedMs?: number;
 };
 
 export type TreeNode = {

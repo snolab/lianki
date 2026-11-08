@@ -1,7 +1,6 @@
 import { authUser } from "@/app/signInEmail";
 import { Icon } from "@/app/components/icons";
 import { getUserMembership } from "@/lib/membership";
-import { localeRedirect } from "@/lib/locale-redirect";
 import Link from "next/link";
 import { useIntlayer } from "next-intlayer/server";
 import { longDate } from "@/lib/dates";
@@ -9,14 +8,8 @@ import { longDate } from "@/lib/dates";
 export default async function PolyglotLayout({ children }: { children: React.ReactNode }) {
   const content = useIntlayer("polyglot-layout");
 
-  // Get authenticated user or redirect to sign-in
-  let user;
-  try {
-    user = await authUser();
-  } catch {
-    localeRedirect("/sign-in");
-    return null; // TypeScript: unreachable, but needed
-  }
+  // Signed in, or to /sign-in (authUser redirects; on a box, with the way back).
+  const user = await authUser();
 
   let membership;
   try {

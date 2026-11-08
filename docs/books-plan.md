@@ -1144,7 +1144,11 @@ items) and `lib/read/familiarity.ts` (aggregation); store
   - From the user's own reads (`read_reviews.dwell_ms`: from the item coming
     into view to the swipe, sent by the UI): lower = their 10th-percentile
     read before a swipe, upper = their 90th percentile; used once there are
-    enough reads for a 10th percentile to exist (10).
+    enough reads for a 10th percentile to exist (10). The upper bound stays
+    within the 1–3 minute rule: never past 3 minutes, and never under 1
+    minute (2026-11-08: his reads are timed on the items he was given, so
+    quick swipes over small items taught smaller ones until every sentence
+    was its own block; the floor stops that ratchet).
   - Before that: lower = 3 s (the upper end of the 1–3 s a person takes to
     react to information, design-principles.md), upper = none (the chosen
     unit unsplit), speed = 238 words a minute (Brysbaert 2019, silent

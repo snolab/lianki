@@ -47,6 +47,7 @@ export const PROGRESS_LIMITS = {
   task: 120,
   note: 280,
   eta: 40,
+  late: 200,
   needs: 120,
   id: 120,
   parent: 120,
@@ -104,6 +105,14 @@ export type ProgressReport = {
   etaAt?: number;
   /** `eta` as a duration (ms): the hub adds it to its own clock (parseProgressReport sets it). */
   etaIn?: number;
+  /**
+   * Why the task ran past its estimate (`progress.ts --late "…"`), always with
+   * a new estimate that sets a time. The hub stores it as `lateReason` and
+   * posts the owner the reason and the new time (docs/state-tree.md, "ETA
+   * overrun"). Once a node's etaAt has passed, a new estimate without it is
+   * refused.
+   */
+  late?: string;
   pr?: number;
   needs?: string;
   ref?: string;
@@ -119,7 +128,7 @@ export type ProgressNote = { at: number; by: string; text: string };
  * its status, pct and eta), `by` wrote it last, `rev` is its revision,
  * `created` / `at` when it was first / last written.
  */
-export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind" | "etaIn"> & {
+export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind" | "etaIn" | "late"> & {
   kind: ProgressKind;
   /**
    * The `etaAt` the hub already sent its ping for ("ETA reached for …",
@@ -127,6 +136,15 @@ export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind" | "etaI
    * pings again at the new time.
    */
   etaSent?: number;
+  /**
+   * The `etaAt` the hub already told the owner about as unexplained ("<name>
+   * 超时，未说明原因": pinged, then ETA_EXPLAIN_MS without a reason or a new
+   * estimate). Once per etaAt, as etaSent.
+   */
+  etaSilent?: number;
+  /** The last overrun's reason (`--late`), and the etaAt it explained. */
+  lateReason?: string;
+  lateFor?: number;
   creator: string;
   by: string;
   rev: number;
@@ -271,7 +289,7 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
     out.link = f.link;
   }
   if (f.needs !== undefined) out.needs = f.needs;
-  for (const k of ["eta", "ref", "action", "note"] as const) if (f[k]) out[k] = f[k];
+  for (const k of ["eta", "ref", "action", "note", "late"] as const) if (f[k]) out[k] = f[k];
   if (b.etaAt !== undefined && b.etaAt !== null) {
     if (typeof b.etaAt !== "number" || !Number.isInteger(b.etaAt) || b.etaAt <= 0)
       return new Error("etaAt must be a time in milliseconds");
@@ -281,6 +299,10 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
     if (e && "in" in e) out.etaIn = e.in;
     else if (e) out.etaAt = e.at;
   }
+  if (out.late && out.etaAt === undefined && out.etaIn === undefined)
+    return new Error(
+      'late needs a new estimate that sets a time: --eta 20m --late "why it ran over"',
+    );
   return out;
 }
 
@@ -325,6 +347,15 @@ export function mergeProgress(
   if (needs) entry.needs = needs;
   if (etaAt !== undefined) entry.etaAt = etaAt;
   if (prev?.etaSent !== undefined) entry.etaSent = prev.etaSent;
+  if (prev?.etaSilent !== undefined) entry.etaSilent = prev.etaSilent;
+  if (r.late) {
+    entry.lateReason = r.late;
+    if (prev?.etaAt !== undefined) entry.lateFor = prev.etaAt;
+    notes.push({ at, by: r.assignee.name, text: `late: ${r.late}` });
+  } else if (prev?.lateReason !== undefined) {
+    entry.lateReason = prev.lateReason;
+    if (prev.lateFor !== undefined) entry.lateFor = prev.lateFor;
+  }
   if (notes.length) entry.notes = notes.slice(-PROGRESS_NOTES_MAX);
   const startedAt = prev?.startedAt ?? (r.status === "doing" ? at : undefined);
   if (startedAt !== undefined) entry.startedAt = startedAt;

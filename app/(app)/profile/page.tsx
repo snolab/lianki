@@ -1,12 +1,11 @@
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { authUserOrNull } from "@/app/signInEmail";
+import { authUserOrNull, signInRedirect } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
 import PasskeysCard from "./PasskeysCard";
 import { ProfileFields } from "./ProfileFields";
-import { DebugOnly } from "./DebugOnly";
+import { SessionDetailsCard } from "./SessionDetailsCard";
 import { dbBackend } from "@/lib/d1";
 import { isEmailConfigured } from "@/lib/email";
 import { readFlags } from "@/lib/flags-store";
@@ -46,7 +45,7 @@ export default async function ProfilePage() {
   // way up (sign up); with levels hidden, a guest goes to sign in as before.
   const level = await levelCardFor(signedIn?.email ?? null, locale);
   if (!signedIn) {
-    if (!level) redirect("/sign-in");
+    if (!level) return signInRedirect();
     const { heading } = getIntlayer("profile-page", locale);
     return (
       <div className="flex flex-col">
@@ -85,38 +84,12 @@ export default async function ProfilePage() {
           />
         </div>
         <PasskeysCard />
-        {/* A raw dump for diagnosing sign-in; shown in debug mode only. */}
-        <DebugOnly>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
-            <h2 className="text-2xl font-semibold mb-4">{sessionDetails}</h2>
-            <pre className="text-sm overflow-x-auto">
-              {JSON.stringify(
-                {
-                  session: session?.session
-                    ? {
-                        expiresAt: session.session.expiresAt,
-                        createdAt: session.session.createdAt,
-                        updatedAt: session.session.updatedAt,
-                        // token and ipAddress intentionally omitted
-                      }
-                    : null,
-                  user: session?.user
-                    ? {
-                        name: session.user.name,
-                        email: session.user.email,
-                        emailVerified: session.user.emailVerified,
-                        createdAt: session.user.createdAt,
-                        updatedAt: session.user.updatedAt,
-                        id: session.user.id,
-                      }
-                    : null,
-                },
-                null,
-                2,
-              )}
-            </pre>
-          </div>
-        </DebugOnly>
+        {/* A raw dump for diagnosing sign-in: dev access only, never user UI. */}
+        <SessionDetailsCard
+          viewerEmail={user.email}
+          title={String(sessionDetails)}
+          session={session}
+        />
         <div className="flex gap-4">
           <a href="/preferences" className="text-blue-500 hover:text-blue-600">
             {editPreferences}

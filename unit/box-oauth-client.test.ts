@@ -7,10 +7,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import {
   boxChatHub,
+  boxSignInBack,
   boxSignOut,
   finishBoxSignIn,
+  forgetBoxTokens,
   installBoxFetch,
   startBoxSignIn,
+  syncBoxCookie,
   type BoxConfig,
 } from "@/lib/box-oauth/client";
 
@@ -27,7 +30,10 @@ const real = {
   fetch: globalThis.fetch,
   location: (globalThis as { location?: unknown }).location,
   sessionStorage: (globalThis as { sessionStorage?: unknown }).sessionStorage,
+  document: (globalThis as { document?: unknown }).document,
 };
+/** Every `document.cookie = …` line the page wrote. */
+let cookieLines: string[] = [];
 
 beforeAll(() => {
   const g = globalThis as unknown as Record<string, unknown>;
@@ -36,8 +42,17 @@ beforeAll(() => {
     setItem: (k: string, v: string) => void store.set(k, v),
     removeItem: (k: string) => void store.delete(k),
   };
+  g.document = {
+    get cookie() {
+      return "";
+    },
+    set cookie(line: string) {
+      cookieLines.push(line);
+    },
+  };
   g.location = {
     origin: BOX,
+    protocol: "https:",
     href: `${BOX}/words`,
     assign: (u: string) => void assigned.push(u),
   };
@@ -56,10 +71,12 @@ afterAll(() => {
   globalThis.fetch = real.fetch;
   g.location = real.location;
   g.sessionStorage = real.sessionStorage;
+  g.document = real.document;
 });
 
 beforeEach(() => {
   calls = [];
+  cookieLines = [];
   assigned = [];
   store.clear();
   answer = () => new Response("{}", { status: 200 });
@@ -356,5 +373,61 @@ describe("the chat hub on a box (box:chat)", () => {
     answer = () => new Response(null, { status: 404 });
     expect(await boxChatHub()?.ticket()).toBeNull();
     expect(boxChatHub()).toBeNull();
+  });
+});
+
+describe("the box's server sees the tab's sign-in (server-session.ts)", () => {
+  const back = (o: Record<string, string>) => new URLSearchParams(o);
+  beforeEach(() => {
+    answer = () =>
+      Response.json({ access_token: "lkb_new", refresh_token: "lkr_new", expires_in: 900 });
+  });
+
+  test("a new token is mirrored into one host-only cookie; the refresh token never", async () => {
+    store.set("lk:box:pending", JSON.stringify({ verifier: "v1", state: "s1" }));
+    expect(await finishBoxSignIn(config, back({ code: "c", state: "s1" }))).toBeNull();
+    expect(cookieLines).toHaveLength(1);
+    const line = cookieLines[0];
+    expect(line.startsWith("__Host-lk_box_at=lkb_new; Path=/; Max-Age=")).toBe(true);
+    expect(line).toContain("; Secure");
+    expect(line).not.toContain("Domain");
+    expect(line).not.toContain("lkr_new");
+    expect(Number(/Max-Age=(\d+)/.exec(line)?.[1])).toBeGreaterThan(890);
+  });
+
+  test("sign-in comes back to the page it started from; never another host", async () => {
+    await startBoxSignIn(config, "/learn?x=1");
+    store.set("lk:box:pending", JSON.stringify({ ...pending(), state: "s1" }));
+    await finishBoxSignIn(config, back({ code: "c", state: "s1" }));
+    expect(boxSignInBack()).toBe("/learn?x=1");
+    for (const evil of ["//evil.example/x", "https://evil.example/", "/\\evil", "/sign-in"]) {
+      await startBoxSignIn(config, evil);
+      store.set("lk:box:pending", JSON.stringify({ ...pending(), state: "s1" }));
+      await finishBoxSignIn(config, back({ code: "c", state: "s1" }));
+      expect(boxSignInBack()).toBe("/home");
+    }
+  });
+
+  test("a stale cookie is refreshed and written again; a tab with no token leaves it alone", async () => {
+    expect(await syncBoxCookie(config)).toBe(false);
+    expect(cookieLines).toHaveLength(0);
+    hold("lkb_old", "lkr_old", 30_000);
+    expect(await syncBoxCookie(config)).toBe(true);
+    expect(calls.map((c) => bodyOf(c).get("grant_type"))).toEqual(["refresh_token"]);
+    expect(cookieLines.at(-1)?.startsWith("__Host-lk_box_at=lkb_new;")).toBe(true);
+    calls = [];
+    hold("lkb_fresh", "lkr", 10 * 60_000);
+    expect(await syncBoxCookie(config)).toBe(true);
+    expect(calls).toHaveLength(0);
+    expect(cookieLines.at(-1)?.startsWith("__Host-lk_box_at=lkb_fresh;")).toBe(true);
+  });
+
+  test("sign-out and a refused token clear it", async () => {
+    hold("lkb_a", "lkr_a");
+    await boxSignOut(config);
+    expect(cookieLines.at(-1)).toContain("__Host-lk_box_at=; Path=/; Max-Age=0");
+    cookieLines = [];
+    forgetBoxTokens();
+    expect(cookieLines.at(-1)).toContain("Max-Age=0");
   });
 });
