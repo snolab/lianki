@@ -19,6 +19,7 @@ import {
   type FillRow,
   type RowPatch,
 } from "@/lib/read/review-row-fill";
+import { useBackend } from "./support/testMocks";
 
 const app = join(import.meta.dir, "../app");
 const review = readFileSync(join(app, "(app)/read/[id]/reader-word-review.tsx"), "utf8");
@@ -213,6 +214,9 @@ describe("one charge per word", () => {
       back,
     });
     beforeEach(() => {
+      // fillGlosses' route limit reads the shared dbBackend(); a file that ran
+      // before this one may have left it on "d1" with a broken database.
+      useBackend("mongodb");
       d1 = createTestD1(testSchema());
       calls = 0;
     });
