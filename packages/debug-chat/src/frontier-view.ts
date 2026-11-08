@@ -21,7 +21,7 @@ export type FrontierLine = {
    * name that truncates and minutes that never do, the first part yielding
    * space first. `text` is the whole line (title, screen readers).
    */
-  parts?: { name: string; min: string }[];
+  parts?: { name: string; min: string; late?: boolean }[];
   count?: number;
   items?: FrontierItem[];
   assignee?: Assignee;

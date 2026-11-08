@@ -1307,7 +1307,7 @@ export function DebugChat({
     locale: globalThis.document?.documentElement.lang,
     inProgress: ui.nowDoing,
   });
-  const etaLine = etaBar ? etaParts(etaList, etaNow, t.etaMinutes) : null;
+  const etaLine = etaBar ? etaParts(etaList, etaNow) : null;
   const shownFrontier =
     frontier ??
     (etaLine

@@ -41,6 +41,12 @@ lianki-dev <command> --help
   characters, then what it is — the owner's ETA bar shows only the name, the
   list both. A longer name is a usage error; no colon and over 20 is a
   warning. [docs/state-tree.md](state-tree.md), "Live progress".
+- **ETA overrun (standing rule).** A task past its `--eta` and not done
+  must, within 5 minutes, tell the owner why and a new time:
+  `lianki-dev progress --as <lane> --path <node> --task "<same>" --status doing --eta 20m --late "<reason>"`.
+  The hub posts "<name> 超时：<reason>。再要 20 分钟" in his Li thread; past the
+  ETA a new `--eta` without `--late` is refused; with nothing for 5 minutes he
+  hears "<name> 超时，未说明原因". [docs/state-tree.md](state-tree.md), "ETA overrun".
 - With `LIANKI_TOKEN` set (a lane token, below), `say`, `ask` and `listen`
   run `lianki chat …` instead of eval.ts: the label is the token's name, not
   `--as`, and `--to`, `--task-path`, `--agent`, more than one `--q` and
