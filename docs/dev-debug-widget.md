@@ -1575,7 +1575,12 @@ text colour per theme at WCAG AA (4.5:1) on the track and on every fill, which
 unit/eta.test.ts computes. Like everything in the chat, the line is dimmed with
 the whole panel at rest (`opacity-60`) and full while the chat is in use.
 On the owner's box it works the same (docs/box-oauth.md, "The state tree on
-the owner's box"). Progress is time
+the owner's box").
+The floating buttons above the input (scroll-down, ask jump) sit the bar's
+measured height higher (`etaH`, a ResizeObserver on its slot), so they never
+cover it (owner, 2026-11-08, Android); `scripts/dev/debug-chat-eta-overlap-qa.mjs`
+checks it at 412×915 and 390×844, light and dark, scrolled up, in and out of
+full screen. Progress is time
 against the estimate (a done task is full and leaves after 8 s); times are
 whole minutes rounded up, in Intl's narrow units. Strings: `eta*` in
 learning-partner.content.ts, each with its context line.

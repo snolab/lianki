@@ -332,10 +332,11 @@ export default {
       try {
         evalOnly = (JSON.parse(body) as { scope?: unknown }).scope === "eval";
       } catch {}
+      // Best effort, as the notice itself: the hub's own re-check is the guarantee.
       if (req.method === "POST" && !evalOnly && env.PROGRESS)
-        await env.PROGRESS.get(env.PROGRESS.idFromName("progress"))
-          .fetch(again())
-          .catch(() => null);
+        try {
+          await env.PROGRESS.get(env.PROGRESS.idFromName("progress")).fetch(again());
+        } catch {}
       return res;
     }
     if (
