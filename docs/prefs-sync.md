@@ -138,6 +138,13 @@ listed once.
 | ---------------- | ----------------------------------------- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `lk:title-rules` | patterns that clean notification prefixes | **synced** | `titles.rules` | owner, 2026-11-06. Holds the difference from the defaults. A public site host and short patterns (a second exception to "nothing typed"); device hosts are refused. The userscript reads it through `/api/preferences` (`lk:preferences`) |
 
+### Links to other websites (docs/external-links.md)
+
+| Key               | Setting                                      | Class      | Server key           | Reason                                                                                                                         |
+| ----------------- | -------------------------------------------- | ---------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `lk:link-confirm` | ask before another site ("any site" box off) | **synced** | `links.confirm`      | owner, 2026-11-09: "for my account, all domains"                                                                               |
+| `lk:link-allowed` | sites not asked about ("this site" box)      | **synced** | `links.allowedHosts` | owner, 2026-11-09: kept with the account. A third exception to "nothing typed": bare public hosts only, newest 80, no device host |
+
 ### Not prefs (left alone)
 
 `lk:swipe-unsent`, `lk:swipe-log*`, `lk:voice-sent`, `lk:status`, `lk:purge`,

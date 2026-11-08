@@ -78,6 +78,22 @@ export const SUITES = [
     paths: [...SHELL, ...AUTH, "app/(app)/profile/**", "lib/sign-out.ts"],
     sensitive: false,
   },
+  // The disclaimer before another website: asks, Cancel, both bypasses, own hosts (docs/external-links.md).
+  {
+    name: "EXTERNAL LINKS (qa-external-link)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-external-link.mjs"],
+    base: true,
+    id: "external-link",
+    paths: [
+      "app/layout.tsx",
+      "app/components/ExternalLink*.tsx",
+      "app/components/external-link.content.ts",
+      "lib/external-link.ts",
+      "packages/core/src/externalLink.ts",
+    ],
+    sensitive: false,
+  },
   // Serverless: familiarity underlines keep their colours inside the reader's selection (WebKit + Chromium).
   {
     name: "READ SEL UNDERLINES",

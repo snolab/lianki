@@ -15,6 +15,7 @@ import { ETA_FLAG } from "@/lib/eta-ping";
 import { isDev } from "@/lib/permissions";
 import { boxConfig } from "@/lib/box-oauth/mode";
 import { BoxApiBridge } from "./components/BoxApiBridge";
+import { ExternalLinkGuard, type ExternalLinkStrings } from "./components/ExternalLinkGuard";
 
 /**
  * The Learning Partner opened to users (`partner.ai-reply`, docs/partner-ai.md):
@@ -100,6 +101,17 @@ export default async function RootLayout({
   ) as unknown as PartnerStrings;
   // The unsaved-changes confirm (LeaveGuard, leave-guard.content.ts).
   const leave = String(getIntlayer("leave-guard", locale as never).unsaved);
+  // The disclaimer before another website (ExternalLinkGuard, external-link.content.ts).
+  const ext = getIntlayer("external-link", locale as never);
+  const extStrings: ExternalLinkStrings = {
+    title: String(ext.title),
+    disclaimer: String(ext.disclaimer),
+    skipSite: String(ext.skipSite),
+    skipAll: String(ext.skipAll),
+    savedNote: String(ext.savedNote),
+    cancel: String(ext.cancel),
+    go: String(ext.go),
+  };
   // One read per request, passed to everything that decides (docs/feature-flags.md).
   const flags: FlagValues = partnerFrame ? {} : await readFlags();
   const open = partnerFrame ? false : await partnerOpenFor(flags);
@@ -158,6 +170,8 @@ export default async function RootLayout({
         <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
           {partnerFrame ? null : <OwnerBoots {...boots} box={box} />}
+          {/* Every link to another website asks first (docs/external-links.md). */}
+          <ExternalLinkGuard strings={extStrings} />
           {/* A box signed in through lianki.com (docs/box-oauth.md): every page, landing included. */}
           {box ? <BoxApiBridge config={box}>{children}</BoxApiBridge> : children}
         </IntlayerServerProvider>

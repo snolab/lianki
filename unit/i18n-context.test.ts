@@ -45,6 +45,7 @@ import learnerLevelUi from "@/app/components/level-ui.content";
 import profileEdit from "@/app/(app)/profile/profile-edit.content";
 import byokSettings from "@/app/components/byok-settings.content";
 import titleRules from "@/app/components/title-rules.content";
+import externalLink from "@/app/components/external-link.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
 import apiTokens from "@/app/components/api-tokens.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
@@ -126,6 +127,7 @@ describe.each([
   ["profile-edit", profileEdit],
   ["byok-settings", byokSettings],
   ["title-rules", titleRules],
+  ["external-link", externalLink],
   ["privacy-page", privacyPage],
   ["api-tokens", apiTokens],
   ["roadmap-page", roadmapPage],
