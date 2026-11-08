@@ -80,18 +80,21 @@ export function timeMs(s: string): number | null {
 
 /** Inline markup a subtitle line may carry (<i>, <c.x>, <v Name>, {\an8}), and karaoke stamps. */
 function plain(text: string): string {
-  return text
-    .replace(/<\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3}>/g, " ")
-    .replace(/<[^>\n]{0,200}>/g, "")
-    .replace(/\{\\[^}\n]{0,100}\}/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
-    .trim()
-    .normalize("NFC")
-    .slice(0, YT_LIMITS.maxLineChars);
+  return (
+    text
+      .replace(/<\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3}>/g, " ")
+      .replace(/<[^>\n]{0,200}>/g, "")
+      .replace(/\{\\[^}\n]{0,100}\}/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      // Last, so "&amp;lt;" stays "&lt;" and is never unescaped twice.
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")
+      .trim()
+      .normalize("NFC")
+      .slice(0, YT_LIMITS.maxLineChars)
+  );
 }
 
 /** A line with nothing to read (♪, an instrumental marker): a boundary only. */
@@ -170,7 +173,8 @@ export function parseTimedText(input: string): TimedParse {
   const text = input.replace(/^﻿/, "");
   if (!text.trim()) return { ok: false, error: "empty" };
 
-  const cues = /-->/.test(text);
+  // SRT and VTT cues have an arrow between their times; LRC never does.
+  const cues = text.includes("-->");
   const format: TimedFormat = cues ? (/^\s*WEBVTT/.test(text) ? "vtt" : "srt") : "lrc";
   const parsed = cues ? { stamps: parseCues(text) } : parseLrc(text);
   const stamps = parsed.stamps.map((s, i) => ({ ...s, i })).sort((a, b) => a.t - b.t || a.i - b.i);

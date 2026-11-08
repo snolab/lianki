@@ -201,6 +201,9 @@ describe("parseTimedText: limits and refusals", () => {
     const r = parseTimedText("[00:01.00]<script>alert(1)</script>&lt;b&gt;\n[00:02.00]x");
     if (!r.ok) throw new Error(r.error);
     expect(r.lines[0].text).toBe("alert(1)<b>");
+    const twice = parseTimedText("[00:01.00]a &amp;lt; b\n[00:02.00]x");
+    if (!twice.ok) throw new Error(twice.error);
+    expect(twice.lines[0].text).toBe("a &lt; b");
   });
 });
 
