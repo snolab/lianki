@@ -13,12 +13,8 @@ export function boxReturnPath(v: string | null | undefined): string | null {
   if (!v.startsWith("/") || v.startsWith("//") || v.startsWith("/\\")) return null;
   // Control characters and backslashes: a browser may read them as another host.
   if (/[\u0000-\u001f\u007f\\]/.test(v)) return null;
-  let u: URL;
-  try {
-    u = new URL(v, "https://box.invalid");
-  } catch {
-    return null;
-  }
+  // One leading "/" and nothing a parser reads as a host: this cannot throw.
+  const u = new URL(v, "https://box.invalid");
   if (u.origin !== "https://box.invalid") return null;
   if (u.pathname === "/sign-in" || u.pathname.startsWith("/sign-in/")) return null;
   return `${u.pathname}${u.search}`;
