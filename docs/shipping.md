@@ -48,7 +48,8 @@ unit suite, 30 s to several minutes):
   bundles (`scripts/pre-commit.ts`, plan in `scripts/pre-commit-plan.ts`).
 - **`pre-push`** — cheapest first, so a failure surfaces in seconds:
   `bun run lint` (whole repo), typecheck, the unit suite with its coverage
-  gate, then `qa:all`. The last two run behind the machine-wide lock, below.
+  gate, then `qa:all`. Only qa:all's time-sensitive suites wait for the
+  machine-wide gate, below.
 
 So a commit can be locally unchecked for types and tests until it is pushed;
 nothing reaches `main` that way, because `main` takes only PRs and the required
@@ -68,45 +69,79 @@ integration gate; `LIANKI_QA_ON_WINDOWS=1` forces the local run, for example to
 re-test after an OpenNext upgrade. WSL counts as Linux and runs the gate
 normally.
 
-## Two heavy runs at a time
+## Admission by load
 
-The unit suite and `qa:all` go behind one machine-wide gate with **two slots**, so
-a third parallel agent queues instead of piling on: past that, time-sensitive
-tests time out under load, and that reads as a broken test. `scripts/dev/machine-lock.ts`
-wraps a command and waits for a free slot; the slots are the files
-`/tmp/lianki-gate.lock` and `/tmp/lianki-gate.lock.2`, the same paths from every
-worktree. `LIANKI_GATE_SLOTS=1` makes it one at a time again (any positive integer
-works). A waiter prints who holds each slot (pid, worktree, command, start time)
-and at most one line a minute after that.
+Time-sensitive suites go through one machine-wide gate, and the gate admits by
+the machine's **actual load**, not by a number of runs (owner, 2026-11-08). Until
+then it was one run at a time, and each agent ahead in the queue added a whole
+gate, about 6 min (measured 2026-11-08: lint 0.7 s, typecheck 1.8 s, unit +
+coverage 47 s, qa:all 295 s, of which qa-words 209 s).
 
-Two at once is safe because the suites budget for load rather than for an idle
-Mac: every QA browser context gets Playwright's 30 s default as a **load budget**,
-and each explicit `timeout:` in a qa:all suite is `budget(ms)` —
-`scripts/qa/load-budget.mjs`, the idle figure times a factor that is 1 up to a
-load of half the cores and grows to at most 4 (`LIANKI_QA_SLOWDOWN` fixes it). Only
-how long a check may take changes, never what it checks. An interval the test
-itself must keep short is not scaled: `qa-read-sel-one` measures its two quick taps'
-pointerdown gap in the page and taps the pair again when the machine made them
-slower than the double-click interval, instead of judging a pair that was not quick.
-Before slots (2026-11-08), one run at a time cost a queue of up to one whole gate
-(~6 min) per agent ahead.
+**What waits and what does not.** Lint, typecheck, the unit suite, the OpenNext
+build, `wrangler dev` and the plain qa suites start at once: they are CPU work,
+not timing checks. Only the qa suites tagged `sensitive: true` in
+[`scripts/qa/suites.mjs`](../scripts/qa/suites.mjs) wait for admission, which
+qa:all asks for after the plain suites (`scripts/qa/gate-suites.ts`). The tags
+are that one list. Today they cover WORDS, READ EPUB, READ SEL ONE, SYNC and
+PARTNER FRAME, the suites that failed under load in the push logs. No unit test
+has shown a timing failure, so none is tagged.
 
-| Run                                                                           | Lock                                                                         |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `git push` (pre-push): unit suite + `qa:all`                                  | held as one stretch, so nobody gets in between                               |
-| `bun run qa:all`, with any flags                                              | takes it                                                                     |
-| `bun run test:unit`, with flags only                                          | takes it                                                                     |
-| `bun test unit/x.test.ts`, `bun run test:unit unit/x.test.ts`                 | no: a single file must stay fast                                             |
-| bare `bun test` (the whole suite, by hand)                                    | no: bun's own command can't be wrapped. Heavy, so prefer `bun run test:unit` |
-| `bun scripts/qa/qa-all.mjs` directly, a single `qa-*.mjs` or Playwright suite | no                                                                           |
-| `bun run lint`, `bun run typecheck`                                           | no: measured 0.5 s and 1.8 s (6 s CPU) on 2026-11-07, and they fail fast     |
-| CI (`CI` set)                                                                 | no: each runner has its machine to itself                                    |
+**The admission rule** (`admission()` in `scripts/dev/machine-lock-lib.ts`, unit
+tested with injected load and memory):
+
+- Nothing else holds the gate → **admitted, always**, however busy the machine
+  is, so nobody starves.
+- Otherwise it is admitted only while **all** of these hold:
+  - the 1-min load average is under `LIANKI_GATE_LOAD_RATIO` × cores (default 0.9);
+  - free + inactive + speculative memory (`vm_stat`; `os.freemem` elsewhere) is at
+    least `LIANKI_GATE_MIN_FREE_GB` (default 2);
+  - the newest holder has run at least `LIANKI_GATE_SETTLE_S` (default 15). The
+    load average lags, and a burst of waiters must not all see the same idle
+    moment.
+- Two waiters can be admitted in the same moment. The one that got its slot later
+  backs off and waits again; ties go by token.
+- **The count is not a limiter.** `LIANKI_GATE_MAX_RUNS` (default: the core count)
+  is only a high safety cap.
+
+A waiter prints why it waits (`waiting: load 17.2/16.2 is too high (mem 5.1 GB
+free)`, or memory, or settling), and who holds the gate (pid, worktree, command,
+start time). After that it prints at most one line a minute. It reads the slot
+files every 3 s, so it sees a holder leave at once. It measures load and memory
+at most every 15 s, and again whenever the set of holders changes.
+
+**Load budgets in the suites.** Several runs at once only work because the suites
+budget for load rather than for an idle Mac. Every QA browser context gets
+Playwright's 30 s default as a load budget, so do the Playwright runner's test
+and expect timeouts, and each explicit `timeout:` in a qa:all suite is
+`budget(ms)` (`scripts/qa/load-budget.mjs`). A budget is the idle figure times a
+factor: 1 until the load reaches half the cores, growing to at most 4
+(`LIANKI_QA_SLOWDOWN` sets it by hand). Only how long a check may take changes,
+never what it checks. An interval the test itself must keep short is not scaled:
+`qa-read-sel-one` measures the gap between its two quick taps' pointerdowns in
+the page. When the machine made them slower than the double-click interval, it
+taps the pair again rather than judging a pair that was not quick.
+
+**Failure log, for tuning.** Every failed qa:all suite appends one line to
+`/tmp/lianki-gate-failures.jsonl` (`LIANKI_GATE_FAILURE_LOG` overrides it). The
+line holds: suite, sensitive or not, exit, duration, 1- and 5-min load, cores,
+free GB, the number of gate runs at the time, and the worktree. Tune the
+thresholds from those lines, not from a guess. A suite that fails at low load is
+a real failure.
+
+| Run                                                     | Gate                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| `git push` (pre-push)                                   | only qa:all's time-sensitive suites wait for admission |
+| `bun run qa:all`, `bun scripts/qa/qa-all.mjs`           | the same: plain suites at once, sensitive ones admitted |
+| `bun run test:unit`, `bun test`, lint, typecheck        | no                                                      |
+| a single `qa-*.mjs` or Playwright suite, by hand        | no                                                      |
+| `bun scripts/dev/machine-lock.ts -- <cmd>`              | admits `<cmd>` as a whole, by the same rule             |
+| CI (`CI` set)                                           | no: each runner has its machine to itself               |
 
 Rules it keeps:
 
-- **Each slot is a lock with the same rules**, taken in order, so slot 1 is the
-  old single lock's path: a wrapper from a branch made before slots waits on slot 1
-  only, and the total still never passes two.
+- **Each run holds one slot file** (`/tmp/lianki-gate.lock`, `.lock.2`, …) with
+  the lock rules below. Slot 1 is the old single lock's path, so a wrapper from a
+  branch made before this change still meets this one there.
 - **Dead holders are taken over, live ones never.** Dead means the pid is gone, a
   zombie, or now belongs to a process with another start time (pid reuse). Age
   counts for nothing: past 30 minutes a waiter prints a warning and keeps waiting.
@@ -114,13 +149,13 @@ Rules it keeps:
 - **Released on exit, failure and signals.** INT, TERM and HUP go to the command,
   and the lock is held until the command is gone. After a `kill -9` of the wrapper
   the command can outlive it; the next waiter takes over, so the two can overlap.
-- **Nested use just runs**: the wrapper hands its token down in the environment
-  (`LIANKI_GATE_TOKEN`), which is how pre-push reaches `test:unit` and `qa:all`
-  inside its own hold, whichever slot it has. A token from a finished run does not count.
-- **It sits outside the per-checkout lock** in `qa-all.mjs` (`.wrangler/qa-all.lock`),
-  which remains for a direct `bun scripts/qa/qa-all.mjs`. Waiters are not served in
-  arrival order. If the file can't be used at all it warns and runs unlocked, so a
-  broken `/tmp` never pushes anyone towards `--no-verify`.
+- **Nested use just runs**: the holder hands its token down in the environment
+  (`LIANKI_GATE_TOKEN`), and a run inside it sees that token in whichever slot it
+  sits in. A token from a finished run does not count.
+- **It sits outside the per-checkout lock** in `qa-all.mjs` (`.wrangler/qa-all.lock`):
+  one qa:all per checkout. Waiters are not served in arrival order. If the file
+  can't be used at all it warns and runs without the gate, so a broken `/tmp` never
+  pushes anyone towards `--no-verify`.
 
 **Don't loop failed pushes.** The hook is one attempt, and nothing in code retries.
 If a time-sensitive suite times out, look at the load first (`uptime`); if it is

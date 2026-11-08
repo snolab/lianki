@@ -42,6 +42,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
+import { runSuites } from "./gate-suites.ts";
+import { SUITES } from "./suites.mjs";
 
 /**
  * Ask the OS for a free port.
@@ -262,47 +264,10 @@ await waitReady();
 log("server ready");
 
 // ── 5. Run every suite; keep going on failure, report at the end ──────────────
-const suites = [
-  // First: every suite after it relies on this layer, with nothing on the Mac behind it.
-  ["AUDIO-FREE (qa-audio-free)", "bun", ["scripts/qa/qa-audio-free.mjs"], {}],
-  ["API  (qa-api)", "bun", ["scripts/qa/qa-api.mjs"], { QA_BASE: BASE }],
-  ["UI   (qa-ui)", "bun", ["scripts/qa/qa-ui.mjs"], { QA_BASE: BASE }],
-  // The menu's Sign out on the Worker build, Chromium + WebKit (lib/sign-out.ts).
-  ["SIGN OUT (qa-sign-out)", "bun", ["scripts/qa/qa-sign-out.mjs"], { QA_BASE: BASE }],
-  ["WORDS (qa-words)", "bun", ["scripts/qa/qa-words.mjs"], { QA_BASE: BASE }],
-  ["READ EPUB (qa-read-epub)", "bun", ["scripts/qa/qa-read-epub.mjs"], { QA_BASE: BASE }],
-  // Serverless: familiarity underlines keep their colours inside the reader's selection (WebKit + Chromium).
-  ["READ SEL UNDERLINES", "bun", ["scripts/qa/qa-read-sel-underlines.ts"], {}],
-  // Serverless: a tap on another word moves the selection, never two drawn (WebKit + Chromium).
-  ["READ SEL ONE", "bun", ["scripts/qa/qa-read-sel-one.ts"], {}],
-  [
-    "SYNC (db-sync-matrix)",
-    "bunx",
-    ["playwright", "test", "tests/db-sync-matrix.spec.ts"],
-    { LIANKI_URL: BASE },
-  ],
-  [
-    "USERSCRIPT (guest)",
-    "bunx",
-    ["playwright", "test", "tests/userscript-guest.spec.ts"],
-    { LIANKI_URL: BASE },
-  ],
-  [
-    "USERSCRIPT (redirect)",
-    "bunx",
-    ["playwright", "test", "tests/userscript-redirect.spec.ts"],
-    { LIANKI_URL: BASE },
-  ],
-  // The real /embed/partner in a frame on another origin: ready, ticket, private keys, no owner boots.
-  ["PARTNER FRAME (route)", "bun", ["scripts/qa/qa-partner-frame-route.ts"], { QA_BASE: BASE }],
-];
-
-const results = [];
-for (const [name, cmd, args, env] of suites) {
-  log(`SUITE — ${name}`);
-  const r = spawnSync(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } });
-  results.push([name, r.status === 0]);
-}
+// The list and each suite's time-sensitive tag: scripts/qa/suites.mjs. Plain
+// suites run at once; time-sensitive ones after load-based admission to the
+// machine-wide gate; a failure is logged with the load (scripts/qa/gate-suites.ts).
+const results = await runSuites(SUITES, BASE, log);
 
 // ── 6. Teardown + summary ─────────────────────────────────────────────────────
 if (!KEEP) stopServer();

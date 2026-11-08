@@ -13,7 +13,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { linkSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { availableParallelism, freemem, loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
 
 export const LOCK_ENV = "LIANKI_GATE_LOCK";
@@ -32,6 +32,8 @@ export type Holder = {
   worktree: string;
   command: string;
   startedAt: string;
+  /** When it got its slot; the wait before it is not running time. */
+  acquiredAt?: string;
 };
 
 type Env = Record<string, string | undefined>;
@@ -220,21 +222,106 @@ export function isReentrant(path: string, token: string | undefined): boolean {
   return holder?.token === token && isHolderAlive(holder);
 }
 
-// ── Slots: the lock is a semaphore of SLOTS_ENV slots (default 2) ─────────────
+// ── Admission by load: the gate admits runs while the machine has room ───────
 //
-// Each slot is a lock file with exactly the rules above. Slot 1 is the original
-// path, so a wrapper from before slots (another branch's checkout) still meets
-// this one there: it only ever waits for slot 1, and the total stays at most
-// the slot count. Two runs at once is what the machine carries once the
-// time-sensitive suites budget for load (scripts/qa/load-budget.mjs).
+// Not a fixed number of runs. A run is admitted when nothing else holds the
+// gate (always at least one, so nobody starves), or else only while the machine
+// has room: 1-minute load average under LOAD_RATIO x cores AND free + inactive
+// memory at least MIN_FREE_GB AND the newest holder has run SETTLE_S, because
+// the load average lags and a burst of waiters must not all see the same idle
+// moment. The only count is a safety cap, MAX_RUNS = the core count.
+//
+// Each run holds one slot file with exactly the rules above; slot 1 is the
+// original path, so a wrapper from before admission (another branch's checkout)
+// still meets this one there.
 
-export const SLOTS_ENV = "LIANKI_GATE_SLOTS";
-export const DEFAULT_SLOTS = 2;
+export const MAX_RUNS_ENV = "LIANKI_GATE_MAX_RUNS";
+export const LOAD_RATIO_ENV = "LIANKI_GATE_LOAD_RATIO";
+export const MIN_FREE_GB_ENV = "LIANKI_GATE_MIN_FREE_GB";
+export const SETTLE_S_ENV = "LIANKI_GATE_SETTLE_S";
 
-/** How many heavy runs may hold the gate at once: a positive integer, else the default. */
-export function slotCount(env: Env = process.env): number {
-  const n = Number(env[SLOTS_ENV]);
-  return Number.isInteger(n) && n >= 1 ? Math.min(n, 16) : DEFAULT_SLOTS;
+export type Rules = { maxRuns: number; loadRatio: number; minFreeBytes: number; settleMs: number };
+export type Room = { load: number; cores: number; availBytes: number | null };
+
+const GB = 1024 ** 3;
+const num = (v: string | undefined, ok: (n: number) => boolean, fallback: number) => {
+  const n = Number(v);
+  return v !== undefined && v !== "" && Number.isFinite(n) && ok(n) ? n : fallback;
+};
+
+/** The admission thresholds: defaults, each overridable by its environment variable. */
+export function gateRules(env: Env = process.env, cores: number = availableParallelism()): Rules {
+  return {
+    maxRuns: Math.floor(num(env[MAX_RUNS_ENV], (n) => n >= 1, Math.max(1, cores))),
+    loadRatio: num(env[LOAD_RATIO_ENV], (n) => n > 0, 0.9),
+    minFreeBytes: num(env[MIN_FREE_GB_ENV], (n) => n >= 0, 2) * GB,
+    settleMs: num(env[SETTLE_S_ENV], (n) => n >= 0, 15) * 1000,
+  };
+}
+
+/** Free + inactive + speculative pages from `vm_stat`, in bytes; null if unreadable. */
+export function parseVmStat(text: string): number | null {
+  const page = Number(/page size of (\d+) bytes/.exec(text)?.[1]);
+  const pages = (name: string) => Number(new RegExp(`Pages ${name}:\\s+(\\d+)`).exec(text)?.[1]);
+  const sum = pages("free") + pages("inactive") + (pages("speculative") || 0);
+  return Number.isFinite(page) && Number.isFinite(sum) ? sum * page : null;
+}
+
+/** The machine now. Memory: vm_stat on macOS (os.freemem leaves out inactive pages). */
+export function measureRoom(platform: string = process.platform): Room {
+  let availBytes: number | null = null;
+  try {
+    if (platform === "darwin") {
+      const r = spawnSync("vm_stat", { encoding: "utf8" });
+      availBytes = r.status === 0 ? parseVmStat(r.stdout ?? "") : null;
+    } else availBytes = freemem();
+  } catch {}
+  return { load: loadavg()[0], cores: availableParallelism(), availBytes };
+}
+
+/** When a holder got its slot (a holder from before admission only has startedAt). */
+export const heldSince = (h: Holder) => Date.parse(h.acquiredAt ?? h.startedAt);
+
+export type Decision = { admit: boolean; why: string };
+
+const gb = (b: number) => `${(b / GB).toFixed(1)} GB`;
+
+/** May one more run start now, beside `others`? `why` is what a waiter prints. */
+export function admission(others: Holder[], room: Room, rules: Rules, now: number): Decision {
+  if (!others.length) return { admit: true, why: "nothing else is running" };
+  if (others.length >= rules.maxRuns) {
+    return { admit: false, why: `${others.length} runs, the safety cap (${MAX_RUNS_ENV})` };
+  }
+  const ran = now - Math.max(...others.map(heldSince));
+  if (ran < rules.settleMs) {
+    const left = Math.ceil((rules.settleMs - ran) / 1000);
+    return {
+      admit: false,
+      why: `the newest run started ${Math.floor(ran / 1000)} s ago; its load shows in ${left} s`,
+    };
+  }
+  const limit = rules.loadRatio * room.cores;
+  const load = `load ${room.load.toFixed(1)}/${limit.toFixed(1)}`;
+  const mem = room.availBytes === null ? "mem unknown" : `mem ${gb(room.availBytes)} free`;
+  if (room.load >= limit) return { admit: false, why: `${load} is too high (${mem})` };
+  if (room.availBytes !== null && room.availBytes < rules.minFreeBytes) {
+    return { admit: false, why: `${mem}, under ${gb(rules.minFreeBytes)} (${load})` };
+  }
+  return { admit: true, why: `room: ${load}, ${mem}` };
+}
+
+/**
+ * Two waiters can be admitted in the same moment. After taking a slot, the one
+ * that got it later backs off (gives it up and waits again) while another got
+ * one within the settle time before it; ties go by token, so exactly one stays.
+ */
+export function shouldBackOff(me: Holder, others: Holder[], rules: Rules): boolean {
+  const mine = heldSince(me);
+  return others.some((o) => {
+    const at = heldSince(o);
+    const earlier = at < mine || (at === mine && o.token < me.token);
+    return earlier && mine - at < rules.settleMs;
+  });
 }
 
 /** The slot files: `<lock>`, `<lock>.2`, … */
@@ -242,14 +329,21 @@ export function slotPaths(base: string, n: number): string[] {
   return Array.from({ length: n }, (_, i) => (i === 0 ? base : `${base}.${i + 1}`));
 }
 
+/** The live holders of every slot, except `skipToken`'s. */
+export function liveHolders(paths: string[], skipToken?: string): Holder[] {
+  const out: Holder[] = [];
+  for (const p of paths) {
+    const h = readLock(p)?.holder;
+    if (h && h.token !== skipToken && isHolderAlive(h)) out.push(h);
+  }
+  return out;
+}
+
 export type SlotResult =
   | { acquired: true; path: string; tookOver: Seen[] }
   | { acquired: false; holders: Holder[]; tookOver: Seen[] };
 
-/**
- * One attempt at every slot, in order; the first free one is taken. Not acquired:
- * `holders` are the live holders seen (fewer than the slots = try again shortly).
- */
+/** One attempt at every slot, in order; the first free one is taken. */
 export function tryAcquireSlot(paths: string[], me: Holder): SlotResult {
   const tookOver: Seen[] = [];
   const holders: Holder[] = [];
@@ -260,6 +354,73 @@ export function tryAcquireSlot(paths: string[], me: Holder): SlotResult {
     if (r.holder) holders.push(r.holder);
   }
   return { acquired: false, holders, tookOver };
+}
+
+export type GateIo = {
+  say: (line: string) => void;
+  pollMs: number;
+  roomEveryMs?: number;
+  rules?: Rules;
+  measure?: () => Room;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+};
+
+/**
+ * Wait for admission, take a slot, return it. The slot files are read every
+ * `pollMs`, so a holder leaving is seen at once; load and memory are measured
+ * at most every `roomEveryMs` (15 s), and again whenever the holders change.
+ */
+export async function acquireGate(
+  paths: string[],
+  base: Holder,
+  io: GateIo,
+): Promise<{ path: string; me: Holder }> {
+  const rules = io.rules ?? gateRules();
+  const measure = io.measure ?? (() => measureRoom());
+  const now = io.now ?? Date.now;
+  const sleep = io.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const roomEvery = io.roomEveryMs ?? 15_000;
+  const report = waitReporter(now);
+  const started = now();
+  let room: Room | null = null;
+  let roomAt = -Infinity;
+  let lastSet = "";
+  let lastWhy = "";
+  let waited = false;
+  for (;;) {
+    const others = liveHolders(paths);
+    const set = others.map((h) => h.token).join(",");
+    if (others.length && (!room || set !== lastSet || now() - roomAt >= roomEvery)) {
+      room = measure();
+      roomAt = now();
+    }
+    lastSet = set;
+    const d = admission(others, room ?? { load: 0, cores: 1, availBytes: null }, rules, now());
+    if (d.admit) {
+      const me: Holder = { ...base, acquiredAt: new Date(now()).toISOString() };
+      const r = tryAcquireSlot(paths, me);
+      for (const dead of r.tookOver) {
+        const who = dead.holder ? describeHolder(dead.holder) : "unreadable lock file";
+        io.say(`took over from a dead holder: ${who}`);
+      }
+      if (r.acquired) {
+        if (!shouldBackOff(me, liveHolders(paths, me.token), rules)) {
+          if (waited) {
+            const s = Math.round((now() - started) / 1000);
+            io.say(`admitted at ${jst(now())}, after ${s} s (${d.why})`);
+          }
+          return { path: r.path, me };
+        }
+        release(r.path, me.token);
+      }
+    }
+    waited = true;
+    if (!d.admit && d.why.replace(/\d+/g, "#") !== lastWhy) io.say(`waiting: ${d.why}`);
+    lastWhy = d.admit ? "" : d.why.replace(/\d+/g, "#");
+    for (const line of report(others)) io.say(line);
+    await sleep(io.pollMs * (0.75 + Math.random() / 2));
+  }
 }
 
 /** Inside a live holder's run, whichever slot it holds. */

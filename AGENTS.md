@@ -22,7 +22,7 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - **Don't loop failed pushes.** The hook is one attempt, with no retries in code.
   If a time-sensitive suite times out, look at the load first (`uptime`); if it is
   high, wait, then retry once. See
-  [docs/shipping.md](docs/shipping.md), "Two heavy runs at a time".
+  [docs/shipping.md](docs/shipping.md), "Admission by load".
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
@@ -32,10 +32,10 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
 bun test unit/x.test.ts  # one test file, no queue
-bun run test:unit      # whole unit suite: waits for the machine-wide lock
+bun run test:unit      # whole unit suite, starts at once
 bun fix                # oxlint --fix + oxfmt
 bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run it)
-bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push); machine-wide lock
+bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push); time-sensitive suites wait for load-based admission
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 

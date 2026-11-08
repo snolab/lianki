@@ -3,7 +3,7 @@
  *
  * A wait in a browser suite is a budget for something to happen, not a claim
  * about how fast it happens: under load (two gate runs at once, docs/shipping.md,
- * "Two heavy runs at a time") the same page takes longer, and a fixed 15 s ran
+ * "Admission by load") the same page takes longer, and a fixed 15 s ran
  * out on a page that was fine. So a budget is the idle figure times the load
  * factor at the moment it is asked for. What a check asserts never changes;
  * only how long it may take to become true.

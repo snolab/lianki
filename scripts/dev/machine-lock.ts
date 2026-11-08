@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
- * At most two heavy test runs at a time on this machine, across all worktrees
- * (LIANKI_GATE_SLOTS, default 2): more at once and time-sensitive tests time out.
+ * The machine-wide gate for time-sensitive test runs, across all worktrees: a run
+ * is admitted while the machine has room (load, memory), always at least one.
  *
  *   bun scripts/dev/machine-lock.ts [--whole-suite] [--label <text>] -- <command...>
  *
- * Waits for a free slot, runs the command, passes on its exit code. The rules are
- * in docs/shipping.md, "Two heavy runs at a time"; the lock in machine-lock-lib.ts.
+ * Waits for admission, runs the command, passes on its exit code. The rules are
+ * in docs/shipping.md, "Admission by load"; the lock in machine-lock-lib.ts.
  * This file is the process side, tested through real child processes
  * (unit/machine-lock.test.ts).
  *
@@ -22,19 +22,16 @@ import { constants } from "node:os";
 import {
   type Holder,
   TOKEN_ENV,
-  describeHolder,
+  acquireGate,
+  gateRules,
   isCi,
   isNarrowedSuite,
   isReentrantAny,
-  jst,
   lockPath,
   makeHolder,
   parseLockArgs,
   release,
-  slotCount,
   slotPaths,
-  tryAcquireSlot,
-  waitReporter,
 } from "./machine-lock-lib";
 
 const say = (line: string) => console.error(`machine-lock: ${line}`);
@@ -47,7 +44,7 @@ if ("error" in parsed) {
 const { command, label, wholeSuite } = parsed;
 
 const base = lockPath();
-const slots = slotPaths(base, slotCount());
+const slots = slotPaths(base, gateRules().maxRuns);
 const pollMs = Number(process.env.LIANKI_GATE_POLL_MS) || 3000;
 let child: ChildProcess | null = null;
 let held: { me: Holder; path: string } | null = null;
@@ -84,31 +81,6 @@ function run(env: NodeJS.ProcessEnv): Promise<number> {
   });
 }
 
-async function acquire(me: Holder): Promise<void> {
-  const report = waitReporter();
-  const started = Date.now();
-  let waited = false;
-  for (;;) {
-    const r = tryAcquireSlot(slots, me);
-    for (const dead of r.tookOver) {
-      const who = dead.holder ? describeHolder(dead.holder) : "unreadable lock file";
-      say(`took over from a dead holder: ${who}`);
-    }
-    if (r.acquired) {
-      held = { me, path: r.path };
-      if (waited) {
-        const s = Math.round((Date.now() - started) / 1000);
-        say(`acquired at ${jst(Date.now())}, after ${s} s`);
-      }
-      return;
-    }
-    if (!waited && slots.length > 1) say(`all ${slots.length} slots are busy`);
-    waited = true;
-    for (const line of report(r.holders)) say(line);
-    await new Promise((done) => setTimeout(done, pollMs * (0.75 + Math.random() / 2)));
-  }
-}
-
 function needsLock(): boolean {
   if (isCi() || (wholeSuite && isNarrowedSuite(command))) return false;
   try {
@@ -122,7 +94,7 @@ let env: NodeJS.ProcessEnv = process.env;
 if (needsLock()) {
   const me = makeHolder(label ?? command.join(" "));
   try {
-    await acquire(me);
+    held = await acquireGate(slots, me, { say, pollMs });
     env = { ...process.env, [TOKEN_ENV]: me.token };
   } catch (e) {
     say(`warning: cannot use ${base} (${(e as Error).message}); running without the lock`);
