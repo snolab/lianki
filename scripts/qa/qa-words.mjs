@@ -2451,6 +2451,23 @@ try {
               innerH: innerHeight,
               scrolls: body.scrollHeight > body.clientHeight ? body.scrollTop > 0 : true,
               overscroll: getComputedStyle(body).overscrollBehaviorY,
+              // Diagnostics (/infra/words-ci-fix): where the sheet's frame came from.
+              diag: (() => {
+                const d = document.querySelector("[data-words-settings-dialog]");
+                const dr = d.getBoundingClientRect();
+                const v = window.visualViewport;
+                return {
+                  dlg: [Math.round(dr.top), Math.round(dr.height), d.style.top, d.style.height],
+                  vv: v && [v.height, v.offsetTop, v.pageTop, v.scale],
+                  scroll: [scrollY, document.scrollingElement?.scrollTop],
+                  tr: getComputedStyle(panel).translate,
+                  tf: getComputedStyle(panel).transform,
+                  anim: d
+                    .getAnimations({ subtree: true })
+                    .map((a) => `${a.animationName || "t"}:${a.playState}:${a.currentTime}`),
+                  vis: document.visibilityState,
+                };
+              })(),
             };
           });
           // (WebKit's mobile emulation has no wheel: the body was scrolled to its
