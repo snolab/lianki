@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { type EtaTask, etaSummary, shortLeft, shownTasks, taskFraction } from "./eta";
 import type { ChatStrings } from "./wire";
 
@@ -13,10 +14,68 @@ import type { ChatStrings } from "./wire";
 /** A tap on the bar must not take focus from the input (the keyboard stays). */
 export const keepFocus = (e: { preventDefault(): void }) => e.preventDefault();
 
-const TRACK = "oklch(0.6 0.02 260 / 0.25)";
-const FILL = "oklch(0.62 0.14 250)";
-const FILL_PAST = "oklch(0.68 0.16 60)";
-const FILL_DONE = "oklch(0.64 0.15 150)";
+/**
+ * No meter of its own (owner, 2026-11-08 19:32 JST): the line's own background
+ * is the bar, filled from the start edge to the progress point. Every colour is
+ * opaque and named here, in both themes, so the text's contrast is known on
+ * the filled and the unfilled part alike: one text colour, WCAG AA (4.5:1) on
+ * all four backgrounds of a theme (unit/eta.test.ts computes it).
+ */
+export const ETA_COLORS = {
+  light: {
+    text: "oklch(0.3 0.02 260)",
+    track: "oklch(0.96 0.006 260)",
+    fill: "oklch(0.87 0.06 250)",
+    past: "oklch(0.89 0.07 75)",
+    done: "oklch(0.89 0.06 150)",
+  },
+  dark: {
+    text: "oklch(0.93 0.01 260)",
+    track: "oklch(0.24 0.01 260)",
+    fill: "oklch(0.38 0.08 250)",
+    past: "oklch(0.4 0.07 65)",
+    done: "oklch(0.38 0.07 150)",
+  },
+} as const;
+
+type Tone = "fill" | "past" | "done";
+const both = (k: keyof (typeof ETA_COLORS)["light"]) =>
+  `light-dark(${ETA_COLORS.light[k]}, ${ETA_COLORS.dark[k]})`;
+
+/** A task's (or the summary's) tone: done, past its estimate, or running. */
+const toneOf = (done: boolean, past: boolean): Tone => (done ? "done" : past ? "past" : "fill");
+
+/**
+ * A line whose background is its progress: the track, and over it the fill
+ * from the start edge (RTL too) to `frac`. The fill sits behind the text.
+ */
+function FillLine({
+  frac,
+  tone,
+  className,
+  children,
+}: {
+  frac: number;
+  tone: Tone;
+  className: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={`relative isolate flex min-w-0 items-center gap-1.5 overflow-hidden rounded ${className}`}
+      style={{ background: both("track"), color: both("text") }}
+    >
+      <span
+        aria-hidden
+        data-testid="debug-chat-eta-fill"
+        data-tone={tone}
+        className="absolute inset-y-0 start-0 -z-10 transition-[width] duration-700 motion-reduce:transition-none"
+        style={{ width: `${Math.round(frac * 100)}%`, background: both(tone) }}
+      />
+      {children}
+    </span>
+  );
+}
 
 /** A small clock, drawn here (no icon set): a ring and two hands. */
 export function EtaClockIcon({ size = 12 }: { size?: number }) {
@@ -42,23 +101,6 @@ type EtaText = Pick<
   ChatStrings,
   "etaTasks" | "etaLeft" | "etaNext" | "etaReached" | "etaDone" | "etaOpen" | "etaList"
 >;
-
-/** A thin bar, filled to `frac`. */
-function Meter({ frac, color, testId }: { frac: number; color: string; testId?: string }) {
-  return (
-    <span
-      aria-hidden
-      data-testid={testId}
-      className="relative inline-block h-1 min-w-8 flex-1 overflow-hidden rounded-full"
-      style={{ background: TRACK }}
-    >
-      <span
-        className="absolute inset-y-0 start-0 rounded-full transition-[width] duration-700 motion-reduce:transition-none"
-        style={{ width: `${Math.round(frac * 100)}%`, background: color }}
-      />
-    </span>
-  );
-}
 
 /** One task's state: done, past its estimate, or the time left. */
 export function taskState(t: EtaTask, now: number, s: EtaText, lang?: string) {
@@ -107,23 +149,24 @@ export function EtaBar({
       title={strings.etaOpen}
       onMouseDown={keepFocus}
       onClick={onOpen}
-      className="pointer-events-auto mb-1 flex w-full min-w-0 items-center gap-1.5 border-0 bg-transparent px-2 py-0.5 text-start fs-10 text-inherit"
+      className="pointer-events-auto mb-1 block w-full min-w-0 border-0 bg-transparent p-0 text-start fs-10"
     >
-      <EtaClockIcon />
-      <Meter
+      <FillLine
         frac={sum.pct / 100}
-        color={sum.leftMs === null ? FILL_DONE : past ? FILL_PAST : FILL}
-        testId="debug-chat-eta-meter"
-      />
-      <span data-testid="debug-chat-eta-text" className="min-w-0 max-w-[70%] truncate opacity-75">
-        {text}
-      </span>
-      <span className="tabular-nums opacity-60">{sum.pct}%</span>
+        tone={toneOf(sum.leftMs === null, past)}
+        className="w-full px-2 py-0.5"
+      >
+        <EtaClockIcon />
+        <span data-testid="debug-chat-eta-text" className="min-w-0 flex-1 truncate">
+          {text}
+        </span>
+        <span className="shrink-0 tabular-nums">{sum.pct}%</span>
+      </FillLine>
     </button>
   );
 }
 
-/** The status area's list (top of the state tree panel): every timed task, its bar and time left. */
+/** The status area's list (top of the state tree panel): every timed task, its line filled to its progress, and its time left. */
 export function EtaList({
   tasks,
   now,
@@ -150,16 +193,16 @@ export function EtaList({
             data-testid="debug-chat-eta-row"
             data-id={t.id}
             data-state={t.done ? "done" : t.at <= now ? "reached" : "running"}
-            className="flex min-w-0 items-center gap-1.5"
+            className="min-w-0"
           >
-            <span className="min-w-0 max-w-[45%] truncate">{t.title}</span>
-            <Meter
+            <FillLine
               frac={taskFraction(t, now)}
-              color={t.done ? FILL_DONE : t.at <= now ? FILL_PAST : FILL}
-            />
-            <span className="shrink-0 tabular-nums opacity-70">
-              {taskState(t, now, strings, lang)}
-            </span>
+              tone={toneOf(!!t.done, t.at <= now)}
+              className="px-1.5 py-px"
+            >
+              <span className="min-w-0 flex-1 truncate">{t.title}</span>
+              <span className="shrink-0 tabular-nums">{taskState(t, now, strings, lang)}</span>
+            </FillLine>
           </li>
         ))}
       </ul>

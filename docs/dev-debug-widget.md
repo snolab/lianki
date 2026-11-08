@@ -1564,10 +1564,18 @@ Flag `chat.eta-bar` (owner only; the root layout reads it and passes
 `etaBar` down to DebugChat). Every live state-tree node with an estimate
 (`progress.ts --eta 25m`, its `etaAt`; docs/state-tree.md, "ETA pings") is a
 timed task (`eta.ts etaTasks`, read from the overlaid tree). Above the input,
-one line (`EtaBar.tsx`): a small clock drawn in place, a bar of the progress
-weighted by each estimate, then "Title · 25m left" for one task, or "3 tasks
-· 1h 5m left · next in 5m" for several; a tap opens the state tree, whose top
-lists each task with its own bar and time left (`EtaList`). Progress is time
+one line (`EtaBar.tsx`): a small clock drawn in place, "Title · 25m left" for
+one task, or "3 tasks · 1h 5m left · next in 5m" for several, and the percent;
+a tap opens the state tree, whose top lists each task with its time left
+(`EtaList`). There is no separate meter (owner, 2026-11-08): each line's own
+background is the bar, filled from the start edge to its progress (weighted
+by each estimate for the summary), blue running, amber past its estimate,
+green done. The colours are opaque `light-dark()` pairs (`ETA_COLORS`), one
+text colour per theme at WCAG AA (4.5:1) on the track and on every fill, which
+unit/eta.test.ts computes. Like everything in the chat, the line is dimmed with
+the whole panel at rest (`opacity-60`) and full while the chat is in use.
+On the owner's box it works the same (docs/box-oauth.md, "The state tree on
+the owner's box"). Progress is time
 against the estimate (a done task is full and leaves after 8 s); times are
 whole minutes rounded up, in Intl's narrow units. Strings: `eta*` in
 learning-partner.content.ts, each with its context line.

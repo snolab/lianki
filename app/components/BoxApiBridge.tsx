@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useSyncExternalStore } from "react";
 import {
   boxSignOut,
   forgetBoxTokens,
@@ -23,6 +23,28 @@ import { setSignOutSession } from "@/lib/sign-out";
  * no provider: null.
  */
 const BoxSession = createContext<{ user: BoxMe | null; account: BoxAccount | null } | null>(null);
+
+/**
+ * The same answer for what is mounted beside the bridge, not inside it: the
+ * owner's boots (OwnerBoots, DebugEval) are the layout's siblings of the
+ * page. undefined until known (and always off a box).
+ */
+let shared: BoxAccount | null | undefined;
+const sharedListeners = new Set<() => void>();
+function shareAccount(a: BoxAccount | null) {
+  shared = a;
+  for (const l of sharedListeners) l();
+}
+export function useBoxAccount(): BoxAccount | null | undefined {
+  return useSyncExternalStore(
+    (l) => {
+      sharedListeners.add(l);
+      return () => sharedListeners.delete(l);
+    },
+    () => shared,
+    () => undefined,
+  );
+}
 
 /**
  * On a box only (docs/box-oauth.md): from the first render, the page's /api
@@ -55,7 +77,9 @@ export function BoxApiBridge({
       fetch: (url) => fetch(url),
       objectUrl: (b) => URL.createObjectURL(b),
     }).then((a) => {
-      if (live) setAccount(a);
+      if (!live) return;
+      setAccount(a);
+      shareAccount(a);
     });
     return () => {
       live = false;

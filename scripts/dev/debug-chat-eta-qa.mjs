@@ -9,7 +9,7 @@
  *   - the clock runs 5 minutes: the first estimate passes, the page's one
  *     timer reports it once (__etaDue), the line moves on
  *   - a revised estimate moves the line
- *   - a tap opens the state tree, listing each task with its bar and time left
+ *   - a tap opens the state tree, listing each task, its line filled to its progress, and its time left
  *   - a done task leaves after a moment
  *
  * Browsers are muted (scripts/qa/silent.mjs); getUserMedia is refused.

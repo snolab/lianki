@@ -32,6 +32,8 @@
  *   GET  /api/version/progress WebSocket for the owner's /dev/roadmap: live
  *                              agent progress (progress.ts). The owner only,
  *                              checked as for the debug pages; 403 otherwise.
+ *                              The owner's box: a box chat ticket instead,
+ *                              from its own origin (progress.ts, "the box").
  *   POST /api/version/progress An agent's report (scripts/dev/progress.ts),
  *                              with Authorization: Bearer <PROGRESS_TOKEN>.
  *                              503 while that secret is unset.
@@ -84,7 +86,13 @@ import {
 } from "./auth";
 import { CHAT_BACKFILL_PATH, EVAL_TOKEN_HEADER, IDENTITY_HEADERS } from "./debug";
 import { CHAT_PATH, REVOKED_PATH } from "./token-chat";
-import { PROGRESS_OWNER_HEADER, progressGate } from "./progress";
+import {
+  BOX_CLOSED_PATH,
+  PROGRESS_BOX_HEADER,
+  PROGRESS_OWNER_HEADER,
+  PROGRESS_TICKET_HEADER,
+  progressGate,
+} from "./progress";
 
 export { DebugHub } from "./debug";
 export { ProgressHub } from "./progress";
@@ -108,7 +116,10 @@ export type Env = {
   READ_STREAM?: Namespace;
   MAIN?: Fetcher;
   /** The main Worker's DebugSessions RPC entrypoint (worker.ts): is a session still live? */
-  SESSIONS?: { live(user: string, session: string): Promise<unknown> };
+  SESSIONS?: {
+    live(user: string, session: string): Promise<unknown>;
+    boxChat?(clientId: string): Promise<unknown>;
+  };
   /** Agents' bearer token for POST /api/version/progress (a Worker secret). */
   PROGRESS_TOKEN?: string;
   /**
@@ -240,16 +251,36 @@ export default {
       if (!env.PROGRESS) return new Response("live progress is not deployed", { status: 503 });
       const hub = env.PROGRESS.get(env.PROGRESS.idFromName("progress"));
       if (!wantsSocket) {
+        // Never a box header on a writer's request: only the socket route sets them.
         const refused = progressGate(req, env.PROGRESS_TOKEN);
         if (refused) return refused;
         const headers = new Headers(req.headers);
         headers.delete(PROGRESS_OWNER_HEADER);
+        headers.delete(PROGRESS_BOX_HEADER);
+        headers.delete(PROGRESS_TICKET_HEADER);
+        return hub.fetch(new Request(req, { headers }));
+      }
+      // The owner's box (docs/box-oauth.md, "Chat on the owner's box"): no cookie,
+      // a box chat ticket alone, from the box origin it names. Never a partner
+      // ticket (the userscript's widget on any site), never the owner header.
+      if (offersPartner(req)) {
+        const t = await boxChatTicket(req, env.PARTNER_TICKET_PUB);
+        if (!t?.cid) return new Response("forbidden", { status: 403 });
+        const headers = new Headers(req.headers);
+        headers.delete(DEV_BRIDGE_HEADER);
+        headers.delete(PROGRESS_OWNER_HEADER);
+        headers.delete("cookie");
+        headers.set(PROGRESS_BOX_HEADER, t.cid);
+        headers.set(PROGRESS_TICKET_HEADER, `${t.jti}.${t.exp}`);
         return hub.fetch(new Request(req, { headers }));
       }
       const who = await debugIdentity(req, env.MAIN);
       if (!who?.owner) return new Response("forbidden", { status: 403 });
       const headers = new Headers(req.headers);
       headers.delete(DEV_BRIDGE_HEADER);
+      // A cookie page is never a box, whatever it sends.
+      headers.delete(PROGRESS_BOX_HEADER);
+      headers.delete(PROGRESS_TICKET_HEADER);
       headers.set(PROGRESS_OWNER_HEADER, "1");
       return hub.fetch(new Request(req, { headers }));
     }
@@ -291,11 +322,26 @@ export default {
     }
     // Friends, a signed-out session (it stops eval-grant renewal bound to it),
     // and revoked API tokens (their listening sockets close).
+    // A box lost box:chat: its chat sockets (the chat hub) and its state-tree
+    // readers (the progress hub) close. An eval-only notice is the chat hub's alone.
+    if (url.pathname === BOX_CLOSED_PATH && isInternal(url)) {
+      const body = await req.text();
+      const again = () => new Request(req.url, { method: req.method, headers: req.headers, body });
+      const res = await env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(again());
+      let evalOnly = false;
+      try {
+        evalOnly = (JSON.parse(body) as { scope?: unknown }).scope === "eval";
+      } catch {}
+      if (req.method === "POST" && !evalOnly && env.PROGRESS)
+        await env.PROGRESS.get(env.PROGRESS.idFromName("progress"))
+          .fetch(again())
+          .catch(() => null);
+      return res;
+    }
     if (
       (url.pathname.startsWith("/internal/friends") ||
         url.pathname === "/internal/signed-out" ||
         url.pathname === REVOKED_PATH ||
-        url.pathname === "/internal/box-closed" ||
         url.pathname === CHAT_BACKFILL_PATH) &&
       isInternal(url)
     )

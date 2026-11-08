@@ -24,6 +24,7 @@ import {
   taskFraction,
 } from "@lianki/debug-chat/eta";
 import {
+  ETA_COLORS,
   EtaBar,
   EtaClockIcon,
   EtaList,
@@ -33,7 +34,7 @@ import {
 } from "@lianki/debug-chat/EtaBar";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
-import { CHAT_STRINGS_EN } from "@lianki/debug-chat/wire";
+import { CHAT_STRINGS_EN, contrastRatio, oklchLuminance } from "@lianki/debug-chat/wire";
 
 const ROOT = "root-secret";
 const MIN = 60_000;
@@ -507,6 +508,10 @@ describe("the bar and the list, rendered", () => {
     expect(out).toContain(CHAT_STRINGS_EN.etaOpen);
     expect(out).toContain("<svg");
     expect(out).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i); // oklch only
+    // No meter of its own: the line's background is filled to the progress point.
+    expect(out).not.toContain("debug-chat-eta-meter");
+    expect(out).toMatch(/data-testid="debug-chat-eta-fill" data-tone="fill"[^>]*width:25%/);
+    expect(out).not.toContain("opacity");
     const past = html(
       createElement(EtaBar, {
         tasks: two,
@@ -525,6 +530,8 @@ describe("the bar and the list, rendered", () => {
       }),
     );
     expect(done).toContain("2 tasks · done");
+    expect(done).toContain('data-tone="done"');
+    expect(past).toContain('data-tone="past"');
     expect(
       html(
         createElement(EtaBar, { tasks: [], now: 0, strings: CHAT_STRINGS_EN, onOpen: () => {} }),
@@ -546,6 +553,8 @@ describe("the bar and the list, rendered", () => {
     expect(out).toContain('data-state="running"');
     expect(out).toContain('data-state="done"');
     expect(out).toContain("18m left");
+    expect(out.match(/data-testid="debug-chat-eta-fill"/g)?.length).toBe(3);
+    expect(out).not.toContain("debug-chat-eta-meter");
     expect(out).toContain(CHAT_STRINGS_EN.etaList);
     expect(html(createElement(EtaList, { tasks: [], now: 0, strings: CHAT_STRINGS_EN }))).toBe("");
     expect(html(createElement(EtaClockIcon, { size: 10 }))).toContain('width="10"');
@@ -554,6 +563,23 @@ describe("the bar and the list, rendered", () => {
     keepFocus({ preventDefault: () => (kept = true) });
     expect(kept).toBe(true);
   });
+});
+
+describe("the line's fill keeps its text readable", () => {
+  const lum = (css: string) => {
+    const m = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)$/.exec(css);
+    if (!m) throw new Error(`not an opaque oklch(): ${css}`);
+    return oklchLuminance(Number(m[1]), Number(m[2]), Number(m[3]));
+  };
+  for (const theme of ["light", "dark"] as const)
+    it(`${theme}: the text is AA (4.5:1) on the track and on every fill`, () => {
+      const c = ETA_COLORS[theme];
+      for (const bg of [c.track, c.fill, c.past, c.done])
+        expect(contrastRatio(lum(c.text), lum(bg))).toBeGreaterThanOrEqual(4.5);
+      // The fill still shows against the track.
+      for (const bg of [c.fill, c.past, c.done])
+        expect(contrastRatio(lum(c.track), lum(bg))).toBeGreaterThanOrEqual(1.2);
+    });
 });
 
 describe('the page\'s {type:"eta"} on the progress socket', () => {
