@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { RETIRED_KEYS, dropRetiredKeys, isQuiet, silenceFor } from "@lianki/debug-chat/speak-rules";
+import {
+  RETIRED_KEYS,
+  dropRetiredKeys,
+  isQuiet,
+  missedReply,
+  silenceFor,
+} from "@lianki/debug-chat/speak-rules";
 import { type Voice, gateVoice, unheard } from "@lianki/debug-chat/voice";
 
 describe("speak rules: which agent lines are read aloud", () => {
@@ -129,5 +135,35 @@ describe("gateVoice: the shared session's gate", () => {
     (v as Readable).__readMissed?.();
     expect(heard).toEqual(["x"]);
     expect([...unheard(v).ids]).toEqual(["c"]);
+  });
+});
+
+describe("missedReply: a history frame after a reconnect (owner 2026-11-10)", () => {
+  const a = (id: string, at: number, extra: Record<string, unknown> = {}) => ({
+    id,
+    from: "agent",
+    at,
+    ...extra,
+  });
+  const list = [a("old", 100), { id: "me", from: "owner", at: 150 }, a("g1", 200), a("g2", 300)];
+
+  it("the first connect never reads old history", () => {
+    expect(missedReply(list, 0, new Set())).toEqual({ line: null, gap: [] });
+  });
+
+  it("reads only the newest line past the last one seen; the gap is marked", () => {
+    const r = missedReply(list, 100, new Set());
+    expect(r.line?.id).toBe("g2");
+    expect(r.gap).toEqual(["g1", "g2"]);
+  });
+
+  it("nothing new: nothing read", () => {
+    expect(missedReply(list, 300, new Set()).line).toBeNull();
+  });
+
+  it("a line already spoken, or quiet, is not read", () => {
+    expect(missedReply(list, 100, new Set(["g2"])).line?.id).toBe("g1");
+    const q = [a("g1", 200), a("g2", 300, { quiet: true })];
+    expect(missedReply(q, 100, new Set()).line?.id).toBe("g1");
   });
 });

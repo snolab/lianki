@@ -3234,9 +3234,11 @@ export function DebugChat({
         title={
           vs.mic
             ? "The mic is on: replies are always read aloud (your setting is back when it stops)"
-            : speak && vs.voiced
-              ? "You used the mic in this tab: replies are read aloud, typed or spoken, until you turn this off"
-              : "Replies are read aloud while you're typing here (the input has focus)"
+            : speak && vs.touch
+              ? "Replies are read aloud, typing or not, until you turn this off"
+              : speak && vs.voiced
+                ? "You used the mic on this device: replies are read aloud, typed or spoken, until you turn this off"
+                : "Replies are read aloud while you're typing here (the input has focus)"
         }
         onClick={() => !vs.mic && toggleSpeak()}
         className={`flex items-center gap-2 px-3 py-1.5 text-start ${vs.mic ? "opacity-70" : ""}`}
@@ -3244,11 +3246,17 @@ export function DebugChat({
         <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
         {vs.mic
           ? "Replies read aloud (mic on)"
-          : speak && vs.voiced
-            ? "Replies read aloud (mic used)"
-            : speak
-              ? "Replies read aloud while typing"
-              : "Replies silent"}
+          : speak && vs.touch
+            ? strings?.readAloud
+              ? t.readAloud
+              : ui.readAloud
+            : speak && vs.voiced
+              ? "Replies read aloud (mic used)"
+              : speak
+                ? strings?.readAloudTyping
+                  ? t.readAloudTyping
+                  : ui.readAloudTyping
+                : "Replies silent"}
       </button>
       {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
       <button
