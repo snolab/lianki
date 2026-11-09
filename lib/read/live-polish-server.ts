@@ -1,5 +1,6 @@
 // The model call of the live polish (rules: live-polish.ts). Nothing about the
 // text is logged.
+import { refusedAs, type Refused } from "@/lib/payments/metered";
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
@@ -14,7 +15,6 @@ import {
   workersAiComplete,
   type AiPayer,
   type Complete,
-  type NoCredits,
 } from "./gloss-server";
 import {
   LIVE_POLISH_MODEL,
@@ -56,7 +56,7 @@ export async function draftOwn(
 export type LivePolish =
   | { ok: true; passages: LivePolished[] }
   | { ok: false; error: "not-configured" | "busy" | "model-failed" }
-  | ({ ok: false; error: "no-credits" } & NoCredits);
+  | Refused;
 
 export async function livePolishAi(
   passages: readonly string[],
@@ -83,10 +83,7 @@ export async function livePolishAi(
       });
       return { value: r, usd: usageUsd(model, r.usage, hold) };
     });
-    if (!paid.ok)
-      return paid.reason === "no-credits"
-        ? { ok: false, error: "no-credits", balance: paid.balance, need: paid.need }
-        : { ok: false, error: "busy" };
+    if (!paid.ok) return refusedAs(paid, { ok: false, error: "busy" } as const);
     const content = paid.value.choices?.[0]?.message?.content;
     // Nothing back at all is a failed call, not a text of nothing but fillers.
     if (!content?.includes("<p ")) return { ok: false, error: "model-failed" };

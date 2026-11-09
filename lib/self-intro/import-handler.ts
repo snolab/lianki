@@ -9,7 +9,7 @@
  * limit is in memory, per isolate, like the other self-intro routes.
  */
 import type { D1WithBatch } from "@/lib/payments/credits-store";
-import { noCreditsResponse } from "@/lib/payments/metered";
+import { refusedResponse } from "@/lib/payments/metered";
 import { flagIn, type FlagValues } from "@/lib/flags";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { sameOriginJsonPost } from "@/lib/security/same-origin";
@@ -105,8 +105,7 @@ export async function handleImport(req: Request, deps: ImportDeps): Promise<Resp
   });
   if (c instanceof Response) return c;
   const r = await extractSelfIntro(c.body, payer(c.userId, deps));
-  if (!r.ok && r.error === "no-credits") return noCreditsResponse(r);
-  if (!r.ok) return json({ error: r.error }, r.error === "empty" ? 400 : 502);
+  if (!r.ok) return refusedResponse(r) ?? json({ error: r.error }, r.error === "empty" ? 400 : 502);
   return json({ facts: r.facts });
 }
 
@@ -120,7 +119,6 @@ export async function handleFollowup(req: Request, deps: ImportDeps): Promise<Re
   });
   if (c instanceof Response) return c;
   const r = await followupTurn(c.body, payer(c.userId, deps));
-  if (!r.ok && r.error === "no-credits") return noCreditsResponse(r);
-  if (!r.ok) return json({ error: r.error }, 502);
+  if (!r.ok) return refusedResponse(r) ?? json({ error: r.error }, 502);
   return json({ facts: r.facts, question: r.question });
 }

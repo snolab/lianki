@@ -7,7 +7,7 @@ import {
 import { livePolishAi, mayPolishLive } from "@/lib/read/live-polish-server";
 import { polishRefused } from "@/lib/read/polish-offer";
 import { badRequest, bodyOf, json, readerCtx, payerOf } from "@/lib/read/reader-route";
-import { noCreditsResponse } from "@/lib/payments/metered";
+import { isRefused, refusalOf } from "@/lib/payments/metered";
 
 /**
  * POST /api/read/[id]/polish-live — passages of a live doc as a speech draft
@@ -41,7 +41,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     typeof body?.before === "string" ? body.before.slice(-LIVE_POLISH_CONTEXT_CHARS) : "";
   const r = await livePolishAi(passages as string[], before, payerOf(ctx));
   if (r.ok) return json({ passages: r.passages });
-  if (r.error === "no-credits") return noCreditsResponse(r);
+  if (isRefused(r)) return refusalOf(r);
   const status = { busy: 429, "model-failed": 502, "not-configured": 503 }[r.error];
   return json({ error: r.error }, status);
 }

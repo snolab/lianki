@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { badRequest, bodyOf, json, readerCtx, payerOf } from "@/lib/read/reader-route";
-import { noCreditsResponse } from "@/lib/payments/metered";
+import { isRefused, refusalOf } from "@/lib/payments/metered";
 import { MAX_TRANSLATE_CHARS, langTag } from "@/lib/read/translate";
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
@@ -46,7 +46,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ? await translateSelection(ctx.db, ctx, ctx.material, input, limit, Date.now())
     : await translate(ctx.db, input, { ...payerOf(ctx), ...limit });
   if (r.ok) return json({ text: r.text, cached: r.cached });
-  if (r.error === "no-credits") return noCreditsResponse(r);
+  if (isRefused(r)) return refusalOf(r);
   const status = { empty: 400, busy: 429, "model-failed": 502, "not-configured": 503 }[r.error];
   return json({ error: r.error }, status);
 }

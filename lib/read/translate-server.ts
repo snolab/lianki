@@ -1,6 +1,7 @@
 // The I/O of the reader's Translate (the rules: lib/read/translate.ts): the
 // shared cache (D1 read_translation), the model for what it lacks, and the
 // call paid from the user's credits through the one charge seam (payAi, gloss-server.ts).
+import { refusedAs, type Refused } from "@/lib/payments/metered";
 import type { D1Like } from "@/lib/d1/types";
 import { PARTNER_AI_MODEL, PARTNER_AI_REASONING } from "@/lib/partner-ai-config";
 import { textHoldUsd, type Feature } from "@/lib/payments/prices";
@@ -13,7 +14,6 @@ import {
   workersAiComplete,
   type AiPayer,
   type Complete,
-  type NoCredits,
 } from "./gloss-server";
 import { cleanTranslation, normText, translateMessages, translationKey } from "./translate";
 
@@ -27,7 +27,7 @@ const maxTokens = (chars: number) => Math.min(8000, 200 + chars * 2);
 export type TranslateResult =
   | { ok: true; text: string; cached: boolean }
   | { ok: false; error: "empty" | "not-configured" | "busy" | "model-failed" }
-  | ({ ok: false; error: "no-credits" } & NoCredits);
+  | Refused;
 
 /**
  * `text` in `to` (a BCP 47 code): the cached translation when there is one,
@@ -81,10 +81,7 @@ export async function translate(
       });
       return { value: r, usd: usageUsd(PARTNER_AI_MODEL, r.usage, hold) };
     });
-    if (!paid.ok)
-      return paid.reason === "no-credits"
-        ? { ok: false, error: "no-credits", balance: paid.balance, need: paid.need }
-        : { ok: false, error: "busy" };
+    if (!paid.ok) return refusedAs(paid, { ok: false, error: "busy" } as const);
     out = cleanTranslation(paid.value.choices?.[0]?.message?.content ?? "");
   } catch (err) {
     console.error("read.translate: model failed", String(err).slice(0, 200));

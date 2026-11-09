@@ -14,6 +14,8 @@
 /** The response header a credit refusal carries. */
 export const CREDITS_HEADER = "x-lianki-credits";
 export const CREDITS_NEEDED = "needed";
+/** A paid feature paused (its price table outrun): "temporarily unavailable". */
+export const CREDITS_PAUSED = "paused";
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 export type WatchWin = { fetch: FetchLike };
@@ -24,21 +26,34 @@ const MARK = Symbol.for("lianki.no-credits-watch");
 export const isNoCredits = (res: Pick<Response, "status" | "headers">) =>
   res.status === 402 && res.headers.get(CREDITS_HEADER) === CREDITS_NEEDED;
 
+/** Which refusal: not enough credits (402), or the feature paused (503). */
+export type CreditsRefusal = "needed" | "paused";
+export function creditsRefusal(res: Pick<Response, "status" | "headers">): CreditsRefusal | null {
+  if (isNoCredits(res)) return "needed";
+  if (res.status === 503 && res.headers.get(CREDITS_HEADER) === CREDITS_PAUSED) return "paused";
+  return null;
+}
+
 /**
- * Wrap `win.fetch` so `onNeeded` runs on each credit refusal. Returns the
- * undo; installing twice wraps once (the second call only adds its listener).
+ * Wrap `win.fetch` so `onNeeded` runs on each credit refusal (with which one).
+ * Returns the undo; installing twice wraps once (the second call only adds its listener).
  */
-export function installNoCreditsWatch(win: WatchWin, onNeeded: () => void): () => void {
-  const host = win as WatchWin & { [MARK]?: Set<() => void> };
+export function installNoCreditsWatch(
+  win: WatchWin,
+  onNeeded: (kind: CreditsRefusal) => void,
+): () => void {
+  type L = (kind: CreditsRefusal) => void;
+  const host = win as WatchWin & { [MARK]?: Set<L> };
   let listeners = host[MARK];
   if (!listeners) {
-    const set = new Set<() => void>();
+    const set = new Set<L>();
     listeners = set;
     host[MARK] = set;
     const real = win.fetch.bind(win);
     win.fetch = async (input, init) => {
       const res = await real(input, init);
-      if (isNoCredits(res)) for (const f of set) f();
+      const kind = creditsRefusal(res);
+      if (kind) for (const f of set) f(kind);
       return res;
     };
   }

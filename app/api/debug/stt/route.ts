@@ -9,6 +9,8 @@ import { isDev } from "@/lib/permissions";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { STT_WINDOW_MS, handleStt } from "@/lib/stt-handler";
 import { workersAiTranscribe } from "@/lib/workers-ai";
+import { freeCall } from "@/lib/payments/paid-calls";
+import { sttUsd } from "@/lib/payments/prices";
 
 /** The debug chat mic's transcription: lib/stt-handler.ts has the rules. */
 export const POST = async (req: Request) => {
@@ -28,6 +30,8 @@ export const POST = async (req: Request) => {
     user: user?.id ? { id: user.id } : null,
     owner: isDev(user?.email),
     transcribe: workersAiTranscribe,
+    // Free by the owner's decision (2026-11-09): what it costs us is logged.
+    pay: <T>(bytes: number, run: () => Promise<T>) => freeCall("speech.stt", sttUsd(bytes), run),
     limit: (key, max) => checkRateLimit(key, { windowMs: STT_WINDOW_MS, max }),
   });
 };

@@ -18,17 +18,11 @@
  * Privacy as the import: the facts and answers live in this request only;
  * nothing is stored, and the one log line is the cost.
  */
+import { refusedAs, type Refused } from "@/lib/payments/metered";
 import { z } from "zod";
 import { cleanReply, fence } from "@/lib/partner-ai";
 import { PARTNER_AI_MODEL, PARTNER_AI_REASONING } from "@/lib/partner-ai-config";
-import {
-  payAi,
-  promptChars,
-  usageUsd,
-  type AiPayer,
-  type Complete,
-  type NoCredits,
-} from "@/lib/read/gloss-server";
+import { payAi, promptChars, usageUsd, type AiPayer, type Complete } from "@/lib/read/gloss-server";
 import { textHoldUsd } from "@/lib/payments/prices";
 import { IMPORT, SELF_INTRO_FIELDS, type SelfIntroField } from "./import-config";
 import {
@@ -172,7 +166,7 @@ export function followupMessages(req: FollowupRequest, open: SelfIntroField[]) {
 export type FollowupResult =
   | { ok: true; facts: ImportFact[]; question: Question | null }
   | { ok: false; error: "model-failed" }
-  | ({ ok: false; error: "no-credits" } & NoCredits);
+  | Refused;
 
 /** One turn: the last answer's facts and the next question; no call when there is nothing to do. */
 export async function followupTurn(
@@ -200,10 +194,7 @@ export async function followupTurn(
       });
       return { value: r, usd: usageUsd(PARTNER_AI_MODEL, r.usage, hold) };
     });
-    if (!paid.ok)
-      return paid.reason === "no-credits"
-        ? { ok: false, error: "no-credits", balance: paid.balance, need: paid.need }
-        : { ok: false, error: "model-failed" };
+    if (!paid.ok) return refusedAs(paid, { ok: false, error: "model-failed" } as const);
     content = paid.value.choices?.[0]?.message?.content ?? "";
   } catch (err) {
     console.error("self-intro.followup: model failed", err instanceof Error ? err.name : "error");

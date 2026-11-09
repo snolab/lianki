@@ -133,6 +133,7 @@ export async function translateLineReply(
       status: 402,
       body: { error: "no-credits", balance: r.balance, need: r.need, topUp: TOP_UP_PATH },
     };
+  if (r.error === "credits-paused") return { status: 503, body: { error: "credits-paused" } };
   const status = {
     "not-found": 404,
     paused: 409,

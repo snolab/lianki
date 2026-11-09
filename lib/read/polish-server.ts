@@ -1,6 +1,7 @@
 // The I/O of the transcript polish (the rules: lib/read/polish.ts): the
 // model per chunk, paid from the user's credits through the one charge seam
 // (payAi: the chunks' most held first), and a per-user limit. Nothing about the text is logged.
+import { refusedAs, type Refused } from "@/lib/payments/metered";
 import { PARTNER_AI_MODEL, PARTNER_AI_REASONING } from "@/lib/partner-ai-config";
 import { textHoldUsd } from "@/lib/payments/prices";
 import { routeLimit } from "@/lib/security/route-guard";
@@ -12,7 +13,6 @@ import {
   workersAiComplete,
   type AiPayer,
   type Complete,
-  type NoCredits,
 } from "./gloss-server";
 import { checkPolish, polishMessages, type PolishChunk } from "./polish";
 
@@ -28,7 +28,7 @@ const maxTokens = (chars: number) => Math.min(8000, 200 + chars * 2);
 export type PolishRun =
   | { ok: true; polished: (string[] | null)[] }
   | { ok: false; error: "not-configured" | "busy" | "too-long" | "model-failed" }
-  | ({ ok: false; error: "no-credits" } & NoCredits);
+  | Refused;
 
 export async function polishChunksAi(
   chunks: readonly PolishChunk[],
@@ -69,10 +69,7 @@ export async function polishChunksAi(
     await Promise.all(Array.from({ length: Math.min(PARALLEL, chunks.length) }, worker));
     return { value: null, usd };
   });
-  if (!paid.ok)
-    return paid.reason === "no-credits"
-      ? { ok: false, error: "no-credits", balance: paid.balance, need: paid.need }
-      : { ok: false, error: "busy" };
+  if (!paid.ok) return refusedAs(paid, { ok: false, error: "busy" } as const);
   console.log(
     JSON.stringify({
       event: "read.polish",
