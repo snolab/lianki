@@ -18,10 +18,7 @@
     // isolate logs "Base URL could not be determined". `www` 308s to the apex
     // before Next runs, so the apex is the only origin auth ever serves.
     // Locally, .dev.vars overrides this (qa:all writes its own port there).
-    "BETTER_AUTH_BASE_URL": "https://lianki.com",
-    // Comma-separated. Gates owner-only internal pages (/dev/roadmap); empty
-    // means nobody passes. See lib/owner.ts.
-    "OWNER_EMAILS": "snomiao@gmail.com"
+    "BETTER_AUTH_BASE_URL": "https://lianki.com"
   },
   // Workers Logs: requests and console output kept and searchable in the
   // dashboard (Observability), not only live via `wrangler tail`.
@@ -35,6 +32,10 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+  // The study ledger's daily anchor (worker.ts `scheduled`, lib/lian/anchor.ts,
+  // docs/lian.md): just after UTC midnight it anchors every day that has ended
+  // in every time zone. Event-driven by Cloudflare; re-runs change nothing.
+  "triggers": { "crons": ["5 0 * * *"] },
   // D1 database (SNOLAB account). Bound as `DB` — see lib/d1/index.ts.
   "d1_databases": [
     {

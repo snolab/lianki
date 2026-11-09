@@ -6,8 +6,10 @@
  * check may run any number of times.
  */
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
-import { creditStmts } from "@/lib/payments/credits-store";
-import { extendedProEnd } from "@/lib/payments/passes";
+import { EXTEND_PRO_SQL, creditStmts } from "@/lib/payments/credits-store";
+import { canonicalEmail } from "@/lib/canonical-email";
+import { sameEmailAccounts } from "@/lib/canonical-email-d1";
+import { sha256Hex } from "@/lib/security/throttle";
 import {
   ACTIVATION_REVIEW_DAYS,
   CLAIM_MAX_ACCOUNT_AGE_H,
@@ -83,14 +85,9 @@ async function grantPro(
   if (!user) return false;
   const at = now.toISOString();
   const stmts = [grantRow(d1, { userId, kind: "pro", days, reason, refId }, at), ...extra];
-  if (days > 0) {
-    const end = extendedProEnd(user.proEndsAt ? new Date(user.proEndsAt) : undefined, days, now);
-    stmts.push(
-      d1
-        .prepare("UPDATE user SET proEndsAt = ?, updatedAt = ? WHERE id = ?")
-        .bind(end.toISOString(), at, userId),
-    );
-  }
+  // The new end is computed in SQL, inside the batch: two grants at once (a
+  // gift and an invite reward) both count, where a read-then-write lost one.
+  if (days > 0) stmts.push(d1.prepare(EXTEND_PRO_SQL).bind(at, days, userId));
   try {
     await d1.batch(stmts);
     return true;
@@ -174,6 +171,13 @@ export async function claimInvite(
   const age = now.getTime() - new Date(invitee.createdAt).getTime();
   if (!(age <= CLAIM_MAX_ACCOUNT_AGE_H * 60 * 60 * 1000))
     return { status: "rejected", reason: "not new" };
+
+  // One person, one invite (lib/canonical-email.ts): an alias of the inviter
+  // is the inviter, and a person with any other account (a dot or +tag
+  // variant) is not a new user — whichever of the two was made first.
+  const others = await sameEmailAccounts(d1, invitee);
+  if (others.some((o) => o.id === inviterId)) return { status: "rejected", reason: "self" };
+  if (others.length) return { status: "rejected", reason: "not new" };
 
   // The trial is granted lazily on first status read; start from it if it exists.
   const createdAt = new Date(invitee.createdAt);
@@ -402,10 +406,22 @@ export async function redeemGiftCode(
   if (!gift) return { status: "rejected", reason: "unknown code" };
   if (gift.expiresAt && new Date(gift.expiresAt) <= now)
     return { status: "rejected", reason: "expired" };
-  const refId = `${code}:${userId}`;
+  // Once per person, not per account: any account sharing the canonical email
+  // (lib/canonical-email.ts) that redeemed this code counts. The grant's refId
+  // names the person, so UNIQUE (reason, refId) also stops two aliases
+  // redeeming at the same moment, past the read below. Rows from before this
+  // name the account, and that read still finds them.
+  const user = await getUser(d1, userId);
+  const refId = user?.email
+    ? `${code}:person:${await sha256Hex(canonicalEmail(user.email))}`
+    : `${code}:${userId}`;
+  const ids = [userId, ...(user ? await sameEmailAccounts(d1, user) : []).map((o) => o.id)];
+  const refIds = [refId, ...ids.map((id) => `${code}:${id}`)];
   const seen = await d1
-    .prepare("SELECT id FROM membership_grant WHERE reason = 'gift' AND refId = ?")
-    .bind(refId)
+    .prepare(
+      `SELECT id FROM membership_grant WHERE reason = 'gift' AND refId IN (${refIds.map(() => "?").join(", ")})`,
+    )
+    .bind(...refIds)
     .first();
   if (seen) return { status: "rejected", reason: "already redeemed" };
 
@@ -423,8 +439,18 @@ export async function redeemGiftCode(
     credits > 0
       ? creditStmts(d1, { userId, amount: credits, reason: "gift", refId }, now.toISOString())
       : [];
-  if (!(await grantPro(d1, userId, gift.days, "gift", refId, now, extra))) {
-    await d1.prepare("UPDATE gift_code SET uses = uses - 1 WHERE code = ?").bind(code).run();
+  const giveBack = () =>
+    d1.prepare("UPDATE gift_code SET uses = uses - 1 WHERE code = ?").bind(code).run();
+  let granted: boolean;
+  try {
+    granted = await grantPro(d1, userId, gift.days, "gift", refId, now, extra);
+  } catch (e) {
+    // The grant failed outright: the use taken above goes back too.
+    await giveBack().catch(() => {});
+    throw e;
+  }
+  if (!granted) {
+    await giveBack();
     return { status: "rejected", reason: "already redeemed" };
   }
   return { status: "redeemed", days: gift.days, credits };

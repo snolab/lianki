@@ -10,10 +10,16 @@
 import { CHAT_FENCE } from "./attach";
 import { cleanScene, MAX_SCENE_SCREEN, type SttScene } from "./wire";
 
+/** Marks a page whose text must never leave as a voice line's context. */
+export const PRIVATE_SCREEN = "[data-lk-private-screen]";
+
 /** The text on screen: visible text nodes in the viewport, outside the chat. */
 export function screenText(doc: Document = document, max = MAX_SCENE_SCREEN): string {
   const win = doc.defaultView;
   if (!doc.body || !win) return "";
+  // A page that shows private speech (/vibe, a transcript in /read: docs/vibe.md):
+  // its text never rides on a chat line.
+  if (doc.querySelector(PRIVATE_SCREEN)) return "";
   const vw = win.innerWidth;
   const vh = win.innerHeight;
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);

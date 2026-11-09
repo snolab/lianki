@@ -22,7 +22,7 @@ screen edge is the system's Back; iOS has its own edge swipe back. A web page
 can't cancel either one.
 
 - **Never rely on a gesture that starts at a screen edge.** Every swipe
-  (swipe to grade on /words and /read) must be comfortable from inside: the
+  (swipe to grade on /words and /reader) must be comfortable from inside: the
   text a finger grabs sits clear of the edge strip, and the travel needed (one
   or two levels of `a`) fits between the strip and the far side.
 - **Edge handles are tap targets inset from the edge,** never drag handles
@@ -37,7 +37,7 @@ can't cancel either one.
   `lib/page-leave.ts`), the slip goes home and nothing is graded.
 - **An accidental Back loses nothing.** Grades are queued on the device the
   moment they are given; positions waiting on a debounce (/words' anchor, the
-  /read anchor) are written at once on Back, hide and leave, so coming back
+  /reader anchor) are written at once on Back, hide and leave, so coming back
   opens at the same word.
 
 ## As little visual nesting as possible
@@ -107,7 +107,7 @@ behaviour per surface is summarised in the Slack thread of 2026-11-03.
   overlay covers at its current level.
 - **Words:** "reduced" (automatic) and "minimized" (the person's choice) are
   different states; don't call both "compact".
-- **/read:** window scroll, no inner scroller; island as capsule (owner
+- **/reader:** window scroll, no inner scroller; island as capsule (owner
   decision) and top strip reduced while reading; play pill at the thumb;
   playback follow and swipe-to-grade never change the chrome.
 

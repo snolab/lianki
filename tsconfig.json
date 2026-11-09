@@ -25,6 +25,8 @@
       // see the @lianki/core/watchStats import in src/lianki.user.ts.
       "@lianki/core/*": ["./packages/core/src/*.ts"],
       "@lianki/debug-chat/*": ["./packages/debug-chat/src/*"],
+      "@lianki/lian": ["./packages/lian/src/index.ts"],
+      "@lianki/lian/*": ["./packages/lian/src/*.ts"],
       "@lianki/ui-state": ["./packages/ui-state/src/index.ts"],
       "@lianki/ui-state/account": ["./packages/ui-state/src/account.ts"],
       "@lianki/ui-state/dirty": ["./packages/ui-state/src/dirty.ts"]
@@ -39,5 +41,13 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "archived", "tmp", "src/lianki.user.ts", "apps", "packages/ext"]
+  "exclude": [
+    "node_modules",
+    "archived",
+    "tmp",
+    "src/lianki.user.ts",
+    "apps",
+    "packages/ext",
+    "workers/edge"
+  ]
 }

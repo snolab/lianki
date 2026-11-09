@@ -13,6 +13,7 @@ import {
   coveragePercent,
   foldsOf,
   hitOf,
+  termKeys,
   inKeys,
   langMatches,
   normWord,
@@ -159,6 +160,11 @@ describe("matching and coverage", () => {
       card("cat", 30, { stability: 300 }),
     ]);
     expect(hitOf("cats", "en", idx)?.mastered).toBe(true);
+  });
+  it("a one-character reading is no key: の is no sign of a card for 野", () => {
+    expect(termKeys("野", "の", "ja")).toEqual(["野"]);
+    expect(termKeys("猫", "ねこ", "ja")).toEqual(["猫", "ねこ"]);
+    expect(termKeys("の", "の", "ja")).toEqual(["の"]);
   });
   it("the best card of any list wins; Japanese readings match", () => {
     const idx = cardIndex([card("cat", 10), card("Cat", 500)]);

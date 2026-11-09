@@ -18,8 +18,26 @@ const PRECACHE_URLS = ["/manifest.json"];
 /** Pages whose shell must open offline even with a different ?query. */
 const OFFLINE_SHELLS = ["/words", "/alphabet"];
 
+/**
+ * A my-<hash> or my-<name> box (devbox/README.md) runs `next dev`, whose chunk
+ * names stay the same across edits and restarts. Cache-first /_next/static there
+ * served the previous build's code next to the new one, and the page never
+ * hydrated (2026-11-07: the box's spinner stayed, its fetch never went to
+ * lianki.com). On a box this worker caches nothing, answers nothing, and drops
+ * what an older one cached.
+ *
+ * Deliberately broader than the box host rule (lib/box-oauth/rules.ts,
+ * isBoxHost): any my-*.lianki.com, since caching nothing is the safe side and a
+ * static file cannot import it. unit/sw-box.test.ts holds that every host the
+ * rule accepts is caught here.
+ */
+const SW_HOST = self.location.hostname || "";
+const IS_BOX =
+  SW_HOST.startsWith("my-") && SW_HOST.endsWith(".lianki.com") && SW_HOST.split(".").length === 3;
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
+  if (IS_BOX) return;
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)));
 });
 
@@ -30,7 +48,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((k) => k !== CACHE_NAME && !KEEP_CACHES.includes(k))
+            .filter((k) => (IS_BOX || k !== CACHE_NAME) && !KEEP_CACHES.includes(k))
             .map((k) => caches.delete(k)),
         ),
       )
@@ -42,7 +60,7 @@ self.addEventListener("activate", (event) => {
 // fetched (its HTML and /_next/static chunks) so they are cached too.
 self.addEventListener("message", (event) => {
   const data = event.data;
-  if (!data || data.type !== "cache" || !Array.isArray(data.urls)) return;
+  if (IS_BOX || !data || data.type !== "cache" || !Array.isArray(data.urls)) return;
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
       Promise.all(
@@ -50,7 +68,7 @@ self.addEventListener("message", (event) => {
           .filter((u) => typeof u === "string")
           .map((u) =>
             fetch(u)
-              .then((res) => (res.ok ? cache.put(u, res) : undefined))
+              .then((res) => (cacheable(res) ? cache.put(u, res) : undefined))
               .catch(() => {}),
           ),
       ),
@@ -59,6 +77,8 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  // A box: everything straight from its dev server (IS_BOX above).
+  if (IS_BOX) return;
   const { request } = event;
   const url = new URL(request.url);
 
@@ -67,6 +87,12 @@ self.addEventListener("fetch", (event) => {
 
   // Skip API routes — always network only
   if (url.pathname.startsWith("/api/")) return;
+
+  // The owner's same-origin live preview (lib/live-view/page-proxy.ts): a page
+  // with ?live=<id>, and whatever it loads, comes from his dev server. Never
+  // answered from the cache (dev chunk names are reused across edits) and
+  // never cached (below), so nothing of it outlives the preview.
+  if (url.searchParams.has("live") || /[?&]live=/.test(request.referrer || "")) return;
 
   // Hashed, immutable build output: cache first.
   if (url.pathname.startsWith("/_next/static/")) {
@@ -85,7 +111,7 @@ self.addEventListener("fetch", (event) => {
         .then((res) => {
           // Cache successful HTML responses
           const cloned = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+          if (cacheable(res)) caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
           return res;
         })
         .catch(async () => {
@@ -113,7 +139,7 @@ async function cacheThenNetwork(request) {
   const cached = await cache.match(request);
   if (cached) return cached;
   const res = await fetch(request);
-  if (res.ok) cache.put(request, res.clone());
+  if (cacheable(res)) cache.put(request, res.clone());
   return res;
 }
 
@@ -121,9 +147,14 @@ async function networkThenCache(request) {
   const cache = await caches.open(CACHE_NAME);
   try {
     const res = await fetch(request);
-    if (res.ok) cache.put(request, res.clone());
+    if (cacheable(res)) cache.put(request, res.clone());
     return res;
   } catch {
     return (await cache.match(request)) ?? Response.error();
   }
+}
+
+/** Kept for offline use: a good answer that is not the owner's live preview (x-lk-live). */
+function cacheable(res) {
+  return res.ok && !res.headers.has("x-lk-live");
 }

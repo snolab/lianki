@@ -4,7 +4,11 @@ import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import ImportClient from "./ImportClient";
 import YamlImportSection from "./YamlImportSection";
 import PasteLinksSection from "./PasteLinksSection";
-import { authEmail } from "@/app/signInEmail";
+import WordListImport from "./WordListImport";
+import { authUserOrNull } from "@/app/signInEmail";
+import { readFlags } from "@/lib/flags-store";
+import { isDev } from "@/lib/permissions";
+import { importAnyOn } from "@/lib/import/words-handler";
 import { appLocale } from "@/lib/app-locale.server";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +24,16 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ImportPage() {
   const locale = await appLocale();
-  let isLoggedIn = false;
+  let email: string | null = null;
   try {
-    isLoggedIn = Boolean(await authEmail());
+    email = (await authUserOrNull())?.email ?? null;
   } catch {
     // Guest: the paste importer renders disabled with a sign-in hint.
   }
+  const isLoggedIn = Boolean(email);
+  // The word-list import (docs/import-material.md): dark behind `import.any`;
+  // the owner sees it while it is off.
+  const wordListOn = !!email && importAnyOn(await readFlags(), isDev(email));
   const {
     title,
     description,
@@ -53,6 +61,7 @@ export default async function ImportPage() {
             importComplete={importComplete}
             viewDashboard={viewDashboard}
           />
+          {wordListOn && <WordListImport signedIn={isLoggedIn} />}
           <PasteLinksSection isLoggedIn={isLoggedIn} />
           <YamlImportSection />
           <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">

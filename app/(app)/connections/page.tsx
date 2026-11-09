@@ -6,7 +6,7 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { connectionsOn } from "@/lib/connections/gate";
 import { getConnection, googleConfig } from "@/lib/connections/google";
 import { listGdocImports } from "@/lib/connections/gdoc-imports";
@@ -46,7 +46,7 @@ export default async function ConnectionsPage({
         </a>
       </div>
     );
-  if (dbBackend() !== "d1" || !connectionsOn(await readFlags(), isOwner(user.email))) notFound();
+  if (dbBackend() !== "d1" || !connectionsOn(await readFlags(), isDev(user.email))) notFound();
 
   const db = getD1() as unknown as D1Like;
   const [conn, imports] = await Promise.all([

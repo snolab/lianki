@@ -45,6 +45,118 @@ and no pointer, it says "Waiting for the dev machine", and the page is
 the normal one. A new pointer takes effect on the next page load; after that,
 saves reach the open page by hot reload, with no reload.
 
+## Same-origin pages (`?live=<id>`)
+
+Owner's approval: Slack, 2026-11-05 13:01 JST ("go"). The whole **page**
+comes from his dev server, at lianki.com's own address, while `/api` and
+`/auth` stay on production. It replaces opening preview.lianki.com for a
+look at a change: same origin, his real session, his real API.
+
+**Start** (on the Mac, with `serve … --public-host preview.lianki.com`
+running, docs/dev-whole-page.md):
+
+```bash
+bun scripts/dev/live-view.ts on --page preview        # prints https://lianki.com/?live=<id>
+```
+
+Open that link (any path works: `https://lianki.com/words?live=<id>`;
+`?live=on` finds the current one). A red **LIVE · branch@sha · stop** badge
+sits at the bottom centre, above the safe area (clear of next dev's dev-tools
+button on the left and the chat widget on the right; so is the notice). In-app
+navigation stays live (the badge's script keeps `?live=<id>` in the address).
+The "New version · Refresh" notice, and its reload-once, stay off on a live
+page (`onLivePage`, lib/live-view/live-page.ts: `?live=<digits>` in the
+address, or `window.__lkLive` from the badge's script): a dev build's id
+never matches production's. That check is in the app's code, so it reaches
+the live page once the dev server serves a checkout that has it.
+
+**Stop**: tap **stop** on the badge (`?live=off`), open any lianki.com page
+without `?live`, or `bun scripts/dev/live-view.ts off` (every device, at the
+next request; at most 5 s for chunks already loading). The pointer also ends
+at its expiry (12 h at most).
+
+**How** (`lib/live-view/page-proxy.ts`, called from `worker.ts` before
+OpenNext, not from Next's middleware):
+
+- A request without `live=` in its URL and without the live cookie goes
+  straight to OpenNext: two string checks, nothing else.
+- A **document** with `?live=<id>`: the viewer must be the owner (his
+  session, asked of the app's own `/api/dev/whoami`), and `<id>` the serial
+  of the stored pointer, which must name a `page` origin. Anyone else gets
+  the normal page, untouched. Then the page is fetched from that origin
+  through the gate (`scripts/dev/preview-gate.ts`), which the Worker enters
+  with its own secret, **LIVE_GATE_SECRET** (a Worker secret; its other copy
+  is `liveSecret` in the dev server's `.dev-whole-page.json`), never a
+  cookie. The gate then signs the dev server in as the owner, as for his
+  tunnel sessions. The response sets `__Host-lk_live`: Secure, HttpOnly,
+  SameSite=Lax, host-only, sealed (HMAC with the same secret), idle 1 h,
+  never past the pointer.
+- The cookie is used **only for subresources**: `/_next/*` and `/__nextjs*`
+  (the dev chunks, the dev overlay), the HMR websocket, and the router's RSC
+  fetches whose Referer still has `?live=<id>` (so another, normal tab is
+  never switched). Never `/api`, `/auth` or `/_lk`, never a POST, never a
+  service worker script (403). A document without `?live` clears it. Static
+  files that production already has (its own hashed chunks, fonts, `/sw.js`)
+  are served by the assets layer before the Worker runs, so a normal tab
+  with the cookie still loads production's.
+- **What goes up**: an allow-list of request headers (Accept,
+  Accept-Language, User-Agent, Next's router headers, Sec-Fetch-Dest/Mode,
+  conditional and range headers, the websocket handshake), Origin set to the
+  tunnel's, and the gate secret. Never the viewer's Cookie, Authorization,
+  `cf-*`, `x-forwarded-*` or Referer. The URL is the pointer's origin with
+  only the path and query set (`live` removed); `//`, backslashes, `%2F`,
+  `%5C`, `%00`, control characters and `@` (outside `/_next/`) are refused,
+  and the result must still be that origin.
+- **What comes down**: filtered (`lib/live-view/tunnel-headers.ts`: no
+  Set-Cookie, Clear-Site-Data, CSP, CORS, HSTS, Service-Worker-Allowed; the
+  same for the websocket's 101), marked `Cache-Control: no-store`,
+  `x-lk-live: <id>`, `Content-Security-Policy: frame-ancestors 'self'`,
+  `Referrer-Policy: same-origin`. A redirect that is relative or to the
+  tunnel becomes the same path on lianki.com, still with `?live=<id>`.
+- **The tunnel down or slow** (no answer within 20 s, or a 5xx such as the
+  gate's 503): the normal production page with a small notice, 「预览不可用，
+  这是正式版」, and the cookie cleared. Never a 502.
+- **The service worker stays out** (`public/sw.js`): a request with
+  `?live` in its URL or its Referer is left to the network, and an answer
+  marked `x-lk-live` is never cached, so a dev chunk (whose name next dev
+  reuses across edits) is never served stale and nothing of the preview is
+  kept for offline use.
+- **The badge and the notice are put in by a script** (DOM text only), not
+  as server HTML, and put back if removed: React's hydration removes body
+  nodes it did not render (seen on lianki.com, 2026-11-05).
+- **Reload storms**: the badge's script counts loads in sessionStorage; 6
+  within 20 s (the dev server's own `RestartStorm` numbers) switches to
+  `?live=off`.
+
+**The pointer's `page`** (`lib/live-view/rules.ts`, `livePageOk`): an exact
+origin, https, no path, query or credentials: one of `LIVE_PAGE_ORIGINS`
+(`https://preview.lianki.com`), or a Cloudflare quick tunnel's random host
+(`https://<words>.trycloudflare.com`), which is accepted only there, in a
+pointer the Mac signed, never as a JS source. `--page <origin>` names one;
+the gate must then run with `--public-host <that host>`.
+
+**Limits**: server actions (`"use server"` POSTs, used by /list and
+sign-in) go to production, which does not know the dev build's action ids,
+so those forms fail on a live page. The dev page's other absolute URLs
+(og tags) name the tunnel.
+
+**Setup, once** (an owner approval: it is a secret):
+`cd ~/ws/snolab/lianki/tree/preview-serve && bun scripts/dev/whole-page.ts live-secret`
+makes `liveSecret` if missing and pipes it to `wrangler secret put
+LIVE_GATE_SECRET` (never printed); then restart `serve`. Without the secret
+on the Worker, every `?live=` gets the production page and the notice "not
+set up".
+
+Tests: `unit/live-page-proxy.test.ts` (non-owner, no cookie or auth up,
+host escapes, 101 filtering, redirects, expiry, revoke, leaving, tunnel
+down, the gate's Worker entry), `unit/tunnel-headers.test.ts`;
+`scripts/qa/qa-api.mjs` (a non-owner's `?live=` and a forged cookie get the
+normal build).
+
+**Other people's frontends** use the same path with stricter rules:
+`?live=<22-character id>`, only for the user who registered it, no cookie
+or gate secret sent up, a strict CSP — [custom-frontend.md](custom-frontend.md).
+
 ## Design
 
 **A signed pointer.** `scripts/dev/live-view.ts` signs, with an Ed25519 key

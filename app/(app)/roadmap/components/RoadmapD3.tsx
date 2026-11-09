@@ -1,96 +1,116 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { RoadmapNodeProgress } from "@/types/roadmap";
+import { fill } from "@/lib/roadmap/labels";
 
 type Props = {
   nodes: RoadmapNodeProgress[];
   overallMaturityRate: number;
+  /** Translated strings (dictionary `roadmap-page`); `{mature}`, `{total}`, `{pct}` filled here. */
+  labels: { cardsCount: string; noCards: string; overallProgress: string };
 };
 
 const NODE_W = 180;
 const NODE_H = 80;
-const H_GAP = 60;
+const H_GAP = 40;
 const V_GAP = 20;
 const RADIUS = 16;
 
-export default function RoadmapD3({ nodes, overallMaturityRate }: Props) {
+/** How many cards fit across `width` (at least one). */
+function columnsFor(width: number, count: number): number {
+  const fit = Math.floor((width - H_GAP) / (NODE_W + H_GAP));
+  return Math.max(1, Math.min(count, fit));
+}
+
+// Colours are the theme's oklch tokens (app/globals.css), switched for dark
+// mode by the wrapper's custom properties below — never hex.
+const C = {
+  card: "var(--rm-card)",
+  cardBorder: "var(--rm-border)",
+  track: "var(--rm-track)",
+  text: "var(--rm-text)",
+  muted: "var(--rm-muted)",
+  done: "var(--color-green-600)",
+  doneBg: "var(--rm-done-bg)",
+  partial: "var(--color-yellow-500)",
+  partialBg: "var(--rm-partial-bg)",
+  overall: "var(--color-blue-600)",
+};
+
+export default function RoadmapD3({ nodes, overallMaturityRate, labels }: Props) {
+  const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const [width, setWidth] = useState(0);
+
+  // The map fits the pane: columns follow its width, so no step is cut off.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setWidth(Math.floor(entry.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
-    if (!svgRef.current || nodes.length === 0) return;
+    if (!svgRef.current || nodes.length === 0 || width === 0) return;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
-    const cols = Math.ceil(Math.sqrt(nodes.length));
+    const cols = columnsFor(width, nodes.length);
     const rows = Math.ceil(nodes.length / cols);
-    const width = cols * (NODE_W + H_GAP) + H_GAP;
+    const gridW = cols * (NODE_W + H_GAP) + H_GAP;
+    const svgW = Math.max(gridW, width);
+    const left = Math.floor((svgW - gridW) / 2);
     const height = rows * (NODE_H + V_GAP) + V_GAP + 60;
 
-    svg.attr("width", width).attr("height", height).attr("viewBox", `0 0 ${width} ${height}`);
+    svg.attr("width", svgW).attr("height", height).attr("viewBox", `0 0 ${svgW} ${height}`);
 
     const sorted = [...nodes].sort((a, b) => a.order - b.order);
+    const at = (i: number) => ({
+      x: left + H_GAP + (i % cols) * (NODE_W + H_GAP),
+      y: V_GAP + Math.floor(i / cols) * (NODE_H + V_GAP),
+    });
 
-    // Draw connector lines between nodes
+    // Connector lines between consecutive steps
     const lineG = svg.append("g").attr("class", "lines");
     for (let i = 0; i < sorted.length - 1; i++) {
-      const fromCol = i % cols;
-      const fromRow = Math.floor(i / cols);
-      const toCol = (i + 1) % cols;
-      const toRow = Math.floor((i + 1) / cols);
-
-      const x1 = H_GAP + fromCol * (NODE_W + H_GAP) + NODE_W / 2;
-      const y1 = V_GAP + fromRow * (NODE_H + V_GAP) + NODE_H / 2;
-      const x2 = H_GAP + toCol * (NODE_W + H_GAP) + NODE_W / 2;
-      const y2 = V_GAP + toRow * (NODE_H + V_GAP) + NODE_H / 2;
-
+      const a = at(i);
+      const b = at(i + 1);
       lineG
         .append("line")
-        .attr("x1", x1)
-        .attr("y1", y1)
-        .attr("x2", x2)
-        .attr("y2", y2)
-        .attr("stroke", "#d1d5db")
+        .attr("x1", a.x + NODE_W / 2)
+        .attr("y1", a.y + NODE_H / 2)
+        .attr("x2", b.x + NODE_W / 2)
+        .attr("y2", b.y + NODE_H / 2)
+        .attr("stroke", C.cardBorder)
         .attr("stroke-width", 2)
         .attr("stroke-dasharray", "4 4");
     }
 
-    // Draw nodes
     const nodeG = svg
       .selectAll("g.node")
       .data(sorted)
       .enter()
       .append("g")
       .attr("class", "node")
-      .attr("transform", (_, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const x = H_GAP + col * (NODE_W + H_GAP);
-        const y = V_GAP + row * (NODE_H + V_GAP);
-        return `translate(${x},${y})`;
-      });
+      .attr("transform", (_, i) => `translate(${at(i).x},${at(i).y})`);
 
-    // Card background
     nodeG
       .append("rect")
       .attr("width", NODE_W)
       .attr("height", NODE_H)
       .attr("rx", 10)
-      .attr("fill", (d) => {
-        if (d.maturityRate >= 1) return "#dcfce7";
-        if (d.maturityRate > 0) return "#fef9c3";
-        return "#f9fafb";
-      })
-      .attr("stroke", (d) => {
-        if (d.maturityRate >= 1) return "#16a34a";
-        if (d.maturityRate > 0) return "#ca8a04";
-        return "#d1d5db";
-      })
+      .attr("fill", (d) =>
+        d.maturityRate >= 1 ? C.doneBg : d.maturityRate > 0 ? C.partialBg : C.card,
+      )
+      .attr("stroke", (d) =>
+        d.maturityRate >= 1 ? C.done : d.maturityRate > 0 ? C.partial : C.cardBorder,
+      )
       .attr("stroke-width", 1.5);
 
-    // Progress bar background
     nodeG
       .append("rect")
       .attr("x", 8)
@@ -98,9 +118,8 @@ export default function RoadmapD3({ nodes, overallMaturityRate }: Props) {
       .attr("width", NODE_W - 16)
       .attr("height", 6)
       .attr("rx", 3)
-      .attr("fill", "#e5e7eb");
+      .attr("fill", C.track);
 
-    // Progress bar fill
     nodeG
       .append("rect")
       .attr("x", 8)
@@ -108,20 +127,19 @@ export default function RoadmapD3({ nodes, overallMaturityRate }: Props) {
       .attr("width", 0)
       .attr("height", 6)
       .attr("rx", 3)
-      .attr("fill", (d) => (d.maturityRate >= 1 ? "#16a34a" : "#facc15"))
+      .attr("fill", (d) => (d.maturityRate >= 1 ? C.done : C.partial))
       .transition()
       .duration(800)
       .delay((_, i) => i * 80)
       .attr("width", (d) => (NODE_W - 16) * d.maturityRate);
 
-    // Circle badge (maturity %)
     nodeG
       .append("circle")
       .attr("cx", NODE_W - RADIUS - 6)
       .attr("cy", RADIUS + 4)
       .attr("r", RADIUS)
-      .attr("fill", "white")
-      .attr("stroke", (d) => (d.maturityRate >= 1 ? "#16a34a" : "#d1d5db"))
+      .attr("fill", C.card)
+      .attr("stroke", (d) => (d.maturityRate >= 1 ? C.done : C.cardBorder))
       .attr("stroke-width", 1.5);
 
     nodeG
@@ -131,10 +149,9 @@ export default function RoadmapD3({ nodes, overallMaturityRate }: Props) {
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "middle")
       .attr("font-size", 9)
-      .attr("fill", "#374151")
+      .attr("fill", C.text)
       .text((d) => `${Math.round(d.maturityRate * 100)}%`);
 
-    // Node title
     nodeG
       .append("foreignObject")
       .attr("x", 8)
@@ -144,7 +161,7 @@ export default function RoadmapD3({ nodes, overallMaturityRate }: Props) {
       .append("xhtml:div")
       .style("font-size", "11px")
       .style("font-weight", "600")
-      .style("color", "#111827")
+      .style("color", C.text)
       .style("line-height", "1.3")
       .style("overflow", "hidden")
       .style("display", "-webkit-box")
@@ -152,51 +169,64 @@ export default function RoadmapD3({ nodes, overallMaturityRate }: Props) {
       .style("-webkit-box-orient", "vertical")
       .text((d) => d.title);
 
-    // Card count label
     nodeG
       .append("text")
       .attr("x", 8)
       .attr("y", NODE_H - 18)
       .attr("font-size", 9)
-      .attr("fill", "#6b7280")
-      .text((d) => (d.totalCards > 0 ? `${d.matureCards}/${d.totalCards} cards` : "no cards"));
+      .attr("fill", C.muted)
+      .text((d) =>
+        d.totalCards > 0
+          ? fill(labels.cardsCount, { mature: d.matureCards, total: d.totalCards })
+          : labels.noCards,
+      );
 
-    // Overall progress bar at bottom
     const barY = height - 36;
-    const barW = width - 40;
+    const barX = left + H_GAP;
+    const barW = gridW - 2 * H_GAP;
     svg
       .append("text")
-      .attr("x", 20)
+      .attr("x", barX)
       .attr("y", barY - 8)
       .attr("font-size", 12)
       .attr("font-weight", "600")
-      .attr("fill", "#374151")
-      .text(`Overall Progress: ${Math.round(overallMaturityRate * 100)}%`);
+      .attr("fill", C.text)
+      .text(fill(labels.overallProgress, { pct: Math.round(overallMaturityRate * 100) }));
 
     svg
       .append("rect")
-      .attr("x", 20)
+      .attr("x", barX)
       .attr("y", barY)
       .attr("width", barW)
       .attr("height", 10)
       .attr("rx", 5)
-      .attr("fill", "#e5e7eb");
+      .attr("fill", C.track);
 
     svg
       .append("rect")
-      .attr("x", 20)
+      .attr("x", barX)
       .attr("y", barY)
       .attr("width", 0)
       .attr("height", 10)
       .attr("rx", 5)
-      .attr("fill", overallMaturityRate >= 1 ? "#16a34a" : "#3b82f6")
+      .attr("fill", overallMaturityRate >= 1 ? C.done : C.overall)
       .transition()
       .duration(1000)
       .attr("width", barW * overallMaturityRate);
-  }, [nodes, overallMaturityRate]);
+  }, [
+    nodes,
+    overallMaturityRate,
+    labels.cardsCount,
+    labels.noCards,
+    labels.overallProgress,
+    width,
+  ]);
 
   return (
-    <div className="overflow-x-auto">
+    <div
+      ref={wrapRef}
+      className="overflow-x-auto [--rm-card:var(--color-white)] [--rm-border:var(--color-gray-300)] [--rm-track:var(--color-gray-200)] [--rm-text:var(--color-gray-800)] [--rm-muted:var(--color-gray-500)] [--rm-done-bg:var(--color-green-100)] [--rm-partial-bg:var(--color-yellow-100)] dark:[--rm-card:var(--color-gray-900)] dark:[--rm-border:var(--color-gray-700)] dark:[--rm-track:var(--color-gray-800)] dark:[--rm-text:var(--color-gray-100)] dark:[--rm-muted:var(--color-gray-400)] dark:[--rm-done-bg:var(--color-green-950)] dark:[--rm-partial-bg:var(--color-yellow-950)]"
+    >
       <svg ref={svgRef} className="block" />
     </div>
   );

@@ -52,10 +52,15 @@ QA may run at any hour, but the Mac must not make a sound:
   and every engine gets an init script that mutes media elements, zeroes Web
   Audio and stubs `speechSynthesis`.
   `unit/qa-silent.test.ts` fails on a launcher that skips it.
-- `bun run qa:all` runs under `scripts/qa/with-muted-mac.sh`. It mutes the
-  Mac's output for the run, restores the previous state afterwards, is
-  ref-counted across concurrent runs, and survives `kill -9`. Wrap any other
-  browser script the same way: `bash scripts/qa/with-muted-mac.sh <cmd>`.
+- That layer is all there is: QA never touches the Mac's mute or volume (owner,
+  2026-11-06). `bun run qa:all` starts with `scripts/qa/qa-audio-free.mjs`, which
+  proves the layer in each engine without being able to make a sound itself:
+  frames of every kind, popups, `new Audio()`, `<audio autoplay>`, Web Audio,
+  worklets, `speechSynthesis`, workers. `unit/qa-silent.test.ts` fails on a
+  mute or volume call, or a speech or playback command, anywhere in `scripts/`,
+  `tests/`, `unit/` or the hooks.
+- Launches are always headless, and Chromium always gets a fake capture device,
+  so no run can reach the real microphone.
 
 ### QA the **deployed D1/Workers path** — `bun run qa:all`
 
@@ -92,24 +97,6 @@ stays paused, and every request to `wrangler dev` hangs after "Ready on".
 `patches/miniflare@*.patch` (applied by `bun install`) rewrites the origin up
 front under Bun. When wrangler is bumped, regenerate it with
 `bun patch miniflare@<ver>`, or drop it once upstream handles Bun.
-
-### Screenshots on the /home Explore cards
-
-Each card under Explore on /home has a faint screenshot of its feature
-behind it (`public/home-features/<key>-<light|dark>.webp`, list in
-`lib/home-features.ts`). Refresh them when one of those pages changes look:
-
-```bash
-bun run qa:all -- --keep                          # or bun run dev; note the port
-QA_BASE=http://localhost:<port> bun run shots:home            # all, light + dark
-QA_BASE=http://localhost:<port> bun run shots:home -- read    # just some
-```
-
-`scripts/qa/home-feature-shots.mjs` signs up a throwaway
-`qa+shots…@lianki.test` account with demo content only (Hiragana, a
-public-domain fable) — never anyone's own data — and shoots an iPhone-size,
-muted Chromium below the top bar, ~5–15 KB WebP each. It refuses a
-`lianki.com` base.
 
 ### Long-session soaks (leaks, slowdowns)
 
@@ -272,12 +259,16 @@ The project uses Husky, split by speed:
 
 **`pre-push`** (before sharing, cheapest first):
 
-- `bun run lint` (whole repo, check-only), typecheck, then the unit suite with
-  its coverage gate (`bun run test:unit -- --coverage`) — about half a minute
-- then `bun run qa:all` — builds the OpenNext Worker and runs the
-  API/UI/sync/userscript suites against `wrangler dev` on local D1 (see the
-  qa:all section above). CI runs qa:all only nightly, so this hook is the
-  per-change integration gate.
+- `bun run lint` (whole repo, check-only), typecheck, then only the unit tests
+  that reach the change (`bun scripts/gate/affected.ts unit`)
+- then only the qa:all suites the change reaches (`bun scripts/gate/affected.ts
+  qa`, which runs `qa-all.mjs --suites=…`, or nothing). A change to the
+  toolchain, test setup or shared core runs the full unit suite with coverage
+  and the full qa:all; `LIANKI_GATE_FULL=1` forces it. CI runs everything
+  ([docs/shipping.md](docs/shipping.md), "Only what changed").
+- only qa:all's time-sensitive suites wait, for load-based admission to a
+  machine-wide gate; everything else starts at once
+  ([docs/shipping.md](docs/shipping.md), "Admission by load")
 
 Never use `--no-verify` (AGENTS.md hard rule) — it skips the userscript meta
 sync and secret scan on commit, and every local gate on push.

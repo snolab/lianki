@@ -7,8 +7,8 @@
  *
  * 1. Device: a cookie pinned by a one-time link (`/__dev/enter?t=…`). Without
  *    it, nothing is served — not even static files.
- * 2. Owner: the request's better-auth session must belong to an OWNER_EMAILS
- *    address. Anyone else gets 403, so no other user's data is readable.
+ * 2. Owner: the request's better-auth session must belong to an active
+ *    holder of the `dev` permission (account_permission on production D1). Anyone else gets 403, so no other user's data is readable.
  *
  * And the auth API is cut down to reading and ending a session: every sign-in
  * and sign-up endpoint is refused, so no account or password can be created in

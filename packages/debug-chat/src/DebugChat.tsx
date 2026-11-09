@@ -14,6 +14,8 @@ import {
 import { createPortal, flushSync } from "react-dom";
 import { useUi } from "@lianki/ui-state";
 import { chatFold, chatPrefs, chatUi } from "./ui-store";
+import { lineTier, richOf, spokenOf } from "./rich-text";
+import { RichBody, RichLine } from "./RichText";
 import {
   COMPACT_BLUR_MS,
   COMPACT_PEEK_MS,
@@ -61,11 +63,17 @@ import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
+import { DevMenuGroup } from "./DevMenuGroup";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
+import { EtaBar, EtaList } from "./EtaBar";
+import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
-import { BAR_CONTROL, barGeometry } from "./bar-geometry";
-import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
+import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry } from "./bar-geometry";
+import { DebugMic, canCapture, pageCues, pageMic, voiceDevice } from "./MicButton";
+import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
+import { micTaps } from "./mic-taps";
+import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
 import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
@@ -100,6 +108,19 @@ import { PolishedMark } from "./PolishedMark";
 import { LINE_SELECTABLE } from "./copy-line";
 import { type Held, logEngaged, typingLook } from "./log-engage";
 import { wireLogHold } from "./log-hold-dom";
+import {
+  JUMP_END_PX,
+  JUMP_GAP_PX,
+  JUMP_H_PX,
+  asksAbove,
+  jumpLabel,
+  jumpRoom,
+  jumpTop,
+  jumpWidth,
+  nearestAbove,
+  openAskIds,
+} from "./ask-above";
+import { lineIn, watchAsksAbove } from "./ask-above-dom";
 import { installSelectFence } from "./select-fence-dom";
 import {
   barInGlass,
@@ -157,6 +178,23 @@ import {
   pushedAgainst,
 } from "./fold";
 import { keyboardLift } from "./keyboard-lift";
+import {
+  FULL_H_VAR,
+  FULL_LOG_STYLE,
+  FULL_PB_VAR,
+  FULL_SCREEN_STYLE,
+  FULL_SIDEBAR_STYLE,
+  FULL_TOP_VAR,
+  SIDEBAR_QUERY,
+  escapeLeaves,
+  fullBarSpan,
+  sidebarReserve,
+  fullBottomPad,
+  fullScreenAllowed,
+  fullScreenBack,
+  fullScreenBox,
+  fullScreenOn,
+} from "./full-screen";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
 import { type ScrollBox, forwardWheel } from "./wheel-forward";
@@ -165,6 +203,8 @@ import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
+import { withLane } from "./voices";
+import { LaneTag, laneAvatar } from "./LaneMark";
 import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
@@ -186,8 +226,6 @@ const OPEN_KEY = "lk:debug-chat-open";
 const END_CONFIRM_MS = 3_000;
 /** In the input while the bar is held. */
 const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
-/** The mark's gestures, for its title and aria-description. */
-const MARK_HINT = "Tap: minimize or restore · double-tap: menu · drag: move the chat";
 /** Text inside the mirrored row stays left to right; LTR adds no box of its own. */
 const LTR_TEXT = { direction: "ltr" } as const;
 const LTR = { display: "contents", direction: "ltr" } as const;
@@ -203,6 +241,8 @@ const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back throug
 /** A minimized scrub shows this many lines at a time. */
 const SCRUB_LINES = 3;
 const POS_KEY = "lk:debug-chat-pos";
+/** After an up-arrow tap, how long its card is put back at the top if the run reflows. */
+const REALIGN_MS = 1500;
 /** The chat bar: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
 
@@ -358,6 +398,8 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
     // The keyboard lift (keyboard-lift.ts) is a CSS variable set straight on
     // the box from visualViewport events: no render, and never saved.
     offset: { transform: `translate(${pos.x}px, calc(${pos.y}px - var(${KB_LIFT_VAR}, 0px)))` },
+    /** The box's sideways offset from its home: full screen keeps the bar at the panel's span. */
+    dx: pos.x,
     handle,
     begin,
     moveTo,
@@ -548,8 +590,14 @@ export type DebugChatProps = {
       context?: ChatContext;
       /** Files sent with the line (files.ts): the host's refs, already uploaded. */
       attachments?: AttachmentRef[];
+      /** This spoken line asks to amend that one (voice-merge.ts); the hub decides. */
+      continues?: string;
     },
   ) => boolean;
+  /** The speech after a merged line went quiet: the passage is over (hub: polish-due). */
+  onPassageEnd?: () => void;
+  /** The undo on a merged line: split it back into the lines it was made from. */
+  onUnmerge?: (id: string) => void;
   /**
    * A tap on an ask card (AskCard.tsx): the page sends {type:"answer",
    * askId, choices}; the hub stamps it. Absent (an older page): the choice
@@ -577,6 +625,8 @@ export type DebugChatProps = {
   noticeHref?: { href: string; label: string };
   /** A one-line note above the input (a message dropped by the rate limit). */
   warning?: string;
+  /** With `warning`: a link after it (out of credits: where credits are bought). */
+  warningHref?: { href: string; label: string };
   /**
    * The agent's heartbeat says it is working on a message (DebugEval decides,
    * from real beats only): a spinner at the right end of the input.
@@ -650,6 +700,37 @@ export type DebugChatProps = {
    * the menu's Inbox lists (and deletes) what it stored. Absent: no files.
    */
   files?: ChatFiles;
+  /**
+   * The host keeps the account's chat history (Lianki: /chat/history,
+   * docs/chat-history.md): the + menu's View group gets History, which calls this.
+   */
+  onHistory?: () => void;
+  /**
+   * The ETA bar (eta.ts, flag chat.eta-bar; the owner's pages only): a summary
+   * of the tree's timed tasks above the input, a tap opens the tree, which
+   * lists each. Needs `treeSource`.
+   */
+  etaBar?: boolean;
+  /** This page's timer saw a task's estimate run out, unsent: tell the hub (once per estimate). */
+  onEtaDue?: (id: string) => void;
+  /**
+   * Set by DebugChatHost when the hot tree (the dev server's outline) took
+   * `treeSource`'s place: the host's live source, which the ETA bar reads.
+   */
+  etaSource?: TreeSource;
+  /**
+   * Full screen for this viewer (full-screen.ts): the host's server-side read
+   * of the flag `partner.fullscreen`. Off, only the owner's pages (`owner`)
+   * get it. Never on another site (`embedded`).
+   */
+  fullScreen?: boolean;
+  /**
+   * The host's "Back closes an overlay" (Lianki: lib/back-to-close.ts
+   * openBackToClose, docs/ui-state.md): opening full screen by a tap pushes
+   * one history entry, Back runs `onBack`, and the returned close consumes the
+   * entry when full screen ends any other way. Absent: Escape and the button only.
+   */
+  backToClose?: (onBack: () => void) => () => void;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -685,15 +766,19 @@ const AVATAR_PX = 18;
 /** The input grows to about five lines, then scrolls inside itself. */
 const INPUT_MAX_PX = 128;
 
+const NONE_ABOVE: ReadonlySet<string> = new Set();
+
 /** The one panel over the log. */
 type Panel = "none" | "menu" | "tree" | "voiceprint";
 
 export function DebugChat({
   live,
   listeners,
-  messages,
+  messages: rawMessages,
   onSend,
   onAnswer,
+  onPassageEnd,
+  onUnmerge,
   sessions = [],
   onEnd,
   evalRan = false,
@@ -702,6 +787,7 @@ export function DebugChat({
   notice,
   noticeHref,
   warning,
+  warningHref,
   busy = null,
   note,
   pages = [],
@@ -725,8 +811,17 @@ export function DebugChat({
   portalRoot,
   attach = true,
   files,
+  onHistory,
+  etaBar = false,
+  onEtaDue,
+  etaSource,
+  fullScreen: fullScreenFlag = false,
+  backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
+  /** Agent lines with their lane (voices.ts): a `【lane】` prefix becomes the name tag and mark. */
+  const messages = useMemo(() => rawMessages.map(withLane), [rawMessages]);
+  const laneOpts = { laneAvatar };
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
   const clipsAuto = useUi(clipsDevice(), (s) => s.autoStop);
@@ -736,6 +831,33 @@ export function DebugChat({
     const v = read(OPEN_KEY);
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
   });
+  /**
+   * Full screen (full-screen.ts): the open chat fills the app. Chosen per
+   * device (ui-store.ts chatPrefs `full`); `flag || owner`, never on another site.
+   */
+  const fullAllowed = fullScreenAllowed({ flag: fullScreenFlag, owner, embedded });
+  const fullPref = useUi(chatPrefs(), (s) => s.full);
+  const full = fullScreenOn({ allowed: fullAllowed, pref: fullPref, open });
+  const fullOn = useRef(full);
+  fullOn.current = full;
+  /** Wider than SIDEBAR_QUERY (35em): full screen is a sidebar docked right; the media query's change event, no polling. */
+  const [sidebar, setSidebar] = useState(
+    () => typeof matchMedia !== "undefined" && matchMedia(SIDEBAR_QUERY).matches,
+  );
+  useEffect(() => {
+    if (typeof matchMedia === "undefined") return;
+    const mq = matchMedia(SIDEBAR_QUERY);
+    const on = () => setSidebar(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const asSidebar = full && sidebar;
+  // The sidebar leaves the page usable beside it: the page reflows clear of it.
+  useEffect(() => {
+    if (!asSidebar || typeof document === "undefined") return;
+    return sidebarReserve(document.documentElement);
+  }, [asSidebar]);
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
   const [aec, setAecState] = useState(aecOn);
@@ -746,6 +868,22 @@ export function DebugChat({
     const f = () => setAecState(aecOn());
     window.addEventListener(AEC_EVENT, f);
     return () => window.removeEventListener(AEC_EVENT, f);
+  }, []);
+  /** The voice cues' two switches (cues.ts), synced with the account. */
+  const [cueSend, setCueSend] = useState(() => cueOn(CUE_SEND_KEY));
+  const [cueSpeech, setCueSpeech] = useState(() => cueOn(CUE_SPEECH_KEY));
+  // Another tab's change, or another device's arriving (docs/prefs-sync.md).
+  useEffect(() => {
+    const f = () => {
+      setCueSend(cueOn(CUE_SEND_KEY));
+      setCueSpeech(cueOn(CUE_SPEECH_KEY));
+    };
+    window.addEventListener("storage", f);
+    window.addEventListener("lk:pref-applied", f);
+    return () => {
+      window.removeEventListener("storage", f);
+      window.removeEventListener("lk:pref-applied", f);
+    };
   }, []);
   /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
   const [rate, setRate] = useState(speechRate);
@@ -762,8 +900,17 @@ export function DebugChat({
   const foldStore = chatFold();
   const tuckedPref = useUi(foldStore, (s) => s.tucked);
   const edge = useUi(foldStore, (s) => s.edge);
-  const fold: Fold = open ? "open" : tuckedPref ? "tucked" : "pill";
-  const tucked = fold === "tucked";
+  /**
+   * The third level, tucked into the screen edge, is removed for now (owner,
+   * 2026-11-07 20:32 JST: useless, to be rethought; fold.ts never steps into
+   * it). A device that saved it shows the plain pill, and the saved value is
+   * cleared. The handle's code stays dormant until it is rethought.
+   */
+  const fold: Fold = open ? "open" : "pill";
+  const tucked = (fold as Fold) === "tucked";
+  useEffect(() => {
+    if (tuckedPref) foldStore.setState({ tucked: false });
+  }, [tuckedPref]);
   const mirrorRow = mirrored(edge);
   const foldNow = useRef<FoldState>({ fold, edge });
   foldNow.current = { fold, edge };
@@ -808,9 +955,10 @@ export function DebugChat({
   const setMenu = (v: boolean) => setPanel((p) => (v ? "menu" : p === "menu" ? "none" : p));
   // Expanding, minimizing or opening the tree refits (fit itself is fresh each render).
   // Tucked, the box is past the edge on purpose: never pulled back on screen.
+  // Full screen places itself; the panel's own place is kept for the way back.
   useLayoutEffect(() => {
-    if (!tucked) fit(root.current, open);
-  }, [open, tree]);
+    if (!tucked && !full) fit(root.current, open);
+  }, [open, tree, full]);
   /** The floating box's side and left edge (px from the bar row's left), anchor.ts. */
   const [place, setPlace] = useState<{ side: AnchorSide; left: number }>({
     side: "left",
@@ -912,6 +1060,20 @@ export function DebugChat({
     const bar = box?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
     const vv = typeof visualViewport === "undefined" ? null : visualViewport;
     if (!box || !bar) return;
+    // Full screen: the box is the visible area (full-screen.ts), so the bar
+    // already sits above the keyboard; no lift.
+    if (fullOn.current) {
+      const b = fullScreenBox({ innerHeight, vv });
+      box.style.setProperty(FULL_TOP_VAR, `${b.top}px`);
+      box.style.setProperty(FULL_H_VAR, `${b.height}px`);
+      box.style.setProperty(FULL_PB_VAR, fullBottomPad(b.keyboard));
+      if (b.keyboard) box.dataset.kb = "";
+      else delete box.dataset.kb;
+      box.style.setProperty(KB_LIFT_VAR, "0px");
+      delete box.dataset.kbLift;
+      return;
+    }
+    delete box.dataset.kb;
     const cur = liftOf(box);
     let next = vv
       ? keyboardLift({
@@ -984,6 +1146,30 @@ export function DebugChat({
   }, [tree]);
   /** The host's tree (StateTree.tsx), loaded while it is open or the bar shows its frontier. */
   const treeData = useTreeSource(treeSource, treeRev, treeRepo);
+  /** The tree's timed tasks (eta.ts), and the clock that moves their bars. */
+  const etaData = useTreeSource(etaBar ? etaSource : undefined, 0, treeRepo);
+  const etaRoot = etaSource ? etaData.root : treeData.root;
+  const etaList = useMemo<EtaTask[]>(
+    () => (etaBar && (etaSource ?? treeSource) ? etaTasks(etaRoot) : []),
+    [etaBar, etaSource, treeSource, etaRoot],
+  );
+  const [etaNow, setEtaNow] = useState(() => Date.now());
+  const onEtaDueRef = useRef(onEtaDue);
+  onEtaDueRef.current = onEtaDue;
+  const etaClockRef = useRef<ReturnType<typeof etaClock> | null>(null);
+  useEffect(() => {
+    if (!etaBar) return;
+    const c = etaClock({ onDue: (id) => onEtaDueRef.current?.(id), onTick: setEtaNow });
+    etaClockRef.current = c;
+    return () => {
+      c.stop();
+      etaClockRef.current = null;
+    };
+  }, [etaBar]);
+  useEffect(() => {
+    setEtaNow(Date.now());
+    etaClockRef.current?.update(etaList);
+  }, [etaList]);
   /** Without a host tree: the dev fragment at lk:tree-src (TreeFragment.tsx). */
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
@@ -1112,13 +1298,30 @@ export function DebugChat({
       else if (top < box.top) el.scrollTop -= box.top - top;
     }
   }, [nav, open]);
-  /** The minimized bar's lines: the host's, else the tree's frontier. */
+  /**
+   * The minimized bar's lines: the host's, else the tree's frontier. With a
+   * timed task (the ETA bar on), its in-progress line is the two ends instead
+   * of the ≈ summary: "<nearest task> 5 min · <last task> 40 min" (eta.ts).
+   */
+  const treeLines = treeFrontier(treeData.root, {
+    locale: globalThis.document?.documentElement.lang,
+    inProgress: ui.nowDoing,
+  });
+  const etaLine = etaBar ? etaParts(etaList, etaNow) : null;
   const shownFrontier =
     frontier ??
-    treeFrontier(treeData.root, {
-      locale: globalThis.document?.documentElement.lang,
-      inProgress: ui.nowDoing,
-    });
+    (etaLine
+      ? {
+          ...treeLines,
+          doing: {
+            text: etaPartsText(etaLine),
+            parts: etaLine,
+            items: etaList
+              .filter((x) => !x.done)
+              .map((x) => ({ title: x.title, path: x.id.startsWith("/") ? x.id : undefined })),
+          },
+        }
+      : treeLines);
   /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
   const [treeFade, setTreeFade] = useState(false);
   const onTreeScroll = () => {
@@ -1290,11 +1493,35 @@ export function DebugChat({
   /** The scrollTop the resize re-pin set, until its scroll event comes. */
   const pinnedAt = useRef<number | null>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
+  /**
+   * The ETA bar's height (margin included), 0 without it. The floating buttons
+   * above the input (scroll-down, ask jump) sit this much higher, so they never
+   * cover the bar (owner, 2026-11-08 19:58 JST, Android: all in one spot).
+   */
+  const [etaH, setEtaH] = useState(0);
+  const etaRo = useRef<ResizeObserver | null>(null);
+  const etaEl = useRef<HTMLDivElement | null>(null);
+  const setEtaBox = (el: HTMLDivElement | null) => {
+    if (etaEl.current === el) return;
+    etaRo.current?.disconnect();
+    etaEl.current = el;
+    if (!el) return setEtaH(0);
+    const read = () => setEtaH(Math.ceil(el.getBoundingClientRect().height));
+    read();
+    if (typeof ResizeObserver !== "undefined") {
+      etaRo.current = new ResizeObserver(read);
+      etaRo.current.observe(el);
+    }
+  };
   /** Messages that arrived while scrolled up: a dot on the scroll-down button. */
   const [below, setBelow] = useState(0);
   const shown = useRef(messages.length);
   /** The log overflows (or is scrolled): its top edge fades. */
   const [fade, setFade] = useState(false);
+  /** The lines whose ask card is above the log's view (ask-above-dom.ts). */
+  const [askCardsAbove, setAskCardsAbove] = useState<ReadonlySet<string>>(NONE_ABOVE);
+  /** Sets `held` through log-hold-dom.ts, which drops it on a press outside the chat. */
+  const holdLog = useRef<((held: Held) => void) | null>(null);
   /**
    * The input has focus: the log opens to 30vh. Otherwise it shows only the
    * last 3 lines, scrolled to the end.
@@ -1379,7 +1606,8 @@ export function DebugChat({
     expanded,
     typing,
     tree,
-    fullLog: fullLog !== "off",
+    // Full screen is for reading the whole chat: compact waits until it ends.
+    fullLog: fullLog !== "off" || full,
   });
   /** The whole chat, from the compact line: for reading, so a longer hold. */
   const peek = () => {
@@ -1394,7 +1622,7 @@ export function DebugChat({
       expanded,
       typing: typingNow,
       scrolledUp,
-      busy: panel !== "none" || fullLog !== "off",
+      busy: panel !== "none" || fullLog !== "off" || full,
       holdUntil: holdUntil.current,
       now: Date.now(),
     });
@@ -1402,7 +1630,7 @@ export function DebugChat({
     if (d === "now") return setExpanded(false);
     const t = setTimeout(() => setFoldTick((n) => n + 1), d);
     return () => clearTimeout(t);
-  }, [compactPref, open, expanded, typingNow, scrolledUp, panel, fullLog, foldTick]);
+  }, [compactPref, open, expanded, typingNow, scrolledUp, panel, fullLog, full, foldTick]);
   // A reply arriving while the whole chat is up: he is reading it, so the
   // fold waits for its reading time (float-lines.ts dwellMs).
   const lastMsg = messages.at(-1);
@@ -1466,8 +1694,9 @@ export function DebugChat({
     start: (from: "mic" | "input" = "mic") => {
       const el = log.current;
       // The tree in the log's place: the drag scrolls it; no full-screen log.
-      if (tree) fullRef.current.lastDy = 0;
-      if (!el || !open || tree) return;
+      // Full screen: the log already spans it, so the drag only scrolls.
+      if (tree || full) fullRef.current.lastDy = 0;
+      if (!el || !open || tree || full) return;
       // Compact: the log comes back first, so it can be measured.
       if (compact) flushSync(() => setExpanded(true));
       const r = el.getBoundingClientRect();
@@ -1533,7 +1762,9 @@ export function DebugChat({
     },
   };
   /** The log's surface props, full screen: lifted to the visible top, or its own snapped box. */
-  const fullSurface = (p: ReturnType<typeof logSurface>) => {
+  const fullSurface = (p: ReturnType<typeof logSurface>, fullScreenNow = false) => {
+    // Full screen: the log takes the height the bar leaves (full-screen.ts).
+    if (fullScreenNow) return { ...p, style: { ...p.style, ...FULL_LOG_STYLE } };
     if (fullLog === "off") return p;
     const box = fullRef.current.box;
     const transition = reducedMotion() || box ? "none" : WIPE;
@@ -1889,6 +2120,9 @@ export function DebugChat({
     const mine = added > 0 && messages.at(-1)?.from !== "agent";
     if (atEnd.current || mine) {
       log.current?.scrollTo({ top: log.current.scrollHeight });
+      // Its scroll event can land after the newest run grew (the arrow's
+      // room, a card): this pin's own, not him leaving the end.
+      if (log.current) pinnedAt.current = log.current.scrollTop;
       atEnd.current = true;
       setScrolledUp(false);
       setBelow(0);
@@ -1920,6 +2154,10 @@ export function DebugChat({
     return () => ro.disconnect();
   }, [open]);
 
+  const messagesNow = useRef(messages);
+  messagesNow.current = messages;
+  /** How many commands the mic's taps had kept at the last spoken line. */
+  const tapsAtVoice = useRef(0);
   /** Send the draft; true when it went out. */
   const submit = (): boolean => {
     clearTimeout(timer.current);
@@ -1960,12 +2198,32 @@ export function DebugChat({
     const timing = source ? voiceLatency().take() : undefined;
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
-    const speakerProof = source ? takeSpeaker().proofs : (clearSpeaker(), undefined);
+    const heardFrom = source ? takeSpeaker() : (clearSpeaker(), undefined);
+    const speakerProof = heardFrom?.proofs;
     // What was attached with the + menu rides along, this line only.
     const context = uiStore.getState().attached ?? undefined;
     const attachments = hasFiles ? pending.get().flatMap((p) => (p.ref ? [p.ref] : [])) : [];
+    // Continuous speech (voice-merge.ts): asks to amend the line before, if it is
+    // stamped mergeable (the flag is on) and no command ran since. The hub decides.
+    const tapsNow = micTaps().kept?.() ?? 0;
+    const lastLine = messagesNow.current.at(-1);
+    const continues =
+      source &&
+      lastLine &&
+      tapsAtVoice.current === tapsNow &&
+      mergeVerdict(lastLine, {
+        text,
+        ...(timing ? { timing } : {}),
+        ...(to === ROOT_NODE ? {} : { to }),
+        ...(context ? { context } : {}),
+        ...(heardFrom?.tag ? { speaker: heardFrom.tag } : {}),
+        attachments,
+      }).ok
+        ? lastLine.id
+        : undefined;
     const opts = {
       ...(attachments.length ? { attachments } : {}),
+      ...(continues ? { continues } : {}),
       ...(source ? { source } : {}),
       ...(source && timing ? { timing } : {}),
       ...(source && speakerProof?.length ? { speakerProof } : {}),
@@ -1989,6 +2247,19 @@ export function DebugChat({
     if (pending.get().length) pending.take();
     // A typed line says which language the owner speaks: the mic's STT hint.
     if (!source) learnSttHint(text);
+    // A spoken line went out, by whichever path (the join, Enter, the debounce):
+    // one cue for it (cues.ts), here and nowhere else. Typed lines are silent.
+    else {
+      // Amending the last line is not a new message: its own softer cue. The page asks by
+      // the rule the hub applies, so they agree but for a reply already on its way.
+      window.dispatchEvent(
+        new CustomEvent(VOICE_SENT_EVENT, {
+          detail: { sound: continues ? pageCues().amend() : pageCues().send() },
+        }),
+      );
+      tapsAtVoice.current = tapsNow;
+      passage.current?.final();
+    }
     // Sent: an interruption is over, and the queue (still relevant) reads on.
     voice().resume();
     draftRef.current = "";
@@ -2015,6 +2286,139 @@ export function DebugChat({
   const engaged = logEngaged({ typing, plusMenu: attachMenu || picking, micActive, held });
   const busyRef = useRef(false);
   busyRef.current = engaged && !held;
+  // Open asks above the view (ask-above.ts). Only the shown log has a view: the
+  // compact line shows its open asks itself, and a drag's full-screen log is
+  // under the finger. An answer (from any device) arrives in `messages`, an
+  // expiry is read on the next render or tap, so neither needs a timer.
+  const openAsks = openAskIds(messages, Date.now());
+  const openAsksKey = openAsks.join("\n");
+  const askWatch = open && !tree && !compact && fullLog === "off";
+  useEffect(() => {
+    const el = log.current;
+    if (!el || !askWatch || !openAsksKey) {
+      setAskCardsAbove(NONE_ABOVE);
+      return;
+    }
+    return watchAsksAbove(el, openAsksKey.split("\n"), setAskCardsAbove);
+  }, [askWatch, openAsksKey]);
+  const asksUp = askWatch ? asksAbove(openAsks, askCardsAbove) : [];
+  /** Nothing over the bar has the place the button would take. */
+  const askJumpShown = asksUp.length > 0 && !attachMenu && !inboxOpen && panel === "none";
+  const askJumpText = jumpLabel(
+    strings?.askJump ? t.askJump : ui.askJump,
+    asksUp.length,
+  );
+  /** One tap: the nearest question above, at the log's top, with the log open to read and answer it. */
+  const jumpToAsk = () => {
+    const el = log.current;
+    const id = nearestAbove(asksAbove(openAskIds(messages, Date.now()), askCardsAbove));
+    const line = id && el && lineIn(el, id);
+    if (!id || !el || !line) return;
+    atEnd.current = false;
+    el.scrollTop = jumpTop({
+      scrollTop: el.scrollTop,
+      lineTop: line.getBoundingClientRect().top,
+      rootTop: el.getBoundingClientRect().top,
+    });
+    hold(COMPACT_SCROLL_MS);
+    if (!typing && !micActive) holdLog.current?.("open");
+    jumpedTo.current = { id, at: Date.now() };
+    // The observer says so a frame later; a quick second tap goes on from here.
+    setAskCardsAbove((s) => new Set([...s].filter((x) => x !== id)));
+  };
+  /**
+   * The card a tap just brought in. When the arrow then hides (or its count
+   * changes), the newest run's side room goes or shrinks and the run reflows:
+   * a card inside a long run of one sender's lines moved up past the view's
+   * top (#664). Put it back at the top once, in the same frame.
+   */
+  const jumpedTo = useRef<{ id: string; at: number } | null>(null);
+  useLayoutEffect(() => {
+    const j = jumpedTo.current;
+    const el = log.current;
+    if (!j || !el) return;
+    if (Date.now() - j.at > REALIGN_MS) {
+      jumpedTo.current = null;
+      return;
+    }
+    const line = lineIn(el, j.id);
+    if (!line) return;
+    el.scrollTop = jumpTop({
+      scrollTop: el.scrollTop,
+      lineTop: line.getBoundingClientRect().top,
+      rootTop: el.getBoundingClientRect().top,
+    });
+    if (!askJumpShown) jumpedTo.current = null;
+  }, [askJumpShown, asksUp.length]);
+  /**
+   * Into full screen and back (full-screen.ts). Only the view changes: the
+   * line being read keeps its place on screen across the switch (at the end,
+   * the resize re-pin keeps the newest line); the draft, its focus and the
+   * mic are the same elements, untouched.
+   */
+  const fullAnchor = useRef<ReturnType<typeof anchorNow>>(null);
+  /** Entered by a tap in this page: it owns one history entry (Back leaves full screen). */
+  const fullByTap = useRef(false);
+  const setFull = (on: boolean, byTap = false) => {
+    if (on === fullOn.current) return;
+    fullAnchor.current = atEnd.current ? null : anchorNow();
+    fullByTap.current = on && byTap;
+    chatPrefs().setState({ full: on });
+  };
+  useLayoutEffect(() => {
+    const el = log.current;
+    const a = fullAnchor.current;
+    fullAnchor.current = null;
+    if (!el || !a) return;
+    const row = el.querySelector<HTMLElement>(`[data-testid=debug-chat-line][data-msg="${a.id}"]`);
+    if (!row) return;
+    const v = el.getBoundingClientRect();
+    el.scrollTop = anchorScrollTop({
+      before: a.top,
+      after: row.getBoundingClientRect().top,
+      height: a.height,
+      view: { top: v.top, bottom: v.bottom },
+      scrollTop: el.scrollTop,
+      maxScroll: el.scrollHeight - el.clientHeight,
+    });
+  }, [full]);
+  // Back leaves full screen (docs/ui-state.md, "Back closes an overlay";
+  // full-screen.ts fullScreenBack): its entry is taken at once after a tap,
+  // else at the first gesture. Left any other way, the entry is consumed.
+  useEffect(() => {
+    if (!full || !backToClose) return;
+    const close = fullScreenBack(
+      window,
+      backToClose,
+      () => {
+        fullByTap.current = false;
+        chatPrefs().setState({ full: false });
+      },
+      fullByTap.current,
+    );
+    return () => {
+      fullByTap.current = false;
+      close();
+    };
+  }, [full]);
+  /** The + menu or the inbox is up: their own Escape closes them first. */
+  const attachMenuNow = useRef(false);
+  attachMenuNow.current = attachMenu || inboxOpen;
+  // Escape leaves full screen, after the tree's and the + menu's own Escape.
+  // Caught before the mic's Escape (which turns it off): leaving full screen
+  // never does.
+  useEffect(() => {
+    if (!full) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (!escapeLeaves({ full: fullOn.current, panelOpen: panelNow.current !== "none", plusMenu: attachMenuNow.current }))
+        return;
+      e.stopPropagation();
+      setFull(false);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [full]);
   // At rest the history is click-through; a press-and-hold on it engages it
   // and selects the line under the finger (log-hold-dom.ts). Events only.
   useEffect(
@@ -2027,6 +2431,9 @@ export function DebugChat({
         chat: () => root.current,
         busy: () => busyRef.current,
         onHeld: setHeld,
+        onReady: (hold) => {
+          holdLog.current = hold;
+        },
       }),
     [],
   );
@@ -2051,16 +2458,32 @@ export function DebugChat({
    * hub's edit is the agent's). The cost is up to joinMs on a line that is
    * really done; it is tunable, and 0 sends at once.
    */
-  const sendVoice = () => {
-    if (submit()) {
-      const sound = playSentTick();
-      window.dispatchEvent(new CustomEvent(VOICE_SENT_EVENT, { detail: { sound } }));
-    }
-  };
+  const sendVoice = () => void submit();
   const joiner = useRef<ReturnType<typeof createJoiner> | null>(null);
   joiner.current ??= createJoiner({
     send: () => sendVoiceRef.current(),
     joinMs: () => voiceTune().joinMs,
+    setTimer: (f, ms) => setTimeout(f, ms),
+    clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+  });
+  /**
+   * The end of a passage: a second join, on what was already sent. No speech for
+   * PASSAGE_END_MS after a spoken line, with nothing being heard or transcribed, and
+   * if that line is a merged one the hub is told (one polish for all of it).
+   */
+  const passage = useRef<ReturnType<typeof createJoiner> | null>(null);
+  const passageEnd = () => {
+    const mic = (globalThis as { __lkMic?: { view?: () => { state: string } } }).__lkMic?.view?.();
+    if (micPending.current || mic?.state === "capturing") return passage.current?.final();
+    if (messagesNow.current.findLast((m) => m.from === "owner")?.parts) onPassageEndRef.current?.();
+  };
+  const passageEndRef = useRef(passageEnd);
+  passageEndRef.current = passageEnd;
+  const onPassageEndRef = useRef(onPassageEnd);
+  onPassageEndRef.current = onPassageEnd;
+  passage.current ??= createJoiner({
+    send: () => passageEndRef.current(),
+    joinMs: () => PASSAGE_END_MS,
     setTimer: (f, ms) => setTimeout(f, ms),
     clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
   });
@@ -2077,18 +2500,23 @@ export function DebugChat({
   };
   useEffect(() => pending.subscribe(() => afterUpload.current()), [pending]);
   useEffect(() => {
-    const on = () => joiner.current?.speechStart();
+    const on = () => {
+      joiner.current?.speechStart();
+      passage.current?.speechStart();
+    };
     window.addEventListener(VOICE_CAPTURE_EVENT, on);
     return () => {
       window.removeEventListener(VOICE_CAPTURE_EVENT, on);
       joiner.current?.cancel();
+      passage.current?.cancel();
     };
   }, []);
   const dictated = (t: string) => {
     // A blip (one short Latin word, or only 嗯/呃) is not a line; short answers pass.
     if (isBlip(t)) {
-      voice().log({ ev: "stt-blip", text: t.slice(0, 40) });
+      voice().log({ ev: "stt-blip", chars: t.length });
       joiner.current?.idle();
+      passage.current?.idle();
       return;
     }
     voiceLatency().shown();
@@ -2198,8 +2626,7 @@ export function DebugChat({
     foldStore.setState({ tucked: tuckNow, edge: next.edge });
     if ((next.fold === "open") !== open) toggle(next.fold === "open");
   };
-  // A drag of the box ended: it follows its nearest edge, and a pill pushed
-  // against one tucks into it.
+  // A drag of the box ended: it follows its nearest edge (no tuck: that level is removed).
   onDrop.current = (bar) => {
     const vw = innerWidth;
     foldBy({
@@ -2209,7 +2636,7 @@ export function DebugChat({
     });
   };
   gripAct.current = {
-    // Open: minimize into the pill. The pill: tuck it into the edge.
+    // Open: minimize into the pill. The pill: open it again.
     single: () => {
       setPanel("none");
       foldBy({ type: "mark" });
@@ -2239,18 +2666,33 @@ export function DebugChat({
     return {
       text: raw ? (
         <span data-testid="debug-chat-raw" className="text-gray-500">
-          {m.raw}
+          <RichBody rich={richOf(m.raw, "markdown")} onOpenPage={onOpenPage} />
         </span>
       ) : (
         m.text
       ),
       mark: (
-        <PolishedMark
-          icon={polishedIcon}
-          label={strings?.polished ? t.polished : ui.polished}
-          showRaw={raw}
-          onToggle={() => toggleRaw(m.id)}
-        />
+        <>
+          <PolishedMark
+            icon={polishedIcon}
+            label={strings?.polished ? t.polished : ui.polished}
+            showRaw={raw}
+            onToggle={() => toggleRaw(m.id)}
+          />
+          {m.parts && onUnmerge ? (
+            <button
+              type="button"
+              data-testid="debug-chat-unmerge"
+              title={t.unmerge}
+              aria-label={t.unmerge}
+              className="pointer-events-auto ms-1 inline-flex select-none items-center align-baseline text-[0.85em] leading-none text-gray-500"
+              style={{ opacity: 0.75 }}
+              onClick={() => onUnmerge(m.id)}
+            >
+              ↩
+            </button>
+          ) : null}
+        </>
       ),
     };
   };
@@ -2444,7 +2886,7 @@ export function DebugChat({
    * edge) to move the box. The liagent mark: a tap minimizes or restores
    * (after 280 ms), a double tap opens the menu. It is its own drag handle,
    * so its click still lands on it. The state tree is in the + menu (its
-   * "View" group; AttachMenu.tsx). The mic is the bar's last control (micEl).
+   * "View" group; AttachMenu.tsx). The mic follows them (micEl).
    */
   const controls = (
     <>
@@ -2452,21 +2894,28 @@ export function DebugChat({
         type="button"
         data-drag-handle
         data-testid="debug-chat-pill-min"
-        // On the pill it is the tuck arrow (fold.ts): the pill's Li restores.
-        aria-label={open ? "Minimize chat" : `${ui.tuckChat}${unread ? `, ${unread} new` : ""}`}
-        aria-description={MARK_HINT}
-        title={open ? MARK_HINT : ui.tuckChat}
+        // The grip (owner, 2026-11-07 20:34 JST: it did not look draggable):
+        // six dots, grab / grabbing. A tap folds or opens, a double tap the menu.
+        aria-label={`${t.dragGrip}${!open && unread ? `, ${unread} new` : ""}`}
+        title={t.dragGrip}
         aria-expanded={open}
         {...handle}
         onPointerDown={(e) => {
           unlockSpeech();
-          handle.onPointerDown(e);
+          // Full screen does not move: the panel keeps its place for the way back.
+          if (!fullOn.current) handle.onPointerDown(e);
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
-        style={{ ...handle.style, ...BAR_CONTROL }}
-        className="tap-40 relative flex w-10 shrink-0 items-center justify-center rounded-full"
+        style={{
+          ...handle.style,
+          ...BAR_CONTROL,
+          // Full screen does not drag; elsewhere grab, grabbing while held.
+          cursor: full ? "pointer" : holding ? "grabbing" : "grab",
+        }}
+        data-lk-tap
+        className="tap-40 relative flex shrink-0 items-center justify-center rounded-full"
       >
-        {open ? <LiagentMark size={18} /> : <TuckArrow edge={edge} />}
+        <GripDots />
         <span
           aria-hidden
           className="absolute end-1.5 top-1 size-1.5 rounded-full"
@@ -2476,7 +2925,8 @@ export function DebugChat({
       {!open && (
         // The pill's Li: a tap opens the chat again (the mark beside it now
         // tucks). Part of the pill, not a button of its own: it drags as the
-        // pill does. Screen readers restore from the menu.
+        // pill does. Screen readers restore from the menu. It takes the +'s
+        // slot, as wide, so the mic after it keeps its place.
         <span
           aria-hidden
           data-testid="debug-chat-restore"
@@ -2485,7 +2935,8 @@ export function DebugChat({
           {...handle}
           onClick={() => !wasDrag() && foldBy({ type: "restore" })}
           style={{ ...handle.style, ...BAR_CONTROL, cursor: "pointer" }}
-          className="tap-40 flex w-8 shrink-0 items-center justify-center"
+          data-lk-tap
+          className="tap-40 flex shrink-0 items-center justify-center"
         >
           <LiagentMark size={18} />
         </span>
@@ -2493,9 +2944,12 @@ export function DebugChat({
     </>
   );
   /**
-   * The mic, after the input: at the bar's far right when expanded, and next
-   * to the connections when minimized (the input's slot is 0 wide then). It is
-   * always this one node, so its live state and gestures survive the switch.
+   * The mic, in the cluster with the mark and the + (owner, 2026-11-07:
+   * "我们把麦克风跟另外几个按钮排到一起吧……这样折叠的时候，它位置就不会变"):
+   * [mark | + | mic | input] open, [mark | Li | mic] folded, the Li in the +'s
+   * slot, so the mic keeps its place on the screen as the chat folds, and in
+   * full screen (the bar keeps the panel's span there). It is always this one
+   * node, so its live state and gestures survive the switch.
    */
   const micEl = (
     <>
@@ -2508,7 +2962,10 @@ export function DebugChat({
             micPending.current = n;
             setInterim(text);
             // The speech after a held line came to nothing: hold it again.
-            if (!n && !text) joiner.current?.idle();
+            if (!n && !text) {
+              joiner.current?.idle();
+              passage.current?.idle();
+            }
             arm(); // stops a debounce under way, or restarts it once all is in
           }}
           onActive={(on) => {
@@ -2631,6 +3088,7 @@ export function DebugChat({
           `min-w-0 flex-1 ${!floating ? "h-[30vh]" : ""}`,
         )}
       >
+        {etaBar && <EtaList tasks={etaList} now={etaNow} strings={t} />}
         {treeContent}
       </div>
     </div>
@@ -2653,8 +3111,9 @@ export function DebugChat({
                 avatarFor,
                 agentName: t.name,
                 you: t.you,
+                ...laneOpts,
               })}
-              text={p.text}
+              text={lineText(m, p.text)}
               mark={
                 m.speaker?.decision === "me" ? (
                   <>
@@ -2755,23 +3214,40 @@ export function DebugChat({
               ? "Replies read aloud while typing"
               : "Replies silent"}
       </button>
-      {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
+      {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
       <button
         type="button"
         role="menuitemcheckbox"
-        data-testid="debug-menu-aec"
-        aria-checked={aec}
-        title={ui.aecHint}
+        data-testid="debug-menu-cue-send"
+        aria-checked={cueSend}
         onClick={() => {
-          setAecState(!aec);
-          void applyAec(!aec);
+          setCueSend(!cueSend);
+          setCue(CUE_SEND_KEY, !cueSend);
+          notePrefWrite();
         }}
         className="flex items-center gap-2 px-3 py-1.5 text-start"
       >
         <span aria-hidden className="w-[1em] text-center">
-          {aec ? "◉" : "○"}
+          {cueSend ? "◉" : "○"}
         </span>
-        {ui.aec}
+        {strings?.cueSend ? t.cueSend : ui.cueSend}
+      </button>
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-cue-speech"
+        aria-checked={cueSpeech}
+        onClick={() => {
+          setCueSpeech(!cueSpeech);
+          setCue(CUE_SPEECH_KEY, !cueSpeech);
+          notePrefWrite();
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {cueSpeech ? "◉" : "○"}
+        </span>
+        {strings?.cueSpeech ? t.cueSpeech : ui.cueSpeech}
       </button>
       {/* Compact mode (compact-view.ts): this device only (lk:pref:chat-view). */}
       <button
@@ -2812,6 +3288,26 @@ export function DebugChat({
           </button>
         ))}
       </div>
+      {/* Dev (DevMenuGroup.tsx): internal diagnostics, on the owner's pages only, collapsed. */}
+      <DevMenuGroup owner={owner} label={t.devGroup}>
+      {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-aec"
+        aria-checked={aec}
+        title={ui.aecHint}
+        onClick={() => {
+          setAecState(!aec);
+          void applyAec(!aec);
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {aec ? "◉" : "○"}
+        </span>
+        {ui.aec}
+      </button>
       {/* The last voice line's path to its reply (latency.ts), when there is one or the mic is on. */}
       {(lastLatency || vs.mic) && (
         <div data-testid="debug-menu-latency" className="px-3 py-1 text-gray-500">
@@ -2863,6 +3359,7 @@ export function DebugChat({
           </div>
         </div>
       )}
+      </DevMenuGroup>
       {vs.queued > 0 && (
         <button
           type="button"
@@ -3085,7 +3582,7 @@ export function DebugChat({
     if (!left) return;
     for (const m of messages) {
       if (m.from !== "agent" || historyIds.current!.has(m.id) || claimed.current.has(m.id)) continue;
-      const n = sentenceCount(m.text);
+      const n = sentenceCount(spokenOf(m, { embedded }));
       if (!n || n > left) continue;
       claimed.current.add(m.id);
       readDispatch({ type: "enqueue", id: m.id, n });
@@ -3142,11 +3639,12 @@ export function DebugChat({
       el.focus({ preventScroll: true });
     }
     for (const { r, m } of resumeItems) {
-      const ranges = sentenceRanges(m.text);
+      const said = spokenOf(m, { embedded });
+      const ranges = sentenceRanges(said);
       const start = ranges[r.from]?.start;
       if (start === undefined) continue;
       claimed.current.add(m.id);
-      if (v.reply(m.text.slice(start)))
+      if (v.reply(said.slice(start)))
         readDispatch({ type: "enqueue", id: m.id, n: ranges.length - r.from, from: r.from });
     }
     if (focusHack && el) {
@@ -3168,25 +3666,63 @@ export function DebugChat({
         ?.hasBeenActive === true;
     if (voice().state().mic || activated) resumeNow();
   }, [resumeItems.length]);
-  /** An agent line in its sentences, each coloured by how far the reading got. */
+  /**
+   * A line's text in full: markdown by its tier (rich-text.ts), and an agent
+   * line in its sentences, each coloured by how far the reading got.
+   */
   const readText = (m: ChatMessage, text: ReactNode) => {
-    if (m.from !== "agent" || typeof text !== "string") return text;
-    return sentenceRanges(text).map((r, idx) => {
-      const st = sentenceState(readP, m.id, idx);
-      return (
-        <span
-          key={r.start}
-          data-read={st}
-          style={st === "spoken" ? SPOKEN_STYLE : st === "speaking" ? SPEAKING_STYLE : undefined}
-        >
-          {text.slice(r.start, r.end)}
-        </span>
-      );
-    });
+    if (typeof text !== "string") return text;
+    const rich = richOf(text, lineTier(m, { embedded }));
+    if (m.from !== "agent") return <RichBody rich={rich} onOpenPage={onOpenPage} />;
+    return (
+      <RichBody
+        rich={rich}
+        onOpenPage={onOpenPage}
+        read={{
+          ranges: sentenceRanges(rich.spoken),
+          wrap: (idx, key, children) => {
+            const st = sentenceState(readP, m.id, idx);
+            return (
+              <span
+                key={key}
+                data-read={st}
+                style={
+                  st === "spoken" ? SPOKEN_STYLE : st === "speaking" ? SPEAKING_STYLE : undefined
+                }
+              >
+                {children}
+              </span>
+            );
+          },
+        }}
+      />
+    );
   };
+  /**
+   * A line in the one-line views: its words with their links, no blocks. A
+   * function declaration, hoisted: the folded pill's floating lines (floatLine,
+   * above) render with it before this point, and as a `const` that threw
+   * "Cannot access 'lineText' before initialization" and took the chat down
+   * as soon as a line floated (debug-chat-fold-qa, debug-chat-bar-qa).
+   */
+  function lineText(m: ChatMessage, text: ReactNode) {
+    return typeof text === "string" ? (
+      <RichLine rich={richOf(text, lineTier(m, { embedded }))} onOpenPage={onOpenPage} />
+    ) : (
+      text
+    );
+  }
   /** Who said each line, and where a run of one sender's lines starts (avatar-rules.ts). */
   const whos = messages.map((m) =>
-    lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you }),
+    lineAvatar(m, {
+      friend,
+      viewer,
+      agentAvatar,
+      avatarFor,
+      agentName: t.name,
+      you: t.you,
+      ...laneOpts,
+    }),
   );
   const starts = runStarts(
     messages.map((m, i) => ({
@@ -3202,7 +3738,15 @@ export function DebugChat({
    * the whole chat back.
    */
   const compactRow = (m: ChatMessage, line: boolean) => {
-    const who = lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you });
+    const who = lineAvatar(m, {
+      friend,
+      viewer,
+      agentAvatar,
+      avatarFor,
+      agentName: t.name,
+      you: t.you,
+      ...laneOpts,
+    });
     const p = polish(m);
     const showAll = strings?.compactShowAll ? t.compactShowAll : ui.compactShowAll;
     const asLine = line && !m.ask;
@@ -3220,8 +3764,8 @@ export function DebugChat({
               "aria-controls": "debug-chat-column",
               "aria-expanded": false,
               onClick: (e: React.MouseEvent) => {
-                // Its polish mark is its own button (shows the raw STT text).
-                if ((e.target as HTMLElement).closest("button")) return;
+                // Its polish mark is its own button (shows the raw STT text); a link is a link.
+                if ((e.target as HTMLElement).closest("button, a")) return;
                 peek();
               },
               onKeyDown: (e: React.KeyboardEvent) => {
@@ -3242,15 +3786,18 @@ export function DebugChat({
           size={AVATAR_PX}
           hidden
         />
-        <p
+        <div
           className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
         >
           <span className="sr-only">{who.name}: </span>
+          {m.lane && <LaneTag lane={m.lane} inline />}
           {m.ask
             ? m.ask.questions.length === 1
-              ? m.ask.questions[0]!.question
+              ? lineText(m, m.ask.questions[0]!.question)
               : ""
-            : readText(m, p.text)}
+            : asLine
+              ? lineText(m, p.text)
+              : readText(m, p.text)}
           {m.ask && (
             <AskCard
               ask={m.ask}
@@ -3261,7 +3808,7 @@ export function DebugChat({
           )}
           {p.mark}
           {asLine && <span className="sr-only"> · {showAll}</span>}
-        </p>
+        </div>
       </div>
     );
   };
@@ -3366,7 +3913,8 @@ export function DebugChat({
     typing: typingNow,
     plusMenu,
     open,
-    fullLog: fullLog !== "off",
+    // Full screen: the glass is the whole chat area, which is the screen.
+    fullLog: fullLog !== "off" || full,
   });
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
@@ -3378,10 +3926,20 @@ export function DebugChat({
         matchMedia("(prefers-reduced-transparency: reduce)").matches,
       lightDark: has("color", "light-dark(#000, #fff)"),
     });
-    if (fullLog === "off") return look;
-    // The full-screen log: the same glass, with the sheet's stronger tint and
+    if (fullLog === "off" && !full) return look;
+    // The full-screen log (and full screen): the same glass, with the sheet's stronger tint and
     // blur (log-surface.ts SHEET_SCRIM, contrast-checked for a tall list).
     const sheet = sheetLook();
+    // Full screen: the chat is all there is to read, so the scrim is near-opaque
+    // (legible even where the blur is not drawn), still frosted over the page.
+    if (full && !sheet.solid)
+      return {
+        ...look,
+        background: has("color", "light-dark(#000, #fff)")
+          ? sheetScrim(true)
+          : "color-mix(in oklch, var(--background) 92%, transparent)",
+        filter: SHEET_FILTER,
+      };
     return { ...look, background: sheet.background, filter: sheet.solid ? "none" : SHEET_FILTER };
   })();
   return (
@@ -3398,6 +3956,8 @@ export function DebugChat({
       inert={tucked}
       aria-hidden={tucked || undefined}
       aria-label={t.chatWith}
+      // Full screen (full-screen.ts): the open chat fills the app.
+      data-fullscreen={full || undefined}
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       // Files dropped anywhere on the chat are attached (files.ts).
@@ -3424,8 +3984,10 @@ export function DebugChat({
           : offset.transform,
         // Only the slide into or out of the edge animates: a drag follows the finger.
         transition: sliding && !holding ? "opacity 150ms, transform 220ms ease-out" : undefined,
+        // Full screen: the visible area, edge to edge (the panel's place is kept).
+        ...(full ? (sidebar ? FULL_SIDEBAR_STYLE : FULL_SCREEN_STYLE) : {}),
       }}
-      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing: typingNow, plusMenu, micActive, fullLog: fullLog !== "off" }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing: typingNow, plusMenu, micActive, fullLog: fullLog !== "off" || full }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${full ? "pointer-events-auto" : "pointer-events-none"} lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
@@ -3450,10 +4012,47 @@ export function DebugChat({
           // The full-screen log in its own box (out of the flow): the glass
           // follows it, the log's box and its few px of edge, never the screen.
           ...(fullLog !== "off" && fullRef.current.box ? glassAroundLog(fullRef.current.box) : {}),
+          // Full screen: the chat area is the screen, so the glass is too.
+          ...(full ? { inset: 0, borderRadius: 0, boxShadow: "none" } : {}),
           ...typingGlassMotion(typingGlassShown, reducedMotion()),
         }}
         className="pointer-events-none absolute -inset-1.5 -z-10 rounded-[1.5rem]"
       />
+      {/* Full screen and back (full-screen.ts): the open chat's top corner, in
+          the panel above its top edge, in full screen at the top of the screen
+          (in the flow, so the log starts under it). */}
+      {open && fullAllowed && !tucked && (
+        <div
+          className={
+            full
+              ? "pointer-events-none flex shrink-0 justify-end"
+              : "pointer-events-none absolute end-0 bottom-full mb-1 flex justify-end"
+          }
+        >
+          <button
+            type="button"
+            data-testid="debug-chat-fullscreen"
+            data-on={full || undefined}
+            aria-pressed={full}
+            aria-label={full ? t.fullScreenExit : t.fullScreen}
+            title={full ? t.fullScreenExit : t.fullScreen}
+            // Keeps the input's focus, so the keyboard and the draft's caret stay
+            // (WebKit moves the focus on the tap's mousedown, not its pointerdown).
+            onPointerDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setFull(!full, true)}
+            style={{
+              background: INPUT_BG,
+              width: full ? 40 : 32,
+              height: full ? 40 : 32,
+              fontSize: full ? 20 : 16,
+            }}
+            className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full border border-current/25 text-gray-600 backdrop-blur-md dark:text-gray-300"
+          >
+            <Icon name={full ? "cornersIn" : "cornersOut"} />
+          </button>
+        </div>
+      )}
       {/* Expanded, one or the other in the log's slot: the state tree, or the log. */}
       {open && tree && treePanel(false)}
       {/* The log: the messages, the newest at the bottom. Hidden minimized, and while the tree has its place. */}
@@ -3483,7 +4082,8 @@ export function DebugChat({
             return;
           }
           // Shrunk: land on the newest lines again, now that the height settled.
-          if (!typing && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
+          // Not when held open: it grew (a jump to an ask), and he is reading there.
+          if (!typingNow && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
           onLogScroll();
         }}
         data-full={fullLog === "off" ? undefined : fullLog}
@@ -3491,8 +4091,9 @@ export function DebugChat({
           logSurface({
             expanded: typingNow || micActive || (compactPref && expanded),
             fade,
-            touch: engaged,
+            touch: engaged || full,
           }),
+          full,
         )}
       >
       <ol
@@ -3511,24 +4112,38 @@ export function DebugChat({
           (time), polish mark, waiting tag, so the hub's history, the polish
           edit (one line id), read-aloud and the anchoring are unchanged.
         */}
-        {runsOf(starts).map((run) => {
+        {runsOf(starts).map((run, r, runs) => {
           const i0 = run[0]!;
           const m0 = messages[i0]!;
           const who = whos[i0]!;
           // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m0);
+          // The up-arrow floats at the log's end: the newest run keeps room
+          // beside it (ask-above.ts jumpRoom), never an empty row under it.
+          const room = askJumpShown && r === runs.length - 1 ? jumpRoom(asksUp.length) : null;
           return (
             <li
               key={m0.id}
               data-testid="debug-chat-run"
               data-from={m0.from}
               data-node={node?.node}
+              data-jump-room={room ? room.end : undefined}
               className="flex items-start gap-1.5 leading-snug"
-              style={
-                node
-                  ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 }
-                  : undefined
-              }
+              style={{
+                ...(node ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 } : {}),
+                // A short run sits at the bottom of its room: nothing blank under it.
+                // The ROW goes down (align-content on a one-line wrapping flex), not
+                // each item: align-items would drop the avatar to a long run's last
+                // line, away from its first (owner, 2026-11-09 13:42 JST).
+                ...(room
+                  ? {
+                      paddingInlineEnd: room.end,
+                      minHeight: room.minHeight,
+                      flexWrap: "wrap",
+                      alignContent: "flex-end",
+                    }
+                  : {}),
+              }}
             >
               <Avatar
                 src={who.src}
@@ -3538,7 +4153,9 @@ export function DebugChat({
                 size={AVATAR_PX}
                 hidden
               />
-              <p className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+              <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+                {/* A lane's name tag (voices.ts), once per run; lines with no lane have none. */}
+                {m0.lane && <LaneTag lane={m0.lane} agentName={t.name} />}
                 {node && (
                   <span
                     aria-hidden
@@ -3583,7 +4200,7 @@ export function DebugChat({
                         ) : null}
                         {m.ask
                           ? m.ask.questions.length === 1
-                            ? m.ask.questions[0]!.question
+                            ? lineText(m, m.ask.questions[0]!.question)
                             : ""
                           : readText(m, polish(m).text)}
                         {m.ask && (
@@ -3617,13 +4234,19 @@ export function DebugChat({
                     </span>
                   );
                 })}
-              </p>
+              </div>
             </li>
           );
         })}
       </ol>
       </div>
       {compact && compactEl}
+      {open && !tree && etaBar && etaList.length > 0 && (
+        // flow-root: the bar's own margin counts in the height the buttons above step over.
+        <div ref={setEtaBox} data-testid="debug-chat-eta-slot" className="flow-root">
+          <EtaBar tasks={etaList} now={etaNow} strings={t} onOpen={() => setPanel("tree")} />
+        </div>
+      )}
       {open && warning && (
         <div
           role="alert"
@@ -3632,6 +4255,19 @@ export function DebugChat({
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {warning}
+          {warningHref && (
+            <>
+              {" "}
+              <a
+                href={warningHref.href}
+                data-testid="debug-chat-warning-link"
+                className="underline"
+                style={{ color: "inherit" }}
+              >
+                {warningHref.label}
+              </a>
+            </>
+          )}
         </div>
       )}
       {vs.blocked && (
@@ -3714,21 +4350,32 @@ export function DebugChat({
         }}
         // On the left edge the row runs right to left (fold.ts): the mark on
         // the inner side, folding right. The text inside stays left to right.
-        style={{ gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr", direction: mirrorRow ? "rtl" : undefined }}
+        // Full screen: the bar spans the screen (or the sidebar), the cluster
+        // at its left and the input taking the rest (full-screen.ts fullBarSpan).
+        style={{
+          gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr",
+          direction: mirrorRow && !full ? "rtl" : undefined,
+          ...(full ? fullBarSpan(sidebar) : {}),
+        }}
       >
         <div style={LTR}>
         {open && (shownTarget !== ROOT_NODE || completions.length > 0) && (
           // The target node (a chip: × back to the main thread) and "@/…" completions.
-          <div className="pointer-events-none absolute start-20 bottom-full mb-1 flex max-w-[calc(100%-6rem)] flex-col items-start gap-1">
+          // Over the input, which starts after the cluster [mark | + | mic].
+          <div
+            style={{ insetInlineStart: INPUT_START, maxWidth: `calc(100% - ${INPUT_START} - 1rem)` }}
+            className="pointer-events-none absolute bottom-full mb-1 flex flex-col items-start gap-1"
+          >
             {completions.length > 0 && (
               <ul
                 role="listbox"
                 aria-label="Nodes to address"
                 data-testid="debug-chat-nodes"
                 // Inside the typing glass, plain rows on the glass (no box of
-                // its own: one frame); a box only where no glass is behind it.
-                style={typingGlassShown ? undefined : { background: INPUT_BG }}
-                className={`pointer-events-auto max-w-full list-none overflow-hidden py-0.5 fs-11 ${typingGlassShown ? "" : "rounded-lg border border-current/25 backdrop-blur"}`}
+                // its own: one frame); a box only where no glass is behind it, and in
+                // full screen, where the list would sit straight on the log's lines.
+                style={typingGlassShown && !full ? undefined : { background: INPUT_BG }}
+                className={`pointer-events-auto max-w-full list-none overflow-hidden py-0.5 fs-11 ${typingGlassShown && !full ? "" : "rounded-lg border border-current/25 backdrop-blur"}`}
               >
                 {completions.map((n) => (
                   <li key={n} role="option" aria-selected={false}>
@@ -3792,6 +4439,7 @@ export function DebugChat({
             upload={!!filesRef.current}
             onPickFiles={pickFiles}
             onInbox={filesRef.current?.list && !notice ? () => setInboxOpen(true) : undefined}
+            onHistory={notice ? undefined : onHistory}
             onClose={closeAttachMenu}
           />
         )}
@@ -3812,9 +4460,49 @@ export function DebugChat({
             }}
           />
         )}
+        {askJumpShown && (
+          // Left of the scroll-down button's place, whether or not it shows: a
+          // jump brings that button up, and a second tap here must not land on it.
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-full flex justify-end"
+            style={{ paddingInlineEnd: JUMP_END_PX, marginBottom: JUMP_GAP_PX + etaH }}
+          >
+            <button
+              type="button"
+              data-testid="debug-chat-ask-jump"
+              data-count={asksUp.length}
+              // Keeps the input's focus, so the keyboard and the log stay.
+              onPointerDown={(e) => e.preventDefault()}
+              aria-label={askJumpText}
+              title={askJumpText}
+              onClick={jumpToAsk}
+              style={{
+                background: "oklch(0.5 0.17 255)",
+                color: "oklch(0.98 0 0)",
+                height: JUMP_H_PX,
+                width: jumpWidth(asksUp.length),
+                padding: "0 10px",
+                gap: 4,
+                fontSize: 13,
+                fontWeight: 600,
+                lineHeight: 1,
+                boxShadow: "0 1px 4px oklch(0 0 0 / 0.3)",
+              }}
+              className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full"
+            >
+              {asksUp.length > 1 && <span aria-hidden>{asksUp.length}</span>}
+              <span aria-hidden style={{ display: "inline-flex", fontSize: 16 }}>
+                <Icon name="arrowUp" />
+              </span>
+            </button>
+          </div>
+        )}
         {open && scrolledUp && (
           // The row stays click-through; only the button takes taps.
-          <div className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end">
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-full flex justify-end"
+            style={{ marginBottom: 4 + etaH }}
+          >
             <button
               type="button"
               data-testid="debug-chat-bottom"
@@ -3841,8 +4529,8 @@ export function DebugChat({
           </div>
         )}
         </div>
-        {/* One container: [minimize | connections | input | mic]; minimized, the
-        input's slot closes to 0 and leaves [minimize | connections | mic]. No title bar:
+        {/* One container: [mark | + | mic | input]; minimized, the input's slot
+        closes to 0 and leaves [mark | Li | mic], the mic where it was. No title bar:
         the mark drags the box, minimizes it and opens the menu (status,
         read-aloud, pages, sessions); its dot is the connection. No End chat
         here: the chat hibernates and wakes by itself. */}
@@ -3856,7 +4544,7 @@ export function DebugChat({
           onPointerDown={(e) => {
             if ((e.target as HTMLElement).closest("button, textarea, p, [data-chat-restore]"))
               return;
-            handle.onPointerDown(e);
+            if (!fullOn.current) handle.onPointerDown(e);
           }}
           onPointerMove={(e) => e.target === e.currentTarget && handle.onPointerMove(e)}
           onPointerUp={(e) => e.target === e.currentTarget && handle.onPointerUp()}
@@ -3864,7 +4552,7 @@ export function DebugChat({
           style={{
             // Radius, padding and the line box as variables: the mic is concentric
             // with the corner by construction (bar-geometry.ts).
-            ...barGeometry(open),
+            ...barGeometry(),
             background: INPUT_BG,
             // Aside while the log spans the screen; it keeps the pointer (captured).
             opacity: barAside ? 0 : undefined,
@@ -3873,10 +4561,11 @@ export function DebugChat({
             ...(barAside ? { backdropFilter: "none", WebkitBackdropFilter: "none" } : {}),
             // While the typing glass is up it is the frame: the bar's own box
             // goes inside it (border transparent, width kept; no tint, no blur).
-            ...barInGlass(typingGlassShown),
+            // Full screen keeps the bar's own box: the glass there is the whole screen.
+            ...barInGlass(typingGlassShown && !full),
             transition: reducedMotion() ? undefined : `${FADE}, ${BAR_IN_GLASS_TRANSITION}`,
           }}
-          data-in-glass={typingGlassShown || undefined}
+          data-in-glass={(typingGlassShown && !full) || undefined}
           className={`pointer-events-auto relative flex items-end border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300`}
         >
           {armed > 0 && (
@@ -3886,6 +4575,8 @@ export function DebugChat({
               className="lk-drain absolute inset-x-3 top-0 h-0.5 bg-blue-600/60"
             />
           )}
+          {/* The controls' 44 px touch areas (bar-geometry.ts TAP_44_CSS). */}
+          <style>{TAP_44_CSS}</style>
           {controls}
           {/* + : add to Lianki, attach to the line, view the state tree
           (AttachMenu.tsx). Open only; without `attach` (or with a notice) it
@@ -3900,6 +4591,8 @@ export function DebugChat({
               onToggle={() => setAttachMenu((v) => !v)}
             />
           )}
+          {/* The mic, after the + (open) or the pill's Li (folded): one place on screen. */}
+          {micEl}
           {/* The input: gone while minimized (inert, so it can't take focus or
           be read), fading out as its slot closes. */}
           <div
@@ -4087,7 +4780,6 @@ export function DebugChat({
               </>
             )}
           </div>
-          {micEl}
           {!open && unread > 0 && (
             <span
               data-testid="debug-chat-pill-unread"
@@ -4115,22 +4807,20 @@ export function DebugChat({
   );
 }
 
-/** The pill's mark as the tuck arrow: an arrow into a bar, pointing at the edge it tucks into. */
-function TuckArrow({ edge }: { edge: "left" | "right" }) {
+/** The bar's drag grip: a vertical six-dot grip (two columns of three), its own SVG. */
+function GripDots() {
   return (
     <svg
+      data-testid="debug-chat-grip"
       viewBox="0 0 18 18"
       width={18}
       height={18}
       aria-hidden
-      style={edge === "left" ? { transform: "scaleX(-1)" } : undefined}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      fill="currentColor"
     >
-      <path d="M3 9h9M8.5 5.5 12 9l-3.5 3.5M15 4v10" />
+      {[3.5, 9, 14.5].flatMap((y) =>
+        [6.5, 11.5].map((x) => <circle key={`${x},${y}`} cx={x} cy={y} r={1.6} />),
+      )}
     </svg>
   );
 }
@@ -4224,6 +4914,7 @@ function FloatLine({
         />
       </span>
       <span className="sr-only">{who.name}: </span>
+      {m.lane && <LaneTag lane={m.lane} inline />}
       {text}
       {mark}
     </li>

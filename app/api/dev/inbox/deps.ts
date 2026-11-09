@@ -1,5 +1,5 @@
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { getBlobs, getD1 } from "@/lib/d1";
 import { rateLimiter } from "@/lib/debug-session";
 import { INBOX } from "@/lib/inbox/config";
@@ -13,7 +13,7 @@ const allow = rateLimiter(INBOX.uploadsPerMinute, 60_000);
 export const inboxDeps: InboxDeps = {
   who: async () => {
     const u = await authUserOrNull();
-    return u?.id && u.email ? { id: u.id, email: u.email, owner: isOwner(u.email) } : null;
+    return u?.id && u.email ? { id: u.id, email: u.email, owner: isDev(u.email) } : null;
   },
   db: () => getD1() as unknown as InboxDb,
   bucket: () => getBlobs() as unknown as InboxBucket,

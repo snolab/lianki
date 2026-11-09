@@ -24,7 +24,7 @@ describe("hover never moves the focused slip", () => {
   });
 
   it("/read desktop items have no hover handler", () => {
-    const src = readFileSync("app/(app)/read/[id]/reader-blocks.tsx", "utf8");
+    const src = readFileSync("app/(app)/reader/[id]/reader-blocks.tsx", "utf8");
     expect(body(src, "DeskItem")).not.toMatch(HOVER);
   });
 });

@@ -3,7 +3,9 @@
  * entry module may export only handlers and Durable Object classes.
  */
 import { type Identity, avatarUrl, isSessionTag, isUserId } from "../../../lib/dev-eval";
+import { isBoxOrigin } from "../../../lib/box-oauth/rules";
 import {
+  BOX_CHAT_TICKET_AUD,
   type JtiStore,
   PARTNER_SUBPROTOCOL,
   PARTNER_TICKET_AUD,
@@ -104,6 +106,50 @@ export function offersPartner(req: Request): boolean {
   return (req.headers.get("sec-websocket-protocol") ?? "")
     .split(",")
     .some((s) => s.trim() === PARTNER_SUBPROTOCOL);
+}
+
+/**
+ * The owner's box (docs/box-oauth.md, "Chat on the owner's box"): which box
+ * client a ticket socket is, for the hub alone. Set here after a box chat
+ * ticket is verified, and deleted from every other request.
+ */
+export const BOX_HEADER = "x-debug-box";
+
+/** A box chat ticket's single-use id, expiry and box client; null = refuse. */
+export type BoxChatTicket = PartnerTicket & { cid: string };
+
+const CLIENT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * A box chat ticket (lianki.com/api/box/chat-ticket): the partner subprotocol,
+ * the box audience, and taken only from the exact origin it names, which must
+ * be a box's. A partner ticket is never one of these, nor the other way round.
+ */
+export async function boxChatTicket(
+  req: Request,
+  pub: string | undefined,
+  seen: JtiStore = seenHere,
+  now: number = Date.now(),
+): Promise<BoxChatTicket | null> {
+  const origin = req.headers.get("origin");
+  // lianki.com signs a ticket only for a live binding's origin, which is
+  // https://my-<hash|name>.lianki.com in production (a dev server's binding may be loopback).
+  if (!origin || !pub || !isBoxOrigin(origin, true)) return null;
+  const offered = (req.headers.get("sec-websocket-protocol") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (offered.length !== 2 || offered[0] !== PARTNER_SUBPROTOCOL) return null;
+  try {
+    const key = await importTicketPublicKey(pub);
+    const r = await verifySttTicket(offered[1], key, seen, now, BOX_CHAT_TICKET_AUD);
+    if (!r.ok || r.payload.org !== origin) return null;
+    const cid = r.payload.cid;
+    if (typeof cid !== "string" || !CLIENT_ID.test(cid)) return null;
+    return { jti: r.payload.jti, exp: r.payload.exp, cid };
+  } catch {
+    return null;
+  }
 }
 
 export async function partnerTicket(

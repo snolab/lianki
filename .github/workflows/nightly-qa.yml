@@ -4,9 +4,9 @@ name: Nightly QA
 # local D1 → API + UI + sync + userscript suites), plus the extension smoke
 # test, against main once a night. It used to run on every push and PR, and
 # main's deploy waited ~4 min for it (owner, 2026-10-31: run it nightly). The
-# pre-push hook still runs the same qa:all on every pushed commit, so this
-# catches what slipped past that: a skipped hook, two PRs green apart and red
-# together, or drift in the runner image.
+# merge queue runs the same qa:all on every PR before it lands (ci.yml, `qa`),
+# and pre-push runs only the suites a change reaches; this catches what slipped
+# past both, and drift in the runner image.
 on:
   schedule:
     - cron: "0 18 * * *" # 03:00 JST
@@ -41,9 +41,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # No setup-node: the Playwright image already provides Node 24.
-      # setup-bun extracts its release zip with `unzip`, which the image lacks.
+      # Bun (setup-bun or its fallback) extracts a release zip with `unzip`, which the image lacks.
       - run: apt-get update && apt-get install -y unzip xvfb
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - run: bun install --frozen-lockfile
       # No "playwright install" — browsers live in the image at
       # $PLAYWRIGHT_BROWSERS_PATH (/ms-playwright); chromium-1208 matches v1.58.2.
@@ -52,12 +52,18 @@ jobs:
       # needed — wrangler runs D1/R2 locally.
       - name: qa:all
         run: bun run qa:all
+        # Firefox (qa-audio-free) refuses to start as root when $HOME is another
+        # user's: Actions sets /github/home, owned by the image's pwuser.
+        env:
+          HOME: /root
       # MV3 extension smoke test — loads the built extension into the image's
-      # Chromium (headed under xvfb) and asserts the content script runs.
+      # Chromium (new-headless, always) and asserts the content script runs.
       - name: Extension smoke test
         run: bun run test:ext
       - name: "Alert #lianki when nightly QA fails"
         if: failure()
+        # A container job's default shell is sh, which dies on ${GITHUB_SHA::7}.
+        shell: bash
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

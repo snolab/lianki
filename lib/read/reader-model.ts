@@ -18,6 +18,7 @@
 // here, `localItems` derives them on the device from the book's lines.
 
 import { normWord } from "./words";
+import { wordSegments } from "./word-segments";
 
 export interface Piece {
   line: number;
@@ -177,7 +178,7 @@ export function cutPara(
   const texts = cuts ? sentencesFromCuts(text, cuts) : sentencesOf(text, lang);
   const sentences = texts.map((st) => {
     const segs: Seg[] = [];
-    for (const s of word.segment(st)) {
+    for (const s of wordSegments(word, st)) {
       const o = base + s.index;
       const k = kindsAt(o);
       const last = segs[segs.length - 1];
@@ -354,6 +355,20 @@ export function blockOfAnchor(blocks: readonly Block[], line: number, s = 0): nu
   )
     i++;
   return i;
+}
+
+/**
+ * The item a paragraph's grade moves on to (owner, 2026-11-08 20:33 JST: after
+ * rating a paragraph the reader goes to the NEXT paragraph): the first item
+ * after the one holding `line` that starts on a later line. The rest of a
+ * split paragraph is skipped, headings too. -1: none (the book's end).
+ */
+export function nextParaItem(blocks: readonly Block[], line: number): number {
+  for (let j = blockOfLine(blocks, line); j < blocks.length; j++) {
+    const b = blocks[j];
+    if (b.kind === "item" && b.pieces[0].line > line) return j;
+  }
+  return -1;
 }
 
 /** The first line a block shows. */

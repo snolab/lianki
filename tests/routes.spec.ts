@@ -215,9 +215,9 @@ test.describe("Auth-required pages (guest redirect)", () => {
     expect(errors).toHaveLength(0);
   });
 
-  test("/polyglot does not throw 500 server error", async ({ page }) => {
+  test("/lab/polyglot does not throw 500 server error", async ({ page }) => {
     const errors = collectErrors(page);
-    const response = await page.goto(url("/polyglot"));
+    const response = await page.goto(url("/lab/polyglot"));
     // BUG-2 regression: must not be 500
     expect(response?.status()).not.toBe(500);
     const crashMessage = page.locator("text=/Application error.*server-side/i");
@@ -280,8 +280,8 @@ test.describe("Navigation flows", () => {
     }
   });
 
-  test("/read renders read page (BUG-4 regression)", async ({ page }) => {
-    const response = await page.goto(url("/read"));
+  test("/reader renders read page (BUG-4 regression)", async ({ page }) => {
+    const response = await page.goto(url("/reader"));
     expect(response?.status()).not.toBe(404);
     // Should either show the read UI or redirect to sign-in
     const finalUrl = page.url();

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { makeSignature } from "better-auth/crypto";
 import { getAuth } from "@/auth";
-import { ownerEmails } from "@/lib/owner";
+import { refreshHolders } from "@/lib/permission-store";
 import { devWholePageLoginAllowed } from "@/lib/dev-whole-page";
 
 /**
@@ -18,8 +18,9 @@ export const POST = async (req: Request) => {
   if (!devWholePageLoginAllowed(process.env, req.headers)) {
     return new NextResponse(null, { status: 404 });
   }
-  const email = ownerEmails()[0];
-  if (!email) return NextResponse.json({ error: "OWNER_EMAILS is empty" }, { status: 500 });
+  // The oldest active `dev` grant (lib/permissions.ts).
+  const email = (await refreshHolders("dev"))[0];
+  if (!email) return NextResponse.json({ error: "no dev grant" }, { status: 500 });
 
   const ctx = await (await getAuth()).$context;
   const found = await ctx.internalAdapter.findUserByEmail(email);

@@ -1,4 +1,5 @@
 "use client";
+import { isOwnAvatar } from "@/lib/profile/avatar";
 
 import Image from "next/image";
 import { BrandName } from "./BrandName";
@@ -19,6 +20,8 @@ import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
 import { NavRows } from "@/lib/nav/islands/NavRows";
 import { DevServerDot, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
 import { LiveViewBoot, LiveViewChip, type LiveViewShell } from "./LiveView";
+import { LevelChip } from "./LevelChip";
+import { useShellUser } from "./BoxApiBridge";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -52,6 +55,8 @@ interface AppShellProps {
   liveView?: LiveViewShell;
   /** Flag-gated nav items this viewer gets (lib/app-nav.ts `flag`), decided by the server. */
   navShown?: string[];
+  /** Learner levels shown to this viewer (lib/level-progress.ts `levelsOn`), decided by the server. */
+  levels?: boolean;
   children: React.ReactNode;
 }
 
@@ -59,14 +64,17 @@ export function AppShell({
   locale,
   appName,
   labels,
-  user,
+  user: serverUser,
   firstRun,
   devSwitch,
   liveView,
   navShown,
+  levels,
   children,
 }: AppShellProps) {
   const pathname = usePathname();
+  // On a box, the account lianki.com named for its token (BoxApiBridge).
+  const user = useShellUser(serverUser);
   const [collapsed, setCollapsed] = useState(false);
   // The nav store (lib/nav/ui-store.ts): the bottom island opens the drawer too.
   const drawerOpen = useUi(navUi, (s) => s.drawerOpen);
@@ -228,12 +236,13 @@ export function AppShell({
           className="flex items-center gap-2 text-xl font-bold hover:opacity-80 transition-opacity"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
-          <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
+          <img src="/icon.svg?v=5" alt="" width={28} height={28} />
           <BrandIsland appName={appName} locale={locale} />
         </Link>
 
         <div className="ms-auto flex items-center gap-3">
           <LanguageSwitcher />
+          {user && levels && <LevelChip />}
           {user ? (
             <div className="relative" ref={profileRef}>
               <button
@@ -255,6 +264,8 @@ export function AppShell({
                     className="w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"
                     alt={user.name}
                     src={user.image}
+                    // An upload of ours is already small, and next/image's loader can't fetch /api/*.
+                    unoptimized={isOwnAvatar(user.image) || user.image.startsWith("blob:")}
                     width={32}
                     height={32}
                   />

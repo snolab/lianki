@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { importTicketKey, signSttTicket } from "@/lib/stt-ticket";
 
 /**
@@ -11,7 +11,7 @@ import { importTicketKey, signSttTicket } from "@/lib/stt-ticket";
  */
 export const POST = async () => {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!isDev(user?.email)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const raw = process.env.STT_TICKET_KEY;
   if (!raw) return NextResponse.json({ error: "STT tickets are off" }, { status: 503 });
   let key: CryptoKey;

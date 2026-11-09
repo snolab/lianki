@@ -1,3 +1,4 @@
+import { offSiteHeaders } from "@/lib/security/route-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
@@ -12,9 +13,7 @@ import { sameOriginJson } from "@/lib/security/same-origin";
 import { detectBook } from "@/lib/read/prep";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { materialWords, summarizeMaterials } from "@/lib/read/progress";
-import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
-import { hashOf, readerV2On } from "@/lib/read/reader-book";
+import { hashOf } from "@/lib/read/reader-book";
 import { deleteReaderRows, saveContentHash, type D1Batch } from "@/lib/read/reader-store";
 import type { ReaderV2Fields } from "@/lib/read/reader-api";
 
@@ -32,6 +31,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Material not found" }, { status: 404 });
   }
 
+  // The two backfills below are saved for next time, so another site's link
+  // gets the same answer without saving them.
+  const saving = !offSiteHeaders(await headers());
   const mw = await materialWords(material, session.user.id);
   const { text, stats } = mw;
   let fullBook = mw.book;
@@ -46,10 +48,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       continues: fullBook.continues,
     });
     fullBook = { ...fullBook, shape };
-    try {
-      await replaceReadMaterialContent(session.user.id, id, JSON.stringify(fullBook));
-    } catch (err) {
-      console.error("read: shape backfill failed", err);
+    if (saving) {
+      try {
+        await replaceReadMaterialContent(session.user.id, id, JSON.stringify(fullBook));
+      } catch (err) {
+        console.error("read: shape backfill failed", err);
+      }
     }
   }
   // The word list itself is /api/read/[id]/words; the header needs the counts.
@@ -58,13 +62,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     { material, stats },
   ]);
 
-  // Reader v2 (docs/books-plan.md, "Review units"): on for this user? And the
-  // book hash its sentence ids use, backfilled into the row on this open.
+  // The reader's server features (docs/books-plan.md, "Review units") need D1:
+  // `readerV2` says so (kept for custom frontends), with the book hash its
+  // sentence ids use, backfilled into the row on this open.
   const v2: ReaderV2Fields = { readerV2: false };
   if (dbBackend() === "d1") {
-    v2.readerV2 = readerV2On(await readFlags(), isOwner(session.user.email));
+    v2.readerV2 = true;
     v2.bookHash = await hashOf(material);
-    if (!material.contentHash) {
+    if (!material.contentHash && saving) {
       try {
         await saveContentHash(getD1(), session.user.id, id, v2.bookHash);
       } catch (err) {

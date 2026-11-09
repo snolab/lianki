@@ -10,7 +10,8 @@ import { getRawPost } from "@/lib/blog";
 import { BLOG_LOCALES, LOCALE_NAMES } from "@/lib/constants";
 import { getPendingTranslation, persistTranslation, translationToken } from "@/lib/translation-pr";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { routeLimit } from "@/lib/security/route-guard";
+import { accountKey } from "@/lib/security/throttle";
 import { logSanitizedError } from "@/lib/safeError";
 
 export const maxDuration = 60;
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(`blog-translate:${requesterEmail}`, {
+  const rateLimit = await routeLimit(await accountKey("blog-translate", requesterEmail), {
     windowMs: RATE_LIMIT_WINDOW_MS,
     max: RATE_LIMIT_MAX_REQUESTS,
   });

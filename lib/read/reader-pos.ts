@@ -19,7 +19,7 @@ export interface Anchor {
 }
 
 const KEY = (id: string) => `lk:read-anchor:${id}`;
-/** The first reader's key: the line only (ReadViewClient). */
+/** The first reader's key (removed 2026-11-07): the line only, read as a fallback. */
 const OLD_KEY = (id: string) => `lk:read-pos:${id}`;
 
 type Store = Pick<Storage, "getItem" | "setItem">;
@@ -55,8 +55,6 @@ export function loadAnchor(id: string, s: Store | null = store()): Anchor | null
 export function saveAnchor(id: string, a: Anchor, s: Store | null = store()) {
   try {
     s?.setItem(KEY(id), JSON.stringify(a));
-    // The first reader opens there too.
-    s?.setItem(OLD_KEY(id), String(a.line));
   } catch {
     // private mode or storage full: the cache is a convenience
   }

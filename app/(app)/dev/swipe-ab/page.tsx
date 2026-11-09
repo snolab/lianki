@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { swipeAbStats } from "@/lib/repos/swipeAbD1";
 
@@ -17,7 +17,7 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
 export default async function DevSwipeAbPage() {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email)) notFound();
+  if (!isDev(user?.email)) notFound();
   if (dbBackend() !== "d1") return <main className="p-8">D1 only.</main>;
   const { stats, first, last } = await swipeAbStats(getD1());
   const rows: [string, (s: (typeof stats)[number]) => React.ReactNode][] = [

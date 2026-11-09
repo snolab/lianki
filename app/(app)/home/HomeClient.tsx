@@ -1,4 +1,5 @@
 "use client";
+import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import { isEntrySource } from "@/lib/words/entry-list";
 import Link from "next/link";
@@ -7,7 +8,7 @@ import { useIntlayer } from "next-intlayer";
 import { APP_NAV } from "@/lib/app-nav";
 import { Icon } from "@/app/components/icons";
 import { loadCatalog } from "@/lib/words/catalog-cache";
-import { HOME_EXPLORE, homeFeatureShot } from "@/lib/home-features";
+import { HOME_EXPLORE, HOME_EXPLORE_HREF } from "@/lib/home-features";
 import { FeatureCard } from "./FeatureCard";
 
 /** The page-card features, behind "Advanced". */
@@ -19,7 +20,9 @@ const ADVANCED = ["sites", "review", "cards"];
  * page-card features (sites, page review, the card list and its userscript)
  * last, under Advanced.
  */
-export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
+export default function HomeClient({ isLoggedIn: serverSignedIn }: { isLoggedIn: boolean }) {
+  // On a box, from lianki.com (BoxApiBridge); else the server's answer.
+  const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("nav-home");
   // Nav labels live in two dictionaries, as in the app shell: landing-page
   // has learn / aiVocab / polyglot / roadmap, app-shell the rest.
@@ -109,24 +112,17 @@ export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.explore}</h2>
         <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {HOME_EXPLORE.map((k) => {
-            const light = homeFeatureShot(k, "light");
-            const dark = homeFeatureShot(k, "dark");
-            return (
-              <li key={k}>
-                <FeatureCard
-                  featureKey={k}
-                  href={item(k).href}
-                  icon={item(k).icon}
-                  label={label(k)}
-                  desc={t.cards[k].value}
-                  shot={
-                    light && dark ? { light, dark, alt: `${t.shotAlt.value}: ${label(k)}` } : null
-                  }
-                />
-              </li>
-            );
-          })}
+          {HOME_EXPLORE.map((k) => (
+            <li key={k}>
+              <FeatureCard
+                featureKey={k}
+                href={HOME_EXPLORE_HREF[k] ?? item(k).href}
+                icon={item(k).icon}
+                label={k === "words" ? t.wordsTitle.value : label(k)}
+                desc={t.cards[k].value}
+              />
+            </li>
+          ))}
         </ul>
       </section>
 

@@ -12,10 +12,14 @@ import { parseBookMeta } from "@/lib/read/book";
 import { saveContentHash } from "@/lib/read/reader-store";
 import { bookHash } from "@/lib/read/units";
 import { isoDay } from "@/lib/dates";
-import { bookMetaOf, checkBook } from "@/lib/read/book";
+import { BOOK_LIMITS, bookMetaOf, checkBook } from "@/lib/read/book";
+import { cappedJsonError, readJsonCapped } from "@/lib/security/route-guard";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { materialWords, summarizeMaterials, withLex } from "@/lib/read/progress";
 import { countWords } from "@/lib/read/words";
+
+/** The longest POST body read: a whole book with its markup. */
+const READ_BODY_MAX = 12 * 1024 * 1024;
 
 const d1OrNull = () => (dbBackend() === "d1" ? getD1() : null);
 
@@ -79,12 +83,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+  // A book's text is capped by checkBook (1.5 MB of text); its JSON with the
+  // chapter and markup arrays stays well inside this. Nothing larger is read.
+  const read = await readJsonCapped(request, READ_BODY_MAX);
+  if (!read.ok) return cappedJsonError(read.status);
+  const body: unknown = read.value;
 
   if (body === null || typeof body !== "object") {
     return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400 });
@@ -151,6 +154,13 @@ export async function POST(request: NextRequest) {
 
   if (typeof title !== "undefined" && typeof title !== "string") {
     return NextResponse.json({ error: "Title must be a string" }, { status: 400 });
+  }
+  // Pasted text: the same caps as a book.
+  if (
+    new TextEncoder().encode(content).byteLength > BOOK_LIMITS.maxTextBytes ||
+    (typeof title === "string" && title.length > BOOK_LIMITS.maxTitleChars)
+  ) {
+    return NextResponse.json({ error: "too-much-text" }, { status: 413 });
   }
 
   const lines = content

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
+import { lineTier } from "@lianki/debug-chat/rich-text";
 import { DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
@@ -22,6 +23,7 @@ import {
   studySummary,
 } from "@/lib/partner-ai";
 import { FLAGS } from "@/lib/flags";
+import { rpcStub } from "./support/rpc-stub";
 
 /** The hub side (lianki-push's DebugHub) with a stubbed main Worker. */
 class FakeSocket implements Socket {
@@ -44,7 +46,7 @@ class FakeSocket implements Socket {
     return this.sent.filter((m) => m.type === type).at(-1);
   }
 }
-type Msg = { from: string; text: string; label: string; thread?: string };
+type Msg = { from: string; text: string; label: string; thread?: string; ownerGrant?: true };
 const chats = (ws: FakeSocket) =>
   ws.sent.filter((m) => m.type === "chat").map((m) => m.message as Msg);
 
@@ -79,6 +81,8 @@ type Stub = {
   calls: PartnerRequest[];
   flagCalls: string[];
   on: boolean;
+  /** The flag read fails (the RPC itself, as `.bind(stub)` made it in production). */
+  flagThrows?: boolean;
   reply: (req: PartnerRequest) => Promise<PartnerResult>;
 };
 const T0 = 1_800_000_000_000;
@@ -103,6 +107,8 @@ function setup(opts: { on?: boolean; sessions?: boolean } = {}) {
     live: async () => "gone",
     flag: async (k: string) => {
       stub.flagCalls.push(k);
+      if (stub.flagThrows)
+        throw new TypeError('The RPC receiver does not implement the method "bind".');
       return k === PARTNER_AI_FLAG ? stub.on : false;
     },
     partnerReply: async (req: PartnerRequest) => {
@@ -117,7 +123,7 @@ function setup(opts: { on?: boolean; sessions?: boolean } = {}) {
       getWebSockets: () => sockets,
       storage,
     },
-    opts.sessions === false ? {} : { SESSIONS: sessions },
+    opts.sessions === false ? {} : { SESSIONS: rpcStub(sessions) },
     () => t,
   );
   const page = (label = "/words pwa iPhone") => {
@@ -184,6 +190,56 @@ describe("partner AI: hub routing", () => {
     expect((f.last("state") as { listeners: number }).listeners).toBe(0);
   });
 
+  it("the hub calls the main Worker on the stub itself: a .bind-ed call is refused by a real stub", async () => {
+    // What production did from #482/#498: every flag read threw, so the AI
+    // never answered and nothing said so. The stub here refuses the same way.
+    const sessions = rpcStub({ flag: async () => true });
+    await expect(sessions.flag.bind(sessions)()).rejects.toThrow(
+      'The RPC receiver does not implement the method "bind".',
+    );
+    await expect(sessions.flag()).resolves.toBe(true);
+    const src = await Bun.file(`${import.meta.dir}/../workers/push/src/debug.ts`).text();
+    expect(src).not.toMatch(/sessions\??\.\w+\??\.(bind|call|apply)\(/);
+  });
+
+  it("the flag cannot be read: an error event, and the friend's page says no reply instead of silence", async () => {
+    const errors: string[] = [];
+    const was = console.error;
+    console.error = (m: unknown) => void errors.push(String(m));
+    try {
+      const s = setup();
+      s.stub.flagThrows = true;
+      const f = await s.friend();
+      expect(f.last("friend-status")).toEqual({ type: "friend-status", status: "open" });
+      await s.msg(f, { type: "chat", id: "a", text: "hello" });
+      expect(s.stub.calls).toEqual([]);
+      expect(f.last("ai-failed")).toEqual({ type: "ai-failed" });
+      const ev = errors.map((e) => JSON.parse(e)).find((e) => e.msg === "debug.rpc-failed");
+      expect(ev).toMatchObject({ method: "flag", what: PARTNER_AI_FLAG });
+      expect(ev.error).toContain("does not implement");
+    } finally {
+      console.error = was;
+    }
+  });
+
+  it("the model RPC itself fails: an error event, ai-failed on the page", async () => {
+    const errors: string[] = [];
+    const was = console.error;
+    console.error = (m: unknown) => void errors.push(String(m));
+    try {
+      const s = setup();
+      s.stub.reply = async () => {
+        throw new Error("main down");
+      };
+      const f = await s.friend();
+      await s.msg(f, { type: "chat", id: "a", text: "hello" });
+      expect(f.last("ai-failed")).toEqual({ type: "ai-failed" });
+      expect(errors.map((e) => JSON.parse(e).method)).toContain("partnerReply");
+    } finally {
+      console.error = was;
+    }
+  });
+
   it("no SESSIONS binding (an older deploy): unchanged", async () => {
     const s = setup({ sessions: false });
     const f = await s.friend();
@@ -207,9 +263,30 @@ describe("partner AI: hub routing", () => {
       ["agent", "Hi! You have 3 words due.", PARTNER_AI_LABEL],
     ]);
     expect(f.last("busy")).toMatchObject({ label: PARTNER_AI_LABEL });
+    // AI output is untrusted (a prompt can inject into it): never the HTML tier.
+    const ai = chats(f).at(-1)!;
+    expect(ai.ownerGrant).toBeUndefined();
+    expect(lineTier(ai)).toBe("markdown");
     // Nobody else's page hears it.
     expect(chats(other)).toEqual([]);
     expect((f.last("state") as { listeners: number }).listeners).toBe(1);
+  });
+
+  it("the line's id is the credits key; out of credits the page is told, and the caps are given back", async () => {
+    const s = setup();
+    s.stub.reply = async () => ({ ok: false, error: "no-credits" });
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, { type: "chat", id: "line1", text: "hello" });
+    expect(s.stub.calls[0].msgId).toBe("line1");
+    expect(f.last("ai-credits")).toEqual({ type: "ai-credits" });
+    expect(f.sent.some((m) => m.type === "ai-failed")).toBe(false);
+    expect(chats(f).map((m) => m.from)).toEqual(["friend"]);
+    // Nothing billed: the day's counters are back to zero.
+    for (const [k, v] of s.storage.store) if (k.startsWith("ai:")) expect(v).toBe(0);
+    // A line already answered ("duplicate") says nothing.
+    s.stub.reply = async () => ({ ok: false, error: "duplicate" });
+    await s.msg(f, { type: "chat", id: "line2", text: "again" });
+    expect(f.sent.some((m) => m.type === "ai-failed")).toBe(false);
   });
 
   it("the owner's thread never goes to the model (pages without identity, and owner identity)", async () => {
@@ -435,15 +512,19 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
   const NOW = Date.parse("2026-11-03T12:00:00Z");
   const env = () => ({
     DB: d1 as unknown as PartnerDb,
-    OWNER_EMAILS: "owner@x.com",
     CLOUDFLARE_ACCOUNT_ID: "acct",
     CLOUDFLARE_AI_TOKEN: "tok",
   });
   beforeEach(() => {
     d1 = createTestD1(testSchema());
+    d1.raw().exec(
+      "INSERT INTO account_permission (email, permission, granted_by, granted_at) VALUES ('owner@x.com', 'dev', 'test', 1)",
+    );
     const db = d1.raw();
     db.exec(`INSERT INTO user (id, email, createdAt, updatedAt) VALUES
       ('u_alice', 'alice@x.com', 'x', 'x'), ('u_bob', 'bob@x.com', 'x', 'x'), ('u_owner', 'owner@x.com', 'x', 'x')`);
+    // Replies cost credits (unit/partner-ai-credits.test.ts): Alice has some.
+    db.exec(`INSERT INTO credit_balance (userId, balance, updatedAt) VALUES ('u_alice', 100, 'x')`);
     db.exec(`INSERT INTO word_lists (email, id, name, lang, created_at, updated_at) VALUES
       ('alice@x.com', 'l1', 'Alice French', 'fr', 'x', 'x'),
       ('bob@x.com', 'l2', 'Bob Secret Korean', 'ko', 'x', 'x'),
@@ -517,7 +598,7 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
     expect(s.pageCards).toEqual({ total: 0, due: 0 });
   });
 
-  it("refuses the owner, an unknown user, and everyone when the flag is off or OWNER_EMAILS unset", async () => {
+  it("refuses the owner, an unknown user, and everyone when the flag is off or the owners unknown", async () => {
     const bodies: unknown[] = [];
     const call = (e: ReturnType<typeof env>, userId: string) =>
       partnerReply(
@@ -527,10 +608,12 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
       );
     expect(await call(env(), "u_owner")).toEqual({ ok: false, error: "owner" });
     expect(await call(env(), "u_nobody")).toEqual({ ok: false, error: "no-user" });
-    expect(await call({ ...env(), OWNER_EMAILS: "" }, "u_alice")).toEqual({
-      ok: false,
-      error: "not-configured",
-    });
+    d1.raw().exec("ALTER TABLE account_permission RENAME TO account_permission_gone");
+    expect(await call(env(), "u_alice")).toEqual({ ok: false, error: "not-configured" });
+    d1.raw().exec("ALTER TABLE account_permission_gone RENAME TO account_permission");
+    d1.raw().exec("UPDATE account_permission SET revoked_at = 2");
+    expect(await call(env(), "u_alice")).toEqual({ ok: false, error: "not-configured" });
+    d1.raw().exec("UPDATE account_permission SET revoked_at = NULL");
     d1.raw().exec(`UPDATE feature_flags SET enabled = 0`);
     expect(await call(env(), "u_alice")).toEqual({ ok: false, error: "off" });
     expect(bodies).toEqual([]);

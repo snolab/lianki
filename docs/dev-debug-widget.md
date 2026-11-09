@@ -49,6 +49,7 @@ re-exports for the hub and the sender.
 | `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
 | `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
 | `compact-view.ts`                                        | compact mode: last message only, when to fold again      |
+| `full-screen.ts`                                         | full screen: who gets it, the box above the keyboard     |
 | `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
 | `typing-glass.ts`                                        | the chat box's own frost while typing                    |
 | `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
@@ -60,6 +61,7 @@ re-exports for the hub and the sender.
 | `debug-chat-tabs.ts`, `tap-gesture.ts`                   | one voice per device; taps and drags                     |
 | `wire.ts`, `icons.tsx`, `LiagentMark.tsx`                | wire types and helpers; icons; the liagent mark          |
 | `Avatar.tsx`, `avatar-rules.ts`                          | the log's avatars: the component; its pure rules         |
+| `rich-text.ts`, `RichText.tsx`, `chat-links.ts`          | markdown, the HTML subset, links; trust tiers            |
 | `node-path.ts`                                           | state-tree node paths: validation, routing, rendering    |
 | `scripts/dev/debug-widget-build.ts`                      | Bun.build with React from the page, plus Tailwind CSS    |
 | `scripts/dev/debug-widget-server.ts`                     | serve, watch, SSE `reload`, tailnet or tunnel            |
@@ -229,10 +231,17 @@ time. So nothing lands in the site's storage and no request goes to the site.
 `embedded` also drops the mic and voice-clip recording.
 
 **Auth.** The userscript fetches a 60 s single-use ticket with
-GM_xmlhttpRequest (its lianki.com session or `lk:token`, header
-`x-lianki-userscript: 1`), signed with the STT ticket key under another
+GM_xmlhttpRequest (its lianki.com session, or `lk:token` only when that
+token holds both `chat:read` and `chat:write`; header `x-lianki-userscript: 1`),
+signed with the STT ticket key under another
 audience (`lianki-partner`, `lib/stt-ticket.ts`). It is offered in
 `Sec-WebSocket-Protocol: lianki-partner, <ticket>`, never in the URL.
+The ticket names no account (it always opens the owner's thread), so
+the route (`lib/partner-ticket-auth.ts`) gives one to the owner only: a
+`study` token (cards and settings) or a token of another account gets 404,
+and a token that does not qualify leaves the session to decide
+(`unit/partner-ticket-route.test.ts`). No other `/api/debug/*` or
+`/api/dev*` route takes an API token at all (same test).
 lianki-push (`workers/push/src/auth.ts` `partnerTicket`) verifies it with
 `PARTNER_TICKET_PUB` and the hub burns its jti (`pjti:*`) before accepting.
 The split is strict: from https://lianki.com only the cookie counts; from any
@@ -243,6 +252,21 @@ for a grant, and drops everything it sends except `chat` and `page`
 broadcast, is `{type, pending: null, sessions: [], listeners}` only: no
 pairing, session, grant, page label or id, node or `self` (`pageState` in
 `workers/push/src/debug.ts`). The label is host + path, never the query.
+
+The owner's own box (`box:chat`, [box-oauth.md](box-oauth.md), "Chat on the
+owner's box") uses the same subprotocol with a ticket of its own audience
+(`lianki-box-chat`), good only from the exact box origin it names. Such a socket
+is chat-only too, may also send voice amends and ask-card taps, and the hub asks
+the main Worker before each line it takes from it.
+
+With `box:eval` as well (box-oauth.md, "Code on the owner's box"), that box's
+socket is an owner page instead: listed, labelled `box <path>`, sent the whole
+state, reached by eval (`eval.ts --target box`), able to answer a pairing with
+the owner's tap on that page, and its page errors go to the agents. It never
+records clips and carries no session, so a grant approved there is never
+renewed (8 hours, then a tap). The hub asks the main Worker (`boxEval`) at
+connect, before each eval it sends there and before each pairing answer, result
+or page error it takes; gone, the page drops back to chat-only.
 
 **The frame: private typing (owner, 2026-11-01).** A shadow widget cannot
 keep keys private: the host page's capture listeners on document or window
@@ -287,7 +311,7 @@ own document; the host page never sees them.
   Tests: `unit/partner-frame-route.test.ts`, `unit/partner-ticket-hub.test.ts`;
   the real route in a frame: `scripts/qa/qa-partner-frame-route.ts` (in qa:all).
 - **Blocked → read-only**: the shadow widget (`mountPartner({readOnly:
-  true})`) shows the replies, and in place of the input a note ("This site
+true})`) shows the replies, and in place of the input a note ("This site
   blocks private typing…") with a link to reply on lianki.com. No key is
   asked for on such a site.
 - **ScriptCat's network rules** ("移除 CSP、改写请求头"): an options-page
@@ -300,13 +324,13 @@ own document; the host page never sees them.
 why instead of the chat (strings `EmbedStrings` in `ui-strings.ts`, by the
 browser's language):
 
-| Blocker     | When                                                                                         |
-| ----------- | -------------------------------------------------------------------------------------------- |
+| Blocker     | When                                                                                                 |
+| ----------- | ---------------------------------------------------------------------------------------------------- |
 | `pageRealm` | the manager runs the script in the page's own JS realm (the site could patch WebSocket, read memory) |
-| `connect`   | a CSP `connect-src` report names the hub, or the socket constructor throws                  |
-| `styles`    | constructed sheets unsupported and the `<style>` fallback blocked                           |
-| `script`    | a CSP report on eval/inline script or Trusted Types                                          |
-| `load`      | the widget threw while rendering                                                            |
+| `connect`   | a CSP `connect-src` report names the hub, or the socket constructor throws                           |
+| `styles`    | constructed sheets unsupported and the `<style>` fallback blocked                                    |
+| `script`    | a CSP report on eval/inline script or Trusted Types                                                  |
+| `load`      | the widget threw while rendering                                                                     |
 
 Isolation is decided fail-closed from the manager's own `GM_info` only (a
 binding in our scope, never a page global; `window.Object` and the like can
@@ -560,12 +584,142 @@ keeps the first STT text as `raw` (only the first), takes the polished
 `text`, and gets `edited: {at, by, count}` (`by` = the agent id, else the
 controller's label). Pages and listeners hear `{type:"edited", …}`.
 
+A spoken line that continues the last one can amend it (below): the rules for that,
+and how its polish waits for the passage's end, are in the next section.
+
 **On the page.** The line changes in place (a floating line too) and is
 never read aloud again. A small muted sparkle after it marks it polished
 (tooltip "Polished", zh 已润色; long press on touch shows it). A tap shows
 the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
+
+## Continuous speech amends the last line
+
+The owner, 2026-11-06 01:13 JST: "连续的语音输入应该能够有能力编辑已经发出去的消息", and 01:14:
+later words carry what the earlier ones really were, so polish the whole passage
+afterwards. Flag **`stt.merge`** at `/dev/flags`, default off. Off, nothing changes:
+the hub stamps nothing, the page never asks. Rule and helpers:
+`packages/debug-chat/src/voice-merge.ts`; hub: `merge`, `unmerge`, `passageEnd` in
+`workers/push/src/debug.ts`.
+
+**How it flows.** With the flag on the hub stamps an owner's voice line `mergeable`.
+The page's next spoken line carries `continues: <that id>` when `mergeVerdict` passes
+locally and no voice command ran since. The hub runs the verdict again and alone
+decides. Yes: the line changes in place and its `id` and `at` stay the first part's.
+No: an ordinary new line, as ever.
+
+### When an utterance continues the last one
+
+All of these, or it is a new line:
+
+| Check                                                                                   | Why                                                                      |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| The thread's **very latest line**, by anyone, and `continues` names it                  | an agent's reply or ask card in between keeps it apart                   |
+| Same page label (path + device), same `to`                                              | another device, or a page he moved to, is a new turn                     |
+| Both `source: "stt"`, the earlier one stamped, not settled, not split                   | typed lines and friends' never                                           |
+| No ask card open right before it, none answered since                                   | an answer stays its own explicit act                                     |
+| No selection or files on either, neither through the wake word                          | such a line is about those, or a new turn                                |
+| Neither is a short answer (`SHORT_ANSWERS`: yes, ok, 是, 行, はい…), nor tagged `other` | fragments cannot add up to an approval; a stranger is not his next words |
+| Under `MAX_CHAT` joined, under `MAX_MERGE_PARTS` (40, a Durable Object value's bound)   | caps hold                                                                |
+| The earlier line does not end in `? ？ ! ！`                                            | that ended it, however soon he went on                                   |
+
+Then a **signal and its window**; no timestamps means no merge:
+
+| Signal                                                                                                                       | Window                                             | Reading                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------- |
+| `cut`: the capture hit `MAX_UTTERANCE_MS` (`t_cut`)                                                                          | next start ≤ `JOIN_WINDOW_MS` (2500) after its end | it never stopped by itself                                 |
+| `open`: ends in a clause mark or no mark (`, ， 、 ; : …`, also `，。`)                                                      | same                                               | a text signal, read from punctuation classes, any script   |
+| `quick`: a plain stop, voice-to-voice silence ≤ `redemptionMs` (1400), **and the Mac's voiceprint signed both lines as him** | as stated                                          | the 600 ms endpoint cut where the VAD's own would not have |
+
+Neither window is new. `JOIN_WINDOW_MS` rejoined about 17 of 18 cut lines on his
+clips (#357). `redemptionMs` is the silence the VAD itself treats as inside one
+utterance. New marks on the line's timing: `t_speechStart`, `t_cut`.
+
+**Why `quick` needs the voiceprint: the evidence.** 211 recorded finals in
+`~/lianki-voice-clips` (2026-10-29 to 10-31, read as text and timestamps only):
+
+- 195 of 210 end in a plain `。` or `.`, 11 in a question mark, 4 in no mark. "No
+  sentence end" barely exists as a signal: STT stops every fragment. His own example,
+  "那你能不能给。", ends in a stop.
+- Gap plus plain stop alone would merge 83 of 181 neighbouring pairs. 66 of those
+  involve junk (`The.`, `Yeah.`, room talk transcribed), and most of the other 17 read
+  as room talk or separate things ("…这里跳转过去。" + "谁给你咖啡放名箱吗。"): noise restarts
+  the VAD as fast as he does, and the clips' 800 ms pad hides anything finer. The
+  blip guard drops most of the junk today, not the room talk.
+- So a plain stop alone is not enough, and the signed tag is the one thing the voice
+  path has that tells him from the room. Cost: with no print on the device (or the
+  cloud STT, whose 1400 ms endpoint leaves no such gap anyway), only `cut` and `open`
+  merge, and his example stays two bubbles there.
+
+The count is a hand reading of a small, noisy, pre-guard set. The rule starts here
+because a wrong merge is worse than two bubbles; `debug.merge` and
+`debug.merge-refused` (with a reason) in `wrangler tail lianki-push` are what to tune
+it from.
+
+### An agent already on it
+
+A busy beat does not stop a merge: `--ack` beats every line at once, so a beat
+would block nearly all of them. Only a line it has _said_ counts. An agent working
+on the first fragment hears `{type:"edited", text, parts, merged}` with the complete
+text and **must read it again before it acts or replies**. Once it has replied, the
+next utterance is a new line, which is also the way to tell it something more.
+
+### What a listener hears
+
+`{type:"edited", id, thread, text, raw, edited, parts, merged:{id, text}}`, the
+existing event: `text` is the whole line so far. `eval.ts chat` prints it (`parts` as a
+count) and `--ack` beats for it as for a new line. `edit --last` targets it as usual.
+An undo: `{type:"edited", …, split:[{id, text, at}…]}`.
+
+### Polish, once, when the passage ends
+
+- A merge resets the text to the merged raw, so polish reads what was heard, never the
+  last polish (errors do not compound). Every part stays in `parts`. `edited.by` is
+  `merge`, `edited.count` still counts polishes only.
+- While a merged line is being spoken an `edit` is refused (`still being spoken`). A
+  polish of the first fragment that arrives late fails `polishCheck`: it drops words.
+- The page sends `{type:"passage-end"}` after `PASSAGE_END_MS` (the same 2500) with no
+  speech heard and no transcript out, only for a merged line. The hub settles the line
+  and tells listeners `{type:"polish-due", id, text, raw, parts}`, once. **That is the
+  lane's cue to run `eval.ts edit` on it.** After 30 s (`MAX_UTTERANCE_MS`) with no
+  passage-end (a page gone) an `edit` is taken again, but nobody is told: the raw stands.
+- The rules are `polishCheck`'s, unchanged. New: a merged line's parts are in its
+  context, so a word later in the passage may correct an earlier one (流失 → 流式).
+- `stt.polish-off` on: merges happen, no polish-due goes out, every edit stays refused.
+- A single voice line polishes as before, at once. No polish-due, so no extra wake.
+
+**Cost.** Polish is the lane's Claude turn; the hub calls no model, so nothing new
+is billed per call. Today N fragments are N lines and up to N polishes. Merged, they
+are N wakes (each `edited` is a wake, as the chat line was) plus one for `polish-due`,
+and exactly one polish, however long the passage; flag off, nothing. `MAX_EDITS` (3)
+still caps a line's polishes, and a settled line takes no more parts. Hub: one flag
+read per 30 s on voice lines (`flag()`'s budget is 60 a minute), one storage write per
+merge, one uncached `flag()` read per passage for `stt.polish-off`.
+
+### Undo
+
+A small ↩ beside the sparkle on a merged line (`debug-chat-unmerge`). `{type:"unmerge",
+id}` from an owner's page splits it back into the lines it came from, in their place in
+the thread even after a reply, each with its own raw text, time, timing and speaker tag.
+Honest about what the hub stores: nothing is lost, and a polish goes with the merge. The
+split lines merge no further. It works with the flag off too.
+
+### Voice commands, cues, guards
+
+- **Commands.** A command is kept by a tap (`voiceTap`) before the chat sees it, so
+  it never merges, and `micTaps().kept()` moves, so the lines around it stay apart.
+- **Cue.** A line the page asks to merge plays `amend`, one soft note at half the send
+  cue's level, under the send cue's switch and rules (voice-mode.md, "Cues"). The hub
+  may still refuse (a reply on its way): then a new line came with the soft note. Rare,
+  and not worth waiting a round trip for.
+- **Hallucination guard, blips, voiceprint filter.** They drop a final before it reaches
+  the draft, so a dropped line sends nothing and asks nothing. The line after it may
+  still continue the one before: the dropped one was never said.
+- **Speaker tag.** The weakest of the parts with all their signed words; a part with
+  none leaves the line with none, so an unverified part never rides on a verified one.
+- **Friends.** Their lines never get the stamp, and friends' lines still can never
+  be edited (`friendChat` returns before any of this).
 
 ## Voiceprint: enrolment and delete by a tap
 
@@ -617,6 +771,133 @@ page. A voice line (stt) is **never** enough to approve anything sensitive:
 it can be misheard, overheard or played from a speaker. A typed line is no
 approval either. Ask with a card and act on the `answered` event.
 
+### The up-arrow to a question above
+
+Owner, 2026-11-06 15:32 JST: "liagent 提问滑过屏幕，如果上面有未回答的问题，我们要显示一个向上箭头按钮，点击跳到未回答提问".
+While an open ask card has scrolled off above the log's view, a round up-arrow
+(`debug-chat-ask-jump`) floats just over the bar; with several it shows their
+number. Each tap goes to the nearest above and it is gone when none is. Rules:
+`ask-above.ts`; DOM: `ask-above-dom.ts`.
+
+- **Which count.** `askState` "open" only. An answer from any device arrives as
+  the hub's `answered`, DebugEval stamps the line, and the card stops counting in
+  that render. An expiry is read at the next render or tap: no timer for it, so
+  a card past its deadline can stay counted until then, and a tap never goes to it.
+- **Above.** One IntersectionObserver rooted at the log, its region running from
+  the top edge (less `ABOVE_INSET_PX`, the fade) down past any history's end. With
+  the plain view as the region, a card jumped from below the view to above it in
+  one frame never intersects and is never reported. A card whose pills still show
+  is not above.
+- **Place.** Left of scroll-down's slot, shown or not: a jump brings that button up,
+  and a second tap on the same spot must not land on it. While it shows, the newest
+  run of lines keeps room beside it (`jumpRoom`: its end padding is the button's
+  width and slot, its height at least the button's, its text at the bottom), so it
+  covers no line or pill and the newest line still sits at the log's bottom. Never
+  an empty row under the last line: that row (#641, `JUMP_ROW_PX`) grew the resting
+  log from 70 to 106 px with 43 px blank under the newest line, the owner's
+  2026-11-07 18:10 JST "滚动不在正确的位置，它的下面半个窗口是空的". Hidden under a
+  panel, the + menu and the inbox. When a tap hides the arrow (or changes its
+  count) the room goes or narrows and the run reflows; a card inside a long run
+  of one sender's lines then moved up past the top, so for 1.5 s after a tap
+  (`REALIGN_MS`) the tapped card is put back at the top in the same frame.
+  The run goes to its room's bottom as a ROW (`flex-wrap` + `align-content:
+  flex-end`), never by `align-items: flex-end`: that sent the avatar to a long
+  run's last line, away from its first (owner, 2026-11-09 13:42 JST, desktop).
+  `bun scripts/dev/debug-chat-avatar-qa.mjs [--shots <dir>]` checks the newest
+  run's avatar is on its first line (±2 px) and clear of the ETA bar, from Li and
+  from the owner, short and long, with and without the arrow, at 1440×900 (panel,
+  sidebar) and 390×844 (panel, full screen), light and dark.
+- **At rest** the log is 3 lines, too short for a card, so a tap holds it open
+  (`held: "open"`, via `wireLogHold`'s `onReady`), glass and all, until a press
+  outside the chat, as a press on the history while typing does.
+- **Not in compact mode.** The log is hidden there and the compact view shows the
+  newest two open asks itself; a third and older has no arrow.
+
+Checks: `bun scripts/dev/debug-chat-ask-jump-qa.mjs --shots <dir>` (silent browsers,
+Chromium and WebKit, 390×844, light and dark); the rules in
+`unit/chat-ask-above.test.ts`. `bun scripts/dev/debug-chat-newline-qa.mjs [--shots <dir>]`
+checks that each new line (the agent's and the owner's) lands at the log's bottom,
+readable, with at most a few px under it, with and without the arrow, and that the
+arrow covers no line's text or pill (text rects), at 414×848 and 320×568, both engines
+and themes, at rest and typing.
+
+When the log looks wrong on his phone, `bun scripts/dev/chat-scroll-diag.ts` reads it
+once through `eval.ts --no-pair` (read-only, never pairs): the log's box and scroll,
+paddings, the newest line and the blank under it, the arrow, the bar, the open asks.
+
+## Full screen
+
+Owner, 2026-11-07 (speech, confirmed by repeating it): "给我的伙伴全屏". The open
+chat can fill the whole app, on the iPhone home-screen app and on a desktop.
+Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
+`unit/chat-fullscreen.test.ts`.
+
+- **Who.** Flag **`partner.fullscreen`** (`/dev/flags`, default off): on, every
+  chat user gets it; off, only the owner's pages (`flag || owner`, the hub's
+  verified `owner`). The root layout reads the flag once per request and passes
+  it down (`OwnerBoots` → `DebugEval` → the widget's `fullScreen` prop). Never
+  on another site (`embedded`: the userscript's widget, `/embed/partner`).
+- **The control.** A round button with its own SVG (four corners out; in full
+  screen, four corners in), 32 px over the open panel's top corner, 40 px in
+  full screen at the top corner under the notch; both have the 40 px tap area
+  (`tap-40`). Labels `fullScreen` / `fullScreenExit` (learning-partner.content.ts,
+  16 locales with context; `ui-strings.ts` en/zh/ja for hosts with no strings).
+- **Ways back.** The same button, Escape (after the tree's and the + menu's own
+  Escape; it never turns the mic off), and Back: entering by a tap pushes one
+  history entry through the host's `backToClose` (Lianki: `openBackToClose`,
+  docs/ui-state.md "Back closes an overlay"), same URL so `?live=` stays.
+  Full screen restored by a reload takes its entry at the first press or key
+  (the browser may skip an entry pushed with no gesture), and reopened from the
+  pill at once, so Back leaves full screen first there too (owner, 2026-11-08;
+  `fullScreenBack`, unit/chat-fullscreen-back.test.ts). Left by the button or
+  Escape, the entry is consumed: no orphan, no double back. Minimizing to the
+  pill leaves it; reopening comes back full screen, since the choice is kept.
+- **Nothing remounts.** The same section, log, input and mic are restyled in
+  place, so the thread, the draft, its focus and caret, and the mic are as they
+  were. The line being read keeps its place on screen across the switch (as far
+  as the log's scroll allows); at the end it stays at the end. The panel's own
+  position is untouched, so the way back lands where it was.
+- **Kept per device**: `lk:pref:chat-view` `full` (`chatPrefs`), never synced;
+  other tabs on the device follow it through the `storage` event, as compact does.
+- **Layout.** The box is the visual viewport, from `visualViewport` resize and
+  scroll events (no polling): with the on-screen keyboard up (iOS shrinks and pans
+  only the visual viewport) the box shrinks to the visible area, so the composer
+  stays above the keyboard and the bottom safe area is not padded (`data-kb`).
+  Pinch-zoomed, it is the layout viewport. The notch and landscape sides pad with
+  `env(safe-area-inset-*)`; no horizontal scroll at 320 px. The log takes the
+  height the bar leaves and always takes the touch.
+- **Phone or sidebar** (owner, 2026-11-07 20:31–20:34 JST). Narrower than
+  `SIDEBAR_QUERY`, `(min-width: 35em)` (his number, in em), full screen is the
+  whole screen. Wider, it is a full-height sidebar docked to the right edge,
+  `SIDEBAR_W` = `clamp(20rem, 32vw, 28rem)` wide (no drag-to-resize pattern
+  exists in the app, so a fixed width: 409.6 px at 1280), with a 1 px oklch
+  left border. The page beside it stays usable: while it is up the page's root
+  is padded on the right by its width (`--lk-chat-side`, `sidebarReserve`), so
+  the page reflows clear of it and scrolls as ever. A host's own fixed bars do
+  not reflow by themselves; they can read `--lk-chat-side`.
+- **The bar spans it** (owner, 2026-11-07 20:30 JST: the input across the full
+  width). On a phone the bar is the screen's width less the safe areas and the
+  panel's own 0.5rem gutter (`fullBarSpan`); in the sidebar it is the
+  sidebar's width, as the log. The cluster `[grip | + | mic]` is at its left
+  (also on a left-edge, mirrored panel) and the input takes the rest.
+- **Glass.** The typing glass with the sheet's tint and blur, covering the chat's
+  area, which in full screen is the screen; nothing outside the chat is blurred.
+  The bar keeps its own box there, and the `@/…` completions get theirs, since the
+  glass behind them is the log.
+- **Everything else as ever.** History scroll, scroll-down, the up-arrow to an
+  unanswered ask (#641) and the cards, markdown, the mic, the + menu. Compact mode
+  waits while full screen is up (it is for reading the whole chat) and applies
+  again on the way back; the drag-on-the-bar full-screen log is not started (the
+  drag only scrolls).
+
+Checks: `bun scripts/dev/debug-chat-fullscreen-qa.mjs [--shots <dir>]` (silent
+Chromium and WebKit, 414×896, 390×844, 320×568 and 1280×800, light and dark; the gate,
+toggle, the sidebar, the bar's and input's widths, overlaps, the page beside the
+sidebar, draft, focus, the same elements, the anchor line, side scroll, Escape,
+Back, reload, an emulated keyboard, scroll-down, the arrow and a card). Not
+covered by emulation: a real iPhone home-screen app's keyboard, its pan, and the
+safe areas.
+
 ## Compact mode: only the last message while not typing
 
 For talking to the chat by voice with less on screen (owner, 2026-11-01:
@@ -661,12 +942,20 @@ and the unit tests are in `unit/chat-fold.test.ts` and `unit/anchor.test.ts`.
   so the side follows the way the bar folded. The screen third no longer
   decides it, which fixes "folds left but lines right-aligned". The
   floating box is still clamped on screen (`anchor.ts`).
-- **Pill → tucked.** On the pill the same mark becomes a tuck arrow, and a
-  tap slides the chat into its edge. A pill dragged flush against an edge
-  tucks into that edge too. The pill's Li (part of the pill, not a new
-  button) opens the chat again, as does the menu's Restore row or
-  `chat.open`.
-- **The handle.** Tucked, the chat leaves one thumb-sized handle. Its shape
+- **The third level, tucked, is removed for now** (owner, 2026-11-07
+  20:32 JST: "第三级别", the edge-snapped fold, useless, to be rethought).
+  The mark steps open → pill → tucked no more: on the pill a tap on the
+  mark opens the chat again, and a pill dragged flush against an edge stays
+  a pill there. A device that saved `tucked` shows the plain pill and the
+  saved value is cleared. The handle code below stays dormant until it is
+  rethought; nothing reaches it.
+- **The grip** (owner, 2026-11-07 20:34 JST: the handle did not look
+  draggable). The mark is a six-dot vertical grip (its own SVG, `GripDots`),
+  `cursor: grab`, `grabbing` while held, labelled `dragGrip` (16 locales,
+  with context). Its 44 px touch area, place and gestures are unchanged.
+- **Pill → open.** The pill's Li (part of the pill, not a new button) opens
+  the chat again, as does the grip, the menu's Restore row or `chat.open`.
+- **The handle (dormant).** Tucked, the chat left one thumb-sized handle. Its shape
   is set by `HANDLE_SHAPE` in fold.ts: `"half"` (a half circle bulging from
   the edge, the default) or `"square"` (a rounded square). The owner has
   not picked one yet. The handle's touch area starts `TOUCH_INSET` in from
@@ -773,9 +1062,58 @@ stays. At rest it is click-through again (a press-and-hold engages it too:
 scripts/dev/debug-chat-typing-scroll-qa.mjs` (WebKit and Chromium, 390×844
 touch).
 
+## Markdown, safe HTML and links in a line
+
+Owner, 2026-11-06 00:05 JST. Every line (log, compact, floating, a polished
+line, its raw text) goes through `rich-text.ts`: `marked` to an HTML string,
+the browser's inert `DOMParser` to a tree, an allowlist walk to a plain data
+tree, and `RichText.tsx` to React elements. There is no
+`dangerouslySetInnerHTML` and no HTML string reaches the page, so only an
+allowed tag with allowed attributes can come out. No `style`, `class`, `id`,
+`on*` or `data-*` attribute ever passes; script, style, iframe, object, form
+and the like go with all that is inside them; another unknown tag gives way to
+its text. With no `DOMParser`, or if anything throws, the line is plain text
+with its links.
+
+**Tiers** (`lineTier`), from what the hub stamps, never from the text:
+
+| Tier       | Who                                                                                     | Gets                                                   |
+| ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `html`     | an agent line with the hub's `ownerGrant`, in the owner's thread, not embedded          | markdown, the HTML subset, images from `IMAGE_ORIGINS` |
+| `markdown` | everyone else: friends, the partner AI, his agents in a friend's thread, his own typing | markdown; raw HTML shows as text, an image as its alt  |
+
+`ownerGrant` is set only in the hub's `say`, when the thread is the owner's:
+that is, by a pairing he approved. A sender cannot set it: the hub builds each
+line field by field. The partner AI's lines and friends' lines never have it, and
+AI output is untrusted because a prompt can inject into it. A line kept from
+before this has none: markdown. It stays on a stored line after the pairing ends.
+
+**Links.** `chat-links.ts`: http(s) and bare `lianki.com/…` only. Punctuation,
+closing brackets and scripts written without spaces end a URL; a host that is not
+ASCII is not a link, so none reads as ours. On lianki.com a lianki.com link stays
+in the tab through `onOpenPage`; any other opens a new tab with
+`rel="noopener noreferrer"`. **The anchor's text is always the URL**: a labelled
+`[docs](https://…)` shows `docs (https://…)`, the URL being the anchor, so no line
+can dress one address as another, in any tier. A link carries `pointer-events-auto`
+because the history is click-through at rest (log-engage.ts); the text around it
+stays glass. A long press on a link is the platform's own (Copy link), not the
+press-and-hold that selects the line. A table or a code block scrolls in its own
+box and takes the pointer only while the history is engaged.
+
+**Read-aloud** reads `spoken`, not `m.text` (`spokenOf`; DebugEval's `speakReply`
+and the resume): the words without markup, a link's label not its URL, table cells
+joined with commas, code blocks left out (a line of only code says nothing). A bare
+URL is read as it always was. Each text keeps its offset in `spoken`, so the sentence
+highlight (`sentenceRanges` over `spoken`) lands on the same words the voice reads,
+across bold and links.
+
+Tests: `unit/chat-links.test.ts`, `unit/chat-rich-text.test.ts` (the sanitizer
+corpus, tiers, read-aloud; happy-dom's parser), the stamp in `unit/debug-hub.test.ts`
+and `unit/partner-ai.test.ts`.
+
 ## Copying a message
 
-Owner, 2026-11-05 01:34 JST, iPhone PWA on /read: "这里复制不了". The chat
+Owner, 2026-11-05 01:34 JST, iPhone PWA on /reader: "这里复制不了". The chat
 box is click-through (`pointer-events: none` on the section, so the page
 under it stays usable) and the log inherited it. iOS will not long-press
 select text that does not take the pointer, so there was no Copy. #537 made
@@ -872,11 +1210,11 @@ There is no time of day in it, and no setting
 
 **Which `say` to use** (agents, read this):
 
-| Line                                                                     | Command                   | Read aloud                          |
-| ------------------------------------------------------------------------ | ------------------------- | ----------------------------------- |
-| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                               |
-| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules      |
-| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line              |
+| Line                                                                     | Command                   | Read aloud                     |
+| ------------------------------------------------------------------------ | ------------------------- | ------------------------------ |
+| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                          |
+| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules |
+| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line         |
 
 Default to `--quiet` whenever the line is not a reply to him. `--loud` is
 deprecated: `eval.ts` still accepts it and prints a note, and the line goes
@@ -900,7 +1238,6 @@ toggle on and either the mic used in this tab or the input focused):
    wins. The menu row says "Replies read aloud (mic used)" while it holds,
    "Replies read aloud while typing" when only the focus rule applies.
 
-
 1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
 2. **Hidden page or locked screen** (`document.visibilityState` "hidden"),
    **on a phone**: never spoken (the browser would not let it). On a
@@ -922,14 +1259,14 @@ There, switching to another tab or window stops nothing, with no grace
 period: the mic keeps listening and the reading goes on until he stops it.
 The paths that used to stop it, all now phone-only on a computer:
 
-| Path | What it did on hide |
-| --- | --- |
-| `voice.ts` `gateVoice` visibilitychange | `voice().stop()`: the reading and its queue |
-| `speak-rules.ts` `silenceHere` | every new line silent while hidden |
-| `DebugChat.tsx` hide effect | stopped the reading (mic off) |
-| `DebugChat.tsx` reading-left mirror | froze the "read on next page" queue |
-| `DebugEval.tsx` hub socket `wanted()` | disconnected 30 s after hide: no lines out, no replies in |
-| `local-stt.ts` `visible()` | a dropped STT socket waited for the page to be visible again |
+| Path                                    | What it did on hide                                          |
+| --------------------------------------- | ------------------------------------------------------------ |
+| `voice.ts` `gateVoice` visibilitychange | `voice().stop()`: the reading and its queue                  |
+| `speak-rules.ts` `silenceHere`          | every new line silent while hidden                           |
+| `DebugChat.tsx` hide effect             | stopped the reading (mic off)                                |
+| `DebugChat.tsx` reading-left mirror     | froze the "read on next page" queue                          |
+| `DebugEval.tsx` hub socket `wanted()`   | disconnected 30 s after hide: no lines out, no replies in    |
+| `local-stt.ts` `visible()`              | a dropped STT socket waited for the page to be visible again |
 
 The hub socket now stays while the voice is busy (mic on, speaking, or
 queued; `keepHub`), and the local STT socket reopens on its close event
@@ -976,6 +1313,118 @@ cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
 `unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
 `unit/node-args.test.ts`.
 
+## Lanes and voices
+
+Several agents talk in the owner's chat — the chat lane (main), codex and
+agy — and he tells them apart by ear and by eye (owner, 2026-11-07). One
+table holds all of it as data: `packages/debug-chat/src/voices.ts` (`LANES`,
+`VOICES`). A lane has a voice id, a name tag and a mark (a small SVG on an
+oklch disc, `LaneMark.tsx`); main has no mark, so its lines look as before.
+
+**Which lane.** A line's `lane` field (`eval.ts say --lane codex`, default
+`$LIANKI_LANE`), else a leading `【codex】` / `【agy】` in its text. The prefix
+is then taken off what is shown and read (the name tag says it). A line
+with neither is main, exactly as before. `say --voice main|calm|bright`
+reads one line in another voice (or one of its own: "A line's own voice"
+below). The hub checks both ids and stores them with the line.
+
+**Device voices** (speechSynthesis). Main, the chat lane, is cute: a
+young, bright voice with a cat-girl feel (owner, 2026-11-07 20:34 JST) — the
+first natural voice it prefers (Meijia, Lili, Nicky, Samantha, O-ren, …),
+else today's pick (`pickVoice`), always at pitch 1.1. The others each take a different installed voice _model_ — another name,
+never a Compact/Enhanced variant of one already in use — in four passes: a
+natural voice the lane prefers by name, any natural voice, a preferred
+Eloquence voice (Apple's Reed, Flo, …: robotic, but a different model), any
+Eloquence voice. Novelty voices (Bahh, Zarvox, …) are never used. Only when
+nothing is left does the lane reuse main's voice at its own pitch and speed.
+A language's other locales that read it the same way are data
+(`SIBLING_LOCALES`: zh-TW for zh-CN, not Cantonese zh-HK; en-GB/AU/… for
+en-US).
+
+| lane  | voice  | prefers (any language)                     | last resort        |
+| ----- | ------ | ------------------------------------------ | ------------------ |
+| main  | main   | Meijia, Lili, Nicky, Samantha, O-ren, Sora | (pitch 1.1 always) |
+| codex | calm   | Li-mu, Daniel, Otoya, … then Reed, Rocko   | pitch 0.8, ×0.92   |
+| agy   | bright | Lili, Tingting, Karen, Kyoko, … then Flo   | pitch 1.4, ×1.06   |
+
+**Cloud voices** (`lk:voice-out` = cloud). Where an engine has several
+voices for the language the lane gets its own speaker: Workers AI Aura-2,
+English (main `luna`, codex `orion`, agy `thalia`) and Spanish (`celeste`,
+`nestor`, `carina`),
+asked as `/api/words/tts?…&speaker=` (the route keeps only speakers the
+table names; a recording is skipped; an Aura-2 failure answers with MeloTTS,
+never nothing). Everywhere else the cloud has one voice (MeloTTS), so the
+clip plays at the lane's own speed — `shift` main 1 (his reading speed as it
+is), codex 0.88, agy 1.2 — always with its pitch kept, the last resort. No
+pitch shift (2026-11-07): on the owner's iPhone a pitch-free clip through the
+voice context stalled mid-word (currentTime frozen ~200 ms, "续续" dropped),
+and he does not want pitch tweaks. The pre-rendered Kokoro/VOICEVOX/Piper clips are fixed texts and are
+not used for live lines.
+
+The owner's mute, quiet lines and the hidden-page rule are unchanged: a
+lane changes which voice reads a line, never whether.
+
+Tests: `unit/voices.test.ts` (lane resolution, voice picks on fake voice
+lists including this Mac's, fallbacks, the cloud speaker and shift, the
+route's speaker, `say --lane/--voice`).
+
+### A line's own voice
+
+Owner, 2026-11-07 22:34 JST: one line can name the exact voice it is read
+in, so he hears candidates for Li by just receiving them. `say --voice`
+(eval.ts and `lianki-dev say`) takes, besides `main|calm|bright`:
+
+| id                | what plays                                                                                     |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `device:<name>`   | that voice of the phone (speechSynthesis), as it is; **even when his output is cloud**          |
+| `melo:<lang>`     | the cloud's MeloTTS voice of `en es fr zh ja ko` (the clip asked in that language)              |
+| `aura:<speaker>`  | a Workers AI Aura-2 speaker of the table (`luna orion thalia` en, `celeste nestor carina` es)  |
+| `eleven:<id>`     | an ElevenLabs **public preview clip** (its own words, not the line's), straight from ElevenLabs |
+| `local:<name>`    | reserved for Mac-local engines (Kokoro, VOICEVOX): refused until one is built                   |
+
+One strict parser (`voices.ts parseLineVoice`) is used by the CLI, the hub
+and the page: an unknown kind, speaker, language or ElevenLabs id is
+refused, never guessed. A device name is checked only for shape (letters,
+digits, spaces, `()（）._'’-`, ≤ 64), since each device has its own; it matches
+the exact name, then any case, then the same model at its best grade
+(`device:Meijia` finds "Meijia (Enhanced)"). **Never silence:** a device
+voice this phone lacks reads the line in its lane's voice by the usual
+route; a cloud voice with no cloud output, or an ElevenLabs preview that
+cannot play (refused before a tap on iOS, gone), reads it in the lane's
+voice too. The same words in another voice are a new line (the 10-minute
+re-delivery check keys on voice and text), so a demo in three voices plays three
+times.
+
+**Finding ids:** `eval.ts voices --no-pair` (or `lianki-dev voices`) reads
+each open debug page's `speechSynthesis.getVoices()` once over the eval
+channel (read only, never a loop) and prints them as ids, zh, ja and en
+first, with the cloud's list; `--cloud` prints the cloud's list without
+asking any page.
+
+**ElevenLabs.** Paid voices, not wired into Li: no key, no generation, no
+copy in R2. Only the premade voices ElevenLabs lists to anyone
+(`GET /v1/voices`, no key) with a preview on its public storage are in
+`ELEVEN_PREVIEWS` (Jessica, Sarah, Bella, Matilda, Alice, Lily, River, all
+English). The community library the chat lane found (Lulu zh-TW, Kaori,
+Pipi, Kano ja, Auri en) lists voices and previews only to a signed-in
+account (checked 2026-11-07: "You must be logged in to use filters" / "to
+fetch more than 3 voices"), so none of those is here. Their storage sends no
+CORS headers, so a preview plays on its own element, not through the voice
+context (which would play it as silence); `unlock()` primes that element in
+the same tap. The app sets no `media-src` CSP, so nothing needed opening.
+
+**On a box** (docs/box-oauth.md) the chat reads lines the same way: the
+line's `lane` and `voice` reach `speakReply` as on lianki.com, and
+`/api/words/tts?…&speaker=` goes to lianki.com through the box's fetch. Two
+differences, found 2026-11-07: the gate's CORS answer exposed no app header,
+so the page could not read `X-Voice` and took every lane clip as fallen back
+to the one voice (fixed: `access-control-expose-headers: X-Voice,
+Retry-After, Content-Disposition`; and a missing X-Voice no longer counts as
+a fallback); and `lk:voice-out` is per origin in localStorage — it is the
+synced pref `chat-voice.out` (docs/prefs-sync.md), so the box takes his
+account's value after its first prefs pull, and until then reads with
+speech. A `device:`/`aura:`/`melo:` voice ignores the output mode either way.
+
 ## The + menu: add to Lianki, attach the page selection
 
 The round **+** at the start of the chat input (owner, 2026-11-03) opens one
@@ -994,8 +1443,8 @@ menu in three groups (`packages/debug-chat/src/AttachMenu.tsx`, `attach.ts`):
   Add group's "Add a link as a card".
 - **View** (查看) — **State tree** (状态树): toggles the state tree, as the
   bar's tree button did (owner, 2026-11-03: "状态树功能藏到加号里"; the bar
-  has no tree button now, so it is `[mark | + | input | mic]`, and minimized
-  `[mark | mic]`). A `menuitemcheckbox`, checked while the tree is open, with
+  has no tree button now, so it is `[mark | + | mic | input]`, and minimized
+  `[mark | Li | mic]`). A `menuitemcheckbox`, checked while the tree is open, with
   the eval/preview sessions' count; while there are any, the + shows a small
   dot (pulsing when code just ran), so they are not lost with the button. The
   button's sideways drag through detents is gone; a tap on a chip opens it,
@@ -1062,13 +1511,13 @@ soon" and paste/drop do nothing.
 (`isOwner`, 404 for anyone else, friends included, as every `/api/dev`
 route); the chat passes `files` only on the owner's own pages.
 
-| route | what |
-| --- | --- |
-| `POST /api/dev/inbox` | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
-| `GET /api/dev/inbox` | his files and usage (settles accrued storage cost) |
-| `PATCH /api/dev/inbox` | `{ids, line}`: the chat line they were sent with |
-| `GET /api/dev/inbox/<id>` | the file: his session, or an agent's ticket in `x-inbox-ticket` |
-| `DELETE /api/dev/inbox/<id>` | his own session only; the object and the row go |
+| route                        | what                                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `POST /api/dev/inbox`        | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
+| `GET /api/dev/inbox`         | his files and usage (settles accrued storage cost)                                                   |
+| `PATCH /api/dev/inbox`       | `{ids, line}`: the chat line they were sent with                                                     |
+| `GET /api/dev/inbox/<id>`    | the file: his session, or an agent's ticket in `x-inbox-ticket`                                      |
+| `DELETE /api/dev/inbox/<id>` | his own session only; the object and the row go                                                      |
 
 - **Keys**: `inbox/<user id>/<yyyy>/<mm>/<id>` (`lib/inbox/keys.ts`); the name
   never goes into a key. D1 `inbox_item` (id, owner, name, type, size,
@@ -1118,6 +1567,71 @@ the bundled copy and the dot is gone.
 `treeSource` accepts a URL, a function returning markdown or nodes, or
 `{subscribe(onUpdate) → unsubscribe}`: the WebSocket progress feed
 (`feat/live-roadmap`, parked) will be another such feed.
+
+## ETA bar
+
+Flag `chat.eta-bar` (owner only; the root layout reads it and passes
+`etaBar` down to DebugChat). Every live state-tree node with an estimate
+(`progress.ts --eta 25m`, its `etaAt`; docs/state-tree.md, "ETA pings") is a
+timed task (`eta.ts etaTasks`, read from the overlaid tree). Above the input,
+one line (`EtaBar.tsx`): a small clock drawn in place, "Title · 25M" for
+one task, or "3 tasks · 1.5H · next in 5M" for several, and the percent;
+a tap opens the state tree, whose top lists each task as a Gantt row
+(`EtaList`). There is no separate meter (owner, 2026-11-08): the summary
+line's own background is filled from the start edge to the progress
+(weighted by each estimate), blue running, red past its estimate, green done.
+
+Time labels (owner, 2026-11-08 20:34 JST), everywhere — bar, list, minimized
+line: one language-neutral form, `eta.ts compactTime`: under an hour "<n>M"
+(whole minutes, rounded up), from an hour hours to one decimal ("1H", "1.5H"
+for 1 h 29 min, "2.5H"; never "1h20m"); past due negative ("-5M", "-1.5H")
+and drawn red (`ETA_COLORS.late`, AA on every background of a row).
+
+The list is a Gantt chart (owner, 2026-11-08 20:24 and 2026-11-09 01:38–01:39
+JST). All rows share one axis (`ganttWindow`): the left edge is the earliest
+start of a shown task, the right edge the latest end (estimate, or when a done
+one finished, queued tasks at their computed ends); it rescales whenever the
+tasks change. A row's background is its bar (`ganttRow`): from when the work
+started (the node's first "doing", `startedAt`) to its etaAt, the agent's pct
+a deeper fill inside it, and past the estimate a red overrun on to now. Running
+tasks overlap freely; queued ones (status waiting: for an agent slot or the
+gate) run one after another in order of creation (`ganttPlan`): the first
+from when the soonest running task is due (or now), each next from the end of
+the one ahead, each as long as its estimate as posted. A red vertical line
+marks now on every row, labelled "Now" (language-neutral) on an axis strip
+under the rows, clamped to an edge outside the range; it moves with the page's
+one clock. No estimate, start, end or actual numbers are drawn — only each
+row's time left. Rows are full width, so it fits 360 px. The colours are
+opaque `light-dark()` pairs (`ETA_COLORS`): text, the muted description and the
+red at WCAG AA (4.5:1) on the track, the bar, the fill, the overrun and done,
+which unit/eta.test.ts computes. Like everything in the chat, the line is dimmed with
+the whole panel at rest (`opacity-60`) and full while the chat is in use.
+On the owner's box it works the same (docs/box-oauth.md, "The state tree on
+the owner's box").
+The floating buttons above the input (scroll-down, ask jump) sit the bar's
+measured height higher (`etaH`, a ResizeObserver on its slot), so they never
+cover it (owner, 2026-11-08, Android); `scripts/dev/debug-chat-eta-overlap-qa.mjs`
+checks it at 412×915 and 390×844, light and dark, scrolled up, in and out of
+full screen.
+
+Task titles are "name: description" (ASCII ':' or full-width '：';
+`eta.ts splitTitle`): the bar and the minimized chat show the name, the list
+shows the name in bold and the description muted (`ETA_COLORS.muted`, AA on
+every fill too). Minimized, while any timed task is open, the in-progress line
+is the two ends instead of the ≈ summary (`etaEnds`, `etaParts`): the nearest
+open leaf and the open task due last, "Fill line 5M · Box ETA 1.5H"
+(compactTime; red and negative past due). Each name truncates, the
+nearer one first; the times never do; the full line is the title. With no
+timed task the ≈ summary shows as before. The summary's progress is time
+against the estimate (a done task is full and leaves after 8 s). Strings: `eta*` in
+learning-partner.content.ts, each with its context line.
+
+One timer per page (`etaClock`), armed to the soonest of an estimate, a done
+task leaving, or a label's next minute (past due too, as "-1M" counts on); re-armed on every tree update; no
+interval, no polling. When an estimate passes unsent, the page sends
+{type:"eta", id} on the progress socket (once per estimate per page); the hub
+also has its own alarm, marks the node sent and posts at most one line, so
+two devices never ping twice and no page needs to be open.
 
 ## UI state across a refresh and a hot swap
 
@@ -1181,10 +1695,10 @@ The widget bundle can be hot-loaded with its own copy of every module, so the
 two sides share no module state. The contract is two window events
 (`packages/debug-chat/src/audio-claim.ts`, used on both sides):
 
-| event               | detail         | meaning                                                                                                                                                                                     |
-| ------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lk:audio-claim`    | `{ id, prio }` | cancelable, "I am about to play". An owner holding or waiting with a higher `prio` calls `preventDefault()`, and the claimer waits. One holding with an equal or lower `prio` pauses and waits (the newest of equals wins). |
-| `lk:audio-release`  | `{ id }`       | "I am done". Each waiter claims again. A higher waiter cancels a lower one's claim, so the highest goes first.                                                                                 |
+| event              | detail         | meaning                                                                                                                                                                                                                     |
+| ------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lk:audio-claim`   | `{ id, prio }` | cancelable, "I am about to play". An owner holding or waiting with a higher `prio` calls `preventDefault()`, and the claimer waits. One holding with an equal or lower `prio` pauses and waits (the newest of equals wins). |
+| `lk:audio-release` | `{ id }`       | "I am done". Each waiter claims again. A higher waiter cancels a lower one's claim, so the highest goes first.                                                                                                              |
 
 - Only an owner that is holding or waiting listens. An idle one needs no
   cleanup.
@@ -1197,6 +1711,28 @@ two sides share no module state. The contract is two window events
 Tests use a fake audio clock and fake elements, with no sound:
 `unit/audio-claim.test.ts`, `unit/read-speaker.test.ts` ("pauses for a
 higher sound") and `unit/voice-session.test.ts` ("Li owns the page's audio").
+
+## Eval tokens: code without the tap
+
+Owner's decision by tap card, 2026-11-07. Besides the pairing (a tap on a page,
+8 hours, renewed while his page is open), a sender can connect with an **eval
+token**. That is an API token with the `eval` permission, which only a site
+owner can make, for at most 30 days ([secrets-and-auth.md](secrets-and-auth.md),
+"Eval tokens"). **Whoever holds it can run code on his open pages, lianki.com and
+his box, with no tap.** Making the token is the grant.
+
+- `LIANKI_TOKEN=lk_… bun scripts/dev/eval.ts '<code>'` (and `lianki-dev serve`)
+  sends it as `Authorization: Bearer` on the control socket. The hub asks the
+  main Worker (`DebugSessions.evalToken`) at connect and before every eval. Each
+  use is audited (`api-token.eval`). A refusal closes the sender (4498).
+- It is an eval session in the owner's thread, listed on his pages like any
+  other, labelled `token <name>`. It reaches every owner page, and a box page
+  only while that box holds `box:eval`. It never reaches a friend's pages.
+- Revoke on the token page closes it at once. End on a page closes only that
+  socket.
+- Without a token the pairing flow is unchanged. A lane's chat-only
+  `LIANKI_TOKEN` is refused for eval, and `eval.ts` then falls back to the saved
+  grant.
 
 ## Page errors
 
@@ -1287,17 +1823,19 @@ renders. `?min` (or `?open`) starts minimized (or expanded), `?notree` and
 `bun scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]` does that on its
 own: it starts the server on a free port, loads the hot widget into
 `/harness`, and checks the chat bar expanded and minimized (one container,
-focus order, 16px input, 40px targets, the inert input, the mic clickable and
+focus order, 16px input, 40px targets (44 px since the mic joined the cluster), the inert input, the mic clickable and
 its drag gestures, floating lines). getUserMedia is stubbed, so nothing is
 recorded. `--shots` also saves light/dark × expanded/minimized at 390px.
 
 The bar's round corner controls are concentric with its border by
 construction (`bar-geometry.ts`): the nested-radius rule, inner radius =
 outer radius − (border + padding), as Apple's iOS 26 `ConcentricRectangle`
-does. The bar's radius is `--lk-bar-r = border + padding + line/2`, and the
-mic's circle is the line-sized square in its inner bottom-right, so one line
-high the bar's right end is a semicircle around the mic, and a taller draft
-keeps the mic on the bottom-right arc. Text size does not scale it (only
+does. The bar's radius is `--lk-bar-r = border + padding + line/2`. Folded,
+the mic is the pill's last control and its circle is the line-sized square in
+the inner bottom-right, so the pill's right end is a semicircle around the
+mic; open, the same circle sits beside the input on the bottom line (see "The
+mic keeps its place" below), and a taller draft keeps the controls on the
+bottom line. Text size does not scale it (only
 text scales). The geometry is inline styles, never new Tailwind classes: a
 stylesheet that has not generated a new class (the whole-page dev server's
 stale CSS on 2026-11-03) left the bar with no radius and no border. `bun scripts/dev/debug-chat-concentric-qa.mjs [--shots <dir>]`
@@ -1305,6 +1843,44 @@ measures both centres (getBoundingClientRect) at 390×844 and 412×915, light
 and dark, one line, four lines, text at 150% and minimized, and fails over
 0.5px. A control added in a corner (a + at the left end) takes its circle
 from the same variables.
+
+### The mic keeps its place
+
+Owner, 2026-11-07 19:27 JST: "我们把麦克风跟另外几个按钮排到一起吧……这样折叠的时候，它位置就不会变".
+The mic is in one cluster with the chat's other buttons: `[mark | + | mic |
+input]` open, `[mark | Li | mic]` folded, the pill's Li in the +'s slot. Every
+slot is `CONTROL_W` (44 px) and the bar's padding is the same folded and open
+(`bar-geometry.ts`), and the fold keeps the mark where it was, so the mic does
+not move as the chat folds. Full screen spans the bar across the screen
+(owner, 2026-11-07 20:30 JST; see "Full screen"): the mic keeps its height
+and its offset in the bar (the bottom pad includes `--lk-bottom-reserve`, as
+the panel rests above it) and moves sideways only to where the bar now starts,
+the panel's own 8 px gutter. The cluster's touch areas
+are 44 px each way (`TAP_44_CSS`, a `<style>` of the bar's own, so another
+site's page has it too). The up-arrow and scroll-down sit over the bar's other
+end and never cover the mic.
+
+Where it still moves, and why:
+
+- **A panel dragged up the screen** (`lk:debug-chat-pos` with a y offset): in
+  full screen the bar goes to the bottom, as the log fills the screen above it.
+- **Restoring a pill dragged near the right edge**: the open bar is wider, and
+  `fit` slides the box back on screen, so the cluster shifts with it.
+- **Entering full screen**: the bar spans the screen, so the mic goes left to
+  the 8 px gutter: measured, 78 px at 414, 54 px at 390, none at 320 (the
+  panel already spans it), and 72.6 px into the sidebar at 1280 (it starts at
+  the sidebar's left). From a panel dragged sideways it lands at that same
+  place; the way back returns it to the panel's.
+- **The keyboard**: the panel lifts by `--lk-kb-lift` and full screen follows
+  the visual viewport; both put the bar above the keyboard, but only emulation
+  has checked that they agree.
+
+`bun scripts/dev/debug-chat-mic-place-qa.mjs [--shots <dir>]` measures the mic's
+rect at rest, typing, scrolled up with the up-arrow and scroll-down, back
+from full screen, folded by the mark, open again by the Li, and back to a
+panel dragged sideways, and fails on a move over 0.5 px; in full screen it
+checks the mic at the bar's start, the bar's width and the grip, at 414×848,
+390×844, 320×568 and 1280×800, Chromium and WebKit, light and dark.
 
 `bun scripts/dev/debug-chat-scroll-qa.mjs` checks the log's scroll on an
 Android-sized touch viewport (412×915). A drag on the empty input scrolls

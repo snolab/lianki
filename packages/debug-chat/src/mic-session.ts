@@ -29,7 +29,8 @@ import {
   createMic,
   keepStream,
 } from "./mic";
-import type { LocalFinal, LocalState } from "./local-stt";
+import type { FilterVerdict, LocalFinal, LocalState } from "./local-stt";
+import type { SttGuardLimits } from "./stt-guard";
 import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
 import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
@@ -50,11 +51,16 @@ export const MIC_SESSION_KEY = "__lkMic";
  * Bumped when the session's shape changes; an older one is migrated, its
  * stream kept. A newer one is left alone (an older bundle never downgrades
  * it). 10: it offers finals to the command taps first (mic-taps.ts). 11:
- * reopen (the echo cancellation switch, aec.ts applyAec).
+ * reopen (the echo cancellation switch, aec.ts applyAec). 12: the voice cues
+ * (cues.ts), and the guard over what the VAD hears while one plays. 13: the
+ * silence guard (stt-guard.ts) over each final, and the route's signals for it.
  */
-export const MIC_SESSION_V = 11;
+export const MIC_SESSION_V = 13;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
+
+/** Shown by the button when a tap finds another listener owns the room. */
+export const MIC_BLOCKED_NOTE = "in use by a conversation";
 
 /** The slice of a MediaStream the session uses. */
 export type StreamLike = {
@@ -88,6 +94,8 @@ export type MicConfig = {
 export type MicDeps = {
   /** The room and voice estimator (adaptive.ts): the endpoint follows it. */
   adapt?: MicAdapt;
+  /** The start and end cues (cues.ts; createMic's `cue`). */
+  cue?: { guard(): boolean; edge(edge: "start" | "end"): void };
   /** getUserMedia with the session's constraints. */
   getStream: () => Promise<StreamLike>;
   /** The VAD on a stream (Silero), and the fallback (an energy gate). Neither stops the stream. */
@@ -106,10 +114,14 @@ export type MicDeps = {
   /** Try to get the AudioContext running without a gesture; false if it stays suspended. */
   resumeAudio?: () => Promise<boolean>;
   log?: (ev: Record<string, unknown>) => void;
+  /** Overrides of the silence guard (createMic's `guard`), for tests. */
+  guard?: Partial<SttGuardLimits>;
   /** A client for the local streaming STT at this URL (local-stt.ts createLocalStt). */
   localStt?: (url: string) => LocalClient;
   /** Each kept final's speaker tag and the Mac's signed proof of it (voiceprint.ts noteSpeaker). */
   speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
+  /** A passive utterance the Mac's voiceprint filter stopped (voiceprint.ts noteFiltered). */
+  filtered?: (v: FilterVerdict) => void;
   /** A final utterance's timestamps (createMic's `timing`; latency.ts). */
   timing?: (seq: number, marks: UttMarks) => void;
   /**
@@ -259,6 +271,7 @@ export function createMicSession(
       done: (f) => enrolHook?.(f),
     },
     adapt: deps.adapt,
+    cue: deps.cue,
     wake: deps.kws
       ? {
           // In whisper mode it stays active: the spotter is unproven on whispers.
@@ -303,13 +316,20 @@ export function createMicSession(
     onError: (e) => emit({ error: e }),
     onProb: (p) => deps.onProb?.(p),
     log: (ev) => deps.log?.(ev),
+    guard: deps.guard,
     timing: (seq, m) => deps.timing?.(seq, m),
     speaker: (t, p) => deps.speaker?.(t, p),
+    filtered: (v) => deps.filtered?.(v),
   });
   const unhold = deps.subscribeHold?.((h) => mic.hold(h));
   // A voice mode turning on wakes the mic: commands need no "Linky".
   const unpin = taps.onPin(() => {
     if (wake.mode() !== "active") wake.set("active", "voice-mode");
+  });
+
+  // /vibe owns the room (mic-taps.ts block): this mic goes off and stays off.
+  const unblock = taps.onBlock?.(() => {
+    if (mic.state() !== "off") void session.off();
   });
 
   const session = {
@@ -345,6 +365,7 @@ export function createMicSession(
     wake: (c: WakeCommand, reason?: WakeReason) => command(c, reason),
     /** A tap: on (remembered for a reload), back to active from passive, or an explicit off. */
     async toggle() {
+      if (taps.blocked?.()) return void emit({ error: new Error(MIC_BLOCKED_NOTE) });
       emit({ error: null });
       if (mic.state() !== "off" && wake.mode() === "passive") return void wake.set("active", "tap");
       if (mic.state() === "off") {
@@ -447,6 +468,7 @@ export function createMicSession(
     async retire() {
       unhold?.();
       unpin();
+      unblock?.();
       listeners.clear();
       sink = null;
       const s = stream;
@@ -460,7 +482,7 @@ export function createMicSession(
     },
     /** After a reload with the mic on: resume without a gesture if we may, else wait for a tap. */
     async autoResume() {
-      if (!store.get()) return;
+      if (!store.get() || taps.blocked?.()) return;
       const tap = (reason: string) => {
         emit({ resume: true });
         deps.log?.({ ev: "mic-resume", path: "tap", reason });

@@ -164,11 +164,11 @@ describe("config", () => {
 
 describe("state and PKCE", () => {
   it("makes an S256 pair inside RFC 7636's limits", async () => {
-    const { state, challenge } = await newConnectState("u1", "/read", T0);
+    const { state, challenge } = await newConnectState("u1", "/reader", T0);
     expect(state.v).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
     expect(challenge).toBe(await s256(state.v));
     expect(state.e).toBe(T0 + STATE_TTL_MS);
-    expect(state.r).toBe("/read");
+    expect(state.r).toBe("/reader");
   });
 
   it("accepts its own cookie only, for its user, in time, with the same state", async () => {
@@ -205,9 +205,14 @@ describe("state and PKCE", () => {
   });
 
   it("returns only to our own pages", () => {
-    expect(returnPath("/read")).toBe("/read");
-    expect(returnPath(`/read?gdoc=${DOC}`)).toBe(`/read?gdoc=${DOC}`);
-    for (const bad of ["https://evil.example", "//evil.example", "/read?gdoc=x", "/admin", 7])
+    expect(returnPath("/reader")).toBe("/reader");
+    expect(returnPath(`/reader?gdoc=${DOC}`)).toBe(`/reader?gdoc=${DOC}`);
+    // A connection started on the old /read (before 2026-11-09) comes back to /reader.
+    expect(returnPath("/read")).toBe("/reader");
+    expect(returnPath("/read?pick=drive")).toBe("/reader?pick=drive");
+    expect(returnPath(`/read?gdoc=${DOC}`)).toBe(`/reader?gdoc=${DOC}`);
+    expect(returnPath("/reading")).toBe("/connections");
+    for (const bad of ["https://evil.example", "//evil.example", "/reader?gdoc=x", "/admin", 7])
       expect(returnPath(bad)).toBe("/connections");
   });
 

@@ -1,56 +1,40 @@
 /**
  * Explore cards on /home (app/(app)/home/FeatureCard.tsx): name, one line of
- * explanation, and a screenshot behind them that never moves layout.
+ * explanation, and a wordless drawing behind them that never moves layout.
  */
 import { describe, expect, test } from "bun:test";
-import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { FeatureArt } from "@/app/(app)/home/FeatureArt";
 import { FeatureCard } from "@/app/(app)/home/FeatureCard";
-import { HOME_EXPLORE, HOME_FEATURE_SHOT, homeFeatureShot } from "@/lib/home-features";
+import { HOME_EXPLORE, HOME_EXPLORE_HREF } from "@/lib/home-features";
 import { APP_NAV } from "@/lib/app-nav";
 import navHome from "@/app/(app)/home/page.content";
 
-const base = {
-  featureKey: "read",
-  href: "/read",
-  icon: "bookOpen" as const,
-  label: "Read",
-  desc: "Read your own texts and books",
-};
+const art = (feature: (typeof HOME_EXPLORE)[number]) =>
+  renderToStaticMarkup(createElement(FeatureArt, { feature }));
 
 describe("FeatureCard", () => {
-  test("with a screenshot: light and dark, lazy, sized, with alt text", () => {
+  test("the name and explanation over the feature's drawing, no image file", () => {
     const html = renderToStaticMarkup(
       createElement(FeatureCard, {
-        ...base,
-        shot: { light: "/a-light.webp", dark: "/a-dark.webp", alt: "Screenshot: Read" },
+        featureKey: "read",
+        href: "/reader",
+        icon: "bookOpen" as const,
+        label: "Read",
+        desc: "Read your own texts and books",
       }),
     );
-    expect(html).toContain('href="/read"');
+    expect(html).toContain('href="/reader"');
     expect(html).toContain("Read your own texts and books");
-    expect(html).toContain('<source media="(prefers-color-scheme: dark)" srcSet="/a-dark.webp"/>');
-    expect(html).toContain('src="/a-light.webp"');
-    expect(html).toContain('alt="Screenshot: Read"');
-    expect(html).toContain('loading="lazy"');
-    expect(html).toContain(`width="${HOME_FEATURE_SHOT.width}"`);
-    expect(html).toContain(`height="${HOME_FEATURE_SHOT.height}"`);
-    // Fixed-height card, the image placed absolutely: no layout shift.
     expect(html).toContain("lk-feature-card");
-    expect(html).toContain("lk-feature-shot");
-  });
-
-  test("without a screenshot: the same card, no picture", () => {
-    const html = renderToStaticMarkup(createElement(FeatureCard, { ...base, shot: null }));
-    expect(html).toContain("lk-feature-card");
-    expect(html).toContain("Read your own texts and books");
+    expect(html).toContain("lk-feature-art");
     expect(html).not.toContain("<img");
-    expect(html).not.toContain("<picture");
   });
 });
 
-describe("home feature screenshots", () => {
+describe("home feature drawings", () => {
   test("every Explore feature is in the nav and has an explanation", () => {
     const cards = (navHome.content as unknown as { cards: Record<string, unknown> }).cards;
     for (const k of HOME_EXPLORE) {
@@ -59,22 +43,38 @@ describe("home feature screenshots", () => {
     }
   });
 
-  test("every screenshot exists, light and dark, and stays small", () => {
-    for (const k of HOME_EXPLORE) {
-      for (const scheme of ["light", "dark"] as const) {
-        const url = homeFeatureShot(k, scheme)!;
-        const file = join(import.meta.dir, "..", "public", url);
-        expect(existsSync(file)).toBe(true);
-        expect(statSync(file).size).toBeLessThan(40 * 1024);
-      }
+  test("eight cards; Word lists is one card and opens the Add a list tree", () => {
+    expect(HOME_EXPLORE.length).toBe(8);
+    expect(HOME_EXPLORE_HREF.words).toBe("/words#add-list");
+  });
+
+  test("each is its own drawing, decorative, and stays small", () => {
+    const all = HOME_EXPLORE.map(art);
+    expect(new Set(all).size).toBe(HOME_EXPLORE.length);
+    for (const svg of all) {
+      expect(svg).toContain('aria-hidden="true"');
+      expect(svg.length).toBeLessThan(3 * 1024);
     }
   });
 
-  test("CSS gives the card its own height and keeps the shot out of the flow", async () => {
+  test("no words in a drawing, and no fixed colours: only the theme's tokens", () => {
+    for (const k of HOME_EXPLORE) {
+      const svg = art(k);
+      expect(svg).not.toContain("<text");
+      expect(svg).not.toContain("<image");
+      // Tags only: nothing but markup, so nothing a reader would read.
+      expect(svg).not.toMatch(/>[^<]/);
+      const colours = [...svg.matchAll(/(?:fill|stroke)="([^"]*)"/g)].map((m) => m[1]);
+      for (const c of colours) expect(c).toMatch(/^(none|var\(--(ink|seal|wash|sheet)\))$/);
+    }
+  });
+
+  test("CSS gives the card its own height and keeps the drawing out of the flow", async () => {
     const css = await Bun.file(join(import.meta.dir, "..", "app", "globals.css")).text();
     const card = css.match(/\.lk-feature-card \{([^}]*)\}/)?.[1] ?? "";
-    const shot = css.match(/\.lk-feature-shot \{([^}]*)\}/)?.[1] ?? "";
+    const drawing = css.match(/\.lk-feature-art \{([^}]*)\}/)?.[1] ?? "";
     expect(card).toMatch(/min-height: \d/);
-    expect(shot).toContain("position: absolute");
+    expect(drawing).toContain("position: absolute");
+    expect(drawing).toContain("--ink: color-mix(in oklch, var(--foreground)");
   });
 });

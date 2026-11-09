@@ -46,10 +46,14 @@ The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
                    {"t":"enrol","op":"commit"|"cancel","rid":R}
                    {"t":"voiceprint","op":"status","rid":R}
                    {"t":"voiceprint","op":"delete","rid":R,"device":D|"*"}
+                   {"t":"filter","on":bool}                  the voiceprint filter on this socket
   server → client  ready gains "speaker":{"models":[…]} when the check is on
                    final gains "speaker":{score,decision:"me"|"other"|"unknown",model,device,
                     speechS,snrDb[,reason]}, or on an enrolment sentence "enrol":{ok,n[,reason],…}
                    {"t":"enrol"|"voiceprint","rid":R,"ok":…[,"error"]…}
+                   {"t":"filter","on":bool}                  (the filter's state: voiceprint status, "filter")
+                   final gains "filtered":{reason,score} when the filter stopped it (text "",
+                    nothing decoded), or "wouldFilter":reason when the filter is not on
 
 GET /health answers {"ok":true,"engine":…,"speaker":[models]|false} (the same port, plain HTTP).
 """
@@ -124,6 +128,8 @@ class Utterance:
         self.uid: str | None = None
         #: The text is decoded from this sample on (the words after "Linky").
         self.text_from = 0
+        #: With the filter on, partials wait for this: the check heard enough and did not stop it.
+        self.cleared = False
 
     def audio(self) -> np.ndarray:
         parts = ([self.pre] if self.pre is not None else []) + self.chunks
@@ -150,6 +156,9 @@ class Server:
         self.spk_pool = ThreadPoolExecutor(max_workers=1)
         #: Decisions so far (the log's counts; never text).
         self.counts = {"me": 0, "other": 0, "unknown": 0}
+        #: Finals the voiceprint filter stopped, and those it would have stopped were it on.
+        self.filtered = 0
+        self.would_filter = 0
         #: Open enrolments by id (the start answer's `enrolment`), and when each began.
         self.enrolments: dict[str, "VP.Enrolment"] = {}
         self.enrol_at: dict[str, float] = {}
@@ -159,6 +168,17 @@ class Server:
             return None
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.spk_pool, self.verifier.verify, audio, device)
+
+    def filter_state(self, device: str | None) -> str:
+        """Why the filter can or cannot work on this socket: "on", "no-print" (this device has none), "off"."""
+        v = self.verifier
+        if not v:
+            return "off"
+        try:
+            return "on" if v.has_print(device) else "no-print"
+        except Exception as e:  # a store it cannot read: as if nothing were enrolled, as today
+            log(f"voice filter off: {type(e).__name__}")
+            return "off"
 
     async def enrol_add(self, enrol, audio: np.ndarray):
         loop = asyncio.get_running_loop()
@@ -190,7 +210,7 @@ class Server:
         ("voiceprint", "delete"): lambda m: {"op": "delete", "device": m.get("device"), "uv": True},
     }
 
-    async def control(self, m: dict) -> dict:
+    async def control(self, m: dict, device: str | None = None) -> dict:
         """An enrolment or voiceprint request; the reply carries its rid. Ops need a voiceprint ticket."""
         t, op = m.get("t"), m.get("op")
         out: dict = {"t": t, "rid": m.get("rid"), "op": op}
@@ -238,7 +258,7 @@ class Server:
                 return {**out, "ok": True, **res}
             if t == "voiceprint" and op == "status":
                 prints = await loop.run_in_executor(self.spk_pool, v.status)
-                return {**out, "ok": True, "prints": prints, "models": v.order}
+                return {**out, "ok": True, "prints": prints, "models": v.order, "filter": self.filter_state(device)}
             if t == "voiceprint" and op == "delete":
                 device = m.get("device")
                 if device != "*" and not VP.valid_device(device):
@@ -274,7 +294,7 @@ class Server:
         log(f"page attached ({peer}, {via})")
         cur: Utterance | None = None
         #: This socket's device (hello): whose print its finals are scored against.
-        conn: dict = {"device": None, "thread": None}
+        conn: dict = {"device": None, "thread": None, "filter": False}
 
         async def send(obj):
             try:
@@ -285,6 +305,16 @@ class Server:
         async def partial(u: Utterance):
             u.partial_busy = True
             try:
+                # The filter on: nothing is decoded before the check has heard enough to speak.
+                if conn["filter"] and not u.enrol and not u.cleared:
+                    try:
+                        spk = await self.verify(u.audio(), conn["device"])
+                    except Exception as e:  # the model failed: exactly as with no filter
+                        log(f"speaker check failed: {type(e).__name__}: {e}")
+                        spk = None
+                    if VP.filter_reason(spk, conn["device"]) or VP.filter_pending(spk, conn["device"]):
+                        return
+                    u.cleared = True
                 text, _lang = await self.decode(u.audio())
             except Exception as e:  # a partial is best effort
                 log(f"partial failed: {e}")
@@ -309,13 +339,38 @@ class Server:
                     return "", "", None
                 return await self.decode_final(heard)
 
+            # The filter on (never an enrolment sentence): the check comes first, and audio it
+            # stops is not transcribed at all. A check that fails lets it through, as today.
+            checked = None
+            if conn["filter"] and self.verifier and not u.enrol:
+                try:
+                    checked = await self.verify(audio, conn["device"])
+                except Exception as e:
+                    log(f"speaker check failed: {type(e).__name__}: {e}")
+                why = VP.filter_reason(checked, conn["device"]) if checked else None
+                if why:
+                    self.filtered += 1
+                    ms = int((time.perf_counter() - t0) * 1000)
+                    await send({
+                        "t": "final", "id": u.id, "text": "", "lang": "", "model": self.engine.model, "ms": ms,
+                        "audioMs": int(len(audio) / RATE * 1000), "endToFinalMs": ms,
+                        "firstPartialMs": u.first_partial_ms,
+                        "speaker": checked, "filtered": {"reason": why, "score": checked.get("score")},
+                    })
+                    log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, filtered {why} "
+                        f"{checked.get('score')} ({self.filtered} filtered)")
+                    return
+
             # The speaker check runs beside the decode (its own thread), on the whole utterance.
-            side = self.enrol_add(enrol, audio) if enrol else self.verify(audio, conn["device"])
+            async def no_check():
+                return checked
+
+            side = self.enrol_add(enrol, audio) if enrol else (no_check() if checked is not None else self.verify(audio, conn["device"]))
             res = await asyncio.gather(text_of(), side, return_exceptions=True)
             if isinstance(res[0], BaseException):
                 await send({"t": "error", "id": u.id, "error": str(res[0])[:200]})
                 return
-            text, lang, auto_lang = res[0]
+            text, lang, auto_lang, *more = res[0]
             spk = None if isinstance(res[1], BaseException) else res[1]
             if isinstance(res[1], BaseException):
                 log(f"speaker check failed: {type(res[1]).__name__}: {res[1]}")
@@ -330,6 +385,8 @@ class Server:
                 "audioMs": int(len(audio) / RATE * 1000),
                 "endToFinalMs": ms,
                 "firstPartialMs": u.first_partial_ms,
+                # The page's silence guard (stt-guard.ts): numbers and the decoder's kind, never text.
+                "signals": {"decoder": getattr(self.engine, "decoder", "ctc"), **(more[0] if more else {})},
             }
             if auto_lang:
                 msg["langAuto"] = auto_lang  # what auto-detect said before the short-utterance pick
@@ -346,10 +403,18 @@ class Server:
                     msg["speakerProof"] = self.attestor.sign(spk, text, uid=u.uid, thread=conn.get("thread"))
                 d = spk["decision"]
                 self.counts[d] = self.counts.get(d, 0) + 1
+                # The filter off: what it would have stopped (a count on his device, and a real
+                # measure of false rejects on his own speech before he turns it on).
+                would = VP.filter_reason(spk, conn["device"]) if not conn["filter"] else None
+                if would:
+                    self.would_filter += 1
+                    msg["wouldFilter"] = would
                 sc = "-" if spk.get("score") is None else f"{spk['score']:.3f}"
                 why = f" {spk['reason']}" if spk.get("reason") else ""
                 c = self.counts
                 tag = f", spk {d} {sc}{why} (me {c['me']} other {c['other']} unknown {c['unknown']})"
+                if would:
+                    tag += f", would filter ({self.would_filter})"
             await send(msg)
             picked = f", lang {auto_lang}->{lang}" if auto_lang else ""
             log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars{picked}{tag}")
@@ -406,8 +471,13 @@ class Server:
                     conn["device"] = d if VP.valid_device(d) else None
                     th = m.get("thread")
                     conn["thread"] = th if isinstance(th, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", th) else None
+                elif t == "filter":
+                    # The page says on or off (docs/local-stt.md, "Only my voice"); no message, no filter.
+                    conn["filter"] = m.get("on") is True and self.verifier is not None
+                    log(f"voice filter {'on' if conn['filter'] else 'off'} ({conn['device']})")
+                    await send({"t": "filter", "on": conn["filter"]})
                 elif t in ("enrol", "voiceprint"):
-                    await send(await self.control(m))
+                    await send(await self.control(m, conn["device"]))
                 elif t == "cancel" and cur is not None and cur.id == uid:
                     cur.done = True
                     cur = None

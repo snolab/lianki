@@ -643,6 +643,173 @@ describe("Keychain and browser, with the Mac faked", () => {
   });
 });
 
+describe("chat (your own thread, with a chat token)", () => {
+  const chatServer = (seen: Call[]) => ({
+    "POST /api/version/chat": (c: Call) => {
+      seen.push(c);
+      if (c.auth !== `Bearer ${TOKEN}`) return json({ ok: false, error: "unknown" }, 401);
+      if (c.body.op === "say") return json({ ok: true, id: "m1", lane: "codex" });
+      if (c.body.op === "ask") return json({ ok: true, id: "m2", askId: "a1", lane: "codex" });
+      if (c.body.op === "read")
+        return json({
+          ok: true,
+          thread: "owner",
+          lane: "codex",
+          messages: [{ id: "m1", from: "agent", label: "codex", text: "【codex】hi", at: 0 }],
+        });
+      return json({ ok: false, error: "bad request" }, 400);
+    },
+  });
+
+  /** A WebSocket that plays the hub: ready after the token, then asked and answered. */
+  function fakeWs(sent: unknown[], opts: { refuse?: string } = {}) {
+    return class {
+      onopen?: () => void;
+      onmessage?: (e: { data: string }) => void;
+      onclose?: (e: { code: number; reason: string }) => void;
+      onerror?: () => void;
+      constructor(public url: string) {
+        queueMicrotask(() => this.onopen?.());
+      }
+      send(s: string) {
+        const m = JSON.parse(s);
+        sent.push(m);
+        const reply = (x: unknown) =>
+          queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(x) }));
+        if (m.type === "auth") {
+          if (opts.refuse) return reply({ type: "error", error: opts.refuse });
+          reply({ type: "ready", lane: "codex", thread: "owner" });
+          reply({
+            type: "chat",
+            message: { id: "x", from: "owner", label: "", text: "live", at: 0 },
+          });
+        }
+        if (m.type === "ask") {
+          reply({ type: "asked", id: "m2", askId: "a9" });
+          reply({
+            type: "answered",
+            askId: "other",
+            labels: { q1: ["No"] },
+            answer: { choices: {} },
+          });
+          reply({
+            type: "answered",
+            askId: "a9",
+            labels: { q1: ["Yes"] },
+            answer: { choices: { q1: ["o1"] }, at: 5 },
+          });
+        }
+      }
+      close() {}
+    };
+  }
+
+  test("say posts to the chat endpoint with the token, never in the URL", async () => {
+    const seen: Call[] = [];
+    const h = harness({ env, server: chatServer(seen) });
+    const r = await h.run("chat", "say", "PR", "#12", "is", "green", "--json");
+    expect(r.code).toBe(0);
+    expect(envelope(r.out)).toMatchObject({
+      ok: true,
+      command: "chat say",
+      data: { id: "m1", lane: "codex" },
+    });
+    expect(seen[0]!.body).toEqual({ op: "say", text: "PR #12 is green" });
+    expect(seen[0]!.query).toBe("");
+    expect((await h.run("chat", "say", "fyi", "--quiet")).out).toBe("sent m1 as 【codex】");
+    expect(seen[1]!.body.quiet).toBe(true);
+  });
+
+  test("say - reads the line from stdin (yargs alone drops a bare -)", async () => {
+    const seen: Call[] = [];
+    const h = harness({ env, server: chatServer(seen), stdin: "  -starts with a dash\n" });
+    expect((await h.run("chat", "say", "-")).code).toBe(0);
+    expect(seen[0]!.body).toEqual({ op: "say", text: "-starts with a dash" });
+    expect((await h.run("chat", "say", "--quiet", "-")).code).toBe(0);
+    expect(seen[1]!.body).toMatchObject({ text: "-starts with a dash", quiet: true });
+    const both = await h.run("chat", "say", "-", "extra");
+    expect(both.code).not.toBe(0);
+    expect(seen).toHaveLength(2);
+  });
+
+  test("read and ask without --wait", async () => {
+    const seen: Call[] = [];
+    const h = harness({ env, server: chatServer(seen) });
+    const r = await h.run("chat", "read", "--limit", "5", "--json");
+    expect(envelope(r.out).data.messages[0].text).toBe("【codex】hi");
+    expect(seen[0]!.body).toEqual({ op: "read", limit: 5 });
+    const a = await h.run(
+      "chat",
+      "ask",
+      "--q",
+      "Ship it?",
+      "--opt",
+      "Yes",
+      "--opt",
+      "No",
+      "--recommend",
+      "1",
+      "--json",
+    );
+    expect(envelope(a.out).data).toMatchObject({ askId: "a1", answer: null });
+    expect(seen[1]!.body).toEqual({
+      op: "ask",
+      question: "Ship it?",
+      options: [{ label: "Yes", recommended: true }, { label: "No" }],
+    });
+    expect((await h.run("chat", "ask", "--opt", "Yes")).code).toBe(1);
+  });
+
+  test("ask --wait: the token goes in the socket's first message; prints the tapped answer", async () => {
+    const sent: any[] = [];
+    const h = harness({ env });
+    (h.deps as any).WebSocket = fakeWs(sent);
+    const r = await h.run(
+      "chat",
+      "ask",
+      "--q",
+      "Ship it?",
+      "--opt",
+      "Yes",
+      "--opt",
+      "No",
+      "--wait",
+    );
+    expect(r.code).toBe(0);
+    expect(r.out).toBe("Yes");
+    expect(sent[0]).toEqual({ type: "auth", token: TOKEN });
+    expect(sent[1]).toMatchObject({ type: "ask", question: "Ship it?" });
+  });
+
+  test("listen streams lines; a refused token exits 2 with the reason", async () => {
+    const sent: any[] = [];
+    const h = harness({ env });
+    (h.deps as any).WebSocket = fakeWs(sent, { refuse: "scope" });
+    const r = await h.run("chat", "listen", "--json");
+    expect(r.code).toBe(2);
+    expect(envelope(r.err).error.code).toBe("auth_refused");
+    expect(envelope(r.err).error.message).toContain("scope");
+  });
+
+  test("a 403 scope refusal over HTTP names the permission problem", async () => {
+    const h = harness({
+      env,
+      server: { "POST /api/version/chat": () => json({ ok: false, error: "scope" }, 403) },
+    });
+    const r = await h.run("chat", "say", "x", "--json");
+    expect(r.code).toBe(2);
+    expect(envelope(r.err).error).toMatchObject({ code: "auth_refused" });
+    expect(envelope(r.err).error.hint).toContain("permission");
+  });
+
+  test("there is no eval, pair or grant command", async () => {
+    const h = harness({ env });
+    for (const c of ["eval", "pair", "grant", "serve"])
+      expect((await h.run("chat", c)).code).toBe(1);
+    expect((await h.run("eval", "1+1")).code).toBe(1);
+  });
+});
+
 test("no command ever printed a token", () => {
   for (const line of printed) {
     expect(line).not.toContain(TOKEN);

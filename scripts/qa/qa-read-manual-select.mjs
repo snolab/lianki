@@ -5,8 +5,8 @@
 //
 //   QA_BASE=http://localhost:3417 bun scripts/qa/qa-read-manual-select.mjs [outDir]
 //
-// Against a local server on D1 with `read.reader-v2` on in the LOCAL D1 (the
-// review and 制卡 need the reader's backend). Throwaway accounts and the
+// Against a local server on D1 (the review and 制卡 need the reader's
+// backend). Throwaway accounts and the
 // public-domain fixture EPUB only:
 //
 // - a selection over two paragraphs, starting and ending inside words, gives
@@ -78,11 +78,11 @@ async function open(ctx) {
   const page = await ctx.newPage();
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
-  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
+  await page.waitForURL(/\/reader\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   // The word map (marks on the words): 制卡 counts need it.
@@ -195,7 +195,7 @@ async function rangeCard(page, ctx, sel, tag) {
   const link = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
   const want = `#r=${sel.first.line}.${sel.first.t}-${sel.last.line}.${sel.last.t}`;
   check(
-    new RegExp(`/read/[0-9a-f]{16}${want.replace(/\./g, "\\.")}$`).test(link),
+    new RegExp(`/reader/[0-9a-f]{16}${want.replace(/\./g, "\\.")}$`).test(link),
     `the link names the range (${link}; want ${want}; ${status})`,
   );
 
@@ -229,7 +229,7 @@ async function rangeCard(page, ctx, sel, tag) {
 async function deepLink(ctx, link, tag) {
   const u = new URL(link);
   const page = await ctx.newPage();
-  await page.goto(`${u.pathname}?reader=v2${u.hash}`, { waitUntil: "load" });
+  await page.goto(`${u.pathname}${u.hash}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   const ok = await until(page, async () => (await card(page))?.kind === "range", 8000);
   check(ok, "the range link opens its card");

@@ -17,6 +17,8 @@
 | ---- | ------- |
 | `app/page.tsx` | Landing page |
 | `app/(app)/list/page.tsx` | Note listing — the page cards, named **LiCards** (zh 链卡) in the UI |
+| `app/(app)/reader/` | The reader: `/reader` (the books list) and `/reader/<id>` (a book, `ReaderV2.tsx`); the old `/read` 308s here (`lib/moved-routes.ts`). Its API stays `/api/read/**` |
+| `lib/moved-routes.ts` | Pages that moved (docs/url-principles.md): `middleware.ts` 308s the old path; pins and recent pages are moved on read (`movedHref`) |
 | `lib/app-locale.ts` | `?lang=` locale helpers + APP_ROUTES |
 | `app/fsrs.ts` | Core FSRS handler logic |
 | `app/db.ts` | MongoDB client |
@@ -30,7 +32,8 @@
 | `scripts/ship.ts` | Land a commit on `main` |
 | `packages/lianki-cli/` | The npm package `lianki` (`bunx lianki`): plain ESM CLI, published by `publish-cli.yml` on a `lianki-cli-v*` tag (docs/shipping.md) |
 | `packages/desktop/` | Windows desktop shell — Tauri 2 window around lianki.com (`README.md` there) |
-| `.github/workflows/ci.yml` | Typecheck + unit, qa:all |
+| `.github/workflows/ci.yml` | lint + typecheck + unit (every PR); qa:all (merge queue); the required `Typecheck + unit` gate |
+| `scripts/gate/affected.ts` | pre-push selection: only the unit tests and qa suites a change reaches (docs/shipping.md, "Only what changed") |
 | `.github/workflows/deploy.yml` | CI/CD to Vercel |
 
 ## Userscript

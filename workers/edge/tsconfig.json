@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "plugins": [],
+    "paths": {
+      "@/*": ["../../*"],
+      "@lianki/core": ["../../packages/core/src/index.ts"],
+      "@lianki/core/*": ["../../packages/core/src/*.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "vite.config.ts", "../../types/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

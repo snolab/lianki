@@ -17,7 +17,9 @@ import {
   type ProgressEntry,
   type ProgressEvent,
   applyProgressMessage,
+  PROGRESS_STATS_TTL_MS,
   autoNode,
+  checkTaskTitle,
   filterWaiting,
   foldProgress,
   mergeProgress,
@@ -25,14 +27,16 @@ import {
   parseProgressReport,
   parseTtl,
   progressAgo,
+  progressDone,
   progressEvent,
+  progressStats,
   progressLabel,
   progressSlug,
   progressTodo,
   waitBadge,
 } from "@/lib/progress";
 import { mintProgressToken, verifyProgressToken } from "@/lib/progress-token";
-import { parseProgressArgs } from "@/scripts/dev/progress-args";
+import { formatStats, parseProgressArgs } from "@/scripts/dev/progress-args";
 
 const ROOT = "root-secret";
 
@@ -202,6 +206,8 @@ describe("parseProgressReport", () => {
       pr: 3,
       needs: "",
       eta: "5m",
+      // A duration: the hub adds it to its own clock (etaAt).
+      etaIn: 300_000,
       link: "https://x",
     });
     expect(ok({ id: "/words/prefetch", kind: "feedback" })).toMatchObject({
@@ -642,5 +648,123 @@ describe("lianki-push progress routes", () => {
     expect(await go(U, { headers: ws }, env(true))).toBe("200 p");
     expect(seen.at(-1)!.headers.get(PROGRESS_OWNER_HEADER)).toBe("1");
     expect(progressGate(new Request(U), ROOT)!.status).toBe(401);
+  });
+});
+
+describe("task titles: name: description", () => {
+  it("checks the name before the colon, counting characters, not bytes", () => {
+    expect(checkTaskTitle("Swipe fix: the card snaps back")).toEqual({});
+    expect(checkTaskTitle("标题格式：progress.ts 校验")).toEqual({});
+    // 20 CJK characters (60 bytes) and an emoji with a modifier are within the limit.
+    expect(checkTaskTitle(`${"字".repeat(20)}: x`)).toEqual({});
+    expect(checkTaskTitle(`${"👍🏽".repeat(20)}: x`)).toEqual({});
+    expect(checkTaskTitle(`${"字".repeat(21)}: x`)).toBeInstanceOf(Error);
+    expect(checkTaskTitle(": no name")).toBeInstanceOf(Error);
+    expect(checkTaskTitle("   ：no name")).toBeInstanceOf(Error);
+    const long = checkTaskTitle("this is a very long name part: then the rest");
+    expect(long).toBeInstanceOf(Error);
+    expect((long as Error).message).toContain("e.g.");
+    // No colon: short is fine, long is taken with a warning.
+    expect(checkTaskTitle("Native swipe")).toEqual({});
+    expect(checkTaskTitle("A long title with no separator at all")).toMatchObject({
+      warning: expect.stringContaining("name: description"),
+    });
+  });
+  it("refuses a bad name in the CLI and warns on a long bare title", () => {
+    const base = ["--agent", "a", "--status", "doing", "--task"];
+    expect(parseProgressArgs([...base, "x".repeat(21) + ": y"])).toBeInstanceOf(Error);
+    expect(parseProgressArgs([...base, "Ship: it"])).not.toHaveProperty("warning");
+    expect(parseProgressArgs([...base, "Ship the whole thing to production"])).toMatchObject({
+      cmd: "report",
+      warning: expect.stringContaining("ETA bar"),
+    });
+  });
+  it("parses stats", () => {
+    expect(parseProgressArgs(["stats"])).toEqual({ cmd: "stats", since: 7 * 86_400_000 });
+    expect(parseProgressArgs(["stats", "--agent", "w", "--since", "2d", "--token", "t"])).toEqual({
+      cmd: "stats",
+      agent: "w",
+      since: 2 * 86_400_000,
+      token: "t",
+    });
+    expect(parseProgressArgs(["stats", "--since", "soon"])).toBeInstanceOf(Error);
+  });
+});
+
+describe("task timing (agents' ETA calibration)", () => {
+  const r = (b: Record<string, unknown>) => {
+    const x = parseProgressReport({ agent: "a", task: "T: t", id: "/x/t", status: "doing", ...b });
+    if (x instanceof Error) throw x;
+    return x;
+  };
+  it("keeps start, end, the first estimate and the number of revisions", () => {
+    const e1 = mergeProgress(undefined, r({ status: "waiting" }), 1000);
+    expect(e1.startedAt).toBeUndefined();
+    const e2 = mergeProgress(e1, r({ eta: "30m" }), 2000);
+    expect(e2).toMatchObject({ startedAt: 2000, estimateMs: 1_800_000, etaRevisions: 0 });
+    const e3 = mergeProgress(e2, r({ eta: "10m" }), 3000);
+    expect(e3).toMatchObject({ startedAt: 2000, estimateMs: 1_800_000, etaRevisions: 1 });
+    const e4 = mergeProgress(e3, r({ note: "no eta" }), 4000);
+    expect(e4.etaRevisions).toBe(1);
+    const done = mergeProgress(e4, r({ status: "done" }), 2000 + 3_600_000);
+    expect(done.endedAt).toBe(2000 + 3_600_000);
+    expect(mergeProgress(done, r({ status: "done" }), 9e6).endedAt).toBe(2000 + 3_600_000);
+    expect(mergeProgress(done, r({}), 9e6).endedAt).toBeUndefined();
+    expect(progressDone(done)).toEqual({
+      at: 2000 + 3_600_000,
+      agent: "a",
+      id: "/x/t",
+      title: "T: t",
+      estimateMs: 1_800_000,
+      actualMs: 3_600_000,
+      revisions: 1,
+    });
+    // An ISO time is an estimate from when it was given; free text is none.
+    const iso = mergeProgress(undefined, r({ etaAt: 61_000 }), 1000);
+    expect(iso.estimateMs).toBe(60_000);
+    expect(mergeProgress(undefined, r({ eta: "after CI" }), 1000).estimateMs).toBeUndefined();
+  });
+  it("sums per agent with the median ratio", () => {
+    const d = (agent: string, at: number, est: number | undefined, actual: number) => ({
+      at,
+      agent,
+      id: `/x/${at}`,
+      title: "t",
+      actualMs: actual,
+      revisions: 0,
+      ...(est ? { estimateMs: est } : {}),
+    });
+    const recs = [d("a", 1, 10, 20), d("a", 2, 10, 10), d("a", 3, 10, 40), d("a", 4, 10, 30)];
+    const all = progressStats([...recs, d("b", 5, undefined, 5)]);
+    expect(all.map((s) => [s.agent, s.done, s.estimated, s.medianRatio])).toEqual([
+      ["a", 4, 4, 2.5],
+      ["b", 1, 0, undefined],
+    ]);
+    expect(progressStats(recs, { since: 3 })[0]!.medianRatio).toBe(3.5);
+    expect(progressStats(recs, { agent: "b" })).toEqual([]);
+    expect(formatStats(all)).toContain("a: 4 done, 4 estimated, median ×2.50");
+    expect(formatStats([])).toContain("no done tasks");
+  });
+  it("the hub logs each done task for 30 days and serves it at /stats", async () => {
+    const h = setup();
+    await h.write(ROOT, { agent: "w", id: "/x/a", task: "A: a", eta: "10m" });
+    h.tick(20 * 60_000);
+    await h.write(ROOT, { agent: "w", id: "/x/a", task: "A: a", status: "done" });
+    await h.write(ROOT, { agent: "w", id: "/x/a", task: "A: a", status: "done" });
+    expect(h.entry("/x/a")).toMatchObject({ estimateMs: 600_000, endedAt: h.now() });
+    await h.write(ROOT, { agent: "w", id: "/@owner/q", task: "Q: q", ref: "/x/a" });
+    await h.call("/resolve", ROOT, { id: "/@owner/q" });
+    const got = await h.call("/stats", ROOT, undefined, "GET");
+    expect(got.body.done).toMatchObject([
+      { agent: "w", id: "/x/a", estimateMs: 600_000, actualMs: 1_200_000, revisions: 0 },
+      { id: "/@owner/q" },
+    ]);
+    // Not part of the page's snapshot.
+    const ws = await h.reader();
+    expect(ws.sent[0]).not.toHaveProperty("done");
+    h.tick(PROGRESS_STATS_TTL_MS + 1);
+    expect((await h.call("/stats", ROOT, undefined, "GET")).body.done).toEqual([]);
+    await h.write(ROOT, { agent: "w", id: "/x/b", task: "B: b", status: "done" });
+    expect([...h.storage.store.keys()].filter((k) => k.startsWith("d:"))).toHaveLength(1);
   });
 });

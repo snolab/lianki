@@ -1,3 +1,5 @@
+import { canonicalEmail } from "@/lib/canonical-email";
+
 type RateLimitState = {
   count: number;
   resetAt: number;
@@ -69,4 +71,12 @@ export function checkRateLimit(key: string, options: RateLimitOptions): RateLimi
     remaining: Math.max(0, options.max - existing.count),
     retryAfterMs: Math.max(0, existing.resetAt - now),
   };
+}
+
+/**
+ * The key for a per-person limit: the email in canonical form
+ * (lib/canonical-email.ts), so dot and +tag variants of one mailbox share it.
+ */
+export function personKey(prefix: string, email: string): string {
+  return `${prefix}:${canonicalEmail(email)}`;
 }

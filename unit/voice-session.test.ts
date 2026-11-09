@@ -543,10 +543,14 @@ function cloudHarness(
     mode?: "speech" | "cloud";
     status?: (text: string) => number;
     hasVoice?: (lang: string) => boolean;
+    /** Device voices by name (a line's `device:<name>`). */
+    devices?: string[];
   } = {},
 ) {
   const h0 = { t: 0 };
   const el = new FakeEl();
+  /** The ElevenLabs preview element (never routed through the context). */
+  const pel = new FakeEl();
   const g = fakeGain();
   const ctx = {
     currentTime: 0,
@@ -569,11 +573,12 @@ function cloudHarness(
       };
     },
     element: () => el,
+    plain: () => pel,
     ctx: () => ctx,
     toUrl: (b) => `blob:${(b as Blob).size}`,
     revoke: () => {},
   });
-  const spoken: (UtterLike & { lang: string })[] = [];
+  const spoken: (UtterLike & { lang: string; pick?: unknown; voice?: unknown })[] = [];
   let cancels = 0;
   const timers: { f: () => void; ms: number; live: boolean }[] = [];
   const logs: Record<string, unknown>[] = [];
@@ -584,8 +589,9 @@ function cloudHarness(
       speak: (u) => void spoken.push(u as UtterLike & { lang: string }),
       cancel: () => void cancels++,
     }),
-    utter: (text, lang) =>
-      ({ text, lang, onend: null, onerror: null, onboundary: null }) as UtterLike,
+    utter: (text, lang, voice, pick) =>
+      ({ text, lang, voice, pick, onend: null, onerror: null, onboundary: null }) as UtterLike,
+    hasDeviceVoice: (name) => (o.devices ?? []).includes(name),
     enabled: () => true,
     here: () => false,
     cloud: () => cloud,
@@ -620,6 +626,7 @@ function cloudHarness(
   return {
     v,
     el,
+    pel,
     g,
     ctx,
     fetched,
@@ -1124,5 +1131,107 @@ describe("voice session: never silent without saying so (Android, no speechSynth
     v.unblock();
     expect(spoken.map((u) => u.text)).toEqual(["Hello.", "Hello."]);
     expect(v.state().blocked).toBe(false);
+  });
+});
+
+describe("voice session: a line's own voice (voices.ts parseLineVoice)", () => {
+  const JESSICA = "cgSgspJ2msm6clMCkdW9";
+
+  it("device:<name> the device has: speechSynthesis in that voice, even in cloud mode", async () => {
+    const h = cloudHarness({ mode: "cloud", devices: ["Meijia"] });
+    h.v.setMic(true);
+    h.v.reply("你好。", { voice: "device:Meijia" });
+    await tick();
+    expect(h.fetched).toEqual([]);
+    expect(h.spoken[0]).toMatchObject({ text: "你好。", pick: { kind: "device", name: "Meijia" } });
+    expect(h.logs.find((l) => l.ev === "voice-out")).toMatchObject({
+      out: "speech",
+      pick: "device",
+    });
+  });
+
+  it("device:<name> the device lacks: the usual route and voice, never silence", async () => {
+    const h = cloudHarness({ mode: "cloud", devices: [] });
+    h.v.setMic(true);
+    h.v.reply("你好。", { voice: "device:Nobody" });
+    await h.loaded();
+    expect(h.spoken).toEqual([]);
+    expect(h.el.plays).toHaveLength(1);
+    expect(h.fetched[0]).toContain("/api/words/tts?lang=zh&");
+    expect(h.fetched[0]).not.toContain("speaker=");
+    expect(h.logs.find((l) => l.ev === "voice-out")).toMatchObject({
+      pick: "device",
+      missing: true,
+    });
+  });
+
+  it("aura:<speaker> goes to the cloud with that speaker even in speech mode, in its language", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: () => true });
+    h.v.setMic(true);
+    h.v.reply("Hello there.", { voice: "aura:thalia" });
+    await h.loaded();
+    expect(h.spoken).toEqual([]);
+    expect(h.fetched[0]).toContain("lang=en&");
+    expect(h.fetched[0]).toContain("speaker=thalia");
+    expect(h.el.plays).toHaveLength(1);
+    expect((h.el as unknown as { playbackRate?: number }).playbackRate).toBe(1);
+  });
+
+  it("melo:<lang> asks for that language's one voice, no speaker", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: () => true });
+    h.v.setMic(true);
+    h.v.reply("こんにちは。", { voice: "melo:ja" });
+    await h.loaded();
+    expect(h.fetched[0]).toContain("/api/words/tts?lang=ja&");
+    expect(h.fetched[0]).not.toContain("speaker=");
+    expect(h.el.plays).toHaveLength(1);
+  });
+
+  it("eleven:<id> plays the public preview on its own element, straight from ElevenLabs", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: () => true });
+    h.v.setMic(true);
+    h.v.reply("Try Jessica. She is cute.", { voice: `eleven:${JESSICA}` });
+    await tick();
+    expect(h.fetched).toEqual([]);
+    expect(h.el.plays).toEqual([]);
+    expect(h.pel.plays).toHaveLength(1);
+    expect(h.pel.plays[0]!.src).toStartWith(
+      `https://storage.googleapis.com/eleven-public-prod/premade/voices/${JESSICA}/`,
+    );
+    expect(h.v.state().queued).toBe(1);
+    h.pel.onended?.();
+    expect(h.v.state().queued).toBe(0);
+  });
+
+  it("eleven:<id> refused (no tap yet): the line is read in its lane's voice instead", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: () => true });
+    h.pel.refuse = true;
+    h.v.setMic(true);
+    h.v.reply("One. Two.", { voice: `eleven:${JESSICA}` });
+    await tick();
+    await tick();
+    expect(h.spoken.map((u) => u.text)).toEqual(["One."]);
+    expect(h.spoken[0]!.pick).toBeUndefined();
+    expect(h.logs.find((l) => l.out === "eleven")).toMatchObject({ route: "lane" });
+    h.spoken[0]!.onend?.();
+    expect(h.spoken.map((u) => u.text)).toEqual(["One.", "Two."]);
+  });
+
+  it("the same words in another voice are read again (a demo), a re-delivery is not", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: () => true });
+    h.v.setMic(true);
+    expect(h.v.reply("Hi.", { voice: "main" })).toBe(true);
+    expect(h.v.reply("Hi.", { voice: "calm" })).toBe(true);
+    expect(h.v.reply("Hi.", { voice: "calm" })).toBe(false);
+    expect(h.v.state().queued).toBe(2);
+  });
+
+  it("an id the parser refuses is no voice of its own: the lane's", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: () => true });
+    h.v.setMic(true);
+    h.v.reply("Hello.", { voice: "aura:nope" });
+    await tick();
+    expect(h.spoken[0]).toMatchObject({ text: "Hello.", pick: undefined });
+    expect(h.fetched).toEqual([]);
   });
 });

@@ -1,6 +1,8 @@
 # Framework migration: off Next.js, without a rewrite branch
 
-Status: **plan, nothing built** (2026-10-31). Owner request, Slack
+Status: **plan; the backend half of the spike is done, its numbers are in
+section 8** (2026-11-06). Nothing in production changed and no step after the
+spike has started; the owner decides from those numbers. Owner request, Slack
 2026-10-31 00:54–00:55 JST: development speed matters most. If Next.js slows
 it down, move to a freer framework such as Vite, and get out of vendor
 lock-in.
@@ -45,7 +47,7 @@ pages end up on. That makes it the no-regret move.
 | `next/dynamic`                                                                          | 1                                           | `React.lazy`                                                                           |
 | `"use server"` server actions                                                           | 2 (`list/actions.ts`, `sign-in/actions.ts`) | a POST endpoint or an RR7 `action`                                                     |
 | `middleware.ts` (www→apex, `/cn`→`/zh`, legacy `/ja/list`, the locale header, intlayer) | 1                                           | Hono middleware. The logic is already plain TypeScript in `lib/app-locale.ts`          |
-| `better-auth/next-js` (`nextCookies`, `toNextJsHandler`)                                | 2                                           | `auth.handler(request)`. `nextCookies` only exists for server actions                  |
+| `better-auth/next-js` (`nextCookies`, `toNextJsHandler`)                                | 2                                           | `auth.handler(request)`. Route handlers must forward `Set-Cookie` themselves (section 8) |
 | Route handlers `app/**/route.ts`                                                        | 54                                          | Hono routes. Most bodies are already `Request → Response`                              |
 | Pages / layouts                                                                         | 37 / 4                                      | thin: the 37 `(app)` page files total 982 lines, and each one wraps a client component |
 | `"use client"` components                                                               | 77                                          | move unchanged                                                                         |
@@ -134,8 +136,9 @@ Scores run from ★ (poor) to ★★★ (good).
   for alternates.
 - **Auth.** better-auth mounts in Hono on the same D1 tables, with the same
   secret and cookie. A session made by Next is valid on the new Worker and
-  the other way round, which is what lets the two coexist. `nextCookies` goes
-  once the two server actions are ported.
+  the other way round, which is what lets the two coexist (proved locally in
+  section 8). `nextCookies` also writes session cookies from route handlers,
+  so a ported route forwards them with `returnHeaders: true`.
 - **Cold start.** The API Worker carries no Next runtime, which is most of
   `handler.mjs`. The cf-native Worker was 373 KiB gzipped. Heavy dependencies
   (better-auth, the AI SDKs, jszip) stay behind `import()`, as #239 did.
@@ -276,3 +279,164 @@ changes nothing in production.
 Go if the phone HMR is at least as fast as Next's and the cold start is
 clearly lower. Then phase 1 starts with `/api/fsrs`. If not, fall back to D:
 keep Next and move only the hot API paths to small Workers.
+
+## 8. Spike results: backend only (2026-11-06 JST)
+
+The owner approved steps 1 and 2 and the cold-start measurements, and nothing
+else. Steps 3 and the phone numbers were skipped on purpose. `workers/edge` is
+in the repo, and it has no zone route and no place in `deploy-worker.yml`.
+
+**Result: the cold-start half of the go test passes.** A new isolate answered
+about 8 times sooner than the OpenNext bundle under the same test, and the port
+matched the Next route on everything a client reads. The numbers leave out D1
+and the MAIN hop (see "What these numbers do not say").
+
+### Size
+
+From `wrangler deploy --dry-run`, the size Cloudflare counts:
+
+| Worker                             | upload    | gzip     |
+| ---------------------------------- | --------- | -------- |
+| `lianki-edge` (one route + auth)   | 2,331 KiB | 500 KiB  |
+| `lianki` (OpenNext, today's build) | 35,022 KiB | 7,379 KiB |
+
+Of the edge's 2.3 MB, 59 KB is the entry that every request loads; the rest,
+better-auth above all, loads on the first request with a session cookie. The
+edge carries one route, so it will grow as routes move. The main Worker has
+grown too: section 1 says ~23 MB, and its `handler.mjs` is now 26.7 MB.
+
+### Cold time to first byte, on Cloudflare
+
+`curl` from the owner's Mac to Cloudflare's Tokyo colo, on a new connection each
+time, so each figure includes about 25–55 ms of TLS. A deploy replaces the
+isolates, so each sample was a new deploy, a 20 s wait, then the first request.
+Six samples per row. `bun scripts/measure-cold.ts`.
+
+| Request                  | `lianki-edge`, new isolate | `lianki-edge`, proved warm | OpenNext bundle, first request after a deploy |
+| ------------------------ | -------------------------- | -------------------------- | --------------------------------------------- |
+| guest (401)              | **172 ms** (136–320)       | 77 ms (71–90)              | **1,438 ms** (1,237–3,652)                    |
+| forged session cookie\*  | **247 ms** (198–409)       | 83 ms (66–180)             | **1,893 ms** (1,265–2,595)                    |
+
+\* It loads and builds better-auth and stops at the first D1 query, with a 500,
+because no D1 is bound. It is the code's cost without D1's time.
+
+- **The two Workers were deployed for this and deleted afterwards**
+  (`lianki-edge-spike`, `lianki-edge-spike-control`, on workers.dev). Neither
+  had a production binding, a secret, a tail consumer or a route. The control is
+  the same OpenNext bundle `lianki` deploys, with every binding removed.
+- **The edge's new isolates are proved:** it reports its own request count
+  (`x-spike-isolate-requests: 1`) in all 12 samples. The control can't report
+  it, so its isolates are inferred from the timing. After it had settled, it
+  answered in 50–114 ms (6 requests), so the 1.2–3.7 s is the cold start.
+- **It agrees with production and with section 1.** Six guest requests to
+  `lianki.com/api/preferences` from the same Mac: four took 1,131–1,307 ms and
+  two took 62–74 ms.
+- **New isolates are common.** Only 2–5 of the 10 requests after each first one
+  proved warm on the edge; the rest also landed on a new isolate. That was right
+  after a deploy with no other traffic, so it doesn't give a production rate, but
+  it is why the control's own "warm" column read about 1.1 s and is left out.
+- Wrangler's "Worker Startup Time" was 1–6 ms for the edge and 13–27 ms for the
+  control. That figure misses nearly all of the control's 1.3 s, so don't judge a
+  cold start by it. An earlier edge run of six samples per kind gave 184 and 332 ms.
+
+### The port against the Next route
+
+`bun scripts/compare-local.ts` (and `--preview` for the production build) runs
+both Workers locally on one throwaway D1 with one `AUTH_SECRET`. Every session
+is made by the Next Worker. All of these match on status, body bytes and
+`Set-Cookie`, against `vite dev` and against the build:
+
+guest (also HEAD, a query string, a trailing slash), forged cookie, signed in
+with no row, signed in with a saved row (written with a POST through the edge
+and MAIN), another user, a corrupt row (500 with the same parse error), an
+expired session, and a session due for a refresh. `qa-worker.mjs` with the edge
+in front of the main Worker: 17/17.
+
+So a Next session is valid on the Hono Worker, and D1 and `lib/repos` work there
+with **no change in `lib/`**: `vite.config.ts` aliases `@opennextjs/cloudflare`
+to a small AsyncLocalStorage (`src/context.ts`), and the Mongo and sqlite stubs
+are the Cloudflare build's own. It ran against local D1 only, never production.
+
+Differences that stay:
+
+- `Set-Cookie` is equal in meaning, not bytes: other attribute order, `SameSite`
+  in another case, and Next adds `Expires` beside `Max-Age`.
+- Next also sends `vary: rsc, next-router-…` and `x-opennext: 1`, and on a 500
+  `cache-control: private, no-cache, no-store, max-age=0, must-revalidate`. The
+  edge does not send these; production's guest 401 has the first two as well.
+
+### Things the spike found
+
+- **`nextCookies` does not only serve server actions**, as this doc used to say.
+  In a route handler it writes better-auth's cookies: it clears a dead session's
+  and rolls one due for a refresh. Without it a port would keep extending the
+  session in D1 while the browser's cookie ran out. The first compare run caught
+  this. Every ported route that reads a session needs `returnHeaders: true`, and
+  it belongs in one helper.
+- **A local `MAIN` binds to whichever `lianki` runs on the machine**, including
+  another checkout's qa:all, so the first compare runs talked to another agent's
+  local Worker (401s; nothing written, nothing remote). `scripts/local.ts` sets a
+  private registry; it takes both `WRANGLER_REGISTRY_PATH` and
+  `MINIFLARE_REGISTRY_PATH`.
+- **The Vite plugin is pinned to 1.64.0**, the last release that matches the
+  root's wrangler 4.151.0 and its patched miniflare. 1.67 wants wrangler ≥ 4.156.
+  `workers/edge` is its own package with its own lockfile, so the root install,
+  and the Worker `lianki` deploys, don't change. The cost: CI doesn't typecheck
+  it (`tsconfig.json` excludes it; `bunx tsgo --noEmit -p workers/edge/tsconfig.json`).
+  Phase 1 should move it into the root and CI.
+- **The doc's reasons for Vite still hold** for the backend: `vite build` takes
+  about 2 s in all, and `vite dev` runs in workerd with real local D1 and the
+  same answers as the build. Packages need aliases, as the linker doesn't put
+  `@lianki/core` in `node_modules`.
+
+### Local numbers
+
+Same Mac, five rounds, machine load 7–10 from other agents, in local workerd. Use
+them to compare the two Workers with each other, not as Cloudflare times.
+`bun scripts/measure-local.ts`.
+
+| Median of 5                                   | spawn to first guest answer | first signed-in request | warm signed-in |
+| --------------------------------------------- | --------------------------- | ----------------------- | -------------- |
+| `lianki-edge` build, `wrangler dev`           | 2,235 ms                    | 56 ms                   | 3 ms           |
+| `lianki` OpenNext build, `wrangler dev`       | 4,162 ms                    | 120 ms                  | 7 ms           |
+| **`vite dev`** (`lianki-edge`)                | **2,017 ms**                | 794 ms (transforms)     | 8 ms           |
+| **`next dev`** (with `CF_BUILD=1 DB_BACKEND=d1`) | **3,594 ms**             | not measured            | not measured   |
+
+So the dev server starts in 2.0 s against 3.6 s, to answer one API route as a
+guest. `next dev` is at its best here: a page's first compile is slower, and
+that wasn't measured. `CF_BUILD=1` is there because the route answers 500 under
+`next dev` otherwise, with `node` linked to Bun (the mongodb driver doesn't
+load). `wrangler check startup`'s CPU profile spans 35 ms for the edge and
+281 ms for `lianki`. Both are local and much smaller than the cold start above.
+
+### What these numbers do not say
+
+- **D1 is in none of the Cloudflare numbers.** A real signed-in cold request adds
+  the session and preference reads. So the phase 1 target of "API cold start under
+  200 ms" looks out of reach for signed-in requests by this measure: the code alone
+  is at 247 ms from the client. Decide whether the target is client-side or
+  inside the Worker.
+- **The MAIN hop was not measured on Cloudflare.** An unported route would pay the
+  edge's isolate plus the main Worker's cold start on the same request. Measuring
+  this needs a deployment bound to `lianki`, which was out of scope.
+- **Not measured:** real sessions on Cloudflare, other colos, phone networks, how
+  often production really hits a new isolate, and the edge's size and cold start
+  with more routes in it. The guess is that the cost grows with what each route
+  eagerly loads.
+- **Six samples, one evening, one location.** Enough for an 8× gap, not for fine
+  comparisons.
+- **Phone HMR and first load**, the owner's main criterion, were skipped by
+  decision, and so was React Router. This result says nothing about pages.
+
+### What it means for the estimate
+
+There are now **110 route files** in `app/api/**` (6,157 lines, 99 import
+`next/server`, 26 `next/headers`). Section 1's 54 was right on 2026-10-31, so it
+has doubled in 6 days. At the
+25–30 agent hours phase 1 assumed for 54, that scales to **50–60 agent hours**.
+The spike neither confirms nor shrinks that: this route took minutes once the
+seam worked, and the seam is reusable, but it was one of the easiest routes. The
+risk sits in `/api/fsrs`, the auth mount, payment webhooks and AI streaming, none
+of them tried. The route count is also moving fast, which is the drift risk
+section 5 warns of. Re-estimate after `/api/fsrs`. The 100–130 total is out of date
+too, by at least the same 25–30 hours.

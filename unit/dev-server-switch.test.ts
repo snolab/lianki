@@ -3,7 +3,8 @@
  * decided on the server for the owner only, one check when the menu opens and
  * no polling, the single-use handoff posted in a form body, and the way back.
  */
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { clearPermissionCache, grantAll } from "./support/grants";
 import { readFileSync } from "node:fs";
 import {
   DEV_SERVER_ORIGIN,
@@ -121,7 +122,7 @@ describe("the entry from the gate page: `to` is a relative path only", () => {
   test("the route is owner-only and lands via the switch, never a token in a URL", () => {
     const page = readFileSync("app/(app)/dev/preview/page.tsx", "utf8");
     expect(page).toContain("notFound()");
-    expect(page).toContain("isOwner(");
+    expect(page).toContain("isDev(");
     expect(page).toContain("safePreviewPath(");
     const client = readFileSync("app/(app)/dev/preview/PreviewEntryClient.tsx", "utf8");
     expect(client).toContain("switchToDevServer(");
@@ -129,14 +130,19 @@ describe("the entry from the gate page: `to` is a relative path only", () => {
   });
 });
 
-const OWNERS = { OWNER_EMAILS: "owner@example.com" };
+const OWNERS = {};
 const labels = () => ({ name: "n", off: "f", checking: "c" });
 
 describe("who gets it (server side)", () => {
+  beforeEach(() => grantAll(["owner@example.com"]));
+  afterAll(() => clearPermissionCache());
+
   test("guests and other users: nothing at all, not even the strings", () => {
     expect(devSwitchFor(null, labels, OWNERS)).toBeUndefined();
     expect(devSwitchFor("friend@example.com", labels, OWNERS)).toBeUndefined();
-    expect(devSwitchFor("owner@example.com", labels, { OWNER_EMAILS: "" })).toBeUndefined();
+    clearPermissionCache();
+    expect(devSwitchFor("owner@example.com", labels, OWNERS)).toBeUndefined();
+    grantAll(["owner@example.com"]);
     let asked = 0;
     devSwitchFor("friend@example.com", () => (asked++, labels()), OWNERS);
     expect(asked).toBe(0); // the strings are never even looked up for them
@@ -156,7 +162,7 @@ describe("who gets it (server side)", () => {
     const layout = readFileSync(new URL("../app/(app)/layout.tsx", import.meta.url), "utf8");
     expect(layout).toMatch(/devSwitch=\{devSwitchFor\(\s*user\?\.email,/);
     const shell = readFileSync(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8");
-    expect(shell).not.toMatch(/isOwner|OWNER_EMAILS/);
+    expect(shell).not.toMatch(/isOwner|site_role/);
   });
 });
 

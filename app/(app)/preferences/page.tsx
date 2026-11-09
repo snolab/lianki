@@ -3,7 +3,13 @@ import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import PreferencesClient from "./PreferencesClient";
 import { appLocale } from "@/lib/app-locale.server";
-import { authEmail } from "@/app/signInEmail";
+import { authUserOrNull } from "@/app/signInEmail";
+import { ByokSettings } from "@/app/components/ByokSettings";
+import { readFlags } from "@/lib/flags-store";
+import { flagIn } from "@/lib/flags";
+import { isDev } from "@/lib/permissions";
+import { vibeAllowed } from "@/lib/vibe/gate";
+import { VibeRetention } from "../vibe/VibeRetention";
 
 export const dynamic = "force-dynamic";
 
@@ -18,15 +24,28 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function PreferencesPage() {
-  // Auth guard, not a leftover: authEmail() redirects guests to /sign-in.
-  // Without it PreferencesClient mounts for guests and 401s on /api/preferences.
-  await authEmail();
+  // Guests get only what needs no account: "Your own AI" in browser-only mode
+  // (docs/byok.md; syncing it needs a free account). PreferencesClient is for
+  // signed-in users only: it would 401 on /api/preferences.
+  const user = await authUserOrNull();
+  if (!user?.email)
+    return (
+      <div className="mx-auto max-w-4xl p-8">
+        <ByokSettings signedIn={false} />
+      </div>
+    );
+  // The API key's account sync (managed mode) is only drawn, disabled, behind
+  // `byok.sync`; the owner sees it while it is off (docs/byok.md).
+  const flags = await readFlags();
+  const showKeySync = isDev(user.email) || flagIn(flags, "byok.sync");
+  const vibe = vibeAllowed(flags, isDev(user.email));
 
   return (
     <div className="flex flex-col">
       {/* Main Content */}
       <div className="flex-grow">
-        <PreferencesClient />
+        <PreferencesClient showKeySync={showKeySync} />
+        {vibe && <VibeRetention />}
       </div>
     </div>
   );

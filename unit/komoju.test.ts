@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1 } from "@/lib/d1/testDb";
+import { clearPermissionCache, grantAll } from "./support/grants";
 import { testSchema } from "@/lib/d1/testSchema";
 import {
   creditTopup,
@@ -39,13 +40,14 @@ const WH = "komoju_wh_secret";
 const saved = { ...process.env };
 const realFetch = globalThis.fetch;
 afterEach(() => {
+  clearPermissionCache();
   process.env = { ...saved };
   globalThis.fetch = realFetch;
 });
 
 /** The key on the Worker; the live FLAG is passed to the functions that start a payment. */
 function env(mode: "test" | "live" | "none", key?: string) {
-  process.env.OWNER_EMAILS = OWNER;
+  grantAll([OWNER]);
   if (mode === "none") {
     delete process.env.KOMOJU_SECRET_KEY;
     delete process.env.KOMOJU_WEBHOOK_SECRET;
@@ -141,8 +143,8 @@ describe("mode", () => {
     const test = {
       KOMOJU_SECRET_KEY: "sk_test_a",
       KOMOJU_WEBHOOK_SECRET: "w",
-      OWNER_EMAILS: OWNER,
     };
+    grantAll([OWNER]);
     expect(providerMode(komojuProvider, test)).toBe("test");
     expect(providerOpenTo(komojuProvider, OWNER, test)).toBe(true);
     expect(providerOpenTo(komojuProvider, "u@x.com", test)).toBe(false);

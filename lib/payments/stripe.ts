@@ -8,7 +8,7 @@
  * at /dev/flags, no deploy):
  *
  * - **test**: an `sk_test_…` key and the flag off. Passes and top-ups are
- *   offered to the owner (`OWNER_EMAILS`) only, and the webhook credits the
+ *   offered to the owner (`isAdmin`, lib/permissions.ts) only, and the webhook credits the
  *   owner only, kept apart from real money — a test card must never become
  *   real Pro days or credits for anyone.
  * - **live**: an `sk_live_…` key and the flag on. Offered to everyone.
@@ -27,7 +27,7 @@
  * drops a customer's money). docs/payments.md, "Live mode and the kill switch".
  */
 import { flagIn, type FlagValues } from "@/lib/flags";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { stripeThreeDSecure } from "./checkout-policy";
 import { topupName } from "./credits";
 import type { CheckoutSessionLike } from "./fulfil";
@@ -79,7 +79,7 @@ export function stripeOpenTo(
   flags: FlagValues = {},
 ): boolean {
   const mode = stripeMode(env, flags);
-  return mode === "live" || (mode === "test" && isOwner(email, env.OWNER_EMAILS));
+  return mode === "live" || (mode === "test" && isAdmin(email));
 }
 
 function paymentMethods(): string[] {

@@ -34,15 +34,29 @@ export function backParts(it: BackCard): BackPart[] {
 export const ROW_TALL = 1.5;
 /** The base unit before ROW_TALL: the 44px touch target, the 28px desktop line. */
 const BASE_PX = { touch: 44, desktop: 28 } as const;
+/** Line height of a /words cell that wraps (Glance `lines`), in em. */
+export const ROW_LINE_LH = 1.25;
+/** One line of a row's back text (text-sm, 14px, at ROW_LINE_LH), in px at text scale 1. */
+export const ROW_LINE_PX = 14 * ROW_LINE_LH;
 
 /**
  * A /words row's sizes for a card text scale (lib/text-size.ts): `rowH` is
  * what the list, the cords and the windowing use; `a` is the swipe's travel
  * unit (one detent), which stays the old row height so a grade still takes
  * the same finger distance. Both grow with the text, never shrink.
+ *
+ * `extraLines`: lines of back text added to every row, each one line of its
+ * own text (ROW_LINE_PX), not a fixed step. The reader's word review takes
+ * one (owner, 2026-11-08 19:16 JST, on /read: "increase the height of every
+ * card by one more line"); the swipe unit stays.
  */
-export function rowMetrics(touch: boolean, cardScale: number): { rowH: number; a: number } {
+export function rowMetrics(
+  touch: boolean,
+  cardScale: number,
+  extraLines = 0,
+): { rowH: number; a: number } {
   const k = Math.max(1, cardScale);
   const base = touch ? BASE_PX.touch : BASE_PX.desktop;
-  return { rowH: Math.round(base * ROW_TALL * k), a: Math.round(base * k) };
+  const n = Math.max(0, extraLines);
+  return { rowH: Math.round((base * ROW_TALL + n * ROW_LINE_PX) * k), a: Math.round(base * k) };
 }

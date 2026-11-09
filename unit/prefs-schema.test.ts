@@ -64,6 +64,28 @@ describe("prefs schema: nothing device-specific is accepted", () => {
   });
 });
 
+describe("prefs schema: titles.rules", () => {
+  it("takes the difference from the defaults, in its exact shape", () => {
+    const v = { off: ["abcd1234"], add: [{ host: "zhihu.com", pattern: "(##*条消息)" }] };
+    expect(checkPref("titles.rules", v)).toEqual(v);
+    expect(
+      checkPref("titles.rules", { off: [], add: [{ host: "", pattern: "(#)" }] }),
+    ).toBeTruthy();
+  });
+
+  it("refuses device hosts, URLs, bad patterns, extra fields and too many rows", () => {
+    const rule = (host: string, pattern = "(#)") => ({ off: [], add: [{ host, pattern }] });
+    for (const u of DEVICE) expect(checkPref("titles.rules", rule(u))).toBeUndefined();
+    for (const u of DEVICE) expect(checkPref("titles.rules", rule("", u))).toBeUndefined();
+    expect(checkPref("titles.rules", rule("", "*"))).toBeUndefined();
+    expect(checkPref("titles.rules", rule("", "x".repeat(49)))).toBeUndefined();
+    expect(checkPref("titles.rules", { off: ["not-an-id"], add: [] })).toBeUndefined();
+    expect(checkPref("titles.rules", { off: [], add: [], note: "hi" })).toBeUndefined();
+    const many = Array.from({ length: 11 }, () => ({ host: "", pattern: "(#)" }));
+    expect(checkPref("titles.rules", { off: [], add: many })).toBeUndefined();
+  });
+});
+
 describe("prefs schema: values", () => {
   it("accepts the settings as the app writes them", () => {
     const ok: Record<string, unknown> = {
@@ -82,6 +104,8 @@ describe("prefs schema: values", () => {
       "chat-voice.rate": 1.25,
       "chat-voice.out": "cloud",
       "chat-voice.speak": false,
+      "chat-voice.cueSend": false,
+      "chat-voice.cueSpeech": true,
     };
     for (const [k, v] of Object.entries(ok)) expect(checkPref(k, v)).toEqual(v);
   });

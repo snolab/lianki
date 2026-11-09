@@ -14,6 +14,14 @@
  *             and says so in x-progress-owner. The same socket checks off his
  *             to-dos ({type:"resolve", id}). Any valid token may also read
  *             the whole tree as JSON (GET).
+ *   the box   The owner's box (docs/box-oauth.md, "Chat on the owner's box"):
+ *             cookie-less, so index.ts lets its socket through on a box chat
+ *             ticket alone, from the box origin it names, and says which box
+ *             in x-progress-box. The hub burns the ticket once and asks the
+ *             main Worker (DebugSessions.boxChat) at connect, again before
+ *             anything is sent to it once BOX_RECHECK_MS has passed, and
+ *             before each {type:"eta"} it sends. "gone" closes it (4401);
+ *             unsure skips that message. It reads and pings, never resolves.
  *
  * Every write is an event ({type:"progress", ...node}). State is the latest
  * node per `id` (one storage key each), so a reload sees where everything
@@ -23,6 +31,11 @@
  * timers, no polling — and auto-created groups left empty go with it. At most
  * PROGRESS_MAX_ENTRIES are kept; past that the oldest done nodes go first.
  *
+ * Each task that goes done also leaves one record ({agent, id, title,
+ * estimateMs, actualMs, revisions}) in a durable stats log (keys "d:", the
+ * newest PROGRESS_STATS_MAX, PROGRESS_STATS_TTL_MS), read with GET /stats
+ * (`progress.ts stats`) by agents calibrating their ETAs; never sent to pages.
+ *
  * Writers are rate limited per name and in total, in memory: an evicted hub
  * starts a fresh window, which is fine for a limit meant to stop a runaway loop.
  */
@@ -30,9 +43,13 @@ import {
   OWNER_NAME,
   PROGRESS_AUTO,
   PROGRESS_DONE_TTL_MS,
+  PROGRESS_ETA_MAX_MS,
   PROGRESS_LIMITS,
   PROGRESS_LOG_MAX,
   PROGRESS_MAX_ENTRIES,
+  PROGRESS_STATS_MAX,
+  PROGRESS_STATS_TTL_MS,
+  type ProgressDone,
   type ProgressEntry,
   type ProgressEvent,
   type ProgressMessage,
@@ -45,6 +62,7 @@ import {
   parseProgressReport,
   parseTtl,
   pathParent,
+  progressDone,
   progressEvent,
   progressKey,
 } from "../../../lib/progress";
@@ -54,6 +72,8 @@ import {
   verifyProgressToken,
 } from "../../../lib/progress-token";
 import type { Socket, Storage } from "./debug";
+import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
+import { ETA_EXPLAIN_MS, ETA_PATH, type EtaPing } from "../../../lib/eta-ping";
 
 export type ProgressState = {
   acceptWebSocket(ws: Socket): void;
@@ -64,6 +84,26 @@ declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
 /** Set by index.ts after the owner check; never trusted from the client. */
 export const PROGRESS_OWNER_HEADER = "x-progress-owner";
+/** Set by index.ts from a verified box chat ticket: the box's client id. Never from the client. */
+export const PROGRESS_BOX_HEADER = "x-progress-box";
+/** Set by index.ts with the box header: the ticket's `<jti>.<exp>`, burned here once. */
+export const PROGRESS_TICKET_HEADER = "x-progress-ticket";
+/** The box's socket closed because its box lost box:chat (as the chat hub's BOX_CLOSED). */
+export const PROGRESS_BOX_CLOSED = 4401;
+/** A box reader's binding is read again before a send once this long has passed. */
+export const BOX_RECHECK_MS = 30_000;
+/** The main Worker's box check (worker.ts DebugSessions): "live" | "gone" | "busy". */
+type BoxRpc = { boxChat?(clientId: string): Promise<unknown> };
+/** A box reader's attachment: which box, and when its binding was last found live. */
+type BoxReader = { box: string; checked: number };
+const boxOf = (ws: Socket): BoxReader | null => {
+  try {
+    const a = ws.deserializeAttachment() as Partial<BoxReader> | null;
+    return a && typeof a.box === "string" ? { box: a.box, checked: Number(a.checked) || 0 } : null;
+  } catch {
+    return null;
+  }
+};
 /** Writes allowed per window: per name, and for everyone together. */
 export const RATE = { windowMs: 60_000, perName: 30, total: 120 } as const;
 /** A report is a few hundred bytes; anything much bigger is not one. */
@@ -71,14 +111,35 @@ export const MAX_BODY = 4096;
 /** The longest a minted token lives. */
 export const GRANT_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 export const GRANT_DEFAULT = "8h";
+/**
+ * ETA pings (docs/state-tree.md, "ETA pings"). A page's {type:"eta", id} is
+ * taken this long before the hub's own clock says it is due (clocks differ).
+ */
+export const ETA_SKEW_MS = 5_000;
+/** A ping the chat hub could not take is tried again this much later… */
+export const ETA_RETRY_MS = 60_000;
+/** …until it is this late; then it is dropped (marked sent). */
+export const ETA_GIVE_UP_MS = 60 * 60 * 1000;
+
+type Namespace = {
+  idFromName(name: string): unknown;
+  get(id: unknown): { fetch(req: Request): Promise<Response> };
+};
+
 /** The note a check-off writes. */
 export const RESOLVED_NOTE = "resolved by owner";
 
 const PREFIX = "e:";
+/** The main Worker tells lianki-push a box lost box:chat (index.ts hands it here too). */
+export const BOX_CLOSED_PATH = "/internal/box-closed";
+/** A ticket's clock allowance, as the chat hub's. */
+const TICKET_SKEW_MS = STT_TICKET_SKEW_S * 1000;
 /** Log keys sort in the order the events happened: time, then a sequence number. */
 const LOG = "l:";
-const logKey = (at: number, seq: number) =>
-  `${LOG}${String(at).padStart(15, "0")}:${String(seq).padStart(6, "0")}`;
+const logKey = (at: number, seq: number, prefix = LOG) =>
+  `${prefix}${String(at).padStart(15, "0")}:${String(seq).padStart(6, "0")}`;
+/** The stats log: one record per task that went done, kept PROGRESS_STATS_TTL_MS. */
+const DONE = "d:";
 
 /**
  * The checks index.ts makes before a token route reaches the hub. null = go
@@ -98,22 +159,134 @@ const json = (body: unknown, status = 200) => Response.json(body, { status });
 const fail = (status: number, error: string, extra: Record<string, unknown> = {}) =>
   json({ error, ...extra }, status);
 
+/** An open node whose estimate has not been pinged yet. */
+const etaDue = (e: ProgressEntry) => e.etaAt !== undefined && e.etaSent !== e.etaAt;
+/**
+ * Pinged, still at that estimate (no new one), and the owner not yet told it
+ * went unexplained (docs/state-tree.md, "ETA overrun"): due at etaAt + ETA_EXPLAIN_MS.
+ */
+const silentDue = (e: ProgressEntry) =>
+  e.status !== "done" && e.etaAt !== undefined && e.etaSent === e.etaAt && e.etaSilent !== e.etaAt;
+
 export class ProgressHub {
   private windows = new Map<string, { start: number; count: number }>();
   private seq = 0;
   private secret: string | undefined;
+  /** The chat hub (debug.ts), where an ETA ping becomes a line in the owner's thread. */
+  private debug: Namespace | undefined;
+  /** Nodes whose ping is being sent right now (fireEta): a second caller backs off at once. */
+  private firing = new Set<string>();
+  /** The main Worker's DebugSessions RPC: whether a box may still read (box readers only). */
+  private sessions: BoxRpc | undefined;
 
   constructor(
     private ctx: ProgressState,
-    env?: { PROGRESS_TOKEN?: string },
+    env?: { PROGRESS_TOKEN?: string; DEBUG?: Namespace; SESSIONS?: BoxRpc },
     private now: () => number = Date.now,
   ) {
     this.secret = env?.PROGRESS_TOKEN;
+    this.debug = env?.DEBUG;
+    this.sessions = env?.SESSIONS;
+  }
+
+  /** The main Worker's word on a box: "live", "gone", or "unsure". No check there counts as gone. */
+  private async boxSays(box: string): Promise<"live" | "gone" | "unsure"> {
+    // Called on the stub itself: a .bind-ed RPC method is refused.
+    const rpc = this.sessions;
+    try {
+      if (!rpc?.boxChat) return "gone";
+      const said = await rpc.boxChat(box);
+      return said === "live" || said === "gone" ? said : "unsure";
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "progress.box-check-failed", error: String(e).slice(0, 200) }),
+      );
+      return "unsure";
+    }
+  }
+
+  /**
+   * May this box reader be sent to (or heard) now? Re-read when `fresh` or its
+   * last check is older than BOX_RECHECK_MS. "gone" closes it.
+   */
+  private async boxMay(ws: Socket, r: BoxReader, fresh = false): Promise<boolean> {
+    const t = this.now();
+    if (!fresh && t - r.checked < BOX_RECHECK_MS) return true;
+    const said = await this.boxSays(r.box);
+    if (said === "live") {
+      try {
+        ws.serializeAttachment({ box: r.box, checked: t } satisfies BoxReader);
+      } catch {}
+      return true;
+    }
+    if (said === "gone") {
+      console.log(JSON.stringify({ msg: "progress.box-closed", why: "check" }));
+      try {
+        ws.close(PROGRESS_BOX_CLOSED, "box chat ended");
+      } catch {}
+    }
+    return false;
+  }
+
+  /** A box chat ticket (`<jti>.<exp>`, from index.ts) opens one progress socket, once. */
+  private async burnTicket(raw: string | null): Promise<boolean> {
+    if (!raw) return false;
+    const at = raw.lastIndexOf(".");
+    const jti = raw.slice(0, at);
+    const exp = Number(raw.slice(at + 1));
+    const t = this.now();
+    if (at <= 0 || !/^[A-Za-z0-9_-]{8,64}$/.test(jti) || !Number.isFinite(exp)) return false;
+    if (exp * 1000 + TICKET_SKEW_MS < t) return false;
+    const key = `pjti:${jti}`;
+    if ((await this.ctx.storage.get<number>(key)) !== undefined) return false;
+    await this.ctx.storage.put(key, exp);
+    const old = await this.ctx.storage.list<number>({ prefix: "pjti:", limit: 200 });
+    for (const [k, e] of old) if (e * 1000 + TICKET_SKEW_MS < t) await this.ctx.storage.delete(k);
+    return true;
+  }
+
+  /** The owner's box: a ticket socket, checked at connect (see the header). */
+  private async connectBox(req: Request): Promise<Response> {
+    const box = req.headers.get(PROGRESS_BOX_HEADER) ?? "";
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(box)) return new Response("forbidden", { status: 403 });
+    if (!(await this.burnTicket(req.headers.get(PROGRESS_TICKET_HEADER))))
+      return new Response("forbidden", { status: 403 });
+    if ((await this.boxSays(box)) !== "live") return new Response("forbidden", { status: 403 });
+    const pair = new WebSocketPair();
+    this.ctx.acceptWebSocket(pair[1]);
+    pair[1].serializeAttachment({ box, checked: this.now() } satisfies BoxReader);
+    await this.sendSnapshot([pair[1]]);
+    // The browser fails a socket whose offered subprotocol is not selected.
+    return new Response(null, {
+      status: 101,
+      webSocket: pair[0],
+      headers: { "sec-websocket-protocol": PARTNER_SUBPROTOCOL },
+    } as ResponseInit);
+  }
+
+  /** POST /internal/box-closed {client}: that box lost box:chat; its readers close now. */
+  private async boxClosed(req: Request): Promise<Response> {
+    let client: unknown;
+    try {
+      client = ((await req.json()) as { client?: unknown }).client;
+    } catch {}
+    if (typeof client !== "string" || !client) return fail(400, "expected {client}");
+    let closed = 0;
+    for (const ws of this.ctx.getWebSockets())
+      if (boxOf(ws)?.box === client) {
+        try {
+          ws.close(PROGRESS_BOX_CLOSED, "box chat ended");
+        } catch {}
+        closed++;
+      }
+    console.log(JSON.stringify({ msg: "progress.box-closed", why: "notice", closed }));
+    return json({ ok: true, closed });
   }
 
   async fetch(req: Request): Promise<Response> {
     const path = new URL(req.url).pathname;
     if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      if (req.headers.has(PROGRESS_BOX_HEADER)) return this.connectBox(req);
       if (req.headers.get(PROGRESS_OWNER_HEADER) !== "1")
         return new Response("forbidden", { status: 403 });
       const pair = new WebSocketPair();
@@ -121,10 +294,13 @@ export class ProgressHub {
       await this.sendSnapshot([pair[1]]);
       return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
     }
+    // Reached only over the binding (index.ts checks the internal hostname).
+    if (path === BOX_CLOSED_PATH && req.method === "POST") return this.boxClosed(req);
     const token = /^Bearer (\S+)$/.exec(req.headers.get("authorization") ?? "")?.[1] ?? "";
     const auth = this.secret ? await verifyProgressToken(this.secret, token, this.now()) : null;
     if (!auth) return fail(401, "unauthorized (wrong, forged or expired token)");
-    if (req.method === "GET") return json(await this.state());
+    if (req.method === "GET")
+      return json(path.endsWith("/stats") ? { done: await this.doneLog() } : await this.state());
     if (req.method !== "POST") return fail(405, "GET or POST");
     const body = await this.body(req);
     if (body instanceof Response) return body;
@@ -168,15 +344,19 @@ export class ProgressHub {
   }
 
   async sendSnapshot(to: Socket[] = this.ctx.getWebSockets()) {
-    this.send(to, { type: "snapshot", ...(await this.state()) });
+    await this.send(to, { type: "snapshot", ...(await this.state()) });
   }
 
-  private send(to: Socket[], msg: ProgressMessage) {
+  /** To each reader; a box reader only while its box may still read (boxMay). */
+  private async send(to: Socket[], msg: ProgressMessage) {
     const data = JSON.stringify(msg);
-    for (const ws of to)
+    for (const ws of to) {
+      const box = boxOf(ws);
+      if (box && !(await this.boxMay(ws, box))) continue;
       try {
         ws.send(data);
       } catch {}
+    }
   }
 
   /** Counts one write; false = over the limit. */
@@ -257,7 +437,9 @@ export class ProgressHub {
         !mine &&
         (r.status !== prev.status ||
           (r.pct !== undefined && r.pct !== prev.pct) ||
-          (r.eta !== undefined && r.eta !== prev.eta))
+          (r.eta !== undefined && r.eta !== prev.eta) ||
+          r.etaIn !== undefined ||
+          (r.etaAt !== undefined && r.etaAt !== prev.etaAt))
       )
         return `only ${prev.creator} (or a scope above) sets the status, pct and eta of ${r.id}`;
       return null;
@@ -280,9 +462,29 @@ export class ProgressHub {
       return fail(400, `unknown parent ${parent}`);
     if (r.rev !== undefined && prev && r.rev <= prev.rev)
       return fail(409, `stale rev ${r.rev}; ${r.id} is at ${prev.rev}`, { rev: prev.rev });
+    const t = this.now();
+    if (
+      r.etaAt !== undefined &&
+      (r.etaAt < t - ETA_GIVE_UP_MS || r.etaAt > t + PROGRESS_ETA_MAX_MS)
+    )
+      return fail(400, "etaAt must be within the next 30 days");
+    // ETA overrun (docs/state-tree.md): past its estimate, a new one comes with the reason.
+    const newEstimate = r.eta !== undefined || r.etaIn !== undefined || r.etaAt !== undefined;
+    if (
+      prev &&
+      prev.status !== "done" &&
+      r.status !== "done" &&
+      prev.etaAt !== undefined &&
+      prev.etaAt <= t &&
+      newEstimate &&
+      !r.late
+    )
+      return fail(
+        400,
+        `${r.id} ran past its ETA: give the reason with the new estimate — --eta 20m --late "why" (the owner is told both)`,
+      );
     if (!this.allow(r.assignee.name)) return this.tooMany();
 
-    const t = this.now();
     // A path's missing ancestors become groups, outermost first.
     const missing: ProgressEntry[] = [];
     for (let p = parent; p !== undefined && isPathId(p) && !all.has(p); p = pathParent(p))
@@ -291,9 +493,27 @@ export class ProgressHub {
     const events = [...missing.map((e) => progressEvent(e)), progressEvent(entry, r.note)];
     const evicted = await this.store([...missing, entry], all);
     for (const ev of events) await this.append(ev);
+    await this.recordDone(prev, entry);
     if (evicted) await this.sendSnapshot();
-    else for (const ev of events) this.send(this.ctx.getWebSockets(), ev);
-    return json({ ok: true, entry, readers: this.ctx.getWebSockets().length });
+    else for (const ev of events) await this.send(this.ctx.getWebSockets(), ev);
+    // The lane explained an overrun: the owner hears the reason and the new time.
+    const told =
+      r.late && entry.etaAt !== undefined
+        ? await this.tell({
+            id: entry.id,
+            title: entry.task,
+            etaAt: entry.etaAt,
+            assignee: entry.assignee.name,
+            kind: "late",
+            reason: r.late,
+          })
+        : undefined;
+    return json({
+      ok: true,
+      entry,
+      readers: this.ctx.getWebSockets().length,
+      ...(told === undefined ? {} : { told }),
+    });
   }
 
   /** Put nodes, making room past PROGRESS_MAX_ENTRIES; true if any were dropped. */
@@ -316,6 +536,8 @@ export class ProgressHub {
     for (const e of entries) {
       await this.ctx.storage.put(progressKey(e), e);
       if (e.status === "done") await this.schedule(e.at + PROGRESS_DONE_TTL_MS);
+      else if (etaDue(e)) await this.schedule(Math.max(e.etaAt!, this.now()));
+      else if (silentDue(e)) await this.schedule(Math.max(e.etaAt! + ETA_EXPLAIN_MS, this.now()));
     }
     return dropped;
   }
@@ -326,6 +548,25 @@ export class ProgressHub {
     const keys = [...(await this.ctx.storage.list({ prefix: LOG })).keys()];
     for (const k of keys.slice(0, Math.max(0, keys.length - PROGRESS_LOG_MAX)))
       await this.ctx.storage.delete(k);
+  }
+
+  /** A task that just went done: one record in the stats log, dropping old ones. */
+  private async recordDone(prev: ProgressEntry | undefined, e: ProgressEntry) {
+    if (e.status !== "done" || prev?.status === "done") return;
+    if (e.kind === "group" || e.kind === "person") return;
+    await this.ctx.storage.put(logKey(e.at, this.seq++ % 1_000_000, DONE), progressDone(e));
+    const cut = this.now() - PROGRESS_STATS_TTL_MS;
+    const all = [...(await this.ctx.storage.list<ProgressDone>({ prefix: DONE }))];
+    for (const [i, [k, d]] of all.entries())
+      if (i < all.length - PROGRESS_STATS_MAX || d.at < cut) await this.ctx.storage.delete(k);
+  }
+
+  /** The stats log, oldest first, without records past their 30 days. */
+  private async doneLog(): Promise<ProgressDone[]> {
+    const cut = this.now() - PROGRESS_STATS_TTL_MS;
+    return [...(await this.ctx.storage.list<ProgressDone>({ prefix: DONE })).values()].filter(
+      (d) => d.at >= cut,
+    );
   }
 
   /**
@@ -361,7 +602,8 @@ export class ProgressHub {
       await this.schedule(kept.at + PROGRESS_DONE_TTL_MS);
       const ev = progressEvent(kept, note);
       await this.append(ev);
-      this.send(this.ctx.getWebSockets(), ev);
+      await this.recordDone(was, kept);
+      await this.send(this.ctx.getWebSockets(), ev);
     }
     return json({ ok: true, resolved: done.map((e) => e.id) });
   }
@@ -395,6 +637,23 @@ export class ProgressHub {
     let pruned = 0;
     let next = Infinity;
     for (const e of all.values()) {
+      if (e.status !== "done" && etaDue(e)) {
+        // An estimate ran out: ping the agent (fireEta), or wait for it.
+        if (e.etaAt! > t) next = Math.min(next, e.etaAt!);
+        else if (!(await this.fireEta(e.id, t))) next = Math.min(next, t + ETA_RETRY_MS);
+        else {
+          const after = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+          if (after && silentDue(after)) next = Math.min(next, after.etaAt! + ETA_EXPLAIN_MS);
+        }
+        continue;
+      }
+      if (silentDue(e)) {
+        // Pinged and still unexplained: tell the owner (fireSilent), or wait for it.
+        const due = e.etaAt! + ETA_EXPLAIN_MS;
+        if (due > t) next = Math.min(next, due);
+        else if (!(await this.fireSilent(e.id, t))) next = Math.min(next, t + ETA_RETRY_MS);
+        continue;
+      }
       if (e.status !== "done") continue;
       const due = e.at + PROGRESS_DONE_TTL_MS;
       if (due <= t) {
@@ -417,12 +676,124 @@ export class ProgressHub {
     if (pruned) await this.sendSnapshot();
   }
 
-  /** The owner's page checks off a node: {type:"resolve", id, note?}. Nothing else is heard. */
-  async webSocketMessage(_ws: Socket, raw: string | ArrayBuffer) {
+  /**
+   * An estimate ran out: tell the agent, once per `etaAt`. Called by the
+   * alarm and by an owner page whose timer went off ({type:"eta", id}); both
+   * land here, so two devices (or a page and the alarm) never ping twice.
+   * The node is marked sent before the chat hub is asked — storage calls hold
+   * the Durable Object's input gate, the fetch does not — and unmarked if it
+   * could not take the line (tried again ETA_RETRY_MS later, up to
+   * ETA_GIVE_UP_MS late). Not due, done, or already sent: false, nothing sent.
+   * Returns false only when it should be tried again.
+   */
+  async fireEta(id: string, t: number = this.now()): Promise<boolean> {
+    // Synchronous claim first: whatever the storage does between awaits, one caller per node.
+    if (this.firing.has(id)) return true;
+    this.firing.add(id);
+    try {
+      return await this.fireEtaOnce(id, t);
+    } finally {
+      this.firing.delete(id);
+    }
+  }
+
+  private async fireEtaOnce(id: string, t: number): Promise<boolean> {
+    const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
+    if (!e || e.status === "done" || !etaDue(e) || e.etaAt! > t + ETA_SKEW_MS) return true;
+    const etaAt = e.etaAt!;
+    const late = t - etaAt > ETA_GIVE_UP_MS;
+    const sent = { ...e, etaSent: etaAt };
+    await this.ctx.storage.put(progressKey(e), sent);
+    if (late || !this.debug) return true;
+    const ping: EtaPing = { id: e.id, title: e.task, etaAt, assignee: e.assignee.name };
+    const ok = await this.tell(ping);
+    if (ok) {
+      // The owner's pages: this one is sent (their timers stop for it).
+      await this.send(this.ctx.getWebSockets(), progressEvent(sent));
+      // The lane has ETA_EXPLAIN_MS to explain; then the owner is told it did not.
+      await this.schedule(etaAt + ETA_EXPLAIN_MS);
+      return true;
+    }
+    const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+    if (now && now.etaSent === etaAt) {
+      const { etaSent: _sent, ...back } = now;
+      await this.ctx.storage.put(progressKey(e), back);
+    }
+    return false;
+  }
+
+  /** One line through the chat hub (debug.ts ETA_PATH); true if it took it. */
+  private async tell(ping: EtaPing): Promise<boolean> {
+    if (!this.debug) return false;
+    let ok = false;
+    try {
+      const res = await this.debug.get(this.debug.idFromName("debug")).fetch(
+        new Request(`https://lianki-push${ETA_PATH}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(ping),
+        }),
+      );
+      ok = res.ok;
+    } catch {}
+    console.log(
+      JSON.stringify({
+        msg: "progress.eta",
+        kind: ping.kind ?? "due",
+        id: ping.id,
+        etaAt: ping.etaAt,
+        ok,
+      }),
+    );
+    return ok;
+  }
+
+  /**
+   * ETA overrun, unexplained: the "due" line went out ETA_EXPLAIN_MS ago and
+   * neither a reason nor a new estimate came. The owner is told "<name> 超时，
+   * 未说明原因", once per etaAt (marked first, unmarked if the chat hub could
+   * not take it; given up, marked, when very late). False: try again later.
+   */
+  async fireSilent(id: string, t: number = this.now()): Promise<boolean> {
+    const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
+    if (!e || !silentDue(e) || e.etaAt! + ETA_EXPLAIN_MS > t) return true;
+    const etaAt = e.etaAt!;
+    await this.ctx.storage.put(progressKey(e), { ...e, etaSilent: etaAt });
+    if (t - etaAt > ETA_GIVE_UP_MS || !this.debug) return true;
+    const ok = await this.tell({
+      id: e.id,
+      title: e.task,
+      etaAt,
+      assignee: e.assignee.name,
+      kind: "silent",
+    });
+    if (ok) return true;
+    const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+    if (now && now.etaSilent === etaAt) {
+      const { etaSilent: _silent, ...back } = now;
+      await this.ctx.storage.put(progressKey(e), back);
+    }
+    return false;
+  }
+
+  /**
+   * The owner's page: {type:"resolve", id, note?} checks off a node;
+   * {type:"eta", id} says its timer for that node went off. Nothing else is heard.
+   */
+  async webSocketMessage(ws: Socket, raw: string | ArrayBuffer) {
     let m: { type?: unknown; id?: unknown; note?: unknown };
     try {
       m = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
     } catch {
+      return;
+    }
+    // The owner's box: its ETA pings only, each while its box may still chat (asked now).
+    const box = boxOf(ws);
+    if (box) {
+      if (m?.type !== "eta" || !isProgressId(m.id) || !(await this.boxMay(ws, box, true))) return;
+    }
+    if (m?.type === "eta" && isProgressId(m.id)) {
+      if (!(await this.fireEta(m.id))) await this.schedule(this.now() + ETA_RETRY_MS);
       return;
     }
     if (m?.type !== "resolve" || !isProgressId(m.id)) return;

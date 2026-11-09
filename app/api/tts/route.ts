@@ -9,7 +9,8 @@ import {
 import crypto from "crypto";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { routeLimit } from "@/lib/security/route-guard";
+import { accountKey } from "@/lib/security/throttle";
 import { logSanitizedError } from "@/lib/safeError";
 import { getCachedTTS, putCachedTTS } from "@/lib/ttsCache";
 
@@ -31,7 +32,7 @@ export const POST = async (req: NextRequest) => {
   }
   const requester = session.user.email ?? session.user.id;
 
-  const rateLimit = checkRateLimit(`tts:${requester}`, {
+  const rateLimit = await routeLimit(await accountKey("tts", requester), {
     windowMs: RATE_LIMIT_WINDOW_MS,
     max: RATE_LIMIT_MAX_REQUESTS,
   });

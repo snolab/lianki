@@ -13,13 +13,16 @@
  *   cannot import the app) needs no change. Writers call `notePrefWrite()`;
  *   a remote value fires `lk:pref-applied`, which usePref and friends follow.
  *
- * Device-local keys (mic, full screen, positions, dev URLs, echo cancel) are
+ * Device-local keys (mic, full screen, positions, dev URLs, echo cancel, and
+ * the user's own AI key `lk:byok` with its notice answer `lk:byok-ack`) are
  * not here, so they can never be sent.
  */
 import type { PrefBinding } from "@lianki/ui-state/account";
 import { REGISTRY, type UiStore } from "@lianki/ui-state";
 import { CATALOG_URLS, type PrefKey } from "@/lib/prefs/schema";
 import { LOCALE_PICK_KEY } from "@/lib/app-locale";
+import { BYOK_BACKEND_KEY } from "@/lib/byok/config";
+import { LINK_CONFIRM_KEY, LINK_ALLOWED_KEY } from "@/lib/external-link";
 
 type Ls = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const ls = (): Ls | null => {
@@ -205,6 +208,20 @@ export function prefBindings(): PrefBinding[] {
     homePins(),
     plain("lab.immersionLangs", "lk:lab:immersion:langs", jsonCodec, []),
     plain("lab.immersionTranspose", "lk:lab:immersion:transpose", bool10, false),
+    // lib/read/sense-pick.ts: which entry a word in a book means, per word and sentence.
+    plain("read.sensePicks", "lk:read-sense-picks", jsonCodec, {}),
+    // lib/read/polish-offer.ts: the offer to tidy a raw transcript.
+    plain("read.polishOffer", "lk:read-polish-offer", bool10, true),
+    plain("read.polishSkips", "lk:read-polish-skips", jsonCodec, []),
+    // lib/read/translator-notes.ts: translator's notes in the reader's translations.
+    plain("read.translatorNotes", "lk:read-translator-notes", bool10, true),
+    // lib/vibe/translations.ts: a language's share before /vibe translates into it.
+    plain("vibe.translateMinPct", "lk:vibe-translate-min-pct", num, 20),
+    // lib/titles/client.ts: the difference from the default title rules.
+    plain("titles.rules", "lk:title-rules", jsonCodec, { off: [], add: [] }),
+    // lib/external-link.ts: the disclaimer before another site, and the sites not asked about.
+    plain("links.confirm", LINK_CONFIRM_KEY, bool10, true),
+    plain("links.allowedHosts", LINK_ALLOWED_KEY, jsonCodec, []),
     plain("chat-voice.rate", "lk:agent-speech-rate", num, 1.5),
     plain("chat-voice.out", "lk:voice-out", text, "speech"),
     // The chat reads lk:agent-chat-speak, then its old name (storage-keys.ts).
@@ -212,5 +229,10 @@ export function prefBindings(): PrefBinding[] {
       read: () => getRaw("lk:agent-chat-speak") ?? getRaw("lk:debug-chat-speak"),
       also: (v) => setRaw("lk:debug-chat-speak", v ? "1" : "0"),
     }),
+    plain("chat-voice.cueSend", "lk:voice-cue-send", bool10, true),
+    plain("chat-voice.cueSpeech", "lk:voice-cue-speech", bool10, true),
+    // The user's own AI backend (docs/byok.md), only while they sync it (null:
+    // they do not). Its own key: the API key (`lk:byok`) is never a binding.
+    plain("byok.backend", BYOK_BACKEND_KEY, jsonCodec, null),
   ];
 }

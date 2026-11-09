@@ -552,7 +552,7 @@ Whether you're targeting the "big 5" or exploring languages for personal enrichm
 
 ---
 
-_Want to learn more about strategic language learning? Check out our [Polyglot Mode](/en/polyglot) feature for AI-powered multi-language learning._
+_Want to learn more about strategic language learning? Check out our [Polyglot Mode](/lab/polyglot) feature for AI-powered multi-language learning._
 
 ---
 

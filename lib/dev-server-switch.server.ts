@@ -1,6 +1,6 @@
 import type { DevSwitch, DevSwitchLabels } from "@/app/components/DevSwitchItem";
 import { devWholePage } from "@/lib/dev-whole-page";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { devSwitchMode } from "@/lib/dev-server-switch";
 
 /**
@@ -14,7 +14,7 @@ export function devSwitchFor(
   env: Record<string, string | undefined> = process.env,
 ): DevSwitch | undefined {
   const mode = devSwitchMode({
-    owner: isOwner(email, env.OWNER_EMAILS),
+    owner: isDev(email),
     devServer: devWholePage(env),
   });
   if (!mode) return undefined;

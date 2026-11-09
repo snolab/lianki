@@ -16,18 +16,28 @@ import {
   sideClip,
   postStt,
   resample,
-  scheduleTick,
 } from "./mic";
+import {
+  CUE_SEND_KEY,
+  CUE_SPEECH_KEY,
+  type CueContext,
+  type Cues,
+  cueAllowed,
+  cueOn,
+  createCues,
+} from "./cues";
+import { silenceHere } from "./speak-rules";
 import { voiceLatency, noteSttVia } from "./latency";
 import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
-import { VOICE_DEVICE_KEY, deviceSlug, noteSpeaker } from "./voiceprint";
+import type { SttSignals } from "./stt-guard";
+import { VOICE_DEVICE_KEY, deviceSlug, filterSwitch, filterVerdict, noteFiltered, noteSpeaker, subscribeFiltered } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
 import { MIC_BOX, MIC_RING } from "./bar-geometry";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
-import { voice } from "./voice";
+import { speechEnabled, voice } from "./voice";
 import { captureHeld, pageAudio } from "./page-audio";
 import { ECHO_WINDOW_MS, echoScore } from "./echo";
 import { micAec, onOpened } from "./aec";
@@ -72,19 +82,37 @@ const LOCAL_DOT = {
   down: "oklch(0.65 0 0)",
 } as const;
 
+/** Suspend the context when nothing needs it: the mic off, nothing being read, no cue playing. */
+const suspendIdle = () => {
+  const st = voice().state();
+  // Not while the page plays: the reader's clips play through it while the mic is on (lib/read/speaker.ts).
+  if (!st.mic && !st.speaking && pageCues().quiet() && !pageAudio().playing())
+    void existingCtx()?.suspend().catch(() => {});
+};
+
 /**
- * The soft tick for a spoken sentence sent by itself (scheduleTick), on the
- * mic's AudioContext; never while the agent speaks, never without the mic
- * (so typed sends are silent). Web Audio only, so a muted iPhone stays quiet.
+ * The page's voice cues (cues.ts), one for every copy of this module: the
+ * guard must be the one the page's mic session asks. Made on first use, on the
+ * mic's AudioContext (made here when a reload's auto-resume or a voice mode
+ * opened the mic without a tap; it then waits for the page's next tap).
  */
-export function playSentTick(): boolean {
-  const c = existingCtx();
-  if (!c || c.state === "closed" || voice().state().speaking) return false;
-  void c.resume().then(
-    () => scheduleTick(c as unknown as Parameters<typeof scheduleTick>[0]),
-    () => {},
-  );
-  return true;
+const CUES_KEY = "__lkCues";
+export function pageCues(): Cues {
+  const g = globalThis as unknown as Record<string, Cues | undefined>;
+  return (g[CUES_KEY] ??= createCues({
+    ctx: () => audioCtx() as unknown as CueContext | null,
+    allowed: (kind) => {
+      const st = voice().state();
+      return cueAllowed(kind, {
+        on: cueOn(kind === "send" || kind === "amend" ? CUE_SEND_KEY : CUE_SPEECH_KEY),
+        muted: !speechEnabled(),
+        silenced: silenceHere() !== null,
+        speaking: st.speaking,
+        aec: micAec(),
+      });
+    },
+    idle: suspendIdle,
+  }));
 }
 
 type MicVAD = {
@@ -284,6 +312,20 @@ async function energy(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   };
 }
 
+/**
+ * The browser's half of a mic, for another listener than the chat (/vibe,
+ * docs/vibe.md): the same stream and VADs, with no chat, cue, estimator, clip
+ * sink or cloud attached. The caller owns the stream and stops it.
+ */
+export const voiceCapture = () => ({
+  getStream: micStream as () => Promise<MediaStream>,
+  load: (ev: VadEvents, s: MediaStream) => silero(ev, s),
+  fallback: (ev: VadEvents, s: MediaStream) => energy(ev, s),
+});
+
+/** How long the mic says a line was stopped by the voiceprint filter. */
+const FILTERED_NOTE_MS = 3_000;
+
 /** This device's slug for the voiceprint (voiceprint.ts; localStorage lk:agent-voice-device overrides it). */
 export const voiceDevice = () => {
   let o: string | null = null;
@@ -306,6 +348,10 @@ const wakeOff = () => {
 function session(): MicSession {
   const v = voice();
   return micSession({
+    cue: {
+      guard: () => pageCues().guard(),
+      edge: (edge) => void (edge === "start" ? pageCues().speechStart() : pageCues().speechEnd()),
+    },
     getStream: micStream,
     // Learns nothing while the agent's voice is out (adaptive.ts).
     adapt: micAdapt(voiceAdapt(() => v.state().speaking)),
@@ -318,12 +364,16 @@ function session(): MicSession {
       // The user starts talking: over the agent it ducks (a barge-in if they
       // keep going), else the reading pauses; it reads on once they are done.
       if (s === "capturing") {
+        pageCues().capture(true);
         v.userSpeech();
         // A line held for joining waits for this speech (voice-tune.ts createJoiner).
         window.dispatchEvent(new Event(VOICE_CAPTURE_EVENT));
       }
-      else if (last === "capturing") v.userIdle();
-      if (!active && !v.state().speaking) void existingCtx()?.suspend().catch(() => {});
+      else if (last === "capturing") {
+        pageCues().capture(false);
+        v.userIdle();
+      }
+      if (!active) suspendIdle();
     },
     onProb: (p) => v.userFrame(p),
     // Only with lk:voice-aec off: else the mic stays open and the user can barge in.
@@ -343,12 +393,14 @@ function session(): MicSession {
       };
     },
     // The device goes along, so the Mac scores finals against this device's voiceprint.
-    localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner" }),
+    localStt: (url) =>
+      createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner", filter: filterSwitch() }),
     speaker: noteSpeaker,
+    filtered: (r) => void v.log({ ev: "voice-filtered", mode: "passive", n: noteFiltered("filtered", r).n, ...r }),
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
     // localStorage lk:agent-wake = "0" turns the wake word off (never passive).
     kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),
-    upload: async (wav, { seq, durationMs, partial, local, onEcho }, cfg) => {
+    upload: async (wav, { seq, durationMs, partial, local, onEcho, onSignals }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
       // The mode and track this utterance was recorded on: a reopen while it is transcribed changes both.
@@ -356,12 +408,14 @@ function session(): MicSession {
       const trackAt = appliedSettings();
       try {
         // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
-        let out: { text: string; model?: string; ms?: number };
+        let out: { text: string; model?: string; ms?: number; signals?: SttSignals };
         let via: "local" | "cloud" = "cloud";
         if (local) {
           // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
           try {
             const f = await local;
+            // The filter stopped it on the Mac: not text, not the cloud, not the clip sink.
+            if (filterVerdict(f, durationMs, (ev) => v.log(ev))) return "";
             out = f;
             via = "local";
             v.log({
@@ -377,6 +431,7 @@ function session(): MicSession {
             out = await postStt(wav, fetch, "audio/wav", sttHint());
           }
         } else out = await postStt(wav, fetch, "audio/wav", sttHint());
+        onSignals?.(out.signals);
         // The text guard: the agent's own words that leaked past the AEC are dropped.
         const chatEcho = v.echoCheck(out.text, durationMs);
         // The page reads aloud too (/read): what it said is the same kind of echo.
@@ -385,7 +440,7 @@ function session(): MicSession {
         // From `at` (taken before the transcription await): when the speech began.
         const spokeAt = at - durationMs;
         if (!partial && !chatEcho.drop && page.heard(out.text, spokeAt)) {
-          v.log({ ev: "voice-utt-page", durationMs, text: out.text.slice(0, 80) });
+          v.log({ ev: "voice-utt-page", durationMs, chars: out.text.length });
           return "";
         }
         const pageEcho = chatEcho.drop
@@ -405,7 +460,8 @@ function session(): MicSession {
             during: echo.during,
             drop: echo.drop,
             score: echo.score,
-            text: out.text.slice(0, 80),
+            // Length only: this runs before the silence guard, and it reaches the Worker logs.
+            chars: out.text.length,
             against: echo.drop ? echo.against?.slice(0, 80) : undefined,
           });
         if (echo.drop) {
@@ -591,13 +647,44 @@ export function DebugMic({
   const state = view.state;
   const pending = view.pending;
   const ws = wakeStrings();
+  // A mic opened without a tap (a reload's auto-resume): the cues' context starts on his next one.
+  const micIsOn = state !== "off";
+  useEffect(() => {
+    if (!micIsOn) return;
+    const unlock = () => {
+      const c = audioCtx();
+      if (c && c.state !== "running") void c.resume().catch(() => {});
+    };
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("keydown", unlock, true);
+    return () => {
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+    };
+  }, [micIsOn]);
+  // A line the voiceprint filter stopped says so, for a moment: he should see his words go.
+  const [stopped, setStopped] = useState(false);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const off = subscribeFiltered(() => {
+      setStopped(true);
+      clearTimeout(t);
+      t = setTimeout(() => setStopped(false), FILTERED_NOTE_MS);
+    });
+    return () => {
+      off();
+      clearTimeout(t);
+    };
+  }, []);
   const note = view.error
     ? micErrorNote(view.error)
     : view.state !== "off" && view.kws === "failed"
       ? ws.failed
       : view.state !== "off" && view.kws === "needs-wifi"
         ? ws.wifi
-        : null;
+        : view.state !== "off" && stopped
+          ? localSttStrings().filtered
+          : null;
 
   useEffect(() => {
     if (state === "off") return;
@@ -616,7 +703,7 @@ export function DebugMic({
   const passive = state !== "off" && view.wake === "passive" && !speaking;
   const wakeLabel = view.kws === "loading" ? ws.loading : ws.passive;
   return (
-    // The chat bar's last control, right of the input.
+    // In the chat bar's cluster, after the + (open) or the pill's Li (folded).
     <div className="relative flex shrink-0">
       <style>{MIC_PULSE}</style>
       {/* What the ring shows, for screen readers: said on each change of state. */}
@@ -627,7 +714,8 @@ export function DebugMic({
         <span
           role="alert"
           data-testid="debug-chat-mic-note"
-          className="pointer-events-none absolute end-0 bottom-full mb-2 whitespace-nowrap fs-10"
+          // From the mic's start, over the bar: the mic is near the box's inner edge.
+          className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap fs-10"
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {note}
@@ -636,6 +724,7 @@ export function DebugMic({
       <button
         type="button"
         data-testid="debug-chat-mic"
+        data-lk-tap
         data-state={state}
         data-resume={(view.resume && state === "off") || undefined}
         data-status={status}
@@ -677,7 +766,7 @@ export function DebugMic({
           if (gesture?.wasDrag()) return;
           // Barge in: the reading stops (it reads on later), and capture resumes at once.
           if (speaking) return voice().interrupt("tap");
-          // Made in this gesture, so iOS lets it play the send tick (and cloud replies) later.
+          // Made in this gesture, so iOS lets it play the cues (and cloud replies) later.
           if (state === "off") {
             void audioCtx()?.resume().catch(() => {});
             // The cloud reads replies when this device has no speechSynthesis voice (voice.ts).

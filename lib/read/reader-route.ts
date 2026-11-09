@@ -1,24 +1,25 @@
 // The gate every reader-v2 route goes through (docs/books-plan.md, "Review
-// units"): a session, D1, the flag `read.reader-v2` (or the owner), and the
-// material being the user's own. Anything else answers before any reader row
+// units"): a session, D1, and the material being the user's own. Anything else answers before any reader row
 // is touched: 401 without a session, 404 otherwise (the feature does not
 // exist for this user, or the book is not theirs).
 
+import { exampleFinder } from "./gloss";
+import { offSiteHeaders } from "@/lib/security/route-guard";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { dbBackend, getD1 } from "@/lib/d1";
-import { readFlags } from "@/lib/flags-store";
 import { getReadMaterialById, type ReadMaterial } from "@/lib/getReadMaterialsCollection";
-import { isOwner } from "@/lib/owner";
 import { materialWords, userWordCards, type MaterialWords } from "./progress";
-import { hashOf, readerBook, readerV2On, type ReaderBook } from "./reader-book";
+import { hashOf, readerBook, type ReaderBook } from "./reader-book";
 import { saveContentHash, type BookRef, type D1Batch } from "./reader-store";
 import type { WordContext } from "./reader-service";
 import { bookPhrase } from "./select-meaning";
 import type { RangeWord } from "./book-word-list";
 import { langIn } from "./lang-detect";
 import { cardIndex, statsLemmas, wordLang } from "./words";
+import { isVibeMaterial } from "@/lib/vibe/private-speech";
+import { songClipFinder } from "@/lib/yt-songs/card-clip";
 
 export interface ReaderCtx {
   userId: string;
@@ -36,17 +37,18 @@ export const json = <T>(body: T, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 
 export async function readerCtx(materialId: string): Promise<ReaderCtx | NextResponse> {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const reqHeaders = await headers();
+  const session = await auth.api.getSession({ headers: reqHeaders });
   const userId = session?.user?.id;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (dbBackend() !== "d1") return notFound();
   const email = session.user.email ?? null;
-  if (!readerV2On(await readFlags(), isOwner(email))) return notFound();
   const material = await getReadMaterialById(userId, materialId);
   if (!material) return notFound();
   const db = getD1() as unknown as D1Batch;
   const hash = await hashOf(material);
-  if (!material.contentHash) {
+  // Saved for next time, so another site's link just answers without saving.
+  if (!material.contentHash && !offSiteHeaders(reqHeaders)) {
     try {
       await saveContentHash(db, userId, String(material._id), hash);
     } catch (err) {
@@ -139,6 +141,10 @@ export async function bookCtxOf(ctx: ReaderCtx) {
       lang: book.lang,
       lem: statsLemmas(words.stats),
       names: new Set(words.stats.names),
+      exampleOf: exampleFinder(ctx.material.lines),
+      privateText: isVibeMaterial(ctx.material),
+      // A YouTube song: each card's example keeps its line's clip (docs/youtube-song-examples.md, M2).
+      clipOf: songClipFinder(words.book, ctx.material.lines),
     },
     // A book word, or a phrase of the book's words (a phrase card: the same path as a word's).
     own: (w: string) => own.has(w) || bookPhrase(w, book.lang, (x) => own.has(x)),

@@ -90,6 +90,17 @@
  * `raw`; `edited: {at, by, count}` marks it. Pages and listeners hear
  * {type:"edited", id, thread, text, raw, edited}. Friends' lines never.
  *
+ * Continuous speech (flag stt.merge, voice-merge.ts; docs/dev-debug-widget.md,
+ * "Continuous speech amends the last line"). With the flag on, an owner's voice
+ * line is stamped `mergeable`. A next voice line carrying `continues: <that id>`
+ * amends it, if it is still the thread's very latest line and mergeVerdict and
+ * the checks in merge() pass; else it is a new line, as ever. Same edit path:
+ * pages and listeners hear {type:"edited", …, parts, merged}, with the complete
+ * text. Every part's raw text is kept in `parts`; {type:"unmerge", id} from an
+ * owner's page splits the line back. {type:"passage-end"} from the page that
+ * spoke tells the listeners {type:"polish-due", …}: one polish for the passage,
+ * read from the merged raw text, none while it is still being spoken.
+ *
  * Resumable grants. The owner's Allow hands the controller a random grant
  * token; only its SHA-256 is stored (`grant:<hash>`), and reconnecting with
  * it (header x-debug-token, or x-liagent-token via index.ts) restores what
@@ -127,6 +138,21 @@
  * every owner page attachment that carried it. A chat grant, a
  * friend's preview, and a grant approved without a session (the dev bridge,
  * an older main Worker) are never renewed.
+ *
+ * Token chat (token-chat.ts; `lianki chat`). A third kind of socket, and
+ * POST calls, at /api/version/chat: an API token's say / ask / read / listen,
+ * only in its account's own thread (the owner's, or that user's), as an agent
+ * line labelled with the token's name. Never a page or a controller: no eval,
+ * pairing, grant, inbox, clips or answer. A token ask's `answered` goes to
+ * that thread's pages and the same lane's token sockets only.
+ *
+ * Eval tokens (lib/eval-token.ts; docs/secrets-and-auth.md, "Eval tokens"). A
+ * controller that connects with an API token holding `eval` (index.ts passes
+ * it as EVAL_TOKEN_HEADER, from Authorization only) is approved by the main
+ * Worker, not a tap: an eval session in the owner's thread until the token
+ * expires, on every owner page (a box's only with box:eval). The main Worker
+ * checks it again, and audits, before each eval; a refusal closes it, as does
+ * a revoke notice. Only its hash and tag are kept, never the token.
  *
  * Voice-clip recording (packages/debug-chat/src/clips.ts). The switch is a
  * window session's, held here, never in an origin's storage. An owner page
@@ -202,9 +228,24 @@ import {
   askText,
   checkChoices,
 } from "../../../packages/debug-chat/src/ask";
-import type { AnsweredEvent, SpeakerTag, SttScene } from "../../../packages/debug-chat/src/wire";
+import type {
+  AnsweredEvent,
+  PolishDueEvent,
+  SpeakerTag,
+  SttScene,
+} from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
 import { polishCheck, polishContext } from "../../../packages/debug-chat/src/polish";
+import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
+import {
+  type MergeCandidate,
+  UNMERGE_BY,
+  lastPartAt,
+  mergeLines,
+  mergeVerdict,
+  partTexts,
+  splitLine,
+} from "../../../packages/debug-chat/src/voice-merge";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
   HISTORY_LINES,
@@ -220,7 +261,17 @@ import {
   jstDay,
   reserveInTokens,
 } from "../../../lib/partner-ai-config";
-import { EMBED_HEADER } from "./auth";
+import { CHAT_PATH, REVOKED_PATH, TokenChat, tokenAtt } from "./token-chat";
+import { BOX_HEADER, EMBED_HEADER } from "./auth";
+import { type ChatLogRequest, chatLogLine } from "../../../lib/chat-log-line";
+import {
+  ETA_AGENT,
+  ETA_FLAG,
+  ETA_LABEL,
+  ETA_PATH,
+  etaLineText,
+  parseEtaPing,
+} from "../../../lib/eta-ping";
 import {
   CLIPS_GONE_MS,
   CLIPS_HIDDEN_MS,
@@ -296,6 +347,22 @@ type PageAtt = {
    * pairing or a grant's pages, never joins a recording session.
    */
   embed?: true;
+  /**
+   * The owner's box (docs/box-oauth.md, "Chat on the owner's box"): an embed
+   * page from that box client's exact origin. Chat only as above, plus what
+   * the chat itself needs (voice amends, ask-card taps). Each line it sends is
+   * checked with the main Worker first; revoked, it is closed.
+   */
+  box?: string;
+  /**
+   * The owner's box with box:eval (docs/box-oauth.md, "Code on the owner's
+   * box"): then not `embed`, but an owner page in full, minus clips and
+   * renewal (it carries no session or device): it takes eval, can answer a
+   * pairing, sends page errors, and gets the whole state. Asked of the main
+   * Worker at connect, before each eval sent to it and before each such
+   * message it sends; gone, the page drops back to chat-only.
+   */
+  boxEval?: true;
 };
 /** A recording window session (`clips:<sid>`), see "Voice-clip recording" above. */
 type ClipsRec = {
@@ -350,6 +417,14 @@ type ControllerAtt = {
   node?: string;
   /** The node's assignee (`?agent=`): the agent's id on its lines. */
   assignee?: string;
+  /**
+   * An eval token's sender (lib/eval-token.ts; docs/secrets-and-auth.md, "Eval
+   * tokens"): the token's SHA-256 (never the secret), its tag and its account.
+   * Approved by the main Worker, not a tap; every eval it sends is asked again.
+   */
+  evalToken?: string;
+  tokenTag?: string;
+  tokenUser?: string;
 } & PairInfo;
 /**
  * A stored grant (`grant:<sha256 of its token>`). `scope` absent = "chat"
@@ -391,7 +466,25 @@ type SessionsRpc = {
   partnerReply?(req: PartnerRequest): Promise<unknown>;
   /** The chat inbox's agent ops (lib/inbox/agent.ts); an older main Worker has none. */
   inbox?(req: { op: string; id?: string }): Promise<unknown>;
+  /** An eval token's connect or use (lib/eval-token.ts); an older main Worker has none: refused. */
+  evalToken?(req: {
+    op: "connect" | "use";
+    token?: string;
+    tokenHash?: string;
+    len?: number;
+    target?: string;
+  }): Promise<unknown>;
+  /** `lianki chat`: an API token's check for one chat operation (lib/chat-token.ts). */
+  chatToken?(req: { op: string; token?: string; tokenHash?: string }): Promise<unknown>;
+  /** May this box keep chatting (docs/box-oauth.md)? An older main Worker has none: no. */
+  boxChat?(clientId: string): Promise<unknown>;
+  /** May this box hold the owner's page powers (docs/box-oauth.md)? An older main Worker has none: no. */
+  boxEval?(clientId: string): Promise<unknown>;
+  /** The account's chat history (lib/chat-log.ts); an older main Worker has none: not kept. */
+  chatLog?(req: ChatLogRequest): Promise<unknown>;
 };
+/** POST, from the main Worker over its binding: the owner thread's history into D1, once. */
+export const CHAT_BACKFILL_PATH = "/internal/chat-backfill";
 /** How long the hub trusts its read of PARTNER_AI_FLAG (as lib/flags-store.ts's FLAG_CACHE_MS). */
 const AI_FLAG_CACHE_MS = 30_000;
 /** The AI's spinner is re-sent this often while the model works (the page's BUSY_MS is 12 s). */
@@ -401,6 +494,8 @@ const aiUserKey = (day: string, userId: string) => `ai:${day}:u:${userId}`;
 const aiSiteKey = (day: string) => `ai:${day}:site`;
 /** The owner's off switch for agent polish (lib/flags.ts, /dev/flags). */
 export const POLISH_OFF_FLAG = "stt.polish-off";
+/** The owner's switch for continuous speech amending the last line (voice-merge.ts). */
+export const MERGE_FLAG = "stt.merge";
 /** At most one live-session check per grant in this long (a burst of uses asks once). */
 const SESSION_CHECK_MIN_MS = 30_000;
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
@@ -410,6 +505,8 @@ const dormantPair = (hash: string) => `${DORMANT}${hash.slice(0, 40)}`;
 type Rate = { start: number; count: number };
 /** The header a controller resumes its chat grant with. */
 const TOKEN_HEADER = "x-debug-token";
+/** An eval token (lib/eval-token.ts), set by index.ts from the sender's Authorization header only. */
+export const EVAL_TOKEN_HEADER = "x-debug-eval-token";
 /** Who a page is: set by index.ts from the main Worker's answer, never by the page. */
 export const IDENTITY_HEADERS = {
   user: "x-debug-user",
@@ -424,6 +521,22 @@ export const IDENTITY_HEADERS = {
 } as const;
 /** The main Worker tells the hub a session was deleted (sign-out), over its PUSH binding. */
 const SIGNED_OUT_PATH = "/internal/signed-out";
+/** The main Worker tells the hub a box lost box:chat, over its PUSH binding. */
+const BOX_CLOSED_PATH = "/internal/box-closed";
+/** A box chat socket closed because its box lost box:chat (hub-side, on purpose). */
+export const BOX_CLOSED = 4401;
+/** What a box page may send (docs/box-oauth.md): the chat, and nothing of eval or recording. */
+const BOX_PAGE_TYPES = new Set(["chat", "page", "passage-end", "unmerge", "answer"]);
+/** What a box page with box:eval may send besides: pairing answers, results, page errors. */
+const BOX_EVAL_TYPES = new Set([
+  "allow",
+  "deny",
+  "revoke",
+  "end-page",
+  "result",
+  "chunk",
+  "page-error",
+]);
 type Att = PageAtt | ControllerAtt;
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
@@ -439,6 +552,32 @@ const send = (ws: Socket, msg: unknown) => {
     ws.send(JSON.stringify(msg));
   } catch {}
 };
+/** The main Worker's yes to an eval token (lib/eval-token.ts), or null for anything else. */
+function evalTokenOk(
+  v: unknown,
+): { id: string; tag: string; name: string; expiresAt: number; userId?: string } | null {
+  if (!v || typeof v !== "object") return null;
+  const r = v as Record<string, unknown>;
+  if (
+    r.ok !== true ||
+    typeof r.id !== "string" ||
+    !/^[0-9a-f]{64}$/.test(r.id) ||
+    typeof r.tag !== "string" ||
+    typeof r.name !== "string" ||
+    typeof r.expiresAt !== "number"
+  )
+    return null;
+  return {
+    id: r.id,
+    tag: r.tag,
+    name: r.name,
+    expiresAt: r.expiresAt,
+    ...(typeof r.userId === "string" ? { userId: r.userId } : {}),
+  };
+}
+/** A box page's label starts with "box ", so the agent and the page list tell it apart. */
+const boxLabel = (label: string, isBox: boolean) =>
+  isBox ? cleanLabel(`box ${label}`, MAX_LABEL) : label;
 const close = (ws: Socket, code: number, reason: string) => {
   try {
     ws.close(code, reason);
@@ -520,11 +659,15 @@ export class DebugHub {
   /** When each grant's session was last checked (the per-grant rate limit). */
   private checkedAt = new Map<string, number>();
   /** The last read of PARTNER_AI_FLAG (AI_FLAG_CACHE_MS). */
-  private aiFlag?: { at: number; on: boolean };
+  /** `unsure`: the flag could not be read (an RPC error, "busy"); the AI cannot answer then. */
+  private aiFlag?: { at: number; on: boolean; unsure?: true };
+  private mergeFlag?: { at: number; on: boolean };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
   private aiTurn = new Map<string, number>();
+  /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
+  private tokens: TokenChat;
 
   constructor(
     private ctx: DebugState,
@@ -534,6 +677,15 @@ export class DebugHub {
     // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
     this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
     this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    this.tokens = new TokenChat({
+      now: () => this.now(),
+      rpc: () => this.sessions,
+      sockets: () => this.ctx.getWebSockets(),
+      post: (m) => this.post(m),
+      history: (thread) => this.history(thread),
+      blocked: async (userId) =>
+        (await this.ctx.storage.get<FriendRecord>(friendKey(userId)))?.blocked === true,
+    });
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
     // hibernates, so it costs no wake-up.
@@ -634,7 +786,8 @@ export class DebugHub {
       type: "state",
       pending,
       sessions,
-      listeners: agents.length + ai,
+      // Lanes listening with an API token in this thread count too (token-chat.ts).
+      listeners: agents.length + ai + this.tokens.count(who),
       pages,
       ...(nodes.length ? { nodes } : {}),
     };
@@ -696,6 +849,57 @@ export class DebugHub {
       const route = routeTo(a.node, m.to);
       if (route) send(ws, route === "observed" ? { ...out, observed: true } : out);
     }
+    // API-token listeners: their own thread only (token-chat.ts).
+    await this.tokens.chat(m);
+    // Sent first: the account's history never holds the chat up.
+    const line = chatLogLine(m);
+    if (line) await this.chatLog({ op: "put", thread: m.thread, lines: [line] });
+  }
+
+  /**
+   * Keeps the account's history in step (lib/chat-log.ts, docs/chat-history.md)
+   * over SESSIONS.chatLog. Never fails the chat: no binding, "busy" or an error
+   * leaves the line in the hub as ever, and is logged.
+   */
+  private async chatLog(req: ChatLogRequest): Promise<unknown> {
+    // Called on the stub itself: `.bind` is sent as an RPC named "bind" and refused (#681).
+    if (!this.sessions?.chatLog) return undefined;
+    try {
+      const out = (await this.sessions.chatLog(req)) as
+        | { ok?: boolean; error?: string }
+        | undefined;
+      if (out && out.ok === false)
+        console.log(JSON.stringify({ msg: "debug.chat-log", op: req.op, error: out.error }));
+      return out;
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.chat-log", op: req.op, error: String(e).slice(0, 200) }),
+      );
+      return undefined;
+    }
+  }
+
+  /** A changed line (polish, merge, answer) in the account's history, where it is still kept. */
+  private async chatLogUpdate(thread: string, m: ChatMessage) {
+    const line = chatLogLine(m);
+    if (line) await this.chatLog({ op: "update", thread, lines: [line] });
+  }
+
+  /**
+   * POST /internal/chat-backfill: the owner thread's stored history into the
+   * owners' accounts, once each (lib/chat-log.ts records it: a second call
+   * writes nothing, so a line deleted since stays deleted). From the main
+   * Worker's history route over its PUSH binding; index.ts answers it on the
+   * binding's hostname alone.
+   */
+  private async backfillApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    if (!this.sessions?.chatLog)
+      return Response.json({ error: "no chat history binding" }, { status: 503 });
+    const lines = (await this.history(OWNER_THREAD)).map(chatLogLine).filter((l) => l !== null);
+    const out = await this.chatLog({ op: "backfill", thread: OWNER_THREAD, lines });
+    if (!out) return Response.json({ error: "chat history unreachable" }, { status: 502 });
+    return Response.json({ lines: lines.length, ...(out as object) });
   }
 
   /**
@@ -728,10 +932,15 @@ export class DebugHub {
     const count = line.edited?.count ?? 0;
     if (count >= MAX_EDITS) return fail(`message ${m.id} was already polished ${MAX_EDITS} times`);
     if (m.text === line.text) return fail(`message ${m.id} already reads that way`);
+    // A merged passage is polished once, when it ended: the raw text is still growing.
+    if (line.parts && !line.settled && this.now() - lastPartAt(line) < MAX_UTTERANCE_MS)
+      return fail(`message ${m.id} is still being spoken: polish it on polish-due`);
     // Held to the context (polish.ts): the raw STT text against the thread's
     // other lines, the page it was spoken on, and the words on its screen.
     const raw = line.raw ?? line.text;
     const recent = [...kept].filter(([k]) => k !== key).map(([, x]) => x.text);
+    // A merged line's parts are context too: later words correct what earlier ones really were.
+    recent.push(...partTexts(line));
     const v = polishCheck(raw, m.text, polishContext(line, recent));
     if (!v.ok) return fail(`not polished, the raw line stands: ${v.reason}`);
     if (await this.polishOff())
@@ -745,6 +954,7 @@ export class DebugHub {
       edited: { at: t, by, count: count + 1 },
     };
     await this.ctx.storage.put(key, next);
+    await this.chatLogUpdate(OWNER_THREAD, next);
     const out: EditedEvent = {
       type: "edited",
       id: line.id,
@@ -764,15 +974,181 @@ export class DebugHub {
         head: head(m.text),
       }),
     );
+    this.tellEdit(out, line.to, ws);
+  }
+
+  /** An edit of an owner's line: its pages, and the listeners by the line's node. */
+  private tellEdit(out: EditedEvent, to: string | undefined, sender?: Socket) {
     for (const { ws: p } of this.pages(OWNER_THREAD)) send(p, out);
     let told = false;
     for (const { ws: l, a } of this.listeners()) {
-      const route = routeTo(a.node, line.to);
+      const route = routeTo(a.node, to);
       if (!route) continue;
-      if (l === ws) told = true;
+      if (l === sender) told = true;
       send(l, route === "observed" ? { ...out, observed: true } : out);
     }
-    if (!told) send(ws, out);
+    if (sender && !told) send(sender, out);
+    this.tokens.edited(out).catch(() => {});
+  }
+
+  /**
+   * Is MERGE_FLAG on? Asked of the main Worker at most once per AI_FLAG_CACHE_MS,
+   * voice lines only. Only exactly true is on: no binding, "busy", an error, all off.
+   */
+  private async mergeOn(): Promise<boolean> {
+    const t = this.now();
+    if (this.mergeFlag && t - this.mergeFlag.at < AI_FLAG_CACHE_MS) return this.mergeFlag.on;
+    let on = false;
+    try {
+      on = (await this.flagValue(MERGE_FLAG)) === true;
+    } catch {}
+    this.mergeFlag = { at: t, on };
+    return on;
+  }
+
+  /**
+   * The owner's voice line amends his last one, when it asked to and everything
+   * holds (voice-merge.ts). False: it goes out as a new line. Reads and writes
+   * storage only, so no other event lands in between (the Durable Object's gate).
+   */
+  private async merge(
+    page: PageAtt,
+    cur: MergeCandidate & { id: string; at: number; continues: string },
+  ): Promise<boolean> {
+    const kept = [
+      ...(await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(OWNER_THREAD).prefix,
+        reverse: true,
+        limit: CHAT_HISTORY,
+      })),
+    ];
+    const refuse = (reason: string) => {
+      console.log(JSON.stringify({ msg: "debug.merge-refused", id: cur.id, reason }));
+      return false;
+    };
+    const latest = kept[0];
+    // The thread's very latest line, by anyone: an agent's reply or card keeps them apart.
+    if (!latest || latest[1].id !== cur.continues) return refuse("not-latest");
+    const [key, prev] = latest;
+    // The same page on the same path: another device, or a page he moved to, is a new turn.
+    if (prev.label !== page.label) return refuse("other-page");
+    // A card waiting for him just before it, or one tapped since: an answer stays its own act.
+    const before = kept[1]?.[1];
+    if (before?.ask && askState(before, cur.at) === "open") return refuse("open-ask");
+    if (kept.some(([, x]) => x.answer && x.answer.at >= prev.at)) return refuse("answered");
+    const v = mergeVerdict(prev, cur);
+    if (!v.ok) return refuse(v.reason);
+    const next = mergeLines(prev, cur, cur.at);
+    await this.ctx.storage.put(key, next);
+    await this.chatLogUpdate(OWNER_THREAD, next);
+    console.log(
+      JSON.stringify({
+        msg: "debug.merge",
+        id: prev.id,
+        part: cur.id,
+        signal: v.signal,
+        parts: next.parts?.length,
+        len: next.text.length,
+        head: head(next.text),
+      }),
+    );
+    this.tellEdit(
+      {
+        type: "edited",
+        id: prev.id,
+        thread: OWNER_THREAD,
+        text: next.text,
+        raw: next.raw as string,
+        edited: next.edited as EditedEvent["edited"],
+        parts: next.parts,
+        merged: { id: cur.id, text: cur.text },
+      },
+      prev.to,
+    );
+    return true;
+  }
+
+  /**
+   * The owner's undo on a merged line: it goes back to the lines it was made
+   * from, in its place in the thread, whatever came after it. Polish is dropped
+   * with the merge: what stands is what was heard. Never gated by the flag:
+   * turning it off must not strand a line already merged.
+   */
+  private async unmerge(ws: Socket, page: PageAtt, id: string) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    if (page.thread !== OWNER_THREAD) return fail("only the owner's lines are merged");
+    const { prefix, seq: seqKey } = threadKeys(OWNER_THREAD);
+    const kept = [
+      ...(await this.ctx.storage.list<ChatMessage>({ prefix, reverse: true, limit: CHAT_HISTORY })),
+    ];
+    const at = kept.findIndex(([, x]) => x.id === id);
+    const line = at < 0 ? undefined : kept[at][1];
+    if (!line?.parts) return fail(`message ${id} is not a merged line`);
+    const lines = splitLine(line).map((x) => ({ ...x, thread: OWNER_THREAD }));
+    const grow = lines.length - 1;
+    const seqOf = (k: string) => Number(k.slice(prefix.length));
+    const seq = seqOf(kept[at][0]);
+    // Newest first: each line moves up by what the split adds, onto a key already moved.
+    for (const [k, x] of kept.slice(0, at))
+      await this.ctx.storage.put(msgKey(OWNER_THREAD, seqOf(k) + grow), x);
+    for (const [i, x] of lines.entries())
+      await this.ctx.storage.put(msgKey(OWNER_THREAD, seq + i), x);
+    const top = ((await this.ctx.storage.get<number>(seqKey)) ?? seq) + grow;
+    await this.ctx.storage.put(seqKey, top);
+    for (let s = top - CHAT_HISTORY; s > top - CHAT_HISTORY - grow && s > 0; s--)
+      await this.ctx.storage.delete(msgKey(OWNER_THREAD, s));
+    console.log(JSON.stringify({ msg: "debug.unmerge", id, lines: lines.length }));
+    await this.chatLog({
+      op: "split",
+      thread: OWNER_THREAD,
+      id,
+      lines: lines.map(chatLogLine).filter((l) => l !== null),
+    });
+    this.tellEdit(
+      {
+        type: "edited",
+        id,
+        thread: OWNER_THREAD,
+        text: lines[0].text,
+        raw: lines[0].text,
+        edited: { at: this.now(), by: UNMERGE_BY, count: 0 },
+        split: lines,
+      },
+      line.to,
+    );
+  }
+
+  /**
+   * The page that spoke went quiet after a merged line. Nothing more joins it,
+   * and the listeners hear it is time for its one polish. With stt.polish-off on
+   * (or unsure) they hear nothing, so no lane wakes for it: the raw line stands.
+   */
+  private async passageEnd(page: PageAtt) {
+    if (page.thread !== OWNER_THREAD) return;
+    const kept = await this.ctx.storage.list<ChatMessage>({
+      prefix: threadKeys(OWNER_THREAD).prefix,
+      reverse: true,
+      limit: CHAT_HISTORY,
+    });
+    const latest = [...kept].find(([, x]) => x.from === "owner");
+    if (!latest) return;
+    const [key, line] = latest;
+    if (!line.parts || line.settled || line.label !== page.label) return;
+    await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
+    if ((line.edited?.count ?? 0) >= MAX_EDITS || (await this.polishOff())) return;
+    const out: PolishDueEvent = {
+      type: "polish-due",
+      id: line.id,
+      thread: OWNER_THREAD,
+      text: line.text,
+      raw: line.raw ?? line.text,
+      parts: line.parts.length,
+    };
+    console.log(JSON.stringify({ msg: "debug.polish-due", id: line.id, parts: out.parts }));
+    for (const { ws: l, a } of this.agents()) {
+      const route = routeTo(a.node, line.to);
+      if (route) send(l, route === "observed" ? { ...out, observed: true } : out);
+    }
   }
 
   /**
@@ -841,6 +1217,7 @@ export class DebugHub {
       at: t,
     };
     await this.ctx.storage.put(key, { ...line, answer } satisfies ChatMessage);
+    await this.chatLogUpdate(page.thread, { ...line, answer });
     const labels: Record<string, string[]> = {};
     for (const q of (line.ask as Ask).questions)
       labels[q.id] = (choices[q.id] ?? []).map(
@@ -851,6 +1228,8 @@ export class DebugHub {
       JSON.stringify({ msg: "debug.answer", thread: page.thread, page: page.label, askId }),
     );
     for (const { ws: p } of this.pages(page.thread)) send(p, out);
+    // An ask posted with an API token: its own lane alone hears the answer (token-chat.ts).
+    if (line.via === "token") return this.tokens.answered(page.thread, line, out);
     for (const { ws: l, a } of this.listeners())
       if (audience(a) === page.thread || page.thread === OWNER_THREAD || !a.forUser)
         send(l, page.thread === OWNER_THREAD ? out : { ...out, thread: page.thread });
@@ -888,6 +1267,17 @@ export class DebugHub {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
+    if (url.pathname === ETA_PATH) return this.etaApi(req);
+    if (url.pathname === REVOKED_PATH) return this.tokensRevoked(req);
+    if (url.pathname === CHAT_PATH) {
+      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return this.tokens.http(req);
+      const pair = new WebSocketPair();
+      this.ctx.acceptWebSocket(pair[1]);
+      this.tokens.opened(pair[1]);
+      return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
+    }
+    if (url.pathname === BOX_CLOSED_PATH) return this.boxClosedApi(req);
+    if (url.pathname === CHAT_BACKFILL_PATH) return this.backfillApi(req);
     const control = url.pathname.endsWith("/control");
     let who: Identity | undefined;
     if (!control) {
@@ -922,8 +1312,16 @@ export class DebugHub {
     const pair = new WebSocketPair();
     const ws = pair[1];
     this.ctx.acceptWebSocket(ws);
-    if (control) await this.connectController(ws, url, req.headers.get(TOKEN_HEADER));
-    else await this.connectPage(ws, url, who, embed);
+    // Which box client a ticket socket is (index.ts verified its origin); only ever with a ticket.
+    const box = embed ? (req.headers.get(BOX_HEADER) ?? undefined) : undefined;
+    if (control)
+      await this.connectController(
+        ws,
+        url,
+        req.headers.get(TOKEN_HEADER),
+        req.headers.get(EVAL_TOKEN_HEADER),
+      );
+    else await this.connectPage(ws, url, who, embed, box);
     // The browser fails a socket whose offered subprotocol is not selected.
     return new Response(null, {
       status: 101,
@@ -978,6 +1376,58 @@ export class DebugHub {
     const rec = await this.block(body.userId, body.action === "block");
     if (!rec) return Response.json({ error: "no such chat user" }, { status: 404 });
     return Response.json({ ok: true, friend: { userId: body.userId, ...rec } });
+  }
+
+  /**
+   * POST /internal/eta {id, title, etaAt, assignee?, kind?, reason?}: a
+   * state-tree estimate ran out, or its overrun was explained or went
+   * unexplained (lib/eta-ping.ts; docs/state-tree.md, "ETA overrun"). From the progress hub alone, over its DEBUG binding:
+   * index.ts forwards no request to this path. With flag chat.eta-bar on, one
+   * line in the owner's thread addressed to the main node ("/"), so every
+   * listener there hears it as it hears his lines: `from: "agent"` (never
+   * the owner), `agentId: "eta"`, `source: "eta"`; quiet for "due" only. It never answers an
+   * ask (only a page's tap does) and never carries ownerGrant. 503 when the
+   * flag cannot be read: the progress hub tries again.
+   */
+  private async etaApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let ping: ReturnType<typeof parseEtaPing> = null;
+    try {
+      ping = parseEtaPing(await req.json());
+    } catch {}
+    if (!ping) return Response.json({ error: "expected {id, title, etaAt}" }, { status: 400 });
+    let on: unknown = false;
+    try {
+      on = await this.flagValue(ETA_FLAG);
+    } catch {
+      return Response.json({ error: "flag unreadable" }, { status: 503 });
+    }
+    if (on === "busy") return Response.json({ error: "flag unreadable" }, { status: 503 });
+    if (on !== true) return Response.json({ ok: true, delivered: false, reason: "flag off" });
+    const line: ChatMessage & { thread: string } = {
+      id: crypto.randomUUID().slice(0, 8),
+      from: "agent",
+      label: ETA_LABEL,
+      text: etaLineText(ping, this.now()),
+      at: this.now(),
+      thread: OWNER_THREAD,
+      to: ROOT_NODE,
+      agentId: ETA_AGENT,
+      source: "eta",
+      // The agents' line is quiet; the owner's (late, silent) is read aloud like any agent line.
+      ...(ping.kind === "late" || ping.kind === "silent" ? {} : { quiet: true }),
+      eta: { id: ping.id, etaAt: ping.etaAt },
+    };
+    await this.post(line);
+    console.log(
+      JSON.stringify({
+        msg: "debug.eta",
+        kind: ping.kind ?? "due",
+        id: ping.id,
+        etaAt: ping.etaAt,
+      }),
+    );
+    return Response.json({ ok: true, delivered: true, listeners: this.agents().length });
   }
 
   /**
@@ -1053,10 +1503,9 @@ export class DebugHub {
    * polish as before, so the deploy order never matters.
    */
   private async polishOff(): Promise<boolean> {
-    const ask = this.sessions?.flag?.bind(this.sessions);
-    if (!ask) return false;
+    if (!this.sessions?.flag) return false;
     try {
-      return (await ask(POLISH_OFF_FLAG)) !== false;
+      return (await this.flagValue(POLISH_OFF_FLAG)) !== false;
     } catch {
       return true;
     }
@@ -1202,12 +1651,16 @@ export class DebugHub {
    * history and its audience's state. A blocked friend is told and closed.
    * Called without an identity (the unit tests' shorthand) it is an owner page.
    */
-  async connectPage(ws: Socket, url: URL, who?: Identity, ticketSocket = false) {
+  async connectPage(ws: Socket, url: URL, who?: Identity, ticketSocket = false, box?: string) {
     // A page that says another site frames it (lib/frame-context.ts) is chat-only
     // like a ticket socket: no pairing, no Allow, no eval, no clips (defence in
     // depth: the page itself never connects from such a frame).
     const embed = ticketSocket || url.searchParams.get("frame") === "foreign";
-    const label = cleanLabel(url.searchParams.get("label"), MAX_LABEL);
+    const isBox = ticketSocket && !!box;
+    // The owner's box with box:eval: an owner page (minus clips and renewal), asked now.
+    const boxEval = isBox && box ? (await this.boxEvalSays(box)) === "live" : false;
+    // A box's lines say so, for the agent: "box /words …".
+    const label = boxLabel(cleanLabel(url.searchParams.get("label"), MAX_LABEL), isBox);
     // The tab's own id (kept across reloads), so "this page" grants survive them.
     const tab = url.searchParams.get("tab");
     const id = isPageId(tab) ? tab : crypto.randomUUID().slice(0, 8);
@@ -1250,11 +1703,13 @@ export class DebugHub {
         at: this.now(),
         // A chat-only page (a ticket socket, or a page another site frames) never
         // carries the owner's session: no eval grant is ever bound to or renewed on it.
-        ...(embed
-          ? { embed: true as const }
-          : who?.owner && who.session
-            ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
-            : {}),
+        ...(boxEval
+          ? { box, boxEval: true as const }
+          : embed
+            ? { embed: true as const, ...(isBox ? { box } : {}) }
+            : who?.owner && who.session
+              ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
+              : {}),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
     // The page's own avatar (older pages ignore an unknown type).
@@ -1294,7 +1749,9 @@ export class DebugHub {
    * page to ask. `?scope=chat` asks for the 30-day chat grant; anything else
    * for eval (and chat) for EVAL_GRANT_MS. Allow grants exactly what was asked.
    */
-  async connectController(ws: Socket, url: URL, token?: string | null) {
+  async connectController(ws: Socket, url: URL, token?: string | null, evalToken?: string | null) {
+    // An eval token is the owner's own grant, made on his token page: no tap, no friend.
+    if (evalToken) return this.tokenController(ws, url, evalToken);
     const forKey = url.searchParams.get("for")?.trim();
     if (forKey) return this.pairForFriend(ws, url, forKey, token);
     if (token) return this.resume(ws, url, token);
@@ -1399,6 +1856,129 @@ export class DebugHub {
    * Reconnecting with a grant token: its scope (and an eval grant's pages)
    * again, no prompt, even with no page open — or 4498 if it is not live.
    */
+  /**
+   * A sender with an eval token (lib/eval-token.ts): the main Worker says
+   * whether the token is live, holds `eval`, and belongs to a site owner now
+   * (and audits the connect). Then it is an eval session on every owner page,
+   * until the token expires, with no tap; a box page only while that box holds
+   * box:eval (its own checks). Refused: closed (GRANT_INVALID); unsure: closed
+   * so the sender retries. Nothing is stored here but the token's hash.
+   */
+  private async tokenController(ws: Socket, url: URL, token: string) {
+    const rpc = this.sessions;
+    let said: unknown;
+    try {
+      said = rpc?.evalToken ? await rpc.evalToken({ op: "connect", token }) : undefined;
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.eval-token-failed", error: String(e).slice(0, 200) }),
+      );
+      send(ws, { type: "error", error: "eval token: could not check it now; try again" });
+      return close(ws, 4503, "eval token unsure");
+    }
+    const ok = evalTokenOk(said);
+    if (!ok) {
+      const why = (said as { error?: unknown } | undefined)?.error;
+      send(ws, { type: "error", error: `eval token refused (${String(why ?? "unavailable")})` });
+      console.log(JSON.stringify({ msg: "debug.eval-token-refused", why: String(why ?? "none") }));
+      return close(ws, 4498, "eval token refused");
+    }
+    const until = Math.min(ok.expiresAt, Number.MAX_SAFE_INTEGER);
+    if (!(until > this.now())) {
+      send(ws, { type: "error", error: "eval token refused (expired)" });
+      return close(ws, 4498, "eval token refused");
+    }
+    const a: ControllerAtt = {
+      role: "controller",
+      pair: crypto.randomUUID(),
+      code: shortCode(crypto.getRandomValues(new Uint8Array(2))),
+      label: cleanLabel(url.searchParams.get("label"), 80) || `token ${ok.name}`,
+      at: this.now(),
+      until,
+      scope: "eval",
+      evalToken: ok.id,
+      tokenTag: ok.tag,
+      ...(ok.userId ? { tokenUser: ok.userId } : {}),
+      ...(url.searchParams.get("beat") === "1" ? { beat: true } : {}),
+      ...whereOf(url),
+    };
+    ws.serializeAttachment(a);
+    send(ws, { type: "approved", until, scope: "eval", via: "token" });
+    send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
+    console.log(
+      JSON.stringify({ msg: "debug.eval-token", pair: a.pair, label: a.label, tag: ok.tag }),
+    );
+    this.broadcast();
+  }
+
+  /**
+   * Before each eval an eval-token sender sends: the main Worker checks the
+   * token again (revoked, expired, no longer an owner) and audits the use.
+   * Refused: the sender is closed. Unsure: this eval is not sent.
+   */
+  private async evalTokenStillOk(
+    ws: Socket,
+    c: ControllerAtt,
+    v: { code: string; target?: string },
+  ): Promise<boolean> {
+    const rpc = this.sessions;
+    let said: unknown;
+    try {
+      said = rpc?.evalToken
+        ? await rpc.evalToken({
+            op: "use",
+            tokenHash: c.evalToken,
+            len: v.code.length,
+            ...(v.target ? { target: v.target } : {}),
+          })
+        : undefined;
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.eval-token-failed", error: String(e).slice(0, 200) }),
+      );
+      send(ws, { type: "error", error: "not sent: the eval token could not be checked now" });
+      return false;
+    }
+    if (evalTokenOk(said)) return true;
+    const why = (said as { error?: unknown } | undefined)?.error;
+    if (why === "rate") {
+      send(ws, { type: "error", error: "not sent: this eval token is over its rate limit" });
+      return false;
+    }
+    send(ws, { type: "revoked", error: `eval token refused (${String(why ?? "unavailable")})` });
+    close(ws, 4498, "eval token refused");
+    this.broadcast(ws);
+    return false;
+  }
+
+  /**
+   * POST /internal/chat-tokens/revoked {tags?, userId?} (lib/push-chat-tokens.ts):
+   * those tokens' eval senders close here, then their chat sockets (token-chat.ts).
+   */
+  private async tokensRevoked(req: Request): Promise<Response> {
+    const text = req.method === "POST" ? await req.text() : "";
+    let body: { tags?: unknown; userId?: unknown } = {};
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {}
+    const tags = Array.isArray(body.tags) ? body.tags : [];
+    const user = isUserId(body.userId) ? body.userId : undefined;
+    let n = 0;
+    for (const { ws, a } of this.sockets("controller"))
+      if (a.tokenTag && (tags.includes(a.tokenTag) || (user && a.tokenUser === user))) {
+        send(ws, { type: "revoked" });
+        close(ws, 4498, "eval token revoked");
+        n++;
+      }
+    if (n) {
+      console.log(JSON.stringify({ msg: "debug.eval-token-revoked", closed: n }));
+      this.broadcast();
+    }
+    return this.tokens.revoked(
+      new Request(req.url, { method: req.method, headers: req.headers, body: text || undefined }),
+    );
+  }
+
   private async resume(ws: Socket, url: URL, token: string) {
     const live = await this.liveGrant(token);
     if (!live) {
@@ -1569,6 +2149,9 @@ export class DebugHub {
     if (ws.readyState !== undefined && ws.readyState > 1) return;
     // The auto-response normally answers it before the hub sees it.
     if (raw === KEEPALIVE.ping) return ws.send(KEEPALIVE.pong);
+    // An API-token socket: never a page or a controller (token-chat.ts).
+    const ta = tokenAtt(ws);
+    if (ta) return this.tokens.message(ws, ta, raw);
     const a = att(ws);
     if (a?.role === "page") return this.fromPage(ws, a, raw);
     if (a?.role !== "controller") return;
@@ -1586,10 +2169,142 @@ export class DebugHub {
   private fromPage(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
     // An embedded page (another site) may only chat and say where it is:
     // no answers, no pairings, no results, no clips, no page errors.
+    // The owner's box may also amend voice lines and tap ask cards, and only
+    // while the main Worker still says its box:chat is live.
+    if (page.box) {
+      const em = parsePageMessage(raw);
+      if (!em) return;
+      if (BOX_PAGE_TYPES.has(em.type))
+        return this.boxStillChats(ws, page).then((ok) =>
+          ok ? this.fromPageChecked(ws, page, raw) : undefined,
+        );
+      // box:eval: pairing answers, results and page errors, each checked first.
+      if (!page.boxEval || !BOX_EVAL_TYPES.has(em.type)) return;
+      return this.boxStillEvals(ws, page).then((ok) =>
+        ok ? this.fromPageChecked(ws, att(ws) as PageAtt, raw) : undefined,
+      );
+    }
     if (page.embed) {
       const em = parsePageMessage(raw);
       if (!em || (em.type !== "chat" && em.type !== "page")) return;
     }
+    return this.fromPageChecked(ws, page, raw);
+  }
+
+  /**
+   * Asked before each line a box sends: "live", or the socket closes
+   * ("gone": box:chat removed, box revoked, account no longer an owner, flag
+   * off; a main Worker without the check counts as gone). Unsure (busy, an
+   * error): this line is dropped and the page told; the socket stays.
+   */
+  private async boxStillChats(ws: Socket, page: PageAtt): Promise<boolean> {
+    // Called on the stub itself: an RPC method taken off it with .bind is refused
+    // ("The RPC receiver does not implement the method"), at least under wrangler dev.
+    const rpc = this.sessions;
+    let said: unknown = "gone";
+    try {
+      if (rpc?.boxChat && page.box) said = await rpc.boxChat(page.box);
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.box-check-failed", error: String(e).slice(0, 200) }),
+      );
+      said = "unsure";
+    }
+    if (said === "live") return true;
+    if (said === "gone") {
+      console.log(JSON.stringify({ msg: "debug.box-closed", why: "check" }));
+      close(ws, BOX_CLOSED, "box chat ended");
+      return false;
+    }
+    if (said !== "unsure")
+      console.log(JSON.stringify({ msg: "debug.box-check", said: String(said) }));
+    send(ws, { type: "error", error: "not sent: try again in a moment" });
+    return false;
+  }
+
+  /** The main Worker's word on a box's page powers: "live", "gone", or "unsure". */
+  private async boxEvalSays(cid: string): Promise<"live" | "gone" | "unsure"> {
+    // Called on the stub itself, as boxChat (a .bind-ed RPC method is refused).
+    const rpc = this.sessions;
+    try {
+      if (!rpc?.boxEval) return "gone";
+      const said = await rpc.boxEval(cid);
+      if (said === "live" || said === "gone") return said;
+      console.log(JSON.stringify({ msg: "debug.box-eval-check", said: String(said) }));
+      return "unsure";
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.box-eval-check-failed", error: String(e).slice(0, 200) }),
+      );
+      return "unsure";
+    }
+  }
+
+  /**
+   * Asked before each eval-power message a box page sends (a pairing answer,
+   * a result, a page error): "live", or the box's pages drop back to
+   * chat-only ("gone": box:eval removed, or anything box:chat needs). Unsure:
+   * this message is dropped; the page keeps its powers.
+   */
+  private async boxStillEvals(ws: Socket, page: PageAtt): Promise<boolean> {
+    if (!page.box) return false;
+    const said = await this.boxEvalSays(page.box);
+    if (said === "live") return true;
+    if (said === "gone") this.boxEvalEnded(page.box);
+    else send(ws, { type: "error", error: "not sent: try again in a moment" });
+    return false;
+  }
+
+  /**
+   * A box lost box:eval: its pages become chat-only embed pages again (no
+   * eval, no pairing, minimal state). Its chat goes on while box:chat holds.
+   */
+  private boxEvalEnded(cid: string): number {
+    let n = 0;
+    for (const { ws, a } of this.sockets("page")) {
+      if (a.box !== cid || !a.boxEval) continue;
+      const { boxEval: _gone, ...rest } = a;
+      const next: PageAtt = { ...rest, embed: true };
+      ws.serializeAttachment(next);
+      send(ws, pageState(next, this.state(next.thread)));
+      n++;
+    }
+    if (n) {
+      console.log(JSON.stringify({ msg: "debug.box-eval-ended", pages: n }));
+      this.broadcast();
+    }
+    return n;
+  }
+
+  /**
+   * POST /internal/box-closed {client, scope?}: that box lost box:chat. Its
+   * chat sockets close now. With `scope: "eval"` it lost box:eval only: its
+   * pages drop back to chat-only. Reached only over the main Worker's PUSH binding.
+   */
+  private async boxClosedApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let body: { client?: unknown; scope?: unknown };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      return Response.json({ error: "bad json" }, { status: 400 });
+    }
+    const client = body.client;
+    if (typeof client !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(client))
+      return Response.json({ error: "expected {client}" }, { status: 400 });
+    if (body.scope === "eval") return Response.json({ ok: true, ended: this.boxEvalEnded(client) });
+    let closed = 0;
+    for (const { ws, a } of this.sockets("page"))
+      if (a.box === client) {
+        close(ws, BOX_CLOSED, "box chat ended");
+        closed++;
+      }
+    if (closed) this.broadcast();
+    console.log(JSON.stringify({ msg: "debug.box-closed", why: "notice", closed }));
+    return Response.json({ ok: true, closed });
+  }
+
+  private fromPageChecked(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
     const cm = clipsParse(raw, parseClipsPageMessage);
     if (cm) return page.thread === OWNER_THREAD ? this.clipsFromPage(ws, page, cm) : undefined;
     const m = parsePageMessage(raw);
@@ -1597,11 +2312,12 @@ export class DebugHub {
     const t = this.now();
     if (m.type === "page") {
       // Only this socket's own label; silent: the agent hears it, the chat never shows it.
-      if (m.label === page.label) return;
-      ws.serializeAttachment({ ...page, label: m.label } satisfies PageAtt);
+      const label = boxLabel(m.label, !!page.box);
+      if (label === page.label) return;
+      ws.serializeAttachment({ ...page, label } satisfies PageAtt);
       const moved = {
         type: "page-changed",
-        label: m.label,
+        label,
         thread: page.thread,
         ...(page.email ? { email: page.email } : {}),
         at: t,
@@ -1659,8 +2375,28 @@ export class DebugHub {
       // Files are the owner's only (the upload is owner-only): a friend's refs are dropped.
       if (page.thread !== OWNER_THREAD)
         return this.friendChat(ws, page, m.id, m.text, m.context, m.scene);
-      const line = (speaker: SpeakerTag | undefined) =>
-        this.post({
+      const line = async (speaker: SpeakerTag | undefined) => {
+        // Voice lines only: a typed line never asks the flag, never merges, never waits.
+        const merging = m.source === "stt" && (await this.mergeOn());
+        if (
+          merging &&
+          m.continues &&
+          (await this.merge(page, {
+            id: m.id,
+            at: t,
+            continues: m.continues,
+            text: m.text,
+            ...(m.timing ? { timing: m.timing } : {}),
+            ...(m.to ? { to: m.to } : {}),
+            ...(m.wake ? { wake: m.wake } : {}),
+            ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
+            ...(m.context ? { context: m.context } : {}),
+            ...(m.attachments ? { attachments: m.attachments } : {}),
+            ...(speaker ? { speaker } : {}),
+          }))
+        )
+          return;
+        return this.post({
           id: m.id,
           from: "owner",
           label: page.label,
@@ -1679,7 +2415,9 @@ export class DebugHub {
           // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
           // approvals later must rely on this, never on what a page says.
           ...(speaker ? { speaker } : {}),
+          ...(merging ? { mergeable: true as const } : {}),
         });
+      };
       // A voice line with the Mac's signed attestations: verified first, then stored.
       if (m.source === "stt" && m.speakerProof?.length)
         return verifySpeakerProofs(
@@ -1692,6 +2430,8 @@ export class DebugHub {
         ).then(line);
       return line(undefined);
     }
+    if (m.type === "passage-end") return this.passageEnd(page);
+    if (m.type === "unmerge") return this.unmerge(ws, page, m.id);
     // A tap on an ask card: stamped here, never by the page or an agent.
     if (m.type === "answer") return this.answer(ws, page, m.askId, m.choices);
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.
@@ -1778,7 +2518,11 @@ export class DebugHub {
       ...(context ? { context } : {}),
     });
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
-    if (await this.aiOn()) await this.aiReply(page, email, t, context, scene);
+    const ai = await this.aiState();
+    if (ai === "on") await this.aiReply(page, email, t, context, scene, id);
+    // The AI could not even be asked: the page says so, rather than leave the line unanswered.
+    else if (ai === "unsure")
+      for (const { ws } of this.pages(page.thread)) send(ws, { type: "ai-failed" });
   }
 
   /**
@@ -1797,15 +2541,49 @@ export class DebugHub {
    * it was (the lanes answer).
    */
   private async aiOn(): Promise<boolean> {
+    return (await this.aiState()) === "on";
+  }
+
+  /**
+   * aiOn, telling "off" from "unsure": the flag could not be read (an RPC
+   * error, already logged as debug.rpc-failed, or "busy"). A friend's line
+   * then gets ai-failed ("No reply this time…") instead of silence.
+   */
+  private async aiState(): Promise<"on" | "off" | "unsure"> {
     const t = this.now();
-    if (this.aiFlag && t - this.aiFlag.at < AI_FLAG_CACHE_MS) return this.aiFlag.on;
-    const ask = this.sessions?.flag?.bind(this.sessions);
-    let on = false;
+    const cached = this.aiFlag;
+    if (cached && t - cached.at < AI_FLAG_CACHE_MS)
+      return cached.on ? "on" : cached.unsure ? "unsure" : "off";
+    let said: unknown = false;
+    let unsure = false;
     try {
-      on = !!ask && !!this.sessions?.partnerReply && (await ask(PARTNER_AI_FLAG)) === true;
-    } catch {}
-    this.aiFlag = { at: t, on };
-    return on;
+      if (this.sessions?.partnerReply) said = await this.flagValue(PARTNER_AI_FLAG);
+    } catch {
+      unsure = true;
+    }
+    if (said === "busy") unsure = true;
+    const on = !unsure && said === true;
+    this.aiFlag = { at: t, on, ...(unsure ? { unsure: true as const } : {}) };
+    return on ? "on" : unsure ? "unsure" : "off";
+  }
+
+  /**
+   * A flag's value from the main Worker's DebugSessions.flag; undefined with
+   * no binding. Called on the stub itself, never through `.bind(stub)`: workerd
+   * sends that as a call of a method named "bind", which the main Worker
+   * refuses ("The RPC receiver does not implement the method") — every flag
+   * read made that way failed in production from #482 until #681.
+   * A failure is logged as debug.rpc-failed and thrown.
+   */
+  private async flagValue(key: string): Promise<unknown> {
+    const rpc = this.sessions;
+    if (!rpc?.flag) return undefined;
+    try {
+      return await rpc.flag(key);
+    } catch (e) {
+      rpcFailed("flag", e, key);
+      throw e;
+    }
   }
 
   /**
@@ -1822,10 +2600,11 @@ export class DebugHub {
     lineAt: number,
     context?: ChatContext,
     scene?: SttScene,
+    msgId?: string,
   ) {
     const thread = page.thread;
-    const ask = this.sessions?.partnerReply?.bind(this.sessions);
-    if (thread === OWNER_THREAD || !isUserId(thread) || !ask) return;
+    const rpc = this.sessions;
+    if (thread === OWNER_THREAD || !isUserId(thread) || !rpc?.partnerReply) return;
     const t = this.now();
     const day = jstDay(t);
     const userKey = aiUserKey(day, thread);
@@ -1883,16 +2662,23 @@ export class DebugHub {
     };
     beat();
     const timer = setInterval(beat, AI_BEAT_MS);
-    const req: PartnerRequest = { userId: thread, history, page: pageInfo };
+    const req: PartnerRequest = {
+      userId: thread,
+      ...(msgId ? { msgId } : {}),
+      history,
+      page: pageInfo,
+    };
     let res: PartnerResult;
     try {
-      res = ((await ask(req)) ?? {
+      // On the stub itself: see flagValue.
+      res = ((await rpc.partnerReply(req)) ?? {
         ok: false,
         error: "model-failed",
         billed: "unknown",
       }) as PartnerResult;
-    } catch {
+    } catch (e) {
       // The RPC failed: the model may have run. Keep the reservation.
+      rpcFailed("partnerReply", e);
       res = { ok: false, error: "model-failed", billed: "unknown" };
     } finally {
       clearInterval(timer);
@@ -1920,14 +2706,24 @@ export class DebugHub {
       JSON.stringify({
         msg: "partner.reply",
         ok: res.ok,
-        ...(res.ok ? { tokensIn, tokensOut, model: res.model } : { error: res.error }),
+        ...(res.ok
+          ? {
+              tokensIn,
+              tokensOut,
+              model: res.model,
+              ...(res.charged !== undefined ? { charged: res.charged } : {}),
+            }
+          : { error: res.error }),
         ...(res.ms !== undefined ? { ms: res.ms } : {}),
         ...(res.ok && stale ? { dropped: true } : {}),
       }),
     );
     if (!res.ok) {
-      // Off or the owner: nothing to say (the lanes still answer). Otherwise tell the page.
-      if (res.error !== "off" && res.error !== "owner")
+      // Off, the owner, or a line already answered: nothing to say (the lanes
+      // still answer). No credits: the page says how to get some. Otherwise it failed.
+      if (res.error === "no-credits")
+        for (const { ws } of this.pages(thread)) send(ws, { type: "ai-credits" });
+      else if (res.error !== "off" && res.error !== "owner" && res.error !== "duplicate")
         for (const { ws } of this.pages(thread)) send(ws, { type: "ai-failed" });
       return;
     }
@@ -2163,7 +2959,8 @@ export class DebugHub {
     let a: Record<string, unknown>;
     try {
       a = ((await sessions.inbox(req)) ?? {}) as Record<string, unknown>;
-    } catch {
+    } catch (e) {
+      rpcFailed("inbox", e, req.op);
       return send(ws, { type: "error", error: "the inbox did not answer" });
     }
     console.log(JSON.stringify({ msg: "debug.inbox", op: req.op, ok: a.ok === true }));
@@ -2236,7 +3033,7 @@ export class DebugHub {
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to, node, agentId, quiet } = m.value;
+      const { text, to, node, agentId, quiet, lane, voice } = m.value;
       // The sender's node: what the line says, within the node its socket listens at.
       const home = c.node ?? ROOT_NODE;
       const from = m.value.taskPath ?? home;
@@ -2262,11 +3059,16 @@ export class DebugHub {
           text,
           at: t,
           ...dest,
+          // A friend's pairing never gets here (it cannot chat), nor the partner AI (aiReply).
+          ...(dest.thread === OWNER_THREAD ? { ownerGrant: true as const } : {}),
           ...(from !== ROOT_NODE ? { taskPath: from } : {}),
           ...(who ? { agentId: who } : {}),
           ...(node ? { to: node } : {}),
           // say --quiet (already a boolean): shown, never read aloud.
           ...(quiet ? { quiet } : {}),
+          // Its lane and voice (packages/debug-chat/src/voices.ts), already checked against the table.
+          ...(lane ? { lane } : {}),
+          ...(voice ? { voice } : {}),
         };
         console.log(
           JSON.stringify({
@@ -2277,6 +3079,8 @@ export class DebugHub {
             ...(said.taskPath ? { taskPath: said.taskPath } : {}),
             ...(said.to ? { to: said.to } : {}),
             ...(quiet ? { quiet } : {}),
+            ...(lane ? { lane } : {}),
+            ...(voice ? { voice } : {}),
             len: text.length,
             // A reply in a user's thread may quote them: only the owner's thread logs its start.
             ...(said.thread === OWNER_THREAD ? { head: head(text) } : {}),
@@ -2290,6 +3094,21 @@ export class DebugHub {
     }
     if (c.scope === "chat")
       return send(ws, { type: "error", error: "this session is chat-only: it cannot eval" });
+    const ev = m.value;
+    // An eval token: the main Worker checks it again, and audits this use, first.
+    if (c.evalToken)
+      return this.evalTokenStillOk(ws, c, ev).then((ok) =>
+        ok ? this.dispatchEval(ws, att(ws) as ControllerAtt, ev) : undefined,
+      );
+    return this.dispatchEval(ws, c, ev);
+  }
+
+  /** One eval to the pages a sender reaches (and the box's, each asked first). */
+  private dispatchEval(
+    ws: Socket,
+    c: ControllerAtt,
+    ev: { code: string; target?: string },
+  ): void | Promise<void> {
     const id = crypto.randomUUID().slice(0, 8);
     const labels: string[] = [];
     // Only the pages of the audience that approved this pairing — or the ones it named.
@@ -2302,11 +3121,35 @@ export class DebugHub {
           ? "the page you were authorized for is not connected now; this socket closes if it stays away 5 min (the grant stays: reconnect with its token)"
           : "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
       });
-    for (const p of reach) {
-      if (p.a.embed || !matchesTarget(p.a.label, m.value.target)) continue;
-      send(p.ws, { type: "eval", id, code: m.value.code, to: c.pair });
-      labels.push(p.a.label);
-    }
+    const targets = reach.filter((p) => !p.a.embed && matchesTarget(p.a.label, ev.target));
+    const deliver = (to: typeof targets) => {
+      for (const p of to) {
+        send(p.ws, { type: "eval", id, code: ev.code, to: c.pair });
+        labels.push(p.a.label);
+      }
+      this.evalSent(ws, c, ev, id, labels);
+    };
+    // The owner's box (box:eval): asked of the main Worker before each eval it is sent.
+    const boxes = [...new Set(targets.map((p) => p.a.box).filter((b): b is string => !!b))];
+    if (!boxes.length) return deliver(targets);
+    return Promise.all(boxes.map(async (b) => [b, await this.boxEvalSays(b)] as const)).then(
+      (said) => {
+        const live = new Set(said.filter(([, s]) => s === "live").map(([b]) => b));
+        for (const [b, s] of said) if (s === "gone") this.boxEvalEnded(b);
+        deliver(targets.filter((p) => !p.a.box || live.has(p.a.box)));
+      },
+    );
+  }
+
+  /** The agent hears where an eval went (and the log says so). */
+  private evalSent(
+    ws: Socket,
+    c: ControllerAtt,
+    v: { code: string; target?: string },
+    id: string,
+    labels: string[],
+  ) {
+    const m = { value: v };
     console.log(
       JSON.stringify({
         msg: "debug.eval",
@@ -2667,6 +3510,22 @@ export class DebugHub {
   webSocketError(ws: Socket): void | Promise<void> {
     return this.webSocketClose(ws, 1011);
   }
+}
+
+/**
+ * A call to the main Worker's DebugSessions failed: an error event in the
+ * Worker's logs (`wrangler tail lianki-push`), never silence. The method and a
+ * flag key or op only: no user, no text.
+ */
+function rpcFailed(method: string, e: unknown, what?: string) {
+  console.error(
+    JSON.stringify({
+      msg: "debug.rpc-failed",
+      method,
+      ...(what ? { what: what.slice(0, 64) } : {}),
+      error: String(e).slice(0, 200),
+    }),
+  );
 }
 
 /** A controller's {type:"inbox", op, id?}, or null (any other message). Bounded before the RPC. */

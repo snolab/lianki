@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { booksOn } from "@/lib/books/gate";
 import { ownedPresets } from "@/lib/books/owned";
 import { ruleYear, viewerCountry } from "@/lib/books/viewer";
@@ -26,7 +26,7 @@ export async function booksAccess(): Promise<{
 }> {
   const user = await authUserOrNull();
   if (dbBackend() !== "d1") notFound();
-  if (!booksOn(await readFlags(), isOwner(user?.email ?? null))) notFound();
+  if (!booksOn(await readFlags(), isDev(user?.email ?? null))) notFound();
   let owned: Record<string, string> = {};
   if (user) {
     try {

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
+import type { Library, LibraryOffer } from "@/lib/books/libraries";
+import { FIND_SECTION_ID, LIBRARIES_SECTION_ID } from "@/lib/books/toc";
 
 /** What /api/books/resolve answers. */
 type Check =
@@ -24,21 +26,20 @@ interface Hit {
   site: string;
 }
 
-const SITES = [
-  { name: "Project Gutenberg", url: "https://www.gutenberg.org/" },
-  { name: "青空文庫 Aozora Bunko", url: "https://www.aozora.gr.jp/" },
-  { name: "维基文库 Wikisource", url: "https://zh.wikisource.org/" },
-  { name: "Викитека Wikisource", url: "https://ru.wikisource.org/" },
-];
-
 /**
  * Below the /books list: find more books. A search the server runs against
- * the libraries themselves, and a box for a book's link from one of them.
- * Both go through the one resolve path; a book is importable only when its
- * source states every fact the public-domain check needs. All actions here
- * are secondary (the page has no primary action).
+ * the libraries themselves, a box for a book's link from one of them, and
+ * the guide to the libraries (lib/books/libraries.ts), grouped by language.
+ * Search and paste go through the one resolve path; a book is importable only
+ * when its source states every fact the public-domain check needs. All
+ * actions here are secondary (the page has no primary action).
  */
-export function BookFinder() {
+export function BookFinder({
+  libraries,
+}: {
+  /** [language code, its display name, its libraries], in page order. */
+  libraries: [string, string, Library[]][];
+}) {
   const t = useIntlayer("books-page");
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -135,13 +136,23 @@ export function BookFinder() {
         );
         return;
       }
-      router.push(`/read/${encodeURIComponent(data.id)}`);
+      router.push(`/reader/${encodeURIComponent(data.id)}`);
     } catch {
       setError(t.errFailed.value);
     } finally {
       setAdding("");
     }
   };
+
+  const offerText = (o: LibraryOffer): string =>
+    ({
+      literature: t.offerLiterature.value,
+      classics: t.offerClassics.value,
+      documents: t.offerDocuments.value,
+      polished: t.offerPolished.value,
+      scans: t.offerScans.value,
+      scholarly: t.offerScholarly.value,
+    })[o];
 
   const secondary =
     "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60 border border-blue-600/40 text-blue-700 dark:text-blue-300 hover:bg-blue-600/10";
@@ -171,7 +182,7 @@ export function BookFinder() {
           {c.curated ? t.inLibrary : t.canAdd}
         </span>
         {c.ownedId ? (
-          <a href={`/read/${encodeURIComponent(c.ownedId)}`} className={secondary}>
+          <a href={`/reader/${encodeURIComponent(c.ownedId)}`} className={secondary}>
             {t.owned}
           </a>
         ) : (
@@ -206,25 +217,12 @@ export function BookFinder() {
 
   return (
     <section
-      className="mt-12 border-t border-gray-200 dark:border-gray-700 pt-8"
+      id={FIND_SECTION_ID}
+      className="mt-12 border-t border-gray-200 dark:border-gray-700 pt-8 scroll-mt-16"
       data-testid="books-find"
     >
       <h2 className="text-xl font-semibold mb-2">{t.findTitle}</h2>
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{t.findIntro}</p>
-      <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm mb-6">
-        <span className="text-gray-500 dark:text-gray-400">{t.sitesLabel}</span>
-        {SITES.map((s) => (
-          <a
-            key={s.url}
-            href={s.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline text-blue-700 dark:text-blue-300"
-          >
-            {s.name}
-          </a>
-        ))}
-      </p>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">{t.findIntro}</p>
 
       <form
         className="flex gap-2 mb-3"
@@ -319,6 +317,63 @@ export function BookFinder() {
           {error}
         </p>
       )}
+
+      <div id={LIBRARIES_SECTION_ID} className="mt-10 scroll-mt-16" data-testid="books-libraries">
+        <h3 className="text-lg font-semibold mb-1">{t.librariesTitle}</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{t.librariesIntro}</p>
+        {libraries.map(([lang, name, list]) => (
+          <div key={lang} className="mb-5" data-testid="books-libraries-lang" data-lang={lang}>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+              {lang === "mul" ? t.manyLanguages : name}
+            </h4>
+            <ul>
+              {list.map((l) => (
+                <li
+                  key={l.id}
+                  className="py-2 border-b border-gray-200 dark:border-gray-700 last:border-b-0"
+                  data-testid="books-library"
+                  data-support={l.support}
+                >
+                  <p className="flex flex-wrap items-baseline gap-x-2">
+                    <a
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium underline text-blue-700 dark:text-blue-300"
+                    >
+                      {l.name}
+                    </a>
+                    <span
+                      className={`text-xs rounded-full px-2 py-0.5 ${
+                        l.support === "paste"
+                          ? "bg-blue-600/10 text-blue-700 dark:text-blue-300"
+                          : "bg-gray-500/10 text-gray-600 dark:text-gray-400"
+                      }`}
+                    >
+                      {l.support === "paste" ? t.supportPaste : t.supportGuide}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {l.offers.map((o) => offerText(o)).join(" · ")}
+                    </span>
+                  </p>
+                  {l.why && (
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                      {l.why === "terms"
+                        ? t.whyTerms
+                        : l.why === "no-facts"
+                          ? t.whyNoFacts
+                          : t.whyNoReader}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {t.licence}: {l.licence}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

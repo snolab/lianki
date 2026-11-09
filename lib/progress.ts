@@ -47,6 +47,7 @@ export const PROGRESS_LIMITS = {
   task: 120,
   note: 280,
   eta: 40,
+  late: 200,
   needs: 120,
   id: 120,
   parent: 120,
@@ -94,7 +95,24 @@ export type ProgressReport = {
   status: ProgressStatus;
   kind?: ProgressKind;
   pct?: number;
+  /**
+   * The agent's estimate as written: a duration from now ("15m", "1h30m"),
+   * an ISO time, or free text. A duration or a time sets `etaAt`; free text
+   * clears it (no bar, no ping). Every report that carries it revises it.
+   */
   eta?: string;
+  /** When the estimate runs out (ms): sent as is, or worked out by the hub from `eta`. */
+  etaAt?: number;
+  /** `eta` as a duration (ms): the hub adds it to its own clock (parseProgressReport sets it). */
+  etaIn?: number;
+  /**
+   * Why the task ran past its estimate (`progress.ts --late "…"`), always with
+   * a new estimate that sets a time. The hub stores it as `lateReason` and
+   * posts the owner the reason and the new time (docs/state-tree.md, "ETA
+   * overrun"). Once a node's etaAt has passed, a new estimate without it is
+   * refused.
+   */
+  late?: string;
   pr?: number;
   needs?: string;
   ref?: string;
@@ -110,14 +128,40 @@ export type ProgressNote = { at: number; by: string; text: string };
  * its status, pct and eta), `by` wrote it last, `rev` is its revision,
  * `created` / `at` when it was first / last written.
  */
-export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind"> & {
+export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind" | "etaIn" | "late"> & {
   kind: ProgressKind;
+  /**
+   * The `etaAt` the hub already sent its ping for ("ETA reached for …",
+   * workers/push/src/progress.ts fireEta). A revised `etaAt` differs, so it
+   * pings again at the new time.
+   */
+  etaSent?: number;
+  /**
+   * The `etaAt` the hub already told the owner about as unexplained ("<name>
+   * 超时，未说明原因": pinged, then ETA_EXPLAIN_MS without a reason or a new
+   * estimate). Once per etaAt, as etaSent.
+   */
+  etaSilent?: number;
+  /** The last overrun's reason (`--late`), and the etaAt it explained. */
+  lateReason?: string;
+  lateFor?: number;
   creator: string;
   by: string;
   rev: number;
   created: number;
   at: number;
   notes?: ProgressNote[];
+  /**
+   * Timing, for agents calibrating their ETAs (`progress.ts stats`); never
+   * shown to the owner. `startedAt`: the first write with status doing.
+   * `endedAt`: when it went done (cleared if it reopens). `estimateMs`: the
+   * first estimate that set a time, as a duration from when it was given;
+   * `etaRevisions`: how many estimates came after it (etaAt keeps moving).
+   */
+  startedAt?: number;
+  endedAt?: number;
+  estimateMs?: number;
+  etaRevisions?: number;
 };
 /** One write as broadcast and logged: the node after it (without its notes) and the note it added. */
 export type ProgressEvent = { type: "progress"; note?: string } & Omit<ProgressEntry, "notes">;
@@ -245,7 +289,20 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
     out.link = f.link;
   }
   if (f.needs !== undefined) out.needs = f.needs;
-  for (const k of ["eta", "ref", "action", "note"] as const) if (f[k]) out[k] = f[k];
+  for (const k of ["eta", "ref", "action", "note", "late"] as const) if (f[k]) out[k] = f[k];
+  if (b.etaAt !== undefined && b.etaAt !== null) {
+    if (typeof b.etaAt !== "number" || !Number.isInteger(b.etaAt) || b.etaAt <= 0)
+      return new Error("etaAt must be a time in milliseconds");
+    out.etaAt = b.etaAt;
+  } else if (out.eta) {
+    const e = parseEta(out.eta);
+    if (e && "in" in e) out.etaIn = e.in;
+    else if (e) out.etaAt = e.at;
+  }
+  if (out.late && out.etaAt === undefined && out.etaIn === undefined)
+    return new Error(
+      'late needs a new estimate that sets a time: --eta 20m --late "why it ran over"',
+    );
   return out;
 }
 
@@ -263,6 +320,10 @@ export function mergeProgress(
   const pick = <K extends "pct" | "eta" | "pr" | "ref" | "action" | "link">(k: K) =>
     r[k] ?? prev?.[k];
   const needs = r.needs === undefined ? prev?.needs : r.needs || undefined;
+  // A new estimate replaces the old one; free text clears the time; none keeps it.
+  const etaAt =
+    r.etaAt ??
+    (r.etaIn !== undefined ? at + r.etaIn : r.eta !== undefined ? undefined : prev?.etaAt);
   const notes = [...(prev?.notes ?? [])];
   if (r.note) notes.push({ at, by: r.assignee.name, text: r.note });
   const entry: ProgressEntry = {
@@ -284,8 +345,133 @@ export function mergeProgress(
     if (v !== undefined) (entry as Record<string, unknown>)[k] = v;
   }
   if (needs) entry.needs = needs;
+  if (etaAt !== undefined) entry.etaAt = etaAt;
+  if (prev?.etaSent !== undefined) entry.etaSent = prev.etaSent;
+  if (prev?.etaSilent !== undefined) entry.etaSilent = prev.etaSilent;
+  if (r.late) {
+    entry.lateReason = r.late;
+    if (prev?.etaAt !== undefined) entry.lateFor = prev.etaAt;
+    notes.push({ at, by: r.assignee.name, text: `late: ${r.late}` });
+  } else if (prev?.lateReason !== undefined) {
+    entry.lateReason = prev.lateReason;
+    if (prev.lateFor !== undefined) entry.lateFor = prev.lateFor;
+  }
   if (notes.length) entry.notes = notes.slice(-PROGRESS_NOTES_MAX);
+  const startedAt = prev?.startedAt ?? (r.status === "doing" ? at : undefined);
+  if (startedAt !== undefined) entry.startedAt = startedAt;
+  if (r.status === "done") entry.endedAt = prev?.status === "done" ? (prev.endedAt ?? at) : at;
+  // An estimate that sets a time: the first is kept, the later ones counted.
+  const estimate = r.etaIn ?? (r.etaAt !== undefined ? r.etaAt - at : undefined);
+  if (prev?.estimateMs !== undefined) {
+    entry.estimateMs = prev.estimateMs;
+    entry.etaRevisions = (prev.etaRevisions ?? 0) + (estimate !== undefined ? 1 : 0);
+  } else if (estimate !== undefined && estimate > 0) {
+    entry.estimateMs = estimate;
+    entry.etaRevisions = 0;
+  }
   return entry;
+}
+
+/** One done task, as the hub's durable stats log keeps it (PROGRESS_STATS_TTL_MS). */
+export type ProgressDone = {
+  at: number;
+  agent: string;
+  id: string;
+  title: string;
+  estimateMs?: number;
+  actualMs: number;
+  revisions: number;
+};
+/** The stats log keeps done tasks this long… */
+export const PROGRESS_STATS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** …and at most this many (the newest). */
+export const PROGRESS_STATS_MAX = 1000;
+
+/** A node that just went done → its stats record (from its start, else its creation, to its end). */
+export function progressDone(e: ProgressEntry): ProgressDone {
+  const end = e.endedAt ?? e.at;
+  const out: ProgressDone = {
+    at: end,
+    agent: e.creator === PROGRESS_AUTO ? e.by : e.creator,
+    id: e.id,
+    title: e.task,
+    actualMs: Math.max(0, end - (e.startedAt ?? e.created)),
+    revisions: e.etaRevisions ?? 0,
+  };
+  if (e.estimateMs !== undefined) out.estimateMs = e.estimateMs;
+  return out;
+}
+
+export type ProgressAgentStats = {
+  agent: string;
+  done: number;
+  /** Done tasks that had an estimate. */
+  estimated: number;
+  /** Median of actual / estimate over the estimated ones (1 = on time, 2 = took twice as long). */
+  medianRatio?: number;
+  tasks: ProgressDone[];
+};
+
+/** Per agent (most done first): the done tasks since `since`, and the median actual/estimate ratio. */
+export function progressStats(
+  records: Iterable<ProgressDone>,
+  opts: { agent?: string; since?: number } = {},
+): ProgressAgentStats[] {
+  const by = new Map<string, ProgressDone[]>();
+  for (const d of records) {
+    if (opts.agent !== undefined && d.agent !== opts.agent) continue;
+    if (opts.since !== undefined && d.at < opts.since) continue;
+    by.set(d.agent, [...(by.get(d.agent) ?? []), d]);
+  }
+  return [...by]
+    .map(([agent, tasks]) => {
+      const ratios = tasks
+        .filter((d) => d.estimateMs)
+        .map((d) => d.actualMs / d.estimateMs!)
+        .sort((a, b) => a - b);
+      const mid = ratios.length >> 1;
+      const out: ProgressAgentStats = {
+        agent,
+        done: tasks.length,
+        estimated: ratios.length,
+        tasks: tasks.sort((a, b) => a.at - b.at),
+      };
+      if (ratios.length)
+        out.medianRatio = ratios.length % 2 ? ratios[mid]! : (ratios[mid - 1]! + ratios[mid]!) / 2;
+      return out;
+    })
+    .sort((a, b) => b.done - a.done || a.agent.localeCompare(b.agent));
+}
+
+/** The longest name a task title may start with ("name: description"); the ETA bar shows only it. */
+export const PROGRESS_TITLE_NAME_MAX = 20;
+
+const graphemes = (s: string) =>
+  typeof Intl.Segmenter === "function"
+    ? [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)].length
+    : [...s].length;
+
+/**
+ * A task title is "name: description" (ASCII ':' or full-width '：'): the
+ * owner's ETA bar shows only the name, the full list both. With a colon, the
+ * name must be 1–PROGRESS_TITLE_NAME_MAX characters (graphemes): an Error.
+ * Without one, a title longer than that is still taken, with a warning.
+ */
+export function checkTaskTitle(task: string): { warning?: string } | Error {
+  const i = task.search(/[:：]/);
+  const example = `e.g. --task "Swipe fix: the card snaps back on a short drag"`;
+  if (i < 0)
+    return graphemes(task.trim()) > PROGRESS_TITLE_NAME_MAX
+      ? {
+          warning: `task titles are "name: description" — the ETA bar shows only the name (at most ${PROGRESS_TITLE_NAME_MAX} characters); ${example}`,
+        }
+      : {};
+  const n = graphemes(task.slice(0, i).trim());
+  if (n < 1 || n > PROGRESS_TITLE_NAME_MAX)
+    return new Error(
+      `the name before the colon in --task must be 1–${PROGRESS_TITLE_NAME_MAX} characters (it has ${n}): the ETA bar shows only the name; ${example}`,
+    );
+  return {};
 }
 
 /** A node created only because a descendant named it: a group (or the owner's person node). */
@@ -492,6 +678,32 @@ export function progressAgo(at: number, now: number): string {
   const h = Math.floor(min / 60);
   if (h < 24) return `${h} h ago`;
   return `${Math.floor(h / 24)} d ago`;
+}
+
+/** The longest estimate the hub takes: a month. */
+export const PROGRESS_ETA_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * An agent's `--eta`: a duration from now ("15m", "1h30m", "90s", "2d") or
+ * an ISO time with its zone ("2026-11-07T20:30+09:00"). Anything else (free
+ * text, "after CI") is null: shown as written, with no bar and no ping.
+ */
+export function parseEta(s: string): { in: number } | { at: number } | null {
+  const t = s.trim();
+  const parts =
+    /^(?:(\d+(?:\.\d+)?)\s*d)?\s*(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+(?:\.\d+)?)\s*m(?:in)?)?\s*(?:(\d+(?:\.\d+)?)\s*s)?$/i.exec(
+      t,
+    );
+  if (t && parts && parts.slice(1).some((x) => x !== undefined)) {
+    const [d, h, m, sec] = parts.slice(1).map((x) => Number(x ?? 0));
+    const ms = Math.round(((d! * 24 + h!) * 60 + m!) * 60_000 + sec! * 1000);
+    return ms > 0 && ms <= PROGRESS_ETA_MAX_MS ? { in: ms } : null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/.test(t)) {
+    const at = Date.parse(t);
+    return Number.isFinite(at) ? { at } : null;
+  }
+  return null;
 }
 
 /** "8h", "30m", "2d", "90s" → milliseconds; an Error otherwise. */

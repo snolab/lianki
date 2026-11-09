@@ -7,6 +7,22 @@
  * Nothing free-form: no device URL, tailnet host, file path or typed text can
  * pass any schema here (unit/prefs-schema.test.ts probes every key).
  *
+ * One exception, by the owner (2026-11-05 14:25 JST): `byok.backend`, the
+ * user's own AI backend (docs/byok.md) — provider, base URL and model, only
+ * when they tick 「同步到我的账号」. Only that exact shape passes, its URL
+ * under lib/byok/config.ts's rules; the server stores it and never fetches
+ * it. The API key has no key here: it never leaves the device.
+ *
+ * A second, by the owner (2026-11-06): `titles.rules`, the patterns that clean
+ * notification prefixes out of page titles (docs/title-clean.md). A pattern is
+ * short text in a restricted syntax and a host names a public site, because
+ * per-site patterns are the point; device and tailnet hosts do not pass.
+ *
+ * A third, by the owner (2026-11-09): `links.allowedHosts`, the sites the
+ * person said not to be asked about again before leaving for them
+ * (@lianki/core/externalLink). Bare public hosts only; device and tailnet
+ * hosts, IP addresses, schemes and paths do not pass.
+ *
  * A field whose shape changes gets a new key (`swipe-feel.tweaks2`); the old
  * row is then simply no longer read.
  */
@@ -15,6 +31,16 @@ import { allImmersionSites, IMMERSION_LANGUAGES } from "@/lib/immersion-sites";
 import { FEEL_RANGES } from "@/lib/words/swipe-feel";
 import { BLOG_LOCALES } from "@/lib/constants";
 import { TEXT_MAX, TEXT_MIN } from "@/lib/text-size-boot";
+import { cleanBackend } from "@/lib/byok/config";
+import {
+  isTitleHost,
+  isTitlePattern,
+  TITLE_HOST_MAX,
+  TITLE_PATTERN_MAX,
+  TITLE_RULES_ADD_MAX,
+  TITLE_RULES_OFF_MAX,
+} from "@lianki/core/titleClean";
+import { isAllowedHost, ALLOWED_HOSTS_MAX } from "@lianki/core/externalLink";
 
 // ── Limits ────────────────────────────────────────────────────────────────
 
@@ -55,6 +81,57 @@ const textScale = z
   .max(TEXT_MAX)
   .refine((v) => Math.abs(v * 20 - Math.round(v * 20)) < 1e-6);
 
+/** Nothing that names a place: a scheme, a host, a path. */
+const placeLike = (s: string) => /:\/\/|\.ts\.net|localhost|127\.0\.0\.1|\/|\.\w{2,}$/i.test(s);
+/**
+ * The reader's sense picks (lib/read/sense-pick.ts): "word@sentence-hash" →
+ * "lang\tterm", a word and a dictionary term — at most PICKS_MAX of them.
+ */
+const sensePicks = z
+  .record(
+    z
+      .string()
+      .max(80)
+      .regex(/^[^\t\n]+@[0-9a-f]{8}$/),
+    z
+      .string()
+      .max(60)
+      .regex(/^[a-z]{2,3}\t[^\t\n]+$/),
+  )
+  .refine((m) => Object.keys(m).length <= 24)
+  .refine((m) => !Object.entries(m).some(([k, v]) => placeLike(k) || placeLike(v)));
+/** Materials he said no to tidying (lib/read/polish-offer.ts): ids, under the 2 KB cap. */
+const polishSkips = z.array(z.string().regex(/^[A-Za-z0-9_-]{1,40}$/)).max(40);
+/** A BYOK backend exactly as lib/byok/config.ts cleans it (no key field can pass). */
+const byokBackend = z
+  .object({
+    provider: z.string().max(40),
+    baseUrl: z.string().max(300),
+    model: z.string().max(120),
+  })
+  .strict()
+  .refine((b) => {
+    const c = cleanBackend(b);
+    return !!c && c.baseUrl === b.baseUrl && c.provider === b.provider && c.model === b.model;
+  });
+
+/** The difference from the default title rules (@lianki/core/titleClean). */
+const titleRules = z
+  .object({
+    off: z.array(z.string().regex(/^[0-9a-f]{8}$/)).max(TITLE_RULES_OFF_MAX),
+    add: z
+      .array(
+        z
+          .object({
+            host: z.string().max(TITLE_HOST_MAX).refine(isTitleHost),
+            pattern: z.string().max(TITLE_PATTERN_MAX).refine(isTitlePattern),
+          })
+          .strict(),
+      )
+      .max(TITLE_RULES_ADD_MAX),
+  })
+  .strict();
+
 export const PREF_SCHEMAS = {
   // /words study settings
   "words.showAll": z.boolean(),
@@ -81,10 +158,28 @@ export const PREF_SCHEMAS = {
   "home.pins": z.array(catalogUrl).max(100),
   "lab.immersionLangs": z.array(z.enum(IMMERSION_CODES)).max(IMMERSION_CODES.length),
   "lab.immersionTranspose": z.boolean(),
+  // /read: which language's entry a word means where it stands
+  "read.sensePicks": sensePicks,
+  // /read: the offer to tidy a raw transcript, off for good or for some texts
+  "read.polishOffer": z.boolean(),
+  "read.translatorNotes": z.boolean(),
+  "read.polishSkips": polishSkips,
+  // /vibe: a language's share of a conversation, in percent, before lines go into it
+  "vibe.translateMinPct": z.number().int().min(1).max(99),
+  // page titles: cleaning notification prefixes
+  "titles.rules": titleRules,
+  // links that leave Lianki: the disclaimer before another site, and its bypasses
+  "links.confirm": z.boolean(),
+  "links.allowedHosts": z.array(z.string().refine(isAllowedHost)).max(ALLOWED_HOSTS_MAX),
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),
   "chat-voice.speak": z.boolean(),
+  // The voice cues' two switches (packages/debug-chat cues.ts).
+  "chat-voice.cueSend": z.boolean(),
+  "chat-voice.cueSpeech": z.boolean(),
+  // the user's own AI backend (not the key), when they sync it; null: not synced
+  "byok.backend": z.union([z.null(), byokBackend]),
 } as const satisfies Record<string, z.ZodType>;
 
 export type PrefKey = keyof typeof PREF_SCHEMAS;

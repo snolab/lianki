@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
+import importWordlist from "@/app/(app)/import/wordlist-import.content";
 import bottomNav from "@/app/components/bottom-nav.content";
 import learningPartner from "@/app/components/learning-partner.content";
 import devSwitch from "@/app/components/dev-switch.content";
@@ -10,33 +11,54 @@ import navHome from "@/app/(app)/home/page.content";
 import appShell from "@/app/components/app-shell.content";
 import landing from "@/app/[locale]/page.content";
 import learn from "@/app/(app)/learn/page.content";
-import polyglot from "@/app/(app)/polyglot/page.content";
+import polyglot from "@/app/(app)/lab/polyglot/page.content";
 import selfIntro from "@/app/(app)/self-intro/page.content";
 import wordsImport from "@/app/(app)/words/import/page.content";
 import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import wordsListPreview from "@/app/(app)/words/list-preview.content";
 import leaveGuard from "@/app/components/leave-guard.content";
+import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
+import devUsers from "@/app/(app)/dev/users/users.content";
 import textSize from "@/app/components/text-size.content";
+import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
+import emailInvite from "@/app/(app)/membership/email-invite.content";
+import inviteMail from "@/lib/referrals/invite-mail.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
-import readEpub from "@/app/(app)/read/read-epub.content";
-import readGdoc from "@/app/(app)/read/read-gdoc.content";
-import readPolish from "@/app/(app)/read/read-polish.content";
-import readPlayer from "@/app/(app)/read/read-player.content";
-import readWords from "@/app/(app)/read/read-words.content";
-import readReader from "@/app/(app)/read/read-reader.content";
-import readSelect from "@/app/(app)/read/read-select.content";
-import readGradeHandle from "@/app/(app)/read/read-grade-handle.content";
+import readEpub from "@/app/(app)/reader/read-epub.content";
+import readGdoc from "@/app/(app)/reader/read-gdoc.content";
+import vibePage from "@/app/(app)/vibe/page.content";
+import readPolish from "@/app/(app)/reader/read-polish.content";
+import readPlayer from "@/app/(app)/reader/read-player.content";
+import readWords from "@/app/(app)/reader/read-words.content";
+import readReader from "@/app/(app)/reader/read-reader.content";
+import readSelect from "@/app/(app)/reader/read-select.content";
+import readGradeHandle from "@/app/(app)/reader/read-grade-handle.content";
 import cliLogin from "@/app/(app)/cli-login/page.content";
 import connectionsPage from "@/app/(app)/connections/page.content";
-import readGdocDrive from "@/app/(app)/read/read-gdoc-drive.content";
+import readGdocDrive from "@/app/(app)/reader/read-gdoc-drive.content";
 import drivePick from "@/app/(app)/connections/drive-pick.content";
-import readRowMenu from "@/app/(app)/read/read-row-menu.content";
+import readRowMenu from "@/app/(app)/reader/read-row-menu.content";
 import selfIntroImport from "@/app/(app)/self-intro/import.content";
 import booksPage from "@/app/(app)/books/page.content";
-import readFormTags from "@/app/(app)/read/read-form-tags.content";
+import readFormTags from "@/app/(app)/reader/read-form-tags.content";
+import learnerLevels from "@/app/components/level-badge.content";
+import learnerLevelUi from "@/app/components/level-ui.content";
+import profileEdit from "@/app/(app)/profile/profile-edit.content";
+import byokSettings from "@/app/components/byok-settings.content";
+import titleRules from "@/app/components/title-rules.content";
+import externalLink from "@/app/components/external-link.content";
+import privacyPage from "@/app/(app)/privacy/privacy.content";
+import apiTokens from "@/app/components/api-tokens.content";
+import roadmapPage from "@/app/(app)/roadmap/page.content";
+import chatHistoryPage from "@/app/(app)/chat/history/page.content";
+import devDesign from "@/app/(app)/dev/design/page.content";
+import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
+import ytSongs from "@/app/components/yt-clip/yt-songs.content";
+import pillChat from "@/app/components/pill-chat.content";
+import signInErrors from "@/app/(app)/sign-in/errors.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -67,6 +89,7 @@ describe("describeKeys / keyContext", () => {
 describe.each([
   ["words-page", words],
   ["words-import-ankiweb", wordsImportAnkiweb],
+  ["import-wordlist", importWordlist],
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
   ["dev-switch", devSwitch],
@@ -83,12 +106,18 @@ describe.each([
   ["words-voice-mode", wordsVoiceMode],
   ["words-list-preview", wordsListPreview],
   ["leave-guard", leaveGuard],
+  ["dev-permissions", devPermissions],
+  ["dev-users", devUsers],
   ["text-size", textSize],
+  ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],
   ["invite-card", inviteCard],
+  ["email-invite", emailInvite],
+  ["invite-mail", inviteMail],
   ["credit-units", creditUnits],
   ["read-epub", readEpub],
   ["read-gdoc", readGdoc],
+  ["vibe-page", vibePage],
   ["read-polish", readPolish],
   ["read-player", readPlayer],
   ["read-words", readWords],
@@ -103,6 +132,21 @@ describe.each([
   ["self-intro-import", selfIntroImport],
   ["books-page", booksPage],
   ["read-form-tags", readFormTags],
+  ["learner-levels", learnerLevels],
+  ["learner-level-ui", learnerLevelUi],
+  ["profile-edit", profileEdit],
+  ["byok-settings", byokSettings],
+  ["title-rules", titleRules],
+  ["external-link", externalLink],
+  ["sign-in-errors", signInErrors],
+  ["privacy-page", privacyPage],
+  ["api-tokens", apiTokens],
+  ["roadmap-page", roadmapPage],
+  ["chat-history-page", chatHistoryPage],
+  ["dev-design", devDesign],
+  ["dev-roadmap", devRoadmap],
+  ["yt-songs", ytSongs],
+  ["pill-chat", pillChat],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

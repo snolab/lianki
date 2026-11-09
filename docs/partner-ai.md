@@ -34,15 +34,15 @@ internal HTTP route to protect. The model call uses the existing
 `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_AI_TOKEN` Worker secrets — no new secret,
 no third-party API key. Non-streaming in v1.
 
-| piece | where |
-| --- | --- |
-| numbers (model, prices, caps, limits) | `lib/partner-ai-config.ts` — the one place |
-| model call, prompt, read-only data | `lib/partner-ai.ts` |
-| RPC method | `worker.ts` `DebugSessions.partnerReply` (120 / min per isolate) |
-| routing, caps, takeover | `workers/push/src/debug.ts` `friendChat` → `aiReply` |
-| who sees the chat | `app/layout.tsx` `partnerOpenFor` → `OwnerBoots` → `DebugEval partnerOpen` |
-| strings (16 locales, with context) | `app/components/learning-partner.content.ts` `aiHint`, `aiStatus`, `aiLimit`, `aiFailed` |
-| tests | `unit/partner-ai.test.ts` |
+| piece                                 | where                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| numbers (model, prices, caps, limits) | `lib/partner-ai-config.ts` — the one place                                               |
+| model call, prompt, read-only data    | `lib/partner-ai.ts`                                                                      |
+| RPC method                            | `worker.ts` `DebugSessions.partnerReply` (120 / min per isolate)                         |
+| routing, caps, takeover               | `workers/push/src/debug.ts` `friendChat` → `aiReply`                                     |
+| who sees the chat                     | `app/layout.tsx` `partnerOpenFor` → `OwnerBoots` → `DebugEval partnerOpen`               |
+| strings (16 locales, with context)    | `app/components/learning-partner.content.ts` `aiHint`, `aiStatus`, `aiLimit`, `aiFailed` |
+| tests                                 | `unit/partner-ai.test.ts`                                                                |
 
 ## Who gets it
 
@@ -54,8 +54,9 @@ no third-party API key. Non-streaming in v1.
   mode on that device. The owner's pages are unchanged.
 - **The owner, never.** Three checks: the hub routes only non-owner threads
   (the thread comes from the session the main Worker verified on connect);
-  the RPC looks the user up by id and refuses `OWNER_EMAILS`; and with
-  `OWNER_EMAILS` unset it refuses everyone (fail closed).
+  the RPC looks the user up by id and refuses an account holding `dev`;
+  and with no owner readable (none, or D1 failing) it refuses everyone (fail
+  closed).
 
 ## Memory and takeover
 
@@ -93,12 +94,12 @@ own data. A `<think>` block is stripped; replies are cut to 2,000 characters.
 
 All in `lib/partner-ai-config.ts`; per JST day (reset 00:00 JST):
 
-| limit | value |
-| --- | --- |
+| limit              | value                                                       |
+| ------------------ | ----------------------------------------------------------- |
 | per user, messages | 30 per 10 min (the existing friend limit, before the model) |
-| per user, tokens | `USER_DAILY_TOKENS` = 60,000 (≈ 40–80 typical messages) |
-| site-wide, spend | `SITE_DAILY_USD` = $2 at list price |
-| per reply | `MAX_OUTPUT_TOKENS` = 600; 30 s timeout |
+| per user, tokens   | `USER_DAILY_TOKENS` = 60,000 (≈ 40–80 typical messages)     |
+| site-wide, spend   | `SITE_DAILY_USD` = $2 at list price                         |
+| per reply          | `MAX_OUTPUT_TOKENS` = 600; 30 s timeout                     |
 
 Prices (model page, 2026-11-03): $0.30 / M input, $1.20 / M output tokens.
 A typical message (~1,500 in, ~150 out) is ≈ $0.0006.
@@ -115,10 +116,45 @@ answer keeps it. Earlier days' keys are deleted on the first call of a new day.
 Turning the flag off does not cancel a call already in flight (≤ 30 s). Over a cap, the page shows `aiLimit`
 ("resting for today") and the lanes can still answer.
 
-v1 is free within the caps. **Credits later**: the per-user check in
-`aiReply` is where a credits debit would go — ask the main Worker's credits
-wallet (docs/payments.md) over the same RPC before the call, debit the settled
-cost after, and show a "top up" line instead of `aiLimit`.
+## Credits: every reply is paid, reserve first
+
+Owner, 2026-11-05 (Slack, typed): "A, ensure it costs credits" + "stop working
+when user have no credits" + "扣 first and return when fail". Each reply is
+paid from the user's credit wallet (docs/payments.md, "Credits"), in the main
+Worker (`lib/partner-ai.ts` → `lib/payments/ai-credits.ts`), after the hub's
+caps and before the model:
+
+1. **Sweep.** Reservations still `pending` `CHARGE_STALE_MS` (10 min) after
+   they were taken belong to a reply that crashed between reserve and settle:
+   they are settled at no cost (refunded in full). Run on every request — no
+   timer, no polling.
+2. **Reserve.** The reply's worst case — `reserveInTokens(history + page
+characters)` input tokens plus `MAX_OUTPUT_TOKENS` at the list prices —
+   converted with `CREDITS_PER_USD` (`lib/payments/credits.ts`, the one place
+   USD becomes credits) and rounded up to whole credits, is debited: an `ai`
+   ledger row (refId `ai:<userId>:<line id>`), the balance change and a
+   `credit_ai_charge` row (pending), in one D1 batch. The balance's
+   `CHECK (balance >= 0)` is the guard: two concurrent replies cannot spend
+   the same credits — the second one's batch fails and it never reaches the
+   model. The same line id again is `duplicate`: no call, no charge.
+3. **Too little → no call.** The result is `no-credits`; the hub sends the
+   page `ai-credits`, which shows `aiCredits` with an `aiCreditsLink` to
+   `/membership` (no numbers). The hub's cap reservation is given back.
+4. **Settle.** After the call, the real cost (millionths of a credit) is
+   added to the user's `credit_ai_carry`; whole credits the carry now holds
+   are kept from the reservation (never more than it), and the rest comes back
+   as a `refund` row with the same refId. Once only: the charge row's
+   `pending → settled` guards every statement of the batch.
+   - A delivered reply: its reported counts (a missing one = its ceiling).
+   - An error status from the model (`billed: "no"`): nothing — full refund.
+   - Billing unknown (timeout, network) with no counts: nothing — full
+     refund, logged `partner.charge.unknown`. With counts: those.
+
+A reply costs far less than a credit at today's rate, so most replies keep
+nothing and the fraction carries: the wallet's history merges a reply's
+reservation and refund into one "AI replies" row and hides those that kept
+nothing (`ledger()` in `credits-store.ts`). The hub's `partner.reply` log adds
+`charged` (whole credits kept). Unit tests: `unit/partner-ai-credits.test.ts`.
 
 ## Privacy
 
@@ -131,11 +167,12 @@ cost after, and show a "top up" line instead of `aiLimit`.
   log's hint (`aiHint`: an AI model, DeepSeek, on Cloudflare Workers AI; the
   developer may read the chat; no passwords or payment details) and the
   status line (`aiStatus`).
-- Lianki has no privacy policy page yet. When one is written (state tree:
-  "Before live keys: … privacy policy"), it must say: Learning Partner replies
-  for users are generated by an AI model hosted on Cloudflare Workers AI; the
-  user's messages, their study summary and the page context they send are
-  passed to it to write the reply.
+- `/privacy` (`app/(app)/privacy`, 2026-11-05) says it: replies are written
+  by DeepSeek on Cloudflare Workers AI; the model receives the user's message,
+  the chat's recent lines, their study summary and the page context they send;
+  logs keep counts and timings only; each reply is paid from credits. Lianki
+  has no full privacy policy yet (state tree: "Before live keys: … privacy
+  policy"); when one is written, this section goes into it.
 
 ## Not verified live
 
@@ -143,3 +180,12 @@ The request shape (`reasoning_effort: "none"`, `max_completion_tokens`) is
 from the model's documentation; the call was not run against the live API
 before merge. When the owner turns the flag on, check `wrangler tail lianki-push`
 for `partner.reply` with `ok: true` and plausible token counts.
+
+A hub call to the main Worker that fails logs `debug.rpc-failed` (an error,
+with the method and flag key only), and the friend's page gets `ai-failed`
+("No reply this time…"). Call the SESSIONS stub's methods on the stub itself:
+`stub.flag.bind(stub)` is sent by workerd as a call of a method named "bind",
+which the main Worker refuses. That is how every flag read failed in
+production from #482 (2026-11-03) until #681, so the AI never answered and
+nothing said so. `unit/support/rpc-stub.ts` makes the suites' stubs refuse
+the same way.

@@ -18,6 +18,12 @@
  *   bun run qa:all              # full: build + migrate + serve + 5 suites
  *   bun run qa:all -- --no-build   # reuse the last .open-next build (fast iterate)
  *   bun run qa:all -- --keep       # leave wrangler dev running after the suites
+ *   bun run qa:all -- --suites=words,read-epub   # only these (ids in suites.mjs)
+ *
+ * --suites is what the pre-push gate passes for an affected-only run
+ * (scripts/gate/affected.ts). When none of the chosen suites needs the Worker
+ * (no `base`/`url` in suites.mjs), the build, migration and wrangler dev are
+ * skipped.
  *
  * Exits non-zero if any suite fails. Designed to be the pre-push gate and the
  * single command CI calls.
@@ -42,6 +48,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
+import { runSuites } from "./gate-suites.ts";
+import { SUITES } from "./suites.mjs";
 
 /**
  * Ask the OS for a free port.
@@ -128,17 +136,39 @@ async function lockCheckout() {
     });
   }
 }
+const flags = new Set(process.argv.slice(2));
+const NO_BUILD = flags.has("--no-build");
+const KEEP = flags.has("--keep");
+const only = process.argv
+  .slice(2)
+  .find((a) => a.startsWith("--suites="))
+  ?.slice("--suites=".length)
+  .split(",")
+  .filter(Boolean);
+const unknown = (only ?? []).filter((id) => !SUITES.some((s) => s.id === id));
+if (unknown.length) {
+  console.error(`qa:all: unknown suite id(s): ${unknown.join(", ")}`);
+  console.error(`known: ${SUITES.map((s) => s.id).join(", ")}`);
+  process.exit(2);
+}
+const CHOSEN = only ? SUITES.filter((s) => only.includes(s.id)) : SUITES;
+const NEEDS_WORKER = CHOSEN.some((s) => s.base || s.url);
+if (only) console.log(`qa:all: ${CHOSEN.length} of ${SUITES.length} suites — ${only.join(", ")}`);
+
 await lockCheckout();
 
 // QA_PORT still pins it, for when you want a predictable URL to poke at.
 const PORT = Number(process.env.QA_PORT) || (await freePort());
 const BASE = `http://localhost:${PORT}`;
-const flags = new Set(process.argv.slice(2));
-const NO_BUILD = flags.has("--no-build");
-const KEEP = flags.has("--keep");
 
 const log = (s) => console.log(`\n\x1b[36m▶ ${s}\x1b[0m`);
 const err = (s) => console.error(`\x1b[31m✗ ${s}\x1b[0m`);
+
+// Only serverless suites chosen (they load their own pages): no Worker needed.
+if (!NEEDS_WORKER) {
+  log("no chosen suite needs the Worker — skipping the build, migration and wrangler dev");
+  summarize(await runSuites(CHOSEN, BASE, log));
+}
 
 // ── .dev.vars: wrangler dev reads this for local Worker vars/secrets ──────────
 // The OpenNext build is a *production* Next build, so process.env.NODE_ENV is
@@ -230,6 +260,11 @@ process.on("SIGINT", () => {
   stopServer();
   process.exit(130);
 });
+// The machine lock forwards a TERM here; without this wrangler dev outlives the run.
+process.on("SIGTERM", () => {
+  stopServer();
+  process.exit(143);
+});
 server.on("exit", (code) => {
   if (!stopped) err(`wrangler dev exited early (code ${code})`);
 });
@@ -257,56 +292,23 @@ await waitReady();
 log("server ready");
 
 // ── 5. Run every suite; keep going on failure, report at the end ──────────────
-const suites = [
-  ["API  (qa-api)", "bun", ["scripts/qa/qa-api.mjs"], { QA_BASE: BASE }],
-  ["UI   (qa-ui)", "bun", ["scripts/qa/qa-ui.mjs"], { QA_BASE: BASE }],
-  // The menu's Sign out on the Worker build, Chromium + WebKit (lib/sign-out.ts).
-  ["SIGN OUT (qa-sign-out)", "bun", ["scripts/qa/qa-sign-out.mjs"], { QA_BASE: BASE }],
-  ["WORDS (qa-words)", "bun", ["scripts/qa/qa-words.mjs"], { QA_BASE: BASE }],
-  ["READ EPUB (qa-read-epub)", "bun", ["scripts/qa/qa-read-epub.mjs"], { QA_BASE: BASE }],
-  ["READ PLAY (qa-read-play)", "bun", ["scripts/qa/qa-read-play.mjs"], { QA_BASE: BASE }],
-  // Serverless: familiarity underlines keep their colours inside the reader's selection (WebKit + Chromium).
-  ["READ SEL UNDERLINES", "bun", ["scripts/qa/qa-read-sel-underlines.ts"], {}],
-  // Serverless: a tap on another word moves the selection, never two drawn (WebKit + Chromium).
-  ["READ SEL ONE", "bun", ["scripts/qa/qa-read-sel-one.ts"], {}],
-  [
-    "SYNC (db-sync-matrix)",
-    "bunx",
-    ["playwright", "test", "tests/db-sync-matrix.spec.ts"],
-    { LIANKI_URL: BASE },
-  ],
-  [
-    "USERSCRIPT (guest)",
-    "bunx",
-    ["playwright", "test", "tests/userscript-guest.spec.ts"],
-    { LIANKI_URL: BASE },
-  ],
-  [
-    "USERSCRIPT (redirect)",
-    "bunx",
-    ["playwright", "test", "tests/userscript-redirect.spec.ts"],
-    { LIANKI_URL: BASE },
-  ],
-  // The real /embed/partner in a frame on another origin: ready, ticket, private keys, no owner boots.
-  ["PARTNER FRAME (route)", "bun", ["scripts/qa/qa-partner-frame-route.ts"], { QA_BASE: BASE }],
-];
-
-const results = [];
-for (const [name, cmd, args, env] of suites) {
-  log(`SUITE — ${name}`);
-  const r = spawnSync(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } });
-  results.push([name, r.status === 0]);
-}
+// The list and each suite's time-sensitive tag: scripts/qa/suites.mjs. Plain
+// suites run at once; time-sensitive ones after load-based admission to the
+// machine-wide gate; a failure is logged with the load (scripts/qa/gate-suites.ts).
+const results = await runSuites(CHOSEN, BASE, log);
 
 // ── 6. Teardown + summary ─────────────────────────────────────────────────────
 if (!KEEP) stopServer();
-console.log("\n=== qa:all summary ===");
-for (const [name, ok] of results) console.log(`  ${ok ? "✓" : "✗"} ${name}`);
+summarize(results);
 
-const failed = results.filter(([, ok]) => !ok);
-if (failed.length) {
-  err(`${failed.length}/${results.length} suites failed`);
-  process.exit(1);
+function summarize(results) {
+  console.log("\n=== qa:all summary ===");
+  for (const [name, ok] of results) console.log(`  ${ok ? "✓" : "✗"} ${name}`);
+  const failed = results.filter(([, ok]) => !ok);
+  if (failed.length) {
+    err(`${failed.length}/${results.length} suites failed`);
+    process.exit(1);
+  }
+  console.log(`\n\x1b[32m✓ all ${results.length} suites passed\x1b[0m`);
+  process.exit(0);
 }
-console.log(`\n\x1b[32m✓ all ${results.length} suites passed\x1b[0m`);
-process.exit(0);

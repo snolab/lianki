@@ -1,7 +1,7 @@
 # Books: a public-domain library you can actually read (plan)
 
 Owner's vision, 2026-11-03 15:15–16:33 JST. Design only; nothing here is
-built yet except EPUB import on /read (#448) and a book's word count and
+built yet except EPUB import on /reader (#448) and a book's word count and
 progress (below).
 
 ## Why
@@ -17,7 +17,7 @@ _Le Petit Prince_ in French) is a test case, never a product default.
 
 ## The flow
 
-1. Open **阅读 /read**, pick a book: from the shared catalogue, or your own
+1. Open **阅读 /reader**, pick a book: from the shared catalogue, or your own
    copy (EPUB import, #448; paste; later URL/photo).
 2. Set it as a **goal** (optionally with a target date).
 3. Read it **progressively**: chunks of about 250 words (Latin scripts) or
@@ -42,7 +42,12 @@ book a ✓, and the day it first passed is kept.
   counted on first read and saved back, so nothing needs re-importing).
   Words are `Intl.Segmenter` word segments in the book's language (EPUB
   metadata, or guessed for pasted text), NFKC, lowercased, French/Italian
-  elisions and English `'s` stripped.
+  elisions and English `'s` stripped. Segments a language's data joins back
+  (`joins` in `lib/read/lang/<lang>.json`, engine `lib/read/word-segments.ts`)
+  are one word: Intl.Segmenter cuts Japanese by dictionary and splits
+  inflected forms (か|ついで for かついで, 食|べ|て), the same under every
+  locale in Bun, Chromium and WebKit, so the joins apply to all text, and
+  every reader path (tokens, word count, selection, reading load) uses them.
 - **Coverage, the ring and the pass:** (running words mastered + running
   words that are names) ÷ running words. Left out entirely: numbers,
   punctuation, single letters (not CJK characters), web addresses and other
@@ -108,7 +113,7 @@ numerals; Hindi loans).
   DRM-free only (#448 refuses DRM). Needs a ToS line and a takedown contact
   before it opens beyond the owner.
 - **A Google Doc** (owner, 2026-11-04): paste a docs.google.com/document
-  link on /read (behind the reader-v2 gate). The server reduces it to the
+  link on /reader (signed in, D1). The server reduces it to the
   doc id and fetches only Google's HTML export for it (`lib/gdoc/`; redirects
   only to Google's export hosts, inline images dropped while streaming, 8 MB
   of markup, 20 imports per 10 minutes per user). Works for docs shared
@@ -151,7 +156,7 @@ One path for a Google Doc import (`lib/read/prep.ts`, `prep-server.ts`):
    the lower end, at his speed (`readSamples` → `itemBounds`, else the
    prior); a sentence longer than that cut at a pause (clause punctuation, a
    filler), else between words. Headings, chapters and marks follow.
-3. **Polish** (AI, optional): offered in the reader only when `shape.raw`
+3. **Polish** (AI, optional): offered in the reader only when `shape.raw` (and not while the page follows a live doc, nor after a no: `lib/read/polish-offer.ts`; the action stays in the contents sheet)
    (「这像是未整理的转写稿，要整理吗？」 / 整理转写稿), never silent.
    `POST /api/read/[id]/polish`: chunks of ~3,000 characters through the
    partner model, each checked to keep every word (punctuation, case,
@@ -183,7 +188,7 @@ then: a /books page for every user, grouped by language, stable slugs in the
 title's own language, the source link visible inside the imported book.
 
 - **Roles.** **/books** (nav "公版书库 / Public-domain library") is the shared
-  catalogue and never lists anyone's own books. **/read** (nav "我的阅读 / My
+  catalogue and never lists anyone's own books. **/reader** (nav "我的阅读 / My
   reading") is the user's own material — pasted text, EPUBs, Google Docs, and
   books added from /books — and never lists the catalogue, only a link to it.
   A /books card shows "已在我的阅读 · 打开" once added.
@@ -285,13 +290,16 @@ title's own language, the source link visible inside the imported book.
   its one action is the primary.
 - **Gate:** flag `books.catalogue` (off: the owner only), D1 only; the nav
   item carries `flag` in `lib/app-nav.ts` and the layout passes the visible
-  ones. Not tied to `read.reader-v2`: an added book opens in whichever reader
-  the user has.
+  ones. An added book opens in the reader.
 
 ### Admission rule: public domain per country (owner, 02:18 JST 2026-11-05)
 
 > **Not legal advice; re-verify with counsel before turning
 > `books.catalogue` on for users.** The flag stays off until then.
+>
+> Owner decision, 2026-11-05 ~14:35 JST (Slack): books.catalogue turned on
+> for all users at 13:45 JST; the owner accepts the risk of opening before a
+> legal review.
 
 Replaces the single global cut-off ("US PD + every creator dead 80 years").
 A book is **shown to a viewer, and importable by them, only when it is public
@@ -433,6 +441,89 @@ shared catalogue. Built:
   redirects refused; the search merge, CSV, the one-file unzip; the D1 store
   (one row per work, slug suffix, curated keys win).
 
+### More libraries in the guide (owner, 13:02 JST 2026-11-05)
+
+The guide is data: `lib/books/libraries.ts` (`LIBRARIES`, grouped by
+language; `checkLibraries` in `unit/books-libraries.test.ts`). Each entry has
+a name, URL, what it offers (tags the page translates), the licence or terms
+as the site states them, and a support level: **paste** (a pasted link works:
+link parser + metadata reader + cleaner) or **guide** (link out only, with
+one reason: `no-reader` — fine terms, no reader yet; `terms` — the site's
+terms allow non-commercial or private use only, or forbid automated access;
+`no-facts` — its records do not state what the rule needs). The viewer's own
+language group is shown first, then the many-language libraries.
+
+Checked 2026-11-05 (reachable — Gallica, HathiTrust and Projekt Gutenberg-DE
+answer bots with 403, their terms were read from their published pages — and
+terms read; a couple of requests per site):
+
+| Language | Library | Support | Why / terms |
+| --- | --- | --- | --- |
+| many | Project Gutenberg | paste | PD in the USA, PG License |
+| many | Internet Archive · Open Library | guide (no-facts) | per-item rights; lending copies of in-copyright books beside PD scans; uploader metadata |
+| many | HathiTrust | guide (no-reader) | full view only for works it finds PD; scans |
+| en | Standard Ebooks | **paste (new)** | PD in the US; its own work CC0 1.0 |
+| ja | 青空文庫 | paste | PD; credit the volunteers |
+| fr | Gallica (BnF) | guide (terms) | non-commercial reuse free; commercial reuse needs a paid licence |
+| de | Deutsches Textarchiv | guide (no-reader) | CC BY-SA; first editions with place and year — a good next reader |
+| de | Projekt Gutenberg-DE | guide (terms) | private use only |
+| es | Biblioteca Virtual Miguel de Cervantes | guide (terms) | its legal notice, no open licence |
+| it | Liber Liber | guide (terms) | personal use; many editions CC BY-NC(-SA/ND) |
+| pl | Wolne Lektury | guide (no-reader) | PD works, editions CC BY-SA 3.0; its API has no death years |
+| sv | Projekt Runeberg | guide (no-reader) | Nordic PD works, scans + OCR |
+| la/grc | Perseus · Scaife | guide (no-facts) | CC BY-SA; a modern critical edition has an editor to date, an ancient work no country of first publication |
+| la | The Latin Library | guide (no-facts) | no licence or edition stated |
+| zh | ctext.org | guide (terms) | scraping forbidden by its terms; non-commercial |
+| he | Project Ben-Yehuda | guide (no-reader) | PD works free for any use; works "by permission" may not be reused |
+| 18 languages | Wikisource: en, zh, ru, fr, de, es, it, pt, la, pl, uk, nl, sv, ja, ko, ar, he, bn | paste (**16 new**) | PD works; transcription CC BY-SA 4.0 |
+
+Not listed: **Project Gutenberg Australia** (its basis is Australian law:
+many of its texts are protected in the US and elsewhere, against our rule);
+**lib.ru** (a mix of in-copyright works, not a public-domain library);
+**Hindawi** (books moved behind a bot challenge at safahat.org, its licence
+could not be read); **Shamela** (modern edited editions — an editor's rights —
+and no terms we could confirm); **zeno.org** (unreachable on 2026-11-05).
+
+New readers (one per host format, no per-language code):
+
+- **Wikisource**: `WIKISOURCE` (host → language, local name) is the only list;
+  link parser, search, cleaner and Wikidata reader are shared. A work item
+  lists the translators of *all* its editions (P655 on "The Raven" names a
+  Spanish one), so for an edition page only the edition's own P655 counts,
+  and an edition whose P407 language differs from its work's is a
+  translation. A page that is mostly links to its own sub-pages
+  (`./Title/Chapter`) is a contents page, not a book (`isContentsPage`):
+  refused as no text. Search: 3 hits per Wikisource site, 40 in all.
+- **Standard Ebooks** (`standardebooks.org/ebooks/<author>/<title>[/<translator
+  or illustrator>]`, any file under it): the ebook page names the work's
+  English Wikipedia article (schema:sameAs on the Book) and each author's;
+  other people come from its "Illustrated by / Translated by / Edited by …"
+  lines. English Wikipedia's API (`en.wikipedia.org`, meta host) gives their
+  Wikidata items; Wikidata the death years, P577 and P495, as for Wikisource.
+  Translated by → a translation; a person without an article → no death
+  year; another role → unknown role; a placeholder page → not found. The file
+  is `/text/single-page` (XHTML, `standardebooks-xhtml`): title page,
+  imprint, contents, endnotes, colophon and the CC0 "uncopyright" are dropped
+  by epub:type. Illustrated editions carry their images inline (Alice: 74 MB
+  of data: URIs, 200 KB of text), so every source file now streams through a
+  data:-URI stripper: 120 MB may arrive, 6 MB may be kept. Its catalogue
+  search (`/ebooks?query=`) joins the library search. Pride and Prejudice is
+  refused today for its Wikidata item states no country (P495): nothing is
+  guessed.
+
+### Table of contents (owner, 13:22 JST 2026-11-05)
+
+`lib/books/toc.ts` builds it from the groups shown: one entry per language
+section (`#books-<lang>`), its levels as sub-items when it has two or more
+(`#books-<lang>-<level>`, on the first book of that level), then 找更多书
+(`#books-find-more`) and its library guide (`#books-find-more-libraries`).
+It follows the filter (a group with no match has no section and no entry).
+Desktop: a sticky index right of the list; phone: a sticky glass bar naming
+the current section that opens a sheet. The current section comes from an
+IntersectionObserver (no polling, no scroll handler); jumps scroll smoothly
+unless reduced motion is asked for. Tests: every section has an entry, sub-
+items resolve to anchors the list sets, the filter drops empty groups.
+
 ## A first multilingual text: the Bible, in its original languages
 
 The owner's example (16:34 JST), refined at 16:36: chosen for language-learning
@@ -496,7 +587,7 @@ $0.12 for _Le Petit Prince_, about $0.8 for a long novel.
 ## Phases (agent hours)
 
 - **0 (2):** rights rule + checker; seed script for one catalogue language.
-- **1 (≈14):** chunking, chunk reading on /read with 「读完」 and a cursor,
+- **1 (≈14):** chunking, chunk reading on /reader with 「读完」 and a cursor,
   extraction + dedupe into a per-book list, roadmap goal with both bars.
   One book, one language, owner only, behind a flag.
 - **2 (≈10):** chat import, URL/photo import, tap-a-word glosses, partner
@@ -569,7 +660,7 @@ updated_at)`, written 1.5 s after scrolling stops and on `pagehide`; newest
   the book's list.
 - **Chrome.** Glass top strip (back, chapter, ring; hides on scroll down), a
   play pill at the right thumb (play/pause, auto, Aa), bottom island hidden on
-  `/read/[id]` (pending owner) which also ends the overlap bug. Aa sheet: a
+  `/reader/[id]` (pending owner) which also ends the overlap bug. Aa sheet: a
   new `read` text-size area (#436), line spacing, serif/sans, mark level.
 - **Options.** A, book page (recommended): free scroll + floating pill. B,
   teleprompter: current paragraph pinned to a reading line, the island
@@ -607,7 +698,7 @@ selecting DOM text.
 - **Addressable units (deep links).** Stable IDs that survive re-imports of
   the same content (derived from the content-hash book id of the dedupe plan
   and positions in `lines`):
-  `/read/<book>` · `#ch=<n>` · `#p=<line>` · `#s=<line>.<sentence>` ·
+  `/reader/<book>` · `#ch=<n>` · `#p=<line>` · `#s=<line>.<sentence>` ·
   `#w=<line>.<token>` · `#ph=<line>.<startToken>-<endToken>`. Opening a link
   scrolls the virtualised list to the anchor, flashes the unit and shows its
   card. Links open only for someone who has access to that book (own upload
@@ -627,9 +718,9 @@ selecting DOM text.
   `data-read-marks` rules as the words. Never a text-decoration, so a
   selection's highlight does not recolour it. QA:
   `scripts/qa/qa-read-phrase-marks.mjs`.
-- **Built** (reader v2, behind `read.reader-v2`): the rules in
+- **Built** (reader v2): the rules in
   `lib/read/reader-select.ts` (levels, fragments; unit-tested), the listener
-  and highlight in `app/(app)/read/[id]/use-reader-select.ts`, the card in
+  and highlight in `app/(app)/reader/[id]/use-reader-select.ts`, the card in
   `reader-select-card.tsx`. Every level is drawn as `data-sel` on the unit's
   elements (an element background, so each word keeps its underline colour),
   never the DOM selection, so the iOS selection menu never covers the card.
@@ -639,16 +730,17 @@ selecting DOM text.
   stayed painted on the words tapped before, so two taps showed two
   selections (owner, 2026-11-05 03:00 JST; QA `scripts/qa/qa-read-sel-one.ts`). The card takes the half of the
   screen away from the finger, so the next click lands on the book. Links
-  name the book by its content hash; `/read/<hash>` redirects to the
+  name the book by its content hash; `/reader/<hash>` redirects to the
   signed-in user's own copy of that text or answers 404
   (`lib/read/book-link.ts`). Gloss is a Wiktionary search in a new tab.
   **Translate is ours** (owner, 2026-11-04 14:58 JST: "dont [go to google
   translate], lets use ai credits and our api"): `POST /api/read/[id]/translate`
-  (`lib/read/translate.ts`, `translate-server.ts`; the reader-v2 gate)
+  (`lib/read/translate.ts`, `translate-server.ts`; the reader routes' gate)
   translates the selected word … paragraph or hand-made range into the UI
   locale with the Learning Partner's model on Workers AI, and the card shows it
   under the text. Cached in D1 `read_translation` by SHA-256 of target + text
-  (the text itself is not stored), so the same text and target are paid once;
+  (the text itself is not stored), so the same text and target are paid once
+  (never for a /vibe doc: [vibe.md](vibe.md), "Where its text goes");
   60 model calls per user per 10 min (a cost guard); the real cost goes to
   `chargeAi` (`gloss-server.ts`), the one charge seam until the credits
   redesign.
@@ -675,19 +767,19 @@ selecting DOM text.
     detects phrases by itself (the combo's phrase level, extraction, a
     suggestion) admits only non-compositional ones, from a data list or
     flagged by the model, never "any n words in a row";
-  - a phrase that is no card yet gets 制作卡片: the same `make-cards` path as
-    a word (the server accepts a phrase of the book's words,
+  - a phrase that is no card yet is a preview, as a word (the slider adds it,
+    "Grading from the selection card" below; the server accepts a phrase of the book's words,
     `bookPhrase`), into the book's own deck (`book:<hash>`, named after the
     book, made once);
   - a sentence, a paragraph or a hand-made range translates by itself once
-    the selection rests (the combo interval): a ragged range grows to whole
-    sentences, each translated and cached on its own; grown to a whole
-    paragraph, the paragraph in one call; a range across paragraphs that
-    covers one whole takes every paragraph it touches whole, one call each,
-    in order. The cache unit is the sentence or paragraph (`read_translation`
-    keyed by its own text, no migration); the device keeps this tab's
-    answers and never asks twice. A long selection stops at a bound and
-    Translate asks for the rest.
+    the selection rests (the combo interval), in **whole sentences** (owner,
+    2026-11-06): a range is drawn grown to the sentences it touches, each
+    sentence is translated once and cached as itself, and the card stitches
+    them in order, so growing a selection asks only for the new ones. The unit
+    keeps the words he picked, for a phrase card. The cache unit is the sentence
+    (`read_translation` keyed by its own text, no migration); the device keeps
+    this tab's answers and never asks twice. A long selection stops at a bound
+    and the card asks for the rest as it is scrolled.
   "New to me" on a word logs a
   `select` exposure (no list API yet: extracts become cards later). QA:
   `scripts/qa/qa-read-select.mjs`.
@@ -739,7 +831,13 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
 - **The popup is /words' own review:** `Study` of `WordsClient.tsx` with a
   `scope` (its rows, swipe, mirror, undo, marks, FSRS cards, grades sent
   through `/api/words/lists/<id>/review`), over the book
-  (`reader-word-review.tsx`, loaded on open). Scoped: only these words, no
+  (`reader-word-review.tsx`, loaded on open). Since 2026-11-09 (owner, 00:51
+  JST: "not full screen") a bottom sheet: it slides up to three quarters of
+  the screen with the book visible above, its top band drags it to half, to
+  nearly full (the notch and a strip of text stay) or away, and a tap above
+  it closes it (`lib/read/review-sheet.ts`, `use-review-sheet.ts`). Its
+  transform makes it the containing block of the list's fixed layers, and
+  `Study` measures its bands against the list's own box. Scoped: only these words, no
   new-word intake, no more due words, the page under it not locked. Order:
   unrecognised, new, learning weakest first, then the known ones
   (`lib/read/word-review.ts` `orderWords`). A card not due yet is left out
@@ -784,12 +882,38 @@ popup"; "点复习按钮后弹出的 = 单词列表复习 UI"; "继续用我在�
   until the credits redesign (owner, 2026-11-04) it only logs
   `read.gloss.cost`.
 
-### After a paragraph's grade: its words (owner, 2026-11-05 02:31 / 02:32 JST)
+### After a paragraph's grade: two reviews, nothing, Easy words (owner, 2026-11-08, card d2cf3080)
 
 The paragraph swipe stays the item's own grade (sides, mirror, the 8 s Undo
-hold, keys 1–4 / L K J H, all unchanged). What follows it is new
-(`lib/read/word-review.ts` `afterGrade`):
+hold, keys 1–4 / L K J H, all unchanged). What follows it
+(`lib/read/review-scope.ts` `afterGrade`):
 
+| level (after the mirror) | after the grade                         | `?review=`  |
+| ------------------------ | --------------------------------------- | ----------- |
+| Again (1)                | review 本段的词: the swiped item's words | `p…` / `r…` |
+| Hard (2)                 | review 从本章开头到本段的词              | `u<line>`   |
+| Good (3)                 | nothing (the owner: "空着" for now)      | —           |
+| Easy (4)                 | its due and new words graded Easy       | —           |
+
+History: 2026-11-05 Again / Hard / Good opened the item's review and Easy
+graded its words Easy. #703 (2026-11-08, card ee79dfe4) made the four levels
+four widening review scopes (paragraph / chapter so far / chapter / book).
+Later that day (card d2cf3080) the owner kept the first two, left Good empty
+and put Easy back as it was; the chapter and book scopes and their
+`?review=c…` / `b` refs are gone.
+
+- **Again — the item's words:** opened only when the server's read-only plan
+  (`POST /api/read/[id]/easy-plan`) has a due or new word, without the words
+  of an Easy grade still waiting in its hold.
+- **Hard — the chapter up to here:** the distinct words of every line from
+  the chapter's start (the chapter the item ends in; no chapters: the book's
+  start) up to the item, without the ones the word map marks known ("k"),
+  the unknown and weakest first (`orderWords`), at most 400 (what
+  `/word-session` takes in one call). The lines are cut once into a
+  book-wide map in the reader (not the row cache, which a chapter would
+  flush; not the server), familiarity comes from the word map already
+  loaded, and nothing is asked per paragraph; 5 000 lines take well under a
+  second (`unit/read-review-scope.test.ts`).
 - **Easy** — by swipe on whichever side gives Easy for his mirror setting,
   or by key H / 4 — also grades Easy every word of the **swiped item** (the
   swipe unit: its pieces' sentences, `paraWords`, as the review takes a
@@ -800,28 +924,27 @@ hold, keys 1–4 / L K J H, all unchanged). What follows it is new
   `planWords` / `gradeWords`: grades through `WordsD1Repo.review`, rating 4,
   as on /words). The swipe and the card's paragraph grade share this: both
   go through `gradeAt`.
-- The words ride in the item grade's own request (`GradeRequest.easyWords`),
-  sent when its Undo hold ends: U / ⌘Z / the ↶ pill / the toast's Undo
-  inside the hold drops both, so nothing reaches the server and nothing has
-  to be reverted. Once sent, the words sit in the grade's own undo record
-  (`read_grade_undo.words`), so the card handle's undo of a sent paragraph
-  grade (`batch-grade { undo }`) restores the sentences and every word
-  exactly and removes the cards it made. The server re-reads his cards and
-  re-checks each due in that request (his email only); a retried request
-  grades nothing twice. Meanings for the new cards as 制卡 finds them,
-  waiting at most a few seconds.
-- While the item rests on the Easy level, a hint above it says
-  "段落简单 + N 个词记为简单" (N from the server's read-only plan,
-  `POST /api/read/[id]/easy-plan`, asked when a slide starts; "+ N" hidden
-  when N = 0). After the grade a toast says how many, with Undo.
-- **Again / Hard / Good** (swipe or key): once the swipe has settled, the
-  item's word review opens (the selection card's review, over the same
-  words) — only when the plan has a due or new word, not after a later
-  grade or an undo, not over a sheet. Closing it focuses the next item.
-  Undoing the grade inside the hold closes a review it opened. Reading
-  aloud is paused under it, not stopped: the review claims the audio
-  (audio-claim, as when opened from the card) and the book goes on from the
-  same sentence on close.
+- The Easy words ride in the item grade's own request
+  (`GradeRequest.easyWords`), sent when its Undo hold ends: U / ⌘Z / the ↶
+  pill / the toast's Undo inside the hold drops both, so nothing reaches the
+  server and nothing has to be reverted. Once sent, the words sit in the
+  grade's own undo record (`read_grade_undo.words`), so the card handle's
+  undo of a sent paragraph grade (`batch-grade { undo }`) restores the
+  sentences and every word exactly and removes the cards it made. The server
+  re-reads his cards and re-checks each due in that request (his email
+  only); a retried request grades nothing twice. Meanings for the new cards
+  as 制卡 finds them, waiting at most a few seconds.
+- **Hints:** while the item rests on a level, a hint above it says what the
+  grade does: Again "复习本段的词", Hard "复习从本章开头到本段的词"
+  (`read-scope-hint`, `data-scope`), Easy "段落简单 + N 个词记为简单"
+  (`read-easy-hint`; N from the plan, asked when a slide starts; "+ N" hidden
+  when N = 0). Good shows no hint. After an Easy grade a toast says how many
+  words went with it, with Undo.
+- A review opens once the swipe has settled — not after a later grade or an
+  undo, not over a sheet. Undoing the grade inside the hold closes a review
+  it opened. Closing it focuses the next item. Reading aloud is paused under
+  it, not stopped (audio-claim). A refresh or a link on `?review=u…` opens
+  the chapter's review again.
 
 ### Grading from the selection card (owner, 2026-11-05 02:50–03:20 JST)
 
@@ -844,10 +967,39 @@ it in the text, not a list of toasts.
   /words: a steep drag can never grade.
 - **What each unit grades** (`lib/read/batch-grade.ts` `handlePlan`):
   - a **word** or **phrase**: its own card, only when due or new (never
-    reviewed). No card (in the book's list but never studied, or not
-    recognised at all) → 制卡 first (the same make-cards path: the book's own
-    deck, meaning from the decks and lemmas, then the AI gloss through
-    `chargeAi`), then the handle. Not due → no handle, "3 天后到期".
+    reviewed). Not due → no handle, "3 天后到期". No card (in the book's list
+    but never studied, or not recognised at all) → **a preview** (owner,
+    2026-11-06 15:56 JST: "你就直接用滑条，不用显示制卡按钮";
+    `NewWordStrip`): nothing is stored, the card shows the word's meaning and
+    its sentence, and the slider's grade adds it in one batch: card
+    (`makeCards`, into the book's own deck, of the word's language, created once
+    per book when it has none), the grade, one undo that removes both. The
+    meaning comes on the tap (owner's card, 2026-11-06 18:18 JST: 恢复，点开就查释义，
+    要花积分): decks, shared `word_gloss`, else the AI gloss through `chargeAi`,
+    written to `word_gloss`, so a second tap, on any device, spends nothing. The
+    commit does not pay again: it carries the tap's meaning, and a tap's call still
+    on its way is waited for before the batch is sent (`withTabGloss`,
+    `glossSettled`). A tap stores nothing; a drag short of a level, closing the
+    card or an Undo stores and spends nothing more than the tap did. Keyboard:
+    keys 1–4, or a button per grade (hidden until focused, read by screen readers).
+    The several-word 制卡 (N) stays on a sentence, paragraph, range or word
+    review, from two words up (`MIN_BATCH`): it is a batch action. A review
+    list's new word is a preview too, and opening the list asks no model
+    (`word-session`): a row in or near view gets its meaning as a tap does
+    (owner, 2026-11-06 23:07 JST: "gain/issues have no explaination"; the card's
+    恢复：点开就查释义), through `fetchGloss`, a few at a time, each word once
+    (`lib/read/review-row-fill.ts`, an IntersectionObserver in Study, no timers).
+    Decks, `word_gloss`, else the AI gloss through `chargeAi` (which only logs for
+    now), written to `word_gloss`. The swipe is the commit: `graded` carries that
+    meaning and asks no model again, and a word that has none gets its AI meaning
+    there. A failed lookup reads 「暂无释义」 and the row still swipes. The example's
+    translation comes the same way, on its own line under the sentence
+    (`fetchPiece`: the reader's shared cache, with translator's notes by his
+    preference, in brackets), and not when the list's language is already his. The live doc's card (`LiveTail`) has the same
+    `NewWordStrip` and the same tap's meaning (its slider shows once that has
+    answered), and sends its batch at once, with an undo toast. A /vibe doc asks
+    no model before a swipe, in the reader as on /vibe (docs/vibe.md); the gloss
+    route refuses it whatever the request says.
   - a **sentence**: that sentence's FSRS card (the reader's per-sentence
     grade, `gradeFor`, granularity `sentence`). Never takes words along.
   - a **hand-made range** (several sentences, several paragraphs): every due
@@ -964,7 +1116,8 @@ own paragraphs (no chunks):
 ## Review units (owner, Slack 2026-11-03 ~19:45–20:00 JST)
 
 The owner's final design for what the reader reviews. Built behind the flag
-`read.reader-v2` (off by default; always on for the owner). Contract:
+`read.reader-v2` until 2026-11-07, when the old reader and the flag were
+removed: every signed-in user on D1 has it. Contract:
 `lib/read/reader-api.ts`; pure libs `lib/read/units.ts` (segmentation, ids,
 items) and `lib/read/familiarity.ts` (aggregation); store
 `lib/read/reader-store.ts`; tables `db/migrations/0030_reader_v2.sql`.
@@ -997,7 +1150,11 @@ items) and `lib/read/familiarity.ts` (aggregation); store
   - From the user's own reads (`read_reviews.dwell_ms`: from the item coming
     into view to the swipe, sent by the UI): lower = their 10th-percentile
     read before a swipe, upper = their 90th percentile; used once there are
-    enough reads for a 10th percentile to exist (10).
+    enough reads for a 10th percentile to exist (10). The upper bound stays
+    within the 1–3 minute rule: never past 3 minutes, and never under 1
+    minute (2026-11-08: his reads are timed on the items he was given, so
+    quick swipes over small items taught smaller ones until every sentence
+    was its own block; the floor stops that ratchet).
   - Before that: lower = 3 s (the upper end of the 1–3 s a person takes to
     react to information, design-principles.md), upper = none (the chosen
     unit unsplit), speed = 238 words a minute (Brysbaert 2019, silent
@@ -1050,10 +1207,16 @@ items) and `lib/read/familiarity.ts` (aggregation); store
   the material is the user's own; every query is keyed by `user_id`.
   Deleting a book deletes its reader rows.
 
-### Built: the reader v2 UI (2026-11-03, behind `read.reader-v2`)
+### Built: the reader v2 UI (2026-11-03; the only reader since 2026-11-07)
 
-`app/(app)/read/[id]/ReaderV2.tsx` (rows: `reader-blocks.tsx`). The old reader
-stays while the flag is off; the owner always gets v2, on lianki.com too (the same rule as its backend, `readerV2On`).
+`app/(app)/reader/[id]/ReaderV2.tsx` (rows: `reader-blocks.tsx`). The first reader
+(`ReadViewClient.tsx`) and the flag `read.reader-v2` were removed on 2026-11-07
+(owner: "you can delete the old reader completely"). What only it had, and the
+new one does not: Next / Replay / Pause buttons while waiting, Reset, the j/k,
+n/Enter and Home/End keys, shadowing (reading the line aloud with the chat mic
+on moved to the next one), the visible status line, line numbers and the line
+counter, a slider to jump anywhere, chapter ← / → buttons. Its word scan panel
+and the title and author moved to the top of the new reader.
 
 - The whole book on the window's scroll, virtualised (`@tanstack/react-virtual`,
   measured heights); the EPUB's paragraphs, headings, emphasis and joins as

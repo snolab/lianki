@@ -135,6 +135,14 @@ try {
         "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
     });
     // lianki.com's ticket route, as the owner's session would get it.
+    // The /dev/flags switch (stt.voiceprint-filter), on: this device has no print yet.
+    await ctx.route("**/api/dev/voice-filter", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ on: true }),
+      }),
+    );
     await ctx.route("**/api/dev/voiceprint-ticket", async (route) => {
       const b = JSON.parse(route.request().postData() || "{}");
       asked.push(`${b.op}:${b.step ?? ""}`);
@@ -209,6 +217,15 @@ try {
       !(await page.$(sel("debug-voiceprint-off"))),
       `${scheme}: the panel reached the Mac with a status ticket`,
     );
+    // "Only my voice": the flag on, no print on this device, so nothing is filtered, and it says so.
+    const filterState = await page.getAttribute(sel("debug-voiceprint-filter"), "data-state");
+    check(filterState === "no-print", `the filter says it needs a print here (${filterState})`);
+    await page.click(sel("debug-voiceprint-filter-pause"));
+    check(
+      (await page.evaluate(() => localStorage.getItem("lk:agent-voice-filter"))) === "off",
+      "pause: this device's switch is kept on this device",
+    );
+    await page.click(sel("debug-voiceprint-filter-pause"));
     if (SHOTS) {
       mkdirSync(SHOTS, { recursive: true });
       await page.screenshot({ path: join(SHOTS, `voiceprint-status-${scheme}.png`) });

@@ -10,7 +10,9 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.25
+// @grant       unsafeWindow
+// @grant       GM_registerMenuCommand
+// @version     2.24.30
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -1654,6 +1656,518 @@
     return dueMs > w.lo && dueMs < w.hi;
   }
 
+  // packages/core/src/titleClean.ts
+  var TITLE_PATTERN_MAX = 48;
+  var TITLE_HOST_MAX = 40;
+  var TITLE_RULES_ADD_MAX = 10;
+  var TITLE_RULES_OFF_MAX = 64;
+  var WINDOW = 512;
+  var ANY_MAX = 64;
+  var ANY_PER_PATTERN = 3;
+  var PASSES = 3;
+  var RULES_MAX = 128;
+  var on = (host, ...patterns) => patterns.map((pattern) => ({ host, pattern }));
+  var COUNTING_SITES = [
+    "youtube.com",
+    "instagram.com",
+    "linkedin.com",
+    "reddit.com",
+    "discord.com",
+    "quora.com",
+    "twitch.tv",
+    "tiktok.com",
+    "pinterest.com",
+    "threads.net",
+    "web.whatsapp.com",
+    "web.telegram.org",
+  ];
+  var DEFAULT_TITLE_RULES = [
+    ...on(
+      "",
+      "(9+)",
+      "(99+)",
+      "(999+)",
+      "(## new)",
+      "(## unread)",
+      "(## message)",
+      "(## messages)",
+      "(## new message)",
+      "(## new messages)",
+      "(## notification)",
+      "(## notifications)",
+      "(## 条消息)",
+      "(## 条新消息)",
+      "(## 条未读)",
+      "(## 条通知)",
+      "(## 条私信)",
+      "(## 封私信)",
+      "(## 件の通知)",
+      "(## 件の新着)",
+      "(## 개의 알림)",
+    ),
+    ...on("zhihu.com", "(##*条消息)", "(##*封私信)"),
+    ...COUNTING_SITES.flatMap((host) => on(host, "(#)")),
+    ...on("facebook.com", "(#)", "(#+)"),
+    ...on("x.com", "(#)", "(#+)"),
+    ...on("twitter.com", "(#)", "(#+)"),
+  ];
+  function titleRuleId(rule) {
+    const s = `${rule.host}|${rule.pattern}`;
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(16).padStart(8, "0");
+  }
+  var isSpace = (c) =>
+    c === 32 || (c >= 9 && c <= 13) || c === 160 || c === 12288 || c === 8203 || c === 65279;
+  var isDigit = (c) => c >= 48 && c <= 57;
+  function fold(s) {
+    let out = "";
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c >= 65281 && c <= 65374) {
+        const ascii = String.fromCharCode(c - 65248).toLowerCase();
+        out += ascii;
+      } else if (c === 12304 || c === 12308) out += "[";
+      else if (c === 12305 || c === 12309) out += "]";
+      else {
+        const ch = s[i];
+        const lower = ch.toLowerCase();
+        out += lower.length === 1 ? lower : ch;
+      }
+    }
+    return out;
+  }
+  function compile(pattern) {
+    if (typeof pattern !== "string" || pattern.length > TITLE_PATTERN_MAX) return null;
+    if (/:\/\/|^\/\/|\.ts\.net|localhost|127\.0\.0\.1/i.test(pattern)) return null;
+    const tokens = [];
+    let lit = "";
+    const flush = () => {
+      if (lit) tokens.push({ k: "lit", s: fold(lit) });
+      lit = "";
+    };
+    for (let i = 0; i < pattern.length; i++) {
+      const ch = pattern[i];
+      if (ch === "\\") {
+        i++;
+        if (i >= pattern.length) return null;
+        lit += pattern[i];
+      } else if (ch === "#") {
+        flush();
+        if (pattern[i + 1] === "#") {
+          i++;
+          tokens.push({ k: "num", max: 4, plus: true });
+        } else tokens.push({ k: "num", max: 2, plus: false });
+      } else if (ch === "*") {
+        flush();
+        tokens.push({ k: "any" });
+      } else if (isSpace(pattern.charCodeAt(i))) {
+        flush();
+        tokens.push({ k: "space" });
+      } else lit += ch;
+    }
+    flush();
+    while (tokens[0]?.k === "space") tokens.shift();
+    while (tokens[tokens.length - 1]?.k === "space") tokens.pop();
+    if (!tokens.length || tokens[0].k === "any") return null;
+    if (tokens.filter((t) => t.k === "any").length > ANY_PER_PATTERN) return null;
+    const out = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      out.push(t);
+      if (t.k !== "any") continue;
+      while (tokens[i + 1]?.k === "space") i++;
+      if (tokens[i + 1]?.k !== "lit") return null;
+    }
+    return out;
+  }
+  var isTitlePattern = (pattern) => compile(pattern) !== null;
+  function titleHostOf(input) {
+    if (typeof input !== "string") return null;
+    const raw = input.trim().toLowerCase();
+    if (!raw) return null;
+    let host;
+    try {
+      host = new URL(raw.includes("://") ? raw : `https://${raw}`).hostname;
+    } catch {
+      return null;
+    }
+    host = host.replace(/^www\./, "");
+    if (host.length > TITLE_HOST_MAX) return null;
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) return null;
+    if (/\.ts\.net$|\.local$|\.internal$|\.\d+$/.test(host)) return null;
+    return host;
+  }
+  var isTitleHost = (host) =>
+    host === "" || (typeof host === "string" && titleHostOf(host) === host);
+  function matchAt(tokens, text, from) {
+    let i = from;
+    for (let n = 0; n < tokens.length; n++) {
+      const t = tokens[n];
+      if (t.k === "lit") {
+        if (!text.startsWith(t.s, i)) return -1;
+        i += t.s.length;
+      } else if (t.k === "space") {
+        while (i < text.length && isSpace(text.charCodeAt(i))) i++;
+      } else if (t.k === "num") {
+        const start = i;
+        while (i < text.length && isDigit(text.charCodeAt(i))) {
+          i++;
+          if (i - start > t.max) return -1;
+        }
+        if (i === start) return -1;
+        if (t.plus && text[i] === "+") i++;
+      } else {
+        const next = tokens[n + 1].s;
+        const limit = Math.min(i + ANY_MAX, text.length);
+        let found = -1;
+        for (let j = i; j <= limit; j++) {
+          if (text.startsWith(next, j)) {
+            found = j;
+            break;
+          }
+          const c = text[j];
+          if (
+            c === ")" ||
+            c === "]" ||
+            c ===
+              `
+`
+          )
+            return -1;
+        }
+        if (found < 0) return -1;
+        i = found;
+      }
+    }
+    return i;
+  }
+  var compiledOf = new WeakMap();
+  function compileRules(rules) {
+    let c = compiledOf.get(rules);
+    if (c) return c;
+    c = [];
+    for (const r of rules.slice(0, RULES_MAX)) {
+      const tokens = compile(r?.pattern);
+      if (tokens) c.push({ host: typeof r.host === "string" ? r.host : "", tokens });
+    }
+    compiledOf.set(rules, c);
+    return c;
+  }
+  function hostFromUrl(url) {
+    if (!url) return "";
+    try {
+      return new URL(url).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  }
+  var onHost = (ruleHost, host) =>
+    ruleHost === "" || host === ruleHost || host.endsWith(`.${ruleHost}`);
+  var hasWords = (s) => /[\p{L}\p{N}]/u.test(s);
+  function cleanTitle(title, opts = {}) {
+    if (typeof title !== "string" || !title) return title;
+    const rules = opts.rules ?? DEFAULT_TITLE_RULES;
+    const host = hostFromUrl(opts.url);
+    const usable = compileRules(rules).filter((r) => onHost(r.host, host));
+    if (!usable.length) return title;
+    const text = fold(title.slice(0, WINDOW));
+    const skipSpace = (i) => {
+      while (i < text.length && isSpace(text.charCodeAt(i))) i++;
+      return i;
+    };
+    let at = skipSpace(0);
+    let cut = -1;
+    for (let pass = 0; pass < PASSES; pass++) {
+      let end = -1;
+      for (const r of usable) {
+        end = matchAt(r.tokens, text, at);
+        if (end >= 0) break;
+      }
+      if (end < 0) break;
+      at = skipSpace(end);
+      cut = at;
+    }
+    if (cut < 0) return title;
+    const rest = title.slice(cut);
+    return hasWords(rest) ? rest : title;
+  }
+  var BARE_COUNT = compile("(##)");
+  function parseTitleRulesPref(v) {
+    const o = v && typeof v === "object" ? v : {};
+    const off = (Array.isArray(o.off) ? o.off : [])
+      .filter((id) => typeof id === "string" && /^[0-9a-f]{8}$/.test(id))
+      .slice(0, TITLE_RULES_OFF_MAX);
+    const add = (Array.isArray(o.add) ? o.add : [])
+      .filter((r) => !!r && isTitleHost(r.host) && isTitlePattern(r.pattern))
+      .slice(0, TITLE_RULES_ADD_MAX)
+      .map((r) => ({ host: r.host, pattern: r.pattern }));
+    return { off, add };
+  }
+  var activeOf = new WeakMap();
+  function activeTitleRules(pref) {
+    if (!pref || typeof pref !== "object") return DEFAULT_TITLE_RULES;
+    const memo = activeOf.get(pref);
+    if (memo) return memo;
+    const { off, add } = parseTitleRulesPref(pref);
+    const rules =
+      !off.length && !add.length
+        ? DEFAULT_TITLE_RULES
+        : [...DEFAULT_TITLE_RULES.filter((r) => !off.includes(titleRuleId(r))), ...add];
+    activeOf.set(pref, rules);
+    return rules;
+  }
+
+  // lib/read/gdoc-tail.ts
+  var OP = /\{"ty":"is","ibi":(\d+),"s":"((?:[^"\\]|\\.)*)"\}|\{"ty":"ds","si":(\d+),"ei":(\d+)\}/g;
+  function parseBindOps(chunk) {
+    const ops = [];
+    let consumed = 0;
+    for (const m of chunk.matchAll(OP)) {
+      consumed = (m.index ?? 0) + m[0].length;
+      if (m[1] === undefined) {
+        ops.push({ si: Number(m[3]), ei: Number(m[4]) });
+        continue;
+      }
+      try {
+        ops.push({ i: Number(m[1]), s: JSON.parse(`"${m[2]}"`) });
+      } catch {}
+    }
+    return { ops, consumed };
+  }
+
+  // src/gdoc-stream.ts
+  var TIMING = { quietMs: 4000, maxWaitMs: 20000, exportLagMs: 6000, retryShortMs: 1500 };
+  function docIdOfPath(path) {
+    return /^\/document\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]{25,128})(?:\/|$)/.exec(path)?.[1] ?? null;
+  }
+  function stripImages(html) {
+    return html.replace(/<img\b[^>]*>/gi, "");
+  }
+  function looksTruncated(next, prev) {
+    return prev !== null && next.length < prev.length / 2;
+  }
+  function startGdocStream(deps) {
+    const id = docIdOfPath(location.pathname);
+    if (!id) return;
+    const { quietMs, maxWaitMs, exportLagMs, retryShortMs } = { ...TIMING, ...deps.timing };
+    const key = `lk:gdoc-stream:${id}`;
+    const zh = /^zh\b/i.test(navigator.language);
+    const label = {
+      start: zh ? "同步到 Lianki" : "Stream to Lianki",
+      stop: zh ? "停止同步" : "Stop streaming",
+      failed: zh ? "同步失败，重试中" : "Sync failed, retrying",
+      open: zh ? "在 Lianki 中打开" : "Open in Lianki",
+    };
+    let on = false;
+    let last = null;
+    let suspect = null;
+    let quiet;
+    let deadline;
+    let lastSignal = 0;
+    let lagCheck;
+    let bookId = null;
+    let liveQueue = [];
+    let liveBusy = false;
+    let busy = false;
+    let dirty = false;
+    let blockedUntil = 0;
+    let button = null;
+    let link = null;
+    let pending = null;
+    const docTitle = () =>
+      document.title.replace(/\s*-\s*Google (Docs|文档|ドキュメント)\s*$/i, "");
+    const read = async () => {
+      const res = await fetch(`/document/d/${id}/export?format=html`, { credentials: "include" });
+      if (!res.ok || !/^text\/html\b/i.test(res.headers.get("content-type") ?? "")) return null;
+      return stripImages(await res.text());
+    };
+    const send = async (html) => {
+      const res = await deps.gmFetch(`${deps.origin}/api/read/gdoc/stream`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ docId: id, html, title: docTitle() }),
+      });
+      if (res.status === 429) {
+        blockedUntil = Date.now() + 1000 * (Number(res.headers.get("retry-after")) || 30);
+        return false;
+      }
+      if (!res.ok) return res.status === 422;
+      const d = await res.json();
+      bookId = d.id;
+      sendLive();
+      const url = `${deps.origin}/reader/${d.id}?streamingFrom=google-docs`;
+      if (link) {
+        link.href = url;
+        link.style.display = "inline";
+      }
+      if (pending) {
+        pending.location.href = url;
+        pending = null;
+      }
+      return true;
+    };
+    const sendLive = async () => {
+      if (liveBusy || !bookId || !liveQueue.length || !on) return;
+      if (Date.now() < blockedUntil) return;
+      liveBusy = true;
+      const ops = liveQueue;
+      liveQueue = [];
+      try {
+        await deps.gmFetch(`${deps.origin}/api/read/gdoc/stream`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ book: bookId, ops }),
+        });
+      } catch (err) {
+        console.warn("[Lianki] Docs live edit failed", err);
+      }
+      liveBusy = false;
+      sendLive();
+    };
+    const check = async () => {
+      clearTimeout(quiet);
+      clearTimeout(deadline);
+      deadline = undefined;
+      if (!on) return;
+      if (busy) {
+        dirty = true;
+        return;
+      }
+      if (Date.now() < blockedUntil) return;
+      busy = true;
+      let ok = true;
+      try {
+        const html = await read();
+        if (html !== null && html !== last) {
+          if (looksTruncated(html, last) && suspect !== html) {
+            suspect = html;
+            setTimeout(() => void check(), retryShortMs);
+          } else {
+            suspect = null;
+            ok = await send(html);
+            if (ok) last = html;
+          }
+        }
+      } catch (err) {
+        ok = false;
+        console.warn("[Lianki] Docs stream failed", err);
+      }
+      busy = false;
+      if (button) button.textContent = ok ? label.stop : label.failed;
+      if (dirty) {
+        dirty = false;
+        check();
+      } else if (Date.now() - lastSignal < exportLagMs) {
+        clearTimeout(lagCheck);
+        lagCheck = setTimeout(() => void check(), exportLagMs);
+      }
+    };
+    const signal = () => {
+      if (!on) return;
+      lastSignal = Date.now();
+      clearTimeout(quiet);
+      quiet = setTimeout(() => void check(), quietMs);
+      deadline ??= setTimeout(() => void check(), maxWaitMs);
+    };
+    let hooked = false;
+    const hook = () => {
+      if (hooked) return;
+      hooked = true;
+      const page = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+      const proto = page.CanvasRenderingContext2D.prototype;
+      const original = proto.fillText;
+      proto.fillText = function (...args) {
+        signal();
+        return original.apply(this, args);
+      };
+      const xhr = page.XMLHttpRequest.prototype;
+      const text = Object.getOwnPropertyDescriptor(xhr, "responseText");
+      if (!text?.get) return;
+      const read = new WeakMap();
+      const open = xhr.open;
+      xhr.open = function (...args) {
+        read.set(this, 0);
+        return open.apply(this, args);
+      };
+      Object.defineProperty(xhr, "responseText", {
+        configurable: true,
+        get() {
+          const v = text.get.call(this);
+          try {
+            if (on && v && /\/bind(\?|$)/.test(this.responseURL)) {
+              const from = read.get(this) ?? v.length;
+              const { ops, consumed } = parseBindOps(v.slice(from));
+              read.set(this, from + consumed);
+              if (ops.length) {
+                liveQueue.push(...ops);
+                signal();
+                sendLive();
+              }
+            }
+          } catch {}
+          return v;
+        },
+      });
+    };
+    const setOn = (next) => {
+      on = next;
+      deps.setValue(key, next);
+      if (button) button.textContent = next ? label.stop : label.start;
+      if (next) {
+        hook();
+        check();
+      } else {
+        clearTimeout(quiet);
+        clearTimeout(deadline);
+        clearTimeout(lagCheck);
+        deadline = undefined;
+        last = null;
+        liveQueue = [];
+        if (link) link.style.display = "none";
+      }
+    };
+    const mount = () => {
+      const host = document.createElement("div");
+      host.style.cssText =
+        "all: initial; position: fixed; z-index: 2147483647; left: 12px; bottom: 12px;";
+      const shadow = host.attachShadow({ mode: "open" });
+      button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label.start;
+      button.style.cssText =
+        "font: 12px system-ui, sans-serif; padding: 6px 10px; border-radius: 999px; cursor: pointer; " +
+        "border: 1px solid oklch(0.8 0 0); background: oklch(1 0 0); color: oklch(0.25 0 0);";
+      button.addEventListener("click", () => {
+        if (!on) pending = window.open("", "_blank");
+        setOn(!on);
+      });
+      link = document.createElement("a");
+      link.textContent = label.open;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.style.cssText =
+        "display: none; margin-left: 8px; font: 12px system-ui, sans-serif; color: oklch(0.45 0.15 260);";
+      shadow.append(button, link);
+      document.documentElement.append(host);
+    };
+    deps
+      .gmFetch(`${deps.origin}/api/read/gdoc/stream`, { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) return;
+        mount();
+        if (deps.getValue(key, false) === true) {
+          setOn(true);
+        }
+      })
+      .catch(() => {});
+  }
+
   // packages/debug-chat/src/embed/guard.ts
   function own(o) {
     if (!o || typeof o !== "object") return { __proto__: null };
@@ -2116,6 +2630,900 @@
     root.append(box);
     (doc.documentElement ?? doc.body).append(host);
     return remove;
+  }
+
+  // src/pill-chat-strings.ts
+  var PILL_CHAT_LOCALES = [
+    "en",
+    "zh",
+    "hi",
+    "es",
+    "fr",
+    "ar",
+    "bn",
+    "pt",
+    "ru",
+    "ur",
+    "id",
+    "de",
+    "ja",
+    "sw",
+    "mr",
+    "ko",
+  ];
+  var PILL_CHAT_STRINGS = {
+    en: {
+      liTitle: "Chat with Li",
+      promptTitle: "Allow Li chat on {host}?",
+      promptBody:
+        "Li runs in its own window from lianki.com. This site cannot read what you type there. Li does not see this page unless you share something.",
+      promptWarn: "Li can make mistakes. Do not paste passwords or private data from this page.",
+      allowOnce: "Allow once",
+      allowAlways: "Always on this site",
+      neverHere: "Never on this site",
+      notNow: "Not now",
+      sitesTitle: "Li chat: sites",
+      sitesMenu: "Li chat: sites…",
+      sitesEmpty: "No sites yet.",
+      sitesAllowed: "Allowed",
+      sitesNever: "Never",
+      forget: "Forget",
+      close: "Close",
+      blocked: "This site blocks Li's private window, so Li cannot open here.",
+      openLianki: "Chat on lianki.com",
+    },
+    zh: {
+      liTitle: "和 Li 聊天",
+      promptTitle: "允许在 {host} 上使用 Li 聊天吗？",
+      promptBody:
+        "Li 在来自 lianki.com 的独立窗口里运行。这个网站读不到你在里面输入的内容。除非你主动分享，Li 也看不到这个页面。",
+      promptWarn: "Li 可能会出错。不要把这个页面上的密码或私人信息粘贴进来。",
+      allowOnce: "仅这一次",
+      allowAlways: "在此网站总是允许",
+      neverHere: "在此网站永不允许",
+      notNow: "暂不",
+      sitesTitle: "Li 聊天：网站",
+      sitesMenu: "Li 聊天：网站…",
+      sitesEmpty: "还没有任何网站。",
+      sitesAllowed: "已允许",
+      sitesNever: "永不",
+      forget: "移除",
+      close: "关闭",
+      blocked: "这个网站阻止了 Li 的独立窗口，Li 无法在这里打开。",
+      openLianki: "去 lianki.com 聊天",
+    },
+    hi: {
+      liTitle: "Li से चैट करें",
+      promptTitle: "{host} पर Li चैट की अनुमति दें?",
+      promptBody:
+        "Li, lianki.com की अपनी अलग विंडो में चलता है। यह साइट वहाँ आपके द्वारा लिखी गई बातें नहीं पढ़ सकती। जब तक आप कुछ साझा न करें, Li यह पेज नहीं देखता।",
+      promptWarn: "Li से गलतियाँ हो सकती हैं। इस पेज से पासवर्ड या निजी जानकारी यहाँ पेस्ट न करें।",
+      allowOnce: "एक बार अनुमति दें",
+      allowAlways: "इस साइट पर हमेशा",
+      neverHere: "इस साइट पर कभी नहीं",
+      notNow: "अभी नहीं",
+      sitesTitle: "Li चैट: साइटें",
+      sitesMenu: "Li चैट: साइटें…",
+      sitesEmpty: "अभी कोई साइट नहीं।",
+      sitesAllowed: "अनुमति है",
+      sitesNever: "कभी नहीं",
+      forget: "हटाएँ",
+      close: "बंद करें",
+      blocked: "यह साइट Li की निजी विंडो को रोकती है, इसलिए Li यहाँ नहीं खुल सकता।",
+      openLianki: "lianki.com पर चैट करें",
+    },
+    es: {
+      liTitle: "Chatear con Li",
+      promptTitle: "¿Permitir el chat de Li en {host}?",
+      promptBody:
+        "Li funciona en su propia ventana de lianki.com. Este sitio no puede leer lo que escribes ahí. Li no ve esta página a menos que compartas algo.",
+      promptWarn: "Li puede equivocarse. No pegues contraseñas ni datos privados de esta página.",
+      allowOnce: "Permitir una vez",
+      allowAlways: "Siempre en este sitio",
+      neverHere: "Nunca en este sitio",
+      notNow: "Ahora no",
+      sitesTitle: "Chat de Li: sitios",
+      sitesMenu: "Chat de Li: sitios…",
+      sitesEmpty: "Todavía no hay sitios.",
+      sitesAllowed: "Permitido",
+      sitesNever: "Nunca",
+      forget: "Olvidar",
+      close: "Cerrar",
+      blocked: "Este sitio bloquea la ventana privada de Li, así que Li no puede abrirse aquí.",
+      openLianki: "Chatear en lianki.com",
+    },
+    fr: {
+      liTitle: "Discuter avec Li",
+      promptTitle: "Autoriser le chat Li sur {host} ?",
+      promptBody:
+        "Li fonctionne dans sa propre fenêtre servie par lianki.com. Ce site ne peut pas lire ce que vous y tapez. Li ne voit pas cette page, sauf si vous partagez quelque chose.",
+      promptWarn:
+        "Li peut se tromper. Ne collez pas de mots de passe ni de données privées de cette page.",
+      allowOnce: "Autoriser une fois",
+      allowAlways: "Toujours sur ce site",
+      neverHere: "Jamais sur ce site",
+      notNow: "Pas maintenant",
+      sitesTitle: "Chat Li : sites",
+      sitesMenu: "Chat Li : sites…",
+      sitesEmpty: "Aucun site pour l’instant.",
+      sitesAllowed: "Autorisé",
+      sitesNever: "Jamais",
+      forget: "Oublier",
+      close: "Fermer",
+      blocked: "Ce site bloque la fenêtre privée de Li : Li ne peut pas s’ouvrir ici.",
+      openLianki: "Discuter sur lianki.com",
+    },
+    ar: {
+      liTitle: "الدردشة مع Li",
+      promptTitle: "هل تسمح بدردشة Li على {host}؟",
+      promptBody:
+        "يعمل Li في نافذته الخاصة من lianki.com. لا يستطيع هذا الموقع قراءة ما تكتبه هناك. ولا يرى Li هذه الصفحة إلا إذا شاركت شيئًا منها.",
+      promptWarn: "قد يخطئ Li. لا تلصق كلمات مرور أو بيانات خاصة من هذه الصفحة.",
+      allowOnce: "السماح مرة واحدة",
+      allowAlways: "دائمًا على هذا الموقع",
+      neverHere: "أبدًا على هذا الموقع",
+      notNow: "ليس الآن",
+      sitesTitle: "دردشة Li: المواقع",
+      sitesMenu: "دردشة Li: المواقع…",
+      sitesEmpty: "لا توجد مواقع بعد.",
+      sitesAllowed: "مسموح",
+      sitesNever: "أبدًا",
+      forget: "إزالة",
+      close: "إغلاق",
+      blocked: "يحظر هذا الموقع نافذة Li الخاصة، لذا لا يمكن فتح Li هنا.",
+      openLianki: "الدردشة على lianki.com",
+    },
+    bn: {
+      liTitle: "Li-এর সঙ্গে চ্যাট করুন",
+      promptTitle: "{host}-এ Li চ্যাটের অনুমতি দেবেন?",
+      promptBody:
+        "Li চলে lianki.com-এর নিজস্ব আলাদা উইন্ডোতে। আপনি সেখানে যা লেখেন, এই সাইট তা পড়তে পারে না। আপনি কিছু শেয়ার না করলে Li এই পেজ দেখে না।",
+      promptWarn: "Li ভুল করতে পারে। এই পেজ থেকে পাসওয়ার্ড বা ব্যক্তিগত তথ্য এখানে পেস্ট করবেন না।",
+      allowOnce: "একবার অনুমতি দিন",
+      allowAlways: "এই সাইটে সবসময়",
+      neverHere: "এই সাইটে কখনো না",
+      notNow: "এখন না",
+      sitesTitle: "Li চ্যাট: সাইট",
+      sitesMenu: "Li চ্যাট: সাইট…",
+      sitesEmpty: "এখনো কোনো সাইট নেই।",
+      sitesAllowed: "অনুমতি আছে",
+      sitesNever: "কখনো না",
+      forget: "সরান",
+      close: "বন্ধ করুন",
+      blocked: "এই সাইট Li-এর ব্যক্তিগত উইন্ডো আটকে দেয়, তাই Li এখানে খোলা যায় না।",
+      openLianki: "lianki.com-এ চ্যাট করুন",
+    },
+    pt: {
+      liTitle: "Conversar com Li",
+      promptTitle: "Permitir o chat do Li em {host}?",
+      promptBody:
+        "O Li funciona em sua própria janela do lianki.com. Este site não consegue ler o que você digita lá. O Li não vê esta página, a menos que você compartilhe algo.",
+      promptWarn: "O Li pode errar. Não cole senhas nem dados privados desta página.",
+      allowOnce: "Permitir uma vez",
+      allowAlways: "Sempre neste site",
+      neverHere: "Nunca neste site",
+      notNow: "Agora não",
+      sitesTitle: "Chat do Li: sites",
+      sitesMenu: "Chat do Li: sites…",
+      sitesEmpty: "Nenhum site ainda.",
+      sitesAllowed: "Permitido",
+      sitesNever: "Nunca",
+      forget: "Esquecer",
+      close: "Fechar",
+      blocked: "Este site bloqueia a janela privada do Li, então o Li não pode abrir aqui.",
+      openLianki: "Conversar no lianki.com",
+    },
+    ru: {
+      liTitle: "Чат с Li",
+      promptTitle: "Разрешить чат Li на {host}?",
+      promptBody:
+        "Li работает в собственном окне с lianki.com. Этот сайт не может прочитать то, что вы там вводите. Li не видит эту страницу, если вы сами чем-то не поделитесь.",
+      promptWarn: "Li может ошибаться. Не вставляйте пароли и личные данные с этой страницы.",
+      allowOnce: "Разрешить один раз",
+      allowAlways: "Всегда на этом сайте",
+      neverHere: "Никогда на этом сайте",
+      notNow: "Не сейчас",
+      sitesTitle: "Чат Li: сайты",
+      sitesMenu: "Чат Li: сайты…",
+      sitesEmpty: "Пока нет сайтов.",
+      sitesAllowed: "Разрешено",
+      sitesNever: "Никогда",
+      forget: "Забыть",
+      close: "Закрыть",
+      blocked: "Этот сайт блокирует отдельное окно Li, поэтому Li здесь не откроется.",
+      openLianki: "Общаться на lianki.com",
+    },
+    ur: {
+      liTitle: "Li سے چیٹ کریں",
+      promptTitle: "کیا {host} پر Li چیٹ کی اجازت دیں؟",
+      promptBody:
+        "Li، lianki.com کی اپنی الگ ونڈو میں چلتا ہے۔ یہ سائٹ وہ نہیں پڑھ سکتی جو آپ وہاں لکھتے ہیں۔ جب تک آپ کچھ شیئر نہ کریں، Li یہ صفحہ نہیں دیکھتا۔",
+      promptWarn: "Li غلطی کر سکتا ہے۔ اس صفحے سے پاس ورڈ یا نجی معلومات یہاں پیسٹ نہ کریں۔",
+      allowOnce: "ایک بار اجازت دیں",
+      allowAlways: "اس سائٹ پر ہمیشہ",
+      neverHere: "اس سائٹ پر کبھی نہیں",
+      notNow: "ابھی نہیں",
+      sitesTitle: "Li چیٹ: سائٹس",
+      sitesMenu: "Li چیٹ: سائٹس…",
+      sitesEmpty: "ابھی کوئی سائٹ نہیں۔",
+      sitesAllowed: "اجازت ہے",
+      sitesNever: "کبھی نہیں",
+      forget: "ہٹائیں",
+      close: "بند کریں",
+      blocked: "یہ سائٹ Li کی نجی ونڈو کو روکتی ہے، اس لیے Li یہاں نہیں کھل سکتا۔",
+      openLianki: "lianki.com پر چیٹ کریں",
+    },
+    id: {
+      liTitle: "Ngobrol dengan Li",
+      promptTitle: "Izinkan obrolan Li di {host}?",
+      promptBody:
+        "Li berjalan di jendelanya sendiri dari lianki.com. Situs ini tidak bisa membaca apa yang Anda ketik di sana. Li tidak melihat halaman ini kecuali Anda membagikan sesuatu.",
+      promptWarn: "Li bisa keliru. Jangan tempel kata sandi atau data pribadi dari halaman ini.",
+      allowOnce: "Izinkan sekali",
+      allowAlways: "Selalu di situs ini",
+      neverHere: "Jangan pernah di situs ini",
+      notNow: "Nanti saja",
+      sitesTitle: "Obrolan Li: situs",
+      sitesMenu: "Obrolan Li: situs…",
+      sitesEmpty: "Belum ada situs.",
+      sitesAllowed: "Diizinkan",
+      sitesNever: "Tidak pernah",
+      forget: "Lupakan",
+      close: "Tutup",
+      blocked: "Situs ini memblokir jendela pribadi Li, jadi Li tidak bisa dibuka di sini.",
+      openLianki: "Ngobrol di lianki.com",
+    },
+    de: {
+      liTitle: "Mit Li chatten",
+      promptTitle: "Li-Chat auf {host} erlauben?",
+      promptBody:
+        "Li läuft in einem eigenen Fenster von lianki.com. Diese Website kann nicht lesen, was du dort tippst. Li sieht diese Seite nicht, außer du teilst etwas.",
+      promptWarn:
+        "Li kann Fehler machen. Füge keine Passwörter oder privaten Daten von dieser Seite ein.",
+      allowOnce: "Einmal erlauben",
+      allowAlways: "Immer auf dieser Website",
+      neverHere: "Nie auf dieser Website",
+      notNow: "Jetzt nicht",
+      sitesTitle: "Li-Chat: Websites",
+      sitesMenu: "Li-Chat: Websites…",
+      sitesEmpty: "Noch keine Websites.",
+      sitesAllowed: "Erlaubt",
+      sitesNever: "Nie",
+      forget: "Vergessen",
+      close: "Schließen",
+      blocked:
+        "Diese Website blockiert das private Fenster von Li, daher kann Li hier nicht öffnen.",
+      openLianki: "Auf lianki.com chatten",
+    },
+    ja: {
+      liTitle: "Li とチャット",
+      promptTitle: "{host} で Li チャットを許可しますか？",
+      promptBody:
+        "Li は lianki.com の専用ウィンドウで動きます。このサイトは、そこで入力した内容を読めません。共有しない限り、Li もこのページを見ません。",
+      promptWarn:
+        "Li は間違えることがあります。このページのパスワードや個人情報は貼り付けないでください。",
+      allowOnce: "今回だけ許可",
+      allowAlways: "このサイトで常に許可",
+      neverHere: "このサイトでは許可しない",
+      notNow: "今はしない",
+      sitesTitle: "Li チャット：サイト",
+      sitesMenu: "Li チャット：サイト…",
+      sitesEmpty: "まだサイトはありません。",
+      sitesAllowed: "許可",
+      sitesNever: "許可しない",
+      forget: "削除",
+      close: "閉じる",
+      blocked: "このサイトは Li の専用ウィンドウをブロックしているため、ここでは Li を開けません。",
+      openLianki: "lianki.com でチャット",
+    },
+    sw: {
+      liTitle: "Ongea na Li",
+      promptTitle: "Ruhusu gumzo la Li kwenye {host}?",
+      promptBody:
+        "Li inaendeshwa kwenye dirisha lake kutoka lianki.com. Tovuti hii haiwezi kusoma unachoandika humo. Li haioni ukurasa huu isipokuwa ukishiriki kitu.",
+      promptWarn: "Li inaweza kukosea. Usibandike nenosiri au data binafsi kutoka ukurasa huu.",
+      allowOnce: "Ruhusu mara moja",
+      allowAlways: "Daima kwenye tovuti hii",
+      neverHere: "Kamwe kwenye tovuti hii",
+      notNow: "Si sasa",
+      sitesTitle: "Gumzo la Li: tovuti",
+      sitesMenu: "Gumzo la Li: tovuti…",
+      sitesEmpty: "Bado hakuna tovuti.",
+      sitesAllowed: "Imeruhusiwa",
+      sitesNever: "Kamwe",
+      forget: "Sahau",
+      close: "Funga",
+      blocked: "Tovuti hii inazuia dirisha binafsi la Li, kwa hiyo Li haiwezi kufunguka hapa.",
+      openLianki: "Ongea kwenye lianki.com",
+    },
+    mr: {
+      liTitle: "Li शी गप्पा मारा",
+      promptTitle: "{host} वर Li चॅटला परवानगी द्यायची?",
+      promptBody:
+        "Li हे lianki.com च्या स्वतःच्या वेगळ्या विंडोमध्ये चालते. तुम्ही तिथे काय टाइप करता ते ही साइट वाचू शकत नाही. तुम्ही काही शेअर केल्याशिवाय Li हे पेज पाहत नाही.",
+      promptWarn: "Li कडून चुका होऊ शकतात. या पेजवरील पासवर्ड किंवा खासगी माहिती इथे पेस्ट करू नका.",
+      allowOnce: "एकदाच परवानगी द्या",
+      allowAlways: "या साइटवर नेहमी",
+      neverHere: "या साइटवर कधीही नाही",
+      notNow: "आता नाही",
+      sitesTitle: "Li चॅट: साइट्स",
+      sitesMenu: "Li चॅट: साइट्स…",
+      sitesEmpty: "अजून कोणतीही साइट नाही.",
+      sitesAllowed: "परवानगी आहे",
+      sitesNever: "कधीही नाही",
+      forget: "काढा",
+      close: "बंद करा",
+      blocked: "ही साइट Li ची खासगी विंडो अडवते, त्यामुळे Li इथे उघडू शकत नाही.",
+      openLianki: "lianki.com वर चॅट करा",
+    },
+    ko: {
+      liTitle: "Li와 채팅",
+      promptTitle: "{host}에서 Li 채팅을 허용할까요?",
+      promptBody:
+        "Li는 lianki.com의 별도 창에서 실행됩니다. 이 사이트는 그 안에 입력한 내용을 읽을 수 없습니다. 직접 공유하지 않는 한 Li도 이 페이지를 보지 않습니다.",
+      promptWarn: "Li는 실수할 수 있습니다. 이 페이지의 비밀번호나 개인 정보를 붙여 넣지 마세요.",
+      allowOnce: "이번만 허용",
+      allowAlways: "이 사이트에서 항상 허용",
+      neverHere: "이 사이트에서 허용 안 함",
+      notNow: "나중에",
+      sitesTitle: "Li 채팅: 사이트",
+      sitesMenu: "Li 채팅: 사이트…",
+      sitesEmpty: "아직 사이트가 없습니다.",
+      sitesAllowed: "허용됨",
+      sitesNever: "허용 안 함",
+      forget: "삭제",
+      close: "닫기",
+      blocked: "이 사이트는 Li의 별도 창을 차단하므로 여기서는 Li를 열 수 없습니다.",
+      openLianki: "lianki.com에서 채팅",
+    },
+  };
+  function pillChatLang(lang = globalThis.navigator?.language) {
+    const base = String(lang ?? "")
+      .toLowerCase()
+      .split(/[-_]/)[0];
+    return PILL_CHAT_LOCALES.includes(base) ? base : "en";
+  }
+  var pillChatStrings = (lang) => PILL_CHAT_STRINGS[pillChatLang(lang)];
+
+  // src/pill-chat-trust.ts
+  var LICHAT_SITES_KEY = "lianki_lichat_sites";
+  var PILLCHAT_ON_KEY = "lianki_pillchat_on";
+  var PILLCHAT_RECHECK_MS = 60000;
+  var HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/;
+  var validHost = (h) =>
+    typeof h === "string" && h.length > 0 && h.length <= 253 && HOST_RE.test(h);
+  var siteKey = (hostname) => {
+    const h = String(hostname ?? "").toLowerCase();
+    return validHost(h) ? h : null;
+  };
+  function parseSites(raw) {
+    let v = raw;
+    if (typeof raw === "string") {
+      try {
+        v = JSON.parse(raw);
+      } catch {
+        return {};
+      }
+    }
+    const out = Object.create(null);
+    if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+    for (const [h, d] of Object.entries(v)) {
+      if (validHost(h) && (d === "allow" || d === "never")) out[h] = d;
+    }
+    return out;
+  }
+  function trustStore(gm) {
+    const read = () => parseSites(gm.getValue(LICHAT_SITES_KEY, "{}"));
+    const write = (s) => gm.setValue(LICHAT_SITES_KEY, JSON.stringify(s));
+    return {
+      decision(host) {
+        const k = siteKey(host);
+        return k ? (read()[k] ?? null) : null;
+      },
+      set(host, d) {
+        const k = siteKey(host);
+        if (!k) return;
+        write({ ...read(), [k]: d });
+      },
+      forget(host) {
+        const s = { ...read() };
+        const k = siteKey(host);
+        if (!k || !(k in s)) return;
+        delete s[k];
+        write(s);
+      },
+      list() {
+        return Object.entries(read()).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+      },
+    };
+  }
+  function applyChoice(store, onceHosts, host, choice) {
+    const k = siteKey(host);
+    if (!k) return false;
+    if (choice === "once") {
+      onceHosts.add(k);
+      return true;
+    }
+    if (choice === "always") {
+      store.set(k, "allow");
+      return true;
+    }
+    if (choice === "never") store.set(k, "never");
+    return false;
+  }
+  function allowedHere(store, onceHosts, host) {
+    const k = siteKey(host);
+    if (!k) return false;
+    const d = store.decision(k);
+    if (d === "never") return false;
+    return d === "allow" || onceHosts.has(k);
+  }
+  function flagMirrorOn(raw) {
+    const v = typeof raw === "string" ? safeJson(raw) : raw;
+    return !!v && typeof v === "object" && v.on === true;
+  }
+  function flagRecheckDue(raw, now) {
+    const v = typeof raw === "string" ? safeJson(raw) : raw;
+    const at = v && typeof v === "object" ? v.at : undefined;
+    return (
+      typeof at !== "number" || !Number.isFinite(at) || now - at >= PILLCHAT_RECHECK_MS || at > now
+    );
+  }
+  function safeJson(s) {
+    try {
+      return JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+  function pillEntry(o) {
+    if (!o.flagOn || !o.top || !o.host || o.decision === "never") return "hidden";
+    return o.isolated ? "show" : "note";
+  }
+
+  // src/pill-chat-ui.ts
+  var css2 = (el, rules) => {
+    for (const [k, v] of rules) el.style.setProperty(k, v, "important");
+  };
+  function palette(win) {
+    let dark = false;
+    try {
+      dark = !!win?.matchMedia?.("(prefers-color-scheme: dark)").matches;
+    } catch {}
+    return dark
+      ? {
+          surface: "oklch(0.24 0.01 65)",
+          text: "oklch(0.95 0.01 82)",
+          muted: "oklch(0.8 0.01 82)",
+          line: "oklch(0.95 0.01 82 / 0.18)",
+          warnBg: "oklch(0.32 0.06 70)",
+          warnText: "oklch(0.95 0.04 85)",
+          primary: "oklch(0.78 0.11 250)",
+          primaryText: "oklch(0.2 0.03 250)",
+          button: "oklch(0.32 0.01 65)",
+          scrim: "oklch(0 0 0 / 0.45)",
+        }
+      : {
+          surface: "oklch(0.985 0.006 82)",
+          text: "oklch(0.25 0.02 65)",
+          muted: "oklch(0.42 0.02 65)",
+          line: "oklch(0.25 0.02 65 / 0.15)",
+          warnBg: "oklch(0.95 0.05 85)",
+          warnText: "oklch(0.32 0.06 60)",
+          primary: "oklch(0.45 0.13 250)",
+          primaryText: "oklch(0.99 0 0)",
+          button: "oklch(0.93 0.01 82)",
+          scrim: "oklch(0 0 0 / 0.3)",
+        };
+  }
+  function modal(doc, p, label, onDismiss) {
+    const host = doc.createElement("div");
+    css2(host, [
+      ["all", "initial"],
+      ["display", "block"],
+      ["position", "fixed"],
+      ["inset", "0"],
+      ["z-index", "2147483647"],
+    ]);
+    const root = host.attachShadow({ mode: "closed" });
+    const scrim = doc.createElement("div");
+    css2(scrim, [
+      ["all", "initial"],
+      ["display", "flex"],
+      ["position", "fixed"],
+      ["inset", "0"],
+      ["align-items", "center"],
+      ["justify-content", "center"],
+      ["padding", "16px"],
+      ["background", p.scrim],
+      ["box-sizing", "border-box"],
+    ]);
+    const panel = doc.createElement("div");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("aria-label", label);
+    css2(panel, [
+      ["all", "initial"],
+      ["display", "flex"],
+      ["flex-direction", "column"],
+      ["gap", "12px"],
+      ["box-sizing", "border-box"],
+      ["width", "min(380px, 100%)"],
+      ["max-height", "calc(100vh - 32px)"],
+      ["overflow", "auto"],
+      ["padding", "16px"],
+      ["border-radius", "14px"],
+      ["background", p.surface],
+      ["color", p.text],
+      ["border", `1px solid ${p.line}`],
+      ["box-shadow", "0 8px 32px oklch(0 0 0 / 0.3)"],
+      ["font", "14px/20px system-ui, sans-serif"],
+    ]);
+    scrim.append(panel);
+    root.append(scrim);
+    scrim.addEventListener("click", (e) => {
+      if (e.isTrusted && e.target === scrim) onDismiss();
+    });
+    host.addEventListener("keydown", (e) => {
+      if (e.isTrusted && e.key === "Escape") onDismiss();
+    });
+    (doc.documentElement ?? doc.body).append(host);
+    return { host, panel, remove: () => host.remove() };
+  }
+  function button(doc, text, kind, p, act) {
+    const b = doc.createElement("button");
+    b.type = "button";
+    b.textContent = text;
+    css2(b, [
+      ["all", "initial"],
+      ["box-sizing", "border-box"],
+      ["min-height", "44px"],
+      ["padding", kind === "icon" ? "0" : "10px 14px"],
+      ["border-radius", "10px"],
+      ["font", "600 14px/20px system-ui, sans-serif"],
+      ["text-align", "center"],
+      ["cursor", "pointer"],
+      ["color", kind === "primary" ? p.primaryText : p.text],
+      ["background", kind === "primary" ? p.primary : kind === "plain" ? p.button : "transparent"],
+      ...(kind === "icon"
+        ? [
+            ["width", "44px"],
+            ["font-size", "20px"],
+          ]
+        : []),
+    ]);
+    b.addEventListener("click", (e) => {
+      if (e.isTrusted) act();
+    });
+    b.addEventListener("focus", () => css2(b, [["outline", `2px solid ${p.primary}`]]));
+    b.addEventListener("blur", () => css2(b, [["outline", "none"]]));
+    return b;
+  }
+  function text(doc, s, rules) {
+    const el = doc.createElement("div");
+    el.textContent = s;
+    css2(el, [
+      ["all", "initial"],
+      ["display", "block"],
+      ["font", "inherit"],
+      ["color", "inherit"],
+      ...rules,
+    ]);
+    return el;
+  }
+  function trustDialog(d) {
+    const t = d.strings;
+    const p = palette(d.win);
+    let done;
+    const result = new Promise((resolve) => (done = resolve));
+    const title = t.promptTitle.replace("{host}", d.host);
+    let shell = null;
+    const finish = (c) => {
+      shell?.remove();
+      shell = null;
+      done(c);
+    };
+    shell = modal(d.doc, p, title, () => finish("dismiss"));
+    const head = d.doc.createElement("div");
+    css2(head, [
+      ["all", "initial"],
+      ["display", "flex"],
+      ["align-items", "flex-start"],
+      ["gap", "8px"],
+    ]);
+    const h = text(d.doc, title, [
+      ["font", "600 16px/22px system-ui, sans-serif"],
+      ["flex", "1"],
+      ["overflow-wrap", "anywhere"],
+      ["padding-top", "10px"],
+    ]);
+    h.setAttribute("role", "heading");
+    const x = button(d.doc, "×", "icon", p, () => finish("dismiss"));
+    x.setAttribute("aria-label", t.notNow);
+    x.title = t.notNow;
+    head.append(h, x);
+    const body = text(d.doc, t.promptBody, [["color", p.muted]]);
+    const warn = text(d.doc, t.promptWarn, [
+      ["background", p.warnBg],
+      ["color", p.warnText],
+      ["padding", "8px 10px"],
+      ["border-radius", "8px"],
+    ]);
+    warn.setAttribute("role", "note");
+    const row = d.doc.createElement("div");
+    css2(row, [
+      ["all", "initial"],
+      ["display", "flex"],
+      ["flex-direction", "column"],
+      ["gap", "8px"],
+    ]);
+    const always = button(d.doc, t.allowAlways, "primary", p, () => finish("always"));
+    row.append(
+      always,
+      button(d.doc, t.allowOnce, "plain", p, () => finish("once")),
+      button(d.doc, t.neverHere, "plain", p, () => finish("never")),
+    );
+    shell.panel.append(head, body, warn, row);
+    try {
+      x.focus();
+    } catch {}
+    return {
+      result,
+      remove: () => finish("dismiss"),
+    };
+  }
+  function sitesDialog(d) {
+    const t = d.strings;
+    const p = palette(d.win);
+    let closedResolve;
+    const closed = new Promise((r) => (closedResolve = r));
+    let shell = null;
+    const close = () => {
+      shell?.remove();
+      shell = null;
+      closedResolve();
+    };
+    shell = modal(d.doc, p, t.sitesTitle, close);
+    const h = text(d.doc, t.sitesTitle, [["font", "600 16px/22px system-ui, sans-serif"]]);
+    h.setAttribute("role", "heading");
+    const list = d.doc.createElement("div");
+    css2(list, [
+      ["all", "initial"],
+      ["display", "flex"],
+      ["flex-direction", "column"],
+      ["gap", "4px"],
+      ["font", "inherit"],
+      ["color", "inherit"],
+    ]);
+    const label = (v) => (v === "allow" ? t.sitesAllowed : t.sitesNever);
+    const render = () => {
+      list.replaceChildren();
+      const rows = d.store.list();
+      if (!rows.length) {
+        list.append(text(d.doc, t.sitesEmpty, [["color", p.muted]]));
+        return;
+      }
+      for (const [host, v] of rows) {
+        const row = d.doc.createElement("div");
+        css2(row, [
+          ["all", "initial"],
+          ["display", "flex"],
+          ["align-items", "center"],
+          ["gap", "8px"],
+          ["padding", "4px 0"],
+          ["border-bottom", `1px solid ${p.line}`],
+          ["font", "inherit"],
+          ["color", "inherit"],
+        ]);
+        const name = text(d.doc, host, [
+          ["flex", "1"],
+          ["min-width", "0"],
+          ["overflow-wrap", "anywhere"],
+        ]);
+        const state = text(d.doc, label(v), [
+          ["color", p.muted],
+          ["font-size", "13px"],
+        ]);
+        const forget = button(d.doc, t.forget, "plain", p, () => {
+          d.store.forget(host);
+          d.onChange?.(host);
+          render();
+        });
+        forget.setAttribute("aria-label", `${t.forget}: ${host}`);
+        row.append(name, state, forget);
+        list.append(row);
+      }
+    };
+    render();
+    const closeBtn = button(d.doc, t.close, "primary", p, close);
+    shell.panel.append(h, list, closeBtn);
+    try {
+      closeBtn.focus();
+    } catch {}
+    return { remove: close, closed };
+  }
+  function blockedNote(d) {
+    const t = d.strings;
+    const p = palette(d.win);
+    const host = d.doc.createElement("div");
+    css2(host, [
+      ["all", "initial"],
+      ["display", "block"],
+      ["position", "fixed"],
+      ["right", "8px"],
+      ["bottom", "8px"],
+      ["z-index", "2147483647"],
+    ]);
+    const root = host.attachShadow({ mode: "closed" });
+    const box = d.doc.createElement("div");
+    box.setAttribute("role", "status");
+    css2(box, [
+      ["all", "initial"],
+      ["display", "flex"],
+      ["gap", "8px"],
+      ["align-items", "flex-start"],
+      ["max-width", "min(320px, calc(100vw - 16px))"],
+      ["padding", "10px 12px"],
+      ["border-radius", "12px"],
+      ["background", p.surface],
+      ["color", p.text],
+      ["border", `1px solid ${p.line}`],
+      ["font", "13px/18px system-ui, sans-serif"],
+    ]);
+    const msg = text(d.doc, t.blocked, []);
+    const link = d.doc.createElement("a");
+    link.href = d.origin;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = t.openLianki;
+    css2(link, [
+      ["display", "block"],
+      ["margin-top", "4px"],
+      ["color", p.primary],
+      ["text-decoration", "underline"],
+    ]);
+    msg.append(link);
+    const remove = () => host.remove();
+    const x = button(d.doc, "×", "icon", p, remove);
+    x.setAttribute("aria-label", t.close);
+    box.append(msg, x);
+    root.append(box);
+    (d.doc.documentElement ?? d.doc.body).append(host);
+    return remove;
+  }
+
+  // src/pill-chat.ts
+  async function mirrorPillChatFlag(d) {
+    const now = d.now?.() ?? Date.now();
+    if (!flagRecheckDue(d.getValue(PILLCHAT_ON_KEY, null), now)) return null;
+    const on = await askFlag(d);
+    d.setValue(PILLCHAT_ON_KEY, JSON.stringify({ on, at: now }));
+    return on;
+  }
+  async function askFlag(d) {
+    try {
+      const r = await d.gmFetch(`${d.origin}/api/ext/pill-chat`, { credentials: "include" });
+      if (!r.ok) return false;
+      const body = await r.json();
+      return body?.on === true;
+    } catch {
+      return false;
+    }
+  }
+  function pillChat(d) {
+    const doc = d.doc ?? document;
+    const win = d.win ?? globalThis;
+    const host = siteKey(d.hostname ?? location.hostname);
+    const top = d.top ?? window.self === window.top;
+    const strings = d.strings ?? pillChatStrings();
+    const store = trustStore(d);
+    const once = new Set();
+    const isolated = isolatedWorld(d.info);
+    const report = d.report ?? (() => {});
+    let open = null;
+    let busy = false;
+    let note = null;
+    const entry = () =>
+      pillEntry({
+        flagOn: flagMirrorOn(d.getValue(PILLCHAT_ON_KEY, null)),
+        top,
+        isolated,
+        decision: host ? store.decision(host) : null,
+        host,
+      });
+    const prompt = d.prompt ?? ((h) => trustDialog({ doc, win, strings, host: h }).result);
+    const ticket = async () => {
+      try {
+        const r = await d.gmFetch(`${d.origin}/api/debug/partner-ticket`, {
+          method: "POST",
+          headers: { "x-lianki-userscript": "1" },
+          credentials: "include",
+        });
+        if (!r.ok) return null;
+        const body = await r.json();
+        return typeof body?.ticket === "string" ? body.ticket : null;
+      } catch {
+        return null;
+      }
+    };
+    const close = () => {
+      open?.destroy();
+      open = null;
+      note?.();
+      note = null;
+    };
+    async function openChat() {
+      const e = entry();
+      if (e === "hidden" || !host) return "hidden";
+      if (e === "note") {
+        note?.();
+        note = pageRealmNote(doc, d.origin, () => store.set(host, "never"));
+        return "note";
+      }
+      if (open) {
+        close();
+        return "closed";
+      }
+      if (busy) return "busy";
+      busy = true;
+      try {
+        if (!allowedHere(store, once, host)) {
+          const choice = await prompt(host);
+          if (!applyChoice(store, once, host, choice))
+            return choice === "never" ? "never" : "denied";
+        }
+        if (!(await askFlag(d))) {
+          d.setValue(PILLCHAT_ON_KEY, JSON.stringify({ on: false, at: d.now?.() ?? Date.now() }));
+          return "off";
+        }
+        const shell = (d.frame ?? frameShell)({
+          doc,
+          win,
+          origin: d.origin,
+          label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
+          ticket,
+          gripLabel: EMBED_STRINGS[embedLang()].grip,
+          pos: {
+            get: () => {
+              const p = d.getValue(PARTNER_POS_KEY, null);
+              return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+            },
+            set: (p) => d.setValue(PARTNER_POS_KEY, { x: Math.round(p.x), y: Math.round(p.y) }),
+          },
+        });
+        let loads = 0;
+        shell.iframe.addEventListener("load", () => {
+          if (++loads > 1) {
+            report("pill-chat-navigated", host);
+            if (open === shell) close();
+            else shell.destroy();
+          }
+        });
+        open = shell;
+        const how = await shell.result;
+        report("pill-chat-frame", `${how} ${host}`);
+        if (how === "ready" && open === shell) return "ready";
+        if (open === shell) open = null;
+        shell.destroy();
+        note?.();
+        note = blockedNote({ doc, win, strings, origin: d.origin });
+        return "blocked";
+      } finally {
+        busy = false;
+      }
+    }
+    function manage(onChange) {
+      return sitesDialog({ doc, win, strings, store, onChange });
+    }
+    return {
+      entry,
+      open: openChat,
+      close,
+      manage,
+      strings,
+      isOpen: () => !!open,
+      flagOn: () => top && flagMirrorOn(d.getValue(PILLCHAT_ON_KEY, null)),
+    };
   }
 
   // src/lianki.user.ts
@@ -2671,6 +4079,12 @@
     const originHost = new URL(ORIGIN).hostname;
     if (location.hostname === originHost || location.hostname === "www." + originHost) {
       mirrorPartnerSwitch(localStorage, GM_setValue);
+      mirrorPillChatFlag({
+        origin: ORIGIN,
+        gmFetch,
+        getValue: GM_getValue,
+        setValue: GM_setValue,
+      }).catch(() => {});
       setTimeout(() => syncToSiteDB(), 500);
       return () => {};
     }
@@ -2688,6 +4102,9 @@
     };
     const reviewOrder = () => (userPreferences?.reviewOrder === "oldest" ? "oldest" : "newest");
     const watchTrackingOn = () => userPreferences?.watchTracking !== false;
+    const cleanedTitle = (title, url) =>
+      cleanTitle(title, { url, rules: activeTitleRules(userPreferences?.titleRules) });
+    const pageTitle = () => cleanedTitle(document.title, location.href);
     async function loadPreferences() {
       try {
         const cached = GM_getValue("lk:preferences", "");
@@ -2715,6 +4132,14 @@
       notesSynced: true,
     };
     let fab = null;
+    const liChat = pillChat({
+      origin: ORIGIN,
+      gmFetch,
+      getValue: GM_getValue,
+      setValue: GM_setValue,
+      info: GM_info,
+      report: (what, detail) => console.debug(`[Lianki] ${what}: ${detail}`),
+    });
     let dialog = null;
     let prefetchedNextUrl = null;
     let prefetchLink = null;
@@ -2982,6 +4407,39 @@
         return sep;
       };
       container.append(slowerBtn, makeSeparator(), liankiBtn, makeSeparator(), fasterBtn);
+      const liSep = makeSeparator();
+      const liBtn = document.createElement("button");
+      liBtn.type = "button";
+      liBtn.textContent = "Li";
+      liBtn.title = liChat.strings.liTitle;
+      liBtn.setAttribute("aria-label", liChat.strings.liTitle);
+      liBtn.style.cssText = BTN_BASE;
+      liBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isDragged || !e.isTrusted) return;
+        liChat
+          .open()
+          .then(updateLiEntry)
+          .catch((err) => console.error("[Lianki] Li chat failed:", err));
+      });
+      const updateLiEntry = () => {
+        const show = liChat.entry() !== "hidden" ? "" : "none";
+        liSep.style.display = show;
+        liBtn.style.display = show;
+      };
+      updateLiEntry();
+      document.addEventListener(
+        "visibilitychange",
+        () => document.visibilityState === "visible" && updateLiEntry(),
+        { signal },
+      );
+      container.append(liSep, liBtn);
+      if (liChat.flagOn() && typeof GM_registerMenuCommand === "function")
+        GM_registerMenuCommand(liChat.strings.sitesMenu, () => {
+          const m = liChat.manage(() => updateLiEntry());
+          m.closed.then(updateLiEntry);
+        });
       let pageHasCard = false;
       const updateLiankiIcon = () => {
         let hasCard = false;
@@ -3419,7 +4877,7 @@ ${state.errorDetails}`);
           opacity: ".8",
         });
         const bold = document.createElement("b");
-        bold.textContent = document.title || location.href;
+        bold.textContent = pageTitle() || location.href;
         titleDiv.appendChild(bold);
         dialog.appendChild(titleDiv);
         const btnRow = document.createElement("div");
@@ -3554,7 +5012,7 @@ ${state.errorDetails}`);
       dialog.focus();
       keepFocusInDialog();
       const url = normalizeUrl(location.href);
-      addNote(url, document.title)
+      addNote(url, pageTitle())
         .then((note) => {
           state.noteId = note._id;
           state.notes = note.notes ?? "";
@@ -3627,7 +5085,7 @@ ${state.errorDetails}`);
       try {
         if (offlineReady) cardStorage.restoreCard(url);
         gmCacheInvalidate(noteKey(url));
-        await restoreNote(url, document.title);
+        await restoreNote(url, pageTitle());
         closeDialog();
         setTimeout(openDialog, 0);
       } catch (err) {
@@ -3716,7 +5174,7 @@ ${state.errorDetails}`);
         if (nextUrl) {
           prefetchNextPage(nextUrl);
           state.message = `Redirecting to:
-${nextTitle || nextUrl}`;
+${(nextTitle && cleanedTitle(nextTitle, nextUrl)) || nextUrl}`;
           renderDialog();
         }
       }
@@ -4150,7 +5608,7 @@ ${actualUrl}
       const now = Date.now();
       if (!force && now - watchSavedAt < WATCH_SAVE_MS) return;
       watchSavedAt = now;
-      acc.title = document.title || acc.title;
+      acc.title = pageTitle() || acc.title;
       saveLocalWatch(acc.url, watchSnapshot(acc), acc.dirty);
       if (acc.dirty) watchDirtyAdd(acc.url);
       if (!acc.indexed) {
@@ -4233,7 +5691,7 @@ ${actualUrl}
       watchAcc = {
         url,
         base: stats,
-        title: document.title,
+        title: pageTitle(),
         wall: mine.wall ?? 0,
         media: mine.media ?? 0,
         sessions: mine.sessions ?? 0,
@@ -4582,7 +6040,7 @@ ${actualUrl}
           logFail("cache-check", "cache check", err);
         }
       }
-      addNote(url, document.title)
+      addNote(url, pageTitle())
         .then(async (note) => {
           state.noteId = note._id;
           state.notes = note.notes ?? "";
@@ -4623,13 +6081,13 @@ ${actualUrl}
             const localNote = {
               _id: "local:" + hashUrl(url),
               url,
-              title: document.title,
+              title: pageTitle(),
               card: localFSRS.newCard(),
               notes: "",
               hlc: newHLC(deviceId, null),
             };
             cardStorage.setCard(url, localNote, localNote.hlc, true);
-            queueStorage.addToQueue("add", { url, title: document.title }, localNote.hlc);
+            queueStorage.addToQueue("add", { url, title: pageTitle() }, localNote.hlc);
             state.noteId = localNote._id;
             state.notes = "";
             state.notesSynced = false;
@@ -4884,6 +6342,9 @@ ${actualUrl}
       initOfflineStorage();
     }, 100);
     let stopPartner = () => {};
+    if (location.hostname === "docs.google.com") {
+      startGdocStream({ origin: ORIGIN, gmFetch, getValue: GM_getValue, setValue: GM_setValue });
+    }
     startPartner({
       origin: ORIGIN,
       src:
@@ -4905,6 +6366,7 @@ ${actualUrl}
       .catch((err) => console.error("[Lianki] partner failed:", err));
     return () => {
       stopPartner();
+      liChat.close();
       ac.abort();
       for (const id of intervals) clearInterval(id);
       intervals.length = 0;

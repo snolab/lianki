@@ -20,10 +20,13 @@
  *       agent — contains <text>) and print each page's result as JSON. With
  *       no `serve` session running it resumes the saved eval grant; only with
  *       none (or a refused one) does it pair, and waits for that one answer.
+ *       The owner's box (box:eval, docs/box-oauth.md "Code on the owner's
+ *       box") is a page like any other: its labels start with "box ", so
+ *       `--target box` reaches only the box, `--target "box /words"` one page.
  *
  *   --no-pair  fail instead of asking the owner (for the chat agent).
  *
- *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>] [--exit-on-idle] [--ack]
+ *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>] [--exit-on-idle] [--ack] [--route chat|codex|agy]
  *       Listen to every chat thread: the owner's and each friend's (any
  *       signed-in user on a debug page). Pairs if there is no saved grant —
  *       prints {"type":"pending","code"} to stdout; the owner taps "Allow chat
@@ -95,7 +98,7 @@
  *       Deleting needs the owner's own session (the chat's + → Inbox →
  *       Delete): `inbox rm` only says so.
  *
- *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] "text"   (or - for stdin)
+ *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane <lane>] [--voice <id>] "text"   (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
@@ -107,9 +110,38 @@
  *       once it is visible again. --loud is deprecated: accepted and
  *       ignored (a plain say), so older commands still work.
  *
+ *       Lanes (docs/dev-debug-widget.md, "Lanes and voices"): --lane main|codex|agy
+ *       (default $LIANKI_LANE) gives the line that lane's avatar, name tag and
+ *       voice; --voice main|calm|bright reads it in another voice. A line
+ *       starting "【codex】" or "【agy】" gets its lane the same way.
+ *
+ *       A line's own voice (docs/dev-debug-widget.md, "A line's own voice"):
+ *       --voice device:<name> (a voice the phone has, read with speech even
+ *       when his output is cloud), melo:<lang>, aura:<speaker>, or
+ *       eleven:<id> (an ElevenLabs public preview clip, its own words).
+ *       local:<name> is reserved. An unknown id is refused; a device voice
+ *       the page lacks falls back to the lane's voice, never silence.
+ *
+ *   bun scripts/dev/eval.ts voices [--no-pair] [--target <text>] [--cloud]
+ *       The ids --voice takes: each open debug page's device voices (read
+ *       once from speechSynthesis over the eval channel; zh, ja, en first)
+ *       and the cloud's list, as one JSON line {"type":"voices","pages":
+ *       [{label,ok,device:[{id,name,lang,tier}]}],"cloud":[{id,lang,note}]}.
+ *       --cloud: the cloud's list only, no page asked. Use --no-pair from an
+ *       agent: each unpaired run would prompt the owner's devices.
+ *
  *       A line spoken into the widget's mic carries "source":"stt"; when
  *       the agent polishes one, {"type":"edited","id","thread","text","raw",
  *       "edited"} follows.
+ *
+ *       With flag stt.merge on, an utterance that continues the last one amends it
+ *       instead of adding a line: {"type":"edited",…,"parts":N,"merged":{id,text}},
+ *       and `text` is the COMPLETE line, one you may already have been shown, so
+ *       read it again before you act or reply. When the passage ends,
+ *       {"type":"polish-due","id","text","raw","parts"} follows: polish then, from
+ *       `raw`, not before (the hub refuses it). An undo is {"type":"edited",…,
+ *       "split":[{id,text,at}…]}: the owner says those were separate lines.
+ *       (docs/dev-debug-widget.md, "Continuous speech amends the last line".)
  *
  *   bun scripts/dev/eval.ts edit [<msgId>|--last] [--no-pair] "polished text"   (or - for stdin)
  *       Polish the owner's latest line when it came from the mic (STT gets
@@ -188,12 +220,16 @@ import { randomBytes } from "node:crypto";
 import {
   LOUD_DEPRECATED,
   type NodeOpts,
+  type SayLane,
   type SayVolume,
   chatLine,
   nodeOpts,
+  sayLane,
   sayVolume,
 } from "./node-args";
 import { routeTo } from "@/lib/dev-eval";
+import { isRouteLane, laneTakes } from "@/lib/lane-route";
+import { VOICES_PROBE, voicesReport } from "./voices-list";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
 import { DEAD, PONG, keepalive } from "./keepalive";
@@ -270,6 +306,8 @@ for (let i = 0; i < args.length; ) {
   } else i++;
 }
 const noPair = boolFlag("--no-pair");
+/** voices: the cloud's list only, no page asked. */
+const cloudOnly = boolFlag("--cloud");
 /** ask: wait for the tap and print the answer (or time out). */
 const waitFlag = boolFlag("--wait");
 /** edit: the owner's latest line, instead of an id. */
@@ -278,8 +316,21 @@ const lastFlag = boolFlag("--last");
 const exitOnIdle = boolFlag("--exit-on-idle");
 /** chat: answer each live owner/friend line at once with one busy beat ("heard you"). */
 const ackFlag = boolFlag("--ack");
+/**
+ * chat: --route <lane> (chat | codex | agy) keeps only the owner lines that
+ * lane answers (lib/lane-route.ts, docs/lane-listen.md): a line addressed
+ * "codex, …" or "agy, …" is left to that lane's own listener, not printed,
+ * not acked. Everything else (agent lines, friends, events) is unchanged.
+ */
+const routeFlag = flag("--route");
 /** say: shown on his page, never read aloud (FYI, progress, deploy notices). */
 const quietFlag = boolFlag("--quiet");
+/**
+ * say: the lane saying it and the voice to read it in (packages/debug-chat/src/voices.ts).
+ * --lane defaults to $LIANKI_LANE, so a lane's shell sets it once; --voice to the lane's.
+ */
+const laneFlag = flag("--lane") ?? (process.env.LIANKI_LANE || undefined);
+const voiceFlag = flag("--voice");
 /** say: deprecated, a no-op (a plain say); accepted so old commands still work. */
 const loudFlag = boolFlag("--loud");
 const labelFlag = flag("--label");
@@ -408,6 +459,13 @@ async function viaSession(code: string): Promise<Msg[] | null> {
  */
 function chat(out?: string, errorsOnly = false) {
   const seen = new Set<string>();
+  const route = errorsOnly ? undefined : routeFlag;
+  if (route !== undefined && !isRouteLane(route)) {
+    console.error(`chat: --route takes chat, codex or agy (got ${route})`);
+    process.exit(2);
+  }
+  /** Owner lines left to another lane (--route): their edits are not printed either. */
+  const routedAway = new Set<string>();
   let first = true;
   let backoff = 1_000;
   let asked = false;
@@ -424,6 +482,16 @@ function chat(out?: string, errorsOnly = false) {
     lagMs?: number,
   ): boolean => {
     if (typeof m.id !== "string" || seen.has(m.id)) return false;
+    // --route: an owner line for another lane is that lane's, not this listener's.
+    if (
+      route &&
+      m.from === "owner" &&
+      !laneTakes(route, { from: m.from, thread: m.thread, text: m.text })
+    ) {
+      seen.add(m.id);
+      routedAway.add(m.id);
+      return false;
+    }
     const line = chatLine(m, where, observed);
     if (!line) return false;
     seen.add(m.id);
@@ -516,7 +584,11 @@ function chat(out?: string, errorsOnly = false) {
           answer: m.answer,
           labels: m.labels,
         });
-      else if (m.type === "edited")
+      else if (m.type === "edited") {
+        // Another lane's line grew: still that lane's (--route), not printed here.
+        if (routedAway.has(String(m.id))) return;
+        // A line grew: the agent heard it, like any new line (--ack).
+        if (m.merged && ackFlag && m.observed !== true) ws.send(beatMessage({}));
         print({
           type: "edited",
           id: m.id,
@@ -524,6 +596,24 @@ function chat(out?: string, errorsOnly = false) {
           text: m.text,
           raw: m.raw,
           edited: m.edited,
+          // Continuous speech (stt.merge): `text` is the whole line so far; read it again.
+          ...(Array.isArray(m.parts) ? { parts: m.parts.length } : {}),
+          ...(m.merged ? { merged: m.merged } : {}),
+          // Undo: the line went back to these separate lines, as heard.
+          ...(Array.isArray(m.split)
+            ? { split: m.split.map((x: Msg) => ({ id: x.id, text: x.text, at: x.at })) }
+            : {}),
+          ...(m.observed === true ? { observed: true } : {}),
+        });
+      } else if (m.type === "polish-due")
+        // A merged passage ended: polish `raw` once now (edit --last), or leave it.
+        print({
+          type: "polish-due",
+          id: m.id,
+          thread: m.thread ?? "owner",
+          text: m.text,
+          raw: m.raw,
+          parts: m.parts,
           ...(m.observed === true ? { observed: true } : {}),
         });
       else if (m.type === "pages-idle" || m.type === "pages-back") {
@@ -601,7 +691,7 @@ function chat(out?: string, errorsOnly = false) {
 }
 
 /** Reply with the saved grant (to the owner, or `to` a friend); resolves once the hub has it. */
-function say(text: string, to?: string, volume: SayVolume = {}): Promise<Msg> {
+function say(text: string, to?: string, volume: SayVolume & SayLane = {}): Promise<Msg> {
   return sendOnce(
     {
       type: "say",
@@ -1046,11 +1136,30 @@ async function main() {
     if (loudFlag) console.error(LOUD_DEPRECATED);
     if (!text) {
       console.error(
-        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] "text" | -',
+        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane main|codex|agy] [--voice main|calm|bright|device:<name>|melo:<lang>|aura:<speaker>|eleven:<id>] "text" | -   (ids: eval.ts voices)',
       );
       process.exit(2);
     }
-    console.log(JSON.stringify(await say(text, to, volume)));
+    const lane = sayLane(laneFlag, voiceFlag);
+    if ("error" in lane) {
+      console.error(lane.error);
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await say(text, to, { ...volume, ...lane })));
+    return;
+  }
+  if (args[0] === "voices") {
+    // Read once from the pages (never a loop); --cloud asks no page at all.
+    let results: Msg[] | null = null;
+    if (!cloudOnly) {
+      results = await viaSession(VOICES_PROBE);
+      if (!results) {
+        const ws = await evalSocket();
+        results = await run(ws, VOICES_PROBE, target);
+        ws.close();
+      }
+    }
+    console.log(JSON.stringify(voicesReport(results)));
     return;
   }
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];

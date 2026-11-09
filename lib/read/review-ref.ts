@@ -1,6 +1,6 @@
 // The paragraph word review in the URL (docs/ui-state.md; owner, 2026-11-05
 // 01:30 JST: a refresh in the review dropped him back to the plain reader).
-// `/read/<id>?review=<ref>` names what the review covers, so a refresh, Back
+// `/reader/<id>?review=<ref>` names what the review covers, so a refresh, Back
 // and Forward and a shared link open it again. Its position (the card in focus,
 // the list's scroll) is per tab, in sessionStorage, keyed by `reviewKey`.
 //
@@ -12,6 +12,8 @@
 // - `p<line>`: the paragraph. A word, a phrase or a sentence reviews its
 //   paragraph, so they all write the paragraph's ref (one URL per review).
 // - `r<l0>.<t0>-<l1>.<t1>`: a range he selected by hand, its own words.
+// - `u<line>`: the wider review a passage's Hard grade opens
+//   (lib/read/review-scope.ts): its chapter up to the passage ending on `line`.
 
 import { RANGE_MAX_LINES, type Unit } from "./reader-select";
 
@@ -20,7 +22,11 @@ export const REVIEW_PARAM = "review";
 /** What a review covers: a paragraph, or a range he selected by hand. */
 export type ReviewTarget =
   | { kind: "para"; line: number }
-  | { kind: "range"; l0: number; t0: number; l1: number; t1: number };
+  | { kind: "range"; l0: number; t0: number; l1: number; t1: number }
+  | { kind: "upto"; line: number };
+
+/** The ref of the chapter-up-to-here review (review-scope.ts), the passage ending on `line`. */
+export const uptoRef = (line: number): string => `u${line}`;
 
 /** The ref of the review a unit's card opens, or null when its card has no review. */
 export function reviewRef(u: Unit): string | null {
@@ -40,12 +46,15 @@ export function reviewRef(u: Unit): string | null {
 const N = "(0|[1-9]\\d{0,6})";
 const PARA = new RegExp(`^p${N}$`);
 const RANGE = new RegExp(`^r${N}\\.${N}-${N}\\.${N}$`);
+const UPTO = new RegExp(`^u${N}$`);
 
 /** The review a ref names, or null for anything else (as decodeUnit checks a range). */
 export function decodeReviewRef(ref: string | null | undefined): ReviewTarget | null {
   if (!ref) return null;
   let m = PARA.exec(ref);
   if (m) return { kind: "para", line: +m[1] };
+  m = UPTO.exec(ref);
+  if (m) return { kind: "upto", line: +m[1] };
   m = RANGE.exec(ref);
   if (!m) return null;
   const [l0, t0, l1, t1] = [+m[1], +m[2], +m[3], +m[4]];

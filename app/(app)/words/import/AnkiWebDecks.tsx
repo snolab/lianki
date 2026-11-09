@@ -11,6 +11,7 @@ import {
   type AnkiWebDeck,
 } from "@/lib/words/ankiweb";
 import { longDate } from "@/lib/dates";
+import { openExternal } from "@/lib/external-link";
 
 const text = (s: unknown): string =>
   typeof s === "string" ? s : String((s as { value?: unknown } | null)?.value ?? s);
@@ -189,7 +190,7 @@ export default function AnkiWebDecks({
         onSubmit={(e) => {
           e.preventDefault();
           // Opened in the user's browser only; never fetched.
-          window.open(ankiWebSearchUrl(webQ), "_blank", "noopener,noreferrer");
+          openExternal(ankiWebSearchUrl(webQ));
         }}
       >
         <label htmlFor="ankiweb-search" className="block text-sm font-medium">

@@ -1,0 +1,12 @@
+-- The session cookie moves to `__Host-` (docs/secrets-and-auth.md, "The session
+-- cookie"). Every browser holds the old name, which nothing reads any more, so
+-- everyone is signed out once. This makes that true on the server too. Without it
+-- the old rows stay live for up to 7 days: a stolen old token would still work under
+-- the new name, and the debug hub's sessionLive() would keep renewing eval grants
+-- bound to a session its owner can no longer use (lib/debug-session.ts).
+--
+-- Migrations run just before the Worker deploys, so someone who signs in within those
+-- seconds is signed out a second time. It cannot be undone: reverting the code does
+-- not bring these sessions back. References: oauthAccessToken and oauthRefreshToken
+-- (ON DELETE SET NULL). Passkeys, accounts, API tokens and data are not touched.
+DELETE FROM session;

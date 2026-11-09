@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   type ChatMessage,
+  applyEditTo,
   type Heartbeat,
   type EditedEvent,
   type HubState,
-  applyEdit,
   type PairInfo,
   type Sender,
   chunkMessages,
@@ -17,6 +17,11 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { type BoxConfig, boxChatHub } from "@/lib/box-oauth/client";
+import { useBoxAccount } from "./BoxApiBridge";
+import { ETA_FLAG } from "@/lib/eta-ping";
+import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
+import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import {
   type ChatContext,
@@ -32,6 +37,8 @@ import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
+import { withLane } from "@lianki/debug-chat/voices";
+import { spokenOf } from "@lianki/debug-chat/rich-text";
 import { voice } from "@lianki/debug-chat/voice";
 import { isDesktop, keepHub, onTakeover, voiceBusy } from "@lianki/debug-chat/voice-bg";
 import { useVoiceTitleHint } from "./useVoiceTitleHint";
@@ -50,6 +57,7 @@ import {
   typedText,
 } from "@lianki/debug-chat/page-errors";
 import { grantUntil } from "@/lib/islands/rules";
+import { openBackToClose } from "@/lib/back-to-close";
 import { frameContext } from "@/lib/frame-context";
 import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
@@ -63,6 +71,8 @@ const TOAST_MS = 4_000;
 const RELABEL_MS = 300;
 /** The agent's avatar in the chat log: Lianki's own logo (public/icon-192.png). */
 const AGENT_AVATAR = "/icon-192.png";
+/** The chat's full screen gets the app's Back-closes-an-overlay entry (lib/back-to-close.ts). */
+const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
 /** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
 const TAB_KEY = "lk:debug-tab";
 /** The build the page runs, on each page-error ("dev" under next dev). */
@@ -111,6 +121,9 @@ export type PartnerStrings = ChatStrings & {
   aiStatus: string;
   aiLimit: string;
   aiFailed: string;
+  /** Out of credits: the model was not asked; the line links to where credits are bought. */
+  aiCredits: string;
+  aiCreditsLink: string;
 };
 
 /**
@@ -121,9 +134,29 @@ export type PartnerStrings = ChatStrings & {
 export function DebugEval({
   strings,
   partnerOpen = false,
-}: { strings?: Partial<PartnerStrings>; partnerOpen?: boolean } = {}) {
+  etaBar = false,
+  fullScreen = false,
+  liHub = false,
+  box = null,
+}: {
+  /**
+   * On a box: its sign-in config (lib/box-oauth/mode.ts). The chat then talks only
+   * to lianki.com's hub with a box:chat ticket, never to the box's own host.
+   */
+  box?: BoxConfig | null;
+  strings?: Partial<PartnerStrings>;
+  partnerOpen?: boolean;
+  /** Flag chat.eta-bar (lib/eta-ping.ts): the ETA bar on the owner's chat, and its pings. */
+  etaBar?: boolean;
+  /** `partner.fullscreen` on: the chat's full screen for every chat user (off: the owner only). */
+  fullScreen?: boolean;
+  /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
+  liHub?: boolean;
+} = {}) {
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
+  const boxRef = useRef(box);
+  boxRef.current = box;
   const stringsRef = useRef(strings);
   stringsRef.current = strings;
   /** The hub said this friend's thread is answered by the AI. */
@@ -137,6 +170,8 @@ export function DebugEval({
   /** null on the owner's pages; a friend's chat status otherwise. */
   const [friend, setFriend] = useState<"open" | "blocked" | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  /** The out-of-credits line as last shown: while it is the warning, a link to /membership follows it. */
+  const [creditsLine, setCreditsLine] = useState<string | null>(null);
   /** Who this page's user is, from the hub on connect: their own lines' avatar. */
   const [viewer, setViewer] = useState<Sender | undefined>(undefined);
   const sockRef = useRef<WebSocket | null>(null);
@@ -173,6 +208,23 @@ export function DebugEval({
   useIslands();
   // The tab title says when Lianki's voice runs on in the background (voice-bg.ts).
   useVoiceTitleHint();
+  // Li's sound hub, phase 0 (docs/li-sound-hub.md): it only observes, on the
+  // owner's pages with `voice.li-hub` on. Off, the module is not even loaded.
+  const liOn = liHub && owner && friend === null;
+  useEffect(() => {
+    if (!liOn) return;
+    let stop = () => {};
+    let gone = false;
+    void import("@lianki/debug-chat/li-client")
+      .then(({ startLiClient }) => {
+        if (!gone) stop = startLiClient({ on: true, log: devLog });
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+      stop();
+    };
+  }, [liOn]);
   /** Live view (docs/live-view.md): the signed pointer, verified on this page. */
   const liveState = useLiveView();
   /** This device's tabs agree on one to read replies aloud (BroadcastChannel). */
@@ -284,7 +336,31 @@ export function DebugEval({
       } catch {}
     };
 
+    /** A box chat ticket is being fetched (docs/box-oauth.md, "Chat on the owner's box"). */
+    let boxPending = false;
+    /** This effect was cleaned up (unmount, or React running it twice in dev): a late ticket opens nothing. */
+    let disposed = false;
     const connect = () => {
+      if (ws || boxPending) return;
+      // On the owner's box: lianki.com's hub with a ticket (box:chat), never a cookie,
+      // and never the box's own host. Decided from the server's config, not from
+      // whether BoxApiBridge has rendered yet: hydration can run this effect first.
+      const hub = boxChatHub(boxRef.current ?? undefined);
+      if (boxRef.current) {
+        if (!hub) return;
+        boxPending = true;
+        void hub.ticket().then((ticket) => {
+          boxPending = false;
+          if (ticket && !ws && !disposed && wanted())
+            openSock(hub.url, [PARTNER_SUBPROTOCOL, ticket]);
+        });
+        return;
+      }
+      openSock(
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug`,
+      );
+    };
+    const openSock = (base: string, protocols?: string[]) => {
       if (ws) return;
       if (!unhook && !friendRef.current) unhook = installPageErrorHooks(window, reporter);
       const label = pageLabel();
@@ -302,7 +378,8 @@ export function DebugEval({
         clipsQ = clipsConnectQuery();
       } catch {}
       const sock = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
+        `${base}?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
+        protocols,
       );
       ws = sock;
       sockRef.current = sock;
@@ -356,6 +433,15 @@ export function DebugEval({
           setWarning("Ended from another page. It reconnects when you come back to this page.");
           return;
         }
+        if (msg.type === "ai-credits") {
+          const s = stringsRef.current;
+          const line = (
+            s?.aiCredits ?? "Your {name} needs credits to reply. Add credits to keep chatting."
+          ).replaceAll("{name}", s?.name || "Learning Partner");
+          setCreditsLine(line);
+          setWarning(line);
+          return;
+        }
         if (msg.type === "ai-limit" || msg.type === "ai-failed") {
           const s = stringsRef.current;
           const line =
@@ -405,7 +491,8 @@ export function DebugEval({
           return;
         }
         if (msg.type === "history" && Array.isArray(msg.messages)) {
-          const list = trimHistory(msg.messages as ChatMessage[]);
+          // A `【lane】` prefix becomes the line's lane (voices.ts): its mark, tag and voice.
+          const list = trimHistory((msg.messages as ChatMessage[]).map(withLane));
           for (const m of list)
             if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
           setMessages(list);
@@ -419,7 +506,7 @@ export function DebugEval({
           return;
         }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
-          const m = msg.message as ChatMessage;
+          const m = withLane(msg.message as ChatMessage);
           if (typeof m.text !== "string" || typeof m.id !== "string") return;
           setMessages((list) =>
             list.some((x) => x.id === m.id) ? list : trimHistory([...list, m]),
@@ -434,7 +521,10 @@ export function DebugEval({
             spokenIds.current.add(m.id);
             // Never a quiet line; a hidden page reads the newest one when it is
             // back (speak-rules.ts): the line itself is the meta.
-            const spoken = fresh && (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text, m);
+            // Its words, not its markup (rich-text.ts): a line of only code says nothing.
+            const said = spokenOf(m);
+            const spoken =
+              fresh && !!said && (tabsRef.current?.isSpeaker() ?? true) && speakReply(said, m);
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);
@@ -446,7 +536,9 @@ export function DebugEval({
           // The agent polished a voice line: it changes in place, and is never read aloud again.
           const e = msg as unknown as EditedEvent;
           if (typeof e.id !== "string" || typeof e.text !== "string") return;
-          setMessages((list) => list.map((m) => applyEdit(m, e)));
+          setMessages((list) => trimHistory(applyEditTo(list, e)));
+          // A line that amended another has no echo of its own: this is its answer.
+          if (e.merged) voiceLatency().heard({ id: e.merged.id, from: "owner", at: e.edited.at });
           return;
         }
         if (msg.type !== "eval") return;
@@ -558,6 +650,7 @@ export function DebugEval({
       window.removeEventListener("storage", onStorage);
       clearTimeout(hideToast);
       clearTimeout(beatTimer.current);
+      disposed = true;
       disconnect();
       unhookErrors();
     };
@@ -625,6 +718,7 @@ export function DebugEval({
       speakerProof?: string[];
       context?: ChatContext;
       attachments?: AttachmentRef[];
+      continues?: string;
     },
   ) => {
     const sock = sockRef.current;
@@ -657,6 +751,7 @@ export function DebugEval({
           text,
           ...(to ? { to } : {}),
           ...(opts?.source === "stt" ? { source: "stt" } : {}),
+          ...(opts?.source === "stt" && opts.continues ? { continues: opts.continues } : {}),
           ...(timing ? { timing } : {}),
           ...(wake === "active" || wake === "passive" ? { wake } : {}),
           ...(speakerProof?.length ? { speakerProof } : {}),
@@ -679,6 +774,15 @@ export function DebugEval({
     }
   };
 
+  /** A plain message to the hub, on this page's socket. */
+  const sendHub = (m: { type: "passage-end" } | { type: "unmerge"; id: string }) => {
+    const sock = sockRef.current;
+    if (!sock || sock.readyState !== WebSocket.OPEN) return;
+    try {
+      sock.send(JSON.stringify(m));
+    } catch {}
+  };
+
   /** A tap on an ask card: only which options; the hub stamps who, where, when and source "tap". */
   const sendAnswer = (askId: string, choices: Record<string, string[]>) => {
     const sock = sockRef.current;
@@ -694,27 +798,43 @@ export function DebugEval({
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   const isFriend = friend !== null;
+  // On a box the layout's flag is the box server's own (its local D1, no
+  // session): production's answer for the signed-in account decides there.
+  const boxAccount = useBoxAccount();
+  const etaOn = ownerFlagOn(!!box, boxAccount, ETA_FLAG, etaBar);
   // A friend's thread answered by the AI says so: in the empty log and the status line.
   const friendStrings =
     isFriend && friendAi && strings?.aiHint
       ? { ...strings, hint: strings.aiHint, listening: strings.aiStatus ?? strings.listening }
       : strings;
   // The owner's tree: the bundled outline, with live progress laid over it.
-  const ownerTree = useMemo(
-    () =>
-      typeof window === "undefined"
-        ? undefined
-        : liveTreeSource({
-            base: async () => {
-              const r = await fetch("/api/dev/state-tree", { cache: "no-store" });
-              if (!r.ok) throw new Error(`HTTP ${r.status}`);
-              return r.text();
+  // Only made once this is the owner's page (the hub said so): nothing is asked before.
+  const treeOn = owner && !isFriend;
+  const ownerTree = useMemo(() => {
+    if (typeof window === "undefined" || !treeOn) return undefined;
+    // On the owner's box (docs/box-oauth.md): lianki.com's progress hub with a
+    // box chat ticket, never a cookie, never the box's own host. The outline
+    // comes through the box's fetch (its token). Not a box:chat box: no tree.
+    const box = boxRef.current ? boxChatHub(boxRef.current) : undefined;
+    if (box === null) return undefined;
+    return liveTreeSource({
+      base: async () => {
+        const r = await fetch("/api/dev/state-tree", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      },
+      url: box ? box.progressUrl : progressSocketUrl(location),
+      ...(box
+        ? {
+            protocols: async () => {
+              const t = await box.ticket();
+              return t ? [PARTNER_SUBPROTOCOL, t] : null;
             },
-            url: progressSocketUrl(location),
-            repo: "snolab/lianki",
-          }),
-    [],
-  );
+          }
+        : {}),
+      repo: "snolab/lianki",
+    });
+  }, [treeOn]);
   // The chat inbox's host side (lib/inbox/client.ts): an Anki package imports in one tap.
   const importDeck = strings?.importDeck ?? "Import as a deck";
   const ownerFiles = useMemo(
@@ -739,6 +859,8 @@ export function DebugEval({
           messages={messages}
           onSend={sendChat}
           onAnswer={sendAnswer}
+          onPassageEnd={() => sendHub({ type: "passage-end" })}
+          onUnmerge={(id) => sendHub({ type: "unmerge", id })}
           nodes={state?.nodes}
           notice={
             friend === "blocked"
@@ -746,6 +868,11 @@ export function DebugEval({
               : undefined
           }
           warning={warning ?? undefined}
+          warningHref={
+            warning && warning === creditsLine
+              ? { href: "/membership", label: strings?.aiCreditsLink ?? "Get credits" }
+              : undefined
+          }
           sessions={sessions}
           onEnd={(x) => answer("revoke", x)}
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
@@ -753,12 +880,20 @@ export function DebugEval({
           friend={isFriend}
           owner={owner && !isFriend}
           strings={friendStrings}
-          treeSource={owner && !isFriend ? ownerTree : undefined}
+          treeSource={treeOn ? ownerTree : undefined}
+          etaBar={etaOn && treeOn && !!ownerTree}
+          // This page's ETA timer went off: the hub pings the agent at most once per estimate.
+          onEtaDue={(id) => ownerTree?.send({ type: "eta", id })}
           treeRepo="snolab/lianki"
           // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
           files={owner && !isFriend ? ownerFiles : undefined}
+          // The account's chat history (docs/chat-history.md): every signed-in user's own.
+          onHistory={() => router.push("/chat/history")}
           agentAvatar={AGENT_AVATAR}
-          viewer={viewer}
+          viewer={boxViewer(!!box, boxAccount, viewer)}
+          fullScreen={fullScreen}
+          // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
+          backToClose={backToCloseChat}
         />
       )}
       {/* A pairing request: a big modal on every open page of its audience. */}

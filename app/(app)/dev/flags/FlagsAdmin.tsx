@@ -1,26 +1,70 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useUi } from "@lianki/ui-state";
+import type { FlagKey } from "@/lib/flags";
 import type { FlagLogEntry, FlagRow } from "@/lib/flags-store";
+import type { PrereqFailure } from "@/lib/flag-prereqs";
+import { card, Chevron, FlagCard, jst } from "./FlagCard";
+import { FLAG_HIGHLIGHT_MS, scrollToFlag } from "./flag-anchor";
+import {
+  buildFlagView,
+  filtersActive,
+  groupDomId,
+  groupOfRow,
+  isGroupOpen,
+  isShipped,
+  RECENT_DAYS,
+  resolveFlagAnchor,
+  SHIPPED_GROUP,
+  type StateFilter,
+} from "./flag-view";
+import { flagViewPrefs } from "./flag-view-store";
 
-type State = { flags: FlagRow[]; log: FlagLogEntry[]; cacheSeconds: number };
+type State = {
+  flags: FlagRow[];
+  /** The prerequisites each flag fails now (reason keys and texts only). */
+  prereqs?: Partial<Record<FlagKey, PrereqFailure[]>>;
+  log: FlagLogEntry[];
+  cacheSeconds: number;
+};
 
-/** Written out, in JST, labelled — the owner reads every time in JST. */
-const jst = (iso: string) =>
-  `${new Date(iso).toLocaleString("zh-CN", {
-    timeZone: "Asia/Tokyo",
-    dateStyle: "long",
-    timeStyle: "short",
-  })} JST`;
+const STATE_FILTERS: [StateFilter, string][] = [
+  ["all", "全部"],
+  ["on", "开着"],
+  ["off", "默认关"],
+];
 
-const card =
-  "rounded-lg border border-[oklch(0_0_0/0.1)] dark:border-[oklch(1_0_0/0.1)] p-4 space-y-2";
+const pill = (on: boolean) =>
+  `rounded-full border px-3 py-1 text-xs ${
+    on
+      ? "border-transparent bg-[oklch(0.3_0_0)] text-[oklch(0.98_0_0)] dark:bg-[oklch(0.9_0_0)] dark:text-[oklch(0.2_0_0)]"
+      : "border-[oklch(0_0_0/0.15)] dark:border-[oklch(1_0_0/0.2)]"
+  }`;
 
 /** Every registry flag with a switch; each change is logged on the server. */
 export default function FlagsAdmin() {
   const [state, setState] = useState<State | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [note, setNote] = useState<{ key: FlagKey; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [expanded, setExpanded] = useState<ReadonlySet<FlagKey>>(new Set());
+  const [pinned, setPinned] = useState<FlagKey | null>(null);
+  const [linkGroup, setLinkGroup] = useState<string | null>(null);
+  const [held, setHeld] = useState<ReadonlyMap<FlagKey, boolean>>(new Map());
+  const [jump, setJump] = useState<{ key: FlagKey } | null>(null);
+  const [now] = useState(() => Date.now());
+  const stateFilter = useUi(flagViewPrefs, (s) => s.state);
+  const recent = useUi(flagViewPrefs, (s) => s.recent);
+  const open = useUi(flagViewPrefs, (s) => s.open);
+  const loaded = state !== null;
+  const latest = useRef({ state, held });
+
+  useEffect(() => {
+    latest.current = { state, held };
+  }, [state, held]);
 
   useEffect(() => {
     void (async () => {
@@ -30,12 +74,82 @@ export default function FlagsAdmin() {
     })();
   }, []);
 
+  // /dev/flags#<key>: the rows exist only after the fetch above, and the row may
+  // be in a folded section or behind a filter. So open the way first (for this
+  // visit only: the device's folded sections and filters stay as they were),
+  // and scroll once that has rendered.
+  useEffect(() => {
+    if (!loaded) return;
+    const goToHash = () => {
+      const key = resolveFlagAnchor(window.location.hash);
+      const { state: current, held: heldNow } = latest.current;
+      const row = current?.flags.find((f) => f.key === key);
+      if (!key || !row) return;
+      setPinned(key);
+      setLinkGroup(groupOfRow(row, { prereqs: current?.prereqs, held: heldNow }));
+      setExpanded((s) => new Set(s).add(key));
+      setJump({ key });
+    };
+    goToHash();
+    window.addEventListener("hashchange", goToHash);
+    return () => window.removeEventListener("hashchange", goToHash);
+  }, [loaded]);
+
+  useEffect(() => {
+    if (!jump) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const key = scrollToFlag(document, `#${jump.key}`, reduce);
+    if (!key) return;
+    setHighlighted(key);
+    const timer = setTimeout(() => setHighlighted(null), FLAG_HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [jump]);
+
+  const groups = useMemo(
+    () =>
+      state
+        ? buildFlagView(state.flags, {
+            q,
+            state: stateFilter,
+            recent,
+            now,
+            prereqs: state.prereqs,
+            pinned,
+            held,
+          })
+        : [],
+    [state, q, stateFilter, recent, now, pinned, held],
+  );
+  const searching = q.trim() !== "";
+
+  /** A new search or filter is a new question: what a link or a tap kept in view lets go. */
+  function letGo() {
+    setPinned(null);
+    setHeld(new Map());
+  }
+
+  function toggleGroup(id: string, isOpen: boolean) {
+    if (linkGroup === id) setLinkGroup(null);
+    flagViewPrefs.setState({ open: { ...open, [id]: !isOpen } });
+  }
+
+  function toggleRow(key: FlagKey) {
+    setExpanded((s) => {
+      const next = new Set(s);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }
+
   async function toggle(f: FlagRow) {
     const enabled = !f.enabled;
     // Payment flags move real money: ask once before turning one on.
     if (enabled && f.key.startsWith("payments.") && !window.confirm(`打开 ${f.key}？`)) return;
     setBusy(f.key);
-    setMsg(null);
+    setNote(null);
+    setHeld((h) =>
+      h.has(f.key) ? h : new Map(h).set(f.key, isShipped(f, state?.prereqs?.[f.key])),
+    );
     try {
       const r = await fetch("/api/dev/flags", {
         method: "POST",
@@ -45,49 +159,141 @@ export default function FlagsAdmin() {
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
         setState(data);
-        setMsg(`${f.key} → ${enabled ? "开" : "关"}（${data.cacheSeconds ?? 30} 秒内生效）`);
-      } else setMsg(data.error ?? `HTTP ${r.status}`);
+        setNote({
+          key: f.key,
+          text: `${f.key} → ${enabled ? "开" : "关"}（${data.cacheSeconds ?? 30} 秒内生效）`,
+        });
+      } else setNote({ key: f.key, text: data.error ?? `HTTP ${r.status}` });
     } finally {
       setBusy(null);
     }
   }
 
   if (!state) return <p className="text-sm opacity-70">{msg ?? "…"}</p>;
+  const shown = groups.reduce((n, g) => n + g.rows.length, 0);
   return (
     <div className="space-y-4">
-      {state.flags.map((f) => (
-        <section key={f.key} className={card} data-flag={f.key}>
-          <div className="flex items-center justify-between gap-3">
-            <code className="font-mono text-sm break-all">{f.key}</code>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={f.enabled}
-              aria-label={f.key}
-              disabled={busy !== null}
-              onClick={() => void toggle(f)}
-              className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-                f.enabled
-                  ? "bg-[oklch(0.62_0.17_150)]"
-                  : "bg-[oklch(0.8_0_0)] dark:bg-[oklch(0.4_0_0)]"
-              }`}
-            >
-              <span
-                className={`absolute top-1 h-5 w-5 rounded-full bg-[oklch(1_0_0)] transition-all ${
-                  f.enabled ? "left-6" : "left-1"
-                }`}
-              />
-            </button>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 rounded-lg border border-[oklch(0_0_0/0.15)] dark:border-[oklch(1_0_0/0.2)] px-3 py-2">
+          <svg
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            aria-hidden="true"
+            className="shrink-0 opacity-60"
+          >
+            <circle cx="7" cy="7" r="4.5" />
+            <path d="m10.5 10.5 3.5 3.5" />
+          </svg>
+          <input
+            type="search"
+            value={q}
+            aria-label="搜索开关"
+            placeholder="搜索名称或说明"
+            onChange={(e) => {
+              setQ(e.target.value);
+              letGo();
+            }}
+            className="min-w-0 flex-1 bg-transparent text-base outline-none sm:text-sm"
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div role="group" aria-label="按状态筛选" className="flex gap-1.5">
+            {STATE_FILTERS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={stateFilter === value}
+                className={pill(stateFilter === value)}
+                onClick={() => {
+                  flagViewPrefs.setState({ state: value });
+                  letGo();
+                }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <p className="text-sm">{f.description}</p>
-          <p className="text-xs opacity-60">
-            {f.enabled ? "开" : "关"}
-            {f.updatedAt ? ` · ${f.updatedBy} · ${jst(f.updatedAt)}` : " · 从未改过（默认关）"}
-          </p>
-        </section>
-      ))}
+          <button
+            type="button"
+            aria-pressed={recent}
+            className={pill(recent)}
+            onClick={() => {
+              flagViewPrefs.setState({ recent: !recent });
+              letGo();
+            }}
+          >
+            {RECENT_DAYS} 天内改过
+          </button>
+          <span data-testid="flags-count" className="ms-auto text-xs opacity-60">
+            {shown} / {state.flags.length}
+          </span>
+        </div>
+      </div>
 
-      {msg && <p className="text-sm">{msg}</p>}
+      {groups.map((g) => {
+        const isOpen = searching || linkGroup === g.id || isGroupOpen(open, g.id);
+        return (
+          <section key={g.id} id={groupDomId(g.id)} data-flag-group={g.id} className="scroll-mt-20">
+            <h2>
+              <button
+                type="button"
+                aria-expanded={isOpen}
+                disabled={searching}
+                onClick={() => toggleGroup(g.id, isOpen)}
+                className="flex min-h-9 w-full items-center gap-1.5 text-start text-sm font-bold"
+              >
+                <Chevron open={isOpen} />
+                {g.label}
+                <span className="ms-auto text-xs font-normal opacity-60">
+                  开 {g.on} / {g.total}
+                </span>
+              </button>
+            </h2>
+            {isOpen && g.id === SHIPPED_GROUP && (
+              <p className="mb-1 text-xs opacity-60">
+                已打开且对所有用户生效。这里只是换个位置看，开关照常可用。
+              </p>
+            )}
+            {isOpen && (
+              <div className="rounded-lg border border-[oklch(0_0_0/0.1)] dark:border-[oklch(1_0_0/0.1)] divide-y divide-[oklch(0_0_0/0.08)] dark:divide-[oklch(1_0_0/0.08)]">
+                {g.rows.map((f) => (
+                  <FlagCard
+                    key={f.key}
+                    flag={f}
+                    failed={state.prereqs?.[f.key]}
+                    busy={busy !== null}
+                    highlighted={highlighted === f.key}
+                    expanded={expanded.has(f.key)}
+                    note={note?.key === f.key ? note.text : null}
+                    onExpand={() => toggleRow(f.key)}
+                    onToggle={() => void toggle(f)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })}
+
+      {shown === 0 && <p className="text-sm opacity-70">没有符合的开关。</p>}
+      {filtersActive({ q, state: stateFilter, recent }) && (
+        <button
+          type="button"
+          className={pill(false)}
+          onClick={() => {
+            setQ("");
+            flagViewPrefs.setState({ state: "all", recent: false });
+            letGo();
+          }}
+        >
+          清除筛选
+        </button>
+      )}
 
       <section className={card}>
         <h2 className="font-bold text-sm">改动记录</h2>

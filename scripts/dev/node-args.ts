@@ -5,6 +5,7 @@
  * docs/dev-debug-widget.md, "Node paths".
  */
 import { ROOT_NODE, agentIdOf, nodePath } from "@/lib/dev-eval";
+import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "@/packages/debug-chat/src/voices";
 
 export type NodeOpts = { node?: string; agent?: string };
 
@@ -55,12 +56,19 @@ export function chatLine(
     ...(typeof m.agentId === "string" ? { agentId: m.agentId } : {}),
     // "stt": spoken into the widget's mic, so `eval.ts edit` may polish it.
     ...(m.source === "stt" ? { source: "stt" } : {}),
+    // "eta": automatic, from the hubs when a state-tree estimate ran out (lib/eta-ping.ts).
+    // Not the owner speaking, never an answer or an approval: report on that node to him.
+    ...(m.source === "eta"
+      ? { source: "eta", auto: true, ...(m.eta && typeof m.eta === "object" ? { eta: m.eta } : {}) }
+      : {}),
     // A voice line's timestamps on the page's clock (VoiceTiming; latency.ts).
     ...(m.timing && typeof m.timing === "object" ? { timing: m.timing } : {}),
     // The mic's wake-word mode when it was sent (docs/wake-word.md), and why it was in it.
     ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
     ...(typeof m.wakeReason === "string" ? { wakeReason: m.wakeReason } : {}),
     ...(m.edited && typeof m.edited === "object" ? { raw: m.raw, edited: m.edited } : {}),
+    // Continuous speech (stt.merge): how many utterances the line is made of.
+    ...(Array.isArray(m.parts) ? { parts: m.parts.length } : {}),
     // Attached with the + menu (attach.ts): {selection, path?, title?, host?}.
     ...(m.context && typeof m.context === "object" ? { context: m.context } : {}),
     // Files sent with the line: [{id,name,type,size}]; fetch one with `eval.ts inbox get <id>`.
@@ -77,6 +85,22 @@ export type SayVolume = { quiet?: true };
 /** The say's flags as sent to the hub. */
 export function sayVolume(f: { quiet: boolean }): SayVolume {
   return f.quiet ? { quiet: true } : {};
+}
+
+/** A say's lane and voice as sent to the hub (packages/debug-chat/src/voices.ts). */
+export type SayLane = { lane?: LaneId; voice?: string };
+
+/**
+ * `--lane` / `--voice` checked: a lane of the table, a voice the strict
+ * parser takes (voices.ts parseLineVoice: main|calm|bright, device:<name>,
+ * melo:<lang>, aura:<speaker>, eleven:<id>). An unknown one is an error, never dropped.
+ */
+export function sayLane(lane?: string, voice?: string): SayLane | { error: string } {
+  if (lane !== undefined && !isLaneId(lane))
+    return { error: `unknown --lane ${lane}: one of ${LANE_IDS.join(", ")}` };
+  const v = voice === undefined ? undefined : parseLineVoice(voice);
+  if (v && "error" in v) return { error: `--voice: ${v.error}` };
+  return { ...(lane ? { lane } : {}), ...(voice ? { voice } : {}) };
 }
 
 /** Printed (stderr) when an old command still passes `say --loud`: it does nothing now. */

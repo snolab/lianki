@@ -47,7 +47,7 @@ for (const [name, device] of [
   const page = await ctx.newPage();
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
 
   const row = page.locator('[data-testid="read-row"]', { hasText: "First text" });
   const btn = row.locator('[data-testid="read-row-menu"]');

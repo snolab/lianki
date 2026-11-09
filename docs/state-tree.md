@@ -47,10 +47,15 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   owner: the outline shows as written. Nothing polls.
 
   Report (one POST, then exit):
-    bun scripts/dev/progress.ts --agent <you> --path /words/swipe       --task "Native swipe" --status doing --pct 40 --eta 15m
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe       --task "Native swipe: drag the card with the finger" --status doing --pct 40 --eta 15m
     … --done --pr 310        when it lands
     … --status blocked --note "why"
     … --status waiting-owner --needs "OK the preview" --kind approval
+  --task is "name: description" (':' or '：'): a short name of 1–20
+  characters (graphemes, not bytes), then what it is. The owner's ETA bar
+  shows only the name; the full list shows both. A longer name is refused
+  (with an example); a title with no colon still goes through, with a
+  warning when it is over 20.
   status: doing | blocked | waiting | waiting-owner | review | done
   kind:   task | decision | approval | feedback | person
   --path sets id and parent (missing ancestors become groups); --id/--parent
@@ -76,6 +81,58 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   (or a scope above). Any agent may add an /@owner/… to-do whose ref is in
   its scope. Any valid token reads the whole tree (`show`). The token is
   --token, LIANKI_PROGRESS_TOKEN, PROGRESS_TOKEN or .dev.vars.
+
+  ETA pings (flag chat.eta-bar, owner only). --eta is the agent's own
+  estimate, given each time it reports: a duration from now (25m, 1h30m) or an
+  ISO time with its zone. The hub turns it into the node's etaAt on its own
+  clock; a new --eta moves it; free text ("after CI") is shown, no timer.
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe: drag with the finger" --status doing --eta 25m
+  The owner's chat shows one summary line above the input, its background
+  filled to the weighted progress (time left, next due;
+  packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens this tree, which
+  lists every timed task as a Gantt row (docs/dev-debug-widget.md, "ETA
+  bar"). Time labels are "5M", "1.5H", and "-5M" in red past due. His box
+  shows the same, on a box chat ticket (docs/box-oauth.md).
+  When etaAt passes on an open node, the hub (Durable Object alarm; also an
+  owner page's one timer sending {type:"eta", id}) marks it etaSent and asks
+  the chat hub (POST /internal/eta over the DEBUG binding, lib/eta-ping.ts) to
+  post one line in the owner's thread, to "/":
+    "ETA reached for <task> (<id>): <lane>, within 5 min tell the owner WHY
+     and a new "N minutes from now" — bun scripts/dev/progress.ts … --eta <N>m
+     --late "<reason>" … Otherwise he is told "<name> 超时，未说明原因"."
+  from "agent", agentId "eta", source "eta", quiet. Every listener at "/" (the
+  chat lane's `eval.ts chat`) hears it as it hears his lines; eval.ts prints it
+  with "source":"eta","auto":true. It is never the owner speaking, never an
+  answer to an ask card, never an approval. One line per estimate, whatever
+  number of pages are open; a done node gets none.
+
+  ETA overrun — a standing rule for every lane (owner, 2026-11-08 20:24 JST).
+  A task that reaches its ETA unfinished owes the owner, within 5 minutes
+  (ETA_EXPLAIN_MS), the REASON and a new "N minutes from now", in one call:
+    bun scripts/dev/progress.ts --agent <you> --path <node> --task "<same>" --status doing --eta 20m --late "CI 排队太久"
+  The hub stores the reason on the node (lateReason, and lateFor = the etaAt
+  it explains; a "late: …" note too) and posts the owner's thread
+  "<name> 超时：<reason>。再要 20 分钟" — read aloud, not quiet. Write the reason
+  in the owner's language. Once a node's etaAt has passed, a new --eta without
+  --late is refused (400); --late without an --eta that sets a time is a usage
+  error. Progress without a new estimate (--pct, a note) and --done need none.
+  If neither a reason nor a new estimate comes within 5 minutes of the
+  "ETA reached" line, the hub's alarm posts the owner "<name> 超时，未说明原因"
+  (read aloud), once per etaAt (marked etaSilent). Never let him find out
+  from that line.
+
+  Timing, for agents only (never shown to the owner: his bar and list keep
+  the time left and the names). Each node keeps startedAt (its first write
+  with status doing), endedAt (when it went done; cleared if it reopens),
+  estimateMs (the first --eta that set a time, as a duration from when it
+  was given) and etaRevisions (estimates after it). `show` returns them.
+  Each task that goes done (a report or the owner's check-off) also leaves
+  {agent, id, title, estimateMs, actualMs, revisions} in a durable stats log
+  (keys "d:", 30 days, newest 1000; never sent to pages), read with GET
+  /stats:
+    bun scripts/dev/progress.ts stats [--agent <you>] [--since 7d]
+  per agent, done tasks with estimate vs actual and the median actual/estimate
+  ratio — multiply your next --eta by it.
 
   Limits: name 40, task 120, note 280, needs 120; 200 nodes (oldest done
   dropped first); done nodes pruned after 24 h (Durable Object alarm); a

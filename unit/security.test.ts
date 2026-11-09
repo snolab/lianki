@@ -498,11 +498,11 @@ describe("admin surfaces are owner-gated", () => {
     ...files("app/api/dev", /^route\.ts$/),
   ];
 
-  test("every /dev page and /api/dev route checks isOwner", () => {
+  test("every /dev page and /api/dev route checks isAdmin or isDev", () => {
     expect(surfaces.length).toBeGreaterThan(8);
     for (const f of surfaces) {
       const src = readFileSync(f, "utf8");
-      expect({ f, gated: /isOwner\(/.test(src) }).toEqual({ f, gated: true });
+      expect({ f, gated: /\b(isAdmin|isDev)\(/.test(src) }).toEqual({ f, gated: true });
     }
   });
 
@@ -511,8 +511,8 @@ describe("admin surfaces are owner-gated", () => {
       const src = readFileSync(f, "utf8");
       const handlers =
         src.match(/export (async function|const) (GET|POST|PUT|PATCH|DELETE)\b/g) ?? [];
-      // A gate call per handler, or one shared helper that wraps isOwner.
-      const gates = (src.match(/isOwner\(|await owner\(\)/g) ?? []).length;
+      // A gate call per handler, or one shared helper that wraps isAdmin/isDev.
+      const gates = (src.match(/\b(isAdmin|isDev)\(|await (owner|admin)\(\)/g) ?? []).length;
       expect({ f, ok: gates >= handlers.length }).toEqual({ f, ok: true });
     }
   });

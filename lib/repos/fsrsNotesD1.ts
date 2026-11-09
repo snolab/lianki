@@ -13,6 +13,9 @@ import {
 /** A note as stored in D1 — carries the stable `id` (migrated MongoDB _id). */
 export type StoredNote = FSRSNote & { id: string };
 
+/** A note's url, title and the two card fields roadmap progress reads. */
+export type CardStat = { url: string; title?: string; state?: number; stability?: number };
+
 type Row = {
   id: string;
   email: string;
@@ -142,6 +145,30 @@ export class FsrsNotesD1Repo {
       .bind(this.email)
       .all<Row>();
     return results.map(rowToNote);
+  }
+
+  /**
+   * Just what roadmap progress reads (url, title, card state and stability),
+   * for every live note. `listAll` returns whole rows — the full review log
+   * of each card, parsed and date-restored — work and transfer that grow with
+   * the collection and that progress never reads.
+   */
+  async listCardStats(): Promise<CardStat[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT url, title,
+                json_extract(card, '$.state') AS state,
+                json_extract(card, '$.stability') AS stability
+           FROM fsrs_notes WHERE email = ? AND ${LIVE}`,
+      )
+      .bind(this.email)
+      .all<{ url: string; title: string | null; state: number | null; stability: number | null }>();
+    return results.map((r) => ({
+      url: r.url,
+      title: r.title ?? undefined,
+      state: r.state ?? undefined,
+      stability: r.stability ?? undefined,
+    }));
   }
 
   /**

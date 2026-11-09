@@ -19,10 +19,17 @@ import { db, mongoClient } from "./app/db";
 import { cfRequestProps, dbBackend, getD1, workerWaitUntil } from "./lib/d1";
 import { securityPlugin } from "./lib/security/auth-plugin";
 import type { ThrottleDb } from "./lib/security/throttle";
-import { passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
+import { authCookieOptions, passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
 import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
 import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
 import { notifySignedOut } from "./lib/push-signed-out";
+import { setEmailCanonical } from "./lib/canonical-email-d1";
+import { recordSignupLocale } from "./lib/signup-locale-d1";
+import { boxBindingHook, boxProviderPlugin } from "./lib/box-oauth/provider";
+import { apiTokenSignOutPlugin } from "./lib/api-token-signout";
+import { notifyTokensRevoked } from "./lib/push-chat-tokens";
+import type { D1Like } from "./lib/d1/types";
+import type { AuditDb } from "./lib/security/audit-log";
 
 // The heavy half of auth: better-auth, its plugins, zod, kysely. Only ever
 // reached through the dynamic import in ./auth.ts, so it is one shared async
@@ -83,11 +90,20 @@ function baseOptions() {
     secret: process.env.AUTH_SECRET,
     baseURL:
       process.env.BETTER_AUTH_BASE_URL ?? process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
+    advanced: authCookieOptions(
+      process.env.BETTER_AUTH_BASE_URL ?? process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
+    ),
     // Allow both www and non-www (the canonical domain is non-www).
     // Deployed origins plus a localhost QA origin derived from
     // BETTER_AUTH_BASE_URL, so qa:all can run on any port. Only localhost is
     // honoured — see lib/trusted-origins.ts.
     trustedOrigins: trustedOrigins(),
+
+    // Profile edits go through /api/profile/** (lib/profile/), which validate
+    // and then call this endpoint server-side. Over HTTP it would let a session
+    // store any string as its name or image: a third-party URL among other
+    // people's chat avatars, for one. disabledPaths closes HTTP only, not auth.api.
+    disabledPaths: ["/update-user"],
 
     // Production stays passwordless (magic link + OAuth); see passwordAuthEnabled.
     emailAndPassword: { enabled: passwordAuthEnabled() },
@@ -117,7 +133,8 @@ function baseOptions() {
 
     // The Google URL must not ask for previously granted scopes — see
     // lib/google-auth-url.ts.
-    hooks: { after: stripGrantedScopesHook },
+    // before: a box's OAuth client belongs to one account (lib/box-oauth/provider.ts).
+    hooks: { after: stripGrantedScopesHook, before: boxBindingHook },
 
     // A GitHub account just signed up or was linked: claim any GitHub
     // Sponsors sponsorship that was waiting for its id (docs/payments.md).
@@ -129,6 +146,36 @@ function baseOptions() {
         delete: {
           after: async (session: { id: string }) => {
             await notifySignedOut(session.id);
+          },
+        },
+      },
+      // The canonical email (lib/canonical-email.ts), for the once-per-person
+      // checks only — the trial, invite and gift rewards. Never fails the
+      // sign-up; those checks fill it in themselves when it is missing.
+      user: {
+        create: {
+          after: async (
+            user: { id: string; email: string },
+            ctx?: { headers?: Headers; request?: Request } | null,
+          ) => {
+            if (dbBackend() !== "d1") return;
+            await setEmailCanonical(getD1(), user.id, user.email).catch((e) =>
+              console.error("[email-canonical] create:", e),
+            );
+            // The browser language at sign-up, once (lib/signup-locale.ts): only
+            // the normalised tag is kept, for mail sent in this person's name.
+            const al = (ctx?.headers ?? ctx?.request?.headers)?.get("accept-language");
+            await recordSignupLocale(getD1(), user.id, al).catch((e) =>
+              console.error("[signup-locale] create:", e),
+            );
+          },
+        },
+        update: {
+          after: async (user: { id: string; email?: string | null }) => {
+            if (dbBackend() !== "d1" || !user.email) return;
+            await setEmailCanonical(getD1(), user.id, user.email).catch((e) =>
+              console.error("[email-canonical] update:", e),
+            );
           },
         },
       },
@@ -145,6 +192,9 @@ function baseOptions() {
     },
 
     plugins: [
+      // my-<hash> boxes sign in through lianki.com: dark, its routes answer only
+      // with the flag on (app/api/auth/[...all]/route.ts, docs/box-oauth.md).
+      ...(dbBackend() === "d1" ? [boxProviderPlugin()] : []),
       // Gated on configuration, as the SMTP version was: with no provider the
       // plugin is absent and the sign-in form offers only OAuth, rather than
       // accepting an address and silently dropping the mail.
@@ -190,6 +240,11 @@ function baseOptions() {
         waitUntil: (p) => {
           if (!workerWaitUntil(p)) void p;
         },
+      }),
+      // A sign-out everywhere (or the account deleted) revokes every API token of the account.
+      apiTokenSignOutPlugin({
+        getDb: () => (dbBackend() === "d1" ? (getD1() as unknown as D1Like & AuditDb) : null),
+        revoked: (r) => notifyTokensRevoked(r),
       }),
       nextCookies(), // must be last — handles Set-Cookie in server actions
     ],

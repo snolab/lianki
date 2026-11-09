@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Icon } from "@/app/components/icons";
+import { Icon, type IconName } from "@/app/components/icons";
 import Link from "next/link";
 import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
@@ -21,23 +21,43 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function LabPage() {
   const locale = await appLocale();
   const { heading, intro, experiments } = getIntlayer("lab-page", locale);
+  const aiVocab = getIntlayer("ai-vocab-page", locale);
+  const polyglot = getIntlayer("polyglot-page", locale);
 
   // One entry per experiment; the list is the page, so it lives here rather
   // than in a registry nothing else reads.
-  const cards = [
+  const cards: {
+    href: string;
+    icon: IconName;
+    title: React.ReactNode;
+    blurb: React.ReactNode;
+    stat?: React.ReactNode;
+  }[] = [
     {
       href: "/lab/immersion",
-      icon: "mapTrifold" as const,
+      icon: "mapTrifold",
       title: experiments.immersion.title,
       blurb: experiments.immersion.blurb,
       stat: `${IMMERSION_DOMAINS.length} topics × ${IMMERSION_LANGUAGES.length} languages`,
     },
     {
       href: "/words",
-      icon: "arrowsLeftRight" as const,
+      icon: "arrowsLeftRight",
       title: experiments.swipe.title,
       blurb: experiments.swipe.blurb,
       stat: experiments.swipe.howTo,
+    },
+    {
+      href: "/lab/ai-vocab",
+      icon: "brain",
+      title: aiVocab.title,
+      blurb: aiVocab.description,
+    },
+    {
+      href: "/lab/polyglot",
+      icon: "globeHemisphereWest",
+      title: polyglot.heading,
+      blurb: polyglot.description,
     },
   ];
 
@@ -59,7 +79,9 @@ export default async function LabPage() {
               <Icon name={card.icon} className="text-2xl mb-2 block" />
               <h2 className="text-lg font-semibold mb-1">{card.title}</h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{card.blurb}</p>
-              <p className="text-xs font-medium text-blue-600 dark:text-blue-400">{card.stat}</p>
+              {card.stat && (
+                <p className="text-xs font-medium text-blue-600 dark:text-blue-400">{card.stat}</p>
+              )}
             </Link>
           </li>
         ))}

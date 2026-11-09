@@ -29,9 +29,20 @@ export class BookSourceFail extends Error {
   }
 }
 
-export const SOURCE_LIMITS = {
-  /** The whole HTML file, images are separate files and never fetched. */
+export const SOURCE_LIMITS: {
+  /** The HTML kept, after inline images (data: URIs) are dropped. */
+  maxBytes: number;
+  /**
+   * The file as sent: a single-page edition can carry its illustrations
+   * inline (Standard Ebooks' Alice is 74 MB of data: URIs around 200 KB of
+   * text). They are dropped while it streams, never kept. Defaults to maxBytes.
+   */
+  maxStreamBytes?: number;
+  maxRedirects: number;
+  timeoutMs: number;
+} = {
   maxBytes: 6_000_000,
+  maxStreamBytes: 120_000_000,
   maxRedirects: 3,
   timeoutMs: 25_000,
 };
@@ -60,18 +71,79 @@ async function drop(res: Response): Promise<void> {
   }
 }
 
-/** Read at most `max` bytes of a body, else too-large. */
-async function readCapped(body: ReadableStream<Uint8Array>, max: number): Promise<Uint8Array> {
+const DATA_URI = [0x64, 0x61, 0x74, 0x61, 0x3a]; // "data:"
+const EQ = 0x3d;
+const QUOTES = new Set([0x22, 0x27]);
+
+/**
+ * Drops inline data: URIs from attribute values (`src="data:…"` → `src="data:"`)
+ * as bytes stream past; the state carries across chunks. The importer keeps
+ * text only, so an inline image is never needed.
+ */
+export function dataUriStripper(): (chunk: Uint8Array) => Uint8Array {
+  let prev = 0;
+  /** The quote that opened the value being matched or skipped; 0 = none. */
+  let quote = 0;
+  let matched = -1;
+  let skipping = false;
+  return (chunk) => {
+    const out = new Uint8Array(chunk.byteLength);
+    let n = 0;
+    for (let i = 0; i < chunk.byteLength; i++) {
+      const b = chunk[i];
+      if (skipping) {
+        if (b === quote) {
+          skipping = false;
+          quote = 0;
+          out[n++] = b;
+          prev = b;
+        }
+        continue;
+      }
+      out[n++] = b;
+      if (matched >= 0) {
+        if (b === DATA_URI[matched]) {
+          matched++;
+          if (matched === DATA_URI.length) {
+            matched = -1;
+            skipping = true;
+          }
+        } else matched = -1;
+      }
+      if (!skipping && matched < 0 && QUOTES.has(b) && prev === EQ) {
+        quote = b;
+        matched = 0;
+      }
+      prev = b;
+    }
+    return out.subarray(0, n);
+  };
+}
+
+/**
+ * Read a body: at most `maxStream` bytes as sent and `max` bytes once inline
+ * data: URIs are dropped, else too-large.
+ */
+async function readCapped(
+  body: ReadableStream<Uint8Array>,
+  max: number,
+  maxStream = max,
+): Promise<Uint8Array> {
   const reader = body.getReader();
+  const strip = dataUriStripper();
   const parts: Uint8Array[] = [];
+  let sent = 0;
   let n = 0;
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      n += value.byteLength;
+      sent += value.byteLength;
+      if (sent > maxStream) throw new BookSourceFail("too-large");
+      const kept = strip(value);
+      n += kept.byteLength;
       if (n > max) throw new BookSourceFail("too-large");
-      parts.push(value);
+      parts.push(kept);
     }
   } finally {
     await reader.cancel().then(undefined, String);
@@ -169,12 +241,13 @@ export async function fetchSourceFile(
       void drop(res);
       throw new BookSourceFail("fetch-failed");
     }
+    const maxStream = Math.max(limits.maxBytes, limits.maxStreamBytes ?? limits.maxBytes);
     const len = Number(res.headers.get("content-length") ?? 0);
-    if (len > limits.maxBytes) {
+    if (len > maxStream) {
       void drop(res);
       throw new BookSourceFail("too-large");
     }
-    return decodeSource(await readCapped(res.body, limits.maxBytes), type);
+    return decodeSource(await readCapped(res.body, limits.maxBytes, maxStream), type);
   }
 }
 
@@ -393,11 +466,73 @@ export function cleanWikisource(html: string): string {
   );
 }
 
+/**
+ * The EPUB structural types (epub:type) of a Standard Ebooks file that are the
+ * edition's own matter, not the book: title pages, imprint, table of contents,
+ * colophon, the CC0 "uncopyright", endnotes and lists of illustrations.
+ */
+const SE_DROP_TYPES = new Set([
+  "titlepage",
+  "halftitlepage",
+  "imprint",
+  "toc",
+  "colophon",
+  "copyright-page",
+  "endnotes",
+  "loi",
+  "noteref",
+]);
+
+/**
+ * A Standard Ebooks single-page XHTML: the book's sections only. The site's
+ * navigation, the edition's front and back matter (by epub:type, the
+ * vocabulary every Standard Ebooks file uses), styles and note markers go;
+ * the CC0 dedication is kept with the entry's licence line instead.
+ */
+export function cleanStandardEbooks(html: string): string {
+  const typeOf = (attrs: string) =>
+    (/\bepub:type\s*=\s*["']([^"']*)["']/i.exec(attrs)?.[1] ?? "").split(/\s+/);
+  return dropElements(
+    html,
+    (name, attrs) =>
+      name === "style" ||
+      name === "link" ||
+      name === "script" ||
+      // The site's navigation bar and the table of contents; <header> and
+      // <footer> stay (a chapter's heading, a letter's signature).
+      name === "nav" ||
+      typeOf(attrs).some((t) => SE_DROP_TYPES.has(t)),
+  );
+}
+
+const plainText = (html: string) =>
+  html
+    .replace(/<(style|script)\b[\s\S]*?<\/\1>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, "").length;
+
+/**
+ * Whether a Wikisource page (Parsoid HTML) is mostly links to its own
+ * sub-pages (`./Title/Chapter`): a contents page, whose text is elsewhere.
+ * Half or more of its text inside such links is a contents page.
+ */
+export function isContentsPage(html: string): boolean {
+  const total = plainText(html.replace(/<head\b[\s\S]*?<\/head>/i, ""));
+  if (!total) return false;
+  let linked = 0;
+  for (const m of html.matchAll(
+    /<a\b[^>]*\bhref=["']\.\/[^"'/]+\/[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi,
+  ))
+    linked += plainText(m[1]);
+  return linked * 2 >= total;
+}
+
 /** The host format's cleaner: what is left is the book's text. */
 const CLEANERS: Record<CatalogueBook["source"]["format"], (html: string) => string> = {
   "gutenberg-html": stripGutenberg,
   "aozora-xhtml": cleanAozora,
   "wikisource-html": cleanWikisource,
+  "standardebooks-xhtml": cleanStandardEbooks,
 };
 
 /** Only the part named by `range`, or the whole file. The <head> (its class styles) is kept. */
@@ -441,6 +576,9 @@ export function parseSource(book: CatalogueBook, html: string): ParsedBook {
   const clean = CLEANERS[book.source.format];
   if (!clean) throw new BookSourceFail("no-text");
   const body = cutRange(clean(html), book.range);
+  // A Wikisource work split into sub-pages: this page is its table of contents, not its text.
+  if (book.source.format === "wikisource-html" && isContentsPage(body))
+    throw new BookSourceFail("no-text");
   let parsed: ParsedBook;
   try {
     // A printed book's title page has a couple of top headings: a level

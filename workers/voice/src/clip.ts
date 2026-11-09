@@ -56,6 +56,8 @@ export function recordedClipOf(req: Request): { lang: string; text: string } | n
   if (req.method !== "GET") return null;
   const url = new URL(req.url);
   if (url.pathname !== CLIP_PATH) return null;
+  // A chat lane's own speaker (lib/words-tts.ts): never the one recorded voice.
+  if (url.searchParams.has("speaker")) return null;
   const { lang, text } = ttsParams(url.searchParams);
   if (!text || text.length > MAX_TTS_TEXT || !VOICE_CREDITS[lang]) return null;
   return { lang, text };

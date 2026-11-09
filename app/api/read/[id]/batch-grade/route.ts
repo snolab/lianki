@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { draftOwn } from "@/lib/read/live-polish-server";
 import {
   badRequest,
   bodyOf,
   bookCtxOf,
+  bookInLang,
+  byLang,
   json,
   rangeWords,
   readerCtx,
@@ -10,7 +13,7 @@ import {
 } from "@/lib/read/reader-route";
 import { gradeBatch, probeBatch, undoBatch, type BatchCtx } from "@/lib/read/batch-grade-server";
 import { fillGlosses } from "@/lib/read/gloss-server";
-import type { RangeWord } from "@/lib/read/book-word-list";
+import type { BookCtx, RangeWord } from "@/lib/read/book-word-list";
 
 /**
  * POST /api/read/[id]/batch-grade — the selection card's grade handle
@@ -22,8 +25,11 @@ import type { RangeWord } from "@/lib/read/book-word-list";
  *
  * One validated call per batch: only the selection's due or never-graded
  * sentences and its due or new words are graded (words without a card get
- * one in the book's list first). `undo` takes a batch — or a paragraph
- * swipe's grade already sent — back to exactly the states before it.
+ * one in the list of their own language first, as make-cards files them, with
+ * the meaning the tap already found: decks, word_gloss or the words' own `back`,
+ * so a word the tap paid for is not paid for again). `own: true` (a user's own AI
+ * on, docs/byok.md): no model of ours here at all. `undo` takes a batch — or a
+ * paragraph swipe's grade already sent — back to exactly the states before it.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
@@ -31,14 +37,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!ctx.email) return badRequest("no email");
   const body = (await bodyOf(req)) as Record<string, unknown> | null;
   if (!body || typeof body !== "object") return badRequest("body must be an object");
-  const { book: bctx, own } = await bookCtxOf(ctx);
+  const { book: bctx, own, langs } = await bookCtxOf(ctx);
   const day = typeof body.day === "string" ? body.day : undefined;
   if (body.undo !== undefined) {
-    const r = await undoBatch({ db: ctx.db, ref: ctx.ref, email: ctx.email, bctx }, body.undo, day);
+    const r = await undoBatch(
+      { db: ctx.db, ref: ctx.ref, email: ctx.email, bctx },
+      body.undo,
+      day,
+      langs.map((l) => bookInLang(bctx, l).hash),
+    );
     return r ? json(r) : NextResponse.json({ error: "Nothing to undo" }, { status: 409 });
   }
   const { book, w } = await wordCtx(ctx);
-  const c: BatchCtx = { db: ctx.db, ref: ctx.ref, email: ctx.email, book, w, bctx };
+  const c: BatchCtx = {
+    db: ctx.db,
+    ref: ctx.ref,
+    email: ctx.email,
+    book,
+    w,
+    bctx,
+    byLang: (ws) => byLang(bctx, langs, ws),
+  };
   if (body.probe !== undefined) {
     const p = (body.probe ?? {}) as { sentences?: unknown; words?: unknown };
     const words = p.words === undefined ? [] : rangeWords(p.words, own);
@@ -46,9 +65,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const r = await probeBatch(c, p.sentences, words, new Date());
     return r.ok ? json(r.res) : badRequest(r.error);
   }
-  const words = body.words === undefined ? [] : rangeWords(body.words, own);
+  const taken = body.draft === true ? await draftOwn(own, ctx) : own;
+  if (!taken) return json({ error: "busy" }, 429);
+  const words = body.words === undefined ? [] : rangeWords(body.words, taken);
   if (!words) return badRequest("words are invalid");
-  const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, bctx, ws, { userId: ctx.userId });
-  const r = await gradeBatch(c, { ...body, day }, words, new Date(), gloss);
+  const ai = body.own === true ? null : { userId: ctx.userId };
+  const glossFor = (b: BookCtx) => (ws: RangeWord[]) => fillGlosses(ctx.db, b, ws, ai);
+  const r = await gradeBatch(c, { ...body, day }, words, new Date(), glossFor);
   return r.ok ? json(r.res) : badRequest(r.error);
 }

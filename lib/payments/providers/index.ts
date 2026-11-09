@@ -5,7 +5,7 @@
  * the owner alone.
  */
 import type { FlagValues } from "@/lib/flags";
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
 import { komojuProvider } from "./komoju";
 import { stripeProvider } from "./stripe";
 import { STUB_PROVIDERS } from "./stubs";
@@ -74,7 +74,7 @@ export function providerOpenTo(
   flags: FlagValues = {},
 ): boolean {
   const mode = providerMode(p, env, flags);
-  return mode === "live" || (mode === "test" && isOwner(email, env.OWNER_EMAILS));
+  return mode === "live" || (mode === "test" && isAdmin(email));
 }
 
 export function enabledProviders(env: Env = process.env, flags: FlagValues = {}) {

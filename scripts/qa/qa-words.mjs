@@ -3,6 +3,8 @@
 import { chromium } from "playwright";
 import { buildApkg } from "./apkg-fixture.mjs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
+import { availableParallelism } from "node:os";
+import { budget } from "./load-budget.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 // QA_SHOTS=<dir>: also save screenshots of the list, to look at the layout.
 const shot = (pg, name) =>
@@ -83,7 +85,7 @@ const toPicker = async () => {
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
   if (!new URL(page.url()).searchParams.has("list")) return;
   const back = page.getByRole("button", { name: "← lists" }).first();
-  await back.waitFor({ timeout: 15000 });
+  await back.waitFor({ timeout: budget(15000) });
   await back.click();
 };
 /**
@@ -100,7 +102,7 @@ const addFromTree = async (c, { checks = false } = {}) => {
   if (checks)
     check(await node.locator("input").isChecked(), "a tapped list row ticks its checkbox");
   await page.locator("[data-add-selected]").click();
-  await page.locator("[data-added-toast]").waitFor({ timeout: 15000 });
+  await page.locator("[data-added-toast]").waitFor({ timeout: budget(15000) });
   await page.waitForTimeout(500);
   if (checks) {
     check(!new URL(page.url()).searchParams.has("list"), `still on the picker: ${page.url()}`);
@@ -123,6 +125,8 @@ page.on("pageerror", (e) => {
   if (!e.message.includes("Turnstile")) errs.push("PAGEERROR " + e.message);
 });
 let ok = true;
+/** The phone and WebKit passes, run beside the desktop flow (see below). */
+let phonesDone = Promise.resolve();
 
 /**
  * The grade reveal paints behind its slip: at rest the point over a label's
@@ -225,7 +229,7 @@ async function revealOrder(pg, variant) {
                 e.closest("[data-reveal]"),
             ),
         [x, y],
-        { timeout: 2000 },
+        { timeout: budget(2000) },
       )
       .catch(() => {});
     mid = await hit();
@@ -254,10 +258,10 @@ async function toggleSettings(pg) {
   const sheet = pg.locator("[data-words-settings]");
   if (await sheet.count()) {
     await pg.locator("[data-words-settings-close]").click();
-    await sheet.waitFor({ state: "detached", timeout: 5000 });
+    await sheet.waitFor({ state: "detached", timeout: budget(5000) });
   } else {
     await pg.getByRole("button", { name: "Settings" }).click();
-    await sheet.waitFor({ timeout: 5000 });
+    await sheet.waitFor({ timeout: budget(5000) });
   }
 }
 
@@ -265,17 +269,21 @@ try {
   await page.goto(`${BASE}/sign-in`, { waitUntil: "networkidle" });
   await page.locator("#email").fill(EMAIL);
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.waitForSelector("#password", { timeout: 10000 });
+  await page.waitForSelector("#password", { timeout: budget(10000) });
   await page.locator("#password").fill(PW);
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForFunction(
     async () => (await (await fetch("/api/auth/get-session")).json())?.user,
     null,
-    { timeout: 20000 },
+    { timeout: budget(20000) },
   );
   // Sign-in ends in a full page load of /home; let it land, or the goto below
-  // aborts it mid-flight (net::ERR_ABORTED).
-  await page.waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: 20000 });
+  // aborts it mid-flight (net::ERR_ABORTED). Landed = committed: waiting for
+  // /home's own "load" as well timed out at 20 s under load, for nothing.
+  await page.waitForURL((u) => /\/home|\/list/.test(u.toString()), {
+    timeout: budget(20000),
+    waitUntil: "commit",
+  });
   check(true, "signed in");
 
   // Only errors on the page under test count; sign-in's local Turnstile stub is noisy.
@@ -321,7 +329,10 @@ try {
     );
     await eye.click();
     const dlg = page.locator('[role="dialog"]:has([data-list-preview])');
-    await dlg.locator("[data-preview-row]").first().waitFor({ timeout: 15000 });
+    await dlg
+      .locator("[data-preview-row]")
+      .first()
+      .waitFor({ timeout: budget(15000) });
     check(!(await node.locator("input").isChecked()), "the eye previews without ticking the row");
     check(
       (await dlg.locator("[data-preview-row]").first().locator("p").first().innerText()).startsWith(
@@ -358,21 +369,24 @@ try {
       "focus is inside the preview",
     );
     await page.keyboard.press("Escape");
-    await dlg.waitFor({ state: "detached", timeout: 5000 });
+    await dlg.waitFor({ state: "detached", timeout: budget(5000) });
     check(
       await page.evaluate(() => document.activeElement?.hasAttribute("data-list-preview-open")),
       "closing the preview returns focus to its eye",
     );
     await eye.click();
-    await dlg.waitFor({ timeout: 5000 });
+    await dlg.waitFor({ timeout: budget(5000) });
     await page.goBack();
-    await dlg.waitFor({ state: "detached", timeout: 5000 });
+    await dlg.waitFor({ state: "detached", timeout: budget(5000) });
     check(new URL(page.url()).pathname.endsWith("/words"), "back closes the preview, not the page");
     // A coverage band previews the union of its lists.
     const bandEye = page.locator("[data-coverage-bands] [data-list-preview-open]").first();
     if (await bandEye.count()) {
       await bandEye.click();
-      await dlg.locator("[data-preview-row]").first().waitFor({ timeout: 15000 });
+      await dlg
+        .locator("[data-preview-row]")
+        .first()
+        .waitFor({ timeout: budget(15000) });
       check(
         Number((await dlg.locator("[data-list-preview-size]").innerText()).replace(/\D/g, "")) >=
           entries.length,
@@ -380,13 +394,13 @@ try {
       );
       await shot(page, "list-preview-band");
       await dlg.locator("[data-words-settings-close]").click();
-      await dlg.waitFor({ state: "detached", timeout: 5000 });
+      await dlg.waitFor({ state: "detached", timeout: budget(5000) });
     }
   }
   await addFromTree(first, { checks: true });
 
   const rows = page.locator('[role="listitem"]');
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) >= 20, `the list opens with ${await rows.count()} words`);
   check((await page.locator("span.text-emerald-600").count()) > 0, "new words are shown in green");
   const statusOf = async (i) => (await rows.nth(i).locator("span.tabular-nums").innerText()).trim();
@@ -445,7 +459,10 @@ try {
       const list = document.querySelector('[role="list"]');
       const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
       const before = list.scrollTop;
-      list.scrollTop = before + 120;
+      // From the opening (the first word in the middle): far enough that it
+      // reaches the bar, and 20px further.
+      const first = list.querySelector('[role="listitem"]').getBoundingClientRect();
+      list.scrollTop = before + Math.max(120, first.top - bar.bottom + 20);
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const covered = [...list.querySelectorAll('[role="listitem"]')].some((row) => {
         const b = row.getBoundingClientRect();
@@ -553,7 +570,7 @@ try {
     const [hrefBefore, , stateBefore] = await where();
     check(stateBefore?.__lkBack === undefined, "Escape left the sheet's history entry");
     await loose.click({ button: "right" });
-    await page.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+    await page.locator("[data-slip-sheet]").waitFor({ timeout: budget(3000) });
     const [hrefOpen, , stateOpen] = await where();
     check(
       hrefOpen === hrefBefore && typeof stateOpen?.__lkBack === "string",
@@ -562,7 +579,7 @@ try {
     await page.evaluate(() => history.back());
     await page
       .locator("[data-slip-sheet]")
-      .waitFor({ state: "detached", timeout: 3000 })
+      .waitFor({ state: "detached", timeout: budget(3000) })
       .catch(() => {});
     await page.waitForTimeout(300);
     const [hrefAfter] = await where();
@@ -577,7 +594,7 @@ try {
     // Reopen, close by Escape: the sheet's entry is consumed, so the next
     // back leaves /words for the page before, not a dead entry.
     await loose.click({ button: "right" });
-    await page.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+    await page.locator("[data-slip-sheet]").waitFor({ timeout: budget(3000) });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
     const [hrefEsc, , stateEsc] = await where();
@@ -639,7 +656,7 @@ try {
   await toggleSettings(page);
   await page.getByRole("switch", { name: "Show all meanings" }).click();
   await page.reload({ waitUntil: "networkidle" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) > 0, "a refresh lands back in the list");
   check(!(await blurred(5)), "Show all meanings is remembered across a refresh");
   // The open Settings panel is UI state of this tab (docs/ui-state.md): it
@@ -674,7 +691,7 @@ try {
     await page.waitForTimeout(600);
     const before = await topRow();
     await page.reload({ waitUntil: "networkidle" });
-    await rows.first().waitFor({ timeout: 15000 });
+    await rows.first().waitFor({ timeout: budget(15000) });
     await page.waitForTimeout(300);
     const after = await topRow();
     check(
@@ -685,7 +702,7 @@ try {
     const bare = new URL(page.url());
     bare.searchParams.delete("list");
     await page.goto(bare.href, { waitUntil: "networkidle" });
-    await rows.first().waitFor({ timeout: 15000 });
+    await rows.first().waitFor({ timeout: budget(15000) });
     check(
       new URL(page.url()).searchParams.get("list") === listUrl.searchParams.get("list"),
       `no ?list=: this tab's list reopens (${new URL(page.url()).search})`,
@@ -701,7 +718,7 @@ try {
       }
     });
     await page.reload({ waitUntil: "networkidle" });
-    await rows.first().waitFor({ timeout: 15000 });
+    await rows.first().waitFor({ timeout: budget(15000) });
   }
   // The server voice is the default (browser voices can mislead): moving to
   // a word plays the server's recording (stubbed: no AI call, nothing audible).
@@ -714,7 +731,7 @@ try {
   await toggleSettings(page);
   await page.keyboard.press("s");
   await page
-    .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
+    .waitForFunction(() => window.__played.length > 0, null, { timeout: budget(5000) })
     .catch(() => {});
   check((await page.evaluate(() => window.__played.length)) > 0, "Server voice plays server audio");
   // Server voice off, and no browser voice for the language: still the
@@ -728,7 +745,7 @@ try {
   });
   await page.keyboard.press("s");
   await page
-    .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
+    .waitForFunction(() => window.__played.length > 0, null, { timeout: budget(5000) })
     .catch(() => {});
   const voiceless = await page.evaluate(() => [window.__spoken.length, window.__played.length]);
   check(
@@ -756,7 +773,13 @@ try {
   // The seal icons are served as files, not swallowed by the locale redirect.
   const icons = await page.evaluate(async () =>
     Promise.all(
-      ["/icon.svg", "/icon-192.png", "/apple-icon.png", "/favicon.ico"].map(async (u) => {
+      [
+        "/icon.svg",
+        "/icon-192.png",
+        "/icon-maskable-512.png",
+        "/apple-icon.png",
+        "/favicon.ico",
+      ].map(async (u) => {
         const r = await fetch(u, { redirect: "manual" });
         return `${r.status}:${(r.headers.get("content-type") ?? "").split(";")[0]}`;
       }),
@@ -841,7 +864,7 @@ try {
     const flag = () => page.evaluate(() => localStorage.getItem("lk:debug"));
     await page.locator("[data-profile-menu]").click();
     const name = page.locator("[data-debug-name]");
-    await name.waitFor({ timeout: 5000 });
+    await name.waitFor({ timeout: budget(5000) });
     for (let k = 0; k < 10; k++) await name.click();
     const on = await flag();
     for (let k = 0; k < 10; k++) await name.click();
@@ -866,7 +889,7 @@ try {
     // The profile menu marks the mode by name: "you@… · Learning Partner".
     await tab.locator("[data-profile-menu]").click();
     const name = tab.locator("[data-debug-name]");
-    await name.waitFor({ timeout: 5000 });
+    await name.waitFor({ timeout: budget(5000) });
     const marker = (await name.innerText()).trim();
     seen.menu = await debugText(tab);
     const flag = await tab.evaluate(() => [
@@ -888,7 +911,7 @@ try {
     await tab.waitForFunction(
       () => localStorage.getItem("lk:agent") === "0" && localStorage.getItem("lk:debug") === "0",
       null,
-      { timeout: 15000 },
+      { timeout: budget(15000) },
     );
     await tab.close();
   }
@@ -917,9 +940,12 @@ try {
       await p.goto(`${listUrl}${listUrl.includes("?") ? "&" : "?"}lang=${lang}`, {
         waitUntil: "networkidle",
       });
-      await p.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await p
+        .locator('[role="listitem"]')
+        .first()
+        .waitFor({ timeout: budget(15000) });
       await p.locator("[data-words-top] button[aria-expanded]").click();
-      await p.locator("[data-words-settings]").waitFor({ timeout: 5000 });
+      await p.locator("[data-words-settings]").waitFor({ timeout: budget(5000) });
       const htmlLang = await p.evaluate(() => document.documentElement.lang);
       const texts = await p.evaluate(() => {
         const out = [];
@@ -985,7 +1011,7 @@ try {
     );
     await deckLinks
       .first()
-      .waitFor({ timeout: 15000 })
+      .waitFor({ timeout: budget(15000) })
       .catch(() => {});
     const h1 = (await learn.locator("h1").first().innerText()).trim();
     check(
@@ -1096,7 +1122,7 @@ try {
   await page.reload({ waitUntil: "load" });
   await page.bringToFront();
   const notice = page.getByRole("button", { name: "New version · Refresh" });
-  await notice.waitFor({ timeout: 15000 }).catch(() => {});
+  await notice.waitFor({ timeout: budget(15000) }).catch(() => {});
   check(await notice.isVisible(), "a newer build pushed over the socket shows a Refresh button");
   // With the Learning Partner on, the page reloads itself once for that
   // build; when the reload still hears the old build is stale, it shows the
@@ -1110,7 +1136,7 @@ try {
     const onLoad = () => loads++;
     page.on("load", onLoad);
     await page.reload({ waitUntil: "load" });
-    await notice.waitFor({ timeout: 20000 }).catch(() => {});
+    await notice.waitFor({ timeout: budget(20000) }).catch(() => {});
     const shown = await notice.isVisible().catch(() => false);
     await page.waitForTimeout(3000); // a second auto-reload would land in here
     page.off("load", onLoad);
@@ -1125,7 +1151,7 @@ try {
   });
   await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
   await page.reload({ waitUntil: "load" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
 
   // Endless: grade 60 words in a row; more keep coming and all are saved.
   // 40 ms apart: still far faster than a person, slow enough for loading to keep up.
@@ -1179,7 +1205,7 @@ try {
   await page
     .locator('[data-sync="synced"]')
     .filter({ hasText: "synced" })
-    .waitFor({ timeout: 20000 });
+    .waitFor({ timeout: budget(20000) });
   await ctx.setOffline(true);
   for (let i = 0; i < 3; i++) {
     await page.keyboard.press("3");
@@ -1197,7 +1223,7 @@ try {
   await page.reload({ waitUntil: "load" }).catch(() => {});
   await rows
     .first()
-    .waitFor({ timeout: 15000 })
+    .waitFor({ timeout: budget(15000) })
     .catch(() => {});
   check((await rows.count()) > 0, "offline, the list reopens from the device");
   await ctx.setOffline(false);
@@ -1208,18 +1234,40 @@ try {
   // default) and "native" (NativeSlipRow, the experimental "New swipe" — each
   // slip a native horizontal scroller, turned on by its Settings switch).
   // Both must look and behave the same; only the gesture mechanism differs.
-  {
-    const { devices } = await import("playwright");
+  //
+  // Every phone check below (these two, the heavy feel, the one-grade-one-row
+  // matrix) runs at the same time as the others, and as the WebKit iPhone
+  // block, each in a browser context of its own with an account of its own and
+  // the same catalog list freshly added: the swipe and mirror switches follow
+  // the account (lib/prefs/bindings.ts), so one phone's settings, grades and
+  // telemetry never reach another's. One after another they took ~150 s.
+  const { devices } = await import("playwright");
+  // The desktop's device state (what its page kept in localStorage: the help
+  // strip already learned, and so on) seeds every phone, as one shared phone
+  // context once was; its cookies, the desktop's account, never do.
+  const deskState = await ctx.storageState();
+  /** A fresh iPhone context, signed up on its own and holding `first`. */
+  const newPhone = async (name) => {
     const phone = await newSilentContext(browser, {
       ...devices["iPhone 13"],
-      storageState: await ctx.storageState(),
+      storageState: { cookies: [], origins: deskState.origins },
     });
+    await phone.addInitScript(() => localStorage.setItem("lk:first-run", "account"));
+    // A phone of its own: not the desktop's remembered keyboard.
+    await phone.addInitScript(() => localStorage.removeItem("lk:input-modality"));
+    // A new account (nothing graded) gets the first-visit gesture tip over the
+    // bottom slips (BottomIsland); the desktop account had graded, so its
+    // phone never saw it. Dismissed, as by its ✕ (lk:pref:nav-tip).
+    await phone.addInitScript(() =>
+      localStorage.setItem(
+        "lk:pref:nav-tip",
+        JSON.stringify({ state: { dismissed: true }, version: 1 }),
+      ),
+    );
     await phone.addInitScript(silentAudio);
     // This phone's speech API never speaks, like Firefox on Android: words
     // must come from the server instead (stubbed here — no AI call in QA).
     await phone.addInitScript(() => (window.__speechDead = true));
-    // A phone of its own: not the desktop's remembered keyboard.
-    await phone.addInitScript(() => localStorage.removeItem("lk:input-modality"));
     const ttsAsked = [];
     const ttsTexts = [];
     await phone.route("**/api/words/tts?*", (r) => {
@@ -1228,15 +1276,74 @@ try {
       ttsTexts.push(q.get("text"));
       return r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") });
     });
-    /** Variant A's slip look, to hold variant B's against. */
-    let lookA = null;
-    for (const variant of ["js", "native"]) {
-      const tag = `phone/${variant}:`;
+    const headers = { origin: BASE };
+    const email = `qa+words-${name}-${Date.now()}@lianki.test`;
+    const up = await phone.request.post(`${BASE}/api/auth/sign-up/email`, {
+      data: { email, password: PW, name: "QA Words" },
+      headers,
+    });
+    if (!up.ok()) throw new Error(`phone ${name}: sign-up ${up.status()}`);
+    const made = await phone.request.post(`${BASE}/api/words/lists`, {
+      data: { name: first.name, lang: first.lang, source: first.id },
+      headers,
+    });
+    if (!made.ok()) throw new Error(`phone ${name}: add list ${made.status()}`);
+    const { list } = await made.json();
+    return { phone, listUrl: `${BASE}/words?list=${list.id}`, ttsAsked, ttsTexts };
+  };
+  /**
+   * Waits until the list and every slip are at rest: list scroll, slip
+   * transforms and scrollers unchanged for `quiet` ms and at least 12 frames
+   * (so a slow machine, with fewer frames, waits longer). Replaces the fixed
+   * "the slip home, the list's scroll done" sleeps; capped by a load budget.
+   */
+  const settle = (pg, quiet = 400) =>
+    pg
+      .evaluate(
+        ([quiet, cap]) =>
+          new Promise((done) => {
+            const sig = () => {
+              const list = document.querySelector('[role="list"]');
+              const rows = [...document.querySelectorAll('[role="listitem"]')];
+              return [
+                Math.round(list?.scrollTop ?? 0),
+                document.querySelector('[role="listitem"].slip-loose')?.dataset.i,
+                ...rows.map((r) => {
+                  const s = r.querySelector(".slip-scroller");
+                  const t = getComputedStyle(r).transform;
+                  return s ? `${Math.round(s.scrollLeft)}${t}${s.style.cssText}` : t;
+                }),
+              ].join();
+            };
+            const end = performance.now() + cap;
+            let last = sig();
+            let since = performance.now();
+            let frames = 0;
+            const tick = () => {
+              const s = sig();
+              const now = performance.now();
+              if (s !== last) [last, since, frames] = [s, now, 0];
+              else frames++;
+              if ((now - since >= quiet && frames >= 12) || now > end) done();
+              else requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          }),
+        [quiet, budget(6000)],
+      )
+      .catch(() => {});
+  /** Variant A's slip look, to hold variant B's against (null if A threw first). */
+  let lookAResolve;
+  const lookA = new Promise((r) => (lookAResolve = r));
+  const firstPass = async (variant) => {
+    const tag = `phone/${variant}:`;
+    const { phone, listUrl, ttsAsked, ttsTexts } = await newPhone(variant);
+    try {
       const m = await phone.newPage();
       m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
-      await m.goto(page.url(), { waitUntil: "networkidle" });
+      await m.goto(listUrl, { waitUntil: "networkidle" });
       const mrows = m.locator('[role="listitem"]');
-      await mrows.first().waitFor({ timeout: 15000 });
+      await mrows.first().waitFor({ timeout: budget(15000) });
       if (variant === "native") {
         // The experimental switch, under its own heading in Settings.
         await toggleSettings(m);
@@ -1251,7 +1358,10 @@ try {
         );
         await sw.click();
         await toggleSettings(m);
-        await m.locator('[data-swipe="native"]').first().waitFor({ timeout: 5000 });
+        await m
+          .locator('[data-swipe="native"]')
+          .first()
+          .waitFor({ timeout: budget(5000) });
         check(
           (await m.evaluate(() => localStorage.getItem("lk:swipe-ab"))) === "native" &&
             (await m.locator('[data-swipe="native"]').count()) === (await mrows.count()),
@@ -1259,7 +1369,7 @@ try {
         );
         // Back to the top, as a fresh page would open.
         await m.reload({ waitUntil: "networkidle" });
-        await mrows.first().waitFor({ timeout: 15000 });
+        await mrows.first().waitFor({ timeout: budget(15000) });
         check(
           (await m.locator('[data-swipe="native"]').count()) > 0,
           `${tag} still native after a reload`,
@@ -1286,7 +1396,7 @@ try {
         await m.keyboard.press("Shift");
         await m
           .locator("text=? all keys")
-          .waitFor({ timeout: 3000 })
+          .waitFor({ timeout: budget(3000) })
           .catch(() => {});
         const typed = [await gestures(), await keys()].join();
         // On a phone the bottom island hides the strip, which lets taps
@@ -1335,7 +1445,7 @@ try {
         else if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
         await m
           .locator("text=/tap = show/")
-          .waitFor({ timeout: 3000 })
+          .waitFor({ timeout: budget(3000) })
           .catch(() => {});
         const touched = [await gestures(), await keys()].join();
         check(
@@ -1344,14 +1454,15 @@ try {
         );
       }
       // The list runs under the glass toolbar; it opens with the first word
-      // just below it, not behind it.
-      const barBottom = await m
-        .locator("[data-words-top]")
-        .evaluate((el) => el.getBoundingClientRect().bottom);
-      const firstTop = (await mrows.nth(0).boundingBox()).y;
+      // in the middle of the screen (owner, 2026-11-07 17:50 JST).
+      const off = await m.evaluate(() => {
+        const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+        const list = document.querySelector('[role="list"]').getBoundingClientRect();
+        return Math.round(row.top + row.height / 2 - (list.top + list.height / 2));
+      });
       check(
-        firstTop >= barBottom - 2 && firstTop - barBottom < 50,
-        `${tag} the list opens with the first word just under the toolbar (${Math.round(firstTop - barBottom)}px)`,
+        Math.abs(off) <= 3,
+        `${tag} the list opens with the first word in the middle of the screen (${off}px)`,
       );
       // Parity: the face of a slip — the row itself (A) or the scroller's
       // face (B) — carries the same paper, node line and seam; the cords are
@@ -1384,14 +1495,16 @@ try {
         look.image.includes("bamboo") && look.cords && look.grains === 3,
         `${tag} slips have the bamboo paper, cords, and a grain per row (${look.grains})`,
       );
-      if (variant === "js") lookA = look;
+      if (variant === "js") lookAResolve(look);
       else {
+        const a = await lookA;
         check(
-          look.image === lookA.image &&
-            look.size === lookA.size &&
-            look.classes === lookA.classes &&
-            look.width === lookA.width &&
-            look.left === lookA.left,
+          !!a &&
+            look.image === a.image &&
+            look.size === a.size &&
+            look.classes === a.classes &&
+            look.width === a.width &&
+            look.left === a.left,
           `${tag} the face matches A's slip: background layers, classes, place (${look.classes} · ${look.width}px@${look.left})`,
         );
         check(look.centred === 88, `${tag} each slip starts centred (scrollLeft ${look.centred})`);
@@ -1431,7 +1544,7 @@ try {
       const playedBefore = await m.evaluate(() => window.__played.length);
       await m.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await m
-        .waitForFunction((n) => window.__played.length > n, playedBefore, { timeout: 6000 })
+        .waitForFunction((n) => window.__played.length > n, playedBefore, { timeout: budget(6000) })
         .catch(() => {});
       check(
         ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > playedBefore,
@@ -1471,6 +1584,11 @@ try {
           const x0 = scroller?.scrollLeft ?? 0;
           // No snap for the probe: it would land on a detent (every a px).
           if (scroller) scroller.style.scrollSnapType = "none";
+          // The slip stays slid, as under a finger: with none down, the scrollend
+          // of this write sends it home at once (settle, native-slip-gesture.ts),
+          // and that glide's first step lands inside the frames below.
+          const held = (e) => e.stopPropagation();
+          row.addEventListener("scrollend", held, true);
           if (scroller) scroller.scrollLeft = x0 - 30;
           else row.style.transform = "translateX(30px)";
           await frames();
@@ -1481,6 +1599,7 @@ try {
             scroller.style.scrollSnapType = "";
           } else row.style.transform = "";
           await frames();
+          row.removeEventListener("scrollend", held, true);
           return { paths, slid, faceMoved: Math.round(face - rb.left) };
         }, motion);
         await shot(m, `cords-${variant}-motion-${motion}`);
@@ -1502,7 +1621,7 @@ try {
       await m.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
       await m
         .locator("[data-slip-sheet]")
-        .waitFor({ timeout: 3000 })
+        .waitFor({ timeout: budget(3000) })
         .catch(() => {});
       check(
         (await m.locator("[data-slip-sheet]").count()) === 1,
@@ -1544,11 +1663,11 @@ try {
       await m.waitForTimeout(400);
       const hrefBefore = await m.evaluate(() => location.href);
       await m.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
-      await m.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+      await m.locator("[data-slip-sheet]").waitFor({ timeout: budget(3000) });
       await m.evaluate(() => history.back());
       await m
         .locator("[data-slip-sheet]")
-        .waitFor({ state: "detached", timeout: 3000 })
+        .waitFor({ state: "detached", timeout: budget(3000) })
         .catch(() => {});
       check(
         (await m.locator("[data-slip-sheet]").count()) === 0 &&
@@ -1579,7 +1698,7 @@ try {
           }
           await m.waitForTimeout(80);
           await touch("touchEnd");
-          await m.waitForTimeout(900); // snap, scrollend, glide home
+          await settle(m); // snap, scrollend, glide home
           return;
         }
         await m.mouse.move(x, y);
@@ -1587,7 +1706,7 @@ try {
         for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y + (dy * k) / 8);
         await m.waitForTimeout(80); // stop before lifting: distance, not a flick
         await m.mouse.up();
-        await m.waitForTimeout(400);
+        await settle(m);
       };
       const before = await mStatus(3);
       await drag(3, 40, 45);
@@ -1702,7 +1821,7 @@ try {
           }
           await m.waitForTimeout(120);
           await touch("touchEnd");
-          await m.waitForTimeout(1500);
+          await settle(m);
           const left = await m.evaluate(
             (i) =>
               Math.round(
@@ -1863,22 +1982,28 @@ try {
         `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
       );
       await m.close();
+    } finally {
+      if (variant === "js") lookAResolve(null); // a no-op once resolved
+      await phone.close();
     }
-    // The heavy feel (lib/words/swipe-feel.ts, docs/swipe-core.md), opt-in per
-    // device, here by `?feel=heavy` for one page load: on both swipes the
-    // dragged slip lifts, a sideways drag grades by the same tiers, the slip
-    // springs home, and its telemetry says which feel it was.
-    for (const variant of ["js", "native"]) {
-      const tag = `phone/${variant}+heavy:`;
+  };
+  // The heavy feel (lib/words/swipe-feel.ts, docs/swipe-core.md), opt-in per
+  // device, here by `?feel=heavy` for one page load: on both swipes the
+  // dragged slip lifts, a sideways drag grades by the same tiers, the slip
+  // springs home, and its telemetry says which feel it was.
+  const heavyPass = async (variant) => {
+    const tag = `phone/${variant}+heavy:`;
+    const { phone, listUrl } = await newPhone(`${variant}-heavy`);
+    try {
       const m = await phone.newPage();
       m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
-      const u = new URL(page.url());
+      const u = new URL(listUrl);
       u.searchParams.set("swipe", variant);
       u.searchParams.set("feel", "heavy");
       await m.goto(u.href, { waitUntil: "networkidle" });
       await m.evaluate(() => localStorage.removeItem("lk:swipe-unsent"));
       const mrows = m.locator('[role="listitem"]');
-      await mrows.nth(3).waitFor({ timeout: 15000 });
+      await mrows.nth(3).waitFor({ timeout: budget(15000) });
       const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
       const touch = (type, x, y) =>
         cdp.send("Input.dispatchTouchEvent", {
@@ -1916,7 +2041,7 @@ try {
         }
       if (cdp) await touch("touchEnd");
       else await m.mouse.up();
-      await m.waitForTimeout(1500);
+      await settle(m); // the spring home, the list's scroll
       const rest = await m.evaluate((native) => {
         const row = document.querySelectorAll('[role="listitem"]')[3];
         const sc = row.querySelector(".slip-scroller");
@@ -1943,417 +2068,584 @@ try {
         `${tag} it grades Good and its telemetry names the feel (${params})`,
       );
       await m.close();
+    } finally {
+      await phone.close();
     }
-    // One grade = one row (the owner, 2026-10-31: "it scrolls two rows"). In
-    // every mode — both swipes, both feels, animations on and off — grading
-    // the focused word moves the focus to the next row and scrolls the list
-    // by exactly one row; re-grading a word already graded moves neither
-    // (lib/words/advance.ts).
-    for (const variant of ["js", "native"])
-      for (const feel of ["light", "heavy"])
-        for (const motion of ["on", "off"]) {
-          const tag = `phone/${variant}+${feel}+motion-${motion}:`;
-          const m = await phone.newPage();
-          m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
-          // Off as the owner has it: Settings → Turn off animations
-          // (lk:pref:motion, <html data-motion="off">), not the system setting.
-          await m.addInitScript((off) => {
-            const v = { state: { animations: off ? "off" : "on" }, version: 1 };
-            localStorage.setItem("lk:pref:motion", JSON.stringify(v));
-          }, motion === "off");
-          const u = new URL(page.url());
-          u.searchParams.set("swipe", variant);
-          u.searchParams.set("feel", feel);
-          await m.goto(u.href, { waitUntil: "networkidle" });
-          await m.locator('[role="listitem"]').nth(8).waitFor({ timeout: 15000 });
-          const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
-          const at = () =>
-            m.evaluate(() => {
-              const list = document.querySelector('[role="list"]');
-              const f = document.querySelector('[role="listitem"].slip-loose');
-              return { top: Math.round(list.scrollTop), focus: f ? Number(f.dataset.i) : -1 };
+  };
+  // One grade = one row (the owner, 2026-10-31: "it scrolls two rows"). In
+  // every mode — both swipes, both feels, animations on and off — grading
+  // the focused word moves the focus to the next row and scrolls the list
+  // by exactly one row; re-grading a word already graded moves neither
+  // (lib/words/advance.ts).
+  const rowPass = async (variant, feel, motion) => {
+    const tag = `phone/${variant}+${feel}+motion-${motion}:`;
+    const { phone, listUrl } = await newPhone(`${variant}-${feel}-${motion}`);
+    try {
+      const m = await phone.newPage();
+      m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      // Off as the owner has it: Settings → Turn off animations
+      // (lk:pref:motion, <html data-motion="off">), not the system setting.
+      await m.addInitScript((off) => {
+        const v = { state: { animations: off ? "off" : "on" }, version: 1 };
+        localStorage.setItem("lk:pref:motion", JSON.stringify(v));
+      }, motion === "off");
+      const u = new URL(listUrl);
+      u.searchParams.set("swipe", variant);
+      u.searchParams.set("feel", feel);
+      await m.goto(u.href, { waitUntil: "networkidle" });
+      await m
+        .locator('[role="listitem"]')
+        .nth(8)
+        .waitFor({ timeout: budget(15000) });
+      const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
+      const at = () =>
+        m.evaluate(() => {
+          const list = document.querySelector('[role="list"]');
+          const f = document.querySelector('[role="listitem"].slip-loose');
+          return { top: Math.round(list.scrollTop), focus: f ? Number(f.dataset.i) : -1 };
+        });
+      // The first ungraded row fully below the toolbar, or the focused one.
+      const target = (focused) =>
+        m.evaluate((focused) => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+          const rows = [...document.querySelectorAll('[role="listitem"]')];
+          const r = focused
+            ? document.querySelector('[role="listitem"].slip-loose')
+            : rows.find(
+                (x) =>
+                  x.getBoundingClientRect().top > bar.bottom + 4 && !x.querySelector(".lk-stamp"),
+              );
+          const b = r.getBoundingClientRect();
+          return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
+        }, focused);
+      const swipe = async ({ x, y }) => {
+        const dx = 70;
+        if (cdp) {
+          const t = (type, x, y) =>
+            cdp.send("Input.dispatchTouchEvent", {
+              type,
+              touchPoints: type === "touchEnd" ? [] : [{ x, y }],
             });
-          // The first ungraded row fully below the toolbar, or the focused one.
-          const target = (focused) =>
-            m.evaluate((focused) => {
-              const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
-              const rows = [...document.querySelectorAll('[role="listitem"]')];
-              const r = focused
-                ? document.querySelector('[role="listitem"].slip-loose')
-                : rows.find(
-                    (x) =>
-                      x.getBoundingClientRect().top > bar.bottom + 4 &&
-                      !x.querySelector(".lk-stamp"),
-                  );
-              const b = r.getBoundingClientRect();
-              return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
-            }, focused);
-          const swipe = async ({ x, y }) => {
-            const dx = 70;
-            if (cdp) {
-              const t = (type, x, y) =>
-                cdp.send("Input.dispatchTouchEvent", {
-                  type,
-                  touchPoints: type === "touchEnd" ? [] : [{ x, y }],
-                });
-              await t("touchStart", x, y);
-              for (let k = 1; k <= 8; k++) {
-                await t("touchMove", x + (dx * k) / 8, y);
-                await m.waitForTimeout(16);
-              }
-              await m.waitForTimeout(80);
-              await t("touchEnd");
-            } else {
-              await m.mouse.move(x, y);
-              await m.mouse.down();
-              for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y);
-              await m.waitForTimeout(80);
-              await m.mouse.up();
-            }
-            await m.waitForTimeout(1500); // the slip home, the list's scroll done
-          };
-          // Headless Chromium can drop a page's very first smooth scroll (no
-          // scroll event at all, on the account's fuller lists): one grade
-          // first, unmeasured, so the checks below see the steady state.
-          await swipe(await target(false));
-          const dm = await m.evaluate(() => document.documentElement.dataset.motion ?? "on");
-          check(dm === motion, `${tag} animations are ${motion} on the page (data-motion ${dm})`);
-          const steps = [];
-          for (let n = 0; n < 3; n++) {
-            const t = await target(true);
-            const a = await at();
-            await swipe(t);
-            const b = await at();
-            steps.push({ i: t.i, focus: b.focus - t.i, top: b.top - a.top });
+          await t("touchStart", x, y);
+          for (let k = 1; k <= 8; k++) {
+            await t("touchMove", x + (dx * k) / 8, y);
+            await m.waitForTimeout(16);
           }
-          check(
-            steps.every((s) => s.focus === 1 && s.top === 66),
-            `${tag} each grade moves the focus and the list by exactly one row (${JSON.stringify(steps)})`,
-          );
-          // Re-grade the row just graded (now one row above the focus): nothing moves.
-          const back = await m.evaluate(() => {
-            const f = document.querySelector('[role="listitem"].slip-loose');
-            const r = f.previousElementSibling;
-            const b = r.getBoundingClientRect();
-            return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
-          });
-          const a = await at();
-          await swipe(back);
-          const b = await at();
-          check(
-            b.top === a.top && b.focus === back.i,
-            `${tag} re-grading a graded word moves nothing (top ${a.top} → ${b.top}, focus ${a.focus} → ${b.focus}, row ${back.i})`,
-          );
-          await m.close();
+          await m.waitForTimeout(80);
+          await t("touchEnd");
+        } else {
+          await m.mouse.move(x, y);
+          await m.mouse.down();
+          for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y);
+          await m.waitForTimeout(80);
+          await m.mouse.up();
         }
-    await phone.close();
-  }
+        await settle(m); // the slip home, the list's scroll done
+      };
+      // Headless Chromium can drop a page's very first smooth scroll (no
+      // scroll event at all, on the account's fuller lists): one grade
+      // first, unmeasured, so the checks below see the steady state.
+      await swipe(await target(false));
+      const dm = await m.evaluate(() => document.documentElement.dataset.motion ?? "on");
+      check(dm === motion, `${tag} animations are ${motion} on the page (data-motion ${dm})`);
+      const steps = [];
+      for (let n = 0; n < 3; n++) {
+        const t = await target(true);
+        const a = await at();
+        await swipe(t);
+        const b = await at();
+        steps.push({ i: t.i, focus: b.focus - t.i, top: b.top - a.top });
+      }
+      check(
+        steps.every((s) => s.focus === 1 && s.top === 66),
+        `${tag} each grade moves the focus and the list by exactly one row (${JSON.stringify(steps)})`,
+      );
+      // Re-grade the row just graded (now one row above the focus): nothing moves.
+      const back = await m.evaluate(() => {
+        const f = document.querySelector('[role="listitem"].slip-loose');
+        const r = f.previousElementSibling;
+        const b = r.getBoundingClientRect();
+        return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
+      });
+      const a = await at();
+      await swipe(back);
+      const b = await at();
+      check(
+        b.top === a.top && b.focus === back.i,
+        `${tag} re-grading a graded word moves nothing (top ${a.top} → ${b.top}, focus ${a.focus} → ${b.focus}, row ${back.i})`,
+      );
+      await m.close();
+    } finally {
+      await phone.close();
+    }
+  };
 
   // iPhone on WebKit, both swipe variants: the page itself never scrolls, and
-  // the list opens with its first word right under the glass toolbar — on
-  // load, on reload, and when the list is shown again (pageshow).
-  {
-    const { webkit, devices } = await import("playwright");
+  // the list opens with its first word in the middle of the screen — on
+  // load, on reload, and when the list is shown again (pageshow). In its own
+  // browser, on an account and list of its own like each phone above.
+  const webkitPass = async () => {
+    const acct = await newPhone("webkit");
+    const { cookies } = await acct.phone.storageState();
+    const { listUrl } = acct;
+    await acct.phone.close();
+    const { webkit } = await import("playwright");
     const wk = await launchSilent(webkit);
-    const listUrl = page.url();
-    for (const variant of ["js", "native"]) {
-      const tag = `webkit-iphone/${variant}:`;
-      const c = await newSilentContext(wk, {
-        ...devices["iPhone 13"],
-        storageState: await ctx.storageState(),
-      });
-      await c.addInitScript(silentAudio);
-      // Stubbed as everywhere else (no AI call from QA).
-      await c.route("**/api/words/tts?*", (r) =>
-        r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
-      );
-      await c.addInitScript((v) => {
-        localStorage.setItem("lk:first-run", "account");
-        localStorage.setItem("lk:swipe-ab", v);
-      }, variant);
-      const w = await c.newPage();
-      // WebKit reports a word-audio prefetch that a reload cuts off as a page
-      // error ("… due to access control checks."). The prefetch is aborted on
-      // purpose; it used to stop early only because a 503 silenced the language.
-      const cutPrefetch = (m) =>
-        m.includes("/api/words/tts?") && m.includes("due to access control checks");
-      w.on("pageerror", (e) => {
-        if (!cutPrefetch(e.message)) errs.push(`PAGEERROR (${tag}) ${e.message}`);
-      });
-      const opening = () =>
-        w.evaluate(() => {
-          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
-          const row = document.querySelector('[role="listitem"]').getBoundingClientRect().top;
-          return {
-            scrollY: Math.round(scrollY),
-            gap: Math.round(row - bar),
-            native: document.querySelectorAll(".slip-native").length > 0,
-          };
+    try {
+      for (const variant of ["js", "native"]) {
+        const tag = `webkit-iphone/${variant}:`;
+        const c = await newSilentContext(wk, {
+          ...devices["iPhone 13"],
+          storageState: { cookies, origins: deskState.origins },
         });
-      for (const when of ["load", "reload"]) {
-        if (when === "load") await w.goto(listUrl, { waitUntil: "networkidle" });
-        else await w.reload({ waitUntil: "networkidle" });
-        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-        await w.waitForTimeout(800);
-        const o = await opening();
-        check(
-          o.scrollY === 0 && o.gap >= 0 && o.gap < 4 && o.native === (variant === "native"),
-          `${tag} ${when}: the page doesn't scroll and the first word sits right under the toolbar (${JSON.stringify(o)})`,
+        await c.addInitScript(silentAudio);
+        // Stubbed as everywhere else (no AI call from QA).
+        await c.route("**/api/words/tts?*", (r) =>
+          r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
         );
-      }
-      // The paper scrolls with the list (always, since 2026-11-03): a layer
-      // inside the list scrolls with the rows and the body behind it is plain.
-      // The cords' layer scrolls with them too.
-      const paper = () =>
-        w.evaluate(async () => {
-          const list = document.querySelector('[role="list"]');
-          const layer = list.querySelector("[data-paper-layer]");
-          const body = getComputedStyle(document.body).backgroundImage;
-          if (!layer) return { layer: false, bodyPaper: body.includes("url(") };
-          const at = () => Math.round(layer.getBoundingClientRect().top);
-          const before = at();
-          const top0 = list.scrollTop;
-          list.scrollTop = top0 + 200;
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          const moved = before - at();
-          list.scrollTop = top0;
-          const cs = getComputedStyle(layer);
-          const cords = list.querySelector("[data-slip-cords]");
-          const cordsAt = () => Math.round(cords.getBoundingClientRect().top);
-          const c0 = cordsAt();
-          list.scrollTop = top0 + 200;
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          const cordsMoved = c0 - cordsAt();
-          list.scrollTop = top0;
-          return {
-            cordsMoved,
-            layer: layer === list.firstElementChild,
-            bodyPaper: body.includes("url("),
-            pointer: cs.pointerEvents,
-            textured: cs.backgroundImage.includes("url("),
-            covers: Math.abs(layer.offsetHeight - list.scrollHeight) <= 1,
-            moved,
-          };
+        await c.addInitScript((v) => {
+          localStorage.setItem("lk:first-run", "account");
+          localStorage.setItem("lk:swipe-ab", v);
+        }, variant);
+        const w = await c.newPage();
+        // WebKit refuses a fetch the old page starts while the next one is
+        // loading, and reports it as a page error ("<url> due to access control
+        // checks."), caught or not. The page stops asking for familiarity marks
+        // once it starts to leave (WordsClient, beforeunload), so that one is a
+        // real error; the word-audio prefetch is let through, and only while one
+        // of this section's own loads is under way: from the call until the next
+        // page commits (goto/reload resolve at "commit" below).
+        let leaving = false;
+        // Exactly "[Fetch API cannot load ][http:]//<this host>/api/words/tts?<query> due to …".
+        const clip = `//${new URL(listUrl).host}/api/words/tts?`;
+        const cut = " due to access control checks.";
+        const cutPrefetch = (m) => {
+          const u = m.replace(/^(?:Fetch API cannot load )?(?:https?:)?\/\/?/, "//");
+          return (
+            u.startsWith(clip) && u.endsWith(cut) && !/\s/.test(u.slice(clip.length, -cut.length))
+          );
+        };
+        w.on("pageerror", (e) => {
+          if (leaving && cutPrefetch(e.message)) return;
+          errs.push(`PAGEERROR (${tag}) ${e.message}`);
         });
-      const on = await paper();
-      check(
-        on.layer &&
-          !on.bodyPaper &&
-          on.pointer === "none" &&
-          on.textured &&
-          on.covers &&
-          on.moved === 200 &&
-          on.cordsMoved === 200,
-        `${tag} the paper and the cords scroll with the rows, the body is plain (${JSON.stringify(on)})`,
-      );
-      const order = await revealOrder(w, variant);
-      check(
-        order === "card → label:3",
-        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
-      );
-      // The owner's iPhone PWA (414×848, a 48px status bar). env(safe-area-*)
-      // can't be emulated, so the body's safe-area padding and the toolbar's
-      // offset stand in for it — that padding once made the page 48px taller
-      // than the window, and iOS left it scrolled by that much.
-      await w.setViewportSize({ width: 414, height: 848 });
-      await w.addInitScript(() =>
-        document.addEventListener("DOMContentLoaded", () => {
-          const st = document.createElement("style");
-          st.textContent = "body{padding-top:48px!important}[data-words-top]{top:104px!important}";
-          document.head.append(st);
-        }),
-      );
-      await w.reload({ waitUntil: "networkidle" });
-      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-      await w.waitForTimeout(800);
-      const layout = () =>
-        w.evaluate(() => {
-          const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
-          const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
-          return {
-            scrollY: Math.round(scrollY),
-            docH: document.documentElement.scrollHeight,
-            innerH: innerHeight,
-            barH: Math.round(bar.height),
-            gap: Math.round(row.top - bar.bottom),
-            sheet: !!document.querySelector("[data-words-settings]"),
-          };
-        });
-      const pageFits = (o) => o.scrollY === 0 && o.docH <= o.innerH;
-      let o = await layout();
-      check(
-        pageFits(o) && o.gap >= 0 && o.gap < 4,
-        `${tag} 414×848 + safe area: the page is exactly the window, first word under the toolbar (${JSON.stringify(o)})`,
-      );
-      await toggleSettings(w);
-      await w.waitForTimeout(400);
-      o = await layout();
-      check(
-        (await w.getByRole("switch", { name: "Paper scrolls with the list" }).count()) === 0,
-        `${tag} no "Paper scrolls with the list" switch: the paper always scrolls`,
-      );
-      check(
-        o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
-        `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
-      );
-      await toggleSettings(w);
-      await w.waitForTimeout(400);
-      o = await layout();
-      check(
-        !o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
-        `${tag} settings closed: the first word is still right under the toolbar (${JSON.stringify(o)})`,
-      );
-      // Settings is a modal sheet (SettingsSheet, owner 2026-11-03): bounded by
-      // the visible viewport, its body scrolls inside itself to the last row,
-      // the page never scrolls, focus goes back to the button. Short phones,
-      // both ways round, both schemes. The toolbar has no Undo button.
-      check(
-        (await w.locator("[data-words-top]").getByRole("button", { name: "Undo" }).count()) === 0,
-        `${tag} the toolbar has no Undo button (Z / M, Esc and voice undo)`,
-      );
-      for (const [vw, vh] of [
-        [360, 640],
-        [640, 360],
-      ]) {
-        await w.setViewportSize({ width: vw, height: vh });
-        await w.waitForTimeout(300);
+        /**
+         * Load the page and wait for the list itself, not for the network: "load"
+         * and "networkidle" have hung 30 s in WebKit under load (#603, #616) on
+         * requests the checks don't need. data-ready says the list is measured
+         * and its opening scroll is placed; then the layout must hold still.
+         */
+        const load = async (go) => {
+          leaving = true;
+          try {
+            await go();
+          } finally {
+            leaving = false;
+          }
+          await w.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
+          await settled();
+        };
+        /** The first row, the list's scroll and the page hold still for 10 frames (fonts loaded). */
+        const settled = () =>
+          w.evaluate(
+            () =>
+              new Promise((done) => {
+                const end = performance.now() + 10000;
+                let last = "";
+                let same = 0;
+                const tick = () => {
+                  const row = document.querySelector('[role="listitem"]')?.getBoundingClientRect();
+                  const list = document.querySelector('[role="list"]');
+                  const k = `${row?.top}|${row?.height}|${list?.scrollTop}|${scrollY}|${innerHeight}`;
+                  same = k === last ? same + 1 : 0;
+                  last = k;
+                  if ((same >= 10 && document.fonts.status === "loaded") || performance.now() > end)
+                    done();
+                  else requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+              }),
+          );
+        const opening = () =>
+          w.evaluate(() => {
+            const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+            const list = document.querySelector('[role="list"]').getBoundingClientRect();
+            return {
+              scrollY: Math.round(scrollY),
+              off: Math.round(row.top + row.height / 2 - (list.top + list.height / 2)),
+              native: document.querySelectorAll(".slip-native").length > 0,
+            };
+          });
+        for (const when of ["load", "reload"]) {
+          if (when === "load") await load(() => w.goto(listUrl, { waitUntil: "commit" }));
+          else await load(() => w.reload({ waitUntil: "commit" }));
+          const o = await opening();
+          check(
+            o.scrollY === 0 && Math.abs(o.off) <= 3 && o.native === (variant === "native"),
+            `${tag} ${when}: the page doesn't scroll and the first word sits in the middle (${JSON.stringify(o)})`,
+          );
+        }
+        // The paper scrolls with the list (always, since 2026-11-03): a layer
+        // inside the list scrolls with the rows and the body behind it is plain.
+        // The cords' layer scrolls with them too.
+        const paper = () =>
+          w.evaluate(async () => {
+            const list = document.querySelector('[role="list"]');
+            const layer = list.querySelector("[data-paper-layer]");
+            const body = getComputedStyle(document.body).backgroundImage;
+            if (!layer) return { layer: false, bodyPaper: body.includes("url(") };
+            const at = () => Math.round(layer.getBoundingClientRect().top);
+            const before = at();
+            const top0 = list.scrollTop;
+            list.scrollTop = top0 + 200;
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const moved = before - at();
+            list.scrollTop = top0;
+            const cs = getComputedStyle(layer);
+            const cords = list.querySelector("[data-slip-cords]");
+            const cordsAt = () => Math.round(cords.getBoundingClientRect().top);
+            const c0 = cordsAt();
+            list.scrollTop = top0 + 200;
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const cordsMoved = c0 - cordsAt();
+            list.scrollTop = top0;
+            return {
+              cordsMoved,
+              layer: layer === list.firstElementChild,
+              bodyPaper: body.includes("url("),
+              pointer: cs.pointerEvents,
+              textured: cs.backgroundImage.includes("url("),
+              covers: Math.abs(layer.offsetHeight - list.scrollHeight) <= 1,
+              moved,
+            };
+          });
+        const on = await paper();
+        check(
+          on.layer &&
+            !on.bodyPaper &&
+            on.pointer === "none" &&
+            on.textured &&
+            on.covers &&
+            on.moved === 200 &&
+            on.cordsMoved === 200,
+          `${tag} the paper and the cords scroll with the rows, the body is plain (${JSON.stringify(on)})`,
+        );
+        const order = await revealOrder(w, variant);
+        check(
+          order === "card → label:3",
+          `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+        );
+        // The owner's iPhone PWA (414×848, a 48px status bar). env(safe-area-*)
+        // can't be emulated, so the body's safe-area padding and the toolbar's
+        // offset stand in for it — that padding once made the page 48px taller
+        // than the window, and iOS left it scrolled by that much.
+        await w.setViewportSize({ width: 414, height: 848 });
+        await w.addInitScript(() =>
+          document.addEventListener("DOMContentLoaded", () => {
+            const st = document.createElement("style");
+            st.textContent =
+              "body{padding-top:48px!important}[data-words-top]{top:104px!important}";
+            document.head.append(st);
+          }),
+        );
+        await load(() => w.reload({ waitUntil: "commit" }));
+        const layout = () =>
+          w.evaluate(() => {
+            const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+            const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+            const list = document.querySelector('[role="list"]').getBoundingClientRect();
+            return {
+              scrollY: Math.round(scrollY),
+              docH: document.documentElement.scrollHeight,
+              innerH: innerHeight,
+              barH: Math.round(bar.height),
+              off: Math.round(row.top + row.height / 2 - (list.top + list.height / 2)),
+              sheet: !!document.querySelector("[data-words-settings]"),
+            };
+          });
+        const pageFits = (o) => o.scrollY === 0 && o.docH <= o.innerH;
+        let o = await layout();
+        check(
+          pageFits(o) && Math.abs(o.off) <= 3,
+          `${tag} 414×848 + safe area: the page is exactly the window, first word in the middle (${JSON.stringify(o)})`,
+        );
         await toggleSettings(w);
         await w.waitForTimeout(400);
-        const fit = await w.evaluate(() => {
-          const panel = document.querySelector("[data-words-settings]");
-          const body = panel.querySelector("[data-words-settings-body]");
-          body.scrollTop = body.scrollHeight;
-          const p = panel.getBoundingClientRect();
-          const last = body.lastElementChild.getBoundingClientRect();
-          const b = body.getBoundingClientRect();
-          return {
-            modal:
-              panel.getAttribute("role") === "dialog" &&
-              panel.getAttribute("aria-modal") === "true",
-            panelTop: Math.round(p.top),
-            panelBottom: Math.round(p.bottom),
-            lastBottom: Math.round(last.bottom),
-            bodyBottom: Math.round(b.bottom),
-            innerH: innerHeight,
-            scrolls: body.scrollHeight > body.clientHeight ? body.scrollTop > 0 : true,
-            overscroll: getComputedStyle(body).overscrollBehaviorY,
-          };
-        });
-        // (WebKit's mobile emulation has no wheel: the body was scrolled to its
-        // end above; overscroll-behavior: contain keeps the page from following.)
-        await w.waitForTimeout(200);
-        const pageY = await w.evaluate(() => Math.round(scrollY));
+        o = await layout();
         check(
-          fit.modal &&
-            fit.panelTop >= 0 &&
-            fit.panelBottom <= fit.innerH &&
-            fit.lastBottom <= fit.bodyBottom + 1 &&
-            fit.scrolls &&
-            fit.overscroll === "contain" &&
-            pageY === 0,
-          `${tag} ${vw}×${vh}: the Settings sheet fits the screen and scrolls to its last row (${JSON.stringify({ ...fit, pageY })})`,
+          (await w.getByRole("switch", { name: "Paper scrolls with the list" }).count()) === 0,
+          `${tag} no "Paper scrolls with the list" switch: the paper always scrolls`,
         );
-        if (process.env.QA_SHOTS)
-          for (const colorScheme of ["light", "dark"]) {
-            await w.emulateMedia({ colorScheme });
-            await w.screenshot({
-              path: `${process.env.QA_SHOTS}/settings-sheet-${variant}-${vw}x${vh}-${colorScheme}.png`,
-            });
-          }
-        await w.keyboard.press("Escape");
-        await w.locator("[data-words-settings]").waitFor({ state: "detached", timeout: 5000 });
         check(
-          await w.evaluate(() => document.activeElement?.getAttribute("aria-label") === "Settings"),
-          `${tag} ${vw}×${vh}: Esc closes the sheet and focus returns to the Settings button`,
+          o.sheet && o.barH <= 72 && pageFits(o) && Math.abs(o.off) <= 3,
+          `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
         );
-      }
-      await w.emulateMedia({ colorScheme: null });
-      await w.setViewportSize({ width: 414, height: 848 });
-      // Fresh layout for the swipe checks below, as before the resizes.
-      await w.reload({ waitUntil: "networkidle" });
-      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-      await w.waitForTimeout(800);
-      if (variant === "native") {
-        // At rest the face covers the label strip; a completed swipe (the
-        // touch sequence iOS gives: touchstart, pointercancel as the scroller
-        // takes over, a scroll to the Good level, touchend resting there)
-        // grades and glides back to centre.
-        const s = await w.evaluate(async () => {
-          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
-          const row = [...document.querySelectorAll(".slip-native")].find(
-            (x) => x.getBoundingClientRect().top > bar + 60,
+        await toggleSettings(w);
+        await w.waitForTimeout(400);
+        o = await layout();
+        check(
+          !o.sheet && o.barH <= 72 && pageFits(o) && Math.abs(o.off) <= 3,
+          `${tag} settings closed: the first word is still in the middle (${JSON.stringify(o)})`,
+        );
+        // Settings is a modal sheet (SettingsSheet, owner 2026-11-03): bounded by
+        // the visible viewport, its body scrolls inside itself to the last row,
+        // the page never scrolls, focus goes back to the button. Short phones,
+        // both ways round, both schemes. The toolbar has no Undo button.
+        check(
+          (await w.locator("[data-words-top]").getByRole("button", { name: "Undo" }).count()) === 0,
+          `${tag} the toolbar has no Undo button (Z / M, Esc and voice undo)`,
+        );
+        // The sheet is measured where it rests, with no slide-in: on a busy CI
+        // runner (the phone passes run side by side since #704) WebKit can go
+        // without a rendering update for a while, and getComputedStyle then
+        // returns a stale mid-slide frame of a FINISHED animation (translate
+        // 0 50% with lk-sheet-in finished, 2026-11-08) — the sheet read
+        // 13–330 px low though it sits right on screen. The slide itself is
+        // not what this checks; the phone passes run with motion on and off.
+        await w.emulateMedia({ reducedMotion: "reduce" });
+        for (const [vw, vh] of [
+          [360, 640],
+          [640, 360],
+        ]) {
+          await w.setViewportSize({ width: vw, height: vh });
+          await w.waitForTimeout(300);
+          // The sheet sizes itself from visualViewport when it opens: open it
+          // only once that matches the new window size.
+          await w.waitForFunction(
+            ([h]) => {
+              const v = window.visualViewport;
+              return !v || (Math.round(v.height) === h && Math.round(v.offsetTop) === 0);
+            },
+            [vh],
+            { polling: 100, timeout: budget(5000) },
           );
-          const b = row.getBoundingClientRect();
-          const y = b.top + b.height / 2;
-          const face = (x) => !!document.elementFromPoint(x, y)?.closest(".slip-face");
-          const sc = row.querySelector(".slip-scroller");
-          const a = parseFloat(getComputedStyle(row).getPropertyValue("--a"));
-          const out = {
-            rest: sc.scrollLeft,
-            a,
-            faceAtRest: face(b.left + 20) && face(b.right - 20),
-          };
-          const fire = (type, x) => {
-            const e = new Event(type, { bubbles: true });
-            const t = [{ clientX: x, clientY: y }];
-            Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : t });
-            Object.defineProperty(e, "changedTouches", { value: t });
-            sc.dispatchEvent(e);
-          };
-          fire("touchstart", 100);
-          sc.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-          sc.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
-          sc.scrollTo({ left: a, behavior: "instant" });
-          await new Promise((r) => setTimeout(r, 50));
-          out.slid = sc.scrollLeft;
-          fire("touchend", 100 + a);
-          await new Promise((r) => setTimeout(r, 1500));
-          out.after = sc.scrollLeft;
-          out.faceAfter = face(b.left + 20);
-          out.graded = !!row.querySelector(".slip-face .lk-stamp");
-          return out;
-        });
-        check(
-          s.faceAtRest && s.rest === 2 * s.a,
-          `${tag} at rest the slip's face covers its label strip (${JSON.stringify(s)})`,
-        );
-        check(
-          s.slid === s.a && s.graded && Math.abs(s.after - s.rest) < 1 && s.faceAfter,
-          `${tag} a completed swipe grades and the slip returns to centre (${JSON.stringify(s)})`,
-        );
-      } else {
-        // ?swipe=native: that page load only, never stored — also in an iframe.
-        const sep = listUrl.includes("?") ? "&" : "?";
-        await w.goto(`${listUrl}${sep}swipe=native`, { waitUntil: "networkidle" });
-        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-        const forced = await w.evaluate(() => ({
-          native: document.querySelectorAll(".slip-native").length > 0,
-          stored: localStorage.getItem("lk:swipe-ab"),
-        }));
-        await w.setContent(
-          `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
-        );
-        const fr = w.frameLocator("iframe");
-        await fr.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-        const framed = await fr.locator(".slip-native").count();
-        await w.goto(listUrl, { waitUntil: "networkidle" });
-        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-        const plain = await w.locator(".slip-native").count();
-        check(
-          forced.native && forced.stored === "js" && framed > 0 && plain === 0,
-          `${tag} ?swipe=native applies to that load only (iframe too) and is never stored (${JSON.stringify({ ...forced, framed, plain })})`,
-        );
+          await toggleSettings(w);
+          // Settled: no animation running, the same rect on two polls in a row,
+          // after two frames have been drawn (a fresh rendering update).
+          await w.evaluate(
+            () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+          );
+          await w.waitForFunction(
+            () => {
+              const d = document.querySelector("[data-words-settings-dialog]");
+              const p = document.querySelector("[data-words-settings]");
+              if (!d || !p) return false;
+              const r = p.getBoundingClientRect();
+              const k = `${Math.round(r.top)}:${Math.round(r.bottom)}:${innerHeight}`;
+              const same = window.__lkSheetRect === k;
+              window.__lkSheetRect = k;
+              return (
+                same && d.getAnimations({ subtree: true }).every((a) => a.playState !== "running")
+              );
+            },
+            null,
+            { polling: 100, timeout: budget(5000) },
+          );
+          const fit = await w.evaluate(() => {
+            const panel = document.querySelector("[data-words-settings]");
+            const body = panel.querySelector("[data-words-settings-body]");
+            body.scrollTop = body.scrollHeight;
+            const p = panel.getBoundingClientRect();
+            const last = body.lastElementChild.getBoundingClientRect();
+            const b = body.getBoundingClientRect();
+            return {
+              modal:
+                panel.getAttribute("role") === "dialog" &&
+                panel.getAttribute("aria-modal") === "true",
+              panelTop: Math.round(p.top),
+              panelBottom: Math.round(p.bottom),
+              lastBottom: Math.round(last.bottom),
+              bodyBottom: Math.round(b.bottom),
+              innerH: innerHeight,
+              scrolls: body.scrollHeight > body.clientHeight ? body.scrollTop > 0 : true,
+              overscroll: getComputedStyle(body).overscrollBehaviorY,
+              // Diagnostics (/infra/words-ci-fix): where the sheet's frame came from.
+              diag: (() => {
+                const d = document.querySelector("[data-words-settings-dialog]");
+                const dr = d.getBoundingClientRect();
+                const v = window.visualViewport;
+                return {
+                  dlg: [Math.round(dr.top), Math.round(dr.height), d.style.top, d.style.height],
+                  vv: v && [v.height, v.offsetTop, v.pageTop, v.scale],
+                  scroll: [scrollY, document.scrollingElement?.scrollTop],
+                  tr: getComputedStyle(panel).translate,
+                  tf: getComputedStyle(panel).transform,
+                  anim: d
+                    .getAnimations({ subtree: true })
+                    .map((a) => `${a.animationName || "t"}:${a.playState}:${a.currentTime}`),
+                  vis: document.visibilityState,
+                };
+              })(),
+            };
+          });
+          // (WebKit's mobile emulation has no wheel: the body was scrolled to its
+          // end above; overscroll-behavior: contain keeps the page from following.)
+          await w.waitForTimeout(200);
+          const pageY = await w.evaluate(() => Math.round(scrollY));
+          check(
+            fit.modal &&
+              fit.panelTop >= 0 &&
+              fit.panelBottom <= fit.innerH &&
+              fit.lastBottom <= fit.bodyBottom + 1 &&
+              fit.scrolls &&
+              fit.overscroll === "contain" &&
+              pageY === 0,
+            `${tag} ${vw}×${vh}: the Settings sheet fits the screen and scrolls to its last row (${JSON.stringify({ ...fit, pageY })})`,
+          );
+          if (process.env.QA_SHOTS)
+            for (const colorScheme of ["light", "dark"]) {
+              await w.emulateMedia({ colorScheme });
+              await w.screenshot({
+                path: `${process.env.QA_SHOTS}/settings-sheet-${variant}-${vw}x${vh}-${colorScheme}.png`,
+              });
+            }
+          await w.keyboard.press("Escape");
+          await w
+            .locator("[data-words-settings]")
+            .waitFor({ state: "detached", timeout: budget(5000) });
+          check(
+            await w.evaluate(
+              () => document.activeElement?.getAttribute("aria-label") === "Settings",
+            ),
+            `${tag} ${vw}×${vh}: Esc closes the sheet and focus returns to the Settings button`,
+          );
+        }
+        await w.emulateMedia({ colorScheme: null, reducedMotion: null });
+        await w.setViewportSize({ width: 414, height: 848 });
+        // Fresh layout for the swipe checks below, as before the resizes.
+        await load(() => w.reload({ waitUntil: "commit" }));
+        if (variant === "native") {
+          // At rest the face covers the label strip; a completed swipe (the
+          // touch sequence iOS gives: touchstart, pointercancel as the scroller
+          // takes over, a scroll to the Good level, touchend resting there)
+          // grades and glides back to centre.
+          const s = await w.evaluate(async () => {
+            const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
+            const row = [...document.querySelectorAll(".slip-native")].find(
+              (x) => x.getBoundingClientRect().top > bar + 60,
+            );
+            const b = row.getBoundingClientRect();
+            const y = b.top + b.height / 2;
+            const face = (x) => !!document.elementFromPoint(x, y)?.closest(".slip-face");
+            const sc = row.querySelector(".slip-scroller");
+            const a = parseFloat(getComputedStyle(row).getPropertyValue("--a"));
+            const out = {
+              rest: sc.scrollLeft,
+              a,
+              faceAtRest: face(b.left + 20) && face(b.right - 20),
+            };
+            const fire = (type, x) => {
+              const e = new Event(type, { bubbles: true });
+              const t = [{ clientX: x, clientY: y }];
+              Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : t });
+              Object.defineProperty(e, "changedTouches", { value: t });
+              sc.dispatchEvent(e);
+            };
+            fire("touchstart", 100);
+            sc.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+            sc.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
+            sc.scrollTo({ left: a, behavior: "instant" });
+            await new Promise((r) => setTimeout(r, 50));
+            out.slid = sc.scrollLeft;
+            fire("touchend", 100 + a);
+            await new Promise((r) => setTimeout(r, 1500));
+            out.after = sc.scrollLeft;
+            out.faceAfter = face(b.left + 20);
+            out.graded = !!row.querySelector(".slip-face .lk-stamp");
+            return out;
+          });
+          check(
+            s.faceAtRest && s.rest === 2 * s.a,
+            `${tag} at rest the slip's face covers its label strip (${JSON.stringify(s)})`,
+          );
+          check(
+            s.slid === s.a && s.graded && Math.abs(s.after - s.rest) < 1 && s.faceAfter,
+            `${tag} a completed swipe grades and the slip returns to centre (${JSON.stringify(s)})`,
+          );
+        } else {
+          // ?swipe=native: that page load only, never stored — also in an iframe.
+          const sep = listUrl.includes("?") ? "&" : "?";
+          await load(() => w.goto(`${listUrl}${sep}swipe=native`, { waitUntil: "commit" }));
+          const forced = await w.evaluate(() => ({
+            native: document.querySelectorAll(".slip-native").length > 0,
+            stored: localStorage.getItem("lk:swipe-ab"),
+          }));
+          // The framed load in a page of its own, closed after. Navigating away
+          // from a setContent document that frames /words never committed in
+          // WebKit on a busy runner (merge queue 2026-11-09, #709 and #727: the
+          // goto below hung 40–49 s at "commit", the same step both times, with
+          // the server idle); every other load here leaves a plain /words page.
+          const host = await c.newPage();
+          host.on("pageerror", (e) => {
+            if (!cutPrefetch(e.message)) errs.push(`PAGEERROR (${tag} iframe) ${e.message}`);
+          });
+          // The framing page is served on the site's own origin, under /api/ so the
+          // service worker lets it through to the route (a blank page's
+          // frame is no secure context in WebKit: no crypto.randomUUID). Its own
+          // "load" would wait for the whole framed page, so it waits for the
+          // framed list.
+          const frameUrl = `${new URL(listUrl).origin}/api/__qa-frame`;
+          await host.route(frameUrl, (r) =>
+            r.fulfill({
+              contentType: "text/html",
+              body: `<!doctype html><iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
+            }),
+          );
+          await host.goto(frameUrl, { waitUntil: "commit" });
+          const fr = host.frameLocator("iframe");
+          await fr.locator('[role="list"][data-ready]').waitFor({ timeout: budget(30000) });
+          const framed = await fr.locator(".slip-native").count();
+          await host.close();
+          await load(() => w.goto(listUrl, { waitUntil: "commit" }));
+          const plain = await w.locator(".slip-native").count();
+          check(
+            forced.native && forced.stored === "js" && framed > 0 && plain === 0,
+            `${tag} ?swipe=native applies to that load only (iframe too) and is never stored (${JSON.stringify({ ...forced, framed, plain })})`,
+          );
+        }
+        await w.close();
+        await c.close();
       }
-      await w.close();
-      await c.close();
+    } finally {
+      await wk.close();
     }
-    await wk.close();
-  }
+  };
+
+  // Every phone pass and the WebKit block at once, a few at a time, beside the
+  // rest of this desktop flow: each is a context (and account) of its own, so
+  // they only share the machine. Awaited before the page-error check below.
+  phonesDone = (async () => {
+    const passes = [
+      // The longest first.
+      ["webkit-iphone", webkitPass],
+      ["phone/js", () => firstPass("js")],
+      ["phone/native", () => firstPass("native")],
+      ["phone/js+heavy", () => heavyPass("js")],
+      ["phone/native+heavy", () => heavyPass("native")],
+    ];
+    for (const variant of ["js", "native"])
+      for (const feel of ["light", "heavy"])
+        for (const motion of ["on", "off"])
+          passes.push([
+            `phone/${variant}+${feel}+motion-${motion}`,
+            () => rowPass(variant, feel, motion),
+          ]);
+    // One idle core per pass, at most 8: more only queue for the same CPU.
+    const width = Math.max(2, Math.min(8, Math.floor(availableParallelism() / 2)));
+    let next = 0;
+    const lane = async () => {
+      for (let i; (i = next++) < passes.length; ) {
+        const [name, run] = passes[i];
+        await run().catch((e) => check(false, `${name}: threw: ${e.message}`));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(width, passes.length) }, lane));
+  })();
 
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
   await addFromTree({ id: "ja-hiragana", lang: "ja" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   const firstTerms = await rows.locator("span.font-medium.overflow-hidden").allInnerTexts();
   const fronts = firstTerms.map((t) => t.split("\n")[0].trim());
   check(fronts[0] === "あ", `alphabet starts with あ: ${fronts.slice(0, 3)}`);
@@ -2366,7 +2658,7 @@ try {
   await page.getByRole("button", { name: /Download for offline/ }).click();
   const saved = await page
     .getByText("Saved on this device ✓")
-    .waitFor({ timeout: 20000 })
+    .waitFor({ timeout: budget(20000) })
     .then(() => true)
     .catch(() => false);
   check(saved, "download for offline completes");
@@ -2374,10 +2666,10 @@ try {
   // Study all: with two lists, one queue mixes both.
   const second = catalog.find((c) => c.lang === first.lang && c.id !== first.id && !c.kind);
   await addFromTree(second);
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   await page.getByRole("button", { name: "← lists" }).first().click();
   await page.getByRole("button", { name: /Study all lists together/ }).click();
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check(page.url().includes("list=all"), "study all has its own URL");
   const sent = page.waitForResponse(
     (r) => r.url().includes("/review") && r.request().method() === "POST",
@@ -2389,7 +2681,7 @@ try {
   await toPicker();
   // Each row ends in its progress ring: a percentage, labelled for screen readers.
   const ring = page.locator("[data-progress]").first();
-  await ring.waitFor({ timeout: 10000 }).catch(() => {});
+  await ring.waitFor({ timeout: budget(10000) }).catch(() => {});
   const ringInfo = (await ring.count())
     ? await ring.evaluate((el) => ({
         pct: Number(el.getAttribute("data-progress")),
@@ -2405,40 +2697,96 @@ try {
       ringInfo.label.includes("words"),
     `each list shows its progress ring (${JSON.stringify(ringInfo)})`,
   );
-  const handles = page.getByRole("button", { name: "Drag to reorder" });
-  const before = (
-    await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
-  )
-    .filter((l) => l.lang === first.lang)
-    .map((l) => l.id);
-  const h2 = await handles.nth(1).boundingBox();
-  const h1 = await handles.nth(0).boundingBox();
+  // The drags below wait for what a person waits for, not for fixed times: the
+  // drop preview before letting go, the saved order before checking it. Under
+  // load (the phone passes run beside this, docs/shipping.md) React draws the
+  // preview frames late; a release before it lands drops where the last drawn
+  // frame said (merge queue 2026-11-09, #714: the nest was never sent).
+  const listIds = async () =>
+    (await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists))
+      .filter((l) => l.lang === first.lang)
+      .map((l) => ({ id: l.id, parentId: l.parentId ?? null }));
+  /** Polls the saved lists until `ok` holds or the budget runs out; returns the last read. */
+  const savedUntil = async (ok) => {
+    const end = Date.now() + budget(10000);
+    let got = await listIds();
+    while (!ok(got) && Date.now() < end) {
+      await page.waitForTimeout(250);
+      got = await listIds();
+    }
+    return got;
+  };
+  /** The rows are drawn in this order and none of them is moving. */
+  const rowsAtRest = (ids) =>
+    page.waitForFunction(
+      (ids) => {
+        const rows = [...document.querySelectorAll("[data-list-row]")];
+        const order = rows
+          .map((r) => r.getAttribute("data-list-row"))
+          .filter((x) => ids.includes(x));
+        return (
+          order.join() === ids.join() &&
+          rows.every((r) => {
+            const t = getComputedStyle(r).transform;
+            return (!t || t === "none") && r.getAnimations().length === 0;
+          })
+        );
+      },
+      ids,
+      { polling: "raf", timeout: budget(10000) },
+    );
+  const handleOf = (id) =>
+    page.locator(`[data-list-row="${id}"]`).getByRole("button", { name: "Drag to reorder" });
+  const before = (await listIds()).map((l) => l.id);
+  await rowsAtRest(before);
+  const h2 = await handleOf(before[1]).boundingBox();
+  const h1 = await handleOf(before[0]).boundingBox();
   await page.mouse.move(h2.x + h2.width / 2, h2.y + h2.height / 2);
   await page.mouse.down();
   await page.mouse.move(h1.x + h1.width / 2, h1.y - 10, { steps: 8 });
-  await page.mouse.up();
-  let after = before;
-  for (let i = 0; i < 10 && after.join() === before.join(); i++, await page.waitForTimeout(300))
-    after = (
-      await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
+  // The preview: the row it passes moves down to make room.
+  await page
+    .waitForFunction(
+      (id) => {
+        const t = getComputedStyle(document.querySelector(`[data-list-row="${id}"]`)).transform;
+        return !!t && t !== "none";
+      },
+      before[0],
+      { polling: "raf", timeout: budget(5000) },
     )
-      .filter((l) => l.lang === first.lang)
-      .map((l) => l.id);
+    .catch(() => {});
+  await page.mouse.up();
+  const after = (await savedUntil((ls) => ls[0]?.id === before[1] && ls[1]?.id === before[0])).map(
+    (l) => l.id,
+  );
   check(after[0] === before[1] && after[1] === before[0], "dragging a handle reorders the lists");
 
   // Drag the second row right: it nests under the first (Anki-style subdeck).
-  await page.waitForTimeout(500);
-  const n2 = await handles.nth(1).boundingBox();
+  await rowsAtRest(after.slice(0, 2));
+  const n2 = await handleOf(after[1]).boundingBox();
   await page.mouse.move(n2.x + n2.width / 2, n2.y + n2.height / 2);
   await page.mouse.down();
   await page.mouse.move(n2.x + n2.width / 2 + 40, n2.y + n2.height / 2, { steps: 8 });
+  // The preview: the dragged row is drawn one level in.
+  const indented = await page
+    .waitForFunction(
+      (id) =>
+        parseFloat(
+          getComputedStyle(document.querySelector(`[data-list-row="${id}"]`)).marginInlineStart,
+        ) > 0,
+      after[1],
+      { polling: "raf", timeout: budget(5000) },
+    )
+    .then(() => true)
+    .catch(() => false);
   await page.mouse.up();
-  let nested = null;
-  for (let i = 0; i < 10 && !nested?.parentId; i++, await page.waitForTimeout(300))
-    nested = (
-      await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
-    ).find((l) => l.id === after[1]);
-  check(nested?.parentId === after[0], "dragging right nests a list under the one above");
+  const nested = (
+    await savedUntil((ls) => ls.find((l) => l.id === after[1])?.parentId === after[0])
+  ).find((l) => l.id === after[1]);
+  check(
+    nested?.parentId === after[0],
+    `dragging right nests a list under the one above${indented ? "" : " (no indent shown while dragging)"}`,
+  );
 
   // A group: study it (its lists) and study all, with groups present.
   const group = await page.evaluate(
@@ -2465,10 +2813,10 @@ try {
     [group, after],
   );
   await page.goto(`${BASE}/words?list=${group}`, { waitUntil: "networkidle" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) > 0, "studying a group lists its words");
   await page.goto(`${BASE}/words?list=all`, { waitUntil: "networkidle" });
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) > 0, "study all works with groups present");
 
   // ── A row's ⋯ menu: rename (keyboard only), delete with Undo ──
@@ -2486,7 +2834,7 @@ try {
   });
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
   const groupMenu = page.getByRole("button", { name: /More actions for .QA group/ });
-  await groupMenu.waitFor({ timeout: 15000 });
+  await groupMenu.waitFor({ timeout: budget(15000) });
   const menuBox = await groupMenu.boundingBox();
   check(
     menuBox && menuBox.width >= 44 && menuBox.height >= 44,
@@ -2508,7 +2856,7 @@ try {
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter"); // Rename, the focused first item
   const field = page.getByRole("textbox", { name: /New name for .QA group/ });
-  await field.waitFor({ timeout: 5000 });
+  await field.waitFor({ timeout: budget(5000) });
   await field.fill("QA folder");
   await page.keyboard.press("Enter");
   const renamed = await waitFor((ls) => ls.find((l) => l.id === group)?.name === "QA folder");
@@ -2518,14 +2866,14 @@ try {
   );
   await page.reload({ waitUntil: "networkidle" });
   const folderMenu = page.getByRole("button", { name: /More actions for .QA folder/ });
-  await folderMenu.waitFor({ timeout: 15000 });
+  await folderMenu.waitFor({ timeout: budget(15000) });
   check(true, "the new name survives a reload");
 
   // Delete, then Undo: nothing is deleted.
   await folderMenu.click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   const toast = page.locator("[data-undo-delete]");
-  await toast.waitFor({ timeout: 5000 });
+  await toast.waitFor({ timeout: budget(5000) });
   check(
     (await toast.innerText()).includes("QA folder") && (await folderMenu.count()) === 0,
     "delete hides the row at once and shows an Undo notice",
@@ -2536,7 +2884,7 @@ try {
     "the Undo button takes the focus",
   );
   await undoButton.click();
-  await folderMenu.waitFor({ timeout: 5000 });
+  await folderMenu.waitFor({ timeout: budget(5000) });
   await page.waitForTimeout(9000); // past the undo window
   check(
     (await serverLists()).some((l) => l.id === group),
@@ -2546,7 +2894,7 @@ try {
   // Delete for real: it goes out when the notice runs out; the lists stay.
   await folderMenu.click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
-  await toast.waitFor({ timeout: 5000 });
+  await toast.waitFor({ timeout: budget(5000) });
   check(
     (await serverLists()).some((l) => l.id === group),
     "the delete waits for the Undo window",
@@ -2589,7 +2937,7 @@ try {
   );
   await page.dispatchEvent('[data-testid="apkg-drop"]', "drop", { dataTransfer: drop });
   const deckCard = page.locator('[data-testid="apkg-deck"]');
-  await deckCard.waitFor({ timeout: 15000 });
+  await deckCard.waitFor({ timeout: budget(15000) });
   check(
     (await deckCard.locator("h2").innerText()) === "QA Spanish",
     "a dropped .apkg shows its deck",
@@ -2626,7 +2974,7 @@ try {
   }
   await page.getByRole("button", { name: "Import", exact: true }).click();
   const done = page.locator('[data-testid="apkg-done"]');
-  await done.waitFor({ timeout: 15000 });
+  await done.waitFor({ timeout: budget(15000) });
   check((await done.innerText()).includes("3 added"), `import: ${await done.innerText()}`);
   const imported = (
     await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
@@ -2635,7 +2983,7 @@ try {
 
   await done.getByRole("link").click();
   await page.waitForURL(/[?&]list=/);
-  await rows.first().waitFor({ timeout: 15000 });
+  await rows.first().waitFor({ timeout: budget(15000) });
   const firstTerm = await rows.nth(0).locator("span").first().innerText();
   check(
     (await page.locator('[role="list"]').innerText()).includes("hola"),
@@ -2668,13 +3016,13 @@ try {
     mimeType: "application/octet-stream",
     buffer: Buffer.from(apkg2),
   });
-  await deckCard.waitFor({ timeout: 15000 });
+  await deckCard.waitFor({ timeout: budget(15000) });
   check(
     (await deckCard.locator("select").last().inputValue()) === imported.id,
     "re-importing the same deck targets its list",
   );
   await page.getByRole("button", { name: "Import", exact: true }).click();
-  await done.waitFor({ timeout: 15000 });
+  await done.waitFor({ timeout: budget(15000) });
   const again = await done.innerText();
   check(again.includes("1 added") && again.includes("1 updated"), `re-import syncs: ${again}`);
   const after2 = (
@@ -2693,10 +3041,12 @@ try {
     "a changed meaning is updated",
   );
 
+  await phonesDone;
   check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);
 } catch (e) {
   check(false, `threw: ${e.message}`);
 } finally {
+  await phonesDone.catch(() => {});
   await browser.close();
 }
 process.exit(ok ? 0 : 1);

@@ -2,6 +2,7 @@ import DIE from "phpdie";
 import { auth, hasSessionCookie } from "@/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { BOX_PATH_HEADER, boxReturnPath } from "@/lib/box-oauth/return-path";
 
 export async function authEmail() {
   const user = await authUser();
@@ -10,8 +11,21 @@ export async function authEmail() {
 
 export async function authUser() {
   const user = await authUserOrNull();
-  if (!user) redirect("/sign-in");
-  return user;
+  if (!user) await signInRedirect();
+  return user!;
+}
+
+/**
+ * To /sign-in. On a box, with the page to come back to (the middleware's
+ * BOX_PATH_HEADER): a tab whose token cookie went stale (15 min) refreshes it
+ * there and returns at once (BoxSignIn), instead of stopping at "sign in".
+ */
+export async function signInRedirect(): Promise<never> {
+  if (process.env.LIANKI_BOX_CLIENT_ID) {
+    const back = boxReturnPath((await headers()).get(BOX_PATH_HEADER));
+    if (back) redirect(`/sign-in?${new URLSearchParams({ next: back })}`);
+  }
+  redirect("/sign-in");
 }
 
 /** For API routes: returns null instead of redirecting when unauthenticated. */

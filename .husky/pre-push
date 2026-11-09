@@ -1,10 +1,13 @@
 # Gate before code leaves the machine, cheapest first so a failure surfaces in
-# seconds: whole-repo lint, typecheck, the unit suite with its coverage gate
-# (bunfig.toml) — all moved here from pre-commit on 2026-11-04 — then qa:all,
-# the full integration gate: builds the OpenNext Worker, boots `wrangler dev` on
-# local D1, and runs the API + UI + sync + userscript suites against the real
-# deployed backend path. See scripts/qa/qa-all.mjs. CI runs lint, typecheck and
-# the unit suite on every PR; qa:all runs nightly (docs/shipping.md).
+# seconds: whole-repo lint and typecheck, then ONLY the tests the pushed change
+# can reach (scripts/gate/affected.ts, docs/shipping.md "Only what changed"):
+# the unit test files that import a changed file, transitively, and the qa:all
+# suites whose routes or entry files it reaches. Unchanged areas are not
+# re-tested here. A change to the toolchain, the test setup, the selector itself
+# or a shared core (lib/d1, auth) falls back to the full unit suite with its
+# coverage gate and the full qa:all; LIANKI_GATE_FULL=1 forces that. CI runs
+# everything: the unit suite with coverage on every PR, qa:all in the merge
+# queue and nightly.
 #
 # Never `git push --no-verify` (AGENTS.md).
 #
@@ -14,10 +17,14 @@
 # has an all-zero <local_sha>.
 saw_ref=0
 only_deletes=1
+shas=""
 while read -r _local_ref local_sha _remote_ref _remote_sha; do
   saw_ref=1
   case "$local_sha" in
-  *[!0]*) only_deletes=0 ;; # any non-zero char ⇒ a real ref update, not a delete
+  *[!0]*)
+    only_deletes=0 # any non-zero char ⇒ a real ref update, not a delete
+    shas="$shas $local_sha"
+    ;;
   esac
 done
 if [ "$saw_ref" = "1" ] && [ "$only_deletes" = "1" ]; then
@@ -31,26 +38,35 @@ fi
 set -e
 bun run lint
 bun run typecheck
-bun run test:unit -- --coverage
 
-# Skip qa:all — only qa:all, the checks above have run — on native Windows (Git
-# Bash / MSYS), where it cannot pass: the OpenNext Cloudflare packaging breaks
-# there. With bun's isolated linker its traced copy turns directory symlinks
-# into file symlinks ("Access is denied" in esbuild); with a hoisted install the
-# Worker boots but every route fails with ChunkLoadError on Turbopack server
-# chunks. Verified 2026-10-14; neither failure involves the code being pushed.
-# The nightly CI run of the identical `qa:all` on Linux is the gate there. WSL
-# is not affected (uname = Linux). Set LIANKI_QA_ON_WINDOWS=1 to run it anyway
-# (e.g. after an OpenNext upgrade).
+# The selector diffs the pushed commits against their merge base with
+# origin/main, and prints what it picked and why before running it.
+export LIANKI_PUSH_SHAS="$shas"
+
+# Nothing here waits for the machine-wide gate except qa:all's time-sensitive
+# suites, which wait for load-based admission inside qa:all (scripts/qa/suites.mjs
+# tags them). Lint, typecheck, the unit tests, the OpenNext build and the plain
+# suites start at once. One attempt, never a retry: docs/shipping.md, "Admission
+# by load".
+bun scripts/gate/affected.ts unit
+
+# Skip qa, and only qa, on native Windows (Git Bash / MSYS), where qa:all
+# cannot pass: the OpenNext Cloudflare packaging breaks there. With bun's
+# isolated linker its traced copy turns directory symlinks into file symlinks
+# ("Access is denied" in esbuild); with a hoisted install the Worker boots but
+# every route fails with ChunkLoadError on Turbopack server chunks. Verified
+# 2026-10-14; neither failure involves the code being pushed. CI's qa:all on
+# Linux (merge queue, nightly) is the gate there. WSL is not affected
+# (uname = Linux). Set LIANKI_QA_ON_WINDOWS=1 to run it anyway (e.g. after an
+# OpenNext upgrade).
 case "$(uname -s 2>/dev/null)" in
 MINGW* | MSYS* | CYGWIN*)
   if [ "${LIANKI_QA_ON_WINDOWS:-}" != "1" ]; then
-    echo "pre-push: native Windows — qa:all cannot run here (OpenNext packaging); the nightly CI run is the gate."
+    echo "pre-push: native Windows — qa:all cannot run here (OpenNext packaging); CI's qa:all (merge queue, nightly) is the gate."
     echo "pre-push: set LIANKI_QA_ON_WINDOWS=1 to force it."
     exit 0
   fi
   ;;
 esac
 
-# qa:all mutes the Mac while it runs (scripts/qa/with-muted-mac.sh).
-bun run qa:all
+bun scripts/gate/affected.ts qa

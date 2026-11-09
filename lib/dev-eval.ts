@@ -30,6 +30,7 @@ import {
   cleanScene,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
+import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "../packages/debug-chat/src/voices";
 import { cleanProofs } from "./speaker-proof";
 import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
 
@@ -66,6 +67,7 @@ export {
   type EditedEvent,
   MAX_EDITS,
   applyEdit,
+  applyEditTo,
   dictatedDraft,
   draftSource,
   type VoiceTiming,
@@ -201,6 +203,13 @@ export type ControllerMessage =
       agentId?: string;
       /** `say --quiet`: shown, never read aloud. */
       quiet?: true;
+      /** `say --lane`: which lane says it (packages/debug-chat/src/voices.ts). */
+      lane?: LaneId;
+      /**
+       * `say --voice`: the voice to read it in (absent = the lane's): a table id
+       * or a typed one (voices.ts parseLineVoice: device:, melo:, aura:, eleven:).
+       */
+      voice?: string;
     }
   | { type: "busy"; to?: string; label?: string }
   /**
@@ -257,7 +266,13 @@ export type PageMessage =
       attachments?: AttachmentRef[];
       /** A voice line's page and screen text (cleanScene): what its polish may draw on. */
       scene?: SttScene;
+      /** A voice line asks to amend this line, the page's last (voice-merge.ts); the hub decides. */
+      continues?: string;
     }
+  /** The page's speech went quiet after a merged line: the passage is over. */
+  | { type: "passage-end" }
+  /** The owner's undo on a merged line: split it back into its lines. */
+  | { type: "unmerge"; id: string }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
@@ -397,6 +412,13 @@ export function parseControllerMessage(
     const agentId = agentIdOf(m.agentId);
     // A boolean only, and only `true` is kept. An old `loud` is dropped: it means nothing now.
     const quiet = m.quiet === true;
+    // Only the table's ids are kept: an unknown lane or voice is refused, not guessed.
+    if (m.lane !== undefined && !isLaneId(m.lane))
+      return { ok: false, error: `unknown lane: ${String(m.lane)} (${LANE_IDS.join(", ")})` };
+    const parsed = m.voice === undefined ? undefined : parseLineVoice(m.voice);
+    if (parsed && "error" in parsed) return { ok: false, error: parsed.error };
+    const lane = isLaneId(m.lane) ? m.lane : undefined;
+    const voice = parsed ? (m.voice as string) : undefined;
     return {
       ok: true,
       value: {
@@ -407,6 +429,8 @@ export function parseControllerMessage(
         ...(taskPath && taskPath !== ROOT_NODE ? { taskPath } : {}),
         ...(agentId ? { agentId } : {}),
         ...(quiet ? { quiet: true as const } : {}),
+        ...(lane ? { lane } : {}),
+        ...(voice ? { voice } : {}),
       },
     };
   }
@@ -508,10 +532,16 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       return null;
     return { type: "answer", askId, choices: m.choices as Record<string, unknown> };
   }
+  if (m.type === "passage-end") return { type: "passage-end" };
+  if (m.type === "unmerge") {
+    const id = str(m.id, 64);
+    return id ? { type: "unmerge", id } : null;
+  }
   if (m.type === "chat") {
     const id = str(m.id, 64);
     const text = chatText(m.text);
     if (!id || !text) return null;
+    const continues = m.source === "stt" ? str(m.continues, 64) : undefined;
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
@@ -534,6 +564,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(context ? { context } : {}),
       ...(attachments ? { attachments } : {}),
       ...(scene ? { scene } : {}),
+      ...(continues ? { continues } : {}),
     };
   }
   if (m.type === "page-error") return parsePageError(m);

@@ -1,4 +1,4 @@
-// "Choose docs from Google Drive" on /read (docs/connections.md, "Picking
+// "Choose docs from Google Drive" on /reader (docs/connections.md, "Picking
 // docs"): silent, iPhone and desktop, light and dark screenshots. Google's
 // Picker is Google's UI, so it is mocked here: `window.gapi` and
 // `google.picker` are stubbed before the page loads (the stub "picks" two
@@ -7,18 +7,17 @@
 //
 //   QA_BASE=http://localhost:3417 bun scripts/qa/qa-drive-pick.mjs [outDir]
 //
-// Against qa:all's wrangler dev (--keep) with the read.reader-v2 and
-// connections.google flags on in its local D1:
+// Against qa:all's wrangler dev (--keep) with the connections.google flag on
+// in its local D1:
 //   bunx wrangler d1 execute lianki --local --command "INSERT OR REPLACE INTO
 //   feature_flags (key, enabled, updated_at, updated_by) VALUES
-//   ('read.reader-v2', 1, datetime('now'), 'qa'), ('connections.google', 1,
-//   datetime('now'), 'qa')"
-// (delete the rows after; the other read suites expect them off).
+//   ('connections.google', 1, datetime('now'), 'qa')"
+// (delete the row after; the other read suites expect it off).
 //
 // Checks: the button and the three-step how-to show next to "Import Google
 // Doc"; a tap opens the Picker with multi-select on and no preselected doc;
 // both picked docs import through Drive; the result line says 2; not
-// connected (409) goes to Google's consent with return /read?pick=drive; back
+// connected (409) goes to Google's consent with return /reader?pick=drive; back
 // with ?pick=drive&google=connected the Picker opens with no tap and the URL
 // is clean; ?pick=drive&google=denied opens nothing.
 import { mkdirSync } from "node:fs";
@@ -120,9 +119,9 @@ for (const [name, device] of [
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
 
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   const btn = page.locator('[data-testid="drive-pick-read"] [data-testid="drive-pick"]');
-  check(await btn.isVisible(), `${name}: the Drive button shows on /read`);
+  check(await btn.isVisible(), `${name}: the Drive button shows on /reader`);
   check(
     await page.locator('[data-testid="read-import-gdoc"]').isVisible(),
     `${name}: paste-link import still there`,
@@ -164,20 +163,20 @@ for (const [name, device] of [
   check(/2/.test(msg), `${name}: result line counts 2 (${msg})`);
   await page.screenshot({ path: join(OUT, `read-${name}-imported.png`) });
 
-  // Not connected: to Google's consent, coming back to /read?pick=drive.
+  // Not connected: to Google's consent, coming back to /reader?pick=drive.
   state.connected = false;
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await btn.click();
   await page.waitForURL(/accounts\.google\.com/, { timeout: 8000 }).catch(() => {});
   check(
-    state.wentToGoogle && state.startBody?.return === "/read?pick=drive",
-    `${name}: not connected → consent, return /read?pick=drive`,
+    state.wentToGoogle && state.startBody?.return === "/reader?pick=drive",
+    `${name}: not connected → consent, return /reader?pick=drive`,
   );
 
   // Back from consent: the Picker opens by itself, the URL is clean.
   state.connected = true;
   state.imports = [];
-  await page.goto("/read?pick=drive&google=connected", { waitUntil: "networkidle" });
+  await page.goto("/reader?pick=drive&google=connected", { waitUntil: "networkidle" });
   await page
     .waitForFunction(() => window.__picker?.built === 1, null, { timeout: 8000 })
     .catch(() => {});
@@ -188,7 +187,7 @@ for (const [name, device] of [
   check(new URL(page.url()).search === "", `${name}: pick words left the URL`);
 
   // A denial opens nothing.
-  await page.goto("/read?pick=drive&google=denied", { waitUntil: "networkidle" });
+  await page.goto("/reader?pick=drive&google=denied", { waitUntil: "networkidle" });
   await page.waitForTimeout(500);
   check((await page.evaluate(() => window.__picker.built)) === 0, `${name}: denied → no Picker`);
 

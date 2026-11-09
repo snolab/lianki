@@ -42,24 +42,38 @@ export function normText(text: string): string {
     .join("\n\n");
 }
 
-/** The cache key: SHA-256 of the target and the normalised text (hex). */
-export async function translationKey(to: string, text: string): Promise<string> {
-  const bytes = new TextEncoder().encode(`${to}\n${text}`);
+/**
+ * The cache key: SHA-256 of the target and the normalised text (hex). With
+ * translator's notes it is another key, so a translation made without them is
+ * never served as one that had the chance to carry them; a change to the rule
+ * below means a new version here.
+ */
+export async function translationKey(to: string, text: string, notes = false): Promise<string> {
+  const bytes = new TextEncoder().encode(`${to}\n${notes ? "notes:v1\n" : ""}${text}`);
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return Array.from(hash, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** The prompt: translate into `to`, keep the paragraphs, answer with the translation alone. */
-export function translateMessages(text: string, to: string, from: string | null) {
+export function translateMessages(text: string, to: string, from: string | null, notes = false) {
   const src = from ? `from ${langName(from)} ` : "";
+  const answer = notes
+    ? "Answer with the translation only: no quotes, no explanation. The one exception: where a " +
+      "cultural difference really changes what the reader would understand (an idiom, an " +
+      "honorific or level of politeness, a taboo, wordplay that does not carry over), put a " +
+      `short translator's note in ${langName(to)} right after the phrase, inside ⟦ and ⟧, ` +
+      "at most 20 words. Most texts need none: never note ordinary vocabulary, grammar or " +
+      "facts, and never invent a difference. "
+    : "Answer with the translation only: no notes, no quotes, no explanation. ";
   return [
     {
       role: "system" as const,
       content:
         `You translate text ${src}into ${langName(to)} (language code "${to}") for a ` +
         "language learner reading it in a book. Translate faithfully and naturally, keeping " +
-        "names, the paragraph breaks and the tone. Answer with the translation only: no notes, " +
-        "no quotes, no explanation. If the text is already in that language, repeat it.",
+        "names, the paragraph breaks and the tone. " +
+        answer +
+        "If the text is already in that language, repeat it.",
     },
     { role: "user" as const, content: text },
   ];
@@ -70,4 +84,22 @@ export function cleanTranslation(out: string): string {
   const t = out.trim();
   const m = /^(["“「『])([\s\S]*)(["”」』])$/.exec(t);
   return (m && !/["“”「」『』]/.test(m[2]) ? m[2] : t).trim();
+}
+
+/**
+ * A translation cut at its translator's notes, for the card to show them as
+ * notes. A ⟦ left open (the answer was cut off) or a stray ⟧ never reaches the reader.
+ */
+export function translationParts(out: string): { text: string; note: boolean }[] {
+  const parts: { text: string; note: boolean }[] = [];
+  let at = 0;
+  for (const m of out.matchAll(/⟦([^⟦⟧]*)⟧/g)) {
+    if (m.index > at) parts.push({ text: out.slice(at, m.index), note: false });
+    if (m[1].trim()) parts.push({ text: m[1].trim(), note: true });
+    at = m.index + m[0].length;
+  }
+  if (at < out.length) parts.push({ text: out.slice(at), note: false });
+  return parts
+    .map((p) => (p.note ? p : { ...p, text: p.text.replace(/⟦[^]*$/, "").replace(/⟧/g, "") }))
+    .filter((p) => p.text);
 }

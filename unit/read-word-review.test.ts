@@ -17,6 +17,7 @@ import {
   type BookCtx,
 } from "@/lib/read/book-word-list";
 import {
+  MIN_BATCH,
   cardOrder,
   deckIndex,
   matchCard,
@@ -45,6 +46,12 @@ const sentence = (words: string[]): Sentence => ({
     ...(i ? [{ text: " ", t: -1, w: null }] : []),
     { text: w, t: i, w: w.toLowerCase() },
   ]),
+});
+
+describe("制卡", () => {
+  test("is a batch action: for several words, never one", () => {
+    expect(MIN_BATCH).toBe(2);
+  });
 });
 
 describe("orderWords", () => {
@@ -230,6 +237,55 @@ describe("the book's list (D1)", () => {
     expect(await addGradedEntries(d1, EMAIL, book, [{ w: "loup" }])).toBe(0);
     const [list] = await bookLists();
     expect(list.size).toBe(1);
+  });
+
+  describe("a new word in the review: a preview, nothing spent until a swipe commits it", () => {
+    const glossing = (asked: string[], back: string) => async (ws: { w: string }[]) => {
+      asked.push(...ws.map((x) => x.w));
+      return ws.map((x) => ({ ...x, back }));
+    };
+    test("opening asks the preview's gloss for a new word, the model's never", async () => {
+      const paid: string[] = [];
+      const free: string[] = [];
+      const s = await scopeSession(
+        d1,
+        EMAIL,
+        book,
+        [{ w: "loup", ex: "Le loup." }],
+        glossing(paid, "paid"),
+        undefined,
+        glossing(free, "cached"),
+      );
+      expect(paid).toEqual([]);
+      expect(free).toEqual(["loup"]);
+      expect(s.items.map((x) => x.back)).toEqual(["cached"]);
+      // Shown, not stored: no card, no entry.
+      const { n } = (await d1
+        .prepare("SELECT COUNT(*) AS n FROM word_cards WHERE email = ? AND term = 'loup'")
+        .bind(EMAIL)
+        .first<{ n: number }>())!;
+      expect(n).toBe(0);
+    });
+    test("once graded: its meaning, on the card and its entry, a card graded or none", async () => {
+      const paid: string[] = [];
+      const s = await scopeSession(d1, EMAIL, book, [{ w: "loup" }]);
+      const listId = s.items[0].listId;
+      // Not synced yet: no model is asked.
+      expect(await addGradedEntries(d1, EMAIL, book, [{ w: "loup" }], glossing(paid, "wolf"))).toBe(
+        0,
+      );
+      expect(paid).toEqual([]);
+      await new WordsD1Repo(d1, EMAIL).review(listId, [{ term: "loup", rating: 3 }], "2026-11-06");
+      expect(await addGradedEntries(d1, EMAIL, book, [{ w: "loup" }], glossing(paid, "wolf"))).toBe(
+        1,
+      );
+      expect(paid).toEqual(["loup"]);
+      const row = await d1
+        .prepare("SELECT back FROM word_cards WHERE email = ? AND term = 'loup'")
+        .bind(EMAIL)
+        .first<{ back: string }>();
+      expect(row!.back).toBe("wolf");
+    });
   });
 });
 

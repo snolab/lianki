@@ -1,6 +1,7 @@
 // "到公版图书馆搜索": the server asks the libraries themselves — Gutendex
-// (Project Gutenberg's catalogue), each Wikisource site we read, and Aozora
-// Bunko's own index of works — and answers links. Each result then goes
+// (Project Gutenberg's catalogue), Standard Ebooks' catalogue search, each
+// Wikisource site we read (lib/books/libraries.ts), and Aozora Bunko's own
+// index of works — and answers links. Each result then goes
 // through the one resolve path (lib/books/resolve.ts) before it can be
 // imported: the search itself decides nothing about copyright.
 //
@@ -20,7 +21,12 @@ export interface SearchHit {
   site: string;
 }
 
-export const SEARCH_LIMITS = { perSource: 8, maxQuery: 80 };
+/**
+ * Hits per library, per Wikisource site (there are many, and their full-text
+ * search also finds documents), and in all: each hit is then checked by the
+ * page, so the answer stays short.
+ */
+export const SEARCH_LIMITS = { perSource: 8, perWikisource: 3, total: 40, maxQuery: 80 };
 
 /** A query we send on: trimmed, single-spaced, capped; "" when too short to mean anything. */
 export function cleanQuery(raw: unknown): string {
@@ -60,7 +66,7 @@ export async function searchGutenberg(q: string, get: Get): Promise<SearchHit[]>
 export async function searchWikisource(site: string, q: string, get: Get): Promise<SearchHit[]> {
   const j = JSON.parse(
     await get(
-      `https://${site}/w/api.php?action=query&format=json&formatversion=2&list=search&srnamespace=0&srlimit=${SEARCH_LIMITS.perSource}&srsearch=${encodeURIComponent(q)}`,
+      `https://${site}/w/api.php?action=query&format=json&formatversion=2&list=search&srnamespace=0&srlimit=${SEARCH_LIMITS.perWikisource}&srsearch=${encodeURIComponent(q)}`,
     ),
   ) as { query?: { search?: { title: string }[] } };
   // A sub-page (a dictionary entry, one chapter) is not a book.
@@ -76,6 +82,43 @@ export async function searchWikisource(site: string, q: string, get: Get): Promi
         site: "Wikisource",
       };
     });
+}
+
+/**
+ * Standard Ebooks' own catalogue search (its HTML results page): produced
+ * ebooks only, a placeholder (a book not made yet) is left out.
+ */
+export async function searchStandardEbooks(q: string, get: Get): Promise<SearchHit[]> {
+  const html = await get(`https://standardebooks.org/ebooks?query=${encodeURIComponent(q)}`);
+  const out: SearchHit[] = [];
+  for (const m of html.matchAll(
+    /<li\b[^>]*typeof="schema:Book"[^>]*about="(\/ebooks\/[^"]+)"[^>]*>([\s\S]*?)<\/li>/g,
+  )) {
+    if (/placeholder-cover/.test(m[2])) continue;
+    const link = parseBookLink(`https://standardebooks.org${m[1]}`);
+    if (!link) continue;
+    const name = (re: RegExp) =>
+      (re.exec(m[2])?.[1] ?? "")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&amp;/g, "&")
+        .replace(/&#39;|&apos;/g, "'")
+        .replace(/&quot;/g, '"')
+        .trim();
+    const title = name(/<p><a\b[^>]*><span property="schema:name">([\s\S]*?)<\/span>/);
+    if (!title) continue;
+    const authors = [
+      ...m[2].matchAll(/<p class="author"[\s\S]*?<span property="schema:name">([\s\S]*?)<\/span>/g),
+    ].map((a) => a[1].replace(/<[^>]+>/g, "").trim());
+    out.push({
+      url: linkPage(link),
+      title,
+      author: authors.join(", "),
+      lang: "en",
+      site: "Standard Ebooks",
+    });
+    if (out.length >= SEARCH_LIMITS.perSource) break;
+  }
+  return out;
 }
 
 /** One work in Aozora's index: card page, title, the people and whether Aozora marks it in copyright. */

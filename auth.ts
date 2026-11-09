@@ -9,6 +9,8 @@
  * requests that actually need auth.
  */
 import type { Auth } from "./auth-impl";
+import { BOX_IDENTITY_HEADER } from "./lib/box-oauth/identity";
+import { refreshPermissions } from "./lib/permission-store";
 
 export type { Auth };
 export { hasSessionCookie, passwordAuthEnabled } from "./lib/auth-env";
@@ -30,8 +32,32 @@ export const auth: Pick<Auth, "api"> = {
     get:
       (_target, endpoint) =>
       async (...args: unknown[]) => {
+        // A box token's request (lib/box-oauth/gate.ts): that account, or nobody.
+        // There is no cookie on it to fall back to.
+        if (endpoint === "getSession") {
+          const headers = (args[0] as { headers?: Headers } | undefined)?.headers;
+          // On a box's own server: the account its tab's token names, per
+          // lianki.com, or nobody. A box has no session of its own to fall back to.
+          if (process.env.LIANKI_BOX_CLIENT_ID) {
+            const { boxServerGetSession } = await import("./lib/box-oauth/server-auth");
+            return boxServerGetSession(headers);
+          }
+          if (headers?.has(BOX_IDENTITY_HEADER)) {
+            const { boxSessionFrom } = await import("./lib/box-oauth/app-session");
+            const box = await boxSessionFrom(headers);
+            if (box) await refreshPermissions();
+            return box;
+          }
+        }
         const api = (await getAuth()).api as Record<PropertyKey, (...a: unknown[]) => unknown>;
-        return api[endpoint](...args);
+        const out = await api[endpoint](...args);
+        // isAdmin()/isDev() are synchronous and answer from a snapshot of the
+        // grants (lib/permissions.ts):
+        // have it fresh before a signed-in user is handed back. A guest costs
+        // nothing; a failed read means nobody holds anything.
+        if (endpoint === "getSession" && (out as { user?: unknown } | null)?.user)
+          await refreshPermissions();
+        return out;
       },
   }),
 };

@@ -92,6 +92,21 @@ export interface BookCtx {
   lem?: Lemmas | null;
   /** Names of the book (counted as known): never made into a card unless he has one. */
   names?: ReadonlySet<string>;
+  /**
+   * A line of the stored book that holds this word, for the model's prompt when
+   * it generates a shared gloss (lib/read/gloss-server.ts). Absent: no example.
+   */
+  exampleOf?: (word: string) => string | null;
+  /**
+   * Private speech (a /vibe doc): a phrase of it is the speaker's own words, so a
+   * meaning generated for one stays on this card and out of the shared word_gloss.
+   */
+  privateText?: boolean;
+  /**
+   * A YouTube song (lib/yt-songs/card-clip.ts): the clip JSON of the line an
+   * example came from, stored on the word's entry. Absent: not a song.
+   */
+  clipOf?: (ex: string) => string | null;
 }
 
 /** One word of the review: his card's list and term, or the book list's new word. */
@@ -102,6 +117,8 @@ export interface ScopeItem {
   reading: string | null;
   back: string;
   ex: string | null;
+  /** The example's song clip JSON (a YouTube song), or null. */
+  clip: string | null;
   /** The stored ts-fsrs card JSON; null: no card yet (a new word). */
   card: string | null;
 }
@@ -121,6 +138,10 @@ export function isDueCard(card: string | null, now: Date): boolean {
 }
 
 const clip = (s: string | null | undefined, n: number) => (s ? s.slice(0, n) : null);
+
+/** The example's song clip (a YouTube song's line), worked out on the server only. */
+const clipOfEx = (book: BookCtx, ex: string | null | undefined) =>
+  ex && book.clipOf ? book.clipOf(ex.slice(0, 1000)) : null;
 
 /** Gives words without a meaning one where it can (lib/read/gloss-server.ts fillGlosses). */
 export type Gloss = (words: RangeWord[]) => Promise<RangeWord[]>;
@@ -189,6 +210,8 @@ export async function scopeSession(
   words: RangeWord[],
   gloss?: Gloss,
   now: Date = new Date(),
+  /** A word with no card yet: what it may be shown with, before a swipe commits it. */
+  previewGloss: Gloss | undefined = gloss,
 ): Promise<{ items: ScopeItem[]; lists: WordList[]; missing: string[] }> {
   const matched = await matchAll(db, email, book, words);
   const missing = matched.filter((m) => !m.hit).map((m) => m.x.w);
@@ -201,8 +224,10 @@ export async function scopeSession(
     matched.flatMap((m) => (m.hit ? [{ listId: m.hit.listId, term: m.hit.term }] : [])),
   );
   const rowOf = (hit: DeckCard | null) => (hit ? rows.get(`${hit.listId}\u0000${hit.term}`) : null);
-  // A meaning for each word that has none: a new word, or a card made without one.
-  await glossIn(matched, (m) => !m.x.back && !rowOf(m.hit)?.back, gloss);
+  // A meaning for each word that has none: a card made without one, and a new word
+  // (a preview: only what costs nothing, the rest when a swipe commits it).
+  await glossIn(matched, (m) => !!m.hit && !m.x.back && !rowOf(m.hit)?.back, gloss);
+  await glossIn(matched, (m) => !m.hit && !m.x.back, previewGloss);
   const items: ScopeItem[] = [];
   const seen = new Set<string>();
   /** His cards that have no meaning yet, and the one found for them now. */
@@ -224,6 +249,7 @@ export async function scopeSession(
       reading: r ? r.reading : clip(x.reading, 200),
       back,
       ex: clip(x.ex, 1000),
+      clip: clipOfEx(book, x.ex),
       card: r ? r.card : null,
     });
   }
@@ -238,7 +264,13 @@ export async function scopeSession(
         bookList,
         items
           .filter((it) => it.listId === bookList && it.card)
-          .map((it) => ({ term: it.term, reading: it.reading, back: it.back, ex: it.ex })),
+          .map((it) => ({
+            term: it.term,
+            reading: it.reading,
+            back: it.back,
+            ex: it.ex,
+            clip: it.clip,
+          })),
       ),
     );
   await runAll(db, backfillStatements(db, email, fill));
@@ -281,16 +313,23 @@ export function entryStatements(
   db: D1Like,
   email: string,
   listId: string,
-  entries: { term: string; reading: string | null; back: string; ex: string | null }[],
+  entries: {
+    term: string;
+    reading: string | null;
+    back: string;
+    ex: string | null;
+    /** A song line's clip JSON (lib/yt-songs/card-clip.ts), or none. */
+    clip?: string | null;
+  }[],
 ): D1StmtLike[] {
   const at = new Date().toISOString();
-  return entries.map((e) =>
+  return entries.flatMap((e) => [
     db
       .prepare(
         `INSERT OR IGNORE INTO word_list_entries
-           (email, list_id, key, position, term, back, reading, ex, updated_at)
+           (email, list_id, key, position, term, back, reading, ex, clip, updated_at)
          SELECT ?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM word_list_entries
-           WHERE email = ? AND list_id = ?), ?, ?, ?, ?, ?
+           WHERE email = ? AND list_id = ?), ?, ?, ?, ?, ?, ?
          WHERE EXISTS (SELECT 1 FROM word_cards WHERE email = ? AND list_id = ? AND term = ?)`,
       )
       .bind(
@@ -303,12 +342,24 @@ export function entryStatements(
         e.back,
         e.reading,
         e.ex,
+        e.clip ?? null,
         at,
         email,
         listId,
         e.term,
       ),
-  );
+    // An entry made before its song's clip was kept: the clip joins it, only
+    // where the example is this same line and no clip is there yet.
+    ...(e.clip && e.ex
+      ? [
+          db
+            .prepare(
+              "UPDATE word_list_entries SET clip = ? WHERE email = ? AND list_id = ? AND key = ? AND clip IS NULL AND ex = ?",
+            )
+            .bind(e.clip, email, listId, e.term, e.ex),
+        ]
+      : []),
+  ]);
 }
 
 async function runAll(db: D1Like, statements: D1StmtLike[]) {
@@ -387,6 +438,7 @@ export async function makeCards(
     reading: clip(x.reading, 200),
     back: clip(x.back, 1000) ?? "",
     ex: clip(x.ex, 1000),
+    clip: clipOfEx(book, x.ex),
   }));
   const statements = [
     // In the same transaction as a guard: a card made meanwhile under the
@@ -489,6 +541,8 @@ export async function addGradedEntries(
   email: string,
   book: BookCtx,
   words: RangeWord[],
+  /** The meaning of a card the grade just made, when it was shown without one. */
+  gloss?: Gloss,
 ): Promise<number> {
   const list = await findBookList(db, email, book.hash);
   if (!list) return 0;
@@ -497,12 +551,21 @@ export async function addGradedEntries(
   // entry without a card would be a new word to /words, carded twice if
   // another list gets it first. Not synced yet: 0, and the device asks again.
   const own = matched.filter((m) => m.hit?.listId === list.id);
+  await glossIn(own, (m) => !m.x.back, gloss);
   const entries = own.map(({ x, hit }) => ({
     term: hit!.term,
     reading: clip(x.reading, 200),
     back: clip(x.back, 1000) ?? "",
     ex: clip(x.ex, 1000),
+    clip: clipOfEx(book, x.ex),
   }));
-  await runAll(db, entryStatements(db, email, list.id, entries));
+  await runAll(db, [
+    ...entryStatements(db, email, list.id, entries),
+    ...backfillStatements(
+      db,
+      email,
+      entries.filter((e) => e.back).map((e) => ({ listId: list.id, term: e.term, back: e.back })),
+    ),
+  ]);
   return entries.length;
 }

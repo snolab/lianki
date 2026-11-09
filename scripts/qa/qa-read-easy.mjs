@@ -1,11 +1,12 @@
-// /read reader v2: what follows a paragraph's grade (owner, 2026-11-05 02:31 /
-// 02:32 JST; lib/read/word-review.ts afterGrade). Silent; iPhone (both swipe
-// variants) and desktop keys, a fake clock that runs.
+// /read reader v2: what follows a paragraph's grade (owner, 2026-11-08, card
+// d2cf3080; lib/read/review-scope.ts afterGrade): Again reviews this
+// paragraph's words, Hard the chapter's up to here, Good nothing, Easy grades
+// its words Easy. Silent; iPhone (both swipe variants) and desktop keys, a
+// fake clock that runs.
 //
 //   QA_BASE=http://localhost:<port> bun scripts/qa/qa-read-easy.mjs [outDir]
 //
-// Against `wrangler dev` on the local D1 (qa:all -- --keep) with the flag
-// read.reader-v2 on there. A throwaway account and the public-domain fixture
+// Against `wrangler dev` on the local D1 (qa:all -- --keep). A throwaway account and the public-domain fixture
 // EPUB only:
 //
 // - dragged to Easy, the hint names how many words go Easy with it;
@@ -13,8 +14,12 @@
 //   reaches the server (no grade, no word card made or graded);
 // - Easy again, past the hold: one /grade request carries the words; they
 //   are graded (the item's plan is empty afterwards);
-// - Hard: once the swipe settles, the item's word review opens; ✕ closes it;
+// - Again: its hint, then once the swipe settles the item's word review
+//   (?review=p…/r…); Hard: its hint, then the chapter-up-to-here review
+//   (?review=u<line>); ✕ closes each;
+// - Good: no hint, no review, no Easy words;
 // - a grade undone before the review opens: no review;
+// - a reload on ?review=u… opens the chapter's review again;
 // - reading aloud, a grade's review pauses it and closing resumes it from the
 //   same sentence (the audio claim, #550): never stopped.
 import { mkdirSync } from "node:fs";
@@ -53,11 +58,11 @@ async function setup(ctx, tag, swipe) {
   const page = await ctx.newPage();
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
-  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
+  await page.waitForURL(/\/reader\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2&swipe=${swipe}`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}?swipe=${swipe}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   await until(page, () => page.evaluate(() => !!document.querySelector(".lk-book [data-f]")));
@@ -233,29 +238,88 @@ async function touchRun(swipe, scheme) {
   const after = await plans.plan(id, body2);
   check(after.length === 0, `${tag}: none of the item's words is due or new now (${after.length})`);
 
-  // 4. Hard (one level left): the item's word review opens once it settles.
+  // 4. Good (one level right): no hint, no review, no words with it.
   await page.waitForTimeout(600);
   it = await anItem(page);
   if (it) {
-    const asked3 = plans.count();
-    await drag(page, cdp, it, -50);
-    await until(page, async () => plans.count() > asked3, 2000);
-    const left = await plans.plan(id, plans.last());
+    const n0 = grades.length;
+    let goodHint = -1;
+    await drag(page, cdp, it, 50, async () => {
+      await page.waitForTimeout(300);
+      goodHint =
+        (await page.getByTestId("read-scope-hint").count()) +
+        (await page.getByTestId("read-easy-hint").count());
+    });
+    check(goodHint === 0, `${tag}: Good: no hint while held (${goodHint})`);
+    await page.waitForTimeout(1200);
+    check(!(await page.getByTestId("read-word-review").count()), `${tag}: Good: no review opens`);
+    await page.clock.fastForward("00:20");
+    await page.waitForTimeout(800);
+    const g = grades.slice(n0);
+    check(
+      g.length === 1 && g[0].rating === 3 && !g[0].easyWords,
+      `${tag}: Good: the grade alone reaches the server (${g.map((x) => x.rating)})`,
+    );
+  }
+
+  // 5. Again (two levels left), then Hard (one level left): each names its
+  // review while held, and opens it once the swipe settles. A fresh account
+  // knows none of the book's words, so both have some.
+  const levels = [
+    { dx: -110, scope: "para", ref: /^[pr]\d/, what: "Again → this paragraph" },
+    { dx: -50, scope: "upto", ref: /^u\d+$/, what: "Hard → the chapter up to here" },
+  ];
+  for (const lv of levels) {
+    await page.waitForTimeout(600);
+    it = await anItem(page);
+    check(!!it, `${tag}: an item with many words on screen (${lv.scope})`);
+    if (!it) break;
+    let hint = null;
+    const asked = plans.count();
+    await drag(page, cdp, it, lv.dx, async () => {
+      await until(page, async () => (await page.getByTestId("read-scope-hint").count()) > 0, 3000);
+      hint = await page
+        .getByTestId("read-scope-hint")
+        .getAttribute("data-scope")
+        .catch(() => null);
+    });
+    check(hint === lv.scope, `${tag}: ${lv.what}: the hint names it (${hint})`);
+    // The item's own review needs a due or new word by the server's plan
+    // (an item graded Easy above has none); the chapter's always has some.
+    // null: the item's plan was cached, not asked again, so not known here.
+    let expect = true;
+    if (lv.scope === "para")
+      expect = (await until(page, async () => plans.count() > asked, 2000))
+        ? (await plans.plan(id, plans.last())).length > 0
+        : null;
     const opened = await until(
       page,
       async () => (await page.getByTestId("read-word-review").count()) > 0,
-      4000,
+      5000,
     );
     check(
-      opened === left.length > 0,
-      `${tag}: Hard opens the item's review when it has words (${opened}, ${left.length})`,
+      expect === null || opened === expect,
+      `${tag}: ${lv.what}: the review opens when it has words (${opened}, ${expect})`,
     );
-    if (opened) {
-      await page.screenshot({ path: join(OUT, `review-${tag}.png`) });
-      await page.getByTestId("read-review-close").click();
-      await page.waitForTimeout(400);
-      check(!(await page.getByTestId("read-word-review").count()), `${tag}: ✕ closes it`);
-    }
+    if (!opened) continue;
+    const ref = new URL(page.url()).searchParams.get("review");
+    check(lv.ref.test(ref ?? ""), `${tag}: ${lv.scope}: pinned in the URL (?review=${ref})`);
+    await page.screenshot({ path: join(OUT, `review-${lv.scope}-${tag}.png`) });
+    await page.getByTestId("read-review-close").click();
+    // The sheet slides down before it closes.
+    await until(page, async () => !(await page.getByTestId("read-word-review").count()), 3000);
+    check(
+      !(await page.getByTestId("read-word-review").count()),
+      `${tag}: ${lv.scope}: ✕ closes it`,
+    );
+    // Back in the text on the paragraph after the graded one (owner, 2026-11-08 20:33 JST).
+    const back = await page.evaluate(() =>
+      Number(document.activeElement?.closest("[data-index]")?.getAttribute("data-index") ?? -1),
+    );
+    check(
+      back > it.block,
+      `${tag}: ${lv.scope}: back on the next paragraph (${it.block} → ${back})`,
+    );
   }
   check(errs.length === 0, `${tag}: no page errors (${errs.slice(0, 2)})`);
   await ctx.close();
@@ -305,14 +369,14 @@ async function playRun() {
     await until(page, async () => (await spoken()) > 0, 5000),
     `${tag}: reading aloud (${await status()})`,
   );
-  // Good (J) while reading: the next item starts (its sentences are queued
-  // at once by the fake voice), then the item's review opens over the book.
+  // Hard (K) while reading: the next item starts (its sentences are queued
+  // at once by the fake voice), then the chapter's review opens over the book.
   await page.waitForTimeout(1000);
   const n0 = await spoken();
-  await page.keyboard.press("KeyJ");
+  await page.keyboard.press("KeyK");
   check(
     await until(page, async () => (await page.getByTestId("read-word-review").count()) > 0, 5000),
-    `${tag}: Good opens the item's review`,
+    `${tag}: Hard opens the chapter-up-to-here review`,
   );
   const playing = (await page.evaluate(() => window.__spoken)).slice(n0);
   check(
@@ -324,6 +388,13 @@ async function playRun() {
   check(
     await until(page, async () => (await spoken()) > n + 1, 6000),
     `${tag}: closed, the reading goes on (${n} → ${await spoken()})`,
+  );
+  // The sheet slides down first: wait for the reading itself, not just any sound.
+  await until(
+    page,
+    async () =>
+      (await page.evaluate(() => window.__spoken)).slice(n).some((x) => playing.includes(x)),
+    6000,
   );
   // On from the sentence it was on: a line of the item that was playing, not the book's start.
   const resumed = (await page.evaluate(() => window.__spoken))
@@ -349,22 +420,34 @@ async function deskRun() {
   });
   await page.mouse.wheel(0, 600);
   await page.waitForTimeout(800);
-  // Good (J), undone at once: the review never opens.
+  const reviewOpen = (ms) =>
+    until(page, async () => (await page.getByTestId("read-word-review").count()) > 0, ms);
+  // Good (J): the grade only, no review.
   await page.keyboard.press("KeyJ");
+  await page.waitForTimeout(1500);
+  check(!(await page.getByTestId("read-word-review").count()), `${tag}: Good (J): no review`);
+  // Hard (K), undone at once: the review never opens.
+  await page.keyboard.press("KeyK");
   await page.keyboard.press("KeyU");
   await page.waitForTimeout(1200);
   check(!(await page.getByTestId("read-word-review").count()), `${tag}: undone at once: no review`);
-  // Good (J): the review opens.
-  await page.keyboard.press("KeyJ");
+  // Hard (K): the chapter-up-to-here review, pinned in the URL; a reload opens it again.
+  await page.keyboard.press("KeyK");
+  check(await reviewOpen(4000), `${tag}: Hard (K) opens the chapter-up-to-here review`);
+  const ref = new URL(page.url()).searchParams.get("review");
+  check(/^u\d+$/.test(ref ?? ""), `${tag}: ?review=${ref}`);
+  const title = await page.getByTestId("read-word-review").getAttribute("aria-label");
+  await page.screenshot({ path: join(OUT, `review-upto-${tag}.png`) });
+  await page.reload({ waitUntil: "load" });
+  check(await reviewOpen(15000), `${tag}: a reload opens the chapter's review again`);
   check(
-    await until(page, async () => (await page.getByTestId("read-word-review").count()) > 0, 4000),
-    `${tag}: Good (J) opens the item's review`,
+    (await page.getByTestId("read-word-review").getAttribute("aria-label")) === title,
+    `${tag}: the same review (${title})`,
   );
-  await page.keyboard.press("Escape");
-  await page
-    .getByTestId("read-review-close")
-    .click()
-    .catch(() => {});
+  await page.getByTestId("read-review-close").click();
+  // The sheet slides down before it closes.
+  await until(page, async () => !(await page.getByTestId("read-word-review").count()), 3000);
+  check(!(await page.getByTestId("read-word-review").count()), `${tag}: ✕ closes it`);
   await page.waitForTimeout(400);
   // Easy (H): the toast; Undo (U) inside the hold sends nothing.
   await page.waitForTimeout(400);

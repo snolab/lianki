@@ -1,6 +1,6 @@
 import { getAuth } from "@/auth";
 import { DEV_BRIDGE_HEADER, devBridgeMatches } from "@/lib/dev-bridge";
-import { ownerEmails } from "@/lib/owner";
+import { refreshHolders } from "@/lib/permission-store";
 
 /** The owner's account, as better-auth stores it. */
 export type BridgeUser = {
@@ -24,7 +24,9 @@ export async function devBridgeUser(req: Request): Promise<BridgeUser | null | u
   const sent = req.headers.get(DEV_BRIDGE_HEADER);
   if (sent === null) return undefined;
   if (!devBridgeMatches(sent, process.env.DEV_BRIDGE_SECRET)) return null;
-  const email = ownerEmails()[0];
+  // The oldest active `dev` grant (lib/permissions.ts). No session here, so
+  // this also refreshes the snapshot for the route's own isDev check.
+  const email = (await refreshHolders("dev"))[0];
   if (!email) return null;
   const ctx = await (await getAuth()).$context;
   const found = await ctx.internalAdapter.findUserByEmail(email);

@@ -167,6 +167,9 @@ context line.
 
 ## Where the speech comes from
 
+Every mic and sound on the page is moving under one hub, Li's; phase 0 only
+observes ([li-sound-hub.md](li-sound-hub.md), flag `voice.li-hub`).
+
 Voice mode uses the page's one mic session, `__lkMic`
 ([dev-debug-widget.md](dev-debug-widget.md), packages/debug-chat
 `mic-session.ts`). This is the same VAD, echo guard and STT as the chat mic:
@@ -196,6 +199,149 @@ Voice mode uses the page's one mic session, `__lkMic`
   voice mode starting on a fresh page and the auto-resume both toggled, and
   the second toggle turned the mic straight off (found by the QA).
 
+## Cues
+
+The owner, 2026-11-05 23:40–23:41 JST: "语音识别完发出去消息的时候要有声音",
+and the start and end of speech heard too, on VAD events rather than the mic
+opening or closing. `packages/debug-chat/src/cues.ts`, tones from Web Audio, no
+files and no TTS.
+
+| Cue     | When                                                                      | Sound                                  |
+| ------- | ------------------------------------------------------------------------- | -------------------------------------- |
+| `send`  | a spoken line went out (`submit` in DebugChat, `source: "stt"`): any path | 880 → 1320 Hz, 110 ms, peak 0.16       |
+| `amend` | a spoken line asked to amend the last one (flag `stt.merge`, [dev-debug-widget.md](dev-debug-widget.md), "Continuous speech amends the last line") | 1046.5 Hz, 60 ms, peak 0.08 |
+| `start` | speech confirmed: 250 ms voiced since the VAD's start                     | 523 → 784 Hz, rising, 90 ms, peak 0.05 |
+| `end`   | the VAD ended an utterance that was kept                                  | 784 → 523 Hz, falling, 90 ms, peak 0.05 |
+
+**Switches.** The chat's ⋯ menu, with the other voice settings: `lk:voice-cue-send`
+and `lk:voice-cue-speech`, on by default, synced with the account
+([prefs-sync.md](prefs-sync.md)). "Replies silent" (his mute,
+`lk:agent-chat-speak`) silences all three, even with the mic on. A phone's hidden
+page makes no cue (speak-rules.ts). `lk:voice-out` changes nothing: the cues play on
+the page's AudioContext with either output. There are no quiet hours.
+
+**One per what.** The send cue has one call, in `submit`, after the line went
+out (`amend` takes its place on a line that joins the one before, follows its switch and rules, and adds nothing else): the join, Enter and the debounce all pass there, and a line that could not
+be sent plays nothing until the send that works. Typed lines are silent. A start
+cue plays at most once an utterance, and not within 1.5 s of the last start or end
+(`CUE_START_GAP_MS`), so talk resuming after a pause does not chime again. A false
+start plays nothing, because the VAD's start alone never plays it: `onMisfire`
+comes before the 250 ms, or the frames never score as speech. Nothing plays for a
+passive (wake-gated) utterance, so room talk never chimes; nor for a voiceprint
+sentence, which must stay clean; nor for speech dropped by a hold or flushed by
+turning the mic off. A command line kept by a tap (voice mode) was captured, so it
+gets start and end, but no send cue: it was not sent.
+
+**Not captured, and not costing his words.** The mic is open when a cue plays. It
+is never held for one: `hold` drops the speech under way and pauses the VAD, which
+would cut his first words. Instead:
+
+- `pageCues().guard()` is on for the cue, the context's output latency and 150 ms
+  more. Frames heard meanwhile stay in the audio, but do not count: not towards
+  the noise floor, the speech level, the barge-in judge, the endpoint, or the
+  speech that confirms an utterance.
+- A VAD start inside the window is a **shadow capture**: the audio is kept from the
+  start as always, but nobody hears of it (no ducking, no held send cancelled, no
+  partial shown). 96 ms voiced after the window makes it a normal capture, audio
+  whole. An utterance that ends without that is dropped: no upload, no transcript,
+  no cue, `{ev: "cue-echo-drop"}` in the debug log. The cost: a reply under about
+  100 ms of voice, begun inside the window and over by its end, is dropped.
+- A send cue over a capture waits for the capture's end. Its tone would otherwise
+  go into the recording.
+- The start cue does play over his words, by design, so only with echo cancellation
+  on (`lk:voice-aec`). With it off the start cue stays silent; end and send play.
+- Start and end stay silent while Li reads a reply (a leak of her voice would
+  chime). The send cue is mixed over the reading.
+
+**Read-aloud.** A cue claims nothing from the page's audio owner (audio-claim.ts)
+and goes straight to the context's destination: it does not pause the reading, and
+the reading's ducking does not touch it. The context is suspended when the mic goes
+off and nothing is read, but only once the last cue has ended (`idle`).
+
+**A context that will not run.** A reload's auto-resume opens the mic with no tap,
+and on Chrome the AudioContext then stays suspended until one. A cue that cannot
+start within 250 ms is dropped, never left to sound at the next tap; while the mic
+is on, any tap on the page starts the context.
+
+Tests: `unit/voice-cues.test.ts` (a mocked AudioContext and fake VAD events). Not
+tested by anything automatic, because it takes a speaker and a mic: how the tones
+sound, and whether a real cue leaks into the real VAD. Its log line `cue-echo-drop`
+counts the leaks the guard caught.
+
+## Keep speaker awake
+
+The owner, 2026-11-05 23:47 JST, after hearing the first sound of each line cut
+on /words and outside Lianki too: keep the output device awake. **Whether this
+fixes it is unproven until he has listened.** `packages/debug-chat/src/output-bed.ts`.
+
+What was measured first (2026-11-05, 23:45 JST, files and a no-device Linux
+container only): 257 production clips all have a lead-in (shortest 50 ms, French
+and English about 420 ms, Chinese about 445 ms) with the first consonant in it,
+and 57 plays through the real clip pool in Chromium reached the gain node whole.
+The Kokoro clips open with 255–347 ms of literal zeros. So the suspect is a
+device that sleeps on digital silence and wakes only on the first real sound.
+That part is reasoning, not a measurement.
+
+| Rule | How |
+| ---- | --- |
+| Level | white noise, peak -72 dBFS (RMS about -77), `BED_DBFS` |
+| Route | its own AudioContext's destination: the same device as the clips (nothing sets a sinkId), and each stop closes the context |
+| Starts | only inside a gesture. A line with no gesture plays at once with no bed (a reply arriving by itself, typed chat past the linger); the next tap while it plays starts the bed |
+| Runs | while a line is due or playing and 60 s after (`LINGER_MS`, a card's thinking time), or while the mic is on, passive mic included |
+| Pre-roll | `begin()` returns the ms to wait, 300 at most (`PREROLL_MS`): the sequencer (/words), `speak` (the reader) and `next` (Li) start their first line after it. Later lines wait for nothing |
+| Stops | the linger's end, setting off, `pagehide`, the page hidden, `signOut()`. After a hide or sign-out only a new gesture starts it. /words' context and Li's (mic off) are suspended on the same exit, and /words' also on leaving /words |
+| Setting | /words Settings, under Read aloud: "Keep speaker awake", `lk:voice-keep-awake`, device-local, on unless `"0"`. It governs /words, the reader and Li |
+
+The first play after a pre-roll is past the tap, so the tap unlocks what will
+play: /words plays a silent clip in a pool element (`unlockClip`), the reader
+has its Play tap's `unlock` plus an empty utterance, and Li has its mic-tap unlock.
+
+### The mic
+
+- **No digital path.** The bed is connected to nothing but its own destination.
+  It never calls `pageAudio().start`, so it takes no mic hold, adds no echo-guard
+  text and leaves half-duplex alone. Measured: Chromium's real
+  echoCancellation/noiseSuppression/autoGainControl path, fake mic file, four
+  12 s runs with and without the bed: frame levels within 0.2 dB. (Fake output:
+  this does not show the echo canceller seeing the bed as a playback reference.)
+- **By air, on speaker.** -77 dBFS RMS is about 40 dB under the speech clips and,
+  at a typical 80–90 dB SPL full scale near the mic, about 3–13 dB SPL: under any
+  room's noise, so the VAD floor, AGC and STT should hear only the room. The
+  energy VAD's `on` is 0.02 (-34 dBFS), 43 dB over the bed even with no air gap.
+- **Echo canceller.** As remembered from WebRTC's AEC3 defaults (not checked in
+  a run): playback under about -50 dBFS counts as inactive, so the bed should
+  neither train the filter nor trigger suppression.
+
+### What only a real device can tell
+
+Whether the cut goes away at all. Whether -72 dBFS wakes each route: a Bluetooth
+codec may drop it as inaudible, and a low OS volume attenuates it before the amp.
+Whether it stays inaudible: by calculation a faint hiss is possible only at
+maximum volume on sealed earphones in a silent room (lower `BED_DBFS` if so).
+iOS: whether the unlocks hold across the pre-roll, whether a running context
+changes the audio session, mixes with or stops other apps' audio, or counts
+against the context limit (this page can hold several while the mic is on).
+
+### Page audio while the mic captures (iOS)
+
+While the chat mic captures, iOS's voice-processing unit ducks every other
+sound on the page to near silence. A bare `<audio>` element is one of those
+sounds: on 2026-11-07 the reader's word and sentence clips played on the
+owner's iPhone (`playing`, currentTime advancing, volume 1) and nothing was
+heard. Li's voice was audible because voice-out.ts routes its element through
+the voice AudioContext. So the reader does the same: while the mic is on and
+that context runs (`readRoute`, lib/read/speaker.ts), its clips play in a pair
+of elements routed into that context; otherwise a bare pair, as before. The
+mic does not suspend the context while page audio plays (MicButton
+`suspendIdle`). The ringer switch was ruled out on the device; the bed's own
+context does not cause it.
+
+Battery: by reasoning only, not measured. While the bed runs the audio path
+cannot power down, on top of a small noise loop. With the mic on it is already
+up for capture, so the bed adds little. Without the mic the cost is bounded by
+the 60 s linger, and it never runs hidden, so it cannot drain a locked phone.
+The passive mic is the longest case.
+
 ## Safety: what voice can reach
 
 Only the six `VoiceActions`: move, grade, show, read, undo and exit (which
@@ -215,6 +361,7 @@ nothing but the chat.
 | `lib/words/voice-dispatch.ts`              | utterance → outcome → one of the screen's actions; `voiceTap` (pure) |
 | `lib/words/voice-access.ts`                | flag + owner → `on` / `preview` / `off`                     |
 | `lib/words/voice-mic.ts`                   | browser glue to `__lkMic` (lazy import)                     |
+| `packages/debug-chat/src/voice-merge.ts`   | continuous speech amending the last line (flag `stt.merge`); a kept command keeps lines apart |
 | `packages/debug-chat/src/mic-taps.ts`      | command taps and pins on the page's mic                     |
 | `app/(app)/words/VoiceMode.tsx`            | the hook, the switch (`useVoicePref`), the badge, its labels; any screen |
 | `app/(app)/review/ReviewClient.tsx`        | /review's registration: the grades and exit                 |
@@ -223,8 +370,8 @@ nothing but the chat.
 | `scripts/qa/qa-voice-mode.mjs`             | end to end, desktop and phone, silent: text fixtures to the taps, fake mic, muted |
 
 ```bash
-QA_BASE=http://localhost:<port> QA_EMAIL=<an OWNER_EMAILS address> \
-  bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-voice-mode.mjs
+QA_BASE=http://localhost:<port> QA_EMAIL=<an account holding dev> \
+  bun scripts/qa/qa-voice-mode.mjs
 ```
 
 The QA never plays anything. Its transcripts are text handed to

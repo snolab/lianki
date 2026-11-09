@@ -2,5 +2,28 @@
   "script": "Hiragana|Katakana",
   "alongside": "Han",
   "readingKeys": "^[\\p{Script=Hiragana}\\p{Script=Katakana}ー]+$",
-  "fillers": ["えっと", "えーと", "えー"]
+  "fillers": ["えっと", "えーと", "えー"],
+  "joins": [
+    {
+      "why": "okurigana after a kanji stem: 食|べ, 読|ん, 書|い, 見|て, 待|って, 遊|んで, 食|べた; a particle (は が を に の で と も へ や か…) or まで stays apart",
+      "a": "\\p{Script=Han}$",
+      "b": "^(?!まで$)(?![はがをにのでともへやかよねなさわだぞば])\\p{Script=Hiragana}(?:ない|なかった|なか|なく|なければ|っ|った|って|た|たい|たく|たら|たり|ます|ました|ません|ませ|ま|せん|した|して|れ|れる|れば|られ|られる|させ|させる|せる|ば|よう|う|い|いた|いて|いる|る|ろ|ず|て|てい|ている|ています|てる|で|だ)?$"
+    },
+    {
+      "why": "an inflection after a stem already joined: 食べ|て, 行き|ました, 行きま|せん, 食べ|なか|っ|た, 降って|い|ます",
+      "a": "\\p{Script=Han}\\p{Script=Hiragana}+$",
+      "b": "^(?:ない|なかった|なか|なく|なければ|っ|った|って|た|たい|たく|たかった|たら|たり|ます|ました|ません|ませ|ま|せん|した|して|しょう|ましょう|れ|れる|れば|られ|られる|られた|させ|させる|せる|ば|よう|う|い|いた|いて|いる|います|る|ろ|ず|て|てい|ている|ています|てる|てた|ちゃう|ちゃった)$"
+    },
+    {
+      "why": "で and だ end a verb only after い or ん (泳い|で, 読ん|だ, 行きません|でした); after a noun they are the particle and the copula (休み|で, 好き|だ)",
+      "a": "\\p{Script=Han}\\p{Script=Hiragana}*[いん]$",
+      "b": "^(?:で|だ|でした|でいる|でいます|だら|だり)$"
+    },
+    {
+      "why": "a verb in kana whose first kana the segmenter cut off before a dictionary word: か|ついで (担ぐ, not ついで 'incidentally'), よ|んで, い|って, し|て; not after a kanji (何|か|ついでに) and not after a particle such as を|して",
+      "prev": "^$|[^\\p{Script=Han}]$",
+      "a": "^(?![はがをにでともへのや])\\p{Script=Hiragana}$",
+      "b": "^\\p{Script=Hiragana}*(?:て|で|た|だ)$"
+    }
+  ]
 }

@@ -1,3 +1,4 @@
+import { BOX_AUTHORIZE_PATH, cleanAuthorizeQuery } from "./box-oauth/rules";
 /**
  * The owner's switch between lianki.com and his whole-page dev server on its
  * tunnel (docs/dev-whole-page.md, "The profile menu switch").
@@ -155,6 +156,11 @@ export function signInReturnPath(raw: string | null | undefined): string | null 
     u = new URL(v, PROD_ORIGIN);
   } catch {
     return null;
+  }
+  // A box's sign-in (docs/box-oauth.md): rebuilt from its known parameters only.
+  if (u.origin === PROD_ORIGIN && u.pathname === BOX_AUTHORIZE_PATH) {
+    const q = cleanAuthorizeQuery(u.searchParams);
+    return q ? `${BOX_AUTHORIZE_PATH}?${q}` : null;
   }
   if (u.origin !== PROD_ORIGIN || u.pathname !== PREVIEW_ENTRY_PATH) return null;
   const to = safePreviewPath(u.searchParams.get("to")) ?? "/";

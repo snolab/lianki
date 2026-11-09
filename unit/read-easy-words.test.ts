@@ -1,8 +1,9 @@
 /**
- * A paragraph graded Easy grades its words Easy with it; any other grade opens
- * its word review when it has a word to review (owner, 2026-11-05 02:31 /
- * 02:32 JST; lib/read/book-word-list.ts easyPlan / gradeEasyWords,
- * lib/read/word-review.ts afterGrade, lib/read/reader-server.ts's hold).
+ * A paragraph graded Easy grades its words Easy with it (a GradeRequest with
+ * `easyWords`; lib/read/book-word-list.ts easyPlan / gradeEasyWords,
+ * lib/read/reader-server.ts's hold), and what each swipe level does after the
+ * grade (lib/read/review-scope.ts afterGrade; owner, 2026-11-08, card
+ * d2cf3080): Again / Hard open a review, Good nothing, Easy the Easy batch.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { testSchema } from "@/lib/d1/testSchema";
@@ -21,7 +22,8 @@ import {
   type D1Batch,
 } from "@/lib/read/reader-store";
 import { bookHash } from "@/lib/read/units";
-import { afterGrade, planLeft } from "@/lib/read/word-review";
+import { afterGrade } from "@/lib/read/review-scope";
+import { planLeft } from "@/lib/read/word-review";
 import { serverReaderData } from "@/lib/read/reader-server";
 import type { ItemsResponse } from "@/lib/read/reader-api";
 import { levelRating, sideRating, type SwipeRating } from "@/lib/words/swipe";
@@ -169,20 +171,12 @@ describe("an Easy paragraph grade takes its words (D1, the batch path)", () => {
   });
 });
 
-describe("after a paragraph grade", () => {
-  it("Easy grades the words; Again, Hard and Good open the review only with a word in it", () => {
-    for (const n of [0, 3, null]) expect(afterGrade(4, n)).toBe("easy");
-    for (const r of [1, 2, 3] as const) {
-      expect(afterGrade(r, 2)).toBe("review");
-      expect(afterGrade(r, 0)).toBe("none");
-      expect(afterGrade(r, null)).toBe("none");
-    }
-  });
-
-  it("the Easy level is the far right by default, the far left mirrored", () => {
-    const at = (k: number, mirror: boolean) => sideRating(levelRating(k), mirror);
-    expect([-2, -1, 1, 2].map((k) => at(k, false))).toEqual([1, 2, 3, 4]);
-    expect([-2, -1, 1, 2].map((k) => at(k, true))).toEqual([4, 3, 2, 1]);
+describe("after a paragraph grade (lib/read/review-scope.ts afterGrade)", () => {
+  it("far left reviews the paragraph, far right grades its words Easy; Good opens nothing", () => {
+    const at = (k: number, mirror: boolean) =>
+      afterGrade(sideRating(levelRating(k), mirror) as SwipeRating);
+    expect([-2, -1, 1, 2].map((k) => at(k, false))).toEqual(["para", "upto", "none", "easy"]);
+    expect([-2, -1, 1, 2].map((k) => at(k, true))).toEqual(["easy", "none", "upto", "para"]);
   });
 
   it("counts leave out the words of an Easy grade still waiting to be sent", () => {

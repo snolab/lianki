@@ -6,7 +6,7 @@
 // form-of senses' tags), one vocabulary shared by every language, kept per
 // form in the lemma file (lib/read/lemma.ts, format v2). Nothing here is per
 // language: a rule names Wiktionary tags, and the label's words are UI strings
-// (app/(app)/read/read-form-tags.content.ts) in the user's language.
+// (app/(app)/reader/read-form-tags.content.ts) in the user's language.
 
 /**
  * The label pieces, in matching order: a rule matches when all its `tags` and

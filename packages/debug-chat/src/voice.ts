@@ -42,7 +42,7 @@
  */
 import { speechRate } from "./speech-rate";
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
-import { cloudOut, cloudSkip, outMode } from "./voice-out";
+import { cloudOut, cloudSkip, existingCtx, outMode } from "./voice-out";
 import { micAec } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
@@ -50,6 +50,19 @@ import { getKey } from "./storage-keys";
 import { hideStops, isDesktop } from "./voice-bg";
 import { reportPageError } from "./page-errors";
 import { AUDIO_PRIO, audioOwner, audioOwnerId } from "./audio-claim";
+import { outputBed } from "./output-bed";
+import {
+  type LineVoice,
+  type VoiceId,
+  findDeviceVoice,
+  laneOf,
+  lineVoiceOf,
+  resolveVoices,
+  voiceIdOf,
+} from "./voices";
+
+/** A line's own voice beyond the table (voices.ts parseLineVoice): device, melo, aura, eleven. */
+export type LinePick = Exclude<LineVoice, { kind: "table" }>;
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
 export const RESUME_TAIL_MS = 400;
@@ -88,7 +101,7 @@ export const REPLY_DEDUPE_MS = 10 * 60_000;
 /** globalThis key of the shared session. */
 const KEY = "__lkVoice";
 /** The session's version: a copy on the page with another one is replaced. */
-const V = 2;
+const V = 3;
 
 const CJK_STOP = "。．！？";
 const LATIN_STOP = ".!?";
@@ -190,7 +203,7 @@ export function isBargeIn(probs: readonly number[], min = BARGE_IN_PROB): boolea
 export type UtterLike = {
   text: string;
   volume?: number;
-  /** The reading speed (speech-rate.ts). */
+  /** The reading speed (speech-rate.ts); `utter` may set a factor first (a lane's last resort). */
   rate?: number;
   onend: ((e?: unknown) => void) | null;
   onerror: ((e?: unknown) => void) | null;
@@ -218,9 +231,18 @@ export type PlayEvents = {
 };
 /** The cloud output (voice-out.ts createCloudOut). */
 export type CloudOut = {
-  prepare?(text: string, lang: string): void;
+  prepare?(text: string, lang: string, voice?: VoiceId, pick?: LinePick): void;
   play(
-    s: { text: string; lang: string; at: number; volume: number; rate?: number },
+    s: {
+      text: string;
+      lang: string;
+      at: number;
+      volume: number;
+      rate?: number;
+      voice?: VoiceId;
+      /** The line's own cloud voice (melo, aura) or ElevenLabs preview (eleven). */
+      pick?: LinePick;
+    },
     ev: PlayEvents,
   ): Playback;
 };
@@ -250,7 +272,15 @@ export type VoiceState = {
 export type Why = "speech" | "tap" | "typing";
 export type OutMode = "speech" | "cloud";
 
-type Sentence = { text: string; lang: string; from: number; at: number };
+/** `voice`: the line's voice (voices.ts), absent = main; `pick`: its own voice beyond the table. */
+type Sentence = {
+  text: string;
+  lang: string;
+  from: number;
+  at: number;
+  voice?: VoiceId;
+  pick?: LinePick;
+};
 /** What the agent said, and when (for the echo guard). */
 type Said = { text: string; start: number; end?: number };
 
@@ -262,8 +292,13 @@ export type EchoCheck = EchoScore & {
 
 export function createVoice(d: {
   synth: () => SynthLike | null;
-  /** A new utterance for `text` in `lang` (the browser picks a voice). */
-  utter: (text: string, lang: string) => UtterLike;
+  /**
+   * A new utterance for `text` in `lang`, in `voice` (voices.ts; absent =
+   * main), or in the device voice a `device:<name>` pick names when the device has it.
+   */
+  utter: (text: string, lang: string, voice?: VoiceId, pick?: LinePick) => UtterLike;
+  /** The device has the voice a `device:<name>` names (voices.ts findDeviceVoice); absent: never. */
+  hasDeviceVoice?: (name: string) => boolean;
   /** The speaker toggle. */
   enabled: () => boolean;
   /** The focus rule: this tab is visible and the chat input has focus. */
@@ -292,6 +327,11 @@ export function createVoice(d: {
    * When Li speaks is not changed by it.
    */
   owner?: { claim(): boolean; release(): void };
+  /**
+   * Asked before each sentence: ms to wait, so the output device is awake
+   * (output-bed.ts `begin`). 0 once the bed has run long enough, or has none.
+   */
+  preroll?: () => number;
 }) {
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
   const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
@@ -351,12 +391,42 @@ export function createVoice(d: {
    * mode; in speech mode when the device has no voice for it and the cloud
    * can voice that language.
    */
-  const routeFor = (lang: string): CloudOut | null => {
+  const routeFor = (lang: string, pick?: LinePick): CloudOut | null => {
+    // A line's own voice (voices.ts, "A line's own voice") wins over the output mode:
+    // a device voice the device has is read with speech even in cloud mode…
+    if (pick?.kind === "device" && devicePick(pick)) return null;
     const c = cloud();
     if (!c) return null;
+    // …and a cloud or ElevenLabs one goes to the cloud even in speech mode.
+    if (pick && pick.kind !== "device") return c;
     if (mode() === "cloud") return c;
     return noVoice(lang) && cloudSkip("x", lang) === null ? c : null;
   };
+  /** A `device:<name>` this device can read (speechSynthesis and that voice). */
+  const devicePick = (pick?: LinePick) =>
+    pick?.kind === "device" && !!d.synth() && !!d.hasDeviceVoice?.(pick.name);
+  /** Fetch a sentence's clip ahead, when the cloud will read it. */
+  const prepare = (s: Sentence) => {
+    if (s.pick?.kind === "eleven") return;
+    routeFor(s.lang, s.pick)?.prepare?.(
+      s.text,
+      s.lang,
+      s.voice,
+      s.pick && s.pick.kind !== "device" ? s.pick : undefined,
+    );
+  };
+  /** A text's sentences (each at most CHUNK_MAX), in `voice` and `pick`. */
+  const toSentences = (text: string, lang: string, voice?: VoiceId, pick?: LinePick): Sentence[] =>
+    sentences(text)
+      .flatMap((s) => chunk(s))
+      .map((t) => ({
+        text: t,
+        lang,
+        from: 0,
+        at: 0,
+        ...(voice ? { voice } : {}),
+        ...(pick ? { pick } : {}),
+      }));
   const canSpeak = () => !!d.synth() || !!cloud();
 
   const ended = () => {
@@ -368,18 +438,20 @@ export function createVoice(d: {
     const s = d.synth();
     if (!s) return null;
     const from = head.from;
-    const u = d.utter(head.text.slice(from), head.lang);
+    const own = devicePick(head.pick) ? head.pick : undefined;
+    const u = d.utter(head.text.slice(from), head.lang, head.voice, own);
     // iOS cannot change it mid-utterance: a duck applies from the next sentence.
     if (level !== 1) u.volume = level;
     // The speed, as set now: a change applies from the next utterance.
-    u.rate = d.rate?.() ?? 1;
+    u.rate = Math.min(10, (d.rate?.() ?? 1) * (u.rate ?? 1));
     u.onboundary = (b) => {
       if (e !== epoch || !current) return;
       if (b.name && b.name !== "word") return;
       current.mark = from + Math.max(0, b.charIndex | 0);
     };
     // No voice for this language here: it may stay silent with no event at all.
-    let watch: unknown = noVoice(head.lang)
+    let watch: unknown =
+      !own && noVoice(head.lang)
       ? setTimer(() => {
           if (e !== epoch) return;
           log({ ev: "voice-stuck", route: "speech", lang: head.lang, ms: SPEECH_START_MS });
@@ -415,11 +487,23 @@ export function createVoice(d: {
     };
   };
 
+  /** Waiting out the pre-roll: the first sentence comes when it fires. */
+  let preroll: unknown = null;
   /** Speak the head of the queue, if nothing is playing and nothing waits (the caller emits). */
   const next = () => {
-    if (current || pauses.size || !canSpeak()) return;
+    if (current || preroll !== null || pauses.size || !canSpeak()) return;
     const head = queue[0];
     if (!head) return;
+    const wait = d.preroll?.() ?? 0;
+    if (wait > 0) {
+      // A stop or an interruption meanwhile: this finds nothing to say, or a pause.
+      preroll = setTimer(() => {
+        preroll = null;
+        next();
+        emit();
+      }, wait);
+      return;
+    }
     const e = epoch;
     const done = () => {
       if (e !== epoch) return;
@@ -449,6 +533,18 @@ export function createVoice(d: {
       onerror: done,
       onfail: (reason) => {
         if (e !== epoch || !current) return;
+        if (head.pick?.kind === "eleven") {
+          // The preview could not play (refused, blocked, gone): the line is read in
+          // its lane's voice instead, sentence by sentence. Never silence.
+          log({ ev: "voice-out", out: "eleven", route: "lane", fallback: reason, ...info });
+          epoch++;
+          ended();
+          current = null;
+          queue.splice(0, 1, ...toSentences(head.text, head.lang, head.voice));
+          next();
+          emit();
+          return;
+        }
         const refused = /NotAllowed/.test(reason);
         // Refused by the browser with nothing else that could read it (or the
         // speech fallback refused too): keep the sentence and wait for a tap.
@@ -481,11 +577,19 @@ export function createVoice(d: {
     const rec: Said = { text: head.text, start: now() };
     // Before a sound of ours: the reader and word read-aloud pause now (never refused: Li ranks first).
     d.owner?.claim();
-    const c = routeFor(head.lang);
+    const c = routeFor(head.lang, head.pick);
     current = { p: null as unknown as Playback, mark: head.from, said: rec };
     const p = c
       ? c.play(
-          { text: head.text, lang: head.lang, at: head.at, volume: level, rate: d.rate?.() ?? 1 },
+          {
+            text: head.text,
+            lang: head.lang,
+            at: head.at,
+            volume: level,
+            rate: d.rate?.() ?? 1,
+            ...(head.voice ? { voice: head.voice } : {}),
+            ...(head.pick && head.pick.kind !== "device" ? { pick: head.pick } : {}),
+          },
           ev,
         )
       : speech(head, ev, e);
@@ -501,14 +605,16 @@ export function createVoice(d: {
       out: c ? "cloud" : "speech",
       route: p.route,
       // Speech mode, but no voice here for this language: the cloud reads it.
-      ...(c && mode() !== "cloud" ? { fallback: "no-voice" } : {}),
+      ...(c && mode() !== "cloud" && !head.pick ? { fallback: "no-voice" } : {}),
+      // The line's own voice: its kind only (a device voice's name stays on the page).
+      ...(head.pick ? { pick: head.pick.kind, ...(head.pick.kind === "device" && !devicePick(head.pick) ? { missing: true } : {}) } : {}),
       ...info,
       volume: level,
       at: head.at || undefined,
       from: head.from || undefined,
     });
     // Fetch the next one while this plays.
-    if (queue[1]) routeFor(queue[1].lang)?.prepare?.(queue[1].text, queue[1].lang);
+    if (queue[1]) prepare(queue[1]);
     clearTimer(tail);
     speaking = true;
   };
@@ -619,21 +725,31 @@ export function createVoice(d: {
      * re-sending it) is not read again from its start. `meta` is the line
      * itself (its id, quiet); voice() gates on it (gateVoice) first.
      */
-    reply(text: string, _meta?: SpeakMeta): boolean {
+    reply(said: string, meta?: SpeakMeta): boolean {
       if (!canSpeak() || !api.shouldSpeak()) return false;
+      // Its lane's voice; a `【lane】` prefix is not read out (voices.ts).
+      const text = laneOf({ lane: meta?.lane, text: said }).text;
+      const v = voiceIdOf({ voice: meta?.voice, lane: meta?.lane, text: said });
+      const voice = v === "main" ? undefined : v;
+      // Its own voice beyond the table (device:, melo:, aura:, eleven:); anything else: none.
+      const pick = lineVoiceOf(meta?.voice);
       const t = now();
-      if (recent.some((r) => r.text === text && t - r.at < REPLY_DEDUPE_MS)) {
+      // The same words in another voice are another line (a voice demo), not a re-delivery.
+      const key = `${typeof meta?.voice === "string" ? meta.voice : v}\n${text}`;
+      if (recent.some((r) => r.text === key && t - r.at < REPLY_DEDUPE_MS)) {
         log({ ev: "voice-reply-dup", chars: text.length });
         return false;
       }
-      recent.push({ text, at: t });
+      recent.push({ text: key, at: t });
       while (recent.length > 20) recent.shift();
       const lang = pickLang(text);
-      const add = sentences(text)
-        .flatMap((s) => chunk(s))
-        .map((t) => ({ text: t, lang, from: 0, at: 0 }));
+      // An ElevenLabs preview stands for the whole line: one item, its text kept for a fallback.
+      const add =
+        pick?.kind === "eleven" && cloud() && text.trim()
+          ? [{ text, lang, from: 0, at: 0, ...(voice ? { voice } : {}), pick }]
+          : toSentences(text, lang, voice, pick?.kind === "eleven" ? undefined : pick);
       if (!add.length) return false;
-      if (!queue.length) routeFor(lang)?.prepare?.(add[0].text, lang);
+      if (!queue.length) prepare(add[0]!);
       queue.push(...add);
       next();
       emit();
@@ -927,16 +1043,38 @@ export function voice(): Voice {
       }
     },
     mode: outMode,
+    preroll: () => outputBed().begin(),
     owner: audioOwner({ id: audioOwnerId("li"), prio: AUDIO_PRIO.li }),
     // The open track's mode (aec.ts), so hold and barge-in match what the mic does.
     aec: micAec,
     rate: () => speechRate(),
     report: (message) => reportPageError({ kind: "media", message }),
-    utter: (text, lang) => {
+    hasDeviceVoice: (name) => {
+      try {
+        return !!findDeviceVoice(speechSynthesis.getVoices(), name);
+      } catch {
+        return false;
+      }
+    },
+    utter: (text, lang, id, pick) => {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = lang;
-      const pick = pickVoice(speechSynthesis.getVoices(), lang);
-      if (pick) u.voice = pick;
+      const voices = speechSynthesis.getVoices();
+      // The line's own device voice, as it is (no pitch or speed of a lane's).
+      const own = pick?.kind === "device" ? findDeviceVoice(voices, pick.name) : undefined;
+      if (own) {
+        u.voice = own;
+        u.lang = own.lang;
+        alive.add(u);
+        u.addEventListener("end", () => alive.delete(u));
+        u.addEventListener("error", () => alive.delete(u));
+        return u as unknown as UtterLike;
+      }
+      // Each lane its own voice model (voices.ts); main is the chat lane's cute voice.
+      const r = resolveVoices(voices, lang, pickVoice)[id ?? "main"];
+      if (r.voice) u.voice = r.voice;
+      u.pitch = r.pitch;
+      u.rate = r.rate;
       alive.add(u);
       u.addEventListener("end", () => alive.delete(u));
       u.addEventListener("error", () => alive.delete(u));
@@ -944,5 +1082,9 @@ export function voice(): Voice {
     },
   });
   g[KEY] = v;
+  // Leaving: the voice context stops too, unless the mic still runs on it.
+  outputBed().onExit(() => {
+    if (!v.state().mic) void existingCtx()?.suspend().catch(() => {});
+  });
   return gateVoice(v);
 }

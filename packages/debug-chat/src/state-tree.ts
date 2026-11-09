@@ -47,6 +47,30 @@ export type Assignee = {
 /** One status group's summary per locale. */
 export type TreeSummary = { done?: string; doing?: string; next?: string };
 
+/**
+ * A live node's estimate (lib/progress.ts etaAt): its node id, when the work
+ * started and when the estimate runs out (ms), whether it is done (and when),
+ * and whether the hub already pinged the agent for this `at`.
+ */
+export type TreeEta = {
+  id: string;
+  start: number;
+  at: number;
+  done?: boolean;
+  doneAt?: number;
+  sent?: boolean;
+  /** The agent's own progress, 0–100 (the Gantt row's deeper fill). */
+  pct?: number;
+  /**
+   * Queued (status waiting: for an agent slot or the gate): the Gantt list
+   * draws it after the one ahead (eta.ts ganttPlan), `created` orders the
+   * queue and `queuedMs` (its estimate as posted) is its length.
+   */
+  queued?: boolean;
+  created?: number;
+  queuedMs?: number;
+};
+
 export type TreeNode = {
   title: string;
   /** From the box: undefined when the item has none. */
@@ -69,6 +93,8 @@ export type TreeNode = {
   summaries?: Record<string, TreeSummary>;
   /** Laid over by the live progress hub (lib/progress-tree.ts): an agent reported it. */
   live?: boolean;
+  /** A live node with an estimate (eta.ts): the bar's and the ETA ping's data. */
+  eta?: TreeEta;
   links: TreeLink[];
   children: TreeNode[];
 };

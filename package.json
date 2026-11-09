@@ -2,6 +2,9 @@
   "name": "lianki-monorepo",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "lianki-dev": "scripts/dev/lianki-dev.ts"
+  },
   "engines": {
     "node": ">=22.12"
   },
@@ -13,11 +16,11 @@
     "dev:db": "bun scripts/dev-mongo.mjs",
     "qa:api": "bun scripts/qa/qa-api.mjs",
     "qa:ui": "bun scripts/qa/qa-ui.mjs",
-    "qa:sign-out": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-sign-out.mjs",
-    "shots:home": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/home-feature-shots.mjs",
-    "qa:lang-menu": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-lang-menu.mjs",
-    "qa:all": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-all.mjs",
-    "qa:partner": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-partner-embed.ts",
+    "qa:sign-out": "bun scripts/qa/qa-sign-out.mjs",
+    "qa:lang-menu": "bun scripts/qa/qa-lang-menu.mjs",
+    "qa:all": "bun scripts/qa/qa-all.mjs",
+    "qa:audio-free": "bun scripts/qa/qa-audio-free.mjs",
+    "qa:partner": "bun scripts/qa/qa-partner-embed.ts",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "oxlint --ignore-pattern 'packages/**' && oxfmt --check '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
@@ -29,7 +32,7 @@
     "test:e2e": "bun tests/e2e-offline-sync.spec.mjs",
     "test:e2e:prod": "LIANKI_URL=https://lianki.com bun tests/e2e-offline-sync.spec.mjs",
     "test:unit": "bun test",
-    "test:ext": "(cd packages/ext && bun run build) && xvfb-run -a bunx playwright test tests/extension.spec.ts",
+    "test:ext": "(cd packages/ext && bun run build) && bunx playwright test tests/extension.spec.ts",
     "test:sync": "playwright test tests/db-sync-matrix.spec.ts",
     "build:userscript": "bunx --bun userbuild src/lianki.user.ts --outdir=public --format=iife",
     "ship": "bun scripts/ship.ts",
@@ -44,6 +47,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
     "@better-auth/kysely-adapter": "1.7.10",
+    "@better-auth/oauth-provider": "1.7.10",
     "@better-auth/passkey": "1.7.10",
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
@@ -103,6 +107,7 @@
     "@typescript/native-preview": "^7.0.0-dev.20260308.1",
     "cloudflared": "^0.7.1",
     "dotenv": "^16.6.1",
+    "happy-dom": "^21.0.4",
     "husky": "^9.1.7",
     "idb-keyval": "^6.2.2",
     "lint-staged": "^16.4.0",

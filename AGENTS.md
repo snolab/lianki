@@ -11,14 +11,24 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - **NEVER `--no-verify`** — pre-commit (seconds, staged files only) scans
   secrets, runs oxlint --fix + oxfmt, and syncs the userscript build,
   `lianki.meta.js` and `@version`; pre-push runs whole-repo lint, typecheck,
-  the unit suite with its coverage gate, then `qa:all`. Bypassing causes meta
-  drift, broken userscript auto-updates, and failures CI finds later.
+  then only the unit tests and `qa:all` suites the change reaches
+  (`scripts/gate/affected.ts`; the full set, with coverage, runs in CI).
+  Bypassing causes meta drift, broken userscript auto-updates, and failures CI
+  finds later.
 - **NEVER `git reset --hard`** to move a branch — it silently destroys
   uncommitted work. Use `git reset --keep`, which aborts instead of overwriting.
 - Always bump `@version` in `lianki.user.js` when changing the userscript.
 - `.env.local` and `.dev.vars` are gitignored and have no other copy — never
   delete them. An encrypted backup is proposed in
   [docs/secrets-backup-plan.md](docs/secrets-backup-plan.md) (not done yet).
+- **Don't loop failed pushes.** The hook is one attempt, with no retries in code.
+  If a time-sensitive suite times out, look at the load first (`uptime`); if it is
+  high, wait, then retry once. See
+  [docs/shipping.md](docs/shipping.md), "Admission by load".
+- **Gates are permission grants.** Every owner/dev/admin check is `isAdmin` or
+  `isDev` (`lib/permissions.ts`, rows in `account_permission`). Never
+  `OWNER_EMAILS`, a hardcoded email, or the unused `site_role` table — not even
+  for the owner. [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions".
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
@@ -27,12 +37,26 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 ```bash
 bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
-bun test               # unit tests
+bun test unit/x.test.ts  # one test file, no queue
+bun run test:unit      # whole unit suite, starts at once (CI adds -- --coverage)
 bun fix                # oxlint --fix + oxfmt
 bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run it)
-bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push)
+bun run qa:all         # full integration gate — CI merge queue + nightly; time-sensitive suites wait for load-based admission
+bun scripts/gate/affected.ts plan  # what pre-push runs for this change, and why (LIANKI_GATE_FULL=1 push: everything)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
+
+Agent lanes talk to the owner and the state tree through **one CLI**,
+`lianki-dev` (`bun scripts/dev/lianki-dev.ts`), not ad-hoc
+`eval.ts`/`progress.ts` calls: `lianki-dev say --as <lane> "…"`, `ask`,
+`inbox`, `listen`, `progress`, and `lianki-dev doctor` when something fails.
+A lane never pairs. [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md).
+**Lanes chat with their own lane token**: the owner makes one per lane at
+lianki.com/preferences → API tokens (name = the lane, chat permissions, an
+expiry) and it is handed to that lane as `LIANKI_TOKEN`; then `lianki chat
+say|ask|read|listen` (or `lianki-dev say/ask/listen`, which uses it when set)
+posts as 【lane】 in the owner's thread only. A token never evals, pairs or
+answers a card; eval stays on the grant path (`eval.ts`, `lianki-dev serve`).
 
 ## Where requests actually go (cut over 2026-10-06)
 
@@ -90,55 +114,85 @@ the same change; translators read it before every string. How:
 While working on Lianki, report to the live state tree
 ([docs/state-tree.md](docs/state-tree.md), "Live progress") at the start, at
 milestones, when blocked, and when done (with the PR):
-`bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<what>" --status doing --pct 40`
+`bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<name>: <description>" --status doing --pct 40 --eta 30m`
 (`--done --pr N` at the end; `--status waiting-owner --needs "…"` when the
-owner must act). Use the token you were given (`--token` or
+owner must act). The title is "name: description" with a name of at most 20
+characters, because the owner's ETA bar shows only the name (a longer one is
+refused). `progress.ts stats` shows your estimate vs actual, to calibrate `--eta`. Use the token you were given (`--token` or
 `LIANKI_PROGRESS_TOKEN`); stay inside its scope.
+
+**ETA overrun is never silent.** A task that reaches its `--eta` unfinished
+tells the owner, within 5 minutes, the reason and a new "N minutes from now":
+`progress.ts … --status doing --eta 20m --late "<reason, in his language>"` —
+the hub posts both to him in Li. Past the ETA a new `--eta` without `--late`
+is refused; with nothing for 5 minutes he hears "<name> 超时，未说明原因".
+[docs/state-tree.md](docs/state-tree.md), "ETA overrun".
 
 ## Where to look
 
 Read the relevant file before working in that area — each one carries decisions
 that are expensive to rediscover.
 
-| Working on                                                    | Read                                                                |
-| ------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Running or setting up the app locally, QA suites              | [DEVELOPMENT.md](DEVELOPMENT.md)                                    |
-| What's in flight / waiting on the owner                       | [docs/state-tree.md](docs/state-tree.md)                            |
-| Landing changes, CI, branch protection, post-deploy QA        | [docs/shipping.md](docs/shipping.md)                                |
-| Finding your way around the code                              | [docs/repo-map.md](docs/repo-map.md)                                |
-| Secrets, auth, OAuth config                                   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
-| Google Drive connection (/connections), private Docs import   | [docs/connections.md](docs/connections.md)                          |
-| Anything calling an LLM or TTS                                | [docs/workers-ai.md](docs/workers-ai.md)                            |
-| Learning Partner AI replies for users (DeepSeek, caps)        | [docs/partner-ai.md](docs/partner-ai.md)                            |
-| The owner's local streaming speech-to-text (mic → his Mac)    | [docs/local-stt.md](docs/local-stt.md)                              |
-| Whole-page dev server on prod D1 (owner only, home LAN)       | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
-| The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
-| Hot-swapping headless core modules (kernel, swap, leak tests) | [docs/hot-core.md](docs/hot-core.md)                                |
-| The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
-| Hot islands: swappable components, shared state               | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
-| Live view: dev JS on lianki.com via a signed pointer          | [docs/live-view.md](docs/live-view.md)                              |
-| The /words swipe: headless core, UI islands, feel presets     | [docs/swipe-core.md](docs/swipe-core.md)                            |
-| UI state: what is kept where (session, local, URL, server)    | [docs/ui-state.md](docs/ui-state.md)                                |
-| Screenshots of the owner's phone page (`scripts/dev/shot.ts`) | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |
-| UI strings, translations: every key carries context           | [docs/i18n.md](docs/i18n.md)                                        |
-| Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
-| The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
-| /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
-| Exam word decks (CET, TOEFL, GRE…): sources, licences, gaps   | [docs/word-deck-sources.md](docs/word-deck-sources.md)              |
-| /self-intro import: files/text → facts → review; privacy        | [docs/self-intro-import.md](docs/self-intro-import.md)              |
-| /books public-domain library: catalogue rule, slugs, R2 cache | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
-| Voice mode: spoken commands per screen, grammar, mic taps     | [docs/voice-mode.md](docs/voice-mode.md)                            |
-| /words owner spec: tall slips, window, review-first, voice    | [docs/words-session-spec.md](docs/words-session-spec.md)            |
-| Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
-| Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
-| Settings that follow the account (`lk:*` key classes)         | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
-| Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
-| Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
-| Feature flags: owner on/off at /dev/flags, ship dark, remove  | [docs/feature-flags.md](docs/feature-flags.md)                      |
-| Security measures: admin gate, lockout, scans, card testing   | [docs/security-measures.md](docs/security-measures.md)              |
-| UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |
-| Leaving Next.js: Vite + RR7 + Hono strangler plan             | [docs/framework-migration.md](docs/framework-migration.md)          |
-| Node tree, study plan, calendar, Google Calendar (design)     | [docs/calendar-plan.md](docs/calendar-plan.md)                      |
+| Working on                                                            | Read                                                                   |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Running or setting up the app locally, QA suites                      | [DEVELOPMENT.md](DEVELOPMENT.md)                                       |
+| What's in flight / waiting on the owner                               | [docs/state-tree.md](docs/state-tree.md)                               |
+| Landing changes, CI, branch protection, post-deploy QA                | [docs/shipping.md](docs/shipping.md)                                   |
+| Finding your way around the code                                      | [docs/repo-map.md](docs/repo-map.md)                                   |
+| Adding or renaming a route: nouns, /lab, /dev, 308 redirects          | [docs/url-principles.md](docs/url-principles.md)                       |
+| Secrets, auth, OAuth config                                           | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                   |
+| Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI     | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions"    |
+| Who may do what: isAdmin/isDev grants, /dev/permissions, break-glass CLI | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
+| Google Drive connection (/connections), private Docs import           | [docs/connections.md](docs/connections.md)                             |
+| Anything calling an LLM or TTS                                        | [docs/workers-ai.md](docs/workers-ai.md)                               |
+| Learning Partner AI replies for users (DeepSeek, caps)                | [docs/partner-ai.md](docs/partner-ai.md)                               |
+| Chat history in D1, /chat/history (what is kept, never kept)          | [docs/chat-history.md](docs/chat-history.md)                           |
+| Users' own AI key and backend (BYOK, browser-only, presets)           | [docs/byok.md](docs/byok.md)                                           |
+| The owner's local streaming speech-to-text (mic → his Mac)            | [docs/local-stt.md](docs/local-stt.md)                                 |
+| /vibe: a conversation transcribed into a private doc                  | [docs/vibe.md](docs/vibe.md)                                           |
+| Whole-page dev server on prod D1 (owner only, home LAN)               | [docs/dev-whole-page.md](docs/dev-whole-page.md)                       |
+| A friend's dev container (devbox: agents, local D1, tunnel)           | [devbox/README.md](devbox/README.md)                                   |
+| A box signing in through lianki.com (OAuth, token gate)               | [docs/box-oauth.md](docs/box-oauth.md)                                 |
+| The userscript's dev loader (hot reload over a CF tunnel)             | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)         |
+| Hosting the dev loader on lianki.com (design stub)                    | [docs/loader-hosting.md](docs/loader-hosting.md)                       |
+| Li chat from the userscript pill: security gate (stub)                | [docs/userscript-li-chat.md](docs/userscript-li-chat.md)               |
+| Hot-swapping headless core modules (kernel, swap, leak tests)         | [docs/hot-core.md](docs/hot-core.md)                                   |
+| The debug chat widget (packages/debug-chat), hot-loading              | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                   |
+| `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor        | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                       |
+| Which lane answers him ("codex, …"), codex/agy listeners      | [docs/lane-listen.md](docs/lane-listen.md)                          |
+| Hot islands: swappable components, shared state                       | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                     |
+| Live view: dev JS or whole dev pages (?live=) on lianki.com           | [docs/live-view.md](docs/live-view.md)                                 |
+| Custom frontends: a user's own dev server at ?live, the /api contract | [docs/custom-frontend.md](docs/custom-frontend.md)                     |
+| The /words swipe: headless core, UI islands, feel presets             | [docs/swipe-core.md](docs/swipe-core.md)                               |
+| UI state: what is kept where (session, local, URL, server)            | [docs/ui-state.md](docs/ui-state.md)                                   |
+| Screenshots of the owner's phone page (`scripts/dev/shot.ts`)         | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots"    |
+| UI strings, translations: every key carries context                   | [docs/i18n.md](docs/i18n.md)                                           |
+| Blog posts                                                            | [blog/AGENTS.md](blog/AGENTS.md)                                       |
+| The Chrome extension, and publishing it                               | [packages/ext/README.md](packages/ext/README.md)                       |
+| /words new-word order: in order + pass, take turns, simulator         | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)               |
+| Exam word decks (CET, TOEFL, GRE…): sources, licences, gaps           | [docs/word-deck-sources.md](docs/word-deck-sources.md)                 |
+| /self-intro import: files/text → facts → review; privacy              | [docs/self-intro-import.md](docs/self-intro-import.md)                 |
+| Import any material: upload → job → /words or /reader (stub)            | [docs/import-material.md](docs/import-material.md)                     |
+| YouTube songs: timed lyric lines as example clips (stub)              | [docs/youtube-song-examples.md](docs/youtube-song-examples.md)         |
+| /books public-domain library: catalogue rule, slugs, R2 cache         | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"      |
+| Voice mode: spoken commands per screen, grammar, mic taps             | [docs/voice-mode.md](docs/voice-mode.md)                               |
+| All sound through Li: `__lkLi` hub, who holds mic / plays             | [docs/li-sound-hub.md](docs/li-sound-hub.md)                           |
+| /words owner spec: tall slips, window, review-first, voice            | [docs/words-session-spec.md](docs/words-session-spec.md)               |
+| Sync/offline architecture                                             | [docs/sync-architecture.md](docs/sync-architecture.md)                 |
+| Sync conflicts, deletions, tombstones                                 | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                   |
+| Settings that follow the account (`lk:*` key classes)                 | [docs/prefs-sync.md](docs/prefs-sync.md)                               |
+| Notification prefixes in page titles: rules, safe matcher             | [docs/title-clean.md](docs/title-clean.md)                             |
+| Links to other sites: the disclaimer dialog, its bypasses             | [docs/external-links.md](docs/external-links.md)                       |
+| Metrics, slowness and error alerts (Slack #lianki)                    | [docs/monitoring.md](docs/monitoring.md)                               |
+| Payments, Pro passes, Stripe, invites, gift codes                     | [docs/payments.md](docs/payments.md)                                   |
+| Study ledger: daily Merkle anchors, proofs, OpenTimestamps            | [docs/lian.md](docs/lian.md)                                           |
+| Learner levels: ladder, names per locale, SVG badges                  | [docs/levels.md](docs/levels.md)                                       |
+| Feature flags: owner on/off at /dev/flags, ship dark, remove          | [docs/feature-flags.md](docs/feature-flags.md)                         |
+| Security measures: admin gate, lockout, scans, card testing           | [docs/security-measures.md](docs/security-measures.md)                 |
+| UI layout: content fills the screen, glass overlays                   | [docs/design-principles.md](docs/design-principles.md)                 |
+| Leaving Next.js: Vite + RR7 + Hono strangler plan                     | [docs/framework-migration.md](docs/framework-migration.md)             |
+| Node tree, study plan, calendar, Google Calendar (design)             | [docs/calendar-plan.md](docs/calendar-plan.md)                         |
+| /roadmap: progress from cards, what to build next                     | [docs/roadmap-next.md](docs/roadmap-next.md)                           |
 
 <!-- BEGIN:nextjs-agent-rules -->
 

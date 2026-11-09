@@ -17,11 +17,19 @@
  * every [data-sel] element; together they must hold exactly the unit tapped.
  * WebKit (iPhone) and Chromium (Android phone), touch taps. Silent.
  *
+ * Under load (two gate runs at once) the two "quick" taps can land further
+ * apart than the double-click interval, through no fault of the page: the
+ * pointerdown gap is measured in the page, and a pair that came out slower than
+ * COMBO_MS is not a quick pair, so it is tapped again (a few times) instead of
+ * being judged. The rests between checks are load budgets (load-budget.mjs).
+ *
  * Exit code 1 on a failed check.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, devices, webkit, type Page } from "playwright";
+import { COMBO_MS } from "../../lib/read/reader-select";
+import { budget } from "./load-budget.mjs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 
 const ROOT = join(import.meta.dir, "../..");
@@ -70,11 +78,50 @@ for (const [name, type, dev] of [
   // Inline <script> would end at the bundle's own "</script>" strings: a tag instead.
   await page.addScriptTag({ content: js });
   await page.waitForSelector("#w0-1");
-  const tap = async (id: string) => {
+  // Every pointerdown's time, on the clock the hook times the combo with.
+  await page.evaluate(() => {
+    const w = window as unknown as { __downs: number[] };
+    w.__downs = [];
+    addEventListener("pointerdown", (e) => w.__downs.push(e.timeStamp), true);
+  });
+  const at = async (id: string) => {
     const b = (await page.locator(`#${id}`).boundingBox())!;
-    await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2);
+    return [b.x + b.width / 2, b.y + b.height / 2] as const;
   };
-  const rest = () => page.waitForTimeout(500);
+  const tap = async (id: string) => {
+    const [x, y] = await at(id);
+    await page.touchscreen.tap(x, y);
+  };
+  // Longer than COMBO_MS and the hook's settle time, however slow the machine.
+  const rest = () => page.waitForTimeout(budget(500));
+  /**
+   * Two taps meant to be one quick pair: positions read first, 80 ms apart.
+   * Returns false when the page saw them COMBO_MS or more apart (too slow to be
+   * a pair): the caller rests and tries again rather than judging.
+   */
+  const quickPair = async (first: string, second: string) => {
+    const [p1, p2] = [await at(first), await at(second)];
+    await page.evaluate(() => ((window as unknown as { __downs: number[] }).__downs = []));
+    await page.touchscreen.tap(...p1);
+    await page.waitForTimeout(80);
+    await page.touchscreen.tap(...p2);
+    const downs = await page.evaluate(() => (window as unknown as { __downs: number[] }).__downs);
+    const gap = downs.length >= 2 ? downs.at(-1)! - downs[0] : Infinity;
+    if (gap < COMBO_MS) return true;
+    console.log(`  (${name}: the pair came ${Math.round(gap)} ms apart, over ${COMBO_MS}: again)`);
+    return false;
+  };
+  /** A quick pair, retried while the machine is too slow to make one. */
+  const quickly = async (first: string, second: string) => {
+    for (let i = 0; i < 6; i++) {
+      if (await quickPair(first, second)) return;
+      // Start over from one plain word, as the check before left it.
+      await rest();
+      await tap("w1-9");
+      await rest();
+    }
+    check(false, `${name}: could not tap two quick taps under ${COMBO_MS} ms in 6 tries`);
+  };
 
   await tap("w0-1");
   await rest();
@@ -86,18 +133,14 @@ for (const [name, type, dev] of [
     `${name}: a tap on another word moves the selection there, the first one goes (${await drawn(page)})`,
   );
   // Quickly, as a combo would be: another word still starts over.
-  await tap("w0-8");
-  await page.waitForTimeout(80);
-  await tap("w1-2");
+  await quickly("w0-8", "w1-2");
   await rest();
   check(
     (await drawn(page)) === "and",
     `${name}: two quick taps on two words select only the second (${await drawn(page)})`,
   );
   // The same spot twice, quickly: the phrase; then another word: only it.
-  await tap("w0-3");
-  await page.waitForTimeout(80);
-  await tap("w0-3");
+  await quickly("w0-3", "w0-3");
   await rest();
   check(
     (await drawn(page)) === "of the magi",

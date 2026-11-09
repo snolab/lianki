@@ -8,8 +8,9 @@ name: Deploy Worker
 # the Workers runtime. See docs/cf-d1-migration.md.
 #
 # Runs only after CI passes on main — never deploys a red commit. CI is the
-# fast `Typecheck + unit` job only; qa:all runs nightly (nightly-qa.yml) and
-# in the pre-push hook, so the deploy does not wait ~4 min for it.
+# fast lint + typecheck + unit job on a push to main; qa:all already ran in the
+# merge queue before the merge, and runs nightly (nightly-qa.yml), so the
+# deploy does not wait for it again.
 on:
   workflow_run:
     workflows: [CI]
@@ -43,7 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - run: bun install --frozen-lockfile
       # The Learning Partner for other sites (docs/dev-debug-widget.md, "On every
       # site"): built here, served as /partner-embed.js, never committed.

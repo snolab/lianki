@@ -132,7 +132,7 @@ gate ─ POST https://lianki.com/api/dev-access/verify (x-lianki-dev-bridge) ─
 most 20 live), shown **once**; D1 keeps only the SHA-256. Revoke one, or
 "revoke all", on the same page. Each token signs in as the account that
 minted it, which must be an owner, and the gate also requires it to be the
-owner its login route mints (`OWNER_EMAILS[0]`): it can never sign in as
+owner its login route mints (the oldest active `dev` grant): it can never sign in as
 anyone else. Tokens are checked only by the gate, which proves itself with
 `DEV_BRIDGE_SECRET`; without it `/api/dev-access/verify` answers 401, so a
 token cannot be tested from anywhere else.
@@ -201,7 +201,10 @@ navigate`, `Sec-Fetch-Dest: document` (when sent) and `Accept: text/html`
   then adds its own `frame-ancestors`. Only the gate sets a cookie (its own
   session). A language picked on the preview build therefore does not
   stick there (the `lang` cookie is dropped); `?lang=` still works per page.
-  Service worker scripts (`/sw.js`, `Service-Worker: script`) are 403.
+  Service worker scripts (`/sw.js`, `Service-Worker: script`) get the
+  gate's self-removing worker (`SW_KILL_SWITCH`): it deletes the origin's
+  caches and unregisters. A 403 left a worker registered before the rule in
+  place, serving day-old `/_next/static` chunks (2026-11-05).
 - **Limits**: 10 failed tokens per IP per 10 minutes → 429, and attempts
   still in flight count towards it. No global lockout: one would let anyone
   with a few IPs lock the owner out without a token. Token checks go through
@@ -220,6 +223,17 @@ navigate`, `Sec-Fetch-Dest: document` (when sent) and `Accept: text/html`
 - Upstream, Host/Origin/Referer become the dev server's own origin; the
   gate cookie, `Authorization`, `cf-*`, `x-forwarded-*`, Tailscale and the
   guard's secret headers are removed.
+
+**The same page on lianki.com itself** (2026-11-05): with the gate running,
+`bun scripts/dev/live-view.ts on --page preview` prints
+`https://lianki.com/?live=<id>`, which serves the owner this dev server's
+pages at lianki.com's own address, `/api` and `/auth` staying on production
+([live-view.md](live-view.md), "Same-origin pages"). The Worker enters the
+gate with `LIVE_GATE_SECRET` (local copy: `liveSecret` here; set it on the
+Worker once with `bun scripts/dev/whole-page.ts live-secret`, then restart
+`serve`). Stop: the badge's **stop**, any page without `?live`, or
+`live-view.ts off`. `--public-host` also takes a quick tunnel's
+`*.trycloudflare.com` host for this.
 
 **On his iPhone**: on lianki.com, the account menu's "Preview build" switch
 (「预览版」) does it all (next section). For a device without a lianki.com
@@ -339,10 +353,12 @@ Rules: `scripts/dev/whole-page-guard.ts`. Tests: `unit/whole-page-guard.test.ts`
    `/api/auth/sign-out` are served. Every sign-in, sign-up, OTP, magic-link,
    OAuth and passkey endpoint returns 403, so no account or credential can
    be created in production through this origin.
-4. **Owner.** Every page and app API must carry a session whose email is in
-   `OWNER_EMAILS` (read from `wrangler.jsonc`, the list production uses).
+4. **Owner.** Every page and app API must carry a session whose email is among
+   the `dev` holders (production's grants, asked of lianki.com with the bridge secret
+   through `/api/dev-access/verify`, at most 30 s old; unreadable means nobody).
    Anything else gets 403, so only the owner's data is readable and writes
-   only touch his account. The result is cached for 60 s per cookie header.
+   only touch his account. The result is cached for 60 s per cookie header, so
+   a revocation reaches this origin within 90 s.
 5. **Sign-in.** The enter link's second half: the guard calls
    `POST /api/dev-whole-page/login` with a secret header (stripped from all
    incoming requests). That route makes a better-auth session for the owner

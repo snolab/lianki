@@ -1,19 +1,29 @@
 // /read's speaker with fake browser pieces: nothing here makes a sound.
 import { describe, expect, it } from "bun:test";
-import { createReadSpeaker, WATCHDOG_MS, type UtterLike, type AudioLike } from "@/lib/read/speaker";
+import {
+  createReadSpeaker,
+  readRoute,
+  WATCHDOG_MS,
+  type UtterLike,
+  type AudioLike,
+} from "@/lib/read/speaker";
 import { captureHeld, createPageAudio } from "@lianki/debug-chat/page-audio";
 import { AUDIO_PRIO, audioOwner } from "@lianki/debug-chat/audio-claim";
 
 type Timer = { f: () => void; at: number; id: number };
-type FakeAudio = AudioLike & { plays: string[]; loads: string[] };
+type FakeAudio = AudioLike & { plays: string[]; loads: string[]; route?: unknown };
 function setup(
   o: {
     voices?: { lang: string; name: string }[];
     mode?: "speech" | "cloud";
     fetchOk?: boolean;
+    /** The status of a failed fetch (default 503). */
+    failStatus?: number;
     held?: boolean;
     /** The page the audio owner claims on (absent: no owner). */
     claims?: EventTarget;
+    /** Where elements play now (speaker.ts `route`); absent: no route dep. */
+    route?: () => unknown;
   } = {},
 ) {
   let t = 0;
@@ -95,7 +105,7 @@ function setup(
       fetched.push(url);
       const res = (ok = o.fetchOk ?? true) => ({
         ok,
-        status: ok ? 200 : 503,
+        status: ok ? 200 : (o.failStatus ?? 503),
         blob: async () => {
           const b = new Blob([url]);
           textOf.set(b, new URL(url, "https://x").searchParams.get("text") ?? "");
@@ -112,7 +122,8 @@ function setup(
         pending.push(p);
       });
     },
-    audio: makeAudio,
+    audio: (r) => Object.assign(makeAudio(), { route: r ?? null }),
+    ...(o.route ? { route: o.route } : {}),
     toUrl: (b) => `blob:${++nurl}:${textOf.get(b)}`,
     revoke: (u) => void revoked.push(u),
     pageAudio: () => page,
@@ -124,7 +135,8 @@ function setup(
   const result: string[] = [];
   const cb = {
     onend: () => void result.push("end"),
-    onerror: (w: string) => void result.push(`error:${w}`),
+    onerror: (w: string, noVoice?: boolean) =>
+      void result.push(`error:${w}${noVoice ? " [no-voice]" : ""}`),
   };
   return {
     sp,
@@ -288,7 +300,26 @@ describe("read speaker", () => {
   it("no voice at all for the language fails at once", () => {
     const x = setup({ voices: [EN] });
     x.sp.speak("Здравствуйте.", "ru", x.cb);
-    expect(x.result).toEqual(["error:no voice for ru on this device"]);
+    expect(x.result).toEqual(["error:no voice for ru on this device [no-voice]"]);
+  });
+
+  it("no browser voice and the server has none (404): a no-voice state, not a failure", async () => {
+    const x = setup({ voices: [EN], fetchOk: false, failStatus: 404 });
+    x.sp.speak("雲", "ja", x.cb);
+    await flush();
+    await flush();
+    expect(x.fetched[0]).toContain("lang=ja");
+    expect(x.result).toEqual(["error:server voice: HTTP 404 [no-voice]"]);
+  });
+
+  it("a server outage with a browser voice there falls back to it, so no no-voice state", async () => {
+    const x = setup({ voices: [{ lang: "ja-JP", name: "Kyoko" }], mode: "cloud", fetchOk: false });
+    x.sp.speak("雲", "ja", x.cb);
+    await flush();
+    await flush();
+    expect(x.spoken.map((u) => u.lang)).toEqual(["ja-JP"]);
+    x.spoken[0].onerror?.({ error: "synthesis-failed" });
+    expect(x.result).toEqual(["error:browser voice: synthesis-failed"]);
   });
 
   it("cancel stops it: later events are ignored and the hold ends", () => {
@@ -321,6 +352,45 @@ describe("read speaker", () => {
     x.spoken[1].onstart?.();
     x.spoken[1].onend?.();
     expect(x.result).toEqual(["end"]);
+  });
+});
+
+describe("read speaker: the route while the chat mic captures (owner, 2026-11-07)", () => {
+  // iOS ducks a bare <audio> element to near silence while the mic captures:
+  // the reader's clips "played" (currentTime ran) and nothing was heard.
+  it("readRoute: the running voice context only while the mic is on", () => {
+    const pa = createPageAudio();
+    const ctx = { state: "running" };
+    expect(readRoute(pa, ctx)).toBeNull();
+    pa.setMic(true);
+    expect(readRoute(pa, ctx)).toBe(ctx);
+    expect(readRoute(pa, { state: "suspended" })).toBeNull();
+    expect(readRoute(pa, null)).toBeNull();
+  });
+
+  it("with the mic on, the cloud clip plays in an element routed to the voice context", async () => {
+    const ctx = { state: "running" };
+    const mic = createPageAudio();
+    const x = setup({ mode: "cloud", route: () => readRoute(mic, ctx) });
+    const say = async (text: string) => {
+      x.sp.unlock();
+      x.sp.speak(text, "en", x.cb);
+      for (let i = 0; i < 4; i++) await flush();
+      return x.played.at(-1)?.el;
+    };
+    mic.setMic(true);
+    const a = await say("Hello there.");
+    expect(a?.route).toBe(ctx);
+    a?.onended?.();
+    expect(x.result).toEqual(["end"]);
+    // Mic off: a bare element, as before.
+    mic.setMic(false);
+    expect((await say("Again."))?.route).toBeNull();
+    // Mic on again: the same routed pair (an element is routed once, never twice).
+    mic.setMic(true);
+    expect((await say("Once more."))?.route).toBe(ctx);
+    expect(x.audios.filter((e) => e.route === ctx)).toHaveLength(2);
+    expect(x.audios.filter((e) => e.route === null)).toHaveLength(2);
   });
 });
 

@@ -20,23 +20,29 @@
 //
 // Client-safe (no server imports): /books renders from it.
 
+import { STANDARD_EBOOKS_HOST, WIKISOURCE } from "./libraries";
 import { SLUG_RE, slugOf } from "./slug";
 import { TERMS, normaliseCountry, pdForViewer, pdIn, type Creator } from "./terms";
 
 /** Hosts the server may fetch a catalogue file from, and follow a redirect to. */
-export const SOURCE_HOSTS = [
+export const SOURCE_HOSTS: readonly string[] = [
   "www.gutenberg.org",
   "www.aozora.gr.jp",
-  "zh.wikisource.org",
-  "ru.wikisource.org",
-] as const;
+  STANDARD_EBOOKS_HOST,
+  ...Object.keys(WIKISOURCE),
+];
 
 /**
  * The kinds of source file the importer reads (lib/books/source.ts), one per
  * host format: a Project Gutenberg HTML ebook, an Aozora Bunko XHTML file, a
- * Wikisource page's REST HTML (`/api/rest_v1/page/html/<title>/<revision>`).
+ * Wikisource page's REST HTML (`/api/rest_v1/page/html/<title>/<revision>`), a
+ * Standard Ebooks single-page XHTML (`/ebooks/<path>/text/single-page`).
  */
-export type SourceFormat = "gutenberg-html" | "aozora-xhtml" | "wikisource-html";
+export type SourceFormat =
+  | "gutenberg-html"
+  | "aozora-xhtml"
+  | "wikisource-html"
+  | "standardebooks-xhtml";
 
 export interface CatalogueBook {
   /**
@@ -800,7 +806,7 @@ export function allowedSourceUrl(raw: string): URL | null {
     return null;
   }
   if (u.protocol !== "https:" || u.port || u.username || u.password) return null;
-  return (SOURCE_HOSTS as readonly string[]).includes(u.hostname) ? u : null;
+  return SOURCE_HOSTS.includes(u.hostname) ? u : null;
 }
 
 /** The latest first-publication year that is public domain in the US during `year`. */

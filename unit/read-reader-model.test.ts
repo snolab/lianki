@@ -12,6 +12,7 @@ import {
   learningBand,
   localItems,
   marksByLine,
+  nextParaItem,
   sentencesFromCuts,
   pieceSentences,
   railLevel,
@@ -21,7 +22,6 @@ import {
 } from "@/lib/read/reader-model";
 import { CHROME_FULL, chromeStep } from "@/lib/read/reader-chrome";
 import { anchorAt, loadAnchor, newestAnchor, parseAnchor, saveAnchor } from "@/lib/read/reader-pos";
-import { readerPick } from "@/lib/read/reader-access";
 import { localReaderData } from "@/lib/read/reader-adapter";
 
 /** A sentence of n words (capitalised: a sentence break needs one). */
@@ -217,7 +217,8 @@ describe("reader position", () => {
     expect(loadAnchor("b", s)).toEqual({ line: 12, off: 0, at: 0 });
     saveAnchor("b", { line: 30, off: 0.25, at: 5 }, s);
     expect(loadAnchor("b", s)).toEqual({ line: 30, off: 0.25, at: 5 });
-    expect(s.getItem("lk:read-pos:b")).toBe("30");
+    // The first reader is gone: its key is only read, never written.
+    expect(s.getItem("lk:read-pos:b")).toBe("12");
   });
 
   it("checks stored anchors and keeps the newest", () => {
@@ -249,22 +250,6 @@ describe("reader position", () => {
       at: 3,
     });
     expect(anchorAt(rects, 1000)).toBeNull();
-  });
-});
-
-describe("reader access", () => {
-  const o = { flags: {}, owner: false, dev: false };
-  it("is v2 for the owner or with the flag on, as its backend (readerV2On)", () => {
-    expect(readerPick(o)).toBe("v1");
-    expect(readerPick({ ...o, flags: { "read.reader-v2": true } })).toBe("v2");
-    expect(readerPick({ ...o, owner: true })).toBe("v2");
-    expect(readerPick({ ...o, owner: true, query: "v1" })).toBe("v1");
-  });
-  it("lets ?reader= choose: v2 only for the owner or a local dev server", () => {
-    expect(readerPick({ ...o, query: "v2" })).toBe("v1");
-    expect(readerPick({ ...o, query: "v2", dev: true })).toBe("v2");
-    expect(readerPick({ ...o, query: "v2", owner: true })).toBe("v2");
-    expect(readerPick({ ...o, flags: { "read.reader-v2": true }, query: "v1" })).toBe("v1");
   });
 });
 
@@ -364,5 +349,25 @@ describe("reader model: emphasis inside a word", () => {
     const p = cutPara("H2O boils.", "en", "en", null, [[1, 2, "sub"]]);
     const tok = p.sentences[0].segs.find((g) => g.t === 0);
     expect(tok?.parts).toEqual([{ text: "H" }, { text: "2", k: ["sub"] }, { text: "O" }]);
+  });
+});
+
+describe("nextParaItem: a paragraph's grade moves on to the next paragraph (owner, 2026-11-08 20:33 JST)", () => {
+  const blocks = [
+    { kind: "heading", line: 0 },
+    { kind: "item", id: "1.0", pieces: [{ line: 1, s0: 0, s1: 2 }] },
+    { kind: "item", id: "1.2", pieces: [{ line: 1, s0: 2, s1: -1 }] },
+    { kind: "heading", line: 2 },
+    { kind: "item", id: "3.0", pieces: [{ line: 3, s0: 0, s1: -1 }] },
+    { kind: "item", id: "4.0", pieces: [{ line: 4, s0: 0, s1: -1 }] },
+  ] as Parameters<typeof nextParaItem>[0];
+  it("skips the rest of a split paragraph and a heading", () => {
+    expect(nextParaItem(blocks, 1)).toBe(4);
+  });
+  it("the item right after a whole paragraph", () => {
+    expect(nextParaItem(blocks, 3)).toBe(5);
+  });
+  it("none after the last paragraph", () => {
+    expect(nextParaItem(blocks, 4)).toBe(-1);
   });
 });

@@ -2,6 +2,7 @@
 
 import { isEntrySource } from "@/lib/words/entry-list";
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
+import { pageLeaving } from "@/lib/page-leaving";
 import { useTextScale } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { SettingsSheet } from "./SettingsSheet";
@@ -26,6 +27,8 @@ import { voiceQuality } from "@lianki/debug-chat/wire";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
 import { AUDIO_PRIO, audioOwner, audioOwnerId } from "@lianki/debug-chat/audio-claim";
 import { AEC_EVENT, aecOn, applyAec } from "@lianki/debug-chat/aec";
+import { keepAwakeOn, outputBed, setKeepAwake } from "@lianki/debug-chat/output-bed";
+import { silentWav } from "@/lib/read/speaker";
 import {
   createContext,
   startTransition,
@@ -98,8 +101,13 @@ import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
-import { backParts, rowMetrics } from "@/lib/words/row-layout";
+import { backParts, ROW_LINE_LH, rowMetrics } from "@/lib/words/row-layout";
 import { withPickedExample, type Example } from "@/lib/words/example-pick";
+import {
+  SongClipButton,
+  useClipPlayer,
+  YtClipProvider,
+} from "@/app/components/yt-clip/clip-context";
 import {
   famLang,
   famMark,
@@ -146,7 +154,15 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
-import { TrayBack, studyFinished } from "./study-done-back";
+import type { Patch, RowFill } from "@/lib/read/review-row-fill";
+import {
+  TrayBack,
+  focusStillFree,
+  inTypingField,
+  listDone,
+  reviewEnded,
+  studyFinished,
+} from "./study-done-back";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -189,6 +205,7 @@ import {
 import { notePrefWrite, PREF_APPLIED_EVENT, useUi } from "@lianki/ui-state";
 import {
   anchorTop,
+  centredTop,
   setFocusKey,
   migrateCollapsed,
   setAnchor,
@@ -210,6 +227,7 @@ const SwipeGradesIsland = island("words.swipeGrades", SwipeGrades);
 const SwipeFeelIsland = island("words.swipeFeel", SwipeFeelSource);
 const SwipeTunerIsland = island("words.swipeTuner", SwipeTuner);
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
+import { WORDS_ADD_HASH } from "@/lib/home-features";
 import { newScan, takeNewIndices, type NewScan } from "@/lib/words/take-new";
 import { dueFetchLimit, MAX_DUE_FETCH, nextBatch, orderDue } from "@/lib/words/review-first";
 import { countGradedNew, unseenLeft } from "@/lib/words/unseen";
@@ -223,7 +241,13 @@ import {
   undoTarget,
   withPendingRenames,
 } from "@/lib/words/pending";
-import { playGradeTone, sharedAudioContext, unlockGradeTones, type GradeTone } from "./gradeSound";
+import {
+  playGradeTone,
+  sharedAudioContext,
+  suspendSharedAudio,
+  unlockGradeTones,
+  type GradeTone,
+} from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
 
 /**
@@ -396,6 +420,8 @@ function flushSwipes(beacon = false) {
 }
 /** A word whose next due falls inside this window comes back in this session. */
 const SESSION_WINDOW_MS = 20 * 60_000;
+/** "Near the screen" for a review list's rows: this share of the list's height beyond it. */
+const NEAR_VIEW = 25;
 
 type Rating = 1 | 2 | 3 | 4;
 type CatalogMeta = {
@@ -452,6 +478,8 @@ type Entry = {
   /** An example sentence in the target language, and its English. */
   ex?: string;
   exTr?: string;
+  /** The example sung in a YouTube song: JSON {v, t0, t1} (lib/yt-songs/card-clip.ts). */
+  clip?: string;
   /** More example sentences, if the deck has them: one is shown per showing (lib/words/example-pick.ts). */
   exs?: Example[];
   /** Phrase decks: a usage note (English), casual / polite, and the moment it is said in. */
@@ -460,6 +488,8 @@ type Entry = {
   scene?: string;
 };
 type Item = Entry & {
+  /** A review list's new word with no meaning yet (lib/read/review-row-fill.ts). */
+  backState?: "loading" | "none";
   kind: "due" | "new" | "again";
   newIndex?: number;
   /** The list it belongs to — a "study all" screen mixes lists. */
@@ -1016,6 +1046,35 @@ function useAecSwitch(): [boolean, (on: boolean) => void] {
   return [on, set];
 }
 
+/**
+ * "Keep speaker awake" (packages/debug-chat output-bed.ts), device-local
+ * (docs/prefs-sync.md). Read after mount: the server has no localStorage.
+ */
+function useKeepAwakeSwitch(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(true);
+  useEffect(() => setOn(keepAwakeOn()), []);
+  const set = useCallback((next: boolean) => {
+    setOn(next);
+    setKeepAwake(next);
+  }, []);
+  return [on, set];
+}
+
+/**
+ * The first clip plays after the pre-roll, past the tap: an element that has
+ * played in the tap may play later without one (iOS). Silent, then paused.
+ */
+function unlockClip() {
+  const silent = silentWav();
+  const c = clipPool().take(silent);
+  void c.el.play().then(
+    () => {
+      if (c.el.src === silent) c.el.pause();
+    },
+    () => {},
+  );
+}
+
 /** `serverVoice`: always use the server's recordings, never the browser's. */
 function useSpeech(serverVoice = false) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -1066,6 +1125,14 @@ function useSpeech(serverVoice = false) {
   const unfollow = useCallback(() => {
     follow.current?.();
     follow.current = null;
+  }, []);
+  useEffect(() => {
+    // Listening for taps from now on; on the way out the clips' context stops too.
+    const off = outputBed().onExit(suspendSharedAudio);
+    return () => {
+      off();
+      suspendSharedAudio();
+    };
   }, []);
   useEffect(() => {
     setAvailable(true);
@@ -1302,6 +1369,11 @@ function useSpeech(serverVoice = false) {
         cancel,
         setTimeout: (fn, ms) => setTimeout(fn, ms),
         clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+        preroll: () => {
+          const ms = outputBed().begin();
+          if (ms > 0) unlockClip();
+          return ms;
+        },
         // A word read aloud pauses the reader's paragraph, and pauses for Li (audio-claim.ts).
         owner: (h) => audioOwner({ ...h, id: audioOwnerId("words"), prio: AUDIO_PRIO.card }),
       }),
@@ -1424,8 +1496,6 @@ function useSpeech(serverVoice = false) {
 const GLANCE_ACCEL = 450;
 const GLANCE_HOLD_START = 1.0;
 const GLANCE_HOLD_END = 1.2;
-/** Line height of a /words cell that wraps (Glance `lines`), in em. */
-const ROW_LINE_LH = 1.25;
 
 /**
  * A cell that would be cut off: on the active row it slides to its end,
@@ -1846,7 +1916,10 @@ function useListParam(base: string): [string | null, (id: string | null) => void
   useEffect(() => {
     let first = read();
     const kept = ui.getState().listId;
-    if (first === null && kept) {
+    // The Word lists card on /home comes for the "Add a list" tree, not this
+    // tab's list.
+    const forAdding = location.hash === `#${WORDS_ADD_HASH}`;
+    if (first === null && kept && !forAdding) {
       const url = new URL(location.href);
       url.searchParams.set("list", kept);
       history.replaceState(history.state, "", url);
@@ -1867,6 +1940,7 @@ function useListParam(base: string): [string | null, (id: string | null) => void
       const url = new URL(location.href);
       if (next) url.searchParams.set("list", next);
       else url.searchParams.delete("list");
+      url.hash = ""; // done with the tree: coming back must not scroll to it again
       history.pushState(null, "", url);
       ui.setState({ listId: next });
       setId(next);
@@ -1879,10 +1953,13 @@ function useListParam(base: string): [string | null, (id: string | null) => void
 export default function WordsClient({
   config: given,
   voice = "off",
+  ytSongs = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
   voice?: VoiceAccess;
+  /** YouTube songs (`read.youtube-songs`, or the owner): an example with a song clip gets its ▶. */
+  ytSongs?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
@@ -2041,22 +2118,24 @@ export default function WordsClient({
     return (
       <>
         {undoToast}
-        <Study
-          key={listId}
-          config={config}
-          lists={studying}
-          catalog={fullCatalog}
-          voice={voice}
-          title={
-            listId === ALL
-              ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
-              : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
-          }
-          onExit={() => {
-            setListId(null);
-            refreshLists();
-          }}
-        />
+        <YtClipProvider on={ytSongs}>
+          <Study
+            key={listId}
+            config={config}
+            lists={studying}
+            catalog={fullCatalog}
+            voice={voice}
+            title={
+              listId === ALL
+                ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
+                : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
+            }
+            onExit={() => {
+              setListId(null);
+              refreshLists();
+            }}
+          />
+        </YtClipProvider>
       </>
     );
 
@@ -2662,6 +2741,13 @@ function ListPicker({
   // lists, languages or whole branches, then add them all in one go. Adding
   // never starts studying: the learner stays here and opens a list himself.
   const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES), [builtIn]);
+  // A link to #add-list arrives before the tree exists, so the browser finds
+  // nothing to scroll to; scroll once the tree is on the page.
+  useEffect(() => {
+    if (location.hash === `#${WORDS_ADD_HASH}`) {
+      document.getElementById(WORDS_ADD_HASH)?.scrollIntoView({ block: "start" });
+    }
+  }, []);
   const [ticked, setTicked] = useState<Set<string>>(() => new Set());
   const [openKeys, setOpenKeys] = useState<Set<string>>(
     () =>
@@ -3018,7 +3104,7 @@ function ListPicker({
         {config.imports && <ImportLink />}
       </div>
 
-      <div className="space-y-2" data-add-tree>
+      <div id={WORDS_ADD_HASH} className="scroll-mt-20 space-y-2" data-add-tree>
         <h2 className="text-sm font-medium opacity-80">{text.addList}</h2>
         <div role="tree" aria-multiselectable className="-mx-2">
           {addTree.map((n) => (
@@ -3538,7 +3624,7 @@ function ImportLink() {
  */
 /**
  * A review of given words instead of a list's session: the reader's "review
- * this range's words" (app/(app)/read/[id]/reader-word-review.tsx). The same
+ * this range's words" (app/(app)/reader/[id]/reader-word-review.tsx). The same
  * study — rows, swipe, mirror, undo, marks, FSRS cards — with only these
  * words: no new-word intake, no further due words, the page not locked.
  */
@@ -3549,6 +3635,8 @@ export type StudyScope = {
     reading?: string | null;
     back: string;
     ex?: string | null;
+    /** The example's song clip JSON (a YouTube song's line), or none. */
+    clip?: string | null;
     /** Stored ts-fsrs card JSON; null: a new word (its first grade makes the card). */
     card?: string | null;
   }[];
@@ -3558,6 +3646,14 @@ export type StudyScope = {
   exitLabel?: string;
   /** Shown in the toolbar after the title (the reader's 制卡). */
   toolbar?: React.ReactNode;
+  /** Fills rows as they come near the screen (lib/read/review-row-fill.ts). Stable. */
+  fill?: RowFill;
+  /**
+   * Lines of back text added to every row (lib/words/row-layout.ts rowMetrics):
+   * the row is that many lines of its own text taller, and its first back
+   * line may wrap that many times more. The reader's review: 1.
+   */
+  extraLines?: number;
   /**
    * This review's place in the tab's UI state (`lk:ui:words`): the list's
    * scroll and the card in focus, kept apart from the lists' own sessions so
@@ -3609,6 +3705,11 @@ export function Study({
   const sheetOpen = useRef(false);
   // Back (the browser's, the phone's) folds the sheet instead of leaving /words.
   useBackToClose(sheet !== null, () => setSheet(null));
+  // A song clip playing (yt-clip): grading or moving to another row closes it.
+  const clipPlayer = useClipPlayer();
+  useEffect(() => {
+    clipPlayer?.close();
+  }, [row, grades, clipPlayer]);
   const sync = useSyncStatus();
   /** The queue was built from the offline copy. */
   const [offlineCopy, setOfflineCopy] = useState(false);
@@ -3751,7 +3852,7 @@ export function Study({
     // Several examples: one at random for this showing, frozen into the item.
     const e = withPickedExample(found, keyOf({ listId, term }));
     return {
-      ...(e.ex ? { ex: e.ex, exTr: e.exTr } : {}),
+      ...(e.ex ? { ex: e.ex, exTr: e.exTr, ...(e.clip ? { clip: e.clip } : {}) } : {}),
       ...(e.note ? { note: e.note } : {}),
       ...(e.register ? { register: e.register } : {}),
       ...(e.scene ? { scene: e.scene } : {}),
@@ -3909,6 +4010,7 @@ export function Study({
           reading: x.reading ?? undefined,
           back: x.back,
           ex: x.ex ?? undefined,
+          clip: x.clip ?? undefined,
           kind: x.card ? "due" : "new",
           listId: x.listId,
           lang: lang.get(x.listId) ?? "und",
@@ -3991,6 +4093,22 @@ export function Study({
     setRow(rowRef.current);
   }, []);
 
+  /** A row to get through: in a scoped review, all of them; else new, or due by now. */
+  const toReview = (x: Item, t: number) =>
+    !!scope || x.kind === "new" || !x.card || dueOf(x.card) <= t;
+  /** What decides the list is done (`listDone`), as of now, not the last render. */
+  const listNow = (except = -1) => {
+    const t = Date.now();
+    return {
+      exhausted: exhaustedNow.current,
+      left: queue.filter(
+        (x, j) => j !== except && !gradesNow.current.has(j) && !retired(j) && toReview(x, t),
+      ).length,
+      // A word fetched to join below (from -1), not a missed word's own copy.
+      waiting: requeue.current.later.filter((w) => w.from < 0).length,
+    };
+  };
+
   /**
    * Grade one word. Works the same online and offline: the new card is
    * computed here (same FSRS params as the server), and the review joins the
@@ -4005,6 +4123,7 @@ export function Study({
     // From the card as it was before this row's grade, so a re-grade replaces.
     const { card } = reviewWord(parseCard(it.card), rating, now, paramsOf.get(it.listId)!);
     const cardJson = JSON.stringify(card);
+    const first = !gradesNow.current.has(i);
     gradesNow.current = new Map(gradesNow.current).set(i, { rating, card: cardJson });
     setGrades((g) => new Map(g).set(i, { rating, card: cardJson }));
     gradeLog.current = [...gradeLog.current.filter((x) => x !== i), i];
@@ -4021,6 +4140,18 @@ export function Study({
       SESSION_WINDOW_MS,
     );
     insertDue.current();
+    // The last word to review, just graded: focus goes to the way back.
+    if (
+      reviewEnded({
+        first,
+        reviewable: toReview(it, now.getTime()),
+        ...listNow(i),
+      })
+    ) {
+      backFrom.current = document.activeElement;
+      setBackSaid("");
+      setBackCue((n) => n + 1);
+    }
     const op: PendingOp = {
       listId: it.listId,
       op: "review",
@@ -4143,7 +4274,7 @@ export function Study({
       if (sheetOpen.current) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      if (inTypingField(t)) return;
       // The end-of-list way back, focused: Enter / Space press it.
       if (
         (e.code === "Enter" || e.code === "Space") &&
@@ -4172,7 +4303,11 @@ export function Study({
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.code === "KeyV") speech.toggle();
       else if (e.code === "KeyE") setShowAll((v) => !v);
-      else if (keyRating(e)) keyGrade(row, keyRating(e)!);
+      else if (e.code === "KeyG") {
+        // Back, once the list is done (the way back has the focus by then).
+        if (loading || loadError || !listDone(listNow())) return;
+        onExit();
+      } else if (keyRating(e)) keyGrade(row, keyRating(e)!);
       else return;
       e.preventDefault();
     };
@@ -4186,7 +4321,9 @@ export function Study({
   // Rows are 1.5× their swipe unit (owner, 2026-11-03): SWIPE_A, the old row
   // height, stays the finger distance of one detent (lib/words/row-layout.ts).
   const cardScale = useTextScale("cards");
-  const { rowH: ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale);
+  // A scope may ask for more lines in every row (the reader's review: one).
+  const extraLines = scope?.extraLines ?? 0;
+  const { rowH: ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale, extraLines);
   const listRef = useRef<HTMLDivElement>(null);
   /** The list element as state, for effects that must start when it mounts. */
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
@@ -4234,6 +4371,37 @@ export function Study({
    */
   const advancing = useRef<{ row: number; top: number } | null>(null);
   /**
+   * The review just ended (`reviewEnded`, from grade): the end-of-list way
+   * back takes the focus, so Enter / Space press it, and a polite status
+   * says so. `backFrom`: what had the focus at that grade — if it moved on
+   * meanwhile (the chat input, a link), the focus is left where it went.
+   */
+  const [backCue, setBackCue] = useState(0);
+  const backFrom = useRef<Element | null>(null);
+  const [backSaid, setBackSaid] = useState("");
+  useEffect(() => {
+    if (!backCue) return;
+    const el = listRef.current;
+    const btn = el?.querySelector<HTMLButtonElement>("[data-testid=study-done-back]");
+    if (!el || !btn) return;
+    if (!focusStillFree(document.activeElement, backFrom.current, document.body)) return;
+    // The ring shows whatever input graded (TrayBack's :focus look).
+    btn.focus({ preventScroll: true, focusVisible: true } as FocusOptions);
+    const list = el.getBoundingClientRect();
+    const b = btn.getBoundingClientRect();
+    const { top, bottom } = barRef.current;
+    // Not fully clear of the glass: the end of the list, where the tray sits.
+    if (b.bottom > list.bottom - bottom || b.top < list.top + top) {
+      advancing.current = null;
+      el.scrollTo({
+        top: el.scrollHeight - el.clientHeight,
+        behavior: motionOff() ? "auto" : "smooth",
+      });
+    }
+    setBackSaid(text.allReviewedBack.value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backCue]);
+  /**
    * After grading row `i` for the first time: scroll the list by exactly one
    * row, so the next word slides up under the thumb. An absolute target, not
    * scrollBy: a relative step lands one row past wherever the list is at
@@ -4279,8 +4447,8 @@ export function Study({
     if (listEl) syncScroll(listEl.scrollTop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listEl, pad, viewH, ROW_H]);
-  // Open with the first row just under the glass toolbar, not half a screen
-  // down. Re-applied until the person moves the list themselves: whenever the
+  // Open with the first row in the middle of the screen (owner, 2026-11-07
+  // 17:50 JST). Re-applied until the person moves the list themselves: whenever the
   // list element is (re)mounted (the queue can reload, e.g. from the offline
   // copy and then the server), the measured heights or the over-scroll
   // change (fonts, safe areas and the toolbar settle late on iOS), and on
@@ -4310,7 +4478,8 @@ export function Study({
     };
   }, [listEl]);
   // Where the reader was in this tab (ui-store.ts): the same opening, aimed
-  // at that word instead of the first, while it is still in the queue.
+  // at that word instead of the first, while it is still in the queue. The
+  // first card itself opens in the middle of the screen (centredTop).
   const studyKey = scope?.key ?? lists.map((l) => l.id).join(",");
   const anchor = useUi(ui, (s) => s.anchors[studyKey] ?? null);
   const anchorAt = useMemo(
@@ -4321,8 +4490,11 @@ export function Study({
     if (!listEl || !listReady || !measured) return;
     if (opened.current.el !== listEl) opened.current = { el: listEl, moved: false };
     if (opened.current.moved) return;
-    listEl.scrollTop = anchorTop(anchorAt, { pad, rowH: ROW_H, barTop: bar.top }) ?? pad - bar.top;
-  }, [listEl, listReady, measured, pad, bar.top, shownAt, anchorAt]);
+    listEl.scrollTop =
+      anchorAt > 0
+        ? anchorTop(anchorAt, { pad, rowH: ROW_H, barTop: bar.top })!
+        : centredTop({ pad, rowH: ROW_H, viewH });
+  }, [listEl, listReady, measured, pad, bar.top, shownAt, anchorAt, viewH]);
   /** Remember the word at the top once the reader has moved the list (not the opening's own scroll). */
   const anchorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** The anchor write still waiting for the scroll to stop, if any. */
@@ -4365,17 +4537,20 @@ export function Study({
   }, [ROW_H, pad]);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
-  // hints change, the window turns), never polled.
+  // hints change, the window turns), never polled. Measured against the list's
+  // own box, not the window: a scoped review in a bottom sheet (the reader's,
+  // reader-word-review.tsx) has the list start below the top of the screen.
   useLayoutEffect(() => {
     const fit = () => {
       const top = topRef.current;
       const hint = hintRef.current;
+      const box = listEl?.getBoundingClientRect();
+      const boxTop = box?.top ?? 0;
+      const boxBottom = box?.bottom ?? window.innerHeight;
       const next = {
-        top: Math.round(top?.getBoundingClientRect().bottom ?? 0),
+        top: Math.round(top ? top.getBoundingClientRect().bottom - boxTop : 0),
         toolbar: Math.round(top?.offsetHeight ?? 0),
-        bottom: hint
-          ? Math.max(0, Math.round(window.innerHeight - hint.getBoundingClientRect().top))
-          : 0,
+        bottom: hint ? Math.max(0, Math.round(boxBottom - hint.getBoundingClientRect().top)) : 0,
       };
       setBar((b) =>
         b.top === next.top && b.bottom === next.bottom && b.toolbar === next.toolbar ? b : next,
@@ -4393,7 +4568,8 @@ export function Study({
   // The paper scrolls with the list (.lk-paper-layer): the body behind it is
   // plain, so the texture isn't drawn twice.
   useEffect(() => {
-    if (!listEl) return;
+    // A scoped review is an overlay: the page under it keeps its own look.
+    if (!listEl || scope) return;
     const root = document.documentElement;
     root.classList.add("lk-paper-scrolls");
     return () => root.classList.remove("lk-paper-scrolls");
@@ -4607,6 +4783,7 @@ export function Study({
   const voiceOn = voice !== "off" && voicePref;
   const vtext = useIntlayer("words-voice-mode");
   const [aec, setAecPill] = useAecSwitch();
+  const [keepAwake, setKeepAwakePill] = useKeepAwakeSwitch();
   /** The card a command acts on: the touch focus, or the desktop cursor. */
   const currentRow = () => (touch ? focusNow.current : rowRef.current);
   /** Touch: bring a focused row into the part of the list the glass leaves uncovered. */
@@ -4679,6 +4856,8 @@ export function Study({
   // asked each time, so words that fell due since the page opened come too),
   // then new ones. Stops only when every catalog runs out.
   const [exhausted, setExhausted] = useState(!!scope);
+  const exhaustedNow = useRef(exhausted);
+  exhaustedNow.current = exhausted;
   const fetching = useRef(false);
   /** Bumped when a recheck lets go of `fetching`, so a skipped endless fetch runs. */
   const [released, setReleased] = useState(0);
@@ -4764,6 +4943,36 @@ export function Study({
   const OVERSCAN = 20;
   const from = Math.max(0, Math.floor((scrollTop - pad) / ROW_H) - OVERSCAN);
   const to = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H) + OVERSCAN);
+  // A review list's rows ask for what they lack as they come near the screen:
+  // the observer, not the window above, which renders far more than is seen.
+  const rowFill = scope?.fill;
+  const nearRows = useRef<IntersectionObserver | null>(null);
+  useEffect(() => {
+    if (!rowFill || !listEl) return;
+    const patch: Patch = (listId, term, p) =>
+      setQueue((q) => q.map((x) => (x.listId === listId && x.term === term ? { ...x, ...p } : x)));
+    const io = new IntersectionObserver(
+      (seen) => {
+        for (const e of seen) {
+          const it = queueNow.current[Number((e.target as HTMLElement).dataset.i)];
+          if (!it) continue;
+          if (e.isIntersecting) rowFill.enter(it, patch);
+          else rowFill.leave(it);
+        }
+      },
+      { root: listEl, rootMargin: `${NEAR_VIEW}% 0px` },
+    );
+    nearRows.current = io;
+    return () => {
+      nearRows.current = null;
+      io.disconnect();
+    };
+  }, [rowFill, listEl]);
+  useEffect(() => {
+    const io = nearRows.current;
+    if (!io || !listEl) return;
+    for (const r of listEl.querySelectorAll("[data-i]")) io.observe(r);
+  }, [rowFill, listEl, from, to, queue.length]);
 
   // Audio, in the owner's order: the rows on screen, then their neighbours
   // outward across the rendered window, then a few past it. Each scroll
@@ -4801,10 +5010,17 @@ export function Study({
   // The headwords of the same words (the lemma file's), for the card's word in its example.
   const heads = useRef<HeadMap>(new Map());
   const [, setFamRev] = useState(0);
+  // Nothing is asked once the page starts to leave (lib/page-leaving.ts): WebKit
+  // refuses a fetch started while the next page loads and reports it as a page
+  // error, caught or not. Held while the list is up.
+  useEffect(() => pageLeaving().watch(), []);
   useEffect(() => {
     const want = missingWords(queue.slice(from, to), fam.current);
     if (!want.size) return;
     const t = setTimeout(() => {
+      const leaving = pageLeaving().signal;
+      // Not asked: the next window asks, should the leave be called off.
+      if (leaving.aborted) return;
       for (const [lang, all] of want)
         for (let k = 0; k < all.length; k += 500) {
           const words = all.slice(k, k + 500);
@@ -4814,6 +5030,7 @@ export function Study({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ lang, words }),
+            signal: leaving,
           })
             .then((r) => (r.ok ? r.json() : null))
             .then((j: { hits?: Record<string, FamHit>; heads?: unknown } | null) => {
@@ -4823,7 +5040,12 @@ export function Study({
               if (j?.hits) recordHits(fam.current, lang, words, j.hits);
               setFamRev((n) => n + 1);
             })
-            .catch(() => {});
+            .catch(() => {
+              // Cut by a leave: not asked after all, should the page stay.
+              if (!leaving.aborted) return;
+              const m = fam.current.get(lang);
+              for (const w of words) if (m?.get(w) === null) m.delete(w);
+            });
         }
     }, 250);
     return () => clearTimeout(t);
@@ -4858,7 +5080,8 @@ export function Study({
     const family = getComputedStyle(document.body).fontFamily;
     const cache = new Map<string, { back: number; ex: number }>();
     return (it: Item) => {
-      const k = keyOf(it);
+      // With what it shows: a review list's row is filled once it is near the screen.
+      const k = `${keyOf(it)}\u0000${it.back.length}\u0000${it.exTr?.length ?? 0}`;
       let w = cache.get(k);
       if (!w && ctx) {
         ctx.font = `400 ${14 * cardScale}px ${family}`;
@@ -5028,12 +5251,17 @@ export function Study({
     // Full width: wide screens get room for longer explanations.
     // In-flow content (loading, errors) starts below the glass toolbar.
     <div className="w-full px-3 pb-4 sm:px-8 sm:pb-6" style={{ paddingTop: bar.toolbar + 16 }}>
+      {/* The review just ended: focus is on the way back (backCue). */}
+      <div role="status" aria-live="polite" className="sr-only" data-review-ended>
+        {backSaid}
+      </div>
       {/* The toolbar: a glass overlay under the header, over the list. */}
       <div
         ref={topRef}
         data-words-top
         className="lk-words-bar lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
-        style={{ top: "calc(3.5rem + env(safe-area-inset-top))" }}
+        // Under the header; a scoped review in a sheet has no notch above it (--lk-sheet-inset-top).
+        style={{ top: "calc(3.5rem + var(--lk-sheet-inset-top, env(safe-area-inset-top)))" }}
       >
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <button
@@ -5159,6 +5387,17 @@ export function Study({
                 label={text.serverVoice.value}
                 hint={text.serverVoiceHint.value}
               />
+            )}
+            {(speech.on || voiceOn) && (
+              <span className="flex w-full flex-col items-start gap-1" data-keep-awake-setting>
+                <TogglePill
+                  on={keepAwake}
+                  onChange={setKeepAwakePill}
+                  label={vtext.keepAwake.value}
+                  hint={vtext.keepAwakeHint.value}
+                />
+                <span className="fs-10 opacity-60">{vtext.keepAwakeHint}</span>
+              </span>
             )}
             {debug && <WhisperModeSetting text={text} />}
             {speech.on && serverVoice && (
@@ -5359,6 +5598,9 @@ export function Study({
             // the user activation full screen needs.
             onPointerUp={touch ? resumeFullscreen : undefined}
             role="list"
+            // Measured and opened (the opening scroll above has run): what a
+            // test waits for after a load, instead of the network going quiet.
+            data-ready={listReady && measured ? "" : undefined}
           >
             {/* The paper, scrolling with the rows: one composited layer the
             height of the whole content (both over-scroll pads included),
@@ -5514,7 +5756,9 @@ export function Study({
                       // The taller rows' room (owner, 2026-11-03): on a phone the
                       // first line (the example) may wrap once, the second stays
                       // one line; on desktop each column may take two lines.
-                      const lines = !touch || first ? 2 : 1;
+                      // A scope's extra lines go to the first line on a phone, to
+                      // each column on desktop (side by side: one line taller).
+                      const lines = !touch || first ? 2 + extraLines : 1;
                       if (k === "meaning")
                         return (
                           <Glance
@@ -5527,8 +5771,50 @@ export function Study({
                             {config.readingOnBack && it.reading && it.reading !== it.term && (
                               <bdi className="mr-2 font-medium">{it.reading}</bdi>
                             )}
-                            {it.back}
+                            {it.back ||
+                              (it.backState === "loading" ? (
+                                <span className="opacity-50" data-row-meaning="loading">
+                                  …
+                                </span>
+                              ) : it.backState === "none" ? (
+                                <span className="opacity-60" data-row-meaning="none">
+                                  {text.meaningNotFound}
+                                </span>
+                              ) : null)}
                           </Glance>
+                        );
+                      // A review list's translation has its own line, under the
+                      // sentence: inline, a long sentence would cut it off (owner,
+                      // 2026-11-07 16:39). Same row height; each line slides or
+                      // aims at its word as a one-line cell does.
+                      if (scope && it.ex && it.exTr)
+                        return (
+                          <span key={k} className={`${span} flex min-w-0 flex-col`}>
+                            <Glance
+                              active={glancing && show}
+                              title={show ? it.ex : undefined}
+                              className={look}
+                              lines={1 + extraLines}
+                            >
+                              {show && <SongClipButton clip={it.clip} text={it.ex} />}
+                              <bdi lang={it.lang} data-row-example>
+                                <MarkedExample
+                                  text={it.ex}
+                                  lang={it.lang}
+                                  fam={fam.current}
+                                  heads={heads.current}
+                                  forms={[it.term, it.reading]}
+                                />
+                              </bdi>
+                            </Glance>
+                            <Glance
+                              active={glancing && show}
+                              title={show ? it.exTr : undefined}
+                              className={`text-xs opacity-60 transition-[filter] duration-75 ${show ? "" : "slip-blank"}`}
+                            >
+                              <span data-row-ex-tr>{it.exTr}</span>
+                            </Glance>
+                          </span>
                         );
                       return (
                         <Glance
@@ -5542,6 +5828,7 @@ export function Study({
                         >
                           {it.ex ? (
                             <>
+                              {show && <SongClipButton clip={it.clip} text={it.ex} />}
                               <bdi lang={it.lang} data-row-example>
                                 <MarkedExample
                                   text={it.ex}
@@ -5742,6 +6029,7 @@ function SlipSheet({
             data-sheet-example
           >
             <div lang={item.lang} dir="auto">
+              <SongClipButton clip={item.clip} text={item.ex} />
               <MarkedExample
                 text={item.ex}
                 lang={item.lang}

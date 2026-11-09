@@ -102,10 +102,18 @@ export type UiStrings = {
   askExpired: string;
   askAnswered: string;
   askSent: string;
+  /** The ask-jump button's label, for a host that passes no strings (ChatStrings.askJump). */
+  askJump: string;
+  /** The full-screen button and its way back (full-screen.ts), for a host that passes no strings. */
+  fullScreen: string;
+  fullScreenExit: string;
   /**
    * Compact mode (compact-view.ts), until the host passes localized ones
    * (ChatStrings): the menu switch, and the compact line's tap hint.
    */
+  /** The menu's two cue switches (cues.ts): when a spoken line goes out; when speech starts and ends. */
+  cueSend: string;
+  cueSpeech: string;
   compactIdle: string;
   compactShowAll: string;
   /**
@@ -165,7 +173,12 @@ export const UI_EN: UiStrings = {
   askExpired: "Expired",
   askAnswered: "Answered",
   askSent: "Sent",
+  askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",
+  fullScreen: "Full screen",
+  fullScreenExit: "Exit full screen",
   aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while anything plays. Takes effect at once.",
+  cueSend: "Sound when a voice message is sent",
+  cueSpeech: "Sound when speech starts and ends",
   compactIdle: "Only the last message while not typing",
   compactShowAll: "Show the whole chat",
   tuckChat: "Tuck the chat into the screen edge",
@@ -215,7 +228,12 @@ export const UI_ZH: UiStrings = {
   askExpired: "已过期",
   askAnswered: "已回答",
   askSent: "已发送",
+  askJump: "跳到上方最近的未回答问题。上方未回答：{count}",
+  fullScreen: "全屏",
+  fullScreenExit: "退出全屏",
   aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，播放声音时麦克风暂停收音。立即生效。",
+  cueSend: "语音消息发出时提示音",
+  cueSpeech: "开始和结束说话时提示音",
   compactIdle: "不打字时只显示最后一条消息",
   compactShowAll: "显示完整聊天",
   tuckChat: "把聊天收进屏幕边",
@@ -265,7 +283,12 @@ export const UI_JA: UiStrings = {
   askExpired: "期限切れ",
   askAnswered: "回答済み",
   askSent: "送信しました",
+  askJump: "上にある一番近い未回答の質問へ移動。上の未回答：{count}",
+  fullScreen: "全画面表示",
+  fullScreenExit: "全画面表示を終了",
   aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、音声の再生中はマイクが一時停止します。すぐに反映されます。",
+  cueSend: "音声メッセージ送信時の音",
+  cueSpeech: "話し始めと話し終わりの音",
   compactIdle: "入力していないときは最後のメッセージだけ表示",
   compactShowAll: "チャット全体を表示",
   tuckChat: "チャットを画面の端にしまう",
@@ -342,22 +365,31 @@ export function voiceBgWords(
 }
 
 /** The mic's local-STT dot (MicButton.tsx, docs/local-stt.md): what each state says. */
-export type LocalSttStrings = { ready: string; connecting: string; down: string };
+export type LocalSttStrings = {
+  ready: string;
+  connecting: string;
+  down: string;
+  /** Brief note over the mic: the owner's "only my voice" filter dropped a line, because the voice did not match. Short. */
+  filtered: string;
+};
 const LOCAL_STT: Record<"en" | "zh" | "ja", LocalSttStrings> = {
   en: {
     ready: "Local speech model connected",
     connecting: "Connecting to the local speech model…",
     down: "Local speech model unreachable: using the cloud",
+    filtered: "Not your voice: not sent",
   },
   zh: {
     ready: "已连接本地语音模型",
     connecting: "正在连接本地语音模型…",
     down: "本地语音模型连不上，改用云端识别",
+    filtered: "不是你的声音，没有发送",
   },
   ja: {
     ready: "ローカル音声モデルに接続済み",
     connecting: "ローカル音声モデルに接続中…",
     down: "ローカル音声モデルに接続できません。クラウドで認識します",
+    filtered: "あなたの声ではないため送信しませんでした",
   },
 };
 export function localSttStrings(

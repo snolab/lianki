@@ -1,6 +1,6 @@
 import type { LiveViewLabels, LiveViewShell } from "@/app/components/LiveView";
 import { dbBackend, getD1 } from "@/lib/d1";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { liveViewKeys } from "./keys";
 import { LIVE_VIEW_COOKIE, liveLabel } from "./rules";
 import { currentPointer } from "./server";
@@ -19,7 +19,7 @@ export async function liveViewFor(
   cookie: string | undefined,
   labels: () => LiveViewLabels,
 ): Promise<LiveViewShell | undefined> {
-  if (!isOwner(email)) return undefined;
+  if (!isDev(email)) return undefined;
   const wanted = cookie === "1";
   let token: string | null = null;
   let ready: string | null = null;

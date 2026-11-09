@@ -2,7 +2,8 @@
  * The few icons the debug chat draws, so the package needs nothing from the
  * app: Phosphor Icons (https://phosphoricons.com), MIT License, Copyright (c)
  * 2023 Phosphor Icons. "regular" is the normal line, "fill" the on state.
- * `sparkle` is drawn here (a four-point star and a small one), not Phosphor's.
+ * `sparkle` is drawn here (a four-point star and a small one), not Phosphor's,
+ * and so are `cornersOut` / `cornersIn` (full screen and its way back).
  */
 const ICONS = {
   play: {
@@ -18,6 +19,23 @@ const ICONS = {
   sparkle: {
     regular:
       "M104,40Q112,136,200,144Q112,152,104,248Q96,152,8,144Q96,136,104,40ZM200,8Q204,48,244,52Q204,56,200,96Q196,56,156,52Q196,48,200,8Z",
+    fill: undefined,
+  },
+  arrowUp: {
+    regular:
+      "M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z",
+    fill: undefined,
+  },
+  /** Full screen: four corners pointing outward (drawn here, rounded 16-unit strokes). */
+  cornersOut: {
+    regular:
+      "M48,40h48a8,8,0,0,1,0,16H56V96a8,8,0,0,1-16,0V48A8,8,0,0,1,48,40ZM208,40H160a8,8,0,0,0,0,16h40V96a8,8,0,0,0,16,0V48A8,8,0,0,0,208,40ZM48,216H96a8,8,0,0,0,0-16H56V160a8,8,0,0,0-16,0v48A8,8,0,0,0,48,216Zm160,0H160a8,8,0,0,1,0-16h40V160a8,8,0,0,1,16,0v48A8,8,0,0,1,208,216Z",
+    fill: undefined,
+  },
+  /** Back from full screen: the same corners, pointing inward. */
+  cornersIn: {
+    regular:
+      "M96,40a8,8,0,0,1,8,8v48a8,8,0,0,1-8,8H48a8,8,0,0,1,0-16H88V48A8,8,0,0,1,96,40Zm64,0a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,0-16H168V48A8,8,0,0,0,160,40ZM96,216a8,8,0,0,0,8-8V160a8,8,0,0,0-8-8H48a8,8,0,0,0,0,16H88v40A8,8,0,0,0,96,216Zm64,0a8,8,0,0,1-8-8V160a8,8,0,0,1,8-8h48a8,8,0,0,1,0,16H168v40A8,8,0,0,1,160,216Z",
     fill: undefined,
   },
   plus: {
@@ -92,6 +110,27 @@ export function TreeIcon() {
       <rect x="14" y="10" width="7" height="4.5" rx="1.5" />
       <rect x="14" y="16.5" width="7" height="4.5" rx="1.5" />
       <path d="M6.5 8v10.75H14M6.5 12.25H14" />
+    </svg>
+  );
+}
+
+/** The + menu's History row: a clock with an arrow running back round it. */
+export function HistoryIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" />
+      <path d="M3.5 4v4h4" />
+      <path d="M12 7.5V12l3 2" />
     </svg>
   );
 }

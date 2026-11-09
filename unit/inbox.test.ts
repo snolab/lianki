@@ -60,6 +60,7 @@ function memBucket() {
 }
 
 let db: InboxDb;
+let rawDb: ReturnType<ReturnType<typeof createTestD1>["raw"]>;
 let bucket: ReturnType<typeof memBucket>;
 let who: typeof OWNER | typeof FRIEND | null;
 let now: number;
@@ -69,6 +70,11 @@ beforeEach(() => {
   d.raw().exec(
     "INSERT INTO user (id, email) VALUES ('u1', 'owner@example.com'), ('u2', 'friend@example.com')",
   );
+  d.raw().exec(
+    `CREATE TABLE account_permission (email TEXT, permission TEXT NOT NULL DEFAULT 'dev', revoked_at INTEGER);
+     INSERT INTO account_permission (email) VALUES ('owner@example.com')`,
+  );
+  rawDb = d.raw();
   db = d as unknown as InboxDb;
   bucket = memBucket();
   who = OWNER;
@@ -215,7 +221,7 @@ describe("upload, usage and cost", () => {
     const got = await download(new Request("https://x"), ref.id, deps);
     expect(new Uint8Array(await got.arrayBuffer())).toEqual(PNG);
     const sha = createHash("sha256").update(PNG).digest("hex");
-    const agent = await inboxOp(db, { op: "list" }, { ownerEmails: OWNER.email, now: () => now });
+    const agent = await inboxOp(db, { op: "list" }, { now: () => now });
     expect(agent).toMatchObject({ ok: true, items: [{ id: ref.id, sha256: sha }] });
   });
 
@@ -243,7 +249,7 @@ describe("edges", () => {
     expect((await patch({ ids: [id], line: "line_1" })).status).toBe(200);
     expect((await patch({ ids: ["nope"], line: "x" })).status).toBe(400);
     expect((await patch({ ids: [id], line: "bad line!" })).status).toBe(400);
-    const agent = (await inboxOp(db, { op: "list" }, { ownerEmails: OWNER.email })) as {
+    const agent = (await inboxOp(db, { op: "list" }, {})) as {
       items: { line?: string }[];
     };
     expect(agent.items[0]?.line).toBe("line_1");
@@ -300,7 +306,7 @@ describe("edges", () => {
 describe("agent tickets", () => {
   test("single use, 60 s, in a header; done marks it processed; friends' files unreachable", async () => {
     const { id } = (await (await upload(post(PNG), deps)).json()) as { id: string };
-    const opts = { ownerEmails: OWNER.email, now: () => now };
+    const opts = { now: () => now };
     const t = (await inboxOp(db, { op: "get", id }, opts)) as { ticket: string };
     who = null;
     const get = () =>
@@ -320,7 +326,8 @@ describe("agent tickets", () => {
     ).toBe(404);
     expect(await inboxOp(db, { op: "done", id }, opts)).toEqual({ ok: true, done: id });
     expect(await inboxOp(db, { op: "rm", id }, opts)).toEqual({ ok: false, error: "bad inbox op" });
-    expect(await inboxOp(db, { op: "list" }, { ownerEmails: "" })).toEqual({ ok: true, items: [] });
+    rawDb.exec("UPDATE account_permission SET revoked_at = 1"); // a revoked owner: no one's files
+    expect(await inboxOp(db, { op: "list" }, {})).toEqual({ ok: true, items: [] });
   });
 });
 

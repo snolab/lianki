@@ -29,9 +29,10 @@ import { PROGRESS_SCALE_DAYS, progressPercent, wordScore } from "@/lib/words/pro
 import { langRules, STOP_LANGS } from "./lang";
 import { primaryLang } from "./lang-detect";
 import { lemmasFromLex, type BookLex, type Lemmas } from "./lemma";
+import { wordSegments } from "./word-segments";
 
 /** Bump when counting changes, so stored stats are counted again. */
-export const WORD_STATS_V = 2;
+export const WORD_STATS_V = 3;
 
 export interface WordStats {
   v: typeof WORD_STATS_V;
@@ -150,7 +151,7 @@ export function wordsOf(text: string, lang: string): string[] {
  */
 export function segmentsOf(text: string, lang: string): { text: string; word: string | null }[] {
   const out: { text: string; word: string | null }[] = [];
-  for (const s of segmenter(lang).segment(text))
+  for (const s of wordSegments(segmenter(lang), text))
     out.push({ text: s.segment, word: s.isWordLike ? normWord(s.segment, lang) : null });
   return out;
 }
@@ -172,7 +173,7 @@ export function countWords(lines: string[], tag?: string | null): WordStats {
     let start = true;
     const caps: { w: string; cap: boolean; mid: boolean; allCaps: boolean }[] = [];
     let prev = "";
-    for (const s of segmenter(lang).segment(line)) {
+    for (const s of wordSegments(segmenter(lang), line)) {
       if (!s.isWordLike) {
         if (
           SENTENCE_END.test(s.segment) &&
@@ -372,7 +373,10 @@ export function termKeys(term: string, reading: string | null | undefined, lang:
   for (const k of keys.slice()) add(stripElision(k, lang));
   for (const k of keys.slice()) add(unligate(k, lang));
   const readingKeys = langRules(lang).reading;
-  if (readingKeys && reading && readingKeys.test(reading)) add(reading);
+  // A one-character reading says nothing: 野 is read の, and the book's の is no
+  // sign of that card. The same bound as foldsOf's; a card whose term is that
+  // character still answers to it, through the term.
+  if (readingKeys && reading && reading.length >= 2 && readingKeys.test(reading)) add(reading);
   return keys;
 }
 /** What one card gives its term: the deck's score, and whether mastered. */

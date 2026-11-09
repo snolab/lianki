@@ -319,6 +319,9 @@ bun scripts/dev/eval.ts say --quiet "PR #390 opened, CI running."
 # A line with "source":"stt" was spoken: polish its misheard words first
 # (docs/dev-debug-widget.md, "Agent edits of voice messages"):
 bun scripts/dev/eval.ts edit --last --no-pair "Fix the sync button on /words."
+# With flag stt.merge on, {"type":"edited",…,"merged":…} means a line you were shown
+# grew: read `text` again. {"type":"polish-due",…}: polish it now, from `raw`
+# (docs/dev-debug-widget.md, "Continuous speech amends the last line").
 ```
 
 The listener reconnects whenever its socket closes, backing off from 1 s to
@@ -462,7 +465,7 @@ event. Disconnecting this page takes two taps. Eval and preview sessions keep
 a light End. The menu has no End chat: the chat hibernates and wakes by
 itself.
 
-**Voice commits.** Every final spoken transcript is punctuated, then committed and sent at once (上屏), with a soft tick: two sine tones (880 Hz, then 1320 Hz 30 ms later) through one gain, 5 ms attack to 0.08 and an exponential decay, 80 ms in all (`scheduleTick` in `mic.ts`, tested with a fake AudioContext), played on the mic's own AudioContext (made on the mic tap, a gesture) and never while the agent speaks. It is Web Audio only, no `<audio>` element, so a muted iPhone stays silent. Typed sends make no sound. Each spoken send also fires `lk:voice-sent` on `window` (`detail.sound`: whether the tick played): if Whisper left no stop, `punctuate()` adds one that fits the text (。/？ for CJK, ./? otherwise, a question by its particle or opening word). A short "好" or "OK" goes out too. Partials never send. Typed text arriving in one burst of 3+ characters that ends a sentence (an outside dictation IME) is also sent at once.
+**Voice commits.** Every final spoken transcript is punctuated, then committed and sent at once (上屏), with the send cue (`cues.ts`, [voice-mode.md](voice-mode.md), "Cues"). Typed sends make no sound. Each spoken send also fires `lk:voice-sent` on `window` (`detail.sound`: whether the cue plays): if Whisper left no stop, `punctuate()` adds one that fits the text (。/？ for CJK, ./? otherwise, a question by its particle or opening word). A short "好" or "OK" goes out too. Partials never send. Typed text arriving in one burst of 3+ characters that ends a sentence (an outside dictation IME) is also sent at once.
 
 **Mic.** A mic button sits at the chat bar's right end
 (`debug-chat-mic`; hidden where the browser lacks getUserMedia or Web Audio).
@@ -660,8 +663,9 @@ The owner line carries the mic's stamps as an optional `timing` object
 stored line; an older hub or page ignores it. `eval.ts chat` prints it, plus
 `lagMs` (hub → listener, two clocks) on live lines.
 
-**Where to see it.** The chat's ⋯ menu shows the latest record
-(`debug-menu-latency`, while the mic is on or once there is one): "Latency,
+**Where to see it.** The chat's ⋯ menu shows the latest record in its
+collapsed Dev group (`debug-menu-dev`, the owner's pages only; owner,
+2026-11-08) (`debug-menu-latency`, while the mic is on or once there is one): "Latency,
 last voice line 8.7 s", then `silence 1.4 · STT 0.9 · send 0.0 · hub 0.1 ·
 reply 6.0 · voice 0.3` (zh/ja/en in `ui-strings.ts`). Each record is also
 logged once as `{ev: "voice-latency", id, chars, replied, …stages, timing}`
@@ -746,7 +750,9 @@ tests:
   `debug-chat-warning`.
 - The pill's menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
   the widget came from, or why it fell back), `debug-menu-speak`,
-  `debug-menu-latency` (the last voice line's breakdown),
+  `debug-menu-dev` (the collapsed Dev group, the owner's pages only:
+  `debug-menu-aec`, `debug-menu-latency` for the last voice line's breakdown,
+  `debug-menu-adapt`),
   `debug-menu-minimize`, `debug-menu-page` (`data-self` on this one),
   `debug-menu-page-open`, `debug-menu-page-end`, `debug-menu-session`,
   `debug-menu-session-add` and `debug-menu-session-end`.

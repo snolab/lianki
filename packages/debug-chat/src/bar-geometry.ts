@@ -13,10 +13,14 @@ import type { CSSProperties } from "react";
  *   --lk-bar-r       = border + padding + line / 2       (the bar's radius)
  *   --lk-bar-inner-r = --lk-bar-r − border − padding     (the circle's radius)
  *
- * The mic is pinned to the bar's inner bottom-right, a line-sized square, so
- * its centre is R from the right and from the bottom: the corner arc's centre.
- * One line high, the bar is exactly 2R tall, so the top-right arc shares it.
- * A taller draft grows the bar upward; the mic stays in the bottom arc.
+ * The mic sits in one cluster with the mark and the + (owner, 2026-11-07:
+ * "我们把麦克风跟另外几个按钮排到一起吧……这样折叠的时候，它位置就不会变"):
+ * [mark | + | mic | input] open and [mark | Li | mic] folded, every slot
+ * CONTROL_W wide and the padding the same in both, so the mic keeps its place.
+ * Folded, the mic is the pill's last control: its circle, a line-sized square
+ * at its end, is R from the right and from the bottom, the corner arc's
+ * centre. One line high, the bar is exactly 2R tall, so the top-right arc
+ * shares it. Open, it is the same circle at the same place, beside the input.
  *
  * Unscaled by the text-size setting on purpose: only text scales (--lk-fs-k);
  * the line box, padding and border are rem and px, as the textarea's height
@@ -24,9 +28,15 @@ import type { CSSProperties } from "react";
  */
 export const BAR_LINE = "2.125rem";
 const BORDER = "1px";
-/** Expanded, a little room around the input; minimized, tight. */
-const PAD_OPEN = "0.125rem";
-const PAD_MIN = "1px";
+/**
+ * A little room around the input, the same open and folded: the tighter pill
+ * it had moved the mark and the mic by a pixel when the chat folded.
+ */
+const PAD = "0.125rem";
+/** Each control of the bar's cluster (mark, +, the pill's Li, mic): 44 px, the platforms' touch target. */
+export const CONTROL_W = "2.75rem";
+/** Open, where the input starts in the bar: after the cluster [mark | + | mic]. */
+export const INPUT_START = `calc(3 * ${CONTROL_W})`;
 
 /*
  * Inline styles, not new Tailwind classes: a class the page's stylesheet has
@@ -35,10 +45,10 @@ const PAD_MIN = "1px";
  */
 
 /** The bar: its variables, and the radius, border and padding drawn from them. */
-export function barGeometry(open: boolean): CSSProperties {
+export function barGeometry(): CSSProperties {
   return {
     "--lk-bar-b": BORDER,
-    "--lk-bar-pad": open ? PAD_OPEN : PAD_MIN,
+    "--lk-bar-pad": PAD,
     "--lk-bar-line": BAR_LINE,
     "--lk-bar-r": "calc(var(--lk-bar-b) + var(--lk-bar-pad) + var(--lk-bar-line) / 2)",
     "--lk-bar-inner-r": "calc(var(--lk-bar-r) - var(--lk-bar-b) - var(--lk-bar-pad))",
@@ -49,15 +59,31 @@ export function barGeometry(open: boolean): CSSProperties {
   } as CSSProperties;
 }
 
-/** A control in the bar: one line box high, so it is centred on one line. */
-export const BAR_CONTROL: CSSProperties = { height: `var(--lk-bar-line, ${BAR_LINE})` };
+/**
+ * A control in the bar: one line box high, so it is centred on one line, and
+ * CONTROL_W wide, never shrunk, so the cluster is as wide folded as open.
+ */
+export const BAR_CONTROL: CSSProperties = {
+  height: `var(--lk-bar-line, ${BAR_LINE})`,
+  width: CONTROL_W,
+  flexShrink: 0,
+};
 
 /**
- * The mic: 40px wide to the touch, its circle the line-sized square at its
- * end (the start padding takes the rest), in the bar's corner.
+ * The bar controls' touch area: 44 px high as well, a little past the bar's
+ * 40 px edge (their widths are CONTROL_W). Its own <style>, not a Tailwind
+ * class, so a stale stylesheet or another site's page has it too; it outranks
+ * the app's 40 px `.tap-40`. The controls carry `data-lk-tap`.
+ */
+export const TAP_44_CSS =
+  '[data-lk-tap]{position:relative}[data-lk-tap]::before,[data-lk-tap].tap-40::before{content:"";position:absolute;inset-inline:0;top:50%;height:max(100%,44px);transform:translateY(-50%)}';
+
+/**
+ * The mic: CONTROL_W wide to the touch, its circle the line-sized square at
+ * its end (the start padding takes the rest). Folded, that end is the bar's corner.
  */
 export const MIC_BOX = {
-  "--lk-mic-w": "2.5rem",
+  "--lk-mic-w": CONTROL_W,
   "--lk-mic-ring": "3px",
   width: "var(--lk-mic-w)",
   height: `var(--lk-bar-line, ${BAR_LINE})`,

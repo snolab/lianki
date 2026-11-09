@@ -10,7 +10,9 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.25
+// @grant       unsafeWindow
+// @grant       GM_registerMenuCommand
+// @version     2.24.30
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -49,13 +51,18 @@ import {
 } from "@lianki/core/watchStats";
 import { heatmapBuckets, rateColor, videoDifficulty } from "@lianki/core/difficulty";
 import { dueWindow, isProvablyDeleted } from "@lianki/core/duePrune";
+import { activeTitleRules, cleanTitle } from "@lianki/core/titleClean";
+import { startGdocStream } from "./gdoc-stream";
 import { mirrorPartnerSwitch, startPartner } from "./partner";
+import { mirrorPillChatFlag, pillChat } from "./pill-chat";
 
 declare const GM_xmlhttpRequest: Function;
 declare const GM_setValue: (key: string, value: any) => void;
 declare const GM_getValue: (key: string, defaultValue?: any) => any;
 declare const GM_deleteValue: (key: string) => void;
 declare const GM_info: { script: { version: string } };
+/** Missing on a manager that does not grant it: the sites list is then reached from the prompt only. */
+declare const GM_registerMenuCommand: ((name: string, fn: () => void) => unknown) | undefined;
 /** Set by the dev loader's server only: where it serves the partner's script. */
 declare const __LK_PARTNER_SRC__: string | undefined;
 
@@ -947,6 +954,13 @@ function main() {
   if (location.hostname === originHost || location.hostname === "www." + originHost) {
     // This browser's debug-mode switch is the partner's opt-in on other sites.
     mirrorPartnerSwitch(localStorage, GM_setValue);
+    // Li chat from the pill (docs/userscript-li-chat.md): this account's flag, kept for other sites.
+    void mirrorPillChatFlag({
+      origin: ORIGIN,
+      gmFetch,
+      getValue: GM_getValue,
+      setValue: GM_setValue,
+    }).catch(() => {});
     setTimeout(() => syncToSiteDB(), 500);
     return () => {};
   }
@@ -998,6 +1012,17 @@ function main() {
    */
   const watchTrackingOn = () => userPreferences?.watchTracking !== false;
 
+  /**
+   * A title without its notification prefix, by the account's rules, which reach
+   * this page through the preferences cache (docs/title-clean.md). Those rules
+   * are untrusted here, on any site: they run through a matcher with no RegExp
+   * and no backtracking, and a bad one is skipped.
+   */
+  const cleanedTitle = (title, url) =>
+    cleanTitle(title, { url, rules: activeTitleRules(userPreferences?.titleRules) });
+  /** This page's title, as it is saved and shown. */
+  const pageTitle = () => cleanedTitle(document.title, location.href);
+
   async function loadPreferences() {
     try {
       const cached = GM_getValue("lk:preferences", "");
@@ -1030,6 +1055,15 @@ function main() {
     notesSynced: true,
   };
   let fab = null;
+  // Li chat from the pill (docs/userscript-li-chat.md): flag-gated, asks per site first.
+  const liChat = pillChat({
+    origin: ORIGIN,
+    gmFetch,
+    getValue: GM_getValue,
+    setValue: GM_setValue,
+    info: GM_info,
+    report: (what, detail) => console.debug(`[Lianki] ${what}: ${detail}`),
+  });
   let dialog = null;
   let prefetchedNextUrl = null; // populated while user reads current card
   let prefetchLink = null; // <link rel="prefetch"> element for next page
@@ -1387,6 +1421,44 @@ function main() {
     };
 
     container.append(slowerBtn, makeSeparator(), liankiBtn, makeSeparator(), fasterBtn);
+
+    // Li chat (docs/userscript-li-chat.md): shown only with the flag on for this
+    // account and not on a "never" site. A trusted tap only: the page cannot
+    // open it by script (el.click() or a dispatched event is not trusted).
+    const liSep = makeSeparator();
+    const liBtn = document.createElement("button");
+    liBtn.type = "button";
+    liBtn.textContent = "Li";
+    liBtn.title = liChat.strings.liTitle;
+    liBtn.setAttribute("aria-label", liChat.strings.liTitle);
+    liBtn.style.cssText = BTN_BASE;
+    liBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isDragged || !e.isTrusted) return;
+      void liChat
+        .open()
+        .then(updateLiEntry)
+        .catch((err) => console.error("[Lianki] Li chat failed:", err));
+    });
+    const updateLiEntry = () => {
+      const show = liChat.entry() !== "hidden" ? "" : "none";
+      liSep.style.display = show;
+      liBtn.style.display = show;
+    };
+    updateLiEntry();
+    // Another tab may have changed the flag or a site's decision.
+    document.addEventListener(
+      "visibilitychange",
+      () => document.visibilityState === "visible" && updateLiEntry(),
+      { signal },
+    );
+    container.append(liSep, liBtn);
+    if (liChat.flagOn() && typeof GM_registerMenuCommand === "function")
+      GM_registerMenuCommand(liChat.strings.sitesMenu, () => {
+        const m = liChat.manage(() => updateLiEntry());
+        void m.closed.then(updateLiEntry);
+      });
 
     // 🔖 means "add this page"; 📗 means it already has a card. Checked on a
     // timer rather than hooked into every add/delete/sync/SPA-navigation path:
@@ -1890,7 +1962,7 @@ function main() {
         opacity: ".8",
       });
       const bold = document.createElement("b");
-      bold.textContent = document.title || location.href;
+      bold.textContent = pageTitle() || location.href;
       titleDiv.appendChild(bold);
       dialog.appendChild(titleDiv);
 
@@ -2045,7 +2117,7 @@ function main() {
     keepFocusInDialog();
 
     const url = normalizeUrl(location.href);
-    addNote(url, document.title)
+    addNote(url, pageTitle())
       .then((note) => {
         state.noteId = note._id;
         state.notes = note.notes ?? "";
@@ -2153,7 +2225,7 @@ function main() {
     try {
       if (offlineReady) cardStorage.restoreCard(url);
       gmCacheInvalidate(noteKey(url));
-      await restoreNote(url, document.title);
+      await restoreNote(url, pageTitle());
       closeDialog();
       setTimeout(openDialog, 0);
     } catch (err) {
@@ -2280,7 +2352,7 @@ function main() {
       nextTitle = data.title;
       if (nextUrl) {
         prefetchNextPage(nextUrl);
-        state.message = `Redirecting to:\n${nextTitle || nextUrl}`;
+        state.message = `Redirecting to:\n${(nextTitle && cleanedTitle(nextTitle, nextUrl)) || nextUrl}`;
         renderDialog();
       }
     }
@@ -2894,7 +2966,7 @@ function main() {
     // Re-read the title here rather than at accumulator creation: YouTube swaps
     // the URL before it swaps document.title, so capturing it up front would
     // label a video with the name of the one before it.
-    acc.title = document.title || acc.title;
+    acc.title = pageTitle() || acc.title;
     saveLocalWatch(acc.url, watchSnapshot(acc), acc.dirty);
     if (acc.dirty) watchDirtyAdd(acc.url);
     // Once per accumulator, not per save: the index walk is O(WATCH_MAX_CACHED)
@@ -3000,7 +3072,7 @@ function main() {
     watchAcc = {
       url,
       base: stats,
-      title: document.title,
+      title: pageTitle(),
       wall: mine.wall ?? 0,
       media: mine.media ?? 0,
       sessions: mine.sessions ?? 0,
@@ -3500,7 +3572,7 @@ function main() {
     }
 
     // Fallback: Original online behavior
-    addNote(url, document.title)
+    addNote(url, pageTitle())
       .then(async (note) => {
         state.noteId = note._id;
         state.notes = note.notes ?? "";
@@ -3552,13 +3624,13 @@ function main() {
           const localNote = {
             _id: "local:" + hashUrl(url),
             url,
-            title: document.title,
+            title: pageTitle(),
             card: localFSRS.newCard(),
             notes: "",
             hlc: newHLC(deviceId, null),
           };
           cardStorage.setCard(url, localNote, localNote.hlc, true);
-          queueStorage.addToQueue("add", { url, title: document.title }, localNote.hlc);
+          queueStorage.addToQueue("add", { url, title: pageTitle() }, localNote.hlc);
           state.noteId = localNote._id;
           state.notes = "";
           state.notesSynced = false;
@@ -3929,6 +4001,10 @@ function main() {
   // ── Learning Partner on every site (docs/dev-debug-widget.md, "On every site") ──
   // The owner's only, opt-in (debug mode on lianki.com); a no-op for everyone else.
   let stopPartner = () => {};
+  if (location.hostname === "docs.google.com") {
+    startGdocStream({ origin: ORIGIN, gmFetch, getValue: GM_getValue, setValue: GM_setValue });
+  }
+
   startPartner({
     origin: ORIGIN,
     src: typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
@@ -3950,6 +4026,7 @@ function main() {
 
   return () => {
     stopPartner();
+    liChat.close();
     ac.abort();
     for (const id of intervals) clearInterval(id);
     intervals.length = 0;

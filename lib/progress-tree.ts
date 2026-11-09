@@ -71,6 +71,21 @@ function apply(n: TreeNode, e: ProgressEntry, waiting: boolean, repo?: string) {
   else delete n.needsOwner;
   n.assignee = { type: e.assignee.type, name: e.assignee.name };
   if (e.action) n.action = e.action;
+  if (e.etaAt !== undefined && e.kind !== "group" && e.kind !== "person")
+    n.eta = {
+      id: e.id,
+      // The Gantt row runs from when the work started (first "doing") to the estimate.
+      start: Math.min(e.startedAt ?? e.created, e.etaAt),
+      at: e.etaAt,
+      ...(n.done ? { done: true, doneAt: e.endedAt ?? e.at } : {}),
+      ...(e.etaSent === e.etaAt ? { sent: true } : {}),
+      ...(e.pct != null ? { pct: e.pct } : {}),
+      // Queued for a slot or the gate: drawn after the one ahead (eta.ts ganttPlan).
+      ...(e.status === "waiting"
+        ? { queued: true, created: e.created, queuedMs: Math.max(60_000, e.etaAt - e.at) }
+        : {}),
+    };
+  else delete n.eta;
   const live = liveNote(e);
   if (live) n.note = n.note ? `${live}\n${n.note}` : live;
   const extra = [
@@ -137,12 +152,14 @@ export function overlayProgress(
   return root;
 }
 
-type Sock = {
+export type Sock = {
   onopen: ((ev: unknown) => void) | null;
   onmessage: ((ev: { data: unknown }) => void) | null;
   onclose: ((ev: unknown) => void) | null;
   onerror: ((ev: unknown) => void) | null;
   close(): void;
+  send?(data: string): void;
+  readyState?: number;
 };
 export type LiveDeps = {
   /** The base outline (markdown). */
@@ -150,13 +167,21 @@ export type LiveDeps = {
   /** The hub's WebSocket URL. */
   url: string;
   repo?: string;
-  socket?: (url: string) => Sock;
+  socket?: (url: string, protocols?: string[]) => Sock;
+  /**
+   * The subprotocols to offer, fetched before each connect: the owner's box
+   * offers a fresh box chat ticket (docs/box-oauth.md), never a cookie. null:
+   * none to be had now; counted as a failed connect.
+   */
+  protocols?: () => Promise<string[] | null>;
   setTimeout?: (fn: () => void, ms: number) => unknown;
   clearTimeout?: (t: unknown) => void;
   /** Called with a function to run when the network or the tab comes back; returns its remover. */
   onWake?: (fn: () => void) => () => void;
 };
 
+/** The hub closed a box's socket because that box lost box:chat (workers/push/src/progress.ts). */
+export const BOX_ENDED = 4401;
 /** Reconnect delays: 1 s doubling to 60 s; after GIVE_UP failures in a row, wait for a wake. */
 export const MAX_DELAY = 60_000;
 export const GIVE_UP = 10;
@@ -175,13 +200,35 @@ export const browserWake = (fn: () => void) => {
   };
 };
 
+/** The live tree, and a way to tell the hub something on its socket. */
+export type LiveTreeSource = TreeSource & {
+  subscribe: Extract<TreeSource, { subscribe: unknown }>["subscribe"];
+  /**
+   * Sends on the open progress socket (one of this source's subscriptions):
+   * {type:"eta", id} when this page's ETA timer went off (eta.ts). False with
+   * none open; the hub's alarm pings anyway.
+   */
+  send(msg: { type: "eta"; id: string }): boolean;
+};
+
 /** The outline with live progress laid over it, pushed on every hub message. */
-export function liveTreeSource(deps: LiveDeps): TreeSource {
-  const open = deps.socket ?? ((u: string) => new WebSocket(u) as unknown as Sock);
+export function liveTreeSource(deps: LiveDeps): LiveTreeSource {
+  /** Every subscription's open socket. */
+  const openSocks = new Set<Sock>();
+  const open = deps.socket ?? ((u: string, p?: string[]) => new WebSocket(u, p) as unknown as Sock);
   const later = deps.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));
   const cancel = deps.clearTimeout ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   const wake = deps.onWake ?? browserWake;
   return {
+    send(msg) {
+      for (const s of openSocks)
+        try {
+          if (s.readyState !== undefined && s.readyState !== 1) continue;
+          s.send?.(JSON.stringify(msg));
+          return true;
+        } catch {}
+      return false;
+    },
     subscribe(onUpdate, onError) {
       let base: TreeNode | null = null;
       let view: ProgressView = { rows: [], log: [] };
@@ -190,6 +237,8 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
       let retry: unknown;
       let failures = 0;
       let stopped = false;
+      /** A ticket is being fetched for the next socket. */
+      let asking = false;
       const push = () => {
         if (stopped || !base) return;
         // The root itself, so its ≈ summaries (above the first ##) are kept.
@@ -215,13 +264,34 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
           );
       };
       loadBase();
+      const retryLater = () => {
+        if (stopped || ++failures > GIVE_UP) return;
+        retry = later(connect, Math.min(MAX_DELAY, 1000 * 2 ** (failures - 1)));
+      };
       const connect = () => {
         if (retry !== undefined) cancel(retry);
         retry = undefined;
-        if (stopped || ws) return;
-        const sock = open(deps.url);
+        if (stopped || ws || asking) return;
+        if (!deps.protocols) return openSock();
+        asking = true;
+        deps.protocols().then(
+          (p) => {
+            asking = false;
+            if (stopped || ws) return;
+            if (p) openSock(p);
+            else retryLater();
+          },
+          () => {
+            asking = false;
+            if (!stopped && !ws) retryLater();
+          },
+        );
+      };
+      const openSock = (protocols?: string[]) => {
+        const sock = protocols ? open(deps.url, protocols) : open(deps.url);
         ws = sock;
         sock.onopen = () => {
+          openSocks.add(sock);
           failures = 0;
           loadBase();
         };
@@ -233,16 +303,20 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
           push();
         };
         const lost = () => {
+          openSocks.delete(sock);
           if (ws !== sock) return;
           ws = null;
           if (live) {
             live = false;
             push();
           }
-          if (stopped || ++failures > GIVE_UP) return;
-          retry = later(connect, Math.min(MAX_DELAY, 1000 * 2 ** (failures - 1)));
+          retryLater();
         };
-        sock.onclose = lost;
+        sock.onclose = (ev) => {
+          // The box lost box:chat (the hub's 4401): no point asking again until a wake.
+          if ((ev as { code?: unknown } | null)?.code === BOX_ENDED) failures = GIVE_UP;
+          lost();
+        };
         sock.onerror = () => {
           lost();
           sock.close();
@@ -250,7 +324,7 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
       };
       const off = wake(() => {
         loadBase();
-        if (ws) return;
+        if (ws || asking) return;
         failures = 0;
         connect();
       });

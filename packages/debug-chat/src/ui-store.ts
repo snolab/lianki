@@ -133,10 +133,12 @@ function migrateTree(v: unknown): KeptTree | null {
 /**
  * The chat's device preferences for how it looks (localStorage
  * `lk:pref:chat-view`, this device only, never synced): compact mode
- * (compact-view.ts), off until he turns it on on this device.
+ * (compact-view.ts), off until he turns it on on this device; full screen
+ * (full-screen.ts), on while the chat fills the app. A stored value from
+ * before `full` existed keeps its `compact` and reads `full` as off.
  */
-export type ChatView = { compact: boolean };
-export const CHAT_VIEW_INITIAL: ChatView = { compact: false };
+export type ChatView = { compact: boolean; full: boolean };
+export const CHAT_VIEW_INITIAL: ChatView = { compact: false, full: false };
 export const chatPrefs = () =>
   createUiStore<ChatView>("chat-view", 1, CHAT_VIEW_INITIAL, { storage: "local" });
 

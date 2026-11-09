@@ -81,3 +81,8 @@ __pycache__/
 
 # The Learning Partner for other sites: built at deploy (scripts/build-partner-embed.ts)
 public/partner-embed.js
+
+# friend dev boxes (devbox/README.md): the DeepSeek key lives here
+/devbox/.env
+/devbox/.env.*
+!/devbox/.env.example

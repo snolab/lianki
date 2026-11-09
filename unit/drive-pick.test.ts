@@ -71,11 +71,11 @@ describe("listGdocImports", () => {
 describe("opening the Picker after connecting", () => {
   it("comes back to the page that started it", () => {
     expect(pickReturnTo("/connections")).toBe("/connections?pick=drive");
-    expect(pickReturnTo("/read")).toBe("/read?pick=drive");
+    expect(pickReturnTo("/reader")).toBe("/reader?pick=drive");
     // The callback keeps them: returnPath allows exactly these.
     expect(returnPath(pickReturnTo("/connections"))).toBe("/connections?pick=drive");
-    expect(returnPath(pickReturnTo("/read"))).toBe("/read?pick=drive");
-    for (const bad of ["/read?pick=other", "/admin?pick=drive", "/read?pick=drive&x=1"])
+    expect(returnPath(pickReturnTo("/reader"))).toBe("/reader?pick=drive");
+    for (const bad of ["/reader?pick=other", "/admin?pick=drive", "/reader?pick=drive&x=1"])
       expect(returnPath(bad)).toBe("/connections");
   });
 
@@ -163,25 +163,25 @@ describe("pickAndImport", () => {
   it("not connected: to Google's consent, coming back to open the Picker", async () => {
     const { f } = mockFetch(() => [409, { error: "not-connected" }]);
     const d = deps(f, []);
-    expect(await pickAndImport("/read", d)).toEqual({ kind: "leaving" });
-    expect(d.connected).toEqual(["/read?pick=drive"]);
+    expect(await pickAndImport("/reader", d)).toEqual({ kind: "leaving" });
+    expect(d.connected).toEqual(["/reader?pick=drive"]);
   });
 
   it("closed without picking, or not set up yet", async () => {
     const ok = mockFetch(() => [200, SETUP]);
-    expect(await pickAndImport("/read", deps(ok.f, []))).toEqual({ kind: "cancelled" });
+    expect(await pickAndImport("/reader", deps(ok.f, []))).toEqual({ kind: "cancelled" });
     expect(ok.calls).toHaveLength(1);
     const off = mockFetch(() => [503, { error: "not-configured" }]);
-    expect(await pickAndImport("/read", deps(off.f, []))).toEqual({
+    expect(await pickAndImport("/reader", deps(off.f, []))).toEqual({
       kind: "error",
       code: "not-configured",
     });
     const slow = mockFetch(() => [429, { error: "rate-limited" }]);
-    expect(await pickAndImport("/read", deps(slow.f, []))).toEqual({
+    expect(await pickAndImport("/reader", deps(slow.f, []))).toEqual({
       kind: "error",
       code: "rate-limited",
     });
-    expect(await pickAndImport("/read", deps(ok.f, new Error("load")))).toEqual({
+    expect(await pickAndImport("/reader", deps(ok.f, new Error("load")))).toEqual({
       kind: "error",
       code: "failed",
     });
@@ -217,11 +217,11 @@ describe("pickAndImport: network trouble", () => {
 
   it("the token request fails or throws", async () => {
     const down = mockFetch(() => [500, {}]);
-    expect(await pickAndImport("/read", deps(down.f, [A]))).toEqual({
+    expect(await pickAndImport("/reader", deps(down.f, [A]))).toEqual({
       kind: "error",
       code: "failed",
     });
-    expect(await pickAndImport("/read", deps(boom, [A]))).toEqual({
+    expect(await pickAndImport("/reader", deps(boom, [A]))).toEqual({
       kind: "error",
       code: "failed",
     });
@@ -236,7 +236,7 @@ describe("pickAndImport: network trouble", () => {
       return new Response("not json", { status: 502 });
     }) as Fetch;
     const { onProgress: _, ...quiet } = deps(f, [A, B]);
-    expect(await pickAndImport("/read", quiet)).toEqual({
+    expect(await pickAndImport("/reader", quiet)).toEqual({
       kind: "done",
       imported: [],
       failed: ["fetch-failed", "fetch-failed"],
@@ -252,7 +252,7 @@ describe("pickAndImport: network trouble", () => {
           : [409, { error: "reconnect" }],
     );
     const d = deps(f, [A, B]);
-    expect(await pickAndImport("/read", d)).toEqual({
+    expect(await pickAndImport("/reader", d)).toEqual({
       kind: "done",
       imported: [{ id: "book-A", title: "" }],
       failed: ["reconnect"],
@@ -263,7 +263,7 @@ describe("pickAndImport: network trouble", () => {
   it("connecting cannot start: says why", async () => {
     const { f } = mockFetch(() => [409, {}]);
     const d = { ...deps(f, []), connect: async () => "not-configured" as const };
-    expect(await pickAndImport("/read", d)).toEqual({ kind: "error", code: "not-configured" });
+    expect(await pickAndImport("/reader", d)).toEqual({ kind: "error", code: "not-configured" });
   });
 });
 

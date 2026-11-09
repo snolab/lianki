@@ -7,6 +7,15 @@ import { useIntlayer } from "next-intlayer";
 import TokenManager from "../list/components/TokenManager";
 import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
+import { ByokSettings } from "@/app/components/ByokSettings";
+import { Icon } from "@/app/components/icons";
+import { TEXT_AREAS, textSizeStore } from "@/lib/text-size";
+import { useTextSizes } from "@/lib/use-text-size";
+import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
+import { ExternalLinkSettings } from "@/app/components/ExternalLinkSettings";
+import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
+import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
+import { readNotesOn, writeNotesOn } from "@/lib/read/translator-notes";
 
 type FilterType = "domain" | "title" | "url";
 
@@ -19,7 +28,94 @@ interface FilterPattern {
   createdAt: string;
 }
 
-export default function PreferencesClient() {
+/** A section heading with its reset button (only when there is something to reset). */
+/** The reader's offer to tidy a raw transcript: on until he says otherwise. */
+function ReaderSettings() {
+  const t = useIntlayer("read-polish");
+  const [on, setOn] = useState(true);
+  const [notes, setNotes] = useState(true);
+  useEffect(() => {
+    const read = () => {
+      setOn(readOfferOn());
+      setNotes(readNotesOn());
+    };
+    read();
+    window.addEventListener(PREF_APPLIED_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(PREF_APPLIED_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, []);
+  return (
+    <section className="mb-10 max-w-md" data-section="reader">
+      <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">{t.prefHeading}</h2>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={on}
+          data-testid="pref-polish-offer"
+          onChange={(e) => {
+            setOn(e.target.checked);
+            writeOfferOn(e.target.checked);
+          }}
+          className="w-4 h-4 rounded"
+        />
+        <span>{t.prefOffer}</span>
+      </label>
+      <p className="text-xs text-gray-500 mt-2 ml-6">{t.prefHelp}</p>
+      <label className="flex items-center gap-2 cursor-pointer mt-4">
+        <input
+          type="checkbox"
+          checked={notes}
+          data-testid="pref-translator-notes"
+          onChange={(e) => {
+            setNotes(e.target.checked);
+            writeNotesOn(e.target.checked);
+          }}
+          className="w-4 h-4 rounded"
+        />
+        <span>{t.prefNotes}</span>
+      </label>
+      <p className="text-xs text-gray-500 mt-2 ml-6">{t.prefNotesHelp}</p>
+    </section>
+  );
+}
+
+function SectionHeading({
+  children,
+  label,
+  canReset,
+  onReset,
+}: {
+  children: React.ReactNode;
+  label: string;
+  canReset: boolean;
+  onReset: () => void;
+}) {
+  return (
+    <div className="mb-4 flex items-center gap-2">
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">{children}</h2>
+      <button
+        type="button"
+        onClick={onReset}
+        disabled={!canReset}
+        aria-label={label}
+        title={label}
+        data-section-reset
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-full opacity-70 hover:bg-[oklch(0.5_0_0/0.12)] hover:opacity-100 disabled:opacity-25 disabled:hover:bg-transparent"
+      >
+        <Icon name="reset" className="h-5 w-5" />
+      </button>
+    </div>
+  );
+}
+
+/** What Save would send, to compare with what the server has. */
+const snapshot = (patterns: FilterPattern[], reviewOrder: ReviewOrder, watchTracking: boolean) =>
+  JSON.stringify({ patterns, reviewOrder, watchTracking });
+
+export default function PreferencesClient({ showKeySync = false }: { showKeySync?: boolean }) {
   const {
     loading: loadingText,
     heading,
@@ -29,8 +125,10 @@ export default function PreferencesClient() {
     success,
     examples,
     reviewOrder: reviewOrderUi,
+    resetSection,
   } = useIntlayer("preferences-page");
   const textSize = useIntlayer("text-size");
+  const textSizes = useTextSizes();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -40,6 +138,9 @@ export default function PreferencesClient() {
   const [isRegex, setIsRegex] = useState(false);
   const [reviewOrder, setReviewOrder] = useState<ReviewOrder>(DEFAULT_REVIEW_ORDER);
   const [watchTracking, setWatchTracking] = useState(true);
+  const [saved, setSaved] = useState("");
+  const current = snapshot(patterns, reviewOrder, watchTracking);
+  const dirty = !loading && current !== saved;
 
   useEffect(() => {
     fetchPreferences();
@@ -50,11 +151,15 @@ export default function PreferencesClient() {
       const res = await fetch("/api/preferences");
       if (!res.ok) throw new Error(errors.failedToFetch.value);
       const data = await res.json();
-      setPatterns(data.mobileExcludePatterns || []);
-      setReviewOrder(asReviewOrder(data.reviewOrder));
+      const loaded: FilterPattern[] = data.mobileExcludePatterns || [];
+      const order = asReviewOrder(data.reviewOrder);
       // Only an explicit false is off, so a server that predates the setting
       // keeps recording rather than appearing to have it disabled.
-      setWatchTracking(data.watchTracking !== false);
+      const watch = data.watchTracking !== false;
+      setPatterns(loaded);
+      setReviewOrder(order);
+      setWatchTracking(watch);
+      setSaved(snapshot(loaded, order, watch));
     } catch (error) {
       console.error("Error fetching preferences:", error);
       alert(errors.failedToLoad.value);
@@ -76,6 +181,7 @@ export default function PreferencesClient() {
         }),
       });
       if (!res.ok) throw new Error(errors.failedToSave.value);
+      setSaved(current);
       alert(success.saved.value);
     } catch (error) {
       console.error("Error saving preferences:", error);
@@ -151,20 +257,40 @@ export default function PreferencesClient() {
 
       {/* Text size — follows the account (lib/text-size.ts) */}
       <section className="mb-10 max-w-md" data-section="text-size">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
+        <SectionHeading
+          label={resetSection.value}
+          canReset={TEXT_AREAS.some((a) => textSizes[a] !== 1)}
+          onReset={() => textSizeStore.setState({ ui: 1, chat: 1, cards: 1, read: 1 })}
+        >
           {textSize.heading}
-        </h2>
+        </SectionHeading>
         <TextSizeControls />
       </section>
 
+      {/* Your own AI — the key on this device only (docs/byok.md) */}
+      <ByokSettings showKeySync={showKeySync} />
+
+      {/* Page titles — follows the account (docs/title-clean.md) */}
+      <TitleRulesSettings />
+
+      {/* Links to other sites — follows the account (lib/external-link.ts) */}
+      <ExternalLinkSettings />
+
+      {/* Reader — follows the account (lib/read/polish-offer.ts) */}
+      <ReaderSettings />
+
       {/* Next-card order */}
       <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
+        <SectionHeading
+          label={resetSection.value}
+          canReset={reviewOrder !== DEFAULT_REVIEW_ORDER}
+          onReset={() => setReviewOrder(DEFAULT_REVIEW_ORDER)}
+        >
           {reviewOrderUi.heading}
-        </h2>
+        </SectionHeading>
         <p className="text-gray-400 mb-4">{reviewOrderUi.description}</p>
         <div className="space-y-2">
-          {(["oldest", "newest"] as const).map((opt) => (
+          {(["newest", "oldest"] as const).map((opt) => (
             <label
               key={opt}
               className="flex items-start gap-3 p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10"
@@ -177,7 +303,10 @@ export default function PreferencesClient() {
                 onChange={() => setReviewOrder(opt)}
               />
               <span>
-                <span className="block font-medium">{reviewOrderUi[opt].label}</span>
+                <span className="block font-medium">
+                  {reviewOrderUi[opt].label}
+                  {opt === DEFAULT_REVIEW_ORDER && <> {reviewOrderUi.defaultMark}</>}
+                </span>
                 <span className="block text-sm text-gray-400">{reviewOrderUi[opt].hint}</span>
               </span>
             </label>
@@ -187,7 +316,13 @@ export default function PreferencesClient() {
 
       {/* Watch tracking */}
       <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Watch time</h2>
+        <SectionHeading
+          label={resetSection.value}
+          canReset={!watchTracking}
+          onReset={() => setWatchTracking(true)}
+        >
+          Watch time
+        </SectionHeading>
         <p className="text-gray-400 mb-4">
           Lianki can measure how long you actually watch or listen to media on a page, to fill your
           streaks and the activity heatmap. Time is counted only while something is playing, audible
@@ -213,9 +348,13 @@ export default function PreferencesClient() {
 
       {/* Mobile Exclude Patterns */}
       <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
+        <SectionHeading
+          label={resetSection.value}
+          canReset={patterns.length > 0}
+          onReset={() => setPatterns([])}
+        >
           {mobileFilters.heading}
-        </h2>
+        </SectionHeading>
         <p className="text-gray-400 mb-4">{mobileFilters.description}</p>
 
         {/* Current Patterns */}
@@ -360,12 +499,22 @@ export default function PreferencesClient() {
       {/* API Tokens */}
       <TokenManager />
 
-      {/* Save Button */}
-      <div className="flex gap-4">
+      {/* Save: floats above the bottom island, lit while there is something to save */}
+      <div
+        className="sticky z-30 flex justify-end pt-4"
+        style={{
+          bottom: "calc(max(env(safe-area-inset-bottom), var(--lk-bottom-reserve, 0px)) + 0.5rem)",
+        }}
+      >
         <button
           onClick={savePreferences}
-          disabled={saving}
-          className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-8 py-3 rounded font-semibold text-lg"
+          disabled={saving || !dirty}
+          data-dirty-save={dirty || undefined}
+          className={`rounded-full px-8 py-3 text-lg font-semibold transition-colors ${
+            dirty
+              ? "bg-[oklch(0.55_0.15_150)] text-[oklch(0.99_0_0)] shadow-lg ring-2 ring-[oklch(0.75_0.15_150)] hover:bg-[oklch(0.5_0.15_150)]"
+              : "lk-glass opacity-70"
+          }`}
         >
           {saving ? save.saving : save.saveButton}
         </button>

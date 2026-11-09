@@ -1,6 +1,7 @@
 // The commit/push split (owner, 2026-11-03): pre-commit runs only staged-file
 // checks and the generation steps whose inputs are staged; whole-repo lint,
-// typecheck and the unit suite run in pre-push, before qa:all.
+// typecheck and the affected unit tests run in pre-push, before the affected qa
+// suites (scripts/gate/affected.ts).
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -98,20 +99,24 @@ describe("git hooks", () => {
     expect(hook("pre-commit")).toEqual(["bunx lint-staged", "bun scripts/pre-commit.ts"]);
   });
 
-  it("pre-push runs lint, typecheck and the unit suite with coverage before qa:all", () => {
+  it("pre-push runs lint, typecheck and the affected unit tests before the affected qa suites", () => {
     const lines = hook("pre-push");
     const at = (cmd: string) => lines.findIndex((l) => l.trim() === cmd);
     const order = [
       "bun run lint",
       "bun run typecheck",
-      "bun run test:unit -- --coverage",
-      "bun run qa:all",
+      "bun scripts/gate/affected.ts unit",
+      "bun scripts/gate/affected.ts qa",
     ].map(at);
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    // The Windows skip exits before qa:all only — after the unit suite.
+    // The Windows skip exits before qa only — after the unit tests.
     const windows = lines.findIndex((l) => l.includes("MINGW*"));
     expect(windows).toBeGreaterThan(order[2]);
     expect(windows).toBeLessThan(order[3]);
+    // The pushed commits reach the selector.
+    const shas = lines.findIndex((l) => l.trim() === 'export LIANKI_PUSH_SHAS="$shas"');
+    expect(shas).toBeGreaterThan(order[1]);
+    expect(shas).toBeLessThan(order[2]);
   });
 });

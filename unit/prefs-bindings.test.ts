@@ -37,6 +37,10 @@ const b = (key: string) => prefBindings().find((x) => x.key === key)!;
 
 const SAMPLE: Record<string, unknown> = {
   "words.showAll": true,
+  "read.polishOffer": false,
+  "read.translatorNotes": false,
+  "vibe.translateMinPct": 35,
+  "read.polishSkips": ["00000000-0000-4000-8000-000000000000"],
   "words.readAloud": false,
   "words.serverVoice": false,
   "words.speakOnSwipe": false,
@@ -60,6 +64,10 @@ const SAMPLE: Record<string, unknown> = {
   "chat-voice.rate": 2,
   "chat-voice.out": "cloud",
   "chat-voice.speak": false,
+  "chat-voice.cueSend": false,
+  "chat-voice.cueSpeech": false,
+  "links.confirm": false,
+  "links.allowedHosts": ["en.wikipedia.org", "youtube.com"],
 };
 
 describe("prefBindings", () => {

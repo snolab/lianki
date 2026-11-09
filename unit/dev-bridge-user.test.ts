@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const OWNER = { id: "owner-1", email: "owner@example.com", name: "O", image: null };
 const lookups: string[] = [];
@@ -15,6 +15,7 @@ mock.module("@/auth", () => ({
   }),
 }));
 
+const { clearPermissionCache, grantAll } = await import("./support/grants");
 const { devBridgeUser } = await import("../lib/dev-bridge-user");
 const { DEV_BRIDGE_HEADER } = await import("../lib/dev-bridge");
 
@@ -25,21 +26,22 @@ const req = (h?: string) =>
   });
 
 describe("devBridgeUser", () => {
-  const saved = { s: process.env.DEV_BRIDGE_SECRET, o: process.env.OWNER_EMAILS };
+  const saved = { s: process.env.DEV_BRIDGE_SECRET };
   beforeAll(() => {
     process.env.DEV_BRIDGE_SECRET = SECRET;
-    process.env.OWNER_EMAILS = `${OWNER.email},second@example.com`;
   });
   afterAll(() => {
     process.env.DEV_BRIDGE_SECRET = saved.s;
-    process.env.OWNER_EMAILS = saved.o;
+    clearPermissionCache();
   });
+
+  beforeEach(() => grantAll([OWNER.email, "second@example.com"]));
 
   test("no header: undefined, so the route uses the session", async () => {
     expect(await devBridgeUser(req())).toBeUndefined();
   });
 
-  test("the right secret: the owner, looked up by the first OWNER_EMAILS address", async () => {
+  test("the right secret: the owner, looked up by the oldest `dev` grant", async () => {
     lookups.length = 0;
     expect(await devBridgeUser(req(SECRET))).toEqual(OWNER);
     expect(lookups).toEqual([OWNER.email]);

@@ -12,6 +12,7 @@ import {
   shortId,
   shownAgentId,
 } from "./frontier-view";
+import { etaColor } from "./EtaBar";
 import { LINE_HALO } from "./log-surface";
 import { createLongPress } from "./tap-gesture";
 import { BLINK, uiStrings } from "./ui-strings";
@@ -156,7 +157,40 @@ export function FrontierLines({
                     <AvatarSlot a={line.assignee} render={renderAvatar} />
                   </span>
                 )}
-                <span className="min-w-0 truncate">{line.text}</span>
+                {line.parts?.length ? (
+                  <span
+                    data-testid="debug-chat-frontier-eta"
+                    title={line.text}
+                    className="flex min-w-0 items-baseline"
+                  >
+                    {line.parts.map((p, i) => (
+                      <span
+                        key={i}
+                        data-testid="debug-chat-frontier-eta-part"
+                        // The first (smaller) task's name gives up its room first.
+                        style={{ flexShrink: i === 0 && line.parts!.length > 1 ? 100 : 1 }}
+                        className="flex min-w-0 items-baseline gap-1"
+                      >
+                        {i > 0 && (
+                          <span aria-hidden className="shrink-0 px-1 opacity-70">
+                            ·
+                          </span>
+                        )}
+                        <span className="min-w-0 truncate">{p.name}</span>
+                        <span
+                          data-late={p.late || undefined}
+                          className="shrink-0 tabular-nums"
+                          // Past due ("-5M"): red, as in the list (EtaBar.tsx ETA_COLORS.late).
+                          style={p.late ? { color: etaColor("late"), fontWeight: 600 } : undefined}
+                        >
+                          {p.min}
+                        </span>
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="min-w-0 truncate">{line.text}</span>
+                )}
                 {count && (
                   <span data-testid="debug-chat-frontier-count" className="shrink-0 opacity-70">
                     {count}

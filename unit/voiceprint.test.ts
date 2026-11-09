@@ -6,7 +6,7 @@
  * STT socket's part of the protocol. The server's side (scoring, thresholds,
  * the store's file modes) is unit/local-stt-voiceprint.test.ts.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { type LocalFinal, type WsLike, createLocalStt } from "@lianki/debug-chat/local-stt";
 import { type EnrolTap, RATE, type StreamStt, createMic } from "@lianki/debug-chat/mic";
 import {
@@ -15,11 +15,20 @@ import {
   ENROL_SENTENCES,
   type EnrolDeps,
   type EnrolView,
+  FILTER_FLAG_TTL_MS,
+  VOICE_FILTERED_KEY,
   clearSpeaker,
   createEnrolment,
   deviceSlug,
+  filterFlag,
+  filterPaused,
+  filterSwitch,
+  filterVerdict,
   matchesPrompt,
   noteSpeaker,
+  readTally,
+  setFilterPaused,
+  subscribeFiltered,
   takeSpeaker,
 } from "@lianki/debug-chat/voiceprint";
 import { type SpeakerTag, cleanSpeaker, combineSpeaker } from "@lianki/debug-chat/wire";
@@ -210,6 +219,199 @@ function card(o: { local?: boolean; startOk?: boolean; passkey?: boolean } = {})
   };
   return { c, sent, captures, tickets, views, sentence, hasHook: () => !!onFinal };
 }
+
+describe("the voiceprint filter on the page (docs/local-stt.md, 'Only my voice')", () => {
+  // Other test files read globalThis.localStorage: put back what was there.
+  const had = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  afterEach(() => {
+    if (had) Object.defineProperty(globalThis, "localStorage", had);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
+  const box = () => {
+    const m = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    };
+    return m;
+  };
+
+  it("a stopped final goes nowhere: the count and reason on this device, never any text", () => {
+    box();
+    const logged: Record<string, unknown>[] = [];
+    let heard = 0;
+    const off = subscribeFiltered(() => heard++);
+    const stopped = filterVerdict({ filtered: { reason: "no-match", score: 0.07 } }, 2500, (e) =>
+      logged.push(e),
+    );
+    off();
+    expect(stopped).toBe(true);
+    expect(heard).toBe(1);
+    expect(readTally()).toMatchObject({ n: 1, would: 0, reason: "no-match", score: 0.07 });
+    expect(logged).toEqual([
+      { ev: "voice-filtered", durationMs: 2500, n: 1, reason: "no-match", score: 0.07 },
+    ]);
+  });
+
+  it("the filter not on: the line lands, and it is counted as one it would have stopped", () => {
+    box();
+    const logged: Record<string, unknown>[] = [];
+    let heard = 0;
+    const off = subscribeFiltered(() => heard++);
+    expect(
+      filterVerdict({ wouldFilter: "no-match", speaker: other(0.09) }, 3000, (e) => logged.push(e)),
+    ).toBe(false);
+    off();
+    expect(heard).toBe(0); // no note on the mic: nothing was lost
+    expect(readTally()).toMatchObject({ n: 0, would: 1 });
+    expect(logged[0]).toMatchObject({ ev: "voice-would-filter", would: 1, score: 0.09 });
+    expect(filterVerdict({ speaker: me() }, 3000)).toBe(false);
+    expect(readTally().would).toBe(1);
+  });
+
+  it("the tally is per day", () => {
+    const m = box();
+    m.set(VOICE_FILTERED_KEY, JSON.stringify({ day: "2020-01-01", n: 9, would: 9 }));
+    expect(readTally()).toMatchObject({ n: 0, would: 0 });
+  });
+
+  it("the switch: the flag, kept a while; a pause on this device counts at once; any failure is off", async () => {
+    box();
+    let on = true;
+    let asks = 0;
+    let t = 0;
+    const sw = filterSwitch(
+      async () => (asks++, on),
+      () => t,
+    );
+    expect(await sw()).toBe(true);
+    on = false;
+    t = FILTER_FLAG_TTL_MS - 1;
+    expect(await sw()).toBe(true);
+    expect(asks).toBe(1);
+    t = FILTER_FLAG_TTL_MS;
+    expect(await sw()).toBe(false);
+    on = true;
+    t *= 2;
+    expect(await sw()).toBe(true);
+    setFilterPaused(true);
+    expect(filterPaused()).toBe(true);
+    expect(await sw()).toBe(false);
+    setFilterPaused(false);
+    expect(await sw()).toBe(true);
+    const broken = filterSwitch(async () => {
+      throw new Error("down");
+    });
+    expect(await broken()).toBe(false);
+  });
+
+  it("the flag: anything but a yes from the owner route is off", async () => {
+    const ans = (r: unknown) => (async () => r) as unknown as typeof fetch;
+    expect(await filterFlag(ans({ ok: true, json: async () => ({ on: true }) }))).toBe(true);
+    expect(await filterFlag(ans({ ok: true, json: async () => ({ on: false }) }))).toBe(false);
+    expect(await filterFlag(ans({ ok: false, json: async () => ({ on: true }) }))).toBe(false);
+    const down = (async () => {
+      throw new Error("offline");
+    }) as unknown as typeof fetch;
+    expect(await filterFlag(down)).toBe(false);
+  });
+
+  it("the socket tells the Mac when it opens and when it changes, and reads the verdict", async () => {
+    const { s, stt, flip } = (() => {
+      const w = sock();
+      let on = true;
+      const c = createLocalStt("wss://mac.ts.net/lianki-stt", {
+        open: w.open,
+        device: "iphone",
+        filter: () => on,
+      });
+      c.warm();
+      const x = w.socks[0]!;
+      x.readyState = 1;
+      x.say({ t: "ready", engine: "sensevoice", model: "m" });
+      return { s: x, stt: c, flip: (v: boolean) => (on = v) };
+    })();
+    await tick();
+    const told = () =>
+      s.sent.filter((f) => typeof f === "string" && f.includes('"filter"')).map((f) => json(f));
+    expect(told()).toEqual([{ t: "filter", on: true }]);
+    const u = stt.begin(() => {})!;
+    await tick();
+    expect(told().length).toBe(1); // unchanged: not repeated
+    const f = u.end(new Float32Array(10));
+    s.say({
+      t: "final",
+      id: 1,
+      text: "",
+      speaker: { decision: "other", score: 0.07, model: "campp", device: "iphone" },
+      filtered: { reason: "no-match", score: 0.07 },
+    });
+    expect((await f).filtered).toEqual({ reason: "no-match", score: 0.07 });
+    flip(false);
+    const v = stt.begin(() => {})!;
+    await tick();
+    expect(told().at(-1)).toEqual({ t: "filter", on: false });
+    const g = v.end(new Float32Array(10));
+    s.say({ t: "final", id: 2, text: "hi", wouldFilter: "no-match" });
+    expect(await g).toMatchObject({ text: "hi", wouldFilter: "no-match" });
+  });
+
+  it("the question failing: nothing is told, so the Mac stays as it was: no filter", async () => {
+    const w = sock();
+    const c = createLocalStt("wss://mac.ts.net/lianki-stt", {
+      open: w.open,
+      device: "iphone",
+      filter: async () => {
+        throw new Error("nope");
+      },
+    });
+    c.warm();
+    const s = w.socks[0]!;
+    s.readyState = 1;
+    s.say({ t: "ready", engine: "sensevoice", model: "m" });
+    await tick();
+    expect(s.sent.some((f) => typeof f === "string" && f.includes('"filter"'))).toBe(false);
+  });
+
+  it("the panel shows it, and the pause sticks on this device", async () => {
+    box();
+    const tally = { day: "x", n: 2, would: 0 };
+    const d: EnrolDeps = {
+      device: "iphone",
+      capture() {},
+      ticket: async () => "T",
+      request: async () => ({ ok: true, prints: [], filter: "no-print" }),
+      filterInfo: async (state) => ({ flag: true, paused: false, state, tally }),
+    };
+    const views: EnrolView[] = [];
+    const e = createEnrolment(d, (v) => views.push(v));
+    await e.open();
+    expect(e.view()).toMatchObject({
+      step: "status",
+      filter: { flag: true, state: "no-print", paused: false },
+    });
+    e.pauseFilter(true);
+    expect(e.view()).toMatchObject({ step: "status", filter: { paused: true } });
+    expect(filterPaused()).toBe(true);
+    e.pauseFilter(false);
+  });
+
+  it("the panel stands when the question fails", async () => {
+    const d: EnrolDeps = {
+      device: "iphone",
+      capture() {},
+      ticket: async () => "T",
+      request: async () => ({ ok: true, prints: [] }),
+      filterInfo: async () => {
+        throw new Error("nope");
+      },
+    };
+    const e = createEnrolment(d, () => {});
+    await e.open();
+    expect(e.view()).toMatchObject({ step: "status", local: true });
+  });
+});
 
 describe("the enrolment card: consent first", () => {
   it("nothing is captured or started on the Mac before the consent tap", async () => {
@@ -427,6 +629,7 @@ function micWith(o: {
   const logs: Record<string, unknown>[] = [];
   let woke = 0;
   const mic = createMic({
+    guard: { minFrameRms: 0 }, // the fake audio is zeros; unit/stt-guard.test.ts has the gate
     load: async (e) => {
       ev = e;
       return { start() {}, pause() {}, flush() {}, destroy() {} };

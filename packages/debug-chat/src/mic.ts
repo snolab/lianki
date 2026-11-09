@@ -17,6 +17,21 @@
 import type { UttMarks } from "./latency";
 import type { BeginOpts, LocalFinal, LocalUtt } from "./local-stt";
 import { STT_PROMPTS } from "./stt-hint";
+import {
+  GAP,
+  escapeRe,
+  STOCK_PHRASES,
+  STT_GUARD,
+  type SttGuardLimits,
+  type SttSignals,
+  judgeFinal,
+  looseAlternative,
+  loudestFrameRms,
+  normalizeTranscript,
+  phraseKey,
+  wholePhraseRe,
+} from "./stt-guard";
+import type { FilterVerdict } from "./local-stt";
 import type { SpeakerTag } from "./wire";
 import type { SpotResult, WakeSpot } from "./wake";
 
@@ -233,64 +248,25 @@ export function appendDictation(draft: string, text: string): { draft: string; s
 }
 
 /**
- * What Whisper says over silence or noise (its training subtitles' credits).
- * A final transcript that is one of these (once normalized, possibly
- * repeated) from a short or faint utterance is dropped (isHallucination).
- * `…` stands for anything.
+ * What Whisper says over silence or noise (stt-guard.ts STOCK_PHRASES), and
+ * our own route's STT prompts, which cloud Whisper reads back as speech.
  */
 export const HALLUCINATIONS: readonly string[] = [
-  "ご視聴ありがとうございました",
-  "ご清聴ありがとうございました",
-  "チャンネル登録よろしくお願いします",
-  "おやすみなさい",
-  "Thanks for watching",
-  "Thank you for watching",
-  "Please subscribe",
-  "Subtitles by …",
-  "字幕由…提供",
-  "字幕製作…",
-  "请不吝点赞 订阅 转发…",
-  "請不吝點贊 訂閱 轉發…",
-  "请不吝点赞订阅转发…",
-  "谢谢观看",
-  "謝謝觀看",
-  "感谢观看",
-  "感謝觀看",
-  "感谢收看",
-  "感謝收看",
-  "谢谢收看",
-  "謝謝收看",
-  "谢谢您的观看",
-  "謝謝您的觀看",
-  "感谢您的观看",
-  "感謝您的觀看",
-  // "字幕志愿者 李宗盛" and the like: a subtitle credit (never 李宗盛 alone, a real name).
-  "字幕志愿者…",
-  "字幕志願者…",
-  // "中文字幕提供", "字幕提供": a credit line on its own clause.
-  "…字幕提供",
-  "请订阅",
-  "請訂閱",
-  "订阅我的频道…",
-  "訂閱我的頻道…",
-  // Our own route's STT prompts, which cloud Whisper reads back as speech.
+  ...STOCK_PHRASES.map((p) => p.text),
   ...STT_PROMPTS,
-  "…明镜与点点栏目…",
-  "…明鏡與點點欄目…",
-  "Ondertiteling …",
-  "Sous-titres réalisés par …",
 ];
-/** Under this much speech an utterance is short enough to be one of those. */
-export const HALLUCINATION_MAX_MS = 1_200;
-/** Under this mean speech probability (Silero) an utterance is faint enough. */
-export const HALLUCINATION_MIN_PROB = 0.5;
 /** A frame at or over this probability counts as speech, for the speech length. */
 export const SPEECH_FRAME_PROB = 0.5;
+/** Speech outside a cue's window, as the cues count it: the VAD's lowest start threshold (whisper)… */
+export const CUE_VOICED_PROB = 0.2;
+/** …or the energy gate's (the fallback VAD gives no probability). */
+export const CUE_VOICED_RMS = 0.02;
+/** This much confirms an utterance (a false start ends before it): the start cue plays. */
+export const CUE_CONFIRM_MS = 250;
+/** This much shows a VAD start inside a cue's window was him, not the cue. */
+export const CUE_REAL_MS = 96;
 
-/** For matching: NFKC, lowercased, without punctuation, symbols or whitespace. */
-export function normalizeTranscript(s: string): string {
-  return s.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}\s]/gu, "");
-}
+export { normalizeTranscript };
 
 /**
  * Phrases dropped only as a whole message (by isHallucination), never cut out
@@ -300,39 +276,24 @@ const WHOLE_ONLY: ReadonlySet<string> = new Set(["おやすみなさい"]);
 /** The phrases cut out of a longer message too (cleanTranscript, stripHallucinationTail). */
 const IN_TEXT = HALLUCINATIONS.filter((h) => !WHOLE_ONLY.has(h));
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-/** Normalized text that is one of `list` (or a run of them). */
-const wholeRe = (list: readonly string[]) =>
-  new RegExp(
-    `^(?:${list
-      .map((h) =>
-        h
-          .split("…")
-          .map((part) => escapeRe(normalizeTranscript(part)))
-          .join(".*"),
-      )
-      .join("|")})+$`,
-    "u",
-  );
-const HALLUCINATION_RE = wholeRe(HALLUCINATIONS);
-const IN_TEXT_RE = wholeRe(IN_TEXT);
+const HALLUCINATION_RE = wholePhraseRe(HALLUCINATIONS);
+const IN_TEXT_RE = wholePhraseRe(IN_TEXT);
 
-/** A known phrase (or a run of them) at the very end of a transcript, whatever its punctuation. */
-/** Punctuation, symbols or spaces, anywhere between a phrase's characters. */
-const GAP = "[\\p{P}\\p{S}\\s]*";
-/** The phrases on raw text: each character in turn, any punctuation or spacing between. */
-const PHRASE_ALT = IN_TEXT.map((h) =>
-  h
-    .split("…")
-    .map((part) => [...normalizeTranscript(part)].map(escapeRe).join(GAP))
-    .join(".*?"),
-).join("|");
-const HALLUCINATION_TAIL_RE = new RegExp(`(?:${PHRASE_ALT})(?:${GAP}(?:${PHRASE_ALT}))*${GAP}$`, "iu");
+const PHRASE_ALT = IN_TEXT.map(looseAlternative).join("|");
+/**
+ * A known phrase (or a run of them) at the very end of a transcript, whatever
+ * its punctuation, as a clause of its own: "他说感谢观看" is his sentence, and
+ * stays.
+ */
+const HALLUCINATION_TAIL_RE = new RegExp(
+  `(?<=^|[\\p{P}\\p{S}\\s])(?:${PHRASE_ALT})(?:${GAP}(?:${PHRASE_ALT}))*${GAP}$`,
+  "iu",
+);
 
 /**
  * Real speech with a known phrase stuck on its end ("…明天见。谢谢观看"):
  * the speech without it. Text that is all phrase is left as it is (that is
- * isHallucination's to judge), and so is text without one.
+ * judgeFinal's to judge), and so is text without one.
  */
 export function stripHallucinationTail(text: string): string {
   const m = HALLUCINATION_TAIL_RE.exec(text);
@@ -343,19 +304,8 @@ export function stripHallucinationTail(text: string): string {
 
 /** The text is a known hallucination phrase (or a run of them), whatever its punctuation. */
 export function isHallucinationPhrase(text: string): boolean {
-  const n = normalizeTranscript(text);
+  const n = phraseKey(text);
   return !!n && HALLUCINATION_RE.test(n);
-}
-
-/**
- * Drop this final transcript: a known hallucination phrase from an utterance
- * with under HALLUCINATION_MAX_MS of speech, or a mean speech probability
- * under HALLUCINATION_MIN_PROB. The same words said at length and clearly are
- * kept: the user may really say them.
- */
-export function isHallucination(text: string, ms: number, prob?: number): boolean {
-  if (!isHallucinationPhrase(text)) return false;
-  return ms < HALLUCINATION_MAX_MS || (prob !== undefined && prob < HALLUCINATION_MIN_PROB);
 }
 
 /**
@@ -486,7 +436,7 @@ export type TranscriptCleaning = {
   phrase: number;
   /** Repeated runs collapsed. */
   repeat: number;
-  /** What was taken out (Whisper's text, not the user's), for the devLog. */
+  /** What was taken out; only its length is logged. */
   removed: string[];
 };
 
@@ -508,11 +458,16 @@ const joinClauses = (cs: Clause[]) => cs.map((c) => c.body + c.end).join("");
  * 3. Decoding loops (collapseRepeats).
  *
  * A text of nothing but stock phrases is left as it is when nothing else was
- * found: isHallucination judges that by length and loudness, since the user
+ * found: judgeFinal (stt-guard.ts) judges that, since the user
  * may say them. Otherwise, when nothing is left but punctuation, or only
  * scraps of a prompt whose echo was found ("中文。"), `drop` is set.
  */
-export function cleanTranscript(text: string, prompts: readonly string[] = STT_PROMPTS): TranscriptCleaning {
+export function cleanTranscript(
+  text: string,
+  prompts: readonly string[] = STT_PROMPTS,
+  /** Whether a stock phrase can be the model's own: not from a ctc decoder (SttSignals). */
+  phrases = true,
+): TranscriptCleaning {
   const res: TranscriptCleaning = { text, drop: false, prompt: 0, phrase: 0, repeat: 0, removed: [] };
   if (!normalizeTranscript(text)) return res;
   const ps = prompts.filter((p) => normalizeTranscript(p)).map(promptParts);
@@ -553,8 +508,8 @@ export function cleanTranscript(text: string, prompts: readonly string[] = STT_P
       continue;
     }
     let j = -1; // the longest run of clauses from i that is one or more stock phrases
-    for (let e = cs.length; e > i && j < 0; e--) {
-      const run = normalizeTranscript(joinClauses(cs.slice(i, e)));
+    for (let e = phrases ? cs.length : i; e > i && j < 0; e--) {
+      const run = phraseKey(joinClauses(cs.slice(i, e)));
       if (run && IN_TEXT_RE.test(run)) j = e;
     }
     if (j > 0) {
@@ -566,12 +521,12 @@ export function cleanTranscript(text: string, prompts: readonly string[] = STT_P
     phraseOnly = false;
     keep.push(cs[i++]);
   }
-  // Stock phrases alone, and nothing else found: isHallucination's call.
+  // Stock phrases alone, and nothing else found: judgeFinal's call.
   if (phraseOnly && !res.prompt && !res.repeat) return { ...res, phrase: 0, removed: [] };
 
   let out = joinClauses(keep).trim();
   // 2 at the end: a phrase stuck onto the last clause ("嗯 字幕志愿者 李宗盛").
-  const tail = stripHallucinationTail(out);
+  const tail = phrases ? stripHallucinationTail(out) : out;
   if (tail !== out) {
     res.phrase++;
     res.removed.push(out.slice(tail.length).trim());
@@ -789,6 +744,8 @@ export type UploadInfo = {
    * towards passive mode (the wake gate's verdict is skipped).
    */
   onEcho?: () => void;
+  /** What the route said besides the text (stt-guard.ts), when it says anything. */
+  onSignals?: (s: SttSignals | undefined) => void;
 };
 /**
  * The wake-word gate (wake.ts, docs/wake-word.md). While `passive()` is true
@@ -849,8 +806,10 @@ export function createMic(d: {
   onError?: (e: unknown) => void;
   /** Each frame's speech probability while capturing (the barge-in judge, voice.ts). */
   onProb?: (prob: number) => void;
-  /** Debug events (a dropped hallucination: `{ev: "stt-hallucination", text, ms, prob}`). */
+  /** Debug events. They reach the Worker logs, so a dropped line is its reason and counts, never its text (`stt-dropped`). */
   log?: (ev: Record<string, unknown>) => void;
+  /** Overrides of the silence guard's limits (stt-guard.ts STT_GUARD), for tests. */
+  guard?: Partial<SttGuardLimits>;
   /** Rolling partial chunks for long utterances (on unless false). */
   partials?: boolean;
   /** The local streaming STT, if one is configured now (asked at each utterance). */
@@ -867,8 +826,17 @@ export function createMic(d: {
   enrol?: EnrolTap;
   /** Each kept final's speaker tag from the Mac and its signed proof (undefined: the cloud, or no check there). */
   speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
+  /** A passive utterance the Mac's voiceprint filter stopped (the active ones: MicButton's upload). */
+  filtered?: (v: FilterVerdict) => void;
   /** The adaptive estimator (adaptive.ts); without it the endpoint is the fixed one. */
   adapt?: MicAdapt;
+  /**
+   * The start and end cues (cues.ts). `guard()`: a cue is playing, so what is
+   * heard now is not counted as speech (see `shadow` below). `edge`: this
+   * utterance's speech was confirmed, or it ended and was kept. Never for a
+   * passive (wake-gated) utterance or an enrolment sentence.
+   */
+  cue?: { guard(): boolean; edge(edge: "start" | "end"): void };
   now?: () => number;
   setTimer?: (f: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -911,10 +879,24 @@ export function createMic(d: {
   let probN = 0;
   /** When the last frame at or over SPEECH_FRAME_PROB was heard (Silero only). */
   let lastVoice: number | undefined;
+  /** The current capture's VAD start, and when the cap cut it (voice-merge.ts reads both). */
+  let speechStart: number | undefined;
+  let cutAt: number | undefined;
   /** The utterance being captured began in passive mode: only the wake gate hears it. */
   let gated = false;
   /** The utterance being captured is an enrolment sentence: only the enrolment hears it. */
   let enrolling = false;
+  /**
+   * A VAD start inside a cue's window: it may be the cue itself or him. The
+   * audio is kept from the start as usual, but nobody hears of the capture
+   * (no ducking, no held send cancelled) until CUE_REAL_MS of speech comes
+   * outside a cue's window; an utterance without that is dropped.
+   */
+  let shadow = false;
+  /** Speech heard this utterance outside any cue's window, in samples. */
+  let voicedOut = 0;
+  /** This utterance passed on its start cue. */
+  let startCued = false;
   /** Lines dropped in passive mode because the speaker check said "other" (logged as a count). */
   let otherDrops = 0;
   /** VAD pause/start calls, in order. */
@@ -973,12 +955,21 @@ export function createMic(d: {
     onSpeechStart() {
       if (g !== gen || held) return;
       tainted = false;
-      set("capturing");
+      voicedOut = 0;
+      startCued = false;
+      shadow = !!d.cue?.guard() && !d.enrol?.active();
+      if (shadow) state = "capturing";
+      else set("capturing");
       resetLive();
       speechLen = probSum = probN = 0;
       lastVoice = undefined;
       clearTimer(cap);
-      cap = setTimer(() => void vad?.flush(), MAX_UTTERANCE_MS);
+      speechStart = now();
+      cutAt = undefined;
+      cap = setTimer(() => {
+        cutAt = now();
+        void vad?.flush();
+      }, MAX_UTTERANCE_MS);
       dropUtt();
       ep.heard = ep.sent = false;
       ep.quiet = 0;
@@ -997,7 +988,7 @@ export function createMic(d: {
       utt = gated
         ? null
         : d.stream?.()?.begin((text) => {
-          if (g !== gen || held) return;
+          if (g !== gen || held || shadow) return;
           const seq = cur ?? (cur = q.add());
           ep.partial = text;
           q.partial(seq, text);
@@ -1006,11 +997,29 @@ export function createMic(d: {
     },
     onFrame(frame, prob) {
       if (g !== gen) return;
-      if (!held) d.adapt?.frame(frame, prob, state === "capturing");
+      // A cue's own sound teaches nothing and counts as nothing; it is still kept as audio.
+      const guarded = !!d.cue?.guard();
+      if (!held && !guarded && !shadow) d.adapt?.frame(frame, prob, state === "capturing");
       // The noise floor: Silero's probability on what is heard between utterances.
-      if (prob !== undefined && state === "listening") ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
+      if (prob !== undefined && state === "listening" && !guarded)
+        ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
       if (state !== "capturing") return;
-      if (utt && prob !== undefined && !ep.sent) {
+      if (
+        d.cue &&
+        !guarded &&
+        (prob !== undefined ? prob >= CUE_VOICED_PROB : rms(frame) >= CUE_VOICED_RMS)
+      ) {
+        voicedOut += frame.length;
+        if (shadow && voicedOut >= toSamples(CUE_REAL_MS)) {
+          shadow = false;
+          d.onState("capturing");
+        }
+        if (!startCued && !shadow && !gated && !enrolling && voicedOut >= toSamples(CUE_CONFIRM_MS)) {
+          startCued = true;
+          d.cue.edge("start");
+        }
+      }
+      if (utt && prob !== undefined && !ep.sent && !guarded) {
         // Streaming: our own end of speech, ENDPOINT_MS under a threshold over the floor.
         const a = d.adapt?.state();
         if (prob >= endpointThreshold(ep.floor, a?.endpointMargin, a?.endpointMin)) {
@@ -1030,7 +1039,7 @@ export function createMic(d: {
           void vad?.flush();
         }
       }
-      if (prob !== undefined) {
+      if (prob !== undefined && !guarded && !shadow) {
         d.onProb?.(prob);
         probSum += prob;
         probN++;
@@ -1056,6 +1065,7 @@ export function createMic(d: {
     onMisfire() {
       d.adapt?.end(false);
       if (g !== gen || held) return;
+      shadow = false;
       clearTimer(cap);
       dropUtt();
       resetLive();
@@ -1064,14 +1074,32 @@ export function createMic(d: {
     },
     onSpeechEnd(audio) {
       // Only speech that is kept teaches the speech level (never the agent's echo).
-      d.adapt?.end(g === gen && !held && !tainted);
+      d.adapt?.end(g === gen && !held && !tainted && !shadow);
       const u = utt;
       utt = null;
       // Heard while the agent spoke (or begun before it did): the reply's echo, dropped.
-      if (held || tainted) return void u?.cancel();
+      if (held || tainted) {
+        shadow = false;
+        return void u?.cancel();
+      }
       clearTimer(cap);
       const mine = g === gen;
+      // A cue's own sound, with no speech of his after it: as if it had never started.
+      if (shadow) {
+        shadow = false;
+        u?.cancel();
+        speechLen = probSum = probN = 0;
+        lastVoice = undefined;
+        if (mine) {
+          resetLive();
+          dropCur();
+          if (state === "capturing") set("listening");
+          d.log?.({ ev: "cue-echo-drop", ms: toMs(audio.length) });
+        }
+        return;
+      }
       if (mine && state === "capturing") set("listening");
+      if (mine && !gated && !enrolling) d.cue?.edge("end");
       const seq = mine && cur !== null ? cur : q.add();
       if (mine) {
         cur = null;
@@ -1094,11 +1122,14 @@ export function createMic(d: {
       const prob = probN ? Math.round((probSum / probN) * 1000) / 1000 : undefined;
       speechLen = probSum = probN = 0;
       d.timing?.(seq, {
+        ...(speechStart !== undefined ? { t_speechStart: speechStart } : {}),
+        ...(cutAt !== undefined ? { t_cut: cutAt } : {}),
         ...(lastVoice !== undefined ? { t_lastVoice: lastVoice } : {}),
         t_speechEnd: now(),
         audioMs: toMs(audio.length),
       });
       lastVoice = undefined;
+      speechStart = cutAt = undefined;
       pending();
       if (gated && d.wake) {
         // Passive: nothing leaves the phone unless "Linky" is in it.
@@ -1148,14 +1179,15 @@ export function createMic(d: {
             if (!local) return wake();
             local.then(
               (f) => {
-                if (f.speaker?.decision !== "other") return wake(f);
+                if (f.speaker?.decision !== "other" && !f.filtered) return wake(f);
+                if (f.filtered) d.filtered?.(f.filtered);
                 otherDrops++;
                 d.log?.({
                   ev: "speaker-other",
                   mode: "passive",
                   n: otherDrops,
-                  score: f.speaker.score,
-                  model: f.speaker.model,
+                  score: f.speaker?.score,
+                  model: f.speaker?.model,
                 });
                 drop();
               },
@@ -1181,6 +1213,7 @@ export function createMic(d: {
     local?: Promise<LocalFinal>,
   ) => {
     const wav = encodeWav(audio);
+    let signals: SttSignals | undefined;
     local?.catch(() => {}); // upload decides; never an unhandled rejection
     /** The Mac's speaker check on it; "other" in active mode counts towards passive. */
     let spk: SpeakerTag | undefined;
@@ -1200,11 +1233,12 @@ export function createMic(d: {
       partial: false,
       local,
       onEcho: () => void (echo = true),
+      onSignals: (s) => void (signals = s),
     })
       .then(
         (heard) => {
           // Whisper's additions out of real speech: prompt echo, stock phrases, loops.
-          const c = cleanTranscript(heard);
+          const c = cleanTranscript(heard, STT_PROMPTS, signals?.decoder !== "ctc");
           const text = c.drop ? "" : c.text;
           if (c.prompt || c.phrase || c.repeat)
             d.log?.({
@@ -1213,10 +1247,30 @@ export function createMic(d: {
               phrase: c.phrase,
               repeat: c.repeat,
               dropped: c.drop,
-              text: c.removed.join(" | ").slice(0, 80),
+              removedChars: c.removed.join("").length,
             });
-          const drop = c.drop || isHallucination(text, ms, prob);
-          if (drop && !c.drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
+          // The silence guard: before the queue, so the taps, the chat, the send
+          // and its cue, and the polish never hear a dropped line.
+          const reason = c.drop
+            ? null
+            : judgeFinal(
+                text,
+                { speechMs: ms, prob, frameRms: loudestFrameRms(audio), signals },
+                { ...STT_GUARD, ...d.guard },
+              );
+          const drop = c.drop || !!reason;
+          if (reason) {
+            d.log?.({
+              ev: "stt-dropped",
+              reason,
+              chars: text.length,
+              ms,
+              prob,
+              decoder: signals?.decoder,
+              logprob: signals?.logprob,
+              vadShare: signals?.vadShare,
+            });
+          }
           d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
           const other = spk?.decision === "other";
           // The line's speaker tag (voiceprint.ts noteSpeaker): only for text that lands.
@@ -1314,7 +1368,13 @@ export function createMic(d: {
 }
 
 /** The STT route's answer (agent C's contract). */
-export type SttResult = { text: string; model?: string; ms?: number; language?: string };
+export type SttResult = {
+  text: string;
+  model?: string;
+  ms?: number;
+  language?: string;
+  signals?: SttSignals;
+};
 
 /**
  * POST one recording to /api/debug/stt, the raw audio as the body, with the
@@ -1412,55 +1472,6 @@ export function sideClip(
 
 /** The custom DOM event fired on window when a spoken sentence is sent by itself. */
 export const VOICE_SENT_EVENT = "lk:voice-sent";
-/** The send tick: two soft sine tones, this loud at their peak, this long in all. */
-export const TICK_GAIN = 0.08;
-export const TICK_MS = 80;
 
-/** The slice of an AudioContext the tick uses (a fake in the tests). */
-export type TickContext = {
-  currentTime: number;
-  destination: unknown;
-  createOscillator(): {
-    type: string;
-    frequency: { setValueAtTime(v: number, t: number): unknown };
-    connect(n: unknown): unknown;
-    start(t: number): void;
-    stop(t: number): void;
-  };
-  createGain(): {
-    gain: {
-      setValueAtTime(v: number, t: number): unknown;
-      linearRampToValueAtTime(v: number, t: number): unknown;
-      exponentialRampToValueAtTime(v: number, t: number): unknown;
-    };
-    connect(n: unknown): unknown;
-  };
-};
-
-/**
- * A short, soft "tick" when a spoken sentence goes out: two sine tones (the
- * second a fifth up, 30 ms later) through one gain with a 5 ms attack and an
- * exponential decay, TICK_MS long, peaking at TICK_GAIN. Web Audio only — no
- * <audio> element — so iOS keeps it silent when the ringer is muted.
- */
-export function scheduleTick(ctx: TickContext, at = ctx.currentTime) {
-  const end = at + TICK_MS / 1000;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.0001, at);
-  g.gain.linearRampToValueAtTime(TICK_GAIN, at + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.0001, end);
-  g.connect(ctx.destination);
-  const tones: [number, number][] = [
-    [880, at],
-    [1320, at + 0.03],
-  ];
-  for (const [hz, t] of tones) {
-    const o = ctx.createOscillator();
-    o.type = "sine";
-    o.frequency.setValueAtTime(hz, t);
-    o.connect(g);
-    o.start(t);
-    o.stop(end);
-  }
-  return end;
-}
+// The cues' synth moved to cues.ts; the mic's callers still find it here.
+export { TICK_GAIN, TICK_MS, type TickContext, scheduleTick } from "./cues";

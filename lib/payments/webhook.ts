@@ -17,7 +17,8 @@
  *   it is logged for the owner (the balance never goes negative) and answered
  *   200, since a retry cannot fix it.
  */
-import { isOwner } from "@/lib/owner";
+import { isAdmin } from "@/lib/permissions";
+import { refreshPermissionsFrom } from "@/lib/permission-store";
 import {
   creditTestTopup,
   creditTopup,
@@ -30,6 +31,12 @@ import { providerSettleMode, type PaymentProvider } from "./providers";
 export interface WebhookReply {
   status: number;
   body: Record<string, unknown>;
+}
+
+/** A webhook has no session, so it refreshes the grants itself (lib/permission-store.ts). */
+async function ownerAccount(d1: D1WithBatch, userId: string): Promise<boolean> {
+  await refreshPermissionsFrom(d1);
+  return isAdmin(await emailOf(d1, userId));
 }
 
 async function emailOf(d1: D1WithBatch, userId: string): Promise<string | null> {
@@ -81,7 +88,7 @@ export async function handleProviderWebhook(
     return { status: 200, body: { received: true, status: r.status } };
   }
 
-  if (mode === "test" && !isOwner(await emailOf(d1, out.userId))) {
+  if (mode === "test" && !(await ownerAccount(d1, out.userId))) {
     console.warn(
       JSON.stringify({ event: "credits.webhook.test-ignored", provider: provider.id, refId }),
     );

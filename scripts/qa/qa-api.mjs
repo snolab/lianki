@@ -100,6 +100,9 @@ for (const [method, path] of [
   ["GET", "/dev/preview?to=%2Fen%2Fread"],
   ["GET", "/dev/users"],
   ["GET", "/dev/gift-codes"],
+  ["GET", "/api/dev/permissions"],
+  ["POST", "/api/dev/permissions"],
+  ["GET", "/dev/permissions"],
 ]) {
   const r = await call(method, path, method === "POST" ? {} : undefined);
   rec(`SEC   non-owner ${method} ${path} → 404`, r.status === 404, `HTTP ${r.status}`);
@@ -141,6 +144,53 @@ for (const method of ["GET", "DELETE"]) {
   const w = await call("POST", "/api/live-view", { token: `${body}.${b64(sig)}` });
   rec("SEC   live-view pointer signed by another key → 401", w.status === 401, `HTTP ${w.status}`);
 }
+// The same-origin live preview (lib/live-view/page-proxy.ts, in worker.ts): a
+// non-owner's ?live=<id> or a forged live cookie gets the normal build, never
+// a dev page, never the live cookie.
+for (const [path, cookie] of [
+  ["/en?live=1793000000000", ""],
+  ["/en?live=on", ""],
+  ["/en?live=off", ""],
+  ["/en", `__Host-lk_live=1793000000000.9999999999999.${"A".repeat(43)}`],
+  // A custom frontend's id (docs/custom-frontend.md): its registrant only.
+  ["/en?live=AAAAAAAAAAAAAAAAAAAAAA", ""],
+  [
+    "/en",
+    `__Host-lk_live=c.${"A".repeat(22)}.u.9999999999999.0.${"A".repeat(22)}.${"A".repeat(43)}`,
+  ],
+]) {
+  const r = await fetch(`${BASE}${path}`, {
+    redirect: "manual",
+    headers: { accept: "text/html", "sec-fetch-dest": "document", ...(cookie ? { cookie } : {}) },
+  });
+  const live = r.headers.get("x-lk-live");
+  const setLive = (r.headers.getSetCookie?.() ?? []).some((c) => /^__Host-lk_live=[^;]/.test(c));
+  rec(
+    `SEC   non-owner ${path}${cookie ? " + forged live cookie" : ""} → normal build`,
+    r.status < 300 && !live && !setLive,
+    `HTTP ${r.status}${live ? " x-lk-live" : ""}${setLive ? " set live cookie" : ""}`,
+  );
+}
+// While a custom frontend's live cookie is set, its JS cannot mint tokens or
+// change the account (customFrontendBlocked in lib/live-view/page-proxy.ts).
+// The Worker decides it, so only against a deployed Worker (not next dev).
+if (!/^http:\/\/(localhost|127\.0\.0\.1)/.test(BASE)) {
+  const r = await fetch(`${BASE}/api/token`, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      "content-type": "application/json",
+      origin: BASE,
+      cookie: `__Host-lk_live=c.${"A".repeat(22)}.u.9999999999999.0.${"A".repeat(22)}.${"A".repeat(43)}`,
+    },
+    body: "{}",
+  });
+  rec(
+    "SEC   POST /api/token under a custom live cookie → 403",
+    r.status === 403,
+    `HTTP ${r.status}`,
+  );
+}
 // Uploads: only the one format each import reads.
 for (const [name, bytes, label] of [
   ["notes.txt", "hello", "a .txt"],
@@ -154,6 +204,81 @@ for (const [name, bytes, label] of [
     body: form,
   });
   rec(`SEC   anki import refuses ${label}`, res.status === 400, `HTTP ${res.status}`);
+}
+
+// ── PROFILE EDITS (docs/secrets-and-auth.md, "Profile edits") ──
+{
+  const r = await call("POST", "/api/profile/name", { name: "  QA Renamed  " });
+  const back = await call("GET", "/api/auth/get-session");
+  rec(
+    "PROFILE name saved, trimmed",
+    r.status === 200 && back.data?.user?.name === "QA Renamed",
+    `HTTP ${r.status}`,
+  );
+  const empty = await call("POST", "/api/profile/name", { name: "   " });
+  rec("PROFILE empty name refused", empty.status === 400, `HTTP ${empty.status}`);
+  // better-auth's own endpoint would store any image URL: closed over HTTP.
+  const direct = await call("POST", "/api/auth/update-user", {
+    image: "https://evil.example/x.png",
+  });
+  rec("PROFILE /update-user closed over HTTP", direct.status === 404, `HTTP ${direct.status}`);
+
+  const upload = (bytes, type = "image/png") =>
+    fetch(`${BASE}/api/profile/avatar`, {
+      method: "POST",
+      headers: { connection: "close", origin: BASE, cookie, "content-type": type },
+      body: bytes,
+    });
+  const svg = await upload(new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>"));
+  rec("PROFILE an SVG named as a PNG refused", svg.status === 415, `HTTP ${svg.status}`);
+  const png = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEAQH/7yMK/gAAAABJRU5ErkJggg==",
+    ),
+    (c) => c.charCodeAt(0),
+  );
+  const up = await upload(png);
+  const { image } = await up.json();
+  rec("PROFILE avatar uploaded", up.status === 201 && image.startsWith("/api/avatar/"), image);
+  const served = await fetch(`${BASE}${image}`, { headers: { connection: "close" } });
+  await served.arrayBuffer();
+  rec(
+    "PROFILE avatar served, no session, safe headers",
+    served.status === 200 &&
+      served.headers.get("content-type") === "image/png" &&
+      served.headers.get("x-content-type-options") === "nosniff",
+    `HTTP ${served.status}`,
+  );
+  const seen = await call("GET", "/api/auth/get-session");
+  rec("PROFILE user.image is the upload", seen.data?.user?.image === image, "");
+  const del = await call("DELETE", "/api/profile/avatar", {});
+  const gone = await fetch(`${BASE}${image}`, { headers: { connection: "close" } });
+  await gone.arrayBuffer();
+  rec(
+    "PROFILE avatar removed, object gone",
+    del.status === 200 && del.data?.image === null && gone.status === 404,
+    `HTTP ${del.status}/${gone.status}`,
+  );
+}
+
+// ── EMAIL CHANGE (docs/secrets-and-auth.md, "Changing the email") ──
+// QA has no mail provider, so the request stops at mail-off; the rest is in
+// unit/email-change.test.ts. Dead links must read as dead on the real D1.
+{
+  const asked = await call("POST", "/api/profile/email", { email: "qa-new@lianki.test" });
+  rec(
+    "EMAIL  request refused without a mail provider",
+    asked.status === 503,
+    `HTTP ${asked.status}`,
+  );
+  const dead = await call("POST", "/api/profile/email/confirm", {
+    token: `nobody.${"0".repeat(64)}`,
+  });
+  rec("EMAIL  an unknown link is dead", dead.status === 400, `HTTP ${dead.status}`);
+  const page = await call("GET", "/profile/email-confirm");
+  rec("EMAIL  the confirmation page loads", page.status === 200, `HTTP ${page.status}`);
+  const still = await call("GET", "/api/auth/get-session");
+  rec("EMAIL  nothing changed", still.data?.user?.email === EMAIL, "");
 }
 
 // ── CREATE ──
@@ -334,8 +459,20 @@ let goalId;
 
 // ── TOKEN ──
 {
-  const r = await call("POST", "/api/token", { name: "qa-token" });
+  const r = await call("POST", "/api/token", {
+    name: "qa-token",
+    scopes: ["study"],
+    expiry: { days: 7 },
+  });
   rec("TOKEN mint", r.status === 200 || r.status === 201, `HTTP ${r.status}`);
+  const none = await call("POST", "/api/token", { name: "qa-forever", scopes: ["study"] });
+  rec("TOKEN refused without an expiry", none.status === 400, `HTTP ${none.status}`);
+  const evil = await call("POST", "/api/token", {
+    name: "qa-eval",
+    scopes: ["chat:read", "eval"],
+    expiry: { days: 7 },
+  });
+  rec("TOKEN refused with eval", evil.status === 400, `HTTP ${evil.status}`);
   const list = await call("GET", "/api/token");
   rec("TOKEN list", list.status === 200, `HTTP ${list.status}`);
 }
@@ -387,6 +524,68 @@ let goalId;
     r.status === 200 && r.data?.total === 0,
     `HTTP ${r.status}`,
   );
+}
+{
+  // The real Worker entry (worker.ts): a sibling *.lianki.com page's request
+  // carries the session cookie, and is refused before any route runs.
+  const sibling = await fetch(`${BASE}/api/fsrs/stats`, {
+    headers: { connection: "close", cookie, "sec-fetch-site": "same-site" },
+  });
+  rec(
+    "SIBLING  a sibling host's request to /api is refused",
+    sibling.status === 403,
+    `HTTP ${sibling.status}`,
+  );
+  const own = await fetch(`${BASE}/api/fsrs/stats`, {
+    headers: { connection: "close", cookie, "sec-fetch-site": "same-origin" },
+  });
+  rec(
+    "SIBLING  the same request from lianki.com itself still works",
+    own.status === 200,
+    `HTTP ${own.status}`,
+  );
+}
+{
+  // GET /api/invite writes, so another site's link goes to the page instead.
+  const offSite = await fetch(`${BASE}/api/invite`, {
+    redirect: "manual",
+    headers: {
+      connection: "close",
+      cookie,
+      "sec-fetch-site": "cross-site",
+      "sec-fetch-mode": "navigate",
+    },
+  });
+  rec(
+    "INVITE  another site's link goes to /membership",
+    offSite.status === 303 &&
+      new URL(offSite.headers.get("location") ?? "/", BASE).pathname === "/membership",
+    `HTTP ${offSite.status}`,
+  );
+}
+{
+  // The BYOK relay needs a session; with one it goes on to its own checks.
+  const relay = (headers) =>
+    fetch(`${BASE}/api/byok/proxy`, {
+      method: "POST",
+      headers: {
+        connection: "close",
+        origin: BASE,
+        "content-type": "application/json",
+        authorization: "Bearer qa-not-a-key",
+        ...headers,
+      },
+      body: JSON.stringify({ provider: "qa-no-such-provider" }),
+    });
+  const guest = await relay({});
+  const guestBody = await guest.json().catch(() => null);
+  rec(
+    "BYOK  the relay answers 401 sign-in with no session",
+    guest.status === 401 && guestBody?.proxyError === "sign-in",
+    `HTTP ${guest.status} ${guestBody?.proxyError}`,
+  );
+  const signedIn = await relay({ cookie });
+  rec("BYOK  the relay goes on with a session", signedIn.status !== 401, `HTTP ${signedIn.status}`);
 }
 {
   const push = "https://example.com/qa-pushed";

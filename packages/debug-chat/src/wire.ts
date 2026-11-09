@@ -6,6 +6,7 @@
  */
 
 import type { Ask, AskAnswer } from "./ask";
+import type { LaneId, VoiceId } from "./voices";
 
 export * from "./node-path";
 
@@ -53,6 +54,15 @@ export type ChatMessage = {
   email?: string;
   sender?: Sender;
   /**
+   * A line posted with an API token (`lianki chat`, workers/push/src/token-chat.ts):
+   * `via: "token"`, and `tokenLane` is the token's name, which the text also
+   * starts with as 【name】 (and `lane` is set when that name is a known lane,
+   * voices.ts). Stamped by the hub only. An ask card on such a line is
+   * answered to that token lane alone.
+   */
+  via?: "token";
+  tokenLane?: string;
+  /**
    * The state-tree node an agent line comes from ("/words/prefetch"; absent =
    * the main thread). Shown as a muted subtitle under the agent's avatar.
    */
@@ -69,11 +79,23 @@ export type ChatMessage = {
    * sent as heard, or sent unchanged. Absent = typed (or dictation edited
    * before sending). Only such a line may be polished by the agent (`edit`).
    */
-  source?: MessageSource;
+  source?: LineSource;
   /** The STT text as first heard, kept once the agent has polished the line. */
   raw?: string;
   /** Set when the agent polished the line: when, by which agent, and how many times. */
   edited?: EditMark;
+  /**
+   * Stamped by the hub only, with flag `stt.merge` on (voice-merge.ts): an owner's
+   * voice line the next utterance may amend. Absent = always a new line.
+   */
+  mergeable?: true;
+  /** Stamped by the hub: the merged passage ended, so nothing more joins it and polish may read it. */
+  settled?: true;
+  /**
+   * A merged line: the utterances it was made from, as heard, oldest first.
+   * `raw` is their text joined; `id` and `at` are the first one's. Undo splits it back.
+   */
+  parts?: MergedPart[];
   /**
    * A voice line's timestamps on the sender's clock (VoiceTiming; the page's
    * latency record, packages/debug-chat/src/latency.ts). Optional: older pages
@@ -86,11 +108,25 @@ export type ChatMessage = {
    */
   quiet?: true;
   /**
+   * The lane an agent line is from (voices.ts LANES: "main", "codex",
+   * "agy"; `say --lane`): its avatar, name tag and voice. Absent = a
+   * `【lane】` prefix in the text says it, else none (looks as before).
+   */
+  lane?: LaneId;
+  /**
+   * The voice to read it in (`say --voice`): a table id (voices.ts VOICES) or
+   * a line's own (voices.ts parseLineVoice: device:, melo:, aura:, eleven:).
+   * Absent = its lane's.
+   */
+  voice?: VoiceId | (string & {});
+  /**
    * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
    * "active", or "passive" (it came through "Linky"). Absent = the mic was
    * off. The chat lane sets it with {type: "wake", mode}.
    */
   wake?: "active" | "passive";
+  /** Why the mic is in that mode (wake.ts WakeReason). */
+  wakeReason?: string;
   /**
    * The Mac's speaker check on a voice line (SpeakerTag; docs/local-stt.md,
    * "Voiceprint"), as the owner's page reported it. Only on `source: "stt"`
@@ -116,6 +152,18 @@ export type ChatMessage = {
    * polish may draw on (polish.ts), so it fixes words from context, not guesses.
    */
   scene?: SttScene;
+  /**
+   * Stamped by the hub only (workers/push/src/debug.ts `say`): an agent line
+   * said in the owner's thread by a pairing he approved. It alone lets a line
+   * use the HTML subset (rich-text.ts lineTier). Never read from what a sender
+   * sends, and absent on friends' lines, the partner AI's and older lines.
+   */
+  ownerGrant?: true;
+  /**
+   * `source: "eta"` lines only: the state-tree node whose estimate ran out,
+   * and that estimate (lib/eta-ping.ts). Automatic, never the owner speaking.
+   */
+  eta?: { id: string; etaAt: number };
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -135,8 +183,24 @@ export type AnsweredEvent = {
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
 export type MessageSource = "stt";
+/**
+ * A stored line's source: MessageSource, or "eta" — an automatic line the
+ * hubs put in the owner's thread when a state-tree estimate ran out
+ * (lib/eta-ping.ts). Stamped by the hub only; a page can never send it.
+ */
+export type LineSource = MessageSource | "eta";
 /** An agent's polish of a voice line (ChatMessage.edited). */
 export type EditMark = { at: number; by: string; count: number };
+/** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
+export type MergedPart = {
+  id: string;
+  text: string;
+  at: number;
+  timing?: VoiceTiming;
+  speaker?: SpeakerTag;
+  wake?: "active" | "passive";
+  wakeReason?: ChatMessage["wakeReason"];
+};
 /** How many times the agent may polish one voice line. */
 export const MAX_EDITS = 3;
 /**
@@ -150,12 +214,35 @@ export type EditedEvent = {
   text: string;
   raw: string;
   edited: EditMark;
+  /** A merge (voice-merge.ts): every part so far. */
+  parts?: MergedPart[];
+  /** A merge: the utterance that just joined (the hub's answer to its `id`). */
+  merged?: { id: string; text: string };
+  /** An undo: the lines this one goes back to, in order; the first keeps this id. */
+  split?: ChatMessage[];
+};
+
+/** The hub to the listeners: a merged passage ended, polish it now, from `raw`. */
+export type PolishDueEvent = {
+  type: "polish-due";
+  id: string;
+  thread: string;
+  text: string;
+  raw: string;
+  parts: number;
 };
 
 /** A message updated by an EditedEvent; any other message is returned as is. */
 export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "type">): M {
   if (m.id !== e.id || (m.thread ?? "owner") !== e.thread) return m;
-  return { ...m, text: e.text, raw: e.raw, edited: e.edited };
+  return { ...m, text: e.text, raw: e.raw, edited: e.edited, ...(e.parts ? { parts: e.parts } : {}) };
+}
+
+/** The list after an EditedEvent: the line changed in place, or split back into its lines. */
+export function applyEditTo<M extends ChatMessage>(list: M[], e: Omit<EditedEvent, "type">): M[] {
+  if (!e.split) return list.map((m) => applyEdit(m, e));
+  const split = e.split as M[];
+  return list.flatMap((m) => (m.id === e.id && (m.thread ?? "owner") === e.thread ? split : [m]));
 }
 
 /**
@@ -396,6 +483,8 @@ export type ChatStrings = {
   statusOffline: string;
   /** The mark on a voice line the agent polished (tooltip and label). */
   polished: string;
+  /** The undo on a line several utterances were merged into. */
+  unmerge: string;
   /** Voice-clip recording (ClipsBadge.tsx): the badge's title while it records. */
   clipsRecording: string;
   /** The badge's button that stops recording. */
@@ -419,9 +508,23 @@ export type ChatStrings = {
   /** Menu switch: a tap on clipsStart also sets an auto-stop; `{n}` = minutes. */
   clipsAutoStop: string;
   /** Menu switch: compact mode (compact-view.ts), this device only. */
+  /** The chat menu's switch: a tone when a spoken line goes out. */
+  cueSend: string;
+  /** The chat menu's switch: soft tones when he starts and stops speaking. */
+  cueSpeech: string;
   compactIdle: string;
+  /** The menu's collapsed Dev group (DevMenuGroup.tsx), the owner's pages only: its heading. */
+  devGroup: string;
   /** The compact line's tooltip and screen-reader hint: a tap shows the whole chat. */
   compactShowAll: string;
+  /** The up-arrow over the log (ask-above.ts): its screen-reader label; `{count}` is how many are above. */
+  askJump: string;
+  /** The round button at the open chat's top corner that makes it fill the whole app (full-screen.ts). */
+  fullScreen: string;
+  /** The same button in full screen: back to the small chat panel, as it was. */
+  fullScreenExit: string;
+  /** The six-dot grip at the bar's left end: drag to move the chat, tap to fold or open it, double-tap for the menu. */
+  dragGrip: string;
   // The voiceprint panel (VoiceprintPanel.tsx, voiceprint.ts; docs/local-stt.md, "Voiceprint").
   /** Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name. */
   vpMenu: string;
@@ -477,6 +580,18 @@ export type ChatStrings = {
   vpFailed: string;
   /** Button and screen-reader label that closes the voiceprint panel (shown as ✕ or under a finished step). Imperative verb, one word. */
   vpClose: string;
+  /** Status line in the voiceprint panel: the owner's 'Only my voice' filter is working: speech that does not match his voiceprint is dropped on his Mac before it is transcribed. Keep 'Mac'; one sentence. */
+  vpFilterOn: string;
+  /** Status line in the voiceprint panel: the 'Only my voice' filter is switched off, so all speech is transcribed as usual. One sentence. */
+  vpFilterOff: string;
+  /** Status line in the voiceprint panel: the 'Only my voice' filter is switched on but cannot work (this phone or computer has no voiceprint yet, or the check on the Mac is unavailable), so all speech is transcribed as usual. Keep 'Mac'; one sentence. */
+  vpFilterWaiting: string;
+  /** Count in the voiceprint panel: {n} spoken lines were dropped today by the 'Only my voice' filter because the voice did not match; {score} is the last match score, a small decimal like 0.07. Keep both placeholders; short. */
+  vpFilterCount: string;
+  /** Count in the voiceprint panel, while the filter is off: {n} spoken lines today that the 'Only my voice' filter would have dropped (they were still sent). Keep the placeholder; short. */
+  vpFilterWould: string;
+  /** Checkbox in the voiceprint panel that pauses the 'Only my voice' filter on the phone or computer in hand only. A short statement. */
+  vpFilterPause: string;
   /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: the owner's Mac confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
@@ -519,6 +634,8 @@ export type ChatStrings = {
   attachFileRemove: string;
   /** Menu item in the + menu's View group: opens the list of files sent in the chat (the inbox). One word, a noun. */
   inbox: string;
+  /** Menu item in the + menu's View group: opens the page with the account's past chat lines (the history). One word, a noun. */
+  chatHistory: string;
   /** Grey line in the inbox list when no file has been sent yet. One short sentence. */
   inboxEmpty: string;
   /** Grey line at the top of the inbox list: how much the user has stored. {size} is like "12 MB", {n} a count of files. Keep both placeholders. */
@@ -537,6 +654,22 @@ export type ChatStrings = {
   inboxKeep: string;
   /** Button and screen-reader label that closes the inbox list. Imperative verb, one word. */
   inboxClose: string;
+  /** Part of the one-line progress bar above the chat input, when several tasks the assistant is working on have a time estimate: how many there are. {n} becomes a number; keep it. A short count, no verb; other parts follow after a middle dot. */
+  etaTasks: string;
+  /** Part of the progress bar above the chat input, and of each task's row in the state tree: how much time is left until the assistant's estimate runs out. {t} becomes a short duration such as '25m' or '1h 5m' (already localized); keep it. Very short, no full stop. */
+  etaLeft: string;
+  /** Part of the progress bar above the chat input when several tasks have estimates: how soon the next one is due. {t} becomes a short duration such as '5m' (already localized); keep it. Very short, no full stop. */
+  etaNext: string;
+  /** Shown in the progress bar above the chat input and in a task's row in the state tree instead of the time left, once the assistant's own time estimate for the work has passed (the work may still be going on; the assistant is asked to report). Very short status phrase, no full stop. */
+  etaReached: string;
+  /** Shown for a few seconds in the progress bar above the chat input and in a task's row in the state tree when that task was finished. One word, a status (past participle or adjective). */
+  etaDone: string;
+  /** Screen-reader label and tooltip of the progress bar above the chat input: tapping it opens the state tree (the status panel) listing every task with its own bar and time left. Imperative verb phrase. */
+  etaOpen: string;
+  /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
+  etaMinutes: string;
+  /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
+  etaList: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -551,6 +684,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   listening: "Your {name} is listening ({n})",
   statusOffline: "Your {name} is offline · messages wait until it is back",
   polished: "Polished by your {name}",
+  unmerge: "Split back into the separate messages",
   clipsRecording: "Recording",
   clipsStop: "Stop",
   clipsScreenOn: "Screen kept on",
@@ -562,8 +696,15 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsSaveFailed: "Saving failed",
   clipsStart: "Record voice clips",
   clipsAutoStop: "Auto-stop after {n} min",
+  cueSend: "Sound when a voice message is sent",
+  cueSpeech: "Sound when speech starts and ends",
   compactIdle: "Only the last message while not typing",
+  devGroup: "Dev",
   compactShowAll: "Show the whole chat",
+  askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",
+  fullScreen: "Full screen",
+  fullScreenExit: "Exit full screen",
+  dragGrip: "Move the chat: drag. Tap to fold or open, double-tap for the menu",
   vpMenu: "Voiceprint",
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",
@@ -592,6 +733,12 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpFailed: "Voiceprint: something went wrong ({error})",
   vpClose: "Close",
   vpVerified: "Your voice, verified",
+  vpFilterOn: "Only my voice: on. Speech that does not match is dropped on your Mac.",
+  vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
+  vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on your Mac. Until then all speech is transcribed as usual.",
+  vpFilterCount: "Dropped today: {n}. Voice did not match (last score {score}).",
+  vpFilterWould: "Would have been dropped today: {n} (still sent).",
+  vpFilterPause: "Pause on this device",
   notReadHidden: "· not read aloud: the page was in the background",
   attachOpen: "Add or attach",
   attachGroupAdd: "Add",
@@ -608,6 +755,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   attachTooBig: "Too large",
   attachFileRemove: "Remove this file",
   inbox: "Inbox",
+  chatHistory: "History",
   inboxEmpty: "Nothing here yet.",
   inboxUsage: "{size} stored · {n} files",
   inboxUsageQuota: "{size} of {quota} used · {n} files",
@@ -617,6 +765,14 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   inboxDeleteConfirm: "Delete for good?",
   inboxKeep: "Keep",
   inboxClose: "Close",
+  etaTasks: "{n} tasks",
+  etaLeft: "{t} left",
+  etaNext: "next in {t}",
+  etaReached: "ETA reached",
+  etaDone: "done",
+  etaOpen: "Show all tasks and their ETAs in the state tree",
+  etaList: "Timed tasks",
+  etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",
   attachGroupView: "View",
   attachTree: "State tree",
@@ -783,6 +939,10 @@ export type VoiceTiming = {
   t_sent?: number;
   sttServerMs?: number;
   audioMs?: number;
+  /** The VAD's start of the first utterance in the line (voice-merge.ts: the gap to the line before). */
+  t_speechStart?: number;
+  /** The capture hit MAX_UTTERANCE_MS and was cut: it did not end by silence. */
+  t_cut?: number;
 };
 export const VOICE_TIMING_KEYS = [
   "t_lastVoice",
@@ -793,6 +953,8 @@ export const VOICE_TIMING_KEYS = [
   "t_sent",
   "sttServerMs",
   "audioMs",
+  "t_speechStart",
+  "t_cut",
 ] as const satisfies readonly (keyof VoiceTiming)[];
 
 /**

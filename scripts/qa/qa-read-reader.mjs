@@ -1,11 +1,11 @@
-// /read reader v2 QA (flag read.reader-v2; ?reader=v2 on a local dev server):
+// /read reader QA:
 // silent, iPhone and Android sizes, light and dark screenshots.
 //
 //   QA_BASE=http://localhost:3417 bun scripts/qa/qa-read-reader.mjs [outDir]
 //
 // Signs up a throwaway account, imports the public-domain fixture EPUB (and a
 // long book made of it, for the performance numbers; never anyone's own
-// book) and checks the reader (app/(app)/read/[id]/ReaderV2.tsx):
+// book) and checks the reader (app/(app)/reader/[id]/ReaderV2.tsx):
 //
 // - the window scrolls the book (no inner scroller), rows are virtualised,
 //   paragraphs carry data-line / data-s / data-t;
@@ -121,11 +121,11 @@ async function run(deviceName, scheme, swipe = "js") {
   const page = await ctx.newPage();
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
-  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
+  await page.waitForURL(/\/reader\/[^/?]+$/, { timeout: 30000 });
   const id = page.url().split("/").pop();
-  await page.goto(`/read/${id}?reader=v2&swipe=${swipe}`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}?swipe=${swipe}`, { waitUntil: "load" });
   await page.getByTestId("reader-v2").waitFor({ timeout: 20000 });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor();
   const tag = `${deviceName.replace(/\W/g, "-")}-${scheme}-${swipe}`;
@@ -298,9 +298,9 @@ async function perf() {
   await ctx.addInitScript(FAKE_SPEECH);
   await signUp(ctx, "perf");
   const page = await ctx.newPage();
-  await page.goto("/read", { waitUntil: "networkidle" });
+  await page.goto("/reader", { waitUntil: "networkidle" });
   await page.locator('[data-testid="read-import-epub"] input[type="file"]').setInputFiles(FIXTURE);
-  await page.waitForURL(/\/read\/[^/?]+$/, { timeout: 30000 });
+  await page.waitForURL(/\/reader\/[^/?]+$/, { timeout: 30000 });
   const small = await (await ctx.request.get(`/api/read/${page.url().split("/").pop()}`)).json();
   // A long book made of the fixture: about a novel's length.
   const reps = Number(process.env.QA_PERF_REPS || 40);
@@ -320,7 +320,7 @@ async function perf() {
   check(res.ok(), `long book imported (${lines.length} lines, ${res.status()})`);
   const id = (await res.json()).id;
   const cdp = await ctx.newCDPSession(page);
-  await page.goto(`/read/${id}?reader=v2`, { waitUntil: "load" });
+  await page.goto(`/reader/${id}`, { waitUntil: "load" });
   await page.locator("[data-testid=reader-book] [data-item]").first().waitFor({ timeout: 30000 });
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
   const t0 = Date.now();

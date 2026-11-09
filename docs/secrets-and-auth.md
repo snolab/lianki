@@ -9,6 +9,20 @@
   [secrets-backup-plan.md](secrets-backup-plan.md), not done yet). `.dev.vars` is auto-created from `.dev.vars.example` on the first
   `qa:all` run.
 
+## The session cookie
+
+On https every better-auth cookie is `__Host-better-auth.*` (`authCookieOptions`,
+`lib/auth-env.ts`), so a subdomain such as a my-box cannot plant one on lianki.com
+(cookie tossing). It does not stop a subdomain's page _sending_ the cookie: that is
+`lib/security/same-site-guard.ts`. On http (`next dev`, qa:all) the name stays plain,
+because a browser refuses `__Host-` there. `scripts/qa/qa-host-cookie.mjs` runs the
+https path.
+
+The change signs everyone out once. `__Secure-better-auth.*` is read by nothing, and
+the Worker sends each one back expired (`lib/security/legacy-session-cookies.ts`).
+Migration 0051 deletes the old session rows. That code can go once the old cookies
+have aged out, 7 days after the change.
+
 ## Magic-link email
 
 Sent through **Resend's HTTP API** (`lib/email.ts`), not SMTP. This is a hard
@@ -53,6 +67,87 @@ secrets or settings: it is always on.
 - QA: `scripts/qa/qa-ui.mjs` drives the whole loop with a CDP virtual
   authenticator.
 
+## Profile edits
+
+`/profile` edits the display name and the picture (`lib/profile/`,
+`app/(app)/profile/ProfileFields.tsx`). Every write is same-origin, for the
+session's own user; nothing in a request can name a user.
+
+- **better-auth's HTTP `/update-user` is closed**: `disabledPaths:
+["/update-user"]`, because over HTTP it would store any string as a name or
+  image. `POST /api/profile/name` and `/api/profile/avatar` validate and then call
+  `auth.api.updateUser` server-side, which `disabledPaths` does not touch.
+- **Name** (`cleanName`): NFC, control and bidi-override characters out, spaces
+  collapsed and trimmed, at most `PROFILE.nameMaxChars` characters.
+- **Picture**: the browser crops it to a centred square, shrinks it and re-encodes
+  it (WebP, else JPEG; EXIF goes with it). The server takes only JPEG, WebP or PNG
+  **by their magic bytes** (`lib/inbox/sniff.ts`; no SVG, no GIF), within
+  `PROFILE.avatarMaxBytes`. R2 `lianki-blobs` key: `avatars/<user id>/<random id>`.
+  D1 `user_avatar` holds the key, the size and `previousImage` (the provider's
+  picture it replaced). A new upload deletes the old object; **Remove** deletes the
+  upload and goes back to `previousImage`, or to none. A provider's picture with no
+  upload has nothing to remove.
+- **Serving**: `GET /api/avatar/<user id>/<random id>` needs no session (the
+  picture shows wherever its owner does, such as chat avatars; the id is random).
+  Only an allowed stored type is sent, with `nosniff` and a sandbox CSP. A new upload
+  is a new URL, so it is `immutable`. `user.image` holds the same-origin path;
+  `/api/debug/identity` makes it absolute for the chat hub. `next/image` can't load
+  `/api/*` under OpenNext, so the nav passes `unoptimized` for these.
+- **Limits** (`lib/profile/config.ts`, D1 `hit()` per user): 20 name changes per
+  10 minutes; 10 uploads or removals per hour.
+- **Cost**: `chargeInbox` with `what: "avatar"`, log-only as the inbox (upload,
+  read, and storage settled when the avatar is replaced or removed).
+
+A picture stays until replaced or removed. There is no account deletion in the
+app today; when one comes, it has to delete `avatars/<user id>/` too (the row
+cascades, the object does not).
+
+## Changing the email
+
+`lib/profile/email-change.ts`, pen on `/profile`. Not better-auth's `/change-email`
+(left disabled): it updates the user row alone, with no way to put the moves below
+into its transaction, and it applies on a GET, which a mail scanner would trigger.
+
+1. `POST /api/profile/email` (same origin, session under a day old, D1 limits per
+   user and per target address). A link goes to the **new** address and a notice,
+   with that address masked, to the **old** one. Nothing changes.
+2. The link opens `/profile/email-confirm#<user id>.<token>`: a fragment, so the
+   token reaches no log, and a press on the page is what applies it, so a mail
+   scanner changes nothing. D1 `email_change_request` keeps the token's hash, for
+   1 hour, one per user: a newer request kills the older link.
+3. `POST /api/profile/email/confirm` moves `user.email`, `email_canonical` and every
+   table in `EMAIL_KEYED_TABLES` in **one D1 batch**, then tells the old address.
+   Failure at any step (a key conflict included) rolls all of it back.
+
+- **Email-keyed data**: `fsrs_notes`, `word_lists`, `word_cards`, `word_list_entries`,
+  `word_reviews`, `swipe_log`, `watch_stats`, `study_day`, `roadmap_goals`,
+  `api_tokens`, `cli_login`, `dev_access_token`. A unit test fails when a migration
+  adds another table with an `email` column. `account_permission` also has one,
+  and never moves (see Permission holders). `site_role` has one too and is unused
+  (see Permissions). Everything else goes by user id.
+- **Taken addresses** (exact or canonical form, or a permission holder's): the same
+  answer and the same two mails, but the new address reads "already in use" instead
+  of a link.
+- **Permission holders**: `account_permission` is read from D1 on every request, not
+  from the isolate's snapshot (which fails closed to "nobody", and would let a
+  holder's address move). The exact address of anyone holding `admin` or `dev` is
+  refused with its reason, since the grant goes by it. A target that is a holder's
+  address or its alias gets the "already in use" mail. The batch checks
+  `account_permission` again, so a grant landing mid-request still stops it. A
+  revoked holder is an ordinary user again.
+- **Sessions** stay valid, as with better-auth's flow: they point at the user id.
+- **Google/GitHub**: a linked account keeps signing in to this user (matched by
+  provider account id first). An unlinked Google account at the old address now
+  matches nobody and makes a new account; so does an email code to the old address.
+- **Batch size**: on local D1 (`wrangler dev --local`) a 200,000-row account moved in
+  0.9 s, and a key conflict on the batch's last table rolled everything back.
+  Production D1's limits on one batch were not measured; going over one should fail
+  the batch and answer "unavailable", changing nothing. The owner, the largest
+  account, is refused anyway.
+- **In-flight writes**: a request authenticated just before the batch can still write
+  a row under the old address. It would stay behind under that address; the window
+  is one request's length.
+
 ## Google OAuth
 
 Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between
@@ -95,6 +190,77 @@ Keep the same value as `PROGRESS_TOKEN=…` in `.dev.vars` (or export
 the owner's tree shows the hand-edited outline only. Rotating it invalidates
 every scoped token at once.
 
+## Permissions (`admin`, `dev`)
+
+**Every owner/dev/admin gate is a permission check** (owner's standing rule,
+2026-11-09): `isAdmin(email)` or `isDev(email)` from `lib/permissions.ts`, never
+an email list in code or env. The grants are rows in D1, table
+`account_permission` (`db/migrations/0058_account_permission.sql`,
+`lib/account-permission.ts`), one row per address and permission, revocable,
+managed at **`/dev/permissions`** (admin only, 404 otherwise). Every grant and
+revoke goes through an in-app confirm dialog and writes `permission.grant` /
+`permission.revoke` to `security_audit` (detail: `<permission> <address>`).
+
+- **`admin`** — people, money and grants: `/dev/permissions`, users, credits, membership, gift codes, friends, flags, box clients, and the
+  payment test mode.
+- **`dev`** — every other `/dev` page and `/api/dev` route, the dev bridge, live
+  view, the whole-page dev server and its tunnel gate, the owner chat thread (chat
+  log, inbox agent, lane chat tokens, `box:chat`), `eval` (eval tokens, `box:eval`,
+  debug-session renewal), the pill chat and partner ticket, the my-box allowlist,
+  and features shipped dark (`booksOn(flags, isDev(…))`, YouTube songs). The
+  Learning Partner AI refuses a `dev` holder (his thread is the dev lanes').
+- Neither implies the other; each is its own grant. Which permission a `/dev`
+  page checks is listed in `lib/dev-page-permissions.ts` (a unit test keeps it
+  in step with the pages), and the `/dev` layout prints a small "who can see
+  this page" line under each page for viewers who hold that permission.
+- **Exact address.** Lowercased and trimmed, never the canonical form
+  (`lib/canonical-email.ts`): `someone+admin@gmail.com`, `someone@gmail.com` and
+  `some.one@gmail.com` are three people here. A grant reads no user table.
+- **How checks read it.** `isAdmin`/`isDev` are synchronous and answer from a
+  snapshot in the isolate, refreshed by `auth.api.getSession` (`auth.ts` →
+  `lib/permission-store.ts`) before it hands back a signed-in user. D1 is read once
+  the snapshot is 20 s old; one 30 s old counts for nothing, so a revocation holds
+  everywhere within **30 s**. Code without a session refreshes for itself (the
+  payment webhooks, the bearer-token path of `/api/debug/partner-ticket`, the pill
+  chat). Checks that must be live read D1 directly with the helpers in
+  `lib/account-permission.ts` (`readHolders`, `holderIds`, `userHolds`, `holdsSql`):
+  the `DebugSessions` RPCs, chat and eval tokens, the box allowlist, email change.
+- **Fail closed.** A D1 error, a missing table, or another backend than D1 means
+  nobody holds anything for that call: a 404, not a crash, logged as
+  `permissions.read-failed`. A local Mongo `next dev` has no `/dev`.
+- **"The owner", where only one account can be meant** (the dev bridge, the
+  whole-page dev server's sign-in): the oldest active `dev` grant.
+- **On a box** (docs/box-oauth.md): `/api/box/me` reports `isAdmin` and `isDev`
+  for the signed-in account, and the box's own server puts exactly those into
+  its snapshot, never its local D1. An answer without them grants nothing.
+- **Last admin.** The only active `admin` cannot be revoked (guard inside the
+  `UPDATE`). To replace him, grant the new one first.
+- **No seed.** The migration inserts nobody: grants are added as data after the
+  owner approves them (a tap card), with the break-glass CLI:
+
+```bash
+bun scripts/dev/permission.ts list
+bun scripts/dev/permission.ts grant someone@example.com admin,dev
+bun scripts/dev/permission.ts revoke someone@example.com dev   # --local for the local D1
+```
+
+**Migration off `site_role` (2026-11-09), lockout-safe — done:**
+(a) shipped the table, the helpers, `/dev/permissions` and every call site on
+`isAdmin`/`isDev`, while an active `site_role` owner still passed both checks;
+(b) the owner approved, and both of his accounts were granted `admin` and `dev`
+with the CLI above (13:30 JST); (c) the fallback, `lib/owner.ts`,
+`lib/owner-store.ts`, `lib/site-role*.ts`, `/dev/owners`,
+`scripts/dev/owner-role*.ts` and every direct `site_role` query were removed.
+
+**`site_role` is unused.** The table (migration 0047) is still in D1 with its
+rows, and nothing reads or writes it; its old audit kinds `site-role.grant` /
+`site-role.revoke` stay readable in `security_audit`. Dropping it is a data
+delete, so it waits for the owner's tap card and its own migration. Never add a
+check against it, against `OWNER_EMAILS`, or against any email in code.
+
+Cloudflare Access (`scripts/ops/cloudflare-access.ts`, prepared, not applied)
+keeps its own allowlist, given with `--email`; it does not follow the grants.
+
 ## Dev bridge (`DEV_BRIDGE_SECRET`)
 
 A Worker secret on `lianki`, used for one thing only. The owner's whole-page
@@ -102,7 +268,7 @@ dev server (docs/dev-whole-page.md) signs its sessions with a local secret,
 so lianki.com can't read them, and the debug chat hub (lianki-push) refused
 that page. The dev server's guard sends this secret in `x-lianki-dev-bridge`,
 lianki-push passes it on, and `/api/debug/identity` answers with the **owner**
-(the first `OWNER_EMAILS` account), never anyone else, when it matches
+(the oldest active `dev` grant), never anyone else, when it matches
 (`lib/dev-bridge.ts`).
 
 Since 2026-10-31 02:11 JST (the owner typed "1同意"), the same header also
@@ -138,12 +304,37 @@ a production build ignores it. Rotate: keygen a new pair (move the old file
 away first), add the new key to `LIVE_VIEW_PUBLIC_KEYS`, deploy, then drop the
 old key.
 
+## Live pages (`LIVE_GATE_SECRET`)
+
+A Worker secret on `lianki` (2026-11-05): the main Worker's way through the
+gate in front of the owner's dev server for the same-origin live preview
+([live-view.md](live-view.md), "Same-origin pages"). The Worker sends it in
+`x-lk-live-gate` to the pointer's page origin, only after it has checked the
+owner's session and the signed pointer; the gate compares it in constant
+time (32+ characters, or that entry is shut), counts failures per IP, and
+strips it before anything reaches next dev. It also keys the HMAC of the
+`__Host-lk_live` cookie, the owner's and, under its own label, a custom
+frontend's ([custom-frontend.md](custom-frontend.md)), which never send it
+anywhere. Unset: every `?live=` gets the production page.
+
+The only other copy is `liveSecret` in `.dev-whole-page.json` (gitignored, 0600) in the dev server's worktree. Set or rotate it (a secret: the owner's
+tap first), never by echoing it:
+
+```bash
+cd ~/ws/snolab/lianki/tree/preview-serve
+bun scripts/dev/whole-page.ts live-secret   # makes liveSecret if missing; pipes it to wrangler secret put
+# then restart serve so the gate reads it
+```
+
+To rotate, delete `liveSecret` from the file first (the next run makes a new
+one). Live cookies sealed with the old value stop working at once.
+
 ## STT tickets (`STT_TICKET_KEY`)
 
 A Worker secret on `lianki`: an Ed25519 **private** key (a JWK) that signs
 the tickets for the owner's local STT server over the public tunnel
 (`wss://stt.lianki.com`; [local-stt.md](local-stt.md), "Off the tailnet").
-`POST /api/dev/stt-ticket` answers the owner's session only (`isOwner`, 404
+`POST /api/dev/stt-ticket` answers the owner's session only (`isDev`, 404
 for anyone else; 503 while the secret is unset) with a ticket good for 60 s
 and one connection (`aud` `lianki-stt`, a random `jti`). The Mac holds only
 the **public** key (`~/.config/lianki-stt/ticket.pub`), so nothing on the Mac
@@ -181,6 +372,7 @@ owner's OK first):
   | bunx wrangler secret put STT_SPEAKER_PUB -c workers/push/wrangler.jsonc
 oxmgr restart lianki-stt   # the server loads the key and signs from then on
 ```
+
 The cloudflared tunnel's own credentials (`~/.cloudflared/<uuid>.json`,
 `cert.pem`) are separate: mode 0600, on the Mac only, never committed;
 whoever holds the credentials file can run a connector for the tunnel.
@@ -205,6 +397,99 @@ token, from the API, for `cloudflared --token-file`), and `previewKey` in
 `.dev-whole-page.json` (seals the gate's session cookie; delete it to end
 every tunnel session).
 
+## Box tokens (no new secret)
+
+A my-box signs in through lianki.com with OAuth and PKCE
+([box-oauth.md](box-oauth.md)). No secret is added: the client is public, tokens
+are stored hashed by better-auth's plugin, and the one-minute identity the
+Worker's gate hands the app is signed with a key derived from `AUTH_SECRET`.
+Nothing of this is in a box.
+
+## API tokens (`lk_…`): fine-grained, one account, expiring
+
+Owner decision 2026-11-07: tokens work like GitHub's fine-grained personal
+access tokens. One system (`api_tokens`, `lib/api-tokens.ts`,
+`db/migrations/0056_api_token_scopes.sql`) for the userscript's, `lianki auth
+login`'s and the agent lanes' tokens.
+
+- **One account.** `user_id` (and the email) are fixed when the token is made
+  and joined to the live `user` row on every use. A token acts only as that
+  account, never another, and dies with it. A sign-out everywhere
+  (better-auth `/revoke-sessions`, or `/delete-user` if ever enabled) deletes
+  every token of the account (`lib/api-token-signout.ts`).
+- **Permissions as data** (`SCOPES`): `study` (cards, reviews, settings: what
+  every token could do before), `chat:read`, `chat:write`, `chat:ask`, and
+  `eval` for a site owner only ("Eval tokens", below). Chosen at creation; a
+  route asks for one. `pair`, `grant`, `admin`, `answer` are not permissions
+  at all (`FORBIDDEN_SCOPES`): a request naming one is refused. Card and settings routes (`authEmailOrToken`,
+  `apiTokenUser`) need `study`, so a chat-only lane token reaches none of them.
+  The other way round, `study` never reaches the chat: the Learning Partner
+  ticket (`/api/debug/partner-ticket`, `lib/partner-ticket-auth.ts`) takes a
+  token only with `chat:read` and `chat:write`, and only the owner's (the
+  ticket opens the owner's thread, chat only). No other `/api/debug/*` or
+  `/api/dev*` route takes a token.
+- **Required expiry**: 7, 30, 90 or 365 days, or a date, at most 366 days. No
+  default. Rows from before 0056 read as `study` with no expiry (shown so).
+- **Last used** (written at most once a minute), shown on the page.
+- **Secret once.** Only the SHA-256 is stored; the page shows the secret once.
+  Ids, the audit log and hub sockets carry the hash (or its first 16 hex, the
+  `tag`), never the token. No token in a URL: `DELETE /api/token` takes
+  `{id}` in the body.
+- **Page**: Settings (`/preferences`) → API tokens
+  (`app/(app)/list/components/TokenManager.tsx`, strings in
+  `app/components/api-tokens.content.ts`): the owning account, each token's
+  name, permissions, created, expiry, last used, and one-click Revoke; the
+  form takes name, permissions and expiry. `/api/token` (`lib/api-token-api.ts`)
+  takes a browser session only; a token can never make or list tokens.
+- **Audit** (`security_audit`): `api-token.create`, `.revoke`, `.revoke-all`,
+  `.use` (when last used is written), `.refused` (a known token expired, out
+  of scope or over its rate limit; at most 5 per 10 min per token).
+- **Chat**: `lianki chat` ([lianki-dev-cli.md](lianki-dev-cli.md), "lianki chat").
+
+### Eval tokens (`eval`): code on the owner's pages, no tap
+
+Owner's decision by tap card, 2026-11-07 ("这样做"). **The trust boundary, in
+plain words: whoever holds an eval token can run any code on the owner's open
+pages, lianki.com and his box, with no pairing tap. Making the token is the
+grant.** A leaked token means arbitrary code on his signed-in pages until it is
+revoked or expires. He accepted that risk.
+
+- **Only a `dev` holder can make one.** `eval` is in `OWNER_SCOPES`
+  (`lib/api-tokens.ts`). Settings → API tokens offers it only when the session's
+  account holds `dev` (`account_permission`, read from D1 at that moment). Anyone else
+  never sees it, and a request naming it gets the same 400 as an unknown
+  permission. The CLI login (`lianki auth login`) never offers or accepts it.
+- **At most 30 days** (`EVAL_MAX_DAYS`). The expiry is required as for every
+  token. A row from before expiry dates is never an eval token.
+- **Shown once, stored hashed, bound to his account.** This works as for every
+  token: one click on the page revokes it, and a sign-out everywhere deletes it.
+- **Checked at every use** (`lib/eval-token.ts`, `DebugSessions.evalToken` over
+  the SESSIONS binding):
+  - when a sender connects with it (`Authorization: Bearer lk_…` on
+    `/api/version/debug/control`, which lianki-push turns into an internal
+    header, refusing any copy a client sends);
+  - again before every eval it sends.
+
+  Each time it checks that the token is live, holds `eval`, and that its
+  account is a site owner now. Up to 300 uses per 10 minutes per token.
+
+- **Every use is audited.** Each connect and each eval writes an
+  `api-token.eval` row to `security_audit`: the token's tag, its name, the
+  code's length and the target, never the code or the token. A refused use is
+  `api-token.refused`.
+- **What it reaches.** The owner's thread, as an eval session (code and chat)
+  until the token expires. It reaches every owner page without a tap. A box page
+  is reached only while that box holds `box:eval` (box-oauth.md, "Code on the
+  owner's box"); the box keeps its own per-use checks. It never reaches a
+  friend's pages and never opens a friend's preview. A revoke notice
+  (`/internal/chat-tokens/revoked`) closes its sender at once; the per-use check
+  catches one the notice missed. "End" on a page closes that sender's socket but
+  does not revoke the token: Revoke on the token page does.
+- **Use**: `LIANKI_TOKEN=lk_… bun scripts/dev/eval.ts --target box '<code>'`, or
+  `lianki-dev serve` with LIANKI_TOKEN set. Without a token, or with a lane's
+  chat-only token (refused for eval), `eval.ts` uses the saved grant and the
+  pairing flow exactly as before.
+
 ## CLI login (`lianki auth`, API tokens)
 
 `lianki auth login` (the npm package `lianki`, `packages/lianki-cli`; run it
@@ -225,9 +510,11 @@ The browser flow (default), a loopback flow with a one-time code and PKCE:
 2. The page needs a signed-in user (owner or anyone), checks every parameter
    (the redirect only `http://127.0.0.1:<port>/cb` or `http://[::1]:<port>/cb`),
    and shows what Approve creates: an API token named `lianki CLI <hostname>`
-   for that account, and where the code goes. Deny tells the CLI and creates
-   nothing.
-3. Approve (same-origin JSON, the page's request id and the state) turns the
+   for that account, and where the code goes. The user ticks its permissions
+   and picks its expiry there (see "API tokens" below; neither has a default,
+   and Approve refuses without both). Deny tells the CLI and creates nothing.
+3. Approve (same-origin JSON, the page's request id, the state, the permissions
+   and the expiry) turns the
    request into a one-time code (60 s) and the page goes to
    `http://127.0.0.1:<port>/cb?code=…&state=…`.
 4. The CLI checks the state, then POSTs the code, the verifier and the

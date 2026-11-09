@@ -180,6 +180,7 @@ describe("the mic's marks (createMic timing)", () => {
         return { start() {}, pause() {}, flush() {}, destroy() {} };
       },
       upload: () => new Promise((r) => (answer = r)),
+      guard: { minFrameRms: 0 },
       onState() {},
       onText() {},
       onPending() {},
@@ -203,7 +204,7 @@ describe("the mic's marks (createMic timing)", () => {
     answer("hello");
     await new Promise((r) => setTimeout(r, 0));
     expect(marks).toEqual([
-      [0, { t_lastVoice: 600, t_speechEnd: 2_000, audioMs: 1_000 }],
+      [0, { t_speechStart: 0, t_lastVoice: 600, t_speechEnd: 2_000, audioMs: 1_000 }],
       [0, { t_uploadStart: 2_000 }],
       [0, { t_sttDone: 2_900, dropped: false }],
     ]);

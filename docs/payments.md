@@ -38,7 +38,7 @@ the same rule as KOMOJU:
 
 | `STRIPE_SECRET_KEY` | flag `payments.stripe.live` | mode     | who can see and pay            |
 | ------------------- | --------------------------- | -------- | ------------------------------ |
-| `sk_test_…`         | off                         | **test** | the owner (`OWNER_EMAILS`) only |
+| `sk_test_…`         | off                         | **test** | an `admin` holder only |
 | `sk_live_…`         | **on**                      | **live** | everyone                       |
 | `sk_live_…`         | off                         | **off**  | nobody — no test mode on a live key |
 | anything else       | anything                    | **off**  | nobody: checkout answers 503   |
@@ -163,6 +163,11 @@ alone (`stripeKeyMode`, `komojuKeyMode`, `providerSettleMode`). The rule:
   days, KOMOJU for 25), so nothing is lost while it is fixed.
 - A test event against a live key (or the reverse) is still refused, flag or
   not (`payments.stripe.mode-mismatch`).
+- `/dev/flags` cannot turn a live flag **on** until the Worker has an
+  `sk_live_` key and its webhook secret (`stripeKeyMode` / `komojuKeyMode` =
+  `"live"`; the API answers 400 otherwise). Off always works.
+  [feature-flags.md](feature-flags.md), "Prerequisites". The page also notes
+  that real charging is confirmed by the owner typing in Slack first.
 
 Unit tests: "a flag flip while a checkout is in flight" in
 `unit/stripe-mode.test.ts` and `unit/komoju.test.ts`.
@@ -194,7 +199,8 @@ top-up reads "¥600 → 600 credits". `/dev/credits` and `/dev/gift-codes` say �
 
 - `credit_ledger` is append-only: one row per change, amount in JPY signed
   (+ top-up, gift, sponsor, refund to the wallet; − a pass, a reversed
-  top-up), reason `topup | pass | refund | gift | sponsor | adjust`, and
+  top-up, − an AI reply's reservation), reason
+  `topup | pass | refund | gift | sponsor | adjust | ai`, and
   **UNIQUE (reason, refId)** — each entry is once-only.
 - `credit_balance` caches the sum. Every ledger row and its balance change are
   written in the **same D1 batch** (one transaction), so the two never
@@ -206,7 +212,13 @@ top-up reads "¥600 → 600 credits". `/dev/credits` and `/dev/gift-codes` say �
   SQLite checks CHECK on the proposed INSERT row before `ON CONFLICT`.
 - refIds: top-up `<provider>:<paymentId>`; pass `<userId>:<client key>` (one
   key per click, so a retried request buys once); refund `pass:<spend refId>`
-  or `topup:<top-up refId>`; gift `<code>:<userId>`; admin `admin:<uuid>`.
+  or `topup:<top-up refId>`; gift `<code>:<userId>`; admin `admin:<uuid>`;
+  AI reply `ai:<userId>:<line id>` (the `ai` reservation and its `refund`
+  share it — docs/partner-ai.md, "Credits"; tables `credit_ai_charge`,
+  `credit_ai_carry` in `0041_ai_credits.sql`).
+- USD-priced costs (AI calls) become credits at `CREDITS_PER_USD`
+  (`lib/payments/credits.ts`), the one place to change when the credit unit
+  is redesigned.
 
 ### Endpoints
 
@@ -244,7 +256,7 @@ person per code.
 The wallet is provider-plural (`lib/payments/providers/`). A provider is
 listed on `/membership` only when it is **implemented, every one of its
 `envKeys` is set** on the Worker, and its mode is not off. A provider in
-**test mode** is listed for the owner (`OWNER_EMAILS`) only, labelled
+**test mode** is listed for an `admin` holder only, labelled
 "(test)", and its webhook credits the owner only — and only to the test
 ledger — so a test card can never become anyone's real credits.
 
@@ -414,6 +426,98 @@ Rules (owner, 2026-10-29) live in `lib/referrals/rules.ts`; the D1 side in
 
 Every reward is a `membership_grant` row with UNIQUE (reason, refId), so each
 is given once however often the checks run.
+
+### Once per person: the canonical email
+
+"Once" means once per **person**, not per account (owner, 2026-11-05):
+`lib/canonical-email.ts` maps an address to its canonical form — for
+gmail.com / googlemail.com dots removed, `+tag` dropped, googlemail → gmail;
+`+tag` also dropped for the providers in `PLUS_ALIAS_DOMAINS`; any other
+domain only lowercased. Stored as `user.email_canonical` (indexed,
+`db/migrations/0043_email_canonical.sql`, backfilled there), set by the
+better-auth `user.create` / `user.update` hooks and filled lazily by the checks
+(`lib/canonical-email-d1.ts`). It is used **only** for these checks; sign-in and
+the account keep the address as given, and no accounts are merged.
+
+- **Trial**: an account whose canonical email belongs to another account that
+  already had a trial or Pro gets no trial — `trialEndsAt` is set to now, so it
+  is free and stays so. Accounts that already have a trial are never touched.
+- **Invites**: an alias of the inviter is `self`; an invitee with any other
+  account of the same canonical email is `not new`.
+- **Gift codes**: redeemed by one account, spent for all its aliases.
+- **Per-person limits**: `accountKey` (sign-in lockout, code sends) and
+  `personKey` (`lib/rateLimit.ts`, the AI/TTS limits) key on it.
+
+At the migration (2026-11-05) no two existing accounts shared a canonical email.
+
+### Invite by email
+
+Owner request 2026-11-09. A Pro user (or an admin) types one friend's address in
+the invite card on `/membership`; Lianki mails that friend the inviter's existing
+`/i/CODE` link. Same code, same rewards as a shared link — no new code type.
+
+| piece | where |
+| --- | --- |
+| limits (one object) | `lib/referrals/email-invite-config.ts` (`EMAIL_INVITE`, `INVITE_MAIL_SENDER`) |
+| send, status, opt-out, tokens | `lib/referrals/email-invite.ts`; routes `app/api/invite/email/route.ts`, `app/api/invite/email/opt-out/route.ts` |
+| the template (one module) | `lib/referrals/invite-mail.ts` + strings `lib/referrals/invite-mail.content.ts` (16 locales, context lines) |
+| preview, sends nothing | `previewInviteMail()` / `renderFor()`; admin-only `GET /api/dev/invite-mail-preview?format=html\|text\|json&locale=` renders his own mail |
+| UI | `app/(app)/membership/EmailInviteBox.tsx`; opt-out page `/membership/invite-opt-out` |
+| tables | `db/migrations/0061_invite_email.sql`: `invite_email_log`, `invite_email_recipient`, `invite_email_suppression` |
+| tests | `unit/email-invite.test.ts`; QA `scripts/qa/qa-email-invite.mjs` (suite `email-invite`) |
+
+- **Who**: `isAdmin` always; Pro (`proEndsAt` in the future, not trial) once the
+  flag `membership.email-invite` is on. Off: admins only.
+- **Limits** (first values, the owner may change them): 5 requests per inviter in
+  24 h, counted with the log row in one conditional INSERT; one invite mail per
+  address in 30 days from anyone, claimed with one conditional upsert on the
+  canonical address's hash; an inviter whose mails were reported 2 times in a
+  year sends nothing more. Failed sends are not counted and give the address's
+  window back.
+- **One address per request**, validated (`oneAddress`): lists, `Name <addr>`
+  forms and junk are 400.
+- **Neutral answer**: an address with an account (any form, the inviter's own
+  included), a suppressed one, one mailed recently, or a blocked inviter — no
+  mail, and the same `{status:"sent"}` as a real send. Every one of these counts
+  against the daily limit, so the limit cannot be used to probe.
+- **No address stored**: `recipientHash` = SHA-256 of the canonical address;
+  `recipientMasked` (`a***@example.com`) only for the inviter's own history.
+  Keyed by user id, so nothing moves on an email change (not in
+  `EMAIL_KEYED_TABLES`). No log line holds an address.
+- **Language**: the inviter's account language (`ui.locale` in `user_prefs`),
+  else `user.signupLocale`, else English (`lib/signup-locale.ts`). zh / zh-CN /
+  zh-Hans read the Simplified template; there is no Traditional one, so zh-Hant
+  reads it too. The send API takes an optional `locale` for a later override (no
+  UI). The opt-out page opens in the same language (`?lang=`).
+- **The mail**: who invited (display name in the subject, the first line and
+  the footer; a name that reads like an address or a link becomes "A friend"),
+  the link, and a compliance footer: why you got it (a friend, one time, no
+  list), Unsubscribe and Report abuse links, the sender (Lianki, the site) and
+  the contact page. `INVITE_MAIL_SENDER.postalAddress` is an empty slot: CAN-SPAM
+  wants a postal address and the repo has none — the line appears once it is set.
+- **Headers**: `List-Unsubscribe: <https://…/api/invite/email/opt-out?t=…>` and
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058). No `mailto:`:
+  there is no inbound mailbox.
+- **Opt-out**: the one-click POST (form body `List-Unsubscribe=One-Click`, no
+  sign-in) and the page's buttons (same-origin JSON) both write
+  `invite_email_suppression`, idempotently; Report also stamps the log row. The
+  token is `<logId>.<HMAC>` with a key derived from `AUTH_SECRET` by HKDF (no new
+  secret), so nobody can opt out an address they did not receive. A GET on the
+  one-click URL only redirects to the page. Per-IP limit 30 / 15 min.
+- **Bounces and complaints** are not wired yet: Resend's webhooks are signed
+  (Svix) and need a new secret (`RESEND_WEBHOOK_SECRET`) and a webhook set up in
+  Resend. The suppression table already takes `bounce` / `complaint`.
+- **Local servers never mail**: on a localhost origin the send is a stub
+  (`invite-email.stub-send`, no address), whatever `.dev.vars` holds.
+
+### `user.signupLocale`
+
+The browser language at an account's first sign-up: the best supported tag from
+`Accept-Language`, normalised (`en`, `ja`, `zh-Hans`, `zh-Hant`…), and **nothing
+else from the header**. Written once by the better-auth `user.create` hook
+(`lib/signup-locale-d1.ts`), never overwritten. Accounts made before
+`db/migrations/0062_user_signup_locale.sql` stay NULL — no backfill, no guess.
+Used only as the invite mail's fallback language.
 
 ## GitHub Sponsors
 

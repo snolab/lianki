@@ -1,4 +1,5 @@
 "use client";
+import { isOwnAvatar } from "@/lib/profile/avatar";
 
 import Image from "next/image";
 import { BrandName } from "./BrandName";
@@ -8,6 +9,7 @@ import { Icon } from "./icons";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useState } from "react";
 import { island } from "@/lib/islands/Island";
+import { useShellUser } from "./BoxApiBridge";
 
 /** The brand, hot-swappable in dev (docs/dev-hot-islands.md). */
 const BrandIsland = island("header.brand", BrandName);
@@ -47,8 +49,10 @@ export function Header({
   membershipLabel,
   signOutLabel,
   roadmapLabel,
-  user,
+  user: serverUser,
 }: HeaderProps) {
+  // On a box, the account lianki.com named for its token (BoxApiBridge).
+  const user = useShellUser(serverUser);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   return (
@@ -60,7 +64,7 @@ export function Header({
           className="flex items-center gap-2 text-2xl font-bold hover:opacity-80 transition-opacity"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
-          <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
+          <img src="/icon.svg?v=5" alt="" width={28} height={28} />
           <BrandIsland appName={appName} locale={locale} />
         </Link>
 
@@ -77,7 +81,7 @@ export function Header({
           </Link>
 
           {/* AI Vocab Button */}
-          <Link href="/ai-vocab" className="text-base md:text-lg font-medium hover:underline">
+          <Link href="/lab/ai-vocab" className="text-base md:text-lg font-medium hover:underline">
             {aiVocabLabel}
           </Link>
 
@@ -112,6 +116,8 @@ export function Header({
                     className="w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"
                     alt={user.name}
                     src={user.image}
+                    // An upload of ours is already small, and next/image's loader can't fetch /api/*.
+                    unoptimized={isOwnAvatar(user.image) || user.image.startsWith("blob:")}
                     width={32}
                     height={32}
                   />

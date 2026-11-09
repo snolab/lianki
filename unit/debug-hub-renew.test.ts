@@ -29,6 +29,7 @@ import {
 } from "@/lib/push-signed-out";
 import { type SessionDb, rateLimiter, sessionLive } from "@/lib/debug-session";
 import { TestD1Database } from "@/lib/d1/testDb";
+import { rpcStub } from "./support/rpc-stub";
 
 class FakeSocket implements Socket {
   sent: Record<string, unknown>[] = [];
@@ -135,7 +136,7 @@ function setup(o: { noMain?: boolean } = {}) {
   const main = fakeMain();
   const hub = new DebugHub(
     { acceptWebSocket: () => {}, getWebSockets: () => sockets, storage },
-    o.noMain ? undefined : { SESSIONS: main },
+    o.noMain ? undefined : { SESSIONS: rpcStub(main) },
     () => t,
   );
   const add = () => {
@@ -917,8 +918,10 @@ describe("the main Worker's live-session lookup (DebugSessions RPC)", () => {
   const db = async () => {
     const d = new TestD1Database();
     await d.exec(
-      "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT); CREATE TABLE session (id TEXT PRIMARY KEY, userId TEXT, expiresAt TEXT);",
+      "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT); CREATE TABLE session (id TEXT PRIMARY KEY, userId TEXT, expiresAt TEXT);" +
+        "CREATE TABLE account_permission (email TEXT, permission TEXT NOT NULL DEFAULT 'dev', granted_by TEXT NOT NULL DEFAULT 't', granted_at INTEGER NOT NULL DEFAULT 1, revoked_at INTEGER);",
     );
+    await d.exec(`INSERT INTO account_permission (email) VALUES ('${OWNER}')`);
     const add = (sql: string, ...v: unknown[]) =>
       d
         .prepare(sql)
@@ -932,7 +935,7 @@ describe("the main Worker's live-session lookup (DebugSessions RPC)", () => {
     await add("INSERT INTO session VALUES (?, ?, ?)", "f1", "u2", at(T0 + 1));
     return d as unknown as SessionDb;
   };
-  const opts = { ownerEmails: OWNER, now: () => T0 };
+  const opts = { now: () => T0 };
 
   it("live only for the owner's unexpired session with that tag", async () => {
     const d = await db();
@@ -942,16 +945,16 @@ describe("the main Worker's live-session lookup (DebugSessions RPC)", () => {
     expect(await live("u1", await sessionTag("s0"))).toBe(false);
     expect(await live("u1", await sessionTag("nope"))).toBe(false);
     expect(await live("u2", await sessionTag("f1"))).toBe(false);
-    expect(await live("u1", await sessionTag("s1"), { ownerEmails: "", now: () => T0 })).toBe(
-      false,
-    );
     // Real clock: T0 is long past.
-    expect(await live("u1", await sessionTag("s1"), { ownerEmails: OWNER })).toBe(false);
+    expect(await live("u1", await sessionTag("s1"), {})).toBe(false);
     // Bounded before any DB work: no db, a malformed user id or tag.
     expect(await sessionLive(null, "u1", await sessionTag("s1"))).toBe(false);
     expect(await live("u1".repeat(40), await sessionTag("s1"))).toBe(false);
     expect(await live("u1", "s1")).toBe(false);
     expect(await live(undefined, await sessionTag("s1"))).toBe(false);
+    // A revoked owner: gone at once, no snapshot in between.
+    await (d as unknown as TestD1Database).exec("UPDATE account_permission SET revoked_at = 1");
+    expect(await live("u1", await sessionTag("s1"))).toBe(false);
   });
 
   it("the entrypoint's own rate limit: a fixed window per isolate", () => {

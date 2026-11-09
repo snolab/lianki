@@ -38,7 +38,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - run: bun install --frozen-lockfile
       # Fails on an unwaived CRITICAL advisory in a production dependency;
       # everything else is in the report.

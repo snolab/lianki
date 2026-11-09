@@ -18,7 +18,11 @@
  */
 import { noteOpened } from "./aec";
 import { encodeWav } from "./mic";
-import type { CloudOut, PlayEvents, Playback } from "./voice";
+import type { CloudOut, LinePick, PlayEvents, Playback } from "./voice";
+import { MELO_LANGS, VOICES, type VoiceId, cloudVoice } from "./voices";
+
+/** The route's X-Voice for a clip in a lane's own cloud speaker (lib/words-tts.ts). */
+export const AURA_VOICE = "aura-2";
 
 export const VOICE_OUT_KEY = "lk:voice-out";
 export type OutMode = "speech" | "cloud";
@@ -38,7 +42,7 @@ export {
 /** /api/words/tts refuses text longer than this (its MAX_TEXT). */
 export const TTS_MAX_TEXT = 200;
 /** Languages the route can voice any text in (MeloTTS, lib/workers-ai.ts MELOTTS_LANGS). */
-export const CLOUD_LANGS: ReadonlySet<string> = new Set(["en", "es", "fr", "zh", "ja", "ko"]);
+export const CLOUD_LANGS: ReadonlySet<string> = new Set(MELO_LANGS);
 /** A clip resumed after an interruption starts this much before where it stopped. */
 export const RESUME_REWIND_S = 0.3;
 const ignore = () => {};
@@ -91,7 +95,7 @@ export const appliedSettings = () => applied;
 
 /**
  * The page's one AudioContext for voice: the energy fallback records through
- * it, the send tick plays on it, and cloud replies play through it. Made on
+ * it, the voice cues play on it, and cloud replies play through it. Made on
  * the mic tap (a gesture, which iOS needs).
  */
 let audio: AudioContext | null = null;
@@ -147,8 +151,10 @@ export type CtxLike = {
  * again, so the route does not keep it in R2 and sends it `no-store`; a
  * replay comes from `clips` below (blob URLs in memory), not the HTTP cache.
  */
-export const ttsUrl = (text: string, lang: string) =>
-  `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}&store=0`;
+export const ttsUrl = (text: string, lang: string, speaker?: string) =>
+  `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}&store=0${
+    speaker ? `&speaker=${encodeURIComponent(speaker)}` : ""
+  }`;
 
 /** Why a sentence cannot be fetched at all (null: try the route). */
 export function cloudSkip(text: string, lang: string): string | null {
@@ -167,6 +173,8 @@ export function cloudSkip(text: string, lang: string): string | null {
 export function createCloudOut(d: {
   fetch: (url: string) => Promise<{ ok: boolean; status: number; headers: { get(k: string): string | null }; blob(): Promise<Blob> }>;
   element: () => ElementLike;
+  /** A second element, never routed through the context: ElevenLabs previews (absent: none play). */
+  plain?: () => ElementLike;
   ctx: () => CtxLike | null;
   toUrl?: (b: Blob) => string;
   revoke?: (u: string) => void;
@@ -191,6 +199,8 @@ export function createCloudOut(d: {
     });
   };
   const clips = new Map<string, Promise<string>>();
+  /** Clips that came back in the route's one voice though a speaker was asked for. */
+  const fellBack = new Set<string>();
   let el: ElementLike | null = null;
   let gain: GainLike | null = null;
   let wired = false;
@@ -220,20 +230,29 @@ export function createCloudOut(d: {
     return el;
   };
 
-  const fetchClip = (text: string, lang: string): Promise<string> => {
-    const key = `${lang}\n${text}`;
+  /** `speaker`: a lane's own cloud voice (voices.ts cloudVoice); absent = the language's one voice. */
+  const fetchClip = (text: string, lang: string, speaker?: string): Promise<string> => {
+    const key = `${lang}\n${speaker ?? ""}\n${text}`;
     const have = clips.get(key);
     if (have) return have;
-    const p = d.fetch(ttsUrl(text, lang.split(/[-_]/)[0])).then(async (r) => {
+    const p = d.fetch(ttsUrl(text, lang.split(/[-_]/)[0], speaker)).then(async (r) => {
       if (!r.ok) throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);
-      return toUrl(await r.blob());
+      const url = toUrl(await r.blob());
+      // The speaker was asked for but the route answered with its one voice (it fell back).
+      // No X-Voice at all (hidden by CORS): the route did not say, so it is not taken as one.
+      const said = r.headers.get("X-Voice");
+      if (speaker && said !== null && said !== AURA_VOICE) fellBack.add(url);
+      return url;
     });
     clips.set(key, p);
     p.catch(() => clips.delete(key));
     if (clips.size > CLIP_CACHE) {
       const [k, old] = clips.entries().next().value as [string, Promise<string>];
       clips.delete(k);
-      old.then(revoke, ignore);
+      old.then((u) => {
+        fellBack.delete(u);
+        revoke(u);
+      }, ignore);
     }
     return p;
   };
@@ -247,6 +266,57 @@ export function createCloudOut(d: {
       gain.gain.linearRampToValueAtTime(level, now + ms / 1000);
     } else if (el) el.volume = level;
   };
+  /** What a sentence asks the route for: the line's own melo/aura voice, else its lane's. */
+  const wanted = (
+    lang: string,
+    voice?: VoiceId,
+    pick?: LinePick,
+  ): { lang: string; speaker?: string; shift: number } => {
+    if (pick?.kind === "melo") return { lang: pick.lang, shift: 1 };
+    if (pick?.kind === "aura") return { lang: pick.lang, speaker: pick.speaker, shift: 1 };
+    return { lang, ...cloudVoice(voice ?? "main", lang) };
+  };
+
+  /**
+   * An ElevenLabs preview clip (voices.ts ELEVEN_PREVIEWS), straight from
+   * ElevenLabs. On its own element, not through the voice context: their
+   * storage sends no CORS headers, and a context plays such media as silence.
+   * Any failure (refused before a tap, gone, blocked) is onfail: the session
+   * then reads the line in its lane's voice.
+   */
+  let plainEl: ElementLike | null = null;
+  const plain = () => (plainEl ??= d.plain?.() ?? null);
+  const preview = (url: string, volume: number, live: () => boolean, ev: PlayEvents): Playback => {
+    const a = plain();
+    const fail = (why: string) => void Promise.resolve().then(() => live() && ev.onfail?.(why));
+    const pb: Playback = {
+      route: "audio",
+      stop() {
+        if (!live()) return {};
+        turn++;
+        a?.pause();
+        return {};
+      },
+      volume: (level) => {
+        if (live() && a) a.volume = level;
+      },
+    };
+    if (!a) {
+      fail("no element for a preview");
+      return pb;
+    }
+    a.volume = volume;
+    a.onended = () => live() && ev.onend();
+    a.onerror = () => live() && ev.onfail?.("preview error");
+    a.onloadedmetadata = null;
+    a.src = url;
+    a.play().then(
+      () => live() && ev.onstart?.(),
+      (e: unknown) => live() && ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`),
+    );
+    return pb;
+  };
+
   const setLevel = (level: number) => {
     const ctx = d.ctx();
     if (gain && ctx) {
@@ -264,15 +334,24 @@ export function createCloudOut(d: {
       const me = turn;
       // A reply that started meanwhile is not paused by this late settle.
       a.play().then(() => me === turn && a.src === silent && a.pause(), ignore);
+      // The preview element too, so a preview may play later without a tap (iOS).
+      const b = plain();
+      if (b && b.paused) {
+        b.src = silentWav();
+        b.play().then(() => me === turn && b.src === silent && b.pause(), ignore);
+      }
     },
     gain: () => gain,
-    prepare(text, lang) {
-      if (!cloudSkip(text, lang)) fetchClip(text, lang).catch(ignore);
+    prepare(text, lang, voice, pick) {
+      if (pick?.kind === "eleven") return;
+      const w = wanted(lang, voice, pick);
+      if (!cloudSkip(text, w.lang)) fetchClip(text, w.lang, w.speaker).catch(ignore);
     },
     play(s, ev: PlayEvents): Playback {
       const me = ++turn;
       const live = () => me === turn;
       const fail = (why: string) => void Promise.resolve().then(() => live() && ev.onfail?.(why));
+      if (s.pick?.kind === "eleven") return preview(s.pick.preview, s.volume, live, ev);
       const pb: Playback = {
         route: "audio",
         stop() {
@@ -285,12 +364,15 @@ export function createCloudOut(d: {
         },
         volume: (level, ms) => live() && ramp(level, ms),
       };
-      const skip = cloudSkip(s.text, s.lang);
+      // The line's own cloud voice (melo:, aura:), else its lane's: its own speaker where
+      // the engine has several, else the one voice at its own speed.
+      const lane = wanted(s.lang, s.voice, s.pick);
+      const skip = cloudSkip(s.text, lane.lang);
       if (skip) {
         fail(skip);
         return pb;
       }
-      fetchClip(s.text, s.lang).then(
+      fetchClip(s.text, lane.lang, lane.speaker).then(
         (url) => {
           if (!live()) return;
           const a = element();
@@ -309,7 +391,10 @@ export function createCloudOut(d: {
             // Resume by offset: where the interrupted clip stopped (else its start).
             a.currentTime = s.at;
             // The speed, pitch kept (a resume after a duck keeps it: it is per play).
-            const rate = s.rate ?? 1;
+            // A lane with no voice of its own here: its own speed, pitch still kept —
+            // a pitch-free clip stalls mid-word on iOS (voices.ts, "Cloud voices").
+            const shift = fellBack.has(url) && !s.pick ? VOICES[s.voice ?? "main"].shift : lane.shift;
+            const rate = (s.rate ?? 1) * shift;
             a.defaultPlaybackRate = rate;
             a.playbackRate = rate;
             a.preservesPitch = true;
@@ -349,7 +434,8 @@ export function cloudOut() {
   browserCloud = createCloudOut({
     fetch: (u) => fetch(u),
     element: () => new Audio() as unknown as ElementLike,
-    ctx: () => existingCtx() as unknown as CtxLike | null,
+    plain: () => new Audio() as unknown as ElementLike,
+    ctx:() => existingCtx() as unknown as CtxLike | null,
   });
   return browserCloud;
 }

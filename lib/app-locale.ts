@@ -22,12 +22,16 @@ export const LOCALE_PICK_KEY = "lk:ui-locale";
 
 export const APP_ROUTES = [
   "add-note",
+  // A box's sign-in (docs/box-oauth.md): lianki.com's entry, and the box's return.
+  "box-authorize",
+  "box-callback",
   "cli-login",
-  "ai-vocab",
   "alphabet",
   // app/auth/logout, outside app/(app)/: the sign-out page (lib/sign-out.ts).
   "auth",
   "books",
+  // /chat/history (docs/chat-history.md).
+  "chat",
   "connections",
   "contact",
   "contacts",
@@ -42,15 +46,16 @@ export const APP_ROUTES = [
   "list",
   "membership",
   "next",
-  "polyglot",
   "preferences",
+  "privacy",
   "profile",
-  "read",
+  "reader",
   "review",
   "roadmap",
   "self-intro",
   "sign-in",
   "stats",
+  "vibe",
   "words",
   "sites",
 ] as const;

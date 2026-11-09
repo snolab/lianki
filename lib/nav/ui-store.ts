@@ -13,6 +13,7 @@
  * island shares them too.
  */
 import { type UiStore, createUiStore } from "@lianki/ui-state";
+import { movedHref } from "@/lib/moved-routes";
 
 export type NavUi = {
   drawerOpen: boolean;
@@ -32,8 +33,9 @@ export const MAX_PINS = 12;
 export const isAppPath = (p: unknown): p is string =>
   typeof p === "string" && p.length <= 300 && /^\/(?!\/)/.test(p);
 
+/** Kept paths, a moved page's at its new address (lib/moved-routes.ts: a pinned /read is /reader). */
 const paths = (v: unknown, max: number): string[] | undefined =>
-  Array.isArray(v) ? [...new Set(v.filter(isAppPath))].slice(0, max) : undefined;
+  Array.isArray(v) ? [...new Set(v.filter(isAppPath).map(movedHref))].slice(0, max) : undefined;
 
 export function cleanNavUi(raw: unknown): Partial<NavUi> {
   if (!raw || typeof raw !== "object") return {};

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
 import { authUserOrNull } from "@/app/signInEmail";
-import { isOwner } from "@/lib/owner";
+import { isDev } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { passkeyRelyingParty } from "@/lib/passkey";
 import { importTicketKey } from "@/lib/stt-ticket";
@@ -22,7 +22,7 @@ const b64 = (s: string) => {
 
 export const POST = async (req: Request) => {
   const user = await authUserOrNull();
-  if (!isOwner(user?.email) || !user?.id)
+  if (!isDev(user?.email) || !user?.id)
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   const raw = process.env.STT_TICKET_KEY;
   if (!raw || dbBackend() !== "d1")

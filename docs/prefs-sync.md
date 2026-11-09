@@ -54,7 +54,14 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:pref:text-size` `.chat`    | Text size: chat                           | **synced** | `text-size.chat`     | the same; multiplies the whole-app size inside the chat                             |
 | `lk:pref:text-size` `.cards`   | Text size: study cards                    | **synced** | `text-size.cards`    | the same; multiplies the whole-app size on /words slips and the /review card        |
 | `lk:words-fullscreen`          | Full screen                               | device     | —                    | owner: depends on the screen and the browser                                        |
-| `lk:pref:read-auto`           | /read: read on without waiting            | device     | —                    | owner, 2026-11-03: "remembered per device"; off by default                          |
+| `lk:pref:read-auto`           | /reader: read on without waiting            | device     | —                    | owner, 2026-11-03: "remembered per device"; off by default                          |
+| `lk:read-scan-open`           | /reader: the word scan's details at the top unfolded | device | —               | a matter of screen room: folded on a phone, open on a wide screen until he toggles it (lib/read/scan-buckets.ts) |
+| `lk:read-sense-picks`         | /reader: which language's entry a word means | **synced** | `read.sensePicks`    | owner, 2026-11-05: his pick (云 as Chinese "cloud" in a Japanese line) follows him; word@sentence-hash → lang + term, newest 24 (lib/read/sense-pick.ts) |
+| `lk:read-polish-offer`        | /reader: offer to tidy a raw transcript     | **synced** | `read.polishOffer`   | owner, 2026-11-06: "dont show"; he reads on several devices. /preferences, or the offer's own button. The action stays in the contents sheet |
+| `lk:read-translator-notes`    | /reader: translator's notes in translations | **synced** | `read.translatorNotes` | owner, 2026-11-06: "use (...) to explain the cultural difference"; on by default |
+| `lk:vibe-translate-min-pct`   | /vibe: a language's share before lines go into it | **synced** | `vibe.translateMinPct` | owner, 2026-11-06: 20 is his number, as a setting ([vibe.md](vibe.md), "Translations") |
+| `lk:read-polish-skips`        | /reader: texts he said no to tidying        | **synced** | `read.polishSkips`   | the same: material ids, the newest 40 (lib/read/polish-offer.ts). Nothing else about the text |
+| `lk:read-polish-skip:<id>`    | /reader: the same no, on this device        | device     | —                    | one key per material, no cap: a text off the account's list stays quiet here. An old one is carried to the account when the text next opens |
 | `lk:ui:swipe-tuner`            | tuner panel open                          | session    | —                    | a panel                                                                             |
 | `lk:ui:words`                  | list, Settings open, help, scroll anchors | session    | —                    | UI state of this tab (ui-state.md)                                                  |
 | `lk:words-collapsed:<base>`    | collapsed groups                          | device     | —                    | one key per page, unbounded, and it tracks the list's layout. Revisit if asked      |
@@ -88,7 +95,10 @@ listed once.
 | `lk:agent-speech-rate`                        | speech rate                 | **synced**       | `chat-voice.rate`  | owner                                                                                                                                                                                    |
 | `lk:voice-out`                                | speech or cloud voice       | **synced**       | `chat-voice.out`   | a voice choice, like Server voice                                                                                                                                                        |
 | `lk:agent-chat-speak` (`lk:debug-chat-speak`) | read replies aloud          | **synced**       | `chat-voice.speak` | a habit                                                                                                                                                                                  |
+| `lk:voice-cue-send`                           | sound when a voice message is sent | **synced** | `chat-voice.cueSend` | a habit, like read aloud; on by default (voice-mode.md, "Cues") |
+| `lk:voice-cue-speech`                         | sound when speech starts and ends  | **synced** | `chat-voice.cueSpeech` | the same, its own switch (owner, 2026-11-05) |
 | `lk:voice-aec`                                | echo cancel, mic stays open | device           | —                  | **decided: device.** It depends on the hardware: speakers next to the mic need it off on some devices, headphones never do. Syncing it would break barge-in on one device to fix another |
+| `lk:voice-keep-awake`                         | keep speaker awake          | device           | —                  | the speaker, the headphones and how they sleep belong to this device. Absent = on; `"0"` = off (output-bed.ts) |
 | `lk:agent:voiced` | mic used here: replies read aloud | session | — | sticky until he mutes; a new tab starts without it |
 | `lk:agent:mic`                                | mic on                      | device → session | —                  | owner: device. A mic must not open by itself on another device                                                                                                                           |
 | `lk:agent:stt-hint`                           | STT language hint           | device           | —                  | learnt from typed lines, cheap to relearn; not a choice                                                                                                                                  |
@@ -113,6 +123,27 @@ listed once.
 | `lianki_pos`                                                                                                                                                                    | device                             | the button's position on this screen                                                              |
 | `lk:watch-lang`                                                                                                                                                                 | not a pref                         | per-video language overrides; that is card data                                                   |
 | `lk:deviceId`, `lk:config`, `lk:c:*`, `lk:card-index`, `lk:queue`, `lk:token`, `lk:note:*`, `lk:markers:*`, `lk:watch:*`, `lk:watch-index`, `lk:watch-dirty`, `lk:nav_intended` | not a pref                         | cards, sync state, caches (sync-architecture.md)                                                  |
+
+### Your own AI (docs/byok.md)
+
+| Key               | Setting                                | Class                    | Server key     | Reason                                                                                                                                                       |
+| ----------------- | -------------------------------------- | ------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lk:byok`         | own AI on/off, its backend, the API key | **device, never synced** | —              | **excluded explicitly**: the key is a secret and stays on the device until the managed mode is approved; no binding exists (unit/byok.test.ts)            |
+| `lk:byok-ack`     | the privacy notice was acknowledged    | device                   | —              | per device, with the notice's version                                                                                                                        |
+| `lk:byok-backend` | provider, base URL, model              | **synced, opt-in**       | `byok.backend` | owner, 2026-11-05 14:25 JST: not secret, follows the account when 「同步到我的账号」 is ticked (`null` when not). **The one URL a pref may hold**: only that exact shape, under lib/byok/config.ts's URL rules; the server never fetches it |
+
+### Page titles (docs/title-clean.md)
+
+| Key              | Setting                                   | Class      | Server key     | Reason                                                                                                                                                                                                                                     |
+| ---------------- | ----------------------------------------- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lk:title-rules` | patterns that clean notification prefixes | **synced** | `titles.rules` | owner, 2026-11-06. Holds the difference from the defaults. A public site host and short patterns (a second exception to "nothing typed"); device hosts are refused. The userscript reads it through `/api/preferences` (`lk:preferences`) |
+
+### Links to other websites (docs/external-links.md)
+
+| Key               | Setting                                      | Class      | Server key           | Reason                                                                                                                         |
+| ----------------- | -------------------------------------------- | ---------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `lk:link-confirm` | ask before another site ("any site" box off) | **synced** | `links.confirm`      | owner, 2026-11-09: "for my account, all domains"                                                                               |
+| `lk:link-allowed` | sites not asked about ("this site" box)      | **synced** | `links.allowedHosts` | owner, 2026-11-09: kept with the account. A third exception to "nothing typed": bare public hosts only, newest 80, no device host |
 
 ### Not prefs (left alone)
 

@@ -28,6 +28,7 @@
 
 import { previewEntryUrl } from "../../lib/dev-server-switch";
 import {
+  LIVE_GATE_HEADER,
   filterTunnelHeaders,
   isServiceWorkerScript,
   tunnelHeaderDropped,
@@ -70,10 +71,20 @@ export type Verified = {
 
 export type GateDeps = {
   publicHost: string;
-  /** The account the dev server's login route signs in (OWNER_EMAILS[0]). */
-  ownerEmail: string;
+  /**
+   * The account the dev server's login route signs in: the oldest active
+   * `dev` grant (account_permission), asked of lianki.com ("" when it cannot be read: nobody passes).
+   */
+  ownerEmail: string | (() => Promise<string>);
   /** HMAC key for the session cookie (local; .dev-whole-page.json). */
   sessionKey: string;
+  /**
+   * LIVE_GATE_SECRET's local copy (.dev-whole-page.json `liveSecret`): the
+   * lianki Worker's entry for the same-origin live preview
+   * (lib/live-view/page-proxy.ts), sent in LIVE_GATE_HEADER. Unset or shorter
+   * than LIVE_SECRET_MIN: that entry is shut.
+   */
+  liveSecret?: string;
   verify(token: string): Promise<Verified | null>;
   active(ids: string[]): Promise<string[]>;
   now?: () => number;
@@ -93,7 +104,14 @@ export type GateRequest = {
 };
 export type GateResult =
   | { kind: "respond"; status: number; headers: Record<string, string | string[]>; body: string }
-  | { kind: "forward"; tokenId: string; untilMs: number };
+  | { kind: "forward"; tokenId: string; untilMs: number; via?: "worker" };
+
+/** The Worker entry's pseudo token id (never a dev_access_token id: those are random base64url). */
+export const WORKER_TOKEN_ID = "live-worker";
+/** A socket opened through the Worker entry is closed after this long (the page reconnects). */
+export const WORKER_SOCKET_MS = 60 * 60 * 1000;
+/** A Worker secret shorter than this never matches. */
+export const LIVE_SECRET_MIN = 32;
 
 const NO_STORE = {
   "cache-control": "no-store, max-age=0",
@@ -101,6 +119,26 @@ const NO_STORE = {
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
 };
+
+/**
+ * The gate's only service worker: it deletes this origin's caches and
+ * unregisters itself. A worker the app registered on the preview origin before
+ * the gate refused them (2026-11-05) kept answering /_next/static from its
+ * cache-first store; dev chunk names do not change with their code, so the
+ * page ran a day-old bundle (an icon map without `books`, a TypeError). A 403
+ * only fails the worker's update check and leaves it running; this replaces it.
+ * No fetch handler: from activation on, every request goes to the network.
+ */
+export const SW_KILL_SWITCH = `self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) =>
+  e.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      .then(() => self.registration.unregister()),
+  ),
+);
+`;
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -605,8 +643,11 @@ export function createGate(d: GateDeps) {
     return ok;
   }
 
-  const okFor = (v: Verified | null) =>
-    Boolean(v && v.email.toLowerCase() === d.ownerEmail.toLowerCase());
+  const okFor = async (v: Verified | null) => {
+    if (!v) return false;
+    const owner = typeof d.ownerEmail === "string" ? d.ownerEmail : await d.ownerEmail();
+    return Boolean(owner) && v.email.toLowerCase() === owner.toLowerCase();
+  };
 
   async function handshake(req: GateRequest, ip: string): Promise<GateResult> {
     if (req.method === "GET") {
@@ -638,7 +679,7 @@ export function createGate(d: GateDeps) {
     const r = await verify(token.trim(), ip, req.signal);
     if ("refused" in r) return refusedAnswer(r.refused);
     const v = r.v;
-    if (!okFor(v) || !v) {
+    if (!(await okFor(v)) || !v) {
       fails.add(ip);
       return closed("handshake: bad, used, expired or revoked token");
     }
@@ -660,8 +701,12 @@ export function createGate(d: GateDeps) {
       const path = new URL(req.url, "http://x").pathname;
       // A service worker from dev code would outlive the preview and control
       // every later page of the origin: never served here, signed in or not.
+      // In its place, a worker that removes itself and its caches: a 403
+      // leaves one registered earlier in place for good, serving stale chunks.
       if (isServiceWorkerScript(path, one(req.headers["service-worker"])))
-        return respond(403, "403 — no service workers from the dev server.\n");
+        return respond(200, SW_KILL_SWITCH, {
+          "content-type": "text/javascript; charset=utf-8",
+        });
       if (path === UP_PATH)
         // The profile menu's one check when it opens: the gate answers (the
         // tunnel is up), and still with 503 — nothing here is a way in.
@@ -676,6 +721,25 @@ export function createGate(d: GateDeps) {
           location: PROD_ORIGIN,
           "set-cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
         });
+
+      // The lianki Worker, for the same-origin live preview: its own secret,
+      // never a cookie. It has already checked the owner's session and the
+      // signed pointer; here it is let through as the owner, like a token.
+      const worker = one(req.headers[LIVE_GATE_HEADER]);
+      if (worker !== undefined) {
+        if (fails.blocked(ip)) return respond(429, "429\n", { "retry-after": "600" });
+        const s = d.liveSecret ?? "";
+        if (s.length < LIVE_SECRET_MIN || !safeEqual(worker.trim(), s)) {
+          fails.add(ip);
+          return closed("worker: bad secret");
+        }
+        return {
+          kind: "forward",
+          tokenId: WORKER_TOKEN_ID,
+          untilMs: now() + WORKER_SOCKET_MS,
+          via: "worker",
+        };
+      }
 
       const auth = one(req.headers.authorization) ?? "";
       if (auth) {
@@ -692,7 +756,7 @@ export function createGate(d: GateDeps) {
           v = r.v;
           if (v) bearer.set(key, { v, at: now() });
         }
-        if (!okFor(v) || !v) {
+        if (!(await okFor(v)) || !v) {
           bearer.delete(key);
           fails.add(ip);
           return closed("bearer: bad token");
@@ -727,6 +791,7 @@ export function upstreamHeaders(
   for (const [k, v] of Object.entries(h)) {
     const key = k.toLowerCase();
     if (key === "authorization" || key.startsWith("tailscale-") || key.startsWith("cf-")) continue;
+    if (key === LIVE_GATE_HEADER) continue; // the Worker's secret never goes past the gate
     if (key === "x-forwarded-host" || key === "x-forwarded-proto" || key === "x-forwarded-for")
       continue;
     if (o.drop.includes(key)) continue;
@@ -736,7 +801,8 @@ export function upstreamHeaders(
     .split(";")
     .map((c) => c.trim())
     .filter(
-      (c) => c && !c.startsWith(`${SESSION_COOKIE}=`) && !/^(__Secure-)?better-auth\./.test(c),
+      (c) =>
+        c && !c.startsWith(`${SESSION_COOKIE}=`) && !/^(__Secure-|__Host-)?better-auth\./.test(c),
     );
   if (cookies.length) out.cookie = cookies.join("; ");
   else delete out.cookie;
