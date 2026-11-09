@@ -159,8 +159,9 @@ export const SUITES = [
     args: ["scripts/qa/qa-words-pinch.mjs"],
     base: true,
     id: "words-pinch",
+    // The study view and the pinch's own files; the /words route tree is the words suite's.
     paths: [
-      "app/(app)/words/**",
+      "app/(app)/words/WordsClient.tsx",
       "lib/words/row-pinch.ts",
       "lib/words/use-row-pinch.ts",
       "lib/words/row-layout.ts",
