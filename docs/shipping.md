@@ -46,16 +46,54 @@ CI runs **everything**; the pre-push hook runs only what a change reaches
 - `Lint + typecheck + unit` — oxlint + `oxfmt --check`, typecheck, the whole
   unit suite with its coverage gate (~20 s). Every PR, every merge group, every
   push to `main`; when it fails on a push to `main` it posts to Slack #lianki.
-- `qa:all (merge queue)` — the whole `bun run qa:all`, in the Playwright image,
-  on the `merge_group` event only (~6–7 min on a runner). So every PR gets the
-  full integration gate before it lands, while opening a PR and main's deploy
-  wait for neither. It blocks; `QA_BLOCKING: "false"` in ci.yml turns a
-  failure into a warning instead (used while WORDS' Settings-sheet check
-  failed in CI, 2026-11-08).
+- `qa` — the whole qa:all, on the `merge_group` event only (and on a manual
+  dispatch), as one build job and three parallel shards
+  (`.github/workflows/qa-sharded.yml`, below). So every PR gets the full
+  integration gate before it lands, while opening a PR and main's deploy wait
+  for neither. It blocks; `QA_BLOCKING: "false"` in ci.yml turns a failure
+  into a warning instead (used while WORDS' Settings-sheet check failed in CI,
+  2026-11-08).
 - `Typecheck + unit` — the one required check (branch protection names it). A
-  tiny job that is green when the first job passed and the qa job passed or
-  was skipped (outside the merge queue). Adding the qa job needed no change to
-  branch protection.
+  tiny job that is green when the first job passed and `qa` (its build and
+  every shard) passed or was skipped (outside the merge queue). It is the
+  aggregator the shards report through, so neither the qa job nor its shards
+  needed a change to branch protection or the ruleset.
+
+### qa:all in shards
+
+Until 2026-11-10 the merge queue ran qa:all as one job: ~12.5 min (median 755 s:
+container 31 s, setup 25 s, OpenNext build 40–50 s, local D1 migrations 20 s,
+then 25 suites one after another, ~11 min). Now:
+
+1. **`qa build`** (plain runner, Node 24): `qa-all.mjs --prepare` builds the
+   OpenNext Worker and migrates a local D1, then ships `.open-next` and
+   `.wrangler/state` to the shards as one tarball artifact (it keeps the
+   build's internal symlinks). `.next/cache` (Turbopack's build cache, on by
+   default since Next 16.3) is kept in the Actions cache. Only caches saved on
+   `main` reach a merge-queue run (one saved on a `gh-readonly-queue` ref is
+   visible to that ref only), so the nightly run on main is what keeps it warm.
+2. **`qa:all 1/3`, `2/3`, `3/3`** (Playwright image, `fail-fast: false`):
+   `qa-all.mjs --no-build --shard=i/3` boots its own `wrangler dev` on the
+   prepared build and runs its third of the suites. Time-sensitive suites
+   still run after the plain ones in each shard, as before; CI needs no
+   admission (each runner has its machine to itself).
+
+**The split** (`scripts/qa/shard.mjs`, tested in `unit/qa-shard.test.ts`):
+longest suite first onto the shard with the least time so far, by the median
+seconds in `scripts/qa/suite-timings.json`; a suite not listed counts 30 s.
+Each job computes the same split by itself. AUDIO-FREE (`everyShard: true`)
+starts every shard, because the suites after it rely on its silent layer.
+Every suite prints `qa:all timing <id> <seconds>`; re-record the medians from
+the last green merge-queue runs with `bun scripts/qa/record-timings.ts` when a
+shard runs long (a new suite, a slower one).
+
+Locally, `--shard=i/n` and `--prepare` work the same, and a plain
+`bun run qa:all` is unchanged. The nightly run uses the same workflow plus the
+extension smoke test in shard 1.
+
+Concurrency: the free plan gives 20 concurrent jobs. A merge-queue entry now
+takes 5 (checks, build, 3 shards) and the queue builds up to 5 entries, so a
+full queue waits a little for runners rather than failing.
 
 A CI runner is slower than a laptop, and the phone passes of qa-words run side
 by side (#704): WebKit there can go a while without a rendering update, and a
@@ -79,8 +117,8 @@ Two more from the merge queue of 2026-11-09 (state tree /infra/qa-words-flake):
 main's deploy waits for this workflow on the push to `main` (no qa job there:
 it ran in the queue).
 
-The integration gate, `qa:all (D1/Workers)` (`bun run qa:all` plus the
-extension smoke test, ~8 min), also runs **nightly** on main at 03:00 JST in
+The integration gate (qa:all in shards plus the extension smoke test) also
+runs **nightly** on main at 03:00 JST in
 `.github/workflows/nightly-qa.yml` (or by hand: `gh workflow run nightly-qa.yml
 -R snolab/lianki`), and posts to #lianki when it fails. It left the per-push CI
 on 2026-10-31 so a deploy no longer waits for it. Node 24 (for `node:sqlite`);

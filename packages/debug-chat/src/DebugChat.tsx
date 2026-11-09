@@ -71,7 +71,7 @@ import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta"
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
 import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry, STRIP_INSET_PX, stripTopRadius } from "./bar-geometry";
-import { DebugMic, canCapture, pageCues, pageMic, voiceDevice } from "./MicButton";
+import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
 import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
@@ -149,6 +149,7 @@ import {
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
+import { type PttState, createPttGesture } from "./ptt";
 import { WAITING_INK, lastPendingIndex, waitingMark } from "./waiting-mark";
 import { TreeChips } from "./TreeChips";
 import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
@@ -244,7 +245,9 @@ const withClass = <T extends { className: string }>(p: T, cls: string): T => ({
   className: `${p.className} ${cls}`,
 });
 /** The mic's extra gesture, for its title and aria-description. */
-const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
+const MIC_PTT_HINT = "Hold to talk: one line, sent when you let go (slide away to cancel). Tap: always listening. ↑/↓: scroll back through the chat";
+/** The light haptic when a press becomes push to talk (navigator.vibrate; none on iOS). */
+const PTT_HAPTIC_MS = 10;
 /** A minimized scrub shows this many lines at a time. */
 const SCRUB_LINES = 3;
 const POS_KEY = "lk:debug-chat-pos";
@@ -2850,62 +2853,107 @@ export function DebugChat({
     setFloatEpoch((e) => e + 1);
   };
   /**
-   * A press on the mic: a tap toggles it (MicButton); locked vertically it
-   * scrubs the history (minimized) or scrolls the log (expanded); locked
-   * horizontally it moves the box. Either lock swallows the click.
+   * A press on the mic (owner, 2026-11-10, push to talk: ptt.ts): a tap
+   * toggles always-on listening (MicButton's click); a long press is one
+   * voice line, recorded from the pointerdown and sent on release; held, a
+   * slide PTT_CANCEL_PX away arms a cancel. Locked horizontally before the
+   * hold, it moves the box. It no longer scrubs the history (drag the
+   * history itself; ↑/↓ still step through it).
    */
   const micAxis = useRef(createAxisLock());
   const micDragged = useRef(createDragFlag());
-  const micPress = useRef({ x: 0, y: 0, back: 0, scroll: 0 });
+  const micPress = useRef({ x: 0, y: 0 });
+  /** The push-to-talk state for the button (held: the red ring and the elapsed time). */
+  const [pttView, setPttView] = useState<{ state: PttState; since: number }>({
+    state: "idle",
+    since: 0,
+  });
+  const pttRec = useRef<ReturnType<typeof pttRecorder> | null>(null);
+  const pttAt = useRef(0);
+  /** The last press was push to talk: its click is no tap. */
+  const pttWasHold = useRef(false);
+  const ptt = useRef<ReturnType<typeof createPttGesture> | null>(null);
+  ptt.current ??= createPttGesture({
+    press: (at) => {
+      pttAt.current = at;
+      pttRec.current = pttRecorder();
+      pttRec.current.start();
+    },
+    hold: () => {
+      pttWasHold.current = true;
+      // A light tick (Android; iOS has no navigator.vibrate, and that is fine).
+      navigator.vibrate?.(PTT_HAPTIC_MS);
+    },
+    release: (at) => {
+      const rec = pttRec.current;
+      pttRec.current = null;
+      const start = pttAt.current;
+      if (!rec) return;
+      void rec
+        .finish()
+        .then(({ text, audioMs }) => {
+          if (!text) return;
+          const done = Date.now();
+          const timing: VoiceTiming = {
+            t_speechStart: start,
+            t_speechEnd: at,
+            t_uploadStart: at,
+            t_sttDone: done,
+            t_sent: done,
+            audioMs,
+          };
+          const to = targetRef.current;
+          // Sent at once: push to talk has no draft step.
+          sendRef.current(text, to === ROOT_NODE ? undefined : to, { source: "stt", timing });
+          window.dispatchEvent(
+            new CustomEvent(VOICE_SENT_EVENT, { detail: { sound: pageCues().send() } }),
+          );
+        })
+        // A failed transcription: logged for the dev view, the line is not sent.
+        .catch((e: unknown) => {
+          voice().log({ ev: "ptt-error", error: String((e as Error)?.message ?? e) });
+        });
+    },
+    drop: () => {
+      pttRec.current?.abort();
+      pttRec.current = null;
+    },
+    state: (st) =>
+      setPttView((v) => ({ state: st, since: st === "held" && v.state !== "away" ? Date.now() : v.since })),
+  });
   const micGesture = {
-    description: MIC_SCRUB_HINT,
+    description: MIC_PTT_HINT,
+    ptt: pttView,
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
       micAxis.current.down(e.clientX, e.clientY);
       micDragged.current.down();
-      micPress.current = {
-        x: e.clientX,
-        y: e.clientY,
-        back: floats.length ? back.current : 0,
-        scroll: log.current?.scrollTop ?? 0,
-      };
+      micPress.current = { x: e.clientX, y: e.clientY };
+      pttWasHold.current = false;
+      ptt.current!.down(e.clientX, e.clientY);
       e.currentTarget.setPointerCapture?.(e.pointerId);
     },
     onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
+      const g = ptt.current!;
+      // Held: the finger only arms or disarms the cancel; nothing else moves.
+      if (g.state() === "held" || g.state() === "away") return g.move(e.clientX, e.clientY);
       const was = micAxis.current.axis();
       const m = micAxis.current.move(e.clientX, e.clientY);
-      if (!m) return;
-      if (m.axis === "x") {
-        if (!was) begin(micPress.current.x, micPress.current.y);
-        handle.onPointerMove(e);
-        return;
-      }
-      if (open) {
-        if (!was) logDrag.start();
-        logDrag.move(m.dy);
-        return;
-      }
-      if (!was) setScrubbing(true);
-      const n = scrubBack(micPress.current.back, m.dy, Math.max(0, messages.length - 1));
-      if (!was || n !== back.current) scrubTo(n);
+      if (!m || m.axis !== "x") return;
+      // Sideways before the hold: a drag that moves the box, no clip.
+      g.drag();
+      if (!was) begin(micPress.current.x, micPress.current.y);
+      handle.onPointerMove(e);
     },
     onPointerUp: () => {
       const axis = micAxis.current.up();
-      if (!axis) return;
-      micDragged.current.dragEnded();
+      if (axis) micDragged.current.dragEnded();
       if (axis === "x") handle.onPointerUp();
-      else if (open) logDrag.end();
-      else {
-        setScrubbing(false);
-        setFloatEpoch((e) => e + 1); // the dwell starts over from the release
-      }
+      ptt.current!.up();
     },
     onPointerCancel: () => {
       const axis = micAxis.current.up();
       if (axis === "x") handle.onPointerCancel();
-      if (axis === "y") {
-        setScrubbing(false);
-        logDrag.end();
-      }
+      ptt.current!.cancel();
     },
     onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
       if (open ||(e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
@@ -2914,7 +2962,7 @@ export function DebugChat({
       const n = Math.max(0, Math.min(Math.max(0, messages.length - 1), from + (e.key === "ArrowUp" ? 1 : -1)));
       scrubTo(n);
     },
-    wasDrag: () => micDragged.current.wasDrag(),
+    wasDrag: () => micDragged.current.wasDrag() || pttWasHold.current,
   };
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const conns = plural(
