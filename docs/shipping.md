@@ -408,6 +408,15 @@ drop it. It stays safe while some agents still use it, because the order only ru
 one way: they hold the old lock and then enter the new one, and nothing holding the
 new lock ever takes the old one.
 
+## Source maps (off since 2026-11-10)
+
+`wrangler deploy` uploads source maps by default. Ours (wrangler's bundle of
+`worker.ts` plus the OpenNext build) reached 61.6 MiB, over Cloudflare's 60 MiB
+limit (error 10021), and every deploy failed. `wrangler.jsonc` now sets
+`"upload_source_maps": false`: stack traces in Workers Logs and `wrangler tail`
+show bundled positions. To turn maps back on, first shrink them under the limit
+(e.g. build with `--outdir`, drop `sourcesContent`, then deploy that bundle).
+
 ## Deploy order
 
 `.github/workflows/deploy-worker.yml` runs after CI passes on `main`: OpenNext
