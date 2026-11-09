@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { installNoCreditsWatch } from "@/lib/payments/no-credits-watch";
+import { installNoCreditsWatch, type CreditsRefusal } from "@/lib/payments/no-credits-watch";
 
-export type NoCreditsStrings = { message: string; topUp: string; close: string };
+export type NoCreditsStrings = { message: string; topUp: string; close: string; paused: string };
 
 /**
  * "Not enough credits · Get credits", on any page, when a paid route refused
@@ -18,8 +18,8 @@ export function NoCreditsNotice({
   strings: NoCreditsStrings;
   href?: string;
 }) {
-  const [shown, setShown] = useState(false);
-  useEffect(() => installNoCreditsWatch(window, () => setShown(true)), []);
+  const [shown, setShown] = useState<CreditsRefusal | null>(null);
+  useEffect(() => installNoCreditsWatch(window, setShown), []);
   if (!shown) return null;
   return (
     <div
@@ -48,16 +48,25 @@ export function NoCreditsNotice({
       className="lk-no-credits"
     >
       <span style={{ flex: 1 }}>
-        {strings.message}{" "}
-        <a href={href} style={{ fontWeight: 600, textDecoration: "underline", color: "inherit" }}>
-          {strings.topUp}
-        </a>
+        {shown === "paused" ? (
+          strings.paused
+        ) : (
+          <>
+            {strings.message}{" "}
+            <a
+              href={href}
+              style={{ fontWeight: 600, textDecoration: "underline", color: "inherit" }}
+            >
+              {strings.topUp}
+            </a>
+          </>
+        )}
       </span>
       <button
         type="button"
         aria-label={strings.close}
         title={strings.close}
-        onClick={() => setShown(false)}
+        onClick={() => setShown(null)}
         style={{
           minWidth: 32,
           minHeight: 32,

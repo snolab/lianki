@@ -9,6 +9,8 @@ import { isDev } from "@/lib/permissions";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { STT_WINDOW_MS, handleStt } from "@/lib/stt-handler";
 import { workersAiTranscribe } from "@/lib/workers-ai";
+import { paidStt } from "@/lib/payments/paid-calls";
+import { walletDb } from "@/lib/payments/wallet-db";
 
 /** The debug chat mic's transcription: lib/stt-handler.ts has the rules. */
 export const POST = async (req: Request) => {
@@ -28,6 +30,13 @@ export const POST = async (req: Request) => {
     user: user?.id ? { id: user.id } : null,
     owner: isDev(user?.email),
     transcribe: workersAiTranscribe,
+    // Paid from the user's credits (docs/payments.md, "What costs credits").
+    ...(user?.id
+      ? {
+          pay: <T>(bytes: number, run: () => Promise<T>) =>
+            paidStt({ userId: user.id, email: user.email, db: walletDb() }, bytes, run),
+        }
+      : {}),
     limit: (key, max) => checkRateLimit(key, { windowMs: STT_WINDOW_MS, max }),
   });
 };

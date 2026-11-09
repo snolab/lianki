@@ -9,7 +9,7 @@ import {
   payerOf,
 } from "@/lib/read/reader-route";
 import { fillGlosses, type GlossAi } from "@/lib/read/gloss-server";
-import { noCreditsResponse } from "@/lib/payments/metered";
+import { noCreditsResponse, pausedResponse } from "@/lib/payments/metered";
 import { glossMayAskModel, headOf } from "@/lib/read/gloss";
 import { draftOwn } from "@/lib/read/live-polish-server";
 
@@ -56,7 +56,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const ai: GlossAi | null = glossMayAskModel(body ?? {}, source) ? payerOf(ctx) : null;
   const [x] = await fillGlosses(ctx.db, book, words, ai);
   const back = x.back ?? null;
-  if (!back && ai?.refused) return noCreditsResponse(ai.refused);
+  if (!back && ai?.refused)
+    return ai.refused === "paused" ? pausedResponse() : noCreditsResponse(ai.refused);
   if (!byok) return json({ term: x.term ?? x.w, back });
   const open = !back && source !== "vibe" && book.lang !== "und" && !book.names?.has(x.w);
   return json({

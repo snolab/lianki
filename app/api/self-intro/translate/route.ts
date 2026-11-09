@@ -1,3 +1,6 @@
+import { refusal } from "@/lib/payments/metered";
+import { MAX_OUT, openAiCreate, paidChat } from "@/lib/payments/paid-calls";
+import { walletDb } from "@/lib/payments/wallet-db";
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
@@ -89,23 +92,31 @@ export async function POST(req: NextRequest) {
     const targetLangName = LANGUAGE_NAMES[targetLanguage];
 
     // Use OpenAI to translate
-    const completion = await openai.chat.completions.create({
-      model: textModel(),
-      messages: [
-        {
-          role: "system",
-          content: `You are a professional translator. Translate the given English sentence to ${targetLangName}.
+    const paid = await paidChat(
+      { userId: session!.user.id, email: email, db: walletDb() },
+      "self-intro.translate",
+      {
+        model: textModel(),
+        messages: [
+          {
+            role: "system",
+            content: `You are a professional translator. Translate the given English sentence to ${targetLangName}.
 Only return the translated sentence, nothing else.
 Make it natural and appropriate for self-introduction.
 If the target language is the same as the input, just return it as is.`,
-        },
-        {
-          role: "user",
-          content: englishSentence,
-        },
-      ],
-      temperature: 0.3,
-    });
+          },
+          {
+            role: "user",
+            content: englishSentence,
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: MAX_OUT["self-intro.translate"],
+      },
+      openAiCreate(openai),
+    );
+    if (!paid.ok) return refusal(paid);
+    const completion = paid.value;
 
     const translatedText = completion.choices[0]?.message?.content?.trim() || englishSentence;
 

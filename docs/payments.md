@@ -287,9 +287,24 @@ There is **no free allowance**: a balance of 0 gets the refusal below.
 made with — 2 input tokens per prompt character (a ceiling: Latin text is
 ~0.3, CJK ~1), 4,000 per image, every output token the call may produce;
 speech at 3 characters a second; audio at 2,000 bytes a second — so the real
-cost is at most the hold by construction. If a provider still reports more
-(pricing drift), it is logged `credits.overage` (feature and amounts only, no
-user data) and settled at the hold: never charged past it.
+cost is at most the hold by construction. The answer ceilings are data
+(`MAX_OUT` in `lib/payments/paid-calls.ts`, the `max_tokens` of each seam
+call), the same for everyone and never shrunk to fit a balance.
+
+**Neither side eats an overage.** Our unit price is the provider's list price
+× `MARGIN`, and the hold is that price × the call's ceilings, so a capped call's
+hold covers the provider's real bill (unit test "every hold covers the
+provider's real bill", `unit/paid-routes.test.ts`, for every model and kind).
+If a call still costs more than its hold (pricing drift, a ceiling wrong), it
+is settled at the hold (never charged past it), alerted (`credits.overage`,
+feature and amounts only, plus an error line), and **the feature is paused for
+everyone**: a row in `credit_feature_pause` (`0065_credit_feature_pause.sql`)
+under the current `PRICES_VERSION`. A paused feature refuses before any hold
+or call — HTTP **503** `{error: "credits-paused"}` with `x-lianki-credits:
+paused`, and the page's notice says "temporarily unavailable, nothing was
+charged" in the user's language. It resumes when the price table is fixed and
+`PRICES_VERSION` bumped (a deploy): the old row no longer matches. No timer, no
+manual switch to forget.
 
 **Who pays nothing.** An `admin` (lib/permissions.ts, a data grant — no
 hardcoded email): the people who pay the provider; logged `credits.free`. A
@@ -317,14 +332,14 @@ is 225 credits.
 | `read.live-polish` | `/api/read/[id]/polish-live` | `read.live-polish` | Workers AI · DeepSeek (or `READ_POLISH_MODEL`) | wallet | ~0.2 / 1–3 |
 | `self-intro.import` | `/api/self-intro/import` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.5 / ≤ 9 (40,000 characters + 4 images) |
 | `self-intro.followup` | `/api/self-intro/followup` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.2 / 1 |
-| `words.tts` | `/api/words/tts` (cache miss only) | — | Workers AI · MeloTTS / Aura-2 | **not yet charged** — follow-up PR | MeloTTS ~0.001 per clip; Aura-2 ~0.7 per 100 characters |
-| `speech.stt` | `/api/debug/stt` (the chat's mic, voice mode) | `words.voice-mode` | Workers AI · Whisper turbo | **not yet charged** — follow-up PR | ~0.03 per 15 s utterance |
-| `ai-sentences` | `/api/ai-sentences/generate`, `/new-word` | — (`/lab/ai-vocab`) | Workers AI · Llama 3.3 70B | **not yet charged** — follow-up PR | ~0.3 |
-| `polyglot.translate`, `polyglot.tts` | `/api/polyglot/*` | — (`/lab/polyglot`) | Workers AI · Llama / MeloTTS | **not yet charged** — follow-up PR | ~0.3 / ~0.01 |
-| `self-intro.translate`, `self-intro.tts` | `/api/self-intro/translate`, `/tts` | — | Workers AI · Llama / MeloTTS | **not yet charged** — follow-up PR | ~0.3 / ~0.01 |
-| `roadmap.generate` | `/api/roadmap/generate` | — | Workers AI · Llama | **not yet charged** — follow-up PR | ~1 |
-| `blog.translate` | `/api/translate` (blog post, any signed-in user; the result is shared) | — | Workers AI · gpt-oss-120b | **not yet charged** — follow-up PR | ~5 per post |
-| `tts` | `/api/tts` (legacy; no page calls it) | — | Workers AI · MeloTTS | **not yet charged** — follow-up PR | ~0.01 |
+| `words.tts` | `/api/words/tts` (cache miss only) | — | Workers AI · MeloTTS / Aura-2 | wallet; a recorded clip or an R2-cached clip is free; Aura-2 held at its price | MeloTTS ~0.001 per clip; Aura-2 ~0.7 per 100 characters |
+| `speech.stt` | `/api/debug/stt` (the chat's mic, voice mode) | `words.voice-mode` | Workers AI · Whisper turbo | wallet, by the audio's size; both models failing → refunded. The owner's local STT (his Mac) costs nothing | ~0.03 per 15 s utterance |
+| `ai-sentences` | `/api/ai-sentences/generate`, `/new-word` | — (`/lab/ai-vocab`) | Workers AI · Llama 3.3 70B | wallet | ~0.3 |
+| `polyglot.translate`, `polyglot.tts` | `/api/polyglot/*` | — (`/lab/polyglot`) | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
+| `self-intro.translate`, `self-intro.tts` | `/api/self-intro/translate`, `/tts` | — | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
+| `roadmap.generate` | `/api/roadmap/generate` | — | Workers AI · Llama | wallet | ~1 |
+| `blog.translate` | `/api/translate` (blog post, any signed-in user; the result is shared) | — | Workers AI · gpt-oss-120b | wallet: held before the stream, settled when it ends; a translation already in the PR is free | ~5 per post |
+| `tts` | `/api/tts` (legacy; no page calls it) | — | Workers AI · MeloTTS | wallet | ~0.01 |
 
 Not charged, on purpose (no provider bill per call):
 

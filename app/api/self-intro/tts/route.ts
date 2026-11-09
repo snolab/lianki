@@ -1,3 +1,6 @@
+import { refusal } from "@/lib/payments/metered";
+import { paidSpeech } from "@/lib/payments/paid-calls";
+import { walletDb } from "@/lib/payments/wallet-db";
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
@@ -69,10 +72,14 @@ export async function POST(req: NextRequest) {
     // are accepted and ignored rather than rejected, which would break older
     // clients. `language` was already being sent and previously ignored; it is
     // what MeloTTS actually needs.
-    const { audio, contentType } = await workersAiSpeech({
+    const paid = await paidSpeech(
+      { userId: session!.user.id, email, db: walletDb() },
+      "self-intro.tts",
       text,
-      lang: resolveTtsLang(text, language),
-    });
+      () => workersAiSpeech({ text, lang: resolveTtsLang(text, language) }),
+    );
+    if (!paid.ok) return refusal(paid);
+    const { audio, contentType } = paid.value;
 
     // Extension follows the real container — MeloTTS returns WAV, not the MP3
     // Cloudflare documents.

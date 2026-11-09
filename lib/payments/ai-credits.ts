@@ -164,19 +164,39 @@ export async function settleAi(
  * that long, so the reply that took them crashed before settling. Each is
  * settled at no cost (what Workers AI billed is unknown: refund it all).
  */
+/** Credits held right now by calls still in progress (shown as "in progress"; not spendable). */
+export async function pendingHolds(d1: D1WithBatch, userId: string): Promise<number> {
+  const row = await d1
+    .prepare(
+      "SELECT COALESCE(SUM(reserved), 0) AS n FROM credit_ai_charge WHERE userId = ? AND status = 'pending'",
+    )
+    .bind(userId)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
 export async function sweepStaleAi(
   d1: D1WithBatch,
   staleMs: number,
   now = new Date(),
   limit = 20,
+  /** Only this wallet's holds (a read of that wallet releases its own expired holds). */
+  userId?: string,
 ): Promise<number> {
   const before = new Date(now.getTime() - staleMs).toISOString();
-  const { results } = await d1
-    .prepare(
-      "SELECT key FROM credit_ai_charge WHERE status = 'pending' AND createdAt < ? ORDER BY createdAt LIMIT ?",
-    )
-    .bind(before, limit)
-    .all<{ key: string }>();
+  const { results } = await (
+    userId
+      ? d1
+          .prepare(
+            "SELECT key FROM credit_ai_charge WHERE status = 'pending' AND createdAt < ? AND userId = ? ORDER BY createdAt LIMIT ?",
+          )
+          .bind(before, userId, limit)
+      : d1
+          .prepare(
+            "SELECT key FROM credit_ai_charge WHERE status = 'pending' AND createdAt < ? ORDER BY createdAt LIMIT ?",
+          )
+          .bind(before, limit)
+  ).all<{ key: string }>();
   let n = 0;
   for (const r of results) if (await settleAi(d1, r.key, 0, now)) n++;
   return n;

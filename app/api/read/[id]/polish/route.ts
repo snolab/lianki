@@ -7,7 +7,7 @@ import { polishChunksAi } from "@/lib/read/polish-server";
 import { prepareBook } from "@/lib/read/prep-server";
 import { readerBook } from "@/lib/read/reader-book";
 import { badRequest, json, readerCtx, payerOf } from "@/lib/read/reader-route";
-import { noCreditsResponse } from "@/lib/payments/metered";
+import { isRefused, refusalOf } from "@/lib/payments/metered";
 import { carrySentenceCardsByText, keepRawText, readRawText } from "@/lib/read/reader-store";
 import { sentenceCarryMap } from "@/lib/read/sentence-cards";
 import { bookHash } from "@/lib/read/units";
@@ -65,7 +65,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   };
   const chunks = polishChunks(raw.lines, new Set(parsed.headings));
   const run = await polishChunksAi(chunks, payerOf(ctx));
-  if (!run.ok && run.error === "no-credits") return noCreditsResponse(run);
+  if (isRefused(run)) return refusalOf(run);
   if (!run.ok) {
     const status = { busy: 429, "too-long": 413, "model-failed": 502, "not-configured": 503 }[
       run.error

@@ -187,6 +187,7 @@ async function generate(
   });
   if (!paid.ok) {
     if (paid.reason === "no-credits") ai.refused = { balance: paid.balance, need: paid.need };
+    if (paid.reason === "paused") ai.refused = "paused";
     return new Map();
   }
   const made = new Map(paid.value.flatMap((d) => [...d.got]));
@@ -203,7 +204,7 @@ async function generate(
 }
 
 /** A gloss's payer; `refused` is set when their credits did not cover the model's words. */
-export type GlossAi = AiPayer & { complete?: Complete; refused?: NoCredits };
+export type GlossAi = AiPayer & { complete?: Complete; refused?: NoCredits | "paused" };
 
 /** Model calls per user per window: a guard against runaway cost, not a quota shown to anyone. */
 const AI_LIMIT = { windowMs: 10 * 60_000, max: 30 };

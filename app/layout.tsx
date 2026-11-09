@@ -104,7 +104,12 @@ export default async function RootLayout({
   const leave = String(getIntlayer("leave-guard", locale as never).unsaved);
   // "Not enough credits · Get credits" (NoCreditsNotice, credits-needed.content.ts).
   const cn = getIntlayer("credits-needed", locale as never);
-  const credits = { message: String(cn.message), topUp: String(cn.topUp), close: String(cn.close) };
+  const credits = {
+    message: String(cn.message),
+    topUp: String(cn.topUp),
+    close: String(cn.close),
+    paused: String(cn.paused),
+  };
   // The disclaimer before another website (ExternalLinkGuard, external-link.content.ts).
   const ext = getIntlayer("external-link", locale as never);
   const extStrings: ExternalLinkStrings = {

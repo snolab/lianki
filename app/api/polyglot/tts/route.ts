@@ -1,3 +1,6 @@
+import { refusal } from "@/lib/payments/metered";
+import { paidSpeech } from "@/lib/payments/paid-calls";
+import { walletDb } from "@/lib/payments/wallet-db";
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
@@ -52,7 +55,14 @@ export async function POST(req: NextRequest) {
 
     // MeloTTS has no voice or speed control, so the previous "nova" at 1.0x has
     // no equivalent — it picks the voice from the language.
-    const { audio, contentType } = await workersAiSpeech({ text });
+    const paid = await paidSpeech(
+      { userId: session!.user.id, email, db: walletDb() },
+      "polyglot.tts",
+      text,
+      () => workersAiSpeech({ text }),
+    );
+    if (!paid.ok) return refusal(paid);
+    const { audio, contentType } = paid.value;
 
     // Extension follows the real container: MeloTTS returns WAV despite
     // Cloudflare documenting MP3, and a .mp3 file that is actually RIFF is a

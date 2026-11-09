@@ -9,6 +9,7 @@
  * The route (app/api/debug/stt/route.ts) only wires in the session, the
  * Workers AI client and the rate limiter, so this is tested on its own.
  */
+import { refusal, type Metered } from "@/lib/payments/metered";
 import type { SttSignals } from "@lianki/debug-chat/stt-guard";
 import {
   DEFAULT_STT_MODEL,
@@ -42,11 +43,19 @@ export type SttDeps = {
     lang?: string;
     hint?: SttHint;
   }) => Promise<{ text: string; language?: string; signals?: SttSignals }>;
+  /**
+   * The transcription paid from the user's credits (lib/payments/paid-calls.ts
+   * paidStt); none: unmetered (tests, the owner's bench tools).
+   */
+  pay?: <T>(bytes: number, run: () => Promise<T>) => Promise<Metered<T>>;
   /** A fixed-window counter: may `key` make one more request out of `max`? */
   limit: (key: string, max: number) => { allowed: boolean; retryAfterMs: number };
   clock?: () => number;
   log?: (o: Record<string, unknown>) => void;
 };
+
+/** Both models failed: 502 with this message, and the hold refunded. */
+class SttFailed extends Error {}
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(body, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -77,21 +86,35 @@ export async function handleStt(req: Request, d: SttDeps): Promise<Response> {
   const t0 = clock();
   let used = model;
   let out: { text: string; language?: string; signals?: SttSignals };
-  try {
-    out = await d.transcribe({ audio, mime, model, lang, hint });
-  } catch (e) {
-    // The default failing falls back once; a model the owner asked for does not.
-    if (model !== DEFAULT_STT_MODEL || (d.owner && isSttModel(asked))) {
-      log({ msg: "debug.stt.error", model, bytes: audio.byteLength });
-      return json({ error: `transcription failed: ${(e as Error).message.slice(0, 200)}` }, 502);
-    }
-    used = FALLBACK_STT_MODEL;
+  // One attempt: the default, falling back once; a model the owner asked for does not.
+  const attempt = async () => {
     try {
-      out = await d.transcribe({ audio, mime, model: used, lang, hint });
-    } catch (e2) {
-      log({ msg: "debug.stt.error", model: used, bytes: audio.byteLength });
-      return json({ error: `transcription failed: ${(e2 as Error).message.slice(0, 200)}` }, 502);
+      out = await d.transcribe({ audio, mime, model, lang, hint });
+    } catch (e) {
+      if (model !== DEFAULT_STT_MODEL || (d.owner && isSttModel(asked))) {
+        log({ msg: "debug.stt.error", model, bytes: audio.byteLength });
+        throw new SttFailed(`transcription failed: ${(e as Error).message.slice(0, 200)}`);
+      }
+      used = FALLBACK_STT_MODEL;
+      try {
+        out = await d.transcribe({ audio, mime, model: used, lang, hint });
+      } catch (e2) {
+        log({ msg: "debug.stt.error", model: used, bytes: audio.byteLength });
+        throw new SttFailed(`transcription failed: ${(e2 as Error).message.slice(0, 200)}`);
+      }
     }
+    return out;
+  };
+  try {
+    if (d.pay) {
+      // Paid from the user's credits, held by the audio's size; a failure is refunded.
+      const paid = await d.pay(audio.byteLength, attempt);
+      if (!paid.ok) return refusal(paid);
+      out = paid.value;
+    } else out = await attempt();
+  } catch (e) {
+    if (e instanceof SttFailed) return json({ error: e.message }, 502);
+    throw e;
   }
   const ms = clock() - t0;
   log({

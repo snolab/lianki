@@ -1,4 +1,8 @@
 import { streamText } from "ai";
+import { refusal, settleHold, takeHold } from "@/lib/payments/metered";
+import { MAX_OUT } from "@/lib/payments/paid-calls";
+import { textHoldUsd, textUsd } from "@/lib/payments/prices";
+import { walletDb, walletUserId } from "@/lib/payments/wallet-db";
 import {
   isWorkersAiConfigured,
   textModelHq,
@@ -101,17 +105,34 @@ export async function GET(request: NextRequest) {
 
   const targetLanguage = LOCALE_NAMES[locale] ?? locale;
 
-  const result = streamText({
-    model: workersAiProvider()(textModelHq()),
-    system: `You are a professional technical translator. Translate markdown blog posts accurately while:
+  // Paid from the requester's credits: the post's most held before the stream
+  // starts, settled when it ends (docs/payments.md, "What costs credits").
+  const model = textModelHq();
+  const system = `You are a professional technical translator. Translate markdown blog posts accurately while:
 - Preserving ALL markdown formatting (headers, bold, italic, lists, tables, code blocks)
 - Preserving ALL code snippets exactly as-is (do not translate code inside backticks or code fences)
 - Translating frontmatter fields: title, summary, and tags (translate tag text but keep array structure)
 - Keeping frontmatter keys (title, date, tags, summary) in English
 - Keeping the date field unchanged
 - Preserving all URLs and links unchanged
-- Outputting ONLY the translated markdown, no commentary`,
-    prompt: `Translate the following markdown blog post to ${targetLanguage}:\n\n${englishRaw}`,
+- Outputting ONLY the translated markdown, no commentary`;
+  const prompt = `Translate the following markdown blog post to ${targetLanguage}:\n\n${englishRaw}`;
+  const maxOut = MAX_OUT["blog.translate"];
+  const holdUsd = textHoldUsd(model, system.length + prompt.length, maxOut);
+  const db = walletDb();
+  const held = await takeHold(
+    { d1: db },
+    { userId: await walletUserId(db, requesterEmail), email: requesterEmail },
+    { what: "blog.translate", holdUsd },
+  );
+  if (!held.ok) return refusal(held);
+  const hold = held.hold;
+
+  const result = streamText({
+    model: workersAiProvider()(model),
+    system,
+    prompt,
+    maxOutputTokens: maxOut,
   });
 
   // Pass the text through, and commit it to the translations PR only once the
@@ -119,6 +140,17 @@ export async function GET(request: NextRequest) {
   const { textStream } = result;
   const encoder = new TextEncoder();
   let fullText = "";
+  let failed = false;
+  const usedUsd = async () => {
+    try {
+      const u = await result.usage;
+      return u?.inputTokens || u?.outputTokens
+        ? textUsd(model, u.inputTokens ?? 0, u.outputTokens ?? 0)
+        : holdUsd;
+    } catch {
+      return holdUsd;
+    }
+  };
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -139,10 +171,12 @@ export async function GET(request: NextRequest) {
           }
         }
       } catch (error) {
+        failed = true;
         logSanitizedError("translate.stream", error, { cacheKey });
         throw error;
       } finally {
         controller.close();
+        await settleHold(hold, failed ? null : await usedUsd()).catch(() => 0);
       }
     },
   });

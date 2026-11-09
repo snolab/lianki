@@ -7,7 +7,7 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
 import type { D1Batch } from "@/lib/read/reader-store";
-import { CREDITS_HEADER, CREDITS_NEEDED } from "@/lib/payments/no-credits-watch";
+import { CREDITS_HEADER, CREDITS_NEEDED, CREDITS_PAUSED } from "@/lib/payments/no-credits-watch";
 import { readJsonCapped } from "@/lib/security/route-guard";
 import { sameOriginJson } from "@/lib/security/same-origin";
 import { NOT_FOUND, vibeUserId, type Reply } from "./api";
@@ -19,6 +19,7 @@ export const reply = (r: Reply) =>
       "cache-control": "no-store",
       // A credit refusal (lib/payments/metered.ts): the page's notice hears it.
       ...(r.body.error === "no-credits" ? { [CREDITS_HEADER]: CREDITS_NEEDED } : {}),
+      ...(r.body.error === "credits-paused" ? { [CREDITS_HEADER]: CREDITS_PAUSED } : {}),
     },
   });
 

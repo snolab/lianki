@@ -9,16 +9,10 @@
  * Nothing here stores or logs the material: it lives in this request's
  * memory only. The one log line is the cost (numbers only).
  */
+import { refusedAs, type Refused } from "@/lib/payments/metered";
 import { z } from "zod";
 import { PARTNER_AI_MODEL } from "@/lib/partner-ai-config";
-import {
-  payAi,
-  promptChars,
-  usageUsd,
-  type AiPayer,
-  type Complete,
-  type NoCredits,
-} from "@/lib/read/gloss-server";
+import { payAi, promptChars, usageUsd, type AiPayer, type Complete } from "@/lib/read/gloss-server";
 import { textHoldUsd } from "@/lib/payments/prices";
 import { IMPORT, SELF_INTRO_FIELDS, type SelfIntroField } from "./import-config";
 
@@ -177,7 +171,7 @@ export function importMessages(req: ImportRequest, today: string) {
 export type ExtractResult =
   | { ok: true; facts: ImportFact[] }
   | { ok: false; error: "empty" | "model-failed" }
-  | ({ ok: false; error: "no-credits" } & NoCredits);
+  | Refused;
 
 /** Material → facts, in one model call, paid from the user's credits (payAi: held first). */
 export async function extractSelfIntro(
@@ -209,10 +203,7 @@ export async function extractSelfIntro(
       });
       return { value: r, usd: usageUsd(PARTNER_AI_MODEL, r.usage, hold) };
     });
-    if (!paid.ok)
-      return paid.reason === "no-credits"
-        ? { ok: false, error: "no-credits", balance: paid.balance, need: paid.need }
-        : { ok: false, error: "model-failed" };
+    if (!paid.ok) return refusedAs(paid, { ok: false, error: "model-failed" } as const);
     content = paid.value.choices?.[0]?.message?.content ?? "";
   } catch (err) {
     // The error's name only: a provider message could echo the input.

@@ -10,6 +10,13 @@
  * No I/O, no imports from the app: unit-testable and safe for any bundle.
  */
 
+/**
+ * This table's version. A feature paused after an overage
+ * (lib/payments/metered.ts) stays paused only while this is unchanged: bump it
+ * with any price or ceiling change, and the deploy un-pauses everything.
+ */
+export const PRICES_VERSION = "2026-11-09";
+
 /** Our price over the provider's list price (covers fees, retries, rounding). */
 export const MARGIN = 1.5;
 

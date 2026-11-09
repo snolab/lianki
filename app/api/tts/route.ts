@@ -1,3 +1,6 @@
+import { refusal, type Metered } from "@/lib/payments/metered";
+import { paidSpeech } from "@/lib/payments/paid-calls";
+import { walletDb } from "@/lib/payments/wallet-db";
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
@@ -126,18 +129,25 @@ export const POST = async (req: NextRequest) => {
     return NextResponse.json({ error: WORKERS_AI_NOT_CONFIGURED }, { status: 500 });
   }
 
-  let audioBuffer: Buffer<ArrayBuffer>;
-  let audioType: string;
+  // A cache miss is paid from the user's credits (docs/payments.md, "What costs credits").
+  let paid: Metered<{ audio: Buffer<ArrayBuffer>; contentType: string }>;
   try {
     // `voice` and `model` stay validated and stay in the cache key, but MeloTTS
     // has neither — one voice per language, no tts-1/tts-1-hd tiers. Kept in
     // the request contract so existing clients do not break; see
     // docs/workers-ai.md for what that costs.
-    ({ audio: audioBuffer, contentType: audioType } = await workersAiSpeech({ text }));
+    paid = await paidSpeech(
+      { userId: session.user.id, email: session.user.email, db: walletDb() },
+      "tts",
+      text,
+      () => workersAiSpeech({ text }),
+    );
   } catch (err) {
     logSanitizedError("tts.workersai.generate", err, { requester });
     return NextResponse.json({ error: "Failed to generate speech" }, { status: 500 });
   }
+  if (!paid.ok) return refusal(paid);
+  const { audio: audioBuffer, contentType: audioType } = paid.value;
 
   // Cache the audio (R2 or GridFS depending on DB_BACKEND)
   try {

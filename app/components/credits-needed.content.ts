@@ -45,6 +45,24 @@ const dictionary = {
       mr: "क्रेडिट्स मिळवा",
       ko: "크레딧 받기",
     }),
+    paused: t({
+      en: "This feature is temporarily unavailable. Nothing was charged. Please try again later.",
+      zh: "此功能暂时无法使用，未扣除任何积分。请稍后再试。",
+      hi: "यह सुविधा अभी अस्थायी रूप से उपलब्ध नहीं है। कोई क्रेडिट नहीं काटा गया। कृपया बाद में फिर कोशिश करें।",
+      es: "Esta función no está disponible temporalmente. No se ha cobrado nada. Inténtalo de nuevo más tarde.",
+      fr: "Cette fonction est temporairement indisponible. Rien n'a été débité. Réessayez plus tard.",
+      ar: "هذه الميزة غير متاحة مؤقتًا. لم يُخصم أي رصيد. يُرجى المحاولة لاحقًا.",
+      bn: "এই সুবিধাটি সাময়িকভাবে বন্ধ আছে। কোনো ক্রেডিট কাটা হয়নি। পরে আবার চেষ্টা করুন।",
+      pt: "Este recurso está temporariamente indisponível. Nada foi cobrado. Tente novamente mais tarde.",
+      ru: "Эта функция временно недоступна. Ничего не списано. Попробуйте позже.",
+      ur: "یہ فیچر عارضی طور پر دستیاب نہیں ہے۔ کوئی کریڈٹ نہیں کاٹا گیا۔ براہ کرم بعد میں دوبارہ کوشش کریں۔",
+      id: "Fitur ini untuk sementara tidak tersedia. Tidak ada kredit yang dipotong. Coba lagi nanti.",
+      de: "Diese Funktion ist vorübergehend nicht verfügbar. Es wurde nichts abgebucht. Bitte versuche es später erneut.",
+      ja: "この機能は一時的に利用できません。クレジットは使われていません。しばらくしてからお試しください。",
+      sw: "Kipengele hiki hakipatikani kwa muda. Hakuna krediti iliyokatwa. Tafadhali jaribu tena baadaye.",
+      mr: "ही सुविधा तात्पुरती उपलब्ध नाही. कोणतेही क्रेडिट्स वजा झाले नाहीत. कृपया नंतर पुन्हा प्रयत्न करा.",
+      ko: "이 기능은 일시적으로 사용할 수 없어요. 크레딧은 차감되지 않았어요. 잠시 후 다시 시도해 주세요.",
+    }),
     close: t({
       en: "Close",
       zh: "关闭",
@@ -71,6 +89,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "A small notice that slides up at the bottom of any page when something the user just asked for (an AI translation, a word meaning, a transcript polish, read-aloud audio, voice typing, an AI-made sentence) was not done because their prepaid credit balance (the wallet on the Membership page) does not cover it. A link (topUp) follows it. Friendly and plain, no numbers or prices. Use the same word for 'credits' as the Membership page's wallet (积分 in Chinese). Two short sentences: not enough credits for this; AI features and generated speech are paid from credits.",
   topUp:
     "Link right after the not-enough-credits notice (message); it opens the Membership page where the user adds credits to their wallet. 2–3 words, an action; the same wording as the Learning Partner chat's 'Get credits' link.",
+  paused:
+    "The same bottom notice, shown instead of the not-enough-credits text when a paid feature (an AI translation, a word meaning, read-aloud audio, voice typing…) is switched off for everyone for a while because its cost outran our prices; the user was not charged. No link follows it. Calm and plain, no technical reason, no numbers. Three short sentences: temporarily unavailable; nothing was charged (use the wallet's word for credits where natural); try again later.",
   close:
     "Accessible label (screen readers, tooltip) of the × button that dismisses the not-enough-credits notice. One word, a verb.",
 };
