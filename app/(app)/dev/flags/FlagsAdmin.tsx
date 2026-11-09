@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useIntlayer } from "next-intlayer";
 import { useUi } from "@lianki/ui-state";
-import type { FlagKey } from "@/lib/flags";
+import { FLAGS, type FlagDef, type FlagKey } from "@/lib/flags";
 import type { FlagLogEntry, FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { card, Chevron, FlagCard, jst } from "./FlagCard";
@@ -20,6 +21,7 @@ import {
   type StateFilter,
 } from "./flag-view";
 import { flagViewPrefs } from "./flag-view-store";
+import { DevToast, type DevToastMsg } from "../DevToast";
 
 type State = {
   flags: FlagRow[];
@@ -35,6 +37,10 @@ const STATE_FILTERS: [StateFilter, string][] = [
   ["off", "关着"],
 ];
 
+/** Puts values into a string's {placeholders}. */
+const fill = (s: string, v: Record<string, string | number>) =>
+  s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
+
 const pill = (on: boolean) =>
   `rounded-full border px-3 py-1 text-xs ${
     on
@@ -46,7 +52,9 @@ const pill = (on: boolean) =>
 export default function FlagsAdmin() {
   const [state, setState] = useState<State | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [note, setNote] = useState<{ key: FlagKey; text: string } | null>(null);
+  const t = useIntlayer("dev-flag-toast");
+  const [toast, setToast] = useState<DevToastMsg | null>(null);
+  const closeToast = useCallback(() => setToast(null), []);
   const [busy, setBusy] = useState<string | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -146,7 +154,7 @@ export default function FlagsAdmin() {
     // Payment flags move real money: ask once before turning one on.
     if (enabled && f.key.startsWith("payments.") && !window.confirm(`打开 ${f.key}？`)) return;
     setBusy(f.key);
-    setNote(null);
+    setToast(null);
     setHeld((h) =>
       h.has(f.key) ? h : new Map(h).set(f.key, isShipped(f, state?.prereqs?.[f.key])),
     );
@@ -159,11 +167,34 @@ export default function FlagsAdmin() {
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
         setState(data);
-        setNote({
-          key: f.key,
-          text: `${f.key} → ${enabled ? "开" : "关"}（${data.cacheSeconds ?? 30} 秒内生效）`,
+        const audience = (FLAGS[f.key] as FlagDef).audience;
+        setToast({
+          ok: true,
+          id: Date.now(),
+          text: fill(t.saved.value, {
+            flag: f.key,
+            state: enabled ? t.on.value : t.off.value,
+            seconds: data.cacheSeconds ?? state?.cacheSeconds ?? "",
+            audience:
+              audience === "owner"
+                ? t.ownerOnly.value
+                : audience === "allowlist"
+                  ? t.allowlist.value
+                  : t.everyone.value,
+          }),
         });
-      } else setNote({ key: f.key, text: data.error ?? `HTTP ${r.status}` });
+      } else
+        setToast({
+          ok: false,
+          id: Date.now(),
+          text: fill(t.failed.value, { flag: f.key, error: data.error ?? `HTTP ${r.status}` }),
+        });
+    } catch (e) {
+      setToast({
+        ok: false,
+        id: Date.now(),
+        text: fill(t.failed.value, { flag: f.key, error: String(e) }),
+      });
     } finally {
       setBusy(null);
     }
@@ -173,6 +204,10 @@ export default function FlagsAdmin() {
   const shown = groups.reduce((n, g) => n + g.rows.length, 0);
   return (
     <div className="space-y-4">
+      <DevToast msg={toast} onClose={closeToast} />
+      <p data-flags-cache-note className="text-xs opacity-70">
+        {fill(t.cacheNote.value, { seconds: state.cacheSeconds })}
+      </p>
       <div className="space-y-2">
         <label className="flex items-center gap-2 rounded-lg border border-[oklch(0_0_0/0.15)] dark:border-[oklch(1_0_0/0.2)] px-3 py-2">
           <svg
@@ -269,7 +304,6 @@ export default function FlagsAdmin() {
                     busy={busy !== null}
                     highlighted={highlighted === f.key}
                     expanded={expanded.has(f.key)}
-                    note={note?.key === f.key ? note.text : null}
                     onExpand={() => toggleRow(f.key)}
                     onToggle={() => void toggle(f)}
                   />
