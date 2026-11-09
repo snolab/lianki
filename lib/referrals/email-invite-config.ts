@@ -27,6 +27,13 @@ export const EMAIL_INVITE = {
   optOutPerIp: { max: 30, windowMs: 15 * 60_000 },
 } as const;
 
+/**
+ * The Resend tag every invite mail carries: its `invite_email_log` id. Resend
+ * echoes tags in its webhook events, so a complaint names the invite and counts
+ * against its inviter (lib/resend-webhook.ts).
+ */
+export const INVITE_LOG_TAG = "invite_log";
+
 export const RECIPIENT_WINDOW_MS = EMAIL_INVITE.perRecipientDays * DAY;
 
 /**

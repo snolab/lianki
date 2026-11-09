@@ -87,6 +87,15 @@ describe("send", () => {
     const seen = ok(JSON.stringify({ id: "x" }));
     await sendEmail({ to: "a@b.test", subject: "s", text: "t" });
     expect("html" in JSON.parse(seen().init.body as string)).toBe(false);
+    expect("tags" in JSON.parse(seen().init.body as string)).toBe(false);
+  });
+
+  it("passes tags through, so webhook events can name the mail", async () => {
+    configure();
+    const seen = ok(JSON.stringify({ id: "x" }));
+    const tags = [{ name: "invite_log", value: "00000000-0000-4000-8000-000000000000" }];
+    await sendEmail({ to: "a@b.test", subject: "s", text: "t", tags });
+    expect(JSON.parse(seen().init.body as string).tags).toEqual(tags);
   });
 
   it("surfaces Resend's reason rather than a bare status", async () => {

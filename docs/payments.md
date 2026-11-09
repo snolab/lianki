@@ -464,7 +464,8 @@ the invite card on `/membership`; Lianki mails that friend the inviter's existin
 | preview, sends nothing | `previewInviteMail()` / `renderFor()`; admin-only `GET /api/dev/invite-mail-preview?format=html\|text\|json&locale=` renders his own mail |
 | UI | `app/(app)/membership/EmailInviteBox.tsx`; opt-out page `/membership/invite-opt-out` |
 | tables | `db/migrations/0061_invite_email.sql`: `invite_email_log`, `invite_email_recipient`, `invite_email_suppression` |
-| tests | `unit/email-invite.test.ts`; QA `scripts/qa/qa-email-invite.mjs` (suite `email-invite`) |
+| bounces, complaints | `lib/resend-webhook.ts`; route `app/api/email/resend-webhook/route.ts` |
+| tests | `unit/email-invite.test.ts`, `unit/resend-webhook.test.ts`; QA `scripts/qa/qa-email-invite.mjs` (suite `email-invite`) |
 
 - **Who**: `isAdmin` always; Pro (`proEndsAt` in the future, not trial) once the
   flag `membership.email-invite` is on. Off: admins only.
@@ -504,9 +505,17 @@ the invite card on `/membership`; Lianki mails that friend the inviter's existin
   token is `<logId>.<HMAC>` with a key derived from `AUTH_SECRET` by HKDF (no new
   secret), so nobody can opt out an address they did not receive. A GET on the
   one-click URL only redirects to the page. Per-IP limit 30 / 15 min.
-- **Bounces and complaints** are not wired yet: Resend's webhooks are signed
-  (Svix) and need a new secret (`RESEND_WEBHOOK_SECRET`) and a webhook set up in
-  Resend. The suppression table already takes `bounce` / `complaint`.
+- **Bounces and complaints**: Resend's webhook, `POST /api/email/resend-webhook`
+  (`lib/resend-webhook.ts`; Svix-signed, secret `RESEND_WEBHOOK_SECRET`; setup
+  in [secrets-and-auth.md](secrets-and-auth.md), "Resend webhook"). A hard
+  bounce (`bounce.type` "Permanent") or a complaint puts the address's hash in
+  `invite_email_suppression` (reason `bounce` / `complaint`; a complaint
+  outranks an unsubscribe or a bounce, an abuse report stays), idempotently.
+  Every invite mail carries the Resend tag `invite_log=<log id>`, so a
+  complaint about an invite also stamps that row's `reportedAt` and counts
+  toward the inviter's report block, like the Report abuse link (matched by
+  Resend's email id = `providerId` when the tag is missing). Soft bounces and
+  every other event: ignored.
 - **Local servers never mail**: on a localhost origin the send is a stub
   (`invite-email.stub-send`, no address), whatever `.dev.vars` holds.
 
