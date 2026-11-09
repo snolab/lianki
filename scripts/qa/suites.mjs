@@ -157,6 +157,22 @@ export const SUITES = [
     paths: ["app/(app)/words/**", "app/(app)/alphabet/**", "app/api/words/**", "lib/words/**"],
     sensitive: true,
   },
+  // The card-height pinch on /words and the faded reviewed slip (lib/words/row-pinch.ts).
+  {
+    name: "WORDS PINCH (qa-words-pinch)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-words-pinch.mjs"],
+    base: true,
+    id: "words-pinch",
+    // The study view and the pinch's own files; the /words route tree is the words suite's.
+    paths: [
+      "app/(app)/words/WordsClient.tsx",
+      "lib/words/row-pinch.ts",
+      "lib/words/use-row-pinch.ts",
+      "lib/words/row-layout.ts",
+    ],
+    sensitive: true,
+  },
   {
     name: "READ EPUB (qa-read-epub)",
     cmd: "bun",

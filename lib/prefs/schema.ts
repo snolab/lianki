@@ -31,6 +31,7 @@ import { allImmersionSites, IMMERSION_LANGUAGES } from "@/lib/immersion-sites";
 import { FEEL_RANGES } from "@/lib/words/swipe-feel";
 import { BLOG_LOCALES } from "@/lib/constants";
 import { TEXT_MAX, TEXT_MIN } from "@/lib/text-size-boot";
+import { CARD_HEIGHT_RANGE } from "@/lib/words/row-pinch";
 import { cleanBackend } from "@/lib/byok/config";
 import {
   isTitleHost,
@@ -142,6 +143,8 @@ export const PREF_SCHEMAS = {
   "words.gradeTones": z.boolean(),
   "words.voiceMode": z.boolean(),
   "words.swipeMirror": z.boolean(),
+  // the rows' height, a factor of the default (lib/words/row-pinch.ts, pinched on the list)
+  "words.cardHeight": z.number().min(CARD_HEIGHT_RANGE[0]).max(CARD_HEIGHT_RANGE[1]),
   // the first-visit walkthrough was finished or skipped (lib/words/onboarding.ts)
   "words.onboarded": z.boolean(),
   // the swipe (Experimental)
