@@ -46,9 +46,9 @@ describe("registry", () => {
     expect(FLAG_KEYS).toContain("payments.stripe.live");
     expect(FLAG_KEYS).toContain("payments.komoju.live");
     // Default-on is for a flag that keeps something already live switchable, or a
-    // walkthrough the owner asked to ship on (words.onboarding, 2026-11-10).
+    // feature the owner asked to ship on (today.goal, words.onboarding, 2026-11-10).
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
-    expect(on).toEqual(["words.onboarding", "stt.polish"]);
+    expect(on).toEqual(["today.goal", "words.onboarding", "stt.polish"]);
     for (const k of FLAG_KEYS) expect(FLAGS[k].description.length).toBeGreaterThan(0);
     expect(FLAGS["payments.stripe.live"].default).toBe(false);
     expect(
