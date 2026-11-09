@@ -186,6 +186,16 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // The marble plan cards on /membership: marble by default, 360 px, measured text contrast over the stone.
+  {
+    name: "MEMBERSHIP MARBLE (qa-membership-marble)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-membership-marble.mjs"],
+    base: true,
+    id: "membership-marble",
+    paths: ["app/(app)/membership/**", "public/membership/**", "lib/plan-skin.ts"],
+    sensitive: false,
+  },
   // YouTube songs (docs/youtube-song-examples.md): flag gate, the ▶ per line, the popup's close rules.
   // Every YouTube host blocked: no video, no sound, no network.
   {
