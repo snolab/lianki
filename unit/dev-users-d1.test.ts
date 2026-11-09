@@ -9,7 +9,26 @@ import {
   READ_SIZES_TTL_MS,
   resetReadBlobCache,
 } from "@/lib/repos/devUserFiles";
-import { listDevUsers } from "@/lib/repos/devUsersD1";
+import { listDevUsers, monthlySignups } from "@/lib/repos/devUsersD1";
+
+describe("monthlySignups", () => {
+  test("counts accounts per JST month in one aggregate", async () => {
+    const d1 = createTestD1(testSchema()) as unknown as D1Like;
+    await d1.exec(`
+      INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt)
+        VALUES ('a', NULL, 'a@x.com', 1, '2026-10-31T14:59:59.000Z', '2026'),
+               ('b', NULL, 'b@x.com', 1, '2026-10-31T15:00:00.000Z', '2026'),
+               ('c', NULL, 'c@x.com', 1, '2026-11-08T01:00:00.000Z', '2026'),
+               ('d', NULL, 'd@x.com', 1, '2026-09-01', '2026'),
+               ('e', NULL, 'e@x.com', 1, 'not a date', '2026');
+    `);
+    expect(await monthlySignups(d1)).toEqual([
+      { month: "2026-09", n: 1 },
+      { month: "2026-10", n: 1 },
+      { month: "2026-11", n: 2 },
+    ]);
+  });
+});
 
 describe("listDevUsers", () => {
   test("joins each account with its activity and data, most recently seen first", async () => {
