@@ -290,6 +290,21 @@ export async function download(req: Request, id: string, d: InboxDeps): Promise<
   return new Response(obj.body, { headers: fileHeaders(it) });
 }
 
+/**
+ * One of `who`'s own files, served back to them only (any source): the
+ * stored, sniffed type, inline only for a safe image, else an attachment;
+ * no shared link exists. Anyone else, or a missing id: 404.
+ */
+export async function serveOwn(id: string, who: { id: string }, d: InboxDeps): Promise<Response> {
+  if (!isInboxId(id)) return notFound();
+  const it = await getItem(d.db(), id);
+  if (!it || it.ownerId !== who.id) return notFound();
+  const obj = await d.bucket().get(it.r2Key);
+  if (!obj) return notFound();
+  await chargeInbox(it.ownerId, { kind: "read", usd: readUsd(), bytes: it.size });
+  return new Response(obj.body, { headers: fileHeaders(it) });
+}
+
 /** DELETE /api/dev/inbox/<id> — the owner's own session only; the file and its row go for good. */
 export async function remove(id: string, d: InboxDeps): Promise<Response> {
   const who = await owner(d);
@@ -297,17 +312,17 @@ export async function remove(id: string, d: InboxDeps): Promise<Response> {
   return removeFor(id, who, d, "chat");
 }
 
-/** Delete one of `who`'s own files from `source`, for good (R2 object, row, usage). */
+/** Delete one of `who`'s own files (from `source`; null: any source), for good (R2 object, row, usage). */
 export async function removeFor(
   id: string,
   who: { id: string },
   d: InboxDeps,
-  source: InboxSource,
+  source: InboxSource | null,
 ): Promise<Response> {
   if (!isInboxId(id)) return notFound();
   const db = d.db();
   const it = await getItem(db, id);
-  if (!it || it.ownerId !== who.id || it.source !== source) return notFound();
+  if (!it || it.ownerId !== who.id || (source !== null && it.source !== source)) return notFound();
   const now = (d.now ?? Date.now)();
   // Everything stored (this file included) is settled up to now, then it goes.
   await settleStorage(it.ownerId, await usageOf(db, it.ownerId), now);

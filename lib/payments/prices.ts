@@ -71,6 +71,7 @@ export const FEATURES = [
   "polyglot.tts",
   "roadmap.generate",
   "blog.translate",
+  "words.import-ai",
   "tts",
 ] as const;
 export type Feature = (typeof FEATURES)[number];

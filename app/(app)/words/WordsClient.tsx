@@ -1970,6 +1970,7 @@ export default function WordsClient({
   voice = "off",
   ytSongs = false,
   importOn = false,
+  importAiOn = false,
   pinch = false,
   onboarding = false,
 }: {
@@ -1980,6 +1981,8 @@ export default function WordsClient({
   ytSongs?: boolean;
   /** The Import button at the top (`import.any`: every user while on; the owner on or off). */
   importOn?: boolean;
+  /** "Words with AI" on stored files (`words.import-ai`); credits are checked when the panel opens. */
+  importAiOn?: boolean;
   /** The card-height pinch on the list (`words.pinch-card-height`, on by default). */
   pinch?: boolean;
   /** `words.onboarding`: the walkthrough and its "?" by the heading (/words only, not /alphabet). */
@@ -2173,6 +2176,7 @@ export default function WordsClient({
         catalog={fullCatalog}
         offline={offline}
         importOn={importOn && !!config.imports}
+        importAiOn={importAiOn}
         onboarding={onboarding && !given}
         onOpen={setListId}
         onRefresh={refreshLists}
@@ -2641,6 +2645,7 @@ function ListPicker({
   catalog,
   offline,
   importOn,
+  importAiOn,
   onboarding,
   onOpen,
   onRefresh,
@@ -2655,6 +2660,8 @@ function ListPicker({
   offline: boolean;
   /** Show the Import button and panel at the top (ImportPanel.tsx). */
   importOn: boolean;
+  /** "Words with AI" on stored files, if the user's credits cover it. */
+  importAiOn: boolean;
   /** The walkthrough's "?" after the heading (WordsOnboarding.tsx). */
   onboarding: boolean;
   onOpen: (id: string) => void;
@@ -2998,7 +3005,10 @@ function ListPicker({
 
   // The Import button and its panel (ImportPanel.tsx): a list made from a
   // table shows up in the lists at once.
-  const importPanel = useImportPanel({ onAdded: () => void onRefresh() });
+  const importPanel = useImportPanel({
+    onAdded: () => void onRefresh(),
+    aiOn: importAiOn,
+  });
 
   const addGroup = async () => {
     const name = prompt(text.groupName.value)?.trim();
