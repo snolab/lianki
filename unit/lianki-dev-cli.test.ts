@@ -309,6 +309,9 @@ describe("lianki-dev say against a stub hub", () => {
       LIANKI_CHAT_TOKEN_FILE: chat,
       LIANKI_EVAL_TOKEN_FILE: join(dir, "absent-eval.json"),
       LIANKI_LANE: undefined,
+      // Never this Mac's real lane tokens (~/.config/lianki/lanes), nor one in the env.
+      LIANKI_TOKEN: undefined,
+      LIANKI_LANE_TOKEN_DIR: join(dir, "no-lanes"),
     };
     const child = Bun.spawn(
       [process.execPath, join(import.meta.dir, "..", "scripts", "dev", "lianki-dev.ts"), ...args],
