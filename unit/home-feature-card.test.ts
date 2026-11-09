@@ -43,8 +43,9 @@ describe("home feature drawings", () => {
     }
   });
 
-  test("eight cards; Word lists is one card and opens the Add a list tree", () => {
-    expect(HOME_EXPLORE.length).toBe(8);
+  test("eleven cards, the three LiCards ones last; Word lists opens the Add a list tree", () => {
+    expect(HOME_EXPLORE.length).toBe(11);
+    expect(HOME_EXPLORE.slice(-3)).toEqual(["sites", "review", "cards"]);
     expect(HOME_EXPLORE_HREF.words).toBe("/words#add-list");
   });
 

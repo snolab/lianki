@@ -225,6 +225,82 @@ const DRAWINGS: Record<HomeFeatureKey, ReactNode> = {
       <path d="M152 7Q166 3 182 11 168 14 152 22Z" fill="var(--seal)" stroke="var(--seal)" />
     </>
   ),
+  // A browser window with the world in it, and a card lifting off its corner.
+  sites: (
+    <>
+      <path
+        d="M32 24Q102 21 174 23 176 66 174 110 102 113 34 111 30 66 32 24Z"
+        fill="var(--wash)"
+        stroke="none"
+      />
+      <path
+        d="M22 14Q94 11 166 13 168 58 166 102 94 105 24 103 20 58 22 14Z"
+        fill="var(--sheet)"
+        strokeWidth="2.8"
+      />
+      <path d="M22 32Q94 30 166 32" strokeWidth="2.2" />
+      <circle cx="33" cy="23" r="2.6" fill="var(--ink)" stroke="none" />
+      <circle cx="43" cy="23" r="2.6" fill="var(--ink)" stroke="none" />
+      <circle cx="53" cy="23" r="2.6" fill="var(--ink)" stroke="none" />
+      <circle cx="90" cy="67" r="25" />
+      <ellipse cx="90" cy="67" rx="10" ry="25" strokeWidth="2" />
+      <path d="M65 67H115M70 54Q90 58 110 54M70 80Q90 76 110 80" strokeWidth="1.8" />
+      <g transform="rotate(8 154 64)">
+        <rect
+          x="136"
+          y="54"
+          width="36"
+          height="22"
+          rx="4"
+          fill="var(--seal)"
+          stroke="var(--seal)"
+        />
+        <path d="M154 59V71M148 65H160" stroke="var(--sheet)" />
+      </g>
+    </>
+  ),
+  // A card played back, and the arrow that brings it round again.
+  review: (
+    <>
+      <g transform="rotate(-7 100 60)">
+        <path
+          d="M52 22Q104 19 156 21 158 62 156 104 104 107 54 105 50 62 52 22Z"
+          fill="var(--wash)"
+          stroke="none"
+        />
+      </g>
+      <path
+        d="M46 16Q100 13 154 15 156 58 154 102 100 105 48 103 44 58 46 16Z"
+        fill="var(--sheet)"
+        strokeWidth="2.8"
+      />
+      <path d="M88 42L120 60 88 78Z" fill="var(--seal)" stroke="var(--seal)" />
+      <path d="M36 100C16 80 18 42 40 28" strokeWidth="2.4" />
+      <path d="M31 27L41 27 41 37" strokeWidth="2.4" />
+      <path d="M164 20C184 40 182 78 160 92" strokeWidth="2.4" strokeDasharray="1 6" />
+    </>
+  ),
+  // One's own cards: saved pages in a list, a ribbon on it, one page due.
+  cards: (
+    <>
+      <path
+        d="M40 22Q108 19 178 21 180 66 178 114 108 117 42 115 38 66 40 22Z"
+        fill="var(--wash)"
+        stroke="none"
+      />
+      <path
+        d="M30 12Q100 9 170 11 172 58 170 106 100 109 32 107 28 58 30 12Z"
+        fill="var(--sheet)"
+        strokeWidth="2.8"
+      />
+      <rect x="42" y="22" width="26" height="18" rx="3" fill="var(--seal)" stroke="var(--seal)" />
+      <rect x="42" y="50" width="26" height="18" rx="3" fill="var(--wash)" strokeWidth="2" />
+      <rect x="42" y="78" width="26" height="18" rx="3" fill="var(--wash)" strokeWidth="2" />
+      <path d="M78 27Q106 25 132 27M78 55Q110 53 140 55M78 83Q104 81 128 83" strokeWidth="2.2" />
+      <path d="M78 35Q94 33 112 35M78 63Q96 61 116 63M78 91Q92 89 106 91" strokeWidth="1.6" />
+      <path d="M146 4H164V34L155 27 146 34Z" fill="var(--seal)" stroke="var(--seal)" />
+    </>
+  ),
 };
 
 export function FeatureArt({ feature }: { feature: HomeFeatureKey }) {
