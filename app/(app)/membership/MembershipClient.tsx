@@ -46,10 +46,8 @@ export default function MembershipClient() {
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const turnstileRef = useRef<TurnstileInstance | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  // Preview only (?card=paper|wood|marble): material plan cards; none = as before.
+  // The plan cards' material: marble; ?card=paper|wood previews the others.
   const skin = usePlanSkin();
-  const mark = (no: boolean, className: string) =>
-    skin ? <PlanMark no={no} /> : <Icon name={no ? "x" : "check"} className={className} />;
 
   useEffect(() => {
     fetchMembership();
@@ -204,77 +202,54 @@ export default function MembershipClient() {
         <WalletCard refreshKey={walletKey} onProChanged={fetchMembership} />
 
         {/* Features Comparison */}
-        <div
-          className={skin ? "lk-plans" : "grid md:grid-cols-2 gap-6"}
-          data-skin={skin ?? undefined}
-        >
-          {skin && <PlanDefs />}
+        <div className="lk-plans" data-skin={skin}>
+          <PlanDefs />
           {/* Free Tier */}
-          <div
-            className={
-              skin
-                ? "lk-plan lk-plan--free"
-                : "bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-2 border-gray-200 dark:border-gray-700"
-            }
-          >
-            {skin && <PlanSurface />}
-            <h3
-              className={
-                skin ? "lk-plan-title" : "text-xl font-bold mb-4 text-gray-900 dark:text-white"
-              }
-            >
-              {currentStatus.free.value}
-            </h3>
-            {skin && <PlanStroke />}
-            <ul className={skin ? "lk-plan-list" : "space-y-3 text-gray-700 dark:text-gray-300"}>
+          <div className="lk-plan lk-plan--free">
+            <PlanSurface />
+            <h3 className="lk-plan-title">{currentStatus.free.value}</h3>
+            <PlanStroke />
+            <ul className="lk-plan-list">
               <li className="flex items-start">
-                {mark(false, "text-green-500 mr-2 mt-1")}
+                <PlanMark />
                 {features.free.basicSpacedRepetition.value}
               </li>
               <li className="flex items-start">
-                {mark(false, "text-green-500 mr-2 mt-1")}
+                <PlanMark />
                 {features.free.unlimitedCards.value}
               </li>
               <li className="flex items-start">
-                {mark(false, "text-green-500 mr-2 mt-1")}
+                <PlanMark />
                 {features.free.videoSpeedControl.value}
               </li>
               <li className="flex items-start">
-                {mark(true, "text-red-500 mr-2 mt-1")}
+                <PlanMark no />
                 {features.free.noPolyglot.value}
               </li>
             </ul>
           </div>
 
           {/* Pro Tier */}
-          <div
-            className={
-              skin
-                ? "lk-plan lk-plan--pro"
-                : "bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg shadow-lg p-6 border-2 border-blue-400 text-white"
-            }
-          >
-            {skin && <PlanSurface />}
-            {skin && <PlanChop />}
-            <h3 className={skin ? "lk-plan-title" : "text-xl font-bold mb-4"}>
-              {currentStatus.pro.value}
-            </h3>
-            {skin && <PlanStroke />}
-            <ul className={skin ? "lk-plan-list" : "space-y-3"}>
+          <div className="lk-plan lk-plan--pro">
+            <PlanSurface />
+            <PlanChop />
+            <h3 className="lk-plan-title">{currentStatus.pro.value}</h3>
+            <PlanStroke />
+            <ul className="lk-plan-list">
               <li className="flex items-start">
-                {mark(false, "mr-2 mt-1")}
+                <PlanMark />
                 {features.pro.allFreeFeatures.value}
               </li>
               <li className="flex items-start">
-                {mark(false, "mr-2 mt-1")}
+                <PlanMark />
                 {features.pro.polyglotLearning.value}
               </li>
               <li className="flex items-start">
-                {mark(false, "mr-2 mt-1")}
+                <PlanMark />
                 {features.pro.aiTranslations.value}
               </li>
               <li className="flex items-start">
-                {mark(false, "mr-2 mt-1")}
+                <PlanMark />
                 {features.pro.textToSpeech.value}
               </li>
             </ul>
@@ -285,11 +260,7 @@ export default function MembershipClient() {
                     key={id}
                     onClick={() => buy(id)}
                     disabled={buying !== null || (Boolean(siteKey) && !turnstileToken)}
-                    className={
-                      skin
-                        ? "lk-plan-btn w-full"
-                        : "w-full bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-60"
-                    }
+                    className="lk-plan-btn w-full"
                   >
                     {id === "pro-1m"
                       ? features.buy.oneMonth.value
@@ -316,14 +287,7 @@ export default function MembershipClient() {
               </div>
             ) : (
               <div className="mt-6 text-center">
-                <a
-                  href="/contacts"
-                  className={
-                    skin
-                      ? "lk-plan-btn inline-block"
-                      : "inline-block bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors"
-                  }
-                >
+                <a href="/contacts" className="lk-plan-btn inline-block">
                   {features.pro.contactUs.value}
                 </a>
               </div>
@@ -333,11 +297,7 @@ export default function MembershipClient() {
                 href={GITHUB_SPONSORS_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={
-                  skin
-                    ? "lk-plan-btn2 inline-flex items-center gap-2"
-                    : "inline-flex items-center gap-2 border border-white/70 font-semibold px-6 py-2 rounded-lg hover:bg-white/10 transition-colors"
-                }
+                className="lk-plan-btn2 inline-flex items-center gap-2"
               >
                 <Icon name="star" />
                 {features.sponsor.link.value}

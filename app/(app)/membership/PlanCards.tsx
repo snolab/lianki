@@ -1,23 +1,19 @@
 "use client";
 
-// Material skins for the Free / Pro plan cards on /membership (presentation
-// only). Preview: /membership?card=paper|wood|marble; without the parameter
-// the page is unchanged. Styles: ./plan-cards.css; textures:
+// The Free / Pro plan cards on /membership are drawn in a material
+// (presentation only): marble, the design; /membership?card=paper|wood
+// previews the other two. Styles: ./plan-cards.css; textures:
 // public/membership/*.svg (scripts/gen-membership-materials.ts).
 
 import { useEffect, useState } from "react";
+import { DEFAULT_PLAN_SKIN, planSkinFrom, type PlanSkin } from "@/lib/plan-skin";
 import "./plan-cards.css";
 
-export const PLAN_SKINS = ["paper", "wood", "marble"] as const;
-export type PlanSkin = (typeof PLAN_SKINS)[number];
-
-/** The ?card= preview skin, or null for the current cards. */
-export function usePlanSkin(): PlanSkin | null {
-  const [skin, setSkin] = useState<PlanSkin | null>(null);
-  useEffect(() => {
-    const v = new URLSearchParams(window.location.search).get("card");
-    setSkin(PLAN_SKINS.find((s) => s === v) ?? null);
-  }, []);
+/** Marble, or the ?card= preview. Marble from the first render (no flash);
+ * the parameter is read after mount so server and client markup agree. */
+export function usePlanSkin(): PlanSkin {
+  const [skin, setSkin] = useState<PlanSkin>(DEFAULT_PLAN_SKIN);
+  useEffect(() => setSkin(planSkinFrom(window.location.search)), []);
   return skin;
 }
 
