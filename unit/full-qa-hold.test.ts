@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
+  FULL_QA_DEFAULTS,
+  coveredSha,
+  decideTrigger,
   holdState,
   lastGreenSha,
   latestDecided,
   liftsHold,
   pending,
+  triggerConfig,
   type Run,
 } from "../scripts/ci/full-qa-lib";
 
@@ -62,5 +66,49 @@ describe("pending and lastGreenSha", () => {
       "abc",
     );
     expect(lastGreenSha([r("failure")])).toBeNull();
+  });
+});
+
+describe("coveredSha", () => {
+  test("a running run covers its commit; a red one covers nothing", () => {
+    expect(coveredSha([r("failure"), r(null, "in_progress", "run"), r("success")])).toBe("run");
+    expect(coveredSha([r("failure"), r("cancelled"), r("success", "completed", "g")])).toBe("g");
+    expect(coveredSha([r("failure")])).toBeNull();
+  });
+});
+
+describe("decideTrigger (no timer: debounce, max wait, risky, count)", () => {
+  const c = triggerConfig({});
+  const now = 10 * 3_600_000;
+  const base = { untested: 2, risky: null, oldestUntestedMs: now - 60_000, nowMs: now };
+  test("defaults, and repo variables override them", () => {
+    expect(c).toEqual({
+      quietMin: FULL_QA_DEFAULTS.FULL_QA_QUIET_MIN,
+      maxWaitH: FULL_QA_DEFAULTS.FULL_QA_MAX_WAIT_H,
+      maxMerges: FULL_QA_DEFAULTS.FULL_QA_MAX_MERGES,
+    });
+    expect(
+      triggerConfig({ FULL_QA_QUIET_MIN: "5", FULL_QA_MAX_WAIT_H: "x", FULL_QA_MAX_MERGES: "-1" }),
+    ).toEqual({ ...c, quietMin: 5 });
+  });
+  test("nothing untested: nothing runs", () => {
+    expect(decideTrigger({ ...base, untested: 0 }, c).action).toBe("none");
+  });
+  test("a QA_FULL path: at once", () => {
+    expect(decideTrigger({ ...base, risky: "wrangler.jsonc" }, c).action).toBe("now");
+  });
+  test("enough merges: at once", () => {
+    expect(decideTrigger({ ...base, untested: c.maxMerges }, c).action).toBe("now");
+  });
+  test("the oldest untested merge waited the max: at once", () => {
+    const t = decideTrigger({ ...base, oldestUntestedMs: now - c.maxWaitH * 3_600_000 }, c);
+    expect(t.action).toBe("now");
+  });
+  test("otherwise: wait for merges to be quiet", () => {
+    expect(decideTrigger(base, c)).toEqual({
+      action: "debounce",
+      reason: expect.any(String),
+      waitMin: c.quietMin,
+    });
   });
 });

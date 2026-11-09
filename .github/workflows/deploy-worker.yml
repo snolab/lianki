@@ -14,7 +14,7 @@ name: Deploy Worker
 #
 # Held while full QA is red (docs/shipping.md, "Full QA and the deploy hold"):
 # the `hold` job reads the latest finished run of nightly-qa.yml ("Full QA",
-# every 6 h on main) and deploys nothing while it failed, starting a new full
+# on main after merges) and deploys nothing while it failed, starting a new full
 # run if none is queued. A green full run that follows a red one lifts the
 # hold and deploys the commit it tested. To deploy anyway, run this workflow
 # by hand with override_hold.

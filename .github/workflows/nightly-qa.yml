@@ -1,27 +1,25 @@
 name: Full QA
 
 # The full set — every qa:all suite (build + three shards, qa-sharded.yml) and
-# the extension smoke test — on main every 6 hours (03:00, 09:00, 15:00 and
-# 21:00 JST), or by hand: `gh workflow run nightly-qa.yml -R snolab/lianki`.
-# The merge queue runs only the suites a merge group reaches plus a smoke set
-# (ci.yml, `qa plan`), so this is what catches the rest, and drift in the
-# runner image. (File name kept from when it ran once a night.)
+# the extension smoke test — on main. Never on a timer (owner, 2026-11-10: he
+# can be away for days; with no merges nothing runs). It starts:
+# - from merges, through full-qa-trigger.yml: once merges have been quiet
+#   FULL_QA_QUIET_MIN minutes (debounce), at once when a QA_FULL path changed
+#   or FULL_QA_MAX_MERGES merges piled up, and at the latest when the oldest
+#   untested merge has waited FULL_QA_MAX_WAIT_H hours (throttle);
+# - from deploy-worker.yml while deploys are held;
+# - by hand: `gh workflow run nightly-qa.yml -R snolab/lianki`.
+# The merge queue runs qa:all too (ci.yml); this catches what a combination
+# of merges breaks after the queue, and drift in the runner image. (File name kept from when it ran once a night on a cron.)
 #
-# On red (docs/shipping.md, "Full QA and the deploy hold"):
-# - #lianki hears it (SLACK_WEBHOOK_URL);
-# - a revert PR of every commit since the last green full run is opened
-#   (scripts/ci/full-qa.ts revert), for a person to merge or close;
-# - deploy-worker.yml deploys nothing while the latest full run is red,
-#   unless dispatched with override_hold. The next green run here lifts the
-#   hold and deploys what it tested.
 on:
-  schedule:
-    - cron: "0 */6 * * *"
   workflow_dispatch:
 
+# A run in progress finishes; a newer start waits behind it (and replaces any
+# other waiting one), so the newest main is always tested next.
 concurrency:
   group: nightly-qa
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   # Runs on main, so the .next/cache it saves is the one merge-queue runs restore.

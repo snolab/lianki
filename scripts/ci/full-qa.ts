@@ -3,19 +3,30 @@
  * The full-QA hold and the revert PR (docs/shipping.md, "Full QA and the
  * deploy hold"). Logic in full-qa-lib.ts; this file talks to GitHub.
  *
+ *   bun scripts/ci/full-qa.ts trigger           # a push to main: start Full QA now, later or not
  *   bun scripts/ci/full-qa.ts hold              # deploy-worker: may main deploy?
  *   bun scripts/ci/full-qa.ts lifts <run id>    # deploy-worker: does this green run lift a hold?
  *   bun scripts/ci/full-qa.ts revert <sha>      # Full QA went red at <sha>: open a revert PR
  *
  * `hold` and `lifts` write `deploy=true|false` (and `reason=`) to
  * $GITHUB_OUTPUT. `hold` also starts a full run when main is held and none is
- * queued, so a fix on main is tested without waiting for the next 6-hour slot.
+ * queued, so a fix on main is tested at once.
  * Needs GH_TOKEN (the workflow's token: actions read/write, contents and
  * pull-requests write for `revert`).
  */
 import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
-import { holdState, lastGreenSha, liftsHold, pending, type Run } from "./full-qa-lib";
+import { QA_FULL, matchesAny } from "../gate/affected-lib";
+import {
+  coveredSha,
+  decideTrigger,
+  holdState,
+  lastGreenSha,
+  liftsHold,
+  pending,
+  triggerConfig,
+  type Run,
+} from "./full-qa-lib";
 
 const REPO = process.env.GITHUB_REPOSITORY || "snolab/lianki";
 const WORKFLOW = "nightly-qa.yml";
@@ -49,17 +60,50 @@ function output(kv: Record<string, string>) {
 
 const [what, arg] = process.argv.slice(2);
 
-if (what === "hold") {
+function startFullQa(why: string) {
+  const d = run("gh", ["workflow", "run", WORKFLOW, "-R", REPO, "--ref", "main"]);
+  console.log(d.ok ? `started Full QA on main: ${why}` : `could not start Full QA: ${d.err}`);
+  if (!d.ok) process.exit(1);
+}
+
+if (what === "trigger") {
+  const runs = fullRuns();
+  const base = coveredSha(runs);
+  const head = must("git", ["rev-parse", "HEAD"]);
+  if (!base) {
+    startFullQa("no green full run on record");
+    process.exit(0);
+  }
+  const shas = must("git", ["rev-list", `${base}..${head}`])
+    .split("\n")
+    .filter(Boolean);
+  const changed = must("git", ["diff", "--name-only", "--no-renames", base, head])
+    .split("\n")
+    .filter(Boolean);
+  const risky = changed.find((f) => matchesAny(f, QA_FULL)) ?? null;
+  const oldest = shas.length
+    ? Number(must("git", ["log", "-1", "--format=%ct", shas[shas.length - 1]])) * 1000
+    : Date.now();
+  const c = triggerConfig(process.env);
+  const t = decideTrigger(
+    { untested: shas.length, risky, oldestUntestedMs: oldest, nowMs: Date.now() },
+    c,
+  );
+  console.log(`full QA trigger: ${t.action} — ${t.reason} (covered up to ${base.slice(0, 7)})`);
+  if (t.action === "now") startFullQa(t.reason);
+  if (t.action === "debounce") {
+    // A newer push cancels this job (its concurrency group) before the wait ends.
+    await new Promise((r) => setTimeout(r, t.waitMin * 60_000));
+    startFullQa(`merges quiet for ${t.waitMin} min`);
+  }
+} else if (what === "hold") {
   const runs = fullRuns();
   const h = holdState(runs);
   if (!h.held) {
     output({ deploy: "true", reason: "the latest full QA run on main is green" });
   } else {
     const why = `full QA is red on main since ${h.run.head_sha.slice(0, 7)} (${h.run.html_url})`;
-    if (!pending(runs)) {
-      const d = run("gh", ["workflow", "run", WORKFLOW, "-R", REPO, "--ref", "main"]);
-      console.log(d.ok ? "started a full QA run on main" : `could not start full QA: ${d.err}`);
-    }
+    if (!pending(runs)) startFullQa("main is held");
     output({ deploy: "false", reason: why });
   }
 } else if (what === "lifts") {
@@ -139,6 +183,6 @@ if (what === "hold") {
   if (!made.ok) console.log(`::warning title=Revert PR not opened::${made.err}`);
   output({ pr });
 } else {
-  console.error("usage: bun scripts/ci/full-qa.ts hold | lifts <run id> | revert <sha>");
+  console.error("usage: bun scripts/ci/full-qa.ts trigger | hold | lifts <run id> | revert <sha>");
   process.exit(2);
 }

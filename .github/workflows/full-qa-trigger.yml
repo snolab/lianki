@@ -1,0 +1,45 @@
+name: Full QA trigger
+
+# Starts Full QA (nightly-qa.yml) from merges, never from a clock (owner,
+# 2026-11-10: he can be away for days; with no merges nothing runs). On each
+# push to main, scripts/ci/full-qa.ts trigger decides (logic and defaults in
+# scripts/ci/full-qa-lib.ts; docs/shipping.md, "Full QA and the deploy hold"):
+#
+# - nothing untested since the last green (or running) full run: nothing;
+# - a QA_FULL path changed since then (the core, the Worker's build, qa:all's
+#   own machinery), or FULL_QA_MAX_MERGES merges piled up, or the oldest
+#   untested merge has waited FULL_QA_MAX_WAIT_H hours: start it now;
+# - otherwise wait FULL_QA_QUIET_MIN minutes and start it. A newer push
+#   cancels this job (the concurrency group below) and decides again, so the
+#   run starts once merges have been quiet that long: a debounce.
+#
+# The three numbers are repo variables; unset, the defaults in full-qa-lib.ts.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: full-qa-trigger
+  cancel-in-progress: true
+
+jobs:
+  decide:
+    name: Decide and start Full QA
+    runs-on: ubuntu-latest
+    # The debounce wait (FULL_QA_QUIET_MIN) plus the decision.
+    timeout-minutes: 120
+    permissions:
+      actions: write # read Full QA's runs; start one
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the commits since the last green full run
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
+      - name: Decide (and wait while merges keep coming)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FULL_QA_QUIET_MIN: ${{ vars.FULL_QA_QUIET_MIN }}
+          FULL_QA_MAX_WAIT_H: ${{ vars.FULL_QA_MAX_WAIT_H }}
+          FULL_QA_MAX_MERGES: ${{ vars.FULL_QA_MAX_MERGES }}
+        run: bun scripts/ci/full-qa.ts trigger
