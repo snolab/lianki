@@ -16,6 +16,9 @@ import {
   fullScreenAllowed,
   fullScreenBox,
   fullScreenOn,
+  FULL_LEAVE_PX,
+  dragLeavesFull,
+  dropEntersFull,
 } from "@lianki/debug-chat/full-screen";
 import { CHAT_VIEW_INITIAL, chatPrefs } from "@lianki/debug-chat/ui-store";
 import { CHAT_STRINGS_EN } from "@lianki/debug-chat/wire";
@@ -209,5 +212,46 @@ describe("strings", () => {
       expect(uiStrings(lang).fullScreen.length).toBeGreaterThan(0);
       expect(uiStrings(lang).fullScreenExit.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("by a drag: the bottom edge enters, a drag up leaves (owner, 2026-11-09 18:25 JST)", () => {
+  const at = (barBottom: number, o: Partial<Parameters<typeof dropEntersFull>[0]> = {}) =>
+    dropEntersFull({ allowed: true, open: true, full: false, barBottom, vh: 844, ...o });
+  it("a bar dropped flush against the bottom edge enters full screen", () => {
+    expect(at(844)).toBe(true);
+    expect(at(843.6)).toBe(true);
+  });
+  it("short of the edge, even by a pixel, it stays a panel", () => {
+    expect(at(843)).toBe(false);
+    // The panel's own place: 0.5rem above the edge.
+    expect(at(836)).toBe(false);
+  });
+  it("the top edge never enters (it would hide the history, 18:26 JST)", () => {
+    // A bar of 44 px pushed against the top: its bottom is far from the screen's.
+    expect(at(44)).toBe(false);
+    expect(at(0)).toBe(false);
+  });
+  it("only an open chat that may go full screen, and not twice", () => {
+    expect(at(844, { allowed: false })).toBe(false);
+    expect(at(844, { open: false })).toBe(false);
+    expect(at(844, { full: true })).toBe(false);
+  });
+  it("a drag up past FULL_LEAVE_PX leaves; a wobble, sideways or down stays", () => {
+    expect(FULL_LEAVE_PX).toBeGreaterThan(20);
+    expect(dragLeavesFull({ full: true, dy: -FULL_LEAVE_PX })).toBe(true);
+    expect(dragLeavesFull({ full: true, dy: -200 })).toBe(true);
+    expect(dragLeavesFull({ full: true, dy: -(FULL_LEAVE_PX - 1) })).toBe(false);
+    expect(dragLeavesFull({ full: true, dy: 0 })).toBe(false);
+    expect(dragLeavesFull({ full: true, dy: 120 })).toBe(false);
+    expect(dragLeavesFull({ full: false, dy: -200 })).toBe(false);
+  });
+  it("the chat has no button to enter, only an exit button and the menu's row", () => {
+    const src = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
+    expect(src).not.toContain('data-testid="debug-chat-fullscreen"');
+    expect(src).toContain('data-testid="debug-chat-fullscreen-exit"');
+    expect(src).toContain('data-testid="debug-menu-fullscreen"');
+    expect(src).toContain("dropEntersFull(");
+    expect(src).toContain("dragLeavesFull(");
   });
 });

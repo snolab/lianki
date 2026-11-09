@@ -57,7 +57,7 @@ const IDS = [
   "debug-chat-eta-bar",
   "debug-chat-bottom",
   "debug-chat-ask-jump",
-  "debug-chat-fullscreen",
+  "debug-chat-fullscreen-exit",
 ];
 const overlap = (a, b) =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
