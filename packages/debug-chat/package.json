@@ -94,6 +94,7 @@
   "type": "module",
   "dependencies": {
     "@lianki/ui-state": "workspace:*",
+    "@snomiao/rgui": "workspace:*",
     "marked": "^17.0.4"
   }
 }

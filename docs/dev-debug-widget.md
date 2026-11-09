@@ -1630,6 +1630,8 @@ and the red Now line show through; the text is AA over every bar composited on
 the panel (unit/gantt-view.test.ts composites in sRGB as the browser does).
 Overdue stays red with a minus; queued bars are fainter and dashed.
 
+The axis math (scales, ticks, bars) is our component library's gantt module,
+`@snomiao/rgui/gantt` ([rgui.md](rgui.md)); `gantt-view.ts` re-exports it.
 The axis (`gantt-view.ts`): x = (t − lo) · pxPerMs. On open now sits a quarter
 from the left and the tasks fit the screen, but never under 120 px per hour
 (`MIN_PX_PER_HOUR`): a long range scrolls. There is no hard limit either way:

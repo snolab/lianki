@@ -1,0 +1,489 @@
+/**
+ * rgui core — one-cell-one-thing + boundary dissolution.
+ *
+ * Rule 1: nodes never overlap. A dragged node that would overlap another is
+ * pushed out along the axis of least penetration until the edges are FLUSH —
+ * i.e. it snaps onto the neighbor instead of covering it.
+ *
+ * Rule 2: nodes whose edges are flush render as one fused shape: the shared
+ * border segment and any wire between the pair are not drawn. The nodes stay
+ * fully standalone (drag one away to split) — this is visual fusion only,
+ * distinct from rg-merge (LOD pseudo-node), which moves as a single unit.
+ */
+import {
+  NODE_COL_W,
+  NODE_ROW_H,
+  inSide,
+  inputPortPos,
+  isHorizontalSide,
+  nodeHeight,
+  nodeMinHeight,
+  oppositeSide,
+  outSide,
+  sidePortPos,
+  type Edge,
+  type Graph,
+  type GraphNode,
+  type Port,
+  type Side,
+} from "./graph.js";
+
+export type { Side };
+
+const EPS = 0.01;
+
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const rectOf = (n: GraphNode): Rect => ({
+  x: n.x,
+  y: n.y,
+  w: n.w,
+  h: nodeHeight(n),
+});
+
+/**
+ * Is `o` the node itself? Compared by ID, not identity: a host that re-maps
+ * its graph mid-drag hands rgui a FRESH object for the same id, and the
+ * dragged node would otherwise treat its own twin as an obstacle — pushing
+ * itself away from where it already is, or clamping its size against a rect
+ * it exactly occupies.
+ */
+const isSelf = (o: GraphNode, node: GraphNode) =>
+  o === node || o.id === node.id;
+
+/**
+ * Resolve overlaps for a node being dragged to (x, y): push it out along the
+ * axis of least penetration until it sits flush against whatever it hit.
+ * Contact beats grid snap — one-cell-one-thing is the invariant.
+ */
+export function resolveOverlap(
+  node: GraphNode,
+  x: number,
+  y: number,
+  others: GraphNode[],
+  opts?: {
+    /** cross-axis align magnet in WORLD units (0 disables) */
+    alignSnap?: number;
+    direction?: "ltr" | "rtl";
+  },
+): { x: number; y: number } {
+  const w = node.w;
+  const h = nodeHeight(node);
+  const alignSnap = opts?.alignSnap ?? 0;
+  const rtl = opts?.direction === "rtl";
+  let contact: { rect: Rect; axis: "h" | "v" } | null = null;
+
+  for (let iter = 0; iter < 8; iter++) {
+    let hit: Rect | null = null;
+    for (const o of others) {
+      if (isSelf(o, node)) continue;
+      const r = rectOf(o);
+      const penX = Math.min(x + w, r.x + r.w) - Math.max(x, r.x);
+      const penY = Math.min(y + h, r.y + r.h) - Math.max(y, r.y);
+      if (penX > EPS && penY > EPS) {
+        hit = r;
+        break;
+      }
+    }
+    if (!hit) break;
+    const penX = Math.min(x + w, hit.x + hit.w) - Math.max(x, hit.x);
+    const penY = Math.min(y + h, hit.y + hit.h) - Math.max(y, hit.y);
+    if (penX < penY) {
+      // push horizontally to flush contact (side-by-side)
+      x += x + w / 2 <= hit.x + hit.w / 2 ? -penX : penX;
+      contact = { rect: hit, axis: "h" };
+    } else {
+      // push vertically to flush contact (stacked)
+      y += y + h / 2 <= hit.y + hit.h / 2 ? -penY : penY;
+      contact = { rect: hit, axis: "v" };
+    }
+  }
+
+  // snap-align rule: snapped nodes read better aligned at their start point —
+  // horizontal snap aligns tops; vertical snap aligns the reading edge
+  if (contact && alignSnap > 0) {
+    if (contact.axis === "h") {
+      if (Math.abs(y - contact.rect.y) <= alignSnap) y = contact.rect.y;
+    } else if (rtl) {
+      const target = contact.rect.x + contact.rect.w - w;
+      if (Math.abs(x - target) <= alignSnap) x = target;
+    } else if (Math.abs(x - contact.rect.x) <= alignSnap) {
+      x = contact.rect.x;
+    }
+  }
+  return { x, y };
+}
+
+/**
+ * 一格一物 on resize: cap a node's requested size so growth stops at flush
+ * contact with neighbors (width first, then height with the new width).
+ */
+export function clampSize(
+  node: GraphNode,
+  w: number,
+  h: number,
+  others: GraphNode[],
+): { w: number; h: number } {
+  const hCur = nodeHeight(node);
+  for (const o of others) {
+    if (isSelf(o, node)) continue;
+    const r = rectOf(o);
+    // width cap: neighbor to the right overlapping our current y-span
+    if (
+      r.x >= node.x + EPS &&
+      r.y < node.y + hCur - EPS &&
+      r.y + r.h > node.y + EPS
+    )
+      w = Math.min(w, r.x - node.x);
+  }
+  for (const o of others) {
+    if (isSelf(o, node)) continue;
+    const r = rectOf(o);
+    // height cap: neighbor below overlapping our NEW x-span
+    if (
+      r.y >= node.y + EPS &&
+      r.x < node.x + w - EPS &&
+      r.x + r.w > node.x + EPS
+    )
+      h = Math.min(h, r.y - node.y);
+  }
+  return { w, h };
+}
+
+/** A flush contact segment between two nodes (world coords). */
+export interface FlushSegment {
+  a: GraphNode;
+  b: GraphNode;
+  /** "v": shared vertical edge; "h": shared horizontal edge */
+  axis: "v" | "h";
+  /** the shared edge coordinate (x for "v", y for "h") */
+  at: number;
+  /** overlap interval along the edge */
+  from: number;
+  to: number;
+}
+
+/**
+ * Find every pair of nodes whose edges are flush (touching with overlapping
+ * intervals). These boundaries — and wires between the pairs — dissolve.
+ */
+export function flushSegments(nodes: GraphNode[]): FlushSegment[] {
+  const out: FlushSegment[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i]!;
+      const b = nodes[j]!;
+      const ra = rectOf(a);
+      const rb = rectOf(b);
+      // vertical contact: a.right == b.left or b.right == a.left
+      for (const [l, r] of [
+        [ra, rb],
+        [rb, ra],
+      ] as const) {
+        if (Math.abs(l.x + l.w - r.x) < EPS) {
+          const from = Math.max(l.y, r.y);
+          const to = Math.min(l.y + l.h, r.y + r.h);
+          if (to - from > EPS)
+            out.push({ a, b, axis: "v", at: r.x, from, to });
+        }
+        if (Math.abs(l.y + l.h - r.y) < EPS) {
+          const from = Math.max(l.x, r.x);
+          const to = Math.min(l.x + l.w, r.x + r.w);
+          if (to - from > EPS)
+            out.push({ a, b, axis: "h", at: r.y, from, to });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Set of "idA|idB" (sorted) pairs in flush contact — their wires dissolve. */
+export function flushPairKeys(segments: FlushSegment[]): Set<string> {
+  const s = new Set<string>();
+  for (const seg of segments)
+    s.add([seg.a.id, seg.b.id].sort().join("|"));
+  return s;
+}
+
+// --- flush components + side coverage ----------------------------------
+
+export interface Interval {
+  from: number;
+  to: number;
+}
+
+export type SideCoverage = Record<Side, Interval[]>;
+
+/** subtract covered intervals from a span, returning the uncovered pieces */
+export function subtractIntervals(
+  span: Interval,
+  covered: Interval[],
+): Interval[] {
+  let pieces: Interval[] = [span];
+  for (const c of covered) {
+    const next: Interval[] = [];
+    for (const p of pieces) {
+      if (c.to <= p.from || c.from >= p.to) {
+        next.push(p);
+        continue;
+      }
+      if (c.from > p.from) next.push({ from: p.from, to: c.from });
+      if (c.to < p.to) next.push({ from: c.to, to: p.to });
+    }
+    pieces = next;
+  }
+  return pieces.filter((p) => p.to - p.from > EPS);
+}
+
+/** per-node covered intervals on each side, from flush segments */
+export function sideCoverage(
+  segments: FlushSegment[],
+): Map<string, SideCoverage> {
+  const map = new Map<string, SideCoverage>();
+  const get = (id: string): SideCoverage => {
+    let c = map.get(id);
+    if (!c) map.set(id, (c = { top: [], right: [], bottom: [], left: [] }));
+    return c;
+  };
+  for (const seg of segments) {
+    const iv = { from: seg.from, to: seg.to };
+    const ra = rectOf(seg.a);
+    const rb = rectOf(seg.b);
+    if (seg.axis === "v") {
+      // shared vertical edge at x=seg.at: it is one rect's right, other's left
+      get(seg.a.id)[Math.abs(ra.x + ra.w - seg.at) < EPS ? "right" : "left"].push(iv);
+      get(seg.b.id)[Math.abs(rb.x + rb.w - seg.at) < EPS ? "right" : "left"].push(iv);
+    } else {
+      get(seg.a.id)[Math.abs(ra.y + ra.h - seg.at) < EPS ? "bottom" : "top"].push(iv);
+      get(seg.b.id)[Math.abs(rb.y + rb.h - seg.at) < EPS ? "bottom" : "top"].push(iv);
+    }
+  }
+  return map;
+}
+
+/** union-find flush components: nodeId -> component root id */
+export function flushComponents(
+  nodes: GraphNode[],
+  segments: FlushSegment[],
+): Map<string, string> {
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    const p = parent.get(id) ?? id;
+    if (p === id) return id;
+    const r = find(p);
+    parent.set(id, r);
+    return r;
+  };
+  for (const seg of segments) parent.set(find(seg.a.id), find(seg.b.id));
+  const out = new Map<string, string>();
+  for (const n of nodes) out.set(n.id, find(n.id));
+  return out;
+}
+
+// --- direction-aware port layout ----------------------------------------
+
+export interface PortPlacement {
+  x: number;
+  y: number;
+  /**
+   * which edge the port sits on. It starts at the node's flow side and may
+   * flip to the opposite edge — when the wire actually leaves that way, or
+   * when the flow side has dissolved into a flush seam.
+   */
+  edge: Side;
+  /** true when every wire of this port stays inside one flush component */
+  hidden: boolean;
+}
+
+/** key: `${nodeId}/${"in"|"out"}/${portId}` */
+export function computePortLayout(
+  graph: Graph,
+  nodes: GraphNode[],
+  segments: FlushSegment[],
+): Map<string, PortPlacement> {
+  const touching = flushPairKeys(segments);
+  const cover = sideCoverage(segments);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const layout = new Map<string, PortPlacement>();
+
+  const coveredAt = (id: string, side: Side, v: number) =>
+    (cover.get(id)?.[side] ?? []).some((c) => v >= c.from - EPS && v <= c.to + EPS);
+
+  for (const n of nodes) {
+    const home = { in: inSide(n), out: outSide(n) } as const;
+    const place = (dir: "in" | "out", ports: GraphNode["inputs"]) => {
+      for (let i = 0; i < ports.length; i++) {
+        const p = ports[i]!;
+        const wires = graph.edges.filter((e) =>
+          dir === "out"
+            ? e.from.node === n.id && e.from.port === p.id
+            : e.to.node === n.id && e.to.port === p.id,
+        );
+        const others = wires
+          .map((e) => byId.get(dir === "out" ? e.to.node : e.from.node))
+          .filter((o): o is GraphNode => !!o);
+        // a wire dissolves only when its two nodes TOUCH (direct flush
+        // contact) — being in the same stack without touching still draws
+        const external = others.filter(
+          (o) => !touching.has([n.id, o.id].sort().join("|")),
+        );
+        const hidden = wires.length > 0 && external.length === 0;
+
+        // edge choice: start at the node's flow side, then follow where the
+        // wires actually go (along the flow axis), and never sit on a
+        // dissolved (covered) boundary
+        let edge: Side = home[dir];
+        if (external.length) {
+          if (isHorizontalSide(edge)) {
+            const mean =
+              external.reduce((s, o) => s + o.y + nodeHeight(o) / 2, 0) /
+              external.length;
+            edge = mean >= n.y + nodeHeight(n) / 2 ? "bottom" : "top";
+          } else {
+            const mean =
+              external.reduce((s, o) => s + o.x + o.w / 2, 0) / external.length;
+            edge = mean >= n.x + n.w / 2 ? "right" : "left";
+          }
+        }
+        // coverage intervals run ALONG the edge: x for top/bottom, y for
+        // left/right — probe with the port's own along-edge coordinate
+        const along = (s: Side) => {
+          const [x, y] = sidePortPos(n, s, i);
+          return isHorizontalSide(s) ? x : y;
+        };
+        if (coveredAt(n.id, edge, along(edge))) edge = oppositeSide(edge);
+
+        const [x, y] = sidePortPos(n, edge, i);
+        layout.set(`${n.id}/${dir}/${p.id}`, { x, y, edge, hidden });
+      }
+    };
+    place("in", n.inputs);
+    place("out", n.outputs);
+  }
+  return layout;
+}
+
+// --- snap-connect -------------------------------------------------------
+
+/**
+ * Kind gate for a candidate wire. Defaults to exact signal-kind equality —
+ * text→text, image→image. Hosts widen it (e.g. a "any" kind) via rgui's
+ * isValidConnection.
+ */
+export type ConnectGate = (
+  from: { node: GraphNode; port: Port },
+  to: { node: GraphNode; port: Port },
+) => boolean;
+
+const sameKind: ConnectGate = (a, b) => a.port.kind === b.port.kind;
+
+export interface SnapConnectOptions {
+  gate?: ConnectGate;
+  /**
+   * how far apart two facing ports may sit along the seam and still capture
+   * each other (world units, default half the seam's port pitch)
+   */
+  tolerance?: number;
+  /** edges the host authored — an input already wired there is not stolen */
+  existing?: Edge[];
+}
+
+/**
+ * SNAP-CONNECT: derive the wires implied by geometry alone.
+ *
+ * When a drag pushes two nodes flush (resolveOverlap guarantees contact,
+ * never overlap), the seam between them may line an output edge up against a
+ * facing input edge. Every pair of ports that meet across that seam within
+ * `tolerance`, and whose kinds pass the gate, becomes an edge marked
+ * `temp: true`. Nothing is stored: the result is a pure function of node
+ * positions, so pulling the nodes apart drops the edges on the next call —
+ * "cutting" a wire costs one drag, not a click on a 2-px curve.
+ *
+ * Ports match nearest-first, one wire per port on each side, and an input
+ * already fed by an authored edge is left alone.
+ */
+export function snapConnections(
+  nodes: GraphNode[],
+  opts: SnapConnectOptions = {},
+): Edge[] {
+  const gate = opts.gate ?? sameKind;
+  const takenIn = new Set<string>();
+  const takenOut = new Set<string>();
+  for (const e of opts.existing ?? [])
+    if (!e.temp) takenIn.add(`${e.to.node}/${e.to.port}`);
+
+  const out: Edge[] = [];
+  for (const seg of flushSegments(nodes)) {
+    // ports pitch by rows down a vertical seam, by columns across a horizontal one
+    const tol =
+      opts.tolerance ?? (seg.axis === "v" ? NODE_ROW_H : NODE_COL_W) / 2;
+    // the seam runs along one axis; each node meets it with one of its sides
+    const sideFacing = (n: GraphNode): Side =>
+      seg.axis === "v"
+        ? Math.abs(n.x + n.w - seg.at) < EPS
+          ? "right"
+          : "left"
+        : Math.abs(n.y + nodeHeight(n) - seg.at) < EPS
+          ? "bottom"
+          : "top";
+    const fa = sideFacing(seg.a);
+    const fb = sideFacing(seg.b);
+
+    // direction falls out of the two nodes' declared flow: whoever meets the
+    // seam with its OUTPUT edge feeds whoever meets it with its INPUT edge
+    for (const [src, dst, ssrc, sdst] of [
+      [seg.a, seg.b, fa, fb],
+      [seg.b, seg.a, fb, fa],
+    ] as const) {
+      if (outSide(src) !== ssrc || inSide(dst) !== sdst) continue;
+
+      // candidate port pairs, nearest along the seam first
+      const cands: { oi: number; ii: number; d: number }[] = [];
+      for (let oi = 0; oi < src.outputs.length; oi++) {
+        const [ox, oy] = sidePortPos(src, ssrc, oi);
+        const oa = seg.axis === "v" ? oy : ox;
+        if (oa < seg.from - EPS || oa > seg.to + EPS) continue; // off the seam
+        for (let ii = 0; ii < dst.inputs.length; ii++) {
+          const [ix, iy] = sidePortPos(dst, sdst, ii);
+          const ia = seg.axis === "v" ? iy : ix;
+          if (ia < seg.from - EPS || ia > seg.to + EPS) continue;
+          const d = Math.abs(oa - ia);
+          if (d > tol) continue;
+          if (
+            !gate(
+              { node: src, port: src.outputs[oi]! },
+              { node: dst, port: dst.inputs[ii]! },
+            )
+          )
+            continue;
+          cands.push({ oi, ii, d });
+        }
+      }
+      cands.sort((p, q) => p.d - q.d);
+      for (const c of cands) {
+        const okey = `${src.id}/${src.outputs[c.oi]!.id}`;
+        const ikey = `${dst.id}/${dst.inputs[c.ii]!.id}`;
+        if (takenOut.has(okey) || takenIn.has(ikey)) continue;
+        takenOut.add(okey);
+        takenIn.add(ikey);
+        out.push({
+          from: { node: src.id, port: src.outputs[c.oi]!.id },
+          to: { node: dst.id, port: dst.inputs[c.ii]!.id },
+          temp: true,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** world y of a node's i-th port row (matches inputPortPos/outputPortPos) */
+export function portRowY(n: GraphNode, i: number): number {
+  return inputPortPos(n, i)[1];
+}

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { withIntlayer } from "next-intlayer/server";
 
 /** @type {import('next').NextConfig} */
@@ -16,7 +17,7 @@ const nextConfig = {
     NEXT_PUBLIC_BUILD_ID: (process.env.GITHUB_SHA ?? `local-${Date.now()}`).slice(0, 20),
   },
   // Internal workspace package shipping TypeScript source (@lianki/core).
-  transpilePackages: ["@lianki/core", "@lianki/debug-chat", "@lianki/ui-state"],
+  transpilePackages: ["@lianki/core", "@lianki/debug-chat", "@lianki/ui-state", "@snomiao/rgui"],
   async headers() {
     return [
       {
@@ -33,6 +34,15 @@ const nextConfig = {
   // the deployed Worker always runs DB_BACKEND=d1, so the driver is dead weight
   // (~1 MiB gzipped). Local `next dev` keeps the real driver for MongoDB mode.
   turbopack: {
+    // rgui (vendored, docs/rgui.md) imports "./x.js" for x.ts; Turbopack takes
+    // that literally. The loader drops the .js in its sources only.
+    rules: {
+      "*.ts": {
+        condition: { path: /^packages\/rgui\/src\// },
+        loaders: [fileURLToPath(new URL("./lib/build/strip-js-ext-loader.cjs", import.meta.url))],
+        as: "*.ts",
+      },
+    },
     resolveAlias: {
       "node:sqlite": "./lib/stubs/node-sqlite.js",
       ...(process.env.CF_BUILD === "1" ? { mongodb: "./lib/stubs/mongodb.js" } : {}),
