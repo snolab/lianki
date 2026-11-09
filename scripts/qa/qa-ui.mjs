@@ -160,6 +160,15 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   // it with no words in it and no layout shift (total ≈ 0).
   {
     const cls = await ctx.newPage();
+    // The web fonts (Google Fonts, LXGW on jsdelivr) are held off this page.
+    // They are font-display: swap, so when a font file lands after the first
+    // paint the text reflows: a card's line of text wraps one line longer and
+    // moves up, the h1 and the logo move a few px. When that happens is the
+    // CDN's timing, not the page's: 0 to 0.003 here, 0.0108 once in CI, which
+    // failed this check (2026-11-09). With the fallback font only, what is left
+    // is the page's own layout (the drawings, the word-list counts loading),
+    // which must not move at all.
+    await cls.route(/fonts\.gstatic\.com\/|\.woff2?(\?|$)/, (r) => r.abort());
     await cls.addInitScript(() => {
       window.__cls = 0;
       new PerformanceObserver((l) => {
