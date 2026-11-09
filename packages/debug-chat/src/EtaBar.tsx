@@ -253,10 +253,13 @@ export function EtaList({
   tasks,
   now,
   strings,
+  onExpand,
 }: {
   tasks: readonly EtaTask[];
   now: number;
   strings: EtaText;
+  /** Open the full-screen Gantt (GanttFull.tsx). */
+  onExpand?: () => void;
 }) {
   const shown = ganttPlan(shownTasks(tasks, now), now);
   const win = ganttWindow(shown, now);
@@ -266,7 +269,21 @@ export function EtaList({
     <section data-testid="debug-chat-eta-list" className="mb-1.5 min-w-0 fs-10">
       <h3 className="m-0 mb-0.5 flex items-center gap-1 fs-10 font-semibold opacity-70">
         <EtaClockIcon size={11} />
-        {strings.etaList}
+        <span className="min-w-0 flex-1 truncate">{strings.etaList}</span>
+        {onExpand && (
+          <button
+            type="button"
+            data-testid="debug-chat-eta-expand"
+            aria-label={strings.etaOpen}
+            title={strings.etaOpen}
+            onMouseDown={keepFocus}
+            onClick={onExpand}
+            className="tap-40 shrink-0 border-0 bg-transparent px-1 py-0 fs-12 leading-none"
+            style={{ color: both("text") }}
+          >
+            ⤢
+          </button>
+        )}
       </h3>
       <ul className="m-0 flex list-none flex-col gap-px p-0">
         {shown.map((t) => {
