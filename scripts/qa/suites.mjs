@@ -86,7 +86,12 @@ export const SUITES = [
     base: true,
     id: "account-locale",
     paths: [
-      ...SHELL,
+      "app/layout.tsx",
+      "app/(app)/layout.tsx",
+      "app/components/LanguageSwitcher.tsx",
+      "app/components/LanguageSettings.tsx",
+      "app/components/AccountLocaleAdopt.tsx",
+      "app/components/language-settings.content.ts",
       "middleware.ts",
       "lib/account-locale*.ts",
       "lib/app-locale*.ts",
