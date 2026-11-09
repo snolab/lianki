@@ -3143,6 +3143,111 @@ describe("DebugHub ask cards (the agent asks, a person taps)", () => {
     expect(f.last("answered")).toMatchObject({ answer: { thread: "f1", source: "tap" } });
     expect(c.last("answered")).toMatchObject({ thread: "f1", answer: { thread: "f1" } });
   });
+
+  describe("withdraw (the agent takes back an obsolete ask)", () => {
+    it("by askId or message id: stamped, kept, sent to the pages and listeners; taps refused", async () => {
+      const s = setup();
+      const owner = s.page();
+      const mac = s.page("/list Macintosh");
+      const c = await agent(s, owner);
+      await s.msg(c, askOne);
+      const msgId = (chats(owner).at(-1) as { id: string }).id;
+      s.tick(5);
+      await s.msg(c, { type: "withdraw", id: "cal1" });
+      const ev = {
+        type: "withdrawn",
+        id: msgId,
+        askId: "cal1",
+        thread: "owner",
+        withdrawnAt: 1_000_005,
+      };
+      expect(owner.last("withdrawn")).toEqual(ev);
+      expect(mac.last("withdrawn")).toEqual(ev);
+      expect(c.last("withdrawn")).toEqual(ev);
+      expect((await s.hub.history()).at(-1)?.ask?.withdrawnAt).toBe(1_000_005);
+      await s.msg(owner, { type: "answer", askId: "cal1", choices: { q1: "o1" } });
+      expect(owner.last("error")?.error).toContain("is withdrawn");
+      expect(owner.last("answered")).toBeUndefined();
+      // Once only.
+      await s.msg(c, { type: "withdraw", id: msgId });
+      expect(c.last("error")?.error).toBe("ask cal1 is withdrawn");
+      // By message id, on another ask.
+      await s.msg(c, { ...askOne, askId: "cal2" });
+      const id2 = (chats(owner).at(-1) as { id: string }).id;
+      await s.msg(c, { type: "withdraw", id: id2 });
+      expect(owner.last("withdrawn")).toMatchObject({ id: id2, askId: "cal2" });
+    });
+
+    it("only open asks: an answered or expired one, or a line without an ask, is refused", async () => {
+      const s = setup();
+      const owner = s.page();
+      const c = await agent(s, owner);
+      await s.msg(c, askOne);
+      await s.msg(owner, { type: "answer", askId: "cal1", choices: { q1: "o1" } });
+      await s.msg(c, { type: "withdraw", id: "cal1" });
+      expect(c.last("error")?.error).toBe("ask cal1 is answered");
+      await s.msg(c, { ...askOne, askId: "soon", expiresAt: Date.now() + 60_000 });
+      // Past its expiry on the hub's clock (ticking that far would lapse the grant too).
+      for (const [k, v] of s.storage.store)
+        if ((v as { ask?: { askId: string } })?.ask?.askId === "soon")
+          s.storage.store.set(k, {
+            ...(v as object),
+            ask: { ...(v as { ask: object }).ask, expiresAt: 1 },
+          });
+      await s.msg(c, { type: "withdraw", id: "soon" });
+      expect(c.last("error")?.error).toBe("ask soon is expired");
+      await s.msg(c, { type: "say", text: "plain line" });
+      const plain = (chats(owner).at(-1) as { id: string }).id;
+      await s.msg(c, { type: "withdraw", id: plain });
+      expect(c.last("error")?.error).toContain(`no ask ${plain}`);
+      expect(owner.last("withdrawn")).toBeUndefined();
+    });
+
+    it("needs a live owner grant; never a friend's pairing, a stranger, or a malformed id", async () => {
+      const s = setup();
+      const owner = s.page();
+      const c = s.controller("agent");
+      await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+      const token = c.last("approved")?.token as string;
+      await s.msg(c, askOne);
+      const stranger = s.controller("stranger");
+      await s.msg(stranger, { type: "withdraw", id: "cal1" });
+      expect(stranger.last("error")?.error).toBe("not approved yet");
+      await s.msg(c, { type: "withdraw", id: "cal 1; drop" });
+      expect(c.last("error")?.error).toContain("withdraw needs the askId");
+      const f = await s.friend("f1", "f1@x.com");
+      await s.msg(f, { type: "chat", id: "hi", text: "hello" });
+      const preview = await s.forFriend(token, "f1@x.com");
+      await s.msg(f, { type: "allow", pair: s.pairOf(f) });
+      await s.msg(preview, { type: "withdraw", id: "cal1" });
+      expect(preview.last("error")?.error).toBe("a pairing for a friend cannot withdraw");
+      s.storage.store.delete(`grant:${await hashToken(token)}`);
+      await s.msg(c, { type: "withdraw", id: "cal1" });
+      expect(c.last("error")?.error).toBe("withdraw needs a live chat grant from the owner");
+      expect((await s.hub.history()).at(-1)?.ask?.withdrawnAt).toBeUndefined();
+    });
+
+    it("thread-scoped: a friend's card only in their thread, never the owner's from there", async () => {
+      const s = setup();
+      const owner = s.page();
+      const c = await agent(s, owner);
+      const f = await s.friend("f1", "f1@x.com", "/words Android");
+      await s.msg(f, { type: "chat", id: "hi", text: "hello" });
+      await s.msg(c, askOne);
+      await s.msg(c, { ...askOne, askId: "fa", to: "f1@x.com" });
+      // The owner's thread by default: the friend's card is not there, and the reverse.
+      await s.msg(c, { type: "withdraw", id: "fa" });
+      expect(c.last("error")?.error).toBe("no ask fa in that thread");
+      await s.msg(c, { type: "withdraw", id: "cal1", to: "f1@x.com" });
+      expect(c.last("error")?.error).toBe("no ask cal1 in that thread");
+      await s.msg(c, { type: "withdraw", id: "fa", to: "f1@x.com" });
+      expect(f.last("withdrawn")).toMatchObject({ askId: "fa", thread: "f1" });
+      expect(owner.last("withdrawn")).toBeUndefined();
+      expect(c.last("withdrawn")).toMatchObject({ askId: "fa", thread: "f1" });
+      expect((await s.hub.history()).at(-1)?.ask?.withdrawnAt).toBeUndefined();
+      expect((await s.hub.history("f1")).at(-1)?.ask?.withdrawnAt).toBeNumber();
+    });
+  });
 });
 
 describe("DebugHub page errors", () => {
