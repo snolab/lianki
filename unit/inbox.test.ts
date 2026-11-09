@@ -34,7 +34,8 @@ import {
 
 const SCHEMA =
   "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT);\n" +
-  readFileSync(new URL("../db/migrations/0035_inbox.sql", import.meta.url), "utf8");
+  readFileSync(new URL("../db/migrations/0035_inbox.sql", import.meta.url), "utf8") +
+  readFileSync(new URL("../db/migrations/0067_import_files.sql", import.meta.url), "utf8");
 const OWNER = { id: "u1", email: "owner@example.com", owner: true };
 const FRIEND = { id: "u2", email: "friend@example.com", owner: false };
 const T0 = 1_800_000_000_000;
