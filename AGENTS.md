@@ -114,8 +114,9 @@ the same change; translators read it before every string. How:
 While working on Lianki, report to the live state tree
 ([docs/state-tree.md](docs/state-tree.md), "Live progress") at the start, at
 milestones, when blocked, and when done (with the PR):
-`bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<name>: <description>" --status doing --pct 40 --eta 30m`
-(`--done --pr N` at the end; `--status waiting-owner --needs "…"` when the
+`bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<name>: <description>" --status doing --pct 40 --eta 12m-63m`
+(`--eta` is one time or a P5–P95 range; `--confirm` re-confirms it unchanged;
+`batch` writes several nodes as one change; `--done --pr N` at the end; `--status waiting-owner --needs "…"` when the
 owner must act). The title is "name: description" with a name of at most 20
 characters, because the owner's ETA bar shows only the name (a longer one is
 refused). `progress.ts stats` shows your estimate vs actual, to calibrate `--eta`. Use the token you were given (`--token` or

@@ -71,6 +71,7 @@ import {
   isPathId,
   isProgressId,
   mergeProgress,
+  newChangeId,
   newestHistory,
   parseProgressReport,
   parseTtl,
@@ -79,6 +80,7 @@ import {
   progressEvent,
   progressHistory,
   progressKey,
+  progressAgo,
 } from "../../../lib/progress";
 import {
   type ProgressAuth,
@@ -122,6 +124,15 @@ const boxOf = (ws: Socket): BoxReader | null => {
 export const RATE = { windowMs: 60_000, perName: 30, total: 120 } as const;
 /** A report is a few hundred bytes; anything much bigger is not one. */
 export const MAX_BODY = 4096;
+/** A batch (POST /batch): at most this many reports, in at most this many bytes. */
+export const BATCH_MAX = 20;
+export const MAX_BATCH_BODY = BATCH_MAX * MAX_BODY;
+/**
+ * A change id given on separate calls (`--change-id`) keeps the time of its
+ * first write for this long, so the ticks of one action line up on the Gantt.
+ */
+export const CHANGE_ID_WINDOW_MS = 10 * 60_000;
+const CHANGE = "cid:";
 /** The longest a minted token lives. */
 export const GRANT_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 export const GRANT_DEFAULT = "8h";
@@ -185,6 +196,23 @@ const etaDue = (e: ProgressEntry) => e.etaAt !== undefined && e.etaSent !== e.et
  */
 const silentDue = (e: ProgressEntry) =>
   e.status !== "done" && e.etaAt !== undefined && e.etaSent === e.etaAt && e.etaSilent !== e.etaAt;
+
+/**
+ * A node as the API and the readers get it: with `etaConfirmedAgo` ("5 min
+ * ago"), when its estimate was last set or re-confirmed (etaConfirmedAt), so a
+ * coordinator spots a stale one at a glance.
+ */
+export function withAgo<T extends ProgressEntry | ProgressEvent>(e: T, now: number): T {
+  return e.etaConfirmedAt === undefined
+    ? e
+    : { ...e, etaConfirmedAgo: progressAgo(e.etaConfirmedAt, now) };
+}
+
+/** A logged event without the node's ETA history (the node itself carries it). */
+const lean = (ev: ProgressEvent): ProgressEvent => {
+  const { etaEvents: _events, ...rest } = ev;
+  return rest;
+};
 
 export class ProgressHub {
   private windows = new Map<string, { start: number; count: number }>();
@@ -327,6 +355,7 @@ export class ProgressHub {
     const body = await this.body(req);
     if (body instanceof Response) return body;
     if (path.endsWith("/grant")) return this.grant(auth, body);
+    if (path.endsWith("/batch")) return this.batch(auth, body);
     if (path.endsWith("/resolve")) {
       if (!auth.root) return fail(403, "only the owner (the root token) resolves");
       const b = body as { id?: unknown; note?: unknown };
@@ -341,7 +370,8 @@ export class ProgressHub {
 
   private async body(req: Request): Promise<unknown> {
     const raw = await req.text();
-    if (raw.length > MAX_BODY) return fail(413, "body too large");
+    const max = new URL(req.url).pathname.endsWith("/batch") ? MAX_BATCH_BODY : MAX_BODY;
+    if (raw.length > max) return fail(413, "body too large");
     try {
       return JSON.parse(raw);
     } catch {
@@ -360,7 +390,10 @@ export class ProgressHub {
 
   /** The tree (newest first) and the log (oldest first). */
   private async state() {
-    const entries = [...(await this.all()).values()].sort((a, b) => b.at - a.at);
+    const t = this.now();
+    const entries = [...(await this.all()).values()]
+      .sort((a, b) => b.at - a.at)
+      .map((e) => withAgo(e, t));
     const log = [...(await this.ctx.storage.list<ProgressEvent>({ prefix: LOG })).values()];
     return { entries, log };
   }
@@ -462,6 +495,7 @@ export class ProgressHub {
           (r.pct !== undefined && r.pct !== prev.pct) ||
           (r.eta !== undefined && r.eta !== prev.eta) ||
           r.etaIn !== undefined ||
+          r.confirm ||
           (r.etaAt !== undefined && r.etaAt !== prev.etaAt))
       )
         return `only ${prev.creator} (or a scope above) sets the status, pct and eta of ${r.id}`;
@@ -474,7 +508,54 @@ export class ProgressHub {
     return null;
   }
 
-  private async write(auth: ProgressAuth, r: ProgressReport): Promise<Response> {
+  /**
+   * POST /batch {changeId?, reports: [...]}: one action across several nodes.
+   * Every report is checked first (400 naming the first bad one, nothing
+   * written); then each is written in order with ONE time and ONE change id,
+   * so their ETA ticks line up. Each answer is in `results`, in order.
+   */
+  private async batch(auth: ProgressAuth, body: unknown): Promise<Response> {
+    const b = (body ?? {}) as { changeId?: unknown; reports?: unknown };
+    if (!Array.isArray(b.reports) || !b.reports.length || b.reports.length > BATCH_MAX)
+      return fail(400, `reports must be a list of 1–${BATCH_MAX} reports`);
+    const reports: ProgressReport[] = [];
+    for (const [i, raw] of b.reports.entries()) {
+      const r = parseProgressReport(
+        b.changeId === undefined ? raw : { ...(raw as object), changeId: b.changeId },
+      );
+      if (r instanceof Error) return fail(400, `reports[${i}]: ${r.message}`);
+      reports.push(r);
+    }
+    const changeId = reports[0]!.changeId ?? newChangeId(this.now());
+    const t = this.now();
+    const results: unknown[] = [];
+    let ok = true;
+    for (const r of reports) {
+      const res = await this.write(auth, { ...r, changeId }, { t, shared: true });
+      const answer = (await res.json()) as Record<string, unknown>;
+      results.push(res.ok ? answer : { ...answer, status: res.status });
+      if (!res.ok) ok = false;
+    }
+    return json({ ok, changeId, at: t, results }, ok ? 200 : 207);
+  }
+
+  /** A change id seen within CHANGE_ID_WINDOW_MS keeps its first time; else this one is stored. */
+  private async changeTime(id: string, t: number): Promise<number> {
+    const key = `${CHANGE}${id}`;
+    const seen = await this.ctx.storage.get<number>(key);
+    if (seen !== undefined && t - seen < CHANGE_ID_WINDOW_MS) return seen;
+    await this.ctx.storage.put(key, t);
+    const old = await this.ctx.storage.list<number>({ prefix: CHANGE });
+    for (const [k, at] of old) if (t - at >= CHANGE_ID_WINDOW_MS) await this.ctx.storage.delete(k);
+    return t;
+  }
+
+  private async write(
+    auth: ProgressAuth,
+    r: ProgressReport,
+    /** A batch: its one time, and its change id already settled. */
+    opts: { t?: number; shared?: boolean } = {},
+  ): Promise<Response> {
     const all = await this.all();
     const prev = all.get(r.id);
     const refused = this.refuse(all, auth, r, prev);
@@ -485,12 +566,22 @@ export class ProgressHub {
       return fail(400, `unknown parent ${parent}`);
     if (r.rev !== undefined && prev && r.rev <= prev.rev)
       return fail(409, `stale rev ${r.rev}; ${r.id} is at ${prev.rev}`, { rev: prev.rev });
-    const t = this.now();
+    const t = opts.t ?? this.now();
     if (
       r.etaAt !== undefined &&
       (r.etaAt < t - ETA_GIVE_UP_MS || r.etaAt > t + PROGRESS_ETA_MAX_MS)
     )
       return fail(400, "etaAt must be within the next 30 days");
+    // A confirm keeps a time that is still ahead: a passed one is an overrun (below).
+    if (r.confirm) {
+      if (prev?.etaAt === undefined || prev.status === "done")
+        return fail(400, `${r.id} has no open estimate to confirm: give one with --eta`);
+      if (prev.etaAt <= t)
+        return fail(
+          400,
+          `${r.id} ran past its ETA: a confirm cannot keep it — --eta 20m --late "why" (the owner is told both)`,
+        );
+    }
     // ETA overrun (docs/state-tree.md): past its estimate, a new one comes with the reason.
     const newEstimate = r.eta !== undefined || r.etaIn !== undefined || r.etaAt !== undefined;
     if (
@@ -512,13 +603,15 @@ export class ProgressHub {
     const missing: ProgressEntry[] = [];
     for (let p = parent; p !== undefined && isPathId(p) && !all.has(p); p = pathParent(p))
       missing.unshift(autoNode(p, r.assignee.name, t));
-    const entry = mergeProgress(prev, r, t);
+    const changeId = r.changeId ?? newChangeId(t);
+    const changeAt = r.changeId && !opts.shared ? await this.changeTime(r.changeId, t) : t;
+    const entry = mergeProgress(prev, r, t, { id: changeId, at: changeAt });
     const events = [...missing.map((e) => progressEvent(e)), progressEvent(entry, r.note)];
     const evicted = await this.store([...missing, entry], all);
-    for (const ev of events) await this.append(ev);
+    for (const ev of events) await this.append(lean(ev));
     await this.recordDone(prev, entry, r.endedAt !== undefined);
     if (evicted) await this.sendSnapshot();
-    else for (const ev of events) await this.send(this.ctx.getWebSockets(), ev);
+    else for (const ev of events) await this.send(this.ctx.getWebSockets(), withAgo(ev, t));
     // The lane explained an overrun: the owner hears the reason and the new time.
     const told =
       r.late && entry.etaAt !== undefined
@@ -533,7 +626,8 @@ export class ProgressHub {
         : undefined;
     return json({
       ok: true,
-      entry,
+      entry: withAgo(entry, t),
+      changeId,
       readers: this.ctx.getWebSockets().length,
       ...(told === undefined ? {} : { told }),
     });
@@ -641,6 +735,8 @@ export class ProgressHub {
     if (!target) return fail(404, `no node ${id}`);
     if (!this.allow(OWNER_NAME)) return this.tooMany();
     const done: ProgressEntry[] = [];
+    const t = this.now();
+    const change = { id: newChangeId(t), at: t };
     const close = (e: ProgressEntry) => {
       const r: ProgressReport = {
         id: e.id,
@@ -650,7 +746,7 @@ export class ProgressHub {
         needs: "",
         note,
       };
-      done.push(mergeProgress(e, r, this.now()));
+      done.push(mergeProgress(e, r, t, change));
     };
     if (target.status !== "done") close(target);
     const ref = isOwnerTodo(id) && target.ref ? all.get(target.ref) : undefined;
@@ -663,9 +759,9 @@ export class ProgressHub {
       await this.ctx.storage.put(progressKey(kept), kept);
       await this.schedule(kept.at + PROGRESS_DONE_TTL_MS);
       const ev = progressEvent(kept, note);
-      await this.append(ev);
+      await this.append(lean(ev));
       await this.recordDone(was, kept);
-      await this.send(this.ctx.getWebSockets(), ev);
+      await this.send(this.ctx.getWebSockets(), withAgo(ev, t));
     }
     return json({ ok: true, resolved: done.map((e) => e.id) });
   }

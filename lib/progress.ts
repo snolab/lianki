@@ -106,6 +106,26 @@ export type ProgressReport = {
   /** `eta` as a duration (ms): the hub adds it to its own clock (parseProgressReport sets it). */
   etaIn?: number;
   /**
+   * A range's start ("--eta 12m-63m": P5 of what it may take; `etaAt` / `etaIn`
+   * is its P95). As a time, or a duration the hub adds to its clock. Overdue,
+   * the ETA ping and the overrun rule all count from the P95; the P5 only
+   * draws (the solid bar, then a fading tail) and labels ("12–63M").
+   */
+  etaMinAt?: number;
+  etaMinIn?: number;
+  /**
+   * `progress.ts --confirm`: the estimate still holds. No new time; the hub
+   * logs a "confirm" event and stamps etaConfirmedAt. Before the ETA only
+   * (a passed one needs a new --eta with --late).
+   */
+  confirm?: boolean;
+  /**
+   * One action across several nodes (`progress.ts batch`, or `--change-id`
+   * on each call): their ETA events share this id and one timestamp, so the
+   * Gantt's ticks line up and a tap shows the group.
+   */
+  changeId?: string;
+  /**
    * Why the task ran past its estimate (`progress.ts --late "…"`), always with
    * a new estimate that sets a time. The hub stores it as `lateReason` and
    * posts the owner the reason and the new time (docs/state-tree.md, "ETA
@@ -135,8 +155,22 @@ export type ProgressNote = { at: number; by: string; text: string };
  * its status, pct and eta), `by` wrote it last, `rev` is its revision,
  * `created` / `at` when it was first / last written.
  */
-export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind" | "etaIn" | "late"> & {
+export type ProgressEntry = Omit<
+  ProgressReport,
+  "note" | "rev" | "kind" | "etaIn" | "etaMinIn" | "late" | "confirm" | "changeId"
+> & {
   kind: ProgressKind;
+  /** The last write that set or re-confirmed the estimate (a change or a confirm). */
+  etaConfirmedAt?: number;
+  /** etaConfirmedAt as "5 min ago", added by the hub when it answers or sends (never stored). */
+  etaConfirmedAgo?: string;
+  /** The estimate's history: changes, confirms and status changes, oldest first (PROGRESS_ETA_EVENTS_MAX). */
+  etaEvents?: EtaEvent[];
+  /**
+   * The original plan: the start and the estimate when the node first got a
+   * time. Never moves; the Gantt draws it as a faint ghost bar.
+   */
+  plan?: { start: number; etaAt: number; etaMinAt?: number };
   /**
    * The `etaAt` the hub already sent its ping for ("ETA reached for …",
    * workers/push/src/progress.ts fireEta). A revised `etaAt` differs, so it
@@ -172,6 +206,29 @@ export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind" | "etaI
   estimateMs?: number;
   etaRevisions?: number;
 };
+/**
+ * One entry of a node's ETA history (docs/state-tree.md, "ETA history").
+ * "change": a new estimate (old → new; no newEtaAt = cleared by free text);
+ * "confirm": the estimate re-confirmed unchanged; "status": the status
+ * changed. `changeId` groups the events one action made across nodes (they
+ * share `at` too).
+ */
+export type EtaEvent = {
+  at: number;
+  kind: "change" | "confirm" | "status";
+  oldEtaAt?: number;
+  newEtaAt?: number;
+  oldEtaMinAt?: number;
+  newEtaMinAt?: number;
+  status?: ProgressStatus;
+  by: string;
+  changeId: string;
+};
+/** ETA events a node keeps (the newest). */
+export const PROGRESS_ETA_EVENTS_MAX = 24;
+/** A change id: what `--change-id` takes. */
+export const CHANGE_ID_RE = /^[A-Za-z0-9._:-]{1,40}$/;
+
 /** One write as broadcast and logged: the node after it (without its notes) and the note it added. */
 export type ProgressEvent = { type: "progress"; note?: string } & Omit<ProgressEntry, "notes">;
 
@@ -312,8 +369,28 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
     out.etaAt = b.etaAt;
   } else if (out.eta) {
     const e = parseEta(out.eta);
-    if (e && "in" in e) out.etaIn = e.in;
-    else if (e) out.etaAt = e.at;
+    if (e && "in" in e) {
+      out.etaIn = e.in;
+      if (e.min !== undefined) out.etaMinIn = e.min;
+    } else if (e) out.etaAt = e.at;
+  }
+  if (b.etaMinAt !== undefined && b.etaMinAt !== null) {
+    if (typeof b.etaMinAt !== "number" || !Number.isInteger(b.etaMinAt) || b.etaMinAt <= 0)
+      return new Error("etaMinAt must be a time in milliseconds");
+    if (out.etaAt === undefined || b.etaMinAt > out.etaAt)
+      return new Error("etaMinAt (P5) needs an etaAt (P95) at or after it");
+    if (b.etaMinAt < out.etaAt) out.etaMinAt = b.etaMinAt;
+  }
+  if (b.confirm !== undefined && b.confirm !== null && b.confirm !== false) {
+    if (b.confirm !== true) return new Error("confirm must be true");
+    if (out.eta !== undefined || out.etaAt !== undefined)
+      return new Error("confirm keeps the estimate as it is: give it without --eta");
+    out.confirm = true;
+  }
+  if (b.changeId !== undefined && b.changeId !== null) {
+    if (typeof b.changeId !== "string" || !CHANGE_ID_RE.test(b.changeId))
+      return new Error("changeId must be 1–40 of A-Z a-z 0-9 . _ : -");
+    out.changeId = b.changeId;
   }
   if (b.endedAt !== undefined && b.endedAt !== null) {
     if (typeof b.endedAt !== "number" || !Number.isInteger(b.endedAt) || b.endedAt <= 0)
@@ -337,6 +414,8 @@ export function mergeProgress(
   prev: ProgressEntry | undefined,
   r: ProgressReport,
   at: number,
+  /** The action's change id and time (the hub's; shared by a batch). Default: this write's own. */
+  change: { id?: string; at?: number } = {},
 ): ProgressEntry {
   const claim = !prev || prev.creator === PROGRESS_AUTO;
   const pick = <K extends "pct" | "eta" | "pr" | "ref" | "action" | "link">(k: K) =>
@@ -346,6 +425,11 @@ export function mergeProgress(
   const etaAt =
     r.etaAt ??
     (r.etaIn !== undefined ? at + r.etaIn : r.eta !== undefined ? undefined : prev?.etaAt);
+  // A range's P5 comes and goes with its estimate: one number has none.
+  const newEstimate = r.eta !== undefined || r.etaAt !== undefined || r.etaIn !== undefined;
+  const etaMinAt = newEstimate
+    ? (r.etaMinAt ?? (r.etaMinIn !== undefined ? at + r.etaMinIn : undefined))
+    : prev?.etaMinAt;
   const notes = [...(prev?.notes ?? [])];
   if (r.note) notes.push({ at, by: r.assignee.name, text: r.note });
   const entry: ProgressEntry = {
@@ -373,6 +457,8 @@ export function mergeProgress(
   if (prs.length) entry.prs = prs;
   if (needs) entry.needs = needs;
   if (etaAt !== undefined) entry.etaAt = etaAt;
+  if (etaAt !== undefined && etaMinAt !== undefined && etaMinAt < etaAt) entry.etaMinAt = etaMinAt;
+  etaHistory(prev, r, entry, at, change);
   if (prev?.etaSent !== undefined) entry.etaSent = prev.etaSent;
   if (prev?.etaSilent !== undefined) entry.etaSilent = prev.etaSilent;
   if (r.late) {
@@ -398,6 +484,63 @@ export function mergeProgress(
     entry.etaRevisions = 0;
   }
   return entry;
+}
+
+/** A change id when the writer gave none: base36 time and a random tail. */
+export const newChangeId = (at: number) =>
+  `${at.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * The ETA history a write adds to `entry` (mergeProgress): a "change" when
+ * the estimate moved (or was set, or cleared by free text), a "confirm" for
+ * `confirm`, a "status" when the status changed; `etaConfirmedAt` on a change
+ * that sets a time or a confirm; `plan` once, from the first time set.
+ */
+function etaHistory(
+  prev: ProgressEntry | undefined,
+  r: ProgressReport,
+  entry: ProgressEntry,
+  at: number,
+  change: { id?: string; at?: number },
+) {
+  const events = [...(prev?.etaEvents ?? [])];
+  const changeId = change.id ?? newChangeId(at);
+  const when = change.at ?? at;
+  const base = { at: when, by: r.assignee.name, changeId };
+  const newEstimate = r.eta !== undefined || r.etaAt !== undefined || r.etaIn !== undefined;
+  const moved = entry.etaAt !== prev?.etaAt || entry.etaMinAt !== prev?.etaMinAt;
+  let confirmed = false;
+  if (newEstimate && moved) {
+    const ev: EtaEvent = { ...base, kind: "change" };
+    if (prev?.etaAt !== undefined) ev.oldEtaAt = prev.etaAt;
+    if (entry.etaAt !== undefined) ev.newEtaAt = entry.etaAt;
+    if (prev?.etaMinAt !== undefined) ev.oldEtaMinAt = prev.etaMinAt;
+    if (entry.etaMinAt !== undefined) ev.newEtaMinAt = entry.etaMinAt;
+    events.push(ev);
+    confirmed = entry.etaAt !== undefined;
+  } else if ((newEstimate || r.confirm) && entry.etaAt !== undefined) {
+    // Confirmed, or the same time given again: it holds.
+    events.push({ ...base, kind: "confirm", newEtaAt: entry.etaAt });
+    confirmed = true;
+  }
+  if (prev && prev.status !== entry.status)
+    events.push({ ...base, kind: "status", status: entry.status });
+  if (events.length) entry.etaEvents = events.slice(-PROGRESS_ETA_EVENTS_MAX);
+  const confirmedAt = confirmed
+    ? when
+    : entry.etaAt !== undefined
+      ? prev?.etaConfirmedAt
+      : undefined;
+  if (confirmedAt !== undefined) entry.etaConfirmedAt = confirmedAt;
+  if (prev?.plan) entry.plan = prev.plan;
+  else if (entry.etaAt !== undefined) {
+    const start = Math.min(prev?.startedAt ?? prev?.created ?? at, entry.etaAt);
+    entry.plan = {
+      start,
+      etaAt: entry.etaAt,
+      ...(entry.etaMinAt !== undefined ? { etaMinAt: entry.etaMinAt } : {}),
+    };
+  }
 }
 
 /** A node keeps at most this many PR numbers (the newest). */
@@ -832,12 +975,23 @@ export function progressAgo(at: number, now: number): string {
 export const PROGRESS_ETA_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
- * An agent's `--eta`: a duration from now ("15m", "1h30m", "90s", "2d") or
+ * An agent's `--eta`: a duration from now ("15m", "1h30m", "90s", "2d"), a
+ * range of two ("12m-63m": `min` its P5, `in` its P95) or
  * an ISO time with its zone ("2026-11-07T20:30+09:00"). Anything else (free
  * text, "after CI") is null: shown as written, with no bar and no ping.
  */
-export function parseEta(s: string): { in: number } | { at: number } | null {
+export function parseEta(s: string): { in: number; min?: number } | { at: number } | null {
   const t = s.trim();
+  // A range "12m-63m" (or "12m–63m"): P5 to P95 of what it may take. The end
+  // is the estimate (etaAt: the bar, the ping, overdue); the start its P5.
+  const range = /^(.+?)\s*(?:-|–|—|\.\.)\s*(.+)$/.exec(t);
+  if (range && !/^\d{4}-/.test(t)) {
+    const lo = parseEta(range[1]!);
+    const hi = parseEta(range[2]!);
+    if (!lo || !hi || !("in" in lo) || !("in" in hi) || lo.min !== undefined) return null;
+    if (lo.in > hi.in) return null;
+    return lo.in === hi.in ? { in: hi.in } : { in: hi.in, min: lo.in };
+  }
   const parts =
     /^(?:(\d+(?:\.\d+)?)\s*d)?\s*(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+(?:\.\d+)?)\s*m(?:in)?)?\s*(?:(\d+(?:\.\d+)?)\s*s)?$/i.exec(
       t,
