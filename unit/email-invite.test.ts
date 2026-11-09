@@ -17,6 +17,8 @@ import {
   canEmailInvite,
   emailInviteStatus,
   inviteOptOut,
+  inviterLocale,
+  optOutGet,
   oneAddress,
   sendEmailInvite,
   signOptOut,
@@ -510,5 +512,80 @@ describe("a local server never mails anyone", () => {
     expect(isLocalOrigin("http://127.0.0.1:8787/")).toBe(true);
     expect(isLocalOrigin("https://lianki.com")).toBe(false);
     expect(isLocalOrigin("https://localhost.evil.example")).toBe(false);
+  });
+});
+
+describe("malformed input and failures fail closed", () => {
+  test("a stored ui.locale that is not JSON, or a prefs read that throws: the next fallback", async () => {
+    raw.raw().prepare("UPDATE user SET signupLocale = 'ja-JP' WHERE id = 'pro'").run();
+    raw
+      .raw()
+      .prepare(
+        "INSERT INTO user_prefs (user_id, key, value, hlc_ts, hlc_counter, device_id, updated_ms) VALUES ('pro', 'ui.locale', '{not json', 1, 0, 'd', 1)",
+      )
+      .run();
+    const db = raw as unknown as InviteDb;
+    expect(await inviterLocale(db, "pro")).toBe("ja");
+    const throwing = {
+      prepare: (sql: string) =>
+        sql.includes("user_prefs")
+          ? { bind: () => ({ first: () => Promise.reject(new Error("d1 down")) }) }
+          : db.prepare(sql),
+    } as unknown as InviteDb;
+    expect(await inviterLocale(throwing, "pro")).toBe("ja");
+  });
+  test("a send body that is not JSON, too long, or already read: 400, nothing sent", async () => {
+    const bad = (body: string) =>
+      new Request(`${BASE}/api/invite/email`, {
+        method: "POST",
+        headers: {
+          host: "lianki.com",
+          origin: BASE,
+          "sec-fetch-site": "same-origin",
+          "content-type": "application/json",
+        },
+        body,
+      });
+    expect((await sendEmailInvite(bad("{nope"), deps)).status).toBe(400);
+    expect((await sendEmailInvite(bad(" ".repeat(3000)), deps)).status).toBe(400);
+    const used = bad(JSON.stringify({ email: FRIEND }));
+    await used.text();
+    expect((await sendEmailInvite(used, deps)).status).toBe(400);
+    expect(mails).toHaveLength(0);
+  });
+  test("opt-out: unknown content type, bad JSON, broken form, unknown action: 400", async () => {
+    const req = (type: string, body: string) =>
+      new Request(`${BASE}/api/invite/email/opt-out?t=x`, {
+        method: "POST",
+        headers: {
+          host: "lianki.com",
+          origin: BASE,
+          "sec-fetch-site": "same-origin",
+          "content-type": type,
+        },
+        body,
+      });
+    expect((await inviteOptOut(req("text/plain", "x"), deps)).status).toBe(400);
+    expect((await inviteOptOut(req("application/json", "{nope"), deps)).status).toBe(400);
+    expect((await inviteOptOut(req("multipart/form-data", "garbage"), deps)).status).toBe(400);
+    expect((await pageAction("x", "delete-everything")).status).toBe(400);
+  });
+  test("opt-out: a short or missing secret verifies nothing", async () => {
+    await invite();
+    const token = decodeURIComponent(tokenOf(mails[0]!));
+    expect(await verifyOptOut(undefined, token)).toBeNull();
+    expect(await verifyOptOut("short", token)).toBeNull();
+    expect(await verifyOptOut(SECRET, 42)).toBeNull();
+  });
+  test("opt-out: past the per-IP limit, 429", async () => {
+    for (let i = 0; i < EMAIL_INVITE.optOutPerIp.max; i++) await oneClick("x");
+    expect((await oneClick("x")).status).toBe(429);
+  });
+  test("a GET on the one-click URL only redirects to the page, in the mail's language", () => {
+    const r = optOutGet(new Request(`${BASE}/api/invite/email/opt-out?t=abc&lang=zh`), BASE);
+    expect(r.status).toBe(303);
+    expect(r.headers.get("location")).toBe(`${BASE}/membership/invite-opt-out?lang=zh#t=abc`);
+    const en = optOutGet(new Request(`${BASE}/api/invite/email/opt-out`), BASE);
+    expect(en.headers.get("location")).toBe(`${BASE}/membership/invite-opt-out?lang=en#t=`);
   });
 });
