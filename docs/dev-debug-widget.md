@@ -1309,15 +1309,26 @@ in `debug.say`.
 
 **On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
 `voice.ts` `gateVoice`), on top of the usual rules (mic on; or the speaker
-toggle on and either the mic used in this tab or the input focused):
+toggle on and either a phone, the mic used on this device, or the input focused):
 
-0. **Mic used here, sticky** (owner, 2026-11-04: "最近用过 mic 输入的话，回我的打字消息也要用语音"):
-   once the mic has been on in a tab, replies are read there with the
-   toggle on whether the input has focus or not, typed lines included
-   (sessionStorage `lk:agent:voiced`). There is no time window: it lasts
-   until he turns "Replies read aloud" off, which clears it; his mute always
-   wins. The menu row says "Replies read aloud (mic used)" while it holds,
-   "Replies read aloud while typing" when only the focus rule applies.
+- **A phone: the toggle alone** (owner, 2026-11-10): on a touch device
+   (voice-bg.ts `isDesktop` false) every reply is read with the speaker
+   toggle on, focused or not: the focus rule needed the keyboard up, so a
+   reader on /reader heard nothing. The menu row says "Replies read aloud"
+   (`ChatStrings.readAloud`).
+- **Mic used here, sticky** (owner, 2026-11-04: "最近用过 mic 输入的话，回我的打字消息也要用语音"):
+   once the mic has been on, replies are read with the toggle on whether
+   the input has focus or not, typed lines included (localStorage
+   `lk:agent:voiced`; it was sessionStorage, which an iOS PWA relaunch
+   clears). There is no time window: it lasts until he turns "Replies read
+   aloud" off, which clears it; his mute always wins. On a computer the menu
+   row says "Replies read aloud (mic used)" while it holds, "Replies read
+   aloud while typing" (`ChatStrings.readAloudTyping`) when only the focus
+   rule applies.
+- **Reconnect**: replies sent while the socket was down come back only in
+   the `history` frame; the newest agent line past the last one this page
+   saw is read (speak-rules.ts `missedReply`). The first connect of a page
+   reads nothing: old history is never read aloud.
 
 1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
 2. **Hidden page or locked screen** (`document.visibilityState` "hidden"),
