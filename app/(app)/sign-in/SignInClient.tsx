@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useIntlayer } from "next-intlayer";
 import { authClient } from "@/lib/auth-client";
 import { sendSignInCodeAction } from "./actions";
+import { signInErrorFrom, signInErrorText, type SignInError } from "@/lib/sign-in-errors";
 import {
   defaultPasskeyName,
   PASSKEY_SUGGESTION_DISMISSED_KEY,
@@ -68,6 +69,7 @@ async function canSuggestPasskey(): Promise<boolean> {
  */
 export default function SignInClient({ passwordEnabled }: { passwordEnabled: boolean }) {
   const t = useIntlayer("sign-in-page");
+  const errText = useIntlayer("sign-in-errors");
   const turnstileRef = useRef<TurnstileInstance | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileState, setTurnstileState] = useState<"loading" | "ready" | "failed">("loading");
@@ -77,6 +79,19 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
   const [step, setStep] = useState<Step>("email");
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
+  /** A server error, shown from its key — never the server's own text. */
+  const showError = (e: SignInError) =>
+    setError(
+      signInErrorText(e, {
+        captcha: errText.captcha.value,
+        locked: errText.locked.value,
+        tooMany: errText.tooMany.value,
+        wrongCode: errText.wrongCode.value,
+        sendFailed: errText.sendFailed.value,
+        authFailed: errText.authFailed.value,
+        signInFailed: errText.signInFailed.value,
+      }),
+    );
   const [code, setCode] = useState("");
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   // Set after mount: the server render cannot know whether WebAuthn exists.
@@ -169,12 +184,12 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
             callbackURL: afterSignInPath(),
           });
           if (signUpResult.error) {
-            setError(signUpResult.error.message || "Authentication failed");
+            showError(signInErrorFrom(signUpResult.error, "authFailed"));
           } else {
             await afterEmailSignIn();
           }
         } else {
-          setError(msg || "Sign in failed");
+          showError(signInErrorFrom(result.error, "signInFailed"));
         }
       } else {
         await afterEmailSignIn();
@@ -193,7 +208,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
       if (result.success) {
         setCode("");
         setStep("code");
-      } else setError(result.error === "captcha" ? t.captchaRetry.value : result.error);
+      } else showError(result.error);
     });
   }
 
@@ -202,7 +217,8 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
     setError("");
     startTransition(async () => {
       const result = await authClient.signIn.emailOtp({ email, otp: code.trim() });
-      if (result.error) setError(t.wrongCode.value);
+      // A locked address answers 429 with the minutes left; anything else is a wrong code.
+      if (result.error) showError(signInErrorFrom(result.error, "wrongCode"));
       else await afterEmailSignIn();
     });
   }

@@ -108,7 +108,12 @@ which is per isolate and could be walked around:
 | one code                                      | dies after 5 wrong tries (better-auth `allowedAttempts`)                   |
 | code mails                                    | 5 per address, 20 per IP, per 15 min                                       |
 
-A locked request gets **429** with `Retry-After`. A successful sign-in clears
+A locked request gets **429** with `Retry-After`, repeated in the body as
+`retryAfterS`, so the sign-in page says "temporarily locked, try again in N
+min" instead of "wrong code" (`lib/sign-in-errors.ts`). The lock is keyed on
+the address whether or not an account exists, so that line tells nothing the
+guard did not already decide. The page shows only its own translated lines
+(`sign-in-errors` dictionary), never the server's text. A successful sign-in clears
 the account's failures. This meets PCI DSS v4.0 8.3.4 (≤ 10 attempts, ≥ 30
 minutes). Account keys are a SHA-256 of the address, never the address. The
 dev-only password path (`/sign-in/email`, off in production) is not counted.
@@ -226,7 +231,9 @@ Checkout requires a signed-in account, so the sign-in limits above apply too.
   (Cloudflare's IP geolocation) and the user agent — with what to do if it was
   not them. A browser is recognised by `lk_device`, a random httpOnly cookie
   (400 days, renewed at each sign-in); only its SHA-256 is stored (`known_device`). The sign-up itself is
-  not announced. `lib/security/login-notice.ts`; sent through Resend
+  not announced. The mail is in the **account's** language, not the signing-in
+  browser's: `ui.locale` (account setting) → `user.signupLocale` (when that
+  column exists) → English; every Chinese tag gets the Simplified template. `lib/security/login-notice.ts`; sent through Resend
   (`RESEND_API_KEY`, `EMAIL_FROM`) after the response (`waitUntil`), so it never
   slows or fails a sign-in.
 - **Attempt limits (④)**: section 1, "Account lockout".

@@ -151,3 +151,55 @@ export function loginNoticeMail(
       `<p>${esc(c.ok)}<br>${esc(c.notYou)}</p>`,
   };
 }
+
+/**
+ * A language tag (any form: `zh`, `zh-CN`, `zh_Hans`, `en-US`) → the notice's
+ * template language, or null when the tag is empty or unusable. Every Chinese
+ * tag gets the Simplified template, the only Chinese one there is.
+ */
+export function noticeTemplateLocale(tag: unknown): MailLocale | null {
+  if (typeof tag !== "string") return null;
+  const base = tag.trim().replace(/_/g, "-").toLowerCase().split("-")[0];
+  if (!base || !/^[a-z]{2,3}$/.test(base)) return null;
+  return base === "zh" ? "zh" : "en";
+}
+
+/**
+ * The notice's language is the account's, never the signing-in browser's
+ * (whoever signs in may not own the account): (1) the language set on the
+ * account (`ui.locale`, docs/prefs-sync.md), (2) the browser language recorded
+ * at sign-up (`user.signupLocale`), (3) English.
+ */
+export function noticeLocale(who: { accountLocale?: unknown; signupLocale?: unknown }): MailLocale {
+  return noticeTemplateLocale(who.accountLocale) ?? noticeTemplateLocale(who.signupLocale) ?? "en";
+}
+
+/** A stored pref value (JSON text) → the string it holds, or null. */
+function prefString(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The account's language for the notice, from D1. Each read fails on its own
+ * to null — `user.signupLocale` exists only once its migration has run — so
+ * the worst case is English.
+ */
+export async function accountNoticeLocale(db: ThrottleDb, userId: string): Promise<MailLocale> {
+  // async, so a prepare that throws at once (no such column) is caught too
+  const read = async <T>(sql: string) => db.prepare(sql).bind(userId).first<T>();
+  const [pref, user] = await Promise.all([
+    read<{ value: string }>(
+      "SELECT value FROM user_prefs WHERE user_id = ?1 AND key = 'ui.locale'",
+    ).catch(() => null),
+    read<{ signupLocale: string | null }>("SELECT signupLocale FROM user WHERE id = ?1").catch(
+      () => null,
+    ),
+  ]);
+  return noticeLocale({ accountLocale: prefString(pref?.value), signupLocale: user?.signupLocale });
+}
