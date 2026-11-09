@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import importWordlist from "@/app/(app)/import/wordlist-import.content";
+import wordsImportPanel from "@/app/(app)/words/import-panel.content";
 import bottomNav from "@/app/components/bottom-nav.content";
 import learningPartner from "@/app/components/learning-partner.content";
 import devSwitch from "@/app/components/dev-switch.content";
@@ -101,6 +102,7 @@ describe.each([
   ["words-page", words],
   ["words-import-ankiweb", wordsImportAnkiweb],
   ["import-wordlist", importWordlist],
+  ["words-import-panel", wordsImportPanel],
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
   ["dev-switch", devSwitch],
