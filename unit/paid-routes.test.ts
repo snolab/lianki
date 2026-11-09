@@ -21,7 +21,9 @@ import {
   installNoCreditsWatch,
 } from "@/lib/payments/no-credits-watch";
 import {
+  FREE_FEATURES,
   MAX_OUT,
+  freeCall,
   chatHoldUsd,
   openAiCreate,
   paidChat,
@@ -340,7 +342,38 @@ describe("paid chat, speech and transcription", () => {
   });
 });
 
-describe("word audio (/api/words/tts): a cache miss is paid", () => {
+describe("kept free by the owner (2026-11-09): word read-aloud and the mic", () => {
+  it("freeCall runs, charges nothing, and logs what it cost us", async () => {
+    const logs: Record<string, unknown>[] = [];
+    const r = await freeCall(
+      "speech.stt",
+      0.001,
+      async () => "ok",
+      (o) => void logs.push(o),
+    );
+    expect(r).toEqual({ ok: true, value: "ok", charged: 0, free: "feature" });
+    expect(logs).toEqual([
+      { event: "credits.free", what: "speech.stt", why: "free-feature", usd: 0.001 },
+    ]);
+    expect(notes()).toEqual([]);
+    expect(FREE_FEATURES).toEqual(["words.tts", "tts", "speech.stt"]);
+  });
+
+  it("the routes use freeCall, never a wallet", async () => {
+    const read = (p: string) => Bun.file(p).text();
+    for (const p of [
+      "app/api/words/tts/route.ts",
+      "app/api/debug/stt/route.ts",
+      "app/api/tts/route.ts",
+    ]) {
+      const src = await read(p);
+      expect(src).toContain("freeCall(");
+      expect(src).not.toMatch(/paidSpeech|paidStt|walletDb/);
+    }
+  });
+});
+
+describe("word audio (/api/words/tts): a cache miss through a paying `pay`", () => {
   const MP3 = new Uint8Array([0x49, 0x44, 0x33, 1]);
   const deps = (over: Partial<WordsTtsDeps> = {}): WordsTtsDeps => ({
     getVoiceClip: async () => null,
@@ -384,7 +417,7 @@ describe("word audio (/api/words/tts): a cache miss is paid", () => {
   });
 });
 
-describe("the mic (/api/debug/stt): each transcription is paid", () => {
+describe("the mic (/api/debug/stt) through a paying `pay`", () => {
   const post = () =>
     new Request("https://lianki.com/api/debug/stt", {
       method: "POST",

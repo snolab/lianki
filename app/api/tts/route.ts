@@ -1,6 +1,6 @@
 import { refusal, type Metered } from "@/lib/payments/metered";
-import { paidSpeech } from "@/lib/payments/paid-calls";
-import { walletDb } from "@/lib/payments/wallet-db";
+import { freeCall } from "@/lib/payments/paid-calls";
+import { speechUsd } from "@/lib/payments/prices";
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
@@ -129,19 +129,14 @@ export const POST = async (req: NextRequest) => {
     return NextResponse.json({ error: WORKERS_AI_NOT_CONFIGURED }, { status: 500 });
   }
 
-  // A cache miss is paid from the user's credits (docs/payments.md, "What costs credits").
+  // Free by the owner's decision (2026-11-09): what a cache miss costs us is logged.
   let paid: Metered<{ audio: Buffer<ArrayBuffer>; contentType: string }>;
   try {
     // `voice` and `model` stay validated and stay in the cache key, but MeloTTS
     // has neither — one voice per language, no tts-1/tts-1-hd tiers. Kept in
     // the request contract so existing clients do not break; see
     // docs/workers-ai.md for what that costs.
-    paid = await paidSpeech(
-      { userId: session.user.id, email: session.user.email, db: walletDb() },
-      "tts",
-      text,
-      () => workersAiSpeech({ text }),
-    );
+    paid = await freeCall("tts", speechUsd(text.length), () => workersAiSpeech({ text }));
   } catch (err) {
     logSanitizedError("tts.workersai.generate", err, { requester });
     return NextResponse.json({ error: "Failed to generate speech" }, { status: 500 });

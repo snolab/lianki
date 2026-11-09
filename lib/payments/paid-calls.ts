@@ -90,3 +90,23 @@ export function paidStt<T>(
     usd,
   }));
 }
+
+/**
+ * Free for everyone by the owner's decision (2026-11-09, card o3): word
+ * read-aloud (`words.tts`, legacy `tts`) and the microphone (`speech.stt`).
+ * No hold, no charge — only what it cost us is logged (`credits.free`, the
+ * feature and USD), so the decision can be revisited with numbers.
+ */
+export async function freeCall<T>(
+  what: Feature,
+  usd: number,
+  run: () => Promise<T>,
+  log: (o: Record<string, unknown>) => void = (o) => console.log(JSON.stringify(o)),
+): Promise<Metered<T>> {
+  const value = await run();
+  log({ event: "credits.free", what, why: "free-feature", usd });
+  return { ok: true, value, charged: 0, free: "feature" };
+}
+
+/** The features `freeCall` serves (docs/payments.md, "What costs credits"). */
+export const FREE_FEATURES: readonly Feature[] = ["words.tts", "tts", "speech.stt"];

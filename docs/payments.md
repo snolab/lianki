@@ -258,7 +258,12 @@ server path a signed-in user can reach that calls a paid provider is paid from
 that user's wallet — or by their own key (BYOK, [byok.md](byok.md): the call
 goes from their browser to their provider and never reaches ours), or it is
 free for everyone because nothing is billed (cached answers, recorded clips).
-There is **no free allowance**: a balance of 0 gets the refusal below.
+There is **no free allowance**: a balance of 0 gets the refusal below — except
+the features the owner keeps free (2026-11-09, card o3): **word read-aloud**
+(`words.tts`, legacy `tts`) and **the microphone** (`speech.stt`). They take no
+hold and charge nothing; each call logs its cost to us (`freeCall` in
+`lib/payments/paid-calls.ts`, `credits.free` with `why: "free-feature"`), so
+the choice can be revisited with numbers.
 
 **Pre-authorisation + refund** (`lib/payments/metered.ts`, on top of
 `lib/payments/ai-credits.ts`):
@@ -332,14 +337,14 @@ is 225 credits.
 | `read.live-polish` | `/api/read/[id]/polish-live` | `read.live-polish` | Workers AI · DeepSeek (or `READ_POLISH_MODEL`) | wallet | ~0.2 / 1–3 |
 | `self-intro.import` | `/api/self-intro/import` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.5 / ≤ 9 (40,000 characters + 4 images) |
 | `self-intro.followup` | `/api/self-intro/followup` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.2 / 1 |
-| `words.tts` | `/api/words/tts` (cache miss only) | — | Workers AI · MeloTTS / Aura-2 | wallet; a recorded clip or an R2-cached clip is free; Aura-2 held at its price | MeloTTS ~0.001 per clip; Aura-2 ~0.7 per 100 characters |
-| `speech.stt` | `/api/debug/stt` (the chat's mic, voice mode) | `words.voice-mode` | Workers AI · Whisper turbo | wallet, by the audio's size; both models failing → refunded. The owner's local STT (his Mac) costs nothing | ~0.03 per 15 s utterance |
+| `words.tts` | `/api/words/tts` (cache miss only) | — | Workers AI · MeloTTS / Aura-2 | **free** — owner, 2026-11-09 (card o3): word read-aloud stays free for now; each miss logs what it cost us (`credits.free`, `why: "free-feature"`) | MeloTTS ~0.001 per clip; Aura-2 ~0.7 per 100 characters |
+| `speech.stt` | `/api/debug/stt` (the chat's mic, voice mode) | `words.voice-mode` | Workers AI · Whisper turbo | **free** — owner, 2026-11-09 (card o3): the microphone stays free for now; each transcription logs what it cost us. The owner's local STT (his Mac) costs nothing | ~0.03 per 15 s utterance |
 | `ai-sentences` | `/api/ai-sentences/generate`, `/new-word` | — (`/lab/ai-vocab`) | Workers AI · Llama 3.3 70B | wallet | ~0.3 |
 | `polyglot.translate`, `polyglot.tts` | `/api/polyglot/*` | — (`/lab/polyglot`) | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
 | `self-intro.translate`, `self-intro.tts` | `/api/self-intro/translate`, `/tts` | — | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
 | `roadmap.generate` | `/api/roadmap/generate` | — | Workers AI · Llama | wallet | ~1 |
 | `blog.translate` | `/api/translate` (blog post, any signed-in user; the result is shared) | — | Workers AI · gpt-oss-120b | wallet: held before the stream, settled when it ends; a translation already in the PR is free | ~5 per post |
-| `tts` | `/api/tts` (legacy; no page calls it) | — | Workers AI · MeloTTS | wallet | ~0.01 |
+| `tts` | `/api/tts` (legacy; no page calls it) | — | Workers AI · MeloTTS | **free** with word read-aloud (2026-11-09); cost logged | ~0.01 |
 
 Not charged, on purpose (no provider bill per call):
 

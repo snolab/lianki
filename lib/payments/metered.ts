@@ -37,7 +37,7 @@ export const HOLD_STALE_MS = 10 * 60_000;
 export type Payer = { userId: string; email?: string | null };
 
 export type Metered<T> =
-  | { ok: true; value: T; charged: number; free?: "admin" | "unmetered" }
+  | { ok: true; value: T; charged: number; free?: "admin" | "unmetered" | "feature" }
   | { ok: false; reason: "no-credits"; balance: number; need: number }
   | { ok: false; reason: "paused" }
   | { ok: false; reason: "duplicate" };
