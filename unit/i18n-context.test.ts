@@ -50,12 +50,14 @@ import profileEdit from "@/app/(app)/profile/profile-edit.content";
 import byokSettings from "@/app/components/byok-settings.content";
 import titleRules from "@/app/components/title-rules.content";
 import externalLink from "@/app/components/external-link.content";
+import appBadge from "@/app/components/app-badge.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
 import apiTokens from "@/app/components/api-tokens.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
 import devDesign from "@/app/(app)/dev/design/page.content";
 import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
+import devPages from "@/app/(app)/dev/dev-pages.content";
 import ytSongs from "@/app/components/yt-clip/yt-songs.content";
 import pillChat from "@/app/components/pill-chat.content";
 import signInErrors from "@/app/(app)/sign-in/errors.content";
@@ -138,6 +140,7 @@ describe.each([
   ["byok-settings", byokSettings],
   ["title-rules", titleRules],
   ["external-link", externalLink],
+  ["app-badge", appBadge],
   ["sign-in-errors", signInErrors],
   ["privacy-page", privacyPage],
   ["api-tokens", apiTokens],
@@ -145,6 +148,7 @@ describe.each([
   ["chat-history-page", chatHistoryPage],
   ["dev-design", devDesign],
   ["dev-roadmap", devRoadmap],
+  ["dev-pages", devPages],
   ["yt-songs", ytSongs],
   ["pill-chat", pillChat],
 ])("%s", (_name, dict) => {

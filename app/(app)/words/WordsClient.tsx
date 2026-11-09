@@ -249,6 +249,7 @@ import {
   type GradeTone,
 } from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
+import { noteBadgeSeen } from "@/lib/app-badge";
 
 /**
  * Sub-second word-list review.
@@ -4140,6 +4141,8 @@ export function Study({
       SESSION_WINDOW_MS,
     );
     insertDue.current();
+    // The app-icon badge (docs/app-badge.md): a due word's first grade is one fewer due.
+    if (first && it.kind === "due") noteBadgeSeen({ due: -1 });
     // The last word to review, just graded: focus goes to the way back.
     if (
       reviewEnded({

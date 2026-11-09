@@ -10,6 +10,7 @@ import { GITHUB_SPONSORS_URL } from "@/lib/payments/sponsors";
 import { InviteCard } from "./InviteCard";
 import { WalletCard } from "./WalletCard";
 import { longDate } from "@/lib/dates";
+import { PlanChop, PlanDefs, PlanMark, PlanStroke, PlanSurface, usePlanSkin } from "./PlanCards";
 
 const yen = (n: number) =>
   new Intl.NumberFormat(undefined, { style: "currency", currency: "JPY" }).format(n);
@@ -45,6 +46,8 @@ export default function MembershipClient() {
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const turnstileRef = useRef<TurnstileInstance | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  // The plan cards' material: marble; ?card=paper|wood previews the others.
+  const skin = usePlanSkin();
 
   useEffect(() => {
     fetchMembership();
@@ -199,50 +202,54 @@ export default function MembershipClient() {
         <WalletCard refreshKey={walletKey} onProChanged={fetchMembership} />
 
         {/* Features Comparison */}
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="lk-plans" data-skin={skin}>
+          <PlanDefs />
           {/* Free Tier */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-2 border-gray-200 dark:border-gray-700">
-            <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">
-              {currentStatus.free.value}
-            </h3>
-            <ul className="space-y-3 text-gray-700 dark:text-gray-300">
+          <div className="lk-plan lk-plan--free">
+            <PlanSurface />
+            <h3 className="lk-plan-title">{currentStatus.free.value}</h3>
+            <PlanStroke />
+            <ul className="lk-plan-list">
               <li className="flex items-start">
-                <Icon name="check" className="text-green-500 mr-2 mt-1" />
+                <PlanMark />
                 {features.free.basicSpacedRepetition.value}
               </li>
               <li className="flex items-start">
-                <Icon name="check" className="text-green-500 mr-2 mt-1" />
+                <PlanMark />
                 {features.free.unlimitedCards.value}
               </li>
               <li className="flex items-start">
-                <Icon name="check" className="text-green-500 mr-2 mt-1" />
+                <PlanMark />
                 {features.free.videoSpeedControl.value}
               </li>
               <li className="flex items-start">
-                <Icon name="x" className="text-red-500 mr-2 mt-1" />
+                <PlanMark no />
                 {features.free.noPolyglot.value}
               </li>
             </ul>
           </div>
 
           {/* Pro Tier */}
-          <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg shadow-lg p-6 border-2 border-blue-400 text-white">
-            <h3 className="text-xl font-bold mb-4">{currentStatus.pro.value}</h3>
-            <ul className="space-y-3">
+          <div className="lk-plan lk-plan--pro">
+            <PlanSurface />
+            <PlanChop />
+            <h3 className="lk-plan-title">{currentStatus.pro.value}</h3>
+            <PlanStroke />
+            <ul className="lk-plan-list">
               <li className="flex items-start">
-                <Icon name="check" className="mr-2 mt-1" />
+                <PlanMark />
                 {features.pro.allFreeFeatures.value}
               </li>
               <li className="flex items-start">
-                <Icon name="check" className="mr-2 mt-1" />
+                <PlanMark />
                 {features.pro.polyglotLearning.value}
               </li>
               <li className="flex items-start">
-                <Icon name="check" className="mr-2 mt-1" />
+                <PlanMark />
                 {features.pro.aiTranslations.value}
               </li>
               <li className="flex items-start">
-                <Icon name="check" className="mr-2 mt-1" />
+                <PlanMark />
                 {features.pro.textToSpeech.value}
               </li>
             </ul>
@@ -253,7 +260,7 @@ export default function MembershipClient() {
                     key={id}
                     onClick={() => buy(id)}
                     disabled={buying !== null || (Boolean(siteKey) && !turnstileToken)}
-                    className="w-full bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-60"
+                    className="lk-plan-btn w-full"
                   >
                     {id === "pro-1m"
                       ? features.buy.oneMonth.value
@@ -276,14 +283,11 @@ export default function MembershipClient() {
                     />
                   </div>
                 )}
-                <p className="text-xs text-center opacity-90">{features.buy.methods.value}</p>
+                <p className="text-xs text-center">{features.buy.methods.value}</p>
               </div>
             ) : (
               <div className="mt-6 text-center">
-                <a
-                  href="/contacts"
-                  className="inline-block bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors"
-                >
+                <a href="/contacts" className="lk-plan-btn inline-block">
                   {features.pro.contactUs.value}
                 </a>
               </div>
@@ -293,12 +297,12 @@ export default function MembershipClient() {
                 href={GITHUB_SPONSORS_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 border border-white/70 font-semibold px-6 py-2 rounded-lg hover:bg-white/10 transition-colors"
+                className="lk-plan-btn2 inline-flex items-center gap-2"
               >
                 <Icon name="star" />
                 {features.sponsor.link.value}
               </a>
-              <p className="text-xs mt-2 opacity-90">{features.sponsor.note.value}</p>
+              <p className="text-xs mt-2">{features.sponsor.note.value}</p>
             </div>
           </div>
         </div>

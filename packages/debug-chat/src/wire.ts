@@ -664,8 +664,10 @@ export type ChatStrings = {
   etaReached: string;
   /** Shown for a few seconds in the progress bar above the chat input and in a task's row in the state tree when that task was finished. One word, a status (past participle or adjective). */
   etaDone: string;
-  /** Screen-reader label and tooltip of the progress bar above the chat input: tapping it opens the state tree (the status panel) listing every task with its own bar and time left. Imperative verb phrase. */
+  /** Screen-reader label and tooltip of the progress bar above the chat input (and of the expand button on the task list in the state tree): tapping it opens a full-screen timeline (a Gantt chart) of every task with its own bar and time left. Imperative verb phrase. */
   etaOpen: string;
+  /** Screen-reader label and tooltip of the × button at the top of the full-screen task timeline (a Gantt chart of the assistant's tasks): closes the timeline and returns to the chat. Imperative verb phrase, very short. */
+  etaGanttClose: string;
   /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
   etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
@@ -770,7 +772,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaNext: "next in {t}",
   etaReached: "ETA reached",
   etaDone: "done",
-  etaOpen: "Show all tasks and their ETAs in the state tree",
+  etaOpen: "Show all tasks on a full-screen timeline",
+  etaGanttClose: "Close the timeline",
   etaList: "Timed tasks",
   etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",

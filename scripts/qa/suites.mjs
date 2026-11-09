@@ -155,6 +155,22 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // The app-icon badge (docs/app-badge.md): flag gate, counts, the setting persists, setAppBadge mocked.
+  {
+    name: "APP BADGE (qa-app-badge)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-app-badge.mjs"],
+    base: true,
+    id: "app-badge",
+    paths: [
+      "app/components/AppBadge*.tsx",
+      "app/components/app-badge.content.ts",
+      "app/api/badge/**",
+      "lib/app-badge*.ts",
+      "public/sw.js",
+    ],
+    sensitive: false,
+  },
   // Invite by email on /membership (docs/payments.md, "Invite by email"): gate, one address, neutral answer, stubbed send.
   {
     name: "EMAIL INVITE (qa-email-invite)",
@@ -168,6 +184,16 @@ export const SUITES = [
       "lib/referrals/**",
       "lib/signup-locale*.ts",
     ],
+    sensitive: false,
+  },
+  // The marble plan cards on /membership: marble by default, 360 px, measured text contrast over the stone.
+  {
+    name: "MEMBERSHIP MARBLE (qa-membership-marble)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-membership-marble.mjs"],
+    base: true,
+    id: "membership-marble",
+    paths: ["app/(app)/membership/**", "public/membership/**", "lib/plan-skin.ts"],
     sensitive: false,
   },
   // YouTube songs (docs/youtube-song-examples.md): flag gate, the ▶ per line, the popup's close rules.

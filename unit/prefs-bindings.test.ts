@@ -67,6 +67,7 @@ const SAMPLE: Record<string, unknown> = {
   "chat-voice.cueSend": false,
   "chat-voice.cueSpeech": false,
   "links.confirm": false,
+  "notify.badge": "ask-cards",
   "links.allowedHosts": ["en.wikipedia.org", "youtube.com"],
 };
 
