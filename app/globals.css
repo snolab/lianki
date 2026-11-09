@@ -817,6 +817,58 @@ html[data-embed] .lk-statusbar {
   }
 }
 
+/* The app rail (AppShell): links, then "⋯" for the ones that did not fit
+ * (useRailFit), then the account menu at the foot. Never taller than the
+ * screen (owner, 2026-11-09: "left side panel 太高了"). On a desktop it is
+ * sticky and as tall as the screen less the part of the top bar still in view
+ * (--lk-head-vis, set on scroll); on a tablet it fills the fixed glass nav. */
+.lk-rail {
+  position: sticky;
+  top: 0;
+  height: calc(100dvh - var(--lk-head-vis, calc(3.5rem + env(safe-area-inset-top))));
+}
+/* The last resort, when even the first group does not fit: the links scroll,
+ * fading out at an edge that has more beyond it. Keyboard focus scrolls a
+ * link into view. */
+.lk-rail-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  --lk-fade: 1.5rem;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    oklch(0 0 0 / 0),
+    oklch(0 0 0) var(--lk-fade-top, 0px),
+    oklch(0 0 0) calc(100% - var(--lk-fade-bottom, 0px)),
+    oklch(0 0 0 / 0)
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    oklch(0 0 0 / 0),
+    oklch(0 0 0) var(--lk-fade-top, 0px),
+    oklch(0 0 0) calc(100% - var(--lk-fade-bottom, 0px)),
+    oklch(0 0 0 / 0)
+  );
+}
+.lk-rail-scroll[data-more-above] {
+  --lk-fade-top: var(--lk-fade);
+}
+.lk-rail-scroll[data-more-below] {
+  --lk-fade-bottom: var(--lk-fade);
+}
+/* "⋯"'s popover: near-opaque paper, so its links read over any content. */
+.lk-rail-more {
+  background: var(--glass-bg-solid);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
+}
+@media (min-width: 48rem) and (max-width: 79.99rem) {
+  .lk-rail {
+    position: static;
+    height: 100%;
+  }
+}
+
 /* Tablet (768–1279px): the app nav floats over the content as glass and takes
  * no layout width; the content is padded by its width (--nav-w, AppShell), so
  * at rest nothing is covered while a swiped card slides under it. Phones keep
@@ -828,7 +880,8 @@ html[data-embed] .lk-statusbar {
     bottom: 0;
     inset-inline-start: 0;
     z-index: 30;
-    overflow-y: auto;
+    /* Not a scroller: the rail inside scrolls its links (.lk-rail-scroll),
+     * and its "⋯" and account popovers reach out over the content. */
     padding-bottom: env(safe-area-inset-bottom);
     /* A landscape iPhone: the glass runs from the screen edge, under the
      * notch, and its links start beside it (the content is padded by the

@@ -205,8 +205,15 @@ describe("up or down: one check, no polling", () => {
       "utf8",
     );
     expect(item).toContain("devServerUp()");
+    // The account menu (one component, in the top bar, the rail's foot and the drawer's).
+    const menu = readFileSync(
+      new URL("../app/components/ProfileMenu.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(menu).toContain("<DevSwitchItem sw={devSwitch}>");
+    expect(menu).not.toContain("LiveViewItem");
+    expect(menu).not.toContain("devServerUp");
     const shell = readFileSync(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8");
-    expect(shell).toContain("<DevSwitchItem sw={devSwitch}>");
     // One preview control: Live view is a chip inside it, not a second switch.
     expect(shell).not.toContain("LiveViewItem");
     expect(shell).not.toContain("devServerUp");

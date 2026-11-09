@@ -36,8 +36,8 @@ describe("the nav islands", () => {
     const shell = src("app/components/AppShell.tsx");
     expect(shell).toContain('island("nav.bottom", BottomIsland)');
     expect(shell).toContain('island("nav.drawer", NavRows)');
-    expect(shell).toContain('sidebar("drawer")');
-    expect(shell).toContain('sidebar("sidebar")');
+    expect(shell).toContain('links("drawer")');
+    expect(shell).toContain('links("sidebar")');
   });
 
   it("chat.open takes an optional state-tree node", () => {

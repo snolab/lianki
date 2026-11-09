@@ -26,6 +26,12 @@ export type NavItem = {
    * itself 404s otherwise): the server passes the keys to show.
    */
   flag?: FlagKey;
+  /**
+   * "menu": reached from the account menu (avatar; also pinned at the rail's
+   * foot), not the rail. Owner, 2026-11-09: import, data and settings are
+   * account things; their URLs stay as they are.
+   */
+  place?: "menu";
 };
 
 // Home is navigation and onboarding; word lists are the main path. The
@@ -50,9 +56,9 @@ export const APP_NAV: NavItem[] = [
   { key: "lab", href: "/lab", icon: "flask", group: "lab" },
   { key: "aiVocab", href: "/lab/ai-vocab", icon: "brain", group: "lab" },
   { key: "polyglot", href: "/lab/polyglot", icon: "globeHemisphereWest", group: "lab" },
-  { key: "import", href: "/import", icon: "uploadSimple", group: "data" },
-  { key: "data", href: "/data", icon: "database", group: "data" },
-  { key: "preferences", href: "/preferences", icon: "gearSix", group: "account" },
+  { key: "import", href: "/import", icon: "uploadSimple", group: "data", place: "menu" },
+  { key: "data", href: "/data", icon: "database", group: "data", place: "menu" },
+  { key: "preferences", href: "/preferences", icon: "gearSix", group: "account", place: "menu" },
   { key: "membership", href: "/membership", icon: "star", group: "account" },
 ];
 
@@ -60,6 +66,14 @@ export const APP_NAV: NavItem[] = [
 export function visibleNav(shown: readonly string[] = []): NavItem[] {
   return APP_NAV.filter((i) => !i.flag || shown.includes(i.key));
 }
+
+/** The rail's (and drawer's) items: the visible ones the account menu does not carry. */
+export function railNav(shown: readonly string[] = []): NavItem[] {
+  return visibleNav(shown).filter((i) => i.place !== "menu");
+}
+
+/** The account menu's page links, in menu order (profile comes first, before these). */
+export const MENU_NAV: NavItem[] = APP_NAV.filter((i) => i.place === "menu");
 
 export const NAV_GROUPS: NavGroup[] = ["main", "advanced", "lab", "data", "account"];
 
