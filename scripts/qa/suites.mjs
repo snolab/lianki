@@ -157,6 +157,22 @@ export const SUITES = [
     paths: ["app/(app)/words/**", "app/(app)/alphabet/**", "app/api/words/**", "lib/words/**"],
     sensitive: true,
   },
+  // The card-height pinch on /words and the faded reviewed slip (lib/words/row-pinch.ts).
+  {
+    name: "WORDS PINCH (qa-words-pinch)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-words-pinch.mjs"],
+    base: true,
+    id: "words-pinch",
+    // The study view and the pinch's own files; the /words route tree is the words suite's.
+    paths: [
+      "app/(app)/words/WordsClient.tsx",
+      "lib/words/row-pinch.ts",
+      "lib/words/use-row-pinch.ts",
+      "lib/words/row-layout.ts",
+    ],
+    sensitive: true,
+  },
   {
     name: "READ EPUB (qa-read-epub)",
     cmd: "bun",
@@ -165,6 +181,38 @@ export const SUITES = [
     id: "read-epub",
     paths: READ,
     sensitive: true,
+  },
+  // /today, today's goal: the one number from /words's counts, red and gold by theme, links (lib/today/goal.ts).
+  {
+    name: "TODAY (qa-today)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-today.mjs"],
+    base: true,
+    id: "today",
+    paths: [
+      "app/(app)/today/**",
+      "app/api/words/today/**",
+      "lib/today/**",
+      "app/(app)/home/**",
+      "lib/app-nav.ts",
+      "scripts/qa/qa-today.mjs",
+    ],
+    sensitive: false,
+  },
+  // The /words first-visit walkthrough: shows once, Skip, replay from the "?", still frames (lib/words/onboarding.ts).
+  {
+    name: "WORDS ONBOARDING (qa-words-onboarding)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-words-onboarding.mjs"],
+    base: true,
+    id: "words-onboarding",
+    paths: [
+      "app/(app)/words/WordsOnboarding.tsx",
+      "app/(app)/words/onboarding.content.ts",
+      "lib/words/onboarding.ts",
+      "scripts/qa/qa-words-onboarding.mjs",
+    ],
+    sensitive: false,
   },
   // Import a word list on /import (docs/import-material.md, M1): flag gate, preview counts, a /words list.
   {

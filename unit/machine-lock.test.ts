@@ -880,6 +880,7 @@ describe("what is wired to the lock", () => {
     );
     expect(sensitive).toEqual([
       "WORDS",
+      "WORDS PINCH",
       "READ EPUB",
       "READ SEL ONE",
       "SYNC",
