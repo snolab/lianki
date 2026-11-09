@@ -14,7 +14,7 @@
 import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
-import { mailLocale } from "@/lib/sign-in-mail";
+import { TOO_MANY_ATTEMPTS } from "@/lib/sign-in-errors";
 import {
   CODE_CHECK_PATHS,
   IP_ONLY_CHECK_PATHS,
@@ -27,6 +27,7 @@ import {
 import {
   DEVICE_COOKIE,
   DEVICE_COOKIE_MAX_AGE_S,
+  accountNoticeLocale,
   approximateLocation,
   loginNoticeMail,
   recordSignIn,
@@ -74,13 +75,17 @@ export function securityPlugin(env: SecurityPluginEnv): BetterAuthPlugin {
             }
             if (!verdict.ok) {
               console.log(JSON.stringify({ event: "auth.throttled", path: ctx.path }));
+              const retryAfterS = Math.ceil(verdict.retryAfterMs / 1000);
+              // retryAfterS repeats Retry-After in the body, where the sign-in
+              // page can read it ("locked, try again in N min"; lib/sign-in-errors.ts).
               throw new APIError(
                 "TOO_MANY_REQUESTS",
                 {
                   message: "Too many attempts. Please try again later.",
-                  code: "TOO_MANY_ATTEMPTS",
+                  code: TOO_MANY_ATTEMPTS,
+                  retryAfterS,
                 },
-                { "Retry-After": String(Math.ceil(verdict.retryAfterMs / 1000)) },
+                { "Retry-After": String(retryAfterS) },
               );
             }
           }),
@@ -137,7 +142,10 @@ export function securityPlugin(env: SecurityPluginEnv): BetterAuthPlugin {
             try {
               cf = env.getCf?.();
             } catch {}
-            const mail = loginNoticeMail(mailLocale(ctx), {
+            // The account's language, not this browser's: whoever signs in
+            // here may not be the owner of the account.
+            const locale = await accountNoticeLocale(db, user.id).catch(() => "en" as const);
+            const mail = loginNoticeMail(locale, {
               when: new Date(),
               location: approximateLocation(cf, ctx.headers),
               userAgent,

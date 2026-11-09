@@ -9,6 +9,7 @@ import { testSchema } from "@/lib/d1/testSchema";
 import { securityPlugin, type SecurityPluginEnv } from "@/lib/security/auth-plugin";
 import { DEVICE_COOKIE } from "@/lib/security/login-notice";
 import type { ThrottleDb } from "@/lib/security/throttle";
+import { lockMinutes, signInErrorFrom } from "@/lib/sign-in-errors";
 
 /**
  * The security plugin inside a real better-auth instance on the D1 schema:
@@ -180,6 +181,12 @@ describe("sign-in lockout through better-auth", () => {
     const locked = await post("/sign-in/email-otp", { email: "v@x.com", otp: right }, ip);
     expect(locked.status).toBe(429);
     expect(Number(locked.headers.get("retry-after"))).toBeGreaterThan(29 * 60);
+    // The body repeats the wait, so the page can say "locked, try again in 30 min".
+    const body = await locked.json();
+    expect(body.retryAfterS).toBe(Number(locked.headers.get("retry-after")));
+    const shown = signInErrorFrom({ ...body, status: locked.status }, "wrongCode");
+    expect(shown.key).toBe("locked");
+    expect(lockMinutes(shown.retryAfterS)).toBe(30);
     expect(
       (await post("/email-otp/send-verification-otp", { email: "v@x.com", type: "sign-in" }, ip))
         .status,
@@ -195,5 +202,78 @@ describe("sign-in lockout through better-auth", () => {
     const ok = await post("/sign-in/email-otp", { email: "w@x.com", otp: right });
     expect(ok.status).toBe(200);
     expect(deviceCookie(ok)).toBeDefined();
+  });
+});
+
+describe("lockout message never tells whether an account exists", () => {
+  test("an address with no account is locked and answered exactly like one with an account", async () => {
+    const { post } = setup();
+    await post("/sign-up/email", { email: "has@x.com", password: "password1234", name: "H" });
+    const lock = async (email: string) => {
+      for (let i = 0; i < 10; i++)
+        await post(
+          "/sign-in/email-otp",
+          { email, otp: "000000" },
+          { "cf-connecting-ip": `198.51.100.${i}` },
+        );
+      const r = await post(
+        "/sign-in/email-otp",
+        { email, otp: "000000" },
+        { "cf-connecting-ip": "203.0.113.99" },
+      );
+      const body = await r.json();
+      return {
+        status: r.status,
+        code: body.code,
+        message: body.message,
+        minutes: lockMinutes(body.retryAfterS),
+      };
+    };
+    const known = await lock("has@x.com");
+    const unknown = await lock("nobody@x.com");
+    expect(known.status).toBe(429);
+    expect(unknown).toEqual(known);
+  });
+});
+
+describe("login notice language: the account's, not the browser's", () => {
+  async function signInFromNewBrowser(
+    setPrefs: (d1: ReturnType<typeof setup>["d1"], id: string) => void,
+    browser: Record<string, string>,
+  ) {
+    const { d1, post } = setup();
+    await post("/sign-up/email", { email: "l@x.com", password: "password1234", name: "L" });
+    const id = (
+      d1.raw().prepare("SELECT id FROM user WHERE email = ?").get("l@x.com") as { id: string }
+    ).id;
+    d1.raw().prepare("UPDATE user SET createdAt = ?").run("2020-01-01T00:00:00.000Z");
+    setPrefs(d1, id);
+    await post("/sign-in/email", { email: "l@x.com", password: "password1234" }, browser);
+    return mails;
+  }
+  const setLocale = (d1: ReturnType<typeof setup>["d1"], id: string, v: string) =>
+    d1
+      .raw()
+      .prepare(
+        "INSERT INTO user_prefs (user_id, key, value, hlc_ts, hlc_counter, device_id, updated_ms) VALUES (?, 'ui.locale', ?, 1, 0, 'd', 1)",
+      )
+      .run(id, JSON.stringify(v));
+
+  test("account set to Chinese, English browser → Chinese notice", async () => {
+    const sent = await signInFromNewBrowser((d1, id) => setLocale(d1, id, "zh"), {
+      "accept-language": "en-US,en;q=0.9",
+      "x-lianki-lang": "en",
+    });
+    expect(sent).toHaveLength(1);
+    expect(sent[0].subject).toContain("炼記");
+  });
+
+  test("no account language → English, even from a Chinese browser", async () => {
+    const sent = await signInFromNewBrowser(() => {}, {
+      "accept-language": "zh-CN,zh;q=0.9",
+      "x-lianki-lang": "zh",
+    });
+    expect(sent).toHaveLength(1);
+    expect(sent[0].subject).toBe("New sign-in to your Lianki account");
   });
 });

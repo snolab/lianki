@@ -462,6 +462,32 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   check(true, "titles: your own pattern can be removed");
 }
 
+// Sign-in errors are the page's own words, never the server's text
+// (lib/sign-in-errors.ts): a wrong password for the account made above is
+// tried as a sign-up, which the server refuses ("User already exists"); the
+// page shows its translated line instead. A fresh context, so this page's
+// expected 4xx stay out of the checks below.
+{
+  const ctx2 = await newSilentContext(browser);
+  const p2 = await ctx2.newPage();
+  await p2.goto(`${BASE}/sign-in`, { waitUntil: "networkidle" });
+  await p2.locator("#email").fill(EMAIL);
+  await p2.getByRole("button", { name: "Continue" }).click();
+  await p2.waitForSelector("#password", { timeout: budget(10000) });
+  await p2.locator("#password").fill(`${PW}-wrong`);
+  await p2.getByRole("button", { name: /sign in/i }).click();
+  const alert = p2.getByRole("alert");
+  const shown = await alert
+    .waitFor({ timeout: budget(15000) })
+    .then(() => alert.innerText())
+    .catch(() => "");
+  check(
+    shown === "Couldn't create the account. Check the email and password.",
+    `sign-in error is a known, translated line, not server text (got "${shown}")`,
+  );
+  await ctx2.close();
+}
+
 // 6. Console errors (ignore benign RSC prefetch aborts / 404 favicon / the
 // passkey client logging the autofill request it abandons when the explicit
 // passkey button starts its own / the

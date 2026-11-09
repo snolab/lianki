@@ -1,16 +1,18 @@
 "use server";
 import { auth } from "@/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { signInErrorFrom, type SignInError } from "@/lib/sign-in-errors";
 import { headers } from "next/headers";
 
-export type MagicLinkResult = { success: true } | { success: false; error: string };
+/** A failure is a key from lib/sign-in-errors.ts, never the server's own text. */
+export type MagicLinkResult = { success: true } | { success: false; error: SignInError };
 
 export async function sendMagicLinkAction(
   email: string,
   turnstileToken: string,
 ): Promise<MagicLinkResult> {
   const ok = await verifyTurnstileToken(turnstileToken);
-  if (!ok) return { success: false, error: "CAPTCHA verification failed" };
+  if (!ok) return { success: false, error: { key: "captcha" } };
 
   try {
     await auth.api.signInMagicLink({
@@ -19,8 +21,7 @@ export async function sendMagicLinkAction(
     });
     return { success: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to send magic link";
-    return { success: false, error: message };
+    return { success: false, error: signInErrorFrom(err, "sendFailed") };
   }
 }
 
@@ -30,7 +31,7 @@ export async function sendSignInCodeAction(
   turnstileToken: string,
 ): Promise<MagicLinkResult> {
   const ok = await verifyTurnstileToken(turnstileToken);
-  if (!ok) return { success: false, error: "captcha" };
+  if (!ok) return { success: false, error: { key: "captcha" } };
   try {
     await auth.api.sendVerificationOTP({
       body: { email, type: "sign-in" },
@@ -38,7 +39,6 @@ export async function sendSignInCodeAction(
     });
     return { success: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to send the code";
-    return { success: false, error: message };
+    return { success: false, error: signInErrorFrom(err, "sendFailed") };
   }
 }
