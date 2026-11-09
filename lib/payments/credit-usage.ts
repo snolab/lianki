@@ -3,13 +3,12 @@
  * usage"): every line of the user's own wallet ledger, with the balance after
  * it, what it was for, per-feature totals for the month and a CSV export.
  *
- * - A metered call's hold (`ai` row, −held) and its settle refund (`refund`
- *   row, same refId) read as ONE entry: held, actual (held − refunded),
- *   refunded. A hold with no refund yet is pending.
+ * - Actual spend only (owner, 2026-11-09): a paid action is one line of its
+ *   net charge; its hold and release never show, and an action that kept
+ *   nothing is hidden (buildEntries). A refund after the fact is its own line.
  * - The balance after each entry is the running sum of the ledger in the
  *   order it was written (`createdAt`, then rowid), computed here, never
- *   trusted from the client. A merged entry shows the balance after its last
- *   part (the refund once settled).
+ *   trusted from the client. A paid action shows the balance once it settled.
  * - The feature of an `ai` row is its ledger `note` (the metered call's
  *   feature id); none = a Learning Partner reply (the older path). Other
  *   reasons are their own feature. No private content is ever in a line: a
@@ -95,20 +94,22 @@ export interface UsageRow {
 /** One line of the view. */
 export interface UsageEntry {
   id: string;
-  /** When it happened (the hold's time for a metered call), ISO UTC. */
+  /** When it happened (a paid action: when it started), ISO UTC. */
   at: string;
   reason: CreditReason;
   /** The feature id (`ai` rows) or the reason. */
   feature: string;
   group: UsageGroup;
-  /** Net change to the balance (held − refunded for a metered call). */
+  /** What changed the spendable balance: a paid action's net charge (what it really cost). */
   amount: number;
   balanceAfter: number;
   passId: string | null;
   /** The page it was used on, when there is one. */
   href: string | null;
-  /** A metered call: what was held, what it really cost, what came back. */
-  hold?: { held: number; actual: number; refunded: number; pending: boolean };
+  /** A paid action not settled yet: its hold is still taken. */
+  pending?: true;
+  /** A refund or reversal: the line it gives back (its id and time). */
+  refundOf?: { id: string; at: string; group: UsageGroup };
 }
 
 /** The feature id of a row: an `ai` row's note, else a Learning Partner reply; other reasons are themselves. */
@@ -126,25 +127,40 @@ export function groupOf(feature: string): UsageGroup {
 const hrefOf = (feature: string, reason: CreditReason) =>
   FEATURES[feature]?.href ?? (reason === "pass" ? "/membership" : null);
 
+/** The ledger key a refund names: `pass:<refId>` gives back a pass, `topup:<refId>` reverses a top-up. */
+const refundTarget = (refId: string): string | null => {
+  const m = /^(pass|topup):(.+)$/.exec(refId);
+  return m ? `${m[1]}\u0000${m[2]}` : null;
+};
+
 /**
- * Rows (in written order) → entries, oldest first: holds and their refunds
- * merged, the running balance after each. `start` is the balance before the
- * first row (0 for a whole ledger; see usagePage for a capped read).
+ * Rows (in written order) → entries, oldest first, with the running balance
+ * after each. `start` is the balance before the first row (0 for a whole
+ * ledger; see usagePage for a capped read).
+ *
+ * Owner, 2026-11-09: the user sees actual spend only. A paid action (an `ai`
+ * hold, then the `refund` settleAi writes with the same refId) is ONE line of
+ * its net charge; the hold and its release never show, and an action that
+ * kept nothing (a failure, a refusal, a reply under a credit) is not shown at
+ * all. A hold not settled yet shows as pending. Every `ai:` refund is such a
+ * settle today — there is no later-refund path for an AI charge; one would
+ * need a refId of its own to show as a line. A refund of a pass or a reversed
+ * top-up (`pass:` / `topup:` refIds) changed the balance after the fact, so
+ * it is its own line, linked to the line it gives back.
  */
 export function buildEntries(rows: UsageRow[], start = 0): UsageEntry[] {
-  const holds = new Map<string, UsageEntry>();
+  const actions = new Map<string, UsageEntry>();
+  const byRef = new Map<string, UsageEntry>();
   const out: UsageEntry[] = [];
   let balance = start;
   for (const r of rows) {
     balance += r.amount;
     if (r.reason === "refund" && r.refId.startsWith("ai:")) {
-      const e = holds.get(r.refId);
-      if (e?.hold) {
-        e.hold.refunded += r.amount;
-        e.hold.actual = e.hold.held - e.hold.refunded;
-        e.hold.pending = false;
+      const e = actions.get(r.refId);
+      if (e) {
         e.amount += r.amount;
         e.balanceAfter = balance;
+        delete e.pending;
         continue;
       }
     }
@@ -161,12 +177,17 @@ export function buildEntries(rows: UsageRow[], start = 0): UsageEntry[] {
       href: hrefOf(feature, r.reason),
     };
     if (r.reason === "ai" && r.amount < 0) {
-      e.hold = { held: -r.amount, actual: -r.amount, refunded: 0, pending: true };
-      holds.set(r.refId, e);
+      e.pending = true;
+      actions.set(r.refId, e);
     }
+    const target = r.reason === "refund" ? refundTarget(r.refId) : null;
+    const of = target ? byRef.get(target) : undefined;
+    if (of) e.refundOf = { id: of.id, at: of.at, group: of.group };
+    byRef.set(`${r.reason}\u0000${r.refId}`, e);
     out.push(e);
   }
-  return out;
+  // A settled action that kept nothing changed nothing the user spent.
+  return out.filter((e) => e.amount !== 0 || e.pending);
 }
 
 /** A valid IANA zone, else UTC. */
@@ -271,12 +292,10 @@ export const CSV_HEADER = [
   "feature",
   "reason",
   "amount",
-  "held",
-  "actual",
-  "refunded",
-  "pending",
+  "status",
   "balance_after",
   "pass",
+  "refund_of",
 ];
 
 /** The entries as CSV (oldest first), times in UTC and in `tz`. */
@@ -290,12 +309,10 @@ export function toCsv(entries: UsageEntry[], tz: string): string {
         e.feature,
         e.reason,
         e.amount,
-        e.hold?.held,
-        e.hold?.actual,
-        e.hold?.refunded,
-        e.hold ? (e.hold.pending ? "yes" : "no") : "",
+        e.pending ? "pending" : "",
         e.balanceAfter,
         e.passId,
+        e.refundOf?.at,
       ]
         .map(cell)
         .join(","),

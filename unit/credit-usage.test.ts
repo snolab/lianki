@@ -47,41 +47,62 @@ describe("credit usage: rules", () => {
     for (const f of Object.values(FEATURES)) expect(GROUPS).toContain(f.group);
   });
 
-  it("merges a hold and its refund into one entry; running balance after each", () => {
+  it("shows actual spend only: one net line per paid action, net-zero hidden, refunds linked", () => {
     const rows = [
       row({ amount: 600, reason: "topup", refId: "stripe:1", createdAt: "2026-11-01T00:00:00Z" }),
       row({ amount: -3, reason: "ai", refId: "ai:read.gloss:u:1", note: "read.gloss" }),
       row({ amount: -5, reason: "ai", refId: "ai:u:m1" }),
       row({ amount: 2, reason: "refund", refId: "ai:read.gloss:u:1" }),
+      // A failed call: held, then all of it back — not shown at all.
+      row({ amount: -4, reason: "ai", refId: "ai:words.tts:u:2", note: "words.tts" }),
+      row({ amount: 4, reason: "refund", refId: "ai:words.tts:u:2" }),
       row({ amount: -600, reason: "pass", refId: "u:k", passId: "pro-1m" }),
       row({ amount: 600, reason: "refund", refId: "pass:u:k", passId: "pro-1m" }),
+      row({ amount: -600, reason: "refund", refId: "topup:stripe:1" }),
+      row({ amount: 5, reason: "refund", refId: "pass:unknown" }),
     ];
     const e = buildEntries(rows);
-    expect(e).toHaveLength(5);
-    expect(e[1]).toMatchObject({
+    expect(e.map((x) => x.reason)).toEqual([
+      "topup",
+      "ai",
+      "ai",
+      "pass",
+      "refund",
+      "refund",
+      "refund",
+    ]);
+    // Net only: what the action really cost; no hold detail anywhere.
+    expect(e[1]).toEqual({
+      id: rows[1].id,
+      at: rows[1].createdAt,
+      reason: "ai",
       feature: "read.gloss",
       group: "gloss",
       amount: -1,
       balanceAfter: 594,
+      passId: null,
       href: "/reader",
-      hold: { held: 3, actual: 1, refunded: 2, pending: false },
     });
-    // No refund yet: pending, the whole hold.
+    // Not settled yet: pending, the hold still taken.
     expect(e[2]).toMatchObject({
       feature: "partner.reply",
       amount: -5,
       balanceAfter: 592,
-      hold: { held: 5, actual: 5, refunded: 0, pending: true },
+      pending: true,
     });
-    expect(e[3]).toMatchObject({ reason: "pass", href: "/membership", balanceAfter: -6 + 0 });
+    expect(e.some((x) => x.feature === "words.tts")).toBe(false);
+    expect(e[3]).toMatchObject({ reason: "pass", href: "/membership", balanceAfter: -6 });
     expect(e[4]).toMatchObject({
-      reason: "refund",
       group: "refund",
+      amount: 600,
       balanceAfter: 594,
       href: null,
+      refundOf: { id: rows[6].id, at: rows[6].createdAt, group: "pass" },
     });
+    expect(e[5].refundOf).toEqual({ id: rows[0].id, at: rows[0].createdAt, group: "topup" });
+    expect(e[6].refundOf).toBeUndefined();
     // Starting from a capped read's offset.
-    expect(buildEntries(rows, 10).at(-1)?.balanceAfter).toBe(604);
+    expect(buildEntries(rows, 10).at(-1)?.balanceAfter).toBe(10 + 600 - 3 - 5 + 2 - 600 + 5);
   });
 
   it("keeps an orphan ai refund as its own line", () => {
@@ -109,12 +130,15 @@ describe("credit usage: rules", () => {
     ]);
     const csv = toCsv(e, "Asia/Tokyo").split("\r\n");
     expect(csv[0]).toBe(CSV_HEADER.join(","));
-    expect(csv[1]).toBe("2026-11-05T16:05:00Z,2026-11-06 01:05,topup,topup,600,,,,,600,");
-    // A formula-looking or quoted value is defused and quoted.
+    expect(csv[1]).toBe("2026-11-05T16:05:00Z,2026-11-06 01:05,topup,topup,600,,600,,");
+    // A formula-looking or quoted value is defused and quoted; one row, the net amount.
     expect(csv[2]).toContain(`"'=cmd,""x"""`);
-    expect(csv[2]).toContain(",-1,2,1,1,no,599,");
-    expect(csv[3]).toEndWith(",-600,,,,,-1,pro-1m");
+    expect(csv[2]).toEndWith(",ai,-1,,599,,");
+    expect(csv[3]).toEndWith(",-600,,-1,pro-1m,");
     expect(csv.at(-1)).toBe("");
+    expect(csv.join("\n")).not.toMatch(/held|refunded|actual/);
+    const pending = toCsv(buildEntries([row({ amount: -2, reason: "ai", refId: "ai:p" })]), "UTC");
+    expect(pending).toContain(",ai,-2,pending,-2,,");
   });
 
   it("filters by group and local day range; month totals in the zone", () => {
@@ -229,7 +253,7 @@ describe("credit usage: D1 and the route", () => {
     const lines = (await res.text()).trim().split("\r\n");
     expect(lines).toHaveLength(3);
     expect(lines[1]).toContain(",topup,topup,600,");
-    expect(lines[2]).toContain(",read.gloss,ai,-1,3,1,2,no,599,");
+    expect(lines[2]).toContain(",read.gloss,ai,-1,,599,,");
     expect(lines.join("\n")).not.toContain("gift");
     // Default `now`.
     expect((await creditUsage(req(), { userId: "u_a", d1: db() })).status).toBe(200);
