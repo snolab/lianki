@@ -24,7 +24,12 @@ import {
   signOptOut,
   verifyOptOut,
 } from "../lib/referrals/email-invite";
-import { mailDisplayName, previewInviteMail, renderInviteMail } from "../lib/referrals/invite-mail";
+import {
+  mailDisplayName,
+  PREVIEW_RECIPIENT,
+  previewInviteMail,
+  renderInviteMail,
+} from "../lib/referrals/invite-mail";
 import {
   inviterMailLocale,
   mailTemplateLocale,
@@ -461,6 +466,7 @@ describe("the mail", () => {
   test("HTML is escaped; Arabic and Urdu are right-to-left", () => {
     const m = renderInviteMail({
       locale: "ar",
+      recipient: FRIEND,
       inviterName: "A&B \"x\" 'y'",
       inviteUrl: `${BASE}/i/ABCD`,
       optOutUrl: `${BASE}/o#t=1`,
@@ -503,6 +509,93 @@ describe("the mail", () => {
     expect(m.text).toContain("120 天");
     // Traditional-only forms must not appear (炼記 is the brand's own spelling).
     expect(m.text).not.toMatch(/請|們|這|郵|訂|舉|濫/);
+  });
+});
+
+describe("the footer names the address the mail went to", () => {
+  const render = (recipient: string, locale: "en" | "zh" | "ar" = "en") =>
+    renderInviteMail({
+      locale,
+      recipient,
+      inviterName: "snomiao",
+      inviteUrl: `${BASE}/i/ABCD`,
+      optOutUrl: `${BASE}/o#t=1`,
+      reportUrl: `${BASE}/o#t=1&report=1`,
+      oneClickUrl: `${BASE}/api/invite/email/opt-out?t=1`,
+    });
+  test("en: text and HTML parts, next to Unsubscribe", () => {
+    const m = render(FRIEND);
+    const line = `This email was sent to ${FRIEND} because snomiao invited you.`;
+    const lines = m.text.split("\n");
+    expect(lines[lines.indexOf(line) + 1]).toMatch(/^Unsubscribe/);
+    expect(m.html).toContain(
+      `This email was sent to <bdi>${FRIEND}</bdi> because snomiao invited you.</span><br><a href="${BASE}/o#t=1">Unsubscribe`,
+    );
+  });
+  test("zh wording", () => {
+    const m = render(FRIEND, "zh");
+    expect(m.text).toContain(`这封邮件发送给 ${FRIEND}，因为 snomiao 邀请了你。`);
+    expect(m.html).toContain(`这封邮件发送给 <bdi>${FRIEND}</bdi>，因为 snomiao 邀请了你。`);
+  });
+  test("an address with markup is escaped in HTML, plain in text (validation refuses it anyway)", () => {
+    const evil = `<b>"x'&y@x.com`;
+    expect(oneAddress(`<b>@x.com`)).toBeNull();
+    const m = render(evil, "ar");
+    expect(m.html).not.toContain("<b>");
+    expect(m.html).toContain("<bdi>&lt;b&gt;&quot;x&#39;&amp;y@x.com</bdi>");
+    expect(m.text).toContain(evil);
+    // A placeholder-looking address is not filled a second time.
+    expect(render("{name}@x.com").text).toContain("sent to {name}@x.com because");
+  });
+  test("the sent mail carries the address as sent; the preview a placeholder", async () => {
+    await invite("Friend.One@Example.org");
+    const m = mails[0]!;
+    expect(m.text).toContain(`sent to ${m.to} because snomiao`);
+    expect(m.html).toContain(`<bdi>${m.to}</bdi>`);
+    const p = previewInviteMail({ locale: "en", inviterName: "snomiao" });
+    expect(p.text).toContain(`sent to ${PREVIEW_RECIPIENT} because`);
+    expect(PREVIEW_RECIPIENT).toBe("friend@example.com");
+  });
+  test("no storage or log call ever receives the address", async () => {
+    // Every write (INSERT/UPDATE/DELETE) with its arguments; reads may look the address up.
+    const writes: unknown[] = [];
+    const db = raw as unknown as InviteDb;
+    const spyDb = {
+      prepare: (sql: string) => {
+        const st = db.prepare(sql);
+        const write = /^\s*(insert|update|delete|replace)\b/i.test(sql);
+        return {
+          bind: (...args: unknown[]) => {
+            if (write) writes.push(sql, ...args);
+            return st.bind(...args);
+          },
+        };
+      },
+    } as unknown as InviteDb;
+    const logs = [spyOn(console, "log"), spyOn(console, "warn"), spyOn(console, "info")].map((s) =>
+      s.mockImplementation(() => {}),
+    );
+    try {
+      deps = { ...deps, db: () => spyDb };
+      const addr = "Unique.Person+tag@Example.org";
+      await invite(addr);
+      failSend = true;
+      now += 400 * DAY;
+      await invite("other.person@example.org");
+      expect(mails).toHaveLength(1);
+      expect(mails[0]!.text).toContain("sent to unique.person+tag@example.org because");
+      const calls = [errors, ...logs].flatMap((s) => s.mock.calls.flat());
+      const all = JSON.stringify([
+        writes,
+        calls,
+        rows("SELECT * FROM invite_email_log"),
+      ]).toLowerCase();
+      expect(writes.length).toBeGreaterThan(4);
+      expect(all).not.toContain("unique.person");
+      expect(all).not.toContain("other.person@");
+    } finally {
+      for (const s of logs) s.mockRestore();
+    }
   });
 });
 

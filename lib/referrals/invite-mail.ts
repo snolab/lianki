@@ -8,8 +8,11 @@
  *   and the footer. A name that is empty or reads like an address or a link is
  *   replaced by "A friend", so nobody can put a URL into someone else's inbox.
  * - Compliance footer (CAN-SPAM / CASL): sender (Lianki, the site), contact,
- *   why you got it (a friend, one time), a visible Unsubscribe link and Report
- *   abuse; the postal address line only once INVITE_MAIL_SENDER has one.
+ *   why you got it (a friend, one time), the address it was sent to beside a
+ *   visible Unsubscribe link, and Report abuse; the postal address line only
+ *   once INVITE_MAIL_SENDER has one.
+ * - The recipient's address is only rendered into this one message: never
+ *   stored, never logged (the log keeps a hash and a masked form).
  * - Headers: List-Unsubscribe with the https one-click URL and
  *   List-Unsubscribe-Post (RFC 8058). No mailto: there is no inbound mailbox.
  *
@@ -59,6 +62,11 @@ export function mailDisplayName(raw: unknown): string | null {
 
 export type InviteMailInput = {
   locale: MailTemplateLocale;
+  /**
+   * The address the mail goes to, exactly as sent: shown in the footer ("This
+   * email was sent to …"). Rendered only — never stored or logged.
+   */
+  recipient: string;
   /** The inviter's display name as stored; cleaned here. */
   inviterName: string | null | undefined;
   /** lianki.com/i/CODE: the inviter's existing invite link. */
@@ -105,6 +113,12 @@ export function renderInviteMail(input: InviteMailInput): RenderedInviteMail {
   const intro = fill(c.intro, v);
   const offer = fill(c.offer, v);
   const why = fill(c.why, v);
+  const sentTo = fill(c.sentTo, { name, address: input.recipient });
+  // HTML: each part escaped on its own; the address isolated so an RTL line keeps it intact.
+  const sentToHtml = fill(esc(c.sentTo), {
+    name: esc(name),
+    address: `<bdi>${esc(input.recipient)}</bdi>`,
+  });
   const sender = fill(c.sender, v);
   const contact = fill(c.contact, v);
   const postal = INVITE_MAIL_SENDER.postalAddress;
@@ -123,6 +137,7 @@ export function renderInviteMail(input: InviteMailInput): RenderedInviteMail {
     "—",
     why,
     "",
+    sentTo,
     c.unsubscribe,
     input.optOutUrl,
     "",
@@ -145,7 +160,7 @@ export function renderInviteMail(input: InviteMailInput): RenderedInviteMail {
     `<p style="font-size:14px">${esc(c.linkLine)}<br><a href="${esc(input.inviteUrl)}">${esc(input.inviteUrl)}</a></p>` +
     `<hr style="border:none;border-top:1px solid oklch(0.85 0 0);margin:24px 0">` +
     `<p style="font-size:13px;${muted}">${esc(why)}</p>` +
-    `<p style="font-size:13px"><a href="${esc(input.optOutUrl)}">${esc(c.unsubscribe)}</a> · <a href="${esc(reportUrl)}">${esc(c.report)}</a></p>` +
+    `<p style="font-size:13px"><span style="${muted}">${sentToHtml}</span><br><a href="${esc(input.optOutUrl)}">${esc(c.unsubscribe)}</a> · <a href="${esc(reportUrl)}">${esc(c.report)}</a></p>` +
     `<p style="font-size:13px;${muted}">${esc(sender)}<br>${esc(contact)}${postal ? `<br>${esc(postal)}` : ""}</p>` +
     `</div>`;
 
@@ -167,6 +182,9 @@ export function optOutLinks(origin: string, locale: string, token: string) {
   return { optOutUrl: `${page}#t=${t}`, reportUrl: `${page}#t=${t}&report=1` };
 }
 
+/** The address a preview shows in its "sent to" line: never a real one. */
+export const PREVIEW_RECIPIENT = "friend@example.com";
+
 /**
  * The mail as a recipient would get it, with placeholder links: for showing the
  * owner before any real send (GET /api/dev/invite-mail-preview renders his own).
@@ -180,6 +198,7 @@ export function previewInviteMail(opts: {
   const origin = opts.origin ?? INVITE_MAIL_SENDER.site;
   return renderInviteMail({
     locale: opts.locale,
+    recipient: PREVIEW_RECIPIENT,
     inviterName: opts.inviterName,
     inviteUrl: `${origin}/i/${opts.code ?? "PREVIEW"}`,
     ...optOutLinks(origin, opts.locale, "preview"),
