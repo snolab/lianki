@@ -1960,7 +1960,7 @@ const learningPartnerContent = {
       zh: "对数",
       hi: "लघुगणक",
       es: "Log",
-      fr: "Log",
+      fr: "Log.",
       ar: "لوغاريتمي",
       bn: "লগ",
       pt: "Log",
