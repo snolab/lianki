@@ -3,10 +3,10 @@ import { describeKeys } from "@/lib/i18n-context";
 
 /**
  * API tokens (lib/api-tokens.ts): the "API tokens" section of /preferences
- * (app/(app)/list/components/TokenManager.tsx) and the permission and expiry
+ * (app/(app)/preferences/TokenManager.tsx) and the permission and expiry
  * pickers that /cli-login shares with it (app/components/TokenPickers.tsx).
  * Modelled on GitHub's fine-grained personal access tokens: a name, explicit
- * permissions, a required expiry, last used, one-click revoke.
+ * permissions, a required expiry, last used, revoke after an inline confirm.
  */
 const dictionary = {
   key: "api-tokens",
@@ -659,6 +659,42 @@ const dictionary = {
       mr: "रद्द करा",
       ko: "폐기",
     }),
+    revokeConfirm: t({
+      en: "Revoke {name}? Apps using it stop working at once.",
+      zh: "撤销 {name}？使用它的应用会立即停止工作。",
+      hi: "{name} रद्द करें? इसका उपयोग करने वाले ऐप तुरंत काम करना बंद कर देंगे।",
+      es: "¿Revocar {name}? Las aplicaciones que lo usan dejarán de funcionar al instante.",
+      fr: "Révoquer {name} ? Les applications qui l'utilisent cesseront aussitôt de fonctionner.",
+      ar: "إلغاء {name}؟ ستتوقف التطبيقات التي تستخدمه عن العمل فورًا.",
+      bn: "{name} বাতিল করবেন? এটি ব্যবহারকারী অ্যাপগুলো সঙ্গে সঙ্গে কাজ করা বন্ধ করবে।",
+      pt: "Revogar {name}? Os apps que o usam param de funcionar na hora.",
+      ru: "Отозвать {name}? Приложения, которые его используют, сразу перестанут работать.",
+      ur: "{name} منسوخ کریں؟ اسے استعمال کرنے والی ایپس فوراً کام کرنا بند کر دیں گی۔",
+      id: "Cabut {name}? Aplikasi yang memakainya langsung berhenti bekerja.",
+      de: "{name} widerrufen? Apps, die es nutzen, funktionieren sofort nicht mehr.",
+      ja: "{name} を取り消しますか？これを使っているアプリはすぐに動かなくなります。",
+      sw: "Batilisha {name}? Programu zinazoitumia zitaacha kufanya kazi mara moja.",
+      mr: "{name} रद्द करायचा? तो वापरणारी अ‍ॅप्स लगेच काम करणे थांबवतील.",
+      ko: "{name}을(를) 폐기할까요? 이 토큰을 쓰는 앱은 즉시 작동을 멈춥니다.",
+    }),
+    revokeCancel: t({
+      en: "Cancel",
+      zh: "取消",
+      hi: "वापस जाएँ",
+      es: "Cancelar",
+      fr: "Annuler",
+      ar: "تراجع",
+      bn: "ফিরে যান",
+      pt: "Cancelar",
+      ru: "Отмена",
+      ur: "واپس جائیں",
+      id: "Batal",
+      de: "Abbrechen",
+      ja: "キャンセル",
+      sw: "Ghairi",
+      mr: "मागे जा",
+      ko: "취소",
+    }),
     errName: t({
       en: "Give the token a name.",
       zh: "请给令牌起个名称。",
@@ -800,7 +836,11 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Small text in a token's row: when a program last used it. {date} is a date and time; keep {date}.",
   neverUsed: "Small text in a token's row: no program has used it yet. Short phrase.",
   revoke:
-    "Button at the end of a token's row in Settings → API tokens: deletes the token at once, so it stops working. Imperative verb.",
+    "Button at the end of a token's row in Settings → API tokens, and again as the confirming button inside the 'Revoke …?' question that the first click opens: deletes the token, so it stops working. Imperative verb; the same word in both places.",
+  revokeConfirm:
+    "Question shown in a token's row after its Revoke button is clicked, above the Revoke and Cancel buttons: revoking cannot be undone and every program (app) using the token stops at once. {name} is the token's name; keep {name}. A question, then one short sentence.",
+  revokeCancel:
+    "Button beside the confirming Revoke in a token's 'Revoke …?' question: backs out and keeps the token. It must not read as another way to revoke (in hi, ar, bn, ur, mr the usual 'cancel' word also means 'revoke', so a 'go back' word is used). One word or short phrase.",
   errName:
     "Error under the token form when the name field is empty or too long: asks for a name. Imperative, short.",
   errScopes: "Error under the token form when no permission checkbox is ticked. Imperative, short.",

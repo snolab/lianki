@@ -479,9 +479,9 @@ login`'s and the agent lanes' tokens.
   `tag`), never the token. No token in a URL: `DELETE /api/token` takes
   `{id}` in the body.
 - **Page**: Settings (`/preferences`) → API tokens
-  (`app/(app)/list/components/TokenManager.tsx`, strings in
+  (`app/(app)/preferences/TokenManager.tsx`, strings in
   `app/components/api-tokens.content.ts`): the owning account, each token's
-  name, permissions, created, expiry, last used, and one-click Revoke; the
+  name, permissions, created, expiry, last used, and Revoke behind an inline confirm (RevokeConfirm.tsx; Esc or Cancel backs out); the
   form takes name, permissions and expiry. `/api/token` (`lib/api-token-api.ts`)
   takes a browser session only; a token can never make or list tokens.
 - **Audit** (`security_audit`): `api-token.create`, `.revoke`, `.revoke-all`,

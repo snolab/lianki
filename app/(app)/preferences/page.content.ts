@@ -96,6 +96,24 @@ const preferencesPageContent = {
       sw: "Rudisha chaguo-msingi",
       mr: "डीफॉल्टवर रीसेट करा",
     }),
+    paperHeading: t({
+      en: "Paper",
+      zh: "纸纹",
+      ja: "紙の風合い",
+      ko: "종이 질감",
+      hi: "कागज़ की बनावट",
+      es: "Papel",
+      fr: "Papier",
+      ar: "ملمس الورق",
+      bn: "কাগজের বুনন",
+      pt: "Papel",
+      ru: "Бумага",
+      ur: "کاغذ کی بناوٹ",
+      id: "Tekstur kertas",
+      de: "Papier",
+      sw: "Umbile la karatasi",
+      mr: "कागदाचा पोत",
+    }),
     reviewOrder: {
       defaultMark: t({
         en: "(default)",
@@ -858,6 +876,8 @@ export default {
   ...preferencesPageContent,
   title: "/preferences — the settings page",
   description: describeKeys("The signed-in settings page. Only recent keys have a line so far.", {
+    paperHeading:
+      "Section heading on the settings page over the paper picker: the paper-like background texture of the app's pages (a skin; today 宣紙, Xuan rice paper). Kept on this device only. A short noun for the texture of a sheet of paper, not newspaper or a document.",
     resetSection:
       "Screen-reader label and tooltip of a small icon button beside a section heading on the settings page: puts that section's settings back to their defaults (unsaved until Save). Imperative verb, short.",
     "reviewOrder.defaultMark":

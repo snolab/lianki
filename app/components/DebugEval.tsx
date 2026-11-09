@@ -64,6 +64,7 @@ import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
 import { useLiveView, widgetSource } from "@/lib/live-view/client";
 import { inboxFiles, linkInboxLine } from "@/lib/inbox/client";
+import { pageBuildId } from "@/lib/build-id";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
@@ -76,8 +77,6 @@ const AGENT_AVATAR = "/icon-192.png";
 const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
 /** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
 const TAB_KEY = "lk:debug-tab";
-/** The build the page runs, on each page-error ("dev" under next dev). */
-const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
 /** The chat lines cut out of page errors: the latest this many. */
 const SENSITIVE_LINES = 50;
 
@@ -291,7 +290,8 @@ export function DebugEval({
     // dropped for good on a friend's.
     const newReporter = () =>
       createPageErrorReporter({
-        rev: BUILD_ID,
+        // The build the page runs ("dev" under next dev): from <html data-build>.
+        rev: pageBuildId(),
         pagePath: () => location.pathname,
         sensitive: () => [
           ...typedText(document),
