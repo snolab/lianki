@@ -6,8 +6,10 @@ import {
   json,
   rangeWords,
   readerCtx,
+  payerOf,
 } from "@/lib/read/reader-route";
-import { fillGlosses } from "@/lib/read/gloss-server";
+import { fillGlosses, type GlossAi } from "@/lib/read/gloss-server";
+import { noCreditsResponse, pausedResponse } from "@/lib/payments/metered";
 import { glossMayAskModel, headOf } from "@/lib/read/gloss";
 import { draftOwn } from "@/lib/read/live-polish-server";
 
@@ -51,9 +53,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!words?.length) return badRequest("a word of the book is required");
   const byok = body?.own === true;
   const source = (await ctx.load()).words.book?.source;
-  const ai = glossMayAskModel(body ?? {}, source) ? { userId: ctx.userId } : null;
+  const ai: GlossAi | null = glossMayAskModel(body ?? {}, source) ? payerOf(ctx) : null;
   const [x] = await fillGlosses(ctx.db, book, words, ai);
   const back = x.back ?? null;
+  if (!back && ai?.refused)
+    return ai.refused === "paused" ? pausedResponse() : noCreditsResponse(ai.refused);
   if (!byok) return json({ term: x.term ?? x.w, back });
   const open = !back && source !== "vibe" && book.lang !== "und" && !book.names?.has(x.w);
   return json({

@@ -8,6 +8,8 @@ import { logSanitizedError } from "@/lib/safeError";
 import { getCachedTTS, getVoiceClip, putCachedTTS } from "@/lib/ttsCache";
 import { isPrivateSpeech } from "@/lib/vibe/private-speech";
 import { wordsTts } from "@/lib/words-tts";
+import { freeCall } from "@/lib/payments/paid-calls";
+import { speechUsd } from "@/lib/payments/prices";
 
 /**
  * Word audio for /words, and the chat's read-aloud (`store=0`). What it
@@ -30,6 +32,9 @@ export const GET = async (req: NextRequest) => {
       speechModel,
       speech: workersAiSpeech,
       log: (where, err) => logSanitizedError(where, err, {}),
+      // Free by the owner's decision (2026-11-09): what a miss costs us is logged.
+      pay: <T>(text: string, aura: boolean, run: () => Promise<T>) =>
+        freeCall("words.tts", speechUsd(text.length, aura), run),
       isPrivate: async (email, text, lang) =>
         dbBackend() === "d1" && isPrivateSpeech(getD1(), email, text, lang),
     },

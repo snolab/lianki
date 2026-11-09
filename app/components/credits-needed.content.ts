@@ -1,0 +1,105 @@
+import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "@/lib/i18n-context";
+
+/**
+ * The notice every page shows when a paid feature was refused for want of
+ * credits (app/components/NoCreditsNotice.tsx, lib/payments/no-credits-watch.ts;
+ * docs/payments.md, "What costs credits").
+ */
+const dictionary = {
+  key: "credits-needed",
+  content: {
+    message: t({
+      en: "Not enough credits for this. AI features and generated speech are paid from your credits.",
+      zh: "积分不足，无法完成此操作。AI 功能和语音生成会从你的积分中扣除。",
+      hi: "इसके लिए पर्याप्त क्रेडिट नहीं हैं। AI सुविधाएँ और बनाई गई आवाज़ आपके क्रेडिट से चुकाई जाती हैं।",
+      es: "No tienes créditos suficientes para esto. Las funciones de IA y la voz generada se pagan con tus créditos.",
+      fr: "Pas assez de crédits pour cela. Les fonctions d'IA et la voix générée sont payées avec vos crédits.",
+      ar: "لا يكفي رصيدك لهذا. تُدفع ميزات الذكاء الاصطناعي والصوت المُولَّد من رصيدك.",
+      bn: "এর জন্য যথেষ্ট ক্রেডিট নেই। AI সুবিধা আর তৈরি করা কণ্ঠস্বর আপনার ক্রেডিট থেকে দেওয়া হয়।",
+      pt: "Créditos insuficientes para isso. Os recursos de IA e a voz gerada são pagos com seus créditos.",
+      ru: "Недостаточно кредитов для этого. Функции ИИ и синтез речи оплачиваются вашими кредитами.",
+      ur: "اس کے لیے کافی کریڈٹس نہیں ہیں۔ AI فیچرز اور بنائی گئی آواز آپ کے کریڈٹس سے ادا ہوتی ہیں۔",
+      id: "Kredit tidak cukup untuk ini. Fitur AI dan suara yang dibuat dibayar dari kredit Anda.",
+      de: "Nicht genug Credits dafür. KI-Funktionen und erzeugte Sprache werden mit deinen Credits bezahlt.",
+      ja: "クレジットが足りません。AI機能と音声の生成はクレジットから支払われます。",
+      sw: "Krediti hazitoshi kwa hili. Vipengele vya AI na sauti inayotengenezwa hulipwa kwa krediti zako.",
+      mr: "यासाठी पुरेसे क्रेडिट्स नाहीत. AI सुविधा आणि तयार केलेला आवाज तुमच्या क्रेडिट्समधून दिला जातो.",
+      ko: "크레딧이 부족해요. AI 기능과 음성 생성은 크레딧으로 결제돼요.",
+    }),
+    topUp: t({
+      en: "Get credits",
+      zh: "获取积分",
+      hi: "क्रेडिट पाएँ",
+      es: "Conseguir créditos",
+      fr: "Obtenir des crédits",
+      ar: "احصل على رصيد",
+      bn: "ক্রেডিট নিন",
+      pt: "Obter créditos",
+      ru: "Получить кредиты",
+      ur: "کریڈٹس حاصل کریں",
+      id: "Dapatkan kredit",
+      de: "Credits holen",
+      ja: "クレジットを追加",
+      sw: "Pata krediti",
+      mr: "क्रेडिट्स मिळवा",
+      ko: "크레딧 받기",
+    }),
+    paused: t({
+      en: "This feature is temporarily unavailable. Nothing was charged. Please try again later.",
+      zh: "此功能暂时无法使用，未扣除任何积分。请稍后再试。",
+      hi: "यह सुविधा अभी अस्थायी रूप से उपलब्ध नहीं है। कोई क्रेडिट नहीं काटा गया। कृपया बाद में फिर कोशिश करें।",
+      es: "Esta función no está disponible temporalmente. No se ha cobrado nada. Inténtalo de nuevo más tarde.",
+      fr: "Cette fonction est temporairement indisponible. Rien n'a été débité. Réessayez plus tard.",
+      ar: "هذه الميزة غير متاحة مؤقتًا. لم يُخصم أي رصيد. يُرجى المحاولة لاحقًا.",
+      bn: "এই সুবিধাটি সাময়িকভাবে বন্ধ আছে। কোনো ক্রেডিট কাটা হয়নি। পরে আবার চেষ্টা করুন।",
+      pt: "Este recurso está temporariamente indisponível. Nada foi cobrado. Tente novamente mais tarde.",
+      ru: "Эта функция временно недоступна. Ничего не списано. Попробуйте позже.",
+      ur: "یہ فیچر عارضی طور پر دستیاب نہیں ہے۔ کوئی کریڈٹ نہیں کاٹا گیا۔ براہ کرم بعد میں دوبارہ کوشش کریں۔",
+      id: "Fitur ini untuk sementara tidak tersedia. Tidak ada kredit yang dipotong. Coba lagi nanti.",
+      de: "Diese Funktion ist vorübergehend nicht verfügbar. Es wurde nichts abgebucht. Bitte versuche es später erneut.",
+      ja: "この機能は一時的に利用できません。クレジットは使われていません。しばらくしてからお試しください。",
+      sw: "Kipengele hiki hakipatikani kwa muda. Hakuna krediti iliyokatwa. Tafadhali jaribu tena baadaye.",
+      mr: "ही सुविधा तात्पुरती उपलब्ध नाही. कोणतेही क्रेडिट्स वजा झाले नाहीत. कृपया नंतर पुन्हा प्रयत्न करा.",
+      ko: "이 기능은 일시적으로 사용할 수 없어요. 크레딧은 차감되지 않았어요. 잠시 후 다시 시도해 주세요.",
+    }),
+    close: t({
+      en: "Close",
+      zh: "关闭",
+      hi: "बंद करें",
+      es: "Cerrar",
+      fr: "Fermer",
+      ar: "إغلاق",
+      bn: "বন্ধ করুন",
+      pt: "Fechar",
+      ru: "Закрыть",
+      ur: "بند کریں",
+      id: "Tutup",
+      de: "Schließen",
+      ja: "閉じる",
+      sw: "Funga",
+      mr: "बंद करा",
+      ko: "닫기",
+    }),
+  },
+};
+
+const context: Record<keyof typeof dictionary.content, string> = {
+  message:
+    "A small notice that slides up at the bottom of any page when something the user just asked for (an AI translation, a word meaning, a transcript polish, read-aloud audio, voice typing, an AI-made sentence) was not done because their prepaid credit balance (the wallet on the Membership page) does not cover it. A link (topUp) follows it. Friendly and plain, no numbers or prices. Use the same word for 'credits' as the Membership page's wallet (积分 in Chinese). Two short sentences: not enough credits for this; AI features and generated speech are paid from credits.",
+  topUp:
+    "Link right after the not-enough-credits notice (message); it opens the Membership page where the user adds credits to their wallet. 2–3 words, an action; the same wording as the Learning Partner chat's 'Get credits' link.",
+  paused:
+    "The same bottom notice, shown instead of the not-enough-credits text when a paid feature (an AI translation, a word meaning, read-aloud audio, voice typing…) is switched off for everyone for a while because its cost outran our prices; the user was not charged. No link follows it. Calm and plain, no technical reason, no numbers. Three short sentences: temporarily unavailable; nothing was charged (use the wallet's word for credits where natural); try again later.",
+  close:
+    "Accessible label (screen readers, tooltip) of the × button that dismisses the not-enough-credits notice. One word, a verb.",
+};
+
+export default {
+  ...dictionary,
+  title: "The not-enough-credits notice on any page",
+  description: describeKeys(
+    "One notice, shown on any page, when a paid feature (AI or generated speech) was refused because the user's credits do not cover it, with a link to add credits.",
+    context,
+  ),
+} satisfies DeclarationContent;

@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { readFlags } from "@/lib/flags-store";
+import { walletDb } from "@/lib/payments/wallet-db";
 import { isDev } from "@/lib/permissions";
 import { workersAiComplete } from "@/lib/read/gloss-server";
 import { isWorkersAiConfigured } from "@/lib/workers-ai";
@@ -22,5 +23,7 @@ export async function POST(req: Request) {
     flags: user ? await readFlags() : {},
     configured: isWorkersAiConfigured(),
     complete: workersAiComplete,
+    // The credit wallet only (the call is paid from it); the material is stored nowhere.
+    db: walletDb(),
   });
 }

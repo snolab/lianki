@@ -360,7 +360,16 @@ export function WalletCard({
 
       {/* History */}
       <div className="space-y-2">
-        <h3 className="font-semibold">{s.history.value}</h3>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-semibold">{s.history.value}</h3>
+          <Link
+            href="/membership/credits"
+            data-credits-usage-link=""
+            className="inline-flex min-h-11 items-center gap-1 text-sm font-medium underline underline-offset-2 text-[oklch(0.5_0.2_262)] hover:text-[oklch(0.42_0.2_262)] dark:text-[oklch(0.75_0.14_262)] dark:hover:text-[oklch(0.82_0.12_262)]"
+          >
+            <Icon name="list" /> {s.usageLink.value}
+          </Link>
+        </div>
         {wallet.entries.length === 0 ? (
           <p className={`text-sm ${muted}`}>{s.empty.value}</p>
         ) : (

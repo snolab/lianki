@@ -1,12 +1,21 @@
 // The model call of the live polish (rules: live-polish.ts). Nothing about the
 // text is logged.
+import { refusedAs, type Refused } from "@/lib/payments/metered";
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
-import { PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
+import { PARTNER_AI_REASONING } from "@/lib/partner-ai-config";
+import { textHoldUsd } from "@/lib/payments/prices";
 import { routeLimit } from "@/lib/security/route-guard";
 import { isWorkersAiConfigured } from "@/lib/workers-ai";
-import { chargeAi, workersAiComplete, type Complete } from "./gloss-server";
+import {
+  payAi,
+  promptChars,
+  usageUsd,
+  workersAiComplete,
+  type AiPayer,
+  type Complete,
+} from "./gloss-server";
 import {
   LIVE_POLISH_MODEL,
   isDraftWord,
@@ -46,29 +55,36 @@ export async function draftOwn(
 
 export type LivePolish =
   | { ok: true; passages: LivePolished[] }
-  | { ok: false; error: "not-configured" | "busy" | "model-failed" };
+  | { ok: false; error: "not-configured" | "busy" | "model-failed" }
+  | Refused;
 
 export async function livePolishAi(
   passages: readonly string[],
   before: string,
-  ai: { userId: string; complete?: Complete; model?: string },
+  ai: AiPayer & { complete?: Complete; model?: string },
 ): Promise<LivePolish> {
   const complete = ai.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
   if (!complete) return { ok: false, error: "not-configured" };
   if (!(await routeLimit(`read-live-polish:${ai.userId}`, LIMIT)).allowed)
     return { ok: false, error: "busy" };
   const chars = passages.reduce((n, p) => n + p.length, 0);
+  const model = ai.model || process.env.READ_POLISH_MODEL || LIVE_POLISH_MODEL;
+  const messages = livePolishMessages(passages, before);
+  const maxOut = maxTokens(chars, passages.length);
+  const hold = textHoldUsd(model, promptChars(messages), maxOut);
   try {
-    const r = await complete({
-      model: ai.model || process.env.READ_POLISH_MODEL || LIVE_POLISH_MODEL,
-      messages: livePolishMessages(passages, before),
-      max_tokens: maxTokens(chars, passages.length),
-      temperature: 0.2,
-      reasoning_effort: PARTNER_AI_REASONING,
+    const paid = await payAi(ai, "read.live-polish", hold, async () => {
+      const r = await complete({
+        model,
+        messages,
+        max_tokens: maxOut,
+        temperature: 0.2,
+        reasoning_effort: PARTNER_AI_REASONING,
+      });
+      return { value: r, usd: usageUsd(model, r.usage, hold) };
     });
-    const usd = costUsd(r.usage?.prompt_tokens ?? 0, r.usage?.completion_tokens ?? 0);
-    if (usd > 0) await chargeAi(ai.userId, { usd, what: "read.live-polish", chars });
-    const content = r.choices?.[0]?.message?.content;
+    if (!paid.ok) return refusedAs(paid, { ok: false, error: "busy" } as const);
+    const content = paid.value.choices?.[0]?.message?.content;
     // Nothing back at all is a failed call, not a text of nothing but fillers.
     if (!content?.includes("<p ")) return { ok: false, error: "model-failed" };
     return { ok: true, passages: parseLivePolish(passages, content) };

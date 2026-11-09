@@ -19,12 +19,13 @@ export type LineResult =
  */
 export async function translateLine(
   db: D1Batch,
-  userId: string,
+  who: string | { userId: string; email?: string | null },
   id: string,
   input: { text: string; to: string; from: string | null },
   now: number,
   complete?: Complete,
 ): Promise<LineResult> {
+  const { userId, email = null } = typeof who === "string" ? { userId: who } : who;
   const doc = await db
     .prepare("SELECT material_id, status FROM vibe_doc WHERE id = ? AND user_id = ?")
     .bind(id, userId)
@@ -39,6 +40,8 @@ export async function translateLine(
     { text: line, to: input.to, from: input.from },
     {
       userId,
+      email,
+      db,
       limit: AI_LIMIT_LIVE,
       what: "vibe.translate",
       ...(complete ? { complete } : {}),
@@ -81,12 +84,13 @@ const NO_CACHE = { get: async () => null, put: async () => {} };
  */
 export async function translateSelection(
   db: D1Batch,
-  userId: string,
+  who: string | { userId: string; email?: string | null },
   material: Pick<ReadMaterial, "_id" | "lines">,
   input: { text: string; to: string; from: string | null; notes?: boolean },
   ai: { limit?: { windowMs: number; max: number }; complete?: Complete },
   now: number,
 ): Promise<TranslateResult> {
+  const { userId, email = null } = typeof who === "string" ? { userId: who } : who;
   const doc = await db
     .prepare("SELECT id FROM vibe_doc WHERE material_id = ? AND user_id = ?")
     .bind(String(material._id), userId)
@@ -95,6 +99,8 @@ export async function translateSelection(
   const docId = doc && !input.notes && material.lines.includes(line) ? doc.id : null;
   return translate(db, docId ? { ...input, text: line } : input, {
     userId,
+    email,
+    db,
     what: "vibe.translate",
     ...ai,
     cache: docId ? lineCache(db, docId, input.to, line, now) : NO_CACHE,

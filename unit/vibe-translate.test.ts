@@ -238,6 +238,9 @@ describe("the route's answers", () => {
       d1.exec(
         `INSERT INTO user (id, email, name, emailVerified, createdAt, updatedAt) VALUES ('${u}', '${u}@example.com', '${u}', 1, 0, 0)`,
       );
+    // Each model call is paid from credits (lib/payments/metered.ts): enough for these tests.
+    for (const u of ["u1", "u2"])
+      d1.exec(`INSERT INTO credit_balance (userId, balance, updatedAt) VALUES ('${u}', 100, 'x')`);
     const blobs = new Map<string, string>();
     useBlobs({
       put: async (k: string, v: string) => void blobs.set(k, v),

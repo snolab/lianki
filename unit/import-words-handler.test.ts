@@ -8,6 +8,7 @@ import {
   type WordImportDeps,
 } from "@/lib/import/words-handler";
 import { isEntrySource } from "@/lib/words/entry-list";
+import { FLAGS } from "@/lib/flags";
 
 // docs/import-material.md, M1: POST /api/import/words and GET /api/import/jobs.
 
@@ -17,7 +18,8 @@ let d1: TestD1Database;
 let deps: WordImportDeps;
 beforeEach(() => {
   d1 = createTestD1(SCHEMA);
-  deps = { user: { email: EMAIL }, owner: false, flags: { "import.any": true }, db: d1 };
+  // The owner: `import.any` is owner-only (lib/import/words-handler.ts, importAnyOn).
+  deps = { user: { email: EMAIL }, owner: true, flags: {}, db: d1 };
 });
 
 const post = (body: unknown, headers: Record<string, string> = {}) =>
@@ -53,15 +55,42 @@ const TEXT =
   "Word,Meaning\napple,a fruit\nBanana,a long fruit\napple,again\n,nothing\ncherry,red\n";
 
 describe("the gate", () => {
-  test("flag on: everyone; flag off: the owner only", () => {
-    expect(importAnyOn({ "import.any": true }, false)).toBe(true);
+  test("the owner: on with the flag on or off", () => {
+    expect(importAnyOn({ "import.any": true }, true)).toBe(true);
+    expect(importAnyOn({ "import.any": false }, true)).toBe(true);
     expect(importAnyOn({}, true)).toBe(true);
-    expect(importAnyOn({}, false)).toBe(false);
+    expect(importAnyOn(null, true)).toBe(true);
   });
 
-  test("off for this user: 404, nothing written", async () => {
-    const r = await handleWordImport(post({ step: "preview", text: TEXT }), { ...deps, flags: {} });
-    expect(r.status).toBe(404);
+  test("anyone else: never, the flag on or off", () => {
+    expect(importAnyOn({ "import.any": true }, false)).toBe(false);
+    expect(importAnyOn({ "import.any": false }, false)).toBe(false);
+    expect(importAnyOn({}, false)).toBe(false);
+    expect(importAnyOn(undefined, false)).toBe(false);
+  });
+
+  test("the flag is owner-audience, so /dev/flags never calls it shipped", () => {
+    expect(FLAGS["import.any"].audience).toBe("owner");
+  });
+
+  test("not the owner, flag on or off: 404, nothing written", async () => {
+    for (const flags of [{ "import.any": true }, {}]) {
+      for (const step of ["preview", "commit"]) {
+        const r = await handleWordImport(post({ step, text: TEXT, name: "X", lang: "en" }), {
+          ...deps,
+          owner: false,
+          flags,
+        });
+        expect(r.status).toBe(404);
+      }
+    }
+    const lists = await d1.prepare("SELECT COUNT(*) AS n FROM word_lists").first<{ n: number }>();
+    expect(lists!.n).toBe(0);
+  });
+
+  test("the owner, flag off: the preview answers", async () => {
+    const r = await handleWordImport(post({ step: "preview", text: TEXT }), deps);
+    expect(r.status).toBe(200);
   });
 
   test("signed out: 401; cross-site: 403", async () => {
@@ -209,7 +238,9 @@ describe("refusals and failures", () => {
 
   test("jobs: signed out 401, flag off 404, no D1 an empty list", async () => {
     expect((await handleImportJobs({ ...deps, user: null })).status).toBe(401);
-    expect((await handleImportJobs({ ...deps, flags: {} })).status).toBe(404);
+    expect((await handleImportJobs({ ...deps, owner: false })).status).toBe(404);
+    expect((await handleImportJobs({ ...deps, owner: false, flags: {} })).status).toBe(404);
+    expect((await handleImportJobs({ ...deps, flags: {} })).status).toBe(200);
     expect(await (await handleImportJobs({ ...deps, db: null })).json()).toEqual({ jobs: [] });
   });
 });

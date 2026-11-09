@@ -1,4 +1,8 @@
 import { generateObject } from "ai";
+import { metered, refusal } from "@/lib/payments/metered";
+import { MAX_OUT } from "@/lib/payments/paid-calls";
+import { textHoldUsd, textUsd } from "@/lib/payments/prices";
+import { walletDb, walletUserId } from "@/lib/payments/wallet-db";
 import { textModel, workersAiProvider } from "@/lib/workers-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -10,6 +14,9 @@ import { accountKey } from "@/lib/security/throttle";
 const GENERATE_LIMIT = { max: 10, windowMs: 60 * 60_000 };
 
 export const maxDuration = 60;
+
+/** The schema's share of the prompt, in characters (held, never shrunk). */
+const SCHEMA_CHARS = 2000;
 
 const RoadmapSchema = z.object({
   nodes: z
@@ -40,10 +47,9 @@ export async function POST(request: NextRequest) {
     return new NextResponse("Invalid topic", { status: 400 });
   }
 
-  const { object } = await generateObject({
-    model: workersAiProvider()(textModel()),
-    schema: RoadmapSchema,
-    prompt: `Generate a learning roadmap for: "${topic}"
+  const db = walletDb();
+  const payer = { id: await walletUserId(db, email) };
+  const prompt = `Generate a learning roadmap for: "${topic}"
 
 Create 5-10 progressive learning milestones. Each node should represent a concrete skill or knowledge area.
 
@@ -54,8 +60,32 @@ For each node, provide:
 - keywords: 2-8 keywords that would appear in study materials/URLs for this topic (e.g. "python loops", "for loop", "iteration")
 - order: 0-based sequential number
 
-Progress from fundamentals to advanced. Keywords should be specific enough to match real study cards.`,
-  });
+Progress from fundamentals to advanced. Keywords should be specific enough to match real study cards.`;
+  const model = textModel();
+  const maxOut = MAX_OUT["roadmap.generate"];
+  // The JSON schema the SDK adds to the prompt: held as SCHEMA_CHARS more characters.
+  const holdUsd = textHoldUsd(model, prompt.length + SCHEMA_CHARS, maxOut);
+  const paid = await metered(
+    { d1: db },
+    { userId: payer.id, email },
+    { what: "roadmap.generate", holdUsd },
+    async () => {
+      const r = await generateObject({
+        model: workersAiProvider()(model),
+        schema: RoadmapSchema,
+        maxOutputTokens: maxOut,
+        prompt,
+      });
+      const u = r.usage;
+      const usd =
+        u?.inputTokens || u?.outputTokens
+          ? textUsd(model, u.inputTokens ?? 0, u.outputTokens ?? 0)
+          : holdUsd;
+      return { value: r.object, usd };
+    },
+  );
+  if (!paid.ok) return refusal(paid);
+  const object = paid.value;
 
   return NextResponse.json(object);
 }

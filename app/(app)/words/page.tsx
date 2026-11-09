@@ -6,6 +6,7 @@ import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
 import { voiceAccess } from "@/lib/words/voice-access";
 import { ytSongsOn } from "@/lib/yt-songs/gate";
+import { importAnyOn } from "@/lib/import/words-handler";
 import WordsClient from "./WordsClient";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,9 @@ export default async function WordsPage() {
     <WordsClient
       voice={voiceAccess(flags, isDev(user?.email))}
       ytSongs={!!user && ytSongsOn(flags, isDev(user.email))}
+      // The Import button (docs/import-material.md, "On /words"): dark behind
+      // `import.any`: the owner only, flag on or off (importAnyOn).
+      importOn={!!user && importAnyOn(flags, isDev(user.email))}
     />
   );
 }

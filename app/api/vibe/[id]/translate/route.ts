@@ -7,7 +7,7 @@ import { vibeWrite } from "@/lib/vibe/route";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return vibeWrite(req, 16 * 1024, ({ db, userId }, body) =>
-    translateLineReply(db, userId, id, body, Date.now()),
+  return vibeWrite(req, 16 * 1024, ({ db, userId, email }, body) =>
+    translateLineReply(db, { userId, email }, id, body, Date.now()),
   );
 }

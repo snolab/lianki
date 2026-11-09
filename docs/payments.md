@@ -240,6 +240,43 @@ Gift codes can carry credits (`gift_code.credits`) as well as, or instead of,
 Pro days; both land in one batch with the `membership_grant` marker, once per
 person per code.
 
+### Credits usage (`/membership/credits`)
+
+Owner, 2026-11-09: a prominent place to audit credits. One tap from the
+account menu ("Credits usage") and from the wallet card's history heading.
+Rules in `lib/payments/credit-usage.ts`, the handler in
+`credit-usage-handler.ts`, the page in `app/(app)/membership/credits/`,
+`GET /api/payments/credits/usage` (`?tz&group&from&to&offset&limit`, or
+`&format=csv`).
+
+- **Every ledger line of the signed-in user, only theirs** (the user id is the
+  session's, never the query's): time in the viewer's zone, feature, amount,
+  the balance after it.
+- **Actual spend only** (owner, 2026-11-09): a paid action is one line of its
+  net charge — what it really cost. Its hold and the release `settleAi`
+  writes (an `ai:` refund with the same refId) never show, on the page or in
+  the CSV; an action that kept nothing (a failure, a refusal, a reply under a
+  credit) is not shown at all. A hold not settled yet reads "Still running".
+  The ledger keeps every row; this is display only (admin views see all).
+- **A refund after the fact is its own line**, linked to the line it gives
+  back: a pass refunded to the wallet (`pass:<refId>`), a reversed top-up
+  (`topup:<refId>`). Every `ai:` refund is a settle today — there is no
+  later-refund path for an AI charge; one would need a refId of its own.
+- **Feature**: an `ai` row's `note` is the metered call's feature id
+  (`FEATURES` maps each to a group and the page it was used on); no note = a
+  Learning Partner reply. Other reasons are their own feature. A line links to
+  that page; it never carries what the user wrote.
+- **Balance after**: the running sum of the ledger in written order, started so
+  that it ends on the cached `credit_balance` (a wallet over `MAX_ROWS` =
+  20,000 lines shows its newest).
+- **Filters** by feature group and local day range (inclusive); **this
+  month's** totals per group in the viewer's zone; **CSV** of the filtered
+  lines, oldest first (one row per action, its net amount; `status` pending;
+  `refund_of` the time of the line a refund gives back), times in UTC and
+  local, formula-looking cells defused.
+- Tests: `unit/credit-usage.test.ts`; QA `scripts/qa/qa-credits-usage.mjs`
+  (suite `credits-usage`).
+
 ### Refunds
 
 - **A pass bought with credits**: `/dev/credits` → "退回余额" returns the
@@ -250,6 +287,114 @@ person per code.
   balance never goes negative; refund the pass first, or settle by hand.
 - No refund of unused credits to the user's card yet — see the open question
   below.
+
+### What costs credits
+
+Owner, 2026-11-09: "every paid service must run on the USER's credits". Every
+server path a signed-in user can reach that calls a paid provider is paid from
+that user's wallet — or by their own key (BYOK, [byok.md](byok.md): the call
+goes from their browser to their provider and never reaches ours), or it is
+free for everyone because nothing is billed (cached answers, recorded clips).
+There is **no free allowance**: a balance of 0 gets the refusal below — except
+the features the owner keeps free (2026-11-09, card o3): **word read-aloud**
+(`words.tts`, legacy `tts`) and **the microphone** (`speech.stt`). They take no
+hold and charge nothing; each call logs its cost to us (`freeCall` in
+`lib/payments/paid-calls.ts`, `credits.free` with `why: "free-feature"`), so
+the choice can be revisited with numbers.
+
+**Pre-authorisation + refund** (`lib/payments/metered.ts`, on top of
+`lib/payments/ai-credits.ts`):
+
+1. **Sweep** — holds still pending `HOLD_STALE_MS` (10 min) after they were
+   taken belong to a call that crashed: released in full. Run on the next paid
+   request, never by a timer.
+2. **Hold** — the most the call can cost is debited in whole credits before the
+   provider is asked: an `ai` ledger row (refId `ai:<feature>:<userId>:<uuid>`,
+   `note` = the feature id) and the balance change in **one D1 batch**. The
+   balance's `CHECK (balance >= 0)` (`0024_credits.sql`) trips on an overdraft
+   and rolls the batch back, so a negative balance cannot be written by any
+   code path, and N concurrent holds on a small balance pass only as far as it
+   covers (unit test "N parallel holds"). Not enough → **refused, the provider
+   never called**: HTTP **402** `{error: "no-credits", balance, need, topUp:
+   "/membership"}` with the header `x-lianki-credits: needed`.
+3. **Call** — with the feature's fixed limits (max output tokens, text length,
+   audio size: the same for everyone, never shrunk to fit a low balance).
+4. **Settle** — the real cost (provider-reported tokens; for speech and
+   transcription, estimated from the text length or audio size) is kept;
+   fractions of a credit carry in `credit_ai_carry`; the rest comes back as a
+   `refund` row with the same refId. The provider failed → full refund. Once
+   only (`pending → settled`).
+
+**The hold is a hard cap.** It is computed from the very limits the call is
+made with — 2 input tokens per prompt character (a ceiling: Latin text is
+~0.3, CJK ~1), 4,000 per image, every output token the call may produce;
+speech at 3 characters a second; audio at 2,000 bytes a second — so the real
+cost is at most the hold by construction. The answer ceilings are data
+(`MAX_OUT` in `lib/payments/paid-calls.ts`, the `max_tokens` of each seam
+call), the same for everyone and never shrunk to fit a balance.
+
+**Neither side eats an overage.** Our unit price is the provider's list price
+× `MARGIN`, and the hold is that price × the call's ceilings, so a capped call's
+hold covers the provider's real bill (unit test "every hold covers the
+provider's real bill", `unit/paid-routes.test.ts`, for every model and kind).
+If a call still costs more than its hold (pricing drift, a ceiling wrong), it
+is settled at the hold (never charged past it), alerted (`credits.overage`,
+feature and amounts only, plus an error line), and **the feature is paused for
+everyone**: a row in `credit_feature_pause` (`0065_credit_feature_pause.sql`)
+under the current `PRICES_VERSION`. A paused feature refuses before any hold
+or call — HTTP **503** `{error: "credits-paused"}` with `x-lianki-credits:
+paused`, and the page's notice says "temporarily unavailable, nothing was
+charged" in the user's language. It resumes when the price table is fixed and
+`PRICES_VERSION` bumped (a deploy): the old row no longer matches. No timer, no
+manual switch to forget.
+
+**Who pays nothing.** An `admin` (lib/permissions.ts, a data grant — no
+hardcoded email): the people who pay the provider; logged `credits.free`. A
+BYOK call never reaches the server. Without D1 (the frozen Mongo backend,
+local dev) nothing can be charged: the call runs and logs `credits.unmetered`.
+
+**The page.** Any 402 with that header shows one notice, on any page, in the
+user's language with a "Get credits" link (`NoCreditsNotice`,
+`credits-needed.content.ts`, `lib/payments/no-credits-watch.ts` — it looks at
+the status and header only, never the body).
+
+**Prices as data.** `lib/payments/prices.ts` is the one table: provider list
+prices in USD (Cloudflare Workers AI pricing page, read 2026-11-09) × `MARGIN`
+(1.5: card fees, retries and rounding), turned into credits at
+`CREDITS_PER_USD` (150; `lib/payments/credits.ts`). So one USD of provider cost
+is 225 credits.
+
+| feature (ledger `note`) | route | flag | provider · model | billing | typical / hold |
+| --- | --- | --- | --- | --- | --- |
+| `partner.reply` | lianki-push hub → `DebugSessions.partnerReply` | `partner.ai-reply` | Workers AI · DeepSeek v4.1 flash | wallet (since 2026-11-05; margin since 2026-11-09). The owner's thread never goes to the model. Ledger note is empty for these. | ~0.2 / ≤ 10 credits |
+| `read.gloss` | `/api/read/[id]/gloss`, `grade`, `make-cards`, `word-session`, `batch-grade` | — | Workers AI · DeepSeek | wallet. Deck meanings and `word_gloss` hits are free; `own: true` (BYOK) asks no model of ours. A tap refused → 402; a bulk call leaves the words without a meaning. | ~0.05 per word / 2 per 40-word batch |
+| `read.translate` | `/api/read/[id]/translate` | — | Workers AI · DeepSeek | wallet; a `read_translation` hit is free | ~0.1 / 1 |
+| `vibe.translate` | `/api/vibe/[id]/translate`, the reader on a /vibe doc | `read.vibe` | Workers AI · DeepSeek | wallet; a line already translated is free | ~0.1 / 1 |
+| `read.polish` | `/api/read/[id]/polish` | — | Workers AI · DeepSeek | wallet, one hold for the whole document | ~0.3 per 1,000 characters / up to its chunks' max |
+| `read.live-polish` | `/api/read/[id]/polish-live` | `read.live-polish` | Workers AI · DeepSeek (or `READ_POLISH_MODEL`) | wallet | ~0.2 / 1–3 |
+| `self-intro.import` | `/api/self-intro/import` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.5 / ≤ 9 (40,000 characters + 4 images) |
+| `self-intro.followup` | `/api/self-intro/followup` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.2 / 1 |
+| `words.tts` | `/api/words/tts` (cache miss only) | — | Workers AI · MeloTTS / Aura-2 | **free** — owner, 2026-11-09 (card o3): word read-aloud stays free for now; each miss logs what it cost us (`credits.free`, `why: "free-feature"`) | MeloTTS ~0.001 per clip; Aura-2 ~0.7 per 100 characters |
+| `speech.stt` | `/api/debug/stt` (the chat's mic, voice mode) | `words.voice-mode` | Workers AI · Whisper turbo | **free** — owner, 2026-11-09 (card o3): the microphone stays free for now; each transcription logs what it cost us. The owner's local STT (his Mac) costs nothing | ~0.03 per 15 s utterance |
+| `ai-sentences` | `/api/ai-sentences/generate`, `/new-word` | — (`/lab/ai-vocab`) | Workers AI · Llama 3.3 70B | wallet | ~0.3 |
+| `polyglot.translate`, `polyglot.tts` | `/api/polyglot/*` | — (`/lab/polyglot`) | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
+| `self-intro.translate`, `self-intro.tts` | `/api/self-intro/translate`, `/tts` | — | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
+| `roadmap.generate` | `/api/roadmap/generate` | — | Workers AI · Llama | wallet | ~1 |
+| `blog.translate` | `/api/translate` (blog post, any signed-in user; the result is shared) | — | Workers AI · gpt-oss-120b | wallet: held before the stream, settled when it ends; a translation already in the PR is free | ~5 per post |
+| `tts` | `/api/tts` (legacy; no page calls it) | — | Workers AI · MeloTTS | **free** with word read-aloud (2026-11-09); cost logged | ~0.01 |
+
+Not charged, on purpose (no provider bill per call):
+
+| path | why free |
+| --- | --- |
+| recorded word clips (`workers/voice`, R2 `voice/`) | pre-rendered once by the owner; R2 egress is free |
+| cached TTS (`tts/` in R2), `word_gloss`, `read_translation`, `vibe_translation` | the answer is stored; no provider call |
+| `/api/import/youtube` | YouTube Data API: free quota, no money |
+| Google Drive / Docs (`/connections`, `read.gdoc-stream`) | Google APIs on the user's own OAuth token; no per-call bill |
+| `/books` catalogue (`books.catalogue`) | public-domain texts cached in R2; no provider call |
+| BYOK (`byok.sync`) | the user's own key, from their browser |
+| the inbox (R2 storage and operations, `lib/inbox/charge.ts`) | metered and logged, not yet debited: cents per GB-month; a follow-up |
+| owner-only tools (`/dev/*`, the owner's STT bench `?model=`, local STT) | the owner pays |
 
 ### Providers
 

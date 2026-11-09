@@ -7,6 +7,7 @@ import {
   json,
   rangeWords,
   readerCtx,
+  payerOf,
 } from "@/lib/read/reader-route";
 import { addGradedEntries, scopeSession, type RangeWord } from "@/lib/read/book-word-list";
 import { fillGlosses } from "@/lib/read/gloss-server";
@@ -40,7 +41,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!graded) return badRequest("graded words are required");
     let added = 0;
     for (const g of byLang(book, langs, graded)) {
-      const ai = body.own === true ? null : { userId: ctx.userId };
+      const ai = body.own === true ? null : payerOf(ctx);
       const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, ai);
       added += await addGradedEntries(ctx.db, ctx.email, g.book, g.words, gloss);
     }
@@ -54,13 +55,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const groups = byLang(book, langs, words);
   if (groups.length === 1) {
     const g = groups[0];
-    const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, { userId: ctx.userId });
+    const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, payerOf(ctx));
     const preview = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, null);
     return json(await scopeSession(ctx.db, ctx.email, g.book, g.words, gloss, undefined, preview));
   }
   const parts = [];
   for (const g of groups) {
-    const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, { userId: ctx.userId });
+    const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, payerOf(ctx));
     const preview = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, null);
     parts.push(await scopeSession(ctx.db, ctx.email, g.book, g.words, gloss, undefined, preview));
   }

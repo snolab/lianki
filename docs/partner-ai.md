@@ -156,6 +156,8 @@ reservation and refund into one "AI replies" row and hides those that kept
 nothing (`ledger()` in `credits-store.ts`). The hub's `partner.reply` log adds
 `charged` (whole credits kept). Unit tests: `unit/partner-ai-credits.test.ts`.
 
+Since 2026-11-09 the price is the one table's (`lib/payments/prices.ts`: list price × `MARGIN`), as for every other paid call — docs/payments.md, "What costs credits". The hub's caps still count list prices (`costUsd`).
+
 ## Privacy
 
 - Logs keep token counts, latency, model and outcome only

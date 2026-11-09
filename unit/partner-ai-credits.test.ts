@@ -6,7 +6,7 @@ import {
   CHARGE_STALE_MS,
   MAX_OUTPUT_TOKENS,
   PARTNER_AI_FLAG,
-  costUsd,
+  PARTNER_AI_MODEL,
   reserveInTokens,
 } from "@/lib/partner-ai-config";
 import {
@@ -18,6 +18,7 @@ import {
   usdToMicroCredits,
 } from "@/lib/payments/ai-credits";
 import { CREDITS_PER_USD } from "@/lib/payments/credits";
+import { textUsd } from "@/lib/payments/prices";
 import { getBalance, ledger, type D1WithBatch } from "@/lib/payments/credits-store";
 
 /** Learning Partner AI replies paid from the credit wallet: reserve first, settle after. */
@@ -64,7 +65,7 @@ describe("partner AI: credits", () => {
 
   // 8,000 in + 300 out: $0.00276, under half a credit at the current rate.
   const USAGE = { prompt_tokens: 8000, completion_tokens: 300 };
-  const REAL = usdToMicroCredits(costUsd(8000, 300));
+  const REAL = usdToMicroCredits(textUsd(PARTNER_AI_MODEL, 8000, 300));
   const answer = (usage: unknown = USAGE) => ({
     choices: [{ message: { content: "Bonjour!" } }],
     usage,
@@ -82,7 +83,7 @@ describe("partner AI: credits", () => {
       { fetch: f, now: () => now },
     );
   // What "hi" reserves: its worst case (every prompt character, every output token).
-  const RESERVED = reserveCredits(costUsd(reserveInTokens(2), MAX_OUTPUT_TOKENS));
+  const RESERVED = reserveCredits(textUsd(PARTNER_AI_MODEL, reserveInTokens(2), MAX_OUTPUT_TOKENS));
 
   it("the conversion lives in one place and rounds up", () => {
     expect(usdToMicroCredits(1)).toBe(CREDITS_PER_USD * 1_000_000);
@@ -272,7 +273,9 @@ describe("partner AI: credits", () => {
       .prepare("SELECT reserved FROM credit_ai_charge WHERE key = 'u_alice:page'")
       .get() as { reserved: number };
     expect(r.reserved).toBe(
-      reserveCredits(costUsd(reserveInTokens(2 + "/words".length + 3000), MAX_OUTPUT_TOKENS)),
+      reserveCredits(
+        textUsd(PARTNER_AI_MODEL, reserveInTokens(2 + "/words".length + 3000), MAX_OUTPUT_TOKENS),
+      ),
     );
   });
 

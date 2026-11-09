@@ -7,6 +7,7 @@ import {
   rangeWords,
   readerCtx,
   wordCtx,
+  payerOf,
 } from "@/lib/read/reader-route";
 import { dwellOf, gradeFor } from "@/lib/read/reader-service";
 import { qualifies, recordStudySafe } from "@/lib/study-days";
@@ -59,7 +60,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // review fills a missing meaning later).
     const gloss = (ws: RangeWord[]) =>
       Promise.race([
-        fillGlosses(ctx.db, bctx, ws, { userId: ctx.userId }).catch(() => ws),
+        fillGlosses(ctx.db, bctx, ws, payerOf(ctx)).catch(() => ws),
         new Promise<RangeWord[]>((ok) => setTimeout(() => ok(ws), GLOSS_WAIT_MS)),
       ]);
     const c = { db: ctx.db, email: ctx.email, bctx };
