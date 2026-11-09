@@ -9,13 +9,16 @@ import {
   type GanttScale,
   ganttBar,
   ganttColor as c,
-  ganttRows,
-  initialScale,
+  GANTT_END_SPACE,
+  centreRowTop,
+  fitSpan,
+  focusRow,
+  ganttRowsByEnd,
+  homeView,
   pinchOf,
   rowsRange,
   scaleExtend,
   scaleTicks,
-  scaleToNow,
   scaleWidth,
   scaleX,
   scaleZoom,
@@ -31,9 +34,16 @@ import type { ChatStrings } from "./wire";
  * axis header sticky at the top; horizontally through time with no hard
  * limit (gantt-view.ts extendAxis), each task's name pinned at the left edge
  * of what is visible. A row's bar is its see-through background. The red Now
- * line runs down every row; on open it is a quarter from the left, and the
- * Now button brings it back. Pinch (touch) or ctrl+wheel (trackpad) zooms
- * about the fingers, minutes to days per screen. ✕ or Escape closes.
+ * line runs down every row. On open (owner, 2026-11-10) Now is at the
+ * horizontal centre, the rows are sorted by end time (expected or actual),
+ * the open task closest to ending is at the vertical centre, and the time
+ * axis is zoomed so the 95th-percentile duration of it and its neighbours
+ * fills the width (gantt-view.ts homeView, fitSpan); the Now button goes
+ * back there. Blank space at the head and tail of the rows (GANTT_END_SPACE)
+ * leaves the scroller room to bounce. Pinch (touch) or ctrl+wheel
+ * (trackpad) zooms about the fingers' midpoint, batched to one step a frame;
+ * on iPhone the touch pinch alone zooms (Safari's gesture events, which
+ * fire alongside it, only stop the page zoom). ✕ or Escape closes.
  *
  * The axis is logarithmic by default (owner, 2026-11-09 15:27 JST): distance
  * from Now compressed symmetrically (gantt-view.ts symlog), so minute and day
@@ -67,13 +77,17 @@ export function GanttFull({
   strings: Strings;
   onClose: () => void;
 }) {
-  const rows = useMemo(() => ganttRows(ganttPlan(tasks, now)), [tasks, now]);
+  const rows = useMemo(() => ganttRowsByEnd(ganttPlan(tasks, now)), [tasks, now]);
   const scale = useUi(ganttPrefs(), (s) => s.scale);
   const scroller = useRef<HTMLDivElement | null>(null);
   /** The view as the handlers last left it (several events may come before a render). */
   const view = useRef<{ axis: GanttAxis; scrollLeft: number; w: number } | null>(null);
   /** A scrollLeft to apply once the content has its new width. */
   const pending = useRef<number | null>(null);
+  /** A scrollTop to apply with it (open: the focus row centred). */
+  const pendingTop = useRef<number | null>(null);
+  /** The view's height: the blank space at the head and tail of the rows is a share of it. */
+  const [viewH, setViewH] = useState(0);
   const [axis, setAxis] = useState<GanttAxis | null>(null);
   const [scrollX, setScrollX] = useState(0);
   const [w, setW] = useState(0);
@@ -94,26 +108,44 @@ export function GanttFull({
     setAxis(next.axis);
   }, []);
 
-  // Open (and on a switch of axis): measure, and put now a quarter (log: a third) from the left.
+  // Open (and on a switch of axis): measure, and go to the home view.
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const nowRef = useRef(now);
   nowRef.current = now;
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  /** Now centred, the focus row centred, zoomed to fit (gantt-view.ts homeView). */
+  const home = useCallback((el: HTMLDivElement) => {
+    const width = el.clientWidth;
+    const rs = rowsRef.current;
+    const t = nowRef.current;
+    const focus = focusRow(rs, t);
+    const first = homeView(scaleRef.current, fitSpan(rs, focus), t, width, rowsRange(rs, t));
+    pendingTop.current = centreRowTop({
+      i: focus,
+      viewH: el.clientHeight,
+      axisH: AXIS_H,
+      headSpace: Math.round(GANTT_END_SPACE * el.clientHeight),
+      rowH: ROW_H,
+      rowGap: ROW_GAP,
+    });
+    return first;
+  }, []);
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
     const width = el.clientWidth;
-    // The log axis fits the open tasks (the history scrolls into view); the linear one all.
-    const open = rowsRef.current.filter((t) => !t.done);
-    const { from, to } = rowsRange(scale === "log" && open.length ? open : rowsRef.current, nowRef.current);
-    const first = initialScale(scale, from, to, nowRef.current, width);
+    const first = home(el);
     view.current = { ...first, w: width };
     pending.current = first.scrollLeft;
     setW(width);
+    setViewH(el.clientHeight);
     setCharPx(charPxOf(el));
     setAxis(first.axis);
     setScrollX(first.scrollLeft);
     const ro = new ResizeObserver(() => {
+      setViewH(el.clientHeight);
       const v = view.current;
       if (!v || el.clientWidth === v.w) return;
       view.current = { ...v, w: el.clientWidth };
@@ -122,7 +154,7 @@ export function GanttFull({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [commit, scale]);
+  }, [commit, scale, home]);
 
   // The content has its width: scroll to where the view should be.
   useLayoutEffect(() => {
@@ -130,7 +162,11 @@ export function GanttFull({
     if (!el || !axis || pending.current === null) return;
     el.scrollLeft = pending.current;
     pending.current = null;
-  }, [axis]);
+    if (pendingTop.current !== null) {
+      el.scrollTop = pendingTop.current;
+      pendingTop.current = null;
+    }
+  }, [axis, viewH]);
 
   const onScroll = useCallback(() => {
     const el = scroller.current;
@@ -142,15 +178,19 @@ export function GanttFull({
     if (next.axis !== v.axis) commit(next);
   }, [commit]);
 
+  /**
+   * Zoom by `factor` about clientX, then pan by dx (a pinch's midpoint
+   * moving): the time under the fingers stays under them.
+   */
   const zoom = useCallback(
-    (clientX: number, factor: number) => {
+    (clientX: number, factor: number, dx = 0) => {
       const el = scroller.current;
       const v = view.current;
       if (!el || !v) return;
       const anchor = clientX - el.getBoundingClientRect().left;
       const from = pending.current ?? el.scrollLeft;
       const next = scaleZoom(v.axis, from, v.w, anchor, factor, nowRef.current);
-      if (next.axis !== v.axis) commit(next);
+      if (next.axis !== v.axis || dx) commit({ ...next, scrollLeft: next.scrollLeft + dx });
     },
     [commit],
   );
@@ -159,27 +199,54 @@ export function GanttFull({
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    let last: { dist: number } | null = null;
+    let last: ReturnType<typeof pinchOf> | null = null;
     let gesture = 1;
+    /** Two fingers are down: iOS's gesture events then only stop the page zoom (no second zoom). */
+    let touching = false;
+    // One zoom step a frame: the steps between frames multiply, the pans add.
+    let step: { cx: number; factor: number; dx: number; dy: number } | null = null;
+    let frame = 0;
+    const flush = () => {
+      frame = 0;
+      const s = step;
+      step = null;
+      if (!s) return;
+      zoom(s.cx, s.factor, s.dx);
+      if (s.dy) el.scrollTop += s.dy;
+    };
+    const queue = (cx: number, factor: number, dx = 0, dy = 0) => {
+      step = step
+        ? { cx, factor: step.factor * factor, dx: step.dx + dx, dy: step.dy + dy }
+        : { cx, factor, dx, dy };
+      frame ||= requestAnimationFrame(flush);
+    };
     const wheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
-      zoom(e.clientX, wheelFactor(e.deltaY));
+      queue(e.clientX, wheelFactor(e.deltaY));
     };
     const start = (e: TouchEvent) => {
+      touching = e.touches.length >= 2;
       last = e.touches.length === 2 ? pinchOf(e.touches) : null;
+      // Two fingers: no native pan or page zoom from here on.
+      if (touching) e.preventDefault();
     };
     const move = (e: TouchEvent) => {
       if (e.touches.length !== 2) return;
       e.preventDefault();
       const p = pinchOf(e.touches);
-      if (last && last.dist > 0 && p.dist > 0) zoom(p.cx, p.dist / last.dist);
+      if (last && last.dist > 0 && p.dist > 0)
+        queue(p.cx, p.dist / last.dist, last.cx - p.cx, last.cy - p.cy);
       last = p;
     };
     const end = (e: TouchEvent) => {
-      if (e.touches.length < 2) last = null;
+      if (e.touches.length < 2) {
+        last = null;
+        touching = false;
+      }
     };
-    // Safari's own trackpad pinch.
+    // Safari's own pinch: a Mac trackpad's zoom; on iPhone it fires with the
+    // touches above, so it only keeps the page from zooming.
     const gStart = (e: Event) => {
       e.preventDefault();
       gesture = 1;
@@ -187,11 +254,11 @@ export function GanttFull({
     const gChange = (e: Event) => {
       e.preventDefault();
       const g = e as Event & { scale: number; clientX: number };
-      if (g.scale > 0) zoom(g.clientX, g.scale / gesture);
+      if (!touching && g.scale > 0) queue(g.clientX, g.scale / gesture);
       gesture = g.scale;
     };
     el.addEventListener("wheel", wheel, { passive: false });
-    el.addEventListener("touchstart", start, { passive: true });
+    el.addEventListener("touchstart", start, { passive: false });
     el.addEventListener("touchmove", move, { passive: false });
     el.addEventListener("touchend", end);
     el.addEventListener("touchcancel", end);
@@ -205,6 +272,7 @@ export function GanttFull({
       el.removeEventListener("touchcancel", end);
       el.removeEventListener("gesturestart", gStart);
       el.removeEventListener("gesturechange", gChange);
+      cancelAnimationFrame(frame);
     };
   }, [zoom]);
 
@@ -224,16 +292,26 @@ export function GanttFull({
   const closeBtn = useRef<HTMLButtonElement | null>(null);
   useEffect(() => closeBtn.current?.focus({ preventScroll: true }), []);
 
+  // Now: back to the home view (Now centred, the focus row centred, the fitted zoom).
   const toNow = () => {
-    const v = view.current;
-    if (v) commit(scaleToNow(v.axis, v.w, Date.now()));
+    const el = scroller.current;
+    if (!el || !view.current) return;
+    nowRef.current = Date.now();
+    commit(home(el));
+    // The same axis scrolled at once in commit; a new one sets the top in the layout effect.
+    if (pending.current === null && pendingTop.current !== null) {
+      el.scrollTop = pendingTop.current;
+      pendingTop.current = null;
+    }
   };
   const setScale = (s: GanttScale) => ganttPrefs().setState({ scale: s });
 
   const width = axis ? scaleWidth(axis) : 0;
   const ticks = axis ? scaleTicks(axis, scrollX, w, now, charPx) : [];
   const nowX = axis ? scaleX(axis, now, now) : 0;
-  const bodyH = rows.length * (ROW_H + ROW_GAP);
+  /** Blank space at the head and the tail of the rows (GANTT_END_SPACE of the view). */
+  const endSpace = Math.round(GANTT_END_SPACE * viewH);
+  const bodyH = rows.length * (ROW_H + ROW_GAP) + 2 * endSpace;
 
   return (
     <div
@@ -390,7 +468,11 @@ export function GanttFull({
               />
             )}
           </div>
-          <ul className="relative m-0 list-none p-0" style={{ paddingTop: ROW_GAP }}>
+          <ul
+            data-testid="debug-chat-gantt-rows"
+            className="relative m-0 list-none p-0"
+            style={{ paddingTop: ROW_GAP + endSpace, paddingBottom: endSpace }}
+          >
             {axis &&
               rows.map((t) => {
                 const b = ganttBar(t, axis, now);

@@ -105,7 +105,7 @@ export default async function ProfilePage() {
           session={session}
         />
         <div className="flex gap-4">
-          <a href="/preferences" className="text-blue-500 hover:text-blue-600">
+          <a href="/my/preferences" className="text-blue-500 hover:text-blue-600">
             {editPreferences}
           </a>
           {connections && (

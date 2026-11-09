@@ -12,7 +12,7 @@ import { formatSize } from "@lianki/debug-chat/files";
 import { pendingDeletes } from "@/lib/import/uploads-client";
 import { FOLDERS, folderOf, type MyFile } from "@/lib/import/my-files";
 
-export default function MyFilesClient() {
+export default function MyFilesClient({ back }: { back: string }) {
   const t = useIntlayer("my-files");
   const { locale } = useLocale();
   const [files, setFiles] = useState<MyFile[] | null>(null);
@@ -62,11 +62,22 @@ export default function MyFilesClient() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-8" data-qa="my-files">
-      <h1 className="text-2xl font-semibold">{t.title}</h1>
+      <a href="/my" className="mb-3 inline-flex items-center gap-1 text-sm underline">
+        <Icon name="folder" />
+        {back}
+      </a>
+      <h1 className="flex items-center gap-2 text-2xl font-semibold">
+        <Icon name="folderSimple" />
+        {t.title}
+      </h1>
       <p className={`mt-1 text-sm ${muted}`}>{t.intro}</p>
 
       {files && files.length === 0 && (
-        <p className={`mt-6 text-sm ${muted}`} data-qa="my-files-empty">
+        <p
+          className={`mt-6 text-sm ${muted}`}
+          data-qa="my-files-empty"
+          data-testid="my-files-empty"
+        >
           {t.empty}
         </p>
       )}

@@ -161,7 +161,7 @@ for (const path of [
   "/words",
   "/review",
   "/list",
-  "/profile",
+  "/my/profile",
   "/membership",
   "/sign-in",
 ]) {
@@ -195,7 +195,7 @@ await back.addCookies([
   { name: OLD, value: token, url: BASE, secure: true, httpOnly: true, sameSite: "Lax" },
 ]);
 const p = await back.newPage();
-await p.goto(`${BASE}/profile`, { waitUntil: "domcontentloaded" });
+await p.goto(`${BASE}/my/profile`, { waitUntil: "domcontentloaded" });
 await p.waitForURL(/\/sign-in/, { timeout: 60_000 });
 check("a protected page sends them to sign-in", true);
 await p.locator("#email").fill(EMAIL);
@@ -207,10 +207,10 @@ check("signing in by hand leaves the sign-in page", true, new URL(p.url()).pathn
 check("with the new cookie", Boolean(await cookie(back, NEW)));
 check("and no old one", !(await names(back)).some((n) => n.startsWith("__Secure-")));
 await p.close();
-const after = await settle(back, "/profile");
+const after = await settle(back, "/my/profile");
 check(
   "a protected page now stays",
-  after.end === "/profile" && after.moves <= 2,
+  after.end === "/my/profile" && after.moves <= 2,
   `${after.moves} moves, ends ${after.end}`,
 );
 
@@ -235,7 +235,7 @@ pp.on("response", async (r) => {
   for (const h of await r.headersArray())
     if (h.name.toLowerCase() === "set-cookie") challengeNames.add(h.value.split("=")[0]);
 });
-await pp.goto(`${BASE}/profile`, { waitUntil: "networkidle", timeout: 120_000 });
+await pp.goto(`${BASE}/my/profile`, { waitUntil: "networkidle", timeout: 120_000 });
 await pp.getByRole("button", { name: "Add a passkey" }).click();
 await pp.getByTestId("passkey-list").locator("li").first().waitFor({ timeout: 30_000 });
 const creds = (await cdp.send("WebAuthn.getCredentials", { authenticatorId })).credentials.length;
@@ -291,7 +291,7 @@ check(
   gone.status() === 401,
   `${gone.status()} (had a tag: ${Boolean(midTag.session)})`,
 );
-const r2 = await settle(mid, "/profile");
+const r2 = await settle(mid, "/my/profile");
 check(
   "and the page settles at sign-in",
   r2.end === "/sign-in" && r2.moves <= 3,

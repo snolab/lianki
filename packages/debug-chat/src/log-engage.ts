@@ -9,8 +9,7 @@
  * wheel or a drag scrolls the history, a press on a line selects its text),
  * while:
  *
- *   - the input is in use (focused, or the + menu / its file picker up),
- *   - the mic is on, or
+ *   - the input is in use (focused, or the + menu / its file picker up), or
  *   - `held`: a press-and-hold on the history (HOLD_MS, still within
  *     HOLD_SLOP_PX) engaged it and selected the line under it ("rest": the
  *     log keeps its resting height, so the line stays under the finger), or
@@ -18,6 +17,11 @@
  *     a line blurs the input, and the log would fold to 3 lines under the
  *     drag; it stays open, glass and all), or a selection is open in the
  *     chat. It lasts until a press lands outside the chat.
+ *
+ * The mic being on does not engage it (owner, 2026-11-10, iPhone on
+ * /reader): with the input not focused, a drag over the history scrolls the
+ * page underneath; only the bar, its buttons and cards, links, or the
+ * focused or full-screen chat take a touch. A hold still engages it.
  *
  * The press-and-hold is seen at the document (the log takes no events at
  * rest): a pointerdown inside the log's box starts one timer, a move past
@@ -50,7 +54,7 @@ export function logEngaged(s: {
   micActive: boolean;
   held: Held;
 }): boolean {
-  return inputInUse(s) || s.micActive || !!s.held;
+  return inputInUse(s) || !!s.held;
 }
 
 /** How the history is held (see above): not, at its resting height, or open. */

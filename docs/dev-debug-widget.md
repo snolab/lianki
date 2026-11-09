@@ -910,7 +910,12 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   pushed flush against the bottom edge (the drag keeps it on screen, so it rests
   flush within half a pixel) enters full screen on the drop (`dropEntersFull`).
   Only the bottom: the top edge would hide the history (18:26 JST), so a bar
-  pushed against the top stays a panel there. In full screen a drag on the grip
+  pushed against the top stays a panel there. **Before the release** (owner,
+  2026-11-10): the moment the drag meets that condition, a glass sheet grows
+  up from the bottom edge to the whole screen, behind the chat
+  (`FULL_HINT_STYLE`, `data-testid="debug-chat-full-hint"`), with a light
+  haptic where the browser has `navigator.vibrate` (not iOS); backing off the
+  edge folds it away (`fullHintStep`). Reduced motion: it appears at once. In full screen a drag on the grip
   or the bar's edge that goes `FULL_LEAVE_PX` (48 px) up leaves it
   (`dragLeavesFull`): the panel comes back, its own size, and follows the finger
   from there; a smaller wobble, sideways or down, stays. Without a drag (the
@@ -1216,8 +1221,7 @@ focused, a wheel or a click over the history must reach the page under it.
 One rule, `logEngaged` in `log-engage.ts`: the history takes the pointer
 (`LOG_TOUCH`: wheel and drag scroll it, its lines select) while
 
-- the input is in use (focused, or the + menu / its file picker up),
-- the mic is on, or
+- the input is in use (focused, or the + menu / its file picker up), or
 - it is **held**: a **press-and-hold on the history** (500 ms, the
   platform's long-press, within 10 px) engaged it and selected the line
   under the finger ("rest": the log keeps its height, so the line stays
@@ -1226,8 +1230,16 @@ One rule, `logEngaged` in `log-engage.ts`: the history takes the pointer
   to the newest lines, so the drag selects what it started on); or a
   selection is open in the chat. A press anywhere outside the chat drops it.
 
-At rest nothing in the history takes a pointer (the polish mark, sent files
-and ask-card buttons keep theirs), so a wheel scrolls the page and a click
+The mic being on does **not** engage it (owner, 2026-11-10, iPhone on
+/reader): with the input not focused, a drag over the history scrolls the
+page underneath. At rest the log is no scroll box either
+(`overflow-y-hidden`; code still scrolls it to the newest lines, and a wheel
+over the bar moves it), so a drag that starts on a link or a card in it pans
+the page, while a tap on that link or card still works. Full screen, the log
+takes the touch as when typing.
+
+At rest nothing in the history takes a pointer (the polish mark, sent files,
+links and ask-card buttons keep theirs), so a wheel scrolls the page and a click
 lands on it. **How to copy now:** press and hold a message (mouse or
 finger): it is selected; ⌘C / Copy. Or tap the input first, then
 long-press / drag a line as before. On the phone a second long-press on the
@@ -1309,15 +1321,26 @@ in `debug.say`.
 
 **On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
 `voice.ts` `gateVoice`), on top of the usual rules (mic on; or the speaker
-toggle on and either the mic used in this tab or the input focused):
+toggle on and either a phone, the mic used on this device, or the input focused):
 
-0. **Mic used here, sticky** (owner, 2026-11-04: "最近用过 mic 输入的话，回我的打字消息也要用语音"):
-   once the mic has been on in a tab, replies are read there with the
-   toggle on whether the input has focus or not, typed lines included
-   (sessionStorage `lk:agent:voiced`). There is no time window: it lasts
-   until he turns "Replies read aloud" off, which clears it; his mute always
-   wins. The menu row says "Replies read aloud (mic used)" while it holds,
-   "Replies read aloud while typing" when only the focus rule applies.
+- **A phone: the toggle alone** (owner, 2026-11-10): on a touch device
+   (voice-bg.ts `isDesktop` false) every reply is read with the speaker
+   toggle on, focused or not: the focus rule needed the keyboard up, so a
+   reader on /reader heard nothing. The menu row says "Replies read aloud"
+   (`ChatStrings.readAloud`).
+- **Mic used here, sticky** (owner, 2026-11-04: "最近用过 mic 输入的话，回我的打字消息也要用语音"):
+   once the mic has been on, replies are read with the toggle on whether
+   the input has focus or not, typed lines included (localStorage
+   `lk:agent:voiced`; it was sessionStorage, which an iOS PWA relaunch
+   clears). There is no time window: it lasts until he turns "Replies read
+   aloud" off, which clears it; his mute always wins. On a computer the menu
+   row says "Replies read aloud (mic used)" while it holds, "Replies read
+   aloud while typing" (`ChatStrings.readAloudTyping`) when only the focus
+   rule applies.
+- **Reconnect**: replies sent while the socket was down come back only in
+   the `history` frame; the newest agent line past the last one this page
+   saw is read (speak-rules.ts `missedReply`). The first connect of a page
+   reads nothing: old history is never read aloud.
 
 1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
 2. **Hidden page or locked screen** (`document.visibilityState` "hidden"),
@@ -1695,6 +1718,20 @@ cover it (owner, 2026-11-08, Android); `scripts/dev/debug-chat-eta-overlap-qa.mj
 checks it at 412×915 and 390×844, light and dark, scrolled up, in and out of
 full screen.
 
+**One glass strip** (owner, 2026-11-10): while the bar shows, it and the
+input row are one bottom strip with one frosted surface. The bar's slot sits
+right over the input row; a layer behind both (`data-testid="debug-chat-strip"`,
+absolute inside the row's grid, reaching `etaH` up) carries the input row's
+own glass (`INPUT_BG`, blur 12 px, saturate 1.5, hairline edge), the input
+row drops its own (`barInGlass`), and the bar drops its track (`EtaBar glass`).
+It is a layer, not a wrapper, because a backdrop-filter on an ancestor would
+become the box of the fixed menus and floating lines inside the row. With no
+bar the input row looks as it always did (it already wore that glass). Off
+while the typing glass is the frame, and full screen. While a task is in
+progress the fill shows activity: a soft light sweeps along it
+(`ETA_SHIMMER_CSS`, its own keyframes since the hot widget has no app
+stylesheet); none when all are done, and none under prefers-reduced-motion.
+
 ### Full-screen Gantt
 
 A tap on the ETA bar (or ⤢ on the state tree's list) opens the Gantt full
@@ -1710,6 +1747,27 @@ its background and see-through (`GANTT_COLORS`, oklch with alpha), so the grid
 and the red Now line show through; the text is AA over every bar composited on
 the panel (unit/gantt-view.test.ts composites in sRGB as the browser does).
 Overdue stays red with a minus; queued bars are fainter and dashed.
+
+**The home view** (owner, 2026-11-10; `gantt-view.ts homeView`, on open,
+on reopening, and on the Now button), on either axis: the rows are sorted
+by end time, expected or actual (`ganttRowsByEnd`); the red Now line is at
+the horizontal centre, past left, future right; the open task closest to
+ending (soonest expected end still ahead; with none, the row ending nearest
+now: `focusRow`) is at the vertical centre (`centreRowTop`). The time axis
+(horizontally only; row height never changes) is zoomed so the
+`GANTT_FIT_PERCENTILE` (95%) duration of that row and its
+`GANTT_FIT_NEIGHBOURS` neighbours either side (`fitSpan`) fills the visible
+width and no more — linear: that span across the width; log: that span
+centred on Now from edge to edge — within the axis's zoom limits. Blank
+space at the head and the tail of the rows (`GANTT_END_SPACE`, half the
+view) gives the scroller's own bounce room before the edge and lets the
+first and last rows be centred; these three are named defaults ready for
+the config store. **Pinch on iPhone**: the touch pinch alone zooms, about
+the fingers' midpoint, which also pans the view as it moves; steps are
+batched to one per frame; two fingers down stop the native pan
+(`touchstart` prevented), and Safari's gesture events, which fire with the
+touches there, only stop the page zoom (before, both zoomed: a double, jumpy
+step). On a Mac trackpad the gesture events still zoom.
 
 The axis math (scales, ticks, bars) is our component library's gantt module,
 `@snomiao/rgui/gantt` ([rgui.md](rgui.md)); `gantt-view.ts` re-exports it.

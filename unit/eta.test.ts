@@ -32,6 +32,7 @@ import {
 } from "@lianki/debug-chat/eta";
 import {
   ETA_COLORS,
+  ETA_SHIMMER_CSS,
   EtaBar,
   EtaClockIcon,
   EtaList,
@@ -657,6 +658,42 @@ describe("the bar and the list, rendered", () => {
         createElement(EtaBar, { tasks: [], now: 0, strings: CHAT_STRINGS_EN, onOpen: () => {} }),
       ),
     ).toBe("");
+  });
+
+  it("in progress the fill shimmers (off under reduced motion); done it is still; glass drops the track", () => {
+    const running = html(
+      createElement(EtaBar, {
+        tasks: two,
+        now: 5 * MIN,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+      }),
+    );
+    expect(running).toContain('data-testid="debug-chat-eta-shimmer"');
+    expect(ETA_SHIMMER_CSS).toContain("prefers-reduced-motion: reduce");
+    expect(ETA_SHIMMER_CSS).toContain("[data-eta-shimmer]{display:none}");
+    const done = html(
+      createElement(EtaBar, {
+        tasks: [task({ done: true, doneAt: 0 })],
+        now: 1000,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+      }),
+    );
+    expect(done).not.toContain("debug-chat-eta-shimmer");
+    const glass = html(
+      createElement(EtaBar, {
+        tasks: two,
+        now: 5 * MIN,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+        glass: true,
+      }),
+    );
+    expect(glass).toContain("background:transparent");
+    expect(glass).not.toContain("mb-1");
+    expect(running).toContain("mb-1");
+    expect(running + glass).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i); // oklch only
   });
 
   it("the list: one row per task with its state; nothing without tasks", () => {
