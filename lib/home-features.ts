@@ -1,7 +1,8 @@
 /**
- * The learning features shown as cards under Explore on /home, each over its
- * own drawing (app/(app)/home/FeatureArt.tsx). Keys index APP_NAV and the nav
- * labels.
+ * The features shown as cards under Explore on /home, each over its own
+ * drawing (app/(app)/home/FeatureArt.tsx): the learning features, then the
+ * LiCards (链卡) ones — sites, page review, the card list. Keys index APP_NAV
+ * and the nav labels.
  */
 export const HOME_EXPLORE = [
   "words",
@@ -12,6 +13,9 @@ export const HOME_EXPLORE = [
   "selfIntro",
   "read",
   "roadmap",
+  "sites",
+  "review",
+  "cards",
 ] as const;
 export type HomeFeatureKey = (typeof HOME_EXPLORE)[number];
 
