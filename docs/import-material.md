@@ -48,6 +48,50 @@ until **Add N words**, which makes a new /words list.
 - **Privacy.** The text lives only in the request: no R2 object, no content
   in D1 beyond the words added, logs carry the job id and an error name.
 
+### On /words: the Import button (owner, 2026-11-09)
+
+Same flag. At the top of /words (beside the title) an **Import** button
+opens an inline panel: a list of import sources (`SOURCES` in
+`app/(app)/words/ImportPanel.tsx`, strings `import-panel.content.ts`,
+dictionary `words-import-panel`).
+
+- **Preset word sets** (预制词组) closes the panel and scrolls to the
+  existing "Add a list" tree (exam decks, frequency lists, phrases) — the
+  same picker, not a copy.
+- **CSV or Excel table** opens the word-list import above inside the panel
+  (`WordListImport embedded`), loaded on that tap; a list it makes appears in
+  the lists at once.
+- A third source (any file, e.g. a PDF, converted in the background by an
+  agent on the user's AI quota) is one more `SOURCES` entry in its own PR,
+  added only once it works — no "coming soon" row.
+
+### CSV / Excel
+
+- **.xlsx** is read in the browser (`lib/import/xlsx.ts`): the workbook's
+  first sheet (by `workbook.xml` and its relationships), shared strings,
+  inline strings, rich-text runs (phonetic `<rPh>` guides left out), cells in
+  their own column. It then goes on as CSV text (`rowsToCsv`, padded to ≥ 2
+  columns so a one-column header still reads as a header), so the server
+  sees one format with the caps above. Limits: 5 MB file, 32 MB per part,
+  48 MB decompressed in all, 25 000 rows, 26 columns.
+- Reader: **jszip** (already a dependency, MIT, loaded on demand) plus a
+  small scanner of the few XML parts — not SheetJS, whose npm release is
+  frozen with known advisories. Runs the same in bun tests (no DOMParser).
+- **.xls** (the old binary format) is recognised by its OLE signature and
+  refused with "save it as .xlsx or CSV UTF-8" — no BIFF reader.
+
+### Templates
+
+"Start from a template" sits at the top of the import with **Excel
+template** and **CSV template** buttons (`lib/import/template.ts`, made on
+the click, nothing static). The header row is in the user's UI language
+(`TEMPLATES`: word / meaning / example per locale, each one an entry of
+`HEADER_ALIASES`), then three example rows (English words, the meaning in
+that language, an English example). CSV: UTF-8 with a BOM and CRLF, so
+Excel opens CJK, Arabic or Devanagari correctly. `.xlsx`: one sheet, header
+bold and frozen. `unit/import-template.test.ts` round-trips every locale:
+template → parse → the example rows, header detected.
+
 Not in this slice (next): the file is **not** kept as an artifact in R2 and
 not counted in usage; no task bar under the nav (the list on /import is the
 stand-in); no push-socket status; no "Front = column A?" question (the

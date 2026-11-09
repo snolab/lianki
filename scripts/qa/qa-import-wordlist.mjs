@@ -11,9 +11,13 @@
 // - flag on: a CSV file dropped in shows the preview counts (new / skipped),
 //   "Add N words" makes a /words list, and the recent-imports list shows it;
 // - the same list pasted again: everything is "already in your words";
-// - a binary file: a plain error, nothing sent.
+// - a binary file: a plain error, nothing sent;
+// - /words: the Import button at the top opens the panel; "Preset word sets"
+//   jumps to the Add a list tree; "CSV or Excel table" shows the templates,
+//   which download (header row, BOM) and, uploaded back (.xlsx, then .csv),
+//   preview and add like any list; an old .xls gets a plain error.
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, devices } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
@@ -81,6 +85,12 @@ try {
       "flag off: no word-list section on /import",
     );
     check((await preview(ctx, CSV)).status() === 404, "flag off: the route is 404");
+    await page.goto("/words?lang=en");
+    await page.waitForTimeout(3000);
+    check(
+      (await page.locator('[data-qa="words-import-button"]').count()) === 0,
+      "flag off: no Import button on /words",
+    );
     await ctx.close();
   }
 
@@ -148,6 +158,110 @@ try {
     check(
       again.fresh === 0 && again.have === 3,
       `again: 0 new, 3 already have (${again.fresh}/${again.have})`,
+    );
+    // /words → Import (docs/import-material.md, "On /words"): the button opens
+    // the panel; the templates download with the header row; the filled-in
+    // .xlsx and .csv go through the same preview and "Add N words".
+    await page.goto("/words?lang=en");
+    const importBtn = page.locator('[data-qa="words-import-button"]');
+    await importBtn.waitFor({ timeout: 30000 });
+    const btnBox = await importBtn.boundingBox();
+    check(!!btnBox && btnBox.y < 260, `/words: Import button at the top (y=${btnBox?.y})`);
+    await importBtn.click();
+    const panel = page.locator('[data-qa="words-import-panel"]');
+    await panel.waitFor({ timeout: 5000 });
+    check(
+      (await panel
+        .locator('[data-qa="words-import-preset"], [data-qa="words-import-table"]')
+        .count()) === 2,
+      "/words: the panel lists preset sets and a CSV / Excel table",
+    );
+    await page.locator('[data-qa="words-import-preset"]').click();
+    await page.waitForTimeout(800);
+    check((await panel.count()) === 0, "preset sets: the panel closes");
+    check(
+      await page.locator("[data-add-tree]").evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return r.top < innerHeight && r.bottom > 0;
+      }),
+      "preset sets: the 'Add a list' tree is in view",
+    );
+    await importBtn.click();
+    await page.locator('[data-qa="words-import-table"]').click();
+    const body = page.locator('[data-qa="words-import-table-body"]');
+    await body.locator('[data-qa="wordlist-templates"]').waitFor({ timeout: 15000 });
+    await page.screenshot({ path: join(OUT, `words-panel-${scheme}.png`), fullPage: true });
+
+    const save = async (sel, name) => {
+      const [dl] = await Promise.all([page.waitForEvent("download"), body.locator(sel).click()]);
+      const path = join(OUT, `${scheme}-${name}`);
+      await dl.saveAs(path);
+      return { name: dl.suggestedFilename(), bytes: readFileSync(path) };
+    };
+    const xlsx = await save('[data-qa="wordlist-template-xlsx"]', "template.xlsx");
+    check(
+      xlsx.name === "lianki-words-template.xlsx" && xlsx.bytes.subarray(0, 2).toString() === "PK",
+      `XLSX template downloads (${xlsx.name}, ${xlsx.bytes.length} bytes)`,
+    );
+    const csv = await save('[data-qa="wordlist-template-csv"]', "template.csv");
+    const csvText = csv.bytes.toString("utf8");
+    check(
+      csvText.startsWith("﻿Word,Meaning,Example\r\n") && /\r\napple,/.test(csvText),
+      "CSV template: BOM, the English header row, example rows",
+    );
+
+    // The .xlsx template, uploaded as it is: its 3 example words.
+    await body.locator('[data-qa="wordlist-file"]').setInputFiles({
+      name: "my-words.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: xlsx.bytes,
+    });
+    const box2 = body.locator('[data-qa="wordlist-preview-box"]');
+    await box2.waitFor({ timeout: 15000 });
+    const sum2 = await box2.innerText();
+    check(/3 new/.test(sum2), `xlsx preview: 3 new (${sum2.split("\n")[0]})`);
+    check(/Columns read from the header row/.test(sum2), "xlsx preview: the header row was read");
+    await body.locator('[data-qa="wordlist-lang"]').selectOption("en");
+    await body.locator('[data-qa="wordlist-add"]').click();
+    const done2 = body.locator('[data-qa="wordlist-done"]');
+    await done2.waitFor({ timeout: 15000 });
+    check(/Added 3 words to “my-words”/.test(await done2.innerText()), "xlsx: 3 words added");
+    await page
+      .locator("[data-list-row]")
+      .filter({ hasText: "my-words" })
+      .first()
+      .waitFor({ timeout: 15000 });
+    check(true, "/words: the new list shows in the lists without a reload");
+
+    // The CSV template next: the same words, so all already there.
+    await body.getByRole("button", { name: /import another/i }).click();
+    await body.locator('[data-qa="wordlist-file"]').setInputFiles({
+      name: "template.csv",
+      mimeType: "text/csv",
+      buffer: csv.bytes,
+    });
+    await box2.waitFor({ timeout: 15000 });
+    const sum3 = await box2.innerText();
+    check(
+      /0 new/.test(sum3) && /3 already in your words/.test(sum3),
+      "csv template: 3 already there",
+    );
+
+    // An old .xls: a plain error naming the fix.
+    await body.locator('[data-qa="wordlist-file"]').setInputFiles({
+      name: "old.xls",
+      mimeType: "application/vnd.ms-excel",
+      buffer: Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0, 0, 0]),
+    });
+    const err2 = body.locator('[data-qa="wordlist-error"]');
+    await err2.waitFor({ timeout: 10000 });
+    check(
+      /old Excel file/.test(await err2.innerText()),
+      "an .xls: 'old Excel file', save as .xlsx",
+    );
+    check(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      "/words: no sideways scroll at phone width",
     );
     check(errs.length === 0, `no page errors (${errs.join(" | ")})`);
     await ctx.close();
