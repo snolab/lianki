@@ -157,7 +157,7 @@ export function rowsToTemplateCsv(rows: readonly AiRow[], locale: string): strin
 }
 
 /** The text cut into chunks of at most `size` characters, on line breaks where it can. */
-export function chunkText(text: string, size = AI_IMPORT.chunkChars): string[] {
+export function chunkText(text: string, size: number = AI_IMPORT.chunkChars): string[] {
   const chunks: string[] = [];
   let cur = "";
   for (const line of text.split(/\r?\n/)) {
