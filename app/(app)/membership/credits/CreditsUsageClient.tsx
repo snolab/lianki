@@ -18,12 +18,12 @@ interface Page {
 
 // Colours (oklch only, docs/design-principles.md); the same family as the wallet card.
 const card =
-  "rounded-2xl p-4 sm:p-6 shadow-sm bg-[oklch(1_0_0)] dark:bg-[oklch(0.27_0.02_260)] text-[oklch(0.25_0.02_260)] dark:text-[oklch(0.95_0.01_260)]";
-const muted = "text-[oklch(0.45_0.02_260)] dark:text-[oklch(0.75_0.02_260)]";
+  "rounded-2xl p-4 sm:p-6 shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100";
+const muted = "text-gray-600 dark:text-gray-400";
 const link =
-  "font-medium underline underline-offset-2 text-[oklch(0.5_0.2_262)] hover:text-[oklch(0.42_0.2_262)] dark:text-[oklch(0.75_0.14_262)] dark:hover:text-[oklch(0.82_0.12_262)]";
+  "font-medium underline underline-offset-2 text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200";
 const field =
-  "min-h-11 w-full rounded-lg border px-3 py-2 bg-[oklch(1_0_0)] dark:bg-[oklch(0.22_0.02_260)] border-[oklch(0.85_0.03_262)] dark:border-[oklch(0.45_0.05_262)]";
+  "min-h-11 w-full rounded-lg border px-3 py-2 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600";
 const plus = "text-[oklch(0.45_0.14_150)] dark:text-[oklch(0.8_0.12_150)]";
 
 const PAGE = 100;
@@ -134,7 +134,7 @@ export default function CreditsUsageClient() {
         {page && page.month.length === 0 ? (
           <p className={`text-sm ${muted}`}>{s.monthEmpty.value}</p>
         ) : (
-          <ul className="text-sm divide-y divide-[oklch(0.92_0.01_260)] dark:divide-[oklch(0.35_0.02_260)]">
+          <ul className="text-sm divide-y divide-gray-200 dark:divide-gray-700">
             {page?.month.map((m) => (
               <li key={m.group} className="flex flex-wrap justify-between gap-x-3 py-1.5">
                 <button
@@ -215,21 +215,19 @@ export default function CreditsUsageClient() {
             role="alert"
             className="text-sm text-[oklch(0.5_0.18_25)] dark:text-[oklch(0.78_0.14_25)]"
           >
+            <Icon name="warning" className="me-1.5" />
             {s.failed.value}
           </p>
         )}
         {page && page.entries.length === 0 && !failed && (
           <p className={`text-sm ${muted}`}>{filtered ? s.noMatch.value : s.empty.value}</p>
         )}
-        <ul
-          className="divide-y divide-[oklch(0.92_0.01_260)] dark:divide-[oklch(0.35_0.02_260)] text-sm"
-          data-usage-list=""
-        >
+        <ul className="divide-y divide-gray-200 dark:divide-gray-700 text-sm" data-usage-list="">
           {page?.entries.map((e) => (
             <li
               key={e.id}
               id={`usage-${e.id}`}
-              className="flex items-start justify-between gap-3 py-2 target:bg-[oklch(0.95_0.03_262)] dark:target:bg-[oklch(0.33_0.06_262)]"
+              className="flex items-start justify-between gap-3 py-2 target:bg-gold-100 dark:target:bg-gold-950"
               data-usage-entry={e.group}
             >
               <div className="min-w-0 space-y-0.5">
@@ -276,7 +274,7 @@ export default function CreditsUsageClient() {
             type="button"
             disabled={busy}
             onClick={() => void load(page.entries.length)}
-            className={`min-h-11 w-full rounded-lg border text-sm font-medium border-[oklch(0.85_0.03_262)] dark:border-[oklch(0.45_0.05_262)] disabled:opacity-50`}
+            className={`min-h-11 w-full rounded-lg border text-sm font-medium border-gray-300 dark:border-gray-600 disabled:opacity-50`}
           >
             {s.loadMore.value}
           </button>
