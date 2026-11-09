@@ -23,6 +23,8 @@ import textSize from "@/app/components/text-size.content";
 import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
+import emailInvite from "@/app/(app)/membership/email-invite.content";
+import inviteMail from "@/lib/referrals/invite-mail.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
 import readEpub from "@/app/(app)/reader/read-epub.content";
 import readGdoc from "@/app/(app)/reader/read-gdoc.content";
@@ -107,6 +109,8 @@ describe.each([
   ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],
   ["invite-card", inviteCard],
+  ["email-invite", emailInvite],
+  ["invite-mail", inviteMail],
   ["credit-units", creditUnits],
   ["read-epub", readEpub],
   ["read-gdoc", readGdoc],

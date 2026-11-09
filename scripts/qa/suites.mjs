@@ -155,6 +155,21 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // Invite by email on /membership (docs/payments.md, "Invite by email"): gate, one address, neutral answer, stubbed send.
+  {
+    name: "EMAIL INVITE (qa-email-invite)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-email-invite.mjs"],
+    base: true,
+    id: "email-invite",
+    paths: [
+      "app/(app)/membership/**",
+      "app/api/invite/email/**",
+      "lib/referrals/**",
+      "lib/signup-locale*.ts",
+    ],
+    sensitive: false,
+  },
   // YouTube songs (docs/youtube-song-examples.md): flag gate, the ▶ per line, the popup's close rules.
   // Every YouTube host blocked: no video, no sound, no network.
   {

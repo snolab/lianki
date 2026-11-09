@@ -450,6 +450,18 @@ tests in `unit/security-hardening.test.ts`.
 - **The reachability probe** follows redirects by hand (5 hops), checking
   each one against the private-host list.
 
+## 13. Invite by email (2026-11-09)
+
+Mail a user can make Lianki send to a stranger's address is a spam and
+harassment channel, so: admins and Pro only; 5 per inviter per 24 h; one per
+address per 30 days from anyone; one address per request; no mail (and the same
+neutral answer) to an address with an account, a suppressed one, or from an
+inviter reported twice; a display name that reads like a link is replaced;
+Unsubscribe / Report abuse and RFC 8058 one-click in every mail, with an HMAC
+token (key derived from `AUTH_SECRET`); only a hash and a masked form of the
+address are stored. Local servers never send. Bounce/complaint webhooks still
+need a secret. Details: [payments.md](payments.md), "Invite by email".
+
 ## Owner checklist
 
 Things this repo cannot do by itself:
