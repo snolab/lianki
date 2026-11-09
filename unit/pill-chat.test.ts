@@ -604,3 +604,21 @@ describe("dialogs: theme, keys, the blocked note", () => {
     proto.attachShadow = orig;
   });
 });
+
+describe("opening Li: the real prompt", () => {
+  it("without a prompt override the trust dialog asks; Escape denies", async () => {
+    const h = harness({});
+    const pc = pillChat({ ...h.d, prompt: undefined });
+    const p = pc.open();
+    await new Promise((r) => setTimeout(r, 0));
+    const host = h.doc.documentElement.lastElementChild as HTMLElement;
+    const e = new (h.win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent(
+      "keydown",
+      { key: "Escape", bubbles: true },
+    );
+    Object.defineProperty(e, "isTrusted", { value: true });
+    host.dispatchEvent(e);
+    expect(await p).toBe("denied");
+    expect(h.calls).toEqual([]);
+  });
+});
