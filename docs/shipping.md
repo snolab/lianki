@@ -20,6 +20,24 @@ the checks run.
 `scripts/ship.ts` uses `git reset --keep`, not `--hard`, so a sync can never
 silently eat uncommitted work.
 
+### The PR on its node
+
+Every PR belongs to a state tree node (docs/planning-tools.md). Once the PR
+is open, ship.ts reports `--pr N` on that node itself, keeping its title and
+status (scripts/ship-node.ts). The node, first found wins:
+
+1. `bun scripts/ship.ts --node /read/review-sheet`
+2. `LIANKI_TASK_PATH=/read/review-sheet` (the lane's node, as `eval.ts` reads it)
+3. a line `Tree: /read/review-sheet` of its own in the commit message
+
+It writes as `LIANKI_AGENT` when set (a scoped token writes only as its own
+agent), else as the node's creator, with the progress token (`progress.ts`
+finds it the same way). No node named, no token, or a node not in the tree:
+ship.ts warns and goes on — the PR still lands; report it by hand
+(`progress.ts … --pr N`). A lane shipping from its own branch with `gh pr
+create` reports `--pr` itself, as before. The node keeps every PR it named
+(`prs`), and /dev/roadmap links them.
+
 ## CI
 
 CI runs **everything**; the pre-push hook runs only what a change reaches
