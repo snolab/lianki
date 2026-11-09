@@ -999,7 +999,8 @@ transcript are unchanged and keep working.
   synced. Turn it on in the window where you want it (the installed /words
   app), and it stays off everywhere else.
 - **Whole chat back**: a tap on the input (focus) or on the compact line, or
-  a vertical drag on the mic or the empty input (the full-screen log).
+  a vertical drag on the empty input (the full-screen log). The mic is push to
+  talk now (docs/voice-mode.md, "Push to talk").
 - **Folding again** (`compact-view.ts` `foldIn`): after the latest hold —
   1.5 s after the input's blur, 8 s after a tap on the line, 3 s after the
   last scroll or touch in the log, and a new reply's reading time
@@ -1016,7 +1017,7 @@ transcript are unchanged and keep working.
   the minimized floating lines — lasting exactly its reading time
   (`float-lines.ts dwellMs`, the one source the minimized chat uses), then
   it is plain text. A mask, alpha only, so the colour and halo are kept.
-  While a mic drag scrubs the minimized history, the lines shown pulse with
+  While ↑/↓ on the mic scrubs the minimized history, the lines shown pulse with
   the same band, ending `SCRUB_PULSE_MS` (two long-presses) after the last
   step. Off under prefers-reduced-motion and the app's "Turn off
   animations". Tests: `unit/chat-shimmer.test.ts`.

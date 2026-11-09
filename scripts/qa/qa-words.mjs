@@ -215,23 +215,18 @@ async function revealOrder(pg, variant) {
     // queued pointermoves are coalesced away, and the slip is never painted
     // off its spot — the probe then sees the card (CI main runs, and 5 of 5
     // local runs with extra observers attached). A screenshot forces a
-    // rendering update; the app's own rAF paint then runs as on a device.
-    await pg.screenshot();
-    // The label fades in (150ms); a loaded runner may take longer to paint.
-    await pg
-      .waitForFunction(
-        ([x, y]) =>
-          document
-            .elementsFromPoint(x, y)
-            .some(
-              (e) =>
-                Number(getComputedStyle(e.closest("[data-reveal]") ?? e).opacity) > 0.5 &&
-                e.closest("[data-reveal]"),
-            ),
-        [x, y],
-        { timeout: budget(2000) },
-      )
-      .catch(() => {});
+    // rendering update, so the app's own rAF paint runs as on a device. One
+    // was not enough: the slip follows the finger on a spring (paint() asks
+    // for frame after frame until it settles), and on a loaded runner the
+    // moves can land after that one forced frame ("transform=none
+    // underlay=visible", merge queue 2026-11-09). So keep forcing frames
+    // until the label shows (it also fades in, 150 ms), on a load budget.
+    const until = Date.now() + budget(4000);
+    while (true) {
+      await pg.screenshot();
+      if ((await hit()) === "label:3" || Date.now() > until) break;
+      await pg.waitForTimeout(50);
+    }
     mid = await hit();
     if (mid !== "label:3") {
       // Why not: the slip's transform and the underlay's state.

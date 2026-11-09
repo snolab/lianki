@@ -8,7 +8,8 @@
  *   once per line (`createNewLines`), so a re-render never shifts it; a line
  *   drawn again part-way (the chat opened, minimized) picks the sweep up
  *   where it is, by a negative delay.
- * - **A scrub**: dragging the mic up or down scrolls the minimized history;
+ * - **A scrub**: ↑/↓ on the mic steps through the minimized history (the mic
+ *   itself is push to talk now, ptt.ts);
  *   while it moves, the lines shown pulse with the same band, ending once
  *   the scrub stops moving.
  *
