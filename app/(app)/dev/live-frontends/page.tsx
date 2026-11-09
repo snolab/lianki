@@ -1,23 +1,23 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { isDev } from "@/lib/permissions";
 import LiveFrontendsAdmin from "./LiveFrontendsAdmin";
+import { devPageText, devPageMetadata } from "../dev-page-title";
 
 // Owner-only, like /dev/flags: anyone else gets a plain 404.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Custom frontends — Lianki dev",
-  robots: { index: false, follow: false, nocache: true },
-};
+export const generateMetadata = devPageMetadata("liveFrontends");
 
 export default async function DevLiveFrontendsPage() {
   const user = await authUserOrNull();
   if (!isDev(user?.email)) notFound();
+  const heading = await devPageText("liveFrontends");
   return (
     <main lang="zh" className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-      <h1 className="font-brush text-4xl">自定义前端</h1>
+      <h1 lang={heading.lang} className="font-brush text-4xl">
+        {heading.text}
+      </h1>
       <p className="text-sm opacity-70">
         名单上的用户可以登记自己的 Cloudflare 隧道，在 lianki.com/?live=&lt;id&gt;
         看到自己开发的前端；/api 和 /auth 永远是正式版，只用他自己的账号和权限，只有他本人能看到。
