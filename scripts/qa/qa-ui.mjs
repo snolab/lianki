@@ -628,7 +628,9 @@ for (const [w, h] of [
     ["/my/profile", "/my/preferences", "/my/files"].every((x) => cards.includes(x)),
     `/my: cards for profile, preferences and files (${JSON.stringify(cards)})`,
   );
-  await page.goto(`${BASE}/my/files`, { waitUntil: "networkidle" });
+  // The listing loads after the page (GET /api/my/files): wait for the page itself.
+  await page.goto(`${BASE}/my/files`, { waitUntil: "domcontentloaded" });
+  await page.locator('[data-qa="my-files"]').waitFor({ timeout: 30000 });
   check(
     !(await page.getByText(/This page could not be found/i).count()),
     "/my/files: the page exists",
