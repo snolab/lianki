@@ -492,7 +492,10 @@ describe("readFlags: cache window and fail-closed", () => {
 
   test("off the D1 backend every flag is off, without touching a database", async () => {
     process.env.DB_BACKEND = "mongodb";
-    expect(await readFlags()).toEqual(closedFlags());
+    // No D1 (the getter's answer off the D1 backend): all off, a default-on flag too.
+    // Given explicitly: unit/support/testMocks.ts may stand in for lib/d1 in a shared run.
+    expect(await readFlags(() => null)).toEqual(closedFlags());
+    clearFlagCache();
     expect(await flagOn("payments.stripe.live")).toBe(false);
   });
 });
