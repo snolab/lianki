@@ -79,7 +79,14 @@ async function signIn(ctx, email) {
 async function openPage(page) {
   for (let i = 0; i < 12; i++) {
     await page.goto("/dev/mails");
-    if (await page.locator("[data-testid=mails-q]").count()) return true;
+    // The list's first answer: the page is hydrated (a search before that would
+    // submit the form natively and reload it unfiltered).
+    const ready = await page
+      .locator("[data-testid=mails-total]")
+      .waitFor({ timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (ready) return true;
     await page.waitForTimeout(3000);
   }
   return false;
