@@ -207,6 +207,21 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // Pre-grants on /dev/users (docs/payments.md, "Pre-grants"): preview → apply → pending row → revoke; the verified-only claim.
+  {
+    name: "PRE-GRANTS (qa-pregrant)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-pregrant.mjs"],
+    base: true,
+    id: "pregrant",
+    paths: [
+      "app/(app)/dev/users/**",
+      "app/api/dev/pregrants/**",
+      "lib/referrals/pregrant.ts",
+      "auth-impl.ts",
+    ],
+    sensitive: false,
+  },
   // The marble plan cards on /membership: marble by default, 360 px, measured text contrast over the stone.
   {
     name: "MEMBERSHIP MARBLE (qa-membership-marble)",

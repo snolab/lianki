@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
 import { compactBytes as size } from "@/lib/repos/devUserFiles";
 import type { DevUserRow } from "@/lib/repos/devUsersD1";
+import type { PendingRow } from "@/lib/referrals/pregrant";
 
 /** ISO-style, in the viewer's time zone: 2026-11-05 18:11. Never 11/5/2026. */
 const when = (s: string | null) =>
@@ -24,6 +26,7 @@ export default function UsersTable({
   now,
   inboxCap,
   filesComplete = true,
+  pending = [],
 }: {
   rows: DevUserRow[];
   now: number;
@@ -31,8 +34,30 @@ export default function UsersTable({
   inboxCap: number;
   /** False when the R2 listing hit its page cap: totals are a lower bound. */
   filesComplete?: boolean;
+  /** Open pre-grants (lib/referrals/pregrant.ts): addresses with no account yet, revocable. */
+  pending?: PendingRow[];
 }) {
   const c = useIntlayer("dev-users");
+  const p = useIntlayer("dev-pregrant");
+  const router = useRouter();
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [revokeFailed, setRevokeFailed] = useState(false);
+  async function revoke(row: PendingRow) {
+    if (!window.confirm(p.revokeConfirm.value.replace("{email}", row.email))) return;
+    setRevoking(row.id);
+    setRevokeFailed(false);
+    try {
+      const r = await fetch(`/api/dev/pregrants?id=${encodeURIComponent(row.id)}`, {
+        method: "DELETE",
+      });
+      if (!r.ok && r.status !== 409) throw new Error(String(r.status));
+      router.refresh();
+    } catch {
+      setRevokeFailed(true);
+    } finally {
+      setRevoking(null);
+    }
+  }
   const COLUMNS: [Key, string][] = [
     ["lastSeen", "最近登录"],
     ["createdAt", "注册"],
@@ -55,6 +80,12 @@ export default function UsersTable({
         return typeof x === "number" ? (y as number) - x : String(y).localeCompare(String(x));
       });
   }, [rows, q, sort]);
+  const pendingShown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return pending.filter(
+      (r) => !needle || `${r.email} ${r.note ?? ""}`.toLowerCase().includes(needle),
+    );
+  }, [pending, q]);
 
   const week = now - 7 * 86_400_000;
   const stat = (label: string, n: number | string) => (
@@ -87,6 +118,14 @@ export default function UsersTable({
         placeholder="搜索邮箱或名字"
         className="w-full rounded border border-current/20 bg-transparent px-3 py-2"
       />
+      {revokeFailed && (
+        <p
+          role="alert"
+          className="text-sm text-[oklch(0.5_0.19_27)] dark:text-[oklch(0.75_0.15_27)]"
+        >
+          {p.failed}
+        </p>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm tabular-nums">
           <thead>
@@ -106,6 +145,51 @@ export default function UsersTable({
             </tr>
           </thead>
           <tbody>
+            {pendingShown.map((r) => {
+              const lapsed = r.grantExpiresAt !== null && Date.parse(r.grantExpiresAt) <= now;
+              return (
+                <tr
+                  key={`pending-${r.id}`}
+                  className="border-t border-current/10 align-top"
+                  data-pending={r.email}
+                >
+                  <td className="py-1.5 pr-3">
+                    <span className="break-all">{r.email}</span>
+                    {r.note && <div className="text-xs opacity-60 break-all">{r.note}</div>}
+                  </td>
+                  <td className="py-1.5 pr-3 whitespace-nowrap">
+                    <span
+                      className={
+                        lapsed
+                          ? "text-[oklch(0.5_0.19_27)] dark:text-[oklch(0.75_0.15_27)]"
+                          : "text-[oklch(0.45_0.12_70)] dark:text-[oklch(0.82_0.12_80)]"
+                      }
+                    >
+                      {lapsed ? p.expired : p.pending}
+                    </span>
+                    <div className="text-xs opacity-60">
+                      {p.pendingDays.value.replace("{days}", String(r.days))}
+                    </div>
+                    {r.grantExpiresAt && (
+                      <div className="text-xs opacity-60">
+                        {p.lapses.value.replace("{date}", when(r.grantExpiresAt))}
+                      </div>
+                    )}
+                    <button
+                      data-revoke={r.id}
+                      disabled={revoking === r.id}
+                      onClick={() => revoke(r)}
+                      className="mt-1 rounded border border-current/30 px-2 py-0.5 text-xs disabled:opacity-40"
+                    >
+                      {p.revoke}
+                    </button>
+                  </td>
+                  <td className="py-1.5 pr-3">—</td>
+                  <td className="py-1.5 pr-3 whitespace-nowrap">{when(r.createdAt)}</td>
+                  <td className="py-1.5 pr-3" colSpan={COLUMNS.length - 2} />
+                </tr>
+              );
+            })}
             {shown.map((u) => {
               const t = tier(u, now);
               return (

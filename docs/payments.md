@@ -523,6 +523,55 @@ the invite card on `/membership`; Lianki mails that friend the inviter's existin
 - **Local servers never mail**: on a localhost origin the send is a stub
   (`invite-email.stub-send`, no address), whatever `.dev.vars` holds.
 
+### Pre-grants
+
+Owner request 2026-11-09. An admin gives Pro days to addresses that have **no
+account yet**, so the days are waiting when that person signs up.
+
+| piece | where |
+| --- | --- |
+| parse, preview, apply, revoke, claim | `lib/referrals/pregrant.ts` |
+| route (admin only, 404 otherwise) | `app/api/dev/pregrants/route.ts`: GET list, POST `preview` / `apply`, DELETE `?id=` |
+| UI | the "Pre-grant" panel on `/dev/users` (`PregrantPanel.tsx`); open grants are rows of the users table tagged pending (or lapsed), each with Revoke. Strings: `pregrant.content.ts` (`dev-pregrant`, 16 locales, context lines) |
+| table | `db/migrations/0063_pending_membership.sql`: `pending_membership` |
+| the claim | better-auth `databaseHooks.session.create.after` (every sign-in) and `user.update.after` (an address verified later), `auth-impl.ts` |
+| tests | `unit/pregrant.test.ts`; QA `scripts/qa/qa-pregrant.mjs` (suite `pregrant`) |
+
+- **The list**: one address per line, or CSV `email,days,note` (the note may
+  hold commas; a header line and `#` comments are skipped). Days and note fall
+  back to the panel's fields. Optional: a date after which an unclaimed grant
+  lapses (the end of that day, Japan time). At most 500 lines, 1–3660 days.
+- **Preview** (writes nothing): `ok` (will wait), `invalid`, `duplicate` (the
+  same canonical address earlier in the list), `pending` (already has an open
+  grant), `account` (an account with that canonical address exists). For an
+  `account` row the admin picks **Grant now** — `grantPro` at once, reason
+  `pregrant-direct`, refId `pregrant-direct:<apply key>:<userId>`, so a retried
+  click grants once — or **Skip** (the default). No pending row is made for an
+  address that has an account. The server runs the preview again on apply and
+  trusts nothing the page sends but the choices.
+- **Stored**: the address as typed (lowercased) — the admin page has to show the
+  list, and it is the owner's own list — plus `email_hash` = SHA-256 of
+  `pregrant:` + the canonical address, which is what matching uses. A partial
+  UNIQUE index allows one open (unclaimed, unrevoked) grant per person.
+- **The claim**: on sign-in, if the account's email is **verified**, every open
+  and unexpired row for its canonical address is taken by one conditional
+  UPDATE (`claimed_at`, `claimed_user_id`), then granted through `grantPro`: a
+  `membership_grant` row, reason `pregrant`, refId `pregrant:<row id>` —
+  UNIQUE, so once only — and `proEndsAt` extended in SQL, stacking on running
+  Pro. An unverified address never claims (anyone can type any address at
+  sign-up; OAuth and the emailed code verify it, a local password sign-up does
+  not). A revoke or expiry landing between the read and the take wins; a grant
+  that fails outright puts the row back for the next sign-in. Aliases share
+  one grant: the first verified account of that person takes it.
+- **Revoke**: only an open row; a claimed one stays claimed.
+- **Audit**: `security_audit` kinds `pregrant.create` / `pregrant.revoke`
+  (actor the admin, subject the row id, detail a masked address and the days),
+  `pregrant.direct` (subject the account), `pregrant.claim` (actor the account).
+- **Email change**: not in `EMAIL_KEYED_TABLES`. The `email` column is the
+  address the admin typed, not an account's key: no account owns the row until
+  it is claimed, and then it is tied to `claimed_user_id`, which never changes.
+- No charging and no Stripe: days only, through the same path as gift codes.
+
 ### `user.signupLocale`
 
 The browser language at an account's first sign-up: the best supported tag from

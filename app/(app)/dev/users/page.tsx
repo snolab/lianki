@@ -6,6 +6,8 @@ import { INBOX } from "@/lib/inbox/config";
 import { cachedReadBlobSizes, type ListBucket } from "@/lib/repos/devUserFiles";
 import { listDevUsers, monthlySignups } from "@/lib/repos/devUsersD1";
 import { monthSeries } from "@/lib/signups-chart";
+import { listPending } from "@/lib/referrals/pregrant";
+import PregrantPanel from "./PregrantPanel";
 import SignupsChart from "./SignupsChart";
 import UsersTable from "./UsersTable";
 import { devPageText, devPageMetadata } from "../dev-page-title";
@@ -22,10 +24,11 @@ export default async function DevUsersPage() {
   // Long reading texts have no stored size: R2's listing, capped and cached (devUserFiles.ts).
   const read = await cachedReadBlobSizes(() => getBlobs() as unknown as ListBucket);
   const now = new Date();
-  const [rows, signups, heading] = await Promise.all([
+  const [rows, signups, heading, pending] = await Promise.all([
     listDevUsers(getD1(), now, read.sizes),
     monthlySignups(getD1()),
     devPageText("users"),
+    listPending(getD1()),
   ]);
   return (
     <main lang="zh" className="max-w-6xl mx-auto px-4 py-8 space-y-6">
@@ -40,11 +43,13 @@ export default async function DevUsersPage() {
         </p>
       </header>
       <SignupsChart series={monthSeries(signups, now)} />
+      <PregrantPanel />
       <UsersTable
         rows={rows}
         now={now.getTime()}
         inboxCap={INBOX.maxStoredBytes}
         filesComplete={read.complete}
+        pending={pending}
       />
     </main>
   );
