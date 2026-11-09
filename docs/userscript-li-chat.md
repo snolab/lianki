@@ -1,5 +1,7 @@
 # Li chat from the userscript pill (design stub)
 
+Tree: /ext/li-chat
+
 State-tree node `/ext/li-chat`. Status: **M1 shipped (userscript 2.24.30)**
 — the trust gate and the pill's Li entry, owner only; M2–M5 open. Flag
 **`ext.pill-chat`**, default off, on for the owner when it ships. The
@@ -8,15 +10,15 @@ anyone but the owner.
 
 ## What shipped (M1)
 
-| piece | where |
-| ----- | ----- |
-| per-site decisions, the gate's rules (pure) | `src/pill-chat-trust.ts` |
-| trust prompt, sites list (revoke), blocked note | `src/pill-chat-ui.ts` |
-| the open path: entry → prompt → flag check → frame | `src/pill-chat.ts` |
-| strings, 16 locales + context (one table, two readers) | `src/pill-chat-strings.ts`, intlayer `pill-chat` in `app/components/pill-chat.content.ts` |
-| `GET /api/ext/pill-chat` → `{ on }` | `app/api/ext/pill-chat/route.ts`, `lib/pill-chat-route.ts` |
-| the pill's Li button, the menu item | `src/lianki.user.ts` (`createUI`, `GM_registerMenuCommand`) |
-| tests | `unit/pill-chat.test.ts`; hostile page `scripts/qa/qa-pill-chat.ts` (qa:all suite `pill-chat`) |
+| piece                                                  | where                                                                                          |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| per-site decisions, the gate's rules (pure)            | `src/pill-chat-trust.ts`                                                                       |
+| trust prompt, sites list (revoke), blocked note        | `src/pill-chat-ui.ts`                                                                          |
+| the open path: entry → prompt → flag check → frame     | `src/pill-chat.ts`                                                                             |
+| strings, 16 locales + context (one table, two readers) | `src/pill-chat-strings.ts`, intlayer `pill-chat` in `app/components/pill-chat.content.ts`      |
+| `GET /api/ext/pill-chat` → `{ on }`                    | `app/api/ext/pill-chat/route.ts`, `lib/pill-chat-route.ts`                                     |
+| the pill's Li button, the menu item                    | `src/lianki.user.ts` (`createUI`, `GM_registerMenuCommand`)                                    |
+| tests                                                  | `unit/pill-chat.test.ts`; hostile page `scripts/qa/qa-pill-chat.ts` (qa:all suite `pill-chat`) |
 
 How it behaves:
 
@@ -40,11 +42,11 @@ How it behaves:
   the CSSOM, oklch light/dark, 44 px targets, fits 360 px. Buttons act only
   on trusted events.
 - **Decisions.** `lianki_lichat_sites` in GM storage, `{host: "allow" |
-  "never"}`, keyed by the top window's exact lowercase hostname (no www
+"never"}`, keyed by the top window's exact lowercase hostname (no www
   folding); junk in storage is dropped, never trusted. "Allow once" is
   memory for that page load.
 - **Revoke.** The manager's menu "Li chat: sites…" (new `@grant
-  GM_registerMenuCommand`, registered only while the flag is on) opens the
+GM_registerMenuCommand`, registered only while the flag is on) opens the
   sites list: each host with its state and a Forget button. The
   /preferences copy and the account sync (`lk:` pref) are M4.
 - **The frame.** `src/partner-frame.ts` as is: `/embed/partner`, strict
@@ -171,13 +173,13 @@ already granted).
 
 ## Milestones
 
-| #   | slice                                                                                                                                                                                               | ETA  |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| #   | slice                                                                                                                                                                                                                                                     | ETA  |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
 | M1  | **Shipped.** Pill → Li entry for the owner only (flag dark), reusing the current owner ticket and `/embed/partner`; per-site trust prompt with default deny and the warning copy; sites list (revoke) in the manager menu; hostile-page QA; @version bump | 2.5H |
-| M2  | Account-scoped `li-ticket` route + hub audience (chat-only, own thread), unit tests                                                                                                                 | 3H   |
-| M3  | Share selection / page link from the composer, escaped; no auto-send test                                                                                                                           | 2H   |
-| M4  | Security gate QA for the account ticket, trust list synced as a pref, revoke on /preferences                                                                                                                 | 3H   |
-| M5  | Flag on for users after the gate passes and the owner approves                                                                                                                                      | 0.5H |
+| M2  | Account-scoped `li-ticket` route + hub audience (chat-only, own thread), unit tests                                                                                                                                                                       | 3H   |
+| M3  | Share selection / page link from the composer, escaped; no auto-send test                                                                                                                                                                                 | 2H   |
+| M4  | Security gate QA for the account ticket, trust list synced as a pref, revoke on /preferences                                                                                                                                                              | 3H   |
+| M5  | Flag on for users after the gate passes and the owner approves                                                                                                                                                                                            | 0.5H |
 
 ETAs include the local gate and ~10M pipeline.
 

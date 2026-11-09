@@ -114,6 +114,8 @@ export type ProgressReport = {
    */
   late?: string;
   pr?: number;
+  /** More PRs at once (`--pr 703,707`); every PR a node ever named is kept in its `prs`. */
+  prs?: number[];
   needs?: string;
   ref?: string;
   action?: string;
@@ -121,6 +123,11 @@ export type ProgressReport = {
   link?: string;
   note?: string;
   rev?: number;
+  /**
+   * When it really went done (ms), for a done node written after the fact
+   * (moving old work into the tree); the root token only, never in the stats.
+   */
+  endedAt?: number;
 };
 export type ProgressNote = { at: number; by: string; text: string };
 /**
@@ -145,6 +152,8 @@ export type ProgressEntry = Omit<ProgressReport, "note" | "rev" | "kind" | "etaI
   /** The last overrun's reason (`--late`), and the etaAt it explained. */
   lateReason?: string;
   lateFor?: number;
+  /** Every PR the node has named (`pr`, `prs`), oldest first, at most PROGRESS_PRS_MAX. */
+  prs?: number[];
   creator: string;
   by: string;
   rev: number;
@@ -277,6 +286,13 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
       return new Error("pct must be a number from 0 to 100");
     out.pct = Math.round(b.pct);
   }
+  if (b.prs !== undefined && b.prs !== null) {
+    const ok = (n: unknown) =>
+      typeof n === "number" && Number.isInteger(n) && n > 0 && n <= Number.MAX_SAFE_INTEGER;
+    if (!Array.isArray(b.prs) || b.prs.length > PROGRESS_PRS_MAX || !b.prs.every(ok))
+      return new Error(`prs must be at most ${PROGRESS_PRS_MAX} positive integers`);
+    if (b.prs.length) out.prs = [...new Set(b.prs as number[])];
+  }
   for (const k of ["pr", "rev"] as const)
     if (b[k] !== undefined && b[k] !== null) {
       const n = b[k];
@@ -298,6 +314,12 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
     const e = parseEta(out.eta);
     if (e && "in" in e) out.etaIn = e.in;
     else if (e) out.etaAt = e.at;
+  }
+  if (b.endedAt !== undefined && b.endedAt !== null) {
+    if (typeof b.endedAt !== "number" || !Number.isInteger(b.endedAt) || b.endedAt <= 0)
+      return new Error("endedAt must be a time in milliseconds");
+    if (out.status !== "done") return new Error("endedAt is only for a done node");
+    out.endedAt = b.endedAt;
   }
   if (out.late && out.etaAt === undefined && out.etaIn === undefined)
     return new Error(
@@ -344,6 +366,11 @@ export function mergeProgress(
     const v = pick(k);
     if (v !== undefined) (entry as Record<string, unknown>)[k] = v;
   }
+  const prs = mergePrs(prev?.prs ?? (prev?.pr ? [prev.pr] : []), [
+    ...(r.prs ?? []),
+    ...(r.pr ? [r.pr] : []),
+  ]);
+  if (prs.length) entry.prs = prs;
   if (needs) entry.needs = needs;
   if (etaAt !== undefined) entry.etaAt = etaAt;
   if (prev?.etaSent !== undefined) entry.etaSent = prev.etaSent;
@@ -359,7 +386,8 @@ export function mergeProgress(
   if (notes.length) entry.notes = notes.slice(-PROGRESS_NOTES_MAX);
   const startedAt = prev?.startedAt ?? (r.status === "doing" ? at : undefined);
   if (startedAt !== undefined) entry.startedAt = startedAt;
-  if (r.status === "done") entry.endedAt = prev?.status === "done" ? (prev.endedAt ?? at) : at;
+  if (r.status === "done")
+    entry.endedAt = r.endedAt ?? (prev?.status === "done" ? (prev.endedAt ?? at) : at);
   // An estimate that sets a time: the first is kept, the later ones counted.
   const estimate = r.etaIn ?? (r.etaAt !== undefined ? r.etaAt - at : undefined);
   if (prev?.estimateMs !== undefined) {
@@ -370,6 +398,93 @@ export function mergeProgress(
     entry.etaRevisions = 0;
   }
   return entry;
+}
+
+/** A node keeps at most this many PR numbers (the newest). */
+export const PROGRESS_PRS_MAX = 20;
+
+/** `a` then the numbers of `b` not in it, newest PROGRESS_PRS_MAX kept. */
+export function mergePrs(a: readonly number[], b: readonly number[]): number[] {
+  return [...new Set([...a, ...b])].slice(-PROGRESS_PRS_MAX);
+}
+
+/** The PRs a node names: its `prs` (else `pr`), then any "#123" in its title. */
+export function prsOf(e: Pick<ProgressEntry, "pr" | "prs" | "task">): number[] {
+  const inTitle = [...e.task.matchAll(/(?:^|[^\w&])#(\d{1,6})\b/g)].map((m) => Number(m[1]));
+  return mergePrs(e.prs ?? (e.pr ? [e.pr] : []), inTitle);
+}
+
+/**
+ * One done node in the hub's durable history (docs/state-tree.md, "Done
+ * history"): what /dev/roadmap lists as done, kept after the live tree drops
+ * the node (PROGRESS_DONE_TTL_MS). One record per id: done again, it is
+ * replaced. Kept with no expiry; see PROGRESS_HISTORY_SEND_MAX for reads.
+ */
+export type ProgressHistory = {
+  id: string;
+  title: string;
+  /** Who did it: the creator (the last writer for an auto group). */
+  agent: string;
+  kind: ProgressKind;
+  parent?: string;
+  prs?: number[];
+  link?: string;
+  created: number;
+  startedAt?: number;
+  endedAt: number;
+  /** The first estimate that set a time (ms), as in the stats log. */
+  estimateMs?: number;
+};
+/** A reader gets at most this many history records per ask (the newest). */
+export const PROGRESS_HISTORY_SEND_MAX = 2000;
+/** …and this many when it does not say. */
+export const PROGRESS_HISTORY_SEND_DEFAULT = 500;
+export const historyKey = (id: string) => `h:${id}`;
+
+/** A node that went done → its history record. */
+export function progressHistory(e: ProgressEntry): ProgressHistory {
+  const out: ProgressHistory = {
+    id: e.id,
+    title: e.task,
+    agent: e.creator === PROGRESS_AUTO ? e.by : e.creator,
+    kind: e.kind,
+    created: e.created,
+    endedAt: e.endedAt ?? e.at,
+  };
+  if (e.parent) out.parent = e.parent;
+  const prs = prsOf(e);
+  if (prs.length) out.prs = prs;
+  if (e.link) out.link = e.link;
+  if (e.startedAt !== undefined) out.startedAt = e.startedAt;
+  if (e.estimateMs !== undefined) out.estimateMs = e.estimateMs;
+  return out;
+}
+
+/** A stats-log record (older than the history) as a history record: no PRs, no parent known. */
+export function historyFromDone(d: ProgressDone): ProgressHistory {
+  const out: ProgressHistory = {
+    id: d.id,
+    title: d.title,
+    agent: d.agent,
+    kind: "task",
+    created: d.at - d.actualMs,
+    endedAt: d.at,
+  };
+  if (isPathId(d.id)) {
+    const parent = pathParent(d.id);
+    if (parent) out.parent = parent;
+  }
+  if (d.estimateMs !== undefined) out.estimateMs = d.estimateMs;
+  return out;
+}
+
+/** History records, newest first, at most `limit`. */
+export function newestHistory(
+  records: Iterable<ProgressHistory>,
+  limit = PROGRESS_HISTORY_SEND_DEFAULT,
+): ProgressHistory[] {
+  const n = Math.max(1, Math.min(PROGRESS_HISTORY_SEND_MAX, Math.floor(limit) || 1));
+  return [...records].sort((a, b) => b.endedAt - a.endedAt).slice(0, n);
 }
 
 /** One done task, as the hub's durable stats log keeps it (PROGRESS_STATS_TTL_MS). */
@@ -534,6 +649,39 @@ export function parseProgressMessage(raw: unknown): ProgressMessage | null {
     };
   if (msg.type === "progress" && isEntry(msg)) return msg as unknown as ProgressEvent;
   return null;
+}
+
+/** The hub's answer to a reader's {type:"history"}: sent to that reader only. */
+export type ProgressHistoryMessage = { type: "history"; items: ProgressHistory[]; total: number };
+
+const isHistory = (h: unknown): h is ProgressHistory => {
+  if (!h || typeof h !== "object") return false;
+  const x = h as Record<string, unknown>;
+  return (
+    typeof x.id === "string" &&
+    typeof x.title === "string" &&
+    typeof x.agent === "string" &&
+    typeof x.endedAt === "number" &&
+    (x.prs === undefined || (Array.isArray(x.prs) && x.prs.every((n) => typeof n === "number")))
+  );
+};
+
+/** A history answer from the hub; anything else (a snapshot, an event) is null. */
+export function parseHistoryMessage(raw: unknown): ProgressHistoryMessage | null {
+  let m: unknown;
+  try {
+    m = typeof raw === "string" ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+  const msg = m as Record<string, unknown> | null;
+  if (!msg || msg.type !== "history" || !Array.isArray(msg.items)) return null;
+  const items = msg.items.filter(isHistory);
+  return {
+    type: "history",
+    items,
+    total: typeof msg.total === "number" ? msg.total : items.length,
+  };
 }
 
 /** What a reader shows: the latest node per id (newest first) and the log (oldest first). */

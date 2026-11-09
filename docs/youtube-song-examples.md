@@ -1,6 +1,8 @@
 # YouTube songs as example sentences
 
-State-tree node `/reader/yt-songs`. Owner said go (2026-11-09). Flag
+Tree: /read/yt-songs
+
+State-tree node `/read/yt-songs`. Owner said go (2026-11-09). Flag
 **`read.youtube-songs`**, default off; off, only the owner has it
 (<https://lianki.com/dev/flags#read.youtube-songs>,
 [feature-flags.md](feature-flags.md)). Status: **M1, M2 (word cards) and M3

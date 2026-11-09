@@ -36,6 +36,13 @@
  * newest PROGRESS_STATS_MAX, PROGRESS_STATS_TTL_MS), read with GET /stats
  * (`progress.ts stats`) by agents calibrating their ETAs; never sent to pages.
  *
+ * And one record per done node ({id, title, agent, prs, link, endedAt…}) in
+ * the durable done history (keys "h:", one per id, no expiry): what
+ * /dev/roadmap lists as done after the live tree drops the node. Read with
+ * GET /history (`progress.ts history`) or, by a reader, {type:"history"} on
+ * its socket (answered to that socket only). Records from before the history
+ * existed come once from the stats log (HISTORY_MIGRATED).
+ *
  * Writers are rate limited per name and in total, in memory: an evicted hub
  * starts a fresh window, which is fine for a limit meant to stop a runaway loop.
  */
@@ -44,6 +51,7 @@ import {
   PROGRESS_AUTO,
   PROGRESS_DONE_TTL_MS,
   PROGRESS_ETA_MAX_MS,
+  PROGRESS_HISTORY_SEND_DEFAULT,
   PROGRESS_LIMITS,
   PROGRESS_LOG_MAX,
   PROGRESS_MAX_ENTRIES,
@@ -52,18 +60,24 @@ import {
   type ProgressDone,
   type ProgressEntry,
   type ProgressEvent,
+  type ProgressHistory,
+  type ProgressHistoryMessage,
   type ProgressMessage,
   type ProgressReport,
   autoNode,
+  historyFromDone,
+  historyKey,
   isOwnerTodo,
   isPathId,
   isProgressId,
   mergeProgress,
+  newestHistory,
   parseProgressReport,
   parseTtl,
   pathParent,
   progressDone,
   progressEvent,
+  progressHistory,
   progressKey,
 } from "../../../lib/progress";
 import {
@@ -140,6 +154,10 @@ const logKey = (at: number, seq: number, prefix = LOG) =>
   `${prefix}${String(at).padStart(15, "0")}:${String(seq).padStart(6, "0")}`;
 /** The stats log: one record per task that went done, kept PROGRESS_STATS_TTL_MS. */
 const DONE = "d:";
+/** The done history: one record per done node (historyKey), kept with no expiry. */
+const HISTORY = "h:";
+/** Set once the stats log's records were copied into the history. */
+export const HISTORY_MIGRATED = "hmig";
 
 /**
  * The checks index.ts makes before a token route reaches the hub. null = go
@@ -299,8 +317,12 @@ export class ProgressHub {
     const token = /^Bearer (\S+)$/.exec(req.headers.get("authorization") ?? "")?.[1] ?? "";
     const auth = this.secret ? await verifyProgressToken(this.secret, token, this.now()) : null;
     if (!auth) return fail(401, "unauthorized (wrong, forged or expired token)");
-    if (req.method === "GET")
-      return json(path.endsWith("/stats") ? { done: await this.doneLog() } : await this.state());
+    if (req.method === "GET") {
+      if (path.endsWith("/stats")) return json({ done: await this.doneLog() });
+      if (path.endsWith("/history"))
+        return json(await this.historyAnswer(Number(new URL(req.url).searchParams.get("limit"))));
+      return json(await this.state());
+    }
     if (req.method !== "POST") return fail(405, "GET or POST");
     const body = await this.body(req);
     if (body instanceof Response) return body;
@@ -412,6 +434,7 @@ export class ProgressHub {
     prev: ProgressEntry | undefined,
   ): string | null {
     if (auth.root) return null;
+    if (r.endedAt !== undefined) return "only the root token back-dates a done node (endedAt)";
     if (r.assignee.name !== auth.agent)
       return `this token is for ${auth.agent}; it cannot write as ${r.assignee.name}`;
     const newParent = r.parent ?? prev?.parent;
@@ -493,7 +516,7 @@ export class ProgressHub {
     const events = [...missing.map((e) => progressEvent(e)), progressEvent(entry, r.note)];
     const evicted = await this.store([...missing, entry], all);
     for (const ev of events) await this.append(ev);
-    await this.recordDone(prev, entry);
+    await this.recordDone(prev, entry, r.endedAt !== undefined);
     if (evicted) await this.sendSnapshot();
     else for (const ev of events) await this.send(this.ctx.getWebSockets(), ev);
     // The lane explained an overrun: the owner hears the reason and the new time.
@@ -550,11 +573,17 @@ export class ProgressHub {
       await this.ctx.storage.delete(k);
   }
 
-  /** A task that just went done: one record in the stats log, dropping old ones. */
-  private async recordDone(prev: ProgressEntry | undefined, e: ProgressEntry) {
-    if (e.status !== "done" || prev?.status === "done") return;
-    if (e.kind === "group" || e.kind === "person") return;
+  /**
+   * A done node: its history record (every write, so later PRs and titles
+   * reach it). A task that just went done: one record in the stats log too,
+   * dropping old ones; not one back-dated (`backdated`: its time is not real).
+   */
+  private async recordDone(prev: ProgressEntry | undefined, e: ProgressEntry, backdated = false) {
+    if (e.status !== "done" || e.kind === "group" || e.kind === "person") return;
+    await this.ctx.storage.put(historyKey(e.id), progressHistory(e));
+    if (prev?.status === "done" || backdated) return;
     await this.ctx.storage.put(logKey(e.at, this.seq++ % 1_000_000, DONE), progressDone(e));
+    await this.ctx.storage.put(historyKey(e.id), progressHistory(e));
     const cut = this.now() - PROGRESS_STATS_TTL_MS;
     const all = [...(await this.ctx.storage.list<ProgressDone>({ prefix: DONE }))];
     for (const [i, [k, d]] of all.entries())
@@ -567,6 +596,39 @@ export class ProgressHub {
     return [...(await this.ctx.storage.list<ProgressDone>({ prefix: DONE })).values()].filter(
       (d) => d.at >= cut,
     );
+  }
+
+  /**
+   * The done history, every record. The first read copies in what the stats
+   * log and the live tree know of tasks done before the history existed.
+   */
+  private async history(): Promise<ProgressHistory[]> {
+    if ((await this.ctx.storage.get<number>(HISTORY_MIGRATED)) === undefined) {
+      const have = new Set(
+        [...(await this.ctx.storage.list({ prefix: HISTORY })).keys()].map((k) =>
+          k.slice(HISTORY.length),
+        ),
+      );
+      const add = async (h: ProgressHistory) => {
+        if (have.has(h.id)) return;
+        have.add(h.id);
+        await this.ctx.storage.put(historyKey(h.id), h);
+      };
+      for (const e of (await this.all()).values())
+        if (e.status === "done" && e.kind !== "group" && e.kind !== "person")
+          await add(progressHistory(e));
+      const done = [...(await this.ctx.storage.list<ProgressDone>({ prefix: DONE })).values()];
+      for (const d of done.reverse()) await add(historyFromDone(d));
+      await this.ctx.storage.put(HISTORY_MIGRATED, this.now());
+    }
+    return [...(await this.ctx.storage.list<ProgressHistory>({ prefix: HISTORY })).values()];
+  }
+
+  /** The newest `limit` history records (PROGRESS_HISTORY_SEND_DEFAULT when not a number). */
+  private async historyAnswer(limit: number): Promise<ProgressHistoryMessage> {
+    const all = await this.history();
+    const items = newestHistory(all, limit > 0 ? limit : PROGRESS_HISTORY_SEND_DEFAULT);
+    return { type: "history", items, total: all.length };
   }
 
   /**
@@ -778,19 +840,29 @@ export class ProgressHub {
 
   /**
    * The owner's page: {type:"resolve", id, note?} checks off a node;
-   * {type:"eta", id} says its timer for that node went off. Nothing else is heard.
+   * {type:"eta", id} says its timer for that node went off; {type:"history",
+   * limit?} asks for the done history, answered to this socket only. Nothing
+   * else is heard.
    */
   async webSocketMessage(ws: Socket, raw: string | ArrayBuffer) {
-    let m: { type?: unknown; id?: unknown; note?: unknown };
+    let m: { type?: unknown; id?: unknown; note?: unknown; limit?: unknown };
     try {
       m = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
     } catch {
       return;
     }
-    // The owner's box: its ETA pings only, each while its box may still chat (asked now).
+    // The owner's box: its ETA pings and history reads only, each while its box may still chat (asked now).
     const box = boxOf(ws);
     if (box) {
-      if (m?.type !== "eta" || !isProgressId(m.id) || !(await this.boxMay(ws, box, true))) return;
+      const reads = m?.type === "history" || (m?.type === "eta" && isProgressId(m.id));
+      if (!reads || !(await this.boxMay(ws, box, true))) return;
+    }
+    if (m?.type === "history") {
+      const answer = await this.historyAnswer(typeof m.limit === "number" ? m.limit : 0);
+      try {
+        ws.send(JSON.stringify(answer));
+      } catch {}
+      return;
     }
     if (m?.type === "eta" && isProgressId(m.id)) {
       if (!(await this.fireEta(m.id))) await this.schedule(this.now() + ETA_RETRY_MS);

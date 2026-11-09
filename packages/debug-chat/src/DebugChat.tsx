@@ -195,6 +195,8 @@ import {
   fullScreenBack,
   fullScreenBox,
   fullScreenOn,
+  dragLeavesFull,
+  dropEntersFull,
 } from "./full-screen";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
@@ -252,10 +254,16 @@ const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
  * offset from its bottom-right home, kept on screen and remembered. A press
  * that moves under 5 px is still a click.
  */
-/** Where a drag left the bar and its box: their spans, viewport px (fold.ts edges). */
-type DropSpan = { left: number; right: number; boxLeft: number; boxRight: number };
+/**
+ * Where a drag left the bar and its box: their spans, viewport px (fold.ts
+ * edges); `bottom` is the bar's resting bottom (full-screen.ts dropEntersFull).
+ */
+type DropSpan = { left: number; right: number; boxLeft: number; boxRight: number; bottom: number };
 
-function useDrag(onDrop?: (at: DropSpan) => void) {
+/** Full screen as a drag sees it: on now, and the way out when the drag leaves it upward. */
+type DragFull = { now: () => boolean; leave: () => void };
+
+function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
       const v = JSON.parse(read(POS_KEY) ?? "null") as { x: number; y: number } | null;
@@ -291,6 +299,13 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
     const dy = cy - d.py;
     if (!d.moved && Math.hypot(dx, dy) < 5) return;
     d.moved = true;
+    // Full screen does not move: a drag up past FULL_LEAVE_PX leaves it, and
+    // the panel, back where it was, follows the finger from the next move on
+    // (this frame's rect is still the full-screen bar's).
+    if (fullDrag?.now()) {
+      if (dragLeavesFull({ full: true, dy })) fullDrag.leave();
+      return;
+    }
     const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
     const left = row.left - (pos.x - d.x);
     const top = row.top + liftOf(box) - (pos.y - d.y);
@@ -304,6 +319,7 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
       right: left + x - d.x + row.width,
       boxLeft: b.left + by,
       boxRight: b.right + by,
+      bottom: top + y - d.y + row.height,
     };
     setPos({ x, y });
   };
@@ -890,8 +906,11 @@ export function DebugChat({
   const [rate, setRate] = useState(speechRate);
   /** A drag of the box ended (useDrag): its edge, or a tuck (fold.ts). */
   const onDrop = useRef((_at: DropSpan) => {});
+  /** A drag up out of full screen (set once setFull exists below). */
+  const leaveFull = useRef(() => {});
   const { offset, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
     (bar) => onDrop.current(bar),
+    { now: () => fullOn.current, leave: () => leaveFull.current() },
   );
   /**
    * How far the chat is folded (fold.ts): open, a pill, or tucked into the
@@ -2368,6 +2387,7 @@ export function DebugChat({
     fullByTap.current = on && byTap;
     chatPrefs().setState({ full: on });
   };
+  leaveFull.current = () => setFull(false);
   useLayoutEffect(() => {
     const el = log.current;
     const a = fullAnchor.current;
@@ -2632,6 +2652,17 @@ export function DebugChat({
   // A drag of the box ended: it follows its nearest edge (no tuck: that level is removed).
   onDrop.current = (bar) => {
     const vw = innerWidth;
+    // Dropped flush against the bottom: full screen (full-screen.ts dropEntersFull).
+    if (
+      dropEntersFull({
+        allowed: fullAllowed && !tucked,
+        open,
+        full: fullOn.current,
+        barBottom: bar.bottom,
+        vh: innerHeight,
+      })
+    )
+      setFull(true, true);
     foldBy({
       type: "dropped",
       nearest: nearestEdge(bar.boxLeft, bar.boxRight, vw),
@@ -2905,15 +2936,15 @@ export function DebugChat({
         {...handle}
         onPointerDown={(e) => {
           unlockSpeech();
-          // Full screen does not move: the panel keeps its place for the way back.
-          if (!fullOn.current) handle.onPointerDown(e);
+          // In full screen a drag up leaves it (useDrag); the panel keeps its place.
+          handle.onPointerDown(e);
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
         style={{
           ...handle.style,
           ...BAR_CONTROL,
-          // Full screen does not drag; elsewhere grab, grabbing while held.
-          cursor: full ? "pointer" : holding ? "grabbing" : "grab",
+          // Grab, grabbing while held (in full screen a drag up leaves it).
+          cursor: holding ? "grabbing" : "grab",
         }}
         data-lk-tap
         className="tap-40 relative flex shrink-0 items-center justify-center rounded-full"
@@ -3268,6 +3299,26 @@ export function DebugChat({
         </span>
         {strings?.compactIdle ? t.compactIdle : ui.compactIdle}
       </button>
+      {/* Full screen without a drag (the keyboard's and a screen reader's way
+          in; a drop on the bottom edge is the other, full-screen.ts). */}
+      {fullAllowed && !tucked && (
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          data-testid="debug-menu-fullscreen"
+          aria-checked={full}
+          onClick={() => {
+            setMenu(false);
+            setFull(!full, true);
+          }}
+          className="flex items-center gap-2 px-3 py-1.5 text-start"
+        >
+          <span aria-hidden className="w-[1em] text-center">
+            {full ? "◉" : "○"}
+          </span>
+          {t.fullScreen}
+        </button>
+      )}
       {/* Reading speed, per device: from the next sentence on. */}
       <div
         role="radiogroup"
@@ -4036,38 +4087,29 @@ export function DebugChat({
         }}
         className="pointer-events-none absolute -inset-1.5 -z-10 rounded-[1.5rem]"
       />
-      {/* Full screen and back (full-screen.ts): the open chat's top corner, in
-          the panel above its top edge, in full screen at the top of the screen
-          (in the flow, so the log starts under it). */}
-      {open && fullAllowed && !tucked && (
-        <div
-          className={
-            full
-              ? "pointer-events-none flex shrink-0 justify-end"
-              : "pointer-events-none absolute end-0 bottom-full mb-1 flex justify-end"
-          }
-        >
+      {/* The way out of full screen (owner, 2026-11-09 18:25 JST: no button to
+          enter it, a drag to the bottom edge does; "an exit button is still
+          needed"): ✕ and its words, at the top corner under the notch, in the
+          flow so the log starts under it. Escape, Back, the menu and a drag up
+          leave too. Entering without a drag: the menu's Full screen row. */}
+      {open && full && (
+        <div className="pointer-events-none flex shrink-0 justify-end">
           <button
             type="button"
-            data-testid="debug-chat-fullscreen"
-            data-on={full || undefined}
-            aria-pressed={full}
-            aria-label={full ? t.fullScreenExit : t.fullScreen}
-            title={full ? t.fullScreenExit : t.fullScreen}
+            data-testid="debug-chat-fullscreen-exit"
+            title={t.fullScreenExit}
             // Keeps the input's focus, so the keyboard and the draft's caret stay
             // (WebKit moves the focus on the tap's mousedown, not its pointerdown).
             onPointerDown={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setFull(!full, true)}
-            style={{
-              background: INPUT_BG,
-              width: full ? 40 : 32,
-              height: full ? 40 : 32,
-              fontSize: full ? 20 : 16,
-            }}
-            className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full border border-current/25 text-gray-600 backdrop-blur-md dark:text-gray-300"
+            onClick={() => setFull(false)}
+            style={{ background: INPUT_BG, minHeight: 40 }}
+            className="tap-40 pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-current/25 ps-3 pe-3.5 text-sm text-gray-700 backdrop-blur-md dark:text-gray-200"
           >
-            <Icon name={full ? "cornersIn" : "cornersOut"} />
+            <span aria-hidden className="text-base leading-none">
+              ✕
+            </span>
+            {t.fullScreenExit}
           </button>
         </div>
       )}
@@ -4562,7 +4604,7 @@ export function DebugChat({
           onPointerDown={(e) => {
             if ((e.target as HTMLElement).closest("button, textarea, p, [data-chat-restore]"))
               return;
-            if (!fullOn.current) handle.onPointerDown(e);
+            handle.onPointerDown(e);
           }}
           onPointerMove={(e) => e.target === e.currentTarget && handle.onPointerMove(e)}
           onPointerUp={(e) => e.target === e.currentTarget && handle.onPointerUp()}

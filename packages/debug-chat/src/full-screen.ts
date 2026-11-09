@@ -219,3 +219,36 @@ export function fullScreenBack(
     close?.();
   };
 }
+
+/**
+ * Full screen by a drag (owner, 2026-11-09 18:25 JST: no button to enter it;
+ * "drag the input to the very bottom"): a drag of the open chat that drops its
+ * bar flush against the bottom edge enters full screen. The drag keeps the
+ * bar on screen, so pushed past the bottom it rests flush (within half a
+ * pixel, as fold.ts pushedAgainst does for the sides). Only the bottom: the
+ * top edge would hide the history (owner, 18:26 JST), so a bar pushed
+ * against the top stays a panel there, as ever. `barBottom` is where it rests
+ * (the keyboard's lift taken off), viewport px.
+ */
+export function dropEntersFull(d: {
+  allowed: boolean;
+  open: boolean;
+  full: boolean;
+  barBottom: number;
+  vh: number;
+}) {
+  return d.allowed && d.open && !d.full && d.barBottom >= d.vh - 0.5;
+}
+
+/** How far up a drag in full screen goes before it leaves (px): a press that wobbles stays. */
+export const FULL_LEAVE_PX = 48;
+
+/**
+ * A drag that began in full screen leaves it once the finger has gone
+ * FULL_LEAVE_PX up from where it pressed (`dy` < 0 is up): the panel comes
+ * back as it was and follows the finger from there. Sideways or down, it
+ * stays full screen.
+ */
+export function dragLeavesFull(d: { full: boolean; dy: number }) {
+  return d.full && d.dy <= -FULL_LEAVE_PX;
+}

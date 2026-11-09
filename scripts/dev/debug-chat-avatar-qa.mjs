@@ -59,7 +59,6 @@ const check = (ok, what, detail = "") => {
   if (!ok) failures.push(what);
 };
 
-const FULL = '[data-testid="debug-chat-fullscreen"]';
 const JUMP = '[data-testid="debug-chat-ask-jump"]';
 const LONG = "a line long enough to wrap over several rows of the log, and on ".repeat(4);
 
@@ -112,7 +111,9 @@ async function run(vpName, vp, mode, scheme) {
       ],
     );
     if (mode !== "panel") {
-      await page.click(FULL, { timeout: 10_000 });
+      // No button to enter (owner, 2026-11-09): the menu's Full screen row.
+      await page.dblclick('[data-testid="debug-chat-pill-min"]', { timeout: 10_000 });
+      await page.click('[data-testid="debug-menu-fullscreen"]', { timeout: 10_000 });
       await page.waitForTimeout(400);
     }
     const cases = [

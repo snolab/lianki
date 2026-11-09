@@ -2,6 +2,13 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "bun:test";
 import { buildNextDueQuery } from "@/app/fsrs-helpers";
+import {
+  REVIEW_FILTERS_KEY,
+  deviceFilters,
+  isMobileAgent,
+  mirrorReviewFilters,
+  parseFilters,
+} from "@/lib/review-filters";
 
 /**
  * Guards the wiring between /preferences and the userscript's card filtering.
@@ -18,7 +25,7 @@ import { buildNextDueQuery } from "@/app/fsrs-helpers";
 const BUILT = readFileSync(join(process.cwd(), "public/lianki.user.js"), "utf-8");
 
 /** Pull `buildExcludeDomainsParam` out of the build by brace-matching. */
-function extractBuildParam(isMobile: boolean, userPreferences: unknown): () => string {
+function extractBuildParam(isMobile: boolean, userPreferences: unknown, own = ""): () => string {
   const start = BUILT.indexOf("const buildExcludeDomainsParam = () =>");
   if (start === -1) throw new Error("buildExcludeDomainsParam not found in the built userscript");
   const open = BUILT.indexOf("{", start);
@@ -33,10 +40,14 @@ function extractBuildParam(isMobile: boolean, userPreferences: unknown): () => s
   }
   if (end === -1) throw new Error("could not brace-match buildExcludeDomainsParam");
   const body = BUILT.slice(start, end);
-  return new Function("isMobile", "userPreferences", `${body}; return buildExcludeDomainsParam;`)(
-    isMobile,
-    userPreferences,
-  ) as () => string;
+  return new Function(
+    "isMobile",
+    "userPreferences",
+    "GM_getValue",
+    "REVIEW_FILTERS_KEY",
+    "deviceFilters",
+    `${body}; return buildExcludeDomainsParam;`,
+  )(isMobile, userPreferences, () => own, REVIEW_FILTERS_KEY, deviceFilters) as () => string;
 }
 
 const pattern = (over: Record<string, unknown> = {}) => ({
@@ -113,8 +124,7 @@ describe("userscript preference wiring", () => {
     expect(serverSideDomains(build())).toEqual(["example.com/a b?c=1&d=2"]);
   });
 
-  it("emits nothing on desktop, and nothing when no pattern qualifies", () => {
-    expect(extractBuildParam(false, { mobileExcludePatterns: [pattern()] })()).toBe("");
+  it("emits nothing when no pattern qualifies", () => {
     expect(extractBuildParam(true, { mobileExcludePatterns: [] })()).toBe("");
     expect(extractBuildParam(true, {})()).toBe("");
   });
@@ -128,5 +138,63 @@ describe("userscript preference wiring", () => {
     const notRegex = (query.url as { $not: RegExp }).$not;
     expect(notRegex.test("https://reddit.com/r/x")).toBe(true);
     expect(notRegex.test("https://example.com/x")).toBe(false);
+  });
+});
+
+describe("review filters stay on the device", () => {
+  const server = { mobileExcludePatterns: [pattern({ pattern: "server.com" })] };
+  const own = JSON.stringify([pattern({ pattern: "own.com" })]);
+
+  it("tells a phone from a desktop the way the userscript does", () => {
+    expect(isMobileAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)")).toBe(true);
+    expect(isMobileAgent("Mozilla/5.0 (Linux; Android 10; K) Mobile")).toBe(true);
+    expect(isMobileAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe(false);
+  });
+
+  it("legacy: a phone with no local value uses the account's copy", () => {
+    expect(serverSideDomains(extractBuildParam(true, server)())).toEqual(["server.com"]);
+  });
+
+  it("legacy: a desktop stays empty even with an account copy", () => {
+    expect(extractBuildParam(false, server)()).toBe("");
+  });
+
+  it("a device's own list wins, on a phone or a desktop", () => {
+    expect(serverSideDomains(extractBuildParam(true, server, own)())).toEqual(["own.com"]);
+    expect(serverSideDomains(extractBuildParam(false, server, own)())).toEqual(["own.com"]);
+  });
+
+  it("an empty own list means no filters, not the account's copy", () => {
+    expect(extractBuildParam(true, server, "[]")()).toBe("");
+  });
+
+  it("falls back when what is stored is broken", () => {
+    expect(parseFilters("{not json")).toBeNull();
+    expect(parseFilters('{"a":1}')).toBeNull();
+    expect(serverSideDomains(extractBuildParam(true, server, "{not json")())).toEqual([
+      "server.com",
+    ]);
+  });
+
+  it("mirrors only a real list into the userscript's storage", () => {
+    const mirrored = (raw: string | null) => {
+      const put: string[] = [];
+      mirrorReviewFilters({ getItem: () => raw }, (_, v) => put.push(v));
+      return put;
+    };
+    expect(mirrored("[]")).toEqual(["[]"]);
+    expect(mirrored(own)).toEqual([own]);
+    expect(mirrored(null)).toEqual([]);
+    expect(mirrored("{not json")).toEqual([]);
+    mirrorReviewFilters(
+      {
+        getItem: () => {
+          throw new Error("denied");
+        },
+      },
+      () => {
+        throw new Error("should not write");
+      },
+    );
   });
 });

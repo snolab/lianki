@@ -18,17 +18,15 @@ import { LanguageSettings } from "@/app/components/LanguageSettings";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
 import { readNotesOn, writeNotesOn } from "@/lib/read/translator-notes";
+import {
+  REVIEW_FILTERS_EVENT,
+  REVIEW_FILTERS_KEY,
+  deviceFilters,
+  isMobileAgent,
+  type FilterPattern,
+} from "@/lib/review-filters";
 
-type FilterType = "domain" | "title" | "url";
-
-interface FilterPattern {
-  id: string;
-  type: FilterType;
-  pattern: string;
-  isRegex: boolean;
-  enabled: boolean;
-  createdAt: string;
-}
+type FilterType = FilterPattern["type"];
 
 /** A section heading with its reset button (only when there is something to reset). */
 /** The reader's offer to tidy a raw transcript: on until he says otherwise. */
@@ -160,7 +158,11 @@ export default function PreferencesClient({
       const res = await fetch("/api/preferences");
       if (!res.ok) throw new Error(errors.failedToFetch.value);
       const data = await res.json();
-      const loaded: FilterPattern[] = data.mobileExcludePatterns || [];
+      const loaded = deviceFilters(
+        localStorage.getItem(REVIEW_FILTERS_KEY),
+        isMobileAgent(navigator.userAgent),
+        data.mobileExcludePatterns,
+      );
       const order = asReviewOrder(data.reviewOrder);
       // Only an explicit false is off, so a server that predates the setting
       // keeps recording rather than appearing to have it disabled.
@@ -184,12 +186,13 @@ export default function PreferencesClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mobileExcludePatterns: patterns,
           reviewOrder,
           watchTracking,
         }),
       });
       if (!res.ok) throw new Error(errors.failedToSave.value);
+      localStorage.setItem(REVIEW_FILTERS_KEY, JSON.stringify(patterns));
+      window.dispatchEvent(new Event(REVIEW_FILTERS_EVENT));
       setSaved(current);
       alert(success.saved.value);
     } catch (error) {
