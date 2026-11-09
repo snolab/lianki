@@ -862,7 +862,14 @@ describe("what is wired to the lock", () => {
     const sensitive = SUITES.filter((s: { sensitive: boolean }) => s.sensitive).map(
       (s: { name: string }) => s.name.split(" (")[0],
     );
-    expect(sensitive).toEqual(["WORDS", "READ EPUB", "READ SEL ONE", "SYNC", "PARTNER FRAME"]);
+    expect(sensitive).toEqual([
+      "WORDS",
+      "READ EPUB",
+      "READ SEL ONE",
+      "SYNC",
+      "PARTNER FRAME",
+      "PILL CHAT",
+    ]);
   });
 
   test("pre-push runs lint, typecheck, unit, qa in order, with no gate of its own", () => {

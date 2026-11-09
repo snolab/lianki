@@ -207,4 +207,14 @@ export const SUITES = [
     ],
     sensitive: true,
   },
+  // Li chat from the userscript pill on a hostile page: default deny, trusted clicks only,
+  // the frame unreachable, a navigated frame torn down (docs/userscript-li-chat.md). No Worker.
+  {
+    name: "PILL CHAT (hostile page)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-pill-chat.ts"],
+    id: "pill-chat",
+    paths: ["src/pill-chat*.ts", "src/partner*.ts", "packages/debug-chat/src/embed/**"],
+    sensitive: true,
+  },
 ];
