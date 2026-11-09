@@ -155,13 +155,13 @@ export function Header({
                     {dashboardLabel}
                   </Link>
                   <Link
-                    href="/profile"
+                    href="/my/profile"
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     {profileLabel}
                   </Link>
                   <Link
-                    href="/preferences"
+                    href="/my/preferences"
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     {preferencesLabel}

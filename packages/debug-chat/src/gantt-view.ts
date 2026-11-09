@@ -12,7 +12,21 @@
  * input helpers and the see-through bar colours (AA-checked).
  */
 
-import { clamp } from "@snomiao/rgui/gantt";
+import {
+  type GanttAxis,
+  type GanttScale,
+  LOG_MAX_T,
+  LOG_MIN_T,
+  clamp,
+  extendAxis,
+  initialAxis,
+  initialLogAxis,
+  logAxis,
+  logPxPerE,
+  logX,
+  xOf,
+  zoomLimits,
+} from "@snomiao/rgui/gantt";
 
 export {
   CHAR_PX,
@@ -77,13 +91,14 @@ export {
   type Tick,
 } from "@snomiao/rgui/gantt";
 
-/** Two touches' distance and centre (clientX), for a pinch. */
+/** Two touches' distance and midpoint (client px), for a pinch. */
 export function pinchOf(t: ArrayLike<{ clientX: number; clientY: number }>) {
   const a = t[0]!;
   const b = t[1]!;
   return {
     dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
     cx: (a.clientX + b.clientX) / 2,
+    cy: (a.clientY + b.clientY) / 2,
   };
 }
 
@@ -170,3 +185,124 @@ export const GANTT_COLORS = {
 
 export const ganttColor = (k: keyof (typeof GANTT_COLORS)["light"]) =>
   `light-dark(${GANTT_COLORS.light[k]}, ${GANTT_COLORS.dark[k]})`;
+
+/* The default view (owner, 2026-11-10): Now centred, the soonest-ending open task centred. */
+
+/** A row's end: when it finished (a done one), else its expected end. */
+export const rowEnd = (t: { at: number; done?: boolean; doneAt?: number }) =>
+  t.done && t.doneAt !== undefined ? t.doneAt : t.at;
+
+/** The rows by end time, expected or actual, earliest first (then by start). */
+export function ganttRowsByEnd<T extends { start: number; at: number; done?: boolean; doneAt?: number }>(
+  rows: readonly T[],
+): T[] {
+  return [...rows].sort((a, b) => rowEnd(a) - rowEnd(b) || a.start - b.start);
+}
+
+/**
+ * The row the view centres on: the open task closest to ending (the soonest
+ * expected end still in the future); with none, the row whose end is nearest
+ * now. -1 with no rows.
+ */
+export function focusRow(
+  rows: readonly { at: number; done?: boolean; doneAt?: number }[],
+  now: number,
+): number {
+  let best = -1;
+  rows.forEach((t, i) => {
+    if (!t.done && t.at > now && (best < 0 || t.at < rows[best]!.at)) best = i;
+  });
+  if (best >= 0) return best;
+  rows.forEach((t, i) => {
+    if (best < 0 || Math.abs(rowEnd(t) - now) < Math.abs(rowEnd(rows[best]!) - now)) best = i;
+  });
+  return best;
+}
+
+/** The rows either side of the focus whose durations set the zoom (a default for the config store). */
+export const GANTT_FIT_NEIGHBOURS = 3;
+/** The share of those durations the view's width holds: the owner's 95% (a default for the config store). */
+export const GANTT_FIT_PERCENTILE = 0.95;
+/**
+ * Blank space at the head and the tail of the row list, as a share of the
+ * view's height (a default for the config store): an overscroll has room
+ * before the edge, and the first or last row can still be centred.
+ */
+export const GANTT_END_SPACE = 0.5;
+
+/** The `p` quantile (0–1) of `xs`, nearest rank; 0 for none. */
+export function quantile(xs: readonly number[], p: number): number {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.max(0, Math.ceil(p * s.length) - 1))]!;
+}
+
+/**
+ * The time span the view's width holds on open: the GANTT_FIT_PERCENTILE
+ * duration (start to end, expected or actual) of the focus row and its
+ * GANTT_FIT_NEIGHBOURS neighbours either side, so most of their bars fit
+ * on screen and none is too short. 0 when there is nothing to fit.
+ */
+export function fitSpan(
+  rows: readonly { start: number; at: number; done?: boolean; doneAt?: number }[],
+  focus: number,
+): number {
+  if (focus < 0) return 0;
+  const near = rows.slice(
+    Math.max(0, focus - GANTT_FIT_NEIGHBOURS),
+    focus + GANTT_FIT_NEIGHBOURS + 1,
+  );
+  return quantile(
+    near.map((t) => rowEnd(t) - Math.min(t.start, t.at)).filter((d) => d > 0),
+    GANTT_FIT_PERCENTILE,
+  );
+}
+
+/**
+ * The view on open (and on Now): Now at the horizontal centre, past to the
+ * left, future to the right, on either axis; zoomed (horizontally only) so
+ * `span` fills the width — linear: span ms across the width; log: a span
+ * centred on Now from edge to edge. Within each axis's zoom limits; no span
+ * keeps the axis's own open zoom.
+ */
+export function homeView(
+  kind: GanttScale,
+  span: number,
+  now: number,
+  w: number,
+  fallback: { from: number; to: number },
+): { axis: GanttAxis; scrollLeft: number } {
+  const width = Math.max(1, w);
+  if (kind === "log") {
+    const L = logPxPerE(width);
+    const T =
+      span > 0
+        ? clamp(span / 2 / Math.expm1(width / 2 / L), LOG_MIN_T, LOG_MAX_T)
+        : initialLogAxis(fallback.from, fallback.to, now, width).axis.T;
+    const axis = logAxis(T, L, width);
+    return { axis, scrollLeft: logX(axis, now, now) - width / 2 };
+  }
+  const lim = zoomLimits(width);
+  const p =
+    span > 0
+      ? clamp(width / span, lim.min, lim.max)
+      : initialAxis(fallback.from, fallback.to, now, width).axis.pxPerMs;
+  const screen = width / p;
+  const axis = { lo: now - 3 * screen, hi: now + 3 * screen, pxPerMs: p };
+  return extendAxis(axis, xOf(axis, now) - width / 2, width);
+}
+
+/** The scrollTop that puts row `i`'s middle at the middle of the rows' view (under the sticky axis). */
+export function centreRowTop(d: {
+  i: number;
+  viewH: number;
+  axisH: number;
+  headSpace: number;
+  rowH: number;
+  rowGap: number;
+}): number {
+  if (d.i < 0) return 0;
+  const mid = d.axisH + d.headSpace + d.i * (d.rowH + d.rowGap) + d.rowH / 2;
+  const viewMid = d.axisH + (d.viewH - d.axisH) / 2;
+  return Math.max(0, Math.round(mid - viewMid));
+}

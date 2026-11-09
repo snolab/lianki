@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SessionDetailsCard } from "../app/(app)/profile/SessionDetailsCard";
+import { SessionDetailsCard } from "../app/(app)/my/profile/SessionDetailsCard";
 import { clearPermissionCache, grantAll } from "./support/grants";
 
 const now = new Date("2026-11-09T00:00:00Z");

@@ -19,6 +19,8 @@ import {
   FULL_LEAVE_PX,
   dragLeavesFull,
   dropEntersFull,
+  FULL_HINT_STYLE,
+  fullHintStep,
 } from "@lianki/debug-chat/full-screen";
 import { CHAT_VIEW_INITIAL, chatPrefs } from "@lianki/debug-chat/ui-store";
 import { CHAT_STRINGS_EN } from "@lianki/debug-chat/wire";
@@ -253,5 +255,34 @@ describe("by a drag: the bottom edge enters, a drag up leaves (owner, 2026-11-09
     expect(src).toContain('data-testid="debug-menu-fullscreen"');
     expect(src).toContain("dropEntersFull(");
     expect(src).toContain("dragLeavesFull(");
+  });
+});
+
+describe("the full-screen hint while dragging (owner, 2026-11-10)", () => {
+  it("steps only when the drop rule flips: in at the bottom edge, out when backing off", () => {
+    const at = (barBottom: number) =>
+      dropEntersFull({ allowed: true, open: true, full: false, barBottom, vh: 844 });
+    let on = false;
+    const steps: (string | null)[] = [];
+    for (const b of [600, 800, 844, 844, 820, 844]) {
+      const next = at(b);
+      steps.push(fullHintStep(on, next));
+      on = next;
+    }
+    expect(steps).toEqual([null, null, "enter", null, "leave", "enter"]);
+    // The top edge never: a bar pushed to the top is no drop into full screen.
+    expect(at(60)).toBe(false);
+  });
+
+  it("the preview grows from the bottom edge, behind the chat, never takes a touch", () => {
+    const off = FULL_HINT_STYLE(false, false);
+    const on = FULL_HINT_STYLE(true, false);
+    expect(off.transform).toBe("scaleY(0)");
+    expect(on.transform).toBe("scaleY(1)");
+    expect(on.transformOrigin).toBe("bottom");
+    expect(on.pointerEvents).toBe("none");
+    expect(on.zIndex).toContain("- 1");
+    expect(JSON.stringify(on)).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i);
+    expect(FULL_HINT_STYLE(true, true).transition).toBe("none");
   });
 });

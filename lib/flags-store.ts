@@ -8,15 +8,25 @@
  *   change made on /dev/flags reaches every isolate within 30 s, no deploy.
  *   Concurrent misses share one query. No snapshot older than the window is
  *   ever returned — cached, joined or held (a held read past it is off).
+ * - **Defaults**: a key with no row reads as its registry default
+ *   (lib/flags.ts; off, but for a few that keep a live thing switchable).
  * - **Fail closed**: off the D1 backend, or when the read throws, every flag is
- *   OFF for that call. A failure is not cached, so the next call tries again.
+ *   OFF for that call, a default-on one too. A failure is not cached, so the next call tries again.
  * - **Write** with `setFlag()`: registry keys only; the row and its log entry
  *   in one batch (one transaction). The writing isolate drops its cache at
  *   once; the others follow within the window.
  */
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
-import { defaultFlags, FLAG_KEYS, FLAGS, isFlagKey, storedFlagRow, type FlagKey } from "./flags";
+import {
+  closedFlags,
+  defaultFlags,
+  FLAG_KEYS,
+  FLAGS,
+  isFlagKey,
+  storedFlagRow,
+  type FlagKey,
+} from "./flags";
 
 export type D1WithBatch = D1Like & { batch(stmts: D1StmtLike[]): Promise<unknown> };
 
@@ -52,7 +62,7 @@ export function clearFlagCache(): void {
 
 async function fetchFlags(db: () => D1Like | null, at: number, gen: number): Promise<FlagSnapshot> {
   const d1 = db();
-  if (!d1) return defaultFlags();
+  if (!d1) return closedFlags();
   const values = await loadFlags(d1);
   // Only a real read is cached, and only if no write cleared the cache meanwhile.
   if (gen === state.generation) state.cache = { at, values };
@@ -110,12 +120,12 @@ export async function readFlags(
     // act on, whoever started it. Fail closed.
     if (!fresh(mine.at, now())) {
       console.error(JSON.stringify({ event: "flags.read-stale", ms: now() - mine.at }));
-      return defaultFlags();
+      return closedFlags();
     }
     return { ...values };
   } catch (e) {
     console.error(JSON.stringify({ event: "flags.read-failed", error: String(e) }));
-    return defaultFlags();
+    return closedFlags();
   }
 }
 
@@ -150,7 +160,8 @@ export async function listFlags(d1: D1Like): Promise<FlagRow[]> {
     return {
       key,
       description: FLAGS[key].description,
-      enabled: r?.enabled === 1,
+      // No row: the registry default (a stored row always wins).
+      enabled: r ? r.enabled === 1 : (FLAGS[key].default as boolean),
       updatedAt: r?.updated_at ?? null,
       updatedBy: r?.updated_by ?? null,
     };

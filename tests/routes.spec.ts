@@ -200,9 +200,9 @@ test.describe("Public pages", () => {
 // ── Auth-required pages (guest behavior) ─────────────────────────────────────
 
 test.describe("Auth-required pages (guest redirect)", () => {
-  test("/preferences redirects or renders without crash", async ({ page }) => {
+  test("/my/preferences redirects or renders without crash", async ({ page }) => {
     const errors = collectErrors(page);
-    await page.goto(url("/preferences"));
+    await page.goto(url("/my/preferences"));
     // Either redirect to sign-in or render preferences
     const finalUrl = page.url();
     const isSignIn = finalUrl.includes("/sign-in");
@@ -231,8 +231,8 @@ test.describe("Auth-required pages (guest redirect)", () => {
     await expect(crashMessage).not.toBeVisible();
   });
 
-  test("/profile renders or redirects", async ({ page }) => {
-    await page.goto(url("/profile"));
+  test("/my/profile renders or redirects", async ({ page }) => {
+    await page.goto(url("/my/profile"));
     // Either redirect to sign-in or render profile
     const finalUrl = page.url();
     if (!finalUrl.includes("/sign-in")) {

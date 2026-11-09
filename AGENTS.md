@@ -52,7 +52,7 @@ Agent lanes talk to the owner and the state tree through **one CLI**,
 `inbox`, `listen`, `progress`, and `lianki-dev doctor` when something fails.
 A lane never pairs. [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md).
 **Lanes chat with their own lane token**: the owner makes one per lane at
-lianki.com/preferences → API tokens (name = the lane, chat permissions, an
+lianki.com/my/preferences → API tokens (name = the lane, chat permissions, an
 expiry) and it is handed to that lane as `LIANKI_TOKEN`; then `lianki chat
 say|ask|read|listen` (or `lianki-dev say/ask/listen`, which uses it when set)
 posts as 【lane】 in the owner's thread only. A token never evals, pairs or
@@ -141,6 +141,7 @@ that are expensive to rediscover.
 | Landing changes, CI, branch protection, post-deploy QA                   | [docs/shipping.md](docs/shipping.md)                                |
 | Finding your way around the code                                         | [docs/repo-map.md](docs/repo-map.md)                                |
 | Adding or renaming a route: nouns, /lab, /dev, 308 redirects             | [docs/url-principles.md](docs/url-principles.md)                    |
+| /my: the user's own data (profile, preferences, files)                   | [docs/url-principles.md](docs/url-principles.md), "/my"             |
 | Secrets, auth, OAuth config                                              | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
 | Transactional mail: templates, /dev/templates, locked variables          | [docs/mail-templates.md](docs/mail-templates.md)                    |
 | Every sent mail: the send log at /dev/mails, statuses, Resend rules       | [docs/mail-templates.md](docs/mail-templates.md), "Send log"        |

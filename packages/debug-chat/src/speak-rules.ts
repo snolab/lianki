@@ -69,3 +69,28 @@ export function dropRetiredKeys(store?: Pick<Storage, "removeItem"> | null) {
       s?.removeItem(k);
     } catch {}
 }
+
+/** An agent line as a history frame carries it (ChatMessage's fields this needs). */
+type HistoryLine = SpeakMeta & { id: string; from: string; at: number };
+
+/**
+ * The line to read when a `history` frame arrives (owner 2026-11-10): after a
+ * reconnect, replies sent while the socket was down come back only in the
+ * history, never as a live `chat` frame. Read the newest agent line newer
+ * than the last one this page saw (`seenAt`), not spoken yet and not quiet;
+ * the older ones in the gap are not a backlog to read. `seenAt` 0 (the first
+ * connect of this page) reads nothing: old history is never read aloud.
+ * Returns the line, and every gap line's id (to mark them spoken, so a late
+ * live copy of one is not read either).
+ */
+export function missedReply<T extends HistoryLine>(
+  list: readonly T[],
+  seenAt: number,
+  spoken: ReadonlySet<string>,
+): { line: T | null; gap: string[] } {
+  if (!(seenAt > 0)) return { line: null, gap: [] };
+  const gap = list.filter((m) => m.from === "agent" && m.at > seenAt && !spoken.has(m.id));
+  let line: T | null = null;
+  for (const m of gap) if (!isQuiet(m) && (!line || m.at >= line.at)) line = m;
+  return { line, gap: gap.map((m) => m.id) };
+}

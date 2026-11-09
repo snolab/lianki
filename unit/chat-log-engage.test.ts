@@ -23,13 +23,23 @@ describe("logEngaged", () => {
       logSurface({ expanded: false, fade: false, touch: logEngaged(rest) }).className,
     ).not.toContain("pointer-events-auto");
   });
-  it("is on while the input is in use, the mic is on, or a hold engaged it", () => {
+  it("is on while the input is in use, or a hold engaged it", () => {
     expect(logEngaged({ ...rest, typing: true })).toBe(true);
     expect(logEngaged({ ...rest, plusMenu: true })).toBe(true);
-    expect(logEngaged({ ...rest, micActive: true })).toBe(true);
     expect(logEngaged({ ...rest, held: "rest" })).toBe(true);
     expect(logEngaged({ ...rest, held: "open" })).toBe(true);
     expect(logSurface({ expanded: true, fade: false, touch: true }).className).toContain(LOG_TOUCH);
+  });
+  it("the mic alone does not engage it: a drag over the history pans the page (owner, 2026-11-10)", () => {
+    expect(logEngaged({ ...rest, micActive: true })).toBe(false);
+    const c = logSurface({ expanded: true, fade: false, touch: false }).className;
+    expect(c).not.toContain("pointer-events-auto");
+    // No scroll box at rest: a drag from a link in it scrolls the page, not the history.
+    expect(c).toContain("overflow-y-hidden");
+    expect(c).not.toContain("overflow-y-auto");
+    expect(logSurface({ expanded: true, fade: false, touch: true }).className).toContain(
+      "overflow-y-auto",
+    );
   });
 });
 
