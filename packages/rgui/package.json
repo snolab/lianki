@@ -1,0 +1,84 @@
+{
+  "name": "@snomiao/rgui",
+  "version": "0.3.0",
+  "description": "Framework-agnostic readable-grid UI library — screen-adaptive grid, snap-everything, semantic-zoom LOD node graphs. Canvas 2D now, WebGPU next.",
+  "type": "module",
+  "license": "MIT",
+  "author": "snomiao <snomiao@gmail.com>",
+  "homepage": "https://github.com/snomiao/rgui#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/snomiao/rgui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/snomiao/rgui/issues"
+  },
+  "keywords": [
+    "canvas",
+    "canvas2d",
+    "node-graph",
+    "node-editor",
+    "graph-editor",
+    "semantic-zoom",
+    "level-of-detail",
+    "lod",
+    "grid",
+    "snap-to-grid",
+    "infinite-canvas",
+    "pan-zoom",
+    "d3",
+    "d3-zoom",
+    "graph-visualization",
+    "dataflow",
+    "webgpu",
+    "framework-agnostic",
+    "readable-grid"
+  ],
+  "sideEffects": false,
+  "main": "./dist/rgui.js",
+  "module": "./dist/rgui.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/rgui.js",
+      "default": "./dist/rgui.js"
+    },
+    "./src": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsgo --noEmit && vite build",
+    "build:lib": "vite build --config vite.lib.config.ts && tsgo -p tsconfig.build.json",
+    "typecheck": "tsgo --noEmit",
+    "preview": "vite preview --strictPort --port 5184",
+    "preview:fresh": "bun run build && vite preview --strictPort --port 5184",
+    "prepublishOnly": "bun run build:lib"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.10.6",
+    "@types/bun": "latest",
+    "@types/d3-selection": "^3.0.11",
+    "@types/d3-zoom": "^3.0.8",
+    "@types/three": "^0.185.1",
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "@webgpu/types": "^0.1.71",
+    "vite": "^8.1.3"
+  },
+  "dependencies": {
+    "d3-selection": "^3.0.0",
+    "d3-zoom": "^3.0.0",
+    "three": "^0.185.1"
+  }
+}

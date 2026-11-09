@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>rgui — readable grid UI</title>
+    <link rel="icon" type="image/gif" href="./assets/rgui-icon-32.gif" />
+    <link rel="alternate icon" type="image/png" href="./assets/rgui-icon-32.png" />
+    <meta
+      name="description"
+      content="rgui — a framework-agnostic readable-grid UI library. Zoom is a renormalization-group flow: at every scale, only the relevant couplings survive."
+    />
+    <script>
+      // set the theme BEFORE first paint (no flash): saved choice, else OS
+      document.documentElement.dataset.theme =
+        localStorage.getItem("rgui-theme") ??
+        (matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark");
+    </script>
+    <style>
+      /* page chrome palette — the canvas side lives in src/core/theme.ts */
+      :root {
+        --bg: #101a2d;
+        --text: #e7eef7;
+        --text-dim: #bfd0e4;
+        --text-muted: #91a9c7;
+        --text-faint: #5e7698;
+        --border: #345275;
+        --panel: rgba(12, 25, 44, 0.88);
+        --panel-strong: rgba(14, 29, 50, 0.94);
+        --accent: #ffd447;
+        --hero-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+      }
+      :root[data-theme="light"] {
+        --bg: #f4ca79;
+        --text: #342715;
+        --text-dim: #5b4325;
+        --text-muted: #7f6034;
+        --text-faint: #a9844c;
+        --border: #c99b4b;
+        --panel: rgba(255, 239, 190, 0.9);
+        --panel-strong: rgba(255, 245, 211, 0.96);
+        --accent: #8b2fc9;
+        --hero-shadow: 0 1px 6px rgba(255, 248, 220, 0.7);
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      #viewer {
+        position: relative;
+        z-index: 1; /* nodes render above the behind-layer title */
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        touch-action: none;
+        cursor: grab;
+      }
+      #debug {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        padding: 6px 8px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: pre;
+        pointer-events: none;
+        user-select: none;
+      }
+      #debug .dim { color: var(--text-muted); }
+      #debug .hi { color: var(--accent); }
+
+      .demo-nav {
+        position: fixed;
+        top: 10px;
+        left: 12px;
+        z-index: 40;
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--panel);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .demo-nav select {
+        min-height: 32px;
+        padding: 0 34px 0 12px;
+        border: 0;
+        border-radius: 7px;
+        appearance: none;
+        background:
+          linear-gradient(45deg, transparent 50%, var(--text-dim) 50%) right 16px center / 5px 5px no-repeat,
+          linear-gradient(135deg, var(--text-dim) 50%, transparent 50%) right 11px center / 5px 5px no-repeat,
+          transparent;
+        color: var(--text);
+        font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        cursor: pointer;
+        outline: none;
+      }
+      .demo-nav:focus-within,
+      .demo-nav:hover {
+        border-color: var(--accent);
+      }
+
+      /* ── Hero overlay ─────────────────────────────────────────────
+         Sits on top of the live rgui canvas without stealing pointer
+         events, so the graph underneath stays pannable/zoomable.
+         Only interactive children (links) re-enable pointer events. */
+      #hero {
+        position: fixed;
+        inset: 0;
+        z-index: 2; /* interactive hero chrome stays on top */
+        z-index: 10; /* above the demo's DOM node overlays */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 18px;
+        padding: 24px;
+        box-sizing: border-box;
+        pointer-events: none;
+        user-select: none;
+        text-align: center;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--text);
+        text-shadow: var(--hero-shadow);
+      }
+      #hero .title {
+        margin: 0;
+        font-size: clamp(72px, 22vw, 260px);
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 0.9;
+        /* the mascot crossover: purple head (TL) flowing to gold tail (BR) */
+        background: linear-gradient(
+          135deg,
+          #9b34bf 0%,
+          #c74be0 32%,
+          #f3820d 68%,
+          #ffd21c 100%
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        /* no CSS filter here: a filtered layer over the live canvas re-rasters
+           every frame (measured 4x page slowdown) — the shadow is painted
+           inside the title canvas instead */
+      }
+      #hero .title::after {
+        content: "·rg";
+        font-size: 0.28em;
+        color: var(--text-muted);
+        vertical-align: super;
+        letter-spacing: 0;
+      }
+      /* Cycling subtitle — CRT-flash glitch between expansions */
+      #hero .subtitle {
+        position: relative;
+        height: 1.4em;
+        min-height: 1.4em;
+        font-size: clamp(15px, 3.6vw, 30px);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--text);
+      }
+      #hero .subtitle .word {
+        display: inline-block;
+        will-change: opacity, transform, filter;
+      }
+      #hero .subtitle .word.flash {
+        animation: crt-flash 2500ms ease-in-out;
+      }
+      @keyframes crt-flash {
+        0% { opacity: 0; transform: translateY(2px) skewX(4deg); }
+        8% { opacity: 1; transform: translateX(-2px) skewX(-3deg); }
+        14% { transform: translateX(0) skewX(0); }
+        88% { opacity: 1; }
+        100% { opacity: 0; transform: translateY(-2px); }
+      }
+      #hero .tagline {
+        max-width: 720px;
+        margin: 4px 0 0;
+        font-size: clamp(12px, 2vw, 16px);
+        line-height: 1.6;
+        color: var(--text-dim);
+        font-weight: 400;
+      }
+      #hero .tagline b { color: var(--accent); font-weight: 600; }
+      #hero .links {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin-top: 6px;
+        pointer-events: auto;
+      }
+      #hero .links a {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--panel);
+        /* backdrop-filter removed: re-blurs every frame over a live canvas */
+        color: var(--text);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 600;
+        transition: border-color 120ms, color 120ms, background 120ms;
+      }
+      #hero .links a:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: var(--panel-strong);
+      }
+      #hero .hint {
+        margin-top: 2px;
+        font-size: 11px;
+        color: var(--text-faint);
+        letter-spacing: 0.04em;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #hero .subtitle .word.flash { animation: none; }
+      }
+
+      /* light/dark toggle — flips page vars AND viewer.setTheme() */
+      #theme-toggle {
+        position: fixed;
+        top: 10px;
+        right: 12px;
+        z-index: 40;
+        width: 34px;
+        height: 34px;
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        background: var(--panel);
+        color: var(--text-dim);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        transition: border-color 120ms, color 120ms, transform 120ms;
+      }
+      #theme-toggle:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+        transform: rotate(-15deg);
+      }
+
+      /* grid radix (进制) — relayers the grid AND re-ladders the snap sizes */
+      #radix {
+        position: fixed;
+        top: 54px;
+        right: 12px;
+        z-index: 40;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--text-dim);
+      }
+      #radix .row {
+        display: flex;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--panel);
+      }
+      #radix button {
+        border: 0;
+        padding: 5px 10px;
+        background: transparent;
+        color: var(--text-dim);
+        font: inherit;
+        cursor: pointer;
+      }
+      #radix button + button {
+        border-left: 1px solid var(--border);
+      }
+      #radix button:hover {
+        color: var(--accent);
+      }
+      #radix button[aria-pressed="true"] {
+        background: var(--accent);
+        color: var(--panel);
+      }
+      #radix .ladder {
+        max-width: 260px;
+        padding: 5px 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+        text-align: right;
+        opacity: 0.9;
+      }
+      #radix .ladder b {
+        color: var(--accent);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="viewer"></canvas>
+    <div id="debug"></div>
+
+    <div class="demo-nav">
+      <select id="demo-nav" aria-label="rgui demo switch">
+        <option value="/" selected>2D Graph</option>
+        <option value="/lane/tree/">1D Lane · Tree</option>
+        <option value="/lane/time/">1D Lane · Deep time</option>
+        <option value="/lane/signal/">1D Lane · Signal</option>
+        <option value="/calendar/">Calendar</option>
+        <option value="/lane/git/">1D Lane · Git history</option>
+        <option value="/cube/">3D Cube</option>
+        <option value="/world/">3D World</option>
+        <option value="https://agent-yes.com/r/">agent-yes RGUI</option>
+        <option value="https://otoji.org/">otoji</option>
+      </select>
+    </div>
+
+    <div id="radix">
+      <div class="row" role="group" aria-label="grid radix">
+        <button data-radix="4">4</button>
+        <button data-radix="8">8</button>
+        <button data-radix="16">16</button>
+      </div>
+      <div class="row" role="group" aria-label="size law">
+        <button data-law="per-axis">per-axis</button>
+        <button data-law="sibling">sibling</button>
+        <button data-law="finest-axis">finest</button>
+      </div>
+      <div class="ladder" id="radix-ladder"></div>
+    </div>
+
+    <div id="hero">
+      <h1 class="title">RGUI</h1>
+      <div class="subtitle" aria-live="polite"><span class="word" id="hero-word"></span></div>
+      <p class="tagline">
+        Zoom is a <b>renormalization-group flow</b>: at every scale, only the
+        relevant couplings survive — and the canvas stays readable.
+      </p>
+      <nav class="links">
+        <a href="/lane/">1D lane mode →</a>
+        <a href="/cube/">3D cube mode →</a>
+        <a href="https://github.com/snomiao/rgui" target="_blank" rel="noopener">GitHub ↗</a>
+        <a href="https://www.npmjs.com/package/@snomiao/rgui" target="_blank" rel="noopener">
+          npm · @snomiao/rgui ↗
+        </a>
+      </nav>
+      <div class="hint">drag = select · two-finger = pan · pinch = zoom · <b>WASD</b> = pan · <b>R/F</b> = zoom · <b>N/P</b> = focus node · <b>?</b> = shortcuts · drag the cube to rotate — the graph is live</div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/theme-toggle.ts"></script>
+    <script type="module" src="/src/hero.ts"></script>
+    <script type="module" src="/src/title.ts"></script>
+    <script type="module" src="/src/cube.ts"></script>
+    <script>
+      document.querySelector("#demo-nav")?.addEventListener("change", (e) => {
+        location.href = e.target.value;
+      });
+    </script>
+    <!-- entry script (not an import): package sideEffects:false would let
+         the bundler drop a side-effect-only import of this module -->
+    <script type="module" src="/src/gizmo.ts"></script>
+  </body>
+</html>
