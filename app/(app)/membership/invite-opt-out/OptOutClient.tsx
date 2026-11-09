@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
-import { Icon } from "@/app/components/icons";
 
 type State = "idle" | "busy" | "unsubscribed" | "reported" | "invalid" | "error";
 
@@ -43,7 +42,7 @@ export function OptOutClient() {
 
   const done = state === "unsubscribed" || state === "reported";
   const btn =
-    "min-h-11 rounded-lg px-4 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:focus-visible:outline-blue-300 disabled:opacity-50";
+    "min-h-11 rounded-lg px-4 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.55_0.14_250)] disabled:opacity-50";
 
   return (
     <main className="mx-auto max-w-lg space-y-4 px-4 py-10" data-qa="invite-opt-out">
@@ -58,7 +57,6 @@ export function OptOutClient() {
           data-qa="opt-out-invalid"
           className="text-[oklch(0.5_0.19_27)] dark:text-[oklch(0.75_0.15_27)]"
         >
-          <Icon name="warning" className="me-1.5" />
           {s.optInvalid.value}
         </p>
       ) : (
@@ -70,7 +68,7 @@ export function OptOutClient() {
               disabled={state === "busy" || !token}
               onClick={() => act("unsubscribe")}
               data-qa="opt-out-unsubscribe"
-              className={`${btn} bg-primary text-on-primary hover:bg-blue-700`}
+              className={`${btn} bg-[oklch(0.45_0.18_260)] text-[oklch(1_0_0)] hover:bg-[oklch(0.4_0.18_260)]`}
             >
               {s.optUnsub.value}
             </button>
@@ -82,14 +80,14 @@ export function OptOutClient() {
               data-qa="opt-out-report"
               className={`${btn} border border-[oklch(0.5_0.19_27)] text-[oklch(0.5_0.19_27)] dark:border-[oklch(0.75_0.15_27)] dark:text-[oklch(0.75_0.15_27)]`}
             >
-              <Icon name="warning" className="me-1.5" />
               {s.optReport.value}
             </button>
           </div>
-          <p className="text-sm text-gray-600 dark:text-gray-400">{s.optReportHint.value}</p>
+          <p className="text-sm text-[oklch(0.45_0.01_250)] dark:text-[oklch(0.78_0.01_250)]">
+            {s.optReportHint.value}
+          </p>
           {state === "error" && (
             <p role="alert" className="text-[oklch(0.5_0.19_27)] dark:text-[oklch(0.75_0.15_27)]">
-              <Icon name="warning" className="me-1.5" />
               {s.optError.value}
             </p>
           )}

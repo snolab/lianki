@@ -15,38 +15,6 @@ Navigation, help and hint strips, the debug chat, toolbars and menus are translu
 - **The rail never runs off the screen** (owner, 2026-11-09). It is as tall as the screen; links that do not fit move, last first, into a "⋯" popover (measured each time, `app/components/useRailFit.ts`), and only if even the first group cannot fit does the list scroll, fading at the edge with more. Import, data and settings live in the account menu, which the rail's foot (and the phone drawer's) carries once the top bar has scrolled away. `qa-ui` checks it at 1512×770, 1280×600 and 1024×600.
 - **Input-aware hints.** Touch hints show only for touch, keyboard hints only for a hardware keyboard; on hybrid devices, the input used last decides.
 
-## Two colours: seal red and gold
-
-The owner, 2026-11-10: the whole site uses **two brand colours**, seal-ink red
-(印泥, primary) and gold (金, secondary). Background and foreground are the
-neutrals: paper and ink (`--background`, `--foreground`, the warm gray ramp).
-Every colour is oklch. Tokens live in `app/globals.css`:
-
-| role                 | token / Tailwind class                    | light                    | dark                   |
-| -------------------- | ----------------------------------------- | ------------------------ | ---------------------- |
-| primary fill         | `bg-primary` + `text-on-primary`          | seal 0.53 0.207 22.3     | same                   |
-| secondary fill       | `bg-secondary` + `text-on-secondary`      | gold 0.89 0.12 86 + ink  | same                   |
-| gold as text / link  | `text-gold-ink`                           | gold-700 0.5 0.1 70      | gold-300 0.89 0.12 86  |
-| seal as text / link  | `text-blue-600 dark:text-blue-300`        | seal                     | seal-300               |
-| bold page or block   | `.lk-bold`, or `bg-bold-bg text-bold-fg`  | gold ground, seal text   | seal ground, gold text |
-| scales               | `blue-*` (= seal), `gold-*`, `seal`, `seal-deep` | | |
-
-- **Red is not danger.** Use it boldly: buttons, checked states, progress,
-  accents. An error or a destructive action carries its own icon and label
-  (and may take a distinct hue), never red alone.
-- **Green only means done.** It may stay as a semantic success/done status
-  (a saved notice, a check mark); never as a button, link or accent.
-- **No blue, sky, cyan, indigo or teal** on screen. `blue-*` classes are
-  already seal red (the palette is re-pointed), so they are fine; raw oklch
-  values with a cool hue (roughly 180–290) are not.
-- **The bold variant** is for special pages that should feel like a seal
-  stamped on gold: gold ground with seal text in light mode, seal ground with
-  gold text in dark. The measured pair is seal-deep oklch(0.49 0.2 22.3) on
-  gold oklch(0.89 0.12 86), 4.95:1 (AA) both ways. /today uses it.
-- **Contrast.** Every text pair is AA (4.5:1) in light and dark. Measured:
-  white on seal 5.6:1, ink on gold 12.7:1, gold-700 on paper 5.2:1, gold-300
-  on ink 13.5:1, seal on paper 5.0:1.
-
 ## Edge gestures
 
 The owner, 2026-11-04 (Slack): "需要注意移动端，特别是安卓。经常右边整一条边的往左滑动都会识别为页面级别的返回键。"

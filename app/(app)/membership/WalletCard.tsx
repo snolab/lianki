@@ -25,15 +25,16 @@ interface Wallet {
 type Notice = { ok: boolean; text: string } | null;
 
 // Colours (oklch only, docs/design-principles.md).
-// Seal red is the primary (buy / top up), a picked chip is stamped in gold;
-// the neutrals are the warm paper→ink ramp (gray-*).
-const card = "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100";
-const muted = "text-gray-600 dark:text-gray-400";
-const accent = "bg-primary text-on-primary hover:bg-blue-700 disabled:opacity-50";
+const card =
+  "bg-[oklch(1_0_0)] dark:bg-[oklch(0.27_0.02_260)] text-[oklch(0.25_0.02_260)] dark:text-[oklch(0.95_0.01_260)]";
+const muted = "text-[oklch(0.5_0.02_260)] dark:text-[oklch(0.72_0.02_260)]";
+const accent =
+  "bg-[oklch(0.55_0.2_262)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.2_262)] disabled:opacity-50";
 const chip =
-  "rounded-full border px-4 py-2 font-semibold tabular-nums border-gray-300 dark:border-gray-600";
-const chipOn = "bg-gold-100 dark:bg-gold-950 border-gold-600 dark:border-gold-300";
-const well = "rounded-lg bg-gray-50 dark:bg-gray-900";
+  "rounded-full border px-4 py-2 font-semibold tabular-nums border-[oklch(0.85_0.03_262)] dark:border-[oklch(0.45_0.05_262)]";
+const chipOn =
+  "bg-[oklch(0.94_0.05_262)] dark:bg-[oklch(0.38_0.1_262)] border-[oklch(0.55_0.2_262)] dark:border-[oklch(0.7_0.15_262)]";
+const well = "rounded-lg bg-[oklch(0.97_0.005_260)] dark:bg-[oklch(0.22_0.02_260)]";
 
 /**
  * The credit wallet on /membership: balance, top-up (quick amounts + custom,
@@ -191,10 +192,9 @@ export function WalletCard({
           className={`rounded-lg p-3 text-sm ${
             notice.ok
               ? "bg-[oklch(0.95_0.05_150)] text-[oklch(0.4_0.12_150)] dark:bg-[oklch(0.3_0.06_150)] dark:text-[oklch(0.88_0.08_150)]"
-              : "flex items-start gap-2 bg-[oklch(0.95_0.04_25)] text-[oklch(0.45_0.17_25)] dark:bg-[oklch(0.3_0.07_25)] dark:text-[oklch(0.88_0.08_25)]"
+              : "bg-[oklch(0.95_0.04_25)] text-[oklch(0.45_0.17_25)] dark:bg-[oklch(0.3_0.07_25)] dark:text-[oklch(0.88_0.08_25)]"
           }`}
         >
-          {!notice.ok && <Icon name="warning" className="mt-0.5" />}
           {notice.text}
         </p>
       )}
@@ -283,12 +283,11 @@ export function WalletCard({
                 value={custom}
                 onChange={(e) => setCustom(e.target.value)}
                 placeholder={`${min}–${max}`}
-                className="w-full rounded-lg border px-3 py-2 tabular-nums bg-transparent border-gray-300 dark:border-gray-600"
+                className="w-full rounded-lg border px-3 py-2 tabular-nums bg-transparent border-[oklch(0.85_0.02_260)] dark:border-[oklch(0.45_0.03_260)]"
               />
             </label>
             {!valid && (
-              <p className="flex items-center gap-1.5 text-sm text-[oklch(0.5_0.18_25)] dark:text-[oklch(0.78_0.12_25)]">
-                <Icon name="warning" />
+              <p className="text-sm text-[oklch(0.55_0.18_25)]">
                 {s.range.value.replace("{min}", yen(min)).replace("{max}", yen(max))}
               </p>
             )}
@@ -366,7 +365,7 @@ export function WalletCard({
           <Link
             href="/membership/credits"
             data-credits-usage-link=""
-            className="inline-flex min-h-11 items-center gap-1 text-sm font-medium underline underline-offset-2 text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
+            className="inline-flex min-h-11 items-center gap-1 text-sm font-medium underline underline-offset-2 text-[oklch(0.5_0.2_262)] hover:text-[oklch(0.42_0.2_262)] dark:text-[oklch(0.75_0.14_262)] dark:hover:text-[oklch(0.82_0.12_262)]"
           >
             <Icon name="list" /> {s.usageLink.value}
           </Link>
@@ -374,7 +373,7 @@ export function WalletCard({
         {wallet.entries.length === 0 ? (
           <p className={`text-sm ${muted}`}>{s.empty.value}</p>
         ) : (
-          <ul className="divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+          <ul className="divide-y divide-[oklch(0.92_0.01_260)] dark:divide-[oklch(0.35_0.02_260)] text-sm">
             {wallet.entries.map((e) => (
               <li key={e.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
@@ -411,7 +410,7 @@ function ContactLine({ text }: { text: string }) {
       {label && (
         <Link
           href="/contacts"
-          className="font-medium underline underline-offset-2 text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
+          className="font-medium underline underline-offset-2 text-[oklch(0.5_0.2_262)] hover:text-[oklch(0.42_0.2_262)] dark:text-[oklch(0.75_0.14_262)] dark:hover:text-[oklch(0.82_0.12_262)]"
         >
           {label}
         </Link>

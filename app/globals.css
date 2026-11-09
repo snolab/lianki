@@ -45,28 +45,6 @@
   --color-blue-900: oklch(0.3 0.11 22);
   --color-blue-950: oklch(0.22 0.08 22);
 
-  /* Gold (金) — the second brand colour (owner, 2026-11-10). 300 is the gold
-   * itself, the ground of the bold variant and of secondary buttons (ink text
-   * on it, 12.7:1); 700 is gold you can read as text on paper (5.2:1), 300 on
-   * ink (13.5:1). Hue drifts warmer as it darkens so deep gold reads bronze,
-   * not olive. docs/design-principles.md, "Two colours: seal red and gold". */
-  --color-gold-50: oklch(0.98 0.025 90);
-  --color-gold-100: oklch(0.96 0.05 90);
-  --color-gold-200: oklch(0.93 0.09 88);
-  --color-gold-300: oklch(0.89 0.12 86); /* gold */
-  --color-gold-400: oklch(0.83 0.135 84);
-  --color-gold-500: oklch(0.75 0.14 80);
-  --color-gold-600: oklch(0.62 0.125 74);
-  --color-gold-700: oklch(0.5 0.1 70);
-  --color-gold-800: oklch(0.41 0.08 68);
-  --color-gold-900: oklch(0.33 0.06 66);
-  --color-gold-950: oklch(0.24 0.04 65);
-
-  /* The seal by name (same as blue-600), and the deeper seal of the bold
-   * variant: seal-deep on gold-300 is the measured AA pair, 4.95:1. */
-  --color-seal: oklch(0.53 0.207 22.3);
-  --color-seal-deep: oklch(0.49 0.2 22.3);
-
   /* "white" is the card sheet laid on the paper; "black" is ink. */
   --color-white: oklch(0.985 0.01 85);
   --color-black: oklch(0.17 0.01 60);
@@ -175,19 +153,6 @@
   --background: oklch(0.945 0.02 82); /* 宣紙 */
   --foreground: oklch(0.22 0.015 65); /* 墨 */
   color-scheme: light;
-  /* Two brand colours, by role (docs/design-principles.md, "Two colours").
-   * primary   seal-red fill (buttons, checked, progress), on-primary on it
-   * secondary gold fill, on-secondary on it
-   * gold-ink  gold you can read as text or a link on the page
-   * bold-*    the bold-page variant: gold ground + seal text in light,
-   *           seal ground + gold text in dark (4.95:1 both ways; /today). */
-  --lk-primary: oklch(0.53 0.207 22.3);
-  --lk-on-primary: oklch(0.985 0.01 85);
-  --lk-secondary: oklch(0.89 0.12 86);
-  --lk-on-secondary: oklch(0.21 0.01 60);
-  --lk-gold-ink: oklch(0.5 0.1 70);
-  --lk-bold-bg: oklch(0.89 0.12 86);
-  --lk-bold-fg: oklch(0.49 0.2 22.3);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -196,27 +161,7 @@
     --background: oklch(0.18 0.01 65); /* 松煙墨 */
     --foreground: oklch(0.92 0.02 82);
     color-scheme: dark;
-    --lk-gold-ink: oklch(0.89 0.12 86);
-    --lk-bold-bg: oklch(0.49 0.2 22.3);
-    --lk-bold-fg: oklch(0.89 0.12 86);
   }
-}
-
-/* The role tokens as Tailwind colours: bg-primary text-on-primary,
- * bg-secondary text-on-secondary, text-gold-ink, bg-bold-bg text-bold-fg. */
-@theme inline {
-  --color-primary: var(--lk-primary);
-  --color-on-primary: var(--lk-on-primary);
-  --color-secondary: var(--lk-secondary);
-  --color-on-secondary: var(--lk-on-secondary);
-  --color-gold-ink: var(--lk-gold-ink);
-  --color-bold-bg: var(--lk-bold-bg);
-  --color-bold-fg: var(--lk-bold-fg);
-}
-/* A bold page or block: the variant pair in one class. */
-.lk-bold {
-  background-color: var(--lk-bold-bg);
-  color: var(--lk-bold-fg);
 }
 
 /* Paper skins (紙紋), picked in preferences and stored as <html data-paper>.
