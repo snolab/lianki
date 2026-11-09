@@ -119,3 +119,18 @@ export async function listDevUsers(
     })
     .sort((a, b) => (b.lastSeen ?? b.createdAt).localeCompare(a.lastSeen ?? a.createdAt));
 }
+
+/**
+ * Sign-ups per JST calendar month ("2026-11"), from the oldest. One grouped
+ * query: only month totals leave the database, never a row per account.
+ * Unparseable dates (strftime → NULL) are left out.
+ */
+export async function monthlySignups(db: D1Like): Promise<{ month: string; n: number }[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT strftime('%Y-%m', createdAt, '+9 hours') AS month, COUNT(*) AS n
+       FROM user WHERE month IS NOT NULL GROUP BY month ORDER BY month`,
+    )
+    .all<{ month: string; n: number }>();
+  return results.map((r) => ({ month: r.month, n: Number(r.n) }));
+}

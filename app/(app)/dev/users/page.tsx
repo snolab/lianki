@@ -5,7 +5,9 @@ import { isAdmin } from "@/lib/permissions";
 import { dbBackend, getBlobs, getD1 } from "@/lib/d1";
 import { INBOX } from "@/lib/inbox/config";
 import { cachedReadBlobSizes, type ListBucket } from "@/lib/repos/devUserFiles";
-import { listDevUsers } from "@/lib/repos/devUsersD1";
+import { listDevUsers, monthlySignups } from "@/lib/repos/devUsersD1";
+import { monthSeries } from "@/lib/signups-chart";
+import SignupsChart from "./SignupsChart";
 import UsersTable from "./UsersTable";
 
 // Owner-only, like /dev/roadmap: anyone else gets a plain 404.
@@ -22,7 +24,11 @@ export default async function DevUsersPage() {
   if (dbBackend() !== "d1") return <main className="p-8">D1 only.</main>;
   // Long reading texts have no stored size: R2's listing, capped and cached (devUserFiles.ts).
   const read = await cachedReadBlobSizes(() => getBlobs() as unknown as ListBucket);
-  const rows = await listDevUsers(getD1(), new Date(), read.sizes);
+  const now = new Date();
+  const [rows, signups] = await Promise.all([
+    listDevUsers(getD1(), now, read.sizes),
+    monthlySignups(getD1()),
+  ]);
   return (
     <main lang="zh" className="max-w-6xl mx-auto px-4 py-8 space-y-6">
       <header className="space-y-1">
@@ -33,9 +39,10 @@ export default async function DevUsersPage() {
           的文件（收件箱、头像、长阅读文本）的实际字节。
         </p>
       </header>
+      <SignupsChart series={monthSeries(signups, now)} />
       <UsersTable
         rows={rows}
-        now={Date.now()}
+        now={now.getTime()}
         inboxCap={INBOX.maxStoredBytes}
         filesComplete={read.complete}
       />
