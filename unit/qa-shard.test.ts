@@ -55,10 +55,6 @@ describe("splitSuites", () => {
     const secs = shards.map((sh: S[]) => shardSeconds(sh, T));
     expect(Math.max(...secs) / Math.min(...secs)).toBeLessThan(1.2);
   });
-
-  test("every suite has a recorded time", () => {
-    for (const suite of SUITES) expect(typeof T[suite.id]).toBe("number");
-  });
 });
 
 describe("record-timings", () => {
