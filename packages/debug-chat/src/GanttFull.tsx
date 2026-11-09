@@ -21,8 +21,6 @@ import {
   paceOf,
   parkedBar,
   pinchOf,
-  pinchStart,
-  pinchView,
   rowsRange,
   scaleExtend,
   scaleTicks,
@@ -230,33 +228,15 @@ export function GanttFull({
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    /** The pinch under way: its start (t0 under the midpoint) and where the fingers are now. */
-    let pinch: {
-      from: ReturnType<typeof pinchStart>;
-      dist0: number;
-      cy0: number;
-      top0: number;
-      now: ReturnType<typeof pinchOf>;
-    } | null = null;
+    let last: ReturnType<typeof pinchOf> | null = null;
     let gesture = 1;
     /** Two fingers are down: iOS's gesture events then only stop the page zoom (no second zoom). */
     let touching = false;
     // One zoom step a frame: the steps between frames multiply, the pans add.
     let step: { cx: number; factor: number; dx: number; dy: number } | null = null;
     let frame = 0;
-    /** A client x as px from the view's left edge (the scroller's own box). */
-    const viewX = (clientX: number) => clientX - el.getBoundingClientRect().left - el.clientLeft;
     const flush = () => {
       frame = 0;
-      if (pinch) {
-        // Absolute from the pinch's start: t0 back under the midpoint, exactly.
-        const p = pinch.now;
-        const v = view.current;
-        if (v && pinch.dist0 > 0 && p.dist > 0)
-          commit(pinchView(pinch.from, p.dist / pinch.dist0, viewX(p.cx), v.w, nowRef.current));
-        el.scrollTop = pinch.top0 + (pinch.cy0 - p.cy);
-        return;
-      }
       const s = step;
       step = null;
       if (!s) return;
@@ -274,42 +254,23 @@ export function GanttFull({
       e.preventDefault();
       queue(e.clientX, wheelFactor(e.deltaY));
     };
-    const begin = (touches: TouchList) => {
-      const v = view.current;
-      if (!v) return;
-      const p = pinchOf(touches);
-      const left = pending.current ?? el.scrollLeft;
-      pinch = {
-        from: pinchStart(v.axis, left, viewX(p.cx), nowRef.current),
-        dist0: p.dist,
-        cy0: p.cy,
-        top0: el.scrollTop,
-        now: p,
-      };
-    };
     const start = (e: TouchEvent) => {
       touching = e.touches.length >= 2;
-      if (e.touches.length === 2) begin(e.touches);
-      else pinch = null;
+      last = e.touches.length === 2 ? pinchOf(e.touches) : null;
       // Two fingers: no native pan or page zoom from here on.
       if (touching) e.preventDefault();
     };
     const move = (e: TouchEvent) => {
       if (e.touches.length !== 2) return;
       e.preventDefault();
-      if (!pinch) begin(e.touches);
-      if (!pinch) return;
-      pinch.now = pinchOf(e.touches);
-      frame ||= requestAnimationFrame(flush);
+      const p = pinchOf(e.touches);
+      if (last && last.dist > 0 && p.dist > 0)
+        queue(p.cx, p.dist / last.dist, last.cx - p.cx, last.cy - p.cy);
+      last = p;
     };
     const end = (e: TouchEvent) => {
       if (e.touches.length < 2) {
-        // The last move still waiting for its frame lands first, then the pinch ends.
-        if (frame && pinch) {
-          cancelAnimationFrame(frame);
-          flush();
-        }
-        pinch = null;
+        last = null;
         touching = false;
       }
     };

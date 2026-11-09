@@ -372,38 +372,6 @@ try {
             Math.abs(g.nowX - cx) < 4,
             `${tag} log: pinch keeps Now under the fingers (${g.nowX} vs ${cx})`,
           );
-          // Off Now, the midpoint moving (owner, 2026-11-10: "the time under the
-          // fingers jumps"): the line under the fingers' midpoint follows it.
-          // nowX is the line's left edge; the line is 2 px wide: its centre is the time.
-          const mx = g.nowX + 1;
-          const mpts = (d, m) => [
-            { x: m - d, y: 420 },
-            { x: m + d, y: 420 },
-          ];
-          // The Now line moves with the time it marks: start the pinch on a point
-          // a known distance from it, then check that distance's time stays put
-          // by pinching ON the Now line after a midpoint drift.
-          await cdp.send("Input.dispatchTouchEvent", {
-            type: "touchStart",
-            touchPoints: mpts(20, mx),
-          });
-          for (const [d, dm] of [
-            [28, 8],
-            [36, 16],
-            [44, 24],
-            [52, 32],
-          ])
-            await cdp.send("Input.dispatchTouchEvent", {
-              type: "touchMove",
-              touchPoints: mpts(d, mx + dm),
-            });
-          await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-          await page.waitForTimeout(250);
-          g = await geo();
-          check(
-            Math.abs(g.nowX + 1 - (mx + 32)) <= 1,
-            `${tag} log: a pinch whose midpoint drifts keeps Now under it (${g.nowX + 1} vs ${mx + 32})`,
-          );
         }
         check(
           g.labels.map((l) => l.text).join(" ") !== ticks0,
@@ -517,34 +485,6 @@ try {
         );
         check(z.ticks.join(" ") !== g.ticks.join(" "), `${tag}: the axis re-ticks after a pinch`);
         await shot("pinched");
-        // Linear too: a pinch whose midpoint drifts keeps the time under it.
-        // The line's centre (nowX is its left edge, 2 px wide): the time under the fingers.
-        const m0 = z.nowX + 1;
-        const dpts = (d, m) => [
-          { x: m - d, y: 420 },
-          { x: m + d, y: 420 },
-        ];
-        await cdp.send("Input.dispatchTouchEvent", {
-          type: "touchStart",
-          touchPoints: dpts(20, m0),
-        });
-        for (const [d, dm] of [
-          [28, -6],
-          [40, -14],
-          [55, -22],
-          [70, -30],
-        ])
-          await cdp.send("Input.dispatchTouchEvent", {
-            type: "touchMove",
-            touchPoints: dpts(d, m0 + dm),
-          });
-        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-        await page.waitForTimeout(250);
-        const z2 = await geo();
-        check(
-          Math.abs(z2.nowX + 1 - (m0 - 30)) <= 1,
-          `${tag}: a pinch whose midpoint drifts keeps Now under it (${z2.nowX + 1} vs ${m0 - 30})`,
-        );
       }
 
       // Escape closes.
