@@ -470,7 +470,7 @@ const context: KeyContext<typeof dictionary.content> = {
     learn:
       "Link in the landing page header to the page that imports learning materials (recommended lists, playlists, URL lists). One short verb or noun.",
     import:
-      "Link in the landing page header to the page that imports cards from files such as Anki decks. One short verb or noun.",
+      "Link in the landing page header, and item in the app's account menu (opened from the avatar), to the page that imports cards from files such as Anki decks. One short verb or noun.",
     aiVocab:
       "Link in the landing page header to the AI vocabulary generator. Keep AI as is; very short noun phrase.",
     roadmap:

@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
@@ -6,14 +5,12 @@ import { isAdmin } from "@/lib/permissions";
 import { isUserId } from "@/lib/dev-eval";
 import { friendThread, listFriends } from "@/lib/push-friends";
 import FriendsTable from "./FriendsTable";
+import { devPageText, devPageMetadata } from "../dev-page-title";
 
 // Owner-only, like /dev/users: anyone else gets a plain 404.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Friends — Lianki dev",
-  robots: { index: false, follow: false, nocache: true },
-};
+export const generateMetadata = devPageMetadata("friends");
 
 /** ISO order, local time: 2026-10-29 18:11. */
 const when = (at: number) =>
@@ -36,10 +33,13 @@ export default async function DevFriendsPage({
     return <main className="p-8">lianki-push is not bound here (production Worker only).</main>;
   const open = isUserId(thread) ? friends.find((f) => f.userId === thread) : undefined;
   const messages = open ? await friendThread(open.userId) : null;
+  const heading = await devPageText("friends");
   return (
     <main lang="zh" className="max-w-5xl mx-auto px-4 py-8 space-y-6">
       <header className="space-y-1">
-        <h1 className="font-brush text-4xl">朋友</h1>
+        <h1 lang={heading.lang} className="font-brush text-4xl">
+          {heading.text}
+        </h1>
         <p className="text-sm opacity-60">
           只有你能看到这页。用过调试聊天的人：聊天不用审批；「屏蔽」会立刻断开他们的连接并拒绝之后的聊天。
           在他们设备上跑代码（预览）要他们自己在设备上点允许。

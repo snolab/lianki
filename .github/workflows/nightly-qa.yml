@@ -41,9 +41,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # No setup-node: the Playwright image already provides Node 24.
-      # setup-bun extracts its release zip with `unzip`, which the image lacks.
+      # Bun (setup-bun or its fallback) extracts a release zip with `unzip`, which the image lacks.
       - run: apt-get update && apt-get install -y unzip xvfb
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - run: bun install --frozen-lockfile
       # No "playwright install" — browsers live in the image at
       # $PLAYWRIGHT_BROWSERS_PATH (/ms-playwright); chromium-1208 matches v1.58.2.

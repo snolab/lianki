@@ -100,6 +100,7 @@ stay on the folded row, because they say why the switch does nothing.
 | `voice.li-hub`         | on the owner's pages (debug mode), Li's sound hub logs who holds the mic and who plays (`audio-owner`, `audio-conflict`); observes only, changes no sound (off: nothing runs) — [li-sound-hub.md](li-sound-hub.md) |
 | `pwa.app-badge`        | every signed-in user gets the number on the installed app's icon (open Li asks + due cards, per the synced `notify.badge`) and its row in Settings → Notifications (off: nobody; a page clears any leftover badge) — [app-badge.md](app-badge.md) |
 | `ext.pill-chat`        | the userscript's pill gets a **Li** button on every site: a per-site trust prompt first (default deny), then Li in the lianki.com frame; sites list in the manager's menu. First slice reuses the owner's partner ticket, so on means the owner only (`audience: "owner"`); off: no Li button anywhere, and an open attempt is refused — [userscript-li-chat.md](userscript-li-chat.md) |
+| `membership.email-invite` | every Pro user gets "Invite by email" in the invite card on /membership: one friend's address → a mail with their own /i/CODE link in their account language; daily and per-address limits, unsubscribe / report, no address stored (off: admins only) — [payments.md](payments.md), "Invite by email" |
 
 ## Prerequisites
 

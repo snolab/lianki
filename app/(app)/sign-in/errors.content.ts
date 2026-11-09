@@ -1,0 +1,165 @@
+import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "@/lib/i18n-context";
+
+/**
+ * Errors on the sign-in page (app/(app)/sign-in/SignInClient.tsx). The page
+ * never shows the server's own text: every failure is mapped to one of these
+ * keys first (lib/sign-in-errors.ts).
+ */
+const dictionary = {
+  key: "sign-in-errors",
+  content: {
+    captcha: t({
+      en: "The human check failed. Please try again.",
+      zh: "人机验证没通过，请重试。",
+      ja: "認証に失敗しました。もう一度お試しください。",
+      ko: "사람 확인에 실패했습니다. 다시 시도하세요.",
+      hi: "सत्यापन विफल रहा। फिर से कोशिश करें।",
+      es: "La verificación falló. Inténtalo de nuevo.",
+      fr: "La vérification a échoué. Réessayez.",
+      ar: "فشل التحقق. حاول مرة أخرى.",
+      bn: "যাচাই ব্যর্থ হয়েছে। আবার চেষ্টা করুন।",
+      pt: "A verificação falhou. Tente de novo.",
+      ru: "Проверка не пройдена. Попробуйте ещё раз.",
+      ur: "تصدیق ناکام رہی۔ دوبارہ کوشش کریں۔",
+      id: "Verifikasi gagal. Coba lagi.",
+      de: "Die Prüfung ist fehlgeschlagen. Bitte erneut versuchen.",
+      sw: "Uthibitisho umeshindwa. Jaribu tena.",
+      mr: "पडताळणी अयशस्वी. पुन्हा प्रयत्न करा.",
+    }),
+    locked: t({
+      en: "Sign-in is temporarily locked after too many tries. Try again in {n} min.",
+      zh: "尝试次数过多，登录已暂时锁定。请 {n} 分钟后再试。",
+      ja: "試行回数が多すぎるため、ログインが一時的にロックされています。{n} 分後にもう一度お試しください。",
+      ko: "시도 횟수가 너무 많아 로그인이 일시적으로 잠겼습니다. {n}분 후에 다시 시도하세요.",
+      hi: "बहुत अधिक प्रयासों के कारण साइन इन अस्थायी रूप से लॉक है। {n} मिनट बाद फिर कोशिश करें।",
+      es: "Demasiados intentos: el inicio de sesión está bloqueado temporalmente. Vuelve a intentarlo en {n} min.",
+      fr: "Trop de tentatives : la connexion est temporairement bloquée. Réessayez dans {n} min.",
+      ar: "محاولات كثيرة جدًا، لذا تم قفل تسجيل الدخول مؤقتًا. حاول مرة أخرى بعد {n} دقيقة.",
+      bn: "অনেকবার চেষ্টা করায় সাইন ইন সাময়িকভাবে লক করা হয়েছে। {n} মিনিট পরে আবার চেষ্টা করুন।",
+      pt: "Tentativas demais: o login está bloqueado temporariamente. Tente de novo em {n} min.",
+      ru: "Слишком много попыток, вход временно заблокирован. Попробуйте снова через {n} мин.",
+      ur: "بہت زیادہ کوششوں کی وجہ سے سائن ان عارضی طور پر بند ہے۔ {n} منٹ بعد دوبارہ کوشش کریں۔",
+      id: "Terlalu banyak percobaan, masuk dikunci sementara. Coba lagi dalam {n} menit.",
+      de: "Zu viele Versuche – die Anmeldung ist vorübergehend gesperrt. Bitte in {n} Min. erneut versuchen.",
+      sw: "Majaribio mengi mno, kuingia kumefungwa kwa muda. Jaribu tena baada ya dakika {n}.",
+      mr: "खूप जास्त प्रयत्नांमुळे साइन इन तात्पुरते लॉक आहे. {n} मिनिटांनी पुन्हा प्रयत्न करा.",
+    }),
+    tooMany: t({
+      en: "Too many tries. Please wait a little and try again.",
+      zh: "尝试次数过多，请稍等片刻再试。",
+      ja: "試行回数が多すぎます。少し待ってからもう一度お試しください。",
+      ko: "시도 횟수가 너무 많습니다. 잠시 후 다시 시도하세요.",
+      hi: "बहुत अधिक प्रयास। थोड़ी देर बाद फिर कोशिश करें।",
+      es: "Demasiados intentos. Espera un poco y vuelve a intentarlo.",
+      fr: "Trop de tentatives. Patientez un peu, puis réessayez.",
+      ar: "محاولات كثيرة جدًا. انتظر قليلًا ثم حاول مرة أخرى.",
+      bn: "অনেকবার চেষ্টা হয়েছে। একটু অপেক্ষা করে আবার চেষ্টা করুন।",
+      pt: "Tentativas demais. Aguarde um pouco e tente de novo.",
+      ru: "Слишком много попыток. Подождите немного и попробуйте снова.",
+      ur: "بہت زیادہ کوششیں۔ تھوڑا انتظار کریں اور دوبارہ کوشش کریں۔",
+      id: "Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.",
+      de: "Zu viele Versuche. Bitte kurz warten und erneut versuchen.",
+      sw: "Majaribio mengi mno. Subiri kidogo kisha ujaribu tena.",
+      mr: "खूप जास्त प्रयत्न. थोडा वेळ थांबा आणि पुन्हा प्रयत्न करा.",
+    }),
+    wrongCode: t({
+      en: "That code didn't work. Check it, or send a new one.",
+      zh: "验证码不对或已过期，请检查或重新发送。",
+      ja: "コードが正しくないか期限切れです。確認するか再送してください。",
+      ko: "코드가 맞지 않거나 만료되었습니다. 확인하거나 다시 받으세요.",
+      hi: "कोड गलत है या समाप्त हो गया। जाँचें या नया भेजें।",
+      es: "El código no es válido o caducó. Revísalo o pide otro.",
+      fr: "Code invalide ou expiré. Vérifiez-le ou demandez-en un autre.",
+      ar: "الرمز غير صحيح أو منتهٍ. تحقق منه أو اطلب رمزًا جديدًا.",
+      bn: "কোডটি ভুল বা মেয়াদোত্তীর্ণ। যাচাই করুন বা নতুন পাঠান।",
+      pt: "Código inválido ou expirado. Confira ou peça outro.",
+      ru: "Код неверный или устарел. Проверьте или запросите новый.",
+      ur: "کوڈ غلط یا ختم ہو چکا ہے۔ جانچیں یا نیا منگوائیں۔",
+      id: "Kode salah atau kedaluwarsa. Periksa atau kirim ulang.",
+      de: "Der Code stimmt nicht oder ist abgelaufen. Prüfen oder neu anfordern.",
+      sw: "Msimbo si sahihi au umeisha. Kagua au omba mpya.",
+      mr: "कोड चुकीचा किंवा कालबाह्य आहे. तपासा किंवा नवीन मागवा.",
+    }),
+    sendFailed: t({
+      en: "Couldn't send the code. Please try again.",
+      zh: "验证码发送失败，请重试。",
+      ja: "コードを送信できませんでした。もう一度お試しください。",
+      ko: "코드를 보내지 못했습니다. 다시 시도하세요.",
+      hi: "कोड नहीं भेजा जा सका। फिर से कोशिश करें।",
+      es: "No se pudo enviar el código. Inténtalo de nuevo.",
+      fr: "Impossible d'envoyer le code. Réessayez.",
+      ar: "تعذّر إرسال الرمز. حاول مرة أخرى.",
+      bn: "কোড পাঠানো যায়নি। আবার চেষ্টা করুন।",
+      pt: "Não foi possível enviar o código. Tente de novo.",
+      ru: "Не удалось отправить код. Попробуйте ещё раз.",
+      ur: "کوڈ نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔",
+      id: "Kode tidak dapat dikirim. Coba lagi.",
+      de: "Der Code konnte nicht gesendet werden. Bitte erneut versuchen.",
+      sw: "Imeshindwa kutuma msimbo. Jaribu tena.",
+      mr: "कोड पाठवता आला नाही. पुन्हा प्रयत्न करा.",
+    }),
+    authFailed: t({
+      en: "Couldn't create the account. Check the email and password.",
+      zh: "无法创建账号，请检查邮箱和密码。",
+      ja: "アカウントを作成できませんでした。メールアドレスとパスワードを確認してください。",
+      ko: "계정을 만들지 못했습니다. 이메일과 비밀번호를 확인하세요.",
+      hi: "खाता नहीं बन सका। ईमेल और पासवर्ड जाँचें।",
+      es: "No se pudo crear la cuenta. Revisa el correo y la contraseña.",
+      fr: "Impossible de créer le compte. Vérifiez l'e-mail et le mot de passe.",
+      ar: "تعذّر إنشاء الحساب. تحقق من البريد الإلكتروني وكلمة المرور.",
+      bn: "অ্যাকাউন্ট খোলা যায়নি। ইমেল ও পাসওয়ার্ড যাচাই করুন।",
+      pt: "Não foi possível criar a conta. Confira o e-mail e a senha.",
+      ru: "Не удалось создать аккаунт. Проверьте почту и пароль.",
+      ur: "اکاؤنٹ نہیں بن سکا۔ ای میل اور پاس ورڈ جانچیں۔",
+      id: "Akun tidak dapat dibuat. Periksa email dan kata sandi.",
+      de: "Das Konto konnte nicht erstellt werden. Bitte E-Mail und Passwort prüfen.",
+      sw: "Imeshindwa kufungua akaunti. Kagua barua pepe na nenosiri.",
+      mr: "खाते तयार करता आले नाही. ईमेल आणि पासवर्ड तपासा.",
+    }),
+    signInFailed: t({
+      en: "Sign-in didn't work. Please try again.",
+      zh: "登录失败，请重试。",
+      ja: "ログインできませんでした。もう一度お試しください。",
+      ko: "로그인하지 못했습니다. 다시 시도하세요.",
+      hi: "साइन इन नहीं हो सका। फिर से कोशिश करें।",
+      es: "No se pudo iniciar sesión. Inténtalo de nuevo.",
+      fr: "La connexion a échoué. Réessayez.",
+      ar: "تعذّر تسجيل الدخول. حاول مرة أخرى.",
+      bn: "সাইন ইন করা যায়নি। আবার চেষ্টা করুন।",
+      pt: "Não foi possível entrar. Tente de novo.",
+      ru: "Не удалось войти. Попробуйте ещё раз.",
+      ur: "سائن ان نہیں ہو سکا۔ دوبارہ کوشش کریں۔",
+      id: "Gagal masuk. Coba lagi.",
+      de: "Die Anmeldung hat nicht geklappt. Bitte erneut versuchen.",
+      sw: "Imeshindwa kuingia. Jaribu tena.",
+      mr: "साइन इन होऊ शकले नाही. पुन्हा प्रयत्न करा.",
+    }),
+  },
+};
+
+const context: Record<keyof typeof dictionary.content, string> = {
+  captcha:
+    "Red error line under the email field when the Cloudflare human check (the captcha box above the Send code button) was rejected by the server. Asks the user to try once more; plain, polite, one short sentence each.",
+  locked:
+    "Red error line on the sign-in page after too many wrong 6-digit codes: sign-in for this email address (or from this network) is paused for a while. {n} is a whole number of minutes left and must stay as {n}; 'min' is the short form of minutes. Says it is temporary and when to try again; must not suggest whether an account exists.",
+  tooMany:
+    "Red error line on the sign-in page when too many codes were asked for or tried and the server gave no wait time. Asks the user to wait a little before trying again; no number of minutes.",
+  wrongCode:
+    "Red error line under the 6-digit code field when the code typed was wrong or has expired. Tells the user to check the code or send a new one with the button below.",
+  sendFailed:
+    "Red error line under the email field when the server could not email the 6-digit sign-in code for an unknown reason. Asks the user to try again; does not blame them.",
+  authFailed:
+    "Red error line under the email and password fields (password sign-in, used only on test servers) when making a new account with that email and password failed. Asks to check both fields.",
+  signInFailed:
+    "Red error line under the email and password fields (password sign-in, used only on test servers) when signing in failed for a reason other than a wrong password. Asks to try again.",
+};
+
+export default {
+  ...dictionary,
+  title: "Sign-in page error messages",
+  description: describeKeys(
+    "Red one-line errors on the sign-in page (email, 6-digit code, password steps). Short, calm, no technical terms, no server text; the user should know what to do next.",
+    context,
+  ),
+} satisfies DeclarationContent;

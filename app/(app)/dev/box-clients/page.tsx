@@ -1,23 +1,23 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { isAdmin } from "@/lib/permissions";
 import BoxClientsAdmin from "./BoxClientsAdmin";
+import { devPageText, devPageMetadata } from "../dev-page-title";
 
 // Owner-only, like /dev/flags: anyone else gets a plain 404.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Boxes — Lianki dev",
-  robots: { index: false, follow: false, nocache: true },
-};
+export const generateMetadata = devPageMetadata("boxClients");
 
 export default async function DevBoxClientsPage() {
   const user = await authUserOrNull();
   if (!isAdmin(user?.email)) notFound();
+  const heading = await devPageText("boxClients");
   return (
     <main lang="zh" className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-      <h1 className="font-brush text-4xl">开发盒登录</h1>
+      <h1 lang={heading.lang} className="font-brush text-4xl">
+        {heading.text}
+      </h1>
       <p className="text-sm opacity-70">
         每个开发盒（my-&lt;hash&gt;.lianki.com 或
         my-&lt;名字&gt;.lianki.com）只能用绑定的那一个账号登录，一个账号也只有一个盒子。

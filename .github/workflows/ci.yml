@@ -42,6 +42,8 @@ jobs:
     name: Lint + typecheck + unit
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      GITLEAKS_VERSION: 8.28.0
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,21 +53,31 @@ jobs:
       # Download to a FILE, then extract. Piping curl into tar reports a GitHub
       # outage as "tar: Error is not recoverable", which hides the cause: the
       # run that prompted this said exactly that, and the real error was
-      # `curl: (22) ... 500` from the release CDN. Retries because one hiccup
-      # fetching a third-party binary should not turn main red.
-      - name: Secret scan (gitleaks)
+      # `curl: (22) ... 500` from the release CDN. The binary is cached per
+      # version, and a miss downloads with backoff (scripts/ci/fetch.sh), because
+      # one hiccup fetching a third-party binary should not turn main red
+      # (docs/shipping.md, "Flaky tool downloads").
+      - name: Restore gitleaks from cache
+        id: gitleaks-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gitleaks-bin
+          key: gitleaks-${{ env.GITLEAKS_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Download gitleaks (with retries)
+        if: steps.gitleaks-cache.outputs.cache-hit != 'true'
         run: |
-          curl -sSfL --retry 5 --retry-delay 3 --retry-all-errors \
-            -o gitleaks.tar.gz \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          tar -xzf gitleaks.tar.gz gitleaks
-          ./gitleaks git . --no-banner --redact
-        env:
-          GITLEAKS_VERSION: 8.28.0
+          bash scripts/ci/fetch.sh \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            "$RUNNER_TEMP/gitleaks.tar.gz"
+          mkdir -p ~/.cache/gitleaks-bin
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C ~/.cache/gitleaks-bin gitleaks
+      - name: Secret scan (gitleaks)
+        run: ~/.cache/gitleaks-bin/gitleaks git . --no-banner --redact
       # No Node toolchain here: the unit suites run on `bun test`, and bun
       # implements node:sqlite natively (no --experimental-sqlite flag). The
       # integration job still needs Node, because wrangler requires it.
-      - uses: oven-sh/setup-bun@v2
+      # Pinned Bun, cached, retried: .github/actions/setup-bun.
+      - uses: ./.github/actions/setup-bun
       - run: bun install --frozen-lockfile
       # 脆弱性対策 ② (docs/security-measures.md): nothing in public/ may be a
       # secret, an env file, a key or a server source map.
@@ -103,7 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: apt-get update && apt-get install -y unzip xvfb
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - run: bun install --frozen-lockfile
       - name: qa:all
         run: bun run qa:all

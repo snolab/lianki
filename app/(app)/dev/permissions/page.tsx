@@ -1,18 +1,14 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { PERMISSION_CACHE_MS, isAdmin, normalizeEmail } from "@/lib/permissions";
 import PermissionsAdmin from "./PermissionsAdmin";
 import PermissionsHeader from "./PermissionsHeader";
+import { devPageMetadata } from "../dev-page-title";
 
 // Admin-only: anyone else gets a plain 404.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Permissions — Lianki dev",
-  robots: { index: false, follow: false, nocache: true },
-  referrer: "no-referrer",
-};
+export const generateMetadata = devPageMetadata("permissions", { referrer: "no-referrer" });
 
 /**
  * Who holds `admin` and `dev`: the account_permission table

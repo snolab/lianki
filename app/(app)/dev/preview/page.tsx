@@ -1,19 +1,15 @@
-import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { isDev } from "@/lib/permissions";
 import { dbBackend } from "@/lib/d1";
 import { safePreviewPath, signInUrlForPreview } from "@/lib/dev-server-switch";
 import PreviewEntryClient from "./PreviewEntryClient";
+import { devPageMetadata } from "../dev-page-title";
 
 // Owner-only, like every /dev page: a signed-in non-owner gets a plain 404.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Preview build — Lianki dev",
-  robots: { index: false, follow: false, nocache: true },
-  referrer: "no-referrer",
-};
+export const generateMetadata = devPageMetadata("preview", { referrer: "no-referrer" });
 
 /**
  * The way in from preview.lianki.com's gate page (docs/dev-whole-page.md,

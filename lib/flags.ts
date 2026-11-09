@@ -243,6 +243,12 @@ export const FLAGS = {
       "应用图标角标数字（docs/app-badge.md）：装到主屏幕/程序坞的 Lianki 图标上显示一个数字 = 没回答的 Li 提问卡 + 今天到期的卡片（页面卡片和单词）。每个登录用户在「设置 → 通知」里选数什么：关闭 / 只数提问 / 只数到期卡片 / 两个都数（默认）。打开 App、切回来、回答提问、复习完都会更新；在 /review、/words 上时不数到期卡片。浏览器不支持就什么都不做（iPhone 需要 iOS 16.4+、从主屏幕打开并允许通知）。关闭（默认）= 谁都没有角标，设置里也没有这一行。",
     default: false,
   },
+  "membership.email-invite": {
+    description:
+      "邮件邀请好友：所有 Pro 用户（和管理员）在 /membership 的邀请卡片里多一个「用邮件邀请」框，填一个朋友的邮箱，Lianki 用发件人的账户语言发一封邀请信，里面是他自己的邀请链接（奖励规则不变）。防滥用：每人每天最多 5 封、同一个地址一个月内只收一封（不管谁邀请）、一次只能填一个地址、已有账户的地址不发（发件人看到的结果一样）、信里有退订和举报链接（一键退订），被举报 2 次的发件人不能再发。收件人地址只存哈希，发件人只看到自己发过的打码地址。关闭（默认）= 只有你本人（管理员）能用。",
+    default: false,
+    requires: ["auth-secret"],
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;

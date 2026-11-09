@@ -278,6 +278,79 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   await phone.close();
 }
 
+// 5b1. The rail never runs off the screen (owner, 2026-11-09: "left side panel
+// 太高了"). At each height every rail link is on screen, in "⋯", or in a list
+// that scrolls to it; import, data and settings live in the account menu,
+// which the rail's foot carries once the top bar has scrolled away.
+for (const [w, h] of [
+  [1512, 770],
+  [1280, 600],
+  [1024, 600],
+]) {
+  const rail = await ctx.newPage();
+  await rail.setViewportSize({ width: w, height: h });
+  await rail.goto(`${BASE}/home`, { waitUntil: "networkidle" });
+  const reach = async () => {
+    const more = rail.locator("[data-rail-more] > button");
+    if (await more.count()) await more.click();
+    const r = await rail.evaluate(() => {
+      const list = document.querySelector("[data-app-nav] .lk-rail-scroll");
+      const scrolls = list.scrollHeight > list.clientHeight + 1;
+      const auto = getComputedStyle(list).overflowY === "auto";
+      const inRail = [...list.querySelectorAll("a")].map((a) => ({
+        href: a.getAttribute("href"),
+        seen: a.getBoundingClientRect().bottom <= innerHeight + 0.5,
+      }));
+      const inMore = [...document.querySelectorAll("#lk-rail-more a")].map((a) => ({
+        href: a.getAttribute("href"),
+        seen: a.getBoundingClientRect().top >= 0 && a.getBoundingClientRect().bottom <= innerHeight,
+      }));
+      const foot = document.querySelector("[data-rail-foot]");
+      const fb = foot.getBoundingClientRect();
+      return {
+        hrefs: [...inRail, ...inMore].map((l) => l.href),
+        lost: [
+          ...inRail.filter((l) => !l.seen && !(scrolls && auto)),
+          ...inMore.filter((l) => !l.seen),
+        ].map((l) => l.href),
+        footIn: fb.top >= 0 && fb.bottom <= innerHeight + 0.5,
+        footShown: getComputedStyle(foot).visibility === "visible",
+      };
+    });
+    if (await more.count()) await rail.keyboard.press("Escape");
+    return r;
+  };
+  const top = await reach();
+  const want = ["/home", "/words", "/review", "/lab/polyglot", "/membership"];
+  check(
+    top.lost.length === 0 &&
+      want.every((x) => top.hrefs.includes(x)) &&
+      !["/import", "/data", "/preferences"].some((x) => top.hrefs.includes(x)) &&
+      top.footIn &&
+      !top.footShown,
+    `rail ${w}x${h}: every link on screen or in "⋯", none of import/data/settings, foot kept for the account menu (${JSON.stringify(top)})`,
+  );
+  await rail.mouse.wheel(0, 600);
+  await rail
+    .locator("[data-rail-foot] [data-rail-profile]")
+    .waitFor({ state: "visible", timeout: budget(5000) })
+    .catch(() => {});
+  const down = await reach();
+  await rail.locator("[data-rail-foot] [data-rail-profile]").click();
+  const menu = await rail.evaluate(() =>
+    [...document.querySelectorAll("[data-rail-foot] a")].map((a) => a.getAttribute("href")),
+  );
+  check(
+    down.lost.length === 0 &&
+      down.hrefs.length === top.hrefs.length &&
+      down.footIn &&
+      down.footShown &&
+      ["/profile", "/import", "/data", "/preferences"].every((x) => menu.includes(x)),
+    `rail ${w}x${h} scrolled: same links, the account menu at the foot has profile/import/data/settings (${JSON.stringify({ down, menu })})`,
+  );
+  await rail.close();
+}
+
 // 5b2. Name and picture: pen, edit, save; the nav changes without a reload.
 {
   await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
@@ -460,6 +533,33 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     { timeout: budget(5000) },
   );
   check(true, "titles: your own pattern can be removed");
+}
+
+// Sign-in errors are the page's own words, never the server's text
+// (lib/sign-in-errors.ts): a wrong password for the account made above is
+// tried as a sign-up, which the server refuses ("User already exists"); the
+// page shows its translated line instead. A fresh context, so this page's
+// expected 4xx stay out of the checks below.
+{
+  const ctx2 = await newSilentContext(browser);
+  const p2 = await ctx2.newPage();
+  await p2.goto(`${BASE}/sign-in`, { waitUntil: "networkidle" });
+  await p2.locator("#email").fill(EMAIL);
+  await p2.getByRole("button", { name: "Continue" }).click();
+  await p2.waitForSelector("#password", { timeout: budget(10000) });
+  await p2.locator("#password").fill(`${PW}-wrong`);
+  await p2.getByRole("button", { name: /sign in/i }).click();
+  // p: Next.js keeps its own role=alert route announcer on every page.
+  const alert = p2.locator("p[role=alert]");
+  const shown = await alert
+    .waitFor({ timeout: budget(15000) })
+    .then(() => alert.innerText())
+    .catch(() => "");
+  check(
+    shown === "Couldn't create the account. Check the email and password.",
+    `sign-in error is a known, translated line, not server text (got "${shown}")`,
+  );
+  await ctx2.close();
 }
 
 // 6. Console errors (ignore benign RSC prefetch aborts / 404 favicon / the
