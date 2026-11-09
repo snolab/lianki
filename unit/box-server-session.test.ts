@@ -14,7 +14,7 @@ import {
 } from "@/lib/box-oauth/server-session";
 import { boxReturnPath } from "@/lib/box-oauth/return-path";
 import { boxServerGetSession } from "@/lib/box-oauth/server-auth";
-import { clearOwnerCache, isOwner } from "@/lib/owner";
+import { clearPermissionCache, isAdmin, isDev } from "@/lib/permissions";
 
 const BOX = "https://my-0123456789abcdef.lianki.com";
 const PROVIDER = "https://lianki.com";
@@ -23,6 +23,8 @@ const ME = {
   user: { id: "u1", name: "Ann", email: "ann@test.example", image: "/api/avatar/u1/x" },
   flags: {},
   owner: true,
+  isAdmin: true,
+  isDev: true,
 };
 
 type Call = { url: string; init: RequestInit };
@@ -63,7 +65,8 @@ describe("asking lianki.com", () => {
       email: "ann@test.example",
       name: "Ann",
       image: `${PROVIDER}/api/avatar/u1/x`,
-      owner: true,
+      isAdmin: true,
+      isDev: true,
     });
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe(`${PROVIDER}/api/box/me`);
@@ -111,7 +114,7 @@ describe("asking lianki.com", () => {
   });
 
   test("the session has the account's id and email, and is not the owner unless lianki.com says so", async () => {
-    answer = () => Response.json({ ...ME, owner: false });
+    answer = () => Response.json({ ...ME, owner: false, isAdmin: false, isDev: false });
     const s = boxServerSession((await boxServerAccount(TOKEN, deps()))!, now);
     expect(s.user.id).toBe("u1");
     expect(s.user.email).toBe("ann@test.example");
@@ -127,19 +130,20 @@ describe("getSession on a box's server", () => {
     process.env.LIANKI_BOX_PROVIDER = PROVIDER;
     process.env.BETTER_AUTH_BASE_URL = `${BOX}/`;
     globalThis.fetch = fakeFetch;
-    clearOwnerCache();
+    clearPermissionCache();
   });
   afterEach(() => {
     process.env = { ...env };
     globalThis.fetch = realFetch;
-    clearOwnerCache();
+    clearPermissionCache();
   });
 
-  test("the cookie's account, with lianki.com's owner role", async () => {
+  test("the cookie's account, with lianki.com's permissions", async () => {
     const s = await boxServerGetSession(new Headers({ cookie: `__Host-lk_box_at=${TOKEN}` }));
     expect(s?.user.email).toBe("ann@test.example");
     expect(new Headers(calls[0].init.headers).get("origin")).toBe(BOX);
-    expect(isOwner("ann@test.example")).toBe(true);
+    expect(isAdmin("ann@test.example")).toBe(true);
+    expect(isDev("ann@test.example")).toBe(true);
   });
 
   test("no cookie, or no box config: nobody, and lianki.com is not asked", async () => {
@@ -152,10 +156,25 @@ describe("getSession on a box's server", () => {
     expect(calls).toHaveLength(0);
   });
 
-  test("not an owner on lianki.com: not one here", async () => {
-    answer = () => Response.json({ ...ME, owner: false });
+  test("dev only on lianki.com: dev only here", async () => {
+    answer = () => Response.json({ ...ME, isAdmin: false });
     await boxServerGetSession(new Headers({ cookie: `__Host-lk_box_at=${TOKEN}` }));
-    expect(isOwner("ann@test.example")).toBe(false);
+    expect(isDev("ann@test.example")).toBe(true);
+    expect(isAdmin("ann@test.example")).toBe(false);
+  });
+
+  test("an old lianki.com answer with `owner` alone grants nothing (fail closed)", async () => {
+    answer = () => Response.json({ user: ME.user, flags: {}, owner: true });
+    await boxServerGetSession(new Headers({ cookie: `__Host-lk_box_at=${TOKEN}` }));
+    expect(isDev("ann@test.example")).toBe(false);
+    expect(isAdmin("ann@test.example")).toBe(false);
+  });
+
+  test("no grant on lianki.com: none here", async () => {
+    answer = () => Response.json({ ...ME, owner: false, isAdmin: false, isDev: false });
+    await boxServerGetSession(new Headers({ cookie: `__Host-lk_box_at=${TOKEN}` }));
+    expect(isAdmin("ann@test.example")).toBe(false);
+    expect(isDev("ann@test.example")).toBe(false);
   });
 });
 

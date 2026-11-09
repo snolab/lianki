@@ -8,7 +8,7 @@
  * at /dev/flags, no deploy):
  *
  * - **test**: an `sk_test_…` key and the flag off. Passes and top-ups are
- *   offered to the owner (`site_role`) only, and the webhook credits the
+ *   offered to the owner (`isAdmin`, lib/permissions.ts) only, and the webhook credits the
  *   owner only, kept apart from real money — a test card must never become
  *   real Pro days or credits for anyone.
  * - **live**: an `sk_live_…` key and the flag on. Offered to everyone.

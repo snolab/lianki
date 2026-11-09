@@ -14,23 +14,20 @@
  * Neither implies the other: each is its own grant. Never an email list in code
  * or env (AGENTS.md hard rules).
  *
- * `isAdmin` / `isDev` stay synchronous, like the old isOwner: they answer from a
- * snapshot of the grants kept in this isolate, refreshed by
- * `auth.api.getSession` (auth.ts → lib/owner-store.ts → lib/permission-store.ts)
- * before a signed-in user is handed back.
+ * `isAdmin` / `isDev` are synchronous: they answer from a snapshot of the
+ * grants kept in this isolate, refreshed by `auth.api.getSession` (auth.ts →
+ * lib/permission-store.ts) before a signed-in user is handed back. Code with
+ * no session (a webhook, a bearer token) calls refreshPermissions() itself.
  *
  * **Fail closed**: no snapshot, or one older than PERMISSION_CACHE_MS, grants
  * nothing. A revocation holds everywhere within PERMISSION_CACHE_MS.
  *
- * MIGRATION (step a, 2026-11-09): an active owner in `site_role` (lib/owner.ts)
- * still passes both checks, so nothing changes until the grants are seeded.
- * Step c removes that fallback, lib/owner.ts and site_role.
+ * The old owner role (`site_role`, lib/owner.ts) is gone (step c, 2026-11-09):
+ * these grants are the only answer. The site_role table is unused.
  *
  * Exact address only (trimmed, lowercased), never the canonical form. Kept free
  * of D1 and Next imports so scripts can use it.
  */
-import { isOwner, normalizeEmail, ownerSnapshot } from "./owner";
-
 export const PERMISSIONS = ["admin", "dev"] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -54,7 +51,10 @@ const KEY = Symbol.for("lianki.permission-snapshot");
 const store = globalThis as unknown as Record<symbol, State | undefined>;
 const state: State = (store[KEY] ??= { snapshot: null, generation: 0 });
 
-export { normalizeEmail };
+/** An address as grants are stored and compared: trimmed, lowercased, nothing else. */
+export function normalizeEmail(email: string | null | undefined): string {
+  return email?.trim().toLowerCase() ?? "";
+}
 
 /** The grants, oldest first, or null when there is no fresh snapshot. */
 export function permissionSnapshot(
@@ -76,9 +76,7 @@ export function hasPermission(
   const normalized = normalizeEmail(email);
   if (!normalized) return false;
   const grants = permissionSnapshot(PERMISSION_CACHE_MS, now);
-  if (grants?.some((g) => g.email === normalized && g.permission === permission)) return true;
-  // Step a only: the old owner role still passes. Removed in step c.
-  return isOwner(normalized, now);
+  return grants?.some((g) => g.email === normalized && g.permission === permission) ?? false;
 }
 
 /** Manages people, money and permission grants. */
@@ -97,8 +95,6 @@ export function permissionHolders(permission: Permission, now = Date.now()): str
   const out: string[] = [];
   for (const g of permissionSnapshot(PERMISSION_CACHE_MS, now) ?? [])
     if (g.permission === permission && !out.includes(g.email)) out.push(g.email);
-  // Step a only: the old owners pass every check, so they are listed too.
-  for (const o of ownerSnapshot(PERMISSION_CACHE_MS, now) ?? []) if (!out.includes(o)) out.push(o);
   return out;
 }
 

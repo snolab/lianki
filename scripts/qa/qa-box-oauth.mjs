@@ -11,7 +11,7 @@
  *   … bun scripts/qa/qa-box-oauth.mjs run
  *
  * The provider needs DEV_EMAIL_PASSWORD_AUTH=1, and in its local D1 the flag on and
- * OWNER in site_role. Use 127.0.0.1, not localhost: the plugin allows http only for a
+ * OWNER holding `dev` in account_permission. Use 127.0.0.1, not localhost: the plugin allows http only for a
  * native client on a loopback address. The box needs LIANKI_BOX_CLIENT_ID and
  * LIANKI_BOX_PROVIDER, and BETTER_AUTH_BASE_URL=$BOX (its server asks the provider
  * from that origin, lib/box-oauth/server-session.ts). It ends by revoking, so `setup` again before another `run`.

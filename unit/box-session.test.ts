@@ -317,20 +317,22 @@ describe("flags on a box: production's, for the bound account", () => {
   const user = { name: "Ann", email: "ann@test.example", image: null };
   const id = new Headers({ [BOX_IDENTITY_HEADER]: "x" });
 
-  test("the route adds production's flags and the owner role for that account", async () => {
+  test("the route adds production's flags and the account's permissions", async () => {
     const asked: string[] = [];
     const res = await boxMeResponse(
       id,
       async () => ({ user }),
       async (email) => {
         asked.push(email);
-        return { flags: { "read.live-polish": true }, owner: false };
+        return { flags: { "read.live-polish": true }, owner: false, isAdmin: true, isDev: false };
       },
     );
     expect(await res.json()).toEqual({
       user,
       flags: { "read.live-polish": true },
       owner: false,
+      isAdmin: true,
+      isDev: false,
     });
     expect(asked).toEqual(["ann@test.example"]);
   });
@@ -342,7 +344,7 @@ describe("flags on a box: production's, for the bound account", () => {
       async () => null,
       async () => {
         read++;
-        return { flags: {}, owner: true };
+        return { flags: {}, owner: true, isAdmin: true, isDev: true };
       },
     );
     expect(res.status).toBe(401);

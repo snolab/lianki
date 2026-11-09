@@ -2,7 +2,6 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
 import { isDev } from "@/lib/permissions";
-import { refreshOwners } from "@/lib/owner-store";
 import { refreshPermissions } from "@/lib/permission-store";
 import { partnerTicket } from "@/lib/partner-ticket-auth";
 import { importTicketKey } from "@/lib/stt-ticket";
@@ -27,9 +26,9 @@ export const POST = (req: Request) =>
     backend: dbBackend,
     d1: () => getD1() as unknown as D1Like,
     sessionEmail: async () => (await authUserOrNull())?.email ?? null,
-    isOwner: async (email) => {
-      // A bearer token reads no session, so nothing has refreshed the owner list yet.
-      await Promise.all([refreshOwners(), refreshPermissions()]);
+    isDev: async (email) => {
+      // A bearer token reads no session, so nothing has refreshed the grants yet.
+      await refreshPermissions();
       return isDev(email);
     },
     key: async () => {

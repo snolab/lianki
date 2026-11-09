@@ -5,7 +5,6 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
 import { voiceAccess } from "@/lib/words/voice-access";
-import { isOwner } from "@/lib/owner";
 import { ytSongsOn } from "@/lib/yt-songs/gate";
 import WordsClient from "./WordsClient";
 
@@ -27,7 +26,7 @@ export default async function WordsPage() {
   return (
     <WordsClient
       voice={voiceAccess(flags, isDev(user?.email))}
-      ytSongs={!!user && ytSongsOn(flags, isOwner(user.email ?? null))}
+      ytSongs={!!user && ytSongsOn(flags, isDev(user.email))}
     />
   );
 }

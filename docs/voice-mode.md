@@ -370,7 +370,7 @@ nothing but the chat.
 | `scripts/qa/qa-voice-mode.mjs`             | end to end, desktop and phone, silent: text fixtures to the taps, fake mic, muted |
 
 ```bash
-QA_BASE=http://localhost:<port> QA_EMAIL=<an owner in site_role> \
+QA_BASE=http://localhost:<port> QA_EMAIL=<an account holding dev> \
   bun scripts/qa/qa-voice-mode.mjs
 ```
 

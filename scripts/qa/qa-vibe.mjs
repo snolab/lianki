@@ -4,7 +4,7 @@
 // and a small WebSocket server here stands in for the owner's Mac, answering
 // invented text. Nothing plays and nothing is recorded.
 //
-//   QA_BASE=http://localhost:3417 QA_EMAIL=<an owner in the local site_role> \
+//   QA_BASE=http://localhost:3417 QA_EMAIL=<an account holding `dev` in the local account_permission> \
 //     QA_PASSWORD=… bun scripts/qa/qa-vibe.mjs [outDir]
 //
 // Against qa:all's wrangler dev (--keep). Flips read.vibe in the LOCAL D1 itself
@@ -682,7 +682,7 @@ async function run(colorScheme, email) {
 
 try {
   const email = process.env.QA_EMAIL;
-  if (!email) throw new Error("QA_EMAIL: an owner in the local site_role");
+  if (!email) throw new Error("QA_EMAIL: an account holding `dev` in the local account_permission");
   await run("light", email);
   await run("dark", email);
 } finally {

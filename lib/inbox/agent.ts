@@ -9,6 +9,7 @@
  * `get` mints a single-use, 60 s download ticket; the agent fetches
  * /api/dev/inbox/<id> with it in the x-inbox-ticket header.
  */
+import { holderIds } from "@/lib/account-permission";
 import { INBOX } from "./config";
 import { isInboxId } from "./keys";
 import { type InboxDb, getItem, listItemsOf, markProcessed, mintTicket } from "./store";
@@ -24,17 +25,8 @@ export function parseInboxOp(raw: unknown): InboxOp | null {
   return null;
 }
 
-/** The accounts of the active owners, by exact address (site_role, lib/site-role.ts). */
-async function ownerIds(db: InboxDb): Promise<string[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT u.id AS id FROM user u JOIN site_role r ON lower(trim(u.email)) = r.email
-       WHERE r.role = 'owner' AND r.revoked_at IS NULL`,
-    )
-    .bind()
-    .all<{ id: string }>();
-  return results.map((r) => r.id);
-}
+/** The owner's accounts: those holding `dev` (lib/permissions.ts). */
+const ownerIds = (db: InboxDb): Promise<string[]> => holderIds(db, "dev");
 
 export type InboxAnswer =
   | { ok: true; items: unknown[] }

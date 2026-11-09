@@ -1,6 +1,6 @@
 /**
  * Keeps the permission snapshot (lib/permissions.ts) fresh from D1, the way
- * lib/owner-store.ts keeps the owner one: one small query, at most once per
+ * lib/flags-store.ts keeps flags: one small query, at most once per
  * PERMISSION_REFRESH_MS per isolate; concurrent misses each do their own read
  * (a Worker must not await another request's I/O).
  *
@@ -17,6 +17,7 @@ import {
   permissionSnapshot,
   setPermissionSnapshot,
   type Grant,
+  type Permission,
 } from "./permissions";
 import { type PermissionReadDb, readGrants } from "./account-permission";
 
@@ -53,3 +54,18 @@ export async function refreshPermissions(
 /** refreshPermissions for code that holds its own D1 and has no session (a webhook). */
 export const refreshPermissionsFrom = (d1: unknown): Promise<Grant[]> =>
   refreshPermissions(() => d1 as PermissionReadDb);
+
+/**
+ * Who holds `permission` right now, oldest grant first; [] when unreadable.
+ * The first is "the owner" where one account is meant (the dev bridge, the
+ * whole-page dev server's sign-in). Never throws.
+ */
+export async function refreshHolders(
+  permission: Permission,
+  db?: () => PermissionReadDb | null,
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const g of await refreshPermissions(db))
+    if (g.permission === permission && !out.includes(g.email)) out.push(g.email);
+  return out;
+}

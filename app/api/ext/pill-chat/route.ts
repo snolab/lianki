@@ -2,7 +2,6 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
 import { readFlags } from "@/lib/flags-store";
-import { refreshOwners } from "@/lib/owner-store";
 import { isDev } from "@/lib/permissions";
 import { refreshPermissions } from "@/lib/permission-store";
 import { pillChatState } from "@/lib/pill-chat-route";
@@ -15,8 +14,8 @@ export const GET = (req: Request) =>
     backend: dbBackend,
     d1: () => getD1() as unknown as D1Like,
     sessionEmail: async () => (await authUserOrNull())?.email ?? null,
-    isOwner: async (email) => {
-      await Promise.all([refreshOwners(), refreshPermissions()]);
+    isDev: async (email) => {
+      await refreshPermissions();
       return isDev(email);
     },
     flags: () => readFlags(),

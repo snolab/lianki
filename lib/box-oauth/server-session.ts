@@ -49,8 +49,9 @@ export type BoxServerAccount = {
   email: string;
   name: string;
   image: string | null;
-  /** lianki.com's owner role for this account (site_role). */
-  owner: boolean;
+  /** lianki.com's permissions for this account (lib/permissions.ts). */
+  isAdmin: boolean;
+  isDev: boolean;
 };
 
 export type BoxServerDeps = {
@@ -100,7 +101,8 @@ export async function boxServerAccount(
   if (!res.ok) return null;
   const body = (await res.json().catch(() => null)) as {
     user?: Record<string, unknown>;
-    owner?: unknown;
+    isAdmin?: unknown;
+    isDev?: unknown;
   } | null;
   const id = text(body?.user?.id, 128);
   const email = text(body?.user?.email, 320);
@@ -117,7 +119,9 @@ export async function boxServerAccount(
         : image?.startsWith("/api/avatar/")
           ? `${d.provider}${image}`
           : null,
-    owner: body?.owner === true,
+    // Fail closed: only an explicit true from lianki.com.
+    isAdmin: body?.isAdmin === true,
+    isDev: body?.isDev === true,
   };
   if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value!);
   cache.set(token, { at: now, account });

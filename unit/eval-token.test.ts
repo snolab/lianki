@@ -83,10 +83,10 @@ beforeEach(() => {
         "INSERT INTO user (id, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, 1, '2026-11-01', '2026-11-01')",
       )
       .run(u.userId, u.email);
-  raw.prepare("DELETE FROM site_role").run();
+  raw.prepare("DELETE FROM account_permission").run();
   raw
     .prepare(
-      "INSERT INTO site_role (email, role, granted_by, granted_at) VALUES (?, 'owner', 'test', 1)",
+      "INSERT INTO account_permission (email, permission, granted_by, granted_at) VALUES (?, 'dev', 'test', 1)",
     )
     .run(OWNER.email);
 });
@@ -181,12 +181,12 @@ describe("using an eval token (the main Worker's check)", () => {
     });
     const mine = await mint(OWNER);
     // The owner role revoked: refused from the next use.
-    d1.raw().prepare("UPDATE site_role SET revoked_at = 2").run();
+    d1.raw().prepare("UPDATE account_permission SET revoked_at = 2").run();
     expect(await evalTokenCheck(db(), { op: "use", tokenHash: mine.id }, t)).toMatchObject({
       ok: false,
       error: "not-owner",
     });
-    d1.raw().prepare("UPDATE site_role SET revoked_at = NULL").run();
+    d1.raw().prepare("UPDATE account_permission SET revoked_at = NULL").run();
     t += 31 * DAY;
     expect(await evalTokenCheck(db(), { op: "use", tokenHash: mine.id }, t)).toMatchObject({
       ok: false,

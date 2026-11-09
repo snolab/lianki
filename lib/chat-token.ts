@@ -20,10 +20,10 @@
  */
 import { type ScopeId, checkToken, tagOf } from "@/lib/api-tokens";
 import type { D1Like } from "@/lib/d1/types";
-import { normalizeEmail } from "@/lib/owner";
 import { type AuditDb, audit } from "@/lib/security/audit-log";
 import { hit, type Limit, type ThrottleDb } from "@/lib/security/throttle";
-import { readOwnerEmails, type OwnerReadDb } from "@/lib/site-role";
+import { readHolders, type PermissionReadDb } from "@/lib/account-permission";
+import { normalizeEmail } from "@/lib/permissions";
 
 const MIN = 60_000;
 
@@ -77,7 +77,7 @@ export type ChatTokenAnswer =
       retryAfterMs?: number;
     };
 
-export type ChatTokenDb = D1Like & ThrottleDb & AuditDb & OwnerReadDb;
+export type ChatTokenDb = D1Like & ThrottleDb & AuditDb & PermissionReadDb;
 
 export async function chatTokenCheck(
   db: ChatTokenDb,
@@ -120,8 +120,9 @@ export async function chatTokenCheck(
       },
       now,
     );
-  // Straight from site_role: a D1 error throws, and the hub refuses.
-  const owners = await readOwnerEmails(db);
+  // `owner`: holds `dev` (the owner chat thread, lib/permissions.ts), straight
+  // from D1: a D1 error throws, and the hub refuses.
+  const owners = await readHolders(db, "dev");
   const expires = c.expiresAt ? Date.parse(c.expiresAt) : null;
   return {
     ok: true,

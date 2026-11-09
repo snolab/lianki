@@ -71,8 +71,8 @@ beforeEach(() => {
     "INSERT INTO user (id, email) VALUES ('u1', 'owner@example.com'), ('u2', 'friend@example.com')",
   );
   d.raw().exec(
-    `CREATE TABLE site_role (email TEXT PRIMARY KEY, role TEXT NOT NULL DEFAULT 'owner', revoked_at INTEGER);
-     INSERT INTO site_role (email) VALUES ('owner@example.com')`,
+    `CREATE TABLE account_permission (email TEXT, permission TEXT NOT NULL DEFAULT 'dev', revoked_at INTEGER);
+     INSERT INTO account_permission (email) VALUES ('owner@example.com')`,
   );
   rawDb = d.raw();
   db = d as unknown as InboxDb;
@@ -326,7 +326,7 @@ describe("agent tickets", () => {
     ).toBe(404);
     expect(await inboxOp(db, { op: "done", id }, opts)).toEqual({ ok: true, done: id });
     expect(await inboxOp(db, { op: "rm", id }, opts)).toEqual({ ok: false, error: "bad inbox op" });
-    rawDb.exec("UPDATE site_role SET revoked_at = 1"); // a revoked owner: no one's files
+    rawDb.exec("UPDATE account_permission SET revoked_at = 1"); // a revoked owner: no one's files
     expect(await inboxOp(db, { op: "list" }, {})).toEqual({ ok: true, items: [] });
   });
 });

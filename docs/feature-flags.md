@@ -61,7 +61,7 @@ stay on the folded row, because they say why the switch does nothing.
   arrives past the window is not acted on — it reads as all off
   (`flags.read-stale`).
 - **Owner only.** The page and `/api/dev/flags` answer 404 to anyone but
-  an owner in `site_role` (the admin gate, [security-measures.md](security-measures.md)
+  an `admin` holder (the permission gate, [security-measures.md](security-measures.md)
   §1; `unit/security.test.ts` enforces it), and sit under Cloudflare Access's
   `/dev` and `/api/dev` paths once that is applied.
 - **CSRF**: `POST /api/dev/flags` must be a same-origin JSON `fetch` —

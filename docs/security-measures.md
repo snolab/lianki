@@ -35,18 +35,18 @@ input-bounded and rate-limited. Gift-code management moved from
 prefix; redeeming stays at `/api/gift-codes/redeem`.
 
 **Layer 1, in the app.** Every `/dev` page and `/api/dev` route checks
-`isAdmin()` or `isDev()` (`lib/permissions.ts`, the `account_permission` table;
-during the 2026-11-09 migration an active `site_role` owner also passes;
+`isAdmin()` or `isDev()` (`lib/permissions.ts`, the `account_permission` table,
+the only source since 2026-11-09; never an email list;
 [secrets-and-auth.md](secrets-and-auth.md), "Permissions") and answers
 **404** to everyone else, so the surface is not even discoverable. A D1 error
-fails closed: nobody is the owner. `unit/security.test.ts` fails if a `/dev` page or
+fails closed: nobody holds anything. `unit/security.test.ts` fails if a `/dev` page or
 `/api/dev` route is added without the gate; `qa:api` checks a signed-in
 non-owner gets 404 from each.
 
 **Layer 2, at the edge: Cloudflare Access** on `lianki.com/dev` and
 `lianki.com/api/dev` (each covers its subpaths), allowing only the
 addresses given with `--email` (Access keeps its own list; it does not follow
-`site_role`). Prepared, not applied — `scripts/ops/cloudflare-access.ts`:
+the grants). Prepared, not applied — `scripts/ops/cloudflare-access.ts`:
 
 ```bash
 bun scripts/ops/cloudflare-access.ts --dry-run --email a@b.c   # the policy and app it would create

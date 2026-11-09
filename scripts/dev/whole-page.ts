@@ -309,8 +309,8 @@ async function serve() {
     if (!r.ok) throw new Error(`verify answered ${r.status}`);
     return ((await r.json()) as { active: string[] }).active;
   };
-  // Who the owners are: site_role on production D1, the list production gates
-  // on, asked of lianki.com with the bridge secret. At most OWNERS_CACHE_MS old;
+  // Who the owners are: the `dev` holders on production D1 (account_permission),
+  // asked of lianki.com with the bridge secret. At most OWNERS_CACHE_MS old;
   // [] when it cannot be read, so the guard and the gate refuse everyone.
   let ownersRead = { at: -Infinity, owners: [] as string[] };
   const currentOwners = async (): Promise<string[]> => {

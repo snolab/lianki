@@ -22,7 +22,6 @@ export const STATUS_ORDER: RoadmapStatus[] = ["doing", "waiting", "queued", "pla
 
 export const ROADMAP: RoadmapItem[] = [
   // In progress
-  { id: "permissions", status: "doing" },
   { id: "boxAuth", status: "doing" },
   { id: "readerFixes", status: "doing" },
   { id: "labMoves", status: "doing" },
@@ -52,6 +51,7 @@ export const ROADMAP: RoadmapItem[] = [
   { id: "progressBar", status: "done", prs: [667, 700, 702] },
   { id: "newReader", status: "done", prs: [689, 690, 698] },
   { id: "box", status: "done", prs: [628, 685, 686, 694, 695, 696, 697] },
+  { id: "permissions", status: "done", prs: [718, 732] },
   { id: "voices", status: "done", prs: [670, 672, 679, 688] },
   { id: "chatHistory", status: "done", prs: [684] },
   { id: "apiTokens", status: "done", prs: [678, 691] },

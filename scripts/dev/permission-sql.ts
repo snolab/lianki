@@ -11,9 +11,18 @@ import {
   validPermissionEmail,
 } from "../../lib/account-permission";
 import { PERMISSIONS, isPermission, type Permission } from "../../lib/permissions";
-import { inlineSql } from "./owner-role-sql";
 
 export const CLI_ACTOR = "cli";
+
+/** Put values into a statement's ?N slots, for wrangler's --command (one pass, quoted). */
+export function inlineSql(sql: string, params: (string | number)[]): string {
+  return sql.replace(/\?(\d+)/g, (_, n) => {
+    const v = params[Number(n) - 1];
+    if (typeof v === "number") return String(Math.trunc(v));
+    if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
+    throw new Error(`no value for ?${n}`);
+  });
+}
 
 export type Parsed =
   | { cmd: "list"; local: boolean }

@@ -20,7 +20,7 @@ export type PillChatRouteDeps = {
   backend: () => "mongodb" | "d1";
   d1: () => D1Like;
   sessionEmail: () => Promise<string | null>;
-  isOwner: (email: string | null) => Promise<boolean>;
+  isDev: (email: string | null) => Promise<boolean>;
   flags: () => Promise<FlagValues>;
   now?: () => number;
 };
@@ -31,6 +31,6 @@ const json = (body: unknown) =>
 export async function pillChatState(req: Request, deps: PillChatRouteDeps): Promise<Response> {
   if (!flagIn(await deps.flags(), "ext.pill-chat")) return json({ on: false });
   const email = (await partnerTokenEmail(req, deps)) ?? (await deps.sessionEmail());
-  if (!email || !(await deps.isOwner(email))) return json({ on: false });
+  if (!email || !(await deps.isDev(email))) return json({ on: false });
   return json({ on: true });
 }

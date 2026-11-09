@@ -11,7 +11,7 @@ import {
   passagesOf,
   settleSlot,
 } from "@/lib/read/live-polish";
-import { setOwnerSnapshot } from "@/lib/owner";
+import { clearPermissionCache, grantAll } from "./support/grants";
 import { draftOwn, livePolishAi, mayPolishLive } from "@/lib/read/live-polish-server";
 
 describe("livePolishMessages", () => {
@@ -115,8 +115,8 @@ describe("livePolishAi", () => {
 describe("draft words", () => {
   const own = (w: string) => w === "book";
   const owner = "owner@example.com";
-  beforeAll(() => setOwnerSnapshot([owner]));
-  afterAll(() => setOwnerSnapshot([]));
+  beforeAll(() => grantAll([owner]));
+  afterAll(() => grantAll([]));
   it("takes one word, never a phrase or a sentence", () => {
     expect(isDraftWord("polished")).toBe(true);
     expect(isDraftWord("two words")).toBe(false);

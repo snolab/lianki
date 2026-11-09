@@ -100,11 +100,8 @@ for (const [method, path] of [
   ["GET", "/dev/preview?to=%2Fen%2Fread"],
   ["GET", "/dev/users"],
   ["GET", "/dev/gift-codes"],
-  ["GET", "/api/dev/owners"],
-  ["POST", "/api/dev/owners"],
   ["GET", "/api/dev/permissions"],
   ["POST", "/api/dev/permissions"],
-  ["GET", "/dev/owners"],
   ["GET", "/dev/permissions"],
 ]) {
   const r = await call(method, path, method === "POST" ? {} : undefined);

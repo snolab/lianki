@@ -258,7 +258,7 @@ transparency. Screenshots are iPhone size, light and dark.
   values `off` (the default), `owner` or `on`.
 - It is read in one place, `lib/features.ts`:
   `googleCalendarEnabled(email): boolean` is true for `on`, or for `owner`
-  when `isOwner(email)` (`lib/owner.ts`, `site_role`).
+  when `isDev(email)` (`lib/permissions.ts`).
 - **Owner toggle for testing:** under `owner`, a switch on /dev (owner only,
   stored in his preferences) turns it on or off for his own account, so he can
   test both states without a deploy.

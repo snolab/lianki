@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { useBackend, useD1 } from "./support/testMocks";
-import { clearOwnerCache, setOwnerSnapshot } from "@/lib/owner";
+import { clearPermissionCache, grantAll } from "./support/grants";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import { b64url } from "@/lib/stt-ticket";
@@ -337,11 +337,11 @@ describe("the pointer store (D1) and POST /api/live-view", () => {
 describe("owner-only shell", () => {
   const labels = () => ({ liveView: "Live view", normal: "Normal", waiting: "w", refused: "r" });
   beforeEach(() => {
-    setOwnerSnapshot(["owner@example.com"]);
+    grantAll(["owner@example.com"]);
     useBackend("d1");
   });
   afterAll(() => {
-    clearOwnerCache();
+    clearPermissionCache();
     useBackend("mongodb");
   });
 
@@ -350,7 +350,7 @@ describe("owner-only shell", () => {
     useD1(d);
     expect(await liveViewFor("someone@example.com", "1", labels)).toBeUndefined();
     expect(await liveViewFor(null, "1", labels)).toBeUndefined();
-    clearOwnerCache();
+    clearPermissionCache();
     expect(await liveViewFor("owner@example.com", "1", labels)).toBeUndefined();
   });
 

@@ -442,7 +442,7 @@ describe("GET /api/ext/pill-chat", () => {
     backend: () => "d1" as const,
     d1: () => ({}) as never,
     sessionEmail: async () => o.email,
-    isOwner: async () => o.owner,
+    isDev: async () => o.owner,
     flags: async () => ({ "ext.pill-chat": o.flag }),
   });
   const on = async (r: Response) => ((await r.json()) as { on: boolean }).on;

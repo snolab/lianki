@@ -23,7 +23,6 @@
  * nothing and never become real credits, even after a switch to live.
  */
 import { isAdmin } from "@/lib/permissions";
-import { refreshOwnersFrom } from "@/lib/owner-store";
 import { refreshPermissionsFrom } from "@/lib/permission-store";
 import { rewardPurchase } from "@/lib/referrals/store";
 import { creditTestTopup, creditTopup, type D1WithBatch } from "./credits-store";
@@ -63,7 +62,7 @@ export async function handleStripeWebhook(
   const testMode = mode === "test";
   if (testMode) {
     const userId = session.metadata?.userId || session.client_reference_id;
-    await Promise.all([refreshOwnersFrom(d1), refreshPermissionsFrom(d1)]); // a webhook has no session
+    await refreshPermissionsFrom(d1); // a webhook has no session
     if (!userId || !isAdmin(await emailOf(d1, userId))) {
       console.warn(JSON.stringify({ event: "payments.stripe.test-ignored", session: session.id }));
       return { status: 200, body: { received: true, status: "ignored" } };

@@ -21,7 +21,7 @@ import {
   boxChatLive,
   chatBinding,
   insertBinding,
-  isSiteOwnerUser,
+  isDevUser,
   liveToken,
   revokeBox,
   setBoxChat,
@@ -71,7 +71,7 @@ async function setup() {
       .run();
   await db
     .prepare(
-      "INSERT INTO site_role (email, role, granted_by, granted_at) VALUES ('u1@test.example', 'owner', 'test', 1)",
+      "INSERT INTO account_permission (email, permission, granted_by, granted_at) VALUES ('u1@test.example', 'dev', 'test', 1)",
     )
     .run();
   for (const c of ["c1", "c2"])
@@ -206,10 +206,12 @@ describe("the scope on the binding", () => {
   test("the owner check is read live: a revoked role ends it at use", async () => {
     await bind(db);
     await setBoxChat(box(db), "c1", true, "u1", NOW);
-    expect(await isSiteOwnerUser(box(db), "u1")).toBe(true);
+    expect(await isDevUser(box(db), "u1")).toBe(true);
     expect(await boxChatLive(box(db), "c1")).toBe(true);
-    await db.prepare("UPDATE site_role SET revoked_at = 2 WHERE email = 'u1@test.example'").run();
-    expect(await isSiteOwnerUser(box(db), "u1")).toBe(false);
+    await db
+      .prepare("UPDATE account_permission SET revoked_at = 2 WHERE email = 'u1@test.example'")
+      .run();
+    expect(await isDevUser(box(db), "u1")).toBe(false);
     expect(await chatBinding(box(db), "c1", "u1")).toBeNull();
     expect(await boxChatLive(box(db), "c1")).toBe(false);
   });
@@ -263,7 +265,7 @@ describe("the gate on the chat routes", () => {
 
   test("the account no longer a site owner: refused at use, though the scope is still there", async () => {
     await setBoxChat(box(db), "c1", true, "u1", NOW);
-    await db.prepare("UPDATE site_role SET revoked_at = 2").run();
+    await db.prepare("UPDATE account_permission SET revoked_at = 2").run();
     expect((await call(BOX_CHAT_TICKET_PATH, tok())).status).toBe(403);
     expect(seen).toBeNull();
   });
@@ -292,8 +294,8 @@ describe("the gate on the chat routes", () => {
     await setBoxChat(box(db), "c1", true, "u1", NOW);
     const flaky = {
       prepare: (sql: string) => {
-        // The separate owner check only: the token lookup also reads site_role (the allowlist).
-        if (sql.includes("site_role") && !sql.includes("oauthAccessToken"))
+        // The separate owner check only: the token lookup also reads account_permission (the allowlist).
+        if (sql.includes("account_permission") && !sql.includes("oauthAccessToken"))
           throw new Error("d1 down");
         return db.prepare(sql);
       },
