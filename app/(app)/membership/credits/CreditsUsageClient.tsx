@@ -228,7 +228,8 @@ export default function CreditsUsageClient() {
           {page?.entries.map((e) => (
             <li
               key={e.id}
-              className="flex items-start justify-between gap-3 py-2"
+              id={`usage-${e.id}`}
+              className="flex items-start justify-between gap-3 py-2 target:bg-[oklch(0.95_0.03_262)] dark:target:bg-[oklch(0.33_0.06_262)]"
               data-usage-entry={e.group}
             >
               <div className="min-w-0 space-y-0.5">
@@ -238,12 +239,18 @@ export default function CreditsUsageClient() {
                   {e.passId === "pro-12m" && ` · ${w.twelveMonths.value}`}
                 </div>
                 <div className={`text-xs ${muted}`}>{longDateTime(e.at)}</div>
-                {e.hold && (
-                  <div className={`text-xs ${muted}`} data-usage-hold="">
-                    {(e.hold.pending ? s.pending.value : s.hold.value)
-                      .replace("{held}", String(e.hold.held))
-                      .replace("{actual}", String(e.hold.actual))
-                      .replace("{refunded}", String(e.hold.refunded))}
+                {e.pending && (
+                  <div className={`text-xs ${muted}`} data-usage-pending="">
+                    {s.pending.value}
+                  </div>
+                )}
+                {e.refundOf && (
+                  <div className={`text-xs ${muted}`} data-usage-refund-of="">
+                    <a href={`#usage-${e.refundOf.id}`} className={link}>
+                      {s.refundOf.value
+                        .replace("{what}", groupLabel(e.refundOf.group))
+                        .replace("{date}", longDateTime(e.refundOf.at))}
+                    </a>
                   </div>
                 )}
                 <div className={`text-xs ${muted}`}>

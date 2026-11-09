@@ -252,9 +252,16 @@ Rules in `lib/payments/credit-usage.ts`, the handler in
 - **Every ledger line of the signed-in user, only theirs** (the user id is the
   session's, never the query's): time in the viewer's zone, feature, amount,
   the balance after it.
-- **A paid action is one line**: its `ai` hold and the `refund` with the same
-  refId read "Held N · used M · returned N−M" (预扣 · 实际 · 退还); a hold with
-  no refund yet reads "still running".
+- **Actual spend only** (owner, 2026-11-09): a paid action is one line of its
+  net charge — what it really cost. Its hold and the release `settleAi`
+  writes (an `ai:` refund with the same refId) never show, on the page or in
+  the CSV; an action that kept nothing (a failure, a refusal, a reply under a
+  credit) is not shown at all. A hold not settled yet reads "Still running".
+  The ledger keeps every row; this is display only (admin views see all).
+- **A refund after the fact is its own line**, linked to the line it gives
+  back: a pass refunded to the wallet (`pass:<refId>`), a reversed top-up
+  (`topup:<refId>`). Every `ai:` refund is a settle today — there is no
+  later-refund path for an AI charge; one would need a refId of its own.
 - **Feature**: an `ai` row's `note` is the metered call's feature id
   (`FEATURES` maps each to a group and the page it was used on); no note = a
   Learning Partner reply. Other reasons are their own feature. A line links to
@@ -264,7 +271,9 @@ Rules in `lib/payments/credit-usage.ts`, the handler in
   20,000 lines shows its newest).
 - **Filters** by feature group and local day range (inclusive); **this
   month's** totals per group in the viewer's zone; **CSV** of the filtered
-  lines, oldest first, times in UTC and local, formula-looking cells defused.
+  lines, oldest first (one row per action, its net amount; `status` pending;
+  `refund_of` the time of the line a refund gives back), times in UTC and
+  local, formula-looking cells defused.
 - Tests: `unit/credit-usage.test.ts`; QA `scripts/qa/qa-credits-usage.mjs`
   (suite `credits-usage`).
 
