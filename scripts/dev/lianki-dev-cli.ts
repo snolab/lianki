@@ -294,7 +294,7 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
 }
 
 /**
- * With a lane token (LIANKI_TOKEN, made at lianki.com/preferences → API tokens
+ * With a lane token (LIANKI_TOKEN, made at lianki.com/my/preferences → API tokens
  * with the chat permissions): the argv for the public CLI's `lianki chat …`
  * (packages/lianki-cli), which posts as the token's name in the token
  * account's own thread. No `--to`, `--task-path`, `--agent` or `--label`:
@@ -454,7 +454,7 @@ export function doctorFindings(f: Facts): Finding[] {
         : {
             check: "lane-token",
             level: "warn",
-            line: `no lane token for ${f.lane}: say/ask use the saved grant; lane-listen needs one (the owner makes it at lianki.com/preferences → API tokens, docs/lane-listen.md)`,
+            line: `no lane token for ${f.lane}: say/ask use the saved grant; lane-listen needs one (the owner makes it at lianki.com/my/preferences → API tokens, docs/lane-listen.md)`,
           },
     );
   out.push({

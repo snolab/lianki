@@ -170,7 +170,7 @@ export async function requestEmailChange(req: Request, d: EmailDeps): Promise<Re
         .bind(who.id, await sha256Hex(token), who.email, email, now + PROFILE.emailLinkMs)
         .run();
       // After the #: a fragment reaches no server log and no Referer.
-      const url = `${d.origin()}/profile/email-confirm#${who.id}.${token}`;
+      const url = `${d.origin()}/my/profile/email-confirm#${who.id}.${token}`;
       await d.send({
         to: email,
         ...(await changeMail(db, "email-confirm", locale, { url }, who.id)),

@@ -1,5 +1,5 @@
 /**
- * Settings → API tokens: Revoke asks first (app/(app)/preferences/RevokeConfirm.tsx).
+ * Settings → API tokens: Revoke asks first (app/(app)/my/preferences/RevokeConfirm.tsx).
  * The first click only opens "Revoke <name>? Apps using it stop working at
  * once." with Revoke and Cancel; Cancel takes the focus, Esc backs out, and
  * only the confirming Revoke deletes. The component is stateless, so its
@@ -12,7 +12,7 @@ import {
   escapeCancels,
   RevokeConfirm,
   revokeQuestion,
-} from "@/app/(app)/preferences/RevokeConfirm";
+} from "@/app/(app)/my/preferences/RevokeConfirm";
 import apiTokens from "@/app/components/api-tokens.content";
 
 const labels = {

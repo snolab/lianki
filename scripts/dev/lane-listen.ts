@@ -13,7 +13,7 @@
  *   lianki-dev lane-listen --as codex --dry-run       # print what it would hand over
  *
  * The token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (0600),
- * made by the owner (lianki.com/preferences → API tokens; name = the lane,
+ * made by the owner (lianki.com/my/preferences → API tokens; name = the lane,
  * chat:read chat:write chat:ask, an expiry). Never printed; a lane never
  * makes one. Without it, exit 2 and say which token is needed.
  *
