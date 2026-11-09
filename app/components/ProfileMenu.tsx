@@ -156,6 +156,10 @@ export function ProfileMenu({
           <MenuLink href="/membership" icon="star">
             {labels.membership}
           </MenuLink>
+          {/* Owner, 2026-11-09: the credits usage list one tap from the account menu. */}
+          <MenuLink href="/membership/credits" icon="list">
+            {labels.creditsUsage ?? "Credits usage"}
+          </MenuLink>
           <LanguageSwitcher variant="menu" />
           {/* One preview control: the whole-page switch, with Live view (dev
               parts on lianki.com) as a chip in the same row, only on
