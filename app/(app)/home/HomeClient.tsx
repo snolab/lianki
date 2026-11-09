@@ -1,7 +1,7 @@
 "use client";
 import { useSignedIn } from "@/app/components/BoxApiBridge";
 
-import { isEntrySource } from "@/lib/words/entry-list";
+import { dueNow, shownLists } from "@/lib/today/goal";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
@@ -17,7 +17,14 @@ import { FeatureCard } from "./FeatureCard";
  * a Continue sit above Explore. The LiCards (链卡) page-card features close the
  * Explore grid.
  */
-export default function HomeClient({ isLoggedIn: serverSignedIn }: { isLoggedIn: boolean }) {
+export default function HomeClient({
+  isLoggedIn: serverSignedIn,
+  todayGoal = false,
+}: {
+  isLoggedIn: boolean;
+  /** `today.goal`: a link to /today beside Continue. */
+  todayGoal?: boolean;
+}) {
   // On a box, from lianki.com (BoxApiBridge); else the server's answer.
   const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("nav-home");
@@ -45,14 +52,10 @@ export default function HomeClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
           { lists?: { due?: number; source?: string }[] } | null,
           { lists?: { id: string }[] } | null,
         ]) => {
-          const ids = new Set((catalog?.lists ?? []).map((c) => c.id));
-          // No catalog (offline, first visit): fall back to every non-group list.
-          const lists = (d?.lists ?? []).filter((l) =>
-            catalog
-              ? !!l.source && (ids.has(l.source) || isEntrySource(l.source))
-              : !l.source?.startsWith("group:"),
-          );
-          setWords({ lists: lists.length, due: lists.reduce((s, l) => s + (l.due ?? 0), 0) });
+          // No catalog (offline, first visit): every non-group list (lib/today/goal.ts).
+          const ids = catalog ? new Set((catalog.lists ?? []).map((c) => c.id)) : null;
+          const lists = shownLists(d?.lists ?? [], ids);
+          setWords({ lists: lists.length, due: dueNow(lists) });
         },
       )
       .catch(() => setWords({ lists: 0, due: 0 }));
@@ -80,9 +83,19 @@ export default function HomeClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
                 {words.lists} {t.lists}
               </span>
             </p>
+            {todayGoal && (
+              <Link
+                href="/today"
+                data-home-today
+                className="ms-auto inline-flex items-center gap-1.5 rounded-lg border border-current/30 px-4 py-2.5 font-semibold"
+              >
+                <Icon name="sparkle" />
+                {label("today")}
+              </Link>
+            )}
             <Link
               href={words.lists > 1 ? "/words?list=all" : "/words"}
-              className="ms-auto rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5"
+              className={`${todayGoal ? "" : "ms-auto "}rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5`}
             >
               {t.cont} →
             </Link>

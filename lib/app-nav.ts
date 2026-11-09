@@ -41,6 +41,7 @@ export type NavItem = {
 // group key stays "advanced".
 export const APP_NAV: NavItem[] = [
   { key: "home", href: "/home", icon: "house", group: "main" },
+  { key: "today", href: "/today", icon: "sparkle", group: "main", flag: "today.goal" },
   { key: "words", href: "/words", icon: "textAa", group: "main" },
   { key: "alphabet", href: "/alphabet", icon: "textAUnderline", group: "main" },
   { key: "learn", href: "/learn", icon: "graduationCap", group: "main" },

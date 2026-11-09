@@ -120,6 +120,12 @@ export const FLAGS = {
     requires: ["komoju.live-key"],
     money: true,
   },
+  // No `audience`: the page and its rail / home links for everyone; ON is the shipped state.
+  "today.goal": {
+    description:
+      "今日目标（/today）：全屏的一页，只有一个数字「还剩 N 张卡片」和一条进度条，加一个「开始」按钮去 /words。数字来自单词列表的真实计数（现在到期的复习卡，和 /words、首页的「到期」一样）；进度条是今天已复习的卡片占（已复习 + 还剩）的比例。亮色金底红字，暗色红底金字。侧栏和首页都有入口。关闭 = 没有这个页面（404），也没有入口。",
+    default: true,
+  },
   "words.voice-mode": {
     description:
       "/words 语音口令模式：设置里出现「语音口令」开关，打开后不用唤醒词，说「下一张、上一张、上下左右、重来/困难/良好/简单、显示答案、再读一遍、撤销、退出语音模式」来操作。关闭时只有站长本人能预览。",

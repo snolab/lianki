@@ -55,6 +55,8 @@ export const APP_ROUTES = [
   "self-intro",
   "sign-in",
   "stats",
+  // The day's goal, full screen (lib/today/goal.ts).
+  "today",
   "vibe",
   "words",
   "sites",

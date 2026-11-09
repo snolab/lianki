@@ -47,7 +47,7 @@ describe("registry", () => {
     expect(FLAG_KEYS).toContain("payments.komoju.live");
     // Default-on is only for a flag that keeps something already live switchable.
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
-    expect(on).toEqual(["stt.polish"]);
+    expect(on).toEqual(["today.goal", "stt.polish"]);
     for (const k of FLAG_KEYS) expect(FLAGS[k].description.length).toBeGreaterThan(0);
     expect(FLAGS["payments.stripe.live"].default).toBe(false);
     expect(

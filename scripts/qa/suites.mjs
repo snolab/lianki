@@ -161,6 +161,23 @@ export const SUITES = [
     paths: READ,
     sensitive: true,
   },
+  // /today, today's goal: the one number from /words's counts, red and gold by theme, links (lib/today/goal.ts).
+  {
+    name: "TODAY (qa-today)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-today.mjs"],
+    base: true,
+    id: "today",
+    paths: [
+      "app/(app)/today/**",
+      "app/api/words/today/**",
+      "lib/today/**",
+      "app/(app)/home/**",
+      "lib/app-nav.ts",
+      "scripts/qa/qa-today.mjs",
+    ],
+    sensitive: false,
+  },
   // Import a word list on /import (docs/import-material.md, M1): flag gate, preview counts, a /words list.
   {
     name: "IMPORT WORDLIST (qa-import-wordlist)",
