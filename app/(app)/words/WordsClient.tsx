@@ -45,6 +45,7 @@ import {
 import { Icon, type IconName } from "@/app/components/icons";
 import { useImportPanel } from "./ImportPanel";
 import { useIntlayer, useLocale } from "next-intlayer";
+import WordsOnboarding from "./WordsOnboarding";
 import {
   closestCenter,
   DndContext,
@@ -103,6 +104,8 @@ import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/wor
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { backParts, ROW_LINE_LH, rowMetrics } from "@/lib/words/row-layout";
+import { backAvail, backLines } from "@/lib/words/row-pinch";
+import { useRowPinch } from "@/lib/words/use-row-pinch";
 import { withPickedExample, type Example } from "@/lib/words/example-pick";
 import {
   SongClipButton,
@@ -734,7 +737,7 @@ function WhisperModeSetting({
           role="radio"
           aria-checked={mode === m}
           onClick={() => pick(m)}
-          className={`rounded-full px-2 py-0.5 ${mode === m ? "bg-emerald-500/20 font-semibold text-emerald-900 dark:text-emerald-100" : "opacity-70"}`}
+          className={`rounded-full px-2 py-0.5 ${mode === m ? "bg-blue-600/15 font-semibold text-blue-800 dark:bg-blue-400/20 dark:text-blue-100" : "opacity-70"}`}
         >
           {text[k].value}
         </button>
@@ -762,13 +765,13 @@ function TogglePill({
       onClick={() => onChange(!on)}
       className={`inline-flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs transition-colors ${
         on
-          ? "bg-emerald-500/20 text-emerald-900 dark:text-emerald-100"
+          ? "bg-blue-600/15 text-blue-800 dark:bg-blue-400/20 dark:text-blue-100"
           : "bg-black/5 dark:bg-white/10 opacity-80"
       }`}
     >
       <span
         className={`relative h-4 w-7 rounded-full transition-colors ${
-          on ? "bg-emerald-500" : "bg-black/25 dark:bg-white/30"
+          on ? "bg-blue-600 dark:bg-blue-400" : "bg-black/25 dark:bg-white/30"
         }`}
       >
         <span
@@ -1525,12 +1528,18 @@ function Glance({
   className,
   title,
   lines = 1,
+  cell,
+  hidden = false,
   children,
 }: {
   active: boolean;
   className: string;
   title?: string;
   lines?: number;
+  /** A back cell, first or second in the row (measured by the card-height pinch). */
+  cell?: 1 | 2;
+  /** No room for it (a short row): kept, at no height, so it is still measured. */
+  hidden?: boolean;
   children: React.ReactNode;
 }) {
   const wrap = lines > 1;
@@ -1643,8 +1652,12 @@ function Glance({
     );
     return () => anim.cancel();
   }, [over, wrap, following]);
-  const follow = { [FOLLOW_ATTR]: "" };
-  const clip = following ? "overflow-auto lk-ex-follow" : "overflow-hidden";
+  const follow = {
+    [FOLLOW_ATTR]: "",
+    ...(cell ? { "data-back-cell": String(cell) } : {}),
+    ...(hidden ? { "aria-hidden": true } : {}),
+  };
+  const clip = `${following ? "overflow-auto lk-ex-follow" : "overflow-hidden"}${hidden ? " slip-cell-hidden" : ""}`;
   if (wrap)
     return (
       <span
@@ -1957,6 +1970,9 @@ export default function WordsClient({
   voice = "off",
   ytSongs = false,
   importOn = false,
+  importAiOn = false,
+  pinch = false,
+  onboarding = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
@@ -1965,6 +1981,12 @@ export default function WordsClient({
   ytSongs?: boolean;
   /** The Import button at the top (`import.any`: every user while on; the owner on or off). */
   importOn?: boolean;
+  /** "Words with AI" on stored files (`words.import-ai`); credits are checked when the panel opens. */
+  importAiOn?: boolean;
+  /** The card-height pinch on the list (`words.pinch-card-height`, on by default). */
+  pinch?: boolean;
+  /** `words.onboarding`: the walkthrough and its "?" by the heading (/words only, not /alphabet). */
+  onboarding?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
@@ -2130,6 +2152,7 @@ export default function WordsClient({
             lists={studying}
             catalog={fullCatalog}
             voice={voice}
+            pinch={pinch}
             title={
               listId === ALL
                 ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
@@ -2153,6 +2176,8 @@ export default function WordsClient({
         catalog={fullCatalog}
         offline={offline}
         importOn={importOn && !!config.imports}
+        importAiOn={importAiOn}
+        onboarding={onboarding && !given}
         onOpen={setListId}
         onRefresh={refreshLists}
         onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
@@ -2205,7 +2230,7 @@ function UndoDeleteToast({ doomed, onUndo }: { doomed: DoomedList; onUndo: () =>
       <button
         ref={undo}
         onClick={onUndo}
-        className="min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]"
+        className="min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.165_22.3)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.132_22.3)]"
       >
         {text.undoDelete}
       </button>
@@ -2436,7 +2461,7 @@ function SortableListRow({
             }}
             onBlur={(e) => endEdit(e.currentTarget.value)}
             // 16px text: phones do not zoom into the field.
-            className="w-full min-h-11 rounded-md px-2 text-base font-medium bg-[oklch(1_0_0/0.7)] dark:bg-[oklch(0.2_0_0/0.7)] ring-1 ring-[oklch(0.5_0_0/0.35)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.6_0.15_250)]"
+            className="w-full min-h-11 rounded-md px-2 text-base font-medium bg-[oklch(1_0_0/0.7)] dark:bg-[oklch(0.2_0_0/0.7)] ring-1 ring-[oklch(0.5_0_0/0.35)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.6_0.165_22.3)]"
           />
         </form>
       ) : (
@@ -2445,7 +2470,7 @@ function SortableListRow({
         <button
           type="button"
           data-open-list={l.id}
-          className="flex min-h-14 min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-2 ps-1 text-start focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.15_250)]"
+          className="flex min-h-14 min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-2 ps-1 text-start focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.165_22.3)]"
           onClick={() => onOpen(l.id)}
           title={
             (isGroup ? `${text.groupRowHint.value}\n` : "") +
@@ -2620,6 +2645,8 @@ function ListPicker({
   catalog,
   offline,
   importOn,
+  importAiOn,
+  onboarding,
   onOpen,
   onRefresh,
   onDelete,
@@ -2633,6 +2660,10 @@ function ListPicker({
   offline: boolean;
   /** Show the Import button and panel at the top (ImportPanel.tsx). */
   importOn: boolean;
+  /** "Words with AI" on stored files, if the user's credits cover it. */
+  importAiOn: boolean;
+  /** The walkthrough's "?" after the heading (WordsOnboarding.tsx). */
+  onboarding: boolean;
   onOpen: (id: string) => void;
   /** Reload the lists from the server. */
   onRefresh: () => Promise<void>;
@@ -2974,7 +3005,10 @@ function ListPicker({
 
   // The Import button and its panel (ImportPanel.tsx): a list made from a
   // table shows up in the lists at once.
-  const importPanel = useImportPanel({ onAdded: () => void onRefresh() });
+  const importPanel = useImportPanel({
+    onAdded: () => void onRefresh(),
+    aiOn: importAiOn,
+  });
 
   const addGroup = async () => {
     const name = prompt(text.groupName.value)?.trim();
@@ -2990,7 +3024,10 @@ function ListPicker({
     <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-8">
       <div>
         <div className="flex items-start justify-between gap-3">
-          <h1 className="min-w-0 text-2xl font-semibold">{config.title}</h1>
+          <div className="flex min-w-0 items-center gap-0.5">
+            <h1 className="min-w-0 text-2xl font-semibold">{config.title}</h1>
+            {onboarding && <WordsOnboarding />}
+          </div>
           {importOn && importPanel.button}
         </div>
         <p className="opacity-70 text-sm mt-1">{config.intro}</p>
@@ -3035,7 +3072,7 @@ function ListPicker({
       {studyable.length > 1 && (
         <button
           onClick={() => onOpen(ALL)}
-          className="w-full flex items-center gap-3 rounded-lg bg-emerald-500/20 dark:bg-emerald-700/40 hover:bg-emerald-500/30 dark:hover:bg-emerald-700/60 px-4 py-3 text-left"
+          className="w-full flex items-center gap-3 rounded-lg bg-gold-300/50 dark:bg-gold-300/20 hover:bg-gold-300/70 dark:hover:bg-gold-300/30 px-4 py-3 text-left"
         >
           {keys && <kbd className="text-xs opacity-50">0</kbd>}
           <span className="flex-1">
@@ -3556,7 +3593,7 @@ function AddedToast({
     ? fill(text.addFailed.value, { error: added.error })
     : fill(text.addedToast.value, { names });
   const action =
-    "min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]";
+    "min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.165_22.3)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.132_22.3)]";
   return (
     <div
       role="status"
@@ -3687,8 +3724,11 @@ export function Study({
   onExit,
   voice,
   scope,
+  pinch = false,
 }: {
   scope?: StudyScope;
+  /** The card-height pinch (`words.pinch-card-height`, lib/words/use-row-pinch.ts). */
+  pinch?: boolean;
   config: DrillConfig;
   /** Whether the voice mode switch is offered (lib/words/voice-access.ts). */
   voice: VoiceAccess;
@@ -4342,10 +4382,21 @@ export function Study({
   const cardScale = useTextScale("cards");
   // A scope may ask for more lines in every row (the reader's review: one).
   const extraLines = scope?.extraLines ?? 0;
-  const { rowH: ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale, extraLines);
+  const { rowH: DEFAULT_ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale, extraLines);
   const listRef = useRef<HTMLDivElement>(null);
   /** The list element as state, for effects that must start when it mounts. */
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
+  // A two-finger vertical pinch sets every row's height (owner, 2026-11-10);
+  // the back cells get the lines the height has room for (lib/words/row-pinch.ts).
+  const pinchK = Math.max(1, cardScale);
+  const { rowH: ROW_H, anchor: pinchAnchor } = useRowPinch({
+    list: listEl,
+    on: pinch,
+    touch,
+    k: pinchK,
+    defaultH: DEFAULT_ROW_H,
+  });
+  const backRoom = backLines(backAvail(ROW_H, pinchK, touch), touch);
   const setListRef = useCallback((el: HTMLDivElement | null) => {
     listRef.current = el;
     setListEl(el);
@@ -4552,8 +4603,10 @@ export function Study({
     rowHWas.current = ROW_H;
     const el = listRef.current;
     if (was === ROW_H || !el) return;
-    el.scrollTop = pad + ((el.scrollTop - pad) / was) * ROW_H;
-  }, [ROW_H, pad]);
+    // A pinch keeps the row between the fingers where it is; else the top row.
+    const at = pinchAnchor() ?? 0;
+    el.scrollTop = pad + ((el.scrollTop + at - pad) / was) * ROW_H - at;
+  }, [ROW_H, pad, pinchAnchor]);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled. Measured against the list's
@@ -5594,6 +5647,8 @@ export function Study({
               overflowAnchor: "none",
               scrollPaddingTop: bar.top,
               scrollPaddingBottom: bar.bottom,
+              // The card-height pinch is the list's own: never the page's zoom.
+              ...(pinch && touch ? { touchAction: "pan-y" } : {}),
             }}
             onScroll={(e) => {
               syncScroll(e.currentTarget.scrollTop);
@@ -5723,7 +5778,7 @@ export function Study({
                       : hasExamples
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--ex-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
-                  } ${rating ? RATING_STYLE[rating] : ""}`}
+                  } ${rating ? `${RATING_STYLE[rating]} slip-done` : ""}`}
                   style={{ height: ROW_H }}
                   a={SWIPE_A}
                 >
@@ -5738,9 +5793,9 @@ export function Study({
                   <Glance
                     active={glancing}
                     title={it.reading ? `${it.term} ${it.reading}` : it.term}
-                    className={`font-medium ${
+                    className={`slip-term font-medium ${
                       it.kind === "new"
-                        ? "text-emerald-600 dark:text-emerald-400"
+                        ? "text-blue-600 dark:text-blue-300"
                         : it.kind === "again"
                           ? "text-amber-600 dark:text-amber-300"
                           : ""
@@ -5769,7 +5824,7 @@ export function Study({
                           : "text-sm opacity-70";
                       // Desktop: a card without an example spans both columns.
                       const span = !touch && hasExamples && parts.length === 1 ? "col-span-2" : "";
-                      const look = `${tone} ${span} transition-[filter] duration-75 ${
+                      const look = `slip-back ${tone} ${span} transition-[filter] duration-75 ${
                         touch ? "block min-w-0" : ""
                       } ${show ? "" : "slip-blank"}`;
                       // The taller rows' room (owner, 2026-11-03): on a phone the
@@ -5777,7 +5832,12 @@ export function Study({
                       // one line; on desktop each column may take two lines.
                       // A scope's extra lines go to the first line on a phone, to
                       // each column on desktop (side by side: one line taller).
-                      const lines = !touch || first ? 2 + extraLines : 1;
+                      // The row's height decides (lib/words/row-pinch.ts backLines): at
+                      // the default, as above; pinched, more or fewer, down to the word alone.
+                      const room = first ? backRoom.first : backRoom.second;
+                      const lines = Math.max(1, room);
+                      const cellNo = first ? 1 : 2;
+                      const hide = room <= 0;
                       if (k === "meaning")
                         return (
                           <Glance
@@ -5786,6 +5846,8 @@ export function Study({
                             title={show ? it.back : undefined}
                             className={look}
                             lines={lines}
+                            cell={cellNo}
+                            hidden={hide}
                           >
                             {config.readingOnBack && it.reading && it.reading !== it.term && (
                               <bdi className="mr-2 font-medium">{it.reading}</bdi>
@@ -5813,7 +5875,9 @@ export function Study({
                               active={glancing && show}
                               title={show ? it.ex : undefined}
                               className={look}
-                              lines={1 + extraLines}
+                              lines={Math.max(1, room - 1)}
+                              cell={cellNo}
+                              hidden={hide}
                             >
                               {show && <SongClipButton clip={it.clip} text={it.ex} />}
                               <bdi lang={it.lang} data-row-example>
@@ -5829,7 +5893,9 @@ export function Study({
                             <Glance
                               active={glancing && show}
                               title={show ? it.exTr : undefined}
-                              className={`text-xs opacity-60 transition-[filter] duration-75 ${show ? "" : "slip-blank"}`}
+                              className={`slip-back text-xs opacity-60 transition-[filter] duration-75 ${show ? "" : "slip-blank"}`}
+                              cell={cellNo}
+                              hidden={room <= 1}
                             >
                               <span data-row-ex-tr>{it.exTr}</span>
                             </Glance>
@@ -5844,6 +5910,8 @@ export function Study({
                           }
                           className={look}
                           lines={lines}
+                          cell={cellNo}
+                          hidden={hide}
                         >
                           {it.ex ? (
                             <>

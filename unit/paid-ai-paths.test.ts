@@ -126,6 +126,7 @@ describe("translate, polish, live polish", () => {
       error: "no-credits",
       balance: 0,
       need: 1,
+      recommended: 1,
     });
     expect(calls).toBe(0);
     setBalance(5);

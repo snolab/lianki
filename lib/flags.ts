@@ -120,6 +120,18 @@ export const FLAGS = {
     requires: ["komoju.live-key"],
     money: true,
   },
+  // No `audience`: the page and its rail / home links for everyone; ON is the shipped state.
+  "today.goal": {
+    description:
+      "今日目标（/today）：全屏的一页，只有一个数字「还剩 N 张卡片」和一条进度条，加一个「开始」按钮去 /words。数字来自单词列表的真实计数（现在到期的复习卡，和 /words、首页的「到期」一样）；进度条是今天已复习的卡片占（已复习 + 还剩）的比例。亮色金底红字，暗色红底金字。侧栏和首页都有入口。关闭 = 没有这个页面（404），也没有入口。",
+    default: true,
+  },
+  // No `audience`: a walkthrough for everyone on /words; ON is the shipped state.
+  "words.onboarding": {
+    description:
+      "/words 首次引导：第一次打开单词列表时播放一段约五个场景的 SVG 动画（点卡片看答案、按感觉评分、处理过的卡片变淡可撤销、之后卡片在下面再出现、双指上下捏改变卡片高度），可跳过；看完或跳过后缩进标题旁的圆圈「?」按钮，点它重播。是否看过跟随账号同步。关闭 = 不自动播放，也没有「?」按钮。",
+    default: true,
+  },
   "words.voice-mode": {
     description:
       "/words 语音口令模式：设置里出现「语音口令」开关，打开后不用唤醒词，说「下一张、上一张、上下左右、重来/困难/良好/简单、显示答案、再读一遍、撤销、退出语音模式」来操作。关闭时只有站长本人能预览。",
@@ -182,6 +194,13 @@ export const FLAGS = {
     default: false,
     group: "words",
   },
+  "words.import-ai": {
+    description:
+      "导入：AI 把已保存的文件变成单词：/words「导入」面板第三项「任意文件」里，每个已保存的文件旁多一个「用 AI 变成单词」按钮。服务器读出这个文件的文字（文本、PDF、Word、网页、字幕 .srt、Excel、照片），交给 DeepSeek（Cloudflare Workers AI）整理成和 CSV 模板一样的表（单词 / 释义 / 例句），然后走 CSV 导入同一条路：先看生成的 CSV（可下载、可修改）和预览，确认后才添加。用户自己的额度付费：先按这个文件最多可能花的扣住，做完按实际结算、多的退回；额度不够就说不够，不缩小；超过扣住的额度就停，不多扣。只有额度够最小一次扣住的人才看得到按钮。打开 = 所有登录用户（额度够的）；关闭（默认）= 只有有 dev 权限的人（额度够的，管理员免费）。",
+    default: false,
+    group: "words",
+  },
+
   "read.gdoc-stream": {
     description:
       "Google 文档实时同步：所有用户都能在 Google 文档页面上用用户脚本打开“同步到 Lianki”，这个文档之后每次改动都会更新到自己的 /reader，打开 /reader/<id>?streamingFrom=google-docs 的阅读页会实时更新并重新标记词。只同步用户自己打开开关的文档，且要保持文档标签页开着。关闭（默认）= 只有你本人能用。",
@@ -251,6 +270,12 @@ export const FLAGS = {
       "应用图标角标数字（docs/app-badge.md）：装到主屏幕/程序坞的 Lianki 图标上显示一个数字 = 没回答的 Li 提问卡 + 今天到期的卡片（页面卡片和单词）。在「设置 → 通知」里选数什么：关闭 / 只数提问 / 只数到期卡片 / 两个都数（默认）。打开 App、切回来、回答提问、复习完都会更新；在 /review、/words 上时不数到期卡片。浏览器不支持就什么都不做（iPhone 需要 iOS 16.4+、从主屏幕打开并允许通知）。现在打开后只有你本人能用（以后再加名单）。关闭（默认）= 谁都没有角标，设置里也没有这一行。",
     default: false,
     audience: "owner",
+  },
+  // No `audience`: on (the default), every /words list review has it.
+  "words.pinch-card-height": {
+    description:
+      "单词列表复习里双指上下捏合改卡片高度：两指在列表上竖着捏拢 = 卡片变矮、一屏更多词；张开 = 卡片变高、每张显示更多（例句、意思）。最矮只剩单词，最高把屏幕上的卡片内容全部显示出来；松手后停在整行上。高度跟着账号同步到所有设备。页面不会被缩放，单指滑动照旧。打开（默认）= 所有人都能捏；关闭 = 捏合不改高度，已选的高度也不再生效（恢复默认高度）。",
+    default: true,
   },
   "membership.email-invite": {
     description:

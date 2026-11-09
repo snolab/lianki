@@ -136,11 +136,11 @@ export const NEEDS_ME_KEY = "state-tree:needs-me";
 const ACCENT = "oklch(0.58 0.21 33)";
 const INK: Record<TreeStatus, string> = {
   open: "oklch(0.62 0.03 260)",
-  doing: "oklch(0.6 0.16 250)",
+  doing: "oklch(0.6 0.176 22.3)",
   blocked: "oklch(0.7 0.16 70)",
   done: "oklch(0.62 0.15 150)",
 };
-const LINK_INK = "oklch(0.58 0.15 255)";
+const LINK_INK = "oklch(0.58 0.165 22.3)";
 
 const fill = (s: string, n: number) => s.replace("{n}", String(n));
 

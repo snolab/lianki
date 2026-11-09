@@ -6,13 +6,15 @@ name: CI
 #
 # - `checks` — OXC lint + format check, typecheck, the WHOLE unit suite with its
 #   coverage gate. Every PR, every merge group, every push to main (~20 s).
-# - `qa` — the whole `bun run qa:all` (OpenNext build → wrangler dev on local
-#   D1 → every suite), in the merge queue only; also nightly on main
+# - `qa` — the whole qa:all (OpenNext build → wrangler dev on local D1 → every
+#   suite), built once and run in three parallel shards (qa-sharded.yml), in
+#   the merge queue only (and on a manual dispatch); also nightly on main
 #   (nightly-qa.yml). A PR does not wait for it and main's deploy does not
 #   either (owner, 2026-10-31). Blocking (QA_BLOCKING below).
 # - `gate` — named `Typecheck + unit`, the one required check: green when
-#   `checks` passed and `qa` passed or was skipped (it is skipped outside the
-#   merge queue). Branch protection is unchanged.
+#   `checks` passed and `qa` (its build and every shard) passed or was skipped
+#   (it is skipped outside the merge queue). It is the aggregator the shards
+#   report through, so branch protection is unchanged.
 #
 # QA_BLOCKING "false" turns a qa failure into a warning on the gate. It was
 # "false" while WORDS' Settings-sheet check failed in CI (2026-11-08,
@@ -100,27 +102,13 @@ jobs:
         run: |
           bash scripts/ci/slack-alert.sh ":red_circle: main is red at ${GITHUB_SHA::7} — Lint + typecheck + unit failed, so the deploy is held: ${RUN_URL}"
 
-  # The whole qa:all, merge queue only. Same container and steps as nightly-qa.yml
-  # (see the reasons there: browsers baked into the image, Node 24, HOME=/root
-  # for Firefox). ~6-7 min on a runner.
+  # The whole qa:all, merge queue only (and by hand), split over a build job
+  # and three parallel shards (qa-sharded.yml; docs/shipping.md, "qa:all in
+  # shards"). Was one ~12.5 min job until 2026-11-10.
   qa:
-    name: qa:all (merge queue)
-    if: github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    container:
-      image: mcr.microsoft.com/playwright:v1.58.2-noble
-    env:
-      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
-    steps:
-      - uses: actions/checkout@v4
-      - run: apt-get update && apt-get install -y unzip xvfb
-      - uses: ./.github/actions/setup-bun # pinned, cached, retried
-      - run: bun install --frozen-lockfile
-      - name: qa:all
-        run: bun run qa:all
-        env:
-          HOME: /root
+    name: qa
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/qa-sharded.yml
 
   # The required check. Its name is what branch protection names, so it stays
   # `Typecheck + unit` though it now stands for both jobs above.

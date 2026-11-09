@@ -1,71 +1,61 @@
-name: Nightly QA
+name: Full QA
 
-# The full integration gate, `bun run qa:all` (OpenNext build → wrangler dev on
-# local D1 → API + UI + sync + userscript suites), plus the extension smoke
-# test, against main once a night. It used to run on every push and PR, and
-# main's deploy waited ~4 min for it (owner, 2026-10-31: run it nightly). The
-# merge queue runs the same qa:all on every PR before it lands (ci.yml, `qa`),
-# and pre-push runs only the suites a change reaches; this catches what slipped
-# past both, and drift in the runner image.
+# The full set — every qa:all suite (build + three shards, qa-sharded.yml) and
+# the extension smoke test — on main. Never on a timer (owner, 2026-11-10: he
+# can be away for days; with no merges nothing runs). It starts:
+# - from merges, through full-qa-trigger.yml: once merges have been quiet
+#   FULL_QA_QUIET_MIN minutes (debounce), at once when a QA_FULL path changed
+#   or FULL_QA_MAX_MERGES merges piled up, and at the latest when the oldest
+#   untested merge has waited FULL_QA_MAX_WAIT_H hours (throttle);
+# - from deploy-worker.yml while deploys are held;
+# - by hand: `gh workflow run nightly-qa.yml -R snolab/lianki`.
+# The merge queue runs qa:all too (ci.yml); this catches what a combination
+# of merges breaks after the queue, and drift in the runner image. (File name kept from when it ran once a night on a cron.)
+#
 on:
-  schedule:
-    - cron: "0 18 * * *" # 03:00 JST
   workflow_dispatch:
 
+# A run in progress finishes; a newer start waits behind it (and replaces any
+# other waiting one), so the newest main is always tested next.
 concurrency:
   group: nightly-qa
-  cancel-in-progress: true
-
-env:
-  NEXT_TELEMETRY_DISABLED: "1"
+  cancel-in-progress: false
 
 jobs:
-  integration:
-    name: qa:all (D1/Workers)
+  # Runs on main, so the .next/cache it saves is the one merge-queue runs restore.
+  qa:
+    name: qa
+    uses: ./.github/workflows/qa-sharded.yml
+    with:
+      ext-smoke: true
+
+  on-red:
+    name: "On red: alert + revert PR"
+    needs: qa
+    if: failure() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Run inside the official Playwright image: chromium (+ all OS deps) is baked
-    # in, so the job never downloads a browser at runtime from cdn.playwright.dev
-    # → Google Cloud Storage — an egress path that has stalled for hours on
-    # Actions runners while being healthy everywhere else. The image also ships
-    # Node 24, satisfying the node:sqlite requirement. Pin the tag to the repo's
-    # Playwright version (package.json @playwright/test) so the preinstalled
-    # browser build matches what the tests expect.
-    container:
-      image: mcr.microsoft.com/playwright:v1.58.2-noble
-    # Cloudflare's "always passes" test sitekey, inlined into the build so the
-    # Turnstile widget renders without a real key (it gates only the magic-link
-    # button; qa:all uses the dev password path). https://developers.cloudflare.com/turnstile/troubleshooting/testing/
-    env:
-      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      # No setup-node: the Playwright image already provides Node 24.
-      # Bun (setup-bun or its fallback) extracts a release zip with `unzip`, which the image lacks.
-      - run: apt-get update && apt-get install -y unzip xvfb
+        with:
+          fetch-depth: 0 # the revert needs the commits since the last green run
       - uses: ./.github/actions/setup-bun # pinned, cached, retried
-      - run: bun install --frozen-lockfile
-      # No "playwright install" — browsers live in the image at
-      # $PLAYWRIGHT_BROWSERS_PATH (/ms-playwright); chromium-1208 matches v1.58.2.
-      # Builds the OpenNext Worker, applies migrations to local (Miniflare) D1,
-      # boots `wrangler dev` and runs all five suites. No Cloudflare account
-      # needed — wrangler runs D1/R2 locally.
-      - name: qa:all
-        run: bun run qa:all
-        # Firefox (qa-audio-free) refuses to start as root when $HOME is another
-        # user's: Actions sets /github/home, owned by the image's pwuser.
+      - name: Revert PR
+        id: revert
         env:
-          HOME: /root
-      # MV3 extension smoke test — loads the built extension into the image's
-      # Chromium (new-headless, always) and asserts the content script runs.
-      - name: Extension smoke test
-        run: bun run test:ext
-      - name: "Alert #lianki when nightly QA fails"
-        if: failure()
-        # A container job's default shell is sh, which dies on ${GITHUB_SHA::7}.
-        shell: bash
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/ci/full-qa.ts revert "$GITHUB_SHA"
+      - name: "Alert #lianki"
+        if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR: ${{ steps.revert.outputs.pr }}
         run: |
-          bash scripts/ci/slack-alert.sh ":red_circle: nightly qa:all failed on main at ${GITHUB_SHA::7}: ${RUN_URL}"
+          msg=":red_circle: full QA failed on main at ${GITHUB_SHA::7}, deploys are held until it is green: ${RUN_URL}"
+          if [ -n "$PR" ]; then msg="$msg — revert PR: $PR"; fi
+          bash scripts/ci/slack-alert.sh "$msg"

@@ -94,9 +94,15 @@ describe("partner AI: credits", () => {
 
   it("no balance for the worst case: the model is never called, nothing is debited", async () => {
     const calls = { n: 0 };
-    expect(await ask("m1", fakeFetch(calls))).toEqual({ ok: false, error: "no-credits" });
+    expect(await ask("m1", fakeFetch(calls))).toMatchObject({ ok: false, error: "no-credits" });
     setBalance(RESERVED - 1);
-    expect(await ask("m2", fakeFetch(calls))).toEqual({ ok: false, error: "no-credits" });
+    // The chat's line gets the minimum one reply needs and the balance.
+    expect(await ask("m2", fakeFetch(calls))).toEqual({
+      ok: false,
+      error: "no-credits",
+      need: RESERVED,
+      have: RESERVED - 1,
+    });
     expect(calls.n).toBe(0);
     expect(rows()).toEqual([]);
     expect(await getBalance(db(), "u_alice")).toBe(RESERVED - 1);
@@ -147,7 +153,7 @@ describe("partner AI: credits", () => {
       ask("y", fakeFetch(calls, answer(), 200, 20)),
     ]);
     expect([a.ok, b.ok].sort()).toEqual([false, true]);
-    expect([a, b].find((r) => !r.ok)).toEqual({ ok: false, error: "no-credits" });
+    expect([a, b].find((r) => !r.ok)).toMatchObject({ ok: false, error: "no-credits" });
     expect(calls.n).toBe(1);
     expect(await getBalance(db(), "u_alice")).toBeGreaterThanOrEqual(0);
   });

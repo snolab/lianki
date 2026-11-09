@@ -21,9 +21,19 @@
 //   jumps to the Add a list tree; "CSV or Excel table" shows the templates,
 //   which download (header row, BOM) and, uploaded back (.xlsx, then .csv),
 //   preview and add like any list; an old .xls gets a plain error.
+// - column mapping (lib/import/column-map.ts): a header-less table opens with
+//   its columns on word / meaning / example by order; chips dragged by mouse
+//   and moved by keyboard (Space, arrows, Space) put each column on its field,
+//   the card preview follows at once, and the list holds what the cards showed.
 // - "Any file" (stored, not processed): a file of any type uploaded in the
 //   panel is listed with its name and size, and Delete removes it; without
 //   the gate its route is 404 like the rest.
+// - "Words with AI" on a stored file (`words.import-ai`, off in the light run,
+//   on in the dark): off → a `dev` holder only (another user: GET says off);
+//   on → every user. A new account with no credits is never offered it (GET
+//   says unavailable, no button on the file) and converting its stored file
+//   is refused before any model call (402, or 503 where no Workers AI is
+//   configured).
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -50,12 +60,18 @@ const d1 = (command) => {
   );
   if (r.status !== 0) throw new Error(`local D1: ${r.stderr}`);
 };
-const setFlag = (on) =>
+const AI_FLAG = "words.import-ai";
+const setFlag = (on, key = FLAG) =>
   d1(
     on
-      ? `INSERT OR REPLACE INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('${FLAG}', 1, '2026-11-09T00:00:00.000Z', 'qa')`
-      : `DELETE FROM feature_flags WHERE key = '${FLAG}'`,
+      ? `INSERT OR REPLACE INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('${key}', 1, '2026-11-09T00:00:00.000Z', 'qa')`
+      : `DELETE FROM feature_flags WHERE key = '${key}'`,
   );
+const convert = (ctx, fileId) =>
+  ctx.request.post("/api/import/ai", {
+    data: { fileId, locale: "en" },
+    headers: { origin: BASE, "content-type": "application/json" },
+  });
 
 const CSV = [
   "Word,Meaning,Example",
@@ -64,6 +80,12 @@ const CSV = [
   "perro,dog,",
   "gato,cat again,",
   ",no word here,",
+].join("\n");
+
+/** A table without a header, columns out of order: example, meaning, note, word. */
+const MAPPED = [
+  "¡Buenos días!,good morning,greeting,buenos días",
+  "Un ratón.,mouse,animal,ratón",
 ].join("\n");
 
 const preview = (ctx, text) =>
@@ -106,6 +128,8 @@ async function notTheOwner(tag) {
     (await ctx.request.get("/api/import/files")).status() === 404,
     `${tag}, not the owner: the stored-files route is 404`,
   );
+  const ai = await (await ctx.request.get("/api/import/ai")).json();
+  check(ai.on === false, `${tag}, not the owner: Words with AI is off (${JSON.stringify(ai)})`);
   await page.goto("/words?lang=en");
   await page.waitForTimeout(3000);
   check(
@@ -133,6 +157,11 @@ async function everyone(tag) {
     (await ctx.request.get("/api/import/files")).status() === 200,
     `${tag}, not the owner: the stored-files route answers`,
   );
+  const ai = await (await ctx.request.get("/api/import/ai")).json();
+  check(
+    ai.available === false,
+    `${tag}, not the owner, no credits: Words with AI not offered (${JSON.stringify(ai)})`,
+  );
   await page.goto("/words?lang=en");
   await page.locator('[data-qa="words-import-button"]').waitFor({ timeout: 15000 });
   check(true, `${tag}, not the owner: the Import button on /words`);
@@ -146,7 +175,10 @@ try {
 
   for (const scheme of ["light", "dark"]) {
     // Light: the owner with the flag off; dark: with it on.
-    if (scheme === "dark") setFlag(true);
+    if (scheme === "dark") {
+      setFlag(true);
+      setFlag(true, AI_FLAG);
+    }
     console.log(`— iPhone 13 ${scheme}`);
     const ctx = await newSilentContext(browser, {
       ...devices["iPhone 13"],
@@ -204,6 +236,121 @@ try {
     );
     check(/qa-spanish\.csv/.test(await section.innerText()), "recent imports list the file");
 
+    // Column mapping: a table without a header, its columns out of order.
+    await page.goto("/import?lang=en");
+    await page
+      .locator('[data-qa="wordlist-file"]')
+      .setInputFiles({ name: "qa-mapped.csv", mimeType: "text/csv", buffer: Buffer.from(MAPPED) });
+    const mapper = page.locator('[data-qa="wordlist-mapper"]');
+    await mapper.waitFor({ timeout: 15000 });
+    const slotCols = (slot) =>
+      page
+        .locator(`[data-qa="wordlist-slot-${slot}"] [data-qa="wordlist-chip"]`)
+        .evaluateAll((els) => els.map((e) => Number(e.dataset.col)));
+    check(
+      JSON.stringify(await slotCols("term")) === "[0]" &&
+        JSON.stringify(await slotCols("back")) === "[1]" &&
+        JSON.stringify(await slotCols("ex")) === "[2]" &&
+        JSON.stringify(await slotCols("ignore")) === "[3]",
+      "mapping: by column order without a header (word, meaning, example; the 4th ignored)",
+    );
+    const firstCard = () =>
+      page.locator('[data-qa="wordlist-card"]').first().innerText({ timeout: 5000 });
+    check(
+      (await firstCard()).startsWith("¡Buenos días!"),
+      "cards: the wrong column shows as the word at first",
+    );
+    /**
+     * Drag a chip with a finger onto a slot (dnd-kit's touch sensor: a short
+     * hold picks it up, as on an iPhone), over CDP touch events.
+     */
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) =>
+      cdp.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1 }],
+      });
+    const drag = async (col, slot) => {
+      await page.evaluate(() =>
+        document
+          .querySelector('[data-qa="wordlist-slot-reading"]')
+          .scrollIntoView({ block: "center", behavior: "instant" }),
+      );
+      const a = await page.locator(`[data-qa="wordlist-chip"][data-col="${col}"]`).boundingBox();
+      const b = await page.locator(`[data-qa="wordlist-slot-${slot}"]`).boundingBox();
+      const [x0, y0] = [a.x + a.width / 2, a.y + a.height / 2];
+      const [x1, y1] = [b.x + b.width / 2, b.y + b.height - 10];
+      await touch("touchStart", x0, y0);
+      await page.waitForTimeout(300);
+      for (let i = 1; i <= 14; i++) {
+        await touch("touchMove", x0 + ((x1 - x0) * i) / 14, y0 + ((y1 - y0) * i) / 14);
+        await page.waitForTimeout(20);
+      }
+      await page.waitForTimeout(150);
+      await touch("touchEnd", x1, y1);
+      await page.waitForTimeout(300);
+    };
+    await drag(0, "ex"); // "¡Buenos días!" is the example
+    await drag(3, "term"); // "buenos días" is the word
+    check(
+      JSON.stringify(await slotCols("term")) === "[3]" &&
+        JSON.stringify((await slotCols("ex")).sort()) === "[0,2]",
+      `mapping: chips dragged onto their fields (word ${JSON.stringify(await slotCols("term"))}, example ${JSON.stringify(await slotCols("ex"))})`,
+    );
+    // Keyboard: Space picks the old example chip up, arrows carry it to Ignore, Space drops it.
+    const kChip = page.locator('[data-qa="wordlist-chip"][data-col="2"]');
+    await kChip.focus();
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(150);
+    for (let i = 0; i < 6 && !(await slotCols("ignore")).includes(2); i++) {
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(150);
+    }
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(300);
+    check(
+      (await slotCols("ignore")).includes(2),
+      `mapping: a chip moved by keyboard (ignore ${JSON.stringify(await slotCols("ignore"))})`,
+    );
+    const card = await firstCard();
+    check(
+      card.startsWith("buenos días") &&
+        card.includes("¡Buenos días!") &&
+        card.includes("good morning"),
+      `cards: the preview follows the chips (${card.replace(/\n/g, " | ")})`,
+    );
+    await page.screenshot({ path: join(OUT, `mapping-${scheme}.png`), fullPage: true });
+    // Counts follow the mapping too (asked again once the chips rest).
+    await page.waitForFunction(
+      () =>
+        /2 new/.test(document.querySelector('[data-qa="wordlist-preview-box"]')?.textContent ?? ""),
+      null,
+      { timeout: 10000 },
+    );
+    await page.locator('[data-qa="wordlist-lang"]').selectOption("es");
+    await page.locator('[data-qa="wordlist-add"]').click();
+    await page.locator('[data-qa="wordlist-done"]').waitFor({ timeout: 15000 });
+    const mHref = await page
+      .locator('[data-qa="wordlist-import"] a[href^="/words?list="]')
+      .first()
+      .getAttribute("href");
+    const mEntries = await (
+      await ctx.request.get(`/api/words/lists/${mHref?.split("=")[1]}/entries`)
+    ).json();
+    const e0 = (mEntries.entries ?? [])[0] ?? {};
+    check(
+      e0.term === "buenos días" && e0.back === "good morning" && e0.ex === "¡Buenos días!",
+      `commit: the server parsed with the mapping (${e0.term} / ${e0.back} / ${e0.ex})`,
+    );
+    // The page's mapping is checked again on the server: a column out of range is dropped.
+    const odd = await (
+      await ctx.request.post("/api/import/words", {
+        data: { step: "preview", text: MAPPED, fileName: "m.csv", mapping: { term: [9] } },
+        headers: { origin: BASE, "content-type": "application/json" },
+      })
+    ).json();
+    check(odd.fresh === 0, `a mapping with no real word column adds nothing (${odd.fresh})`);
+
     // The same words again: nothing new.
     const again = await (await preview(ctx, CSV)).json();
     check(
@@ -255,6 +402,52 @@ try {
       `any file: stored and listed (${row.replace(/\s+/g, " ")})`,
     );
     await page.screenshot({ path: join(OUT, `words-files-${scheme}.png`), fullPage: true });
+    // "Words with AI": never offered without credits; flag off, not even routed.
+    check(
+      (await stored.first().locator('[data-qa="words-import-file-ai"]').count()) === 0,
+      "/words: no credits → no 'Words with AI' on the stored file",
+    );
+    const quota = await (await ctx.request.get("/api/import/ai")).json();
+    check(
+      quota.available === false,
+      `GET /api/import/ai: not available (${JSON.stringify(quota)})`,
+    );
+    const fileId = (await (await ctx.request.get("/api/import/files")).json()).items?.[0]?.id;
+    let conv = (await convert(ctx, fileId)).status();
+    // The flag just turned on reaches the server within its 30 s cache.
+    for (let i = 0; conv === 404 && i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      conv = (await convert(ctx, fileId)).status();
+    }
+    check(
+      conv === 402 || conv === 503,
+      `POST /api/import/ai: refused without credits (402/503) (${conv})`,
+    );
+    // My Files: the file in the Word lists folder, served back to its owner.
+    const mine = await (await ctx.request.get("/api/my/files")).json();
+    check(
+      (mine.items ?? []).some((i) => i.id === fileId && i.source === "import"),
+      "/api/my/files: the file, from the Import panel",
+    );
+    const back = await ctx.request.get(`/api/my/files/${fileId}`);
+    check(
+      back.status() === 200 && (await back.body()).length === 6,
+      `GET /api/my/files/<id>: the owner gets the bytes (${back.status()})`,
+    );
+    const filesPage = await ctx.newPage();
+    await filesPage.goto("/my/files?lang=en");
+    const folder = filesPage.locator('[data-qa="my-files-folder-import"]');
+    await folder.waitFor({ timeout: 15000 });
+    check(
+      /lesson-notes\.bin/.test(await folder.innerText()),
+      "/my/files: the file in the Word lists folder",
+    );
+    await filesPage.screenshot({ path: join(OUT, `my-files-${scheme}.png`), fullPage: true });
+    check(
+      await filesPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      "/my/files: no sideways scroll at phone width",
+    );
+    await filesPage.close();
     await stored.first().locator('[data-qa="words-import-file-delete"]').click();
     await page.waitForTimeout(1500);
     check((await stored.count()) === 0, "any file: Delete removes it");
@@ -345,6 +538,7 @@ try {
 } finally {
   try {
     setFlag(false);
+    setFlag(false, AI_FLAG);
     if (granted.length)
       d1(
         `DELETE FROM account_permission WHERE email IN (${granted.map((e) => `'${e}'`).join(", ")})`,

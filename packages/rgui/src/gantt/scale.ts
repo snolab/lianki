@@ -21,6 +21,8 @@ export const HOUR = FOLD_PERIOD_MS.hour!;
 export const MIN = HOUR / 60;
 export const DAY = FOLD_PERIOD_MS.day!;
 export const WEEK = FOLD_PERIOD_MS.week!;
+export const MONTH = FOLD_PERIOD_MS.month!;
+export const YEAR = FOLD_PERIOD_MS.year!;
 
 /** The narrowest screen: this much time across the whole width (zoomed in). */
 export const MIN_SCREEN_MS = 10 * MIN;

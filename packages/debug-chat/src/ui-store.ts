@@ -166,15 +166,26 @@ export const chatFold = () =>
  * The full-screen Gantt's time axis, logarithmic (the default) or linear
  * (GanttFull.tsx, the Linear | Log toggle; owner, 2026-11-09 15:27 JST):
  * localStorage `lk:pref:gantt`, this device only, never synced.
+ * `fitPercentile` and `fitWidth` override the home view's zoom defaults
+ * (gantt-view.ts GANTT_FIT_PERCENTILE, GANTT_FIT_WIDTH) for this device; no
+ * UI sets them yet, absent means the defaults.
  */
-export type GanttPrefs = { scale: "log" | "linear" };
+export type GanttPrefs = { scale: "log" | "linear"; fitPercentile?: number; fitWidth?: number };
 export const GANTT_PREFS_INITIAL: GanttPrefs = { scale: "log" };
+/** A share in (0, 1], else nothing. */
+const share = (v: unknown) => (typeof v === "number" && v > 0 && v <= 1 ? v : undefined);
 export const ganttPrefs = () =>
   createUiStore<GanttPrefs>("gantt", 1, GANTT_PREFS_INITIAL, {
     storage: "local",
     clean: (v) => {
       const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
-      return o.scale === "log" || o.scale === "linear" ? { scale: o.scale } : {};
+      const out: Partial<GanttPrefs> = {};
+      if (o.scale === "log" || o.scale === "linear") out.scale = o.scale;
+      const p = share(o.fitPercentile);
+      const w = share(o.fitWidth);
+      if (p !== undefined) out.fitPercentile = p;
+      if (w !== undefined) out.fitWidth = w;
+      return out;
     },
   });
 

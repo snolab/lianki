@@ -134,7 +134,8 @@ describe("metered: pre-authorisation + refund", () => {
       },
     );
     expect(called).toBe(false);
-    expect(r).toEqual({ ok: false, reason: "no-credits", balance: 1, need: 5 });
+    // Too little history: recommended = the hold × one call.
+    expect(r).toEqual({ ok: false, reason: "no-credits", balance: 1, need: 5, recommended: 5 });
     expect(await bal()).toBe(1);
     expect(rows()).toEqual([]);
   });
@@ -270,12 +271,21 @@ describe("metered: pre-authorisation + refund", () => {
     expect(await r.json()).toEqual({
       error: "no-credits",
       balance: 1,
+      have: 1,
       need: 3,
+      recommended: 3,
       topUp: TOP_UP_PATH,
     });
+    expect(r.headers.get("x-lianki-credits-need")).toBe("3");
+    expect(r.headers.get("x-lianki-credits-have")).toBe("1");
+    expect(r.headers.get("x-lianki-credits-recommended")).toBe("3");
+    const two = noCreditsResponse({ balance: 1, need: 3, recommended: 9 });
+    expect(two.headers.get("x-lianki-credits-recommended")).toBe("9");
     expect(duplicateResponse().status).toBe(409);
     expect(refusal({ ok: false, reason: "duplicate" }).status).toBe(409);
-    expect(refusal({ ok: false, reason: "no-credits", balance: 0, need: 1 }).status).toBe(402);
+    expect(
+      refusal({ ok: false, reason: "no-credits", balance: 0, need: 1, recommended: 1 }).status,
+    ).toBe(402);
   });
 
   it("walletDb: D1 when that is the backend, else none", () => {

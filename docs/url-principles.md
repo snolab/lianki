@@ -44,7 +44,7 @@ everything that is theirs:
 | `/my`             | the index: one card per kind of data (profile, preferences, files, cards and sync)    |
 | `/my/profile`     | name, picture, email, passkeys, level (was `/profile`)                                 |
 | `/my/preferences` | preferences and settings, API tokens (was `/preferences`)                              |
-| `/my/files`       | uploaded artifacts in folders by origin (inbox_item `source`); filled by the file store |
+| `/my/files`       | every stored file in folders by origin (inbox_item `source`): Open, delete (docs/import-material.md, "My Files") |
 
 Signed-in only: a guest is sent to sign in (except the guest level card on
 `/my/profile`, as before). Never owner-only. A new user-level settings page

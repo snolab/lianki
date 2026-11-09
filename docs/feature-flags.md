@@ -55,7 +55,9 @@ stay on the folded row, because they say why the switch does nothing.
   provides a feature, never forbids one. No `-off` / `disable` keys: a kill
   switch for something already live is a flag that is **on by default**.
 - **Defaults are OFF**, but for such a flag (`default: true` in
-  `lib/flags.ts`; today only `stt.polish`). A key with no stored row reads as
+  `lib/flags.ts`; today `stt.polish`, and `today.goal`, `words.onboarding` and
+  `words.pinch-card-height`, which the owner shipped on for everyone on 2026-11-10).
+  A key with no stored row reads as
   its default; a stored row always wins, either way. `closedFlags()` is what an
   unreadable store gives.
 - **Unreadable is OFF**, every flag, a default-on one too (a D1 error,
@@ -91,6 +93,9 @@ stay on the folded row, because they say why the switch does nothing.
 | `payments.stripe.live` | Stripe takes real money (also needs an `sk_live_` key)         |
 | `payments.komoju.live` | KOMOJU takes real money (also needs an `sk_live_` key)         |
 | `words.voice-mode`     | everyone gets the /words voice commands switch (off: the owner's preview only) — [voice-mode.md](voice-mode.md) |
+| `words.pinch-card-height` | **on by default, everyone.** A two-finger vertical pinch on the /words list sets every card's height, from the word alone to everything on screen shown; synced as `words.cardHeight` (off: the default height, the stored choice unused) — `lib/words/row-pinch.ts` |
+| `today.goal`           | **on by default.** /today: today's goal full screen — one number (cards due now, /words's own count), a progress bar (cards done since local midnight), Start to /words; gold ground and seal ink in light, seal ground and gold ink in dark; in the rail and on /home (off: 404, no links) — `lib/today/goal.ts` |
+| `words.onboarding`     | **on by default.** /words plays a short animated walkthrough (tap, rate by feel, handled cards fade and can be undone, cards come back, pinch for height) once per account, then folds it into a circled "?" by the title that replays it (off: no walkthrough, no "?") — `lib/words/onboarding.ts` |
 | `stt.polish`           | **on by default.** The agent may polish the owner's voice lines from their context and summarise room talk (off: the chat keeps only what STT heard, no edits or summaries) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached; only exactly `false` turns it off there, an unreadable answer holds edits back (logged `debug.polish-flag-unread`). Replaced the inverted `stt.polish-off` (migration 0067 carried a stored value over inverted) |
 | `stt.merge`            | a spoken line that continues the last one amends it instead of adding a bubble; the agent hears the complete line, and the passage is polished once at its end; undo splits it back (off: one line per utterance) — [dev-debug-widget.md](dev-debug-widget.md), "Continuous speech amends the last line". Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `connections.google`   | every signed-in user gets /connections (Google Drive, `drive.file`) and the private Google Docs import on /reader (off: the owner only) — [connections.md](connections.md) |
@@ -108,6 +113,7 @@ stay on the folded row, because they say why the switch does nothing.
 | `partner.fullscreen`   | everyone who has the Learning Partner chat gets its full-screen button: the chat fills the app; the button, Escape or Back return to the panel (off: the owner only) — [dev-debug-widget.md](dev-debug-widget.md), "Full screen" |
 | `byok.sync`            | everyone sees the disabled 「同步 API key」 row (即将推出, with its warning) in Settings → 自己的 AI; nothing on the server stores a key yet (off: the owner only) — [byok.md](byok.md) |
 | `import.any`           | every signed-in user gets /import → "Import a word list" and the Import button on /words: presets, or a .txt/.csv/.tsv/Excel file or paste → preview (new / already have / skipped) → a new /words list; free, no credits (off: the owner only, `importAnyOn`) — [import-material.md](import-material.md) |
+| `words.import-ai`      | on: every signed-in user whose credits cover the smallest hold gets **Words with AI** on each stored file in the /words Import panel ("Any file"): the server reads the file, DeepSeek writes the word-list CSV template, then the CSV import's own preview and add, paid from their credits (hold, settle, refund). Off: holders of the `dev` permission only (`isDev`, a per-account grant), likewise with credits — [import-material.md](import-material.md) |
 | `voice.li-hub`         | on the owner's pages (debug mode), Li's sound hub logs who holds the mic and who plays (`audio-owner`, `audio-conflict`); observes only, changes no sound (off: nothing runs) — [li-sound-hub.md](li-sound-hub.md) |
 | `pwa.app-badge`        | the owner (`audience: "owner"`, `isDev`) gets the number on the installed app's icon (open Li asks + due cards, per the synced `notify.badge`) and its row in Settings → Notifications; nobody else (off: nobody, the owner included; a page clears any leftover badge) — [app-badge.md](app-badge.md) |
 | `ext.pill-chat`        | the userscript's pill gets a **Li** button on every site: a per-site trust prompt first (default deny), then Li in the lianki.com frame; sites list in the manager's menu. First slice reuses the owner's partner ticket, so on means the owner only (`audience: "owner"`); off: no Li button anywhere, and an open attempt is refused — [userscript-li-chat.md](userscript-li-chat.md) |

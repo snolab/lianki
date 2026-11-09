@@ -50,7 +50,7 @@ export function ExternalLinkSettings() {
       <label className="mb-4 flex min-h-11 cursor-pointer items-center gap-3">
         <input
           type="checkbox"
-          className="size-5 shrink-0 accent-[oklch(0.5_0.14_250)]"
+          className="size-5 shrink-0 accent-[oklch(0.5_0.154_22.3)]"
           checked={policy.confirm}
           onChange={(e) => setLinkConfirm(e.target.checked)}
           data-testid="external-links-ask"

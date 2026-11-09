@@ -257,7 +257,7 @@ export function AttachMenu({
           >
             <span
               className={badge}
-              style={{ background: "oklch(0.6 0.1 250 / 0.14)", color: "oklch(0.5 0.12 250)" }}
+              style={{ background: "oklch(0.6 0.11 22.3 / 0.14)", color: "oklch(0.5 0.132 22.3)" }}
             >
               {k.id === "selection" ? (
                 <span aria-hidden className="font-serif text-lg leading-none">
@@ -325,7 +325,7 @@ export function AttachMenu({
           <span
             aria-hidden
             className={badge}
-            style={{ background: "oklch(0.6 0.1 255 / 0.14)", color: "oklch(0.5 0.12 255)" }}
+            style={{ background: "oklch(0.6 0.11 22.3 / 0.14)", color: "oklch(0.5 0.132 22.3)" }}
           >
             <HistoryIcon />
           </span>
@@ -391,7 +391,7 @@ function Quote({ ctx, t, testid }: { ctx: ChatContext; t: ChatStrings; testid: s
   );
 }
 
-const QUOTE_LINE = "oklch(0.6 0.1 250 / 0.75)";
+const QUOTE_LINE = "oklch(0.6 0.11 22.3 / 0.75)";
 
 /** Above the input: what goes with the next line, with × to drop it. */
 export function AttachChip({
@@ -412,7 +412,7 @@ export function AttachChip({
       data-flat={flat || undefined}
       style={{
         borderInlineStartColor: QUOTE_LINE,
-        background: flat ? undefined : "oklch(0.6 0.1 250 / 0.1)",
+        background: flat ? undefined : "oklch(0.6 0.11 22.3 / 0.1)",
       }}
       className={`pointer-events-auto mb-1 flex items-start gap-1 border-s-2 py-1 ps-2 pe-0.5 fs-11 leading-snug ${flat ? "" : "rounded-lg backdrop-blur"}`}
     >

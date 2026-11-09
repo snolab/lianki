@@ -529,7 +529,7 @@ describe("the footer names the address the mail went to", () => {
     const lines = m.text.split("\n");
     expect(lines[lines.indexOf(line) + 1]).toMatch(/^Unsubscribe/);
     expect(m.html).toContain(
-      `This email was sent to <bdi>${FRIEND}</bdi> because snomiao invited you.</span><br><a href="${BASE}/o#t=1">Unsubscribe`,
+      `This email was sent to <bdi>${FRIEND}</bdi> because snomiao invited you.</span><br><a href="${BASE}/o#t=1" style="color:#c8102e;text-decoration:underline">Unsubscribe`,
     );
   });
   test("zh wording", () => {

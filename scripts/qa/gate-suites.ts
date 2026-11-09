@@ -23,6 +23,7 @@ import {
 
 export type Suite = {
   name: string;
+  id?: string;
   cmd: string;
   args: string[];
   sensitive: boolean;
@@ -75,6 +76,9 @@ export async function runSuites(
     const r = spawnSync(s.cmd, s.args, { stdio: "inherit", env });
     const ok = r.status === 0;
     done.set(s.name, ok);
+    // One machine-readable line per suite: scripts/qa/record-timings.ts reads
+    // these from CI logs to keep the shards balanced (suite-timings.json).
+    console.log(`qa:all timing ${s.id ?? s.name} ${((Date.now() - t) / 1000).toFixed(1)}`);
     if (!ok) {
       try {
         const rec = failureRecord(

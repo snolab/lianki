@@ -9,8 +9,19 @@
  * file is caught at once; the server parses it again for the preview counts
  * (new / already have / skipped) and for the import itself, which runs as a
  * job (lib/import/words-handler.ts). Nothing is saved before "Add N words".
+ *
+ * `seed`: the CSV "Words with AI" made from a stored file (app/(app)/words/AiFileImport.tsx)
+ * goes through this same check, preview and add; the templates and the file
+ * and paste inputs are then left out (that source has its own).
+ * A table (CSV, TSV, a sheet) gets a column-mapping step first
+ * (ColumnMapper, lib/import/column-map.ts): its columns as chips on the
+ * fields they fill, set from the header names, and the first rows as the
+ * /words cards they become, live. The mapping goes with the preview and the
+ * commit, so the server parses exactly what the cards show.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ColumnMapper, CardPreview } from "./ColumnMapper";
+import type { ColumnMapping } from "@/lib/import/column-map";
 import { useIntlayer, useLocale } from "next-intlayer";
 import {
   MAX_BYTES,
@@ -18,6 +29,8 @@ import {
   WordListError,
   listNameFrom,
   parseWordList,
+  tableShape,
+  type TableShape,
 } from "@/lib/import/wordlist";
 import type { JobRow, PreviewAnswer } from "@/lib/import/words-handler";
 import { IMPORT_LANGS } from "@/lib/words/anki";
@@ -100,12 +113,15 @@ export default function WordListImport({
   signedIn,
   embedded = false,
   onAdded,
+  seed,
 }: {
   signedIn: boolean;
   /** Inside the /words Import panel: no section heading or top margin. */
   embedded?: boolean;
   /** A list was made (the /words picker reloads its lists). */
   onAdded?: (listId: string) => void;
+  /** A ready CSV to check at once (a new `rev` checks it again, after an edit). */
+  seed?: { text: string; fileName: string; rev: number };
 }) {
   const t = useIntlayer("import-wordlist");
   const { locale } = useLocale();
@@ -121,6 +137,12 @@ export default function WordListImport({
   const [error, setError] = useState<ErrorKey | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const [jobs, setJobs] = useState<JobRow[]>([]);
+  /** The table's columns (null for a plain list) and the user's mapping of them. */
+  const [shape, setShape] = useState<TableShape | null>(null);
+  const [mapping, setMapping] = useState<ColumnMapping | null>(null);
+  const [headerOn, setHeaderOn] = useState(false);
+  /** What the preview counts were asked for, so a moved chip asks again. */
+  const asked = useRef("");
 
   const langName = useMemo(() => {
     try {
@@ -139,8 +161,15 @@ export default function WordListImport({
   useEffect(() => {
     if (signedIn) loadJobs();
   }, [signedIn]);
+  useEffect(() => {
+    if (seed && signedIn) void check({ text: seed.text, fileName: seed.fileName });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on a new seed only
+  }, [seed?.rev, signedIn]);
 
   const reset = () => {
+    setShape(null);
+    setMapping(null);
+    asked.current = "";
     setSource(null);
     setPreview(null);
     setError(null);
@@ -166,16 +195,23 @@ export default function WordListImport({
     setDone(null);
     setPreview(null);
     // Caught here at once; the server says the same.
+    let sh: TableShape;
     try {
-      parseWordList(src.text, src.fileName);
+      sh = tableShape(src.text, src.fileName);
     } catch (e) {
       setError(e instanceof WordListError ? (ERROR_OF[e.code] ?? "errFailed") : "errFailed");
       return;
     }
+    const table = sh.format !== "lines";
+    setShape(table ? sh : null);
+    setMapping(table ? sh.defaults : null);
+    setHeaderOn(sh.header);
     setSource(src);
     setBusy("checking");
     try {
-      const p = (await post({ step: "preview", ...src })) as PreviewAnswer;
+      const how = table ? { mapping: sh.defaults, header: sh.header } : {};
+      asked.current = JSON.stringify(how);
+      const p = (await post({ step: "preview", ...src, ...how })) as PreviewAnswer;
       setPreview(p);
       setName(listNameFrom(src.fileName) || text(t.pastedName));
       setLang(p.lang);
@@ -204,12 +240,49 @@ export default function WordListImport({
     await check({ text: read, fileName: f.name });
   };
 
+  /** The mapping step's answer, as the server takes it; nothing for a plain list. */
+  const how = () => (shape && mapping ? { mapping, header: headerOn } : {});
+
+  // A moved chip or the header switch: the counts again, once the chips rest.
+  useEffect(() => {
+    if (!source || !shape || !mapping || busy) return;
+    const key = JSON.stringify({ mapping, header: headerOn });
+    if (key === asked.current) return;
+    const timer = setTimeout(async () => {
+      asked.current = key;
+      try {
+        setPreview(
+          (await post({ step: "preview", ...source, mapping, header: headerOn })) as PreviewAnswer,
+        );
+      } catch (e) {
+        setError(ERROR_OF[(e as Error).message] ?? "errFailed");
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- post and source are stable per file
+  }, [mapping, headerOn, source, shape, busy]);
+
+  /** The first rows as the cards will hold them, from this page's own parse. */
+  const cards = useMemo(() => {
+    if (!source) return [];
+    try {
+      return parseWordList(
+        source.text,
+        source.fileName,
+        shape && mapping ? { mapping, header: headerOn } : {},
+      ).rows.slice(0, 4);
+    } catch {
+      return [];
+    }
+  }, [source, shape, mapping, headerOn]);
+
   const commit = async () => {
     if (!source || !preview || !lang || !name.trim()) return;
+    if (mapping && !mapping.term.length) return;
     setBusy("adding");
     setError(null);
     try {
-      const b = await post({ step: "commit", ...source, name: name.trim(), lang });
+      const b = await post({ step: "commit", ...source, ...how(), name: name.trim(), lang });
       setDone({ listId: b.listId, added: b.added, name: name.trim() });
       setPreview(null);
       onAdded?.(b.listId);
@@ -238,16 +311,15 @@ export default function WordListImport({
         ] as const
       ).filter(([k]) => preview.skippedBy[k] > 0)
     : [];
-  const hasBack = !!preview?.sample.some((s) => s.back);
-  const hasEx = !!preview?.sample.some((s) => s.ex);
 
   return (
     <section className={embedded ? "" : "mt-10"} data-qa="wordlist-import">
       {!embedded && <h2 className="text-2xl font-bold mb-2">{t.heading}</h2>}
-      <p className="text-sm mb-4 text-gray-600 dark:text-gray-300">{t.intro}</p>
+      {!seed && <p className="text-sm mb-4 text-gray-600 dark:text-gray-300">{t.intro}</p>}
 
       {/* The templates first: fill one in and nobody thinks about column names. */}
       <div
+        hidden={!!seed}
         data-qa="wordlist-templates"
         className="mb-4 rounded-xl border border-[oklch(0.55_0.14_155/0.45)] bg-[oklch(0.55_0.14_155/0.08)] p-3"
       >
@@ -295,15 +367,19 @@ export default function WordListImport({
           <div className="mt-3 flex flex-wrap gap-3">
             <a
               href={`/words?list=${done.listId}`}
-              className="px-4 py-2 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm font-medium"
+              className="px-4 py-2 rounded-lg bg-primary text-on-primary hover:bg-blue-700 text-sm font-medium"
             >
               {t.open}
             </a>
-            <button type="button" onClick={reset} className="px-4 py-2 text-sm underline">
-              {t.another}
-            </button>
+            {!seed && (
+              <button type="button" onClick={reset} className="px-4 py-2 text-sm underline">
+                {t.another}
+              </button>
+            )}
           </div>
         </div>
+      ) : seed ? (
+        busy === "checking" && <p className="text-sm">{t.checking}</p>
       ) : (
         <>
           <div
@@ -381,7 +457,7 @@ export default function WordListImport({
           className="mt-4 p-3 rounded-lg bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-100 text-sm"
         >
           <p>{fill(t[error], { mb: MAX_BYTES / 1_000_000 })}</p>
-          {source && (
+          {source && !seed && (
             <button type="button" onClick={reset} className="mt-2 underline">
               {t.another}
             </button>
@@ -392,7 +468,7 @@ export default function WordListImport({
       {preview && !done && (
         <div className="mt-6" data-qa="wordlist-preview-box">
           <div className="flex flex-wrap gap-2 text-sm">
-            <span className="px-2 py-1 rounded bg-green-100 text-green-900 dark:bg-green-900 dark:text-green-50">
+            <span className="px-2 py-1 rounded bg-gold-100 text-gold-900 dark:bg-gold-900 dark:text-gold-50">
               {fill(t.countNew, { n: n(preview.fresh) })}
             </span>
             <span className="px-2 py-1 rounded bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50">
@@ -419,28 +495,28 @@ export default function WordListImport({
                 : t.headerNone}
           </p>
 
-          {preview.sample.length > 0 && (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-600 dark:text-gray-400">
-                    <th className="py-1 pr-3 font-medium">{t.colWord}</th>
-                    {hasBack && <th className="py-1 pr-3 font-medium">{t.colMeaning}</th>}
-                    {hasEx && <th className="py-1 font-medium">{t.colExample}</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.sample.map((s) => (
-                    <tr key={s.term} className="border-t border-gray-200 dark:border-gray-700">
-                      <td className="py-1 pr-3 break-words">{s.term}</td>
-                      {hasBack && <td className="py-1 pr-3 break-words">{s.back}</td>}
-                      {hasEx && <td className="py-1 break-words">{s.ex}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {shape && mapping && (
+            <>
+              <label className="mt-4 flex min-h-11 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  data-qa="wordlist-header"
+                  checked={headerOn}
+                  onChange={(e) => setHeaderOn(e.target.checked)}
+                  className="size-4 accent-[var(--brand)]"
+                />
+                {t.firstRowHeader}
+              </label>
+              <ColumnMapper
+                names={headerOn ? shape.first : null}
+                samples={(headerOn ? shape.rows[0] : shape.first) ?? []}
+                width={shape.width}
+                mapping={mapping}
+                onChange={setMapping}
+              />
+            </>
           )}
+          <CardPreview rows={cards} lang={lang || undefined} />
 
           {preview.fresh > 0 ? (
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -472,7 +548,9 @@ export default function WordListImport({
               <button
                 type="button"
                 data-qa="wordlist-add"
-                disabled={busy !== null || !lang || !name.trim()}
+                disabled={
+                  busy !== null || !lang || !name.trim() || (!!mapping && !mapping.term.length)
+                }
                 onClick={commit}
                 className="sm:col-span-2 py-3 rounded-lg bg-blue-700 text-white hover:bg-blue-800 font-medium disabled:opacity-50"
               >

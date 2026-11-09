@@ -47,7 +47,7 @@ export function VibeList({ rows: initial, locale }: { rows: VibeRow[]; locale: s
       <Link
         href="/vibe/new"
         data-testid="vibe-new"
-        className="flex min-h-11 items-center justify-center rounded-lg bg-[oklch(0.5_0.16_255)] px-5 font-medium text-[oklch(0.99_0_0)]"
+        className="flex min-h-11 items-center justify-center rounded-lg bg-[oklch(0.5_0.176_22.3)] px-5 font-medium text-[oklch(0.99_0_0)]"
       >
         {t.again}
       </Link>

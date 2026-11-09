@@ -18,7 +18,7 @@ import type { AttachmentRef, ChatStrings } from "./wire";
 
 const keep = (e: { preventDefault(): void }) => e.preventDefault();
 const CHIP_BG = "oklch(0.6 0.02 250 / 0.12)";
-const BAR = "oklch(0.6 0.12 250)";
+const BAR = "oklch(0.6 0.132 22.3)";
 const BAD = "oklch(0.55 0.17 25)";
 
 /** The pending files, live. */

@@ -41,6 +41,18 @@ they land. Design details that are still open are marked **open**.
   selected sentence or paragraph is clamped at 4 lines (was 3), a new word's
   context at 3 (was 2), and the meaning and translation scrollers are one line
   (`1lh`) taller.
+- **Pinch for card height** (2026-11-10, flag `words.pinch-card-height`, on for
+  everyone): two fingers moved together or apart vertically on the list make
+  every row shorter and denser or taller with more shown. Continuous under the
+  fingers, settling on a whole line (no settle with motion off). The bounds
+  are the cards': the word alone at the bottom, everything the rows on screen
+  hold at the top. The lines go to the back cells as the default rows give
+  them (`backLines`, `lib/words/row-pinch.ts`); the swipe unit stays. Synced
+  as `words.cardHeight`, a factor of the default row. The page never zooms;
+  a second finger cancels the rows' own gestures.
+- **Reviewed words fade** (2026-11-10): a slip graded this session stays (for
+  undo) but fades like a slip that came back: a veil and one muted ink at AA
+  contrast (`.slip-done`, app/globals.css). Undo restores it.
 - **Familiarity inside examples** (19:32 JST): an example's words that have
   one of his cards are marked by how well he knows them — solid line = weak,
   dashed = learning, mastered and card-less words plain (the reader's scheme,

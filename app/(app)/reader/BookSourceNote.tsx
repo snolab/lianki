@@ -28,7 +28,7 @@ export function BookSourceNote({
           href={book.sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="underline hover:text-[oklch(0.5_0.16_255)]"
+          className="underline hover:text-[oklch(0.5_0.176_22.3)]"
         >
           {book.credit.sourceName}
         </a>

@@ -44,7 +44,7 @@ export function EmailConfirm() {
             type="button"
             onClick={() => void confirm()}
             disabled={state === "busy"}
-            className="min-h-11 rounded-full bg-[oklch(0.55_0.18_255)] px-5 text-[oklch(0.98_0_0)] disabled:opacity-50"
+            className="min-h-11 rounded-full bg-[oklch(0.55_0.198_22.3)] px-5 text-[oklch(0.98_0_0)] disabled:opacity-50"
             data-testid="email-confirm"
           >
             {t.confirmButton}

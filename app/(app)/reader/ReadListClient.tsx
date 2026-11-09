@@ -343,7 +343,7 @@ export function ReadListClient({
         <Link
           href="/books"
           data-testid="read-browse-books"
-          className="inline-flex items-center gap-1 text-sm font-medium text-[oklch(0.5_0.16_255)] dark:text-[oklch(0.78_0.12_255)] hover:underline"
+          className="inline-flex items-center gap-1 text-sm font-medium text-[oklch(0.5_0.176_22.3)] dark:text-[oklch(0.78_0.132_22.3)] hover:underline"
         >
           {booksText.browse} &rarr;
         </Link>

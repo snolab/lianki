@@ -94,7 +94,7 @@ export default function PregrantPanel() {
 
   const field = "w-full rounded border border-current/20 bg-transparent px-3 py-2";
   const button =
-    "rounded border border-current/30 px-3 py-1.5 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-[oklch(0.55_0.14_250)]";
+    "rounded border border-current/30 px-3 py-1.5 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-[oklch(0.55_0.154_22.3)]";
 
   return (
     <section

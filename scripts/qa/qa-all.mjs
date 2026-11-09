@@ -19,6 +19,13 @@
  *   bun run qa:all -- --no-build   # reuse the last .open-next build (fast iterate)
  *   bun run qa:all -- --keep       # leave wrangler dev running after the suites
  *   bun run qa:all -- --suites=words,read-epub   # only these (ids in suites.mjs)
+ *   bun run qa:all -- --shard=2/3  # the 2nd of 3 time-balanced shards (scripts/qa/shard.mjs)
+ *   bun run qa:all -- --prepare    # build + migrate only, no server, no suites
+ *
+ * --shard and --prepare are how the merge queue runs qa:all in parallel
+ * (.github/workflows/ci.yml; docs/shipping.md, "qa:all in shards"): one job
+ * runs --prepare and hands .open-next and the migrated local D1 to three
+ * jobs that each run `--no-build --shard=i/3`.
  *
  * --suites is what the pre-push gate passes for an affected-only run
  * (scripts/gate/affected.ts). When none of the chosen suites needs the Worker
@@ -49,6 +56,7 @@ import {
 } from "node:fs";
 import { createServer } from "node:net";
 import { runSuites } from "./gate-suites.ts";
+import { parseShard, shardSeconds, splitSuites } from "./shard.mjs";
 import { SUITES } from "./suites.mjs";
 
 /**
@@ -139,6 +147,16 @@ async function lockCheckout() {
 const flags = new Set(process.argv.slice(2));
 const NO_BUILD = flags.has("--no-build");
 const KEEP = flags.has("--keep");
+const PREPARE = flags.has("--prepare");
+const shardArg = process.argv
+  .slice(2)
+  .find((a) => a.startsWith("--shard="))
+  ?.slice("--shard=".length);
+const SHARD = shardArg === undefined ? null : parseShard(shardArg);
+if (shardArg !== undefined && !SHARD) {
+  console.error(`qa:all: --shard wants i/n with 1 ≤ i ≤ n, got ${shardArg}`);
+  process.exit(2);
+}
 const only = process.argv
   .slice(2)
   .find((a) => a.startsWith("--suites="))
@@ -151,9 +169,22 @@ if (unknown.length) {
   console.error(`known: ${SUITES.map((s) => s.id).join(", ")}`);
   process.exit(2);
 }
-const CHOSEN = only ? SUITES.filter((s) => only.includes(s.id)) : SUITES;
-const NEEDS_WORKER = CHOSEN.some((s) => s.base || s.url);
-if (only) console.log(`qa:all: ${CHOSEN.length} of ${SUITES.length} suites — ${only.join(", ")}`);
+const PICKED = only ? SUITES.filter((s) => only.includes(s.id)) : SUITES;
+let CHOSEN = PICKED;
+if (SHARD) {
+  const timings = JSON.parse(
+    readFileSync(new URL("./suite-timings.json", import.meta.url), "utf8"),
+  ).seconds;
+  const shards = splitSuites(PICKED, SHARD.count, timings);
+  CHOSEN = shards[SHARD.index - 1];
+  console.log(
+    `qa:all: shard ${SHARD.index}/${SHARD.count}, ~${Math.round(shardSeconds(CHOSEN, timings))} s ` +
+      `(all: ${shards.map((x) => Math.round(shardSeconds(x, timings))).join(" / ")} s) — ` +
+      CHOSEN.map((s) => s.id).join(", "),
+  );
+}
+const NEEDS_WORKER = PREPARE || CHOSEN.some((s) => s.base || s.url);
+if (only) console.log(`qa:all: ${PICKED.length} of ${SUITES.length} suites — ${only.join(", ")}`);
 
 await lockCheckout();
 
@@ -225,6 +256,11 @@ if (!NO_BUILD) {
 // ── 2. Apply D1 migrations to the local Miniflare database ────────────────────
 // `--local` targets the same .wrangler/state DB that `wrangler dev` serves.
 step("D1 migrate (local)", "bunx", ["wrangler", "d1", "migrations", "apply", "lianki", "--local"]);
+
+if (PREPARE) {
+  log("prepared: .open-next built, local D1 migrated — no server, no suites (--prepare)");
+  process.exit(0);
+}
 
 // ── 3. Boot `wrangler dev` on :PORT (ephemeral by default; auth.ts trusts any
 //       localhost origin via BETTER_AUTH_BASE_URL — see lib/trusted-origins.ts) ─
