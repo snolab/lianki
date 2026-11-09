@@ -19,6 +19,8 @@ import {
   holderIds,
   listGrants,
   readHolders,
+  readPermissionHistory,
+  type HistoryPage,
   userHolds,
   readGrants,
   revokePermission,
@@ -26,7 +28,7 @@ import {
   type PermissionDb,
   type PermissionReadDb,
 } from "@/lib/account-permission";
-import { permissionsGet, permissionsPost } from "@/lib/permission-route";
+import { permissionsGet, permissionsHistoryGet, permissionsPost } from "@/lib/permission-route";
 import { DEV_PAGE_PERMISSION, devPagePermission } from "@/lib/dev-page-permissions";
 import { commandSql, parseArgs } from "../scripts/dev/permission-sql";
 
@@ -116,6 +118,7 @@ describe("account_permission", () => {
       { kind: "permission.grant", actor: ME.id, detail: "admin a@example.com" },
       { kind: "permission.grant", actor: ME.id, detail: "dev a@example.com" },
       { kind: "permission.grant", actor: ME.id, detail: "dev b@example.com" },
+      { kind: "permission.regrant", actor: ME.id, detail: "dev b@example.com" },
       { kind: "permission.revoke", actor: ME.id, detail: "dev b@example.com" },
     ]);
   });
@@ -132,6 +135,21 @@ describe("account_permission", () => {
     expect(await revokePermission(write(), "b@example.com", "admin", ME, T0 + 6)).toBe(
       "last-admin",
     );
+  });
+
+  it("a re-grant keeps the original granted_by and granted_at, and is audited", async () => {
+    const OTHER = { id: "u_other", email: "other@example.com" };
+    await grantPermission(write(), "a@example.com", "dev", ME, T0);
+    expect(await grantPermission(write(), "a@example.com", "dev", OTHER, T0 + 9)).toBe(
+      "already-granted",
+    );
+    expect(await listGrants(read())).toEqual([
+      { email: "a@example.com", permission: "dev", granted_by: ME.email, granted_at: T0 },
+    ]);
+    expect(audits()).toEqual([
+      { kind: "permission.grant", actor: ME.id, detail: "dev a@example.com" },
+      { kind: "permission.regrant", actor: OTHER.id, detail: "dev a@example.com" },
+    ]);
   });
 
   it("a revoked grant can be given again", async () => {
@@ -380,7 +398,7 @@ describe("scripts/dev/permission.ts", () => {
     });
     const sql = commandSql(p, T0);
     expect(sql.match(/INSERT INTO account_permission/g)).toHaveLength(2);
-    expect(sql.match(/INSERT INTO security_audit/g)).toHaveLength(2);
+    expect(sql.match(/INSERT INTO security_audit/g)).toHaveLength(4);
     expect(sql).toContain("'cli'");
     expect(() => parseArgs(["grant", "a@example.com", "owner"])).toThrow();
     expect(() => parseArgs(["grant", "a@example.com"])).toThrow();
@@ -401,6 +419,119 @@ describe("scripts/dev/permission.ts", () => {
       { email: "a@example.com", permission: "dev" },
     ]);
     expect(audits().map((a) => a.actor)).toEqual(["cli", "cli"]);
+    // Again: the rows keep their first grant; only the audit says it happened.
+    d1.raw().exec(commandSql(parseArgs(["grant", "a@example.com", "dev"]), T0 + 50));
+    expect((await listGrants(read())).map((g) => g.granted_at)).toEqual([T0, T0 + 1]);
+    expect(audits().map((a) => a.kind)).toEqual([
+      "permission.grant",
+      "permission.grant",
+      "permission.regrant",
+    ]);
+  });
+});
+
+describe("permission history", () => {
+  const addUser = (id: string, email: string) =>
+    d1
+      .raw()
+      .prepare(
+        "INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, 'x', ?, 1, 1, 1)",
+      )
+      .run(id, email);
+
+  it("newest first, actor by address, source cli or ui, paged by id", async () => {
+    addUser(ME.id, "Admin@Example.com");
+    d1.raw()
+      .prepare("INSERT INTO security_audit (at_ms, kind, actor, detail) VALUES (?, ?, ?, ?)")
+      .run(T0 - 1, "live.on", ME.id, "unrelated");
+    await grantPermission(write(), "a@example.com", "admin", ME, T0);
+    d1.raw().exec(commandSql(parseArgs(["grant", "b@example.com", "dev"]), T0 + 1));
+    await grantPermission(write(), "a@example.com", "admin", ME, T0 + 2);
+    await revokePermission(write(), "b@example.com", "dev", { id: "u_gone" }, T0 + 3);
+
+    const all = await readPermissionHistory(read());
+    expect(all.next).toBe(null);
+    expect(all.rows.map(({ id: _, ...r }) => r)).toEqual([
+      {
+        at: T0 + 3,
+        action: "revoke",
+        permission: "dev",
+        email: "b@example.com",
+        by: "u_gone",
+        source: "ui",
+      },
+      {
+        at: T0 + 2,
+        action: "regrant",
+        permission: "admin",
+        email: "a@example.com",
+        by: "admin@example.com",
+        source: "ui",
+      },
+      {
+        at: T0 + 1,
+        action: "grant",
+        permission: "dev",
+        email: "b@example.com",
+        by: "cli",
+        source: "cli",
+      },
+      {
+        at: T0,
+        action: "grant",
+        permission: "admin",
+        email: "a@example.com",
+        by: "admin@example.com",
+        source: "ui",
+      },
+    ]);
+
+    const p1 = await readPermissionHistory(read(), null, 3);
+    expect(p1.rows.map((r) => r.at)).toEqual([T0 + 3, T0 + 2, T0 + 1]);
+    expect(p1.next).toBe(p1.rows[2].id);
+    const p2 = await readPermissionHistory(read(), p1.next, 3);
+    expect(p2.rows.map((r) => r.at)).toEqual([T0]);
+    expect(p2.next).toBe(null);
+    expect((await readPermissionHistory(read(), Number.NaN, 0)).rows).toHaveLength(4);
+  });
+
+  it("an audit row without detail still reads", async () => {
+    d1.raw()
+      .prepare("INSERT INTO security_audit (at_ms, kind, actor, detail) VALUES (?, ?, ?, NULL)")
+      .run(T0, "permission.grant", "cli");
+    expect((await readPermissionHistory(read())).rows[0]).toMatchObject({
+      permission: "",
+      email: "",
+      source: "cli",
+    });
+  });
+
+  it("GET /api/dev/permissions/history: admin only, pages with ?before", async () => {
+    const url = (q = "") => new Request(`https://lianki.com/api/dev/permissions/history${q}`);
+    expect((await permissionsHistoryGet(url(), null, read)).status).toBe(404);
+    expect((await permissionsHistoryGet(url(), ME, () => null)).status).toBe(404);
+    for (let i = 0; i < 3; i++)
+      await grantPermission(write(), `u${i}@example.com`, "dev", ME, T0 + i);
+    const r = await permissionsHistoryGet(url(), ME, read);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    const page = (await r.json()) as HistoryPage;
+    expect(page.rows.map((x) => x.email)).toEqual([
+      "u2@example.com",
+      "u1@example.com",
+      "u0@example.com",
+    ]);
+    const older = (await (
+      await permissionsHistoryGet(url(`?before=${page.rows[0].id}`), ME, read)
+    ).json()) as HistoryPage;
+    expect(older.rows).toHaveLength(2);
+    const junk = (await (
+      await permissionsHistoryGet(url("?before=abc"), ME, read)
+    ).json()) as HistoryPage;
+    expect(junk.rows).toHaveLength(3);
+    expect(readFileSync("app/api/dev/permissions/history/route.ts", "utf8")).toContain(
+      "isAdmin(user?.email)",
+    );
   });
 });
 

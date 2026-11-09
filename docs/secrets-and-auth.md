@@ -237,6 +237,12 @@ an email list in code or env. The grants are rows in D1, table
 managed at **`/dev/permissions`** (admin only, 404 otherwise). Every grant and
 revoke goes through an in-app confirm dialog and writes `permission.grant` /
 `permission.revoke` to `security_audit` (detail: `<permission> <address>`).
+Granting a permission the address already holds changes nothing in
+`account_permission` (the original `granted_by` / `granted_at` stay) and is
+recorded only as `permission.regrant`. The page's **History** section lists
+these rows newest first, 50 a page, with the time in JST, the actor's address
+(or `cli`) and the source (`/api/dev/permissions/history`,
+`readPermissionHistory`).
 
 - **`admin`** — people, money and grants: `/dev/permissions`, users, credits, membership, gift codes, friends, flags, box clients, and the
   payment test mode.

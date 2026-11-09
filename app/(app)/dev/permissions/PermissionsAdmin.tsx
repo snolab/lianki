@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import PermissionsHistory from "./PermissionsHistory";
 
 type Permission = "admin" | "dev";
 type Row = { email: string; permission: Permission; granted_by: string; granted_at: number };
@@ -27,6 +28,7 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
+  const [version, setVersion] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
 
   const name = (p: Permission) => (p === "admin" ? c.admin.value : c.dev.value);
@@ -73,6 +75,7 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
       if (p.op === "grant") setEmail("");
     } finally {
       setBusy(false);
+      setVersion((v) => v + 1);
     }
   }
 
@@ -101,6 +104,9 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
       <section className="space-y-2">
         <h2 className="font-semibold">{c.holders}</h2>
         {emails.length === 0 && <p className="text-sm opacity-70">{c.none}</p>}
+        <p className="text-sm opacity-70">
+          {c.revokeDelay.value.replace("{seconds}", String(seconds))}
+        </p>
         <ul className="divide-y divide-[oklch(0.88_0_0)] dark:divide-[oklch(0.35_0_0)]">
           {emails.map((e) => (
             <li key={e} className="py-2 text-sm space-y-1">
@@ -177,6 +183,8 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
           {err}
         </p>
       )}
+
+      <PermissionsHistory version={version} />
 
       <dialog
         ref={dialog}

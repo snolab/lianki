@@ -49,7 +49,11 @@ export const MAX_PERMISSION_EMAIL = 180;
 export const SQL_LIST = `SELECT email, permission, granted_by, granted_at FROM account_permission
   WHERE revoked_at IS NULL ORDER BY granted_at, email, permission`;
 
-/** ?1 email, ?2 permission, ?3 granted by, ?4 now. Reactivates a revoked row; an active one is left alone. */
+/**
+ * ?1 email, ?2 permission, ?3 granted by, ?4 now. Reactivates a revoked row; an
+ * active one is left alone, so a re-grant keeps the original granted_by and
+ * granted_at (SQL_AUDIT_REGRANT records it in the audit only).
+ */
 export const SQL_GRANT = `INSERT INTO account_permission (email, permission, granted_by, granted_at)
   VALUES (?1, ?2, ?3, ?4)
   ON CONFLICT(email, permission) DO UPDATE SET granted_by = excluded.granted_by,
@@ -67,6 +71,15 @@ export const SQL_AUDIT_GRANT = `INSERT INTO security_audit (at_ms, kind, actor, 
   SELECT ?4, 'permission.grant', ?3, ?2 || ' ' || ?1 WHERE EXISTS (
     SELECT 1 FROM account_permission
     WHERE email = ?1 AND permission = ?2 AND granted_at = ?4 AND revoked_at IS NULL)`;
+
+/**
+ * ?1 email, ?2 permission, ?3 actor, ?4 now. A grant of a permission already held:
+ * the row keeps its original grant, this audit row is the only trace.
+ */
+export const SQL_AUDIT_REGRANT = `INSERT INTO security_audit (at_ms, kind, actor, detail)
+  SELECT ?4, 'permission.regrant', ?3, ?2 || ' ' || ?1 WHERE EXISTS (
+    SELECT 1 FROM account_permission
+    WHERE email = ?1 AND permission = ?2 AND granted_at <> ?4 AND revoked_at IS NULL)`;
 
 /** ?1 email, ?2 permission, ?3 actor, ?4 now. Only if the revoke above took effect. */
 export const SQL_AUDIT_REVOKE = `INSERT INTO security_audit (at_ms, kind, actor, detail)
@@ -174,6 +187,7 @@ export async function grantPermission(
   await db.batch([
     db.prepare(SQL_GRANT).bind(email, rawPermission, normalizeEmail(by.email), now),
     db.prepare(SQL_AUDIT_GRANT).bind(email, rawPermission, by.id, now),
+    db.prepare(SQL_AUDIT_REGRANT).bind(email, rawPermission, by.id, now),
   ] as never[]);
   clearPermissionCache();
   const row = await rowState(db, email, rawPermission);
@@ -209,4 +223,73 @@ export async function revokePermission(
     return "revoked";
   }
   return !row || row.revoked_at !== null ? "not-granted" : "last-admin";
+}
+
+/** The audit kinds of /dev/permissions' history, as security_audit holds them. */
+export const HISTORY_KINDS = ["permission.grant", "permission.revoke", "permission.regrant"];
+export type HistoryAction = "grant" | "revoke" | "regrant";
+
+export type HistoryRow = {
+  id: number;
+  at: number;
+  action: HistoryAction;
+  permission: string;
+  email: string;
+  /** The acting admin's address, or the raw actor when no account matches it (`cli`). */
+  by: string;
+  source: "cli" | "ui";
+};
+
+/** One page of history and the cursor for the next (older) page, or null at the end. */
+export type HistoryPage = { rows: HistoryRow[]; next: number | null };
+
+export const HISTORY_PAGE = 50;
+
+/** ?1 the id to page below (null: newest), ?2 page size + 1. Newest first. */
+export const SQL_HISTORY = `SELECT a.id AS id, a.at_ms AS at, a.kind AS kind, a.actor AS actor,
+    a.detail AS detail, u.email AS actor_email
+  FROM security_audit a LEFT JOIN user u ON u.id = a.actor
+  WHERE a.kind IN (${HISTORY_KINDS.map((k) => `'${k}'`).join(", ")})
+    AND (?1 IS NULL OR a.id < ?1)
+  ORDER BY a.id DESC LIMIT ?2`;
+
+type HistoryDbRow = {
+  id: number;
+  at: number;
+  kind: string;
+  actor: string;
+  detail: string | null;
+  actor_email: string | null;
+};
+
+/**
+ * Grants, re-grants and revokes from security_audit, newest first, `limit` a
+ * page (at most 200). `before` is the `next` of the previous page. The CLI's
+ * actor is `cli`; anything else is a user id, shown by its address. Throws on a
+ * D1 error.
+ */
+export async function readPermissionHistory(
+  db: PermissionReadDb,
+  before: number | null = null,
+  limit = HISTORY_PAGE,
+): Promise<HistoryPage> {
+  const size = Math.max(1, Math.min(200, Math.trunc(limit) || HISTORY_PAGE));
+  const cursor = before !== null && Number.isFinite(before) ? Math.trunc(before) : null;
+  const { results } = await db
+    .prepare(SQL_HISTORY)
+    .bind(cursor, size + 1)
+    .all<HistoryDbRow>();
+  const rows = results.slice(0, size).map((r): HistoryRow => {
+    const [permission = "", ...rest] = (r.detail ?? "").split(" ");
+    return {
+      id: r.id,
+      at: r.at,
+      action: r.kind.slice("permission.".length) as HistoryAction,
+      permission,
+      email: rest.join(" "),
+      by: r.actor_email ? normalizeEmail(r.actor_email) : r.actor,
+      source: r.actor === "cli" ? "cli" : "ui",
+    };
+  });
+  return { rows, next: results.length > size ? rows[rows.length - 1].id : null };
 }
