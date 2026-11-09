@@ -155,6 +155,22 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // The app-icon badge (docs/app-badge.md): flag gate, counts, the setting persists, setAppBadge mocked.
+  {
+    name: "APP BADGE (qa-app-badge)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-app-badge.mjs"],
+    base: true,
+    id: "app-badge",
+    paths: [
+      "app/components/AppBadge*.tsx",
+      "app/components/app-badge.content.ts",
+      "app/api/badge/**",
+      "lib/app-badge*.ts",
+      "public/sw.js",
+    ],
+    sensitive: false,
+  },
   // YouTube songs (docs/youtube-song-examples.md): flag gate, the ▶ per line, the popup's close rules.
   // Every YouTube host blocked: no video, no sound, no network.
   {

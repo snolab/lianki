@@ -17,6 +17,7 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { noteBadgeSeen } from "@/lib/app-badge";
 import { type BoxConfig, boxChatHub } from "@/lib/box-oauth/client";
 import { useBoxAccount } from "./BoxApiBridge";
 import { ETA_FLAG } from "@/lib/eta-ping";
@@ -789,6 +790,8 @@ export function DebugEval({
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
       sock.send(JSON.stringify({ type: "answer", askId, choices }));
+      // One fewer unanswered ask on the app-icon badge (docs/app-badge.md).
+      noteBadgeSeen({ asks: -1 });
       return true;
     } catch {
       return false;

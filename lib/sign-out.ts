@@ -22,6 +22,7 @@
  */
 import { removeDevice } from "@/lib/byok/config";
 import { exitOutputBed } from "@lianki/debug-chat/output-bed";
+import { type BadgeNav, setBadge } from "@/lib/app-badge";
 
 export const SIGN_OUT_PATH = "/api/auth/sign-out";
 /** public/sw.js KEEP_CACHES: the only cache that is not per-account. */
@@ -32,6 +33,8 @@ type SignOutEnv = {
   caches?: Pick<CacheStorage, "keys" | "delete">;
   replace: (url: string) => void;
   forgetByok?: () => void;
+  /** The app-icon badge (docs/app-badge.md): cleared, it counted this account's cards. */
+  badge?: BadgeNav | null;
   /** Ends the session instead of step 1: a box revokes its token at lianki.com. */
   endSession?: () => Promise<boolean>;
 };
@@ -52,9 +55,11 @@ export async function signOut(to = "/", env?: SignOutEnv): Promise<boolean> {
     caches: typeof caches === "undefined" ? undefined : caches,
     replace: (url) => location.replace(url),
     forgetByok: () => removeDevice(),
+    badge: typeof navigator === "undefined" ? null : (navigator as BadgeNav),
     endSession,
   };
   e.forgetByok?.();
+  void setBadge(e.badge, 0);
   // Nothing of the page's audio keeps running past the account (docs/voice-mode.md).
   exitOutputBed("sign-out");
   let ok = false;

@@ -58,9 +58,17 @@ self.addEventListener("activate", (event) => {
 
 // A page loaded before this worker took control sends the URLs it already
 // fetched (its HTML and /_next/static chunks) so they are cached too.
+//
+// A page also tells it what the app-icon badge counts ({type: "badge-mode"}),
+// for a push that carries counts only (badge section below).
 self.addEventListener("message", (event) => {
   const data = event.data;
-  if (IS_BOX || !data || data.type !== "cache" || !Array.isArray(data.urls)) return;
+  if (IS_BOX || !data) return;
+  if (data.type === "badge-mode") {
+    event.waitUntil(rememberBadgeMode(data.mode));
+    return;
+  }
+  if (data.type !== "cache" || !Array.isArray(data.urls)) return;
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
       Promise.all(
@@ -158,3 +166,95 @@ async function networkThenCache(request) {
 function cacheable(res) {
   return res.ok && !res.headers.has("x-lk-live");
 }
+
+// ── The app-icon badge (docs/app-badge.md; the page side is lib/app-badge.ts) ──
+//
+// A push sets the number on the installed app's icon: from the payload when it
+// carries one ({badge: n} or {badge: {asks, due, mode?}}), else from one
+// GET /api/badge (numbers only). No Badging API, or it refuses: nothing.
+// Behind the flag `pwa.app-badge`: the endpoint answers {on: false} while it
+// is off, and the badge is cleared.
+
+const BADGE_MODES = ["off", "ask-cards", "due-cards", "both"];
+const BADGE_MAX = 9999;
+/** Where the page's last mode is kept across the worker's restarts (dropped on an update). */
+const BADGE_CACHE = "lianki-badge-v1";
+const BADGE_MODE_URL = "/__lk/badge-mode";
+let badgeMode = null;
+
+const isCount = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+
+/** lib/app-badge.ts badgeCount, without the screen (a worker has none). */
+function badgeNumber(mode, c) {
+  if (mode === "off") return 0;
+  const asks = mode === "due-cards" ? 0 : Math.floor(c.asks);
+  const due = mode === "ask-cards" ? 0 : Math.floor(c.due);
+  return Math.min(asks + due, BADGE_MAX);
+}
+
+async function rememberBadgeMode(mode) {
+  if (!BADGE_MODES.includes(mode)) return;
+  badgeMode = mode;
+  try {
+    const cache = await caches.open(BADGE_CACHE);
+    await cache.put(BADGE_MODE_URL, new Response(mode));
+  } catch {}
+}
+
+async function storedBadgeMode() {
+  if (badgeMode) return badgeMode;
+  try {
+    const cache = await caches.open(BADGE_CACHE);
+    const res = await cache.match(BADGE_MODE_URL);
+    const mode = res ? await res.text() : null;
+    if (BADGE_MODES.includes(mode)) badgeMode = mode;
+  } catch {}
+  return badgeMode;
+}
+
+async function setIconBadge(n) {
+  const nav = self.navigator;
+  if (!nav || typeof nav.setAppBadge !== "function") return false;
+  try {
+    if (n > 0) await nav.setAppBadge(Math.min(Math.floor(n), BADGE_MAX));
+    else if (typeof nav.clearAppBadge === "function") await nav.clearAppBadge();
+    else await nav.setAppBadge(0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function badgeFromPush(data) {
+  const nav = self.navigator;
+  if (!nav || typeof nav.setAppBadge !== "function") return false;
+  const b = data && data.badge;
+  if (isCount(b)) return setIconBadge(b);
+  if (b && typeof b === "object" && isCount(b.asks) && isCount(b.due)) {
+    const mode = BADGE_MODES.includes(b.mode) ? b.mode : (await storedBadgeMode()) || "both";
+    return setIconBadge(badgeNumber(mode, b));
+  }
+  const mode = await storedBadgeMode();
+  if (mode === "off") return setIconBadge(0);
+  try {
+    const res = await fetch(mode ? `/api/badge?mode=${mode}` : "/api/badge", {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    // Signed out, or the server failed: the number stays as it was.
+    if (!res.ok) return false;
+    const j = await res.json();
+    return setIconBadge(j && j.on === true && isCount(j.count) ? j.count : 0);
+  } catch {
+    return false;
+  }
+}
+
+self.addEventListener("push", (event) => {
+  if (IS_BOX) return;
+  let data = null;
+  try {
+    data = event.data ? event.data.json() : null;
+  } catch {}
+  event.waitUntil(badgeFromPush(data));
+});
