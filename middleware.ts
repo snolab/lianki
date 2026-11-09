@@ -10,23 +10,25 @@ import {
   PARTNER_FRAME_HEADER,
   isAppRoute,
   isPartnerFramePath,
-  localeFromAcceptLanguage,
   localeRoot,
 } from "@/lib/app-locale";
 import { movedPath } from "@/lib/moved-routes";
+import { LOCALE_SRC_COOKIE, LOCALE_SRC_HEADER, requestLocale } from "@/lib/account-locale";
 
 const YEAR_S = 365 * 24 * 60 * 60;
 /** intlayer's locale header, which the root layout reads (app/layout.tsx, getRootLocale). */
 const INTLAYER_LOCALE_HEADER = "x-intlayer-locale";
 
-function appRouteLocale(request: NextRequest): string {
-  const requested = request.nextUrl.searchParams.get(LOCALE_PARAM);
-  if (requested && isSupportedLocale(requested)) return requested;
-
-  const cookie = request.cookies.get(LOCALE_PARAM)?.value;
-  if (cookie && isSupportedLocale(cookie)) return cookie;
-
-  return localeFromAcceptLanguage(request.headers.get("accept-language"));
+/**
+ * ?lang= → `lang` cookie → Accept-Language. A signed-in account's language is
+ * put first later, on the server (lib/account-locale.ts): no session here.
+ */
+function appRouteLocale(request: NextRequest) {
+  return requestLocale(
+    request.nextUrl.searchParams.get(LOCALE_PARAM),
+    request.cookies.get(LOCALE_PARAM)?.value,
+    request.headers.get("accept-language"),
+  );
 }
 
 export function middleware(request: NextRequest) {
@@ -76,9 +78,11 @@ export function middleware(request: NextRequest) {
   // App routes carry the locale in ?lang=. Resolve it here and pass it down as a
   // request header, because layouts cannot read searchParams.
   if (isAppRoute(pathname)) {
-    const locale = appRouteLocale(request);
+    const { locale, source } = appRouteLocale(request);
     const headers = new Headers(request.headers);
     headers.set(LOCALE_HEADER, locale);
+    // Decided here; a request can never claim a source itself.
+    headers.set(LOCALE_SRC_HEADER, source);
     // Decided here from the path alone; a request can never set or clear it itself.
     headers.delete(PARTNER_FRAME_HEADER);
     if (isPartnerFramePath(pathname)) headers.set(PARTNER_FRAME_HEADER, "1");
@@ -90,8 +94,11 @@ export function middleware(request: NextRequest) {
     const response = NextResponse.next({ request: { headers } });
     // An explicit ?lang= (a language switch, or a shared link) sticks, so the
     // app's own links can stay bare.
-    if (searchParams.get(LOCALE_PARAM) === locale) {
+    // It is a pick by hand for this browser session: the account's language
+    // never overrides it (lib/account-locale.ts, the `pick` marker).
+    if (source === "param") {
       response.cookies.set(LOCALE_PARAM, locale, { path: "/", sameSite: "lax", maxAge: YEAR_S });
+      response.cookies.set(LOCALE_SRC_COOKIE, "pick", { path: "/", sameSite: "lax" });
     }
     return response;
   }

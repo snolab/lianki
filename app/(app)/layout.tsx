@@ -1,7 +1,8 @@
 import { IntlayerServerProvider } from "next-intlayer/server";
 import { getIntlayer } from "intlayer";
 import { LANG_TAGS, isRTLLocale } from "@/lib/constants";
-import { appLocale } from "@/lib/app-locale.server";
+import { appLocaleState } from "@/lib/app-locale.server";
+import { AccountLocaleAdopt } from "@/app/components/AccountLocaleAdopt";
 import { authUserOrNull } from "@/app/signInEmail";
 import { AppShell, type ShellLabels, type ShellUser } from "@/app/components/AppShell";
 import type { FirstRunLabels } from "@/app/components/FirstRunChoice";
@@ -25,7 +26,9 @@ import { levelsOn } from "@/lib/level-progress";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   announceBuild();
-  const locale = await appLocale();
+  // The signed-in account's language first, on the first response (lib/account-locale.ts).
+  const localeState = await appLocaleState();
+  const locale = localeState.locale;
   const lang = LANG_TAGS[locale] ?? locale;
   const dir = isRTLLocale(locale) ? "rtl" : "ltr";
 
@@ -86,6 +89,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           >
             {pendingInvite && <InviteClaim />}
             <PrefSync signedIn={Boolean(user)} />
+            {localeState.adopt && <AccountLocaleAdopt locale={localeState.adopt.locale} />}
             <AppBadge on={appBadge} />
             {children}
           </AppShell>

@@ -96,6 +96,22 @@ describe("prefBindings", () => {
     });
     expect(dataset.paper).toBe("c");
     expect(cookies.some((c) => c.startsWith("lang=ja;"))).toBe(true);
+    // The server need not read the account's language again (lib/account-locale.ts).
+    expect(cookies.some((c) => c.startsWith("lang_src=acct;"))).toBe(true);
+  });
+
+  it("a pulled ui.locale keeps this session's pick by hand a pick", () => {
+    g.document = {
+      get cookie() {
+        return "a=1; lang_src=pick";
+      },
+      set cookie(c: string) {
+        cookies.push(c);
+      },
+    };
+    b("ui.locale").set("ko");
+    expect(cookies.some((c) => c.startsWith("lang=ko;"))).toBe(true);
+    expect(cookies.some((c) => c.startsWith("lang_src="))).toBe(false);
   });
 
   it("a store field goes through the page's store when it has one", () => {

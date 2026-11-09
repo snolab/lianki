@@ -7,7 +7,8 @@ import { getIntlayer } from "intlayer";
 import { cookies, headers } from "next/headers";
 import type { PartnerStrings } from "./components/DebugEval";
 import { OwnerBoots } from "./components/OwnerBoots";
-import { LOCALE_HEADER, PARTNER_FRAME_HEADER, resolveLocale } from "@/lib/app-locale";
+import { LOCALE_HEADER, PARTNER_FRAME_HEADER } from "@/lib/app-locale";
+import { appLocale } from "@/lib/app-locale.server";
 import { LANG_TAGS } from "@/lib/constants";
 import { type FlagValues, flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
@@ -78,8 +79,8 @@ async function getRootLocale() {
   // App routes resolve their locale in middleware (?lang= / cookie /
   // Accept-Language) and pass it in LOCALE_HEADER; <html lang> must match the
   // UI they render, not intlayer's prefix locale.
-  const appLang = h.get(LOCALE_HEADER);
-  if (appLang) return resolveLocale(appLang);
+  // A signed-in account's language comes first there (lib/account-locale.ts).
+  if (h.get(LOCALE_HEADER)) return appLocale();
   const c = await cookies();
   return h.get("x-intlayer-locale") ?? c.get("INTLAYER_LOCALE")?.value ?? "en";
 }

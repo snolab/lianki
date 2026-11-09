@@ -51,6 +51,7 @@ import byokSettings from "@/app/components/byok-settings.content";
 import titleRules from "@/app/components/title-rules.content";
 import externalLink from "@/app/components/external-link.content";
 import appBadge from "@/app/components/app-badge.content";
+import languageSettings from "@/app/components/language-settings.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
 import apiTokens from "@/app/components/api-tokens.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
@@ -141,6 +142,7 @@ describe.each([
   ["title-rules", titleRules],
   ["external-link", externalLink],
   ["app-badge", appBadge],
+  ["language-settings", languageSettings],
   ["sign-in-errors", signInErrors],
   ["privacy-page", privacyPage],
   ["api-tokens", apiTokens],

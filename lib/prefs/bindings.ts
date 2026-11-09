@@ -21,6 +21,7 @@ import type { PrefBinding } from "@lianki/ui-state/account";
 import { REGISTRY, type UiStore } from "@lianki/ui-state";
 import { CATALOG_URLS, type PrefKey } from "@/lib/prefs/schema";
 import { LOCALE_PICK_KEY } from "@/lib/app-locale";
+import { ACCT_COOKIE_LINE } from "@/lib/account-locale";
 import { BYOK_BACKEND_KEY } from "@/lib/byok/config";
 import { LINK_CONFIRM_KEY, LINK_ALLOWED_KEY } from "@/lib/external-link";
 import { BADGE_DEFAULT, BADGE_PREF_KEY } from "@/lib/app-badge";
@@ -153,6 +154,9 @@ function setLocaleCookies(v: unknown) {
   try {
     for (const name of ["NEXT_LOCALE", "lang"])
       document.cookie = `${name}=${String(v)}; path=/; max-age=${COOKIE_YEAR_S}; SameSite=Lax`;
+    // The `lang` cookie now holds the account's language: the server need not
+    // read it again (lib/account-locale.ts). A pick by hand this session stays one.
+    if (!/(?:^|;\s*)lang_src=pick(?:;|$)/.test(document.cookie)) document.cookie = ACCT_COOKIE_LINE;
   } catch {}
 }
 
