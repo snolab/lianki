@@ -85,10 +85,14 @@
  * unchanged, `source: "stt"`. The agent may polish it ({type:"edit", id,
  * text}) — STT gets words wrong and has no context — only if all hold: the
  * sender holds a live owner grant (chat or eval; never a friend's pairing),
- * the line is the owner's latest in the owner thread, it is `stt`, and it
- * was polished fewer than MAX_EDITS times. The first STT text stays as
- * `raw`; `edited: {at, by, count}` marks it. Pages and listeners hear
- * {type:"edited", id, thread, text, raw, edited}. Friends' lines never.
+ * the line is among the owner's last EDITABLE_LINES in the owner thread, it
+ * is `stt`, and it was polished fewer than MAX_EDITS times. The first STT
+ * text stays as `raw`; `edited: {at, by, count}` marks it. Pages and
+ * listeners hear {type:"edited", id, thread, text, raw, edited}. Friends'
+ * lines never. {type:"summary", ids|last, text} collapses a consecutive run
+ * of those voice lines (room talk) into one line saying what was said; the
+ * others stay stored with `collapsedInto`. Both need flag stt.polish (on by
+ * default).
  *
  * Continuous speech (flag stt.merge, voice-merge.ts; docs/dev-debug-widget.md,
  * "Continuous speech amends the last line"). With the flag on, an owner's voice
@@ -191,6 +195,8 @@ import {
   type EditedEvent,
   type FriendRecord,
   MAX_EDITS,
+  EDITABLE_LINES,
+  type SummaryMark,
   type HubState,
   type Identity,
   MAX_LABEL,
@@ -236,7 +242,7 @@ import type {
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
-import { polishCheck, polishContext } from "../../../packages/debug-chat/src/polish";
+import { polishCheck, polishContext, summaryCheck } from "../../../packages/debug-chat/src/polish";
 import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
 import {
   type MergeCandidate,
@@ -493,8 +499,8 @@ const AI_BEAT_MS = 8_000;
 /** Daily usage keys (docs/partner-ai.md, "Caps"): a user's tokens, the site's micro-USD. */
 const aiUserKey = (day: string, userId: string) => `ai:${day}:u:${userId}`;
 const aiSiteKey = (day: string) => `ai:${day}:site`;
-/** The owner's off switch for agent polish (lib/flags.ts, /dev/flags). */
-export const POLISH_OFF_FLAG = "stt.polish-off";
+/** The owner's switch for agent polish and summaries of his voice lines: ON (the default) = active (lib/flags.ts, /dev/flags). */
+export const POLISH_FLAG = "stt.polish";
 /** The owner's switch for continuous speech amending the last line (voice-merge.ts). */
 export const MERGE_FLAG = "stt.merge";
 /** At most one live-session check per grant in this long (a burst of uses asks once). */
@@ -904,32 +910,53 @@ export class DebugHub {
   }
 
   /**
-   * The agent polishes the owner's latest voice line (see "Voice edits"
-   * above). Every refusal is an {type:"error"} naming the rule it broke.
+   * The owner thread's kept lines, newest first, and the owner's own last
+   * EDITABLE_LINES among them: the lines an agent may polish or summarise.
+   */
+  private async editable() {
+    const kept = [
+      ...(await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(OWNER_THREAD).prefix,
+        reverse: true,
+        limit: CHAT_HISTORY,
+      })),
+    ];
+    // A line already inside a summary is not one of his lines any more: the summary is.
+    const own = kept.filter(([, x]) => x.from === "owner" && !x.collapsedInto);
+    return { kept, recent: own.slice(0, EDITABLE_LINES) };
+  }
+
+  /** May this controller edit the owner's lines? A refusal's reason, else null. */
+  private async mayEdit(c: ControllerAtt): Promise<string | null> {
+    if (c.forUser) return "a pairing for a friend cannot edit";
+    const g = c.grant ? await this.ctx.storage.get<Grant>(`grant:${c.grant}`) : undefined;
+    if (!g || g.until <= this.now()) return "edit needs a live chat grant from the owner";
+    return null;
+  }
+
+  /**
+   * The agent polishes one of the owner's last EDITABLE_LINES voice lines (see
+   * "Voice edits" above). Every refusal is an {type:"error"} naming the rule it broke.
    */
   private async edit(ws: Socket, c: ControllerAtt, m: { id: string; text: string }) {
     const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
-    if (c.forUser) return fail("a pairing for a friend cannot edit");
-    const g = c.grant ? await this.ctx.storage.get<Grant>(`grant:${c.grant}`) : undefined;
-    if (!g || g.until <= this.now()) return fail("edit needs a live chat grant from the owner");
-    // The owner's latest line in the owner thread, and its storage key.
-    const kept = await this.ctx.storage.list<ChatMessage>({
-      prefix: threadKeys(OWNER_THREAD).prefix,
-      reverse: true,
-      limit: CHAT_HISTORY,
-    });
-    const latest = [...kept].find(([, x]) => x.from === "owner");
-    if (!latest || latest[1].id !== m.id) {
-      const known = [...kept].some(([, x]) => x.id === m.id);
+    const no = await this.mayEdit(c);
+    if (no) return fail(no);
+    const { kept, recent: mine } = await this.editable();
+    const target = mine.find(([, x]) => x.id === m.id);
+    if (!target) {
+      const known = kept.some(([, x]) => x.id === m.id);
       return fail(
         known
-          ? `message ${m.id} is not the owner's latest: only the latest may be polished`
+          ? `message ${m.id} is not among the owner's last ${EDITABLE_LINES} lines: only those may be polished`
           : `no message ${m.id} in the owner's thread (friends' lines can never be edited)`,
       );
     }
-    const [key, line] = latest;
+    const [key, line] = target;
     if (line.source !== "stt")
       return fail(`message ${m.id} was typed, not spoken: only voice (stt) lines may be polished`);
+    if (line.summary)
+      return fail(`message ${m.id} is a summary: its lines are kept as heard, nothing to polish`);
     const count = line.edited?.count ?? 0;
     if (count >= MAX_EDITS) return fail(`message ${m.id} was already polished ${MAX_EDITS} times`);
     if (m.text === line.text) return fail(`message ${m.id} already reads that way`);
@@ -939,13 +966,17 @@ export class DebugHub {
     // Held to the context (polish.ts): the raw STT text against the thread's
     // other lines, the page it was spoken on, and the words on its screen.
     const raw = line.raw ?? line.text;
-    const recent = [...kept].filter(([k]) => k !== key).map(([, x]) => x.text);
+    // The thread's other lines, before and after it (the agent's replies too).
+    const recent = kept.filter(([k]) => k !== key).map(([, x]) => x.text);
     // A merged line's parts are context too: later words correct what earlier ones really were.
     recent.push(...partTexts(line));
     const v = polishCheck(raw, m.text, polishContext(line, recent));
-    if (!v.ok) return fail(`not polished, the raw line stands: ${v.reason}`);
-    if (await this.polishOff())
-      return fail(`polish is off (${POLISH_OFF_FLAG} at /dev/flags): the raw line stands`);
+    if (!v.ok) {
+      console.log(JSON.stringify({ msg: "debug.polish-refused", id: line.id, reason: v.reason }));
+      return fail(`not polished, the raw line stands: ${v.reason}`);
+    }
+    if (!(await this.polishOn()))
+      return fail(`polish is off (${POLISH_FLAG} at /dev/flags): the raw line stands`);
     const t = this.now();
     const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
     const next: ChatMessage = {
@@ -976,6 +1007,106 @@ export class DebugHub {
       }),
     );
     this.tellEdit(out, line.to, ws);
+  }
+
+  /**
+   * The agent collapses a run of the owner's voice lines that were not
+   * addressed to it (room talk, someone else speaking) into one short summary
+   * (docs/dev-debug-widget.md, "Summaries"). Only his own `stt` lines among his
+   * last EDITABLE_LINES, consecutive in the thread (nobody spoke in between),
+   * none still being spoken or already summarised, and the summary passes
+   * `summaryCheck`. Nothing is deleted: the first line takes the summary as its
+   * text and every line's heard text, joined, as `raw`; the others stay stored
+   * with `collapsedInto`. The account's history keeps every line as it was and
+   * gains the summary as a line of its own.
+   */
+  private async summarise(
+    ws: Socket,
+    c: ControllerAtt,
+    m: { ids?: string[]; last?: number; text: string },
+  ) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    const no = await this.mayEdit(c);
+    if (no) return fail(no);
+    const { kept, recent: mine } = await this.editable();
+    let picked: [string, ChatMessage][];
+    if (m.last) picked = mine.slice(0, m.last);
+    else {
+      picked = [];
+      for (const id of new Set(m.ids ?? [])) {
+        const hit = mine.find(([, x]) => x.id === id);
+        if (!hit)
+          return fail(
+            `message ${id} is not among the owner's last ${EDITABLE_LINES} lines: only those may be summarised`,
+          );
+        picked.push(hit);
+      }
+    }
+    if (!picked.length) return fail("no lines of the owner's to summarise");
+    // Oldest first, in thread order (kept is newest first).
+    const at = (k: string) => kept.findIndex(([key]) => key === k);
+    picked.sort((a, b) => at(b[0]) - at(a[0]));
+    const idx = picked.map(([k]) => at(k));
+    for (let i = 1; i < idx.length; i++)
+      if (idx[i - 1]! - idx[i]! !== 1)
+        return fail("the lines are not consecutive: a summary covers one run nobody spoke into");
+    for (const [, x] of picked) {
+      if (x.source !== "stt")
+        return fail(
+          `message ${x.id} was typed, not spoken: only voice (stt) lines may be summarised`,
+        );
+      if (x.summary) return fail(`message ${x.id} is already a summary`);
+      if (x.parts && !x.settled && this.now() - lastPartAt(x) < MAX_UTTERANCE_MS)
+        return fail(`message ${x.id} is still being spoken`);
+    }
+    const heard = picked.map(([, x]) => x.raw ?? x.text);
+    const v = summaryCheck(heard, m.text);
+    if (!v.ok) {
+      console.log(JSON.stringify({ msg: "debug.summary-refused", reason: v.reason }));
+      return fail(`not summarised, the lines stand: ${v.reason}`);
+    }
+    if (!(await this.polishOn()))
+      return fail(`polish is off (${POLISH_FLAG} at /dev/flags): the lines stand`);
+    const t = this.now();
+    const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
+    const [[firstKey, first], ...rest] = picked as [
+      [string, ChatMessage],
+      ...[string, ChatMessage][],
+    ];
+    const summary: SummaryMark = { at: t, by, ids: picked.map(([, x]) => x.id) };
+    const edited = first.edited ?? { at: t, by, count: 0 };
+    const next: ChatMessage = { ...first, text: m.text, raw: heard.join("\n"), edited, summary };
+    await this.ctx.storage.put(firstKey, next);
+    for (const [k, x] of rest)
+      await this.ctx.storage.put(k, { ...x, collapsedInto: first.id } satisfies ChatMessage);
+    // History keeps every line as heard (or polished); the summary joins it as its own line.
+    const logged = chatLogLine({
+      id: `${first.id}.summary`,
+      from: "owner",
+      text: m.text,
+      at: first.at,
+    });
+    if (logged) await this.chatLog({ op: "put", thread: OWNER_THREAD, lines: [logged] });
+    const out: EditedEvent = {
+      type: "edited",
+      id: first.id,
+      thread: OWNER_THREAD,
+      text: next.text,
+      raw: next.raw as string,
+      edited,
+      summary,
+    };
+    console.log(
+      JSON.stringify({
+        msg: "debug.summary",
+        pair: c.pair,
+        id: first.id,
+        lines: summary.ids.length,
+        by,
+        len: m.text.length,
+      }),
+    );
+    this.tellEdit(out, first.to, ws);
   }
 
   /** An edit of an owner's line: its pages, and the listeners by the line's node. */
@@ -1033,6 +1164,8 @@ export class DebugHub {
     const [key, prev] = latest;
     // The same page on the same path: another device, or a page he moved to, is a new turn.
     if (prev.label !== page.label) return refuse("other-page");
+    // A summarised run is closed: nothing more joins it, nor a line hidden inside it.
+    if (prev.summary || prev.collapsedInto) return refuse("summarised");
     // A card waiting for him just before it, or one tapped since: an answer stays its own act.
     const before = kept[1]?.[1];
     if (before?.ask && askState(before, cur.at) === "open") return refuse("open-ask");
@@ -1121,7 +1254,7 @@ export class DebugHub {
 
   /**
    * The page that spoke went quiet after a merged line. Nothing more joins it,
-   * and the listeners hear it is time for its one polish. With stt.polish-off on
+   * and the listeners hear it is time for its one polish. With stt.polish off
    * (or unsure) they hear nothing, so no lane wakes for it: the raw line stands.
    */
   private async passageEnd(page: PageAtt) {
@@ -1136,7 +1269,7 @@ export class DebugHub {
     const [key, line] = latest;
     if (!line.parts || line.settled || line.label !== page.label) return;
     await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
-    if ((line.edited?.count ?? 0) >= MAX_EDITS || (await this.polishOff())) return;
+    if ((line.edited?.count ?? 0) >= MAX_EDITS || !(await this.polishOn())) return;
     const out: PolishDueEvent = {
       type: "polish-due",
       id: line.id,
@@ -1553,20 +1686,29 @@ export class DebugHub {
   }
 
   /**
-   * Has the owner switched agent polish off (POLISH_OFF_FLAG at /dev/flags)?
-   * Asked of the main Worker's DebugSessions entrypoint on each edit (edits are
-   * one per voice line at most). Only an answer of exactly false lets polish
-   * through; "busy", an error or an odd answer count as off (unsure: the raw
-   * line stands). No binding, or a main Worker from before `flag()`: not off,
-   * polish as before, so the deploy order never matters.
+   * Is agent polish on (POLISH_FLAG at /dev/flags, on by default)? Asked of the
+   * main Worker's DebugSessions entrypoint on each edit (one per voice line at
+   * most), uncached. Only an answer of exactly false switches it off. A read
+   * that fails — "busy" or an error — is unsure: polish waits and the raw line
+   * stands, as before, and it is logged (`debug.polish-flag-unread`). No
+   * binding, or a main Worker from before `flag()`: on, as ever.
    */
-  private async polishOff(): Promise<boolean> {
-    if (!this.sessions?.flag) return false;
+  private async polishOn(): Promise<boolean> {
+    if (!this.sessions?.flag) return true;
+    let v: unknown;
     try {
-      return (await this.flagValue(POLISH_OFF_FLAG)) !== false;
-    } catch {
-      return true;
+      v = await this.flagValue(POLISH_FLAG);
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.polish-flag-unread", error: String(e).slice(0, 200) }),
+      );
+      return false;
     }
+    if (v === "busy") {
+      console.log(JSON.stringify({ msg: "debug.polish-flag-unread", error: "busy" }));
+      return false;
+    }
+    return v !== false;
   }
 
   /** Run read-check-write with no other event in between (the DO's own gate, where there is one). */
@@ -3088,6 +3230,7 @@ export class DebugHub {
     }
     if (m.value.type === "edit") return this.edit(ws, c, m.value);
     if (m.value.type === "withdraw") return this.withdraw(ws, c, m.value);
+    if (m.value.type === "summary") return this.summarise(ws, c, m.value);
     if (m.value.type === "ask") return this.ask(ws, c, m.value.ask, m.value.to);
     if (m.value.type === "say") {
       if (c.forUser)

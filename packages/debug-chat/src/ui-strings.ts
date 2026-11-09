@@ -16,6 +16,14 @@ export type UiStrings = {
   items: string;
   /** The mark on a voice line the agent polished (its tooltip and label). */
   polished: string;
+  /**
+   * The visible tag on a line the agent summarised: a run of the owner's voice
+   * lines that were room talk, collapsed into one short line saying what was
+   * said. A tap shows the lines as heard. Short: one word.
+   */
+  summary: string;
+  /** The tag's tooltip: what the summary is and that a tap shows what was heard. */
+  summaryTip: string;
   /** The menu's Latency row (latency.ts): its title, and before any voice reply. */
   latency: string;
   latencyNone: string;
@@ -146,6 +154,8 @@ export const UI_EN: UiStrings = {
   needsYou: "needs you",
   items: "items",
   polished: "Polished",
+  summary: "Summary",
+  summaryTip: "Summary of what was heard. Tap to see the lines as heard.",
   latency: "Latency, last voice line",
   micAdapt: "Mic, adapting",
   micAdaptFloor: "room",
@@ -202,6 +212,8 @@ export const UI_ZH: UiStrings = {
   needsYou: "等你处理",
   items: "项",
   polished: "已润色",
+  summary: "摘要",
+  summaryTip: "听到的内容的摘要，点一下看原话",
   latency: "延迟（上一句语音）",
   micAdapt: "麦克风（自适应）",
   micAdaptFloor: "环境",
@@ -258,6 +270,8 @@ export const UI_JA: UiStrings = {
   needsYou: "あなた待ち",
   items: "件",
   polished: "整えました",
+  summary: "要約",
+  summaryTip: "聞こえた内容の要約。タップで元の発言を表示",
   latency: "遅延（直前の音声）",
   micAdapt: "マイク（自動調整）",
   micAdaptFloor: "周囲",

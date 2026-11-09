@@ -10,6 +10,7 @@
 
 import {
   MAX_CHAT,
+  EDITABLE_LINES,
   ROOT_NODE,
   agentIdOf,
   nodePath,
@@ -66,6 +67,8 @@ export {
   type EditMark,
   type EditedEvent,
   MAX_EDITS,
+  EDITABLE_LINES,
+  type SummaryMark,
   applyEdit,
   applyEditTo,
   dictatedDraft,
@@ -230,6 +233,13 @@ export type ControllerMessage =
    * docs/dev-debug-widget.md, "Withdrawing an ask".
    */
   | { type: "withdraw"; id: string; to?: string }
+  /**
+   * Collapse a run of the owner's voice lines that were not addressed to the
+   * agent (room talk) into one short summary; the lines stay kept, the raw
+   * text a tap away: docs/dev-debug-widget.md, "Summaries". By `ids`, or his
+   * `last` N lines.
+   */
+  | { type: "summary"; ids?: string[]; last?: number; text: string }
   /**
    * Let senders within node `from` address nodes within `to` for `ms` (the
    * fallback for a scoped grant token): only a listener whose node holds both.
@@ -466,6 +476,21 @@ export function parseControllerMessage(
     const to = str(m.to, 320)?.trim();
     return { ok: true, value: { type: "withdraw", id, ...(to ? { to } : {}) } };
   }
+  if (m?.type === "summary") {
+    const text = chatText(m.text);
+    if (!text) return { ok: false, error: `summary needs text of 1–${MAX_CHAT} chars` };
+    if (m.last !== undefined) {
+      const last = m.last;
+      if (typeof last !== "number" || !Number.isInteger(last) || last < 1 || last > EDITABLE_LINES)
+        return { ok: false, error: `summary last takes 1–${EDITABLE_LINES}` };
+      return { ok: true, value: { type: "summary", last, text } };
+    }
+    const given: unknown[] = Array.isArray(m.ids) ? m.ids : [];
+    const ids = given.map((x) => str(x, 64)?.trim()).filter((x): x is string => !!x);
+    if (!ids.length || ids.length > EDITABLE_LINES || ids.length !== given.length)
+      return { ok: false, error: `summary needs 1–${EDITABLE_LINES} message ids, or last` };
+    return { ok: true, value: { type: "summary", ids, text } };
+  }
   if (m?.type === "grant" || m?.type === "ungrant") {
     const from = nodePath(m.from);
     const to = nodePath(m.to);
@@ -493,7 +518,7 @@ export function parseControllerMessage(
     return {
       ok: false,
       error:
-        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"}, {"type":"withdraw","id"} or {"type":"grant","from","to"}',
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"}, {"type":"summary","ids"|"last","text"}, {"type":"withdraw","id"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };

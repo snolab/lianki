@@ -144,15 +144,26 @@
  *       (docs/dev-debug-widget.md, "Continuous speech amends the last line".)
  *
  *   bun scripts/dev/eval.ts edit [<msgId>|--last] [--no-pair] "polished text"   (or - for stdin)
- *       Polish the owner's latest line when it came from the mic (STT gets
- *       words wrong, and has no context): the hub keeps the first STT text as
- *       `raw`, marks the line edited, and updates it in place on every page
- *       (never read aloud again). Only the owner's LATEST line, only
- *       "source":"stt", at most 3 times; friends' lines never. --last targets
- *       the owner's latest line. Uses the saved grant; never pairs.
- *       The hub refuses a polish its context does not support (polish.ts):
- *       fix punctuation, homophones the line's `scene`, selection or thread
- *       disambiguate, and stutters; never add, drop or invent words.
+ *       Polish one of the owner's last 5 lines when it came from the mic (STT
+ *       gets words wrong, and has no context): the hub keeps the first STT text
+ *       as `raw`, marks the line edited, and updates it in place on every page
+ *       (never read aloud again). Only "source":"stt", at most 3 times;
+ *       friends' lines never. --last targets the owner's latest line. Uses the
+ *       saved grant; never pairs. The hub refuses a polish its context does not
+ *       support (polish.ts): punctuation, homophones the line's `scene`,
+ *       selection or thread (your replies too) disambiguate, a truncated word
+ *       the context completes (fl -> flag), up to 2 function words (的 了 在 里,
+ *       the, of), stutters, and an unclear word as "（没听清，票？，条？）";
+ *       never invent words. (docs/dev-debug-widget.md, "Agent edits".)
+ *
+ *   bun scripts/dev/eval.ts edit --summary (<msgId>… | --last N) [--no-pair] "summary"
+ *       Collapse a run of the owner's consecutive voice lines that were not
+ *       for you (room talk, someone else) into ONE short line saying what was
+ *       said, e.g. "（旁人在聊租房，嫌贵）": one sentence, at most 40% of the raw
+ *       length, never a bare "noise". Nothing is deleted: the lines stay kept
+ *       and in his history, a tap shows them as heard. Keep what matters: he
+ *       may have said something he wants heard; answer it warmly if so.
+ *       (docs/dev-debug-widget.md, "Summaries".)
  *
  *   bun scripts/dev/eval.ts withdraw [<askId|msgId>|--last] [--to <thread|email>] [--no-pair]
  *       Take back an ask card that is obsolete, so nobody has to tap it: the
@@ -320,8 +331,10 @@ const noPair = boolFlag("--no-pair");
 const cloudOnly = boolFlag("--cloud");
 /** ask: wait for the tap and print the answer (or time out). */
 const waitFlag = boolFlag("--wait");
-/** edit: the owner's latest line; withdraw: the latest open ask (instead of an id). */
+/** edit: the owner's latest line, instead of an id (with --summary: his last N lines); withdraw: the latest open ask. */
 const lastFlag = boolFlag("--last");
+/** edit: collapse room-talk lines into one summary instead of polishing one. */
+const summaryFlag = boolFlag("--summary");
 /** chat: exit on {type:"pages-idle"} instead of staying for pages-back. */
 const exitOnIdle = boolFlag("--exit-on-idle");
 /** chat: answer each live owner/friend line at once with one busy beat ("heard you"). */
@@ -614,6 +627,8 @@ function chat(out?: string, errorsOnly = false) {
           text: m.text,
           raw: m.raw,
           edited: m.edited,
+          // A summary of room talk: these lines are now one (raw: all of them as heard).
+          ...(m.summary ? { summary: m.summary } : {}),
           // Continuous speech (stt.merge): `text` is the whole line so far; read it again.
           ...(Array.isArray(m.parts) ? { parts: m.parts.length } : {}),
           ...(m.merged ? { merged: m.merged } : {}),
@@ -881,7 +896,12 @@ function ask(
  * owner said last, from the history the hub sends on resume). Resolves with
  * the hub's {type:"edited"}; rejects with the rule it broke. Never pairs.
  */
-function edit(text: string, id: string | undefined, last: boolean): Promise<Msg> {
+function edit(
+  text: string,
+  id: string | undefined,
+  last: boolean,
+  summary?: { ids?: string[]; last?: number },
+): Promise<Msg> {
   const grant = chatGrant();
   if (!grant)
     return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
@@ -897,9 +917,21 @@ function edit(text: string, id: string | undefined, last: boolean): Promise<Msg>
       ws.close();
       fn();
     };
-    const go = () => ws.send(JSON.stringify({ type: "edit", id: target, text }));
+    const go = () =>
+      ws.send(
+        JSON.stringify(
+          summary ? { type: "summary", ...summary, text } : { type: "edit", id: target, text },
+        ),
+      );
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
+      // A summary is the hub's to resolve (ids or his last N): its answer carries `summary`.
+      if (summary) {
+        if (m.type === "approved") go();
+        else if (m.type === "edited" && m.summary) done(() => resolve(m));
+        else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+        return;
+      }
       // An id: send at once. --last: wait for the history that follows the approval.
       if (m.type === "approved" && !last) go();
       else if (m.type === "history" && last && target === undefined) {
@@ -1118,6 +1150,23 @@ async function main() {
   if (args[0] === "serve") return serve();
   if (args[0] === "chat") return chat(out);
   if (args[0] === "errors") return chat(out, true);
+  if (args[0] === "edit" && summaryFlag) {
+    const rest = args.slice(1);
+    const raw = rest.at(-1);
+    const text = (raw === "-" ? await Bun.stdin.text() : (raw ?? "")).trim();
+    const heads = rest.slice(0, -1);
+    const n = lastFlag ? Number(heads[0]) : NaN;
+    const ok = lastFlag ? heads.length === 1 && Number.isInteger(n) && n >= 1 : heads.length >= 1;
+    if (!text || !ok) {
+      console.error(
+        'usage: bun scripts/dev/eval.ts edit --summary (<msgId>… | --last N) [--no-pair] "summary" | -',
+      );
+      process.exit(2);
+    }
+    const which = lastFlag ? { last: n } : { ids: heads };
+    console.log(JSON.stringify(await edit(text, undefined, false, which)));
+    return;
+  }
   if (args[0] === "edit") {
     const rest = args.slice(1);
     const id = lastFlag ? undefined : rest.length > 1 ? rest[0] : undefined;
