@@ -116,6 +116,9 @@ export type PartnerResult =
        * Absent on refusals before any call. The hub refunds only "no" and refusals.
        */
       billed?: "no" | "unknown";
+      /** "no-credits": whole credits one reply needs (its hold), and the balance. */
+      need?: number;
+      have?: number;
       /** The model's reported usage, when it answered but its text was unusable. */
       tokensIn?: number;
       tokensOut?: number;

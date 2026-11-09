@@ -128,6 +128,8 @@ export type PartnerStrings = ChatStrings & {
   /** Out of credits: the model was not asked; the line links to where credits are bought. */
   aiCredits: string;
   aiCreditsLink: string;
+  /** "At least {need} credits ({short} more)", when the refusal carried the numbers. */
+  aiCreditsNeed?: string;
 };
 
 /**
@@ -440,9 +442,18 @@ export function DebugEval({
         }
         if (msg.type === "ai-credits") {
           const s = stringsRef.current;
-          const line = (
-            s?.aiCredits ?? "Your {name} needs credits to reply. Add credits to keep chatting."
-          ).replaceAll("{name}", s?.name || "Learning Partner");
+          const need = Number((msg as { need?: unknown }).need);
+          const have = Number((msg as { have?: unknown }).have);
+          const numbers =
+            Number.isFinite(need) && Number.isFinite(have) && s?.aiCreditsNeed
+              ? ` ${s.aiCreditsNeed
+                  .replaceAll("{need}", String(need))
+                  .replaceAll("{short}", String(Math.max(0, need - have)))}`
+              : "";
+          const line =
+            (
+              s?.aiCredits ?? "Your {name} needs credits to reply. Add credits to keep chatting."
+            ).replaceAll("{name}", s?.name || "Learning Partner") + numbers;
           setCreditsLine(line);
           setWarning(line);
           return;

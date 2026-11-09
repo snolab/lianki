@@ -27,7 +27,15 @@ export type ImportFilesDeps = InboxDeps & {
   on: (who: { id: string; email: string }) => Promise<boolean>;
   /** False without R2/D1 (the Mongo backend): nothing can be stored. */
   available?: boolean;
+  /** Drop what was derived from a deleted file (its cached AI chunks). */
+  dropDerived?: (userId: string, fileId: string) => Promise<void>;
 };
+
+/** After a delete answered 200: what was derived from the file goes too. */
+async function dropAfter(r: Response, d: ImportFilesDeps, userId: string, id: string) {
+  if (r.ok && d.dropDerived) await d.dropDerived(userId, id);
+  return r;
+}
 
 /** The sources a user uploads to through these routes (`?source=`; default `import`). */
 export const UPLOAD_SOURCES = ["import", "self-intro"] as const satisfies readonly InboxSource[];
@@ -83,7 +91,7 @@ export async function deleteImportFile(
   const a = await allowed(d);
   if (!a.who) return unauthorized();
   if (!a.ok) return notFound();
-  return removeFor(id, a.who, d, "import");
+  return dropAfter(await removeFor(id, a.who, d, "import"), d, a.who.id, id);
 }
 
 /** GET /api/my/files — every file the user stored, every source, newest first (/my/files). */
@@ -125,5 +133,5 @@ export async function deleteMyFile(
   const a = await allowed(d);
   if (!a.who) return unauthorized();
   if (!a.ok) return notFound();
-  return removeFor(id, a.who, d, null);
+  return dropAfter(await removeFor(id, a.who, d, null), d, a.who.id, id);
 }

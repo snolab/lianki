@@ -6,6 +6,8 @@ import { isDev } from "@/lib/permissions";
 import type { Complete } from "@/lib/read/gloss-server";
 import { isWorkersAiConfigured, workersAiOpenAI } from "@/lib/workers-ai";
 import { storedFileReader } from "@/lib/import/stored-read";
+import { d1ChunkCache } from "@/lib/import/chunk-cache";
+import { dbBackend, getD1 } from "@/lib/d1";
 import {
   AI_IMPORT,
   handleAiConvert,
@@ -37,6 +39,8 @@ async function deps(): Promise<AiImportDeps> {
     // The credit wallet (the calls are paid from it); the material is stored nowhere new.
     db: walletDb(),
     readFile,
+    // Paid chunks kept per file, so a run stopped for want of credits resumes.
+    cache: dbBackend() === "d1" ? d1ChunkCache(getD1()) : null,
   };
 }
 

@@ -27,7 +27,14 @@
 import { isAdmin } from "@/lib/permissions";
 import { reserveAi, reserveCredits, settleAi, sweepStaleAi, usdToMicroCredits } from "./ai-credits";
 import type { D1WithBatch } from "./credits-store";
-import { CREDITS_HEADER, CREDITS_NEEDED } from "./no-credits-watch";
+import {
+  CREDITS_HAVE_HEADER,
+  CREDITS_HEADER,
+  CREDITS_NEED_HEADER,
+  CREDITS_NEEDED,
+  CREDITS_RECOMMENDED_HEADER,
+} from "./no-credits-watch";
+import { recommendFor } from "./recommend";
 import { CREDITS_PAUSED } from "./no-credits-watch";
 import { PRICES_VERSION, type Feature } from "./prices";
 
@@ -38,7 +45,15 @@ export type Payer = { userId: string; email?: string | null };
 
 export type Metered<T> =
   | { ok: true; value: T; charged: number; free?: "admin" | "unmetered" | "feature" }
-  | { ok: false; reason: "no-credits"; balance: number; need: number }
+  | {
+      ok: false;
+      reason: "no-credits";
+      balance: number;
+      /** Whole credits this call's hold takes: the minimum to start. */
+      need: number;
+      /** Whole credits recommended to finish the whole action (lib/payments/recommend.ts). */
+      recommended: number;
+    }
   | { ok: false; reason: "paused" }
   | { ok: false; reason: "duplicate" };
 
@@ -68,7 +83,16 @@ type Refusal = Exclude<Metered<unknown>, { ok: true }>;
 export async function takeHold(
   deps: MeterDeps,
   payer: Payer,
-  call: { what: Feature; holdUsd: number; key?: string },
+  call: {
+    what: Feature;
+    holdUsd: number;
+    key?: string;
+    /**
+     * The whole action this call belongs to, for "recommended to finish":
+     * `units` calls of at most `unitHoldUsd` each. Default: this one call.
+     */
+    action?: { units: number; unitHoldUsd: number };
+  },
 ): Promise<{ ok: true; hold: Hold } | Refusal> {
   const now = deps.now ?? (() => new Date());
   const admin = deps.admin ?? isAdmin;
@@ -89,13 +113,21 @@ export async function takeHold(
     now(),
   );
   if (r.status === "duplicate") return { ok: false, reason: "duplicate" };
-  if (r.status !== "reserved")
+  if (r.status !== "reserved") {
+    const { recommended } = await recommendFor(d1, {
+      feature: call.what,
+      units: call.action?.units ?? 1,
+      unitHoldUsd: call.action?.unitHoldUsd ?? call.holdUsd,
+      need,
+    });
     return {
       ok: false,
       reason: "no-credits",
       balance: r.status === "insufficient" ? r.balance : 0,
       need,
+      recommended,
     };
+  }
   return { ok: true, hold: base };
 }
 
@@ -134,7 +166,12 @@ export async function settleHold(
 export async function metered<T>(
   deps: MeterDeps,
   payer: Payer,
-  call: { what: Feature; holdUsd: number; key?: string },
+  call: {
+    what: Feature;
+    holdUsd: number;
+    key?: string;
+    action?: { units: number; unitHoldUsd: number };
+  },
   run: () => Promise<{ value: T; usd: number }>,
 ): Promise<Metered<T>> {
   const h = await takeHold(deps, payer, call);
@@ -208,11 +245,42 @@ export const pausedResponse = () =>
 /** The top-up page a refusal points to. */
 export const TOP_UP_PATH = "/membership";
 
-/** A refusal as the routes answer it: 402, machine-readable; the page shows the translated words. */
-export function noCreditsResponse(r: { balance: number; need: number }): Response {
+/**
+ * A refusal as the routes answer it: 402, machine-readable; the page shows
+ * the translated words. `need` (the minimum to start), `recommended` (to
+ * finish the whole action) and `have` (the balance) ride in the body and in
+ * headers, so the page-wide notice can say them without reading the body.
+ */
+export function noCreditsResponse(
+  r: {
+    balance: number;
+    need: number;
+    recommended?: number;
+  },
+  /** More of the same answer (e.g. how far a multi-step action got). */
+  extra: Record<string, number> = {},
+): Response {
+  const recommended = Math.max(r.need, r.recommended ?? r.need);
   return Response.json(
-    { error: "no-credits", balance: r.balance, need: r.need, topUp: TOP_UP_PATH },
-    { status: 402, headers: { "cache-control": "no-store", [CREDITS_HEADER]: CREDITS_NEEDED } },
+    {
+      ...extra,
+      error: "no-credits",
+      balance: r.balance,
+      have: r.balance,
+      need: r.need,
+      recommended,
+      topUp: TOP_UP_PATH,
+    },
+    {
+      status: 402,
+      headers: {
+        "cache-control": "no-store",
+        [CREDITS_HEADER]: CREDITS_NEEDED,
+        [CREDITS_NEED_HEADER]: String(r.need),
+        [CREDITS_HAVE_HEADER]: String(r.balance),
+        [CREDITS_RECOMMENDED_HEADER]: String(recommended),
+      },
+    },
   );
 }
 
@@ -230,13 +298,19 @@ export const refusal = (r: Exclude<Metered<unknown>, { ok: true }>) =>
 
 /** What a seam function returns when the wallet said no (no call was made). */
 export type Refused =
-  | { ok: false; error: "no-credits"; balance: number; need: number }
+  | { ok: false; error: "no-credits"; balance: number; need: number; recommended?: number }
   | { ok: false; error: "credits-paused" };
 
 /** A refusal as a seam result; a duplicate becomes `other`. */
 export function refusedAs<O>(r: Exclude<Metered<unknown>, { ok: true }>, other: O): Refused | O {
   if (r.reason === "no-credits")
-    return { ok: false, error: "no-credits", balance: r.balance, need: r.need };
+    return {
+      ok: false,
+      error: "no-credits",
+      balance: r.balance,
+      need: r.need,
+      recommended: r.recommended,
+    };
   if (r.reason === "paused") return { ok: false, error: "credits-paused" };
   return other;
 }
@@ -252,7 +326,9 @@ export const refusalOf = (r: Refused): Response =>
 /** The route's answer to a seam refusal, or null when `r` is something else. */
 export function refusedResponse(r: { ok: boolean; error?: string }): Response | null {
   if (r.error === "no-credits")
-    return noCreditsResponse(r as unknown as { balance: number; need: number });
+    return noCreditsResponse(
+      r as unknown as { balance: number; need: number; recommended?: number },
+    );
   if (r.error === "credits-paused") return pausedResponse();
   return null;
 }

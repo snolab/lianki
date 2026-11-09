@@ -1,9 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { installNoCreditsWatch, type CreditsRefusal } from "@/lib/payments/no-credits-watch";
+import {
+  installNoCreditsWatch,
+  needText,
+  type CreditsNumbers,
+  type CreditsRefusal,
+} from "@/lib/payments/no-credits-watch";
 
-export type NoCreditsStrings = { message: string; topUp: string; close: string; paused: string };
+export type NoCreditsStrings = {
+  message: string;
+  topUp: string;
+  close: string;
+  paused: string;
+  /** "To start at least {need}; to finish {recommended} (you have {have})". */
+  needLine?: string;
+  /** "At least {need} ({short} more)": when starting is finishing. */
+  needShort?: string;
+};
 
 /**
  * "Not enough credits · Get credits", on any page, when a paid route refused
@@ -19,7 +33,16 @@ export function NoCreditsNotice({
   href?: string;
 }) {
   const [shown, setShown] = useState<CreditsRefusal | null>(null);
-  useEffect(() => installNoCreditsWatch(window, setShown), []);
+  const [numbers, setNumbers] = useState<CreditsNumbers | null>(null);
+  useEffect(
+    () =>
+      installNoCreditsWatch(window, (kind, n) => {
+        setShown(kind);
+        setNumbers(n);
+      }),
+    [],
+  );
+  const line = needText(strings, numbers);
   if (!shown) return null;
   return (
     <div
@@ -52,7 +75,8 @@ export function NoCreditsNotice({
           strings.paused
         ) : (
           <>
-            {strings.message}{" "}
+            {strings.message}
+            {line ? ` ${line}` : ""}{" "}
             <a
               href={href}
               style={{ fontWeight: 600, textDecoration: "underline", color: "inherit" }}

@@ -14,13 +14,14 @@
  *   `AI_IMPORT.chunkChars`, at most `maxChunks`; images go in one more call.
  *   Each call answers rows as JSON (schema below); the rows are merged,
  *   de-duplicated and capped, then written as CSV here, never by the model.
- * - **Credits (owner rules).** One hold for the whole file, the fixed most
- *   every call can cost, taken before the first call (`takeHold`); too little
- *   → refused (402), never a smaller max. After each call its real cost is
- *   added up; if that ever reaches the hold the conversion stops there (the
- *   rows so far are kept) and is settled at most at the hold (`settleHold`
- *   caps and pauses the feature on an overage). A failed call or a file that
- *   gave no rows keeps nothing: refunded in full.
+ * - **Credits (owner rules).** One hold per call, its fixed most, taken
+ *   before it (`takeHold`); too little → refused (402) with the minimum to
+ *   start, the recommended balance to finish and the balance, never a smaller
+ *   max. Each call is settled at its real cost, at most its hold (an overage
+ *   pauses the feature); a failed call or one with no rows keeps nothing.
+ * - **Resume.** Each paid chunk's rows are kept per user and file
+ *   (lib/import/chunk-cache.ts): after a top-up the same file reuses them and
+ *   pays only for the rest ("completed X of Y").
  * - **Privacy.** The material lives in this request's memory only: no D1
  *   (beyond the wallet), no R2, no log of its content. The one provider it
  *   goes to is Workers AI.
@@ -30,7 +31,15 @@ import { flagIn, type FlagValues } from "@/lib/flags";
 import { PARTNER_AI_MODEL } from "@/lib/partner-ai-config";
 import { getBalance, type D1WithBatch } from "@/lib/payments/credits-store";
 import { reserveCredits } from "@/lib/payments/ai-credits";
-import { refusal, settleHold, takeHold, type MeterDeps } from "@/lib/payments/metered";
+import {
+  noCreditsResponse,
+  refusal,
+  settleHold,
+  takeHold,
+  type Hold,
+  type MeterDeps,
+} from "@/lib/payments/metered";
+import { chunkHash, type ChunkCache } from "./chunk-cache";
 import { textHoldUsd } from "@/lib/payments/prices";
 import { isAdmin } from "@/lib/permissions";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -250,6 +259,10 @@ export type AiPayer = {
   /** Is this payer an admin (free)? Defaults to the permission snapshot. */
   admin?: (email: string | null | undefined) => boolean;
   log?: (o: Record<string, unknown>) => void;
+  /** Paid chunks kept per user and file, so a stopped run resumes (lib/import/chunk-cache.ts). */
+  cache?: ChunkCache | null;
+  /** The stored file being converted (the cache's key). */
+  fileId?: string;
 };
 
 export type ConvertResult =
@@ -257,78 +270,124 @@ export type ConvertResult =
       ok: true;
       csv: string;
       rows: number;
-      /** Cut short: text past the chunks, rows past the cap, or the hold reached. */
+      /** Cut short: text past the chunks, or rows past the cap. */
       truncated: boolean;
-      /** Whole credits kept. */
+      /** Whole credits kept, this run. */
       charged: number;
+      /** Chunks reused from an earlier run (paid then, free now). */
+      reused: number;
     }
   | { ok: false; error: "empty" | "model-failed" | "nothing-found" }
   | { ok: false; refused: Response };
 
-/** The material → the template CSV, paid from the user's credits (hold, calls, settle). */
+/** One call's request body (also what its chunk's cache key is made from). */
+const callBody = (call: Call) => ({
+  model: PARTNER_AI_MODEL,
+  messages: call.messages,
+  max_tokens: AI_IMPORT.maxOutputTokens,
+  temperature: 0,
+  reasoning_effort: "none",
+  response_format: {
+    type: "json_schema",
+    json_schema: { name: "word_rows", schema: ROWS_JSON_SCHEMA },
+  },
+});
+
+/**
+ * The material → the template CSV, paid from the user's credits, one hold
+ * per call (owner rules: each hold the call's fixed most, taken before it;
+ * settled at its real cost, the rest refunded; a failed call or one with no
+ * rows keeps nothing; the hold is a hard cap). With a cache and a file id,
+ * every paid chunk is kept, so a run that stopped for want of credits
+ * resumes after a top-up and pays only for the rest. Refused for credits:
+ * 402 with the minimum to start the next chunk, the recommended balance for
+ * all chunks left, and how far it got (`completed` / `total`).
+ */
 export async function convertToCsv(req: AiImportRequest, ai: AiPayer): Promise<ConvertResult> {
   if (!req.text.trim() && !req.images.length) return { ok: false, error: "empty" };
   const { calls, truncated: cut } = aiCalls(req);
-  const holdUsd = holdUsdFor(calls);
   const deps: MeterDeps = { d1: ai.db, admin: ai.admin, log: ai.log };
-  const h = await takeHold(
-    deps,
-    { userId: ai.userId, email: ai.email },
-    { what: AI_IMPORT.feature, holdUsd },
-  );
-  if (!h.ok) return { ok: false, refused: refusal(h) };
+  const payer = { userId: ai.userId, email: ai.email };
+  const cache = ai.cache && ai.fileId ? ai.cache : null;
+  const fileId = ai.fileId ?? "";
 
-  const batches: AiRow[][] = [];
-  let spent = 0;
-  let stopped = false;
-  try {
-    for (let i = 0; i < calls.length; i += AI_IMPORT.parallel) {
-      // The hold is a hard cap: once spent, the rest of the file is not converted.
-      if (spent >= holdUsd) {
-        stopped = true;
+  const hashes = await Promise.all(calls.map((c) => chunkHash(callBody(c))));
+  const batches: (AiRow[] | null)[] = await Promise.all(
+    hashes.map((h) => (cache ? cache.get(ai.userId, fileId, h) : Promise.resolve(null))),
+  );
+  const reused = batches.filter(Boolean).length;
+  const todo = calls.map((_, i) => i).filter((i) => !batches[i]);
+  const unitHoldUsd = Math.max(0, ...todo.map((i) => callHoldUsd(calls[i]!)));
+
+  let charged = 0;
+  let failed = false;
+  let refused: Exclude<Awaited<ReturnType<typeof takeHold>>, { ok: true }> | null = null;
+  for (let r = 0; r < todo.length && !refused && !failed; r += AI_IMPORT.parallel) {
+    const round = todo.slice(r, r + AI_IMPORT.parallel);
+    // Holds first, one per call, before any of the round is asked.
+    const held: { i: number; hold: Hold }[] = [];
+    for (const [k, i] of round.entries()) {
+      const h = await takeHold(deps, payer, {
+        what: AI_IMPORT.feature,
+        holdUsd: callHoldUsd(calls[i]!),
+        action: { units: todo.length - r - k, unitHoldUsd },
+      });
+      if (!h.ok) {
+        refused = h;
         break;
       }
-      const round = calls.slice(i, i + AI_IMPORT.parallel);
-      const answers = await Promise.all(
-        round.map((call) =>
-          ai.complete({
-            model: PARTNER_AI_MODEL,
-            messages: call.messages,
-            max_tokens: AI_IMPORT.maxOutputTokens,
-            temperature: 0,
-            reasoning_effort: "none",
-            response_format: {
-              type: "json_schema",
-              json_schema: { name: "word_rows", schema: ROWS_JSON_SCHEMA },
-            },
-          }),
-        ),
-      );
-      answers.forEach((r, j) => {
-        spent += usageUsd(PARTNER_AI_MODEL, r.usage, callHoldUsd(round[j]!));
-        batches.push(parseRowsAnswer(r.choices?.[0]?.message?.content ?? "") ?? []);
-      });
+      held.push({ i, hold: h.hold });
     }
-  } catch (err) {
-    // The provider failed: nothing kept. The error's name only (a message could echo the input).
-    await settleHold(h.hold, null, deps);
-    console.error("import.ai: model failed", err instanceof Error ? err.name : "error");
-    return { ok: false, error: "model-failed" };
+    const answers = await Promise.allSettled(held.map(({ i }) => ai.complete(callBody(calls[i]!))));
+    for (const [k, a] of answers.entries()) {
+      const { i, hold } = held[k]!;
+      if (a.status === "rejected") {
+        // The provider failed: nothing kept for this call. The error's name only.
+        await settleHold(hold, null, deps);
+        console.error(
+          "import.ai: model failed",
+          a.reason instanceof Error ? a.reason.name : "error",
+        );
+        failed = true;
+        continue;
+      }
+      const rows = parseRowsAnswer(a.value.choices?.[0]?.message?.content ?? "") ?? [];
+      if (!rows.length) {
+        // Nothing usable from this chunk: not charged for it.
+        await settleHold(hold, null, deps);
+        batches[i] = [];
+        continue;
+      }
+      charged += await settleHold(
+        hold,
+        usageUsd(PARTNER_AI_MODEL, a.value.usage, callHoldUsd(calls[i]!)),
+        deps,
+      );
+      batches[i] = rows;
+      if (cache) await cache.put(ai.userId, fileId, hashes[i]!, rows);
+    }
   }
-  const { rows, capped } = mergeRows(batches);
-  if (!rows.length) {
-    // Nothing usable came back: the user is not charged for it.
-    await settleHold(h.hold, null, deps);
-    return { ok: false, error: "nothing-found" };
+  if (failed) return { ok: false, error: "model-failed" };
+  if (refused) {
+    if (refused.reason !== "no-credits") return { ok: false, refused: refusal(refused) };
+    return {
+      ok: false,
+      refused: noCreditsResponse(refused, {
+        completed: batches.filter(Boolean).length,
+        total: calls.length,
+      }),
+    };
   }
-  const charged = await settleHold(h.hold, spent, deps);
+  const { rows, capped } = mergeRows(batches.map((b) => b ?? []));
+  if (!rows.length) return { ok: false, error: "nothing-found" };
   const csv = rowsToTemplateCsv(rows, req.locale ?? "en");
   return {
     ok: true,
     csv,
     rows: rows.length,
-    truncated: cut || capped || stopped || csv.length > MAX_BYTES,
+    truncated: cut || capped || csv.length > MAX_BYTES,
     charged,
+    reused,
   };
 }
 
@@ -342,6 +401,8 @@ export type AiImportDeps = {
   /** The credit wallet (lib/payments/metered.ts); null: unmetered (local dev). */
   db: D1WithBatch | null;
   admin?: (email: string | null | undefined) => boolean;
+  /** Paid chunks kept per user and file (lib/import/chunk-cache.ts); null: none (no resume). */
+  cache?: ChunkCache | null;
   /** One of the user's own stored import files (lib/import/files.ts), its bytes from R2; null if not theirs. */
   readFile: (
     userId: string,
@@ -464,6 +525,8 @@ export async function handleAiConvert(req: Request, deps: AiImportDeps): Promise
       db: deps.db,
       complete: deps.complete,
       admin: deps.admin,
+      cache: deps.cache ?? null,
+      fileId: parsed.data.fileId,
     },
   );
   if ("refused" in r) return r.refused;
@@ -473,5 +536,6 @@ export async function handleAiConvert(req: Request, deps: AiImportDeps): Promise
     rows: r.rows,
     truncated: r.truncated || payload.truncated,
     charged: r.charged,
+    reused: r.reused,
   });
 }

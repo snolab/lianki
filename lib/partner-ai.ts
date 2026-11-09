@@ -291,7 +291,14 @@ export async function partnerReply(
   );
   if (hold.status === "duplicate") return { ok: false, error: "duplicate" };
   if (hold.status === "no user") return { ok: false, error: "no-user" };
-  if (hold.status === "insufficient") return { ok: false, error: "no-credits" };
+  if (hold.status === "insufficient")
+    return {
+      ok: false,
+      error: "no-credits",
+      // The minimum one reply needs (its hold) and the balance, for the chat's line.
+      need: reserveCredits(textUsd(PARTNER_AI_MODEL, worstIn, MAX_OUTPUT_TOKENS)),
+      have: hold.balance,
+    };
 
   let res: PartnerResult = { ok: false, error: "model-failed", billed: "unknown" };
   try {

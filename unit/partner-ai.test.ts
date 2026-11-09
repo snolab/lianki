@@ -272,6 +272,14 @@ describe("partner AI: hub routing", () => {
     expect((f.last("state") as { listeners: number }).listeners).toBe(1);
   });
 
+  it("out of credits with the numbers: the page gets the need and the balance", async () => {
+    const s = setup();
+    s.stub.reply = async () => ({ ok: false, error: "no-credits", need: 3, have: 1 });
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, { type: "chat", id: "line1", text: "hello" });
+    expect(f.last("ai-credits")).toEqual({ type: "ai-credits", need: 3, have: 1 });
+  });
+
   it("the line's id is the credits key; out of credits the page is told, and the caps are given back", async () => {
     const s = setup();
     s.stub.reply = async () => ({ ok: false, error: "no-credits" });
