@@ -229,6 +229,9 @@ export function refreshDecision(
   return news.routes[route] ? "prompt" : "quiet";
 }
 
+/** A route pattern from the wire: a path, never "__proto__" or another object key. */
+const isRouteKey = (k: string) => k.startsWith("/") && k.length <= 200;
+
 /** Parse one message from lianki-push; null when it is not version news. */
 export function parseNews(data: unknown): VersionNews | null {
   let v: unknown;
@@ -244,9 +247,11 @@ export function parseNews(data: unknown): VersionNews | null {
   if (o.force === true) news.force = true;
   if (typeof o.shell === "boolean" && o.routes && typeof o.routes === "object") {
     news.shell = o.shell;
-    news.routes = {};
-    for (const [k, x] of Object.entries(o.routes as Record<string, unknown>))
-      news.routes[k] = x ? 1 : 0;
+    news.routes = Object.fromEntries(
+      Object.entries(o.routes as Record<string, unknown>)
+        .filter(([k]) => isRouteKey(k))
+        .map(([k, x]) => [k, x ? 1 : 0] as const),
+    );
   }
   return news;
 }
@@ -257,8 +262,10 @@ export function parseFingerprints(v: unknown): RouteFingerprints | null {
   const o = v as Record<string, unknown>;
   if (typeof o.build !== "string" || !o.build || typeof o.shell !== "string") return null;
   if (!o.routes || typeof o.routes !== "object") return null;
-  const routes: Record<string, string> = {};
-  for (const [k, h] of Object.entries(o.routes as Record<string, unknown>))
-    if (typeof h === "string") routes[k] = h;
+  const routes: Record<string, string> = Object.fromEntries(
+    Object.entries(o.routes as Record<string, unknown>).filter(
+      (e): e is [string, string] => isRouteKey(e[0]) && typeof e[1] === "string",
+    ),
+  );
   return { build: o.build, ...(o.force === true ? { force: true } : {}), shell: o.shell, routes };
 }
