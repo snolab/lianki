@@ -10,6 +10,9 @@
  * (new / already have / skipped) and for the import itself, which runs as a
  * job (lib/import/words-handler.ts). Nothing is saved before "Add N words".
  *
+ * `seed`: the CSV "Words with AI" made from a stored file (app/(app)/words/AiFileImport.tsx)
+ * goes through this same check, preview and add; the templates and the file
+ * and paste inputs are then left out (that source has its own).
  * A table (CSV, TSV, a sheet) gets a column-mapping step first
  * (ColumnMapper, lib/import/column-map.ts): its columns as chips on the
  * fields they fill, set from the header names, and the first rows as the
@@ -110,12 +113,15 @@ export default function WordListImport({
   signedIn,
   embedded = false,
   onAdded,
+  seed,
 }: {
   signedIn: boolean;
   /** Inside the /words Import panel: no section heading or top margin. */
   embedded?: boolean;
   /** A list was made (the /words picker reloads its lists). */
   onAdded?: (listId: string) => void;
+  /** A ready CSV to check at once (a new `rev` checks it again, after an edit). */
+  seed?: { text: string; fileName: string; rev: number };
 }) {
   const t = useIntlayer("import-wordlist");
   const { locale } = useLocale();
@@ -155,6 +161,10 @@ export default function WordListImport({
   useEffect(() => {
     if (signedIn) loadJobs();
   }, [signedIn]);
+  useEffect(() => {
+    if (seed && signedIn) void check({ text: seed.text, fileName: seed.fileName });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on a new seed only
+  }, [seed?.rev, signedIn]);
 
   const reset = () => {
     setShape(null);
@@ -305,10 +315,11 @@ export default function WordListImport({
   return (
     <section className={embedded ? "" : "mt-10"} data-qa="wordlist-import">
       {!embedded && <h2 className="text-2xl font-bold mb-2">{t.heading}</h2>}
-      <p className="text-sm mb-4 text-gray-600 dark:text-gray-300">{t.intro}</p>
+      {!seed && <p className="text-sm mb-4 text-gray-600 dark:text-gray-300">{t.intro}</p>}
 
       {/* The templates first: fill one in and nobody thinks about column names. */}
       <div
+        hidden={!!seed}
         data-qa="wordlist-templates"
         className="mb-4 rounded-xl border border-[oklch(0.55_0.14_155/0.45)] bg-[oklch(0.55_0.14_155/0.08)] p-3"
       >
@@ -360,11 +371,15 @@ export default function WordListImport({
             >
               {t.open}
             </a>
-            <button type="button" onClick={reset} className="px-4 py-2 text-sm underline">
-              {t.another}
-            </button>
+            {!seed && (
+              <button type="button" onClick={reset} className="px-4 py-2 text-sm underline">
+                {t.another}
+              </button>
+            )}
           </div>
         </div>
+      ) : seed ? (
+        busy === "checking" && <p className="text-sm">{t.checking}</p>
       ) : (
         <>
           <div
@@ -442,7 +457,7 @@ export default function WordListImport({
           className="mt-4 p-3 rounded-lg bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-100 text-sm"
         >
           <p>{fill(t[error], { mb: MAX_BYTES / 1_000_000 })}</p>
-          {source && (
+          {source && !seed && (
             <button type="button" onClick={reset} className="mt-2 underline">
               {t.another}
             </button>

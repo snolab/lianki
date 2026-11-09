@@ -5,8 +5,11 @@
  * the Import panel's stored files ('import'); usage and caps are shared.
  */
 
-/** Where a stored file came from: the chat's attachments, or the Import panel. */
-export type InboxSource = "chat" | "import";
+/** Where a stored file came from: the chat's attachments, the Import panel, /self-intro. */
+export const INBOX_SOURCES = ["chat", "import", "self-intro"] as const;
+export type InboxSource = (typeof INBOX_SOURCES)[number];
+export const isInboxSource = (v: unknown): v is InboxSource =>
+  typeof v === "string" && (INBOX_SOURCES as readonly string[]).includes(v);
 
 /** The slice of D1 used here (the real binding, or lib/d1/testDb.ts). */
 export type InboxStmt = {
@@ -68,7 +71,7 @@ const item = (r: Row): InboxItem => ({
   createdMs: Number(r.created_ms),
   processedMs: r.processed_ms === null ? null : Number(r.processed_ms),
   lineId: r.line_id,
-  source: r.source === "import" ? "import" : "chat",
+  source: isInboxSource(r.source) ? r.source : "chat",
 });
 
 /** A user's stored files from one source, newest first (at most `limit`). */
@@ -83,6 +86,19 @@ export async function listItems(
       `SELECT ${COLS} FROM inbox_item WHERE owner_id = ? AND source = ? ORDER BY created_ms DESC LIMIT ?`,
     )
     .bind(ownerId, source, limit)
+    .all<Row>();
+  return results.map(item);
+}
+
+/** Every file a user stored, from every source, newest first (/my/files). */
+export async function listAllItems(
+  db: InboxDb,
+  ownerId: string,
+  limit = 500,
+): Promise<InboxItem[]> {
+  const { results } = await db
+    .prepare(`SELECT ${COLS} FROM inbox_item WHERE owner_id = ? ORDER BY created_ms DESC LIMIT ?`)
+    .bind(ownerId, limit)
     .all<Row>();
   return results.map(item);
 }

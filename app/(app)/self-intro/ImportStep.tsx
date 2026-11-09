@@ -7,12 +7,13 @@
  *   3. review: the fields made from the kept facts, all editable.
  * Then `onDone(fields)` hands them to the interview as its answers.
  *
- * Files are parsed here, on the device (lib/self-intro/import-parse.ts); only
- * the text and shrunk images go to /api/self-intro/import, which stores
- * nothing. Nothing here writes the material to storage either: it lives in
- * this component's state and is gone when the page is left.
+ * Files picked or dropped upload at once into the user's own file store
+ * (lib/import/files.ts, source `self-intro`; listed on /my/files), each with
+ * its progress; × deletes one for good after a short Undo. The analysis reads
+ * the stored files on the server (/api/self-intro/import, `fileIds`) and is
+ * offered only when the user's credits cover its smallest hold.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import {
   IMPORT,
@@ -21,13 +22,7 @@ import {
   type SelfIntroField,
   type SelfIntroFields,
 } from "@/lib/self-intro/import-config";
-import {
-  ImportFileError,
-  mergeImport,
-  parseImportFile,
-  type FileLike,
-  type ImportPart,
-} from "@/lib/self-intro/import-parse";
+import { pendingDeletes, uploadFile, type UploadResult } from "@/lib/import/uploads-client";
 import PartnerQuestions, { type NewFact } from "./PartnerQuestions";
 
 type Fact = {
@@ -50,32 +45,19 @@ const FIELD_LABEL = {
   languages: "fieldLanguages",
 } as const satisfies Record<SelfIntroField, string>;
 
-/** An image file as a JPEG data URL, its longer side at most `IMPORT.imageMaxSide`. */
-async function shrinkImage(file: FileLike): Promise<string> {
-  const blob = file as unknown as Blob;
-  let source: CanvasImageSource & { width: number; height: number };
-  try {
-    source = await createImageBitmap(blob);
-  } catch {
-    // Some formats (HEIC in Chrome) only decode through <img>, where the browser can.
-    const url = URL.createObjectURL(blob);
-    try {
-      const img = new Image();
-      img.src = url;
-      await img.decode();
-      source = img;
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  }
-  const scale = Math.min(1, IMPORT.imageMaxSide / Math.max(source.width, source.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(source.width * scale));
-  canvas.height = Math.max(1, Math.round(source.height * scale));
-  canvas.getContext("2d")!.drawImage(source, 0, 0, canvas.width, canvas.height);
-  if ("close" in source && typeof source.close === "function") source.close();
-  return canvas.toDataURL("image/jpeg", 0.85);
-}
+/** One file of the add-file area: uploading (progress), stored (id), or failed. */
+type Upload = {
+  key: string;
+  name: string;
+  size: number;
+  progress: number;
+  id?: string;
+  error?: Exclude<UploadResult, { ok: true }>["error"];
+  abort?: () => void;
+};
+
+/** The top-up page (TOP_UP_PATH in lib/payments/metered.ts, a server module). */
+const TOP_UP = "/membership";
 
 /** The kept facts of one field as one value, joined the way the page's language lists things. */
 function joinFacts(values: string[], locale: string): string {
@@ -99,15 +81,24 @@ const inputBox =
 export default function ImportStep({
   onDone,
   onSkip,
+  filesOn = false,
 }: {
   onDone: (fields: SelfIntroFields) => void;
   onSkip: () => void;
+  /** The add-file area (the user's file store, `import.any`); off: text only. */
+  filesOn?: boolean;
 }) {
   const c = useIntlayer("self-intro-import");
   const { locale } = useLocale();
   const [phase, setPhase] = useState<"input" | "facts" | "review">("input");
   const [text, setText] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<Upload[]>([]);
+  const [quota, setQuota] = useState<{ available: boolean; need: number; have: number } | null>(
+    null,
+  );
+  const [toast, setToast] = useState<Upload | null>(null);
+  const deletes = useRef<ReturnType<typeof pendingDeletes> | null>(null);
+  deletes.current ??= pendingDeletes();
   const [fileErrors, setFileErrors] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -117,60 +108,116 @@ export default function ImportStep({
   const [fields, setFields] = useState<SelfIntroFields>(emptyFields);
   const picker = useRef<HTMLInputElement>(null);
 
+  // May this user start an analysis (credits for its smallest hold)? Asked once.
+  useEffect(() => {
+    fetch("/api/self-intro/import", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b: { available?: boolean; need?: number; have?: number } | null) =>
+        setQuota({ available: !!b?.available, need: b?.need ?? 0, have: b?.have ?? 0 }),
+      )
+      .catch(() => setQuota({ available: false, need: 0, have: 0 }));
+  }, []);
+  // A delete still in its Undo window is sent when the page is left.
+  useEffect(() => {
+    const flush = () => deletes.current?.flush();
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
+
+  const patch = (key: string, p: Partial<Upload>) =>
+    setFiles((prev) => prev.map((f) => (f.key === key ? { ...f, ...p } : f)));
+
+  /** Picked or dropped: each file uploads at once into the user's file store. */
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;
-    // Copied now: the picker's FileList is emptied when its value is reset, before the updater runs.
+    // Copied now: the picker's FileList is emptied when its value is reset.
     const picked = Array.from(list);
-    setFiles((prev) => {
-      const next = [...prev];
-      for (const f of picked)
-        if (!next.some((x) => x.name === f.name && x.size === f.size)) next.push(f);
-      return next.slice(0, IMPORT.maxFiles);
-    });
+    const fresh: Upload[] = [];
+    for (const f of picked) {
+      if (files.length + fresh.length >= IMPORT.maxFiles) break;
+      if (files.some((x) => x.name === f.name && x.size === f.size && !x.error)) continue;
+      const key = `${f.name}:${f.size}:${crypto.randomUUID()}`;
+      const up = uploadFile(f, "self-intro", (progress) => patch(key, { progress }));
+      fresh.push({ key, name: f.name, size: f.size, progress: 0, abort: up.abort });
+      void up.done.then((r) =>
+        r.ok
+          ? patch(key, { id: r.id, progress: 1, abort: undefined })
+          : r.error === "aborted"
+            ? undefined
+            : patch(key, { error: r.error, abort: undefined }),
+      );
+    }
+    if (fresh.length) setFiles((prev) => [...prev, ...fresh]);
   };
 
-  const fileMessage = (e: unknown, name: string) => {
-    const code = e instanceof ImportFileError ? e.code : "unreadable";
-    const msg = {
-      unsupported: c.errUnsupported,
-      "too-large": c.errTooLarge,
-      unreadable: c.errUnreadable,
-      empty: c.errEmpty,
-    }[code];
+  /** ×: an upload in flight is cancelled; a stored file is deleted for good (after Undo). */
+  const removeFile = (f: Upload) => {
+    setFiles((prev) => prev.filter((x) => x.key !== f.key));
+    if (f.abort) f.abort();
+    if (f.id) {
+      deletes.current?.remove(f.id);
+      setToast(f);
+    }
+  };
+  const undoRemove = () => {
+    if (toast?.id && deletes.current?.undo(toast.id)) setFiles((prev) => [...prev, toast]);
+    setToast(null);
+  };
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const uploadMessage = (f: Upload) =>
+    (f.error === "too-large"
+      ? c.errTooLarge
+      : f.error === "full"
+        ? c.uploadFull
+        : c.uploadFailed
+    ).value.replace("{file}", f.name);
+
+  const fileMessage = (code: string, name: string) => {
+    const msg =
+      {
+        unsupported: c.errUnsupported,
+        "too-large": c.errTooLarge,
+        empty: c.errEmpty,
+      }[code] ?? c.errUnreadable;
     return msg.value.replace("{file}", name);
   };
 
   const recognize = async () => {
     setBusy(true);
     setError(null);
-    const errs: string[] = [];
-    const parts: ImportPart[] = [];
-    for (const f of files) {
-      try {
-        parts.push(...(await parseImportFile(f, { shrinkImage })));
-      } catch (e) {
-        errs.push(fileMessage(e, f.name));
-      }
-    }
-    setFileErrors(errs);
-    const payload = mergeImport(text, parts);
-    if (!payload.text.trim() && !payload.images.length) {
-      setBusy(false);
-      return;
-    }
+    setFileErrors([]);
+    const stored = files.filter((f) => f.id);
     try {
       const r = await fetch("/api/self-intro/import", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: payload.text, images: payload.images, locale }),
+        body: JSON.stringify({ text, fileIds: stored.map((f) => f.id), locale }),
       });
-      if (r.status === 429) throw new Error("rate");
-      if (!r.ok) throw new Error("failed");
-      const { facts: got } = (await r.json()) as {
-        facts: { field: SelfIntroField; value: string; certain: boolean }[];
+      const b = (await r.json().catch(() => ({}))) as {
+        facts?: { field: SelfIntroField; value: string; certain: boolean }[];
+        truncated?: boolean;
+        fileErrors?: { id: string; code: string }[];
+        need?: number;
+        balance?: number;
       };
-      setTruncated(payload.truncated);
-      setFacts(got.map((f, id) => ({ ...f, id, status: "pending", editing: false })));
+      const nameOf = (id: string) => stored.find((f) => f.id === id)?.name ?? id;
+      setFileErrors((b.fileErrors ?? []).map((e) => fileMessage(e.code, nameOf(e.id))));
+      if (r.status === 402) {
+        setQuota({ available: false, need: b.need ?? 0, have: b.balance ?? 0 });
+        return;
+      }
+      if (r.status === 429) throw new Error("rate");
+      if (!r.ok || !b.facts) throw new Error("failed");
+      setTruncated(!!b.truncated);
+      setFacts(b.facts.map((f, id) => ({ ...f, id, status: "pending", editing: false })));
       setPhase("facts");
     } catch (e) {
       setError((e instanceof Error && e.message === "rate" ? c.errRate : c.errFailed).value);
@@ -212,7 +259,9 @@ export default function ImportStep({
   };
 
   if (phase === "input") {
-    const canSend = (text.trim() || files.length) && !busy;
+    const uploading = files.some((f) => !f.id && !f.error);
+    const canSend =
+      (text.trim() || files.some((f) => f.id)) && !busy && !uploading && !!quota?.available;
     return (
       <div className="min-h-screen px-4 py-8 md:p-8">
         <div className="max-w-2xl mx-auto">
@@ -232,67 +281,102 @@ export default function ImportStep({
             className={`${inputBox} text-base mb-4 resize-y`}
           />
 
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              addFiles(e.dataTransfer.files);
-            }}
-            className={`rounded-lg border-2 border-dashed p-4 mb-3 transition-colors ${
-              dragging
-                ? "border-[oklch(0.55_0.198_22.3)] bg-[oklch(0.55_0.198_22.3/0.06)]"
-                : "border-[oklch(0.85_0.01_260)] dark:border-[oklch(0.4_0.02_260)]"
-            }`}
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => picker.current?.click()}
-                className="px-4 py-2 rounded-lg font-medium border border-[oklch(0.55_0.198_22.3)] text-[oklch(0.5_0.176_22.3)] dark:text-[oklch(0.78_0.132_22.3)]"
+          {filesOn && (
+            <>
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  addFiles(e.dataTransfer.files);
+                }}
+                className={`rounded-lg border-2 border-dashed p-4 mb-3 transition-colors ${
+                  dragging
+                    ? "border-[oklch(0.55_0.198_22.3)] bg-[oklch(0.55_0.198_22.3/0.06)]"
+                    : "border-[oklch(0.85_0.01_260)] dark:border-[oklch(0.4_0.02_260)]"
+                }`}
               >
-                {c.addFiles}
-              </button>
-              <span className={`text-sm ${muted}`}>{c.dropHint}</span>
-            </div>
-            <input
-              ref={picker}
-              type="file"
-              multiple
-              hidden
-              accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm,.zip,image/*,application/pdf"
-              onChange={(e) => {
-                addFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            {files.length > 0 && (
-              <ul className="flex flex-wrap gap-2 mt-3">
-                {files.map((f) => (
-                  <li
-                    key={`${f.name}:${f.size}`}
-                    className="flex items-center gap-1 max-w-full rounded-full pl-3 pr-1 py-1 text-sm bg-[oklch(0.55_0.198_22.3/0.1)]"
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => picker.current?.click()}
+                    className="px-4 py-2 rounded-lg font-medium border border-[oklch(0.55_0.198_22.3)] text-[oklch(0.5_0.176_22.3)] dark:text-[oklch(0.78_0.132_22.3)]"
                   >
-                    <span className="truncate">{f.name}</span>
-                    <button
-                      type="button"
-                      aria-label={c.removeFile.value.replace("{file}", f.name)}
-                      onClick={() => setFiles((prev) => prev.filter((x) => x !== f))}
-                      className="w-7 h-7 rounded-full shrink-0 hover:bg-[oklch(0.55_0.198_22.3/0.15)]"
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+                    {c.addFiles}
+                  </button>
+                  <span className={`text-sm ${muted}`}>{c.dropHint}</span>
+                </div>
+                <input
+                  ref={picker}
+                  type="file"
+                  multiple
+                  hidden
+                  accept=".pdf,.docx,.txt,.md,.csv,.tsv,.json,.html,.htm,.srt,.vtt,.xlsx,.zip,image/*,application/pdf"
+                  onChange={(e) => {
+                    addFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                {files.length > 0 && (
+                  <ul className="flex flex-wrap gap-2 mt-3" data-qa="self-intro-files">
+                    {files.map((f) => (
+                      <li
+                        key={f.key}
+                        data-qa="self-intro-file"
+                        data-stored={f.id ? "1" : undefined}
+                        className={`flex items-center gap-1 max-w-full rounded-full pl-3 pr-1 py-1 text-sm ${
+                          f.error
+                            ? "bg-[oklch(0.6_0.2_27/0.12)]"
+                            : "bg-[oklch(0.55_0.198_22.3/0.1)]"
+                        }`}
+                      >
+                        <span className="truncate">{f.name}</span>
+                        {!f.id && !f.error && (
+                          <span
+                            className={`shrink-0 text-xs tabular-nums ${muted}`}
+                            aria-live="polite"
+                          >
+                            {c.uploadingFile.value.replace(
+                              "{percent}",
+                              String(Math.round(f.progress * 100)),
+                            )}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          data-qa="self-intro-file-remove"
+                          aria-label={c.removeFile.value.replace("{file}", f.name)}
+                          onClick={() => removeFile(f)}
+                          className="w-7 h-7 rounded-full shrink-0 hover:bg-[oklch(0.55_0.198_22.3/0.15)]"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
 
-          <p className={`text-sm mb-4 ${muted}`}>🔒 {c.privacy}</p>
+              <p className={`text-sm mb-4 ${muted}`}>
+                🔒 {c.storedPrivacy}{" "}
+                <a href="/my/files" className="underline">
+                  {c.myFiles}
+                </a>
+              </p>
+            </>
+          )}
+
+          {files
+            .filter((f) => f.error)
+            .map((f) => (
+              <p key={f.key} className={errorText}>
+                {uploadMessage(f)}
+              </p>
+            ))}
 
           {fileErrors.map((m) => (
             <p key={m} className={errorText}>
@@ -305,15 +389,41 @@ export default function ImportStep({
             <button type="button" onClick={onSkip} className={btnQuiet}>
               {c.skip}
             </button>
-            <button
-              type="button"
-              onClick={recognize}
-              disabled={!canSend}
-              className={`${btnPrimary} sm:flex-1`}
-            >
-              {busy ? c.recognizing : c.recognize}
-            </button>
+            {quota && !quota.available ? (
+              <p className="text-sm sm:flex-1" data-qa="self-intro-credits-short">
+                {c.creditsShort.value
+                  .replace("{need}", quota.need.toLocaleString(locale))
+                  .replace("{have}", quota.have.toLocaleString(locale))}{" "}
+                <a href={TOP_UP} className="underline font-medium">
+                  {c.getCredits}
+                </a>
+              </p>
+            ) : (
+              <button
+                type="button"
+                data-qa="self-intro-start"
+                onClick={recognize}
+                disabled={!canSend}
+                className={`${btnPrimary} sm:flex-1`}
+              >
+                {busy ? c.recognizing : c.recognize}
+              </button>
+            )}
           </div>
+          {toast && (
+            <div
+              role="status"
+              data-qa="self-intro-deleted"
+              className="fixed inset-x-4 bottom-[calc(16px+env(safe-area-inset-bottom,0px))] z-50 mx-auto flex max-w-md items-center gap-3 rounded-xl bg-[oklch(0.25_0.02_260/0.92)] px-4 py-3 text-sm text-[oklch(0.97_0_0)]"
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {c.deletedFile.value.replace("{file}", toast.name)}
+              </span>
+              <button type="button" onClick={undoRemove} className="font-semibold underline">
+                {c.undo}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
