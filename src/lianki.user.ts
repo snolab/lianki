@@ -11,7 +11,8 @@
 // @grant       GM_deleteValue
 // @grant       GM_info
 // @grant       unsafeWindow
-// @version     2.24.29
+// @grant       GM_registerMenuCommand
+// @version     2.24.30
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -53,12 +54,15 @@ import { dueWindow, isProvablyDeleted } from "@lianki/core/duePrune";
 import { activeTitleRules, cleanTitle } from "@lianki/core/titleClean";
 import { startGdocStream } from "./gdoc-stream";
 import { mirrorPartnerSwitch, startPartner } from "./partner";
+import { mirrorPillChatFlag, pillChat } from "./pill-chat";
 
 declare const GM_xmlhttpRequest: Function;
 declare const GM_setValue: (key: string, value: any) => void;
 declare const GM_getValue: (key: string, defaultValue?: any) => any;
 declare const GM_deleteValue: (key: string) => void;
 declare const GM_info: { script: { version: string } };
+/** Missing on a manager that does not grant it: the sites list is then reached from the prompt only. */
+declare const GM_registerMenuCommand: ((name: string, fn: () => void) => unknown) | undefined;
 /** Set by the dev loader's server only: where it serves the partner's script. */
 declare const __LK_PARTNER_SRC__: string | undefined;
 
@@ -950,6 +954,13 @@ function main() {
   if (location.hostname === originHost || location.hostname === "www." + originHost) {
     // This browser's debug-mode switch is the partner's opt-in on other sites.
     mirrorPartnerSwitch(localStorage, GM_setValue);
+    // Li chat from the pill (docs/userscript-li-chat.md): this account's flag, kept for other sites.
+    void mirrorPillChatFlag({
+      origin: ORIGIN,
+      gmFetch,
+      getValue: GM_getValue,
+      setValue: GM_setValue,
+    }).catch(() => {});
     setTimeout(() => syncToSiteDB(), 500);
     return () => {};
   }
@@ -1044,6 +1055,15 @@ function main() {
     notesSynced: true,
   };
   let fab = null;
+  // Li chat from the pill (docs/userscript-li-chat.md): flag-gated, asks per site first.
+  const liChat = pillChat({
+    origin: ORIGIN,
+    gmFetch,
+    getValue: GM_getValue,
+    setValue: GM_setValue,
+    info: GM_info,
+    report: (what, detail) => console.debug(`[Lianki] ${what}: ${detail}`),
+  });
   let dialog = null;
   let prefetchedNextUrl = null; // populated while user reads current card
   let prefetchLink = null; // <link rel="prefetch"> element for next page
@@ -1401,6 +1421,44 @@ function main() {
     };
 
     container.append(slowerBtn, makeSeparator(), liankiBtn, makeSeparator(), fasterBtn);
+
+    // Li chat (docs/userscript-li-chat.md): shown only with the flag on for this
+    // account and not on a "never" site. A trusted tap only: the page cannot
+    // open it by script (el.click() or a dispatched event is not trusted).
+    const liSep = makeSeparator();
+    const liBtn = document.createElement("button");
+    liBtn.type = "button";
+    liBtn.textContent = "Li";
+    liBtn.title = liChat.strings.liTitle;
+    liBtn.setAttribute("aria-label", liChat.strings.liTitle);
+    liBtn.style.cssText = BTN_BASE;
+    liBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isDragged || !e.isTrusted) return;
+      void liChat
+        .open()
+        .then(updateLiEntry)
+        .catch((err) => console.error("[Lianki] Li chat failed:", err));
+    });
+    const updateLiEntry = () => {
+      const show = liChat.entry() !== "hidden" ? "" : "none";
+      liSep.style.display = show;
+      liBtn.style.display = show;
+    };
+    updateLiEntry();
+    // Another tab may have changed the flag or a site's decision.
+    document.addEventListener(
+      "visibilitychange",
+      () => document.visibilityState === "visible" && updateLiEntry(),
+      { signal },
+    );
+    container.append(liSep, liBtn);
+    if (liChat.flagOn() && typeof GM_registerMenuCommand === "function")
+      GM_registerMenuCommand(liChat.strings.sitesMenu, () => {
+        const m = liChat.manage(() => updateLiEntry());
+        void m.closed.then(updateLiEntry);
+      });
 
     // 🔖 means "add this page"; 📗 means it already has a card. Checked on a
     // timer rather than hooked into every add/delete/sync/SPA-navigation path:
@@ -3968,6 +4026,7 @@ function main() {
 
   return () => {
     stopPartner();
+    liChat.close();
     ac.abort();
     for (const id of intervals) clearInterval(id);
     intervals.length = 0;
