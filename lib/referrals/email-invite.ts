@@ -33,7 +33,12 @@ import {
   type MailTemplateLocale,
 } from "@/lib/signup-locale";
 import { EMAIL_INVITE, INVITE_LOG_TAG, RECIPIENT_WINDOW_MS } from "./email-invite-config";
-import { optOutLinks, renderInviteMail, type RenderedInviteMail } from "./invite-mail";
+import {
+  optOutLinks,
+  PREVIEW_RECIPIENT,
+  renderInviteMail,
+  type RenderedInviteMail,
+} from "./invite-mail";
 import { recipientHash } from "./recipient-hash";
 import { maskEmail } from "./rules";
 import { getOrCreateInviteCode } from "./store";
@@ -298,11 +303,15 @@ async function skipReason(
   return null;
 }
 
-/** Render the mail one inviter would send (real code, a real token when `logId` is given). */
+/**
+ * Render the mail one inviter would send (real code, a real token when `logId`
+ * is given). `to` is the recipient, rendered into the footer only; without it
+ * (the preview) a placeholder address.
+ */
 export async function renderFor(
   d: Pick<EmailInviteDeps, "db" | "origin" | "secret">,
   inviterId: string,
-  opts: { locale?: MailTemplateLocale; logId?: string } = {},
+  opts: { locale?: MailTemplateLocale; logId?: string; to?: string } = {},
 ): Promise<RenderedInviteMail & { locale: MailTemplateLocale }> {
   const db = d.db();
   const locale = opts.locale ?? (await inviterLocale(db, inviterId));
@@ -314,6 +323,7 @@ export async function renderFor(
     locale,
     ...renderInviteMail({
       locale,
+      recipient: opts.to ?? PREVIEW_RECIPIENT,
       inviterName: row?.name,
       inviteUrl: `${origin}/i/${code}`,
       ...optOutLinks(origin, locale, token),
@@ -394,7 +404,7 @@ export async function sendEmailInvite(req: Request, d: EmailInviteDeps): Promise
     return sent();
   }
   try {
-    const mail = await renderFor(d, g.who.id, { locale, logId: id });
+    const mail = await renderFor(d, g.who.id, { locale, logId: id, to: email });
     const res = (await d.send({
       to: email,
       subject: mail.subject,

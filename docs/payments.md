@@ -493,7 +493,11 @@ the invite card on `/membership`; Lianki mails that friend the inviter's existin
 - **The mail**: who invited (display name in the subject, the first line and
   the footer; a name that reads like an address or a link becomes "A friend"),
   the link, and a compliance footer: why you got it (a friend, one time, no
-  list), Unsubscribe and Report abuse links, the sender (Lianki, the site) and
+  list), "This email was sent to {address} because {name} invited you." just
+  above the Unsubscribe link (the address exactly as sent, HTML-escaped and
+  `<bdi>`-isolated; rendered into that one message only — never stored or
+  logged; the preview shows `friend@example.com`), Unsubscribe and Report abuse
+  links, the sender (Lianki, the site) and
   the contact page. `INVITE_MAIL_SENDER.postalAddress` is an empty slot: CAN-SPAM
   wants a postal address and the repo has none — the line appears once it is set.
 - **Headers**: `List-Unsubscribe: <https://…/api/invite/email/opt-out?t=…>` and

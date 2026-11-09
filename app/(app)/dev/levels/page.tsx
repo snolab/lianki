@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getIntlayer } from "intlayer";
 import { authUserOrNull } from "@/app/signInEmail";
@@ -8,16 +7,14 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import { recentStudyDays, userLevelOf, type StudyDayRow, type UserLevel } from "@/lib/study-days";
 import { LevelBadge } from "@/app/components/level-badge";
 import { LevelGallery, type LevelNames } from "./LevelGallery";
+import { devPageText, devPageMetadata } from "../dev-page-title";
 
 // Owner-only: his own level as the server computes it (lib/study-days.ts),
 // then the gallery of the learner level badges (docs/levels.md); anyone else
 // gets a plain 404. Users see their level in the nav chip and on /profile.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Learner levels — Lianki dev",
-  robots: { index: false, follow: false, nocache: true },
-};
+export const generateMetadata = devPageMetadata("levels");
 
 function names(locale: "zh" | "en"): LevelNames {
   const d = getIntlayer("learner-levels", locale);
@@ -41,10 +38,13 @@ export default async function DevLevelsPage() {
     } catch (e) {
       error = (e as Error).message;
     }
+  const myLevel = await devPageText("myLevel");
   return (
     <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
       <section className="rounded-xl border border-gray-300 dark:border-gray-700 p-4 space-y-3">
-        <h2 className="text-lg font-semibold">My level</h2>
+        <h2 lang={myLevel.lang} className="text-lg font-semibold">
+          {myLevel.text}
+        </h2>
         {error && <p className="text-sm text-blue-600">{error}</p>}
         {!mine && !error && <p className="text-sm text-gray-500">D1 only.</p>}
         {mine && (

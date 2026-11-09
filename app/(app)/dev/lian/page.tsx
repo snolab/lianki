@@ -1,20 +1,17 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { isDev } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { type AnchorRow, listAnchors } from "@/lib/lian/anchor";
 import { LianVerify } from "./LianVerify";
+import { devPageText, devPageMetadata } from "../dev-page-title";
 
 // Owner-only: the study ledger's anchors (docs/lian.md), with the chain and
 // the owner's own leaves checked in the browser by packages/lian — the same
 // code anyone can run against /api/lian/anchors. Anyone else: a plain 404.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Study ledger — Lianki dev",
-  robots: { index: false, follow: false, nocache: true },
-};
+export const generateMetadata = devPageMetadata("lian");
 
 export default async function DevLianPage() {
   const user = await authUserOrNull();
@@ -35,12 +32,15 @@ export default async function DevLianPage() {
     } catch (e) {
       error = (e as Error).message;
     }
+  const heading = await devPageText("lian");
+  const intro = await devPageText("lianIntro");
   return (
     <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Study ledger</h1>
-      <p className="text-sm opacity-70">
-        One anchor per day: the Merkle root of that day&apos;s salted study-day leaves, chained to
-        the day before. Written by the daily cron; checked here in your browser.
+      <h1 lang={heading.lang} className="text-2xl font-semibold">
+        {heading.text}
+      </h1>
+      <p lang={intro.lang} className="text-sm opacity-70">
+        {intro.text}
       </p>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {dbBackend() !== "d1" && <p className="text-sm opacity-70">D1 only.</p>}

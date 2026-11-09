@@ -1614,6 +1614,41 @@ cover it (owner, 2026-11-08, Android); `scripts/dev/debug-chat-eta-overlap-qa.mj
 checks it at 412×915 and 390×844, light and dark, scrolled up, in and out of
 full screen.
 
+### Full-screen Gantt
+
+A tap on the ETA bar (or ⤢ on the state tree's list) opens the Gantt full
+screen (`GanttFull.tsx`, owner 2026-11-09 13:37–13:38 JST); ✕ or Escape
+closes it, and the compact list in the tree stays as it is. It is portalled
+out of the chat's box and fills the viewport, phone and desktop. One native
+scroller: vertically through every timed task the tree has (open ones first,
+then the done history, the latest first: `gantt-view.ts ganttRows`), the time
+axis header sticky at its top; horizontally through time. Each row's name is
+pinned at the left edge of what is visible (`position: sticky; left: 0`),
+whether its bar starts far to the left or ended long before. A row's bar is
+its background and see-through (`GANTT_COLORS`, oklch with alpha), so the grid
+and the red Now line show through; the text is AA over every bar composited on
+the panel (unit/gantt-view.test.ts composites in sRGB as the browser does).
+Overdue stays red with a minus; queued bars are fainter and dashed.
+
+The axis (`gantt-view.ts`): x = (t − lo) · pxPerMs. On open now sits a quarter
+from the left and the tasks fit the screen, but never under 120 px per hour
+(`MIN_PX_PER_HOUR`): a long range scrolls. There is no hard limit either way:
+within a screen of an end the range grows by two screens (`extendAxis`, the
+scroll compensated when the left grows), the far side is trimmed past 12
+screens, and ticks are drawn only around the view, so the DOM stays bounded.
+"Now" (button) jumps back (`axisToNow`). Pinch on a phone, ctrl+wheel (a
+trackpad pinch) or Safari's gesture events on a desktop zoom the time scale
+about the fingers or pointer (`zoomAxis`: the time under them stays put), from
+10 minutes to 14 days per screen; the page itself never zooms there
+(`touch-action: pan-x pan-y`, the two-finger move prevented). Tick labels are
+relative to now in the compact form, re-picked as it zooms: "-30M", "Now",
+"2H", "1.5D" (`tickStep`, `axisLabel`).
+`scripts/dev/debug-chat-gantt-qa.mjs` checks it at 1440×900, 1512×770 and
+390×844, light and dark: the panel fills the viewport, the axis stays at the
+top after a vertical scroll, Now is in view on open, every name is in view
+after panning both ways, the axis grows to the left with the DOM bounded,
+zoom keeps the anchor, no horizontal page scroll.
+
 Task titles are "name: description" (ASCII ':' or full-width '：';
 `eta.ts splitTitle`): the bar and the minimized chat show the name, the list
 shows the name in bold and the description muted (`ETA_COLORS.muted`, AA on

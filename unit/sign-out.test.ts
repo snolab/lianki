@@ -109,7 +109,7 @@ describe("signOut (the menu's Sign out)", () => {
   });
 
   it("no menu links to a sign-out page any more: both menus call signOut()", () => {
-    for (const f of ["app/components/AppShell.tsx", "app/components/Header.tsx"]) {
+    for (const f of ["app/components/ProfileMenu.tsx", "app/components/Header.tsx"]) {
       const src = readFileSync(f, "utf8");
       expect(src).not.toContain('href="/auth/logout"');
       expect(src).toContain("signOut()");
@@ -147,7 +147,7 @@ describe("the user's own AI key at sign-out", () => {
   it("the default clears lk:byok, and every button goes through signOut", () => {
     expect(readFileSync("lib/sign-out.ts", "utf8")).toContain("forgetByok: () => removeDevice()");
     for (const f of [
-      "app/components/AppShell.tsx",
+      "app/components/ProfileMenu.tsx",
       "app/components/Header.tsx",
       "app/auth/logout/SignOutButton.tsx",
     ])

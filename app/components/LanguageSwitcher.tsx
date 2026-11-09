@@ -8,7 +8,12 @@ import { notePrefWrite } from "@lianki/ui-state";
 import { LOCALE_PARAM, LOCALE_PICK_KEY, isAppRoute } from "@/lib/app-locale";
 import { LANGUAGES, isSupportedLocale } from "@/lib/constants";
 
-export function LanguageSwitcher() {
+/**
+ * `header`: the globe and the language's name in the top bar. `menu`: a
+ * full-width row in the account menu (ProfileMenu), so the picker stays in
+ * reach while the top bar is scrolled away.
+ */
+export function LanguageSwitcher({ variant = "header" }: { variant?: "header" | "menu" } = {}) {
   const [isOpen, setIsOpen] = useState(false);
   // The portal leaves the shell's <div lang dir>; the sheet carries them over.
   const [scope, setScope] = useState<{ lang?: string; dir?: string }>({});
@@ -203,14 +208,19 @@ export function LanguageSwitcher() {
           setIsOpen(true);
         }}
         // A 40px hit area around the 20px glyph; -m-2.5 keeps the header compact.
-        className="text-lg font-medium hover:underline flex items-center gap-2 min-h-10 min-w-10 justify-center -m-2.5 p-2.5"
+        className={
+          variant === "menu"
+            ? "w-full flex items-center gap-2 px-4 py-2 text-sm text-start hover:bg-gray-100 dark:hover:bg-gray-700"
+            : "text-lg font-medium hover:underline flex items-center gap-2 min-h-10 min-w-10 justify-center -m-2.5 p-2.5"
+        }
+        data-lang-trigger={variant}
         aria-label={text.switchLanguage.value}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         title={text.switchLanguage.value}
       >
         <svg
-          className="w-5 h-5"
+          className={variant === "menu" ? "w-4 h-4" : "w-5 h-5"}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -223,7 +233,7 @@ export function LanguageSwitcher() {
             d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
           />
         </svg>
-        <span className="hidden sm:inline">
+        <span className={variant === "menu" ? "" : "hidden sm:inline"}>
           {LANGUAGES.find((l) => l.code === currentLocale)?.nativeName || "Language"}
         </span>
       </button>

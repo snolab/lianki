@@ -1,5 +1,5 @@
 // The Docs page's side of the live stream (docs/connections.md, "Live stream").
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
 import { docIdOfPath, looksTruncated, startGdocStream, stripImages } from "../src/gdoc-stream";
 
 const ID = "fake_doc_id_for_tests_0123456789abcdefABCD";
@@ -31,7 +31,21 @@ describe("looksTruncated", () => {
 });
 
 describe("startGdocStream", () => {
-  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // A fake clock: every wait is exact, however busy the machine is. Time moves
+  // a millisecond at a time, and what each step set off (a read, a send) runs
+  // to its end before the next one: setImmediate is left real for that.
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+  const settle = async () => {
+    for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+  };
+  const wait = async (ms: number) => {
+    await settle();
+    for (let t = 0; t < ms; t++) {
+      jest.advanceTimersByTime(1);
+      await settle();
+    }
+  };
   const timing = { quietMs: 5, maxWaitMs: 20, exportLagMs: 8, retryShortMs: 5 };
   const g = globalThis as unknown as Record<string, unknown>;
   const saved = new Map<string, unknown>();

@@ -39,12 +39,14 @@ export default async function PreferencesPage() {
   const flags = await readFlags();
   const showKeySync = isDev(user.email) || flagIn(flags, "byok.sync");
   const vibe = vibeAllowed(flags, isDev(user.email));
+  // The app-icon badge's row (docs/app-badge.md): only while `pwa.app-badge` is on.
+  const appBadge = flagIn(flags, "pwa.app-badge");
 
   return (
     <div className="flex flex-col">
       {/* Main Content */}
       <div className="flex-grow">
-        <PreferencesClient showKeySync={showKeySync} />
+        <PreferencesClient showKeySync={showKeySync} appBadge={appBadge} />
         {vibe && <VibeRetention />}
       </div>
     </div>
