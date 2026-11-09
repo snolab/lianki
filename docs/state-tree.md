@@ -149,7 +149,12 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
     bun scripts/dev/progress.ts show --all     # the tree plus "history"
   or, on an owner/box reader socket, {type:"history", limit?}: the answer
   {type:"history", items, total} goes to that socket only, never in the
-  snapshot, so the ETA bar and Gantt see nothing new. /dev/roadmap lists it.
+  snapshot, so the ETA bar and Gantt see nothing new. /dev/roadmap lists it
+  (lib/roadmap-tree.ts: open nodes by section, done history folded, both
+  grouped by top-level path; node titles as written). Any write to a done
+  node refreshes its record (a later PR reaches it). Old work moved in after
+  the fact: --done --ended <ISO time> (root token only) back-dates it; such a
+  node stays out of the stats log.
   PRs: --pr 703,707 (or one per report); a node keeps every PR it named in
   `prs` (newest 20), and "#NNN" in its title counts too.
 

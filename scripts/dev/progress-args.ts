@@ -40,6 +40,7 @@ Report again with a new --eta to move it; free text ("after CI") shows as writte
 The hub also keeps, for agents only (never shown to the owner), each task's first estimate, start,
 end and actual time; "stats" lists your done tasks (30 days) with estimate vs actual and the
 median actual/estimate ratio, to calibrate your next --eta.
+--ended <ISO time> (root token only, with --done): when old work really shipped, moving it into the tree.
 --pr takes one number or several (--pr 703,707); a node keeps every PR it ever named.
 "history" lists done nodes, newest first, from the hub's durable done history (kept after the live
 tree drops a done node at 24 h); "show --all" is the tree with that history under "history".
@@ -76,6 +77,7 @@ const STRINGS = [
   "node",
   "ttl",
   "since",
+  "ended",
 ] as const;
 const NUMBERS = ["pct", "pr", "rev", "limit"] as const;
 const SWITCHES = ["done", "human", "all", "json"] as const;
@@ -151,6 +153,11 @@ export function parseProgressArgs(argv: string[]): ProgressCommand | Error {
     };
   }
   if (raw.done) raw.status = "done";
+  if (typeof raw.ended === "string") {
+    const at = Date.parse(raw.ended);
+    if (!Number.isFinite(at)) return new Error("--ended must be an ISO time");
+    raw.endedAt = at;
+  }
   if (raw.path !== undefined) {
     if (raw.id !== undefined && raw.id !== raw.path) return new Error("--path and --id differ");
     raw.id = raw.path;
@@ -159,7 +166,8 @@ export function parseProgressArgs(argv: string[]): ProgressCommand | Error {
     raw.assignee = { type: "human", name: raw.agent };
     delete raw.agent;
   }
-  for (const k of ["path", "done", "human", "token", "all", "json", "limit"]) delete raw[k];
+  for (const k of ["path", "done", "human", "token", "all", "json", "limit", "ended"])
+    delete raw[k];
   const report = parseProgressReport(raw);
   if (report instanceof Error) return report;
   const title = checkTaskTitle(report.task);

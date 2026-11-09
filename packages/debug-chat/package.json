@@ -15,6 +15,7 @@
     "./LaneMark": "./src/LaneMark.tsx",
     "./MicButton": "./src/MicButton.tsx",
     "./StateTree": "./src/StateTree.tsx",
+    "./eta": "./src/eta.ts",
     "./state-tree": "./src/state-tree.ts",
     "./debug-chat-tabs": "./src/debug-chat-tabs.ts",
     "./debug-chat-widget": "./src/debug-chat-widget.ts",

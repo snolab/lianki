@@ -123,6 +123,11 @@ export type ProgressReport = {
   link?: string;
   note?: string;
   rev?: number;
+  /**
+   * When it really went done (ms), for a done node written after the fact
+   * (moving old work into the tree); the root token only, never in the stats.
+   */
+  endedAt?: number;
 };
 export type ProgressNote = { at: number; by: string; text: string };
 /**
@@ -310,6 +315,12 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
     if (e && "in" in e) out.etaIn = e.in;
     else if (e) out.etaAt = e.at;
   }
+  if (b.endedAt !== undefined && b.endedAt !== null) {
+    if (typeof b.endedAt !== "number" || !Number.isInteger(b.endedAt) || b.endedAt <= 0)
+      return new Error("endedAt must be a time in milliseconds");
+    if (out.status !== "done") return new Error("endedAt is only for a done node");
+    out.endedAt = b.endedAt;
+  }
   if (out.late && out.etaAt === undefined && out.etaIn === undefined)
     return new Error(
       'late needs a new estimate that sets a time: --eta 20m --late "why it ran over"',
@@ -375,7 +386,8 @@ export function mergeProgress(
   if (notes.length) entry.notes = notes.slice(-PROGRESS_NOTES_MAX);
   const startedAt = prev?.startedAt ?? (r.status === "doing" ? at : undefined);
   if (startedAt !== undefined) entry.startedAt = startedAt;
-  if (r.status === "done") entry.endedAt = prev?.status === "done" ? (prev.endedAt ?? at) : at;
+  if (r.status === "done")
+    entry.endedAt = r.endedAt ?? (prev?.status === "done" ? (prev.endedAt ?? at) : at);
   // An estimate that sets a time: the first is kept, the later ones counted.
   const estimate = r.etaIn ?? (r.etaAt !== undefined ? r.etaAt - at : undefined);
   if (prev?.estimateMs !== undefined) {
