@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { getIntlayer } from "intlayer";
 import { authUserOrNull, signInRedirect } from "@/app/signInEmail";
 import { appLocale } from "@/lib/app-locale.server";
+import { readFlags } from "@/lib/flags-store";
+import { isDev } from "@/lib/permissions";
+import { importAnyOn } from "@/lib/import/words-handler";
 import MyFilesClient from "./MyFilesClient";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +21,10 @@ export async function generateMetadata(): Promise<Metadata> {
  * store's gate (`import.any`); without it the page shows the empty state.
  */
 export default async function MyFilesPage() {
-  if (!(await authUserOrNull())) return signInRedirect();
+  const user = await authUserOrNull();
+  if (!user) return signInRedirect();
   const { files } = getIntlayer("my-page", await appLocale());
-  return <MyFilesClient back={String(files.back)} />;
+  // Without the store's gate there is nothing to list: no request, the empty state.
+  const on = !!user.email && importAnyOn(await readFlags(), isDev(user.email));
+  return <MyFilesClient back={String(files.back)} on={on} />;
 }

@@ -12,7 +12,14 @@ import { formatSize } from "@lianki/debug-chat/files";
 import { pendingDeletes } from "@/lib/import/uploads-client";
 import { FOLDERS, folderOf, type MyFile } from "@/lib/import/my-files";
 
-export default function MyFilesClient({ back }: { back: string }) {
+export default function MyFilesClient({
+  back,
+  on = true,
+}: {
+  back: string;
+  /** The file store's gate (`import.any`); off: the empty state, no request. */
+  on?: boolean;
+}) {
   const t = useIntlayer("my-files");
   const { locale } = useLocale();
   const [files, setFiles] = useState<MyFile[] | null>(null);
@@ -21,10 +28,12 @@ export default function MyFilesClient({ back }: { back: string }) {
   deletes.current ??= pendingDeletes();
 
   useEffect(() => {
-    fetch("/api/my/files", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((b: { items?: MyFile[] }) => setFiles(b.items ?? []))
-      .catch(() => setFiles([]));
+    if (on)
+      fetch("/api/my/files", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((b: { items?: MyFile[] }) => setFiles(b.items ?? []))
+        .catch(() => setFiles([]));
+    else setFiles([]);
     const flush = () => deletes.current?.flush();
     window.addEventListener("pagehide", flush);
     return () => {
