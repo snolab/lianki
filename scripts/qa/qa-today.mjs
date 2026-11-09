@@ -68,7 +68,7 @@ async function pass(scheme) {
     Number(await left.getAttribute("data-today-left")) === due,
     `${scheme}: the number is /words's due sum (${due})`,
   );
-  const digits = ((await page.locator("main").innerText()).match(/\d+/g) ?? []).length;
+  const digits = ((await page.locator("[data-today]").innerText()).match(/\d+/g) ?? []).length;
   check(digits <= 1, `${scheme}: one number on the page (${digits})`);
 
   const bar = page.locator('[role="progressbar"]');
@@ -78,7 +78,7 @@ async function pass(scheme) {
     `${scheme}: progress bar labelled, ${now}%`,
   );
 
-  const colours = await page.locator("main.lk-today").evaluate((m) => {
+  const colours = await page.locator("[data-today]").evaluate((m) => {
     const s = getComputedStyle(m);
     return { bg: s.backgroundColor, ink: s.color };
   });

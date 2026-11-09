@@ -178,6 +178,21 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // The /words first-visit walkthrough: shows once, Skip, replay from the "?", still frames (lib/words/onboarding.ts).
+  {
+    name: "WORDS ONBOARDING (qa-words-onboarding)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-words-onboarding.mjs"],
+    base: true,
+    id: "words-onboarding",
+    paths: [
+      "app/(app)/words/WordsOnboarding.tsx",
+      "app/(app)/words/onboarding.content.ts",
+      "lib/words/onboarding.ts",
+      "scripts/qa/qa-words-onboarding.mjs",
+    ],
+    sensitive: false,
+  },
   // Import a word list on /import (docs/import-material.md, M1): flag gate, preview counts, a /words list.
   {
     name: "IMPORT WORDLIST (qa-import-wordlist)",

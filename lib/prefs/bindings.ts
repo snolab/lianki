@@ -191,6 +191,8 @@ export function prefBindings(): PrefBinding[] {
     plain("words.gradeTones", "lk:words-grade-tones", bool10, true),
     plain("words.voiceMode", "lk:words-voice-mode", bool10, false),
     plain("words.swipeMirror", "lk:words-swipe-mirror", bool10, false),
+    // lib/words/onboarding.ts: the first-visit walkthrough, seen once per account.
+    plain("words.onboarded", "lk:words-onboarded", bool10, false),
     plain("swipe.variant", "lk:swipe-ab", text, "js"),
     field("swipe-feel.preset", "swipe-feel", 1, "preset", "light"),
     field("swipe-feel.tweaks", "swipe-feel", 1, "tweaks", {}),

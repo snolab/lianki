@@ -64,7 +64,10 @@ export default function TodayClient() {
     : " ";
 
   return (
-    <main className="lk-today fixed inset-0 z-40 flex flex-col justify-center gap-7 overflow-y-auto px-7 pb-10 pt-16">
+    <section
+      data-today
+      className="lk-today fixed inset-0 z-40 flex flex-col justify-center gap-7 overflow-y-auto px-7 pb-10 pt-16"
+    >
       <button
         type="button"
         aria-label={text.close.value}
@@ -96,7 +99,7 @@ export default function TodayClient() {
         {text.start}
       </Link>
       <style>{CSS}</style>
-    </main>
+    </section>
   );
 }
 
