@@ -74,6 +74,7 @@ import ytSongs from "@/app/components/yt-clip/yt-songs.content";
 import pillChat from "@/app/components/pill-chat.content";
 import signInErrors from "@/app/(app)/sign-in/errors.content";
 import activityTally from "@/app/(app)/list/components/activity-tally.content";
+import devFlagToast from "@/app/(app)/dev/flags/flag-toast.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -176,6 +177,7 @@ describe.each([
   ["yt-songs", ytSongs],
   ["pill-chat", pillChat],
   ["activity-tally", activityTally],
+  ["dev-flag-toast", devFlagToast],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

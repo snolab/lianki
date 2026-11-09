@@ -8,6 +8,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, devices } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
+import { budget } from "./load-budget.mjs";
 
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const OUT = process.argv[2] || "test-results/flags";
@@ -198,7 +199,23 @@ async function run(name, device, colorScheme) {
   check(levels.enabled === false, `${tag}: levels starts off`);
   const sw = page.locator('[id="levels"] [role="switch"]');
   await sw.click();
-  await page.waitForSelector('[id="levels"] [role="status"]');
+  // The toast says what was saved, when it takes effect and for whom.
+  const toast = page.locator('[data-dev-toast="ok"]');
+  await toast.waitFor({ timeout: budget(10000) });
+  const said = await toast.innerText();
+  check(
+    said.includes("levels") && /\d/.test(said),
+    `${tag}: a toast says it is saved, with its delay (${said.replace(/\s+/g, " ")})`,
+  );
+  check(
+    (await page.locator("[data-flags-cache-note]").count()) === 1,
+    `${tag}: the cache note sits above the list`,
+  );
+  check(
+    (await page.locator('[id="levels"] [data-seal-check="on"]').count()) === 1,
+    `${tag}: an on switch is stamped with the seal`,
+  );
+  await page.screenshot({ path: join(OUT, `${tag}-toast.png`) });
   check(
     (await page.locator('[id="levels"] [role="switch"]').getAttribute("aria-checked")) === "true",
     `${tag}: one tap turns it on`,
