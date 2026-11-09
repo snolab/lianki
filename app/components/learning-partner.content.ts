@@ -2009,6 +2009,24 @@ const learningPartnerContent = {
       mr: "लॉग",
       ko: "로그",
     }),
+    etaGanttLegend: t({
+      en: "Underline = reported progress · red line = now",
+      zh: "下划线 = 已报告进度，红线 = 现在",
+      hi: "रेखांकन = बताई गई प्रगति · लाल रेखा = अभी",
+      es: "Subrayado = progreso informado · línea roja = ahora",
+      fr: "Soulignement = progression annoncée · ligne rouge = maintenant",
+      ar: "الخط السفلي = التقدّم المُبلَّغ · الخط الأحمر = الآن",
+      bn: "নিচের দাগ = জানানো অগ্রগতি · লাল রেখা = এখন",
+      pt: "Sublinhado = progresso informado · linha vermelha = agora",
+      ru: "Подчёркивание = заявленный прогресс · красная линия = сейчас",
+      ur: "نیچے کی لکیر = بتائی گئی پیش رفت · سرخ لکیر = ابھی",
+      id: "Garis bawah = kemajuan yang dilaporkan · garis merah = sekarang",
+      de: "Unterstrich = gemeldeter Fortschritt · rote Linie = jetzt",
+      ja: "下線 = 報告された進捗、赤線 = 現在",
+      sw: "Mstari wa chini = maendeleo yaliyoripotiwa · mstari mwekundu = sasa",
+      mr: "अधोरेखा = कळवलेली प्रगती · लाल रेषा = आता",
+      ko: "밑줄 = 보고된 진행률 · 빨간 선 = 현재",
+    }),
     etaWaitingYou: t({
       en: "Waiting for you",
       zh: "等你",
@@ -2408,6 +2426,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "One of two buttons of a small switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis evenly, each hour the same width. A single short word for 'linear' as on a chart's axis (线性 in Chinese); the button is narrow.",
   etaGanttLog:
     "The other of the two buttons of that switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis logarithmically, near times wide and far times compressed, so minutes and days fit one screen. A single short word for 'logarithmic' as on a chart's axis, abbreviated if usual (对数 in Chinese, 'Log' in English); the button is narrow.",
+  etaGanttLegend:
+    "One short line under the header of the full-screen task timeline (a Gantt chart): explains two marks on it. Each task's bar has a thin coloured underline whose length is the progress the assistant reported for it (not the time passed), and a vertical red line marks the present moment. Keep the two parts as 'mark = meaning', separated as is usual; no full stop.",
   etaWaitingYou:
     "Shown on a row of the assistant's task timeline (a Gantt chart, and the short task list in the chat) for a task that is stopped until the user acts (answers, decides, approves): the label of a red '!' or '?' before the task's name, and the start of its time text. Means the task is waiting for the user, addressed to the user; very short (等你 in Chinese).",
   etaReminder:

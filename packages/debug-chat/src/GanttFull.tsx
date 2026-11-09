@@ -14,7 +14,11 @@ import {
   fitSpan,
   focusRow,
   ganttRowsByEnd,
+  LIVE_ATTR,
+  LIVE_CSS,
   homeView,
+  paceColor,
+  paceOf,
   parkedBar,
   pinchOf,
   rowsRange,
@@ -55,6 +59,9 @@ import type { ChatStrings } from "./wire";
 const AXIS_H = 26;
 const ROW_H = 30;
 const ROW_GAP = 2;
+/** The progress underline's thickness, and the room left for it under the bar (px). */
+const UNDERLINE_H = 3;
+const UNDERLINE_GAP = 4;
 
 type Strings = Pick<
   ChatStrings,
@@ -66,6 +73,7 @@ type Strings = Pick<
   | "etaGanttLog"
   | "etaWaitingYou"
   | "etaReminder"
+  | "etaGanttLegend"
 >;
 
 /** A label character's width at the axis's text size (the tick spacing reads it). */
@@ -352,6 +360,7 @@ export function GanttFull({
         paddingRight: "env(safe-area-inset-right)",
       }}
     >
+      <style>{LIVE_CSS}</style>
       <header
         className="flex shrink-0 items-center gap-2 px-3 py-1.5"
         style={{ borderBottom: `1px solid ${c("grid")}` }}
@@ -412,6 +421,14 @@ export function GanttFull({
           ✕
         </button>
       </header>
+      {/* What the marks mean: the underline is the reported progress, the red line now. */}
+      <p
+        data-testid="debug-chat-gantt-legend"
+        className="m-0 shrink-0 truncate px-3 py-0.5 fs-10"
+        style={{ color: c("muted"), borderBottom: `1px solid ${c("grid")}` }}
+      >
+        {strings.etaGanttLegend}
+      </p>
       <div
         ref={scroller}
         data-testid="debug-chat-gantt-scroll"
@@ -525,28 +542,80 @@ export function GanttFull({
                     <span
                       aria-hidden
                       data-testid="debug-chat-gantt-bar"
-                      className="absolute inset-y-0 overflow-hidden rounded-sm"
+                      className="absolute overflow-hidden rounded-sm"
                       style={{
+                        top: 0,
+                        bottom: UNDERLINE_GAP,
                         left: b.x,
                         width: Math.max(3, b.w),
                         background: c(t.done ? "done" : t.queued ? "queued" : "bar"),
                         ...(t.queued ? { outline: `1px dashed ${c("muted")}`, outlineOffset: -1 } : {}),
                         ...(parked ? parkedBar(c("bar"), c("muted")) : {}),
                       }}
-                    >
-                      {!t.done && !parked && !t.queued && b.fill > 0 && (
-                        <span
-                          className="absolute inset-y-0 left-0"
-                          style={{ width: b.fill, background: c("fill") }}
-                        />
-                      )}
-                    </span>
+                    />
+                    {!parked && !t.queued && b.fill > 0 && (() => {
+                      // The reported progress: an underline beneath the planned span,
+                      // tinted by its end against Now; live (pulsing, an arrow) while it runs.
+                      const live = !t.done;
+                      const end = b.x + b.fill;
+                      const pace = live ? paceOf(end, nowX) : "on";
+                      const ink = paceColor(pace);
+                      const liveAttr = live ? { [LIVE_ATTR]: true } : {};
+                      return (
+                        <>
+                          <span
+                            aria-hidden
+                            data-testid="debug-chat-gantt-progress"
+                            data-pace={pace}
+                            data-gantt-line
+                            {...liveAttr}
+                            className="absolute rounded-full"
+                            style={{
+                              left: b.x,
+                              width: Math.max(2, b.fill),
+                              bottom: 0,
+                              height: UNDERLINE_H,
+                              background: ink,
+                            }}
+                          />
+                          {live && (
+                            <span
+                              aria-hidden
+                              data-testid="debug-chat-gantt-frontier"
+                              {...liveAttr}
+                              className="absolute leading-none"
+                              style={{ left: end - 1, bottom: -2, fontSize: 8, color: ink }}
+                            >
+                              →
+                            </span>
+                          )}
+                          <span
+                            data-testid="debug-chat-gantt-pct"
+                            className="absolute tabular-nums leading-none"
+                            style={{
+                              left: end + (live ? 9 : 2),
+                              bottom: 0,
+                              fontSize: 9,
+                              color: c("muted"),
+                            }}
+                          >
+                            {Math.round(t.done ? 100 : (t.pct ?? 0))}%
+                          </span>
+                        </>
+                      );
+                    })()}
                     {b.over > 0 && !parked && (
                       <span
                         aria-hidden
                         data-testid="debug-chat-gantt-over"
-                        className="absolute inset-y-0 rounded-e-sm"
-                        style={{ left: b.x + b.w, width: b.over, background: c(t.done ? "done" : "past") }}
+                        className="absolute rounded-e-sm"
+                        style={{
+                          top: 0,
+                          bottom: UNDERLINE_GAP,
+                          left: b.x + b.w,
+                          width: b.over,
+                          background: c(t.done ? "done" : "past"),
+                        }}
                       />
                     )}
                     {/* The name: pinned at the left of what is visible, over the bar. */}
