@@ -910,7 +910,12 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   pushed flush against the bottom edge (the drag keeps it on screen, so it rests
   flush within half a pixel) enters full screen on the drop (`dropEntersFull`).
   Only the bottom: the top edge would hide the history (18:26 JST), so a bar
-  pushed against the top stays a panel there. In full screen a drag on the grip
+  pushed against the top stays a panel there. **Before the release** (owner,
+  2026-11-10): the moment the drag meets that condition, a glass sheet grows
+  up from the bottom edge to the whole screen, behind the chat
+  (`FULL_HINT_STYLE`, `data-testid="debug-chat-full-hint"`), with a light
+  haptic where the browser has `navigator.vibrate` (not iOS); backing off the
+  edge folds it away (`fullHintStep`). Reduced motion: it appears at once. In full screen a drag on the grip
   or the bar's edge that goes `FULL_LEAVE_PX` (48 px) up leaves it
   (`dragLeavesFull`): the panel comes back, its own size, and follows the finger
   from there; a smaller wobble, sideways or down, stays. Without a drag (the
