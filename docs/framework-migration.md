@@ -1,5 +1,7 @@
 # Framework migration: off Next.js, without a rewrite branch
 
+Tree: /backlog/cf-native
+
 Status: **plan; the backend half of the spike is done, its numbers are in
 section 8** (2026-11-06). Nothing in production changed and no step after the
 spike has started; the owner decides from those numbers. Owner request, Slack
@@ -35,24 +37,24 @@ pages end up on. That makes it the no-regret move.
 
 ### What uses Next today (grep, 2026-10-31)
 
-| Next API                                                                                | Files                                       | How hard to replace                                                                    |
-| --------------------------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `next/server` (`NextRequest`, `NextResponse`)                                           | 51                                          | mechanical: `Request` / `Response` / Hono `c.json`                                     |
-| `next` (`Metadata` types; `generateMetadata` in 32 files)                               | 33                                          | RR7 `meta` export, or one `<head>` helper over `lib/hreflang.ts`                       |
-| `next/headers` (`cookies()`, `headers()`)                                               | 29                                          | read them from the request (loader `request`, Hono `c.req`)                            |
-| `next/navigation` (`useRouter`, `usePathname`, `redirect`, `notFound`)                  | 24                                          | `react-router` hooks, `redirect()`, `throw data(null, 404)`                            |
-| `next/link`                                                                             | 15                                          | `react-router` `Link`                                                                  |
-| `next/cache` (`revalidateTag`, `unstable_cache`)                                        | 3                                           | the Cache API or KV, or no cache at all (D1 is close)                                  |
-| `next/image`                                                                            | 2                                           | `<img>` (only avatars and the logo)                                                    |
-| `next/dynamic`                                                                          | 1                                           | `React.lazy`                                                                           |
-| `"use server"` server actions                                                           | 2 (`list/actions.ts`, `sign-in/actions.ts`) | a POST endpoint or an RR7 `action`                                                     |
-| `middleware.ts` (www→apex, `/cn`→`/zh`, legacy `/ja/list`, the locale header, intlayer) | 1                                           | Hono middleware. The logic is already plain TypeScript in `lib/app-locale.ts`          |
+| Next API                                                                                | Files                                       | How hard to replace                                                                      |
+| --------------------------------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `next/server` (`NextRequest`, `NextResponse`)                                           | 51                                          | mechanical: `Request` / `Response` / Hono `c.json`                                       |
+| `next` (`Metadata` types; `generateMetadata` in 32 files)                               | 33                                          | RR7 `meta` export, or one `<head>` helper over `lib/hreflang.ts`                         |
+| `next/headers` (`cookies()`, `headers()`)                                               | 29                                          | read them from the request (loader `request`, Hono `c.req`)                              |
+| `next/navigation` (`useRouter`, `usePathname`, `redirect`, `notFound`)                  | 24                                          | `react-router` hooks, `redirect()`, `throw data(null, 404)`                              |
+| `next/link`                                                                             | 15                                          | `react-router` `Link`                                                                    |
+| `next/cache` (`revalidateTag`, `unstable_cache`)                                        | 3                                           | the Cache API or KV, or no cache at all (D1 is close)                                    |
+| `next/image`                                                                            | 2                                           | `<img>` (only avatars and the logo)                                                      |
+| `next/dynamic`                                                                          | 1                                           | `React.lazy`                                                                             |
+| `"use server"` server actions                                                           | 2 (`list/actions.ts`, `sign-in/actions.ts`) | a POST endpoint or an RR7 `action`                                                       |
+| `middleware.ts` (www→apex, `/cn`→`/zh`, legacy `/ja/list`, the locale header, intlayer) | 1                                           | Hono middleware. The logic is already plain TypeScript in `lib/app-locale.ts`            |
 | `better-auth/next-js` (`nextCookies`, `toNextJsHandler`)                                | 2                                           | `auth.handler(request)`. Route handlers must forward `Set-Cookie` themselves (section 8) |
-| Route handlers `app/**/route.ts`                                                        | 54                                          | Hono routes. Most bodies are already `Request → Response`                              |
-| Pages / layouts                                                                         | 37 / 4                                      | thin: the 37 `(app)` page files total 982 lines, and each one wraps a client component |
-| `"use client"` components                                                               | 77                                          | move unchanged                                                                         |
-| `next-intlayer` (16 locales)                                                            | —                                           | `react-intlayer` + `vite-intlayer`. Proven on the cf-native branch (81c24b0, f392dac)  |
-| `public/sw.js`                                                                          | 1                                           | keep it. It special-cases `/_next/static/`, so it needs a rule for Vite's `/assets/`   |
+| Route handlers `app/**/route.ts`                                                        | 54                                          | Hono routes. Most bodies are already `Request → Response`                                |
+| Pages / layouts                                                                         | 37 / 4                                      | thin: the 37 `(app)` page files total 982 lines, and each one wraps a client component   |
+| `"use client"` components                                                               | 77                                          | move unchanged                                                                           |
+| `next-intlayer` (16 locales)                                                            | —                                           | `react-intlayer` + `vite-intlayer`. Proven on the cf-native branch (81c24b0, f392dac)    |
+| `public/sw.js`                                                                          | 1                                           | keep it. It special-cases `/_next/static/`, so it needs a rule for Vite's `/assets/`     |
 
 So the lock-in is wide but shallow. About 115 files import `next/*`, nearly
 all at the edges (request and response, metadata, links). The business logic
@@ -295,9 +297,9 @@ and the MAIN hop (see "What these numbers do not say").
 
 From `wrangler deploy --dry-run`, the size Cloudflare counts:
 
-| Worker                             | upload    | gzip     |
-| ---------------------------------- | --------- | -------- |
-| `lianki-edge` (one route + auth)   | 2,331 KiB | 500 KiB  |
+| Worker                             | upload     | gzip      |
+| ---------------------------------- | ---------- | --------- |
+| `lianki-edge` (one route + auth)   | 2,331 KiB  | 500 KiB   |
 | `lianki` (OpenNext, today's build) | 35,022 KiB | 7,379 KiB |
 
 Of the edge's 2.3 MB, 59 KB is the entry that every request loads; the rest,
@@ -312,10 +314,10 @@ time, so each figure includes about 25–55 ms of TLS. A deploy replaces the
 isolates, so each sample was a new deploy, a 20 s wait, then the first request.
 Six samples per row. `bun scripts/measure-cold.ts`.
 
-| Request                  | `lianki-edge`, new isolate | `lianki-edge`, proved warm | OpenNext bundle, first request after a deploy |
-| ------------------------ | -------------------------- | -------------------------- | --------------------------------------------- |
-| guest (401)              | **172 ms** (136–320)       | 77 ms (71–90)              | **1,438 ms** (1,237–3,652)                    |
-| forged session cookie\*  | **247 ms** (198–409)       | 83 ms (66–180)             | **1,893 ms** (1,265–2,595)                    |
+| Request                 | `lianki-edge`, new isolate | `lianki-edge`, proved warm | OpenNext bundle, first request after a deploy |
+| ----------------------- | -------------------------- | -------------------------- | --------------------------------------------- |
+| guest (401)             | **172 ms** (136–320)       | 77 ms (71–90)              | **1,438 ms** (1,237–3,652)                    |
+| forged session cookie\* | **247 ms** (198–409)       | 83 ms (66–180)             | **1,893 ms** (1,265–2,595)                    |
 
 \* It loads and builds better-auth and stops at the first D1 query, with a 500,
 because no D1 is bound. It is the code's cost without D1's time.
@@ -395,12 +397,12 @@ Same Mac, five rounds, machine load 7–10 from other agents, in local workerd. 
 them to compare the two Workers with each other, not as Cloudflare times.
 `bun scripts/measure-local.ts`.
 
-| Median of 5                                   | spawn to first guest answer | first signed-in request | warm signed-in |
-| --------------------------------------------- | --------------------------- | ----------------------- | -------------- |
-| `lianki-edge` build, `wrangler dev`           | 2,235 ms                    | 56 ms                   | 3 ms           |
-| `lianki` OpenNext build, `wrangler dev`       | 4,162 ms                    | 120 ms                  | 7 ms           |
-| **`vite dev`** (`lianki-edge`)                | **2,017 ms**                | 794 ms (transforms)     | 8 ms           |
-| **`next dev`** (with `CF_BUILD=1 DB_BACKEND=d1`) | **3,594 ms**             | not measured            | not measured   |
+| Median of 5                                      | spawn to first guest answer | first signed-in request | warm signed-in |
+| ------------------------------------------------ | --------------------------- | ----------------------- | -------------- |
+| `lianki-edge` build, `wrangler dev`              | 2,235 ms                    | 56 ms                   | 3 ms           |
+| `lianki` OpenNext build, `wrangler dev`          | 4,162 ms                    | 120 ms                  | 7 ms           |
+| **`vite dev`** (`lianki-edge`)                   | **2,017 ms**                | 794 ms (transforms)     | 8 ms           |
+| **`next dev`** (with `CF_BUILD=1 DB_BACKEND=d1`) | **3,594 ms**                | not measured            | not measured   |
 
 So the dev server starts in 2.0 s against 3.6 s, to answer one API route as a
 guest. `next dev` is at its best here: a page's first compile is slower, and
