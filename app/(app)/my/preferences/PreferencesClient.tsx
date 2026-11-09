@@ -16,6 +16,7 @@ import { ExternalLinkSettings } from "@/app/components/ExternalLinkSettings";
 import { AppBadgeSettings } from "@/app/components/AppBadgeSettings";
 import { MailSettings } from "@/app/components/MailSettings";
 import { LanguageSettings } from "@/app/components/LanguageSettings";
+import { PreferredLangsSettings } from "@/app/components/PreferredLangsSettings";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
 import { readNotesOn, writeNotesOn } from "@/lib/read/translator-notes";
@@ -265,6 +266,9 @@ export default function PreferencesClient({
 
       {/* Language — follows the account (lib/account-locale.ts) */}
       <LanguageSettings />
+
+      {/* Preferred languages — the order of many-language pages (lib/lang-order.ts) */}
+      <PreferredLangsSettings />
 
       {/* Paper skin — this device only, kept in localStorage */}
       <section className="mb-10">

@@ -6,11 +6,14 @@ import type { CatalogueBook } from "@/lib/books/catalogue";
 import { booksToc, langSectionId, levelAnchors } from "@/lib/books/toc";
 import { BookCard } from "./BookCard";
 import { BooksToc } from "./BooksToc";
+import { orderByPreferred } from "@/lib/lang-order";
+import { usePreferredLangs } from "@/lib/use-preferred-langs";
 
 /**
  * The /books list with an instant filter (title, author, language, level):
  * the catalogue is small and already on the page, so filtering is local —
- * no request, no AI. Groups by language as the server ordered them. Its table
+ * no request, no AI. Groups by language: the preferred languages first
+ * (lib/lang-order.ts), then the rest as the server ordered them. Its table
  * of contents (lib/books/toc.ts) follows the filter: a group with no match has
  * no section and no entry. `finder` (the 找更多书 section) comes after the list.
  */
@@ -32,10 +35,17 @@ export function BooksBrowser({
 }) {
   const t = useIntlayer("books-page");
   const [q, setQ] = useState("");
+  // Settings → Preferred languages first (lib/lang-order.ts), then the rest as
+  // the server ordered them. Server order until mount, so hydration agrees.
+  const { langs: preferred } = usePreferredLangs();
+  const ordered = useMemo(
+    () => orderByPreferred(groups, (g) => g[0], preferred),
+    [groups, preferred],
+  );
   const shown = useMemo(() => {
     const words = q.normalize("NFC").toLowerCase().split(/\s+/).filter(Boolean);
-    if (!words.length) return groups;
-    return groups
+    if (!words.length) return ordered;
+    return ordered
       .map(([lang, name, books]) => {
         const match = books.filter((b) => {
           const hay = [b.title, b.author, b.lang, name, b.level, String(b.firstPublicationYear)]
@@ -47,7 +57,7 @@ export function BooksBrowser({
         return [lang, name, match] as [string, string, CatalogueBook[]];
       })
       .filter(([, , books]) => books.length);
-  }, [groups, q]);
+  }, [ordered, q]);
 
   const toc = booksToc(
     shown,

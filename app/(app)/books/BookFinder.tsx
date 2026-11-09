@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { orderByPreferred } from "@/lib/lang-order";
+import { usePreferredLangs } from "@/lib/use-preferred-langs";
 import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
 import type { Library, LibraryOffer } from "@/lib/books/libraries";
@@ -42,6 +44,13 @@ export function BookFinder({
 }) {
   const t = useIntlayer("books-page");
   const router = useRouter();
+  // The guide's languages: Settings → Preferred languages first (lib/lang-order.ts),
+  // the rest (many-language libraries among them) in the server's order.
+  const { langs: preferred } = usePreferredLangs();
+  const guide = useMemo(
+    () => orderByPreferred(libraries, (l) => l[0], preferred),
+    [libraries, preferred],
+  );
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -321,7 +330,7 @@ export function BookFinder({
       <div id={LIBRARIES_SECTION_ID} className="mt-10 scroll-mt-16" data-testid="books-libraries">
         <h3 className="text-lg font-semibold mb-1">{t.librariesTitle}</h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{t.librariesIntro}</p>
-        {libraries.map(([lang, name, list]) => (
+        {guide.map(([lang, name, list]) => (
           <div key={lang} className="mb-5" data-testid="books-libraries-lang" data-lang={lang}>
             <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
               {lang === "mul" ? t.manyLanguages : name}
