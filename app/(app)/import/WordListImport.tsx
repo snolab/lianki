@@ -1,0 +1,433 @@
+"use client";
+
+/**
+ * /import → a .txt/.csv/.tsv word list (file or paste) → a new /words list
+ * (docs/import-material.md, M1). The text is parsed here first, so a wrong
+ * file is caught at once; the server parses it again for the preview counts
+ * (new / already have / skipped) and for the import itself, which runs as a
+ * job (lib/import/words-handler.ts). Nothing is saved before "Add N words".
+ */
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useIntlayer, useLocale } from "next-intlayer";
+import {
+  MAX_BYTES,
+  MAX_WORDS,
+  WordListError,
+  listNameFrom,
+  parseWordList,
+} from "@/lib/import/wordlist";
+import type { JobRow, PreviewAnswer } from "@/lib/import/words-handler";
+import { IMPORT_LANGS } from "@/lib/words/anki";
+import { downloadCatalog } from "@/lib/words/catalog-cache";
+
+const text = (s: unknown): string =>
+  typeof s === "string" ? s : String((s as { value?: unknown } | null)?.value ?? s);
+const fill = (s: unknown, vars: Record<string, string | number>) =>
+  Object.entries(vars).reduce((out, [k, v]) => out.replaceAll(`{${k}}`, String(v)), text(s));
+
+type Source = { text: string; fileName: string };
+type Done = { listId: string; added: number; name: string };
+type ErrorKey =
+  | "errEmpty"
+  | "errBinary"
+  | "errTooLarge"
+  | "errEncoding"
+  | "errNothingNew"
+  | "errRate"
+  | "errSignIn"
+  | "errFailed";
+
+const ERROR_OF: Record<string, ErrorKey> = {
+  empty: "errEmpty",
+  binary: "errBinary",
+  "too-large": "errTooLarge",
+  "nothing-new": "errNothingNew",
+  "rate-limited": "errRate",
+  unauthorized: "errSignIn",
+};
+
+/** A file's text, or the error key: too large, or not UTF-8. */
+async function readFile(f: File): Promise<string | ErrorKey> {
+  if (f.size > MAX_BYTES) return "errTooLarge";
+  const bytes = await f.arrayBuffer();
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    // A NUL in the first bytes is binary (an image, a zip), not a text encoding.
+    return new Uint8Array(bytes.slice(0, 512)).includes(0) ? "errBinary" : "errEncoding";
+  }
+}
+
+export default function WordListImport({ signedIn }: { signedIn: boolean }) {
+  const t = useIntlayer("import-wordlist");
+  const { locale } = useLocale();
+  const n = (v: number) => v.toLocaleString(locale);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [paste, setPaste] = useState("");
+  const [source, setSource] = useState<Source | null>(null);
+  const [preview, setPreview] = useState<PreviewAnswer | null>(null);
+  const [name, setName] = useState("");
+  const [lang, setLang] = useState("");
+  const [busy, setBusy] = useState<"checking" | "adding" | null>(null);
+  const [error, setError] = useState<ErrorKey | null>(null);
+  const [done, setDone] = useState<Done | null>(null);
+  const [jobs, setJobs] = useState<JobRow[]>([]);
+
+  const langName = useMemo(() => {
+    try {
+      const names = new Intl.DisplayNames([locale], { type: "language" });
+      return (code: string) => names.of(code) ?? code;
+    } catch {
+      return (code: string) => code;
+    }
+  }, [locale]);
+
+  const loadJobs = () =>
+    fetch("/api/import/jobs")
+      .then((r) => (r.ok ? r.json() : { jobs: [] }))
+      .then((b: { jobs?: JobRow[] }) => setJobs(b.jobs ?? []))
+      .catch(() => {});
+  useEffect(() => {
+    if (signedIn) loadJobs();
+  }, [signedIn]);
+
+  const reset = () => {
+    setSource(null);
+    setPreview(null);
+    setError(null);
+    setDone(null);
+    setPaste("");
+    setName("");
+    setLang("");
+  };
+
+  const post = async (body: Record<string, unknown>) => {
+    const r = await fetch("/api/import/words", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(String(b?.error ?? "failed"));
+    return b;
+  };
+
+  const check = async (src: Source) => {
+    setError(null);
+    setDone(null);
+    setPreview(null);
+    // Caught here at once; the server says the same.
+    try {
+      parseWordList(src.text, src.fileName);
+    } catch (e) {
+      setError(e instanceof WordListError ? (ERROR_OF[e.code] ?? "errFailed") : "errFailed");
+      return;
+    }
+    setSource(src);
+    setBusy("checking");
+    try {
+      const p = (await post({ step: "preview", ...src })) as PreviewAnswer;
+      setPreview(p);
+      setName(listNameFrom(src.fileName) || text(t.pastedName));
+      setLang(p.lang);
+    } catch (e) {
+      setError(ERROR_OF[(e as Error).message] ?? "errFailed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onFile = async (f: File) => {
+    const read = await readFile(f);
+    if (read === "errTooLarge" || read === "errBinary" || read === "errEncoding") {
+      setPreview(null);
+      setDone(null);
+      setError(read);
+      return;
+    }
+    await check({ text: read, fileName: f.name });
+  };
+
+  const commit = async () => {
+    if (!source || !preview || !lang || !name.trim()) return;
+    setBusy("adding");
+    setError(null);
+    try {
+      const b = await post({ step: "commit", ...source, name: name.trim(), lang });
+      setDone({ listId: b.listId, added: b.added, name: name.trim() });
+      setPreview(null);
+      // This device's copy of the list's words, so /words opens with them.
+      await downloadCatalog(`/api/words/lists/${b.listId}/entries`).catch(() => {});
+    } catch (e) {
+      setError(ERROR_OF[(e as Error).message] ?? "errFailed");
+    } finally {
+      setBusy(null);
+      loadJobs();
+    }
+  };
+
+  const langs: string[] = (IMPORT_LANGS as readonly string[]).includes(lang)
+    ? [...IMPORT_LANGS]
+    : lang
+      ? [lang, ...IMPORT_LANGS]
+      : [...IMPORT_LANGS];
+  const why = preview
+    ? (
+        [
+          ["duplicate", t.whyDuplicate],
+          ["no-term", t.whyNoTerm],
+          ["too-long", t.whyTooLong],
+          ["over-limit", t.whyOverLimit],
+        ] as const
+      ).filter(([k]) => preview.skippedBy[k] > 0)
+    : [];
+  const hasBack = !!preview?.sample.some((s) => s.back);
+  const hasEx = !!preview?.sample.some((s) => s.ex);
+
+  return (
+    <section className="mt-10" data-qa="wordlist-import">
+      <h2 className="text-2xl font-bold mb-2">{t.heading}</h2>
+      <p className="text-sm mb-4 text-gray-600 dark:text-gray-300">{t.intro}</p>
+
+      {!signedIn ? (
+        <p className="text-sm p-3 rounded-lg bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          {t.errSignIn}
+        </p>
+      ) : done ? (
+        <div className="p-4 rounded-lg bg-green-50 text-green-900 dark:bg-green-950 dark:text-green-100">
+          <p className="font-medium" data-qa="wordlist-done">
+            {fill(t.done, { n: n(done.added), name: done.name })}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <a
+              href={`/words?list=${done.listId}`}
+              className="px-4 py-2 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm font-medium"
+            >
+              {t.open}
+            </a>
+            <button type="button" onClick={reset} className="px-4 py-2 text-sm underline">
+              {t.another}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+              dragging
+                ? "border-blue-600 bg-blue-50 dark:bg-blue-950"
+                : "border-gray-300 dark:border-gray-600 hover:border-gray-500"
+            }`}
+            onClick={() => inputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const f = e.dataTransfer.files[0];
+              if (f) onFile(f);
+            }}
+          >
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".txt,.csv,.tsv,text/plain,text/csv,text/tab-separated-values"
+              className="hidden"
+              data-qa="wordlist-file"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) onFile(f);
+              }}
+            />
+            <div className="text-gray-700 dark:text-gray-200">
+              {source?.fileName || text(t.drop)}
+            </div>
+            <div className="text-xs mt-1 text-gray-600 dark:text-gray-400">
+              {fill(t.limits, { mb: MAX_BYTES / 1_000_000, max: n(MAX_WORDS) })}
+            </div>
+          </div>
+
+          <label className="block mt-4 text-sm font-medium" htmlFor="wordlist-paste">
+            {t.paste}
+          </label>
+          <textarea
+            id="wordlist-paste"
+            data-qa="wordlist-paste"
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+            placeholder={text(t.pastePlaceholder)}
+            rows={4}
+            className="mt-1 w-full p-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 font-mono text-sm"
+          />
+          <button
+            type="button"
+            data-qa="wordlist-preview"
+            disabled={!paste.trim() || busy !== null}
+            onClick={() => check({ text: paste, fileName: "" })}
+            className="mt-2 px-4 py-2 rounded-lg bg-gray-800 text-white dark:bg-gray-100 dark:text-gray-900 text-sm font-medium disabled:opacity-50"
+          >
+            {busy === "checking" ? t.checking : t.preview}
+          </button>
+        </>
+      )}
+
+      {error && (
+        <div
+          role="alert"
+          data-qa="wordlist-error"
+          className="mt-4 p-3 rounded-lg bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-100 text-sm"
+        >
+          <p>{fill(t[error], { mb: MAX_BYTES / 1_000_000 })}</p>
+          {source && (
+            <button type="button" onClick={reset} className="mt-2 underline">
+              {t.another}
+            </button>
+          )}
+        </div>
+      )}
+
+      {preview && !done && (
+        <div className="mt-6" data-qa="wordlist-preview-box">
+          <div className="flex flex-wrap gap-2 text-sm">
+            <span className="px-2 py-1 rounded bg-green-100 text-green-900 dark:bg-green-900 dark:text-green-50">
+              {fill(t.countNew, { n: n(preview.fresh) })}
+            </span>
+            <span className="px-2 py-1 rounded bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50">
+              {fill(t.countHave, { n: n(preview.have) })}
+            </span>
+            {preview.skipped > 0 && (
+              <span className="px-2 py-1 rounded bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-50">
+                {fill(t.countSkipped, { n: n(preview.skipped) })}
+              </span>
+            )}
+          </div>
+          {why.length > 0 && (
+            <ul className="mt-2 text-xs list-disc pl-5 text-gray-700 dark:text-gray-300">
+              {why.map(([k, s]) => (
+                <li key={k}>{fill(s, { n: n(preview.skippedBy[k]), max: n(MAX_WORDS) })}</li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+            {preview.format === "lines"
+              ? t.formatLines
+              : preview.header
+                ? t.headerFound
+                : t.headerNone}
+          </p>
+
+          {preview.sample.length > 0 && (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-600 dark:text-gray-400">
+                    <th className="py-1 pr-3 font-medium">{t.colWord}</th>
+                    {hasBack && <th className="py-1 pr-3 font-medium">{t.colMeaning}</th>}
+                    {hasEx && <th className="py-1 font-medium">{t.colExample}</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.sample.map((s) => (
+                    <tr key={s.term} className="border-t border-gray-200 dark:border-gray-700">
+                      <td className="py-1 pr-3 break-words">{s.term}</td>
+                      {hasBack && <td className="py-1 pr-3 break-words">{s.back}</td>}
+                      {hasEx && <td className="py-1 break-words">{s.ex}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {preview.fresh > 0 ? (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                <span className="block font-medium">{t.listName}</span>
+                <input
+                  value={name}
+                  maxLength={120}
+                  onChange={(e) => setName(e.target.value)}
+                  className="mt-1 w-full p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="block font-medium">{t.language}</span>
+                <select
+                  value={lang}
+                  data-qa="wordlist-lang"
+                  onChange={(e) => setLang(e.target.value)}
+                  className="mt-1 w-full p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900"
+                >
+                  {!lang && <option value="">{text(t.chooseLang)}</option>}
+                  {langs.map((l) => (
+                    <option key={l} value={l}>
+                      {langName(l)} ({l})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                data-qa="wordlist-add"
+                disabled={busy !== null || !lang || !name.trim()}
+                onClick={commit}
+                className="sm:col-span-2 py-3 rounded-lg bg-blue-700 text-white hover:bg-blue-800 font-medium disabled:opacity-50"
+              >
+                {busy === "adding" ? t.adding : fill(t.add, { n: n(preview.fresh) })}
+              </button>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm">{t.errNothingNew}</p>
+          )}
+        </div>
+      )}
+
+      {jobs.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.recent}</h3>
+          <ul className="mt-1 text-sm divide-y divide-gray-200 dark:divide-gray-700">
+            {jobs.map((j) => {
+              const added = j.status === "done" ? safeAdded(j.note) : null;
+              return (
+                <li key={j.id} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-medium break-all">{j.name}</span>
+                  <span className="text-gray-600 dark:text-gray-400">
+                    {j.status === "done"
+                      ? fill(t.jobAdded, { n: n(added ?? 0) })
+                      : j.status === "failed"
+                        ? t.jobFailed
+                        : t.adding}
+                  </span>
+                  {j.status === "done" && j.result_ref && (
+                    <a href={`/words?list=${j.result_ref}`} className="underline">
+                      {t.open}
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function safeAdded(note: string | null): number | null {
+  try {
+    const v = JSON.parse(note ?? "null")?.added;
+    return typeof v === "number" ? v : null;
+  } catch {
+    return null;
+  }
+}
