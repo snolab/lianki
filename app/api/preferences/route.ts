@@ -92,7 +92,9 @@ export async function POST(req: NextRequest) {
     const user = await authUserOrNull();
     if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
     const body = await req.json();
-    const patterns: FilterPattern[] = body.mobileExcludePatterns || [];
+    // Filters live on the device now (lib/review-filters.ts): the page sends
+    // none, and that must not wipe the copy older userscripts and phones read.
+    const patterns: FilterPattern[] | undefined = body.mobileExcludePatterns;
     // Only apply an order when one was sent — the filter-patterns form posts
     // without it, and defaulting here would quietly reset a saved choice.
     const reviewOrder =
@@ -107,7 +109,7 @@ export async function POST(req: NextRequest) {
 
     const preferences: Partial<UserPreferences> = {
       userId: user.id,
-      mobileExcludePatterns: patterns,
+      ...(patterns !== undefined && { mobileExcludePatterns: patterns }),
       ...(reviewOrder !== undefined && { reviewOrder }),
       ...(watchTracking !== undefined && { watchTracking }),
       updatedAt: new Date(),
