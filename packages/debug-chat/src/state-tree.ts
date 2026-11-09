@@ -69,6 +69,15 @@ export type TreeEta = {
   queued?: boolean;
   created?: number;
   queuedMs?: number;
+  /**
+   * Parked on a person (owner, 2026-11-10): "owner" waits for the owner
+   * (status waiting-owner, or an open decision or approval), "blocked" is
+   * blocked. No work runs: `at` is when the reminder goes off, not an end.
+   * Drawn hollow with no progress fill; never the row the Gantt centres on.
+   */
+  parked?: "owner" | "blocked";
+  /** It asks the owner to decide (kind decision): a red "?" before its name, not "!". */
+  question?: boolean;
 };
 
 export type TreeNode = {

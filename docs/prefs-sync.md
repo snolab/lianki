@@ -158,6 +158,7 @@ listed once.
 
 | Key               | Setting                                                                   | Class      | Server key     | Reason                                                                                                                    |
 | ----------------- | ------------------------------------------------------------------------- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `lk:mail-login-notice` | the security notice mail after a sign-in from a new browser (on by default) | **synced** | `mail.loginNotice` | owner, 2026-11-10 ([mail-templates.md](mail-templates.md), "Unsubscribe"). The server reads it at every send; off only after a warning |
 | `lk:notify-badge` | what the app-icon badge counts: off, ask-cards, due-cards, both (default) | **synced** | `notify.badge` | owner, 2026-11-09. A habit; the server also reads it, for a push that carries no counts (`GET /api/badge` without `mode`) |
 
 ### Not prefs (left alone)

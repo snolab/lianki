@@ -3,6 +3,7 @@ import {
   RETIRED_KEYS,
   dropRetiredKeys,
   isQuiet,
+  markWithdrawn,
   missedReply,
   silenceFor,
 } from "@lianki/debug-chat/speak-rules";
@@ -120,6 +121,21 @@ describe("gateVoice: the shared session's gate", () => {
     // Once only.
     (v as Readable).__readMissed?.();
     expect(heard).toEqual(["second"]);
+  });
+
+  it("a withdrawn ask is never read: by its mark, or once the page heard it, even when missed", () => {
+    const { v, heard } = fakeVoice();
+    let hidden = false;
+    gateVoice(v, (m) => silenceFor(m, { hidden }));
+    expect(silenceFor({ ask: { withdrawnAt: 1 } }, { hidden: false })).toBe("withdrawn");
+    expect(v.reply("old ask", { id: "w0", ask: { withdrawnAt: 5 } })).toBe(false);
+    hidden = true;
+    expect(v.reply("ask?", { id: "w1", ask: { askId: "x" } })).toBe(false);
+    markWithdrawn("w1");
+    hidden = false;
+    (v as Readable).__readMissed?.();
+    expect(heard).toEqual([]);
+    expect(silenceFor({ id: "w2", ask: {} }, { hidden: false })).toBeNull();
   });
 
   it("a missed line that still cannot be read (focus rule) keeps its note", () => {

@@ -14,6 +14,7 @@ import { useTextSizes } from "@/lib/use-text-size";
 import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
 import { ExternalLinkSettings } from "@/app/components/ExternalLinkSettings";
 import { AppBadgeSettings } from "@/app/components/AppBadgeSettings";
+import { MailSettings } from "@/app/components/MailSettings";
 import { LanguageSettings } from "@/app/components/LanguageSettings";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
@@ -293,6 +294,9 @@ export default function PreferencesClient({
 
       {/* Page titles — follows the account (docs/title-clean.md) */}
       <TitleRulesSettings />
+
+      {/* Email: which mails the account gets — follows the account (lib/mail-templates/kinds.ts) */}
+      <MailSettings />
 
       {/* Links to other sites — follows the account (lib/external-link.ts) */}
       <ExternalLinkSettings />

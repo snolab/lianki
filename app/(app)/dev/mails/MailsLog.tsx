@@ -1,5 +1,6 @@
 "use client";
 
+import { previewDoc } from "@/lib/mail-templates/layout";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { LOCALE_LABELS } from "@/lib/constants";
@@ -19,7 +20,8 @@ type Status =
   | "bounced"
   | "complained"
   | "unsubscribed"
-  | "failed";
+  | "failed"
+  | "suppressed";
 
 type Item = {
   id: string;
@@ -93,9 +95,13 @@ const BADGE: Record<Status, string> = {
     "bg-[oklch(0.93_0.044_22.3)] text-[oklch(0.38_0.132_22.3)] dark:bg-[oklch(0.32_0.066_22.3)] dark:text-[oklch(0.9_0.055_22.3)]",
   failed:
     "bg-[oklch(0.92_0.05_27)] text-[oklch(0.42_0.16_27)] dark:bg-[oklch(0.33_0.08_27)] dark:text-[oklch(0.9_0.06_27)]",
+  suppressed:
+    "bg-[oklch(0.93_0.04_85)] text-[oklch(0.38_0.07_70)] dark:bg-[oklch(0.32_0.04_80)] dark:text-[oklch(0.9_0.06_85)]",
 };
 
 function frameDoc(html: string, dark: boolean) {
+  // A mail in the shared layout is a whole document with its own dark rules.
+  if (/^<!doctype html>/i.test(html)) return previewDoc(html, dark);
   const bg = dark ? "oklch(0.2 0 0)" : "oklch(1 0 0)";
   const fg = dark ? "oklch(0.92 0 0)" : "oklch(0.2 0 0)";
   const link = dark ? "oklch(0.78 0.132 22.3)" : "oklch(0.45 0.198 22.3)";
