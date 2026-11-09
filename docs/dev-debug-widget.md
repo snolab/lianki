@@ -800,6 +800,13 @@ number. Each tap goes to the nearest above and it is gone when none is. Rules:
   count) the room goes or narrows and the run reflows; a card inside a long run
   of one sender's lines then moved up past the top, so for 1.5 s after a tap
   (`REALIGN_MS`) the tapped card is put back at the top in the same frame.
+  The run goes to its room's bottom as a ROW (`flex-wrap` + `align-content:
+  flex-end`), never by `align-items: flex-end`: that sent the avatar to a long
+  run's last line, away from its first (owner, 2026-11-09 13:42 JST, desktop).
+  `bun scripts/dev/debug-chat-avatar-qa.mjs [--shots <dir>]` checks the newest
+  run's avatar is on its first line (±2 px) and clear of the ETA bar, from Li and
+  from the owner, short and long, with and without the arrow, at 1440×900 (panel,
+  sidebar) and 390×844 (panel, full screen), light and dark.
 - **At rest** the log is 3 lines, too short for a card, so a tap holds it open
   (`held: "open"`, via `wireLogHold`'s `onReady`), glass and all, until a press
   outside the chat, as a press on the history while typing does.
