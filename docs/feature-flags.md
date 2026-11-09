@@ -55,7 +55,9 @@ stay on the folded row, because they say why the switch does nothing.
   provides a feature, never forbids one. No `-off` / `disable` keys: a kill
   switch for something already live is a flag that is **on by default**.
 - **Defaults are OFF**, but for such a flag (`default: true` in
-  `lib/flags.ts`; today only `stt.polish`). A key with no stored row reads as
+  `lib/flags.ts`; today `stt.polish`, and `today.goal`, `words.onboarding` and
+  `words.pinch-card-height`, which the owner shipped on for everyone on 2026-11-10).
+  A key with no stored row reads as
   its default; a stored row always wins, either way. `closedFlags()` is what an
   unreadable store gives.
 - **Unreadable is OFF**, every flag, a default-on one too (a D1 error,
@@ -91,6 +93,7 @@ stay on the folded row, because they say why the switch does nothing.
 | `payments.stripe.live` | Stripe takes real money (also needs an `sk_live_` key)         |
 | `payments.komoju.live` | KOMOJU takes real money (also needs an `sk_live_` key)         |
 | `words.voice-mode`     | everyone gets the /words voice commands switch (off: the owner's preview only) — [voice-mode.md](voice-mode.md) |
+| `words.pinch-card-height` | **on by default, everyone.** A two-finger vertical pinch on the /words list sets every card's height, from the word alone to everything on screen shown; synced as `words.cardHeight` (off: the default height, the stored choice unused) — `lib/words/row-pinch.ts` |
 | `today.goal`           | **on by default.** /today: today's goal full screen — one number (cards due now, /words's own count), a progress bar (cards done since local midnight), Start to /words; gold ground and seal ink in light, seal ground and gold ink in dark; in the rail and on /home (off: 404, no links) — `lib/today/goal.ts` |
 | `words.onboarding`     | **on by default.** /words plays a short animated walkthrough (tap, rate by feel, handled cards fade and can be undone, cards come back, pinch for height) once per account, then folds it into a circled "?" by the title that replays it (off: no walkthrough, no "?") — `lib/words/onboarding.ts` |
 | `stt.polish`           | **on by default.** The agent may polish the owner's voice lines from their context and summarise room talk (off: the chat keeps only what STT heard, no edits or summaries) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached; only exactly `false` turns it off there, an unreadable answer holds edits back (logged `debug.polish-flag-unread`). Replaced the inverted `stt.polish-off` (migration 0067 carried a stored value over inverted) |

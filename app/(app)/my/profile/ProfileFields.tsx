@@ -6,6 +6,7 @@ import { Icon } from "@/app/components/icons";
 import { isOwnAvatar } from "@/lib/profile/avatar";
 import { PROFILE } from "@/lib/profile/config";
 import { downscaleAvatar } from "./avatar-downscale";
+import { UserAvatar } from "@/app/components/UserAvatar";
 
 /** A 44px icon button: the touch target stays whole on any pointer. */
 const ICON_BUTTON =
@@ -324,12 +325,12 @@ export function ProfileFields(props: {
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {image ? (
-              // Plain <img>: any provider's host, and our own route.
-              <img
-                src={image}
-                alt={page.userAvatarAlt.value}
-                className="size-32 rounded-full object-cover"
-                data-testid="profile-avatar"
+              <UserAvatar
+                name={name}
+                image={image}
+                size={128}
+                className="size-32"
+                testId="profile-avatar"
               />
             ) : (
               <span className="inline-flex size-32 items-center justify-center rounded-full bg-gray-100 text-5xl text-gray-400 dark:bg-gray-700">
