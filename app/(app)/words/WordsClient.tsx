@@ -1963,7 +1963,7 @@ export default function WordsClient({
   voice?: VoiceAccess;
   /** YouTube songs (`read.youtube-songs`, or the owner): an example with a song clip gets its ▶. */
   ytSongs?: boolean;
-  /** The Import button at the top (`import.any`: the owner only, flag on or off). */
+  /** The Import button at the top (`import.any`: every user while on; the owner on or off). */
   importOn?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
