@@ -66,11 +66,21 @@ describe("sentences", () => {
 
 /** speechSynthesis in memory: one utterance at a time is all the session ever gives it. */
 function harness(
-  o: { enabled?: boolean; here?: boolean; owner?: { claim(): boolean; release(): void } } = {},
+  o: {
+    enabled?: boolean;
+    here?: boolean;
+    touch?: boolean;
+    owner?: { claim(): boolean; release(): void };
+  } = {},
 ) {
   const spoken: (UtterLike & { lang: string })[] = [];
   let cancels = 0;
-  const flags = { enabled: o.enabled ?? true, here: o.here ?? false, synth: true };
+  const flags = {
+    enabled: o.enabled ?? true,
+    here: o.here ?? false,
+    touch: o.touch ?? false,
+    synth: true,
+  };
   const timers: { f: () => void; ms: number; live: boolean }[] = [];
   const v = createVoice({
     synth: () =>
@@ -84,6 +94,7 @@ function harness(
       ({ text, lang, onend: null, onerror: null, onboundary: null }) as UtterLike,
     enabled: () => flags.enabled,
     here: () => flags.here,
+    touch: () => flags.touch,
     owner: o.owner,
     setTimer: (f, ms) => {
       const t = { f, ms, live: true };
@@ -185,6 +196,37 @@ describe("voice session: the focus rule (mic off)", () => {
   });
 });
 
+describe("voice session: on a phone the speaker toggle alone decides (owner 2026-11-10)", () => {
+  it("reads with the input unfocused and the mic never used", () => {
+    const h = harness({ enabled: true, here: false, touch: true });
+    expect(h.v.voiced()).toBe(false);
+    expect(h.v.shouldSpeak()).toBe(true);
+    expect(h.v.state().touch).toBe(true);
+    expect(h.v.reply("Read on the reader.")).toBe(true);
+    expect(h.texts()).toEqual(["Read on the reader."]);
+  });
+
+  it("his mute still wins", () => {
+    const h = harness({ enabled: false, here: false, touch: true });
+    expect(h.v.shouldSpeak()).toBe(false);
+    expect(h.v.reply("Muted.")).toBe(false);
+  });
+
+  it("the mic stopping keeps reading on a phone (the toggle is on)", () => {
+    const h = harness({ enabled: true, here: false, touch: true });
+    h.v.setMic(true);
+    h.v.reply("One. Two.");
+    h.v.setMic(false);
+    expect(h.v.state().queued).toBe(2);
+  });
+
+  it("a computer still needs focus or the sticky mic state", () => {
+    const h = harness({ enabled: true, here: false, touch: false });
+    expect(h.v.state().touch).toBe(false);
+    expect(h.v.reply("Unfocused desk.")).toBe(false);
+  });
+});
+
 describe("voice session: sticky read-aloud once the mic was used (owner 2026-11-04)", () => {
   it("after the mic, replies to typed lines are read with the input unfocused; no time window", () => {
     const h = harness({ enabled: true, here: false });
@@ -224,7 +266,7 @@ describe("voice session: sticky read-aloud once the mic was used (owner 2026-11-
     expect(h.v.state().queued).toBe(2);
   });
 
-  it("keeps the state where it is told (sessionStorage in the page)", () => {
+  it("keeps the state where it is told (localStorage in the page)", () => {
     let kept = false;
     const v = createVoice({
       synth: () => null,
@@ -448,9 +490,14 @@ describe("voice(): the browser session, shared on globalThis", () => {
   it("one session per page, reading through speechSynthesis with the speaker setting and focus", () => {
     const g = globalThis as Record<string, unknown>;
     const saved = Object.fromEntries(
-      ["speechSynthesis", "SpeechSynthesisUtterance", "localStorage", "document", "__lkVoice"].map(
-        (k) => [k, g[k]],
-      ),
+      [
+        "speechSynthesis",
+        "SpeechSynthesisUtterance",
+        "localStorage",
+        "document",
+        "matchMedia",
+        "__lkVoice",
+      ].map((k) => [k, g[k]]),
     );
     const spoken: (EventTarget & { text: string; lang: string; voice?: unknown })[] = [];
     let store: Record<string, string> | null = {};
@@ -475,6 +522,8 @@ describe("voice(): the browser session, shared on globalThis", () => {
         },
       };
       g.document = doc;
+      // A computer (fine pointer): the focus rule applies.
+      g.matchMedia = () => ({ matches: true });
       delete g.__lkVoice;
       const v = voice();
       expect(voice()).toBe(v);

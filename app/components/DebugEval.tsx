@@ -43,6 +43,7 @@ import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { withLane } from "@lianki/debug-chat/voices";
 import { spokenOf } from "@lianki/debug-chat/rich-text";
+import { missedReply } from "@lianki/debug-chat/speak-rules";
 import { voice } from "@lianki/debug-chat/voice";
 import { isDesktop, keepHub, onTakeover, voiceBusy } from "@lianki/debug-chat/voice-bg";
 import { useVoiceTitleHint } from "./useVoiceTitleHint";
@@ -497,10 +498,18 @@ export function DebugEval({
         if (msg.type === "history" && Array.isArray(msg.messages)) {
           // A `【lane】` prefix becomes the line's lane (voices.ts): its mark, tag and voice.
           const list = trimHistory((msg.messages as ChatMessage[]).map(withLane));
+          // After a reconnect, a reply sent while the socket was down comes only
+          // in the history: read the newest one past what this page saw (never
+          // old history; speak-rules.ts missedReply).
+          const missed = missedReply(list, agentAtRef.current, spokenIds.current);
+          for (const id of missed.gap) spokenIds.current.add(id);
           for (const m of list)
             if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
           setMessages(list);
           reBeat();
+          const said = missed.line && spokenOf(missed.line);
+          if (missed.line && said && (tabsRef.current?.isSpeaker() ?? true))
+            speakReply(said, missed.line);
           return;
         }
         // An ask answered by a tap (on this page or another): the card shows it.

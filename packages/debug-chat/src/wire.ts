@@ -565,6 +565,10 @@ export type ChatStrings = {
   cueSend: string;
   /** The chat menu's switch: soft tones when he starts and stops speaking. */
   cueSpeech: string;
+  /** The speaker row, on: on a phone every reply is read (voice.ts, the toggle alone decides). */
+  readAloud: string;
+  /** The speaker row, on, on a computer: replies are read while the input has focus. */
+  readAloudTyping: string;
   compactIdle: string;
   /** The menu's collapsed Dev group (DevMenuGroup.tsx), the owner's pages only: its heading. */
   devGroup: string;
@@ -759,6 +763,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsAutoStop: "Auto-stop after {n} min",
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
+  readAloud: "Replies read aloud",
+  readAloudTyping: "Replies read aloud while typing",
   compactIdle: "Only the last message while not typing",
   devGroup: "Dev",
   compactShowAll: "Show the whole chat",

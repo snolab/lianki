@@ -127,6 +127,9 @@ export type UiStrings = {
   /** The menu's two cue switches (cues.ts): when a spoken line goes out; when speech starts and ends. */
   cueSend: string;
   cueSpeech: string;
+  /** The speaker row, on (phone: always; computer: while typing). */
+  readAloud: string;
+  readAloudTyping: string;
   compactIdle: string;
   compactShowAll: string;
   /**
@@ -195,6 +198,8 @@ export const UI_EN: UiStrings = {
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
   askWithdrawn: "Withdrawn",
+  readAloud: "Replies read aloud",
+  readAloudTyping: "Replies read aloud while typing",
   compactIdle: "Only the last message while not typing",
   compactShowAll: "Show the whole chat",
   tuckChat: "Tuck the chat into the screen edge",
@@ -253,6 +258,8 @@ export const UI_ZH: UiStrings = {
   cueSend: "语音消息发出时提示音",
   cueSpeech: "开始和结束说话时提示音",
   askWithdrawn: "已撤回",
+  readAloud: "朗读回复",
+  readAloudTyping: "输入时朗读回复",
   compactIdle: "不打字时只显示最后一条消息",
   compactShowAll: "显示完整聊天",
   tuckChat: "把聊天收进屏幕边",
@@ -311,6 +318,8 @@ export const UI_JA: UiStrings = {
   cueSend: "音声メッセージ送信時の音",
   cueSpeech: "話し始めと話し終わりの音",
   askWithdrawn: "取り下げ済み",
+  readAloud: "返事を読み上げる",
+  readAloudTyping: "入力中は返事を読み上げる",
   compactIdle: "入力していないときは最後のメッセージだけ表示",
   compactShowAll: "チャット全体を表示",
   tuckChat: "チャットを画面の端にしまう",
