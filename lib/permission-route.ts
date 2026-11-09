@@ -13,6 +13,7 @@ import { PERMISSION_CACHE_MS } from "./permissions";
 import {
   grantPermission,
   listGrants,
+  readPermissionHistory,
   revokePermission,
   type PermissionDb,
   type PermissionReadDb,
@@ -34,6 +35,22 @@ async function state(db: PermissionDb, status = 200, extra: Record<string, unkno
 export async function permissionsGet(who: PermissionCaller | null, db: () => PermissionDb | null) {
   const d1 = who ? db() : null;
   return d1 ? state(d1) : notFound();
+}
+
+/**
+ * GET /api/dev/permissions/history?before=<id>: one page of grants, re-grants
+ * and revokes from security_audit, newest first, and the `next` cursor.
+ */
+export async function permissionsHistoryGet(
+  req: Request,
+  who: PermissionCaller | null,
+  db: () => PermissionReadDb | null,
+) {
+  const d1 = who ? db() : null;
+  if (!d1) return notFound();
+  const raw = new URL(req.url).searchParams.get("before");
+  const before = raw && /^\d+$/.test(raw) ? Number(raw) : null;
+  return NextResponse.json(await readPermissionHistory(d1, before), { headers: NO_STORE });
 }
 
 export async function permissionsPost(

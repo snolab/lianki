@@ -4,6 +4,7 @@
  */
 import {
   SQL_AUDIT_GRANT,
+  SQL_AUDIT_REGRANT,
   SQL_AUDIT_REVOKE,
   SQL_GRANT,
   SQL_LIST,
@@ -56,6 +57,7 @@ export function commandSql(p: Parsed, now: number): string {
         ? [
             inlineSql(SQL_GRANT, [p.email, perm, CLI_ACTOR, now + i]),
             inlineSql(SQL_AUDIT_GRANT, [p.email, perm, CLI_ACTOR, now + i]),
+            inlineSql(SQL_AUDIT_REGRANT, [p.email, perm, CLI_ACTOR, now + i]),
           ]
         : [
             inlineSql(SQL_REVOKE, [p.email, perm, now + i]),
