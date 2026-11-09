@@ -15,9 +15,9 @@
  * Rendering is the host's: these are numbers in px on the scale's content,
  * plus `windowRows`, the slice of rows a windowed list should draw.
  */
-import { resolveRule, type RgRule } from "../core/rule.js";
-import { chunkRows } from "../lane/treefold.js";
-import { clamp, scaleWidth, scaleX, type GanttAxis } from "./scale.js";
+import { resolveRule, type RgRule } from "../core/rule";
+import { chunkRows } from "../lane/treefold";
+import { clamp, scaleWidth, scaleX, type GanttAxis } from "./scale";
 
 /** What a Gantt row needs: when it starts, its estimate, and how it ended. */
 export type GanttTask = {

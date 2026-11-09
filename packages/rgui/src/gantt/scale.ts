@@ -15,7 +15,7 @@
  * Ported from Lianki's debug-chat gantt-view.ts (#739 linear, #747 log), which
  * now re-exports these.
  */
-import { FOLD_PERIOD_MS } from "../lane/temporal.js";
+import { FOLD_PERIOD_MS } from "../lane/temporal";
 
 export const HOUR = FOLD_PERIOD_MS.hour!;
 export const MIN = HOUR / 60;

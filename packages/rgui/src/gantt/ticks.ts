@@ -9,7 +9,7 @@
  * The log axis takes round distances outward from Now, each one only when
  * its label clears the last one taken: no two labels overlap, at any zoom.
  */
-import { readableStep } from "../core/grid.js";
+import { readableStep } from "../core/grid";
 import {
   DAY,
   HOUR,
@@ -22,7 +22,7 @@ import {
   type Axis,
   type GanttAxis,
   type LogAxis,
-} from "./scale.js";
+} from "./scale";
 
 /** Ticks at least this far apart (px). */
 export const TICK_MIN_PX = 72;

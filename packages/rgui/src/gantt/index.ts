@@ -6,6 +6,6 @@
  * No renderer: the host draws (Lianki: DOM, windowed). Import it as
  * "@snomiao/rgui/gantt"; it pulls in none of the Canvas/WebGPU code.
  */
-export * from "./scale.js";
-export * from "./ticks.js";
-export * from "./layout.js";
+export * from "./scale";
+export * from "./ticks";
+export * from "./layout";

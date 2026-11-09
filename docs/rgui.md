@@ -43,6 +43,13 @@ union bar, a tap that unfolds it) and new QA checks for it in
 `scripts/dev/debug-chat-gantt-qa.mjs` (today's check "every name in view"
 assumes one row per task).
 
+Upstream writes relative imports TypeScript-ESM style (`"./rule.js"` for
+`rule.ts`). bun and tsc map that; Turbopack does not ("Can't resolve
+'./rule.js'"). `lib/build/strip-js-ext-loader.cjs`, a Turbopack loader
+registered in `next.config.mjs` for `packages/rgui/src/**/*.ts` only, drops
+the `.js` before resolution, so upstream's files stay as they are. Our gantt
+module imports without extensions.
+
 ## Our edits to upstream files
 
 Kept small so `subtree pull` merges cleanly:
