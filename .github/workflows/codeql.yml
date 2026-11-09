@@ -51,6 +51,26 @@ jobs:
               - public/lianki.user.js
               - packages/pardon-could-you-say-it-again/lianki.user.js
               - lib/blog.corpus.json
+              # rgui, vendored upstream (git subtree, docs/rgui.md): its demo
+              # apps and library code are never imported by Lianki and are
+              # scanned in their own repo. Only our module, src/gantt/, is
+              # scanned here: everything else under packages/rgui is listed.
+              - packages/rgui/*.html
+              - packages/rgui/*.ts
+              - packages/rgui/assets
+              - packages/rgui/calendar
+              - packages/rgui/cube
+              - packages/rgui/lane
+              - packages/rgui/world
+              - packages/rgui/src/*.ts
+              - packages/rgui/src/calendar
+              - packages/rgui/src/core
+              - packages/rgui/src/cube
+              - packages/rgui/src/i18n
+              - packages/rgui/src/lane
+              - packages/rgui/src/render
+              - packages/rgui/src/stereo
+              - packages/rgui/src/world
       - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           category: "/language:javascript-typescript"
