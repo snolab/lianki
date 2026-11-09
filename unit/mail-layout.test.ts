@@ -19,8 +19,15 @@ import { MAIL_TEMPLATE_IDS, MAIL_TEMPLATES } from "../lib/mail-templates/defs";
 import { MAIL_KINDS, mailPrefOf, oneClickKinds, type MailKind } from "../lib/mail-templates/kinds";
 import { MAIL_BUTTON, MAIL_TOKENS, previewDoc } from "../lib/mail-templates/layout";
 import { MAIL_LOCALES } from "../lib/mail-templates/locales";
-import { setKindOn, unsubscribePost } from "../lib/mail-templates/unsubscribe";
+import { setKindOn, unsubscribeGet, unsubscribePost } from "../lib/mail-templates/unsubscribe";
 import {
+  MAIL_LOGIN_NOTICE_KEY,
+  MAIL_PREFS_EVENT,
+  readLoginNoticeOn,
+  writeLoginNoticeOn,
+} from "../lib/mail-prefs";
+import {
+  oneClickHeaders,
   signUnsubscribe,
   unsubscribeLinks,
   verifyUnsubscribe,
@@ -343,5 +350,130 @@ describe("POST /api/mail/unsubscribe", () => {
     expect((await one(await signUnsubscribe(SECRET, "u1", "signin-code"))).status).toBe(400);
     expect(pref()).toEqual([]);
     expect(await setKindOn(raw as never, "u1", "invite", false, T0, kinds)).toBe(false);
+  });
+});
+
+describe("the unsubscribe route's other ways in", () => {
+  const deps = {
+    db: () => raw as never,
+    secret: () => SECRET,
+    origin: () => "https://lianki.com",
+    now: () => T0,
+  };
+
+  test("a body that is neither the one-click form nor the page's JSON is refused", async () => {
+    const res = await unsubscribePost(
+      new Request("https://lianki.com/api/mail/unsubscribe?t=x", {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body: "List-Unsubscribe=One-Click",
+      }),
+      deps,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  test("a body that cannot be read is refused, never thrown", async () => {
+    const json = await unsubscribePost(
+      new Request("https://lianki.com/api/mail/unsubscribe", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://lianki.com",
+          "sec-fetch-site": "same-origin",
+        },
+        body: "{not json",
+      }),
+      deps,
+    );
+    expect(json.status).toBe(400);
+    const form = await unsubscribePost(
+      new Request("https://lianki.com/api/mail/unsubscribe?t=x", {
+        method: "POST",
+        headers: { "content-type": "multipart/form-data; boundary=zz" },
+        body: "garbage",
+      }),
+      deps,
+    );
+    expect(form.status).toBe(400);
+  });
+
+  test("the RFC 8058 headers", () => {
+    expect(oneClickHeaders("https://lianki.com/api/mail/unsubscribe?t=x")).toEqual({
+      "List-Unsubscribe": "<https://lianki.com/api/mail/unsubscribe?t=x>",
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+  });
+
+  test("no D1: 503, nothing changed", async () => {
+    const res = await unsubscribePost(
+      new Request("https://lianki.com/api/mail/unsubscribe", { method: "POST" }),
+      { ...deps, db: () => null },
+    );
+    expect(res.status).toBe(503);
+  });
+
+  test("a GET changes nothing: it opens the page, token in the fragment", () => {
+    const res = unsubscribeGet(
+      new Request("https://lianki.com/api/mail/unsubscribe?t=u1.a.b.c&lang=zh-TW"),
+      "https://lianki.com",
+    );
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(
+      "https://lianki.com/mail/unsubscribe?lang=zh#t=u1.a.b.c",
+    );
+    const bare = unsubscribeGet(
+      new Request("https://lianki.com/api/mail/unsubscribe"),
+      "https://x.test",
+    );
+    expect(bare.headers.get("location")).toBe("https://x.test/mail/unsubscribe?lang=en#t=");
+  });
+});
+
+describe("the device's copy of the security-notice switch (lib/mail-prefs.ts)", () => {
+  const g = globalThis as unknown as Record<string, unknown>;
+  let store: Map<string, string>;
+  let events: string[];
+  beforeEach(() => {
+    store = new Map();
+    events = [];
+    g.localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
+    g.window = { dispatchEvent: (e: Event) => events.push(e.type) };
+  });
+  afterEach(() => {
+    delete g.localStorage;
+    delete g.window;
+  });
+
+  test("on by default; off and back on; each change announced", () => {
+    expect(readLoginNoticeOn()).toBe(true);
+    writeLoginNoticeOn(false);
+    expect(store.get(MAIL_LOGIN_NOTICE_KEY)).toBe("0");
+    expect(readLoginNoticeOn()).toBe(false);
+    writeLoginNoticeOn(true);
+    expect(readLoginNoticeOn()).toBe(true);
+    expect(events).toEqual([MAIL_PREFS_EVENT, MAIL_PREFS_EVENT]);
+  });
+
+  test("storage that throws reads as on and never throws on write", () => {
+    g.localStorage = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    g.window = {
+      dispatchEvent: () => {
+        throw new Error("no window");
+      },
+    };
+    expect(readLoginNoticeOn()).toBe(true);
+    expect(() => writeLoginNoticeOn(false)).not.toThrow();
   });
 });
