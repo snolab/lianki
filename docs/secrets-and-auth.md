@@ -36,6 +36,43 @@ Resend. With either missing the magic-link plugin is not registered at all, so
 the sign-in form offers OAuth only rather than accepting an address and dropping
 the mail.
 
+## Resend webhook (bounces and complaints)
+
+`POST https://lianki.com/api/email/resend-webhook` (`lib/resend-webhook.ts`)
+takes Resend's `email.bounced` and `email.complained` events and suppresses the
+address for invite mail (docs/payments.md, "Invite by email"). Every other event
+is answered 204 and ignored.
+
+- **Secret**: `RESEND_WEBHOOK_SECRET`, the webhook's signing secret from Resend
+  (`whsec_…`), a Worker secret only — no default, nothing in `wrangler.jsonc`,
+  read as `process.env.RESEND_WEBHOOK_SECRET`. Unset (or not `whsec_<base64>`):
+  the endpoint answers 503 and logs `resend-webhook.no-secret` once per isolate.
+- **Signature**: Svix — HMAC-SHA256 over `${svix-id}.${svix-timestamp}.${body}`
+  with the key after `whsec_`; `svix-signature` may list several `v1,<base64>`
+  (any match passes), checked with WebCrypto `verify` (constant time). A
+  timestamp more than 5 minutes off our clock, or any malformed header: 401. A
+  delivery id seen in the last 5 minutes (per isolate) is answered
+  `{"status":"duplicate"}`; the writes are idempotent anyway.
+- **Logs**: event names only (`resend-webhook.bounce`, `.complaint`, `.refused`
+  with the reason); never the body or an address.
+
+Setting it up (the main lane, once this endpoint is deployed):
+
+1. Resend → Webhooks → Add endpoint: URL
+   `https://lianki.com/api/email/resend-webhook`, events `email.bounced` and
+   `email.complained` only.
+2. Copy the endpoint's signing secret and set it on the Worker:
+   `bunx wrangler secret put RESEND_WEBHOOK_SECRET` (it takes effect at once, no
+   deploy).
+3. Check: Resend's "Send test event" (or any real delivery) shows 2xx in its
+   webhook log; a 401 there means the secret is not that endpoint's, a 503
+   means it is not set.
+
+**Rotation**: in Resend, roll the endpoint's signing secret, then put the new
+value with `wrangler secret put RESEND_WEBHOOK_SECRET`. Deliveries signed with
+the old key in between get 401 and Resend retries them, so nothing is lost.
+Lost secret: readable again in Resend's webhook page.
+
 ## Dev-only password auth
 
 `auth.ts` enables email+password **only** when `NODE_ENV !== production` **and**

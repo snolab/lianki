@@ -801,7 +801,7 @@ number. Each tap goes to the nearest above and it is gone when none is. Rules:
   of one sender's lines then moved up past the top, so for 1.5 s after a tap
   (`REALIGN_MS`) the tapped card is put back at the top in the same frame.
   The run goes to its room's bottom as a ROW (`flex-wrap` + `align-content:
-  flex-end`), never by `align-items: flex-end`: that sent the avatar to a long
+flex-end`), never by `align-items: flex-end`: that sent the avatar to a long
   run's last line, away from its first (owner, 2026-11-09 13:42 JST, desktop).
   `bun scripts/dev/debug-chat-avatar-qa.mjs [--shots <dir>]` checks the newest
   run's avatar is on its first line (±2 px) and clear of the ETA bar, from Li and
@@ -1374,13 +1374,13 @@ Owner, 2026-11-07 22:34 JST: one line can name the exact voice it is read
 in, so he hears candidates for Li by just receiving them. `say --voice`
 (eval.ts and `lianki-dev say`) takes, besides `main|calm|bright`:
 
-| id                | what plays                                                                                     |
-| ----------------- | ---------------------------------------------------------------------------------------------- |
-| `device:<name>`   | that voice of the phone (speechSynthesis), as it is; **even when his output is cloud**          |
-| `melo:<lang>`     | the cloud's MeloTTS voice of `en es fr zh ja ko` (the clip asked in that language)              |
-| `aura:<speaker>`  | a Workers AI Aura-2 speaker of the table (`luna orion thalia` en, `celeste nestor carina` es)  |
-| `eleven:<id>`     | an ElevenLabs **public preview clip** (its own words, not the line's), straight from ElevenLabs |
-| `local:<name>`    | reserved for Mac-local engines (Kokoro, VOICEVOX): refused until one is built                   |
+| id               | what plays                                                                                      |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| `device:<name>`  | that voice of the phone (speechSynthesis), as it is; **even when his output is cloud**          |
+| `melo:<lang>`    | the cloud's MeloTTS voice of `en es fr zh ja ko` (the clip asked in that language)              |
+| `aura:<speaker>` | a Workers AI Aura-2 speaker of the table (`luna orion thalia` en, `celeste nestor carina` es)   |
+| `eleven:<id>`    | an ElevenLabs **public preview clip** (its own words, not the line's), straight from ElevenLabs |
+| `local:<name>`   | reserved for Mac-local engines (Kokoro, VOICEVOX): refused until one is built                   |
 
 One strict parser (`voices.ts parseLineVoice`) is used by the CLI, the hub
 and the page: an unknown kind, speaker, language or ElevenLabs id is
@@ -1643,6 +1643,32 @@ about the fingers or pointer (`zoomAxis`: the time under them stays put), from
 (`touch-action: pan-x pan-y`, the two-finger move prevented). Tick labels are
 relative to now in the compact form, re-picked as it zooms: "-30M", "Now",
 "2H", "1.5D" (`tickStep`, `axisLabel`).
+**The logarithmic axis is the default** (owner, 2026-11-09 15:27 JST): a
+time t is drawn at u = sign(dt) · L · ln(1 + |dt| / T) px from the Now line,
+dt = t − now (`gantt-view.ts symlog`, `symexp` its inverse): linear within
+about T of Now (L / T px per ms), further out every e-fold of distance takes
+the same L px, past and future alike. So a 5-minute task near Now is wide and
+a task two days out still fits the screen. On open T is the narrowest window
+that fits the open tasks (the done history scrolls into view), at least 2
+minutes, and L about an eighth of the width (24–240 px); Now sits a third from
+the left. The content spans a thousand years either side of Now, which is a
+few screens at most, so nothing grows or trims; Now stays at the same x while
+time passes and the bars move. Each bar's start and end are projected
+separately (`ganttBar` over either axis). Zoom (`zoomLogAxis`) multiplies L by
+√f and divides T by √f, so near Now the scale changes by f and far out by √f;
+the time under the fingers stays put. Ticks (`logTicks`) stand at round M/H/D
+distances (`LOG_TICKS`): from Now outward on each side the next one whose
+label box clears the last by 10 px, at the measured text size, so labels never
+overlap at any zoom; the linear axis's step is also at least its longest label
+wide (`tickMinPx`). A small "Linear | Log" switch (线性 | 对数) in the header
+switches the axis, remembered per device (`lk:pref:gantt`, ui-store.ts
+`ganttPrefs`); strings `etaGanttScale`, `etaGanttLinear`, `etaGanttLog`.
+The QA script checks the log axis first (opens on it, Now a third from the
+left, the 12-hour task on screen, a 45-minute task readable, no tick labels
+overlapping on open, panned and zoomed, names in view, zoom anchored, Now
+button), then switches to linear and runs the checks below, and checks the
+choice is remembered when the Gantt opens again.
+
 `scripts/dev/debug-chat-gantt-qa.mjs` checks it at 1440×900, 1512×770 and
 390×844, light and dark: the panel fills the viewport, the axis stays at the
 top after a vertical scroll, Now is in view on open, every name is in view

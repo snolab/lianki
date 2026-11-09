@@ -116,7 +116,8 @@ Read by the code but **not on the Worker** (so either unused in production,
 only in Vercel, or off): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (payments
 are off until set, see [payments.md](payments.md)),
 `GITHUB_SPONSORS_WEBHOOK_SECRET`, `YOUTUBE_API_KEY`, `GITHUB_INTL_TOKEN`,
-`SLACK_BOT_EMAIL`; `OPENAI_API_KEY` is in the cutover list but replaced by
+`SLACK_BOT_EMAIL`, `RESEND_WEBHOOK_SECRET` (bounce/complaint webhook; readable
+in Resend's webhook page, see [secrets-and-auth.md](secrets-and-auth.md)); `OPENAI_API_KEY` is in the cutover list but replaced by
 Workers AI. Step 3 tells which of these exist in Vercel.
 
 ### GitHub Actions (`snolab/lianki`)

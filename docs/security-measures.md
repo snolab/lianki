@@ -466,8 +466,10 @@ neutral answer) to an address with an account, a suppressed one, or from an
 inviter reported twice; a display name that reads like a link is replaced;
 Unsubscribe / Report abuse and RFC 8058 one-click in every mail, with an HMAC
 token (key derived from `AUTH_SECRET`); only a hash and a masked form of the
-address are stored. Local servers never send. Bounce/complaint webhooks still
-need a secret. Details: [payments.md](payments.md), "Invite by email".
+address are stored. Local servers never send. Hard bounces and complaints
+arrive by Resend's Svix-signed webhook (`RESEND_WEBHOOK_SECRET`; 503 without it,
+401 on a bad or stale signature) and suppress the address; a complaint about an
+invite counts toward its inviter's report block. Details: [payments.md](payments.md), "Invite by email".
 
 ## Owner checklist
 

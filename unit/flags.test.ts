@@ -193,6 +193,33 @@ describe("store", () => {
 });
 
 describe("readFlags: cache window and fail-closed", () => {
+  test("the cache is the isolate's, not this module copy's: route handlers and pages share it", async () => {
+    // The build gives route handlers and page rendering each a copy of
+    // lib/flags-store; a copy finds the one cache on globalThis.
+    const shared = () =>
+      (globalThis as { __lkFlagCache?: { cache: unknown; generation: number } }).__lkFlagCache;
+    const d1 = createTestD1(testSchema());
+    let reads = 0;
+    const db = () => {
+      reads++;
+      return d1;
+    };
+    const now = () => 1_000_000;
+    await readFlags(db, now);
+    expect(shared()?.cache).toEqual({ at: 1_000_000, values: expect.any(Object) });
+    d1.raw()
+      .prepare(
+        "INSERT INTO feature_flags (key, enabled, updated_at, updated_by) VALUES (?, 1, ?, ?)",
+      )
+      .run("payments.stripe.live", NOW.toISOString(), BY);
+    // What another copy does to the shared state (a write on /dev/flags clears it)…
+    shared()!.cache = null;
+    shared()!.generation++;
+    // …this copy sees at once.
+    expect((await readFlags(db, now))["payments.stripe.live"]).toBe(true);
+    expect(reads).toBe(2);
+  });
+
   test("cached for FLAG_CACHE_MS (at most 30 s), then re-read: a change lands without a deploy", async () => {
     expect(FLAG_CACHE_MS).toBeLessThanOrEqual(30_000);
     const d1 = createTestD1(testSchema());

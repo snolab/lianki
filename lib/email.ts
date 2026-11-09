@@ -25,6 +25,12 @@ export type SendEmailInput = {
   html?: string;
   /** Extra mail headers (Resend `headers`), e.g. List-Unsubscribe. */
   headers?: Record<string, string>;
+  /**
+   * Resend tags: echoed back in its webhook events, so a bounce or complaint
+   * can name the mail it is about (lib/resend-webhook.ts). Names and values:
+   * ASCII letters, digits, `_` and `-` only.
+   */
+  tags?: { name: string; value: string }[];
 };
 
 /**
@@ -48,6 +54,7 @@ export async function sendEmail(input: SendEmailInput): Promise<{ id: string }> 
       text: input.text,
       ...(input.html ? { html: input.html } : {}),
       ...(input.headers && Object.keys(input.headers).length ? { headers: input.headers } : {}),
+      ...(input.tags?.length ? { tags: input.tags } : {}),
     }),
   });
 

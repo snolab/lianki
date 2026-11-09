@@ -26,19 +26,20 @@ import type { SendEmailInput } from "@/lib/email";
 import { flagIn, type FlagValues } from "@/lib/flags";
 import { cleanEmail } from "@/lib/profile/email-change";
 import { sameOriginJson } from "@/lib/security/same-origin";
-import { clientIp, hit, ipKey, sha256Hex, type ThrottleDb } from "@/lib/security/throttle";
+import { clientIp, hit, ipKey, type ThrottleDb } from "@/lib/security/throttle";
 import {
   inviterMailLocale,
   mailTemplateLocale,
   type MailTemplateLocale,
 } from "@/lib/signup-locale";
-import { EMAIL_INVITE, RECIPIENT_WINDOW_MS } from "./email-invite-config";
+import { EMAIL_INVITE, INVITE_LOG_TAG, RECIPIENT_WINDOW_MS } from "./email-invite-config";
 import {
   optOutLinks,
   PREVIEW_RECIPIENT,
   renderInviteMail,
   type RenderedInviteMail,
 } from "./invite-mail";
+import { recipientHash } from "./recipient-hash";
 import { maskEmail } from "./rules";
 import { getOrCreateInviteCode } from "./store";
 
@@ -213,8 +214,7 @@ export function oneAddress(raw: unknown): string | null {
   return e;
 }
 
-/** The recipient's matching key: SHA-256 of the canonical address. Never the address. */
-export const recipientHash = (email: string) => sha256Hex(`invite-email:${canonicalEmail(email)}`);
+export { recipientHash };
 
 /** Requests left in the inviter's 24 h window (failed sends are not counted). */
 async function usedToday(db: InviteDb, inviterId: string, now: number): Promise<number> {
@@ -411,6 +411,7 @@ export async function sendEmailInvite(req: Request, d: EmailInviteDeps): Promise
       text: mail.text,
       html: mail.html,
       headers: mail.headers,
+      tags: [{ name: INVITE_LOG_TAG, value: id }],
     })) as { id?: string } | undefined;
     await setStatus(db, id, "sent", res?.id || undefined);
   } catch {
