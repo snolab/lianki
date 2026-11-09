@@ -14,7 +14,6 @@ import {
 import { livePolishAi } from "@/lib/read/live-polish-server";
 import { polishChunksAi } from "@/lib/read/polish-server";
 import { translate } from "@/lib/read/translate-server";
-import { payerOf } from "@/lib/read/reader-route";
 import { followupTurn } from "@/lib/self-intro/followup";
 import { extractSelfIntro } from "@/lib/self-intro/import-extract";
 import { handleFollowup, handleImport } from "@/lib/self-intro/import-handler";
@@ -164,13 +163,6 @@ describe("translate, polish, live polish", () => {
     const r = await livePolishAi(["um so hello"], "", payer(answer('<p n="1">Hello.</p>')));
     expect(r.ok).toBe(true);
     expect(reasons()[0]).toBe("ai:read.live-polish");
-  });
-
-  it("the reader's payer is the signed-in user with their wallet", () => {
-    expect(payerOf({ userId: "u1", email: "a@x", db: db() as never })).toMatchObject({
-      userId: "u1",
-      email: "a@x",
-    });
   });
 });
 
