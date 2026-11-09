@@ -19,6 +19,7 @@ import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import wordsListPreview from "@/app/(app)/words/list-preview.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
+import devTemplates from "@/app/(app)/dev/templates/templates.content";
 import devUsers from "@/app/(app)/dev/users/users.content";
 import devPregrant from "@/app/(app)/dev/users/pregrant.content";
 import textSize from "@/app/components/text-size.content";
@@ -116,6 +117,7 @@ describe.each([
   ["words-list-preview", wordsListPreview],
   ["leave-guard", leaveGuard],
   ["dev-permissions", devPermissions],
+  ["dev-templates", devTemplates],
   ["dev-users", devUsers],
   ["dev-pregrant", devPregrant],
   ["text-size", textSize],

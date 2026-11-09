@@ -23,6 +23,7 @@ export const DEV_PAGE_PERMISSION: Record<string, Permission> = {
   preview: "dev",
   roadmap: "dev",
   "swipe-ab": "dev",
+  templates: "dev",
   tokens: "dev",
 };
 

@@ -23,6 +23,7 @@ export type DevPageName =
   | "permissions"
   | "preview"
   | "swipeAb"
+  | "templates"
   | "tokens"
   | "users";
 

@@ -222,6 +222,16 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // The mail template editor (docs/mail-templates.md): edit → live preview → save → test send (stub) → diff → rollback; desktop + phone, light + dark.
+  {
+    name: "MAIL TEMPLATES (qa-templates)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-templates.mjs"],
+    base: true,
+    id: "templates",
+    paths: ["app/(app)/dev/templates/**", "app/api/dev/templates/**", "lib/mail-templates/**"],
+    sensitive: false,
+  },
   // The marble plan cards on /membership: marble by default, 360 px, measured text contrast over the stone.
   {
     name: "MEMBERSHIP MARBLE (qa-membership-marble)",

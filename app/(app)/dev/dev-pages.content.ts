@@ -263,6 +263,24 @@ const dictionary = {
       mr: "परवानग्या",
       ko: "권한",
     }),
+    templates: t({
+      en: "Email templates",
+      zh: "邮件模板",
+      hi: "ईमेल टेम्पलेट",
+      es: "Plantillas de correo",
+      fr: "Modèles d’e-mail",
+      ar: "قوالب البريد الإلكتروني",
+      bn: "ইমেইল টেমপ্লেট",
+      pt: "Modelos de e-mail",
+      ru: "Шаблоны писем",
+      ur: "ای میل ٹیمپلیٹس",
+      id: "Templat email",
+      de: "E-Mail-Vorlagen",
+      ja: "メールテンプレート",
+      sw: "Violezo vya barua pepe",
+      mr: "ईमेल टेम्पलेट",
+      ko: "이메일 템플릿",
+    }),
     preview: t({
       en: "Preview build",
       zh: "预览版",
@@ -364,6 +382,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Name of the internal page (tab title and main heading) where an administrator adds Pro membership days to any account. A noun naming the page.",
   newOrder:
     "Browser tab title of the internal page that simulates in which order new words are introduced in study. A noun phrase: the order of new words.",
+  templates:
+    "Browser tab title and main heading of the internal page that edits the app's transactional emails (sign-in code, login notice, invite…). A plural noun phrase naming the page.",
   permissions:
     "Browser tab title of the internal page that grants and revokes the admin and dev permissions. A plural noun naming the page.",
   preview:
