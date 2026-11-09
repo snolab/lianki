@@ -103,6 +103,25 @@ function silentOptions(type, options) {
 
 const silenced = new WeakSet();
 
+/**
+ * The /words first-visit walkthrough (lib/words/onboarding.ts) opens by itself
+ * for a new account and would sit over the page every suite drives. Marked
+ * seen in every context, unless the context asks for it (`lkOnboarding: true`,
+ * qa-words-onboarding.mjs).
+ */
+export const ONBOARDING_SEEN_INIT = `(() => {
+  try {
+    if (localStorage.getItem("lk:words-onboarded") === null) localStorage.setItem("lk:words-onboarded", "1");
+  } catch {}
+})();`;
+
+/** Split our own option off Playwright's. */
+function ownOptions(o) {
+  if (!o || !("lkOnboarding" in o)) return [o, false];
+  const { lkOnboarding, ...rest } = o;
+  return [rest, !!lkOnboarding];
+}
+
 /** Playwright's own 30 s default, as a load budget; a suite's explicit timeouts still win. */
 function budgetDefaults(ctx) {
   const ms = budget(30_000);
@@ -116,9 +135,11 @@ export async function launchSilent(type, options = {}) {
   const browser = await type.launch(silentOptions(type, options));
   if (typeof browser?.newContext !== "function") return browser;
   const newContext = browser.newContext.bind(browser);
-  browser.newContext = async (o) => {
+  browser.newContext = async (opts) => {
+    const [o, onboarding] = ownOptions(opts);
     const ctx = await newContext(o);
     await ctx.addInitScript(SILENT_INIT);
+    if (!onboarding) await ctx.addInitScript(ONBOARDING_SEEN_INIT);
     return budgetDefaults(ctx);
   };
   browser.newPage = async (o) => (await browser.newContext(o)).newPage();
@@ -128,8 +149,11 @@ export async function launchSilent(type, options = {}) {
 
 /** browser.newContext, with the silencing init script. */
 export async function newSilentContext(browser, options = {}) {
-  const ctx = await browser.newContext(options);
-  if (!silenced.has(browser)) await ctx.addInitScript(SILENT_INIT);
+  if (silenced.has(browser)) return budgetDefaults(await browser.newContext(options));
+  const [o, onboarding] = ownOptions(options);
+  const ctx = await browser.newContext(o);
+  await ctx.addInitScript(SILENT_INIT);
+  if (!onboarding) await ctx.addInitScript(ONBOARDING_SEEN_INIT);
   return budgetDefaults(ctx);
 }
 
@@ -137,5 +161,6 @@ export async function newSilentContext(browser, options = {}) {
 export async function launchPersistentSilent(type, userDataDir, options = {}) {
   const ctx = await type.launchPersistentContext(userDataDir, silentOptions(type, options));
   await ctx.addInitScript(SILENT_INIT);
+  await ctx.addInitScript(ONBOARDING_SEEN_INIT);
   return budgetDefaults(ctx);
 }

@@ -165,6 +165,37 @@ The strings are the `words-voice-mode` dictionary
 (`app/(app)/words/voice-mode.content.ts`), 16 locales, each with its
 context line.
 
+## Push to talk
+
+Owner, 2026-11-10 ("长按说话", "lose not a single second"), on the chat's mic
+(`packages/debug-chat/src/ptt.ts`, wired in DebugChat's mic gesture and
+MicButton's `pttRecorder`):
+
+- **A tap** toggles always-on listening, the VAD as ever.
+- **A long press** (`PTT_HOLD_MS`, the platform's long-press) is ONE voice
+  line. Recording starts at the pointerdown itself, which is the line's
+  `t_speechStart`. While held, no VAD or endpoint cuts it (the always-on
+  capture holds: `setPttHolding`), so soft or whispered speech is kept whole.
+  The held state is a pulsing seal-red ring with the seconds held, plus a
+  light haptic where `navigator.vibrate` exists.
+- **Release** keeps `PTT_TAIL_MS` (1 s) more, then sends the clip through
+  the same STT route once and **sends the line** (source `stt`, no draft). A
+  clip past the route's size limit (`PTT_MAX_WAV_BYTES` = `STT_MAX_BYTES`) is
+  sent in pieces, transcribed in order, and still makes one line.
+- **Pre-roll**: while the always-on mic is open, its last `PTT_PREROLL_MS`
+  (2 s) sit in a ring in memory (`createRing`) and go in front of the clip.
+  The ring is never stored or uploaded unless that clip is sent.
+- **Cancel**: held, sliding `PTT_CANCEL_PX` away arms a cancel (the ring
+  dashes, "✕"); letting go there drops the clip, and coming back disarms it.
+- **History**: it replaces the old drag-the-mic-to-scroll-history gesture.
+  Drag the history itself (log-engage.ts); ↑/↓ on the focused mic still steps
+  back. A sideways drag before the hold still moves the bar.
+
+The named defaults are ready for the config store. Tests:
+`unit/ptt.test.ts` (the gesture, the ring, the pieces) and
+`scripts/dev/debug-chat-ptt-qa.mjs` (CDP touch, 390×844: a hold sends one
+line with one STT call, a slide-away cancels, a tap sends nothing).
+
 ## Where the speech comes from
 
 Every mic and sound on the page is moving under one hub, Li's; phase 0 only
