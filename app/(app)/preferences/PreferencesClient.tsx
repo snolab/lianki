@@ -133,6 +133,8 @@ export default function PreferencesClient({
     examples,
     reviewOrder: reviewOrderUi,
     resetSection,
+    licardsGroup,
+    watchTime,
   } = useIntlayer("preferences-page");
   const textSize = useIntlayer("text-size");
   const textSizes = useTextSizes();
@@ -332,6 +334,17 @@ export default function PreferencesClient({
         </div>
       </section>
 
+      {/* API Tokens */}
+      <TokenManager />
+
+      {/* Used only by the userscript or extension on other sites: watch time, review filters */}
+      <div className="mt-14 mb-6 border-t border-gray-700/40 pt-8" data-section="licards-group">
+        <h2 className="text-2xl font-semibold mb-2 text-gray-900 dark:text-white">
+          {licardsGroup.heading}
+        </h2>
+        <p className="text-gray-400">{licardsGroup.note}</p>
+      </div>
+
       {/* Watch tracking */}
       <section className="mb-10">
         <SectionHeading
@@ -339,13 +352,9 @@ export default function PreferencesClient({
           canReset={!watchTracking}
           onReset={() => setWatchTracking(true)}
         >
-          Watch time
+          {watchTime.heading}
         </SectionHeading>
-        <p className="text-gray-400 mb-4">
-          Lianki can measure how long you actually watch or listen to media on a page, to fill your
-          streaks and the activity heatmap. Time is counted only while something is playing, audible
-          and on screen — never from visiting a page.
-        </p>
+        <p className="text-gray-400 mb-4">{watchTime.description}</p>
         <label className="flex items-start gap-3 p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10">
           <input
             type="checkbox"
@@ -355,11 +364,8 @@ export default function PreferencesClient({
             onChange={(e) => setWatchTracking(e.target.checked)}
           />
           <span>
-            <span className="block font-medium">Record watch time</span>
-            <span className="block text-sm text-gray-400">
-              Turn this off and nothing about your playback leaves the page. Existing statistics are
-              kept; they simply stop growing.
-            </span>
+            <span className="block font-medium">{watchTime.toggle}</span>
+            <span className="block text-sm text-gray-400">{watchTime.hint}</span>
           </span>
         </label>
       </section>
@@ -513,9 +519,6 @@ export default function PreferencesClient({
           </ul>
         </div>
       </section>
-
-      {/* API Tokens */}
-      <TokenManager />
 
       {/* Save: floats above the bottom island, lit while there is something to save */}
       <div
