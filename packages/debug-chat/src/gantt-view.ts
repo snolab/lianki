@@ -15,6 +15,10 @@
 import {
   type GanttAxis,
   type GanttScale,
+  scaleExtend,
+  scaleTimeAt,
+  scaleX,
+  scaleZoom,
   LOG_MAX_T,
   LOG_MIN_T,
   clamp,
@@ -70,6 +74,7 @@ export {
   rowsRange,
   scaleExtend,
   scaleTicks,
+  scaleTimeAt,
   scaleToNow,
   scaleWidth,
   scaleX,
@@ -90,6 +95,31 @@ export {
   type LogAxis,
   type Tick,
 } from "@snomiao/rgui/gantt";
+
+/**
+ * A pinch, anchored (owner, 2026-11-10: "the time under the fingers jumps"):
+ * at its start the time under the midpoint, `t0`, is read off the axis
+ * (its own inverse, log or linear); each move zooms the START axis by the
+ * whole factor so far (dist / dist0) and then solves the scroll so `t0`
+ * sits exactly under the midpoint's current px (`anchorPx`, from the view's
+ * left edge), with the axis's own forward map. Nothing accumulates frame to
+ * frame, so no rounding or clamping drifts it; the linear axis then grows
+ * to cover the view (scaleExtend), the time kept.
+ */
+export function pinchStart(axis: GanttAxis, scrollLeft: number, anchorPx: number, now: number) {
+  return { axis, scrollLeft, anchorPx, t0: scaleTimeAt(axis, scrollLeft + anchorPx, now) };
+}
+
+export function pinchView(
+  start: ReturnType<typeof pinchStart>,
+  factor: number,
+  anchorPx: number,
+  w: number,
+  now: number,
+): { axis: GanttAxis; scrollLeft: number } {
+  const zoomed = scaleZoom(start.axis, start.scrollLeft, w, start.anchorPx, factor, now);
+  return scaleExtend(zoomed.axis, scaleX(zoomed.axis, start.t0, now) - anchorPx, w);
+}
 
 /** Two touches' distance and midpoint (client px), for a pinch. */
 export function pinchOf(t: ArrayLike<{ clientX: number; clientY: number }>) {
