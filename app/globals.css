@@ -686,8 +686,8 @@ html[data-motion="off"] .lk-ex-spoken {
     --slip-done-ink: 80%;
   }
 }
-.slip.slip-done .slip-back:not(.slip-blank),
-.slip.slip-done .slip-term {
+.slip-done .slip-back:not(.slip-blank),
+.slip-done .slip-term {
   opacity: 1;
   color: inherit;
 }
