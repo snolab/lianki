@@ -737,6 +737,20 @@ export type ChatStrings = {
   etaGanttLegend: string;
   /** A parked task's time: when its reminder goes off, `{t}` a compact time ("9.1H"). */
   etaReminder: string;
+  /** The full-screen Gantt's legend, second part: the ETA ticks and the ghost bar of the original plan. */
+  etaGanttLegendTicks: string;
+  /** A tapped ETA tick's group (`{names}`: task names): ends moved earlier. */
+  etaTickEarlier: string;
+  /** …ends moved later. */
+  etaTickLater: string;
+  /** …estimates re-confirmed unchanged. */
+  etaTickConfirmed: string;
+  /** …a first estimate. */
+  etaTickSet: string;
+  /** …status changed only. */
+  etaTickStatus: string;
+  /** The tick note's close button (screen reader, tooltip). */
+  etaTickClose: string;
   /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
   etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
@@ -851,6 +865,13 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaWaitingYou: "Waiting for you",
   etaGanttLegend: "Underline = reported progress · red line = now",
   etaReminder: "reminder in {t}",
+  etaGanttLegendTicks: "tick = estimate changed or confirmed · faint grey = original plan",
+  etaTickEarlier: "moved up: {names}",
+  etaTickLater: "postponed: {names}",
+  etaTickConfirmed: "confirmed: {names}",
+  etaTickSet: "estimated: {names}",
+  etaTickStatus: "status changed: {names}",
+  etaTickClose: "Close",
   etaList: "Timed tasks",
   etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",

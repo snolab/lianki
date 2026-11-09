@@ -52,10 +52,34 @@ export type TreeSummary = { done?: string; doing?: string; next?: string };
  * started and when the estimate runs out (ms), whether it is done (and when),
  * and whether the hub already pinged the agent for this `at`.
  */
+/**
+ * One ETA event of a node (lib/progress.ts EtaEvent): a vertical tick on its
+ * Gantt bar. `old` / `new` are the estimate (P95) before and after a change;
+ * ticks of one `changeId` line up across rows (one action).
+ */
+export type EtaTick = {
+  at: number;
+  kind: "change" | "confirm" | "status";
+  changeId: string;
+  by: string;
+  old?: number;
+  new?: number;
+  status?: string;
+};
+
 export type TreeEta = {
   id: string;
   start: number;
+  /** The estimate: a range's P95 (overdue, the ping and the bar's end count from it). */
   at: number;
+  /** A range's P5 (`--eta 12m-63m`): the bar is solid to it, then fades out to `at`. */
+  min?: number;
+  /** The original plan (the first start and estimate): a faint ghost bar behind. */
+  plan?: { start: number; at: number; min?: number };
+  /** The estimate's history: a tick on the bar each. */
+  ticks?: EtaTick[];
+  /** When the estimate was last set or re-confirmed. */
+  confirmedAt?: number;
   done?: boolean;
   doneAt?: number;
   sent?: boolean;

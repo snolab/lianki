@@ -1789,6 +1789,28 @@ and the red Now line show through; the text is AA over every bar composited on
 the panel (unit/gantt-view.test.ts composites in sRGB as the browser does).
 Overdue stays red with a minus; queued bars are fainter and dashed.
 
+**ETA ticks, ranges and the original plan** (owner, 2026-11-10;
+docs/state-tree.md, "ETA history"). The hub's ETA events for each node
+(`etaEvents`, mapped to `TreeEta.ticks` in lib/progress-tree.ts) are drawn
+as short vertical ticks on the bar at their time (`ganttTickX`): a change
+12 px, a confirm 7 px, a status change dotted, all `GANTT_COLORS.tick` (AA
+over the bars). Events of one action share a `changeId` and one time, so
+their ticks line up across rows. A tap on a tick (a 16 px hit area) marks
+that change's ticks on every row and opens a note at the bottom:
+"-25M · main / moved up: A; postponed: B, C" (`tickGroup`,
+`tickGroupText`: each row sorted by its old → new estimate into moved up,
+postponed, estimated (the first), confirmed, status changed). ✕ or Escape
+closes the note first. A range (`--eta 12m-63m`: `TreeEta.min` is the P5,
+`at` the P95) draws the bar solid to the P5 (`GanttBar.solid`) and a tail
+fading out to the P95 (`TAIL_CSS`, a gradient; hatched under reduced motion
+or "Turn off animations"); overdue and the red "-5M" count from the P95. The
+label reads "12–63M" until the P5 passes (`eta.ts etaLabel`, `rangeTime`;
+minutes at both ends up to 99), then the time to the P95. Behind the bar a
+very faint grey ghost (`GANTT_COLORS.ghost`) shows the original plan, the
+first start and estimate (`TreeEta.plan`), when it differs by 2 px or more
+(`ghostShows`). The progress underline and arrow stay as they are. The
+legend line adds `etaGanttLegendTicks`.
+
 **The home view** (owner, 2026-11-10; `gantt-view.ts homeView`, on open,
 on reopening, and on the Now button), on either axis: the rows are sorted
 by end time, expected or actual (`ganttRowsByEnd`); the red Now line is at

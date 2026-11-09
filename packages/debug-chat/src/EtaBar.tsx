@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import {
   type EtaTask,
   compactTime,
+  etaLabel,
   etaSummary,
   ganttPlan,
   ganttRow,
@@ -196,7 +197,7 @@ type EtaText = Pick<
 
 /** One task's state: done, or its time left (compactTime, negative past due). */
 export function taskState(t: EtaTask, now: number, s: EtaText) {
-  return t.done ? s.etaDone : compactTime(t.at - now);
+  return t.done ? s.etaDone : etaLabel(t, now);
 }
 
 /**

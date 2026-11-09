@@ -1,14 +1,40 @@
 "use client";
 
 import { useUi } from "@lianki/ui-state";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { type EtaTask, compactTime, ganttPlan, isLate, isParked, parkMark, splitTitle } from "./eta";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  type EtaTask,
+  compactTime,
+  etaLabel,
+  ganttPlan,
+  isLate,
+  isParked,
+  parkMark,
+  splitTitle,
+} from "./eta";
 import {
   CHAR_PX,
   type GanttAxis,
   type GanttScale,
+  axisLabel,
   ganttBar,
   ganttColor as c,
+  ganttSpan,
+  ganttTickX,
+  ghostShows,
+  TAIL_ATTR,
+  TAIL_CSS,
+  TAIL_VAR,
+  tickGroup,
+  tickGroupText,
   GANTT_END_SPACE,
   centreRowTop,
   fitSpan,
@@ -76,7 +102,19 @@ type Strings = Pick<
   | "etaWaitingYou"
   | "etaReminder"
   | "etaGanttLegend"
+  | "etaGanttLegendTicks"
+  | "etaTickEarlier"
+  | "etaTickLater"
+  | "etaTickConfirmed"
+  | "etaTickSet"
+  | "etaTickStatus"
+  | "etaTickClose"
 >;
+
+/** A tick's visible line (px): a change or a status change, a confirm (shorter), and its tap area. */
+const TICK_W = 2;
+const TICK_H = { change: 12, status: 12, confirm: 7 } as const;
+const TICK_HIT = 16;
 
 /** A label character's width at the axis's text size (the tick spacing reads it). */
 const charPxOf = (el: HTMLElement) => {
@@ -115,6 +153,15 @@ export function GanttFull({
   const [scrollX, setScrollX] = useState(0);
   const [w, setW] = useState(0);
   const [charPx, setCharPx] = useState(CHAR_PX);
+  /** The tapped tick's change id: its group is shown, its ticks marked on every row. */
+  const [sel, setSel] = useState<string | null>(null);
+  const group = useMemo(
+    () =>
+      sel ? tickGroup(rows.map((r) => ({ ...r, title: splitTitle(r.title).name })), sel) : null,
+    [rows, sel],
+  );
+  const selRef = useRef(sel);
+  selRef.current = sel;
 
   const commit = useCallback((next: { axis: GanttAxis; scrollLeft: number }) => {
     const v = view.current;
@@ -352,7 +399,9 @@ export function GanttFull({
       if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      close.current();
+      // A tick's note open: Escape closes it first.
+      if (selRef.current) setSel(null);
+      else close.current();
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
@@ -399,7 +448,7 @@ export function GanttFull({
         paddingRight: "env(safe-area-inset-right)",
       }}
     >
-      <style>{LIVE_CSS}</style>
+      <style>{LIVE_CSS + TAIL_CSS}</style>
       <header
         className="flex shrink-0 items-center gap-2 px-3 py-1.5"
         style={{ borderBottom: `1px solid ${c("grid")}` }}
@@ -463,10 +512,10 @@ export function GanttFull({
       {/* What the marks mean: the underline is the reported progress, the red line now. */}
       <p
         data-testid="debug-chat-gantt-legend"
-        className="m-0 shrink-0 truncate px-3 py-0.5 fs-10"
+        className="m-0 shrink-0 px-3 py-0.5 fs-10"
         style={{ color: c("muted"), borderBottom: `1px solid ${c("grid")}` }}
       >
-        {strings.etaGanttLegend}
+        {strings.etaGanttLegend} · {strings.etaGanttLegendTicks}
       </p>
       <div
         ref={scroller}
@@ -553,6 +602,10 @@ export function GanttFull({
             {axis &&
               rows.map((t) => {
                 const b = ganttBar(t, axis, now);
+                // A range's tail (P5 → P95) on a running bar; queued, parked and done draw whole.
+                const tail = !t.done && !t.queued && !isParked(t) ? b.w - b.solid : 0;
+                const plan = t.plan ? ganttSpan(t.plan.start, t.plan.at, axis, now) : null;
+                const ghost = plan && ghostShows(plan, b) ? plan : null;
                 const late = !t.done && t.at <= now;
                 const parked = isParked(t);
                 const mark = parkMark(t);
@@ -578,15 +631,48 @@ export function GanttFull({
                     className="relative flex items-center"
                     style={{ height: ROW_H, marginBottom: ROW_GAP }}
                   >
+                    {ghost && (
+                      // The original plan (its first start and estimate): very faint, behind.
+                      <span
+                        aria-hidden
+                        data-testid="debug-chat-gantt-ghost"
+                        className="absolute rounded-sm"
+                        style={{
+                          top: 0,
+                          bottom: UNDERLINE_GAP,
+                          left: ghost.x,
+                          width: Math.max(3, ghost.w),
+                          background: c("ghost"),
+                        }}
+                      />
+                    )}
+                    {tail > 0 && (
+                      // A range: from the P5 the bar fades out to the P95 (hatched under reduced motion).
+                      <span
+                        aria-hidden
+                        data-testid="debug-chat-gantt-tail"
+                        {...{ [TAIL_ATTR]: true }}
+                        className="absolute rounded-e-sm"
+                        style={
+                          {
+                            top: 0,
+                            bottom: UNDERLINE_GAP,
+                            left: b.x + b.solid,
+                            width: tail,
+                            [TAIL_VAR]: c("bar"),
+                          } as CSSProperties
+                        }
+                      />
+                    )}
                     <span
                       aria-hidden
                       data-testid="debug-chat-gantt-bar"
-                      className="absolute overflow-hidden rounded-sm"
+                      className={`absolute overflow-hidden ${tail > 0 ? "rounded-s-sm" : "rounded-sm"}`}
                       style={{
                         top: 0,
                         bottom: UNDERLINE_GAP,
                         left: b.x,
-                        width: Math.max(3, b.w),
+                        width: Math.max(3, tail > 0 ? b.solid : b.w),
                         background: c(t.done ? "done" : t.queued ? "queued" : "bar"),
                         ...(t.queued ? { outline: `1px dashed ${c("muted")}`, outlineOffset: -1 } : {}),
                         ...(parked ? parkedBar(c("bar"), c("muted")) : {}),
@@ -657,6 +743,51 @@ export function GanttFull({
                         }}
                       />
                     )}
+                    {(t.ticks ?? []).map((ev, i) => {
+                      // The estimate's history: a short tick per event; one action's line up.
+                      const x = ganttTickX(ev.at, axis, now);
+                      if (x === null) return null;
+                      const on = ev.changeId === sel;
+                      return (
+                        <button
+                          key={`${ev.changeId}:${i}`}
+                          type="button"
+                          data-testid="debug-chat-gantt-eta-tick"
+                          data-kind={ev.kind}
+                          data-change={ev.changeId}
+                          data-selected={on || undefined}
+                          aria-label={`${axisLabel(ev.at - now)} · ${ev.by}`}
+                          aria-pressed={on}
+                          onClick={() => setSel(on ? null : ev.changeId)}
+                          className="absolute p-0"
+                          style={{
+                            left: x - TICK_HIT / 2,
+                            top: 0,
+                            width: TICK_HIT,
+                            height: ROW_H - UNDERLINE_GAP,
+                            zIndex: 2,
+                            border: 0,
+                            background: "transparent",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span
+                            aria-hidden
+                            className="absolute"
+                            style={{
+                              left: (TICK_HIT - TICK_W) / 2,
+                              top: 0,
+                              width: on ? TICK_W + 1 : TICK_W,
+                              height: on ? ROW_H - UNDERLINE_GAP : TICK_H[ev.kind],
+                              background:
+                                ev.kind === "status"
+                                  ? `repeating-linear-gradient(180deg, ${c(on ? "text" : "tick")} 0 3px, transparent 3px 5px)`
+                                  : c(on ? "text" : "tick"),
+                            }}
+                          />
+                        </button>
+                      );
+                    })}
                     {/* The name: pinned at the left of what is visible, over the bar. */}
                     <span
                       data-testid="debug-chat-gantt-name"
@@ -704,7 +835,7 @@ export function GanttFull({
                             !t.done && isLate(left) ? { color: c("late"), fontWeight: 600 } : undefined
                           }
                         >
-                          {t.done ? strings.etaDone : compactTime(left)}
+                          {t.done ? strings.etaDone : etaLabel(t, now)}
                         </span>
                       )}
                     </span>
@@ -714,6 +845,50 @@ export function GanttFull({
           </ul>
         </div>
       </div>
+      {group && (
+        // A tapped tick: what that one action did across the rows.
+        <div
+          role="status"
+          data-testid="debug-chat-gantt-tick-note"
+          className="absolute flex items-start gap-2 rounded px-3 py-2 fs-12"
+          style={{
+            left: 8,
+            right: 8,
+            bottom: "calc(8px + env(safe-area-inset-bottom))",
+            zIndex: 4,
+            background: c("track"),
+            color: c("text"),
+            border: `1px solid ${c("grid")}`,
+            boxShadow: "0 2px 10px oklch(0 0 0 / 0.18)",
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="tabular-nums fs-10" style={{ color: c("muted") }}>
+              {axisLabel(group.at - now)} · {group.by.join(", ")}
+            </div>
+            <div dir="auto" data-testid="debug-chat-gantt-tick-text">
+              {tickGroupText(group, {
+                earlier: strings.etaTickEarlier,
+                later: strings.etaTickLater,
+                confirmed: strings.etaTickConfirmed,
+                set: strings.etaTickSet,
+                status: strings.etaTickStatus,
+              })}
+            </div>
+          </div>
+          <button
+            type="button"
+            data-testid="debug-chat-gantt-tick-close"
+            aria-label={strings.etaTickClose}
+            title={strings.etaTickClose}
+            onClick={() => setSel(null)}
+            className="tap-40 shrink-0 rounded px-2"
+            style={{ color: c("text"), background: "transparent", border: 0 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

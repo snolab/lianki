@@ -15,12 +15,14 @@
  */
 import type { TreeSource } from "@lianki/debug-chat/StateTree";
 import {
+  type EtaTick,
   type TreeNode,
   type TreeStatus,
   findLinks,
   parseTreeDoc,
 } from "@lianki/debug-chat/state-tree";
 import {
+  type EtaEvent,
   type ProgressEntry,
   type ProgressStatus,
   type ProgressView,
@@ -80,6 +82,17 @@ export function parkedOf(
   return undefined;
 }
 
+/** A hub ETA event as the Gantt's tick (EtaTick). */
+const etaTick = (v: EtaEvent): EtaTick => ({
+  at: v.at,
+  kind: v.kind,
+  changeId: v.changeId,
+  by: v.by,
+  ...(v.oldEtaAt !== undefined ? { old: v.oldEtaAt } : {}),
+  ...(v.newEtaAt !== undefined ? { new: v.newEtaAt } : {}),
+  ...(v.status !== undefined ? { status: v.status } : {}),
+});
+
 function apply(n: TreeNode, e: ProgressEntry, waiting: boolean, repo?: string) {
   n.live = true;
   n.status = STATUS[e.status];
@@ -94,6 +107,18 @@ function apply(n: TreeNode, e: ProgressEntry, waiting: boolean, repo?: string) {
       // The Gantt row runs from when the work started (first "doing") to the estimate.
       start: Math.min(e.startedAt ?? e.created, e.etaAt),
       at: e.etaAt,
+      ...(e.etaMinAt !== undefined && e.etaMinAt < e.etaAt ? { min: e.etaMinAt } : {}),
+      ...(e.plan
+        ? {
+            plan: {
+              start: e.plan.start,
+              at: e.plan.etaAt,
+              ...(e.plan.etaMinAt !== undefined ? { min: e.plan.etaMinAt } : {}),
+            },
+          }
+        : {}),
+      ...(e.etaEvents?.length ? { ticks: e.etaEvents.map(etaTick) } : {}),
+      ...(e.etaConfirmedAt !== undefined ? { confirmedAt: e.etaConfirmedAt } : {}),
       ...(n.done ? { done: true, doneAt: e.endedAt ?? e.at } : {}),
       ...(e.etaSent === e.etaAt ? { sent: true } : {}),
       ...(e.pct != null ? { pct: e.pct } : {}),

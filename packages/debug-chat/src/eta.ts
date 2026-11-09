@@ -107,6 +107,36 @@ export function compactTime(ms: number): string {
   return `${sign}${compactSpan(min * 60_000, min)}`;
 }
 
+/** A range up to this many minutes is labelled in minutes at both ends. */
+export const RANGE_MINUTES_MAX = 99;
+
+/**
+ * A range's label (owner, 2026-11-10): "12–63M", one unit shared when both
+ * ends have it, else each its own ("40M–1.5H"). Both ahead only; callers
+ * pass the time left to the P5 and to the P95.
+ */
+export function rangeTime(minMs: number, maxMs: number): string {
+  const a = compactTime(minMs);
+  const b = compactTime(maxMs);
+  if (a === b) return b;
+  // Up to RANGE_MINUTES_MAX both ends stay in minutes ("12–63M", not "12M–1.1H").
+  if (maxMs > 0 && minutesLeft(maxMs) <= RANGE_MINUTES_MAX)
+    return `${minutesLeft(minMs)}–${minutesLeft(maxMs)}M`;
+  const unit = (x: string) => /[A-Za-z]+$/.exec(x)?.[0] ?? "";
+  return unit(a) === unit(b) ? `${a.slice(0, -unit(a).length)}–${b}` : `${a}–${b}`;
+}
+
+/**
+ * A task's time label: its range ("12–63M") until the P5 passes, then the
+ * time left to the estimate (the P95: "51M", "-5M" past it). A task with
+ * one number shows that, as before.
+ */
+export function etaLabel(t: { at: number; min?: number; done?: boolean }, now: number): string {
+  if (!t.done && t.min !== undefined && t.min > now && t.min < t.at)
+    return rangeTime(t.min - now, t.at - now);
+  return compactTime(t.at - now);
+}
+
 /** Parked on a person (TreeEta.parked): no work runs, its time is a reminder. */
 export const isParked = (t: { done?: boolean; parked?: string }) => !t.done && !!t.parked;
 
@@ -316,7 +346,7 @@ export function etaParts(tasks: readonly EtaTask[], now: number): EtaPart[] | nu
   if (!ends) return null;
   const part = (t: EtaTask): EtaPart => ({
     name: splitTitle(t.title).name,
-    min: compactTime(t.at - now),
+    min: etaLabel(t, now),
     ...(isLate(t.at - now) ? { late: true } : {}),
   });
   return ends.small ? [part(ends.small), part(ends.big)] : [part(ends.big)];
