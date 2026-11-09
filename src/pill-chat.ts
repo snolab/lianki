@@ -186,8 +186,9 @@ export function pillChat(d: PillChatDeps) {
           set: (p) => d.setValue(PARTNER_POS_KEY, { x: Math.round(p.x), y: Math.round(p.y) }),
         },
       });
-      // A second load means the page navigated our iframe (it can reach
-      // window.frames): whatever loaded is not ours, so it goes.
+      // A second load means the page navigated our iframe (it learns the
+      // frame's WindowProxy from the frame's "up" message): whatever loaded
+      // is not ours, so it goes.
       let loads = 0;
       shell.iframe.addEventListener("load", () => {
         if (++loads > 1) {

@@ -178,7 +178,7 @@ export function trustDialog(d: DialogDeps & { host: string }): {
 } {
   const t = d.strings;
   const p = palette(d.win);
-  let done: (c: TrustChoice) => void = () => {};
+  let done!: (c: TrustChoice) => void;
   const result = new Promise<TrustChoice>((resolve) => (done = resolve));
   const title = t.promptTitle.replace("{host}", d.host);
   let shell: Shell | null = null;
@@ -246,7 +246,7 @@ export function sitesDialog(
 ): { remove(): void; closed: Promise<void> } {
   const t = d.strings;
   const p = palette(d.win);
-  let closedResolve: () => void = () => {};
+  let closedResolve!: () => void;
   const closed = new Promise<void>((r) => (closedResolve = r));
   let shell: Shell | null = null;
   const close = () => {

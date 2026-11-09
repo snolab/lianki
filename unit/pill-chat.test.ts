@@ -23,7 +23,7 @@ import {
   trustStore,
   type TrustChoice,
 } from "@/src/pill-chat-trust";
-import { sitesDialog, trustDialog } from "@/src/pill-chat-ui";
+import { blockedNote, sitesDialog, trustDialog } from "@/src/pill-chat-ui";
 
 const ORIGIN = "https://lianki.com";
 const ISOLATED = { injectInto: "content" };
@@ -150,6 +150,7 @@ function harness(opts: {
   choice?: TrustChoice;
   top?: boolean;
   frameResult?: "ready" | "blocked";
+  fetchFail?: "throw" | "status";
 }) {
   const g = gm({
     ...(opts.flag === false ? {} : { [PILLCHAT_ON_KEY]: JSON.stringify({ on: true, at: 1 }) }),
@@ -177,6 +178,9 @@ function harness(opts: {
     setValue: g.setValue,
     gmFetch: async (url: string, o?: { method?: string }) => {
       calls.push({ url, method: o?.method });
+      if (opts.fetchFail === "throw") throw new Error("network");
+      if (opts.fetchFail === "status" && !url.endsWith("/api/ext/pill-chat"))
+        return { ok: false, status: 404, json: async () => ({}) };
       if (url.endsWith("/api/ext/pill-chat"))
         return { ok: true, status: 200, json: async () => ({ on: opts.server ?? true }) };
       return { ok: true, status: 200, json: async () => ({ ticket: "TK-1" }) };
@@ -185,8 +189,13 @@ function harness(opts: {
       prompts.push(h);
       return opts.choice ?? "dismiss";
     },
-    frame: ((f: { label: string; ticket: () => Promise<string | null> }) => {
+    frame: ((f: {
+      label: string;
+      ticket: () => Promise<string | null>;
+      pos?: { get(): unknown; set(p: { x: number; y: number }): void };
+    }) => {
       const rec = {
+        pos: f.pos,
         label: f.label,
         destroyed: false,
         ticket: f.ticket,
@@ -451,5 +460,147 @@ describe("GET /api/ext/pill-chat", () => {
     expect(
       await on(await pillChatState(req(), deps({ flag: true, email: null, owner: true }))),
     ).toBe(false);
+  });
+});
+
+describe("opening Li: edges", () => {
+  it("the frame's position is kept per device; junk reads as none", async () => {
+    const h = harness({ choice: "once" });
+    expect(await h.pc.open()).toBe("ready");
+    const pos = (h.frames[0] as unknown as { pos: { get(): unknown; set(p: object): void } }).pos;
+    expect(pos.get()).toBeNull();
+    pos.set({ x: 10.4, y: -3.6 });
+    expect(pos.get()).toEqual({ x: 10, y: -4 });
+    h.g.setValue("lianki_partner_pos", { x: "a", y: 1 });
+    expect(pos.get()).toBeNull();
+  });
+
+  it("lianki.com unreachable: off, no frame", async () => {
+    const h = harness({ choice: "always", fetchFail: "throw" });
+    expect(await h.pc.open()).toBe("off");
+    expect(h.frames).toEqual([]);
+  });
+
+  it("no ticket for this account: the frame gets null", async () => {
+    const h = harness({ choice: "once", fetchFail: "status" });
+    expect(await h.pc.open()).toBe("ready");
+    expect(await h.frames[0].ticket()).toBeNull();
+  });
+
+  it("a ticket request that throws: null", async () => {
+    const h = harness({ choice: "once" });
+    expect(await h.pc.open()).toBe("ready");
+    h.d.gmFetch = async () => {
+      throw new Error("x");
+    };
+    expect(await h.frames[0].ticket()).toBeNull();
+  });
+
+  it("a load after he closed it: that frame is destroyed, nothing else", async () => {
+    const h = harness({ choice: "once" });
+    expect(await h.pc.open()).toBe("ready");
+    expect(await h.pc.open()).toBe("closed");
+    h.frames[0].destroyed = false;
+    h.frames[0].loads.forEach((f) => f());
+    h.frames[0].loads.forEach((f) => f());
+    expect(h.frames[0].destroyed).toBe(true);
+  });
+
+  it("the page realm note twice replaces the first; the sites list opens from manage()", async () => {
+    const h = harness({ info: PAGE_REALM });
+    expect(await h.pc.open()).toBe("note");
+    expect(await h.pc.open()).toBe("note");
+    h.pc.close();
+    const m = h.pc.manage();
+    m.remove();
+    await m.closed;
+  });
+});
+
+describe("dialogs: theme, keys, the blocked note", () => {
+  const darkWin = (dark: boolean | "throw") => {
+    const w = new Window();
+    (w as unknown as { matchMedia: unknown }).matchMedia = () => {
+      if (dark === "throw") throw new Error("no");
+      return { matches: dark };
+    };
+    return w;
+  };
+  const ev = (w: Window, type: string, init: object, trusted = true) => {
+    const C =
+      type === "keydown"
+        ? (w as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent
+        : type === "click"
+          ? (w as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent
+          : (w as unknown as { FocusEvent: typeof FocusEvent }).FocusEvent;
+    const e = new C(type, { bubbles: true, ...init });
+    if (trusted) Object.defineProperty(e, "isTrusted", { value: true });
+    return e;
+  };
+
+  it("dark mode, Escape on the host, focus rings, scrim click, remove()", async () => {
+    const w = darkWin(true);
+    const doc = w.document as unknown as Document;
+    const t = trustDialog({ doc, win: w as never, strings: PILL_CHAT_STRINGS.en, host: "a.com" });
+    const host = doc.documentElement.lastElementChild as HTMLElement;
+    host.dispatchEvent(ev(w, "keydown", { key: "a" }));
+    host.dispatchEvent(ev(w, "keydown", { key: "Escape" }));
+    expect(await t.result).toBe("dismiss");
+
+    const t2 = trustDialog({
+      doc,
+      win: darkWin("throw") as never,
+      strings: PILL_CHAT_STRINGS.en,
+      host: "b.com",
+    });
+    t2.remove();
+    expect(await t2.result).toBe("dismiss");
+  });
+
+  it("buttons: focus and blur; the scrim dismisses only on itself", async () => {
+    const w = darkWin(false);
+    const roots: ShadowRoot[] = [];
+    const proto = (w as unknown as { HTMLElement: typeof HTMLElement }).HTMLElement.prototype;
+    const orig = proto.attachShadow;
+    proto.attachShadow = function (init: ShadowRootInit) {
+      const r = orig.call(this, init);
+      roots.push(r);
+      return r;
+    };
+    const doc = w.document as unknown as Document;
+    const t = trustDialog({ doc, win: w as never, strings: PILL_CHAT_STRINGS.en, host: "a.com" });
+    const root = roots.at(-1)!;
+    const b = root.querySelector("button")!;
+    b.dispatchEvent(ev(w, "focus", {}, false));
+    b.dispatchEvent(ev(w, "blur", {}, false));
+    const scrim = root.firstElementChild as HTMLElement;
+    const panel = scrim.firstElementChild as HTMLElement;
+    panel.dispatchEvent(ev(w, "click", {}));
+    scrim.dispatchEvent(ev(w, "click", {}, false));
+    scrim.dispatchEvent(ev(w, "click", {}));
+    expect(await t.result).toBe("dismiss");
+
+    // The sites list, empty; and the blocked note with its ×.
+    const m = sitesDialog({
+      doc,
+      win: w as never,
+      strings: PILL_CHAT_STRINGS.en,
+      store: trustStore(gm()),
+    });
+    expect(roots.at(-1)!.textContent).toContain("No sites yet.");
+    m.remove();
+    const remove = blockedNote({
+      doc,
+      win: w as never,
+      strings: PILL_CHAT_STRINGS.en,
+      origin: ORIGIN,
+    });
+    const nr = roots.at(-1)!;
+    expect(nr.textContent).toContain("Chat on lianki.com");
+    expect(nr.querySelector("a")!.getAttribute("href")).toBe(ORIGIN);
+    nr.querySelector("button")!.dispatchEvent(ev(w, "click", {}));
+    expect(doc.documentElement.contains(nr.host)).toBe(false);
+    remove();
+    proto.attachShadow = orig;
   });
 });
