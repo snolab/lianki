@@ -14,6 +14,9 @@
  *     its scrollTop, and the input keeps the focus
  *   - at rest (input not focused), the history's empty area is still
  *     click-through
+ *   - Chromium at rest (owner, 2026-11-10, /reader): a touch drag over the
+ *     history, or one starting on a link in it, scrolls the page under it
+ *     and leaves the history where it was; the link still hit-tests
  *
  * Browsers are muted (scripts/qa/silent.mjs); getUserMedia is refused.
  *
@@ -158,6 +161,77 @@ try {
       `${before} → ${after.top}`,
     );
     check(after.focused, "chromium: the input keeps the focus (the keyboard stays)");
+    await browser.close();
+  }
+  // Chromium at rest (owner, 2026-11-10, /reader): a drag over the history,
+  // even one starting on a link in it, scrolls the page underneath.
+  {
+    const { browser, ctx, page } = await setup(chromium);
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) =>
+      cdp.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: type === "touchEnd" ? [] : [{ x, y }],
+      });
+    await page.evaluate(() => {
+      const tall = document.createElement("div");
+      tall.style.height = "4000px";
+      document.body.append(tall);
+      globalThis.__push("Read on at https://example.com/article now", "agent");
+    });
+    await page.waitForTimeout(400);
+    const link = await page.evaluate((col) => {
+      const a = document.querySelector(`${col} a[href^="https://example.com"]`);
+      if (!a) return null;
+      // Its first line box (a wrapped link's bounding box covers other text).
+      const r = a.getClientRects()[0];
+      const x = r.left + Math.min(8, r.width / 2);
+      const y = r.top + r.height / 2;
+      const at = document.elementFromPoint(x, y);
+      return {
+        x,
+        y,
+        hit: !!at && a.contains(at),
+        what: at ? `${at.tagName}.${at.className}` : "none",
+        logTop: document.querySelector(col).scrollTop,
+      };
+    }, COL);
+    check(!!link, "chromium: the link line is in the history");
+    if (link) {
+      check(link.hit, "chromium: at rest, a link in the history still takes a tap", link.what);
+      const y0 = await page.evaluate(() => scrollY);
+      await touch("touchStart", link.x, link.y);
+      for (let dy = 10; dy <= 150; dy += 10) {
+        await touch("touchMove", link.x, link.y - dy);
+        await page.waitForTimeout(16);
+      }
+      await touch("touchEnd");
+      await page.waitForTimeout(500);
+      const after = await page.evaluate(
+        (col) => ({ y: scrollY, logTop: document.querySelector(col).scrollTop }),
+        COL,
+      );
+      check(
+        after.y > y0,
+        "chromium: at rest, a drag from a link scrolls the page",
+        `${y0} → ${after.y}`,
+      );
+      check(
+        after.logTop === link.logTop,
+        "chromium: at rest, that drag leaves the history where it was",
+      );
+    }
+    const s = await state(page);
+    const y1 = await page.evaluate(() => scrollY);
+    await touch("touchStart", s.x, s.y);
+    for (let dy = 10; dy <= 150; dy += 10) {
+      await touch("touchMove", s.x, s.y - dy);
+      await page.waitForTimeout(16);
+    }
+    await touch("touchEnd");
+    await page.waitForTimeout(500);
+    const y2 = await page.evaluate(() => scrollY);
+    check(y2 > y1, "chromium: at rest, a drag over the history scrolls the page", `${y1} → ${y2}`);
     await browser.close();
   }
 } finally {

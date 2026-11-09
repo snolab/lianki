@@ -12,11 +12,13 @@ export const FADE = "linear-gradient(to bottom, transparent, black 2.5rem)";
 export const FADE_SHORT = "linear-gradient(to bottom, transparent, black 0.9rem)";
 
 /**
- * While the input is in use (focused, keyboard up) or the mic is on, the log
- * takes the touch itself, so a finger drags the history (owner, 2026-11-05
- * 01:52 JST, iPhone PWA: "keyboard up, the history won't scroll"). At rest it
- * stays click-through for the page under it. `overscroll-contain`: the end
- * of the history does not hand the drag to the page behind the keyboard.
+ * While the input is in use (focused, keyboard up), the log takes the touch
+ * itself, so a finger drags the history (owner, 2026-11-05 01:52 JST, iPhone
+ * PWA: "keyboard up, the history won't scroll"). At rest it stays
+ * click-through for the page under it, mic on or not (owner, 2026-11-10: a
+ * drag over the history scrolls /reader underneath). `overscroll-contain`:
+ * the end of the history does not hand the drag to the page behind the
+ * keyboard.
  */
 export const LOG_TOUCH = "pointer-events-auto touch-pan-y overscroll-contain";
 
@@ -28,13 +30,19 @@ export function logSurface({
 }: {
   expanded: boolean;
   fade: boolean;
-  /** The input is in use or the mic on: the log takes the touch (LOG_TOUCH). */
+  /**
+   * The log is engaged (log-engage.ts) or full screen: it takes the touch
+   * (LOG_TOUCH) and scrolls under a finger. Else it is no scroll box at all
+   * (`overflow-y-hidden`, still scrolled by code: the newest lines, a wheel
+   * over the bar), so a drag that starts on a link or a card in it pans the
+   * page underneath instead of the history.
+   */
   touch?: boolean;
 }) {
   const mask = expanded ? FADE : FADE_SHORT;
   return {
     style: fade ? { maskImage: mask, WebkitMaskImage: mask } : undefined,
-    className: `min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${expanded ? "max-h-[30vh]" : "max-h-[4.4rem]"}${touch ? ` ${LOG_TOUCH}` : ""}`,
+    className: `min-h-12 space-y-0.5 ${touch ? "overflow-y-auto" : "overflow-y-hidden"} px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${expanded ? "max-h-[30vh]" : "max-h-[4.4rem]"}${touch ? ` ${LOG_TOUCH}` : ""}`,
   };
 }
 
