@@ -353,6 +353,29 @@ hardcoded email): the people who pay the provider; logged `credits.free`. A
 BYOK call never reaches the server. Without D1 (the frozen Mongo backend,
 local dev) nothing can be charged: the call runs and logs `credits.unmetered`.
 
+**Not enough credits: the numbers** (owner, 2026-11-10). Every 402 from
+`takeHold` carries, in the body and in headers (`x-lianki-credits-need`,
+`-have`, `-recommended`), whole credits:
+
+- `need` — the minimum to start: this call's hold;
+- `recommended` — the balance to finish the whole action without stopping
+  midway: a high percentile (`RECOMMEND_PERCENTILE`, P95; the owner also
+  named P99) of this feature's past real per-call costs
+  (`credit_ai_charge.costMicro`, settled, every user, numbers only) × the
+  calls the action has left (`takeHold`'s `action.units`; 1 for a single
+  call); under `MIN_SAMPLES` (20) settled calls, the hold × the calls left.
+  Never below `need`. `lib/payments/recommend.ts`;
+- `have` — the spendable balance.
+
+The page-wide notice reads the headers (never the body) and adds "开始至少需要
+N 积分，完成整个任务建议 R 积分（当前 H）", or "至少需要 N 积分（还差 M）"
+when starting is finishing (`credits-needed.content.ts` `needLine` /
+`needShort`). The Learning Partner chat's line adds the same short form (the
+reply's hold and the balance, sent with `ai-credits`). /self-intro's start
+note and "Words with AI" say both numbers in place; a multi-part action also
+says how far it got ("已完成 X/Y 部分，充值后继续") and resumes from its
+kept parts (docs/import-material.md, "Resume").
+
 **The page.** Any 402 with that header shows one notice, on any page, in the
 user's language with a "Get credits" link (`NoCreditsNotice`,
 `credits-needed.content.ts`, `lib/payments/no-credits-watch.ts` — it looks at
@@ -374,6 +397,7 @@ is 225 credits.
 | `read.live-polish` | `/api/read/[id]/polish-live` | `read.live-polish` | Workers AI · DeepSeek (or `READ_POLISH_MODEL`) | wallet | ~0.2 / 1–3 |
 | `self-intro.import` | `/api/self-intro/import` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.5 / ≤ 9 (40,000 characters + 4 images) |
 | `self-intro.followup` | `/api/self-intro/followup` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.2 / 1 |
+| `words.import-ai` | `/api/import/ai` (the /words Import panel, "Words with AI" on a stored file) | `words.import-ai` | Workers AI · DeepSeek | wallet: one hold per chunk call, settled at its real cost; a failed call or a chunk with no rows keeps nothing; each hold a hard cap; out of credits midway: 402 with completed / total, the paid chunks kept for a resume | ~0.6 per 6,000 characters / ~3 per chunk; a full file (10 chunks + 4 images) ≤ 23; offered from 2 |
 | `words.tts` | `/api/words/tts` (cache miss only) | — | Workers AI · MeloTTS / Aura-2 | **free** — owner, 2026-11-09 (card o3): word read-aloud stays free for now; each miss logs what it cost us (`credits.free`, `why: "free-feature"`) | MeloTTS ~0.001 per clip; Aura-2 ~0.7 per 100 characters |
 | `speech.stt` | `/api/debug/stt` (the chat's mic, voice mode) | `words.voice-mode` | Workers AI · Whisper turbo | **free** — owner, 2026-11-09 (card o3): the microphone stays free for now; each transcription logs what it cost us. The owner's local STT (his Mac) costs nothing | ~0.03 per 15 s utterance |
 | `ai-sentences` | `/api/ai-sentences/generate`, `/new-word` | — (`/lab/ai-vocab`) | Workers AI · Llama 3.3 70B | wallet | ~0.3 |

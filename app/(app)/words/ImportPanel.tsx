@@ -6,10 +6,12 @@
  * list of import sources; each one either jumps to a tool already on the
  * page (the preset sets → the "Add a list" tree) or opens its own body here
  * (a CSV / Excel table → the word-list import with its templates). "Any
- * file" keeps files of any type as the user's own (StoredFiles.tsx), stored
- * only: turning them into words comes next, on these stored files.
+ * file" keeps files of any type as the user's own (StoredFiles.tsx). A stored
+ * file can be turned into a word table by AI (AiFileImport.tsx) — offered
+ * only behind `words.import-ai` and when GET /api/import/ai says the user's
+ * credits cover it.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useIntlayer } from "next-intlayer";
 import { Icon, type IconName } from "@/app/components/icons";
 import { WORDS_ADD_HASH } from "@/lib/home-features";
@@ -43,13 +45,33 @@ export function goToAddTree() {
 }
 
 /** The button; the panel renders where the parent puts `panel` (under the title row). */
-export function useImportPanel({ onAdded }: { onAdded: () => void }): {
+export function useImportPanel({
+  onAdded,
+  aiOn = false,
+}: {
+  onAdded: () => void;
+  /** The server gate of the stored files' AI button (`importAiOn`); credits are asked when the panel opens. */
+  aiOn?: boolean;
+}): {
   button: ReactNode;
   panel: ReactNode;
 } {
   const t = useIntlayer("words-import-panel");
   const [open, setOpen] = useState(false);
   const [source, setSource] = useState<SourceId | null>(null);
+  const [aiAvailable, setAiAvailable] = useState(false);
+  // On opening: do the user's credits cover the AI conversion? Asked once per open.
+  useEffect(() => {
+    if (!open || !aiOn) return;
+    let live = true;
+    fetch("/api/import/ai", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b: { available?: boolean } | null) => live && setAiAvailable(!!b?.available))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [open, aiOn]);
   const close = () => {
     setOpen(false);
     setSource(null);
@@ -127,7 +149,7 @@ export function useImportPanel({ onAdded }: { onAdded: () => void }): {
       </div>
       {source === "files" && (
         <div className="mt-4">
-          <StoredFiles />
+          <StoredFiles ai={aiOn && aiAvailable} onAdded={() => onAdded()} />
         </div>
       )}
       {source === "table" && (

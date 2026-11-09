@@ -16,6 +16,21 @@ import {
 const run = (p: ReadProgress, ...evs: ReadEvent[]) => evs.reduce(readStep, p);
 
 describe("readStep: following the voice queue", () => {
+  it("drop: one line's sentences leave the mirror, and the session's smaller count then matches", () => {
+    let p = run(
+      initialRead(),
+      { type: "queued", n: 3 },
+      { type: "enqueue", id: "ask", n: 2 },
+      { type: "enqueue", id: "b", n: 1 },
+      { type: "start" },
+    );
+    p = run(p, { type: "drop", id: "ask" }, { type: "queued", n: 1 }, { type: "start" });
+    expect(p.queue).toEqual([{ id: "b", idx: 0 }]);
+    expect(sentenceState(p, "b", 0)).toBe("speaking");
+    expect(p.done).toEqual({});
+    expect(readStep(p, { type: "drop", id: "none" })).toBe(p);
+  });
+
   it("a reply read through: each sentence speaking, then spoken", () => {
     let p = run(initialRead(), { type: "queued", n: 3 }, { type: "enqueue", id: "a", n: 3 });
     expect(p.unmatched).toBe(0);

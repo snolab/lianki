@@ -81,7 +81,7 @@ export function FirstRunChoice({ labels }: { labels: FirstRunLabels }) {
           {labels.title}
         </h2>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{labels.body}</p>
-        <p className="mt-1 text-sm font-medium text-green-700 dark:text-green-400">
+        <p className="mt-1 text-sm font-medium text-gold-700 dark:text-gold-300">
           {labels.syncFree}
         </p>
 

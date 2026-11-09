@@ -241,7 +241,7 @@ export function BookScan({
             )}
             {seg(
               b.fresh,
-              "bg-[oklch(0.62_0.12_250/0.55)] dark:bg-[oklch(0.72_0.12_250/0.55)]",
+              "bg-[oklch(0.62_0.132_22.3/0.55)] dark:bg-[oklch(0.72_0.132_22.3/0.55)]",
               "n",
             )}
             {seg(
@@ -286,7 +286,7 @@ export function BookScan({
                 )}
                 <button
                   type="button"
-                  className="min-h-[44px] text-xs font-medium text-[oklch(0.5_0.14_250)] underline-offset-2 hover:underline dark:text-[oklch(0.75_0.12_250)]"
+                  className="min-h-[44px] text-xs font-medium text-[oklch(0.5_0.154_22.3)] underline-offset-2 hover:underline dark:text-[oklch(0.75_0.132_22.3)]"
                   aria-expanded={open}
                   data-testid="read-scan-toggle"
                   onClick={() => setOpen((o) => !o)}

@@ -28,6 +28,12 @@
 // - "Any file" (stored, not processed): a file of any type uploaded in the
 //   panel is listed with its name and size, and Delete removes it; without
 //   the gate its route is 404 like the rest.
+// - "Words with AI" on a stored file (`words.import-ai`, off in the light run,
+//   on in the dark): off → a `dev` holder only (another user: GET says off);
+//   on → every user. A new account with no credits is never offered it (GET
+//   says unavailable, no button on the file) and converting its stored file
+//   is refused before any model call (402, or 503 where no Workers AI is
+//   configured).
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -54,12 +60,18 @@ const d1 = (command) => {
   );
   if (r.status !== 0) throw new Error(`local D1: ${r.stderr}`);
 };
-const setFlag = (on) =>
+const AI_FLAG = "words.import-ai";
+const setFlag = (on, key = FLAG) =>
   d1(
     on
-      ? `INSERT OR REPLACE INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('${FLAG}', 1, '2026-11-09T00:00:00.000Z', 'qa')`
-      : `DELETE FROM feature_flags WHERE key = '${FLAG}'`,
+      ? `INSERT OR REPLACE INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('${key}', 1, '2026-11-09T00:00:00.000Z', 'qa')`
+      : `DELETE FROM feature_flags WHERE key = '${key}'`,
   );
+const convert = (ctx, fileId) =>
+  ctx.request.post("/api/import/ai", {
+    data: { fileId, locale: "en" },
+    headers: { origin: BASE, "content-type": "application/json" },
+  });
 
 const CSV = [
   "Word,Meaning,Example",
@@ -116,6 +128,8 @@ async function notTheOwner(tag) {
     (await ctx.request.get("/api/import/files")).status() === 404,
     `${tag}, not the owner: the stored-files route is 404`,
   );
+  const ai = await (await ctx.request.get("/api/import/ai")).json();
+  check(ai.on === false, `${tag}, not the owner: Words with AI is off (${JSON.stringify(ai)})`);
   await page.goto("/words?lang=en");
   await page.waitForTimeout(3000);
   check(
@@ -143,6 +157,11 @@ async function everyone(tag) {
     (await ctx.request.get("/api/import/files")).status() === 200,
     `${tag}, not the owner: the stored-files route answers`,
   );
+  const ai = await (await ctx.request.get("/api/import/ai")).json();
+  check(
+    ai.available === false,
+    `${tag}, not the owner, no credits: Words with AI not offered (${JSON.stringify(ai)})`,
+  );
   await page.goto("/words?lang=en");
   await page.locator('[data-qa="words-import-button"]').waitFor({ timeout: 15000 });
   check(true, `${tag}, not the owner: the Import button on /words`);
@@ -156,7 +175,10 @@ try {
 
   for (const scheme of ["light", "dark"]) {
     // Light: the owner with the flag off; dark: with it on.
-    if (scheme === "dark") setFlag(true);
+    if (scheme === "dark") {
+      setFlag(true);
+      setFlag(true, AI_FLAG);
+    }
     console.log(`— iPhone 13 ${scheme}`);
     const ctx = await newSilentContext(browser, {
       ...devices["iPhone 13"],
@@ -380,6 +402,52 @@ try {
       `any file: stored and listed (${row.replace(/\s+/g, " ")})`,
     );
     await page.screenshot({ path: join(OUT, `words-files-${scheme}.png`), fullPage: true });
+    // "Words with AI": never offered without credits; flag off, not even routed.
+    check(
+      (await stored.first().locator('[data-qa="words-import-file-ai"]').count()) === 0,
+      "/words: no credits → no 'Words with AI' on the stored file",
+    );
+    const quota = await (await ctx.request.get("/api/import/ai")).json();
+    check(
+      quota.available === false,
+      `GET /api/import/ai: not available (${JSON.stringify(quota)})`,
+    );
+    const fileId = (await (await ctx.request.get("/api/import/files")).json()).items?.[0]?.id;
+    let conv = (await convert(ctx, fileId)).status();
+    // The flag just turned on reaches the server within its 30 s cache.
+    for (let i = 0; conv === 404 && i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      conv = (await convert(ctx, fileId)).status();
+    }
+    check(
+      conv === 402 || conv === 503,
+      `POST /api/import/ai: refused without credits (402/503) (${conv})`,
+    );
+    // My Files: the file in the Word lists folder, served back to its owner.
+    const mine = await (await ctx.request.get("/api/my/files")).json();
+    check(
+      (mine.items ?? []).some((i) => i.id === fileId && i.source === "import"),
+      "/api/my/files: the file, from the Import panel",
+    );
+    const back = await ctx.request.get(`/api/my/files/${fileId}`);
+    check(
+      back.status() === 200 && (await back.body()).length === 6,
+      `GET /api/my/files/<id>: the owner gets the bytes (${back.status()})`,
+    );
+    const filesPage = await ctx.newPage();
+    await filesPage.goto("/my/files?lang=en");
+    const folder = filesPage.locator('[data-qa="my-files-folder-import"]');
+    await folder.waitFor({ timeout: 15000 });
+    check(
+      /lesson-notes\.bin/.test(await folder.innerText()),
+      "/my/files: the file in the Word lists folder",
+    );
+    await filesPage.screenshot({ path: join(OUT, `my-files-${scheme}.png`), fullPage: true });
+    check(
+      await filesPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      "/my/files: no sideways scroll at phone width",
+    );
+    await filesPage.close();
     await stored.first().locator('[data-qa="words-import-file-delete"]').click();
     await page.waitForTimeout(1500);
     check((await stored.count()) === 0, "any file: Delete removes it");
@@ -470,6 +538,7 @@ try {
 } finally {
   try {
     setFlag(false);
+    setFlag(false, AI_FLAG);
     if (granted.length)
       d1(
         `DELETE FROM account_permission WHERE email IN (${granted.map((e) => `'${e}'`).join(", ")})`,

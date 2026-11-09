@@ -28,6 +28,12 @@
   // lianki-push (workers/push): a new build announces itself through this,
   // and open pages hear it over their WebSocket (lib/announce-build.ts).
   "services": [{ "binding": "PUSH", "service": "lianki-push" }],
+  // Source maps are not uploaded: wrangler's bundle of worker.ts plus the
+  // OpenNext build produced 61.6 MiB of maps on 2026-11-10, over Cloudflare's
+  // 60 MiB limit (error 10021), and every deploy failed. Stack traces in Workers
+  // Logs and `wrangler tail` show bundled positions instead. To bring maps
+  // back, they must be slimmed under the limit first (docs/shipping.md).
+  "upload_source_maps": false,
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

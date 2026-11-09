@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { barText, chartModel, type MonthBar } from "@/lib/signups-chart";
 
-const BAR = "fill-[oklch(0.5_0.12_250)] dark:fill-[oklch(0.74_0.11_250)]";
-const LINE = "stroke-[oklch(0.5_0.12_250)] dark:stroke-[oklch(0.74_0.11_250)]";
+const BAR = "fill-[oklch(0.5_0.132_22.3)] dark:fill-[oklch(0.74_0.121_22.3)]";
+const LINE = "stroke-[oklch(0.5_0.132_22.3)] dark:stroke-[oklch(0.74_0.121_22.3)]";
 
 /**
  * New accounts per JST calendar month. Finished months are solid bars; the
@@ -30,7 +30,9 @@ export default function SignupsChart({ series }: { series: MonthBar[] }) {
         <h2 className="text-base font-medium">{c.signupsTitle.value}</h2>
         <div className="flex gap-3 text-xs">
           <span>
-            <span className={`${swatch} bg-[oklch(0.5_0.12_250)] dark:bg-[oklch(0.74_0.11_250)]`} />
+            <span
+              className={`${swatch} bg-[oklch(0.5_0.132_22.3)] dark:bg-[oklch(0.74_0.121_22.3)]`}
+            />
             {c.signupsLegend.value}
           </span>
           <span>

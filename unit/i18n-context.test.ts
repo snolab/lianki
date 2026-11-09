@@ -3,6 +3,7 @@ import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import importWordlist from "@/app/(app)/import/wordlist-import.content";
 import wordsImportPanel from "@/app/(app)/words/import-panel.content";
+import myFiles from "@/app/(app)/my/files/my-files.content";
 import bottomNav from "@/app/components/bottom-nav.content";
 import learningPartner from "@/app/components/learning-partner.content";
 import devSwitch from "@/app/components/dev-switch.content";
@@ -73,6 +74,8 @@ import devPages from "@/app/(app)/dev/dev-pages.content";
 import ytSongs from "@/app/components/yt-clip/yt-songs.content";
 import pillChat from "@/app/components/pill-chat.content";
 import signInErrors from "@/app/(app)/sign-in/errors.content";
+import activityTally from "@/app/(app)/list/components/activity-tally.content";
+import devFlagToast from "@/app/(app)/dev/flags/flag-toast.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -174,6 +177,9 @@ describe.each([
   ["dev-pages", devPages],
   ["yt-songs", ytSongs],
   ["pill-chat", pillChat],
+  ["my-files", myFiles],
+  ["activity-tally", activityTally],
+  ["dev-flag-toast", devFlagToast],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

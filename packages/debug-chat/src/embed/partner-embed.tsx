@@ -85,7 +85,7 @@ function Note({ text, appOrigin, onHide, hideLabel, openLabel }: {
           href={appOrigin}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: "oklch(0.45 0.12 250)", textDecoration: "underline", display: "inline-block", marginTop: "4px" }}
+          style={{ color: "oklch(0.45 0.132 22.3)", textDecoration: "underline", display: "inline-block", marginTop: "4px" }}
         >
           {openLabel}
         </a>

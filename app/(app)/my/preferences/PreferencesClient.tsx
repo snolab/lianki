@@ -14,6 +14,7 @@ import { useTextSizes } from "@/lib/use-text-size";
 import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
 import { ExternalLinkSettings } from "@/app/components/ExternalLinkSettings";
 import { AppBadgeSettings } from "@/app/components/AppBadgeSettings";
+import { MailSettings } from "@/app/components/MailSettings";
 import { LanguageSettings } from "@/app/components/LanguageSettings";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
@@ -294,6 +295,9 @@ export default function PreferencesClient({
       {/* Page titles — follows the account (docs/title-clean.md) */}
       <TitleRulesSettings />
 
+      {/* Email: which mails the account gets — follows the account (lib/mail-templates/kinds.ts) */}
+      <MailSettings />
+
       {/* Links to other sites — follows the account (lib/external-link.ts) */}
       <ExternalLinkSettings />
 
@@ -407,8 +411,8 @@ export default function PreferencesClient({
                             pattern.type === "domain"
                               ? "bg-blue-900/30 text-blue-400"
                               : pattern.type === "title"
-                                ? "bg-green-900/30 text-green-400"
-                                : "bg-purple-900/30 text-purple-400"
+                                ? "bg-gold-300/40 text-gold-800 dark:bg-gold-300/20 dark:text-gold-300"
+                                : "bg-gray-500/20 text-gray-700 dark:text-gray-300"
                           }`}
                         >
                           {pattern.type}

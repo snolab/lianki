@@ -9,9 +9,12 @@ import {
   ganttRow,
   ganttWindow,
   isLate,
+  isParked,
+  parkMark,
   shownTasks,
   splitTitle,
 } from "./eta";
+import { parkedBar } from "./gantt-view";
 import type { ChatStrings } from "./wire";
 
 /**
@@ -40,8 +43,8 @@ export const ETA_COLORS = {
     muted: "oklch(0.45 0.02 260)",
     late: "oklch(0.47 0.17 27)",
     track: "oklch(0.96 0.006 260)",
-    bar: "oklch(0.905 0.04 250)",
-    fill: "oklch(0.86 0.07 250)",
+    bar: "oklch(0.905 0.044 22.3)",
+    fill: "oklch(0.86 0.077 22.3)",
     past: "oklch(0.9 0.05 25)",
     done: "oklch(0.89 0.06 150)",
   },
@@ -50,8 +53,8 @@ export const ETA_COLORS = {
     muted: "oklch(0.8 0.01 260)",
     late: "oklch(0.8 0.12 25)",
     track: "oklch(0.24 0.01 260)",
-    bar: "oklch(0.3 0.04 250)",
-    fill: "oklch(0.38 0.08 250)",
+    bar: "oklch(0.3 0.044 22.3)",
+    fill: "oklch(0.38 0.088 22.3)",
     past: "oklch(0.36 0.08 25)",
     done: "oklch(0.38 0.07 150)",
   },
@@ -130,7 +133,8 @@ function FillLine({
 }) {
   return (
     <span
-      className={`relative isolate flex min-w-0 items-center gap-1.5 overflow-hidden rounded ${className}`}
+      // In the glass strip a full pill (end caps half its height), concentric with the strip's corners.
+      className={`relative isolate flex min-w-0 items-center gap-1.5 overflow-hidden ${glass ? "rounded-full" : "rounded"} ${className}`}
       style={{ background: glass ? "transparent" : both("track"), color: both("text") }}
     >
       <span
@@ -179,7 +183,15 @@ export function EtaClockIcon({ size = 12 }: { size?: number }) {
 
 type EtaText = Pick<
   ChatStrings,
-  "etaTasks" | "etaLeft" | "etaNext" | "etaReached" | "etaDone" | "etaOpen" | "etaList"
+  | "etaTasks"
+  | "etaLeft"
+  | "etaNext"
+  | "etaReached"
+  | "etaDone"
+  | "etaOpen"
+  | "etaList"
+  | "etaWaitingYou"
+  | "etaReminder"
 >;
 
 /** One task's state: done, or its time left (compactTime, negative past due). */
@@ -324,7 +336,9 @@ export function EtaList({
         {shown.map((t) => {
           const g = ganttRow(t, win, now);
           const reached = !t.done && t.at <= now;
-          const state = t.done ? "done" : reached ? "reached" : "running";
+          const parked = isParked(t);
+          const mark = parkMark(t);
+          const state = t.done ? "done" : parked ? "parked" : reached ? "reached" : "running";
           return (
             <li
               key={t.id}
@@ -344,9 +358,11 @@ export function EtaList({
                   width: `${g.plan}%`,
                   minWidth: 3,
                   background: both(t.done ? "done" : "bar"),
+                  // Parked on a person: hollow and hatched, no fill (gantt-view.ts parkedBar).
+                  ...(parked ? parkedBar(both("bar"), both("muted")) : {}),
                 }}
               >
-                {!t.done && g.fill > 0 && (
+                {!t.done && !parked && g.fill > 0 && (
                   <span
                     data-testid="debug-chat-eta-fill"
                     className="absolute inset-y-0 start-0"
@@ -354,7 +370,7 @@ export function EtaList({
                   />
                 )}
               </span>
-              {g.over > 0 && (
+              {g.over > 0 && !parked && (
                 <span
                   aria-hidden
                   data-testid="debug-chat-eta-over"
@@ -372,9 +388,30 @@ export function EtaList({
                 className="absolute inset-y-0 -z-10 w-0.5 -translate-x-1/2 rtl:translate-x-1/2"
                 style={{ insetInlineStart: `${g.now}%`, background: both("late") }}
               />
+              {mark && (
+                <span
+                  role="img"
+                  aria-label={strings.etaWaitingYou}
+                  title={strings.etaWaitingYou}
+                  data-testid="debug-chat-eta-mark"
+                  className="shrink-0 font-bold"
+                  style={{ color: both("late") }}
+                >
+                  {mark}
+                </span>
+              )}
               <TitleParts title={t.title} />
               {t.done ? (
                 <span className="shrink-0">{strings.etaDone}</span>
+              ) : parked ? (
+                <span
+                  data-testid="debug-chat-eta-time"
+                  data-parked={t.parked}
+                  className="shrink-0 tabular-nums"
+                  style={{ color: both("muted") }}
+                >
+                  {strings.etaReminder.replace("{t}", compactTime(t.at - now))}
+                </span>
               ) : (
                 <TimeLabel ms={t.at - now} />
               )}

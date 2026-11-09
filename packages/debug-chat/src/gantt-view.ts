@@ -163,9 +163,9 @@ export const GANTT_COLORS = {
     late: "oklch(0.46 0.18 27)",
     track: "oklch(0.985 0.004 260)",
     grid: "oklch(0.9 0.01 260)",
-    bar: "oklch(0.62 0.13 250 / 0.22)",
-    queued: "oklch(0.62 0.13 250 / 0.1)",
-    fill: "oklch(0.6 0.15 250 / 0.2)",
+    bar: "oklch(0.62 0.143 22.3 / 0.22)",
+    queued: "oklch(0.62 0.143 22.3 / 0.1)",
+    fill: "oklch(0.6 0.165 22.3 / 0.2)",
     past: "oklch(0.63 0.2 25 / 0.24)",
     done: "oklch(0.66 0.15 150 / 0.28)",
   },
@@ -175,9 +175,9 @@ export const GANTT_COLORS = {
     late: "oklch(0.82 0.11 25)",
     track: "oklch(0.19 0.01 260)",
     grid: "oklch(0.3 0.01 260)",
-    bar: "oklch(0.68 0.12 250 / 0.24)",
-    queued: "oklch(0.68 0.12 250 / 0.12)",
-    fill: "oklch(0.7 0.14 250 / 0.18)",
+    bar: "oklch(0.68 0.132 22.3 / 0.24)",
+    queued: "oklch(0.68 0.132 22.3 / 0.12)",
+    fill: "oklch(0.7 0.154 22.3 / 0.18)",
     past: "oklch(0.66 0.18 25 / 0.3)",
     done: "oklch(0.7 0.14 150 / 0.26)",
   },
@@ -205,12 +205,13 @@ export function ganttRowsByEnd<T extends { start: number; at: number; done?: boo
  * now. -1 with no rows.
  */
 export function focusRow(
-  rows: readonly { at: number; done?: boolean; doneAt?: number }[],
+  rows: readonly { at: number; done?: boolean; doneAt?: number; parked?: string }[],
   now: number,
 ): number {
   let best = -1;
+  // A parked task (waiting, blocked) is no work ending: its time is a reminder.
   rows.forEach((t, i) => {
-    if (!t.done && t.at > now && (best < 0 || t.at < rows[best]!.at)) best = i;
+    if (!t.done && !t.parked && t.at > now && (best < 0 || t.at < rows[best]!.at)) best = i;
   });
   if (best >= 0) return best;
   rows.forEach((t, i) => {
@@ -219,10 +220,76 @@ export function focusRow(
   return best;
 }
 
+/**
+ * A parked row's bar (waiting for the owner, blocked): hollow and hatched, no
+ * progress fill, so it never reads as work running. `line` is its edge,
+ * `hatch` the stripes' colour.
+ */
+export const parkedBar = (hatch: string, line: string) => ({
+  background: `repeating-linear-gradient(135deg, ${hatch} 0 3px, transparent 3px 7px)`,
+  outline: `1px solid ${line}`,
+  outlineOffset: -1,
+});
+
+/*
+ * The reported progress (owner, 2026-11-10): the agent's --pct, not elapsed
+ * time, so it is drawn apart from the bar — an underline beneath the planned
+ * span, pct × its width, tinted by where its end sits against the Now line.
+ */
+
+/** The underline's end this many px left of Now is behind schedule, right of it ahead. */
+export const GANTT_PACE_MARGIN_PX = 6;
+
+export type Pace = "behind" | "on" | "ahead";
+
+/** Where the progress underline's end (`endX`) sits against Now (`nowX`), both px on the content. */
+export function paceOf(endX: number, nowX: number, margin = GANTT_PACE_MARGIN_PX): Pace {
+  if (endX < nowX - margin) return "behind";
+  if (endX > nowX + margin) return "ahead";
+  return "on";
+}
+
+/**
+ * The underline's colours: non-text, at least 3:1 against the Gantt's track
+ * in each theme (unit/gantt-pace.test.ts computes it).
+ */
+export const PACE_COLORS = {
+  light: {
+    on: "oklch(0.52 0.15 250)",
+    behind: "oklch(0.55 0.16 55)",
+    ahead: "oklch(0.52 0.13 150)",
+  },
+  dark: {
+    on: "oklch(0.74 0.12 250)",
+    behind: "oklch(0.78 0.14 65)",
+    ahead: "oklch(0.76 0.13 150)",
+  },
+} as const;
+
+export const paceColor = (p: Pace) => `light-dark(${PACE_COLORS.light[p]}, ${PACE_COLORS.dark[p]})`;
+
+/** Set on the underline and its arrow while the task runs: they pulse together. */
+export const LIVE_ATTR = "data-gantt-live";
+
+/**
+ * The live underline's pulse, its own keyframes (the hot widget has no app
+ * stylesheet). Under reduced motion (or the app's "Turn off animations") it
+ * holds still and is dashed instead, still distinct from a static one.
+ */
+export const LIVE_CSS =
+  "@keyframes lk-gantt-live{0%,100%{opacity:1}50%{opacity:0.45}}" +
+  `[${LIVE_ATTR}]{animation:lk-gantt-live 1.6s ease-in-out infinite}` +
+  "@media (prefers-reduced-motion: reduce){" +
+  `[${LIVE_ATTR}]{animation:none}` +
+  `[${LIVE_ATTR}][data-gantt-line]{-webkit-mask-image:repeating-linear-gradient(90deg,oklch(0 0 0) 0 4px,transparent 4px 6px);mask-image:repeating-linear-gradient(90deg,oklch(0 0 0) 0 4px,transparent 4px 6px)}}` +
+  `html[data-motion="off"] [${LIVE_ATTR}]{animation:none}`;
+
 /** The rows either side of the focus whose durations set the zoom (a default for the config store). */
 export const GANTT_FIT_NEIGHBOURS = 3;
-/** The share of those durations the view's width holds: the owner's 95% (a default for the config store). */
+/** Which of those durations sets the zoom: the owner's 95th percentile (a default for the config store). */
 export const GANTT_FIT_PERCENTILE = 0.95;
+/** The share of the view's width that duration spans: the owner's 75% (a default for the config store). */
+export const GANTT_FIT_WIDTH = 0.75;
 /**
  * Blank space at the head and the tail of the row list, as a share of the
  * view's height (a default for the config store): an overscroll has room
@@ -246,6 +313,7 @@ export function quantile(xs: readonly number[], p: number): number {
 export function fitSpan(
   rows: readonly { start: number; at: number; done?: boolean; doneAt?: number }[],
   focus: number,
+  percentile = GANTT_FIT_PERCENTILE,
 ): number {
   if (focus < 0) return 0;
   const near = rows.slice(
@@ -254,16 +322,16 @@ export function fitSpan(
   );
   return quantile(
     near.map((t) => rowEnd(t) - Math.min(t.start, t.at)).filter((d) => d > 0),
-    GANTT_FIT_PERCENTILE,
+    percentile,
   );
 }
 
 /**
  * The view on open (and on Now): Now at the horizontal centre, past to the
  * left, future to the right, on either axis; zoomed (horizontally only) so
- * `span` fills the width — linear: span ms across the width; log: a span
- * centred on Now from edge to edge. Within each axis's zoom limits; no span
- * keeps the axis's own open zoom.
+ * `span` spans `share` (GANTT_FIT_WIDTH) of the width — linear: span ms
+ * across that share; log: a span centred on Now across it. Within each
+ * axis's zoom limits; no span keeps the axis's own open zoom.
  */
 export function homeView(
   kind: GanttScale,
@@ -271,13 +339,15 @@ export function homeView(
   now: number,
   w: number,
   fallback: { from: number; to: number },
+  share = GANTT_FIT_WIDTH,
 ): { axis: GanttAxis; scrollLeft: number } {
   const width = Math.max(1, w);
+  const fit = width * clamp(share, 0.01, 1);
   if (kind === "log") {
     const L = logPxPerE(width);
     const T =
       span > 0
-        ? clamp(span / 2 / Math.expm1(width / 2 / L), LOG_MIN_T, LOG_MAX_T)
+        ? clamp(span / 2 / Math.expm1(fit / 2 / L), LOG_MIN_T, LOG_MAX_T)
         : initialLogAxis(fallback.from, fallback.to, now, width).axis.T;
     const axis = logAxis(T, L, width);
     return { axis, scrollLeft: logX(axis, now, now) - width / 2 };
@@ -285,7 +355,7 @@ export function homeView(
   const lim = zoomLimits(width);
   const p =
     span > 0
-      ? clamp(width / span, lim.min, lim.max)
+      ? clamp(fit / span, lim.min, lim.max)
       : initialAxis(fallback.from, fallback.to, now, width).axis.pxPerMs;
   const screen = width / p;
   const axis = { lo: now - 3 * screen, hi: now + 3 * screen, pxPerMs: p };

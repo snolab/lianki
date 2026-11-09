@@ -11,12 +11,24 @@ name: Deploy Worker
 # fast lint + typecheck + unit job on a push to main; qa:all already ran in the
 # merge queue before the merge, and runs nightly (nightly-qa.yml), so the
 # deploy does not wait for it again.
+#
+# Held while full QA is red (docs/shipping.md, "Full QA and the deploy hold"):
+# the `hold` job reads the latest finished run of nightly-qa.yml ("Full QA",
+# on main after merges) and deploys nothing while it failed, starting a new full
+# run if none is queued. A green full run that follows a red one lifts the
+# hold and deploys the commit it tested. To deploy anyway, run this workflow
+# by hand with override_hold.
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [CI, Full QA]
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      override_hold:
+        description: Deploy even though full QA is red on main
+        type: boolean
+        default: false
 
 # Queue rather than cancel: a cancelled deploy can leave the D1 migration
 # applied with the old Worker still serving.
@@ -28,8 +40,49 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
-  deploy:
+  # The full-QA hold, as a check this workflow reads (scripts/ci/full-qa.ts).
+  hold:
+    name: Full QA hold
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write # read Full QA's runs; start one while held
+      contents: read
+    outputs:
+      deploy: ${{ steps.hold.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
+      - id: hold
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OVERRIDE: ${{ inputs.override_hold }}
+          FROM: ${{ github.event.workflow_run.name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          if [ "$OVERRIDE" = "true" ]; then
+            echo "::warning title=Full QA hold overridden::deploying by hand regardless of full QA"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          elif [ "$FROM" = "Full QA" ]; then
+            bun scripts/ci/full-qa.ts lifts "$RUN_ID"
+          else
+            bun scripts/ci/full-qa.ts hold
+          fi
+      # Held: this run goes red on purpose, so a held deploy is seen, not
+      # mistaken for one that happened. (A green full run that lifts nothing
+      # just skips the deploy.)
+      - name: Held?
+        if: steps.hold.outputs.deploy != 'true' && github.event.workflow_run.name != 'Full QA'
+        env:
+          REASON: ${{ steps.hold.outputs.reason }}
+        run: |
+          echo "::error title=Deploy held::$REASON. A green full QA run deploys main; to deploy now, run this workflow by hand with override_hold."
+          exit 1
+
+  deploy:
+    needs: hold
+    if: needs.hold.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

@@ -11,7 +11,16 @@
 
 export type AskOption = { id: string; label: string; recommended?: boolean };
 export type AskQuestion = { id: string; question: string; options: AskOption[]; multi?: boolean };
-export type Ask = { askId: string; questions: AskQuestion[]; expiresAt?: number };
+export type Ask = {
+  askId: string;
+  questions: AskQuestion[];
+  expiresAt?: number;
+  /**
+   * When the agent withdrew it (eval.ts withdraw): stamped by the hub only,
+   * never taken from an agent's ask. A withdrawn card takes no answer.
+   */
+  withdrawnAt?: number;
+};
 /** Chosen option ids, per question id. */
 export type AskChoices = Record<string, string[]>;
 /** Stamped by the hub: never taken from a page or an agent as is. */
@@ -112,12 +121,12 @@ export function checkChoices(a: Ask, raw: unknown): AskChoices | null {
   return out;
 }
 
-/** The card's state now. */
-export function askState(
-  m: { ask?: Ask; answer?: AskAnswer },
-  now: number,
-): "open" | "answered" | "expired" {
+export type AskState = "open" | "answered" | "withdrawn" | "expired";
+
+/** The card's state now: an answer stands; a withdrawal outranks the expiry. */
+export function askState(m: { ask?: Ask; answer?: AskAnswer }, now: number): AskState {
   if (m.answer) return "answered";
+  if (m.ask?.withdrawnAt !== undefined) return "withdrawn";
   if (m.ask?.expiresAt !== undefined && now >= m.ask.expiresAt) return "expired";
   return "open";
 }

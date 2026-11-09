@@ -7,7 +7,7 @@ import { type CSSProperties, createElement, type ReactNode, useRef } from "react
 import { linkClick, parseLinks, sameTab } from "./chat-links";
 import type { Rich, RichNode, RichString } from "./rich-text";
 
-const LINK_INK = "light-dark(oklch(0.46 0.17 255), oklch(0.8 0.12 255))";
+const LINK_INK = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))";
 const CODE_BG = "light-dark(oklch(0.5 0.01 260 / 0.13), oklch(0.85 0.01 260 / 0.16))";
 const RULE = "light-dark(oklch(0.5 0.01 260 / 0.35), oklch(0.85 0.01 260 / 0.35))";
 

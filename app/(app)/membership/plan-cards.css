@@ -194,14 +194,14 @@
     --plan-no: oklch(0.68 0.13 25);
   }
   [data-skin="paper"] .lk-plan--pro {
-    /* 瓷青紙: indigo sutra paper, gold ink */
-    --plan-bg: oklch(0.3 0.06 262);
+    /* 朱紙: seal-red sutra paper, gold ink (the bold variant; 6:1) */
+    --plan-bg: oklch(0.44 0.17 22.3);
     --plan-tex: url(/membership/flecks.svg), url(/membership/fibres-dark.svg);
     --plan-blend: normal;
     --plan-ink: oklch(0.92 0.035 88);
-    --plan-title: oklch(0.85 0.1 86);
-    --plan-stroke: oklch(0.82 0.1 86 / 0.85);
-    --plan-yes: oklch(0.84 0.1 86);
+    --plan-title: oklch(0.89 0.12 86);
+    --plan-stroke: oklch(0.89 0.12 86 / 0.85);
+    --plan-yes: oklch(0.89 0.12 86);
   }
 }
 

@@ -97,7 +97,7 @@ export interface CardTranslation {
 export function OwnKeyTag({ label }: { label: ReactNode }) {
   return (
     <span
-      className="ms-1.5 inline-block rounded-full bg-[oklch(0.62_0.12_250/0.14)] px-1.5 align-middle text-[0.7rem] leading-5 text-[oklch(0.45_0.12_250)] dark:bg-[oklch(0.72_0.12_250/0.18)] dark:text-[oklch(0.8_0.1_250)]"
+      className="ms-1.5 inline-block rounded-full bg-[oklch(0.62_0.132_22.3/0.14)] px-1.5 align-middle text-[0.7rem] leading-5 text-[oklch(0.45_0.132_22.3)] dark:bg-[oklch(0.72_0.132_22.3/0.18)] dark:text-[oklch(0.8_0.11_22.3)]"
       data-testid="read-select-own-key"
     >
       {label}
@@ -119,7 +119,7 @@ const famClass = (f: Fam): "known" | "learning" | "fresh" | "unrecognised" =>
 const SEG = {
   known: "bg-[oklch(0.58_0.14_155)] dark:bg-[oklch(0.76_0.14_155)]",
   learning: "bg-[oklch(0.58_0.14_155/0.45)] dark:bg-[oklch(0.76_0.14_155/0.45)]",
-  fresh: "bg-[oklch(0.62_0.12_250/0.55)] dark:bg-[oklch(0.72_0.12_250/0.55)]",
+  fresh: "bg-[oklch(0.62_0.132_22.3/0.55)] dark:bg-[oklch(0.72_0.132_22.3/0.55)]",
   unrecognised: "bg-[oklch(0.6_0.13_45/0.55)] dark:bg-[oklch(0.74_0.12_45/0.55)]",
 } as const;
 
@@ -312,7 +312,7 @@ export function SelectCard({
           {lemma.href ? (
             <a
               href={lemma.href}
-              className="font-medium underline decoration-[oklch(0.6_0.12_250/0.6)] underline-offset-2"
+              className="font-medium underline decoration-[oklch(0.6_0.132_22.3/0.6)] underline-offset-2"
             >
               {lemma.lemma}
             </a>

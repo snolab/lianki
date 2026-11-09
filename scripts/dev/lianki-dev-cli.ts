@@ -45,6 +45,7 @@ export const SUBCOMMANDS = [
   "say",
   "voices",
   "ask",
+  "withdraw",
   "inbox",
   "listen",
   "lane-listen",
@@ -67,6 +68,7 @@ export const USAGE: Record<Sub | "main", string> = {
   say       a chat line to the owner (or --to a thread)
   voices    the voice ids say --voice takes: the phone's own, and the cloud's
   ask      an ask card with tappable options
+  withdraw  withdraw an open ask card he no longer needs to answer
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
   lane-listen  a lane's own listener: the owner lines addressed to it, handed to its agent
@@ -103,6 +105,13 @@ ${EXITS}`,
   debug page's device voices, read once over the eval channel (needs the
   saved eval grant; never pairs unless --pair), zh, ja and en first; and
   the cloud's list. --cloud: the cloud's list only, no page asked.
+${GLOBAL}
+${EXITS}`,
+  withdraw: `usage: lianki-dev withdraw <askId|msgId> | --last [--to <thread|email>]
+  Withdraws an open ask card (eval.ts withdraw): the hub marks it withdrawn,
+  every open page greys it out ("Withdrawn", no options) and it is never read
+  aloud; a later tap is refused. --last: the latest open ask in the thread.
+  stdout: the hub's {"type":"withdrawn",…} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
   ask: `usage: lianki-dev ask [--node /path] [--to owner|<email>] --q "question" --opt "a" --opt "b" [--multi] [--q …] [--wait] [--timeout <s>]
@@ -272,6 +281,17 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
     if (!out.includes("--q") || !out.includes("--opt"))
       return new Error('ask needs --q "question" and at least one --opt');
     return ["ask", ...out, ...pair];
+  }
+  if (sub === "withdraw") {
+    const ids = rest.filter((a, i) => !a.startsWith("--") && rest[i - 1] !== "--to");
+    if (ids.length > 1) return new Error("withdraw takes one askId (or --last)");
+    if (!ids.length && !rest.includes("--last"))
+      return new Error("withdraw needs <askId> or --last");
+    for (const a of rest)
+      if (a.startsWith("--") && a !== "--last" && a !== "--to")
+        return new Error(`withdraw: unknown flag ${a}`);
+    if (rest.at(-1) === "--to") return new Error("--to needs a value");
+    return ["withdraw", ...rest, ...pair];
   }
   if (sub === "inbox") {
     const op = rest[0] ?? "list";

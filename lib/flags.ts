@@ -194,6 +194,13 @@ export const FLAGS = {
     default: false,
     group: "words",
   },
+  "words.import-ai": {
+    description:
+      "导入：AI 把已保存的文件变成单词：/words「导入」面板第三项「任意文件」里，每个已保存的文件旁多一个「用 AI 变成单词」按钮。服务器读出这个文件的文字（文本、PDF、Word、网页、字幕 .srt、Excel、照片），交给 DeepSeek（Cloudflare Workers AI）整理成和 CSV 模板一样的表（单词 / 释义 / 例句），然后走 CSV 导入同一条路：先看生成的 CSV（可下载、可修改）和预览，确认后才添加。用户自己的额度付费：先按这个文件最多可能花的扣住，做完按实际结算、多的退回；额度不够就说不够，不缩小；超过扣住的额度就停，不多扣。只有额度够最小一次扣住的人才看得到按钮。打开 = 所有登录用户（额度够的）；关闭（默认）= 只有有 dev 权限的人（额度够的，管理员免费）。",
+    default: false,
+    group: "words",
+  },
+
   "read.gdoc-stream": {
     description:
       "Google 文档实时同步：所有用户都能在 Google 文档页面上用用户脚本打开“同步到 Lianki”，这个文档之后每次改动都会更新到自己的 /reader，打开 /reader/<id>?streamingFrom=google-docs 的阅读页会实时更新并重新标记词。只同步用户自己打开开关的文档，且要保持文档标签页开着。关闭（默认）= 只有你本人能用。",

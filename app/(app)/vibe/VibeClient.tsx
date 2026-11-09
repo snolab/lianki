@@ -43,7 +43,7 @@ export type VibeDocProps = {
 
 const BUTTON =
   "min-h-11 px-5 rounded-lg font-medium disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2";
-const PRIMARY = `${BUTTON} bg-[oklch(0.5_0.16_255)] text-[oklch(0.99_0_0)]`;
+const PRIMARY = `${BUTTON} bg-[oklch(0.5_0.176_22.3)] text-[oklch(0.99_0_0)]`;
 const QUIET = `${BUTTON} border border-[oklch(0.7_0_0)] dark:border-[oklch(0.45_0_0)]`;
 const DIM = "text-[oklch(0.45_0_0)] dark:text-[oklch(0.72_0_0)]";
 
