@@ -248,6 +248,16 @@ const POS_KEY = "lk:debug-chat-pos";
 const REALIGN_MS = 1500;
 /** The chat bar: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
+/**
+ * The bottom strip's glass while the progress bar shows (owner, 2026-11-10):
+ * the bar's own look (INPUT_BG, backdrop-blur-md, saturate 150%) over both,
+ * so the input row with no progress bar looks as it always did.
+ */
+const STRIP_GLASS = {
+  background: INPUT_BG,
+  backdropFilter: "blur(12px) saturate(1.5)",
+  WebkitBackdropFilter: "blur(12px) saturate(1.5)",
+} as const;
 
 /**
  * Drag the box (by its header, or the collapsed pill) anywhere on screen: an
@@ -3972,6 +3982,13 @@ export function DebugChat({
     // Full screen: the glass is the whole chat area, which is the screen.
     fullLog: fullLog !== "off" || full,
   });
+  /** The progress bar (EtaBar) shows over the input. */
+  const etaShown = open && !tree && etaBar && etaList.length > 0;
+  /**
+   * The bar and the progress bar as one glass strip (owner, 2026-11-10); not
+   * while the typing glass is the frame, nor full screen (the screen is the glass).
+   */
+  const strip = etaShown && !full && !typingGlassShown;
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
     const look = typingGlassLook({
@@ -4301,12 +4318,6 @@ export function DebugChat({
       </ol>
       </div>
       {compact && compactEl}
-      {open && !tree && etaBar && etaList.length > 0 && (
-        // flow-root: the bar's own margin counts in the height the buttons above step over.
-        <div ref={setEtaBox} data-testid="debug-chat-eta-slot" className="flow-root">
-          <EtaBar tasks={etaList} now={etaNow} strings={t} onOpen={() => setGanttOpen(true)} />
-        </div>
-      )}
       {open && warning && (
         <div
           role="alert"
@@ -4393,6 +4404,25 @@ export function DebugChat({
           }}
         />
       )}
+      {etaShown && (
+        // Right over the bar. flow-root: the bar's own margin counts in the
+        // height the buttons above step over. In the strip it has no margin
+        // and no track: the strip's glass is behind it.
+        <div
+          ref={setEtaBox}
+          data-testid="debug-chat-eta-slot"
+          data-strip={strip || undefined}
+          className={`flow-root ${strip ? "px-1 pt-1" : ""}`}
+        >
+          <EtaBar
+            tasks={etaList}
+            now={etaNow}
+            strings={t}
+            glass={strip}
+            onOpen={() => setGanttOpen(true)}
+          />
+        </div>
+      )}
       {/* The log above is click-through: taps reach the page under it. Only the
       bar takes pointer events. Its width animates as two grid columns, the
       bar's and a spacer's, trading 1fr ⇄ 0fr: minimized, the bar's column is
@@ -4418,6 +4448,18 @@ export function DebugChat({
           ...(full ? fullBarSpan(sidebar) : {}),
         }}
       >
+        {strip && (
+          // The strip's one glass (owner, 2026-11-10): behind the progress
+          // bar and the bar alike, so the two read as one surface. Its own
+          // layer, not a wrapper: a backdrop-filter on an ancestor would
+          // become the box of the fixed menus and the floating lines in here.
+          <div
+            aria-hidden
+            data-testid="debug-chat-strip"
+            className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 border border-current/25"
+            style={{ ...barGeometry(), ...STRIP_GLASS, top: -etaH }}
+          />
+        )}
         <div style={LTR}>
         {open && (shownTarget !== ROOT_NODE || completions.length > 0) && (
           // The target node (a chip: × back to the main thread) and "@/…" completions.
@@ -4622,7 +4664,8 @@ export function DebugChat({
             // While the typing glass is up it is the frame: the bar's own box
             // goes inside it (border transparent, width kept; no tint, no blur).
             // Full screen keeps the bar's own box: the glass there is the whole screen.
-            ...barInGlass(typingGlassShown && !full),
+            // In the strip the strip's glass is its surface (the same glass).
+            ...barInGlass((typingGlassShown && !full) || strip),
             transition: reducedMotion() ? undefined : `${FADE}, ${BAR_IN_GLASS_TRANSITION}`,
           }}
           data-in-glass={(typingGlassShown && !full) || undefined}

@@ -1628,6 +1628,20 @@ cover it (owner, 2026-11-08, Android); `scripts/dev/debug-chat-eta-overlap-qa.mj
 checks it at 412×915 and 390×844, light and dark, scrolled up, in and out of
 full screen.
 
+**One glass strip** (owner, 2026-11-10): while the bar shows, it and the
+input row are one bottom strip with one frosted surface. The bar's slot sits
+right over the input row; a layer behind both (`data-testid="debug-chat-strip"`,
+absolute inside the row's grid, reaching `etaH` up) carries the input row's
+own glass (`INPUT_BG`, blur 12 px, saturate 1.5, hairline edge), the input
+row drops its own (`barInGlass`), and the bar drops its track (`EtaBar glass`).
+It is a layer, not a wrapper, because a backdrop-filter on an ancestor would
+become the box of the fixed menus and floating lines inside the row. With no
+bar the input row looks as it always did (it already wore that glass). Off
+while the typing glass is the frame, and full screen. While a task is in
+progress the fill shows activity: a soft light sweeps along it
+(`ETA_SHIMMER_CSS`, its own keyframes since the hot widget has no app
+stylesheet); none when all are done, and none under prefers-reduced-motion.
+
 ### Full-screen Gantt
 
 A tap on the ETA bar (or ⤢ on the state tree's list) opens the Gantt full
