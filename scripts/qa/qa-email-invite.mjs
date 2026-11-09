@@ -118,8 +118,7 @@ try {
     const send = page.locator('[data-qa="email-invite-send"]');
     const msg = page.locator('[data-qa="email-invite-msg"]');
 
-    // Two at once: refused (the browser's type=email check is bypassed with a ; list).
-    await input.evaluate((el) => el.setAttribute("type", "text"));
+    // Two at once: refused by the server, shown in our own words.
     await input.fill("qa-a@lianki.test; qa-b@lianki.test");
     await send.click();
     await msg.waitFor({ timeout: 10000 });

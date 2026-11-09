@@ -12,11 +12,16 @@ export function OptOutClient() {
   const [state, setState] = useState<State>("idle");
 
   useEffect(() => {
-    const p = new URLSearchParams(window.location.hash.slice(1));
-    const t = p.get("t");
-    setToken(t);
-    setFocusReport(p.get("report") === "1");
-    if (!t) setState("invalid");
+    const read = () => {
+      const p = new URLSearchParams(window.location.hash.slice(1));
+      const t = p.get("t");
+      setToken(t);
+      setFocusReport(p.get("report") === "1");
+      setState(t ? "idle" : "invalid");
+    };
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
   }, []);
 
   async function act(action: "unsubscribe" | "report") {

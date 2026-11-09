@@ -60,6 +60,7 @@ export function EmailInviteBox() {
   return (
     <form
       onSubmit={send}
+      noValidate
       data-qa="email-invite"
       className="space-y-2 border-t border-[oklch(0.5_0.02_250/0.25)] pt-6"
     >
@@ -69,11 +70,11 @@ export function EmailInviteBox() {
       </p>
       <div className="flex flex-wrap gap-2">
         <input
-          type="email"
+          type="text"
           inputMode="email"
+          autoCapitalize="none"
           autoComplete="off"
           spellCheck={false}
-          required
           maxLength={254}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
