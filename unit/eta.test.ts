@@ -516,8 +516,7 @@ describe("the page: summary, short times, the one timer", () => {
     expect(compactTime(89 * MIN)).toBe("1.5H");
     expect(compactTime(120 * MIN)).toBe("2H");
     expect(compactTime(150 * MIN)).toBe("2.5H");
-    // From a day the larger units (owner, 2026-11-10): one formatter with the Gantt.
-    expect(compactTime(27 * 60 * MIN)).toBe("1.1D");
+    expect(compactTime(27 * 60 * MIN)).toBe("27H");
     expect(compactTime(0)).toBe("0M");
     // Past due: negative, the same form.
     expect(compactTime(-5 * MIN)).toBe("-5M");

@@ -63,23 +63,6 @@ function liveNote(e: ProgressEntry) {
   return parts.join(" · ");
 }
 
-/**
- * Parked on a person (owner, 2026-11-10): blocked, or waiting for the owner —
- * status waiting-owner, or an open decision or approval nobody is working on
- * (a "doing" or "review" node with a question still runs).
- */
-export function parkedOf(
-  e: Pick<ProgressEntry, "status" | "kind">,
-  waiting: boolean,
-): "owner" | "blocked" | undefined {
-  if (e.status === "done") return undefined;
-  if (e.status === "blocked") return "blocked";
-  if (e.status === "waiting-owner") return "owner";
-  if (waiting && (e.kind === "decision" || e.kind === "approval"))
-    return e.status === "doing" || e.status === "review" ? undefined : "owner";
-  return undefined;
-}
-
 function apply(n: TreeNode, e: ProgressEntry, waiting: boolean, repo?: string) {
   n.live = true;
   n.status = STATUS[e.status];
@@ -101,9 +84,6 @@ function apply(n: TreeNode, e: ProgressEntry, waiting: boolean, repo?: string) {
       ...(e.status === "waiting"
         ? { queued: true, created: e.created, queuedMs: Math.max(60_000, e.etaAt - e.at) }
         : {}),
-      // Parked on a person: hollow, its time a reminder (eta.ts isParked).
-      ...(parkedOf(e, waiting) ? { parked: parkedOf(e, waiting) } : {}),
-      ...(e.kind === "decision" ? { question: true } : {}),
     };
   else delete n.eta;
   const live = liveNote(e);

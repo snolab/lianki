@@ -552,7 +552,7 @@ describe("log ticks: round M/H/D distances that never overlap", () => {
             noOverlap(ticks, charPx);
             for (const k of ticks) {
               expect(k.x).toBeCloseTo(logX(a, k.t, NOW), 6);
-              expect(k.label).toMatch(/^(Now|-?\d+(\.\d)?(M|H|D|W|Mo|Y))$/);
+              expect(k.label).toMatch(/^(Now|-?\d+(\.\d)?[MHD])$/);
               if (!k.now) expect(LOG_TICKS).toContain(Math.abs(k.t - NOW));
             }
           }

@@ -18,7 +18,6 @@
  * sends {type:"eta", id} on the progress socket, and the hub (which also has
  * its own alarm) sends the agent at most one line per estimate.
  */
-import { compactSpan } from "@snomiao/rgui/gantt";
 import type { TreeEta, TreeNode } from "./state-tree";
 
 /** A done task stays this long, then leaves the bar and the list. */
@@ -93,26 +92,16 @@ export const minutesLeft = (ms: number) => (ms <= 0 ? 0 : Math.ceil(ms / 60_000)
 /**
  * Every time label of the bar, the list and the minimized line, in one
  * language-neutral form (owner, 2026-11-08 20:34 JST): under an hour "<n>M"
- * (whole minutes, rounded up: "5M", "40M"); from an hour the largest unit it
- * reaches, to one decimal, a whole number without it: hours ("1H", "1.5H"
- * for 1 h 29 min), then days, weeks, months, years ("1.5D", "2W", "3Mo",
- * "1.2Y"; owner, 2026-11-10: over a year is Y, not D). One formatter with
- * the Gantt's axis labels (rgui gantt compactSpan). Past due it is negative
- * ("-5M", "-1.5H"), drawn red (EtaBar.tsx).
+ * (whole minutes, rounded up: "5M", "40M"); from an hour, hours to one
+ * decimal, rounded, a whole number without it ("1H", "1.5H" for 1 h 29 min,
+ * "2.5H"). Past due it is negative ("-5M", "-1.5H"), drawn red (EtaBar.tsx).
  */
 export function compactTime(ms: number): string {
   const min = minutesLeft(Math.abs(ms));
   const sign = ms < 0 && min > 0 ? "-" : "";
-  // One formatter with the Gantt's axis (rgui compactSpan): Y, Mo, W, D, H, M by size.
-  return `${sign}${compactSpan(min * 60_000, min)}`;
+  if (min < 60) return `${sign}${min}M`;
+  return `${sign}${Math.round(min / 6) / 10}H`;
 }
-
-/** Parked on a person (TreeEta.parked): no work runs, its time is a reminder. */
-export const isParked = (t: { done?: boolean; parked?: string }) => !t.done && !!t.parked;
-
-/** The red mark before a task that waits for the owner: "?" for a decision, else "!"; none otherwise. */
-export const parkMark = (t: { done?: boolean; parked?: string; question?: boolean }) =>
-  !t.done && t.parked === "owner" ? (t.question ? "?" : "!") : null;
 
 /** Past due: a negative label, drawn red. */
 export const isLate = (ms: number) => compactTime(ms).startsWith("-");

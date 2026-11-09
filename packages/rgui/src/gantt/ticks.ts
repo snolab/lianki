@@ -14,9 +14,7 @@ import {
   DAY,
   HOUR,
   MIN,
-  MONTH,
   WEEK,
-  YEAR,
   isLog,
   logX,
   timeAt,
@@ -70,46 +68,17 @@ export const tickMinPx = (charPx = CHAR_PX) =>
   Math.max(TICK_MIN_PX, labelPx("-13.5D", charPx) + TICK_GAP_PX);
 
 /**
- * The compact units, largest first: a span takes the largest one it reaches
- * (a year and over "Y", a month "Mo", a week "W", a day "D", an hour "H",
- * else minutes "M"). Language-neutral, the same everywhere a duration is
- * shown compactly (a Gantt's axis, a host's time-left labels).
- */
-export const COMPACT_UNITS: readonly (readonly [number, string])[] = [
-  [YEAR, "Y"],
-  [MONTH, "Mo"],
-  [WEEK, "W"],
-  [DAY, "D"],
-  [HOUR, "H"],
-];
-
-/**
- * A span in its compact unit, unsigned: whole minutes under an hour
- * (`minutes`, so a host can round them its own way), from an hour the
- * largest COMPACT_UNITS unit it reaches, to one decimal, a whole number
- * without it ("1H", "1.5H", "2D", "3W", "1.5Mo", "2Y"). A value that rounds
- * up to the next unit's size moves up ("23.96H" is "1D", not "24H").
- */
-export function compactSpan(abs: number, minutes = Math.round(abs / MIN)): string {
-  if (abs < HOUR && minutes < 60) return `${minutes}M`;
-  for (let i = 0; i < COMPACT_UNITS.length; i++) {
-    const [size, unit] = COMPACT_UNITS[i]!;
-    if (abs < size) continue;
-    const v = Math.round((abs / size) * 10) / 10;
-    const up = COMPACT_UNITS[i - 1];
-    if (up && v * size >= up[0]) return `${Math.round((v * size) / up[0] * 10) / 10}${up[1]}`;
-    return `${v}${unit}`;
-  }
-  return `${Math.round((abs / HOUR) * 10) / 10}H`;
-}
-
-/**
  * A tick's label, relative to now, language-neutral: "Now", "30M", "-30M",
- * "2H", "1.5H", "-6H", "1D", "-2W", "3Mo", "2Y" (compactSpan).
+ * "2H", "1.5H", "-6H", "1D", "-2D". Minutes under an hour, hours (one
+ * decimal) under a day, days (one decimal) from a day.
  */
 export function axisLabel(dt: number): string {
   if (Math.abs(dt) < MIN / 2) return "Now";
-  return `${dt < 0 ? "-" : ""}${compactSpan(Math.abs(dt))}`;
+  const sign = dt < 0 ? "-" : "";
+  const abs = Math.abs(dt);
+  if (abs < HOUR) return `${sign}${Math.round(abs / MIN)}M`;
+  if (abs < DAY) return `${sign}${Math.round((abs / HOUR) * 10) / 10}H`;
+  return `${sign}${Math.round((abs / DAY) * 10) / 10}D`;
 }
 
 export type Tick = { t: number; x: number; label: string; now: boolean };

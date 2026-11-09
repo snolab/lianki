@@ -205,13 +205,12 @@ export function ganttRowsByEnd<T extends { start: number; at: number; done?: boo
  * now. -1 with no rows.
  */
 export function focusRow(
-  rows: readonly { at: number; done?: boolean; doneAt?: number; parked?: string }[],
+  rows: readonly { at: number; done?: boolean; doneAt?: number }[],
   now: number,
 ): number {
   let best = -1;
-  // A parked task (waiting, blocked) is no work ending: its time is a reminder.
   rows.forEach((t, i) => {
-    if (!t.done && !t.parked && t.at > now && (best < 0 || t.at < rows[best]!.at)) best = i;
+    if (!t.done && t.at > now && (best < 0 || t.at < rows[best]!.at)) best = i;
   });
   if (best >= 0) return best;
   rows.forEach((t, i) => {
@@ -220,23 +219,10 @@ export function focusRow(
   return best;
 }
 
-/**
- * A parked row's bar (waiting for the owner, blocked): hollow and hatched, no
- * progress fill, so it never reads as work running. `line` is its edge,
- * `hatch` the stripes' colour.
- */
-export const parkedBar = (hatch: string, line: string) => ({
-  background: `repeating-linear-gradient(135deg, ${hatch} 0 3px, transparent 3px 7px)`,
-  outline: `1px solid ${line}`,
-  outlineOffset: -1,
-});
-
 /** The rows either side of the focus whose durations set the zoom (a default for the config store). */
 export const GANTT_FIT_NEIGHBOURS = 3;
-/** Which of those durations sets the zoom: the owner's 95th percentile (a default for the config store). */
+/** The share of those durations the view's width holds: the owner's 95% (a default for the config store). */
 export const GANTT_FIT_PERCENTILE = 0.95;
-/** The share of the view's width that duration spans: the owner's 75% (a default for the config store). */
-export const GANTT_FIT_WIDTH = 0.75;
 /**
  * Blank space at the head and the tail of the row list, as a share of the
  * view's height (a default for the config store): an overscroll has room
@@ -260,7 +246,6 @@ export function quantile(xs: readonly number[], p: number): number {
 export function fitSpan(
   rows: readonly { start: number; at: number; done?: boolean; doneAt?: number }[],
   focus: number,
-  percentile = GANTT_FIT_PERCENTILE,
 ): number {
   if (focus < 0) return 0;
   const near = rows.slice(
@@ -269,16 +254,16 @@ export function fitSpan(
   );
   return quantile(
     near.map((t) => rowEnd(t) - Math.min(t.start, t.at)).filter((d) => d > 0),
-    percentile,
+    GANTT_FIT_PERCENTILE,
   );
 }
 
 /**
  * The view on open (and on Now): Now at the horizontal centre, past to the
  * left, future to the right, on either axis; zoomed (horizontally only) so
- * `span` spans `share` (GANTT_FIT_WIDTH) of the width — linear: span ms
- * across that share; log: a span centred on Now across it. Within each
- * axis's zoom limits; no span keeps the axis's own open zoom.
+ * `span` fills the width — linear: span ms across the width; log: a span
+ * centred on Now from edge to edge. Within each axis's zoom limits; no span
+ * keeps the axis's own open zoom.
  */
 export function homeView(
   kind: GanttScale,
@@ -286,15 +271,13 @@ export function homeView(
   now: number,
   w: number,
   fallback: { from: number; to: number },
-  share = GANTT_FIT_WIDTH,
 ): { axis: GanttAxis; scrollLeft: number } {
   const width = Math.max(1, w);
-  const fit = width * clamp(share, 0.01, 1);
   if (kind === "log") {
     const L = logPxPerE(width);
     const T =
       span > 0
-        ? clamp(span / 2 / Math.expm1(fit / 2 / L), LOG_MIN_T, LOG_MAX_T)
+        ? clamp(span / 2 / Math.expm1(width / 2 / L), LOG_MIN_T, LOG_MAX_T)
         : initialLogAxis(fallback.from, fallback.to, now, width).axis.T;
     const axis = logAxis(T, L, width);
     return { axis, scrollLeft: logX(axis, now, now) - width / 2 };
@@ -302,7 +285,7 @@ export function homeView(
   const lim = zoomLimits(width);
   const p =
     span > 0
-      ? clamp(fit / span, lim.min, lim.max)
+      ? clamp(width / span, lim.min, lim.max)
       : initialAxis(fallback.from, fallback.to, now, width).axis.pxPerMs;
   const screen = width / p;
   const axis = { lo: now - 3 * screen, hi: now + 3 * screen, pxPerMs: p };
