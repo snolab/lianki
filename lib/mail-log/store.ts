@@ -181,8 +181,6 @@ export type MailFilter = {
   q?: string | null;
 };
 
-const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
-
 function whereOf(f: MailFilter): { sql: string; args: unknown[] } {
   const parts: string[] = [];
   const args: unknown[] = [];
@@ -195,13 +193,13 @@ function whereOf(f: MailFilter): { sql: string; args: unknown[] } {
   if (f.locale) add("locale = ?", f.locale);
   if (f.from != null) add("created_at >= ?", f.from);
   if (f.to != null) add("created_at < ?", f.to);
-  const q = f.q?.trim().toLowerCase();
+  const q = f.q?.trim();
   if (q) {
-    args.push(`%${likeEscape(q)}%`, q);
+    // instr, not LIKE: D1 refuses a LIKE pattern over 50 bytes, and an
+    // address is often longer. No wildcards to escape either.
+    args.push(q.toLowerCase(), q);
     const a = args.length - 1;
-    parts.push(
-      `(lower(recipient) LIKE ?${a} ESCAPE '\\' OR provider_id = ?${a + 1} OR id = ?${a + 1})`,
-    );
+    parts.push(`(instr(lower(recipient), ?${a}) > 0 OR provider_id = ?${a + 1} OR id = ?${a + 1})`);
   }
   return { sql: parts.length ? `WHERE ${parts.join(" AND ")}` : "", args };
 }

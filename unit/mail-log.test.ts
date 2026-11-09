@@ -585,8 +585,12 @@ describe("/api/dev/mails", () => {
     expect((await get("?q=re_1")).body.total).toBe(1);
     expect((await get("?q=x_y%25z")).body.total).toBe(1);
     expect((await get("?q=_")).body.total).toBe(1); // `_` is literal, not a wildcard
+    // Longer than D1's 50-byte LIKE limit: still found (instr, not LIKE).
+    const long = `qa+notice-desktop-light-1794225234752-x@example.net`;
+    await oneRow({ to: long });
+    expect((await get(`?q=${encodeURIComponent(long)}`)).body.total).toBe(1);
     // Bad filters are ignored, not errors.
-    expect((await get("?template=x&status=y&locale=zz&from=bad&page=-1")).body.total).toBe(3);
+    expect((await get("?template=x&status=y&locale=zz&from=bad&page=-1")).body.total).toBe(4);
     expect((await get("?page=1")).body.rows).toEqual([]);
     expect(jstDay("2027-01-15")).toBe(Date.parse("2027-01-14T15:00:00Z"));
     expect(jstDay("2027-13-45")).toBeNull();
