@@ -25,7 +25,7 @@ export function dbBackend(): "mongodb" | "d1" {
 
 /** Cloudflare's `request.cf` (IP geolocation etc.), or undefined outside a Worker request. */
 export function cfRequestProps():
-  | { city?: unknown; region?: unknown; country?: unknown; timezone?: unknown }
+  | { city?: unknown; region?: unknown; country?: unknown }
   | undefined {
   try {
     return getCloudflareContext().cf as never;
