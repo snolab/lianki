@@ -320,7 +320,7 @@ new lock ever takes the old one.
 ## Deploy order
 
 `.github/workflows/deploy-worker.yml` runs after CI passes on `main`: OpenNext
-build, asset hygiene, **Worker exports unchanged**
+build, route fingerprints (see "Smart refresh" below), asset hygiene, **Worker exports unchanged**
 (`scripts/ci/check-worker-exports.ts`), D1 migrations, then the Workers in
 this order:
 
@@ -349,6 +349,64 @@ owner's same-origin live preview (`lib/live-view/page-proxy.ts`): a request
 with no `live=` and no live cookie goes straight through. The export check bundles it like the deploy does
 (`wrangler deploy --dry-run`) and fails the run if the set differs from the
 build's own plus `DebugSessions`.
+
+## Smart refresh: "New version · Refresh" only for changed pages
+
+Owner, 2026-11-09: invite a refresh only when something changed on the page
+he is on. A deploy that touches other pages, the API, D1 or the Workers stays
+silent.
+
+**At build time** `scripts/build/route-fingerprints.ts` (a deploy step, right
+after the OpenNext build) reads the Next build's
+`.next/server/app/**/page_client-reference-manifest.js` — for each route, the
+client JS chunks and CSS of each layout and page it loads — and
+`.next/build-manifest.json` (runtime and polyfills). It writes
+`.open-next/assets/_lk/route-fp.json`:
+
+```json
+{ "build": "<sha20>", "shell": "<hash>", "routes": { "/words": "<hash>", "/read/[id]": "<hash>" } }
+```
+
+- `shell` hashes the content of what every page loads: runtime, polyfills,
+  the root layout's chunks and the global CSS.
+- each route hashes the content of its own chunks and CSS, minus the shell's
+  (route groups dropped from the key: `/(app)/words/page` → `/words`). A
+  change to `app/(app)/layout.tsx` moves every `(app)` route; a change to a
+  component used by one page moves that page only.
+- Content, not file names, and the build id is **never in client code**: it
+  is `<html data-build>` (root layout), read by `lib/build-id.ts`. With the id
+  inlined, the minifier picked different names in that chunk on every build,
+  so every deploy looked like a shell change. Checked on real builds: the same
+  code under two build ids gives identical fingerprints; a one-line change to
+  `StatsClient.tsx` moves `/stats` alone.
+
+**At deploy** the main Worker's first request per isolate
+(`lib/announce-build.ts`) reads that asset through `ASSETS` and posts the build
+id to lianki-push with the fingerprints in the `x-lk-fingerprints` header (the
+body stays the bare id, so the lianki-push still running during the deploy
+reads it as before). The VersionHub keeps fingerprints for the last 30 builds.
+
+**On the page** (`app/components/VersionNotice.tsx`) the socket connects as
+`/api/version/ws?b=<its build>`; the hub answers with what changed since that
+build: `{build, shell: bool, routes: {"/words": 1, "/list": 0, …}, force?}`.
+`refreshDecision` (`lib/smart-refresh.ts`) shows the button only if the shell
+changed, the current route changed (or is new), the deploy is forced, or it
+cannot tell (no fingerprints for the page's build — e.g. the first deploy with
+this, or a page older than 30 builds — or a path no route pattern matches).
+Otherwise the news is kept, and a soft navigation to a route that did change
+shows the button then. Debug devices still auto-reload, but only when the
+button would show. Event-driven as before: no new requests, no polling.
+
+**Forcing it for everyone** (a security fix, a broken client): put a
+`Force-Refresh: yes` trailer on the commit that lands on `main` (or run the
+step with `--force` / `LIANKI_FORCE_REFRESH=1`). The fingerprint file gets
+`"force": true`, and every open page shows the button.
+
+Tests: `unit/smart-refresh.test.ts` (diff → decision), `unit/route-fingerprints.test.ts`,
+the hub in `unit/debug-hub.test.ts`; `scripts/qa/qa-smart-refresh.ts` (qa:all
+`smart-refresh`, serverless) runs the real hub and the real notice in Chromium
+across builds that change another route, the current route, nothing
+client-side, and a forced one.
 
 ## Branch protection — two mechanisms
 

@@ -58,6 +58,12 @@ jobs:
           CF_BUILD: "1"
           DB_BACKEND: d1
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+      # Smart refresh (docs/shipping.md): per-route hashes of the client chunks,
+      # served as /_lk/route-fp.json and handed to lianki-push on the first
+      # request, so only pages whose code changed offer "New version · Refresh".
+      # A `Force-Refresh: yes` trailer on the commit makes every page offer it.
+      - name: Route fingerprints
+        run: bun scripts/build/route-fingerprints.ts --out .open-next/assets/_lk/route-fp.json
       # The exact files the Worker will serve as static assets: no secrets, env
       # files, keys or server source maps (docs/security-measures.md).
       - name: Static asset hygiene

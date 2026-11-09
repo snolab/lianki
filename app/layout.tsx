@@ -125,7 +125,14 @@ export default async function RootLayout({
   const boots = { strings: partner, leave, open, chatFull, etaBar, liHub };
   const box = boxConfig();
   return (
-    <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
+    <html
+      lang={LANG_TAGS[locale] ?? locale}
+      // The build serving this page, for client code (lib/build-id.ts): never
+      // inlined into client chunks, so a deploy without client changes leaves
+      // them identical (smart refresh, docs/shipping.md).
+      data-build={process.env.NEXT_PUBLIC_BUILD_ID ?? "dev"}
+      suppressHydrationWarning
+    >
       <head>
         {/* Calligraphy theme fonts (all OFL). Both are sliced by unicode-range, so a
             page fetches only the chunks for the characters it shows — CJK fonts are

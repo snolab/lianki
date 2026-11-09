@@ -1106,7 +1106,9 @@ try {
   // New-version notice: lianki-push (workers/push) names the serving build
   // over a WebSocket; a page from an older build offers a refresh. The push
   // service is not part of the local Worker, so the socket is mocked here.
-  await page.routeWebSocket("**/api/version/ws", (ws) =>
+  // The page names its build in ?b= (smart refresh); a bare {build} — no
+  // fingerprints — means "cannot tell", so the button shows.
+  await page.routeWebSocket(/\/api\/version\/ws(\?|$)/, (ws) =>
     ws.send(JSON.stringify({ build: "some-newer-build" })),
   );
   // A Learning Partner device reloads by itself instead of showing the
