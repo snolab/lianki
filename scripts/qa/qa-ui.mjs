@@ -544,6 +544,67 @@ for (const [w, h] of [
   check(true, "titles: your own pattern can be removed");
 }
 
+// API tokens: Revoke asks first (app/(app)/preferences/RevokeConfirm.tsx).
+// Cancel and Esc keep the token; only the confirming Revoke deletes it.
+{
+  const made = await page.evaluate(async () => {
+    const r = await fetch("/api/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "qa-revoke", scopes: ["study"], expiry: { days: 7 } }),
+    });
+    return r.status;
+  });
+  check(made === 200 || made === 201, `tokens: one made for the revoke check (HTTP ${made})`);
+  await page.goto(`${BASE}/preferences`, { waitUntil: "networkidle" });
+  const row = page.getByTestId("token-row").filter({ hasText: "qa-revoke" });
+  await row.waitFor({ timeout: budget(10000) });
+  await row.getByTestId("token-revoke").click();
+  const ask = row.getByTestId("token-revoke-confirm");
+  await ask.waitFor({ timeout: budget(5000) });
+  check(
+    (await ask.innerText()).includes("Revoke qa-revoke? Apps using it stop working at once."),
+    "tokens: Revoke asks first, naming the token",
+  );
+  check(
+    await row.getByTestId("token-revoke-cancel").evaluate((b) => b === document.activeElement),
+    "tokens: Cancel has the focus",
+  );
+  await page.keyboard.press("Escape");
+  await row.getByTestId("token-revoke").waitFor({ timeout: budget(5000) });
+  check(
+    await row.getByTestId("token-revoke").evaluate((b) => b === document.activeElement),
+    "tokens: Esc backs out and returns the focus to Revoke",
+  );
+  await page.keyboard.press("Enter"); // the keyboard opens the question again
+  await row.getByTestId("token-revoke-cancel").click();
+  check((await row.count()) === 1, "tokens: Cancel keeps the token");
+  await row.getByTestId("token-revoke").click();
+  await row.getByTestId("token-revoke-yes").click();
+  await row.waitFor({ state: "detached", timeout: budget(10000) });
+  const left = await page.evaluate(async () =>
+    ((await (await fetch("/api/token")).json()).tokens ?? []).filter((t) => t.name === "qa-revoke"),
+  );
+  check(left.length === 0, "tokens: the confirming Revoke deletes it");
+}
+
+// Profile: every signed-in user sees this sign-in's start and expiry
+// (SessionBasicsCard), never the raw session (dev only).
+{
+  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  const card = page.getByTestId("session-basics");
+  await card.waitFor({ timeout: budget(10000) });
+  const text = await card.innerText();
+  check(
+    /Signed in since .*\d{4}/.test(text) && /This session expires .*\d{4}/.test(text),
+    "profile: this sign-in's start and expiry are shown",
+  );
+  check(
+    !(await page.getByTestId("session-details").count()) && !/token|ipAddress/i.test(text),
+    "profile: no raw session dump or internals for an ordinary user",
+  );
+}
+
 // Sign-in errors are the page's own words, never the server's text
 // (lib/sign-in-errors.ts): a wrong password for the account made above is
 // tried as a sign-up, which the server refuses ("User already exists"); the

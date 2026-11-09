@@ -48,6 +48,8 @@ import readFormTags from "@/app/(app)/reader/read-form-tags.content";
 import learnerLevels from "@/app/components/level-badge.content";
 import learnerLevelUi from "@/app/components/level-ui.content";
 import profileEdit from "@/app/(app)/profile/profile-edit.content";
+import profileSession from "@/app/(app)/profile/session-basics.content";
+import preferencesPage from "@/app/(app)/preferences/page.content";
 import byokSettings from "@/app/components/byok-settings.content";
 import titleRules from "@/app/components/title-rules.content";
 import externalLink from "@/app/components/external-link.content";
@@ -140,6 +142,7 @@ describe.each([
   ["learner-levels", learnerLevels],
   ["learner-level-ui", learnerLevelUi],
   ["profile-edit", profileEdit],
+  ["profile-session", profileSession],
   ["byok-settings", byokSettings],
   ["title-rules", titleRules],
   ["external-link", externalLink],
@@ -185,5 +188,23 @@ describe.each([
       return c.split(/\s+/).length < 5 || c.trim() === en(k).trim();
     });
     expect(thin).toEqual([]);
+  });
+});
+
+// preferences-page adopts the pattern key by key ("Only recent keys have a line
+// so far"), so it is not in the full list above; its newer keys are held here.
+describe("preferences-page: keys that already carry context", () => {
+  const context = keyContext(preferencesPage.description);
+  it.each(["paperHeading", "resetSection"])("%s has a line of 5+ words", (k) => {
+    expect((context[k] ?? "").split(/\s+/).length).toBeGreaterThanOrEqual(5);
+  });
+  it("the Paper heading is a translated key, not the old hardcoded '紙紋 Paper'", () => {
+    const tr = (
+      preferencesPage.content as unknown as {
+        paperHeading: { translation: Record<string, string> };
+      }
+    ).paperHeading.translation;
+    expect(Object.keys(tr)).toHaveLength(16);
+    expect(Object.values(tr)).not.toContain("紙紋 Paper");
   });
 });
