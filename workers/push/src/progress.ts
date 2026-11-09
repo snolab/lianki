@@ -583,6 +583,7 @@ export class ProgressHub {
     await this.ctx.storage.put(historyKey(e.id), progressHistory(e));
     if (prev?.status === "done" || backdated) return;
     await this.ctx.storage.put(logKey(e.at, this.seq++ % 1_000_000, DONE), progressDone(e));
+    await this.ctx.storage.put(historyKey(e.id), progressHistory(e));
     const cut = this.now() - PROGRESS_STATS_TTL_MS;
     const all = [...(await this.ctx.storage.list<ProgressDone>({ prefix: DONE }))];
     for (const [i, [k, d]] of all.entries())
