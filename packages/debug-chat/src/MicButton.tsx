@@ -14,6 +14,7 @@ import {
   micStatus,
   postClip,
   sideClip,
+  encodeWav,
   postStt,
   resample,
 } from "./mic";
@@ -37,6 +38,19 @@ import { createKws } from "./wake-kws";
 import { MIC_BOX, MIC_RING } from "./bar-geometry";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
+import {
+  PTT_PREROLL_MS,
+  PTT_TAIL_MS,
+  chunkSamples,
+  createRing,
+  joinClip,
+  joinTexts,
+  type PttState,
+  onPttHolding,
+  pcmTap,
+  pttHolding,
+  setPttHolding,
+} from "./ptt";
 import { speechEnabled, voice } from "./voice";
 import { captureHeld, pageAudio } from "./page-audio";
 import { ECHO_WINDOW_MS, echoScore } from "./echo";
@@ -73,6 +87,8 @@ const MIC_PULSE = `@keyframes lk-mic-pulse{0%,100%{opacity:1;transform:scale(1)}
 @media (prefers-reduced-motion:reduce){[data-testid="debug-chat-mic-ring"][data-rec]{animation:none!important;box-shadow:0 0 0 3px ${REC}!important}}`;
 /** The agent speaking (capture held): a calm blue, unlike the red of capture. */
 const TALK = "oklch(0.62 0.14 250)";
+/** Push to talk held: seal red, darker than REC so white text on it is AA. */
+const PTT_RING = "oklch(0.5 0.2 27)";
 /** Passive (docs/wake-word.md): on, but only waiting for "Linky": a quiet grey-violet. */
 const WAIT = "oklch(0.62 0.06 290)";
 /** The local-STT dot: the Mac's model, connecting, or the cloud fallback. */
@@ -144,12 +160,106 @@ const script = (src: string) =>
  * the per-utterance debug log. The mic session (mic-session.ts) owns it:
  * the VADs below listen on it and never stop it.
  */
+/** The always-on session's open stream (push to talk records from it, and its pre-roll). */
+let liveStream: MediaStream | null = null;
 const micStream = async () => {
   const aec = aecOn();
   const s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aec) });
   noteTrack(s, aec);
+  liveStream = s;
   return s;
 };
+const liveTrack = () =>
+  liveStream?.getAudioTracks().some((t) => t.readyState === "live") ? liveStream : null;
+
+/**
+ * The pre-roll (ptt.ts): while the always-on mic is open, its last
+ * PTT_PREROLL_MS in a ring, in memory only. Started and stopped with the
+ * session's state; a hold takes it, never stored or sent otherwise.
+ */
+let preroll: { ring: ReturnType<typeof createRing>; stop: () => void } | null = null;
+const prerollOn = (on: boolean) => {
+  if (!on) {
+    preroll?.stop();
+    preroll?.ring.clear();
+    preroll = null;
+    return;
+  }
+  const ctx = audioCtx();
+  const s = liveTrack();
+  if (preroll || !ctx || !s) return;
+  const ring = createRing((ctx.sampleRate * PTT_PREROLL_MS) / 1000);
+  try {
+    preroll = { ring, stop: pcmTap(ctx, s, (c) => ring.push(c)) };
+  } catch {
+    preroll = null;
+  }
+};
+
+/**
+ * Push to talk's recorder (ptt.ts): `start` at the pointerdown (the
+ * session's open stream, else one of its own), `finish` keeps PTT_TAIL_MS
+ * more, then sends the pre-roll and the hold through the STT route (in
+ * pieces only past its size limit) and resolves to one line's text;
+ * `abort` drops everything. While it records, the always-on capture holds
+ * (setPttHolding), so the VAD makes no line of its own from it.
+ */
+export function pttRecorder() {
+  let rec: {
+    ctx: AudioContext;
+    pre: Float32Array;
+    chunks: Float32Array[];
+    stop: () => void;
+    own: MediaStream | null;
+  } | null = null;
+  let starting: Promise<void> | null = null;
+  const end = () => {
+    rec?.stop();
+    rec?.own?.getTracks().forEach((t) => t.stop());
+    rec = null;
+    setPttHolding(false);
+  };
+  return {
+    start() {
+      setPttHolding(true);
+      starting = (async () => {
+        const ctx = audioCtx();
+        if (!ctx) throw new Error("no audio context");
+        if (ctx.state !== "running") await ctx.resume().catch(() => {});
+        const live = liveTrack();
+        // Mic off: a stream of its own, closed with the clip (never the session's).
+        const own = live
+          ? null
+          : await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aecOn()) });
+        const chunks: Float32Array[] = [];
+        const pre = preroll?.ring.take() ?? new Float32Array(0);
+        rec = { ctx, pre, chunks, own, stop: pcmTap(ctx, (live ?? own)!, (c) => chunks.push(c)) };
+      })();
+      starting.catch(() => setPttHolding(false));
+    },
+    abort() {
+      void starting?.finally(end).catch(end);
+    },
+    async finish(): Promise<{ text: string; audioMs: number }> {
+      await starting;
+      await new Promise((r) => setTimeout(r, PTT_TAIL_MS));
+      const r = rec;
+      end();
+      if (!r) return { text: "", audioMs: 0 };
+      const held = new Float32Array(r.chunks.reduce((n, c) => n + c.length, 0));
+      let at = 0;
+      for (const c of r.chunks) {
+        held.set(c, at);
+        at += c.length;
+      }
+      const clip = resample(joinClip(r.pre, held), r.ctx.sampleRate, RATE);
+      const texts: string[] = [];
+      for (const piece of chunkSamples(clip))
+        texts.push((await postStt(encodeWav(piece), fetch, "audio/wav", sttHint())).text);
+      return { text: joinTexts(texts), audioMs: Math.round((clip.length / RATE) * 1000) };
+    },
+  };
+}
 
 /**
  * Whisper mode's input gain (adaptive.ts): the mic → a gain → a tanh soft
@@ -359,6 +469,8 @@ function session(): MicSession {
     fallback: (ev, s) => energy(ev, s as MediaStream),
     onState: (s, last) => {
       const active = s !== "off";
+      // Push to talk's pre-roll runs while the mic is open (ptt.ts), memory only.
+      prerollOn(active);
       v.setMic(active);
       pageAudio().setMic(active);
       // The user starts talking: over the agent it ducks (a barge-in if they
@@ -380,16 +492,19 @@ function session(): MicSession {
     // Held while the chat reads (voice.ts) or the page plays word audio (page-audio.ts).
     subscribeHold: (f) => {
       const page = pageAudio();
+      // Push to talk recording holds it too: the hold is one line, not the VAD's.
       const calc = () =>
-        f(captureHeld(v.state().hold, page.playing(), micAec(), page.always()));
+        f(captureHeld(v.state().hold, page.playing(), micAec(), page.always()) || pttHolding());
       calc();
       const a = v.subscribe(calc);
       const b = page.subscribe(calc);
       const c = onOpened(calc);
+      const d = onPttHolding(calc);
       return () => {
         a();
         b();
         c();
+        d();
       };
     },
     // The device goes along, so the Mac scores finals against this device's voiceprint.
@@ -587,8 +702,22 @@ export function DebugMic({
     onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
     wasDrag: () => boolean;
     description?: string;
+    /** Push to talk (ptt.ts): held shows the seal-red ring and the time held. */
+    ptt?: { state: PttState; since: number };
   };
 }) {
+  const held = gesture?.ptt?.state === "held" || gesture?.ptt?.state === "away";
+  const away = gesture?.ptt?.state === "away";
+  /** Seconds held, ticking once a second while held only. */
+  const [heldS, setHeldS] = useState(0);
+  const since = gesture?.ptt?.since ?? 0;
+  useEffect(() => {
+    if (!held) return setHeldS(0);
+    const tick = () => setHeldS(Math.floor((Date.now() - since) / 1000));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [held, since]);
   const [can, setCan] = useState(false);
   /** The page's mic session (mic-session.ts): it outlives this button. */
   const [view, setView] = useState<MicView>({
@@ -730,6 +859,7 @@ export function DebugMic({
         data-status={status}
         data-wake={state !== "off" ? view.wake : undefined}
         data-whisper={whisper || undefined}
+        data-ptt={gesture?.ptt?.state !== "idle" ? gesture?.ptt?.state : undefined}
         aria-pressed={state !== "off"}
         aria-label={
           state === "off"
@@ -784,6 +914,29 @@ export function DebugMic({
         }}
         className={`tap-40 pointer-events-auto relative flex touch-none flex-col items-center justify-center text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
       >
+        {held && (
+          // Push to talk held: a seal-red ring that pulses, and the seconds held
+          // (slid away to cancel: the ring dims and dashes).
+          <>
+            <span
+              aria-hidden
+              data-testid="debug-chat-mic-ptt"
+              className={`pointer-events-none absolute rounded-full ${away ? "border-2 border-dashed opacity-60" : "animate-pulse motion-reduce:animate-none"}`}
+              style={{
+                ...MIC_RING,
+                ...(away ? { borderColor: PTT_RING } : { boxShadow: `0 0 0 3px ${PTT_RING}` }),
+                animationDuration: "1s",
+              }}
+            />
+            <span
+              data-testid="debug-chat-mic-ptt-time"
+              className="pointer-events-none absolute bottom-full mb-1 rounded-full px-1.5 fs-10 font-semibold tabular-nums"
+              style={{ background: PTT_RING, color: "oklch(0.99 0 0)" }}
+            >
+              {away ? "✕" : `${heldS}s`}
+            </span>
+          </>
+        )}
         {speaking ? (
           // The agent speaks: a slow blue ring, so it is never mistaken for capture.
           <span
