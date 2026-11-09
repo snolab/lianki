@@ -1,4 +1,5 @@
 import type { D1Like } from "@/lib/d1/types";
+import { fileUsageByUser } from "@/lib/repos/devUserFiles";
 
 /** One account as /dev/users shows it: who, membership, activity, data held. */
 export type DevUserRow = {
@@ -22,6 +23,10 @@ export type DevUserRow = {
   reads: number;
   /** Approximate bytes of their rows' text (cards, logs, word lists, reading). */
   bytes: number;
+  /** Bytes of their files in R2: inbox uploads, avatar, long reading texts (lib/repos/devUserFiles.ts). */
+  files: number;
+  /** The inbox part of `files`, the only kind with a per-account cap. */
+  inboxBytes: number;
 };
 
 type Agg = Record<string, number | string | null> & { k: string };
@@ -31,7 +36,12 @@ type Agg = Record<string, number | string | null> & { k: string };
  * per table, joined here: a correlated subquery per user would re-scan the
  * tables once per account.
  */
-export async function listDevUsers(db: D1Like, now = new Date()): Promise<DevUserRow[]> {
+export async function listDevUsers(
+  db: D1Like,
+  now = new Date(),
+  /** R2 sizes of `read/<material id>` objects (cachedReadBlobSizes); empty counts none. */
+  readSizes: Map<string, number> = new Map(),
+): Promise<DevUserRow[]> {
   const since = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const q = async (sql: string, ...bind: unknown[]) =>
     new Map(
@@ -77,6 +87,11 @@ export async function listDevUsers(db: D1Like, now = new Date()): Promise<DevUse
        FROM word_list_entries GROUP BY email`,
     ),
   ]);
+  const files = await fileUsageByUser(
+    db,
+    readSizes,
+    new Map(users.results.map((u) => [u.email, u.id])),
+  );
   const num = (v: unknown) => Number(v ?? 0) || 0;
   return users.results
     .map((u) => {
@@ -98,6 +113,8 @@ export async function listDevUsers(db: D1Like, now = new Date()): Promise<DevUse
         pages: num(p?.n),
         reads: num(rd?.n),
         bytes: num(w?.b) + num(r?.b) + num(p?.b) + num(rd?.b) + num(entries.get(u.email)?.b),
+        files: files.get(u.id)?.bytes ?? 0,
+        inboxBytes: files.get(u.id)?.inboxBytes ?? 0,
       };
     })
     .sort((a, b) => (b.lastSeen ?? b.createdAt).localeCompare(a.lastSeen ?? a.createdAt));

@@ -1,18 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useIntlayer } from "next-intlayer";
+import { compactBytes as size } from "@/lib/repos/devUserFiles";
 import type { DevUserRow } from "@/lib/repos/devUsersD1";
 
 /** ISO-style, in the viewer's time zone: 2026-11-05 18:11. Never 11/5/2026. */
 const when = (s: string | null) =>
   s ? new Date(s).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) : "—";
-
-const size = (b: number) =>
-  b < 1024
-    ? `${b} B`
-    : b < 1048576
-      ? `${(b / 1024).toFixed(1)} KB`
-      : `${(b / 1048576).toFixed(1)} MB`;
 
 const tier = (u: DevUserRow, now: number) =>
   u.proEndsAt && Date.parse(u.proEndsAt) > now
@@ -21,18 +16,32 @@ const tier = (u: DevUserRow, now: number) =>
       ? "trial"
       : "free";
 
-type Key = "lastSeen" | "createdAt" | "words" | "reviews7d" | "pages" | "bytes";
-const COLUMNS: [Key, string][] = [
-  ["lastSeen", "最近登录"],
-  ["createdAt", "注册"],
-  ["words", "单词"],
-  ["reviews7d", "7天复习"],
-  ["pages", "Lianki 卡片"],
-  ["bytes", "数据量"],
-];
+type Key = "lastSeen" | "createdAt" | "words" | "reviews7d" | "pages" | "bytes" | "files";
 
 /** Every account: filter by email or name, sort by any column. */
-export default function UsersTable({ rows, now }: { rows: DevUserRow[]; now: number }) {
+export default function UsersTable({
+  rows,
+  now,
+  inboxCap,
+  filesComplete = true,
+}: {
+  rows: DevUserRow[];
+  now: number;
+  /** Per-account inbox safety cap in bytes (lib/inbox/config.ts). */
+  inboxCap: number;
+  /** False when the R2 listing hit its page cap: totals are a lower bound. */
+  filesComplete?: boolean;
+}) {
+  const c = useIntlayer("dev-users");
+  const COLUMNS: [Key, string][] = [
+    ["lastSeen", "最近登录"],
+    ["createdAt", "注册"],
+    ["words", "单词"],
+    ["reviews7d", "7天复习"],
+    ["pages", "Lianki 卡片"],
+    ["bytes", c.dbText.value],
+    ["files", c.files.value],
+  ];
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<Key>("lastSeen");
   const shown = useMemo(() => {
@@ -57,7 +66,7 @@ export default function UsersTable({ rows, now }: { rows: DevUserRow[]; now: num
 
   return (
     <div className="space-y-4" data-dev-users>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
         {stat("账号", rows.length)}
         {stat("7天内登录", rows.filter((u) => u.lastSeen && Date.parse(u.lastSeen) > week).length)}
         {stat("7天内复习", rows.filter((u) => u.reviews7d > 0).length)}
@@ -65,7 +74,11 @@ export default function UsersTable({ rows, now }: { rows: DevUserRow[]; now: num
           "Pro / 试用",
           `${rows.filter((u) => tier(u, now) === "pro").length} / ${rows.filter((u) => tier(u, now) === "trial").length}`,
         )}
-        {stat("数据总量", size(rows.reduce((s, u) => s + u.bytes, 0)))}
+        {stat(c.dbTextTotal.value, size(rows.reduce((s, u) => s + u.bytes, 0)))}
+        {stat(
+          c.filesTotal.value,
+          `${filesComplete ? "" : "≥ "}${size(rows.reduce((s, u) => s + u.files, 0))}`,
+        )}
       </div>
       <input
         type="search"
@@ -132,6 +145,16 @@ export default function UsersTable({ rows, now }: { rows: DevUserRow[]; now: num
                     {u.reads > 0 && <div className="text-xs opacity-60">{u.reads} 阅读</div>}
                   </td>
                   <td className="py-1.5 pr-3 whitespace-nowrap">{size(u.bytes)}</td>
+                  <td className="py-1.5 pr-3 whitespace-nowrap" data-files={u.files}>
+                    {size(u.files)}
+                    {u.inboxBytes > 0 && (
+                      <div className="text-xs opacity-60">
+                        {c.inboxCap.value
+                          .replace("{used}", size(u.inboxBytes))
+                          .replace("{limit}", size(inboxCap))}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               );
             })}
