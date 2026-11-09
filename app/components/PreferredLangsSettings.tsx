@@ -68,7 +68,7 @@ function Row({
   const name = nameIn(tag, locale);
   const own = nameIn(tag, tag);
   const btn =
-    "grid h-11 w-11 shrink-0 place-items-center rounded-full opacity-70 hover:bg-[oklch(0.5_0_0/0.12)] hover:opacity-100 disabled:opacity-20 disabled:hover:bg-transparent";
+    "grid h-11 w-10 shrink-0 place-items-center rounded-full opacity-70 hover:bg-[oklch(0.5_0_0/0.12)] hover:opacity-100 disabled:opacity-20 disabled:hover:bg-transparent";
   return (
     <li
       ref={setNodeRef}
@@ -92,14 +92,16 @@ function Row({
       <span className="w-6 shrink-0 text-center text-sm font-semibold tabular-nums text-seal dark:text-[oklch(0.75_0.15_22.3)]">
         {index + 1}
       </span>
-      <span className="min-w-0 flex-1 truncate">
-        {name}
-        {own !== name && own !== tag && (
-          <span lang={tag} className="ms-2 text-sm opacity-70">
-            {own}
-          </span>
-        )}
-        <span className="ms-2 font-mono text-xs opacity-60">{tag}</span>
+      <span className="min-w-0 flex-1 py-1 leading-tight">
+        <span className="block truncate">{name}</span>
+        <span className="block truncate text-xs opacity-70">
+          {own !== name && own !== tag && (
+            <span lang={tag} className="me-2">
+              {own}
+            </span>
+          )}
+          <span className="font-mono">{tag}</span>
+        </span>
       </span>
       <button
         type="button"
