@@ -61,6 +61,23 @@ const post = (ctx, lyrics = LRC) =>
     headers: { origin: BASE, "content-type": "application/json" },
   });
 
+/**
+ * The flag is written to D1 straight, so the server's flag cache (30 s, one per
+ * isolate: lib/flags-store.ts) may still hold the old value. Wait until the
+ * page and its route both answer as `on` says, at most one cache window and a
+ * bit: never act on one gate while the other lags.
+ */
+async function waitForGate(ctx, on) {
+  const want = (status) => (on ? status !== 404 : status === 404);
+  for (let i = 0; i < 20; i++) {
+    const route = (await post(ctx, "")).status();
+    const page = (await ctx.request.get("/reader/youtube", { maxRedirects: 0 })).status();
+    if (want(route) && want(page)) return true;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return false;
+}
+
 async function signUp(ctx, tag) {
   const r = await ctx.request.post("/api/auth/sign-up/email", {
     data: { email: `qa+yt${tag}${Date.now()}@lianki.test`, password: PW, name: "QA YT" },
@@ -75,6 +92,8 @@ try {
   {
     const ctx = await newSilentContext(browser, { baseURL: BASE });
     await signUp(ctx, "off");
+    // A run just before this one may have left the flag on in the cache.
+    await waitForGate(ctx, false);
     const page = await ctx.newPage();
     const res = await page.goto("/reader/youtube");
     check(res?.status() === 404, `flag off: /reader/youtube is 404 (${res?.status()})`);
@@ -96,9 +115,7 @@ try {
       (r) => r.abort(),
     );
     await signUp(ctx, scheme);
-    // The server caches flags for 30 s (docs/feature-flags.md): wait for the switch to reach it.
-    for (let i = 0; i < 25 && (await post(ctx, "")).status() === 404; i++)
-      await new Promise((r) => setTimeout(r, 2000));
+    check(await waitForGate(ctx, true), "flag on: the page and its route both open");
 
     const bad = await post(ctx, "just words\nno times");
     check(bad.status() === 400, `lyrics with no timings: 400 (${bad.status()})`);

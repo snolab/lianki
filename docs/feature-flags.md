@@ -56,7 +56,10 @@ stay on the folded row, because they say why the switch does nothing.
 - **Cache: 30 s per isolate** (`FLAG_CACHE_MS`). `readFlags()` costs one small
   query per isolate per 30 s; concurrent misses share it. A change made at
   `/dev/flags` reaches every request within 30 s. The isolate that wrote it
-  drops its cache at once. The bound holds for a slow D1 too: a request never
+  drops its cache at once. One cache per isolate, kept on `globalThis`: the
+  build gives route handlers and page rendering each a copy of the module,
+  and two module-level caches let an API route see a flag on while its page
+  still 404'd for up to 30 s. The bound holds for a slow D1 too: a request never
   joins a shared read that started 30 s or more ago, and a read whose answer
   arrives past the window is not acted on — it reads as all off
   (`flags.read-stale`).
