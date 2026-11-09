@@ -337,11 +337,12 @@ describe("the gate: flag (owner audience) and credits", () => {
     ...over,
   });
 
-  it("the flag: owner audience, default off; the owner only, and only with it on", () => {
-    expect(FLAGS["words.import-ai"]).toMatchObject({ default: false, audience: "owner" });
-    expect(importAiOn({ "words.import-ai": true }, true)).toBe(true);
-    expect(importAiOn({}, true)).toBe(false);
-    expect(importAiOn({ "words.import-ai": true }, false)).toBe(false);
+  it("the flag: default off, no owner audience; off → dev holders, on → everyone", () => {
+    expect(FLAGS["words.import-ai"].default).toBe(false);
+    expect("audience" in FLAGS["words.import-ai"]).toBe(false);
+    expect(importAiOn({}, true)).toBe(true);
+    expect(importAiOn({}, false)).toBe(false);
+    expect(importAiOn({ "words.import-ai": true }, false)).toBe(true);
   });
 
   it("hidden without credits; shown with enough for the smallest hold, for an admin, unmetered", async () => {
@@ -351,7 +352,12 @@ describe("the gate: flag (owner audience) and credits", () => {
     expect(await aiQuota(base({ db: null }))).toEqual({ on: true, available: true });
     d1.raw().exec("DELETE FROM credit_balance");
     expect(await aiQuota(base({ admin: () => true }))).toEqual({ on: true, available: true });
-    for (const off of [{ flags: {} }, { owner: false }, { configured: false }, { user: null }])
+    // Not a dev holder with the flag on: on, credits decide.
+    expect(await aiQuota(base({ owner: false, admin: () => true }))).toEqual({
+      on: true,
+      available: true,
+    });
+    for (const off of [{ flags: {}, owner: false }, { configured: false }, { user: null }])
       expect(await aiQuota(base(off))).toEqual({ on: false, available: false });
   });
 
@@ -428,8 +434,7 @@ describe("the gate: flag (owner audience) and credits", () => {
     const ok = { fileId: ID };
     expect(await st(post(ok, { origin: "https://evil.example" }))).toBe(403);
     expect(await st(post(ok), base({ ...words, user: null }))).toBe(401);
-    expect(await st(post(ok), base({ ...words, flags: {} }))).toBe(404);
-    expect(await st(post(ok), base({ ...words, owner: false }))).toBe(404);
+    expect(await st(post(ok), base({ ...words, flags: {}, owner: false }))).toBe(404);
     expect(await st(post(ok, { "content-length": String(AI_IMPORT.maxBodyBytes + 1) }))).toBe(413);
     expect(await st(post({ fileId: ID, pad: "x".repeat(AI_IMPORT.maxBodyBytes) }))).toBe(413);
     expect(await st(post("{nope"))).toBe(400);

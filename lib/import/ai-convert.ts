@@ -47,13 +47,13 @@ import { ImportFileError, type FileLike } from "@/lib/self-intro/import-parse";
 export { AI_IMPORT };
 
 /**
- * Who sees the source: `words.import-ai` is an owner-audience flag
- * (lib/flags.ts) — the owner (`isDev`) with the flag on; nobody else either
- * way until an allowlist widens it here. Credits are the second gate
- * (`aiQuota`).
+ * Who gets "Words with AI": `words.import-ai` on → every signed-in user; off
+ * → holders of the `dev` permission (`isDev`, a per-account data grant), as
+ * `importAnyOn`. Never an email. Credits are the second gate (`aiQuota`):
+ * only a balance covering the smallest hold is offered the button.
  */
-export function importAiOn(flags: FlagValues | null | undefined, owner: boolean): boolean {
-  return owner && flagIn(flags, AI_IMPORT.flag);
+export function importAiOn(flags: FlagValues | null | undefined, dev: boolean): boolean {
+  return dev || flagIn(flags, AI_IMPORT.flag);
 }
 
 /** The image data URLs accepted (what the page's canvas makes; nothing else). */
@@ -334,6 +334,7 @@ export async function convertToCsv(req: AiImportRequest, ai: AiPayer): Promise<C
 
 export type AiImportDeps = {
   user: { id: string; email: string } | null;
+  /** Holds the `dev` permission (`isDev`, a data grant): has it with the flag off. */
   owner: boolean;
   flags: FlagValues;
   configured: boolean;

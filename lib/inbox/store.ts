@@ -1,7 +1,7 @@
 /**
  * The inbox's D1 rows (db/migrations/0035_inbox.sql): one per file, and one
  * usage row per user, written in the same batch as each insert and delete.
- * `source` (0067_import_files.sql) tells the chat's attachments ('chat') from
+ * `source` (0068_import_files.sql) tells the chat's attachments ('chat') from
  * the Import panel's stored files ('import'); usage and caps are shared.
  */
 

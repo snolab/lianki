@@ -1964,7 +1964,7 @@ export default function WordsClient({
   voice?: VoiceAccess;
   /** YouTube songs (`read.youtube-songs`, or the owner): an example with a song clip gets its ▶. */
   ytSongs?: boolean;
-  /** The Import button at the top (`import.any`: the owner only, flag on or off). */
+  /** The Import button at the top (`import.any`: every user while on; the owner on or off). */
   importOn?: boolean;
   /** "AI: any file" in that panel (`words.import-ai`); credits are checked when it opens. */
   importAiOn?: boolean;

@@ -4,8 +4,9 @@ Tree: /import/any
 
 State-tree node `/import/any`. Status: **M1 shipped in its smallest form**
 (word lists from .txt/.csv/.tsv, below); the rest is design. Flag
-**`import.any`**, default off, `audience: "owner"`: the owner (`isDev`) sees it
-with the flag on or off, nobody else either way — never everyone; a later allowlist widens it in `importAnyOn(flags, isDev(email))` —
+**`import.any`**, default off, no audience: on, every signed-in user gets it
+(owner decision 2026-11-10 00:45 JST: free, no credits); off, only the owner
+(`isDev`) — `importAnyOn(flags, isDev(email))` —
 https://lianki.com/dev/flags#import.any.
 
 ## What shipped (M1, 2026-11-09)
@@ -79,7 +80,7 @@ to every signed-in user while it is on).
 - **Storage = the chat inbox's** (`lib/inbox/`): R2 `lianki-blobs` under
   `inbox/<user id>/<yyyy>/<mm>/<random id>` (the name is never in the key or
   a log), one `inbox_item` row each, with **`source = 'import'`**
-  (`0067_import_files.sql`; the chat's rows are `'chat'`) — open question 1
+  (`0068_import_files.sql`; the chat's rows are `'chat'`) — open question 1
   below, answered "one table, a source column". The type is sniffed, never
   trusted from the name. Usage (`inbox_usage`) and the caps are shared with
   the inbox: 20 MB a file, 200 MB a rolling day, 2 GB stored, 30 uploads a
@@ -96,9 +97,10 @@ to every signed-in user while it is on).
 
 ### AI: a stored file → words (owner, 2026-11-10)
 
-Flag **`words.import-ai`**, default off, `audience: "owner"`: anyone holding
-the `dev` permission (a data grant, `isDev` — widenable per account) with the
-flag on (`importAiOn` in `lib/import/ai-convert.ts`) —
+Flag **`words.import-ai`**, default off, no audience: on → every signed-in
+user; off → holders of the `dev` permission (`isDev`, a per-account data
+grant) — `importAiOn` in `lib/import/ai-convert.ts`, as `importAnyOn`;
+either way only with credits covering the smallest hold —
 https://lianki.com/dev/flags#words.import-ai. No email in any gate.
 
 A stored file (above) → the **same CSV template** the table import takes →
