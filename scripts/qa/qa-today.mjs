@@ -83,7 +83,13 @@ async function pass(scheme) {
     return { bg: s.backgroundColor, ink: s.color };
   });
   // oklch(0.89 0.12 86) is the gold (light, high L); oklch(0.49 0.2 22.3) the seal.
-  const L = (c) => Number((/oklch\(([\d.]+)/.exec(c) ?? [])[1] ?? Number.NaN);
+  // Read through the --lk-bold-* tokens the build may serve it as lab() (L in 0–100).
+  const L = (c) => {
+    const ok = /oklch\(([\d.]+)/.exec(c);
+    if (ok) return Number(ok[1]);
+    const lab = /lab\(([\d.]+)/.exec(c);
+    return lab ? Number(lab[1]) / 100 : Number.NaN;
+  };
   const gold = (c) => L(c) > 0.8;
   const seal = (c) => L(c) < 0.6;
   check(
