@@ -24,6 +24,7 @@ import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
 import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
 import { notifySignedOut } from "./lib/push-signed-out";
 import { setEmailCanonical } from "./lib/canonical-email-d1";
+import { recordSignupLocale } from "./lib/signup-locale-d1";
 import { boxBindingHook, boxProviderPlugin } from "./lib/box-oauth/provider";
 import { apiTokenSignOutPlugin } from "./lib/api-token-signout";
 import { notifyTokensRevoked } from "./lib/push-chat-tokens";
@@ -153,10 +154,19 @@ function baseOptions() {
       // sign-up; those checks fill it in themselves when it is missing.
       user: {
         create: {
-          after: async (user: { id: string; email: string }) => {
+          after: async (
+            user: { id: string; email: string },
+            ctx?: { headers?: Headers; request?: Request } | null,
+          ) => {
             if (dbBackend() !== "d1") return;
             await setEmailCanonical(getD1(), user.id, user.email).catch((e) =>
               console.error("[email-canonical] create:", e),
+            );
+            // The browser language at sign-up, once (lib/signup-locale.ts): only
+            // the normalised tag is kept, for mail sent in this person's name.
+            const al = (ctx?.headers ?? ctx?.request?.headers)?.get("accept-language");
+            await recordSignupLocale(getD1(), user.id, al).catch((e) =>
+              console.error("[signup-locale] create:", e),
             );
           },
         },

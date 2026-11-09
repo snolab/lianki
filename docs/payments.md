@@ -450,6 +450,75 @@ the account keep the address as given, and no accounts are merged.
 
 At the migration (2026-11-05) no two existing accounts shared a canonical email.
 
+### Invite by email
+
+Owner request 2026-11-09. A Pro user (or an admin) types one friend's address in
+the invite card on `/membership`; Lianki mails that friend the inviter's existing
+`/i/CODE` link. Same code, same rewards as a shared link — no new code type.
+
+| piece | where |
+| --- | --- |
+| limits (one object) | `lib/referrals/email-invite-config.ts` (`EMAIL_INVITE`, `INVITE_MAIL_SENDER`) |
+| send, status, opt-out, tokens | `lib/referrals/email-invite.ts`; routes `app/api/invite/email/route.ts`, `app/api/invite/email/opt-out/route.ts` |
+| the template (one module) | `lib/referrals/invite-mail.ts` + strings `lib/referrals/invite-mail.content.ts` (16 locales, context lines) |
+| preview, sends nothing | `previewInviteMail()` / `renderFor()`; admin-only `GET /api/dev/invite-mail-preview?format=html\|text\|json&locale=` renders his own mail |
+| UI | `app/(app)/membership/EmailInviteBox.tsx`; opt-out page `/membership/invite-opt-out` |
+| tables | `db/migrations/0061_invite_email.sql`: `invite_email_log`, `invite_email_recipient`, `invite_email_suppression` |
+| tests | `unit/email-invite.test.ts`; QA `scripts/qa/qa-email-invite.mjs` (suite `email-invite`) |
+
+- **Who**: `isAdmin` always; Pro (`proEndsAt` in the future, not trial) once the
+  flag `membership.email-invite` is on. Off: admins only.
+- **Limits** (first values, the owner may change them): 5 requests per inviter in
+  24 h, counted with the log row in one conditional INSERT; one invite mail per
+  address in 30 days from anyone, claimed with one conditional upsert on the
+  canonical address's hash; an inviter whose mails were reported 2 times in a
+  year sends nothing more. Failed sends are not counted and give the address's
+  window back.
+- **One address per request**, validated (`oneAddress`): lists, `Name <addr>`
+  forms and junk are 400.
+- **Neutral answer**: an address with an account (any form, the inviter's own
+  included), a suppressed one, one mailed recently, or a blocked inviter — no
+  mail, and the same `{status:"sent"}` as a real send. Every one of these counts
+  against the daily limit, so the limit cannot be used to probe.
+- **No address stored**: `recipientHash` = SHA-256 of the canonical address;
+  `recipientMasked` (`a***@example.com`) only for the inviter's own history.
+  Keyed by user id, so nothing moves on an email change (not in
+  `EMAIL_KEYED_TABLES`). No log line holds an address.
+- **Language**: the inviter's account language (`ui.locale` in `user_prefs`),
+  else `user.signupLocale`, else English (`lib/signup-locale.ts`). zh / zh-CN /
+  zh-Hans read the Simplified template; there is no Traditional one, so zh-Hant
+  reads it too. The send API takes an optional `locale` for a later override (no
+  UI). The opt-out page opens in the same language (`?lang=`).
+- **The mail**: who invited (display name in the subject, the first line and
+  the footer; a name that reads like an address or a link becomes "A friend"),
+  the link, and a compliance footer: why you got it (a friend, one time, no
+  list), Unsubscribe and Report abuse links, the sender (Lianki, the site) and
+  the contact page. `INVITE_MAIL_SENDER.postalAddress` is an empty slot: CAN-SPAM
+  wants a postal address and the repo has none — the line appears once it is set.
+- **Headers**: `List-Unsubscribe: <https://…/api/invite/email/opt-out?t=…>` and
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058). No `mailto:`:
+  there is no inbound mailbox.
+- **Opt-out**: the one-click POST (form body `List-Unsubscribe=One-Click`, no
+  sign-in) and the page's buttons (same-origin JSON) both write
+  `invite_email_suppression`, idempotently; Report also stamps the log row. The
+  token is `<logId>.<HMAC>` with a key derived from `AUTH_SECRET` by HKDF (no new
+  secret), so nobody can opt out an address they did not receive. A GET on the
+  one-click URL only redirects to the page. Per-IP limit 30 / 15 min.
+- **Bounces and complaints** are not wired yet: Resend's webhooks are signed
+  (Svix) and need a new secret (`RESEND_WEBHOOK_SECRET`) and a webhook set up in
+  Resend. The suppression table already takes `bounce` / `complaint`.
+- **Local servers never mail**: on a localhost origin the send is a stub
+  (`invite-email.stub-send`, no address), whatever `.dev.vars` holds.
+
+### `user.signupLocale`
+
+The browser language at an account's first sign-up: the best supported tag from
+`Accept-Language`, normalised (`en`, `ja`, `zh-Hans`, `zh-Hant`…), and **nothing
+else from the header**. Written once by the better-auth `user.create` hook
+(`lib/signup-locale-d1.ts`), never overwritten. Accounts made before
+`db/migrations/0062_user_signup_locale.sql` stay NULL — no backfill, no guess.
+Used only as the invite mail's fallback language.
+
 ## GitHub Sponsors
 
 A second way to Pro, for people who would rather pay through GitHub. Rules in
