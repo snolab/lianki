@@ -153,10 +153,23 @@ export const TICK_STEPS = [
   7 * DAY,
 ];
 
-/** The smallest step at least TICK_MIN_PX apart at this zoom. */
-export function tickStep(pxPerMs: number): number {
-  return TICK_STEPS.find((s) => s * pxPerMs >= TICK_MIN_PX) ?? TICK_STEPS[TICK_STEPS.length - 1]!;
+/**
+ * The smallest step at least `minPx` (TICK_MIN_PX, or more for a larger text
+ * size: tickMinPx) apart at this zoom.
+ */
+export function tickStep(pxPerMs: number, minPx = TICK_MIN_PX): number {
+  return TICK_STEPS.find((s) => s * pxPerMs >= minPx) ?? TICK_STEPS[TICK_STEPS.length - 1]!;
 }
+
+/** A label's width estimate (px) for a text whose digits are `charPx` wide, its padding included. */
+export const labelPx = (label: string, charPx = CHAR_PX) => label.length * charPx + charPx;
+
+/** The width of a digit at the axis's 12 px text (px); GanttFull passes the measured one. */
+export const CHAR_PX = 8;
+/** The clear space between two tick labels (px). */
+export const TICK_GAP_PX = 10;
+/** The longest linear label ("-13.5D") never meets its neighbour: the step is at least this far apart. */
+export const tickMinPx = (charPx = CHAR_PX) => Math.max(TICK_MIN_PX, labelPx("-13.5D", charPx) + TICK_GAP_PX);
 
 /**
  * A tick's label, relative to now, language-neutral like compactTime: "Now",
@@ -179,9 +192,15 @@ export type Tick = { t: number; x: number; label: string; now: boolean };
  * so the labels are round ("-1H", "Now", "1H"). Bounded: at most a few
  * screens' worth, whatever the range.
  */
-export function axisTicks(a: Axis, scrollLeft: number, w: number, now: number): Tick[] {
+export function axisTicks(
+  a: Axis,
+  scrollLeft: number,
+  w: number,
+  now: number,
+  charPx = CHAR_PX,
+): Tick[] {
   const width = Math.max(1, w);
-  const step = tickStep(a.pxPerMs);
+  const step = tickStep(a.pxPerMs, tickMinPx(charPx));
   const from = Math.max(a.lo, timeAt(a, scrollLeft - width));
   const to = Math.min(a.hi, timeAt(a, scrollLeft + 2 * width));
   const out: Tick[] = [];
@@ -303,11 +322,12 @@ export type GanttBar = {
  */
 export function ganttBar(
   t: { start: number; at: number; pct?: number; done?: boolean; doneAt?: number },
-  a: Axis,
+  a: GanttAxis,
   now: number,
 ): GanttBar {
-  const width = axisWidth(a);
-  const x = (ms: number) => clamp(xOf(a, ms), 0, width);
+  const width = scaleWidth(a);
+  // Each end projected on its own (on the log axis a bar is not a shifted copy).
+  const x = (ms: number) => clamp(scaleX(a, ms, now), 0, width);
   const x0 = x(Math.min(t.start, t.at));
   const x1 = x(t.at);
   const end = t.done ? x(t.doneAt ?? t.at) : x(now);
@@ -362,3 +382,207 @@ export function axisToNow(a: Axis, w: number, now: number): { axis: Axis; scroll
       };
   return extendAxis(axis, xOf(axis, left), width);
 }
+
+
+/* The logarithmic axis (owner, 2026-11-09 15:27 JST): the default. */
+
+/**
+ * A symmetric-log axis around Now: a time t is drawn at
+ *
+ *   u = sign(dt) · L · ln(1 + |dt| / T),   dt = t − now,
+ *
+ * px from the Now line (`symlog`; `symexp` is its inverse). Within about T of
+ * Now it is linear (L / T px per ms), further out every e-fold of distance
+ * takes the same L px, so minutes and days fit one screen. The content spans
+ * LOG_SPAN either side of Now: x = u − uLo, its width uHi − uLo, bounded
+ * (some 20 e-folds a side) however far it reaches, so there is no growing or
+ * trimming as on the linear axis; the ticks are drawn only around the view.
+ * Now stays at the same x while time passes: the bars move, not the axis.
+ *
+ * Zoom (`zoomLogAxis`) spreads the e-folds (L × √f) and narrows the linear
+ * window (T ÷ √f) together: near Now the scale changes by f, far out by √f,
+ * and the time under the fingers stays put.
+ */
+export type LogAxis = { kind: "log"; T: number; L: number; uLo: number; uHi: number };
+/** Either axis: the linear one (Axis) or the log one. */
+export type GanttAxis = Axis | LogAxis;
+
+export const isLog = (a: GanttAxis): a is LogAxis => "kind" in a && a.kind === "log";
+
+/** The log axis reaches this far either side of Now (a thousand years: in effect, no end). */
+export const LOG_SPAN = 1000 * 365 * DAY;
+/** The linear window around Now (T): from a minute (zoomed in) to a week. */
+export const LOG_MIN_T = MIN;
+export const LOG_MAX_T = 7 * DAY;
+/** On open the window is at least this wide, so a near task is not a sliver of seconds. */
+export const LOG_OPEN_MIN_T = 2 * MIN;
+/** Px per e-fold (L): zoom limits, and on open about this many e-folds per screen. */
+export const LOG_MIN_L = 24;
+export const LOG_MAX_L = 240;
+export const LOG_E_PER_SCREEN = 8;
+/** On open Now sits this far from the left: a third, the future gets the rest. */
+export const LOG_NOW_AT = 1 / 3;
+
+/** Distance from Now (ms) → px from the Now line. Odd and strictly increasing. */
+export const symlog = (dt: number, T: number, L: number) =>
+  Math.sign(dt) * L * Math.log1p(Math.abs(dt) / T);
+/** Px from the Now line → distance from Now (ms): the inverse of symlog. */
+export const symexp = (u: number, T: number, L: number) =>
+  Math.sign(u) * T * Math.expm1(Math.abs(u) / L);
+
+/** The log axis for a window T and L px per e-fold, spanning LOG_SPAN (and at least a screen) a side. */
+export function logAxis(T: number, L: number, w = 0): LogAxis {
+  const side = Math.max(symlog(LOG_SPAN, T, L), Math.max(1, w));
+  return { kind: "log", T, L, uLo: -side, uHi: side };
+}
+
+/** A time's x on the log axis (px from the content's left); beyond LOG_SPAN it stays at the end. */
+export const logX = (a: LogAxis, t: number, now: number) =>
+  symlog(clamp(t - now, -LOG_SPAN, LOG_SPAN), a.T, a.L) - a.uLo;
+/** The time at x on the log axis: the inverse of logX. */
+export const logTimeAt = (a: LogAxis, x: number, now: number) => now + symexp(x + a.uLo, a.T, a.L);
+
+/** Px per e-fold on open for a view `w` px wide. */
+export const logPxPerE = (w: number) => clamp(Math.max(1, w) / LOG_E_PER_SCREEN, LOG_MIN_L, LOG_MAX_L);
+
+/**
+ * The log axis on open: Now LOG_NOW_AT from the left, and the window T as
+ * narrow as lets [from, to] fit the screen (a tenth of margin), so near
+ * tasks get the detail; never under LOG_OPEN_MIN_T, never past LOG_MAX_T.
+ */
+export function initialLogAxis(
+  from: number,
+  to: number,
+  now: number,
+  w: number,
+): { axis: LogAxis; scrollLeft: number } {
+  const width = Math.max(1, w);
+  const L = logPxPerE(width);
+  const fit = (span: number, px: number) => (span > 0 ? span / Math.expm1((px * 0.9) / L) : 0);
+  const T = clamp(
+    Math.max(fit(to - now, (1 - LOG_NOW_AT) * width), fit(now - from, LOG_NOW_AT * width), LOG_OPEN_MIN_T),
+    LOG_MIN_T,
+    LOG_MAX_T,
+  );
+  const axis = logAxis(T, L, width);
+  return { axis, scrollLeft: logX(axis, now, now) - LOG_NOW_AT * width };
+}
+
+/**
+ * Zoom the log axis by `factor` (> 1 in) about `anchorX`, px from the view's
+ * left: L × √factor, T ÷ √factor, each within its limits; the scroll moves so
+ * the time under the anchor stays there. The same object when at the limits.
+ */
+export function zoomLogAxis(
+  a: LogAxis,
+  scrollLeft: number,
+  w: number,
+  anchorX: number,
+  factor: number,
+  now: number,
+): { axis: LogAxis; scrollLeft: number } {
+  const f = Math.sqrt(Number.isFinite(factor) && factor > 0 ? factor : 1);
+  const L = clamp(a.L * f, LOG_MIN_L, LOG_MAX_L);
+  const T = clamp(a.T / f, LOG_MIN_T, LOG_MAX_T);
+  if (L === a.L && T === a.T) return { axis: a, scrollLeft };
+  const t = logTimeAt(a, scrollLeft + anchorX, now);
+  const axis = logAxis(T, L, w);
+  return { axis, scrollLeft: logX(axis, t, now) - anchorX };
+}
+
+/** Back to Now on the log axis: the same zoom, Now LOG_NOW_AT from the left. */
+export const logAxisToNow = (a: LogAxis, w: number): { axis: LogAxis; scrollLeft: number } => ({
+  axis: a,
+  scrollLeft: -a.uLo - LOG_NOW_AT * Math.max(1, w),
+});
+
+/**
+ * The distances from Now (either side) a log tick may stand at: round values
+ * in minutes, hours and days, so the labels read "5M", "3H", "2D", "-90D".
+ */
+export const LOG_TICKS = [
+  ...[1, 2, 3, 5, 10, 15, 20, 30, 45].map((m) => m * MIN),
+  ...[1, 1.5, 2, 3, 4, 6, 8, 12, 18].map((h) => h * HOUR),
+  ...[1, 1.5, 2, 3, 4, 5, 7, 10, 14, 21, 30, 45, 60, 90, 120, 180, 270, 365].map((d) => d * DAY),
+  ...[2, 3, 5, 10, 20, 50, 100, 200, 500, 1000].map((y) => y * 365 * DAY),
+];
+
+/**
+ * The log axis's ticks around the view: Now, then outward on each side the
+ * next round distance (LOG_TICKS) whose label clears the last one taken by
+ * TICK_GAP_PX (labels estimated at `charPx` a character), so no two labels
+ * ever overlap, at any zoom. Only those within a screen of the view are
+ * returned (a bounded DOM).
+ */
+export function logTicks(
+  a: LogAxis,
+  scrollLeft: number,
+  w: number,
+  now: number,
+  charPx = CHAR_PX,
+): Tick[] {
+  const width = Math.max(1, w);
+  const x0 = logX(a, now, now);
+  const all: Tick[] = [{ t: now, x: x0, label: "Now", now: true }];
+  for (const side of [-1, 1]) {
+    let lastX = x0;
+    let lastW = labelPx("Now", charPx);
+    for (const d of LOG_TICKS) {
+      const t = now + side * d;
+      const x = logX(a, t, now);
+      const label = axisLabel(side * d);
+      const lw = labelPx(label, charPx);
+      if (Math.abs(x - lastX) < (lw + lastW) / 2 + TICK_GAP_PX) continue;
+      all.push({ t, x, label, now: false });
+      lastX = x;
+      lastW = lw;
+    }
+  }
+  return all
+    .filter((k) => k.x >= scrollLeft - width && k.x <= scrollLeft + 2 * width)
+    .sort((p, q) => p.x - q.x);
+}
+
+/* One interface over both axes, for GanttFull. */
+
+/** A time's x (px from the content's left) on either axis. */
+export const scaleX = (a: GanttAxis, t: number, now: number) =>
+  isLog(a) ? logX(a, t, now) : xOf(a, t);
+/** The content's width (px) on either axis. */
+export const scaleWidth = (a: GanttAxis) => (isLog(a) ? Math.round(a.uHi - a.uLo) : axisWidth(a));
+/** The ticks around the view on either axis. */
+export const scaleTicks = (a: GanttAxis, scrollLeft: number, w: number, now: number, charPx = CHAR_PX) =>
+  isLog(a) ? logTicks(a, scrollLeft, w, now, charPx) : axisTicks(a, scrollLeft, w, now, charPx);
+/** Zoom either axis about anchorX. */
+export const scaleZoom = (
+  a: GanttAxis,
+  scrollLeft: number,
+  w: number,
+  anchorX: number,
+  factor: number,
+  now: number,
+): { axis: GanttAxis; scrollLeft: number } =>
+  isLog(a) ? zoomLogAxis(a, scrollLeft, w, anchorX, factor, now) : zoomAxis(a, scrollLeft, w, anchorX, factor);
+/** After a scroll or a resize: the linear axis grows (extendAxis); the log one already spans it all. */
+export const scaleExtend = (
+  a: GanttAxis,
+  scrollLeft: number,
+  w: number,
+): { axis: GanttAxis; scrollLeft: number } =>
+  isLog(a) ? { axis: a, scrollLeft } : extendAxis(a, scrollLeft, w);
+/** Back to Now on either axis. */
+export const scaleToNow = (a: GanttAxis, w: number, now: number): { axis: GanttAxis; scrollLeft: number } =>
+  isLog(a) ? logAxisToNow(a, w) : axisToNow(a, w, now);
+/** The axis on open, of the chosen kind. */
+export const initialScale = (
+  kind: GanttScale,
+  from: number,
+  to: number,
+  now: number,
+  w: number,
+): { axis: GanttAxis; scrollLeft: number } =>
+  kind === "log" ? initialLogAxis(from, to, now, w) : initialAxis(from, to, now, w);
+
+/** The axis kinds the toggle switches between; log is the default (owner, 15:27 JST). */
+export type GanttScale = "log" | "linear";
+export const GANTT_SCALE_DEFAULT: GanttScale = "log";

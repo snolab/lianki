@@ -14,6 +14,17 @@
  *   - ctrl+wheel (a trackpad pinch) zooms about the pointer; the ticks re-label
  *   - the Now button brings Now back; Escape closes
  *
+ * The logarithmic axis (the default; owner, 2026-11-09 15:27 JST) first:
+ *
+ *   - it opens on the log axis; Now in view, a third from the left
+ *   - minute and day tasks on one screen: the 9H estimate in view, a 10-minute
+ *     task still a readable width
+ *   - the tick labels never overlap (their boxes), on open, panned and zoomed
+ *   - after scrolling sideways both ways, every row's name is inside the view
+ *   - ctrl+wheel / a pinch zooms about the pointer, the page itself never
+ *   - the Linear toggle switches to the linear axis (the checks above), and
+ *     the choice is remembered when the Gantt opens again
+ *
  *   bun scripts/dev/debug-chat-gantt-qa.mjs [--shots <dir>] [--before]
  *
  * `--before` only takes the screenshots of the old inline list (the tree panel)
@@ -227,8 +238,128 @@ try {
             ticks: [...document.querySelectorAll('[data-testid="debug-chat-gantt-tick"]')].map(
               (t) => t.textContent,
             ),
+            // Every axis label in view, left to right, with its box.
+            labels: [
+              ...document.querySelectorAll(
+                '[data-testid="debug-chat-gantt-axis"] [data-testid^="debug-chat-gantt-"]',
+              ),
+            ]
+              .map((t) => {
+                const b = t.getBoundingClientRect();
+                return { text: t.textContent, l: b.left, r: b.right };
+              })
+              .filter((b) => b.r > r.left && b.l < r.right)
+              .sort((a, b) => a.l - b.l),
+            scale: document.querySelector('[data-testid="debug-chat-gantt-content"]')?.dataset
+              .scale,
           };
         });
+      /** No two axis labels overlap (their rendered boxes). */
+      const apart = (gg) => {
+        for (let i = 1; i < gg.labels.length; i++)
+          if (gg.labels[i].l < gg.labels[i - 1].r) return false;
+        return true;
+      };
+      const scroller = page.locator('[data-testid="debug-chat-gantt-scroll"]');
+      const namesIn = (gg) =>
+        gg.names.every((n) => n.l >= gg.sc.left - 1 && n.r <= gg.sc.right + 1);
+      const barOf = (id) =>
+        page.evaluate((i) => {
+          const b = document
+            .querySelector(
+              `[data-testid="debug-chat-gantt-row"][data-id="${i}"] [data-testid="debug-chat-gantt-bar"]`,
+            )
+            .getBoundingClientRect();
+          return { l: b.left, r: b.right, w: b.width };
+        }, id);
+
+      // The logarithmic axis, the default.
+      {
+        let g = await geo();
+        check(g.scale === "log", `${tag}: opens on the log axis (${g.scale})`);
+        const third = g.sc.left + (g.sc.right - g.sc.left) / 3;
+        check(
+          g.nowX >= g.sc.left && g.nowX <= g.sc.right && Math.abs(g.nowX - third) < 4,
+          `${tag} log: Now in view, a third from the left (${Math.round(g.nowX)} vs ${Math.round(third)})`,
+        );
+        check(g.pageW <= v.width, `${tag} log: no horizontal page scroll (${g.pageW})`);
+        check(namesIn(g), `${tag} log: every name in view on open`);
+        check(
+          apart(g) && g.labels.length >= 5,
+          `${tag} log: ${g.labels.length} tick labels, none overlapping (${g.labels.map((l) => l.text).join(" ")})`,
+        );
+        const long = await barOf("/box/eta");
+        const short = await barOf("/dev/users");
+        check(
+          long.r <= g.sc.right + 1 && long.l >= g.sc.left - 1,
+          `${tag} log: the 12-hour task fits the screen (${Math.round(long.l)}–${Math.round(long.r)})`,
+        );
+        check(
+          short.w >= 30,
+          `${tag} log: a 45-minute task stays readable (${Math.round(short.w)} px)`,
+        );
+        await shot("log-open");
+        for (const dx of [-600, 1500, -900]) {
+          await scroller.evaluate((el, d) => (el.scrollLeft += d), dx);
+          await page.waitForTimeout(120);
+          g = await geo();
+          check(namesIn(g), `${tag} log: after scrolling ${dx} px every name is in view`);
+          check(apart(g), `${tag} log: after scrolling ${dx} px no tick labels overlap`);
+        }
+        await page.locator('[data-testid="debug-chat-gantt-now-btn"]').click();
+        await page.waitForTimeout(150);
+        g = await geo();
+        check(
+          Math.abs(g.nowX - third) < 4,
+          `${tag} log: the Now button brings Now back (${Math.round(g.nowX)})`,
+        );
+        const ticks0 = g.labels.map((l) => l.text).join(" ");
+        if (!v.touch) {
+          await page.mouse.move(Math.round(g.nowX), 300);
+          await page.keyboard.down("Control");
+          for (let i = 0; i < 5; i++) await page.mouse.wheel(0, -60);
+          await page.keyboard.up("Control");
+          await page.waitForTimeout(200);
+          g = await geo();
+          check(
+            Math.abs(g.nowX - third) < 3,
+            `${tag} log: zoom keeps Now under the pointer (${g.nowX} vs ${third})`,
+          );
+        } else {
+          const cdp = await ctx.newCDPSession(page);
+          const cx = Math.round(g.nowX);
+          const pts = (d) => [
+            { x: cx - d, y: 400 },
+            { x: cx + d, y: 400 },
+          ];
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: pts(20) });
+          for (const d of [30, 40, 50, 60])
+            await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: pts(d) });
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+          await page.waitForTimeout(200);
+          g = await geo();
+          const scale = await page.evaluate(() => visualViewport?.scale ?? 1);
+          check(scale === 1, `${tag} log: the page itself did not zoom (${scale})`);
+          check(
+            Math.abs(g.nowX - cx) < 4,
+            `${tag} log: pinch keeps Now under the fingers (${g.nowX} vs ${cx})`,
+          );
+        }
+        check(
+          g.labels.map((l) => l.text).join(" ") !== ticks0,
+          `${tag} log: the axis re-ticks after a zoom (${g.labels.map((l) => l.text).join(" ")})`,
+        );
+        check(apart(g), `${tag} log: zoomed in, no tick labels overlap`);
+        await shot("log-zoomed-in");
+
+        // Switch to the linear axis: the checks below run on it.
+        await page.locator('[data-testid="debug-chat-gantt-scale-linear"]').click();
+        await page.waitForTimeout(250);
+        g = await geo();
+        check(g.scale === "linear", `${tag}: the toggle switches to the linear axis (${g.scale})`);
+        check(apart(g), `${tag} linear: no tick labels overlap`);
+      }
+
       let g = await geo();
       const quarter = g.sc.left + 0.25 * (g.sc.right - g.sc.left);
       check(
@@ -240,7 +371,6 @@ try {
       await shot("open");
 
       // Vertical: the axis stays at the top.
-      const scroller = page.locator('[data-testid="debug-chat-gantt-scroll"]');
       await scroller.evaluate((el) => (el.scrollTop = 10_000));
       await page.waitForTimeout(100);
       g = await geo();
@@ -253,8 +383,6 @@ try {
       await scroller.evaluate((el) => (el.scrollTop = 0));
 
       // Sideways both ways: every name stays inside the view.
-      const namesIn = (gg) =>
-        gg.names.every((n) => n.l >= gg.sc.left - 1 && n.r <= gg.sc.right + 1);
       for (const dx of [-2500, 6000, -1500]) {
         await scroller.evaluate((el, d) => (el.scrollLeft += d), dx);
         await page.waitForTimeout(120);
@@ -304,6 +432,7 @@ try {
           g.ticks.join(" ") !== ticks0,
           `${tag}: the axis re-ticks (${g.ticks.slice(0, 6).join(" ")})`,
         );
+        check(apart(g), `${tag}: zoomed out, no tick labels overlap`);
         await shot("zoomed-out");
       } else {
         // Touch pinch, synthesized: two fingers apart then together.
@@ -334,6 +463,14 @@ try {
       await page.keyboard.press("Escape");
       await page.waitForTimeout(100);
       check(!(await dlg.isVisible()), `${tag}: Escape closes`);
+      // Open again: the linear axis was remembered (this device).
+      await bar.click();
+      await page.waitForTimeout(300);
+      check(
+        (await geo()).scale === "linear",
+        `${tag}: the axis choice is remembered when it opens again`,
+      );
+      await page.keyboard.press("Escape");
       await ctx.close();
     }
 } finally {
