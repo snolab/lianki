@@ -1316,7 +1316,9 @@ async function main() {
 
 /** A value for the terminal log: control characters (newlines, escapes) become spaces. */
 function logSafe(v: unknown): string {
-  return String(v).replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
+  return String(v)
+    .replace(/\n|\r/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
 }
 
 main().catch((e) => {
