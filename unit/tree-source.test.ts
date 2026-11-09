@@ -92,7 +92,7 @@ describe("sanitizeTree", () => {
 describe("treeClassStyle", () => {
   it("colours waiting, doing, done and the frontier block", () => {
     expect(treeClassStyle("w")).toEqual({ color: "oklch(0.62 0.17 35)", fontWeight: 700 });
-    expect(treeClassStyle("d")).toEqual({ color: "oklch(0.62 0.14 250)" });
+    expect(treeClassStyle("d")).toEqual({ color: "oklch(0.62 0.154 22.3)" });
     expect(treeClassStyle("ok")).toEqual({ opacity: 0.6 });
     expect(treeClassStyle("f").marginBlockEnd).toBeDefined();
     expect(treeClassStyle(undefined)).toEqual({});

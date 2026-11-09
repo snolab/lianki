@@ -2281,7 +2281,7 @@ function Reader({
             title={speaking ? tp.pause.value : tp.play.value}
             data-testid="read-play"
             data-status={player.status}
-            className="grid h-10 w-10 place-items-center rounded-full bg-[oklch(0.55_0.13_250)] text-[oklch(0.99_0_0)] [text-shadow:none]"
+            className="grid h-10 w-10 place-items-center rounded-full bg-[oklch(0.55_0.143_22.3)] text-[oklch(0.99_0_0)] [text-shadow:none]"
           >
             <span aria-hidden>{speaking ? "❚❚" : "▶"}</span>
           </button>

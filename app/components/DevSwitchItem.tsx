@@ -16,7 +16,7 @@ export type DevSwitchLabels = {
 
 export type DevSwitch = { mode: Exclude<DevSwitchMode, null>; labels: DevSwitchLabels };
 
-const BLUE = "oklch(0.62 0.19 255)";
+const BLUE = "oklch(0.62 0.209 22.3)";
 
 /**
  * The owner's "Preview build" toggle in the account menu

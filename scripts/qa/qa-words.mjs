@@ -397,7 +397,10 @@ try {
   const rows = page.locator('[role="listitem"]');
   await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) >= 20, `the list opens with ${await rows.count()} words`);
-  check((await page.locator("span.text-emerald-600").count()) > 0, "new words are shown in green");
+  check(
+    (await page.locator(".slip-term.text-blue-600").count()) > 0,
+    "new words are shown in seal red",
+  );
   const statusOf = async (i) => (await rows.nth(i).locator("span.tabular-nums").innerText()).trim();
   check((await statusOf(0)) === "new", `an ungraded new word says "new": ${await statusOf(0)}`);
 

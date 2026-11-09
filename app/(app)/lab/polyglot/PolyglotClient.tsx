@@ -365,8 +365,8 @@ export default function PolyglotPage() {
                   onClick={() => toggleLanguage(lang)}
                   className={`p-3 border-2 rounded-lg transition-colors ${
                     selectedLanguages.find((l) => l.code === lang.code)
-                      ? "border-green-600 bg-green-50 dark:bg-green-900"
-                      : "border-gray-300 hover:border-green-400"
+                      ? "border-blue-600 bg-blue-50 dark:bg-blue-950"
+                      : "border-gray-300 hover:border-blue-400"
                   }`}
                 >
                   <div className="font-semibold">{lang.nativeName}</div>
@@ -411,7 +411,7 @@ export default function PolyglotPage() {
           <div className="flex gap-2">
             <button
               onClick={generateAll}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              className="px-4 py-2 bg-primary text-on-primary rounded-lg hover:bg-blue-700"
             >
               Generate All
             </button>
@@ -543,7 +543,7 @@ export default function PolyglotPage() {
                                           const audio = new Audio(cellData.answerAudioUrl!);
                                           audio.play();
                                         }}
-                                        className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded text-xs hover:bg-green-200 dark:hover:bg-green-800"
+                                        className="px-2 py-1 bg-gold-100 dark:bg-gold-950 text-gold-800 dark:text-gold-300 rounded text-xs hover:bg-gold-200 dark:hover:bg-gold-900"
                                       >
                                         <Icon name="play" className="me-1" />A
                                       </button>

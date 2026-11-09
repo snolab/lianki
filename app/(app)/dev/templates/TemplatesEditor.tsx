@@ -81,7 +81,7 @@ function frameDoc(html: string, dark: boolean) {
   if (/^<!doctype html>/i.test(html)) return previewDoc(html, dark);
   const bg = dark ? "oklch(0.2 0 0)" : "oklch(1 0 0)";
   const fg = dark ? "oklch(0.92 0 0)" : "oklch(0.2 0 0)";
-  const link = dark ? "oklch(0.78 0.12 260)" : "oklch(0.45 0.18 260)";
+  const link = dark ? "oklch(0.78 0.132 22.3)" : "oklch(0.45 0.198 22.3)";
   return `<!doctype html><html style="color-scheme:${dark ? "dark" : "light"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:${bg};color:${fg}}a{color:${link}}</style></head><body>${html}</body></html>`;
 }
 

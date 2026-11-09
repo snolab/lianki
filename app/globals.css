@@ -368,17 +368,17 @@ ruby rt {
   -webkit-box-decoration-break: clone;
 }
 /* The word being read aloud (lib/words/spoken-word.ts), karaoke-style: a
- * cool tint with a bar beneath, unlike the card word's warm highlighter, so
+ * seal-red tint with a bar beneath, unlike the card word's gold highlighter, so
  * the two read apart where they meet. It moves word to word with a short
  * fade; with reduced motion it just jumps. */
 :root {
-  --lk-ex-spoken: oklch(0.85 0.09 220 / 0.7);
-  --lk-ex-spoken-bar: oklch(0.55 0.15 235);
+  --lk-ex-spoken: oklch(0.85 0.099 22.3 / 0.7);
+  --lk-ex-spoken-bar: oklch(0.55 0.165 22.3);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --lk-ex-spoken: oklch(0.45 0.09 225 / 0.75);
-    --lk-ex-spoken-bar: oklch(0.78 0.12 220);
+    --lk-ex-spoken: oklch(0.45 0.099 22.3 / 0.75);
+    --lk-ex-spoken-bar: oklch(0.78 0.132 22.3);
   }
 }
 .lk-ex-spoken {
@@ -1035,14 +1035,14 @@ html[data-embed] .lk-statusbar {
 }
 .lk-lang-current,
 .lk-lang-dot-current {
-  border-color: oklch(0.6 0.15 250);
-  background: oklch(0.6 0.15 250 / 0.14);
+  border-color: oklch(0.6 0.165 22.3);
+  background: oklch(0.6 0.165 22.3 / 0.14);
 }
 .lk-lang-preferred {
   box-shadow: 0 0 0 2px oklch(0.72 0.17 150 / 0.8);
 }
 .lk-lang-badge-current {
-  background: oklch(0.55 0.17 250);
+  background: oklch(0.55 0.187 22.3);
   color: oklch(0.99 0 0);
   text-shadow: none;
 }
@@ -1189,7 +1189,7 @@ html[data-embed] [data-words-top] {
   --ink: oklch(0.62 0.02 260);
   --soft: oklch(0.95 0.01 260);
   --card: oklch(1 0 0);
-  --accent: oklch(0.7 0.08 250);
+  --accent: oklch(0.7 0.088 22.3);
 }
 @media (prefers-color-scheme: dark) {
   .lk-tray {
@@ -1386,10 +1386,10 @@ html[data-motion="off"] *::after {
 @keyframes lk-grade-pulse {
   0%,
   100% {
-    background: oklch(0.7 0.08 250 / 0.06);
+    background: oklch(0.7 0.088 22.3 / 0.06);
   }
   50% {
-    background: oklch(0.7 0.08 250 / 0.24);
+    background: oklch(0.7 0.088 22.3 / 0.24);
   }
 }
 @keyframes lk-grade-flash {
@@ -1420,7 +1420,7 @@ html[data-motion="off"] *::after {
 @media (prefers-reduced-motion: reduce) {
   .lk-book [data-lk-pulse] {
     animation: none;
-    background: oklch(0.7 0.08 250 / 0.2);
+    background: oklch(0.7 0.088 22.3 / 0.2);
   }
   .lk-book [data-lk-flash] {
     animation: none;
@@ -1567,14 +1567,14 @@ html[data-read-marks="unknown"] .lk-book [data-pf="n"] {
  * words tapped before, so two taps showed two selections (owner, 2026-11-05
  * 03:00 JST). A deep link's unit flashes once as it lands. */
 .lk-book [data-sel] {
-  background: oklch(0.72 0.11 250 / 0.32);
+  background: oklch(0.86 0.13 86 / 0.5);
   border-radius: 0.15em;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
 @media (prefers-color-scheme: dark) {
   .lk-book [data-sel] {
-    background: oklch(0.62 0.12 250 / 0.42);
+    background: oklch(0.6 0.11 80 / 0.5);
   }
 }
 @keyframes lk-flash {

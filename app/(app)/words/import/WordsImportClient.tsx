@@ -254,7 +254,7 @@ export default function WordsImportClient() {
   };
   const box = "rounded-lg bg-black/5 dark:bg-white/5 p-4";
   const control =
-    "rounded bg-black/10 dark:bg-white/10 px-2 py-1 text-sm min-w-0 max-w-full focus:outline focus:outline-2 focus:outline-emerald-500";
+    "rounded bg-black/10 dark:bg-white/10 px-2 py-1 text-sm min-w-0 max-w-full focus:outline focus:outline-2 focus:outline-blue-600 dark:focus:outline-blue-300";
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-6">
@@ -296,7 +296,7 @@ export default function WordsImportClient() {
           data-testid="apkg-drop"
           className={`block cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
             dragging
-              ? "border-emerald-500 bg-emerald-500/10"
+              ? "border-blue-600 bg-blue-600/10"
               : "border-black/20 dark:border-white/20 hover:border-black/40 dark:hover:border-white/40"
           }`}
         >
@@ -556,7 +556,7 @@ function DeckCard({
         <button
           disabled={busy || built.entries.length === 0}
           onClick={() => onImport(built)}
-          className="px-4 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+          className="px-4 py-1.5 rounded bg-primary text-on-primary hover:bg-blue-700 disabled:opacity-50"
         >
           {busy ? t.importing : t.importButton}
         </button>

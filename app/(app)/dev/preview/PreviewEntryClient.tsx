@@ -25,7 +25,7 @@ export default function PreviewEntryClient({ to }: { to: string }) {
         <button
           type="button"
           onClick={go}
-          className="rounded-full px-5 py-2 bg-[oklch(0.55_0.18_255)] text-[oklch(0.99_0_0)] font-semibold"
+          className="rounded-full px-5 py-2 bg-[oklch(0.55_0.198_22.3)] text-[oklch(0.99_0_0)] font-semibold"
         >
           再试一次
         </button>

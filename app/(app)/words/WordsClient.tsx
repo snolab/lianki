@@ -737,7 +737,7 @@ function WhisperModeSetting({
           role="radio"
           aria-checked={mode === m}
           onClick={() => pick(m)}
-          className={`rounded-full px-2 py-0.5 ${mode === m ? "bg-emerald-500/20 font-semibold text-emerald-900 dark:text-emerald-100" : "opacity-70"}`}
+          className={`rounded-full px-2 py-0.5 ${mode === m ? "bg-blue-600/15 font-semibold text-blue-800 dark:bg-blue-400/20 dark:text-blue-100" : "opacity-70"}`}
         >
           {text[k].value}
         </button>
@@ -765,13 +765,13 @@ function TogglePill({
       onClick={() => onChange(!on)}
       className={`inline-flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs transition-colors ${
         on
-          ? "bg-emerald-500/20 text-emerald-900 dark:text-emerald-100"
+          ? "bg-blue-600/15 text-blue-800 dark:bg-blue-400/20 dark:text-blue-100"
           : "bg-black/5 dark:bg-white/10 opacity-80"
       }`}
     >
       <span
         className={`relative h-4 w-7 rounded-full transition-colors ${
-          on ? "bg-emerald-500" : "bg-black/25 dark:bg-white/30"
+          on ? "bg-blue-600 dark:bg-blue-400" : "bg-black/25 dark:bg-white/30"
         }`}
       >
         <span
@@ -2230,7 +2230,7 @@ function UndoDeleteToast({ doomed, onUndo }: { doomed: DoomedList; onUndo: () =>
       <button
         ref={undo}
         onClick={onUndo}
-        className="min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]"
+        className="min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.165_22.3)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.132_22.3)]"
       >
         {text.undoDelete}
       </button>
@@ -2461,7 +2461,7 @@ function SortableListRow({
             }}
             onBlur={(e) => endEdit(e.currentTarget.value)}
             // 16px text: phones do not zoom into the field.
-            className="w-full min-h-11 rounded-md px-2 text-base font-medium bg-[oklch(1_0_0/0.7)] dark:bg-[oklch(0.2_0_0/0.7)] ring-1 ring-[oklch(0.5_0_0/0.35)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.6_0.15_250)]"
+            className="w-full min-h-11 rounded-md px-2 text-base font-medium bg-[oklch(1_0_0/0.7)] dark:bg-[oklch(0.2_0_0/0.7)] ring-1 ring-[oklch(0.5_0_0/0.35)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.6_0.165_22.3)]"
           />
         </form>
       ) : (
@@ -2470,7 +2470,7 @@ function SortableListRow({
         <button
           type="button"
           data-open-list={l.id}
-          className="flex min-h-14 min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-2 ps-1 text-start focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.15_250)]"
+          className="flex min-h-14 min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-2 ps-1 text-start focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.165_22.3)]"
           onClick={() => onOpen(l.id)}
           title={
             (isGroup ? `${text.groupRowHint.value}\n` : "") +
@@ -3072,7 +3072,7 @@ function ListPicker({
       {studyable.length > 1 && (
         <button
           onClick={() => onOpen(ALL)}
-          className="w-full flex items-center gap-3 rounded-lg bg-emerald-500/20 dark:bg-emerald-700/40 hover:bg-emerald-500/30 dark:hover:bg-emerald-700/60 px-4 py-3 text-left"
+          className="w-full flex items-center gap-3 rounded-lg bg-gold-300/50 dark:bg-gold-300/20 hover:bg-gold-300/70 dark:hover:bg-gold-300/30 px-4 py-3 text-left"
         >
           {keys && <kbd className="text-xs opacity-50">0</kbd>}
           <span className="flex-1">
@@ -3593,7 +3593,7 @@ function AddedToast({
     ? fill(text.addFailed.value, { error: added.error })
     : fill(text.addedToast.value, { names });
   const action =
-    "min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]";
+    "min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.165_22.3)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.132_22.3)]";
   return (
     <div
       role="status"
@@ -5795,7 +5795,7 @@ export function Study({
                     title={it.reading ? `${it.term} ${it.reading}` : it.term}
                     className={`slip-term font-medium ${
                       it.kind === "new"
-                        ? "text-emerald-600 dark:text-emerald-400"
+                        ? "text-blue-600 dark:text-blue-300"
                         : it.kind === "again"
                           ? "text-amber-600 dark:text-amber-300"
                           : ""
