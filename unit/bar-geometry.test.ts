@@ -6,9 +6,28 @@ import {
   CONTROL_W,
   INPUT_START,
   MIC_BOX,
+  STRIP_INSET_PX,
   TAP_44_CSS,
   barGeometry,
+  stripTopRadius,
 } from "../packages/debug-chat/src/bar-geometry";
+
+describe("the glass strip's top corners (owner, 2026-11-10)", () => {
+  test("concentric with the progress pill's end caps: its radius (half its height) plus the inset", () => {
+    // A 20 px bar under a 4 px inset: the slot is 24, the cap's radius 10, the corner 14.
+    expect(stripTopRadius(20 + STRIP_INSET_PX)).toBe(10 + STRIP_INSET_PX);
+    expect(stripTopRadius(17 + STRIP_INSET_PX)).toBe(8.5 + STRIP_INSET_PX);
+    // Nothing measured yet: just the inset, never negative.
+    expect(stripTopRadius(0)).toBe(STRIP_INSET_PX);
+  });
+  test("the bar is a full pill in the strip, the strip's top radius set from the measured slot", () => {
+    const bar = readFileSync("packages/debug-chat/src/EtaBar.tsx", "utf8");
+    expect(bar).toContain('${glass ? "rounded-full" : "rounded"}');
+    const chat = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
+    expect(chat).toContain("borderTopLeftRadius: stripTopRadius(etaH)");
+    expect(chat).toContain("borderTopRightRadius: stripTopRadius(etaH)");
+  });
+});
 
 describe("chat bar geometry (concentric mic)", () => {
   test("the bar draws its radius, border and padding inline, from the variables", () => {

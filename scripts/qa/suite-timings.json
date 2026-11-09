@@ -1,0 +1,31 @@
+{
+  "_": "Median seconds per qa:all suite in CI (merge queue). Written by `bun scripts/qa/record-timings.ts`; read by scripts/qa/shard.mjs to balance the shards.",
+  "recorded": "2026-11-10, runs 42663863203 42665930604 42665935581 42665986171",
+  "seconds": {
+    "audio-free": 7.3,
+    "api": 3.7,
+    "ui": 32.6,
+    "sign-out": 14.1,
+    "account-locale": 5.2,
+    "external-link": 8.9,
+    "read-sel-underlines": 3.7,
+    "userscript-guest": 9.2,
+    "userscript-redirect": 2.6,
+    "words": 135.4,
+    "read-epub": 17.7,
+    "import-wordlist": 69.2,
+    "app-badge": 82.8,
+    "email-invite": 28.6,
+    "pregrant": 24.8,
+    "templates": 25.8,
+    "mails": 47.6,
+    "membership-marble": 28.3,
+    "credits-usage": 8.8,
+    "yt-songs": 25.8,
+    "read-sel-one": 10.3,
+    "smart-refresh": 1.6,
+    "sync": 8.6,
+    "partner-frame": 2.6,
+    "pill-chat": 4.0
+  }
+}

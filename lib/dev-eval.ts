@@ -228,6 +228,12 @@ export type ControllerMessage =
    */
   | { type: "edit"; id: string; text: string }
   /**
+   * Withdraw the agent's open ask card, by its askId or its message id, in
+   * the owner's thread or `to` a friend's (the thread it was sent to):
+   * docs/dev-debug-widget.md, "Withdrawing an ask".
+   */
+  | { type: "withdraw"; id: string; to?: string }
+  /**
    * Collapse a run of the owner's voice lines that were not addressed to the
    * agent (room talk) into one short summary; the lines stay kept, the raw
    * text a tap away: docs/dev-debug-widget.md, "Summaries". By `ids`, or his
@@ -463,6 +469,13 @@ export function parseControllerMessage(
     if (!text) return { ok: false, error: `edit needs text of 1–${MAX_CHAT} chars` };
     return { ok: true, value: { type: "edit", id, text } };
   }
+  if (m?.type === "withdraw") {
+    const id = str(m.id, 64)?.trim();
+    if (!id || !/^[A-Za-z0-9_-]{1,64}$/.test(id))
+      return { ok: false, error: "withdraw needs the askId or message id of the ask" };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: { type: "withdraw", id, ...(to ? { to } : {}) } };
+  }
   if (m?.type === "summary") {
     const text = chatText(m.text);
     if (!text) return { ok: false, error: `summary needs text of 1–${MAX_CHAT} chars` };
@@ -505,7 +518,7 @@ export function parseControllerMessage(
     return {
       ok: false,
       error:
-        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"}, {"type":"summary","ids"|"last","text"} or {"type":"grant","from","to"}',
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"}, {"type":"summary","ids"|"last","text"}, {"type":"withdraw","id"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };

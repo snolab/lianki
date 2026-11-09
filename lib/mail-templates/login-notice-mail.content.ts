@@ -161,7 +161,7 @@ const B = "{brand} / {brandLong} are the product name filled in at send time; ke
 const context: Record<keyof typeof dictionary.content, string> = {
   subject: `${M} the subject line. Calm, factual, not alarming. ${B}`,
   intro: `${M} the first paragraph: the account was just signed in to from a new browser. ${B}`,
-  time: `${M} label in a two-column table; the value beside it is a date and time in UTC. A noun.`,
+  time: `${M} label in a two-column table; the value beside it is a date and time in the reader's time zone, labelled with that zone. A noun.`,
   location: `${M} label in a two-column table; the value is a city/region/country guessed from the IP address. A noun phrase.`,
   device: `${M} label in a two-column table; the value is the browser's user-agent string. A noun ('Browser', the program used).`,
   unknown: `${M} shown as the value in the table when the location or browser could not be told. Lower-case word, like 'unknown'.`,

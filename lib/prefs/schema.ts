@@ -31,6 +31,7 @@ import { allImmersionSites, IMMERSION_LANGUAGES } from "@/lib/immersion-sites";
 import { FEEL_RANGES } from "@/lib/words/swipe-feel";
 import { BLOG_LOCALES } from "@/lib/constants";
 import { TEXT_MAX, TEXT_MIN } from "@/lib/text-size-boot";
+import { CARD_HEIGHT_RANGE } from "@/lib/words/row-pinch";
 import { cleanBackend } from "@/lib/byok/config";
 import {
   isTitleHost,
@@ -142,6 +143,10 @@ export const PREF_SCHEMAS = {
   "words.gradeTones": z.boolean(),
   "words.voiceMode": z.boolean(),
   "words.swipeMirror": z.boolean(),
+  // the rows' height, a factor of the default (lib/words/row-pinch.ts, pinched on the list)
+  "words.cardHeight": z.number().min(CARD_HEIGHT_RANGE[0]).max(CARD_HEIGHT_RANGE[1]),
+  // the first-visit walkthrough was finished or skipped (lib/words/onboarding.ts)
+  "words.onboarded": z.boolean(),
   // the swipe (Experimental)
   "swipe.variant": z.enum(["js", "native"]),
   "swipe-feel.preset": z.enum(["light", "heavy"]),
@@ -174,6 +179,8 @@ export const PREF_SCHEMAS = {
   "links.allowedHosts": z.array(z.string().refine(isAllowedHost)).max(ALLOWED_HOSTS_MAX),
   // the app-icon badge (lib/app-badge.ts, docs/app-badge.md): what its number counts
   "notify.badge": z.enum(BADGE_MODES),
+  // mails the account turned off (lib/mail-templates/kinds.ts); false = do not send
+  "mail.loginNotice": z.boolean(),
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),

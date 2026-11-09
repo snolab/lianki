@@ -110,6 +110,33 @@ to every signed-in user while it is on).
 - **.xls** (the old binary format) is recognised by its OLE signature and
   refused with "save it as .xlsx or CSV UTF-8" — no BIFF reader.
 
+### Column mapping (owner, 2026-11-10)
+
+A table (CSV, TSV, a sheet) shows a **mapping step** in the preview
+(`app/(app)/import/ColumnMapper.tsx`, `lib/import/column-map.ts`): each file
+column is a chip — its header name, or "Column N", and its first value — on
+one of the fields **Word / Meaning / Example / Reading / Example translation**
+or on **Ignore**. Chips are dragged (dnd-kit: mouse, touch after a short hold
+so the page still scrolls, keyboard: Space, arrows, Space, Escape, with
+spoken announcements) and reordered; two columns in one field are joined in
+their order with "; ". A checkbox says whether the first row is column
+names.
+
+- **Defaults**: the header aliases (`HEADER_ALIASES`), else word, meaning,
+  example by column order (`tableShape().defaults`). Content-based guessing
+  is not built; `MAPPING_GUESSERS` is the hook: a guesser sees the header
+  and the first rows and may return a mapping, which wins when it names a
+  word column.
+- **Live cards**: under the chips, the first rows as /words cards (word and
+  reading, then example and meaning in `BACK_ORDER`, on the slip's paper),
+  parsed in the page with the mapping at every move. The counts (new /
+  already have / skipped) are asked again 400 ms after the chips rest.
+- **Sent with the commit**: `mapping` (columns per field) and `header` go with
+  both steps; the server checks them (zod, then `cleanMapping`: indices in
+  range, each column in one field) and parses with them, so the list holds
+  what the cards showed. No word column: Add stays disabled; the server would
+  skip every row as "no word".
+
 ### Templates
 
 "Start from a template" sits at the top of the import with **Excel
@@ -124,9 +151,8 @@ template → parse → the example rows, header detected.
 
 Not in this slice (next): the file is **not** kept as an artifact in R2 and
 not counted in usage; no task bar under the nav (the list on /import is the
-stand-in); no push-socket status; no "Front = column A?" question (the
-preview's header note says how columns were read, and the user cannot remap
-them yet); re-importing into an existing list.
+stand-in); no push-socket status; re-importing into an existing list. (The
+"Front = column A?" question is the mapping step above.)
 
 ## Goal
 

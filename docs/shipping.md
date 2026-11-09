@@ -46,16 +46,107 @@ CI runs **everything**; the pre-push hook runs only what a change reaches
 - `Lint + typecheck + unit` — oxlint + `oxfmt --check`, typecheck, the whole
   unit suite with its coverage gate (~20 s). Every PR, every merge group, every
   push to `main`; when it fails on a push to `main` it posts to Slack #lianki.
-- `qa:all (merge queue)` — the whole `bun run qa:all`, in the Playwright image,
-  on the `merge_group` event only (~6–7 min on a runner). So every PR gets the
-  full integration gate before it lands, while opening a PR and main's deploy
-  wait for neither. It blocks; `QA_BLOCKING: "false"` in ci.yml turns a
-  failure into a warning instead (used while WORDS' Settings-sheet check
-  failed in CI, 2026-11-08).
+- `qa` — the whole qa:all, on the `merge_group` event only (and on a manual
+  dispatch), as one build job and three parallel shards
+  (`.github/workflows/qa-sharded.yml`, below). So every PR gets the full
+  integration gate before it lands, while opening a PR and main's deploy wait
+  for neither. It blocks; `QA_BLOCKING: "false"` in ci.yml turns a failure
+  into a warning instead (used while WORDS' Settings-sheet check failed in CI,
+  2026-11-08).
 - `Typecheck + unit` — the one required check (branch protection names it). A
-  tiny job that is green when the first job passed and the qa job passed or
-  was skipped (outside the merge queue). Adding the qa job needed no change to
-  branch protection.
+  tiny job that is green when the first job passed and `qa` (its build and
+  every shard) passed or was skipped (outside the merge queue). It is the
+  aggregator the shards report through, so neither the qa job nor its shards
+  needed a change to branch protection or the ruleset.
+
+### qa:all in shards
+
+Until 2026-11-10 the merge queue ran qa:all as one job: ~12.5 min (median 755 s:
+container 31 s, setup 25 s, OpenNext build 40–50 s, local D1 migrations 20 s,
+then 25 suites one after another, ~11 min). Now:
+
+1. **`qa build`** (plain runner, Node 24): `qa-all.mjs --prepare` builds the
+   OpenNext Worker and migrates a local D1, then ships `.open-next` and
+   `.wrangler/state` to the shards as one tarball artifact (it keeps the
+   build's internal symlinks). `.next/cache` (Turbopack's build cache, on by
+   default since Next 16.3) is kept in the Actions cache. Only caches saved on
+   `main` reach a merge-queue run (one saved on a `gh-readonly-queue` ref is
+   visible to that ref only), so Full QA's runs on main are what keep it warm.
+2. **`qa:all 1/3`, `2/3`, `3/3`** (Playwright image, `fail-fast: false`):
+   `qa-all.mjs --no-build --shard=i/3` boots its own `wrangler dev` on the
+   prepared build and runs its third of the suites. Time-sensitive suites
+   still run after the plain ones in each shard, as before; CI needs no
+   admission (each runner has its machine to itself).
+
+**The split** (`scripts/qa/shard.mjs`, tested in `unit/qa-shard.test.ts`):
+longest suite first onto the shard with the least time so far, by the median
+seconds in `scripts/qa/suite-timings.json`; a suite not listed counts 30 s.
+Each job computes the same split by itself. AUDIO-FREE (`everyShard: true`)
+starts every shard, because the suites after it rely on its silent layer.
+Every suite prints `qa:all timing <id> <seconds>`; re-record the medians from
+the last green merge-queue runs with `bun scripts/qa/record-timings.ts` when a
+shard runs long (a new suite, a slower one).
+
+Locally, `--shard=i/n` and `--prepare` work the same, and a plain
+`bun run qa:all` is unchanged. Full QA (below) uses the same workflow plus the
+extension smoke test in shard 1.
+
+### Full QA and the deploy hold
+
+`.github/workflows/nightly-qa.yml`, now named **Full QA**, runs every suite
+plus the extension smoke test on `main`. It is **never on a timer** (owner,
+2026-11-10: he can be away for days, and with no merges nothing should run;
+the 03:00 JST nightly cron is gone). It starts from merges, through
+`.github/workflows/full-qa-trigger.yml` on every push to `main`
+(`scripts/ci/full-qa.ts trigger`; the decision is `decideTrigger` in
+`scripts/ci/full-qa-lib.ts`, tested in `unit/full-qa-hold.test.ts`):
+
+- **Covered:** main counts as tested up to the newest full run that is green
+  or still queued/running. Nothing untested: nothing runs.
+- **At once** when a file since then matches a `QA_FULL` path (the core, the
+  Worker's build and serving, migrations, qa:all's own machinery — the same
+  list that sends pre-push and the merge queue to the full set), or when
+  `FULL_QA_MAX_MERGES` (default 10) merges are untested.
+- **Debounce:** otherwise the trigger job waits `FULL_QA_QUIET_MIN` (default 15) minutes and then starts the run. Its concurrency group cancels it when
+  the next merge arrives, and that merge decides again, so the run starts
+  once merges have been quiet that long.
+- **Throttle:** while merges keep coming, the run starts at the latest when
+  the oldest untested merge has waited `FULL_QA_MAX_WAIT_H` (default 4) hours.
+- Also by hand (`gh workflow run nightly-qa.yml -R snolab/lianki`), and from
+  the deploy hold below.
+
+The three numbers are defaults in `FULL_QA_DEFAULTS`; a repo variable of the
+same name (Settings → Secrets and variables → Actions → Variables) overrides
+each without a code change. A running full run is never cancelled: a newer
+start waits behind it.
+
+When it goes red:
+
+1. **#lianki** hears it (`SLACK_WEBHOOK_URL`), with the run link.
+2. **A revert PR** (`scripts/ci/full-qa.ts revert`): every commit on `main`
+   since the last green full run, reverted on `revert/full-qa-<sha>`, for a
+   person to merge or close; nothing merges it by itself. It is opened with
+   the workflow token, which needs the repo setting _Allow GitHub Actions to
+   create and approve pull requests_ (off as of 2026-11-10). Without it the
+   branch is still pushed and the alert carries the compare link instead. A
+   PR opened by the workflow token gets no CI of its own: push to it, or close
+   and reopen it, to start the checks. Commits that do not revert cleanly
+   leave only a warning.
+3. **Deploys are held.** `deploy-worker.yml` starts with the `Full QA hold`
+   job (logic in `scripts/ci/full-qa-lib.ts`, tested in
+   `unit/full-qa-hold.test.ts`): it reads the latest finished Full QA run on
+   main (cancelled runs do not count) and, while that run is red, deploys
+   nothing — the run fails with "Deploy held", so it shows — and starts a
+   Full QA run if none is queued. A green Full QA run that follows a red one
+   triggers deploy-worker itself (`workflow_run` on Full QA) and deploys the
+   commit it tested; a green run with no hold to lift deploys nothing (CI
+   already did). **Override:** run Deploy Worker by hand with
+   `override_hold` (`gh workflow run deploy-worker.yml -R snolab/lianki -f
+override_hold=true`).
+
+Concurrency: the free plan gives 20 concurrent jobs. A merge-queue entry now
+takes 5 (checks, build, 3 shards) and the queue builds up to 5 entries, so a
+full queue waits a little for runners rather than failing.
 
 A CI runner is slower than a laptop, and the phone passes of qa-words run side
 by side (#704): WebKit there can go a while without a rendering update, and a
@@ -79,10 +170,10 @@ Two more from the merge queue of 2026-11-09 (state tree /infra/qa-words-flake):
 main's deploy waits for this workflow on the push to `main` (no qa job there:
 it ran in the queue).
 
-The integration gate, `qa:all (D1/Workers)` (`bun run qa:all` plus the
-extension smoke test, ~8 min), also runs **nightly** on main at 03:00 JST in
-`.github/workflows/nightly-qa.yml` (or by hand: `gh workflow run nightly-qa.yml
--R snolab/lianki`), and posts to #lianki when it fails. It left the per-push CI
+The integration gate (qa:all in shards plus the extension smoke test) also
+runs on main **after merges, never on a timer** (below, "Full QA and the deploy
+hold") and
+posts to #lianki when it fails. It left the per-push CI
 on 2026-10-31 so a deploy no longer waits for it. Node 24 (for `node:sqlite`);
 wrangler runs D1 locally, so no Cloudflare secrets are needed. Both alerts need
 the repo secret `SLACK_WEBHOOK_URL` (`scripts/ci/slack-alert.sh`); without it
@@ -138,7 +229,7 @@ pushes. On **native Windows** (Git Bash)
 it skips qa only — lint, typecheck and the unit tests still run — because
 the OpenNext Cloudflare packaging cannot produce a working Worker there (symlink
 copy errors with bun's isolated linker, `ChunkLoadError` on every route with a
-hoisted install; verified 2026-10-14). There CI's runs (merge queue, nightly) are the only
+hoisted install; verified 2026-10-14). There CI's runs (merge queue, Full QA) are the only
 integration gate; `LIANKI_QA_ON_WINDOWS=1` forces the local run, for example to
 re-test after an OpenNext upgrade. WSL counts as Linux and runs the gate
 normally.

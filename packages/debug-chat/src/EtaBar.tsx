@@ -133,7 +133,8 @@ function FillLine({
 }) {
   return (
     <span
-      className={`relative isolate flex min-w-0 items-center gap-1.5 overflow-hidden rounded ${className}`}
+      // In the glass strip a full pill (end caps half its height), concentric with the strip's corners.
+      className={`relative isolate flex min-w-0 items-center gap-1.5 overflow-hidden ${glass ? "rounded-full" : "rounded"} ${className}`}
       style={{ background: glass ? "transparent" : both("track"), color: both("text") }}
     >
       <span

@@ -22,6 +22,8 @@ import {
   SIGN_UP_GRACE_MS,
   approximateLocation,
   loginNoticeMail,
+  loginNoticeValues,
+  describeBrowser,
   recordSignIn,
   utcStamp,
   validDeviceId,
@@ -312,8 +314,10 @@ describe("login notification", () => {
       location: approximateLocation({ city: "Tokyo", region: "Tokyo", country: "JP" }),
       userAgent: "Mozilla/5.0 <script>",
     });
-    expect(m.text).toContain("2026-10-30 14:05 UTC");
-    expect(m.text).toContain("Tokyo, Tokyo, JP");
+    // No zone known: UTC, labelled — never a bare stamp.
+    expect(m.text).toContain("October 30, 2026 at 2:05 PM (UTC)");
+    // The region that repeats the city is left out.
+    expect(m.text).toContain("Tokyo, JP");
     expect(m.text).toContain("Mozilla/5.0 <script>");
     expect(m.html).not.toContain("<script>");
     expect(
@@ -325,6 +329,39 @@ describe("login notification", () => {
     expect(approximateLocation(undefined, new Headers({ "cf-ipcountry": "JP" }))).toBe("JP");
     expect(approximateLocation({ country: "XX" })).toBe("");
     expect(utcStamp(new Date("2026-01-02T03:04:05Z"))).toBe("2026-01-02 03:04 UTC");
+  });
+
+  test("the time is the reader's local time, labelled with its zone (owner sample: zh, Tokyo, iPhone)", () => {
+    const iphone =
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1";
+    const v = loginNoticeValues("zh", {
+      when: new Date("2026-11-09T09:07:00Z"),
+      location: approximateLocation({ city: "Tokyo", region: "Tokyo", country: "JP" }, null, "zh"),
+      userAgent: iphone,
+      eventTimeZone: "Asia/Tokyo",
+    });
+    expect(v.time).toBe("2026年11月9日 18:07（日本标准时间 GMT+9）");
+    expect(v.location).toBe("Tokyo, 日本");
+    expect(v.browser).toBe("Safari · iPhone");
+    // The account's own zone wins over the sign-in's; a bad zone falls back to UTC, labelled.
+    expect(
+      loginNoticeValues("en", {
+        when: new Date("2026-11-09T09:07:00Z"),
+        location: "",
+        userAgent: null,
+        accountTimeZone: "Europe/Berlin",
+        eventTimeZone: "Asia/Tokyo",
+      }).time,
+    ).toBe("November 9, 2026 at 10:07 AM (Central European Time, GMT+1)");
+    expect(
+      loginNoticeValues("en", {
+        when: new Date("2026-11-09T09:07:00Z"),
+        location: "",
+        userAgent: null,
+        eventTimeZone: "Not/AZone",
+      }).time,
+    ).toBe("November 9, 2026 at 9:07 AM (UTC)");
+    expect(describeBrowser("curl/8.4.0")).toBe("curl/8.4.0");
   });
 });
 

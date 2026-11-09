@@ -70,8 +70,8 @@ import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
-import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry } from "./bar-geometry";
-import { DebugMic, canCapture, pageCues, pageMic, voiceDevice } from "./MicButton";
+import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry, STRIP_INSET_PX, stripTopRadius } from "./bar-geometry";
+import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
 import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
@@ -91,7 +91,7 @@ import {
 } from "./read-progress";
 import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
 import { AEC_EVENT, aecOn, applyAec } from "./aec";
-import type { SpeakMeta } from "./speak-rules";
+import { type SpeakMeta, isWithdrawn } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -149,6 +149,7 @@ import {
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
+import { type PttState, createPttGesture } from "./ptt";
 import { WAITING_INK, lastPendingIndex, waitingMark } from "./waiting-mark";
 import { TreeChips } from "./TreeChips";
 import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
@@ -244,7 +245,9 @@ const withClass = <T extends { className: string }>(p: T, cls: string): T => ({
   className: `${p.className} ${cls}`,
 });
 /** The mic's extra gesture, for its title and aria-description. */
-const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
+const MIC_PTT_HINT = "Hold to talk: one line, sent when you let go (slide away to cancel). Tap: always listening. ↑/↓: scroll back through the chat";
+/** The light haptic when a press becomes push to talk (navigator.vibrate; none on iOS). */
+const PTT_HAPTIC_MS = 10;
 /** A minimized scrub shows this many lines at a time. */
 const SCRUB_LINES = 3;
 const POS_KEY = "lk:debug-chat-pos";
@@ -2850,62 +2853,107 @@ export function DebugChat({
     setFloatEpoch((e) => e + 1);
   };
   /**
-   * A press on the mic: a tap toggles it (MicButton); locked vertically it
-   * scrubs the history (minimized) or scrolls the log (expanded); locked
-   * horizontally it moves the box. Either lock swallows the click.
+   * A press on the mic (owner, 2026-11-10, push to talk: ptt.ts): a tap
+   * toggles always-on listening (MicButton's click); a long press is one
+   * voice line, recorded from the pointerdown and sent on release; held, a
+   * slide PTT_CANCEL_PX away arms a cancel. Locked horizontally before the
+   * hold, it moves the box. It no longer scrubs the history (drag the
+   * history itself; ↑/↓ still step through it).
    */
   const micAxis = useRef(createAxisLock());
   const micDragged = useRef(createDragFlag());
-  const micPress = useRef({ x: 0, y: 0, back: 0, scroll: 0 });
+  const micPress = useRef({ x: 0, y: 0 });
+  /** The push-to-talk state for the button (held: the red ring and the elapsed time). */
+  const [pttView, setPttView] = useState<{ state: PttState; since: number }>({
+    state: "idle",
+    since: 0,
+  });
+  const pttRec = useRef<ReturnType<typeof pttRecorder> | null>(null);
+  const pttAt = useRef(0);
+  /** The last press was push to talk: its click is no tap. */
+  const pttWasHold = useRef(false);
+  const ptt = useRef<ReturnType<typeof createPttGesture> | null>(null);
+  ptt.current ??= createPttGesture({
+    press: (at) => {
+      pttAt.current = at;
+      pttRec.current = pttRecorder();
+      pttRec.current.start();
+    },
+    hold: () => {
+      pttWasHold.current = true;
+      // A light tick (Android; iOS has no navigator.vibrate, and that is fine).
+      navigator.vibrate?.(PTT_HAPTIC_MS);
+    },
+    release: (at) => {
+      const rec = pttRec.current;
+      pttRec.current = null;
+      const start = pttAt.current;
+      if (!rec) return;
+      void rec
+        .finish()
+        .then(({ text, audioMs }) => {
+          if (!text) return;
+          const done = Date.now();
+          const timing: VoiceTiming = {
+            t_speechStart: start,
+            t_speechEnd: at,
+            t_uploadStart: at,
+            t_sttDone: done,
+            t_sent: done,
+            audioMs,
+          };
+          const to = targetRef.current;
+          // Sent at once: push to talk has no draft step.
+          sendRef.current(text, to === ROOT_NODE ? undefined : to, { source: "stt", timing });
+          window.dispatchEvent(
+            new CustomEvent(VOICE_SENT_EVENT, { detail: { sound: pageCues().send() } }),
+          );
+        })
+        // A failed transcription: logged for the dev view, the line is not sent.
+        .catch((e: unknown) => {
+          voice().log({ ev: "ptt-error", error: String((e as Error)?.message ?? e) });
+        });
+    },
+    drop: () => {
+      pttRec.current?.abort();
+      pttRec.current = null;
+    },
+    state: (st) =>
+      setPttView((v) => ({ state: st, since: st === "held" && v.state !== "away" ? Date.now() : v.since })),
+  });
   const micGesture = {
-    description: MIC_SCRUB_HINT,
+    description: MIC_PTT_HINT,
+    ptt: pttView,
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
       micAxis.current.down(e.clientX, e.clientY);
       micDragged.current.down();
-      micPress.current = {
-        x: e.clientX,
-        y: e.clientY,
-        back: floats.length ? back.current : 0,
-        scroll: log.current?.scrollTop ?? 0,
-      };
+      micPress.current = { x: e.clientX, y: e.clientY };
+      pttWasHold.current = false;
+      ptt.current!.down(e.clientX, e.clientY);
       e.currentTarget.setPointerCapture?.(e.pointerId);
     },
     onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
+      const g = ptt.current!;
+      // Held: the finger only arms or disarms the cancel; nothing else moves.
+      if (g.state() === "held" || g.state() === "away") return g.move(e.clientX, e.clientY);
       const was = micAxis.current.axis();
       const m = micAxis.current.move(e.clientX, e.clientY);
-      if (!m) return;
-      if (m.axis === "x") {
-        if (!was) begin(micPress.current.x, micPress.current.y);
-        handle.onPointerMove(e);
-        return;
-      }
-      if (open) {
-        if (!was) logDrag.start();
-        logDrag.move(m.dy);
-        return;
-      }
-      if (!was) setScrubbing(true);
-      const n = scrubBack(micPress.current.back, m.dy, Math.max(0, messages.length - 1));
-      if (!was || n !== back.current) scrubTo(n);
+      if (!m || m.axis !== "x") return;
+      // Sideways before the hold: a drag that moves the box, no clip.
+      g.drag();
+      if (!was) begin(micPress.current.x, micPress.current.y);
+      handle.onPointerMove(e);
     },
     onPointerUp: () => {
       const axis = micAxis.current.up();
-      if (!axis) return;
-      micDragged.current.dragEnded();
+      if (axis) micDragged.current.dragEnded();
       if (axis === "x") handle.onPointerUp();
-      else if (open) logDrag.end();
-      else {
-        setScrubbing(false);
-        setFloatEpoch((e) => e + 1); // the dwell starts over from the release
-      }
+      ptt.current!.up();
     },
     onPointerCancel: () => {
       const axis = micAxis.current.up();
       if (axis === "x") handle.onPointerCancel();
-      if (axis === "y") {
-        setScrubbing(false);
-        logDrag.end();
-      }
+      ptt.current!.cancel();
     },
     onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
       if (open ||(e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
@@ -2914,7 +2962,7 @@ export function DebugChat({
       const n = Math.max(0, Math.min(Math.max(0, messages.length - 1), from + (e.key === "ArrowUp" ? 1 : -1)));
       scrubTo(n);
     },
-    wasDrag: () => micDragged.current.wasDrag(),
+    wasDrag: () => micDragged.current.wasDrag() || pttWasHold.current,
   };
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const conns = plural(
@@ -3758,7 +3806,21 @@ export function DebugChat({
   );
   const resumeItems = resumeLeft
     .map((r) => ({ r, m: messages.find((x) => x.id === r.id && x.from === "agent") }))
-    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m);
+    // A withdrawn ask card is never read on (speak-rules.ts).
+    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m && !isWithdrawn(x.m));
+  // An ask withdrawn while it is being read (or waits in the queue): its
+  // sentences are dropped, the other lines read on (an older session without
+  // `drop` stops the reading instead).
+  useEffect(() => {
+    for (const m of messages) {
+      if (!isWithdrawn(m) || !readP.queue.some((e) => e.id === m.id)) continue;
+      const v = voice() as ReturnType<typeof voice> & { drop?: (id: string) => boolean };
+      if (!v.drop) return v.stop();
+      readDispatch({ type: "drop", id: m.id });
+      // Not in the session's queue after all (untagged): stop rather than read it.
+      if (!v.drop(m.id)) return v.stop();
+    }
+  }, [messages, readP.queue]);
   /** Hand the unread rest of those replies back to the voice, as one queued reply each. */
   const resumeNow = () => {
     const v = voice();
@@ -3778,7 +3840,8 @@ export function DebugChat({
       const start = ranges[r.from]?.start;
       if (start === undefined) continue;
       claimed.current.add(m.id);
-      if (v.reply(said.slice(start)))
+      // The line as meta: its sentences carry its id (a withdrawn ask is dropped by it).
+      if (v.reply(said.slice(start), m))
         readDispatch({ type: "enqueue", id: m.id, n: ranges.length - r.from, from: r.from });
     }
     if (focusHack && el) {
@@ -4496,7 +4559,9 @@ export function DebugChat({
           ref={setEtaBox}
           data-testid="debug-chat-eta-slot"
           data-strip={strip || undefined}
-          className={`flow-root ${strip ? "px-1 pt-1" : ""}`}
+          // The inset is STRIP_INSET_PX on the top and the sides (stripTopRadius).
+          className="flow-root"
+          style={strip ? { padding: `${STRIP_INSET_PX}px ${STRIP_INSET_PX}px 0` } : undefined}
         >
           <EtaBar
             tasks={etaList}
@@ -4540,8 +4605,18 @@ export function DebugChat({
           <div
             aria-hidden
             data-testid="debug-chat-strip"
+            data-top-radius={stripTopRadius(etaH)}
             className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 border border-current/25"
-            style={{ ...barGeometry(), ...STRIP_GLASS, top: -etaH }}
+            style={{
+              ...barGeometry(),
+              ...STRIP_GLASS,
+              top: -etaH,
+              // The top corners concentric with the progress pill's end caps
+              // (bar-geometry.ts stripTopRadius); the bottom ones the bar's own.
+              borderTopLeftRadius: stripTopRadius(etaH),
+              borderTopRightRadius: stripTopRadius(etaH),
+              transition: reducedMotion() ? undefined : "border-radius 180ms ease-out, top 180ms ease-out",
+            }}
           />
         )}
         <div style={LTR}>

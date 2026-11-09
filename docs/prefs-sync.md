@@ -46,6 +46,8 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:words-grade-tones`         | Grade tones                                          | **synced** | `words.gradeTones`     | a habit                                                                                                                                                  |
 | `lk:words-voice-mode`          | Voice commands (docs/voice-mode.md)                  | **synced** | `words.voiceMode`      | a habit; the mic itself is still asked for on each device                                                                                                |
 | `lk:words-swipe-mirror`        | Mirror swipe sides (← Good, → Hard)                  | **synced** | `words.swipeMirror`    | owner, 2026-11-03: which hand swipes is a habit. Telemetry rows tag `mirror=1`                                                                           |
+| `lk:words-card-height`         | Card height (two-finger pinch on the list)           | **synced** | `words.cardHeight`     | owner, 2026-11-10: a reading habit, like the text size. A factor of the default row height, so it means the same on a phone and a desk (lib/words/row-pinch.ts) |
+| `lk:words-onboarded` | First-visit walkthrough seen (lib/words/onboarding.ts) | **synced** | `words.onboarded` | finished or skipped once is enough on every device; replayed from the "?" by the title |
 | `lk:swipe-ab`                  | New swipe (Experimental)                             | **synced** | `swipe.variant`        | owner, 02:22. Telemetry still tags each row with the variant                                                                                             |
 | `lk:pref:swipe-feel` `.preset` | Heavy swipe (Experimental)                           | **synced** | `swipe-feel.preset`    | owner, 02:22                                                                                                                                             |
 | `lk:pref:swipe-feel` `.tweaks` | swipe tuning sliders                                 | **synced** | `swipe-feel.tweaks`    | owner, 02:22. One field, because the sliders reset together with the preset                                                                              |
@@ -156,6 +158,7 @@ listed once.
 
 | Key               | Setting                                                                   | Class      | Server key     | Reason                                                                                                                    |
 | ----------------- | ------------------------------------------------------------------------- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `lk:mail-login-notice` | the security notice mail after a sign-in from a new browser (on by default) | **synced** | `mail.loginNotice` | owner, 2026-11-10 ([mail-templates.md](mail-templates.md), "Unsubscribe"). The server reads it at every send; off only after a warning |
 | `lk:notify-badge` | what the app-icon badge counts: off, ask-cards, due-cards, both (default) | **synced** | `notify.badge` | owner, 2026-11-09. A habit; the server also reads it, for a push that carries no counts (`GET /api/badge` without `mode`) |
 
 ### Not prefs (left alone)

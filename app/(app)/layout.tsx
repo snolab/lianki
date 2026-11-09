@@ -50,6 +50,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const flags = dbBackend() === "d1" ? await readFlags() : null;
   const owner = isDev(user?.email ?? null);
   const navShown = booksOn(flags, owner) ? ["books"] : [];
+  // Today's goal (/today): `today.goal`, on by default, for everyone.
+  if (flags?.["today.goal"]) navShown.push("today");
   // The level chip by the avatar (docs/levels.md): signed in, D1, `levels` on or the owner.
   const levels = Boolean(user) && flags !== null && levelsOn(flags, owner);
   // The app-icon badge (docs/app-badge.md): signed in, D1, `pwa.app-badge` on, the owner only.

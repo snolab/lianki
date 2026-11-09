@@ -239,6 +239,7 @@ import type {
   PolishDueEvent,
   SpeakerTag,
   SttScene,
+  WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
 import { polishCheck, polishContext, summaryCheck } from "../../../packages/debug-chat/src/polish";
@@ -1366,6 +1367,63 @@ export class DebugHub {
     for (const { ws: l, a } of this.listeners())
       if (audience(a) === page.thread || page.thread === OWNER_THREAD || !a.forUser)
         send(l, page.thread === OWNER_THREAD ? out : { ...out, thread: page.thread });
+  }
+
+  /**
+   * The agent withdraws an ask card it sent (eval.ts withdraw), so nobody
+   * has to tap an obsolete question: by askId or message id, only in the
+   * thread named (`to`, as for ask: the owner's by default, else the friend's
+   * the card was sent to), only an agent line with an ask, only while open
+   * (not answered, expired or already withdrawn), and only with a live chat
+   * grant (never a pairing for a friend). Stamped on the ask
+   * (`ask.withdrawnAt`), kept (a reload shows it withdrawn; a later tap is
+   * refused by askState), and sent to that thread's pages and the listeners.
+   */
+  private async withdraw(ws: Socket, c: ControllerAtt, m: { id: string; to?: string }) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    if (c.forUser) return fail("a pairing for a friend cannot withdraw");
+    const g = c.grant ? await this.ctx.storage.get<Grant>(`grant:${c.grant}`) : undefined;
+    if (!g || g.until <= this.now()) return fail("withdraw needs a live chat grant from the owner");
+    const dest = await this.sayTarget(m.to);
+    if ("error" in dest) return fail(dest.error);
+    const kept = await this.ctx.storage.list<ChatMessage>({
+      prefix: threadKeys(dest.thread).prefix,
+      reverse: true,
+      limit: CHAT_HISTORY,
+    });
+    const hit = [...kept].find(([, x]) => x.ask && (x.ask.askId === m.id || x.id === m.id));
+    if (!hit) return fail(`no ask ${m.id} in that thread`);
+    const [key, line] = hit;
+    if (line.from !== "agent" || !line.ask) return fail(`message ${m.id} is not an agent's ask`);
+    const t = this.now();
+    const state = askState(line, t);
+    if (state !== "open") return fail(`ask ${line.ask.askId} is ${state}`);
+    const ask: Ask = { ...line.ask, withdrawnAt: t };
+    await this.ctx.storage.put(key, { ...line, ask } satisfies ChatMessage);
+    const out: WithdrawnEvent = {
+      type: "withdrawn",
+      id: line.id,
+      askId: ask.askId,
+      thread: dest.thread,
+      withdrawnAt: t,
+    };
+    console.log(
+      JSON.stringify({
+        msg: "debug.withdraw",
+        pair: c.pair,
+        thread: dest.thread,
+        askId: ask.askId,
+        by: cleanLabel(c.assignee ?? c.label, 80) || "agent",
+      }),
+    );
+    for (const { ws: p } of this.pages(dest.thread)) send(p, out);
+    // The owner-approved listeners (never a friend's pairing); the requester among them.
+    let told = false;
+    for (const { ws: l } of this.listeners()) {
+      if (l === ws) told = true;
+      send(l, out);
+    }
+    if (!told) send(ws, out);
   }
 
   /** The live node grants (`ngrant:`), lapsed ones dropped as they are met. */
@@ -3171,6 +3229,7 @@ export class DebugHub {
       return this.nodeGrant(ws, c, m.value);
     }
     if (m.value.type === "edit") return this.edit(ws, c, m.value);
+    if (m.value.type === "withdraw") return this.withdraw(ws, c, m.value);
     if (m.value.type === "summary") return this.summarise(ws, c, m.value);
     if (m.value.type === "ask") return this.ask(ws, c, m.value.ask, m.value.to);
     if (m.value.type === "say") {
