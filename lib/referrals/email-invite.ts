@@ -27,16 +27,15 @@ import { flagIn, type FlagValues } from "@/lib/flags";
 import { cleanEmail } from "@/lib/profile/email-change";
 import { sameOriginJson } from "@/lib/security/same-origin";
 import { clientIp, hit, ipKey, type ThrottleDb } from "@/lib/security/throttle";
-import {
-  inviterMailLocale,
-  mailTemplateLocale,
-  type MailTemplateLocale,
-} from "@/lib/signup-locale";
+import { composeMail } from "@/lib/mail-templates/compose";
+import { mailLocaleOf, pickMailLocale, type MailLocale } from "@/lib/mail-templates/locales";
+import type { TemplateDb } from "@/lib/mail-templates/store";
 import { EMAIL_INVITE, INVITE_LOG_TAG, RECIPIENT_WINDOW_MS } from "./email-invite-config";
 import {
+  inviteMailHeaders,
+  inviteMailValues,
   optOutLinks,
   PREVIEW_RECIPIENT,
-  renderInviteMail,
   type RenderedInviteMail,
 } from "./invite-mail";
 import { recipientHash } from "./recipient-hash";
@@ -116,10 +115,10 @@ async function accountLocale(db: InviteDb, id: string): Promise<string | null> {
   }
 }
 
-/** The inviter's mail language: account setting → signupLocale → en. */
-export async function inviterLocale(db: InviteDb, id: string): Promise<MailTemplateLocale> {
+/** The inviter's mail language: account setting → signupLocale → en (zh-Hant kept). */
+export async function inviterLocale(db: InviteDb, id: string): Promise<MailLocale> {
   const [acct, row] = await Promise.all([accountLocale(db, id), inviterRow(db, id)]);
-  return inviterMailLocale({ accountLocale: acct, signupLocale: row?.signupLocale });
+  return pickMailLocale(acct, row?.signupLocale);
 }
 
 async function gate(d: EmailInviteDeps, now: number) {
@@ -311,25 +310,31 @@ async function skipReason(
 export async function renderFor(
   d: Pick<EmailInviteDeps, "db" | "origin" | "secret">,
   inviterId: string,
-  opts: { locale?: MailTemplateLocale; logId?: string; to?: string } = {},
-): Promise<RenderedInviteMail & { locale: MailTemplateLocale }> {
+  opts: { locale?: MailLocale; logId?: string; to?: string } = {},
+): Promise<RenderedInviteMail & { locale: MailLocale }> {
   const db = d.db();
   const locale = opts.locale ?? (await inviterLocale(db, inviterId));
   const row = await inviterRow(db, inviterId);
   const code = await getOrCreateInviteCode(db, inviterId);
   const origin = d.origin();
   const token = opts.logId ? await signOptOut(d.secret(), opts.logId) : "preview";
-  return {
+  const input = {
     locale,
-    ...renderInviteMail({
-      locale,
-      recipient: opts.to ?? PREVIEW_RECIPIENT,
-      inviterName: row?.name,
-      inviteUrl: `${origin}/i/${code}`,
-      ...optOutLinks(origin, locale, token),
-      oneClickUrl: `${origin}/api/invite/email/opt-out?t=${encodeURIComponent(token)}&lang=${locale}`,
-    }),
+    recipient: opts.to ?? PREVIEW_RECIPIENT,
+    inviterName: row?.name,
+    inviteUrl: `${origin}/i/${code}`,
+    ...optOutLinks(origin, locale, token),
+    oneClickUrl: `${origin}/api/invite/email/opt-out?t=${encodeURIComponent(token)}&lang=${locale}`,
   };
+  // Through the template store (docs/mail-templates.md): an edit at
+  // /dev/templates is what goes out; a broken one falls back to the built-in.
+  const { subject, text, html } = await composeMail(
+    db as unknown as TemplateDb,
+    "invite",
+    locale,
+    inviteMailValues(input),
+  );
+  return { locale, subject, text, html, headers: inviteMailHeaders(input.oneClickUrl) };
 }
 
 export type InviteEmailStatus =
@@ -385,7 +390,7 @@ export async function sendEmailInvite(req: Request, d: EmailInviteDeps): Promise
   if (!email) return json({ error: "invalid" }, 400);
   const db = d.db();
   // The language: the API's override (no UI yet), else the inviter's own.
-  const locale = mailTemplateLocale(body?.locale) ?? (await inviterLocale(db, g.who.id));
+  const locale = mailLocaleOf(body?.locale) ?? (await inviterLocale(db, g.who.id));
   const hash = await recipientHash(email);
   const id = crypto.randomUUID();
   if (
@@ -505,6 +510,6 @@ export async function inviteOptOut(req: Request, d: EmailInviteDeps): Promise<Re
 export function optOutGet(req: Request, origin: string): Response {
   const t = new URL(req.url).searchParams.get("t") ?? "";
   const lang = new URL(req.url).searchParams.get("lang") ?? "";
-  const { optOutUrl } = optOutLinks(origin, mailTemplateLocale(lang) ?? "en", t);
+  const { optOutUrl } = optOutLinks(origin, mailLocaleOf(lang) ?? "en", t);
   return new Response(null, { status: 303, headers: { location: optOutUrl } });
 }

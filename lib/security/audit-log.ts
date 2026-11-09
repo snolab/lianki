@@ -62,6 +62,12 @@ export type AuditKind =
   | "pregrant.claim"
   // The old owner role (site_role, removed 2026-11-09): no longer written, kept
   // so its past rows still read as a known kind.
+  // Mail templates (lib/mail-templates, docs/mail-templates.md): a version saved, a
+  // version made active (rollback), a test mail sent to the editor himself.
+  // Subject: "<template>:<locale>"; detail: the version.
+  | "mail-template.save"
+  | "mail-template.activate"
+  | "mail-template.test-send"
   | "site-role.grant"
   | "site-role.revoke";
 

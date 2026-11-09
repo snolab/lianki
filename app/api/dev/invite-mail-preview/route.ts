@@ -4,7 +4,7 @@ import { dbBackend } from "@/lib/d1";
 import { isAdmin } from "@/lib/permissions";
 import { renderFor } from "@/lib/referrals/email-invite";
 import { emailInviteDeps } from "@/lib/referrals/email-invite-deps";
-import { mailTemplateLocale } from "@/lib/signup-locale";
+import { mailLocaleOf } from "@/lib/mail-templates/locales";
 
 /**
  * Admin only (404 for anyone else): the invite email as the signed-in admin's
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   if (!user?.id || !isAdmin(user.email) || dbBackend() !== "d1")
     return new NextResponse(null, { status: 404 });
   const q = new URL(req.url).searchParams;
-  const locale = mailTemplateLocale(q.get("locale")) ?? undefined;
+  const locale = mailLocaleOf(q.get("locale")) ?? undefined;
   const mail = await renderFor(emailInviteDeps, user.id, { locale });
   const format = q.get("format") ?? "html";
   if (format === "json") return NextResponse.json(mail);

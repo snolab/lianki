@@ -5,7 +5,7 @@ import {
   signInErrorText,
   type SignInErrorKey,
 } from "@/lib/sign-in-errors";
-import { noticeLocale, noticeTemplateLocale } from "@/lib/security/login-notice";
+import { mailLocaleOf, pickMailLocale } from "@/lib/mail-templates/locales";
 
 const TEXT: Record<SignInErrorKey, string> = {
   captcha: "captcha",
@@ -73,17 +73,19 @@ describe("error keys: never raw server text", () => {
 
 describe("new-sign-in notice language", () => {
   test("account setting first, then sign-up language, then English", () => {
-    expect(noticeLocale({ accountLocale: "zh", signupLocale: "en" })).toBe("zh");
-    expect(noticeLocale({ accountLocale: "en", signupLocale: "zh-Hans" })).toBe("en");
-    expect(noticeLocale({ accountLocale: null, signupLocale: "zh-CN" })).toBe("zh");
-    expect(noticeLocale({ accountLocale: "", signupLocale: undefined })).toBe("en");
-    expect(noticeLocale({})).toBe("en");
+    expect(pickMailLocale("zh", "en")).toBe("zh");
+    expect(pickMailLocale("en", "zh-Hans")).toBe("en");
+    expect(pickMailLocale(null, "zh-CN")).toBe("zh");
+    expect(pickMailLocale("", undefined)).toBe("en");
+    expect(pickMailLocale()).toBe("en");
   });
 
-  test("zh, zh-CN, zh-Hans, zh_Hans → Simplified; others → English; junk → none", () => {
+  test("zh, zh-CN, zh-Hans → Simplified; zh-TW → Traditional; each language its own; junk → none", () => {
     for (const tag of ["zh", "zh-CN", "zh-Hans", "zh_Hans", "ZH-cn"])
-      expect(noticeTemplateLocale(tag)).toBe("zh");
-    for (const tag of ["en", "en-US", "ja", "fr"]) expect(noticeTemplateLocale(tag)).toBe("en");
-    for (const tag of ["", "  ", "1234", null, 7, {}]) expect(noticeTemplateLocale(tag)).toBeNull();
+      expect(mailLocaleOf(tag)).toBe("zh");
+    expect(mailLocaleOf("zh-TW")).toBe("zh-Hant");
+    expect(mailLocaleOf("en-US")).toBe("en");
+    expect(mailLocaleOf("ja")).toBe("ja");
+    for (const tag of ["", "  ", "1234", null, 7, {}]) expect(mailLocaleOf(tag)).toBeNull();
   });
 });

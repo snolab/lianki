@@ -27,6 +27,9 @@ import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
 import emailInvite from "@/app/(app)/membership/email-invite.content";
 import inviteMail from "@/lib/referrals/invite-mail.content";
+import mailSignIn from "@/lib/mail-templates/sign-in-mail.content";
+import mailLoginNotice from "@/lib/mail-templates/login-notice-mail.content";
+import mailEmailChange from "@/lib/mail-templates/email-change-mail.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
 import readEpub from "@/app/(app)/reader/read-epub.content";
 import readGdoc from "@/app/(app)/reader/read-gdoc.content";
@@ -121,6 +124,9 @@ describe.each([
   ["invite-card", inviteCard],
   ["email-invite", emailInvite],
   ["invite-mail", inviteMail],
+  ["mail-sign-in", mailSignIn],
+  ["mail-login-notice", mailLoginNotice],
+  ["mail-email-change", mailEmailChange],
   ["credit-units", creditUnits],
   ["read-epub", readEpub],
   ["read-gdoc", readGdoc],
