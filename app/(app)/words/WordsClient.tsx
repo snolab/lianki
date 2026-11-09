@@ -71,6 +71,8 @@ import {
   withoutNode,
 } from "@/lib/words/tree";
 import { shownName } from "@/lib/words/lang-groups";
+import { orderByPreferred } from "@/lib/lang-order";
+import { usePreferredLangs } from "@/lib/use-preferred-langs";
 import { planArrange } from "@/lib/words/arrange";
 import {
   buildAddTree,
@@ -2780,7 +2782,18 @@ function ListPicker({
   // "Add a list" as a tree with checkboxes (lib/words/add-tree.ts): tick
   // lists, languages or whole branches, then add them all in one go. Adding
   // never starts studying: the learner stays here and opens a list himself.
-  const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES), [builtIn]);
+  // Languages in the order of Settings → Preferred languages (lib/lang-order.ts),
+  // the rest after them as the catalog has them.
+  const { langs: preferred } = usePreferredLangs();
+  const addTree = useMemo(
+    () =>
+      orderByPreferred(
+        buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES),
+        (n) => (n.kind === "lang" ? n.lang : null),
+        preferred,
+      ),
+    [builtIn, preferred],
+  );
   // A link to #add-list arrives before the tree exists, so the browser finds
   // nothing to scroll to; scroll once the tree is on the page.
   useEffect(() => {

@@ -27,6 +27,7 @@ import { LINK_CONFIRM_KEY, LINK_ALLOWED_KEY } from "@/lib/external-link";
 import { BADGE_DEFAULT, BADGE_PREF_KEY } from "@/lib/app-badge";
 import { MAIL_LOGIN_NOTICE_KEY } from "@/lib/mail-prefs";
 import { CARD_HEIGHT_KEY } from "@/lib/words/row-pinch";
+import { PREFERRED_LANGS_KEY } from "@/lib/lang-order";
 
 type Ls = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const ls = (): Ls | null => {
@@ -219,6 +220,8 @@ export function prefBindings(): PrefBinding[] {
     homePins(),
     plain("lab.immersionLangs", "lk:lab:immersion:langs", jsonCodec, []),
     plain("lab.immersionTranspose", "lk:lab:immersion:transpose", bool10, false),
+    // lib/lang-order.ts: preferred languages first wherever material comes in many languages.
+    plain("lang.preferred", PREFERRED_LANGS_KEY, jsonCodec, []),
     // lib/read/sense-pick.ts: which entry a word in a book means, per word and sentence.
     plain("read.sensePicks", "lk:read-sense-picks", jsonCodec, {}),
     // lib/read/polish-offer.ts: the offer to tidy a raw transcript.
