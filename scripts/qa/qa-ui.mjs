@@ -476,7 +476,8 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   await p2.waitForSelector("#password", { timeout: budget(10000) });
   await p2.locator("#password").fill(`${PW}-wrong`);
   await p2.getByRole("button", { name: /sign in/i }).click();
-  const alert = p2.getByRole("alert");
+  // p: Next.js keeps its own role=alert route announcer on every page.
+  const alert = p2.locator("p[role=alert]");
   const shown = await alert
     .waitFor({ timeout: budget(15000) })
     .then(() => alert.innerText())
