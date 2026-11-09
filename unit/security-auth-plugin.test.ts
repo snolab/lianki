@@ -277,3 +277,44 @@ describe("login notice language: the account's, not the browser's", () => {
     expect(sent[0].subject).toBe("New sign-in to your Lianki account");
   });
 });
+
+describe("the plugin's own failures never fail a sign-in", () => {
+  /** The test D1, except queries naming `table` fail. */
+  function failing(d1: ReturnType<typeof setup>["d1"], table: string): ThrottleDb {
+    return {
+      prepare(q: string) {
+        if (q.includes(table)) throw new Error(`no ${table}`);
+        return (d1 as unknown as ThrottleDb).prepare(q);
+      },
+    };
+  }
+
+  test("throttle table down: codes are still sent and checked; nothing is locked", async () => {
+    let db: ThrottleDb | null = null;
+    const { d1, post, otps } = setup({ getDb: () => db });
+    db = failing(d1, "auth_throttle");
+    expect(
+      (await post("/email-otp/send-verification-otp", { email: "f@x.com", type: "sign-in" }))
+        .status,
+    ).toBe(200);
+    const right = otps.at(-1)!;
+    const wrong = right === "000000" ? "111111" : "000000";
+    expect((await post("/sign-in/email-otp", { email: "f@x.com", otp: wrong })).status).toBe(400);
+    const ok = await post("/sign-in/email-otp", { email: "f@x.com", otp: right });
+    expect(ok.status).toBe(200);
+  });
+
+  test("device table down: the sign-in succeeds, with no device cookie and no mail", async () => {
+    let db: ThrottleDb | null = null;
+    const { d1, post } = setup({ getDb: () => db });
+    db = failing(d1, "known_device");
+    const up = await post("/sign-up/email", {
+      email: "g@x.com",
+      password: "password1234",
+      name: "G",
+    });
+    expect(up.status).toBe(200);
+    expect(deviceCookie(up)).toBeUndefined();
+    expect(mails).toHaveLength(0);
+  });
+});

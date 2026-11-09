@@ -144,7 +144,7 @@ export function securityPlugin(env: SecurityPluginEnv): BetterAuthPlugin {
             } catch {}
             // The account's language, not this browser's: whoever signs in
             // here may not be the owner of the account.
-            const locale = await accountNoticeLocale(db, user.id).catch(() => "en" as const);
+            const locale = await accountNoticeLocale(db, user.id); // never throws: English at worst
             const mail = loginNoticeMail(locale, {
               when: new Date(),
               location: approximateLocation(cf, ctx.headers),
