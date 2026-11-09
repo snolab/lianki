@@ -78,5 +78,15 @@ cd - && bun test unit/rgui-gantt.test.ts unit/gantt-view.test.ts
 bun scripts/dev/debug-chat-gantt-qa.mjs   # the Gantt in a browser
 ```
 
+`main` is linear (squash merges only). `subtree pull` finds the last sync by
+the `git-subtree-dir: packages/rgui` / `git-subtree-split: <upstream sha>`
+lines in a commit message on `main`; the repo's squash message is the PR's
+commit messages, so they survive as long as the sync PR's "Squashed
+'packages/rgui/' …" commit is in it (never rewrite or rebase that commit;
+rebasing it would replay upstream's files at the repo root). Verified in a
+scratch repo on 2026-11-09: add at an old upstream commit, squash to one
+commit carrying the two lines, a local edit, then `subtree pull --squash` to
+upstream main: only `packages/rgui` changed, the local edit kept.
+
 To offer `src/gantt/` back upstream: `git subtree push --prefix packages/rgui
 <fork-url> <branch>` and open a PR there (the owner's repo).
