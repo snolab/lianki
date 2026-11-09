@@ -168,6 +168,12 @@ export const FLAGS = {
     default: false,
     group: "ai",
   },
+  "import.any": {
+    description:
+      "导入词表：所有登录用户都能在 /import 放进或粘贴 .txt / .csv / .tsv 词表（一行一个词，或带「单词/释义/例句」等列名的表格），先看预览（新词几个、已经有几个、跳过几个），确认后变成 /words 里的一个新词表；已经有的词不重复添加。原文不保存，只记下导入结果。关闭（默认）= 只有你本人能看到。",
+    default: false,
+    group: "words",
+  },
   "read.gdoc-stream": {
     description:
       "Google 文档实时同步：所有用户都能在 Google 文档页面上用用户脚本打开“同步到 Lianki”，这个文档之后每次改动都会更新到自己的 /reader，打开 /reader/<id>?streamingFrom=google-docs 的阅读页会实时更新并重新标记词。只同步用户自己打开开关的文档，且要保持文档标签页开着。关闭（默认）= 只有你本人能用。",

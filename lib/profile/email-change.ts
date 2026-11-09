@@ -52,6 +52,7 @@ export const EMAIL_KEYED_TABLES = [
   "word_cards",
   "word_reviews",
   "word_list_entries",
+  "import_jobs",
   "swipe_log",
   "dev_access_token",
   "cli_login",

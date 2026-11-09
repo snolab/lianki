@@ -3214,7 +3214,7 @@
   function trustDialog(d) {
     const t = d.strings;
     const p = palette(d.win);
-    let done = () => {};
+    let done;
     const result = new Promise((resolve) => (done = resolve));
     const title = t.promptTitle.replace("{host}", d.host);
     let shell = null;
@@ -3275,7 +3275,7 @@
   function sitesDialog(d) {
     const t = d.strings;
     const p = palette(d.win);
-    let closedResolve = () => {};
+    let closedResolve;
     const closed = new Promise((r) => (closedResolve = r));
     let shell = null;
     const close = () => {

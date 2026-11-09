@@ -140,6 +140,21 @@ export const SUITES = [
     paths: READ,
     sensitive: true,
   },
+  // Import a word list on /import (docs/import-material.md, M1): flag gate, preview counts, a /words list.
+  {
+    name: "IMPORT WORDLIST (qa-import-wordlist)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-import-wordlist.mjs"],
+    base: true,
+    id: "import-wordlist",
+    paths: [
+      "app/(app)/import/**",
+      "app/api/import/words/**",
+      "app/api/import/jobs/**",
+      "lib/import/**",
+    ],
+    sensitive: false,
+  },
   // YouTube songs (docs/youtube-song-examples.md): flag gate, the ▶ per line, the popup's close rules.
   // Every YouTube host blocked: no video, no sound, no network.
   {

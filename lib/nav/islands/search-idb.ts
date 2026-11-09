@@ -152,7 +152,7 @@ async function doSync(o: {
       ? (w.path ?? `/words/${w.file}`)
       : a
         ? (a.path ?? `/alphabets/${a.file}`)
-        : l.source?.startsWith("anki:")
+        : l.source?.startsWith("anki:") || l.source?.startsWith("import:")
           ? `/api/words/lists/${l.id}/entries`
           : null;
     if (!path) continue;

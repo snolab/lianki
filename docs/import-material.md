@@ -1,7 +1,56 @@
 # Import any material (design stub)
 
-State-tree node `/import/any`. Status: design only, nothing built. Flag
-**`import.any`**, default off, on for the owner when it ships.
+State-tree node `/import/any`. Status: **M1 shipped in its smallest form**
+(word lists from .txt/.csv/.tsv, below); the rest is design. Flag
+**`import.any`**, default off; the owner sees it while it is off
+(`importAnyOn(flags, isDev(email))`), everyone once it is on —
+https://lianki.com/dev/flags#import.any.
+
+## What shipped (M1, 2026-11-09)
+
+/import → **Import a word list**: drop or pick a `.txt` / `.csv` / `.tsv`
+file, or paste the list. A preview shows counts — **new**, **already have**,
+**skipped** (with the reason per kind) — and the first rows; nothing is saved
+until **Add N words**, which makes a new /words list.
+
+| piece                 | where                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| parser (pure)         | `lib/import/wordlist.ts` — `unit/import-wordlist.test.ts`                                       |
+| routes                | `POST /api/import/words` (`step: preview \| commit`), `GET /api/import/jobs`                    |
+| handler, gate, dedupe | `lib/import/words-handler.ts` — `unit/import-words-handler.test.ts`                             |
+| job rows              | `db/migrations/0060_import_jobs.sql` (`import_jobs`)                                            |
+| UI                    | `app/(app)/import/WordListImport.tsx`, strings `wordlist-import.content.ts` (`import-wordlist`) |
+
+- **Parsing.** One word per line (list markers `1.` `-` `•` stripped), or
+  rows of columns: the delimiter (tab, comma, semicolon) is the one on ≥ 80%
+  of the first 20 lines; quoted CSV fields may hold delimiters, `""` and line
+  breaks. A first row that names ≥ 2 columns (or names every cell it has) is
+  a header; the names are data (`HEADER_ALIASES`: word / meaning / reading /
+  example / example translation in many languages). No header: term,
+  meaning, example. No branch looks at the list's language.
+- **Dedupe.** Within the file by normalized form (`normTerm`: NFC, folded
+  spaces, lower case); against the user's words = every term with a card in
+  any list, plus every entry of a list kept in D1 (imported decks and lists,
+  books' lists). Built-in catalog words never reviewed are not counted (they
+  live in static files). Only new words are written.
+- **Caps.** 1 MB of text, 20 000 words (`MAX_ENTRIES`), term ≤ 200 chars
+  (longer: skipped), meaning/example clipped as the Anki import. 60 requests
+  per user per 10 minutes. Not UTF-8 → a plain error asking for UTF-8; a
+  binary file → "not a text file".
+- **The job.** Inline in the commit request (open question 4: inline now):
+  an `import_jobs` row `writing` → the list (`source = "import:<job id>"`,
+  an entry list as `anki:`/`book:`, `lib/words/entry-list.ts`) and its
+  entries (`WordEntriesD1Repo.sync`, keys from the normalized term) → `done`
+  with the counts as JSON in `note`, or `failed` with the half-made list
+  deleted. /import lists the latest five jobs with **Open**.
+- **Privacy.** The text lives only in the request: no R2 object, no content
+  in D1 beyond the words added, logs carry the job id and an error name.
+
+Not in this slice (next): the file is **not** kept as an artifact in R2 and
+not counted in usage; no task bar under the nav (the list on /import is the
+stand-in); no push-socket status; no "Front = column A?" question (the
+preview's header note says how columns were read, and the user cannot remap
+them yet); re-importing into an existing list.
 
 ## Goal
 
@@ -55,10 +104,10 @@ which already does most of the storage side for the owner only.
   | ---------------------- | -------------------------------------------------------- | --------------------------------------------------------- |
   | txt / csv / tsv        | delimiter + header sniff; columns → term/back/reading/ex | /words list (`WordEntriesD1Repo`, as `/api/words/import`) |
   | Anki `.apkg`/`.colpkg` | the existing import (`/words/import`, `lib/words/anki`)  | /words list                                               |
-  | EPUB                   | the existing EPUB import (`lib/epub/`)                   | /reader book                                                |
-  | PDF                    | text layer (`unpdf`, as self-intro); scans → image path  | /reader, or /words if it is a list                          |
-  | DOCX / HTML            | text extraction as `lib/self-intro/import-parse.ts`      | /reader or /words                                           |
-  | images                 | the multimodal model reads the page (as self-intro)      | /words (vocab page) or /reader                              |
+  | EPUB                   | the existing EPUB import (`lib/epub/`)                   | /reader book                                              |
+  | PDF                    | text layer (`unpdf`, as self-intro); scans → image path  | /reader, or /words if it is a list                        |
+  | DOCX / HTML            | text extraction as `lib/self-intro/import-parse.ts`      | /reader or /words                                         |
+  | images                 | the multimodal model reads the page (as self-intro)      | /words (vocab page) or /reader                            |
 
 - **The agent step.** Only where rules cannot decide: one model call
   ([workers-ai.md](workers-ai.md), `PARTNER_AI_MODEL`) sees a **sample** (first
@@ -89,14 +138,14 @@ which already does most of the storage side for the owner only.
 
 ## Milestones
 
-| #   | slice                                                                                                                                                                                                                    | ETA  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- |
-| M1  | **First slice**: /import → drop a **txt or csv word list** → upload to R2 as the user's artifact (usage counted) → job (rules only, no model) → a /words list; status in a minimal task bar; flag dark, on for the owner | 4H   |
-| M2  | /artifacts list page: name, size, usage line, delete                                                                                                                                                                     | 1.5H |
-| M3  | Anki and EPUB through the same pipeline (reuse existing importers)                                                                                                                                                       | 2.5H |
-| M4  | PDF / DOCX / HTML text → /reader; the agent step for "list or reading?" with one question in the task bar                                                                                                                  | 4H   |
-| M5  | Images (vocab page photos) → /words via the multimodal model                                                                                                                                                             | 2.5H |
-| M6  | Queue consumer hardening: per-job CPU cap, retries, dead-letter, qa script with hostile files                                                                                                                            | 3H   |
+| #   | slice                                                                                                                                                                                                                                                                                                                         | ETA  |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| M1  | **Shipped smaller** (above): txt/csv → preview → /words list, job rows, no R2 artifact yet. Planned: **First slice**: /import → drop a **txt or csv word list** → upload to R2 as the user's artifact (usage counted) → job (rules only, no model) → a /words list; status in a minimal task bar; flag dark, on for the owner | 4H   |
+| M2  | /artifacts list page: name, size, usage line, delete                                                                                                                                                                                                                                                                          | 1.5H |
+| M3  | Anki and EPUB through the same pipeline (reuse existing importers)                                                                                                                                                                                                                                                            | 2.5H |
+| M4  | PDF / DOCX / HTML text → /reader; the agent step for "list or reading?" with one question in the task bar                                                                                                                                                                                                                     | 4H   |
+| M5  | Images (vocab page photos) → /words via the multimodal model                                                                                                                                                                                                                                                                  | 2.5H |
+| M6  | Queue consumer hardening: per-job CPU cap, retries, dead-letter, qa script with hostile files                                                                                                                                                                                                                                 | 3H   |
 
 ETAs include the local gate and ~10M pipeline.
 
