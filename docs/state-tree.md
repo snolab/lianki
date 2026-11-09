@@ -83,10 +83,40 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   --token, LIANKI_PROGRESS_TOKEN, PROGRESS_TOKEN or .dev.vars.
 
   ETA pings (flag chat.eta-bar, owner only). --eta is the agent's own
-  estimate, given each time it reports: a duration from now (25m, 1h30m) or an
-  ISO time with its zone. The hub turns it into the node's etaAt on its own
-  clock; a new --eta moves it; free text ("after CI") is shown, no timer.
-    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe: drag with the finger" --status doing --eta 25m
+  estimate, given each time it reports: a duration from now (25m, 1h30m), a
+  range (12m-63m) or an ISO time with its zone. The hub turns it into the
+  node's etaAt on its own clock; a new --eta moves it; free text ("after CI")
+  is shown, no timer.
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe: drag with the finger" --status doing --eta 12m-63m
+  A range is P5–P95 of what the task may take (owner, 2026-11-10): etaMinAt is
+  the P5, etaAt the P95. Everything that means "late" counts from the P95:
+  the red "-5M", the "ETA reached" ping below, and the overrun rule; a new
+  --eta between the two needs no --late. Labels read "12–63M" (one unit
+  shared) until the P5 passes, then the time to the P95. The Gantt draws the
+  bar solid to the P5 and a tail fading out to the P95. One number is a range
+  of one: no P5, as before.
+
+  ETA history (owner, 2026-11-10). Each node keeps its last 24 ETA events
+  (etaEvents, oldest first): {at, kind: change | confirm | status, oldEtaAt?,
+  newEtaAt?, oldEtaMinAt?, newEtaMinAt?, status?, by, changeId}. A change is a
+  new estimate (no newEtaAt: cleared by free text); a confirm says the
+  estimate still holds; a status event is a change of status. The first time
+  set is also kept as `plan` {start, etaAt, etaMinAt?}, never moved: the
+  Gantt's faint ghost bar, the original plan.
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "<same>" --status doing --confirm
+  re-confirms an unchanged estimate cheaply. It counts as on track: no --late,
+  no new time; only before the ETA (a passed one is an overrun: a new --eta
+  with --late). A change or a confirm stamps etaConfirmedAt; `show`, --json
+  and the readers' feed give it with "etaConfirmedAgo" ("7 min ago"), so a
+  coordinator spots a stale estimate.
+  One action across several nodes (a re-plan) shares one changeId and one
+  time, so its ticks line up on the Gantt and a tap shows the group ("moved
+  up: A; postponed: B, C"):
+    bun scripts/dev/progress.ts batch '[{"agent":"<you>","path":"/x/a","task":"A: …","eta":"20m"},{"agent":"<you>","path":"/x/b","task":"B: …","eta":"1h-2h"}]'
+  (POST /batch {changeId?, reports}: each item keyed by the flags, at most 20;
+  all are checked before any is written), or --change-id <id> on separate
+  calls: the hub keeps the first call's time for 10 minutes. Without either,
+  every write is its own change.
   The owner's chat shows one summary line above the input, its background
   filled to the weighted progress (time left, next due;
   packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens a full-screen
@@ -158,7 +188,7 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   PRs: --pr 703,707 (or one per report); a node keeps every PR it named in
   `prs` (newest 20), and "#NNN" in its title counts too.
 
-  Limits: name 40, task 120, note 280, needs 120; 200 nodes (oldest done
+  Limits: name 40, task 120, note 280, needs 120; 24 ETA events a node; 200 nodes (oldest done
   dropped first); done nodes pruned after 24 h (Durable Object alarm; the
   done history keeps them); a
   200-event log; 30 writes/min per name, 120 in all. Unset secret: 503.
