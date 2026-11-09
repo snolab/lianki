@@ -283,7 +283,7 @@ export default function MembershipClient() {
                     />
                   </div>
                 )}
-                <p className="text-xs text-center opacity-90">{features.buy.methods.value}</p>
+                <p className="text-xs text-center">{features.buy.methods.value}</p>
               </div>
             ) : (
               <div className="mt-6 text-center">
@@ -302,7 +302,7 @@ export default function MembershipClient() {
                 <Icon name="star" />
                 {features.sponsor.link.value}
               </a>
-              <p className="text-xs mt-2 opacity-90">{features.sponsor.note.value}</p>
+              <p className="text-xs mt-2">{features.sponsor.note.value}</p>
             </div>
           </div>
         </div>

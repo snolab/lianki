@@ -120,14 +120,33 @@ const HIDE_TEXT = `.lk-plan :is(h3, li, p, .lk-plan-btn2, .lk-plan-chop) {
   .lk-plan :is(.lk-plan-mark, .lk-plan-chop, .lk-plan-btn2 svg) { visibility: hidden !important; }
   .lk-plan-btn2 { border-color: transparent !important; box-shadow: none !important; }`;
 
+/** Fixed and sticky overlays (the bottom bar) hidden while a card is shot:
+ * they would stand between the stone and the camera. */
+const overlays = (page, hide) =>
+  page.evaluate((hide) => {
+    for (const el of document.querySelectorAll("body *")) {
+      if (hide && /fixed|sticky/.test(getComputedStyle(el).position)) {
+        el.dataset.qaHidden = "1";
+        el.style.visibility = "hidden";
+      } else if (!hide && el.dataset.qaHidden) {
+        delete el.dataset.qaHidden;
+        el.style.visibility = "";
+      }
+    }
+  }, hide);
+
 async function contrast(page, tag) {
-  const style = await page.addStyleTag({ content: HIDE_TEXT });
   for (const tier of ["free", "pro"]) {
     const card = page.locator(`.lk-plan--${tier}`);
     await card.scrollIntoViewIfNeeded();
+    // the text's own colours first, then the stone under it with the text hidden
     const runs = await card.evaluate(TEXT_RUNS);
     const cssWidth = (await card.boundingBox()).width;
+    const style = await page.addStyleTag({ content: HIDE_TEXT });
+    await overlays(page, true);
     const png = (await card.screenshot({ animations: "disabled" })).toString("base64");
+    await overlays(page, false);
+    await style.evaluate((s) => s.remove());
     const res = await page.evaluate(MEASURE, { png, runs, cssWidth });
     const worst = res.reduce((a, b) => (b.min / b.need < a.min / a.need ? b : a));
     check(
@@ -135,7 +154,6 @@ async function contrast(page, tag) {
       `${tag} ${tier}: text AA over the marble (${res.length} runs; lowest ${worst.min}:1 at "${worst.text}", needs ${worst.need})`,
     );
   }
-  await style.evaluate((s) => s.remove());
 }
 
 const browser = await launchSilent(chromium);
@@ -176,7 +194,9 @@ try {
       check(overflow <= 0, `${tag}: no sideways scroll (${overflow}px)`);
       await contrast(page, tag);
       await plans.scrollIntoViewIfNeeded();
+      await overlays(page, true);
       await plans.screenshot({ path: join(OUT, `plans-${name}-${scheme}.png`) });
+      await overlays(page, false);
       if (name === "iphone" && scheme === "light") {
         await page.goto("/membership?lang=en&card=wood");
         await page.waitForFunction(

@@ -1,4 +1,5 @@
-/* Material plan cards on /membership (PlanCards.tsx), preview only:
+/* Material plan cards on /membership (PlanCards.tsx). Marble is the design;
+ * ?card=paper and ?card=wood preview the others:
  * ?card=paper (宣紙: fibres, deckled edge, 洒金 + seal chop for Pro),
  * ?card=wood (木目: grain, carved title, inlaid seal, varnish),
  * ?card=marble (大理石: veins, polish, engraved title, inlaid seal).
@@ -310,6 +311,11 @@
     inset 0 1px 0 oklch(1 0 0 / 0.75), inset 0 0 0 1px oklch(0.4 0.01 250 / 0.18),
     inset 0 -1px 0 oklch(0.3 0.01 250 / 0.18);
   --plan-polish: linear-gradient(160deg, oklch(1 0 0 / 0.4), oklch(1 0 0 / 0) 34%);
+  /* a veil of the slab's own colour over the veins, so text reads AA on any
+   * vein (measured: scripts/qa/qa-membership-marble.mjs) */
+  --plan-veil-a: 0.3;
+  --plan-veil-c: oklch(from var(--plan-bg) l c h / var(--plan-veil-a));
+  --plan-veil: linear-gradient(var(--plan-veil-c), var(--plan-veil-c));
   --plan-carve: 0 1px 0 oklch(1 0 0 / 0.85), 0 -1px 0 oklch(0.3 0.01 250 / 0.3);
   --plan-mark-carve: drop-shadow(0 1px 0 oklch(1 0 0 / 0.7));
   --plan-btn-radius: 3px;
@@ -320,12 +326,13 @@
 }
 /* one slab per card: stone does not repeat */
 [data-skin="marble"] .lk-plan-face {
-  background-size: auto, cover;
+  background-size: auto, auto, cover;
   background-repeat: no-repeat;
   background-position: center;
 }
 [data-skin="marble"] .lk-plan--pro .lk-plan-face {
   background-position:
+    0 0,
     0 0,
     70% 30%;
 }
@@ -337,7 +344,7 @@
 [data-skin="marble"] .lk-plan--free {
   /* Carrara: white, grey veins */
   --plan-bg: oklch(0.955 0.005 90);
-  --plan-tex: var(--plan-polish), url(/membership/marble-gray.svg);
+  --plan-tex: var(--plan-polish), var(--plan-veil), url(/membership/marble-gray.svg);
   --plan-ink: oklch(0.26 0.01 250);
   --plan-title: oklch(0.4 0.012 250);
   --plan-yes: oklch(0.36 0.012 250);
@@ -348,7 +355,7 @@
 [data-skin="marble"] .lk-plan--pro {
   /* Calacatta: cream, gold veins; the title inlaid in seal red */
   --plan-bg: oklch(0.945 0.018 85);
-  --plan-tex: var(--plan-polish), url(/membership/marble-gold.svg);
+  --plan-tex: var(--plan-polish), var(--plan-veil), url(/membership/marble-gold.svg);
   --plan-ink: oklch(0.25 0.015 60);
   --plan-title: var(--brand);
   --plan-carve: 0 1px 0 oklch(1 0 0 / 0.85), 0 -1px 0 oklch(0.3 0.1 22 / 0.35);
@@ -362,14 +369,16 @@
       drop-shadow(0 10px 18px oklch(0 0 0 / 0.45));
     --plan-edge: inset 0 1px 0 oklch(1 0 0 / 0.16), inset 0 0 0 1px oklch(1 0 0 / 0.06);
     --plan-polish: linear-gradient(160deg, oklch(1 0 0 / 0.09), oklch(1 0 0 / 0) 34%);
+    --plan-veil-a: 0.6;
     --plan-carve: 0 -1px 0 oklch(0 0 0 / 0.8), 0 1px 0 oklch(1 0 0 / 0.14);
     --plan-mark-carve: drop-shadow(0 -1px 0 oklch(0 0 0 / 0.7));
     --plan-btn2-edge: inset 0 1px 1px oklch(0 0 0 / 0.4), 0 1px 0 oklch(1 0 0 / 0.1);
   }
   [data-skin="marble"] .lk-plan--free {
-    /* Nero Marquina: black, pale veins */
+    /* Nero Marquina: black, pale veins (veiled more: they are near the ink) */
+    --plan-veil-a: 0.68;
     --plan-bg: oklch(0.18 0.005 250);
-    --plan-tex: var(--plan-polish), url(/membership/marble-pale.svg);
+    --plan-tex: var(--plan-polish), var(--plan-veil), url(/membership/marble-pale.svg);
     --plan-ink: oklch(0.92 0.008 85);
     --plan-title: oklch(0.82 0.01 85);
     --plan-yes: oklch(0.85 0.01 85);
@@ -380,7 +389,7 @@
   [data-skin="marble"] .lk-plan--pro {
     /* Portoro: black, gold veins, gold-leaf title */
     --plan-bg: oklch(0.17 0.01 60);
-    --plan-tex: var(--plan-polish), url(/membership/marble-gold.svg);
+    --plan-tex: var(--plan-polish), var(--plan-veil), url(/membership/marble-gold.svg);
     --plan-ink: oklch(0.93 0.02 85);
     --plan-title: oklch(0.84 0.1 85);
     --plan-yes: oklch(0.84 0.1 85);
