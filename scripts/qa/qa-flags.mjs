@@ -164,7 +164,7 @@ async function run(name, device, colorScheme) {
   });
   await page.waitForSelector('[id="levels"][data-highlighted]');
   check(await inView(page, "levels"), `${tag}: a link gets past the search`);
-  await search.fill("对话模式");
+  await search.fill("对话日记");
   check(
     (await page.locator('[id="read.vibe"]').count()) === 1,
     `${tag}: the description is searched too`,

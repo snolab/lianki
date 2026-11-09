@@ -37,7 +37,7 @@ export function SealCheck({
     >
       <span
         aria-hidden="true"
-        className={`grid place-items-center rounded-[5px] transition-[transform,background-color,border-color] duration-150 motion-reduce:transition-none ${
+        className={`grid place-items-center rounded-[5px] transition-transform duration-150 motion-reduce:transition-none ${
           checked
             ? "-rotate-6 border-2 border-blue-600 bg-blue-600 text-white"
             : "border-2 border-gray-500 bg-transparent dark:border-gray-400"
