@@ -9,7 +9,7 @@ import { isDev } from "@/lib/permissions";
  * "Send log"). Developers only, 404 for anyone else.
  */
 type User = Awaited<ReturnType<typeof authUserOrNull>>;
-const caller = (u: User) => (u?.id && isDev(u.email) ? { id: u.id } : null);
+const caller = (u: User) => (u?.id ? { id: u.id } : null);
 
 const deps: MailsDeps = {
   db: () => (dbBackend() === "d1" ? (getD1() as unknown as MailsDb) : null),
@@ -20,9 +20,11 @@ const deps: MailsDeps = {
 };
 
 export async function GET(req: Request) {
-  return mailsGet(req, caller(await authUserOrNull()), deps);
+  const u = await authUserOrNull();
+  return mailsGet(req, isDev(u?.email) ? caller(u) : null, deps);
 }
 
 export async function POST(req: Request) {
-  return mailsPost(req, caller(await authUserOrNull()), deps);
+  const u = await authUserOrNull();
+  return mailsPost(req, isDev(u?.email) ? caller(u) : null, deps);
 }
