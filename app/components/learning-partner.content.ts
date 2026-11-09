@@ -497,6 +497,42 @@ const learningPartnerContent = {
       mr: "व्हॉइस संदेश पाठवल्यावर आवाज",
       ko: "음성 메시지 전송 시 알림음",
     }),
+    readAloud: t({
+      en: "Replies read aloud",
+      zh: "朗读回复",
+      hi: "जवाब ज़ोर से पढ़े जाते हैं",
+      es: "Respuestas leídas en voz alta",
+      fr: "Réponses lues à voix haute",
+      ar: "قراءة الردود بصوت عالٍ",
+      bn: "উত্তর জোরে পড়া হয়",
+      pt: "Respostas lidas em voz alta",
+      ru: "Ответы читаются вслух",
+      ur: "جوابات بلند آواز میں پڑھے جاتے ہیں",
+      id: "Balasan dibacakan",
+      de: "Antworten vorlesen",
+      ja: "返事を読み上げる",
+      sw: "Majibu yanasomwa kwa sauti",
+      mr: "उत्तरे मोठ्याने वाचली जातात",
+      ko: "답장 소리 내어 읽기",
+    }),
+    readAloudTyping: t({
+      en: "Replies read aloud while typing",
+      zh: "输入时朗读回复",
+      hi: "टाइप करते समय जवाब ज़ोर से पढ़े जाते हैं",
+      es: "Respuestas leídas en voz alta mientras escribes",
+      fr: "Réponses lues à voix haute pendant la saisie",
+      ar: "قراءة الردود بصوت عالٍ أثناء الكتابة",
+      bn: "টাইপ করার সময় উত্তর জোরে পড়া হয়",
+      pt: "Respostas lidas em voz alta enquanto digita",
+      ru: "Ответы читаются вслух, пока вы печатаете",
+      ur: "ٹائپ کرتے وقت جوابات بلند آواز میں پڑھے جاتے ہیں",
+      id: "Balasan dibacakan saat mengetik",
+      de: "Antworten beim Tippen vorlesen",
+      ja: "入力中は返事を読み上げる",
+      sw: "Majibu yanasomwa kwa sauti unapoandika",
+      mr: "टाइप करताना उत्तरे मोठ्याने वाचली जातात",
+      ko: "입력 중 답장 소리 내어 읽기",
+    }),
     cueSpeech: t({
       en: "Sound when speech starts and ends",
       zh: "开始和结束说话时提示音",
@@ -2206,6 +2242,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "On/off switch in the chat's menu under that item: when on, starting a recording also stops it by itself after {n} minutes. Keep {n}; abbreviate minutes.",
   cueSend:
     "On/off switch in the chat's menu, with the voice settings, on by default and following the account: when on, a short tone (no words) plays each time a message the user spoke was recognised and sent. Names the setting as a short noun phrase, not a command.",
+  readAloud:
+    "Visible text of the on/off speaker row in the chat's menu, shown on a phone or tablet while the switch is on: every reply from the assistant is spoken aloud by the device, whether or not the text box is focused (only the user's mute stops it). Describes the current state as a short phrase ('replies are read aloud'), not a command.",
+  readAloudTyping:
+    "Visible text of the same speaker row on a computer while the switch is on: the assistant's replies are spoken aloud only while the user's cursor is in the chat's text box (typing there). Short state phrase like the one above, with 'while typing' added; not a command.",
   cueSpeech:
     "On/off switch right under that one, on by default and following the account: when on, a soft rising tone plays when the microphone hears the user begin to speak, and a falling one when they finish. Speech means the user talking into the mic, not the app reading aloud. Short noun phrase, not a command.",
   compactIdle:

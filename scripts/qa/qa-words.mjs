@@ -876,13 +876,13 @@ try {
   }
 
   // With the Learning Partner on (via the ?agent=1 alias), no visible text on
-  // /profile, /preferences or the profile menu says "debug" (/words is checked
+  // /my/profile, /my/preferences or the profile menu says "debug" (/words is checked
   // above). Owner-only dev pages are exempt.
   {
     const origin = new URL(page.url()).origin;
     const tab = await ctx.newPage();
     const seen = {};
-    for (const path of ["/profile?agent=1", "/preferences"]) {
+    for (const path of ["/my/profile?agent=1", "/my/preferences"]) {
       await tab.goto(`${origin}${path}`, { waitUntil: "networkidle" });
       seen[path] = await debugText(tab);
     }
@@ -902,12 +902,12 @@ try {
     );
     check(
       Object.values(seen).every((h) => h.length === 0),
-      `no visible "debug" on /profile, /preferences or the menu with it on (${JSON.stringify(seen)})`,
+      `no visible "debug" on /my/profile, /my/preferences or the menu with it on (${JSON.stringify(seen)})`,
     );
     // ?agent=0 is applied after hydration, which can come after "load": wait
     // for the flag itself, or closing the tab can leave the Learning Partner
     // on for every later check (the version notice then auto-reloads).
-    await tab.goto(`${origin}/profile?agent=0`, { waitUntil: "load" });
+    await tab.goto(`${origin}/my/profile?agent=0`, { waitUntil: "load" });
     await tab.waitForFunction(
       () => localStorage.getItem("lk:agent") === "0" && localStorage.getItem("lk:debug") === "0",
       null,

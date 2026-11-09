@@ -47,14 +47,14 @@ for (const [name, type] of [
     check((await getSession())?.user?.email === email, `${name}: signed in`);
     check(Boolean(await sessionCookie()), `${name}: session cookie set`);
 
-    await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+    await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
     // The user's own AI key (docs/byok.md) must not outlive the session here.
     await page.evaluate(() => localStorage.setItem("lk:byok", '{"v":1,"apiKey":"qa-not-a-key"}'));
     await page.locator("[data-profile-menu]").click();
     const button = page.locator("[data-sign-out]");
     await button.waitFor({ timeout: budget(10000) });
     await Promise.all([
-      page.waitForURL((u) => !/\/profile/.test(u.pathname), { timeout: budget(30000) }),
+      page.waitForURL((u) => !/\/my\/profile/.test(u.pathname), { timeout: budget(30000) }),
       button.click(),
     ]);
     await page.waitForLoadState("networkidle").catch(() => {});
@@ -64,27 +64,27 @@ for (const [name, type] of [
       (await page.evaluate(() => localStorage.getItem("lk:byok"))) === null,
       `${name}: the BYOK key is gone from this device`,
     );
-    check(new URL(page.url()).pathname !== "/profile", `${name}: left the page (${page.url()})`);
+    check(new URL(page.url()).pathname !== "/my/profile", `${name}: left the page (${page.url()})`);
     // The service worker caches every page it serves; the signed-in ones must be gone
     // (it may already have cached the signed-out landing page again).
     const cached = await page.evaluate(async () => {
       if (!("caches" in self)) return [];
       const hits = await Promise.all(
-        ["/profile", "/home", "/list"].map(async (p) => ((await caches.match(p)) ? p : null)),
+        ["/my/profile", "/home", "/list"].map(async (p) => ((await caches.match(p)) ? p : null)),
       );
       return hits.filter(Boolean);
     });
     check(cached.length === 0, `${name}: no signed-in page cached (${cached.join(",") || "none"})`);
 
-    // Signed out, /profile sends to /sign-in — or, with the `levels` flag on
+    // Signed out, /my/profile sends to /sign-in — or, with the `levels` flag on
     // (docs/levels.md), shows only the guest level card: no account on it.
-    await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+    await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
     const guestCard =
       (await page.locator('[data-level-card] [data-level-progress][href="/sign-in"]').count()) >
         0 && !(await page.content()).includes("@lianki.test");
     check(
       /\/sign-in/.test(page.url()) || guestCard,
-      `${name}: /profile is signed out (${page.url()}${guestCard ? ", guest level card" : ""})`,
+      `${name}: /my/profile is signed out (${page.url()}${guestCard ? ", guest level card" : ""})`,
     );
 
     const legacy = await page.goto(`${BASE}/auth/logout`, { waitUntil: "networkidle" });

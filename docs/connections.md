@@ -15,7 +15,7 @@ Ships **dark**: flag `connections.google` (off) — while off, only the owner
 ## Flow
 
 1. **/connections** (signed in) shows Google Drive: status, account email,
-   granted access, Connect / Disconnect. Also linked from /profile.
+   granted access, Connect / Disconnect. Also linked from /my/profile.
 2. **Connect** → `POST /api/connections/google/start` (same-origin JSON,
    10 per user per 10 min). The server makes a random `state` and a PKCE
    verifier (S256), seals both with the user id and a 10-minute expiry into

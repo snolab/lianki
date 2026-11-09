@@ -48,7 +48,7 @@ export function LevelChip() {
   const name = names[level].value;
   return (
     <Link
-      href="/profile"
+      href="/my/profile"
       data-level-chip={level}
       aria-label={ui.chipLabel.value.replace("{level}", name)}
       title={name}

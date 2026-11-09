@@ -56,7 +56,8 @@ export async function inboxOp(
   });
   if (op.op === "list") return { ok: true, items: (await listItemsOf(db, owners)).map(view) };
   const it = await getItem(db, op.id);
-  if (!it || !owners.includes(it.ownerId)) return { ok: false, error: "no such item" };
+  if (!it || it.source !== "chat" || !owners.includes(it.ownerId))
+    return { ok: false, error: "no such item" };
   if (op.op === "done") {
     await markProcessed(db, it.id, now);
     return { ok: true, done: it.id };

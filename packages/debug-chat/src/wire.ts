@@ -84,6 +84,10 @@ export type ChatMessage = {
   raw?: string;
   /** Set when the agent polished the line: when, by which agent, and how many times. */
   edited?: EditMark;
+  /** The agent summarised a run of voice lines starting here (SummaryMark); `text` is the summary. */
+  summary?: SummaryMark;
+  /** This voice line is inside a summary that starts at that line: hidden, still kept. */
+  collapsedInto?: string;
   /**
    * Stamped by the hub only, with flag `stt.merge` on (voice-merge.ts): an owner's
    * voice line the next utterance may amend. Absent = always a new line.
@@ -204,6 +208,18 @@ export type MergedPart = {
 /** How many times the agent may polish one voice line. */
 export const MAX_EDITS = 3;
 /**
+ * How far back the agent may polish or summarise: any of the owner's last
+ * EDITABLE_LINES lines in the owner thread (not only the latest).
+ */
+export const EDITABLE_LINES = 5;
+/**
+ * A run of the owner's voice lines the agent summarised (room talk, someone
+ * else speaking): on the run's first line, which shows the summary; the others
+ * carry `collapsedInto` and are hidden on the page. Nothing is deleted: every
+ * line stays stored with its text, and the first line's `raw` holds them all.
+ */
+export type SummaryMark = { at: number; by: string; ids: string[] };
+/**
  * The hub's broadcast after an agent polished a voice line: the pages and
  * listeners update that line in place (never read aloud again).
  */
@@ -220,6 +236,8 @@ export type EditedEvent = {
   merged?: { id: string; text: string };
   /** An undo: the lines this one goes back to, in order; the first keeps this id. */
   split?: ChatMessage[];
+  /** A summary of a run of lines starting at `id` (its other lines are hidden). */
+  summary?: SummaryMark;
 };
 
 /** The hub to the listeners: a merged passage ended, polish it now, from `raw`. */
@@ -235,11 +253,26 @@ export type PolishDueEvent = {
 /** A message updated by an EditedEvent; any other message is returned as is. */
 export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "type">): M {
   if (m.id !== e.id || (m.thread ?? "owner") !== e.thread) return m;
-  return { ...m, text: e.text, raw: e.raw, edited: e.edited, ...(e.parts ? { parts: e.parts } : {}) };
+  return {
+    ...m,
+    text: e.text,
+    raw: e.raw,
+    edited: e.edited,
+    ...(e.parts ? { parts: e.parts } : {}),
+    ...(e.summary ? { summary: e.summary } : {}),
+  };
 }
 
 /** The list after an EditedEvent: the line changed in place, or split back into its lines. */
 export function applyEditTo<M extends ChatMessage>(list: M[], e: Omit<EditedEvent, "type">): M[] {
+  if (e.summary) {
+    const rest = new Set(e.summary.ids.filter((id) => id !== e.id));
+    return list.map((m) =>
+      (m.thread ?? "owner") === e.thread && rest.has(m.id)
+        ? { ...m, collapsedInto: e.id }
+        : applyEdit(m, e),
+    );
+  }
   if (!e.split) return list.map((m) => applyEdit(m, e));
   const split = e.split as M[];
   return list.flatMap((m) => (m.id === e.id && (m.thread ?? "owner") === e.thread ? split : [m]));
@@ -512,6 +545,10 @@ export type ChatStrings = {
   cueSend: string;
   /** The chat menu's switch: soft tones when he starts and stops speaking. */
   cueSpeech: string;
+  /** The speaker row, on: on a phone every reply is read (voice.ts, the toggle alone decides). */
+  readAloud: string;
+  /** The speaker row, on, on a computer: replies are read while the input has focus. */
+  readAloudTyping: string;
   compactIdle: string;
   /** The menu's collapsed Dev group (DevMenuGroup.tsx), the owner's pages only: its heading. */
   devGroup: string;
@@ -710,6 +747,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsAutoStop: "Auto-stop after {n} min",
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
+  readAloud: "Replies read aloud",
+  readAloudTyping: "Replies read aloud while typing",
   compactIdle: "Only the last message while not typing",
   devGroup: "Dev",
   compactShowAll: "Show the whole chat",

@@ -10,6 +10,7 @@ import liveView from "@/app/components/live-view.content";
 import reviewPage from "@/app/(app)/review/page.content";
 import navHome from "@/app/(app)/home/page.content";
 import appShell from "@/app/components/app-shell.content";
+import myPage from "@/app/(app)/my/page.content";
 import landing from "@/app/[locale]/page.content";
 import learn from "@/app/(app)/learn/page.content";
 import polyglot from "@/app/(app)/lab/polyglot/page.content";
@@ -54,9 +55,9 @@ import booksPage from "@/app/(app)/books/page.content";
 import readFormTags from "@/app/(app)/reader/read-form-tags.content";
 import learnerLevels from "@/app/components/level-badge.content";
 import learnerLevelUi from "@/app/components/level-ui.content";
-import profileEdit from "@/app/(app)/profile/profile-edit.content";
-import profileSession from "@/app/(app)/profile/session-basics.content";
-import preferencesPage from "@/app/(app)/preferences/page.content";
+import profileEdit from "@/app/(app)/my/profile/profile-edit.content";
+import profileSession from "@/app/(app)/my/profile/session-basics.content";
+import preferencesPage from "@/app/(app)/my/preferences/page.content";
 import byokSettings from "@/app/components/byok-settings.content";
 import titleRules from "@/app/components/title-rules.content";
 import externalLink from "@/app/components/external-link.content";
@@ -111,6 +112,7 @@ describe.each([
   ["review-page", reviewPage],
   ["nav-home", navHome],
   ["app-shell", appShell],
+  ["my-page", myPage],
   ["landing-page", landing],
   ["learn-page", learn],
   ["polyglot-page", polyglot],
