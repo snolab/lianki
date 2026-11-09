@@ -41,7 +41,7 @@ bun test unit/x.test.ts  # one test file, no queue
 bun run test:unit      # whole unit suite, starts at once (CI adds -- --coverage)
 bun fix                # oxlint --fix + oxfmt
 bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run it)
-bun run qa:all         # full integration gate — CI merge queue + nightly; time-sensitive suites wait for load-based admission
+bun run qa:all         # full integration gate — merge queue (sharded) + Full QA after merges; time-sensitive suites wait for load-based admission
 bun scripts/gate/affected.ts plan  # what pre-push runs for this change, and why (LIANKI_GATE_FULL=1 push: everything)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
@@ -144,7 +144,7 @@ that are expensive to rediscover.
 | /my: the user's own data (profile, preferences, files)                   | [docs/url-principles.md](docs/url-principles.md), "/my"             |
 | Secrets, auth, OAuth config                                              | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
 | Transactional mail: templates, /dev/templates, locked variables          | [docs/mail-templates.md](docs/mail-templates.md)                    |
-| Every sent mail: the send log at /dev/mails, statuses, Resend rules       | [docs/mail-templates.md](docs/mail-templates.md), "Send log"        |
+| Every sent mail: the send log at /dev/mails, statuses, Resend rules      | [docs/mail-templates.md](docs/mail-templates.md), "Send log"        |
 | Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI        | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Who may do what: isAdmin/isDev grants, /dev/permissions, break-glass CLI | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Google Drive connection (/connections), private Docs import              | [docs/connections.md](docs/connections.md)                          |
