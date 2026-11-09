@@ -47,6 +47,7 @@ const SAMPLE: Record<string, unknown> = {
   "words.gradeTones": false,
   "words.voiceMode": true,
   "words.swipeMirror": true,
+  "words.onboarded": true,
   "swipe.variant": "native",
   "swipe-feel.preset": "heavy",
   "swipe-feel.tweaks": { friction: 10 },

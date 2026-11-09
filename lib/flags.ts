@@ -120,6 +120,12 @@ export const FLAGS = {
     requires: ["komoju.live-key"],
     money: true,
   },
+  // No `audience`: a walkthrough for everyone on /words; ON is the shipped state.
+  "words.onboarding": {
+    description:
+      "/words 首次引导：第一次打开单词列表时播放一段约五个场景的 SVG 动画（点卡片看答案、按感觉评分、处理过的卡片变淡可撤销、之后卡片在下面再出现、双指上下捏改变卡片高度），可跳过；看完或跳过后缩进标题旁的圆圈「?」按钮，点它重播。是否看过跟随账号同步。关闭 = 不自动播放，也没有「?」按钮。",
+    default: true,
+  },
   "words.voice-mode": {
     description:
       "/words 语音口令模式：设置里出现「语音口令」开关，打开后不用唤醒词，说「下一张、上一张、上下左右、重来/困难/良好/简单、显示答案、再读一遍、撤销、退出语音模式」来操作。关闭时只有站长本人能预览。",

@@ -31,6 +31,8 @@ export default async function WordsPage() {
       // The Import button (docs/import-material.md, "On /words"): dark behind
       // `import.any`: every user while on; the owner on or off (importAnyOn).
       importOn={!!user && importAnyOn(flags, isDev(user.email))}
+      // The first-visit walkthrough and its "?" by the heading (lib/words/onboarding.ts).
+      onboarding={flags["words.onboarding"]}
     />
   );
 }

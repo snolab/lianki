@@ -45,6 +45,7 @@ import {
 import { Icon, type IconName } from "@/app/components/icons";
 import { useImportPanel } from "./ImportPanel";
 import { useIntlayer, useLocale } from "next-intlayer";
+import WordsOnboarding from "./WordsOnboarding";
 import {
   closestCenter,
   DndContext,
@@ -1957,6 +1958,7 @@ export default function WordsClient({
   voice = "off",
   ytSongs = false,
   importOn = false,
+  onboarding = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
@@ -1965,6 +1967,8 @@ export default function WordsClient({
   ytSongs?: boolean;
   /** The Import button at the top (`import.any`: every user while on; the owner on or off). */
   importOn?: boolean;
+  /** `words.onboarding`: the walkthrough and its "?" by the heading (/words only, not /alphabet). */
+  onboarding?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
@@ -2153,6 +2157,7 @@ export default function WordsClient({
         catalog={fullCatalog}
         offline={offline}
         importOn={importOn && !!config.imports}
+        onboarding={onboarding && !given}
         onOpen={setListId}
         onRefresh={refreshLists}
         onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
@@ -2620,6 +2625,7 @@ function ListPicker({
   catalog,
   offline,
   importOn,
+  onboarding,
   onOpen,
   onRefresh,
   onDelete,
@@ -2633,6 +2639,8 @@ function ListPicker({
   offline: boolean;
   /** Show the Import button and panel at the top (ImportPanel.tsx). */
   importOn: boolean;
+  /** The walkthrough's "?" after the heading (WordsOnboarding.tsx). */
+  onboarding: boolean;
   onOpen: (id: string) => void;
   /** Reload the lists from the server. */
   onRefresh: () => Promise<void>;
@@ -2990,7 +2998,10 @@ function ListPicker({
     <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-8">
       <div>
         <div className="flex items-start justify-between gap-3">
-          <h1 className="min-w-0 text-2xl font-semibold">{config.title}</h1>
+          <div className="flex min-w-0 items-center gap-0.5">
+            <h1 className="min-w-0 text-2xl font-semibold">{config.title}</h1>
+            {onboarding && <WordsOnboarding />}
+          </div>
           {importOn && importPanel.button}
         </div>
         <p className="opacity-70 text-sm mt-1">{config.intro}</p>
