@@ -5,9 +5,9 @@
  * (docs/import-material.md, "On /words"; owner 2026-11-09). The panel is a
  * list of import sources; each one either jumps to a tool already on the
  * page (the preset sets → the "Add a list" tree) or opens its own body here
- * (a CSV / Excel table → the word-list import with its templates). A new
- * source (e.g. "any file, converted by an agent") is one more entry in
- * SOURCES once it works — nothing is listed before then.
+ * (a CSV / Excel table → the word-list import with its templates). "Any
+ * file" keeps files of any type as the user's own (StoredFiles.tsx), stored
+ * only: turning them into words comes next, on these stored files.
  */
 import { useState, type ReactNode } from "react";
 import { useIntlayer } from "next-intlayer";
@@ -17,19 +17,21 @@ import dynamic from "next/dynamic";
 
 // Loaded when the table choice is opened, not with /words.
 const WordListImport = dynamic(() => import("../import/WordListImport"), { ssr: false });
+const StoredFiles = dynamic(() => import("./StoredFiles"), { ssr: false });
 
-type SourceId = "preset" | "table";
+type SourceId = "preset" | "table" | "files";
 type Source = {
   id: SourceId;
   icon: IconName;
-  title: "presetTitle" | "tableTitle";
-  hint: "presetHint" | "tableHint";
+  title: "presetTitle" | "tableTitle" | "anyTitle";
+  hint: "presetHint" | "tableHint" | "anyHint";
 };
 
 /** In the order shown. */
 const SOURCES: readonly Source[] = [
   { id: "preset", icon: "books", title: "presetTitle", hint: "presetHint" },
   { id: "table", icon: "cards", title: "tableTitle", hint: "tableHint" },
+  { id: "files", icon: "folderSimple", title: "anyTitle", hint: "anyHint" },
 ];
 
 /** Scroll to the "Add a list" tree and put the focus in it. */
@@ -88,7 +90,7 @@ export function useImportPanel({ onAdded }: { onAdded: () => void }): {
                 <button
                   type="button"
                   data-qa={`words-import-${s.id}`}
-                  aria-pressed={s.id === "table" ? on : undefined}
+                  aria-pressed={s.id === "preset" ? undefined : on}
                   onClick={() => {
                     if (s.id === "preset") {
                       close();
@@ -123,6 +125,11 @@ export function useImportPanel({ onAdded }: { onAdded: () => void }): {
           <Icon name="x" />
         </button>
       </div>
+      {source === "files" && (
+        <div className="mt-4">
+          <StoredFiles />
+        </div>
+      )}
       {source === "table" && (
         <div className="mt-4" data-qa="words-import-table-body">
           <WordListImport signedIn embedded onAdded={() => onAdded()} />

@@ -157,6 +157,7 @@ import {
   createNewLines,
   newShimmer,
 } from "./shimmer";
+import { WAITING_INK, lastPendingIndex, waitingMark } from "./waiting-mark";
 import { TreeChips } from "./TreeChips";
 import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
 import {
@@ -205,6 +206,9 @@ import {
   fullScreenOn,
   dragLeavesFull,
   dropEntersFull,
+  FULL_HINT_HAPTIC_MS,
+  FULL_HINT_STYLE,
+  fullHintStep,
 } from "./full-screen";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
@@ -256,6 +260,16 @@ const POS_KEY = "lk:debug-chat-pos";
 const REALIGN_MS = 1500;
 /** The chat bar: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
+/**
+ * The bottom strip's glass while the progress bar shows (owner, 2026-11-10):
+ * the bar's own look (INPUT_BG, backdrop-blur-md, saturate 150%) over both,
+ * so the input row with no progress bar looks as it always did.
+ */
+const STRIP_GLASS = {
+  background: INPUT_BG,
+  backdropFilter: "blur(12px) saturate(1.5)",
+  WebkitBackdropFilter: "blur(12px) saturate(1.5)",
+} as const;
 
 /**
  * Drag the box (by its header, or the collapsed pill) anywhere on screen: an
@@ -271,7 +285,12 @@ type DropSpan = { left: number; right: number; boxLeft: number; boxRight: number
 /** Full screen as a drag sees it: on now, and the way out when the drag leaves it upward. */
 type DragFull = { now: () => boolean; leave: () => void };
 
-function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
+function useDrag(
+  onDrop?: (at: DropSpan) => void,
+  fullDrag?: DragFull,
+  /** Where the bar would rest after each move; null once the press is over (the full-screen hint). */
+  onMove?: (at: DropSpan | null) => void,
+) {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
       const v = JSON.parse(read(POS_KEY) ?? "null") as { x: number; y: number } | null;
@@ -291,6 +310,8 @@ function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
   } | null>(null);
   const dropRef = useRef(onDrop);
   dropRef.current = onDrop;
+  const moveRef = useRef(onMove);
+  moveRef.current = onMove;
   /** The click that ends a drag is not a tap (cleared on the next press, or after 400 ms). */
   const dragged = useRef(createDragFlag());
   /** The pill is held down: the input shows how to use it. */
@@ -329,6 +350,7 @@ function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
       boxRight: b.right + by,
       bottom: top + y - d.y + row.height,
     };
+    moveRef.current?.(d.last);
     setPos({ x, y });
   };
   /**
@@ -342,6 +364,7 @@ function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
     setHolding(false);
     const d = drag.current;
     drag.current = null;
+    moveRef.current?.(null);
     if (!d?.moved) return;
     dragged.current.dragEnded();
     setPos((p) => {
@@ -374,6 +397,7 @@ function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
     onPointerCancel: () => {
       setHolding(false);
       drag.current = null;
+      moveRef.current?.(null);
     },
     style: { touchAction: "none" as const, cursor: "grab" },
   };
@@ -927,10 +951,19 @@ export function DebugChat({
   const onDrop = useRef((_at: DropSpan) => {});
   /** A drag up out of full screen (set once setFull exists below). */
   const leaveFull = useRef(() => {});
+  /** A drag of the box moved (useDrag): the full-screen hint (set below, where its rule is). */
+  const onDragMove = useRef((_at: DropSpan | null) => {});
   const { offset, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
     (bar) => onDrop.current(bar),
     { now: () => fullOn.current, leave: () => leaveFull.current() },
+    (bar) => onDragMove.current(bar),
   );
+  /**
+   * The drag would enter full screen if let go now (owner, 2026-11-10): the
+   * bottom edge grows toward full screen as a preview, with a light haptic.
+   */
+  const [fullHint, setFullHint] = useState(false);
+  const fullHintRef = useRef(false);
   /**
    * How far the chat is folded (fold.ts): open, a pill, or tucked into the
    * screen edge, and the edge it keeps to (on the left, everything mirrors).
@@ -2668,6 +2701,24 @@ export function DebugChat({
     foldStore.setState({ tucked: tuckNow, edge: next.edge });
     if ((next.fold === "open") !== open) toggle(next.fold === "open");
   };
+  // While dragging: the moment letting go would enter full screen, preview it.
+  onDragMove.current = (bar) => {
+    const on =
+      !!bar &&
+      dropEntersFull({
+        allowed: fullAllowed && !tucked,
+        open,
+        full: fullOn.current,
+        barBottom: bar.bottom,
+        vh: innerHeight,
+      });
+    const step = fullHintStep(fullHintRef.current, on);
+    if (!step) return;
+    fullHintRef.current = on;
+    setFullHint(on);
+    // A light tick on the way in (Android; navigator.vibrate is absent on iOS).
+    if (step === "enter") navigator.vibrate?.(FULL_HINT_HAPTIC_MS);
+  };
   // A drag of the box ended: it follows its nearest edge (no tuck: that level is removed).
   onDrop.current = (bar) => {
     const vw = innerWidth;
@@ -2947,6 +2998,8 @@ export function DebugChat({
       : "oklch(0.62 0.02 70)";
   /** Your lines after the agent last spoke wait for it while it is offline. */
   const lastAgent = messages.findLastIndex((m) => m.from === "agent");
+  /** The last of his lines still waiting (waiting-mark.ts): only it carries the label. */
+  const lastPending = lastPendingIndex(messages);
   const status = notice
     ? "chat unavailable"
     : offline
@@ -3279,9 +3332,11 @@ export function DebugChat({
         title={
           vs.mic
             ? "The mic is on: replies are always read aloud (your setting is back when it stops)"
-            : speak && vs.voiced
-              ? "You used the mic in this tab: replies are read aloud, typed or spoken, until you turn this off"
-              : "Replies are read aloud while you're typing here (the input has focus)"
+            : speak && vs.touch
+              ? "Replies are read aloud, typing or not, until you turn this off"
+              : speak && vs.voiced
+                ? "You used the mic on this device: replies are read aloud, typed or spoken, until you turn this off"
+                : "Replies are read aloud while you're typing here (the input has focus)"
         }
         onClick={() => !vs.mic && toggleSpeak()}
         className={`flex items-center gap-2 px-3 py-1.5 text-start ${vs.mic ? "opacity-70" : ""}`}
@@ -3289,11 +3344,17 @@ export function DebugChat({
         <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
         {vs.mic
           ? "Replies read aloud (mic on)"
-          : speak && vs.voiced
-            ? "Replies read aloud (mic used)"
-            : speak
-              ? "Replies read aloud while typing"
-              : "Replies silent"}
+          : speak && vs.touch
+            ? strings?.readAloud
+              ? t.readAloud
+              : ui.readAloud
+            : speak && vs.voiced
+              ? "Replies read aloud (mic used)"
+              : speak
+                ? strings?.readAloudTyping
+                  ? t.readAloudTyping
+                  : ui.readAloudTyping
+                : "Replies silent"}
       </button>
       {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
       <button
@@ -4018,6 +4079,13 @@ export function DebugChat({
     // Full screen: the glass is the whole chat area, which is the screen.
     fullLog: fullLog !== "off" || full,
   });
+  /** The progress bar (EtaBar) shows over the input. */
+  const etaShown = open && !tree && etaBar && etaList.length > 0;
+  /**
+   * The bar and the progress bar as one glass strip (owner, 2026-11-10); not
+   * while the typing glass is the frame, nor full screen (the screen is the glass).
+   */
+  const strip = etaShown && !full && !typingGlassShown;
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
     const look = typingGlassLook({
@@ -4329,15 +4397,31 @@ export function DebugChat({
                             {t.notReadHidden}
                           </span>
                         )}
-                        {!agentOnline && m.from !== "agent" && i > lastAgent && (
-                          <span
-                            data-testid="debug-chat-queued"
-                            className="ms-1 fs-10 text-gray-500"
-                            title={t.waitingTitle}
-                          >
-                            {t.waiting}
-                          </span>
-                        )}
+                        {(() => {
+                          // Waiting for the partner: the label on the last pending line only;
+                          // the earlier ones a mark in the same ink, named for screen readers.
+                          const w = waitingMark({ i, from: m.from, agentOnline, lastAgent, lastPending });
+                          if (!w) return null;
+                          return w === "label" ? (
+                            <span
+                              data-testid="debug-chat-queued"
+                              className="ms-1 fs-10"
+                              style={{ color: WAITING_INK }}
+                              title={t.waitingTitle}
+                            >
+                              {t.waiting}
+                            </span>
+                          ) : (
+                            <span
+                              data-testid="debug-chat-queued-mark"
+                              role="img"
+                              aria-label={t.waiting.replace(/^[·\s]+/, "")}
+                              title={`${t.waiting.replace(/^[·\s]+/, "")} — ${t.waitingTitle}`}
+                              className="ms-1 inline-block size-1.5 rounded-full align-middle"
+                              style={{ background: WAITING_INK }}
+                            />
+                          );
+                        })()}
                       </span>
                     </span>
                   );
@@ -4349,12 +4433,6 @@ export function DebugChat({
       </ol>
       </div>
       {compact && compactEl}
-      {open && !tree && etaBar && etaList.length > 0 && (
-        // flow-root: the bar's own margin counts in the height the buttons above step over.
-        <div ref={setEtaBox} data-testid="debug-chat-eta-slot" className="flow-root">
-          <EtaBar tasks={etaList} now={etaNow} strings={t} onOpen={() => setGanttOpen(true)} />
-        </div>
-      )}
       {open && warning && (
         <div
           role="alert"
@@ -4441,6 +4519,25 @@ export function DebugChat({
           }}
         />
       )}
+      {etaShown && (
+        // Right over the bar. flow-root: the bar's own margin counts in the
+        // height the buttons above step over. In the strip it has no margin
+        // and no track: the strip's glass is behind it.
+        <div
+          ref={setEtaBox}
+          data-testid="debug-chat-eta-slot"
+          data-strip={strip || undefined}
+          className={`flow-root ${strip ? "px-1 pt-1" : ""}`}
+        >
+          <EtaBar
+            tasks={etaList}
+            now={etaNow}
+            strings={t}
+            glass={strip}
+            onOpen={() => setGanttOpen(true)}
+          />
+        </div>
+      )}
       {/* The log above is click-through: taps reach the page under it. Only the
       bar takes pointer events. Its width animates as two grid columns, the
       bar's and a spacer's, trading 1fr ⇄ 0fr: minimized, the bar's column is
@@ -4466,6 +4563,18 @@ export function DebugChat({
           ...(full ? fullBarSpan(sidebar) : {}),
         }}
       >
+        {strip && (
+          // The strip's one glass (owner, 2026-11-10): behind the progress
+          // bar and the bar alike, so the two read as one surface. Its own
+          // layer, not a wrapper: a backdrop-filter on an ancestor would
+          // become the box of the fixed menus and the floating lines in here.
+          <div
+            aria-hidden
+            data-testid="debug-chat-strip"
+            className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 border border-current/25"
+            style={{ ...barGeometry(), ...STRIP_GLASS, top: -etaH }}
+          />
+        )}
         <div style={LTR}>
         {open && (shownTarget !== ROOT_NODE || completions.length > 0) && (
           // The target node (a chip: × back to the main thread) and "@/…" completions.
@@ -4670,7 +4779,8 @@ export function DebugChat({
             // While the typing glass is up it is the frame: the bar's own box
             // goes inside it (border transparent, width kept; no tint, no blur).
             // Full screen keeps the bar's own box: the glass there is the whole screen.
-            ...barInGlass(typingGlassShown && !full),
+            // In the strip the strip's glass is its surface (the same glass).
+            ...barInGlass((typingGlassShown && !full) || strip),
             transition: reducedMotion() ? undefined : `${FADE}, ${BAR_IN_GLASS_TRANSITION}`,
           }}
           data-in-glass={(typingGlassShown && !full) || undefined}
@@ -4913,6 +5023,16 @@ export function DebugChat({
       </div>
     </section>
     {tuckEl}
+    {fullAllowed && (
+      // The full-screen preview (full-screen.ts FULL_HINT_STYLE): outside the
+      // section, whose transform would make it the box of a fixed child.
+      <div
+        aria-hidden
+        data-testid="debug-chat-full-hint"
+        data-on={fullHint || undefined}
+        style={FULL_HINT_STYLE(fullHint, reducedMotion())}
+      />
+    )}
     </>
   );
 }

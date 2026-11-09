@@ -205,7 +205,7 @@ describe("the request", () => {
     const r = await ask();
     expect(await r.json()).toEqual({ status: "sent" });
     expect(mails.map((m) => m.to)).toEqual([NEW, OLD]);
-    expect(mails[0]!.text).toContain(`${BASE}/profile/email-confirm#u1.`);
+    expect(mails[0]!.text).toContain(`${BASE}/my/profile/email-confirm#u1.`);
     expect(mails[1]!.text).not.toContain(NEW);
     expect(mails[1]!.text).not.toContain("email-confirm");
     expect(rows("SELECT email FROM user WHERE id = 'u1'")).toEqual([{ email: OLD }]);

@@ -118,7 +118,7 @@ try {
     const ctx = await newCtx(browser);
     await signUp(ctx, "off");
     const page = await ctx.newPage();
-    await page.goto("/preferences?lang=en");
+    await page.goto("/my/preferences?lang=en");
     await page.locator("h1").first().waitFor({ timeout: 30000 });
     check(
       (await page.getByTestId("app-badge").count()) === 0,
@@ -145,7 +145,7 @@ try {
     const j = await (await ctx.request.get("/api/badge")).json();
     check(j.on === false, "flag on, not the owner: /api/badge answers {on: false}");
     const page = await ctx.newPage();
-    await page.goto("/preferences?lang=en");
+    await page.goto("/my/preferences?lang=en");
     await page.locator("h1").first().waitFor({ timeout: 30000 });
     check(
       (await page.getByTestId("app-badge").count()) === 0,
@@ -185,7 +185,7 @@ try {
     const page = await ctx.newPage();
     const errs = [];
     page.on("pageerror", (e) => errs.push(e.message));
-    await page.goto("/preferences?lang=en");
+    await page.goto("/my/preferences?lang=en");
     const section = page.getByTestId("app-badge");
     await section.waitFor({ timeout: 30000 });
     check(

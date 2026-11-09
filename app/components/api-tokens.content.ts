@@ -3,7 +3,7 @@ import { describeKeys } from "@/lib/i18n-context";
 
 /**
  * API tokens (lib/api-tokens.ts): the "API tokens" section of /preferences
- * (app/(app)/preferences/TokenManager.tsx) and the permission and expiry
+ * (app/(app)/my/preferences/TokenManager.tsx) and the permission and expiry
  * pickers that /cli-login shares with it (app/components/TokenPickers.tsx).
  * Modelled on GitHub's fine-grained personal access tokens: a name, explicit
  * permissions, a required expiry, last used, revoke after an inline confirm.

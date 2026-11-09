@@ -21,6 +21,9 @@
 //   jumps to the Add a list tree; "CSV or Excel table" shows the templates,
 //   which download (header row, BOM) and, uploaded back (.xlsx, then .csv),
 //   preview and add like any list; an old .xls gets a plain error.
+// - "Any file" (stored, not processed): a file of any type uploaded in the
+//   panel is listed with its name and size, and Delete removes it; without
+//   the gate its route is 404 like the rest.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -99,6 +102,10 @@ async function notTheOwner(tag) {
     `${tag}, not the owner: no word-list section on /import`,
   );
   check((await preview(ctx, CSV)).status() === 404, `${tag}, not the owner: the route is 404`);
+  check(
+    (await ctx.request.get("/api/import/files")).status() === 404,
+    `${tag}, not the owner: the stored-files route is 404`,
+  );
   await page.goto("/words?lang=en");
   await page.waitForTimeout(3000);
   check(
@@ -122,6 +129,10 @@ async function everyone(tag) {
     `${tag}, not the owner: the word-list section on /import`,
   );
   check((await preview(ctx, CSV)).status() === 200, `${tag}, not the owner: the route answers`);
+  check(
+    (await ctx.request.get("/api/import/files")).status() === 200,
+    `${tag}, not the owner: the stored-files route answers`,
+  );
   await page.goto("/words?lang=en");
   await page.locator('[data-qa="words-import-button"]').waitFor({ timeout: 15000 });
   check(true, `${tag}, not the owner: the Import button on /words`);
@@ -226,7 +237,29 @@ try {
       }),
       "preset sets: the 'Add a list' tree is in view",
     );
+    // "Any file": stored and listed, then deleted.
     await importBtn.click();
+    await page.locator('[data-qa="words-import-files"]').click();
+    const filesBody = page.locator('[data-qa="words-import-files-body"]');
+    await filesBody.waitFor({ timeout: 15000 });
+    await filesBody.locator('[data-qa="words-import-files-input"]').setInputFiles({
+      name: "lesson-notes.bin",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from([0, 1, 2, 3, 250, 251]),
+    });
+    const stored = filesBody.locator('[data-qa="words-import-file"]');
+    await stored.first().waitFor({ timeout: 15000 });
+    const row = await stored.first().innerText();
+    check(
+      /lesson-notes\.bin/.test(row) && /6 B/.test(row),
+      `any file: stored and listed (${row.replace(/\s+/g, " ")})`,
+    );
+    await page.screenshot({ path: join(OUT, `words-files-${scheme}.png`), fullPage: true });
+    await stored.first().locator('[data-qa="words-import-file-delete"]').click();
+    await page.waitForTimeout(1500);
+    check((await stored.count()) === 0, "any file: Delete removes it");
+    const left = await (await ctx.request.get("/api/import/files")).json();
+    check((left.items ?? []).length === 0, "any file: gone on the server too");
     await page.locator('[data-qa="words-import-table"]').click();
     const body = page.locator('[data-qa="words-import-table-body"]');
     await body.locator('[data-qa="wordlist-templates"]').waitFor({ timeout: 15000 });
