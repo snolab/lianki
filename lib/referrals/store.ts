@@ -72,7 +72,7 @@ function grantRow(
  * Extra statements ride in the same batch. Returns false when this reason+ref
  * was already granted.
  */
-async function grantPro(
+export async function grantPro(
   d1: D1WithBatch,
   userId: string,
   days: number,

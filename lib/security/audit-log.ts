@@ -52,6 +52,14 @@ export type AuditKind =
   // An eval token's every use: a sender connecting, and each eval it sends
   // (lib/eval-token.ts). Subject: the token's tag.
   | "api-token.eval"
+  // Pre-grants (lib/referrals/pregrant.ts): Pro days given to an address before
+  // it has an account. create/revoke: actor the admin, subject the row id,
+  // detail a masked address and the days; direct: an existing account granted
+  // at once (subject its id); claim: actor the account that signed in.
+  | "pregrant.create"
+  | "pregrant.revoke"
+  | "pregrant.direct"
+  | "pregrant.claim"
   // The old owner role (site_role, removed 2026-11-09): no longer written, kept
   // so its past rows still read as a known kind.
   | "site-role.grant"

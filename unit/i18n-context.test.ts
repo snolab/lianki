@@ -20,6 +20,7 @@ import wordsListPreview from "@/app/(app)/words/list-preview.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
 import devUsers from "@/app/(app)/dev/users/users.content";
+import devPregrant from "@/app/(app)/dev/users/pregrant.content";
 import textSize from "@/app/components/text-size.content";
 import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
@@ -111,6 +112,7 @@ describe.each([
   ["leave-guard", leaveGuard],
   ["dev-permissions", devPermissions],
   ["dev-users", devUsers],
+  ["dev-pregrant", devPregrant],
   ["text-size", textSize],
   ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],

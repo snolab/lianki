@@ -25,6 +25,7 @@ import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsor
 import { notifySignedOut } from "./lib/push-signed-out";
 import { setEmailCanonical } from "./lib/canonical-email-d1";
 import { recordSignupLocale } from "./lib/signup-locale-d1";
+import { claimPregrants, type PregrantDb } from "./lib/referrals/pregrant";
 import { boxBindingHook, boxProviderPlugin } from "./lib/box-oauth/provider";
 import { apiTokenSignOutPlugin } from "./lib/api-token-signout";
 import { notifyTokensRevoked } from "./lib/push-chat-tokens";
@@ -143,6 +144,17 @@ function baseOptions() {
       // Sign-out (or any session deleted): the debug hub stops renewing the
       // owner's eval grants bound to that session at once (docs/monitoring.md, "Renewal").
       session: {
+        // Pre-grants (lib/referrals/pregrant.ts): Pro days an admin gave this
+        // address before the account existed are claimed at sign-in — only
+        // when the account's email is verified. Never fails the sign-in.
+        create: {
+          after: async (session: { userId: string }) => {
+            if (dbBackend() !== "d1") return;
+            await claimPregrants(getD1() as unknown as PregrantDb, session.userId).catch((e) =>
+              console.error("[pregrant] claim:", e),
+            );
+          },
+        },
         delete: {
           after: async (session: { id: string }) => {
             await notifySignedOut(session.id);
@@ -171,11 +183,16 @@ function baseOptions() {
           },
         },
         update: {
-          after: async (user: { id: string; email?: string | null }) => {
+          after: async (user: { id: string; email?: string | null; emailVerified?: boolean }) => {
             if (dbBackend() !== "d1" || !user.email) return;
             await setEmailCanonical(getD1(), user.id, user.email).catch((e) =>
               console.error("[email-canonical] update:", e),
             );
+            // An address verified after sign-up claims its pre-grants now.
+            if (user.emailVerified)
+              await claimPregrants(getD1() as unknown as PregrantDb, user.id).catch((e) =>
+                console.error("[pregrant] claim:", e),
+              );
           },
         },
       },
