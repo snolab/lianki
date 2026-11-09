@@ -90,7 +90,7 @@ const grantDev = (email) => {
 /** Not the owner: nothing on /import or /words, and the route is 404. */
 async function notTheOwner(tag) {
   const ctx = await newSilentContext(browser, { baseURL: BASE });
-  await signUp(ctx, tag);
+  await signUp(ctx, tag.replace(/\W+/g, ""));
   const page = await ctx.newPage();
   await page.goto("/import");
   check(
