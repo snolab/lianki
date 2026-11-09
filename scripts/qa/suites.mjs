@@ -177,6 +177,23 @@ export const SUITES = [
     paths: READ,
     sensitive: true,
   },
+  // /today, today's goal: the one number from /words's counts, red and gold by theme, links (lib/today/goal.ts).
+  {
+    name: "TODAY (qa-today)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-today.mjs"],
+    base: true,
+    id: "today",
+    paths: [
+      "app/(app)/today/**",
+      "app/api/words/today/**",
+      "lib/today/**",
+      "app/(app)/home/**",
+      "lib/app-nav.ts",
+      "scripts/qa/qa-today.mjs",
+    ],
+    sensitive: false,
+  },
   // The /words first-visit walkthrough: shows once, Skip, replay from the "?", still frames (lib/words/onboarding.ts).
   {
     name: "WORDS ONBOARDING (qa-words-onboarding)",
