@@ -14,6 +14,9 @@
  * (Playwright runner suites). A suite with neither needs no Worker: when only
  * such suites are selected, qa:all skips the OpenNext build and wrangler dev.
  *
+ * `everyShard: true` runs the suite at the start of every merge-queue shard
+ * (scripts/qa/shard.mjs), not in one of them.
+ *
  * `id` names the suite for `qa-all.mjs --suites=<id>,…`. `paths` (globs) say
  * which files the suite covers, for the pre-push gate's affected-only run
  * (scripts/gate/affected.ts, docs/shipping.md "Only what changed"): a suite
@@ -43,6 +46,8 @@ export const SUITES = [
     id: "audio-free",
     paths: ["scripts/qa/silent.mjs"],
     sensitive: false,
+    // Sharded runs (scripts/qa/shard.mjs) start each shard with it too.
+    everyShard: true,
   },
   {
     name: "API  (qa-api)",
