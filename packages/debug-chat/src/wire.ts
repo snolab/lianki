@@ -185,6 +185,26 @@ export type AnsweredEvent = {
   labels: Record<string, string[]>;
 };
 
+/**
+ * The hub telling pages and listeners that the agent withdrew an open ask
+ * (eval.ts withdraw): the card greys out, takes no tap, and is never read aloud.
+ */
+export type WithdrawnEvent = {
+  type: "withdrawn";
+  /** The ask's message id, the ask's own id, and its thread. */
+  id: string;
+  askId: string;
+  thread: string;
+  withdrawnAt: number;
+};
+
+/** A message updated by a WithdrawnEvent; any other message is returned as is. */
+export function applyWithdrawn<M extends ChatMessage>(m: M, e: Omit<WithdrawnEvent, "type">): M {
+  if (m.id !== e.id || !m.ask || m.ask.askId !== e.askId || (m.thread ?? "owner") !== e.thread)
+    return m;
+  return { ...m, ask: { ...m.ask, withdrawnAt: e.withdrawnAt } };
+}
+
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
 export type MessageSource = "stt";
 /**
