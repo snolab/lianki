@@ -133,7 +133,7 @@ export function ProfileMenu({
             {debug && ` · ${partner.name.value}`}
           </div>
           {/* Owner's order, 2026-11-09: profile, import, data, settings, language, sign out. */}
-          <MenuLink href="/profile" icon="user">
+          <MenuLink href="/my/profile" icon="user">
             {labels.profile}
           </MenuLink>
           {MENU_NAV.map((item) => (

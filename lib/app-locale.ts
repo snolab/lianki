@@ -45,10 +45,10 @@ export const APP_ROUTES = [
   "learn",
   "list",
   "membership",
+  // The user's own data: /my/profile, /my/preferences, /my/files (docs/url-principles.md).
+  "my",
   "next",
-  "preferences",
   "privacy",
-  "profile",
   "reader",
   "review",
   "roadmap",

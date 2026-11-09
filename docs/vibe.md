@@ -189,7 +189,7 @@ It is narrow: finished lines, translation only. The start page says so in one li
 - **Which languages** (`lib/vibe/translations.ts`, `conversationLangs`): any language
   making up more than the setting's share of the lines so far with a detected
   language. No fixed pair and no per-language code. The share is
-  `vibe.translateMinPct` (`lk:vibe-translate-min-pct`, /preferences), 20 by default:
+  `vibe.translateMinPct` (`lk:vibe-translate-min-pct`, /my/preferences), 20 by default:
   the owner's number. Exactly 20% does not count.
 - **Which lines**: each into those languages but its own. A language that reaches
   its share later brings the earlier lines along, newest first, two at a time.
@@ -270,7 +270,7 @@ ours either, so a word nothing has a meaning for is carded without one.
 
 **Kept until deleted.** Nothing is deleted by itself unless the user set a number.
 
-`/preferences` has that number (`VibeRetention.tsx`, 1–3650), empty and "Off" by
+`/my/preferences` has that number (`VibeRetention.tsx`, 1–3650), empty and "Off" by
 default. It counts from a doc's **newest line** and applies to every doc of that
 user at once, since the sweep reads it at run time. Clearing the field turns it
 off again. The field saves only what the user changed.

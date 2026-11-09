@@ -4,14 +4,15 @@
 //   QA_BASE=http://localhost:3000 bun scripts/qa/qa-import-wordlist.mjs [outDir]
 //
 // In qa:all (suite import-wordlist), or against any local server on local D1.
-// `import.any` is owner-only (lib/import/words-handler.ts, importAnyOn): the
-// accounts that import are granted `dev` in the LOCAL account_permission (as
-// qa-app-badge does; removed at the end). The light run has the flag off, the
-// dark run on (the row is deleted at the end).
+// `import.any` (lib/import/words-handler.ts, importAnyOn): off, the owner only;
+// on, every signed-in user. The accounts that import are granted `dev` in the
+// LOCAL account_permission (as qa-app-badge does; removed at the end). The
+// light run has the flag off, the dark run on (the row is deleted at the end).
 //
-// - not the owner, flag off and then flag on: no section on /import, the
-//   route answers 404, no Import button on /words — the flag never reaches
-//   everyone;
+// - not the owner, flag off: no section on /import, the route answers 404,
+//   no Import button on /words;
+// - not the owner, flag on: the section, the route and the Import button are
+//   all there;
 // - the owner, flag off or on: a CSV file dropped in shows the preview counts (new / skipped),
 //   "Add N words" makes a /words list, and the recent-imports list shows it;
 // - the same list pasted again: everything is "already in your words";
@@ -20,6 +21,9 @@
 //   jumps to the Add a list tree; "CSV or Excel table" shows the templates,
 //   which download (header row, BOM) and, uploaded back (.xlsx, then .csv),
 //   preview and add like any list; an old .xls gets a plain error.
+// - "Any file" (stored, not processed): a file of any type uploaded in the
+//   panel is listed with its name and size, and Delete removes it; without
+//   the gate its route is 404 like the rest.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -87,7 +91,7 @@ const grantDev = (email) => {
   );
 };
 
-/** Not the owner: nothing on /import or /words, and the route is 404. */
+/** Not the owner, flag off: nothing on /import or /words, and the route is 404. */
 async function notTheOwner(tag) {
   const ctx = await newSilentContext(browser, { baseURL: BASE });
   await signUp(ctx, tag.replace(/\W+/g, ""));
@@ -98,12 +102,40 @@ async function notTheOwner(tag) {
     `${tag}, not the owner: no word-list section on /import`,
   );
   check((await preview(ctx, CSV)).status() === 404, `${tag}, not the owner: the route is 404`);
+  check(
+    (await ctx.request.get("/api/import/files")).status() === 404,
+    `${tag}, not the owner: the stored-files route is 404`,
+  );
   await page.goto("/words?lang=en");
   await page.waitForTimeout(3000);
   check(
     (await page.locator('[data-qa="words-import-button"]').count()) === 0,
     `${tag}, not the owner: no Import button on /words`,
   );
+  await ctx.close();
+}
+
+/** Not the owner, flag on: the section on /import, the route, the Import button on /words. */
+async function everyone(tag) {
+  const ctx = await newSilentContext(browser, { baseURL: BASE });
+  await signUp(ctx, tag.replace(/\W+/g, ""));
+  // Flags are cached 30 s per isolate: wait for the flag to reach the server.
+  for (let i = 0; i < 25 && (await preview(ctx, CSV)).status() === 404; i++)
+    await new Promise((r) => setTimeout(r, 2000));
+  const page = await ctx.newPage();
+  await page.goto("/import");
+  check(
+    (await page.locator('[data-qa="wordlist-import"]').count()) === 1,
+    `${tag}, not the owner: the word-list section on /import`,
+  );
+  check((await preview(ctx, CSV)).status() === 200, `${tag}, not the owner: the route answers`);
+  check(
+    (await ctx.request.get("/api/import/files")).status() === 200,
+    `${tag}, not the owner: the stored-files route answers`,
+  );
+  await page.goto("/words?lang=en");
+  await page.locator('[data-qa="words-import-button"]').waitFor({ timeout: 15000 });
+  check(true, `${tag}, not the owner: the Import button on /words`);
   await ctx.close();
 }
 
@@ -205,7 +237,29 @@ try {
       }),
       "preset sets: the 'Add a list' tree is in view",
     );
+    // "Any file": stored and listed, then deleted.
     await importBtn.click();
+    await page.locator('[data-qa="words-import-files"]').click();
+    const filesBody = page.locator('[data-qa="words-import-files-body"]');
+    await filesBody.waitFor({ timeout: 15000 });
+    await filesBody.locator('[data-qa="words-import-files-input"]').setInputFiles({
+      name: "lesson-notes.bin",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from([0, 1, 2, 3, 250, 251]),
+    });
+    const stored = filesBody.locator('[data-qa="words-import-file"]');
+    await stored.first().waitFor({ timeout: 15000 });
+    const row = await stored.first().innerText();
+    check(
+      /lesson-notes\.bin/.test(row) && /6 B/.test(row),
+      `any file: stored and listed (${row.replace(/\s+/g, " ")})`,
+    );
+    await page.screenshot({ path: join(OUT, `words-files-${scheme}.png`), fullPage: true });
+    await stored.first().locator('[data-qa="words-import-file-delete"]').click();
+    await page.waitForTimeout(1500);
+    check((await stored.count()) === 0, "any file: Delete removes it");
+    const left = await (await ctx.request.get("/api/import/files")).json();
+    check((left.items ?? []).length === 0, "any file: gone on the server too");
     await page.locator('[data-qa="words-import-table"]').click();
     const body = page.locator('[data-qa="words-import-table-body"]');
     await body.locator('[data-qa="wordlist-templates"]').waitFor({ timeout: 15000 });
@@ -286,8 +340,8 @@ try {
     await ctx.close();
   }
   // The flag has been on for the whole dark run (past the 30 s flag cache):
-  // it still reaches nobody but the owner.
-  await notTheOwner("flag on");
+  // it reaches every signed-in user.
+  await everyone("flag on");
 } finally {
   try {
     setFlag(false);

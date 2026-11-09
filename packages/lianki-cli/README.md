@@ -47,7 +47,7 @@ lianki auth logout      # revoke the token on the server and forget it
 
 ### Without a browser (servers, CI, agents)
 
-Make a token at [lianki.com/preferences](https://lianki.com/preferences)
+Make a token at [lianki.com/my/preferences](https://lianki.com/my/preferences)
 → **API tokens** (a name, its permissions, an expiry), then either:
 
 ```bash

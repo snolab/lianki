@@ -141,7 +141,11 @@ export function FlagCard({
         <div id={`details-${f.key}`} className="space-y-1 pb-1.5">
           <p className="text-sm">{f.description}</p>
           <p className="text-xs opacity-60">
-            {f.updatedAt ? `${f.updatedBy} · ${jst(f.updatedAt)}` : "从未改过（默认关）"}
+            {f.updatedAt
+              ? `${f.updatedBy} · ${jst(f.updatedAt)}`
+              : FLAGS[f.key].default
+                ? "从未改过（默认开）"
+                : "从未改过（默认关）"}
           </p>
         </div>
       )}

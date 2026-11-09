@@ -18,7 +18,7 @@ let d1: TestD1Database;
 let deps: WordImportDeps;
 beforeEach(() => {
   d1 = createTestD1(SCHEMA);
-  // The owner: `import.any` is owner-only (lib/import/words-handler.ts, importAnyOn).
+  // The owner: has `import.any` with the flag on or off (lib/import/words-handler.ts, importAnyOn).
   deps = { user: { email: EMAIL }, owner: true, flags: {}, db: d1 };
 });
 
@@ -62,19 +62,19 @@ describe("the gate", () => {
     expect(importAnyOn(null, true)).toBe(true);
   });
 
-  test("anyone else: never, the flag on or off", () => {
-    expect(importAnyOn({ "import.any": true }, false)).toBe(false);
+  test("anyone else: only with the flag on", () => {
+    expect(importAnyOn({ "import.any": true }, false)).toBe(true);
     expect(importAnyOn({ "import.any": false }, false)).toBe(false);
     expect(importAnyOn({}, false)).toBe(false);
     expect(importAnyOn(undefined, false)).toBe(false);
   });
 
-  test("the flag is owner-audience, so /dev/flags never calls it shipped", () => {
-    expect(FLAGS["import.any"].audience).toBe("owner");
+  test("the flag has no audience: on, it reaches every user", () => {
+    expect((FLAGS["import.any"] as { audience?: string }).audience).toBeUndefined();
   });
 
-  test("not the owner, flag on or off: 404, nothing written", async () => {
-    for (const flags of [{ "import.any": true }, {}]) {
+  test("not the owner, flag off: 404, nothing written", async () => {
+    for (const flags of [{ "import.any": false }, {}]) {
       for (const step of ["preview", "commit"]) {
         const r = await handleWordImport(post({ step, text: TEXT, name: "X", lang: "en" }), {
           ...deps,

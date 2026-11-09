@@ -20,6 +20,8 @@ import {
   type Identity,
   hashId,
   MAX_EDITS,
+  EDITABLE_LINES,
+  applyEditTo,
 } from "@/lib/dev-eval";
 
 /** A socket as the hibernation API hands it to the hub, recording what it was sent. */
@@ -2861,22 +2863,22 @@ describe("DebugHub agent edits of voice messages", () => {
     expect(stored(s)[0]).toMatchObject({ text: "fix the sink button" });
   });
 
-  it("refuses every polish while the owner's stt.polish-off flag is on", async () => {
+  it("refuses every polish while the owner's stt.polish flag is exactly false", async () => {
     const asked: string[] = [];
-    let on = true;
+    let on: unknown = false;
     const SESSIONS = {
       live: async () => "live",
-      flag: async (k: string) => (k === "stt.polish-off" ? (asked.push(k), on) : false),
+      flag: async (k: string) => (k === "stt.polish" ? (asked.push(k), on) : false),
     };
     const s = setup({ SESSIONS });
     const owner = s.page();
     const { c } = await agent(s, owner);
     await s.msg(owner, voice("v1", "hello world"));
     await s.msg(c, { type: "edit", id: "v1", text: "Hello, world." });
-    expect(c.last("error")?.error).toContain("polish is off");
-    expect(asked).toEqual(["stt.polish-off"]);
+    expect(c.last("error")?.error).toContain("polish is off (stt.polish");
+    expect(asked).toEqual(["stt.polish"]);
     expect(owner.last("edited")).toBeUndefined();
-    on = false;
+    on = true;
     await s.msg(c, { type: "edit", id: "v1", text: "Hello, world." });
     expect(owner.last("edited")).toMatchObject({ text: "Hello, world.", raw: "hello world" });
   });
@@ -2908,21 +2910,203 @@ describe("DebugHub agent edits of voice messages", () => {
     expect(owner.last("edited")).toBeUndefined();
   });
 
-  it("refuses any but the owner's latest line; agent replies after it do not count", async () => {
+  it("edits any of the owner's last EDITABLE_LINES lines; agent replies do not count; older ones are refused", async () => {
+    expect(EDITABLE_LINES).toBe(5);
     const s = setup();
     const owner = s.page();
     const { c } = await agent(s, owner);
-    await s.msg(owner, voice("v1", "first"));
-    await s.msg(owner, voice("v2", "second"));
-    await s.msg(c, { type: "say", text: "on it" });
-    await s.msg(c, { type: "edit", id: "v1", text: "First." });
-    expect(c.last("error")?.error).toContain("not the owner's latest");
-    await s.msg(c, { type: "edit", id: "v2", text: "Second." });
-    expect(owner.last("edited")).toMatchObject({ id: "v2", text: "Second." });
+    for (let i = 1; i <= 6; i++) {
+      await s.msg(owner, voice(`v${i}`, `line ${i}`));
+      await s.msg(c, { type: "say", text: `reply ${i}` });
+    }
+    await s.msg(c, { type: "edit", id: "v1", text: "Line 1." });
+    expect(c.last("error")?.error).toContain("not among the owner's last 5 lines");
+    await s.msg(c, { type: "edit", id: "v2", text: "Line 2." });
+    expect(owner.last("edited")).toMatchObject({ id: "v2", text: "Line 2." });
+    await s.msg(c, { type: "edit", id: "v6", text: "Line 6." });
+    expect(owner.last("edited")).toMatchObject({ id: "v6", text: "Line 6." });
     // The agent's own line is never the target.
     const said = c.last("said")?.id as string;
     await s.msg(c, { type: "edit", id: said, text: "x" });
-    expect(c.last("error")?.error).toContain("not the owner's latest");
+    expect(c.last("error")?.error).toContain("not among the owner's last");
+  });
+
+  it("an earlier line's polish draws on lines after it, the agent's replies included", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "turn the fl on"));
+    await s.msg(c, { type: "say", text: "Which flag do you mean?" });
+    await s.msg(owner, voice("v2", "the polish one"));
+    await s.msg(c, { type: "edit", id: "v1", text: "Turn the flag on." });
+    expect(owner.last("edited")).toMatchObject({
+      id: "v1",
+      text: "Turn the flag on.",
+      raw: "turn the fl on",
+    });
+    // A function word in a clause, no context needed.
+    await s.msg(owner, voice("v3", "我在房间看书"));
+    await s.msg(c, { type: "edit", id: "v3", text: "我在房间里看书。" });
+    expect(owner.last("edited")).toMatchObject({ id: "v3", text: "我在房间里看书。" });
+  });
+
+  it("logs a refused polish with its reason", async () => {
+    const logs: string[] = [];
+    const real = console.log;
+    console.log = (x: string) => void logs.push(String(x));
+    try {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("v1", "fix the sink button"));
+      await s.msg(c, { type: "edit", id: "v1", text: "Fix the sync button." });
+    } finally {
+      console.log = real;
+    }
+    expect(
+      logs.some((l) => l.includes("debug.polish-refused") && l.includes("not in the context")),
+    ).toBe(true);
+  });
+
+  describe("summaries of room talk", () => {
+    const ROOM = ["那个房子一个月多少钱啊我觉得太贵了", "对啊而且离地铁站还挺远的你说呢"];
+    const withLog = () => {
+      const reqs: { op: string; lines: Record<string, unknown>[] }[] = [];
+      const SESSIONS = {
+        live: async () => "live",
+        chatLog: async (r: { op: string; lines: Record<string, unknown>[] }) => {
+          reqs.push(structuredClone(r));
+          return { ok: true, written: r.lines.length };
+        },
+      };
+      return { reqs, s: setup({ SESSIONS }) };
+    };
+
+    it("collapses consecutive voice lines into one: kept, raw recoverable, history keeps all", async () => {
+      const { reqs, s } = withLog();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("r1", ROOM[0]!));
+      await s.msg(owner, voice("r2", ROOM[1]!));
+      reqs.length = 0;
+      await s.msg(c, { type: "summary", ids: ["r2", "r1"], text: "（旁人在聊租房，嫌贵）" });
+      const ev = owner.last("edited") as Record<string, unknown>;
+      expect(ev).toMatchObject({
+        id: "r1",
+        text: "（旁人在聊租房，嫌贵）",
+        raw: `${ROOM[0]}\n${ROOM[1]}`,
+        summary: { by: "main lane", ids: ["r1", "r2"] },
+      });
+      expect(c.last("edited")).toMatchObject({ id: "r1", summary: { ids: ["r1", "r2"] } });
+      // Both lines stay stored; the second is marked inside the summary.
+      expect(stored(s)).toEqual([
+        expect.objectContaining({
+          id: "r1",
+          text: "（旁人在聊租房，嫌贵）",
+          raw: `${ROOM[0]}\n${ROOM[1]}`,
+        }),
+        expect.objectContaining({ id: "r2", text: ROOM[1], collapsedInto: "r1" }),
+      ]);
+      // History: the summary is added as its own line; nothing is updated or dropped.
+      expect(reqs).toEqual([
+        {
+          op: "put",
+          thread: "owner",
+          lines: [
+            expect.objectContaining({
+              id: "r1.summary",
+              from: "owner",
+              text: "（旁人在聊租房，嫌贵）",
+            }),
+          ],
+        } as never,
+      ]);
+    });
+
+    it("takes his last N lines with last", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("r1", ROOM[0]!));
+      await s.msg(owner, voice("r2", ROOM[1]!));
+      await s.msg(c, { type: "summary", last: 2, text: "（旁人在聊租房，嫌贵）" });
+      expect(owner.last("edited")).toMatchObject({ id: "r1", summary: { ids: ["r1", "r2"] } });
+    });
+
+    it("refuses a typed line, a run someone spoke into, one past the last N, and a bare marker", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, { type: "chat", id: "t1", text: ROOM[0]! });
+      await s.msg(c, { type: "summary", ids: ["t1"], text: "（旁人在聊租房）" });
+      expect(c.last("error")?.error).toContain("typed, not spoken");
+      await s.msg(owner, voice("r1", ROOM[0]!));
+      await s.msg(c, { type: "say", text: "嗯？" });
+      await s.msg(owner, voice("r2", ROOM[1]!));
+      await s.msg(c, { type: "summary", ids: ["r1", "r2"], text: "（旁人在聊租房，嫌贵）" });
+      expect(c.last("error")?.error).toContain("not consecutive");
+      await s.msg(c, { type: "summary", ids: ["r2"], text: "（杂音）" });
+      expect(c.last("error")?.error).toContain("not summarised");
+      for (let i = 0; i < 5; i++) await s.msg(owner, voice(`x${i}`, `line ${i}`));
+      await s.msg(c, { type: "summary", ids: ["r2"], text: "（旁人在聊）" });
+      expect(c.last("error")?.error).toContain("not among the owner's last 5 lines");
+      expect(owner.last("edited")).toBeUndefined();
+    });
+
+    it("a summary line is not polished again; the polish flag off refuses summaries too", async () => {
+      const s = setup({
+        SESSIONS: { live: async () => "live", flag: async (k: string) => k !== "stt.polish" },
+      });
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("r1", ROOM[0]!));
+      await s.msg(c, { type: "summary", ids: ["r1"], text: "（问房租）" });
+      expect(c.last("error")?.error).toContain("polish is off");
+      const s2 = setup();
+      const o2 = s2.page();
+      const a2 = await agent(s2, o2);
+      await s2.msg(o2, voice("r1", ROOM[0]!));
+      await s2.msg(a2.c, { type: "summary", ids: ["r1"], text: "（问房租）" });
+      await s2.msg(a2.c, { type: "edit", id: "r1", text: "旁人在问房租。" });
+      expect(a2.c.last("error")?.error).toContain("is a summary");
+    });
+
+    it("pages hide the collapsed lines (applyEditTo), and show the first as the summary", () => {
+      const list = [
+        {
+          id: "r1",
+          from: "owner" as const,
+          label: "",
+          text: ROOM[0]!,
+          at: 1,
+          source: "stt" as const,
+        },
+        {
+          id: "r2",
+          from: "owner" as const,
+          label: "",
+          text: ROOM[1]!,
+          at: 2,
+          source: "stt" as const,
+        },
+        { id: "a", from: "agent" as const, label: "", text: "嗯", at: 3 },
+      ];
+      const out = applyEditTo(list, {
+        id: "r1",
+        thread: "owner",
+        text: "（旁人在聊租房）",
+        raw: ROOM.join("\n"),
+        edited: { at: 4, by: "x", count: 0 },
+        summary: { at: 4, by: "x", ids: ["r1", "r2"] },
+      });
+      expect(
+        out.map((m) => [m.id, m.text, (m as { collapsedInto?: string }).collapsedInto]),
+      ).toEqual([
+        ["r1", "（旁人在聊租房）", undefined],
+        ["r2", ROOM[1], "r1"],
+        ["a", "嗯", undefined],
+      ]);
+    });
   });
 
   it("refuses an unknown id, an unchanged text, and empty or missing fields", async () => {
@@ -3246,7 +3430,7 @@ describe("DebugHub continuous speech (stt.merge)", () => {
   const rig = async (flags: Record<string, unknown> = { "stt.merge": true }) => {
     const SESSIONS = {
       live: async () => "live",
-      flag: async (k: string) => flags[k] ?? false,
+      flag: async (k: string) => flags[k] ?? k === "stt.polish",
     };
     const s = setup({ SESSIONS });
     const owner = s.page();
@@ -3325,7 +3509,10 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     const mac = await speakerKey();
     const s = setup({
       STT_SPEAKER_PUB: mac.pub,
-      SESSIONS: { live: async () => "live", flag: async (k: string) => k === "stt.merge" },
+      SESSIONS: {
+        live: async () => "live",
+        flag: async (k: string) => k === "stt.merge" || k === "stt.polish",
+      },
     });
     const owner = s.page();
     const proof = (text: string, uid: string) =>
@@ -3581,8 +3768,8 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     expect(c.last("error")?.error).toContain("not polished");
   });
 
-  it("stt.polish-off on: merges with no rewrite, and no lane is woken to polish", async () => {
-    const { s, owner, c, two, lines } = await rig({ "stt.merge": true, "stt.polish-off": true });
+  it("stt.polish off: merges with no rewrite, and no lane is woken to polish", async () => {
+    const { s, owner, c, two, lines } = await rig({ "stt.merge": true, "stt.polish": false });
     await two();
     await s.msg(owner, { type: "passage-end" });
     expect(lines()[0].text).toBe("那你能不能给，给我显示一个按钮。");

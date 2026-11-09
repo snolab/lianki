@@ -14,7 +14,7 @@
 //   connecting, live, or lost with no end;
 // - "No thanks" stays gone after a reload, reaches another device through the
 //   account, and leaves other texts alone;
-// - "Don't ask again" and the /preferences switch turn it off and on;
+// - "Don't ask again" and the /my/preferences switch turn it off and on;
 // - the contents sheet's action is there with the offer off and during a stream;
 //   it asks the real route and reports its failure (no AI locally), and on a
 //   stubbed success reloads into the tidied text, where the action has gone.
@@ -161,7 +161,7 @@ async function run(device, scheme) {
   check((await offer(otherPage).count()) === 1, "and leaves the other text alone there");
   await other.close();
 
-  // Don't ask again: off for every text; /preferences has the switch.
+  // Don't ask again: off for every text; /my/preferences has the switch.
   await page.getByTestId("read-polish-never").click();
   check((await offer(page).count()) === 0, "Don't ask again hides it");
   await page.reload({ waitUntil: "load" });
@@ -169,24 +169,24 @@ async function run(device, scheme) {
   await page.waitForTimeout(400);
   check((await offer(page).count()) === 0, "off after a reload");
 
-  await page.goto("/preferences", { waitUntil: "load" });
+  await page.goto("/my/preferences", { waitUntil: "load" });
   const sw = page.getByTestId("pref-polish-offer");
   await sw.waitFor({ timeout: 15000 });
   await page.waitForTimeout(300);
-  check(!(await sw.isChecked()), "the /preferences switch shows off");
+  check(!(await sw.isChecked()), "the /my/preferences switch shows off");
   await sw.scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(OUT, `preferences-${tag}.png`) });
   await sw.check();
   await open(page, b);
   check((await offer(page).count()) === 1, "the switch turns it back on");
-  await page.goto("/preferences", { waitUntil: "load" });
+  await page.goto("/my/preferences", { waitUntil: "load" });
   await sw.waitFor({ timeout: 15000 });
   await page.waitForTimeout(300);
   await sw.uncheck();
 
   // The action, with the offer off: the real route first (no AI on a local Worker).
   await open(page, b);
-  check((await offer(page).count()) === 0, "off again from /preferences");
+  check((await offer(page).count()) === 0, "off again from /my/preferences");
   await openSheet(page);
   const [res] = await Promise.all([
     page.waitForResponse(

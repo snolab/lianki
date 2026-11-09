@@ -4,8 +4,9 @@ Tree: /import/any
 
 State-tree node `/import/any`. Status: **M1 shipped in its smallest form**
 (word lists from .txt/.csv/.tsv, below); the rest is design. Flag
-**`import.any`**, default off, `audience: "owner"`: the owner (`isDev`) sees it
-with the flag on or off, nobody else either way — never everyone; a later allowlist widens it in `importAnyOn(flags, isDev(email))` —
+**`import.any`**, default off, no audience: on, every signed-in user gets it
+(owner decision 2026-11-10 00:45 JST: free, no credits); off, only the owner
+(`isDev`) — `importAnyOn(flags, isDev(email))` —
 https://lianki.com/dev/flags#import.any.
 
 ## What shipped (M1, 2026-11-09)
@@ -61,9 +62,38 @@ dictionary `words-import-panel`).
 - **CSV or Excel table** opens the word-list import above inside the panel
   (`WordListImport embedded`), loaded on that tap; a list it makes appears in
   the lists at once.
-- A third source (any file, e.g. a PDF, converted in the background by an
-  agent on the user's AI quota) is one more `SOURCES` entry in its own PR,
-  added only once it works — no "coming soon" row.
+- **Any file** keeps files of any type as the user's own, stored only
+  (below). Turning a stored file into words with AI, on the user's credits,
+  is the next slice and builds on these stored files.
+
+### Any file: stored, not processed (owner, 2026-11-10)
+
+"Upload any file, store only, don't process yet." Same gate as the panel
+(`import.any` through `importAnyOn`: a flag, never an email; #777 opens it
+to every signed-in user while it is on).
+
+- **UI.** The panel's third source, **Any file**
+  (`app/(app)/words/StoredFiles.tsx`): drop or pick one or more files of
+  any type; each uploads as it is, and **Your files** lists them with name,
+  size and time, newest first, each with a delete button. Nothing reads,
+  parses or converts them.
+- **Storage = the chat inbox's** (`lib/inbox/`): R2 `lianki-blobs` under
+  `inbox/<user id>/<yyyy>/<mm>/<random id>` (the name is never in the key or
+  a log), one `inbox_item` row each, with **`source = 'import'`**
+  (`0068_import_files.sql`; the chat's rows are `'chat'`) — open question 1
+  below, answered "one table, a source column". The type is sniffed, never
+  trusted from the name. Usage (`inbox_usage`) and the caps are shared with
+  the inbox: 20 MB a file, 200 MB a rolling day, 2 GB stored, 30 uploads a
+  minute (`INBOX`, lib/inbox/config.ts); costs are recorded as the inbox's.
+- **Routes** (`lib/import/files.ts`, `app/api/import/files/`): `POST`
+  (raw body, `x-file-name`), `GET` (the user's import files and usage),
+  `DELETE /<id>` (the R2 object, the row and the usage, for good). Writes
+  are same-origin; 401 for a guest, 404 when the gate is off; a user sees
+  and deletes only their own files. The chat inbox lists only `'chat'` rows
+  and agents' inbox ops only reach those; the import routes only `'import'`.
+- **Retention.** Kept until the user deletes it (as the inbox).
+- Tests: `unit/import-files.test.ts`; `scripts/qa/qa-import-wordlist.mjs`
+  (upload in the panel → listed → deleted; 404 without the gate).
 
 ### CSV / Excel
 
