@@ -105,7 +105,7 @@ Mails never spell the product name: `{brand}` / `{brandLong}`, filled from
 ## Send log: /dev/mails (isDev)
 
 Owner request 2026-11-09. Every outgoing mail gets one row in D1
-`mail_log` (`db/migrations/0065_mail_log.sql`), written in the one send path:
+`mail_log` (`db/migrations/0066_mail_log.sql`), written in the one send path:
 `lib/mail-log/send.ts` `withMailLog` wraps the provider call (Resend, or the
 local stub). Production wiring is `lib/mail-log/deliver.ts` (`sendMail`,
 `localOrSend`); the login notice wraps its own D1 the same way

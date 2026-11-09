@@ -245,7 +245,7 @@ export const SUITES = [
       "lib/mail-log/**",
       "lib/mail-templates/**",
       "lib/resend-webhook.ts",
-      "db/migrations/0065_mail_log.sql",
+      "db/migrations/0066_mail_log.sql",
     ],
     sensitive: false,
   },

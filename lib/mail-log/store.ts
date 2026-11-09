@@ -1,5 +1,5 @@
 /**
- * The send log in D1 (db/migrations/0065_mail_log.sql; docs/mail-templates.md,
+ * The send log in D1 (db/migrations/0066_mail_log.sql; docs/mail-templates.md,
  * "Send log"). Writes: a row per mail (queued), then sent / failed from the
  * provider's answer, then delivered / bounced / complained / unsubscribed from
  * Resend's webhook and the invite opt-out. Reads: /dev/mails only.

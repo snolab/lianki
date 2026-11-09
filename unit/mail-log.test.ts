@@ -483,7 +483,7 @@ describe("with the account, and before the log", () => {
 
   test("old invite rows are copied masked, statuses mapped, skipped ones left out", () => {
     const d = createTestD1(
-      FILES.filter((f) => f < "0065")
+      FILES.filter((f) => f < "0066")
         .map(sql)
         .join("\n"),
     );
@@ -504,7 +504,7 @@ describe("with the account, and before the log", () => {
     ins("c", "sent", 9);
     ins("d", "skipped-recent", null);
     ins("e", "failed", null);
-    d.raw().exec(sql(FILES.find((f) => f.startsWith("0065"))!));
+    d.raw().exec(sql(FILES.find((f) => f.startsWith("0066"))!));
     const got = d
       .raw()
       .prepare(
