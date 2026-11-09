@@ -155,7 +155,7 @@ export function treeClassStyle(cls: string | undefined): Record<string, string |
     s.color = "oklch(0.62 0.17 35)";
     s.fontWeight = 700;
   }
-  if (has.has("d")) s.color = "oklch(0.62 0.14 250)";
+  if (has.has("d")) s.color = "oklch(0.62 0.154 22.3)";
   if (has.has("ok")) s.opacity = 0.6;
   if (has.has("f")) {
     s.marginBlockEnd = "0.375rem";

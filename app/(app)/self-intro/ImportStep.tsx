@@ -88,13 +88,13 @@ function joinFacts(values: string[], locale: string): string {
 }
 
 const btnPrimary =
-  "px-5 py-2.5 rounded-lg font-medium bg-[oklch(0.55_0.18_255)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.18_255)] disabled:opacity-50 disabled:cursor-not-allowed";
+  "px-5 py-2.5 rounded-lg font-medium bg-[oklch(0.55_0.198_22.3)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.198_22.3)] disabled:opacity-50 disabled:cursor-not-allowed";
 const btnQuiet =
-  "px-5 py-2.5 rounded-lg text-[oklch(0.5_0.16_255)] dark:text-[oklch(0.78_0.12_255)] hover:bg-[oklch(0.55_0.18_255/0.08)]";
+  "px-5 py-2.5 rounded-lg text-[oklch(0.5_0.176_22.3)] dark:text-[oklch(0.78_0.132_22.3)] hover:bg-[oklch(0.55_0.198_22.3/0.08)]";
 const muted = "text-[oklch(0.5_0.02_260)] dark:text-[oklch(0.72_0.02_260)]";
 const errorText = "text-sm text-[oklch(0.55_0.2_27)] dark:text-[oklch(0.74_0.15_27)]";
 const inputBox =
-  "w-full rounded-lg border border-[oklch(0.85_0.01_260)] dark:border-[oklch(0.4_0.02_260)] bg-[oklch(1_0_0)] dark:bg-[oklch(0.24_0.01_260)] p-3 focus:outline-2 focus:outline-[oklch(0.55_0.18_255)]";
+  "w-full rounded-lg border border-[oklch(0.85_0.01_260)] dark:border-[oklch(0.4_0.02_260)] bg-[oklch(1_0_0)] dark:bg-[oklch(0.24_0.01_260)] p-3 focus:outline-2 focus:outline-[oklch(0.55_0.198_22.3)]";
 
 export default function ImportStep({
   onDone,
@@ -245,7 +245,7 @@ export default function ImportStep({
             }}
             className={`rounded-lg border-2 border-dashed p-4 mb-3 transition-colors ${
               dragging
-                ? "border-[oklch(0.55_0.18_255)] bg-[oklch(0.55_0.18_255/0.06)]"
+                ? "border-[oklch(0.55_0.198_22.3)] bg-[oklch(0.55_0.198_22.3/0.06)]"
                 : "border-[oklch(0.85_0.01_260)] dark:border-[oklch(0.4_0.02_260)]"
             }`}
           >
@@ -253,7 +253,7 @@ export default function ImportStep({
               <button
                 type="button"
                 onClick={() => picker.current?.click()}
-                className="px-4 py-2 rounded-lg font-medium border border-[oklch(0.55_0.18_255)] text-[oklch(0.5_0.16_255)] dark:text-[oklch(0.78_0.12_255)]"
+                className="px-4 py-2 rounded-lg font-medium border border-[oklch(0.55_0.198_22.3)] text-[oklch(0.5_0.176_22.3)] dark:text-[oklch(0.78_0.132_22.3)]"
               >
                 {c.addFiles}
               </button>
@@ -275,14 +275,14 @@ export default function ImportStep({
                 {files.map((f) => (
                   <li
                     key={`${f.name}:${f.size}`}
-                    className="flex items-center gap-1 max-w-full rounded-full pl-3 pr-1 py-1 text-sm bg-[oklch(0.55_0.18_255/0.1)]"
+                    className="flex items-center gap-1 max-w-full rounded-full pl-3 pr-1 py-1 text-sm bg-[oklch(0.55_0.198_22.3/0.1)]"
                   >
                     <span className="truncate">{f.name}</span>
                     <button
                       type="button"
                       aria-label={c.removeFile.value.replace("{file}", f.name)}
                       onClick={() => setFiles((prev) => prev.filter((x) => x !== f))}
-                      className="w-7 h-7 rounded-full shrink-0 hover:bg-[oklch(0.55_0.18_255/0.15)]"
+                      className="w-7 h-7 rounded-full shrink-0 hover:bg-[oklch(0.55_0.198_22.3/0.15)]"
                     >
                       ×
                     </button>
@@ -384,7 +384,7 @@ export default function ImportStep({
                             </span>
                           )}
                           {f.fromAnswer && (
-                            <span className="block text-xs text-[oklch(0.5_0.12_255)] dark:text-[oklch(0.78_0.1_255)]">
+                            <span className="block text-xs text-[oklch(0.5_0.132_22.3)] dark:text-[oklch(0.78_0.11_22.3)]">
                               {c.fromAnswer}
                             </span>
                           )}

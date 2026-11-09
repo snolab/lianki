@@ -284,7 +284,7 @@ export default function SelfIntroClient({ importOn = false }: { importOn?: boole
             </details>
 
             {generatedSentences[currentQuestion.id] && (
-              <div className="mb-4 p-4 bg-green-50 dark:bg-green-900 rounded-lg">
+              <div className="mb-4 p-4 bg-gold-50 dark:bg-gold-950 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-semibold">{interview.generated}</p>
                   {!isEditing[currentQuestion.id] && (

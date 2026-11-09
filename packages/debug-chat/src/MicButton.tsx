@@ -85,12 +85,12 @@ const REC = "oklch(0.6 0.22 25)";
  */
 const MIC_PULSE = `@keyframes lk-mic-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.12)}}
 @media (prefers-reduced-motion:reduce){[data-testid="debug-chat-mic-ring"][data-rec]{animation:none!important;box-shadow:0 0 0 3px ${REC}!important}}`;
-/** The agent speaking (capture held): a calm blue, unlike the red of capture. */
-const TALK = "oklch(0.62 0.14 250)";
+/** The agent speaking (capture held): gold, unlike the red of capture. */
+const TALK = "oklch(0.75 0.14 80)";
 /** Push to talk held: seal red, darker than REC so white text on it is AA. */
 const PTT_RING = "oklch(0.5 0.2 27)";
-/** Passive (docs/wake-word.md): on, but only waiting for "Linky": a quiet grey-violet. */
-const WAIT = "oklch(0.62 0.06 290)";
+/** Passive (docs/wake-word.md): on, but only waiting for "Linky": a quiet warm grey. */
+const WAIT = "oklch(0.62 0.03 70)";
 /** The local-STT dot: the Mac's model, connecting, or the cloud fallback. */
 const LOCAL_DOT = {
   ready: "oklch(0.7 0.16 150)",

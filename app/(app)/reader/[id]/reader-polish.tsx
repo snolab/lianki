@@ -80,7 +80,7 @@ export function PolishOffer({
           data-testid="read-polish-run"
           disabled={state === "working"}
           onClick={run}
-          className="rounded-lg bg-[oklch(0.55_0.15_250)] px-3 py-1.5 font-medium text-[oklch(0.99_0_0)] disabled:opacity-60"
+          className="rounded-lg bg-[oklch(0.55_0.165_22.3)] px-3 py-1.5 font-medium text-[oklch(0.99_0_0)] disabled:opacity-60"
         >
           {state === "working" ? t.working : t.polish}
         </button>

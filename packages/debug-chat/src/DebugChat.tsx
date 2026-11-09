@@ -460,7 +460,7 @@ function useDrag(
 const SPOKEN_STYLE = { color: "light-dark(oklch(0.5 0.01 260), oklch(0.72 0.01 260))" };
 /** The sentence being read: a soft highlight behind it. */
 const SPEAKING_STYLE = {
-  background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.05 250 / 0.7))",
+  background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.055 22.3 / 0.7))",
   borderRadius: 3,
 };
 /** The full-screen log's wipe in and out. */
@@ -4519,7 +4519,7 @@ export function DebugChat({
         <div
           data-testid="debug-chat-drop"
           className="pointer-events-auto absolute inset-0 z-30 flex min-h-24 items-center justify-center rounded-xl border-2 border-dashed px-2 text-center fs-13 backdrop-blur-sm"
-          style={{ borderColor: "oklch(0.6 0.12 250)", background: "oklch(0.6 0.12 250 / 0.16)" }}
+          style={{ borderColor: "oklch(0.6 0.132 22.3)", background: "oklch(0.6 0.132 22.3 / 0.16)" }}
         >
           {t.attachDrop}
         </div>
@@ -4711,7 +4711,7 @@ export function DebugChat({
               title={askJumpText}
               onClick={jumpToAsk}
               style={{
-                background: "oklch(0.5 0.17 255)",
+                background: "oklch(0.5 0.187 22.3)",
                 color: "oklch(0.98 0 0)",
                 height: JUMP_H_PX,
                 width: jumpWidth(asksUp.length),
@@ -5019,7 +5019,7 @@ export function DebugChat({
             <span
               data-testid="debug-chat-pill-unread"
               className="pointer-events-none absolute -end-1.5 -top-1.5 rounded-full px-1 fs-10 leading-4 text-white"
-              style={{ background: "oklch(0.55 0.2 260)" }}
+              style={{ background: "oklch(0.55 0.21 22.3)" }}
             >
               {unread}
             </span>

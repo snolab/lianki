@@ -82,7 +82,7 @@ const OK = "text-sm text-[oklch(0.45_0.12_150)] dark:text-[oklch(0.8_0.12_150)]"
 const BADGE: Record<Status, string> = {
   queued:
     "bg-[oklch(0.93_0_0)] text-[oklch(0.3_0_0)] dark:bg-[oklch(0.32_0_0)] dark:text-[oklch(0.92_0_0)]",
-  sent: "bg-[oklch(0.93_0.04_250)] text-[oklch(0.35_0.12_250)] dark:bg-[oklch(0.32_0.06_250)] dark:text-[oklch(0.9_0.05_250)]",
+  sent: "bg-gold-100 text-gold-900 dark:bg-gold-900 dark:text-gold-100",
   delivered:
     "bg-[oklch(0.93_0.05_150)] text-[oklch(0.35_0.1_150)] dark:bg-[oklch(0.32_0.06_150)] dark:text-[oklch(0.9_0.06_150)]",
   bounced:
@@ -90,7 +90,7 @@ const BADGE: Record<Status, string> = {
   complained:
     "bg-[oklch(0.92_0.05_27)] text-[oklch(0.42_0.16_27)] dark:bg-[oklch(0.33_0.08_27)] dark:text-[oklch(0.9_0.06_27)]",
   unsubscribed:
-    "bg-[oklch(0.93_0.04_300)] text-[oklch(0.38_0.12_300)] dark:bg-[oklch(0.32_0.06_300)] dark:text-[oklch(0.9_0.05_300)]",
+    "bg-[oklch(0.93_0.044_22.3)] text-[oklch(0.38_0.132_22.3)] dark:bg-[oklch(0.32_0.066_22.3)] dark:text-[oklch(0.9_0.055_22.3)]",
   failed:
     "bg-[oklch(0.92_0.05_27)] text-[oklch(0.42_0.16_27)] dark:bg-[oklch(0.33_0.08_27)] dark:text-[oklch(0.9_0.06_27)]",
 };
@@ -98,7 +98,7 @@ const BADGE: Record<Status, string> = {
 function frameDoc(html: string, dark: boolean) {
   const bg = dark ? "oklch(0.2 0 0)" : "oklch(1 0 0)";
   const fg = dark ? "oklch(0.92 0 0)" : "oklch(0.2 0 0)";
-  const link = dark ? "oklch(0.78 0.12 260)" : "oklch(0.45 0.18 260)";
+  const link = dark ? "oklch(0.78 0.132 22.3)" : "oklch(0.45 0.198 22.3)";
   return `<!doctype html><html style="color-scheme:${dark ? "dark" : "light"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:${bg};color:${fg}}a{color:${link}}</style></head><body>${html}</body></html>`;
 }
 

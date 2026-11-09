@@ -356,7 +356,7 @@ export default function WordListImport({
           <div className="mt-3 flex flex-wrap gap-3">
             <a
               href={`/words?list=${done.listId}`}
-              className="px-4 py-2 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm font-medium"
+              className="px-4 py-2 rounded-lg bg-primary text-on-primary hover:bg-blue-700 text-sm font-medium"
             >
               {t.open}
             </a>
@@ -453,7 +453,7 @@ export default function WordListImport({
       {preview && !done && (
         <div className="mt-6" data-qa="wordlist-preview-box">
           <div className="flex flex-wrap gap-2 text-sm">
-            <span className="px-2 py-1 rounded bg-green-100 text-green-900 dark:bg-green-900 dark:text-green-50">
+            <span className="px-2 py-1 rounded bg-gold-100 text-gold-900 dark:bg-gold-900 dark:text-gold-50">
               {fill(t.countNew, { n: n(preview.fresh) })}
             </span>
             <span className="px-2 py-1 rounded bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50">

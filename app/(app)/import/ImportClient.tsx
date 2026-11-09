@@ -284,7 +284,7 @@ export default function ImportClient({
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
               <div
-                className="bg-green-500 h-2 rounded-full transition-all"
+                className="bg-blue-600 dark:bg-blue-400 h-2 rounded-full transition-all"
                 style={{ width: `${pct(syncProgress.done, syncProgress.total)}%` }}
               />
             </div>
@@ -347,7 +347,7 @@ export default function ImportClient({
             </div>
             <a
               href="/list"
-              className="inline-block mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+              className="inline-block mt-4 px-4 py-2 bg-primary text-on-primary rounded hover:bg-blue-700 text-sm"
             >
               {viewDashboard}
             </a>

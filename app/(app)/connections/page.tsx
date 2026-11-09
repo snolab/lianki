@@ -41,7 +41,7 @@ export default async function ConnectionsPage({
     return (
       <div className="max-w-xl mx-auto px-4 py-10">
         <h1 className="text-2xl font-bold mb-4">{labels.title}</h1>
-        <a href="/sign-in" className="text-[oklch(0.55_0.18_255)] underline">
+        <a href="/sign-in" className="text-[oklch(0.55_0.198_22.3)] underline">
           {labels.signIn}
         </a>
       </div>

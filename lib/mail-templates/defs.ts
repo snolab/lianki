@@ -342,7 +342,7 @@ const invite: MailTemplateDef = {
         p(escapeCopy(c.intro)) +
         p(escapeCopy(c.offer)) +
         p(
-          `<a href="{inviteUrl}" style="display:inline-block;padding:12px 20px;border-radius:8px;background:oklch(0.45 0.18 260);color:oklch(1 0 0);font-weight:700;text-decoration:none">${escapeCopy(c.cta)}</a>`,
+          `<a href="{inviteUrl}" style="display:inline-block;padding:12px 20px;border-radius:8px;background:oklch(0.45 0.198 22.3);color:oklch(1 0 0);font-weight:700;text-decoration:none">${escapeCopy(c.cta)}</a>`,
           "margin:24px 0",
         ) +
         p(`${escapeCopy(c.linkLine)}<br><a href="{inviteUrl}">{inviteUrl}</a>`, "font-size:14px") +

@@ -43,7 +43,7 @@ const chip =
 const chipOff =
   "border-[oklch(0.85_0.01_260)] dark:border-[oklch(0.4_0.02_260)] hover:bg-[oklch(0.96_0.005_260)] dark:hover:bg-[oklch(0.3_0.02_260)]";
 const chipOn =
-  "border-transparent bg-[oklch(0.55_0.18_255)] text-[oklch(0.99_0_0)] dark:bg-[oklch(0.6_0.16_255)]";
+  "border-transparent bg-[oklch(0.55_0.198_22.3)] text-[oklch(0.99_0_0)] dark:bg-[oklch(0.6_0.176_22.3)]";
 const muted = "text-[oklch(0.5_0.01_260)] dark:text-[oklch(0.7_0.01_260)]";
 const bad = "text-sm text-[oklch(0.58_0.2_27)] dark:text-[oklch(0.72_0.16_27)]";
 

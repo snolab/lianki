@@ -70,7 +70,7 @@ export function GdocImportList(p: { imports: GdocImport[]; locale: string }) {
                 </div>
                 <Link
                   href={`/reader/${row.id}`}
-                  className="shrink-0 px-2.5 py-1.5 rounded-md text-xs font-medium text-[oklch(0.5_0.17_255)] dark:text-[oklch(0.78_0.11_255)] hover:bg-[oklch(0.96_0.02_255)] dark:hover:bg-[oklch(0.3_0.04_255)]"
+                  className="shrink-0 px-2.5 py-1.5 rounded-md text-xs font-medium text-[oklch(0.5_0.187_22.3)] dark:text-[oklch(0.78_0.121_22.3)] hover:bg-[oklch(0.96_0.02_255)] dark:hover:bg-[oklch(0.3_0.044_22.3)]"
                 >
                   {t.open}
                 </Link>

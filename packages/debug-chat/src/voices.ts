@@ -197,7 +197,7 @@ export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
     aliases: ["codex"],
     // Two slow waves: calm, low.
     mark: {
-      bg: "oklch(0.5 0.13 255)",
+      bg: "oklch(0.5 0.143 22.3)",
       fg: "oklch(0.97 0.02 255)",
       paths: [{ d: "M5 10c2.3-2 4.7-2 7 0s4.7 2 7 0" }, { d: "M5 15c2.3-2 4.7-2 7 0s4.7 2 7 0" }],
     },

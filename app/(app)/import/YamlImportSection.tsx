@@ -75,7 +75,7 @@ export default function YamlImportSection() {
       {file && status === "idle" && (
         <button
           onClick={handleImport}
-          className="w-full mt-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+          className="w-full mt-4 py-3 bg-primary text-on-primary rounded-lg hover:bg-blue-700 font-medium"
         >
           Import YAML
         </button>
@@ -93,7 +93,7 @@ export default function YamlImportSection() {
           </ul>
           <a
             href="/list"
-            className="inline-block mt-4 px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+            className="inline-block mt-4 px-4 py-2 bg-primary text-on-primary rounded text-sm hover:bg-blue-700"
           >
             Go to dashboard
           </a>

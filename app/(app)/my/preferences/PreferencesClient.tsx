@@ -407,8 +407,8 @@ export default function PreferencesClient({
                             pattern.type === "domain"
                               ? "bg-blue-900/30 text-blue-400"
                               : pattern.type === "title"
-                                ? "bg-green-900/30 text-green-400"
-                                : "bg-purple-900/30 text-purple-400"
+                                ? "bg-gold-300/40 text-gold-800 dark:bg-gold-300/20 dark:text-gold-300"
+                                : "bg-gray-500/20 text-gray-700 dark:text-gray-300"
                           }`}
                         >
                           {pattern.type}

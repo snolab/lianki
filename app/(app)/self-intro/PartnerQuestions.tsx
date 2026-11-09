@@ -97,9 +97,9 @@ export default function PartnerQuestions({
   return (
     <section
       aria-live="polite"
-      className="mb-8 rounded-2xl p-4 bg-[oklch(0.55_0.18_255/0.07)] dark:bg-[oklch(0.55_0.18_255/0.14)]"
+      className="mb-8 rounded-2xl p-4 bg-[oklch(0.55_0.198_22.3/0.07)] dark:bg-[oklch(0.55_0.198_22.3/0.14)]"
     >
-      <p className="text-sm font-semibold mb-2 text-[oklch(0.45_0.16_255)] dark:text-[oklch(0.8_0.1_255)]">
+      <p className="text-sm font-semibold mb-2 text-[oklch(0.45_0.176_22.3)] dark:text-[oklch(0.8_0.11_22.3)]">
         {lp.name}
       </p>
       {asked.map((a, i) => (
@@ -121,7 +121,7 @@ export default function PartnerQuestions({
                   key={s}
                   type="button"
                   onClick={() => reply(s)}
-                  className="px-3 py-1.5 rounded-full text-sm border border-[oklch(0.55_0.18_255/0.5)] text-[oklch(0.45_0.16_255)] dark:text-[oklch(0.82_0.1_255)] hover:bg-[oklch(0.55_0.18_255/0.1)]"
+                  className="px-3 py-1.5 rounded-full text-sm border border-[oklch(0.55_0.198_22.3/0.5)] text-[oklch(0.45_0.176_22.3)] dark:text-[oklch(0.82_0.11_22.3)] hover:bg-[oklch(0.55_0.198_22.3/0.1)]"
                 >
                   {s}
                 </button>
@@ -146,7 +146,7 @@ export default function PartnerQuestions({
             <button
               type="submit"
               disabled={!answer.trim()}
-              className="px-4 py-2 rounded-lg font-medium bg-[oklch(0.55_0.18_255)] text-[oklch(0.99_0_0)] disabled:opacity-50"
+              className="px-4 py-2 rounded-lg font-medium bg-[oklch(0.55_0.198_22.3)] text-[oklch(0.99_0_0)] disabled:opacity-50"
             >
               {c.send}
             </button>

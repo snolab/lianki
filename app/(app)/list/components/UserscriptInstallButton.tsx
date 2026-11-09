@@ -87,7 +87,7 @@ export default function UserscriptInstallButton({ locale, latestVersion }: Props
   return (
     <a
       href="/lianki.user.js"
-      className="bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 flex items-center gap-2"
+      className="bg-primary text-on-primary font-bold py-3 px-6 rounded-lg hover:bg-blue-700 flex items-center gap-2"
       title="Install the Lianki userscript to add flashcards from any webpage"
     >
       <svg

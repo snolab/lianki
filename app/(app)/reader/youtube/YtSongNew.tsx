@@ -116,7 +116,7 @@ export function YtSongNew() {
           <label htmlFor="yt-lyrics" className="text-sm font-medium">
             {t.lyricsLabel}
           </label>
-          <label className="cursor-pointer rounded-full px-3 py-1 text-sm text-[oklch(0.45_0.16_255)] ring-1 ring-[oklch(0.45_0.16_255/0.4)] hover:bg-[oklch(0.5_0.1_255/0.1)] dark:text-[oklch(0.8_0.12_255)]">
+          <label className="cursor-pointer rounded-full px-3 py-1 text-sm text-[oklch(0.45_0.176_22.3)] ring-1 ring-[oklch(0.45_0.176_22.3/0.4)] hover:bg-[oklch(0.5_0.11_22.3/0.1)] dark:text-[oklch(0.8_0.132_22.3)]">
             {t.chooseFile}
             <input
               type="file"
@@ -181,7 +181,7 @@ export function YtSongNew() {
         onClick={() => void save()}
         disabled={busy || !v || !parsed?.ok}
         data-testid="yt-song-save"
-        className="w-full rounded-lg bg-[oklch(0.5_0.17_255)] px-4 py-3 font-medium text-[oklch(0.99_0_0)] disabled:opacity-50"
+        className="w-full rounded-lg bg-[oklch(0.5_0.187_22.3)] px-4 py-3 font-medium text-[oklch(0.99_0_0)] disabled:opacity-50"
       >
         {busy ? t.saving : t.save}
       </button>
