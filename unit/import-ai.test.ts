@@ -333,6 +333,7 @@ describe("the gate: flag (owner audience) and credits", () => {
     complete: model(ROWS),
     db: db(),
     admin: notAdmin,
+    readFile: async () => null,
     ...over,
   });
 
@@ -370,47 +371,82 @@ describe("the gate: flag (owner audience) and credits", () => {
       },
       body: typeof body === "string" ? body : JSON.stringify(body),
     });
+  const ID = "0123456789abcdef0123";
+  const stored = (name: string, type: string, data: string | Uint8Array) => ({
+    readFile: async (userId: string, id: string) =>
+      userId === "u1" && id === ID
+        ? {
+            name,
+            type,
+            bytes: typeof data === "string" ? new TextEncoder().encode(data) : data,
+          }
+        : null,
+  });
+  const words = stored("lesson.txt", "text/plain", "apple - a fruit");
 
   it("POST: 402 without credits (the top-up path), the CSV with them", async () => {
-    const r = await handleAiConvert(
-      post({ text: "apple" }),
-      base({ user: { id: "u1", email: "a@x" } }),
-    );
+    const r = await handleAiConvert(post({ fileId: ID }), base(words));
     expect(r.status).toBe(402);
     expect(await r.json()).toMatchObject({ error: "no-credits", topUp: "/membership" });
+    expect(calls).toBe(0);
     fund(100);
-    const ok = await handleAiConvert(post({ text: "apple", locale: "zh" }), base());
+    const ok = await handleAiConvert(post({ fileId: ID, locale: "zh" }), base(words));
     expect(ok.status).toBe(200);
     const b = (await ok.json()) as { csv: string; rows: number };
     expect(b.rows).toBe(2);
     expect(b.csv.startsWith(TEMPLATES.zh.header.join(","))).toBe(true);
+    expect(JSON.stringify(seen[0])).toContain("apple - a fruit");
   });
 
-  it("POST refuses: cross-site, guest, gate off, too large, bad JSON, bad image, empty, not configured, a failed model", async () => {
+  it("POST reads the stored file by its extension first: a Word file sniffed as zip, HTML stored as text", async () => {
+    fund(100);
+    const html = stored("page.html", "text/plain", "<p>chat</p><script>x()</script><p>chien</p>");
+    expect((await handleAiConvert(post({ fileId: ID }), base(html))).status).toBe(200);
+    const sent = JSON.stringify(seen.at(-1));
+    expect(sent).toContain("chat\\nchien");
+    expect(sent).not.toContain("<script>");
+  });
+
+  it("POST sends a stored photo as an image; an unusable one is named", async () => {
+    fund(100);
+    const png = stored("p.png", "image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    expect((await handleAiConvert(post({ fileId: ID }), base(png))).status).toBe(200);
+    expect(JSON.stringify(seen.at(-1))).toContain("data:image/png;base64,iVBORw==");
+    const gif = stored("a.gif", "image/gif", "GIF89a");
+    const r = await handleAiConvert(post({ fileId: ID }), base(gif));
+    expect(r.status).toBe(422);
+    expect(await r.json()).toEqual({ error: "unsupported" });
+    const huge = stored("big.jpg", "image/jpeg", new Uint8Array(AI_IMPORT.maxImageChars));
+    expect((await handleAiConvert(post({ fileId: ID }), base(huge))).status).toBe(413);
+    const video = stored("v.mp4", "video/mp4", "x");
+    expect((await handleAiConvert(post({ fileId: ID }), base(video))).status).toBe(422);
+  });
+
+  it("POST refuses: cross-site, guest, gate off, too large, bad JSON, bad id, not theirs, empty, not configured, a failed model", async () => {
     fund(1000);
-    const st = async (r: Request, d = base()) => (await handleAiConvert(r, d)).status;
-    expect(await st(post({ text: "a" }, { origin: "https://evil.example" }))).toBe(403);
-    expect(await st(post({ text: "a" }), base({ user: null }))).toBe(401);
-    expect(await st(post({ text: "a" }), base({ flags: {} }))).toBe(404);
-    expect(await st(post({ text: "a" }), base({ owner: false }))).toBe(404);
-    expect(
-      await st(post({ text: "a" }, { "content-length": String(AI_IMPORT.maxBodyBytes + 1) })),
-    ).toBe(413);
-    expect(await st(post({ text: "x".repeat(AI_IMPORT.maxTextChars + 1) }))).toBe(413);
+    const st = async (r: Request, d = base(words)) => (await handleAiConvert(r, d)).status;
+    const ok = { fileId: ID };
+    expect(await st(post(ok, { origin: "https://evil.example" }))).toBe(403);
+    expect(await st(post(ok), base({ ...words, user: null }))).toBe(401);
+    expect(await st(post(ok), base({ ...words, flags: {} }))).toBe(404);
+    expect(await st(post(ok), base({ ...words, owner: false }))).toBe(404);
+    expect(await st(post(ok, { "content-length": String(AI_IMPORT.maxBodyBytes + 1) }))).toBe(413);
+    expect(await st(post({ fileId: ID, pad: "x".repeat(AI_IMPORT.maxBodyBytes) }))).toBe(413);
     expect(await st(post("{nope"))).toBe(400);
-    expect(await st(post({ images: ["file:///etc/passwd"] }))).toBe(400);
-    expect(await st(post({ text: " " }))).toBe(422);
-    expect(await st(post({ text: "a" }), base({ configured: false }))).toBe(503);
-    expect(await st(post({ text: "a" }), base({ complete: failing }))).toBe(502);
+    expect(await st(post({ fileId: "../../etc" }))).toBe(400);
+    expect(await st(post({ fileId: "f".repeat(20) }))).toBe(404);
+    expect(await st(post(ok), base(stored("e.txt", "text/plain", "   ")))).toBe(422);
+    expect(await st(post(ok), base({ ...words, configured: false }))).toBe(503);
+    expect(await st(post(ok), base({ ...words, complete: failing }))).toBe(502);
     expect(await bal()).toBe(1000);
   });
 
   it("POST is rate-limited per user", async () => {
     fund(10_000);
-    const d = base({ user: { id: "u1", email: "rate@x.com" }, admin: () => true });
+    const d = base({ ...words, user: { id: "u1", email: "rate@x.com" }, admin: () => true });
     let last = 0;
     for (let i = 0; i <= AI_IMPORT.rate.max; i++)
-      last = (await handleAiConvert(post({ text: "a" }), d)).status;
+      last = (await handleAiConvert(post({ fileId: ID }), d)).status;
     expect(last).toBe(429);
   });
 });
@@ -426,7 +462,7 @@ const fileOf = (name: string, type: string, data: Uint8Array | string): FileLike
   };
 };
 
-describe("reading any file (on the device, the existing readers)", () => {
+describe("reading a stored file (the existing readers)", () => {
   it("text, HTML and subtitles with no type", async () => {
     expect(await readAnyFile(fileOf("a.txt", "text/plain", "apple\npear"))).toEqual({
       text: "apple\npear",

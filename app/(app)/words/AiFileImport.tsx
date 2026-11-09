@@ -1,20 +1,15 @@
 "use client";
 
 /**
- * The /words Import panel's third source, "AI: any file"
- * (docs/import-material.md, "AI: any file"). A file is read on this device
- * (lib/import/ai-read.ts: the self-intro import's parsers and the .xlsx
- * reader); only its text and shrunk images go to POST /api/import/ai, which
- * answers the word-list CSV template (lib/import/ai-convert.ts). The CSV is
- * shown here, editable and downloadable, and goes through the CSV import's
- * own check, preview and "Add N words" (`WordListImport seed`).
+ * A stored import file → a word table by AI (docs/import-material.md, "AI: a
+ * stored file → words"). POST /api/import/ai {fileId} reads the user's own
+ * stored file on the server with the existing readers and answers the
+ * word-list CSV template (lib/import/ai-convert.ts), paid from their credits.
+ * The CSV is shown here, editable and downloadable, and goes through the CSV
+ * import's own check, preview and "Add N words" (`WordListImport seed`).
  */
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
-import { Icon } from "@/app/components/icons";
-import { readAnyFile } from "@/lib/import/ai-read";
-import { ImportFileError } from "@/lib/self-intro/import-parse";
-import { shrinkImage } from "@/lib/self-intro/shrink-image";
 import WordListImport from "../import/WordListImport";
 
 const text = (s: unknown): string =>
@@ -33,21 +28,16 @@ type ErrorKey =
   | "aiErrPaused"
   | "aiErrRate";
 
-const FILE_ERROR: Record<ImportFileError["code"], ErrorKey> = {
-  "too-large": "aiErrTooLarge",
-  unsupported: "aiErrUnsupported",
-  unreadable: "aiErrUnreadable",
-  empty: "aiErrEmpty",
-};
-
 /** A route answer's error → the message key. */
 function routeError(status: number, error: unknown): ErrorKey {
   if (status === 402) return "aiErrCredits";
   if (status === 503 && error === "credits-paused") return "aiErrPaused";
   if (status === 429) return "aiErrRate";
-  if (status === 413) return "aiErrTooLarge";
+  if (status === 413 || error === "too-large") return "aiErrTooLarge";
   if (error === "nothing-found") return "aiErrNothing";
   if (error === "empty") return "aiErrEmpty";
+  if (error === "unsupported") return "aiErrUnsupported";
+  if (error === "unreadable") return "aiErrUnreadable";
   return "aiErrFailed";
 }
 
@@ -71,117 +61,72 @@ const csvNameOf = (name: string) => `${name.replace(/\.[^.]{1,5}$/, "") || "lian
 
 type Result = { csv: string; rows: number; truncated: boolean; charged: number };
 
-export default function AiFileImport({ onAdded }: { onAdded?: (listId: string) => void }) {
+export default function AiFileImport({
+  file,
+  onAdded,
+}: {
+  /** One of the user's stored import files (StoredFiles.tsx). */
+  file: { id: string; name: string };
+  onAdded?: (listId: string) => void;
+}) {
   const t = useIntlayer("words-import-panel");
   const { locale } = useLocale();
   const n = (v: number) => v.toLocaleString(locale);
-  const input = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
-  const [phase, setPhase] = useState<"idle" | "reading" | "converting">("idle");
+  const [phase, setPhase] = useState<"idle" | "converting">("idle");
   const [error, setError] = useState<{ key: ErrorKey; need?: number; balance?: number } | null>(
     null,
   );
-  const [fileName, setFileName] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [csv, setCsv] = useState("");
   const [seed, setSeed] = useState<{ text: string; fileName: string; rev: number } | null>(null);
 
-  const onFile = async (f: File) => {
-    setError(null);
-    setResult(null);
-    setSeed(null);
-    setFileName(f.name);
-    setPhase("reading");
-    try {
-      const payload = await readAnyFile(f, { shrinkImage });
-      setPhase("converting");
-      const r = await fetch("/api/import/ai", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          text: payload.text,
-          images: payload.images,
-          locale,
-          fileName: f.name.slice(0, 200),
-        }),
-      });
-      const b = (await r.json().catch(() => ({}))) as Partial<Result> & {
-        error?: string;
-        need?: number;
-        balance?: number;
-      };
-      if (!r.ok || typeof b.csv !== "string") {
-        setError({ key: routeError(r.status, b.error), need: b.need, balance: b.balance });
-        return;
+  // One conversion per file chosen (the parent remounts this for another file).
+  useEffect(() => {
+    let live = true;
+    setPhase("converting");
+    (async () => {
+      try {
+        const r = await fetch("/api/import/ai", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ fileId: file.id, locale }),
+        });
+        const b = (await r.json().catch(() => ({}))) as Partial<Result> & {
+          error?: string;
+          need?: number;
+          balance?: number;
+        };
+        if (!live) return;
+        if (!r.ok || typeof b.csv !== "string") {
+          setError({ key: routeError(r.status, b.error), need: b.need, balance: b.balance });
+          return;
+        }
+        const res: Result = {
+          csv: b.csv,
+          rows: b.rows ?? 0,
+          truncated: !!b.truncated,
+          charged: b.charged ?? 0,
+        };
+        setResult(res);
+        setCsv(res.csv);
+        setSeed({ text: res.csv, fileName: csvNameOf(file.name), rev: 1 });
+      } catch {
+        if (live) setError({ key: "aiErrFailed" });
+      } finally {
+        if (live) setPhase("idle");
       }
-      const res: Result = {
-        csv: b.csv,
-        rows: b.rows ?? 0,
-        truncated: !!(b.truncated || payload.truncated),
-        charged: b.charged ?? 0,
-      };
-      setResult(res);
-      setCsv(res.csv);
-      setSeed({ text: res.csv, fileName: csvNameOf(f.name), rev: 1 });
-    } catch (e) {
-      setError({ key: e instanceof ImportFileError ? FILE_ERROR[e.code] : "aiErrFailed" });
-    } finally {
-      setPhase("idle");
-    }
-  };
+    })();
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per file
+  }, [file.id]);
 
-  const busy = phase !== "idle";
   return (
     <section data-qa="words-import-ai-body" className="space-y-4">
-      <div
-        role="button"
-        tabIndex={0}
-        aria-disabled={busy}
-        data-qa="words-import-ai-drop"
-        className={`rounded-xl border-2 border-dashed p-6 text-center ${busy ? "cursor-wait" : "cursor-pointer"} ${
-          dragging
-            ? "border-[oklch(0.5_0.14_155)] bg-[oklch(0.55_0.14_155/0.1)]"
-            : "border-[oklch(0.5_0_0/0.3)] hover:border-[oklch(0.5_0_0/0.55)]"
-        }`}
-        onClick={() => !busy && input.current?.click()}
-        onKeyDown={(e) => {
-          if (!busy && (e.key === "Enter" || e.key === " ")) input.current?.click();
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          const f = e.dataTransfer.files[0];
-          if (f && !busy) void onFile(f);
-        }}
-      >
-        <input
-          ref={input}
-          type="file"
-          className="hidden"
-          data-qa="words-import-ai-file"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (f) void onFile(f);
-          }}
-        />
-        <Icon name="uploadSimple" className="text-2xl" />
-        <p className="mt-1 text-sm font-medium" aria-live="polite">
-          {phase === "reading"
-            ? t.aiReading
-            : phase === "converting"
-              ? t.aiConverting
-              : fileName || t.aiDrop}
-        </p>
-        <p className="mt-1 text-xs text-[oklch(0.42_0_0)] dark:text-[oklch(0.8_0_0)]">
-          {t.aiPrivacy}
-        </p>
-      </div>
+      <p className="text-sm font-medium" aria-live="polite" data-qa="words-import-ai-status">
+        {phase === "converting" ? t.aiConverting : file.name}
+      </p>
 
       {error && (
         <div

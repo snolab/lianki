@@ -4,13 +4,19 @@
  * The /words Import panel's "Any file" (docs/import-material.md, "Any file:
  * stored, not processed"): upload files of any type; each is kept as the
  * user's own (POST /api/import/files → R2), listed with its name, size and
- * time, and deleted on request. Nothing reads or converts it yet.
+ * time, and deleted on request. Stored only: nothing reads it unless the
+ * user asks "Words with AI" on one file (`ai`, AiFileImport.tsx), offered
+ * only behind `words.import-ai` and with credits to cover it.
  */
 import { useEffect, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import { formatSize } from "@lianki/debug-chat/files";
 import { INBOX } from "@/lib/inbox/config";
+import dynamic from "next/dynamic";
+
+// Loaded on the first "Words with AI" tap.
+const AiFileImport = dynamic(() => import("./AiFileImport"), { ssr: false });
 
 const text = (s: unknown): string =>
   typeof s === "string" ? s : String((s as { value?: unknown } | null)?.value ?? s);
@@ -34,7 +40,15 @@ export function uploadError(status: number, error: unknown): ErrorKey {
   return "anyErrFailed";
 }
 
-export default function StoredFiles() {
+export default function StoredFiles({
+  ai = false,
+  onAdded,
+}: {
+  /** Offer "Words with AI" on each file (the gate and the user's credits allow it). */
+  ai?: boolean;
+  /** A list was made from a converted file (the /words picker reloads). */
+  onAdded?: (listId: string) => void;
+}) {
   const t = useIntlayer("words-import-panel");
   const { locale } = useLocale();
   const input = useRef<HTMLInputElement>(null);
@@ -42,6 +56,7 @@ export default function StoredFiles() {
   const [busy, setBusy] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<{ key: ErrorKey; name: string } | null>(null);
+  const [converting, setConverting] = useState<StoredFile | null>(null);
 
   const load = () =>
     fetch("/api/import/files", { cache: "no-store" })
@@ -86,8 +101,10 @@ export default function StoredFiles() {
     setBusy(f.id);
     try {
       const r = await fetch(`/api/import/files/${f.id}`, { method: "DELETE" });
-      if (r.ok) setFiles((fs) => fs?.filter((x) => x.id !== f.id) ?? null);
-      else setError({ key: "anyErrFailed", name: f.name });
+      if (r.ok) {
+        setFiles((fs) => fs?.filter((x) => x.id !== f.id) ?? null);
+        if (converting?.id === f.id) setConverting(null);
+      } else setError({ key: "anyErrFailed", name: f.name });
     } finally {
       setBusy(null);
     }
@@ -184,6 +201,19 @@ export default function StoredFiles() {
                   {formatSize(f.size)} · {when(f.at)}
                 </span>
               </span>
+              {ai && (
+                <button
+                  type="button"
+                  data-qa="words-import-file-ai"
+                  disabled={busy !== null}
+                  aria-pressed={converting?.id === f.id}
+                  onClick={() => setConverting(f)}
+                  className="flex min-h-11 shrink-0 items-center gap-1 rounded-lg border border-[oklch(0.5_0.14_155)] px-3 text-xs font-medium text-[oklch(0.4_0.12_155)] hover:bg-[oklch(0.55_0.14_155/0.12)] disabled:opacity-50 dark:text-[oklch(0.82_0.12_155)]"
+                >
+                  <Icon name="sparkle" />
+                  {t.aiMake}
+                </button>
+              )}
               <button
                 type="button"
                 data-qa="words-import-file-delete"
@@ -198,7 +228,18 @@ export default function StoredFiles() {
             </li>
           ))}
         </ul>
+        {ai && !!files?.length && (
+          <p className="mt-1 text-xs text-[oklch(0.42_0_0)] dark:text-[oklch(0.8_0_0)]">
+            {t.aiNote}
+          </p>
+        )}
       </div>
+
+      {ai && converting && (
+        <div className="border-t border-[oklch(0.5_0_0/0.15)] pt-3">
+          <AiFileImport key={converting.id} file={converting} onAdded={onAdded} />
+        </div>
+      )}
     </section>
   );
 }

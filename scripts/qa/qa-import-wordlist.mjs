@@ -23,11 +23,11 @@
 // - "Any file" (stored, not processed): a file of any type uploaded in the
 //   panel is listed with its name and size, and Delete removes it; without
 //   the gate its route is 404 like the rest.
-// - "AI: any file" (`words.import-ai`, off in the light run, on in the dark):
-//   flag off → the route is 404 even for the owner; flag on → a new account
-//   with no credits is not offered it (GET says unavailable, the panel does not
-//   list it) and a conversion is refused before any model call (402, or 503
-//   where no Workers AI is configured).
+// - "Words with AI" on a stored file (`words.import-ai`, off in the light run,
+//   on in the dark): flag off → the route is 404; flag on → a new account
+//   with no credits is not offered it (GET says unavailable, no button on the
+//   file) and converting its stored file is refused before any model call
+//   (402, or 503 where no Workers AI is configured).
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -61,9 +61,9 @@ const setFlag = (on, key = FLAG) =>
       ? `INSERT OR REPLACE INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('${key}', 1, '2026-11-09T00:00:00.000Z', 'qa')`
       : `DELETE FROM feature_flags WHERE key = '${key}'`,
   );
-const convert = (ctx) =>
+const convert = (ctx, fileId) =>
   ctx.request.post("/api/import/ai", {
-    data: { text: "gato - cat", locale: "en" },
+    data: { fileId, locale: "en" },
     headers: { origin: BASE, "content-type": "application/json" },
   });
 
@@ -216,27 +216,6 @@ try {
         .count()) === 2,
       "/words: the panel lists preset sets and a CSV / Excel table",
     );
-    // "AI: any file": never offered without credits; flag off, not even routed.
-    await page.waitForTimeout(1500);
-    check(
-      (await panel.locator('[data-qa="words-import-ai"]').count()) === 0,
-      "/words: no credits → 'AI: any file' is not offered",
-    );
-    const quota = await (await ctx.request.get("/api/import/ai")).json();
-    check(
-      quota.available === false,
-      `GET /api/import/ai: not available (${JSON.stringify(quota)})`,
-    );
-    let conv = (await convert(ctx)).status();
-    // The flag just turned on reaches the server within its 30 s cache.
-    for (let i = 0; scheme === "dark" && conv === 404 && i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      conv = (await convert(ctx)).status();
-    }
-    check(
-      scheme === "light" ? conv === 404 : conv === 402 || conv === 503,
-      `POST /api/import/ai: ${scheme === "light" ? "404 with the flag off" : "refused without credits (402/503)"} (${conv})`,
-    );
     await page.locator('[data-qa="words-import-preset"]').click();
     await page.waitForTimeout(800);
     check((await panel.count()) === 0, "preset sets: the panel closes");
@@ -265,6 +244,27 @@ try {
       `any file: stored and listed (${row.replace(/\s+/g, " ")})`,
     );
     await page.screenshot({ path: join(OUT, `words-files-${scheme}.png`), fullPage: true });
+    // "Words with AI": never offered without credits; flag off, not even routed.
+    check(
+      (await stored.first().locator('[data-qa="words-import-file-ai"]').count()) === 0,
+      "/words: no credits → no 'Words with AI' on the stored file",
+    );
+    const quota = await (await ctx.request.get("/api/import/ai")).json();
+    check(
+      quota.available === false,
+      `GET /api/import/ai: not available (${JSON.stringify(quota)})`,
+    );
+    const fileId = (await (await ctx.request.get("/api/import/files")).json()).items?.[0]?.id;
+    let conv = (await convert(ctx, fileId)).status();
+    // The flag just turned on reaches the server within its 30 s cache.
+    for (let i = 0; scheme === "dark" && conv === 404 && i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      conv = (await convert(ctx, fileId)).status();
+    }
+    check(
+      scheme === "light" ? conv === 404 : conv === 402 || conv === 503,
+      `POST /api/import/ai: ${scheme === "light" ? "404 with the flag off" : "refused without credits (402/503)"} (${conv})`,
+    );
     await stored.first().locator('[data-qa="words-import-file-delete"]').click();
     await page.waitForTimeout(1500);
     check((await stored.count()) === 0, "any file: Delete removes it");
