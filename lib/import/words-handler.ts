@@ -134,10 +134,10 @@ async function readChecked(
     return json({ error: "rate-limited" }, 429, {
       "retry-after": String(Math.ceil(rate.retryAfterMs / 1000)),
     });
-  const raw = await req.text().catch(() => "");
-  if (raw.length > MAX_BODY) return json({ error: "too-large" }, 413);
   let data: unknown = null;
   try {
+    const raw = await req.text();
+    if (raw.length > MAX_BODY) return json({ error: "too-large" }, 413);
     data = JSON.parse(raw);
   } catch {
     return json({ error: "bad-request" }, 400);
@@ -229,8 +229,12 @@ export async function handleWordImport(req: Request, deps: WordImportDeps): Prom
     // Logs carry ids and the error's name, never content.
     console.error("import.words: write failed", id, e instanceof Error ? e.name : "error");
     // No half list left behind: the words already written go with it.
-    if (listId) await words.deleteList(listId).catch(() => {});
-    await finish("failed", "write-failed", null).catch(() => {});
+    try {
+      if (listId) await words.deleteList(listId);
+      await finish("failed", "write-failed", null);
+    } catch {
+      // Best effort: the answer below is the same either way.
+    }
     return json({ error: "write-failed", jobId: id }, 500);
   }
 }

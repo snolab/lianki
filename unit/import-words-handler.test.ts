@@ -162,3 +162,54 @@ describe("commit", () => {
     expect(other.jobs).toEqual([]);
   });
 });
+
+describe("refusals and failures", () => {
+  test("no D1: 503; a declared body over the cap: 413; not JSON or the wrong shape: 400", async () => {
+    expect(
+      (await handleWordImport(post({ step: "preview", text: TEXT }), { ...deps, db: null })).status,
+    ).toBe(503);
+    const big = post({ step: "preview", text: TEXT }, { "content-length": String(10_000_000) });
+    expect((await handleWordImport(big, deps)).status).toBe(413);
+    const notJson = new Request("https://lianki.com/api/import/words", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://lianki.com",
+        host: "lianki.com",
+      },
+      body: "{nope",
+    });
+    expect((await handleWordImport(notJson, deps)).status).toBe(400);
+    expect((await handleWordImport(post({ step: "other" }), deps)).status).toBe(400);
+  });
+
+  test("too many requests: 429 with retry-after", async () => {
+    const d = { ...deps, user: { email: "rate@example.com" } };
+    let last: Response | null = null;
+    for (let i = 0; i < 61; i++)
+      last = await handleWordImport(post({ step: "preview", text: "a" }), d);
+    expect(last!.status).toBe(429);
+    expect(Number(last!.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+
+  test("a write that fails: 500, the job failed, no list left behind", async () => {
+    await d1.exec(
+      "CREATE TRIGGER boom BEFORE INSERT ON word_list_entries BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+    );
+    const r = await handleWordImport(
+      post({ step: "commit", text: TEXT, name: "fruit", lang: "en" }),
+      deps,
+    );
+    expect(r.status).toBe(500);
+    const job = await d1.prepare("SELECT status, note, result_ref FROM import_jobs").first();
+    expect(job).toEqual({ status: "failed", note: "write-failed", result_ref: null });
+    const lists = await d1.prepare("SELECT COUNT(*) AS n FROM word_lists").first<{ n: number }>();
+    expect(lists!.n).toBe(0);
+  });
+
+  test("jobs: signed out 401, flag off 404, no D1 an empty list", async () => {
+    expect((await handleImportJobs({ ...deps, user: null })).status).toBe(401);
+    expect((await handleImportJobs({ ...deps, flags: {} })).status).toBe(404);
+    expect(await (await handleImportJobs({ ...deps, db: null })).json()).toEqual({ jobs: [] });
+  });
+});
