@@ -278,11 +278,7 @@ export type VoiceState = {
 export type Why = "speech" | "tap" | "typing";
 export type OutMode = "speech" | "cloud";
 
-/**
- * `voice`: the line's voice (voices.ts), absent = main; `pick`: its own voice
- * beyond the table; `id`: the line it came from (its meta), so a withdrawn ask
- * can be dropped (`drop`).
- */
+/** `voice`: the line's voice (voices.ts), absent = main; `pick`: its own voice beyond the table. */
 type Sentence = {
   text: string;
   lang: string;
@@ -290,7 +286,6 @@ type Sentence = {
   at: number;
   voice?: VoiceId;
   pick?: LinePick;
-  id?: string;
 };
 /** What the agent said, and when (for the echo guard). */
 type Said = { text: string; start: number; end?: number };
@@ -763,12 +758,10 @@ export function createVoice(d: {
       while (recent.length > 20) recent.shift();
       const lang = pickLang(text);
       // An ElevenLabs preview stands for the whole line: one item, its text kept for a fallback.
-      const idOf = typeof meta?.id === "string" ? { id: meta.id } : {};
-      const add = (
+      const add =
         pick?.kind === "eleven" && cloud() && text.trim()
           ? [{ text, lang, from: 0, at: 0, ...(voice ? { voice } : {}), pick }]
-          : toSentences(text, lang, voice, pick?.kind === "eleven" ? undefined : pick)
-      ).map((s) => ({ ...s, ...idOf }));
+          : toSentences(text, lang, voice, pick?.kind === "eleven" ? undefined : pick);
       if (!add.length) return false;
       if (!queue.length) prepare(add[0]!);
       queue.push(...add);
@@ -866,20 +859,6 @@ export function createVoice(d: {
       if (!voiced.get()) return;
       voiced.set(false);
       emit();
-    },
-    /**
-     * Drop line `id`'s sentences (an ask withdrawn while queued or playing):
-     * stopped if it is playing; the other lines read on. False: none queued.
-     */
-    drop(id: string): boolean {
-      const before = queue.length;
-      if (current && queue[0]?.id === id) halt(false);
-      for (let i = queue.length - 1; i >= 0; i--) if (queue[i]!.id === id) queue.splice(i, 1);
-      if (queue.length === before) return false;
-      log({ ev: "voice-drop", sentences: before - queue.length });
-      next();
-      emit();
-      return true;
     },
     /** Clear the queue and stop reading ("Stop reading", the focus rule). */
     stop() {

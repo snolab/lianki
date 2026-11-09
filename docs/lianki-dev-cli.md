@@ -14,7 +14,6 @@ JSON envelope, so an agent reads both the same way.
 | `say`      | `eval.ts say`                           | saved grant, network         |
 | `voices`   | `eval.ts voices` (`--cloud`: no page)   | saved eval grant, network    |
 | `ask`      | `eval.ts ask`                           | saved grant, network         |
-| `withdraw` | `eval.ts withdraw <askId>\|--last`: an obsolete ask card greys out, untappable, never read aloud | saved grant, network |
 | `inbox`    | `eval.ts inbox list\|get\|done`         | saved grant, network         |
 | `listen`   | `eval.ts chat` (one JSON line an event) | saved grant, network         |
 | `lane-listen` | `lane-listen.ts`: the owner lines addressed to this lane, to its agent ([lane-listen.md](lane-listen.md)) | the lane's token, network |

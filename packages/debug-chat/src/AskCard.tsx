@@ -25,8 +25,7 @@ const pill = {
  * as pills, the recommended one marked. One question with one choice sends
  * on the tap; a batch (or a multi-choice question) sends with "Send" once
  * every question has a choice. One-shot: after the tap it greys out showing
- * the choice; past its expiry it says so; withdrawn by the agent, it
- * collapses to a greyed "Withdrawn" with no options. The answer itself is stamped by
+ * the choice; past its expiry it says so. The answer itself is stamped by
  * the hub; with an older page (no `onAnswer`), the choice goes as a typed
  * line instead, which is not a tap-grade answer.
  */
@@ -51,23 +50,6 @@ export function AskCard({
   const shown = answer?.choices ?? sent;
   const done = state !== "open" || !!sent;
   const quick = ask.questions.length === 1 && !ask.questions[0]!.multi;
-  // Taken back by the agent: nothing to tap, only the mark.
-  if (state === "withdrawn")
-    return (
-      <span
-        data-testid="debug-chat-ask"
-        data-ask={ask.askId}
-        data-state="withdrawn"
-        style={{ display: "block", marginTop: 4, opacity: 0.5 }}
-      >
-        <span
-          data-testid="debug-chat-ask-status"
-          style={{ display: "block", fontSize: 10, fontStyle: "italic" }}
-        >
-          {ui.askWithdrawn}
-        </span>
-      </span>
-    );
 
   const submit = (choices: AskChoices) => {
     if (done) return; // one-shot

@@ -14,9 +14,7 @@
  * - the count shrinking marks that many head sentences spoken; a pause
  *   keeps the count (the head restarts later: it stays the head);
  * - the count dropping to 0 with sentences left ("Stop reading") drops
- *   them: they stay unspoken;
- * - `drop` takes one line's sentences out (a withdrawn ask, voice.ts drop),
- *   sent just before the session's own smaller count, which then matches.
+ *   them: they stay unspoken.
  */
 import { chunk, sentences } from "./voice";
 
@@ -35,8 +33,7 @@ export type ReadProgress = {
 export type ReadEvent =
   | { type: "queued"; n: number }
   | { type: "start" }
-  | { type: "enqueue"; id: string; n: number; from?: number }
-  | { type: "drop"; id: string };
+  | { type: "enqueue"; id: string; n: number; from?: number };
 
 export const initialRead = (done: Record<string, number> = {}): ReadProgress => ({
   queue: [],
@@ -83,17 +80,6 @@ export function readStep(p: ReadProgress, ev: ReadEvent): ReadProgress {
     }
     case "start":
       return p.queue[0] ? { ...p, speaking: p.queue[0] } : p;
-    case "drop": {
-      const left = p.queue.filter((e) => e.id !== ev.id);
-      const k = p.queue.length - left.length;
-      if (!k) return p;
-      return {
-        ...p,
-        queue: left,
-        speaking: p.speaking?.id === ev.id ? null : p.speaking,
-        queued: Math.max(0, p.queued - k),
-      };
-    }
     case "enqueue": {
       if (ev.n <= 0) return p;
       // `from`: a reply resumed mid-way (after a reload) starts at that sentence.
