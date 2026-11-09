@@ -145,6 +145,8 @@ export const PREF_SCHEMAS = {
   "words.swipeMirror": z.boolean(),
   // the rows' height, a factor of the default (lib/words/row-pinch.ts, pinched on the list)
   "words.cardHeight": z.number().min(CARD_HEIGHT_RANGE[0]).max(CARD_HEIGHT_RANGE[1]),
+  // the first-visit walkthrough was finished or skipped (lib/words/onboarding.ts)
+  "words.onboarded": z.boolean(),
   // the swipe (Experimental)
   "swipe.variant": z.enum(["js", "native"]),
   "swipe-feel.preset": z.enum(["light", "heavy"]),

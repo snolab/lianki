@@ -33,6 +33,8 @@ export default async function WordsPage() {
       importOn={!!user && importAnyOn(flags, isDev(user.email))}
       // A two-finger vertical pinch sets the cards' height (lib/words/row-pinch.ts).
       pinch={flags["words.pinch-card-height"]}
+      // The first-visit walkthrough and its "?" by the heading (lib/words/onboarding.ts).
+      onboarding={flags["words.onboarding"]}
     />
   );
 }

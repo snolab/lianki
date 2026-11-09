@@ -1,5 +1,5 @@
 /**
- * /profile "This sign-in" (app/(app)/profile/SessionBasicsCard.tsx): every
+ * /profile "This sign-in" (app/(app)/my/profile/SessionBasicsCard.tsx): every
  * signed-in user sees when this browser's session began and when it expires,
  * in the request's time zone with the zone named — and nothing else from the
  * session (no token, IP or user agent; the raw dump stays dev-only).
@@ -7,8 +7,8 @@
 import { describe, expect, it } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SessionBasicsCard, sessionWhen } from "@/app/(app)/profile/SessionBasicsCard";
-import profileSession from "@/app/(app)/profile/session-basics.content";
+import { SessionBasicsCard, sessionWhen } from "@/app/(app)/my/profile/SessionBasicsCard";
+import profileSession from "@/app/(app)/my/profile/session-basics.content";
 
 const labels = {
   heading: "This sign-in",

@@ -55,8 +55,8 @@ stay on the folded row, because they say why the switch does nothing.
   provides a feature, never forbids one. No `-off` / `disable` keys: a kill
   switch for something already live is a flag that is **on by default**.
 - **Defaults are OFF**, but for such a flag (`default: true` in
-  `lib/flags.ts`; today `stt.polish`, and `words.pinch-card-height`, which the
-  owner shipped on for everyone on 2026-11-10). A key with no stored row reads as
+  `lib/flags.ts`; today `stt.polish`, and `words.onboarding` and
+  `words.pinch-card-height`, which the owner shipped on for everyone on 2026-11-10). A key with no stored row reads as
   its default; a stored row always wins, either way. `closedFlags()` is what an
   unreadable store gives.
 - **Unreadable is OFF**, every flag, a default-on one too (a D1 error,
@@ -93,6 +93,7 @@ stay on the folded row, because they say why the switch does nothing.
 | `payments.komoju.live` | KOMOJU takes real money (also needs an `sk_live_` key)         |
 | `words.voice-mode`     | everyone gets the /words voice commands switch (off: the owner's preview only) — [voice-mode.md](voice-mode.md) |
 | `words.pinch-card-height` | **on by default, everyone.** A two-finger vertical pinch on the /words list sets every card's height, from the word alone to everything on screen shown; synced as `words.cardHeight` (off: the default height, the stored choice unused) — `lib/words/row-pinch.ts` |
+| `words.onboarding`     | **on by default.** /words plays a short animated walkthrough (tap, rate by feel, handled cards fade and can be undone, cards come back, pinch for height) once per account, then folds it into a circled "?" by the title that replays it (off: no walkthrough, no "?") — `lib/words/onboarding.ts` |
 | `stt.polish`           | **on by default.** The agent may polish the owner's voice lines from their context and summarise room talk (off: the chat keeps only what STT heard, no edits or summaries) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached; only exactly `false` turns it off there, an unreadable answer holds edits back (logged `debug.polish-flag-unread`). Replaced the inverted `stt.polish-off` (migration 0067 carried a stored value over inverted) |
 | `stt.merge`            | a spoken line that continues the last one amends it instead of adding a bubble; the agent hears the complete line, and the passage is polished once at its end; undo splits it back (off: one line per utterance) — [dev-debug-widget.md](dev-debug-widget.md), "Continuous speech amends the last line". Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `connections.google`   | every signed-in user gets /connections (Google Drive, `drive.file`) and the private Google Docs import on /reader (off: the owner only) — [connections.md](connections.md) |
@@ -105,7 +106,7 @@ stay on the folded row, because they say why the switch does nothing.
 | `read.live-polish`     | every user gets the AI polish of a live doc's text into a speech draft (off: the owner only) — [connections.md](connections.md), "Polish" |
 | `read.youtube-songs`   | every signed-in user gets /reader → YouTube song: a YouTube link plus timed lyrics (LRC/SRT/VTT) become a /reader text, each line with a ▶ that plays that line in YouTube's own player in a popup, and word cards made from a line keep its clip: their example gets the same ▶ in /words and the reader's word review; lyrics private to the account, nothing downloaded (off: the owner only; /reader/youtube and its route 404) — [youtube-song-examples.md](youtube-song-examples.md) |
 | `books.catalogue`      | every visitor gets /books, the public-domain library, and can add its books to their own reading (off: the owner only) — [books-plan.md](books-plan.md), "The catalogue: /books" |
-| `levels`               | every user sees their learner level: a chip by the avatar in the nav (signed in) and a level card on /profile (guests too), from `GET /api/levels/me`; study days are recorded either way (off: the owner only) — [levels.md](levels.md) |
+| `levels`               | every user sees their learner level: a chip by the avatar in the nav (signed in) and a level card on /my/profile (guests too), from `GET /api/levels/me`; study days are recorded either way (off: the owner only) — [levels.md](levels.md) |
 | `read.vibe`            | the owner, and only the owner, can start /vibe: a conversation transcribed on his Mac into a private doc. **Off: nobody, the owner included** (no bypass) — [vibe.md](vibe.md) |
 | `partner.fullscreen`   | everyone who has the Learning Partner chat gets its full-screen button: the chat fills the app; the button, Escape or Back return to the panel (off: the owner only) — [dev-debug-widget.md](dev-debug-widget.md), "Full screen" |
 | `byok.sync`            | everyone sees the disabled 「同步 API key」 row (即将推出, with its warning) in Settings → 自己的 AI; nothing on the server stores a key yet (off: the owner only) — [byok.md](byok.md) |

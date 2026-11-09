@@ -75,7 +75,7 @@ export const SUITES = [
     args: ["scripts/qa/qa-sign-out.mjs"],
     base: true,
     id: "sign-out",
-    paths: [...SHELL, ...AUTH, "app/(app)/profile/**", "lib/sign-out.ts"],
+    paths: [...SHELL, ...AUTH, "app/(app)/my/profile/**", "lib/sign-out.ts"],
     sensitive: false,
   },
   // The account's UI language on the first response of a new device; ?lang= still wins (lib/account-locale.ts).
@@ -95,7 +95,7 @@ export const SUITES = [
       "middleware.ts",
       "lib/account-locale*.ts",
       "lib/app-locale*.ts",
-      "app/(app)/preferences/**",
+      "app/(app)/my/preferences/**",
     ],
     sensitive: false,
   },
@@ -176,6 +176,21 @@ export const SUITES = [
     id: "read-epub",
     paths: READ,
     sensitive: true,
+  },
+  // The /words first-visit walkthrough: shows once, Skip, replay from the "?", still frames (lib/words/onboarding.ts).
+  {
+    name: "WORDS ONBOARDING (qa-words-onboarding)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-words-onboarding.mjs"],
+    base: true,
+    id: "words-onboarding",
+    paths: [
+      "app/(app)/words/WordsOnboarding.tsx",
+      "app/(app)/words/onboarding.content.ts",
+      "lib/words/onboarding.ts",
+      "scripts/qa/qa-words-onboarding.mjs",
+    ],
+    sensitive: false,
   },
   // Import a word list on /import (docs/import-material.md, M1): flag gate, preview counts, a /words list.
   {

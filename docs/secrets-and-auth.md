@@ -108,8 +108,8 @@ secrets or settings: it is always on.
 
 ## Profile edits
 
-`/profile` edits the display name and the picture (`lib/profile/`,
-`app/(app)/profile/ProfileFields.tsx`). Every write is same-origin, for the
+`/my/profile` edits the display name and the picture (`lib/profile/`,
+`app/(app)/my/profile/ProfileFields.tsx`). Every write is same-origin, for the
 session's own user; nothing in a request can name a user.
 
 - **better-auth's HTTP `/update-user` is closed**: `disabledPaths:
@@ -143,14 +143,14 @@ cascades, the object does not).
 
 ## Changing the email
 
-`lib/profile/email-change.ts`, pen on `/profile`. Not better-auth's `/change-email`
+`lib/profile/email-change.ts`, pen on `/my/profile`. Not better-auth's `/change-email`
 (left disabled): it updates the user row alone, with no way to put the moves below
 into its transaction, and it applies on a GET, which a mail scanner would trigger.
 
 1. `POST /api/profile/email` (same origin, session under a day old, D1 limits per
    user and per target address). A link goes to the **new** address and a notice,
    with that address masked, to the **old** one. Nothing changes.
-2. The link opens `/profile/email-confirm#<user id>.<token>`: a fragment, so the
+2. The link opens `/my/profile/email-confirm#<user id>.<token>`: a fragment, so the
    token reaches no log, and a press on the page is what applies it, so a mail
    scanner changes nothing. D1 `email_change_request` keeps the token's hash, for
    1 hour, one per user: a newer request kills the older link.
@@ -480,8 +480,8 @@ login`'s and the agent lanes' tokens.
   Ids, the audit log and hub sockets carry the hash (or its first 16 hex, the
   `tag`), never the token. No token in a URL: `DELETE /api/token` takes
   `{id}` in the body.
-- **Page**: Settings (`/preferences`) → API tokens
-  (`app/(app)/preferences/TokenManager.tsx`, strings in
+- **Page**: Settings (`/my/preferences`) → API tokens
+  (`app/(app)/my/preferences/TokenManager.tsx`, strings in
   `app/components/api-tokens.content.ts`): the owning account, each token's
   name, permissions, created, expiry, last used, and Revoke behind an inline confirm (RevokeConfirm.tsx; Esc or Cancel backs out); the
   form takes name, permissions and expiry. `/api/token` (`lib/api-token-api.ts`)

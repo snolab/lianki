@@ -66,7 +66,7 @@ export class CliError extends Error {
 const usage = (msg, hint) => new CliError("usage", EXIT.usage, msg, hint);
 const LOGIN_HINT = "lianki auth login   (agents: set LIANKI_TOKEN=lk_… or pass --token)";
 const SCOPE_HINT =
-  "the token lacks that permission: make one that has it at lianki.com/preferences → API tokens, or lianki auth login again";
+  "the token lacks that permission: make one that has it at lianki.com/my/preferences → API tokens, or lianki auth login again";
 
 // ── Context: where, who, how to print ─────────────────────────────────────
 
@@ -408,7 +408,7 @@ async function cmdLogout(c) {
   emit(c, "auth logout", { site, revoked, forgotten: Boolean(storedHere || legacyDropped) }, (d) =>
     d.revoked
       ? "signed out: the token is revoked and forgotten"
-      : "signed out here, but the server could not revoke the token — delete it in lianki.com/preferences → API Tokens",
+      : "signed out here, but the server could not revoke the token — delete it in lianki.com/my/preferences → API Tokens",
   );
   if (!revoked) return EXIT.server;
 }
@@ -484,7 +484,7 @@ async function cmdSettingsSet(c) {
 // ── chat ──────────────────────────────────────────────────────────────────
 //
 // Your own chat thread only (your Learning Partner's; the owner's thread for
-// the owner), with a token that has the chat permissions (lianki.com/preferences
+// the owner), with a token that has the chat permissions (lianki.com/my/preferences
 // → API tokens). Lines carry the token's name as 【name】. No eval, no pairing:
 // the server has nothing of the kind for a token. Only your tap on lianki.com
 // answers an ask card.
@@ -695,7 +695,7 @@ function build(args, deps, box) {
                   .epilogue("Agents: skip the browser with LIANKI_TOKEN=lk_… (no login needed) or --token. --api or $LIANKI_URL picks another site."),
                 [
                   ["lianki auth login", "approve in the browser; the token goes to the Keychain"],
-                  ["lianki auth login --token - < token.txt", "store a token made in lianki.com/preferences → API Tokens"],
+                  ["lianki auth login --token - < token.txt", "store a token made in lianki.com/my/preferences → API Tokens"],
                 ],
               ),
             act(cmdLogin),
@@ -864,7 +864,7 @@ function build(args, deps, box) {
             act(cmdChatListen),
           )
           .epilogue(
-            "Needs a token with the chat permissions (lianki.com/preferences → API tokens). An agent lane uses its own token: LIANKI_TOKEN=lk_… lianki chat say …",
+            "Needs a token with the chat permissions (lianki.com/my/preferences → API tokens). An agent lane uses its own token: LIANKI_TOKEN=lk_… lianki chat say …",
           ),
         [['lianki chat say "hello"', ""]],
       ),

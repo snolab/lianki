@@ -225,7 +225,7 @@ async function run(colorScheme, email) {
   );
   check(noTap === 400, "the server refuses a start without the tap");
 
-  // Off by default on /preferences, and leaving the field saves nothing.
+  // Off by default on /my/preferences, and leaving the field saves nothing.
   const puts = [];
   const notePut = (r) => {
     if (r.method() === "PUT" && r.url().includes("/api/vibe/settings")) puts.push(r.postData());
@@ -236,7 +236,7 @@ async function run(colorScheme, email) {
       const f = document.querySelector('[data-testid="vibe-retention"]');
       return f && !f.disabled;
     });
-  await page.goto(`${BASE}/preferences`);
+  await page.goto(`${BASE}/my/preferences`);
   const field = page.locator('[data-testid="vibe-retention"]');
   await fieldReady();
   check((await field.inputValue()) === "", "retention is off by default");

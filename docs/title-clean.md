@@ -3,7 +3,7 @@
 Owner, 2026-11-06 00:15 JST: page titles carry unread counts that change on
 every visit, like "(99+ 封私信 / 38 条消息) 怎么能让书里的信息成为自己的知识呢？ - 知乎".
 They are taken off when a title is saved and when a card is shown. The patterns
-are editable at `/preferences` → Page titles and follow the account.
+are editable at `/my/preferences` → Page titles and follow the account.
 
 The code is `packages/core/src/titleClean.ts`, one generic matcher with the rules
 as data. Tests and the corpus are in `unit/title-clean.test.ts`.

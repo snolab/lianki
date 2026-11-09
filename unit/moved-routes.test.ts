@@ -72,6 +72,26 @@ describe("middleware", () => {
     expect(movedPath("/api/read/abc/items")).toBeNull();
     expect(movedPath("/reading")).toBeNull();
   });
+
+  // 2026-11-10 (owner): the user's own pages live under /my. A saved link,
+  // the address-change mail (the browser keeps the hash) and a query all land.
+  it("moves /profile and /preferences under /my, subpaths and query kept", () => {
+    const at = (p: string) => go(p).headers.get("location");
+    expect(go("/profile").status).toBe(308);
+    expect(at("/profile")).toBe("https://lianki.com/my/profile");
+    expect(at("/profile?agent=1")).toBe("https://lianki.com/my/profile?agent=1");
+    expect(at("/profile/email-confirm")).toBe("https://lianki.com/my/profile/email-confirm");
+    expect(go("/preferences").status).toBe(308);
+    expect(at("/preferences?lang=en")).toBe("https://lianki.com/my/preferences?lang=en");
+    expect(at("/ja/preferences")).toBe("https://lianki.com/my/preferences?lang=ja");
+    expect(at("/my")).toBeNull();
+    expect(at("/my/profile")).toBeNull();
+    expect(at("/my/preferences")).toBeNull();
+    // The APIs keep their names; a longer word is not the page.
+    expect(movedPath("/api/profile")).toBeNull();
+    expect(movedPath("/api/preferences")).toBeNull();
+    expect(movedPath("/profiles")).toBeNull();
+  });
 });
 
 describe("movedHref: kept hrefs (pins, recent pages)", () => {
@@ -80,6 +100,7 @@ describe("movedHref: kept hrefs (pins, recent pages)", () => {
     expect(movedHref("/read")).toBe("/reader");
     expect(movedHref("/read#x")).toBe("/reader#x");
     expect(movedHref("/words?x=1")).toBe("/words?x=1");
+    expect(movedHref("/preferences#tokens")).toBe("/my/preferences#tokens");
   });
   it("a pinned /read comes back as /reader", () => {
     expect(cleanNavPins({ pinned: ["/words", "/read", "/reader"] })).toEqual({

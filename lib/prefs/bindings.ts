@@ -194,6 +194,8 @@ export function prefBindings(): PrefBinding[] {
     plain("words.swipeMirror", "lk:words-swipe-mirror", bool10, false),
     // lib/words/row-pinch.ts: the rows' height, pinched on the /words list.
     plain("words.cardHeight", CARD_HEIGHT_KEY, num, 1),
+    // lib/words/onboarding.ts: the first-visit walkthrough, seen once per account.
+    plain("words.onboarded", "lk:words-onboarded", bool10, false),
     plain("swipe.variant", "lk:swipe-ab", text, "js"),
     field("swipe-feel.preset", "swipe-feel", 1, "preset", "light"),
     field("swipe-feel.tweaks", "swipe-feel", 1, "tweaks", {}),
