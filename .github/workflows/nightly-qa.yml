@@ -1,45 +1,63 @@
-name: Nightly QA
+name: Full QA
 
-# The full integration gate, `bun run qa:all` (OpenNext build → wrangler dev on
-# local D1 → API + UI + sync + userscript suites), plus the extension smoke
-# test, against main once a night. It used to run on every push and PR, and
-# main's deploy waited ~4 min for it (owner, 2026-10-31: run it nightly). The
-# merge queue runs the same qa:all on every PR before it lands (ci.yml, `qa`),
-# and pre-push runs only the suites a change reaches; this catches what slipped
-# past both, and drift in the runner image.
+# The full set — every qa:all suite (build + three shards, qa-sharded.yml) and
+# the extension smoke test — on main every 6 hours (03:00, 09:00, 15:00 and
+# 21:00 JST), or by hand: `gh workflow run nightly-qa.yml -R snolab/lianki`.
+# The merge queue runs only the suites a merge group reaches plus a smoke set
+# (ci.yml, `qa plan`), so this is what catches the rest, and drift in the
+# runner image. (File name kept from when it ran once a night.)
+#
+# On red (docs/shipping.md, "Full QA and the deploy hold"):
+# - #lianki hears it (SLACK_WEBHOOK_URL);
+# - a revert PR of every commit since the last green full run is opened
+#   (scripts/ci/full-qa.ts revert), for a person to merge or close;
+# - deploy-worker.yml deploys nothing while the latest full run is red,
+#   unless dispatched with override_hold. The next green run here lifts the
+#   hold and deploys what it tested.
 on:
   schedule:
-    - cron: "0 18 * * *" # 03:00 JST
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 concurrency:
   group: nightly-qa
   cancel-in-progress: true
 
-env:
-  NEXT_TELEMETRY_DISABLED: "1"
-
 jobs:
-  # The same build + three shards as the merge queue (qa-sharded.yml), plus the
-  # MV3 extension smoke test in shard 1. Runs on main, so the .next/cache it
-  # saves is the one merge-queue runs restore.
+  # Runs on main, so the .next/cache it saves is the one merge-queue runs restore.
   qa:
     name: qa
     uses: ./.github/workflows/qa-sharded.yml
     with:
       ext-smoke: true
 
-  alert:
-    name: "Alert #lianki when nightly QA fails"
+  on-red:
+    name: "On red: alert + revert PR"
     needs: qa
-    if: failure()
+    if: failure() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the revert needs the commits since the last green run
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
+      - name: Revert PR
+        id: revert
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/ci/full-qa.ts revert "$GITHUB_SHA"
       - name: "Alert #lianki"
+        if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR: ${{ steps.revert.outputs.pr }}
         run: |
-          bash scripts/ci/slack-alert.sh ":red_circle: nightly qa:all failed on main at ${GITHUB_SHA::7}: ${RUN_URL}"
+          msg=":red_circle: full QA failed on main at ${GITHUB_SHA::7}, deploys are held until it is green: ${RUN_URL}"
+          if [ -n "$PR" ]; then msg="$msg — revert PR: $PR"; fi
+          bash scripts/ci/slack-alert.sh "$msg"
