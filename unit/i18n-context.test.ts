@@ -24,6 +24,8 @@ import textSize from "@/app/components/text-size.content";
 import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
+import emailInvite from "@/app/(app)/membership/email-invite.content";
+import inviteMail from "@/lib/referrals/invite-mail.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
 import readEpub from "@/app/(app)/reader/read-epub.content";
 import readGdoc from "@/app/(app)/reader/read-gdoc.content";
@@ -56,6 +58,7 @@ import devDesign from "@/app/(app)/dev/design/page.content";
 import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
 import ytSongs from "@/app/components/yt-clip/yt-songs.content";
 import pillChat from "@/app/components/pill-chat.content";
+import signInErrors from "@/app/(app)/sign-in/errors.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -109,6 +112,8 @@ describe.each([
   ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],
   ["invite-card", inviteCard],
+  ["email-invite", emailInvite],
+  ["invite-mail", inviteMail],
   ["credit-units", creditUnits],
   ["read-epub", readEpub],
   ["read-gdoc", readGdoc],
@@ -133,6 +138,7 @@ describe.each([
   ["byok-settings", byokSettings],
   ["title-rules", titleRules],
   ["external-link", externalLink],
+  ["sign-in-errors", signInErrors],
   ["privacy-page", privacyPage],
   ["api-tokens", apiTokens],
   ["roadmap-page", roadmapPage],

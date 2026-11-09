@@ -238,6 +238,12 @@ export const FLAGS = {
     default: false,
     group: "ai",
   },
+  "membership.email-invite": {
+    description:
+      "邮件邀请好友：所有 Pro 用户（和管理员）在 /membership 的邀请卡片里多一个「用邮件邀请」框，填一个朋友的邮箱，Lianki 用发件人的账户语言发一封邀请信，里面是他自己的邀请链接（奖励规则不变）。防滥用：每人每天最多 5 封、同一个地址一个月内只收一封（不管谁邀请）、一次只能填一个地址、已有账户的地址不发（发件人看到的结果一样）、信里有退订和举报链接（一键退订），被举报 2 次的发件人不能再发。收件人地址只存哈希，发件人只看到自己发过的打码地址。关闭（默认）= 只有你本人（管理员）能用。",
+    default: false,
+    requires: ["auth-secret"],
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;

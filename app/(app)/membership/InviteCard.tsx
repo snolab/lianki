@@ -5,6 +5,7 @@ import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import type { InviteSummary } from "@/lib/referrals/store";
 import { useCredits } from "./use-credits";
+import { EmailInviteBox } from "./EmailInviteBox";
 
 /** The invite link and its results, plus the gift-code box. Renders nothing off D1. */
 export function InviteCard({ onProChanged }: { onProChanged: () => void }) {
@@ -133,6 +134,8 @@ export function InviteCard({ onProChanged }: { onProChanged: () => void }) {
           </ul>
         )}
       </section>
+
+      <EmailInviteBox />
 
       <form
         onSubmit={redeem}

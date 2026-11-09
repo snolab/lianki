@@ -23,6 +23,8 @@ export type SendEmailInput = {
   subject: string;
   text: string;
   html?: string;
+  /** Extra mail headers (Resend `headers`), e.g. List-Unsubscribe. */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -45,6 +47,7 @@ export async function sendEmail(input: SendEmailInput): Promise<{ id: string }> 
       subject: input.subject,
       text: input.text,
       ...(input.html ? { html: input.html } : {}),
+      ...(input.headers && Object.keys(input.headers).length ? { headers: input.headers } : {}),
     }),
   });
 

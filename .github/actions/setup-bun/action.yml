@@ -1,0 +1,82 @@
+name: Set up Bun (cached, retried)
+description: >
+  Bun at a pinned version, from the Actions cache when it is there; otherwise
+  oven-sh/setup-bun, and if that download fails, the release zip fetched with
+  retries (docs/shipping.md, "Flaky tool downloads"). Needs the repo checked
+  out first (it runs scripts/ci/fetch.sh) and `unzip` on the runner.
+
+inputs:
+  bun-version:
+    description: Exact Bun version. Bump it here — every workflow uses this default.
+    default: "1.4.4"
+
+runs:
+  using: composite
+  steps:
+    - name: Restore Bun from cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/bin
+        key: bun-${{ inputs.bun-version }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install Bun (setup-bun)
+      id: setup
+      if: steps.cache.outputs.cache-hit != 'true'
+      continue-on-error: true
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+        no-cache: true
+
+    # Puts the binary at ~/.bun/bin either way, so the cache saves it at the end
+    # of the job: copied from where setup-bun put it, or — when setup-bun failed
+    # (a 504 from the release CDN) — downloaded again with backoff.
+    - name: Install Bun (fallback with retries)
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        BUN_VERSION: ${{ inputs.bun-version }}
+        SETUP_OUTCOME: ${{ steps.setup.outcome }}
+        SETUP_BUN_PATH: ${{ steps.setup.outputs.bun-path }}
+      run: |
+        set -euo pipefail
+        dest="$HOME/.bun/bin"
+        mkdir -p "$dest"
+        src="${SETUP_BUN_PATH:-}"
+        if [ "$SETUP_OUTCOME" = "success" ] && [ -n "$src" ] && [ -x "$src" ]; then
+          [ "$src" -ef "$dest/bun" ] || cp "$src" "$dest/bun"
+        else
+          echo "::warning title=setup-bun failed::falling back to npm, then the GitHub release, with retries"
+          case "$RUNNER_ARCH" in
+            X64) asset=bun-linux-x64 ;;
+            ARM64) asset=bun-linux-aarch64 ;;
+            *) echo "::error::no Bun asset for $RUNNER_ARCH"; exit 1 ;;
+          esac
+          # The same binary is published to npm as @oven/<asset> (what
+          # `npm i bun` installs) — a different CDN from the GitHub release one
+          # that answered 504 on 2026-11-09, so it is tried first.
+          if bash scripts/ci/fetch.sh \
+            "https://registry.npmjs.org/@oven/${asset}/-/${asset}-${BUN_VERSION}.tgz" \
+            "$RUNNER_TEMP/bun.tgz"; then
+            tar -xzf "$RUNNER_TEMP/bun.tgz" -C "$RUNNER_TEMP" package/bin/bun
+            cp "$RUNNER_TEMP/package/bin/bun" "$dest/bun"
+          else
+            bash scripts/ci/fetch.sh \
+              "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${asset}.zip" \
+              "$RUNNER_TEMP/bun.zip"
+            unzip -o -j "$RUNNER_TEMP/bun.zip" "${asset}/bun" -d "$dest"
+          fi
+        fi
+        chmod +x "$dest/bun"
+        ln -sf bun "$dest/bunx"
+
+    - name: Put Bun on PATH
+      shell: bash
+      env:
+        BUN_VERSION: ${{ inputs.bun-version }}
+      run: |
+        echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+        got="$("$HOME/.bun/bin/bun" --version)"
+        echo "bun $got (cache hit: ${{ steps.cache.outputs.cache-hit == 'true' }})"
+        [ "$got" = "$BUN_VERSION" ] || { echo "::error::expected bun $BUN_VERSION, got $got"; exit 1; }
