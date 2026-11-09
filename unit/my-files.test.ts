@@ -154,7 +154,16 @@ describe("My Files: one store, folders by origin, the owner only", () => {
     expect(bucket.store.size).toBe(1);
     const key = [...bucket.store.keys()][0]!;
     expect(key).toMatch(/^inbox\/u1\/\d{4}\/\d{2}\/[0-9a-f]{20}$/);
-    expect((await deleteMyFile(del(a.id), a.id, deps)).status).toBe(200);
+    const dropped: string[] = [];
+    const withDrop = {
+      ...deps,
+      dropDerived: async (u: string, f: string) => void dropped.push(`${u}/${f}`),
+    };
+    expect((await deleteMyFile(del("f".repeat(20)), "f".repeat(20), withDrop)).status).toBe(404);
+    expect(dropped).toEqual([]);
+    expect((await deleteMyFile(del(a.id), a.id, withDrop)).status).toBe(200);
+    // Its cached AI chunks go with it.
+    expect(dropped).toEqual([`u1/${a.id}`]);
     expect(bucket.store.has(key)).toBe(false);
     expect((await readMyFile(a.id, deps)).status).toBe(404);
   });
@@ -391,6 +400,7 @@ describe("/self-intro reads the user's stored files", () => {
       available: true,
       need,
       have: need,
+      recommended: need,
     });
     expect(await (await handleImportQuota(base({ flags: {}, owner: false }))).json()).toMatchObject(
       { on: false, available: false },

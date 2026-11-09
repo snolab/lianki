@@ -4,6 +4,8 @@ import { isDev } from "@/lib/permissions";
 import { importAnyOn } from "@/lib/import/words-handler";
 import type { ImportFilesDeps } from "@/lib/import/files";
 import { inboxDeps } from "@/app/api/dev/inbox/deps";
+import { getD1 } from "@/lib/d1";
+import { dropChunks } from "@/lib/import/chunk-cache";
 
 /**
  * The Import panel's stored files: the chat inbox's storage (D1 + R2
@@ -14,4 +16,6 @@ export const importFilesDeps = (): ImportFilesDeps => ({
   ...inboxDeps,
   on: async (who) => importAnyOn(await readFlags(), isDev(who.email)),
   available: dbBackend() === "d1",
+  // A deleted file's cached AI chunks go with it.
+  dropDerived: (userId, fileId) => dropChunks(getD1(), userId, fileId),
 });

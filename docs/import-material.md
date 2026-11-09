@@ -152,24 +152,35 @@ pipeline.
    inputs, checking that CSV with the same parser and server preview, then
    **Add N words**.
 
-**Credits** (docs/payments.md, feature `words.import-ai`):
+**Credits** (docs/payments.md, feature `words.import-ai`; owner, 2026-11-10):
 
-- One hold for the whole file — the sum of every call's most (its prompt,
-  image, 4,000 output tokens) — taken before the first call (`takeHold`).
-  Too little → 402 "not enough credits: needs up to N, you have M"; the max
-  is never shrunk to fit the balance.
-- After each round the real cost is added up; if it ever reaches the hold
-  the conversion stops there (rows so far kept, "only the first part") and
-  is settled at most at the hold (`settleHold` caps it and pauses the
-  feature on an overage). A balance never goes below zero (the wallet's
-  CHECK).
-- Settled at the real cost, the rest refunded. A failed call, or a file
-  that gave no rows, keeps nothing. The usage page shows one net line.
+- **One hold per call** (a chunk, or the image), its fixed most (its prompt,
+  image, 4,000 output tokens), taken before that call (`takeHold`), settled
+  at its real cost, the rest refunded. The max is never shrunk to fit the
+  balance. A balance never goes below zero (the wallet's CHECK).
+- **Hard cap.** A call that reports more than its hold is settled at the
+  hold and pauses the feature (`credits.overage`); the next call is refused
+  (503), nothing charged past any hold.
+- A failed call, or a chunk that gave no rows, keeps nothing.
+- **Too little to start or to go on** → 402 with `need` (the next call's
+  hold: the minimum to start), `recommended` (the balance to finish every
+  call left: P95 of this feature's past real per-call costs × the calls
+  left, or the hold × the calls left with under 20 samples —
+  `lib/payments/recommend.ts`), `have`, and `completed` / `total`. The page
+  says "开始至少需要 N 积分，完成整个文件建议 R 积分（当前 H）" and, when some
+  parts are done, "已完成 X/Y 部分，充值后继续", with **Get credits** and
+  **Continue**.
+- **Resume.** Every paid chunk's rows are kept per user and file
+  (`ai_chunk_cache`, `0069_ai_chunk_cache.sql`, `lib/import/chunk-cache.ts`,
+  keyed by a hash of the call): Continue (or any later run on the same file)
+  reuses them for free and pays only for the rest. Dropped when the file is
+  deleted. Not a guarantee — hence the recommended balance up front.
 
 **Privacy.** The stored file is read into the request's memory only; its
 text goes to Workers AI and nowhere else; nothing new is written but the
-wallet's rows; logs carry an error name, never content. 20 conversions per
-user per 10 minutes (per isolate).
+wallet's rows and each paid chunk's rows (the resume cache, the user's own,
+deleted with the file); logs carry an error name, never content. 20
+conversions per user per 10 minutes (per isolate).
 
 Tests: `unit/import-ai.test.ts` (the CSV contract with a mocked model; the
 gate; hold / settle / refund / hard cap against a real wallet; the route

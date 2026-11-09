@@ -17,6 +17,7 @@ import type { Complete } from "@/lib/read/gloss-server";
 import { IMPORT } from "./import-config";
 import { ImportRequest, extractSelfIntro, importMessages } from "./import-extract";
 import { creditsCover, storedImage } from "@/lib/import/ai-convert";
+import { recommendFor } from "@/lib/payments/recommend";
 import { readAnyFile } from "@/lib/import/ai-read";
 import { ImportFileError } from "./import-parse";
 import { PARTNER_AI_MODEL } from "@/lib/partner-ai-config";
@@ -64,19 +65,23 @@ export const minImportHoldUsd = () =>
   );
 
 /**
- * GET /api/self-intro/import → {on, available, need, have}: may this user
- * start an analysis (the gate, Workers AI, credits for the smallest hold)?
+ * GET /api/self-intro/import → {on, available, need, have, recommended}: may
+ * this user start an analysis (the gate, Workers AI, credits for the smallest
+ * hold)? `recommended`: the balance to finish one (lib/payments/recommend.ts).
  */
 export async function handleImportQuota(deps: ImportDeps): Promise<Response> {
   if (!deps.user) return json({ error: "unauthorized" }, 401);
   if (!selfIntroImportOn(deps.flags, deps.owner) || !deps.configured)
-    return json({ on: false, available: false, need: 0, have: 0 });
-  const q = await creditsCover(
-    deps.user,
-    { db: deps.db ?? null, admin: deps.admin },
-    minImportHoldUsd(),
-  );
-  return json({ on: true, ...q });
+    return json({ on: false, available: false, need: 0, have: 0, recommended: 0 });
+  const hold = minImportHoldUsd();
+  const q = await creditsCover(deps.user, { db: deps.db ?? null, admin: deps.admin }, hold);
+  const { recommended } = await recommendFor(deps.db ?? null, {
+    feature: "self-intro.import",
+    units: 1,
+    unitHoldUsd: hold,
+    need: q.need,
+  });
+  return json({ on: true, ...q, recommended });
 }
 
 /** The stored files' text and images, merged after what was typed, capped as the import. */

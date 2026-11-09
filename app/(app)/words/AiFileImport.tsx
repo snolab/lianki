@@ -73,9 +73,18 @@ export default function AiFileImport({
   const { locale } = useLocale();
   const n = (v: number) => v.toLocaleString(locale);
   const [phase, setPhase] = useState<"idle" | "converting">("idle");
-  const [error, setError] = useState<{ key: ErrorKey; need?: number; balance?: number } | null>(
-    null,
-  );
+  /** A refusal's numbers (need / recommended / have) and how far a stopped run got. */
+  type Failure = {
+    key: ErrorKey;
+    need?: number;
+    recommended?: number;
+    have?: number;
+    completed?: number;
+    total?: number;
+  };
+  const [error, setError] = useState<Failure | null>(null);
+  // Bumped by Continue (after a top-up): the same file again, its finished parts reused.
+  const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [csv, setCsv] = useState("");
   const [seed, setSeed] = useState<{ text: string; fileName: string; rev: number } | null>(null);
@@ -84,6 +93,7 @@ export default function AiFileImport({
   useEffect(() => {
     let live = true;
     setPhase("converting");
+    setError(null);
     (async () => {
       try {
         const r = await fetch("/api/import/ai", {
@@ -94,11 +104,21 @@ export default function AiFileImport({
         const b = (await r.json().catch(() => ({}))) as Partial<Result> & {
           error?: string;
           need?: number;
-          balance?: number;
+          recommended?: number;
+          have?: number;
+          completed?: number;
+          total?: number;
         };
         if (!live) return;
         if (!r.ok || typeof b.csv !== "string") {
-          setError({ key: routeError(r.status, b.error), need: b.need, balance: b.balance });
+          setError({
+            key: routeError(r.status, b.error),
+            need: b.need,
+            recommended: b.recommended,
+            have: b.have,
+            completed: b.completed,
+            total: b.total,
+          });
           return;
         }
         const res: Result = {
@@ -119,8 +139,8 @@ export default function AiFileImport({
     return () => {
       live = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per file
-  }, [file.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per file (and per Continue)
+  }, [file.id, attempt]);
 
   return (
     <section data-qa="words-import-ai-body" className="space-y-4">
@@ -134,16 +154,32 @@ export default function AiFileImport({
           data-qa="words-import-ai-error"
           className="rounded-lg bg-[oklch(0.6_0.2_25/0.12)] p-3 text-sm text-[oklch(0.42_0.16_25)] dark:text-[oklch(0.85_0.1_25)]"
         >
+          {error.key === "aiErrCredits" && !!error.completed && (
+            <p className="font-medium" data-qa="words-import-ai-partial">
+              {fill(t.aiPartial, { done: n(error.completed), total: n(error.total ?? 0) })}
+            </p>
+          )}
           <p>
             {fill(t[error.key], {
               need: n(error.need ?? 0),
-              balance: n(error.balance ?? 0),
+              recommended: n(Math.max(error.need ?? 0, error.recommended ?? 0)),
+              have: n(error.have ?? 0),
             })}
           </p>
           {error.key === "aiErrCredits" && (
-            <a href={TOP_UP} className="mt-1 inline-block font-medium underline">
-              {t.aiGetCredits}
-            </a>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <a href={TOP_UP} target="_blank" rel="noopener" className="font-medium underline">
+                {t.aiGetCredits}
+              </a>
+              <button
+                type="button"
+                data-qa="words-import-ai-continue"
+                onClick={() => setAttempt((a) => a + 1)}
+                className="min-h-11 rounded-lg border border-current px-4 font-medium"
+              >
+                {t.aiContinue}
+              </button>
+            </div>
           )}
         </div>
       )}

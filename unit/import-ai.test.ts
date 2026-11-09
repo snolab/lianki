@@ -32,6 +32,8 @@ import {
   type AiPayer,
 } from "@/lib/import/ai-convert";
 import { readAnyFile } from "@/lib/import/ai-read";
+import type { AiRow } from "@/lib/import/ai-convert";
+import type { ChunkCache } from "@/lib/import/chunk-cache";
 
 /**
  * "AI: any file" (docs/import-material.md): the file's text → the word-list
@@ -238,15 +240,21 @@ describe("credits: hold the fixed max, settle, refund the rest", () => {
     expect(r.charged).toBeLessThanOrEqual(hold);
   });
 
-  it("never shrinks the max: a balance below this file's hold is refused with the full need", async () => {
+  it("never shrinks the max: below one call's hold → 402 with the need, the recommended for all, the balance", async () => {
     const long = Array.from({ length: 3000 }, (_, i) => `term${i} meaning${i}`).join("\n");
-    const need = reserveCredits(holdUsdFor(aiCalls(req({ text: long })).calls));
-    expect(need).toBeGreaterThan(reserveCredits(minHoldUsd()));
+    const all = aiCalls(req({ text: long })).calls;
+    expect(all.length).toBeGreaterThan(1);
+    const need = reserveCredits(holdUsdFor([all[0]!]));
     fund(need - 1);
     const r = await convertToCsv(req({ text: long }), payer(model(ROWS)));
     expect("refused" in r).toBe(true);
     if (!("refused" in r)) return;
-    expect(await r.refused.json()).toMatchObject({ error: "no-credits", need, balance: need - 1 });
+    const body = (await r.refused.json()) as Record<string, number>;
+    expect(body).toMatchObject({ error: "no-credits", need, have: need - 1, completed: 0 });
+    expect(body.total).toBe(all.length);
+    // Too little history: the recommended is every call's most.
+    expect(body.recommended).toBeGreaterThanOrEqual(need * all.length);
+    expect(r.refused.headers.get("x-lianki-credits-recommended")).toBe(String(body.recommended));
     expect(calls).toBe(0);
     expect(await bal()).toBe(need - 1);
   });
@@ -279,13 +287,15 @@ describe("credits: hold the fixed max, settle, refund the rest", () => {
     expect(ledger()).toEqual([]);
   });
 
-  it("the hold is a hard cap: an overrun stops the conversion, is charged at most the hold, never below zero", async () => {
+  it("each hold is a hard cap: an overrun is charged at most its hold, pauses the feature, stops the rest; never below zero", async () => {
     const long = "y"
       .repeat(AI_IMPORT.chunkChars)
       .concat("\n")
       .repeat(AI_IMPORT.parallel * 2);
-    const hold = reserveCredits(holdUsdFor(aiCalls(req({ text: long })).calls));
-    fund(hold);
+    const all = aiCalls(req({ text: long })).calls;
+    const holds = all.map((c) => reserveCredits(holdUsdFor([c])));
+    const start = holds.reduce((n, h) => n + h, 0);
+    fund(start);
     const log: Record<string, unknown>[] = [];
     // Pricing drift: each call reports far more tokens than any hold covers.
     const r = await convertToCsv(
@@ -295,19 +305,50 @@ describe("credits: hold the fixed max, settle, refund the rest", () => {
       }),
     );
     expect(calls).toBe(AI_IMPORT.parallel); // the second round never ran
-    expect(r).toMatchObject({ ok: true, truncated: true });
-    // Settled at the hold's exact cost (a fraction under the whole credits held carries).
-    const charged = r.ok && !("refused" in r) ? r.charged : -1;
-    expect(charged).toBeLessThanOrEqual(hold);
-    expect(charged).toBeGreaterThanOrEqual(hold - 1);
-    expect(await bal()).toBe(hold - charged);
+    // Paused after the overage: the rest is refused (503), nothing charged past the holds.
+    expect("refused" in r && r.refused.status).toBe(503);
+    const spent = start - (await bal());
+    const roundHolds = holds.slice(0, AI_IMPORT.parallel).reduce((n, h) => n + h, 0);
+    expect(spent).toBeLessThanOrEqual(roundHolds);
+    expect(spent).toBeGreaterThanOrEqual(roundHolds - AI_IMPORT.parallel);
     expect(await bal()).toBeGreaterThanOrEqual(0);
     expect(log.some((o) => o.event === "credits.overage")).toBe(true);
     const paused = d1.raw().prepare("SELECT feature FROM credit_feature_pause").all();
     expect(paused).toEqual([{ feature: "words.import-ai" }]);
-    // Paused: the next file is refused with nothing charged (503).
     const next = await convertToCsv(req(), payer(model(ROWS)));
     expect("refused" in next && next.refused.status).toBe(503);
+  });
+
+  it("resume: a run stopped for credits keeps its paid chunks; after a top-up only the rest is paid", async () => {
+    const mem = new Map<string, AiRow[]>();
+    const cache: ChunkCache = {
+      get: async (u, f, h) => mem.get(`${u}/${f}/${h}`) ?? null,
+      put: async (u, f, h, rows) => void mem.set(`${u}/${f}/${h}`, rows),
+    };
+    const two = "a - one\n".repeat(AI_IMPORT.chunkChars / 8) + "b - two";
+    const all = aiCalls(req({ text: two })).calls;
+    expect(all).toHaveLength(2);
+    const first = reserveCredits(holdUsdFor([all[0]!]));
+    fund(first); // enough for one call only
+    const answer = (i: number) =>
+      JSON.stringify({ rows: [{ word: i === 0 ? "alpha" : "beta", meaning: "m", example: "" }] });
+    const p1 = payer(model(answer), { cache, fileId: "f".repeat(20) });
+    const stopped = await convertToCsv(req({ text: two }), p1);
+    expect("refused" in stopped && stopped.refused.status).toBe(402);
+    if (!("refused" in stopped)) return;
+    expect(await stopped.refused.json()).toMatchObject({ completed: 1, total: 2 });
+    expect(calls).toBe(1);
+    expect(mem.size).toBe(1);
+    // Top up, run again: the finished chunk comes from the cache, one call is paid.
+    d1.raw().exec("UPDATE credit_balance SET balance = balance + 100 WHERE userId = 'u1'");
+    const before = await bal();
+    const done = await convertToCsv(req({ text: two }), p1);
+    expect(done).toMatchObject({ ok: true, rows: 2, reused: 1 });
+    expect(calls).toBe(2);
+    if (!done.ok || "refused" in done) return;
+    expect(before - (await bal())).toBe(done.charged);
+    expect(done.csv).toContain("alpha");
+    expect(done.csv).toContain("beta");
   });
 
   it("an admin pays nothing; no wallet (local dev) runs unmetered", async () => {

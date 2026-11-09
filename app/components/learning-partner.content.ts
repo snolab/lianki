@@ -2189,6 +2189,24 @@ const learningPartnerContent = {
       mr: "क्रेडिट्स मिळवा",
       ko: "크레딧 받기",
     }),
+    aiCreditsNeed: t({
+      en: "You need at least {need} credits ({short} more).",
+      zh: "至少需要 {need} 积分（还差 {short}）。",
+      ja: "少なくとも {need} クレジット必要です（あと {short}）。",
+      ko: "최소 {need} 크레딧이 필요해요({short} 부족).",
+      hi: "कम से कम {need} क्रेडिट चाहिए ({short} और)।",
+      es: "Necesitas al menos {need} créditos (te faltan {short}).",
+      fr: "Il faut au moins {need} crédits (il en manque {short}).",
+      ar: "تحتاج على الأقل {need} من الرصيد (ينقصك {short}).",
+      bn: "অন্তত {need} ক্রেডিট লাগবে (আরও {short})।",
+      pt: "Você precisa de pelo menos {need} créditos (faltam {short}).",
+      ru: "Нужно не меньше {need} кредитов (не хватает {short}).",
+      ur: "کم از کم {need} کریڈٹس چاہئیں ({short} کم ہیں)۔",
+      id: "Perlu setidaknya {need} kredit (kurang {short}).",
+      de: "Du brauchst mindestens {need} Credits (es fehlen {short}).",
+      sw: "Unahitaji angalau krediti {need} (zimepungua {short}).",
+      mr: "किमान {need} क्रेडिट्स लागतील ({short} कमी).",
+    }),
     aiFailed: t({
       en: "No reply this time. Please try again in a moment.",
       zh: "这次没有回复成功，请稍后再试。",
@@ -2448,6 +2466,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Warning line above the chat input when the AI Learning Partner did not answer because the user's prepaid credit balance (the wallet on the Membership page) does not cover a reply; each AI reply is paid from those credits. A link (aiCreditsLink) follows it on the same line. Friendly, no numbers or prices; keep {name} (the assistant's name). Use the same word for 'credits' as the Membership page's wallet (积分 in Chinese). Two short sentences: replies need credits and the balance has run out; add credits to keep chatting.",
   aiCreditsLink:
     "Link right after the out-of-credits warning (aiCredits) above the chat input: opens the Membership page, where the user tops up their prepaid credit balance. Short imperative phrase, two or three words; same word for 'credits' as the wallet (积分 in Chinese).",
+  aiCreditsNeed:
+    "After the out-of-credits warning (aiCredits) above the Learning Partner chat input, when the server said the numbers: {need} = the credits one reply needs (its hold), {short} = how many the user is missing. Whole credits; keep both placeholders; same word for 'credits' as the wallet (积分 in Chinese). Owner's Chinese wording: 至少需要 N 积分（还差 M）.",
   aiFailed:
     "Warning line above the chat input when the AI model failed to produce an answer to the user's last message (a temporary error). Two short sentences: no reply this time, try again soon.",
 };

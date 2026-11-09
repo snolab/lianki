@@ -2922,7 +2922,12 @@ export class DebugHub {
       // Off, the owner, or a line already answered: nothing to say (the lanes
       // still answer). No credits: the page says how to get some. Otherwise it failed.
       if (res.error === "no-credits")
-        for (const { ws } of this.pages(thread)) send(ws, { type: "ai-credits" });
+        for (const { ws } of this.pages(thread))
+          send(ws, {
+            type: "ai-credits",
+            // The minimum one reply needs and the balance (numbers only), for the chat's line.
+            ...(res.need !== undefined ? { need: res.need, have: res.have ?? 0 } : {}),
+          });
       else if (res.error !== "off" && res.error !== "owner" && res.error !== "duplicate")
         for (const { ws } of this.pages(thread)) send(ws, { type: "ai-failed" });
       return;

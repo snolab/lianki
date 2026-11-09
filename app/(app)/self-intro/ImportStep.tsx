@@ -93,9 +93,12 @@ export default function ImportStep({
   const [phase, setPhase] = useState<"input" | "facts" | "review">("input");
   const [text, setText] = useState("");
   const [files, setFiles] = useState<Upload[]>([]);
-  const [quota, setQuota] = useState<{ available: boolean; need: number; have: number } | null>(
-    null,
-  );
+  const [quota, setQuota] = useState<{
+    available: boolean;
+    need: number;
+    have: number;
+    recommended: number;
+  } | null>(null);
   const [toast, setToast] = useState<Upload | null>(null);
   const deletes = useRef<ReturnType<typeof pendingDeletes> | null>(null);
   deletes.current ??= pendingDeletes();
@@ -112,10 +115,16 @@ export default function ImportStep({
   useEffect(() => {
     fetch("/api/self-intro/import", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((b: { available?: boolean; need?: number; have?: number } | null) =>
-        setQuota({ available: !!b?.available, need: b?.need ?? 0, have: b?.have ?? 0 }),
+      .then(
+        (b: { available?: boolean; need?: number; have?: number; recommended?: number } | null) =>
+          setQuota({
+            available: !!b?.available,
+            need: b?.need ?? 0,
+            have: b?.have ?? 0,
+            recommended: b?.recommended ?? b?.need ?? 0,
+          }),
       )
-      .catch(() => setQuota({ available: false, need: 0, have: 0 }));
+      .catch(() => setQuota({ available: false, need: 0, have: 0, recommended: 0 }));
   }, []);
   // A delete still in its Undo window is sent when the page is left.
   useEffect(() => {
@@ -207,11 +216,17 @@ export default function ImportStep({
         fileErrors?: { id: string; code: string }[];
         need?: number;
         balance?: number;
+        recommended?: number;
       };
       const nameOf = (id: string) => stored.find((f) => f.id === id)?.name ?? id;
       setFileErrors((b.fileErrors ?? []).map((e) => fileMessage(e.code, nameOf(e.id))));
       if (r.status === 402) {
-        setQuota({ available: false, need: b.need ?? 0, have: b.balance ?? 0 });
+        setQuota({
+          available: false,
+          need: b.need ?? 0,
+          have: b.balance ?? 0,
+          recommended: b.recommended ?? b.need ?? 0,
+        });
         return;
       }
       if (r.status === 429) throw new Error("rate");
@@ -391,6 +406,10 @@ export default function ImportStep({
               <p className="text-sm sm:flex-1" data-qa="self-intro-credits-short">
                 {c.creditsShort.value
                   .replace("{need}", quota.need.toLocaleString(locale))
+                  .replace(
+                    "{recommended}",
+                    Math.max(quota.need, quota.recommended).toLocaleString(locale),
+                  )
                   .replace("{have}", quota.have.toLocaleString(locale))}{" "}
                 <a href={TOP_UP} className="underline font-medium">
                   {c.getCredits}

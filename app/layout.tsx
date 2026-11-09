@@ -109,6 +109,8 @@ export default async function RootLayout({
     topUp: String(cn.topUp),
     close: String(cn.close),
     paused: String(cn.paused),
+    needLine: String(cn.needLine),
+    needShort: String(cn.needShort),
   };
   // The disclaimer before another website (ExternalLinkGuard, external-link.content.ts).
   const ext = getIntlayer("external-link", locale as never);
