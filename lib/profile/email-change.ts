@@ -157,7 +157,7 @@ export async function requestEmailChange(req: Request, d: EmailDeps): Promise<Re
   const taken = isOwnerAlias(owners, email) || (await takenByAnother(db, who.id, email));
   try {
     if (taken) {
-      await d.send({ to: email, ...(await changeMail(db, "email-taken", locale, {})) });
+      await d.send({ to: email, ...(await changeMail(db, "email-taken", locale, {}, who.id)) });
     } else {
       const token = newToken();
       await db
@@ -171,11 +171,14 @@ export async function requestEmailChange(req: Request, d: EmailDeps): Promise<Re
         .run();
       // After the #: a fragment reaches no server log and no Referer.
       const url = `${d.origin()}/profile/email-confirm#${who.id}.${token}`;
-      await d.send({ to: email, ...(await changeMail(db, "email-confirm", locale, { url })) });
+      await d.send({
+        to: email,
+        ...(await changeMail(db, "email-confirm", locale, { url }, who.id)),
+      });
     }
     await d.send({
       to: who.email,
-      ...(await changeMail(db, "email-requested", locale, { address: maskEmail(email) })),
+      ...(await changeMail(db, "email-requested", locale, { address: maskEmail(email) }, who.id)),
     });
   } catch {
     logFailure("email-change.mail-failed");
@@ -273,9 +276,13 @@ export async function confirmEmailChange(req: Request, d: EmailDeps): Promise<Re
   try {
     await d.send({
       to: row.oldEmail,
-      ...(await changeMail(db, "email-changed", await changeMailLocale(db, userId, req), {
-        address: maskEmail(row.newEmail),
-      })),
+      ...(await changeMail(
+        db,
+        "email-changed",
+        await changeMailLocale(db, userId, req),
+        { address: maskEmail(row.newEmail) },
+        userId,
+      )),
     });
   } catch {
     logFailure("email-change.notice-failed");

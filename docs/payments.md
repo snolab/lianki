@@ -481,10 +481,12 @@ the invite card on `/membership`; Lianki mails that friend the inviter's existin
   included), a suppressed one, one mailed recently, or a blocked inviter — no
   mail, and the same `{status:"sent"}` as a real send. Every one of these counts
   against the daily limit, so the limit cannot be used to probe.
-- **No address stored**: `recipientHash` = SHA-256 of the canonical address;
-  `recipientMasked` (`a***@example.com`) only for the inviter's own history.
-  Keyed by user id, so nothing moves on an email change (not in
-  `EMAIL_KEYED_TABLES`). No log line holds an address.
+- **No address in the invite tables**: `recipientHash` = SHA-256 of the
+  canonical address; `recipientMasked` (`a***@example.com`) only for the
+  inviter's own history. Keyed by user id, so nothing moves on an email change
+  (not in `EMAIL_KEYED_TABLES`). No log line holds an address. Since
+  2026-11-09 the send log (`mail_log`) does keep it, by owner decision:
+  developers only, deleted with the inviter's account.
 - **Language**: the inviter's account language (`ui.locale` in `user_prefs`),
   else `user.signupLocale`, else English (`lib/signup-locale.ts`). zh / zh-CN /
   zh-Hans read the Simplified template; there is no Traditional one, so zh-Hant
@@ -509,6 +511,9 @@ the invite card on `/membership`; Lianki mails that friend the inviter's existin
   token is `<logId>.<HMAC>` with a key derived from `AUTH_SECRET` by HKDF (no new
   secret), so nobody can opt out an address they did not receive. A GET on the
   one-click URL only redirects to the page. Per-IP limit 30 / 15 min.
+- **Send log**: every invite mail also has a row in `mail_log` with the
+  address (dev-only, /dev/mails; [mail-templates.md](mail-templates.md), "Send
+  log"); its Resend there goes through `inviteOne`, under every limit below.
 - **Bounces and complaints**: Resend's webhook, `POST /api/email/resend-webhook`
   (`lib/resend-webhook.ts`; Svix-signed, secret `RESEND_WEBHOOK_SECRET`; setup
   in [secrets-and-auth.md](secrets-and-auth.md), "Resend webhook"). A hard

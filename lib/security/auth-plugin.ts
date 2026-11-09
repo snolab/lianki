@@ -33,6 +33,8 @@ import {
 } from "./login-notice";
 import { clientIp, type ThrottleDb } from "./throttle";
 import { composeMail } from "@/lib/mail-templates/compose";
+import { withMailLog } from "@/lib/mail-log/send";
+import type { MailLogDb } from "@/lib/mail-log/store";
 import { recipientMailLocale } from "@/lib/mail-templates/recipient-locale";
 import type { TemplateDb } from "@/lib/mail-templates/store";
 
@@ -150,7 +152,7 @@ export function securityPlugin(env: SecurityPluginEnv): BetterAuthPlugin {
             // edit falls back to the built-in. Never throws: English at worst.
             const tdb = db as unknown as TemplateDb;
             const locale = await recipientMailLocale(tdb, { userId: user.id });
-            const { subject, text, html } = await composeMail(
+            const { subject, text, html, log } = await composeMail(
               tdb,
               "login-notice",
               locale,
@@ -160,7 +162,17 @@ export function securityPlugin(env: SecurityPluginEnv): BetterAuthPlugin {
                 userAgent,
               }),
             );
-            const send = sendEmail({ to: user.email, subject, text, html })
+            // Through the send log (lib/mail-log), on this same D1.
+            const send = withMailLog(
+              () => db as unknown as MailLogDb,
+              sendEmail,
+            )({
+              to: user.email,
+              subject,
+              text,
+              html,
+              log: { ...log, userId: user.id },
+            })
               .then(({ id }) => console.log(JSON.stringify({ event: "login.notice.sent", id })))
               .catch((e) =>
                 console.error(

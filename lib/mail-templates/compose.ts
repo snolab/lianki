@@ -9,6 +9,8 @@
  * The event is logged without any address: template, language, version and
  * the reason.
  */
+import type { MailLogMeta } from "@/lib/email";
+import { storedVars } from "@/lib/mail-log/vars";
 import { mailBrand } from "./brand";
 import { MAIL_TEMPLATES, type MailTemplateId } from "./defs";
 import { renderSource, TemplateRenderError, type TemplateSource } from "./engine";
@@ -22,7 +24,20 @@ export type ComposedMail = TemplateSource & {
   locale: MailLocale;
   /** The stored version sent; 0 = the built-in default. */
   version: number;
+  /**
+   * For the send log (lib/mail-log): template, version, language and only the
+   * variables it may keep (never a code, link or token). Pass it on as the
+   * send's `log`, with the user / inviter ids the caller knows.
+   */
+  log: MailLogMeta;
 };
+
+const logMeta = (
+  id: MailTemplateId,
+  locale: MailLocale,
+  version: number,
+  values: MailValues,
+): MailLogMeta => ({ template: id, version, locale, vars: storedVars(id, values) });
 
 const withBrand = (locale: MailLocale, values: MailValues): MailValues => ({
   ...values,
@@ -41,6 +56,7 @@ export function renderBuiltin(
     template: id,
     locale,
     version: 0,
+    log: logMeta(id, locale, 0, values),
   };
 }
 
@@ -90,6 +106,7 @@ export async function composeMail(
             template: id,
             locale,
             version: stored.version,
+            log: logMeta(id, locale, stored.version, values),
           };
         } catch (e) {
           logFallback(

@@ -31,6 +31,24 @@ export type SendEmailInput = {
    * ASCII letters, digits, `_` and `-` only.
    */
   tags?: { name: string; value: string }[];
+  /**
+   * What the send log records (lib/mail-log, docs/mail-templates.md, "Send
+   * log"): never sent to the provider. `vars` must already be filtered with
+   * lib/mail-log/vars.ts `storedVars` — the logger filters again anyway.
+   */
+  log?: MailLogMeta;
+};
+
+export type MailLogMeta = {
+  template: string;
+  /** The stored version sent; 0 = the built-in, -1 = an editor test send. */
+  version: number;
+  locale: string;
+  vars?: Record<string, string> | null;
+  userId?: string | null;
+  inviterId?: string | null;
+  inviteLogId?: string | null;
+  resendOf?: string | null;
 };
 
 /**

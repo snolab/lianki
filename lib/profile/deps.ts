@@ -2,7 +2,8 @@ import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { authSessionOrNull, authUserOrNull } from "@/app/signInEmail";
 import { getBlobs, getD1 } from "@/lib/d1";
-import { isEmailConfigured, sendEmail } from "@/lib/email";
+import { isEmailConfigured } from "@/lib/email";
+import { sendMail } from "@/lib/mail-log/deliver";
 import type { EmailDb, EmailDeps } from "./email-change";
 import type { AvatarBucket, ProfileDeps } from "./handlers";
 
@@ -33,7 +34,7 @@ export const emailDeps: EmailDeps = {
       : null;
   },
   db: () => getD1() as unknown as EmailDb,
-  send: sendEmail,
+  send: sendMail,
   mailOn: isEmailConfigured,
   origin: () => process.env.BETTER_AUTH_BASE_URL ?? "https://lianki.com",
 };

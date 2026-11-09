@@ -281,6 +281,24 @@ const dictionary = {
       mr: "ईमेल टेम्पलेट",
       ko: "이메일 템플릿",
     }),
+    mails: t({
+      en: "Sent emails",
+      zh: "邮件发送记录",
+      hi: "भेजे गए ईमेल",
+      es: "Correos enviados",
+      fr: "E-mails envoyés",
+      ar: "الرسائل المرسلة",
+      bn: "পাঠানো ইমেইল",
+      pt: "E-mails enviados",
+      ru: "Отправленные письма",
+      ur: "بھیجی گئی ای میلز",
+      id: "Email terkirim",
+      de: "Gesendete E-Mails",
+      ja: "送信済みメール",
+      sw: "Barua pepe zilizotumwa",
+      mr: "पाठवलेले ईमेल",
+      ko: "보낸 이메일",
+    }),
     preview: t({
       en: "Preview build",
       zh: "预览版",
@@ -384,6 +402,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Browser tab title of the internal page that simulates in which order new words are introduced in study. A noun phrase: the order of new words.",
   templates:
     "Browser tab title and main heading of the internal page that edits the app's transactional emails (sign-in code, login notice, invite…). A plural noun phrase naming the page.",
+  mails:
+    "Browser tab title and main heading of the internal page listing every email the app has sent (sign-in codes, notices, invites) with its delivery status. A plural noun phrase naming the page, like a mail app's 'Sent' folder.",
   permissions:
     "Browser tab title of the internal page that grants and revokes the admin and dev permissions. A plural noun naming the page.",
   preview:

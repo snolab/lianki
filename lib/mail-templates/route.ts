@@ -170,6 +170,8 @@ export async function templatesPost(req: Request, who: TemplatesCaller | null, d
         subject: `[test] ${mail.subject}`,
         text: mail.text,
         html: mail.html,
+        // An editor draft, not a stored version: version -1, no variables kept.
+        log: { template: id, version: -1, locale, vars: null, userId: who.id },
       });
     } catch (e) {
       console.error(

@@ -232,6 +232,23 @@ export const SUITES = [
     paths: ["app/(app)/dev/templates/**", "app/api/dev/templates/**", "lib/mail-templates/**"],
     sensitive: false,
   },
+  // The send log at /dev/mails (docs/mail-templates.md, "Send log"): search, filter, re-render, Resend (stub), Suppress, suppression list; 360 px light + dark.
+  {
+    name: "MAIL LOG (qa-mails)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-mails.mjs"],
+    base: true,
+    id: "mails",
+    paths: [
+      "app/(app)/dev/mails/**",
+      "app/api/dev/mails/**",
+      "lib/mail-log/**",
+      "lib/mail-templates/**",
+      "lib/resend-webhook.ts",
+      "db/migrations/0065_mail_log.sql",
+    ],
+    sensitive: false,
+  },
   // The marble plan cards on /membership: marble by default, 360 px, measured text contrast over the stone.
   {
     name: "MEMBERSHIP MARBLE (qa-membership-marble)",

@@ -6,6 +6,7 @@
  * comes from the account holder. `address` is the other address, already
  * masked.
  */
+import type { MailLogMeta } from "@/lib/email";
 import { composeMail } from "@/lib/mail-templates/compose";
 import { MAIL_CONTACT_URL, type MailTemplateId } from "@/lib/mail-templates/defs";
 import type { MailLocale } from "@/lib/mail-templates/locales";
@@ -26,10 +27,12 @@ export async function changeMail(
   id: ChangeMailId,
   locale: MailLocale,
   values: Record<string, string>,
-): Promise<{ subject: string; text: string; html: string }> {
-  const { subject, text, html } = await composeMail(db as TemplateDb, id, locale, {
+  userId?: string,
+): Promise<{ subject: string; text: string; html: string; log: MailLogMeta }> {
+  const { subject, text, html, log } = await composeMail(db as TemplateDb, id, locale, {
     contactUrl: MAIL_CONTACT_URL,
     ...values,
   });
-  return { subject, text, html };
+  // For the send log (lib/mail-log): the account the change belongs to.
+  return { subject, text, html, log: { ...log, userId: userId ?? null } };
 }

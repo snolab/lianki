@@ -17,16 +17,18 @@
  *   one-click headers; both write `invite_email_suppression`, checked before
  *   every send. Their token is an HMAC of the log row id, keyed from
  *   AUTH_SECRET (HKDF), so nobody can opt out an address they did not receive;
- * - no table holds the address: SHA-256 of its canonical form for matching,
- *   and a masked form for the inviter's own history. No log line holds either.
+ * - no invite table holds the address: SHA-256 of its canonical form for
+ *   matching, and a masked form for the inviter's own history. No log line
+ *   holds either. (The send log, lib/mail-log, keeps it for developers only.)
  */
 import { canonicalEmail } from "@/lib/canonical-email";
 import type { D1Like } from "@/lib/d1/types";
-import type { SendEmailInput } from "@/lib/email";
+import type { MailLogMeta, SendEmailInput } from "@/lib/email";
 import { flagIn, type FlagValues } from "@/lib/flags";
 import { cleanEmail } from "@/lib/profile/email-change";
 import { sameOriginJson } from "@/lib/security/same-origin";
 import { clientIp, hit, ipKey, type ThrottleDb } from "@/lib/security/throttle";
+import { applyEventStatus } from "@/lib/mail-log/store";
 import { composeMail } from "@/lib/mail-templates/compose";
 import { mailLocaleOf, pickMailLocale, type MailLocale } from "@/lib/mail-templates/locales";
 import type { TemplateDb } from "@/lib/mail-templates/store";
@@ -311,7 +313,7 @@ export async function renderFor(
   d: Pick<EmailInviteDeps, "db" | "origin" | "secret">,
   inviterId: string,
   opts: { locale?: MailLocale; logId?: string; to?: string } = {},
-): Promise<RenderedInviteMail & { locale: MailLocale }> {
+): Promise<RenderedInviteMail & { locale: MailLocale; log: MailLogMeta }> {
   const db = d.db();
   const locale = opts.locale ?? (await inviterLocale(db, inviterId));
   const row = await inviterRow(db, inviterId);
@@ -328,13 +330,21 @@ export async function renderFor(
   };
   // Through the template store (docs/mail-templates.md): an edit at
   // /dev/templates is what goes out; a broken one falls back to the built-in.
-  const { subject, text, html } = await composeMail(
+  const { subject, text, html, log } = await composeMail(
     db as unknown as TemplateDb,
     "invite",
     locale,
     inviteMailValues(input),
   );
-  return { locale, subject, text, html, headers: inviteMailHeaders(input.oneClickUrl) };
+  return {
+    locale,
+    subject,
+    text,
+    html,
+    headers: inviteMailHeaders(input.oneClickUrl),
+    // For the send log (lib/mail-log): links and tokens are never kept.
+    log: { ...log, inviterId, inviteLogId: opts.logId ?? null },
+  };
 }
 
 export type InviteEmailStatus =
@@ -391,32 +401,56 @@ export async function sendEmailInvite(req: Request, d: EmailInviteDeps): Promise
   const db = d.db();
   // The language: the API's override (no UI yet), else the inviter's own.
   const locale = mailLocaleOf(body?.locale) ?? (await inviterLocale(db, g.who.id));
-  const hash = await recipientHash(email);
+  const r = await inviteOne(d, { inviterId: g.who.id, email, locale }, now);
+  if (r.status === "rate-limited") return json({ error: "rate-limited", remaining: 0 }, 429);
+  if (r.status === "failed") return json({ error: "mail-failed" }, 502);
+  // Sent or quietly skipped: the same answer, so the inviter learns nothing.
+  return json({ status: "sent", remaining: r.remaining });
+}
+
+type Skipped = Exclude<LogStatus, "pending" | "sent" | "failed">;
+
+export type InviteOneResult =
+  | { status: "rate-limited" }
+  | { status: "sent" | "failed" | Skipped; remaining: number };
+
+/**
+ * One invite mail from `inviterId` to `email`, under every limit: the
+ * inviter's daily slots, the address's window, suppression, an existing
+ * account, a blocked inviter. The invite route and /dev/mails' Resend
+ * (lib/mail-log/route.ts) both send through here, so a resend can never pass
+ * a limit an invite cannot.
+ */
+export async function inviteOne(
+  d: Pick<EmailInviteDeps, "db" | "send" | "origin" | "secret">,
+  a: { inviterId: string; email: string; locale: MailLocale; resendOf?: string | null },
+  now: number,
+): Promise<InviteOneResult> {
+  const db = d.db();
+  const hash = await recipientHash(a.email);
   const id = crypto.randomUUID();
-  if (
-    !(await claimSlot(db, { id, inviterId: g.who.id, hash, masked: maskEmail(email), locale }, now))
-  )
-    return json({ error: "rate-limited", remaining: 0 }, 429);
+  const row = { id, inviterId: a.inviterId, hash, masked: maskEmail(a.email), locale: a.locale };
+  if (!(await claimSlot(db, row, now))) return { status: "rate-limited" };
   const remaining = Math.max(
     0,
-    EMAIL_INVITE.perInviterPerDay - (await usedToday(db, g.who.id, now)),
+    EMAIL_INVITE.perInviterPerDay - (await usedToday(db, a.inviterId, now)),
   );
-  const sent = () => json({ status: "sent", remaining });
 
-  const skip = await skipReason(db, g.who.id, email, hash, now);
+  const skip = await skipReason(db, a.inviterId, a.email, hash, now);
   if (skip) {
     await setStatus(db, id, skip);
-    return sent();
+    return { status: skip as Skipped, remaining };
   }
   try {
-    const mail = await renderFor(d, g.who.id, { locale, logId: id, to: email });
+    const mail = await renderFor(d, a.inviterId, { locale: a.locale, logId: id, to: a.email });
     const res = (await d.send({
-      to: email,
+      to: a.email,
       subject: mail.subject,
       text: mail.text,
       html: mail.html,
       headers: mail.headers,
       tags: [{ name: INVITE_LOG_TAG, value: id }],
+      log: { ...mail.log, resendOf: a.resendOf ?? null },
     })) as { id?: string } | undefined;
     await setStatus(db, id, "sent", res?.id || undefined);
   } catch {
@@ -427,9 +461,9 @@ export async function sendEmailInvite(req: Request, d: EmailInviteDeps): Promise
       .prepare("DELETE FROM invite_email_recipient WHERE recipientHash = ?1 AND lastSentAt = ?2")
       .bind(hash, now)
       .run();
-    return json({ error: "mail-failed" }, 502);
+    return { status: "failed", remaining };
   }
-  return json({ status: "sent", remaining });
+  return { status: "sent", remaining };
 }
 
 // ── Opting out ────────────────────────────────────────────────────────────────
@@ -461,6 +495,14 @@ export async function applyOptOut(
       .prepare("UPDATE invite_email_log SET reportedAt = ?2 WHERE id = ?1 AND reportedAt IS NULL")
       .bind(logId, now)
       .run();
+  // The send log's row for this mail (lib/mail-log): unsubscribed, or complained.
+  await applyEventStatus(
+    db,
+    { inviteLogId: logId },
+    action === "report" ? "complained" : "unsubscribed",
+    now,
+    action === "report" ? "abuse-report" : null,
+  );
   return true;
 }
 

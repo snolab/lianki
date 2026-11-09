@@ -39,9 +39,11 @@ the mail.
 ## Resend webhook (bounces and complaints)
 
 `POST https://lianki.com/api/email/resend-webhook` (`lib/resend-webhook.ts`)
-takes Resend's `email.bounced` and `email.complained` events and suppresses the
-address for invite mail (docs/payments.md, "Invite by email"). Every other event
-is answered 204 and ignored.
+takes Resend's `email.delivered`, `email.bounced` and `email.complained`
+events: bounces and complaints suppress the address for invite mail
+(docs/payments.md, "Invite by email"), and all three move the mail's row in the
+send log (docs/mail-templates.md, "Send log"). Every other event is answered
+204 and ignored.
 
 - **Secret**: `RESEND_WEBHOOK_SECRET`, the webhook's signing secret from Resend
   (`whsec_…`), a Worker secret only — no default, nothing in `wrangler.jsonc`,
@@ -59,8 +61,8 @@ is answered 204 and ignored.
 Setting it up (the main lane, once this endpoint is deployed):
 
 1. Resend → Webhooks → Add endpoint: URL
-   `https://lianki.com/api/email/resend-webhook`, events `email.bounced` and
-   `email.complained` only.
+   `https://lianki.com/api/email/resend-webhook`, events `email.delivered`,
+   `email.bounced` and `email.complained` only.
 2. Copy the endpoint's signing secret and set it on the Worker:
    `bunx wrangler secret put RESEND_WEBHOOK_SECRET` (it takes effect at once, no
    deploy).

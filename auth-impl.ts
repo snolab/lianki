@@ -12,7 +12,8 @@ import { passkey } from "@better-auth/passkey";
 import { stripGrantedScopesHook } from "@/lib/google-auth-url";
 import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
-import { isEmailConfigured, sendEmail } from "@/lib/email";
+import { isEmailConfigured, type SendEmailInput } from "@/lib/email";
+import { sendMail } from "@/lib/mail-log/deliver";
 import { trustedOrigins } from "@/lib/trusted-origins";
 import { composeMail } from "@/lib/mail-templates/compose";
 import { recipientMailLocale, requestLocaleTags } from "@/lib/mail-templates/recipient-locale";
@@ -50,14 +51,10 @@ export type Auth = ReturnType<typeof buildMongoAuth>;
  * the kind, the recipient's domain (never the full address), and Resend's
  * message id or the error — enough to trace "QQ Mail can't sign in".
  */
-async function sendSignInMail(
-  kind: "otp" | "link",
-  email: string,
-  mail: Parameters<typeof sendEmail>[0],
-) {
+async function sendSignInMail(kind: "otp" | "link", email: string, mail: SendEmailInput) {
   const domain = email.split("@")[1]?.toLowerCase() ?? "?";
   try {
-    const { id } = await sendEmail(mail);
+    const { id } = await sendMail(mail);
     console.log(JSON.stringify({ event: "signin.mail.sent", kind, domain, id }));
   } catch (err) {
     console.error(
@@ -85,8 +82,9 @@ async function signInTemplate(
 ) {
   const tdb = dbBackend() === "d1" ? (getD1() as unknown as TemplateDb) : null;
   const locale = await recipientMailLocale(tdb, { email }, ...requestLocaleTags(ctx?.headers));
-  const { subject, text, html } = await composeMail(tdb, id, locale, values);
-  return { subject, text, html };
+  // `log` keeps no variable of a sign-in mail (lib/mail-log/vars.ts).
+  const { subject, text, html, log } = await composeMail(tdb, id, locale, values);
+  return { subject, text, html, log };
 }
 
 /**
