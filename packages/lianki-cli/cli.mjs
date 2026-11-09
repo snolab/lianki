@@ -591,7 +591,8 @@ function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
 async function cmdChatSay(c) {
   const token = await needToken(c);
   const parts = (c.argv.text ?? []).map(String);
-  const text = parts.length === 1 && parts[0] === "-" ? (await c.deps.readStdin()).trim() : parts.join(" ").trim();
+  if (c.argv.stdin && parts.length > 0) throw usage("say takes its text or - (stdin), not both", 'lianki chat say "PR #12 is green"');
+  const text = c.argv.stdin ? (await c.deps.readStdin()).trim() : parts.join(" ").trim();
   if (!text) throw usage("say needs text (or - to read it from stdin)", 'lianki chat say "PR #12 is green"');
   const { data } = await call(c, token, {
     method: "POST",
@@ -816,13 +817,19 @@ function build(args, deps, box) {
         sub(y)
           .usage("lianki chat <say|ask|read|listen> — your own chat thread only; lines show the token's name")
           .command(
-            "say <text..>",
+            "say [text..]",
             "Post a line (- reads it from stdin)",
             (y) =>
-              examples(y.positional("text", { type: "string", describe: "The line" }).option("quiet", { type: "boolean", describe: "Shown, never read aloud" }), [
-                ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
-                ["git log -1 --format=%s | lianki chat say -", ""],
-              ]),
+              examples(
+                y
+                  .positional("text", { type: "string", describe: "The line" })
+                  .option("quiet", { type: "boolean", describe: "Shown, never read aloud" })
+                  .option("stdin", { type: "boolean", hidden: true }),
+                [
+                  ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
+                  ["git log -1 --format=%s | lianki chat say -", ""],
+                ],
+              ),
             act(cmdChatSay),
           )
           .command(
@@ -899,8 +906,17 @@ export async function run(args, deps) {
     await run(["--help"], deps);
     return EXIT.usage;
   }
-  // yargs reads a bare `-` as a positional; `--token -` means "from stdin".
-  args = args.flatMap((a, i) => (a === "-" && args[i - 1] === "--token" ? [] : a === "--token" && args[i + 1] === "-" ? ["--token=-"] : [a]));
+  // yargs drops a bare `-` before any command sees it: `--token -` means
+  // "from stdin", and `say -` (`say --quiet -`) becomes `say --stdin`.
+  args = args.flatMap((a, i) =>
+    a === "-" && args[i - 1] === "--token"
+      ? []
+      : a === "--token" && args[i + 1] === "-"
+        ? ["--token=-"]
+        : a === "-" && (args[i - 1] === "say" || args[i - 1] === "--quiet")
+          ? ["--stdin"]
+          : [a],
+  );
   const json = args.includes("--json");
   const box = { task: null };
   let output = "";

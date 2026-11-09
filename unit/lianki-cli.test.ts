@@ -720,6 +720,18 @@ describe("chat (your own thread, with a chat token)", () => {
     expect(seen[1]!.body.quiet).toBe(true);
   });
 
+  test("say - reads the line from stdin (yargs alone drops a bare -)", async () => {
+    const seen: Call[] = [];
+    const h = harness({ env, server: chatServer(seen), stdin: "  -starts with a dash\n" });
+    expect((await h.run("chat", "say", "-")).code).toBe(0);
+    expect(seen[0]!.body).toEqual({ op: "say", text: "-starts with a dash" });
+    expect((await h.run("chat", "say", "--quiet", "-")).code).toBe(0);
+    expect(seen[1]!.body).toMatchObject({ text: "-starts with a dash", quiet: true });
+    const both = await h.run("chat", "say", "-", "extra");
+    expect(both.code).not.toBe(0);
+    expect(seen).toHaveLength(2);
+  });
+
   test("read and ask without --wait", async () => {
     const seen: Call[] = [];
     const h = harness({ env, server: chatServer(seen) });
