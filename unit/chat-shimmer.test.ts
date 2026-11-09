@@ -74,3 +74,17 @@ describe("the CSS", () => {
     expect(SCRUB_PULSE_MS).toBe(2 * HOLD_MS);
   });
 });
+
+describe("createNewLines keeps itself small", () => {
+  it("forgets lines long gone from the list", () => {
+    const n = createNewLines();
+    n.see([reply("h")], 0);
+    const many = Array.from({ length: 150 }, (_, i) => reply(`r${i}`));
+    n.see(many, 10);
+    expect(n.shimmer(many[0]!, 10)).not.toBeNull();
+    // Only the last one left: the rest are dropped, and a later list starts them over.
+    n.see([many[149]!], 20);
+    expect(n.arrivedAt("r0")).toBeUndefined();
+    expect(n.arrivedAt("r149")).toBe(10);
+  });
+});
