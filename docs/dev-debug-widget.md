@@ -515,8 +515,10 @@ to the main thread, as before, but prints agent lines addressed to a node.
 ## Agent edits of voice messages
 
 STT gets words wrong, and it has no context on the conversation. The chat
-lane does: it may **polish the owner's latest line** when that line came from
-the widget's own mic, so the log reads what was meant.
+lane does: it may **polish any of the owner's last `EDITABLE_LINES` (5) lines**
+when the line came from the widget's own mic, so the log reads what was meant.
+The owner wants this often (2026-11-10): polish whenever the context supports
+it, not only when sure of a homophone.
 
 **Which lines are voice.** The widget sends a line `source: "stt"` when the
 draft is exactly what the mic left there: an STT final sent on its own, or
@@ -536,11 +538,10 @@ echo "polished text" | bun scripts/dev/eval.ts edit --last --no-pair -
 Prints the hub's `{"type":"edited","id","thread","text","raw","edited"}`, or
 fails with the rule it broke. Polish, then reply.
 
-**Polish with the context, or not at all.** Fix punctuation, words misheard
-as a homophone that the context disambiguates, and stutters. Never change the
-meaning, never add or drop a word, never use a word the context does not
-contain. If unsure, do not edit: the raw line stands. The context is what the
-voice line carries and what `eval.ts chat` prints with it:
+**Polish with the context, or not at all.** Never change the meaning, never
+invent a word the raw line and the context both lack. If unsure, write the
+unclear-word bracket (below) or leave the line: the raw line stands. The
+context is what the voice line carries and what `eval.ts chat` prints with it:
 
 - `scene` — where it was spoken: the page's `path`, `title`, and `screen`, the
   text visible on screen outside the chat and not hidden by CSS (the deck's
@@ -548,36 +549,62 @@ voice line carries and what `eval.ts chat` prints with it:
   Captured by `pageScene()` (`packages/debug-chat/src/scene.ts`) when the line
   is sent; voice lines only (`cleanScene` in `wire.ts`).
 - `context.selection`, when something was attached;
-- the thread's other kept lines.
+- the thread's other kept lines, before and after it, **the lane's own replies
+  included** (so a word the lane said, "flag", completes his "fl").
 
-The hub holds every edit to that (`polishCheck` in
-`packages/debug-chat/src/polish.ts`, on the words as `Intl.Segmenter` splits
-them, the same for every script): punctuation, spacing, case and width change
-freely (marks inside a word too: cant → can't); a replaced run must be in the
-context as whole words ("now" is not in "snow"), must not merely drop or add
-characters (不要 → 要 is a removal), and stays within 2x the length of what it
-replaces (the same stretch of audio); a removed run only if it repeats what
-is next to it; added words never. A refusal reads `not polished, the raw line
-stands: …`.
+**What `polishCheck` takes** (`packages/debug-chat/src/polish.ts`, on the words
+as `Intl.Segmenter` splits them; each rule unit-tested in `unit/stt-polish.test.ts`):
 
-**Off switch.** `stt.polish-off` at `/dev/flags` (docs/feature-flags.md):
-on, every edit is refused (`polish is off …`) and the chat keeps only what was
-heard. The hub asks the main Worker's `DebugSessions.flag()` on each edit; only an
-answer of exactly `false` lets polish through (busy or an error: the raw line
-stands). A main Worker without `flag()` means not off, so deploy order does
-not matter. Off (the default) is the behaviour above.
+| change | allowed when | example |
+| --- | --- | --- |
+| punctuation, spacing, case, width (marks inside a word too) | always | cant → can't |
+| a replaced run (a homophone) | the new run is in the context as whole words, and within 2x the length of what it replaces | 流失 → 流式, sink → sync |
+| a truncated word completed | a script that spaces its words; the whole word is in the context and the fragment (≥ 2 letters) is not; same 2x bound | fl → flag, pinner → spinner |
+| a function word added, or swapped for another | from `FUNCTION_WORDS`, a small list per script class (Han, Kana, Hangul, Latin, Cyrillic), at most `MAX_FUNCTION_FIXES` (2) a line; no context needed | 在房间看书 → 在房间里看书, open settings → open the settings |
+| a removed run | it repeats what is next to it (a stutter) | 我我我想 → 我想 |
+| an unclear word as a bracket | each candidate, alone in its place, passes the rules above or is a sound-alike of the run it replaces; ≤ `MAX_UNCLEAR_CANDIDATES` (3) a bracket, ≤ `MAX_UNCLEAR_BRACKETS` (2) a line | 票 → （没听清，票？，条？） |
+| anything else added or dropped | never | 要 → 不要, adding 吗 |
+
+- **The function-word lists** hold particles, measure words, articles and
+  prepositions only. Negations and question words (不, 没, 吗, not) are absent on
+  purpose: they are meaning. The lists are data per script class, never per language.
+- **A sound-alike** (unclear brackets only) is the same stretch of audio and
+  spelled within half its letters of the raw run (pinner / spinner) or, in a
+  script that does not space its words, as many characters (票 / 条).
+- **The unclear-word bracket** is an opening bracket, the "didn't catch it"
+  phrase in the line's language, each candidate followed by `?`, and a closing
+  bracket, full-width or ASCII: `（没听清，票？，条？）`, `(unclear, ticket?, strip?)`.
+  The phrases are data, `UNCLEAR_PHRASES` (zh 没听清, en unclear, ja 聞き取れず…);
+  write the one for the line's language. It replaces one raw run. The raw text
+  stays as `raw`, a tap away.
+
+A refusal reads `not polished, the raw line stands: …`, and is logged as
+`debug.polish-refused` with its reason in `wrangler tail lianki-push`, which is
+what to tune the rules from.
+
+**The switch.** `stt.polish` at `/dev/flags#stt.polish` (docs/feature-flags.md):
+**on by default** (polish active). Off: every edit and summary is refused
+(`polish is off …`) and the chat keeps only what was heard. The hub asks the
+main Worker's `DebugSessions.flag()` on each edit, uncached. Only an answer of
+exactly `false` turns it off; a read that fails ("busy", an error) holds the
+edit back (the raw line stands) and logs `debug.polish-flag-unread`. A main
+Worker without `flag()` means on. It replaced the inverted `stt.polish-off`
+(positive flags only, 2026-11-10); migration 0067 carried a stored value over
+inverted. It reaches the owner's thread only (`audience: "owner"`): friends'
+lines are never edited, so there is no one else to widen it to yet.
 
 **The rules** (`DebugHub.edit` in `workers/push/src/debug.ts`, each one unit-tested
 in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:
 
 - the sender holds a live owner grant (chat, or eval, which implies chat); a
   pairing made for a friend never may;
-- the target is the owner's **latest** line in the owner thread (agent replies
-  after it do not count; any earlier line is refused);
-- that line has `source: "stt"`;
+- the target is among the owner's **last `EDITABLE_LINES` (5)** lines in the
+  owner thread (agent replies do not count; a line inside a summary is not one
+  of them; anything older is refused);
+- that line has `source: "stt"`, and is not a summary;
 - it was polished fewer than `MAX_EDITS` (3) times, and the text changes.
 - the polish passes `polishCheck` against the raw text and the context;
-- `stt.polish-off` is not on.
+- `stt.polish` is not off.
 
 Friends' threads and lines can never be edited. On success the stored line
 keeps the first STT text as `raw` (only the first), takes the polished
@@ -593,6 +620,46 @@ never read aloud again. A small muted sparkle after it marks it polished
 the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
+
+### Summaries
+
+Room talk and other people's voices reach the chat as his voice lines. The
+lane may collapse a run of them into **one short line saying what was said**,
+`（旁人在聊租房，嫌贵）`. The owner, 2026-11-10: sometimes he says something
+meaningful and wants to be heard and kept company, so a summary **keeps the
+meaningful content and is never reduced to "noise"**. A summarised line can
+still be answered, warmly, like any other: if what was said matters to him,
+reply to it.
+
+```bash
+bun scripts/dev/eval.ts edit --summary --last 2 --no-pair "（旁人在聊租房，嫌贵）"
+bun scripts/dev/eval.ts edit --summary <id1> <id2> --no-pair "（旁人在聊租房，嫌贵）"
+```
+
+`{type:"summary", ids | last, text}` (`DebugHub.summarise`) is a separate kind
+of edit: the word rules do not apply. It is accepted only if:
+
+- the sender may edit (as above), and `stt.polish` is not off;
+- every line is the owner's, `source: "stt"`, among his last `EDITABLE_LINES`,
+  not a summary already, not still being spoken;
+- the lines are **consecutive in the thread**: nobody, the lane included, spoke
+  in between (a reply to one of them keeps it apart);
+- `summaryCheck` passes: one sentence, at most `SUMMARY_SHARE` (40%) of the raw
+  length, and more than one word (a bare "（杂音）" is refused).
+
+**Nothing is deleted.** The run's first line takes the summary as its `text`,
+every line's heard text joined as its `raw`, and `summary: {at, by, ids}`. The
+other lines stay stored as they were, with `collapsedInto: <first id>`. The
+account's history (docs/chat-history.md) keeps every line as it was and gains
+the summary as a line of its own (`<first id>.summary`), so the learning
+partner can search and review both later. Listeners hear `{type:"edited", …,
+summary}`.
+
+**On the page.** The collapsed lines are hidden (`applyEditTo`, the widget's
+message list). The first shows the summary with a small visible tag (摘要 /
+Summary / 要約, tooltip "summary of what was heard, tap to see the lines"); a tap
+shows every line as heard, another tap goes back. A summarised run takes no
+more merges or polishes.
 
 ## Continuous speech amends the last line
 
@@ -686,7 +753,7 @@ An undo: `{type:"edited", …, split:[{id, text, at}…]}`.
   passage-end (a page gone) an `edit` is taken again, but nobody is told: the raw stands.
 - The rules are `polishCheck`'s, unchanged. New: a merged line's parts are in its
   context, so a word later in the passage may correct an earlier one (流失 → 流式).
-- `stt.polish-off` on: merges happen, no polish-due goes out, every edit stays refused.
+- `stt.polish` off: merges happen, no polish-due goes out, every edit stays refused.
 - A single voice line polishes as before, at once. No polish-due, so no extra wake.
 
 **Cost.** Polish is the lane's Claude turn; the hub calls no model, so nothing new
@@ -695,7 +762,7 @@ are N wakes (each `edited` is a wake, as the chat line was) plus one for `polish
 and exactly one polish, however long the passage; flag off, nothing. `MAX_EDITS` (3)
 still caps a line's polishes, and a settled line takes no more parts. Hub: one flag
 read per 30 s on voice lines (`flag()`'s budget is 60 a minute), one storage write per
-merge, one uncached `flag()` read per passage for `stt.polish-off`.
+merge, one uncached `flag()` read per passage for `stt.polish`.
 
 ### Undo
 

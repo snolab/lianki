@@ -5,9 +5,14 @@
  * Rules:
  * - Only keys listed here exist. The store refuses to write any other key, and
  *   ignores a stored row whose key is not here.
- * - Every default is OFF (`default: false`), so a flag that cannot be read,
- *   a fresh database, and a new flag all mean "off". Ship a new feature dark
- *   behind a flag; when it has been on for good, delete the flag and its checks.
+ * - Every flag is positive: ON provides a feature, never forbids one (owner
+ *   rule, 2026-11-10). No "-off" or "disable" keys.
+ * - A default is OFF (`default: false`) unless the flag guards something that
+ *   is already live: then `default: true`, and a stored row overrides it. A
+ *   new feature ships dark behind a default-off flag; when it has been on for
+ *   good, delete the flag and its checks.
+ * - A flag that cannot be read (D1 error, no D1) is OFF, whatever its default
+ *   (`closedFlags`).
  *
  * Client-safe: no D1 here (the server side is lib/flags-store.ts).
  */
@@ -75,8 +80,11 @@ export type PrereqReason = keyof typeof PREREQ_REASONS;
 export interface FlagDef {
   /** Shown on /dev/flags: what turning it on does (the owner's language). */
   description: string;
-  /** Always off; a flag is a switch the owner turns ON. */
-  default: false;
+  /**
+   * Its state while no row is stored. Off for a new feature; on only for a
+   * flag that keeps something already live switchable (`stt.polish`).
+   */
+  default: boolean;
   /**
    * Checks that must all pass before the flag may be turned ON (the API
    * refuses otherwise; /dev/flags greys the switch). Turning OFF is always
@@ -124,10 +132,10 @@ export const FLAGS = {
     default: false,
     audience: "owner",
   },
-  "stt.polish-off": {
+  "stt.polish": {
     description:
-      "关闭语音消息的自动润色：打开后，助手不能再改写你的语音消息，聊天里只留识别原文。关闭（默认）= 照旧：助手只按上下文（最近的消息、当前页面、屏幕上的词）改错字和标点，不改原意；原文一直保留，点 ✨ 可看。",
-    default: false,
+      "语音消息的自动润色：打开（默认）时，助手可以按上下文（最近的消息和助手的回复、当前页面、屏幕上的词、选中的文字）改你语音消息里的错字、标点、被截断的词和漏掉的小词（的、了、在、里这类），不改原意，最近 5 条语音都能改；原文一直保留，点 ✨ 可看。关闭 = 助手不能再改你的语音消息，聊天里只留识别原文。",
+    default: true,
     audience: "owner",
   },
   "stt.merge": {
@@ -170,10 +178,9 @@ export const FLAGS = {
   },
   "import.any": {
     description:
-      "导入词表（只给你本人）：在 /import 和 /words 顶上的「导入」按钮里，选预制词组，或放进/粘贴 .txt / .csv / .tsv / Excel 词表（一行一个词，或带「单词/释义/例句」等列名的表格，有模板可下载），先看预览（新词几个、已经有几个、跳过几个），确认后变成 /words 里的一个新词表；已经有的词不重复添加。原文不保存，只记下导入结果。只有你本人（isDev）能看到，开或关都一样；打开也不会给其他用户，以后要放给别人得先做白名单。",
+      "导入词表（所有登录用户，免费，不扣额度）：在 /import 和 /words 顶上的「导入」按钮里，选预制词组，或放进/粘贴 .txt / .csv / .tsv / Excel 词表（一行一个词，或带「单词/释义/例句」等列名的表格，有模板可下载），先看预览（新词几个、已经有几个、跳过几个），确认后变成 /words 里的一个新词表；已经有的词不重复添加。原文不保存，只记下导入结果。关闭时只有你本人（isDev）能用。",
     default: false,
     group: "words",
-    audience: "owner",
   },
   "read.gdoc-stream": {
     description:
@@ -275,12 +282,17 @@ export function isFlagKey(key: unknown): key is FlagKey {
   return typeof key === "string" && Object.hasOwn(FLAGS, key);
 }
 
-/** Every flag at its default (off). */
+/** Every flag at its registry default (what a key with no stored row reads as). */
 export function defaultFlags(): Record<FlagKey, boolean> {
-  return Object.fromEntries(FLAG_KEYS.map((k) => [k, FLAGS[k].default])) as Record<
+  return Object.fromEntries(FLAG_KEYS.map((k) => [k, FLAGS[k].default as boolean])) as Record<
     FlagKey,
     boolean
   >;
+}
+
+/** Every flag off: what an unreadable store reads as, whatever the defaults (fail closed). */
+export function closedFlags(): Record<FlagKey, boolean> {
+  return Object.fromEntries(FLAG_KEYS.map((k) => [k, false])) as Record<FlagKey, boolean>;
 }
 
 /** The stored row that decides `key`: its own, or else its old key's (FLAG_OLD_KEYS). */
