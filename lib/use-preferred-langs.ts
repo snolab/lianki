@@ -12,7 +12,12 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useLocale } from "next-intlayer";
 import { notePrefWrite, PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
-import { defaultPreferred, normalizePreferred, PREFERRED_LANGS_KEY } from "@/lib/lang-order";
+import {
+  defaultPreferred,
+  normalizePreferred,
+  parseStored,
+  PREFERRED_LANGS_KEY,
+} from "@/lib/lang-order";
 
 /** Fired on this tab after a local write, so every hook re-reads. */
 const LOCAL_EVENT = "lk:lang-preferred";
@@ -47,17 +52,6 @@ function snapshot() {
     read(LEARNING_KEY),
     typeof navigator === "undefined" ? [] : [...(navigator.languages ?? [navigator.language])],
   ]);
-}
-
-/** The stored picks (none: automatic). */
-export function parseStored(raw: string | null): string[] {
-  if (!raw) return [];
-  try {
-    const v: unknown = JSON.parse(raw);
-    return Array.isArray(v) ? normalizePreferred(v) : [];
-  } catch {
-    return [];
-  }
 }
 
 /** Store `list` ([] = back to automatic) and tell the sync engine and the page. */

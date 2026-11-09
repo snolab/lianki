@@ -77,6 +77,17 @@ export function normalizePreferred(tags: readonly unknown[]): string[] {
   return out;
 }
 
+/** The stored copy (`lk:lang-preferred`) as a clean list; [] = automatic. */
+export function parseStored(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? normalizePreferred(v) : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * The automatic list, before the user picks: the languages they study, then
  * the app's language, then the browser's (navigator.languages /

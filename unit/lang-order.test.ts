@@ -6,10 +6,10 @@ import {
   langMatch,
   normalizePreferred,
   orderByPreferred,
+  parseStored,
   PREFERRED_LANGS_MAX,
 } from "@/lib/lang-order";
 import { checkPref } from "@/lib/prefs/schema";
-import { parseStored } from "@/lib/use-preferred-langs";
 
 const id = (s: string) => s;
 
