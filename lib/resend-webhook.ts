@@ -18,9 +18,15 @@
  *   `invite_log` tag every invite carries, or by Resend's email id — also
  *   stamps that log row's `reportedAt`, which counts toward the inviter's
  *   report block. Every other event: 204, ignored.
+ * - The send log (lib/mail-log, docs/mail-templates.md "Send log"): the mail an
+ *   event names — by its `mail_log` tag, else Resend's email id — moves to
+ *   delivered (`email.delivered`), bounced (a hard bounce) or complained.
+ *   Statuses only move forward. A delivery for no logged mail: 204.
  * - No body and no address is ever logged.
  */
 import type { D1Like } from "@/lib/d1/types";
+import { applyEventStatus, findForEvent } from "@/lib/mail-log/store";
+import { MAIL_LOG_TAG } from "@/lib/mail-log/vars";
 import { INVITE_LOG_TAG } from "@/lib/referrals/email-invite-config";
 import { recipientHash } from "@/lib/referrals/recipient-hash";
 
@@ -149,14 +155,19 @@ type ResendEvent = {
 
 const LOG_ID = /^[0-9a-f-]{36}$/;
 
-/** The invite log id in an event's tags: Resend sends an object; an array of {name, value} is read too. */
-export function inviteLogTag(tags: unknown): string | null {
+/** A log id tag in an event's tags: Resend sends an object; an array of {name, value} is read too. */
+function logTag(tags: unknown, name: string): string | null {
   let v: unknown;
-  if (Array.isArray(tags))
-    v = tags.find((t) => (t as { name?: unknown })?.name === INVITE_LOG_TAG)?.value;
-  else if (tags && typeof tags === "object") v = (tags as Record<string, unknown>)[INVITE_LOG_TAG];
+  if (Array.isArray(tags)) v = tags.find((t) => (t as { name?: unknown })?.name === name)?.value;
+  else if (tags && typeof tags === "object") v = (tags as Record<string, unknown>)[name];
   return typeof v === "string" && LOG_ID.test(v) ? v : null;
 }
+
+/** The invite log id in an event's tags. */
+export const inviteLogTag = (tags: unknown) => logTag(tags, INVITE_LOG_TAG);
+
+/** The send log id in an event's tags (lib/mail-log/send.ts adds it to every mail). */
+export const mailLogTag = (tags: unknown) => logTag(tags, MAIL_LOG_TAG);
 
 type LogRow = { id: string; recipientHash: string };
 
@@ -193,14 +204,36 @@ export async function applyResendEvent(
 ): Promise<{ status: "ignored" } | { status: "done"; reason: string; linked: boolean }> {
   const type = event?.type;
   const data = event?.data;
-  if ((type !== "email.bounced" && type !== "email.complained") || !data)
+  if (
+    (type !== "email.bounced" && type !== "email.complained" && type !== "email.delivered") ||
+    !data
+  )
     return { status: "ignored" };
+  // The send log's row (lib/mail-log): by its tag, else by Resend's email id.
+  const emailId =
+    typeof data.email_id === "string" && data.email_id && data.email_id.length <= 128
+      ? data.email_id
+      : null;
+  const mailId = await findForEvent(db, mailLogTag(data.tags), emailId);
+  if (type === "email.delivered") {
+    if (!mailId) return { status: "ignored" };
+    await applyEventStatus(db, { id: mailId }, "delivered", now);
+    return { status: "done", reason: "delivered", linked: true };
+  }
   if (type === "email.bounced") {
     // Only a hard bounce suppresses; a mailbox that was full may take mail later.
     const kind = data.bounce?.type;
     if (kind !== undefined && kind !== null && kind !== "Permanent") return { status: "ignored" };
   }
   const reason = type === "email.bounced" ? "bounce" : "complaint";
+  if (mailId)
+    await applyEventStatus(
+      db,
+      { id: mailId },
+      reason === "bounce" ? "bounced" : "complained",
+      now,
+      reason === "bounce" ? "hard-bounce" : "complaint",
+    );
   const log = await linkedInvite(db, data);
   const hashes = new Set<string>();
   if (log) hashes.add(log.recipientHash);

@@ -68,6 +68,13 @@ export type AuditKind =
   | "mail-template.save"
   | "mail-template.activate"
   | "mail-template.test-send"
+  // The send log at /dev/mails (lib/mail-log, docs/mail-templates.md "Send
+  // log"): a mail sent again (subject: its log row id, detail: the template),
+  // an address suppressed by hand (subject: the row id) or taken off the list
+  // (subject: the first 12 hex of its hash). Never an address.
+  | "mail-log.resend"
+  | "mail-log.suppress"
+  | "mail-log.unsuppress"
   | "site-role.grant"
   | "site-role.revoke";
 

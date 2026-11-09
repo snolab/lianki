@@ -101,3 +101,56 @@ Mails never spell the product name: `{brand}` / `{brandLong}`, filled from
 - QA: `scripts/qa/qa-templates.mjs` (suite `templates`): desktop + phone,
   light + dark, edit → preview → unsafe HTML refused → save → test send →
   diff → rollback.
+
+## Send log: /dev/mails (isDev)
+
+Owner request 2026-11-09. Every outgoing mail gets one row in D1
+`mail_log` (`db/migrations/0066_mail_log.sql`), written in the one send path:
+`lib/mail-log/send.ts` `withMailLog` wraps the provider call (Resend, or the
+local stub). Production wiring is `lib/mail-log/deliver.ts` (`sendMail`,
+`localOrSend`); the login notice wraps its own D1 the same way
+(`lib/security/auth-plugin.ts`). Callers pass `log` on the send input —
+`composeMail` returns it (template, version, locale, kept variables) and the
+caller adds the user / inviter ids. `log` is never sent to the provider.
+
+- **Row**: time, template id + version (0 = built-in, -1 = an editor test
+  send), locale, **recipient address**, its hash (matches
+  `invite_email_suppression`), user id / inviter id / invite log id when
+  known, status, a short reason, Resend's message id, and `resend_of`.
+- **Status**: `queued` before the call → `sent` (message id) or `failed`
+  (short reason, anything shaped like an address cut out). Then, forward only,
+  from Resend's webhook: `delivered` (`email.delivered`), `bounced` (hard
+  bounce), `complained` (`email.complained`); from the invite opt-out:
+  `unsubscribed` (Unsubscribe) or `complained` (Report abuse). A late
+  "delivered" never undoes a complaint; a failed mail stays failed. The row
+  is found by the `mail_log` tag every mail carries, else by the message id.
+- **The address** (owner decision): stored; read only at /dev/mails and
+  `/api/dev/mails` (isDev); never written to a log line; deleted with the
+  account (trigger on `user`: rows to its address, about it, or that it sent
+  as invites). Invite rows from before the log are copied masked
+  (`f***@example.com`, `recipient_masked` = 1) — no address backfill.
+- **Variables**: only the allow-list in `lib/mail-log/vars.ts`
+  (`STORED_VARS`) is kept, filtered again inside the logger whatever a caller
+  passes. Never a sign-in code, a sign-in or confirm link, an invite link or
+  an opt-out token. The detail view re-renders the mail from template id +
+  version + kept variables; anything not kept shows as `{name}` or
+  `https://placeholder.invalid/<name>`.
+
+The page (`app/(app)/dev/mails`, API `app/api/dev/mails` →
+`lib/mail-log/route.ts`): the list newest first, 50 a page; filters
+(template, status, language, JST date range); search by part of an address or
+a whole message id; per-day counts (JST); one mail's detail in a sandboxed
+frame; the suppressed-addresses list with Remove.
+
+- **Resend** (confirmation first): refused for `signin-code`, `signin-link`,
+  `email-confirm`, test sends, masked rows, suppressed addresses, and a mail
+  whose re-render would need a value that was not kept. An invite goes through
+  the invite path itself (`inviteOne`, as its inviter): daily slots, the
+  address's 30-day window, account, suppression, report block — all apply.
+  10 per developer per 10 minutes. The new row links to the first
+  (`resend_of`). A stub on a local server.
+- **Suppress address**: puts the row's hash in `invite_email_suppression`
+  (reason `manual`); **Remove** deletes a hash from it.
+- `security_audit`: `mail-log.resend` / `.suppress` / `.unsuppress` — row ids
+  and hash prefixes, never an address.
+- Tests: `unit/mail-log.test.ts`; QA `scripts/qa/qa-mails.mjs` (suite `mails`).

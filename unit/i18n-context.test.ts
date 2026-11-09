@@ -22,6 +22,7 @@ import leaveGuard from "@/app/components/leave-guard.content";
 import creditsUsage from "@/app/(app)/membership/credits/credits-usage.content";
 import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
 import devTemplates from "@/app/(app)/dev/templates/templates.content";
+import devMails from "@/app/(app)/dev/mails/mails.content";
 import devUsers from "@/app/(app)/dev/users/users.content";
 import devPregrant from "@/app/(app)/dev/users/pregrant.content";
 import textSize from "@/app/components/text-size.content";
@@ -121,6 +122,7 @@ describe.each([
   ["leave-guard", leaveGuard],
   ["dev-permissions", devPermissions],
   ["dev-templates", devTemplates],
+  ["dev-mails", devMails],
   ["dev-users", devUsers],
   ["dev-pregrant", devPregrant],
   ["text-size", textSize],

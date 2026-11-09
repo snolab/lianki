@@ -18,6 +18,7 @@ export type DevPageName =
   | "levels"
   | "lian"
   | "liveFrontends"
+  | "mails"
   | "membership"
   | "newOrder"
   | "permissions"

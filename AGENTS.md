@@ -143,6 +143,7 @@ that are expensive to rediscover.
 | Adding or renaming a route: nouns, /lab, /dev, 308 redirects             | [docs/url-principles.md](docs/url-principles.md)                    |
 | Secrets, auth, OAuth config                                              | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
 | Transactional mail: templates, /dev/templates, locked variables          | [docs/mail-templates.md](docs/mail-templates.md)                    |
+| Every sent mail: the send log at /dev/mails, statuses, Resend rules       | [docs/mail-templates.md](docs/mail-templates.md), "Send log"        |
 | Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI        | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Who may do what: isAdmin/isDev grants, /dev/permissions, break-glass CLI | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Google Drive connection (/connections), private Docs import              | [docs/connections.md](docs/connections.md)                          |
