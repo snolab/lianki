@@ -47,7 +47,7 @@ const isCheck = (e: unknown) => /CHECK constraint/i.test(String(e));
 
 export async function reserveAi(
   d1: D1WithBatch,
-  r: { userId: string; key: string; reserved: number },
+  r: { userId: string; key: string; reserved: number; what?: string },
   now = new Date(),
 ): Promise<ReserveResult> {
   if (!Number.isInteger(r.reserved) || r.reserved <= 0) throw new Error("bad reservation");
@@ -63,7 +63,14 @@ export async function reserveAi(
         .bind(r.key, r.userId, r.reserved, at),
       ...creditStmts(
         d1,
-        { userId: r.userId, amount: -r.reserved, reason: "ai", refId: aiRefId(r.key) },
+        {
+          userId: r.userId,
+          amount: -r.reserved,
+          reason: "ai",
+          refId: aiRefId(r.key),
+          // The feature (lib/payments/prices.ts FEATURES) for the usage view; none = a partner reply.
+          note: r.what,
+        },
         at,
       ),
     ]);

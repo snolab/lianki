@@ -379,7 +379,10 @@ describe("extractSelfIntro (mocked model)", () => {
       { userId: "u1", complete: fakeModel(answer).complete },
     );
     expect(logs).toHaveLength(1);
-    expect(JSON.parse(logs[0]!)).toMatchObject({ event: "self-intro.import.cost" });
+    expect(JSON.parse(logs[0]!)).toMatchObject({
+      event: "credits.unmetered",
+      what: "self-intro.import",
+    });
     for (const l of logs) {
       expect(l).not.toContain("Mei");
       expect(l).not.toContain("nurse");

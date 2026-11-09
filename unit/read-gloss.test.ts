@@ -9,7 +9,7 @@ import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { WordsD1Repo } from "@/lib/repos/wordsD1";
 import { parseLemmas } from "@/lib/read/lemma";
 import { exampleFinder, glossMessages, headOf, lookupGloss, parseGlosses } from "@/lib/read/gloss";
-import { chargeAi, fillGlosses, type Complete } from "@/lib/read/gloss-server";
+import { fillGlosses, type Complete } from "@/lib/read/gloss-server";
 import { scopeSession, type BookCtx, type RangeWord } from "@/lib/read/book-word-list";
 
 const lem = parseLemmas(
@@ -158,7 +158,6 @@ describe("filling and backfilling (D1)", () => {
     };
     const out = await fillGlosses(d1, book, [{ w: "boa" }], { userId: "u2", complete });
     expect(out[0].back ?? null).toBeNull();
-    expect(await chargeAi("u2", { usd: 0.0001, words: 1 })).toEqual({ ok: true });
   });
 
   test("a card made without a meaning gets one; a meaning already there is kept", async () => {

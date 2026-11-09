@@ -237,7 +237,7 @@ describe("one charge per word", () => {
     test("the user's own AI: the commit asks no model of ours", async () => {
       await fillGlosses(d1, BOOK, [x()], null);
       expect(calls).toBe(0);
-      expect(route).toContain("body.own === true ? null : { userId: ctx.userId }");
+      expect(route).toContain("body.own === true ? null : payerOf(ctx)");
     });
   });
 });

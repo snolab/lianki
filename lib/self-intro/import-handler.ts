@@ -8,6 +8,8 @@
  * (unit/self-intro-import.test.ts checks that no store is touched). The rate
  * limit is in memory, per isolate, like the other self-intro routes.
  */
+import type { D1WithBatch } from "@/lib/payments/credits-store";
+import { noCreditsResponse } from "@/lib/payments/metered";
 import { flagIn, type FlagValues } from "@/lib/flags";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { sameOriginJsonPost } from "@/lib/security/same-origin";
@@ -28,7 +30,17 @@ export type ImportDeps = {
   flags: FlagValues;
   configured: boolean;
   complete: Complete;
+  /** The credit wallet the model call is paid from (lib/payments/metered.ts); null: unmetered. */
+  db?: D1WithBatch | null;
 };
+
+/** The user pays: their wallet, their email (an admin is free). */
+const payer = (userId: string, deps: ImportDeps) => ({
+  userId,
+  email: deps.user?.email ?? null,
+  db: deps.db ?? null,
+  complete: deps.complete,
+});
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(body, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -92,7 +104,8 @@ export async function handleImport(req: Request, deps: ImportDeps): Promise<Resp
     schema: ImportRequest,
   });
   if (c instanceof Response) return c;
-  const r = await extractSelfIntro(c.body, { userId: c.userId, complete: deps.complete });
+  const r = await extractSelfIntro(c.body, payer(c.userId, deps));
+  if (!r.ok && r.error === "no-credits") return noCreditsResponse(r);
   if (!r.ok) return json({ error: r.error }, r.error === "empty" ? 400 : 502);
   return json({ facts: r.facts });
 }
@@ -106,7 +119,8 @@ export async function handleFollowup(req: Request, deps: ImportDeps): Promise<Re
     schema: FollowupRequest,
   });
   if (c instanceof Response) return c;
-  const r = await followupTurn(c.body, { userId: c.userId, complete: deps.complete });
+  const r = await followupTurn(c.body, payer(c.userId, deps));
+  if (!r.ok && r.error === "no-credits") return noCreditsResponse(r);
   if (!r.ok) return json({ error: r.error }, 502);
   return json({ facts: r.facts, question: r.question });
 }

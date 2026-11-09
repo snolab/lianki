@@ -102,6 +102,9 @@ export default async function RootLayout({
   ) as unknown as PartnerStrings;
   // The unsaved-changes confirm (LeaveGuard, leave-guard.content.ts).
   const leave = String(getIntlayer("leave-guard", locale as never).unsaved);
+  // "Not enough credits · Get credits" (NoCreditsNotice, credits-needed.content.ts).
+  const cn = getIntlayer("credits-needed", locale as never);
+  const credits = { message: String(cn.message), topUp: String(cn.topUp), close: String(cn.close) };
   // The disclaimer before another website (ExternalLinkGuard, external-link.content.ts).
   const ext = getIntlayer("external-link", locale as never);
   const extStrings: ExternalLinkStrings = {
@@ -122,7 +125,7 @@ export default async function RootLayout({
   const liHub = flagIn(flags, "voice.li-hub");
   // The owner's ETA bar (lib/eta-ping.ts): the chat shows it only on his pages.
   const etaBar = flagIn(flags, ETA_FLAG);
-  const boots = { strings: partner, leave, open, chatFull, etaBar, liHub };
+  const boots = { strings: partner, leave, credits, open, chatFull, etaBar, liHub };
   const box = boxConfig();
   return (
     <html

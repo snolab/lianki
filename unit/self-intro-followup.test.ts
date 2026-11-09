@@ -179,7 +179,10 @@ describe("followupTurn (mocked model)", () => {
     ]);
     // The cost is the only log line, and carries none of the answer.
     expect(logs).toHaveLength(1);
-    expect(JSON.parse(logs[0]!)).toMatchObject({ event: "self-intro.followup.cost" });
+    expect(JSON.parse(logs[0]!)).toMatchObject({
+      event: "credits.unmetered",
+      what: "self-intro.followup",
+    });
     expect(logs.join("\n")).not.toContain("Exampleton");
   });
 
