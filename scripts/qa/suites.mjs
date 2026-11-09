@@ -259,6 +259,15 @@ export const SUITES = [
     args: ["scripts/qa/qa-read-sel-one.ts"],
     sensitive: true,
   },
+  // Serverless: "New version · Refresh" only when the current page's code changed.
+  {
+    name: "SMART REFRESH",
+    id: "smart-refresh",
+    paths: [], // serverless: its entry's own imports (VersionNotice, lib/smart-refresh, the hub)
+    cmd: "bun",
+    args: ["scripts/qa/qa-smart-refresh.ts"],
+    sensitive: false,
+  },
   {
     name: "SYNC (db-sync-matrix)",
     cmd: "bunx",

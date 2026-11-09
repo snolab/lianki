@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { DebugHub, type Socket, type Storage, hashToken } from "@/workers/push/src/debug";
 import { rpcStub } from "./support/rpc-stub";
-import push, { type Env, VersionHub } from "@/workers/push/src/index";
+import push, { type Env, KEEP_FINGERPRINTS, VersionHub } from "@/workers/push/src/index";
+import { FINGERPRINTS_HEADER } from "@/lib/smart-refresh";
 import { DEV_BRIDGE_HEADER, debugIdentity } from "@/workers/push/src/auth";
 import {
   APPROVAL_MS,
@@ -925,12 +926,15 @@ describe("VersionHub", () => {
         storage: {
           get: async <T>(k: string) => store.get(k) as T | undefined,
           put: async (k: string, v: unknown) => void store.set(k, v),
+          delete: async (k: string) => store.delete(k),
         },
       },
       {} as Env,
     );
-    const publish = (b: string) =>
-      hub.fetch(new Request("https://lianki-push/internal/publish", { method: "POST", body: b }));
+    const publish = (b: string, headers: Record<string, string> = {}) =>
+      hub.fetch(
+        new Request("https://lianki-push/internal/publish", { method: "POST", body: b, headers }),
+      );
     return { hub, sockets, publish };
   };
 
@@ -945,6 +949,66 @@ describe("VersionHub", () => {
     hub.webSocketMessage();
     hub.webSocketClose(sockets[0] as unknown as WebSocket, 1001);
     expect(sockets[0].closed).toBe(1001);
+  });
+
+  // Smart refresh (lib/smart-refresh.ts): each page hears what changed since its own build.
+  const fpOf = (build: string, words: string, force = false) => ({
+    build,
+    shell: "s",
+    routes: { "/words": words, "/list": "l" },
+    ...(force ? { force: true } : {}),
+  });
+  /** As the main Worker publishes (lib/announce-build.ts): the bare id, fingerprints in a header. */
+  const announce = (
+    publish: (b: string, h: Record<string, string>) => Promise<Response>,
+    b: string,
+    words: string,
+    force = false,
+    fpBuild = b,
+  ) =>
+    publish(b, {
+      [FINGERPRINTS_HEADER]: encodeURIComponent(JSON.stringify(fpOf(fpBuild, words, force))),
+    });
+
+  it("tells each page what changed since its own build", async () => {
+    const { hub, sockets, publish } = make();
+    await announce(publish, "b1", "w1");
+    await hub.fetch(new Request("https://lianki.com/api/version/ws?b=b1"));
+    await hub.fetch(new Request("https://lianki.com/api/version/ws")); // a page from before
+    expect(sockets[0].sent).toEqual([
+      { build: "b1", shell: false, routes: { "/words": 0, "/list": 0 } },
+    ]);
+    expect(sockets[1].sent).toEqual([{ build: "b1" }]);
+    // b2 changes /words only.
+    expect(await (await announce(publish, "b2", "w2")).json()).toEqual({ build: "b2", pushed: 2 });
+    expect(sockets[0].sent[1]).toEqual({
+      build: "b2",
+      shell: false,
+      routes: { "/words": 1, "/list": 0 },
+    });
+    expect(sockets[1].sent[1]).toEqual({ build: "b2" });
+    // A forced deploy says so to every page.
+    await announce(publish, "b3", "w2", true);
+    expect(sockets[0].sent[2]).toMatchObject({ build: "b3", force: true });
+    expect(sockets[1].sent[2]).toEqual({ build: "b3", force: true });
+    // Fingerprints naming another build than announced are ignored.
+    await announce(publish, "b4", "w9", false, "bX");
+    expect(sockets[0].sent[3]).toEqual({ build: "b4" });
+    // A malformed header: the build alone.
+    await publish("b5", { [FINGERPRINTS_HEADER]: "%E0%A4%A" });
+    expect(sockets[0].sent[4]).toEqual({ build: "b5" });
+  });
+
+  it("keeps fingerprints for the last builds only", async () => {
+    const { hub, publish } = make();
+    const store = (hub as unknown as { ctx: { storage: { get(k: string): Promise<unknown> } } }).ctx
+      .storage;
+    for (let i = 0; i < KEEP_FINGERPRINTS + 2; i++) await announce(publish, `b${i}`, `w${i}`);
+    await announce(publish, "b5", "w5"); // a repeat is kept once
+    expect(await store.get("fp:b0")).toBeUndefined();
+    expect(await store.get("fp:b1")).toBeUndefined();
+    expect(await store.get("fp:b2")).toBeDefined();
+    expect(((await store.get("fp-order")) as string[]).length).toBe(KEEP_FINGERPRINTS);
   });
 });
 
