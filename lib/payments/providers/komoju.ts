@@ -7,7 +7,7 @@
  * toggled at /dev/flags, no deploy).
  *
  * - **test**: an `sk_test_…` key and the flag off. Only the owner
- *   (`site_role`) is offered it, and its webhook credits only the owner —
+ *   (`isAdmin`, lib/permissions.ts) is offered it, and its webhook credits only the owner —
  *   a test card must never become real credits for anyone else.
  * - **live**: an `sk_live_…` key and the flag on. Offered to everyone.
  * - **off**: a secret is missing, the key disagrees with the flag (a live key

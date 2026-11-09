@@ -1,6 +1,6 @@
 import { isSessionTag, isUserId, sessionTag } from "@/lib/dev-eval";
-import { normalizeEmail } from "@/lib/owner";
-import { readOwnerEmails } from "@/lib/site-role";
+import { readHolders } from "@/lib/account-permission";
+import { normalizeEmail } from "@/lib/permissions";
 import { isFlagKey } from "@/lib/flags";
 
 /**
@@ -38,9 +38,10 @@ export async function sessionLive(
     .prepare(SQL)
     .bind(user)
     .all<{ id: string; expiresAt: string | number; email: string | null }>();
-  // Straight from site_role, no snapshot. Like the session read above, a D1
-  // error throws: renewal stops and the hub treats it as unsure, not as gone.
-  const owners = await readOwnerEmails(db);
+  // The `dev` grant (eval is dev tooling), straight from D1, no snapshot. Like
+  // the session read above, a D1 error throws: renewal stops and the hub
+  // treats it as unsure, not as gone.
+  const owners = await readHolders(db, "dev");
   const t = (opts.now ?? Date.now)();
   for (const s of results) {
     if (!owners.includes(normalizeEmail(s.email))) return false;

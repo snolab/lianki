@@ -28,8 +28,7 @@ import {
   type ThrottleDb,
 } from "@/lib/security/throttle";
 import { mailLocale } from "@/lib/sign-in-mail";
-import { readOwnerEmails, type OwnerReadDb } from "@/lib/site-role";
-import { readGrants } from "@/lib/account-permission";
+import { readGrants, type PermissionReadDb } from "@/lib/account-permission";
 import { PROFILE } from "./config";
 import {
   emailChangedMail,
@@ -90,18 +89,17 @@ export function cleanEmail(raw: unknown): string | null {
 }
 
 /**
- * The active owners, read from D1 each time and not from the isolate's snapshot:
- * that one fails closed to "nobody", which here would let an owner's address move.
- * A failed read throws, so nothing changes.
+ * Everyone holding a permission (admin or dev, account_permission), read from
+ * D1 each time and not from the isolate's snapshot: that one fails closed to
+ * "nobody", which here would let a holder's address move. A failed read
+ * throws, so nothing changes.
  */
 const activeOwners = async (db: EmailDb) => {
-  const d = db as unknown as OwnerReadDb;
-  // Anyone holding a permission (account_permission) counts as well: grants go by address too.
-  const [owners, grants] = await Promise.all([readOwnerEmails(d), readGrants(d)]);
-  return [...new Set([...owners, ...grants.map((g) => g.email)])];
+  const grants = await readGrants(db as unknown as PermissionReadDb);
+  return [...new Set(grants.map((g) => g.email))];
 };
 
-/** The role goes by this exact address (lib/owner.ts): moving it would drop the role. */
+/** A grant goes by this exact address (lib/permissions.ts): moving it would drop the grant. */
 const isOwnerAddress = (owners: string[], email: string) => owners.includes(email.toLowerCase());
 
 /** Stricter for a target: an alias of an owner's address is refused too. */
@@ -109,9 +107,7 @@ const isOwnerAlias = (owners: string[], email: string) =>
   owners.some((o) => canonicalEmail(o) === canonicalEmail(email));
 
 /** ?1 old address, ?2 new address. Holds inside the batch, so a grant made just now still counts. */
-const NO_OWNER_INVOLVED = `NOT EXISTS (SELECT 1 FROM site_role
-  WHERE email IN (lower(?1), lower(?2)) AND revoked_at IS NULL) AND NOT EXISTS (
-  SELECT 1 FROM account_permission
+const NO_OWNER_INVOLVED = `NOT EXISTS (SELECT 1 FROM account_permission
   WHERE email IN (lower(?1), lower(?2)) AND revoked_at IS NULL)`;
 
 /** Does another account hold this address, in its exact or its canonical form? */
@@ -138,7 +134,7 @@ export async function requestEmailChange(req: Request, d: EmailDeps): Promise<Re
   if (!d.mailOn()) return json({ error: "mail-off" }, 503);
   const db = d.db();
   const owners = await activeOwners(db);
-  // The role is the address in site_role: moving it here would lock its holder out of /dev.
+  // A grant is the address in account_permission: moving it would lock its holder out of /dev.
   if (isOwnerAddress(owners, who.email)) return json({ error: "owner" }, 403);
   const body = (await req.json().catch(() => null)) as { email?: unknown } | null;
   const email = cleanEmail(body?.email);

@@ -104,10 +104,10 @@ beforeEach(() => {
         "INSERT INTO user (id, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, 1, '2026-11-01', '2026-11-01')",
       )
       .run(u.userId, u.email);
-  raw.prepare("DELETE FROM site_role").run();
+  raw.prepare("DELETE FROM account_permission").run();
   raw
     .prepare(
-      "INSERT INTO site_role (email, role, granted_by, granted_at) VALUES (?, 'owner', 'test', 1)",
+      "INSERT INTO account_permission (email, permission, granted_by, granted_at) VALUES (?, 'dev', 'test', 1)",
     )
     .run(OWNER.email);
 });

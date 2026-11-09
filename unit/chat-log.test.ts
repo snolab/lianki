@@ -8,7 +8,7 @@ import { byDay, dayRange, plainText } from "../lib/chat-history-view";
 
 const SCHEMA =
   "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT);\n" +
-  "CREATE TABLE site_role (email TEXT, role TEXT, revoked_at INTEGER);\n" +
+  "CREATE TABLE account_permission (email TEXT, permission TEXT, revoked_at INTEGER);\n" +
   readFileSync(new URL("../db/migrations/0057_chat_line.sql", import.meta.url), "utf8");
 
 const T0 = 1_800_000_000_000;
@@ -19,7 +19,7 @@ beforeEach(() => {
   const d = createTestD1(SCHEMA);
   raw = d.raw();
   raw.exec(`INSERT INTO user VALUES ('own1', 'owner@example.com'), ('fr1', 'f@example.com'), ('fr2', 'g@example.com');
-            INSERT INTO site_role VALUES ('owner@example.com', 'owner', NULL);`);
+            INSERT INTO account_permission VALUES ('owner@example.com', 'dev', NULL);`);
   db = d as unknown as ChatLogDb;
 });
 
@@ -116,7 +116,7 @@ describe("chatLogOp: the hub's writes", () => {
 
   it("the owner's thread goes to the active owners' accounts; a revoked owner gets none", async () => {
     raw.exec(`INSERT INTO user VALUES ('own2', 'old@example.com');
-              INSERT INTO site_role VALUES ('old@example.com', 'owner', 123);`);
+              INSERT INTO account_permission VALUES ('old@example.com', 'dev', 123);`);
     await put("owner", line("o1"));
     expect(rows().map((r) => [r.user_id, r.id, r.thread])).toEqual([["own1", "o1", "owner"]]);
   });

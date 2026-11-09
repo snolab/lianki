@@ -14,7 +14,7 @@ One D1 row per line of the user's **own** thread (`chat_line`,
 
 | column | what |
 | --- | --- |
-| `user_id` | the account; the owner's thread goes to each active owner (`site_role`), a Learning Partner thread to that user |
+| `user_id` | the account; the owner's thread goes to each account holding `dev`, a Learning Partner thread to that user |
 | `id`, `thread` | the hub's line id; `owner` or the user's id |
 | `sender` | the line's `from`: owner, friend, agent |
 | `lane` | main, codex or agy on agent lines (`voices.ts` `laneOf`: the field, else the `【lane】` prefix, taken off the text; else main) |

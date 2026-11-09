@@ -919,9 +919,9 @@ describe("the main Worker's live-session lookup (DebugSessions RPC)", () => {
     const d = new TestD1Database();
     await d.exec(
       "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT); CREATE TABLE session (id TEXT PRIMARY KEY, userId TEXT, expiresAt TEXT);" +
-        "CREATE TABLE site_role (email TEXT PRIMARY KEY, role TEXT NOT NULL DEFAULT 'owner', granted_by TEXT NOT NULL DEFAULT 't', granted_at INTEGER NOT NULL DEFAULT 1, revoked_at INTEGER);",
+        "CREATE TABLE account_permission (email TEXT, permission TEXT NOT NULL DEFAULT 'dev', granted_by TEXT NOT NULL DEFAULT 't', granted_at INTEGER NOT NULL DEFAULT 1, revoked_at INTEGER);",
     );
-    await d.exec(`INSERT INTO site_role (email) VALUES ('${OWNER}')`);
+    await d.exec(`INSERT INTO account_permission (email) VALUES ('${OWNER}')`);
     const add = (sql: string, ...v: unknown[]) =>
       d
         .prepare(sql)
@@ -953,7 +953,7 @@ describe("the main Worker's live-session lookup (DebugSessions RPC)", () => {
     expect(await live("u1", "s1")).toBe(false);
     expect(await live(undefined, await sessionTag("s1"))).toBe(false);
     // A revoked owner: gone at once, no snapshot in between.
-    await (d as unknown as TestD1Database).exec("UPDATE site_role SET revoked_at = 1");
+    await (d as unknown as TestD1Database).exec("UPDATE account_permission SET revoked_at = 1");
     expect(await live("u1", await sessionTag("s1"))).toBe(false);
   });
 

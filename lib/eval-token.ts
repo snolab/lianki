@@ -9,18 +9,19 @@
  * DebugSessions.evalToken (worker.ts), reachable only over the SESSIONS
  * service binding.
  *
- * Deny by default. The token must be live, hold `eval`, and its account be a
- * site owner right now (site_role, no cache). Every use is in security_audit
- * (`api-token.eval`: connect, or one eval), never the token, only its tag;
+ * Deny by default. The token must be live, hold `eval`, and its account hold
+ * the `dev` permission right now (account_permission, no cache). Every use is
+ * in security_audit (`api-token.eval`: connect, or one eval), never the
+ * token, only its tag;
  * a refused known token at most REFUSED_AUDITS per window. Per token in D1:
  * EVAL_LIMIT uses per window.
  */
 import { checkToken, tagOf } from "@/lib/api-tokens";
 import type { D1Like } from "@/lib/d1/types";
-import { normalizeEmail } from "@/lib/owner";
 import { type AuditDb, audit } from "@/lib/security/audit-log";
 import { hit, type Limit, type ThrottleDb } from "@/lib/security/throttle";
-import { readOwnerEmails, type OwnerReadDb } from "@/lib/site-role";
+import { readHolders, type PermissionReadDb } from "@/lib/account-permission";
+import { normalizeEmail } from "@/lib/permissions";
 
 const MIN = 60_000;
 /** Connects and evals per token: a lane's burst of commands, never a loop. */
@@ -57,7 +58,7 @@ export type EvalTokenAnswer =
       retryAfterMs?: number;
     };
 
-export type EvalTokenDb = D1Like & ThrottleDb & AuditDb & OwnerReadDb;
+export type EvalTokenDb = D1Like & ThrottleDb & AuditDb & PermissionReadDb;
 
 export async function evalTokenCheck(
   db: EvalTokenDb,
@@ -84,8 +85,8 @@ export async function evalTokenCheck(
     await refused(db, c.user.id, c.id, `eval ${op} no-expiry`, now);
     return { ok: false, error: "expired" };
   }
-  // Straight from site_role: a D1 error throws, and the hub refuses.
-  const owners = await readOwnerEmails(db);
+  // The `dev` grant, straight from D1: a D1 error throws, and the hub refuses.
+  const owners = await readHolders(db, "dev");
   if (!owners.includes(normalizeEmail(c.user.email))) {
     await refused(db, c.user.id, c.id, `eval ${op} not-owner`, now);
     return { ok: false, error: "not-owner" };

@@ -4,7 +4,7 @@
  * no polling, the single-use handoff posted in a form body, and the way back.
  */
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { clearOwnerCache, setOwnerSnapshot } from "../lib/owner";
+import { clearPermissionCache, grantAll } from "./support/grants";
 import { readFileSync } from "node:fs";
 import {
   DEV_SERVER_ORIGIN,
@@ -134,15 +134,15 @@ const OWNERS = {};
 const labels = () => ({ name: "n", off: "f", checking: "c" });
 
 describe("who gets it (server side)", () => {
-  beforeEach(() => setOwnerSnapshot(["owner@example.com"]));
-  afterAll(() => clearOwnerCache());
+  beforeEach(() => grantAll(["owner@example.com"]));
+  afterAll(() => clearPermissionCache());
 
   test("guests and other users: nothing at all, not even the strings", () => {
     expect(devSwitchFor(null, labels, OWNERS)).toBeUndefined();
     expect(devSwitchFor("friend@example.com", labels, OWNERS)).toBeUndefined();
-    clearOwnerCache();
+    clearPermissionCache();
     expect(devSwitchFor("owner@example.com", labels, OWNERS)).toBeUndefined();
-    setOwnerSnapshot(["owner@example.com"]);
+    grantAll(["owner@example.com"]);
     let asked = 0;
     devSwitchFor("friend@example.com", () => (asked++, labels()), OWNERS);
     expect(asked).toBe(0); // the strings are never even looked up for them

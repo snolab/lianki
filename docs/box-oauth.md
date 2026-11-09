@@ -34,8 +34,8 @@ address (the origin it is bound to), box chat, and custom frontends
 ([custom-frontend.md](custom-frontend.md)). It is the table
 `live_frontend_allow`, kept on `/dev/box-clients` (add by email or user id,
 remove) and shown on `/dev/live-frontends` as well; code in
-`lib/box-oauth/allowlist.ts`. A site owner (`site_role`) approves the list and
-needs no row of their own.
+`lib/box-oauth/allowlist.ts`. An admin approves the list; an account holding
+`dev` (`account_permission`) needs no row of its own.
 
 - **Bind time.** `/dev/box-clients` refuses to bind an account that is not on
   the list (403, and a `box.bind-refused` row in `security_audit`).
@@ -205,8 +205,10 @@ Now (`server-session.ts`, `server-auth.ts`):
 - **What it opens.** Nothing on lianki.com: the server holds the same token the
   page already does, from the same origin, and can call only what the token can.
   `/api/box/me` now also says the account's `id`, so the box's server keys its
-  session by the real account. The owner role is lianki.com's for that account
-  (`setOwnerSnapshot`), so the box's own `/dev` pages show to the owner; their
+  session by the real account. Its permissions are lianki.com's for that account:
+  `/api/box/me` reports `isAdmin` and `isDev`, and the box's server puts exactly
+  those into its snapshot (`setPermissionSnapshot`; an answer without them grants
+  nothing), so the box's own `/dev` pages show as on lianki.com; their
   calls still go to lianki.com, where a token never reaches `/api/dev`.
 - **Data drawn on the server is still the box's own.** A server page that reads
   D1 itself (`/list`'s cards, `/roadmap`'s goals, `/connections`) reads the box's
@@ -274,8 +276,8 @@ chat history, send lines to the agents, transcribe with the mic, and tap ask
 cards, approvals included. That is the box's own code, its dependencies, and
 anything an agent runs there.
 
-**Who can have it.** Only a box whose binding's account is a site owner
-(`site_role`, [secrets-and-auth.md](secrets-and-auth.md), "The owner role"). The
+**Who can have it.** Only a box whose binding's account holds `dev`
+(`account_permission`, [secrets-and-auth.md](secrets-and-auth.md), "Permissions"). The
 owner turns it on per box on `/dev/box-clients` ("允许盒子上的聊天", behind a
 warning and a confirm) and off with "关闭盒子上的聊天". Revoking the box ends it
 with everything else. Each grant, removal and ticket mint is in `security_audit`
@@ -302,11 +304,11 @@ page-error log, no inbox upload, no state-tree writes or resolves, no local STT
 ticket. Read-aloud uses the TTS routes a box already had.
 
 **Fail closed, four times.** (1) Grant: `setBoxChat` refuses a binding whose
-account is not a site owner. (2) The gate: a `box:chat` route also needs the
-token's account to be a site owner, read from D1 on that request
-(`isSiteOwnerUser`, no cache). (3) The routes: `chat-ticket` and `stt` check the
+account does not hold `dev`. (2) The gate: a `box:chat` route also needs the
+token's account to hold `dev`, read from D1 on that request
+(`isDevUser`, no cache). (3) The routes: `chat-ticket` and `stt` check the
 signed identity's binding again (`boxChatCaller`: live, same account, holds the
-scope, site owner). (4) The hub: before it takes each line from a box socket it
+scope, holds `dev`). (4) The hub: before it takes each line from a box socket it
 asks the main Worker (`DebugSessions.boxChat`, an RPC with no URL): flag on,
 binding live with the scope, account a site owner. "gone", or a main Worker that
 has no such check, closes the socket (4401). An unsure answer drops that line only.
@@ -482,8 +484,8 @@ that keeps them until it revalidates: one hard reload (Cmd+Shift+R) clears them.
 - **Server data is local.** The box's server knows the account (above), but
   server components that read D1 read the box's local D1.
   `authClient.useSession` is empty (nothing in the app uses it).
-- **An owner's own box.** Bound to an owner's account (`site_role`), admin routes stay
-  closed, but on allowlisted routes `isOwner` is true, so owner-only feature
+- **An owner's own box.** Bound to an account holding `dev`, admin routes stay
+  closed, but on allowlisted routes `isDev` is true, so owner-only feature
   previews apply. Accepted (owner's direction, 2026-11-05): tokens never reach
   admin routes, which is what matters.
 - **Token in the page.** Any script on the box can read the tab's token. That

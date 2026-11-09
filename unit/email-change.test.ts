@@ -49,7 +49,9 @@ const rows = (sql: string, ...args: (string | number)[]) =>
 const grant = (email: string) =>
   raw
     .raw()
-    .prepare("INSERT INTO site_role (email, granted_by, granted_at) VALUES (?, 't', 1)")
+    .prepare(
+      "INSERT INTO account_permission (email, permission, granted_by, granted_at) VALUES (?, 'admin', 't', 1)",
+    )
     .run(email);
 const addUser = (id: string, email: string, canonical = email) =>
   raw
@@ -161,7 +163,9 @@ describe("what has to hold before anything starts", () => {
     expect(mails).toEqual([]);
   });
   test("a revoked owner is an ordinary user again", async () => {
-    raw.raw().exec("UPDATE site_role SET revoked_at = 2 WHERE email = 'owner+admin@gmail.com'");
+    raw
+      .raw()
+      .exec("UPDATE account_permission SET revoked_at = 2 WHERE email = 'owner+admin@gmail.com'");
     me = { id: "u1", email: "owner+admin@gmail.com", sessionCreatedMs: T0 };
     expect(await (await ask()).json()).toEqual({ status: "sent" });
   });
@@ -179,7 +183,7 @@ describe("what has to hold before anything starts", () => {
             return typeof v === "function" ? v.bind(t) : v;
           }
           return (q: string) => {
-            if (q.includes("site_role")) throw new Error("D1 down");
+            if (q.includes("account_permission")) throw new Error("D1 down");
             return t.prepare(q);
           };
         },

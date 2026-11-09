@@ -15,7 +15,7 @@ mock.module("@/auth", () => ({
   }),
 }));
 
-const { clearOwnerCache, setOwnerSnapshot } = await import("../lib/owner");
+const { clearPermissionCache, grantAll } = await import("./support/grants");
 const { devBridgeUser } = await import("../lib/dev-bridge-user");
 const { DEV_BRIDGE_HEADER } = await import("../lib/dev-bridge");
 
@@ -32,16 +32,16 @@ describe("devBridgeUser", () => {
   });
   afterAll(() => {
     process.env.DEV_BRIDGE_SECRET = saved.s;
-    clearOwnerCache();
+    clearPermissionCache();
   });
 
-  beforeEach(() => setOwnerSnapshot([OWNER.email, "second@example.com"]));
+  beforeEach(() => grantAll([OWNER.email, "second@example.com"]));
 
   test("no header: undefined, so the route uses the session", async () => {
     expect(await devBridgeUser(req())).toBeUndefined();
   });
 
-  test("the right secret: the owner, looked up by the oldest grant in site_role", async () => {
+  test("the right secret: the owner, looked up by the oldest `dev` grant", async () => {
     lookups.length = 0;
     expect(await devBridgeUser(req(SECRET))).toEqual(OWNER);
     expect(lookups).toEqual([OWNER.email]);

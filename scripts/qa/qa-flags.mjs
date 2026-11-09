@@ -256,7 +256,7 @@ try {
   await signup.close();
   const at = Date.now();
   sql(
-    `INSERT OR REPLACE INTO site_role (email, granted_by, granted_at) VALUES ('${EMAIL}', 'qa', ${at})`,
+    `INSERT OR REPLACE INTO account_permission (email, permission, granted_by, granted_at) VALUES ('${EMAIL}', 'admin', 'qa', ${at}), ('${EMAIL}', 'dev', 'qa', ${at})`,
   );
   // One flag on for everyone, and a renamed flag on under its old key only.
   sql("DELETE FROM feature_flags");
@@ -269,7 +269,7 @@ try {
   }
 } finally {
   sql("DELETE FROM feature_flags");
-  sql(`DELETE FROM site_role WHERE email = '${EMAIL}'`);
+  sql(`DELETE FROM account_permission WHERE email = '${EMAIL}'`);
   await browser.close();
 }
 console.log(failed ? `${failed} FAILED` : "all passed");

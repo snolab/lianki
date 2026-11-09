@@ -25,6 +25,10 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
   If a time-sensitive suite times out, look at the load first (`uptime`); if it is
   high, wait, then retry once. See
   [docs/shipping.md](docs/shipping.md), "Admission by load".
+- **Gates are permission grants.** Every owner/dev/admin check is `isAdmin` or
+  `isDev` (`lib/permissions.ts`, rows in `account_permission`). Never
+  `OWNER_EMAILS`, a hardcoded email, or the unused `site_role` table — not even
+  for the owner. [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions".
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
@@ -138,7 +142,7 @@ that are expensive to rediscover.
 | Adding or renaming a route: nouns, /lab, /dev, 308 redirects          | [docs/url-principles.md](docs/url-principles.md)                       |
 | Secrets, auth, OAuth config                                           | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                   |
 | Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI     | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions"    |
-| Who is the owner: `site_role`, /dev/owners, break-glass CLI           | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "The owner role" |
+| Who may do what: isAdmin/isDev grants, /dev/permissions, break-glass CLI | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Google Drive connection (/connections), private Docs import           | [docs/connections.md](docs/connections.md)                             |
 | Anything calling an LLM or TTS                                        | [docs/workers-ai.md](docs/workers-ai.md)                               |
 | Learning Partner AI replies for users (DeepSeek, caps)                | [docs/partner-ai.md](docs/partner-ai.md)                               |

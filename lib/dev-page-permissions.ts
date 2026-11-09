@@ -13,7 +13,6 @@ export const DEV_PAGE_PERMISSION: Record<string, Permission> = {
   friends: "admin",
   "gift-codes": "admin",
   membership: "admin",
-  owners: "admin",
   permissions: "admin",
   users: "admin",
   design: "dev",

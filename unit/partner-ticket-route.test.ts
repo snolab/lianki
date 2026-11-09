@@ -73,7 +73,7 @@ const setup = async (o: { session?: string | null; backend?: "d1" | "mongodb" } 
     backend: () => o.backend ?? "d1",
     d1: db,
     sessionEmail: async () => o.session ?? null,
-    isOwner: async (e) => {
+    isDev: async (e) => {
       asked.push(e);
       return e === OWNER;
     },

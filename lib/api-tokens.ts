@@ -14,7 +14,7 @@
  *   them. A route asks for one scope; a token without it is refused.
  * - **`eval`, the site owner's alone** (OWNER_SCOPES; docs/secrets-and-auth.md,
  *   "Eval tokens"): run code on the owner's open pages with no pairing tap.
- *   Offered and accepted only for a site owner's session, at most
+ *   Offered and accepted only for a session holding `dev`, at most
  *   EVAL_MAX_DAYS, and checked again at every use (lib/eval-token.ts).
  * - **Required expiry**, picked by the user: EXPIRY_DAYS or a date, at most
  *   MAX_EXPIRY_DAYS ahead. No silent "forever".
@@ -58,7 +58,7 @@ export const SCOPE_IDS: readonly ScopeId[] = SCOPES.map((s) => s.id);
 export const FORBIDDEN_SCOPES = ["pair", "grant", "admin", "answer", "owner"] as const;
 
 /**
- * Permissions only a site owner may give a token (site_role, read live at
+ * Permissions only an account holding `dev` may give a token (account_permission, read live at
  * creation and at every use). Anyone else is never offered them, and a
  * request naming one is refused as if it did not exist.
  */

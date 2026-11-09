@@ -5,6 +5,7 @@
  * of: which account, and which origin. Both are unique while the binding is
  * live, so one account has one box and one box has one account.
  */
+import { holdsSql, userHolds } from "@/lib/account-permission";
 import { audit, type AuditDb } from "@/lib/security/audit-log";
 import { SCOPE_CHAT, SCOPE_EVAL, isBoxOrigin, parseScopes } from "./rules";
 
@@ -53,13 +54,13 @@ const COLS = "client_id, origin, user_id, scopes, created_at, revoked_at";
  * premium feature, default deny. A user may have a box, and a box may do
  * anything at all, only while that user is on the owner's list — the same list
  * as custom frontends (`live_frontend_allow`, /dev/box-clients and
- * /dev/live-frontends) — or is a site owner, who approves the list. As SQL, so
- * every lookup a box's use goes through reads it in the same query, live.
+ * /dev/live-frontends) — or holds the `dev` permission (lib/permissions.ts).
+ * As SQL, so every lookup a box's use goes through reads it in the same query,
+ * live.
  */
 const allowedUser = (col: string) =>
   `(EXISTS (SELECT 1 FROM live_frontend_allow la WHERE la.user_id = ${col})
-    OR EXISTS (SELECT 1 FROM user ou JOIN site_role os ON os.email = lower(trim(ou.email))
-               WHERE ou.id = ${col} AND os.role = 'owner' AND os.revoked_at IS NULL))`;
+    OR ${holdsSql(col, "dev")})`;
 
 /** May this account have a box (bind time)? */
 export async function isBoxAllowed(db: BoxDb, userId: string): Promise<boolean> {
@@ -223,20 +224,13 @@ export async function liveToken(
 }
 
 /**
- * Is this account a site owner right now (site_role, lib/site-role.ts)? Read
- * from D1 each time, never from a cache: box:chat is refused the moment the
- * role is revoked. Exact address, as lib/owner.ts compares them.
+ * Does this account hold the `dev` permission right now (account_permission,
+ * lib/permissions.ts)? Read from D1 each time, never from a cache: box:chat is
+ * refused the moment the grant is revoked. Exact address, as the snapshot
+ * compares them.
  */
-export async function isSiteOwnerUser(db: BoxDb, userId: string): Promise<boolean> {
-  const r = await db
-    .prepare(
-      `SELECT 1 AS ok FROM user u JOIN site_role s ON s.email = lower(trim(u.email))
-       WHERE u.id = ?1 AND s.role = 'owner' AND s.revoked_at IS NULL LIMIT 1`,
-    )
-    .bind(userId)
-    .first<{ ok: number }>();
-  return r?.ok === 1;
-}
+export const isDevUser = (db: BoxDb, userId: string): Promise<boolean> =>
+  userHolds(db, userId, "dev");
 
 export type ChatGrant = "granted" | "removed" | "unchanged" | "no-box" | "not-owner";
 
@@ -255,7 +249,7 @@ export async function setBoxChat(
   const live = await anyBindingByClient(db, clientId);
   if (!live) return "no-box";
   const has = live.scopes.includes(SCOPE_CHAT);
-  if (on && !(await isSiteOwnerUser(db, live.userId))) return "not-owner";
+  if (on && !(await isDevUser(db, live.userId))) return "not-owner";
   if (has === on) return "unchanged";
   // box:eval rides on the chat socket: removing chat removes it too.
   const hadEval = live.scopes.includes(SCOPE_EVAL);
@@ -304,7 +298,7 @@ export async function setBoxEval(
   const live = await anyBindingByClient(db, clientId);
   if (!live) return "no-box";
   const has = live.scopes.includes(SCOPE_EVAL);
-  if (on && !(await isSiteOwnerUser(db, live.userId))) return "not-owner";
+  if (on && !(await isDevUser(db, live.userId))) return "not-owner";
   if (on && !live.scopes.includes(SCOPE_CHAT)) return "needs-chat";
   if (has === on) return "unchanged";
   const scopes = on ? [...live.scopes, SCOPE_EVAL] : live.scopes.filter((s) => s !== SCOPE_EVAL);
@@ -338,7 +332,7 @@ export async function boxEvalLive(db: BoxDb, clientId: unknown): Promise<boolean
     !!b &&
     b.scopes.includes(SCOPE_CHAT) &&
     b.scopes.includes(SCOPE_EVAL) &&
-    (await isSiteOwnerUser(db, b.userId))
+    (await isDevUser(db, b.userId))
   );
 }
 
@@ -350,7 +344,7 @@ export async function boxEvalLive(db: BoxDb, clientId: unknown): Promise<boolean
 export async function boxChatLive(db: BoxDb, clientId: unknown): Promise<boolean> {
   if (typeof clientId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(clientId)) return false;
   const b = await bindingByClient(db, clientId);
-  return !!b && b.scopes.includes(SCOPE_CHAT) && (await isSiteOwnerUser(db, b.userId));
+  return !!b && b.scopes.includes(SCOPE_CHAT) && (await isDevUser(db, b.userId));
 }
 
 /**
@@ -365,7 +359,7 @@ export async function chatBinding(
 ): Promise<Binding | null> {
   const b = await bindingByClient(db, clientId);
   if (!b || b.userId !== userId || !b.scopes.includes(SCOPE_CHAT)) return null;
-  return (await isSiteOwnerUser(db, userId)) ? b : null;
+  return (await isDevUser(db, userId)) ? b : null;
 }
 
 /** The user row the app sees for a verified identity. */

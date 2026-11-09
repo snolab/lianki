@@ -5,11 +5,12 @@
  * the signed-in user reads and deletes their own at /chat/history
  * (app/api/chat/history).
  *
- * Whose lines: a thread is "owner" (written to every active owner's account,
- * site_role) or a user id (that user's Learning Partner thread, written to
+ * Whose lines: a thread is "owner" (written to every account holding `dev`,
+ * lib/permissions.ts) or a user id (that user's Learning Partner thread, written to
  * that account only). Every read and delete is by the session's user id; no
  * request can name another account.
  */
+import { holderIds } from "./account-permission";
 import { OWNER_THREAD, isUserId } from "./dev-eval";
 import {
   CHAT_LOG_MAX_LINES,
@@ -64,17 +65,8 @@ const lineOf = (r: Row): ChatHistoryLine => ({
   answer: r.answer,
 });
 
-/** The accounts of the active owners, by exact address (site_role, lib/site-role.ts). */
-export async function ownerIds(db: ChatLogDb): Promise<string[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT u.id AS id FROM user u JOIN site_role r ON lower(trim(u.email)) = r.email
-       WHERE r.role = 'owner' AND r.revoked_at IS NULL`,
-    )
-    .bind()
-    .all<{ id: string }>();
-  return results.map((r) => r.id);
-}
+/** The owner thread's accounts: those holding `dev` (the owner chat thread, lib/permissions.ts). */
+export const ownerIds = (db: ChatLogDb): Promise<string[]> => holderIds(db, "dev");
 
 /** The accounts a thread's lines belong to: the owners for "owner", else that user. */
 export async function accountsOf(db: ChatLogDb, thread: string): Promise<string[]> {

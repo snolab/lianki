@@ -28,8 +28,8 @@ export type PartnerTicketDeps = {
   d1: () => D1Like;
   /** The signed-in session's email, or null. */
   sessionEmail: () => Promise<string | null>;
-  /** Is this the owner (refreshing the owner list first: a token reads no session). */
-  isOwner: (email: string | null) => Promise<boolean>;
+  /** Does this account hold `dev` (refreshing the grants first: a token reads no session)? */
+  isDev: (email: string | null) => Promise<boolean>;
   /** STT_TICKET_KEY's private key, or null when it is not set or unreadable. */
   key: () => Promise<CryptoKey | null>;
   now?: () => number;
@@ -55,7 +55,7 @@ const json = (body: unknown, status: number) =>
 export async function partnerTicket(req: Request, deps: PartnerTicketDeps): Promise<Response> {
   if (req.headers.get(PARTNER_TICKET_HEADER) !== "1") return json({ error: "Not found" }, 404);
   const email = (await partnerTokenEmail(req, deps)) ?? (await deps.sessionEmail());
-  if (!email || !(await deps.isOwner(email))) return json({ error: "Not found" }, 404);
+  if (!email || !(await deps.isDev(email))) return json({ error: "Not found" }, 404);
   const key = await deps.key();
   if (!key) return json({ error: "Partner tickets are off" }, 503);
   // Audience and expiry only: a partner ticket is chat-only by its audience.

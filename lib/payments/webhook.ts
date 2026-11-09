@@ -18,7 +18,6 @@
  *   200, since a retry cannot fix it.
  */
 import { isAdmin } from "@/lib/permissions";
-import { refreshOwnersFrom } from "@/lib/owner-store";
 import { refreshPermissionsFrom } from "@/lib/permission-store";
 import {
   creditTestTopup,
@@ -34,9 +33,9 @@ export interface WebhookReply {
   body: Record<string, unknown>;
 }
 
-/** A webhook has no session, so it refreshes the owner list itself (lib/owner-store.ts). */
+/** A webhook has no session, so it refreshes the grants itself (lib/permission-store.ts). */
 async function ownerAccount(d1: D1WithBatch, userId: string): Promise<boolean> {
-  await Promise.all([refreshOwnersFrom(d1), refreshPermissionsFrom(d1)]);
+  await refreshPermissionsFrom(d1);
   return isAdmin(await emailOf(d1, userId));
 }
 

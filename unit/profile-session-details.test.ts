@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SessionDetailsCard } from "../app/(app)/profile/SessionDetailsCard";
-import { clearOwnerCache, setOwnerSnapshot } from "../lib/owner";
+import { clearPermissionCache, grantAll } from "./support/grants";
 
 const now = new Date("2026-11-09T00:00:00Z");
 const session = {
@@ -25,11 +25,11 @@ const render = (viewerEmail: string | null) =>
     createElement(SessionDetailsCard, { viewerEmail, title: "Session Details", session }),
   );
 
-afterEach(() => clearOwnerCache());
+afterEach(() => clearPermissionCache());
 
 describe("profile session details", () => {
   test("a normal user's profile has no session-details block", () => {
-    setOwnerSnapshot(["dev@example.com"]);
+    grantAll(["dev@example.com"]);
     const html = render("user@example.com");
     expect(html).toBe("");
     expect(html).not.toContain("session-details");
@@ -41,7 +41,7 @@ describe("profile session details", () => {
   });
 
   test("an account with dev access sees it, without the token", () => {
-    setOwnerSnapshot(["dev@example.com"]);
+    grantAll(["dev@example.com"]);
     const html = render("dev@example.com");
     expect(html).toContain('data-testid="session-details"');
     expect(html).toContain("Session Details");

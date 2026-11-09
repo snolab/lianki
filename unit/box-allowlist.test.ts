@@ -47,7 +47,7 @@ beforeEach(async () => {
       .run();
   await db
     .prepare(
-      "INSERT INTO site_role (email, role, granted_by, granted_at) VALUES ('owner@test.example', 'owner', 'test', 1)",
+      "INSERT INTO account_permission (email, permission, granted_by, granted_at) VALUES ('owner@test.example', 'dev', 'test', 1)",
     )
     .run();
   for (const c of ["c1", "c2"])
@@ -100,7 +100,7 @@ describe("who is on the list", () => {
 
   test("a site owner approves the list and needs no row", async () => {
     expect(await isBoxAllowed(box(), "owner")).toBe(true);
-    await db.prepare("UPDATE site_role SET revoked_at = 1").run();
+    await db.prepare("UPDATE account_permission SET revoked_at = 1").run();
     expect(await isBoxAllowed(box(), "owner")).toBe(false);
   });
 
@@ -228,7 +228,7 @@ describe("chat and eval read the list too", () => {
     expect(await setBoxEval(box(), "c2", true, "owner", NOW)).toBe("granted");
     expect(await boxChatLive(box(), "c2")).toBe(true);
     expect(await boxEvalLive(box(), "c2")).toBe(true);
-    await db.prepare("UPDATE site_role SET revoked_at = 1").run();
+    await db.prepare("UPDATE account_permission SET revoked_at = 1").run();
     expect(await boxChatLive(box(), "c2")).toBe(false);
     expect(await boxEvalLive(box(), "c2")).toBe(false);
   });

@@ -10,13 +10,13 @@
  * Env: CLOUDFLARE_API_TOKEN (needs Account · Access: Apps and Policies · Edit;
  * the CI deploy token does not have it) and CLOUDFLARE_ACCOUNT_ID.
  * Options: --email a@b,c@d (required: who Access allows; the owners are in D1,
- * see `bun scripts/dev/owner-role.ts list`), --session 24h, --require-mfa (only if the identity provider reports MFA).
+ * see `bun scripts/dev/permission.ts list`), --session 24h, --require-mfa (only if the identity provider reports MFA).
  *
  * Idempotent: the policy and the application are found by name and updated
  * in place, so running it twice changes nothing.
  *
- * The in-app gate (lib/owner.ts: every /dev page and /api/dev route answers
- * 404 to anyone but an owner in site_role) stays; this is the layer in front of it.
+ * The in-app gate (lib/permissions.ts: every /dev page and /api/dev route answers
+ * 404 to anyone without the admin or dev grant) stays; this is the layer in front of it.
  * Service-binding calls (lianki-push → /api/dev/whoami) do not pass through the
  * zone, so Access does not affect them.
  */

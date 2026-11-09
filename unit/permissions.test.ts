@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
-import { clearOwnerCache, setOwnerSnapshot } from "@/lib/owner";
 import {
   PERMISSION_CACHE_MS,
   PERMISSION_REFRESH_MS,
@@ -13,11 +12,14 @@ import {
   setPermissionSnapshot,
   type Grant,
 } from "@/lib/permissions";
-import { refreshPermissions, refreshPermissionsFrom } from "@/lib/permission-store";
+import { refreshHolders, refreshPermissions, refreshPermissionsFrom } from "@/lib/permission-store";
 import { useBackend, useD1 } from "./support/testMocks";
 import {
   grantPermission,
+  holderIds,
   listGrants,
+  readHolders,
+  userHolds,
   readGrants,
   revokePermission,
   validPermissionEmail,
@@ -44,18 +46,14 @@ const audits = () =>
 
 beforeEach(() => {
   clearPermissionCache();
-  // No old owners: these tests are about the grants alone.
-  setOwnerSnapshot([]);
   d1 = createTestD1(testSchema());
 });
 afterEach(() => {
   clearPermissionCache();
-  clearOwnerCache();
 });
 
 describe("isAdmin / isDev", () => {
   it("fail closed: no snapshot grants nothing", () => {
-    clearOwnerCache();
     expect(isAdmin(ME.email)).toBe(false);
     expect(isDev(ME.email)).toBe(false);
     expect(isDev(null)).toBe(false);
@@ -86,13 +84,16 @@ describe("isAdmin / isDev", () => {
     expect(isDev("a@example.com", T0 - 1)).toBe(false);
   });
 
-  it("step a: an old site_role owner still passes both, and is listed as a holder", () => {
-    setOwnerSnapshot(["owner@example.com"]);
-    expect(isAdmin("owner@example.com")).toBe(true);
-    expect(isDev("owner@example.com")).toBe(true);
+  it("step c: an old site_role owner without a grant passes nothing", async () => {
+    d1.raw().exec(
+      "INSERT INTO site_role (email, role, granted_by, granted_at) VALUES ('owner@example.com', 'owner', 't', 1)",
+    );
+    await refreshPermissions(read);
+    expect(isAdmin("owner@example.com")).toBe(false);
+    expect(isDev("owner@example.com")).toBe(false);
     setPermissionSnapshot([{ email: "dev@example.com", permission: "dev" }]);
-    expect(permissionHolders("dev")).toEqual(["dev@example.com", "owner@example.com"]);
-    expect(permissionHolders("admin")).toEqual(["owner@example.com"]);
+    expect(permissionHolders("dev")).toEqual(["dev@example.com"]);
+    expect(permissionHolders("admin")).toEqual([]);
   });
 });
 
@@ -400,5 +401,69 @@ describe("scripts/dev/permission.ts", () => {
       { email: "a@example.com", permission: "dev" },
     ]);
     expect(audits().map((a) => a.actor)).toEqual(["cli", "cli"]);
+  });
+});
+
+describe("live reads from D1 (no snapshot)", () => {
+  const addUser = (id: string, email: string) =>
+    d1
+      .raw()
+      .prepare(
+        "INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, 'x', ?, 1, 1, 1)",
+      )
+      .run(id, email);
+
+  it("readHolders, holderIds, userHolds: only an active grant, by exact address", async () => {
+    addUser("u_dev", "Dev@Example.com");
+    addUser("u_none", "none@example.com");
+    addUser("u_old", "snomiao@gmail.com"); // in site_role (migration 0047): no grant
+    await grantPermission(write(), "dev@example.com", "dev", ME, T0);
+    await grantPermission(write(), "admin@example.com", "admin", ME, T0 + 1);
+    expect(await readHolders(read(), "dev")).toEqual(["dev@example.com"]);
+    expect(await readHolders(read(), "admin")).toEqual(["admin@example.com"]);
+    expect(await holderIds(read(), "dev")).toEqual(["u_dev"]);
+    const first = d1 as unknown as Parameters<typeof userHolds>[0];
+    expect(await userHolds(first, "u_dev", "dev")).toBe(true);
+    expect(await userHolds(first, "u_dev", "admin")).toBe(false);
+    expect(await userHolds(first, "u_none", "dev")).toBe(false);
+    expect(await userHolds(first, "u_old", "dev")).toBe(false);
+    await revokePermission(write(), "dev@example.com", "dev", ME, T0 + 2);
+    expect(await userHolds(first, "u_dev", "dev")).toBe(false);
+    expect(await holderIds(read(), "dev")).toEqual([]);
+  });
+
+  it("refreshHolders: oldest grant first, [] when unreadable", async () => {
+    await grantPermission(write(), "b@example.com", "dev", ME, T0 + 5);
+    await grantPermission(write(), "a@example.com", "dev", ME, T0 + 9);
+    await grantPermission(write(), "c@example.com", "admin", ME, T0);
+    expect(await refreshHolders("dev", read)).toEqual(["b@example.com", "a@example.com"]);
+    clearPermissionCache();
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await refreshHolders("dev", () => ({}) as unknown as PermissionReadDb)).toEqual([]);
+    } finally {
+      err.mockRestore();
+    }
+  });
+});
+
+describe("step c: the old owner role is gone", () => {
+  const files = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true, recursive: true })
+      .filter((d) => d.isFile() && /\.(ts|tsx|mjs)$/.test(d.name))
+      .map((d) => `${d.parentPath}/${d.name}`)
+      .filter((f) => !f.includes("node_modules"));
+
+  it("no gate reads site_role, lib/owner, OWNER_EMAILS or isOwner(email)", () => {
+    const hits: string[] = [];
+    for (const f of [...files("app"), ...files("lib"), ...files("workers"), "auth.ts", "worker.ts"])
+      if (
+        /FROM site_role|JOIN site_role|@\/lib\/owner\b|lib\/owner-store|lib\/site-role|OWNER_EMAILS|\bisOwner\(\w*\.?email/.test(
+          readFileSync(f, "utf8"),
+        )
+      )
+        hits.push(f);
+    expect(hits).toEqual([]);
+    expect(readFileSync("wrangler.jsonc", "utf8")).not.toContain("OWNER_EMAILS");
   });
 });

@@ -122,16 +122,19 @@ into its transaction, and it applies on a GET, which a mail scanner would trigge
 - **Email-keyed data**: `fsrs_notes`, `word_lists`, `word_cards`, `word_list_entries`,
   `word_reviews`, `swipe_log`, `watch_stats`, `study_day`, `roadmap_goals`,
   `api_tokens`, `cli_login`, `dev_access_token`. A unit test fails when a migration
-  adds another table with an `email` column. `site_role` also has one, and never
-  moves (see Owner). Everything else goes by user id.
-- **Taken addresses** (exact or canonical form, or an owner's): the same answer and
-  the same two mails, but the new address reads "already in use" instead of a link.
-- **Owner**: `site_role` is read from D1 on every request, not from the isolate's
-  snapshot (which fails closed to "nobody", and would let an owner's address move).
-  An active owner's exact address is refused with its reason, since the role goes by
-  it. A target that is an owner's address or its alias gets the "already in use" mail.
-  The batch checks `site_role` again, so a grant landing mid-request still stops it.
-  A revoked owner is an ordinary user again.
+  adds another table with an `email` column. `account_permission` also has one,
+  and never moves (see Permission holders). `site_role` has one too and is unused
+  (see Permissions). Everything else goes by user id.
+- **Taken addresses** (exact or canonical form, or a permission holder's): the same
+  answer and the same two mails, but the new address reads "already in use" instead
+  of a link.
+- **Permission holders**: `account_permission` is read from D1 on every request, not
+  from the isolate's snapshot (which fails closed to "nobody", and would let a
+  holder's address move). The exact address of anyone holding `admin` or `dev` is
+  refused with its reason, since the grant goes by it. A target that is a holder's
+  address or its alias gets the "already in use" mail. The batch checks
+  `account_permission` again, so a grant landing mid-request still stops it. A
+  revoked holder is an ordinary user again.
 - **Sessions** stay valid, as with better-auth's flow: they point at the user id.
 - **Google/GitHub**: a linked account keeps signing in to this user (matched by
   provider account id first). An unlinked Google account at the old address now
@@ -198,19 +201,40 @@ managed at **`/dev/permissions`** (admin only, 404 otherwise). Every grant and
 revoke goes through an in-app confirm dialog and writes `permission.grant` /
 `permission.revoke` to `security_audit` (detail: `<permission> <address>`).
 
-- **`admin`** — people, money and grants: `/dev/permissions`, `/dev/owners`,
-  users, credits, membership, gift codes, friends, flags, box clients, and the
+- **`admin`** — people, money and grants: `/dev/permissions`, users, credits, membership, gift codes, friends, flags, box clients, and the
   payment test mode.
 - **`dev`** — every other `/dev` page and `/api/dev` route, the dev bridge, live
-  view, the owner chat thread, and features shipped dark (`booksOn(flags, isDev(…))`).
+  view, the whole-page dev server and its tunnel gate, the owner chat thread (chat
+  log, inbox agent, lane chat tokens, `box:chat`), `eval` (eval tokens, `box:eval`,
+  debug-session renewal), the pill chat and partner ticket, the my-box allowlist,
+  and features shipped dark (`booksOn(flags, isDev(…))`, YouTube songs). The
+  Learning Partner AI refuses a `dev` holder (his thread is the dev lanes').
 - Neither implies the other; each is its own grant. Which permission a `/dev`
   page checks is listed in `lib/dev-page-permissions.ts` (a unit test keeps it
   in step with the pages), and the `/dev` layout prints a small "who can see
   this page" line under each page for viewers who hold that permission.
-- **Same rules as the owner role below**: exact address, synchronous checks from
-  an isolate snapshot refreshed by `auth.api.getSession` (`lib/permission-store.ts`),
-  fail closed, a revocation holds everywhere within 30 s. The only active
-  `admin` cannot be revoked (guard inside the `UPDATE`).
+- **Exact address.** Lowercased and trimmed, never the canonical form
+  (`lib/canonical-email.ts`): `someone+admin@gmail.com`, `someone@gmail.com` and
+  `some.one@gmail.com` are three people here. A grant reads no user table.
+- **How checks read it.** `isAdmin`/`isDev` are synchronous and answer from a
+  snapshot in the isolate, refreshed by `auth.api.getSession` (`auth.ts` →
+  `lib/permission-store.ts`) before it hands back a signed-in user. D1 is read once
+  the snapshot is 20 s old; one 30 s old counts for nothing, so a revocation holds
+  everywhere within **30 s**. Code without a session refreshes for itself (the
+  payment webhooks, the bearer-token path of `/api/debug/partner-ticket`, the pill
+  chat). Checks that must be live read D1 directly with the helpers in
+  `lib/account-permission.ts` (`readHolders`, `holderIds`, `userHolds`, `holdsSql`):
+  the `DebugSessions` RPCs, chat and eval tokens, the box allowlist, email change.
+- **Fail closed.** A D1 error, a missing table, or another backend than D1 means
+  nobody holds anything for that call: a 404, not a crash, logged as
+  `permissions.read-failed`. A local Mongo `next dev` has no `/dev`.
+- **"The owner", where only one account can be meant** (the dev bridge, the
+  whole-page dev server's sign-in): the oldest active `dev` grant.
+- **On a box** (docs/box-oauth.md): `/api/box/me` reports `isAdmin` and `isDev`
+  for the signed-in account, and the box's own server puts exactly those into
+  its snapshot, never its local D1. An answer without them grants nothing.
+- **Last admin.** The only active `admin` cannot be revoked (guard inside the
+  `UPDATE`). To replace him, grant the new one first.
 - **No seed.** The migration inserts nobody: grants are added as data after the
   owner approves them (a tap card), with the break-glass CLI:
 
@@ -220,68 +244,22 @@ bun scripts/dev/permission.ts grant someone@example.com admin,dev
 bun scripts/dev/permission.ts revoke someone@example.com dev   # --local for the local D1
 ```
 
-**Migration off `site_role` (2026-11-09), lockout-safe:**
+**Migration off `site_role` (2026-11-09), lockout-safe — done:**
 (a) shipped the table, the helpers, `/dev/permissions` and every call site on
-`isAdmin`/`isDev`, while an active `site_role` owner still passes both checks,
-so nothing changed; (b) the owner approves, and the grants are seeded with the
-CLI above; (c) the fallback, `lib/owner.ts`, `/dev/owners` and the direct
-`site_role` queries (box allowlist, chat log, inbox agent, debug session, chat
-and eval tokens, partner AI, email change) move to `account_permission`.
+`isAdmin`/`isDev`, while an active `site_role` owner still passed both checks;
+(b) the owner approved, and both of his accounts were granted `admin` and `dev`
+with the CLI above (13:30 JST); (c) the fallback, `lib/owner.ts`,
+`lib/owner-store.ts`, `lib/site-role*.ts`, `/dev/owners`,
+`scripts/dev/owner-role*.ts` and every direct `site_role` query were removed.
 
-## The owner role (`site_role`)
-
-Who is the owner is a row in D1, table `site_role`
-(`db/migrations/0047_site_role.sql`, `lib/site-role.ts`), and nowhere else. The
-deploy-time setting `OWNER_EMAILS` was removed on 2026-11-05 (the owner's
-decision); granting or revoking needs no deploy. Change it at **`/dev/owners`**
-(owner only, 404 otherwise). No Worker variable or secret is involved.
-
-- **Exact address.** Lowercased and trimmed, never the canonical form
-  (`lib/canonical-email.ts`): `someone+admin@gmail.com`, `someone@gmail.com` and
-  `some.one@gmail.com` are three people here. A grant reads no user table, so
-  it says nothing about whether the address has an account.
-- **How checks read it.** `isOwner()` (`lib/owner.ts`) stays synchronous and
-  answers from a snapshot in the isolate. `auth.api.getSession` (`auth.ts`)
-  refreshes it (`lib/owner-store.ts`) before it hands back a signed-in user, so
-  every session-based call site is covered without a change. D1 is read once
-  the snapshot is 20 s old; a snapshot 30 s old counts for nothing, so a
-  revocation holds everywhere within **30 s**, and at once in the isolate that
-  wrote it. `/api/debug/identity` and `/api/dev/whoami` use it, so lianki-push
-  and the live page proxy follow. Code without a session reads for itself: the
-  payment webhooks and the bearer-token path of `/api/debug/partner-ticket`
-  refresh the snapshot; the `DebugSessions` RPCs
-  (`lib/debug-session.ts`, `lib/inbox/agent.ts`, `lib/partner-ai.ts`) query
-  `site_role` directly.
-- **Fail closed.** A D1 error, a missing table, or another backend than D1
-  means nobody is the owner for that call: a 404, not a crash, logged as
-  `owners.read-failed`, and retried on the next call. A local Mongo `next dev`
-  therefore has no owner; use the D1 backend for `/dev`.
-- **The owner's chat thread.** The hub puts anyone it is told is an owner on the
-  one owner thread, whichever account, so every owner shares it.
-- **"The owner", where only one account can be meant** (the dev bridge, the dev
-  server's sign-in and tunnel gate): the oldest active grant. Replacing the first
-  owner moves those too.
-- **Last owner.** The only active owner cannot be revoked, on the page or the
-  CLI; the guard is inside the `UPDATE`, so two owners revoking each other at
-  once cannot both pass. To replace the only owner, grant the new one first.
-- **Audit.** Each change writes `site-role.grant` or `site-role.revoke` to
-  `security_audit` in the same batch (actor: the user id, `cli`, or the
-  migration; detail: the address). A no-op writes nothing.
-- **The seed.** Migration 0047 inserts the two owners `OWNER_EMAILS` named, the
-  main account first. The deploy applies migrations before it deploys the Workers (`deploy-worker.yml`),
-  so there is no moment without an owner.
-
-**Break-glass**, when no owner can sign in: the same statements through wrangler
-d1. It needs the Mac's Cloudflare login, which is what authorises it:
-
-```bash
-bun scripts/dev/owner-role.ts list
-bun scripts/dev/owner-role.ts grant someone@example.com
-bun scripts/dev/owner-role.ts revoke someone@example.com   # --local for the local D1
-```
+**`site_role` is unused.** The table (migration 0047) is still in D1 with its
+rows, and nothing reads or writes it; its old audit kinds `site-role.grant` /
+`site-role.revoke` stay readable in `security_audit`. Dropping it is a data
+delete, so it waits for the owner's tap card and its own migration. Never add a
+check against it, against `OWNER_EMAILS`, or against any email in code.
 
 Cloudflare Access (`scripts/ops/cloudflare-access.ts`, prepared, not applied)
-keeps its own allowlist, given with `--email`; it does not follow `site_role`.
+keeps its own allowlist, given with `--email`; it does not follow the grants.
 
 ## Dev bridge (`DEV_BRIDGE_SECRET`)
 
@@ -290,7 +268,7 @@ dev server (docs/dev-whole-page.md) signs its sessions with a local secret,
 so lianki.com can't read them, and the debug chat hub (lianki-push) refused
 that page. The dev server's guard sends this secret in `x-lianki-dev-bridge`,
 lianki-push passes it on, and `/api/debug/identity` answers with the **owner**
-(the oldest active grant in `site_role`), never anyone else, when it matches
+(the oldest active `dev` grant), never anyone else, when it matches
 (`lib/dev-bridge.ts`).
 
 Since 2026-10-31 02:11 JST (the owner typed "1同意"), the same header also
@@ -356,7 +334,7 @@ one). Live cookies sealed with the old value stop working at once.
 A Worker secret on `lianki`: an Ed25519 **private** key (a JWK) that signs
 the tickets for the owner's local STT server over the public tunnel
 (`wss://stt.lianki.com`; [local-stt.md](local-stt.md), "Off the tailnet").
-`POST /api/dev/stt-ticket` answers the owner's session only (`isOwner`, 404
+`POST /api/dev/stt-ticket` answers the owner's session only (`isDev`, 404
 for anyone else; 503 while the secret is unset) with a ticket good for 60 s
 and one connection (`aud` `lianki-stt`, a random `jti`). The Mac holds only
 the **public** key (`~/.config/lianki-stt/ticket.pub`), so nothing on the Mac
@@ -476,9 +454,9 @@ pages, lianki.com and his box, with no pairing tap. Making the token is the
 grant.** A leaked token means arbitrary code on his signed-in pages until it is
 revoked or expires. He accepted that risk.
 
-- **Only a site owner can make one.** `eval` is in `OWNER_SCOPES`
+- **Only a `dev` holder can make one.** `eval` is in `OWNER_SCOPES`
   (`lib/api-tokens.ts`). Settings → API tokens offers it only when the session's
-  account is a site owner (`site_role`, read from D1 at that moment). Anyone else
+  account holds `dev` (`account_permission`, read from D1 at that moment). Anyone else
   never sees it, and a request naming it gets the same 400 as an unknown
   permission. The CLI login (`lianki auth login`) never offers or accepts it.
 - **At most 30 days** (`EVAL_MAX_DAYS`). The expiry is required as for every

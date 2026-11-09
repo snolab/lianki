@@ -13,7 +13,7 @@
  * fetch carries its own Origin), and each is in the security audit log.
  *
  * `eval` (OWNER_SCOPES) is listed and accepted only when the session's account
- * is a site owner, read now (`siteOwner`), and only with an expiry of at most
+ * holds the `dev` permission, read now (`siteOwner`), and only with an expiry of at most
  * EVAL_MAX_DAYS. For anyone else it does not exist: the same 400 as any
  * unknown permission.
  */
@@ -40,7 +40,7 @@ export type TokenApiDeps = {
   /** The session's account, or null for a guest. */
   who: () => Promise<TokenOwner | null>;
   db: () => D1Like & AuditDb;
-  /** Is this account a site owner now? Only then is `eval` offered or accepted. Absent: no. */
+  /** Does this account hold `dev` now (lib/permissions.ts)? Only then is `eval` offered or accepted. Absent: no. */
   siteOwner?: (userId: string) => Promise<boolean>;
   /** Revoked tokens' listening sockets close (lib/push-chat-tokens.ts). */
   revoked: (ids: string[]) => Promise<void>;
@@ -106,7 +106,7 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
     body.scopes.some((s) => (FORBIDDEN_SCOPES as readonly unknown[]).includes(s))
   )
     return json({ error: "scopes: that permission does not exist for tokens" }, 400);
-  // An owner-only permission asks site_role first; for anyone else it does not exist.
+  // An owner-only permission asks for the `dev` grant first; for anyone else it does not exist.
   const wantsOwner =
     Array.isArray(body.scopes) &&
     body.scopes.some((s) => (OWNER_SCOPES as readonly unknown[]).includes(s));

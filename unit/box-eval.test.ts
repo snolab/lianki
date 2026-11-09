@@ -52,7 +52,7 @@ async function setupDb() {
       .run();
   await db
     .prepare(
-      "INSERT INTO site_role (email, role, granted_by, granted_at) VALUES ('u1@test.example', 'owner', 'test', 1)",
+      "INSERT INTO account_permission (email, permission, granted_by, granted_at) VALUES ('u1@test.example', 'dev', 'test', 1)",
     )
     .run();
   await db
@@ -131,9 +131,11 @@ describe("box:eval on the binding", () => {
     await bind(db);
     await setBoxChat(box(db), "c1", true, "u1", NOW);
     await setBoxEval(box(db), "c1", true, "u1", NOW);
-    await db.prepare("UPDATE site_role SET revoked_at = 2 WHERE email = 'u1@test.example'").run();
+    await db
+      .prepare("UPDATE account_permission SET revoked_at = 2 WHERE email = 'u1@test.example'")
+      .run();
     expect(await boxEvalLive(box(db), "c1")).toBe(false);
-    await db.prepare("UPDATE site_role SET revoked_at = NULL").run();
+    await db.prepare("UPDATE account_permission SET revoked_at = NULL").run();
     expect(await boxEvalLive(box(db), "c1")).toBe(true);
     await revokeBox(box(db), "c1", "u1", NOW);
     expect(await boxEvalLive(box(db), "c1")).toBe(false);

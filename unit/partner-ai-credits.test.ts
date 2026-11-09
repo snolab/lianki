@@ -53,7 +53,7 @@ describe("partner AI: credits", () => {
   beforeEach(() => {
     d1 = createTestD1(testSchema());
     d1.raw().exec(
-      "INSERT INTO site_role (email, granted_by, granted_at) VALUES ('owner@x.com', 'test', 1)",
+      "INSERT INTO account_permission (email, permission, granted_by, granted_at) VALUES ('owner@x.com', 'dev', 'test', 1)",
     );
     d1.raw().exec(`INSERT INTO user (id, email, createdAt, updatedAt) VALUES
       ('u_alice', 'alice@x.com', 'x', 'x'), ('u_owner', 'owner@x.com', 'x', 'x')`);

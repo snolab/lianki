@@ -100,6 +100,54 @@ export async function readGrants(db: PermissionReadDb): Promise<Grant[]> {
   }));
 }
 
+/** Who holds `permission` right now, oldest grant first, straight from D1. Throws on a D1 error. */
+export async function readHolders(db: PermissionReadDb, permission: Permission): Promise<string[]> {
+  const out: string[] = [];
+  for (const g of await readGrants(db))
+    if (g.permission === permission && !out.includes(g.email)) out.push(g.email);
+  return out;
+}
+
+/**
+ * SQL: does the account whose id is in column `col` hold `permission` right now?
+ * Exact address, as the snapshot compares them. For checks that must read D1
+ * live in the same query (the box allowlist). `permission` is one of PERMISSIONS,
+ * never user input.
+ */
+export function holdsSql(col: string, permission: Permission): string {
+  if (!isPermission(permission)) throw new Error("bad permission");
+  return `EXISTS (SELECT 1 FROM user pu JOIN account_permission pp ON pp.email = lower(trim(pu.email))
+    WHERE pu.id = ${col} AND pp.permission = '${permission}' AND pp.revoked_at IS NULL)`;
+}
+
+/** The account ids (user.id) holding `permission` right now, by exact address. Throws on a D1 error. */
+export async function holderIds(db: PermissionReadDb, permission: Permission): Promise<string[]> {
+  const { results } = await db
+    .prepare(`SELECT u.id AS id FROM user u WHERE ${holdsSql("u.id", permission)}`)
+    .bind()
+    .all<{ id: string }>();
+  return results.map((r) => r.id);
+}
+
+type FirstDb = {
+  prepare(query: string): {
+    bind(...values: unknown[]): { first<T = Record<string, unknown>>(): Promise<T | null> };
+  };
+};
+
+/** Does this account (by user id) hold `permission` right now? Read live from D1, no cache. Throws on a D1 error. */
+export async function userHolds(
+  db: FirstDb,
+  userId: string,
+  permission: Permission,
+): Promise<boolean> {
+  const r = await db
+    .prepare(`SELECT 1 AS ok FROM user u WHERE u.id = ?1 AND ${holdsSql("u.id", permission)}`)
+    .bind(userId)
+    .first<{ ok: number }>();
+  return r?.ok === 1;
+}
+
 export type GrantResult = "granted" | "already-granted" | "bad-email" | "bad-permission";
 export type RevokeResult =
   | "revoked"

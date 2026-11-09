@@ -72,8 +72,8 @@ export type Verified = {
 export type GateDeps = {
   publicHost: string;
   /**
-   * The account the dev server's login route signs in: the oldest active grant
-   * in site_role, asked of lianki.com ("" when it cannot be read: nobody passes).
+   * The account the dev server's login route signs in: the oldest active
+   * `dev` grant (account_permission), asked of lianki.com ("" when it cannot be read: nobody passes).
    */
   ownerEmail: string | (() => Promise<string>);
   /** HMAC key for the session cookie (local; .dev-whole-page.json). */

@@ -1,6 +1,6 @@
 import { authUserOrNull } from "@/app/signInEmail";
 import { tokenApi } from "@/lib/api-token-api";
-import { isSiteOwnerUser, type BoxDb } from "@/lib/box-oauth/store";
+import { isDevUser, type BoxDb } from "@/lib/box-oauth/store";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
 import { notifyTokensRevoked } from "@/lib/push-chat-tokens";
@@ -21,8 +21,8 @@ async function handle(req: Request) {
       return u?.id && u.email ? { userId: u.id, email: u.email } : null;
     },
     db: () => getD1() as unknown as D1Like & AuditDb,
-    // The `eval` permission (lib/api-tokens.ts OWNER_SCOPES): site_role, read now.
-    siteOwner: (userId) => isSiteOwnerUser(getD1() as unknown as BoxDb, userId).catch(() => false),
+    // The `eval` permission (lib/api-tokens.ts OWNER_SCOPES): the `dev` grant, read now.
+    siteOwner: (userId) => isDevUser(getD1() as unknown as BoxDb, userId).catch(() => false),
     revoked: (ids) => notifyTokensRevoked({ ids }),
   });
 }
