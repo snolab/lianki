@@ -47,6 +47,92 @@ the recipient) → `en`. Invites use the inviter's account. A bare `zh` says no
 script, so a later Traditional source (`signupLocale` zh-Hant, Accept-Language
 zh-TW) makes it `zh-Hant`.
 
+## Layout and colours (one shared layout)
+
+Owner request 2026-11-10. Every mail is sent in ONE layout,
+`layout.ts` `mailShell`, applied at render time to whatever the template
+produced — the built-in or a stored edit — so a template is the **body only**
+and the frame cannot drift between mails. `compose.ts` `inLayout` wraps it
+for sends, `/dev/templates` and `/dev/mails` alike.
+
+- **Palette**: seal-ink red is the primary (brand heading, the top rule,
+  buttons, links), gold the secondary (rules, table lines, the security
+  label's frame), ink and paper the neutrals. Red is **not** a danger colour:
+  a security notice is marked by its own label with a shield icon
+  (`mail-layout.content.ts` `securityLabel`), never by red alone.
+- **oklch in the source, hex in the mail.** The tokens (`MAIL_TOKENS`,
+  light and dark) are oklch() like everywhere else. Most mail clients
+  (Outlook, Gmail's apps, older Apple Mail) understand neither oklch() nor
+  light-dark(), so the mail renderer — **and only the mail renderer** —
+  converts every oklch() in the finished HTML to hex (`color.ts`
+  `hexifyOklch`; stored edits included). This is the one allowed exception to
+  the oklch rule. Nothing outside `lib/mail-templates/` uses `color.ts`.
+- **Robust markup**: table layout, inline styles, `bgcolor` fallbacks, a
+  560 px column that fills a phone. Dark mode: a `@media
+  (prefers-color-scheme: dark)` block (plus Outlook.com's `[data-ogsc]`)
+  repaints by class (`lk-body`, `lk-muted`, `lk-btn`, …); the previews switch
+  the same rules on with `.lk-dark` (`previewDoc`). Text pairs pass WCAG AA in
+  both themes (unit-tested in `unit/mail-layout.test.ts`).
+- **Fonts**: the site's faces through web-font links — LXGW WenKai TC for the
+  body, Yuji Syuku (brush) for the brand heading — with system fallbacks
+  (PingFang, Hiragino, Noto CJK, Microsoft YaHei, system-ui), because many
+  clients block web fonts.
+- **Footer** (code, not template, like the List-Unsubscribe headers): what
+  this kind of mail is and how to turn it off — see the classes below.
+- **Times** are never raw UTC. A time variable is written in the reader's
+  local time and labelled with its zone (`lib/dates.ts` `zonedDateTime`:
+  "2026年11月9日 18:07（日本标准时间 GMT+9）"). The zone: the account's own
+  when it has one (none is stored yet), else the zone captured with the event
+  (the login notice: Cloudflare's `request.cf.timezone` of that sign-in),
+  else UTC, labelled "UTC". The language alone never picks a zone: a Chinese
+  reader may live in Tokyo.
+
+Locked variables did not change, so every template keeps `schema` 1 and
+stored versions keep applying; they are now shown inside the layout (their
+own outer `<div>` sits in the body cell; its oklch() becomes hex).
+
+**Look at them without sending**: `bun scripts/dev/render-mails.ts <dir>`
+writes every template × language, light and dark, and an `index.html` showing
+them at iPhone width. Nothing is sent. Snapshot tests per template × language
+are in `unit/mail-layout.test.ts`.
+
+## Unsubscribe: the three classes
+
+Owner request 2026-11-10. `kinds.ts` `MAIL_KINDS` classifies every template
+(one data table; the send path, the footer, /my/preferences and the
+unsubscribe page all read it):
+
+| class                  | templates                                                                                       | how it is turned off                                                                                                  |
+| ---------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **(a) required**       | `signin-code` `signin-link` `email-confirm` `email-taken` `email-requested` `email-changed`     | never: the reader just asked for it, or it is the one way to tell them about their own account. Footer: "always sent" |
+| **(b) security**       | `login-notice`                                                                                  | only in /my/preferences#mail (`mail.loginNotice`), after a short warning. The footer links there                      |
+| **(c) everything else** | `invite` (by address — the recipient has no account); future notices and digests (per account) | one click                                                                                                             |
+
+Receipts would be (a) when they exist; there are none in mail today.
+
+- **One click, per account** (`optOut: "one-click"`): a footer Unsubscribe
+  link and the `List-Unsubscribe` + `List-Unsubscribe-Post:
+  List-Unsubscribe=One-Click` headers (RFC 8058), both added by the layout
+  when the send passes `unsubscribe` links. The token
+  (`unsubscribe-token.ts`) is `u1.<userId>.<kind>.<HMAC>`, keyed by HKDF from
+  `AUTH_SECRET` with its own label; no expiry, no sign-in, and all it can do
+  is switch that one kind for that one account. `POST /api/mail/unsubscribe`
+  takes the client's one-click form post (`?t=`) or the page's same-origin
+  JSON (`unsubscribe` / `undo`); a GET changes nothing and opens
+  `/mail/unsubscribe#t=…`, which confirms on a button and then offers Undo.
+  The switch is the account's synced pref (`mail.<kind>`), so
+  /my/preferences shows it. **No user mail is in this class yet**; a new one
+  gets a pref key in `MAIL_PREF_KEYS` and `lib/prefs/schema.ts` and a row with
+  `optOut: "one-click"`.
+- **The invite** keeps its own opt-out by address (`invite_email_suppression`,
+  above): the person invited has no account to hold a pref.
+- **The send path checks** (`lib/mail-log/send.ts` `suppressedBy`): a mail
+  to an account (`log.userId`) whose kind has an off-switch reads that
+  account's pref; off → not sent, and the `mail_log` row says
+  **`suppressed`** with reason `pref:<key>` (never an address). A pref that
+  cannot be read still sends a security notice, but holds back a one-click
+  kind. Required mails are never checked.
+
 ## Brand
 
 Mails never spell the product name: `{brand}` / `{brandLong}`, filled from
@@ -121,7 +207,8 @@ caller adds the user / inviter ids. `log` is never sent to the provider.
   (short reason, anything shaped like an address cut out). Then, forward only,
   from Resend's webhook: `delivered` (`email.delivered`), `bounced` (hard
   bounce), `complained` (`email.complained`); from the invite opt-out:
-  `unsubscribed` (Unsubscribe) or `complained` (Report abuse). A late
+  `unsubscribed` (Unsubscribe) or `complained` (Report abuse). `suppressed`:
+  never sent, because the account turned that kind off (above). A late
   "delivered" never undoes a complaint; a failed mail stays failed. The row
   is found by the `mail_log` tag every mail carries, else by the message id.
 - **The address** (owner decision): stored; read only at /dev/mails and

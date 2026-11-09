@@ -16,6 +16,7 @@ import { INVITE_MAIL_SENDER } from "@/lib/referrals/email-invite-config";
 import inviteDict from "@/lib/referrals/invite-mail.content";
 import emailChangeDict from "./email-change-mail.content";
 import { escapeCopy, type TemplateSource, type VarSpecs } from "./engine";
+import { BUTTON_ATTR, CODE_ATTR, LINK_STYLE, MAIL_TOKENS, MUTED_ATTR } from "./layout";
 import { RTL_MAIL_LOCALES, type MailLocale } from "./locales";
 import loginNoticeDict from "./login-notice-mail.content";
 import signInDict from "./sign-in-mail.content";
@@ -75,29 +76,38 @@ export function copyOf<D extends Dict>(
   return out;
 }
 
-const MUTED = "color:oklch(0.45 0 0)";
-
-/** The frame every mail shares: direction and language of `locale`, a readable column. */
+/**
+ * A built-in body: direction and language of `locale`. The brand heading,
+ * fonts, colours and footer come from the shared layout (./layout.ts), which
+ * wraps every template — built-in or edited — at render time.
+ */
 function frame(locale: MailLocale, body: string): string {
   const dir = RTL_MAIL_LOCALES.has(locale) ? "rtl" : "ltr";
-  return (
-    `<div dir="${dir}" lang="${locale}" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.5;max-width:560px;margin:0 auto;padding:16px">` +
-    body +
-    `</div>`
-  );
+  return `<div dir="${dir}" lang="${locale}">${body}</div>`;
 }
 
 /** Escaped copy with `{var}` turned into a link to itself. */
 const linkify = (copy: string, v: string) =>
-  escapeCopy(copy).replace(`{${v}}`, `<a href="{${v}}">{${v}}</a>`);
+  escapeCopy(copy).replace(`{${v}}`, `<a href="{${v}}" style="${LINK_STYLE}">{${v}}</a>`);
 
-const p = (s: string, style?: string) => `<p${style ? ` style="${style}"` : ""}>${s}</p>`;
+const P_STYLE = "margin:0 0 16px";
+const p = (s: string, style?: string) =>
+  `<p style="${P_STYLE}${style ? `;${style}` : ""}">${s}</p>`;
+/** A muted paragraph (validity, "ignore this"): its class lets dark mode repaint it. */
+const pMuted = (s: string, style = "font-size:14px") =>
+  `<p ${MUTED_ATTR.replace('style="', `style="${P_STYLE};${style};`)}>${s}</p>`;
+/** The one primary action: a seal-red button. */
+const button = (urlVar: string, label: string) =>
+  p(`<a href="{${urlVar}}" ${BUTTON_ATTR}>${escapeCopy(label)}</a>`, "margin:24px 0");
 
 const signInCopy = (l: MailLocale) => copyOf(signInDict, ZH_HANT_SIGN_IN, l);
 const noticeCopy = (l: MailLocale) => copyOf(loginNoticeDict, ZH_HANT_LOGIN_NOTICE, l);
 const changeCopy = (l: MailLocale) => copyOf(emailChangeDict, ZH_HANT_EMAIL_CHANGE, l);
 export const inviteCopy = (l: MailLocale) => copyOf(inviteDict, ZH_HANT_INVITE, l);
 export const loginNoticeCopy = noticeCopy;
+
+const GOLD = MAIL_TOKENS.light.gold;
+const start = (l: MailLocale) => (RTL_MAIL_LOCALES.has(l) ? "right" : "left");
 
 const req = (kind: "url" | "text") => ({ kind, required: true });
 const opt = (kind: "url" | "text") => ({ kind, required: false });
@@ -117,8 +127,8 @@ const signinCode: MailTemplateDef = {
       html: frame(
         l,
         p(escapeCopy(c.codeIntro)) +
-          p("{code}", "font-size:28px;font-weight:bold;letter-spacing:6px") +
-          p(`${escapeCopy(c.validity)}<br>${escapeCopy(c.ignore)}`, MUTED),
+          p(`<span ${CODE_ATTR}>{code}</span>`, "margin:8px 0 24px") +
+          pMuted(`${escapeCopy(c.validity)}<br>${escapeCopy(c.ignore)}`),
       ),
     };
   },
@@ -143,8 +153,8 @@ const signinLink: MailTemplateDef = {
       html: frame(
         l,
         p(escapeCopy(c.linkIntro)) +
-          p(`<a href="{url}">${escapeCopy(c.linkButton)}</a>`) +
-          p(`${escapeCopy(c.validity)}<br>${escapeCopy(c.ignore)}`, MUTED),
+          button("url", c.linkButton) +
+          pMuted(`${escapeCopy(c.validity)}<br>${escapeCopy(c.ignore)}`),
       ),
     };
   },
@@ -163,13 +173,13 @@ const loginNotice: MailTemplateDef = {
   },
   samples: {
     typical: {
-      time: "2026-11-09 09:20 UTC",
-      location: "Tokyo, 13, JP",
-      browser: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15",
+      time: "November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)",
+      location: "Tokyo, Japan",
+      browser: "Safari · iPhone",
       contactUrl: MAIL_CONTACT_URL,
     },
     long: {
-      time: "2026-12-31 23:59 UTC",
+      time: "December 31, 2026 at 11:59 PM (UTC)",
       location: "São Paulo, SP, BR",
       browser:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0 <b>not bold</b>",
@@ -189,8 +199,15 @@ const loginNotice: MailTemplateDef = {
       html: frame(
         l,
         p(escapeCopy(c.intro)) +
-          `<table>${rows.map(([k, v]) => `<tr><td><b>${escapeCopy(k)}</b></td><td>${v}</td></tr>`).join("")}</table>` +
-          p(`${escapeCopy(c.ok)}<br>${linkify(c.notYou, "contactUrl")}`),
+          `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-collapse:collapse">${rows
+            .map(
+              ([k, v]) =>
+                `<tr><th scope="row" align="${start(l)}" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid ${GOLD};color:${MAIL_TOKENS.light.muted};font-weight:400;font-size:14px;white-space:nowrap">${escapeCopy(k)}</th>` +
+                `<td align="${start(l)}" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid ${GOLD};font-weight:700;word-break:break-word">${v}</td></tr>`,
+            )
+            .join("")}</table>` +
+          p(escapeCopy(c.ok)) +
+          p(linkify(c.notYou, "contactUrl")),
       ),
     };
   },
@@ -215,8 +232,8 @@ const emailConfirm: MailTemplateDef = {
       html: frame(
         l,
         p(escapeCopy(c.confirmIntro)) +
-          p(`<a href="{url}">${escapeCopy(c.confirmButton)}</a>`) +
-          p(`${escapeCopy(c.confirmValid)}<br>${escapeCopy(c.ignore)}`, MUTED),
+          button("url", c.confirmButton) +
+          pMuted(`${escapeCopy(c.confirmValid)}<br>${escapeCopy(c.ignore)}`),
       ),
     };
   },
@@ -234,7 +251,7 @@ const emailTaken: MailTemplateDef = {
     return {
       subject: c.takenSubject,
       text: [c.takenBody, c.ignore].join("\n\n"),
-      html: frame(l, p(escapeCopy(c.takenBody)) + p(escapeCopy(c.ignore))),
+      html: frame(l, p(escapeCopy(c.takenBody)) + pMuted(escapeCopy(c.ignore))),
     };
   },
 };
@@ -311,7 +328,7 @@ const invite: MailTemplateDef = {
   builtin: (l) => {
     const c = inviteCopy(l);
     const postal = INVITE_MAIL_SENDER.postalAddress;
-    const muted = MUTED;
+    const muted = `color:${MAIL_TOKENS.light.muted}`;
     const text = [
       c.invitedBy,
       "",
@@ -341,20 +358,20 @@ const invite: MailTemplateDef = {
       p(escapeCopy(c.invitedBy), "font-weight:700;font-size:18px;margin:0 0 16px") +
         p(escapeCopy(c.intro)) +
         p(escapeCopy(c.offer)) +
+        button("inviteUrl", c.cta) +
         p(
-          `<a href="{inviteUrl}" style="display:inline-block;padding:12px 20px;border-radius:8px;background:oklch(0.45 0.18 260);color:oklch(1 0 0);font-weight:700;text-decoration:none">${escapeCopy(c.cta)}</a>`,
-          "margin:24px 0",
+          `${escapeCopy(c.linkLine)}<br><a href="{inviteUrl}" style="${LINK_STYLE};word-break:break-all">{inviteUrl}</a>`,
+          "font-size:14px",
         ) +
-        p(`${escapeCopy(c.linkLine)}<br><a href="{inviteUrl}">{inviteUrl}</a>`, "font-size:14px") +
-        `<hr style="border:none;border-top:1px solid oklch(0.85 0 0);margin:24px 0">` +
-        p(escapeCopy(c.why), `font-size:13px;${muted}`) +
+        `<div class="lk-rule" style="border-top:1px solid ${GOLD};margin:24px 0;height:0;line-height:0;font-size:0">&nbsp;</div>` +
+        pMuted(escapeCopy(c.why), "font-size:13px") +
         p(
-          `<span style="${muted}">${escapeCopy(c.sentTo).replace("{address}", "<bdi>{address}</bdi>")}</span><br><a href="{unsubscribeUrl}">${escapeCopy(c.unsubscribe)}</a> · <a href="{reportUrl}">${escapeCopy(c.report)}</a>`,
+          `<span class="lk-muted" style="${muted}">${escapeCopy(c.sentTo).replace("{address}", "<bdi>{address}</bdi>")}</span><br><a href="{unsubscribeUrl}" style="${LINK_STYLE}">${escapeCopy(c.unsubscribe)}</a> · <a href="{reportUrl}" style="${LINK_STYLE}">${escapeCopy(c.report)}</a>`,
           "font-size:13px",
         ) +
-        p(
+        pMuted(
           `${escapeCopy(c.sender)}<br>${linkify(c.contact, "contactUrl")}${postal ? "<br>{postal}" : ""}`,
-          `font-size:13px;${muted}`,
+          "font-size:13px",
         ),
     );
     return { subject: c.subject, text, html };

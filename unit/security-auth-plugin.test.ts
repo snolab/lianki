@@ -118,8 +118,10 @@ describe("login notification through better-auth", () => {
     expect(fresh.status).toBe(200);
     expect(mails).toHaveLength(1);
     expect(mails[0].to).toEqual(["a@x.com"]);
-    expect(mails[0].text).toContain("Firefox/140");
-    expect(mails[0].text).toContain("JP");
+    // The browser as a reader recognises it; the time labelled with its zone.
+    expect(mails[0].text).toContain("Browser: Firefox\n");
+    expect(mails[0].text).toMatch(/\(UTC\)/);
+    expect(mails[0].text).toContain("Approximate location: Japan");
 
     const again = await post(
       "/sign-in/email",

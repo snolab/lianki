@@ -174,6 +174,8 @@ export const PREF_SCHEMAS = {
   "links.allowedHosts": z.array(z.string().refine(isAllowedHost)).max(ALLOWED_HOSTS_MAX),
   // the app-icon badge (lib/app-badge.ts, docs/app-badge.md): what its number counts
   "notify.badge": z.enum(BADGE_MODES),
+  // mails the account turned off (lib/mail-templates/kinds.ts); false = do not send
+  "mail.loginNotice": z.boolean(),
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),
