@@ -671,6 +671,35 @@ html[data-motion="off"] .lk-ex-spoken {
   color: color-mix(in oklch, currentColor 55%, var(--background));
 }
 
+/* A word already reviewed this session (owner, 2026-11-10): kept for undo,
+ * faded like a slip that came back (.lk-back): a veil and muted ink, never
+ * opacity. One ink for the whole slip, the word and its back alike, mixed so
+ * it stays at AA contrast on the veiled slip (light ≈ 5:1, dark ≈ 5.8:1).
+ * Undo takes the grade, and with it this look. The seal keeps its colour;
+ * an unrevealed blank keeps its own light dashes. */
+.slip.slip-done {
+  --slip-veil: oklch(from var(--background) l c h / 0.35);
+  color: color-mix(in oklch, var(--foreground) var(--slip-done-ink, 65%), var(--background));
+}
+@media (prefers-color-scheme: dark) {
+  .slip.slip-done {
+    --slip-done-ink: 80%;
+  }
+}
+.slip.slip-done .slip-back:not(.slip-blank),
+.slip.slip-done .slip-term {
+  opacity: 1;
+  color: inherit;
+}
+
+/* A back cell the row has no room for (a pinched-in row, lib/words/row-pinch.ts):
+ * laid out at its width, at no height, so the pinch can still measure it. */
+.slip-cell-hidden {
+  height: 0;
+  max-height: 0;
+  visibility: hidden;
+}
+
 /* The slip's action sheet (/words, double tap): slides up, minimum jerk. */
 .lk-sheet-in {
   animation: lk-sheet-in 240ms var(--min-jerk) both;

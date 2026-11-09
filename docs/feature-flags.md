@@ -55,7 +55,8 @@ stay on the folded row, because they say why the switch does nothing.
   provides a feature, never forbids one. No `-off` / `disable` keys: a kill
   switch for something already live is a flag that is **on by default**.
 - **Defaults are OFF**, but for such a flag (`default: true` in
-  `lib/flags.ts`; today only `stt.polish`). A key with no stored row reads as
+  `lib/flags.ts`; today `stt.polish`, and `words.pinch-card-height`, which the
+  owner shipped on for everyone on 2026-11-10). A key with no stored row reads as
   its default; a stored row always wins, either way. `closedFlags()` is what an
   unreadable store gives.
 - **Unreadable is OFF**, every flag, a default-on one too (a D1 error,
@@ -91,6 +92,7 @@ stay on the folded row, because they say why the switch does nothing.
 | `payments.stripe.live` | Stripe takes real money (also needs an `sk_live_` key)         |
 | `payments.komoju.live` | KOMOJU takes real money (also needs an `sk_live_` key)         |
 | `words.voice-mode`     | everyone gets the /words voice commands switch (off: the owner's preview only) — [voice-mode.md](voice-mode.md) |
+| `words.pinch-card-height` | **on by default, everyone.** A two-finger vertical pinch on the /words list sets every card's height, from the word alone to everything on screen shown; synced as `words.cardHeight` (off: the default height, the stored choice unused) — `lib/words/row-pinch.ts` |
 | `stt.polish`           | **on by default.** The agent may polish the owner's voice lines from their context and summarise room talk (off: the chat keeps only what STT heard, no edits or summaries) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached; only exactly `false` turns it off there, an unreadable answer holds edits back (logged `debug.polish-flag-unread`). Replaced the inverted `stt.polish-off` (migration 0067 carried a stored value over inverted) |
 | `stt.merge`            | a spoken line that continues the last one amends it instead of adding a bubble; the agent hears the complete line, and the passage is polished once at its end; undo splits it back (off: one line per utterance) — [dev-debug-widget.md](dev-debug-widget.md), "Continuous speech amends the last line". Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `connections.google`   | every signed-in user gets /connections (Google Drive, `drive.file`) and the private Google Docs import on /reader (off: the owner only) — [connections.md](connections.md) |

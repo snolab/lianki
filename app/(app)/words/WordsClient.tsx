@@ -103,6 +103,8 @@ import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/wor
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { backParts, ROW_LINE_LH, rowMetrics } from "@/lib/words/row-layout";
+import { backAvail, backLines } from "@/lib/words/row-pinch";
+import { useRowPinch } from "@/lib/words/use-row-pinch";
 import { withPickedExample, type Example } from "@/lib/words/example-pick";
 import {
   SongClipButton,
@@ -1525,12 +1527,18 @@ function Glance({
   className,
   title,
   lines = 1,
+  cell,
+  hidden = false,
   children,
 }: {
   active: boolean;
   className: string;
   title?: string;
   lines?: number;
+  /** A back cell, first or second in the row (measured by the card-height pinch). */
+  cell?: 1 | 2;
+  /** No room for it (a short row): kept, at no height, so it is still measured. */
+  hidden?: boolean;
   children: React.ReactNode;
 }) {
   const wrap = lines > 1;
@@ -1643,8 +1651,12 @@ function Glance({
     );
     return () => anim.cancel();
   }, [over, wrap, following]);
-  const follow = { [FOLLOW_ATTR]: "" };
-  const clip = following ? "overflow-auto lk-ex-follow" : "overflow-hidden";
+  const follow = {
+    [FOLLOW_ATTR]: "",
+    ...(cell ? { "data-back-cell": String(cell) } : {}),
+    ...(hidden ? { "aria-hidden": true } : {}),
+  };
+  const clip = `${following ? "overflow-auto lk-ex-follow" : "overflow-hidden"}${hidden ? " slip-cell-hidden" : ""}`;
   if (wrap)
     return (
       <span
@@ -1957,6 +1969,7 @@ export default function WordsClient({
   voice = "off",
   ytSongs = false,
   importOn = false,
+  pinch = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
@@ -1965,6 +1978,8 @@ export default function WordsClient({
   ytSongs?: boolean;
   /** The Import button at the top (`import.any`: every user while on; the owner on or off). */
   importOn?: boolean;
+  /** The card-height pinch on the list (`words.pinch-card-height`, on by default). */
+  pinch?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
@@ -2130,6 +2145,7 @@ export default function WordsClient({
             lists={studying}
             catalog={fullCatalog}
             voice={voice}
+            pinch={pinch}
             title={
               listId === ALL
                 ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
@@ -3687,8 +3703,11 @@ export function Study({
   onExit,
   voice,
   scope,
+  pinch = false,
 }: {
   scope?: StudyScope;
+  /** The card-height pinch (`words.pinch-card-height`, lib/words/use-row-pinch.ts). */
+  pinch?: boolean;
   config: DrillConfig;
   /** Whether the voice mode switch is offered (lib/words/voice-access.ts). */
   voice: VoiceAccess;
@@ -4342,10 +4361,21 @@ export function Study({
   const cardScale = useTextScale("cards");
   // A scope may ask for more lines in every row (the reader's review: one).
   const extraLines = scope?.extraLines ?? 0;
-  const { rowH: ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale, extraLines);
+  const { rowH: DEFAULT_ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale, extraLines);
   const listRef = useRef<HTMLDivElement>(null);
   /** The list element as state, for effects that must start when it mounts. */
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
+  // A two-finger vertical pinch sets every row's height (owner, 2026-11-10);
+  // the back cells get the lines the height has room for (lib/words/row-pinch.ts).
+  const pinchK = Math.max(1, cardScale);
+  const { rowH: ROW_H, anchor: pinchAnchor } = useRowPinch({
+    list: listEl,
+    on: pinch,
+    touch,
+    k: pinchK,
+    defaultH: DEFAULT_ROW_H,
+  });
+  const backRoom = backLines(backAvail(ROW_H, pinchK, touch), touch);
   const setListRef = useCallback((el: HTMLDivElement | null) => {
     listRef.current = el;
     setListEl(el);
@@ -4552,8 +4582,10 @@ export function Study({
     rowHWas.current = ROW_H;
     const el = listRef.current;
     if (was === ROW_H || !el) return;
-    el.scrollTop = pad + ((el.scrollTop - pad) / was) * ROW_H;
-  }, [ROW_H, pad]);
+    // A pinch keeps the row between the fingers where it is; else the top row.
+    const at = pinchAnchor() ?? 0;
+    el.scrollTop = pad + ((el.scrollTop + at - pad) / was) * ROW_H - at;
+  }, [ROW_H, pad, pinchAnchor]);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled. Measured against the list's
@@ -5594,6 +5626,8 @@ export function Study({
               overflowAnchor: "none",
               scrollPaddingTop: bar.top,
               scrollPaddingBottom: bar.bottom,
+              // The card-height pinch is the list's own: never the page's zoom.
+              ...(pinch && touch ? { touchAction: "pan-y" } : {}),
             }}
             onScroll={(e) => {
               syncScroll(e.currentTarget.scrollTop);
@@ -5723,7 +5757,7 @@ export function Study({
                       : hasExamples
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--ex-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
-                  } ${rating ? RATING_STYLE[rating] : ""}`}
+                  } ${rating ? `${RATING_STYLE[rating]} slip-done` : ""}`}
                   style={{ height: ROW_H }}
                   a={SWIPE_A}
                 >
@@ -5738,7 +5772,7 @@ export function Study({
                   <Glance
                     active={glancing}
                     title={it.reading ? `${it.term} ${it.reading}` : it.term}
-                    className={`font-medium ${
+                    className={`slip-term font-medium ${
                       it.kind === "new"
                         ? "text-emerald-600 dark:text-emerald-400"
                         : it.kind === "again"
@@ -5769,7 +5803,7 @@ export function Study({
                           : "text-sm opacity-70";
                       // Desktop: a card without an example spans both columns.
                       const span = !touch && hasExamples && parts.length === 1 ? "col-span-2" : "";
-                      const look = `${tone} ${span} transition-[filter] duration-75 ${
+                      const look = `slip-back ${tone} ${span} transition-[filter] duration-75 ${
                         touch ? "block min-w-0" : ""
                       } ${show ? "" : "slip-blank"}`;
                       // The taller rows' room (owner, 2026-11-03): on a phone the
@@ -5777,7 +5811,12 @@ export function Study({
                       // one line; on desktop each column may take two lines.
                       // A scope's extra lines go to the first line on a phone, to
                       // each column on desktop (side by side: one line taller).
-                      const lines = !touch || first ? 2 + extraLines : 1;
+                      // The row's height decides (lib/words/row-pinch.ts backLines): at
+                      // the default, as above; pinched, more or fewer, down to the word alone.
+                      const room = first ? backRoom.first : backRoom.second;
+                      const lines = Math.max(1, room);
+                      const cellNo = first ? 1 : 2;
+                      const hide = room <= 0;
                       if (k === "meaning")
                         return (
                           <Glance
@@ -5786,6 +5825,8 @@ export function Study({
                             title={show ? it.back : undefined}
                             className={look}
                             lines={lines}
+                            cell={cellNo}
+                            hidden={hide}
                           >
                             {config.readingOnBack && it.reading && it.reading !== it.term && (
                               <bdi className="mr-2 font-medium">{it.reading}</bdi>
@@ -5813,7 +5854,9 @@ export function Study({
                               active={glancing && show}
                               title={show ? it.ex : undefined}
                               className={look}
-                              lines={1 + extraLines}
+                              lines={Math.max(1, room - 1)}
+                              cell={cellNo}
+                              hidden={hide}
                             >
                               {show && <SongClipButton clip={it.clip} text={it.ex} />}
                               <bdi lang={it.lang} data-row-example>
@@ -5829,7 +5872,9 @@ export function Study({
                             <Glance
                               active={glancing && show}
                               title={show ? it.exTr : undefined}
-                              className={`text-xs opacity-60 transition-[filter] duration-75 ${show ? "" : "slip-blank"}`}
+                              className={`slip-back text-xs opacity-60 transition-[filter] duration-75 ${show ? "" : "slip-blank"}`}
+                              cell={cellNo}
+                              hidden={room <= 1}
                             >
                               <span data-row-ex-tr>{it.exTr}</span>
                             </Glance>
@@ -5844,6 +5889,8 @@ export function Study({
                           }
                           className={look}
                           lines={lines}
+                          cell={cellNo}
+                          hidden={hide}
                         >
                           {it.ex ? (
                             <>

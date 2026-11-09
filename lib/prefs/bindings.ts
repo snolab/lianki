@@ -25,6 +25,7 @@ import { ACCT_COOKIE_LINE } from "@/lib/account-locale";
 import { BYOK_BACKEND_KEY } from "@/lib/byok/config";
 import { LINK_CONFIRM_KEY, LINK_ALLOWED_KEY } from "@/lib/external-link";
 import { BADGE_DEFAULT, BADGE_PREF_KEY } from "@/lib/app-badge";
+import { CARD_HEIGHT_KEY } from "@/lib/words/row-pinch";
 
 type Ls = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const ls = (): Ls | null => {
@@ -191,6 +192,8 @@ export function prefBindings(): PrefBinding[] {
     plain("words.gradeTones", "lk:words-grade-tones", bool10, true),
     plain("words.voiceMode", "lk:words-voice-mode", bool10, false),
     plain("words.swipeMirror", "lk:words-swipe-mirror", bool10, false),
+    // lib/words/row-pinch.ts: the rows' height, pinched on the /words list.
+    plain("words.cardHeight", CARD_HEIGHT_KEY, num, 1),
     plain("swipe.variant", "lk:swipe-ab", text, "js"),
     field("swipe-feel.preset", "swipe-feel", 1, "preset", "light"),
     field("swipe-feel.tweaks", "swipe-feel", 1, "tweaks", {}),

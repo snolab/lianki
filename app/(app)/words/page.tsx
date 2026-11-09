@@ -31,6 +31,8 @@ export default async function WordsPage() {
       // The Import button (docs/import-material.md, "On /words"): dark behind
       // `import.any`: every user while on; the owner on or off (importAnyOn).
       importOn={!!user && importAnyOn(flags, isDev(user.email))}
+      // A two-finger vertical pinch sets the cards' height (lib/words/row-pinch.ts).
+      pinch={flags["words.pinch-card-height"]}
     />
   );
 }
