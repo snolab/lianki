@@ -1,8 +1,11 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { resetUiStores } from "@lianki/ui-state";
+import { GANTT_PREFS_INITIAL, ganttPrefs } from "@lianki/debug-chat/ui-store";
 import {
   GANTT_END_SPACE,
   GANTT_FIT_NEIGHBOURS,
   GANTT_FIT_PERCENTILE,
+  GANTT_FIT_WIDTH,
   LOG_MAX_T,
   LOG_MIN_T,
   centreRowTop,
@@ -78,9 +81,23 @@ describe("the fitted zoom: the 95th-percentile duration fills the width", () => 
     expect(fitSpan(rows, f)).toBe(10 * MIN);
   });
 
-  it("linear: centre x is now, and the span is exactly the visible width", () => {
+  it("the P95 duration spans GANTT_FIT_WIDTH (75%) of the width, both named", () => {
+    expect(GANTT_FIT_WIDTH).toBe(0.75);
     const span = 40 * MIN;
-    const v = homeView("linear", span, NOW, W, { from: NOW, to: NOW });
+    for (const kind of ["linear", "log"] as const) {
+      const v = homeView(kind, span, NOW, W, { from: NOW, to: NOW });
+      const l = scaleX(v.axis, NOW - span / 2, NOW) - v.scrollLeft;
+      const r = scaleX(v.axis, NOW + span / 2, NOW) - v.scrollLeft;
+      expect(r - l).toBeCloseTo(GANTT_FIT_WIDTH * W, 3);
+      expect(scaleX(v.axis, NOW, NOW) - v.scrollLeft).toBeCloseTo(W / 2, 5);
+    }
+    // fitSpan takes another percentile when asked (the preview's combos).
+    expect(fitSpan([task("a", 0, 10), task("b", 0, 100)], 0, 0.5)).toBe(10 * MIN);
+  });
+
+  it("linear: centre x is now, and at share 1 the span is exactly the visible width", () => {
+    const span = 40 * MIN;
+    const v = homeView("linear", span, NOW, W, { from: NOW, to: NOW }, 1);
     expect(isLog(v.axis)).toBe(false);
     expect(scaleX(v.axis, NOW, NOW) - v.scrollLeft).toBeCloseTo(W / 2, 5);
     const left = scaleX(v.axis, NOW - span / 2, NOW) - v.scrollLeft;
@@ -92,7 +109,7 @@ describe("the fitted zoom: the 95th-percentile duration fills the width", () => 
 
   it("log: centre x is now, and a span centred on now runs edge to edge", () => {
     const span = 3 * HOUR;
-    const v = homeView("log", span, NOW, W, { from: NOW, to: NOW });
+    const v = homeView("log", span, NOW, W, { from: NOW, to: NOW }, 1);
     expect(isLog(v.axis)).toBe(true);
     expect(scaleX(v.axis, NOW, NOW) - v.scrollLeft).toBeCloseTo(W / 2, 5);
     if (!isLog(v.axis)) throw new Error("log");
@@ -151,5 +168,36 @@ describe("pinch: the midpoint both ways", () => {
       { clientX: 300, clientY: 400 },
     ]);
     expect(p).toMatchObject({ cx: 200, cy: 300 });
+  });
+});
+
+describe("the zoom defaults can be overridden per device (lk:pref:gantt)", () => {
+  let data: Map<string, string>;
+  beforeEach(() => {
+    data = new Map();
+    const localStorage = {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, String(v)),
+      removeItem: (k: string) => void data.delete(k),
+    };
+    (globalThis as { window?: unknown }).window = { localStorage, addEventListener() {} };
+    resetUiStores();
+  });
+  afterEach(() => {
+    resetUiStores();
+    delete (globalThis as { window?: unknown }).window;
+  });
+  it("keeps shares in (0, 1], drops anything else", () => {
+    data.set(
+      "lk:pref:gantt",
+      JSON.stringify({ state: { scale: "linear", fitPercentile: 0.9, fitWidth: 0.6 }, version: 1 }),
+    );
+    expect(ganttPrefs().getState()).toEqual({ scale: "linear", fitPercentile: 0.9, fitWidth: 0.6 });
+    resetUiStores();
+    data.set(
+      "lk:pref:gantt",
+      JSON.stringify({ state: { scale: "x", fitPercentile: 2, fitWidth: "a" }, version: 1 }),
+    );
+    expect(ganttPrefs().getState()).toEqual(GANTT_PREFS_INITIAL);
   });
 });

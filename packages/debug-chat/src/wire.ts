@@ -674,6 +674,10 @@ export type ChatStrings = {
   etaGanttLinear: string;
   /** The other of the two buttons of that switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis logarithmically, near times wide and far times compressed, so minutes and days fit one screen. A single short word for 'logarithmic' as on a chart's axis, abbreviated if usual (对数 in Chinese, 'Log' in English); the button is narrow. */
   etaGanttLog: string;
+  /** A task waiting for the owner (Gantt and list): the red mark's label, and before its reminder time. */
+  etaWaitingYou: string;
+  /** A parked task's time: when its reminder goes off, `{t}` a compact time ("9.1H"). */
+  etaReminder: string;
   /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
   etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
@@ -783,6 +787,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaGanttScale: "Time axis",
   etaGanttLinear: "Linear",
   etaGanttLog: "Log",
+  etaWaitingYou: "Waiting for you",
+  etaReminder: "reminder in {t}",
   etaList: "Timed tasks",
   etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",

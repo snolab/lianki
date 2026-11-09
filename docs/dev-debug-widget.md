@@ -1665,6 +1665,25 @@ batched to one per frame; two fingers down stop the native pan
 touches there, only stop the page zoom (before, both zoomed: a double, jumpy
 step). On a Mac trackpad the gesture events still zoom.
 
+The fitted zoom's two defaults (owner, 2026-11-10): `GANTT_FIT_PERCENTILE`
+0.95 and `GANTT_FIT_WIDTH` 0.75 — the P95 duration spans 75% of the width.
+A device can override them in `lk:pref:gantt` (`fitPercentile`,
+`fitWidth`; ui-store.ts ganttPrefs), ready for the config store; no UI sets
+them yet. Compact times pick their unit by size, one formatter for the axis
+and every ETA label (rgui `compactSpan`): Y from a year, then Mo, W, D, H,
+M ("1.1Y", never "400D").
+
+**Parked tasks** (owner, 2026-11-10: "9.1H remaining" on a parked item read
+as running): a node blocked, or waiting for the owner (status
+waiting-owner, or an open decision or approval nobody works on;
+lib/progress-tree.ts `parkedOf`), is `parked` on its ETA. In the Gantt and
+the chat's task list its bar is hollow and hatched (`parkedBar`) with no
+progress fill or overrun, its time reads "reminder in 9.1H"
+(`etaReminder`), and one waiting for the owner has a red "!" before its
+name ("?" for a decision), labelled "Waiting for you" (`etaWaitingYou`,
+the late red, AA on the track in both themes). A parked task is never the
+row the home view centres on.
+
 The axis math (scales, ticks, bars) is our component library's gantt module,
 `@snomiao/rgui/gantt` ([rgui.md](rgui.md)); `gantt-view.ts` re-exports it.
 The axis (`gantt-view.ts`): x = (t − lo) · pxPerMs. On open now sits a quarter
