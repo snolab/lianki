@@ -7,7 +7,8 @@
  *   bun scripts/dev/progress.ts --agent swipe-agent --path /words/swipe --task "Native swipe: drag the card with the finger" --done --pr 310
  *   bun scripts/dev/progress.ts grant --node /words --agent swipe-agent --ttl 8h
  *   bun scripts/dev/progress.ts resolve --id /@owner/agent-yes-527 --note "merged"
- *   bun scripts/dev/progress.ts show
+ *   bun scripts/dev/progress.ts show [--all]
+ *   bun scripts/dev/progress.ts history --since 30d
  *   bun scripts/dev/progress.ts stats --agent swipe-agent --since 7d
  *
  * `--eta 25m` (or an ISO time) is the agent's own estimate; it sets the node's
@@ -20,8 +21,8 @@
  * PROGRESS_TOKEN from .dev.vars in this checkout or the main one.
  */
 import { BASE } from "./eval-socket";
-import { PROGRESS_USAGE, formatStats, parseProgressArgs } from "./progress-args";
-import { type ProgressDone, progressStats } from "../../lib/progress";
+import { PROGRESS_USAGE, formatHistory, formatStats, parseProgressArgs } from "./progress-args";
+import { type ProgressDone, type ProgressHistory, progressStats } from "../../lib/progress";
 import { postProgress, progressToken } from "./progress-client";
 
 /** "2026-11-07 20:30 JST": when the estimate runs out, as the owner reads times. */
@@ -55,15 +56,26 @@ const [path, body] =
         ? ["/resolve", { id: cmd.id, note: cmd.note }]
         : cmd.cmd === "stats"
           ? ["/stats", undefined]
-          : ["", undefined];
+          : cmd.cmd === "history"
+            ? [`/history?limit=${cmd.limit ?? 2000}`, undefined]
+            : ["", undefined];
 const res = await postProgress(BASE, token, path, body);
 if (res instanceof Error) {
   console.error(`progress: ${res.message}`);
   process.exit(1);
 }
 if (cmd.cmd === "grant") console.log(res.token);
-else if (cmd.cmd === "show") console.log(JSON.stringify(res, null, 2));
-else if (cmd.cmd === "stats") {
+else if (cmd.cmd === "show") {
+  const all = cmd.all ? await postProgress(BASE, token, "/history?limit=2000") : null;
+  if (all instanceof Error) console.error(`progress: history: ${all.message}`);
+  console.log(
+    JSON.stringify(all && !(all instanceof Error) ? { ...res, history: all.items } : res, null, 2),
+  );
+} else if (cmd.cmd === "history") {
+  const items = (res.items ?? []) as ProgressHistory[];
+  if (cmd.json) console.log(JSON.stringify(items, null, 2));
+  else console.log(formatHistory(items, { agent: cmd.agent, since: cmd.since }));
+} else if (cmd.cmd === "stats") {
   const since = Date.now() - cmd.since;
   const done = (res.done ?? []) as ProgressDone[];
   console.log(formatStats(progressStats(done, { agent: cmd.agent, since })));

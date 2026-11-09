@@ -135,8 +135,27 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   per agent, done tasks with estimate vs actual and the median actual/estimate
   ratio — multiply your next --eta by it.
 
+  Done history (docs/planning-tools.md, step 3). The live tree still drops a
+  done node 24 h after its last write (the bar, the Gantt and this tree show
+  only recent work), but each node that goes done first leaves a record
+  {id, title, agent, kind, parent, prs, link, created, startedAt, endedAt,
+  estimateMs} in the hub's durable done history: keys "h:<id>", one per id
+  (done again: replaced), no expiry and no cap — a record is ~300 bytes, a
+  few thousand a year. Groups and people are not recorded. The first read
+  copies in the stats log's 30 days (no PRs) and done live nodes, once
+  (key "hmig"). Read it with GET /history?limit=N (newest first, default
+  500, at most 2000; any valid token):
+    bun scripts/dev/progress.ts history [--agent <you>] [--since 30d] [--json]
+    bun scripts/dev/progress.ts show --all     # the tree plus "history"
+  or, on an owner/box reader socket, {type:"history", limit?}: the answer
+  {type:"history", items, total} goes to that socket only, never in the
+  snapshot, so the ETA bar and Gantt see nothing new. /dev/roadmap lists it.
+  PRs: --pr 703,707 (or one per report); a node keeps every PR it named in
+  `prs` (newest 20), and "#NNN" in its title counts too.
+
   Limits: name 40, task 120, note 280, needs 120; 200 nodes (oldest done
-  dropped first); done nodes pruned after 24 h (Durable Object alarm); a
+  dropped first); done nodes pruned after 24 h (Durable Object alarm; the
+  done history keeps them); a
   200-event log; 30 writes/min per name, 120 in all. Unset secret: 503.
   Owner to-dos to start with: scripts/dev/progress-seed.ts (idempotent).
 -->

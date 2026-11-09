@@ -6,6 +6,7 @@ import {
   PROGRESS_KINDS,
   PROGRESS_STATUSES,
   type ProgressAgentStats,
+  type ProgressHistory,
   type ProgressReport,
   checkTaskTitle,
   isProgressId,
@@ -20,7 +21,8 @@ export const PROGRESS_USAGE = `usage:
       [--ref <id>] [--action "<command or URL>"] [--link https://…] [--rev N] [--human]
   bun scripts/dev/progress.ts grant --node <id> --agent <name> [--ttl 8h]
   bun scripts/dev/progress.ts resolve --id <id> [--note "the answer"]
-  bun scripts/dev/progress.ts show
+  bun scripts/dev/progress.ts show [--all]
+  bun scripts/dev/progress.ts history [--agent <name>] [--since 30d] [--limit 500] [--json]
   bun scripts/dev/progress.ts stats [--agent <name>] [--since 7d]
 --task is "name: description" (':' or '：'): a short name (1–20 characters), then what it is.
 The owner's ETA bar shows only the name; the full list shows both. A name over 20 characters is
@@ -38,13 +40,17 @@ Report again with a new --eta to move it; free text ("after CI") shows as writte
 The hub also keeps, for agents only (never shown to the owner), each task's first estimate, start,
 end and actual time; "stats" lists your done tasks (30 days) with estimate vs actual and the
 median actual/estimate ratio, to calibrate your next --eta.
+--pr takes one number or several (--pr 703,707); a node keeps every PR it ever named.
+"history" lists done nodes, newest first, from the hub's durable done history (kept after the live
+tree drops a done node at 24 h); "show --all" is the tree with that history under "history".
 Every form takes --token <token> (else LIANKI_PROGRESS_TOKEN, PROGRESS_TOKEN, or .dev.vars).`;
 
 export type ProgressCommand = { token?: string } & (
   | { cmd: "report"; report: ProgressReport; warning?: string }
   | { cmd: "grant"; node: string; agent: string; ttl: string }
   | { cmd: "resolve"; id: string; note?: string }
-  | { cmd: "show" }
+  | { cmd: "show"; all?: boolean }
+  | { cmd: "history"; agent?: string; since?: number; limit?: number; json?: boolean }
   | { cmd: "stats"; agent?: string; since: number }
 );
 
@@ -71,12 +77,13 @@ const STRINGS = [
   "ttl",
   "since",
 ] as const;
-const NUMBERS = ["pct", "pr", "rev"] as const;
-const SWITCHES = ["done", "human"] as const;
+const NUMBERS = ["pct", "pr", "rev", "limit"] as const;
+const SWITCHES = ["done", "human", "all", "json"] as const;
+const SUBS = ["grant", "resolve", "show", "stats", "history"];
 
 /** argv (without the runtime and script) → the command, or an Error naming what is wrong. */
 export function parseProgressArgs(argv: string[]): ProgressCommand | Error {
-  const sub = ["grant", "resolve", "show", "stats"].includes(argv[0] ?? "") ? argv[0]! : "report";
+  const sub = SUBS.includes(argv[0] ?? "") ? argv[0]! : "report";
   const raw: Record<string, unknown> = {};
   for (let i = sub === "report" ? 0 : 1; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -90,7 +97,12 @@ export function parseProgressArgs(argv: string[]): ProgressCommand | Error {
     const value = m[2] ?? argv[++i];
     if (value === undefined) return new Error(`--${name} needs a value`);
     if ((STRINGS as readonly string[]).includes(name)) raw[name] = value;
-    else if ((NUMBERS as readonly string[]).includes(name)) {
+    else if (name === "pr" && value.includes(",")) {
+      const prs = value.split(",").map((v) => Number(v.trim().replace(/^#/, "")));
+      if (!prs.every((n) => Number.isInteger(n) && n > 0))
+        return new Error("--pr must be a number or numbers separated by commas");
+      raw.prs = prs;
+    } else if ((NUMBERS as readonly string[]).includes(name)) {
       const n = Number(value.replace(/^#|%$/g, ""));
       if (value.trim() === "" || !Number.isFinite(n))
         return new Error(`--${name} must be a number`);
@@ -98,7 +110,19 @@ export function parseProgressArgs(argv: string[]): ProgressCommand | Error {
     } else return new Error(`unknown flag: --${name}`);
   }
   const token = typeof raw.token === "string" ? { token: raw.token } : {};
-  if (sub === "show") return { cmd: "show", ...token };
+  if (sub === "show") return { cmd: "show", ...(raw.all ? { all: true } : {}), ...token };
+  if (sub === "history") {
+    const since = typeof raw.since === "string" ? parseTtl(raw.since) : undefined;
+    if (since instanceof Error) return new Error(`--since: ${since.message}`);
+    return {
+      cmd: "history",
+      ...(typeof raw.agent === "string" && raw.agent ? { agent: raw.agent } : {}),
+      ...(since !== undefined ? { since } : {}),
+      ...(typeof raw.limit === "number" && raw.limit > 0 ? { limit: raw.limit } : {}),
+      ...(raw.json ? { json: true } : {}),
+      ...token,
+    };
+  }
   if (sub === "stats") {
     const since = parseTtl(typeof raw.since === "string" ? raw.since : STATS_SINCE_DEFAULT);
     if (since instanceof Error) return new Error(`--since: ${since.message}`);
@@ -135,7 +159,7 @@ export function parseProgressArgs(argv: string[]): ProgressCommand | Error {
     raw.assignee = { type: "human", name: raw.agent };
     delete raw.agent;
   }
-  for (const k of ["path", "done", "human", "token"]) delete raw[k];
+  for (const k of ["path", "done", "human", "token", "all", "json", "limit"]) delete raw[k];
   const report = parseProgressReport(raw);
   if (report instanceof Error) return report;
   const title = checkTaskTitle(report.task);
@@ -161,6 +185,32 @@ export function formatStats(stats: ProgressAgentStats[]): string {
         return `  ${d.id}  est ${est} → actual ${mins(d.actualMs)}${x}${rev}  ${d.title}`;
       });
       return [head, ...rows].join("\n");
+    })
+    .join("\n");
+}
+
+const jst = (at: number) =>
+  new Date(at + 9 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+
+/**
+ * `history` for a terminal: one line per done node (JST end time, id, PRs,
+ * title), filtered by agent and by `since` (ms back from `now`).
+ */
+export function formatHistory(
+  items: ProgressHistory[],
+  opts: { agent?: string; since?: number; now?: number } = {},
+): string {
+  const now = opts.now ?? Date.now();
+  const rows = items.filter(
+    (h) =>
+      (!opts.agent || h.agent === opts.agent) &&
+      (opts.since === undefined || h.endedAt >= now - opts.since),
+  );
+  if (!rows.length) return "progress: no done nodes in the history for that filter";
+  return rows
+    .map((h) => {
+      const prs = h.prs?.length ? `  ${h.prs.map((n) => `#${n}`).join(" ")}` : "";
+      return `${jst(h.endedAt)} JST  ${h.id}${prs}  ${h.title}  (${h.agent})`;
     })
     .join("\n");
 }
