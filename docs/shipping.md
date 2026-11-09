@@ -70,6 +70,27 @@ wrangler runs D1 locally, so no Cloudflare secrets are needed. Both alerts need
 the repo secret `SLACK_WEBHOOK_URL` (`scripts/ci/slack-alert.sh`); without it
 they only leave a workflow warning.
 
+### Flaky tool downloads
+
+On 2026-11-09 GitHub's release CDN answered 504 for long stretches: setup-bun
+("Unexpected HTTP response: 504") and the gitleaks `curl` died, PRs fell out
+of the merge queue and a deploy was skipped. Since then (/infra/ci-retry):
+
+- **Bun** comes from `.github/actions/setup-bun` (a local composite action;
+  every workflow uses it). The version is pinned there (`bun-version`, now
+  1.4.4 — bump it there, nowhere else) and `~/.bun/bin` is cached under
+  `bun-<version>-<os>-<arch>`, so most jobs download nothing. On a miss it runs
+  `oven-sh/setup-bun` with `continue-on-error`; if that fails it fetches the
+  same binary from npm (`@oven/bun-linux-x64`, another CDN), then the GitHub
+  release zip. The log line `bun 1.4.4 (cache hit: true)` says which path ran.
+- **gitleaks** (ci.yml, version in the job's `GITLEAKS_VERSION`) is cached
+  under `gitleaks-<version>-<os>-<arch>`; a miss downloads it.
+- Every download goes through `scripts/ci/fetch.sh`: to a file, 3 attempts,
+  10 s then 30 s apart. A retry leaves a `download retry` warning on the run.
+
+A new tool a workflow downloads gets the same: a pinned version, an
+`actions/cache` keyed by tool + version + OS + arch, and `fetch.sh`.
+
 ## Local hooks
 
 Split by speed since 2026-11-04 (a commit used to run typecheck and the whole
