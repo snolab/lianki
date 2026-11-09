@@ -1,17 +1,14 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { isDev } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { swipeAbStats } from "@/lib/repos/swipeAbD1";
+import { devPageText, devPageMetadata } from "../dev-page-title";
 
 // Owner-only, like /dev/roadmap: anyone else gets a plain 404.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Swipe A/B — Lianki dev",
-  robots: { index: false, follow: false, nocache: true },
-};
+export const generateMetadata = devPageMetadata("swipeAb");
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
@@ -32,10 +29,13 @@ export default async function DevSwipeAbPage() {
     ["5 秒内撤销", (s) => `${s.undos} · ${pct(s.undoRate)}`],
     ["手指位移中位数", (s) => (s.medianTravel == null ? "–" : `${Math.round(s.medianTravel)} px`)],
   ];
+  const heading = await devPageText("swipeAb");
   return (
     <main lang="zh" className="max-w-3xl mx-auto px-4 py-8 space-y-6">
       <header className="space-y-1">
-        <h1 className="font-brush text-4xl">滑动 A/B</h1>
+        <h1 lang={heading.lang} className="font-brush text-4xl">
+          {heading.text}
+        </h1>
         <p className="text-sm opacity-60">
           只有你能看到这页。A = js（指针事件 + JS 档位），B = native（每条竹简一个横向滚动容器 +
           scroll-snap）。默认都是 A，在 /words → Settings → Experimental 打开「New swipe」就是 B。B
