@@ -327,6 +327,25 @@ export class WordsD1Repo {
     return { lists: out, more: results.length >= limit };
   }
 
+  /**
+   * Today's goal (lib/today/goal.ts): per list, the cards reviewed since
+   * `since` that are not due again by `now` (a card still in its learning
+   * steps is counted as left, not done).
+   */
+  async doneSince(since: string, now = new Date()): Promise<Record<string, number>> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT r.list_id AS list_id, COUNT(DISTINCT r.term) AS n
+         FROM word_reviews r
+         JOIN word_cards c ON c.email = r.email AND c.list_id = r.list_id AND c.term = r.term
+         WHERE r.email = ? AND r.reviewed_at >= ? AND c.card_due > ?
+         GROUP BY r.list_id`,
+      )
+      .bind(this.email, since, now.toISOString())
+      .all<{ list_id: string; n: number }>();
+    return Object.fromEntries(results.map((r) => [r.list_id, r.n]));
+  }
+
   /** Words due by `now`, most overdue first. */
   async dueCards(listId: string, now = new Date(), limit = 200): Promise<WordCard[]> {
     const { results } = await this.db
