@@ -92,6 +92,22 @@ to every signed-in user while it is on).
   and deletes only their own files. The chat inbox lists only `'chat'` rows
   and agents' inbox ops only reach those; the import routes only `'import'`.
 - **Retention.** Kept until the user deletes it (as the inbox).
+- **Sources.** `import` (this panel), `self-intro` (/self-intro's add-file
+  area, docs/self-intro-import.md), `chat` (the chat's attachments). Uploads
+  take `?source=import|self-intro`.
+
+### My Files: /my/files (owner, 2026-11-10)
+
+Every file the user stored, in **folders by origin** (`source`):
+Self-introduction, Word lists, Chat, Other (`lib/import/my-files.ts`; a new
+source lands in Other until it gets a folder). Each row: name, size, time,
+**Open** (`GET /api/my/files/<id>`, served to its owner only, as an
+attachment) and × (`DELETE /api/my/files/<id>`: the R2 object and the row,
+after a 5 s Undo toast; a pending delete is sent at once when the page is
+left). Same gate as the store (`import.any`). Linked from the Import panel
+("All my files") and from /self-intro. The /my index (and /profile,
+/preferences under /my) is another change; this page is `/my/files` only.
+Tests: `unit/my-files.test.ts`.
 - Tests: `unit/import-files.test.ts`; `scripts/qa/qa-import-wordlist.mjs`
   (upload in the panel → listed → deleted; 404 without the gate).
 

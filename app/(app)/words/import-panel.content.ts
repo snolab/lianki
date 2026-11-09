@@ -689,6 +689,24 @@ const dictionary = {
       sw: "“Maneno kwa AI” hubadilisha faili kuwa jedwali la maneno (neno, maana, mfano) unalokagua kabla ya kuongeza. Hutumia salio lako; maandishi ya faili tu ndiyo huenda kwa AI.",
       mr: "“AI ने शब्द बनवा” फाइलची शब्दसारणी (शब्द, अर्थ, उदाहरण) बनवते, जी तुम्ही जोडण्यापूर्वी तपासता. तुमचे क्रेडिट वापरले जातात; AI कडे फक्त फाइलचा मजकूर जातो.",
     }),
+    anyAllFiles: t({
+      en: "All my files",
+      zh: "我的文件库",
+      ja: "マイファイル一覧",
+      ko: "내 파일 전체",
+      hi: "मेरी सभी फ़ाइलें",
+      es: "Todos mis archivos",
+      fr: "Tous mes fichiers",
+      ar: "كل ملفاتي",
+      bn: "আমার সব ফাইল",
+      pt: "Todos os meus arquivos",
+      ru: "Все мои файлы",
+      ur: "میری تمام فائلیں",
+      id: "Semua file saya",
+      de: "Alle meine Dateien",
+      sw: "Faili zangu zote",
+      mr: "माझ्या सर्व फाइल्स",
+    }),
   },
 };
 
@@ -706,6 +724,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
   tableHint:
     "Small grey line under the 'CSV or Excel table' choice in the /words Import panel: the columns such a table has, and that ready templates can be downloaded. Short.",
   close: "Button in the Import panel on /words that closes the panel. Imperative, one word.",
+  anyAllFiles:
+    "Link beside 'Your files' in the /words Import panel ('Any file'): opens /my/files, the page listing every file the user stored from anywhere (self-introduction, word lists, chat). A short noun phrase.",
   aiMake:
     "Button on one stored file in the /words Import panel ('Any file'): AI reads that file and turns it into a word table (word, meaning, example) to check before adding; spends the user's credits. A very short label, 2-4 words; keep 'AI' or the language's usual abbreviation.",
   aiNote:

@@ -34,6 +34,13 @@ should be a 名詞 instead of 動詞". Read this before adding or renaming a rou
     permission check (`isAdmin`, `isDev`, …), never by a hidden or guessable
     URL.
 
+## /my: the user's own data (owner, 2026-11-10)
+
+`/my` is the user's manager for all their Lianki data. `/my/files` lists
+every file they stored, in folders by origin (docs/import-material.md, "My
+Files"). Later: `/preferences` → `/my/settings` as a 308 (rule 9), and the
+/my index; neither is moved here.
+
 ## A rename, step by step
 
 1. Move the route folder; fix its own links, `generateAppHreflangMetadata`

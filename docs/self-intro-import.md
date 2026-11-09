@@ -10,7 +10,16 @@ its answers filled in. "Skip: fill in myself" keeps the old manual path.
 ## Steps
 
 1. **Import** (`app/(app)/self-intro/ImportStep.tsx`): a large free-text box
-   and a file drop / picker (multiple), with the one-line privacy notice.
+   and a file drop / picker (multiple), **Upload to My Files**
+   (上传到我的文件库). A picked or dropped file uploads at once, no confirm,
+   into the user's own file store (source `self-intro`, below), each chip
+   with its progress; × deletes that file for good after a 5 s Undo toast.
+   The storage promise (owner's copy, 2026-11-10) sits under it: "文件上传到
+   你的账号自有储存库，仅你自己可见。" with a link to **/my/files**. The
+   start button (识别) appears only when no upload is still running and
+   `GET /api/self-intro/import` says the user's credits cover the smallest
+   hold; otherwise the files stay stored and the step says the minimum to
+   start and the balance, with a top-up link.
 2. **Facts**: the AI's answer is a list of single facts, grouped by field
    (name, from, age, occupation, hobby, languages). Each is ✓ kept, ✎ edited
    or ✕ dropped; "Keep all" keeps every one not dropped. A fact the model was
@@ -56,15 +65,23 @@ Learning Partner (`PartnerQuestions.tsx`, `lib/self-intro/followup.ts`).
 
 ## How files are read
 
-`lib/self-intro/import-parse.ts`, **in the browser**: one parser list keyed by
-MIME type, then extension.
+Owner, 2026-11-10: files are **stored**, then read **on the server** when the
+user starts the analysis. `POST /api/self-intro/import {text, fileIds,
+locale}` loads each id from the user's own store (`source = 'self-intro'`,
+their `owner_id`; any other id is "not found") into the request and reads it
+with `lib/import/ai-read.ts` — the parser list below (a known extension
+first, since the stored type is sniffed), a JPEG/PNG/WebP photo as an image.
+A file that cannot be read is named back (`fileErrors`); the rest goes on.
+
+`lib/self-intro/import-parse.ts`: one parser list keyed by MIME type, then
+extension.
 
 | parser | matches | how |
 | ------ | ------- | --- |
 | pdf    | `application/pdf`, `.pdf` | `unpdf` (pdf.js, lazy-loaded): the text layer |
 | docx   | Word MIME, `.docx` | the zip's `word/document.xml`, headers, footers → text |
 | zip    | `application/zip`, `.zip` | every text/HTML entry, by the same rules (profile exports) |
-| image  | `image/*`, jpg/png/webp/heic/avif… | shrunk on a canvas to a JPEG data URL; read by the model |
+| image  | `image/*` | a stored JPEG/PNG/WebP (≤ ~1.5 MB) as a data URL; read by the model; others refused |
 | html   | HTML/XML MIME, `.html` `.htm` `.xml` | tags stripped |
 | text   | `text/*`, JSON, txt/md/csv/tsv/json/yaml/vcf | decoded (UTF-8, UTF-16 by BOM) |
 
@@ -91,17 +108,36 @@ language (`Intl.DisplayNames`, no per-language code). The cost goes through
 
 ## Privacy
 
-- **Files are never stored.** PDF, Word, zip and text files are parsed on the
-  device; only their text leaves it. Images are shrunk on the device and
-  sent as data URLs. The route holds the body in memory for the one model
-  call and keeps nothing: no D1, no R2, no cache.
+- **Files are stored in the user's own file store until they delete them**
+  (owner, 2026-11-10; replaces "files are never stored"). R2 `lianki-blobs`
+  under `inbox/<user id>/<yyyy>/<mm>/<random 20-hex id>` with one
+  `inbox_item` row (`source = 'self-intro'`), the chat inbox's storage
+  (lib/inbox/, lib/import/files.ts). The promise "only you can see them" is
+  kept by:
+  - only the uploader's session lists, reads (`GET /api/my/files/<id>`) or
+    deletes a file; any other account gets 404 (`unit/my-files.test.ts`);
+  - no shared or public URL exists; a file is served only to that session,
+    as an attachment (inline only for a safe image), `private` caching,
+    `nosniff`, a sandbox CSP;
+  - the R2 key is never sent to the page, and its id is random;
+  - **admin / dev access:** no route lists or reads another user's files.
+    /dev/users shows storage usage numbers only; the owner's agent lanes'
+    inbox tickets reach only the owner's own chat files (`source = 'chat'`).
+    Whoever operates the Cloudflare account can reach R2 itself — for
+    operations only (backups, abuse reports, the law), as /privacy says;
+  - × or /my/files deletes the R2 object and the row for good (after a 5 s
+    Undo window in the page).
+- **Read only when started.** A stored file is read into the request when
+  the user starts the analysis; its text goes to Workers AI for that one
+  call; nothing derived from it is stored but what the user confirms.
 - **Nothing is logged** but the cost (numbers). A model error logs its name
   only, since a provider message could echo the input.
 - **Only what the user confirms is saved**, as before: the interview's
   answers become sentences, and only the cards the user saves are stored.
 - `unit/self-intro-import.test.ts` checks that the route makes no other
-  request, that its code has no storage, and that no log line carries the
-  material.
+  request and that no log line carries the material; `unit/my-files.test.ts`
+  that another user gets 404 for read and delete, and that a delete removes
+  the R2 object.
 
 ## Limits and gate
 

@@ -1,13 +1,11 @@
 import { headers } from "next/headers";
 import { auth } from "@/auth";
-import { getBlobs, getD1, dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { walletDb } from "@/lib/payments/wallet-db";
 import { isDev } from "@/lib/permissions";
 import type { Complete } from "@/lib/read/gloss-server";
 import { isWorkersAiConfigured, workersAiOpenAI } from "@/lib/workers-ai";
-import { getItem, type InboxDb } from "@/lib/inbox/store";
-import type { InboxBucket } from "@/lib/inbox/handlers";
+import { storedFileReader } from "@/lib/import/stored-read";
 import {
   AI_IMPORT,
   handleAiConvert,
@@ -23,19 +21,7 @@ const complete: Complete = async (body) =>
     timeout: AI_IMPORT.callTimeoutMs,
   })) as Awaited<ReturnType<Complete>>;
 
-/** One of the user's own stored import files, its bytes read from R2 into this request only. */
-const readFile: AiImportDeps["readFile"] = async (userId, id) => {
-  if (dbBackend() !== "d1") return null;
-  const it = await getItem(getD1() as unknown as InboxDb, id);
-  if (!it || it.ownerId !== userId || it.source !== "import") return null;
-  const obj = await (getBlobs() as unknown as InboxBucket).get(it.r2Key);
-  if (!obj) return null;
-  return {
-    name: it.name,
-    type: it.type,
-    bytes: new Uint8Array(await new Response(obj.body).arrayBuffer()),
-  };
-};
+const readFile: AiImportDeps["readFile"] = storedFileReader("import");
 
 /** The signed-in user, the gate's inputs, the model, the credit wallet and their stored files. */
 async function deps(): Promise<AiImportDeps> {

@@ -181,7 +181,12 @@ export default function StoredFiles({
       )}
 
       <div>
-        <h3 className="text-sm font-medium">{t.anyListTitle}</h3>
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-sm font-medium">{t.anyListTitle}</h3>
+          <a href="/my/files" className="text-xs underline" data-qa="words-import-my-files">
+            {t.anyAllFiles}
+          </a>
+        </div>
         {files && files.length === 0 && (
           <p className="mt-1 text-sm text-[oklch(0.42_0_0)] dark:text-[oklch(0.8_0_0)]">
             {t.anyEmpty}

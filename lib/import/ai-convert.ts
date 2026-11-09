@@ -361,10 +361,24 @@ export async function aiQuota(
 ): Promise<{ on: boolean; available: boolean }> {
   if (!deps.user || !importAiOn(deps.flags, deps.owner) || !deps.configured)
     return { on: false, available: false };
-  const admin = (deps.admin ?? isAdmin)(deps.user.email);
-  if (admin || !deps.db) return { on: true, available: true };
-  const balance = await getBalance(deps.db, deps.user.id).catch(() => 0);
-  return { on: true, available: balance >= reserveCredits(minHoldUsd()) };
+  const q = await creditsCover(deps.user, deps, minHoldUsd());
+  return { on: true, available: q.available };
+}
+
+/**
+ * Do this user's credits cover a hold of `holdUsd`? An admin or no wallet
+ * (local dev): always. `need` is that hold in whole credits, `have` the
+ * spendable balance — what a page shows when they do not.
+ */
+export async function creditsCover(
+  user: { id: string; email: string },
+  deps: { db: D1WithBatch | null; admin?: (email: string | null | undefined) => boolean },
+  holdUsd: number,
+): Promise<{ available: boolean; need: number; have: number }> {
+  const need = reserveCredits(holdUsd);
+  if ((deps.admin ?? isAdmin)(user.email) || !deps.db) return { available: true, need, have: need };
+  const have = await getBalance(deps.db, user.id).catch(() => 0);
+  return { available: have >= need, need, have };
 }
 
 /** GET /api/import/ai → {on, available}: the panel shows the source only when available. */

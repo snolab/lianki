@@ -298,6 +298,31 @@ try {
       conv === 402 || conv === 503,
       `POST /api/import/ai: refused without credits (402/503) (${conv})`,
     );
+    // My Files: the file in the Word lists folder, served back to its owner.
+    const mine = await (await ctx.request.get("/api/my/files")).json();
+    check(
+      (mine.items ?? []).some((i) => i.id === fileId && i.source === "import"),
+      "/api/my/files: the file, from the Import panel",
+    );
+    const back = await ctx.request.get(`/api/my/files/${fileId}`);
+    check(
+      back.status() === 200 && (await back.body()).length === 6,
+      `GET /api/my/files/<id>: the owner gets the bytes (${back.status()})`,
+    );
+    const filesPage = await ctx.newPage();
+    await filesPage.goto("/my/files?lang=en");
+    const folder = filesPage.locator('[data-qa="my-files-folder-import"]');
+    await folder.waitFor({ timeout: 15000 });
+    check(
+      /lesson-notes\.bin/.test(await folder.innerText()),
+      "/my/files: the file in the Word lists folder",
+    );
+    await filesPage.screenshot({ path: join(OUT, `my-files-${scheme}.png`), fullPage: true });
+    check(
+      await filesPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      "/my/files: no sideways scroll at phone width",
+    );
+    await filesPage.close();
     await stored.first().locator('[data-qa="words-import-file-delete"]').click();
     await page.waitForTimeout(1500);
     check((await stored.count()) === 0, "any file: Delete removes it");
