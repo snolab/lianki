@@ -62,11 +62,10 @@ export default function LearnClient({ locale }: LearnClientProps) {
   const recommendedLists: RecommendedList[] = [
     {
       id: "language-reactor",
-      title: "Language Reactor + Lianki Workflow",
-      description:
-        "Turn YouTube and Netflix into your language school - learn any language through comprehensible input with dual subtitles and spaced repetition",
+      title: t.recommended.reactorTitle.value,
+      description: t.recommended.reactorDescription.value,
       blogSlug: "2026-02-27-language-reactor-lianki-workflow",
-      tags: ["Language Reactor", "YouTube", "Netflix", "Workflow"],
+      tags: ["Language Reactor", "YouTube", "Netflix", t.recommended.workflowTag.value],
     },
   ];
 
