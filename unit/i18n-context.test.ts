@@ -18,6 +18,7 @@ import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import wordsListPreview from "@/app/(app)/words/list-preview.content";
 import leaveGuard from "@/app/components/leave-guard.content";
+import creditsUsage from "@/app/(app)/membership/credits/credits-usage.content";
 import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
 import devTemplates from "@/app/(app)/dev/templates/templates.content";
 import devUsers from "@/app/(app)/dev/users/users.content";
@@ -123,6 +124,7 @@ describe.each([
   ["text-size", textSize],
   ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],
+  ["credits-usage", creditsUsage],
   ["invite-card", inviteCard],
   ["email-invite", emailInvite],
   ["invite-mail", inviteMail],

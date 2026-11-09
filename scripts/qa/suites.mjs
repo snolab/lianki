@@ -242,6 +242,21 @@ export const SUITES = [
     paths: ["app/(app)/membership/**", "public/membership/**", "lib/plan-skin.ts"],
     sensitive: false,
   },
+  // The credits usage page: one tap from the wallet card and the account menu, empty state, filters, CSV, AA, 360 px.
+  {
+    name: "CREDITS USAGE (qa-credits-usage)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-credits-usage.mjs"],
+    base: true,
+    id: "credits-usage",
+    paths: [
+      "app/(app)/membership/**",
+      "app/api/payments/credits/**",
+      "lib/payments/credit-usage*.ts",
+      "app/components/ProfileMenu.tsx",
+    ],
+    sensitive: false,
+  },
   // YouTube songs (docs/youtube-song-examples.md): flag gate, the ▶ per line, the popup's close rules.
   // Every YouTube host blocked: no video, no sound, no network.
   {

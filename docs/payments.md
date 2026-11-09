@@ -240,6 +240,34 @@ Gift codes can carry credits (`gift_code.credits`) as well as, or instead of,
 Pro days; both land in one batch with the `membership_grant` marker, once per
 person per code.
 
+### Credits usage (`/membership/credits`)
+
+Owner, 2026-11-09: a prominent place to audit credits. One tap from the
+account menu ("Credits usage") and from the wallet card's history heading.
+Rules in `lib/payments/credit-usage.ts`, the handler in
+`credit-usage-handler.ts`, the page in `app/(app)/membership/credits/`,
+`GET /api/payments/credits/usage` (`?tz&group&from&to&offset&limit`, or
+`&format=csv`).
+
+- **Every ledger line of the signed-in user, only theirs** (the user id is the
+  session's, never the query's): time in the viewer's zone, feature, amount,
+  the balance after it.
+- **A paid action is one line**: its `ai` hold and the `refund` with the same
+  refId read "Held N · used M · returned N−M" (预扣 · 实际 · 退还); a hold with
+  no refund yet reads "still running".
+- **Feature**: an `ai` row's `note` is the metered call's feature id
+  (`FEATURES` maps each to a group and the page it was used on); no note = a
+  Learning Partner reply. Other reasons are their own feature. A line links to
+  that page; it never carries what the user wrote.
+- **Balance after**: the running sum of the ledger in written order, started so
+  that it ends on the cached `credit_balance` (a wallet over `MAX_ROWS` =
+  20,000 lines shows its newest).
+- **Filters** by feature group and local day range (inclusive); **this
+  month's** totals per group in the viewer's zone; **CSV** of the filtered
+  lines, oldest first, times in UTC and local, formula-looking cells defused.
+- Tests: `unit/credit-usage.test.ts`; QA `scripts/qa/qa-credits-usage.mjs`
+  (suite `credits-usage`).
+
 ### Refunds
 
 - **A pass bought with credits**: `/dev/credits` → "退回余额" returns the
