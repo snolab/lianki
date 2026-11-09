@@ -2181,9 +2181,9 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
   askJump:
     "Screen-reader label and tooltip of a round up-arrow button floating above the chat's text box. It shows while a question the assistant asked (with tappable answers) is still unanswered and has scrolled off above the visible messages; a tap jumps up to the nearest one. Imperative, then a count: keep {count} as is, a number, worded so it needs no plural form.",
   fullScreen:
-    "Screen-reader label and tooltip of a round icon button (four corners pointing outward, no text) at the top corner of the open chat panel: a tap makes the chat fill the whole app screen, with the same conversation, draft and microphone. Use the platform's usual term for the full-screen command (as on a video player), a short noun phrase or command.",
+    "An on/off item in the chat's own menu (opened by a double tap on the chat's grip), next to other on/off view settings: on, the chat fills the whole app screen, with the same conversation, draft and microphone (dragging the chat's input bar to the bottom edge of the screen does the same). Use the platform's usual term for the full-screen command (as on a video player), a short noun phrase.",
   fullScreenExit:
-    "Screen-reader label and tooltip of the same round icon button (four corners pointing inward) while the chat fills the whole screen: a tap returns it to the small chat panel where it was. Use the platform's usual 'exit full screen' command, short imperative.",
+    "Visible text of a pill button, after a ✕ mark, at the top corner while the chat fills the whole screen: a tap returns it to the small chat panel where it was. Use the platform's usual 'exit full screen' command, short imperative; it must fit beside the ✕ on a narrow phone.",
   dragGrip:
     "Screen-reader label and tooltip of a small grip icon (six dots, no text) at the left end of the chat's input bar, beside the + button. Dragging it moves the chat box around the screen; a single tap folds the chat into a small pill, or opens it again from the pill; a double tap opens the chat's menu. Describe all three gestures briefly, the drag first; 'chat' is the chat box with the Learning Partner.",
   vpMenu:

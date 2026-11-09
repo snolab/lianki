@@ -103,6 +103,13 @@ async function run(engine, name, scheme, vp) {
     const mic = () => page.locator(sel("debug-chat-mic")).boundingBox();
     const fold = () => page.getAttribute(SECTION, "data-fold");
     const isFull = () => page.locator(`${SECTION}[data-fullscreen]`).count();
+    // No button to enter (owner, 2026-11-09): the menu's Full screen row (a
+    // double tap on the grip) enters without moving the panel; ✕ leaves.
+    const enterFull = async () => {
+      await page.locator(sel("debug-chat-pill-min")).dblclick();
+      await page.locator(sel("debug-menu-fullscreen")).click();
+    };
+    const exitFull = () => page.locator(sel("debug-chat-fullscreen-exit")).click();
     const shot = async (what) => {
       if (shots)
         await page.screenshot({ path: `${shots}/${name}-${scheme}-${vp.width}-${what}.png` });
@@ -257,7 +264,7 @@ async function run(engine, name, scheme, vp) {
     // sideways by where the bar now starts (0 px at 320, where the panel
     // already spans the screen).
     const barRest = await page.locator(sel("debug-chat-pill")).boundingBox();
-    await page.locator(sel("debug-chat-fullscreen")).click();
+    await enterFull();
     await settle();
     check((await isFull()) === 1, `${tag} full screen is on`);
     const sec = await page.locator(SECTION).boundingBox();
@@ -285,7 +292,7 @@ async function run(engine, name, scheme, vp) {
     table.at(-1).full = fmt(fullMic);
     table.at(-1).moved = r1(fullMic.x - rest.x);
     await shot("4-full");
-    await page.locator(sel("debug-chat-fullscreen")).click();
+    await exitFull();
     await settle();
     check((await isFull()) === 0, `${tag} back to the panel`);
     same(rest, await mic(), "back from full screen");
@@ -313,15 +320,15 @@ async function run(engine, name, scheme, vp) {
       !!left && Math.abs(left.x - (rest.x + dragX)) <= MAX_MOVE,
       `${tag} dragged ${-dragX} px left (${fmt(left)})`,
     );
-    await page.locator(sel("debug-chat-fullscreen")).click();
+    await enterFull();
     await settle();
     same(fullMic, await mic(), "full screen from a dragged panel");
-    await page.locator(sel("debug-chat-fullscreen")).click();
+    await exitFull();
     await settle();
     same(left, await mic(), "back to the dragged panel");
-    await page.locator(sel("debug-chat-fullscreen")).click();
+    await enterFull();
     await settle();
-    await page.locator(sel("debug-chat-fullscreen")).click();
+    await exitFull();
     await settle();
     await ctx.close();
   } finally {
