@@ -75,3 +75,29 @@ Mails never spell the product name: `{brand}` / `{brandLong}`, filled from
   schema, or fails to validate or render is skipped and the built-in default
   goes out. Logged as `mail.template.fallback` with template, locale, version
   and reason — never an address. A sign-in mail is never blocked by a template.
+
+## Editor: /dev/templates (isDev)
+
+`app/(app)/dev/templates`, API `app/api/dev/templates` → `lib/mail-templates/route.ts`.
+
+- Pick a template, a language (17) and a sample-data set (typical / long
+  values); the editor (subject, HTML, plain text) sits beside a **live
+  preview** (side by side on a desktop, stacked on a phone). The preview runs
+  the same engine as a send, in the browser, inside a sandboxed iframe (no
+  script, no same-origin); a Light/Dark switch imitates a mail app's theme.
+- Locked and optional variables are listed above the fields; problems show
+  under them as you type, and Save stays off until there are none. The server
+  validates again.
+- **Save** appends a version and makes it the one sent. The version list shows
+  every saved version plus the built-in, with **Diff** (that version → the
+  editor, line diff with HTML split at closing tags), **Edit from this**, and
+  **Roll back to this** / **Send the built-in**.
+- **Send test to me** renders the editor's source with the sample data and
+  sends it to the signed-in developer's own address only (never one from the
+  request), subject prefixed `[test]`; 5 per 10 minutes per developer; a stub
+  on a local server (`isLocalOrigin`). Save, rollback and test sends are in
+  `security_audit` (`mail-template.save` / `.activate` / `.test-send`, subject
+  `<template>:<locale>`).
+- QA: `scripts/qa/qa-templates.mjs` (suite `templates`): desktop + phone,
+  light + dark, edit → preview → unsafe HTML refused → save → test send →
+  diff → rollback.
