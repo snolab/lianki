@@ -112,6 +112,9 @@ async function notTheOwner(tag) {
 async function everyone(tag) {
   const ctx = await newSilentContext(browser, { baseURL: BASE });
   await signUp(ctx, tag.replace(/\W+/g, ""));
+  // Flags are cached 30 s per isolate: wait for the flag to reach the server.
+  for (let i = 0; i < 25 && (await preview(ctx, CSV)).status() === 404; i++)
+    await new Promise((r) => setTimeout(r, 2000));
   const page = await ctx.newPage();
   await page.goto("/import");
   check(
