@@ -10,9 +10,9 @@ import {
   usdToMicroCredits,
 } from "@/lib/payments/ai-credits";
 import type { D1WithBatch } from "@/lib/payments/credits-store";
+import { textUsd } from "@/lib/payments/prices";
 import {
   CHARGE_STALE_MS,
-  costUsd,
   reserveInTokens,
   HISTORY_LINES,
   HISTORY_MAX_CHARS,
@@ -282,7 +282,11 @@ export async function partnerReply(
   const key = `${req.userId}:${req.msgId ?? crypto.randomUUID()}`;
   const hold = await reserveAi(
     db,
-    { userId: req.userId, key, reserved: reserveCredits(costUsd(worstIn, MAX_OUTPUT_TOKENS)) },
+    {
+      userId: req.userId,
+      key,
+      reserved: reserveCredits(textUsd(PARTNER_AI_MODEL, worstIn, MAX_OUTPUT_TOKENS)),
+    },
     new Date(now()),
   );
   if (hold.status === "duplicate") return { ok: false, error: "duplicate" };
@@ -309,7 +313,7 @@ export async function partnerReply(
       settled = await settleAi(
         db,
         key,
-        usdToMicroCredits(costUsd(tokensIn, tokensOut)),
+        usdToMicroCredits(textUsd(PARTNER_AI_MODEL, tokensIn, tokensOut)),
         new Date(now()),
       );
     } catch {}

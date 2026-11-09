@@ -10,6 +10,7 @@ import {
   rangeWords,
   readerCtx,
   wordCtx,
+  payerOf,
 } from "@/lib/read/reader-route";
 import { gradeBatch, probeBatch, undoBatch, type BatchCtx } from "@/lib/read/batch-grade-server";
 import { fillGlosses } from "@/lib/read/gloss-server";
@@ -69,7 +70,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!taken) return json({ error: "busy" }, 429);
   const words = body.words === undefined ? [] : rangeWords(body.words, taken);
   if (!words) return badRequest("words are invalid");
-  const ai = body.own === true ? null : { userId: ctx.userId };
+  const ai = body.own === true ? null : payerOf(ctx);
   const glossFor = (b: BookCtx) => (ws: RangeWord[]) => fillGlosses(ctx.db, b, ws, ai);
   const r = await gradeBatch(c, { ...body, day }, words, new Date(), glossFor);
   return r.ok ? json(r.res) : badRequest(r.error);

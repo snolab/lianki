@@ -31,6 +31,13 @@ export interface ReaderCtx {
   load(): Promise<{ book: ReaderBook; words: MaterialWords }>;
 }
 
+/** Who pays this request's model calls: the reader, from their credits (lib/payments/metered.ts). */
+export const payerOf = (ctx: Pick<ReaderCtx, "userId" | "email" | "db">) => ({
+  userId: ctx.userId,
+  email: ctx.email,
+  db: ctx.db,
+});
+
 export const notFound = () => NextResponse.json({ error: "Not found" }, { status: 404 });
 export const badRequest = (error: string) => NextResponse.json({ error }, { status: 400 });
 export const json = <T>(body: T, status = 200) =>

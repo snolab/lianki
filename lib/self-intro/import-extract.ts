@@ -10,8 +10,16 @@
  * memory only. The one log line is the cost (numbers only).
  */
 import { z } from "zod";
-import { PARTNER_AI_MODEL, costUsd } from "@/lib/partner-ai-config";
-import { chargeAi, type Complete } from "@/lib/read/gloss-server";
+import { PARTNER_AI_MODEL } from "@/lib/partner-ai-config";
+import {
+  payAi,
+  promptChars,
+  usageUsd,
+  type AiPayer,
+  type Complete,
+  type NoCredits,
+} from "@/lib/read/gloss-server";
+import { textHoldUsd } from "@/lib/payments/prices";
 import { IMPORT, SELF_INTRO_FIELDS, type SelfIntroField } from "./import-config";
 
 /** The image data URLs the route accepts (what the page's canvas makes; nothing else). */
@@ -168,36 +176,44 @@ export function importMessages(req: ImportRequest, today: string) {
 
 export type ExtractResult =
   | { ok: true; facts: ImportFact[] }
-  | { ok: false; error: "empty" | "model-failed" };
+  | { ok: false; error: "empty" | "model-failed" }
+  | ({ ok: false; error: "no-credits" } & NoCredits);
 
-/** Material → facts, in one model call; its real cost settled through chargeAi (log-only). */
+/** Material → facts, in one model call, paid from the user's credits (payAi: held first). */
 export async function extractSelfIntro(
   req: ImportRequest,
-  ai: { userId: string; complete: Complete; now?: Date },
+  ai: AiPayer & { complete: Complete; now?: Date },
 ): Promise<ExtractResult> {
   if (!req.text.trim() && !req.images.length) return { ok: false, error: "empty" };
   const today = (ai.now ?? new Date()).toISOString().slice(0, 10);
   let content = "";
+  const messages = importMessages(req, today);
+  const hold = textHoldUsd(
+    PARTNER_AI_MODEL,
+    promptChars(messages),
+    IMPORT.maxOutputTokens,
+    req.images.length,
+  );
   try {
-    const r = await ai.complete({
-      model: PARTNER_AI_MODEL,
-      messages: importMessages(req, today),
-      max_tokens: IMPORT.maxOutputTokens,
-      temperature: 0,
-      reasoning_effort: "none",
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "self_intro_facts", schema: FACTS_JSON_SCHEMA },
-      },
-    });
-    content = r.choices?.[0]?.message?.content ?? "";
-    const usd = costUsd(r.usage?.prompt_tokens ?? 0, r.usage?.completion_tokens ?? 0);
-    if (usd > 0)
-      await chargeAi(ai.userId, {
-        usd,
-        what: "self-intro.import",
-        chars: req.text.length,
+    const paid = await payAi(ai, "self-intro.import", hold, async () => {
+      const r = await ai.complete({
+        model: PARTNER_AI_MODEL,
+        messages,
+        max_tokens: IMPORT.maxOutputTokens,
+        temperature: 0,
+        reasoning_effort: "none",
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: "self_intro_facts", schema: FACTS_JSON_SCHEMA },
+        },
       });
+      return { value: r, usd: usageUsd(PARTNER_AI_MODEL, r.usage, hold) };
+    });
+    if (!paid.ok)
+      return paid.reason === "no-credits"
+        ? { ok: false, error: "no-credits", balance: paid.balance, need: paid.need }
+        : { ok: false, error: "model-failed" };
+    content = paid.value.choices?.[0]?.message?.content ?? "";
   } catch (err) {
     // The error's name only: a provider message could echo the input.
     console.error("self-intro.import: model failed", err instanceof Error ? err.name : "error");

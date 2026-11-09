@@ -7,6 +7,7 @@ import type { Complete } from "@/lib/read/gloss-server";
 import { cleanTitle } from "@/lib/read/title";
 import { checkRetention, vibeAllowed } from "./gate";
 import { translateLine } from "./translate-server";
+import { TOP_UP_PATH } from "@/lib/payments/metered";
 import {
   appendLines,
   clearRetentionDays,
@@ -109,7 +110,7 @@ export async function stateReply(
 /** POST /api/vibe/[id]/translate: one finished line, into one language. */
 export async function translateLineReply(
   db: D1Batch,
-  userId: string,
+  who: string | { userId: string; email?: string | null },
   id: string,
   raw: unknown,
   now: number,
@@ -120,13 +121,18 @@ export async function translateLineReply(
   if (!to || typeof b.text !== "string") return nope(400, "bad-body");
   const r = await translateLine(
     db,
-    userId,
+    who,
     id,
     { text: b.text, to, from: langTag(b.from) },
     now,
     complete,
   );
   if (r.ok) return { status: 200, body: { text: r.text, cached: r.cached } };
+  if (r.error === "no-credits")
+    return {
+      status: 402,
+      body: { error: "no-credits", balance: r.balance, need: r.need, topUp: TOP_UP_PATH },
+    };
   const status = {
     "not-found": 404,
     paused: 409,

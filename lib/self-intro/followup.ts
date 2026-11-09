@@ -20,8 +20,16 @@
  */
 import { z } from "zod";
 import { cleanReply, fence } from "@/lib/partner-ai";
-import { PARTNER_AI_MODEL, PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
-import { chargeAi, type Complete } from "@/lib/read/gloss-server";
+import { PARTNER_AI_MODEL, PARTNER_AI_REASONING } from "@/lib/partner-ai-config";
+import {
+  payAi,
+  promptChars,
+  usageUsd,
+  type AiPayer,
+  type Complete,
+  type NoCredits,
+} from "@/lib/read/gloss-server";
+import { textHoldUsd } from "@/lib/payments/prices";
 import { IMPORT, SELF_INTRO_FIELDS, type SelfIntroField } from "./import-config";
 import {
   LOCALE,
@@ -163,32 +171,40 @@ export function followupMessages(req: FollowupRequest, open: SelfIntroField[]) {
 
 export type FollowupResult =
   | { ok: true; facts: ImportFact[]; question: Question | null }
-  | { ok: false; error: "model-failed" };
+  | { ok: false; error: "model-failed" }
+  | ({ ok: false; error: "no-credits" } & NoCredits);
 
 /** One turn: the last answer's facts and the next question; no call when there is nothing to do. */
 export async function followupTurn(
   req: FollowupRequest,
-  ai: { userId: string; complete: Complete },
+  ai: AiPayer & { complete: Complete },
 ): Promise<FollowupResult> {
   const open = openFields(req.facts, req.asked);
   const last = req.asked.at(-1);
   if (!open.length && !last?.answer.trim()) return { ok: true, facts: [], question: null };
   let content = "";
+  const messages = followupMessages(req, open);
+  const hold = textHoldUsd(PARTNER_AI_MODEL, promptChars(messages), F.maxOutputTokens);
   try {
-    const r = await ai.complete({
-      model: PARTNER_AI_MODEL,
-      messages: followupMessages(req, open),
-      max_tokens: F.maxOutputTokens,
-      temperature: 0.3,
-      reasoning_effort: PARTNER_AI_REASONING,
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "self_intro_followup", schema: followupSchema(open) },
-      },
+    const paid = await payAi(ai, "self-intro.followup", hold, async () => {
+      const r = await ai.complete({
+        model: PARTNER_AI_MODEL,
+        messages,
+        max_tokens: F.maxOutputTokens,
+        temperature: 0.3,
+        reasoning_effort: PARTNER_AI_REASONING,
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: "self_intro_followup", schema: followupSchema(open) },
+        },
+      });
+      return { value: r, usd: usageUsd(PARTNER_AI_MODEL, r.usage, hold) };
     });
-    content = r.choices?.[0]?.message?.content ?? "";
-    const usd = costUsd(r.usage?.prompt_tokens ?? 0, r.usage?.completion_tokens ?? 0);
-    if (usd > 0) await chargeAi(ai.userId, { usd, what: "self-intro.followup" });
+    if (!paid.ok)
+      return paid.reason === "no-credits"
+        ? { ok: false, error: "no-credits", balance: paid.balance, need: paid.need }
+        : { ok: false, error: "model-failed" };
+    content = paid.value.choices?.[0]?.message?.content ?? "";
   } catch (err) {
     console.error("self-intro.followup: model failed", err instanceof Error ? err.name : "error");
     return { ok: false, error: "model-failed" };
