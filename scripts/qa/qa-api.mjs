@@ -741,6 +741,10 @@ let goalId;
     nohook.status === 404,
     `HTTP ${nohook.status}`,
   );
+  // Resend's bounce/complaint webhook: no RESEND_WEBHOOK_SECRET locally → 503,
+  // never a write (lib/resend-webhook.ts).
+  const resend = await call("POST", "/api/email/resend-webhook", { type: "email.bounced" });
+  rec("RESEND webhook without its secret -> 503", resend.status === 503, `HTTP ${resend.status}`);
 
   const saved = cookie;
   cookie = "";
