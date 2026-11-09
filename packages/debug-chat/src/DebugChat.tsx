@@ -836,8 +836,14 @@ export function DebugChat({
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
-  /** Agent lines with their lane (voices.ts): a `【lane】` prefix becomes the name tag and mark. */
-  const messages = useMemo(() => rawMessages.map(withLane), [rawMessages]);
+  /**
+   * Agent lines with their lane (voices.ts): a `【lane】` prefix becomes the name tag and mark.
+   * A line inside a summary (`collapsedInto`) is not shown: the summary's tap shows it as heard.
+   */
+  const messages = useMemo(
+    () => rawMessages.filter((m) => !m.collapsedInto).map(withLane),
+    [rawMessages],
+  );
   const laneOpts = { laneAvatar };
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
@@ -2693,9 +2699,12 @@ export function DebugChat({
       if (!next.delete(id)) next.add(id);
       return next;
     });
-  /** A polished line's text as shown, and its mark (nothing for any other line). */
+  /**
+   * A polished line's text as shown, and its mark (nothing for any other line).
+   * A summary's mark is a visible tag (ui.summary), and its raw is every line as heard.
+   */
   const polish = (m: ChatMessage) => {
-    if (!m.edited || m.raw === undefined) return { text: m.text, mark: null };
+    if ((!m.edited && !m.summary) || m.raw === undefined) return { text: m.text, mark: null };
     const raw = rawIds.has(m.id);
     return {
       text: raw ? (
@@ -2708,8 +2717,16 @@ export function DebugChat({
       mark: (
         <>
           <PolishedMark
-            icon={polishedIcon}
-            label={strings?.polished ? t.polished : ui.polished}
+            icon={
+              m.summary ? (
+                <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
+                  {ui.summary}
+                </span>
+              ) : (
+                polishedIcon
+              )
+            }
+            label={m.summary ? ui.summaryTip : strings?.polished ? t.polished : ui.polished}
             showRaw={raw}
             onToggle={() => toggleRaw(m.id)}
           />

@@ -19,7 +19,7 @@ export default async function DevFlagsPage() {
         {heading.text}
       </h1>
       <p className="text-sm opacity-70">
-        功能开关：不用部署、不用改密钥，在这里打开或关闭。默认全部关闭；读不到开关时也当作关闭。
+        功能开关：不用部署、不用改密钥，在这里打开或关闭。开关默认关闭（少数已上线功能的开关默认打开，卡片上会写明）；读不到开关时一律当作关闭。
         改动 30 秒内对所有请求生效，每次改动都记下是谁、什么时候。
       </p>
       <FlagsAdmin />

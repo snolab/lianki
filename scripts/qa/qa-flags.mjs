@@ -129,11 +129,11 @@ async function run(name, device, colorScheme) {
 
   // A filter that would hide the target does not, and stays set.
   await loadRows(page);
-  await page.getByRole("button", { name: "默认关" }).click();
-  check(await hidden("my-box"), `${tag}: 默认关 hides a flag that is on`);
+  await page.getByRole("button", { name: "关着" }).click();
+  check(await hidden("my-box"), `${tag}: 关着 hides a flag that is on`);
   await loadRows(page);
   check(
-    (await page.getByRole("button", { name: "默认关" }).getAttribute("aria-pressed")) === "true",
+    (await page.getByRole("button", { name: "关着" }).getAttribute("aria-pressed")) === "true",
     `${tag}: the filter survives a reload (this device)`,
   );
   check(await hidden("my-box"), `${tag}: and still applies`);
@@ -141,7 +141,7 @@ async function run(name, device, colorScheme) {
   await page.waitForSelector('[id="my-box"][data-highlighted]');
   check(await inView(page, "my-box"), `${tag}: a link gets past the filter`);
   check(
-    (await page.getByRole("button", { name: "默认关" }).getAttribute("aria-pressed")) === "true",
+    (await page.getByRole("button", { name: "关着" }).getAttribute("aria-pressed")) === "true",
     `${tag}: and the filter is still set`,
   );
   await page.evaluate(() => {
@@ -192,7 +192,7 @@ async function run(name, device, colorScheme) {
 
   // One tap; the row stays under the finger; a payment flag still asks.
   await loadRows(page);
-  await page.getByRole("button", { name: "默认关" }).click();
+  await page.getByRole("button", { name: "关着" }).click();
   const before = await page.request.get(`${BASE}/api/dev/flags`).then((r) => r.json());
   const levels = before.flags.find((f) => f.key === "levels");
   check(levels.enabled === false, `${tag}: levels starts off`);
