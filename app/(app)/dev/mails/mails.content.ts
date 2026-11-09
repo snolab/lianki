@@ -1144,6 +1144,24 @@ const dictionary = {
         mr: "अयशस्वी",
         ko: "실패",
       }),
+      suppressed: t({
+        en: "Not sent (turned off)",
+        zh: "未发送（已关闭）",
+        hi: "नहीं भेजा (बंद है)",
+        es: "No enviado (desactivado)",
+        fr: "Non envoyé (désactivé)",
+        ar: "لم يُرسل (متوقف)",
+        bn: "পাঠানো হয়নি (বন্ধ)",
+        pt: "Não enviado (desativado)",
+        ru: "Не отправлено (отключено)",
+        ur: "نہیں بھیجا (بند ہے)",
+        id: "Tidak dikirim (dimatikan)",
+        de: "Nicht gesendet (ausgeschaltet)",
+        ja: "未送信（オフ）",
+        sw: "Haikutumwa (imezimwa)",
+        mr: "पाठवला नाही (बंद)",
+        ko: "보내지 않음 (꺼짐)",
+      }),
     },
     reasons: {
       unsubscribe: t({
@@ -1474,6 +1492,7 @@ const context: KeyContext<typeof dictionary.content> = {
     complained: `${S} The recipient marked it as spam (or reported it).`,
     unsubscribed: `${S} The recipient unsubscribed from this kind of email.`,
     failed: `${S} The provider refused it or the call failed.`,
+    suppressed: `${S} Not sent, because the account turned this kind of email off in its preferences (or unsubscribed). Short.`,
   },
   reasons: {
     unsubscribe: `${R} The recipient clicked Unsubscribe.`,
