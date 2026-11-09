@@ -938,6 +938,16 @@ transcript are unchanged and keep working.
   newest two), their pills tappable; an ask that is the last message is the
   line itself, in full.
 - **State tree**: when the tree has the log's place, it stays.
+- **New lines shimmer** (owner, 2026-11-10; `shimmer.ts`): a reply that
+  arrived live (not the history loading in, not the user's own line) gets
+  one soft band sweeping across its text — in the log, the compact line and
+  the minimized floating lines — lasting exactly its reading time
+  (`float-lines.ts dwellMs`, the one source the minimized chat uses), then
+  it is plain text. A mask, alpha only, so the colour and halo are kept.
+  While a mic drag scrubs the minimized history, the lines shown pulse with
+  the same band, ending `SCRUB_PULSE_MS` (two long-presses) after the last
+  step. Off under prefers-reduced-motion and the app's "Turn off
+  animations". Tests: `unit/chat-shimmer.test.ts`.
 
 Checks and screenshots: `bun scripts/dev/debug-chat-compact-qa.mjs --shots
 
