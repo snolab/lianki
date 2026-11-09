@@ -502,6 +502,24 @@ const dictionary = {
         mr: "मेनू बंद करा",
         ko: "메뉴 닫기",
       }),
+      more: t({
+        en: "More",
+        zh: "更多",
+        hi: "और",
+        es: "Más",
+        fr: "Plus",
+        ar: "المزيد",
+        bn: "আরও",
+        pt: "Mais",
+        ru: "Ещё",
+        ur: "مزید",
+        id: "Lainnya",
+        de: "Mehr",
+        ja: "その他",
+        sw: "Zaidi",
+        mr: "आणखी",
+        ko: "더보기",
+      }),
     },
   },
 };
@@ -530,7 +548,7 @@ const context: {
       "Sidebar link to /books, the shared library of public-domain classic books anyone can add to their own reading list. A short noun phrase, 'public domain' as the usual legal term; distinct from 'My reading'.",
     addNote:
       "Sidebar link under the LiCards heading to the form that adds a free-text note as a card. Imperative phrase.",
-    data: "Sidebar link to the page that shows and exports the user's data and sync state. One noun.",
+    data: "Item in the account menu (opened from the avatar) that goes to the page that shows and exports the user's data and sync state. One noun.",
     signIn: "Button in the sidebar header for a visitor who is not signed in. Imperative phrase.",
     signOut:
       "Item in the profile menu at the top right that signs the user out. Imperative phrase.",
@@ -539,7 +557,7 @@ const context: {
     profile:
       "Item in the profile menu at the top right that opens the user's public profile. One noun.",
     preferences:
-      "Sidebar link and profile-menu item to the user's settings page. Plural noun, like 'Settings'.",
+      "Item in the account menu (opened from the avatar) that goes to the user's settings page. Plural noun, like 'Settings'.",
     membership:
       "Sidebar link and profile-menu item to the Pro membership page (plan, payments, invites). One noun.",
     lab: "Sidebar link, first under the Lab heading, to the /lab page that lists every experimental feature; the heading above already says Lab, so this names the overview. Short noun phrase.",
@@ -561,6 +579,7 @@ const context: {
       "Tooltip and screen-reader label of the button that widens the icon-only desktop sidebar again. Imperative phrase.",
     closeMenu:
       "Screen-reader label of the button and backdrop that close the sidebar drawer on phones. Imperative phrase.",
+    more: "Tooltip and label of the '⋯' button near the bottom of the desktop sidebar when the window is too short to show every link: it opens a small list of the links that did not fit. One short word, as in a 'More' menu.",
   },
 };
 

@@ -1,27 +1,24 @@
 "use client";
-import { isOwnAvatar } from "@/lib/profile/avatar";
 
-import Image from "next/image";
 import { BrandName } from "./BrandName";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { NAV_GROUPS, activeNavKey, visibleNav, type NavGroup } from "@/lib/app-nav";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { NAV_GROUPS, activeNavKey, railNav, type NavGroup, type NavItem } from "@/lib/app-nav";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
-import { signOut } from "@/lib/sign-out";
 import { Icon, SealIcon } from "./icons";
-import { useDebugToggle } from "./useDebugToggle";
-import { useIntlayer } from "next-intlayer";
 import { useUi } from "@lianki/ui-state";
 import { island } from "@/lib/islands/Island";
 import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
 import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
 import { NavRows } from "@/lib/nav/islands/NavRows";
-import { DevServerDot, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
-import { LiveViewBoot, LiveViewChip, type LiveViewShell } from "./LiveView";
+import type { DevSwitch } from "./DevSwitchItem";
+import { LiveViewBoot, type LiveViewShell } from "./LiveView";
 import { LevelChip } from "./LevelChip";
 import { useShellUser } from "./BoxApiBridge";
+import { ProfileMenu } from "./ProfileMenu";
+import { edgeFade, useRailFit } from "./useRailFit";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -39,7 +36,7 @@ export type ShellUser = {
 
 export type ShellLabels = Record<string, string> & {
   groups: Record<NavGroup, string>;
-  ui: { menu: string; collapse: string; expand: string; closeMenu: string };
+  ui: { menu: string; collapse: string; expand: string; closeMenu: string; more: string };
 };
 
 interface AppShellProps {
@@ -78,10 +75,8 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   // The nav store (lib/nav/ui-store.ts): the bottom island opens the drawer too.
   const drawerOpen = useUi(navUi, (s) => s.drawerOpen);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [debug, debugTap] = useDebugToggle(undefined, 10);
-  /** The debug chat's user-facing name ("Learning Partner"), shown while it is on. */
-  const partner = useIntlayer("learning-partner");
+  /** The top bar is in view; while it is scrolled away the rail's foot carries the account menu. */
+  const [headerShown, setHeaderShown] = useState(true);
 
   // Read the persisted collapse state after mount — reading localStorage during
   // render would desync SSR and hydration.
@@ -93,33 +88,48 @@ export function AppShell({
     }
   }, []);
 
-  const profileRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const listFade = useCallback((el: HTMLElement | null) => {
+    listRef.current = el;
+    return edgeFade(el);
+  }, []);
 
-  // Route change closes the mobile drawer and the profile menu; they are
-  // overlays, not destinations.
+  // Route change closes the mobile drawer; it is an overlay, not a destination.
   useEffect(() => {
     setDrawerOpen(false);
-    setIsProfileOpen(false);
   }, [pathname]);
 
-  // The profile menu closes on a press outside it and on Escape. Blur alone is
-  // not enough: iOS Safari does not focus a button on tap, so the trigger never
-  // blurs there. Presses inside (the trigger, the 10-tap name row) are ignored.
+  // The top bar scrolls away with the page. Its visible height drives the
+  // sticky rail's (--lk-head-vis, .lk-rail), and once it is gone the rail's
+  // foot shows the account menu, so that is never out of reach.
   useEffect(() => {
-    if (!isProfileOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if (!profileRef.current?.contains(e.target as Node)) setIsProfileOpen(false);
+    const header = headerRef.current;
+    const rail = railRef.current;
+    if (!header || !rail) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const shown = Math.max(0, header.getBoundingClientRect().bottom);
+      rail.style.setProperty("--lk-head-vis", `${shown}px`);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsProfileOpen(false);
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
     };
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey);
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    const io = new IntersectionObserver(([e]) => setHeaderShown(e.isIntersecting));
+    io.observe(header);
     return () => {
-      document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey);
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      io.disconnect();
     };
-  }, [isProfileOpen]);
+  }, []);
 
   // Escape closes the mobile drawer, as it would any modal dialog.
   useEffect(() => {
@@ -143,63 +153,85 @@ export function AppShell({
 
   const active = activeNavKey(pathname);
 
-  const sidebar = (place: "drawer" | "sidebar") => (
-    <nav
-      aria-label={labels.ui.menu}
-      className={`flex flex-col gap-6 py-4 ${collapsed ? "px-2" : "px-3"}`}
-    >
-      <NavDrawerIsland place={place} collapsed={place === "sidebar" && collapsed} />
-      {NAV_GROUPS.map((group) => {
-        const items = visibleNav(navShown).filter((item) => item.group === group);
-        if (!items.length) return null;
-        return (
-          <div key={group}>
-            {!collapsed && (
-              // The page-card group is headed by the brand LiCards, which an
-              // uppercase transform would turn into LICARDS.
-              <h2
-                className={`px-3 mb-1 text-xs font-semibold tracking-wide text-gray-400 dark:text-gray-500 ${group === "advanced" ? "" : "uppercase"}`}
-              >
-                {labels.groups[group]}
-              </h2>
-            )}
-            <ul className="space-y-0.5">
-              {items.map((item) => {
-                const label = labels[item.key] ?? item.key;
-                const isActive = active === item.key;
-                return (
+  // The rail's links: the first group always stays; when the window is too
+  // short, links from the end move into "⋯" (useRailFit).
+  const items = railNav(navShown);
+  const movable = items.filter((i) => i.group !== NAV_GROUPS[0]);
+  const hidden = useRailFit({
+    rail: railRef,
+    list: listRef,
+    rows: rowsRef,
+    header: headerRef,
+    movable: movable.length,
+    enabled: true,
+    resetKey: `${collapsed}|${items.map((i) => i.key).join()}`,
+  });
+  const overflow = hidden ? movable.slice(-hidden) : [];
+
+  const links = (place: "drawer" | "sidebar") => {
+    const narrow = place === "sidebar" && collapsed;
+    const out = place === "sidebar" ? new Set(overflow.map((i) => i.key)) : new Set<string>();
+    return (
+      <>
+        <div ref={place === "sidebar" ? rowsRef : undefined} className="empty:hidden">
+          <NavDrawerIsland place={place} collapsed={narrow} />
+        </div>
+        {NAV_GROUPS.map((group) => {
+          const shown = items.filter((item) => item.group === group && !out.has(item.key));
+          if (!shown.length) return null;
+          return (
+            <div key={group}>
+              {!narrow && (
+                // The page-card group is headed by the brand LiCards, which an
+                // uppercase transform would turn into LICARDS.
+                <h2
+                  className={`px-3 mb-1 text-xs font-semibold tracking-wide text-gray-400 dark:text-gray-500 ${group === "advanced" ? "" : "uppercase"}`}
+                >
+                  {labels.groups[group]}
+                </h2>
+              )}
+              <ul className="space-y-0.5">
+                {shown.map((item) => (
                   <li key={item.key}>
-                    <Link
-                      href={item.href}
-                      aria-current={isActive ? "page" : undefined}
-                      title={label}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                        isActive
-                          ? "font-semibold text-gray-900 dark:text-gray-100"
-                          : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                      } ${collapsed ? "justify-center" : ""}`}
-                    >
-                      {/* Style C: an ink line icon; the current page's is stamped in seal red. */}
-                      <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
-                        {isActive ? <SealIcon name={item.icon} /> : <Icon name={item.icon} />}
-                      </span>
-                      {collapsed ? (
-                        <span className="sr-only">{label}</span>
-                      ) : (
-                        // One line, always: a long label (fr "Listes de mots")
-                        // wrapped and ran into the next row on iOS.
-                        <span className="min-w-0 truncate">{label}</span>
-                      )}
-                    </Link>
+                    <NavLink
+                      item={item}
+                      label={labels[item.key] ?? item.key}
+                      active={active === item.key}
+                      narrow={narrow}
+                    />
                   </li>
-                );
-              })}
-            </ul>
-          </div>
-        );
-      })}
-    </nav>
-  );
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </>
+    );
+  };
+
+  /** The account menu, or Sign in, pinned at the foot of the rail and the drawer. */
+  const foot = (place: "rail" | "drawer") =>
+    user ? (
+      <ProfileMenu
+        user={user}
+        labels={labels}
+        devSwitch={devSwitch}
+        liveView={liveView}
+        place={place}
+        compact={place === "rail" && collapsed}
+      />
+    ) : (
+      <Link
+        href="/sign-in"
+        title={labels.signIn}
+        className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 ${place === "rail" && collapsed ? "justify-center" : ""}`}
+      >
+        <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+          <Icon name="signIn" />
+        </span>
+        <span className={place === "rail" && collapsed ? "sr-only" : ""}>{labels.signIn}</span>
+      </Link>
+    );
 
   return (
     // --nav-w: the nav's width from the tablet up (0 on a phone, where it is a
@@ -212,7 +244,10 @@ export function AppShell({
     >
       {liveView && <LiveViewBoot lv={liveView} />}
       {/* Slim topbar: glass, above full-screen content such as the /words list. */}
-      <header className="lk-glass lk-glass-bleed-top lk-header-bleed relative z-30 flex items-center gap-3 h-14 border-b border-[var(--glass-line)] shrink-0">
+      <header
+        ref={headerRef}
+        className="lk-glass lk-glass-bleed-top lk-header-bleed relative z-30 flex items-center gap-3 h-14 border-b border-[var(--glass-line)] shrink-0"
+      >
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -244,88 +279,13 @@ export function AppShell({
           <LanguageSwitcher />
           {user && levels && <LevelChip />}
           {user ? (
-            <div className="relative" ref={profileRef}>
-              <button
-                data-profile-menu
-                onClick={() => setIsProfileOpen(!isProfileOpen)}
-                // Keyboard: tabbing out of the menu closes it. A press on
-                // something unfocusable gives no relatedTarget; the pointerdown
-                // listener above decides those.
-                onBlur={(e) => {
-                  const to = e.relatedTarget as Node | null;
-                  if (to && !profileRef.current?.contains(to)) setIsProfileOpen(false);
-                }}
-                aria-expanded={isProfileOpen}
-                className="relative flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
-              >
-                {devSwitch?.mode === "back" && <DevServerDot label={devSwitch.labels.name} />}
-                {user.image && (
-                  <Image
-                    className="w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"
-                    alt={user.name}
-                    src={user.image}
-                    // An upload of ours is already small, and next/image's loader can't fetch /api/*.
-                    unoptimized={isOwnAvatar(user.image) || user.image.startsWith("blob:")}
-                    width={32}
-                    height={32}
-                  />
-                )}
-                <span className="hidden md:inline max-w-[120px] truncate">{user.name}</span>
-                <ChevronIcon open={isProfileOpen} />
-              </button>
-
-              {isProfileOpen && (
-                <div
-                  // A link chosen in the menu closes it, even when it points at
-                  // the page already open (no route change to do it).
-                  onClick={(e) => {
-                    if ((e.target as Element).closest("a")) setIsProfileOpen(false);
-                  }}
-                  className="absolute end-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50"
-                >
-                  {/* Hidden: ten quick taps on your own name toggle debug mode.
-                      The taps land inside the menu, so it stays open; mousedown
-                      is cancelled so a desktop click doesn't move focus. */}
-                  <div
-                    data-debug-name
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={debugTap}
-                    className="select-none touch-manipulation px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 truncate"
-                  >
-                    {user.email}
-                    {debug && ` · ${partner.name.value}`}
-                  </div>
-                  <MenuLink href="/list">{labels.dashboard}</MenuLink>
-                  <MenuLink href="/profile">{labels.profile}</MenuLink>
-                  <MenuLink href="/preferences">{labels.preferences}</MenuLink>
-                  <MenuLink href="/membership">{labels.membership}</MenuLink>
-                  {/* One preview control: the whole-page switch, with Live view
-                      (dev parts on lianki.com) as a chip in the same row, only
-                      on lianki.com: the preview build is all dev code already. */}
-                  {devSwitch && (
-                    <DevSwitchItem sw={devSwitch}>
-                      {liveView &&
-                        devSwitch.mode === "go" &&
-                        (liveView.wanted || liveView.ready) && <LiveViewChip lv={liveView} />}
-                    </DevSwitchItem>
-                  )}
-                  <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
-                    <button
-                      type="button"
-                      data-sign-out
-                      onClick={(e) => {
-                        e.currentTarget.disabled = true;
-                        void signOut();
-                      }}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-60"
-                    >
-                      <Icon name="signOut" />
-                      {labels.signOut}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            <ProfileMenu
+              user={user}
+              labels={labels}
+              devSwitch={devSwitch}
+              liveView={liveView}
+              place="header"
+            />
           ) : (
             <Link
               href="/sign-in"
@@ -347,7 +307,26 @@ export function AppShell({
             collapsed ? "w-16" : "w-56"
           }`}
         >
-          <div className="sticky top-0">{sidebar("sidebar")}</div>
+          <div ref={railRef} data-rail className="lk-rail flex flex-col">
+            <nav
+              ref={listFade}
+              aria-label={labels.ui.menu}
+              className={`lk-rail-scroll flex min-h-0 flex-1 flex-col gap-6 py-4 ${collapsed ? "px-2" : "px-3"}`}
+            >
+              {links("sidebar")}
+            </nav>
+            <div className={`flex shrink-0 flex-col gap-1 pb-3 ${collapsed ? "px-2" : "px-3"}`}>
+              {overflow.length > 0 && (
+                <MoreMenu items={overflow} labels={labels} active={active} narrow={collapsed} />
+              )}
+              {/* Space kept while the top bar (which has the avatar) is in
+                  view, so the links do not move in and out of "⋯" as it
+                  scrolls away. */}
+              <div data-rail-foot inert={headerShown} className={headerShown ? "invisible" : ""}>
+                {foot("rail")}
+              </div>
+            </div>
+          </div>
         </aside>
 
         {/* Mobile drawer */}
@@ -365,8 +344,15 @@ export function AppShell({
               className="absolute inset-0 bg-black/40"
               onClick={() => setDrawerOpen(false)}
             />
-            <div className="relative w-64 max-w-[80%] h-full overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] bg-white dark:bg-gray-900 border-e border-gray-200 dark:border-gray-800">
-              {sidebar("drawer")}
+            <div className="relative flex w-64 max-w-[80%] h-full flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] bg-white dark:bg-gray-900 border-e border-gray-200 dark:border-gray-800">
+              <nav
+                aria-label={labels.ui.menu}
+                ref={edgeFade}
+                className="lk-rail-scroll flex min-h-0 flex-1 flex-col gap-6 px-3 py-4"
+              >
+                {links("drawer")}
+              </nav>
+              <div className="shrink-0 px-3 pb-3">{foot("drawer")}</div>
             </div>
           </div>
         )}
@@ -386,11 +372,120 @@ export function AppShell({
   );
 }
 
-function MenuLink({ href, children }: { href: string; children: React.ReactNode }) {
+function NavLink({
+  item,
+  label,
+  active,
+  narrow,
+}: {
+  item: NavItem;
+  label: string;
+  active: boolean;
+  narrow: boolean;
+}) {
   return (
-    <Link href={href} className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
-      {children}
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      title={label}
+      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        active
+          ? "font-semibold text-gray-900 dark:text-gray-100"
+          : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+      } ${narrow ? "justify-center" : ""}`}
+    >
+      {/* Style C: an ink line icon; the current page's is stamped in seal red. */}
+      <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+        {active ? <SealIcon name={item.icon} /> : <Icon name={item.icon} />}
+      </span>
+      {narrow ? (
+        <span className="sr-only">{label}</span>
+      ) : (
+        // One line, always: a long label (fr "Listes de mots") wrapped and
+        // ran into the next row on iOS.
+        <span className="min-w-0 truncate">{label}</span>
+      )}
     </Link>
+  );
+}
+
+/**
+ * "⋯": the rail's links that did not fit (useRailFit), in a popover beside it.
+ * Escape and a press outside close it; Escape gives focus back to "⋯".
+ */
+function MoreMenu({
+  items,
+  labels,
+  active,
+  narrow,
+}: {
+  items: NavItem[];
+  labels: ShellLabels;
+  active: string | null;
+  narrow: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const pathname = usePathname();
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      button.current?.focus();
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  // The current page is in here: "⋯" says so with its own weight.
+  const holdsActive = items.some((i) => i.key === active);
+  return (
+    <div ref={ref} className="relative" data-rail-more>
+      <button
+        ref={button}
+        type="button"
+        aria-expanded={open}
+        aria-controls="lk-rail-more"
+        title={labels.ui.more}
+        onClick={() => setOpen(!open)}
+        className={`flex w-full min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
+          holdsActive
+            ? "font-semibold text-gray-900 dark:text-gray-100"
+            : "font-medium text-gray-700 dark:text-gray-300"
+        } ${narrow ? "justify-center" : ""}`}
+      >
+        <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+          <Icon name="dotsThree" />
+        </span>
+        <span className={narrow ? "sr-only" : "min-w-0 truncate"}>{labels.ui.more}</span>
+      </button>
+      {open && (
+        <ul
+          id="lk-rail-more"
+          className="lk-rail-more absolute bottom-0 start-full z-50 ms-2 w-56 space-y-0.5 rounded-lg border border-[var(--glass-line)] p-1 shadow-lg"
+        >
+          {items.map((item) => (
+            <li key={item.key}>
+              <NavLink
+                item={item}
+                label={labels[item.key] ?? item.key}
+                active={active === item.key}
+                narrow={false}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -403,20 +498,6 @@ function MenuIcon() {
         strokeWidth={2}
         d="M4 6h16M4 12h16M4 18h16"
       />
-    </svg>
-  );
-}
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
   );
 }
