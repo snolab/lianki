@@ -334,7 +334,7 @@ for (const [w, h] of [
   check(
     top.lost.length === 0 &&
       want.every((x) => top.hrefs.includes(x)) &&
-      !["/import", "/data", "/preferences"].some((x) => top.hrefs.includes(x)) &&
+      !["/my", "/import", "/data", "/my/preferences"].some((x) => top.hrefs.includes(x)) &&
       top.footIn &&
       !top.footShown,
     `rail ${w}x${h}: every link on screen or in "⋯", none of import/data/settings, foot kept for the account menu (${JSON.stringify(top)})`,
@@ -354,7 +354,7 @@ for (const [w, h] of [
       down.hrefs.length === top.hrefs.length &&
       down.footIn &&
       down.footShown &&
-      ["/profile", "/import", "/data", "/preferences"].every((x) => menu.includes(x)),
+      ["/my/profile", "/my", "/import", "/data", "/my/preferences"].every((x) => menu.includes(x)),
     `rail ${w}x${h} scrolled: same links, the account menu at the foot has profile/import/data/settings (${JSON.stringify({ down, menu })})`,
   );
   await rail.close();
@@ -362,7 +362,7 @@ for (const [w, h] of [
 
 // 5b2. Name and picture: pen, edit, save; the nav changes without a reload.
 {
-  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
   const shown = page.locator("[data-profile-menu]");
   await page.getByTestId("edit-name").click();
   const input = page.locator("#profile-name");
@@ -427,7 +427,7 @@ for (const [w, h] of [
 // 5c. Passkeys: add one on the profile page, rename it, sign out, sign back in
 // with it, then delete it.
 {
-  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
   await page.getByText("No passkeys yet.").waitFor({ timeout: budget(10000) });
   await page.getByRole("button", { name: "Add a passkey" }).click();
   const list = page.getByTestId("passkey-list");
@@ -469,7 +469,7 @@ for (const [w, h] of [
   const back = await getSession();
   check(back?.user?.email === EMAIL, `signed back in with the passkey (url=${page.url()})`);
 
-  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
   await list.waitFor({ timeout: budget(10000) });
   await list.getByRole("button", { name: "Delete" }).click();
   await list.getByRole("button", { name: "Delete" }).click(); // confirm
@@ -480,7 +480,7 @@ for (const [w, h] of [
 // Page titles: the test box, adding and removing a pattern, restoring a default
 // (docs/title-clean.md). Signed in again above, so the change syncs as well.
 {
-  await page.goto(`${BASE}/preferences`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/preferences`, { waitUntil: "networkidle" });
   const box = page.getByTestId("title-rules");
   await box.waitFor({ timeout: budget(10000) });
   const after = box.getByTestId("title-rules-after");
@@ -544,7 +544,7 @@ for (const [w, h] of [
   check(true, "titles: your own pattern can be removed");
 }
 
-// API tokens: Revoke asks first (app/(app)/preferences/RevokeConfirm.tsx).
+// API tokens: Revoke asks first (app/(app)/my/preferences/RevokeConfirm.tsx).
 // Cancel and Esc keep the token; only the confirming Revoke deletes it.
 {
   const made = await page.evaluate(async () => {
@@ -556,7 +556,7 @@ for (const [w, h] of [
     return r.status;
   });
   check(made === 200 || made === 201, `tokens: one made for the revoke check (HTTP ${made})`);
-  await page.goto(`${BASE}/preferences`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/preferences`, { waitUntil: "networkidle" });
   const row = page.getByTestId("token-row").filter({ hasText: "qa-revoke" });
   await row.waitFor({ timeout: budget(10000) });
   await row.getByTestId("token-revoke").click();
@@ -591,7 +591,7 @@ for (const [w, h] of [
 // Profile: every signed-in user sees this sign-in's start and expiry
 // (SessionBasicsCard), never the raw session (dev only).
 {
-  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
   const card = page.getByTestId("session-basics");
   await card.waitFor({ timeout: budget(10000) });
   const text = await card.innerText();
@@ -602,6 +602,36 @@ for (const [w, h] of [
   check(
     !(await page.getByTestId("session-details").count()) && !/token|ipAddress/i.test(text),
     "profile: no raw session dump or internals for an ordinary user",
+  );
+}
+
+// /my (owner, 2026-11-10): the user's own data in one place. The old
+// /profile and /preferences answer 308 to /my/…, subpath and query kept.
+{
+  for (const [from, to] of [
+    ["/profile?agent=0", "/my/profile?agent=0"],
+    ["/preferences?lang=en", "/my/preferences?lang=en"],
+    ["/profile/email-confirm", "/my/profile/email-confirm"],
+  ]) {
+    const res = await fetch(`${BASE}${from}`, { redirect: "manual" });
+    const at = new URL(res.headers.get("location") ?? "", BASE);
+    check(
+      res.status === 308 && at.pathname + at.search === to,
+      `${from} answers 308 to ${to} (got ${res.status} ${at.pathname}${at.search})`,
+    );
+  }
+  await page.goto(`${BASE}/my`, { waitUntil: "networkidle" });
+  const cards = await page.evaluate(() =>
+    [...document.querySelectorAll("[data-my-card]")].map((a) => a.getAttribute("href")),
+  );
+  check(
+    ["/my/profile", "/my/preferences", "/my/files"].every((x) => cards.includes(x)),
+    `/my: cards for profile, preferences and files (${JSON.stringify(cards)})`,
+  );
+  await page.goto(`${BASE}/my/files`, { waitUntil: "networkidle" });
+  check(
+    !(await page.getByText(/This page could not be found/i).count()),
+    "/my/files: the page exists",
   );
 }
 

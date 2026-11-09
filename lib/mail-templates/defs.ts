@@ -202,9 +202,9 @@ const emailConfirm: MailTemplateDef = {
   about: "Sent to a NEW address when an account asks to change its email: the confirm link.",
   vars: { url: req("url") },
   samples: {
-    typical: { url: "https://lianki.com/profile/email-confirm#SAMPLE" },
+    typical: { url: "https://lianki.com/my/profile/email-confirm#SAMPLE" },
     long: {
-      url: "https://lianki.com/profile/email-confirm#SAMPLE.0123456789abcdef0123456789abcdef",
+      url: "https://lianki.com/my/profile/email-confirm#SAMPLE.0123456789abcdef0123456789abcdef",
     },
   },
   builtin: (l) => {

@@ -144,7 +144,7 @@ CREATE TABLE calendar_links (
 
 There is also `preferences.time_zone TEXT` (IANA). It is filled from the
 browser's `Intl.DateTimeFormat().resolvedOptions().timeZone` on first use and
-can be changed on /preferences. **When no zone is known** (NULL, an invalid
+can be changed on /my/preferences. **When no zone is known** (NULL, an invalid
 name, a request with no browser such as an agent or the API), Lianki uses
 UTC and says so: times are written as ISO 8601 with an explicit `Z`
 (`2026-10-31T09:00Z`), day buckets are UTC days, and the calendar header reads
@@ -503,7 +503,7 @@ These follow the standards declared for PAY.JP in
 - **Subscriptions:** the hub sends only nodes inside the token's subtree. Socket
   payloads leave out `fields` (notes can be private), so a subscriber fetches
   them over HTTP under the same check.
-- **Disconnect** (from /plan or /profile):
+- **Disconnect** (from /plan or /my/profile):
   - revoke at `oauth2.googleapis.com/revoke`;
   - stop the channel;
   - delete the `account` row and `calendar_links`;

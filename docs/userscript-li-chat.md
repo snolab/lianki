@@ -48,7 +48,7 @@ How it behaves:
 - **Revoke.** The manager's menu "Li chat: sites…" (new `@grant
 GM_registerMenuCommand`, registered only while the flag is on) opens the
   sites list: each host with its state and a Forget button. The
-  /preferences copy and the account sync (`lk:` pref) are M4.
+  /my/preferences copy and the account sync (`lk:` pref) are M4.
 - **The frame.** `src/partner-frame.ts` as is: `/embed/partner`, strict
   origin handshake, `MessagePort`, ticket only into the port. New: a second
   `load` of the iframe (the page navigated it) tears it down. On a CSP
@@ -101,7 +101,7 @@ that are acceptable for the owner alone but not for users.
    send.
 5. Never → the pill shows no Li entry on that site; the choice is revocable
    in the userscript menu ("Li chat: sites…") and on lianki.com
-   /preferences.
+   /my/preferences.
 
 ## Architecture
 
@@ -178,7 +178,7 @@ already granted).
 | M1  | **Shipped.** Pill → Li entry for the owner only (flag dark), reusing the current owner ticket and `/embed/partner`; per-site trust prompt with default deny and the warning copy; sites list (revoke) in the manager menu; hostile-page QA; @version bump | 2.5H |
 | M2  | Account-scoped `li-ticket` route + hub audience (chat-only, own thread), unit tests                                                                                                                                                                       | 3H   |
 | M3  | Share selection / page link from the composer, escaped; no auto-send test                                                                                                                                                                                 | 2H   |
-| M4  | Security gate QA for the account ticket, trust list synced as a pref, revoke on /preferences                                                                                                                                                              | 3H   |
+| M4  | Security gate QA for the account ticket, trust list synced as a pref, revoke on /my/preferences                                                                                                                                                              | 3H   |
 | M5  | Flag on for users after the gate passes and the owner approves                                                                                                                                                                                            | 0.5H |
 
 ETAs include the local gate and ~10M pipeline.

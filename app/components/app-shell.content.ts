@@ -336,6 +336,24 @@ const dictionary = {
         sw: "Matumizi ya salio",
         mr: "क्रेडिट वापर",
       }),
+      myData: t({
+        en: "My data",
+        zh: "我的数据",
+        hi: "मेरा डेटा",
+        es: "Mis datos",
+        fr: "Mes données",
+        ar: "بياناتي",
+        bn: "আমার ডেটা",
+        pt: "Meus dados",
+        ru: "Мои данные",
+        ur: "میرا ڈیٹا",
+        id: "Data saya",
+        de: "Meine Daten",
+        ja: "マイデータ",
+        sw: "Data yangu",
+        mr: "माझा डेटा",
+        ko: "내 데이터",
+      }),
       lab: t({
         en: "All experiments",
         zh: "全部实验",
@@ -580,6 +598,8 @@ const context: {
       "Sidebar link and profile-menu item to the Pro membership page (plan, payments, invites). One noun.",
     creditsUsage:
       "Item in the account menu (opened from the avatar) that opens /membership/credits, the itemised list of the user's prepaid credit usage (what used credits, when, the balance after), like a bank statement. Two to four words.",
+    myData:
+      "Item in the account menu (opened from the avatar) that opens /my, the overview of everything that is the user's own in Lianki: profile, preferences/settings and uploaded files. 'My' + a noun for data, short (Chinese: 我的数据).",
     lab: "Sidebar link, first under the Lab heading, to the /lab page that lists every experimental feature; the heading above already says Lab, so this names the overview. Short noun phrase.",
   },
   groups: {

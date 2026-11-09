@@ -1,7 +1,7 @@
 # Your own AI (BYOK)
 
 Owner request, 2026-11-05 14:22–14:27 JST. A user brings their own AI
-provider, backend and API key, set in **Settings** (`/preferences`, section
+provider, backend and API key, set in **Settings** (`/my/preferences`, section
 「自己的 AI」), not `/connections`. By default the browser calls the provider
 directly with the user's key. For an **allowlisted** provider the user may
 instead tick 「经 Lianki 转发（不保存）」: then the call goes through Lianki's
@@ -50,7 +50,7 @@ leaves the key until the next sign-out or "Remove". `lk:byok-ack` and the synced
   whole record. It is not a prefs-sync binding, so it can never be sent
   (`unit/byok.test.ts` checks no binding reads it, and no pref key is named
   like a key or token).
-- Guests: `/preferences` shows only this section to a visitor who is not
+- Guests: `/my/preferences` shows only this section to a visitor who is not
   signed in (the rest needs `/api/preferences`). The reader itself needs an
   account today, so a guest's setting waits until they sign in.
 

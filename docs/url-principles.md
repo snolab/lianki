@@ -34,6 +34,25 @@ should be a 名詞 instead of 動詞". Read this before adding or renaming a rou
     permission check (`isAdmin`, `isDev`, …), never by a hidden or guessable
     URL.
 
+## /my: the user's own data (owner's decision, 2026-11-10 02:08 JST)
+
+`/my` is the user's manager for **all** their Lianki data, one place for
+everything that is theirs:
+
+| Path              | Holds                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `/my`             | the index: one card per kind of data (profile, preferences, files, cards and sync)    |
+| `/my/profile`     | name, picture, email, passkeys, level (was `/profile`)                                 |
+| `/my/preferences` | preferences and settings, API tokens (was `/preferences`)                              |
+| `/my/files`       | uploaded artifacts in folders by origin (inbox_item `source`); filled by the file store |
+
+Signed-in only: a guest is sent to sign in (except the guest level card on
+`/my/profile`, as before). Never owner-only. A new user-level settings page
+goes under `/my/<noun>`, not at the top level; `/dev/<x>` stays separate.
+`/profile` and `/preferences` 308 to their `/my/…` pages, subpaths and query
+kept (`lib/moved-routes.ts`); the `/api/profile` and `/api/preferences` names
+are unchanged (rule 7). The account menu's "My data" (我的数据) opens `/my`.
+
 ## A rename, step by step
 
 1. Move the route folder; fix its own links, `generateAppHreflangMetadata`
@@ -54,5 +73,6 @@ should be a 名詞 instead of 動詞". Read this before adding or renaming a rou
 | `/import`                                                                         | `/imports` (`/imports/new`)      | verb → noun                        |
 | `/learn`                                                                          | `/learning` or `/courses`        | owner to choose                    |
 | `/review`                                                                         | `/reviews` or keep               | "review" is already a noun; decide |
+| `/profile`, `/preferences`                                                        | `/my/profile`, `/my/preferences` | done 2026-11-10                    |
 | `/ai-vocab`, `/polyglot`                                                          | `/lab/ai-vocab`, `/lab/polyglot` | done 2026-11-09                    |
-| `/words`, `/books`, `/sites`, `/alphabet`, `/data`, `/preferences`, `/membership` | keep                             | already nouns                      |
+| `/words`, `/books`, `/sites`, `/alphabet`, `/data`, `/membership`                | keep                             | already nouns                      |
