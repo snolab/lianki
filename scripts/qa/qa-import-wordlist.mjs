@@ -129,6 +129,10 @@ async function everyone(tag) {
     `${tag}, not the owner: the word-list section on /import`,
   );
   check((await preview(ctx, CSV)).status() === 200, `${tag}, not the owner: the route answers`);
+  check(
+    (await ctx.request.get("/api/import/files")).status() === 200,
+    `${tag}, not the owner: the stored-files route answers`,
+  );
   await page.goto("/words?lang=en");
   await page.locator('[data-qa="words-import-button"]').waitFor({ timeout: 15000 });
   check(true, `${tag}, not the owner: the Import button on /words`);
