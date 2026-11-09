@@ -79,7 +79,7 @@ to every signed-in user while it is on).
 - **Storage = the chat inbox's** (`lib/inbox/`): R2 `lianki-blobs` under
   `inbox/<user id>/<yyyy>/<mm>/<random id>` (the name is never in the key or
   a log), one `inbox_item` row each, with **`source = 'import'`**
-  (`0067_import_files.sql`; the chat's rows are `'chat'`) — open question 1
+  (`0068_import_files.sql`; the chat's rows are `'chat'`) — open question 1
   below, answered "one table, a source column". The type is sniffed, never
   trusted from the name. Usage (`inbox_usage`) and the caps are shared with
   the inbox: 20 MB a file, 200 MB a rolling day, 2 GB stored, 30 uploads a
