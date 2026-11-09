@@ -110,6 +110,10 @@ function fakeMain() {
     mode: "db" as "db" | "throw" | "busy" | "odd" | "hold",
     calls: [] as { body: { user: string; session: string } }[],
     held: [] as (() => void)[],
+    /** Whoever waits for the next held call (see `whenHeld`). */
+    waiting: [] as (() => void)[],
+    /** Resolves once the hub has made a held live call: the event itself, not a guess at how long it takes. */
+    whenHeld: () => new Promise<void>((r) => (m.held.length ? r() : m.waiting.push(r))),
     release: () => {
       for (const f of m.held.splice(0)) f();
     },
@@ -122,7 +126,11 @@ function fakeMain() {
       if (m.mode === "odd") return true;
       // A held answer is the one the auth db gave when asked (say, still live).
       const answer = m.live_(user, session);
-      if (m.mode === "hold") return new Promise((r) => m.held.push(() => r(answer)));
+      if (m.mode === "hold")
+        return new Promise((r) => {
+          m.held.push(() => r(answer));
+          for (const w of m.waiting.splice(0)) w();
+        });
       return answer;
     },
   };
@@ -799,7 +807,9 @@ describe("eval grant renewal: the live-session check fails closed", () => {
 });
 
 describe("eval grant renewal: what happens while the live check is out", () => {
-  const settle = () => new Promise((r) => setTimeout(r, 0));
+  // The hub reaches the live check only after work off the event loop (the
+  // token's SHA-256 on a resume, crypto.subtle), so a timer of 0 ms did not
+  // always see it under load: wait for the held call itself.
   /** Start a renewal whose live check is held, and let the hub reach the await. */
   const held = async () => {
     const s = setup();
@@ -808,7 +818,7 @@ describe("eval grant renewal: what happens while the live check is out", () => {
     s.main.mode = "hold";
     s.tick(INTO_WINDOW);
     const using = s.msg(g.c, { type: "eval", code: "1" });
-    await settle();
+    await s.main.whenHeld();
     expect(s.main.held).toHaveLength(1);
     return { s, p, ...g, using };
   };
@@ -834,7 +844,7 @@ describe("eval grant renewal: what happens while the live check is out", () => {
     s.main.mode = "hold";
     s.tick(INTO_WINDOW);
     const back = s.resume(token);
-    await settle();
+    await s.main.whenHeld();
     expect(s.main.held).toHaveLength(1);
     const st = p.last("state") as unknown as { sessions: { pair: string }[] };
     await s.msg(p, { type: "revoke", pair: st.sessions[0].pair });

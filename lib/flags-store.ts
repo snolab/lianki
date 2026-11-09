@@ -25,17 +25,29 @@ export const FLAG_CACHE_MS = 30_000;
 
 export type FlagSnapshot = Record<FlagKey, boolean>;
 
-let cache: { at: number; values: FlagSnapshot } | null = null;
-/** The shared read, and when it started (its snapshot is at least that old). */
-let inflight: { at: number; p: Promise<FlagSnapshot> } | null = null;
-/** Bumped by every clear, so a read that started before it never fills the cache. */
-let generation = 0;
+interface FlagCacheState {
+  cache: { at: number; values: FlagSnapshot } | null;
+  /** The shared read, and when it started (its snapshot is at least that old). */
+  inflight: { at: number; p: Promise<FlagSnapshot> } | null;
+  /** Bumped by every clear, so a read that started before it never fills the cache. */
+  generation: number;
+}
+
+/**
+ * One cache per isolate, on globalThis. The build gives route handlers and
+ * page rendering each their own copy of this module, so module-level state was
+ * two caches up to 30 s apart: an API route saw a flag on while its page still
+ * 404'd (qa-yt-songs timed out on exactly that, 2026-11-09), and a write on
+ * /dev/flags cleared only the route side.
+ */
+const state: FlagCacheState = ((globalThis as { __lkFlagCache?: FlagCacheState }).__lkFlagCache ??=
+  { cache: null, inflight: null, generation: 0 });
 
 /** Forget the cached snapshot (after a write here; and between unit tests). */
 export function clearFlagCache(): void {
-  cache = null;
-  inflight = null;
-  generation++;
+  state.cache = null;
+  state.inflight = null;
+  state.generation++;
 }
 
 async function fetchFlags(db: () => D1Like | null, at: number, gen: number): Promise<FlagSnapshot> {
@@ -43,7 +55,7 @@ async function fetchFlags(db: () => D1Like | null, at: number, gen: number): Pro
   if (!d1) return defaultFlags();
   const values = await loadFlags(d1);
   // Only a real read is cached, and only if no write cleared the cache meanwhile.
-  if (gen === generation) cache = { at, values };
+  if (gen === state.generation) state.cache = { at, values };
   return values;
 }
 
@@ -76,19 +88,20 @@ export async function readFlags(
   now: () => number = Date.now,
 ): Promise<FlagSnapshot> {
   const t = now();
+  const { cache } = state;
   if (cache && t - cache.at >= 0 && t - cache.at < FLAG_CACHE_MS) return { ...cache.values };
   // Concurrent misses share one query; it is forgotten once settled, so a
   // failure is retried by the next call rather than remembered. A read that
   // started a window ago or more is not joined: its answer may predate a flip
   // by more than FLAG_CACHE_MS, so a fresh read starts instead.
   const fresh = (at: number, end: number) => end - at >= 0 && end - at < FLAG_CACHE_MS;
-  let mine = inflight;
+  let mine = state.inflight;
   if (!mine || !fresh(mine.at, t)) {
-    const started = { at: t, p: fetchFlags(db, t, generation) };
-    mine = inflight = started;
+    const started = { at: t, p: fetchFlags(db, t, state.generation) };
+    mine = state.inflight = started;
     started.p.then(
-      () => void (inflight === started && (inflight = null)),
-      () => void (inflight === started && (inflight = null)),
+      () => void (state.inflight === started && (state.inflight = null)),
+      () => void (state.inflight === started && (state.inflight = null)),
     );
   }
   try {
