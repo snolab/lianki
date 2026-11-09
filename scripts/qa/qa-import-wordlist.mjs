@@ -3,12 +3,16 @@
 //
 //   QA_BASE=http://localhost:3000 bun scripts/qa/qa-import-wordlist.mjs [outDir]
 //
-// In qa:all (suite import-wordlist), or against any local server on local D1:
-// it turns `import.any` on in the local D1 for the middle part and deletes the
-// row at the end.
+// In qa:all (suite import-wordlist), or against any local server on local D1.
+// `import.any` is owner-only (lib/import/words-handler.ts, importAnyOn): the
+// accounts that import are granted `dev` in the LOCAL account_permission (as
+// qa-app-badge does; removed at the end). The light run has the flag off, the
+// dark run on (the row is deleted at the end).
 //
-// - flag off, not the owner: no section on /import, and the route answers 404;
-// - flag on: a CSV file dropped in shows the preview counts (new / skipped),
+// - not the owner, flag off and then flag on: no section on /import, the
+//   route answers 404, no Import button on /words — the flag never reaches
+//   everyone;
+// - the owner, flag off or on: a CSV file dropped in shows the preview counts (new / skipped),
 //   "Add N words" makes a /words list, and the recent-imports list shows it;
 // - the same list pasted again: everything is "already in your words";
 // - a binary file: a plain error, nothing sent;
@@ -65,45 +69,60 @@ const preview = (ctx, text) =>
   });
 
 async function signUp(ctx, tag) {
+  const email = `qa+wl${tag}${Date.now()}@lianki.test`;
   const r = await ctx.request.post("/api/auth/sign-up/email", {
-    data: { email: `qa+wl${tag}${Date.now()}@lianki.test`, password: PW, name: "QA WL" },
+    data: { email, password: PW, name: "QA WL" },
     headers: { origin: BASE },
   });
   check(r.ok(), `sign-up (${r.status()})`);
+  return email;
+}
+
+/** Local throwaway accounts granted `dev` by this run, removed at the end. */
+const granted = [];
+const grantDev = (email) => {
+  granted.push(email);
+  d1(
+    `INSERT OR REPLACE INTO account_permission (email, permission, granted_by, granted_at) VALUES ('${email}', 'dev', 'qa', ${Date.now()})`,
+  );
+};
+
+/** Not the owner: nothing on /import or /words, and the route is 404. */
+async function notTheOwner(tag) {
+  const ctx = await newSilentContext(browser, { baseURL: BASE });
+  await signUp(ctx, tag);
+  const page = await ctx.newPage();
+  await page.goto("/import");
+  check(
+    (await page.locator('[data-qa="wordlist-import"]').count()) === 0,
+    `${tag}, not the owner: no word-list section on /import`,
+  );
+  check((await preview(ctx, CSV)).status() === 404, `${tag}, not the owner: the route is 404`);
+  await page.goto("/words?lang=en");
+  await page.waitForTimeout(3000);
+  check(
+    (await page.locator('[data-qa="words-import-button"]').count()) === 0,
+    `${tag}, not the owner: no Import button on /words`,
+  );
+  await ctx.close();
 }
 
 const browser = await launchSilent(chromium);
 try {
   setFlag(false);
-  {
-    const ctx = await newSilentContext(browser, { baseURL: BASE });
-    await signUp(ctx, "off");
-    const page = await ctx.newPage();
-    await page.goto("/import");
-    check(
-      (await page.locator('[data-qa="wordlist-import"]').count()) === 0,
-      "flag off: no word-list section on /import",
-    );
-    check((await preview(ctx, CSV)).status() === 404, "flag off: the route is 404");
-    await page.goto("/words?lang=en");
-    await page.waitForTimeout(3000);
-    check(
-      (await page.locator('[data-qa="words-import-button"]').count()) === 0,
-      "flag off: no Import button on /words",
-    );
-    await ctx.close();
-  }
+  await notTheOwner("flag off");
 
-  setFlag(true);
   for (const scheme of ["light", "dark"]) {
+    // Light: the owner with the flag off; dark: with it on.
+    if (scheme === "dark") setFlag(true);
     console.log(`— iPhone 13 ${scheme}`);
     const ctx = await newSilentContext(browser, {
       ...devices["iPhone 13"],
       baseURL: BASE,
       colorScheme: scheme,
     });
-    await signUp(ctx, scheme);
-    // The server caches flags for 30 s (docs/feature-flags.md): wait for the switch to reach it.
+    grantDev(await signUp(ctx, scheme));
+    // Permission grants are cached 20 s per isolate: wait for the grant to reach the server.
     for (let i = 0; i < 25 && (await preview(ctx, "x")).status() === 404; i++)
       await new Promise((r) => setTimeout(r, 2000));
 
@@ -266,9 +285,16 @@ try {
     check(errs.length === 0, `no page errors (${errs.join(" | ")})`);
     await ctx.close();
   }
+  // The flag has been on for the whole dark run (past the 30 s flag cache):
+  // it still reaches nobody but the owner.
+  await notTheOwner("flag on");
 } finally {
   try {
     setFlag(false);
+    if (granted.length)
+      d1(
+        `DELETE FROM account_permission WHERE email IN (${granted.map((e) => `'${e}'`).join(", ")})`,
+      );
   } catch (e) {
     console.error(e);
   }

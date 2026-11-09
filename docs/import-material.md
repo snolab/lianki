@@ -4,8 +4,8 @@ Tree: /import/any
 
 State-tree node `/import/any`. Status: **M1 shipped in its smallest form**
 (word lists from .txt/.csv/.tsv, below); the rest is design. Flag
-**`import.any`**, default off; the owner sees it while it is off
-(`importAnyOn(flags, isDev(email))`), everyone once it is on —
+**`import.any`**, default off, `audience: "owner"`: the owner (`isDev`) sees it
+with the flag on or off, nobody else either way — never everyone; a later allowlist widens it in `importAnyOn(flags, isDev(email))` —
 https://lianki.com/dev/flags#import.any.
 
 ## What shipped (M1, 2026-11-09)

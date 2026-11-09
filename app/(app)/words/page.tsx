@@ -29,7 +29,7 @@ export default async function WordsPage() {
       voice={voiceAccess(flags, isDev(user?.email))}
       ytSongs={!!user && ytSongsOn(flags, isDev(user.email))}
       // The Import button (docs/import-material.md, "On /words"): dark behind
-      // `import.any`, the owner sees it while it is off.
+      // `import.any`: the owner only, flag on or off (importAnyOn).
       importOn={!!user && importAnyOn(flags, isDev(user.email))}
     />
   );

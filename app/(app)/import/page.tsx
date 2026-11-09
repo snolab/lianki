@@ -31,8 +31,8 @@ export default async function ImportPage() {
     // Guest: the paste importer renders disabled with a sign-in hint.
   }
   const isLoggedIn = Boolean(email);
-  // The word-list import (docs/import-material.md): dark behind `import.any`;
-  // the owner sees it while it is off.
+  // The word-list import (docs/import-material.md): `import.any` is owner-only,
+  // flag on or off; nobody else ever (importAnyOn).
   const wordListOn = !!email && importAnyOn(await readFlags(), isDev(email));
   const {
     title,

@@ -19,7 +19,7 @@
  */
 import { z } from "zod";
 import type { D1Like } from "@/lib/d1/types";
-import { flagIn, type FlagValues } from "@/lib/flags";
+import type { FlagValues } from "@/lib/flags";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { sameOriginJsonPost } from "@/lib/security/same-origin";
 import { WordEntriesD1Repo } from "@/lib/repos/wordEntriesD1";
@@ -37,9 +37,15 @@ import {
 
 export const IMPORT_ANY_FLAG = "import.any";
 
-/** Who gets the word-list import: everyone when `import.any` is on, else the owner only. */
-export function importAnyOn(flags: FlagValues | null | undefined, owner: boolean): boolean {
-  return owner || flagIn(flags, IMPORT_ANY_FLAG);
+/**
+ * Who gets the word-list import (/import, the Import button on /words, both
+ * routes): `import.any` is an owner-audience flag (lib/flags.ts). The owner
+ * (`isDev`, the permission grant) has it with the flag on or off; nobody else,
+ * on or off — the flag never opens it to everyone. An allowlist, when one is
+ * made, widens it here; that is why every caller still passes the flags.
+ */
+export function importAnyOn(_flags: FlagValues | null | undefined, owner: boolean): boolean {
+  return owner;
 }
 
 /** The body's ceiling: the text's cap plus room for JSON escaping and the other fields. */
