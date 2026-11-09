@@ -20,7 +20,7 @@
  * to"), and the owner's line to a node shows "→ /words › prefetch". Typing
  * "@/" offers the listed nodes; `?target=/words/prefetch` starts with that chip.
  * `?eta`: the ETA bar on (eta.ts), the tree a feed of timed tasks set with
- * `__etaSet([{id, title, start, at, done?, doneAt?, sent?}])`; `__etaDue`
+ * `__etaSet([{id, title, start, at, done?, doneAt?, sent?, pct?, queued?, created?, queuedMs?}])`; `__etaDue`
  * records each {type:"eta"} the page's timer would send.
  * `?full` passes the full-screen flag (partner.fullscreen on), with the app's Back handling.
  */
@@ -136,10 +136,11 @@ const etaFeed = (() => {
         links: [],
         children: tasks.map((t) => ({
           title: t.title,
-          status: t.done ? ("done" as const) : ("doing" as const),
+          status: t.done ? ("done" as const) : t.queued ? ("blocked" as const) : ("doing" as const),
           done: !!t.done,
           live: true,
-          eta: { id: t.id, start: t.start, at: t.at, done: t.done, doneAt: t.doneAt, sent: t.sent },
+          // Everything the feed carries: pct and the queue fields too (the Gantt QA).
+          eta: { ...t, title: undefined } as TreeEta,
           links: [],
           children: [],
         })),

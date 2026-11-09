@@ -89,9 +89,10 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
     bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe: drag with the finger" --status doing --eta 25m
   The owner's chat shows one summary line above the input, its background
   filled to the weighted progress (time left, next due;
-  packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens this tree, which
-  lists every timed task as a Gantt row (docs/dev-debug-widget.md, "ETA
-  bar"). Time labels are "5M", "1.5H", and "-5M" in red past due. His box
+  packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens a full-screen
+  Gantt of every timed task, scrollable through time and zoomable
+  (GanttFull.tsx), and this tree lists them as compact Gantt rows
+  (docs/dev-debug-widget.md, "ETA bar", "Full-screen Gantt"). Time labels are "5M", "1.5H", and "-5M" in red past due. His box
   shows the same, on a box chat ticket (docs/box-oauth.md).
   When etaAt passes on an open node, the hub (Durable Object alarm; also an
   owner page's one timer sending {type:"eta", id}) marks it etaSent and asks

@@ -705,6 +705,18 @@ describe("the bar and the list, rendered", () => {
     expect(out).not.toContain("debug-chat-eta-meter");
     expect(out).toContain(CHAT_STRINGS_EN.etaList);
     expect(html(createElement(EtaList, { tasks: [], now: 0, strings: CHAT_STRINGS_EN }))).toBe("");
+    // Without onExpand no expand button; with it, one that opens the full-screen Gantt.
+    expect(out).not.toContain("debug-chat-eta-expand");
+    const ex = html(
+      createElement(EtaList, {
+        tasks: two,
+        now: MIN,
+        strings: CHAT_STRINGS_EN,
+        onExpand: () => {},
+      }),
+    );
+    expect(ex).toContain('data-testid="debug-chat-eta-expand"');
+    expect(ex).toContain(`aria-label="${CHAT_STRINGS_EN.etaOpen}"`);
     expect(html(createElement(EtaClockIcon, { size: 10 }))).toContain('width="10"');
     expect(taskState(task({ done: true }), 0, CHAT_STRINGS_EN)).toBe("done");
     expect(taskState(task({ at: 0 }), 5 * MIN, CHAT_STRINGS_EN)).toBe("-5M");

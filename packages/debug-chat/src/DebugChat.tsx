@@ -66,6 +66,7 @@ import { learnSttHint } from "./stt-hint";
 import { DevMenuGroup } from "./DevMenuGroup";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
+import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
@@ -1154,6 +1155,8 @@ export function DebugChat({
     [etaBar, etaSource, treeSource, etaRoot],
   );
   const [etaNow, setEtaNow] = useState(() => Date.now());
+  /** The full-screen Gantt (GanttFull.tsx), opened from the ETA bar. */
+  const [ganttOpen, setGanttOpen] = useState(false);
   const onEtaDueRef = useRef(onEtaDue);
   onEtaDueRef.current = onEtaDue;
   const etaClockRef = useRef<ReturnType<typeof etaClock> | null>(null);
@@ -3088,7 +3091,9 @@ export function DebugChat({
           `min-w-0 flex-1 ${!floating ? "h-[30vh]" : ""}`,
         )}
       >
-        {etaBar && <EtaList tasks={etaList} now={etaNow} strings={t} />}
+        {etaBar && (
+          <EtaList tasks={etaList} now={etaNow} strings={t} onExpand={() => setGanttOpen(true)} />
+        )}
         {treeContent}
       </div>
     </div>
@@ -3994,6 +3999,19 @@ export function DebugChat({
         !embedded &&
         typeof document !== "undefined" &&
         createPortal(<ClipsBadge strings={t} />, portalRoot ?? document.body)}
+      {/* The full-screen Gantt, out of the box's transform. */}
+      {etaBar &&
+        ganttOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <GanttFull
+            tasks={etaList}
+            now={etaNow}
+            strings={t}
+            onClose={() => setGanttOpen(false)}
+          />,
+          portalRoot ?? document.body,
+        )}
       {/* The typing glass (typing-glass.ts): while the input has the focus,
           the box's own area frosts; the page around it stays sharp. Behind
           the box's content (-z-10 in its stacking context), a little past its
@@ -4244,7 +4262,7 @@ export function DebugChat({
       {open && !tree && etaBar && etaList.length > 0 && (
         // flow-root: the bar's own margin counts in the height the buttons above step over.
         <div ref={setEtaBox} data-testid="debug-chat-eta-slot" className="flow-root">
-          <EtaBar tasks={etaList} now={etaNow} strings={t} onOpen={() => setPanel("tree")} />
+          <EtaBar tasks={etaList} now={etaNow} strings={t} onOpen={() => setGanttOpen(true)} />
         </div>
       )}
       {open && warning && (
