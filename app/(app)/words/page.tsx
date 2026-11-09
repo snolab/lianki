@@ -7,6 +7,7 @@ import { isDev } from "@/lib/permissions";
 import { voiceAccess } from "@/lib/words/voice-access";
 import { ytSongsOn } from "@/lib/yt-songs/gate";
 import { importAnyOn } from "@/lib/import/words-handler";
+import { importAiOn } from "@/lib/import/ai-convert";
 import WordsClient from "./WordsClient";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,8 @@ export default async function WordsPage() {
       // The Import button (docs/import-material.md, "On /words"): dark behind
       // `import.any`: the owner only, flag on or off (importAnyOn).
       importOn={!!user && importAnyOn(flags, isDev(user.email))}
+      // "AI: any file" in that panel: `words.import-ai` (owner audience); credits checked on open.
+      importAiOn={!!user && importAiOn(flags, isDev(user.email))}
     />
   );
 }

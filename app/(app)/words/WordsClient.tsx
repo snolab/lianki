@@ -1957,6 +1957,7 @@ export default function WordsClient({
   voice = "off",
   ytSongs = false,
   importOn = false,
+  importAiOn = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
@@ -1965,6 +1966,8 @@ export default function WordsClient({
   ytSongs?: boolean;
   /** The Import button at the top (`import.any`: the owner only, flag on or off). */
   importOn?: boolean;
+  /** "AI: any file" in that panel (`words.import-ai`); credits are checked when it opens. */
+  importAiOn?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
@@ -2153,6 +2156,7 @@ export default function WordsClient({
         catalog={fullCatalog}
         offline={offline}
         importOn={importOn && !!config.imports}
+        importAiOn={importAiOn}
         onOpen={setListId}
         onRefresh={refreshLists}
         onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
@@ -2620,6 +2624,7 @@ function ListPicker({
   catalog,
   offline,
   importOn,
+  importAiOn,
   onOpen,
   onRefresh,
   onDelete,
@@ -2633,6 +2638,8 @@ function ListPicker({
   offline: boolean;
   /** Show the Import button and panel at the top (ImportPanel.tsx). */
   importOn: boolean;
+  /** "AI: any file" in the panel, if the user's credits cover it. */
+  importAiOn: boolean;
   onOpen: (id: string) => void;
   /** Reload the lists from the server. */
   onRefresh: () => Promise<void>;
@@ -2974,7 +2981,10 @@ function ListPicker({
 
   // The Import button and its panel (ImportPanel.tsx): a list made from a
   // table shows up in the lists at once.
-  const importPanel = useImportPanel({ onAdded: () => void onRefresh() });
+  const importPanel = useImportPanel({
+    onAdded: () => void onRefresh(),
+    aiOn: importAiOn,
+  });
 
   const addGroup = async () => {
     const name = prompt(text.groupName.value)?.trim();

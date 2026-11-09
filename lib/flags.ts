@@ -175,6 +175,13 @@ export const FLAGS = {
     group: "words",
     audience: "owner",
   },
+  "words.import-ai": {
+    description:
+      "导入：AI 读任意文件（只给你本人）：/words 顶上的「导入」面板里多第三项「AI：任意文件」。放进任意文件（文本、PDF、Word、网页、字幕 .srt、Excel、照片），在你的设备上读出文字，交给 DeepSeek（Cloudflare Workers AI）整理成和 CSV 模板一样的表（单词 / 释义 / 例句），然后走 CSV 导入同一条路：先看生成的 CSV（可下载、可修改）和预览，确认后才添加。用户自己的额度付费：先按这个文件最多可能花的扣住，做完按实际结算、多的退回；额度不够就说不够，不缩小；超过扣住的额度就停，不多扣。只有有额度的人才看得到这一项。文件本身不上传、不保存。关闭（默认）= 谁都看不到，包括你本人。",
+    default: false,
+    group: "words",
+    audience: "owner",
+  },
   "read.gdoc-stream": {
     description:
       "Google 文档实时同步：所有用户都能在 Google 文档页面上用用户脚本打开“同步到 Lianki”，这个文档之后每次改动都会更新到自己的 /reader，打开 /reader/<id>?streamingFrom=google-docs 的阅读页会实时更新并重新标记词。只同步用户自己打开开关的文档，且要保持文档标签页开着。关闭（默认）= 只有你本人能用。",

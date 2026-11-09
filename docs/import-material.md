@@ -93,6 +93,68 @@ to every signed-in user while it is on).
 - **Retention.** Kept until the user deletes it (as the inbox).
 - Tests: `unit/import-files.test.ts`; `scripts/qa/qa-import-wordlist.mjs`
   (upload in the panel → listed → deleted; 404 without the gate).
+- **AI: any file** (third source, below) is listed only behind its own flag
+  and only when the user's credits cover it.
+
+### AI: any file (owner, 2026-11-10)
+
+Flag **`words.import-ai`**, default off, `audience: "owner"`: the owner
+(`isDev`) with the flag on, nobody else either way (`importAiOn` in
+`lib/import/ai-convert.ts`) — https://lianki.com/dev/flags#words.import-ai.
+
+Any file → the **same CSV template** the table import takes → the table
+import's own parser, preview and **Add N words**. Not a second pipeline.
+
+1. The user drops or picks a file (text, PDF, Word, HTML, subtitles `.srt`
+   / `.vtt`, `.xlsx`, a photo…). It is **read on the device** with the
+   readers the repo already has: the self-intro import's parser list
+   (`lib/self-intro/import-parse.ts`: PDF via unpdf, Word/zip with the EPUB
+   zip-bomb limits, HTML, text, images shrunk by canvas,
+   `lib/self-intro/shrink-image.ts`) and the table import's `.xlsx` reader —
+   `lib/import/ai-read.ts`. The bytes never leave the device; the text is cut
+   at 60,000 characters, at most 4 images. (Server-side extraction was
+   considered: it would send the raw file to our Worker and add unpdf to the
+   Worker bundle, for no gain over the readers the browser already runs.)
+2. `POST /api/import/ai` (`lib/import/ai-convert.ts`) cuts the text into
+   chunks of 6,000 characters on line breaks (at most 10; more → "only the
+   first part"), one call per chunk plus one for the images, 3 at a time, to
+   the Learning Partner's DeepSeek on Workers AI (`PARTNER_AI_MODEL`). Each
+   call answers JSON rows `{word, meaning, example}` (schema, zod-checked;
+   the material is data, not instructions). The rows are merged, repeats
+   dropped, capped at 1,500, and written **by code** as the template CSV:
+   the header row in the user's UI language (`templateFor`), then word,
+   meaning, example.
+3. The page shows the CSV in an editable box with **Download CSV** (UTF-8
+   BOM) and **Check again**, and under it `WordListImport seed`: the table
+   import itself, without its templates and inputs, checking that CSV with
+   the same parser and server preview, then **Add N words**.
+
+**Credits** (docs/payments.md, feature `words.import-ai`):
+
+- One hold for the whole file — the sum of every call's most (its prompt,
+  images, 4,000 output tokens) — taken before the first call (`takeHold`).
+  Too little → 402 "not enough credits: needs up to N, you have M"; the max
+  is never shrunk to fit the balance.
+- After each round the real cost is added up; if it ever reaches the hold
+  the conversion stops there (rows so far kept, "only the first part") and is
+  settled at most at the hold (`settleHold` caps it and pauses the feature
+  on an overage). A balance never goes below zero (the wallet's CHECK).
+- Settled at the real cost, the rest refunded. A failed call, or a file
+  that gave no rows, keeps nothing. The usage page shows one net line.
+- **Shown only with credits.** `GET /api/import/ai` answers `{on,
+  available}`: available = the gate, Workers AI configured, and an admin, no
+  wallet (local dev) or a balance covering the smallest hold. The panel asks
+  when it opens and lists the source only then; the route refuses anyway.
+
+**Privacy.** Only text and shrunk images reach the server, in the request's
+memory; they go to Workers AI and nowhere else; nothing is written but the
+wallet's rows; logs carry an error name, never content. 20 conversions per
+user per 10 minutes (per isolate).
+
+Tests: `unit/import-ai.test.ts` (the CSV contract with a mocked model, the
+gate, hold / settle / refund / hard cap against a real wallet, the file
+readers); `scripts/qa/qa-import-wordlist.mjs` (not offered without credits,
+404 with the flag off, 402 without credits).
 
 ### CSV / Excel
 

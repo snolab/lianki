@@ -54,6 +54,7 @@ export const FEATURES: Readonly<Record<string, { group: UsageGroup; href: string
   "polyglot.tts": { group: "voice", href: "/lab/polyglot" },
   "roadmap.generate": { group: "roadmap", href: "/roadmap" },
   "blog.translate": { group: "translate", href: "/blog" },
+  "words.import-ai": { group: "ai", href: "/words" },
   tts: { group: "voice", href: null },
 };
 
