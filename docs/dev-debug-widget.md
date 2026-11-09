@@ -1216,8 +1216,7 @@ focused, a wheel or a click over the history must reach the page under it.
 One rule, `logEngaged` in `log-engage.ts`: the history takes the pointer
 (`LOG_TOUCH`: wheel and drag scroll it, its lines select) while
 
-- the input is in use (focused, or the + menu / its file picker up),
-- the mic is on, or
+- the input is in use (focused, or the + menu / its file picker up), or
 - it is **held**: a **press-and-hold on the history** (500 ms, the
   platform's long-press, within 10 px) engaged it and selected the line
   under the finger ("rest": the log keeps its height, so the line stays
@@ -1226,8 +1225,16 @@ One rule, `logEngaged` in `log-engage.ts`: the history takes the pointer
   to the newest lines, so the drag selects what it started on); or a
   selection is open in the chat. A press anywhere outside the chat drops it.
 
-At rest nothing in the history takes a pointer (the polish mark, sent files
-and ask-card buttons keep theirs), so a wheel scrolls the page and a click
+The mic being on does **not** engage it (owner, 2026-11-10, iPhone on
+/reader): with the input not focused, a drag over the history scrolls the
+page underneath. At rest the log is no scroll box either
+(`overflow-y-hidden`; code still scrolls it to the newest lines, and a wheel
+over the bar moves it), so a drag that starts on a link or a card in it pans
+the page, while a tap on that link or card still works. Full screen, the log
+takes the touch as when typing.
+
+At rest nothing in the history takes a pointer (the polish mark, sent files,
+links and ask-card buttons keep theirs), so a wheel scrolls the page and a click
 lands on it. **How to copy now:** press and hold a message (mouse or
 finger): it is selected; ⌘C / Copy. Or tap the input first, then
 long-press / drag a line as before. On the phone a second long-press on the
