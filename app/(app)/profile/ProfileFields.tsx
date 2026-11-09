@@ -329,7 +329,6 @@ export function ProfileFields(props: {
                 name={name}
                 image={image}
                 size={128}
-                plain
                 className="size-32"
                 testId="profile-avatar"
               />
