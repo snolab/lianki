@@ -183,6 +183,7 @@ that are expensive to rediscover.
 | Sync conflicts, deletions, tombstones                                    | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
 | Settings that follow the account (`lk:*` key classes)                    | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
 | Notification prefixes in page titles: rules, safe matcher                | [docs/title-clean.md](docs/title-clean.md)                          |
+| App-icon badge (PWA): what it counts, /api/badge, the SW push            | [docs/app-badge.md](docs/app-badge.md)                              |
 | Links to other sites: the disclaimer dialog, its bypasses                | [docs/external-links.md](docs/external-links.md)                    |
 | Metrics, slowness and error alerts (Slack #lianki)                       | [docs/monitoring.md](docs/monitoring.md)                            |
 | Payments, Pro passes, Stripe, invites, gift codes                        | [docs/payments.md](docs/payments.md)                                |

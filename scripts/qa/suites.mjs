@@ -155,6 +155,22 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // The app-icon badge (docs/app-badge.md): flag gate, counts, the setting persists, setAppBadge mocked.
+  {
+    name: "APP BADGE (qa-app-badge)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-app-badge.mjs"],
+    base: true,
+    id: "app-badge",
+    paths: [
+      "app/components/AppBadge*.tsx",
+      "app/components/app-badge.content.ts",
+      "app/api/badge/**",
+      "lib/app-badge*.ts",
+      "public/sw.js",
+    ],
+    sensitive: false,
+  },
   // Invite by email on /membership (docs/payments.md, "Invite by email"): gate, one address, neutral answer, stubbed send.
   {
     name: "EMAIL INVITE (qa-email-invite)",

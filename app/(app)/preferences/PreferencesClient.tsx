@@ -13,6 +13,7 @@ import { TEXT_AREAS, textSizeStore } from "@/lib/text-size";
 import { useTextSizes } from "@/lib/use-text-size";
 import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
 import { ExternalLinkSettings } from "@/app/components/ExternalLinkSettings";
+import { AppBadgeSettings } from "@/app/components/AppBadgeSettings";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
 import { readNotesOn, writeNotesOn } from "@/lib/read/translator-notes";
@@ -115,7 +116,14 @@ function SectionHeading({
 const snapshot = (patterns: FilterPattern[], reviewOrder: ReviewOrder, watchTracking: boolean) =>
   JSON.stringify({ patterns, reviewOrder, watchTracking });
 
-export default function PreferencesClient({ showKeySync = false }: { showKeySync?: boolean }) {
+export default function PreferencesClient({
+  showKeySync = false,
+  appBadge = false,
+}: {
+  showKeySync?: boolean;
+  /** `pwa.app-badge` is on: the Notifications section (docs/app-badge.md). */
+  appBadge?: boolean;
+}) {
   const {
     loading: loadingText,
     heading,
@@ -266,6 +274,9 @@ export default function PreferencesClient({ showKeySync = false }: { showKeySync
         </SectionHeading>
         <TextSizeControls />
       </section>
+
+      {/* Notifications: the app-icon badge — follows the account (docs/app-badge.md) */}
+      {appBadge && <AppBadgeSettings />}
 
       {/* Your own AI — the key on this device only (docs/byok.md) */}
       <ByokSettings showKeySync={showKeySync} />

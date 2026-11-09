@@ -35,6 +35,7 @@ import {
 import type { VoiceAccess } from "@/lib/words/voice-access";
 import { handleUtterance } from "@/lib/words/voice-dispatch";
 import { reviewTitle } from "@/lib/review-title";
+import { noteBadgeSeen } from "@/lib/app-badge";
 import { VoiceBadge, useVoiceMode, useVoicePref, voiceOutcomeLabel } from "../words/VoiceMode";
 import { openExternal } from "@/lib/external-link";
 
@@ -216,6 +217,8 @@ export default function ReviewClient({
         setFlash(j.due ? fill(gradedText, { time: j.due }) : null);
         dropUrlParam();
         next = await loadNext(j.nextUrl);
+        // The app-icon badge (docs/app-badge.md): one fewer due, or ask again once none is left.
+        noteBadgeSeen(next ? { due: -1 } : { refresh: true });
       } catch (e) {
         fail(e);
       } finally {

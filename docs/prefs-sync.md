@@ -145,6 +145,12 @@ listed once.
 | `lk:link-confirm` | ask before another site ("any site" box off) | **synced** | `links.confirm`      | owner, 2026-11-09: "for my account, all domains"                                                                               |
 | `lk:link-allowed` | sites not asked about ("this site" box)      | **synced** | `links.allowedHosts` | owner, 2026-11-09: kept with the account. A third exception to "nothing typed": bare public hosts only, newest 80, no device host |
 
+### Notifications (docs/app-badge.md)
+
+| Key               | Setting                                                   | Class      | Server key     | Reason                                                                                                             |
+| ----------------- | --------------------------------------------------------- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `lk:notify-badge` | what the app-icon badge counts: off, ask-cards, due-cards, both (default) | **synced** | `notify.badge` | owner, 2026-11-09. A habit; the server also reads it, for a push that carries no counts (`GET /api/badge` without `mode`) |
+
 ### Not prefs (left alone)
 
 `lk:swipe-unsent`, `lk:swipe-log*`, `lk:voice-sent`, `lk:status`, `lk:purge`,

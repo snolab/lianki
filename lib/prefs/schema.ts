@@ -41,6 +41,7 @@ import {
   TITLE_RULES_OFF_MAX,
 } from "@lianki/core/titleClean";
 import { isAllowedHost, ALLOWED_HOSTS_MAX } from "@lianki/core/externalLink";
+import { BADGE_MODES } from "@/lib/app-badge";
 
 // ── Limits ────────────────────────────────────────────────────────────────
 
@@ -171,6 +172,8 @@ export const PREF_SCHEMAS = {
   // links that leave Lianki: the disclaimer before another site, and its bypasses
   "links.confirm": z.boolean(),
   "links.allowedHosts": z.array(z.string().refine(isAllowedHost)).max(ALLOWED_HOSTS_MAX),
+  // the app-icon badge (lib/app-badge.ts, docs/app-badge.md): what its number counts
+  "notify.badge": z.enum(BADGE_MODES),
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),
