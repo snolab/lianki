@@ -44,6 +44,8 @@ export const APP_ROUTES = [
   "lab",
   "learn",
   "list",
+  // /mail/unsubscribe: a mail's one-click Unsubscribe page (docs/mail-templates.md).
+  "mail",
   "membership",
   // The user's own data: /my/profile, /my/preferences, /my/files (docs/url-principles.md).
   "my",
