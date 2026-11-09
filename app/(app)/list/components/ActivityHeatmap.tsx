@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import type { ActivityHeatmapProps, TallyStrokes } from "@/types/heatmap";
 import { formatDate, getMonthLabel, TALLY_STROKES, tallyStrokes } from "@/app/lib/heatmap-utils";
@@ -40,6 +40,12 @@ export default function ActivityHeatmap({ data, startDate, endDate }: ActivityHe
   const { locale } = useLocale();
   const [tooltip, setTooltip] = useState<{ label: string; x: number; y: number } | null>(null);
   const strokes = useMemo(() => tallyStrokes(data), [data]);
+  // Open at the latest weeks: on a phone the year is wider than the screen.
+  const scroller = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, []);
   const plural = useMemo(() => new Intl.PluralRules(locale), [locale]);
   const dayLabel = (date: string, count: number) =>
     (plural.select(count) === "one" && count === 1 ? s.dayOne.value : s.dayOther.value)
@@ -89,9 +95,9 @@ export default function ActivityHeatmap({ data, startDate, endDate }: ActivityHe
 
   return (
     <div className="relative" data-activity-tally>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" ref={scroller}>
         <div className="inline-flex flex-col gap-1">
-          <div className="flex ms-8" style={{ gap: `${CELL_GAP}px` }} aria-hidden="true">
+          <div className="flex ms-10" style={{ gap: `${CELL_GAP}px` }} aria-hidden="true">
             {weeks.map((_, weekIndex) => (
               <div
                 key={weekIndex}
@@ -105,7 +111,7 @@ export default function ActivityHeatmap({ data, startDate, endDate }: ActivityHe
 
           <div className="flex gap-1">
             <div
-              className="flex flex-col justify-around w-7 text-xs text-gray-600 dark:text-gray-400 pe-1"
+              className="flex flex-col justify-around w-9 shrink-0 text-xs text-gray-600 dark:text-gray-400 pe-1"
               aria-hidden="true"
             >
               {weekdays.map((day) => (
