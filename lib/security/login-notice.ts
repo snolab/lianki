@@ -9,7 +9,9 @@
  * one. The sign-up itself is not announced: the account was made by that
  * browser a moment ago.
  */
-import type { MailLocale } from "@/lib/sign-in-mail";
+import { renderBuiltin } from "@/lib/mail-templates/compose";
+import { MAIL_CONTACT_URL, loginNoticeCopy } from "@/lib/mail-templates/defs";
+import type { MailLocale } from "@/lib/mail-templates/locales";
 import { sha256Hex, type ThrottleDb } from "./throttle";
 
 export const DEVICE_COOKIE = "lk_device";
@@ -105,101 +107,33 @@ export function utcStamp(d: Date): string {
   return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+/**
+ * The notice's values for template `login-notice` (lib/mail-templates/defs.ts):
+ * time in UTC, the location or the locale's word for "unknown", the browser,
+ * and the contact link.
+ */
+export function loginNoticeValues(
+  locale: MailLocale,
+  info: { when: Date; location: string; userAgent: string | null | undefined },
+): Record<string, string> {
+  const c = loginNoticeCopy(locale);
+  return {
+    time: utcStamp(info.when),
+    location: info.location || c.unknown,
+    browser: (info.userAgent ?? "").slice(0, 400) || c.unknown,
+    contactUrl: MAIL_CONTACT_URL,
+  };
+}
 
-const COPY = {
-  en: {
-    subject: "New sign-in to your Lianki account",
-    intro: "Your Lianki account was just signed in to from a browser it has not used before.",
-    time: "Time",
-    location: "Approximate location",
-    unknown: "unknown",
-    device: "Browser",
-    ok: "If this was you, there is nothing to do.",
-    notYou:
-      "If it was not you, sign in, remove any passkey you do not recognise on your profile page, and tell us at https://lianki.com/contact.",
-  },
-  zh: {
-    subject: "你的炼記账号有新的登录",
-    intro: "你的炼記（Lianki）账号刚刚在一个以前未使用过的浏览器上登录。",
-    time: "时间",
-    location: "大致位置",
-    unknown: "未知",
-    device: "浏览器",
-    ok: "如果是你本人操作，无需处理。",
-    notYou:
-      "如果不是你本人，请登录后在个人资料页删除不认识的通行密钥，并通过 https://lianki.com/contact 联系我们。",
-  },
-} as const;
-
+/** The built-in notice (no stored edit), for tests and previews. */
 export function loginNoticeMail(
   locale: MailLocale,
   info: { when: Date; location: string; userAgent: string | null | undefined },
 ): { subject: string; text: string; html: string } {
-  const c = COPY[locale];
-  const rows: [string, string][] = [
-    [c.time, utcStamp(info.when)],
-    [c.location, info.location || c.unknown],
-    [c.device, (info.userAgent ?? "").slice(0, 400) || c.unknown],
-  ];
-  return {
-    subject: c.subject,
-    text: [c.intro, "", ...rows.map(([k, v]) => `${k}: ${v}`), "", c.ok, c.notYou].join("\n"),
-    html:
-      `<p>${esc(c.intro)}</p>` +
-      `<table>${rows.map(([k, v]) => `<tr><td><b>${esc(k)}</b></td><td>${esc(v)}</td></tr>`).join("")}</table>` +
-      `<p>${esc(c.ok)}<br>${esc(c.notYou)}</p>`,
-  };
-}
-
-/**
- * A language tag (any form: `zh`, `zh-CN`, `zh_Hans`, `en-US`) → the notice's
- * template language, or null when the tag is empty or unusable. Every Chinese
- * tag gets the Simplified template, the only Chinese one there is.
- */
-export function noticeTemplateLocale(tag: unknown): MailLocale | null {
-  if (typeof tag !== "string") return null;
-  const base = tag.trim().replace(/_/g, "-").toLowerCase().split("-")[0];
-  if (!base || !/^[a-z]{2,3}$/.test(base)) return null;
-  return base === "zh" ? "zh" : "en";
-}
-
-/**
- * The notice's language is the account's, never the signing-in browser's
- * (whoever signs in may not own the account): (1) the language set on the
- * account (`ui.locale`, docs/prefs-sync.md), (2) the browser language recorded
- * at sign-up (`user.signupLocale`), (3) English.
- */
-export function noticeLocale(who: { accountLocale?: unknown; signupLocale?: unknown }): MailLocale {
-  return noticeTemplateLocale(who.accountLocale) ?? noticeTemplateLocale(who.signupLocale) ?? "en";
-}
-
-/** A stored pref value (JSON text) → the string it holds, or null. */
-function prefString(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  try {
-    const v = JSON.parse(raw) as unknown;
-    return typeof v === "string" ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The account's language for the notice, from D1. Each read fails on its own
- * to null — `user.signupLocale` exists only once its migration has run — so
- * the worst case is English.
- */
-export async function accountNoticeLocale(db: ThrottleDb, userId: string): Promise<MailLocale> {
-  // async, so a prepare that throws at once (no such column) is caught too
-  const read = async <T>(sql: string) => db.prepare(sql).bind(userId).first<T>();
-  const [pref, user] = await Promise.all([
-    read<{ value: string }>(
-      "SELECT value FROM user_prefs WHERE user_id = ?1 AND key = 'ui.locale'",
-    ).catch(() => null),
-    read<{ signupLocale: string | null }>("SELECT signupLocale FROM user WHERE id = ?1").catch(
-      () => null,
-    ),
-  ]);
-  return noticeLocale({ accountLocale: prefString(pref?.value), signupLocale: user?.signupLocale });
+  const { subject, text, html } = renderBuiltin(
+    "login-notice",
+    locale,
+    loginNoticeValues(locale, info),
+  );
+  return { subject, text, html };
 }

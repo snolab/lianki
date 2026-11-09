@@ -1,66 +1,31 @@
-import { LOCALE_HEADER, localeFromAcceptLanguage, resolveLocale } from "@/lib/app-locale";
-
 /**
- * Sign-in mail (code or link), in the reader's language.
+ * Sign-in mail (code or link): templates `signin-code` / `signin-link`
+ * (lib/mail-templates, docs/mail-templates.md). auth-impl.ts sends them through
+ * the template store in the account's language; these helpers are the
+ * request-only language and the built-in render.
  *
- * Localized, not bilingual: a Chinese user gets Chinese, everyone else
- * English. Both carry a plain-text part — a bare one-link HTML mail tends to
- * be filed as spam.
+ * Both parts are always there: a bare one-link HTML mail tends to be filed as
+ * spam, so every mail carries a plain-text part too.
  */
-export type MailLocale = "zh" | "en";
+import { renderBuiltin } from "@/lib/mail-templates/compose";
+import { pickMailLocale, type MailLocale } from "@/lib/mail-templates/locales";
+import { requestLocaleTags } from "@/lib/mail-templates/recipient-locale";
 
-/** The request's app locale (middleware header), else Accept-Language. */
+export type { MailLocale };
+
+/** The request's language alone: app locale header, then Accept-Language, then en. */
 export function mailLocale(ctx?: { headers?: Headers | null } | null): MailLocale {
-  const h = ctx?.headers;
-  const locale =
-    (h?.get(LOCALE_HEADER) && resolveLocale(h.get(LOCALE_HEADER))) ||
-    localeFromAcceptLanguage(h?.get("accept-language") ?? null);
-  return locale === "zh" ? "zh" : "en";
+  return pickMailLocale(...requestLocaleTags(ctx?.headers));
 }
 
-const COPY = {
-  en: {
-    brand: "Lianki",
-    codeSubject: (otp: string) => `${otp} is your Lianki sign-in code`,
-    codeIntro: "Your Lianki sign-in code:",
-    linkSubject: "Sign in to Lianki",
-    linkIntro: "Open this link to sign in to Lianki:",
-    linkButton: "Sign in",
-    validity: "Valid for 15 minutes.",
-    ignore: "If you did not ask for this, you can ignore this email.",
-  },
-  zh: {
-    brand: "炼記",
-    codeSubject: (otp: string) => `${otp} 是你的炼記登录验证码`,
-    codeIntro: "你的炼記（Lianki）登录验证码：",
-    linkSubject: "登录炼記",
-    linkIntro: "打开下面的链接登录炼記（Lianki）：",
-    linkButton: "登录",
-    validity: "15 分钟内有效。",
-    ignore: "如果不是你本人操作，请忽略此邮件。",
-  },
-} as const;
-
+/** The built-in sign-in mail (no stored edit), for tests and previews. */
 export function signInMail(
   locale: MailLocale,
   what: { otp: string } | { url: string },
 ): { subject: string; text: string; html: string } {
-  const c = COPY[locale];
-  if ("otp" in what)
-    return {
-      subject: c.codeSubject(what.otp),
-      text: [c.codeIntro, what.otp, "", c.validity, c.ignore].join("\n"),
-      html:
-        `<p>${c.codeIntro}</p>` +
-        `<p style="font-size:28px;font-weight:bold;letter-spacing:6px">${what.otp}</p>` +
-        `<p style="color:#888">${c.validity}<br>${c.ignore}</p>`,
-    };
-  return {
-    subject: c.linkSubject,
-    text: [c.linkIntro, "", what.url, "", c.validity, c.ignore].join("\n"),
-    html:
-      `<p>${c.linkIntro}</p>` +
-      `<p><a href="${what.url}">${c.linkButton}</a></p>` +
-      `<p style="color:#888">${c.validity}<br>${c.ignore}</p>`,
-  };
+  const { subject, text, html } =
+    "otp" in what
+      ? renderBuiltin("signin-code", locale, { code: what.otp })
+      : renderBuiltin("signin-link", locale, { url: what.url });
+  return { subject, text, html };
 }

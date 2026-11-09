@@ -14,7 +14,9 @@ import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { trustedOrigins } from "@/lib/trusted-origins";
-import { mailLocale, signInMail } from "@/lib/sign-in-mail";
+import { composeMail } from "@/lib/mail-templates/compose";
+import { recipientMailLocale, requestLocaleTags } from "@/lib/mail-templates/recipient-locale";
+import type { TemplateDb } from "@/lib/mail-templates/store";
 import { db, mongoClient } from "./app/db";
 import { cfRequestProps, dbBackend, getD1, workerWaitUntil } from "./lib/d1";
 import { securityPlugin } from "./lib/security/auth-plugin";
@@ -68,6 +70,23 @@ async function sendSignInMail(
     );
     throw err;
   }
+}
+
+/**
+ * A sign-in mail through the template store (docs/mail-templates.md): in the
+ * account's language when the address has one, else the asking browser's; an
+ * edited template that fails falls back to the built-in, so this never blocks.
+ */
+async function signInTemplate(
+  email: string,
+  ctx: { headers?: Headers | null } | null | undefined,
+  id: "signin-code" | "signin-link",
+  values: Record<string, string>,
+) {
+  const tdb = dbBackend() === "d1" ? (getD1() as unknown as TemplateDb) : null;
+  const locale = await recipientMailLocale(tdb, { email }, ...requestLocaleTags(ctx?.headers));
+  const { subject, text, html } = await composeMail(tdb, id, locale, values);
+  return { subject, text, html };
 }
 
 /**
@@ -228,7 +247,7 @@ function baseOptions() {
               sendVerificationOTP: async ({ email, otp }, ctx) => {
                 await sendSignInMail("otp", email, {
                   to: email,
-                  ...signInMail(mailLocale(ctx), { otp }),
+                  ...(await signInTemplate(email, ctx, "signin-code", { code: otp })),
                 });
               },
             }),
@@ -239,7 +258,7 @@ function baseOptions() {
               sendMagicLink: async ({ email, url }, ctx) => {
                 await sendSignInMail("link", email, {
                   to: email,
-                  ...signInMail(mailLocale(ctx), { url }),
+                  ...(await signInTemplate(email, ctx, "signin-link", { url })),
                 });
               },
             }),

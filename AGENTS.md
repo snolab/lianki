@@ -142,6 +142,7 @@ that are expensive to rediscover.
 | Finding your way around the code                                         | [docs/repo-map.md](docs/repo-map.md)                                |
 | Adding or renaming a route: nouns, /lab, /dev, 308 redirects             | [docs/url-principles.md](docs/url-principles.md)                    |
 | Secrets, auth, OAuth config                                              | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
+| Transactional mail: templates, /dev/templates, locked variables          | [docs/mail-templates.md](docs/mail-templates.md)                    |
 | Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI        | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Who may do what: isAdmin/isDev grants, /dev/permissions, break-glass CLI | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Google Drive connection (/connections), private Docs import              | [docs/connections.md](docs/connections.md)                          |

@@ -27,12 +27,14 @@ import {
 import {
   DEVICE_COOKIE,
   DEVICE_COOKIE_MAX_AGE_S,
-  accountNoticeLocale,
   approximateLocation,
-  loginNoticeMail,
+  loginNoticeValues,
   recordSignIn,
 } from "./login-notice";
 import { clientIp, type ThrottleDb } from "./throttle";
+import { composeMail } from "@/lib/mail-templates/compose";
+import { recipientMailLocale } from "@/lib/mail-templates/recipient-locale";
+import type { TemplateDb } from "@/lib/mail-templates/store";
 
 export interface SecurityPluginEnv {
   getDb: () => ThrottleDb | null;
@@ -144,13 +146,21 @@ export function securityPlugin(env: SecurityPluginEnv): BetterAuthPlugin {
             } catch {}
             // The account's language, not this browser's: whoever signs in
             // here may not be the owner of the account.
-            const locale = await accountNoticeLocale(db, user.id); // never throws: English at worst
-            const mail = loginNoticeMail(locale, {
-              when: new Date(),
-              location: approximateLocation(cf, ctx.headers),
-              userAgent,
-            });
-            const send = sendEmail({ to: user.email, ...mail })
+            // Through the template store (docs/mail-templates.md); a broken
+            // edit falls back to the built-in. Never throws: English at worst.
+            const tdb = db as unknown as TemplateDb;
+            const locale = await recipientMailLocale(tdb, { userId: user.id });
+            const { subject, text, html } = await composeMail(
+              tdb,
+              "login-notice",
+              locale,
+              loginNoticeValues(locale, {
+                when: new Date(),
+                location: approximateLocation(cf, ctx.headers),
+                userAgent,
+              }),
+            );
+            const send = sendEmail({ to: user.email, subject, text, html })
               .then(({ id }) => console.log(JSON.stringify({ event: "login.notice.sent", id })))
               .catch((e) =>
                 console.error(
