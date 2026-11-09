@@ -39,15 +39,34 @@ export function holdState(runs: Run[]): Hold {
 }
 
 /**
- * A green full run deploys only when it lifts a hold: the decided run before
- * it was red. Otherwise every routine full run would redeploy what CI already
- * deployed.
+ * A green full run deploys only when it lifts a hold: the newest decided run
+ * other than itself was red. Asked from inside the green run, which is still
+ * in progress then. Otherwise every routine full run would redeploy what CI
+ * already deployed.
  */
 export function liftsHold(runs: Run[], greenId: number): boolean {
-  const ds = runs.filter(decided);
-  const i = ds.findIndex((r) => r.id === greenId);
-  if (i < 0 || ds[i].conclusion !== "success") return false;
-  return ds[i + 1]?.conclusion === "failure";
+  return holdState(runs.filter((r) => r.id !== greenId)).held;
+}
+
+/** A job of a workflow run, as the REST API lists it. */
+export type Job = { name: string; status: string; conclusion: string | null };
+
+/**
+ * deploy-worker's check of a lift: the run is Full QA's, tested this commit,
+ * and every one of its qa jobs (build and shards) passed.
+ */
+export function liftIsGenuine(
+  run: { path?: string; head_sha: string },
+  jobs: Job[],
+  sha: string,
+): string | null {
+  if (!run.path?.endsWith("/nightly-qa.yml")) return "that run is not Full QA";
+  if (run.head_sha !== sha)
+    return `that run tested ${run.head_sha.slice(0, 7)}, not ${sha.slice(0, 7)}`;
+  const qa = jobs.filter((j) => j.name.startsWith("qa / "));
+  if (!qa.length) return "that run has no qa jobs";
+  const bad = qa.find((j) => j.status !== "completed" || j.conclusion !== "success");
+  return bad ? `${bad.name} is ${bad.conclusion ?? bad.status}` : null;
 }
 
 /** Whether a full run is already queued or running (so a held deploy need not start one). */

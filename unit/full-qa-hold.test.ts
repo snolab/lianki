@@ -6,6 +6,7 @@ import {
   holdState,
   lastGreenSha,
   latestDecided,
+  liftIsGenuine,
   liftsHold,
   pending,
   triggerConfig,
@@ -38,21 +39,45 @@ describe("holdState", () => {
   });
 });
 
-describe("liftsHold", () => {
-  test("green after red lifts", () => {
-    const g = r("success");
-    expect(liftsHold([g, r("cancelled"), r("failure")], g.id)).toBe(true);
+describe("liftsHold (asked from inside the green run, still in progress)", () => {
+  test("the newest decided run before it was red: lifts", () => {
+    const me = r(null, "in_progress");
+    expect(liftsHold([me, r("cancelled"), r("failure"), r("success")], me.id)).toBe(true);
   });
-  test("green after green does not", () => {
-    const g = r("success");
-    expect(liftsHold([g, r("success")], g.id)).toBe(false);
+  test("the one before was green, or there is none: nothing to lift", () => {
+    const me = r(null, "in_progress");
+    expect(liftsHold([me, r("success"), r("failure")], me.id)).toBe(false);
+    expect(liftsHold([me], me.id)).toBe(false);
   });
-  test("first ever, unknown or red run does not", () => {
-    const g = r("success");
-    expect(liftsHold([g], g.id)).toBe(false);
-    expect(liftsHold([g], 1)).toBe(false);
-    const red = r("failure");
-    expect(liftsHold([red, r("failure")], red.id)).toBe(false);
+});
+
+describe("liftIsGenuine (deploy-worker's check)", () => {
+  const run = { path: ".github/workflows/nightly-qa.yml", head_sha: "abc1234def" };
+  const ok = (name: string) => ({ name, status: "completed", conclusion: "success" });
+  const jobs = [ok("qa / qa build"), ok("qa / qa:all 1/3"), ok("On green: lift the deploy hold")];
+  test("Full QA's run, this commit, every qa job green", () => {
+    expect(liftIsGenuine(run, jobs, "abc1234def")).toBeNull();
+  });
+  test("refuses another workflow, another commit, no qa, a red or unfinished qa job", () => {
+    expect(liftIsGenuine({ ...run, path: ".github/workflows/ci.yml" }, jobs, "abc1234def")).toMatch(
+      /not Full QA/,
+    );
+    expect(liftIsGenuine(run, jobs, "fff")).toMatch(/not fff/);
+    expect(liftIsGenuine(run, [], "abc1234def")).toMatch(/no qa jobs/);
+    expect(
+      liftIsGenuine(
+        run,
+        [...jobs, { name: "qa / qa:all 2/3", status: "completed", conclusion: "failure" }],
+        "abc1234def",
+      ),
+    ).toMatch(/2\/3 is failure/);
+    expect(
+      liftIsGenuine(
+        run,
+        [{ name: "qa / qa:all 3/3", status: "in_progress", conclusion: null }],
+        "abc1234def",
+      ),
+    ).toMatch(/in_progress/);
   });
 });
 

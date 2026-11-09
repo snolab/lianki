@@ -16,11 +16,12 @@ name: Deploy Worker
 # the `hold` job reads the latest finished run of nightly-qa.yml ("Full QA",
 # on main after merges) and deploys nothing while it failed, starting a new full
 # run if none is queued. A green full run that follows a red one lifts the
-# hold and deploys the commit it tested. To deploy anyway, run this workflow
-# by hand with override_hold.
+# hold: Full QA dispatches this workflow with lifted_by (its run) and sha (the
+# commit it tested), checked here before that commit deploys. To deploy anyway,
+# run this workflow by hand with override_hold.
 on:
   workflow_run:
-    workflows: [CI, Full QA]
+    workflows: [CI]
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -29,6 +30,14 @@ on:
         description: Deploy even though full QA is red on main
         type: boolean
         default: false
+      lifted_by:
+        description: (Full QA sets this) the green Full QA run that lifts the hold
+        type: string
+        default: ""
+      sha:
+        description: (Full QA sets this) the commit that run tested, to deploy
+        type: string
+        default: ""
 
 # Queue rather than cancel: a cancelled deploy can leave the D1 migration
 # applied with the old Worker still serving.
@@ -58,22 +67,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           OVERRIDE: ${{ inputs.override_hold }}
-          FROM: ${{ github.event.workflow_run.name }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
+          LIFTED_BY: ${{ inputs.lifted_by }}
+          SHA: ${{ inputs.sha }}
         run: |
           if [ "$OVERRIDE" = "true" ]; then
             echo "::warning title=Full QA hold overridden::deploying by hand regardless of full QA"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
-          elif [ "$FROM" = "Full QA" ]; then
-            bun scripts/ci/full-qa.ts lifts "$RUN_ID"
+          elif [ -n "$LIFTED_BY" ]; then
+            bun scripts/ci/full-qa.ts lifted "$LIFTED_BY" "$SHA"
           else
             bun scripts/ci/full-qa.ts hold
           fi
-      # Held: this run goes red on purpose, so a held deploy is seen, not
-      # mistaken for one that happened. (A green full run that lifts nothing
-      # just skips the deploy.)
+      # Held: this run goes red on purpose, so a held deploy (or a lift that
+      # does not check out) is seen, not mistaken for one that happened.
       - name: Held?
-        if: steps.hold.outputs.deploy != 'true' && github.event.workflow_run.name != 'Full QA'
+        if: steps.hold.outputs.deploy != 'true'
         env:
           REASON: ${{ steps.hold.outputs.reason }}
         run: |
@@ -92,7 +100,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # The commit CI just passed, not whatever main is by now.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # A lift deploys the commit its Full QA run tested.
+          ref: ${{ github.event.workflow_run.head_sha || inputs.sha || github.sha }}
       # wrangler requires Node >= 22.
       - uses: actions/setup-node@v4
         with:

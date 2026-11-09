@@ -29,6 +29,35 @@ jobs:
     with:
       ext-smoke: true
 
+  # A green run after a red one lifts the deploy hold and deploys the commit it
+  # tested. deploy-worker cannot hear it through workflow_run: this run was
+  # started with the workflow token (by the trigger or the hold), and such runs
+  # start no workflow_run. A workflow_dispatch from here does start one.
+  on-green:
+    name: "On green: lift the deploy hold"
+    needs: qa
+    if: success() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write # read Full QA's runs; start deploy-worker
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
+      - id: lifts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/ci/full-qa.ts lifts "$GITHUB_RUN_ID"
+      - name: Deploy what this run tested
+        if: steps.lifts.outputs.deploy == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run deploy-worker.yml -R "$GITHUB_REPOSITORY" --ref main \
+            -f lifted_by="$GITHUB_RUN_ID" -f sha="$GITHUB_SHA"
+          echo "::notice title=Deploy hold lifted::started Deploy Worker for ${GITHUB_SHA::7}"
+
   on-red:
     name: "On red: alert + revert PR"
     needs: qa

@@ -137,10 +137,17 @@ When it goes red:
    `unit/full-qa-hold.test.ts`): it reads the latest finished Full QA run on
    main (cancelled runs do not count) and, while that run is red, deploys
    nothing — the run fails with "Deploy held", so it shows — and starts a
-   Full QA run if none is queued. A green Full QA run that follows a red one
-   triggers deploy-worker itself (`workflow_run` on Full QA) and deploys the
-   commit it tested; a green run with no hold to lift deploys nothing (CI
-   already did). **Override:** run Deploy Worker by hand with
+   Full QA run if none is queued. **Lifting it:** a green Full QA run whose
+   newest decided predecessor was red runs its `On green` job, which
+   dispatches Deploy Worker with `lifted_by=<its run id>` and
+   `sha=<the commit it tested>`; deploy-worker checks that the run is Full
+   QA's, tested that commit and passed every `qa /` job (`liftIsGenuine`), and
+   deploys that commit. A green run with no hold to lift deploys nothing (CI
+   already did). It cannot be a `workflow_run` on Full QA: Full QA is started
+   with the workflow token (by the trigger or by the hold), and a run started
+   that way starts no `workflow_run` — the hold of 2026-11-10 (red at
+   3eb0aeed, green again 23:32 UTC) lifted nothing that way.
+   `workflow_dispatch` is the one event the token may start. **Override:** run Deploy Worker by hand with
    `override_hold` (`gh workflow run deploy-worker.yml -R snolab/lianki -f
 override_hold=true`).
 

@@ -5,7 +5,8 @@
  *
  *   bun scripts/ci/full-qa.ts trigger           # a push to main: start Full QA now, later or not
  *   bun scripts/ci/full-qa.ts hold              # deploy-worker: may main deploy?
- *   bun scripts/ci/full-qa.ts lifts <run id>    # deploy-worker: does this green run lift a hold?
+ *   bun scripts/ci/full-qa.ts lifts <run id>    # Full QA, green: does this run lift a hold?
+ *   bun scripts/ci/full-qa.ts lifted <run id> <sha>  # deploy-worker: is that lift genuine?
  *   bun scripts/ci/full-qa.ts revert <sha>      # Full QA went red at <sha>: open a revert PR
  *
  * `hold` and `lifts` write `deploy=true|false` (and `reason=`) to
@@ -22,6 +23,7 @@ import {
   decideTrigger,
   holdState,
   lastGreenSha,
+  liftIsGenuine,
   liftsHold,
   pending,
   triggerConfig,
@@ -114,6 +116,21 @@ if (what === "trigger") {
       ? "a green full QA run lifts the hold"
       : "a green full QA run with no hold to lift: CI already deployed this",
   });
+} else if (what === "lifted") {
+  const sha = process.argv[4] ?? "";
+  const r = JSON.parse(must("gh", ["api", `repos/${REPO}/actions/runs/${arg}`]));
+  const jobs = JSON.parse(
+    must("gh", ["api", `repos/${REPO}/actions/runs/${arg}/jobs?per_page=50`, "--jq", ".jobs"]),
+  );
+  const why = liftIsGenuine(r, jobs, sha);
+  output(
+    why
+      ? { deploy: "false", reason: `not a genuine lift: ${why}` }
+      : {
+          deploy: "true",
+          reason: `Full QA run ${arg} passed at ${sha.slice(0, 7)} and lifts the hold`,
+        },
+  );
 } else if (what === "revert") {
   const red = arg;
   const green = lastGreenSha(fullRuns());
@@ -183,6 +200,8 @@ if (what === "trigger") {
   if (!made.ok) console.log(`::warning title=Revert PR not opened::${made.err}`);
   output({ pr });
 } else {
-  console.error("usage: bun scripts/ci/full-qa.ts trigger | hold | lifts <run id> | revert <sha>");
+  console.error(
+    "usage: bun scripts/ci/full-qa.ts trigger | hold | lifts <run id> | lifted <run id> <sha> | revert <sha>",
+  );
   process.exit(2);
 }
