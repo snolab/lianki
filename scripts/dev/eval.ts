@@ -607,14 +607,6 @@ function chat(out?: string, errorsOnly = false) {
           answer: m.answer,
           labels: m.labels,
         });
-      else if (m.type === "withdrawn")
-        print({
-          type: "withdrawn",
-          id: m.id,
-          askId: m.askId,
-          thread: m.thread ?? "owner",
-          withdrawnAt: m.withdrawnAt,
-        });
       else if (m.type === "edited") {
         // Another lane's line grew: still that lane's (--route), not printed here.
         if (routedAway.has(String(m.id))) return;
@@ -691,7 +683,16 @@ function chat(out?: string, errorsOnly = false) {
           rev: m.rev ?? null,
           at: new Date(Number(m.at) || Number(m.hubAt)).toISOString(),
         });
-      else if (m.type === "error") console.error(`hub: ${m.error}`);
+      // An ask the agent withdrew (eval.ts withdraw): printed only; the hub decided it.
+      else if (m.type === "withdrawn")
+        print({
+          type: "withdrawn",
+          id: m.id,
+          askId: m.askId,
+          thread: m.thread ?? "owner",
+          withdrawnAt: m.withdrawnAt,
+        });
+      else if (m.type === "error") console.error(`hub: ${logSafe(m.error)}`);
     };
     ws.onclose = (e) => closed(e.code);
     const closed = (code: number) => {
@@ -1313,7 +1314,12 @@ async function main() {
   if (results.some((r) => r.ok !== true)) process.exitCode = 1;
 }
 
+/** A value for the terminal log: control characters (newlines, escapes) become spaces. */
+function logSafe(v: unknown): string {
+  return String(v).replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
+}
+
 main().catch((e) => {
-  console.error((e as Error).message);
+  console.error(logSafe((e as Error).message));
   process.exit(1);
 });
