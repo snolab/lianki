@@ -128,7 +128,7 @@ caller adds the user / inviter ids. `log` is never sent to the provider.
   `/api/dev/mails` (isDev); never written to a log line; deleted with the
   account (trigger on `user`: rows to its address, about it, or that it sent
   as invites). Invite rows from before the log are copied masked
-  (`2***@qq.com`, `recipient_masked` = 1) — no address backfill.
+  (`f***@example.com`, `recipient_masked` = 1) — no address backfill.
 - **Variables**: only the allow-list in `lib/mail-log/vars.ts`
   (`STORED_VARS`) is kept, filtered again inside the logger whatever a caller
   passes. Never a sign-in code, a sign-in or confirm link, an invite link or

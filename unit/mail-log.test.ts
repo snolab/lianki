@@ -491,7 +491,7 @@ describe("with the account, and before the log", () => {
       d
         .raw()
         .prepare(
-          "INSERT INTO invite_email_log (id, inviterId, recipientHash, recipientMasked, locale, status, providerId, createdAt, reportedAt) VALUES (?, 'u', 'h', '2***@qq.com', 'zh', ?, 'p', 5, ?)",
+          "INSERT INTO invite_email_log (id, inviterId, recipientHash, recipientMasked, locale, status, providerId, createdAt, reportedAt) VALUES (?, 'u', 'h', 'f***@example.com', 'zh', ?, 'p', 5, ?)",
         )
         .run(id, status, reportedAt);
     d.raw()
@@ -513,10 +513,10 @@ describe("with the account, and before the log", () => {
       .all()
       .map((r) => ({ ...r }));
     expect(got).toEqual([
-      { id: "a", status: "sent", recipient: "2***@qq.com", m: 1, l: "a" },
-      { id: "b", status: "queued", recipient: "2***@qq.com", m: 1, l: "b" },
-      { id: "c", status: "complained", recipient: "2***@qq.com", m: 1, l: "c" },
-      { id: "e", status: "failed", recipient: "2***@qq.com", m: 1, l: "e" },
+      { id: "a", status: "sent", recipient: "f***@example.com", m: 1, l: "a" },
+      { id: "b", status: "queued", recipient: "f***@example.com", m: 1, l: "b" },
+      { id: "c", status: "complained", recipient: "f***@example.com", m: 1, l: "c" },
+      { id: "e", status: "failed", recipient: "f***@example.com", m: 1, l: "e" },
     ]);
   });
 });
@@ -736,7 +736,7 @@ describe("Resend rules", () => {
       body: { error: "not-resendable" },
     });
     exec(
-      "INSERT INTO mail_log (id, created_at, updated_at, template, version, locale, recipient, recipient_masked, recipient_hash, status) VALUES ('old', 1, 1, 'invite', 0, 'zh', '2***@qq.com', 1, 'h', 'sent')",
+      "INSERT INTO mail_log (id, created_at, updated_at, template, version, locale, recipient, recipient_masked, recipient_hash, status) VALUES ('old', 1, 1, 'invite', 0, 'zh', 'f***@example.com', 1, 'h', 'sent')",
     );
     expect((await act({ op: "resend", id: "old" })).body.error).toBe("no-address");
     const notice = await oneRow(); // login notice, no variables kept
