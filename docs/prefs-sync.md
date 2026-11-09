@@ -125,6 +125,12 @@ listed once.
 | `lk:watch-lang`                                                                                                                                                                 | not a pref                         | per-video language overrides; that is card data                                                   |
 | `lk:deviceId`, `lk:config`, `lk:c:*`, `lk:card-index`, `lk:queue`, `lk:token`, `lk:note:*`, `lk:markers:*`, `lk:watch:*`, `lk:watch-index`, `lk:watch-dirty`, `lk:nav_intended` | not a pref                         | cards, sync state, caches (sync-architecture.md)                                                  |
 
+### Review filters
+
+| Key today           | Setting        | Class  | Server key | Reason |
+| ------------------- | -------------- | ------ | ---------- | ------ |
+| `lk:review-filters` | Review filters | device | —          | owner, 2026-11-05: "truly per device". The userscript mirrors it into GM storage on lianki.com and applies it on other sites (`lib/review-filters.ts`). The account's old `mobileExcludePatterns` is frozen, not deleted: a phone with no list of its own still uses it, a desktop never does. |
+
 ### Your own AI (docs/byok.md)
 
 | Key               | Setting                                 | Class                    | Server key     | Reason                                                                                                                                                                                                                                      |

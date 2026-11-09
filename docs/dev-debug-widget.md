@@ -837,19 +837,33 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   verified `owner`). The root layout reads the flag once per request and passes
   it down (`OwnerBoots` → `DebugEval` → the widget's `fullScreen` prop). Never
   on another site (`embedded`: the userscript's widget, `/embed/partner`).
-- **The control.** A round button with its own SVG (four corners out; in full
-  screen, four corners in), 32 px over the open panel's top corner, 40 px in
-  full screen at the top corner under the notch; both have the 40 px tap area
-  (`tap-40`). Labels `fullScreen` / `fullScreenExit` (learning-partner.content.ts,
-  16 locales with context; `ui-strings.ts` en/zh/ja for hosts with no strings).
-- **Ways back.** The same button, Escape (after the tree's and the + menu's own
+- **In by a drag, no button** (owner, 2026-11-09 18:25 JST: "no dedicated
+  fullscreen button; it should happen when the input box is dragged to the very
+  bottom"). Dragging the open chat (its grip or the bar's edge) until its bar is
+  pushed flush against the bottom edge (the drag keeps it on screen, so it rests
+  flush within half a pixel) enters full screen on the drop (`dropEntersFull`).
+  Only the bottom: the top edge would hide the history (18:26 JST), so a bar
+  pushed against the top stays a panel there. In full screen a drag on the grip
+  or the bar's edge that goes `FULL_LEAVE_PX` (48 px) up leaves it
+  (`dragLeavesFull`): the panel comes back, its own size, and follows the finger
+  from there; a smaller wobble, sideways or down, stays. Without a drag (the
+  keyboard, a screen reader): the menu's **Full screen** row (a double tap on the
+  grip), `fullScreen` in 16 locales. The old ⤢ toggle over the panel's top
+  corner is gone; the Gantt's own ⤢ is unrelated.
+- **The way out** (owner, 18:25 JST: "an exit button is still needed"): a pill,
+  ✕ and the words `fullScreenExit`, at the top corner under the notch, 40 px tall
+  with the 40 px tap area (`tap-40`), focusable, AA in both themes
+  (learning-partner.content.ts, 16 locales with context; `ui-strings.ts`
+  en/zh/ja for hosts with no strings). Left by it, Escape or the menu row, the
+  panel is as it was, where the drag dropped it (on the bottom edge).
+- **Ways back.** The exit button, a drag up, Escape (after the tree's and the + menu's own
   Escape; it never turns the mic off), and Back: entering by a tap pushes one
   history entry through the host's `backToClose` (Lianki: `openBackToClose`,
   docs/ui-state.md "Back closes an overlay"), same URL so `?live=` stays.
   Full screen restored by a reload takes its entry at the first press or key
   (the browser may skip an entry pushed with no gesture), and reopened from the
   pill at once, so Back leaves full screen first there too (owner, 2026-11-08;
-  `fullScreenBack`, unit/chat-fullscreen-back.test.ts). Left by the button or
+  `fullScreenBack`, unit/chat-fullscreen-back.test.ts). Left by the exit button, a drag up or
   Escape, the entry is consumed: no orphan, no double back. Minimizing to the
   pill leaves it; reopening comes back full screen, since the choice is kept.
 - **Nothing remounts.** The same section, log, input and mic are restyled in
@@ -892,8 +906,8 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
 
 Checks: `bun scripts/dev/debug-chat-fullscreen-qa.mjs [--shots <dir>]` (silent
 Chromium and WebKit, 414×896, 390×844, 320×568 and 1280×800, light and dark; the gate,
-toggle, the sidebar, the bar's and input's widths, overlaps, the page beside the
-sidebar, draft, focus, the same elements, the anchor line, side scroll, Escape,
+drop on the bottom edge (not the top, not short of it), the drag up out of it, the exit button (✕ and words, 40 px, AA, keyboard focus), the menu row, no enter button, the sidebar, the bar's and input's widths, overlaps, the page beside the
+sidebar, draft, the same elements, the newest line on entering, side scroll, Escape,
 Back, reload, an emulated keyboard, scroll-down, the arrow and a card). Not
 covered by emulation: a real iPhone home-screen app's keyboard, its pan, and the
 safe areas.

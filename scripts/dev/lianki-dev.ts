@@ -36,7 +36,8 @@ import {
 import { PROGRESS_USAGE, formatStats, parseProgressArgs } from "./progress-args";
 import { postProgress, progressToken } from "./progress-client";
 import { laneToken } from "./lane-listen-lib";
-import { type ProgressDone, progressStats } from "../../lib/progress";
+import { askAnswer, askNode, askQuestions, nodeNote } from "./ask-node";
+import { type ProgressDone, type ProgressEntry, progressStats } from "../../lib/progress";
 
 const HUB = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
 
@@ -138,17 +139,22 @@ async function drain(stream: ReadableStream<Uint8Array>, to: NodeJS.WriteStream,
  * kept, to tell a network failure from a refusal. With --json on a one-shot
  * command its stdout becomes the envelope's data.
  */
-async function runEval(sub: Sub, repo: string, argv: string[]): Promise<number> {
+async function runEval(
+  sub: Sub,
+  repo: string,
+  argv: string[],
+  seen?: (out: string) => Promise<void>,
+): Promise<number> {
   const wrap = json && sub !== "listen" && sub !== "serve";
   const child = Bun.spawn([process.execPath, join(repo, "scripts", "dev", "eval.ts"), ...argv], {
     cwd: repo,
     stdin: "inherit",
-    stdout: wrap ? "pipe" : "inherit",
+    stdout: wrap || seen ? "pipe" : "inherit",
     stderr: "pipe",
   });
   for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => child.kill(sig));
   const [out, err] = await Promise.all([
-    wrap ? drain(child.stdout as ReadableStream<Uint8Array>, process.stdout, true) : "",
+    wrap || seen ? drain(child.stdout as ReadableStream<Uint8Array>, process.stdout, wrap) : "",
     drain(child.stderr as ReadableStream<Uint8Array>, process.stderr, json),
   ]);
   const last = err.trim().split("\n").at(-1) ?? "";
@@ -157,6 +163,7 @@ async function runEval(sub: Sub, repo: string, argv: string[]): Promise<number> 
     if (json) console.error(errorLine(code, last || `eval.ts exited with ${code}`));
     return code;
   }
+  await seen?.(out);
   if (wrap) {
     let data: unknown = out.trim();
     try {
@@ -168,19 +175,60 @@ async function runEval(sub: Sub, repo: string, argv: string[]): Promise<number> 
 }
 
 /** `lianki chat …` from this checkout's packages/lianki-cli; LIANKI_TOKEN passes through the environment. */
-async function runChat(sub: Sub, repo: string, rest: string[], stdin?: string): Promise<number> {
+async function runChat(
+  sub: Sub,
+  repo: string,
+  rest: string[],
+  stdin?: string,
+  seen?: (out: string) => Promise<void>,
+): Promise<number> {
   const argv = chatArgv(sub, rest, stdin);
   if (argv instanceof Error) fail(EXIT.usage, argv.message);
   const cli = join(repo, "packages", "lianki-cli", "lianki.mjs");
-  const child = Bun.spawn([process.execPath, cli, ...argv, ...(json ? ["--json"] : [])], {
+  // An ask on a node reads the answer back as JSON (askAnswer).
+  const asJson = json || !!seen;
+  const child = Bun.spawn([process.execPath, cli, ...argv, ...(asJson ? ["--json"] : [])], {
     cwd: repo,
     env: { ...process.env, LIANKI_URL: HUB },
     stdin: argv.stdin !== undefined ? new TextEncoder().encode(argv.stdin) : "inherit",
-    stdout: "inherit",
+    stdout: seen ? "pipe" : "inherit",
     stderr: "inherit",
   });
   for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => child.kill(sig));
-  return await child.exited;
+  const out = seen
+    ? await drain(child.stdout as ReadableStream<Uint8Array>, process.stdout, false)
+    : "";
+  const code = await child.exited;
+  if (code === 0) await seen?.(out);
+  return code;
+}
+
+/**
+ * A note on a node (ask cards, docs/lianki-dev-cli.md "Asks on a node"),
+ * keeping its title and status. `must`: a node missing from the tree stops
+ * the ask (exit 2); otherwise a failure only warns.
+ */
+async function noteOn(
+  node: string,
+  note: string,
+  g: Global,
+  repo: string,
+  must: boolean,
+): Promise<void> {
+  const warn = (msg: string) => (must ? fail(EXIT.notReady, msg) : console.error(`ask: ${msg}`));
+  const token = progressToken(undefined, repo);
+  if (!token) return void warn(`no progress token: the ask is not noted on ${node}`);
+  const tree = await postProgress(HUB, token, "", undefined);
+  const entry =
+    tree instanceof Error
+      ? undefined
+      : (tree.entries as ProgressEntry[] | undefined)?.find((e) => e.id === node);
+  if (!entry)
+    return void warn(
+      `${node} is not in the state tree: report it first (lianki-dev progress --path ${node} …)`,
+    );
+  const res = await postProgress(HUB, token, "", nodeNote(entry, note, g.lane));
+  if (res instanceof Error) warn(`not noted on ${node}: ${res.message}`);
 }
 
 async function progress(g: Global, rest: string[], repo: string | undefined): Promise<number> {
@@ -234,7 +282,8 @@ async function main(): Promise<number> {
     json = process.argv.includes("--json");
     fail(EXIT.usage, `${parsed.message}\n${json ? "" : USAGE.main}`.trim());
   }
-  const { global: g, rest } = parsed;
+  const { global: g } = parsed;
+  let rest = parsed.rest;
   json = g.json;
   const sub: Sub | undefined = parsed.sub;
   if (!sub || sub === "help") {
@@ -309,13 +358,36 @@ async function main(): Promise<number> {
     const t = laneToken(g.lane);
     if (t.token) process.env.LIANKI_TOKEN = t.token;
   }
+  // An ask names its node (required from a lane): the question, and with
+  // --wait the answer, become notes on it (scripts/dev/ask-node.ts).
+  let seen: ((out: string) => Promise<void>) | undefined;
+  let askAt: string | undefined;
+  if (sub === "ask") {
+    const placed = askNode(rest, process.env, g.lane);
+    if (placed instanceof Error) fail(EXIT.usage, `${placed.message}\n${USAGE.ask}`);
+    rest = placed.rest;
+    const node = placed.node;
+    if (node) {
+      askAt = node;
+      const qs = askQuestions(rest).join(" / ");
+      await noteOn(node, `ask: ${qs}`, g, repo, true);
+      if (!rest.includes("--wait"))
+        console.error(
+          `ask: no --wait — the answer is not written on ${node}; note it there when you hear it`,
+        );
+      seen = async (out) => {
+        const a = askAnswer(out);
+        if (a) await noteOn(node, `answer: ${qs} → ${a}`, g, repo, false);
+      };
+    }
+  }
   const stdin = sub === "say" && rest.includes("-") ? await Bun.stdin.text() : undefined;
   // A lane token (LIANKI_TOKEN): say/ask/listen go through the public CLI's
   // `lianki chat`, in that token account's own thread, labelled with its name.
   // No grant, no pairing; without a token the grant path below is unchanged.
   if (process.env.LIANKI_TOKEN && !g.pair && (sub === "say" || sub === "ask" || sub === "listen"))
-    return runChat(sub, repo, rest, stdin);
-  const argv = evalArgv(sub, rest, g, stdin);
+    return runChat(sub, repo, rest, stdin, seen);
+  const argv = evalArgv(sub, askAt ? [...rest, "--task-path", askAt] : rest, g, stdin);
   if (argv instanceof Error) fail(EXIT.usage, `${argv.message}\n${json ? "" : USAGE[sub]}`.trim());
   // Nothing to send with: say so before eval.ts opens a socket (lanes never pair).
   const f = await facts(g, rest, false);
@@ -330,7 +402,7 @@ async function main(): Promise<number> {
     (sub === "serve" || sub === "voices" ? f.evalGrant : f.chatGrant || f.evalGrant);
   if (!g.pair && !has)
     fail(EXIT.notReady, doctorFindings(f).find((x) => x.check === "grant")!.line);
-  return runEval(sub, repo, argv);
+  return runEval(sub, repo, argv, seen);
 }
 
 main().then(

@@ -1,5 +1,7 @@
 # Hosting the dev loader on lianki.com (design stub)
 
+Tree: /ext/loader-host
+
 State-tree node `/ext/loader-host`. Status: design only, nothing built.
 Background: [dev-userscript-loader.md](dev-userscript-loader.md).
 

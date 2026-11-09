@@ -1,5 +1,7 @@
 # Import any material (design stub)
 
+Tree: /import/any
+
 State-tree node `/import/any`. Status: **M1 shipped in its smallest form**
 (word lists from .txt/.csv/.tsv, below); the rest is design. Flag
 **`import.any`**, default off; the owner sees it while it is off

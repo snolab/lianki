@@ -105,10 +105,13 @@ ${EXITS}`,
   the cloud's list. --cloud: the cloud's list only, no page asked.
 ${GLOBAL}
 ${EXITS}`,
-  ask: `usage: lianki-dev ask [--to owner|<email>] --q "question" --opt "a" --opt "b" [--multi] [--q …] [--wait] [--timeout <s>]
+  ask: `usage: lianki-dev ask [--node /path] [--to owner|<email>] --q "question" --opt "a" --opt "b" [--multi] [--q …] [--wait] [--timeout <s>]
   An ask card (eval.ts ask); the first --opt is the recommended one. --wait
   prints the tap's {"type":"answered",…}, else the hub's {"type":"asked",…}.
   With --as <lane> each question is labelled 【<lane>】.
+  --node: the state tree node the question is about (else LIANKI_TASK_PATH);
+  required with --as <lane>. The question is noted on it ("ask: …"), and with
+  --wait the answer too ("answer: … → …"); the node must be in the tree.
 ${GLOBAL}
 ${EXITS}`,
   inbox: `usage: lianki-dev inbox [list | get <id> [--out <dir>] | done <id>]
