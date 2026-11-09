@@ -14,10 +14,8 @@ import { isLocalOrigin } from "@/lib/referrals/local-origin";
  * The mail template store for /dev/templates (lib/mail-templates/route.ts,
  * docs/mail-templates.md). Developers only, 404 for anyone else.
  */
-async function dev() {
-  const user = await authUserOrNull();
-  return isDev(user?.email) && user?.id && user.email ? { id: user.id, email: user.email } : null;
-}
+type User = Awaited<ReturnType<typeof authUserOrNull>>;
+const caller = (u: User) => (u?.id && u.email ? { id: u.id, email: u.email } : null);
 
 const origin = () => process.env.BETTER_AUTH_BASE_URL ?? "https://lianki.com";
 
@@ -32,6 +30,12 @@ const deps: TemplatesDeps = {
   send: (mail) => (isLocalOrigin(origin()) ? stubSend(mail) : sendEmail(mail)),
 };
 
-export const GET = async (req: Request) => templatesGet(req, await dev(), deps);
+export async function GET(req: Request) {
+  const u = await authUserOrNull();
+  return templatesGet(req, isDev(u?.email) ? caller(u) : null, deps);
+}
 
-export const POST = async (req: Request) => templatesPost(req, await dev(), deps);
+export async function POST(req: Request) {
+  const u = await authUserOrNull();
+  return templatesPost(req, isDev(u?.email) ? caller(u) : null, deps);
+}
