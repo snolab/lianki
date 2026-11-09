@@ -4,14 +4,15 @@
 //   QA_BASE=http://localhost:3000 bun scripts/qa/qa-import-wordlist.mjs [outDir]
 //
 // In qa:all (suite import-wordlist), or against any local server on local D1.
-// `import.any` is owner-only (lib/import/words-handler.ts, importAnyOn): the
-// accounts that import are granted `dev` in the LOCAL account_permission (as
-// qa-app-badge does; removed at the end). The light run has the flag off, the
-// dark run on (the row is deleted at the end).
+// `import.any` (lib/import/words-handler.ts, importAnyOn): off, the owner only;
+// on, every signed-in user. The accounts that import are granted `dev` in the
+// LOCAL account_permission (as qa-app-badge does; removed at the end). The
+// light run has the flag off, the dark run on (the row is deleted at the end).
 //
-// - not the owner, flag off and then flag on: no section on /import, the
-//   route answers 404, no Import button on /words — the flag never reaches
-//   everyone;
+// - not the owner, flag off: no section on /import, the route answers 404,
+//   no Import button on /words;
+// - not the owner, flag on: the section, the route and the Import button are
+//   all there;
 // - the owner, flag off or on: a CSV file dropped in shows the preview counts (new / skipped),
 //   "Add N words" makes a /words list, and the recent-imports list shows it;
 // - the same list pasted again: everything is "already in your words";
@@ -87,7 +88,7 @@ const grantDev = (email) => {
   );
 };
 
-/** Not the owner: nothing on /import or /words, and the route is 404. */
+/** Not the owner, flag off: nothing on /import or /words, and the route is 404. */
 async function notTheOwner(tag) {
   const ctx = await newSilentContext(browser, { baseURL: BASE });
   await signUp(ctx, tag.replace(/\W+/g, ""));
@@ -104,6 +105,26 @@ async function notTheOwner(tag) {
     (await page.locator('[data-qa="words-import-button"]').count()) === 0,
     `${tag}, not the owner: no Import button on /words`,
   );
+  await ctx.close();
+}
+
+/** Not the owner, flag on: the section on /import, the route, the Import button on /words. */
+async function everyone(tag) {
+  const ctx = await newSilentContext(browser, { baseURL: BASE });
+  await signUp(ctx, tag.replace(/\W+/g, ""));
+  // Flags are cached 30 s per isolate: wait for the flag to reach the server.
+  for (let i = 0; i < 25 && (await preview(ctx, CSV)).status() === 404; i++)
+    await new Promise((r) => setTimeout(r, 2000));
+  const page = await ctx.newPage();
+  await page.goto("/import");
+  check(
+    (await page.locator('[data-qa="wordlist-import"]').count()) === 1,
+    `${tag}, not the owner: the word-list section on /import`,
+  );
+  check((await preview(ctx, CSV)).status() === 200, `${tag}, not the owner: the route answers`);
+  await page.goto("/words?lang=en");
+  await page.locator('[data-qa="words-import-button"]').waitFor({ timeout: 15000 });
+  check(true, `${tag}, not the owner: the Import button on /words`);
   await ctx.close();
 }
 
@@ -286,8 +307,8 @@ try {
     await ctx.close();
   }
   // The flag has been on for the whole dark run (past the 30 s flag cache):
-  // it still reaches nobody but the owner.
-  await notTheOwner("flag on");
+  // it reaches every signed-in user.
+  await everyone("flag on");
 } finally {
   try {
     setFlag(false);
