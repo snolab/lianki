@@ -32,7 +32,7 @@ type State = {
 const STATE_FILTERS: [StateFilter, string][] = [
   ["all", "全部"],
   ["on", "开着"],
-  ["off", "默认关"],
+  ["off", "关着"],
 ];
 
 const pill = (on: boolean) =>

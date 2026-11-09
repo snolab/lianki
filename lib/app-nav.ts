@@ -56,9 +56,12 @@ export const APP_NAV: NavItem[] = [
   { key: "lab", href: "/lab", icon: "flask", group: "lab" },
   { key: "aiVocab", href: "/lab/ai-vocab", icon: "brain", group: "lab" },
   { key: "polyglot", href: "/lab/polyglot", icon: "globeHemisphereWest", group: "lab" },
+  // Owner, 2026-11-10: /my is the user's manager for all their own data
+  // (profile, preferences, files); first in the account menu after Profile.
+  { key: "myData", href: "/my", icon: "folder", group: "account", place: "menu" },
   { key: "import", href: "/import", icon: "uploadSimple", group: "data", place: "menu" },
   { key: "data", href: "/data", icon: "database", group: "data", place: "menu" },
-  { key: "preferences", href: "/preferences", icon: "gearSix", group: "account", place: "menu" },
+  { key: "preferences", href: "/my/preferences", icon: "gearSix", group: "account", place: "menu" },
   { key: "membership", href: "/membership", icon: "star", group: "account" },
 ];
 

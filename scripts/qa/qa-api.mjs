@@ -278,7 +278,7 @@ for (const [name, bytes, label] of [
     token: `nobody.${"0".repeat(64)}`,
   });
   rec("EMAIL  an unknown link is dead", dead.status === 400, `HTTP ${dead.status}`);
-  const page = await call("GET", "/profile/email-confirm");
+  const page = await call("GET", "/my/profile/email-confirm");
   rec("EMAIL  the confirmation page loads", page.status === 200, `HTTP ${page.status}`);
   const still = await call("GET", "/api/auth/get-session");
   rec("EMAIL  nothing changed", still.data?.user?.email === EMAIL, "");

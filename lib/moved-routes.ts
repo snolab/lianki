@@ -10,6 +10,10 @@ export const MOVED_ROUTES: readonly (readonly [from: string, to: string])[] = [
   ["/polyglot", "/lab/polyglot"],
   // 2026-11-09: the reader is a noun (owner, 01:17 JST). /api/read keeps its name.
   ["/read", "/reader"],
+  // 2026-11-10: /my holds everything that is the user's own (owner, 02:08 JST):
+  // profile, preferences, files.
+  ["/profile", "/my/profile"],
+  ["/preferences", "/my/preferences"],
 ];
 
 /**

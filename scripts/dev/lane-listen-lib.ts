@@ -47,9 +47,9 @@ export function laneToken(
   return { token: t, from: "file" };
 }
 
-/** What the owner makes at lianki.com/preferences → API tokens for `lane`. */
+/** What the owner makes at lianki.com/my/preferences → API tokens for `lane`. */
 export const tokenNeeded = (lane: string, env?: Record<string, string | undefined>) =>
-  `a lane token for ${lane}: lianki.com/preferences → API tokens → name "${lane}", permissions chat:read chat:write chat:ask (nothing else), an expiry; saved at ${laneTokenPath(lane, env)} (chmod 600) or passed as LIANKI_TOKEN`;
+  `a lane token for ${lane}: lianki.com/my/preferences → API tokens → name "${lane}", permissions chat:read chat:write chat:ask (nothing else), an expiry; saved at ${laneTokenPath(lane, env)} (chmod 600) or passed as LIANKI_TOKEN`;
 
 /** A chat line from either listener's JSON (eval.ts chat, or `lianki chat listen --json`). */
 export type Line = { id: string; thread: string; from: string; text: string; at?: string };

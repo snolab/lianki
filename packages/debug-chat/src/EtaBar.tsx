@@ -100,32 +100,61 @@ function TimeLabel({ ms }: { ms: number }) {
 const toneOf = (done: boolean, past: boolean): Tone => (done ? "done" : past ? "past" : "fill");
 
 /**
+ * Activity on a running bar (owner, 2026-11-10): a soft light sweeps along
+ * the fill, so a task in progress never looks frozen. Its own keyframes
+ * (the hot-loaded widget has no app stylesheet); none under reduced motion.
+ */
+export const ETA_SHIMMER_CSS =
+  "@keyframes lk-eta-sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}" +
+  "@media (prefers-reduced-motion: reduce){[data-eta-shimmer]{display:none}}";
+const SHIMMER_BG =
+  "linear-gradient(90deg, transparent, light-dark(oklch(1 0 0 / 0.55), oklch(1 0 0 / 0.16)), transparent)";
+
+/**
  * A line whose background is its progress: the track, and over it the fill
  * from the start edge (RTL too) to `frac`. The fill sits behind the text.
+ * `glass`: no track of its own (the chat's glass strip is behind it).
+ * `busy`: the fill shimmers (ETA_SHIMMER_CSS).
  */
 function FillLine({
   frac,
   tone,
   className,
+  glass = false,
+  busy = false,
   children,
 }: {
   frac: number;
   tone: Tone;
   className: string;
+  glass?: boolean;
+  busy?: boolean;
   children: ReactNode;
 }) {
   return (
     <span
       className={`relative isolate flex min-w-0 items-center gap-1.5 overflow-hidden rounded ${className}`}
-      style={{ background: both("track"), color: both("text") }}
+      style={{ background: glass ? "transparent" : both("track"), color: both("text") }}
     >
       <span
         aria-hidden
         data-testid="debug-chat-eta-fill"
         data-tone={tone}
-        className="absolute inset-y-0 start-0 -z-10 transition-[width] duration-700 motion-reduce:transition-none"
+        className="absolute inset-y-0 start-0 -z-10 overflow-hidden transition-[width] duration-700 motion-reduce:transition-none"
         style={{ width: `${Math.round(frac * 100)}%`, background: both(tone) }}
-      />
+      >
+        {busy && (
+          <>
+            <style>{ETA_SHIMMER_CSS}</style>
+            <span
+              data-eta-shimmer
+              data-testid="debug-chat-eta-shimmer"
+              className="absolute inset-0"
+              style={{ background: SHIMMER_BG, animation: "lk-eta-sweep 1.8s linear infinite" }}
+            />
+          </>
+        )}
+      </span>
       {children}
     </span>
   );
@@ -201,11 +230,14 @@ export function EtaBar({
   now,
   strings,
   onOpen,
+  glass = false,
 }: {
   tasks: readonly EtaTask[];
   now: number;
   strings: EtaText;
   onOpen: () => void;
+  /** Part of the chat's glass strip (DebugChat): no track, no gap under it. */
+  glass?: boolean;
 }) {
   const p = summaryParts(tasks, now, strings);
   if (!p) return null;
@@ -222,12 +254,15 @@ export function EtaBar({
       title={strings.etaOpen}
       onMouseDown={keepFocus}
       onClick={onOpen}
-      className="pointer-events-auto mb-1 block w-full min-w-0 border-0 bg-transparent p-0 text-start fs-10"
+      className={`pointer-events-auto block w-full min-w-0 border-0 bg-transparent p-0 text-start fs-10 ${glass ? "" : "mb-1"}`}
     >
       <FillLine
         frac={sum.pct / 100}
         tone={toneOf(sum.leftMs === null, past)}
         className="w-full px-2 py-0.5"
+        glass={glass}
+        // In progress: something still open (not all done).
+        busy={p.leftMs !== null && sum.open > 0}
       >
         <EtaClockIcon />
         <span data-testid="debug-chat-eta-text" className="flex min-w-0 flex-1 items-baseline gap-1">

@@ -75,7 +75,7 @@ export const SUITES = [
     args: ["scripts/qa/qa-sign-out.mjs"],
     base: true,
     id: "sign-out",
-    paths: [...SHELL, ...AUTH, "app/(app)/profile/**", "lib/sign-out.ts"],
+    paths: [...SHELL, ...AUTH, "app/(app)/my/profile/**", "lib/sign-out.ts"],
     sensitive: false,
   },
   // The account's UI language on the first response of a new device; ?lang= still wins (lib/account-locale.ts).
@@ -95,7 +95,7 @@ export const SUITES = [
       "middleware.ts",
       "lib/account-locale*.ts",
       "lib/app-locale*.ts",
-      "app/(app)/preferences/**",
+      "app/(app)/my/preferences/**",
     ],
     sensitive: false,
   },

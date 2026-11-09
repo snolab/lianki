@@ -10,7 +10,7 @@ import { flagIn } from "@/lib/flags";
 import { isDev } from "@/lib/permissions";
 import { appBadgeOn } from "@/lib/app-badge-gate";
 import { vibeAllowed } from "@/lib/vibe/gate";
-import { VibeRetention } from "../vibe/VibeRetention";
+import { VibeRetention } from "../../vibe/VibeRetention";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: metadata.title,
     description: metadata.description,
-    ...generateAppHreflangMetadata(locale, "/preferences"),
+    ...generateAppHreflangMetadata(locale, "/my/preferences"),
   };
 }
 
