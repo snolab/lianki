@@ -52,9 +52,9 @@ export function AppBadgeSettings() {
     <section className="mb-10 max-w-xl" data-section="notifications" data-testid="app-badge">
       <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
       <label className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="min-w-0 flex-1">{c.label}</span>
+        <span className="min-w-0 basis-full sm:basis-auto sm:flex-1">{c.label}</span>
         <select
-          className="min-h-11 max-w-full rounded-lg border border-[oklch(0.5_0.02_250/0.35)] bg-[oklch(0.99_0_0)] px-3 text-[oklch(0.25_0.02_250)] dark:bg-[oklch(0.25_0.01_250)] dark:text-[oklch(0.95_0.01_250)] pointer-fine:min-h-9"
+          className="min-h-11 w-full rounded-lg sm:w-auto border border-[oklch(0.5_0.02_250/0.35)] bg-[oklch(0.99_0_0)] px-3 text-[oklch(0.25_0.02_250)] dark:bg-[oklch(0.25_0.01_250)] dark:text-[oklch(0.95_0.01_250)] pointer-fine:min-h-9"
           value={mode}
           data-testid="app-badge-mode"
           onChange={(e) => {

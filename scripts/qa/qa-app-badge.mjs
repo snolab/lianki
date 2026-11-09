@@ -128,13 +128,8 @@ try {
     console.log(`— 360 px ${scheme}`);
     const ctx = await newCtx(browser, scheme);
     const userId = await signUp(ctx, scheme);
-    // The server caches flags for 30 s (docs/feature-flags.md): wait for the switch to reach it.
-    for (let i = 0; i < 25; i++) {
-      const j = await (await ctx.request.get("/api/badge")).json();
-      if (j.on === true) break;
-      await new Promise((r) => setTimeout(r, 2000));
-    }
     // Two page cards, new and so due now, and one open ask card in this account's chat.
+    // Added before the first /api/badge read: the server keeps counts 15 s per account.
     for (const n of [1, 2]) {
       const r = await ctx.request.post("/api/fsrs/add", {
         data: { url: `https://example.com/qa-badge-${scheme}-${n}`, title: `QA badge ${n}` },
@@ -145,7 +140,13 @@ try {
     d1(
       `INSERT INTO chat_line (user_id, id, thread, sender, text, at_ms, ask, answer) VALUES ('${userId}', 'qa-ask-${scheme}', 'owner', 'agent', 'QA?', ${Date.now()}, 1, NULL)`,
     );
-    const counts = await (await ctx.request.get("/api/badge?mode=both")).json();
+    // The server caches flags for 30 s (docs/feature-flags.md): wait for the switch to reach it.
+    let counts = {};
+    for (let i = 0; i < 25; i++) {
+      counts = await (await ctx.request.get("/api/badge?mode=both")).json();
+      if (counts.on === true) break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
     check(
       counts.on === true && counts.asks === 1 && counts.due === 2 && counts.count === 3,
       `/api/badge: 1 ask + 2 due = 3 (${JSON.stringify(counts)})`,
