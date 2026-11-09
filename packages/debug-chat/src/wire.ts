@@ -676,6 +676,8 @@ export type ChatStrings = {
   etaGanttLog: string;
   /** A task waiting for the owner (Gantt and list): the red mark's label, and before its reminder time. */
   etaWaitingYou: string;
+  /** The full-screen Gantt's one-line legend: the underline is the reported progress, the red line now. */
+  etaGanttLegend: string;
   /** A parked task's time: when its reminder goes off, `{t}` a compact time ("9.1H"). */
   etaReminder: string;
   /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
@@ -788,6 +790,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaGanttLinear: "Linear",
   etaGanttLog: "Log",
   etaWaitingYou: "Waiting for you",
+  etaGanttLegend: "Underline = reported progress · red line = now",
   etaReminder: "reminder in {t}",
   etaList: "Timed tasks",
   etaMinutes: "{n} min",

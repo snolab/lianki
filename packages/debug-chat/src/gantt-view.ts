@@ -231,6 +231,59 @@ export const parkedBar = (hatch: string, line: string) => ({
   outlineOffset: -1,
 });
 
+/*
+ * The reported progress (owner, 2026-11-10): the agent's --pct, not elapsed
+ * time, so it is drawn apart from the bar — an underline beneath the planned
+ * span, pct × its width, tinted by where its end sits against the Now line.
+ */
+
+/** The underline's end this many px left of Now is behind schedule, right of it ahead. */
+export const GANTT_PACE_MARGIN_PX = 6;
+
+export type Pace = "behind" | "on" | "ahead";
+
+/** Where the progress underline's end (`endX`) sits against Now (`nowX`), both px on the content. */
+export function paceOf(endX: number, nowX: number, margin = GANTT_PACE_MARGIN_PX): Pace {
+  if (endX < nowX - margin) return "behind";
+  if (endX > nowX + margin) return "ahead";
+  return "on";
+}
+
+/**
+ * The underline's colours: non-text, at least 3:1 against the Gantt's track
+ * in each theme (unit/gantt-pace.test.ts computes it).
+ */
+export const PACE_COLORS = {
+  light: {
+    on: "oklch(0.52 0.15 250)",
+    behind: "oklch(0.55 0.16 55)",
+    ahead: "oklch(0.52 0.13 150)",
+  },
+  dark: {
+    on: "oklch(0.74 0.12 250)",
+    behind: "oklch(0.78 0.14 65)",
+    ahead: "oklch(0.76 0.13 150)",
+  },
+} as const;
+
+export const paceColor = (p: Pace) => `light-dark(${PACE_COLORS.light[p]}, ${PACE_COLORS.dark[p]})`;
+
+/** Set on the underline and its arrow while the task runs: they pulse together. */
+export const LIVE_ATTR = "data-gantt-live";
+
+/**
+ * The live underline's pulse, its own keyframes (the hot widget has no app
+ * stylesheet). Under reduced motion (or the app's "Turn off animations") it
+ * holds still and is dashed instead, still distinct from a static one.
+ */
+export const LIVE_CSS =
+  "@keyframes lk-gantt-live{0%,100%{opacity:1}50%{opacity:0.45}}" +
+  `[${LIVE_ATTR}]{animation:lk-gantt-live 1.6s ease-in-out infinite}` +
+  "@media (prefers-reduced-motion: reduce){" +
+  `[${LIVE_ATTR}]{animation:none}` +
+  `[${LIVE_ATTR}][data-gantt-line]{-webkit-mask-image:repeating-linear-gradient(90deg,oklch(0 0 0) 0 4px,transparent 4px 6px);mask-image:repeating-linear-gradient(90deg,oklch(0 0 0) 0 4px,transparent 4px 6px)}}` +
+  `html[data-motion="off"] [${LIVE_ATTR}]{animation:none}`;
+
 /** The rows either side of the focus whose durations set the zoom (a default for the config store). */
 export const GANTT_FIT_NEIGHBOURS = 3;
 /** Which of those durations sets the zoom: the owner's 95th percentile (a default for the config store). */
