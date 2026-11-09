@@ -44,7 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - run: bun install --frozen-lockfile
       # The Learning Partner for other sites (docs/dev-debug-widget.md, "On every
       # site"): built here, served as /partner-embed.js, never committed.
