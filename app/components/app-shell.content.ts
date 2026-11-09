@@ -30,6 +30,24 @@ const dictionary = {
         mr: "मुख्यपृष्ठ",
         ko: "홈",
       }),
+      today: t({
+        en: "Today's goal",
+        zh: "今日目标",
+        hi: "आज का लक्ष्य",
+        es: "Meta de hoy",
+        fr: "Objectif du jour",
+        ar: "هدف اليوم",
+        bn: "আজকের লক্ষ্য",
+        pt: "Meta de hoje",
+        ru: "Цель на сегодня",
+        ur: "آج کا ہدف",
+        id: "Target hari ini",
+        de: "Heutiges Ziel",
+        ja: "今日の目標",
+        sw: "Lengo la leo",
+        mr: "आजचे ध्येय",
+        ko: "오늘의 목표",
+      }),
       sites: t({
         en: "Sites",
         zh: "沉浸站点",
@@ -567,6 +585,8 @@ const context: {
 } = {
   nav: {
     home: "Sidebar link (house icon) to the app's Home page. One short noun.",
+    today:
+      "Sidebar link and /home button to /today, a full-screen page with the learner's study goal for the current day (how many cards are left). Same words as that page's heading. A short noun phrase.",
     sites:
       "Sidebar link under the LiCards heading to the list of immersion websites (sites in the language being learned) to save pages from. Plural noun.",
     review:

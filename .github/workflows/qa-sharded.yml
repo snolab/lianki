@@ -1,0 +1,110 @@
+name: qa:all (sharded)
+
+# qa:all split over parallel jobs (docs/shipping.md, "qa:all in shards"),
+# called by ci.yml (merge queue) and nightly-qa.yml (main).
+#
+# - `prepare` builds the OpenNext Worker once and migrates a local D1
+#   (`qa-all.mjs --prepare`), then hands both to the shards as one artifact.
+#   .next/cache (Turbopack's build cache, on by default since Next 16.3) is
+#   kept in the Actions cache. Caches saved on main (nightly)
+#   are what a merge queue run can restore: a cache saved on a
+#   gh-readonly-queue ref is visible to that ref only.
+# - `shard` (×3) runs `qa-all.mjs --no-build --shard=i/3` in the Playwright
+#   image: its own `wrangler dev` on the prepared build and D1, and a third of
+#   the suites by recorded time (scripts/qa/shard.mjs, suite-timings.json).
+#   Time-sensitive suites still run after the plain ones in each shard; CI
+#   needs no admission (each runner has its machine to itself).
+#
+# The caller's gate reads this workflow's result: green only when every job
+# here is.
+on:
+  workflow_call:
+    inputs:
+      suites:
+        description: Comma-separated suite ids (affected-only); empty = all.
+        type: string
+        default: ""
+      ext-smoke:
+        description: Also run the MV3 extension smoke test (nightly).
+        type: boolean
+        default: false
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  # Cloudflare's "always passes" test sitekey, inlined into the build so the
+  # Turnstile widget renders without a real key (qa:all signs in with the dev
+  # password path). https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
+
+jobs:
+  prepare:
+    name: qa build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # The same Node major as the Playwright image the shards run in.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
+      - run: bun install --frozen-lockfile
+      - name: Restore .next/cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-qa-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
+          restore-keys: next-qa-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+      - name: Build + migrate (qa-all --prepare)
+        run: bun scripts/qa/qa-all.mjs --prepare
+      # One tarball: it keeps the build's internal symlinks
+      # (server-functions/default/node_modules/.bun/…) and uploads as one file.
+      - name: Pack
+        run: tar -czf "$RUNNER_TEMP/qa-build.tgz" .open-next .wrangler/state
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qa-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-build.tgz
+          retention-days: 1
+          compression-level: 0
+
+  shard:
+    name: qa:all ${{ matrix.shard }}/3
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Three, balanced by recorded time: ~3.5 min of suites each (2026-11-10).
+        # A fourth would not go below WORDS alone (~2.3 min) plus the job's setup.
+        shard: [1, 2, 3]
+    # The official Playwright image: chromium, firefox and webkit (+ OS deps)
+    # baked in, so nothing downloads a browser at run time (cdn.playwright.dev
+    # has stalled for hours on Actions runners). It ships Node 24. Keep the tag
+    # at the repo's @playwright/test version.
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
+    steps:
+      - uses: actions/checkout@v4
+      # setup-bun (or its fallback) extracts a zip with `unzip`, which the image lacks.
+      - run: apt-get update && apt-get install -y unzip xvfb
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: qa-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
+      - name: Unpack
+        run: tar -xzf "$RUNNER_TEMP/qa-build.tgz"
+      - name: qa:all shard
+        run: bun scripts/qa/qa-all.mjs --no-build --shard=${{ matrix.shard }}/3 ${{ inputs.suites && format('--suites={0}', inputs.suites) || '' }}
+        # Firefox (qa-audio-free) refuses to start as root when $HOME is another
+        # user's: Actions sets /github/home, owned by the image's pwuser.
+        env:
+          HOME: /root
+      # MV3 extension smoke test — loads the built extension into the image's
+      # Chromium (new-headless) and asserts the content script runs. Once, in shard 1.
+      - name: Extension smoke test
+        if: inputs.ext-smoke && matrix.shard == 1
+        run: bun run test:ext

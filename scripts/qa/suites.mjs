@@ -14,6 +14,9 @@
  * (Playwright runner suites). A suite with neither needs no Worker: when only
  * such suites are selected, qa:all skips the OpenNext build and wrangler dev.
  *
+ * `everyShard: true` runs the suite at the start of every merge-queue shard
+ * (scripts/qa/shard.mjs), not in one of them.
+ *
  * `id` names the suite for `qa-all.mjs --suites=<id>,…`. `paths` (globs) say
  * which files the suite covers, for the pre-push gate's affected-only run
  * (scripts/gate/affected.ts, docs/shipping.md "Only what changed"): a suite
@@ -43,6 +46,8 @@ export const SUITES = [
     id: "audio-free",
     paths: ["scripts/qa/silent.mjs"],
     sensitive: false,
+    // Sharded runs (scripts/qa/shard.mjs) start each shard with it too.
+    everyShard: true,
   },
   {
     name: "API  (qa-api)",
@@ -152,6 +157,22 @@ export const SUITES = [
     paths: ["app/(app)/words/**", "app/(app)/alphabet/**", "app/api/words/**", "lib/words/**"],
     sensitive: true,
   },
+  // The card-height pinch on /words and the faded reviewed slip (lib/words/row-pinch.ts).
+  {
+    name: "WORDS PINCH (qa-words-pinch)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-words-pinch.mjs"],
+    base: true,
+    id: "words-pinch",
+    // The study view and the pinch's own files; the /words route tree is the words suite's.
+    paths: [
+      "app/(app)/words/WordsClient.tsx",
+      "lib/words/row-pinch.ts",
+      "lib/words/use-row-pinch.ts",
+      "lib/words/row-layout.ts",
+    ],
+    sensitive: true,
+  },
   {
     name: "READ EPUB (qa-read-epub)",
     cmd: "bun",
@@ -160,6 +181,23 @@ export const SUITES = [
     id: "read-epub",
     paths: READ,
     sensitive: true,
+  },
+  // /today, today's goal: the one number from /words's counts, red and gold by theme, links (lib/today/goal.ts).
+  {
+    name: "TODAY (qa-today)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-today.mjs"],
+    base: true,
+    id: "today",
+    paths: [
+      "app/(app)/today/**",
+      "app/api/words/today/**",
+      "lib/today/**",
+      "app/(app)/home/**",
+      "lib/app-nav.ts",
+      "scripts/qa/qa-today.mjs",
+    ],
+    sensitive: false,
   },
   // The /words first-visit walkthrough: shows once, Skip, replay from the "?", still frames (lib/words/onboarding.ts).
   {

@@ -10,11 +10,22 @@
  * - A first row whose cells name columns (word / meaning / example…, in any
  *   of the languages listed in HEADER_ALIASES) is a header; without one the
  *   columns are term, meaning, example in that order.
+ * - The page may send a column mapping (lib/import/column-map.ts): the
+ *   fields each column fills, and whether the first row is a header. It
+ *   decides over the detection; the server checks it like any input.
  * - Language rules are data: header names and list markers are tables, and
  *   the same normalization (NFC, folded spaces, lower case) serves every
  *   language. No branch looks at which language a list is in.
  */
 import { MAX_ENTRIES, MAX_LEN, type ImportEntry, type Role } from "@/lib/words/anki";
+import {
+  cleanMapping,
+  fromColumns,
+  guessMapping,
+  SLOTS,
+  slotText,
+  type ColumnMapping,
+} from "@/lib/import/column-map";
 
 /** Largest file or paste read, in bytes (UTF-8). A 20 000-word list with meanings fits. */
 export const MAX_BYTES = 1_000_000;
@@ -439,16 +450,13 @@ export function utf8Bytes(s: string): number {
   return n;
 }
 
-/**
- * Parse a word list. Throws WordListError for input that is not one (too
- * large, empty, binary); everything else becomes rows or counted skips.
- */
-export function parseWordList(input: string, fileName = ""): ParsedWordList {
+/** The input as rows of cells, with what the detection makes of it. */
+function readTable(input: string, fileName: string) {
   if (utf8Bytes(input) > MAX_BYTES)
     throw new WordListError("too-large", `Over ${MAX_BYTES / 1_000_000} MB`);
   // NUL bytes: a binary file (an .apkg, an image) read as text.
   if (input.includes("\u0000")) throw new WordListError("binary", "Not a text file");
-  const text = input.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+  const text = input.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   if (!text.trim()) throw new WordListError("empty", "No words found");
 
   const format = sniffFormat(text, fileName);
@@ -457,17 +465,66 @@ export function parseWordList(input: string, fileName = ""): ParsedWordList {
     ? splitRows(text, delim)
     : text.split("\n").map((l, i) => ({ line: i + 1, cells: [l.replace(LIST_MARKER, "").trim()] }));
   const rowsIn = raw.filter((r) => r.cells.some((c) => c.trim()));
-
-  let columns: Record<Role, number> = delim
-    ? { ...NO_COLUMNS, term: 0, back: 1, ex: 2 }
-    : { ...NO_COLUMNS, term: 0 };
-  let header = false;
   const head = rowsIn[0] && delim ? headerColumns(rowsIn[0].cells) : null;
-  if (head) {
-    columns = head;
-    header = true;
-    rowsIn.shift();
-  }
+  const columns: Record<Role, number> =
+    head ?? (delim ? { ...NO_COLUMNS, term: 0, back: 1, ex: 2 } : { ...NO_COLUMNS, term: 0 });
+  const width = rowsIn.reduce((w, r) => Math.max(w, r.cells.length), 0);
+  return { format, rowsIn, head: !!head, columns, width };
+}
+
+/** Rows the mapping step shows on its chips and cards. */
+const SHAPE_ROWS = 8;
+
+/**
+ * What the mapping step needs (lib/import/column-map.ts): the columns, the
+ * header's names, the first rows, and the default mapping (the aliases', or
+ * the column order; a registered guesser may improve on it).
+ */
+export function tableShape(input: string, fileName = "") {
+  const { format, rowsIn, head, columns, width } = readTable(input, fileName);
+  const first = rowsIn[0]?.cells ?? [];
+  const body = (head ? rowsIn.slice(1) : rowsIn).slice(0, SHAPE_ROWS).map((r) => r.cells);
+  const fallback = fromColumns(columns, width);
+  return {
+    format,
+    /** A header row was detected (the step lets the user say otherwise). */
+    header: head,
+    /** The header's cells, when the first row is one. */
+    names: head ? first : [],
+    /** The first row's cells, header or not. */
+    first,
+    rows: body,
+    width,
+    defaults: guessMapping({ header: head ? first : null, rows: body, width }, fallback),
+  };
+}
+
+export type TableShape = ReturnType<typeof tableShape>;
+
+export type ParseOptions = {
+  /** The fields each column fills; without one, the detection decides. */
+  mapping?: ColumnMapping;
+  /** Whether the first row is a header; without it, the detection decides. */
+  header?: boolean;
+};
+
+/**
+ * Parse a word list. Throws WordListError for input that is not one (too
+ * large, empty, binary); everything else becomes rows or counted skips.
+ */
+export function parseWordList(
+  input: string,
+  fileName = "",
+  opts: ParseOptions = {},
+): ParsedWordList {
+  const t = readTable(input, fileName);
+  const { format, rowsIn } = t;
+  const header = opts.header ?? t.head;
+  if (header && rowsIn.length) rowsIn.shift();
+  const mapping =
+    (opts.mapping && cleanMapping(opts.mapping, t.width)) ?? fromColumns(t.columns, t.width);
+  const columns = { ...NO_COLUMNS };
+  for (const s of SLOTS) columns[s] = mapping[s][0] ?? -1;
 
   const skippedBy: Record<SkipReason, number> = {
     "no-term": 0,
@@ -490,8 +547,7 @@ export function parseWordList(input: string, fileName = ""): ParsedWordList {
     if (out.skipped.length < MAX_SKIP_LIST) out.skipped.push({ line, reason });
   };
   const seen = new Set<string>();
-  const cell = (cells: string[], role: Role) =>
-    columns[role] >= 0 ? (cells[columns[role]] ?? "").replace(/\s+/g, " ").trim() : "";
+  const cell = (cells: string[], role: Role) => slotText(cells, mapping[role]);
 
   for (const r of rowsIn) {
     const term = cell(r.cells, "term").normalize("NFC");
