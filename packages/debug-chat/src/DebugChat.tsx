@@ -149,6 +149,7 @@ import {
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
+import { WAITING_INK, lastPendingIndex, waitingMark } from "./waiting-mark";
 import { TreeChips } from "./TreeChips";
 import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
 import {
@@ -2905,6 +2906,8 @@ export function DebugChat({
       : "oklch(0.62 0.02 70)";
   /** Your lines after the agent last spoke wait for it while it is offline. */
   const lastAgent = messages.findLastIndex((m) => m.from === "agent");
+  /** The last of his lines still waiting (waiting-mark.ts): only it carries the label. */
+  const lastPending = lastPendingIndex(messages);
   const status = notice
     ? "chat unavailable"
     : offline
@@ -4281,15 +4284,31 @@ export function DebugChat({
                             {t.notReadHidden}
                           </span>
                         )}
-                        {!agentOnline && m.from !== "agent" && i > lastAgent && (
-                          <span
-                            data-testid="debug-chat-queued"
-                            className="ms-1 fs-10 text-gray-500"
-                            title={t.waitingTitle}
-                          >
-                            {t.waiting}
-                          </span>
-                        )}
+                        {(() => {
+                          // Waiting for the partner: the label on the last pending line only;
+                          // the earlier ones a mark in the same ink, named for screen readers.
+                          const w = waitingMark({ i, from: m.from, agentOnline, lastAgent, lastPending });
+                          if (!w) return null;
+                          return w === "label" ? (
+                            <span
+                              data-testid="debug-chat-queued"
+                              className="ms-1 fs-10"
+                              style={{ color: WAITING_INK }}
+                              title={t.waitingTitle}
+                            >
+                              {t.waiting}
+                            </span>
+                          ) : (
+                            <span
+                              data-testid="debug-chat-queued-mark"
+                              role="img"
+                              aria-label={t.waiting.replace(/^[·\s]+/, "")}
+                              title={`${t.waiting.replace(/^[·\s]+/, "")} — ${t.waitingTitle}`}
+                              className="ms-1 inline-block size-1.5 rounded-full align-middle"
+                              style={{ background: WAITING_INK }}
+                            />
+                          );
+                        })()}
                       </span>
                     </span>
                   );
