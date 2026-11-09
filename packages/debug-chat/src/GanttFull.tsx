@@ -1,23 +1,27 @@
 "use client";
 
+import { useUi } from "@lianki/ui-state";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type EtaTask, compactTime, ganttPlan, isLate, splitTitle } from "./eta";
 import {
-  type Axis,
-  axisTicks,
-  axisToNow,
-  axisWidth,
-  extendAxis,
+  CHAR_PX,
+  type GanttAxis,
+  type GanttScale,
   ganttBar,
   ganttColor as c,
   ganttRows,
-  initialAxis,
+  initialScale,
   pinchOf,
   rowsRange,
+  scaleExtend,
+  scaleTicks,
+  scaleToNow,
+  scaleWidth,
+  scaleX,
+  scaleZoom,
   wheelFactor,
-  xOf,
-  zoomAxis,
 } from "./gantt-view";
+import { ganttPrefs } from "./ui-store";
 import type { ChatStrings } from "./wire";
 
 /**
@@ -30,13 +34,27 @@ import type { ChatStrings } from "./wire";
  * line runs down every row; on open it is a quarter from the left, and the
  * Now button brings it back. Pinch (touch) or ctrl+wheel (trackpad) zooms
  * about the fingers, minutes to days per screen. ✕ or Escape closes.
+ *
+ * The axis is logarithmic by default (owner, 2026-11-09 15:27 JST): distance
+ * from Now compressed symmetrically (gantt-view.ts symlog), so minute and day
+ * tasks share a screen; the Linear | Log toggle switches, remembered per
+ * device (ui-store.ts ganttPrefs, lk:pref:gantt).
  */
 
 const AXIS_H = 26;
 const ROW_H = 30;
 const ROW_GAP = 2;
 
-type Strings = Pick<ChatStrings, "etaList" | "etaDone" | "etaGanttClose">;
+type Strings = Pick<
+  ChatStrings,
+  "etaList" | "etaDone" | "etaGanttClose" | "etaGanttScale" | "etaGanttLinear" | "etaGanttLog"
+>;
+
+/** A label character's width at the axis's text size (the tick spacing reads it). */
+const charPxOf = (el: HTMLElement) => {
+  const fs = Number.parseFloat(getComputedStyle(el).fontSize);
+  return Number.isFinite(fs) && fs > 0 ? (fs * 2) / 3 : CHAR_PX;
+};
 
 export function GanttFull({
   tasks,
@@ -50,25 +68,33 @@ export function GanttFull({
   onClose: () => void;
 }) {
   const rows = useMemo(() => ganttRows(ganttPlan(tasks, now)), [tasks, now]);
+  const scale = useUi(ganttPrefs(), (s) => s.scale);
   const scroller = useRef<HTMLDivElement | null>(null);
   /** The view as the handlers last left it (several events may come before a render). */
-  const view = useRef<{ axis: Axis; scrollLeft: number; w: number } | null>(null);
+  const view = useRef<{ axis: GanttAxis; scrollLeft: number; w: number } | null>(null);
   /** A scrollLeft to apply once the content has its new width. */
   const pending = useRef<number | null>(null);
-  const [axis, setAxis] = useState<Axis | null>(null);
+  const [axis, setAxis] = useState<GanttAxis | null>(null);
   const [scrollX, setScrollX] = useState(0);
   const [w, setW] = useState(0);
+  const [charPx, setCharPx] = useState(CHAR_PX);
 
-  const commit = useCallback((next: { axis: Axis; scrollLeft: number }) => {
+  const commit = useCallback((next: { axis: GanttAxis; scrollLeft: number }) => {
     const v = view.current;
     if (!v) return;
     view.current = { ...v, ...next };
+    setScrollX(next.scrollLeft);
+    const el = scroller.current;
+    if (next.axis === v.axis && el) {
+      // The same axis (the log one going back to Now): the content keeps its width, scroll now.
+      el.scrollLeft = next.scrollLeft;
+      return;
+    }
     pending.current = next.scrollLeft;
     setAxis(next.axis);
-    setScrollX(next.scrollLeft);
   }, []);
 
-  // Open: measure, and put now a quarter from the left.
+  // Open (and on a switch of axis): measure, and put now a quarter (log: a third) from the left.
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const nowRef = useRef(now);
@@ -77,11 +103,14 @@ export function GanttFull({
     const el = scroller.current;
     if (!el) return;
     const width = el.clientWidth;
-    const { from, to } = rowsRange(rowsRef.current, nowRef.current);
-    const first = initialAxis(from, to, nowRef.current, width);
+    // The log axis fits the open tasks (the history scrolls into view); the linear one all.
+    const open = rowsRef.current.filter((t) => !t.done);
+    const { from, to } = rowsRange(scale === "log" && open.length ? open : rowsRef.current, nowRef.current);
+    const first = initialScale(scale, from, to, nowRef.current, width);
     view.current = { ...first, w: width };
     pending.current = first.scrollLeft;
     setW(width);
+    setCharPx(charPxOf(el));
     setAxis(first.axis);
     setScrollX(first.scrollLeft);
     const ro = new ResizeObserver(() => {
@@ -89,11 +118,11 @@ export function GanttFull({
       if (!v || el.clientWidth === v.w) return;
       view.current = { ...v, w: el.clientWidth };
       setW(el.clientWidth);
-      commit(extendAxis(v.axis, el.scrollLeft, el.clientWidth));
+      commit(scaleExtend(v.axis, el.scrollLeft, el.clientWidth));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [commit]);
+  }, [commit, scale]);
 
   // The content has its width: scroll to where the view should be.
   useLayoutEffect(() => {
@@ -109,7 +138,7 @@ export function GanttFull({
     if (!el || !v || pending.current !== null) return;
     v.scrollLeft = el.scrollLeft;
     setScrollX(el.scrollLeft);
-    const next = extendAxis(v.axis, el.scrollLeft, v.w);
+    const next = scaleExtend(v.axis, el.scrollLeft, v.w);
     if (next.axis !== v.axis) commit(next);
   }, [commit]);
 
@@ -120,7 +149,7 @@ export function GanttFull({
       if (!el || !v) return;
       const anchor = clientX - el.getBoundingClientRect().left;
       const from = pending.current ?? el.scrollLeft;
-      const next = zoomAxis(v.axis, from, v.w, anchor, factor);
+      const next = scaleZoom(v.axis, from, v.w, anchor, factor, nowRef.current);
       if (next.axis !== v.axis) commit(next);
     },
     [commit],
@@ -197,12 +226,13 @@ export function GanttFull({
 
   const toNow = () => {
     const v = view.current;
-    if (v) commit(axisToNow(v.axis, v.w, Date.now()));
+    if (v) commit(scaleToNow(v.axis, v.w, Date.now()));
   };
+  const setScale = (s: GanttScale) => ganttPrefs().setState({ scale: s });
 
-  const width = axis ? axisWidth(axis) : 0;
-  const ticks = axis ? axisTicks(axis, scrollX, w, now) : [];
-  const nowX = axis ? xOf(axis, now) : 0;
+  const width = axis ? scaleWidth(axis) : 0;
+  const ticks = axis ? scaleTicks(axis, scrollX, w, now, charPx) : [];
+  const nowX = axis ? scaleX(axis, now, now) : 0;
   const bodyH = rows.length * (ROW_H + ROW_GAP);
 
   return (
@@ -228,6 +258,39 @@ export function GanttFull({
         style={{ borderBottom: `1px solid ${c("grid")}` }}
       >
         <h2 className="m-0 min-w-0 flex-1 truncate fs-12 font-semibold">{strings.etaList}</h2>
+        {/* The time axis: logarithmic (default) or linear; this device remembers. */}
+        <div
+          role="group"
+          aria-label={strings.etaGanttScale}
+          data-testid="debug-chat-gantt-scale"
+          data-scale={scale}
+          className="flex shrink-0 overflow-hidden rounded"
+          style={{ border: `1px solid ${c("grid")}` }}
+        >
+          {(
+            [
+              ["linear", strings.etaGanttLinear],
+              ["log", strings.etaGanttLog],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              data-testid={`debug-chat-gantt-scale-${k}`}
+              aria-pressed={scale === k}
+              onClick={() => setScale(k)}
+              className="tap-40 px-2 py-1"
+              style={{
+                border: 0,
+                color: c("text"),
+                fontWeight: scale === k ? 600 : 400,
+                background: scale === k ? c("bar") : "transparent",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           data-testid="debug-chat-gantt-now-btn"
@@ -260,6 +323,7 @@ export function GanttFull({
       >
         <div
           data-testid="debug-chat-gantt-content"
+          data-scale={scale}
           style={{ position: "relative", width: Math.max(width, w), minHeight: AXIS_H + bodyH }}
         >
           {/* The axis: sticky at the top while the rows scroll under it. */}

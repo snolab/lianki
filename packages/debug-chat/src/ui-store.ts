@@ -162,6 +162,22 @@ export const chatFold = () =>
     },
   });
 
+/**
+ * The full-screen Gantt's time axis, logarithmic (the default) or linear
+ * (GanttFull.tsx, the Linear | Log toggle; owner, 2026-11-09 15:27 JST):
+ * localStorage `lk:pref:gantt`, this device only, never synced.
+ */
+export type GanttPrefs = { scale: "log" | "linear" };
+export const GANTT_PREFS_INITIAL: GanttPrefs = { scale: "log" };
+export const ganttPrefs = () =>
+  createUiStore<GanttPrefs>("gantt", 1, GANTT_PREFS_INITIAL, {
+    storage: "local",
+    clean: (v) => {
+      const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+      return o.scale === "log" || o.scale === "linear" ? { scale: o.scale } : {};
+    },
+  });
+
 /** The chat's UI store (one per page, shared by hot-swapped widget copies). */
 export const chatUi = () =>
   createUiStore<ChatUi>(CHAT_UI_NAME, CHAT_UI_VERSION, CHAT_UI_INITIAL, {

@@ -668,6 +668,12 @@ export type ChatStrings = {
   etaOpen: string;
   /** Screen-reader label and tooltip of the × button at the top of the full-screen task timeline (a Gantt chart of the assistant's tasks): closes the timeline and returns to the chat. Imperative verb phrase, very short. */
   etaGanttClose: string;
+  /** Screen-reader label of a small two-button switch in the header of the full-screen task timeline (a Gantt chart of the assistant's tasks): it chooses how the time axis is drawn, evenly (linear) or compressed further from now (logarithmic). Short noun phrase, no full stop. */
+  etaGanttScale: string;
+  /** One of two buttons of a small switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis evenly, each hour the same width. A single short word for 'linear' as on a chart's axis (线性 in Chinese); the button is narrow. */
+  etaGanttLinear: string;
+  /** The other of the two buttons of that switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis logarithmically, near times wide and far times compressed, so minutes and days fit one screen. A single short word for 'logarithmic' as on a chart's axis, abbreviated if usual (对数 in Chinese, 'Log' in English); the button is narrow. */
+  etaGanttLog: string;
   /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
   etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
@@ -774,6 +780,9 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaDone: "done",
   etaOpen: "Show all tasks on a full-screen timeline",
   etaGanttClose: "Close the timeline",
+  etaGanttScale: "Time axis",
+  etaGanttLinear: "Linear",
+  etaGanttLog: "Log",
   etaList: "Timed tasks",
   etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",
