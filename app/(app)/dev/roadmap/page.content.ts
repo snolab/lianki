@@ -922,7 +922,7 @@ const context: KeyContext<typeof dictionary.content> = {
       "shipped: the learner-facing /roadmap page, where a learner writes a wish and gets a step-by-step plan, now exists in 16 languages. Keep /roadmap as is.",
     ),
     permissions: item(
-      "in progress: developer and administrator permissions (isDev, isAdmin) become grants stored as data instead of fixed in code. Keep isDev and isAdmin as is.",
+      "shipped: developer and administrator permissions (isDev, isAdmin) are grants stored as data instead of fixed in code. Keep isDev and isAdmin as is.",
     ),
     boxAuth: item(
       "in progress: the owner's dev box signs in on the server side and shows his avatar in the chat. Keep box as is.",
