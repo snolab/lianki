@@ -14,6 +14,7 @@ import { useTextSizes } from "@/lib/use-text-size";
 import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
 import { ExternalLinkSettings } from "@/app/components/ExternalLinkSettings";
 import { AppBadgeSettings } from "@/app/components/AppBadgeSettings";
+import { LanguageSettings } from "@/app/components/LanguageSettings";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
 import { readNotesOn, writeNotesOn } from "@/lib/read/translator-notes";
@@ -256,6 +257,9 @@ export default function PreferencesClient({
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-3xl font-bold mb-8">{heading}</h1>
+
+      {/* Language — follows the account (lib/account-locale.ts) */}
+      <LanguageSettings />
 
       {/* Paper skin — this device only, kept in localStorage */}
       <section className="mb-10">

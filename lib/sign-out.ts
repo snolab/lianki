@@ -23,6 +23,7 @@
 import { removeDevice } from "@/lib/byok/config";
 import { exitOutputBed } from "@lianki/debug-chat/output-bed";
 import { type BadgeNav, setBadge } from "@/lib/app-badge";
+import { CLEAR_MARKER_LINE } from "@/lib/account-locale";
 
 export const SIGN_OUT_PATH = "/api/auth/sign-out";
 /** public/sw.js KEEP_CACHES: the only cache that is not per-account. */
@@ -37,6 +38,8 @@ type SignOutEnv = {
   badge?: BadgeNav | null;
   /** Ends the session instead of step 1: a box revokes its token at lianki.com. */
   endSession?: () => Promise<boolean>;
+  /** Drops the `lang_src` marker: the next account's language is read afresh (lib/account-locale.ts). */
+  forgetLocale?: () => void;
 };
 
 let endSession: (() => Promise<boolean>) | undefined;
@@ -57,8 +60,14 @@ export async function signOut(to = "/", env?: SignOutEnv): Promise<boolean> {
     forgetByok: () => removeDevice(),
     badge: typeof navigator === "undefined" ? null : (navigator as BadgeNav),
     endSession,
+    forgetLocale: () => {
+      document.cookie = CLEAR_MARKER_LINE;
+    },
   };
   e.forgetByok?.();
+  try {
+    e.forgetLocale?.();
+  } catch {}
   void setBadge(e.badge, 0);
   // Nothing of the page's audio keeps running past the account (docs/voice-mode.md).
   exitOutputBed("sign-out");

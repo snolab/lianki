@@ -323,7 +323,23 @@ usually wins.
 **UI language.** It is uploaded only when LanguageSwitcher picks one
 (`lk:ui-locale`), never from `navigator.languages` or `?lang=`. A pulled
 `ui.locale` sets the `lang` and `NEXT_LOCALE` cookies. It takes effect on the
-next page load: nothing reloads under you mid-study.
+next page load: nothing reloads under you mid-study. Settings → Language
+(`LanguageSettings`) is the same picker as the account menu's row.
+
+**UI language on the server** (lib/account-locale.ts, owner plan 2026-11-09).
+A signed-in user on a new device sees the account's language on the first
+response, not the browser's first. The middleware stays session-free
+(?lang= → `lang` cookie → Accept-Language) and passes which one decided in
+`x-lianki-lang-src`. On an app page, `appLocaleState()`
+(lib/app-locale.server.ts) then reads the account once, when signed in, no
+?lang=, and no `lang_src` marker cookie: `ui.locale` → `user.signupLocale`
+(zh-Hans and zh-Hant both read `zh`) → the cookie chain. The page renders in
+it, and `AccountLocaleAdopt` writes the `lang`/`NEXT_LOCALE` cookies and
+`lang_src=acct` (a year), so later pages need no read. A pulled `ui.locale`
+also writes `acct`. A pick by hand (LanguageSwitcher, or a ?lang= link)
+writes `lang_src=pick` as a session cookie: the account never overrides it
+while it lasts. Sign-out clears the marker, so the next account is read
+afresh. `/embed/partner` (framable) never reads or writes any of it.
 
 **Account switch.** Pending changes of the old account are dropped, and the
 new account's values are pulled. The device's values never fill the new

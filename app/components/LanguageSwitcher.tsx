@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { notePrefWrite } from "@lianki/ui-state";
 import { LOCALE_PARAM, LOCALE_PICK_KEY, isAppRoute } from "@/lib/app-locale";
 import { LANGUAGES, isSupportedLocale } from "@/lib/constants";
+import { PICK_COOKIE_LINE } from "@/lib/account-locale";
 
 /**
  * `header`: the globe and the language's name in the top bar. `menu`: a
@@ -56,6 +57,9 @@ export function LanguageSwitcher({ variant = "header" }: { variant?: "header" | 
     for (const name of ["NEXT_LOCALE", LOCALE_PARAM]) {
       document.cookie = `${name}=${code}; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
     }
+    // A pick by hand: the account's language never overrides it this session
+    // (lib/account-locale.ts).
+    document.cookie = PICK_COOKIE_LINE;
     // A pick by hand follows the account (docs/prefs-sync.md, `ui.locale`);
     // a detected language never does.
     try {

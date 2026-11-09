@@ -43,6 +43,20 @@ describe("signOut (the menu's Sign out)", () => {
     expect(t.replaced).toEqual(["/"]);
   });
 
+  it("drops the account-language marker, so the next account's language is read afresh", async () => {
+    const t = env();
+    let forgot = 0;
+    expect(await signOut("/", { ...t.e, forgetLocale: () => void forgot++ })).toBe(true);
+    expect(forgot).toBe(1);
+    // A cookie write that throws never stops the sign-out.
+    const u = env();
+    const broken = () => {
+      throw new Error("no document");
+    };
+    expect(await signOut("/", { ...u.e, forgetLocale: broken })).toBe(true);
+    expect(u.replaced).toEqual(["/"]);
+  });
+
   it("offline or refused: still clears the caches and leaves the page", async () => {
     for (const t of [env({ fail: true }), env({ status: 403 })]) {
       expect(await signOut("/", t.e)).toBe(false);

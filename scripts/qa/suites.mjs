@@ -78,6 +78,22 @@ export const SUITES = [
     paths: [...SHELL, ...AUTH, "app/(app)/profile/**", "lib/sign-out.ts"],
     sensitive: false,
   },
+  // The account's UI language on the first response of a new device; ?lang= still wins (lib/account-locale.ts).
+  {
+    name: "ACCOUNT LOCALE (qa-account-locale)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-account-locale.mjs"],
+    base: true,
+    id: "account-locale",
+    paths: [
+      ...SHELL,
+      "middleware.ts",
+      "lib/account-locale*.ts",
+      "lib/app-locale*.ts",
+      "app/(app)/preferences/**",
+    ],
+    sensitive: false,
+  },
   // The disclaimer before another website: asks, Cancel, both bypasses, own hosts (docs/external-links.md).
   {
     name: "EXTERNAL LINKS (qa-external-link)",
