@@ -192,6 +192,7 @@ that are expensive to rediscover.
 | Feature flags: owner on/off at /dev/flags, ship dark, remove             | [docs/feature-flags.md](docs/feature-flags.md)                      |
 | Security measures: admin gate, lockout, scans, card testing              | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays                      | [docs/design-principles.md](docs/design-principles.md)              |
+| rgui component library (subtree), its gantt module, upstream sync        | [docs/rgui.md](docs/rgui.md)                                        |
 | Leaving Next.js: Vite + RR7 + Hono strangler plan                        | [docs/framework-migration.md](docs/framework-migration.md)          |
 | Node tree, study plan, calendar, Google Calendar (design)                | [docs/calendar-plan.md](docs/calendar-plan.md)                      |
 | /roadmap: progress from cards, what to build next                        | [docs/roadmap-next.md](docs/roadmap-next.md)                        |

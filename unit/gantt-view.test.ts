@@ -218,7 +218,11 @@ describe("axis ticks re-tick as it zooms", () => {
     expect(tickStep(W / (10 * MIN))).toBe(MIN);
     expect(tickStep(W / (2 * HOUR))).toBe(10 * MIN);
     expect(tickStep(W / (3 * DAY))).toBe(6 * HOUR);
-    expect(tickStep(1e-12)).toBe(TICK_STEPS[TICK_STEPS.length - 1]);
+    // Past the ladder (beyond the zoom limits) the step climbs rgui's radix
+    // ladder, powers of two weeks: still readable, never the last rung squashed.
+    const far = tickStep(1e-12);
+    expect(far * 1e-12).toBeGreaterThanOrEqual(TICK_MIN_PX);
+    expect(Math.log2(far / TICK_STEPS[TICK_STEPS.length - 1]!) % 1).toBe(0);
     for (const p of [W / HOUR, W / DAY, W / (14 * DAY)])
       expect(tickStep(p) * p).toBeGreaterThanOrEqual(TICK_MIN_PX);
   });

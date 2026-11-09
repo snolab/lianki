@@ -1,3 +1,0 @@
-[submodule "lib/sflow"]
-	path = lib/sflow
-	url = https://github.com/snomiao/sflow

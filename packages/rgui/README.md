@@ -1,5 +1,12 @@
 # @snomiao/rgui
 
+> **Vendored in Lianki.** This directory is a `git subtree` of
+> [github.com/snomiao/rgui](https://github.com/snomiao/rgui) by snomiao, MIT
+> licensed (see [LICENSE](LICENSE)); all credit for rgui is upstream's. Lianki
+> uses it as its component library and adds one module, `src/gantt/` (pure
+> Gantt scales, ticks and LOD layout; exported as `@snomiao/rgui/gantt`). How
+> to sync with upstream: Lianki's `docs/rgui.md`.
+
 <img src="assets/rgui-icon-64-wander.gif" width="64" height="64" align="right" alt="rgui mascot — a wandering Royal Gramma as a 4-color dithered field">
 
 **rgui** = the **R**enormalization **G**roup **U**ser **I**nterface — that is the name's

@@ -45,6 +45,7 @@
       "default": "./dist/rgui.js"
     },
     "./src": "./src/index.ts",
+    "./gantt": "./src/gantt/index.ts",
     "./package.json": "./package.json"
   },
   "files": [

@@ -68,4 +68,13 @@ coveragePathIgnorePatterns = [
   # Their logic is in attach.ts (held to 90% here); unit/chat-attach-tree.test.ts
   # renders the markup only, and debug-chat-bar-qa.mjs drives them in a browser.
   "packages/debug-chat/src/AttachMenu.tsx",
+  # rgui, the vendored component library (git subtree of snomiao/rgui,
+  # docs/rgui.md). Its own suites live upstream (packages/rgui/src/**/*.test.ts,
+  # run there with its bunfig); ours only load these files because our gantt
+  # module calls a few of their functions. Gating them here would hold someone
+  # else's code to our per-file 90% and break every subtree pull. Our module,
+  # packages/rgui/src/gantt/, is NOT ignored and stays at 100%
+  # (unit/rgui-gantt.test.ts, unit/gantt-view.test.ts).
+  "packages/rgui/src/core/**",
+  "packages/rgui/src/lane/**",
 ]
