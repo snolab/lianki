@@ -434,6 +434,7 @@ export class ProgressHub {
     prev: ProgressEntry | undefined,
   ): string | null {
     if (auth.root) return null;
+    if (r.endedAt !== undefined) return "only the root token back-dates a done node (endedAt)";
     if (r.assignee.name !== auth.agent)
       return `this token is for ${auth.agent}; it cannot write as ${r.assignee.name}`;
     const newParent = r.parent ?? prev?.parent;
@@ -515,7 +516,7 @@ export class ProgressHub {
     const events = [...missing.map((e) => progressEvent(e)), progressEvent(entry, r.note)];
     const evicted = await this.store([...missing, entry], all);
     for (const ev of events) await this.append(ev);
-    await this.recordDone(prev, entry);
+    await this.recordDone(prev, entry, r.endedAt !== undefined);
     if (evicted) await this.sendSnapshot();
     else for (const ev of events) await this.send(this.ctx.getWebSockets(), ev);
     // The lane explained an overrun: the owner hears the reason and the new time.
@@ -572,12 +573,16 @@ export class ProgressHub {
       await this.ctx.storage.delete(k);
   }
 
-  /** A task that just went done: one record in the stats log, dropping old ones. */
-  private async recordDone(prev: ProgressEntry | undefined, e: ProgressEntry) {
-    if (e.status !== "done" || prev?.status === "done") return;
-    if (e.kind === "group" || e.kind === "person") return;
-    await this.ctx.storage.put(logKey(e.at, this.seq++ % 1_000_000, DONE), progressDone(e));
+  /**
+   * A done node: its history record (every write, so later PRs and titles
+   * reach it). A task that just went done: one record in the stats log too,
+   * dropping old ones; not one back-dated (`backdated`: its time is not real).
+   */
+  private async recordDone(prev: ProgressEntry | undefined, e: ProgressEntry, backdated = false) {
+    if (e.status !== "done" || e.kind === "group" || e.kind === "person") return;
     await this.ctx.storage.put(historyKey(e.id), progressHistory(e));
+    if (prev?.status === "done" || backdated) return;
+    await this.ctx.storage.put(logKey(e.at, this.seq++ % 1_000_000, DONE), progressDone(e));
     const cut = this.now() - PROGRESS_STATS_TTL_MS;
     const all = [...(await this.ctx.storage.list<ProgressDone>({ prefix: DONE }))];
     for (const [i, [k, d]] of all.entries())
