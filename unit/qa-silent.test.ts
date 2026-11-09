@@ -5,6 +5,7 @@ import {
   FAKE_MIC_ARGS,
   MUTE_ARGS,
   SILENT_INIT,
+  ONBOARDING_SEEN_INIT,
   launchPersistentSilent,
   launchSilent,
   newSilentContext,
@@ -207,9 +208,13 @@ describe("the silent helpers", () => {
     };
     const browser = await launchSilent(type as never);
     expect(await browser.newPage()).toBe("page" as never);
-    expect(scripts).toEqual([SILENT_INIT]);
+    const both = [SILENT_INIT, ONBOARDING_SEEN_INIT];
+    expect(scripts).toEqual(both);
     await newSilentContext(browser);
-    expect(scripts).toEqual([SILENT_INIT, SILENT_INIT]);
+    expect(scripts).toEqual([...both, ...both]);
+    // The walkthrough's own suite asks for it, and the option never reaches Playwright.
+    await newSilentContext(browser, { lkOnboarding: true } as never);
+    expect(scripts).toEqual([...both, ...both, SILENT_INIT]);
   });
 
   test("every new context gets the silencing init script", async () => {
@@ -227,14 +232,24 @@ describe("the silent helpers", () => {
       o: unknown;
     };
     expect(ctx.o).toEqual({ viewport: null });
-    expect(scripts).toEqual([SILENT_INIT]);
+    expect(scripts).toEqual([SILENT_INIT, ONBOARDING_SEEN_INIT]);
+    const own = (await newSilentContext(
+      browser as never,
+      {
+        viewport: null,
+        lkOnboarding: true,
+      } as never,
+    )) as unknown as { o: unknown };
+    expect(own.o).toEqual({ viewport: null });
+    expect(scripts).toEqual([SILENT_INIT, ONBOARDING_SEEN_INIT, SILENT_INIT]);
+    expect(() => new Function(ONBOARDING_SEEN_INIT)).not.toThrow();
   });
 
   test("persistent contexts are muted and silenced", async () => {
     const f = fakeType("chromium");
     await launchPersistentSilent(f.type as never, "/tmp/x", { headless: false } as never);
     expect(f.calls).toEqual([["persistent", "/tmp/x", { headless: true, args: CHROMIUM }]]);
-    expect(f.ctx.scripts).toEqual([SILENT_INIT]);
+    expect(f.ctx.scripts).toEqual([SILENT_INIT, ONBOARDING_SEEN_INIT]);
     const w = fakeType("webkit");
     await launchPersistentSilent(w.type as never, "/tmp/y");
     expect(w.calls).toEqual([["persistent", "/tmp/y", { headless: true }]]);

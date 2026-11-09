@@ -142,6 +142,8 @@ export const PREF_SCHEMAS = {
   "words.gradeTones": z.boolean(),
   "words.voiceMode": z.boolean(),
   "words.swipeMirror": z.boolean(),
+  // the first-visit walkthrough was finished or skipped (lib/words/onboarding.ts)
+  "words.onboarded": z.boolean(),
   // the swipe (Experimental)
   "swipe.variant": z.enum(["js", "native"]),
   "swipe-feel.preset": z.enum(["light", "heavy"]),
