@@ -149,6 +149,14 @@ import {
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
+import {
+  NEW_ATTR,
+  SCRUB_ATTR,
+  SCRUB_PULSE_MS,
+  SHIMMER_CSS,
+  createNewLines,
+  newShimmer,
+} from "./shimmer";
 import { type PttState, createPttGesture } from "./ptt";
 import { WAITING_INK, lastPendingIndex, waitingMark } from "./waiting-mark";
 import { TreeChips } from "./TreeChips";
@@ -871,6 +879,11 @@ export function DebugChat({
     () => rawMessages.filter((m) => !m.collapsedInto).map(withLane),
     [rawMessages],
   );
+  /** Which lines arrived live: they shimmer while read (shimmer.ts). Seen at render, idempotent. */
+  const newLines = useRef<ReturnType<typeof createNewLines> | null>(null);
+  newLines.current ??= createNewLines();
+  newLines.current.see(messages, Date.now());
+  const shimmerOf = (m: ChatMessage) => newLines.current!.shimmer(m, Date.now());
   const laneOpts = { laneAvatar };
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
@@ -2845,6 +2858,15 @@ export function DebugChat({
       if (!next.length) back.current = 0;
       return next;
     });
+  /** The scrub moved within SCRUB_PULSE_MS: the lines pulse (shimmer.ts); stops when it rests. */
+  const [scrubMoving, setScrubMoving] = useState(false);
+  const scrubRest = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const scrubMoved = () => {
+    setScrubMoving(true);
+    clearTimeout(scrubRest.current);
+    scrubRest.current = setTimeout(() => setScrubMoving(false), SCRUB_PULSE_MS);
+  };
+  useEffect(() => () => clearTimeout(scrubRest.current), []);
   /** Show the SCRUB_LINES lines that end `n` back from the newest. */
   const scrubTo = (n: number) => {
     back.current = n;
@@ -2961,6 +2983,7 @@ export function DebugChat({
       const from = floats.length ? back.current : -1;
       const n = Math.max(0, Math.min(Math.max(0, messages.length - 1), from + (e.key === "ArrowUp" ? 1 : -1)));
       scrubTo(n);
+      scrubMoved();
     },
     wasDrag: () => micDragged.current.wasDrag() || pttWasHold.current,
   };
@@ -3257,6 +3280,7 @@ export function DebugChat({
               oneLine={oneLine}
               key={m.id}
               m={m}
+              arrivedAt={newLines.current!.arrivedAt(m.id)}
               // The same identity as in the log: the avatar, never the name in its place.
               who={lineAvatar(m, {
                 friend,
@@ -3292,6 +3316,8 @@ export function DebugChat({
     // at the bottom, each fading on its own. Hover or touch holds them.
     <ol
       data-testid="debug-chat-floats"
+      // The mic scrub moving: the lines pulse (shimmer.ts).
+      {...(scrubMoving ? { [SCRUB_ATTR]: true } : {})}
       aria-live="polite"
       className={`flex flex-col gap-0.5 ${ALIGN_ITEMS[place.side]}`}
     >
@@ -3985,6 +4011,7 @@ export function DebugChat({
         />
         <div
           className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
+          {...shimmerOf(m)}
         >
           <span className="sr-only">{who.name}: </span>
           {m.lane && <LaneTag lane={m.lane} inline />}
@@ -4401,6 +4428,8 @@ export function DebugChat({
                         }
                         // Selectable; it takes the pointer while the log is engaged (log-engage.ts).
                         className={LINE_SELECTABLE}
+                        // Just arrived: a soft sweep over its reading time (shimmer.ts).
+                        {...shimmerOf(m)}
                       >
                         {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
                         {m.attachments?.length && m.from !== "agent" ? (
@@ -4839,6 +4868,8 @@ export function DebugChat({
           )}
           {/* The controls' 44 px touch areas (bar-geometry.ts TAP_44_CSS). */}
           <style>{TAP_44_CSS}</style>
+          {/* New lines and the mic scrub's cue (shimmer.ts). */}
+          <style>{SHIMMER_CSS}</style>
           {controls}
           {/* + : add to Lianki, attach to the line, view the state tree
           (AttachMenu.tsx). Open only; without `attach` (or with a notice) it
@@ -5114,10 +5145,13 @@ function FloatLine({
   paused,
   onHover,
   onGone,
+  arrivedAt,
 }: {
   /** Its first line only (the tucked handle's peek), else up to three. */
   oneLine?: boolean;
   m: ChatMessage;
+  /** When it arrived live (shimmer.ts createNewLines): it shimmers while read. */
+  arrivedAt?: number;
   /** Who said it (avatar-rules.ts lineAvatar), drawn as in the log. */
   who: ReturnType<typeof lineAvatar>;
   /** What the line shows (a polished line's text, or its raw STT text), and its mark. */
@@ -5133,6 +5167,10 @@ function FloatLine({
   onGone: () => void;
 }) {
   const [phase, setPhase] = useState<FloatPhase>("dwell");
+  // Fixed at mount: the sweep picks up where it is, and no re-render shifts it.
+  const [shim] = useState(() =>
+    arrivedAt === undefined ? null : newShimmer(m.text, arrivedAt, Date.now()),
+  );
   const life = useRef<ReturnType<typeof createFloatLife> | null>(null);
   const live = useRef({ paused, onGone, aboveLeft, onLife });
   live.current = { paused, onGone, aboveLeft, onLife };
@@ -5170,7 +5208,8 @@ function FloatLine({
       onPointerLeave={() => onHover(false)}
       onPointerCancel={() => onHover(false)}
       // Text only, with a strong halo: no background, no box (they float over the page).
-      style={{ textShadow: LINE_HALO, transitionDuration: `${FADE_MS}ms` }}
+      style={{ textShadow: LINE_HALO, transitionDuration: `${FADE_MS}ms`, ...shim?.style }}
+      {...(shim ? { [NEW_ATTR]: true } : {})}
       // The fade runs FADE_MS (ease-out, opacity only); held (touched), the line
       // snaps back to full at once. Reduced motion: no fade, it just goes.
       className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto ${oneLine ? "line-clamp-1" : "line-clamp-3"} max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
