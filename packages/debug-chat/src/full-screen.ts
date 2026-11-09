@@ -240,6 +240,43 @@ export function dropEntersFull(d: {
   return d.allowed && d.open && !d.full && d.barBottom >= d.vh - 0.5;
 }
 
+/**
+ * The full-screen hint (owner, 2026-11-10): while a drag of the open chat
+ * would enter full screen if let go now (dropEntersFull, before the release),
+ * the bottom edge grows toward full screen as a preview; backing off the edge
+ * undoes it. Only the bottom, as dropEntersFull. "enter" / "leave" when the
+ * hint changes, null when it stays.
+ */
+export function fullHintStep(was: boolean, now: boolean): "enter" | "leave" | null {
+  return was === now ? null : now ? "enter" : "leave";
+}
+
+/** The light haptic on "enter" (navigator.vibrate: Android; iOS has none, and that is fine). */
+export const FULL_HINT_HAPTIC_MS = 10;
+
+/**
+ * The preview: a glass sheet rising from the bottom edge to the whole
+ * screen, behind the chat (its z-index less one), never taking a touch. Off,
+ * it is folded to the bottom edge (scaleY 0). Reduced motion: it appears and
+ * goes at once. Colours in oklch (the page's own background, see-through).
+ */
+export function FULL_HINT_STYLE(on: boolean, reduce: boolean) {
+  return {
+    position: "fixed",
+    inset: 0,
+    zIndex: "calc(var(--lk-z-chat, 80) - 1)",
+    pointerEvents: "none",
+    background: "color-mix(in oklch, var(--background) 45%, transparent)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    borderTop: "1px solid color-mix(in oklch, currentColor 25%, transparent)",
+    transformOrigin: "bottom",
+    transform: on ? "scaleY(1)" : "scaleY(0)",
+    opacity: on ? 1 : 0,
+    transition: reduce ? "none" : "transform 220ms ease-out, opacity 220ms ease-out",
+  } as const;
+}
+
 /** How far up a drag in full screen goes before it leaves (px): a press that wobbles stays. */
 export const FULL_LEAVE_PX = 48;
 

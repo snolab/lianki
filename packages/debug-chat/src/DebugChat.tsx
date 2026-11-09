@@ -197,6 +197,9 @@ import {
   fullScreenOn,
   dragLeavesFull,
   dropEntersFull,
+  FULL_HINT_HAPTIC_MS,
+  FULL_HINT_STYLE,
+  fullHintStep,
 } from "./full-screen";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
@@ -263,7 +266,12 @@ type DropSpan = { left: number; right: number; boxLeft: number; boxRight: number
 /** Full screen as a drag sees it: on now, and the way out when the drag leaves it upward. */
 type DragFull = { now: () => boolean; leave: () => void };
 
-function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
+function useDrag(
+  onDrop?: (at: DropSpan) => void,
+  fullDrag?: DragFull,
+  /** Where the bar would rest after each move; null once the press is over (the full-screen hint). */
+  onMove?: (at: DropSpan | null) => void,
+) {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
       const v = JSON.parse(read(POS_KEY) ?? "null") as { x: number; y: number } | null;
@@ -283,6 +291,8 @@ function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
   } | null>(null);
   const dropRef = useRef(onDrop);
   dropRef.current = onDrop;
+  const moveRef = useRef(onMove);
+  moveRef.current = onMove;
   /** The click that ends a drag is not a tap (cleared on the next press, or after 400 ms). */
   const dragged = useRef(createDragFlag());
   /** The pill is held down: the input shows how to use it. */
@@ -321,6 +331,7 @@ function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
       boxRight: b.right + by,
       bottom: top + y - d.y + row.height,
     };
+    moveRef.current?.(d.last);
     setPos({ x, y });
   };
   /**
@@ -334,6 +345,7 @@ function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
     setHolding(false);
     const d = drag.current;
     drag.current = null;
+    moveRef.current?.(null);
     if (!d?.moved) return;
     dragged.current.dragEnded();
     setPos((p) => {
@@ -366,6 +378,7 @@ function useDrag(onDrop?: (at: DropSpan) => void, fullDrag?: DragFull) {
     onPointerCancel: () => {
       setHolding(false);
       drag.current = null;
+      moveRef.current?.(null);
     },
     style: { touchAction: "none" as const, cursor: "grab" },
   };
@@ -908,10 +921,19 @@ export function DebugChat({
   const onDrop = useRef((_at: DropSpan) => {});
   /** A drag up out of full screen (set once setFull exists below). */
   const leaveFull = useRef(() => {});
+  /** A drag of the box moved (useDrag): the full-screen hint (set below, where its rule is). */
+  const onDragMove = useRef((_at: DropSpan | null) => {});
   const { offset, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
     (bar) => onDrop.current(bar),
     { now: () => fullOn.current, leave: () => leaveFull.current() },
+    (bar) => onDragMove.current(bar),
   );
+  /**
+   * The drag would enter full screen if let go now (owner, 2026-11-10): the
+   * bottom edge grows toward full screen as a preview, with a light haptic.
+   */
+  const [fullHint, setFullHint] = useState(false);
+  const fullHintRef = useRef(false);
   /**
    * How far the chat is folded (fold.ts): open, a pill, or tucked into the
    * screen edge, and the edge it keeps to (on the left, everything mirrors).
@@ -2648,6 +2670,24 @@ export function DebugChat({
     foldNow.current = next;
     foldStore.setState({ tucked: tuckNow, edge: next.edge });
     if ((next.fold === "open") !== open) toggle(next.fold === "open");
+  };
+  // While dragging: the moment letting go would enter full screen, preview it.
+  onDragMove.current = (bar) => {
+    const on =
+      !!bar &&
+      dropEntersFull({
+        allowed: fullAllowed && !tucked,
+        open,
+        full: fullOn.current,
+        barBottom: bar.bottom,
+        vh: innerHeight,
+      });
+    const step = fullHintStep(fullHintRef.current, on);
+    if (!step) return;
+    fullHintRef.current = on;
+    setFullHint(on);
+    // A light tick on the way in (Android; navigator.vibrate is absent on iOS).
+    if (step === "enter") navigator.vibrate?.(FULL_HINT_HAPTIC_MS);
   };
   // A drag of the box ended: it follows its nearest edge (no tuck: that level is removed).
   onDrop.current = (bar) => {
@@ -4863,6 +4903,16 @@ export function DebugChat({
       </div>
     </section>
     {tuckEl}
+    {fullAllowed && (
+      // The full-screen preview (full-screen.ts FULL_HINT_STYLE): outside the
+      // section, whose transform would make it the box of a fixed child.
+      <div
+        aria-hidden
+        data-testid="debug-chat-full-hint"
+        data-on={fullHint || undefined}
+        style={FULL_HINT_STYLE(fullHint, reducedMotion())}
+      />
+    )}
     </>
   );
 }
