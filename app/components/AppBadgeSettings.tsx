@@ -2,7 +2,7 @@
 
 // Settings → Notifications: what the number on the installed app's icon
 // counts (lib/app-badge.ts, docs/app-badge.md). Follows the account
-// (`notify.badge`). Shown only while `pwa.app-badge` is on for this user.
+// (`notify.badge`). Shown only when appBadgeOn (lib/app-badge-gate.ts): flag on, the owner.
 
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";

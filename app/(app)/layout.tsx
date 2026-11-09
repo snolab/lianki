@@ -11,7 +11,7 @@ import { cookies } from "next/headers";
 import { InviteClaim } from "@/app/components/InviteClaim";
 import { PrefSync } from "@/app/components/PrefSync";
 import { AppBadge } from "@/app/components/AppBadge";
-import { flagIn } from "@/lib/flags";
+import { appBadgeOn } from "@/lib/app-badge-gate";
 import { INVITE_COOKIE } from "@/lib/referrals/cookie";
 import { devSwitchFor } from "@/lib/dev-server-switch.server";
 import type { DevSwitchLabels } from "@/app/components/DevSwitchItem";
@@ -49,8 +49,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const navShown = booksOn(flags, owner) ? ["books"] : [];
   // The level chip by the avatar (docs/levels.md): signed in, D1, `levels` on or the owner.
   const levels = Boolean(user) && flags !== null && levelsOn(flags, owner);
-  // The app-icon badge (docs/app-badge.md): signed in, D1, `pwa.app-badge` on.
-  const appBadge = Boolean(user) && flags !== null && flagIn(flags, "pwa.app-badge");
+  // The app-icon badge (docs/app-badge.md): signed in, D1, `pwa.app-badge` on, the owner only.
+  const appBadge = Boolean(user) && flags !== null && appBadgeOn(flags, owner);
 
   const { appName, nav } = getIntlayer("landing-page", locale);
   const shell = getIntlayer("app-shell", locale);

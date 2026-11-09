@@ -33,6 +33,22 @@ import {
   queryBadgeCounts,
 } from "@/lib/app-badge-server";
 import { checkPref } from "@/lib/prefs/schema";
+import { appBadgeOn } from "@/lib/app-badge-gate";
+import { FLAGS } from "@/lib/flags";
+
+describe("who gets it (lib/app-badge-gate.ts)", () => {
+  test("pwa.app-badge is an owner-audience flag, default off", () => {
+    expect(FLAGS["pwa.app-badge"].audience).toBe("owner");
+    expect(FLAGS["pwa.app-badge"].default).toBe(false);
+  });
+  test("on: the owner only; off: nobody, the owner included", () => {
+    expect(appBadgeOn({ "pwa.app-badge": true }, true)).toBe(true);
+    expect(appBadgeOn({ "pwa.app-badge": true }, false)).toBe(false);
+    expect(appBadgeOn({ "pwa.app-badge": false }, true)).toBe(false);
+    expect(appBadgeOn({}, true)).toBe(false);
+    expect(appBadgeOn(null, true)).toBe(false);
+  });
+});
 import { prefBindings } from "@/lib/prefs/bindings";
 import { testSchema } from "@/lib/d1/testSchema";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
