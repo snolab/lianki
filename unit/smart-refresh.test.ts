@@ -181,6 +181,11 @@ describe("parsing", () => {
         JSON.stringify({ build: "b", force: true, shell: false, routes: { "/a": 1, "/b": 0 } }),
       ),
     ).toEqual({ build: "b", force: true, shell: false, routes: { "/a": 1, "/b": 0 } });
+    // Keys that are not route paths (an object's own keys) are dropped.
+    expect(
+      parseNews('{"build":"b","shell":false,"routes":{"__proto__":1,"constructor":1,"/a":1}}')!
+        .routes,
+    ).toEqual({ "/a": 1 });
     // Routes without a shell verdict: cannot tell.
     expect(parseNews(JSON.stringify({ build: "b", routes: { "/a": 1 } }))).toEqual({ build: "b" });
   });
