@@ -45,6 +45,8 @@ export const APP_ROUTES = [
   "learn",
   "list",
   "membership",
+  // /my/files (docs/url-principles.md, "/my").
+  "my",
   "next",
   "preferences",
   "privacy",
