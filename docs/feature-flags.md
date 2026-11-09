@@ -29,8 +29,9 @@ stay on the folded row, because they say why the switch does nothing.
   **Set `audience` on a new flag that does not reach every user once on**, or this
   view will call it shipped.
 - **Search** covers the key, an old key and the description. **Filters**: 全部 /
-  开着 / 默认关 (every default is off, so that is "off now"), and 7 天内改过, from the
-  row's `updated_at`. There is no "on for me": the store has one value per flag,
+  开着 / 关着 (off now, whatever the default), and 7 天内改过, from the row's
+  `updated_at`. A row never changed reads 从未改过（默认关）, or （默认开） for a
+  default-on flag. There is no "on for me": the store has one value per flag,
   and who else a flag lets in (`|| owner`) lives in each feature's gate.
 - **A link always arrives.** `#<key>`, or an old key through `FLAG_OLD_KEYS`, opens
   the section and the row, scrolls and highlights, whatever is typed or filtered.
@@ -50,7 +51,14 @@ stay on the folded row, because they say why the switch does nothing.
 - **Announce with the link.** Anything shipped default-off is announced with its `https://lianki.com/dev/flags#<key>` link, which opens that flag's card.
 - **Only registry keys exist.** `setFlag` refuses any other key (400 on the
   API); a stored row for a key no longer in the registry is ignored.
-- **Every default is OFF**, and so is a flag that cannot be read (a D1 error,
+- **Positive flags only** (owner rule, 2026-11-10): a switch that is ON
+  provides a feature, never forbids one. No `-off` / `disable` keys: a kill
+  switch for something already live is a flag that is **on by default**.
+- **Defaults are OFF**, but for such a flag (`default: true` in
+  `lib/flags.ts`; today only `stt.polish`). A key with no stored row reads as
+  its default; a stored row always wins, either way. `closedFlags()` is what an
+  unreadable store gives.
+- **Unreadable is OFF**, every flag, a default-on one too (a D1 error,
   the Mongo backend, no request context). A failed read is logged
   (`flags.read-failed`) and not cached, so the next request tries again.
 - **Cache: 30 s per isolate** (`FLAG_CACHE_MS`). `readFlags()` costs one small
@@ -83,7 +91,7 @@ stay on the folded row, because they say why the switch does nothing.
 | `payments.stripe.live` | Stripe takes real money (also needs an `sk_live_` key)         |
 | `payments.komoju.live` | KOMOJU takes real money (also needs an `sk_live_` key)         |
 | `words.voice-mode`     | everyone gets the /words voice commands switch (off: the owner's preview only) — [voice-mode.md](voice-mode.md) |
-| `stt.polish-off`       | the agent can no longer polish the owner's voice lines; the chat keeps only what STT heard (off: polish from context only) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached |
+| `stt.polish`           | **on by default.** The agent may polish the owner's voice lines from their context and summarise room talk (off: the chat keeps only what STT heard, no edits or summaries) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached; only exactly `false` turns it off there, an unreadable answer holds edits back (logged `debug.polish-flag-unread`). Replaced the inverted `stt.polish-off` (migration 0067 carried a stored value over inverted) |
 | `stt.merge`            | a spoken line that continues the last one amends it instead of adding a bubble; the agent hears the complete line, and the passage is polished once at its end; undo splits it back (off: one line per utterance) — [dev-debug-widget.md](dev-debug-widget.md), "Continuous speech amends the last line". Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `connections.google`   | every signed-in user gets /connections (Google Drive, `drive.file`) and the private Google Docs import on /reader (off: the owner only) — [connections.md](connections.md) |
 | `stt.voiceprint-filter` | the owner's local STT does not transcribe or post a line that clearly is not his voice, on devices where he has enrolled; his route only, not a security gate (off: as ever, only counting what it would have stopped) — [local-stt.md](local-stt.md), "Only my voice" |
@@ -184,7 +192,7 @@ on deploy. Instead:
 2. Anything reading `feature_flags` with its own SQL has to follow the same
    order. `activeForCookie` (`lib/live-view/custom.ts`) does, with `COALESCE`.
    `flagLive` (`lib/debug-session.ts`) and `flagOn` (`lib/partner-ai.ts`) do
-   not: they read `stt.polish-off`, `stt.merge` and `partner.ai-reply`, so renaming
+   not: they read `stt.polish`, `stt.merge` and `partner.ai-reply`, so renaming
    one of those means changing them too.
 3. The first change at `/dev/flags` writes the row under the new key. The old
    row and its log entries stay as history. The API refuses the old key (400),
