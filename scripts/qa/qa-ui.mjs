@@ -196,9 +196,9 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     );
     const shift = await cls.evaluate(() => window.__cls);
     check(
-      info.length === 8 &&
+      info.length === 11 &&
         info.every((c) => c.text > 20 && c.h >= 160 && c.art && c.hidden && c.wordless && !c.img),
-      `/home Explore: 8 cards, each with a line of text over a wordless drawing (${JSON.stringify(info[0])})`,
+      `/home Explore: 11 cards (the LiCards three last), each with a line of text over a wordless drawing (${JSON.stringify(info[0])})`,
     );
     check(shift < 0.01, `/home Explore cards cause no layout shift (CLS ${shift.toFixed(4)})`);
     // The Word lists card opens the "Add a list" tree, in view, even when this
