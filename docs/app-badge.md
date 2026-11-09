@@ -5,9 +5,12 @@ Owner request, 2026-11-09 15:31 JST: a number on Lianki's installed app icon
 cards due.
 
 Behind the flag **`pwa.app-badge`** (default off;
-https://lianki.com/dev/flags#pwa.app-badge). On: every signed-in user gets it
-and the setting row. Off: nobody, the row is hidden, and a page clears any
-badge left over.
+https://lianki.com/dev/flags#pwa.app-badge), `audience: "owner"`. On: the
+owner only (`isDev`) gets it and the setting row; an allowlist may come later.
+Off: nobody, the owner included; the row is hidden and a page clears any badge
+left over. One gate, `appBadgeOn(flags, owner)` (`lib/app-badge-gate.ts`), for
+`/api/badge`, the Settings row and `AppBadge`. (2026-11-09: briefly on for
+everyone 16:35–16:52 JST before this gate shipped.)
 
 ## What it counts
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
-import { flagIn } from "@/lib/flags";
+import { appBadgeOn } from "@/lib/app-badge-gate";
+import { isDev } from "@/lib/permissions";
 import { readFlags } from "@/lib/flags-store";
 import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
 import { badgeCount, isBadgeMode, parseBadgeMode } from "@/lib/app-badge";
@@ -17,7 +18,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
  * service worker (public/sw.js, on a push without counts).
  *
  *   → { on: true, mode, asks, due, count }   numbers only, no text or ids
- *   → { on: false }                          flag `pwa.app-badge` off, or not D1
+ *   → { on: false }                          flag `pwa.app-badge` off, not the owner (appBadgeOn), or not D1
  *   → 401                                    signed out
  *
  * `mode` is the page's own copy of `notify.badge`; without it (the worker),
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   const user = await authUserOrNull();
   if (!user?.id || !user.email)
     return NextResponse.json({ error: "Login required" }, { status: 401, headers: NO_STORE });
-  if (dbBackend() !== "d1" || !flagIn(await readFlags(), "pwa.app-badge"))
+  if (dbBackend() !== "d1" || !appBadgeOn(await readFlags(), isDev(user.email)))
     return NextResponse.json({ on: false }, { headers: NO_STORE });
   const db = getD1();
   const asked = req.nextUrl.searchParams.get("mode");

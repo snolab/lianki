@@ -10,8 +10,10 @@
 //
 // - flag off: no Notifications section, /api/badge answers {on: false}, and
 //   the page only clears the badge;
-// - flag on, an account with 2 due page cards and 1 open ask card: the page
-//   sets 3; "Unanswered questions from Li" sets 1, persists across a reload
+// - flag on, an account without `dev`: the same, nothing (owner-only flag);
+// - flag on, an account granted `dev` in the LOCAL account_permission (as
+//   qa-flags does; removed at the end), with 2 due page cards and 1 open ask
+//   card: the page sets 3; "Unanswered questions from Li" sets 1, persists across a reload
 //   and reaches the account (/api/prefs); on /chat/history the asks count as
 //   seen (badge 0 with that mode).
 import { spawnSync } from "node:child_process";
@@ -82,14 +84,24 @@ async function newCtx(browser, scheme = "light") {
   return ctx;
 }
 
+/** Local throwaway accounts granted `dev` by this run, removed at the end. */
+const granted = [];
+const grantDev = (email) => {
+  granted.push(email);
+  d1(
+    `INSERT OR REPLACE INTO account_permission (email, permission, granted_by, granted_at) VALUES ('${email}', 'dev', 'qa', ${Date.now()})`,
+  );
+};
+
 async function signUp(ctx, tag) {
+  const email = `qa+badge${tag}${Date.now()}@lianki.test`;
   const r = await ctx.request.post("/api/auth/sign-up/email", {
-    data: { email: `qa+badge${tag}${Date.now()}@lianki.test`, password: PW, name: "QA Badge" },
+    data: { email, password: PW, name: "QA Badge" },
     headers: { origin: BASE },
   });
   check(r.ok(), `sign-up (${r.status()})`);
   const me = await (await ctx.request.get("/api/prefs")).json();
-  return me.user;
+  return { id: me.user, email };
 }
 
 const lastBadge = (page) => page.evaluate(() => window.__badge.at(-1));
@@ -124,10 +136,28 @@ try {
   }
 
   setFlag(true);
+  {
+    // Owner-only: a signed-in account without `dev` still gets nothing.
+    const ctx = await newCtx(browser);
+    await signUp(ctx, "user");
+    // The server caches flags for 30 s: wait until an owner would see it, then check this one.
+    await new Promise((r) => setTimeout(r, 31000));
+    const j = await (await ctx.request.get("/api/badge")).json();
+    check(j.on === false, "flag on, not the owner: /api/badge answers {on: false}");
+    const page = await ctx.newPage();
+    await page.goto("/preferences?lang=en");
+    await page.locator("h1").first().waitFor({ timeout: 30000 });
+    check(
+      (await page.getByTestId("app-badge").count()) === 0,
+      "flag on, not the owner: no Notifications section",
+    );
+    await ctx.close();
+  }
   for (const scheme of ["light", "dark"]) {
     console.log(`— 360 px ${scheme}`);
     const ctx = await newCtx(browser, scheme);
-    const userId = await signUp(ctx, scheme);
+    const { id: userId, email } = await signUp(ctx, scheme);
+    grantDev(email);
     // Two page cards, new and so due now, and one open ask card in this account's chat.
     // Added before the first /api/badge read: the server keeps counts 15 s per account.
     for (const n of [1, 2]) {
@@ -140,7 +170,7 @@ try {
     d1(
       `INSERT INTO chat_line (user_id, id, thread, sender, text, at_ms, ask, answer) VALUES ('${userId}', 'qa-ask-${scheme}', 'owner', 'agent', 'QA?', ${Date.now()}, 1, NULL)`,
     );
-    // The server caches flags for 30 s (docs/feature-flags.md): wait for the switch to reach it.
+    // Flags (30 s) and permission grants (20 s) are cached per isolate: wait for both to reach it.
     let counts = {};
     for (let i = 0; i < 25; i++) {
       counts = await (await ctx.request.get("/api/badge?mode=both")).json();
@@ -200,6 +230,10 @@ try {
 } finally {
   try {
     setFlag(false);
+    if (granted.length)
+      d1(
+        `DELETE FROM account_permission WHERE email IN (${granted.map((e) => `'${e}'`).join(", ")})`,
+      );
   } catch (e) {
     console.error(e);
   }

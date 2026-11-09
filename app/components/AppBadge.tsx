@@ -2,7 +2,7 @@
 
 // The app-icon badge (docs/app-badge.md, lib/app-badge.ts): sets the number
 // on open, when the tab comes back, when the setting changes, and lowers it
-// when something counted is dealt with. `on` is the server's `pwa.app-badge`
+// when something counted is dealt with. `on` is the server's appBadgeOn (`pwa.app-badge`, owner only)
 // for this signed-in user; off, the badge is cleared once and nothing else
 // runs. Nothing polls.
 

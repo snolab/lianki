@@ -8,6 +8,7 @@ import { ByokSettings } from "@/app/components/ByokSettings";
 import { readFlags } from "@/lib/flags-store";
 import { flagIn } from "@/lib/flags";
 import { isDev } from "@/lib/permissions";
+import { appBadgeOn } from "@/lib/app-badge-gate";
 import { vibeAllowed } from "@/lib/vibe/gate";
 import { VibeRetention } from "../vibe/VibeRetention";
 
@@ -39,8 +40,8 @@ export default async function PreferencesPage() {
   const flags = await readFlags();
   const showKeySync = isDev(user.email) || flagIn(flags, "byok.sync");
   const vibe = vibeAllowed(flags, isDev(user.email));
-  // The app-icon badge's row (docs/app-badge.md): only while `pwa.app-badge` is on.
-  const appBadge = flagIn(flags, "pwa.app-badge");
+  // The app-icon badge's row (docs/app-badge.md): only while `pwa.app-badge` is on, the owner only.
+  const appBadge = appBadgeOn(flags, isDev(user.email));
 
   return (
     <div className="flex flex-col">
