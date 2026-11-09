@@ -169,25 +169,30 @@ try {
       check(t.ok(), `${tag}: template test send (${t.status()})`);
       await page.locator("[data-testid=mails-q]").fill(DEV);
       await page.locator("[data-testid=mails-search]").click();
-      await page
-        .locator("[data-testid=mails-row]")
-        .first()
-        .waitFor({ timeout: 10_000 })
-        .catch(() => {});
-      const rowText = await page
-        .locator("[data-testid=mails-row]")
-        .first()
-        .innerText()
-        .catch(() => "");
-      check(rowText.includes(DEV), `${tag}: the test send is in the log through the send path`);
+      // The list before the search is still on screen at first: wait for the answer.
+      const found = await page
+        .waitForFunction(
+          (addr) => {
+            const rows = [...document.querySelectorAll("[data-testid=mails-row]")];
+            return rows.length > 0 && rows.every((r) => r.textContent?.includes(addr));
+          },
+          DEV,
+          { timeout: 10_000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      check(found, `${tag}: the test send is in the log through the send path`);
     }
 
     // Search by address: this pass's three rows.
     await page.locator("[data-testid=mails-q]").fill(notice);
     await page.locator("[data-testid=mails-search]").click();
     await page.waitForFunction(
-      () => document.querySelectorAll("[data-testid=mails-row]").length === 3,
-      null,
+      (addr) => {
+        const rows = [...document.querySelectorAll("[data-testid=mails-row]")];
+        return rows.length === 3 && rows.every((r) => r.textContent?.includes(addr));
+      },
+      notice,
       { timeout: 10_000 },
     );
     check(true, `${tag}: search by address finds its 3 mails`);
