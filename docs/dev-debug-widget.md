@@ -828,9 +828,38 @@ chat` prints it as an `answered` line.
   chatted once). They never see the owner's asks and cannot answer them; their
   answers reach listeners tagged with their `thread`.
 - The card greys out after the tap, shows the choice, says "Expired" past the
-  deadline, and stays in the history. A page from before this change (no
+  deadline ("Withdrawn" once the agent takes it back, below), and stays in the history. A page from before this change (no
   `onAnswer`) falls back to sending the choice as a typed line — that is
   **not** a tap-grade answer.
+
+### Withdrawing an ask
+
+An ask that became obsolete (the question was settled another way) can be
+taken back, so the owner no longer has to tap it (owner, 2026-11-03):
+
+```bash
+bun scripts/dev/eval.ts withdraw 054357d6-db3 --no-pair   # by askId or message id
+bun scripts/dev/eval.ts withdraw --last                  # latest open ask, owner's thread
+bun scripts/dev/eval.ts withdraw fa1 --to friend@x.com   # a card sent to a friend
+```
+
+- Wire: `{type:"withdraw", id, to?}` (`id` is the askId or the line's id,
+  validated in `lib/dev-eval.ts`); the hub answers and broadcasts
+  `{type:"withdrawn", id, askId, thread, withdrawnAt}` to that thread's
+  pages and the approved listeners (`eval.ts chat` prints it).
+- Hub rules (`withdraw()` in `workers/push/src/debug.ts`): a live chat grant
+  (never a pairing for a friend); only the thread named (`to`, as for `ask`:
+  the owner's by default, else the friend's the card was sent to; a card is
+  never found from another thread); only an agent line carrying an ask; only
+  while open — answered, expired or already withdrawn is refused. It stamps
+  `ask.withdrawnAt` on the kept line (an agent's own `ask` can never preset
+  it: `parseAsk` drops it), so `askState` says `"withdrawn"` and a later tap
+  is refused (`ask … is withdrawn`). `ask --wait` on that ask fails.
+- Page: the card collapses to a greyed "Withdrawn" (`askWithdrawn`, 已撤回)
+  with no options. It is never read aloud (speak-rules.ts rule 3): a line
+  missed while hidden is not read on return, a reading under way stops, and
+  the after-reload resume skips it. Compact mode drops it (only open asks
+  show there).
 
 **Security:** a hub-stamped `source:"tap"` answer from the owner's thread is
 a high-confidence approval — a deliberate touch on the owner's signed-in
@@ -1304,11 +1333,12 @@ There is no time of day in it, and no setting
 
 **Which `say` to use** (agents, read this):
 
-| Line                                                                     | Command                   | Read aloud                     |
-| ------------------------------------------------------------------------ | ------------------------- | ------------------------------ |
-| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                          |
-| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules |
-| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line         |
+| Line                                                                     | Command                   | Read aloud                          |
+| ------------------------------------------------------------------------ | ------------------------- | ----------------------------------- |
+| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                               |
+| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules      |
+| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line              |
+| a withdrawn ask card (`eval.ts withdraw`)                                | `eval.ts withdraw …`      | never (nor read on later)           |
 
 Default to `--quiet` whenever the line is not a reply to him. `--loud` is
 deprecated: `eval.ts` still accepts it and prints a note, and the line goes
@@ -1769,6 +1799,25 @@ batched to one per frame; two fingers down stop the native pan
 (`touchstart` prevented), and Safari's gesture events, which fire with the
 touches there, only stop the page zoom (before, both zoomed: a double, jumpy
 step). On a Mac trackpad the gesture events still zoom.
+
+The fitted zoom's two defaults (owner, 2026-11-10): `GANTT_FIT_PERCENTILE`
+0.95 and `GANTT_FIT_WIDTH` 0.75 — the P95 duration spans 75% of the width.
+A device can override them in `lk:pref:gantt` (`fitPercentile`,
+`fitWidth`; ui-store.ts ganttPrefs), ready for the config store; no UI sets
+them yet. Compact times pick their unit by size, one formatter for the axis
+and every ETA label (rgui `compactSpan`): Y from a year, then Mo, W, D, H,
+M ("1.1Y", never "400D").
+
+**Parked tasks** (owner, 2026-11-10: "9.1H remaining" on a parked item read
+as running): a node blocked, or waiting for the owner (status
+waiting-owner, or an open decision or approval nobody works on;
+lib/progress-tree.ts `parkedOf`), is `parked` on its ETA. In the Gantt and
+the chat's task list its bar is hollow and hatched (`parkedBar`) with no
+progress fill or overrun, its time reads "reminder in 9.1H"
+(`etaReminder`), and one waiting for the owner has a red "!" before its
+name ("?" for a decision), labelled "Waiting for you" (`etaWaitingYou`,
+the late red, AA on the track in both themes). A parked task is never the
+row the home view centres on.
 
 The axis math (scales, ticks, bars) is our component library's gantt module,
 `@snomiao/rgui/gantt` ([rgui.md](rgui.md)); `gantt-view.ts` re-exports it.

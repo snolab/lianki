@@ -185,6 +185,26 @@ export type AnsweredEvent = {
   labels: Record<string, string[]>;
 };
 
+/**
+ * The hub telling pages and listeners that the agent withdrew an open ask
+ * (eval.ts withdraw): the card greys out, takes no tap, and is never read aloud.
+ */
+export type WithdrawnEvent = {
+  type: "withdrawn";
+  /** The ask's message id, the ask's own id, and its thread. */
+  id: string;
+  askId: string;
+  thread: string;
+  withdrawnAt: number;
+};
+
+/** A message updated by a WithdrawnEvent; any other message is returned as is. */
+export function applyWithdrawn<M extends ChatMessage>(m: M, e: Omit<WithdrawnEvent, "type">): M {
+  if (m.id !== e.id || !m.ask || m.ask.askId !== e.askId || (m.thread ?? "owner") !== e.thread)
+    return m;
+  return { ...m, ask: { ...m.ask, withdrawnAt: e.withdrawnAt } };
+}
+
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
 export type MessageSource = "stt";
 /**
@@ -711,6 +731,10 @@ export type ChatStrings = {
   etaGanttLinear: string;
   /** The other of the two buttons of that switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis logarithmically, near times wide and far times compressed, so minutes and days fit one screen. A single short word for 'logarithmic' as on a chart's axis, abbreviated if usual (对数 in Chinese, 'Log' in English); the button is narrow. */
   etaGanttLog: string;
+  /** A task waiting for the owner (Gantt and list): the red mark's label, and before its reminder time. */
+  etaWaitingYou: string;
+  /** A parked task's time: when its reminder goes off, `{t}` a compact time ("9.1H"). */
+  etaReminder: string;
   /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
   etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
@@ -822,6 +846,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaGanttScale: "Time axis",
   etaGanttLinear: "Linear",
   etaGanttLog: "Log",
+  etaWaitingYou: "Waiting for you",
+  etaReminder: "reminder in {t}",
   etaList: "Timed tasks",
   etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",

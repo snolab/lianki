@@ -1,0 +1,1883 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`every template, every language, in the one layout signin-code 1`] = `
+{
+  "ar": 
+"482913 هو رمز تسجيل الدخول إلى Lianki
+---
+رمز تسجيل الدخول إلى Lianki:
+482913
+
+صالح لمدة 15 دقيقة.
+إذا لم تطلب ذلك، يمكنك تجاهل هذه الرسالة.
+
+—
+تتعلق هذه الرسالة بحسابك في Lianki، لذلك تُرسل دائمًا."
+,
+  "bn": 
+"482913 আপনার Lianki সাইন-ইন কোড
+---
+আপনার Lianki সাইন-ইন কোড:
+482913
+
+15 মিনিটের জন্য বৈধ।
+আপনি যদি এটি না চেয়ে থাকেন, তাহলে এই ইমেইলটি উপেক্ষা করতে পারেন।
+
+—
+এই ইমেলটি আপনার Lianki অ্যাকাউন্ট সম্পর্কে, তাই এটি সবসময় পাঠানো হয়।"
+,
+  "de": 
+"482913 ist dein Anmeldecode für Lianki
+---
+Dein Anmeldecode für Lianki:
+482913
+
+15 Minuten gültig.
+Wenn du das nicht angefordert hast, kannst du diese E-Mail ignorieren.
+
+—
+Diese E-Mail betrifft dein Lianki-Konto und wird deshalb immer gesendet."
+,
+  "en": 
+"482913 is your Lianki sign-in code
+---
+Your Lianki sign-in code:
+482913
+
+Valid for 15 minutes.
+If you did not ask for this, you can ignore this email.
+
+—
+This email is about your Lianki account, so it is always sent."
+,
+  "es": 
+"482913 es tu código de inicio de sesión de Lianki
+---
+Tu código de inicio de sesión de Lianki:
+482913
+
+Válido durante 15 minutos.
+Si no lo solicitaste, puedes ignorar este correo.
+
+—
+Este correo trata sobre tu cuenta de Lianki, por eso siempre se envía."
+,
+  "fr": 
+"482913 est votre code de connexion Lianki
+---
+Votre code de connexion Lianki :
+482913
+
+Valable 15 minutes.
+Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail.
+
+—
+Cet e-mail concerne votre compte Lianki : il est donc toujours envoyé."
+,
+  "hi": 
+"482913 आपका Lianki साइन-इन कोड है
+---
+आपका Lianki साइन-इन कोड:
+482913
+
+15 मिनट तक मान्य।
+अगर आपने यह अनुरोध नहीं किया था, तो आप इस ईमेल को अनदेखा कर सकते हैं।
+
+—
+यह ईमेल आपके Lianki खाते के बारे में है, इसलिए यह हमेशा भेजा जाता है।"
+,
+  "id": 
+"482913 adalah kode masuk Lianki kamu
+---
+Kode masuk Lianki kamu:
+482913
+
+Berlaku selama 15 menit.
+Jika kamu tidak memintanya, abaikan saja email ini.
+
+—
+Email ini tentang akun Lianki kamu, jadi selalu dikirim."
+,
+  "ja": 
+"482913 は Lianki のログインコードです
+---
+Lianki のログインコード：
+482913
+
+有効期限は 15 分です。
+このメールに心当たりがない場合は、無視していただいて問題ありません。
+
+—
+このメールはお使いの Lianki アカウントに関するものなので、常に送信されます。"
+,
+  "ko": 
+"482913 - Lianki 로그인 코드
+---
+Lianki 로그인 코드:
+482913
+
+15분 동안 유효합니다.
+직접 요청하지 않으셨다면 이 메일을 무시하셔도 됩니다.
+
+—
+이 메일은 회원님의 Lianki 계정에 관한 것이라 항상 발송됩니다."
+,
+  "mr": 
+"482913 हा तुमचा Lianki साइन-इन कोड आहे
+---
+तुमचा Lianki साइन-इन कोड:
+482913
+
+15 मिनिटांसाठी वैध.
+तुम्ही ही विनंती केली नसल्यास, या ईमेलकडे दुर्लक्ष करू शकता.
+
+—
+हा ईमेल तुमच्या Lianki खात्याबद्दल आहे, म्हणून तो नेहमी पाठवला जातो."
+,
+  "pt": 
+"482913 é seu código de acesso ao Lianki
+---
+Seu código de acesso ao Lianki:
+482913
+
+Válido por 15 minutos.
+Se você não pediu isso, pode ignorar este e-mail.
+
+—
+Este e-mail é sobre a sua conta do Lianki, por isso é sempre enviado."
+,
+  "ru": 
+"482913 — ваш код для входа в Lianki
+---
+Ваш код для входа в Lianki:
+482913
+
+Действует 15 минут.
+Если вы этого не запрашивали, просто проигнорируйте это письмо.
+
+—
+Это письмо касается вашего аккаунта Lianki, поэтому оно отправляется всегда."
+,
+  "sw": 
+"482913 ndiyo nambari yako ya kuingia kwenye Lianki
+---
+Nambari yako ya kuingia kwenye Lianki:
+482913
+
+Inatumika kwa dakika 15.
+Ikiwa hukuomba hili, unaweza kupuuza barua pepe hii.
+
+—
+Barua pepe hii inahusu akaunti yako ya Lianki, kwa hiyo hutumwa kila mara."
+,
+  "ur": 
+"482913 آپ کا Lianki سائن اِن کوڈ ہے
+---
+آپ کا Lianki سائن اِن کوڈ:
+482913
+
+15 منٹ کے لیے درست۔
+اگر آپ نے یہ درخواست نہیں کی تھی تو اس ای میل کو نظرانداز کر سکتے ہیں۔
+
+—
+یہ ای میل آپ کے Lianki اکاؤنٹ کے بارے میں ہے، اس لیے یہ ہمیشہ بھیجی جاتی ہے۔"
+,
+  "zh": 
+"482913 是你的炼記登录验证码
+---
+你的炼記（Lianki）登录验证码：
+482913
+
+15 分钟内有效。
+如果不是你本人操作，请忽略此邮件。
+
+—
+这封邮件与你的炼記账号有关，因此总会发送。"
+,
+  "zh-Hant": 
+"482913 是你的炼記登入驗證碼
+---
+你的炼記（Lianki）登入驗證碼：
+482913
+
+15 分鐘內有效。
+如果不是你本人操作，請忽略這封郵件。
+
+—
+這封郵件與你的炼記帳號有關，因此一定會寄出。"
+,
+}
+`;
+
+exports[`every template, every language, in the one layout signin-link 1`] = `
+{
+  "ar": 
+"سجّل الدخول إلى Lianki
+---
+افتح هذا الرابط لتسجيل الدخول إلى Lianki:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+صالح لمدة 15 دقيقة.
+إذا لم تطلب ذلك، يمكنك تجاهل هذه الرسالة.
+
+—
+تتعلق هذه الرسالة بحسابك في Lianki، لذلك تُرسل دائمًا."
+,
+  "bn": 
+"Lianki-এ সাইন ইন করুন
+---
+Lianki-এ সাইন ইন করতে এই লিংকটি খুলুন:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+15 মিনিটের জন্য বৈধ।
+আপনি যদি এটি না চেয়ে থাকেন, তাহলে এই ইমেইলটি উপেক্ষা করতে পারেন।
+
+—
+এই ইমেলটি আপনার Lianki অ্যাকাউন্ট সম্পর্কে, তাই এটি সবসময় পাঠানো হয়।"
+,
+  "de": 
+"Bei Lianki anmelden
+---
+Öffne diesen Link, um dich bei Lianki anzumelden:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+15 Minuten gültig.
+Wenn du das nicht angefordert hast, kannst du diese E-Mail ignorieren.
+
+—
+Diese E-Mail betrifft dein Lianki-Konto und wird deshalb immer gesendet."
+,
+  "en": 
+"Sign in to Lianki
+---
+Open this link to sign in to Lianki:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+Valid for 15 minutes.
+If you did not ask for this, you can ignore this email.
+
+—
+This email is about your Lianki account, so it is always sent."
+,
+  "es": 
+"Inicia sesión en Lianki
+---
+Abre este enlace para iniciar sesión en Lianki:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+Válido durante 15 minutos.
+Si no lo solicitaste, puedes ignorar este correo.
+
+—
+Este correo trata sobre tu cuenta de Lianki, por eso siempre se envía."
+,
+  "fr": 
+"Connectez-vous à Lianki
+---
+Ouvrez ce lien pour vous connecter à Lianki :
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+Valable 15 minutes.
+Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail.
+
+—
+Cet e-mail concerne votre compte Lianki : il est donc toujours envoyé."
+,
+  "hi": 
+"Lianki में साइन इन करें
+---
+Lianki में साइन इन करने के लिए यह लिंक खोलें:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+15 मिनट तक मान्य।
+अगर आपने यह अनुरोध नहीं किया था, तो आप इस ईमेल को अनदेखा कर सकते हैं।
+
+—
+यह ईमेल आपके Lianki खाते के बारे में है, इसलिए यह हमेशा भेजा जाता है।"
+,
+  "id": 
+"Masuk ke Lianki
+---
+Buka tautan ini untuk masuk ke Lianki:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+Berlaku selama 15 menit.
+Jika kamu tidak memintanya, abaikan saja email ini.
+
+—
+Email ini tentang akun Lianki kamu, jadi selalu dikirim."
+,
+  "ja": 
+"Lianki にログイン
+---
+以下のリンクを開いて Lianki にログインしてください：
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+有効期限は 15 分です。
+このメールに心当たりがない場合は、無視していただいて問題ありません。
+
+—
+このメールはお使いの Lianki アカウントに関するものなので、常に送信されます。"
+,
+  "ko": 
+"Lianki에 로그인
+---
+아래 링크를 열어 Lianki에 로그인하세요:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+15분 동안 유효합니다.
+직접 요청하지 않으셨다면 이 메일을 무시하셔도 됩니다.
+
+—
+이 메일은 회원님의 Lianki 계정에 관한 것이라 항상 발송됩니다."
+,
+  "mr": 
+"Lianki मध्ये साइन इन करा
+---
+Lianki मध्ये साइन इन करण्यासाठी ही लिंक उघडा:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+15 मिनिटांसाठी वैध.
+तुम्ही ही विनंती केली नसल्यास, या ईमेलकडे दुर्लक्ष करू शकता.
+
+—
+हा ईमेल तुमच्या Lianki खात्याबद्दल आहे, म्हणून तो नेहमी पाठवला जातो."
+,
+  "pt": 
+"Entre no Lianki
+---
+Abra este link para entrar no Lianki:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+Válido por 15 minutos.
+Se você não pediu isso, pode ignorar este e-mail.
+
+—
+Este e-mail é sobre a sua conta do Lianki, por isso é sempre enviado."
+,
+  "ru": 
+"Вход в Lianki
+---
+Откройте эту ссылку, чтобы войти в Lianki:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+Действует 15 минут.
+Если вы этого не запрашивали, просто проигнорируйте это письмо.
+
+—
+Это письмо касается вашего аккаунта Lianki, поэтому оно отправляется всегда."
+,
+  "sw": 
+"Ingia kwenye Lianki
+---
+Fungua kiungo hiki ili uingie kwenye Lianki:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+Inatumika kwa dakika 15.
+Ikiwa hukuomba hili, unaweza kupuuza barua pepe hii.
+
+—
+Barua pepe hii inahusu akaunti yako ya Lianki, kwa hiyo hutumwa kila mara."
+,
+  "ur": 
+"Lianki میں سائن اِن کریں
+---
+Lianki میں سائن اِن کرنے کے لیے یہ لنک کھولیں:
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+15 منٹ کے لیے درست۔
+اگر آپ نے یہ درخواست نہیں کی تھی تو اس ای میل کو نظرانداز کر سکتے ہیں۔
+
+—
+یہ ای میل آپ کے Lianki اکاؤنٹ کے بارے میں ہے، اس لیے یہ ہمیشہ بھیجی جاتی ہے۔"
+,
+  "zh": 
+"登录炼記
+---
+打开下面的链接登录炼記（Lianki）：
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+15 分钟内有效。
+如果不是你本人操作，请忽略此邮件。
+
+—
+这封邮件与你的炼記账号有关，因此总会发送。"
+,
+  "zh-Hant": 
+"登入炼記
+---
+開啟下方連結登入炼記（Lianki）：
+
+https://lianki.com/api/auth/magic-link/verify?token=SAMPLE
+
+15 分鐘內有效。
+如果不是你本人操作，請忽略這封郵件。
+
+—
+這封郵件與你的炼記帳號有關，因此一定會寄出。"
+,
+}
+`;
+
+exports[`every template, every language, in the one layout login-notice 1`] = `
+{
+  "ar": 
+"تسجيل دخول جديد إلى حسابك في Lianki
+---
+تم للتو تسجيل الدخول إلى حسابك في Lianki من متصفح لم يُستخدم من قبل.
+
+الوقت: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+الموقع التقريبي: Tokyo, Japan
+المتصفح: Safari · iPhone
+
+إذا كنت أنت، فلا داعي لفعل أي شيء.
+إذا لم تكن أنت، فسجّل الدخول واحذف من صفحة ملفك الشخصي أي مفتاح مرور لا تعرفه، وأخبرنا عبر https://lianki.com/contact.
+
+—
+إشعارات الأمان مثل هذا مفعّلة لحسابك. يمكنك إيقافها من تفضيلاتك (https://lianki.com/my/preferences#mail)، لكننا ننصح بإبقائها."
+,
+  "bn": 
+"আপনার Lianki অ্যাকাউন্টে নতুন সাইন-ইন
+---
+এইমাত্র আপনার Lianki অ্যাকাউন্টে এমন একটি ব্রাউজার থেকে সাইন ইন করা হয়েছে যা আগে কখনো ব্যবহার করা হয়নি।
+
+সময়: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+আনুমানিক অবস্থান: Tokyo, Japan
+ব্রাউজার: Safari · iPhone
+
+এটি যদি আপনি হয়ে থাকেন, তাহলে কিছু করার দরকার নেই।
+এটি যদি আপনি না হন, তাহলে সাইন ইন করে আপনার প্রোফাইল পেজ থেকে অচেনা যেকোনো পাসকি মুছে ফেলুন এবং https://lianki.com/contact-এ আমাদের জানান।
+
+—
+আপনার অ্যাকাউন্টে এই ধরনের নিরাপত্তা বিজ্ঞপ্তি চালু আছে। আপনি আপনার পছন্দসমূহ (https://lianki.com/my/preferences#mail)-এ এগুলো বন্ধ করতে পারেন, তবে চালু রাখার পরামর্শ দিই।"
+,
+  "de": 
+"Neue Anmeldung bei deinem Lianki-Konto
+---
+Bei deinem Lianki-Konto hat sich gerade jemand über einen Browser angemeldet, der bisher noch nicht verwendet wurde.
+
+Zeitpunkt: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+Ungefährer Standort: Tokyo, Japan
+Browser: Safari · iPhone
+
+Wenn du das warst, musst du nichts tun.
+Wenn du das nicht warst, melde dich an, entferne auf deiner Profilseite alle Passkeys, die du nicht kennst, und gib uns unter https://lianki.com/contact Bescheid.
+
+—
+Sicherheitshinweise wie dieser sind für dein Konto eingeschaltet. Du kannst sie unter deinen Einstellungen (https://lianki.com/my/preferences#mail) ausschalten, wir raten aber, sie anzulassen."
+,
+  "en": 
+"New sign-in to your Lianki account
+---
+Your Lianki account was just signed in to from a browser it has not used before.
+
+Time: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+Approximate location: Tokyo, Japan
+Browser: Safari · iPhone
+
+If this was you, there is nothing to do.
+If it was not you, sign in, remove any passkey you do not recognise on your profile page, and tell us at https://lianki.com/contact.
+
+—
+Security notices like this one are on for your account. You can turn them off in your preferences (https://lianki.com/my/preferences#mail), but we advise keeping them."
+,
+  "es": 
+"Nuevo inicio de sesión en tu cuenta de Lianki
+---
+Alguien acaba de iniciar sesión en tu cuenta de Lianki desde un navegador que no se había usado antes.
+
+Fecha y hora: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+Ubicación aproximada: Tokyo, Japan
+Navegador: Safari · iPhone
+
+Si fuiste tú, no tienes que hacer nada.
+Si no fuiste tú, inicia sesión, elimina en tu página de perfil las llaves de acceso que no reconozcas y avísanos en https://lianki.com/contact.
+
+—
+Los avisos de seguridad como este están activados en tu cuenta. Puedes desactivarlos en tus preferencias (https://lianki.com/my/preferences#mail), aunque te recomendamos mantenerlos."
+,
+  "fr": 
+"Nouvelle connexion à votre compte Lianki
+---
+Une connexion à votre compte Lianki vient d'avoir lieu depuis un navigateur jamais utilisé auparavant.
+
+Date et heure: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+Emplacement approximatif: Tokyo, Japan
+Navigateur: Safari · iPhone
+
+Si c'était vous, vous n'avez rien à faire.
+Si ce n'était pas vous, connectez-vous, supprimez sur votre page de profil toute clé d'accès que vous ne reconnaissez pas et prévenez-nous via https://lianki.com/contact.
+
+—
+Les avis de sécurité comme celui-ci sont activés pour votre compte. Vous pouvez les désactiver dans vos préférences (https://lianki.com/my/preferences#mail), mais nous vous conseillons de les garder."
+,
+  "hi": 
+"आपके Lianki खाते में नया साइन-इन
+---
+आपके Lianki खाते में अभी-अभी एक ऐसे ब्राउज़र से साइन इन किया गया जिसका पहले कभी उपयोग नहीं हुआ था।
+
+समय: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+अनुमानित स्थान: Tokyo, Japan
+ब्राउज़र: Safari · iPhone
+
+अगर यह आप ही थे, तो कुछ करने की ज़रूरत नहीं है।
+अगर यह आप नहीं थे, तो साइन इन करें, अपने प्रोफ़ाइल पेज पर कोई भी अनजान पासकी हटाएँ, और https://lianki.com/contact पर हमें बताएँ।
+
+—
+आपके खाते के लिए ऐसी सुरक्षा सूचनाएँ चालू हैं। आप इन्हें अपनी प्राथमिकताओं (https://lianki.com/my/preferences#mail) में बंद कर सकते हैं, लेकिन हमारी सलाह है कि इन्हें चालू रखें।"
+,
+  "id": 
+"Aktivitas masuk baru di akun Lianki kamu
+---
+Akun Lianki kamu baru saja dimasuki dari browser yang belum pernah digunakan sebelumnya.
+
+Waktu: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+Perkiraan lokasi: Tokyo, Japan
+Browser: Safari · iPhone
+
+Jika itu kamu, tidak ada yang perlu dilakukan.
+Jika itu bukan kamu, masuklah, hapus kunci sandi yang tidak kamu kenali di halaman profil, lalu beri tahu kami di https://lianki.com/contact.
+
+—
+Pemberitahuan keamanan seperti ini aktif untuk akunmu. Kamu bisa mematikannya di preferensimu (https://lianki.com/my/preferences#mail), tetapi kami sarankan tetap aktif."
+,
+  "ja": 
+"Lianki アカウントへの新しいログイン
+---
+お使いの Lianki アカウントに、これまで使われたことのないブラウザからログインがありました。
+
+日時: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+おおよその場所: Tokyo, Japan
+ブラウザ: Safari · iPhone
+
+ご本人によるログインであれば、対応は不要です。
+ご本人でない場合は、ログインしてプロフィールページで心当たりのないパスキーを削除し、https://lianki.com/contact からお知らせください。
+
+—
+お使いのアカウントでは、このようなセキュリティのお知らせがオンになっています。設定 (https://lianki.com/my/preferences#mail)でオフにできますが、オンのままにすることをおすすめします。"
+,
+  "ko": 
+"Lianki 계정에 새로운 로그인이 있습니다
+---
+회원님의 Lianki 계정에 이전에 사용한 적 없는 브라우저에서 방금 로그인했습니다.
+
+시간: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+대략적인 위치: Tokyo, Japan
+브라우저: Safari · iPhone
+
+본인이 로그인한 것이라면 따로 조치하실 필요가 없습니다.
+본인이 아니라면 로그인한 뒤 프로필 페이지에서 알 수 없는 패스키를 삭제하고 https://lianki.com/contact에서 알려 주세요.
+
+—
+회원님의 계정에는 이런 보안 알림이 켜져 있습니다. 환경설정 (https://lianki.com/my/preferences#mail)에서 끌 수 있지만 켜 두시기를 권장합니다."
+,
+  "mr": 
+"तुमच्या Lianki खात्यात नवीन साइन-इन
+---
+तुमच्या Lianki खात्यात आत्ताच पूर्वी कधीही न वापरलेल्या ब्राउझरमधून साइन इन केले गेले.
+
+वेळ: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+अंदाजे ठिकाण: Tokyo, Japan
+ब्राउझर: Safari · iPhone
+
+हे तुम्हीच असाल, तर काहीही करण्याची गरज नाही.
+हे तुम्ही नसाल, तर साइन इन करा, तुमच्या प्रोफाइल पेजवरून न ओळखणाऱ्या कोणत्याही पासकी काढून टाका आणि https://lianki.com/contact वर आम्हाला कळवा.
+
+—
+तुमच्या खात्यासाठी अशा सुरक्षा सूचना चालू आहेत. तुम्ही त्या तुमच्या पसंती (https://lianki.com/my/preferences#mail) मध्ये बंद करू शकता, पण त्या चालू ठेवण्याचा आमचा सल्ला आहे."
+,
+  "pt": 
+"Novo acesso à sua conta do Lianki
+---
+Sua conta do Lianki acabou de ser acessada por um navegador que nunca tinha sido usado antes.
+
+Data e hora: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+Localização aproximada: Tokyo, Japan
+Navegador: Safari · iPhone
+
+Se foi você, não precisa fazer nada.
+Se não foi você, entre na conta, remova na sua página de perfil qualquer chave de acesso que não reconheça e avise-nos em https://lianki.com/contact.
+
+—
+Avisos de segurança como este estão ativados na sua conta. Você pode desativá-los em suas preferências (https://lianki.com/my/preferences#mail), mas recomendamos mantê-los."
+,
+  "ru": 
+"Новый вход в ваш аккаунт Lianki
+---
+В ваш аккаунт Lianki только что выполнен вход из браузера, который раньше не использовался.
+
+Время: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+Примерное местоположение: Tokyo, Japan
+Браузер: Safari · iPhone
+
+Если это были вы, ничего делать не нужно.
+Если это были не вы, войдите в аккаунт, удалите на странице профиля незнакомые ключи доступа и сообщите нам: https://lianki.com/contact.
+
+—
+Такие уведомления о безопасности включены для вашего аккаунта. Их можно отключить в разделе «Настройки» (https://lianki.com/my/preferences#mail), но мы советуем оставить их."
+,
+  "sw": 
+"Kuingia kupya kwenye akaunti yako ya Lianki
+---
+Akaunti yako ya Lianki imeingiwa sasa hivi kutoka kwenye kivinjari ambacho hakijawahi kutumika hapo awali.
+
+Muda: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+Mahali takriban: Tokyo, Japan
+Kivinjari: Safari · iPhone
+
+Ikiwa ni wewe, huhitaji kufanya chochote.
+Ikiwa si wewe, ingia, ondoa funguo zozote za siri usizozitambua kwenye ukurasa wako wa wasifu, kisha utujulishe kupitia https://lianki.com/contact.
+
+—
+Taarifa za usalama kama hii zimewashwa kwa akaunti yako. Unaweza kuzizima kwenye mapendeleo yako (https://lianki.com/my/preferences#mail), lakini tunashauri uziache zikiwa zimewashwa."
+,
+  "ur": 
+"آپ کے Lianki اکاؤنٹ میں نیا سائن اِن
+---
+آپ کے Lianki اکاؤنٹ میں ابھی ایک ایسے براؤزر سے سائن اِن کیا گیا جو پہلے کبھی استعمال نہیں ہوا تھا۔
+
+وقت: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+تخمینی مقام: Tokyo, Japan
+براؤزر: Safari · iPhone
+
+اگر یہ آپ تھے تو کچھ کرنے کی ضرورت نہیں۔
+اگر یہ آپ نہیں تھے تو سائن اِن کریں، اپنے پروفائل صفحے سے کوئی بھی انجان پاس کی ہٹا دیں، اور https://lianki.com/contact پر ہمیں بتائیں۔
+
+—
+آپ کے اکاؤنٹ کے لیے اس طرح کی سیکیورٹی اطلاعات آن ہیں۔ آپ انہیں اپنی ترجیحات (https://lianki.com/my/preferences#mail) میں بند کر سکتے ہیں، لیکن ہمارا مشورہ ہے کہ انہیں آن رکھیں۔"
+,
+  "zh": 
+"你的炼記账号有新的登录
+---
+你的炼記（Lianki）账号刚刚在一个以前未使用过的浏览器上登录。
+
+时间: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+大致位置: Tokyo, Japan
+浏览器: Safari · iPhone
+
+如果是你本人操作，无需处理。
+如果不是你本人，请登录后在个人资料页删除不认识的通行密钥，并通过 https://lianki.com/contact 联系我们。
+
+—
+你的账号开启了这类安全提醒。你可以在偏好设置 (https://lianki.com/my/preferences#mail)中关闭，但我们建议保持开启。"
+,
+  "zh-Hant": 
+"你的炼記帳號有新的登入
+---
+你的炼記（Lianki）帳號剛剛在一個以前未曾使用過的瀏覽器上登入。
+
+時間: November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)
+大致位置: Tokyo, Japan
+瀏覽器: Safari · iPhone
+
+如果是你本人登入，無需處理。
+如果不是你本人，請登入後在個人資料頁面刪除不認得的密碼金鑰，並透過 https://lianki.com/contact 聯絡我們。
+
+—
+你的帳號開啟了這類安全提醒。你可以在偏好設定 (https://lianki.com/my/preferences#mail)中關閉，但我們建議保持開啟。"
+,
+}
+`;
+
+exports[`every template, every language, in the one layout email-confirm 1`] = `
+{
+  "ar": 
+"أكّد بريدك الإلكتروني الجديد في Lianki
+---
+طلب أحدهم استخدام هذا العنوان لحساب في Lianki. افتح هذا الرابط لتأكيده:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+صالح لمدة 1 ساعة. لن يتغيّر شيء حتى تؤكّد.
+إذا لم تطلب ذلك، يمكنك تجاهل هذه الرسالة.
+
+—
+تتعلق هذه الرسالة بحسابك في Lianki، لذلك تُرسل دائمًا."
+,
+  "bn": 
+"আপনার নতুন Lianki ইমেইল নিশ্চিত করুন
+---
+কেউ একটি Lianki অ্যাকাউন্টের জন্য এই ঠিকানাটি ব্যবহার করতে চেয়েছেন। নিশ্চিত করতে এই লিংকটি খুলুন:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+1 ঘণ্টার জন্য বৈধ। আপনি নিশ্চিত না করা পর্যন্ত কিছুই বদলাবে না।
+আপনি যদি এটি না চেয়ে থাকেন, তাহলে এই ইমেইলটি উপেক্ষা করতে পারেন।
+
+—
+এই ইমেলটি আপনার Lianki অ্যাকাউন্ট সম্পর্কে, তাই এটি সবসময় পাঠানো হয়।"
+,
+  "de": 
+"Bestätige deine neue E-Mail-Adresse für Lianki
+---
+Jemand möchte diese Adresse für ein Lianki-Konto verwenden. Öffne diesen Link, um sie zu bestätigen:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+1 Stunde gültig. Bis du bestätigst, ändert sich nichts.
+Wenn du das nicht angefordert hast, kannst du diese E-Mail ignorieren.
+
+—
+Diese E-Mail betrifft dein Lianki-Konto und wird deshalb immer gesendet."
+,
+  "en": 
+"Confirm your new Lianki email
+---
+Someone asked to use this address for a Lianki account. Open this link to confirm it:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+Valid for 1 hour. Nothing changes until you confirm.
+If you did not ask for this, you can ignore this email.
+
+—
+This email is about your Lianki account, so it is always sent."
+,
+  "es": 
+"Confirma tu nuevo correo de Lianki
+---
+Alguien pidió usar esta dirección para una cuenta de Lianki. Abre este enlace para confirmarla:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+Válido durante 1 hora. No cambia nada hasta que confirmes.
+Si no lo solicitaste, puedes ignorar este correo.
+
+—
+Este correo trata sobre tu cuenta de Lianki, por eso siempre se envía."
+,
+  "fr": 
+"Confirmez votre nouvelle adresse e-mail Lianki
+---
+Quelqu'un a demandé à utiliser cette adresse pour un compte Lianki. Ouvrez ce lien pour la confirmer :
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+Valable 1 heure. Rien ne change tant que vous n'avez pas confirmé.
+Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail.
+
+—
+Cet e-mail concerne votre compte Lianki : il est donc toujours envoyé."
+,
+  "hi": 
+"अपने नए Lianki ईमेल पते की पुष्टि करें
+---
+किसी ने इस पते को Lianki खाते के लिए इस्तेमाल करने का अनुरोध किया है। पुष्टि करने के लिए यह लिंक खोलें:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+1 घंटे तक मान्य। पुष्टि करने तक कुछ नहीं बदलेगा।
+अगर आपने यह अनुरोध नहीं किया था, तो आप इस ईमेल को अनदेखा कर सकते हैं।
+
+—
+यह ईमेल आपके Lianki खाते के बारे में है, इसलिए यह हमेशा भेजा जाता है।"
+,
+  "id": 
+"Konfirmasi email Lianki barumu
+---
+Seseorang meminta alamat ini dipakai untuk akun Lianki. Buka tautan ini untuk mengonfirmasinya:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+Berlaku selama 1 jam. Tidak ada yang berubah sampai kamu mengonfirmasi.
+Jika kamu tidak memintanya, abaikan saja email ini.
+
+—
+Email ini tentang akun Lianki kamu, jadi selalu dikirim."
+,
+  "ja": 
+"Lianki の新しいメールアドレスを確認してください
+---
+このメールアドレスを Lianki アカウントで使用するリクエストがありました。確認するには、以下のリンクを開いてください：
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+有効期限は 1 時間です。確認されるまで何も変更されません。
+このメールに心当たりがない場合は、無視していただいて問題ありません。
+
+—
+このメールはお使いの Lianki アカウントに関するものなので、常に送信されます。"
+,
+  "ko": 
+"Lianki 새 이메일 주소를 확인해 주세요
+---
+누군가 이 주소를 Lianki 계정에 사용하도록 요청했습니다. 확인하려면 아래 링크를 여세요:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+1시간 동안 유효합니다. 확인하기 전까지는 아무것도 바뀌지 않습니다.
+직접 요청하지 않으셨다면 이 메일을 무시하셔도 됩니다.
+
+—
+이 메일은 회원님의 Lianki 계정에 관한 것이라 항상 발송됩니다."
+,
+  "mr": 
+"तुमचा नवीन Lianki ईमेल निश्चित करा
+---
+कोणीतरी हा पत्ता Lianki खात्यासाठी वापरण्याची विनंती केली आहे. निश्चित करण्यासाठी ही लिंक उघडा:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+1 तासासाठी वैध. तुम्ही निश्चित करेपर्यंत काहीही बदलणार नाही.
+तुम्ही ही विनंती केली नसल्यास, या ईमेलकडे दुर्लक्ष करू शकता.
+
+—
+हा ईमेल तुमच्या Lianki खात्याबद्दल आहे, म्हणून तो नेहमी पाठवला जातो."
+,
+  "pt": 
+"Confirme seu novo e-mail do Lianki
+---
+Alguém pediu para usar este endereço em uma conta do Lianki. Abra este link para confirmá-lo:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+Válido por 1 hora. Nada muda até você confirmar.
+Se você não pediu isso, pode ignorar este e-mail.
+
+—
+Este e-mail é sobre a sua conta do Lianki, por isso é sempre enviado."
+,
+  "ru": 
+"Подтвердите новый адрес почты для Lianki
+---
+Кто-то хочет использовать этот адрес для аккаунта Lianki. Откройте ссылку, чтобы подтвердить его:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+Действует 1 час. Пока вы не подтвердите, ничего не изменится.
+Если вы этого не запрашивали, просто проигнорируйте это письмо.
+
+—
+Это письмо касается вашего аккаунта Lianki, поэтому оно отправляется всегда."
+,
+  "sw": 
+"Thibitisha barua pepe yako mpya ya Lianki
+---
+Mtu ameomba kutumia anwani hii kwa akaunti ya Lianki. Fungua kiungo hiki ili kuithibitisha:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+Inatumika kwa saa 1. Hakuna kitakachobadilika hadi uthibitishe.
+Ikiwa hukuomba hili, unaweza kupuuza barua pepe hii.
+
+—
+Barua pepe hii inahusu akaunti yako ya Lianki, kwa hiyo hutumwa kila mara."
+,
+  "ur": 
+"اپنی نئی Lianki ای میل کی تصدیق کریں
+---
+کسی نے یہ پتا Lianki اکاؤنٹ کے لیے استعمال کرنے کی درخواست کی ہے۔ تصدیق کے لیے یہ لنک کھولیں:
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+1 گھنٹے کے لیے درست۔ تصدیق تک کچھ تبدیل نہیں ہوگا۔
+اگر آپ نے یہ درخواست نہیں کی تھی تو اس ای میل کو نظرانداز کر سکتے ہیں۔
+
+—
+یہ ای میل آپ کے Lianki اکاؤنٹ کے بارے میں ہے، اس لیے یہ ہمیشہ بھیجی جاتی ہے۔"
+,
+  "zh": 
+"确认你的炼記新邮箱
+---
+有人申请把这个地址用于炼記（Lianki）账户。打开下面的链接确认：
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+1 小时内有效。确认之前不会有任何改动。
+如果不是你本人操作，请忽略此邮件。
+
+—
+这封邮件与你的炼記账号有关，因此总会发送。"
+,
+  "zh-Hant": 
+"確認你的炼記新電子郵件地址
+---
+有人申請將這個地址用於炼記（Lianki）帳號。請開啟下方連結確認：
+
+https://lianki.com/my/profile/email-confirm#SAMPLE
+
+1 小時內有效。確認之前不會有任何變更。
+如果不是你本人操作，請忽略這封郵件。
+
+—
+這封郵件與你的炼記帳號有關，因此一定會寄出。"
+,
+}
+`;
+
+exports[`every template, every language, in the one layout email-taken 1`] = `
+{
+  "ar": 
+"رُفض طلب تغيير بريد إلكتروني في Lianki
+---
+طلب أحدهم نقل حساب في Lianki إلى هذا العنوان، لكن لا يمكن استخدامه: فهو مرتبط بحساب بالفعل. لم يتغيّر شيء. يمكنك تسجيل الدخول بهذا العنوان كالمعتاد.
+
+إذا لم تطلب ذلك، يمكنك تجاهل هذه الرسالة.
+
+—
+تتعلق هذه الرسالة بحسابك في Lianki، لذلك تُرسل دائمًا."
+,
+  "bn": 
+"Lianki-এ একটি ইমেইল পরিবর্তন প্রত্যাখ্যান করা হয়েছে
+---
+কেউ একটি Lianki অ্যাকাউন্ট এই ঠিকানায় সরাতে চেয়েছিলেন, কিন্তু এটি ব্যবহার করা যাবে না: এটি আগে থেকেই একটি অ্যাকাউন্টের। কিছুই বদলানো হয়নি। আপনি আগের মতোই এই ঠিকানা দিয়ে সাইন ইন করতে পারেন।
+
+আপনি যদি এটি না চেয়ে থাকেন, তাহলে এই ইমেইলটি উপেক্ষা করতে পারেন।
+
+—
+এই ইমেলটি আপনার Lianki অ্যাকাউন্ট সম্পর্কে, তাই এটি সবসময় পাঠানো হয়।"
+,
+  "de": 
+"Eine E-Mail-Änderung bei Lianki wurde abgelehnt
+---
+Jemand wollte ein Lianki-Konto auf diese Adresse umstellen, aber sie kann nicht verwendet werden: Sie gehört bereits zu einem Konto. Es wurde nichts geändert. Du kannst dich wie gewohnt mit dieser Adresse anmelden.
+
+Wenn du das nicht angefordert hast, kannst du diese E-Mail ignorieren.
+
+—
+Diese E-Mail betrifft dein Lianki-Konto und wird deshalb immer gesendet."
+,
+  "en": 
+"A Lianki email change was refused
+---
+Someone asked to move a Lianki account to this address, but it can't be used: it already belongs to an account. Nothing was changed. You can sign in with this address as usual.
+
+If you did not ask for this, you can ignore this email.
+
+—
+This email is about your Lianki account, so it is always sent."
+,
+  "es": 
+"Se rechazó un cambio de correo en Lianki
+---
+Alguien pidió cambiar una cuenta de Lianki a esta dirección, pero no se puede usar: ya pertenece a una cuenta. No se cambió nada. Puedes iniciar sesión con esta dirección como siempre.
+
+Si no lo solicitaste, puedes ignorar este correo.
+
+—
+Este correo trata sobre tu cuenta de Lianki, por eso siempre se envía."
+,
+  "fr": 
+"Un changement d'adresse e-mail Lianki a été refusé
+---
+Quelqu'un a demandé à transférer un compte Lianki vers cette adresse, mais elle ne peut pas être utilisée : elle appartient déjà à un compte. Rien n'a été modifié. Vous pouvez vous connecter avec cette adresse comme d'habitude.
+
+Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail.
+
+—
+Cet e-mail concerne votre compte Lianki : il est donc toujours envoyé."
+,
+  "hi": 
+"Lianki ईमेल बदलने का अनुरोध अस्वीकार किया गया
+---
+किसी ने एक Lianki खाते को इस पते पर ले जाने का अनुरोध किया, लेकिन इसका उपयोग नहीं किया जा सकता: यह पहले से एक खाते से जुड़ा है। कुछ भी नहीं बदला गया। आप हमेशा की तरह इस पते से साइन इन कर सकते हैं।
+
+अगर आपने यह अनुरोध नहीं किया था, तो आप इस ईमेल को अनदेखा कर सकते हैं।
+
+—
+यह ईमेल आपके Lianki खाते के बारे में है, इसलिए यह हमेशा भेजा जाता है।"
+,
+  "id": 
+"Perubahan email Lianki ditolak
+---
+Seseorang meminta agar akun Lianki dipindahkan ke alamat ini, tetapi alamat ini tidak bisa dipakai: alamat ini sudah terhubung ke sebuah akun. Tidak ada yang diubah. Kamu tetap bisa masuk dengan alamat ini seperti biasa.
+
+Jika kamu tidak memintanya, abaikan saja email ini.
+
+—
+Email ini tentang akun Lianki kamu, jadi selalu dikirim."
+,
+  "ja": 
+"Lianki のメールアドレス変更が拒否されました
+---
+Lianki アカウントのメールアドレスをこのアドレスに変更するリクエストがありましたが、このアドレスはすでにアカウントに登録されているため使用できません。変更は行われていません。このアドレスでこれまでどおりログインできます。
+
+このメールに心当たりがない場合は、無視していただいて問題ありません。
+
+—
+このメールはお使いの Lianki アカウントに関するものなので、常に送信されます。"
+,
+  "ko": 
+"Lianki 이메일 변경 요청이 거부되었습니다
+---
+누군가 Lianki 계정의 이메일을 이 주소로 바꾸려고 했지만, 이 주소는 이미 계정에 등록되어 있어 사용할 수 없습니다. 아무것도 변경되지 않았습니다. 평소처럼 이 주소로 로그인하실 수 있습니다.
+
+직접 요청하지 않으셨다면 이 메일을 무시하셔도 됩니다.
+
+—
+이 메일은 회원님의 Lianki 계정에 관한 것이라 항상 발송됩니다."
+,
+  "mr": 
+"Lianki ईमेल बदलाची विनंती नाकारली गेली
+---
+कोणीतरी एखादे Lianki खाते या पत्त्यावर हलवण्याची विनंती केली, पण तो वापरता येणार नाही: तो आधीच एका खात्याशी जोडलेला आहे. काहीही बदलले नाही. तुम्ही नेहमीप्रमाणे या पत्त्याने साइन इन करू शकता.
+
+तुम्ही ही विनंती केली नसल्यास, या ईमेलकडे दुर्लक्ष करू शकता.
+
+—
+हा ईमेल तुमच्या Lianki खात्याबद्दल आहे, म्हणून तो नेहमी पाठवला जातो."
+,
+  "pt": 
+"Uma troca de e-mail no Lianki foi recusada
+---
+Alguém pediu para mudar uma conta do Lianki para este endereço, mas ele não pode ser usado: já pertence a uma conta. Nada foi alterado. Você pode entrar com este endereço normalmente.
+
+Se você não pediu isso, pode ignorar este e-mail.
+
+—
+Este e-mail é sobre a sua conta do Lianki, por isso é sempre enviado."
+,
+  "ru": 
+"Смена адреса почты в Lianki отклонена
+---
+Кто-то попытался перенести аккаунт Lianki на этот адрес, но его нельзя использовать: он уже привязан к аккаунту. Ничего не изменилось. Вы можете входить с этим адресом как обычно.
+
+Если вы этого не запрашивали, просто проигнорируйте это письмо.
+
+—
+Это письмо касается вашего аккаунта Lianki, поэтому оно отправляется всегда."
+,
+  "sw": 
+"Ombi la kubadilisha barua pepe ya Lianki limekataliwa
+---
+Mtu aliomba kuhamishia akaunti ya Lianki kwenye anwani hii, lakini haiwezi kutumika: tayari inatumiwa na akaunti. Hakuna kilichobadilishwa. Unaweza kuingia kwa anwani hii kama kawaida.
+
+Ikiwa hukuomba hili, unaweza kupuuza barua pepe hii.
+
+—
+Barua pepe hii inahusu akaunti yako ya Lianki, kwa hiyo hutumwa kila mara."
+,
+  "ur": 
+"Lianki میں ای میل کی تبدیلی مسترد کر دی گئی
+---
+کسی نے Lianki اکاؤنٹ کو اس پتے پر منتقل کرنے کی درخواست کی، لیکن یہ استعمال نہیں ہو سکتا: یہ پہلے سے ایک اکاؤنٹ سے منسلک ہے۔ کچھ بھی تبدیل نہیں ہوا۔ آپ اس پتے سے حسبِ معمول سائن اِن کر سکتے ہیں۔
+
+اگر آپ نے یہ درخواست نہیں کی تھی تو اس ای میل کو نظرانداز کر سکتے ہیں۔
+
+—
+یہ ای میل آپ کے Lianki اکاؤنٹ کے بارے میں ہے، اس لیے یہ ہمیشہ بھیجی جاتی ہے۔"
+,
+  "zh": 
+"一次炼記邮箱更改被拒绝
+---
+有人申请把炼記账户改到这个地址，但这个地址无法使用：它已属于一个账户。没有任何改动。你可以照常用这个地址登录。
+
+如果不是你本人操作，请忽略此邮件。
+
+—
+这封邮件与你的炼記账号有关，因此总会发送。"
+,
+  "zh-Hant": 
+"一項炼記電子郵件地址變更遭到拒絕
+---
+有人申請將炼記帳號改用這個地址，但這個地址無法使用：它已屬於某個帳號。沒有任何變更。你可以照常用這個地址登入。
+
+如果不是你本人操作，請忽略這封郵件。
+
+—
+這封郵件與你的炼記帳號有關，因此一定會寄出。"
+,
+}
+`;
+
+exports[`every template, every language, in the one layout email-requested 1`] = `
+{
+  "ar": 
+"طُلب تغيير بريدك الإلكتروني في Lianki
+---
+طلب شخص مسجّل الدخول إلى حسابك في Lianki تغيير بريده الإلكتروني إلى n***@example.com. لن يتغيّر إلا بعد تأكيد ذلك العنوان.
+
+إذا لم تكن أنت، فتواصل معنا فورًا: https://lianki.com/contact
+
+—
+تتعلق هذه الرسالة بحسابك في Lianki، لذلك تُرسل دائمًا."
+,
+  "bn": 
+"আপনার Lianki ইমেইল পরিবর্তনের অনুরোধ করা হয়েছে
+---
+আপনার Lianki অ্যাকাউন্টে সাইন ইন করা কেউ এর ইমেইল n***@example.com-এ বদলানোর অনুরোধ করেছেন। ওই ঠিকানা নিশ্চিত হলেই কেবল এটি বদলাবে।
+
+এটি যদি আপনি না হন, এখনই আমাদের সাথে যোগাযোগ করুন: https://lianki.com/contact
+
+—
+এই ইমেলটি আপনার Lianki অ্যাকাউন্ট সম্পর্কে, তাই এটি সবসময় পাঠানো হয়।"
+,
+  "de": 
+"Änderung deiner E-Mail-Adresse bei Lianki angefordert
+---
+Jemand, der in deinem Lianki-Konto angemeldet ist, hat beantragt, die E-Mail-Adresse in n***@example.com zu ändern. Sie wird erst geändert, wenn diese Adresse bestätigt ist.
+
+Wenn du das nicht warst, schreib uns sofort: https://lianki.com/contact
+
+—
+Diese E-Mail betrifft dein Lianki-Konto und wird deshalb immer gesendet."
+,
+  "en": 
+"A change of your Lianki email was requested
+---
+Someone signed in to your Lianki account asked to change its email to n***@example.com. It changes only once that address is confirmed.
+
+If this wasn't you, contact us right away: https://lianki.com/contact
+
+—
+This email is about your Lianki account, so it is always sent."
+,
+  "es": 
+"Se solicitó cambiar tu correo de Lianki
+---
+Alguien con la sesión iniciada en tu cuenta de Lianki pidió cambiar su correo a n***@example.com. Solo cambiará cuando se confirme esa dirección.
+
+Si no fuiste tú, contáctanos de inmediato: https://lianki.com/contact
+
+—
+Este correo trata sobre tu cuenta de Lianki, por eso siempre se envía."
+,
+  "fr": 
+"Une modification de votre adresse e-mail Lianki a été demandée
+---
+Une personne connectée à votre compte Lianki a demandé à remplacer son adresse e-mail par n***@example.com. Le changement n'aura lieu qu'une fois cette adresse confirmée.
+
+Si ce n'était pas vous, contactez-nous immédiatement : https://lianki.com/contact
+
+—
+Cet e-mail concerne votre compte Lianki : il est donc toujours envoyé."
+,
+  "hi": 
+"आपके Lianki ईमेल को बदलने का अनुरोध किया गया है
+---
+आपके Lianki खाते में साइन इन किसी व्यक्ति ने इसका ईमेल n***@example.com में बदलने का अनुरोध किया है। यह तभी बदलेगा जब उस पते की पुष्टि हो जाएगी।
+
+अगर यह आप नहीं थे, तो तुरंत हमसे संपर्क करें: https://lianki.com/contact
+
+—
+यह ईमेल आपके Lianki खाते के बारे में है, इसलिए यह हमेशा भेजा जाता है।"
+,
+  "id": 
+"Ada permintaan untuk mengubah email Lianki kamu
+---
+Seseorang yang masuk ke akun Lianki kamu meminta email akun diubah menjadi n***@example.com. Perubahan baru berlaku setelah alamat itu dikonfirmasi.
+
+Jika ini bukan kamu, segera hubungi kami: https://lianki.com/contact
+
+—
+Email ini tentang akun Lianki kamu, jadi selalu dikirim."
+,
+  "ja": 
+"Lianki のメールアドレス変更がリクエストされました
+---
+Lianki アカウントにログインしている人が、メールアドレスを n***@example.com に変更するようリクエストしました。そのアドレスが確認されるまで変更はされません。
+
+お心当たりがない場合は、すぐにご連絡ください：https://lianki.com/contact
+
+—
+このメールはお使いの Lianki アカウントに関するものなので、常に送信されます。"
+,
+  "ko": 
+"Lianki 이메일 변경이 요청되었습니다
+---
+Lianki 계정에 로그인한 사용자가 이메일을 n***@example.com(으)로 변경하도록 요청했습니다. 해당 주소가 확인되어야만 변경됩니다.
+
+본인이 아니라면 즉시 문의해 주세요: https://lianki.com/contact
+
+—
+이 메일은 회원님의 Lianki 계정에 관한 것이라 항상 발송됩니다."
+,
+  "mr": 
+"तुमचा Lianki ईमेल बदलण्याची विनंती केली गेली
+---
+तुमच्या Lianki खात्यात साइन इन केलेल्या कोणीतरी त्याचा ईमेल n***@example.com असा बदलण्याची विनंती केली आहे. तो पत्ता निश्चित झाल्यावरच बदल होईल.
+
+हे तुम्ही नसाल, तर लगेच आमच्याशी संपर्क साधा: https://lianki.com/contact
+
+—
+हा ईमेल तुमच्या Lianki खात्याबद्दल आहे, म्हणून तो नेहमी पाठवला जातो."
+,
+  "pt": 
+"Foi solicitada a troca do seu e-mail do Lianki
+---
+Alguém conectado à sua conta do Lianki pediu para trocar o e-mail dela para n***@example.com. A troca só acontece quando esse endereço for confirmado.
+
+Se não foi você, fale conosco imediatamente: https://lianki.com/contact
+
+—
+Este e-mail é sobre a sua conta do Lianki, por isso é sempre enviado."
+,
+  "ru": 
+"Запрошена смена адреса почты в Lianki
+---
+Кто-то, выполнивший вход в ваш аккаунт Lianki, запросил смену адреса почты на n***@example.com. Адрес изменится только после подтверждения нового.
+
+Если это были не вы, сразу напишите нам: https://lianki.com/contact
+
+—
+Это письмо касается вашего аккаунта Lianki, поэтому оно отправляется всегда."
+,
+  "sw": 
+"Ombi la kubadilisha barua pepe yako ya Lianki limetumwa
+---
+Mtu aliyeingia kwenye akaunti yako ya Lianki ameomba kubadilisha barua pepe yake kuwa n***@example.com. Itabadilika tu baada ya anwani hiyo kuthibitishwa.
+
+Ikiwa si wewe, wasiliana nasi mara moja: https://lianki.com/contact
+
+—
+Barua pepe hii inahusu akaunti yako ya Lianki, kwa hiyo hutumwa kila mara."
+,
+  "ur": 
+"آپ کی Lianki ای میل تبدیل کرنے کی درخواست کی گئی ہے
+---
+آپ کے Lianki اکاؤنٹ میں سائن اِن کسی شخص نے اس کی ای میل n***@example.com میں تبدیل کرنے کی درخواست کی ہے۔ یہ تبھی بدلے گی جب اس پتے کی تصدیق ہو جائے گی۔
+
+اگر یہ آپ نہیں تھے تو فوراً ہم سے رابطہ کریں: https://lianki.com/contact
+
+—
+یہ ای میل آپ کے Lianki اکاؤنٹ کے بارے میں ہے، اس لیے یہ ہمیشہ بھیجی جاتی ہے۔"
+,
+  "zh": 
+"有人申请更改你的炼記邮箱
+---
+已登录你炼記账户的人申请把邮箱改为 n***@example.com。只有在那个地址确认后才会更改。
+
+如果不是你本人操作，请立即联系我们：https://lianki.com/contact
+
+—
+这封邮件与你的炼記账号有关，因此总会发送。"
+,
+  "zh-Hant": 
+"有人申請變更你的炼記電子郵件地址
+---
+已登入你炼記帳號的人申請將電子郵件地址改為 n***@example.com。必須在該地址確認後才會變更。
+
+如果不是你本人操作，請立即聯絡我們：https://lianki.com/contact
+
+—
+這封郵件與你的炼記帳號有關，因此一定會寄出。"
+,
+}
+`;
+
+exports[`every template, every language, in the one layout email-changed 1`] = `
+{
+  "ar": 
+"تم تغيير بريدك الإلكتروني في Lianki
+---
+أصبح البريد الإلكتروني لحسابك في Lianki الآن n***@example.com. لم يعد هذا العنوان يتيح تسجيل الدخول إليه.
+
+إذا لم تكن أنت، فتواصل معنا فورًا: https://lianki.com/contact
+
+—
+تتعلق هذه الرسالة بحسابك في Lianki، لذلك تُرسل دائمًا."
+,
+  "bn": 
+"আপনার Lianki ইমেইল পরিবর্তন করা হয়েছে
+---
+আপনার Lianki অ্যাকাউন্টের ইমেইল এখন n***@example.com। এই ঠিকানা দিয়ে আর এতে সাইন ইন করা যাবে না।
+
+এটি যদি আপনি না হন, এখনই আমাদের সাথে যোগাযোগ করুন: https://lianki.com/contact
+
+—
+এই ইমেলটি আপনার Lianki অ্যাকাউন্ট সম্পর্কে, তাই এটি সবসময় পাঠানো হয়।"
+,
+  "de": 
+"Deine E-Mail-Adresse bei Lianki wurde geändert
+---
+Die E-Mail-Adresse deines Lianki-Kontos ist jetzt n***@example.com. Mit dieser Adresse kannst du dich nicht mehr anmelden.
+
+Wenn du das nicht warst, schreib uns sofort: https://lianki.com/contact
+
+—
+Diese E-Mail betrifft dein Lianki-Konto und wird deshalb immer gesendet."
+,
+  "en": 
+"Your Lianki email was changed
+---
+Your Lianki account's email is now n***@example.com. This address no longer signs in to it.
+
+If this wasn't you, contact us right away: https://lianki.com/contact
+
+—
+This email is about your Lianki account, so it is always sent."
+,
+  "es": 
+"Se cambió tu correo de Lianki
+---
+El correo de tu cuenta de Lianki ahora es n***@example.com. Esta dirección ya no sirve para iniciar sesión en ella.
+
+Si no fuiste tú, contáctanos de inmediato: https://lianki.com/contact
+
+—
+Este correo trata sobre tu cuenta de Lianki, por eso siempre se envía."
+,
+  "fr": 
+"Votre adresse e-mail Lianki a été modifiée
+---
+L'adresse e-mail de votre compte Lianki est désormais n***@example.com. Cette adresse ne permet plus de vous y connecter.
+
+Si ce n'était pas vous, contactez-nous immédiatement : https://lianki.com/contact
+
+—
+Cet e-mail concerne votre compte Lianki : il est donc toujours envoyé."
+,
+  "hi": 
+"आपका Lianki ईमेल बदल दिया गया है
+---
+आपके Lianki खाते का ईमेल अब n***@example.com है। इस पते से अब उसमें साइन इन नहीं किया जा सकता।
+
+अगर यह आप नहीं थे, तो तुरंत हमसे संपर्क करें: https://lianki.com/contact
+
+—
+यह ईमेल आपके Lianki खाते के बारे में है, इसलिए यह हमेशा भेजा जाता है।"
+,
+  "id": 
+"Email Lianki kamu telah diubah
+---
+Email akun Lianki kamu sekarang n***@example.com. Alamat ini tidak bisa lagi dipakai untuk masuk ke akun tersebut.
+
+Jika ini bukan kamu, segera hubungi kami: https://lianki.com/contact
+
+—
+Email ini tentang akun Lianki kamu, jadi selalu dikirim."
+,
+  "ja": 
+"Lianki のメールアドレスが変更されました
+---
+Lianki アカウントのメールアドレスは n***@example.com に変更されました。このアドレスではログインできなくなりました。
+
+お心当たりがない場合は、すぐにご連絡ください：https://lianki.com/contact
+
+—
+このメールはお使いの Lianki アカウントに関するものなので、常に送信されます。"
+,
+  "ko": 
+"Lianki 이메일이 변경되었습니다
+---
+Lianki 계정의 이메일이 이제 n***@example.com입니다. 이 주소로는 더 이상 로그인할 수 없습니다.
+
+본인이 아니라면 즉시 문의해 주세요: https://lianki.com/contact
+
+—
+이 메일은 회원님의 Lianki 계정에 관한 것이라 항상 발송됩니다."
+,
+  "mr": 
+"तुमचा Lianki ईमेल बदलला गेला
+---
+तुमच्या Lianki खात्याचा ईमेल आता n***@example.com आहे. या पत्त्याने आता त्या खात्यात साइन इन करता येणार नाही.
+
+हे तुम्ही नसाल, तर लगेच आमच्याशी संपर्क साधा: https://lianki.com/contact
+
+—
+हा ईमेल तुमच्या Lianki खात्याबद्दल आहे, म्हणून तो नेहमी पाठवला जातो."
+,
+  "pt": 
+"Seu e-mail do Lianki foi alterado
+---
+O e-mail da sua conta do Lianki agora é n***@example.com. Este endereço não serve mais para entrar nela.
+
+Se não foi você, fale conosco imediatamente: https://lianki.com/contact
+
+—
+Este e-mail é sobre a sua conta do Lianki, por isso é sempre enviado."
+,
+  "ru": 
+"Адрес почты в Lianki изменён
+---
+Адрес почты вашего аккаунта Lianki теперь n***@example.com. С этим адресом войти в аккаунт больше нельзя.
+
+Если это были не вы, сразу напишите нам: https://lianki.com/contact
+
+—
+Это письмо касается вашего аккаунта Lianki, поэтому оно отправляется всегда."
+,
+  "sw": 
+"Barua pepe yako ya Lianki imebadilishwa
+---
+Barua pepe ya akaunti yako ya Lianki sasa ni n***@example.com. Anwani hii haiwezi tena kutumika kuingia kwenye akaunti hiyo.
+
+Ikiwa si wewe, wasiliana nasi mara moja: https://lianki.com/contact
+
+—
+Barua pepe hii inahusu akaunti yako ya Lianki, kwa hiyo hutumwa kila mara."
+,
+  "ur": 
+"آپ کی Lianki ای میل تبدیل کر دی گئی
+---
+آپ کے Lianki اکاؤنٹ کی ای میل اب n***@example.com ہے۔ اس پتے سے اب اس میں سائن اِن نہیں ہو سکتا۔
+
+اگر یہ آپ نہیں تھے تو فوراً ہم سے رابطہ کریں: https://lianki.com/contact
+
+—
+یہ ای میل آپ کے Lianki اکاؤنٹ کے بارے میں ہے، اس لیے یہ ہمیشہ بھیجی جاتی ہے۔"
+,
+  "zh": 
+"你的炼記邮箱已更改
+---
+你的炼記账户邮箱现在是 n***@example.com。这个地址不能再登录该账户。
+
+如果不是你本人操作，请立即联系我们：https://lianki.com/contact
+
+—
+这封邮件与你的炼記账号有关，因此总会发送。"
+,
+  "zh-Hant": 
+"你的炼記電子郵件地址已變更
+---
+你的炼記帳號電子郵件地址現在是 n***@example.com。這個地址已無法再登入該帳號。
+
+如果不是你本人操作，請立即聯絡我們：https://lianki.com/contact
+
+—
+這封郵件與你的炼記帳號有關，因此一定會寄出。"
+,
+}
+`;
+
+exports[`every template, every language, in the one layout invite 1`] = `
+{
+  "ar": 
+"دعاك Sample Friend إلى Lianki
+---
+الدعوة من: Sample Friend
+
+يتعلّم Sample Friend باستخدام Lianki، وهو تطبيق للتكرار المتباعد لتعلّم اللغات وكل ما يستحق التذكّر، ويودّ أن تنضم إليه.
+
+سجّل عبر هذه الدعوة لتطول تجربتك المجانية 30 يومًا: 120 يومًا بدلًا من 90.
+
+اقبل الدعوة
+https://lianki.com/i/PREVIEW
+
+—
+وصلتك هذه الرسالة لأن Sample Friend أدخل عنوانك في Lianki ليدعوك. إنها دعوة لمرة واحدة: لم تتم إضافتك إلى أي قائمة بريدية.
+
+أُرسلت هذه الرسالة إلى friend@example.com لأن Sample Friend دعاك.
+إلغاء الاشتراك: لا تصلني دعوات Lianki مرة أخرى
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+الإبلاغ عن إساءة
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+أرسلها Lianki (lianki.com) نيابةً عن Sample Friend.
+لديك أسئلة؟ تواصل معنا: https://lianki.com/contacts"
+,
+  "bn": 
+"Sample Friend আপনাকে Lianki-তে আমন্ত্রণ জানিয়েছেন
+---
+আমন্ত্রণ জানিয়েছেন: Sample Friend
+
+Sample Friend Lianki দিয়ে শেখেন — ভাষা ও মনে রাখার মতো যেকোনো কিছুর জন্য একটি স্পেসড-রিপিটিশন অ্যাপ — এবং চান আপনিও যোগ দিন।
+
+এই আমন্ত্রণের মাধ্যমে সাইন আপ করলে আপনার বিনামূল্যে ট্রায়াল 30 দিন বেশি হবে: 90-এর বদলে 120 দিন।
+
+আমন্ত্রণ গ্রহণ করুন
+https://lianki.com/i/PREVIEW
+
+—
+আপনি এই ইমেইল পাচ্ছেন কারণ Sample Friend আপনাকে আমন্ত্রণ জানাতে Lianki-তে আপনার ঠিকানা দিয়েছেন। এটি একবারের আমন্ত্রণ: আপনাকে কোনো মেইলিং লিস্টে যোগ করা হয়নি।
+
+এই ইমেইলটি friend@example.com-এ পাঠানো হয়েছে, কারণ Sample Friend আপনাকে আমন্ত্রণ জানিয়েছেন।
+আনসাবস্ক্রাইব: আর কখনো Lianki-র আমন্ত্রণ পাব না
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+অপব্যবহার রিপোর্ট করুন
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Sample Friend-এর পক্ষ থেকে Lianki (lianki.com) পাঠিয়েছে।
+প্রশ্ন আছে? আমাদের সাথে যোগাযোগ করুন: https://lianki.com/contacts"
+,
+  "de": 
+"Sample Friend hat dich zu Lianki eingeladen
+---
+Eingeladen von: Sample Friend
+
+Sample Friend lernt mit Lianki, einer App für verteiltes Wiederholen – für Sprachen und alles, was man sich merken möchte – und möchte, dass du mitmachst.
+
+Melde dich über diese Einladung an, und deine kostenlose Testphase ist 30 Tage länger: 120 statt 90 Tage.
+
+Einladung annehmen
+https://lianki.com/i/PREVIEW
+
+—
+Du bekommst diese E-Mail, weil Sample Friend deine Adresse bei Lianki eingegeben hat, um dich einzuladen. Es ist eine einmalige Einladung: Du wurdest in keinen Verteiler aufgenommen.
+
+Diese E-Mail wurde an friend@example.com gesendet, weil Sample Friend dich eingeladen hat.
+Abmelden: nie wieder eine Lianki-Einladung erhalten
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+Missbrauch melden
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Gesendet von Lianki (lianki.com) im Auftrag von Sample Friend.
+Fragen? Schreib uns: https://lianki.com/contacts"
+,
+  "en": 
+"Sample Friend invited you to Lianki
+---
+Invited by Sample Friend
+
+Sample Friend learns with Lianki, a spaced-repetition app for languages and anything else worth remembering, and would like you to join.
+
+Sign up through this invite and your free trial is 30 days longer: 120 days instead of 90.
+
+Accept the invite
+https://lianki.com/i/PREVIEW
+
+—
+You are getting this email because Sample Friend entered your address on Lianki to invite you. It is a one-time invitation: you have not been added to any mailing list.
+
+This email was sent to friend@example.com because Sample Friend invited you.
+Unsubscribe: never get a Lianki invite again
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+Report abuse
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Sent by Lianki (lianki.com) on behalf of Sample Friend.
+Questions? Contact us: https://lianki.com/contacts"
+,
+  "es": 
+"Sample Friend te invitó a Lianki
+---
+Te invita: Sample Friend
+
+Sample Friend aprende con Lianki, una app de repetición espaciada para idiomas y todo lo que valga la pena recordar, y le gustaría que te unieras.
+
+Regístrate con esta invitación y tu prueba gratuita dura 30 días más: 120 días en lugar de 90.
+
+Aceptar la invitación
+https://lianki.com/i/PREVIEW
+
+—
+Recibes este correo porque Sample Friend introdujo tu dirección en Lianki para invitarte. Es una invitación única: no se te ha añadido a ninguna lista de correo.
+
+Este correo se envió a friend@example.com porque Sample Friend te invitó.
+Darse de baja: no recibir nunca más invitaciones de Lianki
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+Denunciar abuso
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Enviado por Lianki (lianki.com) en nombre de Sample Friend.
+¿Preguntas? Contáctanos: https://lianki.com/contacts"
+,
+  "fr": 
+"Sample Friend vous invite sur Lianki
+---
+Invitation de : Sample Friend
+
+Sample Friend apprend avec Lianki, une appli de répétition espacée pour les langues et tout ce qui mérite d'être retenu, et aimerait que vous la rejoigniez.
+
+Inscrivez-vous avec cette invitation et votre essai gratuit dure 30 jours de plus : 120 jours au lieu de 90.
+
+Accepter l'invitation
+https://lianki.com/i/PREVIEW
+
+—
+Vous recevez cet e-mail parce que Sample Friend a saisi votre adresse sur Lianki pour vous inviter. C'est une invitation unique : vous n'avez été ajouté à aucune liste de diffusion.
+
+Cet e-mail a été envoyé à friend@example.com parce que Sample Friend vous a invité.
+Se désabonner : ne plus jamais recevoir d'invitation Lianki
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+Signaler un abus
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Envoyé par Lianki (lianki.com) de la part de Sample Friend.
+Des questions ? Contactez-nous : https://lianki.com/contacts"
+,
+  "hi": 
+"Sample Friend ने आपको Lianki पर आमंत्रित किया है
+---
+आमंत्रित करने वाले: Sample Friend
+
+Sample Friend Lianki से सीखते हैं — भाषाएँ और याद रखने लायक कुछ भी सीखने के लिए एक स्पेस्ड-रिपिटिशन ऐप — और चाहते हैं कि आप भी जुड़ें।
+
+इस आमंत्रण से साइन अप करें और आपका मुफ़्त ट्रायल 30 दिन लंबा होगा: 90 के बजाय 120 दिन।
+
+आमंत्रण स्वीकार करें
+https://lianki.com/i/PREVIEW
+
+—
+आपको यह ईमेल इसलिए मिला क्योंकि Sample Friend ने आपको आमंत्रित करने के लिए Lianki पर आपका पता डाला। यह एक बार का आमंत्रण है: आपको किसी मेलिंग सूची में नहीं जोड़ा गया है।
+
+यह ईमेल friend@example.com पर भेजा गया क्योंकि Sample Friend ने आपको आमंत्रित किया।
+सदस्यता छोड़ें: Lianki का कोई आमंत्रण फिर कभी न पाएँ
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+दुरुपयोग की रिपोर्ट करें
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Sample Friend की ओर से Lianki (lianki.com) द्वारा भेजा गया।
+कोई सवाल? हमसे संपर्क करें: https://lianki.com/contacts"
+,
+  "id": 
+"Sample Friend mengundangmu ke Lianki
+---
+Diundang oleh: Sample Friend
+
+Sample Friend belajar dengan Lianki, aplikasi pengulangan berjarak untuk bahasa dan apa pun yang layak diingat, dan ingin kamu ikut bergabung.
+
+Daftar lewat undangan ini dan uji coba gratismu 30 hari lebih lama: 120 hari, bukan 90.
+
+Terima undangan
+https://lianki.com/i/PREVIEW
+
+—
+Kamu menerima email ini karena Sample Friend memasukkan alamatmu di Lianki untuk mengundangmu. Ini undangan sekali saja: kamu tidak ditambahkan ke milis apa pun.
+
+Email ini dikirim ke friend@example.com karena Sample Friend mengundangmu.
+Berhenti berlangganan: jangan kirimi saya undangan Lianki lagi
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+Laporkan penyalahgunaan
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Dikirim oleh Lianki (lianki.com) atas nama Sample Friend.
+Ada pertanyaan? Hubungi kami: https://lianki.com/contacts"
+,
+  "ja": 
+"Sample Friend さんから Lianki への招待が届きました
+---
+招待した人：Sample Friend
+
+Sample Friend さんは Lianki で学習しています。Lianki は、語学をはじめ覚えておきたいことを間隔反復で身につけるアプリです。あなたにもぜひ使ってほしいそうです。
+
+この招待から登録すると、無料体験が 30 日延びて、90 日ではなく 120 日になります。
+
+招待を受ける
+https://lianki.com/i/PREVIEW
+
+—
+このメールは、Sample Friend さんがあなたを招待するために Lianki であなたのアドレスを入力したため送信されました。1 回限りの招待で、メーリングリストには登録されていません。
+
+このメールは、Sample Friend さんがあなたを招待したため friend@example.com 宛てに送信されました。
+配信停止：今後 Lianki の招待メールを受け取らない
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+迷惑行為を報告
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Sample Friend さんに代わって Lianki（lianki.com）が送信しました。
+ご質問はこちらから：https://lianki.com/contacts"
+,
+  "ko": 
+"Sample Friend 님이 Lianki에 초대했습니다
+---
+초대한 사람: Sample Friend
+
+Sample Friend 님은 Lianki로 공부하고 있습니다. Lianki는 언어를 비롯해 기억하고 싶은 모든 것을 간격 반복으로 익히는 앱입니다. 함께하자고 초대했습니다.
+
+이 초대로 가입하면 무료 체험이 30일 늘어나 90일이 아닌 120일이 됩니다.
+
+초대 수락하기
+https://lianki.com/i/PREVIEW
+
+—
+Sample Friend 님이 초대를 위해 Lianki에 회원님의 주소를 입력해서 이 메일을 받으셨습니다. 일회성 초대이며, 어떤 메일링 리스트에도 추가되지 않았습니다.
+
+Sample Friend 님이 초대하여 이 메일이 friend@example.com(으)로 발송되었습니다.
+수신 거부: 앞으로 Lianki 초대 메일 받지 않기
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+악용 신고
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Sample Friend 님을 대신해 Lianki(lianki.com)가 보냈습니다.
+문의하기: https://lianki.com/contacts"
+,
+  "mr": 
+"Sample Friend यांनी तुम्हाला Lianki वर आमंत्रित केले आहे
+---
+आमंत्रण देणारे: Sample Friend
+
+Sample Friend Lianki वापरून शिकतात — भाषा आणि लक्षात ठेवण्यासारखे काहीही शिकण्यासाठी एक स्पेस्ड-रिपिटिशन ॲप — आणि तुम्हीही सामील व्हावे असे त्यांना वाटते.
+
+या आमंत्रणातून साइन अप करा आणि तुमची मोफत ट्रायल 30 दिवसांनी वाढेल: 90 ऐवजी 120 दिवस.
+
+आमंत्रण स्वीकारा
+https://lianki.com/i/PREVIEW
+
+—
+तुम्हाला हा ईमेल आला कारण Sample Friend यांनी तुम्हाला आमंत्रित करण्यासाठी Lianki वर तुमचा पत्ता दिला. हे एकदाच दिलेले आमंत्रण आहे: तुम्हाला कोणत्याही मेलिंग लिस्टमध्ये जोडलेले नाही.
+
+हा ईमेल friend@example.com वर पाठवला गेला कारण Sample Friend यांनी तुम्हाला आमंत्रित केले.
+सदस्यता रद्द करा: Lianki चे आमंत्रण पुन्हा कधीही नको
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+गैरवापराची तक्रार करा
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Sample Friend यांच्या वतीने Lianki (lianki.com) ने पाठवले.
+प्रश्न आहेत? आमच्याशी संपर्क साधा: https://lianki.com/contacts"
+,
+  "pt": 
+"Sample Friend convidou você para o Lianki
+---
+Convite de: Sample Friend
+
+Sample Friend aprende com o Lianki, um app de repetição espaçada para idiomas e tudo o que vale a pena lembrar, e gostaria que você participasse.
+
+Cadastre-se por este convite e seu teste grátis fica 30 dias mais longo: 120 dias em vez de 90.
+
+Aceitar o convite
+https://lianki.com/i/PREVIEW
+
+—
+Você está recebendo este e-mail porque Sample Friend informou seu endereço no Lianki para convidar você. É um convite único: você não foi adicionado a nenhuma lista de e-mails.
+
+Este e-mail foi enviado para friend@example.com porque Sample Friend convidou você.
+Cancelar inscrição: nunca mais receber convites do Lianki
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+Denunciar abuso
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Enviado pelo Lianki (lianki.com) em nome de Sample Friend.
+Dúvidas? Fale conosco: https://lianki.com/contacts"
+,
+  "ru": 
+"Sample Friend приглашает вас в Lianki
+---
+Приглашение от: Sample Friend
+
+Sample Friend учится с Lianki — приложением интервальных повторений для языков и всего, что стоит запомнить, — и хочет, чтобы вы присоединились.
+
+Зарегистрируйтесь по этому приглашению — и бесплатный пробный период станет на 30 дн. длиннее: 120 вместо 90.
+
+Принять приглашение
+https://lianki.com/i/PREVIEW
+
+—
+Вы получили это письмо, потому что Sample Friend указал(а) ваш адрес в Lianki, чтобы пригласить вас. Это разовое приглашение: вас не добавили ни в какую рассылку.
+
+Это письмо отправлено на friend@example.com, потому что Sample Friend пригласил(а) вас.
+Отписаться: больше никогда не получать приглашений Lianki
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+Сообщить о злоупотреблении
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Отправлено Lianki (lianki.com) от имени Sample Friend.
+Есть вопросы? Напишите нам: https://lianki.com/contacts"
+,
+  "sw": 
+"Sample Friend amekualika kwenye Lianki
+---
+Mwaliko kutoka kwa: Sample Friend
+
+Sample Friend hujifunza kwa Lianki, programu ya kurudia kwa vipindi kwa ajili ya lugha na chochote kinachostahili kukumbukwa, na angependa ujiunge.
+
+Jisajili kupitia mwaliko huu na majaribio yako ya bure yatakuwa marefu kwa siku 30: siku 120 badala ya 90.
+
+Kubali mwaliko
+https://lianki.com/i/PREVIEW
+
+—
+Unapokea barua pepe hii kwa sababu Sample Friend aliingiza anwani yako kwenye Lianki ili kukualika. Ni mwaliko wa mara moja: hujaongezwa kwenye orodha yoyote ya barua pepe.
+
+Barua pepe hii ilitumwa kwa friend@example.com kwa sababu Sample Friend amekualika.
+Jiondoe: usinitumie mwaliko wa Lianki tena
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+Ripoti matumizi mabaya
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Imetumwa na Lianki (lianki.com) kwa niaba ya Sample Friend.
+Una maswali? Wasiliana nasi: https://lianki.com/contacts"
+,
+  "ur": 
+"Sample Friend نے آپ کو Lianki پر مدعو کیا ہے
+---
+دعوت دینے والے: Sample Friend
+
+Sample Friend Lianki سے سیکھتے ہیں — زبانوں اور یاد رکھنے کے قابل ہر چیز کے لیے ایک اسپیسڈ ریپیٹیشن ایپ — اور چاہتے ہیں کہ آپ بھی شامل ہوں۔
+
+اس دعوت کے ذریعے سائن اپ کریں تو آپ کا مفت ٹرائل 30 دن لمبا ہوگا: 90 کے بجائے 120 دن۔
+
+دعوت قبول کریں
+https://lianki.com/i/PREVIEW
+
+—
+آپ کو یہ ای میل اس لیے ملی کیونکہ Sample Friend نے آپ کو مدعو کرنے کے لیے Lianki پر آپ کا پتا درج کیا۔ یہ ایک بار کی دعوت ہے: آپ کو کسی میلنگ لسٹ میں شامل نہیں کیا گیا۔
+
+یہ ای میل friend@example.com پر بھیجی گئی کیونکہ Sample Friend نے آپ کو مدعو کیا۔
+ان سبسکرائب: Lianki کی کوئی دعوت دوبارہ نہ ملے
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+غلط استعمال کی رپورٹ کریں
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+Sample Friend کی جانب سے Lianki (lianki.com) نے بھیجا۔
+سوالات؟ ہم سے رابطہ کریں: https://lianki.com/contacts"
+,
+  "zh": 
+"Sample Friend 邀请你加入炼記（Lianki）
+---
+邀请人：Sample Friend
+
+Sample Friend 在用炼記（Lianki）学习——一个用间隔重复来学语言、记住任何想记住的东西的应用，想邀请你一起来。
+
+通过这个邀请注册，你的免费试用多 30 天：一共 120 天，而不是 90 天。
+
+接受邀请
+https://lianki.com/i/PREVIEW
+
+—
+你收到这封邮件，是因为 Sample Friend 在炼記上填写了你的邮箱来邀请你。这是一次性的邀请，你没有被加入任何邮件列表。
+
+这封邮件发送给 friend@example.com，因为 Sample Friend 邀请了你。
+退订：不再接收任何炼記邀请邮件
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+举报滥用
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+由炼記（lianki.com）代 Sample Friend 发送。
+有问题？联系我们：https://lianki.com/contacts"
+,
+  "zh-Hant": 
+"Sample Friend 邀請你加入炼記（Lianki）
+---
+邀請人：Sample Friend
+
+Sample Friend 正在用炼記（Lianki）學習——一個用間隔重複來學語言、記住任何想記住的事物的應用程式，想邀請你一起來。
+
+透過這個邀請註冊，你的免費試用多 30 天：總共 120 天，而不是 90 天。
+
+接受邀請
+https://lianki.com/i/PREVIEW
+
+—
+你會收到這封郵件，是因為 Sample Friend 在炼記上填寫了你的電子郵件地址來邀請你。這是一次性的邀請，你並未被加入任何郵寄名單。
+
+這封郵件寄送至 friend@example.com，因為 Sample Friend 邀請了你。
+取消訂閱：不再接收任何炼記邀請郵件
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview
+
+檢舉濫用
+https://lianki.com/membership/invite-opt-out?lang=en#t=preview&report=1
+
+由炼記（lianki.com）代 Sample Friend 寄出。
+有問題嗎？聯絡我們：https://lianki.com/contacts"
+,
+}
+`;
+
+exports[`every template, every language, in the one layout the security notice's HTML (en, zh, ar) 1`] = `"<!doctype html><html lang="en" dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>New sign-in to your Lianki account</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-tc-web@1.522.0/lxgwwenkaitc-regular/result.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&display=swap"><style>:root{color-scheme:light dark;supported-color-schemes:light dark}body{margin:0;padding:0;-webkit-text-size-adjust:100%}a{color:#c8102e}@media (prefers-color-scheme: dark){.lk-page{background:#0e0a08!important}.lk-card{background:#1c1714!important}.lk-body,.lk-body p,.lk-body td,.lk-body th,.lk-body li,.lk-body b,.lk-body strong{color:#ece7dd!important}.lk-body .lk-muted,.lk-foot,.lk-foot td,.lk-foot p{color:#b9b0a3!important}.lk-body a,.lk-foot a,.lk-brand{color:#fb817f!important}.lk-body a.lk-btn{background:#c8102e!important;color:#fdfcf8!important}.lk-code{background:#2b2520!important;color:#ece7dd!important}.lk-badge{background:#332710!important;color:#f0d08f!important;border-color:#c29647!important}.lk-rule{border-color:#c29647!important}.lk-row{border-color:#c29647!important}}.lk-dark .lk-page{background:#0e0a08!important}.lk-dark .lk-card{background:#1c1714!important}.lk-dark .lk-body,.lk-dark .lk-body p,.lk-dark .lk-body td,.lk-dark .lk-body th,.lk-dark .lk-body li,.lk-dark .lk-body b,.lk-dark .lk-body strong{color:#ece7dd!important}.lk-dark .lk-body .lk-muted,.lk-dark .lk-foot,.lk-dark .lk-foot td,.lk-dark .lk-foot p{color:#b9b0a3!important}.lk-dark .lk-body a,.lk-dark .lk-foot a,.lk-dark .lk-brand{color:#fb817f!important}.lk-dark .lk-body a.lk-btn{background:#c8102e!important;color:#fdfcf8!important}.lk-dark .lk-code{background:#2b2520!important;color:#ece7dd!important}.lk-dark .lk-badge{background:#332710!important;color:#f0d08f!important;border-color:#c29647!important}.lk-dark .lk-rule{border-color:#c29647!important}.lk-dark .lk-row{border-color:#c29647!important}[data-ogsc] .lk-page{background:#0e0a08!important}[data-ogsc] .lk-card{background:#1c1714!important}[data-ogsc] .lk-body,[data-ogsc] .lk-body p,[data-ogsc] .lk-body td,[data-ogsc] .lk-body th,[data-ogsc] .lk-body li,[data-ogsc] .lk-body b,[data-ogsc] .lk-body strong{color:#ece7dd!important}[data-ogsc] .lk-body .lk-muted,[data-ogsc] .lk-foot,[data-ogsc] .lk-foot td,[data-ogsc] .lk-foot p{color:#b9b0a3!important}[data-ogsc] .lk-body a,[data-ogsc] .lk-foot a,[data-ogsc] .lk-brand{color:#fb817f!important}[data-ogsc] .lk-body a.lk-btn{background:#c8102e!important;color:#fdfcf8!important}[data-ogsc] .lk-code{background:#2b2520!important;color:#ece7dd!important}[data-ogsc] .lk-badge{background:#332710!important;color:#f0d08f!important;border-color:#c29647!important}[data-ogsc] .lk-rule{border-color:#c29647!important}[data-ogsc] .lk-row{border-color:#c29647!important}</style></head><body class="lk-page" style="margin:0;padding:0;background:#f5eee1"><table role="presentation" class="lk-page" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5eee1" style="background:#f5eee1"><tr><td align="center" style="padding:24px 12px"><table role="presentation" class="lk-card" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fefcf7" style="max-width:560px;background:#fefcf7;border-top:4px solid #c8102e;border-radius:4px"><tr><td dir="ltr" align="left" style="padding:22px 28px 10px"><a href="https://lianki.com" class="lk-brand" style="font-family:'Yuji Syuku','LXGW WenKai TC','Hiragino Mincho ProN','Songti SC','Noto Serif CJK SC','Noto Serif JP',Georgia,serif;font-size:28px;line-height:1.2;color:#c8102e;text-decoration:none">Lianki</a></td></tr><tr><td style="padding:0 28px 14px"><div class="lk-rule" style="border-top:1px solid #cc9c42;height:0;line-height:0;font-size:0">&nbsp;</div></td></tr><tr><td style="padding:0 28px 4px" align="left"><span class="lk-badge" style="display:inline-block;padding:4px 12px;border:1px solid #cc9c42;border-radius:999px;background:#fbedcd;color:#633f0c;font-size:14px;font-weight:700;line-height:1.4"><span aria-hidden="true">&#128737;&#65039;</span> Security notice</span></td></tr><tr><td class="lk-body" dir="ltr" align="left" style="padding:4px 28px 20px;font-family:'LXGW WenKai TC','PingFang SC','PingFang TC','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans CJK SC','Noto Sans JP','Microsoft YaHei',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;line-height:1.6;color:#1c1714"><div dir="ltr" lang="en"><p style="margin:0 0 16px">Your Lianki account was just signed in to from a browser it has not used before.</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-collapse:collapse"><tr><th scope="row" align="left" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid #cc9c42;color:#5d534a;font-weight:400;font-size:14px;white-space:nowrap">Time</th><td align="left" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid #cc9c42;font-weight:700;word-break:break-word">November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)</td></tr><tr><th scope="row" align="left" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid #cc9c42;color:#5d534a;font-weight:400;font-size:14px;white-space:nowrap">Approximate location</th><td align="left" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid #cc9c42;font-weight:700;word-break:break-word">Tokyo, Japan</td></tr><tr><th scope="row" align="left" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid #cc9c42;color:#5d534a;font-weight:400;font-size:14px;white-space:nowrap">Browser</th><td align="left" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid #cc9c42;font-weight:700;word-break:break-word">Safari · iPhone</td></tr></table><p style="margin:0 0 16px">If this was you, there is nothing to do.</p><p style="margin:0 0 16px">If it was not you, sign in, remove any passkey you do not recognise on your profile page, and tell us at <a href="https://lianki.com/contact" style="color:#c8102e;text-decoration:underline">https://lianki.com/contact</a>.</p></div></td></tr><tr><td class="lk-foot" dir="ltr" align="left" style="padding:14px 28px 22px;border-top:1px solid #cc9c42;font-family:'LXGW WenKai TC','PingFang SC','PingFang TC','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans CJK SC','Noto Sans JP','Microsoft YaHei',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;line-height:1.5;color:#5d534a">Security notices like this one are on for your account. You can turn them off in <a href="https://lianki.com/my/preferences#mail" style="color:#c8102e;text-decoration:underline">your preferences</a>, but we advise keeping them.<br><a href="https://lianki.com" style="color:#c8102e;text-decoration:underline">lianki.com</a></td></tr></table></td></tr></table></body></html>"`;
+
+exports[`every template, every language, in the one layout the security notice's HTML (en, zh, ar) 2`] = `"<!doctype html><html lang="zh" dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>你的炼記账号有新的登录</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-tc-web@1.522.0/lxgwwenkaitc-regular/result.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&display=swap"><style>:root{color-scheme:light dark;supported-color-schemes:light dark}body{margin:0;padding:0;-webkit-text-size-adjust:100%}a{color:#c8102e}@media (prefers-color-scheme: dark){.lk-page{background:#0e0a08!important}.lk-card{background:#1c1714!important}.lk-body,.lk-body p,.lk-body td,.lk-body th,.lk-body li,.lk-body b,.lk-body strong{color:#ece7dd!important}.lk-body .lk-muted,.lk-foot,.lk-foot td,.lk-foot p{color:#b9b0a3!important}.lk-body a,.lk-foot a,.lk-brand{color:#fb817f!important}.lk-body a.lk-btn{background:#c8102e!important;color:#fdfcf8!important}.lk-code{background:#2b2520!important;color:#ece7dd!important}.lk-badge{background:#332710!important;color:#f0d08f!important;border-color:#c29647!important}.lk-rule{border-color:#c29647!important}.lk-row{border-color:#c29647!important}}.lk-dark .lk-page{background:#0e0a08!important}.lk-dark .lk-card{background:#1c1714!important}.lk-dark .lk-body,.lk-dark .lk-body p,.lk-dark .lk-body td,.lk-dark .lk-body th,.lk-dark .lk-body li,.lk-dark .lk-body b,.lk-dark .lk-body strong{color:#ece7dd!important}.lk-dark .lk-body .lk-muted,.lk-dark .lk-foot,.lk-dark .lk-foot td,.lk-dark .lk-foot p{color:#b9b0a3!important}.lk-dark .lk-body a,.lk-dark .lk-foot a,.lk-dark .lk-brand{color:#fb817f!important}.lk-dark .lk-body a.lk-btn{background:#c8102e!important;color:#fdfcf8!important}.lk-dark .lk-code{background:#2b2520!important;color:#ece7dd!important}.lk-dark .lk-badge{background:#332710!important;color:#f0d08f!important;border-color:#c29647!important}.lk-dark .lk-rule{border-color:#c29647!important}.lk-dark .lk-row{border-color:#c29647!important}[data-ogsc] .lk-page{background:#0e0a08!important}[data-ogsc] .lk-card{background:#1c1714!important}[data-ogsc] .lk-body,[data-ogsc] .lk-body p,[data-ogsc] .lk-body td,[data-ogsc] .lk-body th,[data-ogsc] .lk-body li,[data-ogsc] .lk-body b,[data-ogsc] .lk-body strong{color:#ece7dd!important}[data-ogsc] .lk-body .lk-muted,[data-ogsc] .lk-foot,[data-ogsc] .lk-foot td,[data-ogsc] .lk-foot p{color:#b9b0a3!important}[data-ogsc] .lk-body a,[data-ogsc] .lk-foot a,[data-ogsc] .lk-brand{color:#fb817f!important}[data-ogsc] .lk-body a.lk-btn{background:#c8102e!important;color:#fdfcf8!important}[data-ogsc] .lk-code{background:#2b2520!important;color:#ece7dd!important}[data-ogsc] .lk-badge{background:#332710!important;color:#f0d08f!important;border-color:#c29647!important}[data-ogsc] .lk-rule{border-color:#c29647!important}[data-ogsc] .lk-row{border-color:#c29647!important}</style></head><body class="lk-page" style="margin:0;padding:0;background:#f5eee1"><table role="presentation" class="lk-page" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5eee1" style="background:#f5eee1"><tr><td align="center" style="padding:24px 12px"><table role="presentation" class="lk-card" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fefcf7" style="max-width:560px;background:#fefcf7;border-top:4px solid #c8102e;border-radius:4px"><tr><td dir="ltr" align="left" style="padding:22px 28px 10px"><a href="https://lianki.com" class="lk-brand" style="font-family:'Yuji Syuku','LXGW WenKai TC','Hiragino Mincho ProN','Songti SC','Noto Serif CJK SC','Noto Serif JP',Georgia,serif;font-size:28px;line-height:1.2;color:#c8102e;text-decoration:none">炼記</a></td></tr><tr><td style="padding:0 28px 14px"><div class="lk-rule" style="border-top:1px solid #cc9c42;height:0;line-height:0;font-size:0">&nbsp;</div></td></tr><tr><td style="padding:0 28px 4px" align="left"><span class="lk-badge" style="display:inline-block;padding:4px 12px;border:1px solid #cc9c42;border-radius:999px;background:#fbedcd;color:#633f0c;font-size:14px;font-weight:700;line-height:1.4"><span aria-hidden="true">&#128737;&#65039;</span> 安全提醒</span></td></tr><tr><td class="lk-body" dir="ltr" align="left" style="padding:4px 28px 20px;font-family:'LXGW WenKai TC','PingFang SC','PingFang TC','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans CJK SC','Noto Sans JP','Microsoft YaHei',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;line-height:1.6;color:#1c1714"><div dir="ltr" lang="zh"><p style="margin:0 0 16px">你的炼記（Lianki）账号刚刚在一个以前未使用过的浏览器上登录。</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-collapse:collapse"><tr><th scope="row" align="left" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid #cc9c42;color:#5d534a;font-weight:400;font-size:14px;white-space:nowrap">时间</th><td align="left" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid #cc9c42;font-weight:700;word-break:break-word">November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)</td></tr><tr><th scope="row" align="left" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid #cc9c42;color:#5d534a;font-weight:400;font-size:14px;white-space:nowrap">大致位置</th><td align="left" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid #cc9c42;font-weight:700;word-break:break-word">Tokyo, Japan</td></tr><tr><th scope="row" align="left" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid #cc9c42;color:#5d534a;font-weight:400;font-size:14px;white-space:nowrap">浏览器</th><td align="left" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid #cc9c42;font-weight:700;word-break:break-word">Safari · iPhone</td></tr></table><p style="margin:0 0 16px">如果是你本人操作，无需处理。</p><p style="margin:0 0 16px">如果不是你本人，请登录后在个人资料页删除不认识的通行密钥，并通过 <a href="https://lianki.com/contact" style="color:#c8102e;text-decoration:underline">https://lianki.com/contact</a> 联系我们。</p></div></td></tr><tr><td class="lk-foot" dir="ltr" align="left" style="padding:14px 28px 22px;border-top:1px solid #cc9c42;font-family:'LXGW WenKai TC','PingFang SC','PingFang TC','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans CJK SC','Noto Sans JP','Microsoft YaHei',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;line-height:1.5;color:#5d534a">你的账号开启了这类安全提醒。你可以在<a href="https://lianki.com/my/preferences#mail" style="color:#c8102e;text-decoration:underline">偏好设置</a>中关闭，但我们建议保持开启。<br><a href="https://lianki.com" style="color:#c8102e;text-decoration:underline">lianki.com</a></td></tr></table></td></tr></table></body></html>"`;
+
+exports[`every template, every language, in the one layout the security notice's HTML (en, zh, ar) 3`] = `"<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>تسجيل دخول جديد إلى حسابك في Lianki</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-tc-web@1.522.0/lxgwwenkaitc-regular/result.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&display=swap"><style>:root{color-scheme:light dark;supported-color-schemes:light dark}body{margin:0;padding:0;-webkit-text-size-adjust:100%}a{color:#c8102e}@media (prefers-color-scheme: dark){.lk-page{background:#0e0a08!important}.lk-card{background:#1c1714!important}.lk-body,.lk-body p,.lk-body td,.lk-body th,.lk-body li,.lk-body b,.lk-body strong{color:#ece7dd!important}.lk-body .lk-muted,.lk-foot,.lk-foot td,.lk-foot p{color:#b9b0a3!important}.lk-body a,.lk-foot a,.lk-brand{color:#fb817f!important}.lk-body a.lk-btn{background:#c8102e!important;color:#fdfcf8!important}.lk-code{background:#2b2520!important;color:#ece7dd!important}.lk-badge{background:#332710!important;color:#f0d08f!important;border-color:#c29647!important}.lk-rule{border-color:#c29647!important}.lk-row{border-color:#c29647!important}}.lk-dark .lk-page{background:#0e0a08!important}.lk-dark .lk-card{background:#1c1714!important}.lk-dark .lk-body,.lk-dark .lk-body p,.lk-dark .lk-body td,.lk-dark .lk-body th,.lk-dark .lk-body li,.lk-dark .lk-body b,.lk-dark .lk-body strong{color:#ece7dd!important}.lk-dark .lk-body .lk-muted,.lk-dark .lk-foot,.lk-dark .lk-foot td,.lk-dark .lk-foot p{color:#b9b0a3!important}.lk-dark .lk-body a,.lk-dark .lk-foot a,.lk-dark .lk-brand{color:#fb817f!important}.lk-dark .lk-body a.lk-btn{background:#c8102e!important;color:#fdfcf8!important}.lk-dark .lk-code{background:#2b2520!important;color:#ece7dd!important}.lk-dark .lk-badge{background:#332710!important;color:#f0d08f!important;border-color:#c29647!important}.lk-dark .lk-rule{border-color:#c29647!important}.lk-dark .lk-row{border-color:#c29647!important}[data-ogsc] .lk-page{background:#0e0a08!important}[data-ogsc] .lk-card{background:#1c1714!important}[data-ogsc] .lk-body,[data-ogsc] .lk-body p,[data-ogsc] .lk-body td,[data-ogsc] .lk-body th,[data-ogsc] .lk-body li,[data-ogsc] .lk-body b,[data-ogsc] .lk-body strong{color:#ece7dd!important}[data-ogsc] .lk-body .lk-muted,[data-ogsc] .lk-foot,[data-ogsc] .lk-foot td,[data-ogsc] .lk-foot p{color:#b9b0a3!important}[data-ogsc] .lk-body a,[data-ogsc] .lk-foot a,[data-ogsc] .lk-brand{color:#fb817f!important}[data-ogsc] .lk-body a.lk-btn{background:#c8102e!important;color:#fdfcf8!important}[data-ogsc] .lk-code{background:#2b2520!important;color:#ece7dd!important}[data-ogsc] .lk-badge{background:#332710!important;color:#f0d08f!important;border-color:#c29647!important}[data-ogsc] .lk-rule{border-color:#c29647!important}[data-ogsc] .lk-row{border-color:#c29647!important}</style></head><body class="lk-page" style="margin:0;padding:0;background:#f5eee1"><table role="presentation" class="lk-page" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5eee1" style="background:#f5eee1"><tr><td align="center" style="padding:24px 12px"><table role="presentation" class="lk-card" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fefcf7" style="max-width:560px;background:#fefcf7;border-top:4px solid #c8102e;border-radius:4px"><tr><td dir="rtl" align="right" style="padding:22px 28px 10px"><a href="https://lianki.com" class="lk-brand" style="font-family:'Yuji Syuku','LXGW WenKai TC','Hiragino Mincho ProN','Songti SC','Noto Serif CJK SC','Noto Serif JP',Georgia,serif;font-size:28px;line-height:1.2;color:#c8102e;text-decoration:none">Lianki</a></td></tr><tr><td style="padding:0 28px 14px"><div class="lk-rule" style="border-top:1px solid #cc9c42;height:0;line-height:0;font-size:0">&nbsp;</div></td></tr><tr><td style="padding:0 28px 4px" align="right"><span class="lk-badge" style="display:inline-block;padding:4px 12px;border:1px solid #cc9c42;border-radius:999px;background:#fbedcd;color:#633f0c;font-size:14px;font-weight:700;line-height:1.4"><span aria-hidden="true">&#128737;&#65039;</span> إشعار أمني</span></td></tr><tr><td class="lk-body" dir="rtl" align="right" style="padding:4px 28px 20px;font-family:'LXGW WenKai TC','PingFang SC','PingFang TC','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans CJK SC','Noto Sans JP','Microsoft YaHei',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;line-height:1.6;color:#1c1714"><div dir="rtl" lang="ar"><p style="margin:0 0 16px">تم للتو تسجيل الدخول إلى حسابك في Lianki من متصفح لم يُستخدم من قبل.</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-collapse:collapse"><tr><th scope="row" align="right" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid #cc9c42;color:#5d534a;font-weight:400;font-size:14px;white-space:nowrap">الوقت</th><td align="right" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid #cc9c42;font-weight:700;word-break:break-word">November 9, 2026 at 6:07 PM (Japan Standard Time, GMT+9)</td></tr><tr><th scope="row" align="right" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid #cc9c42;color:#5d534a;font-weight:400;font-size:14px;white-space:nowrap">الموقع التقريبي</th><td align="right" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid #cc9c42;font-weight:700;word-break:break-word">Tokyo, Japan</td></tr><tr><th scope="row" align="right" valign="top" class="lk-row lk-muted" style="padding:10px 16px 10px 0;border-bottom:1px solid #cc9c42;color:#5d534a;font-weight:400;font-size:14px;white-space:nowrap">المتصفح</th><td align="right" valign="top" class="lk-row" style="padding:10px 0;border-bottom:1px solid #cc9c42;font-weight:700;word-break:break-word">Safari · iPhone</td></tr></table><p style="margin:0 0 16px">إذا كنت أنت، فلا داعي لفعل أي شيء.</p><p style="margin:0 0 16px">إذا لم تكن أنت، فسجّل الدخول واحذف من صفحة ملفك الشخصي أي مفتاح مرور لا تعرفه، وأخبرنا عبر <a href="https://lianki.com/contact" style="color:#c8102e;text-decoration:underline">https://lianki.com/contact</a>.</p></div></td></tr><tr><td class="lk-foot" dir="rtl" align="right" style="padding:14px 28px 22px;border-top:1px solid #cc9c42;font-family:'LXGW WenKai TC','PingFang SC','PingFang TC','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans CJK SC','Noto Sans JP','Microsoft YaHei',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;line-height:1.5;color:#5d534a">إشعارات الأمان مثل هذا مفعّلة لحسابك. يمكنك إيقافها من <a href="https://lianki.com/my/preferences#mail" style="color:#c8102e;text-decoration:underline">تفضيلاتك</a>، لكننا ننصح بإبقائها.<br><a href="https://lianki.com" style="color:#c8102e;text-decoration:underline">lianki.com</a></td></tr></table></td></tr></table></body></html>"`;

@@ -70,7 +70,7 @@ import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
-import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry } from "./bar-geometry";
+import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry, STRIP_INSET_PX, stripTopRadius } from "./bar-geometry";
 import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
@@ -91,7 +91,7 @@ import {
 } from "./read-progress";
 import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
 import { AEC_EVENT, aecOn, applyAec } from "./aec";
-import type { SpeakMeta } from "./speak-rules";
+import { type SpeakMeta, isWithdrawn } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -3806,7 +3806,21 @@ export function DebugChat({
   );
   const resumeItems = resumeLeft
     .map((r) => ({ r, m: messages.find((x) => x.id === r.id && x.from === "agent") }))
-    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m);
+    // A withdrawn ask card is never read on (speak-rules.ts).
+    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m && !isWithdrawn(x.m));
+  // An ask withdrawn while it is being read (or waits in the queue): its
+  // sentences are dropped, the other lines read on (an older session without
+  // `drop` stops the reading instead).
+  useEffect(() => {
+    for (const m of messages) {
+      if (!isWithdrawn(m) || !readP.queue.some((e) => e.id === m.id)) continue;
+      const v = voice() as ReturnType<typeof voice> & { drop?: (id: string) => boolean };
+      if (!v.drop) return v.stop();
+      readDispatch({ type: "drop", id: m.id });
+      // Not in the session's queue after all (untagged): stop rather than read it.
+      if (!v.drop(m.id)) return v.stop();
+    }
+  }, [messages, readP.queue]);
   /** Hand the unread rest of those replies back to the voice, as one queued reply each. */
   const resumeNow = () => {
     const v = voice();
@@ -3826,7 +3840,8 @@ export function DebugChat({
       const start = ranges[r.from]?.start;
       if (start === undefined) continue;
       claimed.current.add(m.id);
-      if (v.reply(said.slice(start)))
+      // The line as meta: its sentences carry its id (a withdrawn ask is dropped by it).
+      if (v.reply(said.slice(start), m))
         readDispatch({ type: "enqueue", id: m.id, n: ranges.length - r.from, from: r.from });
     }
     if (focusHack && el) {
@@ -4544,7 +4559,9 @@ export function DebugChat({
           ref={setEtaBox}
           data-testid="debug-chat-eta-slot"
           data-strip={strip || undefined}
-          className={`flow-root ${strip ? "px-1 pt-1" : ""}`}
+          // The inset is STRIP_INSET_PX on the top and the sides (stripTopRadius).
+          className="flow-root"
+          style={strip ? { padding: `${STRIP_INSET_PX}px ${STRIP_INSET_PX}px 0` } : undefined}
         >
           <EtaBar
             tasks={etaList}
@@ -4588,8 +4605,18 @@ export function DebugChat({
           <div
             aria-hidden
             data-testid="debug-chat-strip"
+            data-top-radius={stripTopRadius(etaH)}
             className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 border border-current/25"
-            style={{ ...barGeometry(), ...STRIP_GLASS, top: -etaH }}
+            style={{
+              ...barGeometry(),
+              ...STRIP_GLASS,
+              top: -etaH,
+              // The top corners concentric with the progress pill's end caps
+              // (bar-geometry.ts stripTopRadius); the bottom ones the bar's own.
+              borderTopLeftRadius: stripTopRadius(etaH),
+              borderTopRightRadius: stripTopRadius(etaH),
+              transition: reducedMotion() ? undefined : "border-radius 180ms ease-out, top 180ms ease-out",
+            }}
           />
         )}
         <div style={LTR}>

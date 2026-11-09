@@ -103,7 +103,10 @@ export type UiStrings = {
    * - askSend: the button that sends the choices of a multi-question card;
    * - askExpired: under a card past its deadline (it can no longer be answered);
    * - askAnswered: under a card that has its answer (it is one-shot);
-   * - askSent: under a card just tapped here, until the answer is confirmed.
+   * - askSent: under a card just tapped here, until the answer is confirmed;
+   * - askWithdrawn: in place of a card's options once the agent took the
+   *   question back (it no longer needs an answer, and cannot be tapped):
+   *   one or two words, like a message marked "withdrawn" in a chat app.
    */
   askRecommended: string;
   askSend: string;
@@ -115,6 +118,8 @@ export type UiStrings = {
   /** The full-screen button and its way back (full-screen.ts), for a host that passes no strings. */
   fullScreen: string;
   fullScreenExit: string;
+  /** A withdrawn ask card's grey state (ChatStrings.askWithdrawn). */
+  askWithdrawn: string;
   /**
    * Compact mode (compact-view.ts), until the host passes localized ones
    * (ChatStrings): the menu switch, and the compact line's tap hint.
@@ -192,6 +197,7 @@ export const UI_EN: UiStrings = {
   aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while anything plays. Takes effect at once.",
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
+  askWithdrawn: "Withdrawn",
   readAloud: "Replies read aloud",
   readAloudTyping: "Replies read aloud while typing",
   compactIdle: "Only the last message while not typing",
@@ -251,6 +257,7 @@ export const UI_ZH: UiStrings = {
   aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，播放声音时麦克风暂停收音。立即生效。",
   cueSend: "语音消息发出时提示音",
   cueSpeech: "开始和结束说话时提示音",
+  askWithdrawn: "已撤回",
   readAloud: "朗读回复",
   readAloudTyping: "输入时朗读回复",
   compactIdle: "不打字时只显示最后一条消息",
@@ -310,6 +317,7 @@ export const UI_JA: UiStrings = {
   aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、音声の再生中はマイクが一時停止します。すぐに反映されます。",
   cueSend: "音声メッセージ送信時の音",
   cueSpeech: "話し始めと話し終わりの音",
+  askWithdrawn: "取り下げ済み",
   readAloud: "返事を読み上げる",
   readAloudTyping: "入力中は返事を読み上げる",
   compactIdle: "入力していないときは最後のメッセージだけ表示",

@@ -41,7 +41,10 @@ import type { TemplateDb } from "@/lib/mail-templates/store";
 export interface SecurityPluginEnv {
   getDb: () => ThrottleDb | null;
   /** Cloudflare's request.cf, for the notice's location. */
-  getCf?: () => { city?: unknown; region?: unknown; country?: unknown } | null | undefined;
+  getCf?: () =>
+    | { city?: unknown; region?: unknown; country?: unknown; timezone?: unknown }
+    | null
+    | undefined;
   /** Keep the notice mail alive after the response (Workers `ctx.waitUntil`). */
   waitUntil?: (p: Promise<unknown>) => void;
 }
@@ -158,8 +161,11 @@ export function securityPlugin(env: SecurityPluginEnv): BetterAuthPlugin {
               locale,
               loginNoticeValues(locale, {
                 when: new Date(),
-                location: approximateLocation(cf, ctx.headers),
+                location: approximateLocation(cf, ctx.headers, locale),
                 userAgent,
+                // No account time zone is stored yet: the zone of this
+                // sign-in, else UTC (labelled). lib/security/login-notice.ts.
+                eventTimeZone: typeof cf?.timezone === "string" ? cf.timezone : null,
               }),
             );
             // Through the send log (lib/mail-log), on this same D1.
@@ -173,7 +179,15 @@ export function securityPlugin(env: SecurityPluginEnv): BetterAuthPlugin {
               html,
               log: { ...log, userId: user.id },
             })
-              .then(({ id }) => console.log(JSON.stringify({ event: "login.notice.sent", id })))
+              .then(({ id, suppressed }) =>
+                console.log(
+                  JSON.stringify(
+                    suppressed
+                      ? { event: "login.notice.suppressed", pref: suppressed }
+                      : { event: "login.notice.sent", id },
+                  ),
+                ),
+              )
               .catch((e) =>
                 console.error(
                   JSON.stringify({ event: "login.notice.failed", error: String(e).slice(0, 300) }),

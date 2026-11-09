@@ -2,7 +2,7 @@
 
 import { useUi } from "@lianki/ui-state";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { type EtaTask, compactTime, ganttPlan, isLate, splitTitle } from "./eta";
+import { type EtaTask, compactTime, ganttPlan, isLate, isParked, parkMark, splitTitle } from "./eta";
 import {
   CHAR_PX,
   type GanttAxis,
@@ -15,6 +15,7 @@ import {
   focusRow,
   ganttRowsByEnd,
   homeView,
+  parkedBar,
   pinchOf,
   rowsRange,
   scaleExtend,
@@ -57,7 +58,14 @@ const ROW_GAP = 2;
 
 type Strings = Pick<
   ChatStrings,
-  "etaList" | "etaDone" | "etaGanttClose" | "etaGanttScale" | "etaGanttLinear" | "etaGanttLog"
+  | "etaList"
+  | "etaDone"
+  | "etaGanttClose"
+  | "etaGanttScale"
+  | "etaGanttLinear"
+  | "etaGanttLog"
+  | "etaWaitingYou"
+  | "etaReminder"
 >;
 
 /** A label character's width at the axis's text size (the tick spacing reads it). */
@@ -79,6 +87,11 @@ export function GanttFull({
 }) {
   const rows = useMemo(() => ganttRowsByEnd(ganttPlan(tasks, now)), [tasks, now]);
   const scale = useUi(ganttPrefs(), (s) => s.scale);
+  /** This device's zoom overrides (ui-store.ts ganttPrefs), else the defaults. */
+  const fitP = useUi(ganttPrefs(), (s) => s.fitPercentile);
+  const fitW = useUi(ganttPrefs(), (s) => s.fitWidth);
+  const fitRef = useRef({ p: fitP, w: fitW });
+  fitRef.current = { p: fitP, w: fitW };
   const scroller = useRef<HTMLDivElement | null>(null);
   /** The view as the handlers last left it (several events may come before a render). */
   const view = useRef<{ axis: GanttAxis; scrollLeft: number; w: number } | null>(null);
@@ -121,7 +134,15 @@ export function GanttFull({
     const rs = rowsRef.current;
     const t = nowRef.current;
     const focus = focusRow(rs, t);
-    const first = homeView(scaleRef.current, fitSpan(rs, focus), t, width, rowsRange(rs, t));
+    const { p, w: share } = fitRef.current;
+    const first = homeView(
+      scaleRef.current,
+      fitSpan(rs, focus, p),
+      t,
+      width,
+      rowsRange(rs, t),
+      share,
+    );
     pendingTop.current = centreRowTop({
       i: focus,
       viewH: el.clientHeight,
@@ -477,9 +498,21 @@ export function GanttFull({
               rows.map((t) => {
                 const b = ganttBar(t, axis, now);
                 const late = !t.done && t.at <= now;
-                const state = t.done ? "done" : t.queued ? "queued" : late ? "reached" : "running";
+                const parked = isParked(t);
+                const mark = parkMark(t);
+                const state = t.done
+                  ? "done"
+                  : parked
+                    ? "parked"
+                    : t.queued
+                      ? "queued"
+                      : late
+                        ? "reached"
+                        : "running";
                 const { name, desc } = splitTitle(t.title);
                 const left = t.at - now;
+                // Parked: its time is when the reminder goes off, never work remaining.
+                const reminder = strings.etaReminder.replace("{t}", compactTime(left));
                 return (
                   <li
                     key={t.id}
@@ -498,16 +531,17 @@ export function GanttFull({
                         width: Math.max(3, b.w),
                         background: c(t.done ? "done" : t.queued ? "queued" : "bar"),
                         ...(t.queued ? { outline: `1px dashed ${c("muted")}`, outlineOffset: -1 } : {}),
+                        ...(parked ? parkedBar(c("bar"), c("muted")) : {}),
                       }}
                     >
-                      {!t.done && b.fill > 0 && (
+                      {!t.done && !parked && !t.queued && b.fill > 0 && (
                         <span
                           className="absolute inset-y-0 left-0"
                           style={{ width: b.fill, background: c("fill") }}
                         />
                       )}
                     </span>
-                    {b.over > 0 && (
+                    {b.over > 0 && !parked && (
                       <span
                         aria-hidden
                         data-testid="debug-chat-gantt-over"
@@ -528,19 +562,43 @@ export function GanttFull({
                       }}
                     >
                       <span dir="auto" className="min-w-0 truncate">
+                        {mark && (
+                          // Waits for the owner: a red "!" ("?" for a decision) before the name.
+                          <span
+                            role="img"
+                            aria-label={strings.etaWaitingYou}
+                            title={strings.etaWaitingYou}
+                            data-testid="debug-chat-gantt-mark"
+                            className="me-1 font-bold"
+                            style={{ color: c("late") }}
+                          >
+                            {mark}
+                          </span>
+                        )}
                         <span className="font-semibold">{name}</span>
                         {desc && <span style={{ color: c("muted") }}> {desc}</span>}
                       </span>
-                      <span
-                        data-testid="debug-chat-gantt-time"
-                        data-late={(!t.done && isLate(left)) || undefined}
-                        className="shrink-0 tabular-nums"
-                        style={
-                          !t.done && isLate(left) ? { color: c("late"), fontWeight: 600 } : undefined
-                        }
-                      >
-                        {t.done ? strings.etaDone : compactTime(left)}
-                      </span>
+                      {parked ? (
+                        <span
+                          data-testid="debug-chat-gantt-time"
+                          data-parked={t.parked}
+                          className="shrink-0 tabular-nums"
+                          style={{ color: c("muted") }}
+                        >
+                          {mark ? `${strings.etaWaitingYou} · ${reminder}` : reminder}
+                        </span>
+                      ) : (
+                        <span
+                          data-testid="debug-chat-gantt-time"
+                          data-late={(!t.done && isLate(left)) || undefined}
+                          className="shrink-0 tabular-nums"
+                          style={
+                            !t.done && isLate(left) ? { color: c("late"), fontWeight: 600 } : undefined
+                          }
+                        >
+                          {t.done ? strings.etaDone : compactTime(left)}
+                        </span>
+                      )}
                     </span>
                   </li>
                 );

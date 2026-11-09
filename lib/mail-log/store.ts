@@ -19,6 +19,8 @@ export const MAIL_STATUSES = [
   "complained",
   "unsubscribed",
   "failed",
+  // Not sent: the account turned this kind of mail off (lib/mail-templates/kinds.ts).
+  "suppressed",
 ] as const;
 export type MailStatus = (typeof MAIL_STATUSES)[number];
 export const isMailStatus = (v: unknown): v is MailStatus =>
@@ -81,6 +83,16 @@ export async function markSent(db: MailLogDb, id: string, providerId: string, no
        WHERE id = ?1`,
     )
     .bind(id, providerId || null, now)
+    .run();
+}
+
+/** Not sent: the account switched this kind off. The reason names the pref, never an address. */
+export async function markSuppressed(db: MailLogDb, id: string, reason: string, now: number) {
+  await db
+    .prepare(
+      "UPDATE mail_log SET status = 'suppressed', reason = ?2, updated_at = ?3 WHERE id = ?1 AND status = 'queued'",
+    )
+    .bind(id, shortReason(reason), now)
     .run();
 }
 

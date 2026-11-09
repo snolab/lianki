@@ -6,7 +6,7 @@ name: qa:all (sharded)
 # - `prepare` builds the OpenNext Worker once and migrates a local D1
 #   (`qa-all.mjs --prepare`), then hands both to the shards as one artifact.
 #   .next/cache (Turbopack's build cache, on by default since Next 16.3) is
-#   kept in the Actions cache. Caches saved on main (nightly)
+#   kept in the Actions cache. Caches saved on main (Full QA)
 #   are what a merge queue run can restore: a cache saved on a
 #   gh-readonly-queue ref is visible to that ref only.
 # - `shard` (×3) runs `qa-all.mjs --no-build --shard=i/3` in the Playwright
@@ -25,7 +25,7 @@ on:
         type: string
         default: ""
       ext-smoke:
-        description: Also run the MV3 extension smoke test (nightly).
+        description: Also run the MV3 extension smoke test (Full QA).
         type: boolean
         default: false
 

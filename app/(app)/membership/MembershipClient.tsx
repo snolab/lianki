@@ -127,7 +127,7 @@ export default function MembershipClient() {
         <div className="mb-6">
           <button
             onClick={() => router.push("/list")}
-            className="text-blue-500 hover:text-blue-600"
+            className="text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
           >
             {backToHome.value}
           </button>
@@ -157,7 +157,8 @@ export default function MembershipClient() {
         )}
 
         {error && (
-          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-800 dark:text-red-200">
+          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-800 dark:text-red-200 flex items-start gap-2">
+            <Icon name="warning" className="mt-0.5" />
             {error}
           </div>
         )}

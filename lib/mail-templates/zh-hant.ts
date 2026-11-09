@@ -7,6 +7,7 @@
  */
 import type emailChange from "./email-change-mail.content";
 import type loginNotice from "./login-notice-mail.content";
+import type mailLayout from "./mail-layout.content";
 import type signIn from "./sign-in-mail.content";
 import type invite from "@/lib/referrals/invite-mail.content";
 
@@ -67,4 +68,13 @@ export const ZH_HANT_INVITE: Strings<typeof invite> = {
   sender: "由{brand}（{site}）代 {inviter} 寄出。",
   contact: "有問題嗎？聯絡我們：{contactUrl}",
   aFriend: "一位朋友",
+};
+
+export const ZH_HANT_MAIL_LAYOUT: Strings<typeof mailLayout> = {
+  securityLabel: "安全提醒",
+  footerRequired: "這封郵件與你的{brand}帳號有關，因此一定會寄出。",
+  footerSecurity: "你的帳號開啟了這類安全提醒。你可以在{link}中關閉，但我們建議保持開啟。",
+  preferencesLink: "偏好設定",
+  footerOptional: "不想再收到這類郵件？",
+  unsubscribe: "取消訂閱",
 };

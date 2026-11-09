@@ -103,20 +103,15 @@ export default function TodayClient() {
   );
 }
 
-// Seal and gold, AA both ways (4.95:1 measured). Light: gold ground, red ink;
-// dark: red ground, gold ink.
+// The bold variant (app/globals.css --lk-bold-*): seal and gold, AA both ways
+// (4.95:1 measured). Light: gold ground, red ink; dark: red ground, gold ink.
 const CSS = `
 .lk-today {
-  --t-seal: oklch(0.49 0.2 22.3);
-  --t-gold: oklch(0.89 0.12 86);
-  --t-bg: var(--t-gold);
-  --t-ink: var(--t-seal);
+  --t-bg: var(--lk-bold-bg);
+  --t-ink: var(--lk-bold-fg);
   background: var(--t-bg);
   color: var(--t-ink);
   font-family: var(--font-sans);
-}
-@media (prefers-color-scheme: dark) {
-  .lk-today { --t-bg: var(--t-seal); --t-ink: var(--t-gold); }
 }
 .lk-today-seal {
   width: 56px; height: 56px; border-radius: 10px; display: grid; place-items: center;

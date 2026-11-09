@@ -2009,6 +2009,42 @@ const learningPartnerContent = {
       mr: "लॉग",
       ko: "로그",
     }),
+    etaWaitingYou: t({
+      en: "Waiting for you",
+      zh: "等你",
+      hi: "आपका इंतज़ार",
+      es: "Te espera",
+      fr: "Vous attend",
+      ar: "بانتظارك",
+      bn: "আপনার অপেক্ষায়",
+      pt: "Aguarda você",
+      ru: "Ждёт вас",
+      ur: "آپ کا انتظار",
+      id: "Menunggu Anda",
+      de: "Wartet auf dich",
+      ja: "あなた待ち",
+      sw: "Inakusubiri",
+      mr: "तुमची वाट",
+      ko: "내 확인 대기",
+    }),
+    etaReminder: t({
+      en: "reminder in {t}",
+      zh: "{t}后提醒",
+      hi: "{t} में याद दिलाना",
+      es: "aviso en {t}",
+      fr: "rappel dans {t}",
+      ar: "تذكير بعد {t}",
+      bn: "{t} পরে মনে করানো",
+      pt: "lembrete em {t}",
+      ru: "напомнит через {t}",
+      ur: "{t} میں یاد دہانی",
+      id: "pengingat {t} lagi",
+      de: "Erinnerung in {t}",
+      ja: "{t}後にリマインド",
+      sw: "ukumbusho baada ya {t}",
+      mr: "{t} नंतर आठवण",
+      ko: "{t} 후 알림",
+    }),
     etaList: t({
       en: "Timed tasks",
       zh: "有预计时间的任务",
@@ -2372,6 +2408,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "One of two buttons of a small switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis evenly, each hour the same width. A single short word for 'linear' as on a chart's axis (线性 in Chinese); the button is narrow.",
   etaGanttLog:
     "The other of the two buttons of that switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis logarithmically, near times wide and far times compressed, so minutes and days fit one screen. A single short word for 'logarithmic' as on a chart's axis, abbreviated if usual (对数 in Chinese, 'Log' in English); the button is narrow.",
+  etaWaitingYou:
+    "Shown on a row of the assistant's task timeline (a Gantt chart, and the short task list in the chat) for a task that is stopped until the user acts (answers, decides, approves): the label of a red '!' or '?' before the task's name, and the start of its time text. Means the task is waiting for the user, addressed to the user; very short (等你 in Chinese).",
+  etaReminder:
+    "The time text on such a stopped task's row: no work is running, and {t} is how long until the user is reminded about it, as a compact time like '9.1H' or '30M' (keep {t} as is). Must not read as work remaining or a deadline; short phrase, lower case where usual.",
   etaList:
     "Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop.",
   inboxClose:
