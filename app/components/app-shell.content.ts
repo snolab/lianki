@@ -318,6 +318,24 @@ const dictionary = {
         mr: "सदस्यत्व",
         ko: "멤버십",
       }),
+      creditsUsage: t({
+        en: "Credits usage",
+        zh: "积分明细",
+        ja: "クレジット利用明細",
+        ko: "크레딧 사용 내역",
+        hi: "क्रेडिट का उपयोग",
+        es: "Uso de créditos",
+        fr: "Utilisation des crédits",
+        ar: "استخدام الرصيد",
+        bn: "ক্রেডিট ব্যবহার",
+        pt: "Uso de créditos",
+        ru: "Расход баланса",
+        ur: "کریڈٹ کا استعمال",
+        id: "Pemakaian kredit",
+        de: "Guthabenverbrauch",
+        sw: "Matumizi ya salio",
+        mr: "क्रेडिट वापर",
+      }),
       lab: t({
         en: "All experiments",
         zh: "全部实验",
@@ -560,6 +578,8 @@ const context: {
       "Item in the account menu (opened from the avatar) that goes to the user's settings page. Plural noun, like 'Settings'.",
     membership:
       "Sidebar link and profile-menu item to the Pro membership page (plan, payments, invites). One noun.",
+    creditsUsage:
+      "Item in the account menu (opened from the avatar) that opens /membership/credits, the itemised list of the user's prepaid credit usage (what used credits, when, the balance after), like a bank statement. Two to four words.",
     lab: "Sidebar link, first under the Lab heading, to the /lab page that lists every experimental feature; the heading above already says Lab, so this names the overview. Short noun phrase.",
   },
   groups: {

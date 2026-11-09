@@ -1,8 +1,11 @@
 "use client";
 
 /**
- * /import → a .txt/.csv/.tsv word list (file or paste) → a new /words list
- * (docs/import-material.md, M1). The text is parsed here first, so a wrong
+ * /import (and the Import panel on /words) → a .txt/.csv/.tsv/.xlsx word list
+ * (file or paste) → a new /words list (docs/import-material.md, M1). An .xlsx
+ * is read here (lib/import/xlsx.ts, first sheet) and goes on as CSV text, so
+ * the server sees one format and keeps its limits. Templates with the header
+ * row in the user's language are made on the click (lib/import/template.ts). The text is parsed here first, so a wrong
  * file is caught at once; the server parses it again for the preview counts
  * (new / already have / skipped) and for the import itself, which runs as a
  * job (lib/import/words-handler.ts). Nothing is saved before "Add N words".
@@ -18,6 +21,8 @@ import {
 } from "@/lib/import/wordlist";
 import type { JobRow, PreviewAnswer } from "@/lib/import/words-handler";
 import { IMPORT_LANGS } from "@/lib/words/anki";
+import { TEMPLATE_FILE, templateCsv, templateXlsx } from "@/lib/import/template";
+import { XlsxError, readXlsx, rowsToCsv } from "@/lib/import/xlsx";
 import { downloadCatalog } from "@/lib/words/catalog-cache";
 
 const text = (s: unknown): string =>
@@ -32,6 +37,8 @@ type ErrorKey =
   | "errBinary"
   | "errTooLarge"
   | "errEncoding"
+  | "errXls"
+  | "errXlsx"
   | "errNothingNew"
   | "errRate"
   | "errSignIn"
@@ -58,7 +65,48 @@ async function readFile(f: File): Promise<string | ErrorKey> {
   }
 }
 
-export default function WordListImport({ signedIn }: { signedIn: boolean }) {
+/** A spreadsheet by its name: read as a workbook, not as text. */
+const isSheet = (name: string) => /\.xlsx?$/i.test(name);
+
+/** An .xlsx's first sheet as CSV text, or the error key. */
+async function readSheet(f: File): Promise<string | ErrorKey> {
+  try {
+    return rowsToCsv(await readXlsx(await f.arrayBuffer()));
+  } catch (e) {
+    const code = e instanceof XlsxError ? e.code : null;
+    return code === "xls"
+      ? "errXls"
+      : code === "too-large"
+        ? "errTooLarge"
+        : code === "empty"
+          ? "errEmpty"
+          : "errXlsx";
+  }
+}
+
+/** Save bytes as a file (the template downloads). */
+function saveFile(data: BlobPart, name: string, type: string) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export default function WordListImport({
+  signedIn,
+  embedded = false,
+  onAdded,
+}: {
+  signedIn: boolean;
+  /** Inside the /words Import panel: no section heading or top margin. */
+  embedded?: boolean;
+  /** A list was made (the /words picker reloads its lists). */
+  onAdded?: (listId: string) => void;
+}) {
   const t = useIntlayer("import-wordlist");
   const { locale } = useLocale();
   const n = (v: number) => v.toLocaleString(locale);
@@ -139,8 +187,15 @@ export default function WordListImport({ signedIn }: { signedIn: boolean }) {
   };
 
   const onFile = async (f: File) => {
-    const read = await readFile(f);
-    if (read === "errTooLarge" || read === "errBinary" || read === "errEncoding") {
+    const read = isSheet(f.name) ? await readSheet(f) : await readFile(f);
+    if (
+      read === "errTooLarge" ||
+      read === "errBinary" ||
+      read === "errEncoding" ||
+      read === "errXls" ||
+      read === "errXlsx" ||
+      read === "errEmpty"
+    ) {
       setPreview(null);
       setDone(null);
       setError(read);
@@ -157,6 +212,7 @@ export default function WordListImport({ signedIn }: { signedIn: boolean }) {
       const b = await post({ step: "commit", ...source, name: name.trim(), lang });
       setDone({ listId: b.listId, added: b.added, name: name.trim() });
       setPreview(null);
+      onAdded?.(b.listId);
       // This device's copy of the list's words, so /words opens with them.
       await downloadCatalog(`/api/words/lists/${b.listId}/entries`).catch(() => {});
     } catch (e) {
@@ -186,9 +242,46 @@ export default function WordListImport({ signedIn }: { signedIn: boolean }) {
   const hasEx = !!preview?.sample.some((s) => s.ex);
 
   return (
-    <section className="mt-10" data-qa="wordlist-import">
-      <h2 className="text-2xl font-bold mb-2">{t.heading}</h2>
+    <section className={embedded ? "" : "mt-10"} data-qa="wordlist-import">
+      {!embedded && <h2 className="text-2xl font-bold mb-2">{t.heading}</h2>}
       <p className="text-sm mb-4 text-gray-600 dark:text-gray-300">{t.intro}</p>
+
+      {/* The templates first: fill one in and nobody thinks about column names. */}
+      <div
+        data-qa="wordlist-templates"
+        className="mb-4 rounded-xl border border-[oklch(0.55_0.14_155/0.45)] bg-[oklch(0.55_0.14_155/0.08)] p-3"
+      >
+        <p className="text-sm font-medium">{t.templateHeading}</p>
+        <p className="mt-0.5 text-xs text-[oklch(0.4_0_0)] dark:text-[oklch(0.82_0_0)]">
+          {t.templateHint}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-qa="wordlist-template-xlsx"
+            onClick={async () =>
+              saveFile(
+                (await templateXlsx(locale)) as BlobPart,
+                `${TEMPLATE_FILE}.xlsx`,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              )
+            }
+            className="min-h-11 rounded-lg bg-[oklch(0.5_0.14_155)] px-4 text-sm font-medium text-[oklch(0.99_0_0)] hover:bg-[oklch(0.45_0.14_155)]"
+          >
+            ⬇ {t.templateXlsx}
+          </button>
+          <button
+            type="button"
+            data-qa="wordlist-template-csv"
+            onClick={() =>
+              saveFile(templateCsv(locale), `${TEMPLATE_FILE}.csv`, "text/csv;charset=utf-8")
+            }
+            className="min-h-11 rounded-lg border border-[oklch(0.5_0.14_155)] px-4 text-sm font-medium text-[oklch(0.4_0.12_155)] hover:bg-[oklch(0.55_0.14_155/0.12)] dark:text-[oklch(0.82_0.12_155)]"
+          >
+            ⬇ {t.templateCsv}
+          </button>
+        </div>
+      </div>
 
       {!signedIn ? (
         <p className="text-sm p-3 rounded-lg bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100">
@@ -240,7 +333,7 @@ export default function WordListImport({ signedIn }: { signedIn: boolean }) {
             <input
               ref={inputRef}
               type="file"
-              accept=".txt,.csv,.tsv,text/plain,text/csv,text/tab-separated-values"
+              accept=".txt,.csv,.tsv,.xlsx,.xls,text/plain,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
               className="hidden"
               data-qa="wordlist-file"
               onChange={(e) => {

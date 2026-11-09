@@ -43,6 +43,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
+import { useImportPanel } from "./ImportPanel";
 import { useIntlayer, useLocale } from "next-intlayer";
 import {
   closestCenter,
@@ -1955,12 +1956,15 @@ export default function WordsClient({
   config: given,
   voice = "off",
   ytSongs = false,
+  importOn = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
   voice?: VoiceAccess;
   /** YouTube songs (`read.youtube-songs`, or the owner): an example with a song clip gets its ▶. */
   ytSongs?: boolean;
+  /** The Import button at the top (`import.any`: the owner only, flag on or off). */
+  importOn?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
@@ -2148,6 +2152,7 @@ export default function WordsClient({
         lists={lists}
         catalog={fullCatalog}
         offline={offline}
+        importOn={importOn && !!config.imports}
         onOpen={setListId}
         onRefresh={refreshLists}
         onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
@@ -2614,6 +2619,7 @@ function ListPicker({
   lists,
   catalog,
   offline,
+  importOn,
   onOpen,
   onRefresh,
   onDelete,
@@ -2625,6 +2631,8 @@ function ListPicker({
   catalog: CatalogMeta[];
   /** Showing the offline copy of the lists. */
   offline: boolean;
+  /** Show the Import button and panel at the top (ImportPanel.tsx). */
+  importOn: boolean;
   onOpen: (id: string) => void;
   /** Reload the lists from the server. */
   onRefresh: () => Promise<void>;
@@ -2964,6 +2972,10 @@ function ListPicker({
     return shownName(row, parent);
   };
 
+  // The Import button and its panel (ImportPanel.tsx): a list made from a
+  // table shows up in the lists at once.
+  const importPanel = useImportPanel({ onAdded: () => void onRefresh() });
+
   const addGroup = async () => {
     const name = prompt(text.groupName.value)?.trim();
     if (!name) return;
@@ -2977,8 +2989,12 @@ function ListPicker({
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">{config.title}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="min-w-0 text-2xl font-semibold">{config.title}</h1>
+          {importOn && importPanel.button}
+        </div>
         <p className="opacity-70 text-sm mt-1">{config.intro}</p>
+        {importOn && importPanel.panel}
         <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
           {offline ? (
             <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">

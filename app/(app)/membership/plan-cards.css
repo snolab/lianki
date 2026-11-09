@@ -357,7 +357,10 @@
   --plan-bg: oklch(0.945 0.018 85);
   --plan-tex: var(--plan-polish), var(--plan-veil), url(/membership/marble-gold.svg);
   --plan-ink: oklch(0.25 0.015 60);
-  --plan-title: var(--brand);
+  /* seal red a shade deeper than the brand: 3:1 over the gold veins wherever
+   * the title lands (the slab is scaled to the card, so a longer title or a
+   * taller card moves the veins under it) */
+  --plan-title: oklch(from var(--brand) calc(l - 0.05) c h);
   --plan-carve: 0 1px 0 oklch(1 0 0 / 0.85), 0 -1px 0 oklch(0.3 0.1 22 / 0.35);
   --plan-yes: var(--brand);
   --plan-line: oklch(0.25 0.015 60 / 0.4);
