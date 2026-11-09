@@ -60,7 +60,8 @@ export function useRailFit({
   useLayoutEffect(() => {
     const el = list.current;
     const box = rail.current;
-    if (!enabled || !el || !box || hidden >= movable) return;
+    // A phone: the rail is not shown (display: none), there is nothing to fit.
+    if (!enabled || !el || !box || hidden >= movable || !box.clientHeight) return;
     if (contentHeight(el) > el.clientHeight - slack(box, header.current) + 0.5)
       setHidden(hidden + 1);
   });
